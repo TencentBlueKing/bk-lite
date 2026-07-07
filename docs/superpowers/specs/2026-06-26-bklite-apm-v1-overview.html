@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BK-Lite APM v1 全貌</title>
+  <style>
+    :root {
+      --bg: #f4f7fb;
+      --panel: #ffffff;
+      --line: #d8e0ea;
+      --text: #16324a;
+      --muted: #5f7489;
+      --brand: #1f6fff;
+      --brand-soft: #eaf2ff;
+      --warn: #f59e0b;
+      --danger: #dc2626;
+      --ok: #16a34a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: linear-gradient(180deg, #f8fbff 0%, var(--bg) 100%);
+      color: var(--text);
+    }
+    .page {
+      max-width: 1480px;
+      margin: 0 auto;
+      padding: 28px 28px 40px;
+    }
+    .hero {
+      background: radial-gradient(circle at top left, #eff5ff 0%, #ffffff 62%);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 28px 30px;
+      box-shadow: 0 18px 48px rgba(31, 58, 90, 0.07);
+    }
+    .hero h1 {
+      margin: 0 0 10px;
+      font-size: 32px;
+      line-height: 1.2;
+    }
+    .hero p {
+      margin: 0;
+      max-width: 980px;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.7;
+    }
+    .tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 18px;
+    }
+    .tag {
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: var(--brand-soft);
+      color: var(--brand);
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1.05fr 1.35fr;
+      gap: 20px;
+      margin-top: 20px;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      padding: 22px;
+      box-shadow: 0 12px 30px rgba(31, 58, 90, 0.05);
+    }
+    .panel h2 {
+      margin: 0 0 6px;
+      font-size: 22px;
+    }
+    .panel .sub {
+      margin: 0 0 18px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    .columns {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+    }
+    .module {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: #fbfdff;
+      padding: 16px;
+      min-height: 166px;
+    }
+    .module h3 {
+      margin: 0 0 8px;
+      font-size: 18px;
+    }
+    .module p {
+      margin: 0 0 10px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    .module ul {
+      padding-left: 18px;
+      margin: 0;
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      align-items: start;
+    }
+    .flow-step {
+      position: relative;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: #fff;
+      padding: 16px;
+      min-height: 190px;
+    }
+    .num {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--brand);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+    .flow-step h4 {
+      margin: 0 0 8px;
+      font-size: 17px;
+    }
+    .flow-step p {
+      margin: 0 0 10px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    .arrow {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      color: var(--brand);
+      font-size: 28px;
+      font-weight: 700;
+    }
+    .state-list {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 10px;
+    }
+    .state {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 14px;
+      background: #fff;
+    }
+    .badge {
+      display: inline-block;
+      padding: 5px 9px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .b-ok { background: #e9f8ef; color: var(--ok); }
+    .b-warn { background: #fff6df; color: var(--warn); }
+    .b-danger { background: #fde8e8; color: var(--danger); }
+    .b-brand { background: var(--brand-soft); color: var(--brand); }
+    .b-muted { background: #eef2f6; color: var(--muted); }
+    .state h4 {
+      margin: 0 0 6px;
+      font-size: 16px;
+    }
+    .state p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    .topology-wrap {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    .topology-card {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 16px;
+      background: #fff;
+    }
+    .map {
+      border: 1px dashed #c5d4ea;
+      border-radius: 18px;
+      background: linear-gradient(180deg, #fbfdff 0%, #f4f8fe 100%);
+      min-height: 270px;
+      padding: 16px;
+      position: relative;
+    }
+    .node {
+      position: absolute;
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: #fff;
+      min-width: 120px;
+      text-align: center;
+      box-shadow: 0 8px 18px rgba(31, 58, 90, 0.06);
+      font-size: 13px;
+    }
+    .node strong {
+      display: block;
+      font-size: 14px;
+      margin-bottom: 4px;
+    }
+    .node.center { border-color: var(--brand); background: #f7fbff; }
+    .node.warn { border-color: #f2c56a; }
+    .node.danger { border-color: #f0a8a8; }
+    .edge {
+      position: absolute;
+      height: 2px;
+      background: #a8b8cd;
+      transform-origin: left center;
+    }
+    .edge.warn { background: #e7ad33; height: 3px; }
+    .edge.danger { background: #d95353; height: 3px; }
+    .edge-label {
+      position: absolute;
+      font-size: 12px;
+      color: var(--muted);
+      background: rgba(255,255,255,0.92);
+      padding: 3px 6px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+    }
+    .rules {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+    }
+    .rule {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 14px;
+      background: #fff;
+    }
+    .rule h4 {
+      margin: 0 0 6px;
+      font-size: 16px;
+    }
+    .rule p {
+      margin: 0;
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+    .footer-note {
+      margin-top: 18px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    @media (max-width: 1180px) {
+      .grid, .columns, .flow, .state-list, .topology-wrap, .rules {
+        grid-template-columns: 1fr;
+      }
+      .map {
+        min-height: 360px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <section class="hero">
+      <h1>BK-Lite APM v1 全貌</h1>
+      <p>
+        面向运维 / SRE 的应用排障工作台。统一使用 OTLP 接入，围绕业务系统（service.namespace）组织服务，
+        通过服务目录、版本对比、服务级拓扑、资源分析与 Trace 证据，完成“接入 -> 发现异常 -> 定界 -> 归因”的闭环。
+      </p>
+      <div class="tags">
+        <span class="tag">OTLP 接入</span>
+        <span class="tag">VT 存储</span>
+        <span class="tag">service.namespace 分组</span>
+        <span class="tag">版本对比</span>
+        <span class="tag">服务级拓扑</span>
+        <span class="tag">轻量错误聚合</span>
+      </div>
+    </section>
+
+    <div class="grid">
+      <section class="panel">
+        <h2>一级信息架构</h2>
+        <p class="sub">主导航少、下钻强。服务详情和资源详情都不是一级菜单，而是围绕调查任务逐步深入。</p>
+        <div class="columns">
+          <div class="module">
+            <h3>首页</h3>
+            <p>值班调查台，不做泛概览。</p>
+            <ul>
+              <li>异常业务系统</li>
+              <li>最可疑服务</li>
+              <li>新增异常版本</li>
+              <li>高风险资源榜</li>
+            </ul>
+          </div>
+          <div class="module">
+            <h3>服务目录</h3>
+            <p>按业务系统分组进入排障主路径。</p>
+            <ul>
+              <li>列表 / 全局地图视图</li>
+              <li>值班排序</li>
+              <li>未归类服务</li>
+              <li>下钻到服务详情</li>
+            </ul>
+          </div>
+          <div class="module">
+            <h3>Trace 查询</h3>
+            <p>在明确调查任务下深挖证据。</p>
+            <ul>
+              <li>namespace / service / version</li>
+              <li>资源 / 错误 / 延迟筛选</li>
+              <li>Trace 详情证据层</li>
+            </ul>
+          </div>
+          <div class="module">
+            <h3>接入中心</h3>
+            <p>标准化 OTLP 接入入口。</p>
+            <ul>
+              <li>集成目录</li>
+              <li>接入详情</li>
+              <li>接入自检</li>
+              <li>服务发现映射结果</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>核心对象与关系</h2>
+        <p class="sub">BK-Lite APM v1 不是从 Trace 开始组织，而是从业务系统、服务、资源、版本和依赖关系开始组织调查。</p>
+        <div class="map">
+          <div class="node center" style="left: 40%; top: 22px;">
+            <strong>业务系统</strong>
+            service.namespace
+          </div>
+          <div class="node" style="left: 14%; top: 118px;">
+            <strong>服务</strong>
+            namespace + name
+          </div>
+          <div class="node" style="left: 68%; top: 118px;">
+            <strong>版本</strong>
+            service.version
+          </div>
+          <div class="node warn" style="left: 14%; top: 220px;">
+            <strong>资源</strong>
+            endpoint / operation
+          </div>
+          <div class="node danger" style="left: 68%; top: 220px;">
+            <strong>服务级拓扑</strong>
+            node + edge
+          </div>
+          <div class="node" style="left: 40%; top: 318px;">
+            <strong>Trace 证据</strong>
+            span tree / error sample
+          </div>
+
+          <div class="edge" style="left: 50%; top: 78px; width: 164px; transform: rotate(150deg);"></div>
+          <div class="edge" style="left: 50%; top: 78px; width: 164px; transform: rotate(32deg);"></div>
+          <div class="edge warn" style="left: 26%; top: 170px; width: 112px; transform: rotate(90deg);"></div>
+          <div class="edge danger" style="left: 74%; top: 170px; width: 112px; transform: rotate(90deg);"></div>
+          <div class="edge" style="left: 27%; top: 284px; width: 202px; transform: rotate(17deg);"></div>
+          <div class="edge" style="left: 53%; top: 284px; width: 202px; transform: rotate(163deg);"></div>
+
+          <div class="edge-label" style="left: 30%; top: 105px;">分组</div>
+          <div class="edge-label" style="left: 61%; top: 105px;">对比</div>
+          <div class="edge-label" style="left: 22%; top: 246px;">资源分析</div>
+          <div class="edge-label" style="left: 70%; top: 246px;">定界 / 归因</div>
+        </div>
+      </section>
+    </div>
+
+    <section class="panel" style="margin-top:20px;">
+      <h2>两条核心闭环</h2>
+      <p class="sub">v1 不追求大而全平台，而是把“接入闭环”和“排障闭环”做完整。</p>
+      <div class="flow">
+        <div class="flow-step">
+          <div class="num">1</div>
+          <h4>接入开始</h4>
+          <p>用户进入接入中心，选择 Java / Python / Go / Node.js / OTel Collector / K8s 注解 / eBPF 路径。</p>
+          <p>接入中心的作用是帮用户选路径，而不是只展示文档。</p>
+        </div>
+        <div class="flow-step">
+          <div class="num">2</div>
+          <h4>接入确认</h4>
+          <p>生成凭证，复制 OTLP endpoint 与配置模板。</p>
+          <p>平台同时展示最近发现的 namespace / service / version，确认“平台认出了什么”。</p>
+        </div>
+        <div class="flow-step">
+          <div class="num">3</div>
+          <h4>发现异常</h4>
+          <p>服务进入服务目录，首页值班调查台开始高亮异常业务系统、异常服务、疑似版本回归。</p>
+          <p>未归类服务显式暴露，避免数据进来但用户找不到对象。</p>
+        </div>
+        <div class="flow-step">
+          <div class="num">4</div>
+          <h4>定界与归因</h4>
+          <p>从服务详情进入局部拓扑，默认一跳上下游。</p>
+          <p>再下钻到资源和 Trace，判断是服务自身问题、版本回归，还是下游依赖拖慢。</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" style="margin-top:20px;">
+      <h2>接入中心全貌</h2>
+      <p class="sub">接入中心是标准化 OTLP 接入入口，不做远程控制台，但必须让用户知道“怎么接、接好了没有、平台看到了什么”。</p>
+      <div class="columns">
+        <div class="module">
+          <h3>集成目录</h3>
+          <p>按推荐场景而不是纯技术名词帮助用户做选择。</p>
+          <ul>
+            <li>主流语言卡片</li>
+            <li>Collector 入口</li>
+            <li>K8s 注解注入</li>
+            <li>eBPF 快速试点</li>
+          </ul>
+        </div>
+        <div class="module">
+          <h3>接入自检</h3>
+          <p>判断“卡在哪一步”，而不是简单红绿灯。</p>
+          <ul>
+            <li>接入凭证</li>
+            <li>传输与准入</li>
+            <li>数据接收</li>
+            <li>字段规范</li>
+            <li>分析可用性</li>
+          </ul>
+        </div>
+        <div class="module">
+          <h3>服务发现映射</h3>
+          <p>把“平台识别到了什么”前置给用户。</p>
+          <ul>
+            <li>最近发现的 namespace</li>
+            <li>最近发现的 service</li>
+            <li>最近发现的 version</li>
+            <li>未归类服务提醒</li>
+          </ul>
+        </div>
+        <div class="module">
+          <h3>最小可用凭证</h3>
+          <p>有凭证能力，但不做重型凭证管理中心。</p>
+          <ul>
+            <li>生成 token</li>
+            <li>首次展示明文</li>
+            <li>备注</li>
+            <li>失效 / 停用</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" style="margin-top:20px;">
+      <h2>拓扑能力定位</h2>
+      <p class="sub">先不谈展示形态，先定义它为什么存在、解决什么问题、必须满足哪些调查原则。</p>
+      <div class="topology-wrap">
+        <div class="topology-card">
+          <h3 style="margin:0 0 8px;">拓扑首要支持的调查任务</h3>
+          <ul style="padding-left:18px; margin:0; font-size:14px; line-height:1.8;">
+            <li><strong>告警后定界</strong>：判断影响范围、识别共享异常下游、缩小排查面。</li>
+            <li><strong>慢请求归因</strong>：判断慢在本服务还是慢在下游，识别最可疑的调用边。</li>
+            <li><strong>逐步下钻</strong>：默认一跳，沿节点推进，而不是一上来两跳三跳全展开。</li>
+          </ul>
+        </div>
+        <div class="topology-card">
+          <h3 style="margin:0 0 8px;">拓扑不是这些东西</h3>
+          <ul style="padding-left:18px; margin:0; font-size:14px; line-height:1.8;">
+            <li>不是 CMDB 物理拓扑</li>
+            <li>不是炫技大屏</li>
+            <li>不是资源级主图</li>
+            <li>不是自动根因系统</li>
+            <li>不是只看关系、不看健康的依赖图</li>
+          </ul>
+        </div>
+      </div>
+      <div class="rules" style="margin-top:16px;">
+        <div class="rule">
+          <h4>异常优先</h4>
+          <p>默认先突出异常边、异常邻接服务和最近退化关系，正常关系只做补充。</p>
+        </div>
+        <div class="rule">
+          <h4>边比点更重要</h4>
+          <p>节点承载身份和摘要，边承载请求量、错误率、P95、最近活跃等排障证据。</p>
+        </div>
+        <div class="rule">
+          <h4>时间窗是一等公民</h4>
+          <p>所有拓扑关系都绑定当前时间窗，避免把历史残影误当成当前故障路径。</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" style="margin-top:20px;">
+      <h2>状态与降级语义</h2>
+      <p class="sub">BK-Lite APM v1 的关键不是“有没有数据”，而是“当前能查到哪一层、为什么不能再往下”。</p>
+      <div class="state-list">
+        <div class="state">
+          <span class="badge b-muted">接入状态</span>
+          <h4>未开始 / 配置中</h4>
+          <p>说明还没有形成可用接入闭环，用户应停留在接入中心继续配置。</p>
+        </div>
+        <div class="state">
+          <span class="badge b-ok">服务状态</span>
+          <h4>正常 / 关注 / 异常</h4>
+          <p>服务状态只表达当前时间窗的调查健康度，不混入接入配置语义。</p>
+        </div>
+        <div class="state">
+          <span class="badge b-brand">版本状态</span>
+          <h4>可对比 / 不可对比</h4>
+          <p>缺少 service.version 时，服务仍可分析，但版本回归判断必须降级。</p>
+        </div>
+        <div class="state">
+          <span class="badge b-warn">拓扑边状态</span>
+          <h4>数据不足 / 无活跃</h4>
+          <p>允许 OT 数据不完美，显式告诉用户是数据不足还是当前无活跃依赖。</p>
+        </div>
+        <div class="state">
+          <span class="badge b-danger">未归类服务</span>
+          <h4>字段不完整</h4>
+          <p>Trace 进来了但 service.namespace 缺失时，不隐藏对象，而是进入未归类分组并提示修复。</p>
+        </div>
+      </div>
+    </section>
+
+    <p class="footer-note">
+      这版全貌图对应规格文档：<code>docs/superpowers/specs/2026-06-26-bklite-apm-v1-design.md</code>。
+      如果你认可，我下一步可以继续把这个总览拆成 2 到 3 张更细的页面草图，例如首页、服务详情、接入详情。
+    </p>
+  </div>
+</body>
+</html>

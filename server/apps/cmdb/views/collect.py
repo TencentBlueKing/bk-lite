@@ -63,6 +63,7 @@ class CollectModelViewSet(AuthViewSet):
     def apply_visibility_filter(queryset):
         return queryset.filter(is_visible=True)
 
+    @HasPermission("auto_collection-View")
     @action(methods=["get"], detail=False, url_path="network_config_file_supported_brands")
     def network_config_file_supported_brands(self, request):
         return Response({"items": get_supported_brand_options()})

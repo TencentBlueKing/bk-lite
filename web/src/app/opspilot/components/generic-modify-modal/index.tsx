@@ -4,8 +4,8 @@ import React, { useState } from 'react';
 import { Form } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import OperateModal from '@/components/operate-modal';
-import SkillForm from '@/app/opspilot/components/knowledge/forms/SkillForm';
-import StudioForm from '@/app/opspilot/components/knowledge/forms/StudioForm';
+import SkillForm from './SkillForm';
+import StudioForm from './StudioForm';
 
 interface GenericModifyModalProps {
   visible: boolean;

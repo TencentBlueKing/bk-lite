@@ -118,6 +118,7 @@ runtime:
 security:
   allowed_callback_subjects:
     - job.ansible_task_callback
+    - default_stargazer.host_remote.callback
   allowed_stream_subjects:
     - job.stream.>
     - executor.stream.>

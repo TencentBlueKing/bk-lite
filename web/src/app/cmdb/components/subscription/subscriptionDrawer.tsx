@@ -89,7 +89,7 @@ const SubscriptionDrawer: React.FC<SubscriptionDrawerProps> = ({
         onClose();
       }}
       title={t('subscription.ruleManagement')}
-      destroyOnClose
+      destroyOnHidden
     >
       <div className="flex items-center justify-between gap-2 mb-4">
         <Input.Search
@@ -157,7 +157,7 @@ const SubscriptionDrawer: React.FC<SubscriptionDrawerProps> = ({
             </Button>
           </Space>
         )}
-        destroyOnClose
+        destroyOnHidden
         styles={{
           body: {
             maxHeight: 'calc(100vh - 220px)',

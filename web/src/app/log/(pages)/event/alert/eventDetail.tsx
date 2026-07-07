@@ -125,7 +125,7 @@ const EventDetail = forwardRef<ModalRef, ModalConfig>(({}, ref) => {
         title={title}
         visible={visible}
         width={800}
-        destroyOnClose
+        destroyOnHidden
         onClose={handleCancel}
         footer={
           <div>

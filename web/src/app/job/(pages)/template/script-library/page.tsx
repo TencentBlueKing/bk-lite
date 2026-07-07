@@ -562,7 +562,7 @@ const ScriptLibraryPage = () => {
               : t('job.viewScript')
         }
         open={modalOpen}
-        destroyOnClose
+        destroyOnHidden
         confirmLoading={confirmLoading}
         onCancel={() => setModalOpen(false)}
         footer={

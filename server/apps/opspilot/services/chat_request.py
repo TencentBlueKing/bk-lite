@@ -36,9 +36,6 @@ class ChatRequest:
     llm_model: Any
 
     # Optional keys with their documented defaults.
-    # NOTE: only ``chat()`` reads enable_rag_knowledge_source; ``invoke_chat()``
-    # never did, so it must NOT be required at the shared parse boundary.
-    enable_rag_knowledge_source: bool = False
     show_think: bool = True
     skill_type: Optional[Any] = None
     group: Any = 0
@@ -64,7 +61,6 @@ class ChatRequest:
 
         return cls(
             llm_model=llm_model,
-            enable_rag_knowledge_source=kwargs.get("enable_rag_knowledge_source", False),
             show_think=kwargs.get("show_think", True),
             skill_type=kwargs.get("skill_type"),
             group=kwargs.get("group", 0),

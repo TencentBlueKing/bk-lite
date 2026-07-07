@@ -219,7 +219,7 @@ const GroupTreeSelect: React.FC<GroupTreeSelectProps> = ({
         onOpenChange={setOpen}
         trigger={['click']}
         disabled={disabled}
-        dropdownRender={() => dropdownContent}
+        popupRender={() => dropdownContent}
         placement="bottomLeft"
       >
         <div

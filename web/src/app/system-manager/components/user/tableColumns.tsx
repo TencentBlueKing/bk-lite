@@ -6,6 +6,7 @@ import Icon from '@/components/icon';
 import type { Key } from 'react';
 import type { ChangeUserStatusAction, UserDataType } from '@/app/system-manager/types/user';
 import { getRandomColor } from '@/app/system-manager/utils';
+import { canDirectlyDeleteUser } from '@/app/system-manager/utils/userDeleteGuards';
 
 interface TableColumnsProps {
   t: (key: string) => string;
@@ -267,9 +268,12 @@ export const createUserTableColumns = ({
                 title={t('common.delConfirm')}
                 okText={t('common.confirm')}
                 cancelText={t('common.cancel')}
+                disabled={!canDirectlyDeleteUser(record)}
                 onConfirm={() => onDeleteUser(key)}
               >
-                <Button type="link" className="p-0">{t('common.delete')}</Button>
+                <Button type="link" className="p-0" disabled={!canDirectlyDeleteUser(record)}>
+                  {t('common.delete')}
+                </Button>
               </Popconfirm>
             </PermissionWrapper>
           </>

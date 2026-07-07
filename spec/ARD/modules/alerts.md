@@ -15,6 +15,8 @@
 | ActionRule / ActionExecution | `models/action.py` | 告警处理动作规则与执行记录（动作类型、触发事件、幂等键、作业回调结果） |
 | OperatorLog | `models/operator_log.py`（operator_log.py:10） | 操作审计 |
 | SystemSetting | `models/sys_setting.py`（sys_setting.py:11） | 配置开关（如 `alert_enrich`，键常量 INIT_ALERT_ENRICH） |
+| EnrichmentRule | `models/enrichment.py:8` | 声明式 Lookup 富化规则模型，供富化引擎批量执行并写回 Alert/Event enrichment 结果 |
+| ActionRule / ActionExecution | `models/action.py:8,29` | 告警动作规则与执行记录，承载动作匹配、执行状态与回调链路 |
 
 ## 3. 接口【已实现/已存在】
 所有 ViewSet 路由组均以 `router.register(r"api/<name>", ...)` 注册（urls.py:35-55），故完整路径统一带 `api/` 段，例如 `api/v1/alerts/api/alert_source/`。路由组：`api/alert_source`/`api/alerts`/`api/events`/`api/level`/`api/settings`/`api/assignment`/`api/shield`/`api/enrichment`/`api/incident`(+`/(?P<incident_pk>\d+)/updates`)/`api/alarm_strategy`/`api/log`/`api/action_rule`/`api/action_execution`；开放端点 `open_api/k8s`（urls.py:35-55）。
@@ -27,6 +29,7 @@ path 端点（urls.py:57-63）：`api/test/`（request_test，receiver.py:107）
 - 即时旁路新增前置屏蔽过滤【已实现/已存在】：`InstantAlertDispatcher.dispatch()` 在收集命中规则之前调用 `_exclude_shielded(events)` 静态方法（`instant_dispatcher.py:273,310`），该方法按 `event_id` 查库过滤 `status=SHIELD` 的事件；内存中 `Event` 对象的状态可能滞后，故以库内当前值为准。
 - 富化规则配置层【已实现/已存在】：`EnrichmentRuleModelViewSet` 提供规则 CRUD 与 `metrics` 指标接口；规则模型以 `provider_type`、`input_binding`、`output_projection`、`preset_key` 描述外部提供方、入参绑定和结果投影（`views/enrichment.py:18-109`、`serializers/enrichment.py:7-25`、`models/enrichment.py`）。
 - 富化运行时【已实现/已存在】：告警富化仍经 `common/source_adapter/base.py` 的 `enable_rich_event` 开关与 `enrich_event()` 入口控制，并通过 `apps.rpc.cmdb.CMDB` 获取资源元数据；配置层与运行时入口已打通在同一模块内。
+- 声明式富化已落地为 `EnrichmentRule` + 批量引擎：`enrichment/engine.py:21` 执行规则，`common/source_adapter/base.py:26,198` 接入事件处理链路，聚合构建器在 `aggregation/builder/alert_builder.py:122` 写回 Alert/Event enrichment 结果；不再按“源码缺失”处理。
 - 聚合 `aggregation/` 子目录：`processor` / `strategy`（指纹分组）/ `builder` / `recovery`（超时恢复）/ `window` / `core` / `engine` / `query` / `templates`【已实现/已存在，目录均存在】。
 
 ## 5. 任务与 NATS【已实现/已存在】
@@ -38,6 +41,12 @@ path 端点（urls.py:57-63）：`api/test/`（request_test，receiver.py:107）
 - NATS（`nats/nats.py`）：`receive_alert_events` 接收事件（nats.py:532）；测试桩 `alert_test`（nats.py:675）。统计类 handler：`get_alert_trend_data`（:188）、`get_alert_source_event_top`（:265）、`get_alert_source_statistics`（:297）、`get_notification_statistics`（:350）、`get_notification_channel_stats`（:404）、`get_alert_data_quality`（:457）、`get_alert_statistics`（:684）、`get_alert_level_distribution`（:741）、`get_active_alert_top`（:782）供运营分析。
 - 统计口径权限收敛【已实现/已存在】：面向运营分析的告警源统计、通知统计与通知渠道统计会先按当前组织与对象权限过滤可见告警，再反推可见告警源与通知结果，避免把无权查看的对象计入汇总（`nats/nats.py:68-137,403-470`）。
 - 通知经 `utils/system_mgmt_util.py:SystemMgmtUtils.send_msg_with_channel()`（委托 system_mgmt 渠道）。
+- 告警动作链路【已实现/已存在】：`tasks/action_tasks.py:10` 注册动作处理任务，`action/engine.py:13` 执行动作规则匹配与派发；动作回调与 job_mgmt 脚本执行入口由 `views/action.py` 与 `urls.py:54-61` 暴露。
+
+## 2026-07-01 Code-ARD 校准
+- `[alerts#20260701-002]` webhook 路由证据路径已更新为当前 `server/apps/alerts/urls.py` 与本 ARD 的接口段，避免沿用漂移行号。
+- `[alerts#20260701-008]` 移除“声明式 Lookup 富化源码缺失”的旧结论，改为记录 EnrichmentRule、Engine、接口和 Alert/Event enrichment 写回链路已存在。
+- `[alerts#20260701-009]` 补录动作规则、执行记录、Celery 任务、ActionEngine 与 job_mgmt 回调入口。
 
 ## 6. 风险 / 待确认
 - 与 monitor/log 各自产生的 Alert 如何统一收敛到本模块【待确认】。
@@ -45,4 +54,4 @@ path 端点（urls.py:57-63）：`api/test/`（request_test，receiver.py:107）
 - 富化提供方当前仍以现有提供方与投影配置为主，跨外部系统的丰富度与失败补偿策略【待确认】。
 
 ## 7. 证据来源
-`server/apps/alerts/{urls.py:35-63, models/operator_log.py:10, models/sys_setting.py:11, models/models.py, models/alert_source.py, models/alert_operator.py, models/action.py, models/enrichment.py, common/source_adapter/*（base.py:44,48-57,432,434,442,462,552-568,557）, aggregation/processor/aggregation_processor.py:136,419, aggregation/processor/instant_dispatcher.py:273,310,315, aggregation/{strategy,builder,recovery,window,core,engine,query,templates}/, tasks/tasks.py:17,132,154-157,198-202, tasks/action_tasks.py:10-22, nats/nats.py:188,265,297,350,404,457,532,675,684,741,782, views/action.py:31-246, views/enrichment.py:18-109, views/receiver.py:107, serializers/action.py:6-18, serializers/enrichment.py:7-25, constants/init_data.py:108,124-130, utils/system_mgmt_util.py}`。
+`server/apps/alerts/{urls.py:35-63, models/operator_log.py:10, models/sys_setting.py:11, models/models.py, models/alert_source.py, models/alert_operator.py, models/action.py:8,29, models/enrichment.py:8, common/source_adapter/*（base.py:26,44,48-57,198,432,434,442,462,552-568,557）, enrichment/engine.py:21, aggregation/builder/alert_builder.py:122, aggregation/processor/aggregation_processor.py:136,419, aggregation/processor/instant_dispatcher.py:273,310,315, aggregation/{strategy,builder,recovery,window,core,engine,query,templates}/, tasks/tasks.py:17,132,154-157,198-202, tasks/action_tasks.py:10-22, action/engine.py:13, nats/nats.py:188,265,297,350,404,457,532,675,684,741,782, views/action.py:31-246, views/enrichment.py:18-109, views/receiver.py:107, serializers/action.py:6-18, serializers/enrichment.py:7-25, constants/init_data.py:108,124-130, utils/system_mgmt_util.py}`。

@@ -40,8 +40,17 @@ spec:
             memory: 256Mi
             cpu: 200m
         args:
-          - '--metric-labels-allowlist=*=[*]'
-          - '--metric-annotations-allowlist=*=[*]'
+          # 注意：本 KSM 与 deploy/dist/bk-lite-kubernetes-collector/bk-lite-metric-collector.yaml
+          # 的 KSM 是同名共享实例（bk-lite-collector/kube-state-metrics），同集群共装时后
+          # apply 者覆盖先 apply 者，因此本段 args 必须与该文件逐字一致——取两条链路消费
+          # 指标的并集（监控 metrics.json/web dashboard 17 个 + CMDB collection/constants.py
+          # 23 个，重叠 6 个）；各链路的精确过滤在采集侧（vmagent keep / telegraf fieldpass）
+          - '--resources=cronjobs,daemonsets,deployments,jobs,namespaces,nodes,pods,replicasets,statefulsets'
+          - '--metric-allowlist=kube_cronjob_annotations,kube_cronjob_info,kube_daemonset_annotations,kube_daemonset_created,kube_daemonset_status_desired_number_scheduled,kube_daemonset_status_number_available,kube_daemonset_status_number_unavailable,kube_deployment_annotations,kube_deployment_created,kube_deployment_spec_replicas,kube_deployment_status_replicas_available,kube_deployment_status_replicas_unavailable,kube_job_annotations,kube_job_info,kube_namespace_labels,kube_node_info,kube_node_role,kube_node_status_allocatable,kube_node_status_capacity,kube_node_status_condition,kube_pod_container_resource_limits,kube_pod_container_resource_requests,kube_pod_container_status_restarts_total,kube_pod_container_status_waiting_reason,kube_pod_info,kube_pod_status_phase,kube_replicaset_annotations,kube_replicaset_created,kube_replicaset_owner,kube_replicaset_spec_replicas,kube_statefulset_annotations,kube_statefulset_created,kube_statefulset_replicas,kube_statefulset_status_replicas_ready'
+          # annotations 仅 CMDB 解析 last-applied-configuration 一个 key
+          - '--metric-annotations-allowlist=cronjobs=[kubectl.kubernetes.io/last-applied-configuration],daemonsets=[kubectl.kubernetes.io/last-applied-configuration],deployments=[kubectl.kubernetes.io/last-applied-configuration],jobs=[kubectl.kubernetes.io/last-applied-configuration],replicasets=[kubectl.kubernetes.io/last-applied-configuration],statefulsets=[kubectl.kubernetes.io/last-applied-configuration]'
+          # KSM 2.13 在 labels allowlist 为空时 kube_namespace_labels 整族不输出任何样本
+          # （internal/store/namespace.go），而 CMDB namespace 发现依赖该指标，必须保留
           - '--metric-labels-allowlist=namespaces=[*]'
         livenessProbe:
           httpGet:
@@ -324,6 +333,12 @@ data:
     [[inputs.prometheus]]
       urls = ["http://kube-state-metrics:8080/metrics"]
       metric_version = 2
+      ## KSM 实例暴露的是两条链路的并集，CMDB 链路只消费以下 23 个指标
+      ## （server/apps/cmdb/collection/constants.py），其余（监控专属的 status_phase/
+      ## condition 等）不上报；metric_version=2 下指标名是 field 名，故用 fieldpass
+      fieldpass = ["kube_cronjob_annotations", "kube_cronjob_info", "kube_daemonset_annotations", "kube_daemonset_created", "kube_deployment_annotations", "kube_deployment_created", "kube_deployment_spec_replicas", "kube_job_annotations", "kube_job_info", "kube_namespace_labels", "kube_node_info", "kube_node_role", "kube_node_status_capacity", "kube_pod_container_resource_limits", "kube_pod_container_resource_requests", "kube_pod_info", "kube_replicaset_annotations", "kube_replicaset_created", "kube_replicaset_owner", "kube_replicaset_spec_replicas", "kube_statefulset_annotations", "kube_statefulset_created", "kube_statefulset_replicas"]
+      ## CMDB 采集(collect_plugin/k8s.py)未消费的维度，上报前丢弃以削减传输
+      tagexclude = ["uid", "unit", "host_ip", "host_network", "priority_class", "system_uuid", "provider_id", "kubeproxy_version", "owner_is_controller", "url"]
       [inputs.prometheus.tags]
         instance_id = "${CLUSTER_NAME:-k8s-bklite-cluster}"
         instance_type = "k8s"

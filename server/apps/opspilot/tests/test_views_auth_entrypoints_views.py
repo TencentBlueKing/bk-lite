@@ -650,7 +650,7 @@ class TestDownloadWorkflowAttachment:
             execution_id="exec-1",
             filename="report.pdf",
             mime_type="application/pdf",
-            file_knowledge=SimpleNamespace(file=file_field),
+            file=file_field,
         )
         mocker.patch.object(views, "resolve_signed_attachment_token", return_value=asset)
         # Avoid FileResponse touching a real file handle.

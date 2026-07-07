@@ -1,5 +1,6 @@
 # flake8: noqa
 from .common import *  # noqa: F401,F403
+from .common import _build_jwt_payload
 from .users import set_opspilot_guest_group_default_rule
 
 

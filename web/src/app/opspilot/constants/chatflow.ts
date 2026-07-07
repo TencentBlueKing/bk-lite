@@ -80,6 +80,15 @@ export const nodeCategories = [
   },
 ] as const;
 
+export const normalizeEnterpriseWechatAibotConfig = (config: any) => ({
+  ...config,
+  connectionMode: 'webhook',
+  webhook: {
+    ...(config?.webhook || {}),
+    aibotid: '',
+  },
+});
+
 export const handleColorClasses = {
   green: 'bg-green-500!',
   purple: 'bg-purple-500!',

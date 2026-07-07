@@ -93,6 +93,16 @@ class BotViewSet(PinMixin, AuthViewSet):
         """重写排序逻辑：当前用户置顶优先，再按 ID 倒序"""
         return self.query_by_groups_with_pinned(request, queryset)
 
+    @action(detail=False, methods=["GET"])
+    def get_teams(self, request):
+        """返回当前用户可访问的团队(组)列表。
+
+        通用工具接口：原挂在已删除的知识库 ViewSet 上（与知识库无关），
+        知识库功能移除后迁移到此处。前端 useGroups hook 调用它获取用户团队。
+        """
+        groups = request.user.group_list
+        return JsonResponse({"result": True, "data": groups})
+
     @HasPermission("bot_list-View")
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)

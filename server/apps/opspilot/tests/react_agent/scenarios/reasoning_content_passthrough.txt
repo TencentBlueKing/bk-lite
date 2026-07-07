@@ -1,6 +1,6 @@
 场景名称: DeepSeek/Qwen Thinking 模式 reasoning_content 回传测试
 
-对应计划: 修复项（非计划内，但影响 ReAct 循环）
+对应计划: 修复项（非计划内，但影响 DeepAgent 工具调用流程）
 
 功能描述:
   DeepSeek 和 Qwen 开启 thinking 模式后，LLM 响应包含 reasoning_content 字段。

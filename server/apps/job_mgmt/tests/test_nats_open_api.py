@@ -79,6 +79,58 @@ class TestJobScriptExecute:
         result = job_script_execute({})
         assert result["result"] is False
 
+    def test_normalize_crlf_on_persist(self):
+        """NATS 入口入库前规范化;worker 兜底不依赖。"""
+        from apps.job_mgmt.models import JobExecution
+        from apps.job_mgmt.nats_api import job_script_execute
+
+        data = {
+            "name": "crlf-nats",
+            "target_source": "node_mgmt",
+            "target_list": [{"node_id": "n1", "name": "h1", "ip": "1.1.1.1", "os": "linux", "cloud_region_id": "r1"}],
+            "script_type": "shell",
+            "script_content": "echo a\r\necho b\r\n",
+            "team": [1],
+            "timeout": 60,
+        }
+        with patch("apps.job_mgmt.services.dangerous_checker.DangerousChecker.check_command") as mock_check, patch(
+            "apps.job_mgmt.nats_api.execute_script_task.delay", return_value=MagicMock(id="task-1")
+        ):
+            mock_result = MagicMock()
+            mock_result.can_execute = True
+            mock_result.forbidden = []
+            mock_check.return_value = mock_result
+            result = job_script_execute(data)
+        assert result["result"] is True
+        e = JobExecution.objects.get(name="crlf-nats")
+        assert "\r" not in e.script_content
+        assert e.script_content.startswith("echo a\necho b")
+
+    def test_bat_keeps_crlf_on_persist(self):
+        from apps.job_mgmt.models import JobExecution
+        from apps.job_mgmt.nats_api import job_script_execute
+
+        crlf = "@echo off\r\nset x=1\r\n"
+        data = {
+            "name": "bat-nats",
+            "target_source": "node_mgmt",
+            "target_list": [{"node_id": "n1", "name": "h1", "ip": "1.1.1.1", "os": "linux", "cloud_region_id": "r1"}],
+            "script_type": "bat",
+            "script_content": crlf,
+            "team": [1],
+        }
+        with patch("apps.job_mgmt.services.dangerous_checker.DangerousChecker.check_command") as mock_check, patch(
+            "apps.job_mgmt.nats_api.execute_script_task.delay", return_value=MagicMock(id="task-1")
+        ):
+            mock_result = MagicMock()
+            mock_result.can_execute = True
+            mock_result.forbidden = []
+            mock_check.return_value = mock_result
+            result = job_script_execute(data)
+        assert result["result"] is True
+        e = JobExecution.objects.get(name="bat-nats")
+        assert "\r" in e.script_content
+
     def _valid_data(self, **overrides):
         data = {
             "name": "test-script",
@@ -201,8 +253,8 @@ class TestJobDetailQuery:
         assert result["result"] is False
 
     def test_without_team_returns_limited_safe_metadata(self):
-        from apps.job_mgmt.nats_api import job_detail_query
         from apps.job_mgmt.models import JobExecution
+        from apps.job_mgmt.nats_api import job_detail_query
 
         execution = JobExecution.objects.create(name="legacy", script_content="echo secret", execution_results=[{"stdout": "secret"}], team=[1])
         result = job_detail_query({"task_id": execution.id})

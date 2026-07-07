@@ -553,7 +553,7 @@ COLLECT_OBJ_TREE = [
     },
     {
         "id": "host_manage",
-        "name": "主机管理",
+        "name": "主机逻辑主机",
         "children": [
             {
                 "id": "host",

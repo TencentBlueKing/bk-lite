@@ -50,7 +50,7 @@ const OidModal: React.FC<OidModalProps> = ({
       onCancel={handleCancel}
       okText={t('CollectTool.confirm')}
       cancelText={t('CollectTool.cancel')}
-      destroyOnClose
+      destroyOnHidden
     >
       <Form form={form} layout="vertical">
         <Form.Item

@@ -16,6 +16,11 @@ import { useTranslation } from '@/utils/i18n';
 import type { WorkflowExecutionDetailItem } from '@/app/opspilot/types/studio';
 import { ApprovalRequest } from '@/app/opspilot/types/global';
 import ApprovalCard from '../custom-chat-sse/ApprovalCard';
+import {
+  sortExecutionPreviewItems,
+  type ExecutionPreviewWorkflowEdge,
+  type ExecutionPreviewWorkflowNode,
+} from './utils/executionPreviewOrder';
 
 interface ExecutionPreviewPanelProps {
   open: boolean;
@@ -25,6 +30,8 @@ interface ExecutionPreviewPanelProps {
   streamingContent: string;
   rawExecutionData?: unknown;
   items: WorkflowExecutionDetailItem[];
+  workflowNodes?: ExecutionPreviewWorkflowNode[];
+  workflowEdges?: ExecutionPreviewWorkflowEdge[];
   activeNodeId?: string | null;
   onClose: () => void;
   approvalRequests?: ApprovalRequest[];
@@ -77,6 +84,8 @@ const ExecutionPreviewPanel: React.FC<ExecutionPreviewPanelProps> = ({
   streamingContent,
   rawExecutionData,
   items,
+  workflowNodes = [],
+  workflowEdges = [],
   activeNodeId,
   onClose,
   approvalRequests,
@@ -88,13 +97,9 @@ const ExecutionPreviewPanel: React.FC<ExecutionPreviewPanelProps> = ({
   const [expandedErrorNodeIds, setExpandedErrorNodeIds] = useState<string[]>([]);
   const failedNodeRef = useRef<HTMLDivElement | null>(null);
 
-  const sortedItems = useMemo(() => {
-    return [...items].sort((left, right) => {
-      const leftIndex = left.node_index ?? Number.MAX_SAFE_INTEGER;
-      const rightIndex = right.node_index ?? Number.MAX_SAFE_INTEGER;
-      return leftIndex - rightIndex;
-    });
-  }, [items]);
+  const sortedItems = useMemo(() => (
+    sortExecutionPreviewItems(items, workflowNodes, workflowEdges)
+  ), [items, workflowEdges, workflowNodes]);
 
   const firstFailedNode = useMemo(
     () => sortedItems.find((item) => item.status === 'failed') ?? null,

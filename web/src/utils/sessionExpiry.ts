@@ -14,6 +14,8 @@ const SESSION_EXPIRY_IGNORED_REQUEST_PATHS = [
   '/api/proxy/core/api/get_bk_settings/',
   '/api/proxy/core/api/get_wechat_settings/',
   '/api/proxy/core/api/login/',
+  '/api/proxy/core/api/get_login_auth_bindings/',
+  '/api/proxy/core/api/start_login_auth/',
   '/api/proxy/core/api/reset_pwd/',
   '/api/proxy/core/api/verify_otp_code/',
 ];
@@ -53,7 +55,7 @@ export const isAuthPath = (pathname?: string | null) => {
     return false;
   }
 
-  return ['/auth/signin', '/auth/signout', '/auth/callback'].includes(pathname);
+  return ['/auth/signin', '/auth/signout', '/auth/callback', '/auth/signin/login-auth-result'].includes(pathname);
 };
 
 const resolveRequestUrl = (input?: RequestInfo | URL | string | null) => {
@@ -94,6 +96,10 @@ export const shouldHandleSessionExpiry = (input?: RequestInfo | URL | string | n
   }
 
   if (SESSION_EXPIRY_IGNORED_REQUEST_PATHS.some((path) => pathname.startsWith(path))) {
+    return false;
+  }
+
+  if (/^\/api\/proxy\/core\/api\/login_auth_requests\/[^/]+\/status$/.test(pathname)) {
     return false;
   }
 
