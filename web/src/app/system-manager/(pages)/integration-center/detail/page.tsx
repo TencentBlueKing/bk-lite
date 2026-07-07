@@ -96,10 +96,12 @@ const IntegrationDetailPage: React.FC = () => {
     if (activeTab !== 'login_auth') {
       return '';
     }
-    return buildLoginAuthCallbackUrl({
+    const result = buildLoginAuthCallbackUrl({
       currentOrigin: typeof window === 'undefined' ? '' : window.location.origin,
       backendCallbackUrl: instance?.login_auth_callback_url || '',
     });
+    console.log('[BK-Lite login-auth v2] backend returned:', instance?.login_auth_callback_url, '| rendered:', result);
+    return result;
   }, [activeTab, instance?.login_auth_callback_url]);
 
   const fetchDetailData = async () => {
