@@ -3,9 +3,16 @@ import time
 from copy import deepcopy
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.monitor.expression.conditions import compile_filter_to_query
+from apps.monitor.expression.query import build_formula_query
 from apps.monitor.models.monitor_metrics import Metric
-from apps.monitor.tasks.utils.metric_query import format_to_vm_filter
-from apps.monitor.tasks.utils.policy_methods import METHOD, build_policy_query, period_to_seconds
+from apps.monitor.tasks.utils.policy_methods import (
+    METHOD,
+    build_formula_policy_query,
+    build_policy_query,
+    period_to_seconds,
+    query_formula_policy_metrics,
+)
 from apps.monitor.utils.unit_converter import UnitConverter
 
 
@@ -20,20 +27,30 @@ class PolicyPreviewService:
         period = self._require_dict("period")
         algorithm = self._require_value("algorithm")
         group_algorithm = self.payload.get("group_algorithm")
-        group_by = self._require_string_list("group_by")
         step = self._format_period(period)
-        group_by_clause = ",".join(group_by)
+        if query_condition.get("type") == "formula":
+            compiled_formula = build_formula_query(query_condition)
+            metric_query = compiled_formula.query
+            group_by = compiled_formula.group_by
+            self.warnings.extend(compiled_formula.warnings)
+            query = build_formula_policy_query(algorithm, metric_query, step)
+        else:
+            group_by = self._require_string_list("group_by")
+            metric_query = self._build_metric_query(query_condition)
+            query = build_policy_query(algorithm, metric_query, step, ",".join(group_by), group_algorithm)
 
-        metric_query = self._build_metric_query(query_condition)
+        group_by_clause = ",".join(group_by)
         method = METHOD.get(algorithm)
         if not method:
             raise BaseAppException(f"invalid algorithm method: {algorithm}")
 
-        query = build_policy_query(algorithm, metric_query, step, group_by_clause, group_algorithm)
         end = int(time.time())
         points = self._preview_points()
         start = end - period_to_seconds(period) * points
-        data = method(metric_query, start, end, step, group_by_clause, group_algorithm)
+        if query_condition.get("type") == "formula":
+            data = query_formula_policy_metrics(algorithm, metric_query, start, end, step)
+        else:
+            data = method(metric_query, start, end, step, group_by_clause, group_algorithm)
         self._raise_for_vm_error(data)
         data = self._apply_unit_conversion(data)
         data["unit"] = self._display_unit()
@@ -66,9 +83,11 @@ class PolicyPreviewService:
         if not self.metric:
             raise BaseAppException(f"metric does not exist [{metric_id}]")
 
-        filters = self._build_instance_filters() + deepcopy(query_condition.get("filter") or [])
-        vm_filter = format_to_vm_filter(filters)
-        return (self.metric.query or "").replace("__$labels__", vm_filter)
+        return compile_filter_to_query(
+            self.metric.query or "",
+            deepcopy(query_condition.get("filter") or []),
+            base_filters=self._build_instance_filters(),
+        )
 
     def _build_instance_filters(self):
         preview = self._require_dict("preview")

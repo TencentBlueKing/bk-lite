@@ -54,13 +54,18 @@ def calculate_alerts(alert_name, df, thresholds, template_context=None, n=1):
     display_unit = template_context.get("display_unit", "")
     enum_value_map = template_context.get("enum_value_map", {})
     dimension_name_map = template_context.get("dimension_name_map", {})
+    monitor_instance_id_key = template_context.get("monitor_instance_id_key")
 
     for _, row in df.iterrows():
         instance_id_tuple = row["instance_id"]
         metric_instance_id = str(instance_id_tuple)
 
         dimensions = build_dimensions(instance_id_tuple, instance_id_keys)
-        monitor_instance_id = extract_monitor_instance_id(instance_id_tuple)
+        monitor_instance_id = _extract_monitor_instance_id_by_key(
+            instance_id_tuple,
+            instance_id_keys,
+            monitor_instance_id_key,
+        )
         resource_name = instances_map.get(monitor_instance_id, monitor_instance_id)
         dimension_str = format_dimension_str(dimensions, instance_id_keys)
         display_name = (
@@ -142,3 +147,16 @@ def calculate_alerts(alert_name, df, thresholds, template_context=None, n=1):
             )
 
     return alert_events, info_events
+
+
+def _extract_monitor_instance_id_by_key(
+    instance_id_tuple: tuple,
+    instance_id_keys: list,
+    monitor_instance_id_key: str | None,
+) -> str:
+    if monitor_instance_id_key and monitor_instance_id_key in instance_id_keys:
+        index = instance_id_keys.index(monitor_instance_id_key)
+        if index < len(instance_id_tuple):
+            return str((instance_id_tuple[index],))
+
+    return extract_monitor_instance_id(instance_id_tuple)

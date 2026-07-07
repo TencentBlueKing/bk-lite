@@ -116,6 +116,16 @@ def build_policy_query(algorithm, metric_query, step, group_by, group_algorithm=
     return f"{algorithm}(({group_algorithm}({metric_query}) by ({group_by}))[{step}:{period_step(step)}])"
 
 
+def build_formula_policy_query(algorithm, metric_query, step):
+    _, algorithm = normalize_policy_algorithms(algorithm)
+    return f"{algorithm}(({metric_query})[{step}:{period_step(step)}])"
+
+
+def query_formula_policy_metrics(algorithm, metric_query, start, end, step):
+    query = build_formula_policy_query(algorithm, metric_query, step)
+    return VictoriaMetricsAPI().query_range(query, start, end, step)
+
+
 def last_over_time(metric_query, start, end, step, group_by, group_algorithm=None):
     query = build_policy_query("last_over_time", metric_query, step, group_by, group_algorithm)
     metrics = VictoriaMetricsAPI().query_range(query, start, end, step)
