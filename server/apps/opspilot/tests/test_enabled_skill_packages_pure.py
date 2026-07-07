@@ -13,6 +13,7 @@ from unittest.mock import patch
 import pytest
 
 from apps.opspilot.viewsets.llm_view import LLMViewSet
+from apps.opspilot.services.skill_package.runtime import build_skill_package_prompt
 
 pytestmark = pytest.mark.unit
 
@@ -102,3 +103,26 @@ def test_apply_skill_packages_enabled_empty_when_no_selection():
 
     assert params["enabled_skill_packages"] == []
     assert params["matched_skill_packages"] == []
+
+
+def test_skill_package_prompt_requires_tool_execution_for_real_tasks():
+    """命中技能包且用户要求实际转换/获取时,提示词必须约束模型调用工具而不是只给安装说明。"""
+    prompt, matched = build_skill_package_prompt(
+        base_prompt="",
+        skill_packages=[
+            {
+                "id": 1,
+                "name": "markitdown",
+                "description": "Convert URLs and files to markdown.",
+                "required_tools": [],
+                "triggers": ["markitdown", "url", "markdown"],
+                "skill_markdown": "Use MarkItDown CLI.",
+            },
+        ],
+        user_message="使用markitdown技能，访问https://www.baidu.com网址，把内容转成markdown返回给我",
+        available_tool_names=[],
+    )
+
+    assert len(matched) == 1
+    assert "不要只输出安装步骤" in prompt
+    assert "execute" in prompt
