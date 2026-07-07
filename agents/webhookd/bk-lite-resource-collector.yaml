@@ -40,9 +40,11 @@ spec:
             memory: 256Mi
             cpu: 200m
         args:
-          - '--metric-labels-allowlist=*=[*]'
-          - '--metric-annotations-allowlist=*=[*]'
-          - '--metric-labels-allowlist=namespaces=[*]'
+          # CMDB 资源发现链路只消费下列指标（server/apps/cmdb/collection/constants.py），
+          # annotations 仅解析 last-applied-configuration 一个 key，按需暴露以削减冗余传输
+          - '--resources=cronjobs,daemonsets,deployments,jobs,namespaces,nodes,pods,replicasets,statefulsets'
+          - '--metric-allowlist=kube_cronjob_annotations,kube_cronjob_info,kube_daemonset_annotations,kube_daemonset_created,kube_deployment_annotations,kube_deployment_created,kube_deployment_spec_replicas,kube_job_annotations,kube_job_info,kube_namespace_labels,kube_node_info,kube_node_role,kube_node_status_capacity,kube_pod_container_resource_limits,kube_pod_container_resource_requests,kube_pod_info,kube_replicaset_annotations,kube_replicaset_created,kube_replicaset_owner,kube_replicaset_spec_replicas,kube_statefulset_annotations,kube_statefulset_created,kube_statefulset_replicas'
+          - '--metric-annotations-allowlist=cronjobs=[kubectl.kubernetes.io/last-applied-configuration],daemonsets=[kubectl.kubernetes.io/last-applied-configuration],deployments=[kubectl.kubernetes.io/last-applied-configuration],jobs=[kubectl.kubernetes.io/last-applied-configuration],replicasets=[kubectl.kubernetes.io/last-applied-configuration],statefulsets=[kubectl.kubernetes.io/last-applied-configuration]'
         livenessProbe:
           httpGet:
             path: /livez
@@ -324,6 +326,8 @@ data:
     [[inputs.prometheus]]
       urls = ["http://kube-state-metrics:8080/metrics"]
       metric_version = 2
+      ## CMDB 采集(collect_plugin/k8s.py)未消费的维度，上报前丢弃以削减传输
+      tagexclude = ["uid", "unit", "host_ip", "host_network", "priority_class", "system_uuid", "provider_id", "kubeproxy_version", "owner_is_controller", "url"]
       [inputs.prometheus.tags]
         instance_id = "${CLUSTER_NAME:-k8s-bklite-cluster}"
         instance_type = "k8s"
