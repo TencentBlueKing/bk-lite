@@ -167,6 +167,7 @@ export interface BuildAffectedPage {
   title: string;
   page_type: string;
   status: string;
+  reason?: string;
 }
 
 export interface BuildMaintenanceStage {
