@@ -4,6 +4,7 @@ import {
   assignMetricRowRefs,
   buildMetricExpressionPreviewPayload,
   buildMetricExpressionQueryCondition,
+  DEFAULT_FORMULA_RESULT_NAME,
   extractFormulaRefs,
   getMetricExpressionModeForRows,
   shouldShowFormulaEditor,
@@ -121,6 +122,14 @@ assert.deepEqual(formulaPayload.queries[1].filter, [
   { name: 'service', method: '=', value: 'checkout' },
   { logic: 'or', name: 'status', method: '=', value: '200' }
 ]);
+
+const defaultFormulaPayload = buildMetricExpressionQueryCondition({
+  mode: 'formula',
+  resultName: DEFAULT_FORMULA_RESULT_NAME,
+  expression: 'a / b * 100',
+  rows: formulaRows
+});
+assert.equal(defaultFormulaPayload.result_name, '计算指标');
 assert.deepEqual(formulaPayload.queries[1].group_by, ['instance_id']);
 
 const previewInstance = {
