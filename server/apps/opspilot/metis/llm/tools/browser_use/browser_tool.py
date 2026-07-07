@@ -336,7 +336,7 @@ def _build_sensitive_data(username: Optional[str] = None, password: Optional[str
     4. 日志/输出中始终显示 <secret>占位符</secret>，保护真实凭证
 
     注意：凭据应通过 browse_website 的 username/password 参数传递，
-    而不是写在 task 文本中。LLM 已在 react_agent_system_message.jinja2
+    而不是写在 task 文本中。LLM 已在 deepagent_system_message.jinja2
     中被严格约束使用参数传递方式。
 
     Args:

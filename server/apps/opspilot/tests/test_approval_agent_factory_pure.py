@@ -5,10 +5,7 @@ import asyncio
 import pytest
 from django.core.cache import cache
 
-from apps.opspilot.metis.llm.agent.chatbot_workflow import ChatBotWorkflowGraph, ChatBotWorkflowRequest
-from apps.opspilot.metis.llm.agent.lats_agent import LatsAgentGraph, LatsAgentRequest
-from apps.opspilot.metis.llm.agent.plan_and_execute_agent import PlanAndExecuteAgentGraph, PlanAndExecuteAgentRequest
-from apps.opspilot.metis.llm.agent.react_agent import ReActAgentGraph, ReActAgentRequest
+from apps.opspilot.metis.llm.agent.deep_agent import DeepAgentGraph, DeepAgentRequest
 from apps.opspilot.models import SkillTypeChoices
 from apps.opspilot.services import approval as approval_svc
 from apps.opspilot.utils import agent_factory
@@ -191,24 +188,23 @@ class TestWaitForApprovalInteractive:
 class TestCreateAgentInstance:
     def test_basic_tool(self):
         graph, request = agent_factory.create_agent_instance(SkillTypeChoices.BASIC_TOOL, {})
-        assert isinstance(graph, ReActAgentGraph)
-        assert isinstance(request, ReActAgentRequest)
+        assert isinstance(graph, DeepAgentGraph)
+        assert isinstance(request, DeepAgentRequest)
 
     def test_plan_execute(self):
         graph, request = agent_factory.create_agent_instance(SkillTypeChoices.PLAN_EXECUTE, {})
-        assert isinstance(graph, PlanAndExecuteAgentGraph)
-        assert isinstance(request, PlanAndExecuteAgentRequest)
+        assert isinstance(graph, DeepAgentGraph)
+        assert isinstance(request, DeepAgentRequest)
 
     def test_lats(self):
         graph, request = agent_factory.create_agent_instance(SkillTypeChoices.LATS, {})
-        assert isinstance(graph, LatsAgentGraph)
-        assert isinstance(request, LatsAgentRequest)
+        assert isinstance(graph, DeepAgentGraph)
+        assert isinstance(request, DeepAgentRequest)
 
-    def test_default_falls_back_to_chatbot(self):
-        # KNOWLEDGE_TOOL (and any unrecognized) → ChatBot workflow default branch
+    def test_knowledge_tool_uses_deepagent(self):
         graph, request = agent_factory.create_agent_instance(SkillTypeChoices.KNOWLEDGE_TOOL, {})
-        assert isinstance(graph, ChatBotWorkflowGraph)
-        assert isinstance(request, ChatBotWorkflowRequest)
+        assert isinstance(graph, DeepAgentGraph)
+        assert isinstance(request, DeepAgentRequest)
 
     def test_kwargs_passed_into_request(self):
         graph, request = agent_factory.create_agent_instance(
