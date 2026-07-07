@@ -85,12 +85,12 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
             return value
 
         if query_type == "formula":
-            from apps.monitor.expression.errors import FormulaError
-            from apps.monitor.expression.validators import validate_formula_condition
+            from apps.core.exceptions.base_app_exception import BaseAppException
+            from apps.monitor.expression.query import build_formula_query
 
             try:
-                validate_formula_condition(value)
-            except FormulaError as err:
+                build_formula_query(value)
+            except BaseAppException as err:
                 raise serializers.ValidationError(str(err)) from err
             return value
 
@@ -115,6 +115,8 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     f"filter[{idx}].method={method!r} 不是合法运算符，只允许 {sorted(_VALID_LABEL_METHODS)}"
                 )
+            if isinstance(condition.get("value"), (list, tuple, set, dict)):
+                raise serializers.ValidationError(f"filter[{idx}].value 必须是标量")
         return value
 
     def validate_source(self, value):

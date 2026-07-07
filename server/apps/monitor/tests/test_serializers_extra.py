@@ -69,6 +69,18 @@ class TestMonitorPolicyValidators:
                 "filter": [{"name": "instance_id", "method": "LIKE", "value": "x"}],
             })
 
+    def test_validate_query_condition_rejects_structured_filter_value(self):
+        with pytest.raises(serializers.ValidationError) as exc:
+            self._s().validate_query_condition(
+                {
+                    "type": "metric",
+                    "metric_id": 1,
+                    "filter": [{"name": "service", "method": "=", "value": ["checkout"]}],
+                }
+            )
+
+        assert "必须是标量" in str(exc.value)
+
     def test_validate_source_requires_type_and_values(self):
         with pytest.raises(serializers.ValidationError):
             self._s().validate_source({"type": "instance"})
@@ -86,7 +98,7 @@ class TestMonitorPolicyValidators:
             self._s().validate_algorithm("bogus")
 
     def test_validate_algorithm_ok(self):
-        assert self._s().validate_algorithm("max") == "max"
+        assert self._s().validate_algorithm("max_over_time") == "max_over_time"
 
     def test_validate_group_by_autocorrects_primary_key(self):
         obj = MonitorObject.objects.create(name="SPGObj", level="base", instance_id_keys=["instance_id", "device"])

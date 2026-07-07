@@ -236,6 +236,9 @@ const parseFormulaExpression = (expression: string): ParsedFormula => {
 const isPositiveInteger = (value: number | null): value is number =>
   Number.isInteger(value) && !!value && value > 0;
 
+const isScalarFilterValue = (value: unknown): value is string | number | boolean =>
+  ['string', 'number', 'boolean'].includes(typeof value);
+
 const validateMetricRows = (rows: MetricExpressionRow[]): string[] => {
   const errors: string[] = [];
 
@@ -272,6 +275,13 @@ const validateMetricRows = (rows: MetricExpressionRow[]): string[] => {
       }
       if (index > 0 && !['and', 'or'].includes(filter.logic || '')) {
         errors.push(`指标 ${row.ref} 的条件 ${index + 1} 缺少 AND/OR 关系`);
+      }
+      if (
+        filter.value !== undefined &&
+        filter.value !== null &&
+        !isScalarFilterValue(filter.value)
+      ) {
+        errors.push(`指标 ${row.ref} 的条件 ${index + 1} 的值必须是字符串、数字或布尔值`);
       }
     });
   });
@@ -356,6 +366,15 @@ export const validateMetricExpressionPayload = ({
 
   const parsedExpression = parseFormulaExpression(expression);
   errors.push(...parsedExpression.errors);
+
+  const anchorRef = normalizedRows[0]?.ref;
+  const anchorGroupBy = normalizedRows[0]?.groupBy || [];
+  if (anchorRef && parsedExpression.refs[0] && parsedExpression.refs[0] !== anchorRef) {
+    errors.push(`表达式首个变量必须是首行指标变量 ${anchorRef}`);
+  }
+  if (anchorRef && !anchorGroupBy.includes('instance_id')) {
+    errors.push(`指标 ${anchorRef} 分组维度必须包含 instance_id`);
+  }
 
   const availableRefs = new Set(normalizedRows.map((row) => row.ref));
   const expressionRefs = new Set(parsedExpression.refs);

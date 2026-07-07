@@ -1,6 +1,7 @@
 """指标查询服务 - 负责指标数据的查询和格式化"""
 
 import json
+import math
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.monitor.expression.conditions import compile_filter_to_query
@@ -11,6 +12,16 @@ from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 from apps.monitor.utils.unit_converter import UnitConverter
 from apps.core.logger import celery_logger as logger
+
+
+def _parse_finite_float(value):
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(number):
+        return None
+    return number
 
 
 class MetricQueryService:
@@ -223,8 +234,10 @@ class MetricQueryService:
                 if "values" not in result:
                     continue
 
-                # 提取所有数值（跳过时间戳）
-                values = [float(v[1]) for v in result["values"]]
+                # 提取所有数值（跳过时间戳）。非有限值继续留给后续扫描作为无效样本处理。
+                values = [_parse_finite_float(v[1]) for v in result["values"]]
+                if any(value is None for value in values):
+                    continue
 
                 # 进行单位转换
                 converted_values = UnitConverter.convert_values(
@@ -314,8 +327,11 @@ class MetricQueryService:
                     continue
 
             value = metric_info["values"][-1]
+            parsed_value = _parse_finite_float(value[1])
+            if parsed_value is None:
+                continue
             result[metric_instance_id] = {
-                "value": float(value[1]),
+                "value": parsed_value,
                 "raw_data": metric_info,
             }
 
