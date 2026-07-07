@@ -68,7 +68,7 @@ def _parse_origin_parts(origin: str) -> tuple[str, str, int] | None:
 
 
 def _parse_request_origin_parts(scheme: str, host: str) -> tuple[str, str, int] | None:
-    scheme = (scheme or "").strip().lower()
+    scheme = (scheme or "").strip().rstrip(':').lower()
     host = _split_first_header_value(host)
     if scheme not in ("http", "https") or not host:
         return None
@@ -135,9 +135,35 @@ def get_login_auth_callback_uri(request=None, redirect_origin: str | None = None
         and request is not None
         and validate_redirect_origin(request, redirect_origin)
     ):
-        return f"{redirect_origin.rstrip('/')}{LOGIN_AUTH_CALLBACK_PATH}"
+        result = f"{redirect_origin.rstrip('/')}{LOGIN_AUTH_CALLBACK_PATH}"
+        logger.warning(
+            "[BK-Lite login-auth v2] path=redirect_origin redirect_origin=%r result=%r "
+            "HTTP_ORIGIN=%r X-Fwd-Host=%r X-Fwd-Proto=%r HTTP_HOST=%r",
+            redirect_origin,
+            result,
+            request.META.get("HTTP_ORIGIN") if request else None,
+            request.META.get("HTTP_X_FORWARDED_HOST") if request else None,
+            request.META.get("HTTP_X_FORWARDED_PROTO") if request else None,
+            request.META.get("HTTP_HOST") if request else None,
+        )
+        return result
     if request is not None:
-        return request.build_absolute_uri(LOGIN_AUTH_CALLBACK_PATH)
+        result = request.build_absolute_uri(LOGIN_AUTH_CALLBACK_PATH)
+        logger.warning(
+            "[BK-Lite login-auth v2] path=build_absolute_uri redirect_origin=%r result=%r "
+            "HTTP_ORIGIN=%r X-Fwd-Host=%r X-Fwd-Proto=%r HTTP_HOST=%r",
+            redirect_origin,
+            result,
+            request.META.get("HTTP_ORIGIN") if request else None,
+            request.META.get("HTTP_X_FORWARDED_HOST") if request else None,
+            request.META.get("HTTP_X_FORWARDED_PROTO") if request else None,
+            request.META.get("HTTP_HOST") if request else None,
+        )
+        return result
+    logger.warning(
+        "[BK-Lite login-auth v2] path=empty redirect_origin=%r",
+        redirect_origin,
+    )
     return ""
 
 

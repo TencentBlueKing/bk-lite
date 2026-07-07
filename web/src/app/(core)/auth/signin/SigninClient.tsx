@@ -14,6 +14,7 @@ import {
   isBindingSelectionLocked,
   resolveInlineValidationError,
   resolveSigninSurface,
+  shouldShowBindingsSelector,
 } from "./login-auth/orderedBindingState";
 import {useTheme} from '@/context/theme';
 import {usePortalBranding} from "@/hooks/usePortalBranding";
@@ -365,7 +366,11 @@ export default function SigninClient({
     authStep,
     viewState: loginAuthValidation.viewState,
   });
-  const showBindingsSelector = authStep === 'login' && loginAuthValidation.bindingsLoadState === 'bindings-ready';
+  const showBindingsSelector = shouldShowBindingsSelector({
+    authStep,
+    bindingsLoadState: loginAuthValidation.bindingsLoadState,
+    bindingsCount: loginAuthValidation.bindings.length,
+  });
   const shouldShowValidationFormState = authStep === 'login';
   const validationInlineError = shouldShowValidationFormState
     ? resolveInlineValidationError(

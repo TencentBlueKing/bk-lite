@@ -274,6 +274,18 @@ const SkillSettingsPage: React.FC = () => {
           required_tools: pkg.required_tools || [],
           triggers: pkg.triggers || [],
         })),
+        chat_history: chatHistory,
+        conversation_window_size: chatHistoryEnabled ? quantity : undefined,
+        temperature: temperature,
+        show_think: values.show_think,
+        tools: selectedTools,
+        skill_type: skillType ?? 1,
+        group: values.group?.[0],
+        skill_name: values.name,
+        skill_id: id,
+        enable_suggest: values.enable_suggest,
+        enable_query_rewrite: values.enable_query_rewrite,
+        skill_params: (values.skill_params || []).filter((p: any) => p && p.key),
       };
 
       return {

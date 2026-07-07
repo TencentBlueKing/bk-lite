@@ -7,6 +7,7 @@ import {
   resolveBindingsLoadState,
   resolveInitialBindingId,
   resolveSelectedBinding,
+  shouldShowBindingsSelector,
   shouldUseBuiltinSigninForm,
 } from '../src/app/(core)/auth/signin/login-auth/orderedBindingState';
 
@@ -47,6 +48,33 @@ assert.equal(
 assert.equal(
   isBindingSelectionLocked({ authStep: 'login', viewState: 'idle' }),
   false,
+);
+
+// shouldShowBindingsSelector: hide selector when binding list has 0 or 1 items
+assert.equal(
+  shouldShowBindingsSelector({ authStep: 'login', bindingsLoadState: 'bindings-ready', bindingsCount: 0 }),
+  false,
+  'length===0 should not show selector',
+);
+assert.equal(
+  shouldShowBindingsSelector({ authStep: 'login', bindingsLoadState: 'bindings-ready', bindingsCount: 1 }),
+  false,
+  'length===1 should not show selector',
+);
+assert.equal(
+  shouldShowBindingsSelector({ authStep: 'login', bindingsLoadState: 'bindings-ready', bindingsCount: 2 }),
+  true,
+  'length===2 should show selector',
+);
+assert.equal(
+  shouldShowBindingsSelector({ authStep: 'login', bindingsLoadState: 'bindings-error', bindingsCount: 1 }),
+  false,
+  'error state with single binding should not show selector',
+);
+assert.equal(
+  shouldShowBindingsSelector({ authStep: 'reset-password', bindingsLoadState: 'bindings-ready', bindingsCount: 3 }),
+  false,
+  'non-login authStep should not show selector',
 );
 
 console.log('signin binding ordered rendering tests passed');

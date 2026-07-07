@@ -304,6 +304,7 @@ export interface ThresholdField {
 }
 
 export interface FilterItem {
+  logic?: 'and' | 'or' | null;
   name: string | null;
   method: string | null;
   value: string;

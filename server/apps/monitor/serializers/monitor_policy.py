@@ -84,6 +84,16 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
             # pmq 类型直接传原始 PromQL，不校验 filter
             return value
 
+        if query_type == "formula":
+            from apps.core.exceptions.base_app_exception import BaseAppException
+            from apps.monitor.expression.query import build_formula_query
+
+            try:
+                build_formula_query(value)
+            except BaseAppException as err:
+                raise serializers.ValidationError(str(err)) from err
+            return value
+
         if "metric_id" not in value:
             raise serializers.ValidationError("query_condition 缺少 metric_id")
 
@@ -105,6 +115,8 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     f"filter[{idx}].method={method!r} 不是合法运算符，只允许 {sorted(_VALID_LABEL_METHODS)}"
                 )
+            if isinstance(condition.get("value"), (list, tuple, set, dict)):
+                raise serializers.ValidationError(f"filter[{idx}].value 必须是标量")
         return value
 
     def validate_source(self, value):
@@ -140,6 +152,11 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
         """校验 group_by 首位必须是监控对象的实例主键，防止下游扫描链路误判实例归属。"""
         if not value:
             return value
+        if not isinstance(value, list) or not all(isinstance(item, str) and item for item in value):
+            raise serializers.ValidationError("group_by 必须是非空字符串列表")
+        invalid_items = [item for item in value if not _LABEL_NAME_RE.match(item)]
+        if invalid_items:
+            raise serializers.ValidationError(f"group_by 包含非法字符：{', '.join(invalid_items)}")
 
         monitor_object = self._get_monitor_object()
         if monitor_object is None:

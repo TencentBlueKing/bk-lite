@@ -1,14 +1,27 @@
 """指标查询服务 - 负责指标数据的查询和格式化"""
 
 import json
+import math
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.monitor.expression.conditions import compile_filter_to_query
+from apps.monitor.expression.query import build_formula_query
 from apps.monitor.models import Metric
-from apps.monitor.tasks.utils.metric_query import format_to_vm_filter
-from apps.monitor.tasks.utils.policy_methods import METHOD, period_to_seconds
+from apps.monitor.tasks.utils.policy_methods import METHOD, period_to_seconds, query_formula_policy_metrics
+from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 from apps.monitor.utils.unit_converter import UnitConverter
 from apps.core.logger import celery_logger as logger
+
+
+def _parse_finite_float(value):
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(number):
+        return None
+    return number
 
 
 class MetricQueryService:
@@ -32,6 +45,7 @@ class MetricQueryService:
         self.instances_map = instances_map
         self.instance_id_keys = None
         self.metric = None
+        self.compiled_formula = None
         # 单位转换配置
         self._unit_conversion_enabled = bool(
             self.policy.metric_unit
@@ -57,6 +71,10 @@ class MetricQueryService:
                 self.instance_id_keys = self.policy.query_condition.get(
                     "instance_id_keys", ["instance_id"]
                 )
+            return
+
+        if query_type == "formula":
+            self._ensure_formula_compiled()
             return
 
         # Metric类型: 从metric配置中获取instance_id_keys
@@ -111,18 +129,10 @@ class MetricQueryService:
         if query_type == "pmq":
             return query_condition.get("query")
 
-        # 否则基于metric构建查询
-        query = self.metric.query
-        filter_list = query_condition.get("filter", [])
-        vm_filter_str = format_to_vm_filter(filter_list)
+        if query_type == "formula":
+            return self._ensure_formula_compiled().query
 
-        # 清理filter字符串尾部的逗号
-        if vm_filter_str and vm_filter_str.endswith(","):
-            vm_filter_str = vm_filter_str[:-1]
-
-        # 替换查询模板中的label占位符
-        query = query.replace("__$labels__", vm_filter_str or "")
-        return query
+        return compile_filter_to_query(self.metric.query, query_condition.get("filter", []))
 
     def query_aggregation_metrics(self, period, points=1):
         """查询聚合指标数据
@@ -146,12 +156,21 @@ class MetricQueryService:
         # 准备查询参数
         query = self.format_pmq()
         step = self.format_period(period, points)
-        group_by = ",".join(self.policy.group_by or [])
+        group_by = ",".join(self.get_result_group_by())
 
         # 获取聚合方法
         method = METHOD.get(self.policy.algorithm)
         if not method:
             raise BaseAppException(f"invalid algorithm method: {self.policy.algorithm}")
+
+        if self.policy.query_condition.get("type") == "formula":
+            return query_formula_policy_metrics(
+                self.policy.algorithm,
+                query,
+                start_timestamp,
+                end_timestamp,
+                step,
+            )
 
         return method(
             query,
@@ -215,8 +234,10 @@ class MetricQueryService:
                 if "values" not in result:
                     continue
 
-                # 提取所有数值（跳过时间戳）
-                values = [float(v[1]) for v in result["values"]]
+                # 提取所有数值（跳过时间戳）。非有限值继续留给后续扫描作为无效样本处理。
+                values = [_parse_finite_float(v[1]) for v in result["values"]]
+                if any(value is None for value in values):
+                    continue
 
                 # 进行单位转换
                 converted_values = UnitConverter.convert_values(
@@ -290,7 +311,7 @@ class MetricQueryService:
             dict: 格式化后的指标数据 {metric_instance_id: {"value": float, "raw_data": dict}}
         """
         result = {}
-        group_by_keys = self.policy.group_by or []
+        group_by_keys = self.get_result_group_by()
 
         for metric_info in metrics.get("data", {}).get("result", []):
             instance_id_tuple = tuple(
@@ -299,16 +320,64 @@ class MetricQueryService:
             metric_instance_id = str(instance_id_tuple)
 
             if self.instances_map:
-                monitor_instance_id = (
-                    str((instance_id_tuple[0],)) if instance_id_tuple else ""
+                monitor_instance_id = self.get_monitor_instance_id_from_tuple(
+                    instance_id_tuple, group_by_keys
                 )
                 if monitor_instance_id not in self.instances_map:
                     continue
 
             value = metric_info["values"][-1]
+            parsed_value = _parse_finite_float(value[1])
+            if parsed_value is None:
+                continue
             result[metric_instance_id] = {
-                "value": float(value[1]),
+                "value": parsed_value,
                 "raw_data": metric_info,
             }
 
         return result
+
+    def _ensure_formula_compiled(self):
+        if self.compiled_formula is None:
+            self.compiled_formula = build_formula_query(self.policy.query_condition)
+            self.instance_id_keys = list(self.compiled_formula.group_by)
+        return self.compiled_formula
+
+    def get_result_group_by(self) -> list:
+        if self.policy.query_condition.get("type") == "formula":
+            return list(self._ensure_formula_compiled().group_by)
+        return self.policy.group_by or []
+
+    def get_monitor_instance_id_key(self) -> str:
+        result_group_by = self.get_result_group_by()
+        if getattr(self.policy, "collect_type", "") == "trap":
+            return "source"
+        if "instance_id" in result_group_by:
+            return "instance_id"
+        metric_instance_keys = getattr(self.metric, "instance_id_keys", None) or []
+        if metric_instance_keys:
+            return metric_instance_keys[0]
+        query_instance_keys = self.policy.query_condition.get("instance_id_keys") or []
+        if query_instance_keys:
+            return query_instance_keys[0]
+        return result_group_by[0] if result_group_by else ""
+
+    def get_monitor_instance_id_from_tuple(
+        self, instance_id_tuple: tuple, group_by_keys: list | None = None
+    ) -> str:
+        if not instance_id_tuple:
+            return ""
+
+        group_by_keys = group_by_keys or self.get_result_group_by()
+        monitor_key = self.get_monitor_instance_id_key()
+        if monitor_key in group_by_keys:
+            index = group_by_keys.index(monitor_key)
+            if index < len(instance_id_tuple):
+                return str((instance_id_tuple[index],))
+
+        return str((instance_id_tuple[0],))
+
+    def get_monitor_instance_id_from_metric_instance_id(
+        self, metric_instance_id: str
+    ) -> str:
+        return self.get_monitor_instance_id_from_tuple(parse_instance_id(metric_instance_id))
