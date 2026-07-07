@@ -69,6 +69,10 @@ const filterInvalidUnit = (unit: string | null | undefined): string | null => {
 
 const StrategyOperation = () => {
   const { t } = useTranslation();
+  const translateWithFallback = (key: string, fallback: string) => {
+    const value = t(key);
+    return value === key ? fallback : value;
+  };
   const { post, put, isLoading } = useApiClient();
   const {
     getMetricsGroup,
@@ -116,8 +120,10 @@ const StrategyOperation = () => {
     useState<MetricExpressionMode>('metric');
   const [formulaResultName, setFormulaResultName] = useState<string>(
     () =>
-      t('monitor.events.formulaDefaultResultName') ||
-      DEFAULT_FORMULA_RESULT_NAME
+      translateWithFallback(
+        'monitor.events.formulaDefaultResultName',
+        DEFAULT_FORMULA_RESULT_NAME
+      )
   );
   const [formulaExpression, setFormulaExpression] =
     useState<string>(DEFAULT_FORMULA_EXPRESSION);
