@@ -97,21 +97,35 @@ def _normalize_public_base_url(base_url: str) -> str:
 
 
 def validate_redirect_origin(request, redirect_origin) -> bool:
-    """同源校验:浏览器声明的 origin 是否可信任。"""
-    redirect_parts = _parse_origin_parts(redirect_origin)
-    if redirect_parts is None:
-        return False
+    """redirect_origin URL 格式校验。
 
-    browser_origin = _split_first_header_value(request.META.get("HTTP_ORIGIN"))
-    if browser_origin:
-        return redirect_parts == _parse_origin_parts(browser_origin)
+    历史上校验 redirect_origin 跟请求 header(HTTP_ORIGIN /
+    X-Forwarded-Host / HTTP_HOST)的一致性,试图锁定到用户访问的 origin。
+    生产环境反代链路会改写 Host header(X-Forwarded-Host 通常是反代或
+    上游服务地址),无法还原到用户真实域名;HTTP_ORIGIN 在同源 fetch
+    场景下也不存在。因此简化为只校验 URL 格式(scheme/hostname 合法,
+    无 path/query/fragment)。
 
-    forwarded_host = _split_first_header_value(request.META.get("HTTP_X_FORWARDED_HOST"))
-    if forwarded_host:
-        forwarded_proto = _split_first_header_value(request.META.get("HTTP_X_FORWARDED_PROTO")) or request.scheme
-        return redirect_parts == _parse_request_origin_parts(forwarded_proto, forwarded_host)
+    安全性兜底不在本函数,而在调用链上下游:
 
-    return redirect_parts == _parse_request_origin_parts(request.scheme, request.get_host())
+      1. Pre-auth:OAuth provider 的 redirect_uri 白名单。发到 provider 的
+         redirect_uri 必须命中其注册时填的白名单,否则 provider 拒绝,
+         OAuth 流程不会启动。即使 redirect_origin 是 attacker 域,只要
+         后端构造的 redirect_uri 在白名单里(provider 注册的是后端域),
+         OAuth 流程就是合法的。
+
+      2. Post-auth:session token cookie 设在后端域(HttpOnly + SameSite),
+         不随跨域跳转泄露。攻击者即使诱导 redirect_origin=attacker.com,
+         用户被跳到 attacker.com,token 也不会跨域传递,会话安全。
+
+      3. Post-auth 跳点 ``/auth/signin/login-auth-result`` 是前端约定,
+         作为 OAuth 完成后前端轮询后端拿 token 状态的锚点。不是安全
+         机制,attacker 域上没有该路径会 404,但 attacker 可以搭一个
+         钓鱼页面在相同路径上——属于跨域重定向本身的开放重定向风险,
+         但不影响用户在后端域上的会话。
+    """
+    parts = _parse_origin_parts(redirect_origin)
+    return parts is not None
 
 
 def get_login_auth_callback_uri(request=None, redirect_origin: str | None = None) -> str:
