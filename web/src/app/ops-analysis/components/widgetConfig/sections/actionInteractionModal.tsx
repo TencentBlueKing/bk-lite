@@ -416,7 +416,7 @@ export const ActionInteractionModal: React.FC<ActionInteractionModalProps> = ({
       maskClosable={false}
       onCancel={handleCancel}
       onOk={handleConfirm}
-      destroyOnClose
+      destroyOnHidden
       styles={{
         body: {
           maxHeight: 'calc(100vh - 320px)',

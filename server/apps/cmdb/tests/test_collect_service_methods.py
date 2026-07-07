@@ -241,9 +241,15 @@ class TestRepairSnapshot:
 
 class TestFormatUpdateCredential:
     def test_空凭据非k8s_报错(self):
-        inst = fake_instance(is_k8s=False, decrypt_credentials={})
+        inst = fake_instance(is_k8s=False, decrypt_credentials={}, task_type=CollectPluginTypes.HOST)
         with pytest.raises(BaseAppException, match="采集凭据不能为空"):
             CollectModelService.format_update_credential(inst, {"credential": None})
+
+    def test_ip任务允许空凭据并沿用旧值(self):
+        inst = fake_instance(is_k8s=False, decrypt_credentials={}, task_type=CollectPluginTypes.IP)
+        data = {"credential": None}
+        CollectModelService.format_update_credential(inst, data)
+        assert data["credential"] == {}
 
     def test_仅改regions_用旧凭据(self):
         inst = fake_instance(
@@ -434,3 +440,33 @@ class TestListRegions:
         params, is_interval, scan_cycle = CollectModelService.format_params(data)
         assert is_interval is False
         assert "scan_cycle" not in params
+
+    def test_format_params_cycle_最小一分钟(self):
+        data = {
+            "name": "task1",
+            "task_type": "host",
+            "driver_type": "snmp",
+            "model_id": "host",
+            "timeout": 60,
+            "input_method": 0,
+            "team": [1],
+            "scan_cycle": {"value_type": "cycle", "value": "1"},
+        }
+        params, is_interval, scan_cycle = CollectModelService.format_params(data)
+        assert params["cycle_value"] == "1"
+        assert is_interval is True
+        assert scan_cycle == "*/1 * * * *"
+
+    def test_format_params_cycle_小于一分钟报错(self):
+        data = {
+            "name": "task1",
+            "task_type": "host",
+            "driver_type": "snmp",
+            "model_id": "host",
+            "timeout": 60,
+            "input_method": 0,
+            "team": [1],
+            "scan_cycle": {"value_type": "cycle", "value": "0"},
+        }
+        with pytest.raises(BaseAppException, match="周期任务最小执行间隔为1分钟"):
+            CollectModelService.format_params(data)

@@ -95,6 +95,7 @@ class CollectModelService(object):
 
     @staticmethod
     def format_params(data):
+        CollectModelService.validate_scan_cycle(data.get("scan_cycle") or {})
         not_required = ["access_point", "ip_range", "instances", "credential", "plugin_id", "params"]
         is_interval, scan_cycle = crontab_format(data["scan_cycle"]["value_type"], data["scan_cycle"]["value"])
         params = {
@@ -120,6 +121,22 @@ class CollectModelService(object):
             params["scan_cycle"] = scan_cycle
 
         return params, is_interval, scan_cycle
+
+    @staticmethod
+    def validate_scan_cycle(scan_cycle: dict) -> None:
+        if not isinstance(scan_cycle, dict):
+            return
+        if scan_cycle.get("value_type") != "cycle":
+            return
+
+        value = scan_cycle.get("value")
+        try:
+            interval_minutes = int(value)
+        except (TypeError, ValueError) as exc:
+            raise BaseAppException("周期任务最小执行间隔为1分钟") from exc
+
+        if interval_minutes < 1:
+            raise BaseAppException("周期任务最小执行间隔为1分钟")
 
     @staticmethod
     def _get_snapshot_item(snapshot):
@@ -279,7 +296,8 @@ class CollectModelService(object):
         格式化更新时的凭据参数
         """
         credential = data.get("credential")
-        if not credential and not instance.is_k8s:
+        task_type = getattr(instance, "task_type", "")
+        if not credential and not instance.is_k8s and task_type != CollectPluginTypes.IP:
             raise BaseAppException("采集凭据不能为空！")
         if credential and "regions" in credential:
             regions = credential.pop("regions")

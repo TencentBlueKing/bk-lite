@@ -81,6 +81,7 @@ class Command(BaseCommand):
         """系统管理资源初始化"""
         self.stdout.write("系统管理资源初始化...")
         admin_password = self._get_admin_password()
+        call_command("cleanup_opspilot_legacy_knowledge_menus")
         call_command("init_realm_resource")
         call_command("init_login_settings")
         call_command("create_user", "admin", admin_password, email="admin@bklite.net", is_superuser=True)
@@ -159,8 +160,6 @@ class Command(BaseCommand):
         self.stdout.write("预热语言缓存...")
         try:
             result = preload_language_cache()
-            self.stdout.write(
-                self.style.SUCCESS(f"语言缓存预热完成: {len(result['loaded'])} 已加载, {len(result['skipped'])} 已跳过, {len(result['failed'])} 失败")
-            )
+            self.stdout.write(self.style.SUCCESS(f"语言缓存预热完成: {len(result['loaded'])} 已加载, {len(result['skipped'])} 已跳过, {len(result['failed'])} 失败"))
         except Exception as e:
             self.stdout.write(self.style.WARNING(f"语言缓存预热失败: {str(e)}"))

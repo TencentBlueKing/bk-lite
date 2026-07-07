@@ -339,6 +339,10 @@
         "correlationRules": "Correlation Rules",
         "assignStrategyMessage": "You can configure an automatic dispatch strategy to assign alerts that meet the filtering criteria to designated personnel and choose the notification method.",
         "shieldStrategyMessage": "By implementing a blocking strategy, you can manage the sending of alarm information more efficiently, improving the efficiency and user experience of the alarm system.",
+        "shieldStrategyForm": {
+            "editTitle": "Edit Shielding Strategy",
+            "addTitle": "Add Shielding Strategy"
+        },
         "correlationRulesMessage": "Explore the correlation between low-level events and aggregate them into high-level events. Here, you can define aggregation rules from 'Event' to 'Alert' to reduce the amount of information that needs to be processed and improve the information value of individual events.",
         "correlationAlertPlaceholder": "Alert to Incident aggregation rules feature is under development, stay tuned...",
         "alertAssignTableName": "Name",

@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/nextjs';
-import EventTable from '@/app/ops-analysis/(pages)/view/dashBoard/widgets/eventTable/eventTable';
-import { EventTableDetail } from '@/app/ops-analysis/(pages)/view/dashBoard/widgets/eventTable/eventTableDetail';
+import EventTable from '@/app/ops-analysis/components/widgets/eventTable/eventTable';
+import { EventTableDetail } from '@/app/ops-analysis/components/widgets/eventTable/eventTableDetail';
 
 const baseConfig = {
   tableConfig: {

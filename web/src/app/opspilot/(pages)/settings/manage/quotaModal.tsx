@@ -187,25 +187,6 @@ const QuotaModal: React.FC<QuotaModalProps> = ({ visible, onConfirm, onCancel, m
             style={{ width: '100%' }}
             placeholder={`${t('common.inputMsg')}${t('settings.manageQuota.form.skill')}`} />
         </Form.Item>
-        <Form.Item
-          label={t('settings.manageQuota.form.knowledgeBase')}
-          name="file_size"
-          rules={[{ required: true, message: `${t('common.inputMsg')}${t('settings.manageQuota.form.knowledgeBase')}` }]}
-        >
-          <InputNumber
-            min={0}
-            addonAfter={
-              <Form.Item name="unit" noStyle initialValue="MB">
-                <Select>
-                  <Option value="MB">MB</Option>
-                  <Option value="GB">GB</Option>
-                </Select>
-              </Form.Item>
-            }
-            style={{ width: '100%' }}
-            placeholder={`${t('common.inputMsg')}${t('settings.manageQuota.form.knowledgeBase')}`}
-          />
-        </Form.Item>
       </Form>
     </OperateModal>
   );

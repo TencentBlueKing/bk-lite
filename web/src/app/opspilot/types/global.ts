@@ -1,24 +1,3 @@
-export interface KnowledgeItem {
-  score: number;
-  content: string;
-}
-
-export interface KnowledgeBase {
-  citing_num: number;
-  knowledge_id: number;
-  knowledge_base_id: number;
-  knowledge_source_type: string;
-  knowledge_title: string;
-  result: KnowledgeItem[]
-}
-
-export interface Annotation {
-  answer: CustomChatMessage;
-  question: CustomChatMessage;
-  selectedKnowledgeBase: string | number;
-  tagId?: number | string;
-}
-
 export interface BrowserStepAction {
   navigate?: { url: string; new_tab?: boolean };
   wait?: { seconds: number };
@@ -123,8 +102,6 @@ export interface CustomChatMessage {
   isThinking?: boolean;
   createAt?: string;
   updateAt?: string;
-  knowledgeBase?: KnowledgeBase | null;
-  annotation?: Annotation | null;
   images?: Array<{
     id: string;
     url: string;
@@ -141,6 +118,29 @@ export interface CustomChatMessage {
   repairCommands?: RepairCommands[];
   agentStepProgress?: AgentStepProgressData[];
   skillViews?: SkillViewItem[];
+  wikiCitations?: WikiCitation[];
+}
+
+export interface WikiSearchExplanation {
+  matched_by: Array<'keyword' | 'vector' | 'chunk_vector' | string>;
+  keyword_score?: number;
+  vector_score?: number;
+  matched_terms?: string[];
+  keyword_rank?: number;
+  semantic_rank?: number;
+  chunk_index?: number;
+  fusion?: string;
+}
+
+// Wiki 知识库引用:答案中对应的来源(知识页面/资料)。
+// n/kb_id 仅智能体对话(按 [n] 标注)有;概览问答助手按标题引用,无 n。
+export interface WikiCitation {
+  n?: number;
+  kb_id?: number;
+  kind: string; // page | material_summary
+  id: number;
+  title: string;
+  explanation?: WikiSearchExplanation;
 }
 
 export interface ConfigDiffItem {

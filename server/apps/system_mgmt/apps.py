@@ -6,3 +6,6 @@ class HandleConfig(AppConfig):
 
     def ready(self):
         import apps.system_mgmt.nats  # noqa
+        from apps.system_mgmt.providers.loader import load_builtin_providers
+
+        load_builtin_providers()

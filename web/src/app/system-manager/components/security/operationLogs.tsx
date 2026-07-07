@@ -248,7 +248,7 @@ const OperationLogs: React.FC = () => {
         width={720}
         open={detailVisible}
         onClose={handleCloseDetail}
-        destroyOnClose
+        destroyOnHidden
       >
         {detailRecord && (
           <div className="flex flex-col gap-4">

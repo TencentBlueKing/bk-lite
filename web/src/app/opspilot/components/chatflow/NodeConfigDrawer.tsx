@@ -7,6 +7,7 @@ import {DeleteOutlined} from '@ant-design/icons';
 import {Node} from '@xyflow/react';
 import {useTranslation} from '@/utils/i18n';
 import {useSearchParams} from 'next/navigation';
+import {normalizeEnterpriseWechatAibotConfig} from '@/app/opspilot/constants/chatflow';
 import {useNodeConfigData} from './hooks/useNodeConfigData';
 import {useKeyValueRows} from './hooks/useKeyValueRows';
 import {NodeConfigForm} from './NodeConfigForm';
@@ -152,7 +153,7 @@ const NodeConfigDrawer: React.FC<NodeConfigDrawerProps> = ({
     if (!node) return;
 
     form.validateFields().then((values) => {
-      const configData: any = {
+      let configData: any = {
         ...values,
         params: paramRows.rows.filter(row => row.key && row.value),
         headers: headerRows.rows.filter(row => row.key && row.value)
@@ -167,6 +168,10 @@ const NodeConfigDrawer: React.FC<NodeConfigDrawerProps> = ({
 
       if (node.data.type === 'notification') {
         configData.notificationChannels = notificationChannels;
+      }
+
+      if (node.data.type === 'enterprise_wechat_aibot') {
+        configData = normalizeEnterpriseWechatAibotConfig(configData);
       }
 
       if (node.data.type === 'celery') {

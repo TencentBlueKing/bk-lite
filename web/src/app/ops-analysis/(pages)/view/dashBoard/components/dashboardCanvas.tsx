@@ -17,6 +17,7 @@ import type {
 import { useTranslation } from '@/utils/i18n';
 import type {
   DashboardLayoutItem,
+  DashboardWidgetLayoutItem,
   FilterValue,
   UnifiedFilterDefinition,
 } from '@/app/ops-analysis/types/dashBoard';
@@ -473,7 +474,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
   }, [emitLayoutChange, handleWidgetMutationStop]);
 
   const renderWidgetCard = useCallback(
-    (item: Extract<DashboardLayoutItem, { itemType?: 'widget' }>) => {
+    (item: DashboardWidgetLayoutItem) => {
       const isTableWidget =
         item.valueConfig?.chartType === 'table' ||
         item.valueConfig?.chartType === 'eventTable';
@@ -869,7 +870,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
             <Button
               type="primary"
               icon={<PlusOutlined aria-hidden="true" />}
-              onClick={onOpenAddModal}
+              onClick={() => onOpenAddModal()}
               disabled={selectedDashboardLocked}
             >
               {t('dashboard.addView')}
@@ -979,8 +980,8 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
         }
       `}</style>
       <div ref={gridRootRef} className="grid-stack relative z-10 w-full" />
-      {groupHeaderPortals}
-      {widgetPortals}
+      {groupHeaderPortals as unknown as React.ReactNode}
+      {widgetPortals as unknown as React.ReactNode}
     </div>
   );
 };

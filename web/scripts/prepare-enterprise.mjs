@@ -41,6 +41,36 @@ const cleanupGenerated = async () => {
   await fs.remove(path.join(appRoot, 'monitor', 'dashboards', 'objects', '(enterprise)-registry.ts'));
 };
 
+/* ── public assets: copy enterprise icons into the served CE public tree ── */
+
+export const prepareEnterprisePublicAssets = async ({
+  webRoot: targetWebRoot = webRoot,
+  enterpriseWebRoot: sourceEnterpriseWebRoot = enterpriseWebRoot,
+} = {}) => {
+  const sourceIconsRoot = path.join(sourceEnterpriseWebRoot, 'public', 'assets', 'icons');
+  const targetIconsRoot = path.join(targetWebRoot, 'public', 'assets', 'icons');
+
+  if (!(await fs.pathExists(sourceIconsRoot))) return [];
+
+  await fs.ensureDir(targetIconsRoot);
+
+  const copiedIconNames = [];
+  const entries = await fs.readdir(sourceIconsRoot, { withFileTypes: true });
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith('.svg')) continue;
+    const sourceIcon = path.join(sourceIconsRoot, entry.name);
+    const targetIcon = path.join(targetIconsRoot, entry.name);
+    if (await fs.pathExists(targetIcon)) continue;
+    await fs.copy(sourceIcon, targetIcon, {
+      dereference: true,
+      overwrite: false,
+    });
+    copiedIconNames.push(entry.name);
+  }
+
+  return copiedIconNames;
+};
+
 /* ── routes: copy EE page source into CE route tree ── */
 
 const generateRouteShims = async (routes) => {
@@ -330,6 +360,13 @@ export const prepareEnterpriseRoutes = async () => {
   }
 
   await cleanupGenerated();
+
+  // 0.5) Copy EE public icons into CE public, because Next.js only serves
+  // assets from the current app's public/ directory.
+  const copiedIconNames = await prepareEnterprisePublicAssets();
+  if (copiedIconNames.length) {
+    console.log(`  🖼️ Public icons: ${copiedIconNames.length} enterprise icons copied`);
+  }
 
   // 1) Junctions for api/types/etc under {module}/(enterprise)/
   const linkedModules = await generateEnterpriseJunctions();

@@ -227,6 +227,125 @@
     "attemptsRemaining": "剩余尝试次数:{remaining}",
     "verifyCodeSuccess": "邮箱验证成功，点击页面底部的【保存】按钮保存更改"
   },
+  "signin": {
+    "errors": {
+      "default": "无法登录。",
+      "signin": "请尝试使用其他账号登录。",
+      "oauthSignin": "请尝试使用其他账号登录。",
+      "oauthCallbackError": "请尝试使用其他账号登录。",
+      "oauthCreateAccount": "请尝试使用其他账号登录。",
+      "emailCreateAccount": "请尝试使用其他账号登录。",
+      "callback": "请尝试使用其他账号登录。",
+      "oauthAccountNotLinked": "为确认你的身份，请使用最初绑定的同一账号登录。",
+      "sessionRequired": "请先登录后再访问此页面。",
+      "popupBlocked": "无法打开登录弹窗，请允许浏览器弹窗后重试。",
+      "loginFailed": "登录失败",
+      "loginError": "登录过程中发生错误",
+      "authenticationFailed": "认证失败",
+      "wechatUnavailable": "微信登录当前不可用。",
+      "passwordMismatch": "两次输入的密码不一致",
+      "passwordTooShort": "密码长度至少为 8 位",
+      "passwordResetFailed": "重置密码失败",
+      "unknown": "发生未知错误",
+      "otpRequired": "请输入 OTP 验证码",
+      "invalidSession": "会话无效，请重新登录。",
+      "invalidOtp": "OTP 验证码无效",
+      "otpVerifyFailed": "OTP 验证失败"
+    },
+    "form": {
+      "domain": "登录域",
+      "loadingDomains": "正在加载登录域...",
+      "selectDomain": "请选择登录域",
+      "loading": "加载中...",
+      "noDomains": "暂无可用登录域",
+      "username": "用户名",
+      "usernamePlaceholder": "请输入用户名",
+      "password": "密码",
+      "passwordPlaceholder": "请输入密码",
+      "signingIn": "登录中...",
+      "signIn": "登录"
+    },
+    "pageTitle": {
+      "login": "登录",
+      "resetPassword": "重置密码",
+      "otpVerification": "验证身份"
+    },
+    "pageDescription": {
+      "login": "请输入账号信息继续",
+      "resetPassword": "创建新密码以保护你的账号",
+      "otpVerification": "完成验证流程后继续"
+    },
+    "passwordReset": {
+      "title": "重置",
+      "description": "你正在使用临时密码，请创建新密码后继续。",
+      "newPassword": "新密码",
+      "newPasswordPlaceholder": "请输入新密码",
+      "confirmPassword": "确认密码",
+      "confirmPasswordPlaceholder": "请再次输入新密码",
+      "submit": "重置密码"
+    },
+    "otp": {
+      "title": "OTP 验证",
+      "description": "请输入验证码以完成登录。",
+      "installAppsStep": "1. 在设备上安装以下任一认证器应用：",
+      "scanQrStep": "2. 使用认证器应用扫描二维码：",
+      "qrAlt": "二维码",
+      "verificationCode": "验证码",
+      "codePlaceholder": "请输入 6 位验证码",
+      "verifying": "验证中...",
+      "verifyCode": "验证"
+    },
+    "thirdParty": {
+      "orContinueWith": "或使用以下方式继续",
+      "wechat": "使用微信登录",
+      "blueking": "使用蓝鲸登录",
+      "wechatBrowserTip": "你正在使用微信浏览器，建议使用微信登录以获得更好体验。",
+      "wechatScanTitle": "微信扫码登录",
+      "back": "返回"
+    },
+    "wechatQr": {
+      "unavailable": "微信登录当前不可用。",
+      "settingsFailed": "微信登录配置获取失败",
+      "qrLoadFailed": "微信二维码加载失败",
+      "loading": "正在加载二维码...",
+      "unableToDisplay": "无法显示二维码"
+    },
+    "loginAuth": {
+      "methodsTitle": "切换登录方式",
+      "bindingPassword": {
+        "usernameLabel": "{bindingName} 用户名",
+        "usernamePlaceholder": "请输入 {bindingName} 用户名",
+        "passwordLabel": "{bindingName} 密码",
+        "passwordPlaceholder": "请输入 {bindingName} 密码",
+        "submitText": "使用 {bindingName} 登录",
+        "loadingText": "正在使用 {bindingName} 登录..."
+      },
+      "bindingContent": {
+        "completingSignIn": "正在完成登录",
+        "startingAuthentication": "正在启动认证",
+        "waitingForAuthentication": "等待认证完成",
+        "loadErrorTitle": "无法加载登录方式",
+        "loadErrorDescription": "请重试加载可用登录选项。",
+        "retry": "重试",
+        "bindingTitle": "{bindingName} 登录",
+        "bindingDescription": "使用 {bindingName} 账号完成登录",
+        "continueSignIn": "点击继续登录",
+        "waiting": "等待中...",
+        "helperMessage": "点击后将在新窗口中完成验证。若未跳转，可检查浏览器是否拦截弹窗。"
+      },
+      "validation": {
+        "loadMethodsFailed": "登录方式加载失败，请刷新后重试。",
+        "timedOut": "认证已超时，请重试。",
+        "cancelled": "认证已取消，请重试。",
+        "failed": "认证失败，请重试。",
+        "incompletePayload": "认证已成功，但返回的登录数据不完整。",
+        "syncFailed": "认证已成功，但会话同步失败。",
+        "queryStatusFailed": "查询认证状态失败。",
+        "startFailed": "启动认证失败。",
+        "popupBlocked": "无法打开认证页面，请允许浏览器弹窗后重试。"
+      }
+    }
+  },
   "system": {
     "zoneinfo": {
       "PacificHonolulu": "太平洋/檀香山 (UTC-10)",

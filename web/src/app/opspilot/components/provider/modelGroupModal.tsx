@@ -62,7 +62,7 @@ const ModelGroupModal: React.FC<ModelGroupModalProps> = ({
       onCancel={onCancel}
       okText={t('common.confirm')}
       cancelText={t('common.cancel')}
-      destroyOnClose
+      destroyOnHidden
     >
       <Form form={form} layout="vertical">
         <Form.Item

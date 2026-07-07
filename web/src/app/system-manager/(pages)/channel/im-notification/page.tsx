@@ -1,0 +1,726 @@
+// Route: /system-manager/channel/im-notification
+'use client';
+
+import React, { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import {
+  Button,
+  Form,
+  Input,
+  message,
+  Popconfirm,
+  Space,
+  Switch,
+} from 'antd';
+import type { ColumnItem } from '@/types';
+import {
+  ArrowLeftOutlined,
+  PlusOutlined,
+  ReloadOutlined,
+} from '@ant-design/icons';
+import PermissionWrapper from '@/components/permission';
+import CustomTable from '@/components/custom-table';
+import PageLayout from '@/components/page-layout';
+import TopSection from '@/components/top-section';
+import { useLocalizedTime } from '@/hooks/useLocalizedTime';
+import IMNotificationConfigModal, {
+  type IMNotificationChannelFormValues,
+} from '@/app/system-manager/components/channel/im-notification/IMNotificationConfigModal';
+import IMNotificationRecordsDrawer from '@/app/system-manager/components/channel/im-notification/IMNotificationRecordsDrawer';
+import IMNotificationSendModal from '@/app/system-manager/components/channel/im-notification/IMNotificationSendModal';
+import { useImNotificationApi } from '@/app/system-manager/api/im-notification';
+import { useIntegrationCenterApi } from '@/app/system-manager/api/integration-center';
+import type {
+  BusinessTemplate,
+  ProviderManifest,
+} from '@/app/system-manager/types/integration-center';
+import type {
+  AvailableInstance,
+  IMNotificationChannel,
+  IMNotificationChannelPayload,
+  IMNotificationSyncRun,
+  IMNotificationUserMapping,
+  PlatformMatchField,
+} from '@/app/system-manager/types/im-notification';
+import {
+  buildSchedulePayload,
+  getLatestSyncSummary,
+  getSyncRunStatusText,
+  isChannelSyncRunning,
+  parseScheduleConfig,
+  resolveImNotificationFieldPatches,
+} from '@/app/system-manager/utils/imNotificationUtils';
+import { useTranslation } from '@/utils/i18n';
+
+interface PaginationState {
+  current: number;
+  total: number;
+  pageSize: number;
+}
+
+const PLATFORM_MATCH_FIELD_OPTIONS: PlatformMatchField[] = ['username', 'email', 'phone'];
+
+function getResolvedImTemplate(
+  instanceId: number | undefined,
+  availableInstances: AvailableInstance[],
+  providers: ProviderManifest[],
+): BusinessTemplate | null {
+  if (!instanceId) return null;
+  const instance = availableInstances.find((item) => item.id === instanceId);
+  if (!instance) return null;
+  const provider = providers.find((item) => item.key === instance.provider_key);
+  if (!provider) return null;
+  const capability = provider.capabilities.find((item) => item.key === 'im_notification');
+  if (!capability?.business_template) return null;
+  return provider.business_templates?.[capability.business_template] ?? null;
+}
+
+function renderSyncPeriod(
+  record: IMNotificationChannel,
+  t: (key: string, defaultMessage?: string, values?: Record<string, string | number>) => string,
+) {
+  const scheduleEnabled = record.schedule_config?.enabled;
+  const syncTime = record.schedule_config?.sync_time;
+
+  if (!scheduleEnabled) {
+    return (
+      <div className="leading-6">
+        <div className="text-base font-semibold text-[var(--color-text-1)]">
+          {t('system.channel.imNotificationPage.syncPeriodManualTitle')}
+        </div>
+        <div className="font-xs text-[var(--color-text-3)]">
+          {t('system.channel.imNotificationPage.syncPeriodManualDesc')}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="leading-6">
+      <div className="text-base font-semibold text-[var(--color-text-1)]">
+        {syncTime
+          ? `${t('system.channel.imNotificationPage.syncPeriodDailyTitle')} ${syncTime}`
+          : t('system.channel.imNotificationPage.syncPeriodDailyTitle')}
+      </div>
+      <div className="text-xs text-[var(--color-text-3)]">
+        {t('system.channel.imNotificationPage.syncPeriodDailyDesc')}
+      </div>
+    </div>
+  );
+}
+
+const ImNotificationPage: React.FC = () => {
+  const { t } = useTranslation();
+  const { convertToLocalizedTime } = useLocalizedTime();
+  const router = useRouter();
+  const {
+    getChannels,
+    createChannel,
+    updateChannel,
+    deleteChannel,
+    getAvailableInstances,
+    syncMappings,
+    getMappings,
+    getRecords,
+    sendNotification,
+  } = useImNotificationApi();
+  const { getProviders } = useIntegrationCenterApi();
+
+  const [channels, setChannels] = useState<IMNotificationChannel[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [searchText, setSearchText] = useState('');
+
+  const [form] = Form.useForm<IMNotificationChannelFormValues>();
+  const watchedIntegrationInstance = Form.useWatch('integration_instance', form);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalLoading, setModalLoading] = useState(false);
+  const [editing, setEditing] = useState<IMNotificationChannel | null>(null);
+  const [availableInstances, setAvailableInstances] = useState<AvailableInstance[]>([]);
+  const [providers, setProviders] = useState<ProviderManifest[]>([]);
+
+  const [sendForm] = Form.useForm();
+  const [sendOpen, setSendOpen] = useState(false);
+  const [sendLoading, setSendLoading] = useState(false);
+  const [sendChannelId, setSendChannelId] = useState<number | undefined>();
+  const [sendMappings, setSendMappings] = useState<IMNotificationUserMapping[]>([]);
+  const [sendMappingsLoading, setSendMappingsLoading] = useState(false);
+
+  const [recordsOpen, setRecordsOpen] = useState(false);
+  const [recordsChannel, setRecordsChannel] = useState<IMNotificationChannel | null>(null);
+  const [records, setRecords] = useState<IMNotificationSyncRun[]>([]);
+  const [recordsLoading, setRecordsLoading] = useState(false);
+
+  const [pagination, setPagination] = useState<PaginationState>({
+    current: 1,
+    total: 0,
+    pageSize: 10,
+  });
+  const [recordsPagination, setRecordsPagination] = useState<PaginationState>({
+    current: 1,
+    total: 0,
+    pageSize: 10,
+  });
+
+  const resolvedTemplate = useMemo(
+    () => getResolvedImTemplate(watchedIntegrationInstance, availableInstances, providers),
+    [availableInstances, providers, watchedIntegrationInstance],
+  );
+
+  const externalMatchOptions = useMemo(
+    () =>
+      (resolvedTemplate?.matchable_fields || []).map((field) => ({
+        value: field,
+        label: t(`system.channel.imNotificationPage.externalFieldOption.${field}`),
+      })),
+    [resolvedTemplate, t],
+  );
+
+  const externalReceiveOptions = useMemo(
+    () =>
+      (resolvedTemplate?.receivable_fields || []).map((field) => ({
+        value: field,
+        label: t(`system.channel.imNotificationPage.externalFieldOption.${field}`),
+      })),
+    [resolvedTemplate, t],
+  );
+
+  const platformMatchOptions = useMemo(
+    () =>
+      PLATFORM_MATCH_FIELD_OPTIONS.map((field) => ({
+        value: field,
+        label: t(`system.channel.imNotificationPage.platformFieldOption.${field}`),
+      })),
+    [t],
+  );
+
+  const fetchChannels = async (current = pagination.current, pageSize = pagination.pageSize) => {
+    setLoading(true);
+    try {
+      const { count, items } = await getChannels({
+        page: current,
+        page_size: pageSize,
+      });
+      setChannels(items);
+      setPagination((prev) => ({
+        ...prev,
+        current,
+        pageSize,
+        total: count,
+      }));
+    } catch {
+      message.error(t('common.fetchFailed'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await fetchChannels(pagination.current, pagination.pageSize);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const fetchMeta = async () => {
+    try {
+      const [instancesData, providersData] = await Promise.all([
+        getAvailableInstances(),
+        getProviders(),
+      ]);
+      setAvailableInstances(instancesData ?? []);
+      setProviders(providersData ?? []);
+    } catch {
+      setAvailableInstances([]);
+      setProviders([]);
+    }
+  };
+
+  useEffect(() => {
+    fetchChannels(1, pagination.pageSize);
+    fetchMeta();
+  }, []);
+
+  useEffect(() => {
+    if (!modalOpen) return;
+
+    const currentMatch = form.getFieldValue('external_match_field');
+    const currentReceive = form.getFieldValue('external_receive_field');
+    const nextValues = resolveImNotificationFieldPatches({
+      editing: Boolean(editing),
+      currentMatch,
+      currentReceive,
+      template: resolvedTemplate,
+    });
+
+    if (Object.keys(nextValues).length > 0) {
+      form.setFieldsValue(nextValues);
+    }
+  }, [editing, form, modalOpen, resolvedTemplate]);
+
+  const filteredChannels = channels.filter((channel) =>
+    channel.name.toLowerCase().includes(searchText.toLowerCase())
+  );
+
+  const openModal = async (record: IMNotificationChannel | null) => {
+    setEditing(record);
+    if (record) {
+      form.setFieldsValue({
+        name: record.name,
+        integration_instance: record.integration_instance,
+        description: record.description,
+        enabled: record.enabled,
+        status: record.status,
+        platform_match_field: record.platform_match_field,
+        external_match_field: record.external_match_field,
+        external_receive_field: record.external_receive_field,
+        schedule_enabled: parseScheduleConfig(record.schedule_config).scheduleEnabled,
+        sync_time: parseScheduleConfig(record.schedule_config).syncTime,
+        team: record.team ?? [],
+      });
+    } else {
+      form.resetFields();
+      form.setFieldsValue({
+        enabled: true,
+        schedule_enabled: false,
+        sync_time: '',
+        team: [],
+        platform_match_field: 'email',
+      });
+    }
+    await fetchMeta();
+    setModalOpen(true);
+  };
+
+  const handleToggleEnabled = async (record: IMNotificationChannel, checked: boolean) => {
+    try {
+      const nextStatus = checked ? record.status : 'disabled';
+      await updateChannel(record.id, { enabled: checked, status: nextStatus });
+      setChannels((prev) =>
+        prev.map((channel) =>
+          channel.id === record.id
+            ? {
+              ...channel,
+              enabled: checked,
+              status: nextStatus,
+              display_status: checked ? channel.display_status : 'disabled',
+            }
+            : channel
+        )
+      );
+    } catch {
+      message.error(t('common.operationFailed'));
+    }
+  };
+
+  const handleDelete = async (record: IMNotificationChannel) => {
+    try {
+      await deleteChannel(record.id);
+      message.success(t('common.delSuccess'));
+      setChannels((prev) => prev.filter((channel) => channel.id !== record.id));
+    } catch {
+      message.error(t('common.delFailed'));
+    }
+  };
+
+  const handleModalOk = async () => {
+    try {
+      const values = await form.validateFields();
+      setModalLoading(true);
+      const payload: IMNotificationChannelPayload = {
+        name: values.name,
+        integration_instance: values.integration_instance,
+        description: values.description || '',
+        enabled: values.enabled ?? true,
+        status: values.status,
+        platform_match_field: values.platform_match_field,
+        external_match_field: values.external_match_field,
+        external_receive_field: values.external_receive_field,
+        schedule_config: buildSchedulePayload(values.schedule_enabled ?? false, values.sync_time),
+        team: values.team ?? [],
+      };
+      if (editing) {
+        const updated = await updateChannel(editing.id, payload);
+        setChannels((prev) => prev.map((channel) => (channel.id === editing.id ? updated : channel)));
+        message.success(t('common.saveSuccess'));
+      } else {
+        await createChannel(payload);
+        message.success(t('common.addSuccess'));
+        await fetchChannels(1, pagination.pageSize);
+      }
+      setModalOpen(false);
+    } catch {
+      message.error(t('common.error'))
+    } finally {
+      setModalLoading(false);
+    }
+  };
+
+  const handleSyncMappings = async (record: IMNotificationChannel) => {
+    try {
+      await syncMappings(record.id);
+      message.success(t('system.channel.imNotificationPage.syncMappingsStarted'));
+      await fetchChannels(pagination.current, pagination.pageSize);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : t('system.channel.imNotificationPage.syncMappingsFailed'));
+    }
+  };
+
+  const fetchRecords = async (channelId: number, current = 1, pageSize = recordsPagination.pageSize) => {
+    setRecordsLoading(true);
+    try {
+      const { count, items } = await getRecords(channelId, {
+        page: current,
+        page_size: pageSize,
+      });
+      setRecords(items ?? []);
+      setRecordsPagination((prev) => ({
+        ...prev,
+        current,
+        pageSize,
+        total: count,
+      }));
+    } catch {
+      message.error(t('common.fetchFailed'));
+      setRecords([]);
+    } finally {
+      setRecordsLoading(false);
+    }
+  };
+
+  const handleViewRecords = async (record: IMNotificationChannel) => {
+    setRecordsChannel(record);
+    setRecordsOpen(true);
+    setRecords([]);
+    await fetchRecords(record.id, 1, recordsPagination.pageSize);
+  };
+
+  const handleSendOpen = () => {
+    sendForm.resetFields();
+    setSendChannelId(undefined);
+    setSendMappings([]);
+    setSendOpen(true);
+  };
+
+  const handleSendChannelChange = async (channelId: number) => {
+    setSendChannelId(channelId);
+    sendForm.setFieldsValue({ user_ids: [] });
+    setSendMappings([]);
+    if (!channelId) return;
+
+    setSendMappingsLoading(true);
+    try {
+      const { items } = await getMappings(channelId, { page: 1, page_size: 1000 });
+      setSendMappings(items ?? []);
+    } catch {
+      message.error(t('common.fetchFailed'));
+      setSendMappings([]);
+    } finally {
+      setSendMappingsLoading(false);
+    }
+  };
+
+  const handleSendOk = async () => {
+    try {
+      const values = await sendForm.validateFields();
+      setSendLoading(true);
+      await sendNotification({
+        channel_id: values.channel_id,
+        user_ids: values.user_ids ?? [],
+        title: values.title,
+        content: values.content,
+      });
+      message.success(t('system.channel.imNotificationPage.sendSuccess'));
+      setSendOpen(false);
+    } catch (error) {
+      if (error && typeof error === 'object' && 'errorFields' in error) return;
+      message.error(error instanceof Error ? error.message : t('system.channel.imNotificationPage.sendFailed'));
+    } finally {
+      setSendLoading(false);
+    }
+  };
+
+  const handleBack = () => {
+    router.push('/system-manager/channel');
+  };
+
+  const renderTime = (value: string | null | undefined) => {
+    if (!value) return '--';
+    return convertToLocalizedTime(value, 'YYYY-MM-DD HH:mm:ss');
+  };
+
+  const sendChannelOptions = useMemo(
+    () =>
+      channels
+        .filter((channel) => channel.status === 'ready')
+        .map((channel) => ({
+          value: channel.id,
+          label: `${channel.name}`,
+        })),
+    [channels],
+  );
+
+  const sendReceiverOptions = useMemo(
+    () =>
+      sendMappings.map((mapping) => {
+        return ({
+          value: mapping.user,
+          label: `${mapping.username}`,
+        })
+      }),
+    [sendMappings],
+  );
+
+  const columns: ColumnItem[] = [
+    {
+      key: 'name',
+      title: t('system.channel.imNotificationPage.name'),
+      dataIndex: 'name',
+      render: (_, record) => {
+        return (<>
+          <p className='font-semibold'>{record.name}</p>
+          <span className='text-xs text-[var(--color-text-3)]'>{record.description || '--'}</span>
+        </>)
+      }
+    },
+    {
+      key: 'integration_instance_name',
+      title: t('system.channel.imNotificationPage.integrationInstance'),
+      dataIndex: 'integration_instance_name',
+      render: (_, record) => {
+        return (<>{record.integration_instance_name} / {t(`system.integrationCenter.provider.${record.provider_key}`)}</>)
+      }
+    },
+    {
+      key: 'latest_sync',
+      title: t('system.channel.imNotificationPage.latestSync'),
+      dataIndex: 'display_sync_status',
+      render: (_, record: IMNotificationChannel) => {
+        const status = record.display_sync_status;
+        if (status === 'never_synced' || !status) {
+          return (
+            <div className="leading-6">
+              <span className="text-base font-semibold text-[var(--color-text-3)]">
+                {t('system.channel.imNotificationPage.latestSyncEmpty')}
+              </span>
+            </div>
+          );
+        }
+
+        const latestSyncTime = record.latest_sync_finished_at || record.latest_sync_started_at;
+        const summary = getLatestSyncSummary(record, t);
+
+        return (
+          <div className="leading-6">
+            <div className="text-base font-semibold text-[var(--color-text-1)]">
+              {latestSyncTime ? renderTime(latestSyncTime) : '--'}
+            </div>
+            <div className="flex items-center gap-2 text-xs text-[var(--color-text-3)]">
+              {getSyncRunStatusText(status, t)}
+              {summary ? (
+                <span>{summary}</span>
+              ) : null}
+            </div>
+          </div>
+        );
+      },
+      width: 260,
+    },
+    {
+      key: 'sync_period',
+      title: t('system.channel.imNotificationPage.syncPeriod'),
+      dataIndex: 'schedule_config',
+      render: (_, record: IMNotificationChannel) => renderSyncPeriod(record, t),
+      width: 220,
+    },
+    {
+      key: 'enabled',
+      title: t('system.channel.imNotificationPage.enabledColumn'),
+      dataIndex: 'enabled',
+      width: 80,
+      render: (enabled: boolean, record: IMNotificationChannel) => (
+        <Switch
+          size="small"
+          checked={enabled}
+          onChange={(checked) => handleToggleEnabled(record, checked)}
+        />
+      ),
+    },
+    {
+      title: t('common.actions'),
+      key: 'actions',
+      dataIndex: 'actions',
+      fixed: 'right',
+      width: 200,
+      render: (_, record: IMNotificationChannel) => (
+        <Space wrap>
+          <PermissionWrapper requiredPermissions={['Edit']}>
+            <Button
+              type="link"
+              size="small"
+              onClick={() => openModal(record)}
+            >
+              {t('common.edit')}
+            </Button>
+          </PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['Edit']}>
+            <Button
+              type="link"
+              size="small"
+              onClick={() => handleSyncMappings(record)}
+              disabled={isChannelSyncRunning(record.latest_sync_status)}
+            >
+              {t('system.channel.imNotificationPage.syncMappings')}
+            </Button>
+          </PermissionWrapper>
+          <Button
+            type="link"
+            size="small"
+            onClick={() => handleViewRecords(record)}
+          >
+            {t('system.channel.imNotificationPage.viewRecords')}
+          </Button>
+          <PermissionWrapper requiredPermissions={['Delete']}>
+            <Popconfirm
+              title={t('system.channel.imNotificationPage.deleteConfirm')}
+              onConfirm={() => handleDelete(record)}
+            >
+              <Button type="link" size="small" danger>
+                {t('common.delete')}
+              </Button>
+            </Popconfirm>
+          </PermissionWrapper>
+        </Space>
+      ),
+    },
+  ];
+
+  const manifestHintVisible = modalOpen && !!watchedIntegrationInstance && !resolvedTemplate;
+  const showMatchFieldHint = modalOpen && !!watchedIntegrationInstance && externalMatchOptions.length === 0;
+  const showReceiveFieldHint = modalOpen && !!watchedIntegrationInstance && externalReceiveOptions.length === 0;
+
+  return (
+    <PageLayout
+      topSection={(
+        <TopSection
+          title={t('system.channel.imNotification')}
+          content={t('system.channel.imNotificationPage.pageDesc')}
+          iconType="liaotian"
+        />
+      )}
+      rightSection={(
+        <div className="w-full">
+          <div className="mb-4 flex items-center justify-between gap-2">
+            <div className="flex items-center">
+              <Button
+                color="default"
+                variant="link"
+                icon={<ArrowLeftOutlined />}
+                onClick={handleBack}
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Input.Search
+                placeholder={t('system.channel.imNotificationPage.search')}
+                allowClear
+                style={{ width: 280 }}
+                onSearch={setSearchText}
+                onChange={(event) => !event.target.value && setSearchText('')}
+              />
+              <PermissionWrapper requiredPermissions={['Add']}>
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  onClick={() => openModal(null)}
+                >
+                  {t('common.add')}
+                </Button>
+              </PermissionWrapper>
+              <PermissionWrapper requiredPermissions={['Edit']}>
+                <Button onClick={handleSendOpen}>
+                  {t('system.channel.imNotificationPage.sendTitle')}
+                </Button>
+              </PermissionWrapper>
+              <Button
+                type="text"
+                icon={<ReloadOutlined />}
+                onClick={handleRefresh}
+                loading={refreshing}
+              />
+            </div>
+          </div>
+
+          <div className="flex h-full">
+            <div className="min-h-0 flex-1 bg-[var(--color-bg)] p-1">
+              <CustomTable
+                rowKey="id"
+                scroll={{ y: 'calc(100vh - 385px)' }}
+                loading={loading}
+                dataSource={filteredChannels}
+                columns={columns}
+                pagination={{
+                  ...pagination,
+                  onChange: (current: number, pageSize: number) => {
+                    const nextPage = pageSize !== pagination.pageSize ? 1 : current;
+                    fetchChannels(nextPage, pageSize);
+                  },
+                }}
+              />
+            </div>
+          </div>
+
+          <IMNotificationConfigModal
+            open={modalOpen}
+            editing={editing}
+            loading={modalLoading}
+            form={form}
+            availableInstances={availableInstances}
+            platformMatchOptions={platformMatchOptions}
+            externalMatchOptions={externalMatchOptions}
+            externalReceiveOptions={externalReceiveOptions}
+            manifestHintVisible={manifestHintVisible}
+            showMatchFieldHint={showMatchFieldHint}
+            showReceiveFieldHint={showReceiveFieldHint}
+            t={t}
+            onOk={handleModalOk}
+            onCancel={() => !modalLoading && setModalOpen(false)}
+          />
+
+          <IMNotificationRecordsDrawer
+            open={recordsOpen}
+            channel={recordsChannel}
+            records={records}
+            loading={recordsLoading}
+            pagination={recordsPagination}
+            t={t}
+            renderTime={renderTime}
+            onClose={() => setRecordsOpen(false)}
+            onPageChange={(current, pageSize) => {
+              if (!recordsChannel) return;
+              const nextPage = pageSize !== recordsPagination.pageSize ? 1 : current;
+              fetchRecords(recordsChannel.id, nextPage, pageSize);
+            }}
+          />
+
+          <IMNotificationSendModal
+            open={sendOpen}
+            loading={sendLoading}
+            form={sendForm}
+            channelOptions={sendChannelOptions}
+            receiverOptions={sendReceiverOptions}
+            receiversLoading={sendMappingsLoading}
+            selectedChannelId={sendChannelId}
+            t={t}
+            onOk={handleSendOk}
+            onCancel={() => !sendLoading && setSendOpen(false)}
+            onChannelChange={handleSendChannelChange}
+          />
+        </div>
+      )}
+    />
+  );
+};
+
+export default ImNotificationPage;

@@ -450,27 +450,32 @@ async def _generate_agui_stream(
             accumulated_content.append(skill_view_event)
             yield _build_sse_line(skill_view_event)
 
-        async for sse_line in graph.agui_stream(request):
-            if execution_id and await is_interrupt_requested_async(execution_id):
-                interrupt_data = {"type": "INTERRUPTED", "error": "执行已中断", "execution_id": execution_id, "timestamp": int(time.time() * 1000)}
-                yield _build_sse_line(interrupt_data)
-                return
-            output_line = sse_line
-            immediate_lines = []
-            if sse_line.startswith("data: "):
-                try:
-                    data_json = json.loads(sse_line[6:].strip())
-                    output_line, immediate_lines = _handle_agui_data_event(data_json, state, show_think, enable_thinking_split)
-                    accumulated_content.append(data_json)
-                except (json.JSONDecodeError, ValueError) as parse_err:
-                    sample = sse_line[6:].strip()[:200]
-                    logger.warning(f"[AGUI Chat] 跳过无法解析的 SSE 行: {parse_err}; 内容样本: {sample!r}")
+        logger.info(f"[AGUI Chat] 开始 graph.agui_stream, request_id={getattr(request, 'thread_id', '?')}")
+        try:
+            async for sse_line in graph.agui_stream(request):
+                if execution_id and await is_interrupt_requested_async(execution_id):
+                    interrupt_data = {"type": "INTERRUPTED", "error": "执行已中断", "execution_id": execution_id, "timestamp": int(time.time() * 1000)}
+                    yield _build_sse_line(interrupt_data)
+                    return
+                output_line = sse_line
+                immediate_lines = []
+                if sse_line.startswith("data: "):
+                    try:
+                        data_json = json.loads(sse_line[6:].strip())
+                        output_line, immediate_lines = _handle_agui_data_event(data_json, state, show_think, enable_thinking_split)
+                        accumulated_content.append(data_json)
+                    except (json.JSONDecodeError, ValueError) as parse_err:
+                        sample = sse_line[6:].strip()[:200]
+                        logger.warning(f"[AGUI Chat] 跳过无法解析的 SSE 行: {parse_err}; 内容样本: {sample!r}")
 
-            for line in immediate_lines:
-                yield line
+                for line in immediate_lines:
+                    yield line
 
-            if output_line:
-                yield output_line
+                if output_line:
+                    yield output_line
+        except Exception as stream_err:
+            logger.error(f"[AGUI Chat] graph.agui_stream 异常: {stream_err}")
+            raise
 
         final_stats["content"] = accumulated_content
         if final_stats["content"]:

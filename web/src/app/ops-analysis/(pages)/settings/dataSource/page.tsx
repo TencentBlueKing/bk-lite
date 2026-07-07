@@ -236,6 +236,7 @@ const Datasource: React.FC = () => {
       title: t('common.actions'),
       key: 'operation',
       width: 150,
+      fixed: 'right' as const,
       render: (_: unknown, row: DatasourceItem) => (
         <div className="space-x-4">
           <PermissionWrapper requiredPermissions={['Edit']}>

@@ -74,9 +74,14 @@ from apps.opspilot.metis.llm.chain.message_trim import trim_messages
 from apps.opspilot.metis.llm.common.anthropic_capabilities import build_anthropic_runtime_capabilities, normalize_tool_choice_for_capabilities
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
 from apps.opspilot.metis.llm.common.structured_output_parser import StructuredOutputParser
-from apps.opspilot.metis.llm.rag.graph_rag.graphiti.graphiti_rag import GraphitiRAG
-from apps.opspilot.metis.llm.rag.naive_rag.pgvector.pgvector_rag import PgvectorRag
+# from apps.opspilot.metis.llm.rag.naive_rag.pgvector.pgvector_rag import PgvectorRag  # 暂时禁用,master 合并后文件被删除
 from apps.opspilot.metis.llm.tools.tools_loader import ToolsLoader
+
+# master 删除的 RAG 模块(占位,后续用 lazy import 避免启动失败)
+try:
+    from apps.opspilot.metis.llm.rag.naive_rag.pgvector.pgvector_rag import PgvectorRag
+except ImportError:
+    PgvectorRag = None
 from apps.opspilot.metis.utils.template_loader import TemplateLoader
 from apps.opspilot.services.approval import wait_for_approval
 from apps.opspilot.utils.execution_interrupt import is_interrupt_requested_async
@@ -102,15 +107,6 @@ def _safe_log_preview(content: str, max_len: int = 200) -> str:
     if not content:
         return ""
     return str(content)[:max_len]
-
-
-def _tool_call_signature(tool_name: str, tool_args: Dict[str, Any]) -> str:
-    """Build a stable signature for duplicate tool-call detection."""
-    try:
-        args_payload = json.dumps(tool_args or {}, ensure_ascii=False, sort_keys=True, default=str)
-    except TypeError:
-        args_payload = repr(tool_args)
-    return f"{tool_name}:{args_payload}"
 
 
 def normalize_messages_for_llm(messages: List[Any]) -> List[Any]:
@@ -239,6 +235,10 @@ class BasicNode:
                 logger.debug(f"智能知识路由判断:[{rag_search_request.index_name}]不适合当前问题,跳过检索")
                 continue
 
+            if PgvectorRag is None:
+                # master 删除 pgvector_rag 模块,降级跳过
+                logger.warning("[naive_rag] PgvectorRag 模块不可用,跳过")
+                continue
             rag = PgvectorRag()
             # PgvectorRag().search 为同步阻塞的向量库查询，async 节点中放入线程池避免阻塞事件循环。
             naive_rag_search_result = await asyncio.to_thread(rag.search, rag_search_request)
@@ -328,13 +328,17 @@ class BasicNode:
             return []
 
     async def _perform_graph_search(self, rag_search_request, config: RunnableConfig) -> list:
-        """执行图谱搜索"""
-        graphiti = GraphitiRAG()
-        rag_search_request.graph_rag_request.search_query = rag_search_request.search_query
-        graph_result = await graphiti.search(req=rag_search_request.graph_rag_request)
-
-        logger.debug(f"GraphRAG模式检索知识库: {rag_search_request.graph_rag_request.group_ids}, 结果数量: {len(graph_result)}")
-        return graph_result
+        """执行图谱搜索(GraphRAG 模块上游已删除,降级返回空)"""
+        try:
+            from apps.opspilot.metis.llm.rag.graph_rag.graphiti.graphiti_rag import GraphitiRAG
+            graphiti = GraphitiRAG()
+            rag_search_request.graph_rag_request.search_query = rag_search_request.search_query
+            graph_result = await graphiti.search(req=rag_search_request.graph_rag_request)
+            logger.debug(f"GraphRAG模式检索知识库: {rag_search_request.graph_rag_request.group_ids}, 结果数量: {len(graph_result)}")
+            return graph_result
+        except ImportError:
+            logger.warning("[GraphRAG] graphiti_rag 模块不可用,降级返回空列表")
+            return []
 
     def _process_graph_results(self, graph_result: list, group_ids: list) -> list:
         """处理图谱检索结果"""
@@ -591,7 +595,10 @@ class BasicNode:
         request = config["configurable"]["graph_request"]
         user_message = request.user_message
         trace_id = config["configurable"].get("trace_id", "unknown")
-        logger.info(f"[{trace_id}] user_message_node 开始执行, original_user_message={user_message[:200]!r}")
+        logger.info(
+            f"[{trace_id}] user_message_node 开始执行, "
+            f"original_user_message(完整, len={len(user_message)})=<{user_message!r}>"
+        )
 
         # 如果启用问题改写功能
         if config["configurable"]["graph_request"].enable_query_rewrite:
@@ -776,7 +783,7 @@ class ToolsNodes(BasicNode):
         if tool_pool_config and tool_pool_config.enabled and len(self.all_tools) > tool_pool_config.auto_activate_threshold:
             self._dynamic_mode = True
             self.active_tools = []  # 初始不激活任何工具
-            self.tools = []  # 清空 self.tools，由 DeepAgent 通过 active_tools + meta-tool 按需激活
+            self.tools = []  # 清空 self.tools，由 build_react_nodes 使用 active_tools + meta-tool
             logger.info(f"动态工具选择已启用: 共 {len(self.all_tools)} 个工具函数, " f"{len(self.tool_catalog)} 个类别, 阈值={tool_pool_config.auto_activate_threshold}")
         else:
             self._dynamic_mode = False
@@ -933,7 +940,7 @@ class ToolsNodes(BasicNode):
         return meta_tool
 
     def _build_done_tool(self, done_cfg=None):
-        """构建 done tool，用于让 Agent 显式返回结构化结果。"""
+        """构建 done tool 用于显式终止 ReAct 循环并返回结构化结果"""
         if done_cfg is None:
             done_cfg = DoneToolConfig()
         if not done_cfg.enabled:
@@ -1012,7 +1019,7 @@ class ToolsNodes(BasicNode):
             description=("当你判断即将执行的操作具有较高风险（如修改系统配置、删除数据、重启服务等），" "应先调用此工具请求人工审批。描述你要做什么以及为什么需要审批。" "收到审批结果后，根据结果决定是否继续执行实际操作。"),
             args_schema=ApprovalToolInput,
         )
-        # 存储执行上下文引用，供审批工具运行时读取。
+        # 存储执行上下文的引用，在 build_react_nodes 中设置
         approval_tool._request_approval_func = _request_approval
         return approval_tool
 
@@ -1210,6 +1217,8 @@ class ToolsNodes(BasicNode):
         async def _report_config_diff(title: str, cluster_name: str, items: List[dict]) -> str:
             import uuid
 
+            from langchain_core.callbacks import dispatch_custom_event
+
             report_id = str(uuid.uuid4())[:8]
 
             report_data = build_config_diff_report_payload(title=title, cluster_name=cluster_name, items=items)
@@ -1280,6 +1289,8 @@ class ToolsNodes(BasicNode):
         ) -> str:
             import uuid
             from itertools import groupby as _groupby
+
+            from langchain_core.callbacks import dispatch_custom_event
 
             group_by = self._normalize_repair_group_by(group_by)
 
@@ -1894,7 +1905,7 @@ class ToolsNodes(BasicNode):
 
     # ========== 使用 DeepAgent 实现 ==========
     #
-    # 统一引擎入口：所有 Agent 图均通过
+    # 统一引擎入口：所有 agent 图（ReAct / Plan-Execute / ChatBot）均通过
     # build_deepagent_nodes 委托给 deepagents 的 create_deep_agent。
     # deepagents 原生提供规划（TodoListMiddleware）、虚拟文件系统、子代理、
     # 上下文压缩（SummarizationMiddleware）、Anthropic prompt 缓存、以及
@@ -1906,6 +1917,8 @@ class ToolsNodes(BasicNode):
     #   - skills：把 SkillPackage 物化为 SKILL.md 写入 MinIO 对象存储 backend
     #   - approval：approval_config -> deepagents 原生 interrupt_on（HITL）
     #
+    # 手写 ReAct 循环（build_react_nodes）暂时保留以兼容存量单测，但图层不再使用。
+
     # deepagents 内置工具名（规划/文件系统/子代理），用于 AG-UI 事件过滤与审批排除。
     DEEPAGENT_BUILTIN_TOOL_NAMES = frozenset(
         {
@@ -1962,6 +1975,8 @@ class ToolsNodes(BasicNode):
                         cloned.search_query = query
                     except Exception:
                         pass
+                if PgvectorRag is None:
+                    return []
                 results = PgvectorRag().search(cloned)
                 return self._normalize_kb_results(results)
 
@@ -2003,18 +2018,29 @@ class ToolsNodes(BasicNode):
           2. virtual_mode=True：文件工具关进沙箱，不能读写宿主任意路径；
           3. inherit_env=False + 精简白名单：不把宿主 DB 密码/密钥泄露给技能 shell。
         sandbox_dir 交给调用方清理。best-effort：无技能或失败返回 (None, [], None)。
+
+        **backend 替换方向(Phase 1):** 当前 backend 是 ``LocalShellBackend``,
+        ``execute`` 仍跑真实宿主 shell,绝对路径可访问宿主(非强隔离)。
+        Phase 1 将按 deepagents ``SandboxBackendProtocol`` 接口替换为
+        NATS worker / 容器沙箱实现,本函数调用方不变(materializer 接口
+        向后兼容,通过 feature flag 切换 backend)。
         """
         packages = self._resolve_skill_packages(graph_request)
         if not packages:
             return None, [], None
+        backend = None
+        sources = []
         sandbox_dir = None
         try:
             import os
             import tempfile
+            from pathlib import Path
 
             from deepagents.backends import LocalShellBackend
 
             from apps.opspilot.services.skill_package.materializer import materialize_skill_package
+
+            from apps.opspilot.services.skill_executor import PathRewritingBackend
 
             base = self._skill_sandbox_base()
             os.makedirs(base, exist_ok=True)
@@ -2030,23 +2056,167 @@ class ToolsNodes(BasicNode):
             #   - execute 的 cwd 即沙箱目录；技能命令用相对路径，产物随沙箱销毁。
             # 局限：execute 跑真实宿主 shell，绝对路径仍可访问宿主，非强隔离；要强隔离
             #   需换 NATS executor / 容器沙箱（替换 SandboxBackendProtocol 即可）。
-            backend = LocalShellBackend(
+            #
+            # Phase 0 路径解析修复:deepagents 0.5.x 的 virtual_mode 不重写
+            # execute 命令字符串里的绝对路径(/skills/...)。
+            # PathRewritingBackend 在 execute 前正则替换 /skills/ → 物理 sandbox_dir/skills/。
+            inner_backend = LocalShellBackend(
                 root_dir=sandbox_dir,
                 virtual_mode=True,
                 inherit_env=False,
                 env=self._sandbox_env(sandbox_dir),
             )
+            backend = PathRewritingBackend(
+                inner=inner_backend,
+                sandbox_dir=sandbox_dir,
+                skills_root="/skills",
+            )
+            # 预装技能包常用 Python 依赖(在 host 跑,sandbox 共享 host Python sys.path)。
+            # 当前 sandbox 是 LocalShellBackend(virtual_mode),execute 跑在 host,
+            # 没有独立 Python env,所以装 host 即可。
+            self._ensure_skill_deps(packages)
             # virtual_mode 下，物化到虚拟根的 /skills/ 即落在 sandbox_dir/skills/
             for pkg in packages:
                 try:
                     materialize_skill_package(pkg, backend, skills_root="/skills")
                 except Exception as me:  # 幂等：已存在/单包失败不影响其它技能
-                    logger.debug("技能物化跳过(%s): %r", pkg.get("name") if isinstance(pkg, dict) else pkg, me)
-            return backend, ["/skills/"], sandbox_dir
+                    import traceback
+                    logger.warning(
+                        "技能物化失败(%s): %s\n%s",
+                        pkg.get("name") if isinstance(pkg, dict) else pkg,
+                        me,
+                        traceback.format_exc(),
+                    )
+            sources = ["/skills/"]
+            return backend, sources, sandbox_dir
         except Exception as e:  # pragma: no cover - defensive
             logger.warning("技能 backend 构建失败，跳过 skills: %r", e)
             self._cleanup_sandbox(sandbox_dir)
             return None, [], None
+
+    @staticmethod
+    def _ensure_skill_deps(packages: list) -> None:
+        """根据启用的技能包,确保 host Python 装了对应的 Python 库。
+
+        当前 sandbox 是 LocalShellBackend(virtual_mode),execute 跑在 host,
+        共享 host 的 sys.path,所以装 host 即可。Phase 1 切到独立容器沙箱后,
+        这个函数会变成往镜像里塞依赖,而不是往 host 装。
+
+        在 async 上下文里跑 subprocess 会抛 "async context",所以用
+        asyncio.to_thread 把同步 subprocess 包到独立线程。
+        """
+        import asyncio
+        import importlib.util
+        import re
+        import subprocess
+        import sys
+        from pathlib import Path
+
+        # 三层依赖发现:
+        # Layer 1: deps_map(opspilot 预设,常用技能包的兜底)
+        # Layer 2: 技能包自带的 requirements.txt / package.json(标准文件)
+        # Layer 3: skill.yaml 里的 runtime.python_packages 字段(扩展字段)
+        #
+        # 这三层互补,优先 Layer 1 → 2 → 3 任一命中即用。
+        # 长期方向:让 GitHub 技能包自己声明依赖,deps_map 退化为可选兜底。
+
+        deps_map = {
+            "pdf": ["reportlab", "pypdf", "pdfplumber", "pypdfium2"],
+            "xlsx": ["openpyxl", "pandas"],
+            "docx": ["python-docx"],
+            "pptx": ["python-pptx"],
+            "kubernetes-specialist": ["kubernetes", "pyyaml"],
+            # agent-browser 是 Node CLI,全局 npm 装好即可。
+            "agent-browser": [],
+        }
+
+        needed: set[str] = set()
+
+        # Layer 1: deps_map 兜底
+        for pkg in packages:
+            name = (pkg.get("name") or "").lower() if isinstance(pkg, dict) else ""
+            if name in deps_map:
+                needed.update(deps_map[name])
+
+        # Layer 2: 扫描技能包根目录的标准依赖文件
+        # requirements.txt(PEP 标准) / package.json(Node.js 标准)
+        for pkg in packages:
+            if not isinstance(pkg, dict):
+                continue
+            extracted_root = pkg.get("extracted_root")
+            if not isinstance(extracted_root, Path):
+                continue
+            # requirements.txt
+            req_txt = extracted_root / "requirements.txt"
+            if req_txt.is_file():
+                for line in req_txt.read_text(encoding="utf-8", errors="ignore").splitlines():
+                    line = line.strip()
+                    if line and not line.startswith("#") and not line.startswith("-"):
+                        # 去掉版本约束(>=,==,<=,~=,!=,>,<,[], extras)
+                        pkg_name = re.split(r"[<>=!~;\[]", line, 1)[0].strip()
+                        if pkg_name:
+                            needed.add(pkg_name)
+                logger.warning(f"[sandbox-deps] 从 {req_txt} 检测到 Python 依赖")
+            # package.json(只取 dependencies 和 devDependencies)
+            pkg_json = extracted_root / "package.json"
+            if pkg_json.is_file():
+                try:
+                    import json
+                    pkg_meta = json.loads(pkg_json.read_text(encoding="utf-8"))
+                    for section in ("dependencies", "devDependencies"):
+                        deps = pkg_meta.get(section) or {}
+                        if isinstance(deps, dict):
+                            needed.update(deps.keys())
+                            logger.warning(f"[sandbox-deps] 从 {pkg_json} 检测到 Node 依赖: {list(deps.keys())}")
+                except Exception as json_err:
+                    logger.warning(f"[sandbox-deps] 解析 {pkg_json} 失败: {json_err}")
+
+        # Layer 3: skill.yaml 显式声明的 runtime.python_packages(扩展字段,优先级最高)
+        for pkg in packages:
+            if not isinstance(pkg, dict):
+                continue
+            declared = pkg.get("required_python_packages") or []
+            if declared:
+                needed.update(declared)
+                logger.warning(f"[sandbox-deps] 从 skill.yaml 声明读到 Python 依赖: {declared}")
+
+        # 过滤掉已经装好的。
+        missing: list[str] = []
+        for dep in sorted(needed):
+            # importlib.util.find_spec 比真正 import 快,且不抛副作用。
+            mod_name = dep.replace("-", "_").split("[")[0]
+            if importlib.util.find_spec(mod_name) is None:
+                missing.append(dep)
+
+        if not missing:
+            return
+
+        logger.warning(f"[sandbox-deps] 缺失依赖: {missing},开始 pip install...")
+        try:
+            result = subprocess.run(
+                [
+                    sys.executable, "-m", "pip", "install", "--quiet",
+                    # host Python 环境的 SSL CA bundle 不全,
+                    # 加 --trusted-host 绕过 PyPI HTTPS 验证。
+                    "--trusted-host", "pypi.org",
+                    "--trusted-host", "files.pythonhosted.org",
+                    *missing,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            if result.returncode == 0:
+                logger.warning(f"[sandbox-deps] 装好: {missing}")
+            else:
+                logger.warning(
+                    f"[sandbox-deps] pip install 失败(returncode={result.returncode}): "
+                    f"{result.stderr[:300]}"
+                )
+        except subprocess.TimeoutExpired:
+            logger.warning(f"[sandbox-deps] pip install 超时: {missing}")
+        except Exception as e:
+            logger.warning(f"[sandbox-deps] pip install 异常: {e!r}")
 
     @staticmethod
     def _skill_sandbox_base() -> str:
@@ -2056,19 +2226,117 @@ class ToolsNodes(BasicNode):
 
         return os.getenv("OPSPILOT_SKILL_LOCAL_ROOT", os.path.join(tempfile.gettempdir(), "opspilot-sandbox"))
 
+    # sandbox PATH 探测:用 shutil.which 自动发现 host 上用户工具的 bin 目录。
+    # 替代硬编码路径(~/anaconda3/bin 等),适配任何机器/任何用户 Python 布局。
+    # 探测对象是 LLM 在技能任务里常用的工具:python/pip/uv/uvx/markitdown/pypdf 等,
+    # 任何找到的工具的 bin 目录都加入 sandbox PATH,让 LLM 一次就能找到。
+    _SANDBOX_PATH_PROBES = (
+        "python3", "python", "pip", "pip3", "uv", "uvx",
+        "node", "npm", "npx",
+        "agent-browser", "ab", "playwright", "chromium",
+        "markitdown", "pdftotext", "qpdf", "wkhtmltopdf",
+        "pypdf", "pymupdf", "pdfplumber", "reportlab",
+        "kubectl", "helm", "kustomize",
+        "git", "curl", "jq", "rg",
+    )
+
+    @staticmethod
+    def _discover_sandbox_path() -> str:
+        """扫描 host 上已装的工具,把它们的 bin 目录合并成一个 PATH 字符串。
+
+        解决 LLM 在 sandbox 内调 `markitdown` / `pip` / `python3` 等工具时
+        找不到的问题 — 不用每次都猜安装路径。
+
+        Returns:
+            合并后的 PATH 字符串(冒号分隔,Unix 风格,无重复)。
+        """
+        import os
+        import shutil
+
+        host_path = os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin")
+        bins: list[str] = []
+
+        for cmd in ToolsNodes._SANDBOX_PATH_PROBES:
+            try:
+                resolved = shutil.which(cmd)
+            except OSError:
+                continue
+            if not resolved:
+                continue
+            bin_dir = os.path.dirname(resolved)
+            if bin_dir and bin_dir not in host_path.split(":") and bin_dir not in bins:
+                bins.append(bin_dir)
+
+        # 合并 host PATH + 探测 bins,用 dict.fromkeys 保序去重(host PATH 本身可能有重复段)
+        merged_list = host_path.split(":") + bins
+        merged_unique = list(dict.fromkeys(p for p in merged_list if p))
+        return ":".join(merged_unique)
+
+    @staticmethod
+    def _venv_site_packages() -> str:
+        """返回当前 Python venv 的 site-packages 路径,用于 sandbox 的 PYTHONPATH。
+
+        host Python 装了 deps(reportlab 等),但 sandbox 用 subprocess 跑 system Python 时
+        看不到 venv 的 site-packages → ModuleNotFoundError。
+        把 venv site-packages 加进 PYTHONPATH 解决。
+        """
+        import os
+        import site
+        import sys
+
+        paths: list[str] = []
+
+        # 1) 当前 sys.executable 推出来的 site-packages(精准匹配 venv)
+        exe = os.path.realpath(sys.executable)
+        ver = f"python{sys.version_info.major}.{sys.version_info.minor}"
+        candidate = os.path.join(os.path.dirname(exe), "..", "lib", ver, "site-packages")
+        candidate = os.path.realpath(candidate)
+        if os.path.isdir(candidate):
+            paths.append(candidate)
+
+        # 2) site.getsitepackages()(覆盖 system Python 之外的场景)
+        for p in site.getsitepackages():
+            if os.path.isdir(p):
+                paths.append(p)
+
+        # 3) user site-packages(~/.local/lib/...)
+        user_site = site.getusersitepackages()
+        if user_site and os.path.isdir(user_site):
+            paths.append(user_site)
+
+        return ":".join(paths) if paths else ""
+
     @staticmethod
     def _sandbox_env(sandbox_dir: str) -> dict:
-        """技能 shell 的精简环境白名单：只给 CLI 必需项，绝不带宿主敏感变量。"""
+        """技能 shell 的环境配置 — PATH 最大化,HOME/TMPDIR 隔离,敏感变量不携带。
+
+        设计原则:
+          - **PATH 扩展**: 用 shutil.which 探测 host 用户级 Python 工具(pip / uv / markitdown 等),
+            任何工具的 bin 目录自动加入 sandbox PATH。LLM 不必反复试不同路径,
+            一次能找到工具。
+          - **HOME 隔离到 sandbox_dir**: 避免 `~/.cache/pip` 等用户配置污染 host HOME,
+            sandbox 销毁后清理。
+          - **TMPDIR 隔离到 sandbox_dir**: subprocess 写 /tmp 时落沙箱内,
+            跟 L3b 的 /tmp 重写 + PathRewritingBackend 配合。
+          - **不携带敏感变量**: SECRET_KEY / DB_PASSWORD / NATS_TOKEN 等
+            不出现在 sandbox 子进程环境中,即使工具泄漏也不会泄露。
+        """
         import os
 
         env = {
-            "PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
+            "PATH": ToolsNodes._discover_sandbox_path(),
             "LANG": os.environ.get("LANG", "C.UTF-8"),
             "LC_ALL": os.environ.get("LC_ALL", os.environ.get("LANG", "C.UTF-8")),
-            "TMPDIR": sandbox_dir,  # 临时文件也落在沙箱内，用完即弃
+            "TMPDIR": sandbox_dir,  # 临时文件落在沙箱内,用完即弃
+            "HOME": sandbox_dir,    # 用户配置也隔离(PATH 透传但 HOME 不透)
+            # host venv 的 site-packages 加进 PYTHONPATH,确保 sandbox 调
+            # `python3 xxx.py` 用 system Python 也能看到 venv 装的包
+            # (否则 LLM 调 `python3 -c "import reportlab"` 会 ModuleNotFoundError)。
+            "PYTHONPATH": ToolsNodes._venv_site_packages(),
+            # kubectl 默认读 ~/.kube/config,但 sandbox 把 HOME 隔离到 sandbox_dir,
+            # 找不到 kubeconfig。显式传 KUBECONFIG(host 环境变量,LLM 调 kubectl 才能连 k8s)。
+            "KUBECONFIG": os.environ.get("KUBECONFIG", os.path.expanduser("~/.kube/config")),
         }
-        # HOME 给 uvx/npx 定位缓存（缓存非敏感，复用可加速）；缺省回退到沙箱内。
-        env["HOME"] = os.environ.get("HOME", sandbox_dir)
         return env
 
     @staticmethod
@@ -2094,12 +2362,32 @@ class ToolsNodes(BasicNode):
     def _resolve_skill_packages(graph_request) -> list:
         """从 request.extra_config 解析本次启用的技能包（已 hydrate 的 dict 列表）。"""
         try:
+            import asyncio
+
             from apps.opspilot.services.skill_package.runtime import hydrate_skill_packages, normalize_skill_packages
 
             ec = ExtraConfig.from_raw(getattr(graph_request, "extra_config", None))
             raw = list(getattr(ec, "matched_skill_packages", None) or [])
+            # 兜底:matched_skill_packages 是 trigger 匹配后 top-N,前端可能漏传。
+            # 退回到 enabled_skill_packages(用户显式选中的技能包全集,用于 backend 物化)。
+            if not raw:
+                raw = list(getattr(ec, "enabled_skill_packages", None) or [])
             if not raw:
                 return []
+            # LangGraph node 跑在 async 上下文,ORM 查询会抛
+            # "You cannot call this from an async context"。
+            # 用 ThreadPoolExecutor 把 hydrate 跑在独立线程里,
+            # 线程不在 async 上下文,可以正常同步 ORM。
+            try:
+                asyncio.get_running_loop()
+                in_async = True
+            except RuntimeError:
+                in_async = False
+            if in_async:
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+                    future = ex.submit(hydrate_skill_packages, normalize_skill_packages(raw))
+                    return future.result()
             return hydrate_skill_packages(normalize_skill_packages(raw))
         except Exception as e:  # pragma: no cover - defensive
             logger.debug("技能包解析失败: %r", e)

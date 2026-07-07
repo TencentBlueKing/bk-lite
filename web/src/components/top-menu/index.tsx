@@ -197,15 +197,16 @@ const TopMenu: React.FC<TopMenuProps> = ({ hideMainMenu }) => {
                 const isActive = matchedPath && matchedPath.length > 0 && matchedPath[0].url === item.url;
 
                 return (
-                  <Link key={item.url} href={item.url} prefetch={false} legacyBehavior>
-                    <a
-                      ref={menuRefs.current[item.url] || null}
-                      id={item.name}
-                      className={`px-3 py-2 rounded-[10px] flex items-center ${styles.menuCol} ${isActive ? styles.active : ''}`}
-                    >
-                      <Icon type={item.icon} className="mr-2 w-4 h-4" />
-                      {item.title}
-                    </a>
+                  <Link
+                    key={item.url}
+                    href={item.url}
+                    prefetch={false}
+                    ref={menuRefs.current[item.url] || null}
+                    id={item.name}
+                    className={`px-3 py-2 rounded-[10px] flex items-center ${styles.menuCol} ${isActive ? styles.active : ''}`}
+                  >
+                    <Icon type={item.icon} className="mr-2 w-4 h-4" />
+                    {item.title}
                   </Link>
                 );
               })}

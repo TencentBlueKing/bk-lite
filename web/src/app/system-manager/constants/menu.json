@@ -19,16 +19,22 @@
           "url": "/system-manager/user/adminstrator"
         },
         {
-          "title": "认证源",
-          "icon": "renzhengyuanguanli",
-          "name": "auth_sources",
-          "url": "/system-manager/user/auth-sources"
-        },
-        {
           "title": "安全策略",
           "icon": "shezhi",
           "name": "security_settings",
           "url": "/system-manager/user/security-settings"
+        },
+        {
+          "title": "登录认证",
+          "icon": "renzhengyuanguanli",
+          "name": "login_auth",
+          "url": "/system-manager/user/login-auth"
+        },
+        {
+          "title": "用户同步",
+          "icon": "yonghu1",
+          "name": "user_sync",
+          "url": "/system-manager/user/user-sync"
         }
       ]
     },
@@ -77,6 +83,26 @@
           "icon": "shezhi",
           "name": "channel_setting",
           "url": "/system-manager/channel/detail/settings",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "IM应用通知",
+          "icon": "qiwei2",
+          "name": "im_notification",
+          "url": "/system-manager/channel/im-notification",
+          "isNotMenuItem": true
+        }
+      ]
+    },
+    {
+      "title": "集成中心",
+      "icon": "guanli",
+      "name": "integration_center",
+      "url": "/system-manager/integration-center",
+      "children": [
+        {
+          "title": "集成详情",
+          "url": "/system-manager/integration-center/detail",
           "isNotMenuItem": true
         }
       ]
@@ -134,16 +160,22 @@
           "url": "/system-manager/user/adminstrator"
         },
         {
-          "title": "Auth Sources",
-          "icon": "renzhengyuanguanli",
-          "name": "auth_sources",
-          "url": "/system-manager/user/auth-sources"
-        },
-        {
           "title": "Security Settings",
           "icon": "shezhi",
           "name": "security_settings",
           "url": "/system-manager/user/security-settings"
+        },
+        {
+          "title": "Login Auth",
+          "icon": "renzhengyuanguanli",
+          "name": "login_auth",
+          "url": "/system-manager/user/login-auth"
+        },
+        {
+          "title": "User Sync",
+          "icon": "yonghu1",
+          "name": "user_sync",
+          "url": "/system-manager/user/user-sync"
         }
       ]
     },
@@ -192,6 +224,25 @@
           "icon": "shezhi",
           "name": "channel_setting",
           "url": "/system-manager/channel/detail/settings"
+        },
+        {
+          "title": "IM Notification",
+          "icon": "qiwei2",
+          "name": "im_notification",
+          "url": "/system-manager/channel/im-notification"
+        }
+      ]
+    },
+    {
+      "title": "Integration Center",
+      "icon": "guanli",
+      "name": "integration_center",
+      "url": "/system-manager/integration-center",
+      "children": [
+        {
+          "title": "Integration Detail",
+          "url": "/system-manager/integration-center/detail",
+          "isNotMenuItem": true
         }
       ]
     },

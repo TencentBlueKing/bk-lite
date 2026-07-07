@@ -27,10 +27,10 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
     const fields = previewData?.fields?.length
       ? previewData.fields
       : Object.keys(previewData?.items?.[0] || {}).map((key) => ({
-          key,
-          title: key,
-          value_type: "string" as ResponseFieldDefinition["value_type"],
-        }));
+        key,
+        title: key,
+        value_type: "string" as ResponseFieldDefinition["value_type"],
+      }));
 
     return fields.map((field) => ({
       title: field.title || field.key,

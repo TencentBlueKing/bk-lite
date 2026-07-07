@@ -23,7 +23,7 @@ from ag_ui.core import (
     ToolCallStartEvent,
 )
 from ag_ui.encoder import EventEncoder
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.constants import START
 
 from apps.core.logger import opspilot_logger as logger
@@ -296,7 +296,6 @@ class BasicGraph(ABC):
         """准备基础图结构，添加节点和边"""
         graph_builder.add_node("prompt_message_node", node_builder.prompt_message_node)
         graph_builder.add_node("add_chat_history_node", node_builder.add_chat_history_node)
-        graph_builder.add_node("naive_rag_node", node_builder.naive_rag_node)
         graph_builder.add_node("user_message_node", node_builder.user_message_node)
         graph_builder.add_node("suggest_question_node", node_builder.suggest_question_node)
 
@@ -304,9 +303,8 @@ class BasicGraph(ABC):
         graph_builder.add_edge("prompt_message_node", "suggest_question_node")
         graph_builder.add_edge("suggest_question_node", "add_chat_history_node")
         graph_builder.add_edge("add_chat_history_node", "user_message_node")
-        graph_builder.add_edge("user_message_node", "naive_rag_node")
 
-        return "naive_rag_node"
+        return "user_message_node"
 
     async def invoke(
         self,
@@ -638,6 +636,7 @@ class BasicGraph(ABC):
             return events
         tool_input = event_data.get("input", {})
         run_id_from_event = event.get("run_id", "")
+        normalized_tool_input = self._normalize_tool_match_payload(tool_input)
 
         # 查找已存在的相同工具名的未结束调用
         existing_tool_call_id = None
@@ -647,6 +646,29 @@ class BasicGraph(ABC):
                 tinfo["tool_started"] = True
                 tinfo["run_id"] = run_id_from_event
                 break
+
+        # LangGraph 实际工具事件名可能是 RunnableCallable 等包装名，而模型 tool_call 名仍是 execute。
+        # 此时按参数匹配，把实际执行结果绑定回模型声明的工具调用，避免前端看到“未收到结果事件”。
+        if not existing_tool_call_id and normalized_tool_input:
+            for tid, tinfo in current_tool_calls.items():
+                if tinfo.get("ended") or tinfo.get("tool_started"):
+                    continue
+                if self._normalize_tool_match_payload(tinfo.get("args")) == normalized_tool_input:
+                    existing_tool_call_id = tid
+                    tinfo["tool_started"] = True
+                    tinfo["run_id"] = run_id_from_event
+                    break
+
+        if not existing_tool_call_id:
+            pending_tool_call_ids = [
+                tid
+                for tid, tinfo in current_tool_calls.items()
+                if not tinfo.get("ended") and not tinfo.get("tool_started")
+            ]
+            if len(pending_tool_call_ids) == 1:
+                existing_tool_call_id = pending_tool_call_ids[0]
+                current_tool_calls[existing_tool_call_id]["tool_started"] = True
+                current_tool_calls[existing_tool_call_id]["run_id"] = run_id_from_event
 
         if existing_tool_call_id:
             if tool_input:
@@ -695,6 +717,14 @@ class BasicGraph(ABC):
                     )
                 )
         return events
+
+    @staticmethod
+    def _normalize_tool_match_payload(value: Any) -> str:
+        if value is None or value == "":
+            return ""
+        if isinstance(value, dict):
+            return json.dumps(value, sort_keys=True, ensure_ascii=False)
+        return str(value)
 
     def _handle_tool_end_event(
         self,
@@ -749,6 +779,92 @@ class BasicGraph(ABC):
             )
         return events
 
+    def _handle_chain_end_messages(
+        self,
+        event_data: Dict[str, Any],
+        encoder: EventEncoder,
+        current_tool_calls: Dict[str, Dict],
+    ) -> list[str]:
+        """把节点结束时返回的 LangChain messages 补成 AG-UI 事件。
+
+        DeepAgent 会在内部执行工具，外层 LangGraph 不一定逐个抛出 on_tool_end。
+        这时工具结果只存在于节点 output.messages 的 ToolMessage 中，需要在这里
+        回填成 TOOL_CALL_RESULT，否则前端会把工具调用标成“未收到结果事件”。
+        """
+        output = event_data.get("output")
+        messages = []
+        if isinstance(output, dict):
+            messages = output.get("messages") or []
+        elif hasattr(output, "get"):
+            messages = output.get("messages") or []
+        elif hasattr(output, "messages"):
+            messages = getattr(output, "messages") or []
+
+        if not messages:
+            return []
+
+        events: list[str] = []
+        emitted_tool_result = False
+        latest_ai_message_after_tool_result: Optional[AIMessage] = None
+
+        for message in messages:
+            if isinstance(message, AIMessage):
+                if emitted_tool_result and (getattr(message, "content", "") or ""):
+                    latest_ai_message_after_tool_result = message
+                continue
+
+            if not isinstance(message, ToolMessage):
+                continue
+
+            tool_call_id = getattr(message, "tool_call_id", "")
+            if not tool_call_id or tool_call_id not in current_tool_calls:
+                continue
+
+            tool_info = current_tool_calls[tool_call_id]
+            if tool_info.get("result_sent"):
+                continue
+
+            if not tool_info.get("ended"):
+                events.append(
+                    encoder.encode(
+                        ToolCallEndEvent(
+                            type=EventType.TOOL_CALL_END,
+                            tool_call_id=tool_call_id,
+                            timestamp=int(time.time() * 1000),
+                        )
+                    )
+                )
+                tool_info["ended"] = True
+
+            events.append(
+                encoder.encode(
+                    ToolCallResultEvent(
+                        type=EventType.TOOL_CALL_RESULT,
+                        message_id=f"result_{uuid.uuid4()}",
+                        tool_call_id=tool_call_id,
+                        content=str(getattr(message, "content", "") or ""),
+                        role="tool",
+                        timestamp=int(time.time() * 1000),
+                    )
+                )
+            )
+            tool_info["result_sent"] = True
+            emitted_tool_result = True
+            latest_ai_message_after_tool_result = None
+
+        if latest_ai_message_after_tool_result is not None:
+            for ev in self._handle_chat_model_end_event(
+                {"output": latest_ai_message_after_tool_result},
+                encoder,
+                None,
+                current_tool_calls,
+                message_started=False,
+                allow_non_streaming_text=True,
+            ):
+                events.append(ev)
+
+        return events
+
     def _handle_chat_model_end_event(
         self,
         event_data: Dict[str, Any],
@@ -756,6 +872,7 @@ class BasicGraph(ABC):
         current_message_id: Optional[str],
         current_tool_calls: Dict[str, Dict],
         message_started: bool = False,
+        allow_non_streaming_text: bool = False,
     ) -> list[str]:
         """处理 on_chat_model_end 事件：补充文本输出（非流式 adapter）和工具调用"""
         events = []
@@ -768,9 +885,9 @@ class BasicGraph(ABC):
         # 否则流式 adapter 已经推送过文本，重复 emit 会导致前端显示两遍内容。
         text_content = getattr(output, "content", "") or ""
         tool_calls_list = getattr(output, "tool_calls", None) or []
-        if text_content and not tool_calls_list and not message_started:
+        if text_content and not tool_calls_list and (not message_started or allow_non_streaming_text):
             # 纯文本响应（非流式）：发 TEXT_MESSAGE_START + CONTENT + END
-            msg_id = current_message_id or str(uuid.uuid4())
+            msg_id = str(uuid.uuid4()) if allow_non_streaming_text else (current_message_id or str(uuid.uuid4()))
             events.append(
                 encoder.encode(
                     TextMessageStartEvent(
@@ -820,7 +937,7 @@ class BasicGraph(ABC):
                 continue
 
             if tool_call_id not in current_tool_calls:
-                current_tool_calls[tool_call_id] = {"name": tool_name, "started": True}
+                current_tool_calls[tool_call_id] = {"name": tool_name, "started": True, "args": tool_args}
                 events.append(
                     encoder.encode(
                         ToolCallStartEvent(
@@ -844,6 +961,8 @@ class BasicGraph(ABC):
                             )
                         )
                     )
+            else:
+                current_tool_calls[tool_call_id]["args"] = tool_args
         return events
 
     async def agui_stream(self, request: BasicLLMRequest) -> AsyncGenerator[str, None]:
@@ -867,6 +986,7 @@ class BasicGraph(ABC):
         message_started = False
         thinking_started = False
         suppress_text_after_tool_call = False
+        tool_result_seen_since_model_end = False
         show_think = bool((request.extra_config or {}).get("show_think", True))
         execution_id = (request.extra_config or {}).get("execution_id") or request.thread_id
         # 创建浏览器步骤事件队列和回调
@@ -962,11 +1082,24 @@ class BasicGraph(ABC):
                 elif event_type == "on_tool_end":
                     for ev in self._handle_tool_end_event(event, event_data, encoder, current_tool_calls):
                         yield ev
+                    tool_result_seen_since_model_end = True
 
                 elif event_type == "on_chat_model_end":
-                    for ev in self._handle_chat_model_end_event(event_data, encoder, current_message_id, current_tool_calls, message_started):
+                    for ev in self._handle_chat_model_end_event(
+                        event_data,
+                        encoder,
+                        current_message_id,
+                        current_tool_calls,
+                        message_started,
+                        allow_non_streaming_text=tool_result_seen_since_model_end,
+                    ):
                         yield ev
                     suppress_text_after_tool_call = False
+                    tool_result_seen_since_model_end = False
+
+                elif event_type == "on_chain_end":
+                    for ev in self._handle_chain_end_messages(event_data, encoder, current_tool_calls):
+                        yield ev
 
                 elif event_type == "on_custom_event":
                     # 转发自定义事件（如 agent_step_progress）

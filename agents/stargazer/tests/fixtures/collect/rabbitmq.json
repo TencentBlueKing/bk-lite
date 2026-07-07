@@ -1,0 +1,25 @@
+{
+  "model_id": "rabbitmq",
+  "captured_at": "2026-07-05T05:44:45Z",
+  "image": "docker.m.daocloud.io/library/ubuntu:22.04",
+  "container_meta": {
+    "container_id": "ca85eb0991a7",
+    "image": "docker.m.daocloud.io/library/ubuntu:22.04"
+  },
+  "params": {
+    "host": "127.0.0.1",
+    "ssh_port": 12224
+  },
+  "raw_stdout": {
+    "inst_name": "192.168.215.3-rabbitmq-5672",
+    "port": "5672",
+    "allport": "25672(clustering),5672(amqp)",
+    "ip_addr": "192.168.215.3",
+    "node_name": "rabbit@ca85eb0991a7",
+    "log_path": "/var/log/rabbitmq/rabbit@ca85eb0991a7.log,/var/log/rabbitmq/rabbit@ca85eb0991a7_upgrade.log,stdout>",
+    "conf_path": "",
+    "version": "3.9.27",
+    "enabled_plugin_file": "/etc/rabbitmq/enabled_plugins",
+    "erlang_version": "24"
+  }
+}

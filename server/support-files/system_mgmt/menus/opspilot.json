@@ -12,6 +12,21 @@
   "description": "app.opspilot",
   "menus": [
     {
+      "name": "Knowledge Base",
+      "children": [
+        {
+          "id": "wiki_list",
+          "name": "Knowledge Base list",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete"
+          ]
+        }
+      ]
+    },
+    {
       "name": "Studio",
       "children": [
         {
@@ -78,55 +93,6 @@
       ]
     },
     {
-      "name": "Knowledge",
-      "children": [
-        {
-          "id": "knowledge_list",
-          "name": " Knowledge list",
-          "operation": [
-            "View",
-            "Add",
-            "Edit",
-            "Delete"
-          ]
-        },
-        {
-          "id": "knowledge_document",
-          "name": " Knowledge Document",
-          "operation": [
-            "View",
-            "Add",
-            "Set",
-            "Train",
-            "Delete"
-          ]
-        },
-        {
-          "id": "knowledge_testing",
-          "name": "Knowledge Testing",
-          "operation": [
-            "View",
-            "Edit"
-          ]
-        },
-        {
-          "id": "knowledge_setting",
-          "name": "Knowledge Setting",
-          "operation": [
-            "View",
-            "Edit"
-          ]
-        },
-        {
-          "id": "knowledge_api",
-          "name": "Knowledge API",
-          "operation": [
-            "View"
-          ]
-        }
-      ]
-    },
-    {
       "name": "Model",
       "children": [
         {
@@ -182,13 +148,10 @@
       "name": "normal",
       "role_name": "opspilot_normal",
       "menus": [
+        "wiki_list-View",
         "bot_list-View",
         "bot_settings-View",
         "bot_conversation_log-View",
-        "knowledge_document-View",
-        "knowledge_list-View",
-        "knowledge_setting-View",
-        "knowledge_testing-View",
         "provide_list-View",
         "skill_list-View",
         "skill_setting-View",

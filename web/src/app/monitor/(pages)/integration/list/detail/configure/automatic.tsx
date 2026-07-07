@@ -28,9 +28,11 @@ import BatchEditModal from './batchEditModal';
 import ExcelImportModal from './excelImportModal';
 import {
   buildCollectDetectFingerprint as buildCollectDetectFingerprintValue,
+  CollectDetectMode,
   getCollectDetectResultPresentation,
   getRowsForBatchCollectDetect,
-  shouldAcceptCollectDetectResult
+  shouldAcceptCollectDetectResult,
+  shouldAutoShowCollectDetectResultOnComplete
 } from './automaticCollectDetect';
 const { confirm } = Modal;
 
@@ -304,7 +306,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     rowKey: string,
     taskId: React.Key,
     fingerprint: string,
-    showResult = false,
+    mode: CollectDetectMode,
     retryCount = 0
   ) => {
     try {
@@ -324,13 +326,14 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
             rowKey,
             taskId,
             fingerprint,
-            showResult,
+            mode,
             retryCount + 1
           );
         }, 2000);
         return;
       }
-      if (showResult) {
+      // 产品决策：测试完成不主动弹窗，由用户点击列表中的状态标签自行查看。
+      if (shouldAutoShowCollectDetectResultOnComplete(mode)) {
         showCollectDetectResult(task);
       }
     } catch (error: any) {
@@ -352,7 +355,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
 
   const handleCollectDetect = async (
     record: IntegrationMonitoredObject,
-    options: { showResult?: boolean } = {}
+    mode: CollectDetectMode = 'single'
   ) => {
     const rowKey = record.key as string;
     const nodeId = getRowNodeId(record);
@@ -371,12 +374,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         instance_key: record.instance_id || record.instance_name || rowKey,
         instance: buildDetectInstance(record)
       })) as { task_id: React.Key };
-      pollCollectDetectTask(
-        rowKey,
-        data.task_id,
-        fingerprint,
-        options.showResult ?? true
-      );
+      pollCollectDetectTask(rowKey, data.task_id, fingerprint, mode);
     } catch (error: any) {
       updateCollectDetectState(rowKey, {
         status: 'failed',
@@ -403,7 +401,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       )
     );
     await Promise.all(
-      runnableRows.map((row) => handleCollectDetect(row, { showResult: false }))
+      runnableRows.map((row) => handleCollectDetect(row, 'batch'))
     );
   };
 

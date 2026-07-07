@@ -1,0 +1,29 @@
+{
+  "model_id": "redis",
+  "captured_at": "2026-07-04T16:15:48Z",
+  "image": "redis:7-alpine",
+  "container_meta": {
+    "container_id": "a806f5386fb9",
+    "image": "redis:7-alpine"
+  },
+  "params": {
+    "host": "127.0.0.1",
+    "port": 16379,
+    "password": "***"
+  },
+  "raw_stdout": {
+    "inst_name": "127.0.0.1-redis-6379",
+    "bk_obj_id": "redis",
+    "ip_addr": "127.0.0.1",
+    "port": "6379",
+    "version": "7.4.9",
+    "install_path": "",
+    "max_conn": "10000",
+    "max_mem": "0",
+    "database_role": "master",
+    "topo_mode": "replication",
+    "cluster_uuid": "",
+    "slaves": [],
+    "master": {}
+  }
+}
