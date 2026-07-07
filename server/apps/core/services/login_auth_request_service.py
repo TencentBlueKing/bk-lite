@@ -68,7 +68,7 @@ def _parse_origin_parts(origin: str) -> tuple[str, str, int] | None:
 
 
 def _parse_request_origin_parts(scheme: str, host: str) -> tuple[str, str, int] | None:
-    scheme = (scheme or "").strip().lower()
+    scheme = (scheme or "").strip().rstrip(':').lower()
     host = _split_first_header_value(host)
     if scheme not in ("http", "https") or not host:
         return None
