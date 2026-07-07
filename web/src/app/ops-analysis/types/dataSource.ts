@@ -7,6 +7,7 @@ export type ChartType =
   | 'eventTable'
   | 'topN'
   | 'gauge'
+  | 'room3D'
   | 'message';
 
 export type DataSourceSourceType =

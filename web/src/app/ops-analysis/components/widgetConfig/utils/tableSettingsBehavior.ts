@@ -1,4 +1,8 @@
 import type { ResponseFieldDefinition } from '@/app/ops-analysis/types/dataSource';
+import {
+  filterChartTypesForSurface,
+  type OpsAnalysisWidgetSurface,
+} from '@/app/ops-analysis/utils/chartTypeSurface';
 import type { DisplayColumnRow } from './columnProbing';
 
 interface BuildDisplayColumnFieldOptionsInput {
@@ -75,6 +79,7 @@ export const shouldShowTableFilterFields = (chartType: string) =>
 interface ResolveDatasourceChartTypesInput<ChartTypeDefinition extends { value: string }> {
   chartTypes?: string[];
   chartTypeDefinitions: ChartTypeDefinition[];
+  surface?: OpsAnalysisWidgetSurface;
 }
 
 export const resolveDatasourceChartTypes = <
@@ -82,8 +87,10 @@ export const resolveDatasourceChartTypes = <
 >({
     chartTypes = [],
     chartTypeDefinitions,
+    surface = 'dashboard',
   }: ResolveDatasourceChartTypesInput<ChartTypeDefinition>) => {
-  const uniqueTypes = chartTypes.filter(
+  const surfaceChartTypes = filterChartTypesForSurface(chartTypes, surface);
+  const uniqueTypes = surfaceChartTypes.filter(
     (type, index, list) => list.indexOf(type) === index,
   );
 
