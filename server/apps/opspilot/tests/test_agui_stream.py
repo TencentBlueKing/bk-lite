@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 from langchain_core.messages import AIMessage, ToolMessage
+from langgraph.types import Overwrite
 
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
 from apps.opspilot.metis.llm.chain.graph import BasicGraph
@@ -499,9 +500,9 @@ def test_chain_end_does_not_duplicate_text_already_emitted_by_chat_model_end(mon
     content_deltas = [p["delta"] for p in payloads if p["type"] == "TEXT_MESSAGE_CONTENT"]
 
     # 关键断言:同一份文本只发一次,即使它同时出现在 chat_model_end 和 chain_end
-    assert "".join(content_deltas) == final_answer, (
-        f"Final answer should be emitted once; got {len(content_deltas)} chunk(s). chunks={content_deltas!r}"
-    )
+    assert (
+        "".join(content_deltas) == final_answer
+    ), f"Final answer should be emitted once; got {len(content_deltas)} chunk(s). chunks={content_deltas!r}"
 
 
 def test_multiple_chain_end_with_same_text_only_emits_once(monkeypatch):
@@ -593,6 +594,62 @@ def test_multiple_chain_end_with_same_text_only_emits_once(monkeypatch):
 
     # 关键断言:即使有多个 chain_end 同份文本,emit 仍只发生一次
     assert "".join(content_deltas) == final_answer, (
-        f"Final answer should be emitted exactly once across multiple chain_end; "
-        f"got {len(content_deltas)} chunk(s): {content_deltas!r}"
+        f"Final answer should be emitted exactly once across multiple chain_end; " f"got {len(content_deltas)} chunk(s): {content_deltas!r}"
     )
+
+
+def test_chain_end_unwraps_overwrite_messages(monkeypatch):
+    """LangGraph 可能用 Overwrite 包裹 messages，AG-UI 应先解包再遍历。"""
+
+    async def _never_interrupted(_execution_id):
+        return False
+
+    monkeypatch.setattr(
+        "apps.opspilot.metis.llm.chain.graph.is_interrupt_requested_async",
+        _never_interrupted,
+    )
+
+    graph = _FakeBasicGraph(
+        [
+            {
+                "event": "on_chat_model_end",
+                "data": {
+                    "output": SimpleNamespace(
+                        tool_calls=[
+                            {
+                                "id": "tool-1",
+                                "name": "execute",
+                                "args": {"command": "date"},
+                            }
+                        ]
+                    )
+                },
+            },
+            {
+                "event": "on_chain_end",
+                "data": {
+                    "output": {
+                        "messages": Overwrite(
+                            [
+                                ToolMessage(content="2026-07-07", tool_call_id="tool-1"),
+                                AIMessage(content="当前时间已获取"),
+                            ]
+                        )
+                    }
+                },
+            },
+        ]
+    )
+    request = BasicLLMRequest(thread_id="thread-chain-end-overwrite", extra_config={})
+
+    async def _collect():
+        return _parse_sse_payloads([line async for line in graph.agui_stream(request)])
+
+    payloads = asyncio.run(_collect())
+    tool_results = [p for p in payloads if p["type"] == "TOOL_CALL_RESULT"]
+    content_deltas = [p["delta"] for p in payloads if p["type"] == "TEXT_MESSAGE_CONTENT"]
+
+    assert len(tool_results) == 1
+    assert tool_results[0]["toolCallId"] == "tool-1"
+    assert tool_results[0]["content"] == "2026-07-07"
+    assert "当前时间已获取" in "".join(content_deltas)
