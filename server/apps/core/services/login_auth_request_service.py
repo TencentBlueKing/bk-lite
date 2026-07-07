@@ -118,18 +118,18 @@ def get_login_auth_callback_uri(request=None, redirect_origin: str | None = None
     """生成 login_auth 回调地址。
 
     优先级:
-      1. 环境变量 ``DEFAULT_ZONE_VAR_NODE_SERVER_URL``(单域名生产唯一可信源)
-      2. ``redirect_origin``(同源校验通过时作为 env 缺失 fallback)
-      3. ``request.build_absolute_uri(...)``(典型 dev / 反代未配置场景)
-      4. 空字符串
+      1. ``redirect_origin``(同源校验通过)——前端声明的 origin
+      2. ``request.build_absolute_uri(...)``(典型 dev / 反代未配置场景)
+      3. 空字符串
+
+    不再使用 ``DEFAULT_ZONE_VAR_NODE_SERVER_URL`` 作为 fallback:
+      部署可能将 env 配为 IP 地址,继续 fallback 会产生 IP 形式的 callback
+      URL。前端始终传递 redirect_origin,无需依赖 env。
 
     该函数同时用于:
       - 集成中心详情页「平台回调地址」展示
       - OAuth 启动流程中飞书/钉钉等 adapter 的 ``redirect_uri``
     """
-    base_url = _normalize_public_base_url(os.getenv("DEFAULT_ZONE_VAR_NODE_SERVER_URL", ""))
-    if base_url:
-        return f"{base_url}{LOGIN_AUTH_CALLBACK_PATH}"
     if (
         redirect_origin
         and request is not None
