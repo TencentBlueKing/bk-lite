@@ -1,8 +1,8 @@
 """API 边界测试 - 对应测试方案 A-01..A-07。
 
 构造非法 payload,验证 MonitorPolicySerializer 在 API 边界拒绝。
-A-05 文档期望 expression="b / a" 被拒,但 76ba4c155 已放宽首变量必须首行的校验,
-所以 A-05 现在被接受(行为符合代码现状),与文档期望冲突——需更新测试方案文档。
+A-05 校验当前业务口径:表达式变量顺序不影响 anchor,`b / a` 可被接受,
+最终 anchor 仍固定为首行 query。
 """
 import pytest
 from rest_framework import serializers
@@ -90,12 +90,8 @@ class TestAPIBoundary:
         assert not s.is_valid()
         assert "query_condition" in s.errors
 
-    def test_A05_formula_b_over_a_now_accepted_per_76ba4c155(self, obj_and_metric):
-        """A-05 文档期望:expression='b / a' 被拒。
-
-        实际: 76ba4c155 放宽了「首变量必须首行」校验,b / a 现被接受(anchor=首个query=a)。
-        与测试方案文档期望冲突,这里断言实际行为(通过),并在报告里标注需更新文档。
-        """
+    def test_A05_formula_b_over_a_keeps_first_query_anchor(self, obj_and_metric):
+        """A-05: expression='b / a' 被接受,anchor 仍为首行 query=a。"""
         obj, m = obj_and_metric
         qc = {
             "type": "formula", "result_name": "x", "expression": "b / a",
