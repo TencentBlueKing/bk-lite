@@ -4,11 +4,13 @@ import re
 _VALID_METHODS = {"=", "!=", "=~", "!~"}
 
 # label name 合法正则（Prometheus 规范）
-_LABEL_NAME_RE = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
+_LABEL_NAME_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
 
 def _escape_label_value(value) -> str:
     """转义 PromQL/MetricsQL label value 中的反斜杠和双引号。"""
+    if isinstance(value, (list, tuple, set, dict)):
+        raise ValueError("label value 必须是标量")
     return str(value).replace("\\", "\\\\").replace('"', '\\"')
 
 
