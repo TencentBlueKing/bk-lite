@@ -399,5 +399,26 @@
         {"key": "alert_snapshot_total", "title": "告警快照总数", "value_type": "number", "description": "告警指标快照总数"},
         {"key": "no_data_baseline_total", "title": "无数据基准总数", "value_type": "number", "description": "策略实例基准总数"}
     ]
+},
+{
+    "name": "CMDB 3D机房布局",
+    "desc": "查询指定 CMDB 机房的 3D 机柜布局数据",
+    "rest_api": "cmdb/get_room3d_layout",
+    "tag": [
+        "cmdb"
+    ],
+    "chart_type": [
+        "room3D"
+    ],
+    "params": [
+        {
+            "name": "server_room_id",
+            "type": "string",
+            "value": "",
+            "alias_name": "机房ID",
+            "filterType": "params"
+        }
+    ],
+    "field_schema": []
 }
 ]

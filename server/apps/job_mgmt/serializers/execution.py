@@ -4,6 +4,7 @@ from rest_framework import serializers
 
 from apps.job_mgmt.models import JobExecution, Playbook, Script
 from apps.job_mgmt.services.script_normalize import normalize_script_line_endings
+from apps.job_mgmt.services.script_params_service import ScriptParamsService
 
 
 class JobExecutionListSerializer(serializers.ModelSerializer):
@@ -183,8 +184,6 @@ class QuickExecuteSerializer(serializers.Serializer):
         # 验证 params 格式
         params = attrs.get("params", [])
         if params:
-            from apps.job_mgmt.services.script_params_service import ScriptParamsService
-
             has_script_template = bool(attrs.get("script_id"))
             ScriptParamsService.validate_params_format(params, require_is_modified=has_script_template)
 

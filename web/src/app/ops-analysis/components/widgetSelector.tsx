@@ -7,6 +7,10 @@ import { TagItem } from '@/app/ops-analysis/types/namespace';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import { useNamespaceApi } from '@/app/ops-analysis/api/namespace';
 import { SCENE_WIDGETS } from '@/app/ops-analysis/constants/sceneWidgets';
+import {
+  filterChartTypesForSurface,
+  hasSupportedChartTypeForSurface,
+} from '@/app/ops-analysis/utils/chartTypeSurface';
 import styles from './widgetSelector.module.scss';
 import type {
   DatasourceItem,
@@ -17,6 +21,7 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
   visible,
   onCancel,
   onOpenConfig,
+  surface = 'dashboard',
 }) => {
   const { t } = useTranslation();
   const [search, setSearch] = useState('');
@@ -48,13 +53,15 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
     eventTable: t('dataSource.eventTable'),
     message: t('dataSource.eventTable'),
     topN: t('dataSource.topN'),
+    room3D: t('dataSource.room3D'),
   };
 
   const getChartTags = (chartTypes: ChartType[]) => {
-    if (!chartTypes?.length) return null;
+    const visibleChartTypes = filterChartTypesForSurface(chartTypes, surface) as ChartType[];
+    if (!visibleChartTypes?.length) return null;
     return (
       <div className="flex gap-1.5 flex-wrap pt-0.5">
-        {chartTypes.map((type, index) => (
+        {visibleChartTypes.map((type, index) => (
           <Tag
             key={index}
             bordered={false}
@@ -167,6 +174,14 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
     () =>
       SCENE_WIDGETS.filter((item) => item.category === selectedSceneCategory),
     [selectedSceneCategory],
+  );
+
+  const visibleDataSources = useMemo(
+    () =>
+      currentDataSources.filter((item) =>
+        hasSupportedChartTypeForSurface(item.chart_type || [], surface),
+      ),
+    [currentDataSources, surface],
   );
 
   const menuItems = selectorMode === 'sceneWidget'
@@ -293,7 +308,7 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
               <div className={styles.cardList}>
                 <List
                   size="small"
-                  dataSource={currentDataSources}
+                  dataSource={visibleDataSources}
                   locale={{
                     emptyText: (
                       <Empty
