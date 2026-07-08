@@ -33,8 +33,12 @@ export const getValidThresholdUnitOptions = (
 export const resolveFormulaResultUnit = (
   unit: string | null | undefined,
   unitList: UnitListItem[]
-): string => {
+): string | null => {
   const validUnits = getValidThresholdUnitOptions(unitList);
+  if (!validUnits.length) {
+    // 契约:单位表未就绪时,绝不硬塞默认单位
+    return null;
+  }
   const unitIds = new Set(validUnits.map((item) => item.unit_id));
 
   if (unit && unitIds.has(unit)) {
@@ -57,6 +61,13 @@ export const getCalculationUnitOnMetricRowsChange = ({
 }): string | null => {
   if (nextMode !== 'formula') {
     return currentCalculationUnit;
+  }
+
+  // 单位表未就绪:
+  //  - 首次进入 formula 时返回 null,让 UI 提示用户重选
+  //  - 已在 formula 模式时保留用户已选值,避免在 unitList 抖动时被覆盖
+  if (!getValidThresholdUnitOptions(unitList).length) {
+    return previousMode === 'formula' ? currentCalculationUnit : null;
   }
 
   if (previousMode !== 'formula') {

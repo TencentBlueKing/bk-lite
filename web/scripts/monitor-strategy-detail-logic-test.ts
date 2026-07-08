@@ -152,6 +152,31 @@ assert.equal(
   'percent'
 );
 
+// unitList 为空:resolveFormulaResultUnit 不再硬塞 percent
+assert.equal(resolveFormulaResultUnit(null, []), null);
+assert.equal(resolveFormulaResultUnit('bytes', []), null);
+
+// unitList 为空:首次进入 formula 不硬塞 percent
+assert.equal(
+  getCalculationUnitOnMetricRowsChange({
+    previousMode: 'metric' as MetricExpressionMode,
+    nextMode: 'formula' as MetricExpressionMode,
+    currentCalculationUnit: 'bytes',
+    unitList: [],
+  }),
+  null
+);
+// unitList 为空:在 formula 模式继续调整,保留用户已选值,不再二次覆盖
+assert.equal(
+  getCalculationUnitOnMetricRowsChange({
+    previousMode: 'formula' as MetricExpressionMode,
+    nextMode: 'formula' as MetricExpressionMode,
+    currentCalculationUnit: 'bytes',
+    unitList: [],
+  }),
+  'bytes'
+);
+
 assert.deepEqual(
   getMetricThresholdEnumState({
     isFormulaMode: true,

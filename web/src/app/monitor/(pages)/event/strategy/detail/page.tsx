@@ -806,8 +806,8 @@ const StrategyOperation = () => {
       const nextCalculationUnit =
         metricExpressionMode === 'formula'
           ? resolveFormulaResultUnit(calculationUnit, unitList)
-          : calculationUnit || '';
-      params.calculation_unit = nextCalculationUnit;
+          : calculationUnit;
+      params.calculation_unit = nextCalculationUnit ?? '';
       params.monitor_object = monitorObjId;
       params.schedule = {
         type: unit,
