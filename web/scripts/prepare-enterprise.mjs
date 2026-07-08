@@ -43,6 +43,46 @@ const cleanupGenerated = async () => {
 
 /* ── public assets: copy enterprise icons into the served CE public tree ── */
 
+const ENTERPRISE_ICONS_SNAPSHOT = path.join(webRoot, '.enterprise-icons.snapshot.json');
+
+/**
+ * 读取上次注入的 svg 文件名列表（sentinel file）。
+ * 启动 community 模式或重置时按此列表清掉 web/public/assets/icons/ 里的 EE 副本，
+ * 避免 enterprise 资源残留在 community 仓 working tree。
+ */
+const readInjectedIconSnapshot = async () => {
+  if (!(await fs.pathExists(ENTERPRISE_ICONS_SNAPSHOT))) return [];
+  try {
+    const raw = await fs.readJSON(ENTERPRISE_ICONS_SNAPSHOT);
+    return Array.isArray(raw) ? raw : [];
+  } catch {
+    return [];
+  }
+};
+
+const writeInjectedIconSnapshot = async (names) => {
+  await fs.writeJSON(ENTERPRISE_ICONS_SNAPSHOT, names, { spaces: 2 });
+};
+
+const removeInjectedEnterpriseIcons = async () => {
+  const targetIconsRoot = path.join(webRoot, 'public', 'assets', 'icons');
+  const names = await readInjectedIconSnapshot();
+  if (!names.length) return [];
+  const removed = [];
+  for (const name of names) {
+    const target = path.join(targetIconsRoot, name);
+    if (await fs.pathExists(target)) {
+      await fs.remove(target);
+      removed.push(name);
+    }
+  }
+  // 清理 sentinel
+  if (await fs.pathExists(ENTERPRISE_ICONS_SNAPSHOT)) {
+    await fs.remove(ENTERPRISE_ICONS_SNAPSHOT);
+  }
+  return removed;
+};
+
 export const prepareEnterprisePublicAssets = async ({
   webRoot: targetWebRoot = webRoot,
   enterpriseWebRoot: sourceEnterpriseWebRoot = enterpriseWebRoot,
@@ -54,20 +94,23 @@ export const prepareEnterprisePublicAssets = async ({
 
   await fs.ensureDir(targetIconsRoot);
 
+  // 先清掉上次注入的副本（无论 community 还是 enterprise，都应先回到干净基线）
+  await removeInjectedEnterpriseIcons();
+
   const copiedIconNames = [];
   const entries = await fs.readdir(sourceIconsRoot, { withFileTypes: true });
   for (const entry of entries) {
     if (!entry.isFile() || !entry.name.endsWith('.svg')) continue;
     const sourceIcon = path.join(sourceIconsRoot, entry.name);
     const targetIcon = path.join(targetIconsRoot, entry.name);
-    if (await fs.pathExists(targetIcon)) continue;
+    // 永远从 EE 源覆盖到 CE 目标，保证 enterprise 模式下图标始终是最新版
     await fs.copy(sourceIcon, targetIcon, {
       dereference: true,
-      overwrite: false,
+      overwrite: true,
     });
     copiedIconNames.push(entry.name);
   }
-
+  await writeInjectedIconSnapshot(copiedIconNames);
   return copiedIconNames;
 };
 
@@ -353,6 +396,11 @@ const updateTsconfigPaths = async (moduleNames) => {
 export const prepareEnterpriseRoutes = async () => {
   if (!(await fs.pathExists(enterpriseWebRoot))) {
     await cleanupGenerated();
+    // community 模式：清掉上次 enterprise 启动注入到 web/public/assets/icons/ 的 EE 副本
+    const removedIcons = await removeInjectedEnterpriseIcons();
+    if (removedIcons.length) {
+      console.log(`  🧹 Public icons: ${removedIcons.length} enterprise icons removed (community mode)`);
+    }
     await writeEmptyMonitorDashboardsRegistry();
     await updateTsconfigPaths([]);
     console.log('ℹ️ No web/enterprise link found, skipping enterprise preparation.');
