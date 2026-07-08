@@ -10,7 +10,6 @@ import {
   ROOM3D_COL_GAP,
   ROOM3D_RACK_DEPTH,
   ROOM3D_RACK_HEIGHT,
-  ROOM3D_RACK_DOOR_OPEN_ROTATION,
   ROOM3D_RACK_WIDTH,
   ROOM3D_ROW_GAP,
   animateRackVisual,
@@ -22,7 +21,6 @@ import {
 } from "./room3DMeshes";
 
 export {
-  ROOM3D_CELL_GAP,
   ROOM3D_COL_GAP,
   ROOM3D_DEVICE_PULL_OUT_DISTANCE,
   ROOM3D_RACK_DEPTH,
@@ -57,8 +55,6 @@ interface PickedRoomObject {
   deviceId?: string;
   target?: "rack" | "door" | "device";
 }
-
-export const getRackDoorOpenRotation = () => ROOM3D_RACK_DOOR_OPEN_ROTATION;
 
 const READABLE_RACK_CAMERA_DISTANCE = 6.4;
 const RACK_DEVICE_VIEW_CAMERA_OFFSET = new THREE.Vector3(-2.35, 1.62, 3.25);

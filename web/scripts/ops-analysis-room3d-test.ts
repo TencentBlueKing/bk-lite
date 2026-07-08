@@ -12,6 +12,7 @@ import {
   filterChartTypesForSurface,
   hasSupportedChartTypeForSurface,
 } from "../src/app/ops-analysis/utils/chartTypeSurface";
+import { shouldWaitForInitialWidgetData } from "../src/app/ops-analysis/utils/widgetRequestVersion";
 import {
   getDefaultScreenWidgetAppearance,
   normalizeScreenWidgetAppearance,
@@ -19,19 +20,16 @@ import {
   createScreenWidgetItem,
 } from "../src/app/ops-analysis/(pages)/view/screen/utils/layout";
 import {
-  ROOM3D_CELL_GAP,
   ROOM3D_COL_GAP,
   ROOM3D_DEVICE_PULL_OUT_DISTANCE,
   ROOM3D_ROW_GAP,
   buildRoomFloorSize,
-  getRackDoorOpenRotation,
   resolveRoomObjectClickState,
   resolveRackClickState,
   shouldAutoFocusRack,
 } from "../src/app/ops-analysis/components/widgets/room3D/room3DScene";
 import {
   createRackVisual,
-  getRackVisualMeta,
 } from "../src/app/ops-analysis/components/widgets/room3D/room3DMeshes";
 
 const installCanvasStub = () => {
@@ -43,7 +41,9 @@ const installCanvasStub = () => {
     createLinearGradient: () => ({ addColorStop: noop }),
     fill: noop,
     fillRect: noop,
-    fillText: noop,
+    fillText: (text: string) => {
+      context.fillTextCalls.push(text);
+    },
     lineTo: noop,
     moveTo: noop,
     stroke: noop,
@@ -55,6 +55,7 @@ const installCanvasStub = () => {
     strokeStyle: "",
     textAlign: "",
     textBaseline: "",
+    fillTextCalls: [] as string[],
   };
   globalThis.document = {
     createElement: (tagName: string) => {
@@ -66,6 +67,7 @@ const installCanvasStub = () => {
       };
     },
   } as unknown as Document;
+  return context;
 };
 
 const validRoom = {
@@ -78,6 +80,7 @@ const validRoom = {
       row: 1,
       col: 3,
       rack_type: "2",
+      rack_type_name: "网络",
       u_count: 42,
       used_u: 21,
       free_u: 21,
@@ -110,6 +113,7 @@ assert.equal(validResult.ok, true);
 assert.equal(validResult.data?.room.name, "一号机房");
 assert.equal(validResult.data?.racks[0].rack_id, "5");
 assert.equal(validResult.data?.racks[0].location, "A03");
+assert.equal(validResult.data?.racks[0].rack_type_name, "网络");
 assert.equal(validResult.data?.racks[0].devices?.length, 2);
 assert.equal(validResult.data?.notice, "部分设备缺少有效 U 位，未在机柜内展示");
 assert.equal(getRoom3DPositionLabel(validResult.data!.racks[0]), "A03");
@@ -161,7 +165,6 @@ const invalidDevicePosition = validateRoom3DData({
 assert.equal(invalidDevicePosition.ok, false);
 assert.match(invalidDevicePosition.error || "", /room3DDeviceRequiredError/);
 
-assert.equal(getRackDoorOpenRotation(), Math.PI * 0.62);
 assert.deepEqual(
   resolveRackClickState(
     { selectedRackId: "rack-a", openRackId: "rack-a" },
@@ -291,7 +294,6 @@ assert.equal(duplicatedSceneRacks[1].rack_id, "7");
 assert.equal(getRoom3DColumnLabel(1), "A");
 assert.equal(getRoom3DColumnLabel(26), "Z");
 assert.equal(getRoom3DColumnLabel(27), "AA");
-assert.equal(ROOM3D_CELL_GAP, ROOM3D_COL_GAP);
 assert.equal(ROOM3D_COL_GAP > 1, true);
 assert.equal(ROOM3D_COL_GAP < 1.4, true);
 assert.equal(ROOM3D_ROW_GAP > ROOM3D_COL_GAP * 2.5, true);
@@ -320,20 +322,13 @@ assert.equal(compactColumnFloor.floorDepth < 18, true);
 assert.equal(shouldAutoFocusRack(8.1), true);
 assert.equal(shouldAutoFocusRack(5.2), false);
 
-assert.equal(
-  getRackVisualMeta("2").labelKey,
-  "dashboard.room3DRackTypeNetwork",
-);
-assert.equal(
-  getRackVisualMeta("unknown").labelKey,
-  "dashboard.room3DRackTypeUnknown",
-);
-
-installCanvasStub();
+const canvasContext = installCanvasStub();
 const rackWithManyDevices = createRackVisual(
   {
     rack_id: "dense-rack",
     rack_name: "Dense Rack",
+    rack_type: "2",
+    rack_type_name: "Network",
     row: 1,
     col: 1,
     u_count: 42,
@@ -348,6 +343,23 @@ const rackWithManyDevices = createRackVisual(
   0,
 );
 assert.equal(rackWithManyDevices.deviceMeshes.length, 20);
+assert.equal(canvasContext.fillTextCalls.includes("A01"), true);
+assert.equal(canvasContext.fillTextCalls.includes("Network"), true);
+
+canvasContext.fillTextCalls.length = 0;
+createRackVisual(
+  {
+    rack_id: "raw-type-rack",
+    rack_name: "Raw Type Rack",
+    rack_type: "2",
+    row: 1,
+    col: 2,
+  },
+  0,
+  0,
+);
+assert.equal(canvasContext.fillTextCalls.includes("A02"), true);
+assert.equal(canvasContext.fillTextCalls.includes("2"), false);
 
 assert.deepEqual(filterChartTypesForSurface(["line", "room3D"], "screen"), [
   "line",
@@ -361,6 +373,45 @@ assert.equal(hasSupportedChartTypeForSurface(["room3D"], "screen"), true);
 assert.equal(
   hasSupportedChartTypeForSurface(["room3D", "line"], "dashboard"),
   true,
+);
+assert.equal(
+  shouldWaitForInitialWidgetData({
+    isSceneWidget: false,
+    isTableLikeChart: false,
+    hasDataSourceId: true,
+    hasResolvedDataSource: false,
+    hasRawPayload: false,
+    hasDataValidation: false,
+    requestEnabled: true,
+    hasRequested: false,
+  }),
+  true,
+);
+assert.equal(
+  shouldWaitForInitialWidgetData({
+    isSceneWidget: false,
+    isTableLikeChart: false,
+    hasDataSourceId: true,
+    hasResolvedDataSource: true,
+    hasRawPayload: false,
+    hasDataValidation: false,
+    requestEnabled: false,
+    hasRequested: false,
+  }),
+  false,
+);
+assert.equal(
+  shouldWaitForInitialWidgetData({
+    isSceneWidget: false,
+    isTableLikeChart: false,
+    hasDataSourceId: true,
+    hasResolvedDataSource: true,
+    hasRawPayload: true,
+    hasDataValidation: false,
+    requestEnabled: true,
+    hasRequested: false,
+  }),
+  false,
 );
 
 assert.deepEqual(normalizeScreenWidgetAppearance(undefined), {
