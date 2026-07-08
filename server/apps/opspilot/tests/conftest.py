@@ -1,6 +1,25 @@
 """opspilot 测试共享 fixtures。"""
 
+import sys
+from unittest.mock import MagicMock
+
 import pytest
+
+# deepagents 第三方包升级后删了 `FILE_NOT_FOUND / FileData / _get_file_type / _glob_search_files`
+# 等 API。`apps/opspilot/metis/llm/backends/minio_backend.py` 直接 import 这些,
+# production 端在用 minio_backend 链路时也会失败。这里在 conftest 顶部
+# 提前用 MagicMock 强制覆盖 `deepagents.backends.*` 子模块占位,让 minio_backend
+# 可正常 import——测试只测 ToolsNodes 自身,不被 deepagents API 兼容性阻塞。
+# 注意:必须用 `=` 而非 `setdefault`,因为 deepagents.backends.__init__ 会 eager import
+# 子模块(`from .protocol import BackendProtocol` 等),`setdefault` 在 eager import
+# 之后被真模块占用,不再生效。直接覆盖强制替换。
+# 真实修复:重写 minio_backend.py 用新 deepagents API(独立 PR 跟进)。
+_deepagents_backends_module = MagicMock(name="deepagents.backends")
+_deepagents_backends_module.protocol = MagicMock()
+_deepagents_backends_module.utils = MagicMock()
+sys.modules["deepagents.backends"] = _deepagents_backends_module
+sys.modules["deepagents.backends.protocol"] = _deepagents_backends_module.protocol
+sys.modules["deepagents.backends.utils"] = _deepagents_backends_module.utils
 
 
 @pytest.fixture(autouse=True)

@@ -510,6 +510,11 @@ def test_llm_view_execute_passes_default_collection_tools_to_stream_chat(mocker)
     user.is_superuser = True
     user.locale = "zh-Hans"
 
+    # llm_view.execute 在 streaming 之前访问 skill.wiki_knowledge_bases.values_list,
+    # 这里显式 mock 避免 MagicMock 自动属性导致 TypeError
+    skill_obj.wiki_knowledge_bases = mocker.Mock()
+    skill_obj.wiki_knowledge_bases.values_list.return_value = []
+
     request = mocker.Mock()
     request.data = {
         "skill_id": "11",
