@@ -79,7 +79,9 @@ def preview_material_update(material):
     versions = list(MaterialVersion.objects.filter(material=material).order_by("-id")[:2])
     latest = versions[0] if versions else None
     previous = versions[1] if len(versions) > 1 else None
-    affected = [_page_impact_payload(page) for page in pages]
+    # 更新预览只有"已变更"状态:reason 提示用户"此页面继承新内容,旧版本将转入待审核"
+    update_reason = "此页面继承新内容,旧版本将进入待审核"
+    affected = [_page_impact_payload(page, update_reason) for page in pages]
     content_changed = bool(
         material.status == "updated"
         or (latest and previous and latest.content_hash and previous.content_hash and latest.content_hash != previous.content_hash)

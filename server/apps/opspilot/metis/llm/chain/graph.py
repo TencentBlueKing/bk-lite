@@ -660,11 +660,7 @@ class BasicGraph(ABC):
                     break
 
         if not existing_tool_call_id:
-            pending_tool_call_ids = [
-                tid
-                for tid, tinfo in current_tool_calls.items()
-                if not tinfo.get("ended") and not tinfo.get("tool_started")
-            ]
+            pending_tool_call_ids = [tid for tid, tinfo in current_tool_calls.items() if not tinfo.get("ended") and not tinfo.get("tool_started")]
             if len(pending_tool_call_ids) == 1:
                 existing_tool_call_id = pending_tool_call_ids[0]
                 current_tool_calls[existing_tool_call_id]["tool_started"] = True
@@ -779,6 +775,13 @@ class BasicGraph(ABC):
             )
         return events
 
+    @staticmethod
+    def _unwrap_overwrite_messages(messages):
+        """兼容 LangGraph Overwrite(messages) 包装，返回实际消息列表。"""
+        if messages.__class__.__name__ == "Overwrite" and hasattr(messages, "value"):
+            return messages.value or []
+        return messages
+
     def _handle_chain_end_messages(
         self,
         event_data: Dict[str, Any],
@@ -801,6 +804,7 @@ class BasicGraph(ABC):
         elif hasattr(output, "messages"):
             messages = getattr(output, "messages") or []
 
+        messages = self._unwrap_overwrite_messages(messages)
         if not messages:
             return []
 
@@ -878,9 +882,7 @@ class BasicGraph(ABC):
         避免链尾再把同一份文本推一遍;但 ToolMessage 仍要补成 TOOL_CALL_RESULT,
         否则前端的 tool_call 会停留在"未收到结果"。
         """
-        return self._handle_chain_end_messages(
-            event_data, encoder, current_tool_calls, include_text=False
-        )
+        return self._handle_chain_end_messages(event_data, encoder, current_tool_calls, include_text=False)
 
     def _handle_chain_end_messages_dedup(
         self,
@@ -904,6 +906,7 @@ class BasicGraph(ABC):
         elif hasattr(output, "messages"):
             messages = getattr(output, "messages") or []
 
+        messages = self._unwrap_overwrite_messages(messages)
         if not messages:
             return []
 
