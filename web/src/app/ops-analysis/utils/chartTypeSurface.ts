@@ -1,4 +1,4 @@
-export type OpsAnalysisWidgetSurface = 'dashboard' | 'screen' | 'topology';
+export type OpsAnalysisWidgetSurface = 'dashboard' | 'screen';
 
 const SCREEN_ONLY_CHART_TYPES = new Set(['room3D']);
 

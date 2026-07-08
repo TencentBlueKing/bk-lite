@@ -29,6 +29,7 @@ def _install_permission(monkeypatch, allowed=True, permission_map=None):
     permission_map = permission_map or {1: {"permission_instances_map": {}, "inst_names": []}}
     monkeypatch.setattr(N, "_build_nats_permission_map", lambda *a, **k: permission_map)
     monkeypatch.setattr(N.InstanceManage, "_has_topology_view_permission", lambda *a, **k: allowed)
+    monkeypatch.setattr(N.ExcludeFieldsCache, "get_model_attrs", lambda *a, **k: [])
     return permission_map
 
 
@@ -111,6 +112,76 @@ def test_get_room3d_layout_ok_contract(monkeypatch):
     assert captured["summary_rack_ids"] == [5]
     assert captured["summary_permission_map"] is permission_map
     assert captured["summary_user"].username == "alice"
+
+
+@pytest.mark.unit
+def test_get_room3d_layout_falls_back_to_rack_id_when_name_missing(monkeypatch):
+    _install_permission(monkeypatch)
+    nameless_rack = _rack(5, "A03")
+    nameless_rack["inst_name"] = ""
+    monkeypatch.setattr(N.InstanceManage, "query_entity_by_id", lambda pk: _room(pk))
+    monkeypatch.setattr(
+        N,
+        "rack_room",
+        SimpleNamespace(
+            get_room_layout=lambda *a, **k: {
+                "racks": [nameless_rack],
+                "unplaced": [],
+                "conflicts": [],
+                "grid": {"max_row": 0, "max_col": 0},
+            },
+            get_rack_layout=lambda *a, **k: {"placed": [], "unplaced": []},
+        ),
+        raising=False,
+    )
+
+    result = N.get_room3d_layout(server_room_id=7, user_info=USER_INFO)
+
+    assert result["result"] is True
+    assert result["data"]["racks"][0]["rack_id"] == "5"
+    assert result["data"]["racks"][0]["rack_name"] == "5"
+
+
+@pytest.mark.unit
+def test_get_room3d_layout_returns_rack_type_name_from_cmdb_enum(monkeypatch):
+    _install_permission(monkeypatch)
+    monkeypatch.setattr(N.InstanceManage, "query_entity_by_id", lambda pk: _room(pk))
+    monkeypatch.setattr(
+        N.ExcludeFieldsCache,
+        "get_model_attrs",
+        lambda model_id: [
+            {
+                "attr_id": "datacenter_type",
+                "attr_type": N.FIELD_TYPE_ENUM,
+                "option": [
+                    {"id": "1", "name": "计算"},
+                    {"id": "2", "name": "网络"},
+                ],
+            }
+        ]
+        if model_id == "rack"
+        else [],
+    )
+    monkeypatch.setattr(
+        N,
+        "rack_room",
+        SimpleNamespace(
+            get_room_layout=lambda *a, **k: {
+                "racks": [_rack()],
+                "unplaced": [],
+                "conflicts": [],
+                "grid": {"max_row": 0, "max_col": 0},
+            },
+            get_rack_layout=lambda *a, **k: {"placed": [], "unplaced": []},
+        ),
+        raising=False,
+    )
+
+    result = N.get_room3d_layout(server_room_id=7, user_info=USER_INFO)
+
+    assert result["result"] is True
+    assert result["data"]["racks"][0]["rack_type"] == "2"
+    assert result["data"]["racks"][0]["rack_type_name"] == "网络"
 
 
 @pytest.mark.unit

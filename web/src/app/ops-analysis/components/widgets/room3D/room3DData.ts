@@ -14,6 +14,7 @@ export interface Room3DRack {
   col: number;
   location?: string;
   rack_type?: string | null;
+  rack_type_name?: string | null;
   u_count?: number;
   used_u?: number;
   free_u?: number;
@@ -264,6 +265,13 @@ export const validateRoom3DData = (
         : rawRackType === null
           ? null
           : undefined;
+    const rawRackTypeName = rack.rack_type_name;
+    const rackTypeName: Room3DRack['rack_type_name'] =
+      isNonEmptyString(rawRackTypeName)
+        ? rawRackTypeName.trim()
+        : rawRackTypeName === null
+          ? null
+          : undefined;
     const numberFieldError = validateOptionalNumberFields(rack, index, t);
     if (numberFieldError) {
       return { ok: false, error: numberFieldError };
@@ -281,6 +289,7 @@ export const validateRoom3DData = (
       col,
       location,
       rack_type: rackType,
+      rack_type_name: rackTypeName,
       u_count: rack.u_count as number | undefined,
       used_u: rack.used_u as number | undefined,
       free_u: rack.free_u as number | undefined,

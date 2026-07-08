@@ -939,6 +939,15 @@ def _room3d_rack_id_as_int(rack_id):
         return None
 
 
+def _get_room3d_rack_type_name_map():
+    attrs = ExcludeFieldsCache.get_model_attrs("rack") or []
+    for attr in attrs:
+        if attr.get("attr_id") != "datacenter_type" or attr.get("attr_type") != FIELD_TYPE_ENUM:
+            continue
+        return {str(option.get("id")): option.get("name") for option in attr.get("option", []) if option and option.get("name")}
+    return {}
+
+
 @nats_client.register
 def get_room3d_layout(server_room_id=None, user_info=None, **kwargs):
     """
@@ -1010,28 +1019,32 @@ def get_room3d_layout(server_room_id=None, user_info=None, **kwargs):
                     user=user,
                 )
 
+    rack_type_name_map = _get_room3d_rack_type_name_map()
     racks = []
     for item in candidate_racks:
         rack = item["rack"]
         rack_id = rack.get("inst_id")
         rack_id_int = _room3d_rack_id_as_int(rack_id)
         device_summary = device_summaries.get(rack_id_int, _empty_room3d_device_summary())
-        racks.append(
-            {
-                "rack_id": str(rack_id),
-                "rack_name": rack.get("inst_name") or "",
-                "row": item["row"],
-                "col": item["col"],
-                "location": item["location"],
-                "rack_type": rack.get("datacenter_type"),
-                "u_count": rack.get("u_count"),
-                "used_u": rack.get("used_u"),
-                "free_u": rack.get("free_u"),
-                "device_count": device_summary["device_count"],
-                "unplaced_device_count": device_summary["unplaced_device_count"],
-                "devices": device_summary["devices"],
-            }
-        )
+        rack_type = rack.get("datacenter_type")
+        rack_type_name = rack_type_name_map.get(str(rack_type)) if rack_type not in (None, "") else None
+        rack_payload = {
+            "rack_id": item["rack_id"],
+            "rack_name": item["rack_name"],
+            "row": item["row"],
+            "col": item["col"],
+            "location": item["location"],
+            "rack_type": rack_type,
+            "u_count": rack.get("u_count"),
+            "used_u": rack.get("used_u"),
+            "free_u": rack.get("free_u"),
+            "device_count": device_summary["device_count"],
+            "unplaced_device_count": device_summary["unplaced_device_count"],
+            "devices": device_summary["devices"],
+        }
+        if rack_type_name:
+            rack_payload["rack_type_name"] = rack_type_name
+        racks.append(rack_payload)
 
     data = {
         "room": {"id": str(room_id), "name": room.get("inst_name") or ""},
