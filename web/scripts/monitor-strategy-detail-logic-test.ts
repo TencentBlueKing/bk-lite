@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 
 import {
   FORMULA_DEFAULT_RESULT_UNIT,
+  getCalculationUnitOnMetricRowsChange,
+  getMetricThresholdEnumState,
   getThresholdUnitFilterBase,
   getThresholdUnitOptions,
   getValidThresholdUnitOptions,
@@ -118,6 +120,45 @@ assert.equal(resolveFormulaResultUnit('none', unitList), 'percent');
 assert.equal(resolveFormulaResultUnit('short', unitList), 'percent');
 assert.equal(resolveFormulaResultUnit('bytes', unitList), 'bytes');
 assert.equal(resolveFormulaResultUnit('unknown-unit', unitList), 'percent');
+assert.equal(
+  getCalculationUnitOnMetricRowsChange({
+    previousMode: 'single',
+    nextMode: 'formula',
+    currentCalculationUnit: 'bytes',
+    unitList,
+  }),
+  'percent'
+);
+assert.equal(
+  getCalculationUnitOnMetricRowsChange({
+    previousMode: 'formula',
+    nextMode: 'formula',
+    currentCalculationUnit: 'bytes',
+    unitList,
+  }),
+  'bytes'
+);
+
+assert.deepEqual(
+  getMetricThresholdEnumState({
+    isFormulaMode: true,
+    metricUnit: '[{\"id\":1,\"name\":\"up\"}]',
+  }),
+  {
+    isEnumMetric: false,
+    enumOptions: [],
+  }
+);
+assert.deepEqual(
+  getMetricThresholdEnumState({
+    isFormulaMode: false,
+    metricUnit: '[{\"id\":1,\"name\":\"up\"}]',
+  }),
+  {
+    isEnumMetric: true,
+    enumOptions: [{ id: 1, name: 'up' }],
+  }
+);
 
 assert.equal(
   getThresholdUnitFilterBase({

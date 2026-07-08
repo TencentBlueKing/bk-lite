@@ -5,8 +5,8 @@ import { ThresholdField } from '@/app/monitor/types';
 import { StrategyFields } from '@/app/monitor/types/event';
 import { useCommon } from '@/app/monitor/context/common';
 import { SCHEDULE_UNIT_MAP } from '@/app/monitor/constants/event';
-import { isStringArray } from '@/app/monitor/utils/common';
 import {
+  getMetricThresholdEnumState,
   getThresholdUnitFilterBase,
   getThresholdUnitOptions
 } from './strategyDetailUtils';
@@ -21,12 +21,6 @@ const NO_DATA_ALERT_OPTIONS = [
   { value: 'error', labelKey: 'triggerErrorAlert' },
   { value: 'warning', labelKey: 'triggerWarningAlert' }
 ];
-
-interface EnumOption {
-  id: number;
-  name: string;
-  color?: string;
-}
 
 interface AlertConditionsFormProps {
   enableAlerts: string[];
@@ -72,20 +66,10 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   const commonContext = useCommon();
   const unitList = commonContext?.unitList || [];
 
-  // 判断是否为枚举类型指标
-  const isEnumMetric = useMemo(() => {
-    return metricUnit ? isStringArray(metricUnit) : false;
-  }, [metricUnit]);
-
-  // 枚举类型的选项列表
-  const enumOptions = useMemo((): EnumOption[] => {
-    if (!isEnumMetric || !metricUnit) return [];
-    try {
-      return JSON.parse(metricUnit);
-    } catch {
-      return [];
-    }
-  }, [isEnumMetric, metricUnit]);
+  const { isEnumMetric, enumOptions } = useMemo(
+    () => getMetricThresholdEnumState({ isFormulaMode, metricUnit }),
+    [isFormulaMode, metricUnit]
+  );
 
   const unitFilterBase = useMemo(
     () =>

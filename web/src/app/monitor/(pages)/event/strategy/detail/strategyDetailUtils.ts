@@ -1,4 +1,5 @@
 import { SegmentedItem, UnitListItem } from '@/app/monitor/types';
+import { isStringArray } from '@/app/monitor/utils/common';
 
 export const FORMULA_DEFAULT_RESULT_UNIT = 'percent';
 
@@ -40,6 +41,67 @@ export const resolveFormulaResultUnit = (
   }
 
   return FORMULA_DEFAULT_RESULT_UNIT;
+};
+
+export const getCalculationUnitOnMetricRowsChange = ({
+  previousMode,
+  nextMode,
+  currentCalculationUnit,
+  unitList,
+}: {
+  previousMode: string;
+  nextMode: string;
+  currentCalculationUnit: string | null;
+  unitList: UnitListItem[];
+}): string | null => {
+  if (nextMode !== 'formula') {
+    return currentCalculationUnit;
+  }
+
+  if (previousMode !== 'formula') {
+    return FORMULA_DEFAULT_RESULT_UNIT;
+  }
+
+  return resolveFormulaResultUnit(currentCalculationUnit, unitList);
+};
+
+interface EnumOption {
+  id: number;
+  name: string;
+  color?: string;
+}
+
+export const getMetricThresholdEnumState = ({
+  isFormulaMode,
+  metricUnit,
+}: {
+  isFormulaMode: boolean;
+  metricUnit: string | null;
+}): {
+  isEnumMetric: boolean;
+  enumOptions: EnumOption[];
+} => {
+  const isEnumMetric =
+    !isFormulaMode && Boolean(metricUnit && isStringArray(metricUnit));
+
+  if (!isEnumMetric || !metricUnit) {
+    return {
+      isEnumMetric: false,
+      enumOptions: [],
+    };
+  }
+
+  try {
+    return {
+      isEnumMetric: true,
+      enumOptions: JSON.parse(metricUnit) as EnumOption[],
+    };
+  } catch {
+    return {
+      isEnumMetric: false,
+      enumOptions: [],
+    };
+  }
 };
 
 export const getThresholdUnitFilterBase = ({

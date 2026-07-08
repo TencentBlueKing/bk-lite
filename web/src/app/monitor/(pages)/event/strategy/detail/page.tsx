@@ -48,6 +48,7 @@ import {
 } from '@/app/monitor/constants/event';
 import {
   FORMULA_DEFAULT_RESULT_UNIT,
+  getCalculationUnitOnMetricRowsChange,
   getValidThresholdUnitOptions,
   resolveFormulaResultUnit,
   resolveInitialMetricPluginId
@@ -633,12 +634,20 @@ const StrategyOperation = () => {
   const handleMetricRowsChange = (rows: MetricExpressionRow[]) => {
     const previousPrimaryMetricName = metricRows[0]?.metricName;
     const nextPrimaryMetricName = rows[0]?.metricName;
+    const previousMode = metricExpressionMode;
     const nextMode = getMetricExpressionModeForRows(rows);
     setMetricExpressionMode(nextMode);
     setMetricRows(rows);
 
     if (nextMode === 'formula') {
-      setCalculationUnit((current) => resolveFormulaResultUnit(current, unitList));
+      setCalculationUnit((current) =>
+        getCalculationUnitOnMetricRowsChange({
+          previousMode,
+          nextMode,
+          currentCalculationUnit: current,
+          unitList
+        })
+      );
     }
 
     if (
