@@ -1,5 +1,6 @@
 import { SegmentedItem, UnitListItem } from '@/app/monitor/types';
 import { isStringArray } from '@/app/monitor/utils/common';
+import { MetricExpressionMode } from './formulaExpressionUtils';
 
 export const FORMULA_DEFAULT_RESULT_UNIT = 'percent';
 
@@ -49,8 +50,8 @@ export const getCalculationUnitOnMetricRowsChange = ({
   currentCalculationUnit,
   unitList,
 }: {
-  previousMode: string;
-  nextMode: string;
+  previousMode: MetricExpressionMode;
+  nextMode: MetricExpressionMode;
   currentCalculationUnit: string | null;
   unitList: UnitListItem[];
 }): string | null => {

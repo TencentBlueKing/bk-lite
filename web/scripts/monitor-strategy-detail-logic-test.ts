@@ -10,6 +10,7 @@ import {
   resolveFormulaResultUnit,
   resolveInitialMetricPluginId,
 } from '../src/app/monitor/(pages)/event/strategy/detail/strategyDetailUtils';
+import type { MetricExpressionMode } from '../src/app/monitor/(pages)/event/strategy/detail/formulaExpressionUtils';
 import { UnitListItem } from '../src/app/monitor/types';
 
 const plugins = [
@@ -122,8 +123,8 @@ assert.equal(resolveFormulaResultUnit('bytes', unitList), 'bytes');
 assert.equal(resolveFormulaResultUnit('unknown-unit', unitList), 'percent');
 assert.equal(
   getCalculationUnitOnMetricRowsChange({
-    previousMode: 'single',
-    nextMode: 'formula',
+    previousMode: 'metric' as MetricExpressionMode,
+    nextMode: 'formula' as MetricExpressionMode,
     currentCalculationUnit: 'bytes',
     unitList,
   }),
@@ -131,12 +132,22 @@ assert.equal(
 );
 assert.equal(
   getCalculationUnitOnMetricRowsChange({
-    previousMode: 'formula',
-    nextMode: 'formula',
+    previousMode: 'formula' as MetricExpressionMode,
+    nextMode: 'formula' as MetricExpressionMode,
     currentCalculationUnit: 'bytes',
     unitList,
   }),
   'bytes'
+);
+// 反向: 'formula' → 'metric' 时 helper 保持 currentCalculationUnit(对称 retract 由 Task 2 接管)
+assert.equal(
+  getCalculationUnitOnMetricRowsChange({
+    previousMode: 'formula' as MetricExpressionMode,
+    nextMode: 'metric' as MetricExpressionMode,
+    currentCalculationUnit: 'percent',
+    unitList,
+  }),
+  'percent'
 );
 
 assert.deepEqual(
