@@ -312,4 +312,45 @@ assert.equal(
   undefined
 );
 
+// getMetricThresholdEnumState 边界:畸形 JSON 全部兜底成空数组
+assert.deepEqual(
+  getMetricThresholdEnumState({ isFormulaMode: false, metricUnit: null }),
+  { isEnumMetric: false, enumOptions: [] }
+);
+assert.deepEqual(
+  getMetricThresholdEnumState({ isFormulaMode: false, metricUnit: '' }),
+  { isEnumMetric: false, enumOptions: [] }
+);
+assert.deepEqual(
+  getMetricThresholdEnumState({ isFormulaMode: false, metricUnit: 'not-json' }),
+  { isEnumMetric: false, enumOptions: [] }
+);
+assert.deepEqual(
+  getMetricThresholdEnumState({ isFormulaMode: false, metricUnit: '{"foo":1}' }),
+  { isEnumMetric: false, enumOptions: [] }
+);
+assert.deepEqual(
+  getMetricThresholdEnumState({
+    isFormulaMode: false,
+    metricUnit: '[{"foo":1}]'
+  }),
+  { isEnumMetric: false, enumOptions: [] }
+);
+// id 是字符串,正常化为 number
+assert.deepEqual(
+  getMetricThresholdEnumState({
+    isFormulaMode: false,
+    metricUnit: '[{"id":"1","name":"up"}]'
+  }),
+  { isEnumMetric: true, enumOptions: [{ id: 1, name: 'up' }] }
+);
+// 缺 name 的项被过滤
+assert.deepEqual(
+  getMetricThresholdEnumState({
+    isFormulaMode: false,
+    metricUnit: '[{"id":1,"name":"up"},{"id":2}]'
+  }),
+  { isEnumMetric: true, enumOptions: [{ id: 1, name: 'up' }] }
+);
+
 console.log('monitor-strategy-detail logic validation passed');

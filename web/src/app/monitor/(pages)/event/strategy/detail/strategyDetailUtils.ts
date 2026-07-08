@@ -83,6 +83,32 @@ interface EnumOption {
   color?: string;
 }
 
+// 内部 JSON 解析:对脏数据(非 JSON / 非数组 / 缺 id/name / id 非法)统一兜底成空数组,
+// 避免渲染层因为 key=NaN 或 name=[object Object] 抛错。
+const parseEnumOptions = (input: string): EnumOption[] => {
+  try {
+    const parsed: unknown = JSON.parse(input);
+    if (!Array.isArray(parsed)) return [];
+    const out: EnumOption[] = [];
+    for (const item of parsed) {
+      if (!item || typeof item !== 'object') continue;
+      const idNum = Number((item as { id: unknown }).id);
+      const name = (item as { name: unknown }).name;
+      if (!Number.isFinite(idNum)) continue;
+      if (typeof name !== 'string' || !name) continue;
+      const color = (item as { color?: unknown }).color;
+      out.push({
+        id: idNum,
+        name,
+        ...(typeof color === 'string' ? { color } : {})
+      });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+};
+
 export const getMetricThresholdEnumState = ({
   isFormulaMode,
   metricUnit,
@@ -93,27 +119,19 @@ export const getMetricThresholdEnumState = ({
   isEnumMetric: boolean;
   enumOptions: EnumOption[];
 } => {
-  const isEnumMetric =
-    !isFormulaMode && Boolean(metricUnit && isStringArray(metricUnit));
-
-  if (!isEnumMetric || !metricUnit) {
+  // 公式模式:阈值永远用数字,即使 metricUnit 形态上是枚举也忽略
+  if (isFormulaMode || !metricUnit || !isStringArray(metricUnit)) {
     return {
       isEnumMetric: false,
-      enumOptions: [],
+      enumOptions: []
     };
   }
 
-  try {
-    return {
-      isEnumMetric: true,
-      enumOptions: JSON.parse(metricUnit) as EnumOption[],
-    };
-  } catch {
-    return {
-      isEnumMetric: false,
-      enumOptions: [],
-    };
-  }
+  const options = parseEnumOptions(metricUnit);
+  return {
+    isEnumMetric: options.length > 0,
+    enumOptions: options
+  };
 };
 
 export const getThresholdUnitFilterBase = ({
