@@ -10,6 +10,7 @@ export type ScreenWidgetChartType =
   | 'table'
   | 'topN'
   | 'eventTable'
+  | 'room3D'
   | 'networkStatusTopology';
 
 export interface ScreenViewportConfig {
