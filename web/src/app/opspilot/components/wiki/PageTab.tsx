@@ -5,6 +5,7 @@ import { AutoComplete, Button, Drawer, Form, Input, List, Popconfirm, Select, Sp
 import { DeleteOutlined, DownloadOutlined, PlusOutlined, UploadOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import CustomTable from '@/components/custom-table';
+import MarkdownRenderer from '@/components/markdown';
 import { useTranslation } from '@/utils/i18n';
 import { useWikiApi } from '@/app/opspilot/api/wiki';
 import { KnowledgePage, PageVersion, WikiIndexStageDetail, WikiPageSource } from '@/app/opspilot/types/wiki';
@@ -20,6 +21,7 @@ const INDEX_STATUS_COLOR: Record<string, string> = {
   skipped: 'default',
 };
 const isArchivedPage = (record: KnowledgePage) => record.status === 'archived';
+const SHOW_PAGE_REINDEX_ACTION = false;
 
 const PageTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const { t } = useTranslation();
@@ -385,7 +387,9 @@ const PageTab: React.FC<{ kbId: number }> = ({ kbId }) => {
         {source.snippet && (
           <div className="mt-2">
             <div className="mb-1 text-xs text-[var(--color-text-3)]">{t('wiki.sourceSnippet')}</div>
-            <div className="whitespace-pre-wrap break-words text-sm text-[var(--color-text-2)]">{source.snippet}</div>
+            <div className="max-w-full overflow-x-auto text-sm text-[var(--color-text-2)]">
+              <MarkdownRenderer content={source.snippet} />
+            </div>
           </div>
         )}
         {source.locator_raw && (
@@ -452,7 +456,7 @@ const PageTab: React.FC<{ kbId: number }> = ({ kbId }) => {
             <Button type="link" size="small" onClick={() => openPageSources(record)}>
               {t('wiki.pageSources')}
             </Button>
-            {record.status === 'active' && (
+            {SHOW_PAGE_REINDEX_ACTION && record.status === 'active' && (
               <Button
                 type="link"
                 size="small"

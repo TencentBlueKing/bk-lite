@@ -6,6 +6,7 @@ import type { ColumnsType } from 'antd/es/table';
 import type { UploadFile } from 'antd/es/upload/interface';
 import { LoadingOutlined, UploadOutlined } from '@ant-design/icons';
 import CustomTable from '@/components/custom-table';
+import MarkdownRenderer from '@/components/markdown';
 import { useTranslation } from '@/utils/i18n';
 import { useWikiApi } from '@/app/opspilot/api/wiki';
 import { Material, MaterialDeleteImpact, MaterialInfo, MaterialType, MaterialUpdateImpact } from '@/app/opspilot/types/wiki';
@@ -54,6 +55,7 @@ const SUPPORTED_FILE_EXTENSIONS = [
   '.epub',
 ];
 const FILE_ACCEPT = SUPPORTED_FILE_EXTENSIONS.join(',');
+const SHOW_MATERIAL_REINDEX_ACTION = false;
 
 const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const { t } = useTranslation();
@@ -64,6 +66,7 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     fetchMaterialDeleteImpact,
     fetchMaterialUpdateImpact,
     createMaterial,
+    updateMaterial,
     createMaterialFile,
     batchCreateMaterials,
     deleteMaterial,
@@ -80,6 +83,7 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const [total, setTotal] = useState(0);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
   const [type, setType] = useState<MaterialType>('text');
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [folderImport, setFolderImport] = useState(false);
@@ -96,6 +100,7 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const [updateSubmitting, setUpdateSubmitting] = useState(false);
   const [updateTarget, setUpdateTarget] = useState<Material | null>(null);
   const [updateImpact, setUpdateImpact] = useState<MaterialUpdateImpact | null>(null);
+  const isEditing = Boolean(editingMaterial);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -131,10 +136,35 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
 
   const openCreate = () => {
     form.resetFields();
+    setEditingMaterial(null);
     setType('file');
     setFileList([]);
     setFolderImport(false);
     form.setFieldsValue({ material_type: 'file', ocr_enhance: false });
+    setOpen(true);
+  };
+
+  const closeMaterialModal = () => {
+    if (saving) return;
+    setOpen(false);
+    setEditingMaterial(null);
+  };
+
+  const openEdit = (record: Material) => {
+    setEditingMaterial(record);
+    setType(record.material_type);
+    setFileList([]);
+    setFolderImport(false);
+    form.resetFields();
+    form.setFieldsValue({
+      name: record.name,
+      material_type: record.material_type,
+      text_content: record.text_content ?? '',
+      url: record.url ?? '',
+      sync_enabled: Boolean(record.sync_policy?.enabled),
+      sync_interval_hours: record.sync_policy?.interval_hours ?? 24,
+      ocr_enhance: Boolean(record.ocr_enhance),
+    });
     setOpen(true);
   };
 
@@ -143,7 +173,21 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     setSaving(true);
     try {
       let successMessage = t('wiki.saveSuccess');
-      if (values.material_type === 'file') {
+      if (editingMaterial) {
+        if (editingMaterial.material_type === 'file') {
+          await updateMaterial(editingMaterial.id, { ocr_enhance: Boolean(values.ocr_enhance) });
+        } else if (editingMaterial.material_type === 'web') {
+          await updateMaterial(editingMaterial.id, {
+            name: values.name,
+            sync_policy: { enabled: !!values.sync_enabled, interval_hours: values.sync_interval_hours ?? 24 },
+          });
+        } else if (editingMaterial.material_type === 'text') {
+          await updateMaterial(editingMaterial.id, {
+            name: values.name,
+            text_content: values.text_content ?? '',
+          });
+        }
+      } else if (values.material_type === 'file') {
         const files = fileList
           .map((item) => item.originFileObj as File | undefined)
           .filter((file): file is File => Boolean(file));
@@ -186,6 +230,7 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
       }
       message.success(successMessage);
       setOpen(false);
+      setEditingMaterial(null);
       load();
     } finally {
       setSaving(false);
@@ -356,6 +401,9 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
             <Button type="link" size="small" onClick={() => openDetail(record.id)}>
               {t('wiki.detail')}
             </Button>
+            <Button type="link" size="small" disabled={busy} onClick={() => openEdit(record)}>
+              {t('common.edit')}
+            </Button>
             <Button type="link" size="small" disabled={busy} onClick={() => handleIngest(record.id)}>
               {t('wiki.ingest')}
             </Button>
@@ -368,15 +416,17 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
             >
               {t('wiki.build')}
             </Button>
-            <Button
-              type="link"
-              size="small"
-              disabled={busy || (reindexingMaterialId !== null && reindexingMaterialId !== record.id)}
-              loading={reindexingMaterialId === record.id}
-              onClick={() => handleReindexMaterial(record.id)}
-            >
-              {t('wiki.reindexPage')}
-            </Button>
+            {SHOW_MATERIAL_REINDEX_ACTION && (
+              <Button
+                type="link"
+                size="small"
+                disabled={busy || (reindexingMaterialId !== null && reindexingMaterialId !== record.id)}
+                loading={reindexingMaterialId === record.id}
+                onClick={() => handleReindexMaterial(record.id)}
+              >
+                {t('wiki.reindexPage')}
+              </Button>
+            )}
             {canProposeUpdate && (
               <Button type="link" size="small" disabled={busy} onClick={() => openUpdateImpact(record)}>
                 {t('wiki.proposeUpdate')}
@@ -501,25 +551,27 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
       </Modal>
 
       <Modal
-        title={t('wiki.addMaterial')}
+        title={isEditing ? t('wiki.editMaterial') : t('wiki.addMaterial')}
         open={open}
         onOk={handleSave}
         confirmLoading={saving}
-        onCancel={() => setOpen(false)}
+        onCancel={closeMaterialModal}
+        maskClosable={false}
         destroyOnHidden
       >
         <Form form={form} layout="vertical">
-          {type !== 'file' && (
+          {(type !== 'file' || isEditing) && (
             <Form.Item
               label={t('wiki.name')}
               name="name"
               rules={[{ required: true, message: `${t('common.inputMsg')}${t('wiki.name')}` }]}
             >
-              <Input />
+              <Input disabled={isEditing && type === 'file'} />
             </Form.Item>
           )}
           <Form.Item label={t('wiki.materialType')} name="material_type" initialValue="file">
             <Select
+              disabled={isEditing}
               onChange={(v: MaterialType) => {
                 setType(v);
                 if (v !== 'file') setFolderImport(false);
@@ -538,8 +590,8 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
           )}
           {type === 'web' && (
             <>
-              <Form.Item label="URL" name="url" rules={[{ required: true }]}>
-                <Input placeholder="https://..." />
+              <Form.Item label="URL" name="url" rules={isEditing ? [] : [{ required: true }]}>
+                <Input placeholder="https://..." disabled={isEditing} />
               </Form.Item>
               {/* 网页同步按站点单独配置 */}
               <Form.Item
@@ -556,7 +608,7 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
               </Form.Item>
             </>
           )}
-          {type === 'file' && (
+          {type === 'file' && !isEditing && (
             <>
               <Form.Item label={t('wiki.folderImport')} tooltip={t('wiki.folderImportTip')}>
                 <Switch checked={folderImport} onChange={(checked) => setFolderImport(checked)} />
@@ -590,16 +642,18 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
               </Form.Item>
             </>
           )}
-          {/* 图片增强:file / text / web 通用,KB 配了 vision_model 才可选 */}
-          <Form.Item
-            label={t('wiki.imageEnhance')}
-            name="ocr_enhance"
-            valuePropName="checked"
-            initialValue={false}
-            tooltip={hasVisionModel ? t('wiki.imageEnhanceTip') : t('wiki.imageEnhanceDisabledTip')}
-          >
-            <Switch disabled={!hasVisionModel} />
-          </Form.Item>
+          {/* 新增时可选择图片增强;编辑文件资料时只允许修改该开关 */}
+          {(!isEditing || type === 'file') && (
+            <Form.Item
+              label={t('wiki.imageEnhance')}
+              name="ocr_enhance"
+              valuePropName="checked"
+              initialValue={false}
+              tooltip={hasVisionModel ? t('wiki.imageEnhanceTip') : t('wiki.imageEnhanceDisabledTip')}
+            >
+              <Switch disabled={!hasVisionModel} />
+            </Form.Item>
+          )}
         </Form>
       </Modal>
 
@@ -607,12 +661,19 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
       <Drawer
         title={`${t('wiki.detail')}: ${detail?.material?.name ?? ''}`}
         open={!!detail}
-        width={600}
+        width="min(960px, calc(100vw - 48px))"
         onClose={() => setDetail(null)}
       >
         {detail && (
           <>
-            <Descriptions column={1} bordered size="small" className="mb-4">
+            <Descriptions
+              column={1}
+              bordered
+              size="small"
+              className="mb-4"
+              labelStyle={{ width: 144, whiteSpace: 'nowrap' }}
+              contentStyle={{ minWidth: 0 }}
+            >
               <Descriptions.Item label={t('wiki.materialType')}>
                 {materialTypeLabel(detail.material.material_type)}
               </Descriptions.Item>
@@ -638,7 +699,13 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
                 )}
               </Descriptions.Item>
               <Descriptions.Item label={t('wiki.aiSummary')}>
-                <span className="whitespace-pre-wrap text-xs">{detail.ai_summary || '--'}</span>
+                {detail.ai_summary ? (
+                  <div className="max-w-full overflow-x-auto text-xs">
+                    <MarkdownRenderer content={detail.ai_summary} />
+                  </div>
+                ) : (
+                  '--'
+                )}
               </Descriptions.Item>
             </Descriptions>
             <div className="mb-2 font-medium">{t('wiki.versions')}</div>

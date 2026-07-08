@@ -13,7 +13,6 @@ import { useIntl } from 'react-intl';
 import { useTranslation } from '@/utils/i18n';
 import GroupTreeSelect from '@/components/group-tree-select';
 import { useWikiApi } from '@/app/opspilot/api/wiki';
-import { Model } from '@/app/opspilot/types/provider';
 import { LlmModel } from '@/app/opspilot/types/skill';
 import { WikiKnowledgeBase } from '@/app/opspilot/types/wiki';
 
@@ -117,14 +116,12 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     fetchKnowledgeBase,
     updateKnowledgeBase,
     fetchLlmModels,
-    fetchEmbedProviders,
     fetchBuildRecords,
     reindexKnowledgeBase,
     rebuildKnowledgeBase,
     deleteKnowledgeBase,
   } = useWikiApi();
   const [llmModels, setLlmModels] = useState<LlmModel[]>([]);
-  const [embedProviders, setEmbedProviders] = useState<Model[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -145,16 +142,13 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     setLoading(true);
     try {
       const [kb, models] = await Promise.all([fetchKnowledgeBase(kbId), fetchLlmModels().catch(() => [])]);
-      const providers = await fetchEmbedProviders().catch(() => []);
       kbRef.current = kb;
       setLlmModels(models || []);
-      setEmbedProviders(providers || []);
       await refreshRunningBuildState();
       form.setFieldsValue({
         name: kb.name,
         introduction: kb.introduction,
         llm_model: kb.llm_model,
-        embed_provider: kb.embed_provider,
         vision_model: kb.vision_model,
         team: kb.team,
         purpose_md: kb.purpose_md,
@@ -201,7 +195,7 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
         name: v.name,
         introduction: v.introduction,
         llm_model: v.llm_model,
-        embed_provider: v.embed_provider,
+        embed_provider: prev?.embed_provider,
         vision_model: v.vision_model,
         team: v.team,
         purpose_md: v.purpose_md,
@@ -265,13 +259,6 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
           <Select
             placeholder={t('wiki.llmModelPlaceholder')}
             options={llmModels.map((m) => ({ value: m.id, label: m.name, disabled: !m.enabled }))}
-          />
-        </Form.Item>
-        <Form.Item label={t('wiki.embedProvider')} name="embed_provider" tooltip={t('wiki.embedProviderTip')}>
-          <Select
-            allowClear
-            placeholder={t('wiki.embedProviderPlaceholder')}
-            options={embedProviders.map((m) => ({ value: m.id, label: m.name, disabled: !m.enabled }))}
           />
         </Form.Item>
         <Form.Item

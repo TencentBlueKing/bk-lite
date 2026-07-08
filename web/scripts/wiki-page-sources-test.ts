@@ -29,7 +29,13 @@ assertIncludes(pageTab, 'pageSourcesVisible', 'PageTab source drawer/modal state
 assertIncludes(pageTab, "t('wiki.pageSources')", 'PageTab source action label');
 assertIncludes(pageTab, 'source.locator?.chunk_index', 'PageTab chunk locator rendering');
 assertIncludes(pageTab, 'source.snippet', 'PageTab snippet rendering');
+assertIncludes(pageTab, "import MarkdownRenderer from '@/components/markdown'", 'PageTab MarkdownRenderer import');
+assertIncludes(pageTab, '<MarkdownRenderer content={source.snippet} />', 'PageTab source snippet markdown rendering');
 assertIncludes(pageTab, 'source.locator_raw', 'PageTab raw locator rendering');
+
+if (pageTab.includes('whitespace-pre-wrap break-words text-sm text-[var(--color-text-2)]">{source.snippet}</div>')) {
+  throw new Error('PageTab should not render source snippets as plain pre-wrapped text');
+}
 
 assertIncludes(zh, '"pageSources": "来源"', 'zh page sources label');
 assertIncludes(zh, '"sourceSnippet": "来源片段"', 'zh source snippet label');

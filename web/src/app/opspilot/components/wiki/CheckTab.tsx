@@ -42,10 +42,13 @@ const CHECK_TYPE_KEY: Record<string, string> = {
   bridge_node: 'wiki.checkBridgeNode',
   sparse_community: 'wiki.checkSparseCommunity',
   cross_community_edge: 'wiki.checkCrossCommunityEdge',
+  surprise_link: 'wiki.checkSurpriseLink',
   schema_violation: 'wiki.checkSchemaViolation',
+  schema_changed: 'wiki.checkSchemaChanged',
   missing: 'wiki.checkMissing',
   material_update: 'wiki.checkMaterialUpdate',
   source_invalid: 'wiki.checkSourceInvalid',
+  qa_answer_candidate: 'wiki.checkQaAnswerCandidate',
 };
 
 const CheckTab: React.FC<{ kbId: number }> = ({ kbId }) => {
@@ -54,11 +57,8 @@ const CheckTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     fetchCheckItems,
     acceptCheck,
     rejectCheck,
-    mergeDuplicateCheck,
-    resolveCheck,
     batchAcceptChecks,
     batchRejectChecks,
-    batchResolveChecks,
     scan,
   } = useWikiApi();
   const [data, setData] = useState<CheckItem[]>([]);
@@ -69,7 +69,7 @@ const CheckTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const [statusFilter, setStatusFilter] = useState('open');
   const [checkTypeFilter, setCheckTypeFilter] = useState('');
   const [scanning, setScanning] = useState(false);
-  const [batchSubmitting, setBatchSubmitting] = useState<'accept' | 'reject' | 'resolve' | null>(null);
+  const [batchSubmitting, setBatchSubmitting] = useState<'accept' | 'reject' | null>(null);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [detail, setDetail] = useState<CheckItem | null>(null);
 
@@ -158,15 +158,12 @@ const CheckTab: React.FC<{ kbId: number }> = ({ kbId }) => {
           processed_at?: string;
         }
       | undefined;
-  const canMergeDuplicate = (r: CheckItem) =>
-    r.status === 'open' && r.check_type === 'duplicate' && !r.candidate_version && (r.related_pages?.length || 0) > 1;
   const selectedOpenItems = useMemo(() => {
     const selectedIds = new Set(selectedRowKeys.map((key) => Number(key)));
     return data.filter((item) => item.status === 'open' && selectedIds.has(item.id));
   }, [data, selectedRowKeys]);
   const selectedOpenIds = selectedOpenItems.map((item) => item.id);
   const hasSelectedOpenItems = selectedOpenIds.length > 0;
-  const hasSelectedResolvableItems = selectedOpenItems.some((item) => !item.candidate_version);
 
   const batchMessage = (acceptedOrRejected: number, skipped: number) =>
     `${t('wiki.batchActionDone')}: ${t('wiki.processed')} ${acceptedOrRejected}, ${t('wiki.skipped')} ${skipped}`;
@@ -190,19 +187,6 @@ const CheckTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     try {
       const res = await batchRejectChecks(selectedOpenIds);
       message.success(batchMessage(res.rejected, res.skipped));
-      setSelectedRowKeys([]);
-      load();
-    } finally {
-      setBatchSubmitting(null);
-    }
-  };
-
-  const handleBatchResolve = async () => {
-    if (!hasSelectedResolvableItems) return;
-    setBatchSubmitting('resolve');
-    try {
-      const res = await batchResolveChecks(selectedOpenIds);
-      message.success(batchMessage(res.resolved, res.skipped));
       setSelectedRowKeys([]);
       load();
     } finally {
@@ -244,47 +228,16 @@ const CheckTab: React.FC<{ kbId: number }> = ({ kbId }) => {
           <Button type="link" size="small" onClick={() => setDetail(r)}>
             {t('wiki.detail')}
           </Button>
-          {r.status === 'open' &&
-            (r.candidate_version ? (
-              // 候选类(资料更新等):可采纳候选版本或丢弃
-              <>
-                <Button type="link" size="small" onClick={() => act(() => acceptCheck(r.id))}>
-                  {t('wiki.accept')}
-                </Button>
-                <Button type="link" size="small" danger onClick={() => act(() => rejectCheck(r.id))}>
-                  {t('wiki.reject')}
-                </Button>
-              </>
-            ) : (
-              // 扫描类(重复/低置信等):无候选版本,仅能忽略(标记已处理)
-              <>
-                {canMergeDuplicate(r) && (
-                  <Popconfirm
-                    title={t('wiki.mergeDuplicateConfirm')}
-                    okText={t('wiki.confirm')}
-                    cancelText={t('common.cancel')}
-                    onConfirm={() => act(() => mergeDuplicateCheck(r.id))}
-                  >
-                    <Button type="link" size="small">
-                      {t('wiki.mergeDuplicate')}
-                    </Button>
-                  </Popconfirm>
-                )}
-                <Popconfirm
-                  title={t('wiki.markResolvedConfirm')}
-                  okText={t('wiki.confirm')}
-                  cancelText={t('common.cancel')}
-                  onConfirm={() => act(() => resolveCheck(r.id))}
-                >
-                  <Button type="link" size="small">
-                    {t('wiki.markResolved')}
-                  </Button>
-                </Popconfirm>
-                <Button type="link" size="small" onClick={() => act(() => rejectCheck(r.id))}>
-                  {t('wiki.dismiss')}
-                </Button>
-              </>
-            ))}
+          {r.status === 'open' && (
+            <>
+              <Button type="link" size="small" onClick={() => act(() => acceptCheck(r.id))}>
+                {t('wiki.accept')}
+              </Button>
+              <Button type="link" size="small" danger onClick={() => act(() => rejectCheck(r.id))}>
+                {t('wiki.dismiss')}
+              </Button>
+            </>
+          )}
         </Space>
       ),
     },
@@ -337,17 +290,6 @@ const CheckTab: React.FC<{ kbId: number }> = ({ kbId }) => {
           >
             <Button danger disabled={!hasSelectedOpenItems} loading={batchSubmitting === 'reject'}>
               {t('wiki.batchReject')}
-            </Button>
-          </Popconfirm>
-          <Popconfirm
-            title={t('wiki.batchResolveConfirm')}
-            okText={t('wiki.confirm')}
-            cancelText={t('common.cancel')}
-            disabled={!hasSelectedResolvableItems}
-            onConfirm={handleBatchResolve}
-          >
-            <Button disabled={!hasSelectedResolvableItems} loading={batchSubmitting === 'resolve'}>
-              {t('wiki.batchResolve')}
             </Button>
           </Popconfirm>
         </Space>
