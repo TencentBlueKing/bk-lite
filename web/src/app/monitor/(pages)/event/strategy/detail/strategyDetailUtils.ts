@@ -141,3 +141,29 @@ export const getThresholdUnitOptions = ({
 
   return validUnits.filter((item) => item.system === baseUnit.system);
 };
+
+// 现有 page.tsx 的 filterInvalidUnit 逻辑上提到 utils(行为完全一致,签名兼容)
+export const filterInvalidCalculationUnit = (
+  unit: string | null | undefined
+): string | null => {
+  if (!unit || unit === 'none' || unit === 'short' || isStringArray(unit)) {
+    return null;
+  }
+  return unit;
+};
+
+// 公式 → 单指标 retract:返回新值;否则返回 undefined 表示「无变化」
+export const getReverseModeCalculationUnit = ({
+  previousMode,
+  nextMode,
+  primaryMetricUnit,
+}: {
+  previousMode: MetricExpressionMode;
+  nextMode: MetricExpressionMode;
+  primaryMetricUnit: string | null | undefined;
+}): string | null | undefined => {
+  if (previousMode === 'formula' && nextMode !== 'formula') {
+    return filterInvalidCalculationUnit(primaryMetricUnit);
+  }
+  return undefined;
+};

@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 
 import {
   FORMULA_DEFAULT_RESULT_UNIT,
+  filterInvalidCalculationUnit,
   getCalculationUnitOnMetricRowsChange,
   getMetricThresholdEnumState,
+  getReverseModeCalculationUnit,
   getThresholdUnitFilterBase,
   getThresholdUnitOptions,
   getValidThresholdUnitOptions,
@@ -235,6 +237,54 @@ assert.deepEqual(
     isEnumMetric: false,
   }),
   []
+);
+
+// filterInvalidCalculationUnit: 现有 page.tsx 逻辑上提
+assert.equal(filterInvalidCalculationUnit(null), null);
+assert.equal(filterInvalidCalculationUnit(undefined), null);
+assert.equal(filterInvalidCalculationUnit(''), null);
+assert.equal(filterInvalidCalculationUnit('none'), null);
+assert.equal(filterInvalidCalculationUnit('short'), null);
+assert.equal(filterInvalidCalculationUnit('bytes'), 'bytes');
+// JSON 数组形式(枚举指标单位)不当作 calculationUnit
+assert.equal(
+  filterInvalidCalculationUnit('[{"id":1,"name":"up"}]'),
+  null
+);
+
+// getReverseModeCalculationUnit
+assert.equal(
+  getReverseModeCalculationUnit({
+    previousMode: 'formula' as MetricExpressionMode,
+    nextMode: 'metric' as MetricExpressionMode,
+    primaryMetricUnit: 'bytes',
+  }),
+  'bytes'
+);
+assert.equal(
+  getReverseModeCalculationUnit({
+    previousMode: 'formula' as MetricExpressionMode,
+    nextMode: 'metric' as MetricExpressionMode,
+    primaryMetricUnit: null,
+  }),
+  null
+);
+// 不是 retract 路径(继续在 formula 或单指标)返回 undefined,调用方不修改 calculationUnit
+assert.equal(
+  getReverseModeCalculationUnit({
+    previousMode: 'formula' as MetricExpressionMode,
+    nextMode: 'formula' as MetricExpressionMode,
+    primaryMetricUnit: 'bytes',
+  }),
+  undefined
+);
+assert.equal(
+  getReverseModeCalculationUnit({
+    previousMode: 'metric' as MetricExpressionMode,
+    nextMode: 'metric' as MetricExpressionMode,
+    primaryMetricUnit: 'bytes',
+  }),
+  undefined
 );
 
 console.log('monitor-strategy-detail logic validation passed');

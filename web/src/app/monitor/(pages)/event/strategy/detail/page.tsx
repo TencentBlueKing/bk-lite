@@ -48,7 +48,9 @@ import {
 } from '@/app/monitor/constants/event';
 import {
   FORMULA_DEFAULT_RESULT_UNIT,
+  filterInvalidCalculationUnit,
   getCalculationUnitOnMetricRowsChange,
+  getReverseModeCalculationUnit,
   getValidThresholdUnitOptions,
   resolveFormulaResultUnit,
   resolveInitialMetricPluginId
@@ -66,12 +68,7 @@ import {
 const defaultGroup = ['instance_id'];
 
 // 过滤无效的单位值（none 、 short 和 JSON 字符串格式 已从单位列表中移除，不能作为单位值）
-const filterInvalidUnit = (unit: string | null | undefined): string | null => {
-  if (!unit || unit === 'none' || unit === 'short' || isStringArray(unit)) {
-    return null;
-  }
-  return unit;
-};
+// 已上提至 strategyDetailUtils.filterInvalidCalculationUnit
 
 const StrategyOperation = () => {
   const { t } = useTranslation();
@@ -245,7 +242,7 @@ const StrategyOperation = () => {
           const target = initMetricData.find((item) => item.name === _metricId);
           if (target) {
             const _labels = getMetricDimensionNames(target?.dimensions);
-            setCalculationUnit(filterInvalidUnit(target?.unit));
+            setCalculationUnit(filterInvalidCalculationUnit(target?.unit));
             // 计算完整的分组维度选项列表并设置为所有选项
             const fixedList =
               getGroupIds(monitorName as string)?.list || defaultGroup;
@@ -405,7 +402,7 @@ const StrategyOperation = () => {
     });
     setGroupBy(sanitizeGroupBy(group_by || []));
     feedbackThreshold(thresholdList);
-    setCalculationUnit(filterInvalidUnit(calculation_unit));
+    setCalculationUnit(filterInvalidCalculationUnit(calculation_unit));
     setPeriod(period?.value || null);
     setPeriodUnit(period?.type || 'min');
     setGroupAlgorithm(data.group_algorithm || 'avg');
@@ -566,7 +563,7 @@ const StrategyOperation = () => {
     // 选择指标后触发验证，清除错误信息（包括指标、条件维度和告警阈值）
     form.validateFields(['metric', 'threshold']);
     // 自动设置告警阈值单位为指标的默认单位（过滤掉 none 和 short）
-    const filteredUnit = filterInvalidUnit(target?.unit);
+    const filteredUnit = filterInvalidCalculationUnit(target?.unit);
     if (filteredUnit) {
       setCalculationUnit(filteredUnit);
       return;
@@ -648,6 +645,19 @@ const StrategyOperation = () => {
           unitList
         })
       );
+    } else {
+      // 反向:从公式切回单指标时,把 calculationUnit 回退到主指标的单位
+      const primaryMetric = metrics.find(
+        (item) => item.name === nextPrimaryMetricName
+      );
+      const retracted = getReverseModeCalculationUnit({
+        previousMode,
+        nextMode,
+        primaryMetricUnit: primaryMetric?.unit ?? null
+      });
+      if (retracted !== undefined) {
+        setCalculationUnit(retracted);
+      }
     }
 
     if (
