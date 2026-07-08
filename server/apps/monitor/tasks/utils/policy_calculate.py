@@ -1,5 +1,7 @@
-import pandas as pd
+import math
 from string import Template
+
+import pandas as pd
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.monitor.constants.alert_policy import AlertConstants
@@ -46,6 +48,16 @@ def _format_value_with_unit(
     return formatted
 
 
+def _parse_finite_float(value):
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(number):
+        return None
+    return number
+
+
 def calculate_alerts(alert_name, df, thresholds, template_context=None, n=1):
     alert_events, info_events = [], []
     template_context = template_context or {}
@@ -54,13 +66,18 @@ def calculate_alerts(alert_name, df, thresholds, template_context=None, n=1):
     display_unit = template_context.get("display_unit", "")
     enum_value_map = template_context.get("enum_value_map", {})
     dimension_name_map = template_context.get("dimension_name_map", {})
+    monitor_instance_id_key = template_context.get("monitor_instance_id_key")
 
     for _, row in df.iterrows():
         instance_id_tuple = row["instance_id"]
         metric_instance_id = str(instance_id_tuple)
 
         dimensions = build_dimensions(instance_id_tuple, instance_id_keys)
-        monitor_instance_id = extract_monitor_instance_id(instance_id_tuple)
+        monitor_instance_id = _extract_monitor_instance_id_by_key(
+            instance_id_tuple,
+            instance_id_keys,
+            monitor_instance_id_key,
+        )
         resource_name = instances_map.get(monitor_instance_id, monitor_instance_id)
         dimension_str = format_dimension_str(dimensions, instance_id_keys)
         display_name = (
@@ -75,6 +92,9 @@ def calculate_alerts(alert_name, df, thresholds, template_context=None, n=1):
 
         values = row["values"][-n:]
         if len(values) < n:
+            continue
+        numeric_values = [_parse_finite_float(value[1]) for value in values]
+        if any(value is None for value in numeric_values):
             continue
 
         raw_data = row.to_dict()
@@ -93,8 +113,8 @@ def calculate_alerts(alert_name, df, thresholds, template_context=None, n=1):
                     f"Invalid threshold method: {threshold_info['method']}"
                 )
 
-            if all(method(float(v[1]), threshold_info["value"]) for v in values):
-                alert_value = float(values[-1][1])
+            if all(method(value, threshold_info["value"]) for value in numeric_values):
+                alert_value = numeric_values[-1]
                 formatted_value = _format_value_with_unit(
                     alert_value, display_unit, enum_value_map
                 )
@@ -142,3 +162,16 @@ def calculate_alerts(alert_name, df, thresholds, template_context=None, n=1):
             )
 
     return alert_events, info_events
+
+
+def _extract_monitor_instance_id_by_key(
+    instance_id_tuple: tuple,
+    instance_id_keys: list,
+    monitor_instance_id_key: str | None,
+) -> str:
+    if monitor_instance_id_key and monitor_instance_id_key in instance_id_keys:
+        index = instance_id_keys.index(monitor_instance_id_key)
+        if index < len(instance_id_tuple):
+            return str((instance_id_tuple[index],))
+
+    return extract_monitor_instance_id(instance_id_tuple)

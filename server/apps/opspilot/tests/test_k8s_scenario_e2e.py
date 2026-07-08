@@ -85,7 +85,7 @@ def _build_invoke_params(llm_model, user_message: str, skill_tool_id: int) -> di
         "chat_history": [],
         "enable_rag": False,
         "enable_rag_knowledge_source": False,
-        "skill_type": 1,  # BASIC_TOOL = ReAct agent
+        "skill_type": 1,  # BASIC_TOOL 配置值，运行时统一进入 DeepAgent
         "locale": "zh-Hans",
         "tools": [{"id": skill_tool_id, "name": "kubernetes_data_collection", "kwargs": [{"key": "kubeconfig_data", "value": kubeconfig_data}]}],
         "show_think": False,

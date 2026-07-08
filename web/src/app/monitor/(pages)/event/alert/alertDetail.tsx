@@ -39,7 +39,10 @@ import { renderChart } from '@/app/monitor/utils/common';
 import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import { LEVEL_MAP } from '@/app/monitor/constants';
 import type { ListRef } from 'rc-virtual-list';
-import { buildAlertSnapshotChartValues } from './alertDetailUtils';
+import {
+  buildAlertSnapshotChartValues,
+  resolveAlertDetailMetric
+} from './alertDetailUtils';
 
 const TIMELINE_ITEM_HEIGHT = 48;
 
@@ -125,8 +128,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
             (item: MetricItem) =>
               item.id === row.policy?.query_condition?.metric_id
           ) || {};
-        const displayUnit = row.policy?.calculation_unit || metricInfo.unit;
-        const metricWithUnit = { ...metricInfo, unit: displayUnit };
+        const metricWithUnit = resolveAlertDetailMetric(row, metricInfo);
         const form: TableDataItem = {
           ...row,
           metric: metricWithUnit,

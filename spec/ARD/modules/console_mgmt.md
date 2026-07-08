@@ -17,7 +17,7 @@
 ### 3.1 函数视图（views.py）
 `init_user_set/`、`update_user_base_info/`、`validate_pwd/`、`validate_email_code/`、`send_email_code/`、`reset_pwd/`、`get_user_info/`。
 
-其中 `send_email_code`/`validate_email_code` 采用**无状态验证码**机制【已实现/已存在 `views.py:205-239,179-181`】：`send_email_code` 生成 6 位随机数字码，经 `SystemMgmt.send_email_to_receiver` RPC 发往目标邮箱，同时用 `make_password` 对验证码做哈希并随响应 `data.hashed_code` 返回前端；`validate_email_code` 接收前端回传的 `hashed_code` + `input_code`，用 `check_password` 比对。服务端不落库保存验证码，校验完全依赖前端持有的哈希值。
+其中 `send_email_code`/`validate_email_code` 采用**服务端 cache TTL + 一次性校验**机制【已实现/已存在 `views.py:184,205,214,222,240,282,285`】：`send_email_code` 生成 6 位随机数字码，经 `SystemMgmt.send_email_to_receiver` RPC 发往目标邮箱；验证码按用户+邮箱隔离写入服务端 cache，TTL 默认 600 秒，发送侧有 60 秒限流；响应不再向客户端返回 `hashed_code`。`validate_email_code` 校验 cache 中验证码，校验通过后删除 cache key，避免重复使用。
 
 ### 3.2 NotificationViewSet（`notifications`）
 按用户隔离已读/删除状态，`http_method_names` 限定为 get/post/delete【`viewsets/notification.py:17`】，`create`/`update`/`partial_update` 被显式覆写禁用返回 405【已实现/已存在 `viewsets/notification.py:55-65`】。自定义 action：
@@ -40,5 +40,8 @@
 ## 5. 风险 / 待确认
 - 通知的实时推送通道（WebSocket/SSE）是否存在【待确认】——当前仅见 ORM 落库。
 
+## 2026-07-01 Code-ARD 校准
+- `[console_mgmt#20260701-024]` 邮箱验证码描述从前端持有 `hashed_code` 的无状态校验，修正为服务端 cache TTL、按用户+邮箱隔离、验证通过删除、发送 60 秒限流且不返回 `hashed_code`。
+
 ## 6. 证据来源
-`server/apps/console_mgmt/{urls.py,models/*,views.py,nats_api.py}`、`server/apps/console_mgmt/viewsets/{notification.py,user_app_set.py}`、`server/apps/console_mgmt/management/commands/init_guest_role.py`、`apps/rpc/system_mgmt.py`、`apps/rpc/opspilot.py`。
+`server/apps/console_mgmt/{urls.py,models/*,views.py:22,184,205,214,222,240,282,285,nats_api.py}`、`server/apps/console_mgmt/tests/test_email_code_views.py:5`、`server/apps/console_mgmt/viewsets/{notification.py,user_app_set.py}`、`server/apps/console_mgmt/management/commands/init_guest_role.py`、`apps/rpc/system_mgmt.py`、`apps/rpc/opspilot.py`。
