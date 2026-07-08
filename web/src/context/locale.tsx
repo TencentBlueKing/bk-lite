@@ -19,11 +19,11 @@ export const LocaleProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     const savedLocale = getStoredLocale();
     setLocale(savedLocale);
-    fetchLocaleMessages(savedLocale);
+    setIsLoading(true);
+    fetchLocaleMessages(savedLocale).finally(() => setIsLoading(false));
   }, []);
 
   const fetchLocaleMessages = async (locale: string) => {
-    setIsLoading(true);
     try {
       const response = await fetch(`/api/locales?locale=${locale}`);
       if (!response.ok) {
@@ -33,8 +33,6 @@ export const LocaleProvider = ({ children }: { children: ReactNode }) => {
       setMessages(data);
     } catch (error) {
       console.error('Failed to load locale messages form api:', error);
-    } finally {
-      setIsLoading(false);
     }
   };
 
