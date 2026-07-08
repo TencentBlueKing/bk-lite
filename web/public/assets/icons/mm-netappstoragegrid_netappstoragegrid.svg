@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="NetApp StorageGRID logo">
-  <rect x="8" y="8" width="104" height="104" rx="22" fill="#ffffff"/>
-  <path d="M22 38h76v3H22zM22 56h76v3H22zM22 74h76v3H22z" fill="#0067c5"/>
-  <circle cx="36" cy="40" r="4" fill="#0067c5"/>
-  <circle cx="60" cy="58" r="4" fill="#0067c5"/>
-  <circle cx="84" cy="76" r="4" fill="#0067c5"/>
-  <text x="60" y="98" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="9" font-weight="600" fill="#0067c5">STORAGEGRID</text>
-</svg>
