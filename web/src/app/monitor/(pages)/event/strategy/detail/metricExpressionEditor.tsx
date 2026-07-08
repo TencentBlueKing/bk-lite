@@ -8,7 +8,8 @@ import {
   FilterItem,
   IndexViewItem,
   ListItem,
-  MetricItem
+  MetricItem,
+  UnitListItem
 } from '@/app/monitor/types';
 import {
   getMetricDimensionNames,
@@ -27,6 +28,8 @@ interface MetricExpressionEditorProps {
   mode: MetricExpressionMode;
   resultName: string;
   expression: string;
+  resultUnit: string | null;
+  unitOptions: UnitListItem[];
   labelsByRef: Record<string, string[]>;
   originMetricData: IndexViewItem[];
   groupByOptions: string[];
@@ -36,6 +39,7 @@ interface MetricExpressionEditorProps {
   onRowsChange: (rows: MetricExpressionRow[]) => void;
   onResultNameChange: (value: string) => void;
   onExpressionChange: (value: string) => void;
+  onResultUnitChange: (value: string) => void;
 }
 
 const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
@@ -43,6 +47,8 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
   mode,
   resultName,
   expression,
+  resultUnit,
+  unitOptions,
   labelsByRef,
   originMetricData,
   groupByOptions,
@@ -51,7 +57,8 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
   metricsLoading,
   onRowsChange,
   onResultNameChange,
-  onExpressionChange
+  onExpressionChange,
+  onResultUnitChange
 }) => {
   const { t } = useTranslation();
   const showFormula = shouldShowFormulaEditor(mode);
@@ -347,7 +354,7 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
           {translateWithFallback('monitor.events.addMetric', '添加指标')}
         </Button>
         {showFormula && (
-          <div className="grid grid-cols-[2rem_minmax(0,220px)_16px_minmax(0,1fr)] items-center gap-2 border-t border-[var(--color-border-2)] bg-[rgba(255,255,255,0.68)] px-3 py-3">
+          <div className="grid grid-cols-[2rem_minmax(0,220px)_16px_minmax(0,1fr)_96px] items-center gap-2 border-t border-[var(--color-border-2)] bg-[rgba(255,255,255,0.68)] px-3 py-3">
             <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded border border-[var(--color-border-2)] font-mono text-xs font-semibold text-[var(--color-primary)]">
               fx
             </span>
@@ -363,6 +370,30 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
               value={expression}
               placeholder="a / b * 100"
               onChange={(event) => onExpressionChange(event.target.value)}
+            />
+            <Select
+              className="w-full"
+              showSearch
+              value={resultUnit}
+              aria-label={translateWithFallback(
+                'monitor.events.formulaResultUnit',
+                '结果单位'
+              )}
+              placeholder={translateWithFallback(
+                'monitor.events.formulaResultUnit',
+                '结果单位'
+              )}
+              options={unitOptions.map((option) => ({
+                label: option.display_unit || option.unit_name,
+                value: option.unit_id
+              }))}
+              filterOption={(input, option) =>
+                (option?.label || '')
+                  .toString()
+                  .toLowerCase()
+                  .includes(input.toLowerCase())
+              }
+              onChange={onResultUnitChange}
             />
           </div>
         )}
