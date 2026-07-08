@@ -8,7 +8,10 @@ def find_files_by_pattern(root_dir: str, filename_pattern: str = None, extension
     """
     通用文件查找函数，支持按文件名或扩展名过滤。
 
-    路径格式: plugins/level1/level2/level3/*
+    路径格式: plugins/level1/level2/[level3/]file
+    兼容两种深度:
+      - 3 层: plugins/level1/level2/file（如 Telegraf/synology/metrics.json）
+      - 4 层: plugins/level1/level2/level3/file（如 Telegraf/powerstore/storage/metrics.json）
 
     :param root_dir: 根目录路径
     :param filename_pattern: 目标文件名（精确匹配）
@@ -22,24 +25,33 @@ def find_files_by_pattern(root_dir: str, filename_pattern: str = None, extension
         logger.warning(f'目录不存在或不是目录: {root_dir}')
         return result
 
+    def _matches(file_path: Path) -> bool:
+        if not file_path.is_file():
+            return False
+        if filename_pattern and file_path.name == filename_pattern:
+            return True
+        if extension and file_path.suffix == extension:
+            return True
+        return False
+
     try:
-        # 递归遍历目录，最多4层（采集器/采集方式/具体插件/文件）
         for level1 in root_path.iterdir():
             if not level1.is_dir():
                 continue
             for level2 in level1.iterdir():
                 if not level2.is_dir():
                     continue
+                # 3 层兼容：level2 本身直接是文件
+                if _matches(level2):
+                    result.append(str(level2))
+                    continue
+                # 4 层：扫 level3
                 for level3 in level2.iterdir():
-                    if not level3.is_dir():
-                        continue
-                    for file_path in level3.iterdir():
-                        if file_path.is_file():
-                            # 按文件名过滤
-                            if filename_pattern and file_path.name == filename_pattern:
-                                result.append(str(file_path))
-                            # 按扩展名过滤
-                            elif extension and file_path.suffix == extension:
+                    if level3.is_file() and _matches(level3):
+                        result.append(str(level3))
+                    elif level3.is_dir():
+                        for file_path in level3.iterdir():
+                            if _matches(file_path):
                                 result.append(str(file_path))
     except Exception as e:
         logger.error(f'遍历目录失败: {root_dir}, 错误: {e}')
