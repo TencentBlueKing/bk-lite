@@ -6,6 +6,8 @@ _Last updated: 2026-07-09_
 BK-Lite is an AI-first lightweight operations platform for operations administrators. It combines a Django business backend, Next.js control consoles, mobile/desktop shells, distributed collection agents, and algorithm services to provide CMDB, monitoring, alerting, log, job, node, MLOps, and OpsPilot capabilities with low deployment cost and progressive operational workflows.
 
 ## Recent issues
+- [DONE] #0010 本 plan「采集频率默认 60s」漏了 285 个 plugin UI.json 的 form default_value=10(仅 interval 字段,已脚本验证),导致前端创建任意类型监控实例表单仍默认 10s。spec grep 只搜了 .py/.yaml/.go/.toml,完全没覆盖 .json。根因:插件 UI.json 的 form_fields[*].default_value 才是前端页面渲染的"默认值",跟 Django 模型 default 无关。需另开 plan 全量改 285 个文件 + 跑 server migrate。 [server/apps/monitor/support-files/plugins/Telegraf/**/UI.json] -> 补 288 个插件 UI.json interval default_value 10 → 60。原 plan「采集频率默认 60s」漏了前端表单(只 grep 了 .py/.yaml/.go/.toml,完全没覆盖 .json)。新增 test_plugin_ui_default_interval.py 回归保护 + 一次性 Python 脚本批量改完 288 个文件,2 个 commit 已 push origin。本轮「采集频率 60s」三端覆盖完成:server 模型 default / K8s Telegraf ConfigMap / 前端 UI.json form default。 [server/apps/monitor/support-files/plugins/] (fixed)
+- [OPEN] #0009 本地 master 已包含主机 Telegraf 节点名称默认实例名改动，但创建监控实例时选择节点后 instance_name 仍未自动填写 [monitor/integration/host-telegraf] (open)
 - [OPEN] #0008 monitor 0045 migration also includes pre-existing algorithm verbose_name drift (commit d38cada17 changed verbose_name 聚合算法→周期聚合算法 without migration) [server/apps/monitor/migrations/0045_alter_monitorinstance_interval_and_more.py] (open)
 - [OPEN] #0007 Sidecar 容器(融合采集器)持续 401/500,节点被标 inactive:get_client_token 在 token_auth.py:25 用 split(':', 1)[0] 取 Basic 头用户名,但容器发的 Basic 头是 "admin:" + token,抽到的不是 token 而是 "admin",导致后续 decode_token(urlsafe_b64decode("admin")) 失败抛 "token 解析失败" [server/apps/node_mgmt/utils/token_auth.py:25] (open)
   - Failed attempt: 误判:把 fusion-collector "节点不活跃" 归因到 server 端 token_auth.py:25 split 索引 bug,实际根因是 sidecar 进程内部状态卡住(长连接死/永久失败标记),用户 docker restart bklite-dev-fusion-collector 后立刻恢复,无需改 server 代码。教训:容器内 python 模拟 HTTP 请求不能证明 sidecar 进程自身行为,需要看进程级 socket/fd 或抓 sidecar 实际发出的请求才能下结论 [server/apps/node_mgmt/utils/token_auth.py:25]
@@ -45,6 +47,9 @@ BK-Lite is an AI-first lightweight operations platform for operations administra
 - `token_auth.py:25`
 - `pnpm-lock.yaml`
 - `MonitorInstance.interval`
+- `UI.json`
+- `.py/.yaml/.go/.toml`
+- `test_plugin_ui_default_interval.py`
 
 ## Open questions
 - None logged yet.
