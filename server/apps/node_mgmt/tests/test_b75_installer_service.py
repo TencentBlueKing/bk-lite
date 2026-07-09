@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, patch
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.node_mgmt.constants.node import NodeConstants
-from apps.node_mgmt.models import Collector, Node, PackageVersion
+from apps.node_mgmt.models import Collector, Node, NodeOrganization, PackageVersion
 from apps.node_mgmt.models.cloud_region import CloudRegion, SidecarEnv
 from apps.node_mgmt.models.installer import (
     CollectorTask,
@@ -99,15 +99,34 @@ def test_install_controller_creates_task_and_nodes():
     region = CloudRegion.objects.create(name="cr-install-ctrl")
     nodes = [
         {
-            "ip": "10.0.0.1", "node_name": "n1", "os": "linux", "cpu_architecture": "x86_64",
-            "organizations": [1], "port": 22, "username": "root",
-            "password": "secret", "private_key": "", "passphrase": "",
+            "ip": "10.0.0.1",
+            "node_id": "node-ctrl-install",
+            "node_name": "n1",
+            "os": "linux",
+            "cpu_architecture": "x86_64",
+            "organizations": [1],
+            "port": 22,
+            "username": "root",
+            "password": "secret",
+            "private_key": "",
+            "passphrase": "",
         }
     ]
-    task_id = InstallerService.install_controller(region.id, "work-1", 5, nodes, "x86_64")
+    task_id = InstallerService.install_controller(
+        region.id,
+        "work-1",
+        5,
+        nodes,
+        "x86_64",
+        created_by="operator",
+        domain="example.com",
+    )
     task = ControllerTask.objects.get(id=task_id)
     assert task.type == "install"
+    assert task.created_by == "operator"
+    assert task.domain == "example.com"
     node = ControllerTaskNode.objects.get(task=task)
+    assert node.node_id == "node-ctrl-install"
     assert node.ip == "10.0.0.1"
     # 密码被加密（不等于明文）
     assert node.password != "secret"
@@ -119,14 +138,29 @@ def test_uninstall_controller_creates_task_and_nodes():
     region = CloudRegion.objects.create(name="cr-uninstall")
     nodes = [
         {
-            "ip": "10.0.0.2", "os": "linux", "port": 22, "username": "root",
-            "password": "", "private_key": "key", "passphrase": "",
+            "ip": "10.0.0.2",
+            "node_id": "node-ctrl-uninstall",
+            "os": "linux",
+            "port": 22,
+            "username": "root",
+            "password": "",
+            "private_key": "key",
+            "passphrase": "",
         }
     ]
-    task_id = InstallerService.uninstall_controller(region.id, "work-2", nodes)
+    task_id = InstallerService.uninstall_controller(
+        region.id,
+        "work-2",
+        nodes,
+        created_by="operator",
+        domain="example.com",
+    )
     task = ControllerTask.objects.get(id=task_id)
     assert task.type == "uninstall"
+    assert task.created_by == "operator"
+    assert task.domain == "example.com"
     node = ControllerTaskNode.objects.get(task=task)
+    assert node.node_id == "node-ctrl-uninstall"
     assert node.private_key != "key"
 
 
@@ -175,6 +209,114 @@ def test_install_controller_nodes_returns_info():
     assert len(result) == 1
     assert result[0]["ip"] == "10.0.0.5"
     assert result[0]["status"] == "waiting"
+
+
+@pytest.mark.django_db
+def test_install_controller_nodes_filters_by_authorized_nodes():
+    region = CloudRegion.objects.create(name="cr-ctrl-auth")
+    allowed_node = Node.objects.create(
+        id="n-ctrl-allowed",
+        name="allowed",
+        ip="10.0.0.10",
+        operating_system="linux",
+        collector_configuration_directory="/etc",
+        cloud_region=region,
+    )
+    denied_node = Node.objects.create(
+        id="n-ctrl-denied",
+        name="denied",
+        ip="10.0.0.11",
+        operating_system="linux",
+        collector_configuration_directory="/etc",
+        cloud_region=region,
+    )
+    task = ControllerTask.objects.create(
+        cloud_region=region, type="install", status="waiting", package_version_id=1
+    )
+    ControllerTaskNode.objects.create(
+        task=task,
+        node_id=allowed_node.id,
+        ip=allowed_node.ip,
+        os="linux",
+        port=22,
+        username="root",
+        password="x",
+        node_name="allowed",
+        organizations=[1],
+        status="waiting",
+    )
+    ControllerTaskNode.objects.create(
+        task=task,
+        node_id=denied_node.id,
+        ip=denied_node.ip,
+        os="linux",
+        port=22,
+        username="root",
+        password="x",
+        node_name="denied",
+        organizations=[2],
+        status="waiting",
+    )
+
+    result = InstallerService.install_controller_nodes(
+        task.id,
+        authorized_nodes=Node.objects.filter(id=allowed_node.id),
+    )
+
+    assert [item["node_id"] for item in result] == [allowed_node.id]
+    assert [item["ip"] for item in result] == ["10.0.0.10"]
+
+
+@pytest.mark.django_db
+def test_install_controller_nodes_limits_legacy_rows_to_task_owner_or_superuser():
+    region = CloudRegion.objects.create(name="cr-ctrl-legacy")
+    node = Node.objects.create(
+        id="n-ctrl-legacy",
+        name="legacy",
+        ip="10.0.0.12",
+        operating_system="linux",
+        collector_configuration_directory="/etc",
+        cloud_region=region,
+    )
+    NodeOrganization.objects.create(node=node, organization=1)
+    task = ControllerTask.objects.create(
+        cloud_region=region,
+        type="install",
+        status="waiting",
+        package_version_id=1,
+        created_by="owner",
+    )
+    ControllerTaskNode.objects.create(
+        task=task,
+        ip=node.ip,
+        os="linux",
+        port=22,
+        username="root",
+        password="x",
+        node_name="legacy",
+        organizations=[1],
+        status="waiting",
+    )
+
+    denied = InstallerService.install_controller_nodes(
+        task.id,
+        authorized_nodes=Node.objects.filter(id=node.id),
+        request_user=type("User", (), {"username": "other", "is_superuser": False})(),
+    )
+    owner = InstallerService.install_controller_nodes(
+        task.id,
+        authorized_nodes=Node.objects.filter(id=node.id),
+        request_user=type("User", (), {"username": "owner", "is_superuser": False})(),
+    )
+    superuser = InstallerService.install_controller_nodes(
+        task.id,
+        authorized_nodes=Node.objects.none(),
+        request_user=type("User", (), {"username": "admin", "is_superuser": True})(),
+    )
+
+    assert denied == []
+    assert [item["ip"] for item in owner] == [node.ip]
+    assert [item["ip"] for item in superuser] == [node.ip]
 
 
 # --------------------------------------------------------------------------- #
