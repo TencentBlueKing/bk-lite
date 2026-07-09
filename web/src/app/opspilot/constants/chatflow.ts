@@ -17,7 +17,7 @@ export const nodeConfig = {
   dingtalk: { icon: 'dingding', color: 'blue' as const },
   wechat_official: { icon: 'weixingongzhonghao', color: 'green' as const },
   memory_read: { icon: 'zhishiku2', color: 'teal' as const },
-  memory_write: { icon: 'bianji', color: 'indigo' as const },
+  memory_write: { icon: 'zhishiku', color: 'indigo' as const },
 } as const;
 
 export const TRIGGER_NODE_TYPES = ['celery', 'nats', 'restful', 'openai', 'agui', 'embedded_chat', 'web_chat', 'mobile', 'enterprise_wechat', 'enterprise_wechat_aibot', 'dingtalk', 'wechat_official'] as const;
@@ -67,7 +67,7 @@ export const nodeCategories = [
     labelKey: 'chatflow.memoryNodes',
     items: [
       { type: 'memory_read', icon: 'zhishiku2', labelKey: 'chatflow.memoryRead' },
-      { type: 'memory_write', icon: 'bianji', labelKey: 'chatflow.memoryWrite' },
+      { type: 'memory_write', icon: 'zhishiku', labelKey: 'chatflow.memoryWrite' },
     ],
   },
   {
