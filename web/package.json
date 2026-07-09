@@ -25,6 +25,7 @@
     "test:monitor-query-step": "pnpm exec tsx scripts/monitor-query-step-test.ts",
     "test:monitor-strategy-aggregation-designer": "pnpm exec tsx scripts/monitor-strategy-aggregation-designer-story-test.ts",
     "test:monitor-strategy-detail-logic": "pnpm exec tsx scripts/monitor-strategy-detail-logic-test.ts",
+    "test:monitor-table-change-handler": "pnpm exec tsx scripts/monitor-table-change-handler-test.ts",
     "test:k8s-cluster-filter": "pnpm exec tsx scripts/k8s-cluster-filter-test.ts",
     "test:monitor-gap-interval": "pnpm exec tsx scripts/monitor-gap-interval-test.ts",
     "test:monitor-promql-label-query": "pnpm exec tsx scripts/monitor-promql-label-query-test.ts",

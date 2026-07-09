@@ -86,7 +86,7 @@
       "label": "间隔",
       "type": "inputNumber",
       "required": true,
-      "default_value": 10,
+      "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
       "widget_props": {
         "min": 1,
@@ -113,6 +113,11 @@
       "required": true,
       "widget_props": {
         "placeholder": "请选择节点"
+      },
+      "change_handler": {
+        "type": "option_field",
+        "source_field": "name",
+        "target_field": "instance_name"
       },
       "enable_row_filter": true
     },

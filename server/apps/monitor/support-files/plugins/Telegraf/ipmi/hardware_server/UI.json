@@ -2,7 +2,9 @@
   "object_name": "Hardware Server",
   "instance_type": "hardware_server",
   "collect_type": "ipmi",
-  "config_type": ["hardware_server"],
+  "config_type": [
+    "hardware_server"
+  ],
   "collector": "Telegraf",
   "instance_id": "{{cloud_region}}_hardware_server_ipmi_{{ip}}",
   "form_fields": [
@@ -79,7 +81,7 @@
       "label": "间隔",
       "type": "inputNumber",
       "required": true,
-      "default_value": 10,
+      "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
       "widget_props": {
         "min": 1,
@@ -119,7 +121,9 @@
       },
       "change_handler": {
         "type": "simple",
-        "source_fields": ["ip"],
+        "source_fields": [
+          "ip"
+        ],
         "target_field": "instance_name"
       }
     },
