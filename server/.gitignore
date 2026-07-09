@@ -28,6 +28,5 @@ uv.lock
 docs/api/*
 docs/*
 !docs/testing-guide.md
-!docs/opspilot-wiki-check-types.md
 ca.pem
 *license_mgmt*
