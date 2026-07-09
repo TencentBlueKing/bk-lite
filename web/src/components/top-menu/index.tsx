@@ -18,6 +18,11 @@ import Icon from '@/components/icon';
 
 const TOUR_VIEWED_KEY_PREFIX = 'tour_viewed';
 
+const resolveMenuIcon = (item: MenuItem) => {
+  if (item.name === 'wiki_list') return 'zhishiku1';
+  return item.icon;
+};
+
 interface TopMenuProps {
   hideMainMenu?: boolean;
 }
@@ -205,7 +210,7 @@ const TopMenu: React.FC<TopMenuProps> = ({ hideMainMenu }) => {
                     id={item.name}
                     className={`px-3 py-2 rounded-[10px] flex items-center ${styles.menuCol} ${isActive ? styles.active : ''}`}
                   >
-                    <Icon type={item.icon} className="mr-2 w-4 h-4" />
+                    <Icon type={resolveMenuIcon(item)} className="mr-2 w-4 h-4" />
                     {item.title}
                   </Link>
                 );

@@ -56,6 +56,7 @@ class TestGetRoomLayout:
                     "model_id": "rack",
                     "row": 1,
                     "col": 1,
+                    "location": "A01",
                     "u_count": 42,
                     "datacenter_type": "1",
                     "datacenter_state": "1",
@@ -76,6 +77,37 @@ class TestGetRoomLayout:
     @patch.object(rack_room.InstanceManage, "_has_topology_view_permission", return_value=True)
     @patch.object(rack_room.InstanceManage, "_query_instance_map_by_ids")
     @patch.object(rack_room.InstanceManage, "instance_association_instance_list")
+    def test_room_position_uses_location_instead_of_legacy_row_col(self, q_assoc, q_map, _perm):
+        # row/col 可能是历史残留属性，当前 rack 模型只维护 location；布局应以 location 为准。
+        def assoc_side_effect(model_id, inst_id):
+            if model_id == "server_room":
+                return [_assoc("server_room", "rack", "run", [5])]
+            return []
+
+        q_assoc.side_effect = assoc_side_effect
+        q_map.return_value = {
+            5: {
+                "_id": 5,
+                "inst_name": "ROOM3D-SHOT-RACK-C03",
+                "model_id": "rack",
+                "row": 3,
+                "col": 3,
+                "location": "A09",
+                "u_count": 42,
+            }
+        }
+
+        out = rack_room.get_room_layout(7, permission_map={"x": 1}, user=None)
+
+        assert len(out["racks"]) == 1
+        assert out["racks"][0]["row"] == 1
+        assert out["racks"][0]["col"] == 9
+        assert out["racks"][0]["location"] == "A09"
+        assert out["grid"] == {"max_row": 1, "max_col": 9}
+
+    @patch.object(rack_room.InstanceManage, "_has_topology_view_permission", return_value=True)
+    @patch.object(rack_room.InstanceManage, "_query_instance_map_by_ids")
+    @patch.object(rack_room.InstanceManage, "instance_association_instance_list")
     def test_used_u_is_distinct_occupied_not_sum(self, q_assoc, q_map, _perm):
         # 一台落位 U1-2、一台未分配 U 位（有 u_size 无 rack_u_start）：
         # used_u 应为去重占用数 2（= u_count - free_u），不被未分配设备抬高，利用率不超 100%
@@ -88,7 +120,7 @@ class TestGetRoomLayout:
 
         def map_side_effect(ids):
             full = {
-                5: {"_id": 5, "inst_name": "R", "model_id": "rack", "row": 1, "col": 1, "u_count": 10, "datacenter_type": "1"},
+                5: {"_id": 5, "inst_name": "R", "model_id": "rack", "row": 1, "col": 1, "location": "A01", "u_count": 10, "datacenter_type": "1"},
                 10: {"_id": 10, "inst_name": "sw1", "model_id": "switch", "rack_u_start": 1, "u_size": 2},
                 11: {"_id": 11, "inst_name": "sw2", "model_id": "switch", "rack_u_start": None, "u_size": 2},
             }
@@ -133,6 +165,7 @@ class TestGetRoomLayout:
                 "model_id": "rack",
                 "row": 1,
                 "col": 1,
+                "location": "A01",
                 "u_count": 42,
                 "datacenter_type": ["3"],
                 "datacenter_state": ["1"],

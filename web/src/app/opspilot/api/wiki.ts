@@ -133,6 +133,8 @@ export const useWikiApi = () => {
     get(`${BASE}/material/${id}/update_impact/`);
 
   const createMaterial = (data: Partial<Material>): Promise<Material> => post(`${BASE}/material/`, data);
+  const updateMaterial = (id: number, data: Partial<Material>): Promise<Material> =>
+    put(`${BASE}/material/${id}/`, data);
 
   const createMaterialFile = (kbId: number, name: string, file: File, ocrEnhance = false): Promise<Material> => {
     const fd = new FormData();
@@ -237,10 +239,6 @@ export const useWikiApi = () => {
 
   const rejectCheck = (id: number): Promise<unknown> => post(`${BASE}/check_item/${id}/reject/`, {});
 
-  const mergeDuplicateCheck = (id: number): Promise<unknown> => post(`${BASE}/check_item/${id}/merge/`, {});
-
-  const resolveCheck = (id: number, note = ''): Promise<unknown> => post(`${BASE}/check_item/${id}/resolve/`, { note });
-
   const batchAcceptChecks = (
     ids: number[]
   ): Promise<{ accepted: number; skipped: number; skipped_ids: number[] }> =>
@@ -250,12 +248,6 @@ export const useWikiApi = () => {
     ids: number[]
   ): Promise<{ rejected: number; skipped: number; skipped_ids: number[] }> =>
     post(`${BASE}/check_item/batch_reject/`, { ids });
-
-  const batchResolveChecks = (
-    ids: number[],
-    note = ''
-  ): Promise<{ resolved: number; skipped: number; skipped_ids: number[] }> =>
-    post(`${BASE}/check_item/batch_resolve/`, { ids, note });
 
   const assignCheck = (
     id: number,
@@ -292,6 +284,7 @@ export const useWikiApi = () => {
     fetchMaterialDeleteImpact,
     fetchMaterialUpdateImpact,
     createMaterial,
+    updateMaterial,
     createMaterialFile,
     batchCreateMaterials,
     deleteMaterial,
@@ -321,11 +314,8 @@ export const useWikiApi = () => {
     fetchCheckItems,
     acceptCheck,
     rejectCheck,
-    mergeDuplicateCheck,
-    resolveCheck,
     batchAcceptChecks,
     batchRejectChecks,
-    batchResolveChecks,
     assignCheck,
   };
 };

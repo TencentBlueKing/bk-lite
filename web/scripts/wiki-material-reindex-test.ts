@@ -13,15 +13,16 @@ for (const key of ['reindexPage', 'reindexPageDone']) {
   assert.ok(en.wiki[key], `missing en wiki.${key}`);
 }
 
+// 重跑索引能力保留在 API/处理函数中,但资料列表暂不展示入口。
 assert.match(wikiApi, /const reindexMaterial = \(id: number\): Promise<BuildRecord> =>/);
 assert.match(wikiApi, /\/material\/\$\{id\}\/reindex\//);
 assert.match(wikiApi, /reindexMaterial,/);
+assert.match(materialTab, /const SHOW_MATERIAL_REINDEX_ACTION = false/);
 assert.match(materialTab, /reindexMaterial,/);
 assert.match(materialTab, /reindexingMaterialId/);
 assert.match(materialTab, /handleReindexMaterial/);
+assert.match(materialTab, /SHOW_MATERIAL_REINDEX_ACTION && \(/);
+assert.match(materialTab, /onClick=\{\(\) => handleReindexMaterial\(record\.id\)\}/);
 assert.match(materialTab, /t\('wiki\.reindexPage'\)/);
 
-// 重跑索引按钮需用纯文字,与其他操作风格一致(都无 icon)
-assert.match(materialTab, /<Button\s+type="link"\s+size="small"[\s\S]*?t\('wiki\.reindexPage'\)/);
-
-console.log('wiki material reindex validation passed');
+console.log('wiki hidden material reindex entry validation passed');

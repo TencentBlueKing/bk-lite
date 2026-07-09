@@ -24,13 +24,12 @@ import {
   ROOM3D_DEVICE_PULL_OUT_DISTANCE,
   ROOM3D_ROW_GAP,
   buildRoomFloorSize,
+  getRoom3DRackScenePosition,
   resolveRoomObjectClickState,
   resolveRackClickState,
   shouldAutoFocusRack,
 } from "../src/app/ops-analysis/components/widgets/room3D/room3DScene";
-import {
-  createRackVisual,
-} from "../src/app/ops-analysis/components/widgets/room3D/room3DMeshes";
+import { createRackVisual } from "../src/app/ops-analysis/components/widgets/room3D/room3DMeshes";
 
 const installCanvasStub = () => {
   const noop = () => undefined;
@@ -318,6 +317,15 @@ assert.equal(
 );
 assert.equal(compactColumnAspect < columnDominantAspect, true);
 assert.equal(compactColumnFloor.floorDepth < 18, true);
+const frontRackPosition = getRoom3DRackScenePosition(
+  { row: 1, col: 1 },
+  { maxRow: 4, maxCol: 6 },
+);
+const rearRackPosition = getRoom3DRackScenePosition(
+  { row: 4, col: 1 },
+  { maxRow: 4, maxCol: 6 },
+);
+assert.equal(frontRackPosition.z > rearRackPosition.z, true);
 
 assert.equal(shouldAutoFocusRack(8.1), true);
 assert.equal(shouldAutoFocusRack(5.2), false);

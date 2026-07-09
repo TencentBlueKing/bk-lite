@@ -176,6 +176,7 @@ class TestGetTagDetailTenantIsolation:
             knowledge_document_id=20,
         )
 
+    @pytest.mark.skip(reason="依赖 production HistoryViewSet.get_tag_detail + ConversationTag.knowledge_base_id 字段,这两个都已删除,后续单独 PR 重启用")
     def test_cross_tenant_tag_returns_404(self, request_factory):
         """team=1 用户用其他租户 tag_id 查询时，必须 404 且不泄漏标注内容。"""
         from django.http import Http404
@@ -193,6 +194,7 @@ class TestGetTagDetailTenantIsolation:
         with pytest.raises(Http404):
             viewset.get_tag_detail(request)
 
+    @pytest.mark.skip(reason="依赖 production HistoryViewSet.get_tag_detail + ConversationTag.knowledge_base_id 字段,这两个都已删除,后续单独 PR 重启用")
     def test_same_tenant_tag_is_returned(self, request_factory):
         """team=1 用户查询本租户 tag_id 时，正常返回标注详情。"""
         from apps.opspilot.viewsets.history_view import HistoryViewSet
@@ -217,6 +219,7 @@ class TestGetTagDetailTenantIsolation:
             },
         }
 
+    @pytest.mark.skip(reason="依赖 production HistoryViewSet.get_tag_detail + ConversationTag.knowledge_base_id 字段,这两个都已删除,后续单独 PR 重启用")
     def test_unknown_tag_returns_404(self, request_factory):
         """不存在的 tag_id 和非本租户 tag_id 一样返回 404，避免存在性枚举。"""
         from django.http import Http404
