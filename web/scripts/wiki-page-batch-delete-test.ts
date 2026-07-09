@@ -41,6 +41,7 @@ assert.match(pageTab, /filterPageTypes\.map\(\(value\) => \(\{ value, label: val
 assert.match(pageTab, /<Select[\s\S]*placeholder=\{t\('wiki\.pageTypeAll'\)\}[\s\S]*onChange=\{handleTypeFilterChange\}/);
 assert.doesNotMatch(pageTab, /<AutoComplete[\s\S]*placeholder=\{t\('wiki\.pageTypeAll'\)\}/);
 assert.match(pageTab, /rowSelection=\{\{/);
+assert.doesNotMatch(pageTab, /t\('wiki\.selected'\)/, 'PageTab should not render selected-count toolbar tag');
 assert.match(pageTab, /batchDeletePages\(kbId, selectedPageIds\)/);
 assert.match(pageTab, /t\('wiki\.batchDeletePages'\)/);
 assert.match(pageTab, /t\('wiki\.batchDeletePagesConfirm'\)/);

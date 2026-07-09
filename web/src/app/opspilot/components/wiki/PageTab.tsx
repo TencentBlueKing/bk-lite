@@ -1,18 +1,23 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { AutoComplete, Button, Drawer, Form, Input, List, Popconfirm, Select, Space, Tag, Tooltip, Upload, message } from 'antd';
+import { AutoComplete, Button, Descriptions, Drawer, Form, Input, List, Modal, Popconfirm, Select, Space, Tag, Tooltip, Upload, message } from 'antd';
 import { DeleteOutlined, DownloadOutlined, PlusOutlined, UploadOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import CustomTable from '@/components/custom-table';
 import MarkdownRenderer from '@/components/markdown';
 import { useTranslation } from '@/utils/i18n';
 import { useWikiApi } from '@/app/opspilot/api/wiki';
-import { KnowledgePage, PageVersion, WikiIndexStageDetail, WikiPageSource } from '@/app/opspilot/types/wiki';
+import { KnowledgePage, MaterialInfo, MaterialType, PageVersion, WikiIndexStageDetail, WikiPageSource } from '@/app/opspilot/types/wiki';
 import ContributionTag from './ContributionTag';
 import { INDEX_REASON_LABEL, INDEX_STATUS_LABEL, PAGE_STATUS_LABEL } from './wikiFormat';
 
 const PAGE_STATUS_COLOR: Record<string, string> = { active: 'green', archived: 'default', source_invalid: 'red' };
+const MATERIAL_TYPE_KEY: Record<MaterialType, string> = {
+  file: 'wiki.materialFile',
+  text: 'wiki.materialText',
+  web: 'wiki.materialWeb',
+};
 const INDEX_STATUS_COLOR: Record<string, string> = {
   indexed: 'green',
   indexing: 'blue',
@@ -35,6 +40,7 @@ const PageTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     importKnowledgeBaseMarkdown,
     reindexPage,
     fetchPageSources,
+    fetchMaterialInfo,
     fetchPageVersions,
     restorePageVersion,
     restorePageFromArchive,
@@ -57,6 +63,8 @@ const PageTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const [pageSourcesLoading, setPageSourcesLoading] = useState(false);
   const [pageSourcesTitle, setPageSourcesTitle] = useState('');
   const [pageSources, setPageSources] = useState<WikiPageSource[]>([]);
+  const [sourceMaterialDetail, setSourceMaterialDetail] = useState<MaterialInfo | null>(null);
+  const [sourceMaterialDetailLoadingId, setSourceMaterialDetailLoadingId] = useState<number | null>(null);
   const [reindexingPageId, setReindexingPageId] = useState<number | null>(null);
 
   // 编辑器抽屉(新建/编辑共用)。editing=null → 新建模式
@@ -333,6 +341,14 @@ const PageTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     }
   };
 
+  const openSourceMaterialDetail = async (materialId: number) => {
+    setSourceMaterialDetailLoadingId(materialId);
+    try {
+      setSourceMaterialDetail(await fetchMaterialInfo(materialId));
+    } finally {
+      setSourceMaterialDetailLoadingId(null);
+    }
+  };
   const handleStatusFilterChange = (value: string) => {
     setStatusFilter(value);
     resetSelectionAndPage();
@@ -364,18 +380,31 @@ const PageTab: React.FC<{ kbId: number }> = ({ kbId }) => {
       {renderIndexTag(t('wiki.chunkIndex'), record.index_detail?.chunk_embedding)}
     </Space>
   );
+  const materialTypeLabel = (type: MaterialType) => (MATERIAL_TYPE_KEY[type] ? t(MATERIAL_TYPE_KEY[type]) : type);
   const renderPageSource = (source: WikiPageSource) => (
     <List.Item key={source.id}>
       <div className="w-full rounded border border-[var(--color-border-1)] bg-[var(--color-bg-1)] p-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="font-medium text-[var(--color-text-1)]">{source.material.name}</span>
-          <Tag className="m-0">{source.material.material_type}</Tag>
-          {source.material.status && <Tag className="m-0">{source.material.status}</Tag>}
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="mb-1 text-xs text-[var(--color-text-3)]">{t('wiki.sourceMaterial')}</div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="link"
+                size="small"
+                className="h-auto max-w-full p-0 text-left font-medium text-[var(--color-text-1)]"
+                loading={sourceMaterialDetailLoadingId === source.material.id}
+                onClick={() => openSourceMaterialDetail(source.material.id)}
+              >
+                <span className="break-all">{source.material.name}</span>
+              </Button>
+              <Tag className="m-0">{materialTypeLabel(source.material.material_type)}</Tag>
+              {source.material.status && <Tag className="m-0">{source.material.status}</Tag>}
+            </div>
+          </div>
         </div>
         {source.material_version && (
           <div className="mt-2 text-xs text-[var(--color-text-3)]">
             {t('wiki.sourceVersion')} #{source.material_version.id}
-            {source.material_version.content_hash ? ` · ${source.material_version.content_hash}` : ''}
           </div>
         )}
         {typeof source.locator?.chunk_index === 'number' && (
@@ -505,9 +534,6 @@ const PageTab: React.FC<{ kbId: number }> = ({ kbId }) => {
             className="min-w-[132px]"
             onChange={handleStatusFilterChange}
           />
-          <Tag className="m-0">
-            {t('wiki.selected')}: {selectedRowKeys.length}
-          </Tag>
           <Popconfirm
             title={t('wiki.batchDeletePagesConfirm')}
             okText={t('wiki.confirm')}
@@ -661,7 +687,7 @@ const PageTab: React.FC<{ kbId: number }> = ({ kbId }) => {
       <Drawer
         title={`${t('wiki.pageSources')}: ${pageSourcesTitle}`}
         open={pageSourcesVisible}
-        width={560}
+        width="min(960px, calc(100vw - 48px))"
         onClose={() => setPageSourcesVisible(false)}
       >
         <List
@@ -671,6 +697,80 @@ const PageTab: React.FC<{ kbId: number }> = ({ kbId }) => {
           renderItem={renderPageSource}
         />
       </Drawer>
+      <Modal
+        title={`${t('wiki.detail')}: ${sourceMaterialDetail?.material?.name ?? ''}`}
+        open={!!sourceMaterialDetail}
+        width="min(960px, calc(100vw - 48px))"
+        onCancel={() => setSourceMaterialDetail(null)}
+        footer={null}
+        destroyOnHidden
+        styles={{ body: { maxHeight: 'calc(100vh - 220px)', overflowY: 'auto' } }}
+      >
+        {sourceMaterialDetail && (
+          <>
+            <Descriptions
+              column={1}
+              bordered
+              size="small"
+              className="mb-4"
+              labelStyle={{ width: 144, whiteSpace: 'nowrap' }}
+              contentStyle={{ minWidth: 0 }}
+            >
+              <Descriptions.Item label={t('wiki.materialType')}>
+                {materialTypeLabel(sourceMaterialDetail.material.material_type)}
+              </Descriptions.Item>
+              {sourceMaterialDetail.material.material_type === 'web' && (
+                <Descriptions.Item label={t('wiki.webSyncEnabled')}>
+                  {sourceMaterialDetail.material.sync_policy?.enabled
+                    ? `${t('wiki.webSyncInterval')} ${sourceMaterialDetail.material.sync_policy?.interval_hours ?? 24} ${t('wiki.hours')}`
+                    : '--'}
+                </Descriptions.Item>
+              )}
+              {sourceMaterialDetail.material.material_type === 'file' && (
+                <Descriptions.Item label={t('wiki.imageEnhance')}>
+                  {sourceMaterialDetail.material.ocr_enhance ? t('common.yes') : t('common.no')}
+                </Descriptions.Item>
+              )}
+              <Descriptions.Item label={sourceMaterialDetail.file_url ? t('wiki.materialFile') : t('wiki.materialText')}>
+                {sourceMaterialDetail.file_url ? (
+                  <a href={sourceMaterialDetail.file_url} target="_blank" rel="noreferrer">
+                    {t('wiki.downloadFile')}
+                  </a>
+                ) : sourceMaterialDetail.original ? (
+                  <div className="max-w-full overflow-x-auto text-sm">
+                    <MarkdownRenderer content={sourceMaterialDetail.original} />
+                  </div>
+                ) : (
+                  '--'
+                )}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('wiki.aiSummary')}>
+                {sourceMaterialDetail.ai_summary ? (
+                  <div className="max-w-full overflow-x-auto text-xs">
+                    <MarkdownRenderer content={sourceMaterialDetail.ai_summary} />
+                  </div>
+                ) : (
+                  '--'
+                )}
+              </Descriptions.Item>
+            </Descriptions>
+            <div className="mb-2 font-medium">{t('wiki.versions')}</div>
+            <List
+              size="small"
+              dataSource={sourceMaterialDetail.versions}
+              renderItem={(version) => (
+                <List.Item>{`#${version.id} ${version.content_hash || ''} ${version.created_at || ''}`}</List.Item>
+              )}
+            />
+            <div className="mt-4 mb-2 font-medium">{t('wiki.contributedPages')}</div>
+            <List
+              size="small"
+              dataSource={sourceMaterialDetail.contributed_pages}
+              renderItem={(page) => <List.Item>{`${page.title} · ${page.page_type} · ${page.status}`}</List.Item>}
+            />
+          </>
+        )}
+      </Modal>
     </div>
   );
 };

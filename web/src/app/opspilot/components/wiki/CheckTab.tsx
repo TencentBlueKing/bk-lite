@@ -267,9 +267,6 @@ const CheckTab: React.FC<{ kbId: number }> = ({ kbId }) => {
             className="min-w-[160px]"
             onChange={handleCheckTypeFilterChange}
           />
-          <Tag className="m-0">
-            {t('wiki.selected')}: {selectedRowKeys.length}
-          </Tag>
           <Popconfirm
             title={t('wiki.batchAcceptConfirm')}
             okText={t('wiki.confirm')}

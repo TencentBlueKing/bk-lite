@@ -8,24 +8,19 @@ const zh = JSON.parse(fs.readFileSync(path.join(root, 'src/app/opspilot/locales/
 const en = JSON.parse(fs.readFileSync(path.join(root, 'src/app/opspilot/locales/en.json'), 'utf8'));
 
 assert.match(buildRecordTab, /statusFilter/);
-assert.match(buildRecordTab, /triggerFilter/);
-assert.match(buildRecordTab, /maintenanceStatusFilter/);
-assert.match(buildRecordTab, /maintenanceStageFilter/);
-assert.match(buildRecordTab, /maintenanceStageStatusFilter/);
+assert.match(buildRecordTab, /status: statusFilter \|\| undefined/);
+assert.match(buildRecordTab, /t\('wiki\.filterStatus'\)/);
+assert.match(buildRecordTab, /t\('wiki\.buildRecordStatusAll'\)/);
 
-for (const param of ['status', 'trigger', 'maintenance_status', 'maintenance_stage', 'maintenance_stage_status']) {
-  assert.match(buildRecordTab, new RegExp(`${param}:`), `missing build record query param ${param}`);
+for (const removedFilter of ['triggerFilter', 'maintenanceStatusFilter', 'maintenanceStageFilter', 'maintenanceStageStatusFilter']) {
+  assert.doesNotMatch(buildRecordTab, new RegExp(removedFilter), `BuildRecordTab should not render ${removedFilter}`);
 }
 
-for (const key of [
-  'buildRecordStatusAll',
-  'buildRecordTriggerAll',
-  'maintenanceStatusAll',
-  'maintenanceStageAll',
-  'maintenanceStageStatusAll',
-]) {
-  assert.ok(zh.wiki[key], `missing zh wiki.${key}`);
-  assert.ok(en.wiki[key], `missing en wiki.${key}`);
+for (const removedParam of ['trigger:', 'maintenance_status:', 'maintenance_stage:', 'maintenance_stage_status:']) {
+  assert.doesNotMatch(buildRecordTab, new RegExp(removedParam), `BuildRecordTab should not query by ${removedParam}`);
 }
+
+assert.ok(zh.wiki.buildRecordStatusAll, 'missing zh wiki.buildRecordStatusAll');
+assert.ok(en.wiki.buildRecordStatusAll, 'missing en wiki.buildRecordStatusAll');
 
 console.log('wiki build record filter validation passed');

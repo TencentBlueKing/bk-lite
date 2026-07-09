@@ -87,10 +87,6 @@ const BuildRecordTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [batchMaintenanceRetrying, setBatchMaintenanceRetrying] = useState(false);
   const [statusFilter, setStatusFilter] = useState('');
-  const [triggerFilter, setTriggerFilter] = useState('');
-  const [maintenanceStatusFilter, setMaintenanceStatusFilter] = useState('');
-  const [maintenanceStageFilter, setMaintenanceStageFilter] = useState('');
-  const [maintenanceStageStatusFilter, setMaintenanceStageStatusFilter] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -99,10 +95,6 @@ const BuildRecordTab: React.FC<{ kbId: number }> = ({ kbId }) => {
         page,
         page_size: pageSize,
         status: statusFilter || undefined,
-        trigger: triggerFilter || undefined,
-        maintenance_status: maintenanceStatusFilter || undefined,
-        maintenance_stage: maintenanceStageFilter || undefined,
-        maintenance_stage_status: maintenanceStageStatusFilter || undefined,
       });
       setData(res.items);
       setTotal(res.count);
@@ -112,12 +104,12 @@ const BuildRecordTab: React.FC<{ kbId: number }> = ({ kbId }) => {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kbId, page, pageSize, statusFilter, triggerFilter, maintenanceStatusFilter, maintenanceStageFilter, maintenanceStageStatusFilter]);
+  }, [kbId, page, pageSize, statusFilter]);
 
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kbId, page, pageSize, statusFilter, triggerFilter, maintenanceStatusFilter, maintenanceStageFilter, maintenanceStageStatusFilter]);
+  }, [kbId, page, pageSize, statusFilter]);
 
   // 有 running 记录时每 3s 轮询刷新进度,全部结束自动停止
   useEffect(() => {
@@ -145,8 +137,7 @@ const BuildRecordTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     if (!hasSelectedRecords) return;
     setBatchMaintenanceRetrying(true);
     try {
-      const stages = maintenanceStageFilter ? [maintenanceStageFilter] : undefined;
-      const result = await batchRetryBuildMaintenance(kbId, selectedRecordIds, stages);
+      const result = await batchRetryBuildMaintenance(kbId, selectedRecordIds);
       message.success(`${t('wiki.batchRetryMaintenance')}: ${t('wiki.processed')} ${result.retried}, ${t('wiki.skipped')} ${result.skipped}`);
       setSelectedRowKeys([]);
       load();
@@ -164,22 +155,6 @@ const BuildRecordTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     setStatusFilter(value || '');
     resetFilterPage();
   };
-  const handleTriggerFilterChange = (value: string) => {
-    setTriggerFilter(value || '');
-    resetFilterPage();
-  };
-  const handleMaintenanceStatusFilterChange = (value: string) => {
-    setMaintenanceStatusFilter(value || '');
-    resetFilterPage();
-  };
-  const handleMaintenanceStageFilterChange = (value: string) => {
-    setMaintenanceStageFilter(value || '');
-    resetFilterPage();
-  };
-  const handleMaintenanceStageStatusFilterChange = (value: string) => {
-    setMaintenanceStageStatusFilter(value || '');
-    resetFilterPage();
-  };
 
   const canRetryMaintenance = (record: BuildRecord) =>
     RETRYABLE_MAINTENANCE_STATUS.has(record.maintenance?.status || '') && !!(record.affected_pages || []).length;
@@ -187,34 +162,6 @@ const BuildRecordTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     () => [
       { value: '', label: t('wiki.buildRecordStatusAll') },
       ...Object.entries(BUILD_STATUS_LABEL).map(([value, labelKey]) => ({ value, label: t(labelKey) })),
-    ],
-    [t]
-  );
-  const triggerOptions = useMemo(
-    () => [
-      { value: '', label: t('wiki.buildRecordTriggerAll') },
-      ...Object.entries(TRIGGER_LABEL).map(([value, labelKey]) => ({ value, label: t(labelKey) })),
-    ],
-    [t]
-  );
-  const maintenanceStatusOptions = useMemo(
-    () => [
-      { value: '', label: t('wiki.maintenanceStatusAll') },
-      ...Object.entries(MAINTENANCE_STATUS_LABEL).map(([value, labelKey]) => ({ value, label: t(labelKey) })),
-    ],
-    [t]
-  );
-  const maintenanceStageOptions = useMemo(
-    () => [
-      { value: '', label: t('wiki.maintenanceStageAll') },
-      ...Object.entries(MAINTENANCE_STAGE_LABEL).map(([value, labelKey]) => ({ value, label: t(labelKey) })),
-    ],
-    [t]
-  );
-  const maintenanceStageStatusOptions = useMemo(
-    () => [
-      { value: '', label: t('wiki.maintenanceStageStatusAll') },
-      ...Object.entries(MAINTENANCE_STATUS_LABEL).map(([value, labelKey]) => ({ value, label: t(labelKey) })),
     ],
     [t]
   );
@@ -508,31 +455,6 @@ const BuildRecordTab: React.FC<{ kbId: number }> = ({ kbId }) => {
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <span className="text-xs text-[var(--color-text-3)]">{t('wiki.filterStatus')}</span>
         <Select value={statusFilter} options={buildStatusOptions} className="min-w-[132px]" onChange={handleStatusFilterChange} />
-        <span className="text-xs text-[var(--color-text-3)]">{t('wiki.trigger')}</span>
-        <Select value={triggerFilter} options={triggerOptions} className="min-w-[132px]" onChange={handleTriggerFilterChange} />
-        <span className="text-xs text-[var(--color-text-3)]">{t('wiki.maintenanceResult')}</span>
-        <Select
-          value={maintenanceStatusFilter}
-          options={maintenanceStatusOptions}
-          className="min-w-[132px]"
-          onChange={handleMaintenanceStatusFilterChange}
-        />
-        <span className="text-xs text-[var(--color-text-3)]">{t('wiki.maintenanceStage')}</span>
-        <Select
-          value={maintenanceStageFilter}
-          options={maintenanceStageOptions}
-          className="min-w-[150px]"
-          onChange={handleMaintenanceStageFilterChange}
-        />
-        <Select
-          value={maintenanceStageStatusFilter}
-          options={maintenanceStageStatusOptions}
-          className="min-w-[132px]"
-          onChange={handleMaintenanceStageStatusFilterChange}
-        />
-        <Tag className="m-0">
-          {t('wiki.selected')}: {selectedRowKeys.length}
-        </Tag>
         <Popconfirm
           title={t('wiki.batchRetryMaintenanceConfirm')}
           okText={t('common.confirm')}
