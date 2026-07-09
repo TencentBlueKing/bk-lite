@@ -20,5 +20,8 @@ window.__ENTERPRISE_BRANDS = [
   { match: /^inspur$|inspur.*snmp/i, label: 'Inspur', icon: 'mm-inspur_inspur' },
   { match: /^ipmi$|storage.*ipmi/i, label: 'IPMI', icon: 'mm-ipmi_ipmi' },
   { match: /dellsc8000|dell.*sc8000/i, label: 'Dell SC8000', icon: 'mm-dellsc8000_dellsc8000' },
-  { match: /ceresdata/i, label: 'CeresData', icon: 'mm-ceresdata_ceresdata' }
+  { match: /ceresdata/i, label: 'CeresData', icon: 'mm-ceresdata_ceresdata' },
+  // 非 storage 但仍属企业版专享的数据库采集器:KingBase/OceanBase
+  { match: /kingbase|金仓|人大金仓/i, label: 'KingBase', icon: 'cc-kingbase_KingBase' },
+  { match: /oceanbase/i, label: 'OceanBase', icon: 'cc-oceanbase_OceanBase' }
 ];
