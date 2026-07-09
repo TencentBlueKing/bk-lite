@@ -29,6 +29,9 @@ def _fake_skill():
         km_llm_model=None,
         enable_suggest=False,
         enable_query_rewrite=False,
+        # AgentNode._build_llm_params 现在读取 wiki_knowledge_bases 透传 wiki_kb_ids
+        # (Issue #3919)。替身补齐 M2M 替身,values_list 返回空迭代器,与"未选 KB"语义一致。
+        wiki_knowledge_bases=types.SimpleNamespace(values_list=lambda *_a, **_kw: iter(())),
     )
 
 

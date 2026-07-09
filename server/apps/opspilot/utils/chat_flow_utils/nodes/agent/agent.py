@@ -223,6 +223,10 @@ class AgentNode(BaseNodeExecutor):
             "node_id": effective_node_id,
             "flow_id": self.variable_manager.get_variable("flow_id", ""),
             "trigger_type": self._resolve_trigger_type(flow_input),
+            # Wiki 知识库复用:把 skill 上勾选的 wiki KB id 列表透传给 chat_service,
+            # 触发 augment_prompt 路径,自动检索并把相关页面片段注入系统提示词。
+            # 与 /opspilot/skill/detail 路径行为一致,Issue #3919。
+            "wiki_kb_ids": list(skill.wiki_knowledge_bases.values_list("id", flat=True)),
         }
 
     @staticmethod
