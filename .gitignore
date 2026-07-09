@@ -54,3 +54,8 @@ automation/
 
 # CMDB 商业版 overlay（同级 app，单独交付，不进开源仓）
 /server/apps/cmdb_enterprise/
+
+# Windows %SystemDrive% 路径噪点:搜狗输入法把缓存写到工作树里
+# (./%SystemDrive%/ProgramData/SogouInput/...),只能匹配字面目录名,
+# 不会误伤其他项目里的同名 .bin/.exe 等。本地文件保留。
+/%SystemDrive%/
