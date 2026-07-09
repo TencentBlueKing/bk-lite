@@ -96,7 +96,7 @@
     },
     {
       "title": "集成中心",
-      "icon": "guanli",
+      "icon": "waibuxitongguanli",
       "name": "integration_center",
       "url": "/system-manager/integration-center",
       "children": [
@@ -235,7 +235,7 @@
     },
     {
       "title": "Integration Center",
-      "icon": "guanli",
+      "icon": "waibuxitongguanli",
       "name": "integration_center",
       "url": "/system-manager/integration-center",
       "children": [

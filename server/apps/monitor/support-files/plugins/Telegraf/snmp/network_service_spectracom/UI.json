@@ -2,27 +2,141 @@
   "object_name": "NetworkService",
   "instance_type": "network_service",
   "collect_type": "snmp_spectracom",
-  "config_type": ["spectracom"],
+  "config_type": [
+    "spectracom"
+  ],
   "collector": "Telegraf",
   "instance_id": "{{cloud_region}}_{{instance_type}}_snmp_spectracom_{{ip}}",
   "form_fields": [
-    {"name": "ip", "label": "IP", "type": "input", "required": true},
-    {"name": "port", "label": "端口", "type": "inputNumber", "required": true, "default_value": 161},
-    {"name": "version", "label": "版本", "type": "select", "required": true, "default_value": 2, "options": [{"label": "v2c", "value": 2}, {"label": "v3", "value": 3}]},
-    {"name": "community", "label": "团体名", "type": "input", "required": true, "default_value": "public"},
-    {"name": "sec_name", "label": "名称", "type": "input", "required": true},
-    {"name": "sec_level", "label": "级别", "type": "select", "required": true, "default_value": "authPriv", "options": [{"label": "noAuthNoPriv", "value": "noAuthNoPriv"}, {"label": "authNoPriv", "value": "authNoPriv"}, {"label": "authPriv", "value": "authPriv"}]},
-    {"name": "auth_protocol", "label": "认证协议", "type": "input", "required": false, "default_value": "SHA"},
-    {"name": "ENV_AUTH_PASSWORD", "label": "认证密码", "type": "password", "required": false},
-    {"name": "priv_protocol", "label": "加密协议", "type": "input", "required": false, "default_value": "AES"},
-    {"name": "ENV_PRIV_PASSWORD", "label": "加密密码", "type": "password", "required": false},
-    {"name": "timeout", "label": "超时时间", "type": "inputNumber", "required": true, "default_value": 10},
-    {"name": "interval", "label": "间隔", "type": "inputNumber", "required": true, "default_value": 10}
+    {
+      "name": "ip",
+      "label": "IP",
+      "type": "input",
+      "required": true
+    },
+    {
+      "name": "port",
+      "label": "端口",
+      "type": "inputNumber",
+      "required": true,
+      "default_value": 161
+    },
+    {
+      "name": "version",
+      "label": "版本",
+      "type": "select",
+      "required": true,
+      "default_value": 2,
+      "options": [
+        {
+          "label": "v2c",
+          "value": 2
+        },
+        {
+          "label": "v3",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "name": "community",
+      "label": "团体名",
+      "type": "input",
+      "required": true,
+      "default_value": "public"
+    },
+    {
+      "name": "sec_name",
+      "label": "名称",
+      "type": "input",
+      "required": true
+    },
+    {
+      "name": "sec_level",
+      "label": "级别",
+      "type": "select",
+      "required": true,
+      "default_value": "authPriv",
+      "options": [
+        {
+          "label": "noAuthNoPriv",
+          "value": "noAuthNoPriv"
+        },
+        {
+          "label": "authNoPriv",
+          "value": "authNoPriv"
+        },
+        {
+          "label": "authPriv",
+          "value": "authPriv"
+        }
+      ]
+    },
+    {
+      "name": "auth_protocol",
+      "label": "认证协议",
+      "type": "input",
+      "required": false,
+      "default_value": "SHA"
+    },
+    {
+      "name": "ENV_AUTH_PASSWORD",
+      "label": "认证密码",
+      "type": "password",
+      "required": false
+    },
+    {
+      "name": "priv_protocol",
+      "label": "加密协议",
+      "type": "input",
+      "required": false,
+      "default_value": "AES"
+    },
+    {
+      "name": "ENV_PRIV_PASSWORD",
+      "label": "加密密码",
+      "type": "password",
+      "required": false
+    },
+    {
+      "name": "timeout",
+      "label": "超时时间",
+      "type": "inputNumber",
+      "required": true,
+      "default_value": 10
+    },
+    {
+      "name": "interval",
+      "label": "间隔",
+      "type": "inputNumber",
+      "required": true,
+      "default_value": 60
+    }
   ],
   "table_columns": [
-    {"name": "node_ids", "label": "节点", "type": "select", "required": true, "options_key": "node_ids_option"},
-    {"name": "ip", "label": "IP", "type": "input"},
-    {"name": "instance_name", "label": "实例名称", "type": "input", "required": true},
-    {"name": "group_ids", "label": "组", "type": "group_select", "required": true}
+    {
+      "name": "node_ids",
+      "label": "节点",
+      "type": "select",
+      "required": true,
+      "options_key": "node_ids_option"
+    },
+    {
+      "name": "ip",
+      "label": "IP",
+      "type": "input"
+    },
+    {
+      "name": "instance_name",
+      "label": "实例名称",
+      "type": "input",
+      "required": true
+    },
+    {
+      "name": "group_ids",
+      "label": "组",
+      "type": "group_select",
+      "required": true
+    }
   ]
 }

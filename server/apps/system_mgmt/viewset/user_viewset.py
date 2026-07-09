@@ -393,12 +393,12 @@ class UserViewSet(ViewSetUtils):
 
         # 校验密码是否为空
         if not password:
-            raise ValueError("密码不能为空")
+            return JsonResponse({"result": False, "message": "密码不能为空"}, status=400)
 
         # 校验密码复杂度
         is_valid, error_message = PasswordValidator.validate_password(password)
         if not is_valid:
-            raise ValueError(error_message)
+            return JsonResponse({"result": False, "message": error_message}, status=400)
 
         user = User.objects.get(id=user_id)
 

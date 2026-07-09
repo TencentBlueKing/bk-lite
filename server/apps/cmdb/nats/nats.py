@@ -1,5 +1,4 @@
 import datetime
-import re
 from functools import reduce
 from operator import or_
 from types import SimpleNamespace
@@ -39,6 +38,7 @@ from apps.cmdb.services.collect_credential_result_service import CollectCredenti
 from apps.cmdb.services.config_file_service import ConfigFileService
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.model import ModelManage
+from apps.cmdb.services.rack_room import format_rack_location_label, parse_rack_location
 from apps.cmdb.utils.base import get_default_group_id
 from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
 from apps.core.logger import cmdb_logger as logger
@@ -836,41 +836,12 @@ def _parse_room3d_server_room_id(value):
         return None
 
 
-ROOM3D_RACK_LOCATION_PATTERN = re.compile(r"^([A-Z]+)(\d+)$")
-
-
-def _room3d_letter_to_index(value):
-    result = 0
-    for char in value:
-        result = result * 26 + (ord(char) - ord("A") + 1)
-    return result
-
-
-def _room3d_index_to_letters(value):
-    result = ""
-    while value > 0:
-        value, remainder = divmod(value - 1, 26)
-        result = chr(ord("A") + remainder) + result
-    return result
-
-
 def _format_room3d_location_label(row, col):
-    return f"{_room3d_index_to_letters(row)}{col:02d}"
+    return format_rack_location_label(row, col)
 
 
 def _parse_room3d_rack_location(value):
-    if not isinstance(value, str):
-        return None
-
-    match = ROOM3D_RACK_LOCATION_PATTERN.match(value.strip().upper())
-    if not match:
-        return None
-
-    row = _room3d_letter_to_index(match.group(1))
-    col = int(match.group(2))
-    if row < 1 or col < 1:
-        return None
-    return row, col
+    return parse_rack_location(value)
 
 
 def _room3d_rack_identity(rack):

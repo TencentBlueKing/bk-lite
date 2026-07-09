@@ -1,6 +1,7 @@
 from urllib.parse import urlencode
 
 from django.contrib.auth.hashers import make_password
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.core.logger import system_mgmt_logger as logger
@@ -9,9 +10,36 @@ from apps.system_mgmt.models import (
     LoginAuthBinding,
     LoginAuthBindingPlatformFieldChoices,
     LoginAuthBindingUnmatchedActionChoices,
+    Role,
     User,
 )
 from apps.system_mgmt.providers import RuntimeApplicationService
+
+# 微信等第三方登陆首次创建用户时,写入与旧 wechat_user_register
+# (server/apps/system_mgmt/nats/wechat.py:16-26) 对齐的默认 role 集合。
+# 缺 normal@ops-console 会让 verify_token 的菜单汇总为空,opsconsole 在
+# get_client 返回中消失,用户看不到入口。
+_DEFAULT_PLATFORM_ROLE_QUERY = Q(
+    name="normal", app__in=["opspilot", "ops-console"]
+) | Q(
+    name="guest",
+    app__in=[
+        "opspilot",
+        "cmdb",
+        "monitor",
+        "log",
+        "alarm",
+        "node",
+        "mlops",
+        "job",
+    ],
+)
+
+
+def _default_platform_role_ids() -> list:
+    return list(
+        Role.objects.filter(_DEFAULT_PLATFORM_ROLE_QUERY).values_list("id", flat=True)
+    )
 
 
 def get_active_login_auth_bindings():
@@ -136,6 +164,9 @@ def _resolve_platform_user(binding: LoginAuthBinding, external_user: dict):
         # code. Do not treat provider integrations as multi-domain sources here.
         domain="domain.com",
         group_list=[default_group.id] if default_group else [],
+        # 默认 role 与旧 wechat_user_register 路径(server/apps/system_mgmt/nats/wechat.py)
+        # 对齐:normal@ops-console 决定 opsconsole 模块入口可见,guest@* 决定其余模块只读权限。
+        role_list=_default_platform_role_ids(),
     )
     logger.info(f"Created platform user '{username}' from login auth binding '{binding.name}'")
     return user

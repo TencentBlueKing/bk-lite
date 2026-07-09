@@ -1,8 +1,14 @@
 import json
+import re
 from pathlib import Path
 from typing import Any, Iterable
 
 import yaml
+
+# SKILL.md frontmatter 提取正则(与 importer._split_frontmatter 保持一致)
+_SKILL_MD_FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*(?:\n|$)", re.DOTALL)
+# 策略字段:由 SKILL.md frontmatter / skill.yaml 决定,覆盖 DB manifest
+_STRATEGY_FIELDS = ("capabilities", "reports", "workflows")
 
 
 def normalize_skill_packages(raw_packages: Any) -> list[dict[str, Any]]:
@@ -187,24 +193,57 @@ def hydrate_skill_packages(skill_packages: Any) -> list[dict[str, Any]]:
 
 
 def _manifest_with_storage_overlay(stored_package) -> dict[str, Any]:
+    """从 DB manifest 出发,叠加磁盘上 skill.yaml / SKILL.md frontmatter 的策略字段。
+
+    优先级(由低到高): DB manifest → skill.yaml → SKILL.md frontmatter。
+
+    设计原因:用户编辑磁盘上的 SKILL.md 后希望能立即热生效,而不用每次都重导 ZIP。
+    - DB manifest 是导入时落盘的快照,可能落后于磁盘文件。
+    - skill.yaml 与 SKILL.md frontmatter 同时存在时,SKILL.md frontmatter 优先
+      (用户改 SKILL.md 比改 skill.yaml 频繁,且 SKILL.md 是 deepagent 沙箱的真相源)。
+    - 磁盘文件不存在 / 不含某策略字段时,沿用 DB manifest 的值
+      (后向兼容历史数据,避免删 skill.yaml 后能力丢失)。
+    """
     manifest = dict(getattr(stored_package, "manifest", None) or {})
-    missing_strategy_fields = any(key not in manifest for key in ("capabilities", "reports", "workflows"))
     storage_path = getattr(stored_package, "storage_path", "")
-    if not missing_strategy_fields or not storage_path:
+    if not storage_path:
         return manifest
 
-    manifest_path = Path(storage_path) / "extracted" / "skill.yaml"
-    if not manifest_path.exists():
+    extracted_dir = Path(storage_path) / "extracted"
+    if not extracted_dir.is_dir():
         return manifest
-    try:
-        file_manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
-    except Exception:
-        return manifest
-    if not isinstance(file_manifest, dict):
-        return manifest
-    for key in ("capabilities", "reports", "workflows"):
-        if key not in manifest and key in file_manifest:
-            manifest[key] = file_manifest[key]
+
+    # 1) skill.yaml 中间层(比 DB 新,但比 SKILL.md 旧)
+    skill_yaml_path = extracted_dir / "skill.yaml"
+    if skill_yaml_path.is_file():
+        try:
+            file_manifest = yaml.safe_load(skill_yaml_path.read_text(encoding="utf-8")) or {}
+        except Exception:
+            file_manifest = None
+        if isinstance(file_manifest, dict):
+            for key in _STRATEGY_FIELDS:
+                if key in file_manifest:
+                    manifest[key] = file_manifest[key]
+
+    # 2) SKILL.md frontmatter 最高优先级(用户编辑磁盘文件 → 立即热生效)
+    skill_md_path = extracted_dir / "SKILL.md"
+    if skill_md_path.is_file():
+        try:
+            skill_md = skill_md_path.read_text(encoding="utf-8")
+        except Exception:
+            skill_md = ""
+        if skill_md:
+            match = _SKILL_MD_FRONTMATTER_RE.match(skill_md)
+            if match:
+                try:
+                    frontmatter = yaml.safe_load(match.group(1)) or {}
+                except Exception:
+                    frontmatter = None
+                if isinstance(frontmatter, dict):
+                    for key in _STRATEGY_FIELDS:
+                        if key in frontmatter:
+                            manifest[key] = frontmatter[key]
+
     return manifest
 
 

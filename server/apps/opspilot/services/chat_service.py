@@ -468,7 +468,9 @@ class ChatService:
                 }
             )
 
+        import logging as _dbg_log
         if kwargs.get("matched_skill_packages") is not None:
+            _dbg_log.warning("DEBUG_CHAT: matched_skill_packages count=%s, capabilities=%s", len(kwargs.get("matched_skill_packages") or []), kwargs.get("skill_package_capabilities"))
             extra_config.update(
                 {
                     "matched_skill_packages": kwargs.get("matched_skill_packages") or [],
