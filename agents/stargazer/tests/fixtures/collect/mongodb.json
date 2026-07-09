@@ -1,9 +1,9 @@
 {
   "model_id": "mongodb",
-  "captured_at": "2026-07-05T05:11:00Z",
+  "captured_at": "2026-07-08T06:37:10Z",
   "image": "docker.m.daocloud.io/library/ubuntu:22.04",
   "container_meta": {
-    "container_id": "3d8bf6b27d9e",
+    "container_id": "47c21f31ebc1",
     "image": "docker.m.daocloud.io/library/ubuntu:22.04"
   },
   "params": {
@@ -11,8 +11,8 @@
     "ssh_port": 12223
   },
   "raw_stdout": {
-    "inst_name": "192.168.215.3-mongodb-27017",
-    "ip_addr": "192.168.215.3",
+    "inst_name": "172.17.0.3-mongodb-27017",
+    "ip_addr": "172.17.0.3",
     "obj_id": "mongodb",
     "bin_path": "/usr/bin",
     "mongo_path": "",

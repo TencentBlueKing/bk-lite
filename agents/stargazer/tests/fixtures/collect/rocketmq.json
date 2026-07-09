@@ -1,0 +1,15 @@
+{
+  "model_id": "rocketmq",
+  "captured_at": "2026-07-08T06:00:00Z",
+  "image": "docker.m.daocloud.io/library/ubuntu:22.04",
+  "container_meta": {
+    "container_id": "N/A-placeholder",
+    "image": "docker.m.daocloud.io/library/ubuntu:22.04"
+  },
+  "params": {
+    "host": "127.0.0.1",
+    "ssh_port": 12258
+  },
+  "raw_stdout": [],
+  "placeholder_reason": "G4.9 rocketmq 装包调试时阻塞 2026-07-08:wget 32MB zip + unzip 慢 + JVM 启动慢(nameserver + broker 双进程),真实环境调试耗时过长。后续解锁路径:1) amd64 CI runner 跑;2) 改用 apache/rocketmq 官方镜像 + container_cmd 模式(类似 mssql);3) 单跑模式不并发,给足 timeout(180s+)。"
+}

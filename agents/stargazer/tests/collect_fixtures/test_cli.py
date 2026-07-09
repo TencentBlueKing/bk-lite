@@ -103,6 +103,90 @@ def test_no_args_prints_help_and_returns_error():
     assert rc == 2
 
 
+# ---------- Phase 2 副产物:--parallel 并发 ----------
+
+def test_parallel_flag_is_parsed():
+    """--parallel N 参数解析正确(仅 --all 时生效,单 model 时忽略)。"""
+    parser = cli_mod._build_parser()
+    args = parser.parse_args(["--all", "--parallel", "3"])
+    assert args.all is True
+    assert args.parallel == 3
+    # 默认值
+    args_default = parser.parse_args(["--all"])
+    assert args_default.parallel == 1
+
+
+def test_all_parallel_uses_thread_pool(monkeypatch):
+    """--all --parallel N 用 ThreadPoolExecutor 并发跑(验证 stub dispatch 收到所有 model_id)。"""
+    import sys as _sys
+    from concurrent.futures import ThreadPoolExecutor
+
+    seen = []
+
+    def stub_dispatch(model_id, keep_container=False):
+        seen.append(model_id)
+        return 0  # 模拟全部成功
+
+    monkeypatch.setattr(cli_mod, "_dispatch_one", stub_dispatch)
+
+    # 抓 stdout(并发模式会 print 汇总)
+    captured = _sys.stdout
+    out_lines = []
+    class FakeStdout:
+        def write(self, s):
+            out_lines.append(s)
+        def flush(self):
+            pass
+    monkeypatch.setattr(_sys, "stdout", FakeStdout())
+
+    rc = cli_mod.main(["--all", "--parallel", "4"])
+
+    monkeypatch.setattr(_sys, "stdout", captured)
+    assert rc == 0, f"--all --parallel 4 期望 rc=0,实际 {rc}"
+    # Phase 5 升级 31→57(roadmap §3 全部 - §3.3 不做,Phase 5 加 26 个对象)
+    assert len(seen) == 57, f"应有 57 个对象被并发 dispatch,实际 {len(seen)}"
+    assert set(seen) == set(cli_mod.list_models())
+    # 汇总输出含 ✅ + model_id
+    joined = "".join(out_lines)
+    assert "并发模式" in joined
+    assert "汇总" in joined
+
+
+def test_all_parallel_one_runs_serially(monkeypatch, capsys):
+    """--all --parallel 1 仍走串行路径(默认行为)。"""
+    seen = []
+
+    def stub_dispatch(model_id, keep_container=False):
+        seen.append(model_id)
+        return 0
+
+    monkeypatch.setattr(cli_mod, "_dispatch_one", stub_dispatch)
+    rc = cli_mod.main(["--all", "--parallel", "1"])
+    assert rc == 0
+    # Phase 5 升级 31→57
+    assert len(seen) == 57
+
+
+def test_all_parallel_propagates_failures(monkeypatch):
+    """--all --parallel N 中某个对象失败时,rc 应反映失败(0 之外的 rc)。"""
+    def stub_dispatch(model_id, keep_container=False):
+        # 模拟 activemq 失败
+        if model_id == "activemq":
+            return 1
+        return 0
+
+    monkeypatch.setattr(cli_mod, "_dispatch_one", stub_dispatch)
+    import sys as _sys
+    captured = _sys.stdout
+    class FakeStdout:
+        def write(self, s): pass
+        def flush(self): pass
+    monkeypatch.setattr(_sys, "stdout", FakeStdout())
+
+    rc = cli_mod.main(["--all", "--parallel", "3"])
+    assert rc == 1, f"有失败对象时,rc 应为 1,实际 {rc}"
+
+
 def test_dispatch_passes_handle_to_shell_collector(monkeypatch):
     """shell 入口时,collect_once 必须接收 handle。"""
     fake_handle = MagicMock()

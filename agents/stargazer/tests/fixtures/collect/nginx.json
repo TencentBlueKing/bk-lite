@@ -1,9 +1,9 @@
 {
   "model_id": "nginx",
-  "captured_at": "2026-07-05T04:45:24Z",
+  "captured_at": "2026-07-08T06:34:48Z",
   "image": "docker.m.daocloud.io/library/ubuntu:22.04",
   "container_meta": {
-    "container_id": "2832b4f39be2",
+    "container_id": "bab3b69cf4d7",
     "image": "docker.m.daocloud.io/library/ubuntu:22.04"
   },
   "params": {
@@ -11,9 +11,9 @@
     "ssh_port": 12222
   },
   "raw_stdout": {
-    "bk_inst_name": "192.168.215.3-nginx-80",
+    "bk_inst_name": "172.17.0.2-nginx-80",
     "bk_obj_id": "nginx",
-    "ip_addr": "192.168.215.3",
+    "ip_addr": "172.17.0.2",
     "listen_port": "80",
     "nginx_path": "/usr/sbin/nginx",
     "version": "1.18.0",

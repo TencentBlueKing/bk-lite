@@ -1,0 +1,25 @@
+{
+  "model_id": "dameng",
+  "captured_at": "2026-07-07T08:33:00Z",
+  "image": "docker.m.daocloud.io/library/ubuntu:22.04",
+  "container_meta": {
+    "container_id": "N/A-placeholder",
+    "image": "docker.m.daocloud.io/library/ubuntu:22.04"
+  },
+  "params": {
+    "host": "127.0.0.1",
+    "ssh_port": 12232,
+    "dm_port": 15236
+  },
+  "raw_stdout": {},
+  "license_status": "missing",
+  "blocked_reason": "G2.3 降级路径:dm8 商业 license 不可达,fixture 工具不引入新风险",
+  "next_steps": [
+    "用户提供达梦官方 license + 在 amd64 CI runner 跑(同 mssql 模式)",
+    "或用户提供 license 文件,在本地 amd64 工作站(非 Mac)单独跑 G2.3"
+  ],
+  "references": [
+    "docs/superpowers/plans/2026-07-06-cmdb-collect-v3-roadmap.md §3.4 G2.3",
+    "docs/superpowers/plans/2026-07-07-cmdb-collect-v3-phase2-plan.md §3.3"
+  ]
+}

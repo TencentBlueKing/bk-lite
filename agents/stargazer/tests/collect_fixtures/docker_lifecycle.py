@@ -43,15 +43,19 @@ def start_container(spec: Spec, docker_client=None, privileged: bool = False) ->
     """拉起一个 spec 描述的容器，返回 handle。"""
     client = _get_docker_client(docker_client)
     # ubuntu minimal 镜像默认 CMD 立即退出,需要 keepalive 让容器持续运行
-    # 直到 install_services 跑完 / remove 触发
-    keepalive_cmd = "bash -c 'while true; do sleep 3600; done'"
+    # 直到 install_services 跑完 / remove 触发。
+    # 但部分镜像(如 mssql)需要保留 entrypoint 启动服务进程;此时 spec.container_cmd 设为 None。
+    cmd = spec.container_cmd if spec.container_cmd is not None else "bash -c 'while true; do sleep 3600; done'"
+    user = spec.container_user  # None = 用镜像 USER
     container = client.containers.run(
         image=spec.image,
-        command=keepalive_cmd,
+        command=cmd,
         detach=True,
         environment=spec.env,
         ports=spec.ports,
-        privileged=privileged,  # 新增：v2 SSH VM 需要（虽然本项目 v2 不强求）
+        privileged=privileged,
+        user=user,
+        platform=spec.platform,  # None = docker SDK 默认(主机架构);G5.1.1 mycat 等需要 amd64 二进制的对象用
         remove=True,  # 进程退出即清理，防御忘记 remove 的情况
     )
     return ContainerHandle(model_id=spec.model_id, container=container)
@@ -206,9 +210,17 @@ def wait_ssh_ready(handle: ContainerHandle, spec: Spec, ssh_password: str) -> No
 
 # sshd bootstrap 的固定命令（容器是 minimal ubuntu,需要先装 sshd 才能 SSH）
 # 注意：必须用 ; 分隔而非换行,因 docker exec + bash -c 对多行 script 支持不可靠
+# Phase 3 增强(2026-07-08):先切到阿里云源,避免 archive.ubuntu.com/ports.ubuntu.com
+# 在国内 502 Bad Gateway,以及清华源缺 arm64 包。
+# 阿里云 mirrors.aliyun.com/ubuntu-ports 同时支持 amd64 + arm64。
 _SSH_BOOTSTRAP_CMD = (
     "set -e; "
     "export DEBIAN_FRONTEND=noninteractive; "
+    # 切到阿里云源(仅在 ubuntu 镜像有 sources.list 时,且不破坏 docker.m.daocloud.io 路径)
+    "if [ -f /etc/apt/sources.list ]; then "
+    "sed -i 's|//ports.ubuntu.com/ubuntu-ports|//mirrors.aliyun.com/ubuntu-ports|g; "
+    "s|//archive.ubuntu.com/ubuntu|//mirrors.aliyun.com/ubuntu|g' /etc/apt/sources.list; "
+    "fi; "
     "apt-get update -qq; "
     "apt-get install -y -qq openssh-server sudo iproute2 curl > /dev/null 2>&1; "
     "echo 'root:{password}' | chpasswd; "
@@ -253,6 +265,19 @@ def install_services(handle: ContainerHandle, spec: Spec, ssh_password: str) -> 
     ssh = VMSSH(host="127.0.0.1", port=port, user=spec.vm_ssh_user, password=ssh_password)
     ssh.connect()
     try:
+        # Phase 3 增强(2026-07-08):进入 install 前先把 ubuntu 源切到阿里云源,
+        # 避免 archive.ubuntu.com/ports.ubuntu.com 在国内 502 Bad Gateway。
+        # 清华源缺 arm64 包,2026-07-08 验证。
+        # alpine/redhat 没有 sources.list,sed 会 silently fail,不影响。
+        # 用 || true 防止 set -e 行为(VMSSH 默认 check=True)。
+        ssh.exec(
+            "if [ -f /etc/apt/sources.list ]; then "
+            "sed -i 's|//ports.ubuntu.com/ubuntu-ports|//mirrors.aliyun.com/ubuntu-ports|g; "
+            "s|//archive.ubuntu.com/ubuntu|//mirrors.aliyun.com/ubuntu|g' /etc/apt/sources.list; "
+            "fi; "
+            "true",
+            check=False,
+        )
         for cmd in spec.install_commands:
             ssh.exec(cmd, check=True, timeout=600)  # apt install 可能很慢
     finally:
