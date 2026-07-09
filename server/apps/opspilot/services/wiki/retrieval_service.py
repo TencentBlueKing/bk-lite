@@ -148,8 +148,17 @@ def _answer_with_llm(query, contexts, llm_model_id):
         return None
     try:
         llm = LLMModel.objects.get(id=llm_model_id)
-        ctx_text = "\n\n".join(f"[{c['title']}]\n{c['snippet']}" for c in contexts)
-        prompt = "基于下面的知识页面与资料摘要回答问题。优先使用知识页面;在回答末尾用 [引用: 标题] 标注所依据的页面。" "若资料不足,请明确说明。\n\n" f"# 上下文\n{ctx_text}\n\n# 问题\n{query}\n"
+        # 上下文用 [n] 编号,与智能体对话路径 wiki_citations 的 [n] 引用一致,
+        # 让前端 WikiCitations.referenced 过滤逻辑(c.n != null ? [n] : title)直接命中。
+        # 否则 LLM 用 [引用: 标题] 时,前端按 title 模糊匹配容易因简化/缩写导致空列表。
+        ctx_text = "\n\n".join(f"[{i + 1}]\n# {c['title']}\n{c['snippet']}" for i, c in enumerate(contexts))
+        prompt = (
+            "基于下面的知识页面与资料摘要回答问题。优先使用知识页面;"
+            "在回答末尾用 [n] 标注所引用的编号(n 与上文 [n] 一致),"
+            "例如引用第 1 个上下文则写 [1]。"
+            "若资料不足,请明确说明。\n\n"
+            f"# 上下文\n{ctx_text}\n\n# 问题\n{query}\n"
+        )
         request = BasicLLMRequest(
             openai_api_base=llm.openai_api_base,
             openai_api_key=llm.openai_api_key,
@@ -166,7 +175,17 @@ def _answer_with_llm(query, contexts, llm_model_id):
 def answer(knowledge_base, query, llm_model_id=None, top_k=5):
     """问答试用:检索 + 作答 + 引用。返回 {answer, citations, contexts}。"""
     contexts = search(knowledge_base, query, top_k=top_k)
-    citations = [{"kind": c["kind"], "id": c["id"], "title": c["title"], "explanation": c.get("explanation", {})} for c in contexts]
+    # n 字段:跟 _answer_with_llm prompt 中的 [n] 编号一一对应,前端 WikiCitations 严格按 [n] 匹配。
+    citations = [
+        {
+            "n": i + 1,
+            "kind": c["kind"],
+            "id": c["id"],
+            "title": c["title"],
+            "explanation": c.get("explanation", {}),
+        }
+        for i, c in enumerate(contexts)
+    ]
     if not contexts:
         return {"answer": "知识库中暂无相关资料,无法回答该问题。", "citations": [], "contexts": []}
     llm_answer = _answer_with_llm(query, contexts, llm_model_id)
