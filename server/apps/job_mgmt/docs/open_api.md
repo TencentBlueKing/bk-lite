@@ -139,7 +139,7 @@ Api-Authorization: <api_secret>
 | ip | string | 否 | 按IP模糊搜索 |
 | os_type | string | 否 | `linux` 或 `windows` |
 | page | int | 否 | 页码，默认 1 |
-| page_size | int | 否 | 每页数量，默认 20，传 `-1` 返回全部 |
+| page_size | int | 否 | 每页数量，默认 20，传 `-1` 或超过 `MAX_TARGET_PAGE_SIZE`(5000) 时收敛为 5000，并以 `truncated=true` 标记数据被截断 |
 
 **Response:**
 ```json
@@ -155,7 +155,8 @@ Api-Authorization: <api_secret>
         "os_type": "linux",
         "cloud_region_id": 1
       }
-    ]
+    ],
+    "truncated": false
   }
 }
 ```

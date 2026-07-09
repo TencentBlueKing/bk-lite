@@ -22,6 +22,10 @@ from apps.rpc.sensitive import sanitize_sensitive_data, summarize_ansible_callba
 
 CANCEL_CONVERGE_BUFFER_SECONDS = 60
 
+# job_target_list 等 NATS 开放接口的硬上界:防止调用方传 page_size=-1 或超大值
+# 触发整表加载进入进程内存,造成 OOM / 长时间超时(NATS 内网可达即可触发)。
+MAX_TARGET_PAGE_SIZE = 5000
+
 
 def _validate_callback_config(callback_type: str, callback_url: str, callback_subject: str, tag: str):
     """校验回调配置，返回错误信息字符串；通过则返回 None。
@@ -746,10 +750,17 @@ def job_target_list(data: dict):
             - ip: 按IP模糊搜索（可选）
             - os_type: 按系统类型过滤 linux|windows（可选）
             - page: 页码（可选，默认1）
-            - page_size: 每页数量（可选，默认20，传 -1 返回全部）
+            - page_size: 每页数量（可选，默认20，传 -1 返回最多 MAX_TARGET_PAGE_SIZE 条而非全表）
 
     Returns:
-        {"result": True, "data": {"count": N, "items": [...]}}
+        {"result": True, "data": {"count": N, "items": [...], "truncated": bool}}
+        - count: 总条数(不受 page_size 影响,便于调用方知道真实规模)
+        - items: 当前页数据(数量受 MAX_TARGET_PAGE_SIZE 硬上界保护)
+        - truncated: True 表示因 page_size=-1 或超过 MAX_TARGET_PAGE_SIZE 而被截断
+
+    安全性(Issue #3422):
+        NATS 接口无额外鉴权,内网节点传 page_size=-1 会触发全表加载进而 OOM。
+        修复后统一收敛到 MAX_TARGET_PAGE_SIZE 上界,杜绝远程 OOM 触发。
     """
     name = data.get("name")
     ip = data.get("ip")
@@ -768,12 +779,27 @@ def job_target_list(data: dict):
 
     total_count = queryset.count()
 
-    if page_size == -1:
-        targets = queryset.order_by("-id")
+    # 硬上界:page_size=-1 或超过 MAX_TARGET_PAGE_SIZE 时,统一收敛到 MAX_TARGET_PAGE_SIZE,
+    # 避免整表加载导致 OOM(Issue #3422)。truncated 标记告知调用方数据被截断。
+    truncated = False
+    if page_size == -1 or page_size > MAX_TARGET_PAGE_SIZE:
+        page_size = MAX_TARGET_PAGE_SIZE
+        truncated = True
     else:
-        start = (page - 1) * page_size
-        end = start + page_size
-        targets = queryset.order_by("-id")[start:end]
+        try:
+            page_size = max(1, int(page_size))
+        except (TypeError, ValueError):
+            page_size = MAX_TARGET_PAGE_SIZE
+            truncated = True
+
+    try:
+        page = max(1, int(page))
+    except (TypeError, ValueError):
+        page = 1
+
+    start = (page - 1) * page_size
+    end = start + page_size
+    targets = queryset.order_by("-id")[start:end]
 
     items = []
     for t in targets:
@@ -787,4 +813,4 @@ def job_target_list(data: dict):
             }
         )
 
-    return {"result": True, "data": {"count": total_count, "items": items}}
+    return {"result": True, "data": {"count": total_count, "items": items, "truncated": truncated}}
