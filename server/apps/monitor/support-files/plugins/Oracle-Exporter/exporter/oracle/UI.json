@@ -2,7 +2,9 @@
   "object_name": "Oracle",
   "instance_type": "oracle",
   "collect_type": "exporter",
-  "config_type": ["oracle"],
+  "config_type": [
+    "oracle"
+  ],
   "collector": "Oracle-Exporter",
   "instance_id": "{{cloud_region}}_{{ENV_HOST}}_{{ENV_PORT}}",
   "form_fields": [
@@ -96,7 +98,7 @@
       "label": "间隔",
       "type": "inputNumber",
       "required": true,
-      "default_value": 10,
+      "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
       "widget_props": {
         "min": 1,
@@ -147,7 +149,10 @@
       },
       "change_handler": {
         "type": "combine",
-        "source_fields": ["ENV_HOST", "ENV_PORT"],
+        "source_fields": [
+          "ENV_HOST",
+          "ENV_PORT"
+        ],
         "target_field": "instance_name",
         "separator": ":"
       }
@@ -164,7 +169,10 @@
       },
       "change_handler": {
         "type": "combine",
-        "source_fields": ["ENV_HOST", "ENV_PORT"],
+        "source_fields": [
+          "ENV_HOST",
+          "ENV_PORT"
+        ],
         "target_field": "instance_name",
         "separator": ":"
       }

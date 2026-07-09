@@ -15,11 +15,6 @@ const COLLECTOR_LABEL: Record<string, string[]> = {
   JMX: [
     'Tomcat-JMX',
     'ActiveMQ-JMX',
-    'JBoss-JMX',
-    'Jetty-JMX',
-    'TongWeb6-JMX',
-    'TongWeb7-JMX',
-    'WebLogic-JMX',
     'JVM-JMX',
   ],
   Export: [
@@ -28,9 +23,7 @@ const COLLECTOR_LABEL: Record<string, string[]> = {
     'Apache-Exporter',
     'Zookeeper-Exporter',
     'Kafka-Exporter',
-    'IBM MQ-Exporter',
     'IIS-Exporter',
-    'WebLogic-Exporter',
     'ElasticSearch-Exporter',
     'Mongodb-Exporter',
     'Mysql-Exporter',
@@ -55,11 +48,8 @@ const COLLECTOR_LABEL: Record<string, string[]> = {
     'VastBase-Exporter',
   ],
   'BK-pull': [
-    'Nacosbk-Bk-pull',
     'MinIO-Bk-pull',
     'etcd-Bk-pull',
-    'JBoss-Bk-pull',
-    'WebSphere-Bk-pull',
     'TiDB-BK-pull',
   ],
 };

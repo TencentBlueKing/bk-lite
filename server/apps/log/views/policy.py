@@ -1,6 +1,7 @@
 import json
 from datetime import datetime, timedelta, timezone
 
+from django.db import models, transaction
 from django.db.models import Count
 
 from django_celery_beat.models import PeriodicTask, CrontabSchedule
@@ -435,9 +436,11 @@ class PolicyViewSet(viewsets.ModelViewSet):
             return error_response
 
         policy_id = kwargs["pk"]
-        # 删除相关的定时任务
-        PeriodicTask.objects.filter(name=f"log_policy_task_{policy_id}").delete()
-        return super().destroy(request, *args, **kwargs)
+        # 原子化：PeriodicTask 与 Policy 同事务，DB 异常时整体回滚，避免漏扫的孤儿策略 (issue #3948)
+        with transaction.atomic():
+            # 删除相关的定时任务
+            PeriodicTask.objects.filter(name=f"log_policy_task_{policy_id}").delete()
+            return super().destroy(request, *args, **kwargs)
 
     def format_crontab(self, schedule):
         """

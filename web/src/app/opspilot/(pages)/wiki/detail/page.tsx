@@ -1,6 +1,14 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  AuditOutlined,
+  BookOutlined,
+  DashboardOutlined,
+  FileTextOutlined,
+  HistoryOutlined,
+  SettingOutlined,
+} from '@ant-design/icons';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import TopSection from '@/components/top-section';
@@ -15,6 +23,8 @@ import KnowledgeTab from '@/app/opspilot/components/wiki/KnowledgeTab';
 import MaterialTab from '@/app/opspilot/components/wiki/MaterialTab';
 import OverviewTab from '@/app/opspilot/components/wiki/OverviewTab';
 import SettingsTab from '@/app/opspilot/components/wiki/SettingsTab';
+
+const WIKI_MENU_ICON_CLASS_NAME = 'text-[16px]';
 
 const WikiDetailPage: React.FC = () => {
   const { t } = useTranslation();
@@ -54,12 +64,54 @@ const WikiDetailPage: React.FC = () => {
       return `/opspilot/wiki/detail?${p.toString()}`;
     };
     return [
-      { title: t('wiki.overview'), url: base('overview'), icon: 'tongji', name: 'overview', operation: [] },
-      { title: t('wiki.material'), url: base('material'), icon: 'wendang', name: 'material', operation: [] },
-      { title: t('wiki.knowledge'), url: base('knowledge'), icon: 'zhishitupu', name: 'knowledge', operation: [] },
-      { title: t('wiki.buildRecord'), url: base('build'), icon: 'biangengjilu', name: 'build', operation: [] },
-      { title: t('wiki.check'), url: base('check'), icon: 'yichangjiance', name: 'check', operation: [] },
-      { title: t('wiki.settings'), url: base('settings'), icon: 'shezhi', name: 'settings', operation: [] },
+      {
+        title: t('wiki.overview'),
+        url: base('overview'),
+        icon: 'tongji',
+        iconNode: <DashboardOutlined className={WIKI_MENU_ICON_CLASS_NAME} />,
+        name: 'overview',
+        operation: [],
+      },
+      {
+        title: t('wiki.material'),
+        url: base('material'),
+        icon: 'shiyongwendang',
+        iconNode: <FileTextOutlined className={WIKI_MENU_ICON_CLASS_NAME} />,
+        name: 'material',
+        operation: [],
+      },
+      {
+        title: t('wiki.knowledge'),
+        url: base('knowledge'),
+        icon: 'zhishiku1',
+        iconNode: <BookOutlined className={WIKI_MENU_ICON_CLASS_NAME} />,
+        name: 'knowledge',
+        operation: [],
+      },
+      {
+        title: t('wiki.buildRecord'),
+        url: base('build'),
+        icon: 'biangengjilu',
+        iconNode: <HistoryOutlined className={WIKI_MENU_ICON_CLASS_NAME} />,
+        name: 'build',
+        operation: [],
+      },
+      {
+        title: t('wiki.check'),
+        url: base('check'),
+        icon: 'ceshi',
+        iconNode: <AuditOutlined className={WIKI_MENU_ICON_CLASS_NAME} />,
+        name: 'check',
+        operation: [],
+      },
+      {
+        title: t('wiki.settings'),
+        url: base('settings'),
+        icon: 'shezhi',
+        iconNode: <SettingOutlined className={WIKI_MENU_ICON_CLASS_NAME} />,
+        name: 'settings',
+        operation: [],
+      },
     ];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [t, searchParams]);

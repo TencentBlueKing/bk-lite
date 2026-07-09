@@ -66,11 +66,12 @@ def build_knowledge_retrieve_tool(
     Returns:
         名为 ``knowledge_retrieve`` 的 :class:`StructuredTool`。
     """
-    # 延迟导入，避免在仅需工厂的场景下拉起重型依赖链。
-    from apps.opspilot.services.knowledge_search_service import KnowledgeSearchService
-
-    default_search_fn = KnowledgeSearchService.search
-    resolved_search_fn = search_fn or default_search_fn
+    # 检索实现:由调用方注入 search_fn(见 node.py:_build_knowledge_retrieve_tool)。
+    # 原 KnowledgeSearchService 已在 commit e7b71e00cc 中随知识库功能一起删除,
+    # 此处不再兜底 default——不传 search_fn 时会显式报错,避免静默错误。
+    if search_fn is None:
+        raise ValueError("build_knowledge_retrieve_tool 需要显式 search_fn(由调用方注入)")
+    resolved_search_fn = search_fn
 
     def _retrieve(query: str, kb_ids: Optional[List[Any]] = None) -> str:
         # 把传入的 kb_ids 统一为字符串集合，兼容 int/str 混传。
@@ -114,5 +115,6 @@ def build_knowledge_retrieve_tool(
             "传入清晰的自然语言查询 query；可选传入 kb_ids 限定检索范围。返回带来源标签的知识片段文本。"
         ),
         args_schema=KnowledgeRetrieveInput,
-        metadata={"default_search_fn": default_search_fn},
+        # 透传 resolved_search_fn(注入的 search_fn)便于集成时校验实际使用的检索实现
+        metadata={"default_search_fn": resolved_search_fn},
     )

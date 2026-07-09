@@ -87,3 +87,15 @@ export function isBindingSelectionLocked(args: {
     || args.viewState === 'syncing-session'
   );
 }
+
+export function shouldShowBindingsSelector(args: {
+  authStep: 'login' | 'reset-password' | 'otp-verification';
+  bindingsLoadState: LoginAuthBindingsLoadState;
+  bindingsCount: number;
+}): boolean {
+  return (
+    args.authStep === 'login'
+    && args.bindingsLoadState === 'bindings-ready'
+    && args.bindingsCount > 1
+  );
+}

@@ -9,8 +9,11 @@
   "type": "Network Device",
   "description": "",
   "default_metric": "any({instance_type='network_service'}) by (instance_id)",
-  "instance_id_keys": ["instance_id"],
+  "instance_id_keys": [
+    "instance_id"
+  ],
   "supplementary_indicators": [
+    "snmp_uptime",
     "network_service_spectracom_sync_state",
     "network_service_spectracom_ntp_state",
     "network_service_spectracom_dc_power_state"
@@ -24,7 +27,9 @@
       "data_type": "Enum",
       "unit": "none",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Spectracom xSync system synchronization state from OID 18837.3.2.2.1.5, normalized so sync is 1 and nosync or unknown values are 2."
     },
     {
@@ -35,7 +40,9 @@
       "data_type": "Enum",
       "unit": "none",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Spectracom DC power input status from OID 18837.3.2.2.1.2, normalized so ok is 1 and alarm, none or unknown values are 2."
     },
     {
@@ -46,7 +53,9 @@
       "data_type": "Enum",
       "unit": "none",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Spectracom minor alarm state from OID 18837.3.2.2.1.13, normalized so clear is 1 and pending or unknown values are 2."
     },
     {
@@ -57,7 +66,9 @@
       "data_type": "Enum",
       "unit": "none",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Spectracom major alarm state from OID 18837.3.2.2.1.14, normalized so clear is 1 and pending or unknown values are 2."
     },
     {
@@ -68,7 +79,9 @@
       "data_type": "Enum",
       "unit": "none",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Spectracom NTP current mode from OID 18837.3.3.2.1, normalized so synchronized is 1 and unknown, notRunning or notSynchronized values are 2."
     },
     {
@@ -79,8 +92,59 @@
       "data_type": "Number",
       "unit": "none",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Spectracom NTP current stratum from OID 18837.3.3.2.2."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='network_service', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='network_service', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='network_service', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
     }
   ]
 }

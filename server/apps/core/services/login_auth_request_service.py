@@ -68,7 +68,7 @@ def _parse_origin_parts(origin: str) -> tuple[str, str, int] | None:
 
 
 def _parse_request_origin_parts(scheme: str, host: str) -> tuple[str, str, int] | None:
-    scheme = (scheme or "").strip().lower()
+    scheme = (scheme or "").strip().rstrip(':').lower()
     host = _split_first_header_value(host)
     if scheme not in ("http", "https") or not host:
         return None
@@ -97,47 +97,87 @@ def _normalize_public_base_url(base_url: str) -> str:
 
 
 def validate_redirect_origin(request, redirect_origin) -> bool:
-    """同源校验:浏览器声明的 origin 是否可信任。"""
-    redirect_parts = _parse_origin_parts(redirect_origin)
-    if redirect_parts is None:
-        return False
+    """redirect_origin URL 格式校验。
 
-    browser_origin = _split_first_header_value(request.META.get("HTTP_ORIGIN"))
-    if browser_origin:
-        return redirect_parts == _parse_origin_parts(browser_origin)
+    历史上校验 redirect_origin 跟请求 header(HTTP_ORIGIN /
+    X-Forwarded-Host / HTTP_HOST)的一致性,试图锁定到用户访问的 origin。
+    生产环境反代链路会改写 Host header(X-Forwarded-Host 通常是反代或
+    上游服务地址),无法还原到用户真实域名;HTTP_ORIGIN 在同源 fetch
+    场景下也不存在。因此简化为只校验 URL 格式(scheme/hostname 合法,
+    无 path/query/fragment)。
 
-    forwarded_host = _split_first_header_value(request.META.get("HTTP_X_FORWARDED_HOST"))
-    if forwarded_host:
-        forwarded_proto = _split_first_header_value(request.META.get("HTTP_X_FORWARDED_PROTO")) or request.scheme
-        return redirect_parts == _parse_request_origin_parts(forwarded_proto, forwarded_host)
+    安全性兜底不在本函数,而在调用链上下游:
 
-    return redirect_parts == _parse_request_origin_parts(request.scheme, request.get_host())
+      1. Pre-auth:OAuth provider 的 redirect_uri 白名单。发到 provider 的
+         redirect_uri 必须命中其注册时填的白名单,否则 provider 拒绝,
+         OAuth 流程不会启动。即使 redirect_origin 是 attacker 域,只要
+         后端构造的 redirect_uri 在白名单里(provider 注册的是后端域),
+         OAuth 流程就是合法的。
+
+      2. Post-auth:session token cookie 设在后端域(HttpOnly + SameSite),
+         不随跨域跳转泄露。攻击者即使诱导 redirect_origin=attacker.com,
+         用户被跳到 attacker.com,token 也不会跨域传递,会话安全。
+
+      3. Post-auth 跳点 ``/auth/signin/login-auth-result`` 是前端约定,
+         作为 OAuth 完成后前端轮询后端拿 token 状态的锚点。不是安全
+         机制,attacker 域上没有该路径会 404,但 attacker 可以搭一个
+         钓鱼页面在相同路径上——属于跨域重定向本身的开放重定向风险,
+         但不影响用户在后端域上的会话。
+    """
+    parts = _parse_origin_parts(redirect_origin)
+    return parts is not None
 
 
 def get_login_auth_callback_uri(request=None, redirect_origin: str | None = None) -> str:
     """生成 login_auth 回调地址。
 
     优先级:
-      1. 环境变量 ``DEFAULT_ZONE_VAR_NODE_SERVER_URL``(单域名生产唯一可信源)
-      2. ``redirect_origin``(同源校验通过时作为 env 缺失 fallback)
-      3. ``request.build_absolute_uri(...)``(典型 dev / 反代未配置场景)
-      4. 空字符串
+      1. ``redirect_origin``(同源校验通过)——前端声明的 origin
+      2. ``request.build_absolute_uri(...)``(典型 dev / 反代未配置场景)
+      3. 空字符串
+
+    不再使用 ``DEFAULT_ZONE_VAR_NODE_SERVER_URL`` 作为 fallback:
+      部署可能将 env 配为 IP 地址,继续 fallback 会产生 IP 形式的 callback
+      URL。前端始终传递 redirect_origin,无需依赖 env。
 
     该函数同时用于:
       - 集成中心详情页「平台回调地址」展示
       - OAuth 启动流程中飞书/钉钉等 adapter 的 ``redirect_uri``
     """
-    base_url = _normalize_public_base_url(os.getenv("DEFAULT_ZONE_VAR_NODE_SERVER_URL", ""))
-    if base_url:
-        return f"{base_url}{LOGIN_AUTH_CALLBACK_PATH}"
     if (
         redirect_origin
         and request is not None
         and validate_redirect_origin(request, redirect_origin)
     ):
-        return f"{redirect_origin.rstrip('/')}{LOGIN_AUTH_CALLBACK_PATH}"
+        result = f"{redirect_origin.rstrip('/')}{LOGIN_AUTH_CALLBACK_PATH}"
+        logger.warning(
+            "[BK-Lite login-auth v2] path=redirect_origin redirect_origin=%r result=%r "
+            "HTTP_ORIGIN=%r X-Fwd-Host=%r X-Fwd-Proto=%r HTTP_HOST=%r",
+            redirect_origin,
+            result,
+            request.META.get("HTTP_ORIGIN") if request else None,
+            request.META.get("HTTP_X_FORWARDED_HOST") if request else None,
+            request.META.get("HTTP_X_FORWARDED_PROTO") if request else None,
+            request.META.get("HTTP_HOST") if request else None,
+        )
+        return result
     if request is not None:
-        return request.build_absolute_uri(LOGIN_AUTH_CALLBACK_PATH)
+        result = request.build_absolute_uri(LOGIN_AUTH_CALLBACK_PATH)
+        logger.warning(
+            "[BK-Lite login-auth v2] path=build_absolute_uri redirect_origin=%r result=%r "
+            "HTTP_ORIGIN=%r X-Fwd-Host=%r X-Fwd-Proto=%r HTTP_HOST=%r",
+            redirect_origin,
+            result,
+            request.META.get("HTTP_ORIGIN") if request else None,
+            request.META.get("HTTP_X_FORWARDED_HOST") if request else None,
+            request.META.get("HTTP_X_FORWARDED_PROTO") if request else None,
+            request.META.get("HTTP_HOST") if request else None,
+        )
+        return result
+    logger.warning(
+        "[BK-Lite login-auth v2] path=empty redirect_origin=%r",
+        redirect_origin,
+    )
     return ""
 
 

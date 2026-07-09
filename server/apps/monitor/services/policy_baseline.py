@@ -157,12 +157,14 @@ class PolicyBaselineService:
             metrics = metric_query_service.query_aggregation_metrics(self.policy.period)
 
             result = {}
-            group_by_keys = self.policy.group_by or []
+            group_by_keys = self._get_result_group_by(metric_query_service)
 
             for metric_info in metrics.get("data", {}).get("result", []):
                 instance_id_tuple = tuple([metric_info["metric"].get(key) for key in group_by_keys])
                 metric_instance_id = str(instance_id_tuple)
-                monitor_instance_id = str((instance_id_tuple[0],)) if instance_id_tuple else ""
+                monitor_instance_id = self._get_monitor_instance_id(
+                    metric_query_service, instance_id_tuple, group_by_keys
+                )
 
                 if monitor_instance_id in instances_map:
                     result[metric_instance_id] = monitor_instance_id
@@ -175,6 +177,50 @@ class PolicyBaselineService:
                 exc_info=True,
             )
             return None
+
+    def _get_result_group_by(self, metric_query_service) -> list:
+        method = getattr(type(metric_query_service), "get_result_group_by", None)
+        if method:
+            return metric_query_service.get_result_group_by()
+
+        service_group_by = getattr(metric_query_service, "instance_id_keys", None)
+        if (
+            self.policy.query_condition.get("type") == "formula"
+            and isinstance(service_group_by, (list, tuple))
+            and service_group_by
+        ):
+            return list(service_group_by)
+
+        return self.policy.group_by or []
+
+    def _get_monitor_instance_id(
+        self,
+        metric_query_service,
+        instance_id_tuple: tuple,
+        group_by_keys: list,
+    ) -> str:
+        method = getattr(
+            type(metric_query_service), "get_monitor_instance_id_from_tuple", None
+        )
+        if method:
+            return metric_query_service.get_monitor_instance_id_from_tuple(
+                instance_id_tuple, group_by_keys
+            )
+
+        if not instance_id_tuple:
+            return ""
+
+        monitor_key = (
+            "source"
+            if getattr(self.policy, "collect_type", "") == "trap"
+            else "instance_id"
+        )
+        if monitor_key in group_by_keys:
+            index = group_by_keys.index(monitor_key)
+            if index < len(instance_id_tuple):
+                return str((instance_id_tuple[index],))
+
+        return str((instance_id_tuple[0],))
 
     def _replace_baselines(self, metric_instances: dict[str, str]):
         """全量替换基准数据

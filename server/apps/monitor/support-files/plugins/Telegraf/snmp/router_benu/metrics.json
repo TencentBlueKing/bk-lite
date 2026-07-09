@@ -13,6 +13,7 @@
     "instance_id"
   ],
   "supplementary_indicators": [
+    "snmp_uptime",
     "device_temperature_celsius",
     "device_fan_state",
     "device_psu_state"
@@ -25,9 +26,7 @@
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
-      "dimensions": [
-
-      ],
+      "dimensions": [],
       "instance_id_keys": [
         "instance_id"
       ],
@@ -40,9 +39,7 @@
       "display_name": "Fan Status",
       "data_type": "Enum",
       "unit": "[{\"id\":1,\"name\":\"Normal\"},{\"id\":2,\"name\":\"Abnormal\"}]",
-      "dimensions": [
-
-      ],
+      "dimensions": [],
       "instance_id_keys": [
         "instance_id"
       ],
@@ -55,13 +52,96 @@
       "display_name": "Power Supply Status",
       "data_type": "Enum",
       "unit": "[{\"id\":1,\"name\":\"Normal\"},{\"id\":2,\"name\":\"Abnormal\"}]",
-      "dimensions": [
-
-      ],
+      "dimensions": [],
       "instance_id_keys": [
         "instance_id"
       ],
       "description": "Worst Benu power-supply status, normalized from present and powered states so present and powered supply rows are healthy and every other state is abnormal."
+    },
+    {
+      "metric_group": "Power",
+      "name": "device_psu_powered",
+      "query": "device_psu_powered{instance_type='router', __$labels__}",
+      "display_name": "PSU Powered Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"powered\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"unpowered\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "PSU description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates whether the device PSU is powered on (1) or off (2)."
+    },
+    {
+      "metric_group": "Power",
+      "name": "device_psu_present",
+      "query": "device_psu_present{instance_type='router', __$labels__}",
+      "display_name": "PSU Present Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"present\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"absent\",\"id\":2,\"color\":\"#d9d9d9\"}]",
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "PSU description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates whether the device PSU slot is populated (1) or empty (2)."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='router', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='router', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='router', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
     }
   ]
 }

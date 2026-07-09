@@ -5,7 +5,11 @@ import { ThresholdField } from '@/app/monitor/types';
 import { StrategyFields } from '@/app/monitor/types/event';
 import { useCommon } from '@/app/monitor/context/common';
 import { SCHEDULE_UNIT_MAP } from '@/app/monitor/constants/event';
-import { isStringArray } from '@/app/monitor/utils/common';
+import {
+  getMetricThresholdEnumState,
+  getThresholdUnitFilterBase,
+  getThresholdUnitOptions
+} from './strategyDetailUtils';
 import ThresholdList from './thresholdList';
 
 const { Option } = Select;
@@ -18,12 +22,6 @@ const NO_DATA_ALERT_OPTIONS = [
   { value: 'warning', labelKey: 'triggerWarningAlert' }
 ];
 
-interface EnumOption {
-  id: number;
-  name: string;
-  color?: string;
-}
-
 interface AlertConditionsFormProps {
   enableAlerts: string[];
   threshold: ThresholdField[];
@@ -35,6 +33,7 @@ interface AlertConditionsFormProps {
   noDataAlertLevel: string;
   noDataAlertName: string;
   metricUnit: string | null;
+  isFormulaMode: boolean;
   onEnableAlertsChange: (val: string[]) => void;
   onThresholdChange: (value: ThresholdField[]) => void;
   onCalculationUnitChange: (val: string) => void;
@@ -55,6 +54,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   noDataAlertLevel,
   noDataAlertName,
   metricUnit,
+  isFormulaMode,
   onThresholdChange,
   onCalculationUnitChange,
   onNoDataAlertChange,
@@ -66,37 +66,30 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   const commonContext = useCommon();
   const unitList = commonContext?.unitList || [];
 
-  // 判断是否为枚举类型指标
-  const isEnumMetric = useMemo(() => {
-    return metricUnit ? isStringArray(metricUnit) : false;
-  }, [metricUnit]);
+  const { isEnumMetric, enumOptions } = useMemo(
+    () => getMetricThresholdEnumState({ isFormulaMode, metricUnit }),
+    [isFormulaMode, metricUnit]
+  );
 
-  // 枚举类型的选项列表
-  const enumOptions = useMemo((): EnumOption[] => {
-    if (!isEnumMetric || !metricUnit) return [];
-    try {
-      return JSON.parse(metricUnit);
-    } catch {
-      return [];
-    }
-  }, [isEnumMetric, metricUnit]);
+  const unitFilterBase = useMemo(
+    () =>
+      getThresholdUnitFilterBase({
+        isFormulaMode,
+        formulaResultUnit: calculationUnit,
+        selectedMetricUnit: metricUnit
+      }),
+    [isFormulaMode, calculationUnit, metricUnit]
+  );
 
-  // 根据指标单位过滤单位列表，只显示相同 system 的单位
-  const filteredUnitOptions = useMemo(() => {
-    // 枚举类型不需要单位选项
-    if (isEnumMetric) return [];
-    // 排除 none 和 short 单位
-    const baseFilteredList = unitList.filter(
-      (item) => !['none', 'short'].includes(item.unit_id)
-    );
-    const metricUnitItem = unitList.find((item) => item.unit_id === metricUnit);
-    if (!metricUnitItem || !metricUnit) {
-      return [];
-    }
-    const targetSystem = metricUnitItem.system;
-    // 过滤出相同 system 的单位
-    return baseFilteredList.filter((item) => item.system === targetSystem);
-  }, [unitList, metricUnit, isEnumMetric]);
+  const filteredUnitOptions = useMemo(
+    () =>
+      getThresholdUnitOptions({
+        unitList,
+        unitFilterBase,
+        isEnumMetric
+      }),
+    [unitList, unitFilterBase, isEnumMetric]
+  );
 
   // 验证阈值
   const validateThreshold = async () => {

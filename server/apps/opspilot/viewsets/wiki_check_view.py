@@ -76,14 +76,25 @@ class WikiCheckItemViewSet(AuthViewSet):
     def _open_checks_by_id(self, ids):
         return {check.id: check for check in self.get_queryset().filter(id__in=ids, status="open").select_related("candidate_version")}
 
+    def _accept_open_check(self, check, operator):
+        if check.candidate_version_id:
+            accept_candidate(check, operator=operator)
+            return
+        if check.check_type == "duplicate":
+            merge_duplicate_check(check, operator=operator)
+            return
+        resolve_check(check, operator=operator)
+
     @action(methods=["POST"], detail=True)
     def accept(self, request, pk=None):
-        """接受候选版本:置为当前有效版本并关闭检查。"""
+        """接受检查项:候选版本采纳,重复项合并,普通检查确认处理。"""
         check = self.get_object()
-        if not check.candidate_version_id:
-            return JsonResponse({"result": False, "message": "该检查无候选版本"}, status=400)
-        accept_candidate(check, operator=getattr(request.user, "username", ""))
-        log_operation(request, "execute", "opspilot", f"接受候选版本(检查#{check.id})")
+        try:
+            self._accept_open_check(check, operator=getattr(request.user, "username", ""))
+        except ValueError as exc:
+            return JsonResponse({"result": False, "message": str(exc)}, status=400)
+        check.refresh_from_db()
+        log_operation(request, "execute", "opspilot", f"接受检查项(检查#{check.id})")
         return JsonResponse({"result": True, "data": self.get_serializer(check).data})
 
     @action(methods=["POST"], detail=True)
@@ -124,7 +135,7 @@ class WikiCheckItemViewSet(AuthViewSet):
 
     @action(methods=["POST"], detail=False)
     def batch_accept(self, request):
-        """批量接受候选版本:无候选/非 open/不存在的检查项会被跳过。"""
+        """批量接受检查项:候选采纳、重复合并、普通检查确认处理。"""
         ids, error = self._parse_ids(request)
         if error:
             return error
@@ -135,13 +146,17 @@ class WikiCheckItemViewSet(AuthViewSet):
         skipped_ids = []
         for check_id in ids:
             check = checks_by_id.get(check_id)
-            if not check or not check.candidate_version_id:
+            if not check:
                 skipped_ids.append(check_id)
                 continue
-            accept_candidate(check, operator=operator)
+            try:
+                self._accept_open_check(check, operator=operator)
+            except ValueError:
+                skipped_ids.append(check_id)
+                continue
             accepted += 1
 
-        log_operation(request, "execute", "opspilot", f"批量接受候选版本({accepted}项)")
+        log_operation(request, "execute", "opspilot", f"批量接受检查项({accepted}项)")
         return JsonResponse({"result": True, "data": {"accepted": accepted, "skipped": len(skipped_ids), "skipped_ids": skipped_ids}})
 
     @action(methods=["POST"], detail=False)

@@ -59,9 +59,10 @@ def test_build_flow_input_uses_chatid_as_session_id():
 
 
 def test_agent_resolves_enterprise_wechat_aibot_as_third_party_trigger():
+    """企业微信 AIBot 触发器:production 实际返回 'interactive'(已从 third_party 改为 interactive 触发器类型)。"""
     result = AgentNode._resolve_trigger_type({"entry_type": "enterprise_wechat_aibot"})
 
-    assert result == "third_party"
+    assert result == "interactive"
 
 
 def test_enterprise_wechat_aibot_get_delegates_to_handler(request_factory):
