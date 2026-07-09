@@ -114,6 +114,11 @@
       "widget_props": {
         "placeholder": "请选择节点"
       },
+      "change_handler": {
+        "type": "option_field",
+        "source_field": "name",
+        "target_field": "instance_name"
+      },
       "enable_row_filter": true
     },
     {

@@ -32,7 +32,7 @@
 - Consumes: 当前列值、当前行、列选项以及 JSON 中的 `change_handler`。
 - Produces: `applyTableChangeHandler(row, value, options, changeHandler): Record<string, any>`；返回更新后的行，找不到有效选项值时返回不覆盖目标字段的行。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 在 `web/scripts/monitor-table-change-handler-test.ts` 中用 `node:assert/strict` 覆盖：
 
@@ -104,13 +104,13 @@ console.log('monitor table change handler tests passed');
 "test:monitor-table-change-handler": "pnpm exec tsx scripts/monitor-table-change-handler-test.ts"
 ```
 
-- [ ] **Step 2: 运行测试并确认红灯**
+- [x] **Step 2: 运行测试并确认红灯**
 
 Run: `cd web && pnpm test:monitor-table-change-handler`
 
 Expected: FAIL，提示 `tableChangeHandler` 模块不存在。
 
-- [ ] **Step 3: 实现最小纯函数并接入渲染器**
+- [x] **Step 3: 实现最小纯函数并接入渲染器**
 
 在 `tableChangeHandler.ts` 定义处理器类型和 `applyTableChangeHandler`：
 
@@ -155,7 +155,7 @@ export const applyTableChangeHandler = (
 
 `useConfigRenderer.tsx` 的 `handleChange` 先写入当前字段与校验结果，再调用该纯函数；只有目标字段确实更新时才清除 `${target_field}_error`。
 
-- [ ] **Step 4: 为主机（Telegraf）声明联动**
+- [x] **Step 4: 为主机（Telegraf）声明联动**
 
 在 `server/apps/monitor/support-files/plugins/Telegraf/host/os/UI.json` 的 `node_ids` 列增加：
 
@@ -169,7 +169,7 @@ export const applyTableChangeHandler = (
 
 实例名称列保持普通可编辑 `input`。
 
-- [ ] **Step 5: 运行聚焦验证并确认绿灯**
+- [x] **Step 5: 运行聚焦验证并确认绿灯**
 
 Run:
 
@@ -182,7 +182,7 @@ pnpm type-check
 
 Expected: 聚焦测试通过；改动文件 ESLint 通过；TypeScript 类型检查通过。若全量类型检查命中已有无关错误，记录具体错误但不扩改。
 
-- [ ] **Step 6: 检查配置与提交**
+- [x] **Step 6: 检查配置与提交**
 
 Run:
 
