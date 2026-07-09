@@ -630,6 +630,85 @@ def test_login_with_binding_falls_back_to_ops_pilot_guest_for_wechat(mock_execut
 
 
 @pytest.mark.django_db
+@patch("apps.system_mgmt.nats.login.get_user_login_token")
+@patch("apps.system_mgmt.services.login_auth_binding_service.RuntimeApplicationService.execute")
+def test_login_with_binding_creates_new_user_with_default_role_list_for_wechat(mock_execute, mock_get_token):
+    """微信首次登录创建用户时,必须写入默认 role_list。
+
+    缺少 `normal@ops-console` 会让 verify_token 的菜单汇总为空,
+    导致 opsconsole 在 get_client 返回中消失,用户看不到入口。
+    该断言保护旧 wechat_user_register 路径里写入的默认 role 集合
+    在新 _resolve_platform_user 路径里被等价保留。
+    """
+    from apps.system_mgmt.models import Role
+    from apps.system_mgmt.services.login_auth_binding_service import login_with_binding
+
+    # 预置默认 role(模拟 init_realm_resource 已经跑过)
+    Role.objects.create(name="normal", app="ops-console", menu_list=[])
+    Role.objects.create(name="normal", app="opspilot", menu_list=[])
+    for app_name in ("opspilot", "cmdb", "monitor", "log", "alarm", "node", "mlops", "job"):
+        Role.objects.create(name="guest", app=app_name, menu_list=[])
+
+    instance = IntegrationInstance.objects.create(
+        name="wechat-instance",
+        provider_key="wechat",
+        config={},
+        status=IntegrationInstanceStatusChoices.READY,
+        capability_status={"login_auth": IntegrationInstanceStatusChoices.READY},
+        enabled=True,
+    )
+    binding = LoginAuthBinding.objects.create(
+        name="wechat-binding",
+        integration_instance=instance,
+        enabled=True,
+        external_field="openid",
+        platform_field=LoginAuthBindingPlatformFieldChoices.USERNAME,
+        unmatched_user_action=LoginAuthBindingUnmatchedActionChoices.CREATE,
+        default_group_name="OpsPilotGuest",
+    )
+    mock_execute.return_value = CapabilityExecutionResult.success_result(
+        "wechat login authenticated",
+        payload={
+            "external_user": {
+                "openid": "oxxx-rolemiss",
+                "unionid": "",
+                "nickname": "新用户",
+                "headimgurl": "",
+            }
+        },
+    )
+    mock_get_token.return_value = {
+        "result": True,
+        "data": {"token": "T", "id": 1, "username": "oxxx-rolemiss", "display_name": "新用户"},
+    }
+
+    result = login_with_binding(binding.id, "auth-code")
+
+    assert result["result"] is True
+    new_user = User.objects.get(username="oxxx-rolemiss")
+    expected_app_role_pairs = {
+        ("normal", "ops-console"),
+        ("normal", "opspilot"),
+        ("guest", "opspilot"),
+        ("guest", "cmdb"),
+        ("guest", "monitor"),
+        ("guest", "log"),
+        ("guest", "alarm"),
+        ("guest", "node"),
+        ("guest", "mlops"),
+        ("guest", "job"),
+    }
+    assigned_pairs = set(
+        Role.objects.filter(id__in=new_user.role_list).values_list("name", "app")
+    )
+    missing = expected_app_role_pairs - assigned_pairs
+    assert not missing, (
+        f"微信首次登录新用户缺少 role_list 中期望的 (name, app) 对: {missing}; "
+        f"实际写入: {assigned_pairs}"
+    )
+
+
+@pytest.mark.django_db
 def test_serializer_allows_wechat_create_with_empty_default_group():
     """WeChat + create + 空 default_group_name 允许通过(后端 fallback 到 OpsPilotGuest)。"""
     from apps.system_mgmt.serializers.login_auth_binding_serializer import LoginAuthBindingSerializer

@@ -8,6 +8,7 @@ import OperateModal from '@/components/operate-modal';
 import { useUserApi } from '@/app/system-manager/api/user/index';
 import { useSecurityApi } from '@/app/system-manager/api/security';
 import type { SystemSettings } from '@/app/system-manager/types/security';
+import { isSilentRequestError } from '@/utils/request';
 
 export interface PasswordModalRef {
   showModal: (config: { userId: string }) => void;
@@ -160,8 +161,13 @@ const PasswordModal = forwardRef<PasswordModalRef, PasswordModalProps>(
         message.success(t('common.updateSuccess'));
         onSuccess();
         setVisible(false);
-      } catch {
-        message.error(t('common.operationFailed'));
+      } catch (err) {
+        // axios 拦截器已对 4xx/5xx/网络异常 message.error + 抛 HandledRequestError,
+        // isSilentRequestError 命中时跳过避免重复 toast; 兜底 200-but-result-false
+        // (handleResponse 抛的 new Error(msg)) 等场景, 这里透传后端 message。
+        if (!isSilentRequestError(err)) {
+          message.error(err instanceof Error ? err.message : t('common.operationFailed'));
+        }
       } finally {
         setIsSubmitting(false);
       }
