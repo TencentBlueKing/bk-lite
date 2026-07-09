@@ -28,6 +28,7 @@ from langgraph.constants import START
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest, BasicLLMResponse
+from apps.opspilot.metis.llm.chain.report_renderers import strip_phantom_tool_calls
 from apps.opspilot.utils.execution_interrupt import is_interrupt_requested_async
 
 # deepagents 引擎内置工具（规划/虚拟文件系统/子代理）。这些是 agent 的内部
@@ -405,8 +406,14 @@ class BasicGraph(ABC):
         message_started: bool,
         show_think: bool,
         thinking_started: bool,
+        text_strip_buffers: Optional[Dict[str, str]] = None,
     ) -> tuple[list[str], Optional[str], bool, bool]:
         """处理 on_chat_model_stream 事件中的文本内容
+
+        text_strip_buffers: per-message_id 的 tail 缓冲,用于跨 streaming chunk 的
+        phantom tool call strip。LLM 把 <tool_call>name{ar | gs}</tool_call> 拆成两个 chunk
+        时,per-chunk strip 抓不到闭合配对;buffer 方式把上一 chunk 末尾 N 字符留到下
+        一 chunk 拼回去再 strip,跨 chunk 也能抹掉。
 
         Returns:
             (events_to_yield, updated_message_id, updated_message_started, updated_thinking_started)
@@ -417,6 +424,39 @@ class BasicGraph(ABC):
 
         # 处理 Anthropic 格式的 content（可能是 list of content blocks）
         content_delta, thinking_delta = self._extract_content_from_chunk(chunk.content)
+
+        # LLM 偶尔会走错格式把"想调的工具"写成 <tool_call>name{args}</tool_call> 或
+        # <|tool_call|>...<|tool_call|>,但 deepagent 不解析这些 XML 模式,所以这些
+        # 根本没执行,只是 LLM 在 text 里假装调了。strip 掉避免前端渲染成"伪工具记录"。
+        # 真实工具调用走 TOOL_CALL_START 事件通道,不在 text content 里,strip 不影响。
+        # 跨 chunk 处理:把上一 chunk 末尾的 tail 拼到本 chunk,strip 完整 phantom call。
+        # 如果还有未闭合的 phantom call 起始,把那部分留到下一 chunk 才 emit;
+        # 闭合完整就 emit 全部。
+        if content_delta and text_strip_buffers is not None and current_message_id:
+            # message_id 切换时清掉旧 message 的 tail(消息已结束,tail 永远不会被它的
+            # 下一 chunk 关闭,留着只是占内存)
+            for mid in list(text_strip_buffers.keys()):
+                if mid != current_message_id:
+                    text_strip_buffers.pop(mid, None)
+            tail = text_strip_buffers.get(current_message_id, "")
+            buffered = tail + content_delta
+            cleaned = strip_phantom_tool_calls(buffered)
+            # 找未闭合 phantom call 起始位置:右 <tool_call> 出现在右 </tool_call> 之后
+            # (说明最近这个 <tool_call> 没对应闭合)。<|tool_call|> 同 tag 双向,这里只
+            # 处理 <tool_call>X</tool_call> 这种最常见形式。
+            last_open = cleaned.rfind("<tool_call>")
+            last_close = cleaned.rfind("</tool_call>")
+            if last_open > last_close:
+                # 末尾有未闭合 phantom,从 last_open 开始 hold
+                content_delta = cleaned[:last_open]
+                text_strip_buffers[current_message_id] = cleaned[last_open:]
+            else:
+                # 全部闭合(phantom 被完整 strip 或本来就没有),emit 全部
+                content_delta = cleaned
+                text_strip_buffers.pop(current_message_id, None)
+        elif content_delta:
+            # 没有 buffer 上下文(老调用路径),per-chunk strip,够覆盖单 chunk 完整 phantom
+            content_delta = strip_phantom_tool_calls(content_delta)
 
         # 从 additional_kwargs 中提取 reasoning_content（DeepSeek/Gemma 等通过 vLLM
         # reasoning-parser 暴露的推理内容，lc_patches.py 已统一归到此字段）
@@ -990,6 +1030,8 @@ class BasicGraph(ABC):
         # 文本内容只出现在 on_chat_model_end。必须确认 message_started 为 False，
         # 否则流式 adapter 已经推送过文本，重复 emit 会导致前端显示两遍内容。
         text_content = getattr(output, "content", "") or ""
+        # 跟 streaming 同样的处理:剥 LLM 幻觉的 XML 工具调用
+        text_content = strip_phantom_tool_calls(text_content)
         tool_calls_list = getattr(output, "tool_calls", None) or []
         if text_content and not tool_calls_list and (not message_started or allow_non_streaming_text):
             # 纯文本响应（非流式）：发 TEXT_MESSAGE_START + CONTENT + END
@@ -1093,6 +1135,10 @@ class BasicGraph(ABC):
         thinking_started = False
         suppress_text_after_tool_call = False
         tool_result_seen_since_model_end = False
+        # 跨 streaming chunk 的 phantom tool call strip buffer。
+        # key = message_id,value = 该 message 累积的未 emit tail。
+        # 当 message_id 变化时清理旧 entry(消息结束 → 它的 tail 不再有用了)。
+        text_strip_buffers: Dict[str, str] = {}
         # DeepAgent 场景下,on_chat_model_end 携带完整 AI 文本(allow_non_streaming_text=True
         # 时)与 on_chain_end 的 output.messages 里的同一份 AIMessage 会重复 emit。
         # 而且父/子图会多次触发 on_chain_end,都带同一份文本,所以用内容指纹去重:
@@ -1170,6 +1216,7 @@ class BasicGraph(ABC):
                             message_started,
                             show_think,
                             thinking_started,
+                            text_strip_buffers,
                         )
                         for ev in content_events:
                             yield ev
