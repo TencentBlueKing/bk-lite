@@ -4,6 +4,10 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
+    """
+    - interval: 业务要求采集频率默认 60s(commit eb1296905)
+    - algorithm verbose_name: 顺带修 d38cada17 遗留的 metadata drift,DB schema 无变更
+    """
 
     dependencies = [
         ('monitor', '0044_rename_monitor_object_type_os_to_host_resource'),
