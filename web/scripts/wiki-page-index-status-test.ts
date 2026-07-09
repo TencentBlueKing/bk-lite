@@ -50,11 +50,10 @@ assert.match(pageTab, /t\('wiki\.reindexPage'\)/);
 assert.doesNotMatch(pageTab, /\{record\.index_status\}/);
 assert.doesNotMatch(pageTab, /\{record\.chunk_index_status\}/);
 
-// 重跑索引按钮需用纯文字,与其他操作风格一致(都无 icon)
-assert.match(
-  pageTab,
-  /<Button\s+type="link"\s+size="small"[\s\S]*?t\('wiki\.reindexPage'\)/
-);
+// 重跑索引能力保留在 API/处理函数中,但暂不在知识页面列表展示入口。
+assert.match(pageTab, /const SHOW_PAGE_REINDEX_ACTION = false/);
+assert.match(pageTab, /SHOW_PAGE_REINDEX_ACTION && record\.status === 'active'/);
+assert.match(pageTab, /onClick=\{\(\) => handleReindexPage\(record\)\}/);
 assert.doesNotMatch(pageTab, /icon=\{<ReloadOutlined\s*\/>\}/);
 
 console.log('wiki page index status validation passed');
