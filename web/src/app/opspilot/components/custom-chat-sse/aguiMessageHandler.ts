@@ -850,7 +850,7 @@ export class AGUIMessageHandler {
           this.handleUserChoiceRequest(aguiData.value as UserChoiceRequestValue);
         } else if (aguiData.name === 'user_choice_result' && aguiData.value) {
           this.handleUserChoiceResult(aguiData.value as { choice_id: string; selected: string[]; source: string });
-        } else if (aguiData.name === 'config_diff_report' && aguiData.value) {
+        } else if (aguiData.name === 'repair_diff_report' && aguiData.value) {
           this.handleConfigDiffReport(aguiData.value as unknown as ConfigDiffReportValue);
         } else if (aguiData.name === 'config_analysis_report' && aguiData.value) {
           this.handleConfigAnalysisReport(aguiData.value as ConfigAnalysisReportValue);
