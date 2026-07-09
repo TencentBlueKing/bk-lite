@@ -54,3 +54,14 @@ automation/
 
 # CMDB 商业版 overlay（同级 app，单独交付，不进开源仓）
 /server/apps/cmdb_enterprise/
+
+# projectmem 本机会话状态(events.jsonl / summary.md / .current_issue / issues/),
+# 按 git 协议不该进仓,每个开发者本地 regen 即可
+# 基线文件(AI_INSTRUCTIONS.md / PROJECT_MAP.md / config.toml / legacy_*.md)保留在 git 里
+.projectmem/events.jsonl
+.projectmem/summary.md
+.projectmem/.current_issue
+.projectmem/issues/[0-9]*.md
+
+# Claude Code 本地设置(用户专属 hook 路径、模型选择等)
+.claude/settings.local.json
