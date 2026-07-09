@@ -1,6 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="ST logo">
-  <rect x="6" y="6" width="108" height="108" rx="20" fill="#ffffff" stroke="#007DB8" stroke-width="2"/>
-  <text x="60" y="60" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="28" font-weight="700" fill="#007DB8">ST</text>
-  <line x1="22" y1="74" x2="98" y2="74" stroke="#007DB8" stroke-width="2"/>
-  <text x="60" y="94" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="500" fill="#007DB8">STORAGE</text>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120"><rect x="12" y="12" width="96" height="96" rx="24" fill="#007DB8"/><g fill="none" stroke="#fff" stroke-width="5.5"><rect x="30" y="32" width="60" height="18" rx="5"/><rect x="30" y="56" width="60" height="18" rx="5"/><rect x="30" y="80" width="60" height="14" rx="5"/></g><g fill="#fff"><circle cx="40" cy="41" r="3"/><circle cx="40" cy="65" r="3"/><circle cx="40" cy="87" r="3"/></g><g stroke="#fff" stroke-width="4" stroke-linecap="round"><line x1="52" y1="41" x2="78" y2="41"/><line x1="52" y1="65" x2="78" y2="65"/><line x1="52" y1="87" x2="78" y2="87"/></g></svg>
