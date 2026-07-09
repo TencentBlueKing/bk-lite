@@ -1,4 +1,5 @@
 from django.http import JsonResponse
+from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from rest_framework.decorators import action
 
@@ -41,8 +42,6 @@ class WikiCheckItemViewSet(AuthViewSet):
             queryset = queryset.filter(action_type=action_type)
         overdue = request.GET.get("overdue")
         if overdue in ("1", "true", "yes"):
-            from django.utils import timezone
-
             queryset = queryset.filter(due_at__lt=timezone.now())
         try:
             page = max(int(request.GET.get("page", 1)), 1)

@@ -18,6 +18,22 @@ from apps.opspilot.utils.chat_flow_utils.engine.core.base_executor import BaseNo
 from apps.opspilot.utils.prompt_utils import resolve_skill_params
 
 
+def _build_agui_sse_line(payload: dict) -> str:
+    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+def _build_wiki_citations_event(extra_config: dict | None) -> dict | None:
+    citations = (extra_config or {}).get("wiki_citations")
+    if not citations:
+        return None
+    return {
+        "type": "CUSTOM",
+        "name": "wiki_citations",
+        "value": {"citations": citations},
+        "timestamp": int(time.time() * 1000),
+    }
+
+
 class AgentNode(BaseNodeExecutor):
     def _get_skill(self, skill_id: str) -> LLMSkill:
         """获取技能对象
@@ -223,6 +239,10 @@ class AgentNode(BaseNodeExecutor):
             "node_id": effective_node_id,
             "flow_id": self.variable_manager.get_variable("flow_id", ""),
             "trigger_type": self._resolve_trigger_type(flow_input),
+            # Wiki 知识库复用:把 skill 上勾选的 wiki KB id 列表透传给 chat_service,
+            # 触发 augment_prompt 路径,自动检索并把相关页面片段注入系统提示词。
+            # 与 /opspilot/skill/detail 路径行为一致,Issue #3919。
+            "wiki_kb_ids": list(skill.wiki_knowledge_bases.values_list("id", flat=True)),
         }
 
     @staticmethod
@@ -291,6 +311,10 @@ class AgentNode(BaseNodeExecutor):
             try:
                 logger.info(f"[AgentNode-AGUI] 开始流式处理 - skill_name: {skill_name}, node_id: {node_id}, show_think: {show_think}")
 
+                wiki_citations_event = _build_wiki_citations_event(request.extra_config)
+                if wiki_citations_event:
+                    yield _build_agui_sse_line(wiki_citations_event)
+
                 chunk_index = 0
                 async for sse_line in graph.agui_stream(request):
                     yield sse_line
@@ -303,7 +327,7 @@ class AgentNode(BaseNodeExecutor):
                     "error": f"节点执行错误: {str(e)}",
                     "timestamp": int(time.time() * 1000),
                 }
-                yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
+                yield _build_agui_sse_line(error_data)
 
         return generate_agui_stream()
 
