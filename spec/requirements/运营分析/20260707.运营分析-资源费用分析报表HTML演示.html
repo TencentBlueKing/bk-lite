@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>资源费用分析 · Report 画布</title>
+  <style>
+    :root {
+      --bg:            oklch(0.985 0.003 250);
+      --surface:       oklch(1 0 0);
+      --surface-2:     oklch(0.972 0.004 250);
+      --border:        oklch(0.92 0.005 250);
+      --border-strong: oklch(0.85 0.008 250);
+      --ink:           oklch(0.20 0.02 250);
+      --ink-2:         oklch(0.40 0.015 250);
+      --ink-3:         oklch(0.55 0.012 250);
+      --ink-4:         oklch(0.68 0.01 250);
+      --accent:        oklch(0.55 0.16 200);
+      --accent-soft:   oklch(0.95 0.04 200);
+      --positive:      oklch(0.62 0.15 150);
+      --negative:      oklch(0.58 0.18 25);
+      --viz-1:         oklch(0.62 0.15 200);   /* ECS / compute */
+      --viz-2:         oklch(0.62 0.13 280);   /* OSS / storage */
+      --viz-3:         oklch(0.65 0.13 50);    /* RDS / database */
+      --viz-4:         oklch(0.62 0.13 150);   /* CDN / network */
+      --viz-5:         oklch(0.55 0.13 320);   /* Redis / cache */
+      --viz-6:         oklch(0.60 0.13 90);    /* Kafka / messaging */
+      --viz-7:         oklch(0.55 0.01 250);   /* other */
+
+      --radius:    6px;
+      --radius-lg: 10px;
+      --shadow-1:  0 1px 2px rgba(15,23,42,0.04), 0 1px 1px rgba(15,23,42,0.03);
+
+      --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", "Segoe UI", system-ui, sans-serif;
+      --font-body:    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", system-ui, sans-serif;
+      --font-mono:    ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { background: var(--bg); color: var(--ink); }
+    body {
+      font-family: var(--font-body);
+      font-size: 14px;
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+      letter-spacing: -0.005em;
+    }
+    .page { max-width: 1280px; margin: 0 auto; padding: 28px 32px 64px; }
+
+    /* ===== Page header ===== */
+    .page-header {
+      display: flex; align-items: flex-end; justify-content: space-between; gap: 24px;
+      margin-bottom: 24px; padding-bottom: 20px;
+      border-bottom: 1px solid var(--border);
+    }
+    .page-title-group { display: flex; flex-direction: column; gap: 6px; }
+    .page-title {
+      font-family: var(--font-display);
+      font-size: 22px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+    .page-subtitle { font-size: 13px; color: var(--ink-3); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .page-subtitle .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--positive); display: inline-block; }
+    .page-subtitle .sep { color: var(--ink-4); }
+    .page-subtitle time { font-variant-numeric: tabular-nums; }
+    .page-subtitle code, .page-subtitle .kbd {
+      font-family: var(--font-mono); font-size: 12px;
+      background: var(--surface-2); padding: 1px 5px; border-radius: 3px;
+    }
+
+    .page-actions { display: flex; gap: 8px; align-items: center; }
+    .btn {
+      font-family: var(--font-body); font-size: 13px; height: 32px; padding: 0 14px;
+      border-radius: 6px; border: 1px solid var(--border-strong); background: var(--surface);
+      color: var(--ink-2); cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+      transition: background .15s ease, color .15s ease, border-color .15s ease;
+    }
+    .btn:hover { background: var(--surface-2); color: var(--ink); }
+    .btn-primary { background: var(--ink); color: oklch(0.99 0 0); border-color: var(--ink); }
+    .btn-primary:hover { background: oklch(0.28 0.02 250); color: oklch(0.99 0 0); }
+
+    /* ===== Filter bar ===== */
+    .filter-bar {
+      display: flex; align-items: flex-end; gap: 14px;
+      padding: 14px 18px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    .filter { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+    .filter-label { font-size: 11px; font-weight: 500; color: var(--ink-3); letter-spacing: 0.02em; }
+    .filter-control {
+      height: 32px; padding: 0 10px;
+      border: 1px solid var(--border); border-radius: 6px;
+      background: var(--surface); color: var(--ink);
+      font-family: var(--font-body); font-size: 13px;
+      min-width: 160px;
+    }
+    .filter-control:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
+
+    .filter-spacer { flex: 1; min-width: 8px; }
+    .filter-actions { display: flex; gap: 8px; align-items: center; }
+
+    /* ===== KPI row ===== */
+    .kpi-row {
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      gap: 14px; margin-bottom: 20px;
+    }
+    .kpi {
+      padding: 18px 20px 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      display: flex; flex-direction: column; gap: 8px;
+      min-width: 0;
+    }
+    .kpi-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .kpi-label { font-size: 12px; color: var(--ink-3); }
+    .kpi-unit  { font-size: 11px; color: var(--ink-4); }
+    .kpi-value {
+      font-family: var(--font-display);
+      font-size: 30px; font-weight: 600;
+      letter-spacing: -0.03em;
+      color: var(--ink);
+      font-variant-numeric: tabular-nums;
+      line-height: 1.05;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .kpi-value-prefix { font-size: 17px; font-weight: 500; color: var(--ink-2); margin-right: 1px; }
+    .kpi-meta { font-size: 12px; color: var(--ink-3); display: flex; align-items: center; gap: 6px; min-height: 18px; }
+    .kpi-delta { display: inline-flex; align-items: center; gap: 2px; font-weight: 500; font-variant-numeric: tabular-nums; }
+    .kpi-delta.bad   { color: var(--negative); }
+    .kpi-delta.good  { color: var(--positive); }
+    .kpi-delta.flat  { color: var(--ink-3); }
+    .kpi-pill {
+      display: inline-block;
+      padding: 1px 6px; border-radius: 4px;
+      font-size: 11px;
+      background: var(--surface-2);
+      color: var(--ink-2);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ===== Main grid ===== */
+    .main-grid {
+      display: grid;
+      grid-template-columns: 5fr 7fr;
+      gap: 14px;
+    }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      display: flex; flex-direction: column;
+      min-width: 0;
+    }
+    .panel-head {
+      padding: 14px 18px 12px;
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .panel-title {
+      font-family: var(--font-display);
+      font-size: 14px; font-weight: 600;
+      color: var(--ink);
+      letter-spacing: -0.01em;
+    }
+    .panel-head-meta { font-size: 12px; color: var(--ink-3); }
+
+    .seg {
+      display: inline-flex;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 2px;
+    }
+    .seg button {
+      font-family: var(--font-body); font-size: 12px;
+      height: 24px; padding: 0 10px;
+      border: none; background: transparent;
+      color: var(--ink-3); border-radius: 4px; cursor: pointer;
+      transition: background .15s ease, color .15s ease, box-shadow .15s ease;
+    }
+    .seg button:hover { color: var(--ink); }
+    .seg button.active {
+      background: var(--surface); color: var(--ink);
+      box-shadow: var(--shadow-1);
+    }
+
+    .panel-body { padding: 18px; }
+
+    /* ===== Distribution list ===== */
+    .dist-list { display: flex; flex-direction: column; gap: 14px; }
+    .dist-row {
+      display: grid;
+      grid-template-columns: 140px 1fr 116px;
+      align-items: center;
+      gap: 14px;
+    }
+    .dist-name {
+      font-size: 13px; color: var(--ink);
+      display: flex; align-items: center; gap: 8px;
+      min-width: 0;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .dist-name .swatch { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; }
+    .dist-bar { height: 8px; background: var(--surface-2); border-radius: 999px; overflow: hidden; }
+    .dist-fill {
+      height: 100%; border-radius: 999px;
+      width: 0;
+      transition: width .6s cubic-bezier(.16,1,.3,1);
+    }
+    .dist-value {
+      font-size: 13px; font-variant-numeric: tabular-nums; color: var(--ink-2);
+      text-align: right;
+      display: flex; justify-content: flex-end; align-items: baseline; gap: 6px;
+      min-width: 0;
+    }
+    .dist-pct { color: var(--ink); font-weight: 600; }
+    .dist-count { color: var(--ink-4); font-size: 11px; }
+
+    /* ===== Table ===== */
+    .table-wrap { overflow-x: auto; }
+    .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .data-table th {
+      text-align: left;
+      padding: 10px 14px;
+      font-size: 11px; font-weight: 500;
+      color: var(--ink-3); letter-spacing: 0.02em;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface-2);
+      white-space: nowrap; user-select: none;
+    }
+    .data-table th.sortable { cursor: pointer; }
+    .data-table th.sortable:hover { color: var(--ink-2); }
+    .data-table th.sorted { color: var(--ink); }
+    .data-table th .sort-ind { color: var(--ink-4); margin-left: 4px; font-size: 9px; }
+    .data-table th.sorted .sort-ind { color: var(--ink); }
+    .data-table td {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      color: var(--ink);
+      vertical-align: middle;
+    }
+    .data-table tbody tr:last-child td { border-bottom: none; }
+    .data-table tbody tr:hover td { background: oklch(0.985 0.003 250); }
+    .data-table td.num { font-variant-numeric: tabular-nums; text-align: right; color: var(--ink); }
+    .data-table td.id  { font-family: var(--font-mono); font-size: 12px; color: var(--ink-2); }
+    .data-table td.cost { font-weight: 600; }
+    .data-table td.dim  { color: var(--ink-3); }
+
+    .type-chip {
+      display: inline-block;
+      padding: 2px 8px; border-radius: 4px;
+      font-size: 11px; font-weight: 500;
+      font-family: var(--font-mono);
+      letter-spacing: 0;
+      white-space: nowrap;
+    }
+    .type-ECS    { background: oklch(0.94 0.04 200); color: oklch(0.36 0.10 200); }
+    .type-RDS    { background: oklch(0.95 0.05 50);  color: oklch(0.38 0.12 50); }
+    .type-OSS    { background: oklch(0.95 0.04 280); color: oklch(0.38 0.10 280); }
+    .type-Redis  { background: oklch(0.93 0.05 320); color: oklch(0.38 0.12 320); }
+    .type-Kafka  { background: oklch(0.95 0.05 90);  color: oklch(0.38 0.12 90); }
+    .type-CDN    { background: oklch(0.94 0.04 150); color: oklch(0.38 0.10 150); }
+    .type-Other  { background: oklch(0.94 0.005 250); color: oklch(0.42 0.012 250); }
+
+    /* ===== Pager ===== */
+    .pager {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 18px;
+      border-top: 1px solid var(--border);
+      font-size: 12px; color: var(--ink-3);
+      flex-wrap: wrap; gap: 8px;
+    }
+    .pager-controls { display: flex; gap: 4px; align-items: center; }
+    .pager button {
+      height: 28px; min-width: 28px; padding: 0 8px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--ink-2);
+      border-radius: 5px;
+      font-size: 12px; cursor: pointer;
+      font-variant-numeric: tabular-nums;
+      font-family: var(--font-body);
+      transition: background .15s ease, color .15s ease, border-color .15s ease;
+    }
+    .pager button:hover:not(:disabled):not(.active) { background: var(--surface-2); color: var(--ink); }
+    .pager button.active { background: var(--ink); color: oklch(0.99 0 0); border-color: var(--ink); }
+    .pager button:disabled { color: var(--ink-4); cursor: not-allowed; }
+    .pager button.more { border-color: transparent; }
+
+    /* ===== Footer note ===== */
+    .footer-note {
+      margin-top: 18px;
+      padding: 12px 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 12px; color: var(--ink-3);
+      display: flex; align-items: flex-start; gap: 10px;
+      line-height: 1.5;
+    }
+    .footer-note .info-dot {
+      width: 6px; height: 6px; border-radius: 50%; background: var(--ink-4);
+      flex-shrink: 0; margin-top: 6px;
+    }
+
+    /* ===== Responsive ===== */
+    @media (max-width: 1100px) {
+      .main-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 760px) {
+      .page { padding: 20px 16px 40px; }
+      .page-header { flex-direction: column; align-items: flex-start; }
+      .kpi-row { grid-template-columns: repeat(2, 1fr); }
+      .filter-bar { gap: 10px; }
+      .filter-spacer { display: none; }
+      .dist-row { grid-template-columns: 100px 1fr 96px; gap: 10px; }
+    }
+    @media (max-width: 480px) {
+      .kpi-row { grid-template-columns: 1fr; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+
+    <header class="page-header">
+      <div class="page-title-group">
+        <h1 class="page-title">资源费用分析</h1>
+        <div class="page-subtitle">
+          <span class="dot" aria-hidden="true"></span>
+          <span>数据更新至 <time>2026-07-06 02:00</time>（T+1）</span>
+          <span class="sep">·</span>
+          <span>分类 <code>jifeiguanli</code> 计费管理</span>
+          <span class="sep">·</span>
+          <span>模型 <code>ziyuanfeiyong</code> / <code>Transaction_Log</code></span>
+          <span class="sep">·</span>
+          <span>租户 WeOpsX-Demo</span>
+        </div>
+      </div>
+      <div class="page-actions">
+        <a class="btn" href="./20260707.运营分析-资源费用分析数据模型HTML演示.html">查看数据模型</a>
+        <button class="btn">导出 CSV</button>
+        <button class="btn btn-primary">编辑画布</button>
+      </div>
+    </header>
+
+    <!-- Filter bar -->
+    <div class="filter-bar">
+      <div class="filter">
+        <label class="filter-label" for="f-dept">使用部门</label>
+        <select id="f-dept" class="filter-control">
+          <option>全部部门</option>
+          <option>ops</option>
+          <option>data</option>
+          <option>product</option>
+          <option>finance</option>
+        </select>
+      </div>
+      <div class="filter">
+        <label class="filter-label" for="f-applicant">申请人</label>
+        <select id="f-applicant" class="filter-control">
+          <option>全部申请人</option>
+          <option>alice</option>
+          <option>bob</option>
+          <option>charlie</option>
+          <option>david</option>
+          <option>eve</option>
+        </select>
+      </div>
+      <div class="filter">
+        <label class="filter-label" for="f-type">对象类型</label>
+        <select id="f-type" class="filter-control">
+          <option>全部类型</option>
+          <option>ECS</option>
+          <option>RDS</option>
+          <option>OSS</option>
+          <option>Redis</option>
+          <option>Kafka</option>
+          <option>CDN</option>
+        </select>
+      </div>
+      <div class="filter">
+        <label class="filter-label" for="f-range">计费日期范围</label>
+        <input id="f-range" class="filter-control" type="text" value="2026-06-01 ~ 2026-06-30" readonly>
+      </div>
+      <div class="filter-spacer"></div>
+      <div class="filter-actions">
+        <button class="btn">重置</button>
+        <button class="btn btn-primary">应用筛选</button>
+      </div>
+    </div>
+
+    <!-- KPI row -->
+    <section class="kpi-row" aria-label="汇总指标">
+      <div class="kpi">
+        <div class="kpi-head">
+          <span class="kpi-label">总费用</span>
+          <span class="kpi-unit">CNY · Transaction_Log.Total_Cost</span>
+        </div>
+        <div class="kpi-value"><span class="kpi-value-prefix">¥</span>12,345.67</div>
+        <div class="kpi-meta">
+          <span class="kpi-delta bad">↑ 12.5%</span>
+          <span>较上期</span>
+        </div>
+      </div>
+
+      <div class="kpi">
+        <div class="kpi-head">
+          <span class="kpi-label">资源实例数</span>
+          <span class="kpi-unit">去重后 · ziyuanfeiyong</span>
+        </div>
+        <div class="kpi-value">142</div>
+        <div class="kpi-meta">
+          <span class="kpi-delta flat">+ 8 较上期</span>
+        </div>
+      </div>
+
+      <div class="kpi">
+        <div class="kpi-head">
+          <span class="kpi-label">日均费用</span>
+          <span class="kpi-unit">30 天</span>
+        </div>
+        <div class="kpi-value"><span class="kpi-value-prefix">¥</span>411.52</div>
+        <div class="kpi-meta">
+          <span class="kpi-pill">¥10,973.41 / 30 天</span>
+        </div>
+      </div>
+
+      <div class="kpi">
+        <div class="kpi-head">
+          <span class="kpi-label">环比变化</span>
+          <span class="kpi-unit">vs 上 30 天</span>
+        </div>
+        <div class="kpi-value" style="color: var(--negative);">+12.5%</div>
+        <div class="kpi-meta">
+          <span>本期高 <span style="color: var(--ink-2); font-variant-numeric: tabular-nums;">¥1,372.26</span></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Main grid -->
+    <section class="main-grid">
+
+      <!-- Distribution -->
+      <article class="panel" aria-label="费用分布">
+        <header class="panel-head">
+          <h2 class="panel-title">费用分布</h2>
+          <div class="seg" role="tablist" aria-label="分布维度">
+            <button class="active" data-group="object_type">对象类型</button>
+            <button data-group="USER_DEPARTMENT">使用部门</button>
+            <button data-group="applicant">申请人</button>
+          </div>
+        </header>
+        <div class="panel-body">
+          <div class="dist-list" id="dist-list"></div>
+        </div>
+      </article>
+
+      <!-- Instance list -->
+      <article class="panel" aria-label="资源账单明细">
+        <header class="panel-head">
+          <h2 class="panel-title">资源账单明细</h2>
+          <span class="panel-head-meta">共 142 条 · 按已发生总费用倒序</span>
+        </header>
+        <div class="table-wrap">
+          <table class="data-table" id="instance-table">
+            <thead>
+              <tr>
+                <th class="sortable sorted" data-sort="inst_name">实例名 <span class="sort-ind">▼</span></th>
+                <th data-sort="object_type">对象类型</th>
+                <th data-sort="object_name">对象名称</th>
+                <th data-sort="USER_DEPARTMENT">使用部门</th>
+                <th data-sort="applicant">申请人</th>
+                <th class="sortable" data-sort="object_id">实例 ID</th>
+                <th class="sortable" data-sort="Total_Accrued_Expenses" style="text-align: right;">已发生总费用 <span class="sort-ind">▼</span></th>
+                <th class="sortable" data-sort="Resource_unit_price" style="text-align: right;">单价 元/天</th>
+              </tr>
+            </thead>
+            <tbody id="instance-tbody"></tbody>
+          </table>
+        </div>
+        <footer class="pager">
+          <div>显示 1–8 / 142 条 · 每页 20</div>
+          <div class="pager-controls">
+            <button disabled aria-label="上一页">‹</button>
+            <button class="active">1</button>
+            <button>2</button>
+            <button>3</button>
+            <button class="more" disabled>…</button>
+            <button>8</button>
+            <button aria-label="下一页">›</button>
+          </div>
+        </footer>
+      </article>
+    </section>
+
+    <div class="footer-note">
+      <span class="info-dot"></span>
+      <span>数据源：CMDB 模型 <code style="font-family: var(--font-mono); font-size: 12px; background: var(--surface-2); padding: 1px 5px; border-radius: 3px;">ziyuanfeiyong</code>（资源账单）+ <code style="font-family: var(--font-mono); font-size: 12px; background: var(--surface-2); padding: 1px 5px; border-radius: 3px;">Transaction_Log</code>（流水记录）。本期不做预算、告警、预测；rollup 降级表待性能评估后启用。</span>
+    </div>
+
+  </div>
+
+  <script>
+    // ===== Distribution data =====
+    const distByGroup = {
+      object_type: [
+        { key: 'ECS',   label: 'ECS 云服务器',     total: 4820.30, count: 49, color: 'var(--viz-1)' },
+        { key: 'RDS',   label: 'RDS 云数据库',     total: 1820.50, count: 12, color: 'var(--viz-3)' },
+        { key: 'OSS',   label: 'OSS 对象存储',     total: 1455.20, count: 28, color: 'var(--viz-2)' },
+        { key: 'Redis', label: 'Redis 云缓存',     total: 1275.80, count: 15, color: 'var(--viz-5)' },
+        { key: 'Kafka', label: 'Kafka 消息队列',   total: 1134.00, count: 10, color: 'var(--viz-6)' },
+        { key: 'CDN',   label: 'CDN 内容分发',     total:  789.10, count:  8, color: 'var(--viz-4)' },
+        { key: 'Other', label: '其他',             total: 1050.77, count: 20, color: 'var(--viz-7)' },
+      ],
+      USER_DEPARTMENT: [
+        { key: 'ops',     label: '运维部 ops',      total: 6420.50, count: 56, color: 'var(--viz-1)' },
+        { key: 'data',    label: '数据部 data',     total: 3580.20, count: 48, color: 'var(--viz-2)' },
+        { key: 'product', label: '产品部 product',  total: 1605.00, count: 26, color: 'var(--viz-3)' },
+        { key: 'finance', label: '财务部 finance',  total:  739.97, count: 12, color: 'var(--viz-4)' },
+      ],
+      applicant: [
+        { key: 'alice',   label: 'alice',           total: 4520.30, count: 42, color: 'var(--viz-1)' },
+        { key: 'bob',     label: 'bob',             total: 2890.10, count: 28, color: 'var(--viz-2)' },
+        { key: 'charlie', label: 'charlie',         total: 2105.50, count: 32, color: 'var(--viz-3)' },
+        { key: 'david',   label: 'david',           total: 1645.27, count: 24, color: 'var(--viz-4)' },
+        { key: 'eve',     label: 'eve',             total: 1184.50, count: 16, color: 'var(--viz-5)' },
+      ],
+    };
+
+    function fmt(n) { return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+    function renderDist(group) {
+      const data = distByGroup[group];
+      const total = data.reduce((s, x) => s + x.total, 0);
+      const max   = Math.max(...data.map(x => x.total));
+      const list  = document.getElementById('dist-list');
+      list.innerHTML = data.map(d => {
+        const pct = (d.total / total * 100).toFixed(2);
+        const w   = (d.total / max * 100).toFixed(1);
+        return `
+          <div class="dist-row">
+            <div class="dist-name"><span class="swatch" style="background:${d.color}"></span>${d.label}</div>
+            <div class="dist-bar"><div class="dist-fill" style="background:${d.color}" data-w="${w}"></div></div>
+            <div class="dist-value">
+              <span class="dist-pct">${pct}%</span>
+              <span class="dist-count">${d.count} 实例</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+      requestAnimationFrame(() => {
+        document.querySelectorAll('.dist-fill').forEach(el => { el.style.width = el.dataset.w + '%'; });
+      });
+    }
+
+    document.querySelectorAll('.seg button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.seg button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        renderDist(btn.dataset.group);
+      });
+    });
+    renderDist('object_type');
+
+    // ===== Instance rows (ziyuanfeiyong 8 条) =====
+    const rows = [
+      { inst_name: 'web-prod-01',       object_type: 'ECS',   object_name: '云服务器 ECS',     USER_DEPARTMENT: 'ops',     applicant: 'alice',   object_id: 'i-7xk9a2b1', Total_Accrued_Expenses: 1234.56, Resource_unit_price: 41.15 },
+      { inst_name: 'db-prod-master',    object_type: 'RDS',   object_name: '云数据库 RDS',     USER_DEPARTMENT: 'ops',     applicant: 'bob',     object_id: 'rds-m4n8q7', Total_Accrued_Expenses:  987.65, Resource_unit_price: 32.92 },
+      { inst_name: 'cache-cluster-01',  object_type: 'Redis', object_name: '云缓存 Redis',     USER_DEPARTMENT: 'ops',     applicant: 'alice',   object_id: 'r-j2k7m9p3', Total_Accrued_Expenses:  845.30, Resource_unit_price: 28.18 },
+      { inst_name: 'obj-store-bk',      object_type: 'OSS',   object_name: '对象存储 OSS',     USER_DEPARTMENT: 'data',    applicant: 'charlie', object_id: 'oss-cn-east', Total_Accrued_Expenses: 712.40, Resource_unit_price: 23.75 },
+      { inst_name: 'kafka-broker-01',   object_type: 'Kafka', object_name: '消息队列 Kafka',   USER_DEPARTMENT: 'data',    applicant: 'david',   object_id: 'k-4b8n1q5w', Total_Accrued_Expenses:  689.00, Resource_unit_price: 22.97 },
+      { inst_name: 'redis-master-01',   object_type: 'Redis', object_name: '云缓存 Redis',     USER_DEPARTMENT: 'ops',     applicant: 'alice',   object_id: 'r-p3w6k2n8', Total_Accrued_Expenses:  534.20, Resource_unit_price: 17.81 },
+      { inst_name: 'cdn-edge-01',       object_type: 'CDN',   object_name: '内容分发 CDN',     USER_DEPARTMENT: 'ops',     applicant: 'eve',     object_id: 'cdn-cn-south', Total_Accrued_Expenses: 478.90, Resource_unit_price: 15.96 },
+      { inst_name: 'log-store-archive', object_type: 'OSS',   object_name: '对象存储 OSS',     USER_DEPARTMENT: 'data',    applicant: 'charlie', object_id: 'oss-archive', Total_Accrued_Expenses: 423.10, Resource_unit_price: 14.10 },
+    ];
+
+    document.getElementById('instance-tbody').innerHTML = rows.map(r => `
+      <tr>
+        <td>${r.inst_name}</td>
+        <td><span class="type-chip type-${r.object_type}">${r.object_type}</span></td>
+        <td class="dim">${r.object_name}</td>
+        <td>${r.USER_DEPARTMENT}</td>
+        <td>${r.applicant}</td>
+        <td class="id">${r.object_id}</td>
+        <td class="num cost">¥${fmt(r.Total_Accrued_Expenses)}</td>
+        <td class="num">¥${fmt(r.Resource_unit_price)}</td>
+      </tr>
+    `).join('');
+  </script>
+</body>
+</html>

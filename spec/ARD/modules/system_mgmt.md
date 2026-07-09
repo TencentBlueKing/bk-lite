@@ -23,7 +23,7 @@ DRF Router 注册 13 个路由组：`group`/`user`/`role`/`channel`/`group_data_
 - `network_white_list`【已实现/已存在】：提供内网白名单的 CRUD 接口，按 `network_white_list-View/Add/Edit/Delete` 权限控制；写操作会主动失效白名单缓存并写入操作日志（`viewset/network_white_list_viewset.py:10-55`）。
 
 ## 4. 认证与权限【已实现/已存在】
-- `nats_api.py`：`login`、`bk_lite_user_login`、`verify_otp_login`、`reset_pwd`、`get_all_groups`、`get_authorized_groups_scoped`、`create_guest_role` 等。
+- 真实 NATS handler 分布在 `nats/auth.py`、`nats/login.py`、`nats/otp.py`、`nats/settings.py`、`nats/wechat.py`、`nats/users.py` 等子模块；`nats_api.py` 现为旧导入路径兼容导出层，会同步 `_verify_token`、`_build_jwt_payload`、`create_challenge` 等 legacy helper，再转发到真实 handler。
 - JWT（含 jti/exp）、OTP（二维码/挑战/限频）、token 黑名单。
 - 角色继承：`get_user_all_roles` 沿 `parent_id`+`allow_inherit_roles` 递归汇总；权限缓存 TTL 由 `PERMISSION_CACHE_TTL` 配置（默认 600s），token 信息缓存 TTL 由 `TOKEN_INFO_CACHE_TTL` 配置（默认 60s）。
 - 密码策略：`utils/password_validator.py`（失败锁定）。
@@ -47,9 +47,8 @@ DRF Router 注册 13 个路由组：`group`/`user`/`role`/`channel`/`group_data_
 - `[system_mgmt#20260701-023]` 认证/权限 NATS API 与 permission cache TTL 证据行号按当前位置更新。
 
 ## 8. 证据来源
-- 路由：`server/apps/system_mgmt/urls.py:11,19-39`（含 `network_white_list` 路由 `urls.py:32`、`app` 路由 `urls.py:25-26`、企业版合并 `urls.py:33-39`）。
-- 模型：`server/apps/system_mgmt/models/user.py:7-62`（User 字段与 `save()` 重写）、`models/sensitive_info_authorization.py:33-42`、`models/network_white_list.py:7-20`、`models/channel.py:7-14`（ChannelChoices 7 类）、`models/role.py`、`models/group_data_rule.py`。
-- 认证/权限：`server/apps/system_mgmt/nats_api.py:63,68,73,78,83,88,93,98,103,108`（认证/权限相关 NATS API 当前位置，含 `get_pilot_permission_by_token`/`verify_token`/`login`/`reset_pwd`/`bk_lite_user_login`/`verify_otp_login`/`verify_bk_token`/`wechat_user_register` 等）；缓存 TTL `server/apps/core/utils/permission_cache.py:22,25,27,30`。
-- 网络白名单：`viewset/network_white_list_viewset.py:10,24,10-55`、`serializers/network_white_list_serializer.py:11,11-35`、`utils/network_whitelist_cache.py:9-32`。
+- 路由：`server/apps/system_mgmt/urls.py:19-39`（含 `app` 路由 `urls.py:26`、`network_white_list` 路由 `urls.py:32`、企业版合并 `urls.py:35-39`）。
+- 模型：`server/apps/system_mgmt/models/user.py:7-62`（User 字段与 `save()` 重写）、`models/network_white_list.py:7-20`、`models/sensitive_info_authorization.py:33-42`、`models/channel.py:7-14`（ChannelChoices 7 类）、`models/role.py`、`models/group_data_rule.py`。
+- 认证/权限：`server/apps/system_mgmt/nats_api.py:1-109`（兼容导出层）、`nats/auth.py:5-118`、`nats/login.py:5-220`、`nats/otp.py:5-186`、`nats/settings.py:21-79`、`nats/wechat.py:6-48`；缓存 TTL `server/apps/core/utils/permission_cache.py:22,25`。
 - Celery 任务：`server/apps/system_mgmt/tasks.py:14`（write_error_log_async）、`tasks.py:42`（sync_user_and_group_by_login_module）、`tasks.py:251`（check_password_expiry_and_notify）。
 - 其他：`server/apps/system_mgmt/{services/role_manage.py,utils/*}`。

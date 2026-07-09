@@ -20,7 +20,7 @@ export const BUILD_IN_MODEL: Array<{
   { key: 'datacenter', icon: 'cc-datacenter-dc' },
   { key: 'rack', icon: 'cc-datacenter-rack' },
   { key: 'server_room', icon: 'cc-datacenter-room' },
-  { key: 'haproxy', icon: 'cc-balance' },
+  { key: 'haproxy', icon: 'cc-haproxy' },
   { key: 'ceph', icon: 'cc-storage' },
   { key: 'disk', icon: 'cc-storage' },
   { key: 'peripherals', icon: 'cc-equipment' },
@@ -53,30 +53,30 @@ export const BUILD_IN_MODEL: Array<{
   { key: 'aws_msk', icon: 'cc-kafka' },
   { key: 'aws_rds', icon: 'cc-mysql' },
   { key: 'aws_s3_bucket', icon: 'cc-cloud-sp' },
-  { key: 'hwcloud', icon: 'cc-cloud-plat' },
+  { key: 'hwcloud', icon: 'cc-cloud-huawei' },
   { key: 'hwcloud_ecs', icon: 'cc-cloud-server' },
-  { key: 'manageone', icon: 'cc-cloud-plat' },
-  { key: 'manageone_cloud', icon: 'cc-cloud-plat' },
-  { key: 'manageone_ds', icon: 'cc-storage' },
+  { key: 'manageone', icon: 'cc-cloud-manageone' },
+  { key: 'manageone_cloud', icon: 'cc-cloud-manageone' },
+  { key: 'manageone_ds', icon: 'cc-datastorage' },
   { key: 'manageone_host', icon: 'cc-cloud-host' },
   { key: 'manageone_server', icon: 'cc-cloud-server' },
-  { key: 'openstack', icon: 'cc-cloud-plat' },
-  { key: 'qcloud', icon: 'cc-cloud-plat' },
+  { key: 'openstack', icon: 'cc-cloud-openstack' },
+  { key: 'qcloud', icon: 'cc-cloud-qcloud' },
   { key: 'qcloud_bucket', icon: 'cc-cloud-sp' },
   { key: 'qcloud_clb', icon: 'cc-cloud-elb' },
   { key: 'qcloud_cmq', icon: 'cc-kafka' },
   { key: 'qcloud_cmq_topic', icon: 'cc-kafka' },
   { key: 'qcloud_domain', icon: 'cc-cloud' },
   { key: 'qcloud_eip', icon: 'cc-ip' },
-  { key: 'qcloud_filesystem', icon: 'cc-storage' },
+  { key: 'qcloud_filesystem', icon: 'cc-datastorage' },
   { key: 'qcloud_mongodb', icon: 'cc-mongodb' },
   { key: 'qcloud_mysql', icon: 'cc-mysql' },
   { key: 'qcloud_pgsql', icon: 'cc-postgresql' },
   { key: 'qcloud_plusar_cluster', icon: 'cc-kafka' },
   { key: 'qcloud_redis', icon: 'cc-redis' },
   { key: 'qcloud_rocketmq', icon: 'cc-rocketmq' },
-  { key: 'smartx', icon: 'cc-cloud-plat' },
-  { key: 'fusioninsight', icon: 'cc-cloud-plat' },
+  { key: 'smartx', icon: 'cc-cloud-smartx' },
+  { key: 'fusioninsight', icon: 'cc-cloud-fusioninsight' },
   // ↑↑↑ 补充结束 ↑↑↑
   {
     key: 'active_directory',
@@ -180,11 +180,11 @@ export const BUILD_IN_MODEL: Array<{
   },
   {
     key: 'aliyun_account',
-    icon: 'cc-cloud-plat',
+    icon: 'cc-cloud-aliyun',
   },
   {
     key: 'qcloud_account',
-    icon: 'cc-cloud-plat',
+    icon: 'cc-cloud-qcloud',
   },
   {
     key: 'mo_cloud',
@@ -192,27 +192,27 @@ export const BUILD_IN_MODEL: Array<{
   },
   {
     key: 'huaweicloud_account',
-    icon: 'cc-cloud-plat',
+    icon: 'cc-cloud-huawei',
   },
   {
     key: 'sangforhci_account',
-    icon: 'cc-cloud-plat',
+    icon: 'cc-cloud-sangfor',
   },
   {
     key: 'nutanixhci_account',
-    icon: 'cc-cloud-plat',
+    icon: 'cc-cloud-nutanix',
   },
   {
     key: 'fusioninsight_account',
-    icon: 'cc-cloud-plat',
+    icon: 'cc-cloud-fusioninsight',
   },
   {
     key: 'openstack_account',
-    icon: 'cc-cloud-plat',
+    icon: 'cc-cloud-openstack',
   },
   {
     key: 'smartx_account',
-    icon: 'cc-cloud-plat',
+    icon: 'cc-cloud-smartx',
   },
   {
     key: 'vmware_vm',
@@ -256,7 +256,7 @@ export const BUILD_IN_MODEL: Array<{
   },
   {
     key: 'mo_ds',
-    icon: 'cc-cloud-sp',
+    icon: 'cc-datastorage',
   },
   {
     key: 'nutanixhci_sp',
@@ -444,7 +444,7 @@ export const BUILD_IN_MODEL: Array<{
   },
   {
     key: 'vmware_ds',
-    icon: 'cc-storage',
+    icon: 'cc-datastorage',
   },
   {
     key: 'aliyun_bucket',
@@ -481,6 +481,252 @@ export const BUILD_IN_MODEL: Array<{
   {
     key: 'zookeeper',
     icon: 'cc-zookeeper',
+  },
+  // ↑↑↑ 补缺第一批：2026-07-06 自主巡航补齐的中间件/数据库图标 ↓↓↓
+  {
+    key: 'influxdb',
+    icon: 'cc-influxdb',
+  },
+  {
+    key: 'consul',
+    icon: 'cc-consul',
+  },
+  {
+    key: 'network_config_file',
+    icon: 'cc-network-config',
+  },
+  // ↑↑↑ 国产数据库：2026-07-07 用户反馈 OceanBase/高斯/人大金仓缺失 ↓↓↓
+  {
+    key: 'oceanbase',
+    icon: 'cc-oceanbase',
+  },
+  {
+    key: 'oceanbase_zone',
+    icon: 'cc-oceanbase_zone',
+  },
+  {
+    key: 'oceanbase_server',
+    icon: 'cc-oceanbase_server',
+  },
+  {
+    key: 'oceanbase_tenant',
+    icon: 'cc-oceanbase_tenant',
+  },
+  {
+    key: 'opengauss',
+    icon: 'cc-opengauss',
+  },
+  {
+    key: 'gaussdb',
+    icon: 'cc-gaussdb',
+  },
+  {
+    key: 'kingbase',
+    icon: 'cc-kingbase',
+  },
+  {
+    key: 'vastbase',
+    icon: 'cc-vastbase',
+  },
+  {
+    key: 'greenplum',
+    icon: 'cc-greenplum',
+  },
+  {
+    key: 'storage_disk',
+    icon: 'cc-storage',
+  },
+  {
+    key: 'storage_volume',
+    icon: 'cc-cloud-volume',
+  },
+  {
+    key: 'fusioncompute',
+    icon: 'cc-cloud-plat',
+  },
+  {
+    key: 'highgo',
+    icon: 'cc-highgo',
+  },
+  // ↑↑↑ 2026-07-07 用户反馈 Storm/YARN/HDFS 等大数据组件图标缺失 ↓↓↓
+  {
+    key: 'storm',
+    icon: 'cc-storm',
+  },
+  {
+    key: 'yarn',
+    icon: 'cc-yarn',
+  },
+  {
+    key: 'hdfs',
+    icon: 'cc-hdfs',
+  },
+  {
+    key: 'ambari',
+    icon: 'cc-ambari',
+  },
+  // 东方通 Tong 系列
+  {
+    key: 'tonglinkq',
+    icon: 'cc-tonglinkq',
+  },
+  {
+    key: 'tonggtp',
+    icon: 'cc-tonggtp',
+  },
+  {
+    key: 'bes',
+    icon: 'cc-bes',
+  },
+  {
+    key: 'apusic',
+    icon: 'cc-apusic',
+  },
+  {
+    key: 'inforsuite_as',
+    icon: 'cc-inforsuite_as',
+  },
+  // IBM 中间件
+  {
+    key: 'ihs',
+    icon: 'cc-ihs',
+  },
+  {
+    key: 'cics',
+    icon: 'cc-cics',
+  },
+  // 数据库
+  {
+    key: 'informix',
+    icon: 'cc-informix',
+  },
+  {
+    key: 'sybase',
+    icon: 'cc-sybase',
+  },
+  {
+    key: 'couchbase',
+    icon: 'cc-couchbase',
+  },
+  {
+    key: 'mycat',
+    icon: 'cc-mycat',
+  },
+  {
+    key: 'sap_hana',
+    icon: 'cc-sap_hana',
+  },
+  {
+    key: 'iris',
+    icon: 'cc-iris',
+  },
+  {
+    key: 'gbase8s',
+    icon: 'cc-gbase8s',
+  },
+  {
+    key: 'oscar',
+    icon: 'cc-oscar',
+  },
+  {
+    key: 'tongrds',
+    icon: 'cc-tongrds',
+  },
+  {
+    key: 'tdsql',
+    icon: 'cc-tdsql',
+  },
+  {
+    key: 'redis_sentinel',
+    icon: 'cc-redis_sentinel',
+  },
+  // 存储硬件
+  {
+    key: 'ibm_storwize',
+    icon: 'cc-ibm_storwize',
+  },
+  {
+    key: 'ibm_ds',
+    icon: 'cc-ibm_ds',
+  },
+  {
+    key: 'emc_symmetrix',
+    icon: 'cc-emc_symmetrix',
+  },
+  {
+    key: 'hds_vsp',
+    icon: 'cc-hds_vsp',
+  },
+  {
+    key: 'macrosan',
+    icon: 'cc-macrosan',
+  },
+  {
+    key: 'pure_array',
+    icon: 'cc-pure_array',
+  },
+  {
+    key: 'netapp_cluster',
+    icon: 'cc-netapp_cluster',
+  },
+  {
+    key: 'oraclezfs',
+    icon: 'cc-oraclezfs',
+  },
+  {
+    key: 'infinidat',
+    icon: 'cc-infinidat',
+  },
+  {
+    key: 'tape_library',
+    icon: 'cc-tape_library',
+  },
+  {
+    key: 'xsky',
+    icon: 'cc-xsky',
+  },
+  // 网络硬件
+  {
+    key: 'brocade_fc',
+    icon: 'cc-brocade_fc',
+  },
+  {
+    key: 'cisco_fc',
+    icon: 'cc-cisco_fc',
+  },
+  {
+    key: 'f5',
+    icon: 'cc-f5',
+  },
+  // 操作系统
+  {
+    key: 'aix',
+    icon: 'cc-aix',
+  },
+  {
+    key: 'hpux',
+    icon: 'cc-hpux',
+  },
+  {
+    key: 'hmc',
+    icon: 'cc-hmc',
+  },
+  {
+    key: 'domestic_linux',
+    icon: 'cc-domestic_linux',
+  },
+  // 其他
+  {
+    key: 'security_device',
+    icon: 'cc-security_device',
+  },
+  {
+    key: 'zstack',
+    icon: 'cc-zstack',
+  },
+  {
+    key: 'h3c_cas',
+    icon: 'cc-h3c_cas',
   },
 ];
 

@@ -171,7 +171,7 @@ const ScreenRndItem: React.FC<ScreenRndItemProps> = React.memo(
 
       const target = event.target;
       if (!(target instanceof HTMLElement)) return;
-      if (!target.closest(".screen-widget-frame__header")) return;
+      if (!target.closest(".screen-widget-frame__drag-handle")) return;
       if (
         target.closest(
           ".screen-widget-frame__actions,.screen-widget-frame__action,button,input,textarea,.ant-select",
@@ -296,7 +296,7 @@ const ScreenRndItem: React.FC<ScreenRndItemProps> = React.memo(
         }}
         minWidth={160}
         minHeight={110}
-        dragHandleClassName="screen-widget-frame__header"
+        dragHandleClassName="screen-widget-frame__drag-handle"
         cancel=".screen-widget-frame__actions,.screen-widget-frame__action,button,input,textarea,.ant-select"
         enableResizing={{
           top: false,
@@ -972,6 +972,27 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
             inset 0 1px 0 rgba(226, 251, 255, 0.14);
         }
 
+        .screen-widget-frame--bare {
+          overflow: visible;
+          border-color: transparent;
+          border-radius: 0;
+          background: transparent;
+          box-shadow: none;
+          backdrop-filter: none;
+        }
+
+        .screen-widget-frame--bare::before {
+          display: none;
+        }
+
+        .screen-widget-frame--bare.screen-widget-frame--selected,
+        .screen-widget-frame--bare.screen-widget-frame--editable:hover {
+          border-color: rgba(125, 211, 252, 0.34);
+          box-shadow:
+            inset 0 0 0 1px rgba(125, 211, 252, 0.22),
+            0 0 18px rgba(8, 145, 178, 0.14);
+        }
+
         .screen-widget-frame__corners {
           display: none;
         }
@@ -1038,16 +1059,65 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
           padding: calc(9px * var(--screen-widget-ui-scale));
         }
 
+        .screen-widget-frame--bare .screen-widget-frame__body {
+          padding: 0;
+        }
+
         .screen-widget-frame--kpi .screen-widget-frame__body,
         .screen-widget-frame--gauge .screen-widget-frame__body {
           padding: calc(8px * var(--screen-widget-ui-scale)) calc(10px * var(--screen-widget-ui-scale)) calc(10px * var(--screen-widget-ui-scale));
+        }
+
+        .screen-widget-frame--bare.screen-widget-frame--kpi .screen-widget-frame__body,
+        .screen-widget-frame--bare.screen-widget-frame--gauge .screen-widget-frame__body {
+          padding: 0;
+        }
+
+        .screen-widget-frame__drag-surface {
+          position: absolute;
+          inset: 0;
+          z-index: 3;
+          cursor: move;
+          user-select: none;
+          background: transparent;
+        }
+
+        .screen-widget-frame__bare-header {
+          position: absolute;
+          left: calc(6px * var(--screen-widget-ui-scale));
+          right: calc(32px * var(--screen-widget-ui-scale));
+          top: calc(4px * var(--screen-widget-ui-scale));
+          z-index: 5;
+          display: flex;
+          min-width: 0;
+          height: calc(24px * var(--screen-widget-ui-scale));
+          align-items: center;
+          padding: 0 calc(8px * var(--screen-widget-ui-scale));
+          border: 1px solid rgba(125, 211, 252, 0.18);
+          border-radius: calc(6px * var(--screen-widget-ui-scale));
+          background: rgba(2, 10, 24, 0.38);
+          cursor: move;
+          opacity: 0;
+          pointer-events: none;
+          backdrop-filter: blur(8px);
+          transform: translateY(calc(-3px * var(--screen-widget-ui-scale)));
+          transition:
+            opacity 120ms ease,
+            transform 120ms ease;
+        }
+
+        .screen-widget-frame--bare:hover .screen-widget-frame__bare-header,
+        .screen-widget-frame--bare.screen-widget-frame--selected .screen-widget-frame__bare-header {
+          opacity: 1;
+          pointer-events: auto;
+          transform: translateY(0);
         }
 
         .screen-widget-frame__actions {
           position: absolute;
           right: calc(3px * var(--screen-widget-ui-scale));
           top: calc(3px * var(--screen-widget-ui-scale));
-          z-index: 4;
+          z-index: 6;
           opacity: 0;
           pointer-events: none;
           transform: translateY(calc(-2px * var(--screen-widget-ui-scale)));

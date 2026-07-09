@@ -4,11 +4,14 @@ from datetime import datetime, timezone
 
 from django.db import transaction
 from django_celery_beat.models import PeriodicTask, CrontabSchedule
+from rest_framework import status
+from rest_framework.response import Response
 from rest_framework import viewsets
 from rest_framework.decorators import action
 
-from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.exceptions.base_app_exception import BaseAppException, UnauthorizedException
 from apps.core.utils.permission_utils import get_permission_rules, permission_filter
+from apps.core.utils.user_group import normalize_user_group_ids
 from apps.core.utils.web_utils import WebUtils
 from apps.monitor.constants.alert_policy import AlertConstants
 from apps.monitor.constants.database import DatabaseConstants
@@ -26,9 +29,44 @@ from apps.monitor.services.policy import PolicyService
 from apps.monitor.services.policy_bulk import build_bulk_policy_payloads
 from apps.monitor.services.policy_baseline import PolicyBaselineService
 from apps.monitor.services.policy_preview import PolicyPreviewService
+from apps.monitor.services.node_mgmt import InstanceConfigService
 from apps.monitor.utils.pagination import parse_page_params
 from config.drf.pagination import CustomPageNumberPagination
 from apps.core.utils.team_utils import get_current_team
+
+
+def _build_actor_context(request):
+    current_team = get_current_team(request)
+    if current_team in (None, ""):
+        raise BaseAppException("缺少 current_team 参数")
+    try:
+        current_team = int(current_team)
+    except (TypeError, ValueError):
+        raise BaseAppException("current_team 参数非法")
+
+    return {
+        "username": request.user.username,
+        "domain": request.user.domain,
+        "current_team": current_team,
+        "include_children": request.COOKIES.get("include_children", "0") == "1",
+        "is_superuser": request.user.is_superuser,
+        "group_list": normalize_user_group_ids(getattr(request.user, "group_list", [])),
+    }
+
+
+def _normalize_orgs(organizations):
+    try:
+        return {int(org) for org in (organizations or []) if org not in (None, "")}
+    except (TypeError, ValueError):
+        raise BaseAppException("组织参数非法")
+
+
+def _operate_only_permission(permission):
+    return {
+        **permission,
+        "team": permission.get("team", []),
+        "instance": [item for item in permission.get("instance", []) if isinstance(item, dict) and "Operate" in item.get("permission", [])],
+    }
 
 
 class MonitorPolicyViewSet(viewsets.ModelViewSet):
@@ -37,25 +75,86 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
     filterset_class = MonitorPolicyFilter
     pagination_class = CustomPageNumberPagination
 
-    def list(self, request, *args, **kwargs):
-        monitor_object_id = request.query_params.get("monitor_object_id", None)
+    def _get_monitor_object_id(self):
+        request = getattr(self, "request", None)
+        if request is not None:
+            monitor_object_id = (
+                request.query_params.get("monitor_object_id") or request.data.get("monitor_object") or request.data.get("monitor_object_id")
+            )
+            if monitor_object_id not in (None, ""):
+                return monitor_object_id
 
-        include_children = request.COOKIES.get("include_children", "0") == "1"
-        permission = get_permission_rules(
+        policy_id = getattr(self, "kwargs", {}).get("pk")
+        if policy_id in (None, ""):
+            return None
+        return MonitorPolicy.objects.filter(id=policy_id).values_list("monitor_object_id", flat=True).first()
+
+    def _get_permission(self, monitor_object_id=None):
+        request = self.request
+        monitor_object_id = monitor_object_id if monitor_object_id not in (None, "") else self._get_monitor_object_id()
+        permission_key = (
+            f"{PermissionConstants.POLICY_MODULE}.{monitor_object_id}" if monitor_object_id not in (None, "") else PermissionConstants.POLICY_MODULE
+        )
+        return get_permission_rules(
             request.user,
             get_current_team(request),
             "monitor",
-            f"{PermissionConstants.POLICY_MODULE}.{monitor_object_id}",
-            include_children=include_children,
+            permission_key,
+            include_children=request.COOKIES.get("include_children", "0") == "1",
         )
-        qs = permission_filter(
+
+    def _scope_queryset(self, queryset, permission):
+        permitted_qs = permission_filter(
             MonitorPolicy,
             permission,
             team_key="policyorganization__organization__in",
             id_key="id__in",
         )
+        return queryset.filter(id__in=permitted_qs.values("id")).distinct()
 
-        queryset = self.filter_queryset(qs)
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        request = getattr(self, "request", None)
+        if request is None:
+            return queryset
+
+        monitor_object_id = self._get_monitor_object_id()
+        if monitor_object_id not in (None, ""):
+            queryset = queryset.filter(monitor_object_id=monitor_object_id)
+
+        if request.user.is_superuser:
+            return queryset
+
+        permission = self._get_permission(monitor_object_id)
+        if getattr(self, "action", "") in {"update", "partial_update", "destroy"}:
+            permission = _operate_only_permission(permission)
+        return self._scope_queryset(queryset, permission)
+
+    def _get_authorized_scope_groups(self, actor_context):
+        if actor_context["is_superuser"]:
+            return None
+
+        groups = set(InstanceConfigService._get_actor_scope_groups(actor_context) or [])
+        if not groups:
+            raise UnauthorizedException("当前组织无可用权限范围")
+        return groups
+
+    def _ensure_target_organizations(self, organizations, actor_context=None):
+        target_orgs = _normalize_orgs(organizations)
+        if not target_orgs:
+            return
+
+        actor_context = actor_context or _build_actor_context(self.request)
+        if actor_context["is_superuser"]:
+            return
+
+        unauthorized_orgs = target_orgs - self._get_authorized_scope_groups(actor_context)
+        if unauthorized_orgs:
+            raise UnauthorizedException("无权限关联指定组织")
+
+    def list(self, request, *args, **kwargs):
+        permission = self._get_permission(request.query_params.get("monitor_object_id", None))
+        queryset = self.filter_queryset(self.get_queryset())
 
         queryset = queryset.distinct()
 
@@ -85,6 +184,7 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
         return WebUtils.response_success(dict(count=queryset.count(), items=results))
 
     def create(self, request, *args, **kwargs):
+        self._ensure_target_organizations(request.data.get("organizations", []))
         request.data["created_by"] = request.user.username
         response = super().create(request, *args, **kwargs)
         policy_id = response.data["id"]
@@ -98,11 +198,12 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
         return response
 
     def update(self, request, *args, **kwargs):
+        policy = self.get_object()
+        self._ensure_target_organizations(request.data.get("organizations", []))
         request.data["updated_by"] = request.user.username
-        policy_id = kwargs["pk"]
+        policy_id = policy.id
 
         # 获取策略变更前的 enable 状态和无数据基准语义
-        policy = MonitorPolicy.objects.filter(id=policy_id).first()
         old_enable = policy.enable if policy else None
         old_baseline_state = self.get_baseline_state(policy)
 
@@ -139,11 +240,13 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
         return response
 
     def partial_update(self, request, *args, **kwargs):
+        policy = self.get_object()
+        if "organizations" in request.data:
+            self._ensure_target_organizations(request.data.get("organizations", []))
         request.data["updated_by"] = request.user.username
-        policy_id = kwargs["pk"]
+        policy_id = policy.id
 
         # 获取策略变更前的 enable 状态和无数据基准语义
-        policy = MonitorPolicy.objects.filter(id=policy_id).first()
         old_enable = policy.enable if policy else None
         old_baseline_state = self.get_baseline_state(policy)
 
@@ -180,15 +283,15 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
         return response
 
     def destroy(self, request, *args, **kwargs):
-        policy_id = kwargs["pk"]
-        policy = MonitorPolicy.objects.filter(id=policy_id).first()
-        if policy:
-            PolicyBaselineService(policy).clear()
-            alerts_to_close = list(MonitorAlert.objects.filter(policy_id=policy_id, status="new"))
-            self.close_alerts(policy, alerts_to_close, request.user.username, "policy_deleted")
+        policy = self.get_object()
+        policy_id = policy.id
+        PolicyBaselineService(policy).clear()
+        alerts_to_close = list(MonitorAlert.objects.filter(policy_id=policy_id, status="new"))
+        self.close_alerts(policy, alerts_to_close, request.user.username, "policy_deleted")
         PeriodicTask.objects.filter(name=f"scan_policy_task_{policy_id}").delete()
         PolicyOrganization.objects.filter(policy_id=policy_id).delete()
-        return super().destroy(request, *args, **kwargs)
+        policy.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     def is_no_data_alert_enabled(self, policy):
         return bool(policy and AlertConstants.NO_DATA in (policy.enable_alerts or []))
@@ -434,6 +537,10 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
         if not asset_ids:
             raise BaseAppException("asset_ids 不能为空")
 
+        permission_error = self.get_bulk_policy_asset_permission_error(monitor_object_id, asset_ids)
+        if permission_error:
+            return WebUtils.response_401(permission_error)
+
         assets = self.get_bulk_policy_assets(monitor_object_id, asset_ids)
         enriched_templates = self.enrich_bulk_policy_templates(monitor_object_id, templates)
         payloads = build_bulk_policy_payloads(
@@ -449,6 +556,7 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
                 payload["updated_by"] = request.user.username
                 payload["domain"] = getattr(request.user, "domain", "domain.com")
                 payload["updated_by_domain"] = getattr(request.user, "domain", "domain.com")
+                self._ensure_target_organizations(payload.get("organizations", []))
                 serializer = self.get_serializer(data=payload)
                 serializer.is_valid(raise_exception=True)
                 policy = serializer.save()
@@ -464,6 +572,41 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
                 "policy_ids": [policy.id for policy in created],
             }
         )
+
+    def get_bulk_policy_asset_permission_error(self, monitor_object_id, asset_ids):
+        from apps.monitor.models.monitor_object import MonitorInstance
+
+        normalized_ids = [str(asset_id) for asset_id in asset_ids if asset_id not in (None, "")]
+        request = getattr(self, "request", None)
+        if request is None or request.user.is_superuser or not normalized_ids:
+            return ""
+
+        actor_context = _build_actor_context(request)
+        authorized_ids = {
+            str(instance_id)
+            for instance_id in InstanceConfigService._get_authorized_monitor_instances(
+                actor_context,
+                monitor_object_id,
+                require_operate=False,
+            )
+            .filter(
+                id__in=normalized_ids,
+                monitor_object_id=monitor_object_id,
+                is_deleted=False,
+            )
+            .values_list("id", flat=True)
+        }
+        existing_ids = set(
+            MonitorInstance.objects.filter(
+                id__in=normalized_ids,
+                monitor_object_id=monitor_object_id,
+                is_deleted=False,
+            ).values_list("id", flat=True)
+        )
+        unauthorized_ids = sorted(existing_ids - authorized_ids)
+        if unauthorized_ids:
+            return f"无权限访问指定监控资产: {', '.join(unauthorized_ids)}"
+        return ""
 
     @action(methods=["post"], detail=False, url_path="preview")
     def preview(self, request):
@@ -488,10 +631,27 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
         if missing_ids:
             raise BaseAppException(f"监控资产不存在: {', '.join(missing_ids)}")
 
+        request = getattr(self, "request", None)
+        if request is not None and not request.user.is_superuser:
+            actor_context = _build_actor_context(request)
+            authorized_ids = {
+                str(instance_id)
+                for instance_id in InstanceConfigService._get_authorized_monitor_instances(
+                    actor_context,
+                    monitor_object_id,
+                    require_operate=False,
+                )
+                .filter(id__in=normalized_ids)
+                .values_list("id", flat=True)
+            }
+            unauthorized_ids = sorted(set(normalized_ids) - authorized_ids)
+            if unauthorized_ids:
+                raise UnauthorizedException(f"无权限访问指定监控资产: {', '.join(unauthorized_ids)}")
+
         org_map = {}
-        for instance_id, organization in MonitorInstanceOrganization.objects.filter(
-            monitor_instance_id__in=normalized_ids
-        ).values_list("monitor_instance_id", "organization"):
+        for instance_id, organization in MonitorInstanceOrganization.objects.filter(monitor_instance_id__in=normalized_ids).values_list(
+            "monitor_instance_id", "organization"
+        ):
             org_map.setdefault(instance_id, []).append(organization)
 
         return [

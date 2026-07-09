@@ -37,7 +37,7 @@ const ToolListPage: React.FC = () => {
   const [availableTools, setAvailableTools] = useState<any[]>([]);
   const [fetchingTools, setFetchingTools] = useState<boolean>(false);
   const [enableAuth, setEnableAuth] = useState<boolean>(false);
-  const [assetView, setAssetView] = useState<'builtin' | 'mcp' | 'skills'>('skills');
+  const [assetView, setAssetView] = useState<'builtin' | 'mcp' | 'skills'>('builtin');
   const [skillAssets, setSkillAssets] = useState<SkillPackage[]>([]);
   const [skillAssetsLoading, setSkillAssetsLoading] = useState<boolean>(false);
   const [skillSearchKeyword, setSkillSearchKeyword] = useState('');
@@ -473,8 +473,8 @@ const ToolListPage: React.FC = () => {
       value={assetView}
       onChange={(value) => setAssetView(value as 'builtin' | 'mcp' | 'skills')}
       options={[
+        { label: '工具', value: 'builtin' },
         { label: '技能', value: 'skills' },
-        { label: '内置', value: 'builtin' },
         { label: 'MCP', value: 'mcp' },
       ]}
     />
