@@ -34,7 +34,6 @@ import { useDataStorageConfig } from './objects/vmWare/dataStorage';
 import { useEsxiConfig } from './objects/vmWare/esxi';
 import { useVmConfig } from './objects/vmWare/vm';
 import { useDockerConfig } from './objects/containerManagement/docker';
-import { useStorageConfig } from './objects/hardwareDevice/storage';
 import { useHostConfig } from './objects/os/host';
 import { useWebsiteConfig } from './objects/web/website';
 import { usePingConfig } from './objects/web/ping';
@@ -103,7 +102,6 @@ export const useMonitorConfig = () => {
   const esxiConfig = useEsxiConfig();
   const vmConfig = useVmConfig();
   const dockerConfig = useDockerConfig();
-  const storageConfig = useStorageConfig();
   const hostConfig = useHostConfig();
   const websiteConfig = useWebsiteConfig();
   const pingConfig = usePingConfig();
@@ -159,7 +157,6 @@ export const useMonitorConfig = () => {
       VoiceGateway: voiceGatewayConfig,
       vCenter: vCenterConfig,
       Docker: dockerConfig,
-      Storage: storageConfig,
       Host: hostConfig,
       Website: websiteConfig,
       Ping: pingConfig,

@@ -25,6 +25,16 @@ import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import dayjs from 'dayjs';
 
+// EE 端运行时注入的 BRANDS:由 web/scripts/prepare-enterprise.mjs 生成
+// /public/__enterprise-brands.js,next layout.tsx <Script> 加载后挂到这里。
+// 类型契约:每条 brand 的 match/label/icon 字段与下方 BRANDS 项同型。
+declare global {
+  // eslint-disable-next-line @typescript-eslint/no-empty-object-type
+  interface Window {
+    __ENTERPRISE_BRANDS?: Array<{ match: RegExp; label: string; icon?: string }>;
+  }
+}
+
 // 获取头像随机色
 export const getRandomColor = () => {
   const colors = ['#875CFF', '#FF9214', '#00CBA6', '#1272FF'];
@@ -784,13 +794,26 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /proxim/i, label: 'Proxim', icon: 'mm-proxim_proxim' }
 ];
 
-// 按插件名取品牌 logo 图标；未命中返回 undefined（调用方回退监控对象图标）。
-export const getPluginBrandIcon = (pluginName = ''): string | undefined =>
-  BRANDS.find((brand) => brand.match.test(pluginName))?.icon;
+// 失败降级:window undefined / __ENTERPRISE_BRANDS 缺失 → 返回 [],等价走纯 CE BRANDS。
+const getEnterpriseBrands = (): Array<{ match: RegExp; label: string; icon?: string }> => {
+  if (typeof window !== 'undefined' && Array.isArray(window.__ENTERPRISE_BRANDS)) {
+    return window.__ENTERPRISE_BRANDS;
+  }
+  return [];
+};
 
-// 按名称（实例名/插件名）取品牌标签（如 'Cisco'），用于在共享仪表盘头部标识当前品牌；未命中返回 undefined。
-export const getBrandLabel = (text = ''): string | undefined =>
-  BRANDS.find((brand) => brand.match.test(text))?.label;
+// 按插件名取品牌 logo 图标;命中 CE BRANDS 或运行时注入的 EE __ENTERPRISE_BRANDS 任一即返回。
+// 失败降级:都未命中 → undefined,调用方回退到监控对象 icon。
+export const getPluginBrandIcon = (pluginName = ''): string | undefined => {
+  const all = [...BRANDS, ...getEnterpriseBrands()];
+  return all.find((brand) => brand.match.test(pluginName))?.icon;
+};
+
+// 按名称(实例名/插件名)取品牌标签,用于仪表盘头部标识;同 getPluginBrandIcon 拼接策略。
+export const getBrandLabel = (text = ''): string | undefined => {
+  const all = [...BRANDS, ...getEnterpriseBrands()];
+  return all.find((brand) => brand.match.test(text))?.label;
+};
 
 export const getRecentTimeRange = (timeValues: TimeValuesProps) => {
   if (timeValues.originValue) {

@@ -226,6 +226,7 @@ export default function RootLayout({
         <title>BlueKing Lite</title>
         <link rel="icon" href="/logo-site.png" type="image/png" data-portal-favicon="true" />
         <Script src="/iconfont.js" strategy="afterInteractive"/>
+        <Script src="/__enterprise-brands.js" strategy="afterInteractive" />
       </head>
       <body>
         {/* 全局 Context Provider 配置 */}
