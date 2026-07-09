@@ -203,6 +203,18 @@ export class DataMapper {
         // 单选模式，将字符串转为数组
         nodeIds = [row.node_ids];
       }
+      // 网络设备实例(Switch/Router/Firewall/Loadbalance)需要把
+      // 选中节点的 cloud_region_id 透传到后端,后端
+      // _extract_network_device_identity_parts 才会校验通过,
+      // 否则抛 "network device instance requires cloud_region and ip"。
+      // nodeList 由接入页通过 context.nodeList 传入,字段名以 NodeMgmt().node_list
+      // 返回为准(可能含 id 或 value 两种 key 形式)。
+      const firstNodeId = nodeIds[0];
+      const matchedNode = firstNodeId
+        ? context.nodeList?.find(
+            (n: any) => n?.value === firstNodeId || n?.id === firstNodeId
+          )
+        : undefined;
       // 生成 instance_id（如果有模板）,使用 SHA256 哈希编码
       let instance_id = row.instance_id;
       if (!instance_id && context.instance_id) {
@@ -233,6 +245,11 @@ export class DataMapper {
         instance_id,
         node_ids: nodeIds,
         instance_type: context.instance_type,
+        // NodeSerializer.Meta.fields 输出的是 ForeignKey 字段名 cloud_region
+        // (DRF 渲染为 PK 整数值,语义等价后端 cloud_region_id);
+        // 老代码偶有 nodeList 项含 cloud_region_id,这里两条路径都吃。
+        cloud_region_id:
+          matchedNode?.cloud_region_id ?? matchedNode?.cloud_region
       };
     });
 
