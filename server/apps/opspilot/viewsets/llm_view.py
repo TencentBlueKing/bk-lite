@@ -428,6 +428,86 @@ class ObjFilter(FilterSet):
         enabled = value == "1"
         return qs.filter(enabled=enabled)
 
+    @action(methods=["POST"], detail=False)
+    def fetch_k8s_deployment_yaml(self, request):
+        """按 namespace + name 拉真实 k8s deployment YAML(给前端 diff 模态按需用)。
+
+        前端 modal 默认显示文字描述(issue + 修复建议),点"查看实际 deployment"
+        才 fetch 一次,减少不必要请求。SSRF 校验复用 _guard_kubeconfig。
+        前端传 skill_id,后端按 skill_id → cluster_name 找 kubeconfig,不暴露给前端。
+        """
+        from kubernetes import client
+        import yaml as _yaml
+
+        namespace = (request.data.get("namespace") or "").strip()
+        name = (request.data.get("name") or "").strip()
+        cluster_name = (request.data.get("cluster_name") or "").strip()
+        skill_id = request.data.get("skill_id")
+        if not namespace or not name or not skill_id or not cluster_name:
+            return Response(
+                {"result": False, "message": "namespace, name, cluster_name, skill_id are required", "code": "40000"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            # 按 skill_id 查 LLMSkill 找匹配的 kubernetes_instances
+            from apps.opspilot.models import LLMSkill
+            skill = LLMSkill.objects.filter(id=skill_id).first()
+            if not skill or not skill.tools:
+                return Response(
+                    {"result": False, "message": "skill not found or no tools", "code": "40400"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            kubeconfig_data = None
+            for tool in skill.tools:
+                if tool.get("name") != "kubernetes":
+                    continue
+                for kw in (tool.get("kwargs") or []):
+                    if kw.get("key") != "kubernetes_instances":
+                        continue
+                    instances = kw.get("value")
+                    if not isinstance(instances, list):
+                        try:
+                            import json as _json
+                            instances = _json.loads(instances)
+                        except Exception:
+                            continue
+                    for inst in instances:
+                        if isinstance(inst, dict) and inst.get("name") == cluster_name:
+                            kubeconfig_data = inst.get("kubeconfig_data")
+                            break
+                if kubeconfig_data:
+                    break
+            if not kubeconfig_data:
+                return Response(
+                    {"result": False, "message": f"cluster {cluster_name} not found in skill tools", "code": "40400"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            self._guard_kubeconfig(kubeconfig_data)
+            from apps.opspilot.metis.llm.tools.kubernetes.connection import (
+                build_kubernetes_config_from_instance,
+            )
+            instance_cfg = build_kubernetes_config_from_instance(
+                {"kubeconfig_data": kubeconfig_data}
+            )
+            configuration = client.Configuration()
+            if instance_cfg.get("verify_ssl") is not None:
+                configuration.verify_ssl = instance_cfg["verify_ssl"]
+            api_client = client.ApiClient(configuration=configuration)
+            apps_v1 = client.AppsV1Api(api_client=api_client)
+            dep = apps_v1.read_namespaced_deployment(name, namespace)
+            manifest = api_client.sanitize_for_serialization(dep)
+            yaml_str = _yaml.safe_dump(manifest, allow_unicode=True, sort_keys=False)
+            return Response(
+                {"result": True, "data": {"yaml": yaml_str, "name": name, "namespace": namespace}, "code": "20000"},
+                status=status.HTTP_200_OK,
+            )
+        except Exception as e:
+            logger.warning(f"fetch_k8s_deployment_yaml failed: {e}")
+            return Response(
+                {"result": False, "message": str(e), "code": "50000"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
 
 class LLMModelViewSet(VendorModelMixin, AuthViewSet):
     serializer_class = LLMModelSerializer
@@ -614,6 +694,38 @@ class SkillPackageViewSet(AuthViewSet):
     queryset = SkillPackage.objects.all().order_by("-id")
     permission_key = "tools"
 
+    @staticmethod
+    def _cleanup_storage_path(storage_path_text: str) -> bool:
+        """删技能包时清掉磁盘 storage_path(物化的 SKILL.md + extracted 资源)。
+
+        Safety:目标路径必须落在 DEFAULT_SKILL_PACKAGE_ROOT 之下,避免 storage_path
+        被恶意改成 host 任意路径后误删。失败只 warn 不抛——留个孤儿目录比
+        直接拒绝删除友好,管理员可以手动 rmtree。
+        """
+        if not storage_path_text:
+            return False
+        try:
+            import shutil
+            from pathlib import Path
+            from apps.opspilot.services.skill_package.importer import DEFAULT_SKILL_PACKAGE_ROOT
+            target = Path(storage_path_text).resolve()
+            root = DEFAULT_SKILL_PACKAGE_ROOT.resolve()
+            if root in target.parents and target.exists():
+                shutil.rmtree(target)
+                logger.info("[skill-package] 清理磁盘目录: %s", target)
+                return True
+        except Exception as e:
+            logger.warning("[skill-package] 清理磁盘目录失败 %s: %r", storage_path_text, e)
+        return False
+
+    def destroy(self, request, *args, **kwargs):
+        """删技能包:DRF 默认 destroy 删 DB 行,再调 _cleanup_storage_path 清磁盘。"""
+        instance = self.get_object()
+        storage_path_text = str(getattr(instance, "storage_path", "") or "")
+        response = super().destroy(request, *args, **kwargs)
+        self._cleanup_storage_path(storage_path_text)
+        return response
+
     def get_queryset(self):
         queryset = super().get_queryset()
         is_enabled = self.request.query_params.get("is_enabled")
@@ -645,10 +757,6 @@ class SkillPackageViewSet(AuthViewSet):
     @HasPermission("tools_list-Edit")
     def partial_update(self, request, *args, **kwargs):
         return super().partial_update(request, *args, **kwargs)
-
-    @HasPermission("tools_list-Delete")
-    def destroy(self, request, *args, **kwargs):
-        return super().destroy(request, *args, **kwargs)
 
     @action(methods=["POST"], detail=False)
     @HasPermission("tools_list-Add")

@@ -224,22 +224,13 @@
 .chatContainer :global(.ant-bubble-start .ant-bubble-content) {
   width: 100%;
   max-width: 100%;
-}
-
-.chatContainer :global(.ant-bubble-end .ant-bubble-content-wrapper) {
-  align-items: flex-end;
-}
-
-// Bot messages: no background, clean and open
-.chatContainer :global(.ant-bubble-start .ant-bubble-content) {
   background-color: transparent;
-  padding: 0;
 }
 
-// User messages: subtle rounded bubble
-.chatContainer :global(.ant-bubble-end .ant-bubble-content) {
+// User messages: subtle blue rounded bubble, left tail
+.chatContainer .userBubble :global(.ant-bubble-content) {
   background-color: var(--color-primary-light-1, #e6f4ff);
-  border-radius: 18px 18px 4px 18px;
+  border-radius: 4px 18px 18px 18px;
   padding: 10px 16px;
 }
 

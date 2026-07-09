@@ -373,3 +373,148 @@ def test_skill_package_strategy_merges_capabilities_reports_and_workflows():
     assert strategy["skill_package_reports"]["config_analysis"]["event"] == "config_analysis_report"
     assert strategy["skill_package_reports"]["browser_steps"]["event"] == "browser_step_progress"
     assert strategy["skill_package_workflows"]["after_config_analysis"][0]["type"] == "choice"
+
+
+def test_manifest_overlay_reads_skill_md_frontmatter_to_activate_capabilities(tmp_path):
+    """SKILL.md frontmatter 里的 capabilities 应当覆盖 DB manifest,让 chain 路径热生效。"""
+    from types import SimpleNamespace
+
+    from apps.opspilot.services.skill_package.runtime import _manifest_with_storage_overlay
+
+    extracted = tmp_path / "extracted"
+    extracted.mkdir()
+    (extracted / "SKILL.md").write_text(
+        "---\n"
+        "name: k8s-pack\n"
+        "description: K8s 专家技能包\n"
+        "capabilities:\n"
+        "  - config_analysis_report\n"
+        "  - repair_diff_report\n"
+        "reports:\n"
+        "  config_analysis:\n"
+        "    event: config_analysis_report\n"
+        "workflows:\n"
+        "  after_config_analysis:\n"
+        "    - type: choice\n"
+        "---\n\n"
+        "# body\n",
+        encoding="utf-8",
+    )
+
+    # DB manifest 故意留空(模拟:用户重导过 ZIP 但那次没声明 capabilities)
+    stored = SimpleNamespace(
+        manifest={},
+        storage_path=str(tmp_path),
+    )
+
+    overlay = _manifest_with_storage_overlay(stored)
+
+    assert overlay["capabilities"] == ["config_analysis_report", "repair_diff_report"]
+    assert overlay["reports"]["config_analysis"]["event"] == "config_analysis_report"
+    assert overlay["workflows"]["after_config_analysis"][0]["type"] == "choice"
+
+
+def test_manifest_overlay_skill_md_overrides_skill_yaml_and_db_manifest(tmp_path):
+    """SKILL.md frontmatter > skill.yaml > DB manifest,后两者都不能盖过 SKILL.md。"""
+    from types import SimpleNamespace
+
+    from apps.opspilot.services.skill_package.runtime import _manifest_with_storage_overlay
+
+    extracted = tmp_path / "extracted"
+    extracted.mkdir()
+    # skill.yaml 声明旧的 capabilities
+    (extracted / "skill.yaml").write_text(
+        "name: k8s-pack\n"
+        "capabilities:\n"
+        "  - browser_steps\n",
+        encoding="utf-8",
+    )
+    # SKILL.md 声明新的 capabilities(用户最新编辑)
+    (extracted / "SKILL.md").write_text(
+        "---\n"
+        "name: k8s-pack\n"
+        "capabilities:\n"
+        "  - config_analysis_report\n"
+        "  - repair_diff_report\n"
+        "---\n\n"
+        "# body\n",
+        encoding="utf-8",
+    )
+
+    stored = SimpleNamespace(
+        manifest={"capabilities": ["legacy_capability"]},  # DB 里有更老的
+        storage_path=str(tmp_path),
+    )
+
+    overlay = _manifest_with_storage_overlay(stored)
+
+    # SKILL.md 的 capabilities 胜出
+    assert overlay["capabilities"] == ["config_analysis_report", "repair_diff_report"]
+
+
+def test_manifest_overlay_falls_back_to_db_when_skill_md_lacks_strategy_field(tmp_path):
+    """SKILL.md frontmatter 没声明 capabilities 时,沿用 DB manifest(不删能力)。"""
+    from types import SimpleNamespace
+
+    from apps.opspilot.services.skill_package.runtime import _manifest_with_storage_overlay
+
+    extracted = tmp_path / "extracted"
+    extracted.mkdir()
+    (extracted / "SKILL.md").write_text(
+        "---\n"
+        "name: k8s-pack\n"
+        "description: 没声明 capabilities\n"
+        "---\n\n"
+        "# body\n",
+        encoding="utf-8",
+    )
+
+    stored = SimpleNamespace(
+        manifest={"capabilities": ["config_analysis_report"]},
+        storage_path=str(tmp_path),
+    )
+
+    overlay = _manifest_with_storage_overlay(stored)
+
+    assert overlay["capabilities"] == ["config_analysis_report"]
+
+
+def test_manifest_overlay_returns_manifest_when_storage_path_is_empty(tmp_path):
+    """storage_path 为空时直接返回 DB manifest,不能崩。"""
+    from types import SimpleNamespace
+
+    from apps.opspilot.services.skill_package.runtime import _manifest_with_storage_overlay
+
+    stored = SimpleNamespace(
+        manifest={"capabilities": ["config_analysis_report"]},
+        storage_path="",
+    )
+
+    overlay = _manifest_with_storage_overlay(stored)
+
+    assert overlay == {"capabilities": ["config_analysis_report"]}
+
+
+def test_manifest_overlay_tolerates_malformed_skill_md(tmp_path):
+    """SKILL.md 解析失败时不能崩,要安静回退到 DB manifest。"""
+    from types import SimpleNamespace
+
+    from apps.opspilot.services.skill_package.runtime import _manifest_with_storage_overlay
+
+    extracted = tmp_path / "extracted"
+    extracted.mkdir()
+    (extracted / "SKILL.md").write_text(
+        "---\n"
+        "name: broken\n"
+        "capabilities: [unclosed\n",  # YAML 解析会失败
+        encoding="utf-8",
+    )
+
+    stored = SimpleNamespace(
+        manifest={"capabilities": ["config_analysis_report"]},
+        storage_path=str(tmp_path),
+    )
+
+    overlay = _manifest_with_storage_overlay(stored)
+
+    assert overlay["capabilities"] == ["config_analysis_report"]
