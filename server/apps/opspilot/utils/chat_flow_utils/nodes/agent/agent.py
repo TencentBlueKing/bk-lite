@@ -18,6 +18,22 @@ from apps.opspilot.utils.chat_flow_utils.engine.core.base_executor import BaseNo
 from apps.opspilot.utils.prompt_utils import resolve_skill_params
 
 
+def _build_agui_sse_line(payload: dict) -> str:
+    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+def _build_wiki_citations_event(extra_config: dict | None) -> dict | None:
+    citations = (extra_config or {}).get("wiki_citations")
+    if not citations:
+        return None
+    return {
+        "type": "CUSTOM",
+        "name": "wiki_citations",
+        "value": {"citations": citations},
+        "timestamp": int(time.time() * 1000),
+    }
+
+
 class AgentNode(BaseNodeExecutor):
     def _get_skill(self, skill_id: str) -> LLMSkill:
         """获取技能对象
@@ -295,6 +311,10 @@ class AgentNode(BaseNodeExecutor):
             try:
                 logger.info(f"[AgentNode-AGUI] 开始流式处理 - skill_name: {skill_name}, node_id: {node_id}, show_think: {show_think}")
 
+                wiki_citations_event = _build_wiki_citations_event(request.extra_config)
+                if wiki_citations_event:
+                    yield _build_agui_sse_line(wiki_citations_event)
+
                 chunk_index = 0
                 async for sse_line in graph.agui_stream(request):
                     yield sse_line
@@ -307,7 +327,7 @@ class AgentNode(BaseNodeExecutor):
                     "error": f"节点执行错误: {str(e)}",
                     "timestamp": int(time.time() * 1000),
                 }
-                yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
+                yield _build_agui_sse_line(error_data)
 
         return generate_agui_stream()
 
