@@ -79,7 +79,9 @@ def search(knowledge_base, query, top_k=5):
                 {
                     "kind": "material_summary",
                     "id": material.id,
-                    "title": f"资料摘要: {material.name}",
+                    # 直接用 material.name 作为 title,前端展示资料名(用户期望 [n] 资料名格式);
+                    # 不再加"资料摘要: "前缀,前缀在 UI 文字层加,与数据层耦合不友好。
+                    "title": material.name,
                     "snippet": (material.ai_summary or "")[:300],
                     "score": score,
                     "explanation": _keyword_explanation(score, terms, material.name, material.ai_summary),
