@@ -998,8 +998,6 @@
       "connectionDescription": "连接说明：",
       "noTriggerNodes": "无可用触发节点",
       "uploadKnowledgeTooltip": "在工作流执行过程中，需要额外的知识，将作为智能体执行的前置条件进行输入",
-      "wikiKbTooltip": "选择该智能体要检索的 Wiki 知识库,执行时会自动检索并把相关页面片段注入系统提示词",
-      "pleaseSelectWikiKb": "请选择 Wiki 知识库(可多选)",
       "enterToken": "输入Token",
       "tuesday": "星期二",
       "dailyTip": "每天触发，请在下方设置具体时间（可添加多个时间点，如：7:00、14:00、18:00）",

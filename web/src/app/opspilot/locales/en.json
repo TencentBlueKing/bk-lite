@@ -998,8 +998,6 @@
       "connectionDescription": "Connection Description:",
       "noTriggerNodes": "No trigger nodes available",
       "uploadKnowledgeTooltip": "During workflow execution, additional knowledge is needed, which will be input as prerequisites for agent execution",
-      "wikiKbTooltip": "Pick the Wiki knowledge bases the agent should retrieve from at execution time. Matching pages are injected into the system prompt automatically.",
-      "pleaseSelectWikiKb": "Select Wiki knowledge bases (multi-select)",
       "enterToken": "Enter Token",
       "tuesday": "Tuesday",
       "dailyTip": "Daily trigger. Set specific times below (multiple times supported, e.g., 7:00, 14:00, 18:00)",
