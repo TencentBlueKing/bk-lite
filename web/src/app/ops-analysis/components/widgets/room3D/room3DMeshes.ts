@@ -18,7 +18,8 @@ export interface RackVisual {
 }
 
 export const ROOM3D_COL_GAP = 1.18;
-export const ROOM3D_ROW_GAP = 4.6;
+export const ROOM3D_ROW_GAP = 5.4;
+export const ROOM3D_FRONT_AISLE_EXTRA = 1.5;
 export const ROOM3D_RACK_WIDTH = 1.05;
 export const ROOM3D_RACK_DEPTH = 1.2;
 export const ROOM3D_RACK_HEIGHT = 1.95;
