@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { Spin, Button, Form, message, Steps } from 'antd';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
@@ -46,19 +46,36 @@ import {
   COMPARISON_METHOD,
   ENUM_COMPARISON_METHOD
 } from '@/app/monitor/constants/event';
-import { resolveInitialMetricPluginId } from './strategyDetailUtils';
+import {
+  FORMULA_DEFAULT_RESULT_UNIT,
+  filterInvalidCalculationUnit,
+  getCalculationUnitOnMetricRowsChange,
+  getReverseModeCalculationUnit,
+  getValidThresholdUnitOptions,
+  resolveFormulaResultUnit,
+  resolveInitialMetricPluginId
+} from './strategyDetailUtils';
+import { MetricExpressionRow } from './metricExpressionTypes';
+import {
+  buildMetricExpressionQueryCondition,
+  createMetricRow,
+  DEFAULT_FORMULA_EXPRESSION,
+  DEFAULT_FORMULA_RESULT_NAME,
+  getMetricExpressionModeForRows,
+  MetricExpressionMode,
+  toMetricExpressionStateFromQueryCondition
+} from './formulaExpressionUtils';
 const defaultGroup = ['instance_id'];
 
 // 过滤无效的单位值（none 、 short 和 JSON 字符串格式 已从单位列表中移除，不能作为单位值）
-const filterInvalidUnit = (unit: string | null | undefined): string | null => {
-  if (!unit || unit === 'none' || unit === 'short' || isStringArray(unit)) {
-    return null;
-  }
-  return unit;
-};
+// 已上提至 strategyDetailUtils.filterInvalidCalculationUnit
 
 const StrategyOperation = () => {
   const { t } = useTranslation();
+  const translateWithFallback = (key: string, fallback: string) => {
+    const value = t(key);
+    return value === key ? fallback : value;
+  };
   const { post, put, isLoading } = useApiClient();
   const {
     getMetricsGroup,
@@ -68,6 +85,11 @@ const StrategyOperation = () => {
   } = useMonitorApi();
   const { getMonitorPolicy, getSystemChannelList } = useEventApi();
   const commonContext = useCommon();
+  const unitList = commonContext?.unitList || [];
+  const validThresholdUnitOptions = useMemo(
+    () => getValidThresholdUnitOptions(unitList),
+    [unitList]
+  );
   const searchParams = useSearchParams();
   const [form] = Form.useForm();
   const router = useRouter();
@@ -94,12 +116,26 @@ const StrategyOperation = () => {
   const [metric, setMetric] = useState<string | null>(null);
   const [metrics, setMetrics] = useState<MetricItem[]>([]);
   const [metricsLoading, setMetricsLoading] = useState<boolean>(false);
-  const [labels, setLabels] = useState<string[]>([]);
   const [unit, setUnit] = useState<string>('min');
   const [periodUnit, setPeriodUnit] = useState<string>('min');
   const [nodataUnit, setNodataUnit] = useState<string>('min');
   const [noDataRecoveryUnit, setNoDataRecoveryUnit] = useState<string>('min');
   const [conditions, setConditions] = useState<FilterItem[]>([]);
+  const [metricRows, setMetricRows] = useState<MetricExpressionRow[]>([
+    createMetricRow(0)
+  ]);
+  const [metricExpressionMode, setMetricExpressionMode] =
+    useState<MetricExpressionMode>('metric');
+  const [formulaResultName, setFormulaResultName] = useState<string>(
+    () =>
+      translateWithFallback(
+        'monitor.events.formulaDefaultResultName',
+        DEFAULT_FORMULA_RESULT_NAME
+      )
+  );
+  const [formulaExpression, setFormulaExpression] =
+    useState<string>(DEFAULT_FORMULA_EXPRESSION);
+  const [labelsByRef, setLabelsByRef] = useState<Record<string, string[]>>({});
   const [noDataAlert, setNoDataAlert] = useState<number | null>(null);
   const [noDataRecovery, setNoDataRecovery] = useState<number | null>(null);
   const [noDataAlertLevel, setNoDataAlertLevel] = useState<string>('none');
@@ -206,13 +242,21 @@ const StrategyOperation = () => {
           const target = initMetricData.find((item) => item.name === _metricId);
           if (target) {
             const _labels = getMetricDimensionNames(target?.dimensions);
-            setLabels(_labels);
-            setCalculationUnit(filterInvalidUnit(target?.unit));
+            setCalculationUnit(filterInvalidCalculationUnit(target?.unit));
             // 计算完整的分组维度选项列表并设置为所有选项
             const fixedList =
               getGroupIds(monitorName as string)?.list || defaultGroup;
             const allGroupByOptions = [...new Set([...fixedList, ..._labels])];
             setGroupBy(allGroupByOptions);
+            setMetricRows([
+              createMetricRow(0, {
+                metricId: target.id,
+                metricName: target.name,
+                groupAlgorithm: initForm.group_algorithm || 'avg',
+                groupBy: allGroupByOptions
+              })
+            ]);
+            setMetricExpressionMode('metric');
           }
         }
       } else if (!_metricId) {
@@ -221,6 +265,13 @@ const StrategyOperation = () => {
         const fixedList =
           getGroupIds(monitorName as string)?.list || defaultGroup;
         setGroupBy(fixedList);
+        setMetricRows([
+          createMetricRow(0, {
+            groupAlgorithm: initForm.group_algorithm || 'avg',
+            groupBy: fixedList
+          })
+        ]);
+        setMetricExpressionMode('metric');
       }
       const instanceIdStr = searchParams.get('instanceId');
       let instanceIds: string[] = [];
@@ -246,6 +297,28 @@ const StrategyOperation = () => {
       processMetricData(formData);
     }
   }, [initMetricData]);
+
+  useEffect(() => {
+    const nextLabelsByRef: Record<string, string[]> = {};
+    metricRows.forEach((row) => {
+      const target = metrics.find(
+        (item) => item.id === row.metricId || item.name === row.metricName
+      );
+      nextLabelsByRef[row.ref] = getMetricDimensionNames(target?.dimensions);
+    });
+    setLabelsByRef(nextLabelsByRef);
+
+    if (metricRows.length === 1) {
+      const row = metricRows[0];
+      const target = metrics.find(
+        (item) => item.id === row.metricId || item.name === row.metricName
+      );
+      setMetric(row.metricName || target?.name || null);
+      setConditions(row.filters || []);
+      setGroupBy(sanitizeGroupBy(row.groupBy || []));
+      setGroupAlgorithm(row.groupAlgorithm || 'avg');
+    }
+  }, [metricRows, metrics]);
 
   useEffect(() => {
     const targetPluginId = resolveInitialMetricPluginId({
@@ -329,7 +402,7 @@ const StrategyOperation = () => {
     });
     setGroupBy(sanitizeGroupBy(group_by || []));
     feedbackThreshold(thresholdList);
-    setCalculationUnit(filterInvalidUnit(calculation_unit));
+    setCalculationUnit(filterInvalidCalculationUnit(calculation_unit));
     setPeriod(period?.value || null);
     setPeriodUnit(period?.type || 'min');
     setGroupAlgorithm(data.group_algorithm || 'avg');
@@ -374,10 +447,18 @@ const StrategyOperation = () => {
         (item) => item.id === query_condition?.metric_id
       );
       if (_metrics) {
-        const _labels = getMetricDimensionNames(_metrics?.dimensions);
         setMetric(_metrics?.name || '');
-        setLabels(_labels);
         setConditions(query_condition?.filter || []);
+        setMetricRows([
+          createMetricRow(0, {
+            metricId: _metrics.id,
+            metricName: _metrics.name,
+            filters: query_condition?.filter || [],
+            groupAlgorithm: data.group_algorithm || 'avg',
+            groupBy: sanitizeGroupBy(data.group_by || [])
+          })
+        ]);
+        setMetricExpressionMode('metric');
         const isEnumMetric = isStringArray(_metrics?.unit || '');
         const comparisonMethods = isEnumMetric
           ? ENUM_COMPARISON_METHOD
@@ -396,6 +477,28 @@ const StrategyOperation = () => {
           })
         );
       }
+    } else if (query_condition?.type === 'formula' && initMetricData.length > 0) {
+      const restoredState = toMetricExpressionStateFromQueryCondition(
+        query_condition
+      );
+      const rows = restoredState.rows.map((row) => {
+        const target = initMetricData.find((item) => item.id === row.metricId);
+        return {
+          ...row,
+          metricName: target?.name || row.metricName
+        };
+      });
+      setMetricRows(rows);
+      setMetricExpressionMode('formula');
+      setCalculationUnit(
+        resolveFormulaResultUnit(data.calculation_unit as string | null, unitList)
+      );
+      setFormulaResultName(restoredState.resultName);
+      setFormulaExpression(restoredState.expression);
+      setMetric(rows[0]?.metricName || null);
+      setConditions(rows[0]?.filters || []);
+      setGroupBy(sanitizeGroupBy(rows[0]?.groupBy || []));
+      setGroupAlgorithm(rows[0]?.groupAlgorithm || 'avg');
     }
   };
 
@@ -434,7 +537,6 @@ const StrategyOperation = () => {
     setMetric(val);
     const target = metrics.find((item) => item.name === val);
     const _labels = getMetricDimensionNames(target?.dimensions);
-    setLabels(_labels);
     // 计算完整的分组维度选项列表（固定列表 + 标签列表，去重）
     const fixedList = getGroupIds(monitorName as string)?.list || defaultGroup;
     const allGroupByOptions = [...new Set([...fixedList, ..._labels])];
@@ -459,9 +561,9 @@ const StrategyOperation = () => {
     setThreshold(newThreshold as any);
 
     // 选择指标后触发验证，清除错误信息（包括指标、条件维度和告警阈值）
-    form.validateFields(['metric', '_conditions_validator', 'threshold']);
+    form.validateFields(['metric', 'threshold']);
     // 自动设置告警阈值单位为指标的默认单位（过滤掉 none 和 short）
-    const filteredUnit = filterInvalidUnit(target?.unit);
+    const filteredUnit = filterInvalidCalculationUnit(target?.unit);
     if (filteredUnit) {
       setCalculationUnit(filteredUnit);
       return;
@@ -526,13 +628,47 @@ const StrategyOperation = () => {
     setFormData(data);
   };
 
-  const handleGroupByChange = (val: string[]) => {
-    setGroupBy(sanitizeGroupBy(val));
-  };
+  const handleMetricRowsChange = (rows: MetricExpressionRow[]) => {
+    const previousPrimaryMetricName = metricRows[0]?.metricName;
+    const nextPrimaryMetricName = rows[0]?.metricName;
+    const previousMode = metricExpressionMode;
+    const nextMode = getMetricExpressionModeForRows(rows);
+    setMetricExpressionMode(nextMode);
+    setMetricRows(rows);
 
-  const handleConditionsChange = (newConditions: FilterItem[]) => {
-    setConditions(newConditions);
-    form.validateFields(['_conditions_validator']);
+    if (nextMode === 'formula') {
+      setCalculationUnit((current) =>
+        getCalculationUnitOnMetricRowsChange({
+          previousMode,
+          nextMode,
+          currentCalculationUnit: current,
+          unitList
+        })
+      );
+    } else {
+      // 反向:从公式切回单指标时,把 calculationUnit 回退到主指标的单位
+      const primaryMetric = metrics.find(
+        (item) => item.name === nextPrimaryMetricName
+      );
+      const retracted = getReverseModeCalculationUnit({
+        previousMode,
+        nextMode,
+        primaryMetricUnit: primaryMetric?.unit ?? null
+      });
+      if (retracted !== undefined) {
+        setCalculationUnit(retracted);
+      }
+    }
+
+    if (
+      rows.length === 1 &&
+      nextPrimaryMetricName &&
+      nextPrimaryMetricName !== previousPrimaryMetricName
+    ) {
+      handleMetricChange(nextPrimaryMetricName);
+    }
+
+    form.validateFields(['metric']).catch(() => undefined);
   };
 
   const handleUnitChange = (val: string) => {
@@ -556,10 +692,6 @@ const StrategyOperation = () => {
 
   const handleAlgorithmChange = (val: string) => {
     setAlgorithm(val);
-  };
-
-  const handleGroupAlgorithmChange = (val: string) => {
-    setGroupAlgorithm(val);
   };
 
   const handleNodataUnitChange = (val: string) => {
@@ -597,6 +729,11 @@ const StrategyOperation = () => {
     form.validateFields(['threshold']);
   };
 
+  const handleFormulaResultUnitChange = (unit: string) => {
+    setCalculationUnit(unit);
+    form.validateFields(['threshold']);
+  };
+
   const goBack = () => {
     const targetUrl = `/monitor/event/${
       type === 'builtIn' ? 'template' : 'strategy'
@@ -628,23 +765,49 @@ const StrategyOperation = () => {
         params.group_algorithm = 'avg';
         params.algorithm = 'last_over_time';
       } else {
-        const mertricTarget = metrics.find((item) => item.name === metric);
-        params.query_condition = {
-          type: 'metric',
-          metric_id: mertricTarget?.id,
-          filter: conditions
-        };
+        try {
+          params.query_condition = buildMetricExpressionQueryCondition({
+            mode: metricExpressionMode,
+            resultName: formulaResultName,
+            expression: formulaExpression,
+            rows: metricRows
+          });
+        } catch (error) {
+          message.error(
+            error instanceof Error
+              ? error.message
+              : t('monitor.events.metricValidate')
+          );
+          return;
+        }
+        const primaryMetric = metricRows[0];
+        const mertricTarget = metrics.find(
+          (item) =>
+            item.id === primaryMetric?.metricId ||
+            item.name === primaryMetric?.metricName
+        );
         params.source = source;
-        params.metric_unit = isStringArray(mertricTarget?.unit)
-          ? ''
-          : mertricTarget?.unit;
+        params.metric_unit =
+          metricExpressionMode === 'formula' ||
+          metricRows.length > 1 ||
+          isStringArray(mertricTarget?.unit)
+            ? ''
+            : mertricTarget?.unit;
       }
-      params.group_algorithm = params.group_algorithm || groupAlgorithm || 'avg';
+      params.group_algorithm =
+        params.group_algorithm ||
+        metricRows[0]?.groupAlgorithm ||
+        groupAlgorithm ||
+        'avg';
       params.algorithm = params.algorithm || algorithm || 'avg_over_time';
       params.threshold = threshold.filter(
         (item) => !!item.value || item.value === 0
       );
-      params.calculation_unit = calculationUnit || '';
+      const nextCalculationUnit =
+        metricExpressionMode === 'formula'
+          ? resolveFormulaResultUnit(calculationUnit, unitList)
+          : calculationUnit;
+      params.calculation_unit = nextCalculationUnit ?? '';
       params.monitor_object = monitorObjId;
       params.schedule = {
         type: unit,
@@ -679,7 +842,7 @@ const StrategyOperation = () => {
       }
       params.enable_alerts = _enableAlerts;
       params.recovery_condition = params.recovery_condition || 0;
-      params.group_by = sanitizeGroupBy(groupBy);
+      params.group_by = sanitizeGroupBy(metricRows[0]?.groupBy || groupBy);
       params.enable = true;
       operateStrategy(params);
     });
@@ -760,21 +923,27 @@ const StrategyOperation = () => {
                         <MetricDefinitionForm
                           form={form}
                           pluginList={pluginList}
-                          metric={metric}
                           metricsLoading={metricsLoading}
-                          labels={labels}
-                          conditions={conditions}
-                          groupBy={groupBy}
-                          groupAlgorithm={groupAlgorithm}
                           period={period}
                           periodUnit={periodUnit}
                           originMetricData={originMetricData}
                           monitorName={monitorName as string}
+                          metricRows={metricRows}
+                          metricExpressionMode={metricExpressionMode}
+                          resultName={formulaResultName}
+                          expression={formulaExpression}
+                          resultUnit={
+                            metricExpressionMode === 'formula'
+                              ? calculationUnit || FORMULA_DEFAULT_RESULT_UNIT
+                              : calculationUnit
+                          }
+                          unitOptions={validThresholdUnitOptions}
+                          labelsByRef={labelsByRef}
                           onCollectTypeChange={changeCollectType}
-                          onMetricChange={handleMetricChange}
-                          onFiltersChange={handleConditionsChange}
-                          onGroupChange={handleGroupByChange}
-                          onGroupAlgorithmChange={handleGroupAlgorithmChange}
+                          onMetricRowsChange={handleMetricRowsChange}
+                          onResultNameChange={setFormulaResultName}
+                          onExpressionChange={setFormulaExpression}
+                          onResultUnitChange={handleFormulaResultUnitChange}
                           onPeriodChange={handlePeriodChange}
                           onPeriodUnitChange={handlePeriodUnitChange}
                           onAlgorithmChange={handleAlgorithmChange}
@@ -800,6 +969,7 @@ const StrategyOperation = () => {
                             metrics.find((item) => item.name === metric)
                               ?.unit || null
                           }
+                          isFormulaMode={metricExpressionMode === 'formula'}
                           onEnableAlertsChange={setEnableAlerts}
                           onThresholdChange={handleThresholdChange}
                           onCalculationUnitChange={handleCalculationUnitChange}
@@ -858,6 +1028,10 @@ const StrategyOperation = () => {
                 algorithm={algorithm}
                 threshold={threshold}
                 calculationUnit={calculationUnit}
+                metricRows={metricRows}
+                metricExpressionMode={metricExpressionMode}
+                resultName={formulaResultName}
+                expression={formulaExpression}
                 scrollContainerRef={formContainerRef}
                 anchorRef={basicInfoRef}
                 fixedGroupByList={

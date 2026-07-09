@@ -4864,7 +4864,7 @@ monitor_object_type:
   VMware: VMware（Telegraf）
   Middleware: 中间件
   Web: 网络
-  OS: 操作系统
+  OS: 主机资源
   Container Management: 容器管理
   Hardware Device: 硬件设备
   Database: 数据库

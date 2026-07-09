@@ -90,16 +90,16 @@ class TestPureHelpers:
         assert views._extract_token_usage({"usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 9}}) == (1, 1, 9)
 
     def test_format_knowledge_sources(self):
-        skill = LLMSkill(name="s", enable_rag_knowledge_source=False)
+        # RAG 知识库引用已移除,函数现为 no-op 直接返回 content
+        skill = LLMSkill(name="s")
         assert views.format_knowledge_sources("hi", skill) == "hi"
-        skill2 = LLMSkill(name="s2", enable_rag_knowledge_source=True)
+        skill2 = LLMSkill(name="s2")
         # json 内容原样返回
         assert views.format_knowledge_sources('{"a":1}', skill2) == '{"a":1}'
-        # 普通文本追加引用知识
+        # doc_map / title_map 参数保留(签名兼容)但被忽略
         doc_map = {"k1": {"name": "文档A"}}
         title_map = {"k1": True}
-        out = views.format_knowledge_sources("正文", skill2, doc_map, title_map)
-        assert "引用知识: 文档A" in out
+        assert views.format_knowledge_sources("正文", skill2, doc_map, title_map) == "正文"
 
     def test_set_channel_type_line(self):
         start = datetime.datetime(2026, 1, 1)

@@ -44,12 +44,3 @@ export const QASkill: Story = {
     is_pinned: true,
   },
 };
-
-export const PlanSkill: Story = {
-  args: {
-    ...baseArgs,
-    name: 'Incident Planner',
-    skill_type: 3,
-    llm_model_name: 'deepseek-reasoner',
-  },
-};

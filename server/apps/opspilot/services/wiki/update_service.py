@@ -27,8 +27,14 @@ def affected_pages(material):
     return list(KnowledgePage.objects.filter(id__in=page_ids, status="active").order_by("id"))
 
 
-def _page_impact_payload(page):
-    return {"id": page.id, "title": page.title, "page_type": page.page_type, "status": page.status}
+def _page_impact_payload(page, reason):
+    return {
+        "id": page.id,
+        "title": page.title,
+        "page_type": page.page_type,
+        "status": page.status,
+        "reason": reason,
+    }
 
 
 def _version_impact_payload(version):
@@ -49,9 +55,12 @@ def preview_material_deletion(material):
     protected_page_ids = set(
         PageEvidence.objects.filter(page_id__in=page_ids).exclude(material=material).values_list("page_id", flat=True).distinct()
     )
-    affected = [_page_impact_payload(page) for page in pages]
-    will_be_source_invalid = [_page_impact_payload(page) for page in pages if page.id not in protected_page_ids]
-    shared_source_protected = [_page_impact_payload(page) for page in pages if page.id in protected_page_ids]
+    # reason 文案:让用户在预览时知道"为什么这个页面会受影响"——按"是否共享来源"分流
+    will_lose_reason = "此页面唯一来源,删除后会变 source_invalid"
+    shared_reason = "此页面共享来源,删除后来源失效但页面保留"
+    affected = [_page_impact_payload(page, will_lose_reason if page.id not in protected_page_ids else shared_reason) for page in pages]
+    will_be_source_invalid = [_page_impact_payload(page, will_lose_reason) for page in pages if page.id not in protected_page_ids]
+    shared_source_protected = [_page_impact_payload(page, shared_reason) for page in pages if page.id in protected_page_ids]
     return {
         "material_id": material.id,
         "material_name": material.name,
@@ -70,7 +79,9 @@ def preview_material_update(material):
     versions = list(MaterialVersion.objects.filter(material=material).order_by("-id")[:2])
     latest = versions[0] if versions else None
     previous = versions[1] if len(versions) > 1 else None
-    affected = [_page_impact_payload(page) for page in pages]
+    # 更新预览只有"已变更"状态:reason 提示用户"此页面继承新内容,旧版本将转入待审核"
+    update_reason = "此页面继承新内容,旧版本将进入待审核"
+    affected = [_page_impact_payload(page, update_reason) for page in pages]
     content_changed = bool(
         material.status == "updated"
         or (latest and previous and latest.content_hash and previous.content_hash and latest.content_hash != previous.content_hash)

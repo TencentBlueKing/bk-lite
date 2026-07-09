@@ -8,6 +8,7 @@ import ComTopN from '@/app/ops-analysis/components/widgets/comTopN';
 import ComGauge from '@/app/ops-analysis/components/widgets/comGauge';
 import EventTable from '@/app/ops-analysis/components/widgets/eventTable/eventTable';
 import NetworkStatusTopology from '@/app/ops-analysis/components/widgets/networkStatusTopology';
+import Room3D from '@/app/ops-analysis/components/widgets/room3D';
 
 export const widgetRegistry: Record<string, ComponentType<any>> = {
   line: ComLine,
@@ -18,6 +19,7 @@ export const widgetRegistry: Record<string, ComponentType<any>> = {
   topN: ComTopN,
   gauge: ComGauge,
   eventTable: EventTable,
+  room3D: Room3D,
   networkStatusTopology: NetworkStatusTopology,
 };
 

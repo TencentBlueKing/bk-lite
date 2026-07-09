@@ -37,7 +37,7 @@ class AlertDetector:
         vm_data = self.metric_query_service.query_aggregation_metrics(self.policy.period, trigger_count)
         vm_data = self.metric_query_service.convert_metric_values(vm_data)
 
-        group_by_keys = self.policy.group_by or []
+        group_by_keys = self._get_group_by_keys()
         df = vm_to_dataframe(
             vm_data.get("data", {}).get("result", []),
             group_by_keys,
@@ -48,6 +48,7 @@ class AlertDetector:
             "metric_name": self._get_metric_display_name(),
             "instances_map": self.instances_map,
             "instance_id_keys": group_by_keys,
+            "monitor_instance_id_key": self._get_monitor_instance_id_key(),
             "dimension_name_map": self._build_dimension_name_map(),
             "display_unit": self.metric_query_service.get_display_unit(),
             "enum_value_map": self.metric_query_service.get_enum_value_map(),
@@ -71,6 +72,9 @@ class AlertDetector:
         return alert_events, info_events
 
     def _get_metric_display_name(self):
+        if self.policy.query_condition.get("type") == "formula":
+            return self.policy.query_condition.get("result_name", "")
+
         metric = self.metric_query_service.metric
         if metric:
             return metric.display_name or metric.name
@@ -91,9 +95,33 @@ class AlertDetector:
         return events
 
     def _filter_events_by_scope(self, events):
-        return [e for e in events if self._extract_monitor_instance_id(e["metric_instance_id"]) in self.instances_map]
+        return [
+            e
+            for e in events
+            if (
+                e.get("monitor_instance_id")
+                or self._extract_monitor_instance_id(e["metric_instance_id"])
+            )
+            in self.instances_map
+        ]
 
     def _extract_monitor_instance_id(self, metric_instance_id: str) -> str:
+        method = getattr(
+            type(self.metric_query_service),
+            "get_monitor_instance_id_from_metric_instance_id",
+            None,
+        )
+        if method:
+            return (
+                self.metric_query_service.get_monitor_instance_id_from_metric_instance_id(
+                    metric_instance_id
+                )
+            )
+
+        dimensions = self._parse_dimensions(metric_instance_id)
+        monitor_key = self._get_monitor_instance_id_key()
+        if monitor_key in dimensions:
+            return str((dimensions[monitor_key],))
         return extract_monitor_instance_id(metric_instance_id)
 
     def _build_no_data_events(self, aggregation_result):
@@ -116,7 +144,7 @@ class AlertDetector:
             dimensions = self._parse_dimensions(metric_instance_id)
             dimension_str = self._format_dimension_str(dimensions)
             display_name = f"{resource_name} - {dimension_str}" if dimension_str else resource_name
-            group_by_keys = self.policy.group_by or []
+            group_by_keys = self._get_group_by_keys()
             sub_dimension_keys = [k for k in group_by_keys if k != "instance_id"]
             dimension_value = format_dimension_value(
                 dimensions,
@@ -153,8 +181,36 @@ class AlertDetector:
         return events
 
     def _parse_dimensions(self, metric_instance_id: str) -> dict:
-        keys = self.policy.group_by or []
+        keys = self._get_group_by_keys()
         return build_dimensions(metric_instance_id, keys)
+
+    def _get_group_by_keys(self) -> list:
+        method = getattr(type(self.metric_query_service), "get_result_group_by", None)
+        if method:
+            return self.metric_query_service.get_result_group_by()
+
+        instance_id_keys = getattr(self.metric_query_service, "instance_id_keys", None)
+        if (
+            self.policy.query_condition.get("type") == "formula"
+            and isinstance(instance_id_keys, (list, tuple))
+            and instance_id_keys
+        ):
+            return list(instance_id_keys)
+        return self.policy.group_by or []
+
+    def _get_monitor_instance_id_key(self) -> str:
+        method = getattr(
+            type(self.metric_query_service), "get_monitor_instance_id_key", None
+        )
+        if method:
+            return self.metric_query_service.get_monitor_instance_id_key()
+
+        group_by_keys = self._get_group_by_keys()
+        if getattr(self.policy, "collect_type", "") == "trap":
+            return "source"
+        if "instance_id" in group_by_keys:
+            return "instance_id"
+        return group_by_keys[0] if group_by_keys else ""
 
     def _format_dimension_str(self, dimensions: dict) -> str:
         return format_dimension_str(dimensions)

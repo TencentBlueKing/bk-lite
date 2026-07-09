@@ -119,9 +119,12 @@ def _build_login_auth_result_redirect(
 ):
     """生成 OAuth callback 完成后的前端结果页重定向。
 
-    优先级:
-      1. 同源校验通过的 redirect_origin → 绝对 URL,跳到前端
-      2. 相对路径 /auth/signin/login-auth-result(生产同源部署的兑底)
+    安全前提:redirect_origin 在 start_login_auth 阶段已通过
+    validate_redirect_origin 校验并落 cache(校验失败时已被置 None,
+    不会入 cache)。callback 阶段无需再校验:
+      - callback 是 top-level navigation,无 HTTP_ORIGIN
+      - 容器化部署下 X-Forwarded-Host / request.get_host() 不可靠
+      - 唯一可信源是 cache 里 T1 阶段验证过的值(server-side,不可篡改)
     """
     query_string = urlencode(
         {
@@ -130,7 +133,7 @@ def _build_login_auth_result_redirect(
         }
     )
     path = f"/auth/signin/login-auth-result?{query_string}"
-    if redirect_origin and validate_redirect_origin(request, redirect_origin):
+    if redirect_origin:
         return HttpResponseRedirect(f"{redirect_origin.rstrip('/')}{path}")
     return HttpResponseRedirect(path)
 

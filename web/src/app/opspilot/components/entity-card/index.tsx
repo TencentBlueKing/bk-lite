@@ -22,7 +22,6 @@ interface EntityCardProps {
   team: any[];
   online?: boolean;
   modelName?: string;
-  skillType?: string;
   skill_type?: number;
   bot_type?: number;
   botType?: string;
@@ -45,7 +44,6 @@ const EntityCard: React.FC<EntityCardProps> = ({
   team,
   online,
   modelName,
-  skillType,
   skill_type,
   bot_type,
   is_pinned,
@@ -196,9 +194,6 @@ const EntityCard: React.FC<EntityCardProps> = ({
                   )}
                   {modelName !== undefined && modelName && (
                     <Tag className="font-mini px-0.5 leading-inherit mr-2" color="blue">{modelName}</Tag>
-                  )}
-                  {skillType !== undefined && skillType && (
-                    <Tag className="font-mini px-0.5 leading-inherit mr-2" color="purple">{skillType}</Tag>
                   )}
                 </div>
                 <div className="flex items-end justify-end text-(--color-text-4) font-mini w-full text-right overflow-hidden">

@@ -12,7 +12,7 @@ agent that never deals with K8s carrying these tools is pure overhead (extra
 tool schema in every LLM call, extra surface for the model to misfire on).
 
 This module isolates the *decision* of whether an agent is "K8s-flavoured" so
-that ``build_react_nodes`` can gate the two report tools behind it. The
+that the DeepAgent tool assembly can gate the two report tools behind it. The
 decision is intentionally based on the agent's actual tool pool rather than on
 the request's ``tools_servers`` list, because:
 
@@ -20,9 +20,9 @@ the request's ``tools_servers`` list, because:
   ``langchain:kubernetes_data_collection``) load tools whose names contain
   ``kubernetes`` and/or the config-analysis trigger
   ``analyze_deployment_configurations``; and
-* the existing react-agent tests drive ``build_react_nodes`` directly with
-  ``node_builder.tools = [analyze_deployment_configurations]`` and never call
-  ``setup()``/populate ``tools_servers``.
+* focused tests can drive the tool pool directly with
+  ``node_builder.tools = [analyze_deployment_configurations]`` without calling
+  ``setup()``/populating ``tools_servers``.
 
 Keying off tool *names* keeps both paths working.
 """

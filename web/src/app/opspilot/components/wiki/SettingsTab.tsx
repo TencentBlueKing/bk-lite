@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Button, Form, Input, Popconfirm, Select, Spin, Tabs, message } from 'antd';
+import { Button, Form, Input, Popconfirm, Select, Spin, Tabs, Tooltip, message } from 'antd';
 import {
   AimOutlined,
+  EditOutlined,
   InfoCircleOutlined,
   LoadingOutlined,
   WarningOutlined,
@@ -12,8 +13,8 @@ import { useRouter } from 'next/navigation';
 import { useIntl } from 'react-intl';
 import { useTranslation } from '@/utils/i18n';
 import GroupTreeSelect from '@/components/group-tree-select';
+import MarkdownRenderer from '@/components/markdown';
 import { useWikiApi } from '@/app/opspilot/api/wiki';
-import { Model } from '@/app/opspilot/types/provider';
 import { LlmModel } from '@/app/opspilot/types/skill';
 import { WikiKnowledgeBase } from '@/app/opspilot/types/wiki';
 
@@ -117,14 +118,12 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     fetchKnowledgeBase,
     updateKnowledgeBase,
     fetchLlmModels,
-    fetchEmbedProviders,
     fetchBuildRecords,
     reindexKnowledgeBase,
     rebuildKnowledgeBase,
     deleteKnowledgeBase,
   } = useWikiApi();
   const [llmModels, setLlmModels] = useState<LlmModel[]>([]);
-  const [embedProviders, setEmbedProviders] = useState<Model[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -132,6 +131,9 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const [rebuildConfirmOpen, setRebuildConfirmOpen] = useState(false);
   const [hasRunningBuild, setHasRunningBuild] = useState(false);
   const [active, setActive] = useState<SectionKey>('basic');
+  const [purposeEditing, setPurposeEditing] = useState(false);
+  const [purposePreview, setPurposePreview] = useState('');
+  const [schemaPreview, setSchemaPreview] = useState('');
   // 保存原始 KB:PUT 为全量更新,被移除的设置字段需回填原值,避免被重置
   const kbRef = useRef<WikiKnowledgeBase | null>(null);
 
@@ -145,16 +147,16 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     setLoading(true);
     try {
       const [kb, models] = await Promise.all([fetchKnowledgeBase(kbId), fetchLlmModels().catch(() => [])]);
-      const providers = await fetchEmbedProviders().catch(() => []);
       kbRef.current = kb;
+      setPurposePreview(kb.purpose_md || '');
+      setSchemaPreview(kb.schema_md || '');
+      setPurposeEditing(false);
       setLlmModels(models || []);
-      setEmbedProviders(providers || []);
       await refreshRunningBuildState();
       form.setFieldsValue({
         name: kb.name,
         introduction: kb.introduction,
         llm_model: kb.llm_model,
-        embed_provider: kb.embed_provider,
         vision_model: kb.vision_model,
         team: kb.team,
         purpose_md: kb.purpose_md,
@@ -182,6 +184,13 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     return () => window.clearInterval(timer);
   }, [hasRunningBuild, refreshRunningBuildState]);
 
+  const handleCancelPurposeEdit = () => {
+    form.setFieldsValue({
+      purpose_md: purposePreview,
+      schema_md: schemaPreview,
+    });
+    setPurposeEditing(false);
+  };
   const handleSave = async () => {
     const v = await form.validateFields();
     setSaving(true);
@@ -191,6 +200,8 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
       const prev = kbRef.current;
       const generationRules = { ...(prev?.generation_rules ?? {}) };
       const titleAliases = normalizeTitleAliasesForSave(v.title_aliases);
+      const purposeMd = typeof v.purpose_md === 'string' ? v.purpose_md : purposePreview;
+      const schemaMd = typeof v.schema_md === 'string' ? v.schema_md : schemaPreview;
       delete generationRules.title_aliases;
       delete generationRules.titleAliases;
       delete generationRules.aliases;
@@ -201,11 +212,11 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
         name: v.name,
         introduction: v.introduction,
         llm_model: v.llm_model,
-        embed_provider: v.embed_provider,
+        embed_provider: prev?.embed_provider,
         vision_model: v.vision_model,
         team: v.team,
-        purpose_md: v.purpose_md,
-        schema_md: v.schema_md,
+        purpose_md: purposeMd,
+        schema_md: schemaMd,
         generation_language: userLang,
         // 以下字段已从设置页移除,PUT 全量更新时回填原值避免被清空
         generation_rules: generationRules,
@@ -213,6 +224,9 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
         risk_rules: prev?.risk_rules ?? {},
       });
       message.success(t('wiki.saveSuccess'));
+      setPurposePreview(purposeMd);
+      setSchemaPreview(schemaMd);
+      setPurposeEditing(false);
     } finally {
       setSaving(false);
     }
@@ -267,13 +281,6 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
             options={llmModels.map((m) => ({ value: m.id, label: m.name, disabled: !m.enabled }))}
           />
         </Form.Item>
-        <Form.Item label={t('wiki.embedProvider')} name="embed_provider" tooltip={t('wiki.embedProviderTip')}>
-          <Select
-            allowClear
-            placeholder={t('wiki.embedProviderPlaceholder')}
-            options={embedProviders.map((m) => ({ value: m.id, label: m.name, disabled: !m.enabled }))}
-          />
-        </Form.Item>
         <Form.Item
           label={t('wiki.visionModel')}
           name="vision_model"
@@ -300,18 +307,53 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     </div>
   );
 
+  const renderMarkdownCard = (title: string, content: string) => (
+    <div className="min-w-0">
+      <div className="mb-2 text-sm font-medium text-[var(--color-text-1)]">{title}</div>
+      <div className="min-h-[420px] rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg-1)] px-4 py-3">
+        {content ? (
+          <div className="max-w-full overflow-x-auto text-sm">
+            <MarkdownRenderer content={content} />
+          </div>
+        ) : (
+          <span className="text-[var(--color-text-4)]">--</span>
+        )}
+      </div>
+    </div>
+  );
+
   const purposePane = (
     <div>
-      {hint(HELP_KEY.purpose)}
-      {/* 两个文本域拉高(autoSize 起步 18 行),保存按钮自然贴近底部,常规内容无需内部滚动 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6">
-        <Form.Item label={t('wiki.purpose')} name="purpose_md">
-          <Input.TextArea autoSize={{ minRows: 18, maxRows: 28 }} />
-        </Form.Item>
-        <Form.Item label={t('wiki.schema')} name="schema_md">
-          <Input.TextArea autoSize={{ minRows: 18, maxRows: 28 }} />
-        </Form.Item>
+      <div className="mb-4 flex items-start justify-between gap-4">
+        <p className="mb-0 mt-0 text-[13px] leading-6 text-[var(--color-text-3)]">{t(HELP_KEY.purpose)}</p>
+        {!purposeEditing && (
+          <Tooltip title={t('common.edit')}>
+            <Button
+              type="text"
+              size="small"
+              icon={<EditOutlined />}
+              aria-label={t('common.edit')}
+              onClick={() => setPurposeEditing(true)}
+            />
+          </Tooltip>
+        )}
       </div>
+      {purposeEditing ? (
+        // 两个文本域拉高(autoSize 起步 18 行),保存按钮自然贴近底部,常规内容无需内部滚动
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6">
+          <Form.Item label={t('wiki.purpose')} name="purpose_md">
+            <Input.TextArea autoSize={{ minRows: 18, maxRows: 28 }} />
+          </Form.Item>
+          <Form.Item label={t('wiki.schema')} name="schema_md">
+            <Input.TextArea autoSize={{ minRows: 18, maxRows: 28 }} />
+          </Form.Item>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          {renderMarkdownCard(t('wiki.purpose'), purposePreview)}
+          {renderMarkdownCard(t('wiki.schema'), schemaPreview)}
+        </div>
+      )}
     </div>
   );
 
@@ -414,8 +456,11 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
             },
           ]}
         />
-        {active !== 'danger' && (
-          <div className="pt-2">
+        {active !== 'danger' && (active !== 'purpose' || purposeEditing) && (
+          <div className="flex items-center gap-2 pt-2">
+            {active === 'purpose' && purposeEditing && (
+              <Button onClick={handleCancelPurposeEdit}>{t('common.cancel')}</Button>
+            )}
             <Button type="primary" loading={saving} onClick={handleSave}>
               {t('common.save')}
             </Button>

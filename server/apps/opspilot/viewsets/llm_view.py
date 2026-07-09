@@ -409,6 +409,9 @@ class LLMViewSet(PinMixin, AuthViewSet):
         )
         params["skill_prompt"] = skill_prompt
         params["matched_skill_packages"] = matched_skill_packages
+        # 用户显式选中的全集:不受 substring 匹配限制,用于 backend 物化。
+        # 解决"用户在设置里选了 N 个包,但用户消息不含描述关键词 → 后端一个都没物化"的丢包问题。
+        params["enabled_skill_packages"] = skill_packages
         params.update(build_skill_package_strategy(matched_skill_packages))
 
 
@@ -705,6 +708,65 @@ class SkillPackageViewSet(AuthViewSet):
                     os.unlink(temp_path)
                 except OSError:
                     pass
+
+    @action(methods=["POST"], detail=False)
+    @HasPermission("tools_list-Add")
+    def import_local(self, request):
+        """从本地服务器目录导入技能包。
+
+        适配 Anthropic Agent Skills 风格的本地目录(如从 GitHub 下载的
+        ``<repo>/<skill-name>/SKILL.md`` 布局)。
+        与 ``import_zip`` 共享同一存储布局,DB 行通过 ``package_id+version+domain``
+        去重,多次导入同一包会覆盖。
+
+        请求参数:
+          source_dir: 绝对路径,必须在 ``DEFAULT_SKILL_PACKAGE_ROOT`` 之下(防越界)。
+        """
+        source_dir = (request.data.get("source_dir") or "").strip()
+        if not source_dir:
+            return Response(
+                {"result": False, "message": "请提供技能包目录路径(source_dir)"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            organization_id = str(request.COOKIES.get("current_team") or "default")
+            result = SkillPackageImporter().import_local_dir(source_dir, organization_id=organization_id)
+            domain = getattr(request.user, "domain", "domain.com") or "domain.com"
+            team = [int(organization_id)] if organization_id.isdigit() else []
+            package, created = SkillPackage.objects.update_or_create(
+                package_id=result.skill_id,
+                version=result.version,
+                domain=domain,
+                defaults={
+                    "name": result.name,
+                    "description": result.description,
+                    "category": result.category,
+                    "source_type": "local",
+                    "source_url": source_dir,
+                    "storage_path": str(result.storage_path),
+                    "manifest": result.manifest,
+                    "skill_markdown": result.skill_markdown,
+                    "required_tools": result.required_tools,
+                    "triggers": result.triggers,
+                    "team": team,
+                    "updated_by": request.user.username,
+                    "updated_by_domain": domain,
+                    "is_enabled": True,
+                },
+            )
+            if created:
+                package.created_by = request.user.username
+                package.domain = domain
+                package.save(update_fields=["created_by", "domain"])
+            serializer = self.get_serializer(package)
+            log_operation(request, "create", "opspilot", f"导入技能包(本地): {package.name}")
+            return Response({"result": True, "data": serializer.data})
+        except ValueError as exc:
+            return Response({"result": False, "message": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as exc:
+            logger.exception("Import local skill package failed")
+            return Response({"result": False, "message": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class ToolsFilter(FilterSet):

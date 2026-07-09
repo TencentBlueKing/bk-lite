@@ -51,6 +51,69 @@ class WikiMaterialViewSet(AuthViewSet):
         material.save(update_fields=["status", "updated_at"])
         _opspilot_tasks.wiki_ingest_material_task.delay(material.id, llm_model_id)
 
+    @staticmethod
+    def _clean_name(value, fallback):
+        value = str(value or "").strip()
+        return value or fallback
+
+    @staticmethod
+    def _to_bool(value):
+        if isinstance(value, str):
+            return value.lower() in ("1", "true", "yes", "on")
+        return bool(value)
+
+    @staticmethod
+    def _normalize_sync_policy(value):
+        if not isinstance(value, dict):
+            return {"enabled": False, "interval_hours": 24}
+        try:
+            interval_hours = int(value.get("interval_hours") or 24)
+        except (TypeError, ValueError):
+            interval_hours = 24
+        interval_hours = min(max(interval_hours, 1), 720)
+        return {
+            "enabled": WikiMaterialViewSet._to_bool(value.get("enabled")),
+            "interval_hours": interval_hours,
+        }
+
+    def update(self, request, *args, **kwargs):
+        material = self.get_object()
+        data = request.data
+        update_fields = []
+        original_text = material.text_content or ""
+
+        if material.material_type == "text":
+            if "name" in data:
+                material.name = self._clean_name(data.get("name"), material.name)
+                update_fields.append("name")
+            if "text_content" in data:
+                material.text_content = str(data.get("text_content") or "")
+                update_fields.append("text_content")
+                if material.text_content != original_text:
+                    material.status = "updated"
+                    update_fields.append("status")
+        elif material.material_type == "web":
+            if "name" in data:
+                material.name = self._clean_name(data.get("name"), material.name)
+                update_fields.append("name")
+            if "sync_policy" in data:
+                material.sync_policy = self._normalize_sync_policy(data.get("sync_policy"))
+                update_fields.append("sync_policy")
+        elif material.material_type == "file" and "ocr_enhance" in data:
+            material.ocr_enhance = self._to_bool(data.get("ocr_enhance"))
+            update_fields.append("ocr_enhance")
+
+        if update_fields:
+            material.updated_by = getattr(request.user, "username", "")
+            update_fields.extend(["updated_by", "updated_at"])
+            material.save(update_fields=list(dict.fromkeys(update_fields)))
+
+        log_operation(request, "update", "opspilot", f"编辑资料: {material.name}")
+        return JsonResponse({"result": True, "data": self.get_serializer(material).data})
+
+    def partial_update(self, request, *args, **kwargs):
+        return self.update(request, *args, **kwargs)
+
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -58,12 +121,12 @@ class WikiMaterialViewSet(AuthViewSet):
         material = serializer.instance
         llm_model_id = material.knowledge_base.llm_model_id
         # 文本解析瞬时(无 loader/OCR/外网),同步摄取即得摘要;
-        # 文件解析较重(loader/OCR/LLM),转 Celery 异步,资料先置「解析中」,前端轮询出结果;
-        # 网页解析需外网抓取、耗时不可控,仍走手动 ingest。
+        # 文件/网页解析较重(loader/OCR/外网抓取/LLM),转 Celery 异步,资料先置「解析中」,前端轮询出结果。
         if material.material_type == "text":
             ingest_material(material, llm_model_id=llm_model_id)
             serializer = self.get_serializer(material)
-        elif material.material_type == "file":
+        else:
+            # file / web:统一走 Celery 异步解析,前端 status 轮询 + 失败重试
             self._enqueue_ingest(material, llm_model_id)
             serializer = self.get_serializer(material)
         log_operation(request, "create", "opspilot", f"新增资料: {material.name}")

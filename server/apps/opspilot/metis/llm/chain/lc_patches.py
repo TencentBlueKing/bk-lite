@@ -3,7 +3,7 @@
 DeepSeek/Qwen thinking mode fix:
 
 Problem: Models like DeepSeek and Qwen return a ``reasoning_content`` field in
-their API responses. In multi-turn conversations (e.g. ReAct tool-calling
+their API responses. In multi-turn conversations (e.g. DeepAgent tool-calling
 loops), this field MUST be passed back with the assistant message. However
 langchain-openai's deserialization (``_convert_dict_to_message``) discards it,
 so on the next turn the field is missing and the model returns HTTP 400:

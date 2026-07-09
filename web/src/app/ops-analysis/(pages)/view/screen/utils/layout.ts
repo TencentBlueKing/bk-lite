@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import type {
   FilterBindings,
+  ScreenWidgetAppearance,
   UnifiedFilterDefinition,
   WidgetConfig,
 } from "@/app/ops-analysis/types/dashBoard";
@@ -31,6 +32,18 @@ const clamp = (value: number, min: number, max: number) =>
 
 const getNextZIndex = (items: ScreenItem[]) =>
   items.reduce((max, item) => Math.max(max, item.zIndex || 0), 0) + 1;
+
+export const normalizeScreenWidgetAppearance = (
+  appearance?: ScreenWidgetAppearance,
+): Required<ScreenWidgetAppearance> => ({
+  frame: appearance?.frame === "bare" ? "bare" : "panel",
+});
+
+export const getDefaultScreenWidgetAppearance = (
+  chartType?: ScreenWidgetChartType | string,
+): Required<ScreenWidgetAppearance> => ({
+  frame: chartType === "room3D" ? "bare" : "panel",
+});
 
 export const isScreenItemInsideViewport = (
   item: ScreenItem,
@@ -232,6 +245,7 @@ export const createScreenWidgetItem = (
     valueConfig: {
       chartType,
       chartThemeMode: "screen-dark",
+      appearance: getDefaultScreenWidgetAppearance(chartType),
       ...(chartType === "networkStatusTopology"
         ? { sceneWidgetType: "networkStatusTopology" as const }
         : {}),
@@ -272,6 +286,8 @@ export const addConfiguredScreenWidget = (
           ...values,
           chartType,
           chartThemeMode: "screen-dark",
+          appearance:
+            values.appearance || getDefaultScreenWidgetAppearance(chartType),
           ...(chartType === "networkStatusTopology"
             ? { sceneWidgetType: "networkStatusTopology" as const }
             : {}),

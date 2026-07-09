@@ -11,6 +11,7 @@ from apps.job_mgmt.constants import CredentialSource, ExecutionStatus, ExecutorD
 from apps.job_mgmt.models import JobExecution, Target
 from apps.job_mgmt.services.callback_service import send_callback
 from apps.job_mgmt.services.execution_stream_service import build_stream_topic
+from apps.job_mgmt.services.script_normalize import normalize_script_line_endings
 from apps.job_mgmt.services.shell_utils import ANSIBLE_SHELL_EXECUTABLES, build_heredoc_command, parse_shebang
 from apps.rpc.ansible import AnsibleExecutor
 from apps.rpc.node_mgmt import NodeMgmt
@@ -27,18 +28,13 @@ class ExecutionTaskBaseService(object):
 
     @staticmethod
     def normalize_script_line_endings(script_content: str, script_type: str) -> str:
-        """规范化脚本换行符（CRLF/CR -> LF）。
+        """兼容入口: 转发到 :func:`apps.job_mgmt.services.script_normalize.normalize_script_line_endings`。
 
-        Windows 编辑/粘贴的脚本常带 ``\\r\\n``，会让 Linux 的 bash/sh 报
-        ``syntax error near unexpected token $'\\r'``；老 Mac 的裸 ``\\r`` 同理。
-        类 Unix 脚本统一转 LF；Windows 原生脚本(bat/powershell)保持原样。
-
-        sidecar(SSH/local_stream) 与 Ansible 两条下发路径都必须调用，缺一不可
-        （#3404：dd4508928 只覆盖了 sidecar，遗漏 Ansible 路径）。
+        保留此方法作为兼容层，确保 ``script_execution_runner``（sidecar 路径）与本类
+        ``_execute_script_via_ansible``（Ansible 路径）的调用不变；权威实现已迁出。
+        worker 兜底保留，处理绕过 serializer 的 NATS / 历史脏数据等场景。
         """
-        if not script_content or script_type in (ScriptType.BAT, ScriptType.POWERSHELL):
-            return script_content
-        return script_content.replace("\r\n", "\n").replace("\r", "\n")
+        return normalize_script_line_endings(script_content, script_type)
 
     @staticmethod
     def decrypt_password(password: Optional[str]) -> Optional[str]:
@@ -134,8 +130,7 @@ class ExecutionTaskBaseService(object):
             cls.update_execution_counts(execution)
             cls.update_execution_status(execution, ExecutionStatus.CANCELLED, finished_at=timezone.now())
             logger.info(
-                f"[{task_name}] 任务被取消，保留已完成结果: execution_id={execution.id}, "
-                f"success={execution.success_count}, failed={execution.failed_count}"
+                f"[{task_name}] 任务被取消，保留已完成结果: execution_id={execution.id}, " f"success={execution.success_count}, failed={execution.failed_count}"
             )
             # 取消时也发送回调通知，让第三方系统知道任务被取消
             execution.refresh_from_db()
@@ -319,9 +314,7 @@ class ExecutionTaskBaseService(object):
         for target in targets:
             # 凭据来源检查：credential 模式暂未实现，记录警告并跳过
             if target.credential_source == CredentialSource.CREDENTIAL:
-                logger.warning(
-                    f"[_build_host_credentials] 目标 {target.ip} 使用凭据管理(credential_id={target.credential_id})，该模式暂未实现，跳过此目标"
-                )
+                logger.warning(f"[_build_host_credentials] 目标 {target.ip} 使用凭据管理(credential_id={target.credential_id})，该模式暂未实现，跳过此目标")
                 continue
 
             cred = {
