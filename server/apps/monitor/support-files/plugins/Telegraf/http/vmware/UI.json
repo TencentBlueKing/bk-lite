@@ -2,7 +2,9 @@
   "object_name": "vCenter",
   "instance_type": "vmware",
   "collect_type": "http",
-  "config_type": ["vmware"],
+  "config_type": [
+    "vmware"
+  ],
   "collector": "Telegraf",
   "instance_id": "{{cloud_region}_vmware_{{host}}",
   "form_fields": [
@@ -55,7 +57,7 @@
       "label": "间隔",
       "type": "inputNumber",
       "required": true,
-      "default_value": 10,
+      "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
       "widget_props": {
         "min": 1,
@@ -95,7 +97,9 @@
       },
       "change_handler": {
         "type": "simple",
-        "source_fields": ["host"],
+        "source_fields": [
+          "host"
+        ],
         "target_field": "instance_name"
       }
     },

@@ -2,7 +2,9 @@
   "object_name": "Switch",
   "instance_type": "switch",
   "collect_type": "snmp",
-  "config_type": ["switch"],
+  "config_type": [
+    "switch"
+  ],
   "collector": "Telegraf",
   "instance_id": "{{cloud_region}}_{{instance_type}}_snmp_{{ip}}",
   "form_fields": [
@@ -53,8 +55,14 @@
       "default_value": 2,
       "description": "指定要使用的 SNMP 协议版本，例如 v2c 或 v3，定义通信机制和安全级别",
       "options": [
-        { "label": "v2c", "value": 2 },
-        { "label": "v3", "value": 3 }
+        {
+          "label": "v2c",
+          "value": 2
+        },
+        {
+          "label": "v3",
+          "value": 3
+        }
       ],
       "widget_props": {
         "placeholder": "选择 SNMP 版本"
@@ -108,9 +116,18 @@
       "default_value": "authPriv",
       "description": "安全级别设置，例如 authPriv 表示同时使用认证和隐私（加密）",
       "options": [
-        { "label": "noAuthNoPriv", "value": "noAuthNoPriv" },
-        { "label": "authNoPriv", "value": "authNoPriv" },
-        { "label": "authPriv", "value": "authPriv" }
+        {
+          "label": "noAuthNoPriv",
+          "value": "noAuthNoPriv"
+        },
+        {
+          "label": "authNoPriv",
+          "value": "authNoPriv"
+        },
+        {
+          "label": "authPriv",
+          "value": "authPriv"
+        }
       ],
       "widget_props": {
         "placeholder": "选择安全级别"
@@ -225,7 +242,7 @@
       "label": "间隔",
       "type": "inputNumber",
       "required": true,
-      "default_value": 10,
+      "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
       "widget_props": {
         "min": 1,
@@ -265,7 +282,9 @@
       },
       "change_handler": {
         "type": "simple",
-        "source_fields": ["ip"],
+        "source_fields": [
+          "ip"
+        ],
         "target_field": "instance_name"
       }
     },
