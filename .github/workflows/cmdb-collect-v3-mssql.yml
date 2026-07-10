@@ -1,0 +1,59 @@
+# CMDB 采集 Fixture v3 — mssql amd64 CI 采集
+#
+# 背景（roadmap §3.3 + phase2-plan §6.2）:
+# mssql 官方镜像仅 linux/amd64,arm64 Mac 上 Rosetta 模拟 SQL Server 启动极慢
+# (5+ 分钟未监听 1433)。本 workflow 在 GitHub Actions amd64 runner(ubuntu-22.04)
+# 跑真实采集,落盘 mssql.json 后 PR 进 main。
+#
+# 触发: workflow_dispatch(手动触发,因 mssql 镜像大、跑得慢,不在 PR 自动跑)
+# 产物: artifact upload `mssql.json`
+#
+# 后续自动化:用户可加 nightly cron 触发,采集最新数据;或保留手动触发作为标准做法。
+
+name: CMDB Collect v3 — mssql amd64
+
+on:
+  workflow_dispatch:  # 仅手动触发(详见说明)
+  # 暂不挂 cron:fixture 工具的目的不是自动化,而是稳定 mock 数据源
+  # schedule:
+  #   - cron: '0 2 * * 1'  # 周一凌晨 2 点 UTC(可选)
+
+jobs:
+  collect-mssql:
+    runs-on: ubuntu-22.04  # amd64 runner,mssql 镜像架构匹配
+    timeout-minutes: 20     # mssql 启动 + fixture 采集总共约 5-10 分钟,留 buffer
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install stargazer deps
+        working-directory: agents/stargazer
+        run: |
+          uv venv
+          .venv/bin/pip install -e .
+
+      - name: Run mssql fixture collection
+        working-directory: agents/stargazer
+        # mssql 启动 + sqlcmd 采集约 3-8 分钟,timeout 留 buffer
+        run: |
+          .venv/bin/python -m tests.collect_fixtures.cli mssql 2>&1 | tee /tmp/mssql_run.log
+          # 检查产物
+          ls -la tests/fixtures/collect/mssql.json || (echo "mssql.json 未落盘,采集失败" && exit 1)
+
+      - name: Upload mssql.json artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mssql-fixture-json
+          path: agents/stargazer/tests/fixtures/collect/mssql.json
+          retention-days: 30
+          if-no-files-found: error

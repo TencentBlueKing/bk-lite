@@ -1,0 +1,26 @@
+{
+  "model_id": "redis_sentinel",
+  "pipeline_model_id": "redis",
+  "instance_count_min": 2,
+  "expected_instance_subset_fixture_driven": [
+    {
+      "inst_name":     "127.0.0.1-redis-6379",
+      "ip_addr":       "127.0.0.1",
+      "port":          "6379",
+      "version":       "7.4.9",
+      "max_conn":      "10000",
+      "max_mem":       "0",
+      "database_role": "master",
+      "topo_mode":     "replication"
+    },
+    {
+      "inst_name":     "127.0.0.1-redis-26379",
+      "ip_addr":       "127.0.0.1",
+      "port":          "26379",
+      "version":       "7.4.9",
+      "topo_mode":     "sentinel"
+    }
+  ],
+  "fixture_source_fixture_driven": "agents/stargazer/tests/fixtures/collect/redis_sentinel.json (2026-07-10 cli 真实落盘,刚跑通)",
+  "notes": "v4 Phase 6 补 redis_sentinel — entry_type=shell,无 plugin,CMDB 端复用 redis plugin(model_id=redis);fixture 形态 C list-of-dict 2 实例(redis 主 6379 + sentinel 26379);instance_count_min=2;expected_subset 是 list 而不是 dict(支持多实例断言)"
+}

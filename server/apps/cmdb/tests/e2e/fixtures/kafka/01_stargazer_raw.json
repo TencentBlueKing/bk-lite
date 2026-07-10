@@ -1,0 +1,28 @@
+{
+  "model_id": "kafka",
+  "captured_at": "2026-07-08T06:29:46Z",
+  "image": "docker.m.daocloud.io/library/ubuntu:22.04",
+  "container_meta": {
+    "container_id": "3533d16803e5",
+    "image": "docker.m.daocloud.io/library/ubuntu:22.04"
+  },
+  "params": {
+    "host": "127.0.0.1",
+    "ssh_port": 12229,
+    "kafka_port": 19092
+  },
+  "raw_stdout": {
+    "inst_name": "172.17.0.3-kafka-9092",
+    "ip_addr": "172.17.0.3",
+    "obj_id": "kafka",
+    "port": "9092",
+    "version": "3.6.0",
+    "cluster_id": "(unparsed)",
+    "broker_count": "0",
+    "topics": "(empty or query failed)",
+    "bin_path": "/opt/kafka/bin",
+    "config": "/opt/kafka/config/kraft/server.properties",
+    "user": "root",
+    "pid": "6348"
+  }
+}

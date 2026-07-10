@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CMDB zookeeper 实例契约",
+  "description": "2026-07-10 v4 — Phase 3 任务 3.6,实例 schema 严格对应 ZookeeperCollectionPlugin.field_mapping(middleware runner,extra_payload_keys={\"result\": True},业务字段从 metric.result 解码)。",
+  "type": "object",
+  "required": ["inst_name", "ip_addr", "port"],
+  "properties": {
+    "inst_name":    {"type": "string", "pattern": "^[0-9.]+-zookeeper-[0-9]+$"},
+    "ip_addr":      {"type": "string"},
+    "port":         {"type": ["string", "integer"]},
+    "version":      {"type": "string"},
+    "install_path": {"type": "string"},
+    "log_path":     {"type": "string"},
+    "conf_path":    {"type": "string"},
+    "java_path":    {"type": "string"},
+    "java_version": {"type": "string"},
+    "data_dir":     {"type": "string"},
+    "tick_time":    {"type": ["string", "integer"]},
+    "init_limit":   {"type": ["string", "integer"]},
+    "sync_limit":   {"type": ["string", "integer"]},
+    "server":       {"type": "string"}
+  }
+}

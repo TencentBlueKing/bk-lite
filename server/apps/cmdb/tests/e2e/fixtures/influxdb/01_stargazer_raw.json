@@ -1,0 +1,29 @@
+{
+  "model_id": "influxdb",
+  "captured_at": "2026-07-10T03:38:19Z",
+  "image": "6dduu4opte8882.xuanyuan.run/library/influxdb:2.7",
+  "container_meta": {
+    "container_id": "335b2d4eb2f7",
+    "image": "6dduu4opte8882.xuanyuan.run/library/influxdb:2.7"
+  },
+  "params": {
+    "host": "127.0.0.1",
+    "port": 18086,
+    "token": "***",
+    "org": "testorg",
+    "bucket": "testbucket"
+  },
+  "raw_stdout": {
+    "result": {
+      "influxdb": [
+        {
+          "version": "",
+          "ip_addr": "127.0.0.1",
+          "port": 18086,
+          "https_enabled": "false"
+        }
+      ]
+    },
+    "success": true
+  }
+}

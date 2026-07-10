@@ -1,0 +1,31 @@
+{
+  "model_id": "zookeeper",
+  "captured_at": "2026-07-08T06:43:21Z",
+  "image": "docker.m.daocloud.io/library/ubuntu:22.04",
+  "container_meta": {
+    "container_id": "a1cb14e6ea16",
+    "image": "docker.m.daocloud.io/library/ubuntu:22.04"
+  },
+  "params": {
+    "host": "127.0.0.1",
+    "ssh_port": 12241
+  },
+  "raw_stdout": {
+    "inst_name": "172.17.0.2-zk-2181",
+    "obj_id": "zookeeper",
+    "install_path": "/usr/share",
+    "port": "2181",
+    "user": "root",
+    "log_path": "/var/log/zookeeper",
+    "conf_path": "/etc/zookeeper/conf/zoo.cfg",
+    "java_path": "/usr/lib/jvm/java-11-openjdk-arm64/bin/java",
+    "ip_addr": "172.17.0.2",
+    "java_version": "11.0.31",
+    "version": "3.4.13",
+    "data_dir": "/var/lib/zookeeper",
+    "tick_time": "2000",
+    "init_limit": "10",
+    "sync_limit": "5",
+    "server": ""
+  }
+}

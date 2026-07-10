@@ -1,0 +1,28 @@
+{
+  "model_id": "rocketmq",
+  "captured_at": "2026-07-08T06:00:00Z",
+  "image": "docker.m.daocloud.io/library/ubuntu:22.04",
+  "container_meta": {
+    "container_id": "N/A-placeholder",
+    "image": "docker.m.daocloud.io/library/ubuntu:22.04"
+  },
+  "params": {
+    "host": "127.0.0.1",
+    "ssh_port": 12258
+  },
+  "_placeholder_reason": "G4.9 rocketmq 装包调试时阻塞 2026-07-08:wget 32MB zip + unzip 慢 + JVM 启动慢(nameserver + broker 双进程),真实环境调试耗时过长。后续解锁路径:1) amd64 CI runner 跑;2) 改用 apache/rocketmq 官方镜像 + container_cmd 模式(类似 mssql);3) 单跑模式不并发,给足 timeout(180s+)。e2e fixture 字段值基于 discover 脚本 (plugins/inputs/rocketmq/rocketmq_default_discover.sh L55-L56) 模板填充:port 默认 10911 (脚本 L48 fallback),broker 进程 classpath 推断 install_path/java_path。",
+  "raw_stdout": {
+    "bk_inst_name": "172.17.0.2-rocketmq-10911",
+    "bk_obj_id": "rocketmq",
+    "ip_addr": "172.17.0.2",
+    "port": "10911",
+    "version": "4.9.7",
+    "install_path": "/opt/rocketmq/rocketmq-4.9.7",
+    "configfile": "/opt/rocketmq/rocketmq-4.9.7/conf/broker.conf",
+    "broker_id": "0",
+    "broker_name": "broker-a",
+    "cluster_name": "DefaultCluster",
+    "namesrv_addr": "172.17.0.2:9876",
+    "java_path": "/usr/lib/jvm/java-8-openjdk-amd64/jre/bin/java"
+  }
+}
