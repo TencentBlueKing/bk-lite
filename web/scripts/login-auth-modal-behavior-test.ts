@@ -107,10 +107,10 @@ assert.deepEqual(
       enabled: true,
       icon: 'wechat',
       description: '  desc  ',
-      external_field: ' open_id ',
+      external_field: ' openid ',
       platform_field: 'email',
       unmatched_user_action: 'create',
-      default_group_name: '  默认组  ',
+      default_group_name: '',
       order: 99,
     },
     'wechat',
@@ -120,10 +120,10 @@ assert.deepEqual(
     integration_instance: 12,
     icon: 'wechat',
     description: '  desc  ',
-    external_field: 'open_id',
+    external_field: 'openid',
     platform_field: 'email',
     unmatched_user_action: 'create',
-    default_group_name: '默认组',
+    default_group_name: '',
   }
 );
 
@@ -153,6 +153,20 @@ assert.deepEqual(
     unmatched_user_action: 'deny',
     default_group_name: '',
   }
+);
+
+// WeChat manifest 现在默认外部字段为 openid(无下划线)
+assert.equal(
+  resolveLoginAuthDefaultExternalField({
+    title: 'Login Auth',
+    groups: [],
+    available_external_fields: ['openid', 'unionid'],
+    matchable_fields: [],
+    receivable_fields: [],
+    default_external_match_field: 'openid',
+    default_external_receive_field: '',
+  }),
+  'openid'
 );
 
 console.log('login-auth modal behavior validation passed');

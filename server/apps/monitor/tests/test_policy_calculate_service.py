@@ -1,4 +1,5 @@
 """policy_calculate 测试 — VM 结果转 DataFrame 与阈值告警计算的真实逻辑。"""
+
 import pytest
 
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -49,9 +50,11 @@ def test_format_value_without_unit():
 
 
 def test_calculate_alerts_triggers_above_threshold():
-    df = vm_to_dataframe([
-        {"metric": {"instance_id": "h1"}, "values": [[1, "90"], [2, "95"]]},
-    ])
+    df = vm_to_dataframe(
+        [
+            {"metric": {"instance_id": "h1"}, "values": [[1, "90"], [2, "95"]]},
+        ]
+    )
     thresholds = [{"method": ">", "value": 80, "level": "error"}]
     ctx = {
         "instance_id_keys": ["instance_id"],
@@ -71,9 +74,11 @@ def test_calculate_alerts_triggers_above_threshold():
 
 
 def test_calculate_alerts_below_threshold_goes_to_info():
-    df = vm_to_dataframe([
-        {"metric": {"instance_id": "h1"}, "values": [[1, "10"], [2, "20"]]},
-    ])
+    df = vm_to_dataframe(
+        [
+            {"metric": {"instance_id": "h1"}, "values": [[1, "10"], [2, "20"]]},
+        ]
+    )
     thresholds = [{"method": ">", "value": 80, "level": "error"}]
     ctx = {"instance_id_keys": ["instance_id"]}
     alerts, infos = calculate_alerts("x", df, thresholds, ctx, n=2)
@@ -83,28 +88,48 @@ def test_calculate_alerts_below_threshold_goes_to_info():
     assert infos[0]["value"] == "20"
 
 
+@pytest.mark.parametrize("bad_value", ["inf", "-inf", "nan"])
+def test_calculate_alerts_skips_non_finite_values(bad_value):
+    df = vm_to_dataframe(
+        [
+            {"metric": {"instance_id": "h1"}, "values": [[1, "90"], [2, bad_value]]},
+        ]
+    )
+    thresholds = [{"method": ">", "value": 80, "level": "error"}]
+    alerts, infos = calculate_alerts("x", df, thresholds, {"instance_id_keys": ["instance_id"]}, n=2)
+
+    assert alerts == []
+    assert infos == []
+
+
 def test_calculate_alerts_skips_rows_with_insufficient_values():
-    df = vm_to_dataframe([
-        {"metric": {"instance_id": "h1"}, "values": [[1, "90"]]},
-    ])
+    df = vm_to_dataframe(
+        [
+            {"metric": {"instance_id": "h1"}, "values": [[1, "90"]]},
+        ]
+    )
     thresholds = [{"method": ">", "value": 80, "level": "error"}]
     alerts, infos = calculate_alerts("x", df, thresholds, {"instance_id_keys": ["instance_id"]}, n=3)
     assert alerts == [] and infos == []
 
 
 def test_calculate_alerts_invalid_threshold_method_raises():
-    df = vm_to_dataframe([
-        {"metric": {"instance_id": "h1"}, "values": [[1, "90"], [2, "95"]]},
-    ])
+    df = vm_to_dataframe(
+        [
+            {"metric": {"instance_id": "h1"}, "values": [[1, "90"], [2, "95"]]},
+        ]
+    )
     thresholds = [{"method": "~=", "value": 1, "level": "error"}]
     with pytest.raises(BaseAppException, match="Invalid threshold method"):
         calculate_alerts("x", df, thresholds, {"instance_id_keys": ["instance_id"]}, n=2)
 
 
 def test_calculate_alerts_first_matching_threshold_wins():
-    df = vm_to_dataframe([
-        {"metric": {"instance_id": "h1"}, "values": [[1, "95"], [2, "96"]]},
-    ])
+    df = vm_to_dataframe(
+        [
+            {"metric": {"instance_id": "h1"}, "values": [[1, "95"], [2, "96"]]},
+        ]
+    )
     thresholds = [
         {"method": ">", "value": 90, "level": "error"},
         {"method": ">", "value": 80, "level": "warning"},

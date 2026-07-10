@@ -1184,5 +1184,30 @@
     },
     "IPAM": {
         "conflictFilter": "冲突 IP"
+    },
+    "K8sResourceOverview": {
+        "title": "K8S 资源",
+        "resourceDetails": "资源详情",
+        "nav": {
+            "overview": "概览",
+            "namespace": "命名空间",
+            "deployment": "Deployment",
+            "statefulset": "StatefulSet",
+            "daemonset": "DaemonSet",
+            "job": "Job",
+            "cronjob": "CronJob",
+            "other_workload": "其他工作负载",
+            "pod": "Pod",
+            "node": "Node",
+            "workloadGroup": "工作负载"
+        },
+        "navGroups": { "workload": "工作负载", "pod": "Pod", "node": "Node" },
+        "metrics": { "namespace": "命名空间", "workload": "工作负载", "otherWorkload": "其他工作负载 {count}", "pod": "Pod", "node": "Node" },
+        "facts": { "title": "采集事实", "lastReported": "最近上报时间", "lastSuccess": "最近成功采集时间", "lastResult": "最近采集结果 / 错误", "collectorTask": "采集任务" },
+        "actions": { "refresh": "刷新", "retry": "重试", "expandNav": "展开资源导航", "collapseNav": "折叠资源导航", "expandPods": "展开 Pod", "collapsePods": "收起 Pod", "loadMorePods": "继续加载 Pod", "retryPods": "重试加载 Pod", "expandUnowned": "展开未归属 Pod", "collapseUnowned": "收起未归属 Pod", "viewResources": "查看关联资源列表", "loadMore": "展开更多", "zoomOut": "缩小", "zoomIn": "放大", "fit": "适应画布" },
+        "states": { "emptyTopology": "暂无可见拓扑资源", "overviewError": "Kubernetes 资源概览加载失败", "listError": "资源列表加载失败", "podError": "Pod 加载失败", "unownedError": "未归属 Pod 加载失败", "waiting": "等待加载", "loading": "加载中", "failed": "加载失败", "shown": "已显示 {loaded}/{count}", "layerShown": "已展示 {shown} / {count}", "noData": "—" },
+        "list": { "search": "搜索名称", "namespaceFilter": "命名空间", "workloadFilter": "工作负载", "nodeFilter": "Node", "total": "共 {total} 条" },
+        "columns": { "name": "名称", "workload_count": "工作负载", "pod_count": "Pod", "namespace": "命名空间", "workload": "工作负载", "workload_type": "类型", "replicas": "副本数", "node": "Node", "ip_addr": "Pod IP", "request_cpu": "CPU 请求", "request_memory": "内存请求", "limit_cpu": "CPU 限制", "limit_memory": "内存限制", "role": "角色", "cpu": "CPU", "memory": "内存", "disk": "磁盘" },
+        "accessibility": { "topology": "Kubernetes 资源拓扑，单击聚焦，右键打开只读菜单", "legend": "图例" }
     }
 }

@@ -36,6 +36,7 @@ export interface WidgetConfigFormValues {
   gaugeMax?: number;
   gaugeShape?: 'semicircle' | 'circle';
   actions?: DashboardActionConfig[];
+  appearance?: ValueConfig['appearance'];
 }
 
 type SubmitDisplayColumn = TableColumnConfigItem & {
@@ -83,6 +84,7 @@ const buildSceneWidgetConfig = (
       instId: topologyConfig?.instId || '',
       depth: topologyConfig?.depth || 2,
     },
+    appearance: values.appearance,
   };
 };
 

@@ -453,15 +453,18 @@ class TestCheckViews:
         assert retrieved.status_code == 200
         assert retrieved.json()["data"]["id"] == plain_check.id
 
-        bad_accept = api_client.post(f"/api/v1/opspilot/wiki_mgmt/check_item/{plain_check.id}/accept/", {}, format="json")
-        assert bad_accept.status_code == 400
+        accepted_scan = api_client.post(f"/api/v1/opspilot/wiki_mgmt/check_item/{plain_check.id}/accept/", {}, format="json")
+        assert accepted_scan.status_code == 200
+        plain_check.refresh_from_db()
+        assert plain_check.status == "resolved"
+        assert plain_check.related["resolution"]["action"] == "manual_resolve"
 
         rejected = api_client.post(f"/api/v1/opspilot/wiki_mgmt/check_item/{candidate_check.id}/reject/", {}, format="json")
         assert rejected.status_code == 200
         candidate_check.refresh_from_db()
         assert candidate_check.status == "dismissed"
 
-    def test_batch_accept_accepts_candidate_checks_and_skips_scan_items(self, api_client):
+    def test_batch_accept_accepts_candidate_and_scan_checks(self, api_client):
         from apps.opspilot.models import CheckItem, WikiKnowledgeBase
         from apps.opspilot.services.wiki.check_service import create_candidate
 
@@ -480,9 +483,9 @@ class TestCheckViews:
 
         assert response.status_code == 200
         data = response.json()["data"]
-        assert data["accepted"] == 2
-        assert data["skipped"] == 1
-        assert data["skipped_ids"] == [scan_check.id]
+        assert data["accepted"] == 3
+        assert data["skipped"] == 0
+        assert data["skipped_ids"] == []
         page_a.refresh_from_db()
         page_b.refresh_from_db()
         candidate_a.refresh_from_db()
@@ -492,7 +495,31 @@ class TestCheckViews:
         assert page_b.current_version.body == "candidate-b"
         assert candidate_a.status == "resolved"
         assert candidate_b.status == "resolved"
-        assert scan_check.status == "open"
+        assert scan_check.status == "resolved"
+        assert scan_check.related["resolution"]["action"] == "manual_resolve"
+
+    def test_accept_endpoint_merges_duplicate_scan_check(self, api_client):
+        from apps.opspilot.models import CheckItem, WikiKnowledgeBase
+
+        kb = WikiKnowledgeBase.objects.create(name="kb", team=[1])
+        duplicate = _page_with_current(kb, title="CMDB", body="CMDB content", page_type="entity")
+        canonical = _page_with_current(kb, title="配置平台", body="配置平台内容", page_type="entity")
+        check = CheckItem.objects.create(
+            knowledge_base=kb,
+            check_type="duplicate",
+            status="open",
+            related={"pages": [duplicate.id, canonical.id], "canonical_title": "配置平台"},
+            suggested_actions=["merge", "dismiss"],
+        )
+
+        response = api_client.post(f"/api/v1/opspilot/wiki_mgmt/check_item/{check.id}/accept/", {}, format="json")
+
+        assert response.status_code == 200, response.content
+        duplicate.refresh_from_db()
+        check.refresh_from_db()
+        assert duplicate.status == "archived"
+        assert check.status == "resolved"
+        assert response.json()["data"]["status"] == "resolved"
 
     def test_batch_reject_dismisses_selected_open_checks(self, api_client):
         from apps.opspilot.models import CheckItem, PageVersion, WikiKnowledgeBase

@@ -10,7 +10,8 @@ import { WikiCitation } from '@/app/opspilot/types/global';
 
 const md = new MarkdownIt({ html: false, linkify: true, breaks: true });
 
-// 答案中的 [n] 对应的来源:渲染为可点「来源」标签,点击在抽屉中展示对应知识页面/资料内容
+// 知识引用:答案中的 [n] 对应的资料/页面来源。点击 [n] 或资料名在抽屉中展示
+// 实际引用的内容。
 const WikiCitations: React.FC<{ citations: WikiCitation[]; content?: string }> = ({ citations, content }) => {
   const { t } = useTranslation();
   const { fetchPage, fetchMaterialInfo } = useWikiApi();
@@ -27,12 +28,6 @@ const WikiCitations: React.FC<{ citations: WikiCitation[]; content?: string }> =
   const items = Array.from(new Map(citations.filter(referenced).map((c) => [`${c.kind}:${c.id}`, c])).values()).sort(
     (a, b) => (a.n ?? 0) - (b.n ?? 0)
   );
-  const explanationLabels: Record<string, string> = {
-    keyword: t('wiki.retrievalKeyword'),
-    vector: t('wiki.retrievalVector'),
-    chunk_vector: t('wiki.retrievalChunkVector'),
-    graph: t('wiki.retrievalGraph'),
-  };
 
   const open = async (c: WikiCitation) => {
     setActive(c);
@@ -59,19 +54,16 @@ const WikiCitations: React.FC<{ citations: WikiCitation[]; content?: string }> =
     <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-[var(--color-border-2)] pt-2">
       <span className="text-xs text-[var(--color-text-3)]">{t('wiki.citations')}:</span>
       {items.map((c) => (
-        <span key={`${c.kind}:${c.id}`} className="flex max-w-full items-center gap-1">
-          <Tooltip title={c.title}>
-            <Tag color="processing" className="m-0 max-w-[220px] cursor-pointer truncate hover:opacity-80" onClick={() => open(c)}>
-              {c.n != null ? `[${c.n}] ` : ''}
-              {c.title}
-            </Tag>
-          </Tooltip>
-          {c.explanation?.matched_by?.map((mode) => (
-            <Tag key={mode} className="m-0 text-[11px]">
-              {explanationLabels[mode] || mode}
-            </Tag>
-          ))}
-        </span>
+        <Tooltip key={`${c.kind}:${c.id}`} title={c.title}>
+          <Tag
+            color="processing"
+            className="m-0 max-w-[280px] cursor-pointer truncate hover:opacity-80"
+            onClick={() => open(c)}
+          >
+            {c.n != null && <span className="mr-1 font-semibold">[{c.n}]</span>}
+            {c.title}
+          </Tag>
+        </Tooltip>
       ))}
       <Drawer title={active?.title} open={!!active} width={600} onClose={() => setActive(null)} destroyOnHidden>
         <Spin spinning={loading}>

@@ -468,7 +468,9 @@ class ChatService:
                 }
             )
 
+        import logging as _dbg_log
         if kwargs.get("matched_skill_packages") is not None:
+            _dbg_log.warning("DEBUG_CHAT: matched_skill_packages count=%s, capabilities=%s", len(kwargs.get("matched_skill_packages") or []), kwargs.get("skill_package_capabilities"))
             extra_config.update(
                 {
                     "matched_skill_packages": kwargs.get("matched_skill_packages") or [],
@@ -477,6 +479,11 @@ class ChatService:
                     "skill_package_workflows": kwargs.get("skill_package_workflows") or {},
                 }
             )
+
+        # 用户显式选中的技能包全集(独立于 matched_skill_packages),
+        # 用于 backend 物化,绕开 substring 匹配丢包。
+        if kwargs.get("enabled_skill_packages") is not None:
+            extra_config["enabled_skill_packages"] = kwargs.get("enabled_skill_packages") or []
 
         if kwargs["skill_type"] != SkillTypeChoices.KNOWLEDGE_TOOL:
             ChatService._process_tools_and_extra_config(kwargs, chat_kwargs, extra_config)

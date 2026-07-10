@@ -22,5 +22,6 @@ assert.match(checkTab, /handleStatusFilterChange/);
 assert.match(checkTab, /handleCheckTypeFilterChange/);
 assert.match(checkTab, /t\('wiki\.checkStatusAll'\)/);
 assert.match(checkTab, /t\('wiki\.checkTypeAll'\)/);
+assert.doesNotMatch(checkTab, /t\('wiki\.selected'\)/, 'CheckTab should not render selected-count toolbar tag');
 
 console.log('wiki check filter validation passed');

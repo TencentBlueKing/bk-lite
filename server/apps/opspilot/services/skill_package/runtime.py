@@ -1,8 +1,14 @@
 import json
+import re
 from pathlib import Path
 from typing import Any, Iterable
 
 import yaml
+
+# SKILL.md frontmatter 提取正则(与 importer._split_frontmatter 保持一致)
+_SKILL_MD_FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*(?:\n|$)", re.DOTALL)
+# 策略字段:由 SKILL.md frontmatter / skill.yaml 决定,覆盖 DB manifest
+_STRATEGY_FIELDS = ("capabilities", "reports", "workflows")
 
 
 def normalize_skill_packages(raw_packages: Any) -> list[dict[str, Any]]:
@@ -97,6 +103,7 @@ def build_skill_package_prompt(
         )
     blocks.append(
         "\n使用规则：仅在用户问题命中技能包能力边界时采用对应技能包；如果采用技能包方法，必须在思考区或最终答复开头写明 `已命中技能包：<技能包名称>`；技能包不是工具调用，不要把技能包写成已调用工具；技能包提供任务方法和输出约束，事实数据必须来自工具或上下文。"
+        "\n运行规则：当用户要求你实际获取、访问、转换、读取、生成或处理外部内容时，不要只输出安装步骤或示例代码；必须优先调用当前可用工具完成任务。DeepAgent 沙箱提供 `execute`、`read_file`、`write_file` 等工具时，应使用这些工具运行技能包中的 CLI 或脚本，并基于工具返回的真实结果回答。只有工具不可用或执行失败时，才说明失败原因并给出人工执行步骤。"
     )
     return (base_prompt or "") + "\n".join(blocks), matched_packages
 
@@ -134,12 +141,19 @@ def hydrate_skill_packages(skill_packages: Any) -> list[dict[str, Any]]:
         return packages
 
     try:
-        stored_packages = {item.id: item for item in SkillPackage.objects.filter(id__in=ids, is_enabled=True)}
-    except Exception:
+        # 同步 ORM 查询,调用方须在 sync 上下文(用 ThreadPoolExecutor 包一层)。
+        stored_list = list(SkillPackage.objects.filter(id__in=ids, is_enabled=True))
+        # key 统一转 str:LangGraph configurable 跨节点序列化会把 int id 转 str,
+        # 后续 stored_packages.get(item.get("id")) 也用 str 查,保持一致。
+        stored_packages = {str(item.id): item for item in stored_list}
+    except Exception as e:
+        logger.debug("技能包查询失败: %r", e)
         return packages
     hydrated: list[dict[str, Any]] = []
     for item in packages:
-        stored = stored_packages.get(item.get("id"))
+        # 兼容 str/int id(参见上面 stored_packages 的 key 处理)。
+        item_id = item.get("id")
+        stored = stored_packages.get(item_id) or stored_packages.get(str(item_id) if item_id is not None else None)
         if not stored:
             hydrated.append(item)
             continue
@@ -161,29 +175,75 @@ def hydrate_skill_packages(skill_packages: Any) -> list[dict[str, Any]]:
                 "skill_markdown": stored.skill_markdown,
             }
         )
+        # 注入物化所需的 extracted_root + asset_roots(流式路径)。
+        # 真相源仍是磁盘上的 extracted_path;materalizer 用 Path.rglob 扫描读盘,
+        # 不在 snapshot 里复制文件内容,避免 mb 级包占用内存。
+        # 仅当 storage_path 非空时添加,空字符串保持后向兼容(走旧 dict 路径)。
+        storage_path_text = str(getattr(stored, "storage_path", "") or "")
+        if storage_path_text:
+            extracted_root = Path(storage_path_text) / "extracted"
+            snapshot["extracted_root"] = extracted_root
+            asset_roots: dict[str, Path | None] = {}
+            for asset_dir in ("scripts", "references", "assets"):
+                sub = extracted_root / asset_dir
+                asset_roots[asset_dir] = sub if sub.is_dir() else None
+            snapshot["asset_roots"] = asset_roots
         hydrated.append(snapshot)
     return hydrated
 
 
 def _manifest_with_storage_overlay(stored_package) -> dict[str, Any]:
+    """从 DB manifest 出发,叠加磁盘上 skill.yaml / SKILL.md frontmatter 的策略字段。
+
+    优先级(由低到高): DB manifest → skill.yaml → SKILL.md frontmatter。
+
+    设计原因:用户编辑磁盘上的 SKILL.md 后希望能立即热生效,而不用每次都重导 ZIP。
+    - DB manifest 是导入时落盘的快照,可能落后于磁盘文件。
+    - skill.yaml 与 SKILL.md frontmatter 同时存在时,SKILL.md frontmatter 优先
+      (用户改 SKILL.md 比改 skill.yaml 频繁,且 SKILL.md 是 deepagent 沙箱的真相源)。
+    - 磁盘文件不存在 / 不含某策略字段时,沿用 DB manifest 的值
+      (后向兼容历史数据,避免删 skill.yaml 后能力丢失)。
+    """
     manifest = dict(getattr(stored_package, "manifest", None) or {})
-    missing_strategy_fields = any(key not in manifest for key in ("capabilities", "reports", "workflows"))
     storage_path = getattr(stored_package, "storage_path", "")
-    if not missing_strategy_fields or not storage_path:
+    if not storage_path:
         return manifest
 
-    manifest_path = Path(storage_path) / "extracted" / "skill.yaml"
-    if not manifest_path.exists():
+    extracted_dir = Path(storage_path) / "extracted"
+    if not extracted_dir.is_dir():
         return manifest
-    try:
-        file_manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
-    except Exception:
-        return manifest
-    if not isinstance(file_manifest, dict):
-        return manifest
-    for key in ("capabilities", "reports", "workflows"):
-        if key not in manifest and key in file_manifest:
-            manifest[key] = file_manifest[key]
+
+    # 1) skill.yaml 中间层(比 DB 新,但比 SKILL.md 旧)
+    skill_yaml_path = extracted_dir / "skill.yaml"
+    if skill_yaml_path.is_file():
+        try:
+            file_manifest = yaml.safe_load(skill_yaml_path.read_text(encoding="utf-8")) or {}
+        except Exception:
+            file_manifest = None
+        if isinstance(file_manifest, dict):
+            for key in _STRATEGY_FIELDS:
+                if key in file_manifest:
+                    manifest[key] = file_manifest[key]
+
+    # 2) SKILL.md frontmatter 最高优先级(用户编辑磁盘文件 → 立即热生效)
+    skill_md_path = extracted_dir / "SKILL.md"
+    if skill_md_path.is_file():
+        try:
+            skill_md = skill_md_path.read_text(encoding="utf-8")
+        except Exception:
+            skill_md = ""
+        if skill_md:
+            match = _SKILL_MD_FRONTMATTER_RE.match(skill_md)
+            if match:
+                try:
+                    frontmatter = yaml.safe_load(match.group(1)) or {}
+                except Exception:
+                    frontmatter = None
+                if isinstance(frontmatter, dict):
+                    for key in _STRATEGY_FIELDS:
+                        if key in frontmatter:
+                            manifest[key] = frontmatter[key]
+
     return manifest
 
 

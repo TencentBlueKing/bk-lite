@@ -97,6 +97,8 @@ export function buildLoginAuthBindingPayload(
   }
 
   const unmatchedAction = values.unmatched_user_action || 'deny';
+  // WeChat provider: create 时允许 default_group_name 为空,后端 fallback 到 OpsPilotGuest
+  // 非 WeChat provider: create 时必须有 default_group_name(由 modal 必填校验保证)
   return {
     ...basePayload,
     unmatched_user_action: unmatchedAction,

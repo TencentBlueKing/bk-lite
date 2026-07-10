@@ -12,6 +12,7 @@ import CustomTable from '@/components/custom-table';
 import { LogRecord, Channel, WorkflowTaskResult, WorkflowExecutionDetailItem } from '@/app/opspilot/types/studio';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { fetchLogDetails, createConversation } from '@/app/opspilot/utils/logUtils';
+import { formatDurationMs } from '@/app/opspilot/utils/duration';
 import { useStudioApi } from '@/app/opspilot/api/studio';
 import dayjs from 'dayjs';
 
@@ -690,7 +691,7 @@ const StudioLogsPage: React.FC = () => {
       title: t('studio.logs.table.executionDuration'),
       dataIndex: 'execution_duration',
       key: 'execution_duration',
-      render: (duration) => `${duration || 0}ms`,
+      render: (duration) => formatDurationMs(duration),
     },
     {
       title: t('common.actions'),

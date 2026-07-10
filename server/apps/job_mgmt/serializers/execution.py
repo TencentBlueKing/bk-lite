@@ -3,6 +3,8 @@
 from rest_framework import serializers
 
 from apps.job_mgmt.models import JobExecution, Playbook, Script
+from apps.job_mgmt.services.script_normalize import normalize_script_line_endings
+from apps.job_mgmt.services.script_params_service import ScriptParamsService
 
 
 class JobExecutionListSerializer(serializers.ModelSerializer):
@@ -182,10 +184,14 @@ class QuickExecuteSerializer(serializers.Serializer):
         # 验证 params 格式
         params = attrs.get("params", [])
         if params:
-            from apps.job_mgmt.services.script_params_service import ScriptParamsService
-
             has_script_template = bool(attrs.get("script_id"))
             ScriptParamsService.validate_params_format(params, require_is_modified=has_script_template)
+
+        # 临时输入模式：入库前规范化换行符（CRLF/CR → LF；bat/powershell 保留原样）。
+        # script_id / playbook_id 模式不直接处理 script_content，下游 ExecutionService
+        # 会从 Script.content 取值（已在 ScriptCreateSerializer 入口规范化）。
+        if attrs.get("script_content") and attrs.get("script_type"):
+            attrs["script_content"] = normalize_script_line_endings(attrs["script_content"], attrs["script_type"])
 
         return attrs
 

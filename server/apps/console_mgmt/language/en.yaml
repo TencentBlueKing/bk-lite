@@ -10,6 +10,7 @@ error:
   group_name_required: group_name is required
   password_required: Password cannot be empty
   invalid_json_format: Invalid JSON format
+  email_change_verification_required: Email change requires verification
 email:
   verification_code_validity: The verification code is valid for 10 minutes, please
     use it in time.

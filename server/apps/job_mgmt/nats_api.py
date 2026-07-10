@@ -13,12 +13,12 @@ from apps.job_mgmt.models import DangerousPath, DangerousRule, DistributionFile,
 from apps.job_mgmt.services.callback_service import send_callback
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
 from apps.job_mgmt.services.execution_stream_service import publish_done_sentinel
+from apps.job_mgmt.services.script_normalize import normalize_script_line_endings
 from apps.job_mgmt.services.script_params_service import ScriptParamsService
 from apps.job_mgmt.tasks import distribute_files_task, execute_script_task, finalize_cancelling_execution
 from apps.job_mgmt.utils.team_authz import is_team_authorized, normalize_team
 from apps.node_mgmt.utils.s3 import delete_s3_file
 from apps.rpc.sensitive import sanitize_sensitive_data, summarize_ansible_callback
-
 
 CANCEL_CONVERGE_BUFFER_SECONDS = 60
 
@@ -130,11 +130,7 @@ def _filter_module_data_by_team(queryset, group_id):
     if connection.features.supports_json_field_contains:
         return queryset.filter(team__contains=group_id)
 
-    matched_ids = [
-        item.id
-        for item in queryset.only("id", "team")
-        if group_id in normalize_team(getattr(item, "team", None))
-    ]
+    matched_ids = [item.id for item in queryset.only("id", "team") if group_id in normalize_team(getattr(item, "team", None))]
     return queryset.filter(id__in=matched_ids)
 
 
@@ -430,6 +426,10 @@ def job_script_execute(data: dict):
 
     # 构建 params 字符串
     params_str = ScriptParamsService.params_to_string(params) if params else ""
+
+    # 入库前规范化换行符（CRLF/CR → LF；bat/powershell 保留原样）。
+    # NATS 入口绕过 REST serializer, 必须独立处理; worker 兜底仍保留。
+    script_content = normalize_script_line_endings(script_content, script_type)
 
     # 创建执行记录
 

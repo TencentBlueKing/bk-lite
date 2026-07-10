@@ -17,6 +17,7 @@ import {
   Input,
   Radio,
   Select,
+  Segmented,
   Tooltip,
   message,
 } from 'antd';
@@ -63,6 +64,7 @@ import {
   type WidgetConfigFormValues,
 } from './widgetConfig/utils/submitConfig';
 import { useNetworkStatusTopologyConfig } from './widgetConfig/hooks/useNetworkStatusTopologyConfig';
+import { normalizeScreenWidgetAppearance } from '@/app/ops-analysis/(pages)/view/screen/utils/layout';
 
 interface ViewConfigPropsWithManager extends ViewConfigProps {
   dataSourceManager: ReturnType<typeof useDataSourceManager>;
@@ -98,6 +100,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   unifiedFilterValues = {},
   builtinNamespaceId,
   showChartThemeMode = false,
+  surface = 'dashboard',
 }) => {
   const { t } = useTranslation();
   const guardClose = useUnsavedConfirm();
@@ -132,6 +135,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     return resolveDatasourceChartTypes({
       chartTypes: dataSource.chart_type,
       chartTypeDefinitions: getChartTypeList(),
+      surface,
     });
   };
 
@@ -369,6 +373,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       singleValueConfig,
       nextConfigRequestId,
       isCurrentConfigRequest,
+      surface,
     ],
   );
 
@@ -483,6 +488,10 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       chartThemeMode: showChartThemeMode
         ? valueConfig?.chartThemeMode || 'default'
         : undefined,
+      appearance:
+        surface === 'screen'
+          ? normalizeScreenWidgetAppearance(valueConfig?.appearance)
+          : undefined,
       dataSource: valueConfig?.dataSource || '',
       dataSourceParams: valueConfig?.dataSourceParams || [],
       params: {},
@@ -961,6 +970,27 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
               />
             </Form.Item>
           )}
+          {surface === 'screen' && (
+            <Form.Item
+              label={t('opsAnalysis.screen.widgetAppearance')}
+              name={['appearance', 'frame']}
+              initialValue="panel"
+            >
+              <Segmented
+                block
+                options={[
+                  {
+                    label: t('opsAnalysis.screen.widgetFramePanel'),
+                    value: 'panel',
+                  },
+                  {
+                    label: t('opsAnalysis.screen.widgetFrameBare'),
+                    value: 'bare',
+                  },
+                ]}
+              />
+            </Form.Item>
+          )}
           <Form.Item label={t('dataSource.describe')} name="description">
             <Input.TextArea
               placeholder={t('common.inputMsg')}
@@ -1111,6 +1141,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         visible={dataSourceSelectorVisible}
         onCancel={() => setDataSourceSelectorVisible(false)}
         onOpenConfig={handleDataSourceChangeFromSelector}
+        surface={surface}
       />
     </Drawer>
   );

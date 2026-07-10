@@ -20,7 +20,6 @@ from apps.opspilot.utils.stream_common import is_interrupt_requested_async
 from apps.opspilot.utils.stream_common import process_think_content as _process_think_content
 from apps.opspilot.utils.stream_common import split_think_content as _split_think_content
 
-
 # 工具结果后的桥接型自述内容匹配模式，供提取与剥离两处复用（避免重复编译）。
 _META_PREAMBLE_PATTERN = re.compile(
     r"^\s*(?:好的[，,\s]*|好[的吧]?[，,\s]*|OK[,\s]*|Okay[,\s]*)?"
@@ -425,9 +424,7 @@ def _prepare_agui_chat_kwargs(params):
     return chat_kwargs
 
 
-async def _generate_agui_stream(
-    params, skill_name, skill_type, show_think, final_stats, kwargs, current_ip, user_message, skill_id, history_log
-):
+async def _generate_agui_stream(params, skill_name, skill_type, show_think, final_stats, kwargs, current_ip, user_message, skill_id, history_log):
     try:
         logger.info(f"[AGUI Chat] 开始异步流处理 - skill_name: {skill_name}, skill_type: {skill_type}, show_think: {show_think}")
         # F044: 把取模型 / 格式化参数 / 创建 Agent 实例（构造 request/graph）的同步前置工作
@@ -450,39 +447,53 @@ async def _generate_agui_stream(
             accumulated_content.append(skill_view_event)
             yield _build_sse_line(skill_view_event)
 
-        # Wiki 知识库引用:把检索到的来源作为 CUSTOM 事件下发,供前端把答案中的 [n] 渲染为可点来源
-        wiki_citations = (chat_kwargs.get("extra_config") or {}).get("wiki_citations")
+        # Wiki 知识库引用:chat_service.format_chat_server_kwargs 在 prepare 阶段已检索 wiki 文档
+        # 并把 citations 放入 extra_config["wiki_citations"],但 augment_prompt 不在 langgraph 节点
+        # coroutine 内,无法直接 dispatch_custom_event。这里在 AGUI 流开始前补一个 CUSTOM event,
+        # 前端 aguiMessageHandler.handleWikiCitations 监听 name === 'wiki_citations' 渲染 WikiCitations。
+        # 同步已有的 skill_view_event 模式;空列表不发送,避免空事件污染。
+        wiki_citations = (request.extra_config or {}).get("wiki_citations")
         if wiki_citations:
-            citation_event = {
+            wiki_citations_event = {
                 "type": "CUSTOM",
                 "name": "wiki_citations",
                 "value": {"citations": wiki_citations},
                 "timestamp": int(time.time() * 1000),
             }
-            accumulated_content.append(citation_event)
-            yield _build_sse_line(citation_event)
+            accumulated_content.append(wiki_citations_event)
+            yield _build_sse_line(wiki_citations_event)
 
-        async for sse_line in graph.agui_stream(request):
-            if execution_id and await is_interrupt_requested_async(execution_id):
-                interrupt_data = {"type": "INTERRUPTED", "error": "执行已中断", "execution_id": execution_id, "timestamp": int(time.time() * 1000)}
-                yield _build_sse_line(interrupt_data)
-                return
-            output_line = sse_line
-            immediate_lines = []
-            if sse_line.startswith("data: "):
-                try:
-                    data_json = json.loads(sse_line[6:].strip())
-                    output_line, immediate_lines = _handle_agui_data_event(data_json, state, show_think, enable_thinking_split)
-                    accumulated_content.append(data_json)
-                except (json.JSONDecodeError, ValueError) as parse_err:
-                    sample = sse_line[6:].strip()[:200]
-                    logger.warning(f"[AGUI Chat] 跳过无法解析的 SSE 行: {parse_err}; 内容样本: {sample!r}")
+        logger.info(f"[AGUI Chat] 开始 graph.agui_stream, request_id={getattr(request, 'thread_id', '?')}")
+        try:
+            async for sse_line in graph.agui_stream(request):
+                if execution_id and await is_interrupt_requested_async(execution_id):
+                    interrupt_data = {
+                        "type": "INTERRUPTED",
+                        "error": "执行已中断",
+                        "execution_id": execution_id,
+                        "timestamp": int(time.time() * 1000),
+                    }
+                    yield _build_sse_line(interrupt_data)
+                    return
+                output_line = sse_line
+                immediate_lines = []
+                if sse_line.startswith("data: "):
+                    try:
+                        data_json = json.loads(sse_line[6:].strip())
+                        output_line, immediate_lines = _handle_agui_data_event(data_json, state, show_think, enable_thinking_split)
+                        accumulated_content.append(data_json)
+                    except (json.JSONDecodeError, ValueError) as parse_err:
+                        sample = sse_line[6:].strip()[:200]
+                        logger.warning(f"[AGUI Chat] 跳过无法解析的 SSE 行: {parse_err}; 内容样本: {sample!r}")
 
-            for line in immediate_lines:
-                yield line
+                for line in immediate_lines:
+                    yield line
 
-            if output_line:
-                yield output_line
+                if output_line:
+                    yield output_line
+        except Exception as stream_err:
+            logger.error(f"[AGUI Chat] graph.agui_stream 异常: {stream_err}")
+            raise
 
         final_stats["content"] = accumulated_content
         if final_stats["content"]:

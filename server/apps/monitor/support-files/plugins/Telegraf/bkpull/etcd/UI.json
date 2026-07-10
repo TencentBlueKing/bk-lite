@@ -2,7 +2,9 @@
   "object_name": "Etcd",
   "instance_type": "etcd",
   "collect_type": "bkpull",
-  "config_type": ["etcd"],
+  "config_type": [
+    "etcd"
+  ],
   "collector": "Telegraf",
   "instance_id": "{{cloud_region}}_{{instance_type}}_{{server_url}}",
   "form_fields": [
@@ -72,7 +74,7 @@
       "label": "间隔",
       "type": "inputNumber",
       "required": true,
-      "default_value": 10,
+      "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
       "widget_props": {
         "min": 1,
@@ -132,7 +134,9 @@
       ],
       "change_handler": {
         "type": "simple",
-        "source_fields": ["server_url"],
+        "source_fields": [
+          "server_url"
+        ],
         "target_field": "instance_name"
       },
       "is_only": true

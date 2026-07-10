@@ -44,6 +44,8 @@ class InstallerViewSet(ViewSet):
             data["package_id"],
             data["nodes"],
             data["cpu_architecture"],
+            request.user.username,
+            getattr(request.user, "domain", "domain.com"),
         )
         install_controller.delay(task_id)
         timeout_controller_install_task.apply_async(
@@ -64,6 +66,8 @@ class InstallerViewSet(ViewSet):
             request.data["cloud_region_id"],
             request.data["work_node"],
             request.data["nodes"],
+            request.user.username,
+            getattr(request.user, "domain", "domain.com"),
         )
         uninstall_controller.delay(task_id)
         return WebUtils.response_success(dict(task_id=task_id))
@@ -123,7 +127,12 @@ class InstallerViewSet(ViewSet):
     )
     @HasPermission("cloud_region_node-Edit")
     def controller_install_nodes(self, request, task_id):
-        data = InstallerService.install_controller_nodes(task_id)
+        authorized_nodes = get_authorized_node_queryset(request)
+        data = InstallerService.install_controller_nodes(
+            task_id,
+            authorized_nodes=authorized_nodes,
+            request_user=request.user,
+        )
         return WebUtils.response_success(data)
 
     # 采集器

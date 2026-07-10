@@ -39,6 +39,10 @@ spec:
           - --docker_only
           - --store_container_labels=false
           - --whitelisted_container_labels=io.kubernetes.container.name,io.kubernetes.pod.name,io.kubernetes.pod.namespace
+          # 监控链路只消费 cpu/内存/磁盘IO/网络四类指标，关闭其余采集组
+          # （尤其 disk 用量统计开销大），降低 cadvisor 自身资源占用；
+          # 与 deploy/dist/bk-lite-kubernetes-collector/bk-lite-metric-collector.yaml 保持一致
+          - --enable_metrics=cpu,diskIO,memory,network
         volumeMounts:
           - name: rootfs
             mountPath: /rootfs
@@ -308,7 +312,7 @@ data:
     [global_tags]
 
     [agent]
-      interval = "10s"
+      interval = "60s"
       round_interval = true
       metric_buffer_limit = 100000
       flush_buffer_when_full = true
@@ -374,10 +378,19 @@ data:
         - target_label: instance_name
           replacement: "%{CLUSTER_NAME}"
         metric_relabel_configs:
+        # 监控链路（metrics.json 与 web k8s dashboard）只消费以下 6 个指标族，
+        # 其余全部丢弃；与 deploy/dist/bk-lite-kubernetes-collector/
+        # bk-lite-metric-collector.yaml 保持一致，新增图表指标时需同步扩充
+        - source_labels: [__name__]
+          action: keep
+          regex: container_cpu_usage_seconds_total|container_memory_working_set_bytes|container_fs_reads_total|container_fs_writes_total|container_network_receive_bytes_total|container_network_transmit_bytes_total
         - source_labels: [container_label_io_kubernetes_pod_name]
           target_label: pod
           regex: (.+)
           action: replace
+        # id(cgroup 路径)/name/image 超长且无查询消费；pod_name 已复制为 pod
+        - regex: id|name|image|container_label_io_kubernetes_pod_name
+          action: labeldrop
 
 ---
 apiVersion: v1
@@ -392,7 +405,7 @@ data:
       instance_id="$HOST_NODE_NAME"
 
     [agent]
-      interval = "10s"
+      interval = "60s"
       round_interval = true
       metric_batch_size = 1000
       metric_buffer_limit = 10000

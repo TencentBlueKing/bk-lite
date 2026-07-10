@@ -50,7 +50,6 @@ const SkillSettingsPage: React.FC = () => {
   const [saveLoading, setSaveLoading] = useState(false);
   const [quantity, setQuantity] = useState<number>(10);
   const [selectedTools, setSelectedTools] = useState<SelectTool[]>([]);
-  const [skillType, setSkillType] = useState<number | null>(null);
   const [skillPermissions, setSkillPermissions] = useState<string[]>([]);
   const [guideValue, setGuideValue] = useState<string>('');
   const [hasInvalidParamKeys, setHasInvalidParamKeys] = useState(false);
@@ -117,7 +116,6 @@ const SkillSettingsPage: React.FC = () => {
         setToolEnabled(!!data.tools.length);
         setSelectedSkillAssetKeys((data.skill_packages || []).map((pkg: SkillPackage) => getPackageKey(pkg)));
 
-        setSkillType(data.skill_type);
         setSkillPermissions(data.permissions || []);
       } catch (error) {
         console.error(t('common.fetchFailed'), error);
@@ -257,7 +255,7 @@ const SkillSettingsPage: React.FC = () => {
         temperature: temperature,
         show_think: values.show_think,
         tools: selectedTools,
-        skill_type: skillType,
+        skill_type: 1,
         group: values.group?.[0],
         skill_name: values.name,
         skill_id: id,
@@ -274,6 +272,18 @@ const SkillSettingsPage: React.FC = () => {
           required_tools: pkg.required_tools || [],
           triggers: pkg.triggers || [],
         })),
+        chat_history: chatHistory,
+        conversation_window_size: chatHistoryEnabled ? quantity : undefined,
+        temperature: temperature,
+        show_think: values.show_think,
+        tools: selectedTools,
+        skill_type: 1,
+        group: values.group?.[0],
+        skill_name: values.name,
+        skill_id: id,
+        enable_suggest: values.enable_suggest,
+        enable_query_rewrite: values.enable_query_rewrite,
+        skill_params: (values.skill_params || []).filter((p: any) => p && p.key),
       };
 
       return {
@@ -680,26 +690,22 @@ const SkillSettingsPage: React.FC = () => {
                     )}
                   </Form>
                 </div>
-                {skillType !== 2 && (
-                  renderSkillPackageSelector()
-                )}
-                {skillType !== 2 && (
-                  <div className={`p-4 rounded-md pb-0 ${styles.contentWrapper}`}>
-                    <Form labelCol={{flex: '0 0 135px'}} wrapperCol={{flex: '1'}}>
-                      <div className="flex justify-between">
-                        <h3 className="font-medium text-sm mb-4">{t('skill.tool')}</h3>
-                        <Switch size="small" className="ml-2" checked={showToolEnabled} onChange={changeToolEnable} />
-                      </div>
-                      <p className="pb-4 text-xs text-[var(--color-text-4)]">{t('skill.toolTip')}</p>
-                      {showToolEnabled && (
-                        <ToolSelector
-                          defaultTools={selectedTools}
-                          onChange={(selected: SelectTool[]) => setSelectedTools(selected)}
-                        />
-                      )}
-                    </Form>
-                  </div>
-                )}
+                {renderSkillPackageSelector()}
+                <div className={`p-4 rounded-md pb-0 ${styles.contentWrapper}`}>
+                  <Form labelCol={{flex: '0 0 135px'}} wrapperCol={{flex: '1'}}>
+                    <div className="flex justify-between">
+                      <h3 className="font-medium text-sm mb-4">{t('skill.tool')}</h3>
+                      <Switch size="small" className="ml-2" checked={showToolEnabled} onChange={changeToolEnable} />
+                    </div>
+                    <p className="pb-4 text-xs text-[var(--color-text-4)]">{t('skill.toolTip')}</p>
+                    {showToolEnabled && (
+                      <ToolSelector
+                        defaultTools={selectedTools}
+                        onChange={(selected: SelectTool[]) => setSelectedTools(selected)}
+                      />
+                    )}
+                  </Form>
+                </div>
               </div>
             </section>
             <div>

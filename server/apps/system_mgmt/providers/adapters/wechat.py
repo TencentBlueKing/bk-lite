@@ -134,16 +134,25 @@ class WechatLoginAuthAdapter(BaseLoginAuthAdapter):
                 external_code=str(user_data.get("errcode") or user_response.status_code),
             )
 
-        from apps.system_mgmt.nats_api import wechat_user_register
-
-        login_result = wechat_user_register(user_data["openid"], user_data.get("nickname") or user_data["openid"])
-        if not login_result.get("result"):
+        # userinfo 200 + 无 errcode 时,openid 仍可能缺失(响应体畸形),
+        # 与 token 缺字段时返回 failed_result 保持一致,避免 KeyError 抛出。
+        userinfo_openid = user_data.get("openid") or openid
+        if not userinfo_openid:
             return CapabilityExecutionResult.failed_result(
-                login_result.get("message") or "WeChat user registration failed",
-                code="provider.auth_failed",
+                "WeChat user info is missing openid", code="provider.invalid_response"
             )
 
+        # WeChat provider 只负责 OAuth 认证并返回真实微信用户信息;
+        # 账号匹配、用户创建、token 签发由通用登录认证链路负责。
+        # 详见:openspec/changes/wechat-login-auth-field-mapping/design.md
         return CapabilityExecutionResult.success_result(
             "WeChat login authenticated",
-            payload={"login_result": login_result.get("data", {})},
+            payload={
+                "external_user": {
+                    "openid": userinfo_openid,
+                    "unionid": user_data.get("unionid", ""),
+                    "nickname": user_data.get("nickname", ""),
+                    "headimgurl": user_data.get("headimgurl", ""),
+                }
+            },
         )

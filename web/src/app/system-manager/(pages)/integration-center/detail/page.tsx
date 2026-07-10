@@ -19,6 +19,7 @@ import {
   resolveIntegrationProviderIcon,
   type IntegrationDetailTab,
 } from '@/app/system-manager/utils/integrationCenter';
+import { buildLoginAuthCallbackUrl } from '@/app/system-manager/utils/integrationLoginAuthCallbackUrl';
 import PermissionWrapper from '@/components/permission';
 import TopSection from '@/components/top-section';
 import { useTranslation } from '@/utils/i18n';
@@ -91,10 +92,17 @@ const IntegrationDetailPage: React.FC = () => {
     () => (instance ? getIntegrationDetailTopSectionContent(instance, t) : ''),
     [instance, t],
   );
-  const loginAuthCallbackUrl = useMemo(
-    () => (activeTab === 'login_auth' ? instance?.login_auth_callback_url || '' : ''),
-    [activeTab, instance?.login_auth_callback_url],
-  );
+  const loginAuthCallbackUrl = useMemo(() => {
+    if (activeTab !== 'login_auth') {
+      return '';
+    }
+    const result = buildLoginAuthCallbackUrl({
+      currentOrigin: typeof window === 'undefined' ? '' : window.location.origin,
+      backendCallbackUrl: instance?.login_auth_callback_url || '',
+    });
+    console.log('[BK-Lite login-auth v2] backend returned:', instance?.login_auth_callback_url, '| rendered:', result);
+    return result;
+  }, [activeTab, instance?.login_auth_callback_url]);
 
   const fetchDetailData = async () => {
     if (!id || Number.isNaN(numericId)) {

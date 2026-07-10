@@ -10,10 +10,12 @@ import LoginAuthValidationPanel from "./login-auth/LoginAuthValidationPanel";
 import SigninContentShell from "./login-auth/SigninContentShell";
 import { getBindingPasswordCopy } from "./login-auth/bindingPasswordCopy";
 import { useLoginAuthValidation } from "./login-auth/useLoginAuthValidation";
+import SigninLanguageToggle from "./login-auth/SigninLanguageToggle";
 import {
   isBindingSelectionLocked,
   resolveInlineValidationError,
   resolveSigninSurface,
+  shouldShowBindingsSelector,
 } from "./login-auth/orderedBindingState";
 import {useTheme} from '@/context/theme';
 import {usePortalBranding} from "@/hooks/usePortalBranding";
@@ -365,7 +367,11 @@ export default function SigninClient({
     authStep,
     viewState: loginAuthValidation.viewState,
   });
-  const showBindingsSelector = authStep === 'login' && loginAuthValidation.bindingsLoadState === 'bindings-ready';
+  const showBindingsSelector = shouldShowBindingsSelector({
+    authStep,
+    bindingsLoadState: loginAuthValidation.bindingsLoadState,
+    bindingsCount: loginAuthValidation.bindings.length,
+  });
   const shouldShowValidationFormState = authStep === 'login';
   const validationInlineError = shouldShowValidationFormState
     ? resolveInlineValidationError(
@@ -512,6 +518,9 @@ export default function SigninClient({
       <div className="w-full h-full md:w-2/5 flex items-center justify-center p-8 bg-(--bg-color-1) overflow-y-auto">
         <div className="w-full h-full flex items-center justify-center">
           <div className="w-full max-w-md">
+            <div className="mb-4 flex justify-end">
+              <SigninLanguageToggle />
+            </div>
             <div className="mb-10 text-center">
               <div className="mb-6 flex justify-center">
                 <img src={logoUrl} alt="Logo" className="h-14 w-auto object-contain" />

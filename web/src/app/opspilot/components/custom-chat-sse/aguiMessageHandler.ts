@@ -127,6 +127,24 @@ const isStructuredConfigAnalysisReport = (
   typeof value.markdown === 'string'
 );
 
+export const finalizePendingToolCalls = (
+  toolCalls: Map<string, ToolCallInfo>,
+  fallbackResult: string
+): boolean => {
+  let changed = false;
+  toolCalls.forEach((toolCall) => {
+    if (toolCall.status !== 'calling') {
+      return;
+    }
+    toolCall.status = 'completed';
+    if (!toolCall.result) {
+      toolCall.result = fallbackResult;
+    }
+    changed = true;
+  });
+  return changed;
+};
+
 export class AGUIMessageHandler {
   private contentBlocks: ContentBlock[] = [];
   private currentTextBlock: string = '';
@@ -691,6 +709,8 @@ export class AGUIMessageHandler {
    */
   handleError(error: string) {
     this.stopThinking();
+    this.isStreaming = false;
+    finalizePendingToolCalls(this.toolCallsRef, '工具调用已结束，但流中断前未收到结果事件。');
     this.flushCurrentTextBlock();
     const errorMessage = renderErrorMessage(error, 'error');
     this.contentBlocks.push({ type: 'text', content: errorMessage });
@@ -702,6 +722,8 @@ export class AGUIMessageHandler {
    */
   handleRunError(message: string, code?: string) {
     this.stopThinking();
+    this.isStreaming = false;
+    finalizePendingToolCalls(this.toolCallsRef, '工具调用已结束，但运行错误前未收到结果事件。');
     this.flushCurrentTextBlock();
     const errorMessage = renderErrorMessage(message, 'run_error', code);
     this.contentBlocks.push({ type: 'text', content: errorMessage });
@@ -790,7 +812,7 @@ export class AGUIMessageHandler {
         return false;
 
       case 'TOOL_CALL_RESULT':
-        if (aguiData.toolCallId && aguiData.content) {
+        if (aguiData.toolCallId && aguiData.content !== undefined) {
           this.handleToolCallResult(aguiData.toolCallId, aguiData.content);
         }
         return false;
@@ -811,6 +833,7 @@ export class AGUIMessageHandler {
       case 'RUN_FINISHED':
         // 流式回复结束，设置 isStreaming 为 false 并更新内容（收起工具列表）
         this.isStreaming = false;
+        finalizePendingToolCalls(this.toolCallsRef, '工具调用已结束，但未收到结果事件。');
         this.handleBrowserStepComplete();
         // 重新渲染内容以收起工具列表
         this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, false);
@@ -827,7 +850,7 @@ export class AGUIMessageHandler {
           this.handleUserChoiceRequest(aguiData.value as UserChoiceRequestValue);
         } else if (aguiData.name === 'user_choice_result' && aguiData.value) {
           this.handleUserChoiceResult(aguiData.value as { choice_id: string; selected: string[]; source: string });
-        } else if (aguiData.name === 'config_diff_report' && aguiData.value) {
+        } else if (aguiData.name === 'repair_diff_report' && aguiData.value) {
           this.handleConfigDiffReport(aguiData.value as unknown as ConfigDiffReportValue);
         } else if (aguiData.name === 'config_analysis_report' && aguiData.value) {
           this.handleConfigAnalysisReport(aguiData.value as ConfigAnalysisReportValue);

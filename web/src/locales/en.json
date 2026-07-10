@@ -344,6 +344,11 @@
         "startFailed": "Failed to start authentication.",
         "popupBlocked": "Unable to open the authentication page. Please allow new tabs and try again."
       }
+    },
+    "languageToggle": {
+      "label": "Switch language",
+      "zhItem": "Simplified Chinese",
+      "enItem": "English"
     }
   },
   "system": {

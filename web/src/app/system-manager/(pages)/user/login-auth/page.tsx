@@ -295,15 +295,13 @@ const LoginAuthPage: React.FC = () => {
     form.setFieldValue('icon', nextIcon);
     form.setFieldValue('external_field', nextExternalField);
 
-    // 微信登录认证默认开启"未匹配时创建用户"并自动填充 OpsPilotGuest 组，
-    // 以接续旧微信扫码登录的首次登录创建组织弹窗（init_user_set）行为。
-    const currentDefaultGroup = form.getFieldValue('default_group_name');
+    // 微信登录认证默认开启"未匹配时创建用户",首次登录创建组织弹窗
+    // (init_user_set) 所需的 OpsPilotGuest 组由后端 fallback 兜底,
+    // 前端不再自动填充,UI 也不展示默认组名输入框。
     if (providerKey === 'wechat') {
       setUnmatchedAction('create');
       form.setFieldValue('unmatched_user_action', 'create');
-      if (!currentDefaultGroup) {
-        form.setFieldValue('default_group_name', 'OpsPilotGuest');
-      }
+      form.setFieldValue('default_group_name', '');
     } else {
       setUnmatchedAction('deny');
       form.setFieldValue('unmatched_user_action', 'deny');
@@ -596,7 +594,7 @@ const LoginAuthPage: React.FC = () => {
                       onChange={handleUnmatchedActionChange}
                     />
                   </Form.Item>
-                  {unmatchedAction === 'create' && (
+                  {unmatchedAction === 'create' && currentProviderKey !== 'wechat' && (
                     <Form.Item
                       name="default_group_name"
                       label={t('system.user.loginAuthPage.defaultGroupName')}
