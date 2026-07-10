@@ -564,7 +564,7 @@ data:
     [global_tags]
 
     [agent]
-      interval = "10s"
+      interval = "60s"
       round_interval = true
       metric_buffer_limit = 100000
       flush_buffer_when_full = true
@@ -671,7 +671,7 @@ data:
       instance_id="$HOST_NODE_NAME"
   
     [agent]
-      interval = "10s"
+      interval = "60s"
       round_interval = true
       metric_batch_size = 1000
       metric_buffer_limit = 10000
