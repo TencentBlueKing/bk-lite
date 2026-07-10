@@ -174,15 +174,19 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     try {
       let successMessage = t('wiki.saveSuccess');
       if (editingMaterial) {
+        // 编辑任何类型都带上 ocr_enhance:web 含图,text 字段保留一致。
+        const common = { ocr_enhance: Boolean(values.ocr_enhance) };
         if (editingMaterial.material_type === 'file') {
-          await updateMaterial(editingMaterial.id, { ocr_enhance: Boolean(values.ocr_enhance) });
+          await updateMaterial(editingMaterial.id, common);
         } else if (editingMaterial.material_type === 'web') {
           await updateMaterial(editingMaterial.id, {
+            ...common,
             name: values.name,
             sync_policy: { enabled: !!values.sync_enabled, interval_hours: values.sync_interval_hours ?? 24 },
           });
         } else if (editingMaterial.material_type === 'text') {
           await updateMaterial(editingMaterial.id, {
+            ...common,
             name: values.name,
             text_content: values.text_content ?? '',
           });
