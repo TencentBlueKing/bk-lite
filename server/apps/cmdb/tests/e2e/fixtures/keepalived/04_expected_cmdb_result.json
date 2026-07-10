@@ -1,0 +1,17 @@
+{
+  "model_id": "keepalived",
+  "instance_count_min": 1,
+  "expected_instance_subset_fixture_driven": {
+    "inst_name":         "127.0.0.1-keepalived-51",
+    "ip_addr":           "127.0.0.1",
+    "version":           "2.0.20",
+    "priority":          "100",
+    "state":             "MASTER",
+    "virtual_router_id": "51",
+    "user_name":         "root",
+    "install_path":      "/usr/sbin",
+    "config_file":       "/etc/keepalived/keepalived.conf"
+  },
+  "fixture_source_fixture_driven": "agents/stargazer/tests/fixtures/collect/keepalived.json (2026-07-08 G4.8 placeholder,init 脚本模板填充)",
+  "notes": "v4 Phase 4 任务 4.1;middleware runner extra_payload_keys={\"result\": True};keepalived 不映射 port,用 virtual_router_id 代替;inst_name 规则为 {ip}-keepalived-{virtual_router_id},与通用 {ip}-{model_id}-{port} 一致(因 virtual_router_id 当 port 字段处理)"
+}

@@ -40,7 +40,13 @@ FACTORY_COVERED_MODEL_IDS = [
     "haproxy",    # port="80&8404" 多端口拼接字符串(middleware runner,extra_payload_keys={"result": True});raw_stdout 走公共契约 raw_stdout_envelope_b 形态(无 bk_inst_name/bk_obj_id);plugin=apps/cmdb/collection/plugins/community/middleware/haproxy.py
     "zookeeper",  # port="2181",middleware runner result=True;plugin 字段集对齐 ZookeeperCollectionPlugin.field_mapping
     "rabbitmq",   # port="5672",middleware runner result=True;raw_stdout 是形态 B(平铺);plugin=apps/cmdb/collection/plugins/community/middleware/rabbitmq.py
-]  
+    "consul",     # port="8500",middleware runner result=True;raw_stdout 形态 B(平铺);plugin=apps/cmdb/collection/plugins/community/middleware/consul.py
+    "minio",      # port="9000",middleware runner result=True;raw_stdout 形态 A(含 bk_inst_name/bk_obj_id);plugin=apps/cmdb/collection/plugins/community/middleware/minio.py
+    "apache",     # port="80",middleware runner result=True;raw_stdout 形态 B(平铺);plugin=apps/cmdb/collection/plugins/community/middleware/apache.py
+    "openresty",  # port="80" from stargazer raw["listen_port"](middleware runner,extra_payload_keys={"result": True});raw_stdout 形态 B(平铺);stargazer 源 G3.6 placeholder 由脚本格式推导;plugin 字段集对齐 OpenrestyCollectionPlugin.field_mapping(含 openresty_path/doc_root,与 nginx 高度对称但 openresty_path 替 nginx_path)
+    "activemq",   # port="61616",middleware runner result=True;raw_stdout 形态 B(平铺);plugin=apps/cmdb/collection/plugins/community/middleware/activemq.py;fixture 字段 bin_path/config 对应 plugin install_path/conf_path(未对齐,expected 子集只断言 ip_addr/port/version/inst_name)
+    "keepalived", # 不映射 port,用 virtual_router_id="51"(G4.8 placeholder);middleware runner result=True;_extract_port fallback 到 virtual_router_id
+]
 
 
 def _extract_raw_items(stargazer_raw: dict, model_id: str) -> dict:
@@ -69,11 +75,11 @@ def _extract_raw_items(stargazer_raw: dict, model_id: str) -> dict:
 
 
 def _extract_port(raw_items: dict) -> str:
-    """从 raw_items 抽出 port(优先 port 字段,fallback listen_port)。"""
-    for k in ("port", "listen_port"):
+    """从 raw_items 抽出 port(优先 port 字段,fallback listen_port / virtual_router_id)。"""
+    for k in ("port", "listen_port", "virtual_router_id"):
         if k in raw_items:
             return str(raw_items[k])
-    raise KeyError(f"raw_items 缺 port / listen_port: keys={list(raw_items.keys())}")
+    raise KeyError(f"raw_items 缺 port / listen_port / virtual_router_id: keys={list(raw_items.keys())}")
 
 
 @pytest.mark.django_db

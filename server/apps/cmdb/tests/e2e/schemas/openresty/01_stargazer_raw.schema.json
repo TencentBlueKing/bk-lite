@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Stargazer openresty 采集原始输出契约",
+  "description": "2026-07-10 v4 Phase 4 任务 4.2 — fixture 字段集对齐 OpenrestyCollectionPlugin.field_mapping 与 openresty_default_discover.sh 真实输出(middleware runner,extra_payload_keys={\"result\":True})。raw_stdout 属于形态 B(平铺,无 success/result 包裹),由公共契约 00_common_contract.schema.json 的 oneOf 在 CI 层兼容;本文件直接展开公共契约必填字段(model_id/captured_at/raw_stdout)+ openresty 业务字段,与其它对象 schema 保持扁平风格以免 jsonschema 库无法解析 $ref。\n\n注:stargazer 端因 G3.6 openresty 装包多次失败(G3.6 placeholder,2026-07-08,raw_stdout:[]),本 fixture 的 raw_stdout 由 openresty_default_discover.sh 脚本格式推导,以便 e2e 流水线跑通 fixture_driven 验证。port 字段名沿用脚本输出(用 listen_port 而非 port,与 nginx 一致)。",
+  "type": "object",
+  "required": ["model_id", "captured_at", "raw_stdout"],
+  "properties": {
+    "model_id":    {"type": "string", "pattern": "^openresty$"},
+    "captured_at": {"type": "string", "format": "date-time"},
+    "raw_stdout": {
+      "type": "object",
+      "required": ["ip_addr", "listen_port", "version"],
+      "properties": {
+        "bk_inst_name":    {"type": "string"},
+        "bk_obj_id":       {"type": "string"},
+        "ip_addr":         {"type": "string"},
+        "listen_port":     {"type": ["string", "integer"]},
+        "openresty_path":  {"type": "string"},
+        "version":         {"type": "string"},
+        "log_path":        {"type": "string"},
+        "config_path":     {"type": "string"},
+        "doc_root":        {"type": "string"}
+      }
+    }
+  }
+}
