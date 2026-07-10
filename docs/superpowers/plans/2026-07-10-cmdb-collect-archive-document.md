@@ -93,7 +93,7 @@
 
 | # | 大类 | 对象 | 跳过原因 | 后续路径 |
 |---|---|---|---|---|
-| 1 | protocol | **mssql** | 微软 SQL Server 镜像仅 amd64,arm64 Mac 启动 5+ 分钟未监听 1433 | amd64 CI runner 上重试(加 `platform="linux/amd64"`) |
+| 1 | ~~protocol~~ | ~~**mssql**~~ | 2026-07-10 主动删除:catalog spec + init 脚本 + CI workflow 全删(amd64-only 镜像,v3 范围外) | 后续如需支持,在 amd64 CI 上以新 spec 加回 |
 | 2 | protocol | **oracle** | stargazer catalog 没注册(无 spec),plugin 有但无 fixture 跑通路径 | 补 catalog spec,plugin 已就绪 |
 | 3 | middleware | **iis** | Windows 容器架构,fixture ssh 入口是 linux | 不在 v3 范围,需重写 ssh → winrm 采集入口 |
 | 4 | db | **hbase** | HDFS + ZK + HBase 集群复杂,v3 暂缓 | 后续作为 HDFS 子对象处理 |
@@ -149,7 +149,7 @@
 | **elasticsearch** | ✅ | db 平铺 | ✅ | Phase 3 | alias es,大写 plugin 类名 |
 | **dameng** | 🟡 | placeholder | ✅(placeholder) | Phase 6 | dm8 商业 license 不可达 |
 | **highgo** | 🟡 | placeholder | ✅(临时复用 postgres) | Phase 8 | 无 CMDB plugin |
-| **mssql** | ⏭️ | — | ❌(arm64 失败) | skipped | 微软镜像仅 amd64 |
+| **mssql** | ⏭️(已删) | — | ❌ | **deleted(2026-07-10)** | 主动删除 cata log spec + init 脚本 + CI workflow |
 | **oracle** | ⏭️ | — | ❌ | skipped | catalog 无 spec |
 | **hbase** | ⏭️ | — | ❌ | skipped | 集群复杂 |
 | **informix** | 🔒 | — | ❌ | archived | IBM 商业 license |
@@ -229,6 +229,7 @@
 - **2026-07-10**:**最终 33/33 真实落盘对象 e2e 触达,113 e2e passed, 6 skipped, 0 failed**
 - **2026-07-10**:worktree v3+v4 共 12 commit 合并到主分支 `feature_windyzhao`,PR 文档准备就绪
 - **2026-07-10 17:00**:**23 个未落盘对象封档(5 skipped + 18 archived),等业务方解锁 license / amd64 CI**
+- **2026-07-10 18:25**:**mssql 主动删除**(catalog spec + init 脚本 + CI workflow 全删),amd64-only 镜像,v3 范围外;后续如需支持,在 amd64 CI 上以新 spec 加回
 
 ---
 

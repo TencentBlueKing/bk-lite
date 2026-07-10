@@ -341,11 +341,11 @@ MODEL_SPECS: Dict[str, Spec] = {
     # 真实情况:
     # - 复用现成 dameng_default_discover.sh(plugins/inputs/dameng/,84 行,扫 dmap 进程 + readlink /proc/PID/exe)
     # - 镜像:xuxuclassmate/dameng:latest (Ubuntu 16.04 base + DM8) 可达,但 arm64 Mac 需 Rosetta 模拟 amd64
-    #   (同 mssql 平台不匹配问题,且镜像精简,缺 sshd/net-tools,apt update 老源慢)
+    #   (同 arm64-vs-amd64 平台不匹配问题,且镜像精简,缺 sshd/net-tools,apt update 老源慢)
     # - license:第三方镜像内置(开发版),但生产链路严禁直接连非官方镜像,fixture 工具不引入新风险
     # 决策:catalog Spec 注册走 SSH 入口(ubuntu:22.04 base + sshd),但 install_commands 故意 fail
     #   标记 license 不可达,落盘占位 JSON 说明状态。
-    # 后续解锁路径:用户提供达梦官方 license + 在 amd64 CI runner 跑(同 mssql 模式)
+    # 后续解锁路径:用户提供达梦官方 license + 在 amd64 CI runner 跑(amd64-only 镜像)
     "dameng": Spec(
         model_id="dameng",
         image="ubuntu:22.04",
@@ -420,48 +420,6 @@ MODEL_SPECS: Dict[str, Spec] = {
         ),
         ready_check=None,
     ),
-    # --- G1.4 mssql (ssh 入口 + sqlcmd,绕开 pyodbc native lib 环境依赖) ---
-    "mssql": Spec(
-        model_id="mssql",
-        image="mcr.microsoft.com/mssql/server:2022-CU14-ubuntu-22.04",
-        ports={"22/tcp": 14330, "1433/tcp": 14331},
-        env={"ACCEPT_EULA": "Y", "MSSQL_SA_PASSWORD": "Testpw123!@#"},
-        wait_strategy={"type": "ssh", "timeout": 90, "interval": 1.0},
-        init_script="mssql_default_discover.sh",
-        entry_type="ssh",
-        entry_module=None,
-        entry_class=None,
-        collector_kwargs={"host": "127.0.0.1", "ssh_port": 14330, "mssql_port": 14331, "sa_password": "Testpw123!@#"},
-        vm_privileged=False,
-        vm_ssh_user="root",
-        vm_ssh_password="testpw",
-        # mssql 镜像默认 USER=mssql(uid 10001),不能 apt;container_user=root + container_cmd=None(走镜像默认 entrypoint 启 SQL Server)
-        container_user="0:0",
-        container_cmd=None,
-        install_commands=(
-            # mssql 官方镜像需要装 sshd(ssh 入口必备),并装 sqlcmd(mssql-tools)用于采集
-            # 用 阿里云镜像源加速(微软源在国内慢)
-            "DEBIAN_FRONTEND=noninteractive apt-get update -qq 2>&1 | tail -3",
-            "DEBIAN_FRONTEND=noninteractive apt-get install -y -qq openssh-server sudo iproute2 curl procps gnupg2 apt-transport-https 2>&1 | tail -3",
-            "mkdir -p /run/sshd && echo 'root:testpw' | chpasswd",
-            "sed -i 's/#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config",
-            "/usr/sbin/sshd",
-            # 安装 mssql-tools(含 sqlcmd)
-            "curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg 2>&1 | tail -3",
-            "echo 'deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/debian/11/prod bullseye main' > /etc/apt/sources.list.d/mssql-release.list",
-            "DEBIAN_FRONTEND=noninteractive apt-get update -qq 2>&1 | tail -3",
-            "DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y -qq mssql-tools unixodbc-dev 2>&1 | tail -3 || DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y -qq mssql-tools 2>&1 | tail -5",
-            # 把 sqlcmd 加到 PATH
-            "echo 'export PATH=$PATH:/opt/mssql-tools/bin' >> /root/.bashrc",
-        ),
-        start_commands=(
-            # 2026-07-07 阻塞:mssql 官方镜像仅 linux/amd64,arm64 Mac 上 Rosetta 模拟下 SQL Server 启动极慢
-            # (5+ 分钟未监听 1433)。本机 mssql 采集走不通,留待 Phase 2 在 amd64 环境或 CI 上跑。
-            "echo 'G1.4 mssql blocked on arm64-vs-amd64 platform mismatch; see roadmap 2026-07-06'",
-            "exit 1",  # 故意失败,标识当前 Spec 不可用
-        ),
-        ready_check={"command": "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P 'Testpw123!@#' -Q 'SELECT 1' 2>/dev/null || /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'Testpw123!@#' -C -Q 'SELECT 1' 2>/dev/null", "timeout": 120, "interval": 5.0},
-    ),
     # ============================================================
     # Phase 3 G3.1-G3.7 社区版扩展(7 个新对象,roadmap §3.1 高优先级)
     # 2026-07-08 落地:mongodb/nginx/tomcat 模式复制,镜像源已配置(daocloud + tuna)
@@ -510,7 +468,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # 2. wget 源码 + 编译方式 configure 阶段 LuaJIT library 找不到
     # 3. alpine 官方镜像无 bash(cli.bootstrap_sshd_in_container 需要)
     # 决策:catalog Spec 注册走 SSH 入口(ubuntu:22.04 + sshd),但 install_commands
-    #   故意 fail 标记降级,后续在 amd64 CI runner 跑(同 mssql 模式)或换 apt 装包思路。
+    #   故意 fail 标记降级,后续在 amd64 CI runner 跑(amd64-only 镜像)或换 apt 装包思路。
     "openresty": Spec(
         model_id="openresty",
         image="ubuntu:22.04",
@@ -1013,7 +971,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # 踩坑(2026-07-08):1) mycat 1.6 官方 release 无 aarch64 wrapper,需 amd64 平台
     # 2) shell 脚本是 CRLF 格式,sed 转 LF;3) startup_nowrap.sh 比 bin/mycat start 简单(无 wrapper)
     # 4) schema 必填 dataNode;5) JAVA_HOME 必设;6) 需先 mkdir logs
-    # 7) amd64 rosetta 模拟在 arm64 Mac 极慢(5+ 分钟 jdk 装不完),与 mssql 同源阻塞
+    # 7) amd64 rosetta 模拟在 arm64 Mac 极慢(5+ 分钟 jdk 装不完)
     # 8) 已用 amd64 镜像手动验证 mycat 可启动 + 8066/9066 监听(见 phase5-execution-report §3)
     # 真实跑通需 amd64 CI runner(GitHub Actions ubuntu-22.04),本机 Mac arm64 跑会卡 rosetta
     "mycat": Spec(
