@@ -1,0 +1,384 @@
+.page {
+  --k8s-blue: #1768ff;
+  display: flex;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #f5f7fb;
+}
+
+.secondaryNav {
+  position: relative;
+  z-index: 30;
+  flex: 0 0 220px;
+  width: 220px;
+  height: 100%;
+  padding: 12px 10px;
+  overflow: auto;
+  border-right: 1px solid #e5eaf2;
+  background: #fff;
+  transition: width .2s ease, flex-basis .2s ease;
+
+  &.collapsed {
+    flex-basis: 56px;
+    width: 56px;
+    padding-inline: 7px;
+  }
+
+  &.overlay {
+    position: absolute;
+    inset: 0 auto 0 0;
+    box-shadow: 14px 0 34px rgb(38 66 110 / 16%);
+  }
+}
+
+.navHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 40px;
+  padding: 0 8px 8px;
+  color: #172b4d;
+  font-weight: 600;
+}
+
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 38px;
+  margin-bottom: 3px;
+  padding: 0 12px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 6px;
+  color: #42526e;
+  white-space: nowrap;
+  background: transparent;
+  cursor: pointer;
+
+  &:hover { background: #f1f6ff; }
+  &.active { color: var(--k8s-blue); background: #eaf2ff; font-weight: 600; }
+}
+
+.navGroup {
+  margin: 14px 12px 6px;
+  color: #8a98ad;
+  font-size: 12px;
+}
+
+.content {
+  min-width: 0;
+  flex: 1;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 16px;
+  overflow: auto;
+}
+
+.listContent {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.pageTitle {
+  margin: 0 0 14px;
+  color: #172b4d;
+  font-size: 18px;
+  font-weight: 650;
+}
+
+.metricGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.metricCard {
+  position: relative;
+  min-height: 98px;
+  padding: 18px 20px;
+  overflow: hidden;
+  border: 1px solid #e6ebf3;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 4px 16px rgb(39 78 126 / 4%);
+
+  &::after {
+    position: absolute;
+    right: -14px;
+    bottom: -28px;
+    width: 76px;
+    height: 76px;
+    border-radius: 50%;
+    background: #edf4ff;
+    content: '';
+  }
+}
+
+.metricLabel { color: #60708a; font-size: 13px; }
+.metricValue { margin-top: 8px; color: #101828; font-size: 28px; font-weight: 650; line-height: 1; }
+.metricDetail { margin-top: 7px; color: #7b8ba3; font-size: 12px; }
+
+.topologyCard {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid #e6ebf3;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.topologyShell {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  outline: none;
+}
+
+.topologyActions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.layerHeaders {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  gap: 24px;
+  margin-bottom: 8px;
+  padding: 0 12px;
+
+  > div {
+    padding: 9px;
+    border-radius: 6px;
+    color: #354764;
+    text-align: center;
+    font-weight: 600;
+    background: linear-gradient(180deg, #f2f6ff, #f7f9fd);
+  }
+}
+
+.topologyViewport {
+  position: relative;
+  height: 520px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border: 1px solid #edf0f5;
+  border-radius: 8px;
+  background:
+    linear-gradient(90deg, rgb(241 246 255 / 55%) 1px, transparent 1px) 0 0 / 20% 100%,
+    #fbfcfe;
+}
+
+.topologyContent {
+  position: relative;
+  min-height: 100%;
+  padding: 16px 12px;
+}
+
+.topologyGrid {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  gap: 24px;
+  min-height: 488px;
+}
+
+.topologyColumn {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.topologyEdges {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.topologyEdge {
+  fill: none;
+  stroke: #b7c5d8;
+  stroke-width: 1.4;
+  vector-effect: non-scaling-stroke;
+  transition: opacity .16s ease, stroke .16s ease, stroke-width .16s ease;
+}
+
+.activeEdge {
+  stroke: #1768ff;
+  stroke-width: 2.2;
+}
+
+.dimmedEdge {
+  opacity: .14;
+}
+
+.topologyNode {
+  position: relative;
+  display: flex;
+  min-height: 64px;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  overflow: hidden;
+  border: 1px solid #dce4ef;
+  border-radius: 8px;
+  color: #263a57;
+  background: #fff;
+  box-shadow: 0 3px 10px rgb(32 66 112 / 5%);
+  cursor: pointer;
+  transition: border-color .16s ease, box-shadow .16s ease, opacity .16s ease, transform .16s ease;
+
+  &:hover {
+    border-color: #9abcf1;
+    box-shadow: 0 6px 16px rgb(32 78 145 / 10%);
+    transform: translateY(-1px);
+  }
+
+  &:focus-visible {
+    outline: 2px solid #1768ff;
+    outline-offset: 2px;
+  }
+
+  &[data-layer='cluster'] { border-left: 3px solid #4b7bec; }
+  &[data-layer='namespace'] { border-left: 3px solid #30b47a; }
+  &[data-layer='workload'] { border-left: 3px solid #7b61ff; }
+  &[data-layer='pod'] { border-left: 3px solid #2f80ed; }
+  &[data-layer='node'] { border-left: 3px solid #23a6a1; }
+}
+
+.selectedNode {
+  border-color: #1768ff;
+  box-shadow: 0 0 0 2px rgb(23 104 255 / 16%), 0 8px 18px rgb(23 104 255 / 12%);
+}
+
+.dimmedNode {
+  opacity: .28;
+}
+
+.virtualNode {
+  border-style: dashed;
+  background: #f8fafc;
+}
+
+.nodeTypeMark {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
+  border: 2px solid currentcolor;
+  border-radius: 50%;
+  color: #7e91ad;
+  background: #fff;
+}
+
+.nodeText {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nodeName {
+  overflow: hidden;
+  color: #172b4d;
+  font-size: 13px;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nodeSubtitle {
+  overflow: hidden;
+  color: #73839c;
+  font-size: 11px;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.layerFooters {
+  display: flex;
+  justify-content: flex-end;
+  gap: 16px;
+  padding-top: 8px;
+  color: #69788f;
+  font-size: 12px;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding-top: 8px;
+}
+
+.contextMenu {
+  position: absolute;
+  z-index: 50;
+  display: flex;
+  width: 190px;
+  flex-direction: column;
+  padding: 6px;
+  border: 1px solid #dbe3ef;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 12px 32px rgb(31 52 83 / 18%);
+
+  button {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    padding: 9px 10px;
+    border: 0;
+    border-radius: 5px;
+    color: #354764;
+    text-align: left;
+    background: transparent;
+    cursor: pointer;
+    &:hover, &:focus { color: #1768ff; background: #edf4ff; outline: none; }
+  }
+}
+
+.toolbar { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.listSpin {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+
+  :global(.ant-spin-container) {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+  }
+}
+
+.resourceList {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--color-bg-1);
+}
+
+.tableShell {
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+@media (max-width: 1500px) {
+  .metricGrid { grid-template-columns: repeat(2, minmax(160px, 1fr)); }
+}

@@ -27,6 +27,13 @@
           "withParentPermission": true
         },
         {
+          "title": "资源详情",
+          "icon": "zichan-quanbushebei",
+          "url": "/cmdb/assetData/detail/k8sResources",
+          "name": "asset_k8s_resources",
+          "withParentPermission": true
+        },
+        {
           "title": "关联关系",
           "icon": "shujumoxingguanli",
           "url": "/cmdb/assetData/detail/relationships",
@@ -165,6 +172,13 @@
           "icon": "shujumoxingguanli",
           "url": "/cmdb/assetData/detail/baseInfo",
           "name": "asset_basic_information",
+          "withParentPermission": true
+        },
+        {
+          "title": "Resource Details",
+          "icon": "zichan-quanbushebei",
+          "url": "/cmdb/assetData/detail/k8sResources",
+          "name": "asset_k8s_resources",
           "withParentPermission": true
         },
         {
