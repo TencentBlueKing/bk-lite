@@ -71,7 +71,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     ),
     "postgresql": Spec(
         model_id="postgresql",
-        image="docker.m.daocloud.io/library/postgres:16-alpine",
+        image="postgres:16-alpine",
         ports={"5432/tcp": 15432},
         env={"POSTGRES_PASSWORD": "rootpw"},
         wait_strategy={"type": "tcp", "port": 15432, "timeout": 120},
@@ -141,7 +141,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # --- VM SSH 入口对象（v2 新增）---
     "nginx": Spec(
         model_id="nginx",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",
+        image="ubuntu:22.04",
         ports={"22/tcp": 12222, "80/tcp": 18000},
         env={},
         wait_strategy={"type": "ssh", "timeout": 60, "interval": 1.0},
@@ -159,7 +159,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     ),
     "mongodb": Spec(
         model_id="mongodb",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",
+        image="ubuntu:22.04",
         ports={"22/tcp": 12223, "27017/tcp": 17017},
         env={},
         wait_strategy={"type": "ssh", "timeout": 90, "interval": 1.0},
@@ -185,7 +185,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     ),
     "rabbitmq": Spec(
         model_id="rabbitmq",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",
+        image="ubuntu:22.04",
         ports={"22/tcp": 12224, "5672/tcp": 5673, "15672/tcp": 15672},
         env={},
         wait_strategy={"type": "ssh", "timeout": 90, "interval": 1.0},
@@ -206,7 +206,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     ),
     "tomcat": Spec(
         model_id="tomcat",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",
+        image="ubuntu:22.04",
         ports={"22/tcp": 12225, "8080/tcp": 18080},
         env={},
         wait_strategy={"type": "ssh", "timeout": 60, "interval": 1.0},
@@ -230,7 +230,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # --- Phase 1 Gap-1 新增对象 ---
     "elasticsearch": Spec(
         model_id="elasticsearch",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",
+        image="ubuntu:22.04",
         ports={"22/tcp": 12228, "9200/tcp": 19200},
         env={},
         wait_strategy={"type": "ssh", "timeout": 90, "interval": 1.0},
@@ -261,7 +261,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # --- G1.2 kafka (KRaft 模式,无 zookeeper) ---
     "kafka": Spec(
         model_id="kafka",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",
+        image="ubuntu:22.04",
         ports={"22/tcp": 12229, "9092/tcp": 19092},
         env={},
         wait_strategy={"type": "ssh", "timeout": 60, "interval": 1.0},
@@ -348,7 +348,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # 后续解锁路径:用户提供达梦官方 license + 在 amd64 CI runner 跑(同 mssql 模式)
     "dameng": Spec(
         model_id="dameng",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",
+        image="ubuntu:22.04",
         ports={"22/tcp": 12232, "5236/tcp": 15236},
         env={},
         wait_strategy={"type": "ssh", "timeout": 60, "interval": 1.0},
@@ -388,7 +388,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # 不落盘 ibmmq.json,后续用户提供 IBM MQ license 后再实施。
     "ibmmq": Spec(
         model_id="ibmmq",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",
+        image="ubuntu:22.04",
         ports={"22/tcp": 12231, "1414/tcp": 11414, "9443/tcp": 19443},
         env={},
         wait_strategy={"type": "ssh", "timeout": 90, "interval": 1.0},
@@ -469,7 +469,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # - memcached:1.6-alpine ✅
     # - openresty/openresty:1.21.4.2-alpine ✅(1.21-alpine tag 不存在,已切 1.21.4.2-alpine)
     # - hashicorp/consul:1.16 ✅
-    # - zookeeper: docker.m.daocloud.io/library/zookeeper:3.9 ✅(官方源 timeout 改 daocloud)
+    # - zookeeper: zookeeper:3.9 ✅(官方源 timeout 改 daocloud)
     # - minio/minio:RELEASE.2023-09-30T07-02-29Z ✅(本地已缓存)
     # - etcd:quay.io/coreos/etcd:v3.5 manifest unknown → 走 ubuntu + apt 路径(plan §3.4 fallback)
     # - haproxy:2.8-alpine 网络抽风 → 走 ubuntu + apt 路径(plan §3.7 fallback)
@@ -480,7 +480,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # 统一走 ubuntu + apt(同 Phase 1/2),保持 cli 工具核心不动。
     "memcached": Spec(
         model_id="memcached",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",
+        image="ubuntu:22.04",
         ports={"22/tcp": 12244, "11211/tcp": 11211},
         env={},
         wait_strategy={"type": "ssh", "timeout": 60, "interval": 1.0},
@@ -513,7 +513,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     #   故意 fail 标记降级,后续在 amd64 CI runner 跑(同 mssql 模式)或换 apt 装包思路。
     "openresty": Spec(
         model_id="openresty",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",
+        image="ubuntu:22.04",
         ports={"22/tcp": 12245, "80/tcp": 18081},
         env={},
         wait_strategy={"type": "ssh", "timeout": 60, "interval": 1.0},
@@ -547,7 +547,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # 改用 ubuntu + apt 装 consul(同 nginx 模式,采集脚本兼容)
     "consul": Spec(
         model_id="consul",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",
+        image="ubuntu:22.04",
         ports={"22/tcp": 12242, "8500/tcp": 18500, "8600/tcp": 18600, "8300/tcp": 18300},
         env={},
         wait_strategy={"type": "ssh", "timeout": 90, "interval": 1.0},
@@ -578,7 +578,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # --- G3.4 etcd (ubuntu + apt 安装 etcd-server,plan §3.4 fallback) ---
     "etcd": Spec(
         model_id="etcd",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",
+        image="ubuntu:22.04",
         ports={"22/tcp": 12243, "2379/tcp": 12379, "2380/tcp": 12380},
         env={},
         wait_strategy={"type": "ssh", "timeout": 90, "interval": 1.0},
@@ -607,7 +607,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # --- G3.7 haproxy (ubuntu + apt 安装 haproxy,plan §3.7 fallback) ---
     "haproxy": Spec(
         model_id="haproxy",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",
+        image="ubuntu:22.04",
         ports={"22/tcp": 12246, "80/tcp": 18082, "8404/tcp": 18404},
         env={},
         wait_strategy={"type": "ssh", "timeout": 90, "interval": 1.0},
@@ -638,7 +638,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # 改用 ubuntu + apt 装 zookeeperd(同 nginx 模式,采集脚本兼容)
     "zookeeper": Spec(
         model_id="zookeeper",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",
+        image="ubuntu:22.04",
         ports={"22/tcp": 12241, "2181/tcp": 12181, "2888/tcp": 12888, "3888/tcp": 13888},
         env={},
         wait_strategy={"type": "ssh", "timeout": 120, "interval": 1.0},
@@ -670,7 +670,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # 改用 ubuntu + wget 下载 minio binary(同 kafka wget 模式,采集脚本兼容)
     "minio": Spec(
         model_id="minio",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",
+        image="ubuntu:22.04",
         ports={"22/tcp": 12240, "9000/tcp": 19000, "9001/tcp": 19001},
         env={},
         wait_strategy={"type": "ssh", "timeout": 120, "interval": 1.0},
@@ -709,7 +709,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # 降级为占位模式(同 dameng/ibmmq/openresty)
     "jboss": Spec(
         model_id="jboss",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",
+        image="ubuntu:22.04",
         ports={"22/tcp": 12250, "8080/tcp": 18090},
         env={},
         wait_strategy={"type": "ssh", "timeout": 60, "interval": 1.0},
@@ -740,7 +740,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # 降级为占位(同 jboss/tongweb)
     "jetty": Spec(
         model_id="jetty",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",
+        image="ubuntu:22.04",
         ports={"22/tcp": 12251, "8080/tcp": 18091},
         env={},
         wait_strategy={"type": "ssh", "timeout": 60, "interval": 1.0},
@@ -771,7 +771,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # 降级为占位
     "tongweb": Spec(
         model_id="tongweb",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",
+        image="ubuntu:22.04",
         ports={"22/tcp": 12252, "8080/tcp": 18092},
         env={},
         wait_strategy={"type": "ssh", "timeout": 60, "interval": 1.0},
@@ -800,7 +800,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # --- G4.4 weblogic(license 降级)---
     "weblogic": Spec(
         model_id="weblogic",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",
+        image="ubuntu:22.04",
         ports={"22/tcp": 12253, "7001/tcp": 18093, "9001/tcp": 18094},
         env={},
         wait_strategy={"type": "ssh", "timeout": 60, "interval": 1.0},
@@ -832,7 +832,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # --- G4.5 websphere(license 降级)---
     "websphere": Spec(
         model_id="websphere",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",
+        image="ubuntu:22.04",
         ports={"22/tcp": 12254, "9043/tcp": 18095, "9080/tcp": 18096},
         env={},
         wait_strategy={"type": "ssh", "timeout": 60, "interval": 1.0},
@@ -863,7 +863,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # --- G4.6 apache(社区版)---
     "apache": Spec(
         model_id="apache",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",
+        image="ubuntu:22.04",
         ports={"22/tcp": 12255, "80/tcp": 18097},
         env={},
         wait_strategy={"type": "ssh", "timeout": 60, "interval": 1.0},
@@ -889,7 +889,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # --- G4.7 squid(社区版)---
     "squid": Spec(
         model_id="squid",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",
+        image="ubuntu:22.04",
         ports={"22/tcp": 12256, "3128/tcp": 18098},
         env={},
         wait_strategy={"type": "ssh", "timeout": 60, "interval": 1.0},
@@ -918,7 +918,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # 降级为占位
     "keepalived": Spec(
         model_id="keepalived",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",
+        image="ubuntu:22.04",
         ports={"22/tcp": 12257},  # keepalived 用 VRRP multicast,无 host 端口
         env={},
         wait_strategy={"type": "ssh", "timeout": 60, "interval": 1.0},
@@ -949,7 +949,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # 降级为占位(同 jboss/jetty/tongweb/keepalived)
     "rocketmq": Spec(
         model_id="rocketmq",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",
+        image="ubuntu:22.04",
         ports={"22/tcp": 12258, "9876/tcp": 19876, "10911/tcp": 19875},
         env={},
         wait_strategy={"type": "ssh", "timeout": 60, "interval": 1.0},
@@ -978,7 +978,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # --- G4.10 tuxedo(Oracle,license 不可达)---
     "tuxedo": Spec(
         model_id="tuxedo",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",
+        image="ubuntu:22.04",
         ports={"22/tcp": 12259, "6600/tcp": 19860},
         env={},
         wait_strategy={"type": "ssh", "timeout": 60, "interval": 1.0},
@@ -1018,7 +1018,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # 真实跑通需 amd64 CI runner(GitHub Actions ubuntu-22.04),本机 Mac arm64 跑会卡 rosetta
     "mycat": Spec(
         model_id="mycat",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",
+        image="ubuntu:22.04",
         platform="linux/amd64",  # mycat 1.6 wrapper 只支持 x86_64 / x86_32 / ppc-64
         ports={"22/tcp": 12260, "8066/tcp": 18066, "9066/tcp": 19066},
         env={},
@@ -1062,7 +1062,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # 端口 80(http) + 8008(admin),IBM 官方 rpm,license 不可达 + amd64 模拟未验证
     "ihs": Spec(
         model_id="ihs",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",
+        image="ubuntu:22.04",
         ports={"22/tcp": 12261, "80/tcp": 18061, "8008/tcp": 18008},
         env={},
         wait_strategy={"type": "ssh", "timeout": 60, "interval": 1.0},
@@ -1091,7 +1091,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # 端口 9088(default),国产镜像可达性 + amd64 模拟未验证
     "gbase8s": Spec(
         model_id="gbase8s",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",
+        image="ubuntu:22.04",
         ports={"22/tcp": 12262, "9088/tcp": 19088},
         env={},
         wait_strategy={"type": "ssh", "timeout": 60, "interval": 1.0},
@@ -1120,7 +1120,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # 端口 2003(default),国产镜像可达性 + amd64 模拟未验证
     "oscar": Spec(
         model_id="oscar",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",
+        image="ubuntu:22.04",
         ports={"22/tcp": 12263, "2003/tcp": 12003},
         env={},
         wait_strategy={"type": "ssh", "timeout": 60, "interval": 1.0},
@@ -1149,7 +1149,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # 端口 5622(default 端口,具体看官方文档),license + amd64 模拟未验证
     "tonglinkq": Spec(
         model_id="tonglinkq",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",
+        image="ubuntu:22.04",
         ports={"22/tcp": 12264, "5622/tcp": 15622},
         env={},
         wait_strategy={"type": "ssh", "timeout": 60, "interval": 1.0},
@@ -1178,7 +1178,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # 端口 8800(default),license + amd64 模拟未验证
     "tonggtp": Spec(
         model_id="tonggtp",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",
+        image="ubuntu:22.04",
         ports={"22/tcp": 12265, "8800/tcp": 18800},
         env={},
         wait_strategy={"type": "ssh", "timeout": 60, "interval": 1.0},
@@ -1207,7 +1207,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # 端口 6888(default admin),license + amd64 模拟未验证
     "apusic": Spec(
         model_id="apusic",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",
+        image="ubuntu:22.04",
         ports={"22/tcp": 12266, "6888/tcp": 16888, "9090/tcp": 19090},
         env={},
         wait_strategy={"type": "ssh", "timeout": 60, "interval": 1.0},
@@ -1236,7 +1236,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # 端口 8080(default),license + amd64 模拟未验证
     "inforsuite_as": Spec(
         model_id="inforsuite_as",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",
+        image="ubuntu:22.04",
         ports={"22/tcp": 12267, "8080/tcp": 18067, "1099/tcp": 11099},
         env={},
         wait_strategy={"type": "ssh", "timeout": 60, "interval": 1.0},
@@ -1265,7 +1265,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # 端口待查(无完整官方文档),license + amd64 模拟未验证
     "bes": Spec(
         model_id="bes",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",
+        image="ubuntu:22.04",
         ports={"22/tcp": 12268, "8080/tcp": 18068},
         env={},
         wait_strategy={"type": "ssh", "timeout": 60, "interval": 1.0},
@@ -1294,7 +1294,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # 不是跑服务,是 ssh 入口适配麒麟/统信/欧拉(centos/rhel 系用 dnf 而非 apt)
     "domestic_linux": Spec(
         model_id="domestic_linux",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",  # 临时 ubuntu 镜像占位
+        image="ubuntu:22.04",  # 临时 ubuntu 镜像占位
         ports={"22/tcp": 12269},
         env={},
         wait_strategy={"type": "ssh", "timeout": 60, "interval": 1.0},
@@ -1324,7 +1324,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # 端口 9088 + 1526,IBM 官方 docker 镜像,license 不可达 + amd64 模拟未验证
     "informix": Spec(
         model_id="informix",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",  # 改用 ubuntu 装(IBM docker 镜像需 license)
+        image="ubuntu:22.04",  # 改用 ubuntu 装(IBM docker 镜像需 license)
         ports={"22/tcp": 12270, "9088/tcp": 29088, "1526/tcp": 11526},
         env={},
         wait_strategy={"type": "ssh", "timeout": 60, "interval": 1.0},
@@ -1354,7 +1354,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # 端口 5000 + 4100,SAP docker 镜像需 license,amd64 模拟未验证
     "sybase": Spec(
         model_id="sybase",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",  # 改用 ubuntu 装(SAP 镜像需 license)
+        image="ubuntu:22.04",  # 改用 ubuntu 装(SAP 镜像需 license)
         ports={"22/tcp": 12271, "5000/tcp": 15000, "4100/tcp": 14100},
         env={},
         wait_strategy={"type": "ssh", "timeout": 60, "interval": 1.0},
@@ -1384,7 +1384,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # 端口 8086(default),python 入口,plugin 已有,只 catalog 化(spec.install_commands 占位)
     "influxdb": Spec(
         model_id="influxdb",
-        image="docker.m.daocloud.io/library/influxdb:2.7",  # 官方镜像
+        image="influxdb:2.7",  # 官方镜像
         ports={"8086/tcp": 18086},
         env={"DOCKER_INFLUXDB_INIT_MODE": "setup", "DOCKER_INFLUXDB_INIT_USERNAME": "admin", "DOCKER_INFLUXDB_INIT_PASSWORD": "testpw", "DOCKER_INFLUXDB_INIT_ORG": "testorg", "DOCKER_INFLUXDB_INIT_BUCKET": "testbucket", "DOCKER_INFLUXDB_INIT_ADMIN_TOKEN": "testtoken"},
         wait_strategy={"type": "tcp", "port": 18086, "timeout": 60, "interval": 1.0},
@@ -1399,10 +1399,10 @@ MODEL_SPECS: Dict[str, Spec] = {
     # 端口 8848(default) + 9848(gRPC),python 入口
     "nacos": Spec(
         model_id="nacos",
-        image="docker.m.daocloud.io/library/nacos/nacos-server:v2.3.2",
+        image="nacos/nacos-server:v3.0.2",  # 2026-07-10 G5.2.2 nacos v2.x 无 arm64 manifest,改 v3.0.2(arm64 支持)
         ports={"8848/tcp": 18848, "9848/tcp": 19848},
-        env={"MODE": "standalone", "JVM_XMS": "256m", "JVM_XMX": "256m", "JVM_XMN": "128m"},
-        wait_strategy={"type": "tcp", "port": 18848, "timeout": 120, "interval": 1.0},
+        env={"MODE": "standalone", "JVM_XMS": "256m", "JVM_XMX": "512m", "JVM_XMN": "256m", "NACOS_AUTH_TOKEN": "dGVzdHRva2Vu", "NACOS_AUTH_IDENTITY_KEY": "testkey", "NACOS_AUTH_IDENTITY_VALUE": "testvalue"},  # 2026-07-10 nacos v3 强制 auth token,Base64("testtoken")
+        wait_strategy={"type": "tcp", "port": 18848, "timeout": 240, "interval": 1.0},  # 2026-07-10 nacos JVM 启动慢(standalone + arm64 模拟)
         init_script=None,
         entry_type="python",
         entry_module="plugins.inputs.nacos.nacos_info",
@@ -1414,7 +1414,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # 端口 5432(default)
     "highgo": Spec(
         model_id="highgo",
-        image="docker.m.daocloud.io/library/postgres:16-alpine",  # 临时用 postgres 镜像
+        image="postgres:16-alpine",  # 临时用 postgres 镜像
         ports={"5432/tcp": 25432},
         env={"POSTGRES_PASSWORD": "testpw", "POSTGRES_USER": "highgo", "POSTGRES_DB": "highgo"},
         wait_strategy={"type": "tcp", "port": 25432, "timeout": 60, "interval": 1.0},
@@ -1429,7 +1429,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # 端口 3306(default),pymysql 改造(复用 mysql 入口)
     "tdsql": Spec(
         model_id="tdsql",
-        image="docker.m.daocloud.io/library/mysql:8.0",  # 临时用 mysql 镜像(TDSQL 需 license)
+        image="mysql:8.0",  # 临时用 mysql 镜像(TDSQL 需 license)
         ports={"3306/tcp": 23306},
         env={"MYSQL_ROOT_PASSWORD": "testpw"},
         wait_strategy={"type": "tcp", "port": 23306, "timeout": 120, "interval": 1.0},
@@ -1444,7 +1444,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # 端口 8080(default)
     "ambari": Spec(
         model_id="ambari",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",  # ambari 无官方 docker 镜像,需手动装
+        image="ubuntu:22.04",  # ambari 无官方 docker 镜像,需手动装
         ports={"22/tcp": 12272, "8080/tcp": 18072},
         env={},
         wait_strategy={"type": "tcp", "port": 18072, "timeout": 120, "interval": 1.0},
@@ -1459,7 +1459,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # 端口 443(default)
     "server_bmc": Spec(
         model_id="server_bmc",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",  # Redfish mock server(可用 sushy 模拟)
+        image="ubuntu:22.04",  # Redfish mock server(可用 sushy 模拟)
         ports={"22/tcp": 12273, "443/tcp": 10443},
         env={},
         wait_strategy={"type": "tcp", "port": 10443, "timeout": 30, "interval": 1.0},
@@ -1474,7 +1474,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # 端口 2881(OBProxy)+ 2883(RS)
     "oceanbase": Spec(
         model_id="oceanbase",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",  # oceanbase 无官方 docker 镜像(需 license)
+        image="ubuntu:22.04",  # oceanbase 无官方 docker 镜像(需 license)
         ports={"22/tcp": 12274, "2881/tcp": 12881},
         env={},
         wait_strategy={"type": "ssh", "timeout": 60, "interval": 1.0},
@@ -1489,7 +1489,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # 端口待查,license 不可达 + amd64 模拟未验证
     "tongrds": Spec(
         model_id="tongrds",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",
+        image="ubuntu:22.04",
         ports={"22/tcp": 12275, "1186/tcp": 11186},
         env={},
         wait_strategy={"type": "ssh", "timeout": 60, "interval": 1.0},
@@ -1504,7 +1504,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # 端口 11210
     "couchbase": Spec(
         model_id="couchbase",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",
+        image="ubuntu:22.04",
         ports={"22/tcp": 12276, "11210/tcp": 11210},
         env={},
         wait_strategy={"type": "ssh", "timeout": 60, "interval": 1.0},
@@ -1518,7 +1518,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # --- G5.2.10 sap_hana(license 不可达,只 catalog 占位)---
     "sap_hana": Spec(
         model_id="sap_hana",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",
+        image="ubuntu:22.04",
         ports={"22/tcp": 12277, "30015/tcp": 30015},
         env={},
         wait_strategy={"type": "ssh", "timeout": 60, "interval": 1.0},
@@ -1533,7 +1533,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # 端口 1972(super)+ 51773/bi
     "iris": Spec(
         model_id="iris",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",
+        image="ubuntu:22.04",
         ports={"22/tcp": 12278, "1972/tcp": 1972, "51773/tcp": 51773},
         env={},
         wait_strategy={"type": "ssh", "timeout": 60, "interval": 1.0},
@@ -1549,7 +1549,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # 单节点伪分布式:NameNode + DataNode 同进程,数据形态跟生产集群差异大
     "hdfs": Spec(
         model_id="hdfs",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",
+        image="ubuntu:22.04",
         ports={"22/tcp": 12279, "9000/tcp": 29000, "9870/tcp": 29870, "9864/tcp": 29864},
         env={},
         wait_strategy={"type": "ssh", "timeout": 60, "interval": 1.0},
@@ -1578,7 +1578,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # ResourceManager 端口 8088(web UI) + 8032(scheduler)
     "yarn": Spec(
         model_id="yarn",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",
+        image="ubuntu:22.04",
         ports={"22/tcp": 12280, "8088/tcp": 18088, "8032/tcp": 18032},
         env={},
         wait_strategy={"type": "ssh", "timeout": 60, "interval": 1.0},
@@ -1607,7 +1607,7 @@ MODEL_SPECS: Dict[str, Spec] = {
     # Nimbus 端口 6627 + UI 8080
     "storm": Spec(
         model_id="storm",
-        image="docker.m.daocloud.io/library/ubuntu:22.04",
+        image="ubuntu:22.04",
         ports={"22/tcp": 12281, "6627/tcp": 16627, "8080/tcp": 28081},
         env={},
         wait_strategy={"type": "ssh", "timeout": 60, "interval": 1.0},
