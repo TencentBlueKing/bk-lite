@@ -889,9 +889,6 @@ class ToolsNodes(BasicNode):
         skill_id: int = None,
         event_dispatcher=None,
     ) -> None:
-        with open("/tmp/ppr2_trace.log", "a", encoding="utf-8") as _f:
-            _f.write(f"entered msg={len(new_messages)} caps={sorted(self._skill_package_capabilities)} ed={event_dispatcher is not None}\n")
-        import logging as _log2; _log2.warning(f"DEBUG_PPR2: entered msg={len(new_messages)}")
         """deepagent 返回后扫一遍新消息,对映射的 tool 结果触发 report 渲染。
 
         解决"普通工具(非 Pydantic/StructuredTool)返回值也想结构化展示"的场景:
@@ -956,19 +953,14 @@ class ToolsNodes(BasicNode):
                 build_summary_diff_from_analysis,
             )
             analysis_merged = accumulated["config_analysis_report"]
-            _skill_id = None
-            try:
-                # graph_request 在 deep_wrapper_node / 上层都能拿到,这里取最近一次
-                # 调用的 skill_id(从调用栈传下来);拿不到就 None,k8s renderer 自己
-                # 兜底不依赖 skill_id
-                _skill_id = getattr(graph_request, "skill_id", None)
-            except Exception:
-                _skill_id = None
+            # skill_id 由 caller(_post_process_tool_results 形参)透传,caller 在
+            # deep_wrapper_node:2799 已用 getattr(graph_request, "skill_id", None) 解析;
+            # 拿不到就 None,k8s renderer 自己兜底不依赖 skill_id。
             if len(analysis_merged) == 1:
-                summary_payload = build_summary_diff_from_analysis(analysis_merged[0], skill_id=_skill_id)
+                summary_payload = build_summary_diff_from_analysis(analysis_merged[0], skill_id=skill_id)
             else:
                 summary_payload = build_summary_diff_from_analysis(
-                    merge_analysis_results(analysis_merged), skill_id=_skill_id,
+                    merge_analysis_results(analysis_merged), skill_id=skill_id,
                 )
             if summary_payload:
                 if event_dispatcher is not None:
@@ -2666,25 +2658,7 @@ class ToolsNodes(BasicNode):
 
         async def deep_wrapper_node(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
             """DeepAgent 包装节点 - 返回完整消息列表以支持实时 SSE 流式输出"""
-            print("MARKER_V2_ENTER", flush=True)
-            try:
-                graph_request = config["configurable"]["graph_request"]
-                print(f"MARKER_AFTER_REQ caps={getattr(self, '_skill_package_capabilities', '?')}", flush=True)
-                final_system_prompt = TemplateLoader.render_template(
-                    "prompts/graph/deepagent_system_message",
-                    {"user_system_message": graph_request.system_message_prompt, "additional_system_prompt": additional_system_prompt or ""},
-                )
-                print("MARKER_AFTER_PROMPT", flush=True)
-                llm = self.get_llm_client(graph_request)
-                print("MARKER_AFTER_LLM", flush=True)
-                tools = self._collect_deepagent_tools(graph_request)
-                print(f"MARKER_AFTER_TOOLS n={len(tools) if tools else 0}", flush=True)
-                backend, skill_sources, sandbox_dir = self._build_skill_backend_and_sources(graph_request)
-                print("MARKER_AFTER_BACKEND", flush=True)
-                interrupt_on = self._build_interrupt_on(graph_request, tools)
-            except Exception as _setup_exc:
-                print(f"MARKER_SETUP_RAISED: {type(_setup_exc).__name__}: {_setup_exc}", flush=True)
-                raise
+            graph_request = config["configurable"]["graph_request"]
 
             # 创建系统提示
             final_system_prompt = TemplateLoader.render_template(
@@ -2717,13 +2691,11 @@ class ToolsNodes(BasicNode):
 
             try:
                 result = await deep_agent.ainvoke({"messages": state["messages"]}, config=deep_config)
-                print("MARKER_AFTER_AWAIT", flush=True)
             except Exception as _await_exc:
                 # deepagent 框架层异常(典型:execute 工具撞 sandbox 命令白名单)会把整
                 # 个 graph 标 ERROR,LLM 没机会拿到 ToolMessage 写 follow-up。
                 # 这里直接调一次 LLM,把失败原因作为用户消息送进去,让 LLM 产出
                 # 人话版的失败说明 + 替代方案,再走 chat_model_end 正常 emit。
-                print(f"MARKER_AWAIT_RAISED: {type(_await_exc).__name__}: {_await_exc}", flush=True)
                 try:
                     from langchain_core.messages import HumanMessage
                     err_prompt = (
@@ -2741,45 +2713,31 @@ class ToolsNodes(BasicNode):
                             "请尝试改用白名单内的等效命令(uvx / python -m 等)或换其他工具。"
                         )
                     return {"messages": [AIMessage(content=fallback_text)]}
-                except Exception as _fallback_exc:
-                    print(f"MARKER_FALLBACK_RAISED: {type(_fallback_exc).__name__}: {_fallback_exc}", flush=True)
+                except Exception:
                     return {"messages": [AIMessage(
                         content=f"工具执行失败:{type(_await_exc).__name__}: {str(_await_exc)[:400]}\n"
                         "请尝试改用白名单内的等效命令(uvx / python -m 等)或换其他工具。"
                     )]}
             finally:
                 # 用完即弃：销毁本次运行的一次性技能沙箱目录
-                self._cleanup_sandbox(sandbox_dir)
+                # _cleanup_sandbox 内部有 None 守卫,但这里再写一次防御:
+                # sandbox_dir 只在 _build_skill_backend_and_sources 成功返回时
+                # 才会被赋值,setup 阶段抛错时这个变量不存在,直接 finally 会 NameError。
+                if sandbox_dir:
+                    self._cleanup_sandbox(sandbox_dir)
 
             # 获取完整的消息列表
             final_messages = result.get("messages", [])
-            import logging as _log3
-            _log3.warning("DEBUG_WRAP: final=%d", len(final_messages))
             if not final_messages:
                 return {"messages": [AIMessage(content="DeepAgent 未返回任何消息")]}
 
             # 过滤掉输入消息，只保留 DeepAgent 新增的消息
             input_message_count = len(state.get("messages", []))
             new_messages = final_messages[input_message_count:]
-            _log3.warning("DEBUG_WRAP: input_count=%d new=%d", input_message_count, len(new_messages))
 
             if not new_messages:
                 return {"messages": [AIMessage(content="DeepAgent 未产生新的响应")]}
 
-            import sys
-            print("DEEP_WRAP_ABOUT_TO_PPR", flush=True)
-            try:
-                print("DEEP_WRAP_BEFORE_OPEN", flush=True)
-                with open("/tmp/ppr2_trace.log", "a", encoding="utf-8") as _f:
-                    print("DEEP_WRAP_AFTER_OPEN", flush=True)
-                    _f.write(
-                        f"about_to_call_ppr caps={sorted(self._skill_package_capabilities)}"
-                        f" skill_id={getattr(graph_request, 'skill_id', None)}\n"
-                    )
-                    print("DEEP_WRAP_AFTER_WRITE", flush=True)
-            except Exception as _oexc:
-                print(f"DEEP_WRAP_OPEN_RAISED: {type(_oexc).__name__}: {_oexc}", flush=True)
-                raise
             # 后处理:扫新消息里的 ToolMessage,按 TOOL_RESULT_TO_CAPABILITY 触发
             # report 渲染。这样普通工具(LLM 不需要显式调 Pydantic tool)也能
             # 自动产出结构化报告事件。LLM text 重复由前端 hasStructuredReports
@@ -2793,19 +2751,13 @@ class ToolsNodes(BasicNode):
                 async def _emit_via_async_config(capability: str, payload: dict):
                     await adispatch_custom_event(capability, payload, config=config)
 
-                print("DEEP_WRAP_CALLING_PPR", flush=True)
                 self._post_process_tool_results(
                     new_messages,
                     skill_id=getattr(graph_request, "skill_id", None),
                     event_dispatcher=_emit_via_async_config,
                 )
-                print("DEEP_WRAP_PPR_DONE", flush=True)
-                with open("/tmp/ppr2_trace.log", "a", encoding="utf-8") as _f:
-                    _f.write("ppr_returned_ok\n")
-            except Exception as _exc:
-                print(f"DEEP_WRAP_PPR_RAISED: {type(_exc).__name__}: {_exc}", flush=True)
-                with open("/tmp/ppr2_trace.log", "a", encoding="utf-8") as _f:
-                    _f.write(f"ppr_raised: {type(_exc).__name__}: {_exc}\n")
+            except Exception:
+                # PPR 失败时 re-raise,让上层 langgraph 走正常 ERROR 处理路径
                 raise
 
             # 直接返回新消息列表，让 agui_stream 逐个处理
