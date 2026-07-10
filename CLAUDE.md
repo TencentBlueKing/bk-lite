@@ -55,7 +55,7 @@
 
 - 版本:Python `3.12`;Node Web=`24`(`web/.nvmrc`),WebChat≥18。
 - 依赖:`uv`(Python)/`pnpm`(web、mobile,`only-allow` 强制)/`npm`(webchat)。
-- Agent 基础工具:团队成员或 Agent 新环境若缺 `openspec` / `pjm` / `codegraph`,先在仓库根执行 `scripts/agent-tooling-bootstrap`;只检查用 `scripts/agent-tooling-bootstrap --check`。不要假设本机已全局安装。
+- Agent 基础工具:团队成员或 Agent 新环境若缺 `openspec`,先在仓库根执行 `scripts/agent-tooling-bootstrap`;只检查用 `scripts/agent-tooling-bootstrap --check`。不要假设本机已全局安装。
 - Secrets(强制):仅用 `*.example`/`*.template` 样例;`.env`/keystore 不入库;凭据经部署环境注入,不写代码和日志。
 - 完整 env 变量与模板清单见 [docs/operations.md §4](docs/operations.md) 与 [SECURITY.md](SECURITY.md)。
 
@@ -78,7 +78,7 @@
   - `/fix` / `/修复`: 缺陷修复流程。先系统化调试确认根因,经确认后 TDD 复现与最小修复,最后真实验证并收口。
   - `/feature` / `/功能`: 功能开发流程。先澄清与设计,必要时走 OpenSpec,多步骤实现先写计划,实现阶段 TDD,最后跑对应模块门禁。
   - 工具入口按会话类型同步维护:`.agents/skills/source-command-*`、`.claude/commands/`、`.claude/skills/`、`.opencode/command/`、`.opencode/skills/`、`.github/prompts/`。
-- **Agent 工具自检**:会话需要 OpenSpec / projectmem / CodeGraph 时,先确认 `openspec`、`pjm`、`codegraph` 可用;缺失则由 Agent 运行 `scripts/agent-tooling-bootstrap` 补齐并记录结果。MCP 启动统一走 `scripts/projectmem-mcp`、`scripts/codegraph-mcp`,禁止在仓库配置里写个人机器绝对路径。
+- **Agent 工具自检**:会话需要 OpenSpec 时,先确认 `openspec` 可用;缺失则由 Agent 运行 `scripts/agent-tooling-bootstrap` 补齐并记录结果。
 - **最小 diff**:仅改需求相关文件与代码块。
 - **避免格式化污染**:只格式化触及文件,不全仓格式化。
 - **变更后必验**:至少跑对应模块最小门禁。
@@ -92,56 +92,6 @@
 
 > 完整信条与「为什么」见 [docs/design-docs/core-beliefs.md](docs/design-docs/core-beliefs.md)。
 
-<!-- CODEGRAPH_START -->
-## CodeGraph
-
-本仓库已项目级接入 CodeGraph。需要理解或定位代码结构时,在 `rg`/`find` 或逐文件读取之前优先使用 CodeGraph:
-
-- **MCP 工具**: 可用时使用 `codegraph_explore`,一次获取相关符号源码、调用路径和动态分发关系。
-- **Shell 兜底**: `codegraph explore "<符号名或问题>"`。
-
-仅当仓库根存在 `.codegraph/` 时使用 CodeGraph;索引目录由 `codegraph init` 生成,数据库为本地文件,不提交。
-<!-- CODEGRAPH_END -->
-
 ## TODO（待确认项）
 
 由各团队按内部约定追踪;新发现的待确认项写明「确认位置(路径+关键词)」,不散落在本文。
-
-<!-- >>> projectmem bridge >>> -->
-## projectmem (MANDATORY)
-
-This project uses projectmem for persistent memory + workflow rules.
-
-SESSION START — call these three MCP tools, in this order, BEFORE
-answering ANY question about this project:
-
-  1. `get_instructions()` — loads the project's mandatory workflow
-     rules. Without this you will not know how to log work
-     correctly, when to use `add_note` vs `add_decision`, or how
-     the event log is structured.
-  2. `get_summary()` — loads project content. Do NOT answer from
-     conversation history or by re-reading package.json / README /
-     source files.
-  3. `get_project_map()` — loads structural layout when relevant.
-
-BEFORE modifying ANY file:
-  - Call `precheck_file(path)` — check failure history first.
-
-DURING work — use MCP write tools, NEVER edit `.projectmem/`
-files directly via filesystem write:
-  - On a bug discovery → `log_issue(summary, location)`.
-  - After each fix attempt → `record_attempt(summary, outcome)`.
-  - After confirmation → `record_fix(summary)`.
-  - On a design choice → `add_decision(summary)`.
-  - On a gotcha / setup detail → `add_note(summary)`.
-
-Editing `.projectmem/summary.md` or `.projectmem/events.jsonl`
-directly bypasses event logging and breaks audit replay. The
-summary file regenerates from `events.jsonl` automatically — write
-via the MCP tools and the summary will follow. `PROJECT_MAP.md`
-may be edited only when intentionally updating structural project
-memory.
-
-Do not re-scan source files when MCP tools can give you the same
-answer in ~500 tokens instead of ~5000. This is not optional.
-<!-- <<< projectmem bridge <<< -->

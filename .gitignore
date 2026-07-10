@@ -54,5 +54,9 @@ automation/
 /server/.skill/
 .agents/
 
+# Agent 本地状态（不由本仓库维护）
+/.projectmem/
+/.codegraph/
+
 # CMDB 商业版 overlay（同级 app，单独交付，不进开源仓）
 /server/apps/cmdb_enterprise/

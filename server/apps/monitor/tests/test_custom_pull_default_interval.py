@@ -1,7 +1,6 @@
 """锁定 custom_pull_plugin.DEFAULT_PULL_UI_TEMPLATE.interval.default_value = 60 的回归测试。
 
-业务规则：监控采集频率统一为 60s（见 PR #4044 commit 5be4782774，
-. projectmem/summary.md Decisions）。
+业务规则：监控采集频率统一为 60s（见 PR #4044 commit 5be4782774）。
 custom_pull_plugin.DEFAULT_PULL_UI_TEMPLATE 是自定义拉取监控实例的 UI
 表单模板，新建实例时 interval 字段默认值必须为 60s，防止后续误改回 10s。
 """

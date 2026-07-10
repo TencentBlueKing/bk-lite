@@ -1,4 +1,0 @@
-# #0007 Sidecar 容器(融合采集器)持续 401/500,节点被标 inactive:get_client_token 在 token_auth.py:25 用 split(':', 1)[0] 取 Basic 头用户名,但容器发的 Basic 头是 "admin:" + token,抽到的不是 token 而是 "admin",导致后续 decode_token(urlsafe_b64decode("admin")) 失败抛 "token 解析失败"
-
-- 2026-07-08T11:09:29Z `issue`: Sidecar 容器(融合采集器)持续 401/500,节点被标 inactive:get_client_token 在 token_auth.py:25 用 split(':', 1)[0] 取 Basic 头用户名,但容器发的 Basic 头是 "admin:" + token,抽到的不是 token 而是 "admin",导致后续 decode_token(urlsafe_b64decode("admin")) 失败抛 "token 解析失败" [server/apps/node_mgmt/utils/token_auth.py:25]
-- 2026-07-09T02:38:11Z `attempt`: 误判:把 fusion-collector "节点不活跃" 归因到 server 端 token_auth.py:25 split 索引 bug,实际根因是 sidecar 进程内部状态卡住(长连接死/永久失败标记),用户 docker restart bklite-dev-fusion-collector 后立刻恢复,无需改 server 代码。教训:容器内 python 模拟 HTTP 请求不能证明 sidecar 进程自身行为,需要看进程级 socket/fd 或抓 sidecar 实际发出的请求才能下结论 [server/apps/node_mgmt/utils/token_auth.py:25] (failed)

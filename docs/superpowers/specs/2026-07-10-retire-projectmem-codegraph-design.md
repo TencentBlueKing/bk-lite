@@ -14,7 +14,7 @@
 ## 变更范围
 
 1. 删除已跟踪的 `.projectmem/`、`.codegraph/` 内容及两个仓库级 MCP 启动脚本。
-2. 从 `.mcp.json`、`.codex/config.toml` 移除 projectmem 与 CodeGraph MCP 配置。
+2. 删除仅服务于这两项集成的 `.mcp.json`、`.codex/config.toml` 与 `.claude/settings.json`。
 3. 精简 `scripts/agent-tooling-bootstrap`，只保留仍由仓库维护的工具。
 4. 从 `CLAUDE.md`、`docs/operations.md` 移除安装、强制调用、预检和 CodeGraph 优先规则。
 5. 将依赖 `.projectmem` 作为说明依据的测试注释和设计文档改成自包含描述；历史 OpenSpec 记录只在会误导当前工作流时改写。

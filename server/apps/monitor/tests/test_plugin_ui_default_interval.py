@@ -1,7 +1,6 @@
 """锁定监控插件 UI.json 的 interval.default_value 必须 = 60s 的回归测试。
 
-业务规则:任何「采集频率/采集间隔」类默认值,不足 60s 一律改为 60s
-(见 .projectmem/summary.md Decisions)。
+业务规则:任何「采集频率/采集间隔」类默认值,不足 60s 一律改为 60s。
 
 该测试扫描所有 Telegraf / JVM-JMX / Kafka-Exporter / Oracle-Exporter 等
 插件的 UI.json 配置文件,确保 form 表单渲染时 interval 输入框默认 = 60,
