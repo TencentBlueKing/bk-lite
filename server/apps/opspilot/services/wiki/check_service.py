@@ -10,12 +10,52 @@ from collections import defaultdict
 from django.db import transaction
 from django.utils import timezone
 
-from apps.opspilot.models import CheckItem, KnowledgePage, PageEvidence, PageRelation, PageVersion
+from apps.opspilot.models import BuildRecord, CheckItem, KnowledgePage, PageEvidence, PageRelation, PageVersion
 from apps.opspilot.services.wiki.cascade_service import cascade
 from apps.opspilot.services.wiki.embedding_service import clear_page_vectors
 from apps.opspilot.services.wiki.graph_service import analyze_graph
 from apps.opspilot.services.wiki.relation_service import LINK_RE, normalize_wikilink_key
 from apps.opspilot.services.wiki.title_service import canonical_title, compact_title_key
+
+
+def _recount_pending_review(check):
+    """回算涉及该 check 的 BuildRecord.counts['pending_review'] 字段(Issue #待审批 25 飘)。
+
+    BuildRecord.counts 是构建时的快照,后续接受/拒绝/resolve 检查时只改
+    CheckItem.status,从不回写 counts,导致 BuildRecordTab 列表展示的 pending_review
+    数字永远是构建时的值,与 CheckTab 实际剩余待审批不一致。
+
+    来源:
+      - check 有 candidate_version → 直接用它.build_record_id 定位 build(精确)
+      - check 无 candidate_version(resolve_check 场景,如孤立页/缺来源扫描项)→
+        回算 knowledge_base 下所有 build(这些检查项不绑定 build,但展示给用户
+        的数字应一致;实际 KB 下的 build 数量有限,重算成本可忽略)
+
+    save_fields 只动 counts + updated_at,避免触发 build_record 上其他字段的副作用。
+    """
+    if check.candidate_version_id and getattr(check.candidate_version, "build_record_id", None):
+        build_ids = [check.candidate_version.build_record_id]
+    else:
+        build_ids = list(BuildRecord.objects.filter(knowledge_base=check.knowledge_base).values_list("id", flat=True))
+
+    for bid in build_ids:
+        build = BuildRecord.objects.filter(id=bid).first()
+        if not build:
+            continue
+        # 仅数"通过 candidate_version 关联到此 build 且状态 open"的 CheckItem。
+        # 系统扫描产生的检查(无 candidate_version)不在此计数中——它们本身没有 build 归属,
+        # 但因方案 A' fallback 重算后,会反映到 KB 下所有 build 的 pending_review 里,
+        # 这是当前 build.counts 数据模型能给出的最接近真实值。
+        open_count = CheckItem.objects.filter(
+            status="open",
+            candidate_version__build_record=build,
+        ).count()
+        counts = dict(build.counts or {})
+        if counts.get("pending_review") == open_count:
+            continue
+        counts["pending_review"] = open_count
+        build.counts = counts
+        build.save(update_fields=["counts", "updated_at"])
 
 
 @transaction.atomic
@@ -78,6 +118,7 @@ def accept_candidate(check, operator=""):
     page.save(update_fields=update_fields)
     check.status = "resolved"
     check.save(update_fields=["status", "updated_at"])
+    _recount_pending_review(check)
     maintenance = cascade(page.knowledge_base, [page.id], "accept")
     if candidate.build_record_id:
         candidate.build_record.maintenance = maintenance
@@ -98,6 +139,7 @@ def reject_candidate(check, operator=""):
         candidate.delete()
         if delete_shell_page:
             page.delete()
+    _recount_pending_review(check)
     return check
 
 
@@ -118,6 +160,7 @@ def resolve_check(check, operator="", note=""):
     check.related = related
     check.status = "resolved"
     check.save(update_fields=["related", "status", "updated_at"])
+    _recount_pending_review(check)
     return check
 
 
@@ -256,6 +299,7 @@ def merge_duplicate_check(check, operator=""):
     check.related = related
     check.status = "resolved"
     check.save(update_fields=["related", "status", "updated_at"])
+    _recount_pending_review(check)
     maintenance = cascade(
         check.knowledge_base,
         [target.id, *source_ids],
