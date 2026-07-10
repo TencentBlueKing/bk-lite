@@ -46,21 +46,29 @@ FACTORY_COVERED_MODEL_IDS = [
     "openresty",  # port="80" from stargazer raw["listen_port"](middleware runner,extra_payload_keys={"result": True});raw_stdout 形态 B(平铺);stargazer 源 G3.6 placeholder 由脚本格式推导;plugin 字段集对齐 OpenrestyCollectionPlugin.field_mapping(含 openresty_path/doc_root,与 nginx 高度对称但 openresty_path 替 nginx_path)
     "activemq",   # port="61616",middleware runner result=True;raw_stdout 形态 B(平铺);plugin=apps/cmdb/collection/plugins/community/middleware/activemq.py;fixture 字段 bin_path/config 对应 plugin install_path/conf_path(未对齐,expected 子集只断言 ip_addr/port/version/inst_name)
     "keepalived", # 不映射 port,用 virtual_router_id="51"(G4.8 placeholder);middleware runner result=True;_extract_port fallback 到 virtual_router_id
+    "rocketmq",   # port="10911"(G4.9 placeholder,JVM 启动阻塞),middleware runner result=True;raw_stdout 形态 B(平铺,无 success/result);field_mapping 含 configfile=partial(pick_value, keys=("configfile","conf_path","config_file"));discover 脚本 plugins/inputs/rocketmq/rocketmq_default_discover.sh L48 port 默认 10911
+    "etcd",       # port="2379",middleware runner result=True;raw_stdout 是 list-of-dict 形态(4 项同 IP/port 不同探测路径);plugin=apps/cmdb/collection/plugins/community/middleware/etcd.py
+    "memcached",  # port="11211",middleware runner result=True;raw_stdout 是 list-of-dict 形态(3 项同 IP,仅首项含有效 port);plugin=apps/cmdb/collection/plugins/community/middleware/memcached.py(MemcachedCollectionPlugin);field_mapping 含 inst_name/ip_addr/port/version/install_path/maxconn/cachesize/user_name
+    "squid",      # port="instead."(G5.2.x stargazer 端采集器对 ubuntu 容器内 squid 解析异常,真实落盘的占位符),middleware runner result=True;raw_stdout 形态 B(平铺,含 bk_inst_name/bk_obj_id);plugin=apps/cmdb/collection/plugins/community/middleware/squid.py,field_mapping 含 install_path/config_file_path/cache_dir/access_log/error_log/visible_hostname;version 字段为空字符串由 pick_value 兜底
 ]
 
 
 def _extract_raw_items(stargazer_raw: dict, model_id: str) -> dict:
     """从 stargazer fixture 抽出 plugin 入参形态。
 
-    三种形态兼容:
+    四种形态兼容:
     - {"raw_stdout": {"result": {<model_id>: [items]}}}  ← mysql/redis/influxdb 形态
-    - {"raw_stdout": {<fields 平铺>}}  ← nginx 形态(raw_stdout 自身就是 dict)
+    - {"raw_stdout": {<fields 平铺>}}  ← nginx/zookeeper/kafka 形态(raw_stdout 自身就是 dict)
+    - {"raw_stdout": [<items>]}  ← etcd 形态(raw_stdout 直接是 list,同 IP/port 多探测路径)
     - 直接 dict  ← 测试用 01_raw_collector.json
     """
     if "raw_stdout" not in stargazer_raw:
         # 直接 dict(测试用人造 raw 形态,如 01_raw_collector.json)
         return stargazer_raw
     raw_stdout = stargazer_raw["raw_stdout"]
+    # etcd 形态:raw_stdout 直接是 list(list-of-dict),取首项即可(同 inst_name)
+    if isinstance(raw_stdout, list) and raw_stdout:
+        return raw_stdout[0]
     # mysql/redis/influxdb 形态:raw_stdout["result"][model_id] = [items]
     if isinstance(raw_stdout, dict) and "result" in raw_stdout:
         result = raw_stdout["result"]

@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Stargazer memcached 采集原始输出契约",
+  "description": "2026-07-10 G5.2.2 — Phase 5 任务 5.2,fixture 由 cli.py 真实落盘(middleware runner,extra_payload_keys={\"result\":True})。raw_stdout 是 list 形态(数组形态 A 变体:每项含 bk_inst_name/bk_obj_id 字段,公共契约走 raw_stdout_envelope_b,只要 ip_addr 必填)。",
+  "type": "object",
+  "required": ["model_id", "captured_at", "raw_stdout"],
+  "properties": {
+    "model_id":    {"type": "string", "pattern": "^memcached$"},
+    "captured_at": {"type": "string", "format": "date-time"},
+    "raw_stdout": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["ip_addr", "port"],
+        "properties": {
+          "bk_inst_name":  {"type": "string"},
+          "bk_obj_id":     {"type": "string"},
+          "ip_addr":       {"type": "string"},
+          "port":          {"type": ["string", "integer"]},
+          "version":       {"type": "string"},
+          "maxconn":       {"type": ["string", "integer"]},
+          "cachesize":     {"type": ["string", "integer"]},
+          "user_name":     {"type": "string"},
+          "install_path":  {"type": "string"}
+        }
+      }
+    }
+  }
+}

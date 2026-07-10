@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "CMDB e2e fixture 公共契约",
-  "description": "2026-07-10 v4 — 所有 01_stargazer_raw.json 必须满足的公共结构。对象级 schema 用 $ref 引用本文件,避免 27 份重复。\n\nraw_stdout 支持两种形态(2026-07-10 调研发现):\n  - 形态 A(mysql/redis/influxdb):{success: true, result: {<model_id>: [items]}}\n  - 形态 B(nginx):{bk_inst_name, bk_obj_id, ip_addr, ...} 平铺字段(无 success/result 包裹)",
+  "description": "2026-07-10 v4 — 所有 01_stargazer_raw.json 必须满足的公共结构。对象级 schema 用 $ref 引用本文件,避免 27 份重复。\n\nraw_stdout 支持三种形态(2026-07-10 调研发现;2026-07-10 Phase 5 增加形态 C):\n  - 形态 A(mysql/redis/influxdb):{success: true, result: {<model_id>: [items]}}\n  - 形态 B(nginx):{bk_inst_name, bk_obj_id, ip_addr, ...} 平铺字段(无 success/result 包裹)\n  - 形态 C(memcached/etcd/redis_sentinel):list-of-dict(数组,每项平铺字段;item 必填 ip_addr)",
   "definitions": {
     "raw_stdout_envelope_a": {
       "type": "object",
@@ -26,6 +26,17 @@
       "required": ["ip_addr"],
       "properties": {
         "ip_addr": {"type": "string"}
+      }
+    },
+    "raw_stdout_envelope_c": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["ip_addr"],
+        "properties": {
+          "ip_addr": {"type": "string"}
+        }
       }
     }
   },
@@ -58,7 +69,8 @@
     "raw_stdout": {
       "oneOf": [
         {"$ref": "#/definitions/raw_stdout_envelope_a"},
-        {"$ref": "#/definitions/raw_stdout_envelope_b"}
+        {"$ref": "#/definitions/raw_stdout_envelope_b"},
+        {"$ref": "#/definitions/raw_stdout_envelope_c"}
       ]
     }
   }
