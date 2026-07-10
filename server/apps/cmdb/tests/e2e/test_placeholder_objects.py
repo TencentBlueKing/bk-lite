@@ -22,6 +22,9 @@ PLACEHOLDER_MODEL_IDS = [
     "tongweb",     # aliyun + 东方通官网 镜像都不可达
     "jboss",       # wildfly 4 种装包方式都失败
     "jetty",       # ubuntu 22.04 apt 仓库无 jetty9 包
+    "ambari",      # 2026-07-10 刚跑通(原以为不可达):ambari 无官方 docker 镜像,需手动装 license + JDK
+    "server_bmc",  # 2026-07-10 刚跑通:Redfish mock 真实数据,但 CMDB 端无 plugin 走 placeholder
+    "ibmmq",       # 2026-07-10 落盘确认(license 阻塞):IBM MQ 9.x 试用 license
 ]
 
 
