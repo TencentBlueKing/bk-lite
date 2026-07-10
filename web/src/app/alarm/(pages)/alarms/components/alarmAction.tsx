@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import AlarmAssignModal from './assignModal';
 import PermissionWrapper from '@/components/permission';
-import { Button, Dropdown, Menu, Modal, message } from 'antd';
+import { Button, Dropdown, Menu, Modal, Tag, message } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { DownOutlined } from '@ant-design/icons';
 import { AlarmActionProps, ActionType } from '@/app/alarm/types/alarms';
@@ -186,15 +186,35 @@ const AlarmAction: React.FC<AlarmActionProps> = ({
   const jobRuleMenuItems = rulesLoading
     ? [{ key: '__loading__', label: <span>{t('common.loading') || '加载中...'}</span>, disabled: true }]
     : jobRules.length === 0
-    ? [{ key: '__empty__', label: <span>{t('settings.noAvailableRules') || '暂无可用规则'}</span>, disabled: true }]
-    : jobRules.map((rule) => ({
-        key: String(rule.id),
-        label: (
-          <span onClick={() => handleManualTrigger(rule)}>
-            {rule.name}
-          </span>
-        ),
-      }));
+      ? [{ key: '__empty__', label: <span>{t('settings.noAvailableRules', '暂无可用规则')}</span>, disabled: true }]
+      : jobRules.map((rule) => {
+        // 三态展示主机来源：fixed 醒目蓝、from_alert 浅灰、mode 缺省（老规则）按 from_alert 语义显示
+        const rawMode = rule.action_config?.target_binding?.mode;
+        let hostTagText: string;
+        let hostTagColor: string;
+        if (rawMode === 'fixed') {
+          hostTagText = t('settings.actionTargetHostModeFixed');
+          hostTagColor = 'blue';
+        } else if (rawMode === 'from_alert') {
+          hostTagText = t('settings.actionTargetHostModeFromAlert');
+          hostTagColor = 'default';
+        } else {
+          hostTagText = t('settings.actionTargetHostModeLegacy');
+          hostTagColor = 'default';
+        }
+        return {
+          key: String(rule.id),
+          label: (
+            <span
+              className="inline-flex items-center gap-2"
+              onClick={() => handleManualTrigger(rule)}
+            >
+              <span>{rule.name}</span>
+              <Tag color={hostTagColor}>{hostTagText}</Tag>
+            </span>
+          ),
+        };
+      });
 
   const manualTriggerDropdown = from === 'alarm' ? (
     <PermissionWrapper requiredPermissions={['Edit']}>
