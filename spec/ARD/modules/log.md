@@ -25,6 +25,7 @@
 - Vector 采集配置编辑约定【已实现/已存在】：`file` 与 `docker` 两类 Vector 采集器在前端编辑模式中统一读写 `child.content` 扁平结构；保存与回显保持同构，避免多行合并、容器过滤等字段在“保存后再次编辑”时丢失（`web/src/app/log/hooks/integration/collectors/vector/fileDefaults.ts:4-75`、`web/src/app/log/hooks/integration/collectors/vector/dockerDefaults.ts:4-92`）。
 - Celery（静态 beat）：仅 `compensate_log_notice_task`（通知补偿，`config.py:5` 静态注册于 `CELERY_BEAT_SCHEDULE`，crontab `*/5` 每 5 分钟一次；实现见 `tasks/policy.py`）。
 - Celery（动态 PeriodicTask）：`tasks/policy.py:scan_log_policy_task(policy_id)` 不在静态 `CELERY_BEAT_SCHEDULE` 中，而是在策略保存/启停时由 `views/policy.py:482` `update_or_create_task` 按策略动态创建 `django-celery-beat` 的 `PeriodicTask`（name=`log_policy_task_<policy_id>`，crontab 调度，`args=[policy_id]`）来周期触发（扫描时间窗，支持补扫，更新 `last_run_time`）。
+- 策略删除路径同事务原子化【已实现/已存在】：`PolicyViewSet.destroy`（`views/policy.py:438-444`）以 `transaction.atomic()` 包裹「先按 `name=log_policy_task_<policy_id>` 删除关联 `PeriodicTask`、再调 `super().destroy` 删除策略本身」两步；任一步抛异常时整体回滚，避免产生周期性漏扫的孤儿策略（issue #3948）。配套静态分析测试 `test_policy_destroy_atomic_3948.py` 校验 `transaction.atomic` 块与 `from django.db import transaction` 同时存在、且包裹顺序敏感（先 `PeriodicTask.delete` 后 `super().destroy`），不依赖 Django/DB，任意环境可跑。
 - 管理命令：`management/commands/log_init.py:7,12,16` 调用 `management/services/plugin.py:11` 的 `migrate_collect_type` 同步采集插件，并调用 `management/services/stream.py:5` 的 `init_stream` 创建默认 LogGroup/组织绑定。
 - NATS：`nats/log.py` 提供 `log_search`/`log_hits`/`get_vmlogs_disk_usage`/`query_log_alert_segments`；`nats/permission.py` 提供 `get_log_module_data`（获取日志模块权限数据）与 `get_log_module_list`（获取日志模块列表），供系统管理侧获取日志模块权限数据/列表。
 
@@ -41,6 +42,9 @@
 - `[log#20260701-010]` 补录 `log_init` 管理命令的插件同步与默认日志分组初始化链路。
 - `[log#20260701-011]` 补录 `EventRawData.data` 与 `AlertSnapshot.snapshots` 均使用 S3JSONField/bucket `log-alert-raw-data`，并记录 raw data 保存失败回滚主事务。
 - `[log#20260701-012]` 动态 PeriodicTask 证据从 `views/policy.py:461` 更新到 `views/policy.py:482` 及相关调用点。
+
+## 2026-07-09 Code-ARD 校准
+- `[log#20260709-001]` 策略删除路径同事务原子化：`PolicyViewSet.destroy` 以 `transaction.atomic()` 包裹「先 `PeriodicTask.objects.filter(name=f"log_policy_task_{policy_id}").delete()`、再 `super().destroy(request, *args, **kwargs)`」，任一步异常整体回滚，避免孤儿策略持续按不存在 policy_id 周期漏扫（issue #3948）。
 
 ## 6. 证据来源
 `server/apps/log/{urls.py,models/*,services/*,utils/query_log.py,constants/victoriametrics.py:16-22,constants/plugin.py:5,config.py:5,views/policy.py:461-476,tasks/policy.py:14-15,tasks/services/policy_scan.py:22,nats/log.py,nats/permission.py:6-7,29-30,management/services/plugin.py:23,support-files/plugins/{Filebeat,Vector,Packetbeat,Auditbeat,Snmptrapd,Winlogbeat}/*/collect_type.json,support-files/plugins/Vector/syslog/collect_type.json:3,support-files/plugins/Snmptrapd/network/collect_type.json:3}`、`web/src/app/log/hooks/integration/collectors/vector/{fileDefaults.ts,dockerDefaults.ts}`。

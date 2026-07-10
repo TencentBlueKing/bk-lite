@@ -523,11 +523,25 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   };
 
   const handleRegenerateMessage = useCallback(
-    async () => {
-      const lastUserMessage = messages.filter(msg => msg.role === 'user').pop();
-      if (lastUserMessage && token) {
-        await sendMessage(lastUserMessage.content, messages);
+    async (id: string) => {
+      if (!token) return;
+
+      const targetIndex = messages.findIndex(msg => msg.id === id);
+      if (targetIndex === -1) return;
+
+      // 从被点击的消息往前找到对应的用户提问（而非始终取最后一个问题）
+      let userIndex = -1;
+      for (let i = targetIndex; i >= 0; i--) {
+        if (messages[i].role === 'user') {
+          userIndex = i;
+          break;
+        }
       }
+      if (userIndex === -1) return;
+
+      const userMessage = messages[userIndex];
+      // 保留全部对话记录，仅用被点击消息对应的问题重新生成（在末尾追加新答案）
+      await sendMessage(userMessage.content, messages, userMessage.images);
     },
     [messages, token, sendMessage]
   );

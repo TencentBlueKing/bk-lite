@@ -24,6 +24,7 @@
 ## 3. 接口【已实现/已存在】
 各为独立 ViewSet 路由：`monitor_object`、`monitor_object_type`、`metrics_group`、`metrics`、`metrics_instance`、`organization_rule`、`monitor_instance`、`monitor_policy`、`monitor_plugin`、`monitor_alert`、`monitor_event`、`manual_collect`、`collect_detect`、`unit`、`monitor_condition`、`system_mgmt`、`node_mgmt`；开放端点 `open_api/infra`。
 - `collect_detect`【已实现/已存在】：用于接入前采集探测任务的创建与结果查询。创建前会校验当前用户对监控对象与节点实例的访问权限；结果查询只允许创建人于所属组织范围内读取。`POST /api/v1/monitor/api/collect_detect/` 创建异步探测任务并返回 `task_id/status`，`GET /api/v1/monitor/api/collect_detect/{id}/` 返回任务状态、阶段、结果与错误信息（`views/collect_detect.py:15-86`）。
+- 告警策略与监控条件对象级权限围栏【已实现/已存在】：`MonitorPolicyViewSet` 与 `MonitorConditionViewSet` 统一在 ViewSet 层对读/写/删按操作类型分流：list/retrieve 仅按 `View` 权限返回 actor 范围内的数据；create/update/partial_update/destroy 收紧到 `Operate` 权限；写操作前对 `organizations` 字段做授权校验（`_ensure_target_organizations`），越权即拒绝；批量模板创建 `bulk_create_from_templates`（`views/monitor_policy.py:528-580`）提前对所有 `asset_ids` 做授权预校验（`get_bulk_policy_asset_permission_error` 在 `:576-609`），越权整体回滚并返回 401，避免进入错误日志中间件。destroy（`:285-295`）先 `get_object()` 校验可操作性，再清基线/关告警/删定时任务/删策略组织/删策略。底层复用 `InstanceConfigService._get_actor_scope_groups` / `_get_authorized_monitor_instances`（`views/monitor_policy.py:38-69` helpers + `:92-153` ViewSet 内部方法；`views/monitor_condition.py:23-54,63-112,140-176` 对应镜像）。
 
 - Celery 任务与调度【已实现/已存在】：
   - `tasks/grouping_rule.py:sync_instance_and_group`（同步实例分组，查 VM）—— 由 beat 每 10 分钟触发（`config.py:8-11`）。
@@ -39,9 +40,9 @@
   - `management/commands/refresh_display_fields.py:26`：把 DB 中监控对象的 `display_fields` 重写为 `metrics.json` 最新种子，默认 dry-run，`--apply` 落库。
   - `management/commands/create_monitor_instance.py:14,21`：YAML 驱动的监控实例创建入口，支持输入/输出文件参数，调用 `InstanceConfigService` 创建或更新实例配置（命令说明见同目录 `create_monitor_instance.md:5`）。
 - NATS【已实现/已存在】：`nats/monitor.py` 注册大量 handler，经 `apps/rpc/monitor.py` 暴露并被 operation_analysis、opspilot 消费：
-  - 创建类（`monitor.py:471-519`）：`create_monitor_object_type` / `create_monitor_object` / `create_monitor_plugin` / `create_metric_group` / `create_metric` / `create_monitor_policy`。
-  - 查询类（`monitor.py:520-1063`）：`monitor_objects` / `monitor_object_instance_count` / `monitor_metrics` / `monitor_object_instances` / `query_monitor_data_by_metric` / `monitor_instance_metrics` / `query_monitor_alert_segments` / `query_latest_active_alerts` / `mm_query` / `mm_query_range` / `get_monitor_statistics`。
-  - 权限授权类：`_get_authorized_monitor_instances` 等内部辅助（`monitor.py:425-462`）；`nats/permission.py:7,33` 另注册 `get_monitor_module_data` / `get_monitor_module_list`，按组织过滤实例/策略/条件。
+  - 创建类（`monitor.py:537-583`）：`create_monitor_object_type`（:538）/ `create_monitor_object`（:552）/ `create_monitor_plugin`（:557）/ `create_metric_group`（:571）/ `create_metric`（:576）/ `create_monitor_policy`（:581）。
+  - 查询类（`monitor.py:585-1153`）：`monitor_objects`（:586）/ `monitor_object_instance_count`（:596）/ `monitor_metrics`（:609）/ `monitor_object_instances`（:633）/ `query_monitor_data_by_metric`（:685）/ `monitor_instance_metrics`（:796）/ `query_monitor_alert_segments`（:918）/ `query_latest_active_alerts`（:1004）/ `mm_query_range`（:1103）/ `mm_query`（:1123）/ `get_monitor_statistics`（:1153）。
+  - 权限授权类：`_get_authorized_monitor_instances` 等内部辅助（`monitor.py:491-...`）；`nats/permission.py:7,33` 另注册 `get_monitor_module_data` / `get_monitor_module_list`，按组织过滤实例/策略/条件。
 - 流量监控接入（NetFlow/sFlow）【已实现/已存在】：服务层 `services/flow_*.py` 承载流量接入能力，对应 PRD「集成·流量监控接入」：
   - `flow_access_guide.py:10-18` 定义协议监听端口：NetFlow 默认接入端点为 2056，同时明确列出 NetFlow v5=2055、NetFlow v9=2056、sFlow=6343；依赖 `apps/rpc/node_mgmt` 拼接云区域接入地址。
   - `flow_onboarding.py:17` 创建/绑定流量资产，兜底采样率默认 1000（`DEFAULT_FALLBACK_SAMPLING_RATE`）。
@@ -67,5 +68,10 @@
 - `[monitor#20260701-004]` 与 `[monitor#20260701-006]` 补录插件初始化、自动发现、instance_id_keys 回填、display_fields 种子维护、YAML 监控实例创建等管理命令。
 - `[monitor#20260701-007]` 动态 PeriodicTask、NATS 创建/查询/权限辅助函数证据行号按当前位置更新。
 
+## 2026-07-09 Code-ARD 校准
+- `[monitor#20260709-001]` 补录告警策略与监控条件 ViewSet 的对象级权限围栏：list/retrieve 受 `View` 权限、create/update/partial_update/destroy 受 `Operate` 权限，写操作前对 `organizations` 字段做授权校验，批量模板创建前对 `asset_ids` 做整体授权预校验（越权 401 整体回滚）。
+- `[monitor#20260709-002]` 前端社区版 4 个企业版 EE 中间件占位 hook 已在 `web/src/app/monitor/hooks/integration/{index.tsx,objects/middleware/{jboss,jetty,tongWeb,webLogic}.tsx}` 删除，社区版不渲染 WebLogic/JBoss/Jetty/TongWeb 卡片；企业版由 `useEnterpriseConfig` 覆盖提供。
+- `[monitor#20260709-003]` i18n `monitor_object_type.OS` 文案由「操作系统」改为「主机资源」（zh-Hans/en），并配套 `migrations/0044_rename_monitor_object_type_os_to_host_resource.py` 同步 DB 兜底字段（仅 `id='os'`）。
+
 ## 7. 证据来源
-`server/apps/monitor/{urls.py,config.py,constants/alert_policy.py,models/*,tasks/*,views/monitor_policy.py:344,384,views/collect_detect.py:15-86,services/flow_*.py,services/flow_access_guide.py:10,13,14,services/flow_sampling.py,services/collect_detect.py:29-69,198-213,utils/victoriametrics_api.py,nats/monitor.py:436,537,585,1130,nats/permission.py,management/commands/{plugin_init.py:9,autodiscover.py:5,backfill_metric_instance_id_keys.py:12,gen_display_fields.py:59,refresh_display_fields.py:26,create_monitor_instance.py:14,21,create_monitor_instance.md:5},support-files/plugins/Telegraf/snmp/{access_topvision/policy.json,access_icotera/policy.json,switch_ipinfusion/policy.json,transmission_ifotec/policy.json,wireless_xirrus/policy.json}}`、`server/apps/rpc/monitor.py`、`web/src/app/monitor/api/integration.ts:220-239`。
+`server/apps/monitor/{urls.py,config.py,constants/alert_policy.py,models/*,tasks/*,views/monitor_policy.py:38-69,92-153,285-295,528-609,views/monitor_condition.py:23-54,63-112,140-176,views/collect_detect.py:15-86,services/flow_*.py,services/flow_access_guide.py:10,13,14,services/flow_sampling.py,services/collect_detect.py:29-69,198-213,utils/victoriametrics_api.py,nats/monitor.py,language/zh-Hans.yaml:4867,language/en.yaml:4865,migrations/0044_rename_monitor_object_type_os_to_host_resource.py:1-28,management/commands/{plugin_init.py:9,autodiscover.py:5,backfill_metric_instance_id_keys.py:12,gen_display_fields.py:59,refresh_display_fields.py:26,create_monitor_instance.py:14,21,create_monitor_instance.md:5},support-files/plugins/Telegraf/snmp/{access_topvision/policy.json,access_icotera/policy.json,switch_ipinfusion/policy.json,transmission_ifotec/policy.json,wireless_xirrus/policy.json}}`、`server/apps/rpc/monitor.py`、`web/src/app/monitor/api/integration.ts:220-239`、`web/src/app/monitor/hooks/integration/{index.tsx,objects/middleware/{jboss,jetty,tongWeb,webLogic}.tsx}`。
