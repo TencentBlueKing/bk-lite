@@ -32,7 +32,15 @@ FACTORY_COVERED_MODEL_IDS = [
     "mysql",      # port="13306"
     "nginx",      # port from stargazer raw["listen_port"]
     "redis",      # port="16379" from stargazer raw["port"]
-]
+    "kafka",      # port="9092" from stargazer raw["port"](middleware runner)
+    "tomcat",     # port="8080" from stargazer raw["port"](middleware runner,extra_payload_keys={"result": True})
+    "elasticsearch", # port="9200",db 平铺;fixture 目录用 elasticsearch,task 内部用 model_id="es"(plugin supported_model_id).PipelineFactory 会映射到 "es"。
+    "postgresql",   # port="15432",db 平铺;plugin inst_name 短名 "pg" 而非 model_id(apps/cmdb/collection/plugins/community/db/postgresql.py)
+    "mongodb",    # port="27017",db 平铺(形态 B,raw_stdout 自身即平铺 dict),plugin=apps/cmdb/collection/plugins/community/db/mongodb.py
+    "haproxy",    # port="80&8404" 多端口拼接字符串(middleware runner,extra_payload_keys={"result": True});raw_stdout 走公共契约 raw_stdout_envelope_b 形态(无 bk_inst_name/bk_obj_id);plugin=apps/cmdb/collection/plugins/community/middleware/haproxy.py
+    "zookeeper",  # port="2181",middleware runner result=True;plugin 字段集对齐 ZookeeperCollectionPlugin.field_mapping
+    "rabbitmq",   # port="5672",middleware runner result=True;raw_stdout 是形态 B(平铺);plugin=apps/cmdb/collection/plugins/community/middleware/rabbitmq.py
+]  
 
 
 def _extract_raw_items(stargazer_raw: dict, model_id: str) -> dict:
@@ -89,19 +97,24 @@ def test_pipeline_fixture_driven_via_factory(monkeypatch, model_id, runner_plugi
     ip_addr = raw_items["ip_addr"]
     port = _extract_port(raw_items)
 
+    # pipeline 实际使用的 model_id:当 stargazer 落盘的 model_id 与 plugin supported_model_id
+    # 不一致时(如 stargazer 用 'elasticsearch',plugin 用 'es'),expected_doc.pipeline_model_id 显式声明。
+    # 未声明时默认用 parametrize 的 model_id(即 fixture 目录名)。
+    pipeline_model_id = expected_doc.get("pipeline_model_id", model_id)
+
     # 2) 流水线层
     from apps.cmdb.tests.e2e import pipeline
     run = pipeline.run_full_pipeline_generic(
         raw_items=raw_items,
         runner_cls=runner_cls,
         plugin_cls=plugin_cls,
-        model_id=model_id,
+        model_id=pipeline_model_id,
         task_id=20000 + hash(model_id) % 1000,
-        instances=[{"inst_name": f"{model_id}-factory-01", "ip_addr": ip_addr}],
+        instances=[{"inst_name": f"{pipeline_model_id}-factory-01", "ip_addr": ip_addr}],
         extra_payload_keys=extra_payload_keys,
         monkeypatch=monkeypatch,
     )
-    instances = run["cmdb_result"][model_id]
+    instances = run["cmdb_result"][pipeline_model_id]
     assert len(instances) >= 1, f"{model_id}: 工厂流水线应至少产出 1 个实例"
 
     # 3) 字段对齐层(expected_subset_fixture_driven 是 stargazer raw 期望值)
@@ -117,8 +130,10 @@ def test_pipeline_fixture_driven_via_factory(monkeypatch, model_id, runner_plugi
         got = inst.get(field)
         assert got == want, f"{model_id} 字段 {field}：期望 {want!r}，实际 {got!r}"
 
-    # inst_name 规则 {ip}-{model_id}-{port} 兜底校验
-    expected_inst_name = f"{ip_addr}-{model_id}-{port}"
-    assert inst["inst_name"] == expected_inst_name, (
-        f"{model_id} inst_name 规则违反：{inst['inst_name']!r} != {expected_inst_name!r}"
+    # inst_name 规则 {ip}-{name_token}-{port} 兜底校验
+    # name_token 优先取 expected_doc.inst_name_alias(plugin 自定义短名,如 postgresql→"pg");
+    # 未声明则用 pipeline_model_id(plugin supported_model_id,如 elasticsearch→"es")。
+    name_token = expected_doc.get("inst_name_alias", pipeline_model_id)
+    assert inst["inst_name"] == f"{ip_addr}-{name_token}-{port}", (
+        f"{model_id} inst_name 规则违反：{inst['inst_name']!r} != {ip_addr}-{name_token}-{port}"
     )

@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CMDB elasticsearch 实例契约",
+  "description": "2026-07-10 v4 Phase 3.8 — 由 ESCollectionPlugin.field_mapping 推导;stargazer 真实落盘字段(如 lucene_version/build_flavor/bin_path/user/pid)不在 field_mapping 中,不会进入 CMDB 实例。",
+  "type": "object",
+  "required": ["inst_name", "ip_addr", "port"],
+  "properties": {
+    "inst_name":    {"type": "string", "pattern": "^[0-9.]+-es-[0-9]+$"},
+    "ip_addr":      {"type": "string"},
+    "port":         {"type": ["string", "integer"]},
+    "version":      {"type": "string"},
+    "log_path":     {"type": "string"},
+    "data_path":    {"type": "string"},
+    "is_master":    {"type": ["string", "integer", "boolean"]},
+    "node_name":    {"type": "string"},
+    "cluster_name": {"type": "string"},
+    "java_version": {"type": "string"},
+    "java_path":    {"type": "string"},
+    "conf_path":    {"type": "string"},
+    "install_path": {"type": "string"}
+  }
+}

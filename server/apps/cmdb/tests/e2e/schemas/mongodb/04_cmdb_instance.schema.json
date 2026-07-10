@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CMDB mongodb 实例契约",
+  "description": "2026-07-10 Phase 3 任务 3.2,fixture 由真实落盘数据驱动(基于 MongoDBCollectionPlugin.field_mapping)",
+  "type": "object",
+  "required": ["inst_name", "ip_addr", "port"],
+  "properties": {
+    "inst_name":          {"type": "string", "pattern": "^[0-9.]+-mongodb-[0-9]+$"},
+    "ip_addr":            {"type": "string"},
+    "port":               {"type": ["string", "integer"]},
+    "version":            {"type": "string"},
+    "mongo_path":         {"type": "string"},
+    "bin_path":           {"type": "string"},
+    "config":             {"type": "string"},
+    "fork":               {"type": "string"},
+    "system_log":         {"type": "string"},
+    "db_path":            {"type": "string"},
+    "max_incoming_conn":  {"type": "string"},
+    "database_role":      {"type": "string"}
+  }
+}

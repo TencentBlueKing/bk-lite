@@ -58,11 +58,24 @@ def _resolve_plugin(model_id: str):
 
     优先在子目录中按 model_id 找 *.py 文件,失败则尝试 mysql→protocol,mysql→db 等兼容路径。
     返回 plugin 类(继承 BaseXxxCollectionPlugin 的具体子类,不是基类本身)。
+
+    支持 model_id → 插件模块名 别名(stargazer 端 model_id 与 plugin supported_model_id 不一致时使用)。
+    例如 stargazer 落盘 model_id='elasticsearch',而 ESCollectionPlugin.supported_model_id='es'
+    且插件模块名是 db/es.py,需要在 db.es 目录里查找。
     """
+    # model_id → 插件模块短名 别名表(用于 stargazer model_id 与 plugin 文件名不一致场景)
+    _PLUGIN_MODULE_ALIAS = {
+        "elasticsearch": "es",
+    }
+    module_alias = _PLUGIN_MODULE_ALIAS.get(model_id, model_id)
+
     # 三种可能路径(按命中优先)
     candidate_modules = [
+        f"apps.cmdb.collection.plugins.community.db.{module_alias}",
         f"apps.cmdb.collection.plugins.community.db.{model_id}",
+        f"apps.cmdb.collection.plugins.community.middleware.{module_alias}",
         f"apps.cmdb.collection.plugins.community.middleware.{model_id}",
+        f"apps.cmdb.collection.plugins.community.protocol.{module_alias}",
         f"apps.cmdb.collection.plugins.community.protocol.{model_id}",
     ]
     last_err: Optional[Exception] = None
