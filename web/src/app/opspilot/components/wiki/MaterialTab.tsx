@@ -642,8 +642,9 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
               </Form.Item>
             </>
           )}
-          {/* 新增时可选择图片增强;编辑文件资料时只允许修改该开关 */}
-          {(!isEditing || type === 'file') && (
+          {/* 新增 + 编辑(file/web 都可修改):ocr_enhance 让 LLM 在解析时调用 vision
+              抽取图片内容;text 类型无图片,不放该开关。 */}
+          {(!isEditing || type === 'file' || type === 'web') && (
             <Form.Item
               label={t('wiki.imageEnhance')}
               name="ocr_enhance"
