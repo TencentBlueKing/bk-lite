@@ -364,7 +364,15 @@ class NodeService:
         permission_data={},
         skip_permission=False,
     ):
-        """获取节点列表"""
+        """获取节点列表
+
+        返回:
+            dict(count, nodes, truncated)
+            - count: 真实总数(不受 page_size 影响,便于调用方知道真实规模)
+            - nodes: 当前页数据(数量受 NODE_LIST_PAGE_SIZE_MAX 硬上界保护)
+            - truncated: True 表示因 page_size=-1 或超过 MAX 而被截断(沿用 #4023 模式,
+              PR #3926 引入的 page_size=-1 静默截断 P0 回归由本字段暴露给调用方)
+        """
         if permission_data:
             from apps.core.utils.permission_utils import permission_filter
 
@@ -417,6 +425,7 @@ class NodeService:
             qs = qs.filter(updated_at__lt=one_minute_ago)
 
         count = qs.count()
+        original_page_size = page_size  # 用于判定 truncated
         page = NodeService._normalize_page(page)
         page_size = NodeService._normalize_page_size(page_size)
         start = (page - 1) * page_size
@@ -428,7 +437,12 @@ class NodeService:
 
         serializer = NodeSerializer(nodes, many=True)
         node_data = serializer.data
-        return dict(count=count, nodes=node_data)
+        # truncated: page_size=-1(全量语义) 或 原 page_size 超 MAX 时返回 True,
+        # 告知调用方数据被截断。沿用 PR #4023 job_target_list 模式。
+        truncated = (original_page_size == -1) or (
+            isinstance(original_page_size, int) and original_page_size > NodeService.NODE_LIST_PAGE_SIZE_MAX
+        ) and (count > page_size)
+        return dict(count=count, nodes=node_data, truncated=bool(truncated))
 
     @staticmethod
     def _normalize_page(page):

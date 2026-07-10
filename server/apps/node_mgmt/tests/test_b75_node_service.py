@@ -142,6 +142,60 @@ def test_get_node_list_page_size_above_limit_is_capped(setup, monkeypatch):
 
 
 @pytest.mark.django_db
+def test_get_node_list_response_contains_truncated_field(setup, monkeypatch):
+    """get_node_list 响应 dict 必含 truncated: bool 字段（沿用 PR #4023 job_target_list 模式）"""
+    region, collector, node = setup
+    monkeypatch.setattr(NodeService, "NODE_LIST_PAGE_SIZE_MAX", 100)
+    result = NodeService.get_node_list(
+        organization_ids=[], cloud_region_id=None, name=None, ip=None, os=None,
+        page=1, page_size=10, is_active=None, is_manual=None, is_container=None,
+        skip_permission=True,
+    )
+    assert "truncated" in result, "响应必须含 truncated 字段"
+    assert isinstance(result["truncated"], bool)
+
+
+@pytest.mark.django_db
+def test_get_node_list_page_size_minus_one_truncated_true_when_overflow(setup, monkeypatch):
+    """page_size=-1 且 count > MAX → truncated=True（沿用 #4023 模式告知调用方数据被截断）"""
+    region, collector, node = setup
+    Node.objects.create(
+        id="node-overflow-a", name="alpha", ip="10.1.1.10", operating_system="linux",
+        collector_configuration_directory="/etc", cloud_region=region,
+    )
+    Node.objects.create(
+        id="node-overflow-b", name="bravo", ip="10.1.1.11", operating_system="linux",
+        collector_configuration_directory="/etc", cloud_region=region,
+    )
+    Node.objects.create(
+        id="node-overflow-c", name="charlie", ip="10.1.1.12", operating_system="linux",
+        collector_configuration_directory="/etc", cloud_region=region,
+    )
+    monkeypatch.setattr(NodeService, "NODE_LIST_PAGE_SIZE_MAX", 2)
+    result = NodeService.get_node_list(
+        organization_ids=[], cloud_region_id=None, name=None, ip=None, os=None,
+        page=1, page_size=-1, is_active=None, is_manual=None, is_container=None,
+        skip_permission=True,
+    )
+    assert result["count"] == 4
+    assert len(result["nodes"]) == 2
+    assert result["truncated"] is True
+
+
+@pytest.mark.django_db
+def test_get_node_list_page_size_negative_other_than_minus_one_defaults_to_10(setup):
+    """page_size=-2/-99 等非 -1 负数 → 走默认 10（防御意外小负数被放大或全量）"""
+    region, collector, node = setup
+    result = NodeService.get_node_list(
+        organization_ids=[], cloud_region_id=None, name=None, ip=None, os=None,
+        page=1, page_size=-2, is_active=None, is_manual=None, is_container=None,
+        skip_permission=True,
+    )
+    assert len(result["nodes"]) <= 10
+    assert result["truncated"] is False
+
+
+@pytest.mark.django_db
 def test_get_node_list_is_container_and_is_manual_filters(setup):
     region, collector, node = setup
     Node.objects.create(

@@ -151,6 +151,27 @@ class TestNodeMgmtView:
         assert query["cloud_region_id"] == 1
         assert query["page"] == 1 and query["page_size"] == 10
 
+    def test_get_nodes_passes_through_truncated_flag(self, api_client, mocker):
+        """NodeMgmt RPC 返回 truncated=True 时，view response.data 必须透传该字段。
+        否则前端无法识别数据被截断（PR #3926 引入的 P0 回归）。
+        """
+        api_client.cookies["current_team"] = "1"
+        node_mgmt = mocker.patch("apps.monitor.views.node_mgmt.NodeMgmt")
+        node_mgmt.return_value.node_list.return_value = {
+            "count": 999,
+            "nodes": [{"id": "n-1"}] * 500,
+            "truncated": True,
+        }
+        resp = api_client.post(
+            f"{BASE}/api/node_mgmt/nodes/",
+            {"cloud_region_id": 1, "page": 1, "page_size": -1},
+            format="json",
+        )
+        assert resp.status_code == 200
+        assert resp.json()["data"]["truncated"] is True
+        # 截断时真实规模应一并透传
+        assert resp.json()["data"]["count"] == 999
+
     def test_get_config_content(self, api_client, mocker):
         api_client.cookies["current_team"] = "1"
         svc = mocker.patch(

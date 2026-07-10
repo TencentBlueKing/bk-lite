@@ -247,6 +247,45 @@ class TestRpcWrappers:
         mocker.patch.object(S, "_node_mgmt_client", return_value=rpc)
         assert S._pick_access_point(1) is None
 
+    def test_fetch_node_mgmt_pages_count缺失立即break_并warning(self, mocker):
+        """count 字段缺失（None/非 dict）→ _safe_count 返回 0 → 第一轮后 break + logger.warning。
+        否则会静默截断大量节点且无任何告警，运维不可见。
+        """
+        rpc = mocker.MagicMock()
+        rpc.node_list.return_value = {
+            "nodes": [{"id": "n-1"}, {"id": "n-2"}],  # 没 count 字段
+        }
+        mocker.patch.object(S, "NODE_MGMT_SYNC_PAGE_SIZE", 100)
+        mocker.patch.object(S, "_node_mgmt_client", return_value=rpc)
+        mock_log = mocker.patch("apps.cmdb.services.node_mgmt_sync_service.logger")
+
+        nodes = S._fetch_node_mgmt_pages({"is_container": False})
+
+        assert len(nodes) == 2
+        assert rpc.node_list.call_count == 1, "count 不可靠时必须立即 break，不翻第 2 页"
+        mock_log.warning.assert_called()
+
+    def test_fetch_node_mgmt_pages_count远小于实际有max_pages防御(self, mocker):
+        """count 永远 > 累计节点数(且每页非空)→ 早期实现会死循环,followup 必须有 MAX_PAGES 防御。
+        场景:每页返回 50 条, count=999999(永远追不上), MAX_PAGES=5 → 翻 5 轮后必须 break + warning。
+        """
+        rpc = mocker.MagicMock()
+        rpc.node_list.return_value = {
+            "count": 999999,  # 永远 > 累计
+            "nodes": [{"id": f"n-{idx}"} for idx in range(50)],  # 每页 50 条
+        }
+        mocker.patch.object(S, "NODE_MGMT_SYNC_PAGE_SIZE", 100)
+        mocker.patch.object(S, "MAX_PAGES", 5)  # 防御上限
+        mocker.patch.object(S, "_node_mgmt_client", return_value=rpc)
+        mock_log = mocker.patch("apps.cmdb.services.node_mgmt_sync_service.logger")
+
+        nodes = S._fetch_node_mgmt_pages({"is_container": False})
+
+        # 翻到 MAX_PAGES=5 轮后必须 break，不能继续
+        assert rpc.node_list.call_count == 5, f"必须有 max_pages 防御，实测 call_count={rpc.node_list.call_count}"
+        # MAX_PAGES 触发时必须 logger.warning 留痕
+        mock_log.warning.assert_called()
+
     def test_pick_access_point_选最新updated_at(self, mocker):
         rpc = mocker.MagicMock()
         rpc.cloud_region_list.return_value = [{"id": 1, "name": "华东"}]

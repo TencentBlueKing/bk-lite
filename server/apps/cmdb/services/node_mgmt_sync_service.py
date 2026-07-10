@@ -42,6 +42,9 @@ class NodeMgmtSyncService:
     DISPLAY_SOURCE_SYNC_FALLBACK = "sync_fallback"
     DISPLAY_SOURCE_NONE = "none"
     NODE_MGMT_SYNC_PAGE_SIZE = _get_positive_int_env("CMDB_NODE_MGMT_SYNC_PAGE_SIZE", 500)
+    # 防御:count 字段不可靠(count 永远 < 实际累计)时,翻页循环必须有硬上界,避免 OOM/超时。
+    # 环境变量可配,默认 1000 轮 × 500 条/轮 = 50 万节点,远超真实部署规模。
+    MAX_PAGES = _get_positive_int_env("CMDB_NODE_MGMT_SYNC_MAX_PAGES", 1000)
     RAW_DATA_FIELDS = (
         "id",
         "_id",
@@ -443,15 +446,30 @@ class NodeMgmtSyncService:
         page = 1
         nodes: list[dict[str, Any]] = []
         client = cls._node_mgmt_client()
-        while True:
+        while page <= cls.MAX_PAGES:
             payload = {**query, "page": page, "page_size": cls.NODE_MGMT_SYNC_PAGE_SIZE}
             rows = client.node_list(payload)
             page_nodes = cls._extract_nodes(rows)
             nodes.extend(page_nodes)
             count = cls._safe_count(rows.get("count") if isinstance(rows, dict) else len(page_nodes))
+            # count 不可靠(None/异常/0)→ 第一轮后立刻 break + warning,
+            # 避免静默截断且运维不可见(PR #3926 followup: P0 回归防御)
             if not page_nodes or len(nodes) >= count:
+                if not page_nodes or count <= 0:
+                    logger.warning(
+                        "[NodeMgmtSync] _fetch_node_mgmt_pages count 不可靠(page=%d, count=%r, "
+                        "actual_fetched=%d), 提前 break 避免静默截断",
+                        page, count, len(nodes),
+                    )
                 break
             page += 1
+        else:
+            # 触发 while 条件不满足(>MAX_PAGES)时走 else 分支
+            logger.warning(
+                "[NodeMgmtSync] _fetch_node_mgmt_pages 达到 MAX_PAGES=%d 上限, 实际累计 %d 节点, "
+                "可能存在 count 字段与实际不一致, 已强制 break",
+                cls.MAX_PAGES, len(nodes),
+            )
         return nodes
 
     @classmethod
