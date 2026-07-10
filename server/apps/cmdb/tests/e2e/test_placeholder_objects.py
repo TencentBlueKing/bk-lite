@@ -25,6 +25,9 @@ PLACEHOLDER_MODEL_IDS = [
     "ambari",      # 2026-07-10 刚跑通(原以为不可达):ambari 无官方 docker 镜像,需手动装 license + JDK
     "server_bmc",  # 2026-07-10 刚跑通:Redfish mock 真实数据,但 CMDB 端无 plugin 走 placeholder
     "ibmmq",       # 2026-07-10 落盘确认(license 阻塞):IBM MQ 9.x 试用 license
+    "highgo",      # 2026-07-10 Phase 1 跑通(国产 PG 兼容,临时复用 postgres 镜像),无 plugin 走 placeholder
+    "nacos",       # 2026-07-10 Phase 1 跑通(阿里配置中心 v3.0.2),无 plugin 走 placeholder
+    "tdsql",       # 2026-07-10 Phase 1 跑通(腾讯分布式 DB,临时复用 mysql 镜像),无 plugin 走 placeholder
 ]
 
 
@@ -53,6 +56,7 @@ def test_placeholder_fixture_satisfies_common_contract(model_id):
     is_placeholder = (
         fixture.get("license_status") == "missing"
         or "placeholder_reason" in fixture
+        or "_placeholder_reason" in fixture
         or "blocked_reason" in fixture
     )
     assert is_placeholder, (
