@@ -65,7 +65,8 @@ CMDB 是平台统一的资产与配置数据中心，围绕模型定义、资产
 | 按模型统计 | 检索结果先按模型汇总命中数，再进入单模型分页查看 | 不依赖单一模型入口 | GA |
 | 常用筛选保存 | 用户保存常用筛选条件并按模型复用 | 保存于用户个人配置，非浏览器本地临时记录 | GA |
 | 资产视图 | 按模型统计资产数量并提供快速跳转入口 | — | GA |
-| 机房俯视平面图 | 以 row/col 网格展示机房内机柜的物理位置、类型与 U 位占用率；同格冲突标记返回，未定位机柜单独成列不丢弃 | 只读；冲突仅标记不阻断；利用率口径：(u_count - free_u) / u_count，free_u 以去重占用数计；须有 asset_info-View 权限；来源 `room_layout/<model_id>/<inst_id>` 端点（server/apps/cmdb/views/instance.py:1030-1050，server/apps/cmdb/services/rack_room.py:162-198） | GA |
+| 机房俯视平面图 | 以 row/col 网格展示机房内机柜的物理位置、类型与 U 位占用率；同格冲突标记返回，未定位机柜单独成列不丢弃 | 只读；冲突仅标记不阻断；利用率口径：(u_count - free_u) / u_count，free_u 以去重占用数计；须有 asset_info-View 权限；类型字段同时返回 `datacenter_type` 枚举 id 与可读名称（如「计算」「网络」「存储」等），由后端依据 `rack` 模型的 `datacenter_type` 枚举属性解析，缺值时仅返回 id；来源 `room_layout/<model_id>/<inst_id>` 端点（server/apps/cmdb/views/instance.py:1030-1050，server/apps/cmdb/services/rack_room.py:162-198） | GA |
+| 机房 3D 布局取数（供大屏消费） | 3D 大屏组件消费机房布局取数接口，返回 row/col/U 占用与设备摘要；类型字段同时返回 `datacenter_type` 枚举 id 与可读名称 `rack_type_name`（计算/网络/存储/安全/其他/未分类），无值时不带 `rack_type_name` | 只读；经 NATS `get_room3d_layout` 暴露（server/apps/cmdb/nats/nats.py:939-1050）；`rack_id`/`rack_name` 字段源统一为 `item['rack_id']` / `item['rack_name']`，`instance_name` 缺失时 fallback 到 `rack_id`；供运营分析 3D 大屏图例与机柜顶贴图渲染 | GA |
 | 机柜正视 U 图 | 展示机柜内设备的 U 位排布（u_start/u_end）、越界与重叠标记，以及空闲 U 汇总（free_u/max_free_u） | 只读；越界/重叠仅标记不阻断；未分配 U 位设备单独成列不丢弃；须有 asset_info-View 权限；来源 `rack_layout/<model_id>/<inst_id>` 端点（server/apps/cmdb/views/instance.py:1052-1072，server/apps/cmdb/services/rack_room.py:146-159） | GA |
 
 ### 5. 自动发现（采集）
