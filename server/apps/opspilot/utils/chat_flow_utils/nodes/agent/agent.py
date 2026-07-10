@@ -2,7 +2,6 @@
 智能体节点
 """
 
-import json
 import time
 from typing import Any, Dict
 
@@ -14,12 +13,9 @@ from apps.opspilot.services.chat_service import ChatService, chat_service
 from apps.opspilot.services.skill_package.runtime import build_skill_package_prompt, build_skill_package_strategy, hydrate_skill_packages
 from apps.opspilot.services.workflow_attachment_service import build_signed_attachment_download_url
 from apps.opspilot.utils.agent_factory import create_agent_instance
+from apps.opspilot.utils.agui_chat import _build_sse_line
 from apps.opspilot.utils.chat_flow_utils.engine.core.base_executor import BaseNodeExecutor
 from apps.opspilot.utils.prompt_utils import resolve_skill_params
-
-
-def _build_agui_sse_line(payload: dict) -> str:
-    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
 def _build_wiki_citations_event(extra_config: dict | None) -> dict | None:
@@ -313,7 +309,7 @@ class AgentNode(BaseNodeExecutor):
 
                 wiki_citations_event = _build_wiki_citations_event(request.extra_config)
                 if wiki_citations_event:
-                    yield _build_agui_sse_line(wiki_citations_event)
+                    yield _build_sse_line(wiki_citations_event)
 
                 chunk_index = 0
                 async for sse_line in graph.agui_stream(request):
@@ -327,7 +323,7 @@ class AgentNode(BaseNodeExecutor):
                     "error": f"节点执行错误: {str(e)}",
                     "timestamp": int(time.time() * 1000),
                 }
-                yield _build_agui_sse_line(error_data)
+                yield _build_sse_line(error_data)
 
         return generate_agui_stream()
 
