@@ -123,6 +123,14 @@
         "eventTitle": "标题",
         "eventCount": "事件数量",
         "notificationStatus": "通知情况",
+        "notificationSummary": "共 {{total}} 次通知，显示最近 {{shown}} 次",
+        "notificationTime": "通知时间",
+        "notificationChannel": "通知渠道",
+        "notificationRecipients": "接收人",
+        "notificationResult": "通知结果",
+        "notificationFailureReason": "失败原因",
+        "notificationReasonUnavailable": "未记录失败原因",
+        "noNotificationRecords": "暂无通知记录",
         "incidentName": "事故名称",
         "declareIncident": "升级为事故",
         "declareIncidentErrorMsg": "你选择的告警已关联事故",
@@ -636,6 +644,7 @@
         "actionTriggerTip": "未勾选的生命周期事件不会触发本规则",
         "actionRecordsTitle": "执行记录",
         "actionManualTrigger": "执行动作",
+        "noAvailableRules": "暂无可用规则",
         "actionRerun": "重跑",
         "actionTab": "处理动作",
         "actionTargetHostField": "目标主机字段",
@@ -644,6 +653,12 @@
         "actionParamConst": "常量",
         "actionBindingField": "字段",
         "actionConfigSection": "动作配置",
-        "actionTargetHostFieldTip": "从告警 labels 取，默认 ip_addr"
+        "actionTargetHostFieldTip": "从告警 labels 取，默认 ip_addr",
+        "actionTargetHostMode": "目标主机来源",
+        "actionTargetHostModeFromAlert": "从告警取",
+        "actionTargetHostModeFixed": "定死主机",
+        "actionTargetHostModeLegacy": "默认·从告警取",
+        "actionTargetHostIp": "目标主机 IP",
+        "actionTargetHostIpTip": "不读告警；按此 IP 在节点管理中查找唯一主机"
     }
 }

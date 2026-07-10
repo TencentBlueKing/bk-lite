@@ -65,7 +65,7 @@ const ActionTimeline: React.FC<ActionTimelineProps> = ({ alertId }) => {
   const getTriggerLabel = (item: ActionExecutionItem): string => {
     if (item.trigger_type === 'manual') {
       const base = '手动触发';
-      return item.operator ? `${base} by ${item.operator}` : base;
+      return item.operator ? `${base} ${item.operator}` : base;
     }
     return '自动触发';
   };
@@ -81,6 +81,7 @@ const ActionTimeline: React.FC<ActionTimelineProps> = ({ alertId }) => {
     const dotColor = STATUS_COLOR_MAP[item.status] || 'gray';
     const isFailed = item.status === 'failed' || item.status === 'config_error';
     const errorMsg = isFailed && item.result?.message ? String(item.result.message) : null;
+    const targetIp = item.result?.target_ip ? String(item.result.target_ip) : '';
 
     return {
       color: dotColor,
@@ -107,6 +108,12 @@ const ActionTimeline: React.FC<ActionTimelineProps> = ({ alertId }) => {
             <span className="mx-1">·</span>
             {item.created_at ? convertToLocalizedTime(item.created_at) : '--'}
           </div>
+          {targetIp && (
+            <div className="text-[var(--color-text-3)] mt-0.5">
+              <span className="mr-1">目标主机</span>
+              <span className="font-mono">{targetIp}</span>
+            </div>
+          )}
           {item.job_detail_url && (
             <div className="mt-1">
               <a href={item.job_detail_url} target="_blank" rel="noopener noreferrer" className="text-[var(--color-primary)]">

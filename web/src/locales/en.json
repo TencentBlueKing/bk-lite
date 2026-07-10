@@ -63,6 +63,7 @@
     "publishSuccess": "publish successfully",
     "saveFailed": "Failed to save",
     "operationFailed": "Operation failed",
+    "operationSuccess": "Operation successful",
     "operateFailed": "Operation failed",
     "loadListFailed": "Failed to load list",
     "markdownLoadFailed": "Failed to load markdown content.",
