@@ -1,0 +1,29 @@
+{
+  "model_id": "activemq",
+  "captured_at": "2026-07-08T06:18:59Z",
+  "image": "apache/activemq-classic:5.18.3",
+  "container_meta": {
+    "container_id": "0a6a68df8cf0",
+    "image": "apache/activemq-classic:5.18.3"
+  },
+  "params": {
+    "host": "127.0.0.1",
+    "ssh_port": 12230,
+    "amq_port": 31616,
+    "web_port": 18161
+  },
+  "raw_stdout": {
+    "inst_name": "172.17.0.3-activemq-61616",
+    "ip_addr": "172.17.0.3",
+    "obj_id": "activemq",
+    "port": "61616",
+    "web_port": "8161",
+    "web_reachable": "false",
+    "version": "",
+    "listening_ports": "1883,5672,61613,61616,8161",
+    "bin_path": "/usr/bin",
+    "config": "/usr/share/activemq/conf/activemq.xml",
+    "user": "activemq",
+    "pid": "46"
+  }
+}

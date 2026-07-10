@@ -209,14 +209,28 @@ def _detect_interpreter(script_path: Path) -> str:
 
 
 def _build_shell_env(spec: Spec) -> Dict[str, str]:
-    """构造 shell 脚本执行所需的环境变量。"""
+    """构造 shell 脚本执行所需的环境变量。
+
+    优先级（高 → 低 覆盖）:
+    1. spec.env（catalog 显式声明,优先级最低,先填底）
+    2. collector_kwargs.ports（list,生成 REDIS_TARGET_PORTS=逗号分隔）
+    3. collector_kwargs.port（单值,生成 REDIS_TARGET_PORTS=单值;向后兼容 redis Spec）
+    4. collector_kwargs.host / user / password 等其他字段
+
+    注释：kwargs 字段在 spec.env 之后写入,所以 spec.env["REDIS_TARGET_PORTS"]
+    在没有 kwargs.port/ports 时保留;有则被覆盖（这是有意设计,kwargs 是权威）。
+    """
     env: Dict[str, str] = {}
     env.update(spec.env)
     kwargs = spec.collector_kwargs
     if "host" in kwargs:
         env["REDIS_TARGET_HOST"] = kwargs["host"]
         env["BK_HOST_INNERIP"] = kwargs["host"]
-    if "port" in kwargs:
+    # 端口：ports(list)优先于 port(scalar)。list 走 comma-sep,让 redis_sentinel /
+    # redis-cluster 这类"多端口探测"对象自然支持。G2.1 引入。
+    if "ports" in kwargs and isinstance(kwargs["ports"], (list, tuple)):
+        env["REDIS_TARGET_PORTS"] = ",".join(str(int(p)) for p in kwargs["ports"])
+    elif "port" in kwargs:
         env["REDIS_TARGET_PORTS"] = str(kwargs["port"])
     if "user" in kwargs:
         env.setdefault("REDIS_USER", kwargs["user"])
@@ -226,18 +240,46 @@ def _build_shell_env(spec: Spec) -> Dict[str, str]:
 
 
 def _parse_shell_stdout(text: str, spec: Spec) -> Any:
-    """解析 shell 脚本 stdout:尝试 JSON parse,失败则返回原始字符串。"""
+    """解析 shell 脚本 stdout。
+
+    G2.1 2026-07-07 修复:支持多 JSON 行(redis_default_discover.sh 在多端口探测时
+    会逐行 emit_instance,输出 N 个独立 JSON object)。原版实现遇到多行 JSON 时
+    只返第一个,导致 sentinel 等多端口对象被吞。
+
+    解析顺序:
+    1. 整段当 JSON parse(单 object / 单 array)
+    2. 按行 split,收集所有 `{...}` 或 `[...]` 行,逐行 JSON parse
+       - 多个 object → 返 list[dict]
+       - 单个 object → 返 dict(向后兼容,保持 fixture schema 不变)
+    3. 都失败 → 返回原始 text(str fallback)
+    """
     text = text.strip()
     if not text:
         return {}
+    # 1) 整段 JSON parse
     try:
         return json.loads(text)
     except json.JSONDecodeError:
-        for line in text.splitlines():
-            line = line.strip()
-            if line.startswith("{") or line.startswith("["):
-                try:
-                    return json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-        return text
+        pass
+
+    # 2) 按行收集所有 JSON 行(G2.1 修复:不再只返第一个)
+    objs: list = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith("{") or line.startswith("["):
+            try:
+                obj = json.loads(line)
+                objs.append(obj)
+            except json.JSONDecodeError:
+                continue
+    if objs:
+        # 单个 object → 保持 dict(向后兼容 redis Spec 等单 instance 对象)
+        # 多个 → 返 list(G2.1:redis_sentinel 多端口场景)
+        if len(objs) == 1:
+            return objs[0]
+        return objs
+
+    # 3) 兜底:原样字符串
+    return text

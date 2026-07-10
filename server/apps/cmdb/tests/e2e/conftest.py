@@ -4,7 +4,7 @@
 """
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional, Tuple
 
 import pytest
 
@@ -40,6 +40,164 @@ def load_schema():
         return _load(f"schemas/{rel_path}")
 
     return _impl
+
+
+# --------------------------------------------------------------------------
+# v4 Phase 1.2:load_runner_plugin_for_model_id 工厂
+# --------------------------------------------------------------------------
+# 根据 model_id 返回 (runner_cls, plugin_cls, extra_payload_keys) 三元组
+# 覆盖 v3+ 全部 27 个真实落盘对象
+# 三个 runner 形态:
+#   - protocol:ProtocolCollectMetrics + extra_payload_keys=None
+#   - db:DBCollectCollectMetrics + extra_payload_keys=None
+#   - middleware:MiddlewareCollectMetrics + extra_payload_keys={"result": True}
+
+
+def _resolve_plugin(model_id: str):
+    """根据 model_id 在 apps/cmdb/collection/plugins/community/ 下找 plugin 类。
+
+    优先在子目录中按 model_id 找 *.py 文件,失败则尝试 mysql→protocol,mysql→db 等兼容路径。
+    返回 plugin 类(继承 BaseXxxCollectionPlugin 的具体子类,不是基类本身)。
+
+    支持 model_id → 插件模块名 别名(stargazer 端 model_id 与 plugin supported_model_id 不一致时使用)。
+    例如 stargazer 落盘 model_id='elasticsearch',而 ESCollectionPlugin.supported_model_id='es'
+    且插件模块名是 db/es.py,需要在 db.es 目录里查找。
+    """
+    # model_id → 插件模块短名 别名表(用于 stargazer model_id 与 plugin 文件名不一致场景)
+    _PLUGIN_MODULE_ALIAS = {
+        "elasticsearch": "es",
+    }
+    module_alias = _PLUGIN_MODULE_ALIAS.get(model_id, model_id)
+
+    # 三种可能路径(按命中优先)
+    candidate_modules = [
+        f"apps.cmdb.collection.plugins.community.db.{module_alias}",
+        f"apps.cmdb.collection.plugins.community.db.{model_id}",
+        f"apps.cmdb.collection.plugins.community.middleware.{module_alias}",
+        f"apps.cmdb.collection.plugins.community.middleware.{model_id}",
+        f"apps.cmdb.collection.plugins.community.protocol.{module_alias}",
+        f"apps.cmdb.collection.plugins.community.protocol.{model_id}",
+    ]
+    last_err: Optional[Exception] = None
+    for mod_path in candidate_modules:
+        try:
+            import importlib
+            mod = importlib.import_module(mod_path)
+        except ModuleNotFoundError as e:
+            last_err = e
+            continue
+        # 在 module 里找以 model_id 开头且以 CollectionPlugin 结尾的具体子类
+        # 过滤掉 BaseXxxCollectionPlugin 这种基类
+        target_prefix = model_id.replace("_", "").lower()
+        for attr_name in dir(mod):
+            cls = getattr(mod, attr_name)
+            if not isinstance(cls, type):
+                continue
+            if not attr_name.endswith("CollectionPlugin"):
+                continue
+            # 跳过基类(BaseProtocolCollectionPlugin / BaseDBCollectionPlugin / BaseMiddlewareCollectionPlugin)
+            if attr_name.startswith("Base"):
+                continue
+            # 优先匹配以 model_id 开头的(如 InfluxdbCollectionPlugin)
+            if attr_name.lower().replace("_", "").startswith(target_prefix):
+                return cls
+        # 如果该 module 找到了但没有前缀匹配,fallback:取第一个非 Base 的 CollectionPlugin
+        for attr_name in dir(mod):
+            cls = getattr(mod, attr_name)
+            if not isinstance(cls, type):
+                continue
+            if not attr_name.endswith("CollectionPlugin"):
+                continue
+            if attr_name.startswith("Base"):
+                continue
+            return cls
+    raise KeyError(
+        f"model_id={model_id!r}: 未在 db/middleware/protocol 三个子目录找到 plugin 类。"
+        f"候选模块: {candidate_modules};最后错误: {last_err}。"
+        f"说明:此 model_id 在 stargazer 端有 catalog,但 CMDB 端尚未实现 plugin 类。"
+        f"属于 v4 排除对象,不在 e2e 覆盖范围。"
+    )
+
+
+# model_id → (大类, extra_payload_keys) 映射表
+# 大类决定用哪个 runner
+_MODEL_RUNNER_MAP = {
+    # protocol 大类(业务字段平铺,无 metric.result 解析)
+    "influxdb":     ("protocol",   None),
+    "mssql":        ("protocol",   None),
+    "oracle":       ("protocol",   None),
+    "elasticsearch": ("db",         None),  # alias:es(同 db 平铺)
+    "es":           ("db",         None),
+    "redis_sentinel": ("middleware", {"result": True}),  # 走 middleware(redis + sentinel 双端口)
+    # db 大类(平铺,runner 用 DatabasesCollectMetrics,实际类是 DBCollectCollectMetrics)
+    "mysql":        ("db",         None),
+    "postgresql":   ("db",         None),
+    "redis":        ("db",         None),
+    "mongodb":      ("db",         None),
+    "es":           ("db",         None),
+    "hbase":        ("db",         None),
+    "dameng":       ("db",         None),
+    "tongweb":      ("db",         None),
+    # middleware 大类(业务字段经 metric.result JSON 编码)
+    "nginx":        ("middleware", {"result": True}),
+    "openresty":    ("middleware", {"result": True}),
+    "apache":       ("middleware", {"result": True}),
+    "tomcat":       ("middleware", {"result": True}),
+    "jboss":        ("middleware", {"result": True}),
+    "jetty":        ("middleware", {"result": True}),
+    "iis":          ("middleware", {"result": True}),
+    "rabbitmq":     ("middleware", {"result": True}),
+    "kafka":        ("middleware", {"result": True}),
+    "rocketmq":     ("middleware", {"result": True}),
+    "activemq":     ("middleware", {"result": True}),
+    "zookeeper":    ("middleware", {"result": True}),
+    "etcd":         ("middleware", {"result": True}),
+    "consul":       ("middleware", {"result": True}),
+    "haproxy":      ("middleware", {"result": True}),
+    "keepalived":   ("middleware", {"result": True}),
+    "memcached":    ("middleware", {"result": True}),
+    "minio":        ("middleware", {"result": True}),
+    "squid":        ("middleware", {"result": True}),
+    "docker":       ("middleware", {"result": True}),
+}
+
+
+def load_runner_plugin_for_model_id(model_id: str) -> Tuple[type, type, Optional[dict]]:
+    """根据 model_id 返回 (runner_cls, plugin_cls, extra_payload_keys) 三元组。
+
+    覆盖 v3+ 全部 27 个真实落盘对象(main 7 + worktree 20)。
+    失败时抛 KeyError 并给出明确错误信息(便于 review 时定位)。
+
+    用法:
+        runner_cls, plugin_cls, extra = load_runner_plugin_for_model_id("influxdb")
+        # → (ProtocolCollectMetrics, InfluxdbCollectionPlugin, None)
+    """
+    if model_id not in _MODEL_RUNNER_MAP:
+        raise KeyError(
+            f"model_id={model_id!r} 不在 _MODEL_RUNNER_MAP 覆盖范围。"
+            f"已覆盖({len(_MODEL_RUNNER_MAP)} 个): {sorted(_MODEL_RUNNER_MAP.keys())}。"
+            f"如需新增,请在 conftest.py 末尾的映射表中追加 model_id → (大类, extra_payload_keys) 一行。"
+        )
+    runner_type, extra_payload_keys = _MODEL_RUNNER_MAP[model_id]
+    if runner_type == "protocol":
+        from apps.cmdb.collection.collect_plugin.protocol import ProtocolCollectMetrics
+        runner_cls = ProtocolCollectMetrics
+    elif runner_type == "db":
+        from apps.cmdb.collection.collect_plugin.databases import DBCollectCollectMetrics
+        runner_cls = DBCollectCollectMetrics
+    elif runner_type == "middleware":
+        from apps.cmdb.collection.collect_plugin.middleware import MiddlewareCollectMetrics
+        runner_cls = MiddlewareCollectMetrics
+    else:
+        raise KeyError(f"未知的 runner_type={runner_type!r}(model_id={model_id!r})")
+    plugin_cls = _resolve_plugin(model_id)
+    return runner_cls, plugin_cls, extra_payload_keys
+
+
+@pytest.fixture
+def runner_plugin_factory():
+    """test 里用 runner_plugin_factory('influxdb') 拿三元组。"""
+    return load_runner_plugin_for_model_id
 
 
 # --------------------------------------------------------------------------

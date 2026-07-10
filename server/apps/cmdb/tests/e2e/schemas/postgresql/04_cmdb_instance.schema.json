@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CMDB postgresql 实例契约(流水线 step3 输出)",
+  "description": "2026-07-10 v4 Phase 3.1 — fixture 由真实落盘数据驱动;plugin 用 pg 短名(servers/{postgresql.py})",
+  "type": "object",
+  "required": ["inst_name", "ip_addr", "port"],
+  "properties": {
+    "inst_name":      {"type": "string", "pattern": "^[0-9.]+-pg-[0-9]+$"},
+    "ip_addr":        {"type": "string"},
+    "port":           {"type": ["string", "integer"]},
+    "version":        {"type": "string"},
+    "conf":           {"type": "string"},
+    "data_path":      {"type": "string"},
+    "max_conn":       {"type": ["string", "integer"]},
+    "shared_buffer":  {"type": ["string", "integer"]},
+    "log_directory":  {"type": "string"}
+  }
+}

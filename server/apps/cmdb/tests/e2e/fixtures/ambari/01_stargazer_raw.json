@@ -1,0 +1,18 @@
+{
+  "model_id": "ambari",
+  "captured_at": "2026-07-10T08:10:28Z",
+  "image": "ubuntu:22.04",
+  "container_meta": {
+    "container_id": "1b62116e6618",
+    "image": "ubuntu:22.04"
+  },
+  "params": {
+    "host": "127.0.0.1",
+    "ssh_port": 12272,
+    "ambari_port": 18072,
+    "user": "admin",
+    "password": "***"
+  },
+  "raw_stdout": [],
+  "placeholder_reason": "2026-07-10 v4 — ambari 无官方 docker 镜像,需手动装 JDK + Ambari Server + PostgreSQL;装包源不可达(2026-07-10 试了 stargazer cli 跑,容器起但 install_commands 失败)"
+}
