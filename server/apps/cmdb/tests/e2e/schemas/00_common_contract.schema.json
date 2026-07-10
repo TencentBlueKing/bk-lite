@@ -1,0 +1,65 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CMDB e2e fixture 公共契约",
+  "description": "2026-07-10 v4 — 所有 01_stargazer_raw.json 必须满足的公共结构。对象级 schema 用 $ref 引用本文件,避免 27 份重复。\n\nraw_stdout 支持两种形态(2026-07-10 调研发现):\n  - 形态 A(mysql/redis/influxdb):{success: true, result: {<model_id>: [items]}}\n  - 形态 B(nginx):{bk_inst_name, bk_obj_id, ip_addr, ...} 平铺字段(无 success/result 包裹)",
+  "definitions": {
+    "raw_stdout_envelope_a": {
+      "type": "object",
+      "required": ["success", "result"],
+      "properties": {
+        "success": {"type": "boolean", "const": true},
+        "result": {
+          "type": "object",
+          "minProperties": 1,
+          "patternProperties": {
+            "^[a-z][a-z0-9_]*$": {
+              "type": "array",
+              "minItems": 1,
+              "items": {"type": "object"}
+            }
+          }
+        }
+      }
+    },
+    "raw_stdout_envelope_b": {
+      "type": "object",
+      "required": ["ip_addr"],
+      "properties": {
+        "ip_addr": {"type": "string"}
+      }
+    }
+  },
+  "type": "object",
+  "required": ["model_id", "captured_at", "raw_stdout"],
+  "properties": {
+    "model_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "stargazer cli 落盘的 model_id,与 fixtures/<model_id>/ 文件夹名一致"
+    },
+    "captured_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO8601 时间戳,stargazer 落盘时记录"
+    },
+    "image": {"type": "string", "description": "docker 镜像,纯参考,不入 CMDB 实例"},
+    "container_meta": {
+      "type": "object",
+      "description": "容器元信息,纯参考",
+      "properties": {
+        "container_id": {"type": "string"},
+        "image": {"type": "string"}
+      }
+    },
+    "params": {
+      "type": "object",
+      "description": "stargazer 采集参数(host/port/user 等),纯参考"
+    },
+    "raw_stdout": {
+      "oneOf": [
+        {"$ref": "#/definitions/raw_stdout_envelope_a"},
+        {"$ref": "#/definitions/raw_stdout_envelope_b"}
+      ]
+    }
+  }
+}
