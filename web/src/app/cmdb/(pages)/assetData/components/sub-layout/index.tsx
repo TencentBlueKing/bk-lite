@@ -79,6 +79,7 @@ const SideMenuLayout: React.FC<WithSideMenuLayoutProps> = ({
   useEffect(() => {
     setMenuItems(updateMenuItems?.filter(menu => (
       !menu.isNotMenuItem
+      && (menu.name !== 'asset_k8s_resources' || modelId === 'k8s_cluster')
       && (menu.name !== 'asset_config_files' || isConfigFileSupportedModel(modelId))
       && (menu.name !== 'asset_ip_view' || isIpamModel(modelId))
     )));

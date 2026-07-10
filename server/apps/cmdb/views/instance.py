@@ -24,10 +24,17 @@ from apps.cmdb.utils.base import (
 from apps.cmdb.services.topology_theme import get_topo_themes
 from apps.cmdb.services.rack_room import get_room_layout, get_rack_layout
 from apps.cmdb.services.application_resource_overview import ApplicationResourceOverviewService
+from apps.cmdb.services.k8s_resource_overview import K8sResourceOverviewService
 from apps.cmdb.serializers.application_resource_overview import (
     ApplicationResourceTopologyQuerySerializer,
     ApplicationResourceEntrySerializer,
     ApplicationResourceNodeIdsSerializer,
+)
+from apps.cmdb.serializers.k8s_resource_overview import (
+    K8sLayerQuerySerializer,
+    K8sPageQuerySerializer,
+    K8sResourceKindSerializer,
+    K8sResourceListQuerySerializer,
 )
 from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
 from apps.cmdb.views.mixins import CmdbPermissionMixin
@@ -40,6 +47,25 @@ from apps.core.utils.team_utils import get_current_team
 
 
 class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
+    K8S_CHILD_MODELS = ("k8s_namespace", "k8s_workload", "k8s_pod", "k8s_node")
+
+    def _k8s_resource_context(self, request, cluster_id):
+        instance = InstanceManage.query_entity_by_id(int(cluster_id))
+        if not instance:
+            return None, None, WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
+        if instance.get("model_id") != "k8s_cluster":
+            return None, None, WebUtils.response_error(
+                "实例不是 k8s_cluster", status_code=status.HTTP_400_BAD_REQUEST
+            )
+        permission_error = self.require_instance_permission(request, instance, operator=VIEW)
+        if permission_error:
+            return None, None, permission_error
+        permission_maps = {
+            model_id: CmdbRulesFormatUtil.format_user_groups_permissions(request, model_id)
+            for model_id in self.K8S_CHILD_MODELS
+        }
+        return instance, permission_maps, None
+
     @staticmethod
     def _get_allowed_org_ids(request) -> list[int]:
         current_team = get_current_team_from_request(request)
@@ -984,6 +1010,106 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             return permission_error
 
         result = InstanceManage.topo_search_test_config(int(inst_id), model_id)
+        return WebUtils.response_success(result)
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path=r"k8s_resource_overview/(?P<cluster_id>.+?)",
+    )
+    @HasPermission("asset_info-View")
+    def k8s_resource_overview(self, request, cluster_id: int):
+        _, permission_maps, error = self._k8s_resource_context(request, cluster_id)
+        if error:
+            return error
+        result = K8sResourceOverviewService.get_overview(
+            int(cluster_id), permission_maps=permission_maps, user=request.user
+        )
+        return WebUtils.response_success(result)
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path=r"k8s_resource_layer/(?P<cluster_id>.+?)/(?P<layer>.+?)",
+    )
+    @HasPermission("asset_info-View")
+    def k8s_resource_layer(self, request, cluster_id: int, layer: str):
+        _, permission_maps, error = self._k8s_resource_context(request, cluster_id)
+        if error:
+            return error
+        serializer = K8sLayerQuerySerializer(data=request.query_params, context={"layer": layer})
+        serializer.is_valid(raise_exception=True)
+        result = K8sResourceOverviewService.get_layer(
+            int(cluster_id),
+            layer,
+            permission_maps=permission_maps,
+            user=request.user,
+            **serializer.validated_data,
+        )
+        return WebUtils.response_success(result)
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path=r"k8s_workload_pods/(?P<cluster_id>.+?)/(?P<workload_id>.+?)",
+    )
+    @HasPermission("asset_info-View")
+    def k8s_workload_pods(self, request, cluster_id: int, workload_id: int):
+        _, permission_maps, error = self._k8s_resource_context(request, cluster_id)
+        if error:
+            return error
+        serializer = K8sPageQuerySerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        result = K8sResourceOverviewService.get_workload_pods(
+            int(cluster_id),
+            int(workload_id),
+            permission_maps=permission_maps,
+            user=request.user,
+            **serializer.validated_data,
+        )
+        return WebUtils.response_success(result)
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path=r"k8s_unowned_pods/(?P<cluster_id>.+?)",
+    )
+    @HasPermission("asset_info-View")
+    def k8s_unowned_pods(self, request, cluster_id: int):
+        _, permission_maps, error = self._k8s_resource_context(request, cluster_id)
+        if error:
+            return error
+        serializer = K8sPageQuerySerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        result = K8sResourceOverviewService.get_unowned_pods(
+            int(cluster_id),
+            permission_maps=permission_maps,
+            user=request.user,
+            **serializer.validated_data,
+        )
+        return WebUtils.response_success(result)
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path=r"k8s_resource_list/(?P<cluster_id>.+?)/(?P<kind>.+?)",
+    )
+    @HasPermission("asset_info-View")
+    def k8s_resource_list(self, request, cluster_id: int, kind: str):
+        _, permission_maps, error = self._k8s_resource_context(request, cluster_id)
+        if error:
+            return error
+        kind_serializer = K8sResourceKindSerializer(data={"kind": kind})
+        kind_serializer.is_valid(raise_exception=True)
+        serializer = K8sResourceListQuerySerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        result = K8sResourceOverviewService.list_resources(
+            int(cluster_id),
+            kind_serializer.validated_data["kind"],
+            permission_maps=permission_maps,
+            user=request.user,
+            **serializer.validated_data,
+        )
         return WebUtils.response_success(result)
 
     @action(

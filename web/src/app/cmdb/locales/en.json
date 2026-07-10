@@ -1026,5 +1026,30 @@
     },
     "IPAM": {
         "conflictFilter": "Conflict IPs"
+    },
+    "K8sResourceOverview": {
+        "title": "K8S Resources",
+        "resourceDetails": "Resource Details",
+        "nav": {
+            "overview": "Overview",
+            "namespace": "Namespaces",
+            "deployment": "Deployments",
+            "statefulset": "StatefulSets",
+            "daemonset": "DaemonSets",
+            "job": "Jobs",
+            "cronjob": "CronJobs",
+            "other_workload": "Other Workloads",
+            "pod": "Pods",
+            "node": "Nodes",
+            "workloadGroup": "Workloads"
+        },
+        "navGroups": { "workload": "Workloads", "pod": "Pods", "node": "Nodes" },
+        "metrics": { "namespace": "Namespaces", "workload": "Workloads", "otherWorkload": "Other workloads {count}", "pod": "Pods", "node": "Nodes" },
+        "facts": { "title": "Collection Facts", "lastReported": "Last reported", "lastSuccess": "Last successful collection", "lastResult": "Latest result / error", "collectorTask": "Collector task" },
+        "actions": { "refresh": "Refresh", "retry": "Retry", "expandNav": "Expand resource navigation", "collapseNav": "Collapse resource navigation", "expandPods": "Expand Pods", "collapsePods": "Collapse Pods", "loadMorePods": "Load more Pods", "retryPods": "Retry Pod loading", "expandUnowned": "Expand unowned Pods", "collapseUnowned": "Collapse unowned Pods", "viewResources": "View related resources", "loadMore": "Load more", "zoomOut": "Zoom out", "zoomIn": "Zoom in", "fit": "Fit canvas" },
+        "states": { "emptyTopology": "No visible topology resources", "overviewError": "Failed to load Kubernetes resource overview", "listError": "Failed to load resource list", "podError": "Failed to load Pods", "unownedError": "Failed to load unowned Pods", "waiting": "Queued", "loading": "Loading", "failed": "Failed", "shown": "Showing {loaded}/{count}", "layerShown": "Showing {shown} / {count}", "noData": "—" },
+        "list": { "search": "Search by name", "namespaceFilter": "Namespace", "workloadFilter": "Workload", "nodeFilter": "Node", "total": "{total} items" },
+        "columns": { "name": "Name", "workload_count": "Workloads", "pod_count": "Pods", "namespace": "Namespace", "workload": "Workload", "workload_type": "Type", "replicas": "Replicas", "node": "Node", "ip_addr": "Pod IP", "request_cpu": "CPU request", "request_memory": "Memory request", "limit_cpu": "CPU limit", "limit_memory": "Memory limit", "role": "Role", "cpu": "CPU", "memory": "Memory", "disk": "Disk" },
+        "accessibility": { "topology": "Kubernetes resource topology. Click to focus, right-click for read-only actions.", "legend": "Legend" }
     }
 }
