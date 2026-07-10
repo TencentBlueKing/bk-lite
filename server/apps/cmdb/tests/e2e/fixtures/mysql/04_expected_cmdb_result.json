@@ -2,15 +2,15 @@
   "model_id": "mysql",
   "instance_count_min": 1,
   "expected_instance_subset": {
-    "inst_name":     "10.0.0.41-mysql-3306",
-    "ip_addr":       "10.0.0.41",
-    "port":          "3306",
-    "version":       "8.0.36",
-    "enable_binlog": "ON",
-    "basedir":       "/usr/local/mysql",
-    "datadir":       "/var/lib/mysql",
-    "bind_address":  "0.0.0.0",
-    "slow_query_log": "ON",
-    "wait_timeout":  "28800"
-  }
+    "inst_name": "127.0.0.1-mysql-13306",
+    "ip_addr":   "127.0.0.1",
+    "port":      "13306",
+    "version":   "8.0.46",
+    "basedir":   "/usr/",
+    "datadir":   "/var/lib/mysql/"
+  },
+  "fixture_source_for_end_to_end": "fixtures/mysql/01_raw_collector.json(人造 raw,2026-07-08 Phase 5 落盘,ip=10.0.0.41)",
+  "fixture_source_for_fixture_driven": "agents/stargazer/tests/fixtures/collect/mysql.json(2026-07-04 cli 真实落盘,ip=127.0.0.1)",
+  "test_expected_subset_notes": "本表是 fixture_driven 的 expected_subset(end_to_end 用 10.0.0.41 raw,fixture_driven 用 127.0.0.1 raw)",
+  "notes": "G5.2.x Phase 2.2 第二闭环;db 类 runner 用 DatabasesCollectMetrics,extra_payload_keys=None(平铺)。role/master_host 等非 plugin field_mapping 字段不入实例"
 }
