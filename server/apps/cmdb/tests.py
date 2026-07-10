@@ -1357,11 +1357,7 @@ def test_node_mgmt_sync_service_fetch_non_container_nodes_uses_rpc_payload():
             "_error": "",
         }
     ]
-    node_mgmt.node_list.assert_called_once_with({
-        "page": 1,
-        "page_size": NodeMgmtSyncService.NODE_MGMT_SYNC_PAGE_SIZE,
-        "is_container": False,
-    })
+    node_mgmt.node_list.assert_called_once_with({"page": 1, "page_size": -1, "is_container": False})
 
 
 def test_node_mgmt_sync_service_pick_access_point_uses_rpc_payload():
@@ -1381,12 +1377,7 @@ def test_node_mgmt_sync_service_pick_access_point_uses_rpc_payload():
         result = NodeMgmtSyncService._pick_access_point(1)
 
     assert result == {"id": "container-new", "name": "new", "cloud": 1, "cloud_name": "default"}
-    node_mgmt.node_list.assert_called_once_with({
-        "page": 1,
-        "page_size": NodeMgmtSyncService.NODE_MGMT_SYNC_PAGE_SIZE,
-        "cloud_region_id": 1,
-        "is_container": True,
-    })
+    node_mgmt.node_list.assert_called_once_with({"page": 1, "page_size": -1, "cloud_region_id": 1, "is_container": True})
 
 
 def test_node_mgmt_sync_service_serialize_config_returns_defaults():

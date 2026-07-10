@@ -189,56 +189,22 @@ class TestRpcWrappers:
     def test_fetch_non_container_nodes_过滤无云区域(self, mocker):
         rpc = mocker.MagicMock()
         rpc.cloud_region_list.return_value = [{"id": 1, "name": "华东"}]
-        rpc.node_list.side_effect = [
-            {
-                "count": 3,
-                "nodes": [
-                    {"id": "n1", "name": "host1", "ip": "1.1.1.1", "cloud_region_id": 1,
-                     "operating_system": "linux", "organization": [10]},
-                    {"id": "n2", "name": "host2", "ip": "2.2.2.2", "cloud_region_id": 1,
-                     "operating_system": "linux", "organization": [10]},
-                ],
-            },
-            {
-                "count": 3,
-                "nodes": [
-                    {"id": "n3", "name": "host3", "ip": "3.3.3.3"},  # 无云区域被跳过
-                ],
-            },
-        ]
-        mocker.patch.object(S, "NODE_MGMT_SYNC_PAGE_SIZE", 2)
+        rpc.node_list.return_value = {
+            "nodes": [
+                {"id": "n1", "name": "host1", "ip": "1.1.1.1", "cloud_region_id": 1,
+                 "operating_system": "linux", "organization": [10]},
+                {"id": "n2", "name": "host2", "ip": "2.2.2.2"},  # 无云区域被跳过
+            ]
+        }
         mocker.patch.object(S, "_node_mgmt_client", return_value=rpc)
         out = S._fetch_non_container_nodes()
-        assert len(out) == 2
+        assert len(out) == 1
         node = out[0]
         assert node["id"] == "n1"
         assert node["cloud_region_name"] == "华东"
         assert node["os_type"] == "linux"
         assert node["organization_ids"] == [10]
         assert node["model_id"] == "host"
-        assert rpc.node_list.call_args_list == [
-            mocker.call({"is_container": False, "page": 1, "page_size": 2}),
-            mocker.call({"is_container": False, "page": 2, "page_size": 2}),
-        ]
-
-    def test_fetch_node_mgmt_pages_按count继续翻页(self, mocker):
-        rpc = mocker.MagicMock()
-        rpc.node_list.side_effect = [
-            {"count": 1200, "nodes": [{"id": f"n-{idx}"} for idx in range(500)]},
-            {"count": 1200, "nodes": [{"id": f"n-{idx}"} for idx in range(500, 1000)]},
-            {"count": 1200, "nodes": [{"id": f"n-{idx}"} for idx in range(1000, 1200)]},
-        ]
-        mocker.patch.object(S, "NODE_MGMT_SYNC_PAGE_SIZE", 1000)
-        mocker.patch.object(S, "_node_mgmt_client", return_value=rpc)
-
-        nodes = S._fetch_node_mgmt_pages({"is_container": False})
-
-        assert len(nodes) == 1200
-        assert rpc.node_list.call_args_list == [
-            mocker.call({"is_container": False, "page": 1, "page_size": 1000}),
-            mocker.call({"is_container": False, "page": 2, "page_size": 1000}),
-            mocker.call({"is_container": False, "page": 3, "page_size": 1000}),
-        ]
 
     def test_pick_access_point_无容器节点返回None(self, mocker):
         rpc = mocker.MagicMock()
@@ -250,26 +216,17 @@ class TestRpcWrappers:
     def test_pick_access_point_选最新updated_at(self, mocker):
         rpc = mocker.MagicMock()
         rpc.cloud_region_list.return_value = [{"id": 1, "name": "华东"}]
-        rpc.node_list.side_effect = [
-            {
-                "count": 3,
-                "nodes": [
-                    {"id": "c1", "name": "old", "updated_at": "2026-01-01"},
-                    {"id": "c2", "name": "middle", "updated_at": "2026-06-01"},
-                ],
-            },
-            {"count": 3, "nodes": [{"id": "c3", "name": "new", "updated_at": "2026-07-01"}]},
-        ]
-        mocker.patch.object(S, "NODE_MGMT_SYNC_PAGE_SIZE", 2)
+        rpc.node_list.return_value = {
+            "nodes": [
+                {"id": "c1", "name": "old", "updated_at": "2026-01-01"},
+                {"id": "c2", "name": "new", "updated_at": "2026-06-01"},
+            ]
+        }
         mocker.patch.object(S, "_node_mgmt_client", return_value=rpc)
         ap = S._pick_access_point(1)
-        assert ap["id"] == "c3"
+        assert ap["id"] == "c2"
         assert ap["cloud"] == 1
         assert ap["cloud_name"] == "华东"
-        assert rpc.node_list.call_args_list == [
-            mocker.call({"cloud_region_id": 1, "is_container": True, "page": 1, "page_size": 2}),
-            mocker.call({"cloud_region_id": 1, "is_container": True, "page": 2, "page_size": 2}),
-        ]
 
 
 class TestDbSerialization:
