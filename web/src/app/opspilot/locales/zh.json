@@ -83,7 +83,7 @@
     "aliasTerms": "别名",
     "aliasTermsPlaceholder": "输入别名后回车",
     "addTitleAlias": "添加别名规则",
-    "webSyncEnabled": "定时刷新网页资料",
+    "webSyncEnabled": "定时刷新",
     "webSyncTip": "开启后按间隔自动重新抓取网页资料并解析,内容变化触发安全更新",
     "webSyncInterval": "刷新间隔",
     "hours": "小时",

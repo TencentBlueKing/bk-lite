@@ -83,7 +83,7 @@
     "aliasTerms": "Aliases",
     "aliasTermsPlaceholder": "Type an alias and press Enter",
     "addTitleAlias": "Add alias rule",
-    "webSyncEnabled": "Scheduled web refresh",
+    "webSyncEnabled": "Auto refresh",
     "webSyncTip": "Periodically re-fetch and re-parse web materials; changes trigger a safe update",
     "webSyncInterval": "Refresh interval",
     "hours": "hours",
