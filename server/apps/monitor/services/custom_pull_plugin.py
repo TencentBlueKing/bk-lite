@@ -81,7 +81,7 @@ DEFAULT_PULL_UI_TEMPLATE = {
             "label": "采集间隔",
             "type": "inputNumber",
             "required": True,
-            "default_value": 10,
+            "default_value": 60,
             "description": "监控数据的采集时间间隔（单位：秒）",
             "widget_props": {"min": 1, "precision": 0, "placeholder": "间隔", "addonAfter": "s"},
             "transform_on_edit": {
