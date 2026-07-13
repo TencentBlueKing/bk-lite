@@ -278,6 +278,27 @@ class InstanceManage(object):
         return result
 
     @staticmethod
+    def query_entity_page_by_ids(inst_ids: list[int], page: int = 1, page_size: int = 50, order: str = "inst_name"):
+        """按 ID 候选集在图查询层排序分页，避免先加载实体再在 Service 内切片。"""
+        normalized_ids = sorted({int(inst_id) for inst_id in inst_ids if str(inst_id).strip()})
+        if not normalized_ids:
+            return [], 0
+
+        normalized_page = max(1, int(page))
+        normalized_page_size = max(1, int(page_size))
+        normalized_order = str(order or "inst_name")
+        if normalized_order.startswith("-"):
+            normalized_order = f"{normalized_order[1:]} DESC"
+
+        with GraphClient() as ag:
+            return ag.query_entity(
+                INSTANCE,
+                [{"field": "id", "type": "id[]", "value": normalized_ids}],
+                page={"skip": (normalized_page - 1) * normalized_page_size, "limit": normalized_page_size},
+                order=normalized_order,
+            )
+
+    @staticmethod
     def _has_topology_view_permission(instance: dict | None, permission_map: dict | None, user=None) -> bool:
         if instance is None:
             return False

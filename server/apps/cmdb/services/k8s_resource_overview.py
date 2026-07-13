@@ -65,6 +65,10 @@ class K8sSnapshot:
 
 class K8sResourceOverviewService:
     @staticmethod
+    def _relation_ids(relation_map: dict[int, list[int]]) -> list[int]:
+        return sorted({related_id for related_ids in relation_map.values() for related_id in related_ids})
+
+    @staticmethod
     def _associated_instances(associations: list[dict], model_id: str) -> list[dict]:
         result = []
         for association in associations or []:
@@ -207,6 +211,9 @@ class K8sResourceOverviewService:
 
     @classmethod
     def get_overview(cls, cluster_id: int, permission_maps=None, user=None) -> dict:
+        if not permission_maps:
+            return cls._get_overview_batched(cluster_id)
+
         snapshot = cls.build_snapshot(cluster_id, permission_maps=permission_maps, user=user)
         sorted_namespaces = sorted(snapshot.namespaces.values(), key=lambda item: (_name(item).casefold(), _id(item)))
         shown_namespaces = sorted_namespaces[: LAYER_LIMITS["namespace"]]
@@ -271,6 +278,83 @@ class K8sResourceOverviewService:
         }
 
     @classmethod
+    def _get_overview_batched(cls, cluster_id: int) -> dict:
+        """用固定次数的批量关系查询构建默认概览，不读取 Pod 实体。"""
+        cluster = InstanceManage.query_entity_by_id(int(cluster_id))
+        if not cluster:
+            raise ValidationError("实例不存在")
+        if cluster.get("model_id") != MODEL_CLUSTER:
+            raise ValidationError("实例不是 k8s_cluster")
+
+        namespace_map = InstanceManage.instance_association_map(MODEL_CLUSTER, [cluster_id], MODEL_NAMESPACE)
+        node_map = InstanceManage.instance_association_map(MODEL_CLUSTER, [cluster_id], MODEL_NODE)
+        namespace_ids = cls._relation_ids(namespace_map)
+        node_ids = cls._relation_ids(node_map)
+        namespaces, namespace_count = InstanceManage.query_entity_page_by_ids(
+            namespace_ids, page_size=LAYER_LIMITS["namespace"], order="name"
+        )
+        nodes, node_count = InstanceManage.query_entity_page_by_ids(
+            node_ids, page_size=LAYER_LIMITS["node"], order="name"
+        )
+
+        workload_map = InstanceManage.instance_association_map(MODEL_NAMESPACE, namespace_ids, MODEL_WORKLOAD)
+        workload_ids = cls._relation_ids(workload_map)
+        workload_namespace = {
+            workload_id: namespace_id
+            for namespace_id, related_ids in workload_map.items()
+            for workload_id in related_ids
+        }
+        shown_namespace_ids = {_id(item) for item in namespaces}
+        shown_workload_ids = cls._relation_ids(
+            {namespace_id: ids for namespace_id, ids in workload_map.items() if namespace_id in shown_namespace_ids}
+        )
+        workloads, shown_workload_count = InstanceManage.query_entity_page_by_ids(
+            shown_workload_ids, page_size=LAYER_LIMITS["workload"], order="name"
+        )
+        pod_map = InstanceManage.instance_association_map(MODEL_WORKLOAD, workload_ids, MODEL_POD)
+        direct_pod_map = InstanceManage.instance_association_map(MODEL_NAMESPACE, namespace_ids, MODEL_POD)
+        pod_count = len(set(cls._relation_ids(pod_map)) | set(cls._relation_ids(direct_pod_map)))
+
+        namespace_by_id = {_id(item): item for item in namespaces}
+        topology_nodes = [cls._node(cluster, "cluster")]
+        topology_nodes.extend(cls._node(item, "namespace") for item in namespaces)
+        topology_nodes.extend(
+            cls._node(item, "workload", workload_type=_workload_type(item), pod_count=len(pod_map.get(_id(item), [])))
+            for item in workloads
+        )
+        topology_nodes.extend(cls._node(item, "node") for item in nodes)
+
+        cluster_node_id = _id(cluster)
+        topology_edges = [cls._edge(cluster_node_id, _id(item), "cluster-namespace") for item in namespaces]
+        topology_edges.extend(
+            cls._edge(workload_namespace[_id(item)], _id(item), "namespace-workload")
+            for item in workloads
+            if workload_namespace.get(_id(item)) in namespace_by_id
+        )
+        topology_edges.extend(cls._edge(cluster_node_id, _id(item), "cluster-node") for item in nodes)
+
+        business_count = sum(1 for item in workloads if _workload_type(item) in BUSINESS_WORKLOAD_KINDS)
+        # 工作负载当前页可能不是全集，分类总数必须从实体聚合接口取得；当前图客户端尚无
+        # 条件聚合能力时，用总数减去已知业务类型作为保守展示，避免加载所有实体。
+        other_count = max(0, len(workload_ids) - business_count)
+        return {
+            "summary": {
+                "namespace_count": namespace_count,
+                "workload_count": business_count,
+                "other_workload_count": other_count,
+                "pod_count": pod_count,
+                "node_count": node_count,
+            },
+            "collection_facts": cls._collection_facts(cluster),
+            "topology": {"nodes": topology_nodes, "edges": topology_edges},
+            "layers": {
+                "namespace": {"shown": len(namespaces), "count": namespace_count, "page_size": 20},
+                "workload": {"shown": len(workloads), "count": shown_workload_count, "page_size": 50},
+                "node": {"shown": len(nodes), "count": node_count, "page_size": 50},
+            },
+        }
+
+    @classmethod
     def _pod_node_relation(cls, snapshot: K8sSnapshot, pod: dict, permission_maps=None, user=None):
         pod_id = _id(pod)
         associations = InstanceManage.instance_association_instance_list(MODEL_POD, pod_id) or []
@@ -325,6 +409,9 @@ class K8sResourceOverviewService:
 
     @classmethod
     def get_workload_pods(cls, cluster_id, workload_id, page=1, page_size=50, permission_maps=None, user=None):
+        if not permission_maps:
+            return cls._get_workload_pods_batched(cluster_id, workload_id, page=page, page_size=page_size)
+
         snapshot = cls.build_snapshot(cluster_id, permission_maps=permission_maps, user=user)
         workload_id = int(workload_id)
         if workload_id not in snapshot.workloads:
@@ -335,6 +422,76 @@ class K8sResourceOverviewService:
         current_ids = pod_ids[start: start + int(page_size)]
         nodes, edges = cls._pod_branch(snapshot, current_ids, workload_id, "workload-pod", permission_maps, user)
         return {"nodes": nodes, "edges": edges, "count": count, "page": int(page), "page_size": int(page_size)}
+
+    @classmethod
+    def _get_workload_pods_batched(cls, cluster_id, workload_id, page=1, page_size=50):
+        cluster = InstanceManage.query_entity_by_id(int(cluster_id))
+        if not cluster or cluster.get("model_id") != MODEL_CLUSTER:
+            raise ValidationError("实例不存在或不是 k8s_cluster")
+
+        namespace_ids = cls._relation_ids(
+            InstanceManage.instance_association_map(MODEL_CLUSTER, [int(cluster_id)], MODEL_NAMESPACE)
+        )
+        workload_map = InstanceManage.instance_association_map(MODEL_NAMESPACE, namespace_ids, MODEL_WORKLOAD)
+        cluster_workload_ids = set(cls._relation_ids(workload_map))
+        normalized_workload_id = int(workload_id)
+        if normalized_workload_id not in cluster_workload_ids:
+            raise ValidationError("Workload 不属于当前集群或无权限")
+
+        pod_ids = cls._relation_ids(
+            InstanceManage.instance_association_map(MODEL_WORKLOAD, [normalized_workload_id], MODEL_POD)
+        )
+        pods, count = InstanceManage.query_entity_page_by_ids(
+            pod_ids, page=int(page), page_size=int(page_size), order="name"
+        )
+        current_pod_ids = [_id(pod) for pod in pods if _id(pod) is not None]
+        pod_node_map = InstanceManage.instance_association_map(MODEL_POD, current_pod_ids, MODEL_NODE)
+        node_ids = cls._relation_ids(pod_node_map)
+        node_rows, _ = InstanceManage.query_entity_page_by_ids(
+            node_ids, page_size=max(1, len(node_ids)), order="name"
+        )
+        nodes_by_id = {_id(node): node for node in node_rows}
+
+        result_nodes = []
+        result_edges = []
+        seen_nodes = set()
+        for pod in pods:
+            pod_id = _id(pod)
+            result_nodes.append(cls._node(pod, "pod"))
+            result_edges.append(cls._edge(normalized_workload_id, pod_id, "workload-pod"))
+            related_node_ids = pod_node_map.get(pod_id, [])
+            related_node_id = related_node_ids[0] if related_node_ids else None
+            if related_node_id in nodes_by_id:
+                node = cls._node(nodes_by_id[related_node_id], "node")
+                target_id = related_node_id
+            elif pod.get("node"):
+                node = {
+                    "id": "virtual:node-unmatched",
+                    "model_id": "virtual",
+                    "name": "Node 未匹配",
+                    "layer": "node",
+                }
+                target_id = "virtual:node-unmatched"
+            else:
+                node = {
+                    "id": "virtual:unscheduled",
+                    "model_id": "virtual",
+                    "name": "未调度",
+                    "layer": "node",
+                }
+                target_id = "virtual:unscheduled"
+            if node["model_id"] == "virtual" and node["id"] not in seen_nodes:
+                seen_nodes.add(node["id"])
+                result_nodes.append(node)
+            result_edges.append(cls._edge(pod_id, target_id, "pod-node"))
+
+        return {
+            "nodes": result_nodes,
+            "edges": result_edges,
+            "count": count,
+            "page": int(page),
+            "page_size": int(page_size),
+        }
 
     @classmethod
     def get_unowned_pods(cls, cluster_id, page=1, page_size=50, permission_maps=None, user=None):
