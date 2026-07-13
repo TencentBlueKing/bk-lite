@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import { Button, Input, Select, Tooltip } from 'antd';
+import { Button, Cascader, Input, Select, Tooltip } from 'antd';
 import { CloseOutlined, PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import {
@@ -9,8 +9,10 @@ import {
   IndexViewItem,
   ListItem,
   MetricItem,
-  UnitListItem
+  UnitListItem,
+  CascaderItem
 } from '@/app/monitor/types';
+import { findCascaderPath } from '@/app/monitor/utils/common';
 import {
   getMetricDimensionNames,
   sanitizeGroupBy
@@ -30,6 +32,9 @@ interface MetricExpressionEditorProps {
   expression: string;
   resultUnit: string | null;
   unitOptions: UnitListItem[];
+  metricUnit: string | null;
+  onMetricUnitChange: (value: string) => void;
+  groupedUnitOptions: CascaderItem[];
   labelsByRef: Record<string, string[]>;
   originMetricData: IndexViewItem[];
   groupByOptions: string[];
@@ -49,6 +54,9 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
   expression,
   resultUnit,
   unitOptions,
+  metricUnit,
+  onMetricUnitChange,
+  groupedUnitOptions,
   labelsByRef,
   originMetricData,
   groupByOptions,
@@ -181,6 +189,10 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
     label: `${item.label.toString().toLowerCase()} by`,
     value: item.value
   }));
+
+  // 透传 metricUnit 给上层(由 MetricDefinitionForm 渲染 Cascader)
+  void metricUnit;
+  void onMetricUnitChange;
 
   return (
     <div className="rounded-md border border-[var(--color-border-2)] bg-[var(--color-bg-1)] shadow-sm">
@@ -371,10 +383,12 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
               placeholder="a / b * 100"
               onChange={(event) => onExpressionChange(event.target.value)}
             />
-            <Select
+            <Cascader
               className="w-full"
               showSearch
-              value={resultUnit}
+              value={
+                resultUnit ? findCascaderPath(groupedUnitOptions, resultUnit) : []
+              }
               aria-label={translateWithFallback(
                 'monitor.events.formulaResultUnit',
                 '结果单位'
@@ -383,17 +397,10 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
                 'monitor.events.formulaResultUnit',
                 '结果单位'
               )}
-              options={unitOptions.map((option) => ({
-                label: option.display_unit || option.unit_name,
-                value: option.unit_id
-              }))}
-              filterOption={(input, option) =>
-                (option?.label || '')
-                  .toString()
-                  .toLowerCase()
-                  .includes(input.toLowerCase())
+              options={groupedUnitOptions}
+              onChange={(path) =>
+                onResultUnitChange((path as (string | number)[]).at(-1) as string)
               }
-              onChange={onResultUnitChange}
             />
           </div>
         )}
