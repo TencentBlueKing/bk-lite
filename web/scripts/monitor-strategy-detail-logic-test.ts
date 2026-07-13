@@ -2,17 +2,19 @@ import assert from 'node:assert/strict';
 
 import {
   FORMULA_DEFAULT_RESULT_UNIT,
+  buildMetricUnitCascaderOptions,
   filterInvalidCalculationUnit,
   getCalculationUnitOnMetricRowsChange,
   getMetricThresholdEnumState,
   getReverseModeCalculationUnit,
-  getThresholdUnitFilterBase,
   getThresholdUnitOptions,
   getValidThresholdUnitOptions,
+  isValidMetricUnit,
   resolveFormulaResultUnit,
   resolveInitialMetricPluginId,
 } from '../src/app/monitor/(pages)/event/strategy/detail/strategyDetailUtils';
 import type { MetricExpressionMode } from '../src/app/monitor/(pages)/event/strategy/detail/formulaExpressionUtils';
+import type { GroupedUnitList } from '../src/app/monitor/types';
 import { UnitListItem } from '../src/app/monitor/types';
 
 const plugins = [
@@ -198,35 +200,10 @@ assert.deepEqual(
   }
 );
 
-assert.equal(
-  getThresholdUnitFilterBase({
-    isFormulaMode: true,
-    formulaResultUnit: 'percent',
-    selectedMetricUnit: 'bytes',
-  }),
-  'percent'
-);
-assert.equal(
-  getThresholdUnitFilterBase({
-    isFormulaMode: false,
-    formulaResultUnit: 'percent',
-    selectedMetricUnit: 'bytes',
-  }),
-  'bytes'
-);
-assert.equal(
-  getThresholdUnitFilterBase({
-    isFormulaMode: false,
-    formulaResultUnit: 'percent',
-    selectedMetricUnit: null,
-  }),
-  null
-);
-
 assert.deepEqual(
   getThresholdUnitOptions({
     unitList,
-    unitFilterBase: 'percent',
+    metricUnit: 'percent',
     isEnumMetric: false,
   }).map((item) => item.unit_id),
   ['percent']
@@ -234,7 +211,7 @@ assert.deepEqual(
 assert.deepEqual(
   getThresholdUnitOptions({
     unitList,
-    unitFilterBase: 'bytes',
+    metricUnit: 'bytes',
     isEnumMetric: false,
   }).map((item) => item.unit_id),
   ['bytes', 'kilobytes']
@@ -242,7 +219,7 @@ assert.deepEqual(
 assert.deepEqual(
   getThresholdUnitOptions({
     unitList,
-    unitFilterBase: 'watts',
+    metricUnit: 'watts',
     isEnumMetric: false,
   }).map((item) => item.unit_id),
   ['watts']
@@ -250,7 +227,7 @@ assert.deepEqual(
 assert.deepEqual(
   getThresholdUnitOptions({
     unitList,
-    unitFilterBase: 'bytes',
+    metricUnit: 'bytes',
     isEnumMetric: true,
   }),
   []
@@ -258,7 +235,7 @@ assert.deepEqual(
 assert.deepEqual(
   getThresholdUnitOptions({
     unitList,
-    unitFilterBase: 'none',
+    metricUnit: 'none',
     isEnumMetric: false,
   }),
   []
@@ -352,5 +329,70 @@ assert.deepEqual(
   }),
   { isEnumMetric: true, enumOptions: [{ id: 1, name: 'up' }] }
 );
+
+const groupedUnitList: GroupedUnitList[] = [
+  {
+    label: 'Data',
+    children: [
+      { unit_id: 'bytes', unit_name: '字节', display_unit: 'B', label: '字节', value: 'bytes', unit: 'B' },
+      { unit_id: 'kibibytes', unit_name: '千字节', display_unit: 'KiB', label: '千字节', value: 'kibibytes', unit: 'KiB' },
+    ],
+  },
+  {
+    label: 'Time',
+    children: [
+      { unit_id: 'seconds', unit_name: '秒', display_unit: 's', label: '秒', value: 'seconds', unit: 's' },
+    ],
+  },
+  {
+    label: 'Base',
+    children: [
+      { unit_id: 'none', unit_name: '无单位', display_unit: '', label: '无单位', value: 'none', unit: '' },
+    ],
+  },
+];
+
+// buildMetricUnitCascaderOptions:保留全量节点(value=unit_id,label=unit_name)
+const cascaderOptions = buildMetricUnitCascaderOptions(groupedUnitList);
+assert.equal(cascaderOptions.length, 3);
+assert.equal(cascaderOptions[0].value, 'Data');
+assert.equal(cascaderOptions[0].children?.length, 2);
+assert.equal(cascaderOptions[0].children?.[0].value, 'bytes');
+
+// isValidMetricUnit:含 'none'/'short'/空/undefined 一律 false
+assert.equal(isValidMetricUnit('bytes', groupedUnitList), true);
+assert.equal(isValidMetricUnit('kibibytes', groupedUnitList), true);
+assert.equal(isValidMetricUnit('seconds', groupedUnitList), true);
+assert.equal(isValidMetricUnit('none', groupedUnitList), false);
+assert.equal(isValidMetricUnit('unknown', groupedUnitList), false);
+assert.equal(isValidMetricUnit(null, groupedUnitList), false);
+assert.equal(isValidMetricUnit(undefined, groupedUnitList), false);
+assert.equal(isValidMetricUnit('', groupedUnitList), false);
+
+// getThresholdUnitOptions(新签名:metricUnit 基准) — 同 system 过滤
+const crossSystemUnitList: UnitListItem[] = [
+  { unit_id: 'bytes', unit_name: '字节', display_unit: 'B', category: 'Data', system: 'bytes', description: '', is_standalone: false },
+  { unit_id: 'kibibytes', unit_name: '千字节', display_unit: 'KiB', category: 'Data', system: 'bytes', description: '', is_standalone: false },
+  { unit_id: 'mebibytes', unit_name: '兆字节', display_unit: 'MiB', category: 'Data', system: 'bytes', description: '', is_standalone: false },
+  { unit_id: 'seconds', unit_name: '秒', display_unit: 's', category: 'Time', system: 'seconds', description: '', is_standalone: false },
+  { unit_id: 'minutes', unit_name: '分钟', display_unit: 'min', category: 'Time', system: 'seconds', description: '', is_standalone: false },
+  { unit_id: 'none', unit_name: '无单位', display_unit: '', category: 'Base', system: 'none', description: '', is_standalone: false },
+];
+
+const bytesOptions = getThresholdUnitOptions({ unitList: crossSystemUnitList, metricUnit: 'bytes', isEnumMetric: false });
+assert.deepEqual(
+  bytesOptions.map((u) => u.unit_id).sort(),
+  ['bytes', 'kibibytes', 'mebibytes']
+);
+
+const secondsOptions = getThresholdUnitOptions({ unitList: crossSystemUnitList, metricUnit: 'seconds', isEnumMetric: false });
+assert.deepEqual(
+  secondsOptions.map((u) => u.unit_id),
+  ['seconds', 'minutes']
+);
+
+// 枚举类型:返回空
+const enumOptions = getThresholdUnitOptions({ unitList: crossSystemUnitList, metricUnit: 'bytes', isEnumMetric: true });
+assert.equal(enumOptions.length, 0);
 
 console.log('monitor-strategy-detail logic validation passed');

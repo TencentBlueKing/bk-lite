@@ -26,8 +26,8 @@ interface EnumOption {
 interface ThresholdListProps {
   data: ThresholdItem[];
   onChange?: (data: ThresholdItem[]) => void;
-  calculationUnit: string | null;
-  onUnitChange: (unit: string) => void;
+  thresholdUnit: string | null;
+  onThresholdUnitChange: (unit: string) => void;
   unitOptions?: any[];
   isEnumMetric?: boolean;
   enumOptions?: EnumOption[];
@@ -36,8 +36,8 @@ interface ThresholdListProps {
 const ThresholdList: React.FC<ThresholdListProps> = ({
   data = [],
   onChange,
-  calculationUnit,
-  onUnitChange,
+  thresholdUnit,
+  onThresholdUnitChange,
   unitOptions = [],
   isEnumMetric = false,
   enumOptions = []
@@ -61,14 +61,14 @@ const ThresholdList: React.FC<ThresholdListProps> = ({
     onChange?.(newData);
   };
 
-  const handleUnitChange = (value: string) => {
-    onUnitChange(value);
+  const handleThresholdUnitChange = (value: string) => {
+    onThresholdUnitChange(value);
   };
 
   // 获取当前选中单位的显示文本
   const getUnitLabel = () => {
     const selectedUnit = unitOptions.find(
-      (option) => option.unit_id === calculationUnit
+      (option) => option.unit_id === thresholdUnit
     );
     return selectedUnit?.display_unit || selectedUnit?.unit_name || '';
   };
@@ -80,7 +80,7 @@ const ThresholdList: React.FC<ThresholdListProps> = ({
         <div className="flex justify-end mb-[10px]">
           <span className="mr-[10px] leading-[32px]">{t('common.unit')}:</span>
           <Select
-            value={calculationUnit}
+            value={thresholdUnit}
             style={{ width: 180 }}
             showSearch
             filterOption={(input, option) =>
@@ -90,7 +90,7 @@ const ThresholdList: React.FC<ThresholdListProps> = ({
               label: option.display_unit || option.unit_name,
               value: option.unit_id
             }))}
-            onChange={handleUnitChange}
+            onChange={handleThresholdUnitChange}
           />
         </div>
       )}
