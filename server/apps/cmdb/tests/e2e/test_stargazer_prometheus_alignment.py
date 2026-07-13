@@ -38,6 +38,8 @@ A_LABEL_EXCLUDE = {
     "inst_name",                                  # 派生字段,set by runner.set_instance_inst_name
     "model_id", "id", "create_time", "update_time",  # CMDB instance 系统字段
     "assos",                                      # 关联关系
+    # 字段重命名:plugin 接收 input X 产出 output Y(Y 跟 X 同名,需在 model 04 schema)
+    "cpu_arch",                                   # host 接收 cpu_architecture,runner set_cpu_arch 转
 }
 
 
@@ -175,7 +177,12 @@ def test_a_alignment_business_labels(model_id, load_fixture, runner_plugin_facto
     p2 = pipeline.step1_stargazer_normalize_generic(raw_items, model_id=model_id)
     p3 = pipeline.step2_push_to_vm(p2)
 
+    # 只检查主 metric({model_id}_info_gauge),不查附属 metric(如 host_proc_usage_info_gauge)
+    main_metric = f"{model_id}_info_gauge"
     for result_item in p3["data"]["result"]:
+        metric_name = result_item["metric"]["__name__"]
+        if metric_name != main_metric:
+            continue
         labels = set(result_item["metric"].keys())
         # 业务 label 集合 ⊇ model 必填字段(排除 system/derived 字段)
         missing = required_input_fields - labels
