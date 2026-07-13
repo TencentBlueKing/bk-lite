@@ -1,5 +1,6 @@
 import hashlib
 import uuid
+from datetime import timedelta
 
 from django.core.files.base import ContentFile
 from django.db import transaction
@@ -41,6 +42,13 @@ class ConfigFileContentLifecycle:
             return True
         if version_obj.content_status not in (ConfigFileContentStatus.PENDING, ConfigFileContentStatus.ERROR):
             return False
+        claimed = ConfigFileVersion.objects.filter(
+            id=version_id,
+            content_status=version_obj.content_status,
+            content_updated_at=version_obj.content_updated_at,
+        ).update(content_updated_at=now())
+        if not claimed:
+            return ConfigFileVersion.objects.filter(id=version_id, content_status=ConfigFileContentStatus.READY).exists()
 
         try:
             if not version_obj.temp_content_key:
@@ -115,6 +123,13 @@ class ConfigFileContentLifecycle:
         ).first()
         if not version_obj:
             return not ConfigFileVersion.objects.filter(id=version_id).exists()
+        claimed = ConfigFileVersion.objects.filter(
+            id=version_id,
+            content_status=ConfigFileContentStatus.DELETE_PENDING,
+            content_updated_at=version_obj.content_updated_at,
+        ).update(content_updated_at=now())
+        if not claimed:
+            return not ConfigFileVersion.objects.filter(id=version_id).exists()
 
         try:
             storage = cls._storage()
@@ -137,3 +152,67 @@ class ConfigFileContentLifecycle:
                 content_updated_at=now(),
             )
             return False
+
+    @classmethod
+    def recover_stale(
+        cls,
+        *,
+        batch_size: int = 100,
+        lease_seconds: int = 900,
+        now_time=None,
+    ) -> dict:
+        current_time = now_time or now()
+        cutoff = current_time - timedelta(seconds=max(1, lease_seconds))
+        limit = max(1, min(int(batch_size), 1000))
+        candidates = list(
+            ConfigFileVersion.objects.filter(
+                content_status__in=[
+                    ConfigFileContentStatus.PENDING,
+                    ConfigFileContentStatus.ERROR,
+                    ConfigFileContentStatus.DELETE_PENDING,
+                ],
+                content_updated_at__lt=cutoff,
+            )
+            .order_by("content_updated_at", "id")
+            .values_list("id", "content_status")[:limit]
+        )
+        stats = {"scanned": len(candidates), "recovered": 0, "failed": 0}
+        for version_id, content_status in candidates:
+            if content_status == ConfigFileContentStatus.DELETE_PENDING:
+                recovered = cls.delete_version(version_id)
+            else:
+                recovered = cls.publish_version(version_id)
+            stats["recovered" if recovered else "failed"] += 1
+        return stats
+
+    @classmethod
+    def cleanup_orphan_temp_objects(
+        cls,
+        *,
+        retention_seconds: int = 86400,
+        batch_size: int = 100,
+        now_time=None,
+    ) -> int:
+        current_time = now_time or now()
+        cutoff = current_time - timedelta(seconds=max(1, retention_seconds))
+        limit = max(1, min(int(batch_size), 1000))
+        referenced_keys = set(
+            ConfigFileVersion.objects.exclude(temp_content_key="").values_list("temp_content_key", flat=True)
+        )
+        storage = cls._storage()
+        _directories, file_names = storage.listdir(cls.TEMP_PREFIX)
+        deleted = 0
+        for file_name in file_names:
+            if deleted >= limit:
+                break
+            object_key = f"{cls.TEMP_PREFIX}/{file_name}"
+            if object_key in referenced_keys:
+                continue
+            try:
+                if storage.get_modified_time(object_key) >= cutoff:
+                    continue
+                storage.delete(object_key)
+                deleted += 1
+            except Exception:
+                logger.exception("[ConfigFileContent] 清理孤儿临时对象失败 object_key=%s", object_key)
+        return deleted

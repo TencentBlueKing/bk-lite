@@ -1,8 +1,10 @@
 import hashlib
 import io
+from datetime import timedelta
 
 import pytest
 from django.db import transaction
+from django.utils.timezone import now
 
 from apps.cmdb.models.config_file_version import ConfigFileContentStatus, ConfigFileVersion, ConfigFileVersionStatus
 from apps.cmdb.services.config_file_content_lifecycle import ConfigFileContentLifecycle
@@ -14,6 +16,7 @@ class FakeStorage:
         self.saved_keys = []
         self.deleted_keys = []
         self.delete_error = None
+        self.modified_at = {}
 
     def save(self, key, content):
         self.objects[key] = content.read()
@@ -31,6 +34,13 @@ class FakeStorage:
             raise self.delete_error
         self.deleted_keys.append(key)
         self.objects.pop(key, None)
+
+    def listdir(self, prefix):
+        marker = prefix.rstrip("/") + "/"
+        return [], [key[len(marker) :] for key in self.objects if key.startswith(marker) and "/" not in key[len(marker) :]]
+
+    def get_modified_time(self, key):
+        return self.modified_at[key]
 
 
 @pytest.fixture
@@ -195,3 +205,97 @@ def test_request_delete_rollback_keeps_ready_row_and_object(fake_storage):
     version_obj.refresh_from_db()
     assert version_obj.content_status == ConfigFileContentStatus.READY
     assert fake_storage.objects["host/inst-1/formal.txt"] == b"v1"
+
+
+@pytest.mark.django_db
+def test_recover_stale_content_processes_publish_and_delete_in_batches(fake_storage):
+    pending = _create_version()
+    deleting = _create_version(
+        version="1700000000001",
+        content="host/inst-1/delete.txt",
+        temp_content_key="",
+        content_status=ConfigFileContentStatus.DELETE_PENDING,
+    )
+    fresh = _create_version(
+        version="1700000000002",
+        content="host/inst-1/fresh.txt",
+        temp_content_key="tmp/config-file/fresh.txt",
+    )
+    fake_storage.objects["tmp/config-file/staged.txt"] = b"v1"
+    fake_storage.objects["host/inst-1/delete.txt"] = b"old"
+    old_time = now() - timedelta(hours=1)
+    ConfigFileVersion.objects.filter(id__in=[pending.id, deleting.id]).update(content_updated_at=old_time)
+
+    stats = ConfigFileContentLifecycle.recover_stale(
+        batch_size=10,
+        lease_seconds=300,
+        now_time=now(),
+    )
+
+    pending.refresh_from_db()
+    fresh.refresh_from_db()
+    assert pending.content_status == ConfigFileContentStatus.READY
+    assert fresh.content_status == ConfigFileContentStatus.PENDING
+    assert not ConfigFileVersion.objects.filter(id=deleting.id).exists()
+    assert stats == {"scanned": 2, "recovered": 2, "failed": 0}
+
+
+@pytest.mark.django_db
+def test_cleanup_orphan_temp_objects_keeps_referenced_and_fresh_objects(fake_storage):
+    referenced_key = "tmp/config-file/referenced.txt"
+    old_orphan = "tmp/config-file/old-orphan.txt"
+    fresh_orphan = "tmp/config-file/fresh-orphan.txt"
+    _create_version(temp_content_key=referenced_key)
+    fake_storage.objects.update(
+        {
+            referenced_key: b"v1",
+            old_orphan: b"old",
+            fresh_orphan: b"fresh",
+        }
+    )
+    old_time = now() - timedelta(hours=2)
+    fake_storage.modified_at = {
+        referenced_key: old_time,
+        old_orphan: old_time,
+        fresh_orphan: now(),
+    }
+
+    deleted = ConfigFileContentLifecycle.cleanup_orphan_temp_objects(
+        retention_seconds=3600,
+        batch_size=10,
+        now_time=now(),
+    )
+
+    assert deleted == 1
+    assert referenced_key in fake_storage.objects
+    assert fresh_orphan in fake_storage.objects
+    assert old_orphan not in fake_storage.objects
+
+
+def test_periodic_task_combines_recovery_and_orphan_stats(monkeypatch):
+    from apps.cmdb.tasks.celery_tasks import reconcile_config_file_content_task
+
+    monkeypatch.setattr(
+        ConfigFileContentLifecycle,
+        "recover_stale",
+        classmethod(lambda cls: {"scanned": 3, "recovered": 2, "failed": 1}),
+    )
+    monkeypatch.setattr(
+        ConfigFileContentLifecycle,
+        "cleanup_orphan_temp_objects",
+        classmethod(lambda cls: 4),
+    )
+
+    assert reconcile_config_file_content_task() == {
+        "scanned": 3,
+        "recovered": 2,
+        "failed": 1,
+        "orphans_deleted": 4,
+    }
+
+
+def test_periodic_schedule_is_registered():
+    from apps.cmdb.config import CELERY_BEAT_SCHEDULE
+
+    schedule = CELERY_BEAT_SCHEDULE["reconcile_config_file_content_task"]
+    assert schedule["task"] == "apps.cmdb.tasks.celery_tasks.reconcile_config_file_content_task"

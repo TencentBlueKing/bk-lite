@@ -430,3 +430,14 @@ def reconcile_ipam_task() -> dict:
     result = run_reconciliation()
     logger.info(f"[IPAM] 对账完成: {result}")
     return result
+
+
+@shared_task
+def reconcile_config_file_content_task() -> dict:
+    from apps.cmdb.services.config_file_content_lifecycle import ConfigFileContentLifecycle
+
+    recovery = ConfigFileContentLifecycle.recover_stale()
+    orphans_deleted = ConfigFileContentLifecycle.cleanup_orphan_temp_objects()
+    result = {**recovery, "orphans_deleted": orphans_deleted}
+    logger.info("[ConfigFileContent] 周期补偿完成: %s", result)
+    return result
