@@ -63,6 +63,12 @@ class ConfigFileVersion(models.Model):
         verbose_name_plural = "配置文件版本"
         ordering = ["-created_at"]
         index_together = [("instance_id", "file_path"), ("collect_task_id",)]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["collect_task", "instance_id", "version"],
+                name="uniq_cfg_ver_task_inst_version",
+            ),
+        ]
 
     @property
     def content_key(self) -> str:

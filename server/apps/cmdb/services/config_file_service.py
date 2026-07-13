@@ -3,7 +3,7 @@ import difflib
 import hashlib
 from datetime import datetime
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Max, Q
 from django.utils.dateparse import parse_datetime
 from django.utils.timezone import get_current_timezone, is_aware, is_naive, make_aware, now
@@ -19,6 +19,10 @@ from apps.system_mgmt.utils.group_utils import GroupUtils
 from apps.core.utils.team_utils import get_current_team
 
 MAX_CONFIG_FILE_SIZE_LIMIT = 5 * 1024 * 1024
+
+
+class ConfigFileVersionConflict(BaseAppException):
+    pass
 
 
 class ConfigFileService(object):
@@ -122,6 +126,15 @@ class ConfigFileService(object):
                     instance_id=instance_id,
                 )
                 content_hash = hashlib.sha256(text_content.encode("utf-8")).hexdigest()
+                existing_version = ConfigFileVersion.objects.filter(
+                    collect_task=task,
+                    instance_id=instance_id,
+                    version=version,
+                ).first()
+                if existing_version:
+                    version_obj, _ = cls._resolve_existing_version(existing_version, content_hash)
+                    return {"version_obj": version_obj, "changed": False, "task_updated": False}
+
                 latest_success_version = cls._get_latest_success_version(task.id, instance_id, file_path)
                 if latest_success_version and latest_success_version.content_hash == content_hash:
                     task_updated = cls._update_task_lifecycle(
@@ -136,30 +149,21 @@ class ConfigFileService(object):
                     )
                     return {"version_obj": latest_success_version, "changed": False, "task_updated": task_updated}
 
-                version_obj, _ = ConfigFileVersion.objects.select_for_update().get_or_create(
-                    collect_task=task,
+                version_obj, created = cls._create_or_get_version(
+                    task=task,
                     instance_id=instance_id,
                     version=version,
-                    defaults={
-                        "model_id": model_id,
-                        "file_path": file_path,
-                        "file_name": file_name,
-                        "status": status,
-                        "file_size": file_size,
-                        "error_message": error_message,
-                    },
+                    model_id=model_id,
+                    file_path=file_path,
+                    file_name=file_name,
+                    status=status,
+                    file_size=file_size,
+                    error_message=error_message,
+                    content_hash=content_hash,
+                    text_content=text_content,
                 )
-                version_obj.model_id = model_id
-                version_obj.file_path = file_path
-                version_obj.file_name = file_name
-                version_obj.file_size = file_size
-                version_obj.status = status
-                version_obj.error_message = error_message
-                version_obj.content_hash = content_hash
-                if not version_obj.content:
-                    object_key = cls.build_object_key(model_id, instance_id, file_path, version)
-                    version_obj.save_content(text_content, object_key)
-                version_obj.save()
+                if not created:
+                    return {"version_obj": version_obj, "changed": False, "task_updated": False}
                 task_updated = cls._update_task_lifecycle(
                     task=task,
                     instance_id=instance_id,
@@ -173,11 +177,22 @@ class ConfigFileService(object):
                 return {"version_obj": version_obj, "changed": True, "task_updated": task_updated}
         except Exception as err:
             logger.exception("[ConfigFileService] 处理配置文件回调失败并转为任务闭环: task_id=%s", task.id)
-            task_updated = cls._close_task_on_processing_error(task=task, payload=payload, error=err)
+            task_updated = cls._close_task_on_processing_error(
+                task=task,
+                payload=payload,
+                error=err,
+                allow_success_transition=isinstance(err, ConfigFileVersionConflict),
+            )
             return {"version_obj": None, "changed": False, "task_updated": task_updated, "error": str(err)}
 
     @classmethod
-    def _close_task_on_processing_error(cls, task: CollectModels, payload: dict, error: Exception) -> bool:
+    def _close_task_on_processing_error(
+        cls,
+        task: CollectModels,
+        payload: dict,
+        error: Exception,
+        allow_success_transition: bool = False,
+    ) -> bool:
         version = cls._normalize_version(str(payload.get("version") or payload.get("collected_at") or ""))
         stale_callback = cls._is_stale_callback(task, version)
         if stale_callback:
@@ -199,6 +214,11 @@ class ConfigFileService(object):
                 version_obj=None,
                 error_message=error_message,
                 stale_callback=False,
+                allowed_current_statuses=(
+                    [CollectRunStatusType.RUNNING, CollectRunStatusType.SUCCESS]
+                    if allow_success_transition
+                    else [CollectRunStatusType.RUNNING]
+                ),
             )
 
         task_state = cls._build_task_state(task)
@@ -227,7 +247,11 @@ class ConfigFileService(object):
             CollectModels.objects.filter(
                 id=task.id,
                 task_id=task.task_id,
-                exec_status=CollectRunStatusType.RUNNING,
+                exec_status__in=(
+                    [CollectRunStatusType.RUNNING, CollectRunStatusType.SUCCESS]
+                    if allow_success_transition
+                    else [CollectRunStatusType.RUNNING]
+                ),
             ).update(
                 collect_data={"config_file": summary["config_file_data"]},
                 format_data=summary["format_data"],
@@ -237,16 +261,81 @@ class ConfigFileService(object):
             )
         )
 
-    @staticmethod
-    def _get_execution_rejection(task: CollectModels, payload: dict) -> str:
+    @classmethod
+    def _get_execution_rejection(cls, task: CollectModels, payload: dict) -> str:
         payload_execution_id = str(payload.get("execution_id") or "").strip()
         if not payload_execution_id:
             return "配置文件采集回调缺少 execution ID"
         if payload_execution_id != str(task.task_id or ""):
             return "配置文件采集回调 execution ID 已过期"
+        if task.exec_status == CollectRunStatusType.SUCCESS:
+            instance_identifier = str(payload.get("instance_name") or payload.get("instance_id") or "")
+            instance_id, _ = cls._resolve_task_instance(task, instance_identifier)
+            version = cls._normalize_version(str(payload.get("version") or payload.get("collected_at") or ""))
+            if instance_id and ConfigFileVersion.objects.filter(
+                collect_task=task,
+                instance_id=instance_id,
+                version=version,
+            ).exists():
+                return ""
         if task.exec_status != CollectRunStatusType.RUNNING:
             return "配置文件采集任务已进入终态"
         return ""
+
+    @classmethod
+    def _create_or_get_version(
+        cls,
+        *,
+        task: CollectModels,
+        instance_id: str,
+        version: str,
+        model_id: str,
+        file_path: str,
+        file_name: str,
+        status: str,
+        file_size: int,
+        error_message: str,
+        content_hash: str,
+        text_content: str,
+    ) -> tuple[ConfigFileVersion, bool]:
+        business_key = {
+            "collect_task": task,
+            "instance_id": instance_id,
+            "version": version,
+        }
+        existing = ConfigFileVersion.objects.filter(**business_key).first()
+        if existing:
+            return cls._resolve_existing_version(existing, content_hash)
+
+        try:
+            with transaction.atomic():
+                version_obj = ConfigFileVersion.objects.create(
+                    **business_key,
+                    model_id=model_id,
+                    file_path=file_path,
+                    file_name=file_name,
+                    status=status,
+                    file_size=file_size,
+                    error_message=error_message,
+                    content_hash=content_hash,
+                )
+        except IntegrityError:
+            existing = ConfigFileVersion.objects.get(**business_key)
+            return cls._resolve_existing_version(existing, content_hash)
+
+        object_key = cls.build_object_key(model_id, instance_id, file_path, version)
+        version_obj.save_content(text_content, object_key)
+        version_obj.save(update_fields=["content"])
+        return version_obj, True
+
+    @staticmethod
+    def _resolve_existing_version(
+        existing: ConfigFileVersion,
+        content_hash: str,
+    ) -> tuple[ConfigFileVersion, bool]:
+        if existing.content_hash == content_hash:
+            return existing, False
+        raise ConfigFileVersionConflict("配置文件回调业务键内容冲突")
 
     @staticmethod
     def _normalize_collect_payload(data: dict) -> dict:
@@ -348,6 +437,7 @@ class ConfigFileService(object):
         version_obj: ConfigFileVersion | None,
         error_message: str,
         stale_callback: bool,
+        allowed_current_statuses: list[int] | None = None,
     ) -> bool:
         if stale_callback:
             logger.info(
@@ -381,7 +471,7 @@ class ConfigFileService(object):
             CollectModels.objects.filter(
                 id=task.id,
                 task_id=task.task_id,
-                exec_status=CollectRunStatusType.RUNNING,
+                exec_status__in=allowed_current_statuses or [CollectRunStatusType.RUNNING],
             ).update(
                 collect_data={"config_file": config_file_data},
                 format_data=format_data,

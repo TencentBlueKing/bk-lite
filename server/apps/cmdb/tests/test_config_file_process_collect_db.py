@@ -9,8 +9,14 @@
 """
 import pydantic.root_model  # noqa: F401  预热
 import base64
+import importlib
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
+from django.db import IntegrityError, OperationalError, close_old_connections, connection, transaction
+from django.db.migrations.executor import MigrationExecutor
 from django.utils.timezone import now, timedelta
 
 from apps.cmdb.constants.constants import CollectRunStatusType
@@ -61,6 +67,39 @@ def _payload(task, **kw):
     )
     base.update(kw)
     return base
+
+
+def _version_fields(task=None, **kw):
+    defaults = {
+        "collect_task": task,
+        "instance_id": "inst-1",
+        "model_id": "host",
+        "version": "1700000000000",
+        "file_path": "/etc/app.conf",
+        "file_name": "app.conf",
+        "content_hash": "hash-v1",
+        "file_size": 2,
+        "status": ConfigFileVersionStatus.SUCCESS,
+    }
+    defaults.update(kw)
+    return defaults
+
+
+@pytest.mark.django_db
+def test_version_business_key_is_unique_for_collect_task():
+    task = _make_task()
+    ConfigFileVersion.objects.create(**_version_fields(task))
+
+    with pytest.raises(IntegrityError), transaction.atomic():
+        ConfigFileVersion.objects.create(**_version_fields(task))
+
+
+@pytest.mark.django_db
+def test_manual_versions_without_collect_task_do_not_conflict():
+    ConfigFileVersion.objects.create(**_version_fields())
+    ConfigFileVersion.objects.create(**_version_fields())
+
+    assert ConfigFileVersion.objects.filter(collect_task=None, instance_id="inst-1", version="1700000000000").count() == 2
 
 
 @pytest.mark.django_db
@@ -204,15 +243,153 @@ def test_missing_instance_identifier_closes_task():
 
 
 @pytest.mark.django_db
-def test_version_reused_updates_fields():
-    # 同 task+instance+version 重复回调（内容不同）-> get_or_create 命中后更新字段
+def test_same_business_key_and_content_is_idempotent(monkeypatch):
+    task = _make_task()
+    ver = str(int(now().timestamp() * 1000))
+    saved_objects = []
+
+    def fake_save_content(self, text, object_key):
+        saved_objects.append((text, object_key))
+        self.content.name = object_key
+
+    monkeypatch.setattr(ConfigFileVersion, "save_content", fake_save_content)
+    first = S.process_collect_result(_payload(task, version=ver, content_base64=base64.b64encode(b"v1").decode()))
+    second = S.process_collect_result(_payload(task, version=ver, content_base64=base64.b64encode(b"v1").decode()))
+
+    assert second["version_obj"].id == first["version_obj"].id
+    assert second["changed"] is False
+    assert len(saved_objects) == 1
+    assert ConfigFileVersion.objects.filter(collect_task=task, version=ver).count() == 1
+
+
+@pytest.mark.django_db
+def test_idempotent_redelivery_returns_exact_business_key_row():
     task = _make_task()
     ver = str(int(now().timestamp() * 1000))
     first = S.process_collect_result(_payload(task, version=ver, content_base64=base64.b64encode(b"v1").decode()))
+    ConfigFileVersion.objects.create(
+        **_version_fields(
+            task,
+            version=str(int(ver) + 1),
+            content_hash=first["version_obj"].content_hash,
+        ),
+        content="host/inst-1/newer.txt",
+    )
+
+    repeated = S.process_collect_result(_payload(task, version=ver, content_base64=base64.b64encode(b"v1").decode()))
+
+    assert repeated["version_obj"].id == first["version_obj"].id
+    assert repeated["changed"] is False
+
+
+@pytest.mark.django_db
+def test_same_business_key_with_different_content_is_protocol_conflict():
+    task = _make_task()
+    ver = str(int(now().timestamp() * 1000))
+    first = S.process_collect_result(_payload(task, version=ver, content_base64=base64.b64encode(b"v1").decode()))
+    original = ConfigFileVersion.objects.get(id=first["version_obj"].id)
+    original_fields = (original.content_hash, original.content_key, original.file_size, original.status)
+
     second = S.process_collect_result(_payload(task, version=ver, content_base64=base64.b64encode(b"v2 longer").decode()))
-    # 同 version 复用同一行
-    assert second["version_obj"].id == first["version_obj"].id
-    assert second["changed"] is True
-    second["version_obj"].refresh_from_db()
-    assert second["version_obj"].content_hash != ""
+
+    assert second["version_obj"] is None
+    assert "业务键内容冲突" in second["error"]
+    original.refresh_from_db()
+    assert (original.content_hash, original.content_key, original.file_size, original.status) == original_fields
     assert ConfigFileVersion.objects.filter(collect_task=task, version=ver).count() == 1
+    task.refresh_from_db()
+    assert task.exec_status == CollectRunStatusType.ERROR
+
+
+@pytest.mark.django_db
+def test_create_or_get_version_reads_concurrent_winner_after_integrity_error(mocker):
+    task = _make_task()
+    existing = ConfigFileVersion(
+        **_version_fields(task, content_hash="same-hash"),
+    )
+    filter_result = mocker.Mock()
+    filter_result.first.return_value = None
+    mocker.patch.object(ConfigFileVersion.objects, "filter", return_value=filter_result)
+    mocker.patch.object(ConfigFileVersion.objects, "create", side_effect=IntegrityError("duplicate"))
+    mocker.patch.object(ConfigFileVersion.objects, "get", return_value=existing)
+
+    version_obj, created = S._create_or_get_version(
+        task=task,
+        instance_id="inst-1",
+        version="1700000000000",
+        model_id="host",
+        file_path="/etc/app.conf",
+        file_name="app.conf",
+        status=ConfigFileVersionStatus.SUCCESS,
+        file_size=2,
+        error_message="",
+        content_hash="same-hash",
+        text_content="v1",
+    )
+
+    assert version_obj is existing
+    assert created is False
+    ConfigFileVersion.objects.get.assert_called_once()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_concurrent_business_key_commits_only_one_row():
+    task = _make_task()
+    barrier = threading.Barrier(2)
+
+    def create_version():
+        close_old_connections()
+        barrier.wait()
+        try:
+            for attempt in range(3):
+                try:
+                    ConfigFileVersion.objects.create(**_version_fields(task))
+                    return "created"
+                except IntegrityError:
+                    return "duplicate"
+                except OperationalError:
+                    if attempt == 2:
+                        return "locked"
+                    time.sleep(0.05)
+        finally:
+            close_old_connections()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        outcomes = list(executor.map(lambda _: create_version(), range(2)))
+
+    assert ConfigFileVersion.objects.filter(
+        collect_task=task,
+        instance_id="inst-1",
+        version="1700000000000",
+    ).count() == 1
+    assert "created" in outcomes
+
+
+@pytest.mark.django_db(transaction=True)
+def test_dedupe_migration_keeps_earliest_record():
+    executor = MigrationExecutor(connection)
+    old_target = [("cmdb", "0031_subscriptiondelivery")]
+    new_target = [("cmdb", "0032_dedupe_config_file_versions")]
+    executor.migrate(old_target)
+    try:
+        old_apps = executor.loader.project_state(old_target).apps
+        historical_task = old_apps.get_model("cmdb", "CollectModels").objects.create(
+            name="migration-task",
+            task_type="host",
+            model_id="host",
+            cycle_value_type="close",
+        )
+        historical_version = old_apps.get_model("cmdb", "ConfigFileVersion")
+        first = historical_version.objects.create(**_version_fields(historical_task))
+        second = historical_version.objects.create(**_version_fields(historical_task))
+        historical_version.objects.filter(id=first.id).update(created_at=now())
+        historical_version.objects.filter(id=second.id).update(created_at=now() - timedelta(seconds=1))
+
+        migration_module = importlib.import_module("apps.cmdb.migrations.0032_dedupe_config_file_versions")
+        migration_module.dedupe_config_file_versions(old_apps, None)
+
+        assert not historical_version.objects.filter(id=first.id).exists()
+        assert historical_version.objects.filter(id=second.id).exists()
+    finally:
+        executor = MigrationExecutor(connection)
+        executor.migrate(new_target)
