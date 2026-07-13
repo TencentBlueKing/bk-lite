@@ -12,10 +12,9 @@
 
 服务层 / 委派对象在真实边界打桩；任务对 DB 的真实读写副作用被断言。
 """
-import pydantic.root_model  # noqa: F401
-
 from datetime import timedelta
 
+import pydantic.root_model  # noqa: F401
 import pytest
 from django.utils.timezone import now
 
@@ -64,27 +63,13 @@ def test_build_safe_error_message_falls_back_to_classname():
 
 
 def test_build_traceback_excerpt_keeps_tail():
-    text = "\n".join(
-        [
-            "Traceback (most recent call last):",
-            '  File "a.py", line 1, in <module>',
-            '  File "b.py", line 2, in run',
-            "KeyError: 0",
-        ]
-    )
+    text = "\n".join(["Traceback (most recent call last):", '  File "a.py", line 1, in <module>', '  File "b.py", line 2, in run', "KeyError: 0",])
     excerpt = ct._build_traceback_excerpt(text, max_lines=2)
     assert excerpt == '  File "b.py", line 2, in run\nKeyError: 0'
 
 
 def test_build_traceback_location_returns_last_file_frame():
-    text = "\n".join(
-        [
-            "Traceback (most recent call last):",
-            '  File "a.py", line 1, in <module>',
-            '  File "b.py", line 2, in run',
-            "KeyError: 0",
-        ]
-    )
+    text = "\n".join(["Traceback (most recent call last):", '  File "a.py", line 1, in <module>', '  File "b.py", line 2, in run', "KeyError: 0",])
     assert ct._build_traceback_location(text) == 'File "b.py", line 2, in run'
 
 
@@ -92,29 +77,84 @@ def test_build_traceback_location_returns_last_file_frame():
 # sync_periodic_update_task_status
 # --------------------------------------------------------------------------
 @pytest.mark.django_db
-def test_sync_periodic_update_marks_stale_running_failed():
-    old_time = now() - timedelta(minutes=10)
-    stale = CollectModels.objects.create(
-        name="stale", task_type=CollectPluginTypes.HOST, model_id="host", cycle_value_type="cycle",
-        exec_status=CollectRunStatusType.RUNNING, exec_time=old_time, team=[1],
+def test_sync_periodic_update使用任务deadline写入超时终态():
+    started_at = now() - timedelta(seconds=31)
+    task = CollectModels.objects.create(
+        name="deadline-30",
+        task_type=CollectPluginTypes.HOST,
+        model_id="host",
+        cycle_value_type="cycle",
+        exec_status=CollectRunStatusType.RUNNING,
+        exec_time=started_at,
+        task_id="execution-30",
+        params={"task_job_timeout": 30},
+        team=[1],
     )
-    cfg = CollectModels.objects.create(
-        name="stale-cfg", task_type=CollectPluginTypes.CONFIG_FILE, model_id="host", driver_type="job", cycle_value_type="cycle",
-        exec_status=CollectRunStatusType.RUNNING, exec_time=old_time, team=[1],
-    )
-    fresh = CollectModels.objects.create(
-        name="fresh", task_type=CollectPluginTypes.HOST, model_id="host", driver_type="snmp", cycle_value_type="cycle",
-        exec_status=CollectRunStatusType.RUNNING, exec_time=now(), team=[1],
-    )
+
     ct.sync_periodic_update_task_status()
-    stale.refresh_from_db()
-    cfg.refresh_from_db()
-    fresh.refresh_from_db()
-    assert stale.exec_status == CollectRunStatusType.ERROR
-    assert cfg.exec_status == CollectRunStatusType.ERROR
-    assert "5 分钟" in cfg.collect_digest["message"]
-    # 未超时的保持 RUNNING
-    assert fresh.exec_status == CollectRunStatusType.RUNNING
+
+    task.refresh_from_db()
+    assert task.exec_status == CollectRunStatusType.TIME_OUT
+    assert task.collect_digest["execution_id"] == "execution-30"
+    assert task.collect_digest["deadline_seconds"] == 30
+    assert task.collect_digest["started_at"] == started_at.isoformat()
+
+
+@pytest.mark.django_db
+def test_sync_periodic_update默认600秒而非固定5分钟(monkeypatch):
+    monkeypatch.setenv("TASK_JOB_TIMEOUT", "600")
+    five_minutes = CollectModels.objects.create(
+        name="five-minutes",
+        task_type=CollectPluginTypes.HOST,
+        model_id="host",
+        driver_type="snmp",
+        cycle_value_type="cycle",
+        exec_status=CollectRunStatusType.RUNNING,
+        exec_time=now() - timedelta(minutes=5),
+        task_id="execution-fresh",
+        team=[1],
+    )
+    expired = CollectModels.objects.create(
+        name="expired-601",
+        task_type=CollectPluginTypes.HOST,
+        model_id="host",
+        cycle_value_type="cycle",
+        exec_status=CollectRunStatusType.RUNNING,
+        exec_time=now() - timedelta(seconds=601),
+        task_id="execution-expired",
+        team=[1],
+    )
+
+    ct.sync_periodic_update_task_status()
+
+    five_minutes.refresh_from_db()
+    expired.refresh_from_db()
+    assert five_minutes.exec_status == CollectRunStatusType.RUNNING
+    assert expired.exec_status == CollectRunStatusType.TIME_OUT
+
+
+@pytest.mark.django_db
+def test_timeout条件写回不能覆盖新execution():
+    task = CollectModels.objects.create(
+        name="timeout-stale",
+        task_type=CollectPluginTypes.HOST,
+        model_id="host",
+        cycle_value_type="cycle",
+        exec_status=CollectRunStatusType.RUNNING,
+        exec_time=now() - timedelta(seconds=31),
+        task_id="execution-A",
+        params={"task_job_timeout": 30},
+        team=[1],
+    )
+    stale_snapshot = CollectModels.objects.get(id=task.id)
+    CollectModels.objects.filter(id=task.id).update(task_id="execution-B")
+
+    updated = ct._timeout_collect_task_if_current(stale_snapshot, now())
+
+    task.refresh_from_db()
+    assert updated is False
+    assert task.task_id == "execution-B"
+    assert task.exec_status == CollectRunStatusType.RUNNING
 
 
 # --------------------------------------------------------------------------
@@ -131,8 +171,7 @@ def test_sync_collect_credential_results_task_skips():
 # --------------------------------------------------------------------------
 def test_sync_cmdb_display_fields_success(monkeypatch):
     monkeypatch.setattr(
-        "apps.cmdb.display_field.DisplayFieldSynchronizer.sync_all",
-        staticmethod(lambda data: {"organizations": 3, "users": 1}),
+        "apps.cmdb.display_field.DisplayFieldSynchronizer.sync_all", staticmethod(lambda data: {"organizations": 3, "users": 1}),
     )
     out = ct.sync_cmdb_display_fields_task({"organizations": [{"id": 1, "name": "x"}], "users": []})
     assert out["result"] is True
@@ -143,9 +182,7 @@ def test_sync_cmdb_display_fields_failure(monkeypatch):
     def _boom(data):
         raise RuntimeError("sync failed")
 
-    monkeypatch.setattr(
-        "apps.cmdb.display_field.DisplayFieldSynchronizer.sync_all", staticmethod(_boom)
-    )
+    monkeypatch.setattr("apps.cmdb.display_field.DisplayFieldSynchronizer.sync_all", staticmethod(_boom))
     out = ct.sync_cmdb_display_fields_task({})
     assert out["result"] is False
     assert "sync failed" in out["message"]
@@ -170,8 +207,7 @@ def test_execute_collect_tool_debug_task_failure_saves_error(monkeypatch):
         staticmethod(lambda *a, **k: (_ for _ in ()).throw(RuntimeError("debug boom"))),
     )
     monkeypatch.setattr(
-        "apps.cmdb.services.collect_tool_service.CollectToolService.build_error_result",
-        staticmethod(lambda **kw: {"error": kw["summary"]}),
+        "apps.cmdb.services.collect_tool_service.CollectToolService.build_error_result", staticmethod(lambda **kw: {"error": kw["summary"]}),
     )
     saved = []
     monkeypatch.setattr(
@@ -207,8 +243,7 @@ def test_full_sync_rule_task_delegates(monkeypatch):
 # --------------------------------------------------------------------------
 def test_sync_node_mgmt_hosts_delegates(monkeypatch):
     monkeypatch.setattr(
-        "apps.cmdb.services.node_mgmt_sync_service.NodeMgmtSyncService.trigger_sync",
-        staticmethod(lambda: {"synced": 5}),
+        "apps.cmdb.services.node_mgmt_sync_service.NodeMgmtSyncService.trigger_sync", staticmethod(lambda: {"synced": 5}),
     )
     assert ct.sync_node_mgmt_hosts() == {"synced": 5}
 
@@ -225,8 +260,7 @@ def test_sync_node_mgmt_hosts_propagates_error(monkeypatch):
 def test_collect_node_mgmt_hosts_delegates(monkeypatch):
     called = []
     monkeypatch.setattr(
-        "apps.cmdb.services.node_mgmt_sync_service.NodeMgmtSyncService.trigger_collect",
-        staticmethod(lambda: called.append(True)),
+        "apps.cmdb.services.node_mgmt_sync_service.NodeMgmtSyncService.trigger_collect", staticmethod(lambda: called.append(True)),
     )
     ct.collect_node_mgmt_hosts()
     assert called == [True]
@@ -237,8 +271,7 @@ def test_collect_node_mgmt_hosts_delegates(monkeypatch):
 # --------------------------------------------------------------------------
 def test_daily_data_cleanup_task_delegates(monkeypatch):
     monkeypatch.setattr(
-        "apps.cmdb.services.data_cleanup_service.DataCleanupService.run_daily_cleanup",
-        staticmethod(lambda: {"deleted": 12}),
+        "apps.cmdb.services.data_cleanup_service.DataCleanupService.run_daily_cleanup", staticmethod(lambda: {"deleted": 12}),
     )
     assert ct.daily_data_cleanup_task() == {"deleted": 12}
 
@@ -249,13 +282,16 @@ def test_daily_data_cleanup_task_delegates(monkeypatch):
 @pytest.mark.django_db
 def test_sync_collect_task_no_data_marks_error(monkeypatch):
     task = CollectModels.objects.create(
-        name="empty-collect", task_type=CollectPluginTypes.PROTOCOL, model_id="mysql", driver_type="protocol",
-        cycle_value_type="cycle", team=[1],
+        name="empty-collect",
+        task_type=CollectPluginTypes.PROTOCOL,
+        model_id="mysql",
+        driver_type="protocol",
+        cycle_value_type="cycle",
+        team=[1],
         instances=[{"_id": "i1", "model_id": "mysql", "inst_name": "db1"}],
     )
     monkeypatch.setattr(
-        "apps.cmdb.services.collect_dispatch_service.CollectDispatchService.should_dispatch",
-        staticmethod(lambda inst: False),
+        "apps.cmdb.services.collect_dispatch_service.CollectDispatchService.should_dispatch", staticmethod(lambda inst: False),
     )
 
     class FakeCollect:
@@ -275,29 +311,28 @@ def test_sync_collect_task_no_data_marks_error(monkeypatch):
 @pytest.mark.django_db
 def test_sync_collect_task_skips_when_task_is_already_running(monkeypatch):
     task = CollectModels.objects.create(
-        name="running-collect", task_type=CollectPluginTypes.PROTOCOL, model_id="mysql", driver_type="protocol",
-        cycle_value_type="cycle", team=[1],
+        name="running-collect",
+        task_type=CollectPluginTypes.PROTOCOL,
+        model_id="mysql",
+        driver_type="protocol",
+        cycle_value_type="cycle",
+        team=[1],
         exec_status=CollectRunStatusType.RUNNING,
         collect_digest={"message": "keep-running"},
         instances=[{"_id": "i1", "model_id": "mysql", "inst_name": "db1"}],
     )
     monkeypatch.setattr(
-        "apps.cmdb.services.collect_service.CollectModelService.repair_host_cloud_snapshot",
-        lambda instance: None,
+        "apps.cmdb.services.collect_service.CollectModelService.repair_host_cloud_snapshot", lambda instance: None,
     )
     monkeypatch.setattr(
         "apps.cmdb.services.collect_dispatch_service.CollectDispatchService.should_dispatch",
         staticmethod(lambda inst: (_ for _ in ()).throw(AssertionError("dispatch decision should not run"))),
     )
     monkeypatch.setattr(
-        ct,
-        "ProtocolCollect",
-        lambda task: (_ for _ in ()).throw(AssertionError("protocol collect should not run")),
+        ct, "ProtocolCollect", lambda task: (_ for _ in ()).throw(AssertionError("protocol collect should not run")),
     )
     monkeypatch.setattr(
-        ct,
-        "JobCollect",
-        lambda task: (_ for _ in ()).throw(AssertionError("job collect should not run")),
+        ct, "JobCollect", lambda task: (_ for _ in ()).throw(AssertionError("job collect should not run")),
     )
 
     ct.sync_collect_task(task.id)
@@ -310,8 +345,12 @@ def test_sync_collect_task_skips_when_task_is_already_running(monkeypatch):
 @pytest.mark.django_db
 def test_claim_collect_task_execution_only_one_runner_can_acquire(monkeypatch):
     task = CollectModels.objects.create(
-        name="claim-once", task_type=CollectPluginTypes.PROTOCOL, model_id="mysql", driver_type="protocol",
-        cycle_value_type="cycle", team=[1],
+        name="claim-once",
+        task_type=CollectPluginTypes.PROTOCOL,
+        model_id="mysql",
+        driver_type="protocol",
+        cycle_value_type="cycle",
+        team=[1],
         exec_status=CollectRunStatusType.NOT_START,
     )
     start_time = now()
@@ -321,11 +360,16 @@ def test_claim_collect_task_execution_only_one_runner_can_acquire(monkeypatch):
 
     assert first is not None
     assert first.exec_status == CollectRunStatusType.RUNNING
+    assert first.task_id
     assert second is None
 
     preclaimed = CollectModels.objects.create(
-        name="claim-token", task_type=CollectPluginTypes.PROTOCOL, model_id="mysql", driver_type="protocol",
-        cycle_value_type="cycle", team=[1],
+        name="claim-token",
+        task_type=CollectPluginTypes.PROTOCOL,
+        model_id="mysql",
+        driver_type="protocol",
+        cycle_value_type="cycle",
+        team=[1],
         exec_status=CollectRunStatusType.RUNNING,
         task_id="owner-token",
     )
@@ -338,13 +382,16 @@ def test_claim_collect_task_execution_only_one_runner_can_acquire(monkeypatch):
 @pytest.mark.django_db
 def test_sync_collect_task_handles_collect_exception(monkeypatch):
     task = CollectModels.objects.create(
-        name="boom-collect", task_type=CollectPluginTypes.PROTOCOL, model_id="mysql", driver_type="protocol",
-        cycle_value_type="cycle", team=[1],
+        name="boom-collect",
+        task_type=CollectPluginTypes.PROTOCOL,
+        model_id="mysql",
+        driver_type="protocol",
+        cycle_value_type="cycle",
+        team=[1],
         instances=[{"_id": "i1", "model_id": "mysql", "inst_name": "db1"}],
     )
     monkeypatch.setattr(
-        "apps.cmdb.services.collect_dispatch_service.CollectDispatchService.should_dispatch",
-        staticmethod(lambda inst: False),
+        "apps.cmdb.services.collect_dispatch_service.CollectDispatchService.should_dispatch", staticmethod(lambda inst: False),
     )
 
     class FakeCollect:
@@ -365,13 +412,16 @@ def test_sync_collect_task_handles_collect_exception(monkeypatch):
 @pytest.mark.django_db
 def test_sync_collect_task_handles_numeric_exception_with_traceback(monkeypatch):
     task = CollectModels.objects.create(
-        name="numeric-collect", task_type=CollectPluginTypes.PROTOCOL, model_id="mysql", driver_type="protocol",
-        cycle_value_type="cycle", team=[1],
+        name="numeric-collect",
+        task_type=CollectPluginTypes.PROTOCOL,
+        model_id="mysql",
+        driver_type="protocol",
+        cycle_value_type="cycle",
+        team=[1],
         instances=[{"_id": "i1", "model_id": "mysql", "inst_name": "db1"}],
     )
     monkeypatch.setattr(
-        "apps.cmdb.services.collect_dispatch_service.CollectDispatchService.should_dispatch",
-        staticmethod(lambda inst: False),
+        "apps.cmdb.services.collect_dispatch_service.CollectDispatchService.should_dispatch", staticmethod(lambda inst: False),
     )
 
     class FakeCollect:
@@ -394,3 +444,118 @@ def test_sync_collect_task_handles_numeric_exception_with_traceback(monkeypatch)
 def test_sync_collect_task_missing_instance_noop(monkeypatch):
     # 不存在的任务 id：早返回，不抛错
     ct.sync_collect_task(999999)
+
+
+@pytest.mark.django_db
+def test_sync_collect_task旧worker成功不能覆盖新execution(monkeypatch):
+    task = CollectModels.objects.create(
+        name="stale-success",
+        task_type=CollectPluginTypes.PROTOCOL,
+        model_id="mysql",
+        driver_type="protocol",
+        cycle_value_type="cycle",
+        team=[1],
+        instances=[{"_id": "i1", "model_id": "mysql", "inst_name": "db1"}],
+    )
+    monkeypatch.setattr(ct.CollectDispatchService, "should_dispatch", staticmethod(lambda inst: False))
+    monkeypatch.setattr(
+        "apps.cmdb.services.collect_service.CollectModelService.repair_host_cloud_snapshot", lambda instance: None,
+    )
+
+    class FakeCollect:
+        def __init__(self, task):
+            self.task = task
+
+        def main(self):
+            CollectModels.objects.filter(id=self.task.id).update(
+                task_id="execution-B",
+                exec_status=CollectRunStatusType.RUNNING,
+                collect_data={"owner": "B"},
+                format_data={"owner": "B"},
+                collect_digest={"owner": "B"},
+            )
+            return {"owner": "A"}, {"add": [], "update": [], "delete": [], "association": [], "__raw_data__": [{"__time__": "2026-07-13T00:00:00Z"}],}
+
+    monkeypatch.setattr(ct, "ProtocolCollect", FakeCollect)
+
+    ct.sync_collect_task(task.id, execution_id="execution-A")
+
+    task.refresh_from_db()
+    assert task.task_id == "execution-B"
+    assert task.exec_status == CollectRunStatusType.RUNNING
+    assert task.collect_data == {"owner": "B"}
+    assert task.format_data == {"owner": "B"}
+    assert task.collect_digest == {"owner": "B"}
+
+
+@pytest.mark.django_db
+def test_sync_collect_task旧worker异常不能覆盖新execution(monkeypatch):
+    task = CollectModels.objects.create(
+        name="stale-error",
+        task_type=CollectPluginTypes.PROTOCOL,
+        model_id="mysql",
+        driver_type="protocol",
+        cycle_value_type="cycle",
+        team=[1],
+        instances=[{"_id": "i1", "model_id": "mysql", "inst_name": "db1"}],
+    )
+    monkeypatch.setattr(ct.CollectDispatchService, "should_dispatch", staticmethod(lambda inst: False))
+    monkeypatch.setattr(
+        "apps.cmdb.services.collect_service.CollectModelService.repair_host_cloud_snapshot", lambda instance: None,
+    )
+
+    class FakeCollect:
+        def __init__(self, task):
+            self.task = task
+
+        def main(self):
+            CollectModels.objects.filter(id=self.task.id).update(
+                task_id="execution-B", exec_status=CollectRunStatusType.RUNNING, collect_digest={"owner": "B"},
+            )
+            raise RuntimeError("late A failed")
+
+    monkeypatch.setattr(ct, "ProtocolCollect", FakeCollect)
+
+    ct.sync_collect_task(task.id, execution_id="execution-A")
+
+    task.refresh_from_db()
+    assert task.task_id == "execution-B"
+    assert task.exec_status == CollectRunStatusType.RUNNING
+    assert task.collect_digest == {"owner": "B"}
+
+
+@pytest.mark.django_db
+def test_config_file_pending不能覆盖同execution回调终态(monkeypatch):
+    task = CollectModels.objects.create(
+        name="config-callback-wins",
+        task_type=CollectPluginTypes.CONFIG_FILE,
+        model_id="host",
+        driver_type="job",
+        cycle_value_type="cycle",
+        team=[1],
+        instances=[{"_id": "i1", "model_id": "host", "inst_name": "host1"}],
+    )
+    monkeypatch.setattr(ct.CollectDispatchService, "should_dispatch", staticmethod(lambda inst: False))
+    monkeypatch.setattr(
+        "apps.cmdb.services.collect_service.CollectModelService.repair_host_cloud_snapshot", lambda instance: None,
+    )
+
+    class FakeCollect:
+        def __init__(self, task):
+            self.task = task
+
+        def main(self):
+            CollectModels.objects.filter(id=self.task.id).update(
+                exec_status=CollectRunStatusType.SUCCESS, collect_data={"owner": "callback"}, collect_digest={"owner": "callback"},
+            )
+            return {"config_file": {"status": "pending"}}, {"add": [], "update": [], "delete": [], "association": [], "__raw_data__": [],}
+
+    monkeypatch.setattr(ct, "JobCollect", FakeCollect)
+
+    ct.sync_collect_task(task.id, execution_id="execution-A")
+
+    task.refresh_from_db()
+    assert task.task_id == "execution-A"
+    assert task.exec_status == CollectRunStatusType.SUCCESS
+    assert task.collect_data == {"owner": "callback"}
+    assert task.collect_digest == {"owner": "callback"}

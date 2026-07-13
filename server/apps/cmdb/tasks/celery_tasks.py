@@ -2,7 +2,9 @@
 # @File: tasks.py
 # @Time: 2025/3/3 15:34
 # @Author: windyzhao
+import os
 from datetime import timedelta
+from uuid import uuid4
 
 from celery import shared_task
 from django.utils.timezone import now
@@ -70,20 +72,58 @@ def _build_traceback_location(traceback_text: str) -> str:
 
 def _claim_collect_task_execution(instance_id, start_time, execution_id=None):
     queryset = CollectModels._default_manager.filter(id=instance_id)
+    execution_id = execution_id or str(uuid4())
     update_fields = {
         "exec_status": CollectRunStatusType.RUNNING,
         "exec_time": start_time,
+        "task_id": execution_id,
     }
-    if execution_id:
-        update_fields["task_id"] = execution_id
-        updated = queryset.filter(exec_status=CollectRunStatusType.RUNNING, task_id=execution_id,).update(**update_fields)
-        if not updated:
-            updated = queryset.exclude(exec_status=CollectRunStatusType.RUNNING).update(**update_fields)
-    else:
+    updated = queryset.filter(exec_status=CollectRunStatusType.RUNNING, task_id=execution_id,).update(**update_fields)
+    if not updated:
         updated = queryset.exclude(exec_status=CollectRunStatusType.RUNNING).update(**update_fields)
     if not updated:
         return None
     return CollectModels._default_manager.filter(id=instance_id).first()
+
+
+def _save_collect_result_if_current(instance_id, execution_id, values):
+    return bool(
+        CollectModels._default_manager.filter(id=instance_id, task_id=execution_id, exec_status=CollectRunStatusType.RUNNING,).update(**values)
+    )
+
+
+def _resolve_execution_timeout_seconds(task):
+    configured = (task.params or {}).get("task_job_timeout")
+    for value in (configured, os.getenv("TASK_JOB_TIMEOUT"), 600):
+        try:
+            timeout_seconds = int(value)
+        except (TypeError, ValueError):
+            continue
+        if timeout_seconds > 0:
+            return timeout_seconds
+    return 600
+
+
+def _timeout_collect_task_if_current(task, checked_at):
+    if not task.exec_time:
+        return False
+    deadline_seconds = _resolve_execution_timeout_seconds(task)
+    if checked_at <= task.exec_time + timedelta(seconds=deadline_seconds):
+        return False
+
+    collect_digest = {
+        "message": "采集执行已超过 deadline，状态置为超时",
+        "execution_id": task.task_id,
+        "deadline_seconds": deadline_seconds,
+        "started_at": task.exec_time.isoformat(),
+    }
+    return bool(
+        CollectModels._default_manager.filter(
+            id=task.id, task_id=task.task_id, exec_status=CollectRunStatusType.RUNNING, exec_time=task.exec_time,
+        ).update(
+            exec_status=CollectRunStatusType.TIME_OUT, collect_digest=collect_digest, updated_at=checked_at,
+        )
+    )
 
 
 @shared_task
@@ -101,6 +141,7 @@ def sync_collect_task(instance_id, execution_id=None):
         else:
             logger.warning("[CollectTask] 采集任务不存在，跳过执行 task_id=%s", instance_id)
         return
+    execution_id = instance.task_id
     from apps.cmdb.services.collect_service import CollectModelService
 
     CollectModelService.repair_host_cloud_snapshot(instance)
@@ -197,28 +238,32 @@ def sync_collect_task(instance_id, execution_id=None):
             elif any_failure:
                 instance.exec_status = CollectRunStatusType.PARTIAL_SUCCESS
                 collect_digest["message"] = "部分数据写入失败，请检查 add/update/delete/association 错误数"
-        instance.collect_digest = collect_digest
-        if config_file_pending:
-            updated = CollectModels._default_manager.filter(id=instance_id, collect_data={}).update(
-                collect_data=result, format_data=format_data, collect_digest=collect_digest, updated_at=now(),
+        update_values = {
+            "collect_data": result,
+            "format_data": format_data,
+            "collect_digest": collect_digest,
+            "exec_status": instance.exec_status,
+            "updated_at": now(),
+        }
+        updated = _save_collect_result_if_current(instance_id, execution_id, update_values,)
+        if not updated:
+            logger.info(
+                "[CollectTask] 忽略旧执行结果 stale_execution_result " "task_id=%s, execution_id=%s", instance_id, execution_id,
             )
-            if not updated:
-                logger.info(
-                    "[CollectTask] 配置文件采集结果已由回调更新，跳过本地 pending 覆盖 task_id=%s", instance_id,
-                )
-        else:
-            # topology_snapshot 由采集插件在运行中途直接 update，刷新避免被本次 save 覆盖
-            instance.refresh_from_db(fields=["topology_snapshot"])
-            instance.save()
     except Exception as err:
         import traceback
 
         logger.error(
             "[CollectTask] 保存采集结果失败 task_id=%s, error=%s", instance_id, traceback.format_exc(),
         )
-        CollectModels._default_manager.filter(id=instance_id).update(
-            exec_status=CollectRunStatusType.ERROR,
-            collect_digest={"message": "采集结果写入失败（task_id={}）：{}".format(instance_id, _build_safe_error_message(err))},
+        _save_collect_result_if_current(
+            instance_id,
+            execution_id,
+            {
+                "exec_status": CollectRunStatusType.ERROR,
+                "collect_digest": {"message": "采集结果写入失败（task_id={}）：{}".format(instance_id, _build_safe_error_message(err),)},
+                "updated_at": now(),
+            },
         )
 
     logger.info("[CollectTask] 采集任务执行结束 task_id=%s", instance_id)
@@ -226,23 +271,19 @@ def sync_collect_task(instance_id, execution_id=None):
 
 @shared_task
 def sync_periodic_update_task_status():
-    """
-    执行脚本5分钟更新一次脚本结果
-    :param :
-    :return:
-    """
-    logger.info("[CollectTask] 开始周期巡检超时采集任务，将运行超过 5 分钟未回传的任务置为失败")
-    five_minutes_ago = now() - timedelta(minutes=5)
-    config_file_rows = CollectModels._default_manager.filter(
-        task_type=CollectPluginTypes.CONFIG_FILE, exec_status=CollectRunStatusType.RUNNING, exec_time__lt=five_minutes_ago,
-    ).update(exec_status=CollectRunStatusType.ERROR, collect_digest={"message": "配置文件采集已触发，但在 5 分钟内未收到回传结果"},)
-    rows = (
-        CollectModels._default_manager.filter(exec_status=CollectRunStatusType.RUNNING, exec_time__lt=five_minutes_ago,)
-        .exclude(task_type=CollectPluginTypes.CONFIG_FILE)
-        .update(exec_status=CollectRunStatusType.ERROR)
+    """按每次 execution 的 deadline 收敛超时状态。"""
+    checked_at = now()
+    logger.info("[CollectTask] 开始周期巡检超时采集任务")
+    timeout_count = 0
+    tasks = (
+        CollectModels._default_manager.filter(exec_status=CollectRunStatusType.RUNNING,)
+        .only("id", "task_id", "exec_status", "exec_time", "params")
+        .iterator(chunk_size=200)
     )
+    for task in tasks:
+        timeout_count += int(_timeout_collect_task_if_current(task, checked_at))
     logger.info(
-        "[CollectTask] 周期巡检超时采集任务完成，超时置失败任务数 rows=%s, 配置文件超时任务数 config_file_rows=%s", rows, config_file_rows,
+        "[CollectTask] 周期巡检超时采集任务完成，超时任务数 rows=%s", timeout_count,
     )
 
 
