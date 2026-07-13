@@ -100,6 +100,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
   const [unit, setUnit] = useState<string>('');
   const [previewError, setPreviewError] = useState<string>('');
   const [previewWarnings, setPreviewWarnings] = useState<string[]>([]);
+  const [previewThreshold, setPreviewThreshold] = useState<ThresholdField[]>([]);
   const [selectedInstance, setSelectedInstance] = useState<string | null>(null);
   const [instances, setInstances] = useState<InstanceItem[]>([]);
   const [allInstances, setAllInstances] = useState<TableDataItem[]>([]);
@@ -228,6 +229,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
       algorithm,
       groupAlgorithm,
       groupBy,
+      threshold,
       calculationUnit,
       thresholdUnit
     });
@@ -270,6 +272,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
       setChartData([]);
       setPreviewError('');
       setPreviewWarnings([]);
+      setPreviewThreshold([]);
       return;
     }
     let payload = null;
@@ -278,6 +281,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
     } catch (error) {
       setChartData([]);
       setPreviewWarnings([]);
+      setPreviewThreshold([]);
       setPreviewError(
         error instanceof Error
           ? error.message
@@ -289,6 +293,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
       setChartData([]);
       setPreviewError('');
       setPreviewWarnings([]);
+      setPreviewThreshold([]);
       return;
     }
     // 取消之前的请求
@@ -309,7 +314,12 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
       const vmData = responseData?.data || {};
       const data = vmData.data?.result || [];
       const displayUnit = vmData.unit || '';
-      setPreviewWarnings(normalizePreviewWarnings(vmData.warnings));
+      setPreviewWarnings(
+        normalizePreviewWarnings(responseData?.warnings || vmData.warnings)
+      );
+      setPreviewThreshold(
+        Array.isArray(responseData?.threshold) ? responseData.threshold : []
+      );
       setUnit(displayUnit);
       // 渲染图表数据
       const selectedInst = instances.find(
@@ -349,6 +359,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
       ) {
         setChartData([]);
         setPreviewWarnings([]);
+        setPreviewThreshold([]);
         setPreviewError(
           error?.response?.data?.message ||
             error?.message ||
@@ -379,7 +390,9 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
     periodUnit,
     groupAlgorithm,
     algorithm,
+    threshold,
     calculationUnit,
+    thresholdUnit,
     metricRows,
     metricExpressionMode,
     resultName,
@@ -407,7 +420,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
   }
 
   // 过滤掉空值的阈值
-  const validThreshold = threshold.filter(
+  const validThreshold = previewThreshold.filter(
     (item) => item.value !== null && item.value !== undefined
   );
 

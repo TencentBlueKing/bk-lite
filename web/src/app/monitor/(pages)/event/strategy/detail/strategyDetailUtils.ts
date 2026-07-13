@@ -141,12 +141,11 @@ export const getMetricThresholdEnumState = ({
 };
 
 export const shouldShowThresholdUnitSelector = ({
-  isFormulaMode,
   isEnumMetric
 }: {
   isFormulaMode: boolean;
   isEnumMetric: boolean;
-}): boolean => !isFormulaMode && !isEnumMetric;
+}): boolean => !isEnumMetric;
 
 export const getThresholdUnitOptions = ({
   unitList,

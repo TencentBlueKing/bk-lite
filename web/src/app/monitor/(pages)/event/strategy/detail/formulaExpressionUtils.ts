@@ -4,7 +4,7 @@ import {
   MetricExpressionRow,
   MetricQueryCondition
 } from './metricExpressionTypes';
-import { MetricItem } from '@/app/monitor/types';
+import { MetricItem, ThresholdField } from '@/app/monitor/types';
 import { SourceFeild } from '@/app/monitor/types/event';
 import { InstanceItem } from '@/app/monitor/types/search';
 import { sanitizeGroupBy } from '@/app/monitor/utils/metricDimensions';
@@ -523,6 +523,7 @@ export const buildMetricExpressionPreviewPayload = ({
   algorithm,
   groupAlgorithm,
   groupBy,
+  threshold,
   calculationUnit,
   thresholdUnit
 }: {
@@ -542,6 +543,7 @@ export const buildMetricExpressionPreviewPayload = ({
   algorithm: string | null;
   groupAlgorithm: string | null;
   groupBy: string[];
+  threshold: ThresholdField[];
   calculationUnit?: string | null;
   thresholdUnit?: string | null;
 }) => {
@@ -598,6 +600,9 @@ export const buildMetricExpressionPreviewPayload = ({
     algorithm,
     group_algorithm: payloadGroupAlgorithm,
     group_by: payloadGroupBy,
+    threshold: threshold.filter(
+      (item) => item.value !== null && item.value !== undefined
+    ),
     metric_unit: units.metricUnit,
     calculation_unit: units.calculationUnit,
     threshold_unit: units.thresholdUnit,

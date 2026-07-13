@@ -261,7 +261,7 @@ assert.equal(
     isFormulaMode: true,
     isEnumMetric: false,
   }),
-  false
+  true
 );
 assert.equal(
   shouldShowThresholdUnitSelector({
