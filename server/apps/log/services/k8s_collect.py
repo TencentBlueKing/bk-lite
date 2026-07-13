@@ -5,6 +5,7 @@ import uuid
 
 import requests
 from django.core.cache import cache
+from django.db import transaction
 from django.utils import timezone
 
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -97,16 +98,23 @@ class K8sLogCollectService:
         if CollectInstance.objects.filter(id=instance_id).exists():
             raise BaseAppException("当前实例 ID 已存在")
 
-        instance = CollectInstance.objects.create(
-            id=instance_id,
-            name=name,
-            collect_type_id=collect_type_id,
-            node_id=None,
-        )
+        with transaction.atomic():
+            instance = CollectInstance.objects.create(
+                id=instance_id,
+                name=name,
+                collect_type_id=collect_type_id,
+                node_id=None,
+            )
 
-        assos = [CollectInstanceOrganization(collect_instance_id=instance.id, organization=organization) for organization in organizations]
-        if assos:
-            CollectInstanceOrganization.objects.bulk_create(assos, ignore_conflicts=True)
+            assos = [
+                CollectInstanceOrganization(
+                    collect_instance_id=instance.id,
+                    organization=organization,
+                )
+                for organization in organizations
+            ]
+            if assos:
+                CollectInstanceOrganization.objects.bulk_create(assos, ignore_conflicts=True)
 
         return {"instance_id": instance.id}
 
