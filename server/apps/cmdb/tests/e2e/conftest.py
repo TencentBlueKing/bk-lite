@@ -120,6 +120,10 @@ def _resolve_plugin(model_id: str):
         # 例:hwcloud_ecs → 父 plugin module = hwcloud(因 plugin 类只在 hwcloud.py 定义)
         f"apps.cmdb.collection.plugins.community.cloud.{module_alias}",
         f"apps.cmdb.collection.plugins.community.cloud.{model_id}",
+        # Task 4:archived 对象 plugin(plugins/community/archived/)— license/集群/平台占位
+        # 例:apusic → plugin module = apusic(因 plugin 类只在 archived/apusic.py 定义)
+        f"apps.cmdb.collection.plugins.community.archived.{module_alias}",
+        f"apps.cmdb.collection.plugins.community.archived.{model_id}",
     ]
     last_err: Optional[Exception] = None
     for mod_path in candidate_modules:
@@ -221,6 +225,34 @@ _MODEL_RUNNER_MAP = {
     # dameng_enterprise / redis_sentinel_enterprise 复用底层 plugin
     "dameng_enterprise":         ("db",         None),  # 复用 db runner + dameng plugin
     "redis_sentinel_enterprise": ("middleware", {"result": True}),  # 复用 redis_sentinel
+    # Task 4:22 个 archived placeholder 对象(17 license + 3 cluster + 1 host 平台 + 1 host 集群)
+    # license 类:全部 MIDDLEWARE task_type,走 middleware runner
+    "apusic":        ("middleware", {"result": True}),
+    "bes":           ("middleware", {"result": True}),
+    "informix":      ("middleware", {"result": True}),
+    "ihs":           ("middleware", {"result": True}),
+    "inforsuite_as": ("middleware", {"result": True}),
+    "iris":          ("middleware", {"result": True}),
+    "couchbase":     ("middleware", {"result": True}),
+    "oceanbase":     ("middleware", {"result": True}),
+    "oscar":         ("middleware", {"result": True}),
+    "sap_hana":      ("middleware", {"result": True}),
+    "sybase":        ("middleware", {"result": True}),
+    "tonggtp":       ("middleware", {"result": True}),
+    "tonglinkq":     ("middleware", {"result": True}),
+    "tongrds":       ("middleware", {"result": True}),
+    "tuxedo":        ("middleware", {"result": True}),
+    "weblogic":      ("middleware", {"result": True}),
+    "websphere":     ("middleware", {"result": True}),
+    # cluster 类:PROTOCOL task_type(hdfs/storm/yarn),HOST task_type(mycat)
+    # 全部用 protocol runner(archived plugin 无 metric_names,protocol runner 在 step2 push_to_vm
+    # 仍能产出主 metric;B 端对齐由 _placeholder_reason 跳过 pipeline 验证)
+    "hdfs":          ("protocol",   None),
+    "storm":         ("protocol",   None),
+    "yarn":          ("protocol",   None),
+    "mycat":         ("protocol",   None),
+    # platform 类:HOST task_type(domestic_linux 国产 Linux 平台约束)
+    "domestic_linux": ("protocol",  None),
 }
 
 
@@ -347,6 +379,30 @@ ALIGNMENT_COVERED_MODEL_IDS = [
     "dameng_enterprise",         # Task 3.6
     "redis_sentinel_enterprise", # Task 3.7
     # P2 archived placeholder(22) — Task 4
+    # 17 license 类(MIDDLEWARE task_type)
+    "apusic",        # Task 4.1
+    "bes",           # Task 4.2
+    "informix",      # Task 4.3
+    "ihs",           # Task 4.4
+    "inforsuite_as", # Task 4.5
+    "iris",          # Task 4.6
+    "couchbase",     # Task 4.7
+    "oceanbase",     # Task 4.8
+    "oscar",         # Task 4.9
+    "sap_hana",      # Task 4.10
+    "sybase",        # Task 4.11
+    "tonggtp",       # Task 4.12
+    "tonglinkq",     # Task 4.13
+    "tongrds",       # Task 4.14
+    "tuxedo",        # Task 4.15
+    "weblogic",      # Task 4.16
+    "websphere",     # Task 4.17
+    # 5 集群/平台类
+    "hdfs",          # Task 4.18
+    "storm",         # Task 4.19
+    "yarn",          # Task 4.20
+    "mycat",         # Task 4.21
+    "domestic_linux", # Task 4.22
 ]
 
 

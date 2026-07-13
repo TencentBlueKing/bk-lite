@@ -43,6 +43,30 @@ ALIGNMENT_COVERED_MODEL_IDS = [
     "dameng_enterprise",         # Task 3.6
     "redis_sentinel_enterprise", # Task 3.7
     # P2 archived placeholder(22) — Task 4 逐对象加进来
+    # 17 license 类
+    "apusic",        # Task 4.1
+    "bes",           # Task 4.2
+    "informix",      # Task 4.3
+    "ihs",           # Task 4.4
+    "inforsuite_as", # Task 4.5
+    "iris",          # Task 4.6
+    "couchbase",     # Task 4.7
+    "oceanbase",     # Task 4.8
+    "oscar",         # Task 4.9
+    "sap_hana",      # Task 4.10
+    "sybase",        # Task 4.11
+    "tonggtp",       # Task 4.12
+    "tonglinkq",     # Task 4.13
+    "tongrds",       # Task 4.14
+    "tuxedo",        # Task 4.15
+    "weblogic",      # Task 4.16
+    "websphere",     # Task 4.17
+    # 5 集群/平台类
+    "hdfs",          # Task 4.18
+    "storm",         # Task 4.19
+    "yarn",          # Task 4.20
+    "mycat",         # Task 4.21
+    "domestic_linux", # Task 4.22
 ]
 
 

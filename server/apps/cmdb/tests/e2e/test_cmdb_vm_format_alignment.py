@@ -44,6 +44,30 @@ ALIGNMENT_COVERED_MODEL_IDS = [
     "dameng_enterprise",         # Task 3.6
     "redis_sentinel_enterprise", # Task 3.7
     # P2 archived placeholder(22) — Task 4 逐对象加进来
+    # 17 license 类
+    "apusic",        # Task 4.1
+    "bes",           # Task 4.2
+    "informix",      # Task 4.3
+    "ihs",           # Task 4.4
+    "inforsuite_as", # Task 4.5
+    "iris",          # Task 4.6
+    "couchbase",     # Task 4.7
+    "oceanbase",     # Task 4.8
+    "oscar",         # Task 4.9
+    "sap_hana",      # Task 4.10
+    "sybase",        # Task 4.11
+    "tonggtp",       # Task 4.12
+    "tonglinkq",     # Task 4.13
+    "tongrds",       # Task 4.14
+    "tuxedo",        # Task 4.15
+    "weblogic",      # Task 4.16
+    "websphere",     # Task 4.17
+    # 5 集群/平台类
+    "hdfs",          # Task 4.18
+    "storm",         # Task 4.19
+    "yarn",          # Task 4.20
+    "mycat",         # Task 4.21
+    "domestic_linux", # Task 4.22
 ]
 
 
@@ -191,6 +215,17 @@ def test_b_alignment_field_subset(model_id, load_fixture, runner_plugin_factory,
     raw_items = raw if isinstance(raw, list) else [raw]
     raw_items_first = raw_items[0] if isinstance(raw_items, list) else raw_items
 
+    # Task 4:placeholder 对象(_placeholder_reason 标记)的 fixture 是空对象,archived plugin
+    # metric_names/field_mappings 为空,pipeline.run_full_pipeline_generic 会 KeyError
+    # (runner.collection_metrics_dict 为空 dict,append 主 metric 名时 KeyError)。
+    # placeholder 模式由 test_placeholder_objects.py + per-object pipeline test 覆盖,
+    # 这里跳过 VM pipeline 验证。
+    if isinstance(raw_items_first, dict) and raw_items_first.get("_placeholder_reason"):
+        pytest.skip(
+            f"{model_id} 是 placeholder 对象(_placeholder_reason={raw_items_first.get('_placeholder_reason')!r}),"
+            f"跳过 B 端 VM pipeline 字段子集验证(由 placeholder 模式覆盖)"
+        )
+
     # P0 真实化对象:monkeypatch runner / plugin 才能跑 generic pipeline
     if model_id in P0_RUNNER_PLUGIN:
         _patch_p0_runner_for_b_endpoint(monkeypatch, runner_cls, plugin_cls, model_id)
@@ -301,6 +336,17 @@ def test_b_alignment_required_nonempty(model_id, load_fixture, runner_plugin_fac
     raw = load_fixture(f"{model_id}/01_stargazer_raw.json")
     raw_items = raw if isinstance(raw, list) else [raw]
     raw_items_first = raw_items[0] if isinstance(raw_items, list) else raw_items
+
+    # Task 4:placeholder 对象(_placeholder_reason 标记)的 fixture 是空对象,archived plugin
+    # metric_names/field_mappings 为空,pipeline.run_full_pipeline_generic 会 KeyError
+    # (runner.collection_metrics_dict 为空 dict,append 主 metric 名时 KeyError)。
+    # placeholder 模式由 test_placeholder_objects.py + per-object pipeline test 覆盖,
+    # 这里跳过 VM pipeline 验证。
+    if isinstance(raw_items_first, dict) and raw_items_first.get("_placeholder_reason"):
+        pytest.skip(
+            f"{model_id} 是 placeholder 对象(_placeholder_reason={raw_items_first.get('_placeholder_reason')!r}),"
+            f"跳过 B 端 VM pipeline 字段子集验证(由 placeholder 模式覆盖)"
+        )
 
     # P0 真实化对象:monkeypatch runner / plugin 才能跑 generic pipeline
     if model_id in P0_RUNNER_PLUGIN:
