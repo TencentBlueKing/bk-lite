@@ -43,6 +43,20 @@ def _call(request, inst_id="9"):
     return view(request, inst_id=inst_id)
 
 
+def _reconcile_request(user):
+    request = APIRequestFactory().post(
+        "/api/v1/cmdb/api/instance/ipam_reconcile/",
+        data={},
+        format="json",
+    )
+    force_authenticate(request, user=user)
+    return request
+
+
+def _call_reconcile(request):
+    return InstanceViewSet.as_view({"post": "ipam_reconcile"})(request)
+
+
 def test_ipam_view_requires_asset_view_permission():
     user = _user()
     subnet = {
@@ -107,3 +121,30 @@ def test_ipam_view_action_returns_capacity_with_view_permission():
     assert resp.status_code == 200
     body = json.loads(resp.content)
     assert body["data"]["capacity"] == 254
+
+
+def test_ipam_reconcile_requires_asset_edit_permission():
+    user = _user()
+
+    with patch(
+        "apps.cmdb.services.ipam_reconcile.run_reconciliation",
+        return_value={"created": 1},
+    ) as reconcile:
+        response = _call_reconcile(_reconcile_request(user))
+
+    assert response.status_code == 403
+    reconcile.assert_not_called()
+
+
+def test_ipam_reconcile_runs_with_asset_edit_permission():
+    user = _user()
+    user.permission = {"cmdb": {"asset_info-Edit"}}
+
+    with patch(
+        "apps.cmdb.services.ipam_reconcile.run_reconciliation",
+        return_value={"created": 1, "updated": 2},
+    ) as reconcile:
+        response = _call_reconcile(_reconcile_request(user))
+
+    assert response.status_code == 200
+    reconcile.assert_called_once_with()

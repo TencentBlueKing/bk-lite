@@ -1414,6 +1414,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         return WebUtils.response_success(_data)
 
     @action(detail=False, methods=["post"], url_path="ipam_reconcile")
+    @HasPermission("asset_info-Edit")
     def ipam_reconcile(self, request):
         """立即对账（手动触发）。"""
         from apps.cmdb.services.ipam_reconcile import run_reconciliation
