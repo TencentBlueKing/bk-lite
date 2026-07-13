@@ -55,6 +55,21 @@ class ConfigFileService(object):
         if not task:
             raise BaseAppException(f"配置文件采集任务不存在: {task_id}")
 
+        execution_error = cls._get_execution_rejection(task, payload)
+        if execution_error:
+            logger.info(
+                "[ConfigFileService] 忽略非当前执行回调 task_id=%s, error=%s",
+                task.id,
+                execution_error,
+            )
+            return {
+                "version_obj": None,
+                "changed": False,
+                "task_updated": False,
+                "stale": True,
+                "error": execution_error,
+            }
+
         try:
             params = dict(task.params or {})
             instance_identifier = str(payload.get("instance_name") or payload.get("instance_id") or "")
@@ -74,6 +89,17 @@ class ConfigFileService(object):
             stale_callback = cls._is_stale_callback(task, version)
 
             with transaction.atomic():
+                task = CollectModels.objects.select_for_update().get(id=task.id)
+                execution_error = cls._get_execution_rejection(task, payload)
+                if execution_error:
+                    return {
+                        "version_obj": None,
+                        "changed": False,
+                        "task_updated": False,
+                        "stale": True,
+                        "error": execution_error,
+                    }
+                stale_callback = cls._is_stale_callback(task, version)
                 if status != ConfigFileVersionStatus.SUCCESS:
                     task_updated = cls._update_task_lifecycle(
                         task=task,
@@ -197,12 +223,30 @@ class ConfigFileService(object):
             }
 
         summary = cls._build_summary(task, items)
-        task.collect_data = {"config_file": summary["config_file_data"]}
-        task.format_data = summary["format_data"]
-        task.collect_digest = summary["collect_digest"]
-        task.exec_status = summary["exec_status"]
-        task.save(update_fields=["collect_data", "format_data", "collect_digest", "exec_status", "updated_at"])
-        return True
+        return bool(
+            CollectModels.objects.filter(
+                id=task.id,
+                task_id=task.task_id,
+                exec_status=CollectRunStatusType.RUNNING,
+            ).update(
+                collect_data={"config_file": summary["config_file_data"]},
+                format_data=summary["format_data"],
+                collect_digest=summary["collect_digest"],
+                exec_status=summary["exec_status"],
+                updated_at=now(),
+            )
+        )
+
+    @staticmethod
+    def _get_execution_rejection(task: CollectModels, payload: dict) -> str:
+        payload_execution_id = str(payload.get("execution_id") or "").strip()
+        if not payload_execution_id:
+            return "配置文件采集回调缺少 execution ID"
+        if payload_execution_id != str(task.task_id or ""):
+            return "配置文件采集回调 execution ID 已过期"
+        if task.exec_status != CollectRunStatusType.RUNNING:
+            return "配置文件采集任务已进入终态"
+        return ""
 
     @staticmethod
     def _normalize_collect_payload(data: dict) -> dict:
@@ -333,12 +377,19 @@ class ConfigFileService(object):
         collect_digest = summary["collect_digest"]
         exec_status = summary["exec_status"]
 
-        task.collect_data = {"config_file": config_file_data}
-        task.format_data = format_data
-        task.collect_digest = collect_digest
-        task.exec_status = exec_status
-        task.save(update_fields=["collect_data", "format_data", "collect_digest", "exec_status", "updated_at"])
-        return True
+        return bool(
+            CollectModels.objects.filter(
+                id=task.id,
+                task_id=task.task_id,
+                exec_status=CollectRunStatusType.RUNNING,
+            ).update(
+                collect_data={"config_file": config_file_data},
+                format_data=format_data,
+                collect_digest=collect_digest,
+                exec_status=exec_status,
+                updated_at=now(),
+            )
+        )
 
     @staticmethod
     def _decode_content(content_base64: str) -> str:

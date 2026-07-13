@@ -41,6 +41,8 @@ def _make_task(**kw):
         instances=[{"_id": "inst-1", "ip_addr": "10.0.0.1", "inst_name": "10.0.0.1"}],
         params={"config_file_path": "/etc/app.conf", "config_file_name": "app.conf"},
         exec_time=now() - timedelta(hours=1),
+        exec_status=CollectRunStatusType.RUNNING,
+        task_id="execution-current",
     )
     defaults.update(kw)
     return CollectModels.objects.create(**defaults)
@@ -49,6 +51,7 @@ def _make_task(**kw):
 def _payload(task, **kw):
     base = dict(
         collect_task_id=task.id,
+        execution_id=task.task_id,
         instance_id="inst-1",
         status="success",
         version=str(int(now().timestamp() * 1000)),
@@ -124,7 +127,59 @@ def test_stale_callback_is_ignored():
     assert result["task_updated"] is False
     task.refresh_from_db()
     # 过期回调不改任务状态
-    assert task.exec_status == CollectRunStatusType.NOT_START
+    assert task.exec_status == CollectRunStatusType.RUNNING
+
+
+@pytest.mark.django_db
+def test_missing_execution_id_is_rejected_without_side_effects():
+    task = _make_task()
+    payload = _payload(task)
+    payload.pop("execution_id")
+
+    result = S.process_collect_result(payload)
+
+    assert result["stale"] is True
+    assert result["task_updated"] is False
+    assert "execution ID" in result["error"]
+    assert ConfigFileVersion.objects.filter(collect_task=task).count() == 0
+    task.refresh_from_db()
+    assert task.exec_status == CollectRunStatusType.RUNNING
+
+
+@pytest.mark.django_db
+def test_stale_execution_id_does_not_create_version_or_update_task():
+    task = _make_task()
+
+    result = S.process_collect_result(_payload(task, execution_id="execution-old"))
+
+    assert result["stale"] is True
+    assert result["task_updated"] is False
+    assert ConfigFileVersion.objects.filter(collect_task=task).count() == 0
+    task.refresh_from_db()
+    assert task.exec_status == CollectRunStatusType.RUNNING
+    assert task.collect_data == {}
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "terminal_status",
+    [
+        CollectRunStatusType.SUCCESS,
+        CollectRunStatusType.ERROR,
+        CollectRunStatusType.TIME_OUT,
+        CollectRunStatusType.FORCE_STOP,
+    ],
+)
+def test_terminal_task_rejects_late_callback(terminal_status):
+    task = _make_task(exec_status=terminal_status)
+
+    result = S.process_collect_result(_payload(task))
+
+    assert result["stale"] is True
+    assert result["task_updated"] is False
+    assert ConfigFileVersion.objects.filter(collect_task=task).count() == 0
+    task.refresh_from_db()
+    assert task.exec_status == terminal_status
 
 
 @pytest.mark.django_db
