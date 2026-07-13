@@ -11,8 +11,13 @@ from apps.monitor.management.utils import (
     parse_template_filename,
 )
 from apps.monitor.services.plugin import MonitorPluginService
+from apps.rpc.node_mgmt import NodeMgmt
 
 TEMPLATE_COLLECT_TYPE_PATTERN = re.compile(r"""collect_type\s*=\s*["']([^"']+)["']""")
+REMOTE_HOST_METRICS_MODULES = ("cpu", "mem", "disk", "diskio", "net", "processes", "system")
+REMOTE_HOST_METRICS_MODULES_CSV = ",".join(REMOTE_HOST_METRICS_MODULES)
+REMOTE_HOST_CONFIG_TYPES = ("host", "windows_wmi")
+METRICS_MODULES_TOML_LINE_PATTERN = re.compile(r'(?m)^(\s*metrics_modules\s*=\s*)"[^"\n]*"')
 
 
 class PluginIdentityValidationError(ValueError):
@@ -157,6 +162,61 @@ def _reconcile_supplementary_indicators(supplementary_map):
     )
     logger.info(f"已重算 {len(objects_to_update)} 个监控对象的 supplementary_indicators")
     return len(objects_to_update)
+
+
+def _replace_remote_host_metrics_modules_line(content):
+    if not isinstance(content, str):
+        return content, False
+
+    changed = False
+
+    def replace(match):
+        nonlocal changed
+        replacement = f'{match.group(1)}"{REMOTE_HOST_METRICS_MODULES_CSV}"'
+        if match.group(0) == replacement:
+            return match.group(0)
+        changed = True
+        return replacement
+
+    updated_content = METRICS_MODULES_TOML_LINE_PATTERN.sub(replace, content)
+    return updated_content, changed
+
+
+def _sync_remote_host_metrics_modules():
+    from apps.monitor.models import CollectConfig
+
+    config_ids = list(
+        CollectConfig.objects.filter(
+            collect_type="http",
+            config_type__in=REMOTE_HOST_CONFIG_TYPES,
+            is_child=True,
+        ).values_list("id", flat=True)
+    )
+    if not config_ids:
+        logger.info("未发现需要同步采集模块的主机远程子配置")
+        return 0
+
+    node_mgmt = NodeMgmt()
+    try:
+        child_configs = node_mgmt.get_child_configs_by_ids(config_ids)
+    except Exception as e:
+        logger.error(f"获取主机远程子配置失败，跳过采集模块同步: {e}")
+        return 0
+
+    updated_count = 0
+    for child_config in child_configs or []:
+        config_id = child_config.get("id")
+        updated_content, changed = _replace_remote_host_metrics_modules_line(child_config.get("content"))
+        if not config_id or not changed:
+            continue
+
+        try:
+            node_mgmt.update_child_config_content(config_id, updated_content)
+            updated_count += 1
+        except Exception as e:
+            logger.error(f"同步主机远程子配置采集模块失败: config_id={config_id}, 错误={e}")
+
+    return updated_count
 
 
 def _load_plugins_to_memory():
@@ -473,11 +533,13 @@ def migrate_plugin():
 
     # 第四阶段：批量保存模板
     stats = _batch_save_templates(templates_data)
+    remote_host_synced_count = _sync_remote_host_metrics_modules()
 
     # 输出统计信息
     logger.info(f"插件导入完成: 成功={success_count}, 失败={error_count}")
     logger.info(f"配置模板统计: 创建={stats['config_create']}, 更新={stats['config_update']}, 删除={stats['config_delete']}")
     logger.info(f"UI 模板统计: 创建={stats['ui_create']}, 更新={stats['ui_update']}, 删除={stats['ui_delete']}")
+    logger.info(f"主机远程采集模块同步完成: 更新={remote_host_synced_count}")
 
     # 第五阶段：清理已移除的内置插件
     _cleanup_removed_plugins(path_list)

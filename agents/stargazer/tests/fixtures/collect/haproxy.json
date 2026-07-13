@@ -1,0 +1,29 @@
+{
+  "model_id": "haproxy",
+  "captured_at": "2026-07-08T06:21:49Z",
+  "image": "docker.m.daocloud.io/library/ubuntu:22.04",
+  "container_meta": {
+    "container_id": "e6f00b9b63a9",
+    "image": "docker.m.daocloud.io/library/ubuntu:22.04"
+  },
+  "params": {
+    "host": "127.0.0.1",
+    "ssh_port": 12246
+  },
+  "raw_stdout": {
+    "bk_inst_name": "172.17.0.3-haproxy-80&8404",
+    "bk_obj_id": "haproxy",
+    "ip_addr": "172.17.0.3",
+    "version": "2.4.30",
+    "install_path": "haproxy",
+    "conf_file": "/etc/haproxy/haproxy.cfg",
+    "global_maxconn": "",
+    "global_pidfile": "",
+    "global_group_name": "",
+    "global_user_name": "",
+    "defaults_maxconn": "",
+    "defaults_mode": "http",
+    "defaults_retries": "",
+    "port": "80&8404"
+  }
+}

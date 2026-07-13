@@ -15,12 +15,51 @@ import importlib.util
 from pathlib import Path
 from unittest.mock import MagicMock, patch, call
 
+import pytest
+
+
+_MISSING = object()
+_MODULE_SNAPSHOT = {}
+
+
+def _remember_module(name):
+    if name in _MODULE_SNAPSHOT:
+        return
+    mod = sys.modules.get(name, _MISSING)
+    if mod is _MISSING:
+        _MODULE_SNAPSHOT[name] = (_MISSING, None)
+    elif isinstance(mod, types.ModuleType):
+        _MODULE_SNAPSHOT[name] = (mod, dict(mod.__dict__))
+    else:
+        _MODULE_SNAPSHOT[name] = (mod, None)
+
+
+def _restore_modules():
+    for name, (mod, attrs) in reversed(list(_MODULE_SNAPSHOT.items())):
+        if mod is _MISSING:
+            sys.modules.pop(name, None)
+            continue
+        sys.modules[name] = mod
+        if attrs is not None:
+            mod.__dict__.clear()
+            mod.__dict__.update(attrs)
+    _MODULE_SNAPSHOT.clear()
+
+
+@pytest.fixture(autouse=True)
+def _restore_fake_modules_after_test():
+    try:
+        yield
+    finally:
+        _restore_modules()
+
 
 def _install(name, **attrs):
     """Install a fake module into sys.modules, including all parent packages."""
     parts = name.split(".")
     for i in range(1, len(parts) + 1):
         pkg = ".".join(parts[:i])
+        _remember_module(pkg)
         if pkg not in sys.modules:
             mod = types.ModuleType(pkg)
             sys.modules[pkg] = mod

@@ -1,0 +1,69 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_icotera",
+  "plugin": "Access Icotera SNMP",
+  "plugin_desc": "Baseline SNMP child template for Icotera FTTH / GPON / CATV / VoIP CPE devices (i64xx and i68xx families, enterprise PEN 29865). The Icotera enterprise root and the ictIGW1k / ictIGW4k sub-trees are publicly documented through the public ICOTERA-I6400-SERIES and ICOTERA-I6800-SERIES MIB modules and the public IANA enterprise-numbers entry, but no stable, row-filter-free CPU, memory, temperature, fan or power-supply device-health leaf OID is confirmed in this pass; CATV module admin state, RF levels and optical-transceiver DDM values are device-specific and require per-row filtering that telegraf inputs.snmp cannot provide reliably. This child therefore declares no vendor metric deltas in metrics.json; the shared Access SNMP floor supplies MIB-II uptime, IF-MIB/ifXTable interface metrics including 64-bit ifHCInOctets and ifHCOutOctets, and aggregate device traffic. Supported brands/models - Icotera i64xx (1K CPE) and i68xx (4K CPE) FTTH/GPON/CATV/VoIP terminal devices that expose standard IF-MIB.",
+  "status_query": "any({instance_type='access', collect_type='snmp_icotera'}) by (instance_id)",
+  "name": "Access",
+  "icon": "mm-access_接入设备",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='access'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='access', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='access', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='access', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+export PATH="$HOME/.local/bin:$HOME/bin:$PATH"
+
+if ! command -v codegraph >/dev/null 2>&1; then
+  if command -v npm >/dev/null 2>&1; then
+    npm install -g @colbymchenry/codegraph >/dev/null
+  else
+    echo "codegraph is missing and npm is not available. Run scripts/agent-tooling-bootstrap." >&2
+    exit 127
+  fi
+fi
+
+cd "$ROOT"
+exec codegraph serve --mcp

@@ -32,11 +32,13 @@ from apps.cmdb.display_field.constants import (
 from apps.cmdb.display_field.handler import DisplayFieldConverter, DisplayFieldHandler
 from apps.cmdb.models.change_record import CREATE_INST, DELETE_INST, OPERATE_TYPE_CHOICES, UPDATE_INST, ChangeRecord
 from apps.cmdb.models.collect_model import CollectModels
-from apps.cmdb.services.collect_credential_result_service import CollectCredentialResultService
+from apps.cmdb.services import rack_room
 from apps.cmdb.services.classification import ClassificationManage
+from apps.cmdb.services.collect_credential_result_service import CollectCredentialResultService
 from apps.cmdb.services.config_file_service import ConfigFileService
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.model import ModelManage
+from apps.cmdb.services.rack_room import format_rack_location_label, parse_rack_location
 from apps.cmdb.utils.base import get_default_group_id
 from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
 from apps.core.logger import cmdb_logger as logger
@@ -261,9 +263,18 @@ def _format_asset_instances_response(model_id, instances):
 
 
 @nats_client.register
-def get_cmdb_module_data(module, child_module, page, page_size, group_id):
+def get_cmdb_module_data(module, child_module, page, page_size, group_id, user_info=None):
     """
     获取cmdb模块实例数据
+
+    Args:
+        module: 模块类型（PERMISSION_INSTANCES / PERMISSION_MODEL / PERMISSION_TASK）
+        child_module: 子模块标识（PERMISSION_INSTANCES 分支下为 model_id）
+        page: 页码
+        page_size: 每页条目数
+        group_id: 组织 ID，用于限定组织范围查询
+        user_info: 用户上下文 { user: str, team: int, domain: str }，
+                   由调用方（system_mgmt）注入；缺失时 PERMISSION_INSTANCES 分支返回空列表（安全兜底）
     """
     page = int(page)
     page_size = int(page_size)
@@ -275,14 +286,19 @@ def get_cmdb_module_data(module, child_module, page, page_size, group_id):
         count = instances.count()
         queryset = [{"id": str(i["id"]), "name": f"{i['model_id']}_{i['name']}"} for i in instances]
     elif module == PERMISSION_INSTANCES:
+        # 构建真实权限 map：根据调用方传入的 user_info 查询用户在目标模型上的权限范围
+        # 当 user_info 缺失或用户无权限时返回空列表，避免越权泄露实例名称
+        permission_map = _build_nats_permission_map(user_info, model_id=child_module)
+        if permission_map is None:
+            return {"count": 0, "items": []}
         instances, count = InstanceManage.instance_list(
-            model_id=child_module,  # 使用实际模型ID
-            params=[{"field": "organization", "type": "list[]", "value": [int(group_id)]}],  # 空查询条件（或按需添加）
+            model_id=child_module,
+            params=[{"field": "organization", "type": "list[]", "value": [int(group_id)]}],
             page=page,
             page_size=page_size,
             order="",
             creator="",
-            permission_map={},
+            permission_map=permission_map,
         )
         queryset = []
         for instance in instances:
@@ -690,6 +706,7 @@ def receive_config_file_result(data: dict):
         "task_updated": bool(result.get("task_updated", False)),
     }
 
+
 @nats_client.register
 def receive_collect_credential_result(data: dict):
     """接收 Stargazer 推送的单条或批量凭据执行结果并回写命中状态。"""
@@ -802,6 +819,218 @@ def get_cmdb_statistics(user_info=None, **kwargs):
             "empty_model_count": empty_model_count,
             "model_coverage_rate": model_coverage_rate,
         },
+        "message": "",
+    }
+
+
+def _room3d_error(message, code=400):
+    return {"result": False, "data": {}, "message": message, "code": code}
+
+
+def _parse_room3d_server_room_id(value):
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _format_room3d_location_label(row, col):
+    return format_rack_location_label(row, col)
+
+
+def _parse_room3d_rack_location(value):
+    return parse_rack_location(value)
+
+
+def _room3d_rack_identity(rack):
+    rack_id = rack.get("inst_id")
+    return str(rack_id or ""), rack.get("inst_name") or str(rack_id or "")
+
+
+def _resolve_room3d_locale(user_info=None):
+    user_info = user_info or {}
+    user = user_info.get("user")
+    locale = user_info.get("locale") or user_info.get("language") or getattr(user, "locale", None) or user_info.get("LANGUAGE_CODE") or "zh-CN"
+    return str(locale).lower()
+
+
+def _format_room3d_invalid_location_notice(invalid_racks, locale="zh-CN"):
+    if not invalid_racks:
+        return ""
+
+    is_english = str(locale).lower().startswith("en")
+    rack_descriptions = []
+    for rack, location in invalid_racks:
+        _, rack_name = _room3d_rack_identity(rack)
+        if is_english:
+            location_label = "location is empty" if location in (None, "") else f"location is {location}"
+            rack_descriptions.append(f"{rack_name} ({location_label})")
+        else:
+            location_label = "位置为空" if location in (None, "") else f"位置为 {location}"
+            rack_descriptions.append(f"{rack_name}（{location_label}）")
+
+    if is_english:
+        return f"{len(invalid_racks)} racks have invalid locations and are not shown: " f"{', '.join(rack_descriptions)}. Use the A3 / A03 format."
+
+    return f"{len(invalid_racks)} 个机柜位置格式错误未展示：{'、'.join(rack_descriptions)}。请按 A3 / A03 格式填写。"
+
+
+def _format_room3d_device(device):
+    return {
+        "device_id": str(device.get("inst_id") or device.get("_id") or ""),
+        "device_name": device.get("inst_name") or "",
+        "model_id": device.get("model_id"),
+        "rack_u_start": device.get("rack_u_start"),
+        "u_size": device.get("u_size"),
+        "status": device.get("status"),
+    }
+
+
+def _get_room3d_rack_device_summary(rack_id, permission_map=None, user=None):
+    rack_layout = rack_room.get_rack_layout(rack_id, permission_map=permission_map, user=user)
+    placed_devices = rack_layout.get("placed") or []
+    unplaced_devices = rack_layout.get("unplaced") or []
+    return {
+        "devices": [_format_room3d_device(device) for device in placed_devices],
+        "device_count": len(placed_devices) + len(unplaced_devices),
+        "unplaced_device_count": len(unplaced_devices),
+    }
+
+
+def _empty_room3d_device_summary():
+    return {"devices": [], "device_count": 0, "unplaced_device_count": 0}
+
+
+def _room3d_rack_id_as_int(rack_id):
+    try:
+        return int(rack_id)
+    except (TypeError, ValueError):
+        return None
+
+
+def _get_room3d_rack_type_name_map():
+    attrs = ExcludeFieldsCache.get_model_attrs("rack") or []
+    for attr in attrs:
+        if attr.get("attr_id") != "datacenter_type" or attr.get("attr_type") != FIELD_TYPE_ENUM:
+            continue
+        return {str(option.get("id")): option.get("name") for option in attr.get("option", []) if option and option.get("name")}
+    return {}
+
+
+@nats_client.register
+def get_room3d_layout(server_room_id=None, user_info=None, **kwargs):
+    """
+    获取运营分析 room3D 图表使用的 CMDB 机房机柜布局数据。
+
+    一个 room3D 组件只展示一个 server_room；机柜列表复用 rack_room.get_room_layout，
+    因此机柜权限、U 位统计、位置解析和位置冲突口径与 CMDB 机房视图保持一致。
+    """
+    room_id = _parse_room3d_server_room_id(server_room_id)
+    if room_id is None:
+        return _room3d_error("server_room_id 参数必填且必须为整数")
+
+    room = InstanceManage.query_entity_by_id(room_id)
+    if not room:
+        return _room3d_error("机房实例不存在", code=404)
+    if room.get("model_id") != "server_room":
+        return _room3d_error("server_room_id 必须指向 server_room 实例")
+
+    permission_map = _build_nats_permission_map(user_info)
+    if permission_map is None:
+        return _room3d_error("无权限查看当前机房", code=403)
+
+    user_context = user_info or {}
+    user = _normalize_permission_user(user_context.get("user"), domain=user_context.get("domain"))
+    if not InstanceManage._has_topology_view_permission(room, permission_map, user=user):
+        return _room3d_error("无权限查看当前机房", code=403)
+
+    layout = rack_room.get_room_layout(room_id, permission_map=permission_map, user=user)
+    visible_layout_racks = (layout.get("racks") or []) + (layout.get("unplaced") or [])
+    candidate_racks = []
+    invalid_location_racks = []
+    for rack in visible_layout_racks:
+        rack_location = rack.get("location")
+        parsed_location = _parse_room3d_rack_location(rack_location)
+        if not parsed_location:
+            invalid_location_racks.append((rack, rack_location))
+            continue
+
+        row, col = parsed_location
+        rack_id, rack_name = _room3d_rack_identity(rack)
+        candidate = {
+            "rack": rack,
+            "row": row,
+            "col": col,
+            "location": _format_room3d_location_label(row, col),
+            "rack_id": rack_id,
+            "rack_name": rack_name,
+        }
+        candidate_racks.append(candidate)
+
+    rack_ids = [
+        rack_id_int for rack_id_int in (_room3d_rack_id_as_int(item["rack"].get("inst_id")) for item in candidate_racks) if rack_id_int is not None
+    ]
+    if hasattr(rack_room, "get_room3d_rack_device_summaries"):
+        device_summaries = rack_room.get_room3d_rack_device_summaries(
+            rack_ids,
+            permission_map=permission_map,
+            user=user,
+        )
+    else:
+        device_summaries = {}
+        for item in candidate_racks:
+            raw_rack_id = item["rack"].get("inst_id")
+            rack_id_int = _room3d_rack_id_as_int(raw_rack_id)
+            if rack_id_int is not None:
+                device_summaries[rack_id_int] = _get_room3d_rack_device_summary(
+                    raw_rack_id,
+                    permission_map=permission_map,
+                    user=user,
+                )
+
+    rack_type_name_map = _get_room3d_rack_type_name_map()
+    racks = []
+    for item in candidate_racks:
+        rack = item["rack"]
+        rack_id = rack.get("inst_id")
+        rack_id_int = _room3d_rack_id_as_int(rack_id)
+        device_summary = device_summaries.get(rack_id_int, _empty_room3d_device_summary())
+        rack_type = rack.get("datacenter_type")
+        rack_type_name = rack_type_name_map.get(str(rack_type)) if rack_type not in (None, "") else None
+        rack_payload = {
+            "rack_id": item["rack_id"],
+            "rack_name": item["rack_name"],
+            "row": item["row"],
+            "col": item["col"],
+            "location": item["location"],
+            "rack_type": rack_type,
+            "u_count": rack.get("u_count"),
+            "used_u": rack.get("used_u"),
+            "free_u": rack.get("free_u"),
+            "device_count": device_summary["device_count"],
+            "unplaced_device_count": device_summary["unplaced_device_count"],
+            "devices": device_summary["devices"],
+        }
+        if rack_type_name:
+            rack_payload["rack_type_name"] = rack_type_name
+        racks.append(rack_payload)
+
+    data = {
+        "room": {"id": str(room_id), "name": room.get("inst_name") or ""},
+        "racks": racks,
+    }
+    notice = _format_room3d_invalid_location_notice(
+        invalid_location_racks,
+        _resolve_room3d_locale(user_info),
+    )
+    if notice:
+        data["notice"] = notice
+
+    return {
+        "result": True,
+        "data": data,
         "message": "",
     }
 

@@ -38,11 +38,24 @@ export const buildLogFieldVariable = (field: string) =>
   field.startsWith('log.') ? '${' + field + '}' : '${log.' + field + '}';
 
 export const buildAlertNameVariables = (groupBy?: string[] | null) => {
-  const variableValues = new Set<string>(['${level}']);
-  (groupBy || []).filter(Boolean).forEach((field) => {
-    variableValues.add(buildLogFieldVariable(field));
+  const variableItems = new Map<
+    string,
+    { value: string; label: string; description: 'alertLevel' | 'groupField' }
+  >();
+  variableItems.set('${level}', {
+    value: '${level}',
+    label: '${level}',
+    description: 'alertLevel'
   });
-  return Array.from(variableValues).map((value) => ({ value, label: value }));
+  (groupBy || []).filter(Boolean).forEach((field) => {
+    const value = buildLogFieldVariable(field);
+    variableItems.set(value, {
+      value,
+      label: value,
+      description: 'groupField'
+    });
+  });
+  return Array.from(variableItems.values());
 };
 
 export const buildLogPreviewSearchParams = ({

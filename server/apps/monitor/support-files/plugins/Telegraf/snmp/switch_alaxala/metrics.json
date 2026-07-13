@@ -1,0 +1,123 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_alaxala",
+  "plugin": "Switch Alaxala SNMP",
+  "plugin_desc": "Alaxala Networks switch-specific SNMP collection (AX series, IANA PEN 21839). In addition to standard IF-MIB interface metrics, it collects Alaxala private OIDs for device health from the per-chassis-member box-management table — control-plane CPU load over the last minute (axsCpuLoad1m) and system memory total, used and free bytes (axsMemoryTotalSize / axsMemoryUsedSize / axsMemoryFreeSize). The columns are indexed per stack/chassis member, with the real value on the active member and other rows reporting zero, so device_cpu_usage and the memory totals are aggregated with max() to surface the real reading; memory utilization is derived from used/(used+free). The AX box-management table exposes only a discrete temperature status enum (axsTemperatureStatusNumber), not a pollable numeric Celsius value, and no dedicated fan-state or power-supply (PSU) state numeric object, so temperature, fan and PSU are not collected (N/A). Supported brands/models — Alaxala AX2430S managed enterprise switches; other AX families (AX2300S/AX2600S/AX3000S) place the same counters under model-specific subtrees and degrade to a clean IF-MIB baseline.",
+  "status_query": "any({instance_type='switch', collect_type='snmp_alaxala'}) by (instance_id)",
+  "name": "Switch",
+  "icon": "mm-switch_交换机",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='switch'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage"
+  ],
+  "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "max(device_cpu_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the CPU load of the Alaxala device control plane over the last minute (box-management table, axsCpuLoad1m column), expressed as a percentage from 0 to 100. The value is read from the per-chassis-member box-management table; standby/inactive members report zero, so the metric is aggregated with max() to surface the real active-member reading. Sustained high CPU usage can indicate control-plane overload, routing instability, or attack traffic, and may lead to slow management response or packet processing delays."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_used",
+      "query": "max(device_memory_used{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Memory Used",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the used system memory of the Alaxala device in bytes (box-management table, axsMemoryUsedSize column). The value is read from the active chassis-member row and aggregated with max() to surface the real reading. It is used together with the free memory counter to derive overall memory utilization."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_free",
+      "query": "max(device_memory_free{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Memory Free",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the free system memory of the Alaxala device in bytes (box-management table, axsMemoryFreeSize column). The value is read from the active chassis-member row and aggregated with max() to surface the real reading. It is used together with the used memory counter to derive overall memory utilization."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_usage",
+      "query": "sum(device_memory_used{instance_type='switch', __$labels__}) by (instance_id) / (sum(device_memory_used{instance_type='switch', __$labels__}) by (instance_id) + sum(device_memory_free{instance_type='switch', __$labels__}) by (instance_id)) * 100",
+      "display_name": "Memory Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the overall memory utilization of the Alaxala device, derived as used/(used+free)*100 from the box-management memory counters (axsMemoryUsedSize / axsMemoryFreeSize). High memory usage may indicate memory leaks, oversized routing/MAC/ARP tables, or insufficient capacity, and can cause instability or failed allocations."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifInOctets on high-speed switch ports, keeping the rate accurate."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifOutOctets on high-speed switch ports, keeping the rate accurate."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='switch', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

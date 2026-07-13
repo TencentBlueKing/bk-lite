@@ -43,8 +43,10 @@ class DummyNATSClient:
     def __init__(self, payload, max_payload=1024 * 1024):
         self.payload = payload
         self.max_payload = max_payload
+        self.requests = []
 
     async def request(self, subject, request_payload, timeout):
+        self.requests.append((subject, request_payload, timeout))
         return DummyNATSResponse(self.payload)
 
 
@@ -206,6 +208,68 @@ async def test_invoke_callback_rejects_non_object_response(tmp_path):
 
     with pytest.raises(ValueError, match="non-object"):
         await service._invoke_callback({"subject": "job.ansible_task_callback"}, {"task_id": "task-6"})
+
+
+@pytest.mark.asyncio
+async def test_invoke_callback_rejects_untrusted_subject_before_request(tmp_path):
+    service = AnsibleNATSService(
+        ServiceConfig(
+            nats_servers=["nats://127.0.0.1:4222"],
+            nats_instance_id="default",
+            js_stream="BK_ANS_EXEC_TASKS",
+            js_subject_prefix="bk.ans_exec.tasks",
+            js_durable="ansible-executor",
+            state_db_path=str(tmp_path / "task.db"),
+        )
+    )
+    service.nc = DummyNATSClient({"success": True})
+
+    with pytest.raises(ValueError, match="callback subject is not allowed"):
+        await service._invoke_callback({"subject": "system_mgmt.delete_user"}, {"task_id": "task-bad"})
+
+    assert service.nc.requests == []
+
+
+@pytest.mark.asyncio
+async def test_invoke_callback_allows_configured_subject_pattern(tmp_path):
+    service = AnsibleNATSService(
+        ServiceConfig(
+            nats_servers=["nats://127.0.0.1:4222"],
+            nats_instance_id="default",
+            js_stream="BK_ANS_EXEC_TASKS",
+            js_subject_prefix="bk.ans_exec.tasks",
+            js_durable="ansible-executor",
+            state_db_path=str(tmp_path / "task.db"),
+            allowed_callback_subjects=["job.ansible_task_callback", "bklite.safe_callback.>"],
+        )
+    )
+    service.nc = DummyNATSClient({"success": True})
+
+    await service._invoke_callback({"subject": "bklite.safe_callback.result"}, {"task_id": "task-safe"})
+
+    assert service.nc.requests[0][0] == "bklite.safe_callback.result"
+
+
+@pytest.mark.asyncio
+async def test_invoke_callback_allows_default_host_remote_callback_subject(tmp_path):
+    service = AnsibleNATSService(
+        ServiceConfig(
+            nats_servers=["nats://127.0.0.1:4222"],
+            nats_instance_id="default",
+            js_stream="BK_ANS_EXEC_TASKS",
+            js_subject_prefix="bk.ans_exec.tasks",
+            js_durable="ansible-executor",
+            state_db_path=str(tmp_path / "task.db"),
+        )
+    )
+    service.nc = DummyNATSClient({"success": True})
+
+    await service._invoke_callback(
+        {"subject": "default_stargazer.host_remote.callback"},
+        {"task_id": "collect_host_safe"},
+    )
+
+    assert service.nc.requests[0][0] == "default_stargazer.host_remote.callback"
 
 
 @pytest.mark.asyncio
@@ -470,6 +534,84 @@ async def test_run_task_forwards_stream_context_to_run_command(tmp_path, monkeyp
     assert callable(captured["stream_publish"])
     # The publisher wrapper routes to the core NATS publish on self.nc.
     assert service.nc.published == [("bk.ans_exec.stream.exec-9", b'{"line": "hi"}')]
+
+
+@pytest.mark.asyncio
+async def test_run_task_rejects_untrusted_stream_topic_before_publish(tmp_path, monkeypatch):
+    service = _make_service(tmp_path)
+    service.nc = RecordingNATSClient()
+
+    calls = {"run": 0}
+
+    monkeypatch.setattr("service.nats_service.to_adhoc_request", lambda payload: type("R", (), {"execute_timeout": 60})())
+    monkeypatch.setattr("service.nats_service.prepare_adhoc_execution", lambda request: (["echo", "hi"], None))
+    monkeypatch.setattr("service.nats_service.cleanup_workspace", lambda workspace: None)
+
+    async def fake_run_command(cmd, timeout, **kwargs):
+        calls["run"] += 1
+        return 0, "hi", {"truncated": False, "output_bytes_total": 2, "output_bytes_retained": 2, "output_max_bytes": 0}
+
+    monkeypatch.setattr("service.nats_service.run_command", fake_run_command)
+    monkeypatch.setattr(service.task_store, "update_execution_result", lambda *a, **k: True)
+    monkeypatch.setattr(service.task_store, "update_callback_status", lambda *a, **k: True)
+
+    task = QueuedTask(
+        task_id="task-stream-bad",
+        task_type="adhoc",
+        payload={
+            "task_id": "task-stream-bad",
+            "stream_log_topic": "system_mgmt.delete_user",
+            "execution_id": "exec-bad",
+        },
+        callback=None,
+        instance_id="default",
+    )
+
+    result = await service._run_task(task, "owner-a")
+
+    assert calls["run"] == 0
+    assert service.nc.published == []
+    assert result["success"] is False
+    assert "stream subject is not allowed" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_run_task_allows_executor_stream_topic(tmp_path, monkeypatch):
+    service = _make_service(tmp_path)
+    service.nc = RecordingNATSClient()
+
+    captured = {}
+
+    monkeypatch.setattr("service.nats_service.to_adhoc_request", lambda payload: type("R", (), {"execute_timeout": 60})())
+    monkeypatch.setattr("service.nats_service.prepare_adhoc_execution", lambda request: (["echo", "hi"], None))
+    monkeypatch.setattr("service.nats_service.cleanup_workspace", lambda workspace: None)
+
+    async def fake_run_command(cmd, timeout, **kwargs):
+        captured.update(kwargs)
+        if kwargs.get("stream_publish") and kwargs.get("stream_log_topic"):
+            await kwargs["stream_publish"](kwargs["stream_log_topic"], b'{"line": "ok"}')
+        return 0, "ok", {"truncated": False, "output_bytes_total": 2, "output_bytes_retained": 2, "output_max_bytes": 0}
+
+    monkeypatch.setattr("service.nats_service.run_command", fake_run_command)
+    monkeypatch.setattr(service.task_store, "update_execution_result", lambda *a, **k: True)
+    monkeypatch.setattr(service.task_store, "update_callback_status", lambda *a, **k: True)
+
+    task = QueuedTask(
+        task_id="task-stream-executor",
+        task_type="adhoc",
+        payload={
+            "task_id": "task-stream-executor",
+            "stream_log_topic": "executor.stream.exec-9",
+            "execution_id": "exec-9",
+        },
+        callback=None,
+        instance_id="default",
+    )
+
+    await service._run_task(task, "owner-a")
+
+    assert captured["stream_log_topic"] == "executor.stream.exec-9"
+    assert service.nc.published == [("executor.stream.exec-9", b'{"line": "ok"}')]
 
 
 @pytest.mark.asyncio

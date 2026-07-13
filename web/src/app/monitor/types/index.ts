@@ -229,7 +229,12 @@ export interface ObjectItem {
   display_type?: string;
   icon?: string;
   instance_count?: number;
-  display_fields?: { name: string; sort_order: number; metrics: { plugin: string; metric: string }[] }[];
+  display_fields?: {
+    name: string;
+    type?: 'metric' | 'field';
+    sort_order: number;
+    metrics: { plugin: string; metric: string; field?: string }[];
+  }[];
   options?: ObjectItem[];
   label?: string;
   value?: string;
@@ -299,6 +304,7 @@ export interface ThresholdField {
 }
 
 export interface FilterItem {
+  logic?: 'and' | 'or' | null;
   name: string | null;
   method: string | null;
   value: string;

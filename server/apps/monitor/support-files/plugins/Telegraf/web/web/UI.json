@@ -2,7 +2,9 @@
   "object_name": "Website",
   "instance_type": "web",
   "collect_type": "web",
-  "config_type": ["http_response"],
+  "config_type": [
+    "http_response"
+  ],
   "collector": "Telegraf",
   "instance_id": "{{instance_type}}_{{url}}",
   "form_fields": [
@@ -26,7 +28,7 @@
       "label": "间隔",
       "type": "inputNumber",
       "required": true,
-      "default_value": 10,
+      "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
       "widget_props": {
         "min": 1,
@@ -64,40 +66,35 @@
       "type": "select",
       "required": true,
       "widget_props": {
-        "placeholder": "请选择节点"
+        "placeholder": "请选择节点",
+        "width": 220
       },
       "enable_row_filter": false
     },
     {
       "name": "url",
-      "label": "URL",
+      "label": "URL（IPv4/IPv6）",
       "type": "input",
       "required": true,
       "widget_props": {
-        "placeholder": "https://example.com"
+        "placeholder": "https://example.com 或 https://[2001:db8::1]/",
+        "width": 420
       },
       "rules": [
         {
           "type": "pattern",
-          "pattern": "^(http|https)://.*",
-          "message": "URL必须以http://或https://开头",
+          "pattern": "^(http|https)://(\\[[0-9A-Fa-f:.]+\\]|[^\\s/:]+)(:\\d+)?(/.*)?$",
+          "message": "URL必须以http://或https://开头，IPv6地址需使用方括号",
           "excel_formula": "OR(LEFT({{CELL}},7)=\"http://\",LEFT({{CELL}},8)=\"https://\")"
         }
       ],
       "change_handler": {
         "type": "simple",
-        "source_fields": ["url"],
+        "source_fields": [
+          "url"
+        ],
         "target_field": "instance_name"
       }
-    },
-    {
-      "name": "insecure_skip_verify",
-      "label": "跳过证书校验",
-      "type": "switch",
-      "required": false,
-      "default_value": false,
-      "description": "HTTPS 场景下是否跳过服务端证书校验",
-      "widget_props": {}
     },
     {
       "name": "instance_name",
@@ -106,7 +103,8 @@
       "required": true,
       "widget_props": {
         "placeholder": "实例名称",
-        "disabled": false
+        "disabled": false,
+        "width": 220
       }
     },
     {
@@ -115,7 +113,8 @@
       "type": "group_select",
       "required": false,
       "widget_props": {
-        "placeholder": "请选择组"
+        "placeholder": "请选择组",
+        "width": 220
       }
     }
   ]

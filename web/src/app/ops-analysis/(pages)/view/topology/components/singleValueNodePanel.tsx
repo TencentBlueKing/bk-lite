@@ -12,7 +12,11 @@ import { useDataSourceManager } from '@/app/ops-analysis/hooks/useDataSource';
 import { useSingleValueConfig } from '@/app/ops-analysis/hooks/useSingleValueConfig';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
-import { NodeConfPanelProps } from '@/app/ops-analysis/types/topology';
+import type {
+  NodeConfPanelProps,
+  NodeConfigFormValues,
+  TopologyNodeData,
+} from '@/app/ops-analysis/types/topology';
 import { NODE_DEFAULTS } from '../constants/nodeDefaults';
 import { initThresholdColors } from '@/app/ops-analysis/utils/thresholdUtils';
 import { canEnableCompare } from '@/app/ops-analysis/utils/compareQuery';
@@ -20,6 +24,7 @@ import { SingleValueSettingsSection } from '@/app/ops-analysis/components/single
 import { useTranslation } from '@/utils/i18n';
 import DataSourceParamsConfig from '@/app/ops-analysis/components/paramsConfig';
 import DataSourceSelect from '@/app/ops-analysis/components/dataSourceSelect';
+import { normalizeColorFields } from '../utils/formColorUtils';
 import {
   Form,
   Input,
@@ -29,6 +34,10 @@ import {
   Drawer,
   ColorPicker,
 } from 'antd';
+
+type SingleValueFormValues = NodeConfigFormValues & {
+  params?: Record<string, unknown>;
+};
 
 const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
   readonly = false,
@@ -68,7 +77,7 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
   });
 
   const initializeNewNode = useCallback(() => {
-    const defaultValues: any = {
+    const defaultValues: SingleValueFormValues = {
       dataSource: undefined,
       compare: false,
       params: {},
@@ -80,6 +89,7 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
       conversionFactor: 1,
       decimalPlaces: 2,
       fontSize: NODE_DEFAULTS.SINGLE_VALUE_NODE.fontSize,
+      textColor: NODE_DEFAULTS.SINGLE_VALUE_NODE.textColor,
     };
 
     setCurrentDataSource(null);
@@ -91,15 +101,21 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
   }, [form, setSelectedDataSource, singleValueConfig]);
 
   const initializeEditNode = useCallback(
-    async (editingNodeData: any) => {
+    async (editingNodeData: TopologyNodeData) => {
       const { styleConfig = {}, valueConfig = {} } = editingNodeData;
 
-      const formValues: any = {
+      const normalizeColorForForm = (value?: string) =>
+        value === 'transparent' ? undefined : value;
+
+      const formValues: SingleValueFormValues = {
         name: editingNodeData.name,
         dataSource: valueConfig.dataSource,
         compare: valueConfig.compare,
         selectedFields: valueConfig.selectedFields,
         fontSize: styleConfig.fontSize,
+        textColor: normalizeColorForForm(styleConfig.textColor),
+        backgroundColor: normalizeColorForForm(styleConfig.backgroundColor),
+        borderColor: normalizeColorForForm(styleConfig.borderColor),
         nameFontSize: styleConfig.nameFontSize,
         nameColor: styleConfig.nameColor,
         unit: editingNodeData.unit,
@@ -109,7 +125,15 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
         decimalPlaces: editingNodeData.decimalPlaces,
       };
 
-      setCurrentDataSource(valueConfig.dataSource || null);
+      const dataSourceId =
+        typeof valueConfig.dataSource === 'string'
+          ? parseInt(valueConfig.dataSource, 10)
+          : valueConfig.dataSource;
+      setCurrentDataSource(
+        typeof dataSourceId === 'number' && !Number.isNaN(dataSourceId)
+          ? dataSourceId
+          : null,
+      );
       singleValueConfig.setSelectedFields(valueConfig.selectedFields || []);
       singleValueConfig.setThresholdColors(initThresholdColors(styleConfig.thresholdColors));
 
@@ -126,14 +150,15 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
         }
 
         formValues.params = formValues.params || {};
+        const params = formValues.params as Parameters<typeof setDefaultParamValues>[1];
 
         if (selectedSource?.params?.length) {
-          setDefaultParamValues(selectedSource.params, formValues.params);
+          setDefaultParamValues(selectedSource.params, params);
 
           if (valueConfig.dataSourceParams?.length) {
             restoreUserParamValues(
               valueConfig.dataSourceParams,
-              formValues.params,
+              params,
             );
           }
         }
@@ -207,7 +232,9 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
       });
 
       if (selectedSource?.params?.length) {
-        const params = currentValues.params || {};
+        const params = (currentValues.params || {}) as Parameters<
+          typeof setDefaultParamValues
+        >[1];
         setDefaultParamValues(selectedSource.params, params);
         form.setFieldsValue({
           ...currentValues,
@@ -219,25 +246,16 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
     [ensureDataSource, setSelectedDataSource, form, setDefaultParamValues, singleValueConfig]
   );
 
-  const processColorValue = useCallback((colorValue: any) => {
-    if (!colorValue) return undefined;
-    if (typeof colorValue === 'string') return colorValue;
-    if (colorValue.toHexString) return colorValue.toHexString();
-    if (colorValue.toRgbString) return colorValue.toRgbString();
-    return colorValue;
-  }, []);
-
   const handleConfirm = useCallback(async () => {
     try {
-      const values = await form.validateFields();
-
-      if (values.nameColor) {
-        values.nameColor = processColorValue(values.nameColor);
-      }
+      const values = normalizeColorFields(
+        (await form.validateFields()) as SingleValueFormValues,
+        ['textColor', 'backgroundColor', 'borderColor', 'nameColor'],
+      );
 
       if (values.params && selectedDataSource?.params) {
         values.dataSourceParams = processFormParamsForSubmit(
-          values.params,
+          values.params as Parameters<typeof processFormParamsForSubmit>[0],
           selectedDataSource.params,
         );
         delete values.params;
@@ -255,7 +273,6 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
     selectedDataSource,
     processFormParamsForSubmit,
     onConfirm,
-    processColorValue,
     singleValueConfig.thresholdColors,
   ]);
 
@@ -376,6 +393,18 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
             />
           </Form.Item>
           <Form.Item
+            label={t('topology.nodeConfig.textColor')}
+            name="textColor"
+          >
+            <ColorPicker
+              disabled={readonly}
+              size="small"
+              showText
+              allowClear
+              format="hex"
+            />
+          </Form.Item>
+          <Form.Item
             label={t('topology.nodeConfig.nameFontSize')}
             name="nameFontSize"
           >
@@ -392,6 +421,30 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
           <Form.Item
             label={t('topology.nodeConfig.nameColor')}
             name="nameColor"
+          >
+            <ColorPicker
+              disabled={readonly}
+              size="small"
+              showText
+              allowClear
+              format="hex"
+            />
+          </Form.Item>
+          <Form.Item
+            label={t('topology.nodeConfig.backgroundColor')}
+            name="backgroundColor"
+          >
+            <ColorPicker
+              disabled={readonly}
+              size="small"
+              showText
+              allowClear
+              format="hex"
+            />
+          </Form.Item>
+          <Form.Item
+            label={t('topology.nodeConfig.borderColor')}
+            name="borderColor"
           >
             <ColorPicker
               disabled={readonly}

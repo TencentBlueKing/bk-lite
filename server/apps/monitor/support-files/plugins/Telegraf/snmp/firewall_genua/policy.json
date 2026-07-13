@@ -1,0 +1,156 @@
+{
+  "object": "Firewall",
+  "plugin": "Firewall genua SNMP",
+  "templates": [
+    {
+      "name": "genua防火墙CPU使用率过高",
+      "alert_name": "防火墙${resource_name} CPU 使用率过高",
+      "description": "监控 genua 防火墙整体 CPU 使用率，当持续高于阈值时触发告警，提示可能存在流量检测负载过高或攻击活动，避免转发与管理响应受影响。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "genua防火墙内存使用率过高",
+      "alert_name": "防火墙${resource_name} 内存使用率过高",
+      "description": "监控 genua 防火墙整体内存使用率，当超过阈值时触发告警，便于及时发现内存压力导致会话处理性能下降的风险。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "接口接收错误包过高",
+      "alert_name": "防火墙${resource_name} 接口 ${metric_ifDescr} 每秒接收错误包数过高",
+      "description": "监控设备接口接收的错误包数情况，当每秒错误包数超出设定阈值时触发告警，便于发现网络接口隐患。",
+      "metric_name": "interface_ifInErrors",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 100,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 50,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 10,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "接口发送错误包过高",
+      "alert_name": "防火墙${resource_name} 接口 ${metric_ifDescr} 每秒发送错误包数过高",
+      "description": "监控设备接口发送端错误包数，每秒发送错误包数量超出限制时发出告警，及时定位和处理网络发送问题。",
+      "metric_name": "interface_ifOutErrors",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 100,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 50,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 10,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "接口接收丢包数过高",
+      "alert_name": "防火墙${resource_name} 接口 ${metric_ifDescr} 每秒接收丢包数过高",
+      "description": "实时监控设备机接口的丢包情况，当接收丢包速率超过阈值时告警，帮助排查网络接收质量问题并优化链路性能。",
+      "metric_name": "interface_ifInDiscards",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 100,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 50,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 10,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "接口发送丢包数过高",
+      "alert_name": "防火墙${resource_name} 接口 ${metric_ifDescr} 每秒发送丢包数过高",
+      "description": "监测接口发送丢包速率是否异常，当发送丢包数量高于预设阈值时触发告警，为网络发送端问题提供及时反馈。",
+      "metric_name": "interface_ifOutDiscards",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 100,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 50,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 10,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

@@ -128,11 +128,8 @@ const Sidebar: React.FC<NodeSidebarProps> = ({
             if (nodeType) {
               let position = { x: e.clientX, y: e.clientY };
 
-              if (graphInstance && 'pageToLocal' in graphInstance) {
-                position = (graphInstance as any).pageToLocal(
-                  e.clientX,
-                  e.clientY,
-                );
+              if (graphInstance) {
+                position = graphInstance.pageToLocal(e.clientX, e.clientY);
               }
 
               if (nodeType.id === 'chart') {

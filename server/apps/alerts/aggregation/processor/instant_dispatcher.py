@@ -11,13 +11,13 @@ INSTANT 策略，两条路径完全互斥。
 """
 
 import hashlib
-import time
 import uuid
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import List, Optional
 
 from celery import current_app
+from django.core.cache import cache
 from django.db import transaction
 
 from apps.alerts.constants import (
@@ -41,36 +41,49 @@ class InstantHit:
     event_id: str
 
 
-class InstantStrategyCache:
-    """active INSTANT 策略的进程内 TTL 缓存。
+@dataclass(frozen=True, slots=True)
+class InstantStrategySnapshot:
+    """即时告警匹配所需的策略快照。"""
 
-    多 worker 间最坏 ``INSTANT_STRATEGY_CACHE_TTL`` 秒不一致；策略变更非
-    高频，可接受。Strategy serializer save 后会主动调用 ``cache_clear``。
+    id: int
+    match_rules: list
+
+
+class InstantStrategyCache:
+    """active INSTANT 策略的 Django cache 缓存。
+
+    默认 cache 在生产环境指向 Redis，可跨 worker 共享；策略变更通过
+    save/delete 信号与 serializer 兜底删除该缓存。
     """
 
-    _value: Optional[List[AlarmStrategy]] = None
-    _cached_at: float = 0.0
+    CACHE_KEY = "alerts:instant_strategies:v1"
 
     @classmethod
-    def get(cls) -> List[AlarmStrategy]:
-        now = time.monotonic()
-        if cls._value is not None and (now - cls._cached_at) < INSTANT_STRATEGY_CACHE_TTL:
-            return cls._value
-        value = list(
-            AlarmStrategy.objects.filter(
-                is_active=True,
-                strategy_type=AlarmStrategyType.INSTANT,
+    def get(cls) -> List[InstantStrategySnapshot]:
+        cached = cache.get(cls.CACHE_KEY)
+        if cached is not None:
+            return cached
+
+        value = [
+            InstantStrategySnapshot(
+                id=row["id"],
+                match_rules=row["match_rules"] or [],
             )
-        )
-        cls._value = value
-        cls._cached_at = now
+            for row in (
+                AlarmStrategy.objects.filter(
+                    is_active=True,
+                    strategy_type=AlarmStrategyType.INSTANT,
+                )
+                .values("id", "match_rules")
+            )
+        ]
+        cache.set(cls.CACHE_KEY, value, INSTANT_STRATEGY_CACHE_TTL)
         logger.debug("instant strategy cache refreshed: count=%s", len(value))
         return value
 
     @classmethod
     def cache_clear(cls) -> None:
-        cls._value = None
-        cls._cached_at = 0.0
+        cache.delete(cls.CACHE_KEY)
 
 
 def _build_fingerprint(strategy_id: int, event_id: str) -> str:
@@ -259,10 +272,6 @@ class InstantAlertDispatcher:
             （按批分组的 Event 实例二维列表）。
         """
         try:
-            strategies = InstantStrategyCache.get()
-            if not strategies:
-                return
-
             events: List[Event] = []
             for batch in bulk_events or []:
                 for evt in batch or []:
@@ -271,22 +280,14 @@ class InstantAlertDispatcher:
             if not events:
                 return
 
-            # 跳过已被屏蔽的事件（事件级·不建警）。屏蔽在 main() 中先于 dispatch 执行，
-            # 但更新落在 DB，内存对象 status 仍为旧值，故按 event_id 回查最新 SHIELD 状态。
-            shielded_ids = set(
-                Event.objects.filter(
-                    event_id__in=[e.event_id for e in events],
-                    status=EventStatus.SHIELD,
-                ).values_list("event_id", flat=True)
-            )
-            if shielded_ids:
-                events = [e for e in events if e.event_id not in shielded_ids]
-                if not events:
-                    return
             # 已被屏蔽的事件不得产出即时告警。屏蔽在 main() 中先于本旁路执行，
             # 但内存中的 Event 实例状态可能滞后，故按当前库内状态过滤。
             events = InstantAlertDispatcher._exclude_shielded(events)
             if not events:
+                return
+
+            strategies = InstantStrategyCache.get()
+            if not strategies:
                 return
 
             hits = InstantAlertDispatcher._collect_hits(events, strategies)
@@ -336,7 +337,7 @@ class InstantAlertDispatcher:
 
     @staticmethod
     def _collect_hits(
-        events: List[Event], strategies: List[AlarmStrategy]
+        events: List[Event], strategies: List[InstantStrategySnapshot]
     ) -> List[InstantHit]:
         from apps.alerts.aggregation.strategy.instant_matcher import InstantMatcher
 

@@ -1,0 +1,135 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_pluribus",
+  "plugin": "Switch Pluribus SNMP",
+  "plugin_desc": "Pluribus Networks Netvisor ONE 白盒/开放网络交换机专用 SNMP 采集模板（Netvisor ONE 为 Linux 基 NOS，SNMP 子代理经 AgentX 暴露标准 NET-SNMP，含 HOST-RESOURCES-MIB / UCD-SNMP-MIB / LM-SENSORS-MIB，企业号 47269）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Netvisor ONE 健康指标：CPU 使用率（HOST-RESOURCES hrProcessorLoad 多核均值）、主内存（总量 + 空闲，字节，用量按 (总量-空闲)/总量 推导）与机箱温度（LM-SENSORS 温度传感器，℃）。Netvisor ONE 以软件 NOS 运行于白盒交换机硬件，标准 NET-SNMP 未以无需行级过滤的标量形式暴露独立风扇与电源状态 OID，故风扇与电源为 N/A。适用品牌型号——Pluribus Networks 白盒交换机（Netvisor ONE NOS / Adaptive Cloud Fabric，企业号 47269）。",
+  "status_query": "any({instance_type='switch', collect_type='snmp_pluribus'}) by (instance_id)",
+  "name": "Switch",
+  "icon": "mm-switch_交换机",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='switch'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage"
+  ],
+  "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "avg(device_cpu_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "CPU utilisation of the Pluribus Netvisor ONE switch, averaged across processors from HOST-RESOURCES-MIB hrProcessorLoad."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable)."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable)."
+    },
+    {
+      "metric_group": "Memory",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_memory_total",
+      "display_name": "内存总量",
+      "query": "sum(device_memory_total{instance_type='switch', __$labels__}) by (instance_id)",
+      "unit": "bytes",
+      "data_type": "Number",
+      "description": "Total physical memory of the Pluribus Netvisor ONE switch in bytes (UCD-SNMP-MIB memTotalReal)."
+    },
+    {
+      "metric_group": "Memory",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_memory_free",
+      "display_name": "内存空闲",
+      "query": "sum(device_memory_free{instance_type='switch', __$labels__}) by (instance_id)",
+      "unit": "bytes",
+      "data_type": "Number",
+      "description": "Free physical memory of the Pluribus Netvisor ONE switch in bytes (UCD-SNMP-MIB memAvailReal)."
+    },
+    {
+      "metric_group": "Memory",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_memory_usage",
+      "display_name": "内存使用率",
+      "query": "(sum(device_memory_total{instance_type='switch', __$labels__}) by (instance_id) - sum(device_memory_free{instance_type='switch', __$labels__}) by (instance_id)) / sum(device_memory_total{instance_type='switch', __$labels__}) by (instance_id) * 100",
+      "unit": "percent",
+      "data_type": "Number",
+      "description": "Memory utilisation of the Pluribus Netvisor ONE switch, derived as (total-free)/total."
+    },
+    {
+      "metric_group": "Temperature",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_temperature_celsius",
+      "display_name": "设备温度",
+      "query": "max(device_temperature_celsius{instance_type='switch', __$labels__}) by (instance_id)",
+      "unit": "celsius",
+      "data_type": "Number",
+      "description": "Chassis temperature of the Pluribus Netvisor ONE switch in degrees Celsius (LM-SENSORS-MIB lmTempSensorsValue)."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='switch', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

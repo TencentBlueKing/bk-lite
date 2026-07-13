@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -94,7 +95,33 @@ def test_website_probe_result_code_has_language_entries(languages):
 @pytest.mark.unit
 def test_website_https_probe_can_opt_into_skipping_certificate_verification(ui, toml_text):
     fields = {field["name"]: field for field in ui["table_columns"]}
+    form_fields = {field["name"]: field for field in ui["form_fields"]}
+    insecure_skip_verify = form_fields["insecure_skip_verify"]
 
-    assert fields["insecure_skip_verify"]["type"] == "switch"
-    assert fields["insecure_skip_verify"]["default_value"] is False
+    assert insecure_skip_verify["type"] == "switch"
+    assert insecure_skip_verify["default_value"] is False
+    assert "visible_in" not in insecure_skip_verify
+    assert "insecure_skip_verify" not in fields
     assert "insecure_skip_verify = {{ insecure_skip_verify | default(false) | lower }}" in toml_text
+
+
+@pytest.mark.unit
+def test_website_url_rule_accepts_bracketed_ipv6_literals(ui):
+    url_field = {field["name"]: field for field in ui["table_columns"]}["url"]
+    pattern = url_field["rules"][0]["pattern"]
+
+    assert url_field["label"] == "URL（IPv4/IPv6）"
+    assert url_field["widget_props"]["placeholder"] == "https://example.com 或 https://[2001:db8::1]/"
+    assert re.fullmatch(pattern, "http://[2001:db8::1]/")
+    assert re.fullmatch(pattern, "https://[2001:db8::1]:8443/health")
+    assert re.fullmatch(pattern, "2001:db8::1") is None
+
+
+@pytest.mark.unit
+def test_website_auto_access_columns_have_compact_layout(ui):
+    fields = {field["name"]: field for field in ui["table_columns"]}
+
+    assert fields["node_ids"]["widget_props"]["width"] == 220
+    assert fields["url"]["widget_props"]["width"] == 420
+    assert fields["instance_name"]["widget_props"]["width"] == 220
+    assert fields["group_ids"]["widget_props"]["width"] == 220

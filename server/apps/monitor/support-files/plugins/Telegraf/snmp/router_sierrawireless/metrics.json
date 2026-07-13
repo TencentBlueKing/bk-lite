@@ -1,0 +1,83 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_sierrawireless",
+  "plugin": "Router Sierra Wireless SNMP",
+  "plugin_desc": "Sierra Wireless AirLink (ALEOS) cellular LTE router / gateway SNMP collection template (SIERRA-MIB, IANA PEN 20542). In addition to standard IF-MIB interface metrics, it collects the ALEOS board/radio temperature scalar (gpsStatus temperature group, .20542.9.1.1.1.267), reported directly in degrees Celsius. The SIERRA-MIB exposes no aggregate CPU or memory scalar; cellular RSSI (.261, dBm) and power-in (.266) are available but are signed/contextual values left for a future increment, and there is no fan or power-supply state object (AirLink gateways are fanless), so CPU, memory, fan and PSU are not collected (N/A). Supported brands/models — Sierra Wireless AirLink ALEOS routers/gateways (RV/MP/LX/ES/GX series, IANA PEN 20542).",
+  "status_query": "any({instance_type='router', collect_type='snmp_sierrawireless'}) by (instance_id)",
+  "name": "Router",
+  "icon": "mm-router_路由器",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='router'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_temperature_celsius"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='router', __$labels__}) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the board/radio temperature in degrees Celsius of the Sierra Wireless AirLink (ALEOS) router (private SIERRA-MIB scalar under IANA PEN 20542, .20542.9.1.1.1.267). The object value is reported directly in whole degrees Celsius with no scaling applied. High temperatures can indicate cooling failure or an over-heated enclosure and risk thermal shutdown of the cellular modem."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='router', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifInOctets on high-speed interfaces, keeping the rate accurate."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='router', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifOutOctets on high-speed interfaces, keeping the rate accurate."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='router', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

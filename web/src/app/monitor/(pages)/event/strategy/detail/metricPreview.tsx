@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect, useRef, useMemo, RefObject } from 'react';
-import { Select, Spin, Empty } from 'antd';
+import { Select, Spin, Empty, Alert } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import useMonitorApi from '@/app/monitor/api';
 import useEventApi from '@/app/monitor/api/event';
@@ -17,6 +17,11 @@ import { InstanceItem } from '@/app/monitor/types/search';
 import { renderChart } from '@/app/monitor/utils/common';
 import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import { sanitizeGroupBy } from '@/app/monitor/utils/metricDimensions';
+import { MetricExpressionRow } from './metricExpressionTypes';
+import {
+  buildMetricExpressionPreviewPayload,
+  MetricExpressionMode
+} from './formulaExpressionUtils';
 
 const { Option } = Select;
 
@@ -26,16 +31,41 @@ interface MetricPreviewProps {
   metric: string | null;
   metrics: MetricItem[];
   groupBy: string[];
+  groupAlgorithm: string | null;
   conditions: FilterItem[];
   period: number | null;
   periodUnit: string;
   algorithm: string | null;
   threshold: ThresholdField[];
   calculationUnit?: string | null;
+  metricRows: MetricExpressionRow[];
+  metricExpressionMode: MetricExpressionMode;
+  resultName: string;
+  expression: string;
   scrollContainerRef?: RefObject<HTMLDivElement | null>;
   anchorRef?: RefObject<HTMLDivElement | null>;
   fixedGroupByList?: string[];
 }
+
+const normalizePreviewWarnings = (warnings: unknown): string[] => {
+  if (!Array.isArray(warnings)) {
+    return [];
+  }
+
+  return warnings
+    .map((item) => {
+      if (typeof item === 'string') {
+        return item;
+      }
+      if (item && typeof item === 'object') {
+        const record = item as Record<string, unknown>;
+        const message = record.message || record.detail || record.code;
+        return typeof message === 'string' ? message : JSON.stringify(record);
+      }
+      return '';
+    })
+    .filter(Boolean);
+};
 
 const MetricPreview: React.FC<MetricPreviewProps> = ({
   monitorObjId,
@@ -43,12 +73,17 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
   metric,
   metrics,
   groupBy,
+  groupAlgorithm,
   conditions,
   period,
   periodUnit,
   algorithm,
   threshold,
   calculationUnit,
+  metricRows,
+  metricExpressionMode,
+  resultName,
+  expression,
   scrollContainerRef,
   anchorRef,
   fixedGroupByList = []
@@ -62,6 +97,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
   const [chartData, setChartData] = useState<ChartData[]>([]);
   const [unit, setUnit] = useState<string>('');
   const [previewError, setPreviewError] = useState<string>('');
+  const [previewWarnings, setPreviewWarnings] = useState<string[]>([]);
   const [selectedInstance, setSelectedInstance] = useState<string | null>(null);
   const [instances, setInstances] = useState<InstanceItem[]>([]);
   const [allInstances, setAllInstances] = useState<TableDataItem[]>([]);
@@ -132,55 +168,66 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
 
   // 判断是否可以查询
   const canQuery = useMemo(() => {
-    const sanitizedGroupBy = sanitizeGroupBy(groupBy);
+    const previewGroupBy =
+      metricExpressionMode === 'formula'
+        ? sanitizeGroupBy(metricRows[0]?.groupBy || [])
+        : sanitizeGroupBy(groupBy);
+    const hasMetricExpression =
+      metricExpressionMode === 'formula' ? metricRows.length > 0 : !!metric;
     return !!(
       monitorObjId &&
-      metric &&
+      hasMetricExpression &&
       algorithm &&
-      sanitizedGroupBy.length > 0 &&
+      previewGroupBy.length > 0 &&
       selectedInstance &&
       instances.length > 0
     );
-  }, [monitorObjId, metric, algorithm, groupBy.length, selectedInstance, instances.length]);
+  }, [
+    monitorObjId,
+    metric,
+    metricRows,
+    metricExpressionMode,
+    algorithm,
+    groupBy,
+    selectedInstance,
+    instances.length
+  ]);
 
   // 获取当前选中的指标信息
   const currentMetric = useMemo(() => {
+    const anchorRow = metricRows[0];
+    if (anchorRow?.metricId || anchorRow?.metricName) {
+      return metrics.find(
+        (item) =>
+          item.id === anchorRow.metricId || item.name === anchorRow.metricName
+      );
+    }
     return metrics.find((item) => item.name === metric);
-  }, [metrics, metric]);
+  }, [metrics, metric, metricRows]);
 
   // 构建后端策略预览参数，PromQL 由后端统一构造
   const getPreviewPayload = () => {
-    if (!currentMetric || !selectedInstance) return null;
+    if (!selectedInstance) return null;
     const selectedInst = instances.find(
       (item) => item.instance_id === selectedInstance
     );
     if (!selectedInst) return null;
-    const filter = (conditions || []).filter(
-      (condition) => condition.name && condition.method && condition.value
-    );
-    const sanitizedGroupBy = sanitizeGroupBy(groupBy);
-    return {
-      monitor_object: monitorObjId,
-      query_condition: {
-        type: 'metric',
-        metric_id: currentMetric.id,
-        filter
-      },
+    return buildMetricExpressionPreviewPayload({
+      monitorObjId,
       source,
-      period: {
-        type: periodUnit,
-        value: period || 5
-      },
+      metrics,
+      mode: metricExpressionMode,
+      resultName,
+      expression,
+      rows: metricRows,
+      selectedInstance: selectedInst,
+      period,
+      periodUnit,
       algorithm,
-      group_by: sanitizedGroupBy,
-      metric_unit: currentMetric.unit || '',
-      calculation_unit: calculationUnit || '',
-      preview: {
-        instance_id: selectedInst.instance_id,
-        instance_id_values: selectedInst.instance_id_values,
-        duration_points: 30
-      }
-    };
+      groupAlgorithm,
+      groupBy,
+      calculationUnit
+    });
   };
 
   const getInstances = async () => {
@@ -219,12 +266,26 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
     if (!canQuery) {
       setChartData([]);
       setPreviewError('');
+      setPreviewWarnings([]);
       return;
     }
-    const payload = getPreviewPayload();
+    let payload = null;
+    try {
+      payload = getPreviewPayload();
+    } catch (error) {
+      setChartData([]);
+      setPreviewWarnings([]);
+      setPreviewError(
+        error instanceof Error
+          ? error.message
+          : t('monitor.events.metricValidate')
+      );
+      return;
+    }
     if (!payload) {
       setChartData([]);
       setPreviewError('');
+      setPreviewWarnings([]);
       return;
     }
     // 取消之前的请求
@@ -235,6 +296,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
     try {
       setLoading(true);
       setPreviewError('');
+      setPreviewWarnings([]);
       const responseData = await previewMonitorPolicy(payload, {
         signal: abortController.signal
       });
@@ -244,13 +306,17 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
       const vmData = responseData?.data || {};
       const data = vmData.data?.result || [];
       const displayUnit = vmData.unit || '';
+      setPreviewWarnings(normalizePreviewWarnings(vmData.warnings));
       setUnit(displayUnit);
       // 渲染图表数据
       const selectedInst = instances.find(
         (item) => item.instance_id === selectedInstance
       );
       // 判断 showInstName：groupBy 为空或 groupBy 的值都在固定列表中时为 true
-      const sanitizedGroupBy = sanitizeGroupBy(groupBy);
+      const sanitizedGroupBy =
+        metricExpressionMode === 'formula'
+          ? sanitizeGroupBy(metricRows[0]?.groupBy || [])
+          : sanitizeGroupBy(groupBy);
       const showInstName = sanitizedGroupBy.some((item) =>
         fixedGroupByList.includes(item)
       );
@@ -263,7 +329,10 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
             instance_id: selectedInst.instance_id,
             instance_id_keys: currentMetric?.instance_id_keys || [],
             dimensions: currentMetric?.dimensions || [],
-            title: currentMetric?.display_name || '--',
+            title:
+              metricExpressionMode === 'formula'
+                ? resultName || currentMetric?.display_name || '--'
+                : currentMetric?.display_name || '--',
             showInstName
           }
         ];
@@ -276,6 +345,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
         currentRequestId === requestIdRef.current
       ) {
         setChartData([]);
+        setPreviewWarnings([]);
         setPreviewError(
           error?.response?.data?.message ||
             error?.message ||
@@ -298,13 +368,19 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
   }, [
     selectedInstance,
     instances,
+    metrics,
     metric,
     groupBy,
     conditions,
     period,
     periodUnit,
+    groupAlgorithm,
     algorithm,
-    calculationUnit
+    calculationUnit,
+    metricRows,
+    metricExpressionMode,
+    resultName,
+    expression
   ]);
 
   // 清理
@@ -320,7 +396,10 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
   };
 
   // 如果不满足显示条件，返回 null
-  if (instances.length === 0 || !metric) {
+  if (
+    instances.length === 0 ||
+    (metricExpressionMode !== 'formula' && !metric)
+  ) {
     return null;
   }
 
@@ -373,13 +452,23 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
       {/* 指标名称 */}
       {currentMetric && (
         <div className="text-[12px] text-[var(--color-text-2)] mb-2">
-          {currentMetric.display_name || metric}
+          {metricExpressionMode === 'formula'
+            ? resultName || currentMetric.display_name || metric
+            : currentMetric.display_name || metric}
           {(calculationUnit || unit) && (
             <span className="text-[var(--color-text-3)] ml-1">
               {showUnit(calculationUnit || unit)}
             </span>
           )}
         </div>
+      )}
+      {previewWarnings.length > 0 && (
+        <Alert
+          className="mb-2 text-[12px]"
+          type="warning"
+          showIcon
+          message={previewWarnings.join('；')}
+        />
       )}
       {/* 图表区域 */}
       <Spin spinning={loading}>

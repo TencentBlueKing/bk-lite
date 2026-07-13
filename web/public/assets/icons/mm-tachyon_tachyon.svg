@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Tachyon">
+  <rect width="1024" height="1024" rx="160" fill="#0F766E"/>
+  <path d="M256 284h512v112H568v344H456V396H256V284z" fill="#FFFFFF"/>
+  <path d="M624 512h168l-214 252 54-176H464l214-252-54 176z" fill="#FACC15"/>
+</svg>

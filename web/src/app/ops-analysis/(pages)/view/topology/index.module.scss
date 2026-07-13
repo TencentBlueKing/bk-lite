@@ -10,22 +10,67 @@
 .topologyContainer {
   :global(.x6-graph-svg) {
     background:
-      radial-gradient(circle at 18% 16%, rgba(113, 170, 255, 0.14) 0%, transparent 32%),
-      radial-gradient(circle at 82% 20%, rgba(190, 155, 255, 0.12) 0%, transparent 28%),
+      radial-gradient(circle at 18% 16%, rgba(76, 142, 214, 0.1) 0%, transparent 34%),
+      radial-gradient(circle at 82% 18%, rgba(42, 179, 173, 0.07) 0%, transparent 30%),
       linear-gradient(
         135deg,
-        #eff7ff 0%,
-        #f9fbff 48%,
-        #f8f2ff 100%
+        #f7fbff 0%,
+        #fcfdff 48%,
+        #f5f8fc 100%
       ) !important;
+    background-size: 100% 100%, 100% 100%, 100% 100% !important;
   }
 
   :global(.x6-graph-grid line) {
-    stroke: rgba(112, 140, 180, 0.12) !important;
+    stroke: transparent !important;
   }
 
   :global(.x6-node foreignObject) {
     overflow: hidden !important;
+  }
+
+  :global(.x6-node[data-shape='icon-node'] rect[selector='body']) {
+    transition:
+      stroke 0.18s ease,
+      filter 0.18s ease,
+      fill 0.18s ease;
+  }
+
+  :global(.x6-node[data-shape='icon-node']:hover rect[selector='body']) {
+    stroke: #8dbcf2;
+    filter:
+      drop-shadow(0 15px 28px rgba(42, 97, 160, 0.13))
+      drop-shadow(0 2px 5px rgba(15, 23, 42, 0.07));
+  }
+
+  :global(.x6-node-selected[data-shape='icon-node'] rect[selector='body']),
+  :global(.x6-node[data-shape='icon-node'].selected rect[selector='body']) {
+    stroke: #2d7df0 !important;
+    stroke-width: 2 !important;
+    filter:
+      drop-shadow(0 0 0 rgba(45, 125, 240, 0.1))
+      drop-shadow(0 16px 30px rgba(45, 125, 240, 0.18)) !important;
+  }
+
+  :global(.x6-node[data-shape='icon-node'] text[selector='label']) {
+    paint-order: stroke;
+    stroke: rgba(255, 255, 255, 0.8);
+    stroke-width: 2px;
+  }
+
+  :global(.x6-edge path[selector='line']) {
+    transition:
+      stroke 0.18s ease,
+      stroke-width 0.18s ease,
+      filter 0.18s ease,
+      opacity 0.18s ease;
+  }
+
+  :global(.x6-edge:hover path[selector='line']),
+  :global(.x6-edge-selected path[selector='line']) {
+    stroke: #2d7df0 !important;
+    stroke-width: 2 !important;
+    filter: drop-shadow(0 2px 5px rgba(45, 125, 240, 0.28)) !important;
   }
   
   :global(.edge-flow-animation) {
@@ -37,15 +82,14 @@
     border-radius: 0 0 8px 8px !important;
     overflow: hidden !important;
     
-    // 背景网格优化
+    // 背景优化
     :global(.x6-graph-svg) {
-      background: linear-gradient(90deg, 
-        rgba(0, 0, 0, 0.02) 1px, 
-        transparent 1px),
-      linear-gradient(180deg, 
-        rgba(0, 0, 0, 0.02) 1px, 
-        transparent 1px) !important;
-      background-size: 20px 20px !important;
+      background: linear-gradient(
+        135deg,
+        rgba(248, 250, 252, 0.98) 0%,
+        rgba(241, 246, 251, 0.96) 100%
+      ) !important;
+      background-size: 100% 100% !important;
     }
   }
 }

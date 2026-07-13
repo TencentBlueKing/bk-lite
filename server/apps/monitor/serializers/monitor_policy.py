@@ -12,18 +12,15 @@ logger = logging.getLogger(__name__)
 _VALID_THRESHOLD_LEVELS = {"info", "warning", "error", "critical"}
 # source 合法类型 —— 其余类型在扫描器/基线构建时静默返回空目标（策略不生效），instance/organization 之外即误配
 _VALID_SOURCE_TYPES = {"instance", "organization"}
-# 聚合算法合法集合 —— 来源 apps/monitor/tasks/utils/policy_methods.py 的 METHOD 字典键；
-# 非法值会在扫描聚合处（metric_query 取 METHOD.get(algorithm)）抛 BaseAppException。改 METHOD 时需同步此集合。
+# 分组聚合算法合法集合 —— 先按维度聚合多个原始序列。
+_VALID_GROUP_AGGREGATION_ALGORITHMS = {"sum", "avg", "max", "min", "count"}
+# 周期聚合算法合法集合 —— 再对汇聚周期内的子查询结果做 over_time 计算。
 _VALID_AGGREGATION_ALGORITHMS = {
-    "sum",
-    "avg",
-    "max",
-    "min",
-    "count",
     "max_over_time",
     "min_over_time",
     "avg_over_time",
     "sum_over_time",
+    "count_over_time",
     "last_over_time",
 }
 # PromQL/MetricsQL label 运算符白名单
@@ -60,6 +57,14 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(f"threshold[{index}].level 非法，须为 {sorted(_VALID_THRESHOLD_LEVELS)} 之一")
         return value
 
+    def validate_trigger_count(self, value):
+        """校验阈值告警触发条件：连续 N 个汇聚周期满足阈值，N 必须为正整数。"""
+        if not isinstance(value, int) or isinstance(value, bool):
+            raise serializers.ValidationError("trigger_count 必须是正整数")
+        if value < 1:
+            raise serializers.ValidationError("trigger_count 必须大于等于 1")
+        return value
+
     def validate_query_condition(self, value):
         """校验查询条件结构完整性，并对 filter 条件执行注入防护。
 
@@ -77,6 +82,16 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
             if not value.get("query"):
                 raise serializers.ValidationError("query_condition.type=pmq 时必须提供非空 query")
             # pmq 类型直接传原始 PromQL，不校验 filter
+            return value
+
+        if query_type == "formula":
+            from apps.core.exceptions.base_app_exception import BaseAppException
+            from apps.monitor.expression.query import build_formula_query
+
+            try:
+                build_formula_query(value)
+            except BaseAppException as err:
+                raise serializers.ValidationError(str(err)) from err
             return value
 
         if "metric_id" not in value:
@@ -100,6 +115,8 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     f"filter[{idx}].method={method!r} 不是合法运算符，只允许 {sorted(_VALID_LABEL_METHODS)}"
                 )
+            if isinstance(condition.get("value"), (list, tuple, set, dict)):
+                raise serializers.ValidationError(f"filter[{idx}].value 必须是标量")
         return value
 
     def validate_source(self, value):
@@ -118,15 +135,28 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
         return value
 
     def validate_algorithm(self, value):
-        """校验聚合算法须为下游支持的聚合函数，否则扫描聚合时抛 BaseAppException。"""
+        """校验周期聚合算法须为下游支持的 over_time 函数。"""
         if value and value not in _VALID_AGGREGATION_ALGORITHMS:
             raise serializers.ValidationError(f"algorithm 非法，须为 {sorted(_VALID_AGGREGATION_ALGORITHMS)} 之一")
+        return value
+
+    def validate_group_algorithm(self, value):
+        """校验分组聚合算法须为下游支持的聚合函数。"""
+        if value and value not in _VALID_GROUP_AGGREGATION_ALGORITHMS:
+            raise serializers.ValidationError(
+                f"group_algorithm 非法，须为 {sorted(_VALID_GROUP_AGGREGATION_ALGORITHMS)} 之一"
+            )
         return value
 
     def validate_group_by(self, value):
         """校验 group_by 首位必须是监控对象的实例主键，防止下游扫描链路误判实例归属。"""
         if not value:
             return value
+        if not isinstance(value, list) or not all(isinstance(item, str) and item for item in value):
+            raise serializers.ValidationError("group_by 必须是非空字符串列表")
+        invalid_items = [item for item in value if not _LABEL_NAME_RE.match(item)]
+        if invalid_items:
+            raise serializers.ValidationError(f"group_by 包含非法字符：{', '.join(invalid_items)}")
 
         monitor_object = self._get_monitor_object()
         if monitor_object is None:

@@ -10,7 +10,6 @@ import { useRedisConfig } from './objects/database/redis';
 import { usePostgresConfig } from './objects/database/postgres';
 import { useZookeeperConfig } from './objects/middleware/zookeeper';
 import { useActiveMQConfig } from './objects/middleware/activeMQ';
-import { useWebLogicConfig } from './objects/middleware/webLogic';
 import { useNginxConfig } from './objects/middleware/nginx';
 import { useApacheConfig } from './objects/middleware/apache';
 import { useHaproxyConfig } from './objects/middleware/haproxy';
@@ -19,9 +18,7 @@ import { useEtcdBkpullConfig } from './objects/middleware/etcd';
 import { useClickHouseConfig } from './objects/database/clickHouse';
 import { useTomcatConfig } from './objects/middleware/tomcat';
 import { useMinioBkpullConfig } from './objects/middleware/minio';
-import { useJettyJmxConfig } from './objects/middleware/jetty';
 import { useRabbitMQConfig } from './objects/middleware/rabbitMQ';
-import { useIBMMQConfig } from './objects/middleware/ibmmq';
 import { useRouterConfig } from './objects/networkDevice/router';
 import { useLoadbalanceConfig } from './objects/networkDevice/loadbalance';
 import { useSwitchConfig } from './objects/networkDevice/switch';
@@ -37,16 +34,14 @@ import { useDataStorageConfig } from './objects/vmWare/dataStorage';
 import { useEsxiConfig } from './objects/vmWare/esxi';
 import { useVmConfig } from './objects/vmWare/vm';
 import { useDockerConfig } from './objects/containerManagement/docker';
-import { useStorageConfig } from './objects/hardwareDevice/storage';
 import { useHostConfig } from './objects/os/host';
 import { useWebsiteConfig } from './objects/web/website';
 import { usePingConfig } from './objects/web/ping';
+import { useTcpPortConfig } from './objects/web/tcpPort';
 import { useSnmpTrapConfig } from './objects/other/snmpTrap';
 import { useJvmConfig } from './objects/other/jvm';
 import { useTcpConfig } from './objects/tencentCloud/tcp';
 import { useCvmConfig } from './objects/tencentCloud/cvm';
-import { useTongWebConfig } from './objects/middleware/tongWeb';
-import { useJbossConfig } from './objects/middleware/jboss';
 import { useKafkaConfig } from './objects/middleware/kafka';
 import { useMssqlConfig } from './objects/database/mssql';
 import { useClusterConfig } from './objects/k8s/cluster';
@@ -83,7 +78,6 @@ export const useMonitorConfig = () => {
   const postgresConfig = usePostgresConfig();
   const zookeeperConfig = useZookeeperConfig();
   const activeMQConfig = useActiveMQConfig();
-  const webLogicConfig = useWebLogicConfig();
   const nginxConfig = useNginxConfig();
   const apacheConfig = useApacheConfig();
   const haproxyConfig = useHaproxyConfig();
@@ -92,7 +86,6 @@ export const useMonitorConfig = () => {
   const clickHouseConfig = useClickHouseConfig();
   const tomcatConfig = useTomcatConfig();
   const minioBkpullConfig = useMinioBkpullConfig();
-  const jettyJmxConfig = useJettyJmxConfig();
   const rabbitMQConfig = useRabbitMQConfig();
   const routerConfig = useRouterConfig();
   const loadbalanceConfig = useLoadbalanceConfig();
@@ -109,18 +102,15 @@ export const useMonitorConfig = () => {
   const esxiConfig = useEsxiConfig();
   const vmConfig = useVmConfig();
   const dockerConfig = useDockerConfig();
-  const storageConfig = useStorageConfig();
   const hostConfig = useHostConfig();
   const websiteConfig = useWebsiteConfig();
   const pingConfig = usePingConfig();
+  const tcpPortConfig = useTcpPortConfig();
   const snmpTrapConfig = useSnmpTrapConfig();
   const jvmConfig = useJvmConfig();
   const tcpConfig = useTcpConfig();
   const cvmConfig = useCvmConfig();
-  const tongWebConfig = useTongWebConfig();
-  const jbossConfig = useJbossConfig();
   const kafkaConfig = useKafkaConfig();
-  const ibmmqConfig = useIBMMQConfig();
   const mssqlConfig = useMssqlConfig();
   const clusterConfig = useClusterConfig();
   const podConfig = usePodConfig();
@@ -146,7 +136,6 @@ export const useMonitorConfig = () => {
       Postgres: postgresConfig,
       Zookeeper: zookeeperConfig,
       ActiveMQ: activeMQConfig,
-      WebLogic: webLogicConfig,
       Nginx: nginxConfig,
       Apache: apacheConfig,
       Haproxy: haproxyConfig,
@@ -155,7 +144,6 @@ export const useMonitorConfig = () => {
       ClickHouse: clickHouseConfig,
       Tomcat: tomcatConfig,
       Minio: minioBkpullConfig,
-      Jetty: jettyJmxConfig,
       RabbitMQ: rabbitMQConfig,
       Router: routerConfig,
       Loadbalance: loadbalanceConfig,
@@ -169,17 +157,14 @@ export const useMonitorConfig = () => {
       VoiceGateway: voiceGatewayConfig,
       vCenter: vCenterConfig,
       Docker: dockerConfig,
-      Storage: storageConfig,
       Host: hostConfig,
       Website: websiteConfig,
       Ping: pingConfig,
+      TCPPort: tcpPortConfig,
       'SNMP Trap': snmpTrapConfig,
       JVM: jvmConfig,
       TCP: tcpConfig,
-      TongWeb: tongWebConfig,
-      JBoss: jbossConfig,
       Kafka: kafkaConfig,
-      IBMMQ: ibmmqConfig,
       MSSQL: mssqlConfig,
       Cluster: clusterConfig,
       Pod: podConfig,

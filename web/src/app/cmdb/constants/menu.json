@@ -27,10 +27,24 @@
           "withParentPermission": true
         },
         {
+          "title": "资源详情",
+          "icon": "zichan-quanbushebei",
+          "url": "/cmdb/assetData/detail/k8sResources",
+          "name": "asset_k8s_resources",
+          "withParentPermission": true
+        },
+        {
           "title": "关联关系",
           "icon": "shujumoxingguanli",
           "url": "/cmdb/assetData/detail/relationships",
           "name": "asset_relationships",
+          "withParentPermission": true
+        },
+        {
+          "title": "IP视图",
+          "icon": "shujumoxingguanli",
+          "url": "/cmdb/assetData/detail/ipView",
+          "name": "asset_ip_view",
           "withParentPermission": true
         },
         {
@@ -161,10 +175,24 @@
           "withParentPermission": true
         },
         {
+          "title": "Resource Details",
+          "icon": "zichan-quanbushebei",
+          "url": "/cmdb/assetData/detail/k8sResources",
+          "name": "asset_k8s_resources",
+          "withParentPermission": true
+        },
+        {
           "title": "Relationships",
           "icon": "shujumoxingguanli",
           "url": "/cmdb/assetData/detail/relationships",
           "name": "asset_relationships",
+          "withParentPermission": true
+        },
+        {
+          "title": "IP View",
+          "icon": "shujumoxingguanli",
+          "url": "/cmdb/assetData/detail/ipView",
+          "name": "asset_ip_view",
           "withParentPermission": true
         },
         {

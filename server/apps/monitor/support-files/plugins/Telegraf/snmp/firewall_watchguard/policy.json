@@ -9,10 +9,23 @@
       "metric_name": "device_cpu_usage",
       "algorithm": "last_over_time",
       "threshold": [
-        {"level": "critical", "value": 90, "method": ">"},
-        {"level": "error", "value": 80, "method": ">"},
-        {"level": "warning", "value": 70, "method": ">"}
-      ]
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "接口接收错误包过高",
@@ -21,10 +34,23 @@
       "metric_name": "interface_ifInErrors",
       "algorithm": "last_over_time",
       "threshold": [
-        {"level": "critical", "value": 100, "method": ">"},
-        {"level": "error", "value": 50, "method": ">"},
-        {"level": "warning", "value": 10, "method": ">"}
-      ]
+        {
+          "level": "critical",
+          "value": 100,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 50,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 10,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "接口发送错误包过高",
@@ -33,10 +59,23 @@
       "metric_name": "interface_ifOutErrors",
       "algorithm": "last_over_time",
       "threshold": [
-        {"level": "critical", "value": 100, "method": ">"},
-        {"level": "error", "value": 50, "method": ">"},
-        {"level": "warning", "value": 10, "method": ">"}
-      ]
+        {
+          "level": "critical",
+          "value": 100,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 50,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 10,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "接口接收丢包数过高",
@@ -45,10 +84,23 @@
       "metric_name": "interface_ifInDiscards",
       "algorithm": "last_over_time",
       "threshold": [
-        {"level": "critical", "value": 100, "method": ">"},
-        {"level": "error", "value": 50, "method": ">"},
-        {"level": "warning", "value": 10, "method": ">"}
-      ]
+        {
+          "level": "critical",
+          "value": 100,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 50,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 10,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "接口发送丢包数过高",
@@ -57,10 +109,23 @@
       "metric_name": "interface_ifOutDiscards",
       "algorithm": "last_over_time",
       "threshold": [
-        {"level": "critical", "value": 100, "method": ">"},
-        {"level": "error", "value": 50, "method": ">"},
-        {"level": "warning", "value": 10, "method": ">"}
-      ]
+        {
+          "level": "critical",
+          "value": 100,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 50,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 10,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
     }
   ]
 }

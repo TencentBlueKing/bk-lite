@@ -27,3 +27,33 @@ class JobMgmt:
     def get_module_list(self):
         """获取模块列表"""
         return self.client.run("get_job_mgmt_module_list")
+
+    def job_script_execute(self, data):
+        """触发脚本执行（NATS）。data 见 apps.job_mgmt.nats_api.job_script_execute。"""
+        return self.client.run("job_script_execute", data)
+
+    def get_script(self, script_id):
+        """读取单个脚本模板完整详情（content/params/script_type/timeout）。
+
+        走 job_mgmt 的 job_script_detail 接口（get_job_mgmt_module_data 只返回 {id,name}，拿不到 content/params）。
+        """
+        resp = self.client.run("job_script_detail", {"id": script_id}) or {}
+        if not resp.get("result"):
+            return None
+        return resp.get("data")
+
+    def list_scripts(self, group_id, page=1, page_size=1000, team=None):
+        """脚本列表（供告警动作选择作业）。按团队(group_id)过滤，返回 {count, items:[{id,name}]}。
+
+        get_job_mgmt_module_data 需要 module/child_module/page/page_size/group_id 五个独立参数，必须按关键字传（参见 get_module_data）。
+        team 为当前调用方已授权团队 ID 列表，用于避免直接信任 group_id。
+        """
+        return self.client.run(
+            "get_job_mgmt_module_data",
+            module="script",
+            child_module=None,
+            page=page,
+            page_size=page_size,
+            group_id=group_id,
+            team=team,
+        )

@@ -16,9 +16,15 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("--apps", type=str, default="", help="逗号分隔的应用列表，为空则初始化所有应用")
+        parser.add_argument(
+            "--continue-on-error",
+            action="store_true",
+            help="初始化失败时继续执行后续模块，并在末尾输出失败列表",
+        )
 
     def handle(self, *args, **options):
         apps = options["apps"].strip()
+        continue_on_error = options["continue_on_error"]
 
         # 如果为空，初始化所有应用
         if not apps:
@@ -32,6 +38,7 @@ class Command(BaseCommand):
         self._preload_language_cache()
 
         # 按模块执行初始化
+        failed_apps = []
         for app in apps_list:
             try:
                 if app == "system_mgmt":
@@ -58,10 +65,15 @@ class Command(BaseCommand):
                     self.stdout.write(self.style.WARNING(f"未知模块: {app}"))
             except Exception as e:
                 self.stdout.write(self.style.ERROR(f"初始化 {app} 失败: {str(e)}"))
-                if app == "system_mgmt":
+                if not continue_on_error:
                     raise
-                # 继续执行其他模块的初始化
+                failed_apps.append((app, str(e)))
                 continue
+
+        if failed_apps:
+            failed_summary = "; ".join(f"{app}: {error}" for app, error in failed_apps)
+            self.stdout.write(self.style.WARNING(f"批量初始化完成，失败模块: {failed_summary}"))
+            return
 
         self.stdout.write(self.style.SUCCESS("批量初始化完成"))
 
@@ -69,6 +81,7 @@ class Command(BaseCommand):
         """系统管理资源初始化"""
         self.stdout.write("系统管理资源初始化...")
         admin_password = self._get_admin_password()
+        call_command("cleanup_opspilot_legacy_knowledge_menus")
         call_command("init_realm_resource")
         call_command("init_login_settings")
         call_command("create_user", "admin", admin_password, email="admin@bklite.net", is_superuser=True)
@@ -147,8 +160,6 @@ class Command(BaseCommand):
         self.stdout.write("预热语言缓存...")
         try:
             result = preload_language_cache()
-            self.stdout.write(
-                self.style.SUCCESS(f"语言缓存预热完成: {len(result['loaded'])} 已加载, {len(result['skipped'])} 已跳过, {len(result['failed'])} 失败")
-            )
+            self.stdout.write(self.style.SUCCESS(f"语言缓存预热完成: {len(result['loaded'])} 已加载, {len(result['skipped'])} 已跳过, {len(result['failed'])} 失败"))
         except Exception as e:
             self.stdout.write(self.style.WARNING(f"语言缓存预热失败: {str(e)}"))

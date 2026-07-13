@@ -4,6 +4,8 @@
 """
 
 import datetime
+import sys
+import types
 
 import pytest
 from django.utils import timezone
@@ -49,6 +51,26 @@ def restful_source(db):
 # --------------------------------------------------------------------------
 
 
+def test_alerts_ready_does_not_register_source_adapters(monkeypatch):
+    import apps.alerts
+    from apps.alerts.apps import AlertsConfig
+
+    called = False
+
+    def mark_called():
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr("apps.alerts.apps.adapters", mark_called)
+    monkeypatch.setattr("apps.alerts.apps._register_instant_cache_signals", lambda: None)
+    monkeypatch.setitem(sys.modules, "apps.alerts.nats", types.ModuleType("apps.alerts.nats"))
+    monkeypatch.setitem(sys.modules, "apps.alerts.nats.nats", types.ModuleType("apps.alerts.nats.nats"))
+
+    AlertsConfig("alerts", apps.alerts).ready()
+
+    assert called is False
+
+
 def test_factory_register_and_get():
     class Dummy:
         pass
@@ -57,6 +79,32 @@ def test_factory_register_and_get():
     assert "dummy_type" in AlertSourceAdapterFactory.get_supported_types()
     src = AlertSource(source_type="dummy_type")
     assert AlertSourceAdapterFactory.get_adapter(src) is Dummy
+
+
+def test_factory_get_adapter_registers_defaults_on_first_use(monkeypatch):
+    monkeypatch.setattr(AlertSourceAdapterFactory, "_adapters", {})
+
+    src = AlertSource(source_type="restful")
+
+    assert AlertSourceAdapterFactory.get_adapter(src) is RestFulAdapter
+
+
+def test_factory_get_supported_types_registers_defaults_on_first_use(monkeypatch):
+    monkeypatch.setattr(AlertSourceAdapterFactory, "_adapters", {})
+
+    supported_types = AlertSourceAdapterFactory.get_supported_types()
+
+    assert {"restful", "nats", "prometheus", "zabbix"}.issubset(supported_types)
+
+
+def test_factory_register_adapter_skips_duplicate_info_log(monkeypatch):
+    info_calls = []
+    monkeypatch.setattr(AlertSourceAdapterFactory, "_adapters", {"restful": RestFulAdapter})
+    monkeypatch.setattr("apps.alerts.common.source_adapter.base.logger.info", lambda *args, **kwargs: info_calls.append(args))
+
+    AlertSourceAdapterFactory.register_adapter("restful", RestFulAdapter)
+
+    assert info_calls == []
 
 
 def test_factory_unknown_type_raises():
@@ -530,6 +578,76 @@ def test_get_active_shields(event_levels, restful_source):
     AlertShield.objects.create(name="s", match_type="all", match_rules=[], suppression_time={})
     shields = AlertSourceAdapter.get_active_shields()
     assert shields is not None and shields.count() == 1
+
+
+# --------------------------------------------------------------------------
+# resolve_recovery_external_id — Prefetch 过滤优化（issue #3701）
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_resolve_recovery_external_id_prefetch_filters_non_created_events(event_levels, restful_source):
+    """回归：候选告警的 prefetch 必须只加载 CREATED 事件（DB 侧过滤），
+    Python 层不应再看到其他 action 的事件。修复前用 alert.events.all() 会
+    返回所有事件；修复后用 Prefetch(to_attr='_created_events') 仅含 CREATED。
+    若把修复代码 revert（恢复为 events.all()），alert._created_events 不存在，
+    遍历将抛 AttributeError，测试必然失败。"""
+    from apps.alerts.constants.constants import AlertStatus, EventAction
+    from apps.alerts.models.models import Alert
+
+    adapter = RestFulAdapter(alert_source=restful_source)
+
+    # 建两条事件：一条 CREATED（目标），一条 RECOVERY（噪声，旧逻辑会混入 events.all()）
+    created_evt = Event.objects.create(
+        source=restful_source, raw_data={}, title="t", level="0",
+        start_time=timezone.now(), event_id="E-CREATED",
+        action=EventAction.CREATED, item="mem", resource_name="host2",
+        external_id="ext-3701",
+    )
+    noise_evt = Event.objects.create(
+        source=restful_source, raw_data={}, title="t", level="0",
+        start_time=timezone.now(), event_id="E-RECOVERY-NOISE",
+        action=EventAction.RECOVERY, item="mem", resource_name="host2",
+        external_id="",
+    )
+
+    alert = Alert.objects.create(
+        alert_id="A-3701", level="0", title="t", content="c",
+        fingerprint="fp-3701", status=AlertStatus.PENDING,
+    )
+    alert.events.add(created_evt, noise_evt)
+
+    recovery = Event(
+        source=restful_source, raw_data={}, title="t", level="0",
+        start_time=timezone.now(), event_id="E-REC", action=EventAction.RECOVERY,
+        item="mem", resource_name="host2",
+    )
+
+    result = adapter.resolve_recovery_external_id(recovery)
+
+    # 只应解析到唯一 CREATED 事件的 external_id
+    assert result == "ext-3701"
+
+    # 核心断言：candidate_alerts 必须带 _created_events 属性（Prefetch to_attr），
+    # 且只含 CREATED 事件（不含噪声的 RECOVERY 事件）
+    from apps.alerts.constants.constants import EventAction as EA
+    from apps.alerts.models.models import Alert as AlertModel
+    from django.db.models import Prefetch
+
+    prefetch_qs = Event.objects.filter(
+        action=EA.CREATED,
+        source=restful_source,
+        item="mem",
+        resource_name="host2",
+    ).only("external_id", "item", "resource_name", "source_id", "action")
+
+    qs = AlertModel.objects.filter(pk=alert.pk).prefetch_related(
+        Prefetch("events", queryset=prefetch_qs, to_attr="_created_events")
+    )
+    fetched = qs.first()
+    assert hasattr(fetched, "_created_events"), "_created_events 属性不存在，Prefetch(to_attr=) 未生效"
+    assert len(fetched._created_events) == 1, "DB 侧过滤应只保留 1 条 CREATED 事件"
+    assert fetched._created_events[0].external_id == "ext-3701"
 
 
 # --------------------------------------------------------------------------

@@ -17,7 +17,6 @@ import { useTopologyState } from './hooks/useTopologyState';
 import { useGraphOperations } from './hooks/useGraphOperations';
 import { useContextMenuAndModal } from './hooks/useGraphInteractions';
 import { useTopologyResources } from './hooks/useTopologyResources';
-import { useTopologyPresentation } from './hooks/useTopologyPresentation';
 import { useTopologyRefresh } from './hooks/useTopologyRefresh';
 import { useTopologyLifecycle } from './hooks/useTopologyLifecycle';
 import { useNodeConfigFlow } from './hooks/useNodeConfigFlow';
@@ -26,19 +25,18 @@ import { useUnifiedFilter } from '@/app/ops-analysis/hooks/useUnifiedFilter';
 import {
   TopologyProps,
   TopologyRef,
-  TopologyViewportConfig,
 } from '@/app/ops-analysis/types/topology';
 import type { FilterValue } from '@/app/ops-analysis/types/dashBoard';
 import TopologyToolbar from './components/toolbar';
 import TopologyCanvasShell from './components/canvasShell';
-import TopologyPresentationModal from './components/presentationModal';
+import ViewWorkspace from '../components/viewWorkspace';
 import ContextMenu from './components/contextMenu';
 import EdgeConfigPanel from './components/edgeConfPanel';
 import NodeSidebar from './components/nodeSidebar';
 import ShapeNodePanel from './components/shapeNodePanel';
 import SingleValueNodePanel from './components/singleValueNodePanel';
-import ViewConfig from '../dashBoard/components/viewConfig';
-import ViewSelector from '../dashBoard/components/viewSelector';
+import ViewConfig from '@/app/ops-analysis/components/widgetConfig';
+import ViewSelector from '@/app/ops-analysis/components/widgetSelector';
 import {
   UnifiedFilterBar,
   UnifiedFilterConfigModal,
@@ -52,7 +50,6 @@ import {
   AppViewFullscreenExit,
   useAppViewFullscreen,
 } from '@/app/ops-analysis/components/appFullscreen';
-import { getTopologyViewportDraft } from './utils/viewport';
 
 const Topology = forwardRef<TopologyRef, TopologyProps>(
   ({ selectedTopology }, ref) => {
@@ -60,9 +57,9 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
     const chartTheme = getOpsChartTheme(themeName);
     const isDarkTheme = themeName === 'dark';
     const containerRef = useRef<HTMLDivElement>(null);
-    const canvasContainerRef = useRef<HTMLDivElement>(null as any);
-    const presentationHostRef = useRef<HTMLDivElement>(null as any);
-    const minimapContainerRef = useRef<HTMLDivElement>(null as any);
+    const canvasContainerRef = useRef<HTMLDivElement>(null);
+    const canvasHostRef = useRef<HTMLDivElement>(null);
+    const minimapContainerRef = useRef<HTMLDivElement>(null);
     const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
     const resizeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const [minimapVisible, setMinimapVisible] = useState(true);
@@ -78,11 +75,16 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
       Record<string, FilterValue>
     >({});
     const [nodeChangeKey, setNodeChangeKey] = useState(0);
-    const [viewportConfig, setViewportConfig] =
-      useState<TopologyViewportConfig>(() => getTopologyViewportDraft(null));
     const rebuildFiltersRef = useRef<(() => void) | null>(null);
     const { isFullscreen, enterFullscreen, exitFullscreen } =
       useAppViewFullscreen();
+    const handleFullscreenToggle = useCallback(() => {
+      if (isFullscreen) {
+        exitFullscreen();
+        return;
+      }
+      enterFullscreen();
+    }, [enterFullscreen, exitFullscreen, isFullscreen]);
 
     const { t } = useTranslation();
     const intl = useIntl();
@@ -245,38 +247,25 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
       handleCanvasResize();
     }, [state.collapsed]);
 
-    const {
-      activePresentationPresetKey,
-      handleClearPresentationConfig,
-      handleFullscreenToggle,
-      handleOpenPresentationConfig,
-      handlePresentationConfigConfirm,
-      handlePresentationDraftChange,
-      handlePresentationPresetSelect,
-      isLetterboxFullscreen,
-      letterboxLayout,
-      normalizedViewport,
-      presentationConfigDraft,
-      presentationConfigModalVisible,
-      setPresentationConfigDraft,
-      setPresentationConfigModalVisible,
-      viewportGuideTransform,
-    } = useTopologyPresentation({
-      graphInstance: state.graphInstance,
-      isEditMode: state.isEditMode,
-      toggleEditMode,
-      viewportConfig,
-      setViewportConfig,
-      containerRef,
-      canvasContainerRef,
-      presentationHostRef,
-      resizeCanvas,
-      handleCanvasResize,
-      isFullscreen,
-      enterFullscreen,
-      exitFullscreen,
-      t,
-    });
+    useEffect(() => {
+      const timers = [80, 220, 420].map((delay) =>
+        window.setTimeout(() => {
+          const canvasElement = canvasContainerRef.current;
+
+          if (canvasElement?.clientWidth && canvasElement.clientHeight) {
+            resizeCanvas(canvasElement.clientWidth, canvasElement.clientHeight);
+          }
+
+          if (isFullscreen) {
+            state.graphInstance?.zoomToFit({ padding: 20, maxScale: 1 });
+          }
+        }, delay),
+      );
+
+      return () => {
+        timers.forEach((timer) => window.clearTimeout(timer));
+      };
+    }, [isFullscreen, resizeCanvas, state.graphInstance]);
 
     const {
       addNodeVisible,
@@ -310,7 +299,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
 
     const handleSave = () => {
       if (selectedTopology) {
-        handleSaveTopology(selectedTopology, definitions, normalizedViewport);
+        handleSaveTopology(selectedTopology, definitions);
       }
     };
 
@@ -332,13 +321,11 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
       definitions,
       appliedFilterValues,
       appliedNamespaceId,
-      viewportConfig,
       setAppliedFilterValues,
       setAppliedNamespaceId,
       setDefinitions,
       setFilterValues,
       setNamespaceDraftId,
-      setViewportConfig,
       clearOperationHistory,
       clearRefreshTimer,
       finishInitialization,
@@ -384,115 +371,101 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
       nodeType === 'single-value' ? SingleValueNodePanel : ShapeNodePanel;
 
     const panelStyle = {
-      //   border: `1px solid ${chartTheme.panelBorderColor}`,
-      backgroundColor: chartTheme.panelBg,
+      background: chartTheme.panelBg,
     };
+    const topologyContainerStyle: React.CSSProperties = {
+      backgroundColor: isDarkTheme ? 'var(--color-fill-1)' : '#f5f6f8',
+      zIndex: isFullscreen ? 1100 : undefined,
+    };
+
+    const topologyToolbar = (
+      <TopologyToolbar
+        selectedTopology={selectedTopology}
+        onEdit={handleEnterEditMode}
+        onSave={handleSave}
+        onCancel={handleCancelEdit}
+        onFilterConfig={() => setFilterConfigModalVisible(true)}
+        onZoomIn={zoomIn}
+        onZoomOut={zoomOut}
+        onFit={handleFit}
+        onDelete={handleDelete}
+        onSelectMode={handleSelectMode}
+        onUndo={undo}
+        onRedo={redo}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        isSelectMode={state.isSelectMode}
+        isEditMode={state.isEditMode}
+        isFullscreen={isFullscreen}
+        onFullscreenToggle={handleFullscreenToggle}
+        onRefresh={handleRefresh}
+        onFrequencyChange={handleFrequencyChange}
+      />
+    );
+
+    const topologyFilterBar =
+      (definitions.length > 0 || namespaceSelectorElement) && (
+        <UnifiedFilterBar
+          definitions={definitions}
+          values={filterValues}
+          onChange={setFilterValues}
+          onSearch={handleFilterSearch}
+          onReset={handleFilterSearch}
+          prefixContent={namespaceSelectorElement}
+          popupZIndex={isFullscreen ? 1200 : undefined}
+        />
+      );
+
+    const topologyCanvasContent = (
+      <div
+        className={`flex h-full min-h-0 overflow-hidden p-0 ${state.collapsed ? 'gap-0' : 'gap-2'}`}
+      >
+        <div className={isFullscreen ? 'hidden' : 'min-h-0 shrink-0'}>
+          <NodeSidebar
+            collapsed={state.collapsed}
+            isEditMode={state.isEditMode}
+            graphInstance={state.graphInstance ?? undefined}
+            setCollapsed={state.setCollapsed}
+            onShowNodeConfig={handleShowNodeConfig}
+            onShowChartSelector={handleShowChartSelector}
+          />
+        </div>
+
+        <TopologyCanvasShell
+          canvasContainerRef={canvasContainerRef}
+          containerRef={containerRef}
+          minimapContainerRef={minimapContainerRef}
+          canvasHostRef={canvasHostRef}
+          isFullscreen={isFullscreen}
+          loading={loading}
+          minimapVisible={minimapVisible}
+          panelStyle={panelStyle}
+          t={t}
+          setMinimapVisible={setMinimapVisible}
+        />
+      </div>
+    );
 
     return (
       <div
         className={`flex flex-col ${styles.topologyContainer} ${
           isFullscreen
             ? 'fixed inset-0 h-screen w-screen overflow-hidden'
-            : 'flex-1 overflow-auto p-2 pb-0'
+            : 'h-full flex-1 overflow-hidden'
         }`}
-        style={{
-          backgroundColor: isDarkTheme ? 'var(--color-fill-1)' : '#f5f6f8',
-          zIndex: isFullscreen ? 1100 : undefined,
-        }}
+        style={topologyContainerStyle}
       >
         <AppViewFullscreenExit visible={isFullscreen} onExit={exitFullscreen} />
-        {/* 工具栏 */}
-        {!isFullscreen && (
-          <TopologyToolbar
-            selectedTopology={selectedTopology}
-            onEdit={handleEnterEditMode}
-            onSave={handleSave}
-            onCancel={handleCancelEdit}
-            onFilterConfig={() => setFilterConfigModalVisible(true)}
-            onPresentationConfig={handleOpenPresentationConfig}
-            onZoomIn={zoomIn}
-            onZoomOut={zoomOut}
-            onFit={handleFit}
-            onDelete={handleDelete}
-            onSelectMode={handleSelectMode}
-            onUndo={undo}
-            onRedo={redo}
-            canUndo={canUndo}
-            canRedo={canRedo}
-            isSelectMode={state.isSelectMode}
-            isEditMode={state.isEditMode}
-            isFullscreen={isFullscreen}
-            onFullscreenToggle={handleFullscreenToggle}
-            onRefresh={handleRefresh}
-            onFrequencyChange={handleFrequencyChange}
-          />
-        )}
-
-        <div
-          className={`flex-1 overflow-hidden flex flex-col ${
-            isFullscreen ? 'rounded-none' : 'rounded-2xl'
-          }`}
-          style={{
-            ...panelStyle,
-            boxShadow: isFullscreen
-              ? 'none'
-              : isDarkTheme
-                ? '0 10px 24px rgba(0, 0, 0, 0.18)'
-                : '0 12px 28px rgba(31, 63, 104, 0.06)',
-          }}
+        <ViewWorkspace
+          selectedItem={selectedTopology}
+          titleFallback="拓扑图"
+          emptyDescription="请选择一个拓扑图"
+          toolbar={isFullscreen ? undefined : topologyToolbar}
+          filterBar={topologyFilterBar}
+          headerVisible={!isFullscreen}
         >
-          {(definitions.length > 0 || namespaceSelectorElement) && (
-            <div className="shrink-0">
-              <UnifiedFilterBar
-                definitions={definitions}
-                values={filterValues}
-                onChange={setFilterValues}
-                onSearch={handleFilterSearch}
-                onReset={handleFilterSearch}
-                prefixContent={namespaceSelectorElement}
-                containerClassName="mx-0 mt-0"
-                appearance="embedded"
-                popupZIndex={isFullscreen ? 1200 : undefined}
-              />
-            </div>
-          )}
-
-          <div
-            className={`flex-1 flex overflow-hidden ${
-              isFullscreen ? 'p-0' : 'p-2.5'
-            } ${state.collapsed ? 'gap-0' : 'gap-2'}`}
-          >
-            {/* 侧边栏 */}
-            {!isFullscreen && (
-              <NodeSidebar
-                collapsed={state.collapsed}
-                isEditMode={state.isEditMode}
-                graphInstance={state.graphInstance ?? undefined}
-                setCollapsed={state.setCollapsed}
-                onShowNodeConfig={handleShowNodeConfig}
-                onShowChartSelector={handleShowChartSelector}
-              />
-            )}
-
-            <TopologyCanvasShell
-              canvasContainerRef={canvasContainerRef}
-              containerRef={containerRef}
-              minimapContainerRef={minimapContainerRef}
-              presentationHostRef={presentationHostRef}
-              isFullscreen={isFullscreen}
-              isLetterboxFullscreen={isLetterboxFullscreen}
-              isEditMode={state.isEditMode}
-              loading={loading}
-              minimapVisible={minimapVisible}
-              normalizedViewport={normalizedViewport}
-              letterboxLayout={letterboxLayout}
-              panelStyle={panelStyle}
-              viewportGuideTransform={viewportGuideTransform}
-              t={t}
-              setMinimapVisible={setMinimapVisible}
-            />
-          </div>
-        </div>
+          {topologyCanvasContent}
+        </ViewWorkspace>
 
         <ContextMenu
           visible={state.contextMenuVisible}
@@ -537,19 +510,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
           dataSourceManager={dataSourceManager}
           filterDefinitions={definitions}
           unifiedFilterValues={filterValues}
-        />
-
-        <TopologyPresentationModal
-          activePresetKey={activePresentationPresetKey}
-          draft={presentationConfigDraft}
-          open={presentationConfigModalVisible}
-          t={t}
-          onCancel={() => setPresentationConfigModalVisible(false)}
-          onClear={handleClearPresentationConfig}
-          onConfirm={handlePresentationConfigConfirm}
-          onDraftChange={handlePresentationDraftChange}
-          onDraftColorChange={setPresentationConfigDraft}
-          onPresetSelect={handlePresentationPresetSelect}
+          showChartThemeMode={true}
         />
 
         <UnifiedFilterConfigModal

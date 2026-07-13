@@ -73,35 +73,6 @@ export const getColorByThreshold = (
 };
 
 /**
- * 验证阈值配置的有效性
- * @param thresholds 阈值配置数组
- * @returns 验证结果
- */
-export const validateThresholds = (thresholds: ThresholdColorConfig[]) => {
-  const errors: string[] = [];
-
-  for (let i = 0; i < thresholds.length; i++) {
-    const threshold = thresholds[i];
-
-    // 检查颜色格式
-    if (!threshold.color || !threshold.color.match(/^#[0-9A-Fa-f]{6}$/)) {
-      errors.push(`第${i + 1}个阈值的颜色格式无效`);
-    }
-
-    // 检查数值格式
-    const value = parseFloat(threshold.value);
-    if (isNaN(value)) {
-      errors.push(`第${i + 1}个阈值的数值无效`);
-    }
-  }
-
-  return {
-    isValid: errors.length === 0,
-    errors
-  };
-};
-
-/**
  * 格式化显示值（添加单位、小数位等）
  * @param value 原始值
  * @param unit 单位（自由文本后缀，兼容旧逻辑）
@@ -151,37 +122,4 @@ export const formatDisplayValue = (
   }
 
   return formattedValue;
-};
-
-/**
- * 从嵌套对象中根据路径提取值
- * @param obj 数据对象
- * @param path 路径，支持 "." 分隔的嵌套路径和数组索引 "[0]"
- * @returns 提取的值
- */
-export const getValueByPath = (
-  obj: unknown,
-  path: string | undefined
-): unknown => {
-  if (!path || obj === null || obj === undefined) {
-    return undefined;
-  }
-
-  // 处理路径，将 "[0]" 转换为 ".0"
-  const normalizedPath = path.replace(/\[(\d+)\]/g, '.$1');
-  const keys = normalizedPath.split('.');
-
-  let current: unknown = obj;
-  for (const key of keys) {
-    if (current === null || current === undefined) {
-      return undefined;
-    }
-    if (typeof current === 'object') {
-      current = (current as Record<string, unknown>)[key];
-    } else {
-      return undefined;
-    }
-  }
-
-  return current;
 };

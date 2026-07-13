@@ -36,15 +36,15 @@ export interface CreateEntityContextOptions<T extends BaseEntityInfo, R> {
 
 /**
  * 创建实体 Context 的工厂函数
- * 用于减少 knowledge、skill、studio 等 Context 的重复代码
+ * 用于减少 skill、studio 等 Context 的重复代码
  *
  * @example
  * ```tsx
- * const { Provider: KnowledgeProvider, useEntity: useKnowledge } = createEntityContext({
- *   contextName: 'Knowledge',
+ * const { Provider: SkillProvider, useEntity: useSkill } = createEntityContext({
+ *   contextName: 'Skill',
  *   useApi: () => {
- *     const { fetchKnowledgeBaseDetails } = useKnowledgeApi();
- *     return { fetchDetail: (id) => fetchKnowledgeBaseDetails(Number(id)) };
+ *     const { fetchSkillDetail } = useSkillApi();
+ *     return { fetchDetail: (id) => fetchSkillDetail(String(id)) };
  *   },
  *   transformResponse: (data) => ({
  *     name: data.name,

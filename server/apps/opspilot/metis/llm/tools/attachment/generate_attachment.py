@@ -70,5 +70,5 @@ def generate_attachment_file(
         "filename": asset.filename,
         "file_url": build_signed_attachment_download_url(asset),
         "mime_type": asset.mime_type,
-        "file_knowledge_id": asset.file_knowledge_id,
+        "attachment_asset_id": asset.id,
     }

@@ -1,3 +1,4 @@
+import os
 from datetime import timezone
 from django.utils import timezone as dj_timezone
 
@@ -28,7 +29,17 @@ from apps.rpc.system_mgmt import SystemMgmt
 from apps.core.utils.safe_template import build_sandboxed_env
 
 
+def _get_positive_int_env(name, default):
+    try:
+        value = int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+    return max(1, value)
+
+
 class NodeService:
+    NODE_LIST_PAGE_SIZE_MAX = _get_positive_int_env("NODE_MGMT_NODE_LIST_PAGE_SIZE_MAX", 500)
+
     @staticmethod
     def _build_scoped_permission(permission_data):
         user_obj = User(username=permission_data["username"], domain=permission_data["domain"])
@@ -406,12 +417,11 @@ class NodeService:
             qs = qs.filter(updated_at__lt=one_minute_ago)
 
         count = qs.count()
-        if page_size == -1:
-            nodes = qs
-        else:
-            start = (page - 1) * page_size
-            end = start + page_size
-            nodes = qs[start:end]
+        page = NodeService._normalize_page(page)
+        page_size = NodeService._normalize_page_size(page_size)
+        start = (page - 1) * page_size
+        end = start + page_size
+        nodes = qs[start:end]
 
         # 应用预加载优化，避免 N+1 查询
         nodes = NodeSerializer.setup_eager_loading(nodes)
@@ -419,6 +429,24 @@ class NodeService:
         serializer = NodeSerializer(nodes, many=True)
         node_data = serializer.data
         return dict(count=count, nodes=node_data)
+
+    @staticmethod
+    def _normalize_page(page):
+        try:
+            page = int(page)
+        except (TypeError, ValueError):
+            page = 1
+        return max(1, page)
+
+    @staticmethod
+    def _normalize_page_size(page_size):
+        try:
+            page_size = int(page_size)
+        except (TypeError, ValueError):
+            page_size = 10
+        if page_size == -1:
+            return NodeService.NODE_LIST_PAGE_SIZE_MAX
+        return max(1, min(page_size, NodeService.NODE_LIST_PAGE_SIZE_MAX))
 
     @staticmethod
     def get_authorized_nodes_by_ids(node_ids, permission_data=None):

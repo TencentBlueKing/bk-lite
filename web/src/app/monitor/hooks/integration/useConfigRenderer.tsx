@@ -12,6 +12,7 @@ import { ExclamationCircleFilled } from '@ant-design/icons';
 import Password from '@/components/password';
 import GroupTreeSelector from '@/components/group-tree-select';
 import { useTranslation } from '@/utils/i18n';
+import { applyTableChangeHandler } from './tableChangeHandler';
 
 export const useConfigRenderer = () => {
   const { t } = useTranslation();
@@ -317,6 +318,7 @@ export const useConfigRenderer = () => {
       rules = [],
       required = false
     } = columnConfig;
+    const { width: columnWidth, ...componentProps } = widget_props;
 
     let options = columnConfig.options || [];
     if (!options?.length && externalOptions) {
@@ -333,7 +335,7 @@ export const useConfigRenderer = () => {
       title: label,
       dataIndex: name,
       key: name,
-      width: widget_props.width || 200
+      width: columnWidth || 200
     };
 
     // 验证函数
@@ -373,26 +375,16 @@ export const useConfigRenderer = () => {
       const errorMsg = validateField(value);
       newData[index][`${name}_error`] = errorMsg;
       if (change_handler) {
-        const {
-          type,
-          target_field,
-          source_fields = [],
-          separator = ':'
-        } = change_handler;
-        if (type === 'simple') {
-          const sourceValue = source_fields[0]
-            ? newData[index][source_fields[0]]
-            : value;
-          newData[index][target_field] = sourceValue;
+        const changedRow = applyTableChangeHandler(
+          newData[index],
+          value,
+          options,
+          change_handler
+        );
+        if (changedRow !== newData[index]) {
+          newData[index] = changedRow;
           // 清除目标字段的错误状态（因为值已经被更新了）
-          newData[index][`${target_field}_error`] = null;
-        } else if (type === 'combine') {
-          const values = source_fields.map(
-            (field: string) => newData[index][field] || ''
-          );
-          newData[index][target_field] = values.join(separator);
-          // 清除目标字段的错误状态（因为值已经被更新了）
-          newData[index][`${target_field}_error`] = null;
+          newData[index][`${change_handler.target_field}_error`] = null;
         }
       }
       onTableDataChange(newData);
@@ -407,10 +399,10 @@ export const useConfigRenderer = () => {
               <Input
                 value={text}
                 onChange={(e) => handleChange(e.target.value, record, index)}
-                placeholder={widget_props.placeholder || label}
+                placeholder={componentProps.placeholder || label}
                 status={errorMsg ? 'error' : ''}
                 style={{ flex: 1 }}
-                {...widget_props}
+                {...componentProps}
               />
               {errorMsg && (
                 <Tooltip title={errorMsg}>
@@ -432,10 +424,10 @@ export const useConfigRenderer = () => {
               <InputNumber
                 value={text}
                 onChange={(value) => handleChange(value, record, index)}
-                placeholder={widget_props.placeholder || label}
+                placeholder={componentProps.placeholder || label}
                 style={{ flex: 1 }}
                 status={errorMsg ? 'error' : ''}
-                {...widget_props}
+                {...componentProps}
               />
               {errorMsg && (
                 <Tooltip title={errorMsg}>
@@ -455,7 +447,7 @@ export const useConfigRenderer = () => {
           const filteredOptions = getFilteredOptionsForRow(
             options,
             enable_row_filter,
-            widget_props.mode,
+            componentProps.mode,
             dataSource,
             index,
             name
@@ -466,12 +458,12 @@ export const useConfigRenderer = () => {
               <Select
                 value={text}
                 onChange={(value) => handleChange(value, record, index)}
-                placeholder={widget_props.placeholder || label}
+                placeholder={componentProps.placeholder || label}
                 style={{ flex: 1 }}
                 status={errorMsg ? 'error' : ''}
                 showSearch
                 optionFilterProp="children"
-                {...widget_props}
+                {...componentProps}
               >
                 {filteredOptions.map((option: any) => (
                   <Select.Option key={option.value} value={option.value}>
@@ -506,7 +498,7 @@ export const useConfigRenderer = () => {
                 onChange={handleGroupChange}
                 status={errorMsg ? 'error' : ''}
                 style={{ flex: 1 }}
-                {...widget_props}
+                {...componentProps}
               />
               {errorMsg && (
                 <Tooltip title={errorMsg}>
@@ -529,10 +521,10 @@ export const useConfigRenderer = () => {
                 value={text}
                 clickToEdit={false}
                 onChange={(value) => handleChange(value, record, index)}
-                placeholder={widget_props.placeholder || label}
+                placeholder={componentProps.placeholder || label}
                 status={errorMsg ? 'error' : ''}
                 style={{ flex: 1 }}
-                {...widget_props}
+                {...componentProps}
               />
               {errorMsg && (
                 <Tooltip title={errorMsg}>
@@ -544,6 +536,18 @@ export const useConfigRenderer = () => {
             </div>
           );
         };
+        break;
+
+      case 'switch':
+        column.render = (text: any, record: any, index: number) => (
+          <div style={{ display: 'flex', alignItems: 'center', minHeight: 32 }}>
+            <Switch
+              checked={Boolean(text)}
+              onChange={(checked) => handleChange(checked, record, index)}
+              {...componentProps}
+            />
+          </div>
+        );
         break;
 
       default:

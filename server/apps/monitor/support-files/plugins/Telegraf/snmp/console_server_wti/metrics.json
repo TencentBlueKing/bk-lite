@@ -1,0 +1,149 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_wti",
+  "plugin": "ConsoleServer WTI SNMP",
+  "plugin_desc": "WTI console-server and remote-power SNMP collection for devices under WTI PEN 2634. The shared SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. This child template adds verified environment-unit temperature and input-power status leaves from the WTI console tree, normalizing input-power states conservatively to 1=healthy and 2=fault. Serial-port rows, outlet power metering, users and trap objects are not promoted into shared device-health metrics.",
+  "status_query": "any({instance_type='console_server', collect_type='snmp_wti'}) by (instance_id)",
+  "name": "ConsoleServer",
+  "icon": "mm-console_server_控制台服务器",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='console_server'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_psu_state",
+    "device_temperature_celsius"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='console_server', __$labels__}) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "WTI environment unit temperature in degrees Celsius, read from the verified console environment unit leaf."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "max(device_psu_state{instance_type='console_server', __$labels__}) by (instance_id)",
+      "display_name": "Power Supply Status",
+      "data_type": "Enum",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "WTI input power state normalized to 1=healthy and 2=fault across input power feeds."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='console_server', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='console_server', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='console_server', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    },
+    {
+      "metric_group": "Power",
+      "name": "wti_input_power_1_state",
+      "query": "wti_input_power_1_state{instance_type='console_server', __$labels__}",
+      "display_name": "WTI Input Power 1 State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"abnormal\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the state of WTI input power 1, normalized to 1 (normal) or 2 (abnormal)."
+    },
+    {
+      "metric_group": "Power",
+      "name": "wti_input_power_2_state",
+      "query": "wti_input_power_2_state{instance_type='console_server', __$labels__}",
+      "display_name": "WTI Input Power 2 State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"abnormal\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the state of WTI input power 2, normalized to 1 (normal) or 2 (abnormal)."
+    },
+    {
+      "metric_group": "Power",
+      "name": "wti_input_power_3_state",
+      "query": "wti_input_power_3_state{instance_type='console_server', __$labels__}",
+      "display_name": "WTI Input Power 3 State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"abnormal\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the state of WTI input power 3, normalized to 1 (normal) or 2 (abnormal)."
+    },
+    {
+      "metric_group": "Power",
+      "name": "wti_input_power_4_state",
+      "query": "wti_input_power_4_state{instance_type='console_server', __$labels__}",
+      "display_name": "WTI Input Power 4 State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"abnormal\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the state of WTI input power 4, normalized to 1 (normal) or 2 (abnormal)."
+    }
+  ]
+}

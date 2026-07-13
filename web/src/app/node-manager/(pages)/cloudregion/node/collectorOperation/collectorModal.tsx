@@ -347,7 +347,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
       <OperateModal
         title={t(`node-manager.cloudregion.node.${type}`)}
         open={collectorVisible}
-        destroyOnClose
+        destroyOnHidden
         okText={t('common.confirm')}
         cancelText={t('common.cancel')}
         onCancel={handleCancel}

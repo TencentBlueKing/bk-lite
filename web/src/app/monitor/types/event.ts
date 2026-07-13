@@ -45,8 +45,10 @@ export interface StrategyFields {
     type: string;
     value: number;
   };
+  group_algorithm?: string;
   algorithm?: string;
   threshold: ThresholdField[];
+  trigger_count?: number;
   recovery_condition?: number;
   no_data_period?: {
     type: string;
@@ -65,12 +67,28 @@ export interface StrategyFields {
   id?: number;
   group_by?: string[];
   enable_alerts?: string[];
-  query_condition?: {
-    type: string;
-    query?: string;
-    metric_id?: number;
-    filter?: FilterItem[];
-  };
+  query_condition?: { query?: string } & (
+    | {
+        type: 'metric';
+        metric_id?: number;
+        filter?: FilterItem[];
+      }
+    | {
+        type: 'pmq';
+      }
+    | {
+        type: 'formula';
+        result_name: string;
+        expression: string;
+        queries: Array<{
+          ref: string;
+          metric_id: number;
+          filter?: FilterItem[];
+          group_algorithm: string;
+          group_by: string[];
+        }>;
+      }
+  );
   [key: string]: unknown;
 }
 

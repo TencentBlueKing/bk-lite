@@ -398,6 +398,26 @@ class TestCreateReExecution:
         assert execution.job_type == JobType.SCRIPT
         assert execution.script_content == "echo"
 
+    def test_re_execution_normalizes_legacy_crlf(self):
+        """re_execute 复制历史 script_content 时规范化,防止历史脏数据传递。"""
+        original = self._make_original(
+            script_content="echo a\r\necho b\r\n",
+            script_type="shell",
+        )
+        with patch(DISPATCH_PATH, return_value="celery-1"):
+            execution = ExecutionService.create_re_execution(original=original, username="bob", authorized_team_ids={1})
+        # 新副本不含 CR
+        assert "\r" not in execution.script_content
+        assert execution.script_content.startswith("echo a\necho b")
+
+    def test_re_execution_bat_preserves_crlf(self):
+        crlf = "@echo off\r\nset x=1\r\n"
+        original = self._make_original(script_content=crlf, script_type="bat")
+        with patch(DISPATCH_PATH, return_value="celery-1"):
+            execution = ExecutionService.create_re_execution(original=original, username="bob", authorized_team_ids={1})
+        # bat 保留 CRLF
+        assert "\r" in execution.script_content
+
     def test_playbook_re_execution_without_playbook_raises_400(self):
         original = self._make_original(job_type=JobType.PLAYBOOK, playbook=None)
         with patch(DISPATCH_PATH):

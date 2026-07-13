@@ -12,48 +12,6 @@
 from rest_framework import serializers
 
 
-class BatchTrainRequestSerializer(serializers.Serializer):
-    """knowledge_document 的 batch_train 动作请求体。
-
-    前端（web knowledge.ts batchTrainDocuments）发送：
-        {knowledge_document_ids: number[], delete_qa_pairs: boolean}
-
-    - knowledge_document_ids: 原视图通过 ``pop(..., [])`` 容忍缺失，故保持可选，默认空列表。
-      同时兼容原视图“非 list 自动包装为单元素 list”的行为。
-    - delete_qa_pairs: 原视图为 ``kwargs["delete_qa_pairs"]`` 原始访问（缺失会 500）。
-      前端始终发送布尔值；此处保持可选并默认 True 以避免 KeyError 且不改变成功路径行为。
-    """
-
-    knowledge_document_ids = serializers.ListField(child=serializers.IntegerField(), required=False, default=list)
-    delete_qa_pairs = serializers.BooleanField(required=False, default=True)
-
-    def to_internal_value(self, data):
-        # 兼容原视图：knowledge_document_ids 传入非 list（如单个 id）时包装为 list
-        if isinstance(data, dict):
-            raw = data.get("knowledge_document_ids", None)
-            if raw is not None and not isinstance(raw, (list, tuple)):
-                data = dict(data)
-                data["knowledge_document_ids"] = [raw]
-        return super().to_internal_value(data)
-
-
-class DeleteChunksRequestSerializer(serializers.Serializer):
-    """knowledge_document 的 delete_chunks 动作请求体。
-
-    前端（web knowledge.ts deleteChunks）发送：
-        {knowledge_base_id: number, ids: string[], delete_all: boolean}
-
-    - ids: 原视图为 ``params["ids"]`` 原始访问（缺失会 500）。前端始终发送，
-      标记为 required 以返回干净的 400。
-    - knowledge_base_id: 原视图通过 ``get(..., 0)`` 容忍缺失，保持可选，默认 0。
-    - delete_all: 原视图通过 ``get(..., False)`` 容忍缺失，保持可选，默认 False。
-    """
-
-    ids = serializers.ListField(child=serializers.CharField(), allow_empty=True)
-    knowledge_base_id = serializers.IntegerField(required=False, default=0)
-    delete_all = serializers.BooleanField(required=False, default=False)
-
-
 class SubmitApprovalRequestSerializer(serializers.Serializer):
     """bot_mgmt submit_approval 请求体。
 

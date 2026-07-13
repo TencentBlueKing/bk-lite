@@ -6,8 +6,9 @@ from typing import Any
 
 from asgiref.sync import sync_to_async
 from django.core import signing
-from django.db.models import Count, Q
-from django.db.models.functions import TruncDate
+from django.db.models import Count, IntegerField, Q, Sum, Value
+from django.db.models.fields.json import KeyTextTransform
+from django.db.models.functions import Cast, Coalesce, NullIf, TruncDate
 from django.http import FileResponse, HttpResponse, JsonResponse
 from ipware import get_client_ip
 from wechatpy.enterprise import WeChatCrypto
@@ -34,6 +35,7 @@ from apps.opspilot.services.workflow_attachment_service import resolve_signed_at
 from apps.opspilot.tasks import chat_flow_test_execute_task
 from apps.opspilot.utils.bot_utils import insert_skill_log, set_time_range
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
+from apps.opspilot.utils.enterprise_wechat_aibot_chat_flow_utils import EnterpriseWechatAibotChatFlowUtils
 from apps.opspilot.utils.execution_interrupt import request_interrupt
 from apps.opspilot.utils.pending_hitl import try_deliver_to_pending
 from apps.opspilot.utils.sse_chat import create_error_stream_response, generate_stream_error, stream_chat
@@ -130,8 +132,8 @@ def download_workflow_attachment(request, download_token):
     if not asset:
         return JsonResponse({"result": False, "message": "Attachment not found"}, status=404)
 
-    asset.file_knowledge.file.open("rb")
-    response = FileResponse(asset.file_knowledge.file, as_attachment=True, filename=asset.filename)
+    asset.file.open("rb")
+    response = FileResponse(asset.file, as_attachment=True, filename=asset.filename)
     if asset.mime_type:
         response["Content-Type"] = asset.mime_type
     return response
@@ -143,7 +145,7 @@ def validate_openai_token(token, team=None, is_mobile=False):
     if not token:
         return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}
     token = token.split("Bearer ")[-1]
-    user = UserAPISecret.objects.filter(api_secret=token).first()
+    user = UserAPISecret.find_by_api_secret(token)
     if not user:
         if team is None and not is_mobile:
             return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}
@@ -246,13 +248,11 @@ def get_skill_and_params(kwargs, team, bot_id=None):
         "chat_history": chat_history,
         "user_message": chat_history[-1]["message"],
         "conversation_window_size": num,
-        "enable_rag": pick_request_value(kwargs, "enable_rag", skill_obj.enable_rag),
-        "rag_score_threshold": [{"knowledge_base": int(key), "score": float(value)} for key, value in skill_obj.rag_score_threshold_map.items()],
-        "enable_rag_knowledge_source": skill_obj.enable_rag_knowledge_source,
         "show_think": skill_obj.show_think,
         "tools": skill_obj.tools,
         "skill_type": skill_obj.skill_type,
         "group": skill_obj.team[0],
+        "wiki_kb_ids": list(skill_obj.wiki_knowledge_bases.values_list("id", flat=True)),
     }
 
     return skill_obj, params, None
@@ -266,19 +266,7 @@ def invoke_chat(params, skill_obj, kwargs, current_ip, user_message, history_log
 
 
 def format_knowledge_sources(content, skill_obj, doc_map=None, title_map=None):
-    """Format and append knowledge source references if enabled"""
-    if skill_obj.enable_rag_knowledge_source:
-        stripped_content = content.strip()
-        if (stripped_content.startswith("{") and stripped_content.endswith("}")) or (
-            stripped_content.startswith("[") and stripped_content.endswith("]")
-        ):
-            return content
-        doc_map = doc_map or {}
-        title_map = title_map or {}
-        knowledge_titles = sorted({doc_map.get(k, {}).get("name") for k in title_map.keys() if doc_map.get(k, {}).get("name")})
-        last_content = content.strip().split("\n")[-1]
-        if "引用知识" not in last_content and knowledge_titles:
-            content += f"\n引用知识: {', '.join(knowledge_titles)}"
+    """知识库引用已移除，直接返回原始内容（保留签名以兼容调用方）。"""
     return content
 
 
@@ -324,7 +312,6 @@ def get_chat_msg(current_ip, kwargs, params, skill_obj, user_message, history_lo
     }
     if history_log:
         history_log.conversation = content
-        history_log.citing_knowledge = list(doc_map.values())
         history_log.save()
     insert_skill_log(current_ip, skill_obj.id, return_data, kwargs, user_message=user_message)
     return return_data, content, False  # 第三个返回值表示是否失败
@@ -375,7 +362,6 @@ def _lobe_persist_history(params, skill_obj, user_message, user, kwargs):
         domain=bot.domain,
         conversation_role="user",
         conversation=user_message,
-        citing_knowledge=[],
     )
     return BotConversationHistory(
         bot_id=kwargs.get("studio_id"),
@@ -384,7 +370,6 @@ def _lobe_persist_history(params, skill_obj, user_message, user, kwargs):
         domain=bot.domain,
         conversation_role="bot",
         conversation="",
-        citing_knowledge=[],
     )
 
 
@@ -515,19 +500,45 @@ def _token_consumption_queryset(request):
     return queryset, start_time, end_time
 
 
+def _annotate_token_fields(queryset):
+    """在 DB 层从 response_detail JSONField 中提取各 token 整型字段，供聚合使用。
+
+    response_detail 结构：{"usage": {"prompt_tokens": N, "completion_tokens": N, "total_tokens": N}}
+    KeyTextTransform 提取文本值后 Cast 为整型；NULL 值（路径不存在的旧行）被 Coalesce 置零。
+    与 _extract_token_usage 保持一致：total_tokens 缺失或为 0 时回退为 prompt_tokens + completion_tokens。
+    """
+
+    def _int_field(path):
+        return Coalesce(Cast(KeyTextTransform(path[1], KeyTextTransform(path[0], "response_detail")), IntegerField()), 0)
+
+    prompt_expr = _int_field(("usage", "prompt_tokens"))
+    completion_expr = _int_field(("usage", "completion_tokens"))
+    total_expr = _int_field(("usage", "total_tokens"))
+    return queryset.annotate(
+        _prompt=prompt_expr,
+        _completion=completion_expr,
+        _total=Coalesce(
+            NullIf(total_expr, Value(0)),
+            prompt_expr + completion_expr,
+            Value(0),
+            output_field=IntegerField(),
+        ),
+    )
+
+
 @HasRole("admin")
 def get_total_token_consumption(request):
     queryset, _start_time, _end_time = _token_consumption_queryset(request)
-    input_tokens = output_tokens = total_tokens = 0
-    for response_detail in queryset.values_list("response_detail", flat=True).iterator():
-        prompt, completion, total = _extract_token_usage(response_detail)
-        input_tokens += prompt
-        output_tokens += completion
-        total_tokens += total
+    # DB 层聚合：不再把记录全量拉取到 Python 进程
+    result = _annotate_token_fields(queryset).aggregate(
+        input_tokens=Sum("_prompt"),
+        output_tokens=Sum("_completion"),
+        total_tokens=Sum("_total"),
+    )
     data = {
-        "total_tokens": total_tokens,
-        "input_tokens": input_tokens,
-        "output_tokens": output_tokens,
+        "total_tokens": result["total_tokens"] or 0,
+        "input_tokens": result["input_tokens"] or 0,
+        "output_tokens": result["output_tokens"] or 0,
     }
     return JsonResponse({"result": True, "data": data})
 
@@ -536,13 +547,13 @@ def get_total_token_consumption(request):
 def get_token_consumption_overview(request):
     queryset, start_time, end_time = _token_consumption_queryset(request)
     num_days = (end_time - start_time).days + 1
+    # 先初始化日期骨架（保证无数据日仍有 0 占位）
     daily_totals = {(start_time + datetime.timedelta(days=i)).strftime("%Y-%m-%d"): 0 for i in range(num_days)}
-    for created_at, response_detail in queryset.values_list("created_at", "response_detail").iterator():
-        _prompt, _completion, total = _extract_token_usage(response_detail)
-        date_key = created_at.strftime("%Y-%m-%d")
-        if date_key not in daily_totals:
-            daily_totals[date_key] = 0
-        daily_totals[date_key] += total
+    # DB 层按日期聚合 token 总量，不再全量拉取行到 Python
+    rows = _annotate_token_fields(queryset).annotate(date=TruncDate("created_at")).values("date").annotate(tokens=Sum("_total")).order_by("date")
+    for row in rows:
+        date_key = row["date"].strftime("%Y-%m-%d")
+        daily_totals[date_key] = (daily_totals.get(date_key) or 0) + (row["tokens"] or 0)
     items = [{"date": date, "tokens": tokens} for date, tokens in sorted(daily_totals.items())]
     return JsonResponse({"result": True, "data": {"items": items}})
 
@@ -1013,6 +1024,12 @@ def execute_chat_flow_wechat(request, bot_id):
 
     # 6. 处理POST请求（消息处理）
     return wechat_utils.handle_wechat_message(request, crypto, bot_chat_flow, wechat_config)
+
+
+@api_exempt
+def execute_chat_flow_enterprise_wechat_aibot(request, bot_id):
+    """企微智能机器人短连接 ChatFlow 执行入口。"""
+    return EnterpriseWechatAibotChatFlowUtils(bot_id).handle_request(request)
 
 
 @api_exempt

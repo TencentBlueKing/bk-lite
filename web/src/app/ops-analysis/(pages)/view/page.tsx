@@ -5,31 +5,42 @@ import Sidebar from '../../components/sidebar';
 import Dashboard, { DashboardRef } from './dashBoard/index';
 import Topology from './topology/index';
 import Architecture, { ArchitectureRef } from './architecture/index';
+import Screen, { ScreenRef } from './screen/index';
+import Report, { ReportRef } from './report/index';
 import { TopologyRef } from '@/app/ops-analysis/types/topology';
 import { useTranslation } from '@/utils/i18n';
 import { DirectoryType, SidebarRef } from '@/app/ops-analysis/types';
+import {
+  CANVAS_TYPES,
+  CanvasType,
+  isCanvasType,
+} from '@/app/ops-analysis/constants/canvasTypes';
 import { LeftOutlined, RightOutlined } from '@ant-design/icons';
 import { Button, Empty, Modal } from 'antd';
 import { useRouter } from 'next/navigation';
 import { DirItem } from '@/app/ops-analysis/types';
+
+type SelectedCanvasItems = Record<CanvasType, DirItem | null>;
+
+const createEmptySelectedItems = (): SelectedCanvasItems =>
+  CANVAS_TYPES.reduce((acc, type) => {
+    acc[type] = null;
+    return acc;
+  }, {} as SelectedCanvasItems);
 
 const ViewPage: React.FC = () => {
   const { t } = useTranslation();
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
   const [selectedType, setSelectedType] = useState<DirectoryType>('directory');
-  const [selectedItem, setSelectedItem] = useState<{
-    dashboard: DirItem | null;
-    topology: DirItem | null;
-    architecture: DirItem | null;
-  }>({
-    dashboard: null,
-    topology: null,
-    architecture: null,
-  });
+  const [selectedItem, setSelectedItem] = useState<SelectedCanvasItems>(
+    createEmptySelectedItems
+  );
   const dashboardRef = useRef<DashboardRef>(null);
   const architectureRef = useRef<ArchitectureRef>(null);
   const topologyRef = useRef<TopologyRef>(null);
+  const screenRef = useRef<ScreenRef>(null);
+  const reportRef = useRef<ReportRef>(null);
   const sidebarRef = useRef<SidebarRef>(null);
   const previousSelectionRef = useRef<{
     type: DirectoryType;
@@ -37,21 +48,14 @@ const ViewPage: React.FC = () => {
   } | null>(null);
 
   const handleSidebarDataUpdate = (updatedItem: DirItem) => {
-    if (
-      selectedItem.dashboard &&
-      updatedItem.id === selectedItem.dashboard.id
-    ) {
-      setSelectedItem((prev) => ({ ...prev, dashboard: updatedItem }));
+    if (!isCanvasType(updatedItem.type)) {
+      return;
     }
-    if (selectedItem.topology && updatedItem.id === selectedItem.topology.id) {
-      setSelectedItem((prev) => ({ ...prev, topology: updatedItem }));
-    }
-    if (
-      selectedItem.architecture &&
-      updatedItem.id === selectedItem.architecture.id
-    ) {
-      setSelectedItem((prev) => ({ ...prev, architecture: updatedItem }));
-    }
+    setSelectedItem((prev) =>
+      prev[updatedItem.type]?.id === updatedItem.id
+        ? { ...prev, [updatedItem.type]: updatedItem }
+        : prev
+    );
   };
 
   // 检查是否需要显示未保存更改提示
@@ -65,25 +69,29 @@ const ViewPage: React.FC = () => {
     if (selectedType === 'architecture' && architectureRef.current) {
       return architectureRef.current.hasUnsavedChanges();
     }
+    if (selectedType === 'screen' && screenRef.current) {
+      return screenRef.current.hasUnsavedChanges();
+    }
+    if (selectedType === 'report' && reportRef.current) {
+      return reportRef.current.hasUnsavedChanges();
+    }
     return false;
   };
 
   // 处理导航
   const handleNavigation = (type: DirectoryType, itemInfo?: DirItem) => {
     const isLeavingContentPage =
-      (selectedType === 'dashboard' ||
-        selectedType === 'topology' ||
-        selectedType === 'architecture') &&
+      isCanvasType(selectedType) &&
       (type !== selectedType ||
         (type === selectedType &&
           itemInfo?.id !==
-            selectedItem[selectedType as keyof typeof selectedItem]?.id));
+            selectedItem[selectedType]?.id));
 
     if (isLeavingContentPage && checkUnsavedChanges()) {
       // 记录当前选中状态
       previousSelectionRef.current = {
         type: selectedType,
-        item: selectedItem[selectedType as keyof typeof selectedItem],
+        item: isCanvasType(selectedType) ? selectedItem[selectedType] : null,
       };
 
       Modal.confirm({
@@ -116,9 +124,8 @@ const ViewPage: React.FC = () => {
   const performNavigation = (type: DirectoryType, itemInfo?: DirItem) => {
     setSelectedType(type);
     setSelectedItem({
-      dashboard: type === 'dashboard' ? itemInfo || null : null,
-      topology: type === 'topology' ? itemInfo || null : null,
-      architecture: type === 'architecture' ? itemInfo || null : null,
+      ...createEmptySelectedItems(),
+      ...(isCanvasType(type) ? { [type]: itemInfo || null } : {}),
     });
     const params = new URLSearchParams({
       type: itemInfo?.type || '',
@@ -163,7 +170,19 @@ const ViewPage: React.FC = () => {
         </Button>
       </div>
       <div className="h-full flex-1 flex" style={{ minWidth: 0 }}>
-        {selectedType === 'architecture' ? (
+        {selectedType === 'screen' ? (
+          <Screen
+            ref={screenRef}
+            key={selectedItem.screen?.data_id ?? 'screen-empty'}
+            selectedScreen={selectedItem.screen}
+          />
+        ) : selectedType === 'report' ? (
+          <Report
+            ref={reportRef}
+            key={selectedItem.report?.data_id ?? 'report-empty'}
+            selectedReport={selectedItem.report}
+          />
+        ) : selectedType === 'architecture' ? (
           <Architecture
             ref={architectureRef}
             selectedArchitecture={selectedItem.architecture}

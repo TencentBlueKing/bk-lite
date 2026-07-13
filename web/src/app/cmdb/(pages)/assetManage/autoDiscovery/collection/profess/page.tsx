@@ -11,6 +11,8 @@ import CloudTask from './components/cloudTask';
 import HostTask from './components/hostTask';
 import IPMITask from './components/ipmiTask';
 import ConfigFileTask from './components/configFileTask';
+import NetworkConfigFileTask from './components/networkConfigFileTask';
+import IpTask from './components/ipTask';
 import PluginCard from './components/pluginCard';
 import TaskDetail from './components/taskDetail';
 import NodeMgmtSyncDetail from './components/nodeMgmtSyncDetail';
@@ -599,10 +601,15 @@ const ProfessionalCollection: React.FC = () => {
         config_file: ConfigFileTask,
         snmp: SNMPTask,
         protocol: SQLTask,
+        ip: IpTask,
       };
 
     if (currentPlugin.id === 'physcial_server_ipmi') {
       return <IPMITask {...taskProps} />;
+    }
+
+    if (currentPlugin.model_id === 'network_config_file') {
+      return <NetworkConfigFileTask {...taskProps} />;
     }
 
     const taskTypeKey = currentPlugin.task_type || currentPlugin.type || actualCategory.id;
@@ -973,7 +980,7 @@ const ProfessionalCollection: React.FC = () => {
   }, [categoryList.length, currentTask, detailVisible, openTaskDetailById, searchParams]);
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <CollectionStats />
       <div className="bg-white border-b border-gray-200 ml-2">
         {categoryLoading ? (
@@ -1042,9 +1049,9 @@ const ProfessionalCollection: React.FC = () => {
           style={{ backgroundColor: 'var(--color-border-2)' }}
         ></div>
 
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded border border-gray-200 bg-white shadow-sm">
-            <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto pb-1 pr-1">
+          <div className="flex min-h-[360px] min-w-0 flex-1 flex-col overflow-hidden rounded border border-gray-200 bg-white pb-1 shadow-sm">
+            <div className="px-4 py-2 border-b border-gray-100 flex items-center gap-2">
               <span className="text-base font-semibold text-gray-900">
                 {currentPlugin?.name || ''}
               </span>
@@ -1061,7 +1068,7 @@ const ProfessionalCollection: React.FC = () => {
               </Button>
             </div>
 
-            <div className="px-4 py-4 flex justify-between items-center">
+            <div className="px-4 py-2 flex justify-between items-center">
               <Input.Search
                 placeholder={t('Collection.inputTaskPlaceholder')}
                 className="w-80"
@@ -1077,33 +1084,32 @@ const ProfessionalCollection: React.FC = () => {
               </PermissionWrapper>
             </div>
 
-            <div className="flex-1 overflow-hidden p-4 pt-1">
-              <CustomTable
-                loading={tableLoading}
-                key={selectedCategoryRef.current.categoryId}
-                size="middle"
-                rowKey="id"
-                columns={currentColumns}
-                dataSource={tableData}
-                scroll={{
-                  y: 'calc(100vh - 600px)',
-                }}
-                onSelectFields={onSelectFields}
-                onChange={handleTableChange}
-                pagination={{
-                  ...paginationUI,
-                  showSizeChanger: true,
-                  showTotal: (total) => `共 ${total} 条`,
-                }}
-                fieldSetting={{
-                  showSetting: true,
-                  displayFieldKeys,
-                  choosableFields: allColumns.filter(
-                    (item): item is ColumnItem =>
-                      item.key !== 'action' && 'dataIndex' in item,
-                  ),
-                }}
-              />
+            <div className="min-h-0 flex-1 overflow-hidden px-4 pb-1 pt-1">
+              <div className="h-full min-h-0">
+                <CustomTable
+                  loading={tableLoading}
+                  key={selectedCategoryRef.current.categoryId}
+                  size="middle"
+                  rowKey="id"
+                  columns={currentColumns}
+                  dataSource={tableData}
+                  onSelectFields={onSelectFields}
+                  onChange={handleTableChange}
+                  pagination={{
+                    ...paginationUI,
+                    showSizeChanger: true,
+                    showTotal: (total) => `共 ${total} 条`,
+                  }}
+                  fieldSetting={{
+                    showSetting: true,
+                    displayFieldKeys,
+                    choosableFields: allColumns.filter(
+                      (item): item is ColumnItem =>
+                        item.key !== 'action' && 'dataIndex' in item,
+                    ),
+                  }}
+                />
+              </div>
             </div>
           </div>
         </div>

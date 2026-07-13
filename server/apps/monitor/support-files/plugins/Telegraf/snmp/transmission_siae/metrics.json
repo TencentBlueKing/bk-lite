@@ -1,0 +1,83 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_siae",
+  "plugin": "Transmission SIAE Microelettronica SNMP",
+  "plugin_desc": "SIAE Microelettronica microwave transmission SNMP child template for devices under enterprise PEN 3373. The shared Transmission SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. This child adds the confirmed sensorTempValue temperature table from SIAE-SENSOR-TEMP-MIB as device_temperature_celsius. CPU, memory, fan and power-supply health are N/A because stable shared device-health objects are not confirmed in the current MIB facts; temperature monitor up/down state is left as alarm context rather than promoted into a generic hardware-state metric.",
+  "status_query": "any({instance_type='transmission', collect_type='snmp_siae'}) by (instance_id)",
+  "name": "Transmission",
+  "icon": "mm-siae_siae",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='transmission'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_temperature_celsius"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='transmission', __$labels__}) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Highest SIAE Microelettronica equipment temperature in degrees Celsius, read from sensorTempValue in SIAE-SENSOR-TEMP-MIB."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='transmission', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='transmission', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='transmission', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

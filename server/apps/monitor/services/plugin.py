@@ -72,6 +72,7 @@ class MonitorPluginService:
         return {
             "ui_template": obj.content if obj else None,
             "node_selector": getattr(obj.plugin, "node_selector", {}) if obj else {},
+            "support_collect_detect": getattr(obj.plugin, "support_collect_detect", False) if obj else False,
         }
 
     @staticmethod
@@ -97,6 +98,7 @@ class MonitorPluginService:
         status_query = data.pop("status_query", "")
         collector = data.pop("collector", "")
         collect_type = data.pop("collect_type", "")
+        support_collect_detect = bool(data.pop("support_collect_detect", False))
         node_selector = normalize_node_selector(data.pop("node_selector", {}))
 
         # 处理type字段：确保MonitorObjectType存在
@@ -156,6 +158,7 @@ class MonitorPluginService:
                     status_query=status_query,
                     collector=collector,
                     collect_type=collect_type,
+                    support_collect_detect=support_collect_detect,
                     node_selector=node_selector,
                 ),
             )
@@ -250,6 +253,7 @@ class MonitorPluginService:
         derivative_objects = []
         collector = data.get("collector", "")
         collect_type = data.get("collect_type", "")
+        support_collect_detect = bool(data.get("support_collect_detect", False))
         node_selector = data.get("node_selector", {})
 
         for object_info in data.get("objects", []):
@@ -259,6 +263,7 @@ class MonitorPluginService:
                 status_query=data["status_query"],
                 collector=collector,
                 collect_type=collect_type,
+                support_collect_detect=support_collect_detect,
                 node_selector=node_selector,
             )
             if object_info.get("level") == "base":
@@ -295,6 +300,7 @@ class MonitorPluginService:
             "plugin_desc": plugin_obj.description,
             "collector": plugin_obj.collector,
             "collect_type": plugin_obj.collect_type,
+            "support_collect_detect": plugin_obj.support_collect_detect,
             "node_selector": plugin_obj.node_selector or {},
             "name": monitor_obj.name,
             "type": monitor_obj.type_id if monitor_obj.type else None,  # 导出type的id值
@@ -324,6 +330,7 @@ class MonitorPluginService:
             "plugin_desc": plugin_obj.description,
             "collector": plugin_obj.collector,
             "collect_type": plugin_obj.collector,
+            "support_collect_detect": plugin_obj.support_collect_detect,
             "node_selector": plugin_obj.node_selector or {},
             "is_compound_object": True,
             "objects": [],

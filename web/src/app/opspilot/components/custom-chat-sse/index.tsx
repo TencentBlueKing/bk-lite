@@ -1,5 +1,5 @@
-import React, {ReactNode, useCallback, useEffect, useRef, useState} from 'react';
-import {Button, ButtonProps, Drawer, Flex, Image, message as antMessage, Popconfirm, Spin, Tooltip, Upload} from 'antd';
+import React, {ReactNode, useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {Button, ButtonProps, Flex, Image, message as antMessage, Popconfirm, Tooltip, Upload} from 'antd';
 import {FullscreenExitOutlined, FullscreenOutlined, PictureOutlined, SendOutlined} from '@ant-design/icons';
 import type {UploadFile} from 'antd/es/upload/interface';
 import {Bubble, Sender} from '@ant-design/x';
@@ -11,26 +11,25 @@ import hljs from 'highlight.js';
 import 'highlight.js/styles/atom-one-dark.css';
 import styles from '../custom-chat/index.module.scss';
 import MessageActions from '../custom-chat/actions';
-import KnowledgeBase from '../custom-chat/knowledgeBase';
-import AnnotationModal from '../custom-chat/annotationModal';
-import KnowledgeGraphView from '../knowledge/knowledgeGraphView';
 import PermissionWrapper from '@/components/permission';
 import BrowserStepProgress from './BrowserStepProgress';
 import AgentStepProgress from './AgentStepProgress';
+import WikiCitations from './WikiCitations';
 import ApprovalCard from './ApprovalCard';
 import UserChoiceCard from './UserChoiceCard';
+import {postUserChoice} from './submitUserChoice';
 import DiffReportCard from './DiffReportCard';
 import ConfigAnalysisReportCard from './ConfigAnalysisReportCard';
 import ReportDownloadCard from './ReportDownloadCard';
 import RepairCommandsCard from './RepairCommandsCard';
 import SkillView from './SkillView';
-import {Annotation, CustomChatMessage, ReportFileDownload} from '@/app/opspilot/types/global';
+import { hydrateGeneratedFileLinks } from './downloadUrl';
+import {CustomChatMessage} from '@/app/opspilot/types/global';
 import {useSession} from 'next-auth/react';
 import {useAuth} from '@/context/auth';
 import {CustomChatSSEProps, GuideParseResult} from '@/app/opspilot/types/chat';
 import {useSSEStream} from './hooks/useSSEStream';
 import {useSendMessage} from './hooks/useSendMessage';
-import {useReferenceHandler} from './hooks/useReferenceHandler';
 import {initToolCallTooltips} from './toolCallRenderer';
 
 const normalizeThinkingText = (value?: string) => {
@@ -109,70 +108,20 @@ const md = new MarkdownIt({
   },
 });
 
-// Sanitize HTML to prevent XSS
+// Sanitize HTML to prevent XSS and CSS injection.
+// SECURITY: 'style' tag (block CSS) is intentionally excluded: allowing it
+// enables CSS injection via LLM prompt injection.
+// Inline style attributes are kept because guide/reference link renderers use them.
 const sanitizeHtml = (html: string): string => {
   return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'code', 'pre', 'span', 'div', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img', 'svg', 'use', 'button', 'style'],
-    ALLOWED_ATTR: ['class', 'style', 'href', 'target', 'rel', 'data-ref-number', 'data-chunk-id', 'data-knowledge-id', 'data-chunk-type', 'data-content', 'data-suggestion', 'data-expanded', 'data-tool-id', 'src', 'alt', 'width', 'height', 'aria-hidden'],
-    ALLOW_DATA_ATTR: true,
+    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'code', 'pre', 'span', 'div', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img', 'svg', 'use', 'button'],
+    ALLOWED_ATTR: ['class', 'style', 'href', 'target', 'rel', 'data-ref-number', 'data-chunk-id', 'data-knowledge-id', 'data-chunk-type', 'data-content', 'data-suggestion', 'data-expanded', 'data-tool-id', 'data-has-detail', 'src', 'alt', 'width', 'height', 'aria-hidden'],
+    ALLOW_DATA_ATTR: false,
   });
-};
-
-const normalizeDownloadUrl = (url?: string): string => {
-  if (!url) {
-    return '';
-  }
-
-  if (url.startsWith('/api/v1/')) {
-    return url.replace('/api/v1/', '/api/proxy/');
-  }
-
-  return url;
-};
-
-const hydrateGeneratedFileLinks = (html: string, downloads?: ReportFileDownload[]): string => {
-  if (!html || !downloads?.length || typeof window === 'undefined') {
-    return html;
-  }
-
-  const linkableDownloads = downloads.filter(download => download.file_url);
-  if (linkableDownloads.length === 0 || !html.includes('<a')) {
-    return html;
-  }
-
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(html, 'text/html');
-  const anchors = Array.from(doc.querySelectorAll('a:not([href])'));
-  if (anchors.length === 0) {
-    return html;
-  }
-
-  const normalizeText = (value: string) => value.replace(/^下载/, '').replace(/\.[^.]+$/, '').trim().toLowerCase();
-
-  anchors.forEach(anchor => {
-    const anchorText = normalizeText(anchor.textContent || '');
-    const matchedDownload = linkableDownloads.length === 1
-      ? linkableDownloads[0]
-      : linkableDownloads.find(download => {
-        const fileName = normalizeText(download.filename);
-        return anchorText && (fileName.includes(anchorText) || anchorText.includes(fileName));
-      });
-
-    if (!matchedDownload?.file_url) {
-      return;
-    }
-
-    anchor.setAttribute('href', normalizeDownloadUrl(matchedDownload.file_url));
-    anchor.setAttribute('target', '_blank');
-    anchor.setAttribute('rel', 'noopener noreferrer');
-  });
-
-  return doc.body.innerHTML;
 };
 
 const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   handleSendMessage,
-  showMarkOnly = false,
   initialMessages = [],
   mode = 'chat',
   guide,
@@ -201,10 +150,9 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   const [messages, setMessages] = useState<CustomChatMessage[]>(
     initialMessages.length ? initialMessages : []
   );
-  const [annotationModalVisible, setAnnotationModalVisible] = useState(false);
-  const [annotation, setAnnotation] = useState<Annotation | null>(null);
   const currentBotMessageRef = useRef<CustomChatMessage | null>(null);
   const chatContentRef = useRef<HTMLDivElement>(null);
+  const scrollAnimationFrameRef = useRef<number | null>(null);
 
   // 监听 initialMessages 变化
   useEffect(() => {
@@ -221,29 +169,46 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     if (chatContentRef.current) {
       chatContentRef.current.scrollTo({
         top: chatContentRef.current.scrollHeight,
-        behavior: 'smooth'
+        behavior: 'auto'
       });
     }
   }, []);
 
+  const scheduleScrollToBottom = useCallback(() => {
+    if (scrollAnimationFrameRef.current !== null) {
+      cancelAnimationFrame(scrollAnimationFrameRef.current);
+    }
+
+    scrollAnimationFrameRef.current = requestAnimationFrame(() => {
+      scrollAnimationFrameRef.current = null;
+      scrollToBottom();
+    });
+  }, [scrollToBottom]);
+
   useEffect(() => {
     if (messages.length > 0) {
-      requestAnimationFrame(() => {
-        scrollToBottom();
-      });
+      scheduleScrollToBottom();
     }
-  }, [messages, scrollToBottom]);
+  }, [messages, scheduleScrollToBottom]);
+
+  useEffect(() => {
+    return () => {
+      if (scrollAnimationFrameRef.current !== null) {
+        cancelAnimationFrame(scrollAnimationFrameRef.current);
+      }
+    };
+  }, []);
 
   const updateMessages = useCallback(
     (newMessages: CustomChatMessage[] | ((prev: CustomChatMessage[]) => CustomChatMessage[])) => {
       setMessages(prevMessages => {
         const updatedMessages =
           typeof newMessages === 'function' ? newMessages(prevMessages) : newMessages;
-        setTimeout(() => scrollToBottom(), 50);
         return updatedMessages;
       });
+      scheduleScrollToBottom();
     },
-    [scrollToBottom]
+    [scheduleScrollToBottom]
   );
 
   // 使用自定义 Hooks
@@ -278,8 +243,16 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     t
   });
 
-  const { referenceModal, drawerContent, handleReferenceClick, closeDrawer } =
-    useReferenceHandler(t);
+  const pendingChoice = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const requests = messages[i].userChoiceRequests;
+      if (requests?.length) {
+        const pending = requests.find(request => request.status === 'pending');
+        if (pending) return pending;
+      }
+    }
+    return null;
+  }, [messages]);
 
   // Parse guide with proper HTML escaping
   const parseGuideItems = useCallback((guideText: string): GuideParseResult => {
@@ -457,6 +430,32 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
 
   const handleSend = useCallback(
     async (msg: string, images?: UploadFile[]) => {
+      if (pendingChoice && msg.trim() && token) {
+        const answer = msg.trim();
+        try {
+          await postUserChoice(token, {
+            execution_id: pendingChoice.execution_id,
+            node_id: pendingChoice.node_id,
+            choice_id: pendingChoice.choice_id,
+            selected: [answer],
+          });
+          updateMessages(prev => prev.map(message => {
+            if (!message.userChoiceRequests) return message;
+            return {
+              ...message,
+              userChoiceRequests: message.userChoiceRequests.map(request =>
+                request.choice_id === pendingChoice.choice_id
+                  ? { ...request, status: 'submitted' as const, selected: [answer] }
+                  : request
+              ),
+            };
+          }));
+        } catch {
+          antMessage.error(t('chat.choiceSubmitFailed'));
+        }
+        return;
+      }
+
       if ((msg.trim() || (images && images.length > 0)) && !loading && token) {
         currentBotMessageRef.current = null;
 
@@ -486,7 +485,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
         await sendMessage(msg, messages, imageData);
       }
     },
-    [loading, token, sendMessage, messages]
+    [pendingChoice, loading, token, sendMessage, messages, updateMessages, t]
   );
 
   const handleCopyMessage = (content: string) => {
@@ -524,11 +523,25 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   };
 
   const handleRegenerateMessage = useCallback(
-    async () => {
-      const lastUserMessage = messages.filter(msg => msg.role === 'user').pop();
-      if (lastUserMessage && token) {
-        await sendMessage(lastUserMessage.content, messages);
+    async (id: string) => {
+      if (!token) return;
+
+      const targetIndex = messages.findIndex(msg => msg.id === id);
+      if (targetIndex === -1) return;
+
+      // 从被点击的消息往前找到对应的用户提问（而非始终取最后一个问题）
+      let userIndex = -1;
+      for (let i = targetIndex; i >= 0; i--) {
+        if (messages[i].role === 'user') {
+          userIndex = i;
+          break;
+        }
       }
+      if (userIndex === -1) return;
+
+      const userMessage = messages[userIndex];
+      // 保留全部对话记录，仅用被点击消息对应的问题重新生成（在末尾追加新答案）
+      await sendMessage(userMessage.content, messages, userMessage.images);
     },
     [messages, token, sendMessage]
   );
@@ -554,7 +567,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   }, [updateMessages]);
 
   const renderContent = (msg: CustomChatMessage) => {
-    const { content, knowledgeBase, images, browserStepsHistory, thinking, isThinking, approvalRequests, userChoiceRequests, configDiffReports, configAnalysisReports, reportFileDownloads, repairCommands, agentStepProgress, skillViews } = msg;
+    const { content, images, browserStepsHistory, thinking, isThinking, approvalRequests, userChoiceRequests, configDiffReports, configAnalysisReports, reportFileDownloads, repairCommands, agentStepProgress, skillViews } = msg;
     const visibleReportFileDownloads = Array.isArray(reportFileDownloads)
       ? reportFileDownloads.filter(download => Boolean(download.content_base64))
       : [];
@@ -562,9 +575,84 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     let replacedContent = parseReferenceLinks(content || '');
     replacedContent = parseSuggestionLinks(replacedContent);
 
+    // 当技能包声明了 config_analysis_report / repair_diff_report capability 且实际有
+    // 报告 emit 时,LLM 自己在 text 里写的 markdown 表格就跟卡片重复了(Gemini
+    // 经常不听 system message 的简短说明提示)。这种情况 hide 整段 text,只保留卡片。
+    // 没声明 capability 时回退老行为:全显示 LLM text。
+    const hasStructuredReports =
+      (Array.isArray(configAnalysisReports) && configAnalysisReports.length > 0) ||
+      (Array.isArray(configDiffReports) && configDiffReports.length > 0);
+
+    // 从 content 字符串里抠出 tool-call-group HTML(getFullContent 把 LLM text 和
+    // tool call HTML 拼成同一个字符串了),只在 hasStructuredReports 时用得上,避免
+    // 前端 hasStructuredReports 分支把"已调用 N 个工具"那块隐藏,让用户看不到过程。
+    //
+    // 实现:用 DOMParser 而不是 regex,因为 tool-call-group 是嵌套 div
+    // (outer > header + body > items),regex 的非贪婪 `.*?` 会匹配到第一个 `</div></div>`
+    // 就停,把 data-tool-id 等关键属性截断,点击展开 handler 就找不到目标。
+    const extractToolCallGroups = (html: string): string => {
+      if (typeof DOMParser === 'undefined' || !html) return '';
+      try {
+        const doc = new DOMParser().parseFromString(
+          `<div id="__root">${html}</div>`,
+          'text/html',
+        );
+        const groups = doc.querySelectorAll('#__root > .tool-call-group');
+        return Array.from(groups).map((g) => g.outerHTML).join('');
+      } catch {
+        return '';
+      }
+    };
+
     // Split content at placeholder markers and render components inline
     const renderContentWithInlineComponents = () => {
       if (!content) return null;
+      // 有结构化报告时:LLM 写的 markdown 表格整段换简短说明,但 tool call 调用
+      // 记录(已调用 N 个工具 + 工具详情)用 DOMParser 抠出来保留——用户能看
+      // 到"agent 实际调了哪些工具得到这份报告",而不只是结论。
+      if (hasStructuredReports) {
+        const summary = '已通过上方结构化卡片展示详细报告,请查看卡片中的统计、问题分组和修复建议。';
+        const preservedToolCalls = extractToolCallGroups(replacedContent);
+        return (
+          <>
+            <div className={styles.markdownBody}>
+              <p className="m-0 text-sm text-[var(--color-text-3)]">{summary}</p>
+            </div>
+            {preservedToolCalls && (
+              <div
+                className="mt-2"
+                dangerouslySetInnerHTML={{ __html: preservedToolCalls }}
+                onClick={(e) => {
+                  handleToolCallClick(e);
+                  handleSuggestionClick(e);
+                }}
+              />
+            )}
+            {(() => {
+              // 把 analysis + diff 合并按 received_at 排,统一渲染。
+              // 之前分两个数组各自排,JSX 又是 diff 在 analysis 前,导致对比卡总在报告卡上面。
+              const orderedReports: Array<{ kind: 'analysis' | 'diff'; report: any }> = [
+                ...(configAnalysisReports || []).map(r => ({ kind: 'analysis' as const, report: r })),
+                ...(configDiffReports || []).map(r => ({ kind: 'diff' as const, report: r })),
+              ].sort((a, b) => (a.report.received_at || 0) - (b.report.received_at || 0));
+              return orderedReports.map(({ kind, report }) => (
+                <div key={report.report_id} className="mt-2">
+                  {kind === 'analysis'
+                    ? <ConfigAnalysisReportCard report={report} />
+                    : <DiffReportCard report={report} />}
+                </div>
+              ));
+            })()}
+            {visibleReportFileDownloads.length > 0 && (
+              <div className="mt-2">
+                {visibleReportFileDownloads.map(dl => (
+                  <ReportDownloadCard key={dl.download_id} download={dl} />
+                ))}
+              </div>
+            )}
+          </>
+        );
+      }
 
       // Check if content has inline markers
       const markerPattern = /<!--(CONFIG_DIFF|CONFIG_ANALYSIS|USER_CHOICE):([^>]+)-->/g;
@@ -572,7 +660,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
 
       if (!hasMarkers) {
         // No markers — render as single block with fallback positions
-        const html = hydrateGeneratedFileLinks(sanitizeHtml(md.render(replacedContent)), reportFileDownloads);
+        const html = sanitizeHtml(hydrateGeneratedFileLinks(sanitizeHtml(md.render(replacedContent)), reportFileDownloads));
         return (
           <>
             <div
@@ -580,7 +668,6 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
               className={styles.markdownBody}
               onClick={e => {
                 handleToolCallClick(e);
-                handleReferenceClick(e);
                 handleSuggestionClick(e);
               }}
             />
@@ -658,7 +745,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
       for (let i = 0; i < segments.length; i++) {
         const segment = segments[i].trim();
         if (segment) {
-          const segHtml = hydrateGeneratedFileLinks(sanitizeHtml(md.render(segment)), reportFileDownloads);
+          const segHtml = sanitizeHtml(hydrateGeneratedFileLinks(sanitizeHtml(md.render(segment)), reportFileDownloads));
           elements.push(
             <div
               key={`seg-${i}`}
@@ -666,7 +753,6 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
               className={styles.markdownBody}
               onClick={e => {
                 handleToolCallClick(e);
-                handleReferenceClick(e);
                 handleSuggestionClick(e);
               }}
             />
@@ -806,9 +892,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
           <BrowserStepProgress history={browserStepsHistory} />
         )}
         {renderContentWithInlineComponents()}
-        {Array.isArray(knowledgeBase) && knowledgeBase.length ? (
-          <KnowledgeBase knowledgeList={knowledgeBase} />
-        ) : null}
+        {!!msg.wikiCitations?.length && <WikiCitations citations={msg.wikiCitations} content={msg.content} />}
       </>
     );
   };
@@ -886,14 +970,14 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
           className={styles.sender}
           value={value}
           onChange={setValue}
-          loading={loading}
+          loading={loading && !pendingChoice}
           onSubmit={(msg: string) => {
             setValue('');
             const currentImages = [...imageList];
             setImageList([]);
             handleSend(msg, currentImages);
           }}
-          placeholder={placeholder}
+          placeholder={pendingChoice ? (t('chat.replyToPendingChoice') || '回复上面的问题...') : placeholder}
           onCancel={stopSSEConnection}
           prefix={uploadButton}
           onPaste={(event: React.ClipboardEvent) => {
@@ -931,7 +1015,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
             }
           ) => {
             const { SendButton, LoadingButton } = info.components;
-            if (!ignoreLoading && loading) {
+            if (!ignoreLoading && loading && !pendingChoice) {
               return (
                 <Tooltip title={t('chat.clickCancel')}>
                   <LoadingButton />
@@ -957,41 +1041,6 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
         {senderComponent}
       </PermissionWrapper>
     ) : senderComponent;
-  };
-
-  const toggleAnnotationModal = (message: CustomChatMessage) => {
-    if (message?.annotation) {
-      setAnnotation(message.annotation);
-    } else {
-      const lastUserMessage = messages
-        .slice(0, messages.indexOf(message))
-        .reverse()
-        .find(msg => msg.role === 'user') as CustomChatMessage;
-      setAnnotation({
-        answer: message,
-        question: lastUserMessage,
-        selectedKnowledgeBase: '',
-        tagId: 0,
-      });
-    }
-    setAnnotationModalVisible(!annotationModalVisible);
-  };
-
-  const updateMessagesAnnotation = (id: string | undefined, newAnnotation?: Annotation) => {
-    if (!id) return;
-    updateMessages(prevMessages =>
-      prevMessages.map(msg => (msg.id === id ? { ...msg, annotation: newAnnotation } : msg))
-    );
-    setAnnotationModalVisible(false);
-  };
-
-  const handleSaveAnnotation = (annotation?: Annotation) => {
-    updateMessagesAnnotation(annotation?.answer?.id, annotation);
-  };
-
-  const handleRemoveAnnotation = (id: string | undefined) => {
-    if (!id) return;
-    updateMessagesAnnotation(id, undefined);
   };
 
   useEffect(() => {
@@ -1041,8 +1090,8 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
               return (
                 <Bubble
                   key={msg.id}
-                  className={styles.bubbleWrapper}
-                  placement={msg.role === 'user' ? 'end' : 'start'}
+                  className={`${styles.bubbleWrapper} ${msg.role === 'user' ? styles.userBubble : ''}`}
+                  placement="start"
                   loading={isEmptyMessage && isCurrentBotLoading}
                   content={renderContent(msg)}
                   avatar={{
@@ -1060,8 +1109,6 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                         onCopy={handleCopyMessage}
                         onRegenerate={handleRegenerateMessage}
                         onDelete={handleDeleteMessage}
-                        onMark={toggleAnnotationModal}
-                        showMarkOnly={showMarkOnly}
                       />
                     )
                   }
@@ -1097,46 +1144,6 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
           </div>
         )}
       </div>
-      {annotation && (
-        <AnnotationModal
-          visible={annotationModalVisible}
-          showMarkOnly={showMarkOnly}
-          annotation={annotation}
-          onSave={handleSaveAnnotation}
-          onRemove={handleRemoveAnnotation}
-          onCancel={() => setAnnotationModalVisible(false)}
-        />
-      )}
-
-      <Drawer
-        width={drawerContent.chunkType === 'Graph' ? 800 : 480}
-        visible={drawerContent.visible}
-        title={drawerContent.title}
-        onClose={closeDrawer}
-        getContainer={isFullscreen ? false : undefined}
-        styles={{
-          body: drawerContent.chunkType === 'Graph' ? { padding: 0, height: '100%' } : undefined
-        }}
-      >
-        {referenceModal.loading ? (
-          <div className="flex justify-center items-center h-32">
-            <Spin size="large" />
-          </div>
-        ) : (
-          <>
-            {drawerContent.chunkType === 'Graph' ? (
-              <div style={{ height: '100%', padding: '16px' }}>
-                <KnowledgeGraphView
-                  data={drawerContent.graphData || { nodes: [], edges: [] }}
-                  height="100%"
-                />
-              </div>
-            ) : (
-              <div className="whitespace-pre-wrap leading-6">{drawerContent.content}</div>
-            )}
-          </>
-        )}
-      </Drawer>
     </div>
   );
 };

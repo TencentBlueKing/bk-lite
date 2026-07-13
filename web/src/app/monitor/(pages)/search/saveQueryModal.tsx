@@ -100,7 +100,7 @@ const SaveQueryModal = forwardRef<SaveQueryModalRef, SaveQueryModalProps>(
         title={t('monitor.search.saveQuery')}
         open={visible}
         width={500}
-        destroyOnClose
+        destroyOnHidden
         onCancel={handleCancel}
         footer={
           <div className="flex justify-end gap-2">

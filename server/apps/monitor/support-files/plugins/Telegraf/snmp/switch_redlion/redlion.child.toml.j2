@@ -1,0 +1,73 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "{{ auth_password }}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "{{ priv_password }}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_redlion"
+        config_type = "redlion"
+        brand = "redlion"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    # ---- Interfaces (generic IF-MIB, auto-walked column names) ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
+    # 待现网核验：ifHCInOctets 1.3.6.1.2.1.31.1.1.1.6 / ifHCOutOctets ...1.10，按 ifIndex 与上表接口行对齐。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- Red Lion / N-Tron 双路电源输入状态 (NTRON714FX6-MIB ntronPowerFault, scalar, 私有树 PEN 28381) ----
+    # 待现网核验：标量 OID 1.3.6.1.4.1.28381.700.7.1.16.0。原始码 1=faultNone(双路均正常) / 2=faultPower1(电源1失电) / 3=faultPower2(电源2失电)。
+    # 该标量在 MIB 中已定义但部分固件实采才返回，无私有响应时本标量缺省、device_psu_state 自然不上报（退回纯 IF-MIB 基线）。
+    # 下方 processors.enum 归一为 1=正常/2=异常（1 faultNone→1，2/3 任一路失电→2）。共享盘 device_psu_state 约定 1=正常,>1=异常。
+    [[inputs.snmp.table]]
+        name = "device_psu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.28381.700.7.1.16.0"
+        name = "state"
+# ---- 电源状态归一：1=faultNone(正常)→1(正常)，2=faultPower1/3=faultPower2(任一路失电)→2(异常)，未知码 default=2。----
+# ---- 共享盘 device_psu_state 约定 1=正常,>1=异常。----
+[[processors.enum]]
+    namepass = ["device_psu"]
+    [[processors.enum.mapping]]
+        field = "state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "1" = 1
+            "2" = 2
+            "3" = 2
+# ---- CPU/内存/温度/风扇：N-Tron 714FX6-MIB 仅暴露电源故障枚举与 RAM/Flash 总量（无 used/free 故无法算使用率），无 CPU、无可轮询数值温度（温度仅 Web UI / N-View 暴露）、无风扇对象（N-Tron 为无风扇对流散热工业交换机），故 CPU/内存/温度/风扇 N/A 不采。----

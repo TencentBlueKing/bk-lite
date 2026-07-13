@@ -68,10 +68,24 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
     }, [groupVisible, instanceData]);
 
     useEffect(() => {
-      if (groupVisible && modelId === 'host') {
-        setProxyOptions(useAssetDataStore.getState().cloud_list || []);
+      if (!groupVisible || !['host', 'subnet'].includes(modelId)) {
+        return;
       }
-    }, [groupVisible, modelId]);
+      const cachedOptions = useAssetDataStore.getState().cloud_list || [];
+      if (cachedOptions.length > 0) {
+        setProxyOptions(cachedOptions);
+        return;
+      }
+      instanceApi.getInstanceProxys()
+        .then((data: any[]) => {
+          const nextOptions = data || [];
+          setProxyOptions(nextOptions);
+          useAssetDataStore.getState().setCloudList(nextOptions);
+        })
+        .catch(() => {
+          setProxyOptions([]);
+        });
+    }, [groupVisible, modelId, instanceApi]);
 
     const ipValue = Form.useWatch('ip_addr', form);
     const cloudValue = Form.useWatch('cloud', form);
@@ -213,8 +227,11 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
 
       const hostDisabled = modelId === 'host' && item.attr_id === 'inst_name';
 
-      // 特殊处理-主机的云区域为下拉选项（弹窗中）
-      if (item.attr_id === 'cloud') {
+      // 特殊处理-主机/子网的云区域为下拉选项（弹窗中）
+      if (
+        (item.attr_id === 'cloud' && modelId === 'host') ||
+        (item.attr_id === 'cloud_id' && modelId === 'subnet')
+      ) {
         return (
           <Select
             disabled={fieldDisabled}
@@ -274,6 +291,9 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
 
           if (values.cloud) {
             values.cloud = String(values.cloud);
+          }
+          if (values.cloud_id) {
+            values.cloud_id = String(values.cloud_id);
           }
           operateAttr(values, confirmType);
         })

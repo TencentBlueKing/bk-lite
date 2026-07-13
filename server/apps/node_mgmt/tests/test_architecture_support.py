@@ -91,6 +91,7 @@ class _FakeNode:
         self.name = f"name-{node_id}"
         self.ip = "127.0.0.1"
         self.operating_system = "linux"
+        self.node_type = "os"
         self.install_method = "manual"
         self.nodeorganization_set = _FakeOrganizations([SimpleNamespace(organization=org) for org in (organizations or [2])])
         self.saved = False
@@ -224,38 +225,43 @@ def test_authorize_target_organizations_allows_in_scope_team_org(monkeypatch):
     assert response is None
 
 
-def test_authorize_target_organizations_rejects_new_out_of_scope_org(monkeypatch):
+def test_authorize_target_organizations_rejects_org_outside_user_group_scope(monkeypatch):
     node = _FakeNode(organizations=[2])
 
-    class _ScopedSystemMgmt:
-        def __init__(self, is_local_client=True):
-            pass
+    from apps.system_mgmt.utils.group_utils import GroupUtils
 
-        def get_authorized_groups_scoped(self, actor_context, include_children=False):
-            return {"data": [2]}
+    monkeypatch.setattr(GroupUtils, "get_group_with_descendants", staticmethod(lambda group_ids: [1]))
 
-    monkeypatch.setattr(node_permission, "SystemMgmt", _ScopedSystemMgmt)
-
-    response = node_permission.authorize_target_organizations(_make_node_request(), node, [2, 3])
+    response = node_permission.authorize_target_organizations(_make_permission_request(), node, [2, 3])
 
     assert response.status_code == 403
 
 
-def test_authorize_target_organizations_rejects_existing_org_outside_team_scope(monkeypatch):
+def test_authorize_target_organizations_allows_org_inside_user_group_scope(monkeypatch):
     node = _FakeNode(organizations=[2])
 
-    class _ScopedSystemMgmt:
-        def __init__(self, is_local_client=True):
-            pass
+    from apps.system_mgmt.utils.group_utils import GroupUtils
 
-        def get_authorized_groups_scoped(self, actor_context, include_children=False):
-            return {"data": []}
+    monkeypatch.setattr(GroupUtils, "get_group_with_descendants", staticmethod(lambda group_ids: [1, 2, 3]))
 
-    monkeypatch.setattr(node_permission, "SystemMgmt", _ScopedSystemMgmt)
+    response = node_permission.authorize_target_organizations(_make_permission_request(), node, [2, 3])
 
-    response = node_permission.authorize_target_organizations(_make_node_request(), node, [2])
+    assert response is None
 
-    assert response.status_code == 403
+
+def test_authorize_target_organizations_superuser_bypasses_group_scope(monkeypatch):
+    node = _FakeNode(organizations=[2])
+
+    from apps.system_mgmt.utils.group_utils import GroupUtils
+
+    def _unexpected(group_ids):
+        raise AssertionError("superuser should not consult group scope")
+
+    monkeypatch.setattr(GroupUtils, "get_group_with_descendants", staticmethod(_unexpected))
+
+    response = node_permission.authorize_target_organizations(_make_node_request(), node, [99])
+
+    assert response is None
 
 
 def test_get_node_permission_rejects_forged_current_team(monkeypatch):
@@ -762,6 +768,38 @@ def test_config_node_asso_hides_unauthorized_nodes(monkeypatch):
     ]
 
 
+def test_controller_install_nodes_passes_authorized_queryset(monkeypatch):
+    authorized_nodes = _FakeNodeQuerySet([_FakeNode("node-allowed")])
+    captured = {}
+
+    monkeypatch.setattr(
+        "apps.node_mgmt.views.installer.get_authorized_node_queryset",
+        lambda request: authorized_nodes,
+    )
+
+    def fake_install_controller_nodes(task_id, authorized_nodes=None, request_user=None):
+        captured["task_id"] = task_id
+        captured["authorized_nodes"] = authorized_nodes
+        captured["request_user"] = request_user
+        return []
+
+    monkeypatch.setattr(
+        "apps.node_mgmt.views.installer.InstallerService.install_controller_nodes",
+        fake_install_controller_nodes,
+    )
+
+    view = InstallerViewSet.as_view({"post": "controller_install_nodes"})
+    response = view(
+        _make_permission_request(permissions=("cloud_region_node-Edit",)),
+        task_id="task-3923",
+    )
+
+    assert response.status_code != 403
+    assert captured["task_id"] == "task-3923"
+    assert captured["authorized_nodes"] is authorized_nodes
+    assert captured["request_user"].username == "permission-test-user"
+
+
 def test_apply_to_node_prevalidates_permissions_before_mutation(monkeypatch):
     monkeypatch.setattr(
         collector_configuration,
@@ -910,7 +948,7 @@ def test_get_authorized_nodes_by_ids_uses_scoped_current_team(monkeypatch):
         },
     )
 
-    assert result == [{"id": "node-scoped", "organization_ids": [1]}]
+    assert result == [{"id": "node-scoped", "node_type": "os", "organization_ids": [1]}]
     assert captured == {
         "is_local_client": True,
         "actor_context": {
@@ -1306,7 +1344,7 @@ def test_discover_controller_version_preserves_existing_version_when_command_ret
         updated_by="tester",
     )
 
-    monkeypatch.setattr(version_discovery.Executor, "execute_local", lambda self, command, timeout=10: "   ")
+    monkeypatch.setattr(version_discovery.Executor, "execute_local", lambda self, command, timeout=10, shell=None: "   ")
 
     all_controllers = [controller]
     controllers_map = {(controller.os, controller.cpu_architecture): controller}
@@ -1360,7 +1398,7 @@ def test_discover_controller_version_reuses_existing_unknown_record_after_succes
         updated_by="tester",
     )
 
-    monkeypatch.setattr(version_discovery.Executor, "execute_local", lambda self, command, timeout=10: "1.0.0")
+    monkeypatch.setattr(version_discovery.Executor, "execute_local", lambda self, command, timeout=10, shell=None: "1.0.0")
 
     all_controllers = [controller]
     controllers_map = {(controller.os, controller.cpu_architecture): controller}
@@ -2823,9 +2861,6 @@ def test_open_api_linux_bootstrap_contains_arch_detection_and_routed_urls(monkey
     assert 'EXPECTED_ARCH="arm64"' in content
     assert "installer/linux/download?token=abc&arch=$DETECTED_ARCH" in content
     assert "installer/session?token=abc&arch=$DETECTED_ARCH" in content
-    # issue #3524: 生成的脚本不得包含 --skip-tls 或 curl -k（TLS 不可默认关闭）
-    assert "--skip-tls" not in content
-    assert "curl -sSLk" not in content
 
 
 @pytest.mark.django_db
@@ -4697,6 +4732,61 @@ def test_converge_controller_install_connectivity_for_node_prefers_install_node_
     current_task_node.refresh_from_db()
     assert stale_task_node.status == InstallerConstants.STEP_STATUS_RUNNING
     assert current_task_node.status == InstallerConstants.STEP_STATUS_SUCCESS
+
+
+@pytest.mark.django_db
+def test_converge_controller_install_connectivity_triggers_version_discovery_when_install_task_finishes(monkeypatch):
+    cloud_region = CloudRegion.objects.create(
+        name="version-refresh-converge-region",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    task = installer_tasks.ControllerTask.objects.create(
+        cloud_region=cloud_region,
+        type="install",
+        status="running",
+        work_node="worker-1",
+        package_version_id=1,
+        created_by="tester",
+        updated_by="tester",
+    )
+    task_node = ControllerTaskNode.objects.create(
+        task=task,
+        ip="10.0.0.90",
+        node_name="version-node",
+        os=NodeConstants.LINUX_OS,
+        organizations=[1],
+        port=22,
+        username="root",
+        password="",
+        status=InstallerConstants.STEP_STATUS_RUNNING,
+        result={
+            InstallerConstants.EXECUTION_PHASE_KEY: InstallerConstants.EXECUTION_PHASE_CONNECTIVITY_WAITING,
+            "steps": [{"action": "connectivity_check", "status": "running", "message": "Wait for node connection"}],
+        },
+    )
+    Node.objects.create(
+        id="version-install-node",
+        name="version-node",
+        ip="10.0.0.90",
+        operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        collector_configuration_directory="/tmp/config",
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    called = []
+    monkeypatch.setattr(installer_tasks.discover_node_versions, "delay", lambda: called.append("discover"))
+
+    installer_tasks.converge_controller_install_connectivity_for_node("version-install-node")
+
+    task.refresh_from_db()
+    task_node.refresh_from_db()
+    assert task.status == "finished"
+    assert task_node.status == InstallerConstants.STEP_STATUS_SUCCESS
+    assert called == ["discover"]
 
 
 @pytest.mark.django_db

@@ -1,0 +1,41 @@
+{
+  "object": "Access",
+  "plugin": "Access ARRIS Cadant SNMP",
+  "templates": [
+    {
+      "metric_name": "device_temperature_celsius",
+      "alert_name": "Fan ambient temperature high",
+      "algorithm": "Threshold",
+      "threshold": 70,
+      "level": "warning"
+    },
+    {
+      "metric_name": "device_disk_usage",
+      "alert_name": "Disk volume usage high",
+      "algorithm": "Threshold",
+      "threshold": 85,
+      "level": "warning"
+    },
+    {
+      "metric_name": "device_card_state",
+      "alert_name": "Card state abnormal",
+      "algorithm": "Threshold",
+      "threshold": 1,
+      "level": "warning"
+    },
+    {
+      "metric_name": "device_psu_state",
+      "alert_name": "Power module state abnormal",
+      "algorithm": "Threshold",
+      "threshold": 1,
+      "level": "warning"
+    },
+    {
+      "metric_name": "device_disk_state",
+      "alert_name": "Disk volume state abnormal",
+      "algorithm": "Threshold",
+      "threshold": 1,
+      "level": "warning"
+    }
+  ]
+}

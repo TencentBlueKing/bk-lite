@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Lantech">
+  <rect width="64" height="64" rx="12" fill="#184f78"/>
+  <path d="M17 15h9v25h22v8H17z" fill="#fff"/>
+  <path d="M35 15h12l-12 18h-9z" fill="#65c8ff"/>
+</svg>

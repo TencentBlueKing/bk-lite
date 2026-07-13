@@ -13,7 +13,7 @@ from apps.core.logger import alert_logger as logger
 class AlertBuilder:
     _alert_event_cache: Dict[int, set] = {}
 
-    # ALERT类型的有效level_id缓存（启动时加载）
+    # ALERT类型的有效level_id缓存（首次使用时加载，Level 信号变更时自动失效）
     _valid_alert_levels: Optional[set] = None
 
     @classmethod
@@ -305,6 +305,11 @@ class AlertBuilder:
 
             # 初始化新创建Alert的缓存
             AlertBuilder._alert_event_cache[alert.pk] = set(event_ids)
+
+        from django.db import transaction
+        from apps.alerts.action.engine import ActionEngine
+
+        transaction.on_commit(lambda aid=alert.alert_id: ActionEngine.dispatch_async(aid, "created"))
 
         return alert
 

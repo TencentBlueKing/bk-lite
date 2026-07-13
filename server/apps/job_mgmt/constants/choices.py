@@ -65,6 +65,34 @@ class JobType:
     )
 
 
+class CallbackType:
+    """任务完成回调通道（调用方触发作业时按需选择，可单选或全选）
+
+    - web:  HTTP 回调，结果 POST 到 callback_url（原 web 层方式）
+    - nats: NATS 回调，结果 publish 到 callback_subject（参考 ansible 的 callback_config.subject）
+    - both: 两个通道都投递
+    """
+
+    WEB = "web"
+    NATS = "nats"
+    BOTH = "both"
+
+    CHOICES = (
+        (WEB, "HTTP回调"),
+        (NATS, "NATS回调"),
+        (BOTH, "HTTP+NATS"),
+    )
+
+    # 各通道是否启用的判定辅助
+    @classmethod
+    def use_web(cls, value: str) -> bool:
+        return value in (cls.WEB, cls.BOTH)
+
+    @classmethod
+    def use_nats(cls, value: str) -> bool:
+        return value in (cls.NATS, cls.BOTH)
+
+
 class ExecutionStatus:
     """执行状态"""
 

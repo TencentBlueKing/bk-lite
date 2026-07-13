@@ -184,7 +184,11 @@ const WithSideMenuLayout: React.FC<WithSideMenuLayoutProps> = ({
     return menuItems.map(item => ({
       label: (
         <div className="flex items-center justify-center">
-          {item.icon && (
+          {item.iconNode ? (
+            <span className="mr-2 flex h-4 w-4 items-center justify-center text-[14px] leading-none">
+              {item.iconNode}
+            </span>
+          ) : item.icon && (
             <Icon type={item.icon} className="mr-2 text-sm" />
           )} {item.title}
         </div>

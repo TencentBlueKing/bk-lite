@@ -1,0 +1,111 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_tachyon",
+  "plugin": "Transmission Tachyon SNMP",
+  "plugin_desc": "Tachyon Networks TNA 300 series transmission SNMP child template (enterprise 57344). Beyond standard IF-MIB interface metrics supplied by the shared Transmission SNMP floor, it collects Tachyon private health scalars for CPU usage, memory usage and CPU temperature. CPU and memory are reported directly as percentages, and CPU temperature is reported directly in degrees Celsius. Fan and power-supply states are not exposed as stable normalized health objects, so they are N/A. Supported brands/models - Tachyon Networks TNA 300 series 60 GHz wireless backhaul / transmission devices.",
+  "status_query": "any({instance_type='transmission', collect_type='snmp_tachyon'}) by (instance_id)",
+  "name": "Transmission",
+  "icon": "mm-transmission_传输设备",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='transmission'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_temperature_celsius"
+  ],
+  "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "avg(device_cpu_usage{instance_type='transmission', __$labels__}) by (instance_id)",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "CPU utilization of the Tachyon TNA 300 series platform, reported directly as a 0-100 percentage."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_usage",
+      "query": "avg(device_memory_usage{instance_type='transmission', __$labels__}) by (instance_id)",
+      "display_name": "Memory Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Memory utilization of the Tachyon TNA 300 series platform, reported directly as a 0-100 percentage."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='transmission', __$labels__}) by (instance_id)",
+      "display_name": "CPU Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "CPU temperature of the Tachyon TNA 300 series platform in degrees Celsius, read directly with no scaling."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='transmission', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='transmission', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='transmission', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

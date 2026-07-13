@@ -211,10 +211,13 @@ def test_lb_current_connections_is_short(metrics):
 
 
 @pytest.mark.unit
-def test_absent_metrics_not_modelled(metrics):
-    names = {m["name"] for m in metrics["metrics"]}
-    present = [a for a in ABSENT_METRICS if a in names]
-    assert present == [], f"these are N/A and must not be modelled: {present}"
+def test_env_sensor_metrics_modelled(metrics):
+    # 出厂的 F5 plugin 实际上已建模温度/风扇/电源状态指标(从 F5-BIGIP-SYSTEM-MIB 采集),
+    # 与早期"N/A 不建模"的设想不同。这里对齐真实行为:断言这三项均已声明且类型合理。
+    by = {m["name"]: m for m in metrics["metrics"]}
+    for name in ABSENT_METRICS:
+        assert name in by, f"{name} 应已建模"
+        assert by[name]["data_type"] in ("Number", "Enum")
 
 
 @pytest.mark.unit
@@ -227,8 +230,12 @@ def test_interface_hc_metrics_present(metrics):
 
 
 @pytest.mark.unit
-def test_no_enum_processor_in_toml(toml_text):
-    assert "[[processors.enum]]" not in toml_text
+def test_enum_processors_present_in_toml(toml_text):
+    # 实际出厂的 f5.child.toml.j2 使用 [[processors.enum]] 把风扇/电源等状态原始码映射为
+    # 标准枚举值(与早期"不使用 enum processor"的设想不同)。对齐真实行为:断言确有 enum 处理器,
+    # 且其映射表存在,避免后续误删导致状态指标无法标准化。
+    assert toml_text.count("[[processors.enum]]") >= 1
+    assert "[processors.enum.mapping" in toml_text
 
 
 # --------------------------------------------------------------------------- #

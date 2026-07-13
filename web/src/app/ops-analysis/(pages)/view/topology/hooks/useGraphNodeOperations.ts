@@ -9,6 +9,7 @@ import type {
   UnifiedFilterDefinition,
 } from '@/app/ops-analysis/types/dashBoard';
 import type {
+  NodeStyleConfig,
   NodeConfigFormValues,
   TopologyNodeData,
   ViewConfigFormValues,
@@ -63,13 +64,19 @@ function buildCompareSuffix(
 }
 
 function mergeStyleConfig(
-  values: Record<string, any>,
-  existing: Record<string, any> | undefined,
-  keys: string[],
-): Record<string, any> {
-  const result: Record<string, any> = {};
+  values: NodeConfigFormValues,
+  existing: NodeStyleConfig | undefined,
+  keys: Array<keyof NodeStyleConfig>,
+): NodeStyleConfig {
+  let result: NodeStyleConfig = {};
   for (const key of keys) {
-    result[key] = values[key] !== undefined ? values[key] : existing?.[key];
+    const nextValue = values[key] !== undefined ? values[key] : existing?.[key];
+    if (nextValue !== undefined) {
+      result = {
+        ...result,
+        [key]: nextValue,
+      };
+    }
   }
   return result;
 }
@@ -256,7 +263,6 @@ export const useGraphNodeOperations = ({
 
   const dataOperations = useGraphData(
     graphInstance,
-    updateSingleNodeData,
     startLoadingAnimation,
     handleSave,
   );
@@ -268,7 +274,7 @@ export const useGraphNodeOperations = ({
       }
       const nodeData = createNodeByType(nodeConfig);
       const { valueConfig } = nodeConfig || {};
-      const addedNode = graphInstance.addNode(nodeData as any);
+      const addedNode = graphInstance.addNode(nodeData);
       if (nodeConfig.type === 'single-value') {
         adjustSingleValueNodeSize(addedNode, nodeConfig.name || '');
       }
@@ -330,7 +336,6 @@ export const useGraphNodeOperations = ({
         'borderColor',
         'borderWidth',
         'iconPadding',
-        'renderEffect',
         'width',
         'height',
         'lineType',

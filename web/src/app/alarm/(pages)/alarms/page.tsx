@@ -4,13 +4,14 @@ import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react'
 import Icon from '@/components/icon';
 import useApiClient from '@/utils/request';
 import dayjs from 'dayjs';
+import { useSearchParams } from 'next/navigation';
 import TimeSelector from '@/components/time-selector';
 import StackedBarChart from '@/app/alarm/components/stackedBarChart';
 import alertStyle from './index.module.scss';
 import AlarmFilters from '@/app/alarm/components/alarmFilters';
 import AlarmTable from '@/app/alarm/(pages)/alarms/components/alarmTable';
 import SearchFilter from '../../components/searchFilter';
-import AlarmAction from './components/alarmAction';
+// import AlarmAction from './components/alarmAction';  // 顶部 batch AlarmAction 暂隐藏（见上方 TODO），恢复时取消本注释
 import DeclareIncident from './components/declareIncident';
 import { SearchFilterCondition } from '@/app/alarm/types/alarms';
 import { useAlarmApi } from '@/app/alarm/api/alarms';
@@ -39,6 +40,11 @@ const getSettings = () => {
 const Alert: React.FC = () => {
   const { isLoading } = useApiClient();
   const { t } = useTranslation();
+  const searchParams = useSearchParams();
+  const initialResourceType = searchParams.get('resource_type') || '';
+  const initialResourceId = searchParams.get('resource_id') || '';
+  const initialActivate = searchParams.get('activate') || '';
+  const initialStatus = searchParams.get('status') || '';
   const { levelList, levelMap } = useCommon();
   const { getAlarmList } = useAlarmApi();
   const { convertToLocalizedTime } = useLocalizedTime();
@@ -47,7 +53,11 @@ const Alert: React.FC = () => {
   const beginTime: number = dayjs().subtract(10080, 'minute').valueOf();
   const lastTime: number = dayjs().valueOf();
   const [searchCondition, setSearchCondition] =
-    useState<SearchFilterCondition | null>(null);
+    useState<SearchFilterCondition | null>(() => (
+      initialResourceId
+        ? { field: 'resource_id', type: 'str', value: initialResourceId }
+        : null
+    ));
   const [tableLoading, setTableLoading] = useState<boolean>(false);
   const [chartLoading, setChartLoading] = useState<boolean>(false);
   const [tableData, setTableData] = useState<AlarmTableDataItem[]>([]);
@@ -105,7 +115,9 @@ const Alert: React.FC = () => {
     const { stateFilters } = getSettings();
     return {
       level: [],
-      state: stateFilters || ['pending', 'processing'],
+      state: initialStatus
+        ? initialStatus.split(',').filter(Boolean)
+        : stateFilters || ['pending', 'processing'],
       alarm_source: [],
     };
   });
@@ -206,9 +218,12 @@ const Alert: React.FC = () => {
       page_size: pagination.pageSize,
       created_at_after: dayjs(timeRange[0]).toISOString(),
       created_at_before: dayjs(timeRange[1]).toISOString(),
-      activate: isActiveAlarms ? 1 : '',
-      my_alert: isActiveAlarms ? (myAlarms ? 1 : '') : undefined,
+      activate: initialActivate || (isActiveAlarms ? 1 : ''),
+      my_alert: initialResourceId
+        ? ''
+        : isActiveAlarms ? (myAlarms ? 1 : '') : undefined,
       has_incident: '',
+      resource_type: initialResourceType,
       [conditionValue?.field as string]: conditionValue?.value,
     };
     return params;
@@ -423,12 +438,18 @@ const Alert: React.FC = () => {
                   rowData={selectedRowData}
                   onSuccess={onRefresh}
                 />
-                <AlarmAction
+                {/*
+                  TODO: 暂不需要批量的"操作/手动触发"。
+                  当前需求收敛到单条告警维度，顶部 batch AlarmAction 暂时隐藏，
+                  确认位置：(pages)/alarms/page.tsx 顶右批量按钮区。
+                  恢复时去掉本注释块并恢复下面的 <AlarmAction .../> 即可。
+                */}
+                {/* <AlarmAction
                   rowData={selectedRowData}
                   displayMode="dropdown"
                   showAll
                   onAction={onRefresh}
-                />
+                /> */}
               </div>
             </div>
             <AlarmTable

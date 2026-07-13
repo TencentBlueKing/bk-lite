@@ -9,13 +9,18 @@ import React, {
   useCallback,
   useMemo,
 } from 'react';
-import { NodeConfPanelProps } from '@/app/ops-analysis/types/topology';
+import type {
+  NodeConfPanelProps,
+  NodeConfigFormValues,
+  TopologyNodeData,
+} from '@/app/ops-analysis/types/topology';
 import { iconList } from '@/app/cmdb/utils/common';
 import { NODE_DEFAULTS } from '../constants/nodeDefaults';
 import { useTranslation } from '@/utils/i18n';
 import SelectIcon, {
   SelectIconRef,
 } from '@/app/cmdb/(pages)/assetManage/management/list/selectIcon';
+import { normalizeColorFields } from '../utils/formColorUtils';
 import {
   Form,
   Input,
@@ -27,6 +32,7 @@ import {
   Select,
   ColorPicker,
 } from 'antd';
+import type { RadioChangeEvent, UploadProps } from 'antd';
 import {
   UploadOutlined,
   AppstoreOutlined,
@@ -72,7 +78,7 @@ const ShapeNodePanel: React.FC<NodeConfPanelProps> = ({
   }, []);
 
   const initializeNewNode = useCallback(() => {
-    const defaultValues: any = {
+    const defaultValues: NodeConfigFormValues = {
       logoType: 'default',
       logoIcon: 'cc-host',
       logoUrl: '',
@@ -91,7 +97,6 @@ const ShapeNodePanel: React.FC<NodeConfPanelProps> = ({
       defaultValues.borderWidth = basicShapeDefaults.borderWidth;
       defaultValues.lineType = basicShapeDefaults.lineType;
       defaultValues.shapeType = basicShapeDefaults.shapeType;
-      defaultValues.renderEffect = 'glass';
     }
 
     if (nodeType === 'icon') {
@@ -118,10 +123,10 @@ const ShapeNodePanel: React.FC<NodeConfPanelProps> = ({
   }, [form, nodeType, nodeDefaults]);
 
   const initializeEditNode = useCallback(
-    (editingNodeData: any) => {
+    (editingNodeData: TopologyNodeData) => {
       const { styleConfig = {} } = editingNodeData;
 
-      const formValues: any = {
+      const formValues: NodeConfigFormValues = {
         name: editingNodeData.name,
         logoType: editingNodeData.logoType,
         logoIcon:
@@ -140,7 +145,6 @@ const ShapeNodePanel: React.FC<NodeConfPanelProps> = ({
         backgroundColor: styleConfig.backgroundColor,
         borderColor: styleConfig.borderColor,
         borderWidth: styleConfig.borderWidth,
-        renderEffect: styleConfig.renderEffect || 'glass',
         iconPadding: styleConfig.iconPadding,
         lineType: styleConfig.lineType,
         shapeType: styleConfig.shapeType,
@@ -156,7 +160,7 @@ const ShapeNodePanel: React.FC<NodeConfPanelProps> = ({
 
       form.setFieldsValue(formValues);
     },
-    [form]
+    [form, nodeType]
   );
 
   useEffect(() => {
@@ -180,7 +184,7 @@ const ShapeNodePanel: React.FC<NodeConfPanelProps> = ({
   }, [visible, editingNodeData, initializeEditNode, initializeNewNode]);
 
   const handleLogoUpload = useCallback(
-    (file: any) => {
+    ((file) => {
       const reader = new FileReader();
       reader.onload = (e) => {
         setLogoPreview(e.target?.result as string);
@@ -188,13 +192,13 @@ const ShapeNodePanel: React.FC<NodeConfPanelProps> = ({
       };
       reader.readAsDataURL(file);
       return false;
-    },
+    }) satisfies NonNullable<UploadProps['beforeUpload']>,
     [form]
   );
 
   const handleLogoTypeChange = useCallback(
-    (e: any) => {
-      const type = e.target.value;
+    (e: RadioChangeEvent) => {
+      const type = e.target.value === 'custom' ? 'custom' : 'default';
       setLogoType(type);
 
       if (type === 'default') {
@@ -236,29 +240,18 @@ const ShapeNodePanel: React.FC<NodeConfPanelProps> = ({
     [readonly]
   );
 
-  const processColorValue = useCallback((colorValue: any) => {
-    if (!colorValue) return undefined;
-    if (typeof colorValue === 'string') return colorValue;
-    if (colorValue.toHexString) return colorValue.toHexString();
-    if (colorValue.toRgbString) return colorValue.toRgbString();
-    return colorValue;
-  }, []);
-
   const handleConfirm = useCallback(async () => {
     try {
-      const values = await form.validateFields();
-
-      ['textColor', 'backgroundColor', 'borderColor'].forEach((key) => {
-        if (values[key]) {
-          values[key] = processColorValue(values[key]);
-        }
-      });
+      const values = normalizeColorFields(
+        (await form.validateFields()) as NodeConfigFormValues,
+        ['textColor', 'backgroundColor', 'borderColor'],
+      );
 
       onConfirm?.(values);
     } catch (error) {
       console.error('Form validation failed:', error);
     }
-  }, [form, onConfirm, processColorValue]);
+  }, [form, onConfirm]);
 
   const handleCancel = () => {
     if (onCancel) {
@@ -470,20 +463,6 @@ const ShapeNodePanel: React.FC<NodeConfPanelProps> = ({
 
         {nodeType === 'basic-shape' && (
           <>
-            <Form.Item
-              label={t('topology.nodeConfig.renderEffect')}
-              name="renderEffect"
-            >
-              <Radio.Group disabled={readonly}>
-                <Radio value="normal">
-                  {t('topology.nodeConfig.renderEffectNormal')}
-                </Radio>
-                <Radio value="glass">
-                  {t('topology.nodeConfig.renderEffectGlass')}
-                </Radio>
-              </Radio.Group>
-            </Form.Item>
-
             <Form.Item
               label={t('topology.nodeConfig.backgroundColor')}
               name="backgroundColor"

@@ -26,6 +26,7 @@ import {
   CYCLE_OPTIONS,
   getNetworkDeviceOptions,
   createTaskValidationRules,
+  isSupportedNetworkConfigBrand,
 } from '@/app/cmdb/constants/professCollection';
 
 // 需要IP选择的任务类型
@@ -60,6 +61,7 @@ const ACCESS_POINT_TASK_TYPES = [
   'cloud',
   'vm',
   'ipmi',
+  'ip', // IP 发现：由接入点直连目标网段执行探测（规格 §13.1）
 ];
 
 import {
@@ -141,6 +143,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     const editingId = useAssetManageStore((state) => state.editingId);
     const scan_cycle_type = useAssetManageStore((state) => state.scan_cycle_type);
     const { model_id: modelId, task_type: taskType, target_model_id: targetModelId } = modelItem;
+    const isNetworkConfigFileTask = modelId === 'network_config_file';
     const instanceModelId = targetModelId || modelId;
     const normalizedTaskType = taskType || nodeId || '';
     const { t } = useTranslation();
@@ -218,7 +221,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
 
     const isCommonSelectInstTask = COMMON_SELECT_INST_TASK_TYPES.includes(
       normalizedTaskType
-    );
+    ) && !isNetworkConfigFileTask;
     const isHostTask = normalizedTaskType === 'host';
     const isHostAssetMode = isHostTask && collectionType === 'asset';
     const selectedAccessPoint = accessPoints.find(
@@ -427,6 +430,19 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     ) => {
       setSelectedKeys(selectedRowKeys);
       setSelectedRows(selectedRows);
+    };
+
+    const getNetworkConfigDisabledReason = (record: any) => {
+      if (!isNetworkConfigFileTask) {
+        return '';
+      }
+      if (!record?.brand) {
+        return '缺少厂商字段，无法选择';
+      }
+      if (!isSupportedNetworkConfigBrand(record.brand)) {
+        return '暂不支持该厂商';
+      }
+      return '';
     };
 
     const handleDrawerClose = () => {
@@ -695,7 +711,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                         >
                           <InputNumber
                             className="w-20"
-                            min={5}
+                            min={1}
                             placeholder={t('common.inputTip')}
                           />
                         </Form.Item>
@@ -1117,8 +1133,9 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
               type: 'checkbox',
               selectedRowKeys: selectedKeys,
               onChange: handleRowSelect,
-              getCheckboxProps: () => ({
-                disabled: false,
+              getCheckboxProps: (record: any) => ({
+                disabled: Boolean(getNetworkConfigDisabledReason(record)),
+                title: getNetworkConfigDisabledReason(record),
               }),
             }}
           />

@@ -1,14 +1,19 @@
+from types import SimpleNamespace
 import pytest
 from unittest.mock import patch
 
+from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.monitor.models.collect_config import CollectConfig
 from apps.monitor.models.monitor_object import MonitorObject, MonitorInstance
 from apps.monitor.models.monitor_metrics import Metric, MetricGroup
 from apps.monitor.models.plugin import MonitorPlugin
 from apps.monitor.services.metrics import Metrics
 from apps.monitor.services.monitor_object import MonitorObjectService
+from apps.monitor.views.monitor_metrics import collect_vm_field_names
+from apps.monitor.utils.display_fields import validate_display_fields
 from apps.monitor.utils.display_fields_metrics import (
     display_field_key,
+    extract_field_bindings,
     extract_metric_bindings,
     extract_metric_names,
 )
@@ -51,6 +56,289 @@ def test_display_field_key_composite_and_legacy():
         "Switch Huawei SNMP::device_temperature_celsius"
     # 无插件(遗留)退化为裸指标名
     assert display_field_key("", "device_temperature_celsius") == "device_temperature_celsius"
+
+
+def test_display_field_key_supports_field_columns():
+    assert (
+        display_field_key("主机（Telegraf）", "node_info", "collector_ip")
+        == "field::主机（Telegraf）::node_info::collector_ip"
+    )
+
+
+def test_extract_metric_bindings_skips_field_columns():
+    display_fields = [
+        {"name": "CPU", "sort_order": 0, "metrics": [{"plugin": "P", "metric": "cpu"}]},
+        {
+            "name": "采集IP",
+            "type": "field",
+            "sort_order": 1,
+            "metrics": [{"plugin": "P", "metric": "node_info", "field": "collector_ip"}],
+        },
+    ]
+
+    assert extract_metric_bindings(display_fields) == [{"plugin": "P", "metric": "cpu"}]
+
+
+def test_extract_field_bindings_keeps_field_and_dedups_by_triplet():
+    display_fields = [
+        {"name": "CPU", "sort_order": 0, "metrics": [{"plugin": "P", "metric": "cpu"}]},
+        {
+            "name": "采集IP",
+            "type": "field",
+            "sort_order": 1,
+            "metrics": [
+                {"plugin": "P", "metric": "node_info", "field": "collector_ip"},
+                {"plugin": "P", "metric": "node_info", "field": "collector_ip"},
+                {"plugin": "P", "metric": "node_info", "field": "model"},
+            ],
+        },
+    ]
+
+    assert extract_field_bindings(display_fields) == [
+        {"plugin": "P", "metric": "node_info", "field": "collector_ip"},
+        {"plugin": "P", "metric": "node_info", "field": "model"},
+    ]
+
+
+class _FakeMetricQuerySet:
+    def values(self, *args):
+        return [
+            {"monitor_plugin__name": "P", "name": "cpu"},
+            {"monitor_plugin__name": "P", "name": "node_info"},
+        ]
+
+
+class _FakeMetricManager:
+    def filter(self, **kwargs):
+        return _FakeMetricQuerySet()
+
+
+def test_validate_display_fields_accepts_metric_and_field_columns(monkeypatch):
+    monkeypatch.setattr("apps.monitor.utils.display_fields.Metric.objects", _FakeMetricManager())
+
+    normalized = validate_display_fields(object(), [
+        {"name": "CPU", "sort_order": 1, "metrics": [{"plugin": "P", "metric": "cpu"}]},
+        {
+            "name": "采集IP",
+            "type": "field",
+            "sort_order": 0,
+            "metrics": [{"plugin": "P", "metric": "node_info", "field": "collector_ip"}],
+        },
+    ])
+
+    assert normalized == [
+        {
+            "name": "采集IP",
+            "type": "field",
+            "sort_order": 0,
+            "metrics": [{"plugin": "P", "metric": "node_info", "field": "collector_ip"}],
+        },
+        {"name": "CPU", "sort_order": 1, "metrics": [{"plugin": "P", "metric": "cpu"}]},
+    ]
+
+
+def test_validate_display_fields_rejects_field_column_without_field(monkeypatch):
+    monkeypatch.setattr("apps.monitor.utils.display_fields.Metric.objects", _FakeMetricManager())
+
+    with pytest.raises(BaseAppException, match="field"):
+        validate_display_fields(object(), [
+            {
+                "name": "采集IP",
+                "type": "field",
+                "sort_order": 0,
+                "metrics": [{"plugin": "P", "metric": "node_info"}],
+            },
+        ])
+
+
+def test_query_metric_field_values_reads_vm_label(monkeypatch):
+    class FakeVM:
+        def query(self, query, step=None):
+            assert query == 'node_info{instance_id=~"i1|i2"}'
+            assert step is None
+            return {"data": {"result": [
+                {"metric": {"instance_id": "i1", "collector_ip": "10.0.0.1"}, "value": [0, "1"]},
+                {"metric": {"instance_id": "i2"}, "value": [0, "1"]},
+            ]}}
+
+    monkeypatch.setattr("apps.monitor.services.monitor_object.VictoriaMetricsAPI", lambda: FakeVM())
+
+    metric_obj = SimpleNamespace(
+        name="node_info",
+        query="node_info{__$labels__}",
+        instance_id_keys=["instance_id"],
+    )
+    result = MonitorObjectService._query_metric_field_values(
+        metric_obj,
+        [
+            {"instance_id": "('i1',)"},
+            {"instance_id": "('i2',)"},
+        ],
+        "collector_ip",
+    )
+
+    assert result == {"('i1',)": "10.0.0.1"}
+
+
+def test_query_metric_field_values_matches_storage_instance_key(monkeypatch):
+    class FakeVM:
+        def query(self, query, step=None):
+            assert query == 'node_info{instance_id=~"i1"}'
+            assert step is None
+            return {"data": {"result": [
+                {"metric": {"instance_id": "('i1',)", "collector_ip": "10.0.0.1"}, "value": [0, "1"]},
+            ]}}
+
+    monkeypatch.setattr("apps.monitor.services.monitor_object.VictoriaMetricsAPI", lambda: FakeVM())
+
+    metric_obj = SimpleNamespace(
+        name="node_info",
+        query="node_info{__$labels__}",
+        instance_id_keys=["instance_id"],
+    )
+    result = MonitorObjectService._query_metric_field_values(
+        metric_obj,
+        [{"instance_id": "('i1',)"}],
+        "collector_ip",
+    )
+
+    assert result == {"('i1',)": "10.0.0.1"}
+
+
+def test_query_metric_field_values_uses_metric_query_when_storage_name_differs(monkeypatch):
+    class FakeVM:
+        def query(self, query, step=None):
+            assert query == 'cpu_usage_system_total_gauge{instance_type="os", instance_id=~"i1"}'
+            assert step is None
+            return {"data": {"result": [
+                {
+                    "metric": {
+                        "instance_id": "i1",
+                        "host": "remote-host",
+                    },
+                    "value": [0, "1"],
+                },
+            ]}}
+
+    monkeypatch.setattr("apps.monitor.services.monitor_object.VictoriaMetricsAPI", lambda: FakeVM())
+
+    metric_obj = SimpleNamespace(
+        name="cpu_usage_system_total",
+        query='cpu_usage_system_total_gauge{instance_type="os", __$labels__}',
+        instance_id_keys=["instance_id"],
+    )
+    result = MonitorObjectService._query_metric_field_values(
+        metric_obj,
+        [{"instance_id": "('i1',)"}],
+        "host",
+    )
+
+    assert result == {"('i1',)": "remote-host"}
+
+
+def test_query_metric_values_uses_default_query_step(monkeypatch):
+    class FakeVM:
+        def query(self, query, step=None):
+            assert query == 'host_cpu_usage_percent_gauge{instance_type="os", instance_id=~"i1"}'
+            assert step is None
+            return {"data": {"result": [
+                {"metric": {"instance_id": "i1"}, "value": [0, "8.52"]},
+            ]}}
+
+    monkeypatch.setattr("apps.monitor.services.monitor_object.VictoriaMetricsAPI", lambda: FakeVM())
+
+    metric_obj = SimpleNamespace(
+        query='host_cpu_usage_percent_gauge{instance_type="os", __$labels__}',
+        instance_id_keys=["instance_id"],
+    )
+    result = MonitorObjectService._query_metric_values(
+        metric_obj,
+        [{"instance_id": "('i1',)"}],
+    )
+
+    assert result == {"('i1',)": "8.52"}
+
+
+def test_query_metric_values_enum_prefers_latest_series_by_timestamp(monkeypatch):
+    class FakeVM:
+        def __init__(self):
+            self.queries = []
+
+        def query(self, query, step=None):
+            self.queries.append(query)
+            assert step is None
+            if query == 'http_response_result_code{instance_id=~"i1"}':
+                return {"data": {"result": [
+                    {
+                        "metric": {"instance_id": "i1", "result": "connection_failed"},
+                        "value": [1782888110, "3"],
+                    },
+                    {
+                        "metric": {"instance_id": "i1", "result": "success", "status_code": "200"},
+                        "value": [1782888110, "0"],
+                    },
+                ]}}
+            if query == 'timestamp(http_response_result_code{instance_id=~"i1"})':
+                return {"data": {"result": [
+                    {
+                        "metric": {"instance_id": "i1", "result": "connection_failed"},
+                        "value": [1782888110, "1782887860"],
+                    },
+                    {
+                        "metric": {"instance_id": "i1", "result": "success", "status_code": "200"},
+                        "value": [1782888110, "1782888071"],
+                    },
+                ]}}
+            raise AssertionError(f"unexpected query: {query}")
+
+    fake_vm = FakeVM()
+    monkeypatch.setattr("apps.monitor.services.monitor_object.VictoriaMetricsAPI", lambda: fake_vm)
+
+    metric_obj = SimpleNamespace(
+        query='http_response_result_code{__$labels__}',
+        data_type="Enum",
+        instance_id_keys=["instance_id"],
+    )
+    result = MonitorObjectService._query_metric_values(
+        metric_obj,
+        [{"instance_id": "('i1',)"}],
+    )
+
+    assert result == {"('i1',)": "0"}
+    assert fake_vm.queries == [
+        'http_response_result_code{instance_id=~"i1"}',
+        'timestamp(http_response_result_code{instance_id=~"i1"})',
+    ]
+
+
+def test_collect_vm_field_names_queries_vm_without_dimensions(monkeypatch):
+    class FakeVM:
+        def labels(self, match=None):
+            assert match == '{__name__="node_info"}'
+            return {"data": ["__name__", "collector_ip", "instance_id", "model"]}
+
+        def query(self, query):
+            raise AssertionError("labels API should provide field candidates")
+
+    monkeypatch.setattr("apps.monitor.views.monitor_metrics.VictoriaMetricsAPI", lambda: FakeVM())
+
+    metric_obj = SimpleNamespace(name="node_info", query="node_info{__$labels__}")
+
+    assert collect_vm_field_names(metric_obj) == ["collector_ip", "instance_id", "model"]
+
+
+def test_collect_vm_field_names_removes_trailing_placeholder_comma(monkeypatch):
+    class FakeVM:
+        def labels(self, match=None):
+            return {"data": []}
+
+        def query(self, query):
+            assert query == "node_info{instance_type='host'}"
+            return {"data": {"result": []}}
+
+    monkeypatch.setattr("apps.monitor.views.monitor_metrics.VictoriaMetricsAPI", lambda: FakeVM())
+
+    collect_vm_field_names(SimpleNamespace(query="node_info{instance_type='host',__$labels__}"))
 
 
 def _mk_metric(obj, plugin, name):
@@ -103,6 +391,68 @@ def test_get_monitor_instance_queries_display_fields_metrics(mock_vm):
     Metrics.convert_instance_list_metrics(obj.id, res["results"])
     converted = res["results"][0]["P::cpu_usage_total"]
     assert isinstance(converted, dict) and float(converted["value"]) == 42.0
+
+
+@pytest.mark.django_db
+@patch("apps.monitor.services.monitor_object.VictoriaMetricsAPI")
+def test_get_monitor_instance_fills_metric_and_field_columns_with_metric_query(mock_vm):
+    # 回归远程主机采集:展示名(cpu_usage_total)与 VM 真实指标(host_cpu_usage_percent_gauge)不同,
+    # 列表页必须用 metric.query 同时回填指标值列和字段展示列,且展示列不主动放大查询窗口。
+    def fake_query(query, **kwargs):
+        if "any({instance_type='UTRemoteHost'})" in query:
+            assert kwargs.get("step") == "20m"
+            return {"data": {"result": [
+                {"metric": {"instance_id": "i1", "agent_id": "stargazer-i1"}, "value": [100, "1"]},
+            ]}}
+        if query == 'host_cpu_usage_percent_gauge{instance_type="os", instance_id=~"i1"}':
+            assert "step" not in kwargs
+            return {"data": {"result": [
+                {"metric": {"instance_id": "i1"}, "value": [100, "8.52"]},
+            ]}}
+        if query == 'cpu_usage_system_total_gauge{instance_type="os", instance_id=~"i1"}':
+            assert "step" not in kwargs
+            return {"data": {"result": [
+                {"metric": {"instance_id": "i1", "host": "remote-host"}, "value": [100, "1.64"]},
+            ]}}
+        raise AssertionError(f"unexpected VM query: {query}")
+
+    mock_vm.return_value.query.side_effect = fake_query
+    obj = MonitorObject.objects.create(
+        name="UTRemoteHost", level="base",
+        default_metric="any({instance_type='UTRemoteHost'}) by (instance_id)",
+        instance_id_keys=["instance_id"], supplementary_indicators=[],
+        display_fields=[
+            {"name": "CPU", "sort_order": 0,
+             "metrics": [{"plugin": "Host Remote", "metric": "cpu_usage_total"}]},
+            {"name": "Host", "type": "field", "sort_order": 1,
+             "metrics": [{"plugin": "Host Remote", "metric": "cpu_usage_system_total", "field": "host"}]},
+        ],
+    )
+    plugin = MonitorPlugin.objects.create(name="Host Remote")
+    group = MetricGroup.objects.create(monitor_object=obj, monitor_plugin=plugin, name="G-Host Remote")
+    Metric.objects.create(
+        monitor_object=obj, monitor_plugin=plugin, metric_group=group,
+        name="cpu_usage_total", display_name="CPU",
+        query='host_cpu_usage_percent_gauge{instance_type="os", __$labels__}',
+        unit="percent", data_type="Number", instance_id_keys=["instance_id"],
+    )
+    Metric.objects.create(
+        monitor_object=obj, monitor_plugin=plugin, metric_group=group,
+        name="cpu_usage_system_total", display_name="CPU System",
+        query='cpu_usage_system_total_gauge{instance_type="os", __$labels__}',
+        unit="percent", data_type="Number", instance_id_keys=["instance_id"],
+    )
+    inst = MonitorInstance.objects.create(id="('i1',)", name="remote-host", monitor_object=obj)
+    _mk_collect_config("cc-i1-host-remote", inst, plugin)
+
+    res = MonitorObjectService.get_monitor_instance(
+        obj.id, page=1, page_size=10, name=None,
+        qs=MonitorInstance.objects.all(), add_metrics=True,
+    )
+
+    row = res["results"][0]
+    assert row["Host Remote::cpu_usage_total"] == "8.52"
+    assert row["field::Host Remote::cpu_usage_system_total::host"] == "remote-host"
 
 
 @pytest.mark.django_db

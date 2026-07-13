@@ -1,0 +1,69 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_ribbon",
+  "plugin": "VoiceGateway Ribbon SNMP",
+  "plugin_desc": "Ribbon/Sonus voice gateway and SBC SNMP baseline child template. This child template relies on the shared VoiceGateway SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, so they are not promoted into shared device-health metrics.",
+  "status_query": "any({instance_type='voice_gateway', collect_type='snmp_ribbon'}) by (instance_id)",
+  "name": "VoiceGateway",
+  "icon": "mm-ribbon_ribbon",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='voice_gateway'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='voice_gateway', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='voice_gateway', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='voice_gateway', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

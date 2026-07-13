@@ -10,6 +10,23 @@ import uuid
 import json
 
 
+# 告警处理(动作引擎)测试：把它设成你「节点管理」里已纳管主机的真实 IP，
+# mock 会以 MANAGED_HOST_IP_RATIO 的概率用它，方便测「真跑作业」那一段；
+# 留空("")则始终随机（随机 IP 命不中已纳管主机 → 走 config_error 未纳管，验证安全兜底）。
+MANAGED_HOST_IP = ""
+MANAGED_HOST_IP_RATIO = 0.3
+
+
+def _random_ip():
+    """生成 mock 主机 IP（告警处理/动作引擎测试用）。
+
+    若配置了 MANAGED_HOST_IP，则按概率返回它（命中已纳管主机→真跑作业），否则随机。
+    """
+    if MANAGED_HOST_IP and random.random() < MANAGED_HOST_IP_RATIO:
+        return MANAGED_HOST_IP
+    return f"10.{random.randint(0, 255)}.{random.randint(0, 255)}.{random.randint(1, 254)}"
+
+
 def generate_mock_events(num_events=100):
     # 基础数据模板
     base_event = {
@@ -79,7 +96,8 @@ def generate_mock_events(num_events=100):
         event["level"] = level
         event["start_time"] = str(start_time)
         event["end_time"] = str(end_time)
-        event["labels"] = {"instance": f"host-{server_num}", "region": region}
+        host_ip = _random_ip()
+        event["labels"] = {"instance": f"host-{server_num}", "region": region, "ip": host_ip, "ip_addr": host_ip}
         event["annotations"] = {"alertname": "HighCPUUsage", "summary": f"High CPU usage detected on {server_type}-{server_num}", "severity": level}
         event["external_id"] = str(uuid.uuid4())
         event["status"] = random.choice(statuses)

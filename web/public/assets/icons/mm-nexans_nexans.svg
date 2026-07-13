@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <defs>
+    <linearGradient id="nexansRed" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e23a3a"/>
+      <stop offset="1" stop-color="#b51d1d"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="104" height="104" rx="22" fill="url(#nexansRed)"/>
+  <path d="M36 84 V36 h7 l34 33 V36 h7 v48 h-7 L43 51 v33 z" fill="#ffffff"/>
+</svg>

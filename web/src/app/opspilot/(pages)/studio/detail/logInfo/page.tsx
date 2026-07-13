@@ -12,17 +12,22 @@ import CustomTable from '@/components/custom-table';
 import { LogRecord, Channel, WorkflowTaskResult, WorkflowExecutionDetailItem } from '@/app/opspilot/types/studio';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { fetchLogDetails, createConversation } from '@/app/opspilot/utils/logUtils';
+import { formatDurationMs } from '@/app/opspilot/utils/duration';
 import { useStudioApi } from '@/app/opspilot/api/studio';
+import dayjs from 'dayjs';
 
 const { Search } = Input;
 
 const StudioLogsPage: React.FC = () => {
   const { t } = useTranslation();
-  const { get, post } = useApiClient();
+  const { post } = useApiClient();
   const { fetchLogs, fetchChannels, fetchBotDetail, fetchWorkflowTaskResult, fetchWorkflowLogs, fetchExecutionOutputData, fetchExecutionDetail } = useStudioApi();
   const { convertToLocalizedTime } = useLocalizedTime();
   const [searchText, setSearchText] = useState('');
-  const [dates, setDates] = useState<number[]>([]);
+  const [dates, setDates] = useState<number[]>([
+    dayjs().subtract(1440, 'minute').valueOf(),
+    dayjs().valueOf(),
+  ]);
   const [data, setData] = useState<LogRecord[] | WorkflowTaskResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -227,7 +232,7 @@ const StudioLogsPage: React.FC = () => {
 
     try {
       const data = await fetchLogDetails(post, record?.ids || []);
-      const conversation = await createConversation(data, get);
+      const conversation = await createConversation(data);
       setSelectedConversation({
         ...record,
         conversation,
@@ -686,7 +691,7 @@ const StudioLogsPage: React.FC = () => {
       title: t('studio.logs.table.executionDuration'),
       dataIndex: 'execution_duration',
       key: 'execution_duration',
-      render: (duration) => `${duration || 0}ms`,
+      render: (duration) => formatDurationMs(duration),
     },
     {
       title: t('common.actions'),

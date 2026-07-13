@@ -33,3 +33,23 @@ class TestTopologyTheme:
     def test_get_topo_themes_empty_for_non_network(self, mock_search):
         mock_search.return_value = []
         assert get_topo_themes("host") == []
+
+    @patch("apps.cmdb.services.topology_theme.ModelManage.model_association_search")
+    def test_subnet_has_no_ipam_theme(self, mock_search):
+        mock_search.return_value = []
+        assert get_topo_themes("subnet") == []
+
+    @patch("apps.cmdb.services.topology_theme.ModelManage.model_association_search")
+    def test_non_subnet_has_no_ipam_theme(self, mock_search):
+        mock_search.return_value = []
+        assert "ipam" not in get_topo_themes("host")
+
+    @patch("apps.cmdb.services.topology_theme.ModelManage.model_association_search")
+    def test_system_returns_app_overview_theme(self, mock_search):
+        mock_search.return_value = []
+        assert "app_overview" in get_topo_themes("system")
+
+    @patch("apps.cmdb.services.topology_theme.ModelManage.model_association_search")
+    def test_application_returns_app_overview_theme(self, mock_search):
+        mock_search.return_value = []
+        assert "app_overview" in get_topo_themes("application")

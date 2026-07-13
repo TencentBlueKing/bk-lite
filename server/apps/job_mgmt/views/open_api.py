@@ -166,7 +166,7 @@ class OpenFileDeleteView(TeamResolveMixin, APIView):
         Body: {"files": [{"file_id": 1, "file_key": "job-files/..."}]}
 
     返回:
-        {"result": true, "data": {"deleted": 1}}
+        {"result": true, "data": {"deleted": 1, "failed": [{"file_id": 2, "file_key": "...", "reason": "..."}]}}
     """
 
     def delete(self, request):
@@ -190,6 +190,7 @@ class OpenFileDeleteView(TeamResolveMixin, APIView):
         deleted_count = 0
         no_permission = []  # 无权限的文件
         not_found = []  # 不存在的文件
+        failed = []  # S3 删除失败的文件
         for item in files:
             file_id = item.get("file_id")
             file_key = item.get("file_key")
@@ -208,11 +209,13 @@ class OpenFileDeleteView(TeamResolveMixin, APIView):
                 no_permission.append({"file_id": file_id, "file_key": file_key})
                 continue
 
-            # 删除对象存储文件
+            # 删除对象存储文件；若失败则跳过 DB 删除，避免产生孤儿 S3 对象
             try:
                 async_to_sync(delete_s3_file)(df.file_key)
             except Exception as e:
                 logger.warning(f"[open_delete_file] 删除对象存储文件失败: {df.file_key}, error={e}")
+                failed.append({"file_id": df.id, "file_key": df.file_key, "reason": str(e)})
+                continue  # S3 删除失败时不删除 DB 记录，防止产生孤儿文件
 
             df.delete()
             deleted_count += 1
@@ -222,6 +225,8 @@ class OpenFileDeleteView(TeamResolveMixin, APIView):
             result["no_permission"] = no_permission
         if not_found:
             result["not_found"] = not_found
+        if failed:
+            result["failed"] = failed
 
         return Response(
             result,

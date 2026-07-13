@@ -232,6 +232,45 @@ def test_search_model_attr_v2(fake_graph):
 
 
 @pytest.mark.django_db
+def test_search_model_attr_v2_caches_user_and_organization_options(fake_graph, monkeypatch):
+    attrs = [
+        {"attr_id": "owner", "attr_type": "user", "attr_name": "负责人"},
+        {"attr_id": "org", "attr_type": "organization", "attr_name": "组织"},
+    ]
+    fake_graph(MODULE, query_entity=([{"_id": 1, "attrs": json.dumps(attrs)}], 1))
+    monkeypatch.setattr(f"{MODULE}.cache.get", lambda key: None)
+
+    cached = {}
+
+    def fake_set(key, value, timeout=None):
+        cached[key] = value
+
+    monkeypatch.setattr(f"{MODULE}.cache.set", fake_set)
+    monkeypatch.setattr(f"{MODULE}.SystemMgmt", lambda: object())
+
+    calls = {"groups": 0, "users": 0}
+
+    def fake_get_all_groups(client):
+        calls["groups"] += 1
+        return [{"id": "root", "name": "Root", "subGroups": []}]
+
+    def fake_get_all_users(client):
+        calls["users"] += 1
+        return {"users": [{"id": 1, "username": "admin", "display_name": "Admin"}]}
+
+    monkeypatch.setattr(f"{MODULE}.UserGroup.get_all_groups", fake_get_all_groups)
+    monkeypatch.setattr(f"{MODULE}.UserGroup.get_all_users", fake_get_all_users)
+
+    first = ModelManage.search_model_attr_v2("host")
+    monkeypatch.setattr(f"{MODULE}.cache.get", lambda key: cached.get(key))
+    second = ModelManage.search_model_attr_v2("host")
+
+    assert calls == {"groups": 1, "users": 1}
+    assert first[0]["option"] == second[0]["option"]
+    assert first[1]["option"] == second[1]["option"]
+
+
+@pytest.mark.django_db
 def test_get_model_attrs_for_auto_rule_model_missing(monkeypatch):
     monkeypatch.setattr(f"{MODULE}.ModelManage.search_model_info", lambda mid: {})
     with pytest.raises(BaseAppException):

@@ -1,0 +1,18 @@
+{
+  "model_id": "apache",
+  "instance_count_min": 1,
+  "expected_instance_subset_fixture_driven": {
+    "inst_name":       "172.17.0.4-apache-80",
+    "ip_addr":         "172.17.0.4",
+    "port":            "80",
+    "version":         "2.4.52",
+    "httpd_path":      "/usr/sbin/apache2",
+    "httpd_conf_path": "/etc/apache2/apache2.conf",
+    "doc_root":        "",
+    "error_log":       "",
+    "custom_Log":      "",
+    "include":         "mods-enabled/*.load,mods-enabled/*.conf,ports.conf,conf-enabled/*.conf,sites-enabled/*.conf"
+  },
+  "fixture_source_fixture_driven": "agents/stargazer/tests/fixtures/collect/apache.json(2026-07-08 cli 真实落盘,ip=172.17.0.4,port=80)",
+  "notes": "G5.2.x Phase 4 任务 4.3;middleware runner 走 metric.result JSON 编码,extra_payload_keys={\"result\": True}。stargazer raw_stdout 是形态 B(平铺 dict,无 success/result 包裹),由公共契约 00_common_contract.schema.json 的 oneOf 在 CI 层兼容;raw_stdout 含 inst_name/obj_id 是 v3+ 标准化形态(供 inst_name 模式校验参考,真实 inst_name 由 plugin get_inst_name 重新计算)。plugin 字段集来自 ApacheCollectionPlugin.field_mapping,与 fixture 字段一一对应;doc_root/error_log/custom_Log 留空字符串表示该 ubuntu 容器内 apache 未配置该字段。"
+}

@@ -18,6 +18,11 @@ from apps.cmdb.models.collect_model import (
 )
 from apps.cmdb.services.collect_credential_pool_service import CollectCredentialPoolService
 from apps.cmdb.services.encrypt_collect_password import get_collect_model_passwords
+from apps.cmdb.services.network_config_file_policy import (
+    normalize_network_config_instance,
+    validate_commands,
+    validate_network_config_instance,
+)
 from apps.cmdb.utils.config_file_path import validate_absolute_path
 from apps.core.utils.serializers import UsernameSerializer, AuthSerializer
 
@@ -124,6 +129,54 @@ class CollectModelSerializer(AuthSerializer):
                     attrs["params"] = self._validate_topology_params(params)
                 else:
                     attrs["params"] = self._normalize_topology_params(params)
+            return attrs
+
+        if model_id == "network_config_file":
+            params = dict(self._get_effective_params(attrs) or {})
+            raw_instances = attrs.get("instances")
+            if raw_instances is None and self.instance is not None:
+                raw_instances = self.instance.instances
+            if not raw_instances:
+                raise serializers.ValidationError("请选择网络设备")
+
+            validated_instances = []
+            for instance in raw_instances:
+                try:
+                    # P2-2.1: validate 只校验不返回,显式 normalize 后放进结果列表
+                    # (落库时需要 host / device_type 字段,供下游 node_config 复用)
+                    validate_network_config_instance(instance)
+                    validated_instances.append(normalize_network_config_instance(instance))
+                except Exception as err:
+                    raise serializers.ValidationError({"instances": str(err)}) from err
+
+            config_name = (params.get("config_name") or "").strip()
+            if not config_name:
+                raise serializers.ValidationError({"params": "请输入配置名称"})
+
+            try:
+                commands = validate_commands(params.get("commands"))
+            except Exception as err:
+                raise serializers.ValidationError({"params": str(err)}) from err
+
+            credential_items = attrs.get("credential")
+            if credential_items is None and self.instance is not None:
+                credential_items = self.instance.credential
+            credential_pool = CollectCredentialPoolService.normalize_pool(copy.deepcopy(credential_items))
+            need_enable = any(
+                bool(item.get("enable_password"))
+                for item in credential_pool
+                if isinstance(item, dict)
+            )
+
+            attrs["instances"] = validated_instances
+            attrs["ip_range"] = ""
+            attrs["driver_type"] = CollectDriverTypes.PROTOCOL
+            attrs["params"] = {
+                **params,
+                "config_name": config_name,
+                "commands": "\n".join(commands),
+                "need_enable": need_enable,
+            }
             return attrs
 
         raw_params = attrs.get("params")

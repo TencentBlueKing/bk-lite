@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CMDB openresty 实例契约",
+  "description": "2026-07-10 v4 Phase 4 任务 4.2 — fixture 由 openresty_default_discover.sh 脚本输出格式驱动,字段集对齐 OpenrestyCollectionPlugin.field_mapping。",
+  "type": "object",
+  "required": ["inst_name", "ip_addr", "port"],
+  "properties": {
+    "inst_name":      {"type": "string", "pattern": "^[0-9.]+-openresty-[0-9]+$"},
+    "ip_addr":        {"type": "string"},
+    "port":           {"type": ["string", "integer"]},
+    "version":        {"type": "string"},
+    "openresty_path": {"type": "string"},
+    "log_path":       {"type": "string"},
+    "config_path":    {"type": "string"},
+    "doc_root":       {"type": "string"}
+  }
+}

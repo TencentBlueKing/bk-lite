@@ -1,0 +1,139 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_tsntec",
+  "plugin": "Switch TsnTec SNMP",
+  "plugin_desc": "TsnTec 8148SC switch-specific SNMP collection (enterprise PEN 65531). Beyond the shared Switch SNMP floor, it collects vendor health OIDs for control-plane CPU usage, memory usage, CPU temperature, fan state and power-supply state. CPU and memory are reported directly as 0-100 percentages. Temperature is read as degrees Celsius from the confirmed CPU temperature scalar. Fan and PSU raw status values are normalized through telegraf processors.enum to 1=healthy / 2=fault, and the worst component state is surfaced per device. The shared Switch floor supplies uptime, IF-MIB interface metrics, 64-bit ifHCInOctets/ifHCOutOctets and aggregate traffic roll-ups.",
+  "status_query": "any({instance_type='switch', collect_type='snmp_tsntec'}) by (instance_id)",
+  "name": "Switch",
+  "icon": "mm-tsntec_tsntec",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='switch'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_temperature_celsius",
+    "device_fan_state",
+    "device_psu_state"
+  ],
+  "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "max(device_cpu_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the TsnTec switch control-plane CPU utilization from PEN 65531, as a direct 0-100 percentage. Sustained high CPU usage can indicate control-plane overload, excessive management polling or abnormal traffic pressure."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_usage",
+      "query": "max(device_memory_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Memory Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports TsnTec system memory utilization from PEN 65531 as a direct 0-100 percentage. High memory usage may indicate oversized forwarding tables, memory leaks or insufficient capacity."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the TsnTec CPU temperature in degrees Celsius from PEN 65531. High temperature indicates thermal risk and can precede throttling, instability or hardware damage."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_state",
+      "query": "max(device_fan_state{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Fan State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports TsnTec fan health normalized to 1 = healthy and 2 = fault. A value greater than 1 indicates fan failure or an unknown fan condition requiring inspection."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "max(device_psu_state{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "PSU State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports TsnTec power-supply health normalized to 1 = healthy and 2 = fault. A value greater than 1 indicates a failed or abnormal power input."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='switch', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

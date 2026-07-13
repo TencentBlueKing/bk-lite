@@ -20,6 +20,8 @@ const OperateModal: React.FC<CustomModalProps> = ({
   subTitle = '',
   customHeaderClass = customModalStyle.customModalHeader,
   maskClosable = false,
+  destroyOnClose,
+  destroyOnHidden,
   ...modalProps
 }) => {
   return (
@@ -55,6 +57,7 @@ const OperateModal: React.FC<CustomModalProps> = ({
       footer={footer}
       centered={centered}
       maskClosable={maskClosable}
+      destroyOnHidden={destroyOnHidden ?? destroyOnClose}
       {...modalProps}
     />
   );

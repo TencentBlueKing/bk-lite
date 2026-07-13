@@ -2,7 +2,9 @@
   "object_name": "Kafka",
   "instance_type": "kafka",
   "collect_type": "exporter",
-  "config_type": ["kafka"],
+  "config_type": [
+    "kafka"
+  ],
   "collector": "Kafka-Exporter",
   "instance_id": "{{cloud_region}}_{{ENV_KAFKA_SERVER}}",
   "form_fields": [
@@ -36,8 +38,13 @@
         "origin_path": "child.env_config.SASL_ENABLED__{{config_id}}",
         "to_form": {
           "mapping": {
-            "true": ["--sasl.enabled"],
-            "false": ["", null]
+            "true": [
+              "--sasl.enabled"
+            ],
+            "false": [
+              "",
+              null
+            ]
           }
         },
         "to_api": {
@@ -186,7 +193,7 @@
       "label": "间隔",
       "type": "inputNumber",
       "required": true,
-      "default_value": 10,
+      "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
       "widget_props": {
         "min": 1,
@@ -237,7 +244,9 @@
       },
       "change_handler": {
         "type": "simple",
-        "source_fields": ["ENV_KAFKA_SERVER"],
+        "source_fields": [
+          "ENV_KAFKA_SERVER"
+        ],
         "target_field": "instance_name"
       }
     },

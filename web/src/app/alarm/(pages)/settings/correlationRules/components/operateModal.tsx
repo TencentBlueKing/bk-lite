@@ -35,7 +35,7 @@ import {
   Button,
 } from 'antd';
 import GroupTreeSelect from '@/components/group-tree-select';
-import RulesMatch from '../../components/matchRule';
+import RulesMatch from './matchRule';
 import CheckPeriod from './cron/checkPeriod';
 import AlertTemplate from './alertTemplate';
 import {
@@ -622,7 +622,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
       width={720}
       open={open}
       onClose={onClose}
-      destroyOnClose
+      destroyOnHidden
       maskClosable={false}
       footer={
         <div className="flex justify-end gap-2">

@@ -1,171 +1,223 @@
 monitor_object_metric:
-  IBMMQ:
-    ibmmq_qmgr_status_gauge:
-      name: 队列管理器状态
-      desc: 队列管理器运行状态。0 表示探针无法连接（已停止/不可用），1 启动中，2 运行中，3 静默中，4 备用。
-    ibmmq_qmgr_channel_initiator_status_gauge:
-      name: 通道初始化器状态
-      desc: 队列管理器通道初始化器（channel initiator）的运行状态。
-    ibmmq_qmgr_command_server_status_gauge:
-      name: 命令服务器状态
-      desc: 队列管理器命令服务器（command server）的运行状态。
-    ibmmq_qmgr_uptime_gauge:
-      name: 已运行时长
-      desc: 队列管理器已持续运行的时长（秒）。
-    ibmmq_qmgr_connection_count_gauge:
-      name: 连接数
-      desc: 当前连接到队列管理器的活动连接数量。
-    ibmmq_qmgr_active_listeners_gauge:
-      name: 活动监听器数量
-      desc: 队列管理器上处于活动状态的监听器数量。
-    ibmmq_qmgr_concurrent_connections_high_water_mark_gauge:
-      name: 并发连接数高水位
-      desc: 队列管理器并发连接数的峰值（高水位标记）。
-    ibmmq_qmgr_expired_message_count_gauge:
-      name: 过期消息计数
-      desc: 采集周期内队列管理器上过期的消息数量。
-    ibmmq_qmgr_commit_count_gauge:
-      name: 提交计数
-      desc: 采集周期内队列管理器上的提交（commit）操作次数。
-    ibmmq_qmgr_rollback_count_gauge:
-      name: 回滚计数
-      desc: 采集周期内队列管理器上的回滚（rollback）操作次数。
-    ibmmq_qmgr_exporter_collection_time_gauge:
-      name: 采集耗时
-      desc: 探针上一次采集周期所花费的时间（毫秒）。
-    ibmmq_qmgr_cpu_load_one_minute_average_percentage_gauge:
-      name: CPU 一分钟平均负载
-      desc: 队列管理器所在主机最近一分钟的 CPU 平均负载百分比。
-    ibmmq_qmgr_cpu_load_five_minute_average_percentage_gauge:
-      name: CPU 五分钟平均负载
-      desc: 队列管理器所在主机最近五分钟的 CPU 平均负载百分比。
-    ibmmq_qmgr_user_cpu_time_percentage_gauge:
-      name: 用户态 CPU 时间
-      desc: 队列管理器所在主机用户态 CPU 时间百分比。
-    ibmmq_qmgr_system_cpu_time_percentage_gauge:
-      name: 系统态 CPU 时间
-      desc: 队列管理器所在主机系统（内核）态 CPU 时间百分比。
-    ibmmq_qmgr_ram_free_percentage_gauge:
-      name: 空闲内存百分比
-      desc: 队列管理器所在主机的空闲内存百分比。
-    ibmmq_qmgr_ram_total_bytes_gauge:
-      name: 总内存
-      desc: 队列管理器所在主机的总内存（字节）。
-    ibmmq_qmgr_queue_manager_file_system_free_space_percentage_gauge:
-      name: 队列管理器文件系统空闲空间
-      desc: 队列管理器文件系统的空闲空间百分比。
-    ibmmq_qmgr_queue_manager_file_system_in_use_bytes_gauge:
-      name: 队列管理器文件系统已用空间
-      desc: 队列管理器文件系统已使用的空间（字节）。
-    ibmmq_qmgr_log_in_use_bytes_gauge:
-      name: 日志已用空间
-      desc: 当前正在使用的恢复日志空间（字节）。
-    ibmmq_qmgr_log_max_bytes_gauge:
-      name: 日志最大容量
-      desc: 恢复日志的最大容量（字节）。
-    ibmmq_qmgr_log_current_primary_space_in_use_percentage_gauge:
-      name: 主日志空间使用率
-      desc: 当前主日志空间的使用百分比。
-    ibmmq_qmgr_log_workload_primary_space_utilization_percentage_gauge:
-      name: 主日志工作负载利用率
-      desc: 主日志空间的工作负载利用率百分比。
-    ibmmq_qmgr_log_write_latency_seconds_gauge:
-      name: 日志写入延迟
-      desc: 日志写入的平均延迟（秒）。
-    ibmmq_qmgr_log_file_system_in_use_bytes_gauge:
-      name: 日志文件系统已用空间
-      desc: 日志文件系统已使用的空间（字节）。
-    ibmmq_qmgr_log_file_system_max_bytes_gauge:
-      name: 日志文件系统最大空间
-      desc: 日志文件系统的最大容量（字节）。
-    ibmmq_queue_depth_gauge:
-      name: 队列深度
-      desc: 队列当前的消息数量。
-    ibmmq_queue_attribute_max_depth_gauge:
-      name: 队列最大深度
-      desc: 队列允许容纳的最大消息数量。
-    ibmmq_queue_oldest_message_age_gauge:
-      name: 最早消息时长
-      desc: 队列中最早一条消息的滞留时长（秒）。
-    ibmmq_queue_uncommitted_messages_gauge:
-      name: 未提交消息数
-      desc: 队列中尚未提交的消息数量。
-    ibmmq_queue_input_handles_gauge:
-      name: 输入句柄数
-      desc: 队列当前打开的输入句柄数量。
-    ibmmq_queue_output_handles_gauge:
-      name: 输出句柄数
-      desc: 队列当前打开的输出句柄数量。
-    ibmmq_queue_qtime_short_gauge:
-      name: 短期排队时间
-      desc: 消息在队列中停留时间的短周期平均值（秒）。
-    ibmmq_queue_qtime_long_gauge:
-      name: 长期排队时间
-      desc: 消息在队列中停留时间的长周期平均值（秒）。
-    ibmmq_topic_publisher_count_gauge:
-      name: 发布者数量
-      desc: 主题上活动的发布者数量。
-    ibmmq_topic_subscriber_count_gauge:
-      name: 订阅者数量
-      desc: 主题上活动的订阅者数量。
-    ibmmq_topic_messages_received_gauge:
-      name: 接收消息数
-      desc: 采集周期内主题接收到的消息数量。
-    ibmmq_topic_time_since_msg_received_gauge:
-      name: 距上次接收消息时间
-      desc: 距主题上一次接收到消息的时间（秒）。
-    ibmmq_subscription_messsages_received_gauge:
-      name: 订阅接收消息数
-      desc: 采集周期内订阅接收到的消息数量。
-    ibmmq_subscription_time_since_message_published_gauge:
-      name: 距上次发布消息时间
-      desc: 距订阅上一次发布消息的时间（秒）。
   Wireless:
-    snmp_uptime: &id001
+    snmp_uptime:
       name: 系统运行时间
       desc: 该指标表示设备自上次启动以来的运行时间（来自 sysUpTime）。通过监测设备运行时间，网络管理员可以了解设备的稳定性与可靠性，识别潜在的重启或故障问题。
-    interface_ifHCInOctets: &id002
+    interface_ifHCInOctets:
       name: 接口接收流量速率
       desc: 此指标表示过去5分钟内接收到的字节数的平均速率（来自 64 位 IF-MIB ifHCInOctets 计数器，ifXTable），单位为字节每秒。64 位计数器可避免 32 位 ifInOctets 在高速口上快速回绕，使流量速率更准确。
-    interface_ifHCOutOctets: &id003
+    interface_ifHCOutOctets:
       name: 接口发送流量速率
       desc: 该指标计算过去5分钟内发送的字节数的平均速率（来自 64 位 IF-MIB ifHCOutOctets 计数器，ifXTable），单位为字节每秒。64 位计数器可避免 32 位 ifOutOctets 在高速口上快速回绕，使流量速率更准确。
-    device_total_incoming_traffic: &id004
+    device_total_incoming_traffic:
       name: 设备接收总流量速率
       desc: 此指标表示整个设备在过去5分钟内接收到的总字节流量的平均速率（按所有接口的 64 位 ifHCInOctets 汇总），单位为字节每秒。帮助管理员获取整个设备的接收流量情况，支持总体流量监控与容量规划。
-    device_total_outgoing_traffic: &id005
+    device_total_outgoing_traffic:
       name: 设备发送总流量速率
       desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率（按所有接口的 64 位 ifHCOutOctets 汇总），单位为字节每秒。帮助管理员评估整个系统的发送性能，进行更有效的流量管理与优化。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: 无线设备的整体 CPU 使用率，以 0-100 百分比直接上报。持续偏高可能表示客户端关联负载过高、控制平面压力或射频管理开销过大，会影响漫游与管理响应。
+    device_memory_usage:
+      name: 内存使用率
+      desc: 无线设备的整体内存使用率，以 0-100 百分比直接上报。内存压力过高会导致接入点丢弃客户端关联或重启服务，需及时排查客户端数量或异常负载。
+    device_temperature_celsius:
+      name: 温度
+      desc: 无线设备机箱温度（摄氏度，直采无缩放）。仅带温度传感器的机型返回真实值，无风扇接入点返回 0。温度过高可能表示散热失效或气流不畅，存在过热停机风险。
   Transmission:
-    snmp_uptime: *id001
-    interface_ifHCInOctets: *id002
-    interface_ifHCOutOctets: *id003
-    device_total_incoming_traffic: *id004
-    device_total_outgoing_traffic: *id005
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示设备自上次启动以来的运行时间（来自 sysUpTime）。通过监测设备运行时间，网络管理员可以了解设备的稳定性与可靠性，识别潜在的重启或故障问题。
+    interface_ifHCInOctets:
+      name: 接口接收流量速率
+      desc: 此指标表示过去5分钟内接收到的字节数的平均速率（来自 64 位 IF-MIB ifHCInOctets 计数器，ifXTable），单位为字节每秒。64 位计数器可避免 32 位 ifInOctets 在高速口上快速回绕，使流量速率更准确。
+    interface_ifHCOutOctets:
+      name: 接口发送流量速率
+      desc: 该指标计算过去5分钟内发送的字节数的平均速率（来自 64 位 IF-MIB ifHCOutOctets 计数器，ifXTable），单位为字节每秒。64 位计数器可避免 32 位 ifOutOctets 在高速口上快速回绕，使流量速率更准确。
+    device_total_incoming_traffic:
+      name: 设备接收总流量速率
+      desc: 此指标表示整个设备在过去5分钟内接收到的总字节流量的平均速率（按所有接口的 64 位 ifHCInOctets 汇总），单位为字节每秒。帮助管理员获取整个设备的接收流量情况，支持总体流量监控与容量规划。
+    device_total_outgoing_traffic:
+      name: 设备发送总流量速率
+      desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率（按所有接口的 64 位 ifHCOutOctets 汇总），单位为字节每秒。帮助管理员评估整个系统的发送性能，进行更有效的流量管理与优化。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: 传输设备的整体 CPU 使用率，以 0-100 百分比直接上报。持续偏高可能表示无线回传业务压力、控制平面负载或异常流量。
+    device_memory_usage:
+      name: 内存使用率
+      desc: 传输设备的整体内存使用率，以 0-100 百分比直接上报。持续偏高可能表示控制面资源压力或设备服务不稳定。
+    device_temperature_celsius:
+      name: 温度
+      desc: 传输设备的 CPU 或机箱温度，单位为摄氏度。温度偏高可能表示散热异常、环境温度过高或硬件过载。
+    device_fan_state:
+      name: 风扇状态
+      desc: 传输设备各散热风扇或风扇控制器的运行状态。非正常状态表示散热模块异常、离线或通信故障，可能导致设备过热。
+    device_psu_state:
+      name: 电源状态
+      desc: 传输设备各电源模块的运行状态。非正常状态表示电源离线、无输入、过温、硬件故障或告警，需及时排查。
   Access:
-    snmp_uptime: *id001
-    interface_ifHCInOctets: *id002
-    interface_ifHCOutOctets: *id003
-    device_total_incoming_traffic: *id004
-    device_total_outgoing_traffic: *id005
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示设备自上次启动以来的运行时间（来自 sysUpTime）。通过监测设备运行时间，网络管理员可以了解设备的稳定性与可靠性，识别潜在的重启或故障问题。
+    interface_ifHCInOctets:
+      name: 接口接收流量速率
+      desc: 此指标表示过去5分钟内接收到的字节数的平均速率（来自 64 位 IF-MIB ifHCInOctets 计数器，ifXTable），单位为字节每秒。64 位计数器可避免 32 位 ifInOctets 在高速口上快速回绕，使流量速率更准确。
+    interface_ifHCOutOctets:
+      name: 接口发送流量速率
+      desc: 该指标计算过去5分钟内发送的字节数的平均速率（来自 64 位 IF-MIB ifHCOutOctets 计数器，ifXTable），单位为字节每秒。64 位计数器可避免 32 位 ifOutOctets 在高速口上快速回绕，使流量速率更准确。
+    device_total_incoming_traffic:
+      name: 设备接收总流量速率
+      desc: 此指标表示整个设备在过去5分钟内接收到的总字节流量的平均速率（按所有接口的 64 位 ifHCInOctets 汇总），单位为字节每秒。帮助管理员获取整个设备的接收流量情况，支持总体流量监控与容量规划。
+    device_total_outgoing_traffic:
+      name: 设备发送总流量速率
+      desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率（按所有接口的 64 位 ifHCOutOctets 汇总），单位为字节每秒。帮助管理员评估整个系统的发送性能，进行更有效的流量管理与优化。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: 接入设备的整机 CPU 使用率（设备私有标量直接上报的百分比）。持续偏高说明 OLT 控制平面或管理平面负载过高。
+    device_memory_total:
+      name: 内存总量
+      desc: 接入设备上报的物理内存总容量，单位为字节。该指标可与空闲内存一起推导整体内存使用率。
+    device_memory_free:
+      name: 空闲内存
+      desc: 接入设备当前可用的物理内存容量，单位为字节。空闲内存持续降低可能表示控制服务或业务表项造成内存压力。
+    device_memory_usage:
+      name: 内存使用率
+      desc: 接入设备的系统内存使用率（设备私有标量直接上报的百分比）。持续偏高可能表示转发表、ONU 管理表或控制服务存在内存压力。
+    device_temperature_celsius:
+      name: 系统温度
+      desc: 接入设备系统温度读数，单位摄氏度。温度持续升高可能表示散热异常、环境温度过高或设备负载过高。
+    device_card_temperature_level:
+      name: 板卡温度级别
+      desc: 接入设备板卡相对温度级别。数值 1-10 表示从低温到高温，999 表示未上报；该指标用于发现板卡温度趋势，不等同于摄氏度读数。
+    device_card_state:
+      name: 板卡状态
+      desc: 接入设备板卡主状态。正常值归一为 1，非在服、未知或其它状态归一为 2，表示板卡可能不可用或需要检查。
+    device_psu_state:
+      name: 电源状态
+      desc: 接入设备电源模块状态。正常值归一为 1，告警或未知状态归一为 2，表示电源输入、模块或告警灯存在异常风险。
+    device_fan_state:
+      name: 风扇状态
+      desc: 接入设备风扇运行状态。正常值归一为 1，异常或未知状态归一为 2，表示散热能力可能下降。
+    device_disk_usage:
+      name: 磁盘使用率
+      desc: 接入设备磁盘卷使用率，按设备取最高卷使用率。持续偏高可能导致日志、配置或运行文件写入风险。
+    device_disk_state:
+      name: 磁盘状态
+      desc: 接入设备磁盘卷使用级别。正常值归一为 1，minor、major、critical 或未知状态归一为 2，表示磁盘空间需要关注。
   ConsoleServer:
-    snmp_uptime: *id001
-    interface_ifHCInOctets: *id002
-    interface_ifHCOutOctets: *id003
-    device_total_incoming_traffic: *id004
-    device_total_outgoing_traffic: *id005
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示设备自上次启动以来的运行时间（来自 sysUpTime）。通过监测设备运行时间，网络管理员可以了解设备的稳定性与可靠性，识别潜在的重启或故障问题。
+    interface_ifHCInOctets:
+      name: 接口接收流量速率
+      desc: 此指标表示过去5分钟内接收到的字节数的平均速率（来自 64 位 IF-MIB ifHCInOctets 计数器，ifXTable），单位为字节每秒。64 位计数器可避免 32 位 ifInOctets 在高速口上快速回绕，使流量速率更准确。
+    interface_ifHCOutOctets:
+      name: 接口发送流量速率
+      desc: 该指标计算过去5分钟内发送的字节数的平均速率（来自 64 位 IF-MIB ifHCOutOctets 计数器，ifXTable），单位为字节每秒。64 位计数器可避免 32 位 ifOutOctets 在高速口上快速回绕，使流量速率更准确。
+    device_total_incoming_traffic:
+      name: 设备接收总流量速率
+      desc: 此指标表示整个设备在过去5分钟内接收到的总字节流量的平均速率（按所有接口的 64 位 ifHCInOctets 汇总），单位为字节每秒。帮助管理员获取整个设备的接收流量情况，支持总体流量监控与容量规划。
+    device_total_outgoing_traffic:
+      name: 设备发送总流量速率
+      desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率（按所有接口的 64 位 ifHCOutOctets 汇总），单位为字节每秒。帮助管理员评估整个系统的发送性能，进行更有效的流量管理与优化。
+    device_temperature_celsius:
+      name: 温度
+      desc: 控制台服务器的温度读数，单位为摄氏度。温度偏高可能表示散热或环境温度风险。
+    device_psu_state:
+      name: 电源状态
+      desc: 控制台服务器的输入电源状态，统一归一为 1=正常、2=异常。未知或非正常码均按电源路径风险处理。
   NetworkService:
-    snmp_uptime: *id001
-    interface_ifHCInOctets: *id002
-    interface_ifHCOutOctets: *id003
-    device_total_incoming_traffic: *id004
-    device_total_outgoing_traffic: *id005
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示设备自上次启动以来的运行时间（来自 sysUpTime）。通过监测设备运行时间，网络管理员可以了解设备的稳定性与可靠性，识别潜在的重启或故障问题。
+    interface_ifHCInOctets:
+      name: 接口接收流量速率
+      desc: 此指标表示过去5分钟内接收到的字节数的平均速率（来自 64 位 IF-MIB ifHCInOctets 计数器，ifXTable），单位为字节每秒。64 位计数器可避免 32 位 ifInOctets 在高速口上快速回绕，使流量速率更准确。
+    interface_ifHCOutOctets:
+      name: 接口发送流量速率
+      desc: 该指标计算过去5分钟内发送的字节数的平均速率（来自 64 位 IF-MIB ifHCOutOctets 计数器，ifXTable），单位为字节每秒。64 位计数器可避免 32 位 ifOutOctets 在高速口上快速回绕，使流量速率更准确。
+    device_total_incoming_traffic:
+      name: 设备接收总流量速率
+      desc: 此指标表示整个设备在过去5分钟内接收到的总字节流量的平均速率（按所有接口的 64 位 ifHCInOctets 汇总），单位为字节每秒。帮助管理员获取整个设备的接收流量情况，支持总体流量监控与容量规划。
+    device_total_outgoing_traffic:
+      name: 设备发送总流量速率
+      desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率（按所有接口的 64 位 ifHCOutOctets 汇总），单位为字节每秒。帮助管理员评估整个系统的发送性能，进行更有效的流量管理与优化。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: 网络服务设备的整机 CPU 使用率（设备直接上报的百分比）。持续偏高表示节点的流量转发与过滤处理已接近处理能力上限。
+    device_memory_usage:
+      name: 内存使用率
+      desc: 网络服务设备的系统内存使用率（设备直接上报的百分比）。持续偏高可能表示设备上的映射/流表存在内存压力。
+    device_temperature_celsius:
+      name: 温度
+      desc: 网络服务设备的温度读数，单位为摄氏度。温度偏高可能表示散热或环境温度风险。
+    network_service_dns_service_state:
+      name: DNS 服务状态
+      desc: DNS 服务运行状态，统一归一为 1=正常、2=异常。
+    network_service_dhcp_service_state:
+      name: DHCP 服务状态
+      desc: DHCP 服务运行状态，统一归一为 1=正常、2=异常。
+    network_service_ntp_service_state:
+      name: NTP 服务状态
+      desc: NTP 服务运行状态，统一归一为 1=正常、2=异常。
+    network_service_zwp_service_state:
+      name: ZWP 服务状态
+      desc: ZWP 服务运行状态，统一归一为 1=正常、2=异常。
+    network_service_tftp_service_state:
+      name: TFTP 服务状态
+      desc: TFTP 服务运行状态，统一归一为 1=正常、2=异常。
+    network_service_virtual_server_state:
+      name: 虚拟服务状态
+      desc: 虚拟服务可用性状态，统一归一为 1=正常、2=异常。
+    network_service_node_state:
+      name: 节点状态
+      desc: 服务节点可用性状态，统一归一为 1=正常、2=异常。
+    network_service_pool_state:
+      name: 池状态
+      desc: 服务池可用性状态，统一归一为 1=正常、2=异常。
+    network_service_pool_member_state:
+      name: 池成员状态
+      desc: 服务池成员可用性状态，统一归一为 1=正常、2=异常。
+    network_service_spectracom_sync_state:
+      name: Spectracom 同步状态
+      desc: Spectracom xSync 系统同步状态，统一归一为 1=正常、2=异常。
+    network_service_spectracom_dc_power_state:
+      name: Spectracom DC 电源状态
+      desc: Spectracom DC 电源输入状态，统一归一为 1=正常、2=异常。
+    network_service_spectracom_minor_alarm_state:
+      name: Spectracom 次告警状态
+      desc: Spectracom 次告警状态，统一归一为 1=正常、2=异常。
+    network_service_spectracom_major_alarm_state:
+      name: Spectracom 主告警状态
+      desc: Spectracom 主告警状态，统一归一为 1=正常、2=异常。
+    network_service_spectracom_ntp_state:
+      name: Spectracom NTP 状态
+      desc: Spectracom NTP 当前模式，统一归一为 1=正常、2=异常。
+    network_service_spectracom_ntp_stratum:
+      name: Spectracom NTP 层级
+      desc: Spectracom NTP 当前 stratum 层级。
   VoiceGateway:
-    snmp_uptime: *id001
-    interface_ifHCInOctets: *id002
-    interface_ifHCOutOctets: *id003
-    device_total_incoming_traffic: *id004
-    device_total_outgoing_traffic: *id005
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示设备自上次启动以来的运行时间（来自 sysUpTime）。通过监测设备运行时间，网络管理员可以了解设备的稳定性与可靠性，识别潜在的重启或故障问题。
+    interface_ifHCInOctets:
+      name: 接口接收流量速率
+      desc: 此指标表示过去5分钟内接收到的字节数的平均速率（来自 64 位 IF-MIB ifHCInOctets 计数器，ifXTable），单位为字节每秒。64 位计数器可避免 32 位 ifInOctets 在高速口上快速回绕，使流量速率更准确。
+    interface_ifHCOutOctets:
+      name: 接口发送流量速率
+      desc: 该指标计算过去5分钟内发送的字节数的平均速率（来自 64 位 IF-MIB ifHCOutOctets 计数器，ifXTable），单位为字节每秒。64 位计数器可避免 32 位 ifOutOctets 在高速口上快速回绕，使流量速率更准确。
+    device_total_incoming_traffic:
+      name: 设备接收总流量速率
+      desc: 此指标表示整个设备在过去5分钟内接收到的总字节流量的平均速率（按所有接口的 64 位 ifHCInOctets 汇总），单位为字节每秒。帮助管理员获取整个设备的接收流量情况，支持总体流量监控与容量规划。
+    device_total_outgoing_traffic:
+      name: 设备发送总流量速率
+      desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率（按所有接口的 64 位 ifHCOutOctets 汇总），单位为字节每秒。帮助管理员评估整个系统的发送性能，进行更有效的流量管理与优化。
+    device_temperature_celsius:
+      name: 设备温度
+      desc: 语音网关设备温度，单位为摄氏度。用于识别散热异常、风道堵塞或过热风险。
+    device_psu_state:
+      name: 电源状态
+      desc: 语音网关电源状态，归一后 1 表示正常，2 表示异常。
   Minio:
     minio_cluster_capacity_usable_total_bytes_gauge:
       name: 集群可用总容量
@@ -273,6 +325,9 @@ monitor_object_metric:
     system_load15:
       name: 15分钟平均负载
       desc: 表示系统在最近 15 分钟内的平均运行负载，用于评估系统负载的长期稳定性。
+    system_uptime:
+      name: 系统运行时长
+      desc: 表示主机自上次启动以来的持续运行时间（秒），用于观察主机稳定性和识别异常重启。
     host_cpu_core_count:
       name: CPU核心数
       desc: 表示主机可用的逻辑 CPU 核心数量，用于评估计算资源规模和容量基线。
@@ -291,18 +346,30 @@ monitor_object_metric:
     diskio_writes_rate:
       name: 磁盘写入IOPS
       desc: 表示磁盘每秒完成的写入操作次数，用于衡量写入请求的并发强度和 I/O 压力。
+    diskio_writes_total:
+      name: 磁盘写入次数
+      desc: 表示磁盘设备累计完成的写入操作次数，用于分析写入负载总量和变化趋势。
     diskio_write_bytes_rate:
       name: 磁盘写入速率
       desc: 表示磁盘单位时间内写入的数据量，用于评估磁盘写入吞吐能力。
+    diskio_write_bytes_total:
+      name: 磁盘写入字节数
+      desc: 表示磁盘设备累计写入的数据量（字节），用于分析磁盘写入流量规模。
     disk_write_latency:
       name: 磁盘写入延迟
       desc: 表示单次磁盘写入操作的平均耗时，用于分析磁盘写入性能及响应能力。
     diskio_reads_rate:
       name: 磁盘读出IOPS
       desc: 表示磁盘每秒完成的读取操作次数，用于衡量读请求的并发程度和 I/O 压力。
+    diskio_reads_total:
+      name: 磁盘读取次数
+      desc: 表示磁盘设备累计完成的读取操作次数，用于分析读取负载总量和变化趋势。
     diskio_read_bytes_rate:
       name: 磁盘读出速率
       desc: 表示磁盘单位时间内读取的数据量，用于评估磁盘读取吞吐能力。
+    diskio_read_bytes_total:
+      name: 磁盘读取字节数
+      desc: 表示磁盘设备累计读取的数据量（字节），用于分析磁盘读取流量规模。
     disk_read_latency:
       name: 磁盘读出延迟
       desc: 表示单次磁盘读取操作的平均耗时，用于分析磁盘读取性能和访问延迟。
@@ -375,9 +442,15 @@ monitor_object_metric:
     net_packets_recv_rate:
       name: 网络接收包速率
       desc: 表示网络接口单位时间内接收的数据包数量，用于衡量网络包级流量情况。
+    net_packets_recv_total:
+      name: 网络接收包数
+      desc: 表示网络接口累计接收的数据包数量，用于分析网络接收流量规模。
     net_packets_sent_rate:
       name: 网络发送包速率
       desc: 表示网络接口单位时间内发送的数据包数量。
+    net_packets_sent_total:
+      name: 网络发送包数
+      desc: 表示网络接口累计发送的数据包数量，用于分析网络发送流量规模。
     net_bytes_recv_rate:
       name: 网络接收吞吐速率
       desc: 表示网络接口单位时间内接收的数据量，用于评估网络接收带宽使用情况。
@@ -405,9 +478,15 @@ monitor_object_metric:
     net_drop_in_rate:
       name: 网络接收丢包速率
       desc: 表示网络接口单位时间内被丢弃的接收数据包数量，用于评估网络拥塞或异常情况。
+    net_drop_in_total:
+      name: 网络接收丢包数
+      desc: 表示网络接口累计丢弃的接收数据包数量，用于定位链路拥塞、缓冲区不足或驱动异常。
     net_drop_out_rate:
       name: 网络发送丢包速率
       desc: 表示网络接口单位时间内被丢弃的发送数据包数量。
+    net_drop_out_total:
+      name: 网络发送丢包数
+      desc: 表示网络接口累计丢弃的发送数据包数量，用于辅助排查网络发送路径异常。
     nvidia_smi_memory_total:
       name: GPU显存总容量
       desc: 表示 GPU 可用的显存总容量，是 GPU 资源评估的基础指标。
@@ -687,10 +766,10 @@ monitor_object_metric:
       desc: 该指标表示设备自上次启动以来的运行时间。通过监测设备的运行时间，网络管理员可以了解到设备的稳定性及可靠性，识别潜在的重启或故障问题。
     device_flow_bytes_rate:
       name: 设备 Flow 总流量速率
-      desc: 基于 Flow 记录和生效采样率换算后的设备总流量速率，用于观察整体带宽压力和容量趋势。
+      desc: 按当前协议指标契约从 Flow 记录估算出的设备总流量速率，用于观察整体带宽压力和容量趋势。
     device_flow_packets_rate:
       name: 设备 Flow 总包速率
-      desc: 基于 Flow 记录和生效采样率换算后的设备总包速率，用于观察包级负载和突增流量。
+      desc: 按当前协议指标契约从 Flow 记录估算出的设备总包速率，用于观察包级负载和突增流量。
     device_flow_in_bytes_rate:
       name: 设备 Flow 入方向流量速率
       desc: 基于 Flow 记录换算并归属到输入侧数据的流量速率；具体协议的接口方向请以接口指标为准。
@@ -705,7 +784,7 @@ monitor_object_metric:
       desc: 基于 Flow 记录换算并归属到输出侧数据的包速率；具体协议的接口方向请以接口指标为准。
     device_flow_avg_packet_size:
       name: 设备 Flow 平均包大小
-      desc: 由采样率归一化后的字节数和包数计算出的平均包大小，可辅助识别小包风暴或大包传输特征。
+      desc: 基于 Flow 记录计算出的平均包大小或采样帧长，可辅助识别小包风暴或大包传输特征。
     device_flow_effective_sampling_rate:
       name: 设备 Flow 生效采样率
       desc: 当前 Flow 数据计算使用的生效采样率，优先取设备上报字段，缺失时使用资产兜底采样率。
@@ -825,6 +904,15 @@ monitor_object_metric:
     device_temperature_celsius:
       name: 设备温度
       desc: 该指标报告设备硬件温度传感器读数，单位摄氏度。温度异常升高可能由风扇故障、散热不良或环境温度过高导致，严重时触发热保护或损坏硬件。
+    device_swap_usage:
+      name: Swap 使用率
+      desc: 该指标报告防火墙的 Swap（交换分区）使用率，0~100 直接百分比。Swap 持续被占用通常意味着物理内存耗尽，会拖慢会话处理性能。
+    device_disk_usage:
+      name: 磁盘使用率
+      desc: 该指标报告防火墙的磁盘空间使用率，0~100 直接百分比。磁盘将满会阻碍日志记录与配置变更，并可能导致设备不稳定。
+    device_web_users:
+      name: 已登录 Web 用户数
+      desc: 该指标报告网关当前已登录的 Web 用户数量。跟踪活动会话数有助于容量规划与发现异常连接激增。
     device_psu_state:
       name: 电源状态
       desc: 该指标报告设备电源模块的运行状态（枚举）。非正常状态表示电源冗余或硬件故障；在冗余电源设备上单个故障会移除冗余，需尽快处理。
@@ -944,10 +1032,10 @@ monitor_object_metric:
       desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率，单位为字节每秒。通过对多个接口的发送字节进行汇总，管理员可以全面评估整个系统的发送性能，从而进行更有效的流量管理和优化。
     device_flow_bytes_rate:
       name: 设备 Flow 总流量速率
-      desc: 基于 Flow 记录和生效采样率换算后的设备总流量速率，用于观察整体带宽压力和容量趋势。
+      desc: 按当前协议指标契约从 Flow 记录估算出的设备总流量速率，用于观察整体带宽压力和容量趋势。
     device_flow_packets_rate:
       name: 设备 Flow 总包速率
-      desc: 基于 Flow 记录和生效采样率换算后的设备总包速率，用于观察包级负载和突增流量。
+      desc: 按当前协议指标契约从 Flow 记录估算出的设备总包速率，用于观察包级负载和突增流量。
     device_flow_in_bytes_rate:
       name: 设备 Flow 入方向流量速率
       desc: 基于 Flow 记录换算并归属到输入侧数据的流量速率；具体协议的接口方向请以接口指标为准。
@@ -962,7 +1050,7 @@ monitor_object_metric:
       desc: 基于 Flow 记录换算并归属到输出侧数据的包速率；具体协议的接口方向请以接口指标为准。
     device_flow_avg_packet_size:
       name: 设备 Flow 平均包大小
-      desc: 由采样率归一化后的字节数和包数计算出的平均包大小，可辅助识别小包风暴或大包传输特征。
+      desc: 基于 Flow 记录计算出的平均包大小或采样帧长，可辅助识别小包风暴或大包传输特征。
     device_flow_effective_sampling_rate:
       name: 设备 Flow 生效采样率
       desc: 当前 Flow 数据计算使用的生效采样率，优先取设备上报字段，缺失时使用资产兜底采样率。
@@ -1358,6 +1446,33 @@ monitor_object_metric:
       name: 接口每秒发送流量
       desc: 该指标计算过去5分钟内发送的字节数的平均速率，单位为兆字节（MB）。监测发送流量对于确保数据传输质量和优化网络性能非常重要。
   Storage:
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: 该指标表示存储设备控制器的 CPU 使用率，单位为百分比，数据来源于厂商私有 SNMP OID 并归一化为 0-100。CPU 持续偏高可能意味着控制器过载、IO 处理繁重或后台阵列重建，可能导致主机 IO 响应变慢。
+    device_memory_usage:
+      name: 内存使用率
+      desc: 该指标表示存储设备控制器的内存使用率，单位为百分比，数据来源于厂商私有 SNMP OID 并归一化为 0-100。内存持续偏高可能意味着缓存压力或内存泄漏，可能降低 IO 性能或触发控制器切换。
+    device_disk_state:
+      name: 磁盘健康状态
+      desc: 该指标表示存储设备物理磁盘的健康状态，按最差磁盘归一化为 1=正常/2=异常。磁盘降级或损坏会带来数据丢失风险，应立即更换。
+    device_temperature_celsius:
+      name: 温度
+      desc: 该指标表示存储设备机箱温度传感器的读数，单位为摄氏度，数据来源于厂商私有 SNMP OID（直采，无缩放）。温度异常升高可能意味着风扇故障、散热受阻或环境过热，若不处理可能触发热保护或损坏磁盘和硬件。
+    device_fan_state:
+      name: 风扇状态
+      desc: 该指标表示存储设备散热风扇的运行状态，归一化为 1=正常/2=异常。非正常状态表示散热故障，可能迅速导致设备过热，应立即排查。
+    device_psu_state:
+      name: 电源状态
+      desc: 该指标表示存储设备电源模块的运行状态，归一化为 1=正常/2=异常。非正常状态表示电源冗余缺失或硬件故障，需尽快修复。
+    device_raid_state:
+      name: RAID 状态
+      desc: 该指标表示存储设备 RAID/卷阵列的运行状态，按最差阵列归一化为 1=正常/2=异常。阵列降级或损坏会带来数据丢失风险，应立即排查。
+    interface_ifHCInOctets:
+      name: 接口接收流量速率
+      desc: 此指标表示过去5分钟内接收到的字节数的平均速率（来自 64 位 IF-MIB ifHCInOctets 计数器），单位为字节每秒。64 位计数器可避免 32 位 ifInOctets 在高速口上快速回绕，使流量速率更准确。
+    interface_ifHCOutOctets:
+      name: 接口发送流量速率
+      desc: 此指标表示过去5分钟内发送的字节数的平均速率（来自 64 位 IF-MIB ifHCOutOctets 计数器），单位为字节每秒。64 位计数器可避免 32 位 ifOutOctets 在高速口上快速回绕，使流量速率更准确。
     ipmi_power_watts:
       name: 功率
       desc: 功率指标以瓦特 (watts) 为单位，反映设备当前功耗。通过此指标可以评估设备能效和功耗趋势。便于设置节能政策和资源优化。
@@ -2179,10 +2294,10 @@ monitor_object_metric:
       desc: 该指标表示设备风扇的转速（RPM），取各风扇的最大值。转速异常偏低或为 0 表示风扇卡转或故障、设备面临过热风险；转速异常偏高可能是设备在为高温加速散热。对于仅提供转速、无风扇状态枚举的设备，转速是判断风扇健康的唯一依据。
     device_flow_bytes_rate:
       name: 设备 Flow 总流量速率
-      desc: 基于 Flow 记录和生效采样率换算后的设备总流量速率，用于观察整体带宽压力和容量趋势。
+      desc: 按当前协议指标契约从 Flow 记录估算出的设备总流量速率，用于观察整体带宽压力和容量趋势。
     device_flow_packets_rate:
       name: 设备 Flow 总包速率
-      desc: 基于 Flow 记录和生效采样率换算后的设备总包速率，用于观察包级负载和突增流量。
+      desc: 按当前协议指标契约从 Flow 记录估算出的设备总包速率，用于观察包级负载和突增流量。
     device_flow_in_bytes_rate:
       name: 设备 Flow 入方向流量速率
       desc: 基于 Flow 记录换算并归属到输入侧数据的流量速率；具体协议的接口方向请以接口指标为准。
@@ -2197,7 +2312,7 @@ monitor_object_metric:
       desc: 基于 Flow 记录换算并归属到输出侧数据的包速率；具体协议的接口方向请以接口指标为准。
     device_flow_avg_packet_size:
       name: 设备 Flow 平均包大小
-      desc: 由采样率归一化后的字节数和包数计算出的平均包大小，可辅助识别小包风暴或大包传输特征。
+      desc: 基于 Flow 记录计算出的平均包大小或采样帧长，可辅助识别小包风暴或大包传输特征。
     device_flow_effective_sampling_rate:
       name: 设备 Flow 生效采样率
       desc: 当前 Flow 数据计算使用的生效采样率，优先取设备上报字段，缺失时使用资产兜底采样率。
@@ -2240,6 +2355,9 @@ monitor_object_metric:
     device_flow_top_conversation_bytes_rate:
       name: Top 会话 Flow 流量速率
       desc: 按源地址、目的地址、协议和目的端口聚合的会话流量排行，用于定位主要通信关系。
+    device_psu_temperature_celsius:
+      name: 电源温度
+      desc: 采集 IP Infusion (OcNOS) 设备机箱级 PSU 1 温度传感器读数（IPI-CMM-CHASSIS-MIB cmmSysPSTemperature1），单位摄氏度。用于监测电源模块工作温度，过高温度可能提示散热不良、风扇故障或环境过热，存在触发热保护或硬件损坏风险。
   Router:
     device_temperature_celsius:
       name: 设备温度
@@ -2315,10 +2433,10 @@ monitor_object_metric:
       desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率，单位为字节每秒。通过对多个接口的发送字节进行汇总，管理员可以全面评估整个系统的发送性能，从而进行更有效的流量管理和优化。
     device_flow_bytes_rate:
       name: 设备 Flow 总流量速率
-      desc: 基于 Flow 记录和生效采样率换算后的设备总流量速率，用于观察整体带宽压力和容量趋势。
+      desc: 按当前协议指标契约从 Flow 记录估算出的设备总流量速率，用于观察整体带宽压力和容量趋势。
     device_flow_packets_rate:
       name: 设备 Flow 总包速率
-      desc: 基于 Flow 记录和生效采样率换算后的设备总包速率，用于观察包级负载和突增流量。
+      desc: 按当前协议指标契约从 Flow 记录估算出的设备总包速率，用于观察包级负载和突增流量。
     device_flow_in_bytes_rate:
       name: 设备 Flow 入方向流量速率
       desc: 基于 Flow 记录换算并归属到输入侧数据的流量速率；具体协议的接口方向请以接口指标为准。
@@ -2333,7 +2451,7 @@ monitor_object_metric:
       desc: 基于 Flow 记录换算并归属到输出侧数据的包速率；具体协议的接口方向请以接口指标为准。
     device_flow_avg_packet_size:
       name: 设备 Flow 平均包大小
-      desc: 由采样率归一化后的字节数和包数计算出的平均包大小，可辅助识别小包风暴或大包传输特征。
+      desc: 基于 Flow 记录计算出的平均包大小或采样帧长，可辅助识别小包风暴或大包传输特征。
     device_flow_effective_sampling_rate:
       name: 设备 Flow 生效采样率
       desc: 当前 Flow 数据计算使用的生效采样率，优先取设备上报字段，缺失时使用资产兜底采样率。
@@ -2414,6 +2532,16 @@ monitor_object_metric:
     ping_ttl:
       name: 生存时间(TTL)
       desc: 接收到的ICMP响应包的生存时间值，反映数据包经过的网络跳数
+  TCPPort:
+    net_response_response_time:
+      name: 响应时间
+      desc: TCP建立连接的往返耗时（毫秒）。net_response原始输出为秒，查询时乘以1000换算为毫秒展示，数值越大表示连接越慢或网络延迟越高。
+    net_response_result_code:
+      name: 探测结果码
+      desc: TCP探测的结果码。0表示成功，1表示连接超时，2表示连接失败，3表示读取失败，4表示返回内容与期望串不匹配。非0均代表探测异常。
+    net_response_string_found:
+      name: 返回匹配
+      desc: 是否在响应内容中匹配到期望字符串。仅在配置了期望返回串时上报，1表示命中，0表示未命中。
   Nginx:
     nginx_active:
       name: 活跃连接数
@@ -3341,32 +3469,38 @@ monitor_object_metric:
       name: 运行时堆内存分配
       desc: Go 运行时当前已分配且正在使用的堆内存大小。
 monitor_object_metric_group:
-  IBMMQ:
-    Base: 基础信息
-    Status: 状态
-    Resource: 资源
-    Log: 日志
-    Queue: 队列
-    Topic: 主题
-    Subscription: 订阅
   Wireless:
     Base: 基础
     Traffic: 流量
+    Wireless: 无线
+    Temperature: 温度
   Transmission:
     Base: 基础
     Traffic: 流量
+    CPU: CPU
+    Memory: 内存
+    Temperature: 温度
+    Hardware Status: 硬件状态
   Access:
     Base: 基础
     Traffic: 流量
+    Access: 接入设备
+    Temperature: 温度
+    Hardware Status: 硬件状态
   ConsoleServer:
     Base: 基础
     Traffic: 流量
+    Temperature: 温度
+    Hardware Status: 硬件状态
   NetworkService:
     Base: 基础
     Traffic: 流量
+    NetworkService: 网络服务
   VoiceGateway:
     Base: 基础
     Traffic: 流量
+    Temperature: 温度
+    Hardware Status: 硬件状态
   Dameng:
     Base: 基础
     Session: 会话
@@ -3456,6 +3590,10 @@ monitor_object_metric_group:
     StubStatus: Stub状态
     Performance: 性能
   Router:
+    CPU: CPU
+    Memory: 内存
+    Temperature: 温度
+    Hardware Status: 硬件状态
     Packet Loss: 数据包丢失
     Traffic: 流量
     Packet Error: 数据包错误
@@ -3490,8 +3628,10 @@ monitor_object_metric_group:
     Disk IO: 磁盘 IO
     Disk: 磁盘
     Process: 进程
+    Processes: 进程
     Memory: 内存
     Net: 网络
+    Network: 网络
     Nvidia GPU: Nvidia GPU
   Firewall:
     Packet: 数据包
@@ -3501,6 +3641,8 @@ monitor_object_metric_group:
     Status: 状态
     Bandwidth: 带宽
     Traffic: 流量
+    Temperature: 温度
+    Hardware Status: 硬件状态
     Firewall: 防火墙
     Traffic Overview: 流量总览
     Sampling: 采样率
@@ -3539,6 +3681,10 @@ monitor_object_metric_group:
     Packet: 数据包
     Environment: 环境
     Power: 功率
+    CPU: CPU
+    Memory: 内存
+    Temperature: 温度
+    Hardware Status: 硬件状态
     Traffic: 流量
     Packet Loss: 数据包丢失
     Status: 状态
@@ -3621,6 +3767,8 @@ monitor_object_metric_group:
     Packet: 数据包
     Bandwidth: 带宽
     Status: 状态
+    Temperature: 温度
+    Hardware Status: 硬件状态
     Packet Error: 数据包错误
     Loadbalance: 负载均衡
     Traffic Overview: 流量总览
@@ -3704,6 +3852,8 @@ monitor_object_metric_group:
     Service: 服务状态
   Ping:
     Ping: Ping
+  TCPPort:
+    TCPPort: TCP
   SNMP Trap: None
   Website:
     HTTP: HTTP
@@ -3726,33 +3876,288 @@ monitor_object_metric_group:
     写入稳定性: 写入稳定性
     运行时: 运行时
 monitor_object_plugin:
-  IBM-MQ-Exporter:
-    name: IBM MQ（Exporter）
-    desc: 通过 IBM MQ Exporter 采集器以 MQI 客户端方式连接队列管理器，定期采集队列管理器、队列、主题与订阅的状态、积压及资源使用等指标，帮助监控消息队列的可用性与性能。需在节点预装 IBM MQ redistributable client（/opt/mqm）。
-  IBMMQ:
-    name: IBM MQ（Exporter）
-    desc: 通过 IBM MQ Exporter 采集器以 MQI 客户端方式连接队列管理器，定期采集队列管理器、队列、主题与订阅的状态、积压及资源使用等指标，帮助监控消息队列的可用性与性能。需在节点预装 IBM MQ redistributable client（/opt/mqm）。
   Wireless Cambium SNMP:
     name: Cambium (Telegraf)
-    desc: 无线设备 SNMP 采集基线模板（接口流量 + 运行时长）。采集 IF-MIB 64 位 HC 接口流量计数器（ifHCInOctets/ifHCOutOctets，ifXTable）速率与设备运行时长（sysUpTime）。无线信号强度/SNR/关联客户端数等健康指标因 Cambium 私有 MIB 采用 per-row 索引表（按射频单元/SSID/客户端逐行）并需行级过滤（skip_values），而 telegraf inputs.snmp 不支持行级过滤，故为 N/A，不伪造。适用品牌型号——Cambium Networks 无线设备（cnPilot/ePMP/PMP 系列，企业号 17713）及其他遵循 IF-MIB 标准的无线 AP/网桥。
+    desc: 面向 Cambium 无线设备的 SNMP 监控模板,可采集 运行时长、每端口入向流量速率和每端口出向流量速率。
+  Switch WAGO SNMP:
+    name: WAGO（Telegraf）
+    desc: 面向 WAGO 交换机的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 13576）。
+  Switch Weidmuller SNMP:
+    name: Weidmuller（Telegraf）
+    desc: 面向 Weidmuller 交换机的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 38187）。
   Wireless Proxim SNMP:
     name: Proxim (Telegraf)
-    desc: 无线设备 SNMP 采集基线模板（接口流量 + 运行时长）。采集 IF-MIB 64 位 HC 接口流量计数器（ifHCInOctets/ifHCOutOctets，ifXTable）速率与设备运行时长（sysUpTime）。无线信号强度/SNR/远端订户单元等健康指标因 Proxim ORiNOCO/Tsunami 私有 MIB 采用 per-row 索引表（按射频单元/订户单元逐行）并需行级过滤（skip_values），而 telegraf inputs.snmp 不支持行级过滤；LibreNMS 亦无 Proxim 的 processors/mempools/sensors 发现定义，仅有 ORiNOCO-MIB 用于 OS 识别，故无线健康为 N/A，不伪造。适用品牌型号——Proxim Wireless 无线设备（ORiNOCO AP 系列接入点、Tsunami MP 点对多点回传基站/订户单元，企业号 841）及其他遵循 IF-MIB 标准的无线 AP/回传网桥。
+    desc: 面向 Proxim 无线设备的 SNMP 监控模板,可采集 运行时长、每端口入向流量速率和每端口出向流量速率。
+  Wireless ASCOM SNMP:
+    name: Ascom（Telegraf）
+    desc: 面向 Ascom 无线设备的 SNMP 监控模板,可采集 运行时长、每端口入向流量速率和每端口出向流量速率（企业号 PEN 27614）。
+  Wireless Albentia SNMP:
+    name: Albentia（Telegraf）
+    desc: 面向 Albentia 无线设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 28087）。
+  Wireless LigoWave SNMP:
+    name: LigoWave（Telegraf）
+    desc: 面向 LigoWave 无线设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 32750）。
+  Wireless Radwin SNMP:
+    name: Radwin（Telegraf）
+    desc: 面向 Radwin 无线设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 4458）。
+  Wireless Mimosa SNMP:
+    name: Mimosa（Telegraf）
+    desc: 面向 Mimosa 无线设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 43356）。
+  Wireless Airspan SNMP:
+    name: Airspan（Telegraf）
+    desc: 面向 Airspan 无线设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 1803）。
+  Wireless ACKSYS SNMP:
+    name: ACKSYS（Telegraf）
+    desc: 面向 ACKSYS 无线设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  Wireless Xirrus SNMP:
+    name: Xirrus（Telegraf）
+    desc: 面向 Xirrus 无线设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 21013）。
+  Wireless ProSoft Technology SNMP:
+    name: ProSoft Technology（Telegraf）
+    desc: 面向 ProSoft 无线设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  Wireless Grandstream SNMP:
+    name: Grandstream（Telegraf）
+    desc: 面向 Grandstream 无线设备的 SNMP 监控模板,可采集 运行时长、每端口入向流量速率和每端口出向流量速率（企业号 PEN 42397）。
+  Wireless Aerohive SNMP:
+    name: Aerohive（Telegraf）
+    desc: 面向 Aerohive 无线设备的 SNMP 监控模板,可采集 运行时长、CPU 使用率、内存使用率等主要指标（企业号 PEN 26928）。
+  Wireless EnGenius SNMP:
+    name: EnGenius（Telegraf）
+    desc: 面向 EnGenius 无线设备的 SNMP 监控模板,可采集 运行时长、每端口入向流量速率和每端口出向流量速率。
   Transmission Ciena SNMP:
     name: Ciena (Telegraf)
-    desc: 采 IF-MIB 64位 HC 接口流量（ifHCInOctets/ifHCOutOctets）+ 运行时长；Ciena SAOS 传输设备的温度/光模块光功率/激光偏置电流等健康指标因 MIB 为 per-row 索引表带行级过滤（skip_values），telegraf inputs.snmp 不能行级过滤，故为 N/A。适用品牌型号——Ciena SAOS 传输/分组光设备（3000/5000/6500 系列，企业号 1271）及其他 IF-MIB 标准传输设备。
+    desc: 面向 Ciena 传输设备的 SNMP 监控模板,可采集 运行时长、每端口入向流量速率和每端口出向流量速率。
+  Transmission SAF Tehnika SNMP:
+    name: SAF Tehnika（Telegraf）
+    desc: 面向 SAF Tehnika 传输设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 19011）。
+  Transmission PacketLight SNMP:
+    name: PacketLight（Telegraf）
+    desc: 面向 PacketLight 传输设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 4515）。
+  Transmission Pan Dacom SNMP:
+    name: Pan Dacom（Telegraf）
+    desc: 面向 Pan Dacom 传输设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  Transmission Tachyon SNMP:
+    name: Tachyon（Telegraf）
+    desc: 面向 Tachyon 传输设备的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率等主要指标。
+  Transmission XKL SNMP:
+    name: XKL（Telegraf）
+    desc: 面向 XKL 传输设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  Transmission Siklu SNMP:
+    name: Siklu（Telegraf）
+    desc: 面向 Siklu 传输设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 31926）。
+  Transmission 4RF Aprisa SNMP:
+    name: 4RF Aprisa（Telegraf）
+    desc: 面向 4RF Aprisa 传输设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 14817）。
+  Transmission Viavi SNMP:
+    name: Viavi（Telegraf）
+    desc: 面向 Viavi 传输设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 26052）。
+  Transmission Sycamore SNMP:
+    name: Sycamore（Telegraf）
+    desc: 面向 Sycamore 传输设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 2411）。
+  Transmission Redline SNMP:
+    name: Redline（Telegraf）
+    desc: 面向 Redline 传输设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 10728）。
+  Transmission DragonWave SNMP:
+    name: DragonWave（Telegraf）
+    desc: 面向 DragonWave 传输设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 7262）。
+  Transmission Ericsson SNMP:
+    name: Ericsson（Telegraf）
+    desc: 面向 Ericsson 传输设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 193）。
+  Transmission Ekinops SNMP:
+    name: Ekinops（Telegraf）
+    desc: 面向 Ekinops 传输设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 20044）。
+  Transmission Infinera SNMP:
+    name: Infinera（Telegraf）
+    desc: 面向 Infinera 传输设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  Transmission BridgeWave SNMP:
+    name: BridgeWave（Telegraf）
+    desc: 面向 BridgeWave 传输设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  Transmission Fibrolan SNMP:
+    name: Fibrolan（Telegraf）
+    desc: 面向 Fibrolan 传输设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  Transmission Exalt SNMP:
+    name: Exalt（Telegraf）
+    desc: 面向 Exalt 传输设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  Transmission Smartoptics SNMP:
+    name: Smartoptics（Telegraf）
+    desc: 面向 Smartoptics 传输设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 30826）。
+  Transmission RACOM SNMP:
+    name: RACOM（Telegraf）
+    desc: 面向 RACOM 传输设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 33555）。
   Access BDCOM SNMP:
     name: BDCOM (Telegraf)
-    desc: BDCOM 接入设备专用 SNMP 采集模板。仅采集标准 IF-MIB 64 位 HC 接口流量（ifHCInOctets/ifHCOutOctets，ifXTable）与设备运行时长（sysUpTime），并据此汇总设备入向/出向总流量速率。BDCOM 接入设备（OLT/交换机）的光功率、PON 口、温度等健康指标因其 MIB 为 per-row 索引表并带行级过滤（skip_values），而 inputs.snmp 不支持行级过滤，故为 N/A。适用品牌型号——BDCOM 接入设备/OLT（GP/EP 系列，企业号 3320）及其他 IF-MIB 标准接入交换机/OLT。
+    desc: 面向 BDCOM 接入设备的 SNMP 监控模板,可采集 运行时长、每端口入向流量速率和每端口出向流量速率。
+  Access V-SOL SNMP:
+    name: V-SOL（Telegraf）
+    desc: 面向 V-SOL 接入设备的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率等主要指标。
+  Access ARRIS Cadant SNMP:
+    name: ARRIS Cadant（Telegraf）
+    desc: 面向 ARRIS Cadant 接入设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 4998）。
+  Access FiberHome OLT SNMP:
+    name: 烽火 FiberHome OLT（Telegraf）
+    desc: 面向 FiberHome OLT 接入设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  Access Zhone DZS SNMP:
+    name: Zhone DZS（Telegraf）
+    desc: 面向 Zhone DZS 接入设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 6296）。
+  Access UTStarcom SNMP:
+    name: UTStarcom（Telegraf）
+    desc: 面向 UTStarcom 接入设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 4666）。
+  Access Raisecom SNMP:
+    name: Raisecom（Telegraf）
+    desc: 面向 Raisecom 接入设备的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率等主要指标（企业号 PEN 8886）。
+  Access PacketFront SNMP:
+    name: PacketFront（Telegraf）
+    desc: 面向 PacketFront 接入设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  Access C-Data SNMP:
+    name: C-Data（Telegraf）
+    desc: 面向 C-Data 接入设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  Access Casa Systems SNMP:
+    name: Casa Systems（Telegraf）
+    desc: 面向 Casa Systems 接入设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  Access Topvision SNMP:
+    name: Topvision（Telegraf）
+    desc: 面向 Topvision 接入设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 32285）。
+  Access Icotera SNMP:
+    name: Icotera（Telegraf）
+    desc: 面向 Icotera 接入设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 29865）。
+  Access Nateks SNMP:
+    name: Nateks（Telegraf）
+    desc: 面向 Nateks 接入设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 4249）。
+  Access Harmonic SNMP:
+    name: Harmonic（Telegraf）
+    desc: 面向 Harmonic 接入设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 1563）。
+  Access RAD SNMP:
+    name: RAD（Telegraf）
+    desc: 面向 RAD 接入设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 164）。
   ConsoleServer Opengear SNMP:
     name: Opengear (Telegraf)
-    desc: Opengear 控制台服务器专用 SNMP 采集模板。采集标准 IF-MIB 接口流量(64 位 ifHCInOctets/ifHCOutOctets,自动展开各接口)与设备运行时长(uptime),作为该控制台服务器对象的基础监控能力。Opengear 私有健康指标多为 per-row 索引表(行级过滤),telegraf 采集端暂不支持,后续按官方 MIB 补充。适用品牌型号——Opengear 控制台服务器系列。
+    desc: 面向 Opengear 控制台服务器的 SNMP 监控模板,可采集 运行时长、每端口入向流量速率和每端口出向流量速率。
+  ConsoleServer WTI SNMP:
+    name: WTI 控制台服务器（Telegraf）
+    desc: 面向 WTI 控制台服务器的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  ConsoleServer Avocent ACS SNMP:
+    name: Avocent ACS 控制台服务器（Telegraf）
+    desc: 面向 Avocent ACS 控制台服务器的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  ConsoleServer Perle IOLAN SNMP:
+    name: Perle IOLAN 控制台服务器（Telegraf）
+    desc: 面向 Perle IOLAN 控制台服务器的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  ConsoleServer Raritan SX SNMP:
+    name: Raritan SX 控制台服务器（Telegraf）
+    desc: 面向 Raritan SX 控制台服务器的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  ConsoleServer Lantronix SLC SNMP:
+    name: Lantronix SLC 控制台服务器（Telegraf）
+    desc: 面向 Lantronix SLC 控制台服务器的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
   NetworkService Infoblox SNMP:
     name: Infoblox (Telegraf)
-    desc: Infoblox NIOS 网络服务设备专用 SNMP 采集模板。采 IF-MIB 64 位 HC 接口流量（ifHCInOctets/ifHCOutOctets，ifXTable）+ 运行时长（sysUpTime）。Infoblox NIOS 的 DNS/DHCP 服务统计、节点 CPU/内存为 per-row 索引表 / 服务计数带行级过滤（skip_values），inputs.snmp 不能行级过滤，故为 N/A。适用品牌型号——Infoblox NIOS 网络服务设备 (DNS/DHCP/IPAM 一体机，企业号 7779) 及其他 IF-MIB 标准网络服务设备。
+    desc: 面向 Infoblox 网络服务设备的 SNMP 监控模板,可采集 运行时长、每端口入向流量速率和每端口出向流量速率。
+  NetworkService Gigamon SNMP:
+    name: Gigamon（Telegraf）
+    desc: 面向 Gigamon 网络服务设备的 SNMP 监控模板,可采集 运行时长、CPU 使用率、内存使用率等主要指标。
+  NetworkService Accedian SNMP:
+    name: Accedian（Telegraf）
+    desc: 面向 Accedian 网络服务设备的 SNMP 监控模板,可采集 运行时长、CPU 使用率、每端口入向流量速率等主要指标。
+  NetworkService ZDNS SNMP:
+    name: ZDNS（Telegraf）
+    desc: 面向 ZDNS 网络服务设备的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率等主要指标（企业号 PEN 39810）。
+  NetworkService BlueCat SNMP:
+    name: BlueCat（Telegraf）
+    desc: 面向 BlueCat 网络服务设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  NetworkService Server Technology Sentry3 SNMP:
+    name: Server Technology Sentry3（Telegraf）
+    desc: 面向 Server Technology 网络服务设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  NetworkService Enlogic PDU SNMP:
+    name: Enlogic PDU（Telegraf）
+    desc: 面向 Enlogic PDU 网络服务设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  NetworkService Rittal CMC III SNMP:
+    name: Rittal CMC III（Telegraf）
+    desc: 面向 Rittal CMC III 网络服务设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  NetworkService Gude PDU SNMP:
+    name: Gude PDU（Telegraf）
+    desc: 面向 Gude PDU 网络服务设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  NetworkService Geist PDU Environmental SNMP:
+    name: Geist PDU Environmental（Telegraf）
+    desc: 面向 Geist 网络服务设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  NetworkService Panduit iPDU SNMP:
+    name: Panduit iPDU（Telegraf）
+    desc: 面向 Panduit iPDU 网络服务设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  NetworkService APC UPS PDU Environmental SNMP:
+    name: APC UPS PDU Environmental（Telegraf）
+    desc: 面向 APC 网络服务设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  NetworkService Eaton UPS PDU Environmental SNMP:
+    name: Eaton UPS PDU Environmental（Telegraf）
+    desc: 面向 Eaton 网络服务设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  NetworkService Tripp Lite UPS PDU Environmental SNMP:
+    name: Tripp Lite UPS PDU Environmental（Telegraf）
+    desc: 面向 Tripp Lite 网络服务设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  NetworkService Allot SNMP:
+    name: Allot（Telegraf）
+    desc: 面向 Allot 网络服务设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  NetworkService EfficientIP SNMP:
+    name: EfficientIP（Telegraf）
+    desc: 面向 EfficientIP 网络服务设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  NetworkService Nomadix SNMP:
+    name: Nomadix（Telegraf）
+    desc: 面向 Nomadix 网络服务设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  NetworkService Socomec iPDU UPS SNMP:
+    name: Socomec iPDU UPS（Telegraf）
+    desc: 面向 Socomec iPDU UPS 网络服务设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  NetworkService Liebert PDU UPS Environmental SNMP:
+    name: Liebert PDU UPS Environmental（Telegraf）
+    desc: 面向 Liebert 网络服务设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  NetworkService NTI ENVIROMUX SNMP:
+    name: NTI ENVIROMUX（Telegraf）
+    desc: 面向 NTI ENVIROMUX 网络服务设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  NetworkService Meinberg LANTIME SNMP:
+    name: Meinberg LANTIME（Telegraf）
+    desc: 面向 Meinberg LANTIME 网络服务设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  NetworkService Endace SNMP:
+    name: Endace（Telegraf）
+    desc: 面向 Endace 网络服务设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  NetworkService DEVA Broadcast SNMP:
+    name: DEVA Broadcast（Telegraf）
+    desc: 面向 DEVA Broadcast 网络服务设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  NetworkService EndRun SNMP:
+    name: EndRun（Telegraf）
+    desc: 面向 EndRun 网络服务设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  NetworkService Spectracom SNMP:
+    name: Spectracom（Telegraf）
+    desc: 面向 Spectracom 网络服务设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  NetworkService Asentria SiteBoss SNMP:
+    name: Asentria SiteBoss（Telegraf）
+    desc: 面向 Asentria SiteBoss 网络服务设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
   VoiceGateway AudioCodes SNMP:
     name: AudioCodes (Telegraf)
-    desc: AudioCodes 语音网关SBC专用 SNMP 采集模板。采集标准 IF-MIB 接口流量(64 位 ifHCInOctets/ifHCOutOctets,自动展开各接口)与设备运行时长(uptime),作为该语音网关SBC对象的基础监控能力。AudioCodes 私有健康指标多为 per-row 索引表(行级过滤),telegraf 采集端暂不支持,后续按官方 MIB 补充。适用品牌型号——AudioCodes 语音网关SBC系列。
+    desc: 面向 AudioCodes 语音网关的 SNMP 监控模板,可采集 运行时长、每端口入向流量速率和每端口出向流量速率。
+  VoiceGateway Ribbon SNMP:
+    name: Ribbon（Telegraf）
+    desc: 面向 Ribbon 语音网关的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  VoiceGateway Acme Packet SNMP:
+    name: Acme Packet（Telegraf）
+    desc: 面向 Acme Packet 语音网关的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  VoiceGateway Patton SNMP:
+    name: Patton（Telegraf）
+    desc: 面向 Patton 语音网关的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  VoiceGateway Innovaphone SNMP:
+    name: Innovaphone（Telegraf）
+    desc: 面向 Innovaphone 语音网关的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  VoiceGateway Mitel SNMP:
+    name: Mitel（Telegraf）
+    desc: 面向 Mitel 语音网关的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  VoiceGateway Polycom SNMP:
+    name: Polycom（Telegraf）
+    desc: 面向 Polycom 语音网关的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  VoiceGateway Yeastar SNMP:
+    name: Yeastar（Telegraf）
+    desc: 面向 Yeastar 语音网关的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  VoiceGateway Zenitel SNMP:
+    name: Zenitel（Telegraf）
+    desc: 面向 Zenitel 语音网关的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  VoiceGateway Sangoma Vega SNMP:
+    name: Sangoma Vega（Telegraf）
+    desc: 面向 Sangoma Vega 语音网关的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  VoiceGateway AddPac SNMP:
+    name: AddPac（Telegraf）
+    desc: 面向 AddPac 语音网关的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
   DM-Exporter:
     name: 达梦数据库监控探针
     desc: 通过 DM-Exporter 下发达梦数据库监控探针，采集会话、锁、表空间、内存、慢查询等核心监控指标，帮助快速掌握数据库运行状态与性能变化。
@@ -3782,147 +4187,253 @@ monitor_object_plugin:
     desc: 通过Telegraf采集器定期收集Redis性能及资源使用情况的关键指标。
   Switch SNMP General:
     name: 交换机通用（Telegraf）
-    desc: 通过Telegraf采集器利用SNMP协议定期收集交换机各接口的流量、丢包数、错包数等IF-MIB关键指标。
+    desc: 通过 Telegraf 采集器利用 SNMP 协议定期收集交换机的标准网络接口指标和流量统计,用于查看设备运行状态。
   Switch Cisco SNMP:
     name: 思科（Telegraf）
-    desc: 思科交换机专用 SNMP 采集模板。在标准 IF-MIB 接口指标之外，额外采集思科私有 OID 的设备健康指标：CPU 使用率、内存池、温度传感器、风扇与电源状态。
-      适用品牌型号——Cisco Catalyst 园区交换机（2960/3650/3850/9200/9300/9500 等）及运行 IOS/IOS-XE 的交换机；Nexus(NX-OS) 部分指标兼容。
+    desc: 面向 Cisco 交换机的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率等主要指标。
   Switch Huawei SNMP:
     name: 华为（Telegraf）
-    desc: 华为交换机专用 SNMP 采集模板。在标准 IF-MIB 接口指标之外，额外采集华为私有 OID（HUAWEI-ENTITY-EXTENT-MIB）的设备健康指标：CPU 使用率、内存使用率、温度传感器与风扇状态。华为以利用率百分比直接上报内存，且该模板未提供电源状态 OID。
-      适用品牌型号——华为 S 系列园区交换机（S5700/S6700/S7700/S9300 等）及 CloudEngine CE 系列。
+    desc: 面向 Huawei 交换机的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率等主要指标。
   Switch Aruba SNMP:
     name: Aruba（Telegraf）
-    desc: Aruba 交换机专用 SNMP 采集模板（ArubaOS-CX）。在标准 IF-MIB 接口指标之外，额外采集 ARUBAWIRED 私有 OID 的设备健康指标：各模块 CPU 与内存使用率、温度传感器、风扇与电源状态。Aruba 以利用率百分比直接上报内存；风扇/电源状态已归一化为统一的 1=正常 约定。
-      适用品牌型号——Aruba / HPE ArubaOS-CX 与 ArubaOS-Switch（部分原 HP ProCurve，2530/2930/3810/5400/6300/8300 等）。
+    desc: 面向 Aruba 交换机的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率等主要指标。
   Switch Juniper SNMP:
     name: Juniper（Telegraf）
-    desc: Juniper 交换机专用 SNMP 采集模板（Junos）。在标准 IF-MIB 接口指标之外，额外采集 JUNIPER-MIB jnxOperating 私有 OID 的设备健康指标：CPU 与内存缓冲使用率、温度传感器、风扇与电源状态。Juniper 以利用率百分比直接上报内存；风扇/电源的 jnxOperatingState 已归一化为统一的 1=正常 约定。
-      适用品牌型号——Juniper EX 系列园区交换机（EX2300/3400/4300/4600 等，Junos）。
+    desc: 面向 Juniper 交换机的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、运行时长等主要指标。
   Switch Extreme SNMP:
     name: Extreme（Telegraf）
-    desc: Extreme Networks 交换机专用 SNMP 采集模板（EXOS）。在标准 IF-MIB 接口指标之外，额外采集 EXTREME-SYSTEM-MIB 私有 OID 的设备健康指标：CPU 使用率、系统内存（总量/空闲）、温度、风扇与电源状态。内存使用率按 (总量-空闲)/总量 计算；风扇/电源状态已归一化为统一的 1=正常 约定。
-      适用品牌型号——Extreme Networks ExtremeXOS(EXOS) 交换机（X440/X460/X670/X690 等）。
+    desc: 面向 Extreme 交换机的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率等主要指标。
   Switch Brocade SNMP:
     name: Brocade（Telegraf）
-    desc: Brocade/Foundry 交换机专用 SNMP 采集模板（FastIron/NetIron）。在标准 IF-MIB 接口指标之外，额外采集 FOUNDRY-SN-AGENT-MIB 私有 OID 的设备健康指标：1 分钟平均 CPU 使用率、动态内存使用率、机箱温度传感器、风扇与电源状态。Brocade 以利用率百分比直接上报 CPU 与内存；风扇/电源状态已归一化为统一的 1=正常 约定。
-      适用品牌型号——Brocade ICX/FCX/NetIron、Ruckus ICX（原 Brocade ICX，运行 FastIron）、Foundry/IronWare 交换机——均使用同一套 FOUNDRY-SN-AGENT-MIB（企业号 1991）；Ruckus ICX 用户直接选用本模板即可监控。
+    desc: 面向 Brocade 交换机的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率等主要指标。
   Switch Alcatel-Lucent SNMP:
     name: Alcatel-Lucent（Telegraf）
-    desc: Alcatel-Lucent (Nokia) TiMOS 交换机专用 SNMP 采集模板。在标准 IF-MIB 接口指标之外，额外采集 TIMETRA-CHASSIS-MIB 私有 OID 的设备健康指标：CPU 使用率、系统内存池（已用/空闲字节）、硬件温度传感器、风扇与电源状态。内存使用率按 used/(used+free) 计算；风扇/电源状态（TmnxDeviceState）已归一化为统一的 1=正常 约定。适用品牌型号——Nokia/Alcatel-Lucent 7750 SR、7450 ESS、7950 XRS 及 Nokia SR Linux 数据中心交换机（SR-OS/TiMOS/SR Linux，均暴露 TIMETRA MIB，企业号 6527）；不含 Alcatel OmniSwitch（企业号 6486）。
-      适用品牌型号——Alcatel-Lucent / Nokia 业务路由器 7750 SR、7450 ESS、7950 XRS 等（SR-OS/TiMOS，企业号 6527）；不适用于 Alcatel OmniSwitch（企业号 6486，OID 不同）。
+    desc: 面向 Alcatel-Lucent 交换机的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率等主要指标。
   Switch MikroTik SNMP:
     name: MikroTik（Telegraf）
-    desc: MikroTik (RouterOS) 交换机专用 SNMP 采集模板（当前挂载于交换机对象）。在标准 IF-MIB 接口指标之外，额外采集 HOST-RESOURCES 与 MIKROTIK-MIB 的设备健康指标：每核 CPU 使用率、系统内存（已用/总量）、板载温度。MikroTik 风扇以原始 RPM 上报（非状态）、且电源无标准化状态 OID，故风扇/电源健康不采集（N/A）。内存使用率按 used/total 计算。
-      适用品牌型号——MikroTik RouterOS 设备（CRS/CCR/RB 系列）。
+    desc: 面向 MikroTik 交换机的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率等主要指标。
   Switch D-Link SNMP:
     name: D-Link（Telegraf）
-    desc: D-Link DES/DGS 交换机专用 SNMP 采集模板（EQUIPMENT-MIB，企业号 171）。在标准 IF-MIB 接口指标之外，额外采集 D-Link 私有 OID 的设备健康指标：CPU 使用率、内存使用率、温度传感器、风扇与电源状态。D-Link 以利用率百分比直接上报 CPU 与内存；风扇状态原生 1=正常，电源状态已归一化为统一的 1=正常 约定。
-      适用品牌型号——D-Link DES / DGS 系列及 DES-7200（均为 D-Link 企业号 171；具体健康 OID 因型号略异，以现网为准）。
+    desc: 面向 D-Link 交换机的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率等主要指标。
   Switch Netgear SNMP:
     name: Netgear（Telegraf）
-    desc: Netgear (FASTPATH) 交换机专用 SNMP 采集模板。在标准 IF-MIB 接口指标之外，额外采集 FASTPATH-BOXSERVICES 私有 OID 的设备健康指标：CPU 使用率、系统内存（总量/空闲）、温度传感器、风扇与电源状态。内存使用率按 (总量-空闲)/总量 计算；风扇与电源状态原生 1=正常。
-      适用品牌型号——NETGEAR 智能/全网管交换机（GS/M 系列等）。
+    desc: 面向 Netgear 交换机的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率等主要指标。
   Switch TP-Link SNMP:
     name: TP-Link（Telegraf）
-    desc: TP-Link (JetStream) 交换机专用 SNMP 采集模板（TPLINK 私有 MIB，企业号 11863）。在标准 IF-MIB 接口指标之外，额外采集 TP-Link 私有 OID 的设备健康指标：CPU 与内存使用率，均以利用率百分比直接上报。TP-Link 中小企业交换机无温度/风扇/电源传感器 OID，故此类健康项不采集（N/A）。
-      适用品牌型号——TP-Link JetStream 网管交换机（T1500/T1600/T2600 系列等）。
+    desc: 面向 TP-Link 交换机的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率等主要指标。
   Switch Zyxel SNMP:
     name: Zyxel（Telegraf）
-    desc: Zyxel 交换机专用 SNMP 采集模板（ZYXEL 私有 MIB，企业号 890）。在标准 IF-MIB 接口指标之外，额外采集 Zyxel 私有 OID 的设备健康指标：CPU 使用率（百分比直报）与硬件温度传感器。Zyxel 风扇以原始 RPM 上报（非状态）、且该交换机线无内存利用率与电源状态 OID，故此类健康项不采集（N/A）。
-      适用品牌型号——Zyxel GS/XGS/XS 系列网管交换机。
+    desc: 面向 Zyxel 交换机的 SNMP 监控模板,可采集 CPU 使用率、每端口入向流量速率、每端口出向流量速率等主要指标。
   Switch QTech SNMP:
     name: QTech（Telegraf）
-    desc: QTech (QSW) 交换机专用 SNMP 采集模板（QTECH-MIB，企业号 27514）。在标准 IF-MIB 接口指标之外，额外采集 QTech 私有 OID 的设备健康指标：CPU 使用率、系统内存（已用/总量）、温度、风扇与电源状态。内存使用率按 used/total 计算；风扇/电源状态（原生 0=正常）已归一化为统一的 1=正常 约定。
-      适用品牌型号——QTech QSW 系列交换机。
+    desc: 面向 QTech 交换机的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率等主要指标。
   Switch Dell Force10 SNMP:
     name: Dell Force10（Telegraf）
-    desc: Dell Force10 (S-Series) 交换机专用 SNMP 采集模板（F10-S-SERIES-CHASSIS-MIB，企业号 6027）。在标准 IF-MIB 接口指标之外，额外采集 Dell Force10 私有 OID 的设备健康指标：每处理器 CPU 与内存使用率、每堆叠单元温度、风扇托盘与电源状态。CPU 与内存以利用率百分比直接上报；风扇/电源状态已归一化为统一的 1=正常 约定。
-      适用品牌型号——Dell Networking / Force10（PowerSwitch S/Z 系列，FTOS/OS9，企业号 6027）。
+    desc: 面向 Dell 交换机的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率等主要指标。
   Switch HP ProCurve SNMP:
     name: HP ProCurve（Telegraf）
-    desc: HP ProCurve / HP Networking 交换机专用 SNMP 采集模板（HP-ICF MIB）。在标准 IF-MIB 接口指标之外，额外采集 HP 私有 OID 的设备健康指标：CPU 使用率与系统内存（已用/总量）。温度与风扇/电源状态位于 HP 的 ENTITY-SENSOR / hpicfSensorTable 混合表、需按行类型/类过滤（telegraf inputs.snmp 无法实现），故不采集（N/A）。内存使用率按 used/total 计算。
-      适用品牌型号——HP / HPE ProCurve 交换机（2500/2600/2900/2920/3500/5400 ProCurve 系列等，企业号 11）。
+    desc: 面向 HP 交换机的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率等主要指标。
   Switch Datacom SNMP:
     name: Datacom（Telegraf）
-    desc: Datacom DmOS 交换机专用 SNMP 采集模板（DMOS-SYSMON-MIB，IANA PEN 3709）。在标准 IF-MIB 接口指标之外，额外采集 Datacom 私有 OID 的设备健康指标：各 slot CPU 负载（cpuLoadOneMinuteActive）与系统内存（已用/总量，字节）。DmOS SYSMON MIB 仅含 CPU 与内存子树；温度/风扇/电源对象只在旧 DMswitch-MIB（与 DmOS 不兼容）中存在，故不采集（N/A）。CPU 使用率按各 slot 平均，内存使用率按 used/total 计算。
-      适用品牌型号——Datacom DmOS 交换机（DM4xxx 系列）。
+    desc: 面向 Datacom 交换机的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率等主要指标（企业号 PEN 3709）。
   Switch Eltex SNMP:
     name: Eltex（Telegraf）
-    desc: Eltex MES 系列交换机专用 SNMP 采集模板（基于 RADLAN/Marvell MIB + ELTEX 私有 OID，IANA PEN 89/35265）。在标准 IF-MIB 接口指标之外，额外采集 Eltex 私有 OID 的设备健康指标：CPU 使用率（rlCpuUtilDuringLast5Minutes）、系统内存（总量/空闲）、机箱温度（rlPhdUnitEnvParamTempSensorValue 专用温度列）、风扇状态（rlEnvMonFanState）与电源状态（rlPhdUnitEnvParamMainPSStatus）。风扇/电源原始码经 telegraf processors.enum 归一为 1=正常/2=异常。内存使用率按 (total-free)/total 计算。这是首个采集真实温度/风扇/电源的交换机品牌（Eltex 以专用值列暴露，无需行级类型过滤）。
-      适用品牌型号——Eltex MES 系列交换机。
+    desc: 面向 Eltex 交换机的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率等主要指标（企业号 PEN 89）。
   Switch SNR SNMP:
     name: SNR（Telegraf）
-    desc: SNR（НАГ/NAG）交换机专用 SNMP 采集模板（NAG-MIB，IANA PEN 40418）。在标准 IF-MIB 接口指标之外，额外采集 SNR 私有 OID 的设备健康指标：各 slot CPU 使用率（sysCpuUsage）、系统内存（总量/已用）、机箱温度（sysTemperature 专用温度列）与风扇状态（sysFanStatus）。风扇原始码（0=正常/1=异常）经 telegraf processors.enum 归一为 1=正常/2=异常。内存使用率按 used/total 计算。NAG-MIB 无独立电源（PSU）状态对象，故电源不采集（N/A）。
-      适用品牌型号——SNR（NAG）网管交换机。
+    desc: 面向 SNR 交换机的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率等主要指标（企业号 PEN 40418）。
+  Switch APRESIA SNMP:
+    name: APRESIA（Telegraf）
+    desc: 面向 APRESIA 交换机的 SNMP 监控模板,可采集 CPU 使用率、每端口入向流量速率、每端口出向流量速率等主要指标（企业号 PEN 278）。
+  Switch Intelbras SNMP:
+    name: Intelbras（Telegraf）
+    desc: 面向 Intelbras 交换机的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率等主要指标（企业号 PEN 26138）。
+  Switch Nexans SNMP:
+    name: Nexans（Telegraf）
+    desc: 面向 Nexans 交换机的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 266）。
+  Switch Pica8 SNMP:
+    name: Pica8（Telegraf）
+    desc: 面向 Pica8 PicOS 白盒交换机的 SNMP 监控模板,可采集 CPU 使用率和每个端口的进/出流量速率,用于实时掌握设备负载与端口流量变化（企业号 PEN 35098）。
+  Switch Advantech SNMP:
+    name: Advantech（Telegraf）
+    desc: 面向 Advantech 交换机的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 10297）。
+  Switch EtherWAN SNMP:
+    name: EtherWAN（Telegraf）
+    desc: 面向 EtherWAN 交换机的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 2736）。
+  Switch Red Lion SNMP:
+    name: Red Lion（Telegraf）
+    desc: 面向 Red Lion 交换机的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 28381）。
+  Switch Alaxala SNMP:
+    name: Alaxala（Telegraf）
+    desc: 面向 Alaxala 交换机的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率等主要指标（企业号 PEN 21839）。
+  Switch Transition Networks SNMP:
+    name: Transition Networks（Telegraf）
+    desc: 面向 Transition Networks 交换机的 SNMP 监控模板,可采集 运行时长、接口速率、入向错误包等主要指标（企业号 PEN 868）。
+  Switch Waystream SNMP:
+    name: Waystream（Telegraf）
+    desc: 面向 Waystream 交换机的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 9303）。
+  Switch Antaira SNMP:
+    name: Antaira（Telegraf）
+    desc: 面向 Antaira 交换机的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 38477）。
+  Switch XikeStor SNMP:
+    name: XikeStor（Telegraf）
+    desc: 面向 XikeStor 交换机的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 242853）。
+  Switch RubyTech SNMP:
+    name: RubyTech（Telegraf）
+    desc: 面向 RubyTech 交换机的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 5205）。
+  Switch Kyland SNMP:
+    name: Kyland（Telegraf）
+    desc: 面向 Kyland 交换机的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 26067）。
+  Switch Lantech SNMP:
+    name: Lantech（Telegraf）
+    desc: 面向 Lantech 交换机的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 148305）。
+  Switch TsnTec SNMP:
+    name: TsnTec（Telegraf）
+    desc: 面向 TsnTec 交换机的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率等主要指标（企业号 PEN 65531）。
+  Switch Wi-Tek SNMP:
+    name: Wi-Tek（Telegraf）
+    desc: 面向 Wi-Tek 交换机的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率等主要指标（企业号 PEN 12284）。
+  Switch BDCOM SNMP:
+    name: BDCOM（Telegraf）
+    desc: 面向 BDCOM 交换机的 SNMP 监控模板,可采集 运行时长、每端口入向流量速率和每端口出向流量速率（企业号 PEN 3320）。
   Switch Parks SNMP:
     name: Parks（Telegraf）
-    desc: Parks PK700 系列交换机专用 SNMP 采集模板（PARKS-PK700 MIB，IANA PEN 50224）。在标准 IF-MIB 接口指标之外，额外采集 Parks 私有 OID 的设备健康指标：CPU 使用率（cpuUsage）、内存使用率（直接百分比标量）与机箱主芯片温度（mainChipTemperature）。PARKS-PK700 MIB 无独立风扇/电源状态对象，故不采集（N/A）；SFP 光功率/模块温度属端口级诊断、非设备级健康，本插件亦不采。
-      适用品牌型号——Parks PK 系列交换机。
+    desc: 面向 Parks 交换机的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率等主要指标（企业号 PEN 50224）。
   Switch Ubiquiti SNMP:
     name: Ubiquiti（Telegraf）
-    desc: Ubiquiti EdgeSwitch 专用 SNMP 采集模板（EdgeSwitch-SWITCHING-MIB + EdgeSwitch-BOXSERVICES-PRIVATE-MIB，IANA PEN 4413，Broadcom FASTPATH）。在标准 IF-MIB 接口指标之外，额外采集 EdgeSwitch 私有 OID 的设备健康指标：系统内存（可用/空闲，KB）、机箱温度（boxServicesTempSensorTemperature）与风扇状态（boxServicesFanItemState）。风扇原始码经 telegraf processors.enum 归一为 1=正常/2=异常。内存使用率按 (total-free)/total 计算。CPU 仅以逐进程表（agentSwitchCpuProcessTable）暴露、无设备级聚合标量，telegraf inputs.snmp 无法归约，故不采集（N/A）；BOXSERVICES MIB 无电源（PSU）状态对象，故电源亦 N/A。适用于 EdgeSwitch/UniFi 有线交换机；airOS/UniFi 无线 AP 属另一对象、超出范围。
-      适用品牌型号——Ubiquiti EdgeSwitch（ES 系列）。
+    desc: 面向 Ubiquiti 交换机的 SNMP 监控模板,可采集 内存使用率、每端口入向流量速率、每端口出向流量速率等主要指标（企业号 PEN 4413）。
   Switch Ruijie SNMP:
     name: 锐捷 Ruijie（Telegraf）
-    desc: 锐捷 Ruijie 交换机专用 SNMP 采集模板（RUIJIE-PROCESS/MEMORY/SYSTEM MIB，IANA PEN 4881）。在标准 IF-MIB 接口指标之外，额外采集锐捷私有 OID 的全套设备健康指标：CPU 使用率（ruijieNodeCPUTotal5min）、系统内存（容量/已用，KB）、机箱温度（ruijieSystemMultipleTemperatureCurrent）、风扇状态（ruijieSystemFanStatus）与电源状态（ruijieSystemElectricalInformationStatus）。风扇/电源原始码经 telegraf processors.enum 归一为 1=正常/2=异常。内存使用率按 used/total 计算。
-      适用品牌型号——锐捷网络（Ruijie）RG 系列交换机。
+    desc: 面向 Ruijie 交换机的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率等主要指标（企业号 PEN 4881）。
   Switch ZTE SNMP:
     name: 中兴 ZTE（Telegraf）
-    desc: 中兴 ZTE ZXR10 系列交换机专用 SNMP 采集模板（ZXR10-MIB，IANA PEN 3902）。在标准 IF-MIB 接口指标之外，额外采集中兴私有 OID 的设备健康指标：各 unit CPU 使用率（zxr10SystemCpuUtility5m）与内存使用率（zxr10SystemMemUsed，直接百分比）。ZXR10-MIB 系统表无温度/风扇/电源传感器（这些在面向接入网 OLT 的 ZTE-AN-ENVMON-MIB 中、非 ZXR10 交换机），故不采集（N/A）。
-      适用品牌型号——中兴（ZTE）ZXR10 系列交换机。
+    desc: 面向 ZTE 交换机的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率等主要指标（企业号 PEN 3902）。
   Switch Alcatel OmniSwitch SNMP:
     name: Alcatel OmniSwitch（Telegraf）
-    desc: Alcatel-Lucent Enterprise OmniSwitch (AOS) 交换机专用 SNMP 采集模板（ALCATEL-IND1-HEALTH-MIB，企业号 6486）。在标准 IF-MIB 接口指标之外，额外采集 OmniSwitch 私有 OID 的设备健康指标：1 分钟平均 CPU 使用率（healthDeviceCpu1MinAvg）与内存使用率（healthDeviceMemoryLatest），均以百分比直接上报。温度在机箱硬件表、风扇/电源在 chasEntPhysical 实体表需按实体类型行级过滤（telegraf inputs.snmp 不支持），故为 N/A。适用品牌型号——Alcatel-Lucent Enterprise OmniSwitch（OS6xxx/OS9xxx，AOS6/AOS8，企业号 6486）；区别于「Switch Alcatel-Lucent SNMP」（覆盖 Nokia/ALU 7750 SR 业务路由器）。
+    desc: 面向 Alcatel OmniSwitch 交换机的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率等主要指标。
   Switch Yamaha SNMP:
     name: Yamaha（Telegraf）
-    desc: 雅马哈（Yamaha）SWX 系列交换机专用 SNMP 采集模板（YAMAHA-SWHUB-MIB，企业号 1182）。在标准 IF-MIB 接口指标之外，额外采集 Yamaha 私有 OID 的设备健康指标：1 分钟平均 CPU 使用率（yshCpuUtil1min）与内存使用率（yshMemoryUtil），均以百分比直接上报。SWX 系列未暴露温度/风扇/电源 SNMP 传感器，故为 N/A。适用品牌型号——Yamaha SWX 系列 L2/L2+ 交换机（SWX2200 / SWX2300 / SWX3100 等，企业号 1182）；不覆盖 Yamaha RTX 路由器（无公开 SNMP 健康模板）。
+    desc: 面向 Yamaha 交换机的 SNMP 监控模板,可采集 CPU 使用率、每端口入向流量速率、每端口出向流量速率等主要指标。
   Switch Arista SNMP:
     name: Arista（Telegraf）
-    desc: Arista EOS 交换机专用 SNMP 采集模板。除标准 IF-MIB 接口指标外，额外通过 HOST-RESOURCES hrProcessorLoad 采集设备 CPU 使用率（按核取均值）——这是通用 SNMP 交换机插件不具备的。Arista 的内存仅通过多行 hrStorage 表暴露（RAM 行索引不固定）、温度/风扇/电源仅通过 ENTITY-SENSOR 表暴露（多种传感器混在同表按类型列区分），SNMP 采集端无法按行/类型过滤，故内存/温度/风扇/电源为 N/A。适用品牌型号——Arista Networks EOS 数据中心交换机（7050/7060/7280/7300/7500 系列及其他 EOS 平台）。
+    desc: 面向 Arista 交换机的 SNMP 监控模板,可采集 CPU 使用率、每端口入向流量速率、每端口出向流量速率等主要指标。
   Switch Mellanox SNMP:
     name: Mellanox（Telegraf）
-    desc: Mellanox（NVIDIA）Spectrum 以太网交换机专用 SNMP 采集模板（Onyx / MLNX-OS）。除标准 IF-MIB 接口指标外，额外通过 HOST-RESOURCES hrProcessorLoad 采集设备 CPU 使用率（按核取均值）——这是通用 SNMP 交换机插件不具备的。内存仅通过多行 hrStorage 表暴露、温度/风扇/电源仅通过 ENTITY-SENSOR 表暴露（多种传感器混在同表按类型列区分），SNMP 采集端无法按行/类型过滤，故为 N/A。适用品牌型号——Mellanox/NVIDIA Spectrum 以太网交换机（运行 Onyx 或 MLNX-OS 的 SN2000/SN3000/SN4000 系列）；纯 InfiniBand 组网不在范围。
+    desc: 面向 Mellanox 交换机的 SNMP 监控模板,可采集 CPU 使用率、每端口入向流量速率、每端口出向流量速率等主要指标。
   Switch Allied Telesis SNMP:
     name: Allied Telesis（Telegraf）
-    desc: Allied Telesis AlliedWare Plus（AW+）交换机专用 SNMP 采集模板（AT-SYSINFO-MIB / AT-ENVMONv2-MIB，企业号 207）。除标准 IF-MIB 接口指标外，额外采集 Allied Telesis 私有 OID 的设备健康指标：每栈成员 CPU 使用率（cpuUtilisationStackAvgLastMinute，取均值）、机箱温度传感器（atEnvMonv2TemperatureCurrent，取最高），以及风扇与电源状态（归一为 1=正常/2=异常）。AlliedWare Plus 未暴露标准内存使用率 OID，故内存为 N/A。适用品牌型号——Allied Telesis AlliedWare Plus 交换机（x 系列/IE 工业系列/SwitchBlade，运行 AW+，企业号 207）。
+    desc: 面向 Allied Telesis 交换机的 SNMP 监控模板,可采集 运行时长、CPU 使用率、接口速率等主要指标。
   Switch Dell OS10 SNMP:
     name: Dell OS10（Telegraf）
-    desc: Dell EMC OS10（SmartFabric OS10）交换机专用 SNMP 采集模板（DELLEMC-OS10-CHASSIS-MIB，企业号 674）。除标准 IF-MIB 接口指标外，额外采集设备健康指标：CPU 使用率（HOST-RESOURCES hrProcessorLoad，取均值）、板卡温度传感器（os10CardTemp，取最高），以及风扇与电源运行状态（os10FanOperStatus / os10PowerSupplyOperStatus，原生 1=正常/2=异常）。内存仅通过多行 hrStorage 表暴露（物理内存行索引不固定），故为 N/A。与 Force10/FTOS 插件相互独立。适用品牌型号——运行 OS10/SmartFabric OS10 的 Dell EMC PowerSwitch（S 系列/Z 系列，企业号 674）。
+    desc: 面向 Dell 交换机的 SNMP 监控模板,可采集 运行时长、CPU 使用率、接口速率等主要指标。
   Switch Lenovo CNOS SNMP:
     name: Lenovo CNOS（Telegraf）
-    desc: 联想 CNOS（Cloud Network OS）交换机专用 SNMP 采集模板（LENOVO-ENV-MIB，企业号 19046）。除标准 IF-MIB 接口指标外，额外采集设备健康指标：温度传感器（lenovoEnvMibTempSensorTemperature，取最高）、风扇状态（lenovoEnvMibFanState）与电源状态（lenovoEnvMibPowerSupplyState，归一为 1=正常/2=异常），以及在平台暴露时通过 HOST-RESOURCES hrProcessorLoad 采集 CPU 使用率。内存无可用私有 OID，故为 N/A。适用品牌型号——运行 CNOS 的联想 ThinkSystem/RackSwitch 交换机（NE 系列，如 NE1032/NE2572/NE10032，企业号 19046）。
+    desc: 面向 Lenovo CNOS 交换机的 SNMP 监控模板,可采集 运行时长、CPU 使用率、接口速率等主要指标。
+  Switch Westermo SNMP:
+    name: Westermo（Telegraf）
+    desc: 面向 Westermo 交换机的 SNMP 监控模板,可采集 CPU 使用率、每端口入向流量速率、每端口出向流量速率等主要指标。
+  Switch RuggedCOM SNMP:
+    name: RuggedCOM（Telegraf）
+    desc: 面向 RuggedCOM 交换机的 SNMP 监控模板,可采集 CPU 使用率、每端口入向流量速率、每端口出向流量速率等主要指标。
+  Switch Scalance SNMP:
+    name: Scalance（Telegraf）
+    desc: 面向 Scalance 交换机的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  Switch Microsens SNMP:
+    name: Microsens（Telegraf）
+    desc: 面向 Microsens 交换机的 SNMP 监控模板,可采集 CPU 使用率、每端口入向流量速率、每端口出向流量速率等主要指标。
+  Switch Maipu SNMP:
+    name: Maipu（Telegraf）
+    desc: 面向 Maipu 交换机的 SNMP 监控模板,可采集 CPU 使用率、每端口入向流量速率、每端口出向流量速率等主要指标。
+  Switch Moxa SNMP:
+    name: Moxa（Telegraf）
+    desc: 面向 Moxa 交换机的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  Switch ALLNET SNMP:
+    name: ALLNET（Telegraf）
+    desc: 面向 ALLNET 交换机的 SNMP 监控模板,可采集 运行时长、接口速率、入向错误包等主要指标。
+  Switch Sixnet SNMP:
+    name: Sixnet（Telegraf）
+    desc: 面向 Sixnet 交换机的 SNMP 监控模板,可采集 运行时长、接口速率、入向错误包等主要指标。
+  Switch AsterFusion SNMP:
+    name: AsterFusion（Telegraf）
+    desc: 面向 AsterFusion 交换机的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  Switch ATOP SNMP:
+    name: ATOP（Telegraf）
+    desc: 面向 ATOP 交换机的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  Switch Comtrol RocketLinx SNMP:
+    name: Comtrol RocketLinx（Telegraf）
+    desc: 面向 Comtrol RocketLinx 交换机的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  Switch WoMaster SNMP:
+    name: WoMaster（Telegraf）
+    desc: 面向 WoMaster 交换机的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  Switch Murrelektronik SNMP:
+    name: Murrelektronik（Telegraf）
+    desc: 面向 Murrelektronik 交换机的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  Switch InHand Networks SNMP:
+    name: InHand Networks（Telegraf）
+    desc: 面向 InHand Networks 交换机的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  Switch Phoenix Contact SNMP:
+    name: Phoenix Contact（Telegraf）
+    desc: 面向 Phoenix Contact 交换机的 SNMP 监控模板,可采集 运行时长、接口速率、入向错误包等主要指标（企业号 PEN 4346）。
+  Switch Korenix SNMP:
+    name: Korenix（Telegraf）
+    desc: 面向 Korenix 交换机的 SNMP 监控模板,可采集 运行时长、接口速率、入向错误包等主要指标。
+  Switch GarretCom SNMP:
+    name: GarretCom（Telegraf）
+    desc: 面向 GarretCom 交换机的 SNMP 监控模板,可采集 CPU 使用率、每端口入向流量速率、每端口出向流量速率等主要指标。
+  Switch PLANET SNMP:
+    name: PLANET（Telegraf）
+    desc: 面向 PLANET 交换机的 SNMP 监控模板,可采集 CPU 使用率、每端口入向流量速率、每端口出向流量速率等主要指标。
+  Switch Edgecore SNMP:
+    name: Edgecore（Telegraf）
+    desc: 面向 Edgecore 交换机的 SNMP 监控模板,可采集 CPU 使用率、每端口入向流量速率、每端口出向流量速率等主要指标。
+  Switch Pluribus SNMP:
+    name: Pluribus（Telegraf）
+    desc: 面向 Pluribus 交换机的 SNMP 监控模板,可采集 CPU 使用率、每端口入向流量速率、每端口出向流量速率等主要指标。
+  Router Yamaha SNMP:
+    name: Yamaha（Telegraf）
+    desc: 面向 Yamaha 路由器的 SNMP 监控模板,可采集 CPU 使用率、每端口入向流量速率、每端口出向流量速率等主要指标。
+  Switch Cumulus SNMP:
+    name: Cumulus（Telegraf）
+    desc: 面向 Cumulus 交换机的 SNMP 监控模板,可采集 CPU 使用率、每端口入向流量速率、每端口出向流量速率等主要指标。
+  Router Versa SNMP:
+    name: Versa（Telegraf）
+    desc: 面向 Versa 路由器的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率等主要指标。
+  Switch Enterasys SNMP:
+    name: Enterasys（Telegraf）
+    desc: 面向 Enterasys 交换机的 SNMP 监控模板,可采集 CPU 使用率、每端口入向流量速率、每端口出向流量速率等主要指标。
   Switch Hirschmann SNMP:
     name: Hirschmann（Telegraf）
-    desc: Hirschmann 工业交换机专用 SNMP 采集模板（HMPRIV-MGMT-SNMP-MIB，企业号 248）。除标准 IF-MIB 接口指标外，额外采集 Hirschmann 私有 OID 的设备健康指标：CPU 使用率（hmCpuUtilization，直接以百分比上报）、主内存（hmMemoryAllocated 已用 + hmMemoryFree 空闲，KB，用量按 已用/（已用+空闲）推导）、机箱温度（hmTemperature，℃）与电源状态（hmPSState，经 telegraf processors.enum 归一为 1=正常/2=异常）。未暴露独立风扇状态 OID，故风扇为 N/A。适用品牌型号——Hirschmann（Belden）工业网管交换机（RS20/RS30/RS40、MACH/MICE/GREYHOUND/EAGLE 系列，企业号 248）。
+    desc: 面向 Hirschmann 交换机的 SNMP 监控模板,可采集 CPU 使用率、每端口入向流量速率、每端口出向流量速率等主要指标。
   Switch 3Com SNMP:
     name: 3Com（Telegraf）
-    desc: 3Com 交换机专用 SNMP 采集模板（A3COM-HUAWEI-LswDEVM-MIB，企业号 43）。除标准 IF-MIB 接口指标外，额外采集 3Com 私有 OID 的设备健康指标：CPU 使用率（hwCpuCostRatePer1Min，近 1 分钟占用率%，按板卡表取平均）与内存（hwMemoryUsedSize 已用 + hwMemorySize 总量，字节，用量按 已用/总量 推导）。该 MIB（企业号 43.45）与已支持的 H3C（企业号 25506 HH3C-ENTITY-EXT）不同，故单独支持。未暴露温度/风扇/电源专用 OID，故为 N/A。适用品牌型号——3Com 网管交换机（Switch 4200/4500/5500 等 A3COM-HUAWEI 平台，企业号 43）。
+    desc: 面向 3Com 交换机的 SNMP 监控模板,可采集 CPU 使用率、每端口入向流量速率、每端口出向流量速率等主要指标。
   Switch FortiSwitch SNMP:
     name: FortiSwitch（Telegraf）
-    desc: Fortinet FortiSwitch 交换机专用 SNMP 采集模板（FORTINET-FORTISWITCH-MIB，企业号 12356）。除标准 IF-MIB 接口指标外，额外采集 FortiSwitch 私有 OID 的设备健康指标：CPU 使用率（fsSysCpuUsage，直接以百分比上报）与内存（fsSysMemUsage 已用 + fsSysMemCapacity 总量，KB，用量按 已用/总量 推导）。温度/风扇/电源仅通过类型混合的 ENTITY-SENSOR 表暴露，SNMP 采集端无法按行过滤，故为 N/A。适用品牌型号——Fortinet FortiSwitch 网管交换机（FortiSwitch 100/200/400/500/1000 系列，企业号 12356）。
+    desc: 面向 Fortinet 交换机的 SNMP 监控模板,可采集 CPU 使用率、每端口入向流量速率、每端口出向流量速率等主要指标。
   Switch FiberHome SNMP:
     name: 烽火 FiberHome（Telegraf）
-    desc: 烽火 FiberHome 交换机专用 SNMP 采集模板（WRI-CPU/MEMORY/TEMPERATURE/POWER MIB，IANA PEN 3807）。在标准 IF-MIB 接口指标之外，额外采集烽火私有 OID 的设备健康指标：CPU 使用率（cpuUsage，精度100）、系统内存（已分配/总量，字节）、机箱温度（temperatureValue）与电源状态（powerState，0=正常）。风扇仅提供转速（RPM）无状态枚举，故风扇状态不采集（N/A）；风扇转速与电压为后续增补的新指标候选。电源原始码经 telegraf processors.enum 归一为 1=正常/2=异常。内存使用率按 used/total 计算。
-      适用品牌型号——烽火通信（FiberHome）交换机。
+    desc: 面向 FiberHome 交换机的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率等主要指标（企业号 PEN 3807）。
   Switch H3C SNMP:
     name: H3C（Telegraf）
-    desc: H3C / HPE Comware 交换机专用 SNMP 采集模板（HH3C-ENTITY-EXT-MIB，企业号 25506）。在标准 IF-MIB 接口指标之外，额外采集 H3C 私有 OID 的设备健康指标：按物理实体的 CPU 使用率（hh3cEntityExtCpuUsage）与内存使用率（hh3cEntityExtMemUsage）。二者按物理实体上报，多数实体为 0、仅承载 CPU/内存的板卡为真实值，故设备级 CPU/内存取各实体的最大值。温度不采集（Comware 上各实体的 hh3cEntityExtTemperature 均报 0）；风扇与电源状态在 ENTITY-MIB 中需按 entPhysicalClass 行级过滤，telegraf inputs.snmp 无法支持，故为 N/A。适用品牌型号——H3C S 系列 Comware 交换机（S5100/S5500/S5800 等）。
+    desc: 面向 H3C 交换机的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率等主要指标。
   Switch DCN SNMP:
     name: 神州数码 DCN（Telegraf）
-    desc: 神州数码（DCN）交换机专用 SNMP 采集模板（DCN-MIB，企业号 6339）。除标准 IF-MIB 接口指标外，额外采集 DCN 私有 OID 的设备健康指标：CPU 使用率（switchCpuUsage，直接百分比）与系统内存（switchMemorySize 总量 / switchMemoryBusy 已用，字节，用量按 已用/总量 推导）。DCN-MIB 的 switchInfo 系统表仅含 CPU 与内存标量，无温度/风扇/电源传感器，故为 N/A。适用品牌型号——神州数码 DCN DCS/DCRS/CS 系列园区交换机（企业号 6339）。
+    desc: 面向 DCN 交换机的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率等主要指标。
   Switch FS SNMP:
     name: FS.com（Telegraf）
-    desc: FS.com 交换机专用 SNMP 采集模板（FS-PROCESS/MEMORY/SYSTEM-MIB，企业号 52642）。除标准 IF-MIB 接口指标外，额外采集 FS 私有 OID 的全套设备健康指标：CPU 使用率（fsNodeCPUTotal5min）、系统内存（容量/已用，KB）、机箱温度（fsSystemMultipleTemperatureCurrent）、风扇状态（fsSystemFanStatus）与电源状态（fsSystemElectricalInformationStatus）。风扇/电源原始码经 telegraf processors.enum 归一为 1=正常/2=异常。内存使用率按 已用/总量 计算。适用品牌型号——FS.com S 系列数据中心/园区交换机（S5810/S5800/N8560 等，企业号 52642）。
+    desc: 面向 FS 交换机的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率等主要指标。
   Switch Netonix SNMP:
     name: Netonix（Telegraf）
-    desc: Netonix WISP 交换机专用 SNMP 采集模板（NETONIX-SWITCH-MIB，企业号 46242）。除标准 IF-MIB 接口指标外，额外采集 Netonix 私有 OID 的机箱温度（temp，专用温度表，℃）。NETONIX-SWITCH-MIB 不提供 CPU/内存 OID；风扇为转速（RPM）而非状态枚举、PoE 为端口级状态，均非设备级健康状态，故仅采集温度（其余 N/A）。适用品牌型号——Netonix WISP Switch 系列 PoE 交换机（企业号 46242）。
+    desc: 面向 Netonix 交换机的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  Switch Nokia SNMP:
+    name: Nokia（Telegraf）
+    desc: 面向 Nokia 交换机的 SNMP 监控模板,可采集 CPU 使用率、每端口入向流量速率、每端口出向流量速率等主要指标。
   Switch Flow NetFlow:
     name: 交换机流量分析（NetFlow）
     desc: 使用 NetFlow 对交换机进行流量分析采集，通过资产映射补充实例信息，按设备上报或兜底采样率归一化，并提供总览、接口、协议、端口、端点和会话维度指标。
   Switch Flow sFlow:
     name: 交换机流量分析（sFlow）
-    desc: 使用 sFlow 对交换机进行流量分析采集，通过资产映射补充实例信息，按设备上报或兜底采样率归一化，并提供总览、接口、协议、端口、端点和会话维度指标。
+    desc: 使用 sFlow 对交换机进行流量分析采集，通过资产映射补充实例信息，直接消费 Telegraf 已估算的 sFlow 值，并提供总览、接口、协议、端口、端点和会话维度指标。
   WebLogic-JMX:
     name: WebLogic（JMX）
     desc: 通过WebLogic-JMX采集器定期收集WebLogic关键指标，包括线程池、连接池、内存、EJB、Servlet、JMS 性能及 Web 服务响应时间等。
@@ -3939,30 +4450,53 @@ monitor_object_plugin:
     desc: 通过Telegraf采集器定期收集Nginx的请求、连接状态及处理效率等指标，帮助监控和优化网站的性能与稳定性。
     name: Nginx（Telegraf）
   Loadbalance SNMP General:
-    desc: 通过Telegraf采集器利用SNMP协议定期收集负载均衡各接口的流量、丢包数、错包数等IF-MIB关键指标。
+    desc: 通过 Telegraf 采集器利用 SNMP 协议定期收集负载均衡器的标准网络接口指标和流量统计,用于查看设备运行状态。
     name: 负载均衡设备通用（Telegraf）
   Loadbalance F5 SNMP:
     name: F5（Telegraf）
-    desc: 面向 F5 BIG-IP 负载均衡的 F5 专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 F5-BIGIP-SYSTEM-MIB 私有 OID 的设备健康（主机 CPU 使用率、主机内存 总量/已用及推算使用率）与负载均衡特有状态（当前客户端连接数）。内存使用率按 已用/总量 推算。
-      适用品牌型号——F5 BIG-IP（LTM/GTM/DNS，含 iSeries / VIPRION / VE 虚拟版）。
+    desc: 面向 F5 负载均衡器的 SNMP 监控模板,可采集 运行时长、CPU 使用率、内存使用率等主要指标。
   Loadbalance Citrix NetScaler SNMP:
     name: Citrix NetScaler（Telegraf）
-    desc: Citrix NetScaler（NetScaler ADC，原 Citrix ADC）负载均衡专用 SNMP 采集模板（NS-ROOT-MIB，企业号 5951）。在标准 IF-MIB 接口指标之外，额外采集 NetScaler 私有 OID 的设备健康指标：跨管理与数据包处理 CPU 平均的 CPU 使用率（resCpuUsage）、直接以百分比上报的系统内存使用率（resMemUsage）、当前客户端连接数（tcpCurClientConn）。温度/电压传感器在 nsSysHealth 表中按传感器名（CPU0Temperature/Voltage 等）字符串混合索引、需行级名称过滤（telegraf inputs.snmp 不支持），故温度/风扇/电源为 N/A。适用品牌型号——Citrix / NetScaler ADC（MPX / SDX / VPX / CPX，NetScaler OS，企业号 5951）。
+    desc: 面向 Citrix NetScaler 负载均衡器的 SNMP 监控模板,可采集 运行时长、CPU 使用率、内存使用率等主要指标。
   Loadbalance A10 Thunder SNMP:
     name: A10 Thunder（Telegraf）
-    desc: A10 Networks Thunder / AX（ACOS）应用交付控制器（ADC）专用 SNMP 采集模板（A10-AX-MIB，企业号 22610）。在标准 IF-MIB 接口指标之外，额外采集 A10 私有 OID 的设备健康指标：跨控制与数据平面 CPU 平均的 CPU 使用率（axSysCpuUsage）、系统内存（axSysMemoryTotal/axSysMemoryUsage，单位 KB，利用率按 used/total 计算）。当前连接数与温度/风扇/电源在 ACOS 上无免行级过滤的 OID 形式，故为 N/A。适用品牌型号——A10 Networks Thunder ADC / AX 系列（ACOS，含实体与 vThunder，企业号 22610）。
+    desc: 面向 A10 Thunder 负载均衡器的 SNMP 监控模板,可采集 运行时长、CPU 使用率、内存使用率等主要指标。
   Loadbalance FortiADC SNMP:
     name: FortiADC（Telegraf）
-    desc: Fortinet FortiADC 应用交付控制器/负载均衡器专用 SNMP 采集模板（FORTINET-FORTIADC-MIB，企业号 12356）。除标准 IF-MIB 接口指标外，额外采集 FortiADC 私有 OID 的设备健康与负载指标：系统 CPU 使用率（fadcSysCpuUsage）、内存使用率（fadcSysMemUsage，均直接以百分比上报），以及当前并发客户端连接数（fadcConcurrentClientConnections）。FortiADC MIB 未暴露温度/风扇/电源，故为 N/A。适用品牌型号——Fortinet FortiADC 硬件与虚拟设备（FortiADC D/E/F 系列，企业号 12356）。
+    desc: 面向 FortiADC 负载均衡器的 SNMP 监控模板,可采集 运行时长、CPU 使用率、内存使用率等主要指标。
+  Loadbalance Kemp LoadMaster SNMP:
+    name: Kemp LoadMaster（Telegraf）
+    desc: 面向 Kemp LoadMaster 负载均衡器的 SNMP 监控模板,可采集 运行时长、CPU 使用率、内存使用率等主要指标。
+  Loadbalance Superiority SNMP:
+    name: 超数（Telegraf）
+    desc: 面向 Superiority 负载均衡器的 SNMP 监控模板,可采集 运行时长、CPU 使用率、内存使用率等主要指标。
+  Transmission MRV SNMP:
+    name: MRV（Telegraf）
+    desc: 面向 MRV 传输设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  Transmission Marconi SNMP:
+    name: Marconi（Telegraf）
+    desc: 面向 Marconi 传输设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  Transmission Alcoma SNMP:
+    name: Alcoma（Telegraf）
+    desc: 面向 Alcoma 传输设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  Transmission Huber+Suhner Cubo SNMP:
+    name: Huber+Suhner Cubo（Telegraf）
+    desc: 面向 Huber+Suhner Cubo 传输设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  Transmission SIAE Microelettronica SNMP:
+    name: SIAE Microelettronica（Telegraf）
+    desc: 面向 SIAE Microelettronica 传输设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  Loadbalance RELIANOID SNMP:
+    name: RELIANOID（Telegraf）
+    desc: 面向 RELIANOID 负载均衡器的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
   Loadbalance Radware Alteon SNMP:
     name: Radware Alteon（Telegraf）
-    desc: Radware Alteon 应用交换机/负载均衡器专用 SNMP 采集模板（ALTEON-CHEETAH-SWITCH-MIB，企业号 1872）。除标准 IF-MIB 接口指标外，额外采集 Alteon 私有 OID 的设备健康指标：管理处理器 CPU 使用率（mpCpuStatsUtil1Second，直接以百分比上报）与主内存（mpMemStatsTotal/mpMemStatsFree，字节，用量按 (总量-空闲)/总量 推导）。CHEETAH MIB 未暴露标量连接/会话数与温度/风扇/电源，故为 N/A。适用品牌型号——运行 AlteonOS 的 Radware Alteon ADC/应用交换机（Alteon 4408/5208/6420/8420/9800 及 VA 虚拟设备，企业号 1872）。
+    desc: 面向 Radware Alteon 负载均衡器的 SNMP 监控模板,可采集 运行时长、CPU 使用率、接口速率等主要指标。
   Loadbalance Flow NetFlow:
     name: 负载均衡流量分析（NetFlow）
     desc: 使用 NetFlow 对负载均衡进行流量分析采集，通过资产映射补充实例信息，按设备上报或兜底采样率归一化，并提供总览、接口、协议、端口、端点和会话维度指标。
   Loadbalance Flow sFlow:
     name: 负载均衡流量分析（sFlow）
-    desc: 使用 sFlow 对负载均衡进行流量分析采集，通过资产映射补充实例信息，按设备上报或兜底采样率归一化，并提供总览、接口、协议、端口、端点和会话维度指标。
+    desc: 使用 sFlow 对负载均衡进行流量分析采集，通过资产映射补充实例信息，直接消费 Telegraf 已估算的 sFlow 值，并提供总览、接口、协议、端口、端点和会话维度指标。
   Bastion Host SNMP General:
     desc: SNMP 通用插件用于通过 SNMP 监控和管理堡垒机的监控情况。管理员可以获取有关设备的关键信息，例如 接口流量、错误统计和状态信息等，从而优化网络性能和提高管理效率。
     name: 堡垒机通用（SNMP）
@@ -3976,94 +4510,188 @@ monitor_object_plugin:
     name: Zookeeper（Telegraf）
     desc: 通过Telegraf采集器定期收集Zookeeper的运行时的性能数据和稳定性指标，如运行时长、平均延迟、读写比例等。
   Firewall SNMP General:
-    desc: 通过Telegraf采集器利用SNMP协议定期收集防火墙各接口的流量、丢包数、错包数等IF-MIB关键指标。
+    desc: 通过 Telegraf 采集器利用 SNMP 协议定期收集防火墙的标准网络接口指标和流量统计,用于查看设备运行状态。
     name: 防火墙通用（Telegraf）
   Firewall Fortinet SNMP:
     name: Fortinet（Telegraf）
-    desc: 面向 FortiGate 防火墙的 Fortinet 专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 FORTINET-FORTIGATE-MIB 私有 OID 的设备健康（CPU、内存使用率、总内存）与防火墙特有状态（IPv4 活动会话数、活动 IPsec VPN 隧道数、HA 模式）。内存为设备直接上报的使用率百分比。
-      适用品牌型号——Fortinet FortiGate 防火墙（FortiOS）。
+    desc: 面向 Fortinet 防火墙的 SNMP 监控模板,可采集 运行时长、CPU 使用率、内存使用率等主要指标。
   Firewall Hillstone SNMP:
     name: Hillstone（Telegraf）
-    desc: 山石网科（Hillstone，StoneOS）防火墙专用 SNMP 采集模板（HILLSTONE-SYSTEM/TEMPERATURE/POWER-MIB，企业号 28557）。在标准 IF-MIB 接口指标之外，额外采集 Hillstone 私有 OID 的设备健康指标：CPU 使用率（sysCPU）、系统内存（sysMemTotal/sysMemUsed，单位 KB，利用率按 used/total 计算）、机箱温度（专用每传感器表）与电源状态。电源原始码（fine/absent/warning/fail/unsupport）已归一化为 1=正常/2=异常。风扇与会话数 OID 无确认的数字形式，故为 N/A。适用品牌型号——山石网科 SG-6000 / E 系列 / A 系列下一代防火墙（StoneOS，企业号 28557）。
+    desc: 面向 Hillstone 防火墙的 SNMP 监控模板,可采集 运行时长、CPU 使用率、内存使用率等主要指标。
   Firewall Sophos XG SNMP:
     name: Sophos XG（Telegraf）
-    desc: Sophos XG / SFOS 防火墙专用 SNMP 采集模板（SFOS-FIREWALL-MIB，企业号 21067）。在标准 IF-MIB 接口指标之外，额外采集 Sophos 私有 OID 的设备健康指标：CPU 使用率（cpuPercentUsage）与主内存使用率（memoryPercentUsage），均以百分比直接上报。Sophos 暴露在线认证用户数与磁盘使用率而非标准会话/连接表，故会话数与温度/风扇/电源为 N/A。适用品牌型号——Sophos XG / XGS 防火墙及 SFOS 系列设备（Sophos Firewall OS，企业号 21067），以及 Cyberoam UTM 设备（CYBEROAM-MIB，同企业号 21067、健康 OID 完全一致——Sophos 收购 Cyberoam 后 SFOS 沿用其 MIB）。
+    desc: 面向 Sophos 防火墙的 SNMP 监控模板,可采集 运行时长、CPU 使用率、内存使用率等主要指标。
   Firewall Forcepoint SNMP:
     name: Forcepoint（Telegraf）
-    desc: Forcepoint NGFW（原 Stonesoft/McAfee NGFW）专用 SNMP 采集模板（STONESOFT-FIREWALL-MIB，企业号 1369）。除标准 IF-MIB 接口指标外，额外采集 Forcepoint 私有 OID 的设备健康指标：每核 CPU 使用率（fwCpuTotal，取均值）与内存（fwMemBytesTotal/fwMemBytesUsed，字节，用量按 已用/总量 推导）。Stonesoft MIB 未暴露标量会话计数与温度/风扇/电源，故为 N/A。适用品牌型号——Forcepoint NGFW / Stonesoft / McAfee NGFW 硬件及虚拟引擎（企业号 1369）。
+    desc: 面向 Forcepoint 防火墙的 SNMP 监控模板,可采集 运行时长、CPU 使用率、接口速率等主要指标。
   Firewall ScreenOS SNMP:
     name: Juniper ScreenOS（Telegraf）
-    desc: Juniper ScreenOS（NetScreen）防火墙专用 SNMP 采集模板（NETSCREEN-RESOURCE-MIB，企业号 3224）。除标准 IF-MIB 接口指标外，额外采集 ScreenOS 私有 OID 的设备健康指标：近 5 分钟 CPU 使用率（nsResCpuLast5Min）与内存（nsResMemAllocate 已用 + nsResMemLeft 空闲，用量按 已用/(已用+空闲) 推导）。会话计数与温度/风扇/电源本模板未采集，故为 N/A。适用品牌型号——运行 ScreenOS 的 Juniper NetScreen / SSG 防火墙（企业号 3224）。
+    desc: 面向 ScreenOS 防火墙的 SNMP 监控模板,可采集 运行时长、CPU 使用率、接口速率等主要指标。
+  Firewall Neteye SNMP:
+    name: 网御星云（Telegraf）
+    desc: 面向 Neteye 防火墙的 SNMP 监控模板,可采集 运行时长、CPU 使用率、接口速率等主要指标。
+  Firewall Bluedon SNMP:
+    name: 蓝盾（Telegraf）
+    desc: 面向 Bluedon 防火墙的 SNMP 监控模板,可采集 运行时长、CPU 使用率、接口速率等主要指标。
+  Firewall Pulse Secure SNMP:
+    name: Pulse Secure（Telegraf）
+    desc: 面向 Pulse Secure 防火墙的 SNMP 监控模板,可采集 运行时长、CPU 使用率、接口速率等主要指标（企业号 PEN 12532）。
+  Firewall DPtech SNMP:
+    name: 迪普（Telegraf）
+    desc: 面向 DPtech 防火墙的 SNMP 监控模板,可采集 运行时长、CPU 使用率、接口速率等主要指标（企业号 PEN 31648）。
+  Firewall Barracuda SNMP:
+    name: Barracuda（Telegraf）
+    desc: 面向 Barracuda 防火墙的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 20632）。
+  Firewall Westone SNMP:
+    name: 卫士通（Telegraf）
+    desc: 面向 Westone 防火墙的 SNMP 监控模板,可采集 运行时长、CPU 使用率、接口速率等主要指标。
+  Firewall Amaranten SNMP:
+    name: 安然（Telegraf）
+    desc: 面向 Amaranten 防火墙的 SNMP 监控模板,可采集 运行时长、CPU 使用率、接口速率等主要指标。
+  Firewall Secworld SNMP:
+    name: 安世（Telegraf）
+    desc: 面向 Secworld 防火墙的 SNMP 监控模板,可采集 运行时长、CPU 使用率、接口速率等主要指标。
   Firewall Check Point SNMP:
     name: Check Point（Telegraf）
-    desc: 面向 Check Point Quantum NGFW（Gaia）防火墙的专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 CHECKPOINT-MIB 私有 OID 的设备健康（CPU 使用率，真实内存 总量/空闲/已用及推算使用率）与防火墙特有的 VPN 吞吐（每秒加密/解密包数）。内存使用率按 (总量-空闲)/总量 推算。
-      适用品牌型号——Check Point 安全网关（GAiA OS）。
+    desc: 面向 Check Point 防火墙的 SNMP 监控模板,可采集 运行时长、CPU 使用率、内存使用率等主要指标。
   Firewall Stormshield SNMP:
     name: Stormshield（Telegraf）
-    desc: 面向 Stormshield Network Security（SNS）防火墙的专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 HOST-RESOURCES 的 CPU 负载（按各核取平均）、UCD-SNMP 真实内存（总量/空闲、已用及推算使用率）与 STORMSHIELD-SNS-MIB 私有 OID 的防火墙特有状态（ASQ 活动 TCP/UDP 连接数、成熟 VPN 隧道数）。内存使用率按 (总量-空闲)/总量 推算。
-      适用品牌型号——Stormshield SNS 系列防火墙。
+    desc: 面向 Stormshield 防火墙的 SNMP 监控模板,可采集 运行时长、CPU 使用率、内存使用率等主要指标。
   Firewall Palo Alto SNMP:
     name: Palo Alto（Telegraf）
-    desc: 面向 Palo Alto Networks（PAN-OS）防火墙的专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 HOST-RESOURCES 的 CPU 负载（按各核取平均）与 PAN-COMMON-MIB 私有 OID 的防火墙特有会话健康（会话表使用率、活动会话总数/TCP/UDP/ICMP、最大支持会话数）。内存与温度/风扇/电源不采集——PAN-OS 仅通过需行级过滤的 hrStorage / entity-sensor 表暴露，telegraf inputs.snmp 无法行级过滤。
-      适用品牌型号——Palo Alto Networks PA 系列防火墙（PAN-OS）。
+    desc: 面向 Palo Alto 防火墙的 SNMP 监控模板,可采集 运行时长、CPU 使用率、接口速率等主要指标。
   Firewall SonicWall SNMP:
     name: SonicWall（Telegraf）
-    desc: 面向 SonicWall（SonicOS）防火墙的专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 SONICWALL-FIREWALL-IP-STATISTICS-MIB 私有 OID 的设备健康（CPU 与内存使用率，均为设备直接上报的百分比）与防火墙特有状态（当前/最大连接缓存条目数、NAT 转换条目数）。
-      适用品牌型号——SonicWall TZ/NSa 系列防火墙（SonicOS）。
+    desc: 面向 SonicWall 防火墙的 SNMP 监控模板,可采集 运行时长、CPU 使用率、内存使用率等主要指标。
+  Firewall Sangfor SNMP:
+    name: 深信服 NGAF（Telegraf）
+    desc: 面向 Sangfor 防火墙的 SNMP 监控模板,可采集 运行时长、CPU 使用率、内存使用率等主要指标。
+  Firewall Kerio Control SNMP:
+    name: Kerio Control（Telegraf）
+    desc: 面向 Kerio Control 防火墙的 SNMP 监控模板,可采集 运行时长、接口速率、入向错误包等主要指标。
+  Firewall Blockbit SNMP:
+    name: Blockbit（Telegraf）
+    desc: 面向 Blockbit 防火墙的 SNMP 监控模板,可采集 运行时长、接口速率、入向错误包等主要指标。
+  Firewall Clavister SNMP:
+    name: Clavister（Telegraf）
+    desc: 面向 Clavister 防火墙的 SNMP 监控模板,可采集 运行时长、CPU 使用率、内存使用率等主要指标。
+  Firewall Zorp SNMP:
+    name: Zorp（Telegraf）
+    desc: 面向 Zorp 防火墙的 SNMP 监控模板,可采集 运行时长、CPU 使用率、内存使用率等主要指标。
+  Firewall genua SNMP:
+    name: genua（Telegraf）
+    desc: 面向 genua 防火墙的 SNMP 监控模板,可采集 运行时长、CPU 使用率、内存使用率等主要指标。
   Firewall WatchGuard SNMP:
     name: WatchGuard（Telegraf）
-    desc: 面向 WatchGuard（Fireware）防火墙的专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 WATCHGUARD-SYSTEM-STATISTICS-MIB 私有 OID 的设备健康（CPU 使用率）与防火墙特有状态（当前活动连接数）。内存与温度/风扇/电源不采集——Fireware 无标准 SNMP 内存利用率标量或传感器表，telegraf inputs.snmp 无法在不做行级过滤的情况下读取。
-      适用品牌型号——WatchGuard Firebox 防火墙（Fireware OS）。
+    desc: 面向 WatchGuard 防火墙的 SNMP 监控模板,可采集 运行时长、CPU 使用率、接口速率等主要指标。
   Firewall pfSense SNMP:
     name: pfSense（Telegraf）
-    desc: 面向 pfSense（FreeBSD/pf）防火墙的专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 HOST-RESOURCES 的 CPU 负载（按各核取平均）与 BEGEMOT-PF-MIB 的 pf 状态表条目数（等价活动连接数）。内存与温度/风扇/电源不采集——pfSense 内存仅经需行级过滤的 hrStorage 暴露、且无标准传感器表。
-      适用品牌型号——pfSense 开源防火墙（FreeBSD）。
+    desc: 面向 pfSense 防火墙的 SNMP 监控模板,可采集 运行时长、CPU 使用率、接口速率等主要指标。
   Firewall OPNsense SNMP:
     name: OPNsense（Telegraf）
-    desc: 面向 OPNsense（FreeBSD/pf）防火墙的专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 HOST-RESOURCES 的 CPU 负载（按各核取平均）与 BEGEMOT-PF-MIB 的 pf 状态表条目数（等价活动连接数）。内存与温度/风扇/电源不采集——OPNsense 内存仅经需行级过滤的 hrStorage 暴露、且无标准传感器表。
-      适用品牌型号——OPNsense 开源防火墙（FreeBSD）。
+    desc: 面向 OPNsense 防火墙的 SNMP 监控模板,可采集 运行时长、CPU 使用率、接口速率等主要指标。
   Firewall Flow NetFlow:
     name: 防火墙流量分析（NetFlow）
     desc: 使用 NetFlow 对防火墙进行流量分析采集，通过资产映射补充实例信息，按设备上报或兜底采样率归一化，并提供总览、接口、协议、端口、端点和会话维度指标。
   Firewall Flow sFlow:
     name: 防火墙流量分析（sFlow）
-    desc: 使用 sFlow 对防火墙进行流量分析采集，通过资产映射补充实例信息，按设备上报或兜底采样率归一化，并提供总览、接口、协议、端口、端点和会话维度指标。
+    desc: 使用 sFlow 对防火墙进行流量分析采集，通过资产映射补充实例信息，直接消费 Telegraf 已估算的 sFlow 值，并提供总览、接口、协议、端口、端点和会话维度指标。
   SNMP Trap:
     desc: SNMP Trap监控插件用于接收和处理网络设备主动推送的报警或状态通知（Trap消息），以实现实时监控和故障告警。
     name: SNMP Trap
   Router SNMP General:
-    desc: 通过Telegraf采集器利用SNMP协议定期收集路由器各接口的流量、丢包数、错包数等IF-MIB关键指标。
+    desc: 通过 Telegraf 采集器利用 SNMP 协议定期收集路由器的标准网络接口指标和流量统计,用于查看设备运行状态。
     name: 路由器通用（Telegraf）
   Router Juniper MX SNMP:
     name: Juniper MX（Telegraf）
-    desc: 面向 Juniper MX 系列路由器（Junos）的专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 JUNIPER-MIB jnxOperating 私有 OID 的设备健康（CPU 使用率与内存缓冲使用率，均为百分比，按路由引擎/FPC 等运行实体取平均）。
-      适用品牌型号——Juniper MX 系列业务路由器（MX240/480/960 等，Junos）。
+    desc: 面向 Juniper MX 路由器的 SNMP 监控模板,可采集 运行时长、CPU 使用率、内存使用率等主要指标。
   Router Huawei AR SNMP:
     name: Huawei AR（Telegraf）
-    desc: 面向 Huawei AR 系列路由器（VRP）的专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 HUAWEI-ENTITY-EXTENT-MIB 私有 OID 的设备健康（CPU 与内存使用率，均为百分比直报，按各实体取平均）。
-      适用品牌型号——华为 AR 系列企业路由器（AR1200/AR2200/AR3200 等）。
+    desc: 面向 Huawei AR 路由器的 SNMP 监控模板,可采集 运行时长、CPU 使用率、内存使用率等主要指标。
   Router Vyatta SNMP:
     name: Vyatta（Telegraf）
-    desc: 面向 Vyatta/VyOS（Linux）路由器的专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 HOST-RESOURCES 的 CPU 负载（按各核取平均）与 UCD-SNMP 真实内存（总量/空闲、已用及推算使用率）。内存使用率按 (总量-空闲)/总量 推算。
-      适用品牌型号——Vyatta / VyOS 软件路由器。
+    desc: 面向 Vyatta 路由器的 SNMP 监控模板,可采集 运行时长、CPU 使用率、内存使用率等主要指标。
   Router Adtran SNMP:
     name: Adtran（Telegraf）
-    desc: Adtran AOS 路由器专用 SNMP 采集模板（ADTRAN-AOS MIB，企业号 664）。除标准 IF-MIB 接口指标外，额外采集 Adtran 私有 OID 的设备健康指标：CPU 使用率（adGenAOSCurrentCpuUtil，直接以百分比上报）与内存（adGenAOSMemPool 总量 + adGenAOSHeapFree 空闲，字节，用量按 （总量-空闲）/总量 推导）。未暴露温度/风扇/电源专用 OID，故为 N/A。适用品牌型号——Adtran AOS 路由器/网关（NetVanta 系列及其他 adtran-aos 平台，企业号 664）。
+    desc: 面向 Adtran 路由器的 SNMP 监控模板,可采集 CPU 使用率、每端口入向流量速率、每端口出向流量速率等主要指标。
+  Router Cradlepoint SNMP:
+    name: Cradlepoint（Telegraf）
+    desc: 面向 Cradlepoint 路由器的 SNMP 监控模板,可采集 运行时长、CPU 使用率、内存使用率等主要指标。
+  Router Teltonika SNMP:
+    name: Teltonika（Telegraf）
+    desc: 面向 Teltonika 路由器的 SNMP 监控模板,可采集 CPU 使用率、每端口入向流量速率、每端口出向流量速率等主要指标。
+  Router Teldat SNMP:
+    name: Teldat（Telegraf）
+    desc: 面向 Teldat 路由器的 SNMP 监控模板,可采集 CPU 使用率、每端口入向流量速率、每端口出向流量速率等主要指标。
+  Router Avaya SNMP:
+    name: Avaya（Telegraf）
+    desc: 面向 Avaya 路由器的 SNMP 监控模板,可采集 CPU 使用率、每端口入向流量速率、每端口出向流量速率等主要指标。
+  Router Viprinet SNMP:
+    name: Viprinet（Telegraf）
+    desc: 面向 Viprinet 路由器的 SNMP 监控模板,可采集 CPU 使用率、每端口入向流量速率、每端口出向流量速率等主要指标。
+  Router OneAccess SNMP:
+    name: OneAccess（Telegraf）
+    desc: 面向 OneAccess 路由器的 SNMP 监控模板,可采集 CPU 使用率、每端口入向流量速率、每端口出向流量速率等主要指标。
+  Router Aethra SNMP:
+    name: Aethra（Telegraf）
+    desc: 面向 Aethra 路由器的 SNMP 监控模板,可采集 CPU 使用率、每端口入向流量速率、每端口出向流量速率等主要指标。
+  Router Benu SNMP:
+    name: Benu Networks（Telegraf）
+    desc: 面向 Benu 路由器的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  Router VeloCloud SNMP:
+    name: VeloCloud/VMware SD-WAN（Telegraf）
+    desc: 面向 VeloCloud 路由器的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率等主要指标。
+  Router Harbour SNMP:
+    name: 港湾网络（Telegraf）
+    desc: 面向 Harbour 路由器的 SNMP 监控模板,可采集 CPU 使用率、每端口入向流量速率、每端口出向流量速率等主要指标。
+  Router Bintec SNMP:
+    name: Bintec（Telegraf）
+    desc: 面向 Bintec 路由器的 SNMP 监控模板,可采集 CPU 使用率、每端口入向流量速率、每端口出向流量速率等主要指标。
+  Router Digi SNMP:
+    name: Digi（Telegraf）
+    desc: 面向 Digi 路由器的 SNMP 监控模板,可采集 CPU 使用率、每端口入向流量速率、每端口出向流量速率等主要指标。
   Router LANCOM SNMP:
     name: LANCOM（Telegraf）
-    desc: LANCOM LCOS 路由器/VPN 网关专用 SNMP 采集模板（LCOS-MIB，企业号 2356）。除标准 IF-MIB 接口指标外，额外采集 LANCOM 私有硬件温度传感器（lcsStatusHardwareInfoTemperatureDegrees，℃）。LCOS os_discovery 未暴露 CPU/内存利用率或风扇/电源状态 OID，故为 N/A。适用品牌型号——LANCOM LCOS 路由器与 VPN 网关（1xxx / ic- / ISG 系列及其他 LCOS 平台，企业号 2356）。
+    desc: 面向 LANCOM 路由器的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  Router NetModule SNMP:
+    name: NetModule（Telegraf）
+    desc: 面向 NetModule 路由器的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 31496）。
+  Router Unisphere SNMP:
+    name: Unisphere（Telegraf）
+    desc: 面向 Unisphere 路由器的 SNMP 监控模板,可采集 运行时长、接口速率、入向错误包等主要指标（企业号 PEN 4064）。
+  Router Avici SNMP:
+    name: Avici（Telegraf）
+    desc: 面向 Avici 路由器的 SNMP 监控模板,可采集 运行时长、接口速率、入向错误包等主要指标（企业号 PEN 2474）。
+  Router 6WIND VSR SNMP:
+    name: 6WIND VSR（Telegraf）
+    desc: 面向 6WIND VSR 路由器的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  Router Robustel SNMP:
+    name: Robustel（Telegraf）
+    desc: 面向 Robustel 路由器的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  Router Milesight SNMP:
+    name: Milesight（Telegraf）
+    desc: 面向 Milesight 路由器的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  Router MikroTik SNMP:
+    name: MikroTik（Telegraf）
+    desc: 面向 MikroTik 路由器的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率等主要指标。
+  Router MultiTech SNMP:
+    name: MultiTech（Telegraf）
+    desc: 面向 MultiTech 路由器的 SNMP 监控模板,可采集 运行时长、接口速率、入向错误包等主要指标（企业号 PEN 995）。
+  Router Sierra Wireless SNMP:
+    name: Sierra Wireless（Telegraf）
+    desc: 面向 Sierra Wireless 路由器的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 20542）。
   Router NEC SNMP:
     name: NEC（Telegraf）
-    desc: NEC UNIVERGE IX 系列路由器专用 SNMP 采集模板（NEC 私有企业 MIB，企业号 119）。除标准 IF-MIB 接口指标外，额外采集 NEC 私有标量 OID 的设备健康指标：1 分钟 CPU 使用率、内存使用率、机箱温度，均直接上报。风扇与电源状态仅以每单元 LLD 状态行（厂商私有状态码）暴露，SNMP 采集端无法规范化，故为 N/A。适用品牌型号——NEC UNIVERGE IX 系列路由器（IX2000/IX3000 及其他 UNIVERGE IX 平台，企业号 119）。
+    desc: 面向 NEC 路由器的 SNMP 监控模板,可采集 运行时长、CPU 使用率、内存使用率等主要指标。
   Router DrayTek SNMP:
     name: DrayTek（Telegraf）
-    desc: 居易科技 DrayTek Vigor 路由器/防火墙专用 SNMP 采集模板（DrayTek 私有 MIB，企业号 7367）。除标准 IF-MIB 接口指标外，额外采集设备内存使用率（DrayTek 私有 OID 1.3.6.1.4.1.7367.3.7.0，直接以百分比上报）与 CPU 使用率（HOST-RESOURCES hrProcessorLoad）。Vigor MIB 未暴露温度/风扇/电源，故为 N/A。适用品牌型号——DrayTek Vigor 系列路由器/防火墙（Vigor 2xxx/3xxx，如 Vigor2962/Vigor3900，企业号 7367）；CPU 需固件暴露 HOST-RESOURCES。
+    desc: 面向 DrayTek 路由器的 SNMP 监控模板,可采集 运行时长、CPU 使用率、内存使用率等主要指标。
   Router Flow NetFlow:
     name: 路由器流量分析（NetFlow）
     desc: 使用 NetFlow 对路由器进行流量分析采集，通过资产映射补充实例信息，按设备上报或兜底采样率归一化，并提供总览、接口、协议、端口、端点和会话维度指标。
   Router Flow sFlow:
     name: 路由器流量分析（sFlow）
-    desc: 使用 sFlow 对路由器进行流量分析采集，通过资产映射补充实例信息，按设备上报或兜底采样率归一化，并提供总览、接口、协议、端口、端点和会话维度指标。
+    desc: 使用 sFlow 对路由器进行流量分析采集，通过资产映射补充实例信息，直接消费 Telegraf 已估算的 sFlow 值，并提供总览、接口、协议、端口、端点和会话维度指标。
   ActiveMQ-JMX:
     name: ActiveMQ-JMX
     desc: 该 ActiveMQ 插件基于 JMX 采集，可获取消息队列、连接池、消息吞吐量等关键性能指标，实时监控消息处理效率与资源使用情况，助力优化系统性能，保障服务稳定。
@@ -4084,7 +4712,7 @@ monitor_object_plugin:
     desc: 基于Telegraf的haproxy采集器，定期采集HAProxy前端、后端及服务器的会话、队列、流量、HTTP响应、错误、服务器健康与延迟等运行数据。
   Hardware Server IPMI:
     name: 硬件服务器IPMI通用（Telegraf）
-    desc: 通过Telegraf采集器利用IPMI协议定期收集硬件服务器的电源状态、风扇转速、温度等关键指标。
+    desc: 面向 IPMI 硬件服务器的 SNMP 监控模板,可采集 运行时长、接口速率、入向错误包等主要指标。适用于IPMI 全系列。
   Mysql:
     name: Mysql（Telegraf）
     desc: 通过Telegraf采集器定期收集MySQL数据库健康状况及性能等关键指标。
@@ -4093,7 +4721,7 @@ monitor_object_plugin:
     desc: 通过Telegraf采集器定期调用MinIO指标接口收集包括对象存储系统的运行状态、存储容量、使用情况、复制、节点间通信和S3请求等关键指标。
   Hardware Server SNMP General:
     name: 硬件服务器SNMP通用（Telegraf）
-    desc: 通过Telegraf采集器利用SNMP协议定期收集硬件服务器各接口的流量、丢包数、错包数等IF-MIB关键指标。
+    desc: 通过 Telegraf 采集器利用 SNMP 协议定期收集硬件服务器的标准网络接口指标和流量统计,用于查看设备运行状态。
   Host:
     desc: 通过Telegraf采集器收集和分析主机的性能数据，包括CPU、内存、磁盘和网络使用情况。
     name: 主机（Telegraf）
@@ -4103,6 +4731,9 @@ monitor_object_plugin:
   Ping:
     desc: 通过Telegraf采集器定期发送ICMP回显请求（ECHO_REQUEST）来检查目标主机或网络设备的连通性和响应时间。
     name: Ping（Telegraf）
+  TCPPort:
+    name: TCP（Telegraf）
+    desc: 通过Telegraf net_response插件对目标主机的TCP端口进行连通性探测，支持IPv4和IPv6，可选发送内容并匹配期望返回串。
   MongoDB:
     name: MongoDB（Telegraf）
     desc: 通过Telegraf采集器定期收集MongoDB的基础信息、性能指标、操作统计和资源使用情况，帮助优化性能，保障数据库高效稳定运行。
@@ -4112,6 +4743,36 @@ monitor_object_plugin:
   Storage SNMP General:
     desc: 通过Telegraf采集器利用SNMP协议定期收集存储设备各接口的流量、丢包数、错包数等IF-MIB关键指标。
     name: 存储设备SNMP通用（Telegraf）
+  Storage Synology SNMP:
+    name: 群晖 Synology（Telegraf）
+    desc: 群晖 Synology NAS 存储 SNMP 采集（企业号 PEN 6574）。在标准 MIB-II / IF-MIB 设备运行时长与 64 位 HC 接口流量之外，采集厂商私有健康量——机箱温度（synologyTemperature，直采摄氏度无缩放）、系统风扇与电源运行状态（synologySystemFanStatus / synologyPowerStatus，原生 1=正常 / 2=异常）、RAID/卷阵列状态（synologyRaidStatus，按最差阵列归一为 1=正常 / 2=异常）。私有树仅暴露粗粒度 normal/failed 系统状态码，无可轮询的系统级 CPU / 内存 gauge，故 CPU、内存为 N/A，不伪造。适用品牌型号——群晖 DiskStation / RackStation NAS（DSM 系统，DS / RS / FS / SA 系列）。
+  Storage MacroSAN SNMP:
+    name: 宏杉 MacroSAN（Telegraf）
+    desc: 宏杉 MacroSAN 存储阵列 SNMP 采集（企业号 PEN 35904）。在标准 MIB-II / IF-MIB 设备运行时长与 64 位 HC 接口流量之外，采集完整厂商私有健康量——控制器 CPU 利用率（cpuRate，直接百分比）、控制器内存利用率（vmRate，直接百分比，无 used/free 拆分）、风扇/电源/磁盘健康状态（fanState / powerState / diskHealthState，归一为 1=正常 / 2=异常，按实例取最差行）。温度为 N/A。适用品牌型号——宏杉 MS 系列 SAN/NAS 存储阵列（企业号 PEN 35904）。
+  Storage Sugon SNMP:
+    name: 曙光 Sugon（Telegraf）
+    desc: 曙光 Sugon ParaStor 存储 SNMP 采集（企业号 PEN 35904；ParaStor 复用宏杉私有树）。在标准 MIB-II / IF-MIB 设备运行时长与 64 位 HC 接口流量之外，采集厂商私有硬件健康量——风扇/电源/磁盘运行状态（fanState / powerState / diskState，归一为 1=正常 / 2=异常，按实例取最差行）。本 profile 未暴露控制器级 CPU / 内存 gauge，故 CPU、内存、温度为 N/A，不伪造。适用品牌型号——曙光 ParaStor 分布式存储阵列（企业号 PEN 35904）。
+  Storage NetApp SNMP:
+    name: NetApp（Telegraf）
+    desc: NetApp 存储 SNMP 采集（企业号 PEN 789）。在标准 MIB-II / IF-MIB 设备运行时长与 64 位 HC 接口流量之外，采集厂商私有健康量——控制器 CPU 繁忙时间（cpuBusyTimePerCent，直接百分比）与 RAID 磁盘驱动器状态（raidStatus，active 正常归一为 1=正常 / 2=异常，按实例取最差磁盘行）。环境标量（风扇/电源失效计数、超温）为计数/布尔型，未纳入共享盘 enum 语义，故温度、风扇、电源为 N/A，不伪造，待现网核验后扩展。适用品牌型号——NetApp FAS / AFF 存储系统（Data ONTAP，企业号 PEN 789）。
+  Storage Fujitsu SNMP:
+    name: 富士通 Fujitsu（Telegraf）
+    desc: Fujitsu ETERNUS 存储阵列 SNMP 采集（企业号 PEN 211，fjdary-MIB）。在标准 MIB-II / IF-MIB 设备运行时长与 64 位 HC 接口流量之外，采集厂商私有健康量——机箱温度传感器（fjdaryMachineTempInfo，摄氏度直采无缩放）、RAID 组状态（fjdaryMgtRaidGrpStatus）与逻辑卷状态（fjdaryMgtOpVolumeStatus）。RAID/卷原始枚举 ok(2) 归一为 1=正常，其余 unknown/degraded/error/dormant 归一为 2=异常，并按实例取最差阵列或卷。该 MIB 未发布可轮询的控制器 CPU/内存利用率，电源对象为瓦数读数而非状态枚举，且无风扇状态对象，故 CPU、内存、风扇、电源为 N/A，不伪造。适用品牌型号——Fujitsu ETERNUS DX 存储阵列。
+  Storage Dell SC8000 SNMP:
+    name: Dell SC8000（Telegraf）
+    desc: Dell SC8000 / Compellent 存储 SNMP 采集（Dell EMC 企业号 PEN 674）。在标准 MIB-II / IF-MIB 设备运行时长与 64 位 HC 接口流量之外，采集厂商私有健康量——物理磁盘状态与健康标志（scDiskStatus / scDiskHealthy）、控制器风扇状态（scCtlrFanStatus）和控制器电源状态（scCtlrPowerStatus），统一归一为 1=正常 / 2=异常，并按实例取最差组件。该 profile 未暴露可轮询的控制器 CPU、内存或温度 gauge，故 CPU、内存、温度为 N/A，不伪造。适用品牌型号——Dell SC8000 / Compellent SC Series 存储阵列。
+  Storage Dell PowerVault SNMP:
+    name: Dell PowerVault（Telegraf）
+    desc: Dell PowerVault / EqualLogic 存储 SNMP 采集（EqualLogic 企业号 PEN 12740）。在标准 MIB-II / IF-MIB 设备运行时长与 64 位 HC 接口流量之外，采集厂商私有健康量——控制器 CPU 使用率（cpmCPUTotal5min，直接百分比）、控制器处理器/芯片温度、物理磁盘状态（eqlDiskStatus）和 iSCSI 卷管理状态（eqliscsiVolumeAdminStatus），统一归一为 1=正常 / 2=异常，并按实例取最差组件。容量、磁盘转速、CPU 频率和物理内存大小属于规格/容量信息，不作为健康指标采集。适用品牌型号——Dell PowerVault / EqualLogic PS 与 MD 系列存储。
+  Storage Inspur SNMP:
+    name: 浪潮 Inspur（Telegraf）
+    desc: Inspur AS5500 存储 SNMP 采集（企业号 PEN 48512）。在标准 MIB-II / IF-MIB 设备运行时长与 64 位 HC 接口流量之外，采集厂商私有硬件健康量——受管磁盘状态、物理盘可用性与电源状态。状态值 1 保守归一为正常，其余均归一为异常，并按实例取最差组件。当前 profile 未暴露控制器 CPU、内存、温度和风扇健康 gauge，故这些指标为 N/A，不伪造。
+  Storage CeresData SNMP:
+    name: 希磁 CeresData（Telegraf）
+    desc: CeresData 全闪存储 SNMP 采集（企业号 PEN 25359）。在标准 MIB-II / IF-MIB 设备运行时长与 64 位 HC 接口流量之外，采集厂商私有健康量——系统磁盘状态、物理磁盘状态与存储池健康度。状态值 1 保守归一为正常，其余均归一为异常，并按实例取最差磁盘或存储池。当前 profile 未暴露控制器 CPU、内存、温度、风扇和电源健康 gauge，故这些指标为 N/A，不伪造。
+  Storage Hikvision SNMP:
+    name: 海康 Hikvision（Telegraf）
+    desc: 海康 Hikvision Brainware 存储 SNMP 采集（本地私有 MIB 树 PEN 99999）。在标准 MIB-II / IF-MIB 设备运行时长与 64 位 HC 接口流量之外，采集厂商私有健康量——CPU、内存、CPU 温度、磁盘、RAID、电源和 CPU 风扇状态；状态值 1 归一为正常，其余归一为异常，并按实例取最差组件。容量与 IO 速率为规格/性能项，不作为共享健康指标采集。
   Oracle:
     desc: 通过Oracle Exporter采集器定期采集Oracle运行时长、操作次数、事务提交回滚及各类等待时间等指标。
     name: Oracle（Exporter）
@@ -4130,8 +4791,19 @@ monitor_object_plugin:
   Kafka:
     name: Kafka（Exporter）
     desc: 通过Kafka Exporter采集器定期收集Kafka集群的主题统计、分区数量、消费者组状态等指标，帮助监控Kafka集群的健康和性能。
+  Transmission Ifotec SNMP:
+    name: Ifotec（Telegraf）
+    desc: 面向 Ifotec 传输设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 21362）。
+  Switch IP Infusion SNMP:
+    name: IP Infusion（Telegraf）
+    desc: 面向 IP Infusion 交换机的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 36673）。
+  Switch Omnitron SNMP:
+    name: Omnitron（Telegraf）
+    desc: 面向 Omnitron 交换机的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 7342）。
+  Switch Ubiquoss SNMP:
+    name: Ubiquoss（Telegraf）
+    desc: 面向 Ubiquoss 交换机的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 36141）。
 monitor_object:
-  IBMMQ: IBM MQ
   Wireless: 无线设备
   Transmission: 传输设备
   Access: 接入设备
@@ -4148,6 +4820,7 @@ monitor_object:
   Minio: Minio
   Postgres: Postgres
   Ping: Ping
+  TCPPort: TCP
   vCenter: vCenter
   Switch: 交换机
   WebLogic: WebLogic
@@ -4188,7 +4861,7 @@ monitor_object_type:
   VMware: VMware（Telegraf）
   Middleware: 中间件
   Web: 网络
-  OS: 操作系统
+  OS: 主机资源
   Container Management: 容器管理
   Hardware Device: 硬件设备
   Database: 数据库
@@ -4196,7 +4869,6 @@ monitor_object_type:
   Tencent Cloud: 腾讯云
   Network Device: 网络设备
   K8S: K8s
-
 flow_onboarding_ui:
   accessAsset: 接入资产
   accessGuide: 接入指引

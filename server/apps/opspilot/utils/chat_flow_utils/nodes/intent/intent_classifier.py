@@ -100,8 +100,6 @@ class IntentClassifierNode(BaseNodeExecutor):
             "skill_type": SkillTypeChoices.BASIC_TOOL,
             "group": 0,
             "user_id": flow_input.get("user_id", "anonymous"),
-            "enable_km_route": False,
-            "km_llm_model": None,
             "enable_suggest": False,
             "enable_query_rewrite": False,
             "locale": flow_input.get("locale", "en"),

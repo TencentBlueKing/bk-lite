@@ -1,0 +1,137 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_bdcom",
+  "plugin": "Switch BDCOM SNMP",
+  "plugin_desc": "BDCOM (Shanghai Baud Data Communication) switch-specific SNMP collection (BDCOM private MIBs, IANA PEN 3320). In addition to standard IF-MIB interface metrics, it collects BDCOM private OIDs for device health — control-plane CPU utilization over the last 5 minutes (NMS-PROCESS-MIB cpmCPUTotal5min), system memory pool used and free bytes (NMS-MEMORY-POOL-MIB, mirroring the Cisco-style memory pool table) and per-card temperature (BDCOM-SYS nmscardTemperature, a dedicated typed temperature column). Memory utilization is computed from used / (used + free). BDCOM switch MIBs expose no dedicated fan-state or power-supply (PSU) state object, so fan and PSU are not collected (N/A). Supported brands/models — BDCOM managed Ethernet switches and OLT line cards.",
+  "status_query": "any({instance_type='switch', collect_type='snmp_bdcom'}) by (instance_id)",
+  "name": "Switch",
+  "icon": "mm-switch_交换机",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='switch'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_temperature_celsius"
+  ],
+  "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "avg(device_cpu_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the CPU utilization of the BDCOM device control plane over the last 5 minutes (NMS-PROCESS-MIB cpmCPUTotal5min), normalized to 0-100. Sustained high CPU usage can indicate control-plane overload, routing instability, or attack traffic, and may lead to slow management response or packet processing delays."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_used",
+      "query": "device_memory_used{instance_type='switch', __$labels__}",
+      "display_name": "Memory Used",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the number of bytes currently in use in the BDCOM system memory pool (NMS-MEMORY-POOL-MIB used bytes). It helps administrators understand absolute memory consumption and identify when the device is under memory pressure."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_free",
+      "query": "device_memory_free{instance_type='switch', __$labels__}",
+      "display_name": "Memory Free",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the number of free bytes remaining in the BDCOM system memory pool (NMS-MEMORY-POOL-MIB free bytes). Together with the used bytes it determines overall memory utilization."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_usage",
+      "query": "sum(device_memory_used{instance_type='switch', __$labels__}) by (instance_id) / (sum(device_memory_used{instance_type='switch', __$labels__}) by (instance_id) + sum(device_memory_free{instance_type='switch', __$labels__}) by (instance_id)) * 100",
+      "display_name": "Memory Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports overall memory utilization of the BDCOM device, computed as used / (used + free) * 100. High memory usage may indicate memory leaks, oversized routing/MAC/ARP tables, or insufficient capacity, and can cause instability or failed allocations."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the card temperature in degrees Celsius of the BDCOM device (BDCOM-SYS nmscardTemperature, a dedicated typed temperature column), aggregated as the maximum across cards. High temperatures can indicate cooling failure or airflow obstruction and risk thermal shutdown."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifInOctets on high-speed switch ports, keeping the rate accurate."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifOutOctets on high-speed switch ports, keeping the rate accurate."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='switch', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

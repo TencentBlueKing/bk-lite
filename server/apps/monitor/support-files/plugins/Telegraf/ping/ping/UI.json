@@ -2,7 +2,9 @@
   "object_name": "Ping",
   "instance_type": "ping",
   "collect_type": "ping",
-  "config_type": ["ping"],
+  "config_type": [
+    "ping"
+  ],
   "collector": "Telegraf",
   "instance_id": "{{instance_type}}_{{url}}",
   "form_fields": [
@@ -26,7 +28,7 @@
       "label": "间隔",
       "type": "inputNumber",
       "required": true,
-      "default_value": 10,
+      "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
       "widget_props": {
         "min": 1,
@@ -52,29 +54,33 @@
       "type": "select",
       "required": true,
       "widget_props": {
-        "placeholder": "请选择节点"
+        "placeholder": "请选择节点",
+        "width": 220
       },
       "enable_row_filter": false
     },
     {
       "name": "url",
-      "label": "URL",
+      "label": "目标地址",
       "type": "input",
       "required": true,
       "widget_props": {
-        "placeholder": "192.168.1.1"
+        "placeholder": "example.com / 192.168.1.1 / 2001:db8::1",
+        "width": 340
       },
       "rules": [
         {
           "type": "pattern",
-          "pattern": "^([a-zA-Z0-9]([a-zA-Z0-9\\-]{0,61}[a-zA-Z0-9])?\\.)+[a-zA-Z]{2,}$|^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$",
-          "message": "请输入有效的域名或IP地址",
+          "pattern": "^([a-zA-Z0-9]([a-zA-Z0-9\\-]{0,61}[a-zA-Z0-9])?\\.)+[a-zA-Z]{2,}$|^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$|^([0-9A-Fa-f]{0,4}:){2,7}[0-9A-Fa-f]{0,4}$",
+          "message": "请输入有效的域名、IPv4或IPv6地址",
           "excel_formula": "OR(ISNUMBER(FIND(\".\",{{CELL}})),AND(LEN({{CELL}})>=7,LEN({{CELL}})<=253))"
         }
       ],
       "change_handler": {
         "type": "simple",
-        "source_fields": ["url"],
+        "source_fields": [
+          "url"
+        ],
         "target_field": "instance_name"
       }
     },
@@ -85,7 +91,8 @@
       "required": true,
       "widget_props": {
         "placeholder": "实例名称",
-        "disabled": false
+        "disabled": false,
+        "width": 220
       }
     },
     {
@@ -94,7 +101,8 @@
       "type": "group_select",
       "required": false,
       "widget_props": {
-        "placeholder": "请选择组"
+        "placeholder": "请选择组",
+        "width": 220
       }
     }
   ]

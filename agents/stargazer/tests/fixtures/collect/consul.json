@@ -1,0 +1,24 @@
+{
+  "model_id": "consul",
+  "captured_at": "2026-07-08T06:19:37Z",
+  "image": "docker.m.daocloud.io/library/ubuntu:22.04",
+  "container_meta": {
+    "container_id": "08f4f85169eb",
+    "image": "docker.m.daocloud.io/library/ubuntu:22.04"
+  },
+  "params": {
+    "host": "127.0.0.1",
+    "ssh_port": 12242
+  },
+  "raw_stdout": {
+    "inst_name": "172.17.0.2-consul-8500",
+    "bk_obj_id": "consul",
+    "ip_addr": "172.17.0.2",
+    "port": "8500",
+    "install_path": "/usr/bin",
+    "version": "2.0.1",
+    "data_dir": "",
+    "conf_path": "",
+    "role": "Leader"
+  }
+}

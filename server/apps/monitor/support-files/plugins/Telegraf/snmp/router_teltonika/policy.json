@@ -1,0 +1,56 @@
+{
+  "object": "Router",
+  "plugin": "Router Teltonika SNMP",
+  "templates": [
+    {
+      "name": "Teltonika路由器CPU使用率过高",
+      "alert_name": "路由器${resource_name} CPU 使用率过高",
+      "description": "监控 Teltonika 蜂窝路由器各核平均 CPU 使用率，当持续高于阈值时触发告警，提示可能存在控制平面过载或异常流量，避免管理响应变慢或转发受影响。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Teltonika路由器内存使用率过高",
+      "alert_name": "路由器${resource_name} 内存使用率过高",
+      "description": "监控 Teltonika 蜂窝路由器整体内存使用率，当超过阈值时触发告警，便于及时发现内存压力导致转发或路由处理性能下降的风险。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

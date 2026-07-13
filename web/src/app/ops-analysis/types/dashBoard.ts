@@ -2,6 +2,12 @@ import { TopologyNodeData } from './topology';
 import type { ParamItem, DatasourceItem } from './dataSource';
 import type { ValueMapping } from '@/app/ops-analysis/utils/valueMapping';
 import type { Dayjs } from 'dayjs';
+import type { OpsChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
+import type {
+  NetworkStatusTopologyConfig,
+  SceneWidgetType,
+} from './sceneWidget';
+import type { OpsAnalysisWidgetSurface } from '@/app/ops-analysis/utils/chartTypeSurface';
 
 export type FilterType = 'selector' | 'fixed';
 
@@ -45,8 +51,12 @@ export interface LayoutChangeItem {
 export interface AddComponentConfig {
   name?: string;
   description?: string;
+  defaultWidth?: number;
+  defaultHeight?: number;
   dataSource?: string | number;
   chartType?: string;
+  sceneWidgetType?: SceneWidgetType;
+  networkStatusTopology?: NetworkStatusTopologyConfig;
   dataSourceParams?: ParamItem[];
   tableConfig?: TableConfig;
 }
@@ -55,8 +65,7 @@ export interface AddComponentConfig {
 export interface TableFilterFieldConfig {
   key: string;
   label: string;
-  inputType: 'keyword' | 'time_range' | 'select';
-  options?: string[];
+  inputType: 'keyword' | 'time_range';
 }
 
 /** 表格列配置（组件级别） */
@@ -67,14 +76,6 @@ export interface TableColumnConfigItem {
   order: number;
   width?: number;
   columnType?: 'data' | 'actions';
-  /** 单元格值映射：把该列的值映射为文本/颜色（对齐 Grafana 表格单元格映射） */
-  valueMappings?: ValueMapping[];
-  /** 单元格渲染类型（对齐 Grafana cell display mode）：纯文本/色背景/条形量规 */
-  cellType?: 'text' | 'colorBackground' | 'gauge';
-  /** 单元格按阈值着色（色背景/量规填充用）；未命中值映射时生效 */
-  cellThresholdColors?: ThresholdColorConfig[];
-  /** gauge 单元格的最大值；不设则取该列数值最大值 */
-  cellMax?: number;
 }
 
 /** 表格组件配置 */
@@ -87,6 +88,9 @@ import { ThresholdColorConfig } from '@/app/ops-analysis/utils/thresholdUtils';
 
 export interface ValueConfig {
   chartType?: string;
+  sceneWidgetType?: SceneWidgetType;
+  networkStatusTopology?: NetworkStatusTopologyConfig;
+  chartThemeMode?: OpsChartThemeMode;
   dataSource?: string | number;
   compare?: boolean;
   params?: Record<string, string | number | boolean | [number, number] | null>;
@@ -102,12 +106,6 @@ export interface ValueConfig {
   unitId?: string;
   /** 值映射规则（值→文本/色），命中时覆盖数值展示与颜色。 */
   valueMappings?: ValueMapping[];
-  /** 折线/柱状多系列堆叠（对齐 Grafana stacking）。 */
-  stack?: boolean;
-  /** 折线面积填充透明度 0~1（对齐 Grafana Fill opacity）。 */
-  fillOpacity?: number;
-  /** Text/Markdown 面板内容（对齐 Grafana Text panel），支持轻量 markdown。 */
-  content?: string;
   conversionFactor?: number;
   decimalPlaces?: number;
   thresholdColors?: ThresholdColorConfig[];
@@ -115,6 +113,20 @@ export interface ValueConfig {
   gaugeMax?: number;
   gaugeShape?: 'semicircle' | 'circle';
   actions?: DashboardActionConfig[];
+  appearance?: ScreenWidgetAppearance;
+}
+
+export interface ScreenWidgetAppearance {
+  frame?: 'panel' | 'bare';
+}
+
+export interface ScreenRenderContext {
+  enabled: boolean;
+  fitScale: number;
+  screenDensity: number;
+  screenUiScale: number;
+  widgetDensity: number;
+  widgetUiScale: number;
 }
 
 export interface DashboardActionParamMapping {
@@ -135,6 +147,8 @@ export interface DashboardActionConfig {
 export interface WidgetConfig extends ValueConfig {
   name: string;
   description?: string;
+  defaultWidth?: number;
+  defaultHeight?: number;
   tableConfig?: TableConfig;
 }
 
@@ -150,7 +164,7 @@ export interface LayoutItem {
 }
 
 export interface DashboardWidgetLayoutItem extends LayoutItem {
-  itemType?: 'widget';
+  itemType?: 'widget' | 'sceneWidget';
   groupId?: string | null;
 }
 
@@ -175,12 +189,23 @@ export interface ViewConfigProps {
   onConfirm?: (values: WidgetConfig) => void;
   onClose?: () => void;
   builtinNamespaceId?: number;
+  showChartThemeMode?: boolean;
+  surface?: OpsAnalysisWidgetSurface;
+}
+
+export interface ComponentSelectorConfigItem extends DatasourceItem {
+  chartType: string;
+  dataSource?: string | number;
+  defaultWidth: number;
+  defaultHeight: number;
+  sceneWidgetType?: SceneWidgetType;
 }
 
 export interface ComponentSelectorProps {
   visible: boolean;
   onCancel: () => void;
-  onOpenConfig?: (item: DatasourceItem) => void;
+  onOpenConfig?: (item: ComponentSelectorConfigItem) => void;
+  surface?: OpsAnalysisWidgetSurface;
 }
 
 export interface BaseWidgetProps {

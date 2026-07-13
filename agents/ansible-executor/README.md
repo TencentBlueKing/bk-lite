@@ -115,6 +115,15 @@ runtime:
   work_dir: /var/lib/ansible-executor/work
   state_db_path: /var/lib/ansible-executor/task_state.db
 
+security:
+  allowed_callback_subjects:
+    - job.ansible_task_callback
+    - default_stargazer.host_remote.callback
+  allowed_stream_subjects:
+    - job.stream.>
+    - executor.stream.>
+    - bk.ans_exec.stream.>
+
 jetstream:
   namespace: bk.ans_exec
   max_deliver: 5
@@ -122,6 +131,9 @@ jetstream:
   backoff: [5, 15, 30, 60]
   dlq_subject: bk.ans_exec.tasks.dlq
 ```
+
+`security.allowed_callback_subjects` 和 `security.allowed_stream_subjects` 也可分别通过
+`ANSIBLE_ALLOWED_CALLBACK_SUBJECTS`、`ANSIBLE_ALLOWED_STREAM_SUBJECTS` 以逗号分隔形式注入；仅在部署确有自定义回调或流式日志 subject 时扩展。
 
 兼容的环境变量模式仍保留，便于迁移，但不再推荐作为主配置方式。
 

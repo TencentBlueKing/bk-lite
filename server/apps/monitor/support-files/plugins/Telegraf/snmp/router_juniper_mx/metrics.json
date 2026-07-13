@@ -60,6 +60,19 @@
       "description": "This metric reports the memory-buffer utilization of the Juniper MX router operating entities (JUNIPER-MIB jnxOperatingBuffer, reported directly as a percentage and averaged across entities). High memory pressure can affect forwarding and route processing."
     },
     {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='router', __$labels__}) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the temperature reading of Juniper MX router operating entities (JUNIPER-MIB jnxOperatingTemp), aggregated as the maximum across sensors. High temperatures can indicate cooling failure or airflow obstruction and risk thermal shutdown."
+    },
+    {
       "metric_group": "Status",
       "name": "interface_ifAdminStatus",
       "query": "interface_ifAdminStatus{instance_type='router', __$labels__}",

@@ -1,8 +1,15 @@
 import ChartNode from '../components/chartNode';
 import { Graph, Node } from '@antv/x6';
+import type { Attr } from '@antv/x6/es/registry/attr';
 import { register } from '@antv/x6-react-shape';
 import { NODE_DEFAULTS, PORT_DEFAULTS } from '../constants/nodeDefaults';
 import { createPortConfig } from './topologyUtils';
+import {
+  getBasicShapeAttrs,
+  getLabelAttrsByDirection,
+  resolveConfiguredNodeSize,
+  resolveNodePosition,
+} from './nodeStyleUtils';
 import { iconList } from '@/app/cmdb/utils/common';
 import type {
   TopologyNodeData,
@@ -19,109 +26,6 @@ const NODE_TYPE_MAP = {
 } as const;
 
 const DEFAULT_ICON_PATH = '/assets/icons/cc-default_默认.svg';
-
-const getBasicShapeAttrs = (nodeConfig: TopologyNodeData, shapeType?: string): Record<string, any> => {
-  const { BASIC_SHAPE_NODE } = NODE_DEFAULTS;
-  const backgroundColor = nodeConfig.styleConfig?.backgroundColor;
-  const borderColor = nodeConfig.styleConfig?.borderColor;
-  const borderWidth = nodeConfig.styleConfig?.borderWidth;
-  const lineType = nodeConfig.styleConfig?.lineType;
-  const renderEffect = nodeConfig.styleConfig?.renderEffect;
-
-  const isTransparent = !backgroundColor ||
-    backgroundColor === 'transparent' ||
-    backgroundColor === 'none' ||
-    backgroundColor === '' ||
-    backgroundColor === 'rgba(0,0,0,0)';
-
-  const baseAttrs: any = {
-    body: {
-      fill: isTransparent ? BASIC_SHAPE_NODE.backgroundColor : backgroundColor,
-      stroke: borderColor || BASIC_SHAPE_NODE.borderColor,
-      strokeWidth: borderWidth || 0,
-      rx: 16,
-      ry: 16,
-      opacity: 1
-    }
-  };
-
-  if (['glass', undefined].includes(renderEffect)) {
-    baseAttrs.body.filter = 'drop-shadow(2px 4px 6px rgba(0, 0, 0, 0.25))';
-    baseAttrs.body.stroke = `rgba(${parseInt((borderColor || BASIC_SHAPE_NODE.borderColor).slice(1, 3), 16)}, ${parseInt((borderColor || BASIC_SHAPE_NODE.borderColor).slice(3, 5), 16)}, ${parseInt((borderColor || BASIC_SHAPE_NODE.borderColor).slice(5, 7), 16)}, 0.8)`;
-  } else {
-    baseAttrs.body.filter = '';
-  }
-
-  if (lineType === 'dashed') {
-    baseAttrs.body.strokeDasharray = '8,4';
-  } else if (lineType === 'dotted') {
-    baseAttrs.body.strokeDasharray = '2,2';
-  } else {
-    baseAttrs.body.strokeDasharray = '';
-  }
-
-  if (shapeType === 'circle') {
-    baseAttrs.body.rx = '50%';
-    baseAttrs.body.ry = '50%';
-  } else if (shapeType === 'polygon') {
-    baseAttrs.body.rx = 0;
-    baseAttrs.body.ry = 0;
-  }
-
-  return baseAttrs;
-};
-
-const getLabelAttrsByDirection = (direction: 'top' | 'bottom' | 'left' | 'right' = 'bottom') => {
-  switch (direction) {
-    case 'top':
-      return {
-        textAnchor: 'middle',
-        textVerticalAnchor: 'bottom',
-        refX: '50%',
-        refY: '0%',
-        refY2: '-8',
-        textWrap: { width: '90%', ellipsis: true }
-      };
-    case 'bottom':
-      return {
-        textAnchor: 'middle',
-        textVerticalAnchor: 'top',
-        refX: '50%',
-        refY: '100%',
-        refY2: '8',
-        textWrap: { width: '90%', ellipsis: true }
-      };
-    case 'left':
-      return {
-        textAnchor: 'end',
-        textVerticalAnchor: 'middle',
-        refX: '0%',
-        refX2: '-5',
-        refY: '50%',
-        refY2: '1',
-        textWrap: { width: '60px', ellipsis: true }
-      };
-    case 'right':
-      return {
-        textAnchor: 'start',
-        textVerticalAnchor: 'middle',
-        refX: '100%',
-        refX2: '5',
-        refY: '50%',
-        refY2: '1',
-        textWrap: { width: '60px', ellipsis: true }
-      };
-    default:
-      return {
-        textAnchor: 'middle',
-        textVerticalAnchor: 'top',
-        refX: '50%',
-        refY: '100%',
-        refY2: '8',
-        textWrap: { width: '90%', ellipsis: true }
-      };
-  }
-};
 
 const registerIconNode = () => {
   const { ICON_NODE } = NODE_DEFAULTS;
@@ -164,9 +68,8 @@ const registerIconNode = () => {
         refY2: '20',
         textWrap: { width: '90%', ellipsis: true }
       }
-    },
-    ports: createPortConfig(PORT_DEFAULTS.FILL_COLOR)
-  });
+    }
+  }, true);
 };
 
 const registerSingleValueNode = () => {
@@ -210,9 +113,8 @@ const registerSingleValueNode = () => {
         textWrap: { width: '90%', ellipsis: true },
         display: 'none'
       }
-    },
-    ports: createPortConfig(PORT_DEFAULTS.FILL_COLOR)
-  });
+    }
+  }, true);
 };
 
 const registerTextNode = () => {
@@ -244,9 +146,8 @@ const registerTextNode = () => {
         refY: '50%',
         textWrap: { width: '85%', height: '85%', ellipsis: false }
       }
-    },
-    ports: createPortConfig(PORT_DEFAULTS.FILL_COLOR)
-  });
+    }
+  }, true);
 };
 
 const registerBasicShapeNode = () => {
@@ -257,7 +158,9 @@ const registerBasicShapeNode = () => {
     width: BASIC_SHAPE_NODE.width,
     height: BASIC_SHAPE_NODE.height,
     markup: [
-      { tagName: 'rect', selector: 'body' }
+      { tagName: 'rect', selector: 'body' },
+      { tagName: 'path', selector: 'frame' },
+      { tagName: 'path', selector: 'innerFrame' },
     ],
     attrs: {
       body: {
@@ -267,10 +170,11 @@ const registerBasicShapeNode = () => {
         rx: BASIC_SHAPE_NODE.borderRadius,
         ry: BASIC_SHAPE_NODE.borderRadius,
         opacity: 1
-      }
-    },
-    ports: createPortConfig(PORT_DEFAULTS.FILL_COLOR)
-  });
+      },
+      frame: { display: 'none' },
+      innerFrame: { display: 'none' },
+    }
+  }, true);
 };
 
 const registerChartNode = () => {
@@ -280,40 +184,39 @@ const registerChartNode = () => {
     shape: 'chart-node',
     width: CHART_NODE.width,
     height: CHART_NODE.height,
-    component: ChartNode,
-    ports: createPortConfig(PORT_DEFAULTS.FILL_COLOR)
+    component: ChartNode
   });
 };
 
 const registeredNodes = new Set<string>();
+const TOPOLOGY_NODE_SHAPES = [
+  'icon-node',
+  'single-value-node',
+  'text-node',
+  'basic-shape-node',
+  'chart-node',
+];
 
 export const registerNodes = () => {
   try {
-    if (!registeredNodes.has('icon-node')) {
-      registerIconNode();
-      registeredNodes.add('icon-node');
-    }
+    TOPOLOGY_NODE_SHAPES.forEach((shape) => {
+      try {
+        Graph.unregisterNode(shape);
+      } catch {
+        // Shape may not have been registered in this runtime yet.
+      }
+    });
 
-    if (!registeredNodes.has('single-value-node')) {
-      registerSingleValueNode();
-      registeredNodes.add('single-value-node');
-    }
-
-    if (!registeredNodes.has('text-node')) {
-      registerTextNode();
-      registeredNodes.add('text-node');
-    }
-
-    if (!registeredNodes.has('basic-shape-node')) {
-      registerBasicShapeNode();
-      registeredNodes.add('basic-shape-node');
-    }
-
-    if (!registeredNodes.has('chart-node')) {
-      registerChartNode();
-      registeredNodes.add('chart-node');
-    }
-
+    registerIconNode();
+    registerSingleValueNode();
+    registerTextNode();
+    registerBasicShapeNode();
+    registerChartNode();
+    registeredNodes.add('icon-node');
+    registeredNodes.add('single-value-node');
+    registeredNodes.add('text-node');
+    registeredNodes.add('basic-shape-node');
+    registeredNodes.add('chart-node');
   } catch (error) {
     console.warn('节点注册失败:', error);
   }
@@ -343,9 +246,12 @@ const getIconUrl = (nodeConfig: TopologyNodeData): string => {
 
 const createIconNode = (nodeConfig: TopologyNodeData, baseNodeData: BaseNodeData): CreatedNodeConfig => {
   const logoUrl = getIconUrl(nodeConfig);
+  const { ICON_NODE } = NODE_DEFAULTS;
 
   const iconPadding = nodeConfig.styleConfig?.iconPadding || 0;
   const iconSize = Math.max(10, 100 - iconPadding * 2);
+  const width = nodeConfig.styleConfig?.width || ICON_NODE.width;
+  const height = nodeConfig.styleConfig?.height || ICON_NODE.height;
 
   const textDirection = nodeConfig.styleConfig?.textDirection || 'bottom';
   const labelAttrs = getLabelAttrsByDirection(textDirection);
@@ -354,13 +260,15 @@ const createIconNode = (nodeConfig: TopologyNodeData, baseNodeData: BaseNodeData
 
   return {
     ...baseNodeData,
-    width: nodeConfig.styleConfig?.width,
-    height: nodeConfig.styleConfig?.height,
+    width,
+    height,
     attrs: {
       body: {
-        stroke: nodeConfig.styleConfig?.borderColor || NODE_DEFAULTS.ICON_NODE.borderColor,
-        strokeWidth: NODE_DEFAULTS.ICON_NODE.strokeWidth,
-        fill: nodeConfig.styleConfig?.backgroundColor || NODE_DEFAULTS.ICON_NODE.backgroundColor,
+        stroke: nodeConfig.styleConfig?.borderColor || ICON_NODE.borderColor,
+        strokeWidth: ICON_NODE.strokeWidth,
+        fill: nodeConfig.styleConfig?.backgroundColor || ICON_NODE.backgroundColor,
+        rx: ICON_NODE.borderRadius,
+        ry: ICON_NODE.borderRadius,
       },
       image: {
         'xlink:href': logoUrl,
@@ -372,14 +280,15 @@ const createIconNode = (nodeConfig: TopologyNodeData, baseNodeData: BaseNodeData
         refY2: `-${iconSize / 2}%`,
       },
       label: {
-        fill: nodeConfig.styleConfig?.textColor || NODE_DEFAULTS.ICON_NODE.textColor,
-        fontSize: nodeConfig.styleConfig?.fontSize || NODE_DEFAULTS.ICON_NODE.fontSize,
+        fill: nodeConfig.styleConfig?.textColor || ICON_NODE.textColor,
+        fontSize: nodeConfig.styleConfig?.fontSize || ICON_NODE.fontSize,
+        fontWeight: ICON_NODE.fontWeight,
         text: hasName ? nodeConfig.name : '',
         display: hasName ? 'block' : 'none',
         ...labelAttrs
       }
     },
-    ports: createPortConfig()
+    ports: createPortConfig(PORT_DEFAULTS.FILL_COLOR, { width, height })
   };
 };
 
@@ -388,9 +297,18 @@ const createSingleValueNode = (nodeConfig: TopologyNodeData, baseNodeData: BaseN
   const hasDataSource = !!(valueConfig.dataSource && (valueConfig.selectedFields?.length ?? 0) > 0);
   const hasName = !!(nodeConfig.name && nodeConfig.name.trim());
   const initialText = hasDataSource ? 'loading' : '--';
+  const { width, height } = resolveConfiguredNodeSize(
+    nodeConfig.styleConfig,
+    {
+      width: NODE_DEFAULTS.SINGLE_VALUE_NODE.width,
+      height: NODE_DEFAULTS.SINGLE_VALUE_NODE.height,
+    },
+  );
 
   return {
     ...baseNodeData,
+    width,
+    height,
     data: {
       ...baseNodeData.data,
       valueConfig: valueConfig,
@@ -400,7 +318,8 @@ const createSingleValueNode = (nodeConfig: TopologyNodeData, baseNodeData: BaseN
     attrs: {
       body: {
         fill: nodeConfig.styleConfig?.backgroundColor || 'transparent',
-        stroke: nodeConfig.styleConfig?.borderColor || 'transparent'
+        stroke: nodeConfig.styleConfig?.borderColor || 'transparent',
+        strokeWidth: NODE_DEFAULTS.SINGLE_VALUE_NODE.strokeWidth,
       },
       label: {
         fill: nodeConfig.styleConfig?.textColor,
@@ -416,7 +335,7 @@ const createSingleValueNode = (nodeConfig: TopologyNodeData, baseNodeData: BaseN
         display: hasName ? 'block' : 'none'
       }
     },
-    ports: createPortConfig()
+    ports: createPortConfig(PORT_DEFAULTS.FILL_COLOR, { width, height })
   };
 };
 
@@ -439,10 +358,14 @@ const createTextNode = (nodeConfig: TopologyNodeData, baseNodeData: BaseNodeData
   const estimatedHeight = Math.max(
     60,
     lines.length * lineHeight + 30
-  ); return {
+  );
+  const width = nodeConfig.styleConfig?.width || estimatedWidth;
+  const height = nodeConfig.styleConfig?.height || estimatedHeight;
+
+  return {
     ...baseNodeData,
-    width: estimatedWidth,
-    height: estimatedHeight,
+    width,
+    height,
     data: {
       ...baseNodeData.data,
       isPlaceholder: !nodeConfig.name
@@ -467,21 +390,22 @@ const createTextNode = (nodeConfig: TopologyNodeData, baseNodeData: BaseNodeData
         refY: '50%'
       }
     },
-    ports: createPortConfig(PORT_DEFAULTS.FILL_COLOR)
+    ports: createPortConfig(PORT_DEFAULTS.FILL_COLOR, { width, height })
   };
 };
 
 const createBasicShapeNode = (nodeConfig: TopologyNodeData, baseNodeData: BaseNodeData): CreatedNodeConfig => {
+  const { BASIC_SHAPE_NODE } = NODE_DEFAULTS;
   const shapeType = nodeConfig.styleConfig?.shapeType;
-  const width = nodeConfig.styleConfig?.width;
-  const height = nodeConfig.styleConfig?.height;
+  const width = nodeConfig.styleConfig?.width || BASIC_SHAPE_NODE.width;
+  const height = nodeConfig.styleConfig?.height || BASIC_SHAPE_NODE.height;
 
   return {
     ...baseNodeData,
     width: width,
     height: height,
     attrs: getBasicShapeAttrs(nodeConfig, shapeType),
-    ports: createPortConfig()
+    ports: createPortConfig(PORT_DEFAULTS.FILL_COLOR, { width, height })
   };
 };
 
@@ -503,9 +427,7 @@ const createChartNode = (nodeConfig: TopologyNodeData, baseNodeData: BaseNodeDat
 
 export const createNodeByType = (nodeConfig: TopologyNodeData): CreatedNodeConfig => {
   const shape = getRegisteredNodeShape(nodeConfig.type);
-
-  const x = nodeConfig.position?.x ?? (nodeConfig as any).x ?? 0;
-  const y = nodeConfig.position?.y ?? (nodeConfig as any).y ?? 0;
+  const { x, y } = resolveNodePosition(nodeConfig);
 
   const baseNodeData: BaseNodeData = {
     id: nodeConfig.id || '',
@@ -534,9 +456,12 @@ export const createNodeByType = (nodeConfig: TopologyNodeData): CreatedNodeConfi
 
 const updateIconNodeAttributes = (node: Node, nodeConfig: TopologyNodeData) => {
   const logoUrl = getIconUrl(nodeConfig);
+  const { ICON_NODE } = NODE_DEFAULTS;
 
   const iconPadding = nodeConfig.styleConfig?.iconPadding || 0;
   const iconSize = Math.max(10, 100 - iconPadding * 2);
+  const width = nodeConfig.styleConfig?.width || ICON_NODE.width;
+  const height = nodeConfig.styleConfig?.height || ICON_NODE.height;
 
   const textDirection = nodeConfig.styleConfig?.textDirection || 'bottom';
   const labelAttrs = getLabelAttrsByDirection(textDirection);
@@ -545,9 +470,11 @@ const updateIconNodeAttributes = (node: Node, nodeConfig: TopologyNodeData) => {
 
   node.setAttrs({
     body: {
-      stroke: nodeConfig.styleConfig?.borderColor || NODE_DEFAULTS.ICON_NODE.borderColor,
-      strokeWidth: NODE_DEFAULTS.ICON_NODE.strokeWidth,
-      fill: nodeConfig.styleConfig?.backgroundColor || NODE_DEFAULTS.ICON_NODE.backgroundColor,
+      stroke: nodeConfig.styleConfig?.borderColor || ICON_NODE.borderColor,
+      strokeWidth: ICON_NODE.strokeWidth,
+      fill: nodeConfig.styleConfig?.backgroundColor || ICON_NODE.backgroundColor,
+      rx: ICON_NODE.borderRadius,
+      ry: ICON_NODE.borderRadius,
     },
     image: {
       'xlink:href': logoUrl,
@@ -559,24 +486,32 @@ const updateIconNodeAttributes = (node: Node, nodeConfig: TopologyNodeData) => {
       refY2: `-${iconSize / 2}%`,
     },
     label: {
-      fill: nodeConfig.styleConfig?.textColor || NODE_DEFAULTS.ICON_NODE.textColor,
-      fontSize: nodeConfig.styleConfig?.fontSize || NODE_DEFAULTS.ICON_NODE.fontSize,
+      fill: nodeConfig.styleConfig?.textColor || ICON_NODE.textColor,
+      fontSize: nodeConfig.styleConfig?.fontSize || ICON_NODE.fontSize,
+      fontWeight: ICON_NODE.fontWeight,
       text: hasName ? nodeConfig.name : '',
       display: hasName ? 'block' : 'none',
       ...labelAttrs
     }
   });
 
-  if (nodeConfig.styleConfig?.width && nodeConfig.styleConfig?.height) {
-    const { width: currentWidth, height: currentHeight } = node.getSize();
+  const { width: currentWidth, height: currentHeight } = node.getSize();
 
-    if (currentWidth !== nodeConfig.styleConfig.width || currentHeight !== nodeConfig.styleConfig.height) {
-      node.resize(nodeConfig.styleConfig.width, nodeConfig.styleConfig.height);
-      node.prop('ports', createPortConfig(PORT_DEFAULTS.FILL_COLOR));
-    }
+  if (currentWidth !== width || currentHeight !== height) {
+    node.resize(width, height);
+    node.prop('ports', createPortConfig(PORT_DEFAULTS.FILL_COLOR, { width, height }));
   }
-}; const updateSingleValueNodeAttributes = (node: Node, nodeConfig: TopologyNodeData) => {
+};
+
+const updateSingleValueNodeAttributes = (node: Node, nodeConfig: TopologyNodeData) => {
   const hasName = !!(nodeConfig.name && nodeConfig.name.trim());
+  const { width, height } = resolveConfiguredNodeSize(
+    nodeConfig.styleConfig,
+    {
+      width: NODE_DEFAULTS.SINGLE_VALUE_NODE.width,
+      height: NODE_DEFAULTS.SINGLE_VALUE_NODE.height,
+    },
+  );
 
   const nodeData = node.getData();
   const isLoading = nodeData?.isLoading;
@@ -592,10 +527,11 @@ const updateIconNodeAttributes = (node: Node, nodeConfig: TopologyNodeData) => {
       displayText = currentText;
     }
   }
-  const attrs: any = {
+  const attrs: Attr.CellAttrs = {
     body: {
       fill: nodeConfig.styleConfig?.backgroundColor || 'transparent',
       stroke: nodeConfig.styleConfig?.borderColor || 'transparent',
+      strokeWidth: NODE_DEFAULTS.SINGLE_VALUE_NODE.strokeWidth,
     },
     label: {
       fill: nodeConfig.styleConfig?.textColor,
@@ -616,6 +552,12 @@ const updateIconNodeAttributes = (node: Node, nodeConfig: TopologyNodeData) => {
   }
 
   node.setAttrs(attrs);
+
+  const { width: currentWidth, height: currentHeight } = node.getSize();
+  if (currentWidth !== width || currentHeight !== height) {
+    node.resize(width, height);
+    node.prop('ports', createPortConfig(PORT_DEFAULTS.FILL_COLOR, { width, height }));
+  }
 };
 
 const updateTextNodeAttributes = (node: Node, nodeConfig: TopologyNodeData) => {
@@ -638,10 +580,12 @@ const updateTextNodeAttributes = (node: Node, nodeConfig: TopologyNodeData) => {
     60,
     lines.length * lineHeight + 30
   );
+  const width = nodeConfig.styleConfig?.width || estimatedWidth;
+  const height = nodeConfig.styleConfig?.height || estimatedHeight;
 
-  node.resize(estimatedWidth, estimatedHeight);
+  node.resize(width, height);
 
-  node.prop('ports', createPortConfig(PORT_DEFAULTS.FILL_COLOR));
+  node.prop('ports', createPortConfig(PORT_DEFAULTS.FILL_COLOR, { width, height }));
 
   node.setAttrs({
     body: {

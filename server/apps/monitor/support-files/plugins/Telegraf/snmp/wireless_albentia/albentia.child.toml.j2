@@ -1,0 +1,56 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "{{ auth_password }}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "{{ priv_password }}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_albentia"
+        config_type = "albentia"
+        brand = "albentia"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    # ---- Interfaces (generic IF-MIB ifTable, 用于自动展开 ifDescr/ifOperStatus 等接口属性列) ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    # ---- 64 位 IF-MIB HC 流量计数器 (ifXTable，无线 AP 上联高吞吐不易回绕，按 ifIndex 与上表接口行对齐) ----
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- 无线健康 (温度/用户数/射频/链路/CPU/内存) → N/A ----
+    # Albentia Systems WiMAX / AerDOCSIS（企业号 28087）的 ALBENTIA-AS-MIB 来源队列已确认
+    # 存在 sectorTemp、clients、frequency、distance、power 等私有无线遥测,但当前工作树没有原始
+    # MIB 正文可核对具体 OID 与是否无需行级过滤。为避免伪造或采错逐行表,本插件仅采集标准
+    # IF-MIB 接口流量 (ifHCInOctets/ifHCOutOctets) 与运行时长 (uptime),私有健康指标待原始 MIB
+    # 对象核验后再增量补充。

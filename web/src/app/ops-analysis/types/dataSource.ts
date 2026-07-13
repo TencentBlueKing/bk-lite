@@ -7,7 +7,15 @@ export type ChartType =
   | 'eventTable'
   | 'topN'
   | 'gauge'
+  | 'room3D'
   | 'message';
+
+export type DataSourceSourceType =
+  | 'nats'
+  | 'mysql'
+  | 'postgresql'
+  | 'rest_api'
+  | 'excel';
 
 /** 接口返回字段定义（数据源级配置） */
 export interface ResponseFieldDefinition {
@@ -42,7 +50,10 @@ export interface DatasourceItem {
   domain: string;
   updated_by_domain: string;
   name: string;
+  source_type?: DataSourceSourceType;
   rest_api: string;
+  connection_config?: Record<string, any>;
+  query_config?: Record<string, any>;
   desc: string;
   // [内部预留] is_active 字段仅后端/导入导出链路使用，前端不再暴露
   params: ParamItem[];
@@ -56,6 +67,12 @@ export interface DatasourceItem {
   groups?: number[];
   hasAuth?: boolean;
   field_schema?: ResponseFieldDefinition[];
+}
+
+export interface DataSourcePreviewResult {
+  items: Record<string, any>[];
+  count: number;
+  fields: ResponseFieldDefinition[];
 }
 
 export interface OperateModalProps {

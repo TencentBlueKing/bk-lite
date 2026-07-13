@@ -3,7 +3,7 @@ from rest_framework import viewsets
 from apps.core.exceptions.base_app_exception import BaseAppException, UnauthorizedException
 from apps.core.utils.web_utils import WebUtils
 from apps.monitor.filters.monitor_object import MonitorObjectOrganizationRuleFilter
-from apps.monitor.models import MonitorObjectOrganizationRule, MonitorInstance
+from apps.monitor.models import MonitorObjectOrganizationRule, MonitorInstance, MonitorObject
 from apps.monitor.serializers.monitor_object import MonitorObjectOrganizationRuleSerializer
 from apps.monitor.services.organization_rule import OrganizationRule
 from apps.monitor.services.node_mgmt import InstanceConfigService
@@ -71,8 +71,15 @@ def _validate_rule_binding(monitor_object_id, monitor_instance_id):
     instance = MonitorInstance.objects.filter(id=monitor_instance_id).values("monitor_object_id").first()
     if not instance:
         raise BaseAppException("监控实例不存在")
-    if str(instance["monitor_object_id"]) != str(monitor_object_id):
-        raise BaseAppException("监控实例与监控对象不匹配")
+    if str(instance["monitor_object_id"]) == str(monitor_object_id):
+        return
+
+    # 兼容 create_default_rule 自动建子规则的设计:子对象(derivative)的规则
+    # 会沿用父实例 ID,此时 instance.monitor_object_id 必为 rule.monitor_object.parent_id
+    if MonitorObject.objects.filter(id=monitor_object_id, parent_id=instance["monitor_object_id"]).exists():
+        return
+
+    raise BaseAppException("监控实例与监控对象不匹配")
 
 
 def _validate_rule_payload(request, actor_context, monitor_object_id, monitor_instance_id, organizations):

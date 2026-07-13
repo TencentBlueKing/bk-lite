@@ -8,11 +8,9 @@ import datetime
 import pytest
 from django.utils import timezone
 
-from apps.alerts import nats as nats_pkg
-from apps.alerts.nats import nats as N
-from apps.alerts.constants.constants import AlertStatus
+from apps.alerts.constants.constants import AlertStatus, LevelType
 from apps.alerts.models.models import Alert, Level
-
+from apps.alerts.nats import nats as N
 
 # --------------------------------------------------------------------------
 # 纯辅助函数
@@ -144,6 +142,76 @@ def test_authorized_queryset_superuser_scoped():
     assert set(qs.values_list("alert_id", flat=True)) == {"A1"}
 
 
+@pytest.mark.django_db
+def test_authorized_queryset_uses_alert_permission_rules(monkeypatch):
+    team_alert = Alert.objects.create(
+        alert_id="A1",
+        level="0",
+        title="t",
+        content="c",
+        fingerprint="fp1",
+        team=[1],
+    )
+    instance_alert = Alert.objects.create(
+        alert_id="A2",
+        level="0",
+        title="t",
+        content="c",
+        fingerprint="fp2",
+        team=[2],
+    )
+    hidden_alert = Alert.objects.create(
+        alert_id="A3",
+        level="0",
+        title="t",
+        content="c",
+        fingerprint="fp3",
+        team=[3],
+    )
+    calls = []
+
+    def fake_get_permission_rules(user, current_team, app_name, permission_key, include_children=False):
+        calls.append((user.username, user.domain, current_team, app_name, permission_key, include_children))
+        return {
+            "team": [1],
+            "instance": [{"id": instance_alert.id, "permission": ["View"]}],
+        }
+
+    monkeypatch.setattr(N, "get_permission_rules", fake_get_permission_rules)
+
+    qs, err = N._get_authorized_alert_queryset(
+        {
+            "team": 1,
+            "user": "alice",
+            "domain": "tenant.example",
+            "is_superuser": False,
+            "include_children": True,
+            "permission": {"alarm": ["Alarms-View"]},
+        }
+    )
+
+    assert err is None
+    assert set(qs.values_list("id", flat=True)) == {team_alert.id, instance_alert.id}
+    assert hidden_alert.id not in set(qs.values_list("id", flat=True))
+    assert calls == [("alice", "tenant.example", 1, "alerts", "alert", True)]
+
+
+@pytest.mark.django_db
+def test_authorized_queryset_requires_permission_identity_for_non_superuser():
+    qs, err = N._get_authorized_alert_queryset(
+        {
+            "team": 1,
+            "user": "alice",
+            "is_superuser": False,
+            "permission": {"alarm": ["Alarms-View"]},
+        }
+    )
+
+    assert qs is None
+    assert err["result"] is False
+    assert "用户信息" in err["message"]
+
+
 # --------------------------------------------------------------------------
 # RPC 统计处理器
 # --------------------------------------------------------------------------
@@ -169,6 +237,156 @@ def test_get_alert_statistics(user_info):
 def test_get_alert_statistics_permission_error():
     result = N.get_alert_statistics(user_info={"team": 1, "is_superuser": False, "permission": {}})
     assert result["result"] is False
+
+
+@pytest.mark.django_db
+def test_get_alert_today_status_summary_counts_created_closed_and_processing(user_info):
+    now = timezone.now()
+    old_alert = Alert.objects.create(
+        alert_id="OLD",
+        level="0",
+        title="old",
+        content="c",
+        fingerprint="old-fp",
+        team=[1],
+        status=AlertStatus.CLOSED,
+    )
+    today_closed = Alert.objects.create(
+        alert_id="TODAY-CLOSED",
+        level="0",
+        title="closed",
+        content="c",
+        fingerprint="closed-fp",
+        team=[1],
+        status=AlertStatus.CLOSED,
+    )
+    today_processing = Alert.objects.create(
+        alert_id="TODAY-PROCESSING",
+        level="0",
+        title="processing",
+        content="c",
+        fingerprint="processing-fp",
+        team=[1],
+        status=AlertStatus.PROCESSING,
+    )
+    other_team = Alert.objects.create(
+        alert_id="OTHER",
+        level="0",
+        title="other",
+        content="c",
+        fingerprint="other-fp",
+        team=[2],
+        status=AlertStatus.PROCESSING,
+    )
+    Alert.objects.filter(pk=old_alert.pk).update(
+        created_at=now - datetime.timedelta(days=2),
+        updated_at=now - datetime.timedelta(days=2),
+    )
+    Alert.objects.filter(pk=today_closed.pk).update(created_at=now, updated_at=now)
+    Alert.objects.filter(pk=today_processing.pk).update(created_at=now, updated_at=now)
+    Alert.objects.filter(pk=other_team.pk).update(created_at=now, updated_at=now)
+
+    result = N.get_alert_today_status_summary(user_info=user_info)
+
+    assert result["result"] is True
+    assert result["data"] == {
+        "today_created_count": 2,
+        "today_closed_count": 1,
+        "processing_count": 1,
+    }
+
+
+@pytest.mark.django_db
+def test_get_alert_status_distribution_returns_active_status_labels(user_info):
+    Alert.objects.create(
+        alert_id="A1",
+        level="0",
+        title="t",
+        content="c",
+        fingerprint="fp1",
+        team=[1],
+        status=AlertStatus.UNASSIGNED,
+    )
+    Alert.objects.create(
+        alert_id="A2",
+        level="0",
+        title="t",
+        content="c",
+        fingerprint="fp2",
+        team=[1],
+        status=AlertStatus.PENDING,
+    )
+    Alert.objects.create(
+        alert_id="A3",
+        level="0",
+        title="t",
+        content="c",
+        fingerprint="fp3",
+        team=[1],
+        status=AlertStatus.PROCESSING,
+    )
+    Alert.objects.create(
+        alert_id="A4",
+        level="0",
+        title="t",
+        content="c",
+        fingerprint="fp4",
+        team=[1],
+        status=AlertStatus.CLOSED,
+    )
+
+    result = N.get_alert_status_distribution(user_info=user_info)
+
+    assert result["result"] is True
+    assert result["data"] == [
+        {"name": "未分派", "value": 1},
+        {"name": "待响应", "value": 1},
+        {"name": "处理中", "value": 1},
+    ]
+
+
+@pytest.mark.django_db
+def test_get_alert_level_trend_returns_multiseries_by_level(user_info):
+    Level.objects.create(
+        level_id=0,
+        level_name="fatal",
+        level_display_name="致命",
+        level_type=LevelType.ALERT,
+    )
+    Level.objects.create(
+        level_id=1,
+        level_name="warning",
+        level_display_name="预警",
+        level_type=LevelType.ALERT,
+    )
+    now = timezone.now()
+    fatal_alert = Alert.objects.create(
+        alert_id="A1",
+        level="0",
+        title="t",
+        content="c",
+        fingerprint="fp1",
+        team=[1],
+    )
+    warning_alert = Alert.objects.create(
+        alert_id="A2",
+        level="1",
+        title="t",
+        content="c",
+        fingerprint="fp2",
+        team=[1],
+    )
+    Alert.objects.filter(pk=fatal_alert.pk).update(created_at=now)
+    Alert.objects.filter(pk=warning_alert.pk).update(created_at=now)
+    start = (now - datetime.timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
+    end = (now + datetime.timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
+
+    result = N.get_alert_level_trend(user_info=user_info, time=[start, end], group_by="day")
+
+    assert result["result"] is True
+    assert set(result["data"]) == {"致命", "预警"}
+    assert sum(point[1] for point in result["data"]["致命"]) == 1
+    assert sum(point[1] for point in result["data"]["预警"]) == 1
 
 
 @pytest.mark.django_db
@@ -208,6 +426,46 @@ def test_get_alert_trend_data_requires_time(user_info):
     result = N.get_alert_trend_data(user_info=user_info)
     assert result["result"] is False
     assert "required" in result["message"]
+
+
+@pytest.mark.django_db
+def test_get_alert_trend_data_minute_span_over_limit_rejected(user_info):
+    """minute 粒度时间跨度超过 7 天上限时，应返回 result=False（拒绝生成超大时间序列）。
+    若移除 get_alert_trend_data 中的跨度校验代码，本测试将失败。
+    """
+    result = N.get_alert_trend_data(
+        user_info=user_info,
+        time=["2026-01-01 00:00:00", "2026-01-09 00:00:00"],  # 8 天，超过 minute 粒度 7 天上限
+        group_by="minute",
+    )
+    assert result["result"] is False, "超出 minute 粒度上限的请求必须被拒绝，防止 OOM"
+    assert "minute" in result["message"]
+
+
+@pytest.mark.django_db
+def test_get_alert_trend_data_minute_span_within_limit_ok(user_info):
+    """minute 粒度时间跨度在 7 天以内，应正常返回数据。"""
+    result = N.get_alert_trend_data(
+        user_info=user_info,
+        time=["2026-01-01 00:00:00", "2026-01-06 00:00:00"],  # 5 天，在上限内
+        group_by="minute",
+    )
+    assert result["result"] is True
+    assert "告警数" in result["data"]
+
+
+@pytest.mark.django_db
+def test_get_alert_trend_data_hour_span_over_limit_rejected(user_info):
+    """hour 粒度时间跨度超过 90 天上限时，应返回 result=False。
+    若移除跨度校验代码，本测试将失败。
+    """
+    result = N.get_alert_trend_data(
+        user_info=user_info,
+        time=["2026-01-01 00:00:00", "2026-04-15 00:00:00"],  # ~104 天，超过 hour 粒度 90 天上限
+        group_by="hour",
+    )
+    assert result["result"] is False, "超出 hour 粒度上限的请求必须被拒绝，防止 OOM"
+    assert "hour" in result["message"]
 
 
 @pytest.mark.django_db
@@ -253,19 +511,103 @@ def test_get_alert_source_event_top(user_info):
     alert.events.add(event)
     result = N.get_alert_source_event_top(user_info=user_info, limit=5)
     assert result["result"] is True
-    assert result["data"][0][0] == "Zabbix"
+    assert result["data"][0] == {"source_name": "Zabbix", "count": 1}
 
 
 @pytest.mark.django_db
 def test_get_alert_source_statistics(user_info):
     from apps.alerts.models.alert_source import AlertSource
+    from apps.alerts.models.models import Event
 
     AlertSource.objects.create(name="s1", source_id="s1", source_type="restful", secret="x", is_active=True)
-    AlertSource.objects.create(name="s2", source_id="s2", source_type="restful", secret="x", is_active=False)
+    src2 = AlertSource.objects.create(name="s2", source_id="s2", source_type="restful", secret="x", is_active=False)
+    alert = Alert.objects.create(alert_id="A1", level="0", title="t", content="c", fingerprint="fp", team=[1])
+    event = Event.objects.create(
+        source=src2,
+        raw_data={},
+        title="e",
+        level="0",
+        start_time=timezone.now(),
+        event_id="E1",
+    )
+    alert.events.add(event)
+
     result = N.get_alert_source_statistics(user_info=user_info)
+
     assert result["result"] is True
-    assert result["data"]["total_count"] == 2
+    assert result["data"]["total_count"] == 1
+    assert result["data"]["enabled_count"] == 0
+
+
+@pytest.mark.django_db
+def test_get_alert_source_statistics_counts_only_sources_from_authorized_alerts(user_info):
+    from apps.alerts.models.alert_source import AlertSource
+    from apps.alerts.models.models import Event
+
+    visible_source = AlertSource.objects.create(
+        name="visible",
+        source_id="visible",
+        source_type="restful",
+        secret="x",
+        is_active=True,
+    )
+    hidden_source = AlertSource.objects.create(
+        name="hidden",
+        source_id="hidden",
+        source_type="restful",
+        secret="x",
+        is_active=True,
+    )
+    unused_source = AlertSource.objects.create(
+        name="unused",
+        source_id="unused",
+        source_type="restful",
+        secret="x",
+        is_active=True,
+    )
+
+    visible_alert = Alert.objects.create(
+        alert_id="A1",
+        level="0",
+        title="t",
+        content="c",
+        fingerprint="fp1",
+        team=[1],
+    )
+    hidden_alert = Alert.objects.create(
+        alert_id="A2",
+        level="0",
+        title="t",
+        content="c",
+        fingerprint="fp2",
+        team=[2],
+    )
+    visible_event = Event.objects.create(
+        source=visible_source,
+        raw_data={},
+        title="e1",
+        level="0",
+        start_time=timezone.now(),
+        event_id="E1",
+    )
+    hidden_event = Event.objects.create(
+        source=hidden_source,
+        raw_data={},
+        title="e2",
+        level="0",
+        start_time=timezone.now(),
+        event_id="E2",
+    )
+    visible_alert.events.add(visible_event)
+    hidden_alert.events.add(hidden_event)
+
+    result = N.get_alert_source_statistics(user_info=user_info)
+
+    assert result["result"] is True
+    assert result["data"]["total_count"] == 1
     assert result["data"]["enabled_count"] == 1
+    assert result["data"]["active_count"] == 1
+    assert AlertSource.objects.filter(pk=unused_source.pk).exists()
 
 
 @pytest.mark.django_db
@@ -279,13 +621,49 @@ def test_get_notification_statistics(user_info):
     from apps.alerts.constants.constants import NotifyResultStatus
     from apps.alerts.models import NotifyResult
 
-    NotifyResult.objects.create(notify_type="alert", notify_object="A1", notify_result=NotifyResultStatus.SUCCESS)
-    NotifyResult.objects.create(notify_type="alert", notify_object="A2", notify_result=NotifyResultStatus.FAILED)
+    Alert.objects.create(alert_id="A1", level="0", title="t", content="c", fingerprint="fp1", team=[1])
+    Alert.objects.create(alert_id="A2", level="0", title="t", content="c", fingerprint="fp2", team=[1])
+    NotifyResult.objects.create(
+        notify_type="alert",
+        notify_object="A1",
+        notify_result=NotifyResultStatus.SUCCESS,
+    )
+    NotifyResult.objects.create(
+        notify_type="alert",
+        notify_object="A2",
+        notify_result=NotifyResultStatus.FAILED,
+    )
     result = N.get_notification_statistics(user_info=user_info)
     assert result["result"] is True
     assert result["data"]["total_count"] == 2
     assert result["data"]["success_count"] == 1
     assert result["data"]["failed_count"] == 1
+
+
+@pytest.mark.django_db
+def test_get_notification_statistics_counts_only_authorized_alerts(user_info):
+    from apps.alerts.constants.constants import NotifyResultStatus
+    from apps.alerts.models import NotifyResult
+
+    Alert.objects.create(alert_id="A1", level="0", title="t", content="c", fingerprint="fp1", team=[1])
+    Alert.objects.create(alert_id="A2", level="0", title="t", content="c", fingerprint="fp2", team=[2])
+    NotifyResult.objects.create(
+        notify_type="alert",
+        notify_object="A1",
+        notify_result=NotifyResultStatus.SUCCESS,
+    )
+    NotifyResult.objects.create(
+        notify_type="alert",
+        notify_object="A2",
+        notify_result=NotifyResultStatus.FAILED,
+    )
+
+    result = N.get_notification_statistics(user_info=user_info)
+
+    assert result["result"] is True
+    assert result["data"]["total_count"] == 1
+    assert result["data"]["success_count"] == 1
+    assert result["data"]["failed_count"] == 0
 
 
 @pytest.mark.django_db
@@ -352,8 +730,12 @@ def test_receive_alert_events_success():
     for lid in (0, 1, 2, 3):
         Level.objects.create(level_id=lid, level_name=f"L{lid}", level_display_name=f"等级{lid}", level_type=LevelType.EVENT)
     AlertSource.objects.create(
-        name="nats源", source_id="nats", source_type="nats", secret="x",
-        is_active=True, is_effective=True,
+        name="nats源",
+        source_id="nats",
+        source_type="nats",
+        secret="x",
+        is_active=True,
+        is_effective=True,
         config={"event_fields_mapping": {"title": "title", "level": "level", "item": "item", "start_time": "start_time"}},
     )
     events = [{"title": "事件A", "level": "0", "item": "cpu", "start_time": "1700000000"}]
@@ -379,3 +761,31 @@ def test_get_notification_channel_stats_ok(user_info):
     result = N.get_notification_channel_stats(user_info=user_info)
     assert result["result"] is True
     assert isinstance(result["data"], list)
+
+
+@pytest.mark.django_db
+def test_get_notification_channel_stats_counts_only_authorized_alerts(user_info):
+    from apps.alerts.constants.constants import NotifyResultStatus
+    from apps.alerts.models import NotifyResult
+
+    Alert.objects.create(alert_id="A1", level="0", title="t", content="c", fingerprint="fp1", team=[1])
+    Alert.objects.create(alert_id="A2", level="0", title="t", content="c", fingerprint="fp2", team=[2])
+    NotifyResult.objects.create(
+        notify_type="alert",
+        notify_object="A1",
+        notify_channel="email",
+        notify_channel_name="邮件",
+        notify_result=NotifyResultStatus.SUCCESS,
+    )
+    NotifyResult.objects.create(
+        notify_type="alert",
+        notify_object="A2",
+        notify_channel="sms",
+        notify_channel_name="短信",
+        notify_result=NotifyResultStatus.SUCCESS,
+    )
+
+    result = N.get_notification_channel_stats(user_info=user_info)
+
+    assert result["result"] is True
+    assert result["data"] == [{"name": "邮件", "value": 100.0}]

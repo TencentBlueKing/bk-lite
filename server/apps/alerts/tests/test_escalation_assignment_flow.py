@@ -46,6 +46,14 @@ def _alert(status="unassigned"):
 @pytest.mark.django_db
 @mock.patch("apps.alerts.tasks.sync_notify.delay")
 def test_assign_creates_escalation_task(mock_delay, sys_user, assignment):
+    # auto-dispatch 现在按策略 notify_channels 构造通知，会读取告警级别对应的 Level
+    from apps.alerts.constants.constants import LevelType
+    from apps.alerts.models.models import Level
+
+    Level.objects.get_or_create(
+        level_id=0, level_type=LevelType.ALERT,
+        defaults={"level_name": "critical", "level_display_name": "严重"},
+    )
     alert = _alert("unassigned")
     svc = AlertOperator(user="system")
     svc._assign_alert(alert.alert_id, {"assignee": ["u1"], "assignment_id": assignment.id})

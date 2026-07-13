@@ -168,6 +168,9 @@ const useIntegrationApi = () => {
       getInstanceListByPrimaryObject: async (
         params: {
           id?: React.Key;
+          page?: number;
+          page_size?: number;
+          name?: string;
         } = {},
         config?: AxiosRequestConfig
       ) => {
@@ -227,6 +230,12 @@ const useIntegrationApi = () => {
       },
       detectFlowStatus: async (data: FlowDetectParams) => {
         return await post('/monitor/api/manual_collect/flow_detect_status/', data);
+      },
+      createCollectDetectTask: async (data: Record<string, any>) => {
+        return await post('/monitor/api/collect_detect/', data);
+      },
+      getCollectDetectTask: async (taskId: React.Key) => {
+        return await get(`/monitor/api/collect_detect/${taskId}/`);
       },
     } satisfies FlowIntegrationApi),
     [del, get, post, put]

@@ -15,6 +15,12 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ServiceConfig:
+    DEFAULT_ALLOWED_CALLBACK_SUBJECTS = [
+        "job.ansible_task_callback",
+        "default_stargazer.host_remote.callback",
+    ]
+    DEFAULT_ALLOWED_STREAM_SUBJECTS = ["job.stream.>", "executor.stream.>", "bk.ans_exec.stream.>"]
+
     nats_servers: list[str]
     nats_instance_id: str
     nats_username: str = ""
@@ -33,6 +39,14 @@ class ServiceConfig:
     js_backoff: list[int] | None = None
     dlq_subject: str = "ansible.tasks.dlq"
     state_db_path: str = "/tmp/ansible-executor/task_state.db"
+    allowed_callback_subjects: list[str] | None = None
+    allowed_stream_subjects: list[str] | None = None
+
+    def __post_init__(self):
+        if self.allowed_callback_subjects is None:
+            self.allowed_callback_subjects = list(self.DEFAULT_ALLOWED_CALLBACK_SUBJECTS)
+        if self.allowed_stream_subjects is None:
+            self.allowed_stream_subjects = list(self.DEFAULT_ALLOWED_STREAM_SUBJECTS)
 
 
 def _render_env_vars(value: str) -> str:
@@ -119,6 +133,14 @@ def load_config(path: str | None = None) -> ServiceConfig:
     state_db_path_fallback = os.getenv("ANSIBLE_STATE_DB_PATH", "/tmp/ansible-executor/task_state.db")
     callback_timeout_fallback = os.getenv("ANSIBLE_CALLBACK_TIMEOUT", "10")
     ansible_work_dir_fallback = os.getenv("ANSIBLE_WORK_DIR", "/tmp/ansible-executor")
+    allowed_callback_subjects_fallback = os.getenv(
+        "ANSIBLE_ALLOWED_CALLBACK_SUBJECTS",
+        ",".join(ServiceConfig.DEFAULT_ALLOWED_CALLBACK_SUBJECTS),
+    )
+    allowed_stream_subjects_fallback = os.getenv(
+        "ANSIBLE_ALLOWED_STREAM_SUBJECTS",
+        ",".join(ServiceConfig.DEFAULT_ALLOWED_STREAM_SUBJECTS),
+    )
 
     nats_servers_raw = _pick_value(
         data,
@@ -319,6 +341,20 @@ def load_config(path: str | None = None) -> ServiceConfig:
         ).strip()
         or state_db_path_fallback
     )
+    allowed_callback_subjects = _parse_string_list(
+        _pick_value(
+            data,
+            [("allowed_callback_subjects",), ("security", "allowed_callback_subjects")],
+            allowed_callback_subjects_fallback,
+        )
+    )
+    allowed_stream_subjects = _parse_string_list(
+        _pick_value(
+            data,
+            [("allowed_stream_subjects",), ("security", "allowed_stream_subjects")],
+            allowed_stream_subjects_fallback,
+        )
+    )
 
     return ServiceConfig(
         nats_servers=nats_servers,
@@ -339,4 +375,6 @@ def load_config(path: str | None = None) -> ServiceConfig:
         js_backoff=js_backoff,
         dlq_subject=dlq_subject,
         state_db_path=state_db_path,
+        allowed_callback_subjects=allowed_callback_subjects,
+        allowed_stream_subjects=allowed_stream_subjects,
     )

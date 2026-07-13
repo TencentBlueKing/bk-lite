@@ -1,0 +1,110 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_4rf",
+  "plugin": "Transmission 4RF Aprisa SNMP",
+  "plugin_desc": "4RF AprisaXE wireless transmission SNMP child template (enterprise PEN 14817). Beyond standard MIB-II uptime and IF-MIB interface metrics supplied by the shared Transmission SNMP floor, it collects AprisaXE private receiver temperature and fan status objects. Temperature is reported directly in degrees Celsius. Fan status values are normalized so notFitted(0) and fanOkay(1) map to 1 healthy, while fanFailed(2) and unknown values map to 2 fault. CPU, memory and power-supply health are not exposed as stable shared health objects in APRISAXE-MIB-4RF, so they are N/A.",
+  "status_query": "any({instance_type='transmission', collect_type='snmp_4rf'}) by (instance_id)",
+  "name": "Transmission",
+  "icon": "mm-4rf_4rf",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='transmission'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_temperature_celsius",
+    "device_fan_state"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='transmission', __$labels__}) by (instance_id)",
+      "display_name": "Receiver Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Highest 4RF AprisaXE receiver temperature in degrees Celsius, read from aprisaXEReceiverTemperature."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_state",
+      "query": "max(device_fan_state{instance_type='transmission', __$labels__}) by (instance_id)",
+      "display_name": "Fan Status",
+      "data_type": "Enum",
+      "unit": "[{\"id\":1,\"name\":\"Normal\"},{\"id\":2,\"name\":\"Abnormal\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Worst 4RF AprisaXE fan status, normalized from aprisaXEFan1Status and aprisaXEFan2Status so notFitted(0) and fanOkay(1) are healthy and every other state is abnormal."
+    },
+    {
+      "metric_group": "Fan",
+      "name": "device_fan_fan1_state",
+      "query": "device_fan_fan1_state{instance_type='transmission', __$labels__}",
+      "display_name": "Fan 1 State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"abnormal\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the operational state of the device fan 1, normalized to 1 (normal) or 2 (abnormal)."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='transmission', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='transmission', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='transmission', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

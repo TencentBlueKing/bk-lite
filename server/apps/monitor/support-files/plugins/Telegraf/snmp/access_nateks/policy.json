@@ -1,0 +1,20 @@
+{
+  "object": "Access",
+  "plugin": "Access Nateks SNMP",
+  "templates": [
+    {
+      "metric_name": "device_temperature_celsius",
+      "alert_name": "Temperature high",
+      "algorithm": "Threshold",
+      "threshold": 70,
+      "level": "warning"
+    },
+    {
+      "metric_name": "device_psu_state",
+      "alert_name": "Power supply abnormal",
+      "algorithm": "Threshold",
+      "threshold": 1,
+      "level": "warning"
+    }
+  ]
+}

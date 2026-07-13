@@ -1,0 +1,29 @@
+{
+  "model_id": "tdsql",
+  "captured_at": "2026-07-10T04:05:45Z",
+  "image": "mysql:8.0",
+  "container_meta": {
+    "container_id": "44d6ad2a7fa3",
+    "image": "mysql:8.0"
+  },
+  "params": {
+    "host": "127.0.0.1",
+    "port": 23306,
+    "user": "root",
+    "password": "***"
+  },
+  "raw_stdout": {
+    "result": {
+      "tdsql": [
+        {
+          "ip_addr": "127.0.0.1",
+          "port": 23306,
+          "version": "",
+          "database_count": 0,
+          "user_count": 0
+        }
+      ]
+    },
+    "success": true
+  }
+}

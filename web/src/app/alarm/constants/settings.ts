@@ -9,6 +9,7 @@ export const initialConditionLists: Record<
     { name: 'not_contains', desc: '不包含' },
   ],
   source_id: [{ name: 'eq', desc: '等于' }],
+  source_name: [{ name: 'eq', desc: '等于' }],
   level: [{ name: 'eq', desc: '等于' }],
   resource_type: [
     { name: 'eq', desc: '等于' },
@@ -55,7 +56,11 @@ export const ruleList = [
   },
   {
     name: 'source_id',
-    verbose_name: '告警源',
+    verbose_name: '告警源 (按 ID)',
+  },
+  {
+    name: 'source_name',
+    verbose_name: '告警源 (按名称)',
   },
   { name: 'level', verbose_name: '级别' },
   { name: 'resource_type', verbose_name: '类型对象' },
@@ -101,3 +106,21 @@ export const weekList = [
   { name: '星期六', value: 6 },
   { name: '星期天', value: 7 },
 ];
+
+export const ACTION_TRIGGER_EVENTS = [
+  { value: 'created', label: '创建' },
+  { value: 'assigned', label: '分派' },
+  { value: 'acknowledged', label: '认领' },
+  { value: 'resolved', label: '恢复' },
+  { value: 'closed', label: '关闭' },
+];
+export const ACTION_TYPES = [
+  { value: 'job', label: '作业', disabled: false },
+  { value: 'itsm', label: 'ITSM', disabled: true },
+  { value: 'webhook', label: 'Webhook', disabled: true },
+];
+export const ACTION_EXEC_STATUS: Record<string, { text: string; color: string }> = {
+  pending: { text: '等待', color: 'default' }, running: { text: '执行中', color: 'processing' },
+  success: { text: '成功', color: 'success' }, failed: { text: '失败', color: 'error' },
+  skipped: { text: '已跳过', color: 'warning' }, config_error: { text: '未执行', color: 'warning' },
+};

@@ -1,0 +1,83 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_netmodule",
+  "plugin": "Router NetModule SNMP",
+  "plugin_desc": "NetModule industrial 4G/5G LTE router-specific SNMP collection (NB-MIB, IANA PEN 31496). In addition to standard IF-MIB interface metrics, it collects the NetModule private system temperature object (systemTemperature), whose raw value carries a tenths-of-a-degree display hint and is divided by 10 to obtain degrees Celsius. The NB-MIB exposes no CPU, memory, fan or power/voltage objects (NB/NG-series are fanless industrial routers). NetModule routers run embedded Linux with net-snmp, but whether HOST-RESOURCES / UCD CPU and memory OIDs are enabled is firmware-dependent and unverified, so CPU and memory are not collected here (N/A); the plugin collects system temperature plus standard IF-MIB (including 64-bit HC) interface metrics. CPU, memory, fan and power are N/A. Supported brands/models — NetModule NB/NG-series industrial 4G/5G LTE routers (IANA PEN 31496).",
+  "status_query": "any({instance_type='router', collect_type='snmp_netmodule'}) by (instance_id)",
+  "name": "Router",
+  "icon": "mm-router_路由器",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='router'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_temperature_celsius"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='router', __$labels__}/10) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the system temperature in degrees Celsius of the NetModule router (private systemTemperature scalar under IANA PEN 31496). The raw object value carries a tenths-of-a-degree display hint, so the query divides it by 10 to obtain Celsius. High temperatures can indicate cooling failure or an over-heated enclosure and risk thermal shutdown of the cellular modem."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='router', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifInOctets on high-speed interfaces, keeping the rate accurate."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='router', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifOutOctets on high-speed interfaces, keeping the rate accurate."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='router', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

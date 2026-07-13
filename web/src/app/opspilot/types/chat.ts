@@ -3,7 +3,6 @@ import {ButtonProps} from 'antd';
 import {
   AgentStepProgressData,
   A2UIReportContract,
-  Annotation,
   BrowserStepAction,
   BrowserStepProgressData,
   BrowserTaskReceivedData,
@@ -187,7 +186,6 @@ export interface CustomChatSSEProps {
       reason?: string;
     };
   } | null>;
-  showMarkOnly?: boolean;
   initialMessages?: CustomChatMessage[];
   mode?: 'chat' | 'display';
   guide?: string;
@@ -239,47 +237,8 @@ export interface AGUIMessage {
   value?: BrowserStepProgressValue | BrowserTaskReceivedValue | ApprovalRequestValue | UserChoiceRequestValue | AgentStepProgressValue | SubAgentProgressValue | SkillViewValue | ConfigAnalysisReportValue | Record<string, unknown>;
 }
 
-export interface ReferenceModalState {
-  visible: boolean;
-  loading: boolean;
-  title: string;
-  content: string;
-}
-
-export interface DrawerContentState {
-  visible: boolean;
-  title: string;
-  content: string;
-  chunkType?: "Document" | "QA" | "Graph";
-  graphData?: { nodes: any[], edges: any[] };
-}
-
 export interface GuideParseResult {
   text: string;
   items: string[];
   renderedHtml: string;
-}
-
-export interface ReferenceParams {
-  refNumber: string;
-  chunkId: string | null;
-  knowledgeId: string | null;
-}
-
-export interface MessageActionsProps {
-  message: CustomChatMessage;
-  onCopy: (content: string) => void;
-  onRegenerate: (id: string) => void;
-  onDelete: (id: string) => void;
-  onMark: (message: CustomChatMessage) => void;
-  showMarkOnly?: boolean;
-}
-
-export interface AnnotationModalProps {
-  visible: boolean;
-  showMarkOnly?: boolean;
-  annotation: Annotation | null;
-  onSave: (annotation?: Annotation) => void;
-  onRemove: (id: string | undefined) => void;
-  onCancel: () => void;
 }

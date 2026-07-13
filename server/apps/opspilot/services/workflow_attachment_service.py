@@ -17,7 +17,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 
 from apps.core.logger import opspilot_logger as logger
-from apps.opspilot.models import FileKnowledge, WorkflowAttachmentAsset
+from apps.opspilot.models import WorkflowAttachmentAsset
 
 # 工作流附件下载令牌的签名盐值与默认有效期(秒)。
 # 使用签名 + 过期时间替代原先可被猜测且永不失效的明文 token。
@@ -54,7 +54,7 @@ def resolve_signed_attachment_token(download_token: str) -> WorkflowAttachmentAs
     )
     if not isinstance(payload, dict):
         raise signing.BadSignature("Malformed download token payload")
-    asset = WorkflowAttachmentAsset.objects.filter(id=payload.get("aid")).select_related("file_knowledge").first()
+    asset = WorkflowAttachmentAsset.objects.filter(id=payload.get("aid")).first()
     # 校验签名内绑定的 execution_id，防止令牌被篡改后指向其它附件
     if not asset or asset.execution_id != payload.get("eid"):
         return None
@@ -130,9 +130,8 @@ def create_workflow_attachment_asset(
     if not attachment_id:
         raise ValueError("attachment_id 不能为空")
 
-    file_knowledge = FileKnowledge.objects.create(file=ContentFile(content_bytes, name=filename))
     existing_asset = WorkflowAttachmentAsset.objects.filter(execution_id=execution_id, attachment_id=attachment_id).first()
-    previous_file_knowledge = existing_asset.file_knowledge if existing_asset else None
+    previous_file_name = existing_asset.file.name if (existing_asset and existing_asset.file) else None
     asset, _ = WorkflowAttachmentAsset.objects.update_or_create(
         execution_id=execution_id,
         attachment_id=attachment_id,
@@ -141,12 +140,13 @@ def create_workflow_attachment_asset(
             "source_node_id": source_node_id,
             "filename": filename,
             "mime_type": mime_type,
-            "file_knowledge": file_knowledge,
+            "file": ContentFile(content_bytes, name=filename),
             "created_by": str(created_by or ""),
         },
     )
-    if previous_file_knowledge and previous_file_knowledge.id != asset.file_knowledge_id:
-        previous_file_knowledge.delete()
+    # 替换了文件时清理旧的 MinIO 对象，避免遗留孤儿文件
+    if previous_file_name and previous_file_name != asset.file.name:
+        asset.file.storage.delete(previous_file_name)
     return asset
 
 
@@ -175,14 +175,14 @@ def build_workflow_attachment_id(*, execution_id: str, source_node_id: str = "",
 
 def cleanup_expired_workflow_attachments(*, retention_days: int = 3) -> int:
     expire_before = timezone.now() - timedelta(days=retention_days)
-    expired_assets = WorkflowAttachmentAsset.objects.filter(created_at__lt=expire_before).select_related("file_knowledge")
+    expired_assets = WorkflowAttachmentAsset.objects.filter(created_at__lt=expire_before)
     deleted_count = 0
 
     for asset in expired_assets.iterator():
-        if asset.file_knowledge_id:
-            asset.file_knowledge.delete()
-        else:
-            asset.delete()
+        # 先删 MinIO 上的文件对象，再删数据库记录，避免遗留孤儿文件
+        if asset.file:
+            asset.file.delete(save=False)
+        asset.delete()
         deleted_count += 1
 
     return deleted_count

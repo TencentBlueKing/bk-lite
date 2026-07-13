@@ -6,7 +6,7 @@
 from django_filters import CharFilter
 
 from apps.operation_analysis.filters.base_filters import BaseGroupFilter
-from apps.operation_analysis.models.models import Dashboard, Directory, Topology, Architecture
+from apps.operation_analysis.models.models import Architecture, Dashboard, Directory, Report, Screen, Topology
 
 
 class DashboardModelFilter(BaseGroupFilter):
@@ -38,4 +38,20 @@ class ArchitectureModelFilter(BaseGroupFilter):
 
     class Meta:
         model = Architecture
+        fields = ["name"]
+
+
+class ScreenModelFilter(BaseGroupFilter):
+    name = CharFilter(field_name="name", lookup_expr="icontains", label="名称")
+
+    class Meta:
+        model = Screen
+        fields = ["name"]
+
+
+class ReportModelFilter(BaseGroupFilter):
+    name = CharFilter(field_name="name", lookup_expr="icontains", label="名称")
+
+    class Meta:
+        model = Report
         fields = ["name"]

@@ -100,6 +100,45 @@
       "description": "This metric reports the number of current client-side connections on the F5 BIG-IP load balancer (F5-BIGIP-SYSTEM-MIB sysStatClientCurConns). A rapid rise can indicate a connection surge or capacity pressure."
     },
     {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='loadbalance', __$labels__}) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the chassis temperature in degrees Celsius of the F5 BIG-IP load balancer, aggregated as the maximum across sensors. High temperatures can indicate cooling failure or airflow obstruction and risk thermal shutdown."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_state",
+      "query": "max(device_fan_state{instance_type='loadbalance', __$labels__}) by (instance_id)",
+      "display_name": "Fan State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the fan state of the F5 BIG-IP load balancer, normalized via telegraf processors.enum so that 1 = healthy and 2 = fault. Aggregated as the maximum across fans so any faulty fan surfaces."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "max(device_psu_state{instance_type='loadbalance', __$labels__}) by (instance_id)",
+      "display_name": "PSU State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the power-supply state of the F5 BIG-IP load balancer, normalized via telegraf processors.enum so that 1 = healthy and 2 = fault. Aggregated as the maximum across supplies so any failed PSU surfaces."
+    },
+    {
       "metric_group": "Status",
       "name": "interface_ifAdminStatus",
       "query": "interface_ifAdminStatus{instance_type='loadbalance', __$labels__}",
@@ -358,6 +397,19 @@
         "instance_id"
       ],
       "description": "This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes."
+    },
+    {
+      "metric_group": "Connection",
+      "name": "loadbalance_current_connections",
+      "query": "loadbalance_current_connections{instance_type='loadbalance', __$labels__}",
+      "display_name": "Current Connections",
+      "data_type": "Number",
+      "unit": "connections",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the current number of active connections through the load balancer."
     }
   ]
 }

@@ -1,0 +1,122 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_aethra",
+  "plugin": "Router Aethra SNMP",
+  "plugin_desc": "Aethra Telecommunications IAD/DSL 接入路由器（含 VoIP）专用 SNMP 采集模板（AETHRA-MIB，企业号 7745）。除标准 IF-MIB 接口指标外，额外采集 Aethra 私有 OID 的设备健康指标：CPU 5 分钟平均负载（cpuLoad5min，直接 %）与主内存（总内存 + 空闲内存，KBytes，使用率按 (总量-空闲)/总量 推导）。温度/风扇/电源本模板未采集，故为 N/A。适用品牌型号——Aethra Telecommunications IAD/DSL 路由器（AC2036/Dolcevita 系列，企业号 7745）。",
+  "status_query": "any({instance_type='router', collect_type='snmp_aethra'}) by (instance_id)",
+  "name": "Router",
+  "icon": "mm-router_路由器",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='router'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage"
+  ],
+  "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "avg(device_cpu_usage{instance_type='router', __$labels__}) by (instance_id)",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Average CPU load of the Aethra router over the last 5 minutes (enterprise 7745 cpuLoad5min, reported directly as a percentage)."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='router', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable)."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='router', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable)."
+    },
+    {
+      "metric_group": "Memory",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_memory_total",
+      "display_name": "内存总量",
+      "query": "sum(device_memory_total{instance_type='router', __$labels__}) by (instance_id) * 1024",
+      "unit": "bytes",
+      "data_type": "Number",
+      "description": "Total main memory of the Aethra router in bytes (enterprise 7745). The raw OID is reported in kBytes and is scaled by 1024 to bytes."
+    },
+    {
+      "metric_group": "Memory",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_memory_free",
+      "display_name": "内存空闲",
+      "query": "sum(device_memory_free{instance_type='router', __$labels__}) by (instance_id) * 1024",
+      "unit": "bytes",
+      "data_type": "Number",
+      "description": "Free main memory of the Aethra router in bytes (enterprise 7745). The raw OID is reported in kBytes and is scaled by 1024 to bytes."
+    },
+    {
+      "metric_group": "Memory",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_memory_usage",
+      "display_name": "内存使用率",
+      "query": "(sum(device_memory_total{instance_type='router', __$labels__}) by (instance_id) - sum(device_memory_free{instance_type='router', __$labels__}) by (instance_id)) / sum(device_memory_total{instance_type='router', __$labels__}) by (instance_id) * 100",
+      "unit": "percent",
+      "data_type": "Number",
+      "description": "Memory utilisation of the Aethra router, derived as (total-free)/total (enterprise 7745)."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='router', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

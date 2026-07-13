@@ -550,6 +550,9 @@ class InstanceManage(object):
         attrs = ModelManage.search_model_attr(model_id)
         instance_info = apply_tag_validation_for_instance(instance_info, attrs, model_id)
         instance_info = apply_enum_validation_for_instance(instance_info, attrs)
+        if model_id == "subnet":
+            from apps.cmdb.services.ipam_subnet import validate_subnet_no_overlap
+            validate_subnet_no_overlap(instance_info)
         # 企业版附件/图片字段：校验并把值规范化为元数据 JSON
         instance_info = get_instance_enterprise_extension().normalize_file_fields(
             model_id, instance_info, attrs, operator=operator
@@ -624,6 +627,13 @@ class InstanceManage(object):
         attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
         update_attr = apply_tag_validation_for_instance(update_attr, attrs, inst_info["model_id"])
         update_attr = apply_enum_validation_for_instance(update_attr, attrs)
+        if inst_info["model_id"] == "subnet":
+            from apps.cmdb.services.ipam_subnet import validate_subnet_no_overlap
+            merged = {
+                "subnet_address": update_attr.get("subnet_address", inst_info.get("subnet_address")),
+                "subnet_mask": update_attr.get("subnet_mask", inst_info.get("subnet_mask")),
+            }
+            validate_subnet_no_overlap(merged, exclude_inst_id=inst_id)
         # 企业版附件/图片字段：校验并规范化（old_instance 用于跨实例引用校验）
         update_attr = get_instance_enterprise_extension().normalize_file_fields(
             inst_info["model_id"], update_attr, attrs, operator=operator, old_instance=inst_info
@@ -788,12 +798,9 @@ class InstanceManage(object):
             roles=roles,
         )
 
-        with GraphClient() as ag:
-            ag.batch_delete_entity(INSTANCE, inst_ids)
-
-        # 企业版：实例删除后把其附件/图片文件标记为待回收（批量单次处理）
-        get_instance_enterprise_extension().on_instances_delete([item["_id"] for item in inst_list])
-
+        # 先写 PG 变更记录，再删图数据库节点。
+        # 若 PG 写入失败则直接抛出，图删除不执行，两侧保持一致；
+        # 反之若先删图再写 PG，图删除提交后无法回滚，PG 失败会导致审计日志丢失（#3665）。
         change_records = [
             dict(
                 inst_id=i["_id"],
@@ -805,6 +812,12 @@ class InstanceManage(object):
             for i in inst_list
         ]
         batch_create_change_record(INSTANCE, DELETE_INST, change_records, operator=operator)
+
+        with GraphClient() as ag:
+            ag.batch_delete_entity(INSTANCE, inst_ids)
+
+        # 企业版：实例删除后把其附件/图片文件标记为待回收（批量单次处理）
+        get_instance_enterprise_extension().on_instances_delete([item["_id"] for item in inst_list])
 
         from apps.cmdb.services.auto_relation_reconcile import schedule_incoming_rule_full_sync_by_model_ids
 
@@ -1051,14 +1064,25 @@ class InstanceManage(object):
             f"目标模型ID: {dst_info.get('model_id', '')} 目标模型实例: "
             f"{dst_info.get('inst_name') or dst_info.get('ip_addr', '')}"
         )
-        create_change_record_by_asso(
-            INSTANCE_ASSOCIATION,
-            CREATE_INST_ASST,
-            asso_info,
-            message=message,
-            operator=operator,
-            scenario=scenario,
-        )
+        # 关联关系需先创建图边才能取到 edge._id / asso_info，无法在图写之前先写 PG。
+        # 用 try/except 兜底：变更记录写入失败时记录错误日志但不影响关联创建结果，
+        # 避免异常向上传播让调用方误判关联创建失败而重试（可能触发"edge already exists"重复异常）。
+        # 若需更强一致性保障，可改为 Celery 异步投递（至少一次）——见 #3665。
+        try:
+            create_change_record_by_asso(
+                INSTANCE_ASSOCIATION,
+                CREATE_INST_ASST,
+                asso_info,
+                message=message,
+                operator=operator,
+                scenario=scenario,
+            )
+        except Exception as e:  # noqa: 变更记录写入失败不影响关联创建，但必须记录以便排查审计缺失
+            logger.error(
+                "[instance_association_create] 变更记录写入失败，关联已创建但审计日志可能缺失: "
+                "edge_id=%s, operator=%s, error=%s",
+                edge.get("_id"), operator, e,
+            )
 
         return edge
 

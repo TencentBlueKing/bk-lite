@@ -50,7 +50,7 @@ const VersionModal: React.FC<VersionModalProps> = ({ visible, onClose }) => {
       title={t('common.version')}
       footer={null}
       onCancel={onClose}
-      destroyOnClose
+      destroyOnHidden
       width={900}
       styles={{ body: { overflowY: 'auto', height: 'calc(80vh - 108px)' } }}
     >

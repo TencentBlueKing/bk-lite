@@ -205,7 +205,7 @@ class InstanceSearch:
             results = items[start:end]
 
         if self.query_data.get("add_metrics", False) and page_size != -1:
-            results = self.add_other_metrics(results)
+            MonitorObjectService._fill_display_metrics(self.monitor_obj.id, self.obj_metric_map, results)
 
         MonitorObjectService.add_attr(results)
 
@@ -411,9 +411,13 @@ class InstanceSearch:
 
         page = self.query_data.get("page", 1)
         page_size = self.query_data.get("page_size", 10)
-        start = (page - 1) * page_size
-        end = start + page_size
-        results = self._project_instance_identity(qs)[start:end]
+        projected_qs = self._project_instance_identity(qs)
+        if page_size == -1:
+            results = projected_qs
+        else:
+            start = (page - 1) * page_size
+            end = start + page_size
+            results = projected_qs[start:end]
         org_objs = MonitorInstanceOrganization.objects.filter(monitor_instance_id__in=[obj.id for obj in results])
         org_map = {}
         for org in org_objs:

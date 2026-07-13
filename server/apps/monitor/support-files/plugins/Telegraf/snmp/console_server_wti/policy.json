@@ -1,0 +1,20 @@
+{
+  "object": "ConsoleServer",
+  "plugin": "ConsoleServer WTI SNMP",
+  "templates": [
+    {
+      "name": "WTI Unit Temperature High",
+      "metric_name": "device_temperature_celsius",
+      "condition": "gt",
+      "threshold": 70,
+      "level": "warning"
+    },
+    {
+      "name": "WTI Input Power Fault",
+      "metric_name": "device_psu_state",
+      "condition": "gt",
+      "threshold": 1,
+      "level": "warning"
+    }
+  ]
+}

@@ -5,17 +5,13 @@ import type {
   FilterValue,
   UnifiedFilterDefinition,
 } from '@/app/ops-analysis/types/dashBoard';
-import type {
-  TopologyProps,
-  TopologyViewportConfig,
-} from '@/app/ops-analysis/types/topology';
+import type { TopologyProps } from '@/app/ops-analysis/types/topology';
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import { collectTopologyNamespaceIds } from '@/app/ops-analysis/utils/canvasResources';
 import {
   buildFiltersFromNodes,
   syncFilterValuesWithDefinitions,
 } from '../utils/namespaceUtils';
-import { getTopologyViewportDraft } from '../utils/viewport';
 import type { useTopologyState } from './useTopologyState';
 
 interface UseTopologyLifecycleParams {
@@ -24,7 +20,6 @@ interface UseTopologyLifecycleParams {
   definitions: UnifiedFilterDefinition[];
   appliedFilterValues: Record<string, FilterValue>;
   appliedNamespaceId: number | undefined;
-  viewportConfig: TopologyViewportConfig;
   setAppliedFilterValues: React.Dispatch<
     React.SetStateAction<Record<string, FilterValue>>
   >;
@@ -32,13 +27,11 @@ interface UseTopologyLifecycleParams {
   setDefinitions: (definitions: UnifiedFilterDefinition[]) => void;
   setFilterValues: (values: Record<string, FilterValue>) => void;
   setNamespaceDraftId: (value: number | undefined) => void;
-  setViewportConfig: (value: TopologyViewportConfig) => void;
   clearOperationHistory: () => void;
   clearRefreshTimer: () => void;
   finishInitialization: () => void;
   handleLoadTopology: (dataId: number | string) => Promise<{
     filters?: UnifiedFilterDefinition[];
-    viewport?: TopologyViewportConfig | null;
   }>;
   loadCanvasNamespaces: (namespaceIds?: (string | number)[]) => unknown;
   refreshAllSingleValueNodes: (
@@ -70,13 +63,11 @@ export const useTopologyLifecycle = ({
   definitions,
   appliedFilterValues,
   appliedNamespaceId,
-  viewportConfig,
   setAppliedFilterValues,
   setAppliedNamespaceId,
   setDefinitions,
   setFilterValues,
   setNamespaceDraftId,
-  setViewportConfig,
   clearOperationHistory,
   clearRefreshTimer,
   finishInitialization,
@@ -95,8 +86,6 @@ export const useTopologyLifecycle = ({
   const [originalDefinitions, setOriginalDefinitions] = useState<
     UnifiedFilterDefinition[]
   >([]);
-  const [originalViewportConfig, setOriginalViewportConfig] =
-    useState<TopologyViewportConfig>(() => getTopologyViewportDraft(null));
   const handleLoadTopologyRef = useRef(handleLoadTopology);
 
   useEffect(() => {
@@ -107,10 +96,9 @@ export const useTopologyLifecycle = ({
     if (state.graphInstance) {
       setOriginalGraphState(state.graphInstance.toJSON());
       setOriginalDefinitions([...definitions]);
-      setOriginalViewportConfig(getTopologyViewportDraft(viewportConfig));
     }
     toggleEditMode();
-  }, [state.graphInstance, definitions, toggleEditMode, viewportConfig]);
+  }, [state.graphInstance, definitions, toggleEditMode]);
 
   const handleCancelEdit = useCallback(() => {
     if (state.graphInstance && originalGraphState) {
@@ -124,7 +112,6 @@ export const useTopologyLifecycle = ({
     setDefinitions(restoredDefs);
     setFilterValues(restoredValues);
     setAppliedFilterValues(restoredValues);
-    setViewportConfig(getTopologyViewportDraft(originalViewportConfig));
     toggleEditMode();
     refreshTopologyNodes(
       'reload',
@@ -138,11 +125,9 @@ export const useTopologyLifecycle = ({
     originalDefinitions,
     appliedFilterValues,
     appliedNamespaceId,
-    originalViewportConfig,
     setDefinitions,
     setFilterValues,
     setAppliedFilterValues,
-    setViewportConfig,
     toggleEditMode,
     refreshTopologyNodes,
   ]);
@@ -155,8 +140,6 @@ export const useTopologyLifecycle = ({
     setFilterValues({});
     setAppliedFilterValues({});
     setOriginalDefinitions([]);
-    setViewportConfig(getTopologyViewportDraft(null));
-    setOriginalViewportConfig(getTopologyViewportDraft(null));
     setNamespaceDraftId(undefined);
     setAppliedNamespaceId(undefined);
 
@@ -165,10 +148,7 @@ export const useTopologyLifecycle = ({
     if (selectedTopology?.data_id && state.graphInstance) {
       handleLoadTopologyRef
         .current(selectedTopology.data_id)
-        .then(async ({ filters: loadedFilters, viewport }) => {
-          const loadedViewport = getTopologyViewportDraft(viewport);
-          setViewportConfig(loadedViewport);
-          setOriginalViewportConfig(loadedViewport);
+        .then(async ({ filters: loadedFilters }) => {
           const canvasDataSources = await syncTopologyCanvasResources();
           const autoBuiltFilters = buildFiltersFromNodes(
             state.graphInstance,

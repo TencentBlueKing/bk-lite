@@ -36,10 +36,6 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({
     });
   }, [pluginName, objectName]);
 
-  const collectType = useMemo(() => {
-    return configsInfo.collect_type || '';
-  }, [configsInfo]);
-
   const formItems = useMemo(() => {
     return configsInfo.formItems;
   }, [configsInfo]);
@@ -51,7 +47,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({
 
   const initData = () => {
     form.setFieldsValue({
-      interval: collectType === 'http' ? 60 : 10,
+      interval: 60,
       ...configsInfo.defaultForm,
     });
   };

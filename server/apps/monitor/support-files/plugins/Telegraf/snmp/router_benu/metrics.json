@@ -1,0 +1,147 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_benu",
+  "plugin": "Router Benu SNMP",
+  "plugin_desc": "Benu Networks router SNMP child template (enterprise PEN 39406). Beyond the shared Router SNMP baseline for MIB-II uptime and IF-MIB interface traffic, it collects BENU-CHASSIS-MIB sensor temperature, fan status and power-supply status. Host software task CPU and memory tables are process-level metrics and are not promoted to shared device CPU or memory health metrics here.",
+  "status_query": "any({instance_type='router', collect_type='snmp_benu'}) by (instance_id)",
+  "name": "Router",
+  "icon": "mm-benu_benu",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='router'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_temperature_celsius",
+    "device_fan_state",
+    "device_psu_state"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='router', __$labels__}) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Highest Benu chassis temperature sensor value in degrees Celsius, using BENU-CHASSIS-MIB sensor rows whose type is temperature."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_state",
+      "query": "max(device_fan_state{instance_type='router', __$labels__}) by (instance_id)",
+      "display_name": "Fan Status",
+      "data_type": "Enum",
+      "unit": "[{\"id\":1,\"name\":\"Normal\"},{\"id\":2,\"name\":\"Abnormal\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Worst Benu fan sensor state, normalized from benuSensorState so normal(1) is healthy and every other state is abnormal."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "max(device_psu_state{instance_type='router', __$labels__}) by (instance_id)",
+      "display_name": "Power Supply Status",
+      "data_type": "Enum",
+      "unit": "[{\"id\":1,\"name\":\"Normal\"},{\"id\":2,\"name\":\"Abnormal\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Worst Benu power-supply status, normalized from present and powered states so present and powered supply rows are healthy and every other state is abnormal."
+    },
+    {
+      "metric_group": "Power",
+      "name": "device_psu_powered",
+      "query": "device_psu_powered{instance_type='router', __$labels__}",
+      "display_name": "PSU Powered Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"powered\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"unpowered\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "PSU description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates whether the device PSU is powered on (1) or off (2)."
+    },
+    {
+      "metric_group": "Power",
+      "name": "device_psu_present",
+      "query": "device_psu_present{instance_type='router', __$labels__}",
+      "display_name": "PSU Present Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"present\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"absent\",\"id\":2,\"color\":\"#d9d9d9\"}]",
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "PSU description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates whether the device PSU slot is populated (1) or empty (2)."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='router', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='router', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='router', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

@@ -7,6 +7,8 @@ import useUnsavedConfirm from '@/hooks/useUnsavedConfirm';
 import { NamespaceOperateModalProps } from '@/app/ops-analysis/types/namespace';
 import { useNamespaceApi } from '@/app/ops-analysis/api/namespace';
 
+const PASSWORD_PLACEHOLDER = '******';
+
 const OperateModal: React.FC<NamespaceOperateModalProps> = ({
   open,
   currentRow,
@@ -26,15 +28,40 @@ const OperateModal: React.FC<NamespaceOperateModalProps> = ({
     form.resetFields();
 
     if (currentRow) {
-      form.setFieldsValue(currentRow);
+      form.setFieldsValue({
+        ...currentRow,
+        password: PASSWORD_PLACEHOLDER,
+      });
     }
   }, [open, currentRow, form]);
+
+  const handlePasswordFocus = (event: React.FocusEvent<HTMLInputElement>) => {
+    if (!currentRow) return;
+    if (event.target.value === PASSWORD_PLACEHOLDER) {
+      form.setFieldValue('password', '');
+    }
+  };
+
+  const handlePasswordBlur = (event: React.FocusEvent<HTMLInputElement>) => {
+    if (!currentRow) return;
+    if (!event.target.value?.trim()) {
+      form.setFieldValue('password', PASSWORD_PLACEHOLDER);
+    }
+  };
 
   const onFinish = async (values: any) => {
     try {
       setLoading(true);
 
-      const submitData = {
+      const submitData: {
+        name: string;
+        account: string;
+        password?: string;
+        domain: string;
+        namespace: string;
+        enable_tls: boolean;
+        desc: string;
+      } = {
         name: values.name,
         account: values.account,
         password: values.password,
@@ -43,6 +70,13 @@ const OperateModal: React.FC<NamespaceOperateModalProps> = ({
         enable_tls: values.enable_tls || false,
         desc: values.desc || '',
       };
+
+      if (
+        currentRow &&
+        (!values.password?.trim() || values.password === PASSWORD_PLACEHOLDER)
+      ) {
+        delete submitData.password;
+      }
 
       if (currentRow) {
         await updateNamespace(currentRow.id, submitData);
@@ -118,6 +152,8 @@ const OperateModal: React.FC<NamespaceOperateModalProps> = ({
           <Input.Password
             placeholder={t('common.inputMsg')}
             autoComplete="new-password"
+            onFocus={handlePasswordFocus}
+            onBlur={handlePasswordBlur}
           />
         </Form.Item>
 

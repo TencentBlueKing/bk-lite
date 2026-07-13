@@ -88,6 +88,7 @@ export interface MenuItem {
   display_name?: string;
   url: string;
   icon: string;
+  iconNode?: React.ReactNode;
   title: string;
   operation: string[];
   tour?: TourItem;

@@ -321,7 +321,31 @@ apps/monitor/support-files/plugins/<collector>/<collect_type>/<instance_type>/
 | instance_id_keys | array | 指标实例键 |
 | description | string | 指标描述 |
 
-### 6.5 隐式规则
+### 6.5 实例身份约定
+
+VictoriaMetrics / Prometheus 中的实例身份不是数据库中的 tuple 字符串，而是多个 label 维度。`MonitorObject.instance_id_keys` 和 `Metric.instance_id_keys` 定义了从 VM labels 到 BK-Lite `MonitorInstance.id` 的投影顺序。
+
+例如子对象指标返回：
+
+```text
+instance_id="cluster-a", pod="pod-1"
+```
+
+当 `instance_id_keys` 为：
+
+```json
+["instance_id", "pod"]
+```
+
+系统会把它重建为数据库实例 ID：
+
+```text
+("cluster-a", "pod-1")
+```
+
+因此，涉及实例匹配、权限过滤、插件状态、告警归属或实例详情查询的逻辑，都必须按 `instance_id_keys` 从 VM labels 重建完整实例 ID，不能直接把 VM label 中的 `instance_id` 当作完整数据库 ID。基础对象通常只有 `["instance_id"]`；派生对象通常使用 `["instance_id", "<child_label>"]`，其中第二个字段必须与真实上报 label 名一致。
+
+### 6.6 隐式规则
 
 - `collector` 与 `collect_type` 的最终导入值优先取 `metrics.json` 显式声明；字段缺失或为空时，再回退到文件路径。
 - 路径回退是逐字段生效的：只声明 `collect_type` 时，`collector` 仍可从路径回退。

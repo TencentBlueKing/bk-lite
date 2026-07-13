@@ -283,6 +283,75 @@ export const CONFIG_FILE_FORM_INITIAL_VALUES = {
   configFilePath: '',
 };
 
+export const NETWORK_CONFIG_FILE_FORM_INITIAL_VALUES = {
+  ...HOST_FORM_INITIAL_VALUES,
+  intervalValue: 60,
+  timeout: 60,
+  configName: '',
+  commands: '',
+  needEnable: false,
+  credentialPool: [{ port: '22' }],
+};
+
+export const NETWORK_CONFIG_SUPPORTED_BRANDS = [
+  '华为',
+  'Huawei',
+  'H3C',
+  'HP Comware',
+  'Cisco',
+  'Juniper',
+  'F5',
+  'Fortinet',
+];
+
+const NETWORK_CONFIG_BRAND_ALIASES = new Set(
+  NETWORK_CONFIG_SUPPORTED_BRANDS.map((item) => item.toLowerCase())
+);
+
+const DANGEROUS_EXACT_COMMANDS = new Set(['conf t', 'write erase']);
+const DANGEROUS_COMMAND_PREFIXES = new Set([
+  'configure',
+  'reload',
+  'reboot',
+  'reset',
+  'delete',
+  'erase',
+  'format',
+  'copy',
+  'scp',
+  'tftp',
+  'ftp',
+  'install',
+  'upgrade',
+  'commit',
+  'save',
+  'shutdown',
+  'undo',
+  'set',
+]);
+
+export const normalizeNetworkConfigBrand = (brand?: string) =>
+  String(brand || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+export const isSupportedNetworkConfigBrand = (brand?: string) =>
+  NETWORK_CONFIG_BRAND_ALIASES.has(normalizeNetworkConfigBrand(brand));
+
+export const validateNetworkConfigCommands = (value: string) => {
+  const commands = (value || '')
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  if (!commands.length) {
+    return '请输入采集命令';
+  }
+  const badCommand = commands.find((command) => {
+    const lowered = command.toLowerCase().replace(/\s+/g, ' ');
+    const firstWord = lowered.split(' ')[0];
+    return DANGEROUS_EXACT_COMMANDS.has(lowered) || DANGEROUS_COMMAND_PREFIXES.has(firstWord);
+  });
+  return badCommand ? `命令存在高危操作：${badCommand}` : '';
+};
+
 export const validateCycleTime = (
   type: string,
   value: any,
@@ -336,6 +405,9 @@ const cycleValidators = (context: ValidationContext) => ({
           return Promise.reject(
             new Error(context.t('Collection.k8sTask.intervalRequired'))
           );
+        }
+        if (cycle === CYCLE_OPTIONS.INTERVAL && Number(value) < 1) {
+          return Promise.reject(new Error(context.t('Collection.everyMinuteMin')));
         }
         return Promise.resolve();
       },

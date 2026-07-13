@@ -173,3 +173,45 @@ export interface LevelFormItem {
   level_type: string;
   built_in?: boolean;
 }
+
+export interface TargetBinding {
+  source: 'node_mgmt';
+  match_by?: 'ip' | 'name';
+  // 主机来源模式：
+  //   'from_alert'(默认) — 用 host_field 从告警 payload 里解析主机 IP
+  //   'fixed'           — 不读 alert，直接用 ip 字段写死的 IP
+  mode?: 'from_alert' | 'fixed';
+  host_field?: string;
+  ip?: string;
+}
+export interface ActionConfig {
+  script_id?: number;
+  target_binding: TargetBinding;
+  param_bindings: Array<{ name: string; from: 'field' | 'const'; value: string }>;
+  timeout?: number;
+}
+export interface ActionRuleListItem {
+  id: number;
+  name: string;
+  is_active: boolean;
+  team: number[];
+  trigger_events: string[];
+  match_rules: Array<Array<{ key: string; operator: string; value: string }>>;
+  action_type: 'job' | 'itsm' | 'webhook';
+  action_config: ActionConfig;
+  updated_at: string;
+}
+export interface ActionExecutionItem {
+  id: number;
+  rule: number | null;
+  rule_name: string | null;
+  alert_title: string | null;
+  trigger_event: string;
+  trigger_type: 'auto' | 'manual';
+  status: 'pending' | 'running' | 'success' | 'failed' | 'skipped' | 'config_error';
+  job_task_id: number | null;
+  job_detail_url: string | null;
+  result: Record<string, any>;
+  operator: string | null;
+  created_at: string;
+}

@@ -17,6 +17,14 @@ class TestUserAPISecretGenerateApiSecret:
         secret2 = UserAPISecret.generate_api_secret()
         assert secret1 != secret2
 
+    def test_hash_api_secret_is_not_reusable_plaintext(self):
+        secret = "a" * 64
+        hashed = UserAPISecret.hash_api_secret(secret)
+
+        assert hashed != secret
+        assert hashed.startswith(UserAPISecret.HASH_PREFIX)
+        assert UserAPISecret.hash_api_secret(hashed) == hashed
+
 
 @pytest.mark.unit
 @pytest.mark.django_db
@@ -56,3 +64,16 @@ class TestUserAPISecretModelConstraints:
         secret = UserAPISecretFactory(username="charlie")
         assert secret.team == 0
         assert secret.domain == "domain.com"
+
+    def test_find_by_api_secret_matches_hashed_secret(self):
+        raw_secret = UserAPISecret.generate_api_secret()
+        stored = UserAPISecretFactory(api_secret=UserAPISecret.hash_api_secret(raw_secret))
+
+        assert UserAPISecret.find_by_api_secret(raw_secret) == stored
+        assert UserAPISecret.find_by_api_secret(stored.api_secret) is None
+
+    def test_find_by_api_secret_keeps_legacy_plaintext_fallback(self):
+        raw_secret = UserAPISecret.generate_api_secret()
+        stored = UserAPISecretFactory(api_secret=raw_secret)
+
+        assert UserAPISecret.find_by_api_secret(raw_secret) == stored

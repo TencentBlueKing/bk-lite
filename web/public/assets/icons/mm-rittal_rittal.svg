@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Rittal">
+  <rect width="1024" height="1024" rx="160" fill="#F8FAFC"/>
+  <path d="M216 232h592c36 0 64 28 64 64v432c0 36-28 64-64 64H216c-36 0-64-28-64-64V296c0-36 28-64 64-64Z" fill="#FFFFFF" stroke="#E11D48" stroke-width="40"/>
+  <path d="M280 328h464M280 456h464M280 584h464M280 712h464" stroke="#E11D48" stroke-width="34" stroke-linecap="round"/>
+  <circle cx="336" cy="328" r="22" fill="#0F172A"/>
+  <circle cx="336" cy="456" r="22" fill="#0F172A"/>
+  <circle cx="336" cy="584" r="22" fill="#0F172A"/>
+  <circle cx="336" cy="712" r="22" fill="#0F172A"/>
+  <path d="M632 300h92v448h-92z" fill="#FFE4E6" stroke="#E11D48" stroke-width="28" stroke-linejoin="round"/>
+  <path d="M664 384h28M664 472h28M664 560h28M664 648h28" stroke="#E11D48" stroke-width="22" stroke-linecap="round"/>
+</svg>

@@ -9,6 +9,7 @@ from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.system_mgmt.models import Group, Menu, Role, User
 from apps.system_mgmt.serializers.role_serializer import RoleSerializer
 from apps.system_mgmt.services.role_manage import RoleManage
+from apps.system_mgmt.utils.group_filter_mixin import get_unauthorized_group_ids
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 from apps.system_mgmt.utils.viewset_utils import ViewSetUtils
 
@@ -16,6 +17,14 @@ from apps.system_mgmt.utils.viewset_utils import ViewSetUtils
 class RoleViewSet(LanguageViewSet, ViewSetUtils):
     queryset = Role.objects.exclude(app="")
     serializer_class = RoleSerializer
+
+    def _validate_group_scope_for_request(self, request, group_ids):
+        unauthorized_group_ids = get_unauthorized_group_ids(request.user, group_ids)
+        if unauthorized_group_ids:
+            loader = getattr(self, "loader", None)
+            message = loader.get("error.no_permission_access_group") if loader else "无权访问该组织"
+            return JsonResponse({"result": False, "message": message}, status=403)
+        return None
 
     @action(detail=False, methods=["POST"])
     @HasPermission("application_role-View")
@@ -273,6 +282,9 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
                     "message": self.loader.get("error.some_groups_not_exist"),
                 }
             )
+        group_scope_error = self._validate_group_scope_for_request(request, group_ids)
+        if group_scope_error:
+            return group_scope_error
 
         # 验证角色是否存在
         try:
@@ -330,6 +342,9 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
                     "message": self.loader.get("error.some_groups_not_exist"),
                 }
             )
+        group_scope_error = self._validate_group_scope_for_request(request, group_ids)
+        if group_scope_error:
+            return group_scope_error
 
         # 验证角色是否存在
         try:

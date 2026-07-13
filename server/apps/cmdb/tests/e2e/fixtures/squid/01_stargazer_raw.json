@@ -1,0 +1,26 @@
+{
+  "model_id": "squid",
+  "captured_at": "2026-07-08T06:38:52Z",
+  "image": "docker.m.daocloud.io/library/ubuntu:22.04",
+  "container_meta": {
+    "container_id": "170437b1aa9d",
+    "image": "docker.m.daocloud.io/library/ubuntu:22.04"
+  },
+  "params": {
+    "host": "127.0.0.1",
+    "ssh_port": 12256
+  },
+  "raw_stdout": {
+    "bk_inst_name": "172.17.0.3-squid-instead.",
+    "bk_obj_id": "squid",
+    "ip_addr": "172.17.0.3",
+    "port": "instead.",
+    "install_path": ".",
+    "version": "",
+    "config_file_path": "/etc/squid/squid.conf",
+    "cache_dir": "lines",
+    "access_log": "directives",
+    "error_log": "/var/log/squid/cache.log",
+    "visible_hostname": "is"
+  }
+}

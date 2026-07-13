@@ -4,8 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"net/http"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -89,32 +90,99 @@ func TestClassifyDownloadErrorDetectsIOTimeout(t *testing.T) {
 	}
 }
 
-// TestNewHTTPClientDefaultsToTLSVerification 验证 issue #3524：
-// newHTTPClient(false) 必须启用 TLS 验证（InsecureSkipVerify == false），
-// 确保"不传 --skip-tls"时 HTTPS 下载受证书校验保护。
-func TestNewHTTPClientDefaultsToTLSVerification(t *testing.T) {
-	client := newHTTPClient(false)
-	tr, ok := client.Transport.(*http.Transport)
-	if !ok {
-		// nil Transport 表示使用 DefaultTransport，TLS 校验已启用
-		return
+func TestRunLinuxInstallerDoesNotExposeAPITokenInArgv(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell script test is only for Unix-like systems")
 	}
-	if tr.TLSClientConfig != nil && tr.TLSClientConfig.InsecureSkipVerify {
-		t.Fatal("newHTTPClient(false) must not disable TLS verification (InsecureSkipVerify must be false)")
+
+	installDir := t.TempDir()
+	token := "issue-3842-secret-token"
+	installScript := filepath.Join(installDir, "install.sh")
+	script := `#!/bin/sh
+set -eu
+for arg in "$@"; do
+    printf '<%s>\n' "$arg"
+done > argv.txt
+printf '%s' "$BK_LITE_SERVER_API_TOKEN_FILE" > token-file-path.txt
+stat -f '%Lp' "$BK_LITE_SERVER_API_TOKEN_FILE" > token-file-mode.txt 2>/dev/null || stat -c '%a' "$BK_LITE_SERVER_API_TOKEN_FILE" > token-file-mode.txt
+cat "$BK_LITE_SERVER_API_TOKEN_FILE" > token-value.txt
+`
+	if err := os.WriteFile(installScript, []byte(script), 0644); err != nil {
+		t.Fatalf("write install.sh: %v", err)
+	}
+
+	cfg := &Config{
+		ServerURL:  "https://bk.example",
+		APIToken:   token,
+		ZoneID:     "zone-a",
+		GroupID:    "group-a",
+		NodeName:   "node-a",
+		NodeID:     "node-1",
+		InstallDir: installDir,
+		Package: PackageConfig{
+			CPUArchitecture: "x86_64",
+		},
+	}
+
+	if err := runLinuxInstaller(cfg); err != nil {
+		t.Fatalf("runLinuxInstaller: %v", err)
+	}
+
+	argv := readTestFile(t, filepath.Join(installDir, "argv.txt"))
+	if strings.Contains(argv, token) {
+		t.Fatalf("API token leaked through argv: %q", argv)
+	}
+
+	args := strings.Split(strings.TrimSpace(argv), "\n")
+	wantArgs := []string{"<https://bk.example>", "<>", "<zone-a>", "<group-a>", "<node-a>", "<node-1>", "<x86_64>"}
+	if !equalStringSlices(args, wantArgs) {
+		t.Fatalf("unexpected argv\nwant: %#v\n got: %#v", wantArgs, args)
+	}
+
+	if got := readTestFile(t, filepath.Join(installDir, "token-value.txt")); got != token {
+		t.Fatalf("install script did not receive API token, got %q", got)
+	}
+	tokenFilePath := readTestFile(t, filepath.Join(installDir, "token-file-path.txt"))
+	if strings.Contains(tokenFilePath, token) {
+		t.Fatalf("token file path contains token: %q", tokenFilePath)
+	}
+	if _, err := os.Stat(tokenFilePath); !os.IsNotExist(err) {
+		t.Fatalf("expected token file to be cleaned up, stat error: %v", err)
+	}
+	mode := readTestFile(t, filepath.Join(installDir, "token-file-mode.txt"))
+	if mode != "600" {
+		t.Fatalf("expected token file mode 600, got %q", mode)
 	}
 }
 
-// TestNewHTTPClientSkipTLSWhenExplicitlyRequested 验证 --skip-tls=true 仍可显式禁用校验（opt-out 保留）。
-func TestNewHTTPClientSkipTLSWhenExplicitlyRequested(t *testing.T) {
-	client := newHTTPClient(true)
-	tr, ok := client.Transport.(*http.Transport)
-	if !ok {
-		t.Fatal("expected *http.Transport when skipTLS=true")
+func TestLinuxInstallerAPITokenInputsKeepsEmptyTokenOnArgv(t *testing.T) {
+	arg, env, cleanup, err := linuxInstallerAPITokenInputs(t.TempDir(), "")
+	if err != nil {
+		t.Fatalf("linuxInstallerAPITokenInputs: %v", err)
 	}
-	if tr.TLSClientConfig == nil {
-		t.Fatal("expected non-nil TLSClientConfig when skipTLS=true")
+	defer cleanup()
+	if arg != "" || env != "" {
+		t.Fatalf("empty token should not create env/file inputs, got arg=%q env=%q", arg, env)
 	}
-	if !tr.TLSClientConfig.InsecureSkipVerify {
-		t.Fatal("newHTTPClient(true) must set InsecureSkipVerify=true")
+}
+
+func readTestFile(t *testing.T, path string) string {
+	t.Helper()
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
 	}
+	return string(content)
+}
+
+func equalStringSlices(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

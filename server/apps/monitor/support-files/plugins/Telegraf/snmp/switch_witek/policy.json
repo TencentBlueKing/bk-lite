@@ -1,0 +1,106 @@
+{
+  "object": "Switch",
+  "plugin": "Switch Wi-Tek SNMP",
+  "templates": [
+    {
+      "name": "Wi-Tek交换机CPU使用率过高",
+      "alert_name": "交换机${resource_name} CPU使用率过高",
+      "description": "监控 Wi-Tek 交换机控制平面 CPU 使用率，持续过高时触发告警，便于发现控制面过载或异常流量。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ]
+    },
+    {
+      "name": "Wi-Tek交换机内存使用率过高",
+      "alert_name": "交换机${resource_name} 内存使用率过高",
+      "description": "监控 Wi-Tek 交换机系统内存使用率，持续过高可能表示表项膨胀、内存泄漏或容量不足。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 95,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 80,
+          "method": ">"
+        }
+      ]
+    },
+    {
+      "name": "Wi-Tek交换机温度过高",
+      "alert_name": "交换机${resource_name} 温度过高",
+      "description": "监控 Wi-Tek 交换机系统温度，超过阈值时提示机柜散热、风道或设备硬件风险。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 60,
+          "method": ">"
+        }
+      ]
+    },
+    {
+      "name": "Wi-Tek交换机风扇状态异常",
+      "alert_name": "交换机${resource_name} 风扇状态异常",
+      "description": "监控 Wi-Tek 交换机风扇状态，归一后 1=正常，>1=异常。",
+      "metric_name": "device_fan_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">"
+        }
+      ]
+    },
+    {
+      "name": "Wi-Tek交换机电源状态异常",
+      "alert_name": "交换机${resource_name} 电源状态异常",
+      "description": "监控 Wi-Tek 交换机电源状态，归一后 1=正常，>1=异常。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">"
+        }
+      ]
+    }
+  ]
+}

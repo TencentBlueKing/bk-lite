@@ -10,6 +10,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional
 
 from django.db import IntegrityError
+from django.db.models import Prefetch
 
 from django.utils import timezone
 
@@ -23,6 +24,7 @@ from apps.alerts.common.source_adapter import logger
 from apps.alerts.utils.util import decode_team_secret, split_list
 from apps.alerts.utils.permission_scope import normalize_team_ids
 from apps.alerts.enrichment.engine import EnrichmentEngine
+from apps.rpc.cmdb import CMDB
 
 
 class AlertSourceAdapter(ABC):
@@ -73,6 +75,35 @@ class AlertSourceAdapter(ABC):
             Level.objects.filter(level_type=LevelType.EVENT).order_by("level_id").values_list("level_id", flat=True))
 
         return str(max(instance)), [str(i) for i in instance]
+
+    @staticmethod
+    def enable_enrich() -> bool:
+        return False
+
+    @staticmethod
+    def enrich_event(data: Dict[str, Any]) -> None:
+        resource_type = data.get("resource_type")
+        resource_id = data.get("resource_id")
+        if not resource_type or not resource_id:
+            return
+
+        params = {"model_id": resource_type, "_id": resource_id}
+        try:
+            try:
+                resource = CMDB().search_instances(**params)
+            except TypeError:
+                resource = CMDB().search_instances(params)
+        except Exception:
+            logger.error("[AlertSource] 单事件 CMDB 丰富失败: %s", params, exc_info=True)
+            return
+
+        if isinstance(resource, dict) and resource:
+            data.setdefault("labels", {}).update(resource)
+
+    def rich_event(self, data: Dict[str, Any]) -> None:
+        if not getattr(self, "enable_rich_event", self.enable_enrich()):
+            return
+        self.enrich_event(data)
 
     def authenticate(self) -> bool:
         # 契约：认证通过返回 True，否则抛 AuthenticationSourceError（不会返回 False）。
@@ -255,6 +286,13 @@ class AlertSourceAdapter(ABC):
         if not item or not resource_name or resource_id or resource_type:
             return None
 
+        prefetch_qs = Event.objects.filter(
+            action=EventAction.CREATED,
+            source=self.alert_source,
+            item=item,
+            resource_name=resource_name,
+        ).only("external_id", "item", "resource_name", "source_id", "action")
+
         candidate_alerts = (
             Alert.objects.filter(
                 status__in=AlertStatus.ACTIVATE_STATUS,
@@ -263,7 +301,7 @@ class AlertSourceAdapter(ABC):
                 events__resource_name=resource_name,
                 events__action=EventAction.CREATED,
             )
-            .prefetch_related("events__source")
+            .prefetch_related(Prefetch("events", queryset=prefetch_qs, to_attr="_created_events"))
             .distinct()
         )
 
@@ -271,12 +309,8 @@ class AlertSourceAdapter(ABC):
         for alert in candidate_alerts:
             created_external_ids = {
                 existing_event.external_id
-                for existing_event in alert.events.all()
-                if existing_event.action == EventAction.CREATED
-                   and existing_event.source_id == self.alert_source.id
-                   and self._normalize_lookup_value(existing_event.item) == item
-                   and self._normalize_lookup_value(existing_event.resource_name) == resource_name
-                   and existing_event.external_id
+                for existing_event in alert._created_events
+                if existing_event.external_id
             }
             if len(created_external_ids) == 1:
                 matched_external_ids.append(next(iter(created_external_ids)))
@@ -601,17 +635,49 @@ class AlertSourceAdapter(ABC):
 class AlertSourceAdapterFactory:
     """告警源适配器工厂"""
 
+    _default_adapter_types = ("restful", "nats", "prometheus", "zabbix")
     _adapters = {}
+
+    @classmethod
+    def ensure_registered(cls):
+        """确保内置告警源适配器已注册。"""
+        if all(source_type in cls._adapters for source_type in cls._default_adapter_types):
+            return
+
+        from apps.alerts.common.source_adapter.nats import NatsAdapter
+        from apps.alerts.common.source_adapter.prometheus import PrometheusAdapter
+        from apps.alerts.common.source_adapter.restful import RestFulAdapter
+        from apps.alerts.common.source_adapter.zabbix import ZabbixAdapter
+
+        default_adapters = {
+            "restful": RestFulAdapter,
+            "nats": NatsAdapter,
+            "prometheus": PrometheusAdapter,
+            "zabbix": ZabbixAdapter,
+        }
+        for source_type, adapter_class in default_adapters.items():
+            cls.register_adapter(source_type, adapter_class)
 
     @classmethod
     def register_adapter(cls, source_type: str, adapter_class):
         """注册适配器"""
+        registered_adapter = cls._adapters.get(source_type)
+        if registered_adapter is adapter_class:
+            return
+        if registered_adapter is not None:
+            logger.warning(
+                "[AlertSource] 适配器已存在并将被覆盖 source type: %s, old: %s, new: %s",
+                source_type,
+                registered_adapter,
+                adapter_class,
+            )
         cls._adapters[source_type] = adapter_class
         logger.info("[AlertSource] 适配器已注册 source type: %s", source_type)
 
     @classmethod
     def get_adapter(cls, alert_source: AlertSource):
         """获取适配器实例"""
+        cls.ensure_registered()
         adapter_class = cls._adapters.get(alert_source.source_type)
         if not adapter_class:
             raise ValueError(f"No adapter found for source type: {alert_source.source_type}")
@@ -620,4 +686,5 @@ class AlertSourceAdapterFactory:
     @classmethod
     def get_supported_types(cls) -> List[str]:
         """获取支持的告警源类型"""
+        cls.ensure_registered()
         return list(cls._adapters.keys())

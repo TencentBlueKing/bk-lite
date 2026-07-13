@@ -60,6 +60,24 @@ def _build_queue_safe_payload(payload: dict[str, Any] | None) -> dict[str, Any]:
     return sanitized or {}
 
 
+def _subject_matches(subject: str, allowed_subjects: list[str] | None) -> bool:
+    if not subject or any(char.isspace() for char in subject):
+        return False
+
+    for raw_pattern in allowed_subjects or []:
+        pattern = str(raw_pattern).strip()
+        if not pattern:
+            continue
+        if pattern.endswith(".>"):
+            prefix = pattern[:-1]
+            if subject.startswith(prefix):
+                return True
+            continue
+        if subject == pattern:
+            return True
+    return False
+
+
 class AnsibleNATSService:
     CALLBACK_PAYLOAD_MARGIN_BYTES = 4 * 1024
     CALLBACK_RESULT_TEXT_MAX_CHARS = 8 * 1024
@@ -145,6 +163,14 @@ class AnsibleNATSService:
         max_payload = int(getattr(self.nc, "max_payload", 1024 * 1024) or 1024 * 1024)
         max_bytes = max(1024, max_payload - self.CALLBACK_PAYLOAD_MARGIN_BYTES)
         return self._compact_callback_payload(payload, max_bytes)
+
+    def _validate_callback_subject(self, subject: str):
+        if not _subject_matches(subject, self.config.allowed_callback_subjects):
+            raise ValueError(f"callback subject is not allowed: {subject}")
+
+    def _validate_stream_subject(self, subject: str):
+        if not _subject_matches(subject, self.config.allowed_stream_subjects):
+            raise ValueError(f"stream subject is not allowed: {subject}")
 
     @staticmethod
     def _build_accepted(task_id: str, duplicate: bool = False) -> bytes:
@@ -382,6 +408,7 @@ class AnsibleNATSService:
             return
         if not subject:
             subject = f"{namespace}.{method_name}.{instance_id}" if instance_id else f"{namespace}.{method_name}"
+        self._validate_callback_subject(subject)
 
         timeout = int(callback.get("timeout", self.config.callback_timeout))
         request_payload = json.dumps({"args": [payload], "kwargs": {}}, ensure_ascii=False).encode("utf-8")
@@ -500,15 +527,18 @@ class AnsibleNATSService:
 
         stream_log_topic = execution_payload.get("stream_log_topic")
         execution_id = execution_payload.get("execution_id")
-        stream_kwargs: dict[str, Any] = {}
-        if stream_log_topic and execution_id:
-            stream_kwargs = {
-                "stream_publish": lambda subject, data: self.nc.publish(subject, data),
-                "stream_log_topic": str(stream_log_topic),
-                "execution_id": str(execution_id),
-            }
 
         try:
+            stream_kwargs: dict[str, Any] = {}
+            if stream_log_topic and execution_id:
+                stream_subject = str(stream_log_topic).strip()
+                self._validate_stream_subject(stream_subject)
+                stream_kwargs = {
+                    "stream_publish": lambda subject, data: self.nc.publish(subject, data),
+                    "stream_log_topic": stream_subject,
+                    "execution_id": str(execution_id),
+                }
+
             if task.task_type == "adhoc":
                 request = to_adhoc_request(execution_payload)
                 cmd, workspace = prepare_adhoc_execution(request)

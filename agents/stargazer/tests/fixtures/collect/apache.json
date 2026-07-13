@@ -1,0 +1,26 @@
+{
+  "model_id": "apache",
+  "captured_at": "2026-07-08T06:19:12Z",
+  "image": "docker.m.daocloud.io/library/ubuntu:22.04",
+  "container_meta": {
+    "container_id": "07b5b0e56fef",
+    "image": "docker.m.daocloud.io/library/ubuntu:22.04"
+  },
+  "params": {
+    "host": "127.0.0.1",
+    "ssh_port": 12255
+  },
+  "raw_stdout": {
+    "inst_name": "172.17.0.4-apache-80",
+    "obj_id": "apache",
+    "ip_addr": "172.17.0.4",
+    "port": "80",
+    "httpd_path": "/usr/sbin/apache2",
+    "version": "2.4.52",
+    "doc_root": "",
+    "httpd_conf_path": "/etc/apache2/apache2.conf",
+    "error_log": "",
+    "custom_log": "",
+    "include": "mods-enabled/*.load,mods-enabled/*.conf,ports.conf,conf-enabled/*.conf,sites-enabled/*.conf"
+  }
+}

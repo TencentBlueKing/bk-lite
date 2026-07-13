@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { KeepAlive, useActivate } from 'react-activation';
 import {
   Button,
@@ -13,9 +13,11 @@ import {
   Tree,
   Input,
   Empty,
+  Tag,
+  Tooltip,
 } from 'antd';
 import type { MenuProps } from 'antd';
-import { DownOutlined, UnorderedListOutlined } from '@ant-design/icons';
+import { DownOutlined, StarFilled, StarOutlined, UnorderedListOutlined } from '@ant-design/icons';
 import { useSearchParams, usePathname, useRouter } from 'next/navigation';
 import CustomTable from '@/components/custom-table';
 import GroupTreeSelector from '@/components/group-tree-select';
@@ -51,6 +53,7 @@ import ExportModal from './components/exportModal';
 import SubscriptionDrawer from '@/app/cmdb/components/subscription/subscriptionDrawer';
 import SubscriptionRuleForm, { type SubscriptionRuleFormRef } from '@/app/cmdb/components/subscription/subscriptionRuleForm';
 import { useQuickSubscribeDefaults, useSubscriptionMutation } from '@/app/cmdb/hooks/useSubscription';
+import { useFollowedAssets } from '@/app/cmdb/hooks/useFollowedAssets';
 import type { QuickSubscribeDefaults, QuickSubscribeSource } from '@/app/cmdb/types/subscription';
 import assetDataStyle from './index.module.scss';
 
@@ -222,6 +225,12 @@ const AssetDataContent = () => {
   const [subscriptionSource, setSubscriptionSource] = useState<QuickSubscribeSource>('drawer');
   const quickSubscribeFormRef = useRef<SubscriptionRuleFormRef>(null);
   const { submitting: quickSubscribeSubmitting, createRule: quickSubscribeCreateRule } = useSubscriptionMutation();
+  const {
+    isFollowed,
+    followAsset,
+    unfollowAsset,
+  } = useFollowedAssets();
+  const [followPendingKey, setFollowPendingKey] = useState<string>('');
   const [quickContext, setQuickContext] = useState<{
     selectedInstanceIds?: number[];
     queryList?: any[];
@@ -293,7 +302,7 @@ const AssetDataContent = () => {
 
   useEffect(() => {
     // 主页中当模型为host时，获取云区域选项test8.7
-    if (modelId === 'host') {
+    if (['host', 'subnet'].includes(modelId)) {
       getInstanceProxys()
         .then((data: any[]) => {
           setProxyOptions(data || []);
@@ -385,6 +394,30 @@ const AssetDataContent = () => {
     await quickSubscribeCreateRule({ ...payload, is_enabled: enabled });
     setQuickSubscribeModalOpen(false);
   };
+
+  const handleFollowToggle = useCallback(
+    async (record: any, event: React.MouseEvent<HTMLElement>) => {
+      event.stopPropagation();
+      if (!modelId || !record?._id) return;
+      const pendingKey = `${modelId}:${record._id}`;
+      if (followPendingKey) return;
+
+      setFollowPendingKey(pendingKey);
+      try {
+        if (isFollowed(modelId, record._id)) {
+          await unfollowAsset(modelId, record._id);
+          message.success(t('AssetSearch.unfollowSuccess'));
+          return;
+        }
+
+        await followAsset({ model_id: modelId, inst_id: record._id });
+        message.success(t('AssetSearch.followSuccess'));
+      } finally {
+        setFollowPendingKey('');
+      }
+    },
+    [followAsset, followPendingKey, isFollowed, modelId, t, unfollowAsset]
+  );
 
   const showImportModal = () => {
     importRef.current?.showModal({
@@ -705,6 +738,27 @@ const AssetDataContent = () => {
 
   const storeQueryList = useAssetDataStore((state) => state.query_list);
 
+  const IP_CONFLICT_FILTER: FilterItem = { field: 'ip_status', type: 'list_any[]', value: ['conflict'] };
+
+  const isConflictFilterActive = useMemo(
+    () => storeQueryList.some(
+      (f) =>
+        f.field === 'ip_status' &&
+        f.type === 'list_any[]' &&
+        Array.isArray(f.value) &&
+        (f.value as string[]).includes('conflict')
+    ),
+    [storeQueryList]
+  );
+
+  const handleConflictFilterToggle = () => {
+    if (isConflictFilterActive) {
+      handleSearch({ field: 'ip_status', type: '' });
+    } else {
+      handleSearch(IP_CONFLICT_FILTER);
+    }
+  };
+
   useEffect(() => {
     // 如果查询条件为空，则设置为 null，否则设置为查询条件
     const newQueryList = storeQueryList.length === 0 ? null
@@ -816,6 +870,39 @@ const AssetDataContent = () => {
     if (!propertyList.length) return;
 
     const attrList = getAssetColumns({ attrList: propertyList, userList, t });
+    const columnsWithFollow = attrList.map((column) => {
+      if (column.key !== 'inst_name') return column;
+
+      const originRender = column.render;
+      return {
+        ...column,
+        width: Math.max(Number(column.width) || 180, 220),
+        render: (value: unknown, record: any) => {
+          const followed = isFollowed(modelId, record._id);
+          const pendingKey = `${modelId}:${record._id}`;
+          const isPending = followPendingKey === pendingKey;
+          const content = originRender ? originRender(value, record) : <>{record.inst_name || '--'}</>;
+
+          return (
+            <span className={assetDataStyle.instanceNameCell}>
+              <Tooltip title={followed ? t('AssetSearch.unfollow') : t('AssetSearch.follow')}>
+                <Button
+                  type="text"
+                  size="small"
+                  loading={isPending}
+                  disabled={!!followPendingKey && !isPending}
+                  icon={followed ? <StarFilled /> : <StarOutlined />}
+                  className={`${assetDataStyle.instanceFollowButton} ${followed ? assetDataStyle.instanceFollowed : ''}`}
+                  aria-label={followed ? t('AssetSearch.unfollow') : t('AssetSearch.follow')}
+                  onClick={(event) => handleFollowToggle(record, event)}
+                />
+              </Tooltip>
+              <span className={assetDataStyle.instanceNameText}>{content}</span>
+            </span>
+          );
+        },
+      };
+    });
     const actionColumn: ColumnItem = {
       title: t('common.actions'),
       key: 'action',
@@ -850,14 +937,14 @@ const AssetDataContent = () => {
         </>
       ),
     };
-    const tableColumns = [...attrList, actionColumn];
+    const tableColumns = [...columnsWithFollow, actionColumn];
     setColumns(tableColumns);
 
     const orderedColumns = tableColumns
       .filter((col) => displayFieldKeys.includes(col.key as string))
       .sort((a, b) => displayFieldKeys.indexOf(a.key as string) - displayFieldKeys.indexOf(b.key as string));
     setCurrentColumns([...orderedColumns, actionColumn]);
-  }, [propertyList, displayFieldKeys, propertyListGroups]);
+  }, [propertyList, displayFieldKeys, propertyListGroups, modelId, followPendingKey, handleFollowToggle, isFollowed, t]);
 
   const showSubscribeAction = selectedRowKeys.length > 0 || storeQueryList.length > 0;
 
@@ -1000,6 +1087,15 @@ const AssetDataContent = () => {
                   onChange={handleFilterBarChange}
                   onFilterChange={handleFilterBarChange}
                 />
+                {modelId === 'ip' && (
+                  <Tag
+                    color={isConflictFilterActive ? 'error' : 'default'}
+                    style={{ cursor: 'pointer', userSelect: 'none' }}
+                    onClick={handleConflictFilterToggle}
+                  >
+                    {t('IPAM.conflictFilter')}
+                  </Tag>
+                )}
                 <RefreshIconButton
                   loading={loading}
                   onClick={() => fetchData()}
@@ -1159,7 +1255,7 @@ const AssetDataContent = () => {
                 </Button>
               </Space>
             )}
-            destroyOnClose
+            destroyOnHidden
             styles={{
               body: {
                 maxHeight: 'calc(100vh - 220px)',

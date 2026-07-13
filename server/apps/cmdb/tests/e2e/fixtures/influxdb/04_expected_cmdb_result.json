@@ -1,0 +1,13 @@
+{
+  "model_id": "influxdb",
+  "instance_count_min": 1,
+  "expected_instance_subset": {
+    "inst_name": "127.0.0.1-influxdb-18086",
+    "ip_addr":   "127.0.0.1",
+    "port":      "18086",
+    "version":   "",
+    "https_enabled": "false"
+  },
+  "fixture_source": "agents/stargazer/tests/fixtures/collect/influxdb.json (2026-07-10 cli 落盘)",
+  "notes": "G5.2.1 Phase 2.1 第一闭环;version 为空(2.x 未填),https_enabled=false(env DOCKER_INFLUXDB_INIT_MODE=setup)"
+}

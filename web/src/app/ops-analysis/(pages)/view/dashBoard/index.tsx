@@ -1,4 +1,4 @@
-import React, {
+import {
   useState,
   useEffect,
   useMemo,
@@ -8,10 +8,11 @@ import React, {
   useCallback,
 } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import ViewSelector from './components/viewSelector';
-import ViewConfig from './components/viewConfig';
+import ViewSelector from '@/app/ops-analysis/components/widgetSelector';
+import ViewConfig from '@/app/ops-analysis/components/widgetConfig';
 import DashboardCanvas from './components/dashboardCanvas';
 import DashboardToolbar from './components/dashboardToolbar';
+import ViewWorkspace from '../components/viewWorkspace';
 import { Input, Modal, message, Select } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useOpsAnalysis } from '@/app/ops-analysis/context/common';
@@ -24,12 +25,12 @@ import {
   WidgetConfig,
   UnifiedFilterDefinition,
   FilterValue,
+  ComponentSelectorConfigItem,
 } from '@/app/ops-analysis/types/dashBoard';
 import { DirItem } from '@/app/ops-analysis/types';
 import { useDataSourceManager } from '@/app/ops-analysis/hooks/useDataSource';
 import { useUnifiedFilter } from '@/app/ops-analysis/hooks/useUnifiedFilter';
 import { useDashBoardApi } from '@/app/ops-analysis/api/dashBoard';
-import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import {
   UnifiedFilterBar,
   UnifiedFilterConfigModal,
@@ -554,7 +555,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       [isEditMode],
     );
 
-    const handleAddComponent = (config: WidgetConfig) => {
+    const handleAddComponent = (config: WidgetConfig, draftItem: LayoutItem) => {
       const nextUngroupedY = layout.reduce(
         (maxY, item) => Math.max(maxY, item.y + item.h),
         0,
@@ -564,14 +565,16 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         i: uuidv4(),
         x: 0,
         y: nextUngroupedY,
-        w: 4,
-        h: 3,
+        w: draftItem.w,
+        h: draftItem.h,
         groupId: null,
-        name: config?.name || '',
-        description: config?.description || '',
+        name: config.name,
+        description: config.description,
         valueConfig: {
           dataSource: config.dataSource,
-          chartType: config.chartType || '',
+          chartType: config.chartType,
+          sceneWidgetType: config.sceneWidgetType,
+          networkStatusTopology: config.networkStatusTopology,
           dataSourceParams: config.dataSourceParams || [],
           tableConfig: config.tableConfig,
           filterBindings: config.filterBindings,
@@ -899,20 +902,21 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       setConfigDrawerVisible(true);
     };
 
-    const handleOpenConfig = (item: DatasourceItem) => {
+    const handleOpenConfig = (item: ComponentSelectorConfigItem) => {
       setAddModalVisible(false);
 
       const configItem = {
         i: '',
         x: 0,
         y: 0,
-        w: 4,
-        h: 3,
+        w: item.defaultWidth,
+        h: item.defaultHeight,
         name: item.name,
         description: item.desc,
         valueConfig: {
-          dataSource: item?.id,
-          chartType: '',
+          dataSource: item.dataSource,
+          chartType: item.chartType,
+          sceneWidgetType: item.sceneWidgetType,
           dataSourceParams: [],
         },
       };
@@ -923,7 +927,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
 
     const handleConfigConfirm = (values: WidgetConfig) => {
       if (isNewComponentConfig && currentConfigItem) {
-        handleAddComponent(values);
+        handleAddComponent(values, currentConfigItem);
       } else {
         const editedWidgetId = currentConfigItem?.i;
         const nextLayout = layout.map((item) => {
@@ -936,6 +940,8 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                 ...item.valueConfig,
                 dataSource: values.dataSource,
                 chartType: values.chartType,
+                sceneWidgetType: values.sceneWidgetType,
+                networkStatusTopology: values.networkStatusTopology,
                 dataSourceParams: values.dataSourceParams,
                 tableConfig: values.tableConfig,
                 filterBindings: values.filterBindings,
@@ -1045,6 +1051,70 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       });
     };
 
+    const dashboardToolbar = (
+      <DashboardToolbar
+        selectedDashboard={selectedDashboard}
+        chartTheme={chartTheme}
+        exporting={exporting}
+        isFullscreen={isFullscreen}
+        isEditMode={isEditMode}
+        saving={saving}
+        onRefresh={handleRefresh}
+        onToggleFullscreen={handleFullscreenToggle}
+        onExportPdf={handleExportPdf}
+        onOpenFilterConfig={() => setFilterConfigModalVisible(true)}
+        onOpenAddView={() => openAddModal()}
+        onOpenAddGroup={handleAddGroup}
+        onToggleEditMode={toggleEditMode}
+        onCancelEdit={handleCancelEdit}
+        onSave={handleSave}
+      />
+    );
+
+    const dashboardFilterBar = (definitions.length > 0 ||
+      namespaceSelectorElement) && (
+      <UnifiedFilterBar
+        definitions={definitions}
+        values={filterValues}
+        onSearch={handleFilterSearch}
+        onReset={handleFilterReset}
+        prefixContent={namespaceSelectorElement}
+        popupZIndex={isFullscreen ? 1200 : undefined}
+      />
+    );
+
+    const dashboardCanvas = (
+      <div className="h-full overflow-auto" data-export-expand="true">
+        <DashboardCanvas
+          dashboardId={selectedDashboard?.data_id}
+          loading={loading}
+          isEditMode={isEditMode}
+          isDarkTheme={isDarkTheme}
+          key={selectedDashboard?.data_id ?? 'dashboard'}
+          layout={layout}
+          collapsedGroups={collapsedGroups}
+          chartTheme={chartTheme}
+          filterSearchVersion={filterSearchVersion}
+          namespaceSearchVersion={namespaceSearchVersion}
+          dashboardReloadVersion={dashboardReloadVersion}
+          widgetReloadVersions={widgetReloadVersions}
+          dataSourceResolver={dataSourceManager.findDataSource}
+          appliedFilterValues={appliedFilterValues}
+          appliedFilterDefinitions={appliedFilterDefinitions}
+          appliedNamespaceId={appliedNamespaceId}
+          selectedDashboardLocked={selectedDashboard?.is_build_in}
+          onOpenAddModal={openAddModal}
+          onLayoutChange={handleLayoutCommit}
+          onToggleCollapsedGroup={toggleCollapsedGroup}
+          onRenameGroup={handleRenameGroup}
+          onRemoveGroup={handleRemoveGroup}
+          onDeleteEntireGroup={handleDeleteEntireGroup}
+          onEditWidget={handleEdit}
+          onDeleteWidget={handleDelete}
+        />
+      </div>
+    );
+
     return (
       <div
         className={`flex flex-col ${
@@ -1058,81 +1128,37 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         }}
       >
         <AppViewFullscreenExit visible={isFullscreen} onExit={exitFullscreen} />
-        <div
-          ref={exportRef}
-          className="flex-1 min-h-0 flex flex-col"
-          data-export-expand="true"
-        >
-          {!isFullscreen && (
-            <DashboardToolbar
-              selectedDashboard={selectedDashboard}
-              chartTheme={chartTheme}
-              exporting={exporting}
-              isFullscreen={isFullscreen}
-              isEditMode={isEditMode}
-              saving={saving}
-              onRefresh={handleRefresh}
-              onToggleFullscreen={handleFullscreenToggle}
-              onExportPdf={handleExportPdf}
-              onOpenFilterConfig={() => setFilterConfigModalVisible(true)}
-              onOpenAddView={() => openAddModal()}
-              onOpenAddGroup={handleAddGroup}
-              onToggleEditMode={toggleEditMode}
-              onCancelEdit={handleCancelEdit}
-              onSave={handleSave}
-            />
-          )}
-
+        {isFullscreen ? (
           <div
-            className="flex-1 overflow-hidden flex flex-col"
-            style={{
-              backgroundColor: isDarkTheme ? 'var(--color-bg-1)' : '#f7f8fa',
-            }}
+            ref={exportRef}
+            className="flex-1 min-h-0 flex flex-col"
             data-export-expand="true"
           >
-            {(definitions.length > 0 || namespaceSelectorElement) && (
-              <div className="shrink-0">
-                <UnifiedFilterBar
-                  definitions={definitions}
-                  values={filterValues}
-                  onSearch={handleFilterSearch}
-                  onReset={handleFilterReset}
-                  prefixContent={namespaceSelectorElement}
-                  popupZIndex={isFullscreen ? 1200 : undefined}
-                />
+            {dashboardFilterBar && (
+              <div className="shrink-0 bg-[var(--color-bg-1)] px-2.5 pb-2 pt-1">
+                {dashboardFilterBar}
               </div>
             )}
-            <div className="flex-1 overflow-auto" data-export-expand="true">
-              <DashboardCanvas
-                dashboardId={selectedDashboard?.data_id}
-                loading={loading}
-                isEditMode={isEditMode}
-                isDarkTheme={isDarkTheme}
-                key={selectedDashboard?.data_id ?? 'dashboard'}
-                layout={layout}
-                collapsedGroups={collapsedGroups}
-                chartTheme={chartTheme}
-                filterSearchVersion={filterSearchVersion}
-                namespaceSearchVersion={namespaceSearchVersion}
-                dashboardReloadVersion={dashboardReloadVersion}
-                widgetReloadVersions={widgetReloadVersions}
-                dataSourceResolver={dataSourceManager.findDataSource}
-                appliedFilterValues={appliedFilterValues}
-                appliedFilterDefinitions={appliedFilterDefinitions}
-                appliedNamespaceId={appliedNamespaceId}
-                selectedDashboardLocked={selectedDashboard?.is_build_in}
-                onOpenAddModal={openAddModal}
-                onLayoutChange={handleLayoutCommit}
-                onToggleCollapsedGroup={toggleCollapsedGroup}
-                onRenameGroup={handleRenameGroup}
-                onRemoveGroup={handleRemoveGroup}
-                onDeleteEntireGroup={handleDeleteEntireGroup}
-                onEditWidget={handleEdit}
-                onDeleteWidget={handleDelete}
-              />
+            <div
+              className="min-h-0 flex-1 overflow-hidden pt-1"
+              data-export-expand="true"
+            >
+              {dashboardCanvas}
             </div>
           </div>
-        </div>
+        ) : (
+          <ViewWorkspace
+            selectedItem={selectedDashboard}
+            loading={loading}
+            titleFallback="仪表盘"
+            emptyDescription={t('dashboard.selectDashboardFirst')}
+            toolbar={dashboardToolbar}
+            filterBar={dashboardFilterBar}
+            contentRef={exportRef}
+          >
+            {dashboardCanvas}
+          </ViewWorkspace>
+        )}
 
         <ViewSelector
           visible={addModalVisible}

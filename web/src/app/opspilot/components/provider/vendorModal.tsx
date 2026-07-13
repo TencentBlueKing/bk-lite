@@ -249,7 +249,7 @@ const VendorModal: React.FC<VendorModalProps> = ({
           {t('common.save')}
         </Button>,
       ]}
-      destroyOnClose
+      destroyOnHidden
     >
       <Form form={form} layout="vertical" className="pb-1">
         {submitError ? <Alert className="mb-4" type="error" message={submitError} showIcon /> : null}

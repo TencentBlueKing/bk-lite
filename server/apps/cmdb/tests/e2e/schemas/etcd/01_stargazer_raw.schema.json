@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Stargazer etcd 采集原始输出契约",
+  "description": "2026-07-10 v4 — Phase 5 任务 5.1,fixture 由 stargazer cli 真实落盘(middleware runner,extra_payload_keys={\"result\": True})。\n\netcd 的 raw_stdout 是 list 形态(数组,每项是一个发现的 etcd 实例 dict),与常见 dict 平铺形态不同,反映 stargazer 端 etcd 脚本可能发现多实例(本 fixture 4 项,同一 IP/port 不同探测路径)。公共契约 00_common_contract 关注的是 fixture 顶层(model_id/captured_at/image/container_meta/params),本文件独立声明 raw_stdout 的 list-of-dict 结构,避免引入 jsonschema 库无法解析的 $ref。",
+  "type": "object",
+  "required": ["model_id", "captured_at", "raw_stdout"],
+  "properties": {
+    "model_id":    {"type": "string", "pattern": "^etcd$"},
+    "captured_at": {"type": "string", "format": "date-time"},
+    "image":       {"type": "string", "description": "docker 镜像,纯参考"},
+    "container_meta": {
+      "type": "object",
+      "properties": {
+        "container_id": {"type": "string"},
+        "image":        {"type": "string"}
+      }
+    },
+    "params": {
+      "type": "object",
+      "description": "stargazer 采集参数(host/ssh_port),纯参考"
+    },
+    "raw_stdout": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["inst_name", "ip_addr", "port", "obj_id"],
+        "properties": {
+          "inst_name":     {"type": "string", "pattern": "^[0-9.]+-etcd-[0-9]+$"},
+          "obj_id":        {"type": "string", "pattern": "^etcd$"},
+          "ip_addr":       {"type": "string"},
+          "port":          {"type": ["string", "integer"]},
+          "version":       {"type": "string"},
+          "data_dir":      {"type": "string"},
+          "conf_file_path": {"type": "string"},
+          "peer_port":     {"type": ["string", "integer"]},
+          "install_path":  {"type": "string"}
+        }
+      }
+    }
+  }
+}

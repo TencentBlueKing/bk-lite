@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Tooltip } from 'antd';
+import { Typography } from 'antd';
 import WithSideMenuLayout from '@/components/sub-layout';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
@@ -28,7 +28,7 @@ const IntegrationDetailLayout = ({
   };
 
   const TopSection = () => (
-    <div className="p-4 rounded-md w-full h-[95px] flex items-center bg-[var(--color-bg-2)]">
+    <div className="p-4 rounded-md w-full min-h-[95px] flex items-start bg-[var(--color-bg-2)]">
       <div className="w-[72px] h-[72px] mr-[10px] min-w-[72px] rounded-lg flex items-center justify-center bg-[var(--color-fill-1)]">
         <img
           src={`/assets/icons/${icon}.svg`}
@@ -40,11 +40,19 @@ const IntegrationDetailLayout = ({
           }}
         />
       </div>
-      <div className="w-full">
+      <div className="w-full min-w-0">
         <h2 className="text-lg font-semibold mb-2">{pluginDisplayName}</h2>
-        <Tooltip title={desc}>
-          <p className="truncate w-[95%] text-sm hide-text">{desc}</p>
-        </Tooltip>
+        <Typography.Paragraph
+          className="!mb-0 text-sm text-[var(--color-text-3)]"
+          ellipsis={{
+            rows: 2,
+            expandable: 'collapsible',
+            symbol: (expanded: boolean) =>
+              expanded ? t('common.collapse') : t('common.expand')
+          }}
+        >
+          {desc}
+        </Typography.Paragraph>
       </div>
     </div>
   );

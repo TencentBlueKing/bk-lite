@@ -8,6 +8,7 @@ static
 *.pyc
 .pytest_cache
 .coverage
+.coverage.*
 htmlcov
 token
 assets/static

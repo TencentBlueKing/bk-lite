@@ -275,16 +275,26 @@ def sync_notify(params):
         object_id = param.get("object_id", "")
         notify_action_object = param.get("notify_action_object", "alert")
         logger.info(
-            "[AlertTask] === 开始执行通知任务 time=%s username_list=%s, channel=%s ===",
-            send_time, username_list, channel_type,
+            "[AlertTask] === 开始执行通知任务 time=%s channel=%s channel_id=%s object_id=%s "
+            "username_list=%s content=%s ===",
+            send_time, channel_type, channel_id, object_id, username_list, content,
         )
-        notify = Notify(
-            username_list=username_list,
-            channel_id=channel_id,
-            title=title,
-            content=content,
-        )
-        result = notify.notify()
+        try:
+            notify = Notify(
+                username_list=username_list,
+                channel_id=channel_id,
+                title=title,
+                content=content,
+            )
+            result = notify.notify()
+        except Exception:
+            logger.exception(
+                "[AlertTask] 通知服务调用异常 channel=%s channel_id=%s object_id=%s",
+                channel_type,
+                channel_id,
+                object_id,
+            )
+            result = {"result": False, "message": "通知服务调用异常"}
         result_list.append(result)
         logger.info("[AlertTask] === 通知任务执行完成 send_time=%s ===", send_time)
         if object_id:

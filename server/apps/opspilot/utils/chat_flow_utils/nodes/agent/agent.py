@@ -2,7 +2,6 @@
 智能体节点
 """
 
-import json
 import time
 from typing import Any, Dict
 
@@ -14,8 +13,21 @@ from apps.opspilot.services.chat_service import ChatService, chat_service
 from apps.opspilot.services.skill_package.runtime import build_skill_package_prompt, build_skill_package_strategy, hydrate_skill_packages
 from apps.opspilot.services.workflow_attachment_service import build_signed_attachment_download_url
 from apps.opspilot.utils.agent_factory import create_agent_instance
+from apps.opspilot.utils.agui_chat import _build_sse_line
 from apps.opspilot.utils.chat_flow_utils.engine.core.base_executor import BaseNodeExecutor
 from apps.opspilot.utils.prompt_utils import resolve_skill_params
+
+
+def _build_wiki_citations_event(extra_config: dict | None) -> dict | None:
+    citations = (extra_config or {}).get("wiki_citations")
+    if not citations:
+        return None
+    return {
+        "type": "CUSTOM",
+        "name": "wiki_citations",
+        "value": {"citations": citations},
+        "timestamp": int(time.time() * 1000),
+    }
 
 
 class AgentNode(BaseNodeExecutor):
@@ -186,10 +198,6 @@ class AgentNode(BaseNodeExecutor):
         Returns:
             LLM参数字典
         """
-        # 判断是否为第三方渠道调用，如果是则禁用知识来源显示
-        is_third_party = flow_input.get("is_third_party", False)
-        enable_rag_knowledge_source = False if is_third_party else skill.enable_rag_knowledge_source
-        logger.info(f"is_third_party：{is_third_party}")
         # 优先使用调用方传入的当前节点 ID；flow_input["node_id"] 存储的是入口节点 ID，
         # 不是当前智能体节点的 ID，直接使用会导致附件 source_node_id 错误。
         effective_node_id = node_id or self.variable_manager.get_variable("current_node_id", "")
@@ -206,21 +214,19 @@ class AgentNode(BaseNodeExecutor):
             "llm_model": skill.llm_model_id,
             "skill_prompt": resolved_prompt,
             "matched_skill_packages": matched_skill_packages,
+            # 用户显式选中的全集:用于 backend 物化,绕开 substring 匹配丢包。
+            # chat_service 透传到 extra_config,node._resolve_skill_packages 优先使用。
+            "enabled_skill_packages": skill_packages,
             **skill_package_strategy,
             "temperature": skill.temperature,
             "chat_history": [{"event": "user", "message": final_message}],
             "user_message": final_message,
             "conversation_window_size": skill.conversation_window_size,
-            "enable_rag": skill.enable_rag,
-            "rag_score_threshold": [{"knowledge_base": int(key), "score": float(value)} for key, value in skill.rag_score_threshold_map.items()],
-            "enable_rag_knowledge_source": enable_rag_knowledge_source,
             "show_think": skill.show_think,
             "tools": skill.tools,
             "skill_type": skill.skill_type,
             "group": skill.team[0],
             "user_id": flow_input.get("user_id", "anonymous"),
-            "enable_km_route": skill.enable_km_route,
-            "km_llm_model": skill.km_llm_model,
             "enable_suggest": skill.enable_suggest,
             "enable_query_rewrite": skill.enable_query_rewrite,
             "locale": flow_input.get("locale", "en"),  # 用户语言设置，用于 browser-use 输出国际化
@@ -229,6 +235,10 @@ class AgentNode(BaseNodeExecutor):
             "node_id": effective_node_id,
             "flow_id": self.variable_manager.get_variable("flow_id", ""),
             "trigger_type": self._resolve_trigger_type(flow_input),
+            # Wiki 知识库复用:把 skill 上勾选的 wiki KB id 列表透传给 chat_service,
+            # 触发 augment_prompt 路径,自动检索并把相关页面片段注入系统提示词。
+            # 与 /opspilot/skill/detail 路径行为一致,Issue #3919。
+            "wiki_kb_ids": list(skill.wiki_knowledge_bases.values_list("id", flat=True)),
         }
 
     @staticmethod
@@ -297,6 +307,10 @@ class AgentNode(BaseNodeExecutor):
             try:
                 logger.info(f"[AgentNode-AGUI] 开始流式处理 - skill_name: {skill_name}, node_id: {node_id}, show_think: {show_think}")
 
+                wiki_citations_event = _build_wiki_citations_event(request.extra_config)
+                if wiki_citations_event:
+                    yield _build_sse_line(wiki_citations_event)
+
                 chunk_index = 0
                 async for sse_line in graph.agui_stream(request):
                     yield sse_line
@@ -309,7 +323,7 @@ class AgentNode(BaseNodeExecutor):
                     "error": f"节点执行错误: {str(e)}",
                     "timestamp": int(time.time() * 1000),
                 }
-                yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
+                yield _build_sse_line(error_data)
 
         return generate_agui_stream()
 

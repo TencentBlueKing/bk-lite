@@ -8,6 +8,7 @@ from apps.cmdb.models import CollectModels
 
 class BaseCollect(object):
     COLLECT_PLUGIN = None
+    TASK_FORMAT_DATA_KEY = "__task_format_data__"
     RAW_DATA_FIELDS = (
         "id",
         "_id",
@@ -43,7 +44,7 @@ class BaseCollect(object):
         return kwargs
 
     def format_params(self):
-        if not self.task.instances:
+        if not self.task.instances or not isinstance(self.task.instances, list):
             # IP范围采集模式
             organization = self.task.team
             if not organization:
@@ -89,6 +90,7 @@ class BaseCollect(object):
         )
         result = metrics_cannula.collect_controller()
         format_data = self.format_collect_data(result)
+        self.merge_task_format_data(format_data, metrics_cannula.collect_data)
         return metrics_cannula.collect_data, format_data
 
     def format_collect_data(self, result):
@@ -165,6 +167,24 @@ class BaseCollect(object):
                 i["_status"] = status
                 result.append(i)
         return result
+
+    @classmethod
+    def merge_task_format_data(cls, format_data: dict, collect_data: dict) -> dict:
+        if not isinstance(format_data, dict) or not isinstance(collect_data, dict):
+            return format_data
+
+        extra = collect_data.get(cls.TASK_FORMAT_DATA_KEY)
+        if not isinstance(extra, dict):
+            return format_data
+
+        for key in ("add", "update", "delete", "association"):
+            if extra.get(key):
+                format_data.setdefault(key, [])
+                format_data[key].extend(extra[key])
+
+        if "all" in extra:
+            format_data["all"] = int(format_data.get("all", 0) or 0) + int(extra.get("all", 0) or 0)
+        return format_data
 
     def __call__(self, *args, **kwargs):
         return self.run()

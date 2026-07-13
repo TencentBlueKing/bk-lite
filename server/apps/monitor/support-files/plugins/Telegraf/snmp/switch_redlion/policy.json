@@ -1,0 +1,21 @@
+{
+  "object": "Switch",
+  "plugin": "Switch Red Lion SNMP",
+  "templates": [
+    {
+      "name": "Red Lion交换机电源告警",
+      "alert_name": "交换机${resource_name} 电源状态异常",
+      "description": "监控 Red Lion / N-Tron 设备双路电源输入状态（ntronPowerFault，归一后 1=正常，>1=异常），当任一路电源失电时提示电源异常。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

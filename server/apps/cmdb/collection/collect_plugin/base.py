@@ -23,15 +23,22 @@ class CollectBase(metaclass=ABCMeta):
         self.inst_name = inst_name
         self._instance_id = f"cmdb_{self.task_id}"
         if not self.inst_name:
-            task_inst_data = self.get_collect_inst().instances
-            if task_inst_data.__len__():
-                self.inst_name = task_inst_data[0]['inst_name']
+            self.inst_name = self._resolve_inst_name_from_task() or self.inst_name
         assert self.check_metrics(), "请定义_metrics"
         self.collection_metrics_dict = {i: [] for i in self._metrics}
         self.timestamp_gt = False
         self.asso = "assos"
         self.result = {}
         self.raw_data = []
+
+    def _resolve_inst_name_from_task(self) -> str:
+        task_inst_data = self.get_collect_inst().instances
+        if not isinstance(task_inst_data, list) or not task_inst_data:
+            return ""
+        first_item = task_inst_data[0]
+        if not isinstance(first_item, dict):
+            return ""
+        return str(first_item.get("inst_name") or "")
 
     @property
     @abstractmethod

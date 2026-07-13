@@ -1,0 +1,229 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_zdns",
+  "plugin": "NetworkService ZDNS SNMP",
+  "plugin_desc": "ZDNS DNS/GSLB network-service SNMP collection for appliances exposing ZDNS private PEN 39810 and F5 BIG-IP LTM PEN 3375 objects. Beyond standard MIB-II / IF-MIB uptime and 64-bit HC interface traffic, it collects ZDNS private scalar health — CPU utilization, memory utilization and CPU temperature — plus DNS/DHCP/NTP/ZWP/TFTP service status and F5 LTM virtual-server, node, pool and pool-member availability states, normalized to 1=healthy / 2=fault. Query success rate, cache hit rate, recursion count and disk usage are business or capacity indicators, so they are not promoted into shared device-health metrics.",
+  "status_query": "any({instance_type='network_service', collect_type='snmp_zdns'}) by (instance_id)",
+  "name": "NetworkService",
+  "icon": "mm-network_service_网络服务",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='network_service'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_temperature_celsius",
+    "network_service_dns_service_state"
+  ],
+  "metrics": [
+    {
+      "metric_group": "NetworkService",
+      "name": "device_cpu_usage",
+      "query": "avg(device_cpu_usage{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Average CPU utilization of the ZDNS appliance from ZDNS private OID 39810.100.1.1, reported directly as a percentage."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "device_memory_usage",
+      "query": "avg(device_memory_usage{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "Memory Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Memory utilization of the ZDNS appliance from ZDNS private OID 39810.100.1.2, reported directly as a percentage."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "CPU Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "CPU temperature of the ZDNS appliance from ZDNS private OID 39810.100.1.4, reported directly in degrees Celsius."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "network_service_dns_service_state",
+      "query": "max(network_service_dns_service_state{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "DNS Service Status",
+      "data_type": "Enum",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "DNS service state normalized from ZDNS private OID 39810.100.1.5. Value 1 is healthy; every other value is treated as fault."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "network_service_dhcp_service_state",
+      "query": "max(network_service_dhcp_service_state{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "DHCP Service Status",
+      "data_type": "Enum",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "DHCP service state normalized from ZDNS private OID 39810.100.1.6."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "network_service_ntp_service_state",
+      "query": "max(network_service_ntp_service_state{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "NTP Service Status",
+      "data_type": "Enum",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "NTP service state normalized from ZDNS private OID 39810.100.1.7."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "network_service_zwp_service_state",
+      "query": "max(network_service_zwp_service_state{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "ZWP Service Status",
+      "data_type": "Enum",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "ZWP service state normalized from ZDNS private OID 39810.100.1.12."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "network_service_tftp_service_state",
+      "query": "max(network_service_tftp_service_state{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "TFTP Service Status",
+      "data_type": "Enum",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "TFTP service state normalized from ZDNS private OID 39810.100.1.13."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "network_service_virtual_server_state",
+      "query": "max(network_service_virtual_server_state{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "Virtual Server Status",
+      "data_type": "Enum",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "F5 LTM virtual-server availability state from 3375.2.2.10.1.2.1.22, normalized green(1)=healthy and all other values=fault."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "network_service_node_state",
+      "query": "max(network_service_node_state{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "Node Status",
+      "data_type": "Enum",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "F5 LTM node availability state from 3375.2.2.4.3.2.1.3, normalized green(1)=healthy and all other values=fault."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "network_service_pool_state",
+      "query": "max(network_service_pool_state{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "Pool Status",
+      "data_type": "Enum",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "F5 LTM pool availability state from 3375.2.2.5.5.2.1.2, normalized green(1)=healthy and all other values=fault."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "network_service_pool_member_state",
+      "query": "max(network_service_pool_member_state{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "Pool Member Status",
+      "data_type": "Enum",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "F5 LTM pool-member availability state from 3375.2.2.5.6.2.1.5, normalized green(1)=healthy and all other values=fault."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='network_service', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='network_service', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='network_service', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

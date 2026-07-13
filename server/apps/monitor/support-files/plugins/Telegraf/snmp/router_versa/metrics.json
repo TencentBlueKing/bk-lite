@@ -1,0 +1,96 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_versa",
+  "plugin": "Router Versa SNMP",
+  "plugin_desc": "Versa Networks SD-WAN 路由器（FlexVNF / VOS）专用 SNMP 采集模板（VERSA-MIB，企业号 42359）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Versa 私有 OID 的设备健康指标：CPU 使用率与内存使用率（均为设备直接上报的百分比）。Versa SD-WAN 以软件型/虚拟化网络功能（VNF）运行于通用计算或白盒 CPE 之上，其私有 MIB 未以无需行级过滤的标量形式暴露温度/风扇/电源传感器，故为 N/A。适用品牌型号——Versa Networks SD-WAN（FlexVNF / Versa Operating System，企业号 42359）。",
+  "status_query": "any({instance_type='router', collect_type='snmp_versa'}) by (instance_id)",
+  "name": "Router",
+  "icon": "mm-router_路由器",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='router'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage"
+  ],
+  "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "avg(device_cpu_usage{instance_type='router', __$labels__}) by (instance_id)",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "CPU utilisation of the Versa SD-WAN router (VERSA-MIB, reported directly as a percentage)."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_usage",
+      "query": "avg(device_memory_usage{instance_type='router', __$labels__}) by (instance_id)",
+      "display_name": "内存使用率",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Memory utilisation of the Versa SD-WAN router (VERSA-MIB, reported directly as a percentage)."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='router', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable)."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='router', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable)."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='router', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

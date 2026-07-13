@@ -1,7 +1,7 @@
 {
   "model_id": "redis",
   "instance_count_min": 1,
-  "expected_instance_subset": {
+  "expected_instance_subset_end_to_end": {
     "inst_name":     "10.0.0.31-redis-6379",
     "ip_addr":       "10.0.0.31",
     "port":          "6379",
@@ -10,9 +10,19 @@
     "max_conn":      "10000",
     "max_mem":       "8589934592",
     "database_role": "master",
-    "topo_mode":     "cluster",
-    "cluster_uuid":  "abcd1234ef567890",
-    "slaves":        "10.0.0.32:6379,10.0.0.33:6379",
-    "master":        ""
-  }
+    "topo_mode":     "cluster"
+  },
+  "expected_instance_subset_fixture_driven": {
+    "inst_name":     "127.0.0.1-redis-6379",
+    "ip_addr":       "127.0.0.1",
+    "port":          "6379",
+    "version":       "7.4.9",
+    "max_conn":      "10000",
+    "max_mem":       "0",
+    "database_role": "master",
+    "topo_mode":     "replication"
+  },
+  "fixture_source_end_to_end": "fixtures/redis/01_raw_collector.json(人造 raw,2026-07-04 Phase 5 落盘,ip=10.0.0.31)",
+  "fixture_source_fixture_driven": "agents/stargazer/tests/fixtures/collect/redis.json(2026-07-04 cli 真实落盘,ip=127.0.0.1)",
+  "notes": "G5.2.x Phase 2.4 第四闭环;db 类 runner 用 DBCollectCollectMetrics,extra_payload_keys=None 平铺。stargazer 真实 fixture 含 inst_name/bk_obj_id 标准化字段;slaves/master 是 dict/array 而非 string"
 }

@@ -78,7 +78,7 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   const isAuthLoading = status === 'loading';
 
   const isLoading = isAuthLoading || (isAuthenticated && (permissionsLoading || menusLoading));
-  const authPaths = ['/auth/signin', '/auth/signout'];
+  const authPaths = ['/auth/signin', '/auth/signout', '/auth/signin/login-auth-result'];
   const excludedPaths = ['/no-permission', '/no-found', '/', ...authPaths];
   const hasResolvedPathname = pathname !== null;
   const isAuthRoute = Boolean(pathname && authPaths.includes(pathname));
@@ -226,6 +226,10 @@ export default function RootLayout({
         <title>BlueKing Lite</title>
         <link rel="icon" href="/logo-site.png" type="image/png" data-portal-favicon="true" />
         <Script src="/iconfont.js" strategy="afterInteractive"/>
+        {/* cache bust: prepare-enterprise.mjs 重写该文件但 next dev 模式 HMR 不重发 script,
+            浏览器可能缓存旧版(空数组)→ 22 卡片全显示 VTrak 占位。
+            ?v=Date.now() 强制浏览器每次重拉,避免陈旧 brand 数据 */}
+        <Script src={`/__enterprise-brands.js?v=${Date.now()}`} strategy="afterInteractive" />
       </head>
       <body>
         {/* 全局 Context Provider 配置 */}

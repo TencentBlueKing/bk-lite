@@ -8,8 +8,12 @@ import {
 } from '@/app/ops-analysis/utils/widgetDataTransform';
 import {
   buildRelativeTimeRangeFilterValue,
-  normalizeTimeRangeFilterValue,
 } from '@/app/ops-analysis/utils/filterValue';
+import {
+  syncFilterValuesWithDefinitions,
+} from '@/app/ops-analysis/utils/unifiedFilterState';
+
+export { syncFilterValuesWithDefinitions };
 
 export interface NamespaceOption {
   label: string;
@@ -64,15 +68,6 @@ export const collectNamespaceIdsFromNodes = (
   });
 
   return namespaceIds;
-};
-
-export const datasourceSupportsNamespace = (
-  dataSource: DatasourceItem | undefined,
-  namespaceId: number | undefined,
-): boolean => {
-  if (!dataSource || namespaceId === undefined) return true;
-  if (!dataSource.namespaces || dataSource.namespaces.length === 0) return true;
-  return dataSource.namespaces.includes(namespaceId);
 };
 
 /**
@@ -187,34 +182,6 @@ export const buildFiltersFromNodes = (
 };
 
 /**
- * 同步筛选值与筛选定义：为缺失值的启用定义填充 defaultValue
- * 对于 timeRange 类型，如果 selectValue > 0，重新计算相对时间范围
- */
-export const syncFilterValuesWithDefinitions = (
-  nextDefinitions: UnifiedFilterDefinition[],
-  currentValues: Record<string, FilterValue>,
-): Record<string, FilterValue> => {
-  const updatedValues = { ...currentValues };
-  nextDefinitions.forEach((def) => {
-    if (def.enabled && def.defaultValue !== null && def.defaultValue !== undefined) {
-      if (updatedValues[def.id] === undefined || updatedValues[def.id] === null) {
-        if (def.type === 'timeRange') {
-          const normalizedValue = normalizeTimeRangeFilterValue(
-            def.defaultValue,
-          );
-          if (normalizedValue) {
-            updatedValues[def.id] = normalizedValue;
-          }
-        } else {
-          updatedValues[def.id] = def.defaultValue;
-        }
-      }
-    }
-  });
-  return updatedValues;
-};
-
-/**
  * 从 ViewConfigFormValues 构建 valueConfig 对象，供图表/单值/表格节点使用。
  * @param coerceDataSource 是否将 string 类型的 dataSource 转为 number（新增节点场景）
  */
@@ -231,6 +198,9 @@ export const buildValueConfig = (
   };
   if (values.filterBindings && Object.keys(values.filterBindings).length > 0) {
     valueConfig.filterBindings = values.filterBindings;
+  }
+  if (values.chartThemeMode && values.chartThemeMode !== 'default') {
+    valueConfig.chartThemeMode = values.chartThemeMode;
   }
   if (values.chartType === 'single') {
     valueConfig.compare = !!values.compare;
