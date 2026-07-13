@@ -136,6 +136,7 @@ def _type_match(actual_value, expected_type: str) -> bool:
     return True  # unknown 类型跳过
 
 
+@pytest.mark.django_db
 @pytest.mark.parametrize("model_id", ALIGNMENT_COVERED_MODEL_IDS)
 def test_b_alignment_field_subset(model_id, load_fixture, runner_plugin_factory, monkeypatch):
     """实例字段名 ⊆ Model 字段定义(允许额外字段,不能漏 model 字段)。
@@ -148,6 +149,10 @@ def test_b_alignment_field_subset(model_id, load_fixture, runner_plugin_factory,
     # config_file 走 NATS 路径,无 VM pipeline
     if model_id == "config_file":
         pytest.skip(f"{model_id} 走 NATS 路径,跳过 B 端 VM pipeline 字段子集检查")
+    # network 走 CollectNetworkMetrics 特殊路径(需要 fake_task 加 is_network_topo 等字段),
+    # 通用 pipeline.run_full_pipeline_generic 模拟不完整 → B 端由 test_network_a_b_alignment 覆盖
+    if model_id == "network":
+        pytest.skip(f"{model_id} 走 CollectNetworkMetrics 特殊路径,B 端由 test_network_a_b_alignment 覆盖")
     try:
         get_model_field_def(model_id)  # 验证 model 反射可拿到
     except KeyError:
@@ -219,6 +224,7 @@ def test_b_alignment_field_subset(model_id, load_fixture, runner_plugin_factory,
     assert not missing, f"{model_id} 04 实例缺 Model 字段: {missing}"
 
 
+@pytest.mark.django_db
 @pytest.mark.parametrize("model_id", ALIGNMENT_COVERED_MODEL_IDS)
 def test_b_alignment_required_nonempty(model_id, load_fixture, runner_plugin_factory, monkeypatch):
     """Model 必填字段必须非空。"""
@@ -228,6 +234,9 @@ def test_b_alignment_required_nonempty(model_id, load_fixture, runner_plugin_fac
     # config_file 走 NATS 路径,无 VM pipeline
     if model_id == "config_file":
         pytest.skip(f"{model_id} 走 NATS 路径,跳过 B 端 VM pipeline 必填字段检查")
+    # network 走 CollectNetworkMetrics 特殊路径
+    if model_id == "network":
+        pytest.skip(f"{model_id} 走 CollectNetworkMetrics 特殊路径,B 端由 test_network_a_b_alignment 覆盖")
     try:
         model_fields = get_model_field_def(model_id)
     except KeyError:
