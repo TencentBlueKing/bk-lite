@@ -72,16 +72,6 @@ const resolveRequestUrl = (input?: RequestInfo | URL | string | null) => {
   }
 };
 
-export const hasClientAuthToken = () => {
-  if (typeof document === 'undefined') {
-    return false;
-  }
-
-  return document.cookie
-    .split(';')
-    .some((cookie) => cookie.trim().startsWith('bklite_token='));
-};
-
 export const shouldHandleSessionExpiry = (input?: RequestInfo | URL | string | null) => {
   const requestUrl = resolveRequestUrl(input);
 
@@ -106,13 +96,16 @@ export const shouldHandleSessionExpiry = (input?: RequestInfo | URL | string | n
   return pathname.startsWith('/api/') || pathname.includes('/api/');
 };
 
-export const shouldTriggerSessionExpiry = (input?: RequestInfo | URL | string | null) => {
+export const shouldTriggerSessionExpiry = (
+  input: RequestInfo | URL | string | null | undefined,
+  hasAuthenticatedSession: boolean,
+) => {
   if (typeof window === 'undefined') {
     return false;
   }
 
-  return !isAuthPath(window.location.pathname)
-    && hasClientAuthToken()
+  return hasAuthenticatedSession
+    && !isAuthPath(window.location.pathname)
     && shouldHandleSessionExpiry(input);
 };
 
