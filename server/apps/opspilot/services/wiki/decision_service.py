@@ -72,6 +72,28 @@ def subject_key_for_page(*, page_type: str, canonical_title: str) -> str:
     return f"page::{page_type}::{compact_title_key(canonical_title)}"
 
 
+def compute_page_identity_decision_key(
+    *,
+    knowledge_base_id: int,
+    page_type: str,
+    canonical_title_a: str,
+    canonical_title_b: str,
+    schema_fingerprint: str,
+) -> str:
+    """phase 5 工具:页面身份对的决策签名(不依赖 page id,用 canonical title + page_type 排序)。
+
+    排序保证 AB 和 BA 是同一签名。
+    """
+    from apps.opspilot.services.wiki.title_service import compact_title_key
+
+    a = compact_title_key(canonical_title_a or "")
+    b = compact_title_key(canonical_title_b or "")
+    pair = sorted([a, b])
+    subject = f"identity::{pair[0]}::{pair[1]}"
+    payload = f"{POLICY_VERSION}|page_identity|{knowledge_base_id}|{page_type}|{subject}|{schema_fingerprint}"
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 def is_participant_complete(participants: Iterable[Dict[str, Any]]) -> bool:
     """所有参与者都必须有 material_id + content_hash 才算上下文完整。"""
     if not participants:
