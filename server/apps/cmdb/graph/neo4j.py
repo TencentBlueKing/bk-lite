@@ -347,6 +347,7 @@ class Neo4jClient:
         param_type="AND",
         permission_params: str = "",
         permission_or_creator_filter: dict = None,
+        include_count: bool = True,
     ):
         """
         查询实体
@@ -394,8 +395,9 @@ class Neo4jClient:
 
         count_str = f"MATCH (n{label_str}) {params_str} RETURN COUNT(n) AS count"
         count = None
-        if page:
+        if page and include_count:
             count = self.session.run(count_str, **query_params).single()["count"]
+        if page:
             sql_str += f" SKIP {page['skip']} LIMIT {page['limit']}"
 
         objs = self.session.run(sql_str, **query_params)

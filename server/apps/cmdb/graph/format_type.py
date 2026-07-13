@@ -140,6 +140,11 @@ def format_id_eq(param):
     return f"ID(n) = {value}"
 
 
+def format_id_gt(param):
+    value = param["value"]
+    return f"ID(n) > {value}"
+
+
 def format_id_in(param):
     """id[]: {"field": "id", "type": "id[]", "value": [115,116]} -> "ID(n) IN [115,116]" """
     value = param["value"]
@@ -161,6 +166,7 @@ FORMAT_TYPE = {
     "int<>": format_int_neq,
     "int[]": format_int_in,
     "id=": format_id_eq,  # 修改为使用ID()函数
+    "id>": format_id_gt,
     "id[]": format_id_in,  # 修改为使用ID()函数
     "list[]": format_list_in,
     "list_any[]": format_list_any,
@@ -337,6 +343,15 @@ def format_id_eq_params(param, collector):
     return f"ID(n) = {param_name}"
 
 
+def format_id_gt_params(param, collector):
+    """参数化版本：图节点 ID 游标。"""
+    from apps.cmdb.graph.validators import CQLValidator
+
+    value = CQLValidator.validate_id(param["value"])
+    param_name = collector.add_param(value, prefix="id_cursor")
+    return f"ID(n) > {param_name}"
+
+
 def format_id_in_params(param, collector):
     """参数化版本：id[]"""
     from apps.cmdb.graph.validators import CQLValidator
@@ -391,6 +406,7 @@ FORMAT_TYPE_PARAMS = {
     "int<>": format_int_neq_params,
     "int[]": format_int_in_params,
     "id=": format_id_eq_params,
+    "id>": format_id_gt_params,
     "id[]": format_id_in_params,
     "list[]": format_list_in_params,
     "list_any[]": format_list_any_params,
