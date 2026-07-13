@@ -2,7 +2,29 @@ from types import SimpleNamespace
 
 import pytest
 
+from apps.log.models import CollectInstance, CollectType
 from apps.log.services.k8s_collect import K8sLogCollectService
+
+
+@pytest.mark.django_db
+def test_create_k8s_collect_instance_rolls_back_when_organization_insert_fails(mocker):
+    collect_type = CollectType.objects.create(name="kubernetes", collector="filebeat", icon="")
+    mocker.patch(
+        "apps.log.services.k8s_collect.CollectInstanceOrganization.objects.bulk_create",
+        side_effect=RuntimeError("organization insert failed"),
+    )
+
+    with pytest.raises(RuntimeError, match="organization insert failed"):
+        K8sLogCollectService.create_k8s_collect_instance(
+            {
+                "id": "k8s-demo",
+                "name": "k8s-demo",
+                "collect_type_id": collect_type.id,
+                "organizations": [2],
+            }
+        )
+
+    assert not CollectInstance.objects.filter(id="k8s-demo").exists()
 
 
 @pytest.mark.django_db
