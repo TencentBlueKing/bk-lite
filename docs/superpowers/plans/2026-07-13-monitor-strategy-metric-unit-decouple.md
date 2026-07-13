@@ -53,9 +53,15 @@
 - Produces: `isValidMetricUnit(unit: string | null | undefined, groupedUnitList: GroupedUnitList[]): boolean`
 - Produces (signature change): `getThresholdUnitOptions({ unitList, metricUnit, isEnumMetric }: { unitList: UnitListItem[]; metricUnit: string | null; isEnumMetric: boolean; }): UnitListItem[]`
 
-- [ ] **Step 1: 写失败测试**
+- [ ] **Step 1: 改旧测试断言为新签名 + 写失败测试**
 
-在 `web/scripts/monitor-strategy-detail-logic-test.ts` 现有断言之后追加：
+`web/scripts/monitor-strategy-detail-logic-test.ts` 现有 3 处 `getThresholdUnitFilterBase` 断言（行 202/210/218）和 5 处旧签名 `getThresholdUnitOptions` 断言（行 227/235/243/251/259）。**Task 1 必须同步迁移**：
+
+1. 删除 import 中的 `getThresholdUnitFilterBase`；保留 `getThresholdUnitOptions` 导入。
+2. 删除 3 处 `getThresholdUnitFilterBase` 断言（函数随 Task 1 Step 3 一同删除）。
+3. 5 处旧签名断言改为新签名：
+   - 把每个 `getThresholdUnitOptions({ unitList, unitFilterBase: '...', isEnumMetric: ... })` 改为 `getThresholdUnitOptions({ unitList, metricUnit: '...', isEnumMetric: ... })`，断言期望值不变。
+4. 追加 Task 1 末尾的新断言（`buildMetricUnitCascaderOptions` / `isValidMetricUnit` / 新 `getThresholdUnitOptions` 跨 system 测试），import 增补：
 
 ```ts
 import {
@@ -137,7 +143,7 @@ Run:
 ```bash
 cd web && pnpm tsx scripts/monitor-strategy-detail-logic-test.ts
 ```
-Expected: 失败（`buildMetricUnitCascaderOptions` / `isValidMetricUnit` / 新签名 `getThresholdUnitOptions` 未定义）。
+Expected: 失败（旧的 `getThresholdUnitFilterBase` import/断言因函数未实现而 fail；新增的 `buildMetricUnitCascaderOptions` / `isValidMetricUnit` 也因未定义而 fail；旧的 5 处 `getThresholdUnitOptions` 断言因参数已迁移到新签名而抛错）。
 
 - [ ] **Step 3: 在 strategyDetailUtils.ts 实现新函数**
 
@@ -198,7 +204,7 @@ export const getThresholdUnitOptions = ({
 };
 ```
 
-并删除旧的 `getThresholdUnitFilterBase` 导出函数（不再被外部使用；page.tsx 与 alertConditionsForm.tsx 后续 Task 改造时改用新签名）。
+并删除旧的 `getThresholdUnitFilterBase` 导出函数（整段删除，行号 137–150）。alertConditionsForm.tsx 唯一非测试调用方将在 Task 4 改为直接传入 `metricUnit`。
 
 - [ ] **Step 4: 运行测试，验证通过**
 
@@ -206,7 +212,7 @@ Run:
 ```bash
 cd web && pnpm tsx scripts/monitor-strategy-detail-logic-test.ts
 ```
-Expected: 全部断言通过（新增 3 个新断言 + 既有断言不破坏）。
+Expected: 全部断言通过（既有 5 个 `getThresholdUnitOptions` 断言改为新签名后通过 + 新增 3 组断言通过；既有的 9 个其他 utils 断言不破坏）。
 
 - [ ] **Step 5: 提交**
 
