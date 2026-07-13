@@ -152,6 +152,76 @@ def find_active_rule(knowledge_base, decision_type: str, decision_key: str):
     ).first()
 
 
+def build_participants_from_materials(materials) -> list:
+    """phase 4 工具:从 material 列表构造参与者签名(给 build / update / rebuild 共用)。
+
+    过滤缺 content_hash 的 material,保证签名完整性(只有完整上下文的 material 参与签名)。
+    """
+    participants = []
+    for mat in materials or []:
+        if mat and mat.id and mat.content_hash:
+            participants.append({"material_id": mat.id, "content_hash": mat.content_hash})
+    return participants
+
+
+def replay_decision(
+    *,
+    knowledge_base,
+    decision_type: str,
+    subject_key: str,
+    schema_fingerprint: str,
+    participants,
+    page,
+):
+    """phase 4 核心入口:build / update / rebuild 流程在创建候选前调。
+
+    返回 (result, rule):
+      - ("replayed", rule):命中有效规则且当前页面仍满足结果前置条件(不创建 CheckItem)
+      - ("pending", None):未命中/规则已失效,需创建 CheckItem 让用户决策
+      - ("unchanged", None):候选正文与当前正文相同,无需决策也无需规则
+
+    调用方根据 result:
+      - replayed: 复用 rule.action 执行(由调用方继续,本函数不应用)
+      - pending: 调 create_candidate 创建新候选,后续由用户 decide
+      - unchanged: 直接跳过,不创建 CheckItem 也不写 Rule
+    """
+    from apps.opspilot.services.wiki.check_service import _body_hash
+
+    if not participants:
+        # 上下文不完整 → 让人决策
+        return "pending", None
+
+    decision_key = compute_decision_signature(
+        knowledge_base_id=knowledge_base.id,
+        decision_type=decision_type,
+        subject_key=subject_key,
+        schema_fingerprint=schema_fingerprint,
+        participants=participants,
+    )
+    rule = find_active_rule(knowledge_base, decision_type, decision_key)
+    if rule is None:
+        return "pending", None
+
+    # 验证当前页面仍满足结果前置条件:result_version 必须是 page.current_version
+    # 且 result_version.body 与当前 page.current_version.body 哈希一致
+    if rule.result_version_id is None or page.current_version_id != rule.result_version_id:
+        # 规则不再适用当前页面(可能人工编辑过)
+        import sys
+
+        sys.stderr.write(
+            f"\n[DEBUG replay_decision] rule.id={rule.id} "
+            f"page.current_version_id={page.current_version_id} "
+            f"rule.result_version_id={rule.result_version_id} "
+            f"decision_key={decision_key[:16]}..\n"
+        )
+        sys.stderr.flush()
+        return "pending", None
+
+    # 标记回放
+    mark_replayed(rule)
+    return "replayed", rule
+
+
 def mark_replayed(rule) -> None:
     """自动回放命中时 +1(审计字段),更新 last_replayed_at。"""
     from django.utils import timezone

@@ -17,6 +17,7 @@ from apps.opspilot.services.wiki.check_service import create_candidate
 from apps.opspilot.services.wiki.material_service import load_parsed_markdown
 from apps.opspilot.services.wiki.text_utils import split_text_for_llm
 from apps.opspilot.services.wiki.title_service import canonical_title as _canonical_title
+from apps.opspilot.services.wiki.title_service import compact_title_key
 from apps.opspilot.services.wiki.title_service import title_alias_terms_for_enrichment as _title_alias_terms_for_enrichment
 from apps.opspilot.services.wiki.wikilink_enrichment_service import enrich_pages_wikilinks
 
@@ -445,6 +446,35 @@ def _merge_ai_page(page, material, build, page_data, operator="", update_method=
 
 
 def _create_review_candidate(page, material, build, page_data, operator=""):
+    # phase 4.2: 调决策服务查规则,命中回放不创建 CheckItem,BuildRecord 记 decision_reused
+    from apps.opspilot.services.wiki.decision_service import (
+        build_participants_from_materials,
+        compute_schema_fingerprint,
+        replay_decision,
+        subject_key_for_page,
+    )
+
+    schema_fingerprint = compute_schema_fingerprint(page.knowledge_base)
+    subject_key = subject_key_for_page(
+        page_type=page.page_type or "concept",
+        canonical_title=compact_title_key(page.title or ""),
+    )
+    result, rule = replay_decision(
+        knowledge_base=page.knowledge_base,
+        decision_type="page_identity",
+        subject_key=subject_key,
+        schema_fingerprint=schema_fingerprint,
+        participants=build_participants_from_materials([material]),
+        page=page,
+    )
+    if result == "replayed":
+        # 命中规则,记录到 BuildRecord 供审计,直接返回 unchanged
+        _record_decision_reused(build, rule, action=rule.action, page=page)
+        return "unchanged"
+    if result == "unchanged":
+        return "unchanged"
+
+    # result == "pending" 或规则不适配:创建候选 + 决策
     create_candidate(
         page,
         body=page_data.get("body", "") or "",
@@ -455,6 +485,25 @@ def _create_review_candidate(page, material, build, page_data, operator=""):
         related={"pages": [page.id], "materials": [material.id]},
     )
     return "pending_review"
+
+
+def _record_decision_reused(build, rule, *, action, page):
+    """phase 4: 把决策回放写入 BuildRecord.inputs.source_trace,审计用。"""
+    trace = dict(build.inputs.get("source_trace") or {})
+    page_actions = list(trace.get("page_actions") or [])
+    page_actions.append(
+        {
+            "page_id": page.id,
+            "decision_reused": True,
+            "rule_id": rule.id,
+            "action": action,
+        }
+    )
+    trace["page_actions"] = page_actions
+    inputs = dict(build.inputs or {})
+    inputs["source_trace"] = trace
+    build.inputs = inputs
+    build.save(update_fields=["inputs", "updated_at"])
 
 
 def build_from_material(material, llm_model_id=None, operator="", trigger="material"):
