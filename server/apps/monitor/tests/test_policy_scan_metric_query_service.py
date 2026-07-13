@@ -25,6 +25,7 @@ def _policy(**kwargs):
         algorithm="max",
         metric_unit="",
         calculation_unit="",
+        threshold_unit="",
         last_run_time=datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
     )
     base.update(kwargs)
@@ -186,6 +187,40 @@ class TestConvertMetricValues:
         out = svc.convert_metric_values(data)
 
         assert out["data"]["result"][0]["values"] == [[100, "inf"]]
+
+
+class TestConvertThresholds:
+    def test_legacy_empty_threshold_unit_uses_calculation_unit(self):
+        svc = MetricQueryService(
+            _policy(calculation_unit="bytes", threshold_unit=""), {}
+        )
+        original = [{"level": "critical", "method": ">", "value": 10}]
+
+        converted = svc.convert_thresholds(original)
+
+        assert converted == original
+        assert converted is not original
+
+    def test_gibibytes_threshold_converts_to_bytes_without_mutating_policy(self):
+        svc = MetricQueryService(
+            _policy(calculation_unit="bytes", threshold_unit="gibibytes"), {}
+        )
+        original = [{"level": "critical", "method": "<", "value": -2}]
+
+        converted = svc.convert_thresholds(original)
+
+        assert converted[0]["value"] == pytest.approx(-2 * 1024**3)
+        assert original[0]["value"] == -2
+
+    def test_cross_system_threshold_raises(self):
+        svc = MetricQueryService(
+            _policy(calculation_unit="bytes", threshold_unit="percent"), {}
+        )
+
+        with pytest.raises(BaseAppException, match="不能转换"):
+            svc.convert_thresholds(
+                [{"level": "critical", "method": ">", "value": 80}]
+            )
 
 
 class TestGetDisplayUnit:
