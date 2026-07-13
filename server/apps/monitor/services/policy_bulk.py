@@ -81,6 +81,12 @@ def build_bulk_policy_payloads(
                 "recovery_condition": config.get("recovery_condition", 5),
                 "metric_unit": template.get("metric_unit") or "",
                 "calculation_unit": template.get("calculation_unit") or template.get("metric_unit") or "",
+                "threshold_unit": (
+                    template.get("threshold_unit")
+                    or template.get("calculation_unit")
+                    or template.get("metric_unit")
+                    or ""
+                ),
                 "notice": bool(config.get("notice", False)),
                 "notice_type_ids": config.get("notice_type_ids") or [],
                 "notice_users": config.get("notice_users") or [],
