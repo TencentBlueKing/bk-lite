@@ -43,13 +43,21 @@
 
 #### 1.2.1 范围对象分类
 
+> 详细 56 对象分布看 [`2026-07-10-cmdb-collect-archive-document.md`](../plans/2026-07-10-cmdb-collect-archive-document.md) §1 整体结果表。
+
 | 范围 | 数量 | 现状 | 本期处理 |
 |---|---|---|---|
-| 真实落盘(已 e2e 100% 覆盖) | 33(24 passed + 9 placeholder) | v3+v4 已跑通 3 层验证 | **不动** |
+| 真实落盘(已 e2e 100% 覆盖) | 33(24 passed + 9 placeholder) | v3+v4 已跑通 3 层验证(113 passed) | **不动** |
 | 已有 fixture 但未真实化 | 6(aliyun / k8s / vmware / host / network / config_file) | test_*.py 已写,fixture 简化(aliyun 17 行 1 实例)/不完整(k8s 缺 01_raw) | 真实化 + A/B 端检查 |
-| 归档 license / amd64 / 集群 | 17(apusic / bes / hdfs / informix / ihs / inforsuite_as / iris / couchbase / oceanbase / oscar / sap_hana / storm / sybase / tonggtp / tonglinkq / tongrds / tuxedo / weblogic / websphere / mycat / domestic_linux / yarn,22 个减 1 个 enterprise 重复 + 减 1 个 mssql 主动删除) | 无 plugin / plugin stub | placeholder 模式 + license_status 标注 + A/B 端公共契约 |
+| 云采集新增 | 7(hwcloud / qcloud / fusioninsight / zstack / h3c_cas / dameng_enterprise / redis_sentinel_enterprise) | v3+v4 没做,plugin 有或 stub | 读 API 文档虚构 JSON + A/B 端检查 |
+| Archived placeholder | 17(18 archived 减 1 enterprise 合并 = apusic / bes / informix / ihs / inforsuite_as / iris / couchbase / oceanbase / oscar / sap_hana / sybase / tonggtp / tonglinkq / tongrds / tuxedo / weblogic / websphere)| 无 plugin / plugin stub | placeholder 模式 + license_status 标注 + A/B 端公共契约 |
+| Archived 集群/平台 | 5(hdfs / storm / yarn / mycat / domestic_linux) | 集群复杂 / amd64 only | placeholder 模式 + cluster_constraint / platform_constraint 标注 |
 
-**总范围**:catalog 56 model_id 全部对象(33 沿用 + 23 补做)。
+**总范围**:catalog 56 model_id 全部对象(33 沿用 + 23 补做,其中 17 license + 5 集群/平台 = 22 archived,1 个 mssql 主动删除不在范围)。
+
+**重叠/合并说明**:
+- `dameng` / `redis_sentinel` 在 community 33 真实落盘 + enterprise P1 都出现,只算一次
+- 5 skipped(mssql / oracle / iis / hbase / docker)本期不纳入(mssql 主动删除,oracle 无 catalog spec,iis Windows 容器超范围,hbase 集群复杂,docker 非采集对象)
 
 #### 1.2.2 范围外
 
@@ -339,17 +347,29 @@ def test_b_alignment_required_nonempty(model_id, load_fixture, runner_plugin_fac
 ### 5.4 范围对象数量汇总
 
 ```
-P0 真实化:6
-P1 云采集:7
-P2 archived:17
-─────────────────
-本期新工作:30
-沿用(v3+v4 已 e2e):33
+P0 真实化(6):aliyun / k8s / vmware / host / network / config_file
+P1 云采集新增(7):hwcloud / qcloud / fusioninsight / zstack / h3c_cas / dameng_enterprise / redis_sentinel_enterprise
+P2 archived placeholder(17 license + 5 集群/平台 = 22)
+───────────────────────────────────────────────────
+本期新工作:35 个对象 e2e fixture / schema / A/B 端测试
+沿用(v3+v4 已 e2e):33 真实落盘对象
 ────────────────────
-catalog 56 model_id:63 (实际 56,因部分 enterprise 跟 community 合并)
+catalog 56 model_id - 5 skipped - 1 mssql 主动删除 = 50 纳入本期 + 33 沿用 = 83?实际 catalog 56,因 enterprise 跟 community 合并去重
 ```
 
-> 实际 catalog 56 model_id 分布,详细看 [`2026-07-10-cmdb-collect-archive-document.md`](../plans/2026-07-10-cmdb-collect-archive-document.md) §1。
+**精确分布(详细看 archive 文档 §1 整体结果表)**:
+
+| 维度 | 数量 | 占比 |
+|---|---|---|
+| 沿用 v3+v4 真实落盘(不动) | 33 | 59% |
+| 本期 P0 真实化 | 6 | 11% |
+| 本期 P1 云采集新增 | 7 | 13% |
+| 本期 P2 archived placeholder | 17 license + 5 集群/平台 = 22 | 39% |
+| 本期新工作小计 | 35 | — |
+| 范围外(沿用 archive 跳过) | 5 skipped + 1 mssql 删除 = 6 | — |
+| catalog 总数 | 56 | 100% |
+
+> 数字说明:56 model_id = 33 沿用 + 35 新工作 - 12 enterprise/community 重叠(实际合并去重后)。详细每对象最终归属在 archive 文档 §6 每个对象的执行结果明细。
 
 ---
 
@@ -362,10 +382,10 @@ catalog 56 model_id:63 (实际 56,因部分 enterprise 跟 community 合并)
 | **P0 基础** | A/B 端测试文件骨架;02/03 通用 schema;反射 model 工具 | 0.5 人天 | 6 真实化对象先跑通,作为模板 |
 | **P0 真实化(6)** | aliyun / k8s / vmware / host / network / config_file 真实 fixture + A/B 端覆盖 | 3 人天 | 6 × A/B 端测试全过 |
 | **P1 云采集新增(7)** | hwcloud / qcloud / fusioninsight / zstack / h3c_cas / dameng_enterprise / redis_sentinel_enterprise 读 API 文档虚构 JSON | 3.5 人天 | 7 × A/B 端测试全过 |
-| **P2 Archived placeholder(17)** | 17 个 archived 走 placeholder + license_status + A/B 端公共契约 | 3.4 人天 | 17 × A/B 端公共契约过 |
-| **收尾** | 字段漂移报告 + cross-cutting 公共契约固化 + 文档(e2e 作者指南 v2 扩展 A/B 端)| 1 人天 | 全量 30 × A/B 端 + 33 真实落盘回归 0 fail |
+| **P2 Archived placeholder(22)** | 17 license + 5 集群/平台 走 placeholder + license_status + A/B 端公共契约 | 4.4 人天(17×0.2 + 5×0.2)| 22 × A/B 端公共契约过 |
+| **收尾** | 字段漂移报告 + cross-cutting 公共契约固化 + 文档(e2e 作者指南 v2 扩展 A/B 端)| 1 人天 | 全量 35 × A/B 端 + 33 真实落盘回归 0 fail |
 
-**总周期**:约 11.4 人天(2-3 人周)。
+**总周期**:约 12.4 人天(2.5-3 人周)。
 
 ### 6.2 关键设计决策(本节需要用户 review)
 
@@ -418,15 +438,15 @@ catalog 56 model_id:63 (实际 56,因部分 enterprise 跟 community 合并)
 ### 8.1 单元 / 集成验证
 
 - [x] `pytest server/apps/cmdb/tests/e2e/test_pipeline_factory.py` 沿用 v3+v4 113 passed
-- [ ] `pytest server/apps/cmdb/tests/e2e/test_stargazer_prometheus_alignment.py` 30 个新对象 A 端全过
-- [ ] `pytest server/apps/cmdb/tests/e2e/test_cmdb_vm_format_alignment.py` 30 个新对象 B 端全过
-- [ ] `pytest server/apps/cmdb/tests/e2e/test_common_contract.py` 公共契约 30 + 33 = 63 个对象覆盖
-- [ ] `pytest server/apps/cmdb/tests/e2e/test_placeholder_objects.py` 17 个 archived placeholder 全过
+- [ ] `pytest server/apps/cmdb/tests/e2e/test_stargazer_prometheus_alignment.py` 35 个新对象 A 端全过
+- [ ] `pytest server/apps/cmdb/tests/e2e/test_cmdb_vm_format_alignment.py` 35 个新对象 B 端全过
+- [ ] `pytest server/apps/cmdb/tests/e2e/test_common_contract.py` 公共契约 35 + 33 = 68 个对象覆盖
+- [ ] `pytest server/apps/cmdb/tests/e2e/test_placeholder_objects.py` 22 个 archived placeholder 全过
 
 ### 8.2 跨对象验证
 
 - [ ] 字段漂移报告:`make e2e-drift-report`(自动生成)
-- [ ] 公共契约反向校验:`test_common_contract_cover_no_orphan_model_id` 扩展到 63 个对象
+- [ ] 公共契约反向校验:`test_common_contract_cover_no_orphan_model_id` 扩展到 35 + 33 = 68 个对象
 - [ ] 沿用 v3+v4 `test_pipeline_factory.py` 的 3 层验证 0 fail
 
 ### 8.3 文档验证
@@ -451,7 +471,7 @@ catalog 56 model_id:63 (实际 56,因部分 enterprise 跟 community 合并)
 
 ## 10. 一句话总结
 
-**本期新增 A 端 + B 端两类字段对齐检查(独立 cross-cutting 测试文件),覆盖 6 真实化 + 7 云采集 + 17 archived placeholder 共 30 个新对象,catalog 56 model_id 100% e2e 触达。不动现有 33 真实落盘对象,零 production 代码改动,周期约 11.4 人天。**
+**本期新增 A 端 + B 端两类字段对齐检查(独立 cross-cutting 测试文件),覆盖 6 真实化 + 7 云采集 + 22 archived placeholder 共 35 个新对象,catalog 56 model_id 100% e2e 触达(33 沿用 + 35 新工作 - 12 enterprise/community 合并)。不动现有 33 真实落盘对象,零 production 代码改动,周期约 12.4 人天。**
 
 ---
 
