@@ -52,17 +52,20 @@ export const getMetricExpressionModeForRows = (
 export const resolveMetricExpressionUnits = ({
   queryType,
   metricUnit,
-  calculationUnit
+  calculationUnit,
+  thresholdUnit
 }: {
   queryType: MetricExpressionQueryType;
   metricUnit: string | null | undefined;
   calculationUnit: string | null | undefined;
-}): { metricUnit: string; calculationUnit: string } => ({
+  thresholdUnit: string | null | undefined;
+}): { metricUnit: string; calculationUnit: string; thresholdUnit: string } => ({
   metricUnit:
     queryType === 'formula' || isStringArray(metricUnit || '')
       ? ''
       : metricUnit || '',
-  calculationUnit: calculationUnit || ''
+  calculationUnit: calculationUnit || '',
+  thresholdUnit: thresholdUnit || calculationUnit || ''
 });
 
 export const createMetricRow = (
@@ -520,7 +523,8 @@ export const buildMetricExpressionPreviewPayload = ({
   algorithm,
   groupAlgorithm,
   groupBy,
-  calculationUnit
+  calculationUnit,
+  thresholdUnit
 }: {
   monitorObjId: string | number | null;
   source: SourceFeild;
@@ -539,6 +543,7 @@ export const buildMetricExpressionPreviewPayload = ({
   groupAlgorithm: string | null;
   groupBy: string[];
   calculationUnit?: string | null;
+  thresholdUnit?: string | null;
 }) => {
   if (!monitorObjId || !selectedInstance || !algorithm) {
     return null;
@@ -578,7 +583,8 @@ export const buildMetricExpressionPreviewPayload = ({
   const units = resolveMetricExpressionUnits({
     queryType: isFormula ? 'formula' : 'metric',
     metricUnit: anchorMetric.unit,
-    calculationUnit
+    calculationUnit,
+    thresholdUnit
   });
 
   return {
@@ -594,6 +600,7 @@ export const buildMetricExpressionPreviewPayload = ({
     group_by: payloadGroupBy,
     metric_unit: units.metricUnit,
     calculation_unit: units.calculationUnit,
+    threshold_unit: units.thresholdUnit,
     preview: {
       instance_id: selectedInstance.instance_id,
       instance_id_values: selectedInstance.instance_id_values,

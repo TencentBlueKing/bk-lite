@@ -170,6 +170,34 @@ export const getThresholdUnitOptions = ({
   return validUnits.filter((item) => item.system === baseUnit.system);
 };
 
+export const resolveThresholdUnit = ({
+  thresholdUnit,
+  calculationUnit,
+  unitList,
+}: {
+  thresholdUnit: string | null | undefined;
+  calculationUnit: string | null | undefined;
+  unitList: UnitListItem[];
+}): string | null => {
+  // 单位表尚未加载时保留接口中的历史值，避免初始化过程误覆盖。
+  if (!unitList.length) return thresholdUnit || calculationUnit || null;
+  if (!calculationUnit) return thresholdUnit || null;
+
+  const options = getThresholdUnitOptions({
+    unitList,
+    metricUnit: calculationUnit,
+    isEnumMetric: false,
+  });
+  if (thresholdUnit && options.some((item) => item.unit_id === thresholdUnit)) {
+    return thresholdUnit;
+  }
+  return options.some((item) => item.unit_id === calculationUnit)
+    ? calculationUnit
+    : null;
+};
+
+export const getThresholdUnitOnCalculationUnitChange = resolveThresholdUnit;
+
 // 把 groupedUnitList (按 category 分组) 转为 Cascader 选项;
 // 一级 value = category 名,二级 value = unit_id,二级为叶子节点需 children=[] 以满足 CascaderItem 递归类型。
 // 单位表规模小 (<100),即便 O(N×M) 也可接受。

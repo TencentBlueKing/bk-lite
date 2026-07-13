@@ -38,6 +38,7 @@ interface MetricPreviewProps {
   algorithm: string | null;
   threshold: ThresholdField[];
   calculationUnit?: string | null;
+  thresholdUnit?: string | null;
   metricRows: MetricExpressionRow[];
   metricExpressionMode: MetricExpressionMode;
   resultName: string;
@@ -80,6 +81,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
   algorithm,
   threshold,
   calculationUnit,
+  thresholdUnit,
   metricRows,
   metricExpressionMode,
   resultName,
@@ -226,7 +228,8 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
       algorithm,
       groupAlgorithm,
       groupBy,
-      calculationUnit
+      calculationUnit,
+      thresholdUnit
     });
   };
 

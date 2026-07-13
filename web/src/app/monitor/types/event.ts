@@ -33,6 +33,7 @@ export interface SourceFeild {
 export interface StrategyFields {
   name?: string;
   calculation_unit?: string;
+  threshold_unit?: string;
   metric_unit?: string;
   organizations?: string[];
   source?: SourceFeild;

@@ -8,12 +8,14 @@ import {
   getCalculationUnitOnMetricRowsChange,
   getMetricThresholdEnumState,
   getReverseModeCalculationUnit,
+  getThresholdUnitOnCalculationUnitChange,
   getThresholdUnitOptions,
   getValidThresholdUnitOptions,
   resolveFormulaResultUnit,
   resolveEffectiveCalculationUnit,
   resolveInitialMetricPluginId,
   resolveMetricDisplayUnit,
+  resolveThresholdUnit,
   restoreCalculationUnitState,
   shouldShowThresholdUnitSelector,
 } from '../src/app/monitor/(pages)/event/strategy/detail/strategyDetailUtils';
@@ -222,8 +224,9 @@ assert.deepEqual(
     queryType: 'metric',
     metricUnit: 'bytes',
     calculationUnit: 'megabytes',
+    thresholdUnit: 'kilobytes',
   }),
-  { metricUnit: 'bytes', calculationUnit: 'megabytes' }
+  { metricUnit: 'bytes', calculationUnit: 'megabytes', thresholdUnit: 'kilobytes' }
 );
 
 assert.deepEqual(
@@ -231,8 +234,9 @@ assert.deepEqual(
     queryType: 'formula',
     metricUnit: 'bytes',
     calculationUnit: 'percent',
+    thresholdUnit: 'percent',
   }),
-  { metricUnit: '', calculationUnit: 'percent' }
+  { metricUnit: '', calculationUnit: 'percent', thresholdUnit: 'percent' }
 );
 
 assert.deepEqual(
@@ -240,8 +244,9 @@ assert.deepEqual(
     queryType: 'metric',
     metricUnit: '[{"id":1,"name":"up"}]',
     calculationUnit: null,
+    thresholdUnit: null,
   }),
-  { metricUnit: '', calculationUnit: '' }
+  { metricUnit: '', calculationUnit: '', thresholdUnit: '' }
 );
 
 assert.equal(
@@ -384,6 +389,39 @@ assert.deepEqual(
     isEnumMetric: true,
   }),
   []
+);
+
+assert.equal(
+  resolveThresholdUnit({
+    thresholdUnit: null,
+    calculationUnit: 'bytes',
+    unitList,
+  }),
+  'bytes'
+);
+assert.equal(
+  resolveThresholdUnit({
+    thresholdUnit: 'kilobytes',
+    calculationUnit: 'bytes',
+    unitList,
+  }),
+  'kilobytes'
+);
+assert.equal(
+  getThresholdUnitOnCalculationUnitChange({
+    thresholdUnit: 'milliseconds',
+    calculationUnit: 'bytes',
+    unitList,
+  }),
+  'bytes'
+);
+assert.equal(
+  resolveThresholdUnit({
+    thresholdUnit: 'historical-unit',
+    calculationUnit: 'bytes',
+    unitList: [],
+  }),
+  'historical-unit'
 );
 assert.deepEqual(
   getThresholdUnitOptions({
