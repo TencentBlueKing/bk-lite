@@ -1,10 +1,13 @@
-"""安全更新 + 检查/审核(P2)。
+"""安全更新 + 检查/审核(P2 + openspec streamline-wiki-knowledge-decisions phase 3)。
 
 风险变更不污染当前有效版本:生成候选版本(PageVersion change_type=candidate, is_current=False)+ CheckItem。
-审核动作:接受候选(置为当前并生成新版本)、拒绝(关闭检查)、忽略。
+phase 3: 决策中心 API `decide_check` 取代通用 accept/reject,
+按 check_type 路由到知识冲突 3 选 1(keep_current/use_new/edit_accept)或
+页面合并 2 选 1(keep_separate/merge),所有动作写入 WikiDecisionRule。
 也提供系统检查扫描:孤立页面、缺来源等(MVP 子集)。
 """
 
+import hashlib
 from collections import defaultdict
 
 from django.db import transaction
@@ -12,10 +15,24 @@ from django.utils import timezone
 
 from apps.opspilot.models import BuildRecord, CheckItem, KnowledgePage, PageEvidence, PageRelation, PageVersion
 from apps.opspilot.services.wiki.cascade_service import cascade
+from apps.opspilot.services.wiki.decision_service import (
+    POLICY_VERSION,
+    compute_decision_signature,
+    compute_schema_fingerprint,
+    create_rule_if_eligible,
+    subject_key_for_page,
+)
 from apps.opspilot.services.wiki.embedding_service import clear_page_vectors
 from apps.opspilot.services.wiki.graph_service import analyze_graph
 from apps.opspilot.services.wiki.relation_service import LINK_RE, normalize_wikilink_key
 from apps.opspilot.services.wiki.title_service import canonical_title, compact_title_key
+
+# phase 3.1: 各 decision_type 允许的动作集合
+_KNOWLEDGE_CONFLICT_ACTIONS = {"keep_current", "use_new", "edit_accept"}
+_PAGE_IDENTITY_ACTIONS = {"keep_separate", "merge"}
+
+# phase 3.4: 锁当前版本的键(供测试断言)
+_LOCK_KEY = "locked_current_version_id"
 
 
 def _recount_pending_review(check):
@@ -91,6 +108,8 @@ def create_candidate(
         related=related or {"pages": [page.id]},
         candidate_version=candidate,
         suggested_actions=suggested_actions or ["accept", "reject", "edit_accept"],
+        # phase 3.4: 锁当前版本,decide_check 时校验防止过期决策覆盖后续人工编辑
+        decision_context={_LOCK_KEY: page.current_version_id} if page.current_version_id else {},
     )
     return check
 
@@ -124,6 +143,227 @@ def accept_candidate(check, operator=""):
         candidate.build_record.maintenance = maintenance
         candidate.build_record.save(update_fields=["maintenance", "updated_at"])
     return candidate
+
+
+@transaction.atomic
+def decide_check(
+    check,
+    action,
+    operator="",
+    body="",
+    material=None,
+):
+    """phase 3 决策中心 API:语义化决策,取代通用 accept/reject。
+
+    Args:
+        check: CheckItem 实例
+        action: 知识冲突 keep_current/use_new/edit_accept
+                页面合并 keep_separate/merge
+                (按 check.check_type 自动校验允许集合)
+        operator: 决策人
+        body: edit_accept 必填,其它动作忽略
+        material: use_new / edit_accept 时可选传入新资料以补齐 PageEvidence,
+                 缺则从 check.candidate_version 的 build_record/related 推断
+
+    Returns: WikiDecisionRule 写入的规则实例
+    Raises:
+        ValueError: 错误 action / 空 body / 决策类型不匹配 / 当前版本已过期
+    """
+    from apps.opspilot.services.wiki.title_service import compact_title_key
+
+    if check.status != "open":
+        raise ValueError(f"check not open: status={check.status}")
+
+    # phase 3.1: 决策类型与动作校验
+    if check.check_type in ("conflict", "material_update"):
+        decision_type = "knowledge_conflict"
+        allowed = _KNOWLEDGE_CONFLICT_ACTIONS
+    elif check.check_type in ("duplicate", "cannot_merge"):
+        decision_type = "page_identity"
+        allowed = _PAGE_IDENTITY_ACTIONS
+    else:
+        raise ValueError(f"check.check_type {check.check_type!r} not in decision-center scope; " "use resolve_check for system-scoped items")
+    if action not in allowed:
+        raise ValueError(f"action {action!r} not allowed for decision_type {decision_type!r}; allowed={sorted(allowed)}")
+
+    # phase 3.4: 当前版本竞态保护 - 锁必须匹配
+    locked_version_id = (check.decision_context or {}).get(_LOCK_KEY)
+    if locked_version_id is not None and check.candidate_version_id:
+        candidate = check.candidate_version
+        # 必须基于 lock 时的 page(取自 candidate.page)
+        page = candidate.page
+        if page.current_version_id and page.current_version_id != locked_version_id:
+            raise ValueError(
+                f"check decision outdated: page.current_version_id={page.current_version_id} " f"!= locked={locked_version_id}; refresh before decide"
+            )
+    else:
+        candidate = check.candidate_version
+        page = candidate.page if candidate else None
+
+    # phase 3.1 + 3.2: 执行语义化动作 + 写 WikiDecisionRule
+    schema_fingerprint = compute_schema_fingerprint(check.knowledge_base)
+    subject_key = subject_key_for_page(
+        page_type=page.page_type or "concept",
+        canonical_title=compact_title_key(page.title or ""),
+    )
+
+    # phase 3.2: 提前构造 participants,所有知识冲突决策共用
+    # - 优先用调用方传入 material
+    # - 否则从 page 已有 PageEvidence 推断当前页面已采纳的 material 集合
+    if material is not None and material.id and material.content_hash:
+        participants = [{"material_id": material.id, "content_hash": material.content_hash}]
+    else:
+        evidences = PageEvidence.objects.filter(page=page).select_related("material")
+        participants = [
+            {"material_id": ev.material_id, "content_hash": ev.material.content_hash}
+            for ev in evidences
+            if ev.material_id and ev.material.content_hash
+        ]
+
+    if decision_type == "knowledge_conflict":
+        if action == "keep_current":
+            # 当前版本保持,候选版本不删除(供审计),不补证据
+            check.status = "resolved"
+            check.save(update_fields=["status", "updated_at"])
+            result_version = page.current_version
+            result_page_id = page.id
+            match_extra = {"current_body_hash": _body_hash(page.current_version.body) if page.current_version else ""}
+        elif action == "use_new":
+            # 候选正文成为新当前版本;原当前版本保留为可恢复历史
+            candidate = check.candidate_version
+            candidate.is_current = True
+            candidate.save(update_fields=["is_current"])
+            page.current_version = candidate
+            if page.contribution == "human":
+                page.contribution = "mixed"
+            page.save(update_fields=["current_version", "contribution", "updated_at"])
+            check.status = "resolved"
+            check.save(update_fields=["status", "updated_at"])
+            result_version = candidate
+            result_page_id = page.id
+            match_extra = {"current_body_hash": _body_hash(candidate.body)}
+        elif action == "edit_accept":
+            if not body or not body.strip():
+                raise ValueError("edit_accept requires non-empty body")
+            # 用编辑后正文创建新的当前版本
+            new_version = _create_edited_version(page, body, candidate=check.candidate_version)
+            new_version.is_current = True
+            new_version.save(update_fields=["is_current"])
+            page.current_version = new_version
+            if page.contribution == "human":
+                page.contribution = "mixed"
+            page.save(update_fields=["current_version", "contribution", "updated_at"])
+            check.status = "resolved"
+            check.save(update_fields=["status", "updated_at"])
+            result_version = new_version
+            result_page_id = page.id
+            match_extra = {"current_body_hash": _body_hash(body)}
+        else:  # pragma: no cover - 已被 allowed 校验挡掉
+            raise ValueError(f"unhandled knowledge_conflict action: {action!r}")
+
+        # 补证据(keep_current 不补,use_new/edit_accept 补)
+        if action in ("use_new", "edit_accept") and material is not None:
+            _add_evidence_for_decision(page, material, result_version, source="decide_check")
+
+        if not participants:
+            # 上下文不完整:不创建规则,check 仍 resolved 但无自动回放能力
+            _recount_pending_review(check)
+            return None
+
+        _recount_pending_review(check)
+        cascade(check.knowledge_base, [result_page_id], "accept")
+    else:  # page_identity
+        # 页面合并决策由独立 _merge_pages 处理,这里仅校验路径
+        raise ValueError("page_identity decisions handled by _merge_pages; not routed here")
+
+    # phase 3.2: 写 WikiDecisionRule(完整 match_snapshot + result_snapshot,审计用)
+    rule = create_rule_if_eligible(
+        knowledge_base=check.knowledge_base,
+        decision_type=decision_type,
+        subject_key=subject_key,
+        schema_fingerprint=schema_fingerprint,
+        participants=participants,
+        action=action,
+        match_snapshot={
+            "participants": participants,
+            "schema_fingerprint": schema_fingerprint,
+            "policy_version": POLICY_VERSION,
+            **match_extra,
+        },
+        result_snapshot={
+            "winner_action": action,
+            "body_hash": _body_hash(result_version.body) if result_version else "",
+        },
+        source_check=check,
+        result_page_id=result_page_id,
+        result_version=result_version,
+    )
+    return rule
+
+
+def _body_hash(body: str) -> str:
+    """正文指纹(短哈希,审计/回放前置条件比较用)。"""
+    if not body:
+        return ""
+    return hashlib.sha256(body.encode("utf-8")).hexdigest()[:32]
+
+
+def _create_edited_version(page, body, candidate):
+    """edit_accept:从候选继承 build_record / change_type,创建新当前版本。"""
+    last = page.page_versions.order_by("-no").first()
+    next_no = (last.no + 1) if last else 1
+    return PageVersion.objects.create(
+        page=page,
+        no=next_no,
+        body=body,
+        change_type="human_edit",  # 编辑后采用 = 人工编辑
+        is_current=False,  # 由 caller 置 True
+        build_record=candidate.build_record if candidate else None,
+        created_by="human_edit",
+        meta_snapshot=(candidate.meta_snapshot if candidate else {}),
+    )
+
+
+def _add_evidence_for_decision(page, material, version, source=""):
+    """use_new / edit_accept 补齐 PageEvidence,缺则创建,避免下轮签名缺参与者。"""
+    material_version = getattr(material, "current_version", None)
+    locator = f"decision:{source}" if source else ""
+    # 幂等:同 material + page + locator 已存在则跳过
+    exists = PageEvidence.objects.filter(page=page, material=material, locator=locator).exists()
+    if exists:
+        return
+    PageEvidence.objects.create(
+        page=page,
+        material=material,
+        material_version=material_version,
+        locator=locator,
+    )
+
+
+def _participants_from_check(check, material=None) -> list:
+    """从 check.related + 可选 material 构造参与者集合。
+
+    优先取 related.materials(若已存),否则从 candidate_version 反推,再 fallback material。
+    """
+    related = check.related or {}
+    if isinstance(related, dict):
+        mats = related.get("materials") or []
+        participants = []
+        for m in mats:
+            if isinstance(m, dict):
+                mat_id = m.get("id")
+                content_hash = m.get("content_hash") or ""
+            else:
+                mat_id = getattr(m, "id", None)
+                content_hash = getattr(m, "content_hash", "")
+            if mat_id and content_hash:
+                participants.append({"material_id": mat_id, "content_hash": content_hash})
+        if participants:
+            return participants
+    # fallback: 用调用方传入的 material
+    if material is not None and material.id and material.content_hash:
+        return [{"material_id": material.id, "content_hash": material.content_hash}]
+    return []
 
 
 @transaction.atomic

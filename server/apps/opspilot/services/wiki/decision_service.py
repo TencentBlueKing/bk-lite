@@ -95,10 +95,15 @@ def create_rule_if_eligible(
     source_check=None,
     result_page=None,
     result_version=None,
+    result_page_id: Optional[int] = None,
+    result_version_id: Optional[int] = None,
 ) -> Optional["WikiDecisionRule"]:
     """签名 + 完整上下文校验通过 → upsert WikiDecisionRule(active),否则返回 None。
 
-    已有同签名 active 规则时,update 字段(upsert 语义,opspilot/tasks.md 2.4 行为)。
+    已有同签名 active 规则时,update 字段(upsert 语义,opsppec/tasks.md 2.4 行为)。
+
+    result_page / result_version 接受 Model 实例(自动取 id),也接受 result_page_id /
+    result_version_id 整数 ID,兼容上层两种调用习惯。
     """
     from apps.opspilot.models import WikiDecisionRule
 
@@ -114,14 +119,16 @@ def create_rule_if_eligible(
         schema_fingerprint=schema_fingerprint,
         participants=participants,
     )
+    resolved_page_id = result_page.id if result_page is not None else result_page_id
+    resolved_version_id = result_version.id if result_version is not None else result_version_id
     defaults = {
         "subject_key": subject_key,
         "match_snapshot": match_snapshot or {"participants": list(participants)},
         "result_snapshot": result_snapshot or {},
         "action": action,
         "source_check": source_check,
-        "result_page": result_page,
-        "result_version": result_version,
+        "result_page_id": resolved_page_id,
+        "result_version_id": resolved_version_id,
         "status": WikiDecisionRule.STATUS_ACTIVE,
     }
     rule, created = WikiDecisionRule.objects.update_or_create(

@@ -6,7 +6,7 @@ from rest_framework.decorators import action
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.opspilot.models import CheckItem
 from apps.opspilot.serializers.wiki_serializers import CheckItemSerializer
-from apps.opspilot.services.wiki.check_service import accept_candidate, merge_duplicate_check, reject_candidate, resolve_check
+from apps.opspilot.services.wiki.check_service import accept_candidate, decide_check, merge_duplicate_check, reject_candidate, resolve_check
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
@@ -244,3 +244,62 @@ class WikiCheckItemViewSet(AuthViewSet):
             f"分配检查项(检查#{check.id}): {', '.join(f'{k}={v!r}' for k, v in fields.items())}",
         )
         return JsonResponse({"result": True, "data": self.get_serializer(check).data})
+
+    @action(methods=["POST"], detail=True, url_path="decide")
+    def decide(self, request, pk=None):
+        """phase 3: 决策中心 API(POST /wiki_mgmt/check_item/{id}/decide/)。
+
+        body 字段:
+        - action: 必填,语义化动作(知识冲突 keep_current/use_new/edit_accept;
+                  页面合并 keep_separate/merge)
+        - body: edit_accept 必填的编辑后正文
+        - material_id: use_new/edit_accept 可选,提供则补齐 PageEvidence
+        """
+        check = self.get_object()
+        action_value = (request.data.get("action") or "").strip()
+        if not action_value:
+            return JsonResponse(
+                {"result": False, "message": "action 不能为空"},
+                status=400,
+            )
+        body = request.data.get("body") or ""
+        material = None
+        material_id = request.data.get("material_id")
+        if material_id:
+            from apps.opspilot.models import Material
+
+            material = Material.objects.filter(id=material_id).first()
+            if not material:
+                return JsonResponse(
+                    {"result": False, "message": f"material_id={material_id} 不存在"},
+                    status=400,
+                )
+        try:
+            rule = decide_check(
+                check,
+                action=action_value,
+                operator=getattr(request.user, "username", ""),
+                body=body,
+                material=material,
+            )
+        except ValueError as exc:
+            return JsonResponse({"result": False, "message": str(exc)}, status=400)
+        log_operation(
+            request,
+            "execute",
+            "opspilot",
+            f"决策检查项(检查#{check.id}): action={action_value}, 规则={getattr(rule, 'id', None)}",
+        )
+        return JsonResponse(
+            {
+                "result": True,
+                "data": {
+                    "check": self.get_serializer(check).data,
+                    "rule_id": getattr(rule, "id", None),
+                },
+            }
+        )
+
+
+# 别名:保留测试与老代码使用的 WikiCheckViewSet 名称
+WikiCheckViewSet = WikiCheckItemViewSet

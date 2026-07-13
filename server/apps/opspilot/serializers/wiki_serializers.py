@@ -131,6 +131,10 @@ class CheckItemSerializer(serializers.ModelSerializer):
             "assignee",
             "due_at",
             "action_type",
+            # phase 3: 决策中心字段,前端用 decision_key 查 WikiDecisionRule,
+            # decision_context 展示来源快照
+            "decision_key",
+            "decision_context",
             "created_at",
             "updated_at",
         ]
