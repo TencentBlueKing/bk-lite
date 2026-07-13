@@ -18,6 +18,29 @@ from typing import Optional
 SCHEMA_ROOT = Path(__file__).resolve().parents[1] / "schemas"
 
 
+# model_id → schema 目录名 别名表(Task 2 新增)
+# 当 model_id 与 schema 所在目录名不一致时使用,如 aliyun_ecs 模型定义在 schemas/aliyun/ 下
+SCHEMA_DIR_ALIAS = {
+    "aliyun_ecs": "aliyun",
+    "aliyun_clb": "aliyun",
+    "aliyun_bucket": "aliyun",
+    "aliyun_mysql": "aliyun",
+    "aliyun_pgsql": "aliyun",
+    "aliyun_redis": "aliyun",
+    "aliyun_mongodb": "aliyun",
+    "aliyun_kafka_inst": "aliyun",
+    "k8s_namespace": "k8s",
+    "k8s_cluster": "k8s",
+    "k8s_workload": "k8s",
+    "k8s_pod": "k8s",
+    "k8s_node": "k8s",
+    "vmware_vc": "vmware",
+    "vmware_vm": "vmware",
+    "vmware_esxi": "vmware",
+    "vmware_ds": "vmware",
+}
+
+
 @dataclass(frozen=True)
 class ModelFieldDef:
     """CMDB Model 字段定义反射结果。"""
@@ -29,7 +52,8 @@ class ModelFieldDef:
 
 def _load_schema(model_id: str) -> dict:
     """加载 model_id 对应的 04_cmdb_instance.schema.json,不存在则抛 KeyError。"""
-    schema_path = SCHEMA_ROOT / model_id / "04_cmdb_instance.schema.json"
+    dir_name = SCHEMA_DIR_ALIAS.get(model_id, model_id)
+    schema_path = SCHEMA_ROOT / dir_name / "04_cmdb_instance.schema.json"
     if not schema_path.exists():
         raise KeyError(
             f"model_id={model_id!r} 的 04_cmdb_instance.schema.json 找不到: {schema_path}"

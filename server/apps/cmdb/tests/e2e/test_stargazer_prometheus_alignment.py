@@ -16,9 +16,8 @@ from apps.cmdb.tests.e2e import pipeline
 from apps.cmdb.tests.e2e.utils.model_reflection import get_model_field_def
 
 
-# 35 个新工作对象(本期 P0/P1/P2 覆盖)
-# 由 conftest.py 的 ALIGNMENT_COVERED_MODEL_IDS fixture 提供;此处 list 仅作 fallback / docstring。
-# 优先用 fixture:`def test_...(alignment_covered_model_ids): ids = alignment_covered_model_ids`
+# 由 conftest.py 的 alignment_covered_model_ids fixture 提供;此处保留 inline 列表作为 fallback / docstring。
+# 优先用 fixture。
 ALIGNMENT_COVERED_MODEL_IDS = [
     # P0 真实化(6) — Task 2 逐对象加进来
     "aliyun_ecs",
@@ -32,15 +31,77 @@ ALIGNMENT_COVERED_MODEL_IDS = [
 ]
 
 
+# A 端业务 label 校验时排除的 system/derived 字段
+# 这些字段由 runner 在 format_metrics 阶段 set,不在 03 metric label 里
+A_LABEL_EXCLUDE = {
+    "__name__", "instance_id", "collect_status",  # system labels
+    "inst_name",                                  # 派生字段,set by runner.set_instance_inst_name
+    "model_id", "id", "create_time", "update_time",  # CMDB instance 系统字段
+    "assos",                                      # 关联关系
+}
+
+
+# P0 真实化对象的 (runner_cls, plugin_cls) 注册表
+# A 端只需要知道 plugin.metric_names,不需要跑 pipeline;先只注册需要的
+# Task 3/4 会扩展更多 model_id
+P0_RUNNER_PLUGIN = {
+    "aliyun_ecs": (
+        "apps.cmdb.collection.collect_plugin.aliyun.AliyunCollectMetrics",
+        "apps.cmdb.collection.plugins.community.cloud.aliyun.AliyunAccountCollectionPlugin",
+    ),
+    "vmware": (
+        "apps.cmdb.collection.collect_plugin.vmware.CollectVmwareMetrics",
+        "apps.cmdb.collection.plugins.community.vm.plugins.VmwareVCCollectionPlugin",
+    ),
+    "host": (
+        "apps.cmdb.collection.collect_plugin.host.HostCollectMetrics",
+        "apps.cmdb.collection.plugins.community.host.host.HostCollectionPlugin",
+    ),
+    "network": (
+        "apps.cmdb.collection.collect_plugin.network.CollectNetworkMetrics",
+        "apps.cmdb.collection.plugins.community.network.plugins.NetworkCollectionPlugin",
+    ),
+}
+
+
+def _resolve_p0_runner_plugin(model_id: str):
+    """解析 P0 model_id 的 (runner_cls, plugin_cls) 元组。失败时返回 None。"""
+    if model_id not in P0_RUNNER_PLUGIN:
+        return None
+    runner_path, plugin_path = P0_RUNNER_PLUGIN[model_id]
+    import importlib
+    runner_mod_path, runner_cls_name = runner_path.rsplit(".", 1)
+    plugin_mod_path, plugin_cls_name = plugin_path.rsplit(".", 1)
+    runner_mod = importlib.import_module(runner_mod_path)
+    plugin_mod = importlib.import_module(plugin_mod_path)
+    return getattr(runner_mod, runner_cls_name), getattr(plugin_mod, plugin_cls_name)
+
+
+def _get_runner_plugin_for_alignment(model_id, runner_plugin_factory):
+    """根据 model_id 获取 (runner_cls, plugin_cls)。
+
+    P0 真实化对象:从 P0_RUNNER_PLUGIN 解析
+    其他:从 conftest runner_plugin_factory 解析
+    失败时抛 KeyError。
+    """
+    p0_result = _resolve_p0_runner_plugin(model_id)
+    if p0_result is not None:
+        return p0_result
+    return runner_plugin_factory(model_id)
+
+
 @pytest.mark.parametrize("model_id", ALIGNMENT_COVERED_MODEL_IDS)
 def test_a_alignment_metric_name_suffix(model_id, load_fixture, runner_plugin_factory):
     """metric.__name__ 后缀必须合法(对齐 plugin.metric_names)。"""
     # K8s 走 minimal path(Pre-Flight Issue 1 决策),跳过 A 端 generic 检查
     if model_id.startswith("k8s_"):
         pytest.skip(f"{model_id} 走 minimal path,A 端字段对齐检查由 test_k8s_pipeline.py 覆盖")
+    # config_file 走 NATS 路径,无 03 VM metric
+    if model_id == "config_file":
+        pytest.skip(f"{model_id} 走 NATS 路径,无 03 VM metric,A 端检查由 NATS 路径测试覆盖")
 
     try:
-        runner_cls, plugin_cls, _ = runner_plugin_factory(model_id)
+        runner_cls, plugin_cls = _get_runner_plugin_for_alignment(model_id, runner_plugin_factory)
     except KeyError:
         pytest.skip(f"{model_id} 尚未在 runner_plugin_factory 注册(Task 2/3/4 加进来)")
 
@@ -63,8 +124,10 @@ def test_a_alignment_instance_id_label(model_id, load_fixture, runner_plugin_fac
     # K8s 走 minimal path,跳过
     if model_id.startswith("k8s_"):
         pytest.skip(f"{model_id} 走 minimal path,跳过 A 端 instance_id 检查")
+    if model_id == "config_file":
+        pytest.skip(f"{model_id} 走 NATS 路径,跳过 A 端 instance_id 检查")
     try:
-        runner_cls, plugin_cls, _ = runner_plugin_factory(model_id)
+        runner_cls, plugin_cls = _get_runner_plugin_for_alignment(model_id, runner_plugin_factory)
     except KeyError:
         pytest.skip(f"{model_id} 尚未在 runner_plugin_factory 注册")
 
@@ -83,21 +146,29 @@ def test_a_alignment_instance_id_label(model_id, load_fixture, runner_plugin_fac
 
 @pytest.mark.parametrize("model_id", ALIGNMENT_COVERED_MODEL_IDS)
 def test_a_alignment_business_labels(model_id, load_fixture, runner_plugin_factory):
-    """业务 label 集合必须 ⊇ model 必填字段(避免漏字段)。"""
+    """业务 label 集合必须 ⊇ model 必填字段(避免漏字段)。
+
+    inst_name / model_id / assos 等 system/derived 字段由 runner 在 04 阶段 set,
+    不参与 03 label 校验。ip_addr 是 03 通用 label,显式排除。
+    """
     # K8s 走 minimal path,跳过
     if model_id.startswith("k8s_"):
         pytest.skip(f"{model_id} 走 minimal path,跳过 A 端业务 label 检查")
+    if model_id == "config_file":
+        pytest.skip(f"{model_id} 走 NATS 路径,跳过 A 端业务 label 检查")
     try:
         get_model_field_def(model_id)  # 验证 model 反射可拿到
     except KeyError:
         pytest.skip(f"{model_id} 04 schema 尚未存在(Task 2/3/4 加进来)")
     try:
-        runner_cls, plugin_cls, _ = runner_plugin_factory(model_id)
+        runner_cls, plugin_cls = _get_runner_plugin_for_alignment(model_id, runner_plugin_factory)
     except KeyError:
         pytest.skip(f"{model_id} 尚未在 runner_plugin_factory 注册")
 
     model_fields = get_model_field_def(model_id)
     required_fields = {f.name for f in model_fields.values() if f.is_required}
+    # 排除 system/derived 字段
+    required_input_fields = required_fields - A_LABEL_EXCLUDE
 
     raw = load_fixture(f"{model_id}/01_stargazer_raw.json")
     raw_items = raw if isinstance(raw, list) else [raw]
@@ -105,7 +176,7 @@ def test_a_alignment_business_labels(model_id, load_fixture, runner_plugin_facto
     p3 = pipeline.step2_push_to_vm(p2)
 
     for result_item in p3["data"]["result"]:
-        labels = set(result_item["metric"].keys()) - {"__name__", "instance_id", "collect_status"}
-        # 业务 label 集合 ⊇ model 必填字段(ip_addr 通用 label 排除)
-        missing = required_fields - labels - {"ip_addr"}
+        labels = set(result_item["metric"].keys())
+        # 业务 label 集合 ⊇ model 必填字段(排除 system/derived 字段)
+        missing = required_input_fields - labels
         assert not missing, f"{model_id} 03 metric 缺 model 必填字段: {missing}"
