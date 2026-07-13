@@ -355,8 +355,8 @@ const Collector = () => {
         menuActions={(value) => menuActions(value)}
         filter={false}
         search={false}
-        operateSection={
-          <div className="w-full">
+        toolbarPrefix={
+          <div className="flex flex-col gap-2">
             {appTags.length > 0 && (
               <Segmented
                 options={appTags}
@@ -365,60 +365,60 @@ const Collector = () => {
                 className="custom-tabs"
               />
             )}
-            <div className="flex items-center w-full">
-              <div className="flex items-center flex-1 mr-[10px] overflow-x-auto">
-                {(osTags || []).map((tag: any) => (
-                  <Tag
-                    key={tag.value}
-                    color={
-                      selectedOsTags.includes(tag.value) ? 'blue' : 'default'
-                    }
-                    className="cursor-pointer transition-all duration-200 hover:scale-105 select-none"
-                    onClick={() => handleOsTagClick(tag.value)}
-                  >
-                    {tag.label}
-                  </Tag>
-                ))}
-                {(kindTags || []).map((tag: any) => (
-                  <Tag
-                    key={tag.value}
-                    color={
-                      selectedSystemTags.includes(tag.value)
-                        ? 'blue'
-                        : 'default'
-                    }
-                    className="cursor-pointer transition-all duration-200 hover:scale-105 select-none"
-                    onClick={() => handleSystemTagClick(tag.value)}
-                  >
-                    {tag.label}
-                  </Tag>
-                ))}
-                {architectureTags.map((tag) => (
-                  <Tag
-                    key={tag.value}
-                    color={
-                      selectedArchitectureTags.includes(tag.value)
-                        ? 'blue'
-                        : 'default'
-                    }
-                    className="cursor-pointer transition-all duration-200 hover:scale-105 select-none"
-                    onClick={() => handleArchitectureTagClick(tag.value)}
-                  >
-                    {tag.label}
-                  </Tag>
-                ))}
-              </div>
-              <Search
-                allowClear
-                enterButton
-                placeholder={`${t('common.search')}...`}
-                className="w-60 flex justify-end"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                onSearch={onSearch}
-              />
+            <div className="flex flex-wrap items-center gap-1.5">
+              {(osTags || []).map((tag: any) => (
+                <Tag
+                  key={tag.value}
+                  color={
+                    selectedOsTags.includes(tag.value) ? 'blue' : 'default'
+                  }
+                  className="cursor-pointer transition-all duration-200 hover:scale-105 select-none"
+                  onClick={() => handleOsTagClick(tag.value)}
+                >
+                  {tag.label}
+                </Tag>
+              ))}
+              {(kindTags || []).map((tag: any) => (
+                <Tag
+                  key={tag.value}
+                  color={
+                    selectedSystemTags.includes(tag.value)
+                      ? 'blue'
+                      : 'default'
+                  }
+                  className="cursor-pointer transition-all duration-200 hover:scale-105 select-none"
+                  onClick={() => handleSystemTagClick(tag.value)}
+                >
+                  {tag.label}
+                </Tag>
+              ))}
+              {architectureTags.map((tag) => (
+                <Tag
+                  key={tag.value}
+                  color={
+                    selectedArchitectureTags.includes(tag.value)
+                      ? 'blue'
+                      : 'default'
+                  }
+                  className="cursor-pointer transition-all duration-200 hover:scale-105 select-none"
+                  onClick={() => handleArchitectureTagClick(tag.value)}
+                >
+                  {tag.label}
+                </Tag>
+              ))}
             </div>
           </div>
+        }
+        operateSection={
+          <Search
+            allowClear
+            enterButton
+            placeholder={`${t('common.search')}...`}
+            className="w-60"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onSearch={onSearch}
+          />
         }
         {...ifOpenAddModal()}
         onCardClick={(item: CardItem) => navigateToCollectorDetail(item)}
