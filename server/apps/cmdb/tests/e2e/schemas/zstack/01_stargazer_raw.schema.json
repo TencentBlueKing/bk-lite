@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Stargazer zstack 采集脚本原始输出(placeholder)",
+  "description": "Task 3.4:zstack 无真实 SDK,fixture 走 placeholder 模式(_placeholder_reason=plugin_stub)",
+  "type": "object",
+  "required": ["model_id", "captured_at", "raw_stdout", "_placeholder_reason"],
+  "properties": {
+    "model_id":            {"type": "string", "pattern": "^zstack$"},
+    "captured_at":         {"type": "string", "format": "date-time"},
+    "raw_stdout":          {"type": "object", "maxProperties": 0},
+    "_placeholder_reason": {"type": "string", "const": "plugin_stub"},
+    "blocked_reason":      {"type": "string"},
+    "next_steps":          {"type": "array", "items": {"type": "string"}},
+    "references":          {"type": "array", "items": {"type": "string"}}
+  }
+}
