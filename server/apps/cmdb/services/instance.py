@@ -278,7 +278,13 @@ class InstanceManage(object):
         return result
 
     @staticmethod
-    def query_entity_page_by_ids(inst_ids: list[int], page: int = 1, page_size: int = 50, order: str = "inst_name"):
+    def query_entity_page_by_ids(
+        inst_ids: list[int],
+        page: int = 1,
+        page_size: int = 50,
+        order: str = "inst_name",
+        filters: list[dict] | None = None,
+    ):
         """按 ID 候选集在图查询层排序分页，避免先加载实体再在 Service 内切片。"""
         normalized_ids = sorted({int(inst_id) for inst_id in inst_ids if str(inst_id).strip()})
         if not normalized_ids:
@@ -287,15 +293,18 @@ class InstanceManage(object):
         normalized_page = max(1, int(page))
         normalized_page_size = max(1, int(page_size))
         normalized_order = str(order or "inst_name")
+        order_type = "ASC"
         if normalized_order.startswith("-"):
-            normalized_order = f"{normalized_order[1:]} DESC"
+            normalized_order = normalized_order[1:]
+            order_type = "DESC"
 
         with GraphClient() as ag:
             return ag.query_entity(
                 INSTANCE,
-                [{"field": "id", "type": "id[]", "value": normalized_ids}],
+                [{"field": "id", "type": "id[]", "value": normalized_ids}, *(filters or [])],
                 page={"skip": (normalized_page - 1) * normalized_page_size, "limit": normalized_page_size},
                 order=normalized_order,
+                order_type=order_type,
             )
 
     @staticmethod
@@ -440,6 +449,45 @@ class InstanceManage(object):
         check_attr_map["unique_rules"] = ctx.unique_rules
         check_attr_map["attrs_by_id"] = ctx.attrs_by_id
         return check_attr_map
+
+    @staticmethod
+    def _unique_candidate_param(field: str, value):
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return None
+        if isinstance(value, bool):
+            return {"field": field, "type": "str=", "value": str(value).lower()}
+        if isinstance(value, int):
+            return {"field": field, "type": "int=", "value": value}
+        if isinstance(value, (dict, list, tuple, set)):
+            return None
+        return {"field": field, "type": "str=", "value": value}
+
+    @classmethod
+    def _query_unique_rule_candidates(cls, graph, model_id: str, item: dict, check_attr_map: dict) -> list[dict]:
+        """只查询可能命中内置/联合唯一签名的实例；规则数上限使查询次数有固定上界。"""
+        candidate_queries = []
+        for field in check_attr_map.get("is_only", {}):
+            param = cls._unique_candidate_param(field, item.get(field))
+            if param:
+                candidate_queries.append([param])
+
+        for rule in check_attr_map.get("unique_rules", []):
+            params = [cls._unique_candidate_param(field, item.get(field)) for field in rule.field_ids]
+            if params and all(params):
+                candidate_queries.append(params)
+
+        candidates = {}
+        for unique_params in candidate_queries:
+            rows, _ = graph.query_entity(
+                INSTANCE,
+                [{"field": "model_id", "type": "str=", "value": model_id}, *unique_params],
+            )
+            for row in rows:
+                key = row.get("_id")
+                if key is None:
+                    key = repr(sorted(row.items()))
+                candidates[key] = row
+        return list(candidates.values())
 
     @staticmethod
     def _apply_display_fields_to_update(attrs: list, update_attr: dict) -> None:
@@ -592,12 +640,17 @@ class InstanceManage(object):
 
         # 为 organization/user/enum 字段生成 _display 冗余字段
         from apps.cmdb.display_field import DisplayFieldHandler
+        from apps.cmdb.services.unique_write_lock import UniqueWriteLockService
 
         instance_info = DisplayFieldHandler.build_display_fields(model_id, instance_info, attrs)
+        unique_lock_keys = UniqueWriteLockService.build_lock_keys(model_id, instance_info, check_attr_map)
 
-        with GraphClient() as ag:
-            exist_items, _ = ag.query_entity(INSTANCE, [{"field": "model_id", "type": "str=", "value": model_id}])
-            result = ag.create_entity(INSTANCE, instance_info, check_attr_map, exist_items, operator, attrs)
+        with UniqueWriteLockService.hold(unique_lock_keys):
+            with GraphClient() as ag:
+                exist_items = InstanceManage._query_unique_rule_candidates(
+                    ag, model_id, instance_info, check_attr_map
+                )
+                result = ag.create_entity(INSTANCE, instance_info, check_attr_map, exist_items, operator, attrs)
 
         result = dict(result)
         result.pop("_cmdb_operation_id", None)
@@ -682,20 +735,27 @@ class InstanceManage(object):
         if operation_id:
             update_attr["_cmdb_operation_id"] = operation_id
 
-        with GraphClient() as ag:
-            exist_items, _ = ag.query_entity(
-                INSTANCE,
-                [{"field": "model_id", "type": "str=", "value": inst_info["model_id"]}],
-            )
-            exist_items = [i for i in exist_items if i["_id"] != inst_id]
-            result = ag.set_entity_properties(
-                INSTANCE,
-                [inst_id],
-                update_attr,
-                check_attr_map,
-                exist_items,
-                attrs=attrs,
-            )
+        from apps.cmdb.services.unique_write_lock import UniqueWriteLockService
+
+        validation_item = {**inst_info, **update_attr}
+        check_attr_map["validation_items"] = [validation_item]
+        unique_lock_keys = UniqueWriteLockService.build_lock_keys(
+            inst_info["model_id"], validation_item, check_attr_map
+        )
+        with UniqueWriteLockService.hold(unique_lock_keys):
+            with GraphClient() as ag:
+                exist_items = InstanceManage._query_unique_rule_candidates(
+                    ag, inst_info["model_id"], validation_item, check_attr_map
+                )
+                exist_items = [i for i in exist_items if i["_id"] != inst_id]
+                result = ag.set_entity_properties(
+                    INSTANCE,
+                    [inst_id],
+                    update_attr,
+                    check_attr_map,
+                    exist_items,
+                    attrs=attrs,
+                )
             result[0] = dict(result[0])
             result[0].pop("_cmdb_operation_id", None)
 

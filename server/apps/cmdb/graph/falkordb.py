@@ -953,7 +953,7 @@ class FalkorDBClient:
             )
 
             self.check_unique_rules(
-                [properties],
+                check_attr_map.get("validation_items") or [properties],
                 check_attr_map.get("unique_rules", []),
                 exist_items,
                 check_attr_map.get("attrs_by_id", {}),

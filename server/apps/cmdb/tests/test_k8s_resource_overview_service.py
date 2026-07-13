@@ -59,26 +59,60 @@ def k8s_graph(monkeypatch):
         "apps.cmdb.services.k8s_resource_overview.InstanceManage.instance_association_instance_list",
         lambda model_id, inst_id: associations.get((model_id, int(inst_id)), []),
     )
-    monkeypatch.setattr(
-        "apps.cmdb.services.k8s_resource_overview.InstanceManage.instance_association_map",
-        lambda model_id, inst_ids, related_model=None: {
+    reverse_maps = {
+        ("k8s_node", "k8s_pod"): {40: [30], 41: [32]},
+        ("k8s_pod", "k8s_namespace"): {30: [10], 31: [10], 32: [10]},
+        ("k8s_pod", "k8s_workload"): {30: [20], 31: [20], 32: []},
+    }
+
+    def association_map(model_id, inst_ids, related_model=None):
+        special = reverse_maps.get((model_id, related_model))
+        if special is not None:
+            return {int(inst_id): special.get(int(inst_id), []) for inst_id in inst_ids}
+        return {
             int(inst_id): sorted(
                 {
                     int(item["_id"])
                     for group in associations.get((model_id, int(inst_id)), [])
                     for item in group.get("inst_list", [])
                     if item.get("model_id") == related_model
+                    or (
+                        item.get("model_id") is None
+                        and related_model in {group.get("src_model_id"), group.get("dst_model_id")}
+                    )
                 }
             )
             for inst_id in inst_ids
-        },
+        }
+
+    monkeypatch.setattr(
+        "apps.cmdb.services.k8s_resource_overview.InstanceManage.instance_association_map", association_map
     )
 
-    def query_page(inst_ids, page=1, page_size=50, order="inst_name"):
+    def test_name(row):
+        return str(row.get("name") or row.get("inst_name") or "")
+
+    def test_workload_type(row):
+        value = row.get("workload_type")
+        if isinstance(value, list):
+            value = value[0] if value else ""
+        return str(value or "").casefold()
+
+    def query_page(inst_ids, page=1, page_size=50, order="inst_name", filters=None):
         rows = [instances[int(inst_id)] for inst_id in inst_ids if int(inst_id) in instances]
-        rows.sort(key=lambda item: str(item.get(order) or item.get("name") or ""))
+        for query_filter in filters or []:
+            if query_filter["type"] == "str*":
+                rows = [row for row in rows if query_filter["value"].casefold() in test_name(row).casefold()]
+            elif query_filter["type"] == "list_any[]":
+                rows = [row for row in rows if test_workload_type(row) in query_filter["value"]]
+            elif query_filter["type"] == "list_none[]":
+                rows = [row for row in rows if test_workload_type(row) not in query_filter["value"]]
+        reverse = str(order).startswith("-")
+        order_key = str(order).removeprefix("-")
+        rows.sort(key=lambda item: str(item.get(order_key) or item.get("name") or ""), reverse=reverse)
+        count = len(rows)
         start = (int(page) - 1) * int(page_size)
-        return rows[start: start + int(page_size)], len(rows)
+        return rows[start: start + int(page_size)], count
 
     monkeypatch.setattr(
         "apps.cmdb.services.k8s_resource_overview.InstanceManage.query_entity_page_by_ids",

@@ -461,3 +461,19 @@ def reconcile_cmdb_operations_task() -> dict:
     }
     logger.info("[CmdbOperation] 周期补偿完成: %s", result)
     return result
+
+
+@shared_task
+def consume_change_record_mirror_outbox(event_id: str) -> bool:
+    from apps.cmdb.services.change_record_mirror import ChangeRecordMirrorService
+
+    return ChangeRecordMirrorService.consume(event_id)
+
+
+@shared_task
+def recover_change_record_mirror_outbox_task() -> dict:
+    from apps.cmdb.services.change_record_mirror import ChangeRecordMirrorService
+
+    dispatched = ChangeRecordMirrorService.recover_ready()
+    logger.info("[ChangeRecordMirror] 周期补偿派发完成: dispatched=%s", dispatched)
+    return {"dispatched": dispatched}

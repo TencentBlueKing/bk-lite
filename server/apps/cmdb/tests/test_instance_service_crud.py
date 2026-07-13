@@ -93,6 +93,43 @@ def test_instance_create_can_defer_audit_and_auto_relation(fake_graph, patch_sid
     assert create_call[1][1]["_cmdb_operation_id"] == "operation-1"
 
 
+@pytest.mark.django_db
+def test_instance_create_queries_only_unique_rule_candidates(fake_graph, patch_side_effects, monkeypatch):
+    from apps.cmdb.services.unique_rule import ModelUniqueRule
+
+    query_params = []
+
+    def query_entity(label, params, **kwargs):
+        query_params.append(params)
+        return [], 0
+
+    fake_graph(
+        MODULE,
+        query_entity=query_entity,
+        create_entity={"_id": 9, "model_id": "host", "inst_name": "h1", "serial": "S-1", "region": "cn"},
+    )
+    monkeypatch.setattr(
+        f"{MODULE}.InstanceManage._build_unique_rule_check_attr_map",
+        lambda model_id, attrs, for_update=False: {
+            "is_only": {},
+            "is_required": {},
+            "unique_rules": [ModelUniqueRule(rule_id="r1", order=1, field_ids=["serial", "region"])],
+            "attrs_by_id": {"serial": {"attr_name": "序列号"}, "region": {"attr_name": "区域"}},
+        },
+    )
+
+    InstanceManage.instance_create(
+        "host", {"inst_name": "h1", "serial": "S-1", "region": "cn"}, "admin", allowed_org_ids=[1]
+    )
+
+    assert len(query_params) == 1
+    assert query_params[0] == [
+        {"field": "model_id", "type": "str=", "value": "host"},
+        {"field": "serial", "type": "str=", "value": "S-1"},
+        {"field": "region", "type": "str=", "value": "cn"},
+    ]
+
+
 # --------------------------------------------------------------------------
 # instance_update
 # --------------------------------------------------------------------------

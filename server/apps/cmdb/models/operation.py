@@ -76,3 +76,33 @@ class CmdbOperationOutbox(TimeInfo):
             )
         ]
         indexes = [models.Index(fields=["status", "lease_expires_at"], name="cmdb_op_outbox_lease_idx")]
+
+
+class CmdbUniqueWriteLock(models.Model):
+    lock_key = models.CharField(max_length=64, primary_key=True)
+    owner_token = models.CharField(max_length=64)
+    lease_expires_at = models.DateTimeField()
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "cmdb_unique_write_lock"
+        indexes = [models.Index(fields=["lease_expires_at"], name="cmdb_unique_lock_lease_idx")]
+
+
+class ChangeRecordMirrorOutbox(TimeInfo):
+    event_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    payloads = models.JSONField(default=list)
+    status = models.CharField(
+        max_length=16,
+        choices=CmdbOperationOutboxStatus.choices,
+        default=CmdbOperationOutboxStatus.PENDING,
+    )
+    owner_token = models.CharField(max_length=64, blank=True, default="")
+    lease_expires_at = models.DateTimeField(null=True, blank=True)
+    attempt_count = models.PositiveIntegerField(default=0)
+    last_error = models.TextField(blank=True, default="")
+    next_attempt_at = models.DateTimeField(default=now)
+
+    class Meta:
+        db_table = "cmdb_change_record_mirror_outbox"
+        indexes = [models.Index(fields=["status", "next_attempt_at"], name="cmdb_cr_mirror_ready_idx")]
