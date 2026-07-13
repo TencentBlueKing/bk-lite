@@ -230,47 +230,38 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
         }
       </Form.Item>
 
-      {/* 计算指标单位 - 仅在非 Trap 模式下展示 */}
-      <Form.Item
-        noStyle
-        shouldUpdate={(prevValues, currentValues) =>
-          prevValues.collect_type !== currentValues.collect_type
-        }
-      >
-        {({ getFieldValue }) =>
-          isTrap(getFieldValue) ? null : (
-            <Form.Item<StrategyFields>
-              label={
-                <span className="w-[100px]">
-                  {t('monitor.events.metricUnit')}
-                </span>
+      {/* 计算指标单位 - 非 Trap 且非公式模式下展示(spec: 公式模式只保留 resultUnit) */}
+      {!isTrap(form.getFieldValue('collect_type')) && metricExpressionMode !== 'formula' && (
+        <Form.Item<StrategyFields>
+          label={
+            <span className="w-[100px]">
+              {t('monitor.events.metricUnit')}
+            </span>
+          }
+        >
+          <Cascader
+            className="w-full"
+            showSearch
+            value={
+              metricUnit
+                ? findCascaderPath(groupedUnitOptions, metricUnit)
+                : []
+            }
+            placeholder={t('monitor.events.metricUnitPlaceholder')}
+            options={groupedUnitOptions}
+            onChange={(path) => {
+              // Cascader 清空时 path 是 [],直接忽略,避免把字符串 "undefined" 写入 state
+              const next = (path as (string | number)[]).at(-1);
+              if (typeof next === 'string') {
+                onMetricUnitChange(next);
               }
-            >
-              <Cascader
-                className="w-full"
-                showSearch
-                value={
-                  metricUnit
-                    ? findCascaderPath(groupedUnitOptions, metricUnit)
-                    : []
-                }
-                placeholder={t('monitor.events.metricUnitPlaceholder')}
-                options={groupedUnitOptions}
-                onChange={(path) => {
-                  // Cascader 清空时 path 是 [],直接忽略,避免把字符串 "undefined" 写入 state
-                  const next = (path as (string | number)[]).at(-1);
-                  if (typeof next === 'string') {
-                    onMetricUnitChange(next);
-                  }
-                }}
-              />
-              <div className="text-[var(--color-text-3)] mt-[10px]">
-                {t('monitor.events.metricUnitTip')}
-              </div>
-            </Form.Item>
-          )
-        }
-      </Form.Item>
+            }}
+          />
+          <div className="text-[var(--color-text-3)] mt-[10px]">
+            {t('monitor.events.metricUnitTip')}
+          </div>
+        </Form.Item>
+      )}
 
       {/* 汇聚周期 - 移到汇聚方式之前 */}
       <Form.Item<StrategyFields>
