@@ -28,6 +28,21 @@ ALIGNMENT_COVERED_MODEL_IDS = [
     "network",
     "config_file",
     # P1 云采集新增(7) — Task 3 逐对象加进来
+    "hwcloud_ecs",     # Task 3.1
+    "hwcloud_vpc",     # Task 3.1
+    "qcloud_cvm",      # Task 3.2
+    "qcloud_vpc",      # Task 3.2
+    "qcloud_clb",      # Task 3.2
+    "qcloud_cdb",      # Task 3.2
+    "qcloud_redis",    # Task 3.2
+    "qcloud_bucket",   # Task 3.2
+    "qcloud_cmq",      # Task 3.2
+    "fusioninsight_cluster",  # Task 3.3
+    "fusioninsight_host",     # Task 3.3
+    "zstack",          # Task 3.4
+    "h3c_cas",         # Task 3.5
+    "dameng_enterprise",         # Task 3.6
+    "redis_sentinel_enterprise", # Task 3.7
     # P2 archived placeholder(22) — Task 4 逐对象加进来
 ]
 
@@ -182,6 +197,27 @@ def test_b_alignment_field_subset(model_id, load_fixture, runner_plugin_factory,
                 plugin_cls.field_mappings["aliyun_ecs"],
                 raising=False,
             )
+    # Task 3:云采集 plugin(走 cloud runner,也需要 monkeypatch _metrics / model_field_mapping)
+    elif runner_cls.__name__ in ("HwCloudCollectMetrics", "QCloudCollectMetrics", "FusionInsightCollectMetrics"):
+        # 云 runner 的 _metrics / model_field_mapping 依赖 get_collection_plugin
+        # 测试环境需要 monkeypatch 为直接读 plugin.metric_names / plugin.field_mappings
+        metric_names = getattr(plugin_cls, "metric_names", None)
+        if metric_names is not None and isinstance(metric_names, property):
+            metric_names = metric_names.fget(plugin_cls)
+        if metric_names is not None and not isinstance(metric_names, property):
+            monkeypatch.setattr(
+                runner_cls, "_metrics",
+                property(lambda self, _mn=list(metric_names): list(_mn)),
+            )
+        if hasattr(plugin_cls, "field_mappings"):
+            from apps.cmdb.collection.plugins.base import bind_collection_mapping
+            monkeypatch.setattr(
+                runner_cls, "model_field_mapping",
+                property(lambda self, _cls=plugin_cls: {
+                    mid: bind_collection_mapping(self, m)
+                    for mid, m in _cls.field_mappings.items()
+                }),
+            )
 
     # host 走专门 step3_cmdb_consume_host,不走 generic
     if model_id == "host":
@@ -265,6 +301,25 @@ def test_b_alignment_required_nonempty(model_id, load_fixture, runner_plugin_fac
                 plugin_cls, "field_mapping",
                 plugin_cls.field_mappings["aliyun_ecs"],
                 raising=False,
+            )
+    # Task 3:云采集 plugin(同 field_subset 段处理)
+    elif runner_cls.__name__ in ("HwCloudCollectMetrics", "QCloudCollectMetrics", "FusionInsightCollectMetrics"):
+        metric_names = getattr(plugin_cls, "metric_names", None)
+        if metric_names is not None and isinstance(metric_names, property):
+            metric_names = metric_names.fget(plugin_cls)
+        if metric_names is not None and not isinstance(metric_names, property):
+            monkeypatch.setattr(
+                runner_cls, "_metrics",
+                property(lambda self, _mn=list(metric_names): list(_mn)),
+            )
+        if hasattr(plugin_cls, "field_mappings"):
+            from apps.cmdb.collection.plugins.base import bind_collection_mapping
+            monkeypatch.setattr(
+                runner_cls, "model_field_mapping",
+                property(lambda self, _cls=plugin_cls: {
+                    mid: bind_collection_mapping(self, m)
+                    for mid, m in _cls.field_mappings.items()
+                }),
             )
 
     if model_id == "host":

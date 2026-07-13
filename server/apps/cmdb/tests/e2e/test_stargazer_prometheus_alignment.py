@@ -27,6 +27,21 @@ ALIGNMENT_COVERED_MODEL_IDS = [
     "network",
     "config_file",
     # P1 云采集新增(7) — Task 3 逐对象加进来
+    "hwcloud_ecs",     # Task 3.1
+    "hwcloud_vpc",     # Task 3.1
+    "qcloud_cvm",      # Task 3.2
+    "qcloud_vpc",      # Task 3.2
+    "qcloud_clb",      # Task 3.2
+    "qcloud_cdb",      # Task 3.2
+    "qcloud_redis",    # Task 3.2
+    "qcloud_bucket",   # Task 3.2
+    "qcloud_cmq",      # Task 3.2
+    "fusioninsight_cluster",  # Task 3.3
+    "fusioninsight_host",     # Task 3.3
+    "zstack",          # Task 3.4
+    "h3c_cas",         # Task 3.5
+    "dameng_enterprise",         # Task 3.6
+    "redis_sentinel_enterprise", # Task 3.7
     # P2 archived placeholder(22) — Task 4 逐对象加进来
 ]
 
@@ -76,11 +91,11 @@ def _resolve_p0_runner_plugin(model_id: str):
     plugin_mod_path, plugin_cls_name = plugin_path.rsplit(".", 1)
     runner_mod = importlib.import_module(runner_mod_path)
     plugin_mod = importlib.import_module(plugin_mod_path)
-    return getattr(runner_mod, runner_cls_name), getattr(plugin_mod, plugin_cls_name)
+    return getattr(runner_mod, runner_cls_name), getattr(plugin_mod, plugin_cls_name), None
 
 
 def _get_runner_plugin_for_alignment(model_id, runner_plugin_factory):
-    """根据 model_id 获取 (runner_cls, plugin_cls)。
+    """根据 model_id 获取 (runner_cls, plugin_cls, extra_payload_keys)。
 
     P0 真实化对象:从 P0_RUNNER_PLUGIN 解析
     其他:从 conftest runner_plugin_factory 解析
@@ -103,14 +118,14 @@ def test_a_alignment_metric_name_suffix(model_id, load_fixture, runner_plugin_fa
         pytest.skip(f"{model_id} 走 NATS 路径,无 03 VM metric,A 端检查由 NATS 路径测试覆盖")
 
     try:
-        runner_cls, plugin_cls = _get_runner_plugin_for_alignment(model_id, runner_plugin_factory)
-    except KeyError:
-        pytest.skip(f"{model_id} 尚未在 runner_plugin_factory 注册(Task 2/3/4 加进来)")
+        runner_cls, plugin_cls, extra_payload_keys = _get_runner_plugin_for_alignment(model_id, runner_plugin_factory)
+    except KeyError as e:
+        pytest.skip(f"{model_id} 尚未在 runner_plugin_factory 注册(Task 2/3/4 加进来): {e}")
 
     raw = load_fixture(f"{model_id}/01_stargazer_raw.json")
     raw_items = raw if isinstance(raw, list) else [raw]
     p2 = pipeline.step1_stargazer_normalize_generic(raw_items, model_id=model_id)
-    p3 = pipeline.step2_push_to_vm(p2)
+    p3 = pipeline.step2_push_to_vm(p2, extra_payload_keys=extra_payload_keys)
 
     for result_item in p3["data"]["result"]:
         metric_name = result_item["metric"]["__name__"]
@@ -129,7 +144,7 @@ def test_a_alignment_instance_id_label(model_id, load_fixture, runner_plugin_fac
     if model_id == "config_file":
         pytest.skip(f"{model_id} 走 NATS 路径,跳过 A 端 instance_id 检查")
     try:
-        runner_cls, plugin_cls = _get_runner_plugin_for_alignment(model_id, runner_plugin_factory)
+        runner_cls, plugin_cls, extra_payload_keys = _get_runner_plugin_for_alignment(model_id, runner_plugin_factory)
     except KeyError:
         pytest.skip(f"{model_id} 尚未在 runner_plugin_factory 注册")
 
@@ -138,6 +153,7 @@ def test_a_alignment_instance_id_label(model_id, load_fixture, runner_plugin_fac
     p3 = pipeline.step2_push_to_vm(
         pipeline.step1_stargazer_normalize_generic(raw_items, model_id=model_id),
         task_id=99999,
+        extra_payload_keys=extra_payload_keys,
     )
 
     for result_item in p3["data"]["result"]:
@@ -163,7 +179,7 @@ def test_a_alignment_business_labels(model_id, load_fixture, runner_plugin_facto
     except KeyError:
         pytest.skip(f"{model_id} 04 schema 尚未存在(Task 2/3/4 加进来)")
     try:
-        runner_cls, plugin_cls = _get_runner_plugin_for_alignment(model_id, runner_plugin_factory)
+        runner_cls, plugin_cls, extra_payload_keys = _get_runner_plugin_for_alignment(model_id, runner_plugin_factory)
     except KeyError:
         pytest.skip(f"{model_id} 尚未在 runner_plugin_factory 注册")
 
@@ -175,7 +191,7 @@ def test_a_alignment_business_labels(model_id, load_fixture, runner_plugin_facto
     raw = load_fixture(f"{model_id}/01_stargazer_raw.json")
     raw_items = raw if isinstance(raw, list) else [raw]
     p2 = pipeline.step1_stargazer_normalize_generic(raw_items, model_id=model_id)
-    p3 = pipeline.step2_push_to_vm(p2)
+    p3 = pipeline.step2_push_to_vm(p2, extra_payload_keys=extra_payload_keys)
 
     # 只检查主 metric({model_id}_info_gauge),不查附属 metric(如 host_proc_usage_info_gauge)
     main_metric = f"{model_id}_info_gauge"

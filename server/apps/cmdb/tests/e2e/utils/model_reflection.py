@@ -18,8 +18,10 @@ from typing import Optional
 SCHEMA_ROOT = Path(__file__).resolve().parents[1] / "schemas"
 
 
-# model_id → schema 目录名 别名表(Task 2 新增)
+# model_id → schema 目录名 别名表(Task 2 + 3 新增)
 # 当 model_id 与 schema 所在目录名不一致时使用,如 aliyun_ecs 模型定义在 schemas/aliyun/ 下
+# Task 3.1:hwcloud 子对象用各自目录(hwcloud_ecs/hwcloud_vpc,无别名)
+# Task 3.6/3.7:dameng_enterprise/redis_sentinel_enterprise 复用 dameng/redis_sentinel
 SCHEMA_DIR_ALIAS = {
     "aliyun_ecs": "aliyun",
     "aliyun_clb": "aliyun",
@@ -38,6 +40,10 @@ SCHEMA_DIR_ALIAS = {
     "vmware_vm": "vmware",
     "vmware_esxi": "vmware",
     "vmware_ds": "vmware",
+    # Task 3.6:dameng_enterprise 复用 dameng schema 目录
+    "dameng_enterprise": "dameng",
+    # Task 3.7:redis_sentinel_enterprise 复用 redis_sentinel schema 目录
+    "redis_sentinel_enterprise": "redis_sentinel",
 }
 
 

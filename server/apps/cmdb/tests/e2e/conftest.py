@@ -64,8 +64,42 @@ def _resolve_plugin(model_id: str):
     且插件模块名是 db/es.py,需要在 db.es 目录里查找。
     """
     # model_id → 插件模块短名 别名表(用于 stargazer model_id 与 plugin 文件名不一致场景)
+    # 例 1:stargazer 落盘 model_id='elasticsearch',plugin 类 supported_model_id='es' 且模块名是 db/es.py
+    # 例 2:stargazer 落盘 model_id='hwcloud_ecs'(子对象),plugin 类定义在 cloud/hwcloud.py(父 plugin)
     _PLUGIN_MODULE_ALIAS = {
         "elasticsearch": "es",
+        # Task 3.1:hwcloud 子对象共用 cloud/hwcloud.py 父 plugin
+        "hwcloud_ecs": "hwcloud",
+        "hwcloud_vpc": "hwcloud",
+        "hwcloud_evs": "hwcloud",
+        "hwcloud_obs": "hwcloud",
+        "hwcloud_subnet": "hwcloud",
+        "hwcloud_eip": "hwcloud",
+        "hwcloud_sg": "hwcloud",
+        "hwcloud_elb": "hwcloud",
+        "hwcloud_rds": "hwcloud",
+        "hwcloud_dcs": "hwcloud",
+        # Task 3.2:qcloud 子对象共用 cloud/qcloud.py 父 plugin
+        "qcloud_bucket": "qcloud",
+        "qcloud_clb": "qcloud",
+        "qcloud_cmq": "qcloud",
+        "qcloud_cmq_topic": "qcloud",
+        "qcloud_cvm": "qcloud",
+        "qcloud_domain": "qcloud",
+        "qcloud_eip": "qcloud",
+        "qcloud_filesystem": "qcloud",
+        "qcloud_mongodb": "qcloud",
+        "qcloud_mysql": "qcloud",
+        "qcloud_pgsql": "qcloud",
+        "qcloud_plusar_cluster": "qcloud",
+        "qcloud_pulsar_cluster": "qcloud",
+        "qcloud_redis": "qcloud",
+        "qcloud_rocketmq": "qcloud",
+        # Task 3.3:fusioninsight 子对象共用 cloud/fusioninsight.py 父 plugin
+        "fusioninsight_cluster": "fusioninsight",
+        "fusioninsight_host": "fusioninsight",
+        # Task 3.4 / 3.5:zstack / h3c_cas 无 plugin(stub)
+        # 已在 _PLUGIN_MODULE_ALIAS 处理:stub module 名 = model_id
     }
     module_alias = _PLUGIN_MODULE_ALIAS.get(model_id, model_id)
 
@@ -77,6 +111,10 @@ def _resolve_plugin(model_id: str):
         f"apps.cmdb.collection.plugins.community.middleware.{model_id}",
         f"apps.cmdb.collection.plugins.community.protocol.{module_alias}",
         f"apps.cmdb.collection.plugins.community.protocol.{model_id}",
+        # Task 3:云采集 plugin(plugins/community/cloud/)— 子对象走父 plugin
+        # 例:hwcloud_ecs → 父 plugin module = hwcloud(因 plugin 类只在 hwcloud.py 定义)
+        f"apps.cmdb.collection.plugins.community.cloud.{module_alias}",
+        f"apps.cmdb.collection.plugins.community.cloud.{model_id}",
     ]
     last_err: Optional[Exception] = None
     for mod_path in candidate_modules:
@@ -159,6 +197,25 @@ _MODEL_RUNNER_MAP = {
     "minio":        ("middleware", {"result": True}),
     "squid":        ("middleware", {"result": True}),
     "docker":       ("middleware", {"result": True}),
+    # Task 3:云采集 plugin 走各自云厂商 collector(HwCloud / QCloud / FusionInsight)
+    # model_field_mapping 由 plugin.field_mappings 字典提供(每个 sub-model 各自 bind)
+    "hwcloud_ecs":     ("cloud_hwcloud",   None),
+    "hwcloud_vpc":     ("cloud_hwcloud",   None),
+    "qcloud_cvm":      ("cloud_qcloud",    None),
+    "qcloud_vpc":      ("cloud_qcloud",    None),
+    "qcloud_clb":      ("cloud_qcloud",    None),
+    "qcloud_cdb":      ("cloud_qcloud",    None),
+    "qcloud_redis":    ("cloud_qcloud",    None),
+    "qcloud_bucket":   ("cloud_qcloud",    None),
+    "qcloud_cmq":      ("cloud_qcloud",    None),
+    "fusioninsight_cluster": ("cloud_fusioninsight", None),
+    "fusioninsight_host":    ("cloud_fusioninsight", None),
+    # zstack / h3c_cas:stub plugin,云厂商特定 collector 也不存在,先用 cloud_generic stub
+    "zstack":  ("cloud_stub", None),
+    "h3c_cas": ("cloud_stub", None),
+    # dameng_enterprise / redis_sentinel_enterprise 复用底层 plugin
+    "dameng_enterprise":         ("db",         None),  # 复用 db runner + dameng plugin
+    "redis_sentinel_enterprise": ("middleware", {"result": True}),  # 复用 redis_sentinel
 }
 
 
@@ -188,6 +245,19 @@ def load_runner_plugin_for_model_id(model_id: str) -> Tuple[type, type, Optional
     elif runner_type == "middleware":
         from apps.cmdb.collection.collect_plugin.middleware import MiddlewareCollectMetrics
         runner_cls = MiddlewareCollectMetrics
+    elif runner_type == "cloud_hwcloud":
+        from apps.cmdb.collection.collect_plugin.hwcloud import HwCloudCollectMetrics
+        runner_cls = HwCloudCollectMetrics
+    elif runner_type == "cloud_qcloud":
+        from apps.cmdb.collection.collect_plugin.qcloud import QCloudCollectMetrics
+        runner_cls = QCloudCollectMetrics
+    elif runner_type == "cloud_fusioninsight":
+        from apps.cmdb.collection.collect_plugin.fusioninsight import FusionInsightCollectMetrics
+        runner_cls = FusionInsightCollectMetrics
+    elif runner_type == "cloud_stub":
+        # zstack / h3c_cas:无云厂商特定 collector,用 ProtocolCollectMetrics 作 stub 载体
+        from apps.cmdb.collection.collect_plugin.protocol import ProtocolCollectMetrics
+        runner_cls = ProtocolCollectMetrics
     else:
         raise KeyError(f"未知的 runner_type={runner_type!r}(model_id={model_id!r})")
     plugin_cls = _resolve_plugin(model_id)
@@ -256,6 +326,21 @@ ALIGNMENT_COVERED_MODEL_IDS = [
     "network",
     "config_file",
     # P1 云采集新增(7) — Task 3
+    "hwcloud_ecs",     # Task 3.1
+    "hwcloud_vpc",     # Task 3.1
+    "qcloud_cvm",      # Task 3.2
+    "qcloud_vpc",      # Task 3.2
+    "qcloud_clb",      # Task 3.2
+    "qcloud_cdb",      # Task 3.2
+    "qcloud_redis",    # Task 3.2
+    "qcloud_bucket",   # Task 3.2
+    "qcloud_cmq",      # Task 3.2
+    "fusioninsight_cluster",  # Task 3.3
+    "fusioninsight_host",     # Task 3.3
+    "zstack",          # Task 3.4
+    "h3c_cas",         # Task 3.5
+    "dameng_enterprise",         # Task 3.6
+    "redis_sentinel_enterprise", # Task 3.7
     # P2 archived placeholder(22) — Task 4
 ]
 

@@ -1,0 +1,13 @@
+{
+  "model_id": "hwcloud_vpc",
+  "instance_count_min": 1,
+  "expected_instance_subset": {
+    "inst_name":     "vpc-prod-01_vpc-bp1yyyyyy",
+    "resource_name": "vpc-prod-01",
+    "resource_id":   "vpc-bp1yyyyyy",
+    "region":        "cn-north-4",
+    "status":        "ACTIVE",
+    "cidr":          "192.168.0.0/16",
+    "is_default":    "false"
+  }
+}
