@@ -1416,6 +1416,10 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @action(detail=False, methods=["post"], url_path="ipam_reconcile")
     @HasPermission("asset_info-Edit")
     def ipam_reconcile(self, request):
-        """立即对账（手动触发）。"""
-        from apps.cmdb.services.ipam_reconcile import run_reconciliation
-        return WebUtils.response_success(run_reconciliation())
+        """创建或复用一个异步 IPAM 对账作业。"""
+        from apps.cmdb.services.ipam_reconcile_job import IPAMReconcileJob
+
+        result = IPAMReconcileJob.enqueue(trigger="manual")
+        return WebUtils.response_success(
+            {"run_id": str(result.run.run_id), "status": result.run.status, "reused": result.reused}
+        )

@@ -423,12 +423,20 @@ def collect_node_mgmt_hosts():
 
 @shared_task
 def reconcile_ipam_task() -> dict:
-    """IPAM 与 CMDB 自动对账周期任务。规格 §5.5。"""
-    from apps.cmdb.services.ipam_reconcile import run_reconciliation
+    """创建或恢复一个 IPAM 周期对账作业。"""
+    from apps.cmdb.services.ipam_reconcile_job import IPAMReconcileJob
 
-    logger.info("[IPAM] 开始对账...")
-    result = run_reconciliation()
-    logger.info(f"[IPAM] 对账完成: {result}")
+    result = IPAMReconcileJob.enqueue(trigger="scheduled")
+    return {"run_id": str(result.run.run_id), "status": result.run.status, "reused": result.reused}
+
+
+@shared_task
+def execute_ipam_reconcile_task(run_id: str) -> dict:
+    from apps.cmdb.services.ipam_reconcile_job import IPAMReconcileJob
+
+    logger.info("[IPAM] 开始执行对账作业 run_id=%s", run_id)
+    result = IPAMReconcileJob.execute(run_id)
+    logger.info("[IPAM] 对账作业结束 run_id=%s result=%s", run_id, result)
     return result
 
 

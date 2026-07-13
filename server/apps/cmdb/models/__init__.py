@@ -9,4 +9,4 @@ from apps.cmdb.models.subscription_rule import *  # noqa
 from apps.cmdb.models.subscription_delivery import *  # noqa
 from apps.cmdb.models.node_mgmt_sync import *  # noqa
 from apps.cmdb.models.collect_task_credential_hit import *  # noqa
-from apps.cmdb.models.ipam_models import IPAMReconcileSource  # noqa
+from apps.cmdb.models.ipam_models import IPAMReconcileRun, IPAMReconcileSource  # noqa

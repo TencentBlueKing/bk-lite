@@ -136,15 +136,19 @@ def test_ipam_reconcile_requires_asset_edit_permission():
     reconcile.assert_not_called()
 
 
-def test_ipam_reconcile_runs_with_asset_edit_permission():
+def test_ipam_reconcile_enqueues_with_asset_edit_permission():
     user = _user()
     user.permission = {"cmdb": {"asset_info-Edit"}}
 
     with patch(
-        "apps.cmdb.services.ipam_reconcile.run_reconciliation",
-        return_value={"created": 1, "updated": 2},
-    ) as reconcile:
+        "apps.cmdb.services.ipam_reconcile_job.IPAMReconcileJob.enqueue",
+    ) as enqueue:
+        enqueue.return_value.run.run_id = "run-1"
+        enqueue.return_value.run.status = "pending"
+        enqueue.return_value.reused = False
         response = _call_reconcile(_reconcile_request(user))
 
     assert response.status_code == 200
-    reconcile.assert_called_once_with()
+    enqueue.assert_called_once_with(trigger="manual")
+    body = json.loads(response.content)["data"]
+    assert body == {"run_id": "run-1", "status": "pending", "reused": False}
