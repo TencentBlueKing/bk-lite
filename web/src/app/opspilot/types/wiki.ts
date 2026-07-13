@@ -283,7 +283,30 @@ export interface CheckItem {
   action_type?: string;
   created_at?: string;
   updated_at?: string;
+  // phase 7: 决策中心字段
+  decision_key?: string;
+  decision_context?: Record<string, unknown>;
 }
+
+// phase 7: 决策动作枚举(决策中心 API 接受)
+export type CheckDecisionAction =
+  // 知识冲突
+  | 'keep_current'
+  | 'use_new'
+  | 'edit_accept'
+  // 页面合并
+  | 'keep_separate'
+  | 'merge';
+
+// 知识冲突决策三选一
+export const KNOWLEDGE_CONFLICT_ACTIONS: CheckDecisionAction[] = [
+  'keep_current',
+  'use_new',
+  'edit_accept',
+];
+
+// 页面合并决策二选一
+export const PAGE_IDENTITY_ACTIONS: CheckDecisionAction[] = ['keep_separate', 'merge'];
 
 export interface PurposeSchemaTemplate {
   key: string;

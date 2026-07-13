@@ -239,6 +239,13 @@ export const useWikiApi = () => {
 
   const rejectCheck = (id: number): Promise<unknown> => post(`${BASE}/check_item/${id}/reject/`, {});
 
+  // phase 7: 决策中心 API(取代通用 accept/reject)
+  const decideCheck = (
+    id: number,
+    payload: { action: string; body?: string; material_id?: number }
+  ): Promise<{ check: CheckItem; rule_id: number | null }> =>
+    post(`${BASE}/check_item/${id}/decide/`, payload);
+
   const batchAcceptChecks = (
     ids: number[]
   ): Promise<{ accepted: number; skipped: number; skipped_ids: number[] }> =>
@@ -314,6 +321,7 @@ export const useWikiApi = () => {
     fetchCheckItems,
     acceptCheck,
     rejectCheck,
+    decideCheck,
     batchAcceptChecks,
     batchRejectChecks,
     assignCheck,

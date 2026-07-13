@@ -131,7 +131,7 @@ def create_rule_if_eligible(
 
     if not subject_key or not subject_key.strip():
         return None
-    if not is_participant_complete(participants):
+    if decision_type != "page_identity" and not is_participant_complete(participants):
         return None
 
     decision_key = compute_decision_signature(
