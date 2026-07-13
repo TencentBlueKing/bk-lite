@@ -30,12 +30,12 @@ ALIGNMENT_COVERED_MODEL_IDS = [
     "hwcloud_ecs",     # Task 3.1
     "hwcloud_vpc",     # Task 3.1
     "qcloud_cvm",      # Task 3.2
-    "qcloud_vpc",      # Task 3.2
     "qcloud_clb",      # Task 3.2
-    "qcloud_cdb",      # Task 3.2
     "qcloud_redis",    # Task 3.2
     "qcloud_bucket",   # Task 3.2
     "qcloud_cmq",      # Task 3.2
+    "qcloud_mysql",    # Task 3.2
+    "qcloud_mongodb",  # Task 3.2
     "fusioninsight_cluster",  # Task 3.3
     "fusioninsight_host",     # Task 3.3
     "zstack",          # Task 3.4

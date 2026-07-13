@@ -1,0 +1,25 @@
+{
+  "success": true,
+  "result": {
+    "qcloud_mysql": [
+      {
+        "model_id": "qcloud_mysql",
+        "task_id": 33021,
+        "account_id": "acct-qcloud-prod-001",
+        "captured_at": "2026-07-14T10:30:00+08:00",
+        "collected_by": "stargazer/inputs/qcloud/qcloud_mysql.py@1.2.0",
+        "request_id": "QC-MYSQL-12345678-ABCD-EF01-2345-6789ABCDEF01",
+        "total_count": 1,
+        "resource_name": "qmysql-prod-01",
+        "resource_id": "qmysql-abc123def456",
+        "ip_addr": "10.0.4.40",
+        "region": "ap-shanghai",
+        "zone": "ap-shanghai-2",
+        "status": "RUNNING",
+        "volume": "100",
+        "memory_mb": "2048",
+        "charge_type": "POSTPAID"
+      }
+    ]
+  }
+}

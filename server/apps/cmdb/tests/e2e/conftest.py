@@ -202,12 +202,12 @@ _MODEL_RUNNER_MAP = {
     "hwcloud_ecs":     ("cloud_hwcloud",   None),
     "hwcloud_vpc":     ("cloud_hwcloud",   None),
     "qcloud_cvm":      ("cloud_qcloud",    None),
-    "qcloud_vpc":      ("cloud_qcloud",    None),
     "qcloud_clb":      ("cloud_qcloud",    None),
-    "qcloud_cdb":      ("cloud_qcloud",    None),
     "qcloud_redis":    ("cloud_qcloud",    None),
     "qcloud_bucket":   ("cloud_qcloud",    None),
     "qcloud_cmq":      ("cloud_qcloud",    None),
+    "qcloud_mysql":    ("cloud_qcloud",    None),
+    "qcloud_mongodb":  ("cloud_qcloud",    None),
     "fusioninsight_cluster": ("cloud_fusioninsight", None),
     "fusioninsight_host":    ("cloud_fusioninsight", None),
     # zstack / h3c_cas:stub plugin,云厂商特定 collector 也不存在,先用 cloud_generic stub
@@ -329,12 +329,12 @@ ALIGNMENT_COVERED_MODEL_IDS = [
     "hwcloud_ecs",     # Task 3.1
     "hwcloud_vpc",     # Task 3.1
     "qcloud_cvm",      # Task 3.2
-    "qcloud_vpc",      # Task 3.2
     "qcloud_clb",      # Task 3.2
-    "qcloud_cdb",      # Task 3.2
     "qcloud_redis",    # Task 3.2
     "qcloud_bucket",   # Task 3.2
     "qcloud_cmq",      # Task 3.2
+    "qcloud_mysql",    # Task 3.2
+    "qcloud_mongodb",  # Task 3.2
     "fusioninsight_cluster",  # Task 3.3
     "fusioninsight_host",     # Task 3.3
     "zstack",          # Task 3.4
