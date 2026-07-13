@@ -11,6 +11,7 @@ from rest_framework import status
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.cmdb.models.config_file_version import ConfigFileVersion
+from apps.cmdb.services.config_file_content_lifecycle import ConfigFileContentLifecycle
 from apps.cmdb.views.config_file import ConfigFileVersionViewSet
 from apps.core.utils.web_utils import WebUtils
 
@@ -145,7 +146,7 @@ def test_diff_no_content(superuser, version):
 def test_diff_denies_version_2_without_permission_and_does_not_read_it(superuser, monkeypatch):
     v1 = ConfigFileVersion.objects.create(
         instance_id="5", model_id="host", version="v1",
-        file_path="/etc/app.conf", file_name="app.conf", status="success", content="v1.txt",
+        file_path="/etc/app.conf", file_name="app.conf", status="success", content="v1.txt", content_status="ready",
     )
     v2 = ConfigFileVersion.objects.create(
         instance_id="6", model_id="host", version="v2",
@@ -218,11 +219,11 @@ def test_diff_rejects_different_file_path(superuser, monkeypatch):
 def test_diff_ok_for_same_instance_and_file_with_permission(superuser, monkeypatch):
     v1 = ConfigFileVersion.objects.create(
         instance_id="5", model_id="host", version="v1",
-        file_path="/etc/app.conf", file_name="app.conf", status="success", content="v1.txt",
+        file_path="/etc/app.conf", file_name="app.conf", status="success", content="v1.txt", content_status="ready",
     )
     v2 = ConfigFileVersion.objects.create(
         instance_id="5", model_id="host", version="v2",
-        file_path="/etc/app.conf", file_name="app.conf", status="success", content="v2.txt",
+        file_path="/etc/app.conf", file_name="app.conf", status="success", content="v2.txt", content_status="ready",
     )
     monkeypatch.setattr(
         f"{VIEWS}.ConfigFileVersion.read_content",
@@ -333,7 +334,17 @@ def test_destroy_not_found(superuser):
 
 
 @pytest.mark.django_db
-def test_destroy_ok(superuser, version):
+def test_destroy_ok(superuser, version, monkeypatch):
+    requested_deletes = []
+    monkeypatch.setattr(
+        ConfigFileContentLifecycle,
+        "request_delete",
+        staticmethod(lambda version_id: requested_deletes.append(version_id) or True),
+    )
+
     response = ConfigFileVersionViewSet.as_view({"delete": "destroy"})(_req("delete", superuser), pk=version.id)
+
     assert response.status_code == status.HTTP_200_OK
     assert _body(response)["data"]["deleted_id"] == version.id
+    assert _body(response)["data"]["content_status"] == "delete_pending"
+    assert requested_deletes == [version.id]

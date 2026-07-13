@@ -22,20 +22,31 @@ from django.utils.timezone import now, timedelta
 from apps.cmdb.constants.constants import CollectRunStatusType
 from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.models.config_file_version import ConfigFileVersion, ConfigFileVersionStatus
+from apps.cmdb.services.config_file_content_lifecycle import ConfigFileContentLifecycle
 from apps.cmdb.services.config_file_service import ConfigFileService as S
 from apps.core.exceptions.base_app_exception import BaseAppException
 
 
 @pytest.fixture(autouse=True)
 def _stub_minio(monkeypatch):
-    """save_content 不写 MinIO，仅把对象键记到 content.name 让 content/content_key 真实可用。"""
+    """不写 MinIO；模拟临时上传与提交后发布。"""
 
-    def fake_save_content(self, text, object_key):
-        # 真实 FieldFile.name 赋值即可让 bool(content) 为真、content_key 返回键
-        self.content.name = object_key
-        self._fake_text = text
+    monkeypatch.setattr(
+        ConfigFileContentLifecycle,
+        "stage_content",
+        staticmethod(lambda _text: "tmp/config-file/test.txt"),
+    )
+    monkeypatch.setattr(ConfigFileContentLifecycle, "discard_temp_content", staticmethod(lambda _key: None))
 
-    monkeypatch.setattr(ConfigFileVersion, "save_content", fake_save_content)
+    def fake_publish(version_id):
+        ConfigFileVersion.objects.filter(id=version_id).update(
+            content_status="ready",
+            temp_content_key="",
+            content_error="",
+        )
+        return True
+
+    monkeypatch.setattr(ConfigFileContentLifecycle, "publish_version", staticmethod(fake_publish))
 
 
 def _make_task(**kw):
@@ -114,9 +125,10 @@ def test_config_file_content_lifecycle_defaults_to_pending():
 
 
 @pytest.mark.django_db
-def test_success_creates_version_and_updates_task():
+def test_success_creates_version_and_updates_task(django_capture_on_commit_callbacks):
     task = _make_task()
-    result = S.process_collect_result(_payload(task))
+    with django_capture_on_commit_callbacks(execute=True):
+        result = S.process_collect_result(_payload(task))
 
     assert result["changed"] is True
     assert result["task_updated"] is True
@@ -125,6 +137,9 @@ def test_success_creates_version_and_updates_task():
     assert version_obj.status == ConfigFileVersionStatus.SUCCESS
     assert version_obj.content_hash  # 已计算哈希
     assert version_obj.content_key.endswith(".txt")  # 对象键已落到 content
+    version_obj.refresh_from_db()
+    assert version_obj.content_status == "ready"
+    assert version_obj.temp_content_key == ""
 
     # DB 真实落库
     assert ConfigFileVersion.objects.filter(collect_task=task, instance_id="inst-1").count() == 1
@@ -259,11 +274,11 @@ def test_same_business_key_and_content_is_idempotent(monkeypatch):
     ver = str(int(now().timestamp() * 1000))
     saved_objects = []
 
-    def fake_save_content(self, text, object_key):
-        saved_objects.append((text, object_key))
-        self.content.name = object_key
+    def fake_stage_content(text):
+        saved_objects.append(text)
+        return "tmp/config-file/idempotent.txt"
 
-    monkeypatch.setattr(ConfigFileVersion, "save_content", fake_save_content)
+    monkeypatch.setattr(ConfigFileContentLifecycle, "stage_content", staticmethod(fake_stage_content))
     first = S.process_collect_result(_payload(task, version=ver, content_base64=base64.b64encode(b"v1").decode()))
     second = S.process_collect_result(_payload(task, version=ver, content_base64=base64.b64encode(b"v1").decode()))
 
@@ -341,6 +356,58 @@ def test_create_or_get_version_reads_concurrent_winner_after_integrity_error(moc
     assert version_obj is existing
     assert created is False
     ConfigFileVersion.objects.get.assert_called_once()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_transaction_rollback_does_not_publish_formal_content(monkeypatch):
+    task = _make_task()
+    formal_writes = []
+
+    def track_formal_write(version_id):
+        formal_writes.append(version_id)
+        return True
+
+    monkeypatch.setattr(ConfigFileContentLifecycle, "publish_version", staticmethod(track_formal_write))
+
+    with pytest.raises(RuntimeError, match="rollback"):
+        with transaction.atomic():
+            S._create_or_get_version(
+                task=task,
+                instance_id="inst-1",
+                version="1700000000000",
+                model_id="host",
+                file_path="/etc/app.conf",
+                file_name="app.conf",
+                status=ConfigFileVersionStatus.SUCCESS,
+                file_size=2,
+                error_message="",
+                content_hash="same-hash",
+                text_content="v1",
+            )
+            raise RuntimeError("rollback")
+
+    assert formal_writes == []
+    assert ConfigFileVersion.objects.filter(collect_task=task).count() == 0
+
+
+@pytest.mark.django_db(transaction=True)
+def test_transaction_rollback_does_not_delete_content_object(monkeypatch):
+    version_obj = ConfigFileVersion.objects.create(
+        **_version_fields(),
+        content="host/inst-1/formal.txt",
+        content_status="ready",
+    )
+    version_id = version_obj.id
+    deleted_objects = []
+    monkeypatch.setattr(version_obj.content, "delete", lambda save=False: deleted_objects.append(version_obj.content.name))
+
+    with pytest.raises(RuntimeError, match="rollback"):
+        with transaction.atomic():
+            version_obj.delete()
+            raise RuntimeError("rollback")
+
+    assert deleted_objects == []
+    assert ConfigFileVersion.objects.filter(id=version_id).exists()
 
 
 @pytest.mark.django_db(transaction=True)

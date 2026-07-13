@@ -120,8 +120,3 @@ class ConfigFileVersion(models.Model):
                 return gzip.decompress(raw_content)
             except OSError:
                 return raw_content
-
-    def delete(self, using=None, keep_parents=False):
-        if self.content:
-            self.content.delete(save=False)
-        return super().delete(using=using, keep_parents=keep_parents)

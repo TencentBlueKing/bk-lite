@@ -11,6 +11,7 @@ from django.utils.timezone import get_current_timezone, is_aware, is_naive, make
 from apps.cmdb.constants.constants import CollectRunStatusType
 from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.models.config_file_version import ConfigFileVersion, ConfigFileVersionStatus
+from apps.cmdb.services.config_file_content_lifecycle import ConfigFileContentLifecycle
 from apps.cmdb.utils.config_file_path import extract_file_name
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
@@ -308,6 +309,8 @@ class ConfigFileService(object):
             return cls._resolve_existing_version(existing, content_hash)
 
         try:
+            temp_content_key = ConfigFileContentLifecycle.stage_content(text_content)
+            formal_content_key = cls.build_object_key(model_id, instance_id, file_path, version)
             with transaction.atomic():
                 version_obj = ConfigFileVersion.objects.create(
                     **business_key,
@@ -318,14 +321,22 @@ class ConfigFileService(object):
                     file_size=file_size,
                     error_message=error_message,
                     content_hash=content_hash,
+                    content=formal_content_key,
+                    temp_content_key=temp_content_key,
                 )
         except IntegrityError:
+            ConfigFileContentLifecycle.discard_temp_content(temp_content_key)
             existing = ConfigFileVersion.objects.get(**business_key)
             return cls._resolve_existing_version(existing, content_hash)
+        except Exception:
+            if "temp_content_key" in locals():
+                ConfigFileContentLifecycle.discard_temp_content(temp_content_key)
+            raise
 
-        object_key = cls.build_object_key(model_id, instance_id, file_path, version)
-        version_obj.save_content(text_content, object_key)
-        version_obj.save(update_fields=["content"])
+        transaction.on_commit(
+            lambda version_id=version_obj.id: ConfigFileContentLifecycle.publish_version(version_id),
+            robust=True,
+        )
         return version_obj, True
 
     @staticmethod
@@ -808,19 +819,29 @@ class ConfigFileService(object):
         content_hash = hashlib.sha256(text_content.encode("utf-8")).hexdigest()
         file_size = len(text_content.encode("utf-8"))
 
+        temp_content_key = ConfigFileContentLifecycle.stage_content(text_content)
         object_key = cls.build_object_key(model_id, instance_id, file_path, version)
-        version_obj = ConfigFileVersion(
-            collect_task=None,
-            instance_id=instance_id,
-            model_id=model_id,
-            version=version,
-            file_path=file_path,
-            file_name=file_name,
-            content_hash=content_hash,
-            file_size=file_size,
-            status=ConfigFileVersionStatus.SUCCESS,
-            error_message="",
-        )
-        version_obj.save_content(text_content, object_key)
-        version_obj.save()
+        try:
+            with transaction.atomic():
+                version_obj = ConfigFileVersion.objects.create(
+                    collect_task=None,
+                    instance_id=instance_id,
+                    model_id=model_id,
+                    version=version,
+                    file_path=file_path,
+                    file_name=file_name,
+                    content_hash=content_hash,
+                    content=object_key,
+                    temp_content_key=temp_content_key,
+                    file_size=file_size,
+                    status=ConfigFileVersionStatus.SUCCESS,
+                    error_message="",
+                )
+                transaction.on_commit(
+                    lambda version_id=version_obj.id: ConfigFileContentLifecycle.publish_version(version_id),
+                    robust=True,
+                )
+        except Exception:
+            ConfigFileContentLifecycle.discard_temp_content(temp_content_key)
+            raise
         return {"unchanged": False, "version_obj": version_obj}

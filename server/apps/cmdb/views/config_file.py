@@ -5,9 +5,10 @@ from rest_framework.decorators import action
 from rest_framework.viewsets import GenericViewSet
 
 from apps.cmdb.constants.constants import OPERATE, VIEW
-from apps.cmdb.models.config_file_version import ConfigFileVersion
+from apps.cmdb.models.config_file_version import ConfigFileContentStatus, ConfigFileVersion
 from apps.cmdb.serializers.config_file_serializer import ConfigFileListSerializer, ConfigFileVersionSerializer
 from apps.cmdb.services.config_file_service import ConfigFileService
+from apps.cmdb.services.config_file_content_lifecycle import ConfigFileContentLifecycle
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.views.mixins import CmdbPermissionMixin
 from apps.core.decorators.api_permission import HasPermission
@@ -71,7 +72,7 @@ class ConfigFileVersionViewSet(CmdbPermissionMixin, GenericViewSet):
         if permission_error:
             return permission_error
 
-        if not version_obj.content:
+        if version_obj.content_status != ConfigFileContentStatus.READY or not version_obj.content:
             return WebUtils.response_error(error_message="当前版本没有可查看的内容", status_code=status.HTTP_400_BAD_REQUEST)
         encoding = (request.GET.get("encoding") or "utf-8").strip().lower()
         try:
@@ -124,7 +125,12 @@ class ConfigFileVersionViewSet(CmdbPermissionMixin, GenericViewSet):
         if version_1.file_path != version_2.file_path:
             return WebUtils.response_error(error_message="仅支持对比同一配置文件的版本", status_code=status.HTTP_400_BAD_REQUEST)
 
-        if not version_1.content or not version_2.content:
+        if (
+            version_1.content_status != ConfigFileContentStatus.READY
+            or version_2.content_status != ConfigFileContentStatus.READY
+            or not version_1.content
+            or not version_2.content
+        ):
             return WebUtils.response_error(error_message="仅支持对比采集成功的版本", status_code=status.HTTP_400_BAD_REQUEST)
 
         content_1 = version_1.read_content()
@@ -227,5 +233,5 @@ class ConfigFileVersionViewSet(CmdbPermissionMixin, GenericViewSet):
             return permission_error
 
         deleted_id = version_obj.id
-        version_obj.delete()
-        return WebUtils.response_success({"deleted_id": deleted_id})
+        ConfigFileContentLifecycle.request_delete(deleted_id)
+        return WebUtils.response_success({"deleted_id": deleted_id, "content_status": ConfigFileContentStatus.DELETE_PENDING})
