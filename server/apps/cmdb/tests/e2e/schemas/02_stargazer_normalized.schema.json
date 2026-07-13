@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Stargazer Normalized Payload",
+  "description": "通用 02 阶段 schema —— step1_stargazer_normalize_generic 输出",
+  "type": "object",
+  "required": ["success", "result"],
+  "properties": {
+    "success": {"type": "boolean"},
+    "result": {
+      "type": "object",
+      "additionalProperties": {"type": "array"},
+      "description": "{<model_id>: [items], host_proc_usage?: [procs]}"
+    }
+  }
+}
