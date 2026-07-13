@@ -13,8 +13,8 @@ from apps.cmdb.constants.constants import CollectPluginTypes, CollectRunStatusTy
 from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.services.collect_dispatch_service import CollectDispatchService
 from apps.cmdb.services.collect_tool_service import CollectToolService
-from apps.cmdb.services.subscription_task import SubscriptionTaskService
 from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncService
+from apps.cmdb.services.subscription_task import SubscriptionTaskService
 from apps.core.logger import cmdb_logger as logger
 
 
@@ -76,10 +76,7 @@ def _claim_collect_task_execution(instance_id, start_time, execution_id=None):
     }
     if execution_id:
         update_fields["task_id"] = execution_id
-        updated = queryset.filter(
-            exec_status=CollectRunStatusType.RUNNING,
-            task_id=execution_id,
-        ).update(**update_fields)
+        updated = queryset.filter(exec_status=CollectRunStatusType.RUNNING, task_id=execution_id,).update(**update_fields)
         if not updated:
             updated = queryset.exclude(exec_status=CollectRunStatusType.RUNNING).update(**update_fields)
     else:
@@ -123,10 +120,7 @@ def sync_collect_task(instance_id, execution_id=None):
                 collect = ProtocolCollect(task=instance)
                 result, format_data = collect.main()
 
-        config_file_pending = (
-            instance.task_type == CollectPluginTypes.CONFIG_FILE
-            and (result.get("config_file") or {}).get("status") == "pending"
-        )
+        config_file_pending = instance.task_type == CollectPluginTypes.CONFIG_FILE and (result.get("config_file") or {}).get("status") == "pending"
         if config_file_pending:
             instance.exec_status = CollectRunStatusType.RUNNING
         else:
@@ -137,13 +131,9 @@ def sync_collect_task(instance_id, execution_id=None):
 
         traceback_text = traceback.format_exc()
         logger.error(
-            "[CollectTask] 同步采集数据失败 task_id=%s, error=%s",
-            instance_id,
-            traceback_text,
+            "[CollectTask] 同步采集数据失败 task_id=%s, error=%s", instance_id, traceback_text,
         )
-        exec_error_message = "采集任务执行失败（task_id={}）：{}".format(
-            instance_id, _build_safe_error_message(err)
-        )
+        exec_error_message = "采集任务执行失败（task_id={}）：{}".format(instance_id, _build_safe_error_message(err))
         exec_traceback_excerpt = _build_traceback_excerpt(traceback_text)
         exec_traceback_location = _build_traceback_location(traceback_text)
         if exec_traceback_location:
@@ -200,9 +190,7 @@ def sync_collect_task(instance_id, execution_id=None):
             data_total = sum(collect_digest.get(k, 0) for k in data_keys)
             data_error = sum(collect_digest.get(f"{k}_error", 0) for k in data_keys)
             data_success = data_total - data_error
-            any_failure = any(
-                collect_digest.get(f"{k}_error", 0) > 0 for k in ("add", "update", "delete", "association")
-            )
+            any_failure = any(collect_digest.get(f"{k}_error", 0) > 0 for k in ("add", "update", "delete", "association"))
             if data_total > 0 and data_success == 0:
                 instance.exec_status = CollectRunStatusType.ERROR
                 collect_digest["message"] = "实例数据写入全部失败，请检查 add/update/delete 错误数"
@@ -212,15 +200,11 @@ def sync_collect_task(instance_id, execution_id=None):
         instance.collect_digest = collect_digest
         if config_file_pending:
             updated = CollectModels._default_manager.filter(id=instance_id, collect_data={}).update(
-                collect_data=result,
-                format_data=format_data,
-                collect_digest=collect_digest,
-                updated_at=now(),
+                collect_data=result, format_data=format_data, collect_digest=collect_digest, updated_at=now(),
             )
             if not updated:
                 logger.info(
-                    "[CollectTask] 配置文件采集结果已由回调更新，跳过本地 pending 覆盖 task_id=%s",
-                    instance_id,
+                    "[CollectTask] 配置文件采集结果已由回调更新，跳过本地 pending 覆盖 task_id=%s", instance_id,
                 )
         else:
             # topology_snapshot 由采集插件在运行中途直接 update，刷新避免被本次 save 覆盖
@@ -230,17 +214,11 @@ def sync_collect_task(instance_id, execution_id=None):
         import traceback
 
         logger.error(
-            "[CollectTask] 保存采集结果失败 task_id=%s, error=%s",
-            instance_id,
-            traceback.format_exc(),
+            "[CollectTask] 保存采集结果失败 task_id=%s, error=%s", instance_id, traceback.format_exc(),
         )
         CollectModels._default_manager.filter(id=instance_id).update(
             exec_status=CollectRunStatusType.ERROR,
-            collect_digest={
-                "message": "采集结果写入失败（task_id={}）：{}".format(
-                    instance_id, _build_safe_error_message(err)
-                )
-            },
+            collect_digest={"message": "采集结果写入失败（task_id={}）：{}".format(instance_id, _build_safe_error_message(err))},
         )
 
     logger.info("[CollectTask] 采集任务执行结束 task_id=%s", instance_id)
@@ -256,23 +234,15 @@ def sync_periodic_update_task_status():
     logger.info("[CollectTask] 开始周期巡检超时采集任务，将运行超过 5 分钟未回传的任务置为失败")
     five_minutes_ago = now() - timedelta(minutes=5)
     config_file_rows = CollectModels._default_manager.filter(
-        task_type=CollectPluginTypes.CONFIG_FILE,
-        exec_status=CollectRunStatusType.RUNNING,
-        exec_time__lt=five_minutes_ago,
-    ).update(
-        exec_status=CollectRunStatusType.ERROR,
-        collect_digest={"message": "配置文件采集已触发，但在 5 分钟内未收到回传结果"},
-    )
-    rows = CollectModels._default_manager.filter(
-        exec_status=CollectRunStatusType.RUNNING,
-        exec_time__lt=five_minutes_ago,
-    ).exclude(task_type=CollectPluginTypes.CONFIG_FILE).update(
-        exec_status=CollectRunStatusType.ERROR
+        task_type=CollectPluginTypes.CONFIG_FILE, exec_status=CollectRunStatusType.RUNNING, exec_time__lt=five_minutes_ago,
+    ).update(exec_status=CollectRunStatusType.ERROR, collect_digest={"message": "配置文件采集已触发，但在 5 分钟内未收到回传结果"},)
+    rows = (
+        CollectModels._default_manager.filter(exec_status=CollectRunStatusType.RUNNING, exec_time__lt=five_minutes_ago,)
+        .exclude(task_type=CollectPluginTypes.CONFIG_FILE)
+        .update(exec_status=CollectRunStatusType.ERROR)
     )
     logger.info(
-        "[CollectTask] 周期巡检超时采集任务完成，超时置失败任务数 rows=%s, 配置文件超时任务数 config_file_rows=%s",
-        rows,
-        config_file_rows,
+        "[CollectTask] 周期巡检超时采集任务完成，超时置失败任务数 rows=%s, 配置文件超时任务数 config_file_rows=%s", rows, config_file_rows,
     )
 
 
@@ -339,11 +309,7 @@ def execute_collect_tool_debug_task(debug_id: str, payload: dict, service_name: 
     except Exception as exc:
         logger.error(f"采集工具调试任务失败 debug_id={debug_id}, error={exc}", exc_info=True)
         result = CollectToolService.build_error_result(
-            debug_id=debug_id,
-            payload=payload,
-            stage="unknown",
-            summary=f"调试任务执行失败: {exc}",
-            raw_log=str(exc),
+            debug_id=debug_id, payload=payload, stage="unknown", summary=f"调试任务执行失败: {exc}", raw_log=str(exc),
         )
         CollectToolService.save_debug_state(debug_id, "error", result)
         return result
@@ -363,10 +329,8 @@ def check_subscription_rules() -> None:
 
 
 @shared_task
-def send_subscription_notifications(
-    event_groups: list[dict] | None = None,
-) -> None:
-    SubscriptionTaskService.send_notifications(event_groups=event_groups)
+def send_subscription_notifications(delivery_ids: list[int] | None = None,) -> None:
+    SubscriptionTaskService.send_notifications(delivery_ids=delivery_ids)
 
 
 @shared_task
@@ -420,6 +384,7 @@ def collect_node_mgmt_hosts():
 def reconcile_ipam_task() -> dict:
     """IPAM 与 CMDB 自动对账周期任务。规格 §5.5。"""
     from apps.cmdb.services.ipam_reconcile import run_reconciliation
+
     logger.info("[IPAM] 开始对账...")
     result = run_reconciliation()
     logger.info(f"[IPAM] 对账完成: {result}")
