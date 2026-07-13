@@ -1,6 +1,7 @@
 import uuid
 
 from django.db import models
+from django.utils.timezone import now
 
 from apps.core.models.time_info import TimeInfo
 
@@ -64,6 +65,7 @@ class CmdbOperationOutbox(TimeInfo):
     lease_expires_at = models.DateTimeField(null=True, blank=True)
     attempt_count = models.PositiveIntegerField(default=0)
     last_error = models.TextField(blank=True, default="")
+    next_attempt_at = models.DateTimeField(default=now)
 
     class Meta:
         db_table = "cmdb_operation_outbox"

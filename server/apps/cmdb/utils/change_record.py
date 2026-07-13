@@ -50,7 +50,7 @@ def _mirror_change_record(*, inst_id, model_id, _type, operator, scenario,
 
 
 def create_change_record(inst_id, model_id, label, _type, before_data=None, after_data=None, operator="", message="",
-                         model_object="", scenario=ORDINARY_ATTRIBUTE_CHANGE):
+                         model_object="", scenario=ORDINARY_ATTRIBUTE_CHANGE, operation_event_id=None):
     """创建实例变更记录"""
     change_data = {"operator": operator, "scenario": scenario}
     if before_data:
@@ -61,9 +61,24 @@ def create_change_record(inst_id, model_id, label, _type, before_data=None, afte
         change_data["message"] = message
     if model_object:
         change_data["model_object"] = model_object
-    ChangeRecord.objects.create(inst_id=inst_id, model_id=model_id, label=label, type=_type, **change_data)
-    _mirror_change_record(inst_id=inst_id, model_id=model_id, _type=_type, operator=operator, scenario=scenario,
-                          message=message, model_object=model_object, before_data=before_data, after_data=after_data)
+    if operation_event_id:
+        _record, created = ChangeRecord.objects.get_or_create(
+            operation_event_id=operation_event_id,
+            defaults={"inst_id": inst_id, "model_id": model_id, "label": label, "type": _type, **change_data},
+        )
+    else:
+        _record = ChangeRecord.objects.create(
+            inst_id=inst_id,
+            model_id=model_id,
+            label=label,
+            type=_type,
+            **change_data,
+        )
+        created = True
+    if created:
+        _mirror_change_record(inst_id=inst_id, model_id=model_id, _type=_type, operator=operator, scenario=scenario,
+                              message=message, model_object=model_object, before_data=before_data, after_data=after_data)
+    return _record
 
 
 def batch_create_change_record(label, _type, change_records, operator="", scenario=ORDINARY_ATTRIBUTE_CHANGE):

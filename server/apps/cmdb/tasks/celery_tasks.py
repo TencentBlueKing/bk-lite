@@ -449,3 +449,15 @@ def reconcile_config_file_content_task() -> dict:
     result = {**recovery, "orphans_deleted": orphans_deleted}
     logger.info("[ConfigFileContent] 周期补偿完成: %s", result)
     return result
+
+
+@shared_task
+def reconcile_cmdb_operations_task() -> dict:
+    from apps.cmdb.services.operation_service import OperationService
+
+    result = {
+        "graph_writes": OperationService.recover_stale_graph_writes(),
+        "outbox": OperationService.process_outbox_batch(),
+    }
+    logger.info("[CmdbOperation] 周期补偿完成: %s", result)
+    return result
