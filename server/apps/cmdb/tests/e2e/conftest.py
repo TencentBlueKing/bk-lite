@@ -100,6 +100,11 @@ def _resolve_plugin(model_id: str):
         "fusioninsight_host": "fusioninsight",
         # Task 3.4 / 3.5:zstack / h3c_cas 无 plugin(stub)
         # 已在 _PLUGIN_MODULE_ALIAS 处理:stub module 名 = model_id
+        # Task 3.6 / 3.7:dameng_enterprise / redis_sentinel_enterprise 复用底层 plugin
+        # 注:redis_sentinel 的实际 plugin 模块是 db/redis.py(因为 bk_obj_id='redis')
+        # 所以 redis_sentinel_enterprise 也要 alias 到 redis 才能找到 plugin
+        "dameng_enterprise":          "dameng",  # 复用社区版 dameng plugin
+        "redis_sentinel_enterprise":  "redis",  # 复用 redis plugin(db/redis.py)
     }
     module_alias = _PLUGIN_MODULE_ALIAS.get(model_id, model_id)
 

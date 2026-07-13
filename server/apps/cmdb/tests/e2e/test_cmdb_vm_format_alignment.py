@@ -180,7 +180,12 @@ def test_b_alignment_field_subset(model_id, load_fixture, runner_plugin_factory,
         pytest.skip(f"{model_id} 尚未在 runner_plugin_factory 注册")
 
     # vmware 走 vmware_vc sub-model(pipeline 实际产出 vmware_vc,不是 vmware)
-    actual_pipeline_model_id = "vmware_vc" if model_id == "vmware" else model_id
+    # redis_sentinel_enterprise 走 redis plugin(pipeline 实际产出 redis,不是 redis_sentinel_enterprise)
+    actual_pipeline_model_id = model_id
+    if model_id == "vmware":
+        actual_pipeline_model_id = "vmware_vc"
+    elif model_id == "redis_sentinel_enterprise":
+        actual_pipeline_model_id = "redis"  # 复用 redis plugin
 
     raw = load_fixture(f"{model_id}/01_stargazer_raw.json")
     raw_items = raw if isinstance(raw, list) else [raw]
@@ -286,7 +291,12 @@ def test_b_alignment_required_nonempty(model_id, load_fixture, runner_plugin_fac
     required_fields = {f.name for f in model_fields.values() if f.is_required}
 
     # vmware 走 vmware_vc sub-model
-    actual_pipeline_model_id = "vmware_vc" if model_id == "vmware" else model_id
+    # redis_sentinel_enterprise 走 redis plugin
+    actual_pipeline_model_id = model_id
+    if model_id == "vmware":
+        actual_pipeline_model_id = "vmware_vc"
+    elif model_id == "redis_sentinel_enterprise":
+        actual_pipeline_model_id = "redis"  # 复用 redis plugin
 
     raw = load_fixture(f"{model_id}/01_stargazer_raw.json")
     raw_items = raw if isinstance(raw, list) else [raw]

@@ -182,6 +182,10 @@ def test_a_alignment_business_labels(model_id, load_fixture, runner_plugin_facto
         runner_cls, plugin_cls, extra_payload_keys = _get_runner_plugin_for_alignment(model_id, runner_plugin_factory)
     except KeyError:
         pytest.skip(f"{model_id} 尚未在 runner_plugin_factory 注册")
+    # middleware 模式对象:业务字段 JSON 编码到 metric.result,不在顶层 labels
+    # 本 test 只检查顶层 labels,middleware 模式跳过(由 B 端 alignment 验证 result JSON 完整性)
+    if extra_payload_keys is not None:
+        pytest.skip(f"{model_id} 走 middleware 模式(业务字段在 metric.result),A 端 labels 校验跳过")
 
     model_fields = get_model_field_def(model_id)
     required_fields = {f.name for f in model_fields.values() if f.is_required}
