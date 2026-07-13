@@ -65,6 +65,34 @@ def test_instance_create(fake_graph, patch_side_effects):
     assert out["inst_name"] == "h1"
 
 
+@pytest.mark.django_db
+def test_instance_create_can_defer_audit_and_auto_relation(fake_graph, patch_side_effects, monkeypatch):
+    graph = fake_graph(
+        MODULE,
+        query_entity=([], 0),
+        create_entity={"_id": 9, "model_id": "host", "inst_name": "h1"},
+    )
+    monkeypatch.setattr(f"{MODULE}.create_change_record", lambda *a, **k: pytest.fail("审计不得同步执行"))
+    monkeypatch.setattr(
+        "apps.cmdb.services.auto_relation_reconcile.schedule_instance_auto_relation_reconcile",
+        lambda ids: pytest.fail("自动关联不得同步执行"),
+    )
+
+    out = InstanceManage.instance_create(
+        "host",
+        {"inst_name": "h1"},
+        "admin",
+        allowed_org_ids=[1],
+        operation_id="operation-1",
+        record_change=False,
+        schedule_post_actions=False,
+    )
+
+    create_call = next(call for call in graph.calls if call[0] == "create_entity")
+    assert out["_id"] == 9
+    assert create_call[1][1]["_cmdb_operation_id"] == "operation-1"
+
+
 # --------------------------------------------------------------------------
 # instance_update
 # --------------------------------------------------------------------------
@@ -92,6 +120,36 @@ def test_instance_update_ok(fake_graph, patch_side_effects):
         [{"id": 1}], ["admin"], 5, {"inst_name": "h2"}, "admin"
     )
     assert out["inst_name"] == "h2"
+
+
+@pytest.mark.django_db
+def test_instance_update_can_defer_audit_and_auto_relation(fake_graph, patch_side_effects, monkeypatch):
+    graph = fake_graph(
+        MODULE,
+        query_entity_by_id={"_id": 5, "model_id": "host", "inst_name": "h1", "organization": [1]},
+        query_entity=([], 0),
+        set_entity_properties=[{"_id": 5, "model_id": "host", "inst_name": "h2", "organization": [1]}],
+    )
+    monkeypatch.setattr(f"{MODULE}.create_change_record", lambda *a, **k: pytest.fail("审计不得同步执行"))
+    monkeypatch.setattr(
+        "apps.cmdb.services.auto_relation_reconcile.schedule_instance_auto_relation_reconcile",
+        lambda ids: pytest.fail("自动关联不得同步执行"),
+    )
+
+    out = InstanceManage.instance_update(
+        [{"id": 1}],
+        ["admin"],
+        5,
+        {"inst_name": "h2"},
+        "admin",
+        operation_id="operation-1",
+        record_change=False,
+        schedule_post_actions=False,
+    )
+
+    update_call = next(call for call in graph.calls if call[0] == "set_entity_properties")
+    assert out["inst_name"] == "h2"
+    assert update_call[1][2]["_cmdb_operation_id"] == "operation-1"
 
 
 # --------------------------------------------------------------------------

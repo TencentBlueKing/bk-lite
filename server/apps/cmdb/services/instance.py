@@ -544,9 +544,14 @@ class InstanceManage(object):
             allowed_org_ids: list | None = None,
             scenario: str = ORDINARY_ATTRIBUTE_CHANGE,
             record_change: bool = True,
+            operation_id: str | None = None,
+            schedule_post_actions: bool = True,
     ):
         """创建实例"""
+        instance_info = dict(instance_info)
         instance_info.update(model_id=model_id)
+        if operation_id:
+            instance_info["_cmdb_operation_id"] = operation_id
         attrs = ModelManage.search_model_attr(model_id)
         instance_info = apply_tag_validation_for_instance(instance_info, attrs, model_id)
         instance_info = apply_enum_validation_for_instance(instance_info, attrs)
@@ -573,6 +578,9 @@ class InstanceManage(object):
             exist_items, _ = ag.query_entity(INSTANCE, [{"field": "model_id", "type": "str=", "value": model_id}])
             result = ag.create_entity(INSTANCE, instance_info, check_attr_map, exist_items, operator, attrs)
 
+        result = dict(result)
+        result.pop("_cmdb_operation_id", None)
+
         # 企业版：实例创建后把引用文件落账（pending→committed 并补 inst_id）
         get_instance_enterprise_extension().commit_instance_files(
             model_id, result["_id"], result, attrs, operator=operator
@@ -591,9 +599,10 @@ class InstanceManage(object):
                 scenario=scenario,
             )
 
-        from apps.cmdb.services.auto_relation_reconcile import schedule_instance_auto_relation_reconcile
+        if schedule_post_actions:
+            from apps.cmdb.services.auto_relation_reconcile import schedule_instance_auto_relation_reconcile
 
-        schedule_instance_auto_relation_reconcile([result["_id"]])
+            schedule_instance_auto_relation_reconcile([result["_id"]])
         return result
 
     @staticmethod
@@ -607,8 +616,11 @@ class InstanceManage(object):
             scenario: str = ORDINARY_ATTRIBUTE_CHANGE,
             skip_permission_check: bool = False,
             record_change: bool = True,
+            operation_id: str | None = None,
+            schedule_post_actions: bool = True,
     ):
         """修改实例属性"""
+        update_attr = dict(update_attr)
         inst_info = InstanceManage.query_entity_by_id(inst_id)
 
         if not inst_info:
@@ -646,6 +658,8 @@ class InstanceManage(object):
         )
 
         InstanceManage._apply_display_fields_to_update(attrs, update_attr)
+        if operation_id:
+            update_attr["_cmdb_operation_id"] = operation_id
 
         with GraphClient() as ag:
             exist_items, _ = ag.query_entity(
@@ -661,6 +675,8 @@ class InstanceManage(object):
                 exist_items,
                 attrs=attrs,
             )
+            result[0] = dict(result[0])
+            result[0].pop("_cmdb_operation_id", None)
 
             # 企业版：实例更新后落账（引用文件 committed、移除文件 orphaned）
             get_instance_enterprise_extension().commit_instance_files(
@@ -681,9 +697,10 @@ class InstanceManage(object):
                     scenario=scenario,
                 )
 
-            from apps.cmdb.services.auto_relation_reconcile import schedule_instance_auto_relation_reconcile
+            if schedule_post_actions:
+                from apps.cmdb.services.auto_relation_reconcile import schedule_instance_auto_relation_reconcile
 
-            schedule_instance_auto_relation_reconcile([result[0]["_id"]])
+                schedule_instance_auto_relation_reconcile([result[0]["_id"]])
 
             return result[0]
 
