@@ -32,7 +32,7 @@
 
 - 不新增单位体系、不改单位换算规则
 - 不改公式表达式语法、查询构建或后端扫描计算逻辑
-- 不改 MetricPreview 预览图展示（仍展示 `calculation_unit`，即阈值单位）
+- 不改 MetricPreview 预览图展示：阈值单位即 `calculation_unit`（服务端单位换算的展示单位），Y 轴继续展示阈值单位，与阈值标注、比较语义一致
 - 不动公式模式下的结果单位交互（保持单槽位）
 - 不重做指标编辑器其它 Select（如汇聚周期单位）
 - 不修改后端迁移 / 模型 / 序列化器
@@ -115,7 +115,7 @@ groupedUnitOptions: CascaderItem[]; // 由 page.tsx 传入,data source = grouped
 />
 ```
 
-非公式模式：计算指标单位 Cascader 不放在编辑器内（编辑器的语义是「表达式构建」，单位属于结果配置）；改放在 `metricDefinitionForm.tsx` 的「指标」字段下方，紧挨公式编辑器，标签「计算指标单位」。
+非公式模式：计算指标单位 Cascader 不放在 `metricExpressionEditor` 内（该组件语义是「表达式构建」，单位属于结果配置）。物理位置在 `metricDefinitionForm.tsx` 的「指标」字段下方，紧挨公式编辑器，标签「计算指标单位」。由 `MetricDefinitionForm` 直接接收 `metricUnit` / `onMetricUnitChange` / `groupedUnitOptions` props 并渲染。
 
 #### `thresholdList.tsx`
 
