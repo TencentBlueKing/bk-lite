@@ -111,15 +111,19 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
         获取插件的 UI 模板。
 
         :param pk: 插件 ID
-        :return: UI 模板内容（JSON 格式）
+        :return: UI 模板内容（JSON 格式）。form_fields/table_columns 内
+            的 label 字段已按 request.user.locale 自动选 label/label_en。
         """
+        from apps.monitor.services.ui_template_locale import localize_ui_template
+
         plugin = self.get_object()
+        locale = getattr(request.user, "locale", "zh-Hans") or "zh-Hans"
 
         try:
             ui_template = MonitorPluginUITemplate.objects.get(plugin=plugin)
             return WebUtils.response_success(
                 {
-                    "ui_template": ui_template.content,
+                    "ui_template": localize_ui_template(ui_template.content, locale),
                     "node_selector": plugin.node_selector or {},
                     "support_collect_detect": plugin.support_collect_detect,
                 }
