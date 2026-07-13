@@ -45,9 +45,9 @@ def channel_view_module(monkeypatch):
     return module
 
 
-def _request(*, is_superuser):
+def _request(*, is_superuser, roles=None):
     return SimpleNamespace(
-        user=SimpleNamespace(is_superuser=is_superuser, roles=[], locale="en"),
+        user=SimpleNamespace(is_superuser=is_superuser, roles=roles or [], locale="en"),
         data={},
     )
 
@@ -74,6 +74,21 @@ def test_channel_crud_keeps_superuser_access(channel_view_module, mocker, action
         mocker.patch.object(view, "get_object", return_value=SimpleNamespace(name="protected"))
 
     response = getattr(view, action)(_request(is_superuser=True), pk=1)
+
+    assert response is expected
+    parent.assert_called_once()
+
+
+@pytest.mark.parametrize("action", ["list", "retrieve", "create", "update", "partial_update", "destroy"])
+def test_channel_crud_keeps_admin_role_access(channel_view_module, mocker, action):
+    view = channel_view_module.ChannelViewSet()
+    expected = SimpleNamespace(status_code=200, data={})
+    parent_action = "update" if action == "partial_update" else action
+    parent = mocker.patch.object(viewsets.ModelViewSet, parent_action, return_value=expected)
+    if action == "destroy":
+        mocker.patch.object(view, "get_object", return_value=SimpleNamespace(name="protected"))
+
+    response = getattr(view, action)(_request(is_superuser=False, roles=["admin"]), pk=1)
 
     assert response is expected
     parent.assert_called_once()
