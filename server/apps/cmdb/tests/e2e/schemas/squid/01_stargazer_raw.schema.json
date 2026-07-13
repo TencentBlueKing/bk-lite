@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Stargazer squid 采集原始输出契约",
+  "description": "2026-07-10 v4 — Phase 5 任务 5.3,fixture 由 stargazer cli 真实落盘(middleware runner,extra_payload_keys={\"result\": True})。raw_stdout 属于形态 B(平铺,无 success/result 包裹),由公共契约 00_common_contract.schema.json 的 oneOf 在 CI 层兼容;本文件直接展开公共契约必填字段(model_id/captured_at/raw_stdout)+ squid 业务字段,与其它对象 schema 保持扁平风格以免 jsonschema 库无法解析 $ref。\n\n注:squid 的 stargazer 真实落盘 port 字段在 ubuntu 容器下解析异常(值为 'instead.'),版本字段为空。e2e 不修改 fixture,以反映现场真实数据;pattern 字段接受 ip + model_id + 任意后缀。",
+  "type": "object",
+  "required": ["model_id", "captured_at", "raw_stdout"],
+  "properties": {
+    "model_id":    {"type": "string", "pattern": "^squid$"},
+    "captured_at": {"type": "string", "format": "date-time"},
+    "image":       {"type": "string", "description": "docker 镜像,纯参考"},
+    "container_meta": {
+      "type": "object",
+      "properties": {
+        "container_id": {"type": "string"},
+        "image":        {"type": "string"}
+      }
+    },
+    "params": {"type": "object", "description": "stargazer 采集参数,纯参考"},
+    "raw_stdout": {
+      "type": "object",
+      "required": ["ip_addr", "port", "version"],
+      "properties": {
+        "bk_inst_name":     {"type": "string"},
+        "bk_obj_id":        {"type": "string"},
+        "ip_addr":          {"type": "string"},
+        "port":             {"type": ["string", "integer"]},
+        "install_path":     {"type": "string"},
+        "version":          {"type": "string"},
+        "config_file_path": {"type": "string"},
+        "cache_dir":        {"type": "string"},
+        "access_log":       {"type": "string"},
+        "error_log":        {"type": "string"},
+        "visible_hostname": {"type": "string"}
+      }
+    }
+  }
+}

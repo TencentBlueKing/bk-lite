@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Stargazer haproxy 采集原始输出契约",
+  "description": "2026-07-10 v4 Phase 2.3 第四闭环,fixture 由 cli.py 真实落盘(middleware runner,extra_payload_keys={\"result\":True})。raw_stdout 走公共契约 oneOf 形态 B(平铺,无 success/result 包裹)。",
+  "type": "object",
+  "required": ["model_id", "captured_at", "raw_stdout"],
+  "properties": {
+    "model_id":    {"type": "string", "pattern": "^haproxy$"},
+    "captured_at": {"type": "string", "format": "date-time"},
+    "image":       {"type": "string"},
+    "container_meta": {
+      "type": "object",
+      "properties": {
+        "container_id": {"type": "string"},
+        "image":        {"type": "string"}
+      }
+    },
+    "params": {
+      "type": "object",
+      "description": "stargazer 采集参数(host/ssh_port 等),纯参考",
+      "properties": {
+        "host":     {"type": "string"},
+        "ssh_port": {"type": ["string", "integer"]}
+      }
+    },
+    "raw_stdout": {
+      "type": "object",
+      "required": ["ip_addr", "port", "version"],
+      "properties": {
+        "bk_inst_name":        {"type": "string"},
+        "bk_obj_id":           {"type": "string"},
+        "ip_addr":             {"type": "string", "format": "ipv4"},
+        "port":                {"type": ["string", "integer"], "description": "haproxy 多端口拼接字符串(\"80&8404\")或单端口"},
+        "listen_port":         {"type": ["string", "integer"], "description": "兼容 nginx 形态别名,实际 haproxy 走 port"},
+        "version":             {"type": "string"},
+        "install_path":        {"type": "string"},
+        "conf_file":           {"type": "string"},
+        "global_maxconn":      {"type": "string"},
+        "global_pidfile":      {"type": "string"},
+        "global_group_name":   {"type": "string"},
+        "global_user_name":    {"type": "string"},
+        "defaults_maxconn":    {"type": "string"},
+        "defaults_mode":       {"type": "string"},
+        "defaults_retries":    {"type": "string"}
+      }
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Stargazer kafka 采集原始输出契约",
+  "description": "2026-07-10 G5.2.x — kafka 走 middleware runner,extra_payload_keys={\"result\":True},业务字段经 metric.result JSON 编码。raw_stdout 属于形态 B(平铺,无 success/result 包裹),由公共契约 00_common_contract.schema.json 的 oneOf 兼容。",
+  "type": "object",
+  "required": ["model_id", "captured_at", "raw_stdout"],
+  "properties": {
+    "model_id":    {"type": "string", "pattern": "^kafka$"},
+    "captured_at": {"type": "string", "format": "date-time"},
+    "raw_stdout": {
+      "type": "object",
+      "required": ["inst_name", "ip_addr", "port", "version", "obj_id", "bin_path", "config", "user", "pid"],
+      "properties": {
+        "inst_name":   {"type": "string", "pattern": "^[0-9.]+-kafka-[0-9]+$"},
+        "ip_addr":     {"type": "string"},
+        "obj_id":      {"type": "string", "pattern": "^kafka$"},
+        "port":        {"type": ["string", "integer"]},
+        "version":     {"type": "string"},
+        "cluster_id":  {"type": "string"},
+        "broker_count": {"type": ["string", "integer"]},
+        "topics":      {"type": "string"},
+        "bin_path":    {"type": "string"},
+        "config":      {"type": "string"},
+        "user":        {"type": "string"},
+        "pid":         {"type": ["string", "integer"]}
+      }
+    }
+  }
+}

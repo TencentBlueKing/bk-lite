@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Stargazer elasticsearch 采集原始输出契约",
+  "description": "2026-07-10 v4 Phase 3.8 — elasticsearch(db runner,平铺,extra_payload_keys=None)。stargazer fixture model_id 字段是 'elasticsearch',CMDB plugin ESCollectionPlugin.supported_model_id='es'(alias 在 conftest._resolve_plugin 处理)。",
+  "type": "object",
+  "required": ["model_id", "captured_at", "raw_stdout"],
+  "properties": {
+    "model_id":    {"type": "string", "pattern": "^es$"},
+    "captured_at": {"type": "string", "format": "date-time"},
+    "raw_stdout": {
+      "type": "object",
+      "required": ["inst_name", "ip_addr", "port", "version", "cluster_name"],
+      "properties": {
+        "inst_name":         {"type": "string"},
+        "obj_id":            {"type": "string"},
+        "ip_addr":           {"type": "string"},
+        "port":              {"type": ["string", "integer"]},
+        "version":           {"type": "string"},
+        "lucene_version":    {"type": "string"},
+        "build_flavor":      {"type": "string"},
+        "cluster_name":      {"type": "string"},
+        "status":            {"type": "string"},
+        "number_of_nodes":   {"type": ["string", "integer"]},
+        "active_shards":     {"type": ["string", "integer"]},
+        "unassigned_shards": {"type": ["string", "integer"]},
+        "bin_path":          {"type": "string"},
+        "config":            {"type": "string"},
+        "user":              {"type": "string"},
+        "pid":               {"type": ["string", "integer"]}
+      }
+    }
+  }
+}

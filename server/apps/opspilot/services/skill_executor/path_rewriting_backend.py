@@ -154,6 +154,8 @@ class PathRewritingBackend(SandboxBackendProtocol):
     # 沙箱安全：可执行命令白名单(防止 LLM 误操作 host)。
     # 当前 sandbox 是 LocalShellBackend(virtual_mode),execute 直接跑 host shell,
     # 白名单是 P0 短期方案,Phase 1 NATS worker + Docker 沙箱是长期方案。
+    # 安全约定:任何需要出网的命令(curl / wget / ssh / scp / rsync / nc)
+    # 都不在白名单;对应的网络行为由工具函数显式提供(参考 SSRFValidator)。
     _ALLOWED_COMMANDS = frozenset({
         # 文件/文本
         "ls", "cat", "head", "tail", "grep", "find", "wc", "echo", "pwd",
@@ -172,13 +174,14 @@ class PathRewritingBackend(SandboxBackendProtocol):
         "pdf2htmlEX", "mutool", "pandoc",
         # k8s
         "kubectl", "helm", "kustomize", "kubectx", "kubens",
-        # 网络(受 _BLOCKED_PATTERNS 限)
-        "curl", "wget",
+        # 网络工具(curl/wget/ssh 等)显式不在白名单。
+        # 真正出网需求由业务工具(uvx / git / npm)或 SSRF 校验过的 fetch 工具处理。
         # 其他常用
         "git", "tar", "date", "echo", "true", "false", "test", "[",
         "which", "whereis", "type",
     })
     # 黑名单正则(任何匹配都拒绝)
+    # 收紧后比 L3 shell_tools 严:L3 只禁纯命令词,这层连管道 / 替换 / 展开一起拦。
     _BLOCKED_PATTERNS = (
         r"\brm\s+(-[a-zA-Z]*r[a-zA-Z]*f|-[a-zA-Z]*f[a-zA-Z]*r|-rf|-fr)\s+/\s*",  # rm -rf /
         r"\brm\s+-rf\s+/",
@@ -220,6 +223,18 @@ class PathRewritingBackend(SandboxBackendProtocol):
         r"\b>/dev/sd",
         r"\bcrontab\s+",
         r"\bat\s+now\b",              # at 立即执行
+        # S4 防御:网络工具原命令被 _ALLOWED_COMMANDS 拿掉,这里再做一次
+        # 黑名单兜底防止 LLM 通过管道 `cat|curl` / `echo|curl` 之类绕开
+        r"\bcurl\b",
+        r"\bwget\b",
+        # M6 防御:路径展开绕开路径白名单(原正则只查 /xxx,LLM 写 ~/.ssh/id_rsa
+        # / $HOME/.aws/credentials / `cat $(echo /etc/passwd)` 都不触发)
+        r"\$\(",                      # 命令替换 $(...) 任何出现都拦
+        r"`[^`]*`",                   # 反引号命令替换
+        r"(?:^|\s)~/[^\s'\"]*",       # ~/path 任意字符(隐藏文件 / 任意位置展开)
+        r"\$HOME\b",                  # $HOME 环境变量展开
+        r"\$\{[A-Z_][A-Z0-9_]*\}",   # ${HOME} ${PATH} 形式
+        r"(?:^|\s|\|)\$[A-Z_][A-Z0-9_]*\b",  # $PATH $USER $SECRET 等无大括号形式
     )
 
     def _validate_command(self, rewritten_command: str, original: str) -> None:
@@ -267,10 +282,13 @@ class PathRewritingBackend(SandboxBackendProtocol):
 
         # 3. 路径沙箱(只查原 command,防止 LLM 访问 host 路径)
         # 允许: /skills/xxx, /tmp/xxx(虚拟根,会被重写到 sandbox_dir),
-        # /dev/null, /dev/stdout, /dev/stderr, /dev/fd/*, 纯环境变量赋值, 注释
+        # /dev/null, /dev/stdout, /dev/stderr, 纯环境变量赋值, 注释
+        # M9 修复:删 /proc/self/(可读 host 进程 environ 拿 SECRET_KEY/DB_PASSWORD)、
+        # /dev/fd/(可反推进程打开文件)、/dev/shm/(跨进程共享内存泄露)。整个 /proc
+        # 前缀都不在白名单,堵死 /proc/cpuinfo /proc/meminfo /proc/net/tcp 等。
         allowed_path_prefixes = (
             "/skills/", "/tmp/", "/dev/null", "/dev/stdout",
-            "/dev/stderr", "/dev/fd/", "/proc/self/", "/dev/shm/",
+            "/dev/stderr",
         )
         for match in re.finditer(r"(?:^|\s)(/[^\s'\"]+)", original):
             path = match.group(1)
@@ -279,6 +297,26 @@ class PathRewritingBackend(SandboxBackendProtocol):
                         f"[sandbox] 拒绝 host 路径 {path!r}。"
                         f"只允许 {allowed_path_prefixes} 下的路径。"
                     )
+
+        # 4. SSRF 兜底:扫命令字符串里所有 http(s):// URL,用 LLM 端点宽松模式
+        # 校验(只挡云元数据,内网 / localhost 由 ops-system-mgmt 的内网白名单统一管)。
+        # 即便 _ALLOWED_COMMANDS 拿掉了 curl/wget,LLM 还能走
+        # `python3 -c "import urllib.request; ..."` 这类绕道,黑名单拦不住,这里兜底。
+        # 严格 validate() 模式对 skill 沙箱太死板(企业 k8s、localhost 服务、内部 HTTP
+        # 都会拒),用 validate_llm_endpoint 只挡云元数据,把"内网能不能走"留给系统
+        # 白名单(apps/system_mgmt/viewsets/network_white_list_viewset.py + 缓存
+        # apps/system_mgmt/utils/network_whitelist_cache.py)统一管。
+        # deep_wrapper_node 是 async,但 _validate_command 是同步调用,
+        # validate_llm_endpoint 内部用 socket.getaddrinfo 同步,host 解析在
+        # 50ms 以内,可接受;Phase 1 容器化时再考虑包 to_thread。
+        from apps.core.utils.ssrf_validator import SSRFValidator, SSRFError
+        for url in re.findall(r"https?://[^\s'\"|;&<>]+", original):
+            try:
+                SSRFValidator.validate_llm_endpoint(url)
+            except SSRFError as e:
+                raise PermissionError(
+                    f"[sandbox] 网络目标被 SSRF 拦截: {url!r}({e})"
+                ) from e
 
     def _ensure_sandbox_dirs(self, rewritten_command: str) -> None:
         """提前 mkdir sandbox_dir 下可能被写到的子目录,避免 open() 因父目录不存在而失败。

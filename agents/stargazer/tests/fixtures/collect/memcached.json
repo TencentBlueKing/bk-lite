@@ -1,0 +1,48 @@
+{
+  "model_id": "memcached",
+  "captured_at": "2026-07-08T06:28:31Z",
+  "image": "docker.m.daocloud.io/library/ubuntu:22.04",
+  "container_meta": {
+    "container_id": "bf65f49a4402",
+    "image": "docker.m.daocloud.io/library/ubuntu:22.04"
+  },
+  "params": {
+    "host": "127.0.0.1",
+    "ssh_port": 12244
+  },
+  "raw_stdout": [
+    {
+      "bk_inst_name": "172.17.0.2-memcached-11211",
+      "ip_addr": "172.17.0.2",
+      "bk_obj_id": "memcached",
+      "port": "11211",
+      "version": "",
+      "maxconn": "",
+      "cachesize": "64",
+      "user_name": "memcache",
+      "install_path": "."
+    },
+    {
+      "bk_inst_name": "172.17.0.2-memcached-",
+      "ip_addr": "172.17.0.2",
+      "bk_obj_id": "memcached",
+      "port": "",
+      "version": "",
+      "maxconn": "",
+      "cachesize": "",
+      "user_name": "root",
+      "install_path": "/usr/bin"
+    },
+    {
+      "bk_inst_name": "172.17.0.2-memcached-",
+      "ip_addr": "172.17.0.2",
+      "bk_obj_id": "memcached",
+      "port": "",
+      "version": "",
+      "maxconn": "",
+      "cachesize": "",
+      "user_name": "",
+      "install_path": "."
+    }
+  ]
+}

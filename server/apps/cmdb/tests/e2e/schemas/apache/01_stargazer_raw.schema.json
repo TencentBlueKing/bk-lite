@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Stargazer apache 采集原始输出契约",
+  "description": "2026-07-10 v4 — Phase 4 任务 4.3,fixture 由 stargazer cli 真实落盘(middleware runner,extra_payload_keys={\"result\": True})。raw_stdout 属于形态 B(平铺,无 success/result 包裹),由公共契约 00_common_contract.schema.json 的 oneOf 在 CI 层兼容;本文件直接展开公共契约必填字段(model_id/captured_at/raw_stdout)+ apache 业务字段,与其它对象 schema 保持扁平风格以免 jsonschema 库无法解析 $ref。",
+  "type": "object",
+  "required": ["model_id", "captured_at", "raw_stdout"],
+  "properties": {
+    "model_id":    {"type": "string", "pattern": "^apache$"},
+    "captured_at": {"type": "string", "format": "date-time"},
+    "image":       {"type": "string", "description": "docker 镜像,纯参考"},
+    "container_meta": {
+      "type": "object",
+      "properties": {
+        "container_id": {"type": "string"},
+        "image":        {"type": "string"}
+      }
+    },
+    "params": {"type": "object", "description": "stargazer 采集参数,纯参考"},
+    "raw_stdout": {
+      "type": "object",
+      "required": ["ip_addr", "port", "version"],
+      "properties": {
+        "inst_name":        {"type": "string"},
+        "obj_id":           {"type": "string"},
+        "ip_addr":          {"type": "string"},
+        "port":             {"type": ["string", "integer"]},
+        "httpd_path":       {"type": "string"},
+        "version":          {"type": "string"},
+        "doc_root":         {"type": "string"},
+        "httpd_conf_path":  {"type": "string"},
+        "error_log":        {"type": "string"},
+        "custom_log":       {"type": "string"},
+        "include":          {"type": "string"}
+      }
+    }
+  }
+}

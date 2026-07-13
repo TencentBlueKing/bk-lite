@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CMDB haproxy 实例契约",
+  "description": "2026-07-10 v4 Phase 2.3 第四闭环,基于 HaproxyCollectionPlugin.field_mapping + MiddlewareCollectMetrics。runner 走 metric.result JSON 编码,所以 port 字段保留字符串形态(可能是 '80&8404' 拼接)。",
+  "type": "object",
+  "required": ["inst_name", "ip_addr", "port"],
+  "properties": {
+    "inst_name":  {"type": "string", "pattern": "^[0-9.]+-haproxy-.+$", "description": "由 MiddlewareCollectMetrics.get_inst_name 用 port 或 listen_port 拼成,{ip}-{model_id}-{port};haproxy 真实是多端口拼接 '80&8404',所以 pattern 用 .+ 而非纯数字"},
+    "ip_addr":    {"type": "string", "format": "ipv4"},
+    "port":       {"type": ["string", "integer"], "description": "MiddlewareCollectMetrics.get_port 直接 pick_value('port' 或 'listen_port'),haproxy 真实形态为多端口拼接字符串"},
+    "version":    {"type": "string"},
+    "install_path": {"type": "string"},
+    "conf_file":  {"type": "string"},
+    "defaults_maxconn":  {"type": "string"},
+    "defaults_mode":     {"type": "string"},
+    "defaults_retries":  {"type": "string"},
+    "global_group_name": {"type": "string"},
+    "global_maxconn":    {"type": "string"},
+    "global_pidfile":    {"type": "string"},
+    "global_user_name":  {"type": "string"}
+  }
+}

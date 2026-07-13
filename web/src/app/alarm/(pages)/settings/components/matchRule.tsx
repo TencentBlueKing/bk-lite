@@ -177,11 +177,11 @@ const RulesMatch: React.FC<MatchRuleProps> = ({
                         </Select>
                       </div>
                       <div className={styles.valueInput}>
-                        {['level', 'source_id'].includes(i.key as string) ? (
+                        {['level', 'source_id', 'source_name'].includes(i.key as string) ? (
                           <Select
                             value={i.value}
                             showSearch
-                            loading={i.key === 'source_id' && sourceLoading}
+                            loading={(i.key === 'source_id' || i.key === 'source_name') && sourceLoading}
                             placeholder={`${t('common.selectTip')}`}
                             onChange={(value) => {
                               const updatedPolicyList = [...policyList];
@@ -198,12 +198,18 @@ const RulesMatch: React.FC<MatchRuleProps> = ({
                                   </Option>
                                 ),
                               )}
-                            {i.key === 'source_id' &&
-                              sourceList.map((source) => (
-                                <Option key={source.id} value={source.id}>
-                                  {source.name}
-                                </Option>
-                              ))}
+                            {(i.key === 'source_id' || i.key === 'source_name') &&
+                              sourceList.map((source) => {
+                                // source_id 存 AlertSource.id（向后兼容老数据）；
+                                // source_name 存 AlertSource.name 字符串（推荐新规则用）。
+                                const optionValue =
+                                  i.key === 'source_name' ? String(source.name) : String(source.id);
+                                return (
+                                  <Option key={optionValue} value={optionValue}>
+                                    {source.name}
+                                  </Option>
+                                );
+                              })}
                           </Select>
                         ) : (
                           <Input

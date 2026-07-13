@@ -1,20 +1,21 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "CMDB redis instance",
+  "title": "CMDB redis 实例契约",
+  "description": "2026-07-10 Phase 2.4 第四闭环,fixture 由真实落盘数据驱动",
   "type": "object",
   "required": ["inst_name", "ip_addr", "port"],
   "properties": {
-    "inst_name":     {"type": "string", "pattern": "-redis-"},
+    "inst_name":     {"type": "string", "pattern": "^[0-9.]+-redis-[0-9]+$"},
     "ip_addr":       {"type": "string"},
-    "port":          {"type": "string"},
+    "port":          {"type": ["string", "integer"]},
     "version":       {"type": "string"},
     "install_path":  {"type": "string"},
-    "max_conn":      {"type": "string"},
-    "max_mem":       {"type": "string"},
+    "max_conn":      {"type": ["string", "integer"]},
+    "max_mem":       {"type": ["string", "integer"]},
     "database_role": {"type": "string"},
     "topo_mode":     {"type": "string"},
     "cluster_uuid":  {"type": "string"},
-    "slaves":        {"type": "string"},
-    "master":        {"type": "string"}
+    "slaves":        {"type": ["string", "array"]},
+    "master":        {"type": ["string", "object"]}
   }
 }

@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CMDB redis 实例契约(redis_sentinel 复用)",
+  "description": "2026-07-10 v4 — redis_sentinel 走 redis plugin,inst_name 模式沿用 redis {ip}-{model_id}-{port}",
+  "type": "object",
+  "required": ["inst_name", "ip_addr", "port"],
+  "properties": {
+    "inst_name":     {"type": "string", "pattern": "^[0-9.]+-(redis|redis_sentinel)-[0-9]+$"},
+    "ip_addr":       {"type": "string"},
+    "port":          {"type": ["string", "integer"]},
+    "version":       {"type": "string"},
+    "install_path":  {"type": "string"},
+    "max_conn":      {"type": ["string", "integer"]},
+    "max_mem":       {"type": ["string", "integer"]},
+    "database_role": {"type": "string"},
+    "topo_mode":     {"type": "string"},
+    "cluster_uuid":  {"type": "string"},
+    "slaves":        {"type": ["array", "string"]},
+    "master":        {"type": ["object", "string"]}
+  }
+}

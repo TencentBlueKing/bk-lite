@@ -1,0 +1,32 @@
+{
+  "model_id": "elasticsearch",
+  "captured_at": "2026-07-08T06:25:36Z",
+  "image": "docker.m.daocloud.io/library/ubuntu:22.04",
+  "container_meta": {
+    "container_id": "1ace2ff2f773",
+    "image": "docker.m.daocloud.io/library/ubuntu:22.04"
+  },
+  "params": {
+    "host": "127.0.0.1",
+    "ssh_port": 12228,
+    "es_port": 19200
+  },
+  "raw_stdout": {
+    "inst_name": "172.17.0.4-elasticsearch-9200",
+    "ip_addr": "172.17.0.4",
+    "obj_id": "elasticsearch",
+    "port": "9200",
+    "version": "8.19.18",
+    "lucene_version": "9.12.2",
+    "build_flavor": "default",
+    "cluster_name": "elasticsearch",
+    "status": "green",
+    "number_of_nodes": "1",
+    "active_shards": "0",
+    "unassigned_shards": "0",
+    "bin_path": "/usr/share/elasticsearch/bin",
+    "config": "/etc/elasticsearch/elasticsearch.yml",
+    "user": "elasticsearch",
+    "pid": "4440"
+  }
+}
