@@ -105,13 +105,24 @@ class ConfigFileVersionViewSet(CmdbPermissionMixin, GenericViewSet):
         if not version_1 or not version_2:
             return WebUtils.response_error(error_message="对比版本不存在", status_code=status.HTTP_404_NOT_FOUND)
 
-        # 校验权限（两个版本应属于同一实例）
-        instance, error = self._get_instance_or_error(version_1.instance_id)
+        instance_1, error = self._get_instance_or_error(version_1.instance_id)
         if error:
             return error
-        permission_error = self.require_instance_permission(request, instance, operator=VIEW)
+        permission_error = self.require_instance_permission(request, instance_1, operator=VIEW)
         if permission_error:
             return permission_error
+
+        instance_2, error = self._get_instance_or_error(version_2.instance_id)
+        if error:
+            return error
+        permission_error = self.require_instance_permission(request, instance_2, operator=VIEW)
+        if permission_error:
+            return permission_error
+
+        if version_1.instance_id != version_2.instance_id:
+            return WebUtils.response_error(error_message="仅支持对比同一实例的配置文件版本", status_code=status.HTTP_400_BAD_REQUEST)
+        if version_1.file_path != version_2.file_path:
+            return WebUtils.response_error(error_message="仅支持对比同一配置文件的版本", status_code=status.HTTP_400_BAD_REQUEST)
 
         if not version_1.content or not version_2.content:
             return WebUtils.response_error(error_message="仅支持对比采集成功的版本", status_code=status.HTTP_400_BAD_REQUEST)

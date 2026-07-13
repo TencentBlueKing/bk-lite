@@ -84,6 +84,47 @@ class Management:
 
         return add_list, update_list, delete_list
 
+    def _query_existing_unique_candidates(self, ag, inst_list):
+        unique_fields = list(self.check_attr_map.get("is_only", {}).keys())
+        if not unique_fields:
+            return []
+
+        exist_items = []
+        seen_ids = set()
+        base_params = [{"field": "model_id", "type": "str=", "value": self.model_id}]
+
+        for field in unique_fields:
+            values = []
+            seen_values = set()
+            for instance_info in inst_list:
+                value = instance_info.get(field)
+                if value in (None, "") or value in seen_values:
+                    continue
+                seen_values.add(value)
+                values.append(value)
+
+            if not values:
+                continue
+
+            for params in self._build_unique_candidate_params(base_params, field, values):
+                items, _ = ag.query_entity(INSTANCE, params)
+                for item in items:
+                    item_id = item.get("_id")
+                    if item_id in seen_ids:
+                        continue
+                    seen_ids.add(item_id)
+                    exist_items.append(item)
+
+        return exist_items
+
+    @staticmethod
+    def _build_unique_candidate_params(base_params, field, values):
+        if all(isinstance(value, bool) for value in values):
+            return [base_params + [{"field": field, "type": "bool", "value": value}] for value in values]
+        if all(isinstance(value, int) and not isinstance(value, bool) for value in values):
+            return [base_params + [{"field": field, "type": "int[]", "value": values}]]
+        return [base_params + [{"field": field, "type": "str[]", "value": values}]]
+
     def add_inst(self, inst_list):
         """新增实例"""
         result = {"success": [], "failed": []}
@@ -91,7 +132,7 @@ class Management:
             return result
 
         with GraphClient() as ag:
-            exist_items, _ = ag.query_entity(INSTANCE, [{"field": "model_id", "type": "str=", "value": self.model_id}])
+            exist_items = self._query_existing_unique_candidates(ag, inst_list)
             for instance_info in inst_list:
                 assos = instance_info.pop("assos", [])
                 try:
@@ -123,7 +164,7 @@ class Management:
             return result
 
         with GraphClient() as ag:
-            exist_items, _ = ag.query_entity(INSTANCE, [{"field": "model_id", "type": "str=", "value": self.model_id}])
+            exist_items = self._query_existing_unique_candidates(ag, inst_list)
             for instance_info in inst_list:
                 try:
                     instance_info.update(

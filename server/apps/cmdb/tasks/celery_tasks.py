@@ -68,33 +68,45 @@ def _build_traceback_location(traceback_text: str) -> str:
     return file_lines[-1] if file_lines else ""
 
 
+def _claim_collect_task_execution(instance_id, start_time, execution_id=None):
+    queryset = CollectModels._default_manager.filter(id=instance_id)
+    update_fields = {
+        "exec_status": CollectRunStatusType.RUNNING,
+        "exec_time": start_time,
+    }
+    if execution_id:
+        update_fields["task_id"] = execution_id
+        updated = queryset.filter(
+            exec_status=CollectRunStatusType.RUNNING,
+            task_id=execution_id,
+        ).update(**update_fields)
+        if not updated:
+            updated = queryset.exclude(exec_status=CollectRunStatusType.RUNNING).update(**update_fields)
+    else:
+        updated = queryset.exclude(exec_status=CollectRunStatusType.RUNNING).update(**update_fields)
+    if not updated:
+        return None
+    return CollectModels._default_manager.filter(id=instance_id).first()
+
+
 @shared_task
-def sync_collect_task(instance_id):
+def sync_collect_task(instance_id, execution_id=None):
     """
     同步采集任务
     """
     logger.info("[CollectTask] 开始采集任务 task_id=%s", instance_id)
-    instance = CollectModels._default_manager.filter(id=instance_id).first()
+    start_time = now()
+    instance = _claim_collect_task_execution(instance_id, start_time, execution_id=execution_id)
     if not instance:
-        logger.warning("[CollectTask] 采集任务不存在，跳过执行 task_id=%s", instance_id)
+        exists = CollectModels._default_manager.filter(id=instance_id).exists()
+        if exists:
+            logger.info("[CollectTask] 采集任务已在执行中，跳过重复执行 task_id=%s", instance_id)
+        else:
+            logger.warning("[CollectTask] 采集任务不存在，跳过执行 task_id=%s", instance_id)
         return
     from apps.cmdb.services.collect_service import CollectModelService
 
     CollectModelService.repair_host_cloud_snapshot(instance)
-    if instance.exec_status == CollectRunStatusType.NOT_START:
-        CollectModels._default_manager.filter(id=instance_id).update(exec_status=CollectRunStatusType.RUNNING)
-    # 防止周期触发与延迟补跑重叠导致同一任务并发执行
-    # if instance.exec_status == CollectRunStatusType.RUNNING:
-    #     logger.info("采集任务已在执行中，跳过重复执行 task_id={}".format(instance_id))
-    #     return
-    # 统一在 Celery 执行入口更新任务开始时间和运行状态
-    start_time = now()
-    instance.exec_status = CollectRunStatusType.RUNNING
-    instance.exec_time = start_time
-    CollectModels._default_manager.filter(id=instance_id).update(
-        exec_status=CollectRunStatusType.RUNNING,
-        exec_time=start_time,
-    )
     exec_error_message = ""
     exec_traceback_excerpt = ""
     exec_traceback_location = ""

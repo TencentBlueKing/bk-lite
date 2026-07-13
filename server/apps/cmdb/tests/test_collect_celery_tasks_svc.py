@@ -273,6 +273,69 @@ def test_sync_collect_task_no_data_marks_error(monkeypatch):
 
 
 @pytest.mark.django_db
+def test_sync_collect_task_skips_when_task_is_already_running(monkeypatch):
+    task = CollectModels.objects.create(
+        name="running-collect", task_type=CollectPluginTypes.PROTOCOL, model_id="mysql", driver_type="protocol",
+        cycle_value_type="cycle", team=[1],
+        exec_status=CollectRunStatusType.RUNNING,
+        collect_digest={"message": "keep-running"},
+        instances=[{"_id": "i1", "model_id": "mysql", "inst_name": "db1"}],
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.services.collect_service.CollectModelService.repair_host_cloud_snapshot",
+        lambda instance: None,
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.services.collect_dispatch_service.CollectDispatchService.should_dispatch",
+        staticmethod(lambda inst: (_ for _ in ()).throw(AssertionError("dispatch decision should not run"))),
+    )
+    monkeypatch.setattr(
+        ct,
+        "ProtocolCollect",
+        lambda task: (_ for _ in ()).throw(AssertionError("protocol collect should not run")),
+    )
+    monkeypatch.setattr(
+        ct,
+        "JobCollect",
+        lambda task: (_ for _ in ()).throw(AssertionError("job collect should not run")),
+    )
+
+    ct.sync_collect_task(task.id)
+
+    task.refresh_from_db()
+    assert task.exec_status == CollectRunStatusType.RUNNING
+    assert task.collect_digest == {"message": "keep-running"}
+
+
+@pytest.mark.django_db
+def test_claim_collect_task_execution_only_one_runner_can_acquire(monkeypatch):
+    task = CollectModels.objects.create(
+        name="claim-once", task_type=CollectPluginTypes.PROTOCOL, model_id="mysql", driver_type="protocol",
+        cycle_value_type="cycle", team=[1],
+        exec_status=CollectRunStatusType.NOT_START,
+    )
+    start_time = now()
+
+    first = ct._claim_collect_task_execution(task.id, start_time)
+    second = ct._claim_collect_task_execution(task.id, start_time)
+
+    assert first is not None
+    assert first.exec_status == CollectRunStatusType.RUNNING
+    assert second is None
+
+    preclaimed = CollectModels.objects.create(
+        name="claim-token", task_type=CollectPluginTypes.PROTOCOL, model_id="mysql", driver_type="protocol",
+        cycle_value_type="cycle", team=[1],
+        exec_status=CollectRunStatusType.RUNNING,
+        task_id="owner-token",
+    )
+    assert ct._claim_collect_task_execution(preclaimed.id, start_time, execution_id="other-token") is None
+    token_owner = ct._claim_collect_task_execution(preclaimed.id, start_time, execution_id="owner-token")
+    assert token_owner is not None
+    assert token_owner.task_id == "owner-token"
+
+
+@pytest.mark.django_db
 def test_sync_collect_task_handles_collect_exception(monkeypatch):
     task = CollectModels.objects.create(
         name="boom-collect", task_type=CollectPluginTypes.PROTOCOL, model_id="mysql", driver_type="protocol",

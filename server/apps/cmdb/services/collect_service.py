@@ -3,6 +3,7 @@
 # @Time: 2025/3/3 15:23
 # @Author: windyzhao
 import copy
+import uuid
 
 from celery import current_app
 from django.conf import settings
@@ -425,31 +426,33 @@ class CollectModelService(object):
             view_self.perform_create(serializer)
             instance = serializer.instance
 
-            # 在事务内执行外部操作，失败时会触发事务回滚
-            # 虽然这会导致长事务，但保证了业务的强一致性
-            try:
-                # 更新定时任务
-                if is_interval:
-                    task_name = f"{cls.NAME}_{instance.id}"
-                    CeleryUtils.create_or_update_periodic_task(name=task_name, crontab=scan_cycle, args=[instance.id], task=cls.TASK)
-                    # create 场景满足阈值则注册一次延迟补跑
-                    cls.schedule_delayed_sync_if_needed(instance=instance, is_interval=is_interval)
+            def sync_external_resources():
+                task_name = f"{cls.NAME}_{instance.id}"
+                try:
+                    # 更新定时任务
+                    if is_interval:
+                        CeleryUtils.create_or_update_periodic_task(
+                            name=task_name,
+                            crontab=scan_cycle,
+                            args=[instance.id],
+                            task=cls.TASK,
+                        )
+                        # create 场景满足阈值则注册一次延迟补跑
+                        cls.schedule_delayed_sync_if_needed(instance=instance, is_interval=is_interval)
 
-                # RPC 调用：推送节点参数
-                if cls.should_sync_node_params(instance):
-                    cls.push_butch_node_params(instance)
-            except Exception as e:
-                # 外部操作失败，记录详细错误日志并抛出异常，触发事务回滚
-                logger.error(
-                    "[CollectTask] 创建采集任务时外部操作失败，事务将回滚 task_name=%s, error=%s",
-                    instance.name,
-                    e,
-                    exc_info=True,
-                )
-                # 重新抛出异常，让事务回滚
-                raise BaseAppException(f"创建采集任务失败：{str(e)}")
+                    # RPC 调用：推送节点参数
+                    if cls.should_sync_node_params(instance):
+                        cls.push_butch_node_params(instance)
+                except Exception as e:
+                    logger.error(
+                        "[CollectTask] 创建采集任务时外部操作失败 task_name=%s, error=%s",
+                        instance.name,
+                        e,
+                        exc_info=True,
+                    )
+                    raise BaseAppException(f"创建采集任务失败：{str(e)}")
 
-            # 只有所有操作都成功，才创建变更记录
+            # 只有所有 DB 操作都成功，才创建变更记录
             create_change_record(
                 operator=request.user.username,
                 model_id=instance.model_id,
@@ -461,6 +464,9 @@ class CollectModelService(object):
                 scenario=COLLECT_AUTOMATION_CHANGE,
                 after_data=cls._snapshot_task(instance),
             )
+            if is_interval or cls.should_sync_node_params(instance):
+                # DB 事务提交后再同步外部系统，避免回滚后留下幽灵周期任务或节点配置。
+                transaction.on_commit(sync_external_resources)
 
         return instance.id
 
@@ -488,31 +494,35 @@ class CollectModelService(object):
             serializer.is_valid(raise_exception=True)
             view_self.perform_update(serializer)
 
-            # 在事务内执行外部操作，失败时会触发事务回滚
-            try:
+            def sync_external_resources():
                 task_name = f"{cls.NAME}_{instance.id}"
-                # 更新定时任务
-                if is_interval:
-                    CeleryUtils.create_or_update_periodic_task(name=task_name, crontab=scan_cycle, args=[instance.id], task=cls.TASK)
-                    if cls.is_schedule_config_changed(old_instance=old_instance, new_instance=instance):
-                        # update 场景仅在调度参数变更时注册延迟补跑
-                        cls.schedule_delayed_sync_if_needed(instance=instance, is_interval=is_interval)
-                else:
-                    CeleryUtils.delete_periodic_task(task_name)
+                try:
+                    # 更新定时任务
+                    if is_interval:
+                        CeleryUtils.create_or_update_periodic_task(
+                            name=task_name,
+                            crontab=scan_cycle,
+                            args=[instance.id],
+                            task=cls.TASK,
+                        )
+                        if cls.is_schedule_config_changed(old_instance=old_instance, new_instance=instance):
+                            # update 场景仅在调度参数变更时注册延迟补跑
+                            cls.schedule_delayed_sync_if_needed(instance=instance, is_interval=is_interval)
+                    else:
+                        CeleryUtils.delete_periodic_task(task_name)
 
-                # RPC 调用：先删除旧节点参数，再推送新节点参数
-                if cls.should_sync_node_params(instance):
-                    cls.delete_butch_node_params(old_instance)
-                    cls.push_butch_node_params(instance)
-            except Exception as e:
-                # 外部操作失败，记录错误并抛出异常，触发事务回滚
-                logger.error(
-                    "[CollectTask] 更新采集任务时外部操作失败，事务将回滚 task_name=%s, error=%s",
-                    instance.name,
-                    e,
-                    exc_info=True,
-                )
-                raise BaseAppException(f"更新采集任务失败：{str(e)}")
+                    # RPC 调用：先删除旧节点参数，再推送新节点参数
+                    if cls.should_sync_node_params(instance):
+                        cls.delete_butch_node_params(old_instance)
+                        cls.push_butch_node_params(instance)
+                except Exception as e:
+                    logger.error(
+                        "[CollectTask] 更新采集任务时外部操作失败 task_name=%s, error=%s",
+                        instance.name,
+                        e,
+                        exc_info=True,
+                    )
+                    raise BaseAppException(f"更新采集任务失败：{str(e)}")
 
             cls.delete_team(instance.id, old_instance.team, request.data["team"], view_self)
             invalidated_credential_ids = list(dict.fromkeys(credential_pool_diff[1] + credential_pool_diff[2]))
@@ -525,7 +535,7 @@ class CollectModelService(object):
                 credential_pool_diff[2],
                 cleared_hit_count,
             )
-            # 只有所有操作都成功，才创建变更记录
+            # 只有所有 DB 操作都成功，才创建变更记录
             create_change_record(
                 operator=request.user.username,
                 model_id=instance.model_id,
@@ -538,6 +548,7 @@ class CollectModelService(object):
                 before_data=cls._snapshot_task(old_instance),
                 after_data=cls._snapshot_task(instance),
             )
+            transaction.on_commit(sync_external_resources)
 
         return instance.id
 
@@ -633,16 +644,18 @@ class CollectModelService(object):
 
         before_snapshot = cls._snapshot_task(instance)
         cls.repair_host_cloud_snapshot(instance)
+        execution_id = uuid.uuid4().hex
         instance.exec_time = now()
         instance.exec_status = CollectRunStatusType.RUNNING
+        instance.task_id = execution_id
         instance.format_data = {}
         instance.collect_data = {}
         instance.collect_digest = {}
         instance.save()
         if not settings.DEBUG:
-            sync_collect_task.delay(instance.id)
+            sync_collect_task.delay(instance.id, execution_id)
         else:
-            sync_collect_task(instance.id)
+            sync_collect_task(instance.id, execution_id)
 
         create_change_record(
             operator=operator,

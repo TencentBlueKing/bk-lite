@@ -1269,10 +1269,18 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         return response
 
     @action(detail=False, methods=["get"], url_path=r"ipam_view/(?P<inst_id>.+?)")
+    @HasPermission("asset_info-View")
     def ipam_view(self, request, inst_id: str):
         """子网 IP 视图数据：容量/利用率/状态计数/落库 IP 列表。"""
         from apps.cmdb.services.ipam_view import build_ipam_view
         subnet = InstanceManage.query_entity_by_id(int(inst_id))
+        if not subnet:
+            return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
+
+        permission_error = self.require_instance_permission(request, subnet, operator=VIEW)
+        if permission_error:
+            return permission_error
+
         return WebUtils.response_success(build_ipam_view(subnet))
 
     @action(
