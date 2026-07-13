@@ -52,7 +52,6 @@ import {
   filterInvalidCalculationUnit,
   getCalculationUnitOnMetricRowsChange,
   getReverseModeCalculationUnit,
-  getValidThresholdUnitOptions,
   resolveFormulaResultUnit,
   resolveInitialMetricPluginId
 } from './strategyDetailUtils';
@@ -90,10 +89,6 @@ const StrategyOperation = () => {
   const groupedUnitOptions = useMemo(
     () => buildMetricUnitCascaderOptions(commonContext?.groupedUnitList || []),
     [commonContext?.groupedUnitList]
-  );
-  const validThresholdUnitOptions = useMemo(
-    () => getValidThresholdUnitOptions(unitList),
-    [unitList]
   );
   const searchParams = useSearchParams();
   const [form] = Form.useForm();
@@ -961,7 +956,6 @@ const StrategyOperation = () => {
                               ? thresholdUnit || FORMULA_DEFAULT_RESULT_UNIT
                               : thresholdUnit
                           }
-                          unitOptions={validThresholdUnitOptions}
                           labelsByRef={labelsByRef}
                           metricUnit={metricUnit}
                           onMetricUnitChange={handleMetricUnitChange}
@@ -992,7 +986,10 @@ const StrategyOperation = () => {
                           noDataRecoveryUnit={noDataRecoveryUnit}
                           noDataAlertLevel={noDataAlertLevel}
                           noDataAlertName={noDataAlertName}
-                          metricUnit={metricUnit}
+                          metricUnit={
+                            metrics.find((item) => item.name === metric)
+                              ?.unit || null
+                          }
                           isFormulaMode={metricExpressionMode === 'formula'}
                           onEnableAlertsChange={setEnableAlerts}
                           onThresholdChange={handleThresholdChange}

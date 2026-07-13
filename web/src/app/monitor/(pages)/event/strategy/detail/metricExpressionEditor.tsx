@@ -9,7 +9,6 @@ import {
   IndexViewItem,
   ListItem,
   MetricItem,
-  UnitListItem,
   CascaderItem
 } from '@/app/monitor/types';
 import { findCascaderPath } from '@/app/monitor/utils/common';
@@ -31,7 +30,6 @@ interface MetricExpressionEditorProps {
   resultName: string;
   expression: string;
   resultUnit: string | null;
-  unitOptions: UnitListItem[];
   metricUnit: string | null;
   onMetricUnitChange: (value: string) => void;
   groupedUnitOptions: CascaderItem[];
@@ -53,7 +51,6 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
   resultName,
   expression,
   resultUnit,
-  unitOptions,
   metricUnit,
   onMetricUnitChange,
   groupedUnitOptions,

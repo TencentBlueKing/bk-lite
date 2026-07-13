@@ -13,7 +13,6 @@ import { useTranslation } from '@/utils/i18n';
 import {
   SegmentedItem,
   IndexViewItem,
-  UnitListItem,
   CascaderItem
 } from '@/app/monitor/types';
 import { StrategyFields } from '@/app/monitor/types/event';
@@ -52,7 +51,6 @@ interface MetricDefinitionFormProps {
   resultName: string;
   expression: string;
   resultUnit: string | null;
-  unitOptions: UnitListItem[];
   labelsByRef: Record<string, string[]>;
   metricUnit: string | null;
   onMetricUnitChange: (value: string) => void;
@@ -80,7 +78,6 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
   resultName,
   expression,
   resultUnit,
-  unitOptions,
   labelsByRef,
   metricUnit,
   onMetricUnitChange,
@@ -209,7 +206,6 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
                   resultName={resultName}
                   expression={expression}
                   resultUnit={resultUnit}
-                  unitOptions={unitOptions}
                   labelsByRef={labelsByRef}
                   originMetricData={originMetricData}
                   groupByOptions={groupByOptions}
@@ -231,7 +227,7 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
       </Form.Item>
 
       {/* 计算指标单位 - 非 Trap 且非公式模式下展示(spec: 公式模式只保留 resultUnit) */}
-      {!isTrap(form.getFieldValue('collect_type')) && metricExpressionMode !== 'formula' && (
+      {!isTrap(form.getFieldValue) && metricExpressionMode !== 'formula' && (
         <Form.Item<StrategyFields>
           label={
             <span className="w-[100px]">
