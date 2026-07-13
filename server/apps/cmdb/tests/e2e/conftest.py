@@ -239,3 +239,28 @@ class FakeNatsClient:
 @pytest.fixture
 def fake_nats():
     return FakeNatsClient()
+
+
+# ============================================================================
+# A/B 端对齐检查 fixture(Task 1.6)
+# ============================================================================
+# 35 个新工作对象(P0/P1/P2 覆盖),不动现有 33 真实落盘对象
+# P1/P2 逐对象在 Task 3/4 加进来
+
+ALIGNMENT_COVERED_MODEL_IDS = [
+    # P0 真实化(6)
+    "aliyun_ecs",
+    "k8s_namespace",
+    "vmware",
+    "host",
+    "network",
+    "config_file",
+    # P1 云采集新增(7) — Task 3
+    # P2 archived placeholder(22) — Task 4
+]
+
+
+@pytest.fixture
+def alignment_covered_model_ids():
+    """A/B 端对齐检查覆盖的 model_id 列表。"""
+    return ALIGNMENT_COVERED_MODEL_IDS
