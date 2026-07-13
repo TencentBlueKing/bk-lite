@@ -7,7 +7,6 @@ import { useCommon } from '@/app/monitor/context/common';
 import { SCHEDULE_UNIT_MAP } from '@/app/monitor/constants/event';
 import {
   getMetricThresholdEnumState,
-  getThresholdUnitFilterBase,
   getThresholdUnitOptions
 } from './strategyDetailUtils';
 import ThresholdList from './thresholdList';
@@ -71,21 +70,16 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
     [isFormulaMode, metricUnit]
   );
 
-  const unitFilterBase = useMemo(
-    () =>
-      getThresholdUnitFilterBase({
-        isFormulaMode,
-        formulaResultUnit: calculationUnit,
-        selectedMetricUnit: metricUnit
-      }),
-    [isFormulaMode, calculationUnit, metricUnit]
-  );
+  // 阈值单位过滤基准:新 utils 以 metricUnit 为基准;公式模式下 calculationUnit 才是结果单位
+  // 这里保留旧语义——指标模式用 metricUnit,公式模式用 calculationUnit——通过页面传入。
+  // (Task 1 临时修复,Task 4 完整重命名为 thresholdUnit)
+  const unitFilterBase = calculationUnit || metricUnit;
 
   const filteredUnitOptions = useMemo(
     () =>
       getThresholdUnitOptions({
         unitList,
-        unitFilterBase,
+        metricUnit: unitFilterBase,
         isEnumMetric
       }),
     [unitList, unitFilterBase, isEnumMetric]

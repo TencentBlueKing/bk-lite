@@ -157,7 +157,8 @@ export const getThresholdUnitOptions = ({
 };
 
 // 把 groupedUnitList (按 category 分组) 转为 Cascader 选项;
-// value 取 category 名(category 名作为级联第一级),子节点 value = unit_id。
+// 一级 value = category 名,二级 value = unit_id,二级为叶子节点需 children=[] 以满足 CascaderItem 递归类型。
+// 单位表规模小 (<100),即便 O(N×M) 也可接受。
 export const buildMetricUnitCascaderOptions = (
   groupedUnitList: GroupedUnitList[]
 ): CascaderItem[] =>
@@ -166,11 +167,13 @@ export const buildMetricUnitCascaderOptions = (
     value: group.label,
     children: (group.children || []).map((item) => ({
       label: item.label,
-      value: item.value
+      value: item.value,
+      children: []
     }))
   }));
 
 // 有效 metric 单位:必须能在 groupedUnitList 中找到, 且不在 'none' / 'short' 集内
+// 单位表规模小 (<100),即便 O(N×M) 也可接受。
 export const isValidMetricUnit = (
   unit: string | null | undefined,
   groupedUnitList: GroupedUnitList[]
