@@ -398,9 +398,13 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
                 '结果单位'
               )}
               options={groupedUnitOptions}
-              onChange={(path) =>
-                onResultUnitChange((path as (string | number)[]).at(-1) as string)
-              }
+              onChange={(path) => {
+                // Cascader 清空时 path 是 [],直接忽略,避免把字符串 "undefined" 写入 state
+                const next = (path as (string | number)[]).at(-1);
+                if (typeof next === 'string') {
+                  onResultUnitChange(next);
+                }
+              }}
             />
           </div>
         )}
