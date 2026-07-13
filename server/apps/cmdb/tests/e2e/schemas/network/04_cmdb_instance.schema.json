@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CMDB network device instance",
+  "description": "Task 2.5:CollectNetworkMetrics 转换后准备写入 FalkorDB 的实例字段约束。device_type 由 sysobjectid 推导(switch/router/firewall),inst_name 格式 {ip}-{device_type}。Plugin 字段映射:soid=sysobjectid, sys_desc=sysname。model_id 由 runner 后续在 result setdefault 时 set 进来(device 实例 result['switch'] 的 key),不在实例字典内。",
+  "type": "object",
+  "required": ["inst_name", "ip_addr"],
+  "properties": {
+    "inst_name":   {"type": "string", "pattern": "^[0-9.]+-(switch|router|firewall|server)$"},
+    "model_id":    {"type": ["string", "null"]},
+    "ip_addr":     {"type": "string"},
+    "port":        {"type": "string"},
+    "brand":       {"type": "string"},
+    "model":       {"type": "string"},
+    "soid":        {"type": "string"},
+    "sys_desc":    {"type": "string"},
+    "assos":       {"type": ["array", "object"]}
+  }
+}
