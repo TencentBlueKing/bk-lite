@@ -82,3 +82,10 @@ def test_broker_failure_keeps_outbox_pending_without_breaking_batch_write(_mock_
 
     assert ChangeRecord.objects.count() == 1
     assert ChangeRecordMirrorOutbox.objects.filter(status="pending").count() == 1
+
+
+def test_mirror_outbox_recovery_is_registered_in_beat():
+    from apps.cmdb.config import CELERY_BEAT_SCHEDULE
+
+    schedule = CELERY_BEAT_SCHEDULE["recover_change_record_mirror_outbox_task"]
+    assert schedule["task"] == "apps.cmdb.tasks.celery_tasks.recover_change_record_mirror_outbox_task"

@@ -29,4 +29,8 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.cmdb.tasks.celery_tasks.reconcile_cmdb_operations_task",
         "schedule": crontab(minute="*/5"),
     },
+    "recover_change_record_mirror_outbox_task": {
+        "task": "apps.cmdb.tasks.celery_tasks.recover_change_record_mirror_outbox_task",
+        "schedule": crontab(minute="*/5"),
+    },
 }
