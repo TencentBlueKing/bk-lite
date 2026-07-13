@@ -1,0 +1,27 @@
+{
+  "model_id": "oceanbase",
+  "captured_at": "2026-07-14T10:30:00+08:00",
+  "image": "N/A-placeholder",
+  "container_meta": {
+    "container_id": "N/A-placeholder",
+    "image": "N/A-placeholder"
+  },
+  "params": {
+    "host": "192.0.2.1",
+    "note": "Task 4.8 archived placeholder 模式"
+  },
+  "raw_stdout": {},
+  "license_status": "missing",
+  "_placeholder_reason": "license_missing",
+  "ip_addr": "192.0.2.1",
+  "inst_name": "oceanbase-placeholder-01",
+  "blocked_reason": "OceanBase 社区版 docker 可拉,但 3.x+ 容器化需 OBD 部署链;amd64 runner 资源受限",
+  "next_steps": [
+    "在 amd64 runner 部署 OBD + OceanBase CE 3.x",
+    "实施 OceanBaseCollectionPlugin"
+  ],
+  "references": [
+    "docs/superpowers/plans/2026-07-06-cmdb-collect-v3-roadmap.md §3.4 G2.3(archived 22 套对象说明)",
+    "docs/superpowers/sdd/task-4-brief.md §Task 4.8"
+  ]
+}
