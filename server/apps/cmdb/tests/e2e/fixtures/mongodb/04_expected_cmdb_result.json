@@ -1,0 +1,20 @@
+{
+  "model_id": "mongodb",
+  "instance_count_min": 1,
+  "expected_instance_subset_fixture_driven": {
+    "inst_name":  "172.17.0.3-mongodb-27017",
+    "ip_addr":    "172.17.0.3",
+    "port":       "27017",
+    "version":    "7.0.37",
+    "bin_path":   "/usr/bin",
+    "mongo_path": "",
+    "config":     "/etc/mongod.conf",
+    "fork":       "",
+    "system_log": "/var/log/mongodb/mongod.log",
+    "db_path":    "/var/lib/mongodb",
+    "max_incoming_conn": "default:819",
+    "database_role":     ""
+  },
+  "fixture_source_fixture_driven": "agents/stargazer/tests/fixtures/collect/mongodb.json(2026-07-08 cli 真实落盘,ip=172.17.0.3)",
+  "notes": "v4 Phase 3 任务 3.2;db 类 runner 用 DBCollectCollectMetrics,extra_payload_keys=None。stargazer raw_stdout 是形态 B(平铺,无 success/result 包裹),step1_stargazer_normalize_generic 自动包装成形态 A。plugin field_mapping 含 12 个业务字段,本表全部对齐;空值字段(mongo_path/fork/database_role)保留以验证 pipeline 兼容空字符串"
+}

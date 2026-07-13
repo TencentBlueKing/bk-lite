@@ -1,0 +1,16 @@
+{
+  "model_id": "etcd",
+  "instance_count_min": 1,
+  "expected_instance_subset_fixture_driven": {
+    "inst_name":     "172.17.0.2-etcd-2379",
+    "ip_addr":       "172.17.0.2",
+    "port":          "2379",
+    "version":       "3.3.25",
+    "data_dir":      "/var/lib/etcd",
+    "conf_file_path": "",
+    "peer_port":     "2380",
+    "install_path":  "/usr/bin"
+  },
+  "fixture_source_fixture_driven": "agents/stargazer/tests/fixtures/collect/etcd.json(2026-07-08 cli 真实落盘,ip=172.17.0.2,port=2379,etcd=3.3.25,raw_stdout 是 list 形态含 4 项同实例不同探测路径)",
+  "notes": "G5.2.x v4 Phase 5 任务 5.1;etcd 走 middleware runner(MiddlewareCollectMetrics),extra_payload_keys={\"result\":True},业务字段经 metric.result JSON 编码。raw_stdout 是 list-of-dict 形态(4 项,同 IP/port 由 stargazer 端 etcd 脚本不同探测路径产出),与 mysql/redis/influxdb 的 {success,result} 形态 A、nginx/zookeeper/kafka 的平铺 dict 形态 B 都不同;raw schema 独立声明 list 形态。plugin 字段集来自 EtcdCollectionPlugin.field_mapping,与 fixture 字段一一对应。"
+}

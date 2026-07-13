@@ -63,6 +63,7 @@
     "publishSuccess": "发布成功",
     "saveFailed": "保存失败",
     "operationFailed": "操作失败",
+    "operationSuccess": "操作成功",
     "operateFailed": "操作失败",
     "loadListFailed": "加载列表失败",
     "markdownLoadFailed": "加载 Markdown 内容失败",

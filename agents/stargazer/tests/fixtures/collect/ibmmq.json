@@ -1,0 +1,29 @@
+{
+  "model_id": "ibmmq",
+  "captured_at": "2026-07-07T08:40:00Z",
+  "image": "docker.m.daocloud.io/library/ubuntu:22.04",
+  "container_meta": {
+    "container_id": "N/A-placeholder",
+    "image": "docker.m.daocloud.io/library/ubuntu:22.04"
+  },
+  "params": {
+    "host": "127.0.0.1",
+    "ssh_port": 12231,
+    "mq_port": 11414,
+    "web_port": 19443
+  },
+  "raw_stdout": {},
+  "license_status": "missing",
+  "blocked_reason": "G2.2 选 B:catalog 占位 + TODO;IBM MQ 商业 license 不可达",
+  "phase2_decision": "用户拍板选 B(catalog 占位);实施推迟到用户提供 IBM MQ license",
+  "next_steps": [
+    "用户注册 IBMid 下载 IBM MQ 9.x 试用 license(developer plan 免费)",
+    "在 agents/stargazer/enterprise/plugins/inputs/ibmmq/ 下新建 ibmmq_default_discover.sh(扫 dspmq 输出 + runmqlsr 进程)",
+    "catalog Spec install_commands 替换为 download + mqlicense.sh -accept + rpm -ivh",
+    "实施完成后回填 ibmmq.json(类似 dameng.json 的 schema)"
+  ],
+  "references": [
+    "docs/superpowers/plans/2026-07-06-cmdb-collect-v3-roadmap.md §3.4 G2.2",
+    "docs/superpowers/plans/2026-07-07-cmdb-collect-v3-phase2-plan.md §3.2"
+  ]
+}

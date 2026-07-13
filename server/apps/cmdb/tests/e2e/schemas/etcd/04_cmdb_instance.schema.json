@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CMDB etcd 实例契约",
+  "description": "2026-07-10 v4 — Phase 5 任务 5.1,实例 schema 严格对应 EtcdCollectionPlugin.field_mapping(middleware runner,extra_payload_keys={\"result\": True},业务字段从 metric.result 解码后合入 index_dict)。",
+  "type": "object",
+  "required": ["inst_name", "ip_addr", "port"],
+  "properties": {
+    "inst_name":     {"type": "string", "pattern": "^[0-9.]+-etcd-[0-9]+$"},
+    "ip_addr":       {"type": "string"},
+    "port":          {"type": ["string", "integer"]},
+    "version":       {"type": "string"},
+    "data_dir":      {"type": "string"},
+    "conf_file_path": {"type": "string"},
+    "peer_port":     {"type": ["string", "integer"]},
+    "install_path":  {"type": "string"}
+  }
+}

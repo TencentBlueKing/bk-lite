@@ -1,0 +1,25 @@
+{
+  "model_id": "openresty",
+  "captured_at": "2026-07-08T04:20:00Z",
+  "image": "docker.m.daocloud.io/library/ubuntu:22.04",
+  "container_meta": {
+    "container_id": "N/A-placeholder",
+    "image": "docker.m.daocloud.io/library/ubuntu:22.04"
+  },
+  "params": {
+    "host": "127.0.0.1",
+    "ssh_port": 12245
+  },
+  "raw_stdout": {
+    "bk_inst_name": "172.17.0.4-openresty-80",
+    "bk_obj_id": "openresty",
+    "ip_addr": "172.17.0.4",
+    "listen_port": "80",
+    "openresty_path": "/usr/local/openresty/nginx/sbin/nginx",
+    "version": "1.25.3.1",
+    "log_path": "/usr/local/openresty/nginx/logs/error.log",
+    "config_path": "/usr/local/openresty/nginx/conf/nginx.conf",
+    "doc_root": "/usr/local/openresty/nginx/html"
+  },
+  "_placeholder_reason": "G3.6 openresty 装包多次失败 2026-07-08:openresty 官方 apt 源在国内 apt update 经常失败;wget 源码 + 编译方式 configure 阶段 LuaJIT library 找不到;alpine 官方镜像无 bash(cli.bootstrap_sshd_in_container 需要 bash -c 跑 apt)。后续解锁路径:1) amd64 CI runner 跑(同 mssql 模式);2) 换预编译 deb 包路径;3) 改 docker_lifecycle.bootstrap_sshd_in_container 支持 alpine(超出 Phase 3 范围)。见 phase3-execution-report 2026-07-08 §1 镜像策略 + §4.2 openresty 详解。raw_stdout 由 openresty_default_discover.sh 脚本输出格式推导填充,字段集与真实落盘应一致;后续 CI 跑通后用真实落盘覆盖"
+}

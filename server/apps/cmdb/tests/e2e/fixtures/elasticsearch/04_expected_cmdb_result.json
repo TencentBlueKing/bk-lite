@@ -1,0 +1,15 @@
+{
+  "model_id": "es",
+  "pipeline_model_id": "es",
+  "instance_count_min": 1,
+  "expected_instance_subset_fixture_driven": {
+    "inst_name":    "172.17.0.4-es-9200",
+    "ip_addr":      "172.17.0.4",
+    "port":         "9200",
+    "version":      "8.19.18",
+    "cluster_name": "elasticsearch"
+  },
+  "fixture_source_fixture_driven": "agents/stargazer/tests/fixtures/collect/elasticsearch.json(2026-07-08 cli 真实落盘,ip=172.17.0.4;e2e fixture 按 v4 Phase 3.8 任务指引把 model_id 字段从 'elasticsearch' 重写为 'es' 以匹配 plugin ESCollectionPlugin.supported_model_id)",
+  "model_id_resolution_notes": "stargazer fixture 原始 model_id='elasticsearch',CMDB plugin ESCollectionPlugin.supported_model_id='es' 且 metric_names=('es_info_gauge',)。e2e 流水线必须用 plugin supported_model_id='es' 才能让 step2 拼接的 metric 名 es_info_gauge 与 plugin 一致,BaseDBCollectionPlugin.get_inst_name 拼出的 inst_name 也用 'es'。fixture 目录命名仍按 task 约定使用 'elasticsearch',仅 01_stargazer_raw.json 的 model_id 字段在 e2e 层改写。",
+  "notes": "v4 Phase 3.8 第八个对象;db 类 runner 用 DBCollectCollectMetrics,extra_payload_keys=None 平铺。fixture 里 lucene_version/build_flavor/bin_path/config/user/pid/status/number_of_nodes/active_shards/unassigned_shards 等不在 plugin field_mapping 中,不入实例。cluster_name 字段在 plugin field_mapping 中('cluster_name':'cluster_name'),故会进入实例。"
+}

@@ -1,0 +1,19 @@
+{
+  "model_id": "tomcat",
+  "instance_count_min": 1,
+  "expected_instance_subset_fixture_driven": {
+    "inst_name":     "172.17.0.3-tomcat-8080",
+    "ip_addr":       "172.17.0.3",
+    "port":          "8080",
+    "catalina_path": "/usr/share/tomcat9/bin/catalina.sh",
+    "version":       "9.0.58 (Ubuntu)",
+    "xms":           "",
+    "xmx":           "",
+    "max_perm_size": "",
+    "permsize":      "",
+    "log_path":      "/usr/share/tomcat9/logs/catalina.out",
+    "java_version":  "11.0.31"
+  },
+  "fixture_source_fixture_driven": "agents/stargazer/tests/fixtures/collect/tomcat.json(2026-07-08 cli 真实落盘,ip=172.17.0.3)",
+  "notes": "G5.2.x Phase 3 任务 3.3;middleware 类 runner 用 MiddlewareCollectMetrics,extra_payload_keys={\"result\":True}(业务字段经 metric.result JSON 编码)。stargazer raw_stdout 是形态 B(平铺 dict,无 success/result 包裹);inst_name 由 fixture 直接提供,与 runner.get_inst_name 规则 {ip}-{model_id}-{port} 一致;xms/xmx/max_perm_size/permsize 在真实采集时为空字符串,fixture_driven 保留原状"
+}

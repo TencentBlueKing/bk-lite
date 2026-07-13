@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CMDB rocketmq 实例契约",
+  "description": "2026-07-10 v4 — middleware runner 真实落盘实例契约;字段集对齐 apps/cmdb/collection/plugins/community/middleware/rocketmq.py::RocketmqCollectionPlugin.field_mapping;configfile 走 pick_value 三选一 (configfile / conf_path / config_file)",
+  "type": "object",
+  "required": ["inst_name", "ip_addr", "port"],
+  "properties": {
+    "inst_name":     {"type": "string", "pattern": "^[0-9.]+-rocketmq-[0-9]+$"},
+    "ip_addr":       {"type": "string"},
+    "port":          {"type": ["string", "integer"]},
+    "version":       {"type": "string"},
+    "install_path":  {"type": "string"},
+    "configfile":    {"type": "string"},
+    "broker_id":     {"type": ["string", "integer"]},
+    "broker_name":   {"type": "string"},
+    "cluster_name":  {"type": "string"},
+    "namesrv_addr":  {"type": "string"},
+    "java_path":     {"type": "string"}
+  }
+}

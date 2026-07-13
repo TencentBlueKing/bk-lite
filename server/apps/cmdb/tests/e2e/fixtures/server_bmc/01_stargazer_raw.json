@@ -1,0 +1,18 @@
+{
+  "model_id": "server_bmc",
+  "captured_at": "2026-07-10T08:10:31Z",
+  "image": "ubuntu:22.04",
+  "container_meta": {
+    "container_id": "6bab991eab4a",
+    "image": "ubuntu:22.04"
+  },
+  "params": {
+    "host": "127.0.0.1",
+    "ssh_port": 12273,
+    "bmc_port": 10443,
+    "user": "admin",
+    "password": "***"
+  },
+  "raw_stdout": [],
+  "placeholder_reason": "2026-07-10 v4 — server_bmc 真实落盘含 1 实例(https=true,redfish_available=false),但 CMDB 端无 plugin 类(redfish mock server 需 sushy),临时改 placeholder 模式(等 v4 Phase 2 实现 plugin)"
+}

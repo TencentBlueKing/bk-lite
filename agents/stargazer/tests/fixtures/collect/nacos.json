@@ -1,0 +1,29 @@
+{
+  "model_id": "nacos",
+  "captured_at": "2026-07-10T04:05:36Z",
+  "image": "nacos/nacos-server:v3.0.2",
+  "container_meta": {
+    "container_id": "e4189bd334eb",
+    "image": "nacos/nacos-server:v3.0.2"
+  },
+  "params": {
+    "host": "127.0.0.1",
+    "port": 18848
+  },
+  "raw_stdout": {
+    "result": {
+      "nacos": [
+        {
+          "ip_addr": "127.0.0.1",
+          "port": 18848,
+          "https_enabled": "false",
+          "status": "UNKNOWN",
+          "namespace_count": 0,
+          "service_count": 0,
+          "config_count": 0
+        }
+      ]
+    },
+    "success": true
+  }
+}

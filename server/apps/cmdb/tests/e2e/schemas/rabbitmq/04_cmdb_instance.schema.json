@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CMDB rabbitmq 实例契约",
+  "description": "2026-07-10 Phase 3.4 — fixture 由真实落盘数据驱动。字段来自 RabbitmqCollectionPlugin.field_mapping(middleware runner)。",
+  "type": "object",
+  "required": ["inst_name", "ip_addr", "port"],
+  "properties": {
+    "inst_name":           {"type": "string", "pattern": "^[0-9.]+-rabbitmq-[0-9]+$"},
+    "ip_addr":             {"type": "string"},
+    "port":                {"type": ["string", "integer"]},
+    "allport":             {"type": "string"},
+    "node_name":           {"type": "string"},
+    "log_path":            {"type": "string"},
+    "conf_path":           {"type": "string"},
+    "version":             {"type": "string"},
+    "enabled_plugin_file": {"type": "string"},
+    "erlang_version":      {"type": "string"}
+  }
+}

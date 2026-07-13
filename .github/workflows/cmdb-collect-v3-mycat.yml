@@ -1,0 +1,64 @@
+# CMDB 采集 Fixture v3 — mycat amd64 CI 采集
+#
+# 背景（phase5-plan §0 + phase5-execution-report §3）:
+# mycat 1.6 官方 release 无 aarch64 wrapper,只支持 x86_64 / x86_32 / ppc-64。
+# arm64 Mac 上用 --platform linux/amd64 + rosetta 模拟,jdk 安装 5+ 分钟装不完。
+# 本 workflow 在 GitHub Actions amd64 runner(ubuntu-22.04) 跑真实采集,
+# 落盘 mycat.json 后 PR 进 main。
+#
+# 触发: workflow_dispatch(手动触发,因 mycat 启动 + jdk 安装跑得慢,不在 PR 自动跑)
+# 产物: artifact upload `mycat.json`
+#
+# 关键参数(基于 G5.1.1 手动验证 evidence):
+# - platform="linux/amd64"：spec 已配,containers.run 传 platform
+# - CRLF 转换:install_commands 含 sed -i 's/\r$//' /opt/mycat/bin/*
+# - schema dataNode:start_commands 含 dataNode="dn1" 配置
+# - JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64:start_commands 必设
+# - mkdir /opt/mycat/logs:install_commands 含
+# - 启动用 /opt/mycat/bin/startup_nowrap.sh:绕开 wrapper arch 问题
+# - ready_check: ss -tln | grep -q ':8066 '
+
+name: CMDB Collect v3 — mycat amd64
+
+on:
+  workflow_dispatch:  # 仅手动触发
+  # 暂不挂 cron:fixture 工具的目的不是自动化,而是稳定 mock 数据源
+
+jobs:
+  collect-mycat:
+    runs-on: ubuntu-22.04  # amd64 runner,mycat wrapper arch 匹配
+    timeout-minutes: 20   # jdk + mycat 启动 + fixture 采集总共约 5-10 分钟
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install stargazer deps
+        working-directory: agents/stargazer
+        run: |
+          uv sync --all-extras
+
+      - name: Run mycat fixture collection
+        working-directory: agents/stargazer
+        # mycat 启动 + 采集约 3-8 分钟,timeout 留 buffer
+        run: |
+          .venv/bin/python -m tests.collect_fixtures.cli mycat 2>&1 | tee /tmp/mycat_run.log
+          # 检查产物
+          ls -la tests/fixtures/collect/mycat.json || (echo "mycat.json 未落盘,采集失败" && exit 1)
+
+      - name: Upload mycat.json artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mycat-fixture-json
+          path: agents/stargazer/tests/fixtures/collect/mycat.json
+          retention-days: 30
+          if-no-files-found: error

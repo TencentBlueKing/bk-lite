@@ -1,7 +1,7 @@
 {# Macro: Check if all dimensions are non-null #}
 {% macro all_dimensions_present(dimensions) %}
   {%- for dim_name in dimensions -%}
-    NULLIF(CAST({{ dim_name }} AS VARCHAR), '') IS NOT NULL{{ " AND " if not loop.last else "" }}
+    NULLIF(CAST({{ dim_name }} AS VARCHAR), '') IS NOT NULL{{ " OR " if not loop.last else "" }}
   {%- endfor -%}
 {% endmacro %}
 

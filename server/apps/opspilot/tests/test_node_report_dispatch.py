@@ -284,3 +284,54 @@ def test_post_process_tool_results_coalesces_multiple_calls_into_one_card():
     # 7 个 namespace 的 issues 合并到 severity_sections(单 severity "high" 段下挂着 7 条)
     high_section = next(s for s in payload["severity_sections"] if s["severity"] == "high")
     assert len(high_section["issues"]) == 7
+
+
+def test_post_process_tool_results_passes_skill_id_to_repair_diff_report():
+    """S1 回归测试:联动 emit 的 repair_diff_report 必须带 caller 传入的 skill_id。
+
+    之前 node.py:960-966 的 try/except 静默吞了 graph_request NameError,
+    导致 _skill_id 永远为 None,前端"查看实际 deployment"按钮拿不到 skill_id
+    而 404。修法:用已经在栈上的 skill_id 形参,不要绕道 graph_request。
+    本测试锁住 caller 传 skill_id → emit 的 repair_diff_report payload 带 skill_id,
+    防止 S1 再次回退。
+    """
+    from langchain_core.messages import ToolMessage
+
+    # 必须同时声明 config_analysis_report + repair_diff_report,才会触发联动 emit
+    # (node.py:954 if self._has_report_capability("repair_diff_report") and accumulated.get("config_analysis_report"))
+    node = _make_node(
+        skill_capabilities=["config_analysis_report", "repair_diff_report"],
+    )
+
+    tool_message = ToolMessage(
+        name="analyze_deployment_configurations",
+        content=(
+            '{"cluster_name": "Kubernetes - 1", "total": 3, "problematic": 2, '
+            '"issues_detail": [{"severity": "high", "issue": "缺存活探针", '
+            '"count": 2, "workloads": ["admin-panel", "api-gateway"]}]}'
+        ),
+        tool_call_id="call-1",
+    )
+
+    with patch("langchain_core.callbacks.dispatch_custom_event") as mock_dispatch:
+        # 关键:把 skill_id 传进去,模拟 deep_wrapper_node:2799 的 caller 行为
+        node._post_process_tool_results([tool_message], skill_id=42)
+
+    # 3 次 emit:config_analysis_report + repair_diff_report + report_file_download
+    # (前两个由 _emit_report_event 触发,report_file_download 由 docx 自动生成)
+    # 这里关键断言是 repair_diff_report 那次带 skill_id
+    assert mock_dispatch.call_count == 3, (
+        f"Expected 3 emits (analysis + repair_diff + file_download), got {mock_dispatch.call_count}"
+    )
+
+    # 第一次:config_analysis_report(由 _emit_report_event 触发,不带 skill_id 字段,
+    # 那是 config_analysis_report payload schema 自身决定的,不是 bug)
+    first_event, _ = mock_dispatch.call_args_list[0].args
+    assert first_event == "config_analysis_report"
+
+    # 第二次:repair_diff_report 联动 emit,带 skill_id(关键回归断言)
+    second_event, second_payload = mock_dispatch.call_args_list[1].args
+    assert second_event == "repair_diff_report"
+    assert second_payload.get("skill_id") == 42, (
+        f"repair_diff_report payload 应带 skill_id=42,实际 {second_payload.get('skill_id')!r}"
+    )

@@ -1,0 +1,25 @@
+{
+  "model_id": "keepalived",
+  "captured_at": "2026-07-08T06:00:00Z",
+  "image": "docker.m.daocloud.io/library/ubuntu:22.04",
+  "container_meta": {
+    "container_id": "N/A-placeholder",
+    "image": "docker.m.daocloud.io/library/ubuntu:22.04"
+  },
+  "params": {
+    "host": "127.0.0.1",
+    "ssh_port": 12257
+  },
+  "_placeholder_reason": "G4.8 keepalived 启动失败 2026-07-08:容器内 VRRP multicast 受限,keepalived daemon 模式 fork 阻塞 cli 流程(2 次尝试 setsid + nohup 都超时)。后续解锁路径:1) docker --privileged 模式 + --network host 启动容器;2) 真实 Linux 网络环境跑(非容器);3) 改 keepalived 用 checker 模式而非 VRRP。",
+  "raw_stdout": {
+    "ip_addr": "127.0.0.1",
+    "bk_obj_id": "keepalived",
+    "version": "2.0.20",
+    "priority": "100",
+    "state": "MASTER",
+    "virtual_router_id": "51",
+    "user_name": "root",
+    "install_path": "/usr/sbin",
+    "config_file": "/etc/keepalived/keepalived.conf"
+  }
+}
