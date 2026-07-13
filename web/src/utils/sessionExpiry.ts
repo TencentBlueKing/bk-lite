@@ -98,13 +98,15 @@ export const shouldHandleSessionExpiry = (input?: RequestInfo | URL | string | n
 
 export const shouldTriggerSessionExpiry = (
   input: RequestInfo | URL | string | null | undefined,
-  hasAuthenticatedSession: boolean,
+  currentSessionIdentity: string | null,
+  requestSessionIdentity: string | null = currentSessionIdentity,
 ) => {
   if (typeof window === 'undefined') {
     return false;
   }
 
-  return hasAuthenticatedSession
+  return Boolean(currentSessionIdentity)
+    && requestSessionIdentity === currentSessionIdentity
     && !isAuthPath(window.location.pathname)
     && shouldHandleSessionExpiry(input);
 };

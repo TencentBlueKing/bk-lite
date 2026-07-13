@@ -4,7 +4,8 @@ import { shouldTriggerSessionExpiry } from '../src/utils/sessionExpiry';
 
 const triggerSessionExpiry = shouldTriggerSessionExpiry as unknown as (
   input: string,
-  hasAuthenticatedSession: boolean,
+  currentSessionIdentity: string | null,
+  requestSessionIdentity?: string | null,
 ) => boolean;
 
 const windowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window');
@@ -25,29 +26,34 @@ Object.defineProperty(globalThis, 'document', {
 
 try {
   assert.equal(
-    triggerSessionExpiry('/api/proxy/monitor/api/metrics/', true),
+    triggerSessionExpiry('/api/proxy/monitor/api/metrics/', 'session-a'),
     true,
     'an authenticated NextAuth session should trigger expiry handling without a readable auth cookie',
   );
   assert.equal(
-    triggerSessionExpiry('/api/proxy/monitor/api/metrics/', false),
+    triggerSessionExpiry('/api/proxy/monitor/api/metrics/', null),
     false,
     'unauthenticated requests must not trigger the global expiry flow',
   );
   assert.equal(
-    triggerSessionExpiry('/api/proxy/core/api/login/', true),
+    triggerSessionExpiry('/api/proxy/core/api/login/', 'session-a'),
     false,
     'login requests must remain excluded',
   );
   assert.equal(
-    triggerSessionExpiry('https://other.example.com/api/metrics/', true),
+    triggerSessionExpiry('https://other.example.com/api/metrics/', 'session-a'),
     false,
     'cross-origin requests must remain excluded',
+  );
+  assert.equal(
+    triggerSessionExpiry('/api/proxy/monitor/api/metrics/', 'session-b', 'session-a'),
+    false,
+    'a response from an earlier session must not expire the current authenticated session',
   );
 
   location.pathname = '/auth/signin';
   assert.equal(
-    triggerSessionExpiry('/api/proxy/monitor/api/metrics/', true),
+    triggerSessionExpiry('/api/proxy/monitor/api/metrics/', 'session-a'),
     false,
     'auth pages must not trigger the expiry flow',
   );

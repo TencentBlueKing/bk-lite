@@ -76,8 +76,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const authPaths = ['/auth/signin', '/auth/signout', '/auth/callback', '/auth/signin/login-auth-result'];
   const isCurrentAuthPath = isAuthPath(pathname);
   const isSessionValid = extendedSession && extendedSession.user && (extendedSession.user.id || extendedSession.user.username);
-  const hasAuthenticatedSessionRef = useRef(false);
-  hasAuthenticatedSessionRef.current = status === 'authenticated' && Boolean(isSessionValid);
+  const authenticatedSessionIdentityRef = useRef<string | null>(null);
+  authenticatedSessionIdentityRef.current = status === 'authenticated' && isSessionValid
+    ? String(extendedSession.user.token || extendedSession.user.id || extendedSession.user.username)
+    : null;
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -85,22 +87,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     const nativeFetch = window.fetch.bind(window);
-    const shouldTriggerForCurrentSession = (input?: RequestInfo | URL | string | null) => (
-      shouldTriggerSessionExpiry(input, hasAuthenticatedSessionRef.current)
+    const axiosRequestSessionIdentities = new WeakMap<object, string | null>();
+    const shouldTriggerForSession = (
+      input: RequestInfo | URL | string | null | undefined,
+      requestSessionIdentity: string | null,
+    ) => (
+      shouldTriggerSessionExpiry(
+        input,
+        authenticatedSessionIdentityRef.current,
+        requestSessionIdentity,
+      )
     );
 
     window.fetch = async (input, init) => {
-      if (shouldTriggerForCurrentSession(input) && isSessionExpiredState()) {
+      const requestSessionIdentity = authenticatedSessionIdentityRef.current;
+
+      if (shouldTriggerForSession(input, requestSessionIdentity) && isSessionExpiredState()) {
         throw createSessionExpiredRequestError();
       }
 
       const response = await nativeFetch(input, init);
 
-      if (response.status === 460 && shouldTriggerForCurrentSession(input)) {
+      if (response.status === 460 && shouldTriggerForSession(input, requestSessionIdentity)) {
         void forceLogoutAndRedirect();
       }
 
-      if (response.status === 401 && shouldTriggerForCurrentSession(input)) {
+      if (response.status === 401 && shouldTriggerForSession(input, requestSessionIdentity)) {
         emitSessionExpired({ reason: 'global-fetch-session-expired', status: 401 });
       }
 
@@ -108,7 +120,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     const axiosRequestInterceptor = axios.interceptors.request.use((config) => {
-      if (shouldTriggerForCurrentSession(config.url) && isSessionExpiredState()) {
+      const requestSessionIdentity = authenticatedSessionIdentityRef.current;
+      axiosRequestSessionIdentities.set(config, requestSessionIdentity);
+
+      if (shouldTriggerForSession(config.url, requestSessionIdentity) && isSessionExpiredState()) {
         return Promise.reject(createSessionExpiredRequestError());
       }
 
@@ -117,22 +132,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const axiosResponseInterceptor = axios.interceptors.response.use(
       (response) => {
-        if (response.status === 460 && shouldTriggerForCurrentSession(response.config.url)) {
+        const requestSessionIdentity = axiosRequestSessionIdentities.get(response.config) ?? null;
+
+        if (response.status === 460 && shouldTriggerForSession(response.config.url, requestSessionIdentity)) {
           void forceLogoutAndRedirect();
         }
 
-        if (response.status === 401 && shouldTriggerForCurrentSession(response.config.url)) {
+        if (response.status === 401 && shouldTriggerForSession(response.config.url, requestSessionIdentity)) {
           emitSessionExpired({ reason: 'global-axios-session-expired', status: 401 });
         }
 
         return response;
       },
       (error) => {
-        if (axios.isAxiosError(error) && error.response?.status === 460 && shouldTriggerForCurrentSession(error.config?.url)) {
+        const requestSessionIdentity = error.config
+          ? axiosRequestSessionIdentities.get(error.config) ?? null
+          : null;
+
+        if (axios.isAxiosError(error) && error.response?.status === 460 && shouldTriggerForSession(error.config?.url, requestSessionIdentity)) {
           void forceLogoutAndRedirect();
         }
 
-        if (axios.isAxiosError(error) && error.response?.status === 401 && shouldTriggerForCurrentSession(error.config?.url)) {
+        if (axios.isAxiosError(error) && error.response?.status === 401 && shouldTriggerForSession(error.config?.url, requestSessionIdentity)) {
           emitSessionExpired({ reason: 'global-axios-session-expired', status: 401 });
         }
 
