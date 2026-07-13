@@ -1,14 +1,14 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Drawer, Empty, Popconfirm, Select, Space, Tag, message } from 'antd';
+import { Button, Drawer, Input, Modal, Popconfirm, Select, Space, Tag, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import MarkdownIt from 'markdown-it';
 import DOMPurify from 'dompurify';
 import CustomTable from '@/components/custom-table';
 import { useTranslation } from '@/utils/i18n';
 import { useWikiApi } from '@/app/opspilot/api/wiki';
-import { CheckItem } from '@/app/opspilot/types/wiki';
+import { CheckItem, CheckDecisionAction } from '@/app/opspilot/types/wiki';
 
 const md = new MarkdownIt({ html: false, linkify: true, breaks: true });
 const mdHtml = (body: string) => ({ __html: DOMPurify.sanitize(md.render(body || '')) });
@@ -51,14 +51,17 @@ const CHECK_TYPE_KEY: Record<string, string> = {
   qa_answer_candidate: 'wiki.checkQaAnswerCandidate',
 };
 
+// phase 7: 决策中心 - 按 check_type 路由
+// 知识冲突 3 选 1
+const KNOWLEDGE_CONFLICT_TYPES = new Set(['conflict', 'material_update', 'cannot_merge']);
+// 页面合并 2 选 1
+const PAGE_IDENTITY_TYPES = new Set(['duplicate']);
+
 const CheckTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const { t } = useTranslation();
   const {
     fetchCheckItems,
-    acceptCheck,
-    rejectCheck,
-    batchAcceptChecks,
-    batchRejectChecks,
+    decideCheck,
     scan,
   } = useWikiApi();
   const [data, setData] = useState<CheckItem[]>([]);
@@ -69,8 +72,10 @@ const CheckTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const [statusFilter, setStatusFilter] = useState('open');
   const [checkTypeFilter, setCheckTypeFilter] = useState('');
   const [scanning, setScanning] = useState(false);
-  const [batchSubmitting, setBatchSubmitting] = useState<'accept' | 'reject' | null>(null);
-  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  // phase 7.3: edit_accept 输入的编辑后正文
+  const [editingItem, setEditingItem] = useState<CheckItem | null>(null);
+  const [editBody, setEditBody] = useState('');
+  const [submitting, setSubmitting] = useState<CheckDecisionAction | null>(null);
   const [detail, setDetail] = useState<CheckItem | null>(null);
 
   const load = useCallback(async () => {
@@ -84,8 +89,6 @@ const CheckTab: React.FC<{ kbId: number }> = ({ kbId }) => {
       });
       setData(res.items);
       setTotal(res.count);
-      const openIds = new Set(res.items.filter((item) => item.status === 'open').map((item) => item.id));
-      setSelectedRowKeys((keys) => keys.filter((key) => openIds.has(Number(key))));
     } finally {
       setLoading(false);
     }
@@ -106,27 +109,25 @@ const CheckTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     ],
     [t]
   );
-  const checkTypeOptions = useMemo(
+  // phase 7.2: 待办列表只显示知识冲突 / 页面合并,其他系统级(orphan / no_source 等)进独立过滤
+  const decisionCheckTypes = useMemo(
     () => [
       { value: '', label: t('wiki.checkTypeAll') },
-      ...Object.entries(CHECK_TYPE_KEY).map(([value, labelKey]) => ({ value, label: t(labelKey) })),
+      ...Object.entries(CHECK_TYPE_KEY)
+        .filter(([k]) => KNOWLEDGE_CONFLICT_TYPES.has(k) || PAGE_IDENTITY_TYPES.has(k))
+        .map(([value, labelKey]) => ({ value, label: t(labelKey) })),
     ],
     [t]
   );
 
-  const resetSelectionAndPage = () => {
-    setSelectedRowKeys([]);
-    setPage(1);
-  };
-
   const handleStatusFilterChange = (value: string) => {
     setStatusFilter(value);
-    resetSelectionAndPage();
+    setPage(1);
   };
 
   const handleCheckTypeFilterChange = (value: string) => {
     setCheckTypeFilter(value);
-    resetSelectionAndPage();
+    setPage(1);
   };
 
   const handleScan = async () => {
@@ -140,59 +141,112 @@ const CheckTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     }
   };
 
-  const act = async (fn: () => Promise<unknown>) => {
-    await fn();
-    message.success(t('wiki.saveSuccess'));
-    setDetail(null);
-    load();
+  // phase 7.3 + 7.4: 语义化决策调用
+  const handleDecide = async (item: CheckItem, action: CheckDecisionAction, body?: string) => {
+    setSubmitting(action);
+    try {
+      const res = await decideCheck(item.id, { action, body });
+      message.success(t('wiki.saveSuccess'));
+      setDetail(null);
+      setEditingItem(null);
+      setEditBody('');
+      console.info(`[decision-center] rule_id=${res.rule_id} action=${action}`);
+      load();
+    } catch (err) {
+      message.error(String(err));
+    } finally {
+      setSubmitting(null);
+    }
+  };
+
+  const openEditAcceptDialog = (item: CheckItem) => {
+    setEditingItem(item);
+    setEditBody(item.candidate?.body || '');
+  };
+
+  // phase 7.7: 已处理记录展示 - 包含规则状态 + 回放次数
+  const renderResolution = (item: CheckItem) => {
+    const resolution = item.related?.resolution as
+      | {
+          action?: string;
+          operator?: string;
+          processed_at?: string;
+        }
+      | undefined;
+    if (!resolution) return null;
+    return (
+      <div className="mt-2 text-xs text-[var(--color-text-3)]">
+        <span>{t('wiki.processed')}: {resolution.action}</span>
+        {resolution.operator && <span className="ml-2">{t('wiki.operator')}: {resolution.operator}</span>}
+        {resolution.processed_at && (
+          <span className="ml-2">{t('wiki.detail')}: {resolution.processed_at}</span>
+        )}
+        {item.decision_key && (
+          <div className="mt-1">decision_key: {item.decision_key.substring(0, 12)}...</div>
+        )}
+      </div>
+    );
+  };
+
+  // phase 7.3 + 7.4: 决策按钮按 check_type 路由
+  const renderDecisionButtons = (item: CheckItem) => {
+    if (item.status !== 'open') return null;
+    if (KNOWLEDGE_CONFLICT_TYPES.has(item.check_type)) {
+      return (
+        <Space size={4} wrap>
+          <Button
+            type="primary"
+            size="small"
+            loading={submitting === 'keep_current'}
+            onClick={() => handleDecide(item, 'keep_current')}
+          >
+            {t('wiki.decisionKeepCurrent')}
+          </Button>
+          <Button
+            type="primary"
+            size="small"
+            loading={submitting === 'use_new'}
+            onClick={() => handleDecide(item, 'use_new')}
+          >
+            {t('wiki.decisionUseNew')}
+          </Button>
+          <Button
+            size="small"
+            loading={submitting === 'edit_accept'}
+            onClick={() => openEditAcceptDialog(item)}
+          >
+            {t('wiki.decisionEditAccept')}
+          </Button>
+        </Space>
+      );
+    }
+    if (PAGE_IDENTITY_TYPES.has(item.check_type)) {
+      return (
+        <Space size={4} wrap>
+          <Button
+            type="primary"
+            size="small"
+            loading={submitting === 'keep_separate'}
+            onClick={() => handleDecide(item, 'keep_separate')}
+          >
+            {t('wiki.decisionKeepSeparate')}
+          </Button>
+          <Button
+            type="primary"
+            size="small"
+            loading={submitting === 'merge'}
+            onClick={() => handleDecide(item, 'merge')}
+          >
+            {t('wiki.decisionMerge')}
+          </Button>
+        </Space>
+      );
+    }
+    return null;
   };
 
   const typeLabel = (ct: string) => (CHECK_TYPE_KEY[ct] ? t(CHECK_TYPE_KEY[ct]) : ct);
   const statusLabel = (status: string) => (CHECK_STATUS_KEY[status] ? t(CHECK_STATUS_KEY[status]) : status);
-  const resolutionOf = (item?: CheckItem | null) =>
-    item?.related?.resolution as
-      | {
-          action?: string;
-          operator?: string;
-          note?: string;
-          processed_at?: string;
-        }
-      | undefined;
-  const selectedOpenItems = useMemo(() => {
-    const selectedIds = new Set(selectedRowKeys.map((key) => Number(key)));
-    return data.filter((item) => item.status === 'open' && selectedIds.has(item.id));
-  }, [data, selectedRowKeys]);
-  const selectedOpenIds = selectedOpenItems.map((item) => item.id);
-  const hasSelectedOpenItems = selectedOpenIds.length > 0;
-
-  const batchMessage = (acceptedOrRejected: number, skipped: number) =>
-    `${t('wiki.batchActionDone')}: ${t('wiki.processed')} ${acceptedOrRejected}, ${t('wiki.skipped')} ${skipped}`;
-
-  const handleBatchAccept = async () => {
-    if (!hasSelectedOpenItems) return;
-    setBatchSubmitting('accept');
-    try {
-      const res = await batchAcceptChecks(selectedOpenIds);
-      message.success(batchMessage(res.accepted, res.skipped));
-      setSelectedRowKeys([]);
-      load();
-    } finally {
-      setBatchSubmitting(null);
-    }
-  };
-
-  const handleBatchReject = async () => {
-    if (!hasSelectedOpenItems) return;
-    setBatchSubmitting('reject');
-    try {
-      const res = await batchRejectChecks(selectedOpenIds);
-      message.success(batchMessage(res.rejected, res.skipped));
-      setSelectedRowKeys([]);
-      load();
-    } finally {
-      setBatchSubmitting(null);
-    }
-  };
 
   const columns: ColumnsType<CheckItem> = [
     {
@@ -215,182 +269,180 @@ const CheckTab: React.FC<{ kbId: number }> = ({ kbId }) => {
       render: (_: unknown, r) => {
         const pages = r.related_pages || [];
         if (!pages.length) return <span className="text-xs text-[var(--color-text-3)]">--</span>;
-        // 列出涉及页面标题(同标题重复时会一致),点「详情」看实际内容/对比
         return <span className="text-[var(--color-text-2)]">{pages.map((p) => p.title).join('  ·  ')}</span>;
       },
     },
     {
       title: t('common.actions'),
       key: 'action',
-      width: 200,
+      width: 380,
       render: (_: unknown, r) => (
-        <Space size={4}>
+        <Space size={4} wrap>
           <Button type="link" size="small" onClick={() => setDetail(r)}>
             {t('wiki.detail')}
           </Button>
-          {r.status === 'open' && (
-            <>
-              <Button type="link" size="small" onClick={() => act(() => acceptCheck(r.id))}>
-                {t('wiki.accept')}
-              </Button>
-              <Button type="link" size="small" danger onClick={() => act(() => rejectCheck(r.id))}>
-                {t('wiki.dismiss')}
-              </Button>
-            </>
-          )}
+          {renderDecisionButtons(r)}
         </Space>
       ),
     },
   ];
 
   const pages = detail?.related_pages || [];
-  const resolution = resolutionOf(detail);
   const suggestedQueries = Array.isArray(detail?.related?.suggested_queries)
     ? (detail.related.suggested_queries as string[])
     : [];
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="mb-3 flex shrink-0 flex-wrap items-center justify-between gap-2">
-        <Space size={8} wrap>
-          <span className="text-xs text-[var(--color-text-3)]">{t('wiki.filterStatus')}</span>
-          <Select
-            value={statusFilter}
-            options={statusOptions}
-            className="min-w-[132px]"
-            onChange={handleStatusFilterChange}
-          />
-          <span className="text-xs text-[var(--color-text-3)]">{t('wiki.filterType')}</span>
-          <Select
-            value={checkTypeFilter}
-            options={checkTypeOptions}
-            className="min-w-[160px]"
-            onChange={handleCheckTypeFilterChange}
-          />
-          <Popconfirm
-            title={t('wiki.batchAcceptConfirm')}
-            okText={t('wiki.confirm')}
-            cancelText={t('common.cancel')}
-            disabled={!hasSelectedOpenItems}
-            onConfirm={handleBatchAccept}
-          >
-            <Button disabled={!hasSelectedOpenItems} loading={batchSubmitting === 'accept'}>
-              {t('wiki.batchAccept')}
-            </Button>
-          </Popconfirm>
-          <Popconfirm
-            title={t('wiki.batchRejectConfirm')}
-            okText={t('wiki.confirm')}
-            cancelText={t('common.cancel')}
-            disabled={!hasSelectedOpenItems}
-            onConfirm={handleBatchReject}
-          >
-            <Button danger disabled={!hasSelectedOpenItems} loading={batchSubmitting === 'reject'}>
-              {t('wiki.batchReject')}
-            </Button>
-          </Popconfirm>
-        </Space>
-        <Button onClick={handleScan} loading={scanning}>
-          {t('wiki.scan')}
-        </Button>
-      </div>
-      {/* flex-1 容器给表格确定高度,使分页时 CustomTable 自动算出的 scroll.y 稳定 */}
-      <div className="flex-1 min-h-0">
-        <CustomTable<CheckItem>
-          rowKey="id"
-          loading={loading}
-          columns={columns}
-          dataSource={data}
-          rowSelection={{
-            selectedRowKeys,
-            onChange: setSelectedRowKeys,
-            getCheckboxProps: (record) => ({ disabled: record.status !== 'open' }),
-          }}
-          pagination={{
-            current: page,
-            pageSize,
-            total,
-            showSizeChanger: true,
-            onChange: (p, ps) => {
-              setPage(p);
-              setPageSize(ps);
-            },
-          }}
-          scroll={{ x: undefined }}
+    <div>
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <Select
+          value={statusFilter}
+          onChange={handleStatusFilterChange}
+          options={statusOptions}
+          style={{ width: 160 }}
+          placeholder={t('wiki.checkStatusAll')}
         />
+        <Select
+          value={checkTypeFilter}
+          onChange={handleCheckTypeFilterChange}
+          options={decisionCheckTypes}
+          style={{ width: 220 }}
+          showSearch
+          placeholder={t('wiki.checkTypeAll')}
+        />
+        <Popconfirm
+          title={t('wiki.scanConfirm')}
+          onConfirm={handleScan}
+          okText={t('common.confirm')}
+          cancelText={t('common.cancel')}
+        >
+          <Button loading={scanning}>{t('wiki.scan')}</Button>
+        </Popconfirm>
       </div>
 
-      {/* 检查详情:候选类展示「当前 vs 候选」对比,扫描类展示涉及页面内容 */}
+      <CustomTable<CheckItem>
+        rowKey="id"
+        loading={loading}
+        columns={columns}
+        dataSource={data}
+        pagination={{
+          current: page,
+          pageSize,
+          total,
+          showSizeChanger: true,
+          onChange: (p, ps) => {
+            setPage(p);
+            setPageSize(ps);
+          },
+        }}
+        onRow={(record) => ({
+          onClick: () => setDetail(record),
+        })}
+      />
+
+      {/* 详情 Drawer */}
       <Drawer
-        title={detail ? typeLabel(detail.check_type) : ''}
+        title={`${t('wiki.detail')}: ${typeLabel(detail?.check_type || '')}`}
         open={!!detail}
-        width={760}
+        width={720}
         onClose={() => setDetail(null)}
         destroyOnHidden
       >
-        {detail &&
-          (detail.candidate ? (
-            <div className="grid grid-cols-2 gap-4">
+        {detail && (
+          <div className="space-y-4">
+            {pages.length > 0 && (
               <div>
-                <div className="mb-2 text-xs font-medium text-[var(--color-text-3)]">{t('wiki.currentVersion')}</div>
-                <div className={MD_CLS} dangerouslySetInnerHTML={mdHtml(pages[0]?.body || '')} />
+                <div className="mb-2 text-sm font-medium">{t('wiki.involvedPages')}</div>
+                <div className="flex flex-wrap gap-2">
+                  {pages.map((p) => (
+                    <Tag key={p.id} color="geekblue">{p.title}</Tag>
+                  ))}
+                </div>
               </div>
-              <div className="border-l border-[var(--color-border-2)] pl-4">
-                <div className="mb-2 text-xs font-medium text-[var(--color-primary)]">{t('wiki.candidateVersion')}</div>
-                <div className={MD_CLS} dangerouslySetInnerHTML={mdHtml(detail.candidate.body)} />
+            )}
+
+            {detail.related?.materials && (
+              <div>
+                <div className="mb-2 text-sm font-medium">{t('wiki.sourceMaterials')}</div>
+                <div className="flex flex-wrap gap-2">
+                  {(detail.related.materials as Array<{ id: number; name?: string }>).map((m) => (
+                    <Tag key={m.id}>{m.name || `#${m.id}`}</Tag>
+                  ))}
+                </div>
               </div>
+            )}
+
+            {detail.candidate && (
+              <div>
+                <div className="mb-2 text-sm font-medium">{t('wiki.candidate')}</div>
+                <div className="rounded border bg-[var(--color-bg-1)] p-3">
+                  <div
+                    className={MD_CLS}
+                    dangerouslySetInnerHTML={mdHtml(detail.candidate.body)}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* phase 7.3 / 7.4: 决策按钮在 Drawer 内 */}
+            <div className="rounded border bg-[var(--color-fill-1)] p-3">
+              <div className="mb-2 text-sm font-medium">{t('wiki.decision')}</div>
+              {renderDecisionButtons(detail)}
             </div>
-          ) : pages.length ? (
-            <div className="space-y-4">
-              {resolution && (
-                <div className="rounded-lg border border-[var(--color-border-2)] bg-[var(--color-fill-1)] p-3">
-                  <div className="mb-2 text-xs font-medium text-[var(--color-text-2)]">
-                    {t('wiki.resolutionResult')}
-                  </div>
-                  <div className="space-y-1 text-xs text-[var(--color-text-3)]">
-                    <div>
-                      {t('wiki.operator')}: {resolution.operator || '--'}
-                    </div>
-                    <div>
-                      {t('wiki.time')}: {resolution.processed_at || '--'}
-                    </div>
-                    {resolution.note && <div>{resolution.note}</div>}
-                  </div>
+
+            {/* phase 7.7: 已处理记录展示 */}
+            {renderResolution(detail)}
+
+            {suggestedQueries.length > 0 && (
+              <div>
+                <div className="mb-2 text-sm font-medium">{t('wiki.suggestedQueries')}</div>
+                <div className="flex flex-wrap gap-2">
+                  {suggestedQueries.map((q) => (
+                    <Tag key={q}>{q}</Tag>
+                  ))}
                 </div>
-              )}
-              {suggestedQueries.length > 0 && (
-                <div>
-                  <div className="mb-2 text-xs font-medium text-[var(--color-text-3)]">
-                    {t('wiki.suggestedQueries')}
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {suggestedQueries.map((query) => (
-                      <Tag key={query} className="m-0">
-                        {query}
-                      </Tag>
-                    ))}
-                  </div>
-                </div>
-              )}
-              <div className="text-xs text-[var(--color-text-3)]">{t('wiki.involvedPages')}</div>
-              {pages.map((p) => (
-                <div key={p.id} className="rounded-lg border border-[var(--color-border-2)] p-3">
-                  <div className="mb-2 flex items-center gap-2 font-medium text-[var(--color-text-1)]">
-                    {p.title}
-                    <Tag className="m-0">{p.page_type}</Tag>
-                  </div>
-                  {p.body ? (
-                    <div className={MD_CLS} dangerouslySetInnerHTML={mdHtml(p.body)} />
-                  ) : (
-                    <span className="text-xs text-[var(--color-text-3)]">--</span>
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <Empty />
-          ))}
+              </div>
+            )}
+          </div>
+        )}
       </Drawer>
+
+      {/* phase 7.3: edit_accept 弹 Modal 接收新正文 */}
+      <Modal
+        title={t('wiki.decisionEditAcceptTitle')}
+        open={!!editingItem}
+        width={720}
+        onCancel={() => {
+          setEditingItem(null);
+          setEditBody('');
+        }}
+        onOk={() => {
+          if (editingItem && editBody.trim()) {
+            handleDecide(editingItem, 'edit_accept', editBody);
+          }
+        }}
+        okButtonProps={{ disabled: !editBody.trim() || submitting === 'edit_accept' }}
+        okText={t('wiki.decisionEditAccept')}
+        cancelText={t('common.cancel')}
+      >
+        <div className="mb-2 text-sm text-[var(--color-text-3)]">
+          {t('wiki.decisionEditAcceptTip')}
+        </div>
+        {editingItem?.candidate && (
+          <div className="mb-3 rounded border bg-[var(--color-bg-1)] p-3">
+            <div className="mb-1 text-xs text-[var(--color-text-3)]">
+              {t('wiki.candidate')}:
+            </div>
+            <div className="max-h-32 overflow-auto text-xs" dangerouslySetInnerHTML={mdHtml(editingItem.candidate.body)} />
+          </div>
+        )}
+        <Input.TextArea
+          value={editBody}
+          onChange={(e) => setEditBody(e.target.value)}
+          autoSize={{ minRows: 10, maxRows: 20 }}
+          placeholder={t('wiki.decisionEditAcceptPlaceholder')}
+        />
+      </Modal>
     </div>
   );
 };
