@@ -6,15 +6,18 @@ import {
   Select,
   Tooltip,
   InputNumber,
+  Cascader,
   FormInstance
 } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import {
   SegmentedItem,
   IndexViewItem,
-  UnitListItem
+  UnitListItem,
+  CascaderItem
 } from '@/app/monitor/types';
 import { StrategyFields } from '@/app/monitor/types/event';
+import { findCascaderPath } from '@/app/monitor/utils/common';
 import {
   useScheduleList,
   useMethodList,
@@ -51,6 +54,9 @@ interface MetricDefinitionFormProps {
   resultUnit: string | null;
   unitOptions: UnitListItem[];
   labelsByRef: Record<string, string[]>;
+  metricUnit: string | null;
+  onMetricUnitChange: (value: string) => void;
+  groupedUnitOptions: CascaderItem[];
   onCollectTypeChange: (id: string) => void;
   onMetricRowsChange: (rows: MetricExpressionRow[]) => void;
   onResultNameChange: (value: string) => void;
@@ -76,6 +82,9 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
   resultUnit,
   unitOptions,
   labelsByRef,
+  metricUnit,
+  onMetricUnitChange,
+  groupedUnitOptions,
   onCollectTypeChange,
   onMetricRowsChange,
   onResultNameChange,
@@ -207,6 +216,9 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
                   groupMethods={GROUP_METHOD_LIST}
                   conditionMethods={CONDITION_LIST}
                   metricsLoading={metricsLoading}
+                  metricUnit={metricUnit}
+                  onMetricUnitChange={onMetricUnitChange}
+                  groupedUnitOptions={groupedUnitOptions}
                   onRowsChange={onMetricRowsChange}
                   onResultNameChange={onResultNameChange}
                   onExpressionChange={onExpressionChange}
@@ -214,6 +226,48 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
                 />
               </Form.Item>
             </>
+          )
+        }
+      </Form.Item>
+
+      {/* 计算指标单位 - 仅在非 Trap 模式下展示 */}
+      <Form.Item
+        noStyle
+        shouldUpdate={(prevValues, currentValues) =>
+          prevValues.collect_type !== currentValues.collect_type
+        }
+      >
+        {({ getFieldValue }) =>
+          isTrap(getFieldValue) ? null : (
+            <Form.Item<StrategyFields>
+              label={
+                <span className="w-[100px]">
+                  {t('monitor.events.metricUnit')}
+                </span>
+              }
+            >
+              <Cascader
+                className="w-full"
+                showSearch
+                value={
+                  metricUnit
+                    ? findCascaderPath(groupedUnitOptions, metricUnit)
+                    : []
+                }
+                placeholder={t('monitor.events.metricUnitPlaceholder')}
+                options={groupedUnitOptions}
+                onChange={(path) => {
+                  // Cascader 清空时 path 是 [],直接忽略,避免把字符串 "undefined" 写入 state
+                  const next = (path as (string | number)[]).at(-1);
+                  if (typeof next === 'string') {
+                    onMetricUnitChange(next);
+                  }
+                }}
+              />
+              <div className="text-[var(--color-text-3)] mt-[10px]">
+                {t('monitor.events.metricUnitTip')}
+              </div>
+            </Form.Item>
           )
         }
       </Form.Item>
