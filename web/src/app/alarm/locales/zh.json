@@ -656,7 +656,7 @@
         "actionTargetHostFieldTip": "从告警 labels 取，默认 ip_addr",
         "actionTargetHostMode": "目标主机来源",
         "actionTargetHostModeFromAlert": "从告警取",
-        "actionTargetHostModeFixed": "定死主机",
+        "actionTargetHostModeFixed": "固定主机",
         "actionTargetHostModeLegacy": "默认·从告警取",
         "actionTargetHostIp": "目标主机 IP",
         "actionTargetHostIpTip": "不读告警；按此 IP 在节点管理中查找唯一主机"

@@ -296,8 +296,9 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
                   rowData={[formData]}
                   displayMode="dropdown"
                   onAction={() => {
+                    // 修复：原 onAction 里还调 handleCancel()，会让用户点完执行动作时
+                    // 右侧 Drawer 被关闭，妨碍继续操作；现在保留刷新、不再关闭 Drawer。
                     handleAction?.();
-                    handleCancel();
                   }}
                 />
               </div>
