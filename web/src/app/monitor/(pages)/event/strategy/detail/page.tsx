@@ -47,13 +47,13 @@ import {
   ENUM_COMPARISON_METHOD
 } from '@/app/monitor/constants/event';
 import {
-  FORMULA_DEFAULT_RESULT_UNIT,
   buildMetricUnitCascaderOptions,
   filterInvalidCalculationUnit,
   getCalculationUnitOnMetricRowsChange,
   getReverseModeCalculationUnit,
-  resolveFormulaResultUnit,
-  resolveInitialMetricPluginId
+  resolveEffectiveCalculationUnit,
+  resolveInitialMetricPluginId,
+  restoreCalculationUnitState
 } from './strategyDetailUtils';
 import { MetricExpressionRow } from './metricExpressionTypes';
 import {
@@ -63,6 +63,7 @@ import {
   DEFAULT_FORMULA_RESULT_NAME,
   getMetricExpressionModeForRows,
   MetricExpressionMode,
+  resolveMetricExpressionUnits,
   toMetricExpressionStateFromQueryCondition
 } from './formulaExpressionUtils';
 const defaultGroup = ['instance_id'];
@@ -168,15 +169,18 @@ const StrategyOperation = () => {
       value: null
     }
   ]);
-  const [metricUnit, setMetricUnit] = useState<string | null>(null);
   const [thresholdUnit, setThresholdUnit] = useState<string | null>(null);
-  const [resultUnit, setResultUnit] = useState<string | null>(null);
   const [pluginList, setPluginList] = useState<SegmentedItem[]>([]);
   const [originMetricData, setOriginMetricData] = useState<IndexViewItem[]>([]);
   const [initMetricData, setInitMetricData] = useState<MetricItem[]>([]);
   const [channelList, setChannelList] = useState<ChannelItem[]>([]);
   const [enableAlerts, setEnableAlerts] = useState<string[]>(['threshold']);
   const initialMetricPluginIdRef = useRef<string | number | undefined>(undefined);
+  const effectiveCalculationUnit = resolveEffectiveCalculationUnit({
+    isFormulaMode: metricExpressionMode === 'formula',
+    unit: thresholdUnit,
+    unitList
+  });
 
   useEffect(() => {
     if (!isLoading) {
@@ -246,8 +250,6 @@ const StrategyOperation = () => {
             const _labels = getMetricDimensionNames(target?.dimensions);
             const initialBuiltInUnit = filterInvalidCalculationUnit(target?.unit);
             setThresholdUnit(initialBuiltInUnit);
-            // 内置模板新建场景下,metricUnit 与 thresholdUnit 一同初始化
-            setMetricUnit(initialBuiltInUnit);
             // 计算完整的分组维度选项列表并设置为所有选项
             const fixedList =
               getGroupIds(monitorName as string)?.list || defaultGroup;
@@ -407,10 +409,8 @@ const StrategyOperation = () => {
     });
     setGroupBy(sanitizeGroupBy(group_by || []));
     feedbackThreshold(thresholdList);
-    const initialUnit = filterInvalidCalculationUnit(calculation_unit);
+    const initialUnit = restoreCalculationUnitState(calculation_unit);
     setThresholdUnit(initialUnit);
-    // 首屏编辑回填时指标单位也填同值;切换指标时会被覆盖
-    setMetricUnit(initialUnit);
     setPeriod(period?.value || null);
     setPeriodUnit(period?.type || 'min');
     setGroupAlgorithm(data.group_algorithm || 'avg');
@@ -498,13 +498,9 @@ const StrategyOperation = () => {
       });
       setMetricRows(rows);
       setMetricExpressionMode('formula');
-      setResultUnit(
-        resolveFormulaResultUnit(data.calculation_unit as string | null, unitList)
+      setThresholdUnit(
+        restoreCalculationUnitState(data.calculation_unit as string | null)
       );
-      // 公式模式 metricUnit 留空(Cascader 在公式模式下隐藏);
-      // thresholdUnit 沿用 edit-load 时的值,用户可独立调整
-      setMetricUnit(null);
-      setThresholdUnit(data.calculation_unit as string | null);
       setFormulaResultName(restoredState.resultName);
       setFormulaExpression(restoredState.expression);
       setMetric(rows[0]?.metricName || null);
@@ -577,8 +573,6 @@ const StrategyOperation = () => {
     // 自动设置告警阈值单位为指标的默认单位（过滤掉 none 和 short）
     const filteredUnit = filterInvalidCalculationUnit(target?.unit);
     if (filteredUnit) {
-      // 先设 metricUnit(指标单位),再设 thresholdUnit(阈值单位)初始同步为同一值,用户可独立调整
-      setMetricUnit(filteredUnit);
       setThresholdUnit(filteredUnit);
       return;
     }
@@ -597,7 +591,6 @@ const StrategyOperation = () => {
       );
       defaultUnit = sameSystemUnit?.unit_id || null;
     }
-    setMetricUnit(defaultUnit);
     setThresholdUnit(defaultUnit);
   };
 
@@ -652,7 +645,7 @@ const StrategyOperation = () => {
     setMetricRows(rows);
 
     if (nextMode === 'formula') {
-      setResultUnit((current) =>
+      setThresholdUnit((current) =>
         getCalculationUnitOnMetricRowsChange({
           previousMode,
           nextMode,
@@ -660,10 +653,8 @@ const StrategyOperation = () => {
           unitList
         })
       );
-      // 公式模式 metricUnit 留空;thresholdUnit 保留用户已选值
-      setMetricUnit(null);
     } else {
-      // 反向:从公式切回单指标时,把 metricUnit 与 thresholdUnit 都回退到主指标的单位,用户可独立调整
+      // 从公式切回单指标时,阈值单位回退到主指标的单位
       const primaryMetric = metrics.find(
         (item) => item.name === nextPrimaryMetricName
       );
@@ -673,11 +664,8 @@ const StrategyOperation = () => {
         primaryMetricUnit: primaryMetric?.unit ?? null
       });
       if (retracted !== undefined) {
-        setMetricUnit(retracted);
         setThresholdUnit(retracted);
       }
-      // 离开公式模式,清空 resultUnit
-      setResultUnit(null);
     }
 
     if (
@@ -749,12 +737,8 @@ const StrategyOperation = () => {
     form.validateFields(['threshold']);
   };
 
-  const handleMetricUnitChange = (unit: string) => {
-    setMetricUnit(unit);
-  };
-
   const handleFormulaResultUnitChange = (unit: string) => {
-    setResultUnit(unit);
+    setThresholdUnit(unit);
     form.validateFields(['threshold']);
   };
 
@@ -780,6 +764,7 @@ const StrategyOperation = () => {
         (item) => item.value === params.collect_type
       );
       const isTrapPlugin = target?.name === 'SNMP Trap';
+      let selectedMetricSourceUnit: string | null | undefined = null;
       if (isTrapPlugin) {
         params.query_condition = {
           type: 'pmq',
@@ -810,13 +795,8 @@ const StrategyOperation = () => {
             item.id === primaryMetric?.metricId ||
             item.name === primaryMetric?.metricName
         );
+        selectedMetricSourceUnit = mertricTarget?.unit;
         params.source = source;
-        params.metric_unit =
-          metricExpressionMode === 'formula' ||
-          metricRows.length > 1 ||
-          isStringArray(mertricTarget?.unit)
-            ? ''
-            : metricUnit ?? mertricTarget?.unit;
       }
       params.group_algorithm =
         params.group_algorithm ||
@@ -827,11 +807,18 @@ const StrategyOperation = () => {
       params.threshold = threshold.filter(
         (item) => !!item.value || item.value === 0
       );
-      const nextCalculationUnit =
-        metricExpressionMode === 'formula'
-          ? resolveFormulaResultUnit(resultUnit, unitList)
-          : thresholdUnit;
-      params.calculation_unit = nextCalculationUnit ?? '';
+      const policyUnits = isTrapPlugin
+        ? { metricUnit: '', calculationUnit: '' }
+        : resolveMetricExpressionUnits({
+          queryType:
+            metricExpressionMode === 'formula' || metricRows.length > 1
+              ? 'formula'
+              : 'metric',
+          metricUnit: selectedMetricSourceUnit,
+          calculationUnit: effectiveCalculationUnit
+        });
+      params.metric_unit = policyUnits.metricUnit;
+      params.calculation_unit = policyUnits.calculationUnit;
       params.monitor_object = monitorObjId;
       params.schedule = {
         type: unit,
@@ -958,12 +945,10 @@ const StrategyOperation = () => {
                           expression={formulaExpression}
                           resultUnit={
                             metricExpressionMode === 'formula'
-                              ? resultUnit || FORMULA_DEFAULT_RESULT_UNIT
+                              ? effectiveCalculationUnit
                               : null
                           }
                           labelsByRef={labelsByRef}
-                          metricUnit={metricUnit}
-                          onMetricUnitChange={handleMetricUnitChange}
                           groupedUnitOptions={groupedUnitOptions}
                           onCollectTypeChange={changeCollectType}
                           onMetricRowsChange={handleMetricRowsChange}
@@ -984,7 +969,7 @@ const StrategyOperation = () => {
                         <AlertConditionsForm
                           enableAlerts={enableAlerts}
                           threshold={threshold}
-                          thresholdUnit={thresholdUnit}
+                          thresholdUnit={effectiveCalculationUnit}
                           noDataAlert={noDataAlert}
                           nodataUnit={nodataUnit}
                           noDataRecovery={noDataRecovery}
@@ -995,7 +980,6 @@ const StrategyOperation = () => {
                             metrics.find((item) => item.name === metric)
                               ?.unit || null
                           }
-                          resultUnit={resultUnit}
                           isFormulaMode={metricExpressionMode === 'formula'}
                           onEnableAlertsChange={setEnableAlerts}
                           onThresholdChange={handleThresholdChange}
@@ -1054,7 +1038,7 @@ const StrategyOperation = () => {
                 periodUnit={periodUnit}
                 algorithm={algorithm}
                 threshold={threshold}
-                calculationUnit={thresholdUnit}
+                calculationUnit={effectiveCalculationUnit}
                 metricRows={metricRows}
                 metricExpressionMode={metricExpressionMode}
                 resultName={formulaResultName}

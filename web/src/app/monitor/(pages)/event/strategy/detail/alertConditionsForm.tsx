@@ -7,7 +7,8 @@ import { useCommon } from '@/app/monitor/context/common';
 import { SCHEDULE_UNIT_MAP } from '@/app/monitor/constants/event';
 import {
   getMetricThresholdEnumState,
-  getThresholdUnitOptions
+  getThresholdUnitOptions,
+  shouldShowThresholdUnitSelector
 } from './strategyDetailUtils';
 import ThresholdList from './thresholdList';
 
@@ -32,7 +33,6 @@ interface AlertConditionsFormProps {
   noDataAlertLevel: string;
   noDataAlertName: string;
   metricUnit: string | null;
-  resultUnit: string | null;
   isFormulaMode: boolean;
   onEnableAlertsChange: (val: string[]) => void;
   onThresholdChange: (value: ThresholdField[]) => void;
@@ -54,7 +54,6 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   noDataAlertLevel,
   noDataAlertName,
   metricUnit,
-  resultUnit,
   isFormulaMode,
   onThresholdChange,
   onThresholdUnitChange,
@@ -72,9 +71,9 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
     [isFormulaMode, metricUnit]
   );
 
-  // 阈值单位过滤基准: 公式模式下用 resultUnit(结果单位定阈值范围),
+  // 阈值单位过滤基准: 公式模式下用 thresholdUnit(结果单位定阈值范围),
   // 非公式模式下用 metricUnit(指标单位定阈值范围)
-  const thresholdFilterBase = isFormulaMode ? resultUnit : metricUnit;
+  const thresholdFilterBase = isFormulaMode ? thresholdUnit : metricUnit;
 
   const filteredUnitOptions = useMemo(
     () =>
@@ -132,6 +131,10 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                   unitOptions={filteredUnitOptions}
                   isEnumMetric={isEnumMetric}
                   enumOptions={enumOptions}
+                  showUnitSelector={shouldShowThresholdUnitSelector({
+                    isFormulaMode,
+                    isEnumMetric
+                  })}
                 />
               </Form.Item>
 

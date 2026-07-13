@@ -8,8 +8,10 @@ import { MetricItem } from '@/app/monitor/types';
 import { SourceFeild } from '@/app/monitor/types/event';
 import { InstanceItem } from '@/app/monitor/types/search';
 import { sanitizeGroupBy } from '@/app/monitor/utils/metricDimensions';
+import { isStringArray } from '@/app/monitor/utils/common';
 
 export type MetricExpressionMode = 'metric' | 'formula' | 'auto';
+export type MetricExpressionQueryType = 'metric' | 'formula';
 
 export const DEFAULT_FORMULA_RESULT_NAME = '计算指标';
 export const DEFAULT_FORMULA_EXPRESSION = 'a / b * 100';
@@ -46,6 +48,22 @@ export const shouldShowFormulaEditor = (
 export const getMetricExpressionModeForRows = (
   rows: MetricExpressionRow[]
 ): MetricExpressionMode => (rows.length > 1 ? 'formula' : 'metric');
+
+export const resolveMetricExpressionUnits = ({
+  queryType,
+  metricUnit,
+  calculationUnit
+}: {
+  queryType: MetricExpressionQueryType;
+  metricUnit: string | null | undefined;
+  calculationUnit: string | null | undefined;
+}): { metricUnit: string; calculationUnit: string } => ({
+  metricUnit:
+    queryType === 'formula' || isStringArray(metricUnit || '')
+      ? ''
+      : metricUnit || '',
+  calculationUnit: calculationUnit || ''
+});
 
 export const createMetricRow = (
   index: number,
@@ -557,6 +575,11 @@ export const buildMetricExpressionPreviewPayload = ({
   const payloadGroupAlgorithm = isFormula
     ? anchorRow.groupAlgorithm || 'avg'
     : groupAlgorithm || 'avg';
+  const units = resolveMetricExpressionUnits({
+    queryType: isFormula ? 'formula' : 'metric',
+    metricUnit: anchorMetric.unit,
+    calculationUnit
+  });
 
   return {
     monitor_object: monitorObjId,
@@ -569,8 +592,8 @@ export const buildMetricExpressionPreviewPayload = ({
     algorithm,
     group_algorithm: payloadGroupAlgorithm,
     group_by: payloadGroupBy,
-    metric_unit: isFormula ? '' : anchorMetric.unit || '',
-    calculation_unit: calculationUnit || '',
+    metric_unit: units.metricUnit,
+    calculation_unit: units.calculationUnit,
     preview: {
       instance_id: selectedInstance.instance_id,
       instance_id_values: selectedInstance.instance_id_values,

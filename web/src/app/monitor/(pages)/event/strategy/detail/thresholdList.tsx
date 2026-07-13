@@ -31,6 +31,7 @@ interface ThresholdListProps {
   unitOptions?: any[];
   isEnumMetric?: boolean;
   enumOptions?: EnumOption[];
+  showUnitSelector?: boolean;
 }
 
 const ThresholdList: React.FC<ThresholdListProps> = ({
@@ -40,7 +41,8 @@ const ThresholdList: React.FC<ThresholdListProps> = ({
   onThresholdUnitChange,
   unitOptions = [],
   isEnumMetric = false,
-  enumOptions = []
+  enumOptions = [],
+  showUnitSelector = true
 }) => {
   const { t } = useTranslation();
 
@@ -76,7 +78,7 @@ const ThresholdList: React.FC<ThresholdListProps> = ({
   return (
     <div className="w-full border border-[var(--color-border-2)] rounded-md p-4 bg-[var(--color-bg-1)] shadow-md">
       {/* 单位选择器在右上角 - 枚举类型不显示 */}
-      {!isEnumMetric && (
+      {showUnitSelector && !isEnumMetric && (
         <div className="flex justify-end mb-[10px]">
           <span className="mr-[10px] leading-[32px]">{t('common.unit')}:</span>
           <Select

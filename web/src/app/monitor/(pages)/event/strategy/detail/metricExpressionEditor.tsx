@@ -30,8 +30,6 @@ interface MetricExpressionEditorProps {
   resultName: string;
   expression: string;
   resultUnit: string | null;
-  metricUnit: string | null;
-  onMetricUnitChange: (value: string) => void;
   groupedUnitOptions: CascaderItem[];
   labelsByRef: Record<string, string[]>;
   originMetricData: IndexViewItem[];
@@ -51,8 +49,6 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
   resultName,
   expression,
   resultUnit,
-  metricUnit,
-  onMetricUnitChange,
   groupedUnitOptions,
   labelsByRef,
   originMetricData,
@@ -186,10 +182,6 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
     label: `${item.label.toString().toLowerCase()} by`,
     value: item.value
   }));
-
-  // 透传 metricUnit 给上层(由 MetricDefinitionForm 渲染 Cascader)
-  void metricUnit;
-  void onMetricUnitChange;
 
   return (
     <div className="rounded-md border border-[var(--color-border-2)] bg-[var(--color-bg-1)] shadow-sm">
@@ -383,6 +375,7 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
             <Cascader
               className="w-full"
               showSearch
+              allowClear={false}
               value={
                 resultUnit ? findCascaderPath(groupedUnitOptions, resultUnit) : []
               }

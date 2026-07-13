@@ -134,6 +134,14 @@ export const getMetricThresholdEnumState = ({
   };
 };
 
+export const shouldShowThresholdUnitSelector = ({
+  isFormulaMode,
+  isEnumMetric
+}: {
+  isFormulaMode: boolean;
+  isEnumMetric: boolean;
+}): boolean => !isFormulaMode && !isEnumMetric;
+
 export const getThresholdUnitOptions = ({
   unitList,
   metricUnit,
@@ -162,28 +170,19 @@ export const getThresholdUnitOptions = ({
 export const buildMetricUnitCascaderOptions = (
   groupedUnitList: GroupedUnitList[]
 ): CascaderItem[] =>
-  groupedUnitList.map((group) => ({
-    label: group.label,
-    value: group.label,
-    children: (group.children || []).map((item) => ({
-      label: item.label,
-      value: item.value,
-      children: []
+  groupedUnitList
+    .map((group) => ({
+      label: group.label,
+      value: group.label,
+      children: (group.children || [])
+        .filter((item) => !INVALID_THRESHOLD_UNIT_IDS.has(item.value))
+        .map((item) => ({
+          label: item.label,
+          value: item.value,
+          children: []
+        }))
     }))
-  }));
-
-// 有效 metric 单位:必须能在 groupedUnitList 中找到, 且不在 'none' / 'short' 集内
-// 单位表规模小 (<100),即便 O(N×M) 也可接受。
-export const isValidMetricUnit = (
-  unit: string | null | undefined,
-  groupedUnitList: GroupedUnitList[]
-): boolean => {
-  if (!unit) return false;
-  if (unit === 'none' || unit === 'short') return false;
-  return groupedUnitList.some((group) =>
-    (group.children || []).some((item) => item.value === unit)
-  );
-};
+    .filter((group) => group.children.length > 0);
 
 // 现有 page.tsx 的 filterInvalidUnit 逻辑上提到 utils(行为完全一致,签名兼容)
 export const filterInvalidCalculationUnit = (
@@ -193,6 +192,33 @@ export const filterInvalidCalculationUnit = (
     return null;
   }
   return unit;
+};
+
+export const restoreCalculationUnitState = (
+  unit: string | null | undefined
+): string | null => filterInvalidCalculationUnit(unit);
+
+export const resolveEffectiveCalculationUnit = ({
+  isFormulaMode,
+  unit,
+  unitList
+}: {
+  isFormulaMode: boolean;
+  unit: string | null | undefined;
+  unitList: UnitListItem[];
+}): string | null => {
+  if (isFormulaMode) {
+    return resolveFormulaResultUnit(unit, unitList);
+  }
+
+  const normalizedUnit = filterInvalidCalculationUnit(unit);
+  if (!normalizedUnit) return null;
+
+  return getValidThresholdUnitOptions(unitList).some(
+    (item) => item.unit_id === normalizedUnit
+  )
+    ? normalizedUnit
+    : null;
 };
 
 // 公式 → 单指标 retract:返回新值;否则返回 undefined 表示「无变化」
