@@ -36,6 +36,14 @@ def scan_log_policy_task(policy_id):
             logger.info(f"日志策略 [{policy_id}] 未启用，跳过执行，耗时: {duration:.2f}s")
             return {"success": True, "duration": duration, "message": "策略未启用"}
 
+        try:
+            period_seconds = period_to_seconds(policy_obj.period)
+        except BaseAppException as exc:
+            duration = time.time() - start_time
+            message = f"策略周期配置无效: {exc}"
+            logger.error(f"日志策略 [{policy_id}] 跳过执行，耗时: {duration:.2f}s，错误: {message}")
+            return {"success": False, "duration": duration, "message": message}
+
         current_time = datetime.now(timezone.utc)
         safe_time = current_time - timedelta(seconds=AlertConstants.INGEST_DELAY_SECONDS)
         overlap_seconds = AlertConstants.WINDOW_OVERLAP_SECONDS
@@ -46,7 +54,6 @@ def scan_log_policy_task(policy_id):
             LogPolicyScan(policy_obj, scan_time=safe_time).run()
             Policy.objects.filter(id=policy_id).update(last_run_time=safe_time)
         else:
-            period_seconds = period_to_seconds(policy_obj.period)
             gap_seconds = max((safe_time - policy_obj.last_run_time).total_seconds(), 0)
             gap_seconds = min(gap_seconds, AlertConstants.MAX_BACKFILL_SECONDS)
 
