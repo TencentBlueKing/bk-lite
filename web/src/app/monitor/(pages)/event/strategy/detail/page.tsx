@@ -950,6 +950,7 @@ const StrategyOperation = () => {
                           }
                           labelsByRef={labelsByRef}
                           groupedUnitOptions={groupedUnitOptions}
+                          unitList={unitList}
                           onCollectTypeChange={changeCollectType}
                           onMetricRowsChange={handleMetricRowsChange}
                           onResultNameChange={setFormulaResultName}

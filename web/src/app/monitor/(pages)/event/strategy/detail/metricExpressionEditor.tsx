@@ -9,7 +9,8 @@ import {
   IndexViewItem,
   ListItem,
   MetricItem,
-  CascaderItem
+  CascaderItem,
+  UnitListItem
 } from '@/app/monitor/types';
 import { findCascaderPath } from '@/app/monitor/utils/common';
 import {
@@ -23,6 +24,7 @@ import {
   shouldShowFormulaEditor,
   VARIABLE_SEQUENCE
 } from './formulaExpressionUtils';
+import { buildMetricSelectOption } from './strategyDetailUtils';
 
 interface MetricExpressionEditorProps {
   rows: MetricExpressionRow[];
@@ -31,6 +33,7 @@ interface MetricExpressionEditorProps {
   expression: string;
   resultUnit: string | null;
   groupedUnitOptions: CascaderItem[];
+  unitList: UnitListItem[];
   labelsByRef: Record<string, string[]>;
   originMetricData: IndexViewItem[];
   groupByOptions: string[];
@@ -50,6 +53,7 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
   expression,
   resultUnit,
   groupedUnitOptions,
+  unitList,
   labelsByRef,
   originMetricData,
   groupByOptions,
@@ -79,12 +83,11 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
       originMetricData.map((group) => ({
         label: group.display_name,
         title: group.name,
-        options: (group.child || []).map((metric: MetricItem) => ({
-          label: metric.display_name,
-          value: metric.name
-        }))
+        options: (group.child || []).map((metric: MetricItem) =>
+          buildMetricSelectOption(metric, unitList)
+        )
       })),
-    [originMetricData]
+    [originMetricData, unitList]
   );
 
   const updateRow = (rowIndex: number, patch: Partial<MetricExpressionRow>) => {

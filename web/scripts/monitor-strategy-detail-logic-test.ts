@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 
 import {
   FORMULA_DEFAULT_RESULT_UNIT,
+  buildMetricSelectOption,
   buildMetricUnitCascaderOptions,
   filterInvalidCalculationUnit,
   getCalculationUnitOnMetricRowsChange,
@@ -12,6 +13,7 @@ import {
   resolveFormulaResultUnit,
   resolveEffectiveCalculationUnit,
   resolveInitialMetricPluginId,
+  resolveMetricDisplayUnit,
   restoreCalculationUnitState,
   shouldShowThresholdUnitSelector,
 } from '../src/app/monitor/(pages)/event/strategy/detail/strategyDetailUtils';
@@ -117,6 +119,50 @@ const unitList: UnitListItem[] = [
     is_standalone: true,
   },
 ];
+
+assert.equal(resolveMetricDisplayUnit('percent', unitList), '%');
+assert.equal(resolveMetricDisplayUnit('bytes', unitList), 'B');
+assert.equal(resolveMetricDisplayUnit('none', unitList), '');
+assert.equal(resolveMetricDisplayUnit('short', unitList), '');
+assert.equal(
+  resolveMetricDisplayUnit('[{"id":1,"name":"up"}]', unitList),
+  ''
+);
+assert.equal(resolveMetricDisplayUnit('unknown-unit', unitList), '');
+assert.equal(resolveMetricDisplayUnit('percent', []), '');
+
+assert.deepEqual(
+  buildMetricSelectOption(
+    {
+      id: 1,
+      metric_group: 1,
+      metric_object: 1,
+      name: 'disk_usage',
+      type: 'gauge',
+      display_name: '磁盘使用率',
+      dimensions: [],
+      unit: 'percent',
+    },
+    unitList
+  ),
+  { label: '磁盘使用率（%）', value: 'disk_usage' }
+);
+assert.deepEqual(
+  buildMetricSelectOption(
+    {
+      id: 2,
+      metric_group: 1,
+      metric_object: 1,
+      name: 'disk_state',
+      type: 'gauge',
+      display_name: '磁盘状态',
+      dimensions: [],
+      unit: '[{"id":1,"name":"up"}]',
+    },
+    unitList
+  ),
+  { label: '磁盘状态', value: 'disk_state' }
+);
 
 assert.equal(
   resolveEffectiveCalculationUnit({

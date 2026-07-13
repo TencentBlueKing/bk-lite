@@ -1,4 +1,10 @@
-import { SegmentedItem, UnitListItem, GroupedUnitList, CascaderItem } from '@/app/monitor/types';
+import {
+  CascaderItem,
+  GroupedUnitList,
+  MetricItem,
+  SegmentedItem,
+  UnitListItem
+} from '@/app/monitor/types';
 import { isStringArray } from '@/app/monitor/utils/common';
 import { MetricExpressionMode } from './formulaExpressionUtils';
 
@@ -183,6 +189,29 @@ export const buildMetricUnitCascaderOptions = (
         }))
     }))
     .filter((group) => group.children.length > 0);
+
+export const resolveMetricDisplayUnit = (
+  unit: string | null | undefined,
+  unitList: UnitListItem[]
+): string => {
+  if (!unit || INVALID_THRESHOLD_UNIT_IDS.has(unit) || isStringArray(unit)) {
+    return '';
+  }
+
+  return unitList.find((item) => item.unit_id === unit)?.display_unit || '';
+};
+
+export const buildMetricSelectOption = (
+  metric: MetricItem,
+  unitList: UnitListItem[]
+): { label: string; value: string } => {
+  const displayName = metric.display_name || metric.name;
+  const displayUnit = resolveMetricDisplayUnit(metric.unit, unitList);
+  return {
+    label: displayUnit ? `${displayName}（${displayUnit}）` : displayName,
+    value: metric.name
+  };
+};
 
 // 现有 page.tsx 的 filterInvalidUnit 逻辑上提到 utils(行为完全一致,签名兼容)
 export const filterInvalidCalculationUnit = (

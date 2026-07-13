@@ -12,7 +12,8 @@ import { useTranslation } from '@/utils/i18n';
 import {
   SegmentedItem,
   IndexViewItem,
-  CascaderItem
+  CascaderItem,
+  UnitListItem
 } from '@/app/monitor/types';
 import { StrategyFields } from '@/app/monitor/types/event';
 import {
@@ -51,6 +52,7 @@ interface MetricDefinitionFormProps {
   resultUnit: string | null;
   labelsByRef: Record<string, string[]>;
   groupedUnitOptions: CascaderItem[];
+  unitList: UnitListItem[];
   onCollectTypeChange: (id: string) => void;
   onMetricRowsChange: (rows: MetricExpressionRow[]) => void;
   onResultNameChange: (value: string) => void;
@@ -76,6 +78,7 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
   resultUnit,
   labelsByRef,
   groupedUnitOptions,
+  unitList,
   onCollectTypeChange,
   onMetricRowsChange,
   onResultNameChange,
@@ -207,6 +210,7 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
                   conditionMethods={CONDITION_LIST}
                   metricsLoading={metricsLoading}
                   groupedUnitOptions={groupedUnitOptions}
+                  unitList={unitList}
                   onRowsChange={onMetricRowsChange}
                   onResultNameChange={onResultNameChange}
                   onExpressionChange={onExpressionChange}
