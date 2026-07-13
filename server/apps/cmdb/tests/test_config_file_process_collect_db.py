@@ -103,6 +103,17 @@ def test_manual_versions_without_collect_task_do_not_conflict():
 
 
 @pytest.mark.django_db
+def test_config_file_content_lifecycle_defaults_to_pending():
+    version_obj = ConfigFileVersion.objects.create(**_version_fields())
+
+    assert version_obj.content_status == "pending"
+    assert version_obj.temp_content_key == ""
+    assert version_obj.content_error == ""
+    assert version_obj.content_attempt_count == 0
+    assert version_obj.content_updated_at is not None
+
+
+@pytest.mark.django_db
 def test_success_creates_version_and_updates_task():
     task = _make_task()
     result = S.process_collect_result(_payload(task))
@@ -369,7 +380,7 @@ def test_concurrent_business_key_commits_only_one_row():
 def test_dedupe_migration_keeps_earliest_record():
     executor = MigrationExecutor(connection)
     old_target = [("cmdb", "0031_subscriptiondelivery")]
-    new_target = [("cmdb", "0032_dedupe_config_file_versions")]
+    new_target = [("cmdb", "0033_config_file_content_lifecycle")]
     executor.migrate(old_target)
     try:
         old_apps = executor.loader.project_state(old_target).apps
@@ -390,6 +401,43 @@ def test_dedupe_migration_keeps_earliest_record():
 
         assert not historical_version.objects.filter(id=first.id).exists()
         assert historical_version.objects.filter(id=second.id).exists()
+    finally:
+        executor = MigrationExecutor(connection)
+        executor.migrate(new_target)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_content_lifecycle_migration_classifies_existing_versions():
+    executor = MigrationExecutor(connection)
+    old_target = [("cmdb", "0032_dedupe_config_file_versions")]
+    new_target = [("cmdb", "0033_config_file_content_lifecycle")]
+    executor.migrate(old_target)
+    try:
+        old_apps = executor.loader.project_state(old_target).apps
+        historical_task = old_apps.get_model("cmdb", "CollectModels").objects.create(
+            name="content-migration-task",
+            task_type="host",
+            model_id="host",
+            cycle_value_type="close",
+        )
+        historical_version = old_apps.get_model("cmdb", "ConfigFileVersion")
+        ready = historical_version.objects.create(
+            **_version_fields(historical_task, version="1700000000001"),
+            content="host/inst-1/ready.txt",
+        )
+        missing = historical_version.objects.create(
+            **_version_fields(historical_task, version="1700000000002"),
+        )
+
+        executor = MigrationExecutor(connection)
+        executor.migrate(new_target)
+        new_apps = executor.loader.project_state(new_target).apps
+        migrated_version = new_apps.get_model("cmdb", "ConfigFileVersion")
+
+        assert migrated_version.objects.get(id=ready.id).content_status == "ready"
+        missing_version = migrated_version.objects.get(id=missing.id)
+        assert missing_version.content_status == "error"
+        assert missing_version.content_error == "历史配置版本缺少正文对象"
     finally:
         executor = MigrationExecutor(connection)
         executor.migrate(new_target)

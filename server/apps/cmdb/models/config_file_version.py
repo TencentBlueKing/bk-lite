@@ -31,6 +31,20 @@ class ConfigFileVersionStatus(object):
     )
 
 
+class ConfigFileContentStatus(object):
+    PENDING = "pending"
+    READY = "ready"
+    DELETE_PENDING = "delete_pending"
+    ERROR = "error"
+
+    CHOICES = (
+        (PENDING, "待发布"),
+        (READY, "可用"),
+        (DELETE_PENDING, "待删除"),
+        (ERROR, "处理失败"),
+    )
+
+
 class ConfigFileVersion(models.Model):
     collect_task = models.ForeignKey(
         CollectModels,
@@ -56,6 +70,16 @@ class ConfigFileVersion(models.Model):
     file_size = models.PositiveIntegerField(default=0, help_text="文件大小（字节）")
     status = models.CharField(max_length=32, choices=ConfigFileVersionStatus.CHOICES, help_text="采集结果状态")
     error_message = models.TextField(blank=True, default="", help_text="失败原因描述")
+    content_status = models.CharField(
+        max_length=32,
+        choices=ConfigFileContentStatus.CHOICES,
+        default=ConfigFileContentStatus.PENDING,
+        help_text="配置正文跨存储生命周期状态",
+    )
+    temp_content_key = models.CharField(max_length=512, blank=True, default="", help_text="待发布的临时对象键")
+    content_error = models.TextField(blank=True, default="", help_text="正文发布或删除失败摘要")
+    content_attempt_count = models.PositiveIntegerField(default=0, help_text="正文生命周期处理尝试次数")
+    content_updated_at = models.DateTimeField(auto_now=True, help_text="正文生命周期状态更新时间")
     created_at = models.DateTimeField(auto_now_add=True, help_text="记录创建时间")
 
     class Meta:
@@ -68,6 +92,9 @@ class ConfigFileVersion(models.Model):
                 fields=["collect_task", "instance_id", "version"],
                 name="uniq_cfg_ver_task_inst_version",
             ),
+        ]
+        indexes = [
+            models.Index(fields=["content_status", "content_updated_at"], name="cfg_content_state_idx"),
         ]
 
     @property
