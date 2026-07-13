@@ -170,6 +170,7 @@ const StrategyOperation = () => {
   ]);
   const [metricUnit, setMetricUnit] = useState<string | null>(null);
   const [thresholdUnit, setThresholdUnit] = useState<string | null>(null);
+  const [resultUnit, setResultUnit] = useState<string | null>(null);
   const [pluginList, setPluginList] = useState<SegmentedItem[]>([]);
   const [originMetricData, setOriginMetricData] = useState<IndexViewItem[]>([]);
   const [initMetricData, setInitMetricData] = useState<MetricItem[]>([]);
@@ -497,11 +498,13 @@ const StrategyOperation = () => {
       });
       setMetricRows(rows);
       setMetricExpressionMode('formula');
-      setThresholdUnit(
+      setResultUnit(
         resolveFormulaResultUnit(data.calculation_unit as string | null, unitList)
       );
-      // 公式模式 metricUnit 留空(Cascader 在公式模式下隐藏)
+      // 公式模式 metricUnit 留空(Cascader 在公式模式下隐藏);
+      // thresholdUnit 沿用 edit-load 时的值,用户可独立调整
       setMetricUnit(null);
+      setThresholdUnit(data.calculation_unit as string | null);
       setFormulaResultName(restoredState.resultName);
       setFormulaExpression(restoredState.expression);
       setMetric(rows[0]?.metricName || null);
@@ -649,7 +652,7 @@ const StrategyOperation = () => {
     setMetricRows(rows);
 
     if (nextMode === 'formula') {
-      setThresholdUnit((current) =>
+      setResultUnit((current) =>
         getCalculationUnitOnMetricRowsChange({
           previousMode,
           nextMode,
@@ -657,7 +660,7 @@ const StrategyOperation = () => {
           unitList
         })
       );
-      // 公式模式 metricUnit 留空
+      // 公式模式 metricUnit 留空;thresholdUnit 保留用户已选值
       setMetricUnit(null);
     } else {
       // 反向:从公式切回单指标时,把 metricUnit 与 thresholdUnit 都回退到主指标的单位,用户可独立调整
@@ -673,6 +676,8 @@ const StrategyOperation = () => {
         setMetricUnit(retracted);
         setThresholdUnit(retracted);
       }
+      // 离开公式模式,清空 resultUnit
+      setResultUnit(null);
     }
 
     if (
@@ -749,7 +754,7 @@ const StrategyOperation = () => {
   };
 
   const handleFormulaResultUnitChange = (unit: string) => {
-    setThresholdUnit(unit);
+    setResultUnit(unit);
     form.validateFields(['threshold']);
   };
 
@@ -824,7 +829,7 @@ const StrategyOperation = () => {
       );
       const nextCalculationUnit =
         metricExpressionMode === 'formula'
-          ? resolveFormulaResultUnit(thresholdUnit, unitList)
+          ? resolveFormulaResultUnit(resultUnit, unitList)
           : thresholdUnit;
       params.calculation_unit = nextCalculationUnit ?? '';
       params.monitor_object = monitorObjId;
@@ -953,8 +958,8 @@ const StrategyOperation = () => {
                           expression={formulaExpression}
                           resultUnit={
                             metricExpressionMode === 'formula'
-                              ? thresholdUnit || FORMULA_DEFAULT_RESULT_UNIT
-                              : thresholdUnit
+                              ? resultUnit || FORMULA_DEFAULT_RESULT_UNIT
+                              : null
                           }
                           labelsByRef={labelsByRef}
                           metricUnit={metricUnit}
@@ -990,6 +995,7 @@ const StrategyOperation = () => {
                             metrics.find((item) => item.name === metric)
                               ?.unit || null
                           }
+                          resultUnit={resultUnit}
                           isFormulaMode={metricExpressionMode === 'formula'}
                           onEnableAlertsChange={setEnableAlerts}
                           onThresholdChange={handleThresholdChange}

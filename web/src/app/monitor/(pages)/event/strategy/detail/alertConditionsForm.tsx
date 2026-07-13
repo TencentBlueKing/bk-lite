@@ -32,6 +32,7 @@ interface AlertConditionsFormProps {
   noDataAlertLevel: string;
   noDataAlertName: string;
   metricUnit: string | null;
+  resultUnit: string | null;
   isFormulaMode: boolean;
   onEnableAlertsChange: (val: string[]) => void;
   onThresholdChange: (value: ThresholdField[]) => void;
@@ -53,6 +54,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   noDataAlertLevel,
   noDataAlertName,
   metricUnit,
+  resultUnit,
   isFormulaMode,
   onThresholdChange,
   onThresholdUnitChange,
@@ -70,15 +72,18 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
     [isFormulaMode, metricUnit]
   );
 
-  // 阈值单位过滤基准：直接使用 metricUnit
+  // 阈值单位过滤基准: 公式模式下用 resultUnit(结果单位定阈值范围),
+  // 非公式模式下用 metricUnit(指标单位定阈值范围)
+  const thresholdFilterBase = isFormulaMode ? resultUnit : metricUnit;
+
   const filteredUnitOptions = useMemo(
     () =>
       getThresholdUnitOptions({
         unitList,
-        metricUnit,
+        metricUnit: thresholdFilterBase,
         isEnumMetric
       }),
-    [unitList, metricUnit, isEnumMetric]
+    [unitList, thresholdFilterBase, isEnumMetric]
   );
 
   // 验证阈值
