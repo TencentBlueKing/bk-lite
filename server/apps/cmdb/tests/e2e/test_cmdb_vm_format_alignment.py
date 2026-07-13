@@ -89,11 +89,16 @@ def _patch_p0_runner_for_b_endpoint(monkeypatch, runner_cls, plugin_cls, model_i
     Aliyun / Vmware / Network 的 runner 需要 _metrics / model_field_mapping 由 plugin 提供;
     不 monkeypatch 会导致 runner.__init__ 抛 "请定义_metrics"。
     """
-    # P0 对象 _metrics 从 plugin.metric_names 拿
+    # P0 对象 _metrics 从 plugin.metric_names / _metrics 拿
     metric_names = getattr(plugin_cls, "metric_names", None)
+    if metric_names is not None and isinstance(metric_names, property):
+        metric_names = metric_names.fget(plugin_cls)
     if metric_names is None and hasattr(plugin_cls, "_metrics"):
-        metric_names = plugin_cls._metrics
-    if metric_names is not None:
+        _m = plugin_cls._metrics
+        if isinstance(_m, property):
+            _m = _m.fget(plugin_cls)
+        metric_names = _m
+    if metric_names is not None and not isinstance(metric_names, property):
         monkeypatch.setattr(
             runner_cls, "_metrics",
             property(lambda self, _mn=list(metric_names): list(_mn)),
@@ -154,6 +159,9 @@ def test_b_alignment_field_subset(model_id, load_fixture, runner_plugin_factory,
     except KeyError:
         pytest.skip(f"{model_id} 尚未在 runner_plugin_factory 注册")
 
+    # vmware 走 vmware_vc sub-model(pipeline 实际产出 vmware_vc,不是 vmware)
+    actual_pipeline_model_id = "vmware_vc" if model_id == "vmware" else model_id
+
     raw = load_fixture(f"{model_id}/01_stargazer_raw.json")
     raw_items = raw if isinstance(raw, list) else [raw]
     raw_items_first = raw_items[0] if isinstance(raw_items, list) else raw_items
@@ -185,13 +193,13 @@ def test_b_alignment_field_subset(model_id, load_fixture, runner_plugin_factory,
             raw_items=raw_items,
             runner_cls=runner_cls,
             plugin_cls=plugin_cls,
-            model_id=model_id,
+            model_id=actual_pipeline_model_id,
             task_id=99999,
-            instances=[{"inst_name": f"{model_id}-align-01", "ip_addr": raw_items_first.get("ip_addr", "127.0.0.1")}],
+            instances=[{"inst_name": f"{actual_pipeline_model_id}-align-01", "ip_addr": raw_items_first.get("ip_addr", "127.0.0.1")}],
             extra_payload_keys=extra_payload_keys,
             monkeypatch=monkeypatch,
         )
-    instances = run["cmdb_result"].get(model_id, [])
+    instances = run["cmdb_result"].get(actual_pipeline_model_id, [])
 
     if not instances:
         pytest.skip(f"{model_id} 流水线无实例产出,跳过(可能是 placeholder 模式)")
@@ -232,6 +240,9 @@ def test_b_alignment_required_nonempty(model_id, load_fixture, runner_plugin_fac
         pytest.skip(f"{model_id} 尚未在 runner_plugin_factory 注册")
     required_fields = {f.name for f in model_fields.values() if f.is_required}
 
+    # vmware 走 vmware_vc sub-model
+    actual_pipeline_model_id = "vmware_vc" if model_id == "vmware" else model_id
+
     raw = load_fixture(f"{model_id}/01_stargazer_raw.json")
     raw_items = raw if isinstance(raw, list) else [raw]
     raw_items_first = raw_items[0] if isinstance(raw_items, list) else raw_items
@@ -261,13 +272,13 @@ def test_b_alignment_required_nonempty(model_id, load_fixture, runner_plugin_fac
             raw_items=raw_items,
             runner_cls=runner_cls,
             plugin_cls=plugin_cls,
-            model_id=model_id,
+            model_id=actual_pipeline_model_id,
             task_id=99999,
-            instances=[{"inst_name": f"{model_id}-align-01", "ip_addr": raw_items_first.get("ip_addr", "127.0.0.1")}],
+            instances=[{"inst_name": f"{actual_pipeline_model_id}-align-01", "ip_addr": raw_items_first.get("ip_addr", "127.0.0.1")}],
             extra_payload_keys=extra_payload_keys,
             monkeypatch=monkeypatch,
         )
-    instances = run["cmdb_result"].get(model_id, [])
+    instances = run["cmdb_result"].get(actual_pipeline_model_id, [])
 
     if not instances:
         pytest.skip(f"{model_id} 流水线无实例产出,跳过")
