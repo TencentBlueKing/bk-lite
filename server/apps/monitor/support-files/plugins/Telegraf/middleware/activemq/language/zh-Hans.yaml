@@ -1,0 +1,24 @@
+ActiveMQ:
+  desc: 通过Telegraf采集器定期收集ActiveMQ的主题相关指标，包括实时监控消费者数量、入队/出队速率，以及主题消息堆积情况等。
+  name: ActiveMQ（Telegraf）
+monitor_object:
+  ActiveMQ: ActiveMQ
+monitor_object_type:
+  Middleware: 中间件
+monitor_object_metric:
+  ActiveMQ:
+    activemq_topics_consumer_count:
+      name: 主题消费者数量
+      desc: 指定主题的当前消费者连接数量，反映主题的消息消费能力
+    activemq_topics_dequeue_count:
+      name: 主题出队消息数
+      desc: 从指定主题出队的消息总数，反映主题已处理的消息量
+    activemq_topics_enqueue_count:
+      name: 主题入队消息数
+      desc: 进入指定主题的消息总数，反映主题接收的消息量
+    activemq_topics_size:
+      name: 主题当前消息数
+      desc: 指定主题当前存储的消息数量，反映主题积压情况
+monitor_object_metric_group:
+  ActiveMQ:
+    Topic: 主题

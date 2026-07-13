@@ -1,0 +1,39 @@
+Consul:
+  name: Consul(Telegraf)
+  desc: Through the Telegraf collector, regularly collect Consul service health status
+    by gathering status check results and analyzing pass, warning, and critical metrics.
+monitor_object:
+  Consul: Consul
+monitor_object_type:
+  Middleware: Middleware
+monitor_object_metric:
+  Consul:
+    consul_health_checks_passing:
+      name: Health Checks Passing
+      desc: Number of health checks in passing state on Consul node; 1 indicates check
+        passed, 0 indicates not passed
+    consul_health_checks_critical:
+      name: Health Checks Critical
+      desc: Number of health checks in critical state on Consul node; 1 indicates
+        check is critical, 0 indicates normal
+    consul_health_checks_warning:
+      name: Health Checks Warning
+      desc: Number of health checks in warning state on Consul node; 1 indicates check
+        is warning, 0 indicates normal
+    consul_health_checks_status:
+      name: Health Checks Status
+      desc: Current status value of health checks on Consul node, typically indicating
+        specific status codes
+    consul_health_checks_check_name:
+      name: Check Name Identifier
+      desc: Name identifier of health check, distinguishing different types (e.g.,
+        serfHealth for Serf cluster health check)
+    consul_health_checks_service_id:
+      name: Service ID Identifier
+      desc: Service ID identifier associated with health check; 0 indicates node-level
+        check, non-zero indicates service-specific check
+monitor_object_metric_group:
+  Consul:
+    Health: Health
+    Node: Node
+    Service: Service

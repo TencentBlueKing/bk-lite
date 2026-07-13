@@ -1,0 +1,41 @@
+Nginx:
+  desc: Through the Telegraf collector, regularly collect metrics from Nginx such
+    as requests, connection status, and processing efficiency, to aid in monitoring
+    and optimizing website performance and stability.
+  name: Nginx(Telegraf)
+monitor_object:
+  Nginx: Nginx
+monitor_object_type:
+  Middleware: Middleware
+monitor_object_metric:
+  Nginx:
+    nginx_active:
+      name: Active Connections
+      desc: Number of active client connections, reflecting concurrent load
+    nginx_reading:
+      name: Reading Connections
+      desc: Number of connections reading request headers, reflecting request processing
+        status
+    nginx_writing:
+      name: Writing Connections
+      desc: Number of connections writing responses, reflecting response processing
+        status
+    nginx_waiting:
+      name: Waiting Connections
+      desc: Number of idle connections waiting for requests, reflecting connection
+        pool usage
+    nginx_requests_rate:
+      name: Request Rate
+      desc: Rate of requests handled by Nginx, reflecting real-time load
+    nginx_accepts_rate:
+      name: Connection Acceptance Rate
+      desc: Rate of new connections accepted by Nginx, reflecting connection establishment
+        frequency
+    nginx_handled_rate:
+      name: Connection Handling Rate
+      desc: Rate of connections handled by Nginx, reflecting connection processing
+        capacity
+monitor_object_metric_group:
+  Nginx:
+    StubStatus: Stub Status
+    Performance: Performance

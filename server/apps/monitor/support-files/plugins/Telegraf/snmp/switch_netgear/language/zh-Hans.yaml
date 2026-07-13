@@ -1,0 +1,183 @@
+Switch Netgear SNMP:
+  name: Netgear（Telegraf）
+  desc: 面向 Netgear 交换机的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率等主要指标。
+monitor_object:
+  Switch: 交换机
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Switch:
+    device_voltage_volts:
+      name: 输入电压
+      desc: 该指标报告设备输入电压读数，单位伏特。电压偏离额定范围可能意味着供电不稳，存在硬件风险。
+    device_optical_rx_power:
+      name: 光模块接收功率
+      desc: 该指标报告光模块（SFP/SFP+）接收光功率读数。接收功率过低可能意味着链路衰减、光纤污染或对端发送异常，可能导致丢包或链路中断。
+    device_optical_tx_power:
+      name: 光模块发送功率
+      desc: 该指标报告光模块（SFP/SFP+）发送光功率读数。发送功率异常可能意味着光模块老化或故障。
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示设备自上次启动以来的运行时间。通过监测设备的运行时间，网络管理员可以了解到设备的稳定性及可靠性，识别潜在的重启或故障问题。
+    interface_ifAdminStatus:
+      name: 接口管理状态
+      desc: 此指标表示网络交换机接口的管理状态。它用于指示接口是否被管理人员启用（up）或禁用（down），以及其他状态如测试或已删除等。这个信息对网络管理和故障排查非常重要。
+    interface_ifOperStatus:
+      name: 接口操作状态
+      desc: 此指标反映网络交换机接口的实际运行状态，表明接口是否正在工作。与管理状态不同，运行状态指示接口是否能够成功接收和发送流量。这对监测网络健康至关重要。
+    interface_ifSpeed:
+      name: 接口带宽
+      desc: 该指标表示网络接口支持的最高数据传输速度，单位为比特每秒。了解接口的最高速度能够帮助管理员优化流量和利用网络资源。
+    interface_ifInErrors:
+      name: 接收错误数据包速率
+      desc: 此指标计算过去5分钟内接收到的错误包的平均速率，单位为包每秒。通过监测接收错误，管理员可以及时发现潜在的问题，例如物理连接故障或配置错误。
+    interface_ifOutErrors:
+      name: 发送错误数据包速率
+      desc: 该指标计算过去5分钟内发送错误包的平均速率，单位为包每秒。监测发送错误对于识别传输问题和确保数据完整性至关重要。
+    interface_ifInDiscards:
+      name: 接收丢包速率
+      desc: 此指标表示过去5分钟内接收到的丢弃包的平均速率，单位为包每秒。丢包可能表示网络堵塞或资源不足，监控此指标可以帮助管理员优化网络性能。
+    interface_ifOutDiscards:
+      name: 发送丢包速率
+      desc: 本指标计算过去5分钟内发送的丢弃包的平均速率，单位为包每秒。关注发送丢包情况能够帮助识别网络传输问题和配置不当的情况。
+    interface_ifInUcastPkts:
+      name: 接收单播数据包速率
+      desc: 该指标表示过去5分钟内接收到的单播包的平均速率，单位为包每秒。单播包的监测对于评估接口的使用情况及流量负载非常重要。
+    interface_ifOutUcastPkts:
+      name: 发送单播数据包速率
+      desc: 此指标计算过去5分钟内发送的单播包的平均速率，单位为包每秒。通过监测单播包的数量，管理员可以评估接口的传输性能以及流量的使用情况。
+    interface_ifInOctets:
+      name: 接口接收流量速率
+      desc: 此指标表示过去5分钟内接收到的字节数的平均速率，单位为字节每秒。监测字节流量有助于评估接口的负载及带宽使用情况。
+    interface_ifOutOctets:
+      name: 接口发送流量速率
+      desc: 该指标计算过去5分钟内发送的字节数的平均速率，单位为字节每秒。监测发送流量对于确保数据传输质量和优化网络性能非常重要。
+    interface_ifHCInOctets:
+      name: 接口接收流量速率
+      desc: 此指标表示过去5分钟内接收到的字节数的平均速率（来自 64 位 IF-MIB ifHCInOctets 计数器），单位为字节每秒。64 位计数器可避免
+        32 位 ifInOctets 在高速口上快速回绕，使流量速率更准确。
+    interface_ifHCOutOctets:
+      name: 接口发送流量速率
+      desc: 该指标计算过去5分钟内发送的字节数的平均速率（来自 64 位 IF-MIB ifHCOutOctets 计数器），单位为字节每秒。64 位计数器可避免
+        32 位 ifOutOctets 在高速口上快速回绕，使流量速率更准确。
+    device_total_incoming_traffic:
+      name: 设备接收总流量速率
+      desc: 此指标表示整个设备在过去5分钟内接收到的总字节流量的平均速率，单位为字节每秒。通过对多个接口的接收字节进行汇总计算，帮助管理员获取整个设备的接收流量情况，从而支持总体流量监控以及容量规划。
+    device_total_outgoing_traffic:
+      name: 设备发送总流量速率
+      desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率，单位为字节每秒。通过对多个接口的发送字节进行汇总，管理员可以全面评估整个系统的发送性能，从而进行更有效的流量管理和优化。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: 该指标表示设备控制平面的 CPU 使用率（通常为 5 分钟平均值），单位为百分比。CPU 持续偏高可能意味着控制平面过载、路由震荡或异常流量，会导致管理响应变慢或转发延迟。数据来源于各品牌私有
+        SNMP OID，并归一化为 0-100 的百分比。
+    device_memory_usage:
+      name: 内存使用率
+      desc: 该指标表示设备整体内存使用率，按 已用/(已用+空闲)*100 在所有内存池上汇总计算，单位为百分比。内存偏高可能由内存泄漏、路由/MAC/ARP
+        表项过大或容量不足导致，可能引发不稳定或分配失败。
+    device_memory_used:
+      name: 内存已用量
+      desc: 该指标表示设备各内存池当前已使用的字节数。它帮助管理员了解每个内存池（如 Processor、I/O 池）的绝对内存消耗，并定位承压的内存池。
+    device_memory_free:
+      name: 内存空闲量
+      desc: 该指标表示设备各内存池当前空闲可用的字节数。它与已用量一起决定整体内存使用率；空闲量持续偏低说明该内存池存在内存压力。
+    device_memory_total:
+      name: 内存总量
+      desc: 该指标表示设备的内存总容量。它是计算内存使用率的分母（部分厂商按 (总量-空闲)/总量 计算），与空闲量一起反映整体内存压力。
+    device_temperature_celsius:
+      name: 温度
+      desc: 该指标表示设备各硬件温度传感器的读数，单位为摄氏度。温度异常升高可能意味着风扇故障、散热受阻或环境过热，若不处理可能触发热保护或损坏硬件。
+    device_fan_state:
+      name: 风扇状态
+      desc: 该指标表示设备各散热风扇的运行状态。非正常状态（告警、严重、关闭或故障）表示散热故障，可能迅速导致过热，应立即排查。
+    device_psu_state:
+      name: 电源状态
+      desc: 该指标表示设备各电源模块的运行状态。非正常状态表示电源冗余缺失或硬件故障；在具备冗余电源的设备上，单个故障可能不会立即中断业务，但会失去冗余，需尽快修复。
+    device_fan_speed:
+      name: 风扇转速
+      desc: 该指标表示设备风扇的转速（RPM），取各风扇的最大值。转速异常偏低或为 0 表示风扇卡转或故障、设备面临过热风险；转速异常偏高可能是设备在为高温加速散热。对于仅提供转速、无风扇状态枚举的设备，转速是判断风扇健康的唯一依据。
+    device_flow_bytes_rate:
+      name: 设备 Flow 总流量速率
+      desc: 按当前协议指标契约从 Flow 记录估算出的设备总流量速率，用于观察整体带宽压力和容量趋势。
+    device_flow_packets_rate:
+      name: 设备 Flow 总包速率
+      desc: 按当前协议指标契约从 Flow 记录估算出的设备总包速率，用于观察包级负载和突增流量。
+    device_flow_in_bytes_rate:
+      name: 设备 Flow 入方向流量速率
+      desc: 基于 Flow 记录换算并归属到输入侧数据的流量速率；具体协议的接口方向请以接口指标为准。
+    device_flow_out_bytes_rate:
+      name: 设备 Flow 出方向流量速率
+      desc: 基于 Flow 记录换算并归属到输出侧数据的流量速率；具体协议的接口方向请以接口指标为准。
+    device_flow_in_packets_rate:
+      name: 设备 Flow 入方向包速率
+      desc: 基于 Flow 记录换算并归属到输入侧数据的包速率；具体协议的接口方向请以接口指标为准。
+    device_flow_out_packets_rate:
+      name: 设备 Flow 出方向包速率
+      desc: 基于 Flow 记录换算并归属到输出侧数据的包速率；具体协议的接口方向请以接口指标为准。
+    device_flow_avg_packet_size:
+      name: 设备 Flow 平均包大小
+      desc: 基于 Flow 记录计算出的平均包大小或采样帧长，可辅助识别小包风暴或大包传输特征。
+    device_flow_effective_sampling_rate:
+      name: 设备 Flow 生效采样率
+      desc: 当前 Flow 数据计算使用的生效采样率，优先取设备上报字段，缺失时使用资产兜底采样率。
+    device_flow_interface_bytes_rate:
+      name: 接口 Flow 流量速率
+      desc: 按接口和方向聚合的 Flow 流量速率，用于定位接口维度的流量热点。
+    device_flow_interface_packets_rate:
+      name: 接口 Flow 包速率
+      desc: 按接口和方向聚合的 Flow 包速率，用于定位接口维度的包量热点。
+    device_flow_top_interfaces_by_bytes:
+      name: Top 接口 Flow 流量速率
+      desc: 按流量速率排序的接口 Flow 排行，用于快速发现高流量接口。
+    device_flow_protocol_bytes_rate:
+      name: 协议 Flow 流量速率
+      desc: 按协议聚合的 Flow 流量速率，用于识别 TCP、UDP、ICMP 等协议流量占比。
+    device_flow_protocol_packets_rate:
+      name: 协议 Flow 包速率
+      desc: 按协议聚合的 Flow 包速率，用于识别协议层面的包量异常。
+    device_flow_dst_port_bytes_rate:
+      name: 目的端口 Flow 流量速率
+      desc: 按目的端口聚合的 Flow 流量速率，用于分析应用或服务端口流量热点。
+    device_flow_dst_port_packets_rate:
+      name: 目的端口 Flow 包速率
+      desc: 按目的端口聚合的 Flow 包速率，用于分析应用或服务端口包量热点。
+    device_flow_src_port_bytes_rate:
+      name: 源端口 Flow 流量速率
+      desc: 按源端口聚合的 Flow 流量速率，用于辅助分析客户端侧端口流量分布。
+    device_flow_top_src_bytes_rate:
+      name: Top 源地址 Flow 流量速率
+      desc: 按源地址聚合并排序的 Flow 流量速率，用于发现主要流量来源。
+    device_flow_top_dst_bytes_rate:
+      name: Top 目的地址 Flow 流量速率
+      desc: 按目的地址聚合并排序的 Flow 流量速率，用于发现主要流量去向。
+    device_flow_top_src_packets_rate:
+      name: Top 源地址 Flow 包速率
+      desc: 按源地址聚合并排序的 Flow 包速率，用于发现包量异常来源。
+    device_flow_top_dst_packets_rate:
+      name: Top 目的地址 Flow 包速率
+      desc: 按目的地址聚合并排序的 Flow 包速率，用于发现包量异常目标。
+    device_flow_top_conversation_bytes_rate:
+      name: Top 会话 Flow 流量速率
+      desc: 按源地址、目的地址、协议和目的端口聚合的会话流量排行，用于定位主要通信关系。
+    device_psu_temperature_celsius:
+      name: 电源温度
+      desc: 采集 IP Infusion (OcNOS) 设备机箱级 PSU 1 温度传感器读数（IPI-CMM-CHASSIS-MIB cmmSysPSTemperature1），单位摄氏度。用于监测电源模块工作温度，过高温度可能提示散热不良、风扇故障或环境过热，存在触发热保护或硬件损坏风险。
+monitor_object_metric_group:
+  Switch:
+    Base: 基础
+    Packet: 数据包
+    Status: 状态
+    Packet Error: 数据包错误
+    Packet Loss: 数据包丢失
+    Bandwidth: 带宽
+    Traffic: 流量
+    CPU: CPU
+    Memory: 内存
+    Temperature: 温度
+    Hardware Status: 硬件状态
+    Traffic Overview: 流量总览
+    Sampling: 采样率
+    Interface Traffic: 接口流量
+    Protocol: 协议
+    Application Port: 应用端口
+    Endpoint: 端点
+    Conversation: 会话

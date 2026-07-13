@@ -1,0 +1,21 @@
+TCPPort:
+  name: TCP（Telegraf）
+  desc: 通过Telegraf net_response插件对目标主机的TCP端口进行连通性探测，支持IPv4和IPv6，可选发送内容并匹配期望返回串。
+monitor_object:
+  TCPPort: TCP
+monitor_object_type:
+  Web: 网络
+monitor_object_metric:
+  TCPPort:
+    net_response_response_time:
+      name: 响应时间
+      desc: TCP建立连接的往返耗时（毫秒）。net_response原始输出为秒，查询时乘以1000换算为毫秒展示，数值越大表示连接越慢或网络延迟越高。
+    net_response_result_code:
+      name: 探测结果码
+      desc: TCP探测的结果码。0表示成功，1表示连接超时，2表示连接失败，3表示读取失败，4表示返回内容与期望串不匹配。非0均代表探测异常。
+    net_response_string_found:
+      name: 返回匹配
+      desc: 是否在响应内容中匹配到期望字符串。仅在配置了期望返回串时上报，1表示命中，0表示未命中。
+monitor_object_metric_group:
+  TCPPort:
+    TCPPort: TCP

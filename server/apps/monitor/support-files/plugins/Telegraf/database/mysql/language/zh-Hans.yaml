@@ -1,0 +1,230 @@
+Mysql:
+  name: Mysql（Telegraf）
+  desc: 通过Telegraf采集器定期收集MySQL数据库健康状况及性能等关键指标。
+monitor_object:
+  Mysql: MySQL
+monitor_object_type:
+  Database: 数据库
+monitor_object_metric:
+  Mysql:
+    mysql_threads_connected:
+      name: 当前连接数
+      desc: 当前打开的连接数；接近 max_connections 时会拒绝新连接
+    mysql_threads_running:
+      name: 活跃线程数
+      desc: 当前正在执行的线程数；反映数据库并发处理能力
+    mysql_threads_cached:
+      name: 缓存线程数
+      desc: 可复用的缓存线程数量；反映连接复用能力
+    mysql_process_list_threads_idle:
+      name: 空闲进程列表线程数
+      desc: 进程列表中处于空闲状态的线程数量；用于识别空闲连接堆积情况
+    mysql_process_list_threads_executing:
+      name: 执行中进程列表线程数
+      desc: 进程列表中当前正在执行查询的线程数量；用于评估活跃查询并发
+    mysql_process_list_threads_sending_data:
+      name: 发送数据进程列表线程数
+      desc: 进程列表中处于 Sending data 状态的线程数量；通常与大扫描或慢结果处理有关
+    mysql_process_list_threads_waiting_for_lock:
+      name: 等待锁进程列表线程数
+      desc: 进程列表中正在等待锁的线程数量；用于识别阻塞和锁竞争
+    mysql_variables_max_connections:
+      name: 最大连接配置值
+      desc: max_connections 的配置值；用于表示实例真实连接容量上限
+    mysql_max_used_connections:
+      name: 历史最大连接数
+      desc: MySQL 启动以来使用过的峰值连接数；用于评估连接池水位
+    mysql_aborted_connects:
+      name: 中断连接数
+      desc: 连接尝试失败的次数；突增反映权限 / 网络配置问题
+    mysql_aborted_connects_rate:
+      name: 中断连接速率
+      desc: 连接尝试失败的速率；用于发现认证、网络或配置异常
+    mysql_aborted_clients:
+      name: 客户端异常断开数
+      desc: 客户端非正常断开连接的次数；常与网络抖动或超时有关
+    mysql_aborted_clients_rate:
+      name: 客户端异常断开速率
+      desc: 客户端非正常断开连接的速率；用于识别网络抖动、超时或连接池问题
+    mysql_connection_errors_internal:
+      name: 内部连接错误数
+      desc: 由 MySQL 内部错误导致的连接失败次数
+    mysql_connection_errors_max_connections:
+      name: 连接数上限错误数
+      desc: 因达到 max_connections 限制而被拒绝的连接次数
+    mysql_connection_errors_max_connections_rate:
+      name: 连接数上限错误速率
+      desc: 因达到 max_connections 限制而被拒绝连接的速率；反映连接饱和对业务的即时影响
+    mysql_connection_errors_peer_address:
+      name: 对端地址连接错误数
+      desc: 因对端地址非法或被拒绝导致的连接失败次数
+    mysql_connection_errors_select:
+      name: 轮询连接错误数
+      desc: 在 socket select 处理阶段发生的连接失败次数
+    mysql_connection_errors_tcpwrap:
+      name: 访问控制连接错误数
+      desc: 因 TCP Wrapper 访问控制导致的连接失败次数
+    mysql_connection_utilization:
+      name: 连接使用率
+      desc: 当前连接数相对 max_connections 配置值的占比；用于估算连接容量压力
+    mysql_uptime:
+      name: MySQL 运行时长
+      desc: MySQL 实例自上次启动以来的持续运行时间；用于观察实例重启频率与运行稳定性
+    mysql_slave_seconds_behind_master:
+      name: 复制延迟
+      desc: 从库相对主库落后的秒数；用于评估复制延迟
+    mysql_slave_io_running:
+      name: 复制 IO 线程状态
+      desc: 从库复制 IO 线程状态；通常 1 为运行，0 为异常
+    mysql_slave_sql_running:
+      name: 复制 SQL 线程状态
+      desc: 从库复制 SQL 线程状态；通常 1 为运行，0 为异常
+    mysql_variables_read_only:
+      name: 只读配置状态
+      desc: MySQL read_only 配置状态；常与复制信号结合用于判断实例角色
+    mysql_variables_super_read_only:
+      name: 超级只读配置状态
+      desc: MySQL super_read_only 配置状态；通常在从库上启用以避免误写入
+    mysql_variables_log_bin:
+      name: 二进制日志启用状态
+      desc: 是否启用二进制日志；用于识别主库或具备复制能力的实例
+    mysql_variables_log_slave_updates:
+      name: 复制更新写入二进制日志状态
+      desc: 重放的复制变更是否写入二进制日志；用于分析级联复制角色
+    mysql_slow_queries_rate:
+      name: 慢查询请求触发速率
+      desc: 慢查询请求数量，反映慢查询发生的频率
+    mysql_queries_rate:
+      name: QPS（查询速率）
+      desc: 整体查询吞吐速率；反映数据库总体访问压力
+    mysql_questions_rate:
+      name: Questions 请求速率
+      desc: 客户端发送到 MySQL 的语句速率；反映前端请求压力
+    mysql_com_select_rate:
+      name: SELECT 查询速率
+      desc: SELECT 查询数，反映读取负载趋势
+    mysql_com_insert_rate:
+      name: INSERT 写入速率
+      desc: INSERT 查询数，反映写入负载趋势
+    mysql_com_update_rate:
+      name: UPDATE 更新速率
+      desc: UPDATE 操作数，反映数据更新频率
+    mysql_com_delete_rate:
+      name: DELETE 删除速率
+      desc: DELETE 操作数；激增时需检查数据清理合理性
+    mysql_innodb_row_lock_time_avg:
+      name: 平均行锁等待时间
+      desc: 平均行锁等待时间；>50ms 表示锁竞争严重
+    mysql_innodb_row_lock_waits_rate:
+      name: InnoDB 行锁等待次数速率
+      desc: InnoDB 引擎发生行锁等待的次数
+    mysql_innodb_data_reads_rate:
+      name: InnoDB 数据读速率
+      desc: InnoDB 发起的物理读操作速率；反映存储读取压力
+    mysql_innodb_data_writes_rate:
+      name: InnoDB 数据写速率
+      desc: InnoDB 发起的物理写操作速率；反映写入与刷盘压力
+    mysql_innodb_data_fsyncs_rate:
+      name: InnoDB 数据文件 Fsync 速率
+      desc: InnoDB 数据文件执行 fsync 的速率；用于评估数据文件刷盘压力
+    mysql_innodb_os_log_fsyncs_rate:
+      name: InnoDB 日志 Fsync 速率
+      desc: Redo 日志 fsync 速率；反映事务提交刷盘压力
+    mysql_innodb_buffer_pool_read_requests_rate:
+      name: 缓冲池读取请求速率
+      desc: 缓冲池读取请求，反映数据库读取负载
+    mysql_innodb_buffer_pool_reads_rate:
+      name: 缓冲池磁盘读取速率
+      desc: 缓冲池物理磁盘读取数；过高表示内存不足
+    mysql_innodb_buffer_pool_pages_free:
+      name: 缓冲池空闲页数
+      desc: 缓冲池中尚未被使用的页数；用于评估缓存剩余空间
+    mysql_innodb_buffer_pool_pages_dirty:
+      name: 脏页数量
+      desc: 缓冲池中已修改未写入磁盘的页数；反映内存使用效率
+    mysql_innodb_buffer_pool_pages_total:
+      name: 缓冲池总页数
+      desc: 缓冲池中的总页数；用于计算缓冲池利用率
+    mysql_buffer_pool_hit_ratio:
+      name: Buffer Pool 命中率
+      desc: 逻辑读请求直接命中 Buffer Pool 的比率；越高越好
+    mysql_buffer_pool_dirty_ratio:
+      name: Buffer Pool 脏页占比
+      desc: 脏页在 Buffer Pool 总页数中的占比；过高可能意味着刷盘压力上升
+    mysql_buffer_pool_used_ratio:
+      name: Buffer Pool 使用率
+      desc: 已使用的 Buffer Pool 页在总页数中的占比；用于评估缓存负载
+    mysql_bytes_received_rate:
+      name: 数据接收速率
+      desc: 接收的数据量，反映数据库输入流量
+    mysql_bytes_sent_rate:
+      name: 数据发送速率
+      desc: 发送的数据量，反映数据库输出流量
+    mysql_open_tables:
+      name: 当前打开表数
+      desc: 当前处于打开状态的表句柄数
+    mysql_opened_tables_rate:
+      name: 打开表速率
+      desc: 表被重新打开的速率；较高可能表示表缓存不足
+    mysql_open_files:
+      name: 当前打开文件数
+      desc: MySQL 当前占用的文件句柄数量
+    mysql_open_files_utilization:
+      name: 文件句柄使用率
+      desc: 当前打开文件数相对 open_files_limit 配置值的占比；用于评估文件句柄压力
+    mysql_table_open_cache_utilization:
+      name: 表缓存使用率
+      desc: 当前打开表数相对 table_open_cache 配置值的占比；用于评估表缓存容量压力
+    mysql_variables_table_open_cache:
+      name: 表缓存配置值
+      desc: table_open_cache 的配置值；用于衡量表句柄容量上限
+    mysql_variables_open_files_limit:
+      name: 文件句柄上限配置值
+      desc: open_files_limit 的配置值；用于衡量文件句柄容量上限
+    mysql_table_open_cache_hits_rate:
+      name: 表缓存命中率
+      desc: 表缓存命中率；<95% 需调整 table_open_cache 配置
+    mysql_table_open_cache_misses_rate:
+      name: 表缓存未命中请求速率
+      desc: 表缓存未命中的请求次数，反映表缓存的命中情况
+    mysql_key_reads_rate:
+      name: Key Cache 磁盘读取速率
+      desc: MyISAM 键块从磁盘读取的速率
+    mysql_key_read_requests_rate:
+      name: Key Cache 请求速率
+      desc: MyISAM 键块逻辑读取请求速率
+    mysql_key_cache_hit_ratio:
+      name: Key Cache 命中率
+      desc: MyISAM 键缓存命中率；越高说明键缓存效果越好
+    mysql_created_tmp_disk_tables_rate:
+      name: 磁盘临时表创建速率
+      desc: 创建的磁盘临时表数量
+    mysql_created_tmp_tables_rate:
+      name: 总临时表创建速率
+      desc: 创建的临时表总数（内存 + 磁盘）
+    mysql_created_tmp_memory_tables_rate:
+      name: 内存临时表创建速率
+      desc: 内存中创建的临时表估算速率，由总临时表数减去磁盘临时表数得到
+    mysql_tmp_disk_table_ratio:
+      name: 磁盘临时表占比
+      desc: 临时表中落盘到磁盘的比例；过高通常需要优化 SQL 或调大临时表内存
+    mysql_variables_tmp_table_size:
+      name: 临时表内存阈值
+      desc: tmp_table_size 的配置值；用于评估临时表内存上限
+    mysql_variables_max_heap_table_size:
+      name: 堆临时表内存阈值
+      desc: max_heap_table_size 的配置值；用于评估内存临时表容量上限
+    mysql_variables_innodb_buffer_pool_size:
+      name: Buffer Pool 配置大小
+      desc: innodb_buffer_pool_size 的配置值；用于衡量缓存容量基线
+monitor_object_metric_group:
+  Mysql:
+    Base: 基础信息
+    ConnStatus: 连接状态
+    QueryPerf: 查询性能
+    InnoDBPerf: InnoDB 性能
+    NetTraffic: 网络流量
+    TableCache: 表缓存
+    KeyCache: Key Cache
+    TempTable: 临时表
+    Replication: 复制状态

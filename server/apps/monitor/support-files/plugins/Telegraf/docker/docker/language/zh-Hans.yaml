@@ -1,0 +1,3 @@
+Docker:
+  name: Docker（Telegraf）
+  desc: 通过Telegraf采集器定期收集Docker容器的状态、资源使用情况（CPU、内存、网络、IO）和性能指标。

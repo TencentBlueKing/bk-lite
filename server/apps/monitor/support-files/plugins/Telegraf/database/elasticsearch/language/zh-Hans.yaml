@@ -1,0 +1,58 @@
+ElasticSearch:
+  desc: 通过Telegraf采集器定期收集Elasticsearch的文件系统、HTTP 请求、IO 统计、文档统计、查询缓存和截断器的相关指标，帮助用户监控集群健康状态和性能表现。
+  name: ElasticSearch（Telegraf）
+monitor_object:
+  ElasticSearch: Elasticsearch
+monitor_object_type:
+  Database: 数据库
+monitor_object_metric:
+  ElasticSearch:
+    elasticsearch_cluster_health_status_code:
+      name: 集群健康状态
+      desc: 集群健康核心度量，通过状态值反映集群健康程度：1 对应正常（green）、2 对应副本缺失、3 对应主分片缺失（故障）；red 状态会直接影响数据可用性
+    elasticsearch_cluster_health_active_primary_shards:
+      name: 活跃主分片数
+      desc: 数据可用性核心指标，代表主分片的活跃数量；若主分片缺失，对应数据将无法读写，需确保其与预期数量一致
+    elasticsearch_cluster_health_unassigned_shards:
+      name: 未分配分片数
+      desc: 集群异常核心标志，代表未分配分片的数量；该值大于 0 时需及时排查，长期存在会降低数据冗余度与系统可用性
+    elasticsearch_jvm_mem_heap_used_percent:
+      name: JVM 堆使用率
+      desc: JVM 内存压力核心指标，反映 JVM 内存的占用情况；内存占用过高易引发 Full GC，进而导致集群运行卡顿
+    elasticsearch_jvm_gc_collectors_young_collection_time_in_millis_rate:
+      name: 年轻代 GC 每秒耗时
+      desc: GC 效率监控指标，反映 GC 操作的耗时情况；该值持续偏高表示 GC 占用大量 CPU 资源，会对业务性能造成影响
+    elasticsearch_fs_data_0_available_in_bytes:
+      name: 节点可用磁盘空间
+      desc: 节点存储可用性指标，反映节点磁盘的剩余空间情况；磁盘空间耗尽会导致节点离线
+    elasticsearch_process_cpu_percent:
+      name: 进程 CPU 使用率
+      desc: 进程计算负载指标，反映进程的 CPU 负载情况；高负载会导致集群的读写性能下降
+    elasticsearch_process_open_file_descriptors:
+      name: 打开文件描述符数
+      desc: 文件资源监控指标，反映文件描述符的使用情况；当使用量接近系统上限时，会影响分片的可用性
+    elasticsearch_breakers_fielddata_tripped_rate:
+      name: Fielddata 内存断路器触发速率
+      desc: 内存保护机制监控，反映内存保护断路器的触发情况；该值大于 0 表示近期存在内存不足的情况
+    elasticsearch_breakers_request_tripped_rate:
+      name: HTTP 请求断路器触发速率
+      desc: 请求级内存保护监控，反映请求级内存保护断路器的触发情况；该值大于 0 表示近期存在请求内存过载的情况
+    elasticsearch_http_current_open:
+      name: HTTP 当前连接数
+      desc: HTTP 服务可用性指标，反映 HTTP 服务的连接使用情况；当连接数接近上限时，会影响新请求的接收
+    elasticsearch_http_total_opened_rate:
+      name: HTTP 每秒新建连接数
+      desc: HTTP 服务流量指标，反映近期业务请求的流量变化情况，可辅助排查流量峰值相关问题
+    elasticsearch_thread_pool_write_queue:
+      name: 写入线程池队列长度
+      desc: 批量写入性能预警指标，反映批量(bulk)写入请求队列的长度情况；队列长度持续增长表示批量数据处理能力不足，会影响数据摄入吞吐量，导致数据同步延迟
+    elasticsearch_thread_pool_search_queue:
+      name: 搜索线程池队列长度
+      desc: 查询性能预警指标，反映查询请求队列的长度情况；队列长度持续增长表示查询处理能力不足，会影响业务使用体验
+monitor_object_metric_group:
+  ElasticSearch:
+    Base: 集群健康
+    Node: 节点资源
+    Breaker: 断路器
+    HTTP: HTTP服务
+    ThreadPool: 线程池
