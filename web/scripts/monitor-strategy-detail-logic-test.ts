@@ -15,6 +15,7 @@ import {
   resolveEffectiveCalculationUnit,
   resolveInitialMetricPluginId,
   resolveMetricDisplayUnit,
+  resolvePreviewChartUnit,
   resolveThresholdUnit,
   restoreCalculationUnitState,
   shouldShowThresholdUnitSelector,
@@ -132,6 +133,13 @@ assert.equal(
 );
 assert.equal(resolveMetricDisplayUnit('unknown-unit', unitList), '');
 assert.equal(resolveMetricDisplayUnit('percent', []), '');
+
+assert.equal(
+  resolvePreviewChartUnit('kibibytes', 'kibibytes', 'bytes'),
+  'kibibytes'
+);
+assert.equal(resolvePreviewChartUnit('', null, 'bytes'), 'bytes');
+assert.equal(resolvePreviewChartUnit('', '', ''), null);
 
 assert.deepEqual(
   buildMetricSelectOption(

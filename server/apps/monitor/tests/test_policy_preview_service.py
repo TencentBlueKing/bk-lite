@@ -3,6 +3,9 @@
 聚焦查询构建、单位换算、参数校验、VM 错误抛出。METHOD/VM 边界 mock。
 """
 
+from copy import deepcopy
+from types import SimpleNamespace
+
 import pytest
 
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -120,28 +123,8 @@ class TestBuildMetricQuery:
             svc._build_metric_query({"type": "metric", "metric_id": 999999})
 
 
-class TestApplyUnitConversion:
-    def test_no_conversion_when_units_equal(self):
-        svc = PolicyPreviewService({"metric_unit": "bytes", "calculation_unit": "bytes"})
-        data = {"data": {"result": [{"values": [[0, "1"]]}]}}
-        assert svc._apply_unit_conversion(data) is data
-
-    def test_not_convertible_adds_warning(self):
-        svc = PolicyPreviewService({"metric_unit": "bytes", "calculation_unit": "seconds"})
-        data = {"data": {"result": [{"values": [[0, "1024"]]}]}}
-        out = svc._apply_unit_conversion(data)
-        assert out["data"]["result"][0]["values"] == [[0, "1024"]]
-        assert svc.warnings
-
-    def test_converts_values(self):
-        svc = PolicyPreviewService({"metric_unit": "bytes", "calculation_unit": "kibibytes"})
-        data = {"data": {"result": [{"values": [[0, "2048"]]}]}}
-        out = svc._apply_unit_conversion(data)
-        assert float(out["data"]["result"][0]["values"][0][1]) == pytest.approx(2.0)
-
-
-class TestThresholdUnitConversion:
-    def test_converts_threshold_copy_to_calculation_unit(self):
+class TestPreviewThreshold:
+    def test_keeps_threshold_copy_in_threshold_unit(self):
         thresholds = [{"level": "critical", "method": ">", "value": -2}]
         svc = PolicyPreviewService(
             {
@@ -151,13 +134,14 @@ class TestThresholdUnitConversion:
             }
         )
 
-        converted = svc._converted_thresholds()
+        converted = svc._preview_thresholds()
 
-        assert converted[0]["value"] == pytest.approx(-2048)
+        assert converted[0]["value"] == -2
+        assert converted is not thresholds
         assert thresholds[0]["value"] == -2
 
     def test_empty_thresholds_are_supported(self):
-        assert PolicyPreviewService({})._converted_thresholds() == []
+        assert PolicyPreviewService({})._preview_thresholds() == []
 
 
 class TestPreviewEndToEnd:
@@ -177,6 +161,76 @@ class TestPreviewEndToEnd:
         assert "by (instance_id)" in out["query"]
         assert out["data"]["data"]["result"] == []
         assert out["warnings"] == []
+
+    def test_preview_pmq_converts_metric_values_to_threshold_unit(self, mocker):
+        threshold = [{"level": "critical", "method": ">", "value": 2}]
+        vm_response = {
+            "status": "success",
+            "data": {"result": [{"values": [[1, "2048"]]}]},
+        }
+        original_response = deepcopy(vm_response)
+        svc = PolicyPreviewService(
+            {
+                "query_condition": {"type": "pmq", "query": "disk_used"},
+                "period": {"type": "min", "value": 5},
+                "algorithm": "max",
+                "group_by": ["instance_id"],
+                "metric_unit": "bytes",
+                "calculation_unit": "bytes",
+                "threshold_unit": "kibibytes",
+                "threshold": threshold,
+            }
+        )
+        mocker.patch.dict(
+            "apps.monitor.services.policy_preview.METHOD",
+            {"max": mocker.Mock(return_value=vm_response)},
+            clear=False,
+        )
+
+        out = svc.preview()
+
+        assert out["chart_unit"] == "kibibytes"
+        assert out["data"]["unit"] == "KiB"
+        assert out["data"]["data"]["result"][0]["values"] == [[1, "2.0"]]
+        assert out["threshold"] == threshold
+        assert out["threshold"] is not threshold
+        assert vm_response == original_response
+
+    def test_preview_formula_converts_calculation_values_to_threshold_unit(
+        self, mocker
+    ):
+        vm_response = {
+            "status": "success",
+            "data": {"result": [{"values": [[1, "2048"]]}]},
+        }
+        svc = PolicyPreviewService(
+            {
+                "query_condition": {"type": "formula"},
+                "period": {"type": "min", "value": 5},
+                "algorithm": "max",
+                "calculation_unit": "bytes",
+                "threshold_unit": "kibibytes",
+                "preview": {"instance_id_values": ["host-1"]},
+            }
+        )
+        mocker.patch.object(
+            svc, "_build_formula_instance_filters", return_value={}
+        )
+        mocker.patch(
+            "apps.monitor.services.policy_preview.build_formula_query",
+            return_value=SimpleNamespace(
+                query="formula_query", group_by=["instance_id"], warnings=[]
+            ),
+        )
+        mocker.patch(
+            "apps.monitor.services.policy_preview.query_formula_policy_metrics",
+            return_value=vm_response,
+        )
+
+        out = svc.preview()
+
+        assert out["chart_unit"] == "kibibytes"
+        assert out["data"]["data"]["result"][0]["values"] == [[1, "2.0"]]
 
     def test_preview_invalid_algorithm(self):
         svc = PolicyPreviewService({

@@ -8,6 +8,10 @@ from apps.monitor.expression.errors import FormulaError
 from apps.monitor.expression.query import build_formula_query
 from apps.monitor.expression.validators import validate_formula_condition
 from apps.monitor.models.monitor_metrics import Metric
+from apps.monitor.services.chart_unit import (
+    convert_vm_result_copy,
+    resolve_chart_unit,
+)
 from apps.monitor.tasks.utils.policy_methods import (
     METHOD,
     build_formula_policy_query,
@@ -57,13 +61,20 @@ class PolicyPreviewService:
         else:
             data = method(metric_query, start, end, step, group_by_clause, group_algorithm)
         self._raise_for_vm_error(data)
-        data = self._apply_unit_conversion(data)
-        data["unit"] = self._display_unit()
+        chart_unit = self._chart_unit()
+        source_unit = self._chart_source_unit(query_condition.get("type"))
+        data = convert_vm_result_copy(
+            data, source_unit or chart_unit, chart_unit
+        )
+        data["unit"] = (
+            UnitConverter.get_display_unit(chart_unit) if chart_unit else ""
+        )
 
         return {
             "query": query,
             "data": data,
-            "threshold": self._converted_thresholds(),
+            "chart_unit": chart_unit,
+            "threshold": self._preview_thresholds(),
             "warnings": self.warnings,
         }
 
@@ -152,52 +163,26 @@ class PolicyPreviewService:
     def _escape_regex_value(value):
         return re.sub(r'([\\^$.*+?()[\]{}|"])', r"\\\1", str(value if value is not None else ""))
 
-    def _apply_unit_conversion(self, data):
-        source_unit = self.payload.get("metric_unit") or getattr(self.metric, "unit", "") or ""
-        target_unit = self.payload.get("calculation_unit") or ""
-        if not source_unit or not target_unit or source_unit == target_unit:
-            return data
-        if not UnitConverter.is_convertible(source_unit, target_unit):
-            self.warnings.append(f"unit conversion skipped: {source_unit} -> {target_unit}")
-            return data
+    def _chart_unit(self):
+        return resolve_chart_unit(
+            self.payload.get("metric_unit")
+            or getattr(self.metric, "unit", "")
+            or "",
+            self.payload.get("calculation_unit") or "",
+            self.payload.get("threshold_unit") or "",
+        )
 
-        for result in data.get("data", {}).get("result", []):
-            values = result.get("values") or []
-            converted = UnitConverter.convert_values([float(item[1]) for item in values], source_unit, target_unit)
-            for index, (timestamp, _) in enumerate(values):
-                values[index] = [timestamp, str(converted[index])]
-        return data
-
-    def _display_unit(self):
-        target_unit = self.payload.get("calculation_unit") or ""
-        source_unit = self.payload.get("metric_unit") or getattr(self.metric, "unit", "") or ""
-        return UnitConverter.get_display_unit(target_unit or source_unit) if (target_unit or source_unit) else ""
-
-    def _converted_thresholds(self):
-        thresholds = deepcopy(self.payload.get("threshold") or [])
-        if not thresholds:
-            return []
-
-        calculation_unit = (
-            self.payload.get("calculation_unit")
-            or self.payload.get("metric_unit")
+    def _chart_source_unit(self, query_type):
+        if query_type == "formula":
+            return self.payload.get("calculation_unit") or ""
+        return (
+            self.payload.get("metric_unit")
+            or getattr(self.metric, "unit", "")
             or ""
         )
-        threshold_unit = self.payload.get("threshold_unit") or calculation_unit
-        if not calculation_unit or not threshold_unit or calculation_unit == threshold_unit:
-            return thresholds
-        if not UnitConverter.is_convertible(threshold_unit, calculation_unit):
-            raise BaseAppException(
-                f"threshold unit is not convertible: {threshold_unit} -> {calculation_unit}"
-            )
 
-        values = [item.get("value") for item in thresholds]
-        converted_values = UnitConverter.convert_values(
-            values, threshold_unit, calculation_unit
-        )
-        for item, value in zip(thresholds, converted_values):
-            item["value"] = value
-        return thresholds
+    def _preview_thresholds(self):
+        return deepcopy(self.payload.get("threshold") or [])
 
     def _preview_points(self):
         preview = self.payload.get("preview") or {}
