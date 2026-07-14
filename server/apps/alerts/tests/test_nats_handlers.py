@@ -390,6 +390,31 @@ def test_get_alert_level_trend_returns_multiseries_by_level(user_info):
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("group_by", "start", "end", "limit_label"),
+    [
+        ("minute", "2025-01-01 00:00:00", "2025-01-09 00:00:01", "7 天"),
+        ("hour", "2025-01-01 00:00:00", "2025-04-02 00:00:01", "90 天"),
+    ],
+)
+def test_get_alert_level_trend_span_over_limit_rejected_before_period_generation(
+    monkeypatch, user_info, group_by, start, end, limit_label
+):
+    """超限区间必须在生成完整时间序列前被拒绝。"""
+    monkeypatch.setattr(
+        N,
+        "_generate_time_periods",
+        lambda *_args, **_kwargs: pytest.fail("超限请求不应生成时间序列"),
+    )
+
+    result = N.get_alert_level_trend(user_info=user_info, time=[start, end], group_by=group_by)
+
+    assert result["result"] is False
+    assert result["data"] == {}
+    assert limit_label in result["message"]
+
+
+@pytest.mark.django_db
 def test_get_alert_level_distribution(user_info):
     Level.objects.create(level_id=0, level_name="Critical", level_display_name="严重", level_type="alert")
     Alert.objects.create(alert_id="A1", level="0", title="t", content="c", fingerprint="fp", team=[1])

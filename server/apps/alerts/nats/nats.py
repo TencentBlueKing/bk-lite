@@ -225,6 +225,24 @@ def _generate_time_periods(group_by, start_dt, end_dt):
     return all_periods
 
 
+def _get_trend_span_error(group_by, aware_start, aware_end, handler_name):
+    """校验趋势查询跨度，避免在数据库查询前生成超大时间序列。"""
+    span_seconds = (aware_end - aware_start).total_seconds()
+    max_span = _MAX_SPAN_SECONDS.get(group_by, _MAX_SPAN_SECONDS["day"])
+    if span_seconds <= max_span:
+        return None
+
+    label = _MAX_SPAN_LABEL.get(group_by, "2 年")
+    logger.warning(
+        "[AlertNatsRPC] %s 时间跨度 %.0f 秒超过 %s 粒度上限 %d 秒，已拒绝",
+        handler_name,
+        span_seconds,
+        group_by,
+        max_span,
+    )
+    return f"时间跨度超过 {group_by} 粒度的最大限制（{label}），请缩短查询范围或改用更粗粒度。"
+
+
 def _build_period_series(queryset, time_field, trunc_func, target_tz, aware_start, aware_end, all_periods, extra_filter=None):
     """对给定queryset按时间分组统计，返回 [[period_str, count], ...] 的时间序列"""
     time_conditions = Q(**{f"{time_field}__gte": aware_start, f"{time_field}__lt": aware_end})
@@ -294,21 +312,12 @@ def get_alert_trend_data(*args, **kwargs) -> Dict[str, Any]:
     group_by = kwargs.pop("group_by", "day")
     trunc_func, _ = group_dy_date_format(group_by)
 
-    # 时间跨度上界校验，防止大跨度 minute/hour 请求撑爆 Worker 内存
-    span_seconds = (aware_end - aware_start).total_seconds()
-    max_span = _MAX_SPAN_SECONDS.get(group_by, _MAX_SPAN_SECONDS["day"])
-    if span_seconds > max_span:
-        label = _MAX_SPAN_LABEL.get(group_by, "2 年")
-        logger.warning(
-            "[AlertNatsRPC] get_alert_trend_data 时间跨度 %.0f 秒超过 %s 粒度上限 %d 秒，已拒绝",
-            span_seconds,
-            group_by,
-            max_span,
-        )
+    span_error = _get_trend_span_error(group_by, aware_start, aware_end, "get_alert_trend_data")
+    if span_error:
         return {
             "result": False,
             "data": [],
-            "message": f"时间跨度超过 {group_by} 粒度的最大限制（{label}），请缩短查询范围或改用更粗粒度。",
+            "message": span_error,
         }
 
     # 构建告警过滤条件
@@ -908,6 +917,9 @@ def get_alert_level_trend(**kwargs):
     end_dt = aware_end.astimezone(target_tz)
     group_by = kwargs.get("group_by", "day")
     trunc_func, _ = group_dy_date_format(group_by)
+    span_error = _get_trend_span_error(group_by, aware_start, aware_end, "get_alert_level_trend")
+    if span_error:
+        return {"result": False, "data": {}, "message": span_error}
     all_periods = _generate_time_periods(group_by, start_dt, end_dt)
     level_map = _get_alert_level_display_map()
 
