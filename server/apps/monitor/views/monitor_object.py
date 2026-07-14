@@ -71,15 +71,13 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
         children_counts = MonitorObject.objects.filter(parent__isnull=False).values("parent_id").annotate(children_count=Count("id"))
         children_count_map = {item["parent_id"]: item["children_count"] for item in children_counts}
 
-        # 构建类型 id -> name 的映射，用于自定义类型的 fallback 显示
-        type_name_map = {t.id: t.name for t in MonitorObjectType.objects.all()}
-
         for result in results:
             _type_key = f"{LanguageConstants.MONITOR_OBJECT_TYPE}.{result['type']}"
             _name_key = f"{LanguageConstants.MONITOR_OBJECT}.{result['name']}"
-            # display_type 优先级：国际化 > 类型名称 > 类型ID
-            result["display_type"] = lan.get(_type_key) or type_name_map.get(result["type"]) or result["type"]
-            # display_name 优先级：国际化 > 模型字段 display_name > name
+            # display_type 优先级：国际化 > 类型ID(英文 slug)
+            i18n_type = lan.get(_type_key)
+            result["display_type"] = i18n_type or result["type"]
+            # display_name 优先级：国际化 > 模型字段 display_name > name(英文 slug)
             i18n_name = lan.get(_name_key)
             result["display_name"] = i18n_name or result.get("display_name") or result["name"]
             # 添加是否内置标识：有国际化配置 或 没有 display_name 字段 表示内置
