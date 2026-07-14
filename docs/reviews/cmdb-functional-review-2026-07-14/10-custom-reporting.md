@@ -8,7 +8,7 @@
 
 认证 token 的签发、轮换和作废采用随机明文一次返回、SQL 只保存 SHA-256、常量时间比较；作废凭据和停用任务会拒收。任务详情等既有对象接口也校验请求组织与 task.team 交集。但控制面创建/改组未验证新 team，数据面又仅按 model_id 读取全图实例；这两个边界可让低权限登录用户或合法任务 token 跨组织写入、覆盖和删除资产。快照路径还会把本次更新失败的旧实例当成“未覆盖”直接清理，同时批次仍标 SUCCESS。空 identity_keys 则使整批以空元组折叠，只落最后一条且 errors=0。
 
-本域新增 4 个主 Finding：`CMDB-F52`–`CMDB-F55`，P0 3/P1 1/P2 0/P3 0。关系双端授权引用 `CMDB-F14`，批次写唯一锁引用 `CMDB-F10`，清理跨存储恢复引用 `CMDB-F11`，所有请求/实例/关系/字段/扫描预算引用 `CMDB-F23`，不重复计数。Recommendation 为 **Block**。
+本域新增 6 个主 Finding：`CMDB-F52`–`CMDB-F57`，P0 3/P1 3/P2 0/P3 0。关系双端授权引用 `CMDB-F14`，批次写唯一锁引用 `CMDB-F10`，清理跨存储恢复引用 `CMDB-F11`，所有请求/实例/关系/字段/扫描预算引用 `CMDB-F23`，不重复计数。Recommendation 为 **Block**。
 
 ## 2. Findings
 
@@ -64,27 +64,56 @@
 - Required tests: 缺失/空/重复/未知 identity_keys，实例缺键/空值，update 把有效配置改空，两个实例 identity 相同，以及无任何图/字段/cleanup 副作用的 4xx 失败。
 - Long-term design note: identity schema 应成为版本化任务契约并随 token/batch 固化，不能每次从可任意浅合并的 JSON config 动态解释。
 
+### Finding CMDB-F56：字段与关系 schema 校验扩展已声明但未接线，非法载荷可直接写图
+
+- Severity: P1
+- Location: `server/apps/cmdb/custom_reporting/extensions.py:18-25`；`server/apps/cmdb/services/model.py:591-609`；`server/apps/cmdb_enterprise/custom_reporting/provider.py:16-148`；`server/apps/cmdb_enterprise/custom_reporting/services/ingest_service.py:60-86`；`server/apps/cmdb_enterprise/custom_reporting/services/merge_service.py:61-105`；`server/apps/cmdb_enterprise/custom_reporting/services/relation_service.py:24-49`；`server/apps/cmdb/services/instance.py:1062-1150`
+- Root cause category: 跨层契约不一致
+- Evidence: 社区 `CustomReportingExtension` 和 ModelManage 已分别声明 `validate_instance_fields`、`validate_relation_fields` 委托点；Enterprise provider 没有覆盖这两个方法，ingest 也从未调用。standard 模式不自动注册字段，Management.add_inst 调 `create_entity` 时只传 required/unique/editable 的 `check_attr_map`，没有 attrs schema，未知字段及 `_` 前缀保留字段会随 properties 入图。关系服务从关联元数据填充 src/dst model_id，但不查询实际 source/target 节点模型是否匹配；下游 `check_asso_mapping` 只检查关联存在和 1:1/1:n/n:1 基数，不校验端点实体模型。
+- Trigger: standard 任务上报模型未声明字段或 `_id/model_id/organization/collect_task` 等保留字段；或 relation 指定一个真实 source._id/target identity，但实际节点模型与 model_asst_id 声明端点不一致。
+- Impact: 图节点可出现模型 schema 外属性或覆盖框架保留元数据；关系边声明的 src/dst_model_id 与真实端点类型不一致，后续拓扑、权限、清理和关联格式化基于错误 schema 工作。该缺陷即使调用者对两端都有权限也成立，因此不同于 `CMDB-F14` 的关系授权根因。
+- Why existing tests missed it: 六文件没有调用社区 validate 委托；ingest 测试把字段注册和 merge 替换为 fake；merge 测试只验证 collect_time；relation 测试 mock `_resolve_instance/_create_edge`，`test_create_edge_enriches_model_ids` 只断言元数据被复制，不构造实际端点模型错配。没有“校验失败时零字段/实例/边写入”的断言。
+- Minimal safe fix: 由 Enterprise provider/adapter 实现唯一 schema validator，并在创建 Batch、自动字段或任何图写前调用；quick 模式只允许经策略批准的新业务字段，standard 模式拒绝未声明/保留字段。关系 validator 必须读取关联定义和实际端点，验证 source 属于 task model、src/dst 实体模型及 identity schema 全部匹配。
+- Required tests: standard 未知字段、全部保留字段、quick 新字段 allowlist、字段类型/缺失 identity、source/target 端点模型错配、关联方向错配；每个拒绝场景断言 4xx/明确错误且零模型字段、零实例、零 pending、零边、零 cleanup 副作用。
+- Long-term design note: schema 验证是 provider/adapter 的接入契约，应在 payload 进入通用 Management/InstanceManage 前一次完成，图驱动不应猜测业务 schema。
+
+### Finding CMDB-F57：Beat 已配置过期清理，但 Celery 自动发现入口没有注册该任务
+
+- Severity: P1
+- Location: `server/apps/cmdb_enterprise/config.py:3-13`；`server/apps/cmdb_enterprise/tasks/__init__.py:1-2`；`server/apps/cmdb_enterprise/custom_reporting/tasks.py:1-11`；`server/apps/core/celery.py:12-14`
+- Root cause category: 架构职责放置错误
+- Evidence: Enterprise config 把 Beat task path 配为 `apps.cmdb_enterprise.custom_reporting.tasks.custom_reporting_expire_cleanup`；Celery 只执行 `app.autodiscover_tasks()`，对 app 自动导入约定入口 `apps.cmdb_enterprise.tasks`。该入口当前只导入 `instance_ops.tasks.cleanup_attachment_files`，没有导入 custom_reporting task。只读复现调用 `app.loader.import_default_modules()` 后，目标 task `registered=False`，Enterprise 已注册任务列表只有附件 cleanup。
+- Trigger: 启用 `cmdb_enterprise` 和 Celery/Beat，配置 expire cleanup 任务后到达每日 04:00 调度时间。
+- Impact: Beat 可持久化并发送一个 Worker 未注册的 task name，Worker 报 unregistered task 并丢弃；expire 策略从未自动清理，页面却持续展示已配置策略，过期资产无限残留且没有本域状态/告警回写。
+- Why existing tests missed it: 简报 cleanup 测试直接调用 `cleanup_service.expire_cleanup()`；没有启动 Celery autodiscover 或断言 Beat schedule 中每个 task name 都存在于 `app.tasks`。`tasks.py` 覆盖率为 0%，config 和 `tasks/__init__.py` 不在六文件断言内。
+- Minimal safe fix: 在标准 Celery app 入口显式导入/注册 custom_reporting tasks（例如 `apps.cmdb_enterprise.tasks.__init__` 导入该模块），并以统一任务注册表生成/校验 Beat schedule；启动时发现 schedule 引用未注册任务应 fail fast 或告警。
+- Required tests: Django/Celery 集成测试执行 autodiscover 后断言目标全限定名在 `app.tasks`；Beat schedule 的每个 Enterprise task 都可解析；eager Worker 实际执行 expire service；未注册回归、重复 import 幂等和 Overlay 缺失模式不产生悬空 schedule。
+- Long-term design note: 任务定义、自动发现和 Beat 配置应同属一个可验证 registry，不能靠相隔目录的字符串路径和隐式 import 约定维持一致性。
+
 ### 跨域证据与未重复计数风险
 
 - `CMDB-F14`：relation payload 可直接给任意 `source._id`，target 又用 model_id+identity 全局解析，随后直接调用 `instance_association_create`，没有验证 source 属于 task model/team 或关联两端组织；这是既有“关系写只信中心/单端上下文”的同一根因，本域不重复计数。
 - `CMDB-F10`：custom reporting 的 Management 批写同样绕过单实例 `UniqueWriteLockService`；并发相同 identity 或重投可同时读到不存在并重复建图，归入既有批量写唯一锁根因。
 - `CMDB-F11`：snapshot/expire/approve 都直接“读图快照→删图→写 SQL 审计/审核状态”，无 Operation、幂等 key、owner 或崩溃恢复；approve 并发/图删后进程退出可重复删或让审核永久 pending，归入既有批量删除跨存储状态机根因。
 - `CMDB-F23`：公开 ingest 没有 body bytes、instances、relations、字段数/字段名长度、pending 或 deadline 上限；token 认证扫描全部 enabled credential，merge 全量物化模型，backfill 每次遍历全 task pending，expire 再逐任务全模型加载。该资源边界与自动采集执行/清理无批次和内存预算是同一主根因，本域不重复计数。
+- 重投确定行为：ingest 没有 idempotency key、payload hash 或 snapshot generation，相同请求每次都新建 Batch，并再次写实例变更审计；未解析关系每次都直接插入 `CustomReportingPendingRelation`，模型没有业务唯一约束，故重复重投会积累相同 pending。并发相同 identity 的图写竞态引用 `CMDB-F10`；Batch、重复审计、pending 和 cleanup 的副作用/恢复闭环引用 `CMDB-F11`，不新增计数。修复必须测试相同 key 同 payload 复用、同 key 冲突、无 key 的明确语义、并发重投单 owner、pending/审计去重、snapshot generation 只提交一次，以及失败后按原 generation 安全续跑。
 - 凭据正向证据：token 只在签发/轮换响应中返回，持久化前转 SHA-256，序列化去掉 token/token_hash；`compare_digest` 比较，revoke 清 hash 并禁用，停用任务也拒收。当前仍缺 credential ID 前缀索引、轮换/作废并发代次和速率限制证明。
 
 ## 3. Test Review
 
 Overlay 启用模式在主工作区 `server/` 只读运行简报六文件，并设置 `PYTHONDONTWRITEBYTECODE=1`。首次因沙箱不能读 `~/.cache/uv/sdists-v9/.git` 未进入收集；受控权限重跑命令为：
 
-`MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,node_mgmt,cmdb,cmdb_enterprise uv run pytest -q -o addopts='' apps/cmdb_enterprise/tests/test_custom_reporting_authz.py apps/cmdb_enterprise/tests/test_custom_reporting_ingest_service.py apps/cmdb_enterprise/tests/test_custom_reporting_merge_service.py apps/cmdb_enterprise/tests/test_custom_reporting_relation_service.py apps/cmdb_enterprise/tests/test_custom_reporting_cleanup_service.py apps/cmdb_enterprise/tests/bdd/test_custom_reporting_bdd.py --cov=apps.cmdb_enterprise.custom_reporting --cov-report=term-missing`
+`PYTHONDONTWRITEBYTECODE=1 MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,node_mgmt,cmdb,cmdb_enterprise uv run pytest -q -o addopts='' apps/cmdb_enterprise/tests/test_custom_reporting_authz.py apps/cmdb_enterprise/tests/test_custom_reporting_ingest_service.py apps/cmdb_enterprise/tests/test_custom_reporting_merge_service.py apps/cmdb_enterprise/tests/test_custom_reporting_relation_service.py apps/cmdb_enterprise/tests/test_custom_reporting_cleanup_service.py apps/cmdb_enterprise/tests/bdd/test_custom_reporting_bdd.py --cov=apps.cmdb_enterprise.custom_reporting --cov-report=term-missing`
 
 结果 **38 passed in 25.02s，exit 0**。15 个 Overlay 模块合计 **59%**（808 statements / 333 missed）；models 92%、provider 67%、activity 21%、cleanup 81%、credential 32%、document 27%、field 27%、ingest 78%、merge 73%、model 20%、relation 84%、task 17%、tasks 0%。相关模块 80% 和核心路径 90% 均未达到。
 
-Overlay 缺失模式在指定 worktree 运行社区扩展与委托测试：`... INSTALL_APPS=system_mgmt,node_mgmt,cmdb uv run pytest -q -o addopts='' apps/cmdb/tests/test_custom_reporting_extension.py apps/cmdb/tests/test_model_custom_reporting_delegation.py`，结果 **6 passed in 0.07s，exit 0**。它有效证明默认列表为空、写入口明确拒绝、模型字段 no-op 和 registry 委托；不证明 Overlay 打包版本或企业注册成功。
+Overlay 缺失模式在指定 worktree 运行社区扩展与委托测试：`PYTHONDONTWRITEBYTECODE=1 MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,node_mgmt,cmdb uv run pytest -q -o addopts='' apps/cmdb/tests/test_custom_reporting_extension.py apps/cmdb/tests/test_model_custom_reporting_delegation.py`，结果 **6 passed in 0.07s，exit 0**。它有效证明默认列表为空、写入口明确拒绝、模型字段 no-op 和 registry 委托；不证明 Overlay 打包版本或企业注册成功。
+
+Celery 注册补充复现命令：`PYTHONDONTWRITEBYTECODE=1 DJANGO_SETTINGS_MODULE=settings MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,node_mgmt,cmdb,cmdb_enterprise ENABLE_CELERY=true uv run python -c "import django; django.setup(); from apps.core.celery import app; app.loader.import_default_modules(); name='apps.cmdb_enterprise.custom_reporting.tasks.custom_reporting_expire_cleanup'; print('registered=', name in app.tasks); print('enterprise_tasks=', sorted(k for k in app.tasks if k.startswith('apps.cmdb_enterprise')))"`。结果为 `registered=False`，Enterprise 任务只有 `apps.cmdb_enterprise.instance_ops.tasks.cleanup_attachment_files`。
 
 六文件有效证明：已有 task 的错误组织被 provider 拒绝；坏/作废 token 与停用任务拒收；成功 ingest 建 Batch；身份类型 coercion；关系可建/进入 pending/backfill；快照阈值和审核基本行为。BDD 的“端到端”合并实际是有状态内存 fake，图、Management、权限、字段、关系和 cleanup 均未穿透。
 
-证明力不足：没有 create/update 新 team、View 功能权限、同模型跨任务/组织、真实 partial failure、空 identity、真实并发/重投、请求/字段预算、token 大表、PendingRelation 去重、崩溃恢复、FalkorDB/Neo4j、多数据库、Celery Beat/Worker。测试输出还含预期 BaseAppException 的 ERROR 日志和根 pyproject 无 project table 的 uv warning；虽不影响退出码，但生产日志分类和测试噪声仍需治理。
+证明力不足：没有 create/update 新 team、View 功能权限、同模型跨任务/组织、真实 partial failure、空 identity、schema/保留字段/端点模型、真实并发重投与幂等 key/generation、请求/字段预算、token 大表、PendingRelation 去重、崩溃恢复、FalkorDB/Neo4j、多数据库和真实 Beat→broker→Worker。测试输出还含预期 BaseAppException 的 ERROR 日志和根 pyproject 无 project table 的 uv warning；虽不影响退出码，但生产日志分类和测试噪声仍需治理。
 
 ## 4. Maintainability Verdict
 
@@ -101,4 +130,4 @@ Overlay 缺失模式在指定 worktree 运行社区扩展与委托测试：`... 
 
 **Block**。
 
-发布前必须先关闭三个 P0：任务新组织绑定必须 fail closed；所有 merge/cleanup 候选必须以不可伪造 owner+organization 裁剪；任何部分失败都不得启动 snapshot 或标 SUCCESS。随后修复空 identity 静默折叠，并落实跨域 `CMDB-F10/F11/F14/F23` 的唯一锁、删除状态机、关系双端授权和资源预算。Overlay 还必须给出可 checkout 的确切 commit 或不可变制品清单；38 个通过测试和 59% 覆盖率不足以批准当前运行态进入生产。
+发布前必须先关闭三个 P0：任务新组织绑定必须 fail closed；所有 merge/cleanup 候选必须以不可伪造 owner+organization 裁剪；任何部分失败都不得启动 snapshot 或标 SUCCESS。随后修复空 identity 静默折叠，接通字段/关系 schema validator，确保 Worker 实际注册过期清理，并落实跨域 `CMDB-F10/F11/F14/F23` 的唯一锁、删除状态机、关系双端授权和资源预算。Overlay 还必须给出可 checkout 的确切 commit 或不可变制品清单；38 个通过测试和 59% 覆盖率不足以批准当前运行态进入生产。
