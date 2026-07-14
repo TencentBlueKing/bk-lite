@@ -1,4 +1,5 @@
 from asgiref.sync import async_to_sync
+from django.db.models import Q
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.crypto.aes_crypto import AESCryptor
@@ -139,7 +140,15 @@ class InstallerService:
         return install_command
 
     @staticmethod
-    def install_controller(cloud_region_id, work_node, package_version_id, nodes, cpu_architecture: str):
+    def install_controller(
+        cloud_region_id,
+        work_node,
+        package_version_id,
+        nodes,
+        cpu_architecture: str,
+        created_by: str = "",
+        domain: str = "domain.com",
+    ):
         """安装控制器"""
         task_obj = ControllerTask.objects.create(
             cloud_region_id=cloud_region_id,
@@ -147,6 +156,10 @@ class InstallerService:
             package_version_id=package_version_id,
             type="install",
             status="waiting",
+            created_by=created_by,
+            updated_by=created_by,
+            domain=domain,
+            updated_by_domain=domain,
         )
         creates = []
         aes_obj = AESCryptor()
@@ -165,6 +178,7 @@ class InstallerService:
             creates.append(
                 ControllerTaskNode(
                     task_id=task_obj.id,
+                    node_id=node.get("node_id", ""),
                     ip=node["ip"],
                     node_name=node["node_name"],
                     os=node["os"],
@@ -199,13 +213,23 @@ class InstallerService:
         return result
 
     @staticmethod
-    def uninstall_controller(cloud_region_id, work_node, nodes):
+    def uninstall_controller(
+        cloud_region_id,
+        work_node,
+        nodes,
+        created_by: str = "",
+        domain: str = "domain.com",
+    ):
         """卸载控制器"""
         task_obj = ControllerTask.objects.create(
             cloud_region_id=cloud_region_id,
             work_node=work_node,
             type="uninstall",
             status="waiting",
+            created_by=created_by,
+            updated_by=created_by,
+            domain=domain,
+            updated_by_domain=domain,
         )
         creates = []
         aes_obj = AESCryptor()
@@ -220,6 +244,7 @@ class InstallerService:
             creates.append(
                 ControllerTaskNode(
                     task_id=task_obj.id,
+                    node_id=node.get("node_id", ""),
                     ip=node["ip"],
                     os=node["os"],
                     cpu_architecture=node.get("cpu_architecture", ""),
@@ -235,14 +260,25 @@ class InstallerService:
         return task_obj.id
 
     @staticmethod
-    def install_controller_nodes(task_id):
+    def install_controller_nodes(task_id, authorized_nodes=None, request_user=None):
         """获取控制器安装节点信息"""
-        task_nodes = ControllerTaskNode.objects.filter(task_id=task_id)
+        task_nodes = ControllerTaskNode.objects.filter(task_id=task_id).select_related("task").order_by("id")
+        if authorized_nodes is not None and not getattr(request_user, "is_superuser", False):
+            authorized_node_ids = list(authorized_nodes.values_list("id", flat=True))
+            username = getattr(request_user, "username", "") if request_user is not None else ""
+            legacy_owner_filter = Q(pk__in=[])
+            if username:
+                legacy_owner_filter = Q(node_id="") & Q(task__created_by=username)
+            task_nodes = task_nodes.filter(
+                (~Q(node_id="") & Q(node_id__in=authorized_node_ids)) | legacy_owner_filter
+            )
+
         result = []
         for task_node in task_nodes:
             result.append(
                 dict(
                     task_node_id=task_node.id,
+                    node_id=task_node.node_id,
                     ip=task_node.ip,
                     os=task_node.os,
                     cpu_architecture=task_node.cpu_architecture,

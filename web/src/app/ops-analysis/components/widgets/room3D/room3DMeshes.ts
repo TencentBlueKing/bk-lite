@@ -6,11 +6,6 @@ import {
   type Room3DRenderableDevice,
 } from "./room3DData";
 
-export interface RackVisualMeta {
-  labelKey: string;
-  color: string;
-}
-
 export interface RackVisual {
   rack: Room3DRack;
   root: THREE.Group;
@@ -23,8 +18,8 @@ export interface RackVisual {
 }
 
 export const ROOM3D_COL_GAP = 1.18;
-export const ROOM3D_ROW_GAP = 4.6;
-export const ROOM3D_CELL_GAP = ROOM3D_COL_GAP;
+export const ROOM3D_ROW_GAP = 5.4;
+export const ROOM3D_FRONT_AISLE_EXTRA = 1.5;
 export const ROOM3D_RACK_WIDTH = 1.05;
 export const ROOM3D_RACK_DEPTH = 1.2;
 export const ROOM3D_RACK_HEIGHT = 1.95;
@@ -38,28 +33,6 @@ const RACK_USABLE_BOTTOM = 0.12;
 const RACK_USABLE_TOP_PADDING = 0.1;
 const RACK_USABLE_HEIGHT =
   ROOM3D_RACK_HEIGHT - RACK_USABLE_BOTTOM - RACK_USABLE_TOP_PADDING;
-
-const RACK_COLOR_MAP: Record<string, RackVisualMeta> = {
-  "1": { labelKey: "dashboard.room3DRackTypeCompute", color: "#82878b" },
-  "2": { labelKey: "dashboard.room3DRackTypeNetwork", color: "#7f8a8a" },
-  "3": { labelKey: "dashboard.room3DRackTypeStorage", color: "#85817a" },
-  "4": { labelKey: "dashboard.room3DRackTypeSecurity", color: "#85808a" },
-  "5": { labelKey: "dashboard.room3DRackTypeOther", color: "#82878b" },
-  compute: { labelKey: "dashboard.room3DRackTypeCompute", color: "#82878b" },
-  network: { labelKey: "dashboard.room3DRackTypeNetwork", color: "#7f8a8a" },
-  storage: { labelKey: "dashboard.room3DRackTypeStorage", color: "#85817a" },
-  security: { labelKey: "dashboard.room3DRackTypeSecurity", color: "#85808a" },
-};
-
-const DEFAULT_RACK_META: RackVisualMeta = {
-  labelKey: "dashboard.room3DRackTypeUnknown",
-  color: "#82878b",
-};
-
-export const getRackVisualMeta = (rackType?: string | null): RackVisualMeta => {
-  const key = String(rackType || "").trim();
-  return RACK_COLOR_MAP[key] || DEFAULT_RACK_META;
-};
 
 const createCanvasTexture = (
   width: number,
@@ -153,7 +126,7 @@ const createEquipmentTexture = () =>
     context.fillRect(276, 31, 3, 34);
   });
 
-const createRackTopTexture = (label: string) =>
+const createRackTopTexture = (label: string, category?: string) =>
   createCanvasTexture(192, 128, (context) => {
     const gradient = context.createLinearGradient(0, 0, 192, 128);
     gradient.addColorStop(0, "#7e858b");
@@ -163,11 +136,18 @@ const createRackTopTexture = (label: string) =>
     context.fillRect(0, 0, 192, 128);
     context.strokeStyle = "rgba(96, 218, 255, 0.42)";
     context.strokeRect(8, 8, 176, 112);
-    context.fillStyle = "rgba(255,255,255,0.62)";
-    context.font = "700 34px sans-serif";
+    context.fillStyle = "rgba(255,255,255,0.72)";
+    context.font = "700 30px sans-serif";
     context.textAlign = "center";
     context.textBaseline = "middle";
-    context.fillText(label.slice(0, 5), 96, 64);
+    if (category) {
+      context.fillText(label.slice(0, 5), 96, 50);
+      context.fillStyle = "rgba(219,236,246,0.78)";
+      context.font = "600 22px sans-serif";
+      context.fillText(category.slice(0, 8), 96, 84);
+    } else {
+      context.fillText(label.slice(0, 5), 96, 64);
+    }
     context.fillStyle = "rgba(95, 234, 255, 0.22)";
     for (let x = 56; x < 136; x += 10) {
       context.fillRect(x, 26, 4, 2);
@@ -969,7 +949,6 @@ export const createRackVisual = (
   x: number,
   z: number,
 ): RackVisual => {
-  const meta = getRackVisualMeta(rack.rack_type);
   const isConflict = Boolean(rack.is_conflict);
   const root = new THREE.Group();
   root.name = "rack";
@@ -977,7 +956,7 @@ export const createRackVisual = (
   root.userData.rack = rack;
 
   const bodyMaterial = new THREE.MeshStandardMaterial({
-    color: meta.color,
+    color: "#82878b",
     emissive: "#555b60",
     emissiveIntensity: 0.28,
     metalness: 0.24,
@@ -1125,7 +1104,12 @@ export const createRackVisual = (
     new THREE.BoxGeometry(ROOM3D_RACK_WIDTH, 0.035, ROOM3D_RACK_DEPTH),
     new THREE.MeshStandardMaterial({
       color: "#7d858c",
-      map: createRackTopTexture(getRoom3DPositionLabel(rack) || rack.rack_name),
+      map: createRackTopTexture(
+        getRoom3DPositionLabel(rack) || rack.rack_name,
+        typeof rack.rack_type_name === "string"
+          ? rack.rack_type_name.trim()
+          : undefined,
+      ),
       emissive: "#5a6268",
       emissiveIntensity: 0.24,
       metalness: 0.22,

@@ -4,9 +4,13 @@
 越界/重叠/同格冲突均标记返回，由前端高亮提示。
 """
 
+import re
+
 from apps.cmdb.constants.constants import INSTANCE_ASSOCIATION
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.services.instance import InstanceManage
+
+RACK_LOCATION_PATTERN = re.compile(r"^([A-Z]+)(\d+)$")
 
 
 def col_to_letter(col: int) -> str:
@@ -17,6 +21,33 @@ def col_to_letter(col: int) -> str:
         n, rem = divmod(n - 1, 26)
         result = chr(65 + rem) + result
     return result
+
+
+def letter_to_index(value: str) -> int:
+    result = 0
+    for char in value:
+        result = result * 26 + (ord(char) - ord("A") + 1)
+    return result
+
+
+def format_rack_location_label(row: int, col: int) -> str:
+    return f"{col_to_letter(row)}{col:02d}"
+
+
+def parse_rack_location(value) -> tuple[int, int] | None:
+    """解析 rack.location，字母为行、数字为列；支持 A3/A03。"""
+    if not isinstance(value, str):
+        return None
+
+    match = RACK_LOCATION_PATTERN.match(value.strip().upper())
+    if not match:
+        return None
+
+    row = letter_to_index(match.group(1))
+    col = int(match.group(2))
+    if row < 1 or col < 1:
+        return None
+    return row, col
 
 
 def build_room_layout(racks: list) -> dict:
@@ -258,12 +289,14 @@ def get_room_layout(server_room_id, permission_map=None, user=None) -> dict:
             # 已占用 = 总U - 空闲U（去重计数）：忽略未分配设备、重叠不重复计、永不超 100%，
             # 与机柜抽屉概览口径一致
             used_u = u_count - free_u
+            row_col = parse_rack_location(r.get("location"))
+            row, col = row_col if row_col else (None, None)
             racks.append(
                 {
                     "inst_id": str(rid),
                     "inst_name": r.get("inst_name"),
-                    "row": _safe_int(r.get("row")),
-                    "col": _safe_int(r.get("col")),
+                    "row": row,
+                    "col": col,
                     "location": r.get("location"),
                     "u_count": u_count,
                     "datacenter_type": _scalar(r.get("datacenter_type")),

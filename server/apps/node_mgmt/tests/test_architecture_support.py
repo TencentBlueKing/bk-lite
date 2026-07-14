@@ -768,6 +768,38 @@ def test_config_node_asso_hides_unauthorized_nodes(monkeypatch):
     ]
 
 
+def test_controller_install_nodes_passes_authorized_queryset(monkeypatch):
+    authorized_nodes = _FakeNodeQuerySet([_FakeNode("node-allowed")])
+    captured = {}
+
+    monkeypatch.setattr(
+        "apps.node_mgmt.views.installer.get_authorized_node_queryset",
+        lambda request: authorized_nodes,
+    )
+
+    def fake_install_controller_nodes(task_id, authorized_nodes=None, request_user=None):
+        captured["task_id"] = task_id
+        captured["authorized_nodes"] = authorized_nodes
+        captured["request_user"] = request_user
+        return []
+
+    monkeypatch.setattr(
+        "apps.node_mgmt.views.installer.InstallerService.install_controller_nodes",
+        fake_install_controller_nodes,
+    )
+
+    view = InstallerViewSet.as_view({"post": "controller_install_nodes"})
+    response = view(
+        _make_permission_request(permissions=("cloud_region_node-Edit",)),
+        task_id="task-3923",
+    )
+
+    assert response.status_code != 403
+    assert captured["task_id"] == "task-3923"
+    assert captured["authorized_nodes"] is authorized_nodes
+    assert captured["request_user"].username == "permission-test-user"
+
+
 def test_apply_to_node_prevalidates_permissions_before_mutation(monkeypatch):
     monkeypatch.setattr(
         collector_configuration,

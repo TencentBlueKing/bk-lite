@@ -1,0 +1,15 @@
+{
+  "model_id": "tongweb",
+  "captured_at": "2026-07-08T06:00:00Z",
+  "image": "docker.m.daocloud.io/library/ubuntu:22.04",
+  "container_meta": {
+    "container_id": "N/A-placeholder",
+    "image": "docker.m.daocloud.io/library/ubuntu:22.04"
+  },
+  "params": {
+    "host": "127.0.0.1",
+    "ssh_port": 12252
+  },
+  "raw_stdout": [],
+  "placeholder_reason": "G4.3 tongweb(东方通)装包失败 2026-07-08:aliyun 镜像 + 东方通官网 tar.gz 都不可达(实际下到的是 HTML 404 页,gzip 解压失败)。后续解锁路径:1) 用户提供东方通 license 后走官方源;2) 内部 Nexus 镜像同步;3) amd64 CI runner 跑。"
+}

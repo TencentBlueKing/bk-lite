@@ -46,6 +46,7 @@ from apps.opspilot.metis.llm.chain.entity import (
 # side effect, preserving the original import-time patching behavior of node.py.
 # ---------------------------------------------------------------------------
 from apps.opspilot.metis.llm.chain.k8s_report_tools import (  # noqa: E402,F401
+    RENDERER_REGISTRY,
     _build_config_analysis_report_total,
     _build_config_analysis_scan_range,
     _build_config_analysis_scope,
@@ -53,13 +54,13 @@ from apps.opspilot.metis.llm.chain.k8s_report_tools import (  # noqa: E402,F401
     _config_analysis_fix_description,
     _config_analysis_risk_description,
     build_a2ui_report_contract,
-    build_config_diff_report_payload,
     build_config_analysis_report_markdown,
     build_config_analysis_report_payload,
     build_post_tool_directives,
     build_repair_mode_choice_args,
     downgrade_config_analysis_next_step_hint,
     find_pending_k8s_analysis_choice,
+    get_renderer,
     should_emit_config_analysis_report,
 )
 from apps.opspilot.metis.llm.chain.k8s_tool_gate import is_k8s_agent  # noqa: E402,F401
@@ -795,20 +796,251 @@ class ToolsNodes(BasicNode):
 
         # 多实例强制选择配置（由 chat_service 注入 extra_config）
         _ec = ExtraConfig.from_raw(getattr(request, "extra_config", None))
+        self._extra_config = _ec
         self._require_choice_before_tools = _ec.require_choice_before_tools
         self._multi_instance_options = _ec.multi_instance_options
         self._skill_package_capabilities = set(_ec.skill_package_capabilities or [])
+        logger.debug(
+            "ToolsNodes extra_config keys=%s, capabilities=%s",
+            list((getattr(request, "extra_config", None) or {}).keys()),
+            self._skill_package_capabilities,
+        )
         if self._require_choice_before_tools:
             logger.info(f"多实例强制选择已启用, options={self._multi_instance_options}")
 
     def _has_skill_package_capability(self, capability: str) -> bool:
         return capability in getattr(self, "_skill_package_capabilities", set())
 
+    def _enabled_report_capabilities(self) -> set[str]:
+        """已启用的 report 类 capability 集合(由 skill 包声明 ∩ 渲染器注册表)。
+
+        任何 report 能力的判断都从这里走,避免在多处硬编码 capability 名。
+        """
+        return set(RENDERER_REGISTRY.keys()) & getattr(self, "_skill_package_capabilities", set())
+
+    def _has_report_capability(self, capability: str) -> bool:
+        return capability in self._enabled_report_capabilities()
+
     def _enable_config_analysis_report(self) -> bool:
-        return self._has_skill_package_capability("config_analysis_report")
+        # 保留旧名以兼容现有调用点;真值从统一的 capability 集合里查
+        return self._has_report_capability("config_analysis_report")
 
     def _enable_repair_diff_report(self) -> bool:
-        return self._has_skill_package_capability("repair_diff_report")
+        return self._has_report_capability("repair_diff_report")
+
+    def _emit_report_event(self, capability: str, parsed: Any, event_dispatcher=None) -> Optional[str]:
+        """通过 registry 渲染 + dispatch 一个 report 类 AG-UI 事件。
+
+        流程:
+        1. 检查 capability 是否在 skill 包声明中(否则直接跳过)
+        2. 查 RENDERER_REGISTRY 拿渲染器
+        3. 渲染器吃 parsed,产出 payload(None 表示"本轮跳过")
+        4. dispatch_custom_event(capability, payload)
+
+        event_dispatcher: 可选的 async 回调(capability, payload) -> awaitable。
+        默认走同步 dispatch_custom_event(deepagent 包装节点不在 langchain
+        runnable 回调树里时会缺 parent run id,需要传一个 adispatch_custom_event
+        并把 config 传进去的回调)。
+
+        返回生成的 report_id(payload 上的)以便调用方引用,失败返回 None。
+        事件名 = capability 名,前后端/技能包能力名三者一致。
+        """
+        if not self._has_report_capability(capability):
+            return None
+        renderer = get_renderer(capability)
+        if renderer is None:
+            return None
+        # package 上下文:matched_skill_packages 的第一个(若存在),渲染器用它做
+        # cluster_name 兜底;主数据来源仍是 parsed 里的 cluster_name/title。
+        ec = getattr(self, "_extra_config", None)
+        matched = list(getattr(ec, "matched_skill_packages", None) or []) if ec else []
+        package_ctx = matched[0] if matched else {}
+        payload = renderer(parsed, package_ctx)
+        if not payload:
+            return None
+        if event_dispatcher is not None:
+            # async 路径:deep_wrapper_node 传入的 adispatch_custom_event 回调
+            try:
+                import asyncio as _asyncio
+                coro = event_dispatcher(capability, payload)
+                try:
+                    _asyncio.get_running_loop()
+                except RuntimeError:
+                    # 同步上下文里没运行 loop,把 coroutine 跑到底
+                    _asyncio.run(coro)
+                else:
+                    # 已有 loop(在 async 函数里),创建 task 不阻塞
+                    _asyncio.ensure_future(coro)
+            except Exception as e:
+                logger.warning(f"dispatch {capability} (async) failed: {e}")
+                return None
+        else:
+            try:
+                from langchain_core.callbacks import dispatch_custom_event
+                dispatch_custom_event(capability, payload)
+            except Exception as e:
+                logger.warning(f"dispatch {capability} failed: {e}")
+                return None
+        return payload.get("report_id")
+
+    def _post_process_tool_results(
+        self,
+        new_messages: list,
+        skill_id: int = None,
+        event_dispatcher=None,
+    ) -> None:
+        """deepagent 返回后扫一遍新消息,对映射的 tool 结果触发 report 渲染。
+
+        解决"普通工具(非 Pydantic/StructuredTool)返回值也想结构化展示"的场景:
+        LLM 调 analyze_deployment_configurations → ToolMessage.content 是 JSON 字符串,
+        后处理器按 tool name 命中 TOOL_RESULT_TO_CAPABILITY,自动 dispatch 报告事件。
+
+        同一 capability 多次触发(LLM 分 namespace 多次调分析工具)会被合并:
+        - issues_detail 串接
+        - total / problematic / healthy 累加
+        - cluster_name 优先用唯一值,多 namespace 时改成 cluster_names 列表
+        渲染器拿到的还是单份 parsed,无需自己处理多份。
+
+        不在映射里的 tool 静默跳过。renderer 返 None(数据无效)也静默。
+
+        LLM text 的去重由前端 custom-chat-sse/index.tsx 负责
+        (hasStructuredReports 标记 + 简短说明替换),见那个文件的注释。
+        """
+        from langchain_core.messages import ToolMessage
+
+        from apps.opspilot.metis.llm.chain.k8s_report_tools import (
+            TOOL_RESULT_TO_CAPABILITY,
+            merge_analysis_results,
+        )
+
+        # 按 capability 累计:同一 capability 多次工具调用,合并成一次 emit
+        accumulated: Dict[str, List[Any]] = {}
+
+        for message in new_messages:
+            if not isinstance(message, ToolMessage):
+                continue
+            tool_name = getattr(message, "name", "") or ""
+            capability = TOOL_RESULT_TO_CAPABILITY.get(tool_name)
+            if not capability:
+                continue
+            try:
+                content = message.content
+                if isinstance(content, str):
+                    parsed = json.loads(content)
+                elif isinstance(content, list):
+                    # 偶发:content 是 list[dict](langchain 0.2+ 行为)
+                    parsed = content[0] if content and isinstance(content[0], dict) else {"content": content}
+                else:
+                    parsed = content
+            except (json.JSONDecodeError, TypeError, IndexError) as e:
+                logger.debug(f"skip {tool_name} post-process (parse failed): {e}")
+                continue
+            accumulated.setdefault(capability, []).append(parsed)
+
+        # 每个 capability 合并后 emit 一次(而不是 N 张卡片)
+        for capability, parsed_list in accumulated.items():
+            if not parsed_list:
+                continue
+            merged = merge_analysis_results(parsed_list) if len(parsed_list) > 1 else parsed_list[0]
+            self._emit_report_event(capability, merged, event_dispatcher=event_dispatcher)
+
+        # 联动 emit:analysis 出完之后,如果 repair_diff_report 能力也启了,自动出 summary diff
+        # 卡片(不依赖 LLM 调 generate_repair_report)。这样在 Gemma/Gemini 这些
+        # 不严格服从 system prompt "必须调 user_choice → repair_report" 的模型上,
+        # 用户也能直接看到修复建议清单。关掉就在 capabilities 里删 repair_diff_report。
+        if self._has_report_capability("repair_diff_report") and accumulated.get("config_analysis_report"):
+            from apps.opspilot.metis.llm.chain.report_renderers.k8s import (
+                build_summary_diff_from_analysis,
+            )
+            analysis_merged = accumulated["config_analysis_report"]
+            # skill_id 由 caller(_post_process_tool_results 形参)透传,caller 在
+            # deep_wrapper_node:2799 已用 getattr(graph_request, "skill_id", None) 解析;
+            # 拿不到就 None,k8s renderer 自己兜底不依赖 skill_id。
+            if len(analysis_merged) == 1:
+                summary_payload = build_summary_diff_from_analysis(analysis_merged[0], skill_id=skill_id)
+            else:
+                summary_payload = build_summary_diff_from_analysis(
+                    merge_analysis_results(analysis_merged), skill_id=skill_id,
+                )
+            if summary_payload:
+                if event_dispatcher is not None:
+                    try:
+                        import asyncio as _asyncio
+                        coro = event_dispatcher("repair_diff_report", summary_payload)
+                        try:
+                            _asyncio.get_running_loop()
+                        except RuntimeError:
+                            _asyncio.run(coro)
+                        else:
+                            _asyncio.ensure_future(coro)
+                    except Exception as e:
+                        logger.warning(f"auto-dispatch summary diff (async) failed: {e}")
+                else:
+                    try:
+                        from langchain_core.callbacks import dispatch_custom_event
+                        dispatch_custom_event("repair_diff_report", summary_payload)
+                    except Exception as e:
+                        logger.warning(f"auto-dispatch summary diff failed: {e}")
+
+                # 顺手出 report_file_download(.docx 文件下载),前端 ReportDownloadCard
+                # 自动渲染。docx 用 summary diff items 转 raw_items 喂现有 report_generator。
+                # 完全同步执行,小集群下 < 1s,大集群可能稍长但加 try/except 兜底。
+                try:
+                    from datetime import datetime
+                    from apps.opspilot.metis.llm.tools.kubernetes.report_generator import (
+                        generate_k8s_report_docx,
+                    )
+                    from apps.opspilot.services.generated_file_delivery_service import (
+                        build_generated_file_download_event,
+                    )
+
+                    raw_items = [
+                        {
+                            "namespace": str(item.get("namespace") or "all"),
+                            "target_name": str(item.get("workload_name") or "unknown"),
+                            "target_type": str(item.get("workload_type") or "Deployment"),
+                            "severity": str(item.get("severity") or "info"),
+                            "summary": str(item.get("summary") or ""),
+                            "category": "summary_diff",
+                        }
+                        for item in summary_payload.get("items", [])
+                    ]
+                    report_data = {
+                        "cluster_name": summary_payload.get("cluster_name") or "Kubernetes",
+                        "raw_items": raw_items,
+                    }
+                    docx_bytes = generate_k8s_report_docx(report_data)
+                    if docx_bytes:
+                        cluster = report_data["cluster_name"]
+                        filename = (
+                            f"K8S配置检查报告_{cluster}_"
+                            f"{datetime.now().strftime('%Y%m%d')}.docx"
+                        )
+                        download_event = build_generated_file_download_event(
+                            filename=filename,
+                            content_bytes=docx_bytes,
+                            mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        )
+                        if event_dispatcher is not None:
+                            try:
+                                import asyncio as _asyncio_dl
+                                coro = event_dispatcher("report_file_download", download_event)
+                                try:
+                                    _asyncio_dl.get_running_loop()
+                                except RuntimeError:
+                                    _asyncio_dl.run(coro)
+                                else:
+                                    _asyncio_dl.ensure_future(coro)
+                            except Exception as e:
+                                logger.warning(f"auto-dispatch docx report (async) failed: {e}")
+                        else:
+                            try:
+                                from langchain_core.callbacks import dispatch_custom_event
+                                dispatch_custom_event("report_file_download", download_event)
+                            except Exception as e:
+                                logger.warning(f"auto-dispatch docx report failed: {e}")
+                except Exception as e:
+                    logger.warning(f"auto-dispatch docx report failed: {e}")
 
     def _filter_basic_k8s_analysis_loop_calls(self, tool_calls: list, analysis_cache: dict) -> tuple[list, bool]:
         if self._enable_config_analysis_report() or self._enable_repair_diff_report():
@@ -1215,19 +1447,14 @@ class ToolsNodes(BasicNode):
             items: List[DiffItem] = PydanticField(description="各工作负载的对比项列表")
 
         async def _report_config_diff(title: str, cluster_name: str, items: List[dict]) -> str:
-            import uuid
+            # 走统一的 registry 路径:capability 名 = 事件名,渲染器构造 payload。
+            # 不再这里手写 dispatch,新增 report 类型只需 register_renderer()。
+            parsed = {"title": title, "cluster_name": cluster_name, "items": items}
+            report_id = self._emit_report_event("repair_diff_report", parsed)
 
-            from langchain_core.callbacks import dispatch_custom_event
-
-            report_id = str(uuid.uuid4())[:8]
-
-            report_data = build_config_diff_report_payload(title=title, cluster_name=cluster_name, items=items)
-            report_data["report_id"] = report_id
-
-            try:
-                dispatch_custom_event("config_diff_report", report_data)
-            except Exception as e:
-                logger.warning(f"dispatch config_diff_report failed: {e}")
+            if not report_id:
+                # capability 未启用或渲染器返回 None,不阻塞流程
+                return f"已收到 {len(items)} 个工作负载的修复对比数据,但当前技能包未声明 repair_diff_report 能力,跳过报告推送。"
 
             return f"已生成配置修复对比报告（{len(items)} 个工作负载），用户可点击查看详细对比。"
 
@@ -1721,12 +1948,9 @@ class ToolsNodes(BasicNode):
                     }
                 )
 
-            report_data = build_config_diff_report_payload(title=title, cluster_name=context_name, items=diff_items)
-
-            try:
-                dispatch_custom_event("config_diff_report", report_data)
-            except Exception as e:
-                logger.warning(f"dispatch config_diff_report failed: {e}")
+            # 走 registry:事件名 = capability 名 = repair_diff_report。
+            # 这里直接传 items 列表,渲染器认两种 shape(list / dict-with-items)。
+            self._emit_report_event("repair_diff_report", diff_items)
 
             def _get_patch_json_for_issue(issue: str) -> str:
                 """根据 issue 类型返回紧凑的 patch JSON（多行格式，便于阅读）"""
@@ -2467,9 +2691,40 @@ class ToolsNodes(BasicNode):
 
             try:
                 result = await deep_agent.ainvoke({"messages": state["messages"]}, config=deep_config)
+            except Exception as _await_exc:
+                # deepagent 框架层异常(典型:execute 工具撞 sandbox 命令白名单)会把整
+                # 个 graph 标 ERROR,LLM 没机会拿到 ToolMessage 写 follow-up。
+                # 这里直接调一次 LLM,把失败原因作为用户消息送进去,让 LLM 产出
+                # 人话版的失败说明 + 替代方案,再走 chat_model_end 正常 emit。
+                try:
+                    from langchain_core.messages import HumanMessage
+                    err_prompt = (
+                        f"上一轮工具执行失败(异常 {type(_await_exc).__name__}:"
+                        f" {str(_await_exc)[:800]}),请用中文告诉用户失败原因,"
+                        "并给出可执行的替代方案(例如改用白名单内的命令 uvx / python -m,"
+                        "或换其他可用工具)。不要再尝试调同样的命令。"
+                    )
+                    fallback_messages = list(state.get("messages") or []) + [HumanMessage(content=err_prompt)]
+                    fallback_response = await llm.ainvoke(fallback_messages, config=config)
+                    fallback_text = str(getattr(fallback_response, "content", "") or "").strip()
+                    if not fallback_text:
+                        fallback_text = (
+                            f"工具执行失败:{type(_await_exc).__name__}: {str(_await_exc)[:400]}\n"
+                            "请尝试改用白名单内的等效命令(uvx / python -m 等)或换其他工具。"
+                        )
+                    return {"messages": [AIMessage(content=fallback_text)]}
+                except Exception:
+                    return {"messages": [AIMessage(
+                        content=f"工具执行失败:{type(_await_exc).__name__}: {str(_await_exc)[:400]}\n"
+                        "请尝试改用白名单内的等效命令(uvx / python -m 等)或换其他工具。"
+                    )]}
             finally:
                 # 用完即弃：销毁本次运行的一次性技能沙箱目录
-                self._cleanup_sandbox(sandbox_dir)
+                # _cleanup_sandbox 内部有 None 守卫,但这里再写一次防御:
+                # sandbox_dir 只在 _build_skill_backend_and_sources 成功返回时
+                # 才会被赋值,setup 阶段抛错时这个变量不存在,直接 finally 会 NameError。
+                if sandbox_dir:
+                    self._cleanup_sandbox(sandbox_dir)
 
             # 获取完整的消息列表
             final_messages = result.get("messages", [])
@@ -2482,6 +2737,28 @@ class ToolsNodes(BasicNode):
 
             if not new_messages:
                 return {"messages": [AIMessage(content="DeepAgent 未产生新的响应")]}
+
+            # 后处理:扫新消息里的 ToolMessage,按 TOOL_RESULT_TO_CAPABILITY 触发
+            # report 渲染。这样普通工具(LLM 不需要显式调 Pydantic tool)也能
+            # 自动产出结构化报告事件。LLM text 重复由前端 hasStructuredReports
+            # 标记去重(已通过上方结构化卡片展示)。
+            # 深 agent 异步包装节点不在 langchain runnable 回调树里,直接调
+            # `dispatch_custom_event` 会因缺 parent run id 静默失败,所以走
+            # `adispatch_custom_event` 并把 `config` 传进去,让事件能正确 emit。
+            try:
+                from langchain_core.callbacks import adispatch_custom_event
+
+                async def _emit_via_async_config(capability: str, payload: dict):
+                    await adispatch_custom_event(capability, payload, config=config)
+
+                self._post_process_tool_results(
+                    new_messages,
+                    skill_id=getattr(graph_request, "skill_id", None),
+                    event_dispatcher=_emit_via_async_config,
+                )
+            except Exception:
+                # PPR 失败时 re-raise,让上层 langgraph 走正常 ERROR 处理路径
+                raise
 
             # 直接返回新消息列表，让 agui_stream 逐个处理
             # 这样可以实时发送：工具调用 -> 工具结果 -> 最终响应

@@ -29,7 +29,10 @@ import {
   setWidgetRequestFailureCache,
   setWidgetRequestSuccessCache,
 } from "@/app/ops-analysis/utils/widgetRequestCache";
-import { buildWidgetRequestVersionKey } from "@/app/ops-analysis/utils/widgetRequestVersion";
+import {
+  buildWidgetRequestVersionKey,
+  shouldWaitForInitialWidgetData,
+} from "@/app/ops-analysis/utils/widgetRequestVersion";
 import WidgetRenderer from "@/app/ops-analysis/components/widgetRenderer";
 import WidgetErrorState from "@/app/ops-analysis/components/widgetErrorState";
 
@@ -664,14 +667,16 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     <WidgetErrorState message={message} />
   );
   const hasRawPayload = rawData !== null && rawData !== undefined;
-  const isWaitingForRoom3DInitialData =
-    chartType === "room3D" &&
-    !isSceneWidget &&
-    !isTableLikeChart &&
-    Boolean(normalizedDataSourceId) &&
-    !hasRawPayload &&
-    !dataValidation &&
-    (!requestEnabled || !previousRequestRef.current.hasRequested);
+  const isWaitingForInitialData = shouldWaitForInitialWidgetData({
+    isSceneWidget,
+    isTableLikeChart,
+    hasDataSourceId: Boolean(normalizedDataSourceId),
+    hasResolvedDataSource: Boolean(dataSource),
+    hasRawPayload,
+    hasDataValidation: Boolean(dataValidation),
+    requestEnabled,
+    hasRequested: previousRequestRef.current.hasRequested,
+  });
 
   if (isSceneWidget) {
     return (
@@ -692,7 +697,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     );
   }
 
-  if ((loading && !isTableLikeChart) || isWaitingForRoom3DInitialData) {
+  if ((loading && !isTableLikeChart) || isWaitingForInitialData) {
     return (
       <div className="h-full flex items-center justify-center">
         <Spin spinning />

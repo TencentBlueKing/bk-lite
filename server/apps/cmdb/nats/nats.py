@@ -1,5 +1,4 @@
 import datetime
-import re
 from functools import reduce
 from operator import or_
 from types import SimpleNamespace
@@ -39,6 +38,7 @@ from apps.cmdb.services.collect_credential_result_service import CollectCredenti
 from apps.cmdb.services.config_file_service import ConfigFileService
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.model import ModelManage
+from apps.cmdb.services.rack_room import format_rack_location_label, parse_rack_location
 from apps.cmdb.utils.base import get_default_group_id
 from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
 from apps.core.logger import cmdb_logger as logger
@@ -836,41 +836,12 @@ def _parse_room3d_server_room_id(value):
         return None
 
 
-ROOM3D_RACK_LOCATION_PATTERN = re.compile(r"^([A-Z]+)(\d+)$")
-
-
-def _room3d_letter_to_index(value):
-    result = 0
-    for char in value:
-        result = result * 26 + (ord(char) - ord("A") + 1)
-    return result
-
-
-def _room3d_index_to_letters(value):
-    result = ""
-    while value > 0:
-        value, remainder = divmod(value - 1, 26)
-        result = chr(ord("A") + remainder) + result
-    return result
-
-
 def _format_room3d_location_label(row, col):
-    return f"{_room3d_index_to_letters(row)}{col:02d}"
+    return format_rack_location_label(row, col)
 
 
 def _parse_room3d_rack_location(value):
-    if not isinstance(value, str):
-        return None
-
-    match = ROOM3D_RACK_LOCATION_PATTERN.match(value.strip().upper())
-    if not match:
-        return None
-
-    row = _room3d_letter_to_index(match.group(1))
-    col = int(match.group(2))
-    if row < 1 or col < 1:
-        return None
-    return row, col
+    return parse_rack_location(value)
 
 
 def _room3d_rack_identity(rack):
@@ -937,6 +908,15 @@ def _room3d_rack_id_as_int(rack_id):
         return int(rack_id)
     except (TypeError, ValueError):
         return None
+
+
+def _get_room3d_rack_type_name_map():
+    attrs = ExcludeFieldsCache.get_model_attrs("rack") or []
+    for attr in attrs:
+        if attr.get("attr_id") != "datacenter_type" or attr.get("attr_type") != FIELD_TYPE_ENUM:
+            continue
+        return {str(option.get("id")): option.get("name") for option in attr.get("option", []) if option and option.get("name")}
+    return {}
 
 
 @nats_client.register
@@ -1010,28 +990,32 @@ def get_room3d_layout(server_room_id=None, user_info=None, **kwargs):
                     user=user,
                 )
 
+    rack_type_name_map = _get_room3d_rack_type_name_map()
     racks = []
     for item in candidate_racks:
         rack = item["rack"]
         rack_id = rack.get("inst_id")
         rack_id_int = _room3d_rack_id_as_int(rack_id)
         device_summary = device_summaries.get(rack_id_int, _empty_room3d_device_summary())
-        racks.append(
-            {
-                "rack_id": str(rack_id),
-                "rack_name": rack.get("inst_name") or "",
-                "row": item["row"],
-                "col": item["col"],
-                "location": item["location"],
-                "rack_type": rack.get("datacenter_type"),
-                "u_count": rack.get("u_count"),
-                "used_u": rack.get("used_u"),
-                "free_u": rack.get("free_u"),
-                "device_count": device_summary["device_count"],
-                "unplaced_device_count": device_summary["unplaced_device_count"],
-                "devices": device_summary["devices"],
-            }
-        )
+        rack_type = rack.get("datacenter_type")
+        rack_type_name = rack_type_name_map.get(str(rack_type)) if rack_type not in (None, "") else None
+        rack_payload = {
+            "rack_id": item["rack_id"],
+            "rack_name": item["rack_name"],
+            "row": item["row"],
+            "col": item["col"],
+            "location": item["location"],
+            "rack_type": rack_type,
+            "u_count": rack.get("u_count"),
+            "used_u": rack.get("used_u"),
+            "free_u": rack.get("free_u"),
+            "device_count": device_summary["device_count"],
+            "unplaced_device_count": device_summary["unplaced_device_count"],
+            "devices": device_summary["devices"],
+        }
+        if rack_type_name:
+            rack_payload["rack_type_name"] = rack_type_name
+        racks.append(rack_payload)
 
     data = {
         "room": {"id": str(room_id), "name": room.get("inst_name") or ""},

@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Stargazer ibmmq 采集原始输出契约(license 阻塞 placeholder)",
+  "description": "2026-07-10 v4 — ibmmq raw_stdout 是空 object,license_status=missing,等用户提供 IBM MQ 试用 license 后解锁",
+  "type": "object",
+  "required": ["model_id", "captured_at", "raw_stdout", "license_status"],
+  "properties": {
+    "model_id":      {"type": "string", "pattern": "^ibmmq$"},
+    "captured_at":   {"type": "string", "format": "date-time"},
+    "raw_stdout":    {"type": "object", "maxProperties": 0},
+    "license_status": {"type": "string", "const": "missing"},
+    "blocked_reason": {"type": "string"},
+    "phase2_decision": {"type": "string"},
+    "next_steps":     {"type": "array", "items": {"type": "string"}},
+    "references":     {"type": "array", "items": {"type": "string"}}
+  }
+}

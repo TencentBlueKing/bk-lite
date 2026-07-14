@@ -167,11 +167,12 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
       });
 
       if (currentData !== lastSaveData.current) {
+        // 同步触发 onSave,不要 setTimeout:
+        // 之前 100ms 延迟会导致"节点配置保存后立刻发布"路径拿不到最新 workflowData,
+        // 出现应用对话列表查不到,要再点开 web 应用节点保存一次才出现的时序竞态。
+        // onSave 本身是 React setState,不卡 UI;React 事件循环内同步执行也安全。
         lastSaveData.current = currentData;
-        const timeoutId = setTimeout(() => {
-          onSave(nodes, edges);
-        }, 100);
-        return () => clearTimeout(timeoutId);
+        onSave(nodes, edges);
       }
     }
   }, [nodes, edges, onSave, isInitialized]);

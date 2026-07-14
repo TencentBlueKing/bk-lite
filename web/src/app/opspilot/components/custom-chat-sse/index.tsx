@@ -523,11 +523,25 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   };
 
   const handleRegenerateMessage = useCallback(
-    async () => {
-      const lastUserMessage = messages.filter(msg => msg.role === 'user').pop();
-      if (lastUserMessage && token) {
-        await sendMessage(lastUserMessage.content, messages);
+    async (id: string) => {
+      if (!token) return;
+
+      const targetIndex = messages.findIndex(msg => msg.id === id);
+      if (targetIndex === -1) return;
+
+      // 从被点击的消息往前找到对应的用户提问（而非始终取最后一个问题）
+      let userIndex = -1;
+      for (let i = targetIndex; i >= 0; i--) {
+        if (messages[i].role === 'user') {
+          userIndex = i;
+          break;
+        }
       }
+      if (userIndex === -1) return;
+
+      const userMessage = messages[userIndex];
+      // 保留全部对话记录，仅用被点击消息对应的问题重新生成（在末尾追加新答案）
+      await sendMessage(userMessage.content, messages, userMessage.images);
     },
     [messages, token, sendMessage]
   );
@@ -561,9 +575,84 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     let replacedContent = parseReferenceLinks(content || '');
     replacedContent = parseSuggestionLinks(replacedContent);
 
+    // 当技能包声明了 config_analysis_report / repair_diff_report capability 且实际有
+    // 报告 emit 时,LLM 自己在 text 里写的 markdown 表格就跟卡片重复了(Gemini
+    // 经常不听 system message 的简短说明提示)。这种情况 hide 整段 text,只保留卡片。
+    // 没声明 capability 时回退老行为:全显示 LLM text。
+    const hasStructuredReports =
+      (Array.isArray(configAnalysisReports) && configAnalysisReports.length > 0) ||
+      (Array.isArray(configDiffReports) && configDiffReports.length > 0);
+
+    // 从 content 字符串里抠出 tool-call-group HTML(getFullContent 把 LLM text 和
+    // tool call HTML 拼成同一个字符串了),只在 hasStructuredReports 时用得上,避免
+    // 前端 hasStructuredReports 分支把"已调用 N 个工具"那块隐藏,让用户看不到过程。
+    //
+    // 实现:用 DOMParser 而不是 regex,因为 tool-call-group 是嵌套 div
+    // (outer > header + body > items),regex 的非贪婪 `.*?` 会匹配到第一个 `</div></div>`
+    // 就停,把 data-tool-id 等关键属性截断,点击展开 handler 就找不到目标。
+    const extractToolCallGroups = (html: string): string => {
+      if (typeof DOMParser === 'undefined' || !html) return '';
+      try {
+        const doc = new DOMParser().parseFromString(
+          `<div id="__root">${html}</div>`,
+          'text/html',
+        );
+        const groups = doc.querySelectorAll('#__root > .tool-call-group');
+        return Array.from(groups).map((g) => g.outerHTML).join('');
+      } catch {
+        return '';
+      }
+    };
+
     // Split content at placeholder markers and render components inline
     const renderContentWithInlineComponents = () => {
       if (!content) return null;
+      // 有结构化报告时:LLM 写的 markdown 表格整段换简短说明,但 tool call 调用
+      // 记录(已调用 N 个工具 + 工具详情)用 DOMParser 抠出来保留——用户能看
+      // 到"agent 实际调了哪些工具得到这份报告",而不只是结论。
+      if (hasStructuredReports) {
+        const summary = '已通过上方结构化卡片展示详细报告,请查看卡片中的统计、问题分组和修复建议。';
+        const preservedToolCalls = extractToolCallGroups(replacedContent);
+        return (
+          <>
+            <div className={styles.markdownBody}>
+              <p className="m-0 text-sm text-[var(--color-text-3)]">{summary}</p>
+            </div>
+            {preservedToolCalls && (
+              <div
+                className="mt-2"
+                dangerouslySetInnerHTML={{ __html: preservedToolCalls }}
+                onClick={(e) => {
+                  handleToolCallClick(e);
+                  handleSuggestionClick(e);
+                }}
+              />
+            )}
+            {(() => {
+              // 把 analysis + diff 合并按 received_at 排,统一渲染。
+              // 之前分两个数组各自排,JSX 又是 diff 在 analysis 前,导致对比卡总在报告卡上面。
+              const orderedReports: Array<{ kind: 'analysis' | 'diff'; report: any }> = [
+                ...(configAnalysisReports || []).map(r => ({ kind: 'analysis' as const, report: r })),
+                ...(configDiffReports || []).map(r => ({ kind: 'diff' as const, report: r })),
+              ].sort((a, b) => (a.report.received_at || 0) - (b.report.received_at || 0));
+              return orderedReports.map(({ kind, report }) => (
+                <div key={report.report_id} className="mt-2">
+                  {kind === 'analysis'
+                    ? <ConfigAnalysisReportCard report={report} />
+                    : <DiffReportCard report={report} />}
+                </div>
+              ));
+            })()}
+            {visibleReportFileDownloads.length > 0 && (
+              <div className="mt-2">
+                {visibleReportFileDownloads.map(dl => (
+                  <ReportDownloadCard key={dl.download_id} download={dl} />
+                ))}
+              </div>
+            )}
+          </>
+        );
+      }
 
       // Check if content has inline markers
       const markerPattern = /<!--(CONFIG_DIFF|CONFIG_ANALYSIS|USER_CHOICE):([^>]+)-->/g;
@@ -988,7 +1077,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
               </div>
               <div
                 dangerouslySetInnerHTML={{ __html: guideData.renderedHtml }}
-                className={`${styles.markdownBody} flex-1 p-3 bg-[var(--color-bg)] rounded-lg`}
+                className={`${styles.markdownBody} ${styles.guideText} flex-1 p-3 bg-[var(--color-bg)] rounded-lg`}
               />
             </div>
           )}
@@ -1001,8 +1090,8 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
               return (
                 <Bubble
                   key={msg.id}
-                  className={styles.bubbleWrapper}
-                  placement={msg.role === 'user' ? 'end' : 'start'}
+                  className={`${styles.bubbleWrapper} ${msg.role === 'user' ? styles.userBubble : ''}`}
+                  placement="start"
                   loading={isEmptyMessage && isCurrentBotLoading}
                   content={renderContent(msg)}
                   avatar={{

@@ -222,6 +222,88 @@ class TestMaterialViews:
         assert lst.status_code == 200
         assert any(x["name"] == "m1" for x in self._data(lst)["items"])
 
+    def test_update_text_material_allows_name_and_content_and_marks_updated(self, api_client):
+        from apps.opspilot.models import Material, WikiKnowledgeBase
+
+        kb = WikiKnowledgeBase.objects.create(name="kb", team=[1])
+        material = Material.objects.create(
+            knowledge_base=kb,
+            name="old",
+            material_type="text",
+            text_content="old body",
+            status="done",
+        )
+
+        resp = api_client.put(
+            self.BASE + f"{material.id}/",
+            {
+                "name": "new",
+                "text_content": "new body",
+                "material_type": "web",
+                "knowledge_base": 9999,
+            },
+            format="json",
+        )
+
+        assert resp.status_code == 200, resp.content
+        data = self._data(resp)
+        assert data["name"] == "new"
+        assert data["text_content"] == "new body"
+        assert data["material_type"] == "text"
+        assert data["knowledge_base"] == kb.id
+        assert data["status"] == "updated"
+
+    def test_update_web_and_file_material_respects_editable_fields(self, api_client):
+        from apps.opspilot.models import Material, WikiKnowledgeBase
+
+        kb = WikiKnowledgeBase.objects.create(name="kb", team=[1])
+        web = Material.objects.create(
+            knowledge_base=kb,
+            name="site",
+            material_type="web",
+            url="https://old.example.com",
+            sync_policy={"enabled": True, "interval_hours": 24},
+            status="done",
+        )
+        file_material = Material.objects.create(
+            knowledge_base=kb,
+            name="manual.pdf",
+            material_type="file",
+            ocr_enhance=False,
+            status="done",
+        )
+
+        web_resp = api_client.put(
+            self.BASE + f"{web.id}/",
+            {
+                "name": "new site",
+                "url": "https://new.example.com",
+                "sync_policy": {"enabled": False, "interval_hours": 72},
+                "text_content": "ignored",
+            },
+            format="json",
+        )
+        file_resp = api_client.put(
+            self.BASE + f"{file_material.id}/",
+            {"name": "renamed.pdf", "ocr_enhance": True, "text_content": "ignored"},
+            format="json",
+        )
+
+        assert web_resp.status_code == 200, web_resp.content
+        web.refresh_from_db()
+        assert web.name == "new site"
+        assert web.url == "https://old.example.com"
+        assert web.sync_policy == {"enabled": False, "interval_hours": 72}
+        assert web.text_content == ""
+        assert web.status == "done"
+
+        assert file_resp.status_code == 200, file_resp.content
+        file_material.refresh_from_db()
+        assert file_material.name == "manual.pdf"
+        assert file_material.ocr_enhance is True
+        assert file_material.text_content == ""
+        assert file_material.status == "done"
+
     def test_list_retrieve_info_and_async_actions(self, api_client, monkeypatch):
         from apps.opspilot.models import KnowledgePage, Material, MaterialVersion, PageEvidence, PageVersion, WikiKnowledgeBase
         from apps.opspilot.viewsets import wiki_material_view

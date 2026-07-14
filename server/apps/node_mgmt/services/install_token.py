@@ -7,6 +7,38 @@ from apps.node_mgmt.constants.installer import InstallerConstants
 class InstallTokenService:
     """节点安装令牌服务 - 管理限时安装令牌"""
 
+    USAGE_COUNT_CACHE_SUFFIX = "usage_count"
+
+    @classmethod
+    def _consume_token_usage(
+        cls,
+        cache_key: str,
+        data: dict,
+        max_usage: int,
+        timeout: int,
+        invalid_message: str,
+        exceeded_message: str,
+    ) -> int:
+        """Atomically consume one use without extending the token lifetime."""
+        usage_cache_key = f"{cache_key}:{cls.USAGE_COUNT_CACHE_SUFFIX}"
+
+        # ``add`` is atomic on supported cache backends. Seeding from the
+        # payload keeps tokens issued before the separate counter compatible.
+        cache.add(usage_cache_key, data.get("usage_count", 0), timeout=timeout)
+        try:
+            usage_count = cache.incr(usage_cache_key)
+        except ValueError:
+            raise BaseAppException(invalid_message)
+
+        if usage_count > max_usage:
+            # Keep the exhausted counter as a tombstone until its TTL ends.
+            # A request that already read ``data`` must not be able to recreate
+            # the counter from the stale payload after this token is deleted.
+            cache.delete(cache_key)
+            raise BaseAppException(exceeded_message)
+
+        return usage_count
+
     @staticmethod
     def generate_install_token(
         node_id: str,
@@ -71,20 +103,15 @@ class InstallTokenService:
         if not data:
             raise BaseAppException("Invalid or expired token")
 
-        # 检查使用次数
-        usage_count = data.get("usage_count", 0)
         max_usage = data.get("max_usage", InstallerConstants.INSTALL_TOKEN_MAX_USAGE)
-
-        if usage_count >= max_usage:
-            # 超过最大使用次数,删除令牌
-            cache.delete(cache_key)
-            raise BaseAppException(f"Token has exceeded maximum usage limit ({max_usage} times)")
-
-        # 增加使用次数
-        data["usage_count"] = usage_count + 1
-
-        # 更新 cache
-        cache.set(cache_key, data, timeout=InstallerConstants.INSTALL_TOKEN_EXPIRE_TIME)
+        usage_count = InstallTokenService._consume_token_usage(
+            cache_key=cache_key,
+            data=data,
+            max_usage=max_usage,
+            timeout=InstallerConstants.INSTALL_TOKEN_EXPIRE_TIME,
+            invalid_message="Invalid or expired token",
+            exceeded_message=f"Token has exceeded maximum usage limit ({max_usage} times)",
+        )
 
         return {
             "node_id": data["node_id"],
@@ -96,7 +123,7 @@ class InstallTokenService:
             "organizations": data["organizations"],
             "node_name": data["node_name"],
             "cpu_architecture": data.get("cpu_architecture", ""),
-            "remaining_usage": max_usage - data["usage_count"],
+            "remaining_usage": max_usage - usage_count,
         }
 
     @staticmethod
@@ -140,23 +167,18 @@ class InstallTokenService:
         if not data:
             raise BaseAppException("Invalid or expired download token")
 
-        # 检查使用次数
-        usage_count = data.get("usage_count", 0)
         max_usage = data.get("max_usage", InstallerConstants.DOWNLOAD_TOKEN_MAX_USAGE)
-
-        if usage_count >= max_usage:
-            # 超过最大使用次数,删除令牌
-            cache.delete(cache_key)
-            raise BaseAppException(f"Download token has exceeded maximum usage limit ({max_usage} times)")
-
-        # 增加使用次数
-        data["usage_count"] = usage_count + 1
-
-        # 更新 cache
-        cache.set(cache_key, data, timeout=InstallerConstants.DOWNLOAD_TOKEN_EXPIRE_TIME)
+        usage_count = InstallTokenService._consume_token_usage(
+            cache_key=cache_key,
+            data=data,
+            max_usage=max_usage,
+            timeout=InstallerConstants.DOWNLOAD_TOKEN_EXPIRE_TIME,
+            invalid_message="Invalid or expired download token",
+            exceeded_message=f"Download token has exceeded maximum usage limit ({max_usage} times)",
+        )
 
         return {
             "package_id": data["package_id"],
             "node_id": data["node_id"],
-            "remaining_usage": max_usage - data["usage_count"],
+            "remaining_usage": max_usage - usage_count,
         }

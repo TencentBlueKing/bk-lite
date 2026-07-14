@@ -2,7 +2,9 @@
   "object_name": "Ping",
   "instance_type": "ping",
   "collect_type": "ping",
-  "config_type": ["ping"],
+  "config_type": [
+    "ping"
+  ],
   "collector": "Telegraf",
   "instance_id": "{{instance_type}}_{{url}}",
   "form_fields": [
@@ -26,7 +28,7 @@
       "label": "间隔",
       "type": "inputNumber",
       "required": true,
-      "default_value": 10,
+      "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
       "widget_props": {
         "min": 1,
@@ -76,7 +78,9 @@
       ],
       "change_handler": {
         "type": "simple",
-        "source_fields": ["url"],
+        "source_fields": [
+          "url"
+        ],
         "target_field": "instance_name"
       }
     },

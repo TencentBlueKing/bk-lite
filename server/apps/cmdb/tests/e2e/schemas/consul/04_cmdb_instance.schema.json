@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CMDB consul 实例契约",
+  "description": "2026-07-10 Phase 4 任务 4.6 — fixture 由真实落盘数据驱动。字段来自 ConsulCollectionPlugin.field_mapping(middleware runner)。端口字段在 plugin 中为 port(与 nginx 的 listen_port 不同,本对象走 port)。",
+  "type": "object",
+  "required": ["inst_name", "ip_addr", "port"],
+  "properties": {
+    "inst_name":    {"type": "string", "pattern": "^[0-9.]+-consul-[0-9]+$"},
+    "ip_addr":      {"type": "string"},
+    "port":         {"type": ["string", "integer"]},
+    "install_path": {"type": "string"},
+    "version":      {"type": "string"},
+    "data_dir":     {"type": "string"},
+    "conf_path":    {"type": "string"},
+    "role":         {"type": "string"}
+  }
+}

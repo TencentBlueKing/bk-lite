@@ -1,0 +1,49 @@
+{
+  "model_id": "mysql",
+  "captured_at": "2026-07-04T16:43:33Z",
+  "image": "mysql:8.0",
+  "container_meta": {
+    "container_id": "d07f777525c8",
+    "image": "mysql:8.0"
+  },
+  "params": {
+    "host": "127.0.0.1",
+    "port": 13306,
+    "user": "root",
+    "password": "***"
+  },
+  "raw_stdout": {
+    "result": {
+      "mysql": [
+        {
+          "ip_addr": "127.0.0.1",
+          "port": 13306,
+          "version": "8.0.46",
+          "enable_binlog": "ON",
+          "sync_binlog": 1,
+          "max_conn": 151,
+          "max_mem": 67108864,
+          "basedir": "/usr/",
+          "datadir": "/var/lib/mysql/",
+          "socket": "/var/run/mysqld/mysqld.sock",
+          "bind_address": "*",
+          "slow_query_log": "OFF",
+          "slow_query_log_file": "/var/lib/mysql/d07f777525c8-slow.log",
+          "log_error": "stderr",
+          "wait_timeout": 28800,
+          "role": "master",
+          "cluster_id": "632eb57e-77c7-11f1-98fd-7a21b74389b1",
+          "master_host": null,
+          "master_port": null,
+          "master_user": null,
+          "master_uuid": null,
+          "server_uuid": "632eb57e-77c7-11f1-98fd-7a21b74389b1",
+          "has_slaves": false,
+          "slave_io_running": null,
+          "slave_sql_running": null
+        }
+      ]
+    },
+    "success": true
+  }
+}

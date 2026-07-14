@@ -20,6 +20,20 @@ export interface MetricInfo {
   dimensions?: string[];
 }
 
+export interface NotifyRecipient {
+  username: string;
+  display_name: string;
+}
+
+export interface NotifyRecord {
+  notify_time: string;
+  channel: string;
+  channel_name: string;
+  recipients: NotifyRecipient[];
+  result: 'success' | 'failed' | 'partial_success';
+  failure_reason: string | null;
+}
+
 export interface AlarmTableDataItem {
   id: number;
   event_count: number;
@@ -41,7 +55,9 @@ export interface AlarmTableDataItem {
   resource_name: string;
   resource_type: string;
   operate: string | null;
-  notification_status: string;
+  notify_status?: string;
+  notify_total?: number;
+  notify_records?: NotifyRecord[];
   [key: string]: any;
 }
 export interface RuleInfo {

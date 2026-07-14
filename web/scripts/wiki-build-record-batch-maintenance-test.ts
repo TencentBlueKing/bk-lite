@@ -17,8 +17,13 @@ assert.match(wikiApi, /ids/);
 assert.match(buildRecordTab, /batchRetryBuildMaintenance/);
 assert.match(buildRecordTab, /selectedRowKeys/);
 assert.match(buildRecordTab, /rowSelection/);
+assert.doesNotMatch(buildRecordTab, /t\('wiki\.selected'\)/, 'BuildRecordTab should not render selected-count toolbar tag');
 assert.match(buildRecordTab, /handleBatchMaintenanceRetry/);
-assert.match(buildRecordTab, /maintenanceStageFilter \? \[maintenanceStageFilter\] : undefined/);
+assert.doesNotMatch(buildRecordTab, /handleTriggerFilterChange/, 'BuildRecordTab should not render trigger filter');
+assert.doesNotMatch(buildRecordTab, /handleMaintenanceStatusFilterChange/, 'BuildRecordTab should not render maintenance result filter');
+assert.doesNotMatch(buildRecordTab, /handleMaintenanceStageFilterChange/, 'BuildRecordTab should not render maintenance stage filter');
+assert.doesNotMatch(buildRecordTab, /handleMaintenanceStageStatusFilterChange/, 'BuildRecordTab should not render maintenance stage status filter');
+assert.doesNotMatch(buildRecordTab, /maintenanceStageFilter \? \[maintenanceStageFilter\] : undefined/);
 
 for (const key of ['batchRetryMaintenance', 'batchRetryMaintenanceConfirm']) {
   assert.ok(zh.wiki[key], `missing zh wiki.${key}`);

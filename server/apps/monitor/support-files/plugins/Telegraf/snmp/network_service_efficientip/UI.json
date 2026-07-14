@@ -110,7 +110,7 @@
       "label": "间隔",
       "type": "inputNumber",
       "required": true,
-      "default_value": 10
+      "default_value": 60
     }
   ],
   "table_columns": [

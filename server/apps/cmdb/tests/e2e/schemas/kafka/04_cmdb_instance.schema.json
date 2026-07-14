@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CMDB kafka 实例契约",
+  "description": "2026-07-10 Phase 2.3 第三闭环,fixture 由真实落盘数据驱动。字段严格对齐 plugin KafkaCollectionPlugin.field_mapping",
+  "type": "object",
+  "required": ["inst_name", "ip_addr", "port"],
+  "properties": {
+    "inst_name":                        {"type": "string", "pattern": "^[0-9.]+-kafka-[0-9]+$"},
+    "ip_addr":                          {"type": "string"},
+    "port":                             {"type": ["string", "integer"]},
+    "version":                          {"type": "string"},
+    "install_path":                     {"type": "string"},
+    "conf_path":                        {"type": "string"},
+    "log_path":                         {"type": "string"},
+    "java_path":                        {"type": "string"},
+    "java_version":                     {"type": "string"},
+    "xms":                              {"type": ["string", "integer"]},
+    "xmx":                              {"type": ["string", "integer"]},
+    "broker_id":                        {"type": ["string", "integer"]},
+    "io_threads":                       {"type": ["string", "integer"]},
+    "network_threads":                  {"type": ["string", "integer"]},
+    "socket_receive_buffer_bytes":      {"type": ["string", "integer"]},
+    "socket_request_max_bytes":         {"type": ["string", "integer"]},
+    "socket_send_buffer_bytes":         {"type": ["string", "integer"]}
+  }
+}

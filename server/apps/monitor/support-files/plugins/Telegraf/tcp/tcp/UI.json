@@ -2,7 +2,9 @@
   "object_name": "TCPPort",
   "instance_type": "tcp",
   "collect_type": "tcp",
-  "config_type": ["net_response"],
+  "config_type": [
+    "net_response"
+  ],
   "collector": "Telegraf",
   "instance_id": "{{instance_type}}_{{host}}_{{port}}",
   "form_fields": [
@@ -50,7 +52,7 @@
       "label": "间隔",
       "type": "inputNumber",
       "required": true,
-      "default_value": 10,
+      "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
       "widget_props": {
         "min": 1,
@@ -148,7 +150,10 @@
       ],
       "change_handler": {
         "type": "combine",
-        "source_fields": ["host", "port"],
+        "source_fields": [
+          "host",
+          "port"
+        ],
         "target_field": "instance_name",
         "separator": ":"
       }
@@ -167,7 +172,10 @@
       },
       "change_handler": {
         "type": "combine",
-        "source_fields": ["host", "port"],
+        "source_fields": [
+          "host",
+          "port"
+        ],
         "target_field": "instance_name",
         "separator": ":"
       }

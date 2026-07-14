@@ -8,9 +8,9 @@ import type {
 import { getRoom3DSceneRacks } from "./room3DData";
 import {
   ROOM3D_COL_GAP,
+  ROOM3D_FRONT_AISLE_EXTRA,
   ROOM3D_RACK_DEPTH,
   ROOM3D_RACK_HEIGHT,
-  ROOM3D_RACK_DOOR_OPEN_ROTATION,
   ROOM3D_RACK_WIDTH,
   ROOM3D_ROW_GAP,
   animateRackVisual,
@@ -22,7 +22,6 @@ import {
 } from "./room3DMeshes";
 
 export {
-  ROOM3D_CELL_GAP,
   ROOM3D_COL_GAP,
   ROOM3D_DEVICE_PULL_OUT_DISTANCE,
   ROOM3D_RACK_DEPTH,
@@ -57,8 +56,6 @@ interface PickedRoomObject {
   deviceId?: string;
   target?: "rack" | "door" | "device";
 }
-
-export const getRackDoorOpenRotation = () => ROOM3D_RACK_DOOR_OPEN_ROTATION;
 
 const READABLE_RACK_CAMERA_DISTANCE = 6.4;
 const RACK_DEVICE_VIEW_CAMERA_OFFSET = new THREE.Vector3(-2.35, 1.62, 3.25);
@@ -142,9 +139,9 @@ export const resolveRoomObjectClickState = (
 
 const ROOM3D_ROOM_RECT_ASPECT = 1.38;
 const ROOM3D_MIN_ROOM_RECT_ASPECT = 1.08;
-const ROOM3D_FLOOR_SIDE_PADDING = 7.2;
-const ROOM3D_MIN_FLOOR_WIDTH = 10.5;
-const ROOM3D_MIN_FLOOR_DEPTH = 8.8;
+const ROOM3D_FLOOR_SIDE_PADDING = 5.0;
+const ROOM3D_MIN_FLOOR_WIDTH = 6.0;
+const ROOM3D_MIN_FLOOR_DEPTH = 5.0;
 
 const clampRoomRatio = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max);
@@ -174,13 +171,14 @@ export const buildRoomFloorSize = (maxRow: number, maxCol: number) => {
     (maxRow - 1) * ROOM3D_ROW_GAP + ROOM3D_RACK_DEPTH,
     ROOM3D_RACK_DEPTH,
   );
+  const frontAisleExtra = maxRow >= 1 ? ROOM3D_FRONT_AISLE_EXTRA : 0;
   const baseWidth = Math.max(
     rackMatrixWidth + ROOM3D_FLOOR_SIDE_PADDING,
     ROOM3D_MIN_FLOOR_WIDTH,
   );
   const baseDepth = Math.max(
-    rackMatrixDepth + ROOM3D_FLOOR_SIDE_PADDING,
-    ROOM3D_MIN_FLOOR_DEPTH,
+    rackMatrixDepth + ROOM3D_FLOOR_SIDE_PADDING + frontAisleExtra,
+    ROOM3D_MIN_FLOOR_DEPTH + frontAisleExtra,
   );
   const rowDominant =
     maxRow > maxCol && rackMatrixDepth > rackMatrixWidth * 1.35;
@@ -207,9 +205,9 @@ const buildInitialCameraPosition = (
   floorDepth: number,
 ) => {
   const rackSpan = Math.max(maxRow * ROOM3D_ROW_GAP, maxCol * ROOM3D_COL_GAP);
-  const roomSpan = Math.max(floorWidth, floorDepth) * 0.68;
+  const roomSpan = Math.max(floorWidth, floorDepth) * 0.72;
   const span = Math.max(rackSpan, roomSpan, 9);
-  return new THREE.Vector3(span * 0.9, span * 0.72 + 4.2, span * 0.95);
+  return new THREE.Vector3(span * 0.95, span * 0.5 + 2.5, span * 1.05);
 };
 
 const getResponsiveCameraPosition = (
@@ -228,6 +226,20 @@ const getResponsiveCameraPosition = (
   return basePosition.clone();
 };
 
+export const getRoom3DRackScenePosition = (
+  rack: Pick<Room3DRack, "row" | "col">,
+  bounds: { maxRow: number; maxCol: number },
+) => {
+  const centerX = ((bounds.maxCol - 1) * ROOM3D_COL_GAP) / 2;
+  const frontAisleExtra = bounds.maxRow >= 1 ? ROOM3D_FRONT_AISLE_EXTRA : 0;
+  const centerZ =
+    ((bounds.maxRow - 1) * ROOM3D_ROW_GAP) / 2 + frontAisleExtra / 2;
+  return {
+    x: (rack.col - 1) * ROOM3D_COL_GAP - centerX,
+    z: (bounds.maxRow - rack.row) * ROOM3D_ROW_GAP - centerZ,
+  };
+};
+
 export const createRoom3DScene = (
   mountNode: HTMLDivElement,
   roomData: Room3DResponse,
@@ -237,8 +249,6 @@ export const createRoom3DScene = (
   const sceneRacks = getRoom3DSceneRacks(roomData);
   const maxRow = Math.max(...sceneRacks.map((rack) => rack.row), 1);
   const maxCol = Math.max(...sceneRacks.map((rack) => rack.col), 1);
-  const centerX = ((maxCol - 1) * ROOM3D_COL_GAP) / 2;
-  const centerZ = ((maxRow - 1) * ROOM3D_ROW_GAP) / 2;
   const { floorWidth, floorDepth } = buildRoomFloorSize(maxRow, maxCol);
   const scene = new THREE.Scene();
   if (!options.transparentScene) {
@@ -299,11 +309,8 @@ export const createRoom3DScene = (
   const visuals = new Map<string, RackVisual>();
   const pickTargets: THREE.Object3D[] = [];
   sceneRacks.forEach((rack) => {
-    const visual = createRackVisual(
-      rack,
-      (rack.col - 1) * ROOM3D_COL_GAP - centerX,
-      (rack.row - 1) * ROOM3D_ROW_GAP - centerZ,
-    );
+    const { x, z } = getRoom3DRackScenePosition(rack, { maxRow, maxCol });
+    const visual = createRackVisual(rack, x, z);
     scene.add(visual.root);
     visuals.set(rack.rack_id, visual);
     pickTargets.push(...visual.pickTargets);

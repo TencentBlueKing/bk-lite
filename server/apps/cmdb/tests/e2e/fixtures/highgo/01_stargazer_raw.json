@@ -1,0 +1,31 @@
+{
+  "model_id": "highgo",
+  "captured_at": "2026-07-10T03:43:18Z",
+  "image": "6dduu4opte8882.xuanyuan.run/library/postgres:16-alpine",
+  "container_meta": {
+    "container_id": "9d91dae75ed4",
+    "image": "6dduu4opte8882.xuanyuan.run/library/postgres:16-alpine"
+  },
+  "params": {
+    "host": "127.0.0.1",
+    "port": 25432,
+    "user": "highgo",
+    "password": "***",
+    "dbname": "highgo"
+  },
+  "raw_stdout": {
+    "result": {
+      "highgo": [
+        {
+          "ip_addr": "127.0.0.1",
+          "port": 25432,
+          "version": "",
+          "database_count": 0,
+          "user_count": 0
+        }
+      ]
+    },
+    "success": true
+  },
+  "_placeholder_reason": "2026-07-10 v4 — highgo 真实落盘含 1 实例,但 CMDB 端无 plugin 类,临时 placeholder(等 v4 Phase 2 实现 plugin)。fixture 数据保留以备未来 plugin 实现时使用。"
+}

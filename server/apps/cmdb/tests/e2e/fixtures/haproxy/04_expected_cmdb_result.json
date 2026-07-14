@@ -1,0 +1,15 @@
+{
+  "model_id": "haproxy",
+  "instance_count_min": 1,
+  "expected_instance_subset_fixture_driven": {
+    "inst_name":   "172.17.0.3-haproxy-80&8404",
+    "ip_addr":     "172.17.0.3",
+    "port":        "80&8404",
+    "version":     "2.4.30",
+    "install_path": "haproxy",
+    "conf_file":   "/etc/haproxy/haproxy.cfg",
+    "defaults_mode": "http"
+  },
+  "fixture_source_fixture_driven": "agents/stargazer/tests/fixtures/collect/haproxy.json(2026-07-08 cli 真实落盘,ip=172.17.0.3)",
+  "notes": "G5.2.x Phase 2.3 第四闭环;middleware 类 runner 用 MiddlewareCollectMetrics,extra_payload_keys={\"result\":True}(业务字段经 metric.result JSON 编码)。haproxy 的 raw_stdout 是公共契约 raw_stdout_envelope_b 形态(平铺,无 success/result 包裹,无 bk_inst_name/bk_obj_id)。port 字段为多端口拼接字符串 '80&8404',MiddlewareCollectMetrics.get_inst_name 直接拼成 {ip}-haproxy-{port},所以 inst_name 含 '&'。HaproxyCollectionPlugin.field_mapping 包含 12 个字段,其余 defaults_*/global_* 字段在 fixture 中为空字符串,这里只断言非空枚举项以保持子集意图。"
+}

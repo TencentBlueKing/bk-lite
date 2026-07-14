@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CMDB apache 实例契约",
+  "description": "2026-07-10 v4 — Phase 4 任务 4.3,实例 schema 严格对应 ApacheCollectionPlugin.field_mapping(middleware runner,extra_payload_keys={\"result\": True},业务字段从 metric.result 解码)。port 字段在 stargazer raw_stdout 中是字符串(形态 B 平铺),ApacheCollectionPlugin 用 pick_value(port|listen_port) 兜底;httpd_path/httpd_conf_path/doc_root/error_log/custom_Log/include 全部来自 plugin field_mapping 直读或 pick_value(custom_Log|custom_log 大小写兜底)。",
+  "type": "object",
+  "required": ["inst_name", "ip_addr", "port"],
+  "properties": {
+    "inst_name":       {"type": "string", "pattern": "^[0-9.]+-apache-[0-9]+$"},
+    "ip_addr":         {"type": "string"},
+    "port":            {"type": ["string", "integer"]},
+    "version":         {"type": "string"},
+    "httpd_path":      {"type": "string"},
+    "httpd_conf_path": {"type": "string"},
+    "doc_root":        {"type": "string"},
+    "error_log":       {"type": "string"},
+    "custom_Log":      {"type": "string"},
+    "include":         {"type": "string"}
+  }
+}

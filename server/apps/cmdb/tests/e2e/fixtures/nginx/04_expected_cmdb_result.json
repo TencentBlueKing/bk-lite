@@ -1,7 +1,8 @@
 {
   "model_id": "nginx",
   "instance_count_min": 1,
-  "expected_instance_subset": {
+  "expected_instance_subset_end_to_end": {
+    "inst_name":   "10.0.0.21-nginx-80",
     "ip_addr":     "10.0.0.21",
     "port":        "80",
     "version":     "1.24.0",
@@ -11,5 +12,17 @@
     "server_name": "_",
     "include":     "/etc/nginx/conf.d/*.conf",
     "ssl_version": "TLSv1.2 TLSv1.3"
-  }
+  },
+  "expected_instance_subset_fixture_driven": {
+    "inst_name":   "172.17.0.2-nginx-80",
+    "ip_addr":     "172.17.0.2",
+    "port":        "80",
+    "version":     "1.18.0",
+    "bin_path":    "/usr/sbin/nginx",
+    "log_path":    "/var/log/nginx/error.log",
+    "conf_path":   "/etc/nginx/nginx.conf"
+  },
+  "fixture_source_end_to_end": "fixtures/nginx/01_raw_collector.json(人造 raw,2026-07-08 Phase 5 落盘,ip=10.0.0.21)",
+  "fixture_source_fixture_driven": "agents/stargazer/tests/fixtures/collect/nginx.json(2026-07-08 cli 真实落盘,ip=172.17.0.2)",
+  "notes": "G5.2.x Phase 2.3 第三闭环;middleware 类 runner 用 MiddlewareCollectMetrics,extra_payload_keys={\"result\":True}(业务字段经 metric.result JSON 编码)。stargazer raw_stdout 含 bk_inst_name/bk_obj_id 是 v2 标准化形态"
 }

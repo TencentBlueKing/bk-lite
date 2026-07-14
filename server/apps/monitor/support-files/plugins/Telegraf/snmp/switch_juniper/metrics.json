@@ -13,6 +13,7 @@
     "instance_id"
   ],
   "supplementary_indicators": [
+    "snmp_uptime",
     "device_cpu_usage",
     "device_memory_usage"
   ],
@@ -98,10 +99,221 @@
       "description": "This metric reports the operational state of each Juniper power supply unit, normalized to the unified convention where 1 means normal and any other value indicates an abnormal/fault state. A non-normal state signals a power redundancy or hardware fault and must be remediated promptly."
     },
     {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='switch', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the Juniper switch since the last restart (SNMPv2-MIB sysUpTime, in centiseconds, divided by 100 to seconds and summed across the device's source tag). By monitoring uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    },
+    {
+      "metric_group": "Status",
+      "name": "interface_ifAdminStatus",
+      "query": "interface_ifAdminStatus{instance_type='switch', __$labels__}",
+      "display_name": "Interface Admin Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"up\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"down\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"testing\",\"id\":3,\"color\":\"#faad14\"},{\"name\":\"unknown\",\"id\":4,\"color\":\"#d9d9d9\"},{\"name\":\"dormant\",\"id\":5,\"color\":\"#faad14\"},{\"name\":\"notPresent\",\"id\":6,\"color\":\"#d9d9d9\"},{\"name\":\"lowerLayerDown\",\"id\":7,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the administrative status of the Juniper switch interface (IF-MIB ifAdminStatus). It indicates whether the interface is enabled (up) or disabled (down) by an administrator, or in other states such as testing. This information is vital for network management and troubleshooting."
+    },
+    {
+      "metric_group": "Status",
+      "name": "interface_ifOperStatus",
+      "query": "interface_ifOperStatus{instance_type='switch', __$labels__}",
+      "display_name": "Interface Oper Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"up\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"down\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"testing\",\"id\":3,\"color\":\"#faad14\"},{\"name\":\"unknown\",\"id\":4,\"color\":\"#d9d9d9\"},{\"name\":\"dormant\",\"id\":5,\"color\":\"#faad14\"},{\"name\":\"notPresent\",\"id\":6,\"color\":\"#d9d9d9\"},{\"name\":\"lowerLayerDown\",\"id\":7,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reflects the actual operational status of the Juniper switch interface (IF-MIB ifOperStatus). Unlike the administrative status, it shows whether the interface can successfully receive and send traffic, which is crucial for monitoring network health."
+    },
+    {
+      "metric_group": "Bandwidth",
+      "name": "interface_ifSpeed",
+      "query": "interface_ifSpeed{instance_type='switch', __$labels__}",
+      "display_name": "Interface Bandwidth",
+      "data_type": "Number",
+      "unit": "bitps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the maximum data transmission speed supported by the Juniper switch interface (IF-MIB ifSpeed), measured in bits per second. Understanding the interface's nominal speed helps administrators optimize traffic and utilize network resources effectively."
+    },
+    {
+      "metric_group": "Packet Error",
+      "name": "interface_ifInErrors",
+      "query": "rate(interface_ifInErrors{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Incoming Errors Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of incoming error packets over the past 5 minutes on the Juniper switch interface (IF-MIB ifInErrors), measured in packets per second. Monitoring incoming errors allows administrators to detect potential issues, such as physical connection faults or configuration errors, in a timely manner."
+    },
+    {
+      "metric_group": "Packet Error",
+      "name": "interface_ifOutErrors",
+      "query": "rate(interface_ifOutErrors{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Outgoing Errors Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of outgoing error packets over the past 5 minutes on the Juniper switch interface (IF-MIB ifOutErrors), measured in packets per second. Monitoring outgoing errors is essential for identifying transmission issues and ensuring data integrity."
+    },
+    {
+      "metric_group": "Packet Loss",
+      "name": "interface_ifInDiscards",
+      "query": "rate(interface_ifInDiscards{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Incoming Discards Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric represents the average rate of incoming discarded packets over the past 5 minutes on the Juniper switch interface (IF-MIB ifInDiscards), measured in packets per second. Packet discards may indicate network congestion or resource shortages, and monitoring this metric can help administrators optimize network performance."
+    },
+    {
+      "metric_group": "Packet Loss",
+      "name": "interface_ifOutDiscards",
+      "query": "rate(interface_ifOutDiscards{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Outgoing Discards Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of outgoing discarded packets over the past 5 minutes on the Juniper switch interface (IF-MIB ifOutDiscards), measured in packets per second. Monitoring outgoing discards can help identify network transmission issues and misconfigurations."
+    },
+    {
+      "metric_group": "Packet",
+      "name": "interface_ifInUcastPkts",
+      "query": "rate(interface_ifInUcastPkts{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Incoming Unicast Packets Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of incoming unicast packets over the past 5 minutes on the Juniper switch interface (IF-MIB ifInUcastPkts), measured in packets per second. Monitoring unicast packets is crucial for assessing interface utilization and traffic load."
+    },
+    {
+      "metric_group": "Packet",
+      "name": "interface_ifOutUcastPkts",
+      "query": "rate(interface_ifOutUcastPkts{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Outgoing Unicast Packets Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of outgoing unicast packets over the past 5 minutes on the Juniper switch interface (IF-MIB ifOutUcastPkts), measured in packets per second. By monitoring the number of unicast packets, administrators can assess the transmission performance of the interface and the usage of traffic."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifInOctets",
+      "query": "rate(interface_ifInOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes on the Juniper switch interface, from the 32-bit IF-MIB ifInOctets counter, measured in bytes per second. Monitoring byte traffic helps evaluate the load on the interface and bandwidth usage."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifOutOctets",
+      "query": "rate(interface_ifOutOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes on the Juniper switch interface, from the 32-bit IF-MIB ifOutOctets counter, measured in bytes per second. Monitoring outgoing traffic is crucial for ensuring data transmission quality and optimizing network performance."
+    },
+    {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
       "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
-      "display_name": "Interface Incoming Traffic Rate",
+      "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
       "dimensions": [
@@ -119,7 +331,7 @@
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
       "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
-      "display_name": "Interface Outgoing Traffic Rate",
+      "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
       "dimensions": [

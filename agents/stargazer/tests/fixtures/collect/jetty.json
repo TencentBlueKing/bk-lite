@@ -1,0 +1,15 @@
+{
+  "model_id": "jetty",
+  "captured_at": "2026-07-08T06:00:00Z",
+  "image": "docker.m.daocloud.io/library/ubuntu:22.04",
+  "container_meta": {
+    "container_id": "N/A-placeholder",
+    "image": "docker.m.daocloud.io/library/ubuntu:22.04"
+  },
+  "params": {
+    "host": "127.0.0.1",
+    "ssh_port": 12251
+  },
+  "raw_stdout": [],
+  "placeholder_reason": "G4.2 jetty 装包失败 2026-07-08:ubuntu 22.04 apt 仓库已无 jetty9 包(只在 18.04/20.04 维护),wget 镜像可达性待 verify。后续解锁路径:1) amd64 CI runner + wget 镜像;2) 用 eclipse-temurin docker 镜像 + wget 装 jetty distribution;3) 改 docker_lifecycle 支持更宽松 init 模式。"
+}

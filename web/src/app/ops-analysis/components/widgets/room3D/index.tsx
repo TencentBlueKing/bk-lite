@@ -16,7 +16,6 @@ import {
   type Room3DRack,
   validateRoom3DData,
 } from "./room3DData";
-import { getRackVisualMeta } from "./room3DMeshes";
 import { createRoom3DScene } from "./room3DScene";
 import styles from "./room3D.module.scss";
 
@@ -112,16 +111,20 @@ const Room3D: React.FC<Room3DProps> = ({
       return [];
     }
 
-    const uniqueTypes = new Map<string, ReturnType<typeof getRackVisualMeta>>();
+    const uniqueTypes = new Map<string, string>();
     roomData.racks.forEach((rack) => {
-      const key = String(rack.rack_type || "default");
+      const label = rack.rack_type_name?.trim();
+      if (!label) {
+        return;
+      }
+      const key = `${rack.rack_type || "type"}:${label}`;
       if (!uniqueTypes.has(key)) {
-        uniqueTypes.set(key, getRackVisualMeta(rack.rack_type));
+        uniqueTypes.set(key, label);
       }
     });
-    return Array.from(uniqueTypes.entries()).map(([key, meta]) => ({
+    return Array.from(uniqueTypes.entries()).map(([key, label]) => ({
       key,
-      ...meta,
+      label,
     }));
   }, [roomData?.racks]);
 
@@ -257,8 +260,7 @@ const Room3D: React.FC<Room3DProps> = ({
         <div className={styles.legend}>
           {legendItems.map((item) => (
             <span key={item.key} className={styles.legendItem}>
-              <i style={{ backgroundColor: item.color }} />
-              {t(item.labelKey)}
+              {item.label}
             </span>
           ))}
         </div>

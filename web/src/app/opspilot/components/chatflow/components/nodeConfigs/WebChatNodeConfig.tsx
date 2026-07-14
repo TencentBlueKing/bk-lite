@@ -1,6 +1,5 @@
 import React from 'react';
-import { Form, Input, Button } from 'antd';
-import { ExportOutlined } from '@ant-design/icons';
+import { Form, Input } from 'antd';
 import Icon from '@/components/icon';
 import type { WebChatNodeConfigProps } from './types';
 
@@ -73,21 +72,17 @@ export const WebChatNodeConfig: React.FC<WebChatNodeConfigProps> = ({
         />
       </Form.Item>
       <div className="p-3 bg-blue-50 border border-blue-200 rounded-md text-xs">
-        <div className="flex items-center justify-between mb-1">
-          <p className="text-gray-600">
-            {t('chatflow.nodeConfig.webAccessAddress')}：
-          </p>
-          <Button
-            type="text"
-            size="small"
-            icon={<ExportOutlined />}
-            className="text-gray-400 hover:text-gray-600"
-            onClick={() => window.open(webAccessUrl, '_blank')}
-          />
-        </div>
-        <div className="font-mono text-blue-600 break-all">
+        <p className="mb-1 text-gray-600">
+          {t('chatflow.nodeConfig.webAccessAddress')}：
+        </p>
+        <a
+          href={webAccessUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block font-mono text-blue-600 break-all hover:text-blue-700 hover:underline"
+        >
           {webAccessUrl}
-        </div>
+        </a>
       </div>
     </>
   );

@@ -35,7 +35,7 @@ import {
   Button,
 } from 'antd';
 import GroupTreeSelect from '@/components/group-tree-select';
-import RulesMatch from '../../components/matchRule';
+import RulesMatch from './matchRule';
 import CheckPeriod from './cron/checkPeriod';
 import AlertTemplate from './alertTemplate';
 import {

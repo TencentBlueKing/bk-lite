@@ -40,6 +40,12 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--list", action="store_true", help="列出所有可用 model_id")
     p.add_argument("--all", action="store_true", help="逐个跑所有 model_id")
     p.add_argument(
+        "--parallel",
+        type=int,
+        default=1,
+        help="并发 worker 数(仅 --all 时生效,默认 1 串行)。建议 2-4,过高会增加 docker daemon 压力",
+    )
+    p.add_argument(
         "--keep-container",
         action="store_true",
         help="采集完成后不销毁容器（debug 用）",
@@ -135,10 +141,44 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 2
 
     if args.all:
+        if args.parallel <= 1:
+            # 串行(原行为)
+            rc = 0
+            for m in list_models():
+                sub_rc = _dispatch_one(m, keep_container=args.keep_container)
+                rc = rc or sub_rc
+            return rc
+
+        # 并发(Phase 2 G2 副产物:14 对象 fixture 采集耗时从 30+ 分钟降到 10-15 分钟)
+        # 用 ThreadPoolExecutor(每个 _dispatch_one 是 IO 密集型:起容器 + 等端口 + ssh + 装包)
+        # 每个 model_id 独立容器 + 独立 host port(已在 catalog 隔离),无共享状态冲突
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        parallel = args.parallel
+        models = list_models()
+        print(f"==> 并发模式: {parallel} workers,共 {len(models)} 个对象")
         rc = 0
-        for m in list_models():
-            sub_rc = _dispatch_one(m, keep_container=args.keep_container)
-            rc = rc or sub_rc
+        results = {}  # model_id -> rc
+        with ThreadPoolExecutor(max_workers=parallel) as ex:
+            futures = {
+                ex.submit(_dispatch_one, m, keep_container=args.keep_container): m
+                for m in models
+            }
+            for fut in as_completed(futures):
+                m = futures[fut]
+                try:
+                    sub_rc = fut.result()
+                except Exception as e:
+                    print(f"❌ [{m}] 异常: {e}", file=sys.stderr)
+                    sub_rc = 1
+                results[m] = sub_rc
+                rc = rc or sub_rc
+
+        # 按 model_id 排序打印汇总(便于 review)
+        print("\n==> 汇总(按 model_id 字母序):")
+        for m in sorted(results.keys()):
+            mark = "✅" if results[m] == 0 else "❌"
+            print(f"    {mark} {m}")
         return rc
 
     return _dispatch_one(args.model, keep_container=args.keep_container)
