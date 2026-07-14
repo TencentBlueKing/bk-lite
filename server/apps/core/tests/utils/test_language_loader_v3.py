@@ -121,6 +121,71 @@ class TestLoadPluginLanguage:
         assert result == {"Wrong-Key": {"name": "x"}}
 
 
+class TestLoadEnterpriseLanguage:
+    def test_语言过滤_en不加载zhHans(self, tmp_path, monkeypatch):
+        """_load_enterprise_language 只加载目标语言文件,避免 zh-Hans 覆盖 en。
+
+        回归:英文 UI 下存储插件出现中文标题/描述(富士通中文、CeresData 英文混用),
+        根因是 enterprise/language 下 en.yaml 与 zh-Hans.yaml 全部 deep-merge,
+        按文件名排序后 zh-Hans 覆盖英文。
+        """
+        enterprise_root = tmp_path / "apps" / "__ent_lang_filter__" / "enterprise" / "language"
+        enterprise_root.mkdir(parents=True)
+        (enterprise_root / "en.yaml").write_text(
+            "monitor_object_plugin:\n"
+            "  Storage Fujitsu SNMP:\n"
+            "    name: Fujitsu ETERNUS (SNMP)\n"
+            "    desc: English desc\n"
+            "monitor_object:\n"
+            "  Storage: Storage Device\n",
+            encoding="utf-8",
+        )
+        (enterprise_root / "zh-Hans.yaml").write_text(
+            "monitor_object_plugin:\n"
+            "  Storage Fujitsu SNMP:\n"
+            "    name: 富士通 ETERNUS（SNMP）\n"
+            "    desc: 中文描述\n"
+            "monitor_object:\n"
+            "  Storage: 存储设备\n",
+            encoding="utf-8",
+        )
+        monkeypatch.chdir(tmp_path)
+
+        lo = LanguageLoader(app="__ent_lang_filter__", default_lang="en")
+        result = lo._load_enterprise_language("en")
+
+        plugin = (result.get("monitor_object_plugin") or {}).get("Storage Fujitsu SNMP") or {}
+        assert plugin.get("name") == "Fujitsu ETERNUS (SNMP)", (
+            f"en 应读 enterprise/en.yaml, 实际 name={plugin.get('name')!r}"
+        )
+        assert plugin.get("desc") == "English desc"
+        assert (result.get("monitor_object") or {}).get("Storage") == "Storage Device"
+
+    def test_语言过滤_zhHans不加载en(self, tmp_path, monkeypatch):
+        """_load_enterprise_language 加载 zh-Hans 时不混入 en.yaml。"""
+        enterprise_root = tmp_path / "apps" / "__ent_lang_filter_zh__" / "enterprise" / "language"
+        enterprise_root.mkdir(parents=True)
+        (enterprise_root / "en.yaml").write_text(
+            "monitor_object:\n"
+            "  Storage: Storage Device\n"
+            "  OnlyEn: from-en\n",
+            encoding="utf-8",
+        )
+        (enterprise_root / "zh-Hans.yaml").write_text(
+            "monitor_object:\n  Storage: 存储设备\n",
+            encoding="utf-8",
+        )
+        monkeypatch.chdir(tmp_path)
+
+        lo = LanguageLoader(app="__ent_lang_filter_zh__", default_lang="zh-Hans")
+        result = lo._load_enterprise_language("zh-Hans")
+
+        assert (result.get("monitor_object") or {}).get("Storage") == "存储设备"
+        assert "OnlyEn" not in (result.get("monitor_object") or {}), (
+            "zh-Hans 不应读到 enterprise/en.yaml"
+        )
+
+
 class TestLoadLanguageFileMergeOrder:
     def test_合并顺序base_plugins_enterprise(self, tmp_path, monkeypatch):
         """base 设值,plugins 覆盖,enterprise 再覆盖。"""

@@ -127,9 +127,11 @@ class LanguageLoader:
         return collected
 
     def _load_enterprise_language(self, lang: str) -> dict:
-        """扫描 apps/<app>/enterprise/language/ 下所有 *.yaml,deep-merge。
+        """扫描 apps/<app>/enterprise/language/ 下匹配目标语言的 *.yaml,deep-merge。
 
         与 _load_language_dir 同样逻辑但扫 enterprise 目录,作为最高优先级覆盖。
+        只加载文件名匹配目标语言的文件(如 lang='en' 只读 en.yaml),避免 zh-Hans.yaml
+        在 deep-merge 时覆盖英文翻译。
         注:legacy 单文件模式(en.yaml 直接放全部企业翻译)在 Task 5 拆分为子文件前仍被读取。
         """
         result = {}
@@ -139,6 +141,17 @@ class LanguageLoader:
         for root, _, files in os.walk(enterprise_root):
             for name in sorted(files):
                 if not name.endswith(".yaml"):
+                    continue
+                # 与 _load_language_dir 相同过滤:跳过其他语言后缀的 yaml
+                has_lang_suffix = (
+                    name.startswith(f"{lang}.")
+                    or name.endswith(f"_{lang}.yaml")
+                    or name == f"{lang}.yaml"
+                )
+                has_any_lang_suffix = any(
+                    name.endswith(f"_{l}.yaml") or name == f"{l}.yaml" for l in ("en", "zh-Hans")
+                )
+                if not has_lang_suffix and has_any_lang_suffix:
                     continue
                 path = os.path.join(root, name)
                 try:
