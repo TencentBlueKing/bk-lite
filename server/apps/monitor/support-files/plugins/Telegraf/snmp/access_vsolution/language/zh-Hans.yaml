@@ -1,0 +1,66 @@
+Access V-SOL SNMP:
+  name: V-SOL（Telegraf）
+  desc: 面向 V-SOL 接入设备的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率等主要指标。
+monitor_object:
+  Access: 接入设备
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Access:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示设备自上次启动以来的运行时间（来自 sysUpTime）。通过监测设备运行时间，网络管理员可以了解设备的稳定性与可靠性，识别潜在的重启或故障问题。
+    interface_ifHCInOctets:
+      name: 接口接收流量速率
+      desc: 此指标表示过去5分钟内接收到的字节数的平均速率（来自 64 位 IF-MIB ifHCInOctets 计数器，ifXTable），单位为字节每秒。64
+        位计数器可避免 32 位 ifInOctets 在高速口上快速回绕，使流量速率更准确。
+    interface_ifHCOutOctets:
+      name: 接口发送流量速率
+      desc: 该指标计算过去5分钟内发送的字节数的平均速率（来自 64 位 IF-MIB ifHCOutOctets 计数器，ifXTable），单位为字节每秒。64
+        位计数器可避免 32 位 ifOutOctets 在高速口上快速回绕，使流量速率更准确。
+    device_total_incoming_traffic:
+      name: 设备接收总流量速率
+      desc: 此指标表示整个设备在过去5分钟内接收到的总字节流量的平均速率（按所有接口的 64 位 ifHCInOctets 汇总），单位为字节每秒。帮助管理员获取整个设备的接收流量情况，支持总体流量监控与容量规划。
+    device_total_outgoing_traffic:
+      name: 设备发送总流量速率
+      desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率（按所有接口的 64 位 ifHCOutOctets 汇总），单位为字节每秒。帮助管理员评估整个系统的发送性能，进行更有效的流量管理与优化。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: 接入设备的整机 CPU 使用率（设备私有标量直接上报的百分比）。持续偏高说明 OLT 控制平面或管理平面负载过高。
+    device_memory_total:
+      name: 内存总量
+      desc: 接入设备上报的物理内存总容量，单位为字节。该指标可与空闲内存一起推导整体内存使用率。
+    device_memory_free:
+      name: 空闲内存
+      desc: 接入设备当前可用的物理内存容量，单位为字节。空闲内存持续降低可能表示控制服务或业务表项造成内存压力。
+    device_memory_usage:
+      name: 内存使用率
+      desc: 接入设备的系统内存使用率（设备私有标量直接上报的百分比）。持续偏高可能表示转发表、ONU 管理表或控制服务存在内存压力。
+    device_temperature_celsius:
+      name: 系统温度
+      desc: 接入设备系统温度读数，单位摄氏度。温度持续升高可能表示散热异常、环境温度过高或设备负载过高。
+    device_card_temperature_level:
+      name: 板卡温度级别
+      desc: 接入设备板卡相对温度级别。数值 1-10 表示从低温到高温，999 表示未上报；该指标用于发现板卡温度趋势，不等同于摄氏度读数。
+    device_card_state:
+      name: 板卡状态
+      desc: 接入设备板卡主状态。正常值归一为 1，非在服、未知或其它状态归一为 2，表示板卡可能不可用或需要检查。
+    device_psu_state:
+      name: 电源状态
+      desc: 接入设备电源模块状态。正常值归一为 1，告警或未知状态归一为 2，表示电源输入、模块或告警灯存在异常风险。
+    device_fan_state:
+      name: 风扇状态
+      desc: 接入设备风扇运行状态。正常值归一为 1，异常或未知状态归一为 2，表示散热能力可能下降。
+    device_disk_usage:
+      name: 磁盘使用率
+      desc: 接入设备磁盘卷使用率，按设备取最高卷使用率。持续偏高可能导致日志、配置或运行文件写入风险。
+    device_disk_state:
+      name: 磁盘状态
+      desc: 接入设备磁盘卷使用级别。正常值归一为 1，minor、major、critical 或未知状态归一为 2，表示磁盘空间需要关注。
+monitor_object_metric_group:
+  Access:
+    Base: 基础
+    Traffic: 流量
+    Access: 接入设备
+    Temperature: 温度
+    Hardware Status: 硬件状态

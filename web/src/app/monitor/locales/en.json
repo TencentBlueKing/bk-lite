@@ -156,7 +156,8 @@
       "channelTypeCustomWebhook": "Custom Webhook",
       "notificationDesc": "Select the notification method and recipients when an alert is triggered.",
       "notificationConfig": "Notify",
-      "notificationChannel": "Channel"
+      "notificationChannel": "Channel",
+      "addMetric": "Add Metric"
     },
     "views": {
       "vmware_esxi_count": "Number of ESXi",

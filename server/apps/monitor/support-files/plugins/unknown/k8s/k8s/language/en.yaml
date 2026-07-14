@@ -1,0 +1,5 @@
+K8S:
+  name: K8s
+  desc: Leveraging Kubernetes' active monitoring data reporting capability, collect
+    the status and health of the Kubernetes cluster, including performance metrics
+    for nodes, containers, and pods.
