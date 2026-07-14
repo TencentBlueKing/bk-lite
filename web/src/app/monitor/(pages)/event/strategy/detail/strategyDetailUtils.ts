@@ -1,4 +1,10 @@
-import { SegmentedItem, UnitListItem } from '@/app/monitor/types';
+import {
+  CascaderItem,
+  GroupedUnitList,
+  MetricItem,
+  SegmentedItem,
+  UnitListItem
+} from '@/app/monitor/types';
 import { isStringArray } from '@/app/monitor/utils/common';
 import { MetricExpressionMode } from './formulaExpressionUtils';
 
@@ -134,34 +140,26 @@ export const getMetricThresholdEnumState = ({
   };
 };
 
-export const getThresholdUnitFilterBase = ({
-  isFormulaMode,
-  formulaResultUnit,
-  selectedMetricUnit,
+export const shouldShowThresholdUnitSelector = ({
+  isEnumMetric
 }: {
   isFormulaMode: boolean;
-  formulaResultUnit: string | null;
-  selectedMetricUnit: string | null;
-}): string | null => {
-  if (isFormulaMode) {
-    return formulaResultUnit || FORMULA_DEFAULT_RESULT_UNIT;
-  }
-  return selectedMetricUnit;
-};
+  isEnumMetric: boolean;
+}): boolean => !isEnumMetric;
 
 export const getThresholdUnitOptions = ({
   unitList,
-  unitFilterBase,
+  metricUnit,
   isEnumMetric,
 }: {
   unitList: UnitListItem[];
-  unitFilterBase: string | null;
+  metricUnit: string | null;
   isEnumMetric: boolean;
 }): UnitListItem[] => {
-  if (isEnumMetric || !unitFilterBase) return [];
+  if (isEnumMetric || !metricUnit) return [];
 
   const validUnits = getValidThresholdUnitOptions(unitList);
-  const baseUnit = validUnits.find((item) => item.unit_id === unitFilterBase);
+  const baseUnit = validUnits.find((item) => item.unit_id === metricUnit);
   if (!baseUnit) return [];
 
   if (baseUnit.system === null) {
@@ -169,6 +167,83 @@ export const getThresholdUnitOptions = ({
   }
 
   return validUnits.filter((item) => item.system === baseUnit.system);
+};
+
+export const resolveThresholdUnit = ({
+  thresholdUnit,
+  calculationUnit,
+  unitList,
+}: {
+  thresholdUnit: string | null | undefined;
+  calculationUnit: string | null | undefined;
+  unitList: UnitListItem[];
+}): string | null => {
+  // 单位表尚未加载时保留接口中的历史值，避免初始化过程误覆盖。
+  if (!unitList.length) return thresholdUnit || calculationUnit || null;
+  if (!calculationUnit) return thresholdUnit || null;
+
+  const options = getThresholdUnitOptions({
+    unitList,
+    metricUnit: calculationUnit,
+    isEnumMetric: false,
+  });
+  if (thresholdUnit && options.some((item) => item.unit_id === thresholdUnit)) {
+    return thresholdUnit;
+  }
+  return options.some((item) => item.unit_id === calculationUnit)
+    ? calculationUnit
+    : null;
+};
+
+export const getThresholdUnitOnCalculationUnitChange = resolveThresholdUnit;
+
+// 把 groupedUnitList (按 category 分组) 转为 Cascader 选项;
+// 一级 value = category 名,二级 value = unit_id,二级为叶子节点需 children=[] 以满足 CascaderItem 递归类型。
+// 单位表规模小 (<100),即便 O(N×M) 也可接受。
+export const buildMetricUnitCascaderOptions = (
+  groupedUnitList: GroupedUnitList[]
+): CascaderItem[] =>
+  groupedUnitList
+    .map((group) => ({
+      label: group.label,
+      value: group.label,
+      children: (group.children || [])
+        .filter((item) => !INVALID_THRESHOLD_UNIT_IDS.has(item.value))
+        .map((item) => ({
+          label: item.label,
+          value: item.value,
+          children: []
+        }))
+    }))
+    .filter((group) => group.children.length > 0);
+
+export const resolveMetricDisplayUnit = (
+  unit: string | null | undefined,
+  unitList: UnitListItem[]
+): string => {
+  if (!unit || INVALID_THRESHOLD_UNIT_IDS.has(unit) || isStringArray(unit)) {
+    return '';
+  }
+
+  return unitList.find((item) => item.unit_id === unit)?.display_unit || '';
+};
+
+export const resolvePreviewChartUnit = (
+  responseUnit: string | null | undefined,
+  thresholdUnit: string | null | undefined,
+  calculationUnit: string | null | undefined
+): string | null => responseUnit || thresholdUnit || calculationUnit || null;
+
+export const buildMetricSelectOption = (
+  metric: MetricItem,
+  unitList: UnitListItem[]
+): { label: string; value: string } => {
+  const displayName = metric.display_name || metric.name;
+  const displayUnit = resolveMetricDisplayUnit(metric.unit, unitList);
+  return {
+    label: displayUnit ? `${displayName}（${displayUnit}）` : displayName,
+    value: metric.name
+  };
 };
 
 // 现有 page.tsx 的 filterInvalidUnit 逻辑上提到 utils(行为完全一致,签名兼容)
@@ -179,6 +254,33 @@ export const filterInvalidCalculationUnit = (
     return null;
   }
   return unit;
+};
+
+export const restoreCalculationUnitState = (
+  unit: string | null | undefined
+): string | null => filterInvalidCalculationUnit(unit);
+
+export const resolveEffectiveCalculationUnit = ({
+  isFormulaMode,
+  unit,
+  unitList
+}: {
+  isFormulaMode: boolean;
+  unit: string | null | undefined;
+  unitList: UnitListItem[];
+}): string | null => {
+  if (isFormulaMode) {
+    return resolveFormulaResultUnit(unit, unitList);
+  }
+
+  const normalizedUnit = filterInvalidCalculationUnit(unit);
+  if (!normalizedUnit) return null;
+
+  return getValidThresholdUnitOptions(unitList).some(
+    (item) => item.unit_id === normalizedUnit
+  )
+    ? normalizedUnit
+    : null;
 };
 
 // 公式 → 单指标 retract:返回新值;否则返回 undefined 表示「无变化」

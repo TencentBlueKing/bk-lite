@@ -91,10 +91,10 @@ class ADLoginAuthAdapter(BaseLoginAuthAdapter):
                 )
 
             bind_user_dn(connection_config, distinguished_name, password)
-        except ValueError:
+        except ValueError as error:
             return CapabilityExecutionResult.failed_result(
-                "AD user search returned multiple matches",
-                code="provider.auth_failed",
+                f"AD login_auth configuration error: {error}",
+                code="provider.invalid_config",
                 field=identity_field,
             )
         except LDAPBindError as error:

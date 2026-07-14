@@ -44,11 +44,19 @@ def stub_s3(mocker):
     )
 
 
-def _policy():
+def _policy(**overrides):
     obj = MonitorObject.objects.create(name="AlertViewObj", level="base")
+    values = {
+        "monitor_object": obj,
+        "name": "p",
+        "algorithm": "max",
+        "query_condition": {},
+        "source": {},
+        "group_by": [],
+    }
+    values.update(overrides)
     return MonitorPolicy.objects.create(
-        monitor_object=obj, name="p", algorithm="max",
-        query_condition={}, source={}, group_by=[],
+        **values
     )
 
 
@@ -60,13 +68,82 @@ class TestGetSnapshots:
 
     def test_no_snapshot_returns_empty(self, api_client, grant_all):
         api_client.cookies["current_team"] = "1"
-        policy = _policy()
+        policy = _policy(
+            metric_unit="bytes",
+            calculation_unit="bytes",
+            threshold_unit="kibibytes",
+        )
         alert = MonitorAlert.objects.create(policy_id=policy.id, monitor_instance_id="h1", status="new")
         resp = api_client.get(f"{BASE}/api/monitor_alert/snapshots/{alert.id}/")
         assert resp.status_code == 200
         body = resp.json()["data"]
         assert body["snapshots"] == []
+        assert body["chart_unit"] == "kibibytes"
         assert body["alert_info"]["id"] == alert.id
+
+    def test_no_snapshot_legacy_policy_falls_back_to_calculation_unit(
+        self, api_client, grant_all
+    ):
+        api_client.cookies["current_team"] = "1"
+        policy = _policy(
+            metric_unit="bytes",
+            calculation_unit="kibibytes",
+            threshold_unit="",
+        )
+        alert = MonitorAlert.objects.create(
+            policy_id=policy.id, monitor_instance_id="h1", status="new"
+        )
+
+        resp = api_client.get(
+            f"{BASE}/api/monitor_alert/snapshots/{alert.id}/"
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["data"]["chart_unit"] == "kibibytes"
+
+    def test_converts_snapshot_copy_to_threshold_unit(
+        self, api_client, grant_all, mocker
+    ):
+        api_client.cookies["current_team"] = "1"
+        policy = _policy(
+            metric_unit="bytes",
+            calculation_unit="bytes",
+            threshold_unit="kibibytes",
+        )
+        alert = MonitorAlert.objects.create(
+            policy_id=policy.id, monitor_instance_id="h1", status="new"
+        )
+        source_snapshots = [
+            {
+                "type": "event",
+                "raw_data": {"values": [[1, "2048"], [2, None]]},
+            }
+        ]
+        mocker.patch(
+            "apps.core.fields.s3_json_field.S3JSONField._load_from_s3",
+            return_value=source_snapshots,
+        )
+        MonitorAlertMetricSnapshot.objects.create(
+            alert=alert,
+            policy_id=policy.id,
+            monitor_instance_id="h1",
+        )
+
+        resp = api_client.get(
+            f"{BASE}/api/monitor_alert/snapshots/{alert.id}/"
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()["data"]
+        assert body["chart_unit"] == "kibibytes"
+        assert body["snapshots"][0]["raw_data"]["values"] == [
+            [1, "2.0"],
+            [2, None],
+        ]
+        assert source_snapshots[0]["raw_data"]["values"] == [
+            [1, "2048"],
+            [2, None],
+        ]
 
     def test_returns_snapshot_data(self, api_client, grant_all, mocker):
         api_client.cookies["current_team"] = "1"
