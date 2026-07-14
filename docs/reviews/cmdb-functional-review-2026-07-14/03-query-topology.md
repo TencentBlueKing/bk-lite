@@ -17,9 +17,9 @@
 ### Finding CMDB-F14：跨模型关系读写与拓扑只授权中心模型，未校验真实对端
 
 - Severity: P0
-- Location: `server/apps/cmdb/views/instance.py:707-746,840-861,983-1047`；`server/apps/cmdb/services/instance.py:334-435,948-1004,1446-1466,1523-1621`；`server/apps/cmdb/utils/Import.py:643-656,713-837`；`server/apps/cmdb/utils/export.py:241-268`
+- Location: `server/apps/cmdb/views/instance.py:707-746,840-861,983-1047`；`server/apps/cmdb/services/instance.py:334-435,948-1004,1446-1466,1523-1621`；`server/apps/cmdb/utils/Import.py:643-656,713-837`；`server/apps/cmdb/utils/export.py:290-317`
 - Root cause category: 跨层契约不一致
-- Evidence: `instance_association_instance_list`/`instance_association` 只对请求中的中心实例调用 `require_instance_permission`，随后返回对端完整实体；实例导出只裁剪根实例，`Export.format_inst_asst_name` 又调用同一无权限 Service 写入全部对端名称。导入的 `allowed_org_ids` 只进入 organization 单元格解析，`format_import_asso_data` 无权限全量查询关联模型并按名称解析对端，随后直接建边。通用/网络拓扑只构造中心模型的 permission map；`_has_topology_view_permission` 对其他模型仍复用该 map，而实例判权只读取 organization/inst_name，不验证 map 所属模型。
+- Evidence: 两个关联 View 都只对请求中的中心实例调用 `require_instance_permission`。其中 `instance_association_instance_list` 以 `return_entity=True` 查询边，并把对端完整实体加入 `inst_list`；`instance_association` 未设置 `return_entity=True`，只返回关系边元数据，但同样没有验证边的另一端是否可见。实例导出只裁剪根实例，`Export.format_inst_asst_name` 在 290–317 行调用前一个无权限 Service 并写入全部对端名称。导入的 `allowed_org_ids` 只进入 organization 单元格解析，`format_import_asso_data` 无权限全量查询关联模型并按名称解析对端，随后直接建边。通用/网络拓扑只构造中心模型的 permission map；`_has_topology_view_permission` 对其他模型仍复用该 map，而实例判权只读取 organization/inst_name，不验证 map 所属模型。
 - Trigger: 查询或导出可见中心实例的关系，而对端属于无权组织/模型；导入 Excel 关联列填写越权对端名称；从可见中心节点展开包含其他模型的拓扑。
 - Impact: 可读取越权对端完整实体或实例名、模型和关系存在性；可把授权组织实例连接到其他组织资产；拓扑可展示无权跨模型节点和接口连线。
 - Why existing tests missed it: 关联 View 只断言中心实例校验；导出测试直接 Mock 对端列表；导入 Fake Graph 不构造跨组织对端；指定六文件没有任何跨模型拓扑权限测试。
@@ -43,9 +43,9 @@
 ### Finding CMDB-F16：在线实例列表与旧全文检索没有请求级返回上限
 
 - Severity: P1
-- Location: `server/apps/cmdb/views/instance.py:232-280,864-872`；`server/apps/cmdb/services/instance.py:599-629,1767-1802`；`server/apps/cmdb/graph/falkordb.py:1963-2062`
+- Location: `server/apps/cmdb/views/instance.py:232-280,864-872`；`server/apps/cmdb/services/instance.py:599-629,1767-1802`；`server/apps/cmdb/graph/falkordb.py:1963-2062`；`server/apps/cmdb/graph/neo4j.py:983-1016`
 - Root cause category: 资源边界缺失
-- Evidence: 普通 `search` 只校验 `page_size>=1`，直接把任意大整数变成图查询 LIMIT；旧 `fulltext_search` 没有 page/page_size/limit，对全部非排除属性执行全文条件并返回所有命中实体。新 by-model 接口的 100 条限制没有覆盖这两个旧入口。
+- Evidence: 普通 `search` 只校验 `page_size>=1`，直接把任意大整数变成图查询 LIMIT；旧 `fulltext_search` 没有 page/page_size/limit。FalkorDB 在 1963–2062 行执行属性全文条件并返回全部命中实体；默认可达的 Neo4j 在 983–1016 行同样构造 `MATCH ... RETURN n` 且没有 SKIP/LIMIT。新 by-model 接口的 100 条限制没有覆盖这两个旧入口。
 - Trigger: 具有 `asset_info-View` 的调用者提交超大 page_size；具有 `search-View` 的调用者用空泛/高命中关键词调用旧全文入口。
 - Impact: 单请求可返回大量图节点并放大图查询、序列化和响应内存，造成接口超时、进程内存压力与其他在线请求延迟。
 - Why existing tests missed it: 列表只测试缺 model、非法 page 和小数据成功；六文件不调用全文 View/Service/驱动，没有最大值或超限断言。
@@ -56,7 +56,7 @@
 ### Finding CMDB-F17：实例导入导出全量物化，关联导出按实例 N+1 查询
 
 - Severity: P1
-- Location: `server/apps/cmdb/views/instance.py:756-861`；`server/apps/cmdb/services/instance.py:1330-1424,1470-1512`；`server/apps/cmdb/utils/Import.py:643-739`；`server/apps/cmdb/utils/export.py:192-268`
+- Location: `server/apps/cmdb/views/instance.py:756-861`；`server/apps/cmdb/services/instance.py:1330-1424,1470-1512`；`server/apps/cmdb/utils/Import.py:643-739`；`server/apps/cmdb/utils/export.py:192-268,285-317`
 - Root cause category: 资源边界缺失
 - Evidence: 导入前按 model_id 全量加载 `exist_items`，有关联列时又逐关联模型全量构造名称/ID映射；导出未传 ids 时一次读取所有授权实例，再由 openpyxl 在内存构造完整工作簿。选择关联列后，`export_inst_list` 对每个根实例单独调用 `instance_association_instance_list`，形成 N+1 图查询。入口没有文件行数、根实例数、关联目标数或生成字节数上限。
 - Trigger: 对大模型导入含关联列的 Excel；导出不传 inst_ids，或导出大量根实例并选择关联列。
