@@ -8,7 +8,7 @@ CMDB 在 `CmdbConfig.ready()` 中导入 `apps.cmdb.nats.nats`，26 个 `@nats_cl
 
 ### 1.1 注册函数与契约盘点
 
-下表的“注册名”均省略共同前缀 `{NATS_NAMESPACE}.`；外层 listener 成功响应统一包装为 `{"success": true, "result": <handler返回值>}`，未捕获异常则包装为 `success=false`。表内“返回”描述 handler 内层 payload。
+下表的“注册名”均省略共同前缀 `{NATS_NAMESPACE}.`；消息带 `reply` 时，外层 listener 把成功响应包装为 `{"success": true, "result": <handler返回值>}`，未捕获异常则包装为 `success=false`；单向 callback 没有 response envelope。表内“返回”描述 handler 内层 payload。
 
 | # | 注册名 | 请求 schema / 主要调用方 | 授权上下文 | 返回与错误路径 |
 |---:|---|---|---|---|
@@ -56,15 +56,15 @@ CMDB 在 `CmdbConfig.ready()` 中导入 `apps.cmdb.nats.nats`，26 个 `@nats_cl
 - Required tests: 两个独立 NATS service identity 的 subject allow/deny；伪造 allowed_org_ids/user_info/organization_ids 仍 403 且零图/ORM写；裸实例/列表/计数/关系读写的组织与实例权限矩阵；伪造 callback、旧 execution、重复 event、跨 task credential 全部拒绝；拒绝响应不泄露目标是否存在。
 - Long-term design note: `user_info` 是业务参数，不是身份凭证。NATS 框架应在 dispatch 前生成类型化 `CallerContext`，业务 handler 只消费可信 context 和已验证 DTO；共享 namespace 不能等同于共享超级用户权限。
 
-### Finding CMDB-F63：NATS 错误协议回传并反序列化原始异常对象
+### Finding CMDB-F63：NATS 错误协议回传原始异常对象并保留条件反序列化兼容路径
 
 - Severity: P1
 - Location: `server/nats_client/management/commands/nats_listener.py:128-157`；`server/nats_client/clients.py:113-151,184-222`
 - Root cause category: 错误模型不清晰
-- Evidence: listener 捕获任意异常后同时回传 `str(e)`、异常类名和 `jsonpickle.encode(e)`；客户端默认对 `pickled_exc` 调用 `jsonpickle.decode`，仅 `_raw=True` 才删除该字段。直接用 `RuntimeError("password=canary-secret")` 复现，wire payload 为包含 `py/reduce` 的异常对象图且明文保存 canary，客户端 decode 后再次得到完整 secret。handler 还混用抛异常、内层 `result=false`、空列表 fail-closed 和 `result=true/processed=false`，调用方必须按函数特判业务错误与传输错误。
-- Trigger: 图数据库、MinIO、SDK、callback Service 或校验异常的 message/args 包含 token、连接串、配置正文或内部诊断；或 NATS 响应被错误/恶意 responder 替换为构造的 jsonpickle 对象图。
-- Impact: 原始敏感异常进入 NATS 响应并扩散到调用方错误文本/日志；客户端对跨进程对象图反序列化扩大协议攻击面和 Python 类型耦合。Go/其他语言消费者无法安全复用该错误协议，异常类或 jsonpickle 版本变化也会导致兼容分叉。
-- Why existing tests missed it: brief 六文件全部直接调用 handler，未启动 listener/客户端；没有 canary secret、wire envelope、非 Python consumer、未知异常类型或 `_raw`/默认 decode 对照。现有 RPC forwarding 测试只断言方法名和参数，不触达真实 NATS。
+- Evidence: listener 对所有带 `reply` 的异常响应同时写入异常类名、`str(e)`（`ValidationError` 为 message dict）和 `jsonpickle.encode(e)`。`request/request_v2` 对当前 listener 产生的非空 `error + message` 直接拼接文本，不会常规解码 `pickled_exc`；只有 `error == "BaseAppException"` 且缺少 message，或旧式响应同时缺少规范 `error/result` 时，才走 `jsonpickle.decode` fallback。直接用 `RuntimeError("password=canary-secret")` 做 codec 复现，序列化对象图包含 `py/reduce` 和明文 canary，decode 可还原同一 secret；该复现只证明异常对象在 wire codec 中被完整保留且兼容路径能够还原，不证明当前普通 listener 响应必经 decode。handler 还混用抛异常、内层 `result=false`、空列表 fail-closed 和 `result=true/processed=false`，调用方必须按函数特判业务错误与传输错误。
+- Trigger: 当前协议触发——图数据库、MinIO、SDK、callback Service 或校验异常的 message/args 包含 token、连接串、配置正文或内部诊断，listener 会把原始文本和序列化对象一并放入 wire 响应。兼容 decode 触发——旧式/异构响应提供无 message 的 `BaseAppException`，或同时缺少规范 `error/result`，客户端进入 jsonpickle fallback；错误/恶意 responder 也可构造该形态。
+- Impact: 当前异常响应会在 wire 同时暴露原始敏感文本与序列化对象，并可能由调用方错误文本/日志继续扩散；普通非空 `error + message` 响应不会因此自动反序列化。条件 fallback 仍保留跨进程对象图反序列化攻击面和 Python 类型耦合，且 Go/其他语言消费者无法安全复用该兼容协议；异常类或 jsonpickle 版本变化也会导致分叉。
+- Why existing tests missed it: brief 六文件全部直接调用 handler，未启动 listener/客户端；没有 canary secret、wire envelope、非 Python consumer、当前文本分支与兼容 decode 对照。`server/apps/node_mgmt/tests/test_architecture_support.py:4358-4388` 已测试无 message 的 `BaseAppException` 会 fallback 到 pickled message，证明兼容分支仍在使用，但该文件不在 brief 六文件中，也没有断言当前普通 `error + message` 不 decode 或敏感信息不进入 wire。
 - Minimal safe fix: 删除 `pickled_exc` 生成和 decode；统一返回版本化纯 JSON `ErrorEnvelope {code, category, retryable, safe_message, correlation_id, details?}`，服务端原始异常只进入受控日志并先按 `CMDB-F25` 统一脱敏。handler 的参数、权限、业务冲突和依赖失败映射为稳定 code，callback 的 transport ack 与 application result 使用显式字段。
 - Required tests: canary password/token/连接串不出现在 wire、客户端异常或日志；ValidationError/权限/冲突/timeout/依赖失败映射为稳定 JSON；Python/非 Python consumer 契约；旧 `pickled_exc` 兼容窗口只读且默认禁用，恶意对象图永不 decode。
 - Long-term design note: 跨服务错误必须是数据协议而非语言运行时对象。`CMDB-F25` 负责领域错误脱敏，本 Finding 负责通用 NATS adapter 的序列化、映射与跨语言兼容，根因独立。
@@ -112,7 +112,7 @@ CMDB 在 `CmdbConfig.ready()` 中导入 `apps.cmdb.nats.nats`，26 个 `@nats_cl
 - pure tests只验证小时间桶和展示转换，没有长范围、page/batch/message bytes/deadline。
 - 凭据 callback 没有 publisher 身份、跨 task/credential、批量上限、防重放、部分失败 application ack 或 canary secret；日志输出中仍可见 `auth failed`。
 - Room3D 大量 Mock 图和权限 helper，未连接真实 NATS/图数据库，也未验证调用方伪造 user_info、机房规模预算和超时。
-- 没有测试 listener 的双层 envelope、`pickled_exc`、客户端 jsonpickle decode、跨语言兼容、异常脱敏、subject ACL 或真实 request/publish/reply。
+- brief 六文件没有测试 listener 的双层 envelope、`pickled_exc`、客户端 jsonpickle 条件 decode、跨语言兼容、异常脱敏、subject ACL 或真实 request/publish/reply。仓库另有 `server/apps/node_mgmt/tests/test_architecture_support.py:4358-4388` 锁定无 message `BaseAppException` 的 decode fallback，但不在本次 brief/coverage，且未覆盖当前普通 `error + message` 文本分支与 canary 脱敏。
 
 ## 4. Maintainability Verdict
 

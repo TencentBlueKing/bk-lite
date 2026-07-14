@@ -30,4 +30,4 @@
 
 11 变更与订阅新增 `CMDB-F58`–`CMDB-F61`（P0 2/P1 2）；`CMDB-F61` 独立负责订阅规则/Delivery/实例/关系/ChangeRecord 扫描的稳定游标、总预算、deadline 与可恢复 checkpoint，`CMDB-F23` 只作为其他域相似模式及 Mirror 调用方批量参考；原始事件与异常日志引用既有 `CMDB-F25`。Delivery 的租约、代次和永久错误骨架通过聚焦测试，但规则授权、ChangeRecord View 与规模恢复均缺负向证明。
 
-12 NATS / RPC 新增 `CMDB-F62`–`CMDB-F64`（P0 1/P1 2）：消息体 scope/user_info 无可信调用者绑定、通用 listener 回传并反序列化原始异常对象、adapter 无统一 schema/批量预算和服务端 deadline。关系对端、ChangeRecord、领域错误脱敏、Stargazer 投递、配置 callback、Room3D 预算和 Node 父子终态分别引用既有 `CMDB-F14/F59/F25/F31/F33/F43/F50`，不重复计数。26 个注册入口已逐项盘点；brief 六文件 64 passed，但 NATS 主模块覆盖率仅 54%，listener/client 和多数裸读写入口没有业务安全断言。
+12 NATS / RPC 新增 `CMDB-F62`–`CMDB-F64`（P0 1/P1 2）：消息体 scope/user_info 无可信调用者绑定、通用 listener 回传原始异常对象且客户端保留条件反序列化兼容路径、adapter 无统一 schema/批量预算和服务端 deadline。关系对端、ChangeRecord、领域错误脱敏、Stargazer 投递、配置 callback、Room3D 预算和 Node 父子终态分别引用既有 `CMDB-F14/F59/F25/F31/F33/F43/F50`，不重复计数。26 个注册入口已逐项盘点；brief 六文件 64 passed，但 NATS 主模块覆盖率仅 54%，listener/client 和多数裸读写入口没有业务安全断言。
