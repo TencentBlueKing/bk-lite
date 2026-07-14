@@ -1,0 +1,34 @@
+Nginx:
+  desc: 通过Telegraf采集器定期收集Nginx的请求、连接状态及处理效率等指标，帮助监控和优化网站的性能与稳定性。
+  name: Nginx（Telegraf）
+monitor_object:
+  Nginx: Nginx
+monitor_object_type:
+  Middleware: 中间件
+monitor_object_metric:
+  Nginx:
+    nginx_active:
+      name: 活跃连接数
+      desc: 当前活跃的客户端连接数，反映并发负载
+    nginx_reading:
+      name: 读取连接数
+      desc: 正在读取请求头的连接数，反映请求处理状态
+    nginx_writing:
+      name: 写入连接数
+      desc: 正在写入响应的连接数，反映响应处理状态
+    nginx_waiting:
+      name: 等待连接数
+      desc: 等待请求的空闲连接数，反映连接池使用情况
+    nginx_requests_rate:
+      name: 请求速率
+      desc: Nginx处理的请求速率，反映实时负载
+    nginx_accepts_rate:
+      name: 连接接受速率
+      desc: Nginx接受新连接的速率，反映连接建立频率
+    nginx_handled_rate:
+      name: 连接处理速率
+      desc: Nginx处理连接的速率，反映连接处理能力
+monitor_object_metric_group:
+  Nginx:
+    StubStatus: Stub状态
+    Performance: 性能

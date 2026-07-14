@@ -1,0 +1,93 @@
+Apache:
+  name: Apache(Telegraf)
+  desc: Through the Telegraf collector, regularly collect Apache metrics including
+    uptime, resource utilization, request processing efficiency, and bandwidth usage.
+monitor_object:
+  Apache: Apache
+monitor_object_type:
+  Middleware: Middleware
+monitor_object_metric:
+  Apache:
+    apache_ServerUptimeSeconds:
+      name: Server Uptime
+      desc: Duration the server has been running since last restart, reflecting service
+        stability and availability
+    apache_ParentServerConfigGeneration:
+      name: Parent Server Config Generation
+      desc: Number of times parent server configuration has been reloaded; increments
+        on each reload
+    apache_TotalAccesses:
+      name: Total Accesses
+      desc: Total number of HTTP requests processed, measuring overall server workload
+        and processing capacity
+    apache_ReqPerSec:
+      name: Request Processing Rate
+      desc: Current rate at which the server processes requests, directly indicating
+        real-time processing performance
+    apache_BytesPerSec:
+      name: Data Transfer Rate
+      desc: Amount of data sent per second, reflecting network bandwidth usage and
+        data throughput capacity
+    apache_BusyWorkers:
+      name: Busy Workers
+      desc: Number of worker processes currently handling client requests; high values
+        may indicate server overload
+    apache_IdleWorkers:
+      name: Idle Workers
+      desc: Number of worker processes idle and waiting for requests, indicating available
+        processing capacity
+    apache_CPULoad:
+      name: CPU Load
+      desc: Percentage of CPU resources utilized by the process, monitoring CPU usage
+        and identifying resource bottlenecks
+    apache_Load1:
+      name: 1-Minute System Load
+      desc: Average system load over the past 1 minute, reflecting short-term system
+        resource pressure
+    apache_Load5:
+      name: 5-Minute System Load
+      desc: Average system load over the past 5 minutes, indicating medium-term system
+        resource pressure trends
+    apache_Load15:
+      name: 15-Minute System Load
+      desc: Average system load over the past 15 minutes, indicating long-term system
+        resource pressure trends
+    apache_TotalAccesses_rate:
+      name: Request Rate Change
+      desc: Rate of change in requests per second calculated over a 5-minute window,
+        indicating traffic trends and fluctuations
+    apache_scboard_open:
+      name: Open Connections
+      desc: Total number of connections currently open in the scoreboard, indicating
+        concurrent connections
+    apache_scboard_waiting:
+      name: Waiting Connections
+      desc: Number of connections waiting for idle worker processes; high values may
+        indicate insufficient server resources
+    apache_scboard_reading:
+      name: Reading Connections
+      desc: Number of connections currently reading client request headers, reflecting
+        the state of request reception
+    apache_scboard_sending:
+      name: Sending Connections
+      desc: Number of connections currently sending responses to clients, reflecting
+        the state of response delivery
+    apache_scboard_open_rate:
+      name: Connection Open Rate Change
+      desc: Rate of change in connection openings per second calculated over a 5-minute
+        window, indicating connection establishment trends
+    apache_CacheCurrentEntries:
+      name: Cache Current Entries
+      desc: Number of cache entries currently stored, indicating cache usage and memory
+        occupancy
+    apache_CacheRetrieveHitCount:
+      name: Cache Retrieve Hit Count
+      desc: Number of successful cache retrievals; high hit rate indicates efficient
+        caching and reduced backend load
+monitor_object_metric_group:
+  Apache:
+    Base: Base
+    Performance: Performance
+    State: State
+    Cache: Cache
+    Process: Process
