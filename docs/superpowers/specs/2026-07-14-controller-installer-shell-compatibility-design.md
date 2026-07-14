@@ -4,6 +4,8 @@
 
 Linux 控制器自动安装当前把 bootstrap 命令包装为 `sh -lc "..."`。`-l` 会让目标机加载 `/etc/profile`，而 `/etc/profile` 通常继续加载 `/etc/profile.d/*.sh`。当这些脚本包含 Bash 专属语法时，`dash`、BusyBox `ash` 等 `sh` 实现会在 bootstrap 下载前退出。
 
+本次现场 `/etc/profile.d/date-format.sh` 第 5 行包含 `sh` 不接受的函数名；用户把函数名中的连字符改为下划线并同步修改引用后可以恢复，证明故障发生在登录 profile 解析阶段。该目标机修改可作为临时恢复手段，但 BK-Lite 的正式修复不能要求用户修改系统级 Shell 配置。
+
 当前动态 bootstrap 又通过 `curl ... | bash -s` 执行，因此外层使用 `sh`、内层固定使用 Bash，兼容性契约不一致；直接把外层改为 `bash -c` 仍无法支持仅提供 POSIX `sh` 的精简系统。
 
 ## 目标
@@ -108,12 +110,13 @@ bootstrap URL、安装目录、安装器文件名等动态值通过 Python `shle
 - PATH 中同时存在 sh/Bash 时优先使用 sh。
 - PATH 中仅暴露 Bash 时能够执行 POSIX bootstrap。
 - PATH 中仅暴露 sh 时能够执行 POSIX bootstrap。
+- 构造包含 `date-format() { ...; }` 这类非 POSIX 函数名的登录 profile 回归场景，确认自动安装命令不启动登录 Shell、不会解析该脚本，并能继续执行 bootstrap。
 - 下载失败时不执行 bootstrap，命令返回非零状态。
 - bootstrap 执行失败时保留其非零退出码并清理临时文件。
 
 ## 验收标准
 
-- 目标机存在不兼容的 `/etc/profile.d/date-format.sh` 时，自动安装不再读取该文件。
+- 目标机存在函数名带连字符的 `/etc/profile.d/date-format.sh` 时，无需修改该系统文件，自动安装也不再读取它。
 - 仅有 sh 或仅有 Bash 的受测环境均能进入 bootstrap。
 - 所有新增专项测试通过。
 - `server/apps/node_mgmt` 相关回归测试通过；若全量 `make test` 被既有环境问题阻断，需记录阻断证据并至少完成节点管理聚焦门禁。
