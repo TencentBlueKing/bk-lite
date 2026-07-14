@@ -39,49 +39,90 @@ export default function BuiltinSigninContent({
   const isModalMode = mode === "modal";
   const usernameFieldId = `${fieldIdPrefix}-username`;
   const passwordFieldId = `${fieldIdPrefix}-password`;
+  const pageInputShellClassName =
+    "flex h-12 items-center rounded-lg border-[1.5px] border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.16)_0%,rgba(255,255,255,0.07)_100%)] px-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.32)] backdrop-blur-[16px]";
+  const pageInputClassName =
+    "h-full !bg-transparent !px-0 !text-[#334a72] !shadow-none placeholder:!text-[#b9c5da]";
+  const pagePasswordClassName =
+    "h-full !bg-transparent !px-0 !text-[#334a72] !shadow-none [&_.ant-input]:!bg-transparent [&_.ant-input]:!px-0 [&_.ant-input]:!text-[#334a72] [&_.ant-input]:!shadow-none [&_.ant-input]:placeholder:!text-[#b9c5da] [&_.ant-input-password-icon]:!text-[#8fa0bf]";
+  const pageButtonClassName =
+    "h-12 rounded-lg text-[15px] shadow-[0_18px_36px_rgba(36,107,253,0.28)]";
 
   return (
-    <form onSubmit={onSubmit} className="flex w-full flex-col space-y-5">
-      <div className="space-y-1.5">
+    <form
+      onSubmit={onSubmit}
+      className={`flex w-full flex-col space-y-5 ${isModalMode ? "" : "mx-auto max-w-[420px]"}`}
+    >
+      <div>
         <label
           htmlFor={usernameFieldId}
-          className={`font-medium text-(--color-text-1) ${isModalMode ? "text-[13px]" : "text-[13px]"}`}
+          className={`block font-medium ${isModalMode ? "mb-1.5 text-(--color-text-1) text-[13px]" : "mb-3 text-[13px] text-[#31456a]"}`}
         >
           {usernameLabel}
         </label>
-        <Input
-          id={usernameFieldId}
-          placeholder={usernamePlaceholder}
-          value={username}
-          onChange={(event) => onUsernameChange(event.target.value)}
-          size="large"
-          required
-          className={isModalMode ? "h-10 rounded-lg" : "h-11 rounded-lg"}
-        />
+        {isModalMode ? (
+          <Input
+            id={usernameFieldId}
+            placeholder={usernamePlaceholder}
+            value={username}
+            onChange={(event) => onUsernameChange(event.target.value)}
+            size="large"
+            required
+            className="h-10 rounded-lg"
+          />
+        ) : (
+          <div className={pageInputShellClassName}>
+            <Input
+              id={usernameFieldId}
+              placeholder={usernamePlaceholder}
+              value={username}
+              onChange={(event) => onUsernameChange(event.target.value)}
+              size="large"
+              required
+              variant="borderless"
+              className={pageInputClassName}
+            />
+          </div>
+        )}
       </div>
 
-      <div className="space-y-1.5">
+      <div>
         <label
           htmlFor={passwordFieldId}
-          className={`font-medium text-(--color-text-1) ${isModalMode ? "text-[13px]" : "text-[13px]"}`}
+          className={`block font-medium ${isModalMode ? "mb-1.5 text-(--color-text-1) text-[13px]" : "mb-3 text-[13px] text-[#31456a]"}`}
         >
           {passwordLabel}
         </label>
-        <Input.Password
-          id={passwordFieldId}
-          placeholder={passwordPlaceholder}
-          value={password}
-          onChange={(event) => onPasswordChange(event.target.value)}
-          size="large"
-          required
-          className={isModalMode ? "h-10 rounded-lg" : "h-11 rounded-lg"}
-        />
+        {isModalMode ? (
+          <Input.Password
+            id={passwordFieldId}
+            placeholder={passwordPlaceholder}
+            value={password}
+            onChange={(event) => onPasswordChange(event.target.value)}
+            size="large"
+            required
+            className="h-10 rounded-lg"
+          />
+        ) : (
+          <div className={pageInputShellClassName}>
+            <Input.Password
+              id={passwordFieldId}
+              placeholder={passwordPlaceholder}
+              value={password}
+              onChange={(event) => onPasswordChange(event.target.value)}
+              size="large"
+              required
+              variant="borderless"
+              className={pagePasswordClassName}
+            />
+          </div>
+        )}
       </div>
 
       <button
         type="submit"
         disabled={isLoading}
-        className={`w-full rounded-lg bg-[#246BFD] px-4 text-white font-medium transition-all duration-150 ease-in-out hover:bg-[#1F5DE0] ${isModalMode ? "h-11 text-[14px] shadow-[0_12px_28px_rgba(36,107,253,0.24)]" : "h-11 text-[14px] shadow-[0_10px_24px_rgba(36,107,253,0.2)]"} ${isLoading ? "cursor-not-allowed opacity-70" : ""}`}
+        className={`w-full bg-[#246BFD] px-4 text-white font-medium transition-all duration-150 ease-in-out hover:from-[#4378f0] hover:to-[#5a95fb] ${isModalMode ? "h-11 rounded-lg text-[14px] shadow-[0_12px_28px_rgba(36,107,253,0.24)]" : pageButtonClassName} ${isLoading ? "cursor-not-allowed opacity-70" : ""}`}
       >
         {isLoading ? (
           <span className="flex items-center justify-center">
