@@ -2,27 +2,27 @@
 
 ## 1. Summary
 
-IPAM 已形成三条主链：子网详情经 `asset_info-View` 与实例级 VIEW 权限进入 IP 视图；IP 发现复用采集任务、NodeMgmt、Stargazer/VM 指标与系统身份回写；人工与每小时 Beat 共用 `IPAMReconcileRun`，以 nullable unique `active_scope="global"` 裁决单活，Worker 用 owner token 抢占并保存统计或安全错误摘要。来源 CI 采用图节点 ID 递增游标、默认 500/最大 5000 的批次，子网与已有 IP 参考集也有显式上限。手工记录只读保护、非法子网跳过、失败释放 `active_scope`、Broker/作业错误不回显原文等骨架是正确的。
+IPAM 已形成三条主链：子网详情经 `asset_info-View` 与实例级 VIEW 权限进入 IP 视图；IP 发现设计上复用采集任务、NodeMgmt、Stargazer/VM 指标与系统身份回写，但当前 Agent 插件路径受 `CMDB-F30` 阻断；人工与每小时 Beat 共用 `IPAMReconcileRun`，以 nullable unique `active_scope="global"` 裁决单活，Worker 用 owner token 抢占并保存统计或安全错误摘要。来源 CI 采用图节点 ID 递增游标、默认 500/最大 5000 的批次，子网与已有 IP 参考集也有显式上限。手工记录只读保护、非法子网跳过、失败释放 `active_scope`、Broker/作业错误不回显原文等骨架是正确的。
 
-但执行边界仍有两个 P0。第一，IP 发现任务只校验采集任务菜单/任务对象权限，没有校验 `params.subnet_ids` 对应子网的实例与组织权限；NodeParams 按任意 ID 读取子网后，回写层又以 `system` 跳过权限，在目标子网组织内创建或更新 IP。第二，IPAM 作业的两小时租约没有续租或写副作用 fencing；新 owner 接管后，旧 owner 仍可继续创建/更新 IP、关联与离线状态，只是最后不能覆盖新 owner 的 ORM 终态。
+但执行边界仍有两个 P0。第一，IP 发现任务只校验采集任务菜单/任务对象权限，没有校验 `params.subnet_ids` 对应子网的实例与组织权限；当前可确定的是越权 ID 会被持久化，NodeParams 会以系统上下文读取目标 CIDR 并下发扫描范围。由于 `CMDB-F30` 当前阻断正常 Agent 加载，不能声称普通 create/update/execute 必然完成扫描与图回写；只有已有/延迟 VM rows、其他合法生产者，或 F30 修复后的正常链路到达回写层时，system 写才会进一步跨组织修改 IP 台账。第二，IPAM 作业的两小时租约没有续租或写副作用 fencing；新 owner 接管后，旧 owner 仍可继续创建/更新 IP、关联与离线状态，只是最后不能覆盖新 owner 的 ORM 终态。
 
-另有三项 P1：失败/缺失扫描行被当成完整空快照并批量置离线；occupant 上限只统计唯一 `(subnet, ip)` 键，不能约束单 IP 的占用者列表、来源总扫描量和关联写；CIDR 重叠检查在锁外全量读取，两个并发但取不同唯一键的重叠网段可同时通过。在线 IP 视图的对端授权和无界返回分别引用 `CMDB-F14/CMDB-F16`；异步投递、外部错误脱敏及 Agent IP 插件不可加载分别引用 `CMDB-F04/CMDB-F25/CMDB-F30`，不重复计数。
+另有三项 P1：失败/缺失扫描行被当成完整空快照并批量置离线；occupant 上限只统计唯一 `(subnet, ip)` 键，不能约束单 IP 的占用者列表、来源总扫描量和关联写；CIDR 重叠检查在锁外全量读取，两个并发但取不同唯一键的重叠网段可同时通过。在线 IP 视图的对端授权和无界返回分别引用 `CMDB-F14/CMDB-F16`；外部错误脱敏及 Agent IP 插件不可加载分别引用 `CMDB-F25/CMDB-F30`，不重复计数。
 
 本域确认 5 个主 Finding：P0 2 个、P1 3 个、P2/P3 0 个，编号 `CMDB-F36`–`CMDB-F40`。Recommendation 为 **Block**。
 
 ## 2. Findings
 
-### Finding CMDB-F36：IP 发现任务可引用无权子网并以 system 身份跨组织回写
+### Finding CMDB-F36：IP 发现任务可持久化无权子网并下发其 CIDR 扫描范围
 
 - Severity: P0
 - Location: `server/apps/cmdb/serializers/collect_serializer.py:121-132`；`server/apps/cmdb/views/collect.py:210-242`；`server/apps/cmdb/node_configs/ipam/ip_discovery.py:50-92`；`server/apps/cmdb/services/ipam_discovery.py:50-65,142-190,205-296`
 - Root cause category: 跨层契约不一致
-- Evidence: 通用 `CollectModelSerializer.validate` 对 IP 任务在 125–132 行直接返回，只为网络拓扑做参数校验，没有解析、限量或授权 `subnet_ids`。采集 View 校验的是 `auto_collection-*` 与采集任务自身权限；`IPDiscoveryNodeParams._load_subnet_scopes` 随后按请求保存的任意 ID 查询全部子网，不带用户、组织或 permission map。VM 回写再次按 ID 加载子网，继承该子网 `organization`，再由 `_system_create_or_update/_system_update` 以 `system`、`skip_permission_check=True` 创建/更新 IP 和关系。`allowed_org_ids` 取自目标子网而不是发起者授权范围，不能阻止越权。
-- Trigger: 仅有组织 A 自动采集新增/执行权限的用户，在任务 `params.subnet_ids` 中提交组织 B 的子网实例 ID，并选择可用接入点执行任务；或编辑已有任务替换为该 ID。
-- Impact: 用户可扫描其他组织网段，并在组织 B 中创建、更新、置离线 IP 实例及建立子网关系；这既泄露网络存活信息，也跨租户篡改 IPAM 台账与利用率。
+- Evidence: 通用 `CollectModelSerializer.validate` 对 IP 任务在 125–132 行直接返回，只为网络拓扑做参数校验，没有解析、限量或授权 `subnet_ids`。采集 View 校验的是 `auto_collection-*` 与采集任务自身权限，因此组织 B 的子网 ID 可作为普通 JSON 持久化到组织 A 的任务。`IPDiscoveryNodeParams._load_subnet_scopes` 随后按这些 ID 查询子网，不带用户、组织或 permission map，并把目标 `cidr/gateway/reserved_addresses` 写入 NodeMgmt 下发参数。当前 `CMDB-F30` 使正常 Agent 插件加载失败，所以普通任务不必然产生扫描或 VM rows；若已有/延迟 VM rows、其他合法生产者，或 F30 修复后结果到达，回写层才会再次按 ID 加载子网，并由 `_system_create_or_update/_system_update` 以 `system`、`skip_permission_check=True` 条件性创建/更新 IP 和关系。此时 `allowed_org_ids` 来自目标子网而不是发起者授权范围，不能阻止跨组织回写。
+- Trigger: 确定触发——仅有组织 A 自动采集新增/编辑权限的用户，在任务 `params.subnet_ids` 中提交组织 B 的子网实例 ID并保存任务，NodeParams 同步读取组织 B 的 CIDR 后写入 NodeMgmt 扫描配置。条件触发——该任务的已有/延迟 VM rows、其他合法生产者结果到达，或 `CMDB-F30` 修复后正常执行产出结果。
+- Impact: 当前确定影响是跨组织子网引用被持久化，目标 CIDR、网关和保留地址进入无权任务及其 NodeMgmt 下发配置，破坏租户网络范围授权。若条件性结果到达，影响进一步扩大为扫描其他组织网段，并在组织 B 中创建、更新、置离线 IP 及建立关系；不能把这一后半段表述为当前普通 create/update/execute 的必然结果。
 - Why existing tests missed it: `test_ipam_discovery_node_params.py` 用固定子网 ID并直接 Mock `_load_subnet_scopes`；`test_ipam_discovery_service.py` 把“所选子网”只当字符串白名单，测试还明确证明 system helper 跳过权限。五文件没有经过采集 create/update Serializer 的跨组织正反向用例。
 - Minimal safe fix: IP 任务 Serializer/Service 必须在持久化前解析唯一且有硬上限的子网 ID，按当前用户和组织逐实例要求 VIEW/OPERATE（产品需明确扫描所需操作级别）；持久化授权快照或稳定 scope，NodeParams 和回写再次验证子网仍在该 scope 内。拒绝路径必须发生在 NodeMgmt 下发前。
-- Required tests: 组织 A 用户引用组织 B 子网时 create/update 403/400 且零 NodeMgmt、零图写；同组织实例权限允许/拒绝、include_children、子网被转组/删除、重复/非法/超限 ID；合法任务只下发并回写授权子网。
+- Required tests: 组织 A 用户引用组织 B 子网时 create/update 403/400 且零持久化、零 NodeMgmt；同组织实例权限允许/拒绝、include_children、子网被转组/删除、重复/非法/超限 ID；分别覆盖当前 F30 阻断时零扫描/零图写，以及已有/延迟 VM rows、其他合法生产者、F30 修复后结果到达时仍只回写授权子网。
 - Long-term design note: 采集任务权限不等于任务内资源权限；所有“任务引用实例 ID”字段应复用统一 `AuthorizedResourceScope`，执行时消费不可伪造的授权快照，而不是让插件用 system 权限重新解释请求参数。
 
 ### Finding CMDB-F38：IPAM 租约过期接管只保护终态，旧 owner 仍可继续写图副作用
@@ -81,7 +81,6 @@ IPAM 已形成三条主链：子网详情经 `asset_info-View` 与实例级 VIEW
 
 - `CMDB-F14`：`ipam_view` 只校验 subnet 中心实例，随后通过 `subnet_group_ip` 关系和 `subnet_id` 旧字段兜底返回对端完整 IP 实体，没有逐 IP 权限裁剪；属于既有“关系只授权中心实例”主 Finding。
 - `CMDB-F16`：`ipam_view` 两条查询均无分页/rows/bytes 上限并在响应中返回全部 IP；属于既有在线实例查询无请求级预算，本域不新增 Finding。
-- `CMDB-F04`：`enqueue` 在 broker `.delay()` 不抛错后没有 delivery/Worker 应用确认；失败时安全保留 PENDING 并由下一次每小时 Beat/人工触发重派是正确改进，但仍未形成持久化 delivery 与退避告警，复用异步投递主 Finding。
 - `CMDB-F25`：发现单 IP 写失败日志仍输出原始 `err`，对账关联失败也输出 `message`；敏感外部错误统一脱敏复用采集主 Finding。
 - `CMDB-F30`：当前 Stargazer `ip/plugin.yml` 仍指向不存在的 `plugins.inputs.ip_discovery`，正常配置驱动 IP 发现入口会先加载失败；本域 `CMDB-F36/F37` 是该路径修复后仍会发生的独立授权与快照语义缺陷，不重复登记插件路径问题。
 - `IPAMReconcileSource` 只有 ORM 模型、数据迁移种子和直接 ORM 测试，没有 HTTP/admin 管理入口、字段存在性校验或变更审计。本次未找到必须向普通用户开放来源配置的批准契约，因此只记录维护风险，不形成 Finding。
@@ -113,4 +112,4 @@ IPAM 已形成三条主链：子网详情经 `asset_info-View` 与实例级 VIEW
 
 **Block**。
 
-上线前必须先关闭两个 P0：`CMDB-F36` 在任务保存、下发和回写三处绑定真实授权子网 scope；`CMDB-F38` 为租约续租、generation fencing 与批次 Operation 建立端到端单 owner。随后修复空/失败快照误离线、真实总资源预算和 CIDR 原子范围约束。跨域 `CMDB-F14/F16/F04/F25/F30` 也必须一起收敛；仅延长租约、增加 semaphore、继续以选中 ID 作为授权、或把失败行过滤掉，均不能批准生产。
+上线前必须先关闭两个 P0：`CMDB-F36` 在任务保存、下发和条件性回写三处绑定真实授权子网 scope；`CMDB-F38` 为租约续租、generation fencing 与批次 Operation 建立端到端单 owner。随后修复空/失败快照误离线、真实总资源预算和 CIDR 原子范围约束。跨域 `CMDB-F14/F16/F25/F30` 也必须一起收敛；仅延长租约、增加 semaphore、继续以选中 ID 作为授权、或把失败行过滤掉，均不能批准生产。
