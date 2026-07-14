@@ -32,15 +32,15 @@
 
 ## 02 实例写入
 
-- 业务承诺：待补充
-- 入口：待补充
-- 核心调用链：待补充
-- 外部依赖：待补充
-- 关键测试：待补充
-- 执行命令：待补充
-- 结果：待补充
-- 覆盖率：待补充
-- 未验证项：待补充
+- 业务承诺：实例 create/update/delete/batch 在组织与实例权限内执行字段、枚举、唯一规则和文件校验；相同幂等请求只产生一次图事实。跨 FalkorDB、Django ORM 文件/审计台账和自动关系投影的失败必须可核对、可重试且旧 Worker 不得覆盖新 owner。Task 2 的 `CMDB-F01`/`CMDB-F02` 分别提供唯一规则与自动关系上游契约，本域不重复计数。
+- 入口：`InstanceViewSet.create/partial_update/destroy/instance_batch_update/instance_batch_delete`；Service 入口 `InstanceManage.instance_create/instance_update/batch_instance_update/instance_batch_delete`；恢复入口 `reconcile_cmdb_operations_task`；Enterprise 门面 `instance_ops.extensions`。
+- 核心调用链：单 create/update → 菜单/组织/实例权限 → `OperationService.start` → `GRAPH_WRITING` owner → 唯一签名锁 → 带 `_cmdb_operation_id` 图写 → `GRAPH_COMMITTED` + change_record/auto_relation Outbox → lease 消费 → COMPLETED；Beat 每 5 分钟核对过期图写和重投 Outbox。批量更新/删除直接编排图、文件、审计和自动关系，不进入 Operation。
+- 外部依赖：FalkorDB/GraphClient、Django ORM/SQLite 测试库、Celery broker/worker/Beat、Enterprise 文件台账与对象存储、SystemMgmt 组织权限。
+- 关键测试：`test_instance_service_crud.py`、`test_operation_service.py`、`test_operation_outbox.py`、`test_unique_write_lock.py`、`bdd/test_instance_crud_bdd.py`；静态补充审查 `test_instance_views.py` 与自动关系 task/调度实现。
+- 执行命令：`SECRET_KEY=test DB_ENGINE=sqlite DB_NAME=/private/tmp/cmdb-task3.sqlite3 ENABLE_CELERY=true INSTALL_APPS=system_mgmt,node_mgmt,cmdb MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false uv run pytest -q -o addopts='' apps/cmdb/tests/test_instance_service_crud.py apps/cmdb/tests/test_operation_service.py apps/cmdb/tests/test_operation_outbox.py apps/cmdb/tests/test_unique_write_lock.py apps/cmdb/tests/bdd/test_instance_crud_bdd.py --cov=apps.cmdb.services.instance --cov=apps.cmdb.services.operation_service --cov-report=term-missing`。
+- 结果：沙箱首次退出 2（uv cache 无权限，未收集）；受控权限原命令退出 1，49 passed、1 failed in 28.76s。唯一失败 `test_instance_batch_delete_ok` 是历史 #0076：夹具未 mock incoming 自动关系图查询而连接空 Neo4j URI，不是本次回归。
+- 覆盖率：`instance.py` 37%（905/567 missed）；`operation_service.py` 82%（192/34 missed）；合计 45%（1097/601 missed）。实例服务和功能域合计未达质量门槛。
+- 未验证项：Enterprise 子模块未初始化，真实文件台账/GC/overlay 行为不可用；未执行真实 FalkorDB、真实 broker/worker 崩溃、并发进程、MySQL/PostgreSQL 和大规模资源验证。旧 Outbox Worker owner 隔离已有测试；旧图 Worker 晚到、5 次 FAILED、批量部分失败和删除副作用没有测试。主 Findings：`CMDB-F08`–`CMDB-F13`（P0 1/P1 3/P2 2），详见 [02-instance-write.md](02-instance-write.md)。
 
 ## 03 查询与拓扑
 
