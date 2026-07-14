@@ -9,6 +9,7 @@ from apps.core.logger import opspilot_logger as logger
 from apps.core.mixinx import EncryptMixin
 from apps.core.utils.loader import LanguageLoader
 from apps.opspilot.models import LLMModel, SkillTools, SkillTypeChoices
+from apps.opspilot.metis.llm.chain.report_renderers import strip_phantom_tool_calls
 from apps.opspilot.services.builtin_tools import (
     BUILTIN_ATTACHMENT_FILE_TOOL_NAME,
     BUILTIN_MONITOR_TOOL_NAME,
@@ -231,6 +232,13 @@ class ChatService:
             if not show_think:
                 content = re.sub(r"<think>.*?</think>", "", result["message"], flags=re.DOTALL).strip()
                 result["message"] = content
+
+            # 抹掉 LLM 幻觉的 phantom <tool_call> 文本
+            # 流式 agui_stream 路径已在 _handle_chat_model_stream_content /
+            # _handle_chat_model_end_event 中 strip,这里是非流式 invoke_chat 路径
+            # 的兜底,避免漏到 wiki 候选/调用方。
+            if result.get("message"):
+                result["message"] = strip_phantom_tool_calls(result["message"])
 
             # 自动落候选:在 chat 完成后,如果 kwargs 标记保存且有 wiki 引用,把回答落为待审核候选页
             saved_page = _maybe_save_answer_as_wiki_candidate(kwargs, result, doc_map)
