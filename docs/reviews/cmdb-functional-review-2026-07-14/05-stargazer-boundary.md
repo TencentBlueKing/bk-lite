@@ -114,7 +114,7 @@ CMDB 下发到 Stargazer 的主链路已经形成：`CollectModelService` 生成
 
 - brief 原始命令：`uv run pytest -q tests/test_collect_multicred.py tests/test_collect_credential_push.py tests/test_ip_discovery_targets.py tests/collect_fixtures/`。结果在收集期退出 2：`test_ip_discovery_targets.py` 导入不存在的 `plugins.inputs.ip_discovery`，未执行任何测试。
 - 拆分后 `test_collect_multicred.py + test_collect_credential_push.py` 为 49 passed；它们证明 host/credential 候选、部分 cooldown 和成功 publish 后 cursor 更新，但大量使用 fake cache/publish，不能证明真实 Redis/NATS、未知投递、应用 ack、同 score 分页或日志脱敏。
-- `tests/collect_fixtures/` 为 203 passed、6 failed：测试要求 mssql 和 57 个 MODEL_SPECS，实际 catalog 无 mssql 且为 56；真实 Docker/VM/SSH fixture 依赖也未在本机启动。该失败与 7 个主 Findings 不同根因，但说明 brief 基线并非全绿。
+- 独立运行 `tests/collect_fixtures/` 为 154 passed、6 failed、1 warning；与上面的 49 个多凭据/凭据推送测试组合运行时才是 203 passed、6 failed。fixture 失败来自测试要求 mssql 和 57 个 MODEL_SPECS，实际 catalog 无 mssql，且为 56；真实 Docker/VM/SSH fixture 依赖也未在本机启动。该失败与 7 个主 Findings 不同根因，但说明 brief 基线并非全绿。
 - 额外 `test_network_config_file_info.py` 为 10 passed，却没有命令策略集合一致性和空命令用例；`test_ip_discovery_scanner.py` 同样因旧模块路径收集失败。
 - `make lint` 退出 2：Makefile 执行 `pre-commit run --all-files`，但 `agents/stargazer/.pre-commit-config.yaml` 不存在；同时无法写用户缓存日志。不能声明 lint 通过。
 - 覆盖率未获得：当前 Stargazer 环境未安装 pytest-cov，`--cov` 命令退出 4，不能声称达到相关模块 80%/核心路径 90%。
