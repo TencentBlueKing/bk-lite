@@ -40,11 +40,25 @@ const SUPPORTED_LANGUAGES: ReadonlyArray<LanguageOption> = [
  *   - Dropdown 项过滤当前 locale,只展示另一语言。
  *   - aria-label 走 signin.languageToggle.label(i18n 键)。
  */
+import { useSession } from 'next-auth/react';
+import { useUserApi } from '@/app/system-manager/api/user';
 export default function SigninLanguageToggle() {
   const { t } = useTranslation();
   const { locale, setLocale } = useLocale();
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const { data: session } = useSession();
+  const { editUser } = useUserApi();
+
+  // 同步后端 User.locale(已登录用户改完后端才能返回对应语言的 monitor i18n)
+  const syncBackendLocale = async (langKey: string) => {
+    if (!session?.user?.id) return;
+    try {
+      await editUser({ id: session.user.id, locale: langKey });
+    } catch {
+      // 后端同步失败不影响前端切换(本地化已生效,只是后端 monitor i18n 仍按旧 locale)
+    }
+  };
 
   // 点击外部关闭
   useEffect(() => {
@@ -109,6 +123,7 @@ export default function SigninLanguageToggle() {
                   role="menuitem"
                   onClick={() => {
                     setLocale(lang.key);
+                    syncBackendLocale(lang.key);
                     setOpen(false);
                   }}
                   className="flex w-full items-center px-3 py-2 text-left text-sm text-(--color-text-1) hover:bg-black/[0.02]"

@@ -55,9 +55,12 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
         for result in results:
             if result.get("template_type") in {"api", "pull"}:
                 result["display_name"] = result.get("display_name") or result["name"]
-                result["display_description"] = result["description"]
+                result["display_description"] = lan.get(
+                    f"{LanguageConstants.MONITOR_OBJECT_PLUGIN}.{result['name']}.desc"
+                ) or result["description"]
             else:
                 plugin_key = f"{LanguageConstants.MONITOR_OBJECT_PLUGIN}.{result['name']}"
+                # 始终优先使用 i18n 翻译,DB 字段只作为最终 fallback
                 result["display_name"] = lan.get(f"{plugin_key}.name") or result.get("display_name") or result["name"]
                 result["display_description"] = lan.get(f"{plugin_key}.desc") or result["description"]
             result["is_custom"] = result.get("template_type") in {"api", "pull", "snmp"}
