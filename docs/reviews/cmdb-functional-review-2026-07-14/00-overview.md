@@ -13,7 +13,7 @@
 | 03 查询与拓扑 | 已完成 | 1 | 4 | 1 | 0 | Request changes | [03-query-topology.md](03-query-topology.md) |
 | 04 自动采集 | 已完成 | 3 | 3 | 0 | 0 | Request changes | [04-auto-collection.md](04-auto-collection.md) |
 | 05 Stargazer 边界 | 已完成 | 3 | 4 | 0 | 0 | Block | [05-stargazer-boundary.md](05-stargazer-boundary.md) |
-| 06 配置文件 | 已完成 | 0 | 3 | 0 | 0 | Request changes | [06-config-file.md](06-config-file.md) |
+| 06 配置文件 | 已完成 | 2 | 1 | 0 | 0 | Block | [06-config-file.md](06-config-file.md) |
 | 07 IPAM | 未开始 | 0 | 0 | 0 | 0 | 待评审 | [07-ipam.md](07-ipam.md) |
 | 08 专项资源视图 | 未开始 | 0 | 0 | 0 | 0 | 待评审 | [08-specialized-resource-views.md](08-specialized-resource-views.md) |
 | 09 Node 同步 | 未开始 | 0 | 0 | 0 | 0 | 待评审 | [09-node-sync.md](09-node-sync.md) |

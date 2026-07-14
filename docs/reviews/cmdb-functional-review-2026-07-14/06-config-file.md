@@ -4,22 +4,35 @@
 
 本域从即时触发与 Stargazer `receive_config_file_result` 回调开始，追踪到 execution 校验、版本业务键、临时对象、DB `PENDING`、`transaction.on_commit` 发布、`READY/ERROR/DELETE_PENDING`、15 分钟补偿、读取/diff/手动上传/删除权限。采集版本的 `(collect_task, instance_id, version)` 唯一约束、同键同文幂等、同键异文拒绝、旧 execution 拒绝、跨实例/跨文件 diff 双边权限、删除失败保留待补偿状态均有当前代码与测试证据。
 
-确认 3 个主 Finding，均为 P1：`CMDB-F33`–`CMDB-F35`。`cleanup_orphan_temp_objects` 全量物化 DB 引用键和 MinIO 目录，与 Task 5 `CMDB-F23` 的周期清理无界扫描同根因；配置 callback/base64、读取和 diff 的输入输出预算也引用 Task 6 `CMDB-F28`，不重复计数。任意 MinIO/外部错误进入日志、`content_error` 或 HTTP 错误正文的脱敏问题引用 `CMDB-F25`。Recommendation 为 **Request changes**。
+确认 3 个主 Finding：P0 2 个、P1 1 个，编号保持为 `CMDB-F33`–`CMDB-F35`。`cleanup_orphan_temp_objects` 全量物化 DB 引用键和 MinIO 目录，与 Task 5 `CMDB-F23` 的周期清理无界扫描同根因；配置 callback/base64、读取和 diff 的输入输出预算也引用 Task 6 `CMDB-F28`，不重复计数。任意 MinIO/外部错误进入日志、`content_error` 或 HTTP 错误正文的脱敏问题引用 `CMDB-F25`。Recommendation 为 **Block**。
 
 ## 2. Findings
 
-### Finding CMDB-F33：正文发布前任务与 callback 已宣告成功，永久发布失败只留下不可读的 ERROR 版本
+### Finding CMDB-F33：任务先置 SUCCESS，正文发布失败被吞后 callback 仍返回 processed=True
 
-- Severity: P1
+- Severity: P0
 - Location: `server/apps/cmdb/services/config_file_service.py:96-178,287-340,440-493`；`server/apps/cmdb/services/config_file_content_lifecycle.py:37-98,157-186`；`server/apps/cmdb/nats/nats.py:769-784`；`server/apps/cmdb/serializers/config_file_serializer.py:13-29`
 - Root cause category: 状态机设计缺陷
-- Evidence: 成功 callback 在同一 DB 事务中先创建带正式 `content.name` 的 `PENDING` 版本，再立即通过 `_update_task_lifecycle` 把 `CollectModels.exec_status` 推进 `SUCCESS`；正文只在事务提交后的 robust `on_commit` 中发布。`publish_version` 捕获 MinIO/哈希/对象键异常并仅把版本改为 `ERROR`，不会回写采集任务；NATS handler 又只检查 `process_collect_result` 的 `error` 字段，返回 `processed=True`。版本 serializer 不暴露 `content_status/content_error`，列表仍显示业务 `status=success`，而 content/diff 入口随后因非 `READY` 拒绝读取。15 分钟恢复可重试临时故障，但永久失败没有任务终态纠正或用户可见失败闭环。
+- Evidence: `process_collect_result` 在最外层 `transaction.atomic()` 中创建带正式 `content.name` 的 `PENDING` 版本，并通过 `_update_task_lifecycle` 先把 `CollectModels.exec_status` 推进 `SUCCESS`。`_create_or_get_version` 注册 robust `on_commit`；handler 没有外层事务，因此退出该最外层 atomic 时同步调用 `publish_version`。发布遇到 MinIO/哈希/对象键异常时，`publish_version` 将版本改为 `ERROR` 并吞掉异常、返回 `False`，但回调返回值无人检查；随后 `process_collect_result` 无 `error` 返回，NATS handler 据此返回 `processed=True`。版本 serializer 不暴露 `content_status/content_error`，列表仍显示业务 `status=success`，而 content/diff 因非 `READY` 拒绝读取。若调用方确有更外层事务，on_commit 会进一步延后，此时 handler 还可能在正文仍 PENDING 时返回。
 - Trigger: 临时对象已写入且 DB 提交成功后，MinIO 正式对象保存失败、正式键已有不同正文、临时对象缺失/哈希不匹配，且后续周期重试持续失败。
 - Impact: 调用方、采集任务与列表均观察到成功，实际正文永久不可读且 diff 不可用；监控不会按任务失败告警，上游也不会重试采集，配置留存与审计结论失真。
 - Why existing tests missed it: DB 流水线 fixture 把 `publish_version` 固定桩成 READY 成功；生命周期测试单独证明发布失败会进入 ERROR，却不连接 `CollectModels` 或 NATS envelope；NATS E2E 又直接 mock `process_collect_result`。没有一个测试贯穿“DB 提交成功 + 发布失败 → 任务/callback/列表/content”外部结果。
-- Minimal safe fix: 把“正文已发布”纳入采集任务终态条件：创建版本后保持任务 `RUNNING/PUBLISHING`，由带 generation/owner 的发布完成器在确认 `READY` 后原子推进任务成功；发布失败或达到重试上限时推进任务 ERROR，并让 callback 明确返回 staged/pending 或业务失败，不能用预填 formal key 代表可用正文。
+- Minimal safe fix: 只有版本确认 `READY` 后才推进任务 `SUCCESS`。当前同步发布若进入 `ERROR`，`process_collect_result` 必须返回稳定错误，NATS handler 返回 `processed=False/error`；若调用栈确有外层事务、发布尚未执行，则任务与 callback 必须显式返回 pending，不能把预填 formal key 当作正文可用。
 - Required tests: on_commit 保存失败、正式键冲突、临时对象丢失及持续重试耗尽；逐一断言版本状态、任务终态、NATS `processed/error`、列表字段、content/diff 响应和恢复后从 pending/error 到 READY 的唯一合法转换；覆盖旧恢复 Worker 不得覆盖新 generation。
-- Long-term design note: `ConfigFileVersion` 应是正文发布状态的权威实体，任务汇总只消费其持久化状态事件；不要由 callback 编排器猜测对象存储已经完成。通用 broker/application ack 仍复用 `CMDB-F04`，本 Finding 聚焦本域已有恢复器下的错误终态发布。
+- Long-term design note: `ConfigFileVersion` 应是正文发布状态的权威实体，任务汇总只消费其持久化状态事件；异步恢复长期应增加 generation/owner fencing，防止超租约旧 Worker 覆盖新处理者。通用 broker/application ack 仍复用 `CMDB-F04`，本 Finding 聚焦本域已有恢复器下的错误终态发布。
+
+### Finding CMDB-F35：超过 5 MB 的正文被完整接收后静默截断，仍以 success 参与版本读取与 diff
+
+- Severity: P0
+- Location: `server/apps/cmdb/models/config_file_version.py:16-31,57-82`；`server/apps/cmdb/services/config_file_service.py:90-165,403-423,495-503,792-820`；`server/apps/cmdb/views/config_file.py:62-139,174-221`
+- Root cause category: 跨层契约不一致
+- Evidence: 模型已经定义 `FILE_TOO_LARGE` 业务状态，但采集成功路径先对任意 base64 完整解码和 UTF-8 物化，再把超过 5 MB 的正文截断；随后仍以 `status=success`、截断内容哈希创建版本，采集路径的 `file_size` 还保留 payload 原值。手动上传同样先接收完整字符串再截断并返回成功。读取与 diff 无任何 `truncated` 标志，会把不完整正文作为真实配置比较。现有单测明确锁定“超限截断”，但没有证明该行为符合配置留存契约。
+- Trigger: Stargazer/直连 callback 或手动上传提交大于 5 MB 的文本配置；恶意调用方还可声明小 `file_size`，实际正文仍只在完整解码后判断。
+- Impact: 用户在成功版本上读取或比较的是被静默删尾的业务正文，截断部分对平台不可见，完整配置语义发生数据丢失，可能漏掉关键安全/网络配置变更。临时对象保存的也是截断后正文，并不存在可供恢复完整内容的原始对象；同时 5 MB 只限制最终存储，不限制请求、base64 解码、原始字符串与 diff 响应的内存放大。
+- Why existing tests missed it: 纯函数测试只断言截断后的字节长度，等于把静默删尾锁定成实现行为，却没有验证“success 版本必须代表完整正文”的业务契约；四文件聚焦套件没有超限 callback/手动上传的任务状态、file_size、列表、content/diff 或资源占用测试，也没有断言 `FILE_TOO_LARGE`。Agent 大文件与 NATS 放大已在 `CMDB-F28` 登记，但服务端仍没有 fail-closed 契约测试。
+- Minimal safe fix: 在入口按编码后长度、声明 size 与解码后长度多层校验，并在分配大对象前拒绝超限；超限返回/落地 `FILE_TOO_LARGE` 且不创建成功版本。若产品确需保存摘要，必须使用独立 `truncated` 状态、真实已存字节数和原始大小字段，并禁止把摘要作为完整正文参与 diff。
+- Required tests: callback/手动入口上限−1、上限、上限+1，伪造 file_size、base64 放大、非法编码、超大 diff 输出；超限必须在 stage/MinIO 前失败，任务/NATS/HTTP 显式可见，零 success 版本。与 Agent `CMDB-F28` 联合验证端到端请求和输出预算。
+- Long-term design note: 文件大小策略应是控制面、Agent、NATS schema、Service 和对象存储共享的版本化契约；“拒绝、流式存储或摘要”只能选择一个显式产品语义，不能由 Service 静默截断。
 
 ### Finding CMDB-F34：手动上传的毫秒版本与正式对象键可并发碰撞，后发布者失败但 HTTP 仍返回创建成功
 
@@ -33,19 +46,6 @@
 - Minimal safe fix: 为手动版本建立不可碰撞且可幂等的业务键（服务端 request/idempotency ID 或 UUID），正式对象键至少包含该唯一 ID；创建与响应必须依据发布状态，冲突时返回稳定的 409/失败结果，不能依赖毫秒时钟或 nullable 唯一约束。
 - Required tests: 冻结同一毫秒并发上传不同/相同正文、重复 Idempotency-Key、时间回拨、不同实例/路径；断言 DB 行、对象键、READY/ERROR、HTTP 状态、重试和孤儿临时对象均可确定收敛，并在 SQLite/MySQL/PostgreSQL 验证 nullable unique 语义。
 - Long-term design note: 展示版本号与存储身份应分离；展示可保留采集时间，持久身份必须是全局唯一且由 DB/协议产生，MinIO key 不应由非唯一业务时间拼接。
-
-### Finding CMDB-F35：超过 5 MB 的正文被完整接收后静默截断，仍以 success 参与版本读取与 diff
-
-- Severity: P1
-- Location: `server/apps/cmdb/models/config_file_version.py:16-31,57-82`；`server/apps/cmdb/services/config_file_service.py:90-165,403-423,495-503,792-820`；`server/apps/cmdb/views/config_file.py:62-139,174-221`
-- Root cause category: 跨层契约不一致
-- Evidence: 模型已经定义 `FILE_TOO_LARGE` 业务状态，但采集成功路径先对任意 base64 完整解码和 UTF-8 物化，再把超过 5 MB 的正文截断；随后仍以 `status=success`、截断内容哈希创建版本，采集路径的 `file_size` 还保留 payload 原值。手动上传同样先接收完整字符串再截断并返回成功。读取与 diff 无任何 `truncated` 标志，会把不完整正文作为真实配置比较。现有单测明确锁定“超限截断”，但没有证明该行为符合配置留存契约。
-- Trigger: Stargazer/直连 callback 或手动上传提交大于 5 MB 的文本配置；恶意调用方还可声明小 `file_size`，实际正文仍只在完整解码后判断。
-- Impact: 用户在成功版本上读取、下载或比较被静默删尾的配置，可能遗漏关键安全/网络配置变更；同时 5 MB 只限制最终存储，不限制请求、base64 解码、原始字符串与 diff 响应的内存放大。
-- Why existing tests missed it: 纯函数测试只断言截断后的字节长度；四文件聚焦套件没有超限 callback/手动上传的任务状态、file_size、列表、content/diff 或资源占用测试，也没有断言 `FILE_TOO_LARGE`。Agent 大文件与 NATS 放大已在 `CMDB-F28` 登记，但服务端仍没有 fail-closed 契约测试。
-- Minimal safe fix: 在入口按编码后长度、声明 size 与解码后长度多层校验，并在分配大对象前拒绝超限；超限返回/落地 `FILE_TOO_LARGE` 且不创建成功版本。若产品确需保存摘要，必须使用独立 `truncated` 状态、真实已存字节数和原始大小字段，并禁止把摘要作为完整正文参与 diff。
-- Required tests: callback/手动入口上限−1、上限、上限+1，伪造 file_size、base64 放大、非法编码、超大 diff 输出；超限必须在 stage/MinIO 前失败，任务/NATS/HTTP 显式可见，零 success 版本。与 Agent `CMDB-F28` 联合验证端到端请求和输出预算。
-- Long-term design note: 文件大小策略应是控制面、Agent、NATS schema、Service 和对象存储共享的版本化契约；“拒绝、流式存储或摘要”只能选择一个显式产品语义，不能由 Service 静默截断。
 
 ### 跨域证据与未计数风险
 
@@ -75,6 +75,6 @@
 
 ## 5. Recommendation
 
-**Request changes**。
+**Block**。
 
-先关闭 `CMDB-F33`，使 READY 成为任务成功和 callback 业务成功的必要条件；再用不可碰撞、可幂等的手动业务键/对象键修复 `CMDB-F34`，并将 `CMDB-F35` 改为入口 fail-closed 或显式摘要语义。联合 `CMDB-F23/F28/F25` 补齐分页资源预算、端到端大小限制和错误脱敏。当前 66 项绿灯证明了局部状态转换，但不能证明 MinIO 失败、并发上传和超限配置下的外部真实性，尚不建议合并为生产可用。
+先关闭两个 P0：`CMDB-F33` 使 READY 成为任务成功和 callback 业务成功的必要条件，`CMDB-F35` 将超限正文改为入口 fail-closed 或显式摘要语义；再用不可碰撞、可幂等的手动业务键/对象键修复 `CMDB-F34`。联合 `CMDB-F23/F28/F25` 补齐分页资源预算、端到端大小限制和错误脱敏。当前 66 项绿灯证明了局部状态转换，但不能证明 MinIO 失败、并发上传和超限配置下的外部真实性，尚不建议合并为生产可用。

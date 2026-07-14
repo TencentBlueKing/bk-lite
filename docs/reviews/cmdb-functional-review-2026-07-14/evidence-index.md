@@ -88,7 +88,7 @@
 - 执行命令：`MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false SECRET_KEY=test DB_ENGINE=sqlite DB_NAME=/private/tmp/cmdb-task7-review.sqlite3 ENABLE_CELERY=true INSTALL_APPS=system_mgmt,node_mgmt,cmdb uv run --with jsonschema pytest -q -o addopts='' apps/cmdb/tests/test_config_file_process_collect_db.py apps/cmdb/tests/test_config_file_content_lifecycle.py apps/cmdb/tests/test_config_file_views.py apps/cmdb/tests/e2e/test_config_file_pipeline.py --cov=apps.cmdb.services.config_file_service --cov=apps.cmdb.services.config_file_content_lifecycle --cov=apps.cmdb.views.config_file --cov=apps.cmdb.collection.collect_tasks.config_file_collect --cov=apps.cmdb.nats.nats --cov-report=term-missing`。
 - 结果：沙箱首次退出2（uv cache 无权限，未收集）；受控缓存权限重跑退出0，66 passed in 8.21s。测试证明采集业务键、旧 execution、权限、局部发布/删除失败、恢复和 NATS envelope，但发布失败与任务/callback 被 Mock 分层隔离。
 - 覆盖率：content lifecycle 91%、config service 73%、config View 81%、即时触发协调器 27%、NATS 整文件16%，五目标合计46%；主 Service、触发链和整体未达80%/核心90%门槛。
-- 未验证项：真实 MinIO/NATS/Celery worker、发布与恢复并发、MySQL/PostgreSQL nullable unique、同毫秒手动上传、大文件/base64/diff 输出、大 MinIO 目录和 DB 引用集均未执行。主 Findings `CMDB-F33`–`CMDB-F35`（P1 3）；孤儿清理无界扫描引用 `CMDB-F23`，端到端资源放大引用 `CMDB-F28`，异常泄露引用 `CMDB-F25`，详见 [06-config-file.md](06-config-file.md)。
+- 未验证项：真实 MinIO/NATS/Celery worker、发布与恢复并发、MySQL/PostgreSQL nullable unique、同毫秒手动上传、大文件/base64/diff 输出、大 MinIO 目录和 DB 引用集均未执行。主 Findings `CMDB-F33`–`CMDB-F35`（P0 2/P1 1）；孤儿清理无界扫描引用 `CMDB-F23`，端到端资源放大引用 `CMDB-F28`，异常泄露引用 `CMDB-F25`，详见 [06-config-file.md](06-config-file.md)。
 
 ## 07 IPAM
 
