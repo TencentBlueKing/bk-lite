@@ -18,7 +18,7 @@
 | 08 专项资源视图 | 已完成 | 2 | 1 | 0 | 0 | Block | [08-specialized-resources.md](08-specialized-resources.md) |
 | 09 Node 同步 | 已完成 | 4 | 4 | 0 | 0 | Block | [09-node-sync.md](09-node-sync.md) |
 | 10 Enterprise 自定义上报 | 已完成 | 3 | 3 | 0 | 0 | Block | [10-custom-reporting.md](10-custom-reporting.md) |
-| 11 变更与订阅 | 已完成 | 2 | 1 | 0 | 0 | Block | [11-change-subscription.md](11-change-subscription.md) |
+| 11 变更与订阅 | 已完成 | 2 | 2 | 0 | 0 | Block | [11-change-subscription.md](11-change-subscription.md) |
 | 12 NATS / RPC | 未开始 | 0 | 0 | 0 | 0 | 待评审 | [12-nats-rpc.md](12-nats-rpc.md) |
 | 13 跨域架构复核 | 未开始 | 0 | 0 | 0 | 0 | 待评审 | [13-cross-domain-architecture.md](13-cross-domain-architecture.md) |
 
@@ -28,4 +28,4 @@
 
 10 Enterprise 自定义上报新增 `CMDB-F52`–`CMDB-F57`（P0 3/P1 3）；关系双端授权、批写唯一锁、删除恢复和资源预算分别引用既有 `CMDB-F14/F10/F11/F23`。本域 Overlay 来自主工作区 ignored 安装态，根 gitlink 未初始化，结论可复核当前运行态但不能由当前主仓库分支单独重建。
 
-11 变更与订阅新增 `CMDB-F58`–`CMDB-F60`（P0 2/P1 1）；订阅与镜像无界扫描/积压引用既有 `CMDB-F23`，原始事件与异常日志引用既有 `CMDB-F25`。Delivery 的租约、代次和永久错误骨架通过聚焦测试，但规则授权与 ChangeRecord View 均缺跨组织负向证明。
+11 变更与订阅新增 `CMDB-F58`–`CMDB-F61`（P0 2/P1 2）；`CMDB-F61` 独立负责订阅规则/Delivery/实例/关系/ChangeRecord 扫描的稳定游标、总预算、deadline 与可恢复 checkpoint，`CMDB-F23` 只作为其他域相似模式及 Mirror 调用方批量参考；原始事件与异常日志引用既有 `CMDB-F25`。Delivery 的租约、代次和永久错误骨架通过聚焦测试，但规则授权、ChangeRecord View 与规模恢复均缺负向证明。

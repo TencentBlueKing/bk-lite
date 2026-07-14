@@ -8,7 +8,7 @@
 
 镜像链还存在一致性缺口：单条管理类记录在外层事务提交前同步 RPC，失败只写 warning 且没有重试，外层回滚时平台侧又可能保留不存在的操作；批量 Outbox 在第 N 条 RPC 失败时整批 RETRY，重投会重复前 N-1 条成功日志。订阅 Delivery 的至少一次发送在“外部发送成功、SENT 更新前崩溃”时同样可能重复，但项目已明确采用至少一次模型，本域将其列为需由下游幂等键收敛的已知限制，不另立 Finding。
 
-本域新增 3 个主 Finding：`CMDB-F58`–`CMDB-F60`，P0 2 个、P1 1 个、P2/P3 0 个。订阅/镜像无规则数、实例数、关系数、ChangeRecord 数、Delivery 数、RPC 总量和 deadline 硬上限引用既有 `CMDB-F23`；原始非法 event、异常字符串及下游 message 写日志/`last_error` 引用既有 `CMDB-F25`，均不重复计数。Recommendation 为 **Block**。
+本域新增 4 个主 Finding：`CMDB-F58`–`CMDB-F61`，P0 2 个、P1 2 个、P2/P3 0 个。`CMDB-F61` 独立登记订阅检查与恢复的资源边界：它有自己的 Beat 入口、规则/Delivery 游标、per-rule checkpoint 和公平性责任；既有 `CMDB-F23` 仅作为其他域同类无界物化模式以及 Mirror 调用方批量输入的参考，不能替代本域修复。原始非法 event、异常字符串及下游 message 写日志/`last_error` 引用既有 `CMDB-F25`，不重复计数。Recommendation 为 **Block**。
 
 ## 2. Findings
 
@@ -51,9 +51,22 @@
 - Required tests: 单条 RPC 失败后 Beat 重试、外层事务回滚零外部发送、单/批 payload 完全一致；100 条第 2/50/100 条失败只补失败项；Worker 部分成功崩溃、租约接管、旧 owner 晚到、5 次终态、人工重放、相同 event ID 下游去重和敏感错误脱敏。
 - Long-term design note: ChangeRecord 是源事实，OperationLog 是异步投影；投影协议应以 per-record event ID 和消费者幂等表达，不应由调用方按单条/批量选择可靠性语义。
 
+### Finding CMDB-F61：订阅检查与恢复全量物化且无稳定游标、总预算或 deadline
+
+- Severity: P1
+- Location: `server/apps/cmdb/services/subscription_task.py:43-82,85-95,195-206`；`server/apps/cmdb/services/subscription_trigger.py:129-218,220-263,351-439,441-668`
+- Root cause category: 资源边界缺失
+- Evidence: `check_rules` 先用 `list(...values_list)` 全量物化全部 enabled rule IDs，`_get_ready_delivery_ids` 又无 limit 地全量返回所有 PENDING/到期 RETRY Delivery；两者都没有稳定 cursor、单轮 batch 或 deadline。每条 rule 在持有 `select_for_update` 的事务中，`_get_current_instances` 仅依赖下游 `count` 循环翻页并把所有实例累积到列表，没有最大页数、实例总量或重复页保护。关系批查失败后 `_get_relation_instances` 对每个实例逐一 RPC fallback；关联实例 ID、名称和多类 ChangeRecord 窗口继续整批集合/列表物化，最后所有 Delivery IDs 聚合后一次 `send_task`。单个大规则或异常 count 可占满 Beat 周期和数据库行锁；前序规则持续超时还会让后续规则与恢复投递长期得不到处理。
+- Trigger: 启用规则、ready Delivery 或单规则匹配实例/关系/ChangeRecord 持续增长；图查询返回异常偏大 count、重复非空页，批量关系接口失败触发逐实例 fallback，或下游 RPC/图查询长尾。
+- Impact: Beat/Worker 内存、CPU、图连接、NATS RPC、数据库连接与事务锁时长无界增长；规则编辑/停用被长事务阻塞，5 分钟调度可重叠积压，通知延迟失去上限。由于没有稳定 cursor 和可恢复 per-rule checkpoint，进程退出后只能从整轮开头重扫，热点前序规则可反复挤占资源并饥饿后续规则及已有 RETRY Delivery。
+- Why existing tests missed it: Trigger 测试对 `InstanceManage` 使用小型 mock，未执行 `_get_current_instances` 的正常分页/异常 count/重复页；关系测试只覆盖单个小集合，未验证批查失败后的 RPC 次数上限。Task 测试最多一个 rule、两个 channel 和一个 Delivery，不构造积压、公平性、deadline、进程中断续跑或多轮 cursor。82 项聚焦测试全部在小数据内完成，Trigger 覆盖率仍仅 70%。
+- Minimal safe fix: enabled rules 与 ready Delivery 分别采用主键稳定游标和固定 batch，游标/扫描 checkpoint 持久化并保证跨轮公平；每条 rule 设置实例总量、页数、关系边/逐实例 fallback RPC、关联 ID、ChangeRecord 行数和待建 Delivery 数硬预算，并以单调 deadline 在每个分页/RPC/物化阶段检查。超限或 deadline 到达时持久化可恢复 checkpoint 和结构化失败，不推进 `last_check_time`/snapshot；缩短 `select_for_update` 范围，不能在长图/RPC 扫描期间持有规则行锁。
+- Required tests: 多批 rule/Delivery 按稳定 ID cursor 无遗漏无重复；中途新增/删除、进程退出和 checkpoint 恢复；实例异常 count、重复页、最大页/总量；关系批查失败后的 fallback RPC 上限；ChangeRecord/关联 ID/Delivery 预算；deadline 在各阶段触发且不推进快照；热点首规则不饥饿后续规则与 RETRY Delivery；并发编辑规则的锁时长上界及内存/RPC 次数断言。
+- Long-term design note: 订阅检测应是可分片、可续跑的持久化扫描作业，规则游标、数据窗口 checkpoint 和 Delivery 恢复游标分别归订阅调度层负责。`CMDB-F23` 描述自动采集/清理的相似历史模式，Mirror 调用方批量也可参考其预算原则，但入口、状态与修复责任均不同，不能替代本 Finding。
+
 ### 跨域证据与不重复计数风险
 
-- `CMDB-F23`：`check_rules` 一次性加载全部启用 rule IDs 和全部 ready delivery IDs；每条规则的实例分页没有最大页数/实例总量/deadline，随后关系、关联名称和 ChangeRecord 全量物化。Mirror 只限制每行 100 个 payload 和每轮恢复 100 个 event，却不限制调用方 change_records、Outbox 总行数或 RPC 总耗时。该“批次/扫描/内存/外部调用无统一预算”与自动采集主 Finding 同根因，本域不重复计数。修复须覆盖异常 count/重复页、大规则/实例/关系/变更/Delivery 积压、每轮 deadline 与公平游标。
+- `CMDB-F23` 参考边界：自动采集/清理曾出现相似的批次、扫描和内存无预算模式；Mirror 虽限制每行 100 payload、每轮恢复 100 event，调用方 change_records、Outbox 总行数和总 RPC 时间仍可复用该跨域预算原则。订阅规则/Delivery/实例/关系/ChangeRecord 的扫描则由本域主 Finding `CMDB-F61` 负责，因为它有不同的 Beat 入口、checkpoint、稳定游标、公平性和规则锁修复责任，不再用 `CMDB-F23` 代替或重复计数。
 - `CMDB-F25`：`_decode_event_dicts` warning 原样记录非法 `item`，Trigger/Task 多处记录 `error={exc}` 与 traceback，Delivery 把下游 `message` 原样写 `last_error`；现有测试输出实际展示完整非法 payload 和异常文本。该敏感错误面沿用既有主 Finding，不重复计数；应只记录 rule/delivery/event ID、阶段和白名单错误码，正文/字段值/下游响应经统一 sanitizer。
 - Delivery 正向证据：SHA-256 对 canonical event group+rule+channel 去重；规则快照和 Delivery 同事务，delivery 写失败会回滚 checkpoint；broker 失败下轮扫描 PENDING；15 分钟 SENDING 恢复、claim 原子加 attempt、成功/失败按 attempt_count 条件收敛；规则停用/删除和事件无法解码首次即 FAILED。外部发送成功但进程在 SENT 更新前退出仍可能重复，这是已批准“至少一次”模型的固有限制；长期应把 `dedupe_key` 传给 SystemMgmt/渠道 provider 做幂等，不能把测试中的“第二次调用已 SENT 不再发送”等同于崩溃窗口 exactly-once。
 
@@ -82,21 +95,22 @@
 - 没有规则 View、organization/model/instance/condition/recipient/channel 授权测试；现有收件人测试固定全局 `get_group_users` 行为。
 - 没有 ChangeRecord 普通用户两组织 list/retrieve/export；补充静态测试文件全部使用 superuser。
 - Mirror 没有单条事务回滚、失败重试、批内部分成功、租约接管、5 次 FAILED、人工重放、per-payload 幂等和 payload 一致性。
+- 没有多规则/Delivery 积压、稳定 cursor、公平性、中断续跑、实例异常 count/重复页、关系 fallback RPC 上限、ChangeRecord/关系/Delivery 总预算、deadline 或长事务锁时长断言；小数据通过不能证明资源边界。
 - 所有 SystemMgmt、Graph、broker 都是 Mock；未验证真实 NATS/渠道 provider、FalkorDB、MySQL/PostgreSQL、积压与资源上限。
 
 ## 4. Maintainability Verdict
 
-1. 六个月后能否快速理解：Subscription Delivery 状态枚举、退避和代次较集中；但授权只存在于 View 列表，后台 system 查询与收件人 RPC没有显式 scope，读代码容易误以为 rule.organization 已生效。
+1. 六个月后能否快速理解：Subscription Delivery 状态枚举、退避和代次较集中；但授权只存在于 View 列表，后台 system 查询与收件人 RPC没有显式 scope，规则/Delivery 扫描也没有显式作业游标，读代码容易误以为 rule.organization 和单轮调度边界已生效。
 2. 新增同类插件是否需要复制代码：新增 Trigger type 需同时改常量、Serializer、Trigger、snapshot、内容格式和测试；Mirror 单/批还要选择两套路径，复制风险高。
 3. 新增错误类型是否需改多个模块：是。图查询、事件解码、收件人解析、渠道返回和 broker 异常分别用跳过、ValueError、RuntimeError、字符串 message 表达，没有统一 error code/sanitizer。
 4. 新增 callback 模式是否容易扩展：Delivery ID 是良好入口，但没有向下游传播幂等/回执协议；新增渠道仍只能把 RPC 返回当最终发送结果。
-5. 当前接口是否容易被误用：是。Serializer 接受任意组织/用户/组/渠道，Trigger 的 `permission_map={}` 和 SystemMgmt 的非 scoped 方法都是看似方便但会绕过边界的接口。
+5. 当前接口是否容易被误用：是。Serializer 接受任意组织/用户/组/渠道，Trigger 的 `permission_map={}` 和 SystemMgmt 的非 scoped 方法会绕过边界；分页又完全信任 count，调用方无法声明总预算/deadline。
 6. 日志是否足够且不泄密：rule/delivery/event 数量日志有助定位；非法 event、异常和下游 message 原样记录/持久化，引用 `CMDB-F25`，未满足脱敏要求。
-7. 状态异常时能否判断停在哪个阶段：Delivery 可以判断待发/发送/重试/终态；规则检测只有 last_check/snapshot，没有单轮 run/owner/deadline；单条 Mirror 完全无状态，批量 FAILED 无重放闭环。
-8. 设计是否降低复杂度：事务内 checkpoint+Delivery、租约和代次降低了通知重投复杂度；授权上下文丢失、全规则长事务和两套 Mirror 语义把复杂度转移到数据泄露、重复日志和人工对账。
+7. 状态异常时能否判断停在哪个阶段：Delivery 可以判断待发/发送/重试/终态；规则检测只有 last_check/snapshot，没有单轮 run、rule/instance cursor、owner 或 deadline，无法区分未开始、处理中断和超预算；单条 Mirror 完全无状态，批量 FAILED 无重放闭环。
+8. 设计是否降低复杂度：事务内 checkpoint+Delivery、租约和代次降低了通知重投复杂度；授权上下文丢失、全规则长事务、无界重扫和两套 Mirror 语义把复杂度转移到数据泄露、调度饥饿、重复日志和人工对账。
 
 ## 5. Recommendation
 
 **Block**。
 
-发布前先关闭两个 P0：订阅规则从创建到查询、收件人和渠道全链绑定同一 actor/organization scope；ChangeRecord 在写入时固化可信组织并让 list/detail/export 复用同一权限裁剪。随后关闭 `CMDB-F60`，把所有管理类镜像统一为 per-record durable、幂等的提交后投影。跨域 `CMDB-F23/F25` 的资源预算和脱敏也必须覆盖本域。82 个测试通过和 82% 聚焦总覆盖率不能抵消 View 零覆盖、Trigger 70% 及跨组织负向测试缺失。
+发布前先关闭两个 P0：订阅规则从创建到查询、收件人和渠道全链绑定同一 actor/organization scope；ChangeRecord 在写入时固化可信组织并让 list/detail/export 复用同一权限裁剪。随后关闭两个 P1：`CMDB-F60` 把所有管理类镜像统一为 per-record durable、幂等的提交后投影；`CMDB-F61` 把规则、Delivery 和 per-rule 数据扫描改为有稳定 cursor、总预算、deadline 与可恢复 checkpoint 的公平作业。`CMDB-F25` 的脱敏也必须覆盖本域；`CMDB-F23` 仅提供相似模式参考。82 个测试通过和 82% 聚焦总覆盖率不能抵消 View 零覆盖、Trigger 70%、跨组织负向与规模恢复测试缺失。
