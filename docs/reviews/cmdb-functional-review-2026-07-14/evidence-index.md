@@ -50,9 +50,9 @@
 - 外部依赖：FalkorDB/Neo4j 双图驱动、SystemMgmt 权限/组织 RPC、Django ORM Group、openpyxl、Enterprise instance file overlay/MinIO、审计与 Celery 自动关系。
 - 关键测试：`test_instance_views.py`、`test_search_inst_batch.py`、`test_topology_theme.py`、`test_import_organization.py`、`test_import_asso_export.py`、`test_permission_util.py`；额外静态/直接验证排序驱动契约。
 - 执行命令：`SECRET_KEY=test DB_ENGINE=sqlite DB_NAME=/private/tmp/cmdb-task4-review.sqlite3 ENABLE_CELERY=true INSTALL_APPS=system_mgmt,node_mgmt,cmdb MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false uv run pytest -q -o addopts='' apps/cmdb/tests/test_instance_views.py apps/cmdb/tests/test_search_inst_batch.py apps/cmdb/tests/test_topology_theme.py apps/cmdb/tests/test_import_organization.py apps/cmdb/tests/test_import_asso_export.py apps/cmdb/tests/test_permission_util.py --cov=apps.cmdb.views.instance --cov=apps.cmdb.services.instance --cov=apps.cmdb.services.topology_theme --cov=apps.cmdb.graph.drivers.graph_client --cov=apps.cmdb.graph.falkordb --cov-report=term-missing`；Falkor降序复现为 `.venv/bin/python -c "from apps.cmdb.graph.validators import CQLValidator; CQLValidator.validate_field('inst_name DESC')"`。
-- 结果：沙箱首次退出 2（uv cache 无权限，未收集）；受控缓存权限重跑退出 1，115 passed、1 failed in 7.45s。唯一失败为 subnet 主题实现返回 `ipam`、测试仍断言空列表。排序复现退出 1，验证器按预期抛 `Invalid field name: 'inst_name DESC'`，证明现有 Service 与 Falkor 字段契约不兼容。
+- 结果：沙箱首次退出 2（uv cache 无权限，未收集）；受控缓存权限最新重跑退出 1，115 passed、1 failed in 7.38s。唯一失败为 subnet 主题实现返回 `ipam`、测试仍断言空列表。历史 `f2f2ee211` 已明确把 IPAM 迁出主题到独立左侧菜单，`c729f2299` 从并行旧基线新增应用拓扑时意外回带该分支。排序复现退出 1，验证器按预期抛 `Invalid field name: 'inst_name DESC'`，证明现有 Service 与 Falkor 字段契约不兼容；无 `FALKORDB_HOST` 时 GraphClient 实际选择 Neo4j。
 - 覆盖率：`views/instance.py` 53%、`services/instance.py` 16%、`services/topology_theme.py` 95%、`graph_client.py` 29%，合计 33%；FalkorDB 未被测试路径导入，coverage 无可声明数据。本域远低于 75%/核心 90% 门槛。
-- 未验证项：Enterprise 子模块未初始化，真实文件 overlay/MinIO 未验证；无真实 FalkorDB/Neo4j、跨模型关系权限、全文入口、通用/网络拓扑、稳定分页、资源超限、跨组织关联导入、大文件/稠密图、并发和 MySQL/PostgreSQL 验证。主 Findings `CMDB-F14`–`CMDB-F17`（P0 2/P1 1/P2 1），详见 [03-query-topology.md](03-query-topology.md)。
+- 未验证项：Enterprise 子模块未初始化，真实文件 overlay/MinIO 未验证；无真实 FalkorDB/Neo4j、跨模型关系权限、全文入口、通用/网络拓扑、稳定分页、资源超限、跨组织关联导入、大文件/稠密图、并发和 MySQL/PostgreSQL 验证。主 Findings `CMDB-F14`–`CMDB-F19`（P0 1/P1 4/P2 1），详见 [03-query-topology.md](03-query-topology.md)。
 
 ## 04 自动采集
 
