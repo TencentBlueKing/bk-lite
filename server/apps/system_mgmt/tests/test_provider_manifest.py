@@ -314,3 +314,32 @@ def test_capability_contract_still_rejects_empty_root_dn_for_ad_user_sync():
         field for group in template.groups for field in group.fields if field.key == "root_dn"
     )
     assert root_field.required is True
+
+
+def test_ad_login_auth_connection_template_includes_base_dn_required():
+    """AD login_auth.connection_template 必须含 base_dn 必填字段。
+
+    回归锁：2026-07-02 spec 误删此字段，导致 AD 登录报 'AD user not found'。
+    base_dn 是 LDAP search 操作必需的 search_base（RFC 4511 §4.5.1.2），
+    不是应用层冗余字段。本测试保证未来不再被一并删除。
+    """
+    from apps.system_mgmt.providers.manifests.ad import PROVIDER_MANIFEST
+
+    login_auth_capability = next(
+        capability for capability in PROVIDER_MANIFEST.capabilities if capability.key == "login_auth"
+    )
+    base_dn_field = next(
+        (field for field in login_auth_capability.connection_template if field.key == "base_dn"),
+        None,
+    )
+
+    assert base_dn_field is not None, "login_auth.connection_template must contain base_dn field"
+    assert base_dn_field.required is True
+    assert base_dn_field.default is None
+    assert base_dn_field.placeholder == "DC=example,DC=com"
+    assert base_dn_field.field_type == "string"
+    # login_auth_identity_field must come AFTER base_dn in connection_template
+    field_keys = [field.key for field in login_auth_capability.connection_template]
+    assert field_keys.index("base_dn") < field_keys.index("login_auth_identity_field"), (
+        "base_dn must precede login_auth_identity_field in connection_template"
+    )

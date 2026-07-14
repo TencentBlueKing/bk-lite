@@ -1,10 +1,12 @@
 import logging
+import math
 import re
 
 from rest_framework import serializers
 
 from apps.monitor.constants.alert_policy import AlertConstants
 from apps.monitor.models.monitor_policy import MonitorPolicy
+from apps.monitor.utils.unit_converter import UnitConverter
 
 logger = logging.getLogger(__name__)
 
@@ -53,9 +55,84 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(f"threshold[{index}].method 非法，须为 {sorted(valid_methods)} 之一")
             if "value" not in item:
                 raise serializers.ValidationError(f"threshold[{index}] 缺少 value")
+            raw_value = item.get("value")
+            if isinstance(raw_value, bool):
+                raise serializers.ValidationError(
+                    f"threshold[{index}].value 必须是有限数值"
+                )
+            try:
+                number = float(raw_value)
+            except (TypeError, ValueError) as err:
+                raise serializers.ValidationError(
+                    f"threshold[{index}].value 必须是有限数值"
+                ) from err
+            if not math.isfinite(number):
+                raise serializers.ValidationError(
+                    f"threshold[{index}].value 必须是有限数值"
+                )
             if item.get("level") not in _VALID_THRESHOLD_LEVELS:
                 raise serializers.ValidationError(f"threshold[{index}].level 非法，须为 {sorted(_VALID_THRESHOLD_LEVELS)} 之一")
         return value
+
+    def _get_value(self, attrs, field, default):
+        if field in attrs:
+            return attrs[field]
+        if self.instance is not None:
+            return getattr(self.instance, field, default)
+        return default
+
+    def get_effective_units(self, attrs):
+        metric_unit = self._get_value(attrs, "metric_unit", "") or ""
+        calculation_unit = (
+            self._get_value(attrs, "calculation_unit", "") or metric_unit
+        )
+        threshold_unit = (
+            self._get_value(attrs, "threshold_unit", "") or calculation_unit
+        )
+        return calculation_unit, threshold_unit
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        relevant_fields = {
+            "threshold",
+            "metric_unit",
+            "calculation_unit",
+            "threshold_unit",
+            "query_condition",
+        }
+        if self.instance is not None and not relevant_fields.intersection(attrs):
+            return attrs
+
+        threshold = self._get_value(attrs, "threshold", [])
+        if not threshold:
+            return attrs
+
+        query_condition = self._get_value(attrs, "query_condition", {}) or {}
+        calculation_unit, threshold_unit = self.get_effective_units(attrs)
+        if not calculation_unit and not threshold_unit:
+            # Trap、枚举指标与历史 PMQ 策略没有数值单位，保持现有契约。
+            if query_condition.get("type") in {"pmq", "metric"}:
+                return attrs
+            raise serializers.ValidationError(
+                {"threshold_unit": "数值型告警阈值必须配置结果单位和阈值单位"}
+            )
+
+        if not UnitConverter.is_known_unit(calculation_unit):
+            raise serializers.ValidationError(
+                {"calculation_unit": "结果单位无效"}
+            )
+        if not UnitConverter.is_known_unit(threshold_unit):
+            raise serializers.ValidationError({"threshold_unit": "阈值单位无效"})
+        if not UnitConverter.is_convertible(threshold_unit, calculation_unit):
+            raise serializers.ValidationError(
+                {
+                    "threshold_unit": (
+                        f"阈值单位 {threshold_unit} 不能转换为结果单位 "
+                        f"{calculation_unit}"
+                    )
+                }
+            )
+        return attrs
 
     def validate_trigger_count(self, value):
         """校验阈值告警触发条件：连续 N 个汇聚周期满足阈值，N 必须为正整数。"""
