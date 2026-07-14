@@ -92,15 +92,15 @@
 
 ## 07 IPAM
 
-- 业务承诺：待补充
-- 入口：待补充
-- 核心调用链：待补充
-- 外部依赖：待补充
-- 关键测试：待补充
-- 执行命令：待补充
-- 结果：待补充
-- 覆盖率：待补充
-- 未验证项：待补充
+- 业务承诺：子网 IP 视图必须同时满足菜单和实例权限；发现任务只能扫描/回写授权子网并区分完整空快照与失败；人工/每小时 Beat 共用持久化单活作业，owner 租约覆盖全部图副作用；来源使用稳定游标，参考集、占用者、关联和执行时长均受硬预算；失败释放 `active_scope` 且错误不泄密。关系对端与在线返回预算引用 `CMDB-F14/F16`，异步投递、错误脱敏、Agent 插件路径引用 `CMDB-F04/F25/F30`。
+- 入口：`InstanceViewSet.ipam_view/ipam_reconcile`；`CollectModelViewSet.create/update/exec_task` 与 `CollectModelSerializer`；`IPDiscoveryNodeParams`、`IPAMDiscoveryCollectionPlugin`、`apply_ip_discovery_vm_rows/apply_discovery_result`；Beat `reconcile_ipam_task`、Worker `execute_ipam_reconcile_task`；来源 ORM `IPAMReconcileSource`。
+- 核心调用链：IP 视图 → 菜单/中心 subnet VIEW → 关系+旧字段查询 → 容量/状态列表；发现任务 JSON `subnet_ids` → NodeMgmt 参数 → Stargazer/VM `ip_info` → system upsert/offline/关系 → 利用率；人工/Beat → enqueue/nullable unique active_scope → Celery → owner claim/lease → 来源 ID 游标 → occupant 聚合 → IP/关系/离线/利用率 → owner 条件终态并释放 active_scope。
+- 外部依赖：FalkorDB/Neo4j GraphClient、Django ORM 及多数据库唯一约束、Celery broker/worker/Beat、NodeMgmt、Stargazer、VictoriaMetrics、SystemMgmt 权限与组织上下文。
+- 关键测试：brief 五文件 `test_ipam_views.py`、`test_ipam_discovery_service.py`、`test_ipam_reconcile_service.py`、`test_ipam_reconcile_job.py`、`test_ipam_reconcile_task.py`；静态补充审查 `test_ipam_subnet_service.py`、`test_ipam_cidr_pure.py`、`test_ipam_discovery_node_params.py` 及 Agent `test_ip_discovery_targets.py`。
+- 执行命令：`MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false SECRET_KEY=test ENABLE_CELERY=true INSTALL_APPS=system_mgmt,node_mgmt,cmdb DB_ENGINE=sqlite DB_NAME=/private/tmp/cmdb-task8-review.sqlite3 uv run pytest -q -o addopts='' apps/cmdb/tests/test_ipam_views.py apps/cmdb/tests/test_ipam_discovery_service.py apps/cmdb/tests/test_ipam_reconcile_service.py apps/cmdb/tests/test_ipam_reconcile_job.py apps/cmdb/tests/test_ipam_reconcile_task.py --cov=apps.cmdb.services.ipam_view --cov=apps.cmdb.services.ipam_subnet --cov=apps.cmdb.services.ipam_discovery --cov=apps.cmdb.services.ipam_reconcile --cov=apps.cmdb.services.ipam_reconcile_job --cov=apps.cmdb.models.ipam_models --cov-report=term-missing`。
+- 结果：首次沙箱退出 2（uv cache 无权限，未收集）；受控缓存权限重跑退出 0，54 passed in 2.97s。测试证明 SQLite 单活唯一、终态 owner 条件、失败释放 active_scope、安全顶层错误、ID 游标与 existing IP 上限；但测试锁定空扫描结果批量离线，且未证明任务内子网授权、旧 owner 图 fencing 或真实 occupant 总预算。
+- 覆盖率：ipam_models 100%、ipam_discovery 77%、ipam_reconcile 79%、ipam_reconcile_job 90%、ipam_view 40%，聚焦合计 78%；ipam_subnet 未被 brief 五文件导入，无可声明覆盖率。相关模块未达 80%，仅作业状态机达到核心 90%。
+- 未验证项：真实 FalkorDB/Neo4j、Celery broker/多 Worker、NodeMgmt/Stargazer/VM、MySQL/PostgreSQL nullable unique、跨组织发现 E2E、租约过期旧 owner 图副作用、CIDR 并发、同 IP 海量占用者、来源总量/内存/deadline 和在线 IP 视图大响应。主 Findings `CMDB-F36`–`CMDB-F40`（P0 2/P1 3），Recommendation Block，详见 [07-ipam.md](07-ipam.md)。
 
 ## 08 专项资源视图
 
