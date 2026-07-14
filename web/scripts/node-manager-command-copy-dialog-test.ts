@@ -163,6 +163,35 @@ for (const { name, locale } of locales) {
   }
 }
 
+const readWebSource = (path: string) =>
+  readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
+
+const guidance = readWebSource(
+  'src/app/node-manager/(pages)/cloudregion/node/controllerInstall/installing/operationGuidance.tsx'
+);
+assert.match(guidance, /useCommandCopyDialog/);
+assert.match(guidance, /copyCommand\(nodeInfo\.installerSession/);
+assert.match(guidance, /commandCopyDialog/);
+assert.match(guidance, /handleCopy\(\{ value \}\)/);
+
+const sections = readWebSource(
+  'src/app/node-manager/(pages)/cloudregion/node/controllerInstall/installing/operationGuidanceSections.tsx'
+);
+assert.match(
+  sections,
+  /disabled=\{loading \|\| !installerSession\.trim\(\)\}/
+);
+assert.match(sections, /loading=\{copying\}/);
+
+const progress = readWebSource(
+  'src/app/node-manager/(pages)/cloudregion/node/operationProgress/index.tsx'
+);
+assert.match(progress, /await copyCommand\(installCommand\)/);
+assert.doesNotMatch(
+  progress,
+  /notification\.success\(\{[\s\S]*?commandCopied/
+);
+
 console.log('node-manager command copy dialog tests passed');
 };
 
