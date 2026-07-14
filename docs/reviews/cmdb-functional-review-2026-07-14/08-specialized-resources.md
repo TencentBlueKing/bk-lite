@@ -6,7 +6,7 @@
 
 生产阻断点有两项。第一，公开 render token 的使用计数是 `cache.get` 后 `cache.set` 的非原子读改写，并且每次成功验证都会重新设置 1800 秒 TTL；并发请求可共同读取同一计数后全部成功，周期性并发可同时突破 5 次上限和固定有效期，继续换取包含 NATS 接入参数的安装 YAML。第二，K8s 通用资源列表只验证 workload/node ID 属于集群，没有验证该父实例对当前用户可见；概览统计也在 workload 权限收敛前展开 Pod 关系，因此可从不可见父级看到仍可见 Pod 的明细或数量。
 
-查询次数优化尚未形成资源预算。K8s 默认概览固定为 5 次批量关系调用但每次仍全量返回边并在内存保存全部关系 ID；应用拓扑按节点 BFS 查询、永远返回 `truncated=False`，实例明细/Excel 的 `node_ids` 无条数限制；机房布局先全量取 rack，再逐 rack 查询设备形成 N+1。固定调用次数、分页实体和批量查询都不能约束边总量、节点总量、响应字节或同步请求时长。
+查询次数优化尚未形成专项预算。K8s 默认概览固定为 5 次批量关系调用，但每次仍全量返回边并在内存保存全部关系 ID；机房布局先全量取 rack，再逐 rack 查询设备形成 N+1。应用 BFS/Excel 的独立资源问题已分别由 `CMDB-F18/F17` 覆盖，不并入本域 P1。
 
 本域确认 3 个新增主 Finding：P0 2 个、P1 1 个、P2/P3 0 个，编号 `CMDB-F41`–`CMDB-F43`。应用/机房用根模型 permission map 裁剪其他模型的对端，引用 `CMDB-F14`；应用拓扑的无界遍历契约同时引用 `CMDB-F18`，不重复计数。Recommendation 为 **Block**。
 
@@ -28,7 +28,7 @@
 ### Finding CMDB-F42：K8s 资源筛选与概览在不可见 Workload/Node 父级下仍暴露 Pod
 
 - Severity: P0
-- Location: `server/apps/cmdb/services/k8s_resource_overview.py:117-197,431-450,496-568`
+- Location: `server/apps/cmdb/services/k8s_resource_overview.py:117-197,431-450,456-479,540-607`
 - Root cause category: 局部实现错误
 - Evidence: Namespace 候选正确调用 `_visible_candidate_ids`，但 cluster 的 `node_ids` 只取原始关系 ID。Pod 列表收到 `node_id` 时只检查它存在于原始 `node_ids`，随后按该 Node 的关系枚举 Pod 并仅应用 Pod permission；`workload_id` 同样只检查原始 `all_workload_ids`。因此父 Workload/Node 不可见而 Pod 可见时仍返回 Pod 名称、IP、资源 request/limit 等字段。默认概览也对 Namespace 下全部 `workload_ids` 查询 Pod 边，未先收敛可见 Workload；`pod_count` 与 Namespace 卡片的 workload/pod 数量可包含隐藏父级的子资源。
 - Trigger: 用户能查看集群和某些 Pod，但没有目标 Workload 或 Node 的 VIEW；向 `k8s_resource_list/{cluster}/pod` 传该隐藏父级 ID，或打开包含隐藏 Workload 子 Pod 的默认概览。
@@ -38,24 +38,36 @@
 - Required tests: Workload/Node 不可见但 Pod 可见时显式过滤拒绝且零 Pod 查询；默认概览和 Namespace 卡片不计隐藏父级子 Pod；父可见/子不可见、父子均可见、同名跨组织、空父关系；权限分页超过 500 条时无漏项且查询次数受控。
 - Long-term design note: 延续已批准的“父资源权限先收敛、再构造子资源候选”组件，把父链校验作为 K8s relation traversal 的强制入口，所有 overview/layer/list 共用。
 
-### Finding CMDB-F43：专项视图只有局部分页/批量化，没有关系、节点、查询与响应总预算
+### Finding CMDB-F43：K8s 与机房视图只有局部分页/批量化，没有关系候选与查询总预算
 
 - Severity: P1
-- Location: `server/apps/cmdb/services/instance.py:1008-1058`；`server/apps/cmdb/services/k8s_resource_overview.py:117-197,456-568`；`server/apps/cmdb/services/application_resource_overview.py:113-184,310-454`；`server/apps/cmdb/serializers/application_resource_overview.py:14-18`；`server/apps/cmdb/services/rack_room.py:150-167,250-309`
+- Location: `server/apps/cmdb/services/instance.py:1008-1058`；`server/apps/cmdb/services/k8s_resource_overview.py:117-197,456-568`；`server/apps/cmdb/services/rack_room.py:150-167,250-309`
 - Root cause category: 资源边界缺失
-- Evidence: `instance_association_map` 的批量查询对 src/dst 两侧执行无 LIMIT 的 `query_edge` 并返回完整边集合。K8s 默认概览测试只锁定 5 次关系调用和“不读 Pod 实体”，真实实现仍为全部 Namespace→Workload、Workload→Pod、Namespace→Pod 边创建 list/set；资源页的 500 条上限只限制最终实体，不限制候选边。应用拓扑按每个已发现节点调用一次 `instance_association_instance_list`，depth 最多 3 但无 node/edge/query/deadline 上限且固定 `truncated=False`；POST `node_ids` 没有 max_length，实例明细和 openpyxl 导出全量加载。机房布局读取全部 rack 后在循环内逐 rack 调 `_rack_device_instances`，形成 1+R 关联查询并全量计算 U 位。
-- Trigger: 大集群包含大量 Workload/Pod 关系；高扇出应用深度 3；提交超大 node_ids 导出；或单机房包含大量 rack/设备后同步打开布局。
-- Impact: 单请求可在图数据库、Django Worker 和 openpyxl 中放大全部边/节点/工作簿，查询数或内存随资产规模线性乃至按扇出增长，造成超时、图连接占用和进程 OOM；已有 page_size 与固定调用次数无法提供上界。
-- Why existing tests missed it: K8s 测试只断言关系调用数为 5 和 Pod 实体零查询，不限制每次边数/候选总量；应用 View 测试完全 Mock Service，应用 Service 仅 20% 覆盖；rack 测试证明 Room3D 摘要批量化，却没有验证 `get_room_layout` 使用该批量路径或设置查询预算。所有数据规模都很小，无超限/truncated/字节断言。
-- Minimal safe fix: 定义请求级 rows/relations/nodes/queries/bytes/deadline 预算；批量关系查询支持游标和硬上限。K8s 达预算返回明确 truncated/分层游标；应用 BFS 分层批查并限制节点/边，node_ids 设置条数上限，Excel 超限改异步；room 复用 `_rack_device_relation_map` 一次批查设备并限制 rack/设备总量。
-- Required tests: K8s 单次边数和总候选上限、达到预算的稳定 truncated；应用高扇出/环路固定查询预算、node_ids 边界和超大 Excel 拒绝；机房 1/500/501 rack 的固定查询次数、设备总量上限和空关系；两图驱动的截断/游标等价与超时取消。
-- Long-term design note: `CMDB-F18` 已要求统一 `GraphTraversalBudget`；专项视图应在同一组件上增加关系游标、响应字节与导出作业预算，而不是分别用 page_size、调用次数或局部 batch 充当资源上限。
+- Evidence: `instance_association_map` 对 src/dst 两侧执行无 LIMIT 的 `query_edge` 并返回完整边集合。K8s 默认概览测试只锁定 5 次关系调用和“不读 Pod 实体”，真实实现仍为全部 Namespace→Workload、Workload→Pod、Namespace→Pod 边创建 list/set；资源页的 500 条上限只限制最终实体，不限制关系候选总量。机房布局先全量取得 rack，再在循环内逐 rack 调 `_rack_device_instances`，每次重新查询关联和设备实例，形成 1+R 关联/实例查询并全量计算 U 位；同文件已有 `_rack_device_relation_map` 批量路径，但 `get_room_layout` 未复用。
+- Trigger: 大集群包含大量 Namespace/Workload/Pod 关系后打开默认概览或资源页；单机房包含大量 rack/设备后同步打开 room layout。
+- Impact: K8s 单请求可把全部关系边和候选 ID 拉入图客户端与 Worker 内存；room layout 的查询次数随 rack 数线性增长并全量物化设备，造成超时、图连接占用与进程内存压力。最终实体 page_size 和固定关系调用次数都不能给这两条路径提供硬上界。
+- Why existing tests missed it: K8s 测试只断言关系调用数为 5 和 Pod 实体零查询，不限制每次边数或候选总量；rack 测试证明 Room3D 摘要批量化，却没有验证 `get_room_layout` 复用该批量路径或限制 rack/设备规模。测试数据均很小，无关系游标、超限或查询次数随规模不变的断言。
+- Minimal safe fix: 定义统一的专项查询 budget；为 K8s 批量关系查询增加边游标/硬上限并在达到预算时返回明确 truncated；`get_room_layout` 复用 `_rack_device_relation_map` 一次批查 rack→device 关系和设备实例，并限制 rack/设备总量。
+- Required tests: K8s 单次边数和总候选上限、达到预算的稳定 truncated/游标、两图驱动等价；机房 1/500/501 rack 的固定查询次数、设备总量上限、空关系和超限零部分响应；验证 room 主入口确实调用批量关系路径。
+- Long-term design note: 在专项资源 Service 入口共享 `SpecializedQueryBudget`，统一关系候选、查询次数、实体总量和 deadline；不要把 page_size、固定调用次数或局部 batch 当作完整资源上限。
 
 ### 跨域证据：应用与机房对端授权引用 CMDB-F14
 
 - 主 Finding: `CMDB-F14`（跨模型关系读写与拓扑只授权中心模型，P0）；本域不重复计数。
 - Evidence: 应用入口只按根 `system/application` 构造一个 permission map，BFS、节点明细和导出用它判断 application/host/database 等其他模型；room/rack 同样把中心模型 map 用于 rack 和任意设备。实例判权不验证 permission map 所属模型，因此这正是 `CMDB-F14` 的专项可达入口。
 - Required follow-up: 按真实 `model_id` 分组构造 permission map；根、父级和对端逐层 fail-closed；增加应用与机房跨模型/跨组织正反向测试。
+
+### 跨域证据：应用资源容量引用 CMDB-F17 / CMDB-F18
+
+- 主 Findings: `CMDB-F17`（同步导出全量物化，P1）、`CMDB-F18`（拓扑无节点/路径预算，P1）；本域不重复计数。
+- Evidence: 应用拓扑按已发现节点逐个调用 `instance_association_instance_list`，depth 最多 3 但固定 `truncated=False`；实例/导出入口接受无 max_length 的 `node_ids`，全量查询后由 openpyxl 同步构造工作簿。它们分别是已有遍历预算与同步导出预算问题的专项入口，不属于 F43 的 K8s/机房最小修复。
+- Required follow-up: 应用 BFS 接入 `CMDB-F18` 的统一 `GraphTraversalBudget`；应用 Excel 接入 `CMDB-F17` 的有界/异步导出作业，并增加高扇出、环路、超大 node_ids 和生成字节边界测试。
+
+### 网络视图复核：现有节点截断有效，剩余风险归入 CMDB-F14 / CMDB-F18
+
+- 入口与调用链: `InstanceViewSet.network_topo`（`views/instance.py:1338-1374`）先要求 `asset_info-View`、查询根实例并校验 VIEW，将 depth 钳制到 1–4，再调用 `InstanceManage.network_topology`（`services/instance.py:1523-1626`）。Service 在单个 GraphClient 连接内逐层 BFS，按设备调用 `query_network_topo`，裁剪无权限对端并停止向其下探。
+- 已有预算: `NETWORK_TOPO_NODE_LIMIT=100`；达到上限时 `truncated=True` 并删除悬空边。`test_network_topology_service.py:145-165` 对 node_limit 与截断有直接断言，空关系返回中心节点、空 links、`truncated=False`。
+- 剩余风险与去重: permission map 仍按中心模型构造后复用于其他设备模型，归 `CMDB-F14`；node_limit 只约束最终节点，不约束每个 frontier 的邻接行、查询次数或 deadline，归 `CMDB-F18`。本域不新增网络 Finding，也不重复计数。
 
 ## 3. Test Review
 
@@ -75,7 +87,8 @@
 
 - token 测试是串行 Mock，不证明并发消费、绝对 TTL 或真实 Redis/多进程行为。
 - K8s 没有不可见 Workload/Node + 可见 Pod 的组合，也没有限制单次批量关系返回的边数。
-- 应用资源指定文件只测 View 接线并 Mock 全部 Service，20% 覆盖没有进入 BFS、跨模型权限、明细、Excel、名称冲突和空分组主路径。
+- 应用资源指定文件只测 View 接线并 Mock 全部 Service，20% 覆盖没有进入 BFS、跨模型权限、明细、Excel、名称冲突和空分组主路径；相关容量风险引用 `CMDB-F17/F18`。
+- brief 五文件未包含网络拓扑测试；静态补查确认现有 node_limit/truncated 测试，但未在本域命令中重跑，网络跨模型权限与邻接查询预算仍未验证。
 - room 主路径仍逐 rack 查询，测试未断言 `get_room_layout` 查询次数；Room3D 的批量测试不能替代该入口。
 - 未连接真实 FalkorDB/Neo4j、Redis、多 Worker、NodeMgmt/Webhook/VictoriaMetrics，也未测大集群、高扇出应用、大机房或响应字节峰值。
 
@@ -85,7 +98,7 @@
 2. 新增同类插件是否需要复制代码：是。新增资源层要手工复制根校验、每模型 permission map、父级收敛、关系 batch 和分页，当前 list 已漏父权限。
 3. 新增错误类型是否需改多个模块：是。BaseAppException、DRF ValidationError、HTTP response_error 和返回体 `error=str(e)` 并存。
 4. 新增 callback 模式是否容易扩展：安装渲染委派清晰，但 token consume 与外部渲染没有持久化状态或幂等回执。
-5. 当前接口是否容易被误用：是。`permission_map` 不带 model_id 类型约束，`instance_association_map` 名为 batch 却无结果上限，node_ids 无最大长度。
+5. 当前接口是否容易被误用：是。`permission_map` 不带 model_id 类型约束，`instance_association_map` 名为 batch 却无结果上限；应用 `node_ids` 无最大长度的风险引用 `CMDB-F17`。
 6. 日志是否足够且不泄密：token 只记前缀较好；但 verify 和 infra 异常会把外部 `str(e)`/response text 进入日志或错误契约，该敏感错误面引用 `CMDB-F25`。
 7. 状态异常时能否判断停在哪个阶段：不能。token 无消费审计，拓扑/布局无 query budget、截断原因和阶段指标，无法区分图查询、权限裁剪或 Excel 构造超时。
 8. 设计是否降低复杂度：K8s 关系批查和 Room3D batch 降低了局部查询数，但尚未形成可复用的父链授权和资源预算，局部优化仍可被全量结果放大。
@@ -94,4 +107,4 @@
 
 **Block**。
 
-合并前必须关闭两个 P0：token 使用资格改为绝对过期且原子消费；所有 K8s 子候选先按真实父模型权限收敛。随后关闭 P1，为 K8s、应用和机房建立统一关系/节点/查询/字节预算，并让 `get_room_layout` 使用批量设备关系路径。应用和机房的跨模型权限必须随 `CMDB-F14` 一并修复；仅保留内部 setup 权限、限制最终 page_size 或固定关系调用次数都不足以批准生产。
+合并前必须关闭两个 P0：token 使用资格改为绝对过期且原子消费；所有 K8s 子候选先按真实父模型权限收敛。随后关闭 P1，为 K8s 关系候选设置边游标/上限，让 `get_room_layout` 使用批量设备关系路径并纳入统一专项查询 budget。应用与网络遍历、应用导出及跨模型权限分别随 `CMDB-F18/F17/F14` 修复；仅保留内部 setup 权限、限制最终 page_size 或固定关系调用次数都不足以批准生产。

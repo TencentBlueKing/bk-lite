@@ -21,3 +21,5 @@
 | 11 变更与订阅 | 未开始 | 0 | 0 | 0 | 0 | 待评审 | [11-change-subscription.md](11-change-subscription.md) |
 | 12 NATS / RPC | 未开始 | 0 | 0 | 0 | 0 | 待评审 | [12-nats-rpc.md](12-nats-rpc.md) |
 | 13 跨域架构复核 | 未开始 | 0 | 0 | 0 | 0 | 待评审 | [13-cross-domain-architecture.md](13-cross-domain-architecture.md) |
+
+08 专项资源视图新增 `CMDB-F41`–`CMDB-F43`（P0 2/P1 1）；应用导出、应用/网络遍历和跨模型权限分别引用既有 `CMDB-F17/F18/F14`，不重复计数。
