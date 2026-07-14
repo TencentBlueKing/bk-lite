@@ -192,6 +192,18 @@ assert.doesNotMatch(
   /notification\.success\(\{[\s\S]*?commandCopied/
 );
 
+const environmentPage = readWebSource(
+  'src/app/node-manager/(pages)/cloudregion/environment/page.tsx'
+);
+assert.match(environmentPage, /useCommandCopyDialog/);
+assert.match(environmentPage, /copyCommand\(script\)/);
+assert.match(environmentPage, /commandCopyDialog/);
+assert.match(environmentPage, /loading=\{copying\}/);
+assert.doesNotMatch(
+  environmentPage,
+  /title:\s*t\('node-manager\.cloudregion\.environment\.copySuccess'\)/
+);
+
 console.log('node-manager command copy dialog tests passed');
 };
 
