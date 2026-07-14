@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "VictoriaMetrics PromQL Response",
+  "description": "通用 03 阶段 schema —— VictoriaMetrics /prometheus/api/v1/query 响应",
+  "type": "object",
+  "required": ["status", "data"],
+  "properties": {
+    "status": {"type": "string", "enum": ["success", "error"]},
+    "data": {
+      "type": "object",
+      "required": ["resultType", "result"],
+      "properties": {
+        "resultType": {"type": "string", "enum": ["vector", "matrix", "scalar"]},
+        "result": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["metric", "value"],
+            "properties": {
+              "metric": {
+                "type": "object",
+                "required": ["__name__", "instance_id"],
+                "properties": {
+                  "__name__": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+                  },
+                  "instance_id": {"type": "string"},
+                  "collect_status": {"type": "string", "enum": ["success", "error"]},
+                  "ip_addr": {"type": "string"},
+                  "result": {"type": "string", "description": "JSON 编码的业务字段(middleware/db/protocol 模式)"}
+                },
+                "additionalProperties": true
+              },
+              "value": {
+                "type": "array",
+                "items": {"type": ["string", "number"]},
+                "minItems": 2,
+                "maxItems": 2
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

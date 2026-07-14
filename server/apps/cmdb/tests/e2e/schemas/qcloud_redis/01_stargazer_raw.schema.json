@@ -1,0 +1,74 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Stargazer qcloud_redis 采集脚本原始输出",
+  "description": "Task 3.2 真实化版本:qcloud_redis 真实落盘形态",
+  "type": "object",
+  "required": [
+    "resource_name",
+    "resource_id",
+    "region",
+    "status"
+  ],
+  "properties": {
+    "model_id": {
+      "type": "string"
+    },
+    "total_count": {
+      "type": "integer"
+    },
+    "ip_addr": {
+      "type": "string"
+    },
+    "vpc": {
+      "type": "string"
+    },
+    "zone": {
+      "type": "string"
+    },
+    "port": {
+      "type": "string"
+    },
+    "wan_address": {
+      "type": "string"
+    },
+    "sub_status": {
+      "type": "string"
+    },
+    "engine": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string"
+    },
+    "type": {
+      "type": "string"
+    },
+    "memory_mb": {
+      "type": "string"
+    },
+    "shard_size": {
+      "type": "string"
+    },
+    "shard_num": {
+      "type": "string"
+    },
+    "replicas_num": {
+      "type": "string"
+    },
+    "client_limit": {
+      "type": "string"
+    },
+    "net_limit": {
+      "type": "string"
+    },
+    "tag": {
+      "type": "string"
+    },
+    "charge_type": {
+      "type": "string"
+    },
+    "create_time": {
+      "type": "string"
+    }
+  }
+}

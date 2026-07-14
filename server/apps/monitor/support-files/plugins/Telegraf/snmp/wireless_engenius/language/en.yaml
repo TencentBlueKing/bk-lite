@@ -1,0 +1,63 @@
+Wireless EnGenius SNMP:
+  name: EnGenius (Telegraf)
+  desc: SNMP monitoring template for EnGenius wireless device. It reports system uptime,
+    per-port inbound traffic rate, and per-port outbound traffic rate
+monitor_object:
+  Wireless: Wireless
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Wireless:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart,
+        derived from sysUpTime. Monitoring uptime helps administrators understand
+        device stability and identify unexpected reboots or failures.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past
+        5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets
+        counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
+        ifInOctets on high-speed ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5
+        minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets
+        counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
+        ifOutOctets on high-speed ports, keeping the rate accurate.
+    device_total_incoming_traffic:
+      name: Device Total Incoming Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the
+        entire device over the past 5 minutes, measured in bytes per second, summed
+        across all interfaces from the 64-bit ifHCInOctets counter. It helps administrators
+        obtain an overview of incoming traffic for overall monitoring and capacity
+        planning.
+    device_total_outgoing_traffic:
+      name: Device Total Outgoing Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire
+        device over the past 5 minutes, measured in bytes per second, summed across
+        all interfaces from the 64-bit ifHCOutOctets counter. It helps administrators
+        assess sending performance for traffic management and optimization.
+    device_cpu_usage:
+      name: CPU Usage
+      desc: CPU utilization of the wireless device reported directly as a 0-100 percentage.
+        Sustained high CPU usage can indicate heavy client-association load, control-plane
+        pressure, or RF management overhead affecting roaming and management responsiveness.
+    device_memory_usage:
+      name: Memory Usage
+      desc: Memory utilization of the wireless device reported directly as a 0-100
+        percentage. High memory pressure can cause the access point to drop client
+        associations or restart services, so investigate client counts or abnormal
+        load promptly.
+    device_temperature_celsius:
+      name: Temperature
+      desc: Chassis temperature in degrees Celsius of the wireless device, read directly
+        with no scaling. Only models equipped with a temperature sensor report a real
+        value; fanless access points return 0. High temperatures can indicate cooling
+        failure or poor airflow and risk thermal shutdown.
+monitor_object_metric_group:
+  Wireless:
+    Base: Base
+    Traffic: Traffic
+    Wireless: Wireless
+    Temperature: Temperature
