@@ -309,7 +309,6 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
       setLoading(true);
       setPreviewError('');
       setPreviewWarnings([]);
-      setPreviewChartUnit(null);
       const responseData = await previewMonitorPolicy(payload, {
         signal: abortController.signal
       });
