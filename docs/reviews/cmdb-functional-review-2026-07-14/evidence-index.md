@@ -140,15 +140,15 @@
 
 ## 11 变更与订阅
 
-- 业务承诺：待补充
-- 入口：待补充
-- 核心调用链：待补充
-- 外部依赖：待补充
-- 关键测试：待补充
-- 执行命令：待补充
-- 结果：待补充
-- 覆盖率：待补充
-- 未验证项：待补充
+- 业务承诺：ChangeRecord 必须记录真实变更并按组织/实例权限查询和导出；管理类变更镜像为提交后、可重试、单事件幂等的 OperationLog 投影。订阅规则的组织、模型、实例/条件、收件人和渠道共享同一授权 scope；检测 checkpoint 与 Delivery 原子提交，Delivery 去重、租约接管、旧 attempt fencing、永久错误和退避终态可恢复且日志脱敏。
+- 入口：`ChangeRecordViewSet.list/retrieve/export/enum_*`；`create_change_record/batch_create_change_record/create_change_record_by_asso`；`ChangeRecordMirrorService.consume/recover_ready` 与 Beat `recover_change_record_mirror_outbox_task`；`SubscriptionViewSet` CRUD/toggle；Beat `check_subscription_rules`、Worker `send_subscription_notifications`。
+- 核心调用链：实例/模型/采集/自定义上报/关系写 → ChangeRecord ORM → 单条同步 SystemMgmt 或批量 MirrorOutbox → on_commit Celery/Beat → 平台 OperationLog；规则 Beat → 全局启用 rule IDs → `select_for_update` → `InstanceManage(permission_map={})`/ChangeRecord/ConfigFileVersion → snapshot+SHA Delivery 同事务 → `app.send_task(delivery_ids)` → 条件抢占 SENDING/attempt_count → 全局 group users/通知 channel → SENT、RETRY 或 FAILED；15 分钟 SENDING 由下一轮扫描接管。
+- 外部依赖：Django ORM/多数据库 JSON、FalkorDB/Neo4j GraphClient、Celery broker/Worker/Beat、SystemMgmt 用户/组织/渠道/OperationLog NATS RPC、配置文件版本表。
+- 关键测试：brief 四文件 `test_change_record_mirror_service.py`、`test_change_record_mirror_outbox.py`、`test_subscription_trigger_service.py`、`test_subscription_task_service.py`；补充静态审查 `test_change_record_views.py`、`test_subscription_serializer.py` 及 SystemMgmt scoped users/channel 实现。
+- 执行命令：`MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false SECRET_KEY=test DB_ENGINE=sqlite DB_NAME=/private/tmp/cmdb-task12-review.sqlite3 ENABLE_CELERY=true INSTALL_APPS=system_mgmt,node_mgmt,cmdb uv run pytest -q -o addopts='' apps/cmdb/tests/test_change_record_mirror_service.py apps/cmdb/tests/test_change_record_mirror_outbox.py apps/cmdb/tests/test_subscription_trigger_service.py apps/cmdb/tests/test_subscription_task_service.py --cov=apps.cmdb.views.change_record --cov=apps.cmdb.utils.change_record --cov=apps.cmdb.services.change_record_mirror --cov=apps.cmdb.services.subscription_trigger --cov=apps.cmdb.services.subscription_task --cov=apps.cmdb.models.change_record --cov=apps.cmdb.models.subscription_delivery --cov-report=term-missing`。
+- 结果：首次命令被沙箱拒绝读取 uv cache，退出 2、未收集；受控权限重跑退出 0，82 passed in 3.28s。有效证明 checkpoint/Delivery 事务、SHA 去重、broker 重派、退避/永久错误、15 分钟恢复、attempt_count 旧代次保护和 Mirror 100 RPC 分片；没有证明 View 授权、真实多 Worker/渠道、外部成功后崩溃、Mirror 部分成功或批量资源上限。
+- 覆盖率：ChangeRecord Model 100%、SubscriptionDelivery Model 100%、Mirror Service 75%、SubscriptionTask Service 98%、SubscriptionTrigger Service 70%、ChangeRecord utils 74%，六个导入模块合计 82%；ChangeRecord View 未被四文件导入，无 coverage 行。相关 Trigger/Mirror/utils 与 View 未达 80%，核心触发/镜像未达 90%。
+- 未验证项：真实 FalkorDB/Neo4j、Celery broker/多 Worker、SystemMgmt NATS/邮件/机器人/webhook、MySQL/PostgreSQL；规则组织/模型/实例/条件/收件人/渠道负向权限、ChangeRecord 两组织查询/详情/导出、外部成功而 SENT 未提交、Mirror 单条事务回滚/失败重试/批内第 N 条失败/5 次终态、异常 count/重复页、大规模规则/实例/关系/ChangeRecord/Delivery 积压、deadline 和脱敏。主 Findings `CMDB-F58`–`CMDB-F60`（P0 2/P1 1）；资源预算引用 `CMDB-F23`，敏感日志引用 `CMDB-F25`。Recommendation Block，详见 [11-change-subscription.md](11-change-subscription.md)。
 
 ## 12 NATS / RPC
 
