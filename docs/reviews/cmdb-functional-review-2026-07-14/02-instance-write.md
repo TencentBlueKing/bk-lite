@@ -6,9 +6,9 @@
 
 但这套状态机只覆盖单实例 create/update，且“图写”闭包还包含 Enterprise 文件台账提交。文件台账失败发生在图已提交之后，却会被统一标成 `ERROR`，而恢复器明确不扫描 `ERROR`。批量更新、单条/批量删除完全绕过 `CmdbOperation`：批量更新不使用唯一签名锁并全量读取同模型候选；删除则依次提交 SQL 审计、删除图节点、回收文件、查询并派发自动关系同步，任一步失败都没有补偿或可恢复阶段。
 
-相同 Idempotency-Key 的同请求复用、冲突请求 409、`PENDING` 图写单 owner、图写后 SQL 提交失败的事实恢复、Outbox 旧 Worker 不能覆盖新 owner 等关键骨架是正确的。不过，自动关系 Outbox 只保证 Celery broker 接收，不保证 Worker 完成；Worker 失败后 Outbox 已是 SUCCESS，Operation 仍可成为 COMPLETED。Outbox 达到 FAILED 后，Operation 又会永久停在 GRAPH_COMMITTED，缺少失败终态和人工重放闭环。
+相同 Idempotency-Key 的同请求复用、冲突请求 409、`PENDING` 图写单 owner、图写后 SQL 提交失败的事实恢复、Outbox 旧 Worker 不能覆盖新 owner 等关键骨架是正确的。不过，自动关系 Outbox 只保证 Celery broker 接收，不保证 Worker 完成；Worker 失败后 Outbox 已是 SUCCESS，Operation 仍可成为 COMPLETED。该证据与 Task 2 主 Finding `CMDB-F04` 是同一“异步派发/传输 ack 被误当业务完成”的根因，本域只作跨域引用，不重复计数。Outbox 达到 FAILED 后，Operation 又会永久停在 GRAPH_COMMITTED，缺少失败终态和人工重放闭环。
 
-本域确认 6 个主 Finding：P0 1 个、P1 3 个、P2 2 个、P3 0 个。Task 2 的 `CMDB-F01`（唯一规则管理授权）和 `CMDB-F02`（自动关联双端授权）是本域消费的上游契约；本域问题分别位于规则执行并发和异步收敛，根因不同，未重复建立 Finding。Recommendation 为 **Request changes**。
+本域确认 5 个主 Finding：P0 1 个、P1 2 个、P2 2 个、P3 0 个，编号为 `CMDB-F08`、`CMDB-F10`–`CMDB-F13`。Task 2 的 `CMDB-F01`（唯一规则管理授权）和 `CMDB-F02`（自动关联双端授权）是本域消费的上游契约；自动关系异步完成语义引用 Task 2 主 Finding `CMDB-F04`，不进入本域计数。Recommendation 为 **Request changes**。
 
 ## 2. Findings
 
@@ -16,33 +16,33 @@
 
 - Severity: P0
 - Location: `server/apps/cmdb/services/instance.py:632-812`；`server/apps/cmdb/services/operation_service.py:131-180,346-372`
-- Root cause category: 状态机阶段边界错误
-- Evidence: `instance_create` 和 `instance_update` 先完成 `create_entity/set_entity_properties`，随后在返回 `graph_write` 闭包前同步调用 Enterprise `commit_instance_files`。该调用任意异常都会被 `execute_graph` 的统一 `except` 当作“图操作失败”，把 Operation 从 `GRAPH_WRITING` 改为 `ERROR`。但图节点已经持久化 `_cmdb_operation_id`；`recover_pending` 和周期扫描只接受 `PENDING/GRAPH_WRITING`，相同 Idempotency-Key 重试又会因 `ERROR` 固定返回冲突。因此事实存在、SQL operation 错误、文件台账未落账的状态没有恢复入口。更新操作的 marker 还会被后续更新覆盖，进一步削弱事实核对。
-- Trigger: Enterprise 文件台账数据库暂时不可用、文件引用校验/提交异常，或进程在图写返回后、文件落账完成前失败。
-- Impact: API 返回失败且禁止同 key 重放，但实例已经创建/修改；引用文件仍为 pending/orphaned，后续 GC 可删除图实例正在引用的对象，形成用户数据丢失。审计和自动关系 Outbox也不会产生。
+- Root cause category: 状态机设计缺陷
+- Evidence: `instance_create` 和 `instance_update` 先完成 `create_entity/set_entity_properties`，随后在返回 `graph_write` 闭包前同步调用 Enterprise `commit_instance_files`。这里有两条不同状态路径。第一，文件 hook 主动抛异常时，异常会回到 `execute_graph` 的统一 `except`，Operation 从 `GRAPH_WRITING` 被写成 `ERROR`；图节点已经持久化 `_cmdb_operation_id`，但 `recover_pending`/周期扫描不接受 `ERROR`，相同 Idempotency-Key 也固定冲突。第二，进程在图写之后直接崩溃时，没有 Python `except` 执行，Operation 留在 `GRAPH_WRITING`；租约过期后恢复器能按 marker 推进图结果和两个 Outbox，却不会重新执行或创建任何文件 hook 事件。两条路径都会留下文件台账未收敛；更新 marker 还可能被后续更新覆盖。
+- Trigger: 路径 A——Enterprise 文件台账数据库、文件引用校验或提交显式抛异常；路径 B——进程在图写已提交、文件 hook 完成前崩溃或被终止。
+- Impact: 路径 A 中 API 返回失败、Operation=ERROR 且同 key 不可重放；路径 B 中 Beat 最终可把 Operation 推进至 GRAPH_COMMITTED/COMPLETED，但只补审计和自动关系，不补文件。两者都可能让引用文件保持 pending/orphaned，后续 GC 删除图实例正在引用的对象；路径 A 还不会产生审计和自动关系 Outbox。
 - Why existing tests missed it: 社区默认扩展是 no-op；`test_instance_service_crud.py` 只验证成功 spy 被调用，BDD 明确把 Enterprise 扩展替换为空实现。Enterprise gitlink 在本 worktree 未初始化，真实 overlay 失败行为不可验证。
 - Minimal safe fix: `graph_write` 只执行可由 `_cmdb_operation_id` 核对的图事实；文件落账作为带幂等事件 ID 的持久化 Outbox 消费者，或扩展 Operation 阶段明确区分 `GRAPH_COMMITTED/FILE_COMMITTED`。不得把图已成功后的投影失败写成不可恢复 `ERROR`。
-- Required tests: 注入 create/update 图成功后文件落账失败，断言图事实可被恢复、同 key 不重复图写、文件事件可重投；覆盖进程崩溃、marker 被后续更新覆盖和重投幂等。
+- Required tests: 分别覆盖文件 hook 抛异常后 Operation=ERROR 且图事实存在，以及进程崩溃后 Operation=GRAPH_WRITING、Beat 能恢复图结果但当前实现不补文件；修复后断言两条路径都产生可重投文件事件、同 key 不重复图写，并覆盖 marker 被后续更新覆盖和重投幂等。
 - Long-term design note: Operation 应以“主事实提交 + 多投影 checkpoint”表达跨存储状态，文件、审计和自动关系都是独立可重试消费者。
 
-### Finding CMDB-F09：自动关系 Outbox 把 broker 接收当成业务完成
+### 跨域证据：自动关系 Outbox 把 broker 接收当成业务完成（引用 CMDB-F04）
 
-- Severity: P1
+- 主 Finding: `CMDB-F04`（Task 2，P0）；本域不重复计数
 - Location: `server/apps/cmdb/services/operation_service.py:216-312`；`server/apps/cmdb/tasks/celery_tasks.py:385-398`；`server/apps/cmdb/services/auto_relation_reconcile.py:27-98`
-- Root cause category: 异步交付语义错误
+- Root cause category: 状态机设计缺陷
 - Evidence: `auto_relation` Outbox 的 `_dispatch_outbox` 只调用 Celery `.delay()`；调用未抛异常便立即把事件置 SUCCESS。当两个 Outbox 都 SUCCESS 时 Operation 变为 COMPLETED。实际 `reconcile_instance_auto_association_task/full_sync_auto_association_rule_task` 是普通 `shared_task`，没有 durable delivery ID、结果回执或 `autoretry_for`；实例在目标侧时还会继续通过裸 `send_task` 派发规则级全量同步。Worker 运行失败或 worker 收到后丢失不会回写原 Outbox。
 - Trigger: broker 已确认消息但 Worker 执行期间图连接失败、进程崩溃、任务超时，或目标侧二级全量同步派发失败。
 - Impact: Operation 对外显示 COMPLETED，实例主属性已更新，但派生关系长期缺失或残留；没有周期任务能从 SUCCESS Outbox 重新发现该实例。
 - Why existing tests missed it: `test_operation_outbox.py` 只模拟 `_dispatch_outbox` 在派发时抛错；没有运行真实 Worker 后失败并回看 Outbox/Operation。自动关系测试只断言函数或 task 被调用。
 - Minimal safe fix: Outbox 消费者直接执行幂等 reconcile 并以实际结果完成事件，或创建持久化 auto-relation delivery，由 Worker 按 delivery ID 抢占、回写和重试；二级全量同步也必须进入同一 durable 链路。
 - Required tests: broker 成功但 Worker 失败、Worker 崩溃租约恢复、重复投递、目标侧二级同步失败、最终成功回执，以及 Operation 在关系未收敛前不得 COMPLETED。
-- Long-term design note: 明确区分“消息已派发”和“关系投影已收敛”，Operation 完成条件只能依赖后者。
+- Long-term design note: 明确区分“消息已派发”和“关系投影已收敛”，Operation 完成条件只能依赖后者；该跨域错误模型应随 `CMDB-F04` 统一治理，而不是为每个消费者建立重复主 Finding。
 
 ### Finding CMDB-F10：批量更新绕过唯一签名锁并全量扫描候选
 
 - Severity: P1
 - Location: `server/apps/cmdb/services/instance.py:813-904`
-- Root cause category: 跨入口契约不一致
+- Root cause category: 并发或幂等设计问题
 - Evidence: 单实例 create/update 会构建 `UniqueWriteLockService` 锁键，并用规则字段定向查询候选；`batch_instance_update` 不构建或持有任何锁，直接按 `model_id` 无分页查询全部实例，再排除本批 IDs 后校验。批量与单实例写并发时都可能在对方提交前读到“无冲突”，随后写入相同唯一签名。该路径也重新引入历史 #0079 已从单实例路径移除的全模型线性扫描。
 - Trigger: 两个批量更新，或批量更新与单实例 create/update，同时把不同实例改为相同内置/联合唯一值；大模型执行任意批量更新。
 - Impact: 唯一规则可被并发突破；查询内存、网络和图校验成本随模型总量增长，热点模型批量编辑会超时或拖垮图服务。
@@ -55,7 +55,7 @@
 
 - Severity: P1
 - Location: `server/apps/cmdb/views/instance.py:416-624`；`server/apps/cmdb/services/instance.py:813-949`；`server/apps/cmdb/instance_ops/extensions.py:17-46`
-- Root cause category: 状态机覆盖不完整
+- Root cause category: 状态机设计缺陷
 - Evidence: 批量更新直接“图批量改写 → 逐实例文件落账 → SQL 批量审计 → 自动关系派发”；删除直接“SQL 审计 → 图批量删除 → 文件回收 → incoming 规则查询/派发”。这些入口没有 Idempotency-Key、operation ID、owner、Outbox 或恢复扫描。图更新后第 N 个文件落账失败会留下部分文件台账；图删除失败会留下声称已删除的审计；图删除后文件回收或 incoming 规则查询/派发失败会返回错误但节点已不可恢复。`destroy` 也复用同一批量删除实现。
 - Trigger: 批量图写、SQL 审计、Enterprise 文件台账、incoming 规则图查询或 Celery broker 任一阶段暂时失败，或进程在任意两阶段之间退出。
 - Impact: 调用方重试可能重复审计/副作用；实例、附件台账、审计与自动关系出现永久分叉。删除路径可能留下假删除审计，或实例已删除但附件未回收、反向关系未重算。
@@ -68,7 +68,7 @@
 
 - Severity: P2
 - Location: `server/apps/cmdb/services/unique_write_lock.py:14-80`；`server/apps/cmdb/models/operation.py:81-89`
-- Root cause category: 并发租约设计缺陷
+- Root cause category: 并发或幂等设计问题
 - Evidence: `hold` 默认只取得 60 秒租约，临界区中没有续租；过期后第二 owner 可条件更新接管。首 owner 的 release 因 owner token 不同不会删新锁，这是正确的，但首 owner 在失锁后仍继续查询和图写，没有 fencing token 让图层拒绝旧 owner。
 - Trigger: 图查询/写入、Enterprise 文件处理或网络暂停超过 60 秒，第二个相同签名写入随后开始。
 - Impact: 两个 owner 同时进入唯一性检查与图写，锁要保护的竞态重新出现；慢请求越多，越容易产生重复唯一值。
@@ -81,7 +81,7 @@
 
 - Severity: P2
 - Location: `server/apps/cmdb/models/operation.py:9-78`；`server/apps/cmdb/services/operation_service.py:216-312,375-391`
-- Root cause category: 终态模型不完整
+- Root cause category: 错误模型不清晰
 - Evidence: Outbox 第 5 次失败后进入 FAILED；批处理只扫描 PENDING/RETRY/过期 SENDING，FAILED 不再处理。Operation 状态只有 ERROR（图写失败）和 COMPLETED（全部 Outbox SUCCESS）；`finish_outbox_success` 仅在所有事件 SUCCESS 时完成 Operation，没有任何逻辑把含 FAILED 的 Operation 推进到明确失败终态，也没有 reset/replay API 或告警记录。
 - Trigger: change_record 或 auto_relation 连续 5 次派发失败。
 - Impact: Operation 永久停在 GRAPH_COMMITTED，无法区分“仍在重试”和“已放弃”；运维无法按状态发现、恢复或量化丢失的投影，客户端相同 key 又只会获得旧结果快照。
@@ -129,4 +129,4 @@
 
 **Request changes**。
 
-`CMDB-F08` 是发布阻断项：先把文件台账移出图写失败域，确保图已成功后任何投影失败都可恢复且不会删除用户文件。随后关闭三个 P1：让自动关系以实际 Worker 收敛作为完成条件；让批量更新复用唯一锁和有界候选；让批量更新/删除进入统一 Operation/Outbox。P2 的锁 fencing 和 Operation 失败终态也应在生产前补齐，否则长尾并发和最终失败仍无可靠闭环。仅修复现有删除测试夹具或增加成功路径 Mock，不能降低上述生产风险。
+`CMDB-F08` 是本域发布阻断项：先把文件台账移出图写失败域，确保 hook 异常和进程崩溃两条路径都可恢复且不会删除用户文件。跨域主 Finding `CMDB-F04` 还必须让自动关系以实际 Worker 收敛作为完成条件。随后关闭两个本域 P1：让批量更新复用唯一锁和有界候选；让批量更新/删除进入统一 Operation/Outbox。P2 的锁 fencing 和 Operation 失败终态也应在生产前补齐，否则长尾并发和最终失败仍无可靠闭环。仅修复现有删除测试夹具或增加成功路径 Mock，不能降低上述生产风险。
