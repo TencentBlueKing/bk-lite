@@ -19,7 +19,7 @@
 | 09 Node 同步 | 已完成 | 4 | 4 | 0 | 0 | Block | [09-node-sync.md](09-node-sync.md) |
 | 10 Enterprise 自定义上报 | 已完成 | 3 | 3 | 0 | 0 | Block | [10-custom-reporting.md](10-custom-reporting.md) |
 | 11 变更与订阅 | 已完成 | 2 | 2 | 0 | 0 | Block | [11-change-subscription.md](11-change-subscription.md) |
-| 12 NATS / RPC | 未开始 | 0 | 0 | 0 | 0 | 待评审 | [12-nats-rpc.md](12-nats-rpc.md) |
+| 12 NATS / RPC | 已完成 | 1 | 2 | 0 | 0 | Block | [12-nats-rpc.md](12-nats-rpc.md) |
 | 13 跨域架构复核 | 未开始 | 0 | 0 | 0 | 0 | 待评审 | [13-cross-domain-architecture.md](13-cross-domain-architecture.md) |
 
 08 专项资源视图新增 `CMDB-F41`–`CMDB-F43`（P0 2/P1 1）；应用导出、应用/网络遍历和跨模型权限分别引用既有 `CMDB-F17/F18/F14`，不重复计数。
@@ -29,3 +29,5 @@
 10 Enterprise 自定义上报新增 `CMDB-F52`–`CMDB-F57`（P0 3/P1 3）；关系双端授权、批写唯一锁、删除恢复和资源预算分别引用既有 `CMDB-F14/F10/F11/F23`。本域 Overlay 来自主工作区 ignored 安装态，根 gitlink 未初始化，结论可复核当前运行态但不能由当前主仓库分支单独重建。
 
 11 变更与订阅新增 `CMDB-F58`–`CMDB-F61`（P0 2/P1 2）；`CMDB-F61` 独立负责订阅规则/Delivery/实例/关系/ChangeRecord 扫描的稳定游标、总预算、deadline 与可恢复 checkpoint，`CMDB-F23` 只作为其他域相似模式及 Mirror 调用方批量参考；原始事件与异常日志引用既有 `CMDB-F25`。Delivery 的租约、代次和永久错误骨架通过聚焦测试，但规则授权、ChangeRecord View 与规模恢复均缺负向证明。
+
+12 NATS / RPC 新增 `CMDB-F62`–`CMDB-F64`（P0 1/P1 2）：消息体 scope/user_info 无可信调用者绑定、通用 listener 回传并反序列化原始异常对象、adapter 无统一 schema/批量预算和服务端 deadline。关系对端、ChangeRecord、领域错误脱敏、Stargazer 投递、配置 callback、Room3D 预算和 Node 父子终态分别引用既有 `CMDB-F14/F59/F25/F31/F33/F43/F50`，不重复计数。26 个注册入口已逐项盘点；brief 六文件 64 passed，但 NATS 主模块覆盖率仅 54%，listener/client 和多数裸读写入口没有业务安全断言。

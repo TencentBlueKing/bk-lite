@@ -152,15 +152,15 @@
 
 ## 12 NATS / RPC
 
-- 业务承诺：待补充
-- 入口：待补充
-- 核心调用链：待补充
-- 外部依赖：待补充
-- 关键测试：待补充
-- 执行命令：待补充
-- 结果：待补充
-- 覆盖率：待补充
-- 未验证项：待补充
+- 业务承诺：26 个 NATS/RPC handler 必须以可信 publisher/caller identity 绑定功能、组织和实例权限；调用方 payload 中的 user_info/scope/organization 不能成为权威边界。请求、响应、callback 和错误使用版本化 schema，传输 ack 与业务应用结果可区分；消息、rows、IDs/events、时间范围、响应和服务端执行具备硬预算与 deadline。已有领域契约分别引用 `CMDB-F14/F25/F31/F33/F43/F50/F59`，adapter 独立根因才新增 Finding。
+- 入口：`CmdbConfig.ready → import apps.cmdb.nats.nats → @nats_client.register`；通用 `nats_listener → nats_handler → database_sync_to_async(handler)`；26 个 subject 为 `{NATS_NAMESPACE}.<function_name>`，均 `js=False`。调用方包括 `apps.rpc.cmdb.CMDB`、Alerts 单条/批量丰富、Operation Analysis 动态数据源、SystemMgmt 用户/组织更新，以及 Stargazer `receive_config_file_result/receive_collect_credential_result` publish。
+- 核心调用链：NATS 消息 `args/kwargs` → 无 caller context 的 registry dispatch → handler 自行解析 loose dict → `_build_nats_permission_map`、空 permission map 或自报 scope → Model/Instance/ChangeRecord/CollectModels/Room Service → 外层 listener `success/result` 或 `error/message/pickled_exc`。实例 CRUD/批量搜索信任消息体 scope；裸实例/列表/关系/计数不授权；Operation Analysis 通常从 HTTP request 注入 user_info，但 wire 上无 provenance；callback 是非 JetStream 单向 publish，无应用 ack。
+- 外部依赖：Core NATS 与共享连接凭据/TLS、`server/nats_client` 注册/监听/客户端、FalkorDB/Neo4j GraphClient、Django ORM、SystemMgmt 权限/组织、Operation Analysis NATS 数据源、Alerts 丰富、Stargazer callback、配置文件/凭据命中/展示字段同步 Service。
+- 关键测试：brief 六文件 `test_nats_pure.py`、`test_create_delete_instance_nats.py`、`test_update_instance_nats.py`、`test_get_cmdb_module_data_permission_3662.py`、`test_collect_credential_event_nats.py`、`test_room3d_layout_nats.py`；静态补充 `test_model_assoc_nats.py`、`apps/rpc/tests/test_misc_forwarding.py`、Operation Analysis `GetNatsData` 与通用 `server/nats_client` listener/client。
+- 执行命令：`MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false SECRET_KEY=test DB_ENGINE=sqlite DB_NAME=/private/tmp/cmdb-task13-review.sqlite3 ENABLE_CELERY=true INSTALL_APPS=system_mgmt,node_mgmt,cmdb uv run pytest -q -o addopts='' apps/cmdb/tests/test_nats_pure.py apps/cmdb/tests/test_create_delete_instance_nats.py apps/cmdb/tests/test_update_instance_nats.py apps/cmdb/tests/test_get_cmdb_module_data_permission_3662.py apps/cmdb/tests/test_collect_credential_event_nats.py apps/cmdb/tests/test_room3d_layout_nats.py --cov=apps.cmdb.nats.nats --cov-report=term-missing`。异常协议直接复现：`.venv/bin/python -c 'import jsonpickle; e=RuntimeError("password=canary-secret"); print(jsonpickle.encode(e)); print(str(jsonpickle.decode(jsonpickle.encode(e))))'`。
+- 结果：首次 pytest 因沙箱拒绝读取 `~/.cache/uv/sdists-v9/.git` 退出 2、未收集；受控权限重跑退出 0，64 passed in 2.90s。canary 复现退出 0，wire JSON 的 `py/reduce` tuple 和 decode 后异常文本均包含 `password=canary-secret`。精确注册计数 `rg '^@nats_client.register$' ... | wc -l` 为 26。
+- 覆盖率：`apps/cmdb/nats/nats.py` 54%（733 statements / 338 missed），远低于相关模块80%/核心90%；`server/nats_client` listener/handler/client 未纳入 coverage。CRUD 测试主要 Mock 委托并锁定自报 scope，module_data 只覆盖单一实例分支；凭据 callback 有真实 ORM 断言，Room3D 有较完整权限/payload 断言，但都不证明 wire publisher 身份、ACL、预算或真实 NATS。
+- 未验证项：真实 NATS 多 service 账号与 subject ACL、恶意/错误 responder 对 jsonpickle 的完整利用影响、非 Python consumer、FalkorDB/Neo4j、大消息/大响应、并发线程饱和、caller timeout 后服务端取消、多数据库；配置 callback 业务失败引用 `CMDB-F33`，未知投递/cursor 引用 `CMDB-F31/F32`。主 Findings `CMDB-F62`–`CMDB-F64`（P0 1/P1 2），Recommendation Block，详见 [12-nats-rpc.md](12-nats-rpc.md)。
 
 ## 13 跨域架构复核
 
