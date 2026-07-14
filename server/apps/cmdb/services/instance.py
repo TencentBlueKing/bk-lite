@@ -284,6 +284,8 @@ class InstanceManage(object):
         page_size: int = 50,
         order: str = "inst_name",
         filters: list[dict] | None = None,
+        permission_map: dict | None = None,
+        creator: str = "",
     ):
         """按 ID 候选集在图查询层排序分页，避免先加载实体再在 Service 内切片。"""
         normalized_ids = sorted({int(inst_id) for inst_id in inst_ids if str(inst_id).strip()})
@@ -305,7 +307,28 @@ class InstanceManage(object):
                 page={"skip": (normalized_page - 1) * normalized_page_size, "limit": normalized_page_size},
                 order=normalized_order,
                 order_type=order_type,
+                format_permission_dict=InstanceManage._build_format_permission_dict(permission_map or {}, creator),
             )
+
+    @staticmethod
+    def count_entity_by_ids(
+        inst_ids: list[int],
+        permission_map: dict | None = None,
+        creator: str = "",
+        filters: list[dict] | None = None,
+    ) -> int:
+        normalized_ids = sorted({int(inst_id) for inst_id in inst_ids if str(inst_id).strip()})
+        if not normalized_ids:
+            return 0
+        with GraphClient() as ag:
+            _rows, count = ag.query_entity(
+                INSTANCE,
+                [{"field": "id", "type": "id[]", "value": normalized_ids}, *(filters or [])],
+                page={"skip": 0, "limit": 0},
+                include_count=True,
+                format_permission_dict=InstanceManage._build_format_permission_dict(permission_map or {}, creator),
+            )
+        return int(count or 0)
 
     @staticmethod
     def _has_topology_view_permission(instance: dict | None, permission_map: dict | None, user=None) -> bool:

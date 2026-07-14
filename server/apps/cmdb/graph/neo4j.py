@@ -347,6 +347,9 @@ class Neo4jClient:
         param_type="AND",
         permission_params: str = "",
         permission_or_creator_filter: dict = None,
+        format_permission_dict: dict = None,
+        organization_field: str = "organization",
+        case_sensitive: bool = True,
         include_count: bool = True,
     ):
         """
@@ -355,7 +358,25 @@ class Neo4jClient:
         label_str = f":{label}" if label else ""
 
         # 处理权限或创建人的OR条件
-        if permission_or_creator_filter:
+        if format_permission_dict:
+            collector = ParameterCollector()
+            base_params, _ = self.format_search_params(params, param_type=param_type, collector=collector)
+            permission_filters = []
+            for organization_id, query_list in format_permission_dict.items():
+                organization_params, _ = self.format_search_params(
+                    [{"field": organization_field, "type": "list[]", "value": [organization_id]}],
+                    collector=collector,
+                )
+                scoped_params, _ = self.format_search_params(
+                    query_list, param_type="OR", collector=collector
+                )
+                parts = [part for part in (organization_params, scoped_params) if part]
+                if parts:
+                    permission_filters.append(f"({' AND '.join(parts)})")
+            permission_clause = f"({' OR '.join(permission_filters)})" if permission_filters else ""
+            params_str = " AND ".join(part for part in (base_params, permission_clause) if part)
+            query_params = collector.get_params()
+        elif permission_or_creator_filter:
             inst_names = permission_or_creator_filter.get("inst_names", [])
             creator = permission_or_creator_filter.get("creator")
 

@@ -211,6 +211,21 @@ def test_query_entity_can_page_without_count_query():
     assert "SKIP 0 LIMIT 10" in c.session.calls[0][0]
 
 
+def test_query_entity_supports_cross_driver_permission_map():
+    c = _client([(FakeNode(1, ["instance"], {"inst_name": "h1", "organization": [4]}),)])
+
+    rows, _ = c.query_entity(
+        "instance",
+        [],
+        format_permission_dict={4: [{"field": "inst_name", "type": "str[]", "value": ["h1"]}]},
+    )
+
+    assert rows[0]["inst_name"] == "h1"
+    assert "organization" in c.session.last_query
+    assert "inst_name" in c.session.last_query
+    assert 4 in c.session.last_params.values() or [4] in c.session.last_params.values()
+
+
 # --------------------------------------------------------------------------
 # check helpers
 # --------------------------------------------------------------------------

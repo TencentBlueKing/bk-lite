@@ -98,8 +98,11 @@ def k8s_graph(monkeypatch):
             value = value[0] if value else ""
         return str(value or "").casefold()
 
-    def query_page(inst_ids, page=1, page_size=50, order="inst_name", filters=None):
+    def filter_rows(inst_ids, filters=None, permission_map=None):
         rows = [instances[int(inst_id)] for inst_id in inst_ids if int(inst_id) in instances]
+        if permission_map and "visible_ids" in permission_map:
+            visible_ids = {int(item) for item in permission_map["visible_ids"]}
+            rows = [row for row in rows if int(row["_id"]) in visible_ids]
         for query_filter in filters or []:
             if query_filter["type"] == "str*":
                 rows = [row for row in rows if query_filter["value"].casefold() in test_name(row).casefold()]
@@ -107,6 +110,12 @@ def k8s_graph(monkeypatch):
                 rows = [row for row in rows if test_workload_type(row) in query_filter["value"]]
             elif query_filter["type"] == "list_none[]":
                 rows = [row for row in rows if test_workload_type(row) not in query_filter["value"]]
+        return rows
+
+    def query_page(
+        inst_ids, page=1, page_size=50, order="inst_name", filters=None, permission_map=None, **kwargs
+    ):
+        rows = filter_rows(inst_ids, filters=filters, permission_map=permission_map)
         reverse = str(order).startswith("-")
         order_key = str(order).removeprefix("-")
         rows.sort(key=lambda item: str(item.get(order_key) or item.get("name") or ""), reverse=reverse)
@@ -117,6 +126,12 @@ def k8s_graph(monkeypatch):
     monkeypatch.setattr(
         "apps.cmdb.services.k8s_resource_overview.InstanceManage.query_entity_page_by_ids",
         query_page,
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.services.k8s_resource_overview.InstanceManage.count_entity_by_ids",
+        lambda inst_ids, permission_map=None, filters=None, **kwargs: len(
+            filter_rows(inst_ids, filters=filters, permission_map=permission_map)
+        ),
     )
     monkeypatch.setattr(
         "apps.cmdb.services.k8s_resource_overview.InstanceManage._has_topology_view_permission",
@@ -193,6 +208,28 @@ def test_visibility_uses_each_model_permission_and_prunes_hidden_parents(k8s_gra
     }
     assert "backup" not in {node["name"] for node in result["topology"]["nodes"]}
     assert "node-b" not in {node["name"] for node in result["topology"]["nodes"]}
+
+
+@pytest.mark.unit
+def test_resource_list_prunes_children_of_hidden_namespace_without_legacy_snapshot(
+    k8s_graph, monkeypatch
+):
+    k8s_graph[21]["workload_type"] = "deployment"
+    permission_maps = {
+        "k8s_namespace": {"visible_ids": [10]},
+        "k8s_workload": {"visible_ids": [20, 21, 22]},
+    }
+    monkeypatch.setattr(
+        "apps.cmdb.services.k8s_resource_overview.InstanceManage.instance_association_instance_list",
+        lambda *args, **kwargs: pytest.fail("权限分页不得回退到逐实例快照"),
+    )
+
+    result = K8sResourceOverviewService.list_resources(
+        1, "deployment", permission_maps=permission_maps
+    )
+
+    assert [item["name"] for item in result["items"]] == ["api"]
+    assert result["count"] == 1
 
 
 @pytest.mark.unit
@@ -311,7 +348,7 @@ def test_base_layers_use_stable_limits_and_parent_complete_workloads(monkeypatch
             )
         return result
 
-    def query_page(inst_ids, page=1, page_size=50, order="inst_name"):
+    def query_page(inst_ids, page=1, page_size=50, order="inst_name", **kwargs):
         rows = [all_instances[int(inst_id)] for inst_id in inst_ids if int(inst_id) in all_instances]
         rows.sort(key=lambda item: str(item.get(order) or item.get("name") or ""))
         start = (int(page) - 1) * int(page_size)
@@ -322,6 +359,10 @@ def test_base_layers_use_stable_limits_and_parent_complete_workloads(monkeypatch
     )
     monkeypatch.setattr(
         "apps.cmdb.services.k8s_resource_overview.InstanceManage.query_entity_page_by_ids", query_page
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.services.k8s_resource_overview.InstanceManage.count_entity_by_ids",
+        lambda inst_ids, **kwargs: len(inst_ids),
     )
 
     result = K8sResourceOverviewService.get_overview(1)
@@ -360,7 +401,7 @@ def test_overview_uses_batched_relations_and_never_loads_pod_entities(monkeypatc
         }
         return maps[(model_id, related_model)]
 
-    def query_page(ids, page=1, page_size=50, order="inst_name"):
+    def query_page(ids, page=1, page_size=50, order="inst_name", **kwargs):
         entity_queries.append(tuple(ids))
         rows = [instances[item_id] for item_id in ids if item_id in instances]
         rows.sort(key=lambda item: str(item.get(order) or item.get("name") or ""))
@@ -378,6 +419,11 @@ def test_overview_uses_batched_relations_and_never_loads_pod_entities(monkeypatc
     monkeypatch.setattr(
         "apps.cmdb.services.k8s_resource_overview.InstanceManage.query_entity_page_by_ids",
         query_page,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.services.k8s_resource_overview.InstanceManage.count_entity_by_ids",
+        lambda ids, **kwargs: len(ids),
         raising=False,
     )
     monkeypatch.setattr(
@@ -414,7 +460,7 @@ def test_workload_pod_page_batches_node_relations_for_current_page(monkeypatch):
         }
         return maps[(model_id, related_model)]
 
-    def query_page(ids, page=1, page_size=50, order="inst_name"):
+    def query_page(ids, page=1, page_size=50, order="inst_name", **kwargs):
         page_queries.append(tuple(ids))
         rows = [instances[item_id] for item_id in ids if item_id in instances]
         start = (page - 1) * page_size
