@@ -1,5 +1,8 @@
 import base64
 import json
+import os
+import shlex
+import subprocess
 from io import StringIO
 from queue import Queue
 from types import SimpleNamespace
@@ -1523,6 +1526,7 @@ def test_install_controller_on_nodes_detects_arch_and_resolves_package(monkeypat
     )
 
     install_call = {}
+    stream_call = {}
 
     def fake_exec_command_to_remote(*args, **kwargs):
         return "aarch64"
@@ -1532,8 +1536,12 @@ def test_install_controller_on_nodes_detects_arch_and_resolves_package(monkeypat
         install_call["kwargs"] = kwargs
         return "echo install"
 
+    def fake_exec_command_to_remote_stream(*args, **kwargs):
+        stream_call["command"] = args[4]
+        return ""
+
     monkeypatch.setattr(installer_tasks, "exec_command_to_remote", fake_exec_command_to_remote)
-    monkeypatch.setattr(installer_tasks, "exec_command_to_remote_stream", lambda *args, **kwargs: "")
+    monkeypatch.setattr(installer_tasks, "exec_command_to_remote_stream", fake_exec_command_to_remote_stream)
     monkeypatch.setattr(installer_tasks, "subscribe_lines_sync", lambda *args, **kwargs: (Queue(), lambda: None))
     monkeypatch.setattr(installer_tasks.InstallerService, "get_install_command", fake_get_install_command)
     monkeypatch.setattr(installer_tasks, "_dispatch_or_finalize_controller_task", lambda task_id: None)
@@ -1545,6 +1553,8 @@ def test_install_controller_on_nodes_detects_arch_and_resolves_package(monkeypat
     assert task_node.resolved_package_version_id == arm_package.id
     assert install_call["args"][4] == arm_package.id
     assert install_call["kwargs"]["cpu_architecture"] == NodeConstants.ARM64_ARCH
+    assert stream_call["command"] == "echo install"
+    assert "sh -lc" not in stream_call["command"]
 
 
 @pytest.mark.django_db
@@ -2857,10 +2867,111 @@ def test_open_api_linux_bootstrap_contains_arch_detection_and_routed_urls(monkey
     content = response.content.decode("utf-8")
 
     assert response.status_code == 200
+    assert content.startswith("#!/bin/sh\n")
+    assert "set -eu\n" in content
+    assert "pipefail" not in content
+    assert "trap cleanup 0" in content
+    assert "trap 'exit 1' 1 2 15" in content
+    assert 'exec "$INSTALLER_PATH"' not in content
+    assert 'exit "$installer_status"' in content
     assert 'DETECTED_ARCH="$(uname -m' in content
-    assert 'EXPECTED_ARCH="arm64"' in content
-    assert "installer/linux/download?token=abc&arch=$DETECTED_ARCH" in content
-    assert "installer/session?token=abc&arch=$DETECTED_ARCH" in content
+    assert f"EXPECTED_ARCH={shlex.quote('arm64')}" in content
+    assert (
+        f"INSTALLER_URL={shlex.quote('https://example.com/api/v1/node_mgmt/open_api/installer/linux/download?token=abc&arch=')}" '"$DETECTED_ARCH"'
+    ) in content
+    assert (
+        f"CONFIG_URL={shlex.quote('https://example.com/api/v1/node_mgmt/open_api/installer/session?token=abc&arch=')}" '"$DETECTED_ARCH"'
+    ) in content
+    syntax_check = subprocess.run(["sh", "-n"], input=content, text=True, capture_output=True, check=False)
+    assert syntax_check.returncode == 0, syntax_check.stderr
+
+
+@pytest.mark.django_db
+def test_open_api_linux_bootstrap_shell_quotes_dynamic_values(monkeypatch):
+    factory = APIRequestFactory()
+    view = OpenSidecarViewSet.as_view({"get": "linux_bootstrap"})
+    install_dir = "/opt/fusion path/it's"
+    installer_name = "controller installer's binary"
+
+    monkeypatch.setattr(
+        "apps.node_mgmt.views.sidecar.InstallTokenService.validate_and_get_token_data",
+        lambda token: {"cpu_architecture": NodeConstants.ARM64_ARCH},
+    )
+    monkeypatch.setattr(
+        InstallerSessionService,
+        "build_session_config",
+        lambda token, arch="", token_data=None: {
+            "installer": {"filename": installer_name},
+            "install_dir": install_dir,
+            "server_url": "https://example.com/api/v1/node_mgmt/open_api/node",
+        },
+    )
+
+    response = view(factory.get("/node_mgmt/open_api/installer/linux_bootstrap", {"token": "abc"}))
+    content = response.content.decode("utf-8")
+
+    assert f"INSTALL_DIR={shlex.quote(install_dir)}" in content
+    assert f"INSTALLER_NAME={shlex.quote(installer_name)}" in content
+    syntax_check = subprocess.run(["sh", "-n"], input=content, text=True, capture_output=True, check=False)
+    assert syntax_check.returncode == 0, syntax_check.stderr
+
+
+@pytest.mark.django_db
+def test_open_api_linux_bootstrap_preserves_installer_failure_and_cleans_temp_dir(monkeypatch, tmp_path):
+    factory = APIRequestFactory()
+    view = OpenSidecarViewSet.as_view({"get": "linux_bootstrap"})
+    install_dir = tmp_path / "install"
+    bootstrap_temp = tmp_path / "bootstrap-temp"
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+
+    monkeypatch.setattr(
+        "apps.node_mgmt.views.sidecar.InstallTokenService.validate_and_get_token_data",
+        lambda token: {"cpu_architecture": NodeConstants.X86_64_ARCH},
+    )
+    monkeypatch.setattr(
+        InstallerSessionService,
+        "build_session_config",
+        lambda token, arch="", token_data=None: {
+            "installer": {"filename": "installer.bin"},
+            "install_dir": str(install_dir),
+            "server_url": "https://example.com/api/v1/node_mgmt/open_api/node",
+        },
+    )
+
+    scripts = {
+        "mktemp": '#!/bin/sh\n/bin/mkdir -p "$BOOTSTRAP_TEMP"\nprintf "%s\\n" "$BOOTSTRAP_TEMP"\n',
+        "uname": "#!/bin/sh\nprintf 'x86_64\\n'\n",
+        "curl": """#!/bin/sh
+output=''
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "-o" ]; then output="$2"; shift 2; else shift; fi
+done
+printf '%s\n' '#!/bin/sh' 'exit 7' > "$output"
+""",
+        "rm": '#!/bin/sh\nexec /bin/rm "$@"\n',
+        "mkdir": '#!/bin/sh\nexec /bin/mkdir "$@"\n',
+        "chmod": '#!/bin/sh\nexec /bin/chmod "$@"\n',
+    }
+    for name, script in scripts.items():
+        path = bin_dir / name
+        path.write_text(script, encoding="utf-8")
+        path.chmod(0o755)
+    (bin_dir / "tr").symlink_to("/usr/bin/tr")
+
+    response = view(factory.get("/node_mgmt/open_api/installer/linux_bootstrap", {"token": "abc"}))
+    env = os.environ.copy()
+    env.update({"PATH": str(bin_dir), "BOOTSTRAP_TEMP": str(bootstrap_temp)})
+    result = subprocess.run(
+        ["/bin/sh", "-c", response.content.decode("utf-8")],
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 7, result.stderr
+    assert not bootstrap_temp.exists()
 
 
 @pytest.mark.django_db
