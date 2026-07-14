@@ -104,15 +104,15 @@
 
 ## 08 专项资源视图
 
-- 业务承诺：待补充
-- 入口：待补充
-- 核心调用链：待补充
-- 外部依赖：待补充
-- 关键测试：待补充
-- 执行命令：待补充
-- 结果：待补充
-- 覆盖率：待补充
-- 未验证项：待补充
+- 业务承诺：K8s setup 内部入口按 Execute/View 授权，公开 render 仅凭绝对过期且原子限次的 token 生成 YAML；K8s、应用、网络、机房/机柜视图先授权根实例，再按真实模型收敛父级和对端；实体分页之外还必须限制关系、节点、查询、响应字节和 deadline。跨模型对端授权引用 `CMDB-F14`，通用遍历预算引用 `CMDB-F18`，敏感外部错误引用 `CMDB-F25`。
+- 入口：`K8sSetupViewSet.install_token/install_command/verify`、`K8sSetupOpenViewSet.render`；`InstanceViewSet.k8s_resource_overview/k8s_resource_layer/k8s_workload_pods/k8s_unowned_pods/k8s_resource_list`；`application_resource_apps/topology/resources/instances/export`；`network_topo`；`room_layout/rack_layout`。
+- 核心调用链：内部 setup 权限 → `K8sSetupService` → cache token/NodeMgmt/Webhook/VictoriaMetrics；公开 token → 非原子 cache get/set 消费 → NodeMgmt NATS 参数 → Webhook YAML；K8s 根 cluster VIEW → 四模型 permission map → Namespace 500 条权限分页 → 批量关系/实体页/统计；应用根 VIEW → 单一根模型 permission map → 逐节点 BFS/分组/openpyxl；room/rack 根 VIEW → 关系实例 → rack/device 权限 → U 位布局，其中 room 逐 rack 查询设备。
+- 外部依赖：FalkorDB/Neo4j GraphClient、Django cache/Redis、NodeMgmt cloud region RPC、infra Webhook、VictoriaMetrics、SystemMgmt 权限与组织上下文、openpyxl。
+- 关键测试：brief 五文件 `test_k8s_resource_overview_service.py`、`test_k8s_resource_overview_views.py`、`test_application_resource_overview_views.py`、`test_infra_service.py`、`test_rack_room_service.py`；补充权限测试 `test_k8s_setup_views.py`。
+- 执行命令：`MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false SECRET_KEY=test DB_ENGINE=sqlite DB_NAME=/private/tmp/cmdb-task9-review.sqlite3 ENABLE_CELERY=true INSTALL_APPS=system_mgmt,node_mgmt,cmdb uv run pytest -q -o addopts='' apps/cmdb/tests/test_k8s_resource_overview_service.py apps/cmdb/tests/test_k8s_resource_overview_views.py apps/cmdb/tests/test_application_resource_overview_views.py apps/cmdb/tests/test_infra_service.py apps/cmdb/tests/test_rack_room_service.py --cov=apps.cmdb.services.k8s_resource_overview --cov=apps.cmdb.services.application_resource_overview --cov=apps.cmdb.services.infra --cov=apps.cmdb.services.rack_room --cov=apps.cmdb.views.k8s_setup --cov-report=term-missing`；补充 `... uv run pytest -q -o addopts='' apps/cmdb/tests/test_k8s_setup_views.py --cov=apps.cmdb.views.k8s_setup --cov=apps.cmdb.services.k8s_setup --cov-report=term-missing`。
+- 结果：首次五文件命令被沙箱拒绝读取 uv cache，退出 2、未收集；受控权限重跑退出 0，51 passed in 4.75s。补充 setup 权限测试退出 0，6 passed in 0.15s；三项内部入口无权限均 403 且 Service 零调用，有权限 200。
+- 覆盖率：brief 五文件 K8s overview 76%、应用资源 20%、infra 95%、rack_room 89%，合计 63%；setup View 未被五文件导入。补充测试 setup View 79%、setup Service 34%、合计 54%。相关模块与核心路径总体未达 80%/90% 目标。
+- 未验证项：真实 Redis 多进程 token 原子性/绝对 TTL、FalkorDB/Neo4j、NodeMgmt/Webhook/VM、隐藏 Workload/Node 下可见 Pod、高关系边集、高扇出/环应用、超大 node_ids/Excel、room 大量 rack 的查询次数与内存、响应字节/deadline。主 Findings `CMDB-F41`–`CMDB-F43`（P0 2/P1 1），Recommendation Block，详见 [08-specialized-resources.md](08-specialized-resources.md)。
 
 ## 09 Node 同步
 
