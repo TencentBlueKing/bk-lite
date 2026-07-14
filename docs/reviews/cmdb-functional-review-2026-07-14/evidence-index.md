@@ -56,15 +56,15 @@
 
 ## 04 自动采集
 
-- 业务承诺：待补充
-- 入口：待补充
-- 核心调用链：待补充
-- 外部依赖：待补充
-- 关键测试：待补充
-- 执行命令：待补充
-- 结果：待补充
-- 覆盖率：待补充
-- 未验证项：待补充
+- 业务承诺：采集任务 create/update/delete/execute 必须在组织权限内形成可恢复的数据库、周期任务与节点配置状态；每次 execution 单 owner，重复投递幂等且旧 Worker 不能写图、关系、审计或结果；每个目标和凭据尝试有结构化 outcome，部分成功不得误报；实例 merge、自动关系与清理复用统一权限、唯一、Operation 和审计契约；目标、批次、内存、原始数据和日志均有硬边界且不泄露凭据。跨存储/异步恢复引用 `CMDB-F04/F11`，实例批写引用 `CMDB-F10/F11`，关系对端引用 `CMDB-F14`，不重复计数。
+- 入口：`CollectModelViewSet.create/update/destroy/exec_task`；周期入口 `sync_collect_task`；超时与清理 Beat 入口 `sync_periodic_update_task_status/daily_data_cleanup_task`；派发/轮换入口 `CollectDispatchService`、`CollectCredentialPoolService`、`CollectHitStateService`；实例落地入口 `BaseCollect → MetricsCannula → Management`；Enterprise hook `collect.extensions`。
+- 核心调用链：CRUD → ORM/ChangeRecord → on_commit 周期任务与 NodeMgmt；execute/周期消息 → execution claim → Job/Protocol 或多凭据 dispatch → target×credential attempt → BaseCollect 格式化 add/update/delete/association/raw → Management 图写/关系 → 审计 outbox/Enterprise hook/自动关系 → token 条件结果写回；Beat 每 5 分钟收敛 timeout，每日 02:00 全量扫描过期实例并批删。
+- 外部依赖：Django ORM/多数据库 JSON、Celery broker/worker/Beat/django-celery-beat、FalkorDB/GraphClient、NodeMgmt RPC、Stargazer/采集插件、Enterprise collect extension、ChangeRecord mirror outbox。
+- 关键测试：`test_collect_service_methods.py`、`test_collect_dispatch_service.py`、`test_collect_celery_tasks_svc.py`、`test_collect_management_hooks.py`；Enterprise `test_new_collect_objects_pipeline.py` 因子模块未初始化未执行。
+- 执行命令：`SECRET_KEY=test DB_ENGINE=sqlite DB_NAME=/private/tmp/cmdb-task5-review.sqlite3 ENABLE_CELERY=true INSTALL_APPS=system_mgmt,node_mgmt,cmdb MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false uv run pytest -q -o addopts='' apps/cmdb/tests/test_collect_service_methods.py apps/cmdb/tests/test_collect_dispatch_service.py apps/cmdb/tests/test_collect_celery_tasks_svc.py apps/cmdb/tests/test_collect_management_hooks.py --cov=apps.cmdb.services.collect_service --cov=apps.cmdb.services.collect_dispatch_service --cov=apps.cmdb.services.collect_credential_pool_service --cov=apps.cmdb.services.collect_target_service --cov=apps.cmdb.services.collect_hit_state_service --cov=apps.cmdb.collection.common --cov=apps.cmdb.collection.collect_tasks.base --cov=apps.cmdb.tasks.celery_tasks --cov=apps.cmdb.services.data_cleanup_service --cov-report=term-missing`。Enterprise 初始化后必须使用 `uv run --with jsonschema pytest`，本次未执行。
+- 结果：沙箱首次退出 2（uv cache 无权限，未收集）；受控缓存权限重跑退出 0，82 passed in 3.61s。Enterprise gitlink `enterprise` 前缀为 `-`，子模块未初始化，brief 路径在当前 worktree 不存在并明确未验证。
+- 覆盖率：collect_service 85%、dispatch 73%、credential_pool 61%、target 61%、hit_state 76%、common 38%、base 17%、celery_tasks 84%、cleanup 23%，合计 65%，未达 75%/核心 90% 门槛。
+- 未验证项：Enterprise pipeline/overlay hook、真实 FalkorDB、真实 broker/多 Worker 重投与崩溃、NodeMgmt/Stargazer、MySQL/PostgreSQL、大 IP/实例/原始结果和 cleanup 规模均未验证。测试未覆盖相同 token 双 owner、旧 Worker 图副作用、混合目标失败、结构化错误分类、批次/内存上限、删除审计和 secret 日志。主 Findings `CMDB-F20`–`CMDB-F25`（P0 1/P1 5），详见 [04-auto-collection.md](04-auto-collection.md)。
 
 ## 05 Stargazer 边界
 
