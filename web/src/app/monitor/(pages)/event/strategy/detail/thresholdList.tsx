@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { Select, InputNumber } from 'antd';
+import { Select, InputNumber, Tooltip } from 'antd';
+import { QuestionCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { ListItem } from '@/app/monitor/types';
 import { LEVEL_MAP } from '@/app/monitor/constants';
@@ -31,6 +32,7 @@ interface ThresholdListProps {
   unitOptions?: any[];
   isEnumMetric?: boolean;
   enumOptions?: EnumOption[];
+  showUnitSelector?: boolean;
 }
 
 const ThresholdList: React.FC<ThresholdListProps> = ({
@@ -40,7 +42,8 @@ const ThresholdList: React.FC<ThresholdListProps> = ({
   onThresholdUnitChange,
   unitOptions = [],
   isEnumMetric = false,
-  enumOptions = []
+  enumOptions = [],
+  showUnitSelector = true
 }) => {
   const { t } = useTranslation();
 
@@ -76,9 +79,12 @@ const ThresholdList: React.FC<ThresholdListProps> = ({
   return (
     <div className="w-full border border-[var(--color-border-2)] rounded-md p-4 bg-[var(--color-bg-1)] shadow-md">
       {/* 单位选择器在右上角 - 枚举类型不显示 */}
-      {!isEnumMetric && (
+      {showUnitSelector && !isEnumMetric && (
         <div className="flex justify-end mb-[10px]">
           <span className="mr-[10px] leading-[32px]">{t('common.unit')}:</span>
+          <Tooltip title={t('monitor.events.thresholdUnitHelp')}>
+            <QuestionCircleOutlined className="mr-[8px] text-[var(--color-text-3)]" />
+          </Tooltip>
           <Select
             value={thresholdUnit}
             style={{ width: 180 }}
@@ -144,7 +150,6 @@ const ThresholdList: React.FC<ThresholdListProps> = ({
               ) : (
                 <InputNumber
                   style={{ flex: 1 }}
-                  min={0}
                   value={item.value}
                   addonAfter={getUnitLabel()}
                   onChange={(val) => handleValueChange(val, index)}

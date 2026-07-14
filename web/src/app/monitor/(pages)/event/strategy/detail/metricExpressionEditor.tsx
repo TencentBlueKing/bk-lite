@@ -9,7 +9,8 @@ import {
   IndexViewItem,
   ListItem,
   MetricItem,
-  CascaderItem
+  CascaderItem,
+  UnitListItem
 } from '@/app/monitor/types';
 import { findCascaderPath } from '@/app/monitor/utils/common';
 import {
@@ -23,6 +24,7 @@ import {
   shouldShowFormulaEditor,
   VARIABLE_SEQUENCE
 } from './formulaExpressionUtils';
+import { buildMetricSelectOption } from './strategyDetailUtils';
 
 interface MetricExpressionEditorProps {
   rows: MetricExpressionRow[];
@@ -30,9 +32,8 @@ interface MetricExpressionEditorProps {
   resultName: string;
   expression: string;
   resultUnit: string | null;
-  metricUnit: string | null;
-  onMetricUnitChange: (value: string) => void;
   groupedUnitOptions: CascaderItem[];
+  unitList: UnitListItem[];
   labelsByRef: Record<string, string[]>;
   originMetricData: IndexViewItem[];
   groupByOptions: string[];
@@ -51,9 +52,8 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
   resultName,
   expression,
   resultUnit,
-  metricUnit,
-  onMetricUnitChange,
   groupedUnitOptions,
+  unitList,
   labelsByRef,
   originMetricData,
   groupByOptions,
@@ -83,12 +83,11 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
       originMetricData.map((group) => ({
         label: group.display_name,
         title: group.name,
-        options: (group.child || []).map((metric: MetricItem) => ({
-          label: metric.display_name,
-          value: metric.name
-        }))
+        options: (group.child || []).map((metric: MetricItem) =>
+          buildMetricSelectOption(metric, unitList)
+        )
       })),
-    [originMetricData]
+    [originMetricData, unitList]
   );
 
   const updateRow = (rowIndex: number, patch: Partial<MetricExpressionRow>) => {
@@ -186,10 +185,6 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
     label: `${item.label.toString().toLowerCase()} by`,
     value: item.value
   }));
-
-  // 透传 metricUnit 给上层(由 MetricDefinitionForm 渲染 Cascader)
-  void metricUnit;
-  void onMetricUnitChange;
 
   return (
     <div className="rounded-md border border-[var(--color-border-2)] bg-[var(--color-bg-1)] shadow-sm">
@@ -383,6 +378,7 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
             <Cascader
               className="w-full"
               showSearch
+              allowClear={false}
               value={
                 resultUnit ? findCascaderPath(groupedUnitOptions, resultUnit) : []
               }
