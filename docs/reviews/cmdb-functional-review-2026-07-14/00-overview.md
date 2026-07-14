@@ -8,7 +8,7 @@
 
 | 功能域 | 状态 | P0 | P1 | P2 | P3 | Recommendation | 报告链接 |
 |---|---|---:|---:|---:|---:|---|---|
-| 01 模型治理 | 已完成 | 0 | 5 | 2 | 0 | Request changes | [01-model-governance.md](01-model-governance.md) |
+| 01 模型治理 | 已完成 | 1 | 4 | 2 | 0 | Request changes | [01-model-governance.md](01-model-governance.md) |
 | 02 实例写入 | 未开始 | 0 | 0 | 0 | 0 | 待评审 | [02-instance-write.md](02-instance-write.md) |
 | 03 查询与拓扑 | 未开始 | 0 | 0 | 0 | 0 | 待评审 | [03-query-topology.md](03-query-topology.md) |
 | 04 自动采集 | 未开始 | 0 | 0 | 0 | 0 | 待评审 | [04-auto-collection.md](04-auto-collection.md) |

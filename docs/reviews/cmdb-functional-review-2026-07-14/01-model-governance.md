@@ -2,13 +2,26 @@
 
 ## 1. Summary
 
-模型治理以 HTTP ViewSet 为入口：分类与模型主体写入 FalkorDB；字段分组、公共枚举库写入 Django ORM；唯一规则存放在 `MODEL.unique_rules` JSON；自动关联规则存放在 `MODEL_ASSOCIATION.auto_relation_rule` 边属性；展示字段同时存在于模型 `attrs` 与实例冗余属性。社区层通过 `model_ops` 注册表委派企业字段类型规则，当前仓库只包含 no-op 默认实现，未包含可核验的 Enterprise overlay 实现。
+模型治理以 HTTP ViewSet 为入口：分类与模型主体写入 FalkorDB；字段分组、公共枚举库写入 Django ORM；唯一规则存放在 `MODEL.unique_rules` JSON；自动关联规则存放在 `MODEL_ASSOCIATION.auto_relation_rule` 边属性；展示字段同时存在于模型 `attrs` 与实例冗余属性。社区层通过 `model_ops` 注册表委派企业字段类型规则；HEAD 已通过 `enterprise` gitlink 和 `.gitmodules` 声明 Enterprise 子模块，但本 worktree 未初始化该子模块，因此本域只完成社区委派契约审查，overlay 行为验证仍是未完成范围。
 
 主模型 CRUD、模型关联创建/删除、字段新增/更新已有菜单权限和部分对象权限；规则校验也能拒绝字段不存在、类型不一致、展示字段及不支持类型。不过，模型子资源、自动关联双端授权和公共枚举租户边界没有保持同一权限契约；字段分组、公共枚举传播与布局保存也缺少可收敛的跨存储状态机。
 
-本域确认 7 个主 Finding：P1 5 个、P2 2 个；没有 P0/P3。Recommendation 为 **Request changes**。
+本域确认 7 个主 Finding：P0 1 个、P1 4 个、P2 2 个；没有 P3。P0 `CMDB-F04` 会把部分失败任务错误标记为成功且没有恢复闭环，优先级高于其余权限与一致性问题。Recommendation 为 **Request changes**。
 
 ## 2. Findings
+
+### Finding CMDB-F04：公共枚举传播把部分失败标记为成功且不可恢复
+
+- Severity: P0
+- Location: `server/apps/cmdb/services/public_enum_library.py:82-126,191-301`；`server/apps/cmdb/tasks/celery_tasks.py:359-364`
+- Root cause category: 状态机设计缺陷
+- Evidence: `update_library` 先保存 ORM options，再同步调用 Celery `.delay()`，没有 `transaction.on_commit`、持久化 outbox 或周期恢复；broker 失败会在库已提交后返回错误。Worker 全量扫描模型，单模型图写异常只追加 `failed_items`，最终仍返回 `result=True`；`sync_public_enum_library_snapshots_task` 原样返回该结果，Celery 将存在失败副作用的任务标记为成功且不会重试。成功分支只更新模型 `attrs.option`，未调用实例 `_display` 重建，因此选项改名后既有实例继续保留旧显示名。
+- Trigger: broker 派发失败、任一模型图写暂时失败，或公共选项 ID 不变但名称变化。
+- Impact: 公共库、不同模型的枚举快照和实例可搜索展示值可永久处于不同版本；API/任务状态又无法指出待恢复对象，搜索和展示会返回旧含义。
+- Why existing tests missed it: `test_update_library_options_enqueues` 将 enqueue 替换为布尔标记；`test_sync_library_snapshots_ok` 只断言模型 `set_entity_properties` 被调用，没有 broker 失败、部分图失败、重投、任务终态或实例 `_display` 断言。
+- Minimal safe fix: 库更新与持久化传播事件同事务提交；Worker 以模型/字段为可重试单元记录状态，失败抛出或进入可恢复终态；模型快照成功后按受影响模型/字段分页重建实例 `_display`。
+- Required tests: 覆盖 broker 首次失败后恢复、单模型失败重试、重复投递幂等、部分成功不报 SUCCESS、选项改名后实例展示值更新，以及大批量分页/资源上限。
+- Long-term design note: 将公共枚举视为版本化主数据，用 durable outbox + per-consumer checkpoint 驱动模型快照和实例投影，禁止以一次 fire-and-forget 全量扫描表达一致性。
 
 ### Finding CMDB-F01：模型唯一规则与字段分组缺少模型对象权限
 
@@ -48,19 +61,6 @@
 - Minimal safe fix: Service 接受并强制授权组织范围；列表只返回公共库或授权组织交集，写入/删除要求库 team 属于授权范围，创建/转移 team 校验提交集合是授权集合子集。
 - Required tests: 增加跨组织 list 不可见、update/delete 403、任意 team 创建/转移拒绝、公共库策略、include_children 与拒绝路径数据库不变测试。
 - Long-term design note: `editable` 只能是服务端授权结果的展示，不能替代查询集裁剪和写路径强制校验；公共枚举应复用统一 JSON 组织范围 helper。
-
-### Finding CMDB-F04：公共枚举传播不可恢复且不更新实例展示值
-
-- Severity: P1
-- Location: `server/apps/cmdb/services/public_enum_library.py:82-126,191-301`；`server/apps/cmdb/tasks/celery_tasks.py:359-364`
-- Root cause category: 状态机设计缺陷
-- Evidence: `update_library` 先保存 ORM options，再同步调用 Celery `.delay()`，没有 `transaction.on_commit`、持久化 outbox 或周期恢复；broker 失败会在库已提交后返回错误。Worker 全量扫描模型，单模型图写异常只追加 `failed_items`，最终仍返回 `result=True`，Celery 将任务视为成功且无自动重试。成功分支只更新模型 `attrs.option`，未调用实例 `_display` 重建，因此选项改名后既有实例继续保留旧显示名。
-- Trigger: broker 派发失败、任一模型图写暂时失败，或公共选项 ID 不变但名称变化。
-- Impact: 公共库、不同模型的枚举快照和实例可搜索展示值可永久处于不同版本；API/任务状态又无法指出待恢复对象，搜索和展示会返回旧含义。
-- Why existing tests missed it: `test_update_library_options_enqueues` 将 enqueue 替换为布尔标记；`test_sync_library_snapshots_ok` 只断言模型 `set_entity_properties` 被调用，没有 broker 失败、部分图失败、重投、任务终态或实例 `_display` 断言。
-- Minimal safe fix: 库更新与持久化传播事件同事务提交；Worker 以模型/字段为可重试单元记录状态，失败抛出或进入可恢复终态；模型快照成功后按受影响模型/字段分页重建实例 `_display`。
-- Required tests: 覆盖 broker 首次失败后恢复、单模型失败重试、重复投递幂等、部分成功不报 SUCCESS、选项改名后实例展示值更新，以及大批量分页/资源上限。
-- Long-term design note: 将公共枚举视为版本化主数据，用 durable outbox + per-consumer checkpoint 驱动模型快照和实例投影，禁止以一次 fire-and-forget 全量扫描表达一致性。
 
 ### Finding CMDB-F05：SQLite 字段删除在图删除后固定失败
 
@@ -114,7 +114,7 @@
 - 自动关联测试不经过双端对象权限和全量同步外部效果。
 - 字段分组测试没有跨存储失败注入；布局原子性测试在模型第一笔写之前抛错。
 - 现有 `test_model_attr_delete_ok` 在 SQLite 下单独实跑 **1 failed in 2.26s，exit 1**，直接复现 CMDB-F05；六文件绿灯没有覆盖该入口。
-- Enterprise 扩展仅验证社区注册表默认实现与自定义 stub；仓库中无 overlay 实现，附件/图片真实校验、导入导出和审计委派未验证。
+- Enterprise 扩展仅验证社区注册表默认实现与自定义 stub；HEAD 存在 `enterprise` gitlink 与 `.gitmodules`，但本 worktree 未初始化子模块，overlay 源码在本次审查环境不可用。附件/图片真实校验、导入导出和审计委派属于未完成范围，不能从社区门面测试外推结论。
 
 ## 4. Maintainability Verdict
 
@@ -131,4 +131,4 @@
 
 **Request changes**。
 
-合并/发布前至少应关闭三个 P1 权限根因（模型子资源、关联双端、公共枚举组织边界）、修复 SQLite 字段删除，并为公共枚举传播建立可恢复投递和实例展示收敛。P2 的字段分组与布局跨存储状态也应在进入生产前提供补偿或持久化恢复机制；仅增加成功路径 Mock 测试不足以降低风险。
+`CMDB-F04` 是发布阻断项：必须先消除任务错误成功，建立可恢复投递、部分失败重试和实例展示收敛，再评估进入生产。其后至少关闭三个 P1 权限根因（模型子资源、关联双端、公共枚举组织边界）并修复 SQLite 字段删除。P2 的字段分组与布局跨存储状态也应在进入生产前提供补偿或持久化恢复机制；仅增加成功路径 Mock 测试不足以降低风险。
