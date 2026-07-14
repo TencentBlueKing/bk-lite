@@ -18,7 +18,7 @@
 - Impact: 调用方、采集任务与列表均观察到成功，实际正文永久不可读且 diff 不可用；监控不会按任务失败告警，上游也不会重试采集，配置留存与审计结论失真。
 - Why existing tests missed it: DB 流水线 fixture 把 `publish_version` 固定桩成 READY 成功；生命周期测试单独证明发布失败会进入 ERROR，却不连接 `CollectModels` 或 NATS envelope；NATS E2E 又直接 mock `process_collect_result`。没有一个测试贯穿“DB 提交成功 + 发布失败 → 任务/callback/列表/content”外部结果。
 - Minimal safe fix: 只有版本确认 `READY` 后才推进任务 `SUCCESS`。当前同步发布若进入 `ERROR`，`process_collect_result` 必须返回稳定错误，NATS handler 返回 `processed=False/error`；若调用栈确有外层事务、发布尚未执行，则任务与 callback 必须显式返回 pending，不能把预填 formal key 当作正文可用。
-- Required tests: on_commit 保存失败、正式键冲突、临时对象丢失及持续重试耗尽；逐一断言版本状态、任务终态、NATS `processed/error`、列表字段、content/diff 响应和恢复后从 pending/error 到 READY 的唯一合法转换；覆盖旧恢复 Worker 不得覆盖新 generation。
+- Required tests: READY 前任务不得进入成功；同步发布进入 ERROR 时 NATS 必须返回 `processed=False/error`；同一业务键重投命中 PENDING/ERROR 版本时不得再次返回业务成功；周期恢复到 READY 后只能一次推进任务 SUCCESS。各场景同时断言版本状态、任务终态、列表字段与 content/diff 响应。
 - Long-term design note: `ConfigFileVersion` 应是正文发布状态的权威实体，任务汇总只消费其持久化状态事件；异步恢复长期应增加 generation/owner fencing，防止超租约旧 Worker 覆盖新处理者。通用 broker/application ack 仍复用 `CMDB-F04`，本 Finding 聚焦本域已有恢复器下的错误终态发布。
 
 ### Finding CMDB-F35：超过 5 MB 的正文被完整接收后静默截断，仍以 success 参与版本读取与 diff
