@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Stargazer jboss 采集原始输出契约(装包失败 placeholder)",
+  "description": "2026-07-10 v4 — jboss raw_stdout 是空 array,placeholder_reason 标注 wildfly 4 种装包方式都失败",
+  "type": "object",
+  "required": ["model_id", "captured_at", "raw_stdout", "placeholder_reason"],
+  "properties": {
+    "model_id":          {"type": "string", "pattern": "^jboss$"},
+    "captured_at":       {"type": "string", "format": "date-time"},
+    "raw_stdout":        {"type": "array", "maxItems": 0},
+    "placeholder_reason": {"type": "string"}
+  }
+}

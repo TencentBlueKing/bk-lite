@@ -63,6 +63,7 @@ class PolicyPreviewService:
         return {
             "query": query,
             "data": data,
+            "threshold": self._converted_thresholds(),
             "warnings": self.warnings,
         }
 
@@ -171,6 +172,32 @@ class PolicyPreviewService:
         target_unit = self.payload.get("calculation_unit") or ""
         source_unit = self.payload.get("metric_unit") or getattr(self.metric, "unit", "") or ""
         return UnitConverter.get_display_unit(target_unit or source_unit) if (target_unit or source_unit) else ""
+
+    def _converted_thresholds(self):
+        thresholds = deepcopy(self.payload.get("threshold") or [])
+        if not thresholds:
+            return []
+
+        calculation_unit = (
+            self.payload.get("calculation_unit")
+            or self.payload.get("metric_unit")
+            or ""
+        )
+        threshold_unit = self.payload.get("threshold_unit") or calculation_unit
+        if not calculation_unit or not threshold_unit or calculation_unit == threshold_unit:
+            return thresholds
+        if not UnitConverter.is_convertible(threshold_unit, calculation_unit):
+            raise BaseAppException(
+                f"threshold unit is not convertible: {threshold_unit} -> {calculation_unit}"
+            )
+
+        values = [item.get("value") for item in thresholds]
+        converted_values = UnitConverter.convert_values(
+            values, threshold_unit, calculation_unit
+        )
+        for item, value in zip(thresholds, converted_values):
+            item["value"] = value
+        return thresholds
 
     def _preview_points(self):
         preview = self.payload.get("preview") or {}

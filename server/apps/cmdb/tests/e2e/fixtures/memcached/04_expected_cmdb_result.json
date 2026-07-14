@@ -1,0 +1,16 @@
+{
+  "model_id": "memcached",
+  "instance_count_min": 1,
+  "expected_instance_subset_fixture_driven": {
+    "inst_name":    "172.17.0.2-memcached-11211",
+    "ip_addr":      "172.17.0.2",
+    "port":         "11211",
+    "version":      "",
+    "install_path": ".",
+    "maxconn":      "",
+    "cachesize":    "64",
+    "user_name":    "memcache"
+  },
+  "fixture_source_fixture_driven": "agents/stargazer/tests/fixtures/collect/memcached.json(2026-07-08 cli 真实落盘,ip=172.17.0.2)",
+  "notes": "Phase 5 任务 5.2;middleware 类 runner 用 MiddlewareCollectMetrics,extra_payload_keys={\"result\":True}(业务字段经 metric.result JSON 编码)。raw_stdout 是 list 形态(每项含 bk_inst_name/bk_obj_id),工厂测试取首项做 raw_items。plugin field_mapping 见 apps/cmdb/collection/plugins/community/middleware/memcached.py(MemcachedCollectionPlugin)。version/maxconn 在真实采集场景下可能为空,fixture_driven 留空字符串。"
+}

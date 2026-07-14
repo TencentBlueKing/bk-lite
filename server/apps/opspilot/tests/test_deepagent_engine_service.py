@@ -223,3 +223,43 @@ class TestBuildDeepagentNodes:
         assert kwargs["backend"] is fake_backend
         assert kwargs["skills"] == ["/skills/"]
         assert kwargs["interrupt_on"] == {"shell": True}
+
+    def test_build_skill_backend_and_sources_called_only_once_per_run(self):
+        """S2 回归测试:每次 deepagent 流只调一次 _build_skill_backend_and_sources。
+
+        之前 node.py 的 deep_wrapper_node 把 setup 块 copy-paste 了两遍(2664-2682 一次,
+        2684-2693 一次),导致 _build_skill_backend_and_sources 被双倍调,每次请求多 mkdtemp
+        一个沙箱,第一个永远不清理。本测试锁住"setup 只跑一次",防止回退。
+
+        改后版本里 _build_skill_backend_and_sources 应该恰好 1 次(整个 wrapper 一次);
+        回退到旧版本时会变 2 次,本测试 fail 并报具体计数。
+        """
+        node = ToolsNodes()
+        # _skill_package_capabilities 是 ToolsNodes 实例属性,deep_wrapper_node 路径会读,
+        # 手动设一个空集合(测试不依赖具体 capability,只关心调用次数)
+        node._skill_package_capabilities = set()
+        node.all_tools = [_tool("shell")]
+        req = _request()
+        captured = {}
+
+        fake_backend = MagicMock()
+        call_counter = {"n": 0}
+
+        def _counting_side_effect(*args, **kwargs):
+            call_counter["n"] += 1
+            return (fake_backend, ["/skills/"], None)
+
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None), patch.object(
+            ToolsNodes, "_build_skill_backend_and_sources", side_effect=_counting_side_effect
+        ):
+            self._run_wrapper(node, req, captured)
+
+        assert call_counter["n"] == 1, (
+            f"期望 deep_wrapper_node 整个 setup 期间 _build_skill_backend_and_sources "
+            f"只调 1 次,实际 {call_counter['n']} 次。"
+            f"S2 修复前为 2 次(setup 块被复制粘贴)。"
+        )
+        # 同时确认 kwargs 透传正确(防御 setup 块改坏后端到端数据流)
+        kwargs = captured["create_kwargs"]
+        assert kwargs["backend"] is fake_backend
+        assert kwargs["skills"] == ["/skills/"]

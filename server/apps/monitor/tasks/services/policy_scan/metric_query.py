@@ -1,5 +1,6 @@
 """指标查询服务 - 负责指标数据的查询和格式化"""
 
+import copy
 import json
 import math
 
@@ -258,18 +259,49 @@ class MetricQueryService:
 
         return vm_data
 
+    def get_effective_calculation_unit(self):
+        """返回最终结果单位，历史策略回退到指标原始单位。"""
+        return self.policy.calculation_unit or self.policy.metric_unit or ""
+
+    def get_effective_threshold_unit(self):
+        """返回阈值输入单位，历史空字段回退到最终结果单位。"""
+        return (
+            getattr(self.policy, "threshold_unit", "")
+            or self.get_effective_calculation_unit()
+        )
+
+    def convert_thresholds(self, thresholds):
+        """把阈值临时副本换算到最终结果单位，不改写策略配置。"""
+        converted = copy.deepcopy(thresholds)
+        if not converted:
+            return converted
+
+        source_unit = self.get_effective_threshold_unit()
+        target_unit = self.get_effective_calculation_unit()
+        if not source_unit or not target_unit:
+            return converted
+        if not UnitConverter.is_convertible(source_unit, target_unit):
+            raise BaseAppException(
+                f"策略 {self.policy.id}: 阈值单位 '{source_unit}' "
+                f"不能转换为结果单位 '{target_unit}'"
+            )
+
+        values = [float(item["value"]) for item in converted]
+        converted_values = UnitConverter.convert_values(
+            values, source_unit, target_unit
+        )
+        for item, value in zip(converted, converted_values):
+            item["value"] = value
+        return converted
+
     def get_display_unit(self):
         """获取用于展示的单位
 
         Returns:
             str: 展示单位
         """
-        if self._unit_conversion_enabled:
-            return UnitConverter.get_display_unit(self.policy.calculation_unit)
-        elif self.policy.metric_unit:
-            return UnitConverter.get_display_unit(self.policy.metric_unit)
-        else:
-            return ""
+        unit = self.get_effective_calculation_unit()
+        return UnitConverter.get_display_unit(unit) if unit else ""
 
     def get_enum_value_map(self) -> dict:
         """获取枚举类型指标的值到名称的映射

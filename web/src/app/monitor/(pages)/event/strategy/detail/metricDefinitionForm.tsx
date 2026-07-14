@@ -12,6 +12,7 @@ import { useTranslation } from '@/utils/i18n';
 import {
   SegmentedItem,
   IndexViewItem,
+  CascaderItem,
   UnitListItem
 } from '@/app/monitor/types';
 import { StrategyFields } from '@/app/monitor/types/event';
@@ -49,8 +50,9 @@ interface MetricDefinitionFormProps {
   resultName: string;
   expression: string;
   resultUnit: string | null;
-  unitOptions: UnitListItem[];
   labelsByRef: Record<string, string[]>;
+  groupedUnitOptions: CascaderItem[];
+  unitList: UnitListItem[];
   onCollectTypeChange: (id: string) => void;
   onMetricRowsChange: (rows: MetricExpressionRow[]) => void;
   onResultNameChange: (value: string) => void;
@@ -74,8 +76,9 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
   resultName,
   expression,
   resultUnit,
-  unitOptions,
   labelsByRef,
+  groupedUnitOptions,
+  unitList,
   onCollectTypeChange,
   onMetricRowsChange,
   onResultNameChange,
@@ -200,13 +203,14 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
                   resultName={resultName}
                   expression={expression}
                   resultUnit={resultUnit}
-                  unitOptions={unitOptions}
                   labelsByRef={labelsByRef}
                   originMetricData={originMetricData}
                   groupByOptions={groupByOptions}
                   groupMethods={GROUP_METHOD_LIST}
                   conditionMethods={CONDITION_LIST}
                   metricsLoading={metricsLoading}
+                  groupedUnitOptions={groupedUnitOptions}
+                  unitList={unitList}
                   onRowsChange={onMetricRowsChange}
                   onResultNameChange={onResultNameChange}
                   onExpressionChange={onExpressionChange}

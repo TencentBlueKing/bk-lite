@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+from django.db import transaction
 from rest_framework import viewsets, mixins
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -225,19 +226,27 @@ class MonitorAlertViewSet(
             if old_status == "new":
                 updated_data["alert_center_notified"] = False
 
+            # 基线清理/刷新 与 告警 status 写库 必须在同一事务中。
+            # 否则 perform_update 失败时 baseline 已删/已刷,下次扫描会再次 new 一条
+            # 一模一样的 no_data 告警，相当于「用户手动关了又自动重开」(issue #4041)。
+            # 注意:refresh() 内部含 VM scan,事务不宜过长——失败 → 整段回滚即满足需求。
             if instance.alert_type == "no_data" and instance.metric_instance_id:
-                update_baseline = request.data.get("update_baseline", False)
-                if update_baseline:
-                    policy = MonitorPolicy.objects.filter(id=instance.policy_id).first()
-                    if policy:
-                        PolicyBaselineService(policy).refresh()
-                else:
-                    PolicyInstanceBaseline.objects.filter(
-                        policy_id=instance.policy_id,
-                        metric_instance_id=instance.metric_instance_id,
-                    ).delete()
-
-        self.perform_update(serializer)
+                with transaction.atomic():
+                    update_baseline = request.data.get("update_baseline", False)
+                    if update_baseline:
+                        policy = MonitorPolicy.objects.filter(id=instance.policy_id).first()
+                        if policy:
+                            PolicyBaselineService(policy).refresh()
+                    else:
+                        PolicyInstanceBaseline.objects.filter(
+                            policy_id=instance.policy_id,
+                            metric_instance_id=instance.metric_instance_id,
+                        ).delete()
+                    self.perform_update(serializer)
+            else:
+                self.perform_update(serializer)
+        else:
+            self.perform_update(serializer)
         instance.refresh_from_db()
 
         if old_status == "new" and instance.status == "closed":

@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Stargazer keepalived 采集原始输出契约",
+  "description": "2026-07-10 v4 — G4.8 placeholder 形态(VRRP 启动阻塞,init 脚本模板填充)",
+  "type": "object",
+  "required": ["model_id", "captured_at", "raw_stdout"],
+  "properties": {
+    "model_id":    {"type": "string", "pattern": "^keepalived$"},
+    "captured_at": {"type": "string", "format": "date-time"},
+    "raw_stdout": {
+      "type": "object",
+      "required": ["ip_addr", "virtual_router_id"],
+      "properties": {
+        "ip_addr":           {"type": "string"},
+        "bk_obj_id":         {"type": "string"},
+        "version":           {"type": "string"},
+        "priority":          {"type": ["string", "integer"]},
+        "state":             {"type": "string"},
+        "virtual_router_id": {"type": ["string", "integer"]},
+        "user_name":         {"type": "string"},
+        "install_path":      {"type": "string"},
+        "config_file":       {"type": "string"}
+      }
+    }
+  }
+}

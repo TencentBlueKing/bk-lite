@@ -1,0 +1,12 @@
+{
+  "model_id": "kafka",
+  "instance_count_min": 1,
+  "expected_instance_subset_fixture_driven": {
+    "inst_name": "172.17.0.3-kafka-9092",
+    "ip_addr":   "172.17.0.3",
+    "port":      "9092",
+    "version":   "3.6.0"
+  },
+  "fixture_source_fixture_driven": "agents/stargazer/tests/fixtures/collect/kafka.json(2026-07-08 cli 真实落盘,ip=172.17.0.3,port=9092,kafka=3.6.0)",
+  "notes": "G5.2.x Phase 2.3 第三闭环;kafka 走 middleware runner(MiddlewareCollectMetrics),extra_payload_keys={\"result\":True},业务字段经 metric.result JSON 编码。raw_stdout 为形态 B(平铺,无 success/result 包裹),由公共契约 00_common_contract.schema.json 的 oneOf 兼容。kafka plugin field_mapping 实际只取 ip_addr/port/version/install_path/conf_path/log_path/java_*_xms_xmx/broker/io_threads/network_threads/socket_*_bytes,raw 中 bin_path/config/user/pid/cluster_id/broker_count/topics 不在 field_mapping 内,不会进入 CMDB 实例字段"
+}

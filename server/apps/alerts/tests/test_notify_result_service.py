@@ -39,12 +39,111 @@ def test_format_notify_result_explicit_false_failed():
     assert svc.format_notify_result() == NotifyResultStatus.FAILED
 
 
+@pytest.mark.parametrize(
+    ("notify_result", "expected"),
+    [
+        ({"errcode": 0}, NotifyResultStatus.SUCCESS),
+        ({"errcode": "0"}, NotifyResultStatus.SUCCESS),
+        ({"errcode": 40013}, NotifyResultStatus.FAILED),
+        ({"code": 0}, NotifyResultStatus.SUCCESS),
+        ({"code": "0"}, NotifyResultStatus.SUCCESS),
+        ({"code": 19002}, NotifyResultStatus.FAILED),
+    ],
+)
+def test_format_notify_result_supports_channel_code_conventions(notify_result, expected):
+    svc = NotifyResultService(
+        notify_users=["op1"], channel="bot", notify_result=notify_result, notify_object="A1"
+    )
+    assert svc.format_notify_result() == expected
+
+
+def test_format_notify_result_explicit_result_takes_precedence_over_code():
+    svc = NotifyResultService(
+        notify_users=["op1"],
+        channel="bot",
+        notify_result={"result": True, "errcode": 40013, "code": 19002},
+        notify_object="A1",
+    )
+    assert svc.format_notify_result() == NotifyResultStatus.SUCCESS
+
+
 def test_format_notify_result_non_dict_falls_back_to_failed():
     # notify_result 不是 dict 时 .get 抛 AttributeError，被 except 捕获并记失败
     svc = NotifyResultService(
         notify_users=["op1"], channel="email", notify_result="bad", notify_object="A1"
     )
     assert svc.format_notify_result() == NotifyResultStatus.FAILED
+
+
+def test_format_failure_reason_extracts_sanitizes_and_truncates_message():
+    svc = NotifyResultService(
+        notify_users=["op1"],
+        channel="webhook",
+        notify_result={
+            "result": False,
+            "message": (
+                "request https://notify.example/send?token=visible&room=ops "
+                "token=abc123 password: p@ss secret=top-secret "
+                + "x" * 600
+            ),
+        },
+        notify_object="A1",
+    )
+
+    reason = svc.format_failure_reason()
+
+    assert reason is not None
+    assert len(reason) == 500
+    assert "visible" not in reason
+    assert "abc123" not in reason
+    assert "p@ss" not in reason
+    assert "top-secret" not in reason
+    assert "token=***" in reason
+    assert "password: ***" in reason
+
+
+def test_format_failure_reason_uses_supported_fields_and_safe_fallback():
+    with_errmsg = NotifyResultService(
+        notify_users=["op1"],
+        channel="wechat",
+        notify_result={"errcode": 1, "errmsg": "invalid receiver"},
+        notify_object="A1",
+    )
+    without_reason = NotifyResultService(
+        notify_users=["op1"], channel="wechat", notify_result={"errcode": 1}, notify_object="A1"
+    )
+
+    assert with_errmsg.format_failure_reason() == "invalid receiver"
+    assert without_reason.format_failure_reason() == "通知失败，渠道未返回具体原因"
+
+
+def test_format_failure_reason_redacts_quoted_and_api_secret_values():
+    svc = NotifyResultService(
+        notify_users=["op1"],
+        channel="webhook",
+        notify_result={
+            "result": False,
+            "error": 'api_key: "private-key" token="private-token"',
+        },
+        notify_object="A1",
+    )
+
+    reason = svc.format_failure_reason()
+
+    assert reason is not None
+    assert "private-key" not in reason
+    assert "private-token" not in reason
+    assert reason.count("***") == 2
+
+
+def test_format_failure_reason_is_empty_for_success():
+    svc = NotifyResultService(
+        notify_users=["op1"],
+        channel="email",
+        notify_result={"result": True, "message": "accepted"},
+        notify_object="A1",
+    )
+    assert svc.format_failure_reason() is None
 
 
 # --------------------------------------------------------------------------
@@ -85,6 +184,7 @@ def test_save_notify_result_persists_failed_without_object():
     row = NotifyResult.objects.filter(notify_channel="sms").first()
     assert row is not None
     assert row.notify_result == NotifyResultStatus.FAILED
+    assert row.failure_reason == "通知失败，渠道未返回具体原因"
     assert row.notify_type == "incident"
     # notify_object 未被显式赋值，保持模型默认（None / 空）
     assert not row.notify_object

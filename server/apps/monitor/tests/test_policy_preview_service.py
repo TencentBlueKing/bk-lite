@@ -140,6 +140,26 @@ class TestApplyUnitConversion:
         assert float(out["data"]["result"][0]["values"][0][1]) == pytest.approx(2.0)
 
 
+class TestThresholdUnitConversion:
+    def test_converts_threshold_copy_to_calculation_unit(self):
+        thresholds = [{"level": "critical", "method": ">", "value": -2}]
+        svc = PolicyPreviewService(
+            {
+                "threshold": thresholds,
+                "threshold_unit": "kibibytes",
+                "calculation_unit": "bytes",
+            }
+        )
+
+        converted = svc._converted_thresholds()
+
+        assert converted[0]["value"] == pytest.approx(-2048)
+        assert thresholds[0]["value"] == -2
+
+    def test_empty_thresholds_are_supported(self):
+        assert PolicyPreviewService({})._converted_thresholds() == []
+
+
 class TestPreviewEndToEnd:
     def test_preview_pmq(self, mocker):
         svc = PolicyPreviewService({

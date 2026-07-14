@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Stargazer mysql 采集原始输出契约",
+  "description": "2026-07-10 G5.2.x — Phase 2.2 第二闭环,fixture 由 cli.py 真实落盘(db runner,extra_payload_keys=None)",
+  "type": "object",
+  "required": ["model_id", "captured_at", "raw_stdout"],
+  "properties": {
+    "model_id":    {"type": "string", "pattern": "^mysql$"},
+    "captured_at": {"type": "string", "format": "date-time"},
+    "raw_stdout": {
+      "type": "object",
+      "required": ["success", "result"],
+      "properties": {
+        "success": {"type": "boolean"},
+        "result": {
+          "type": "object",
+          "required": ["mysql"],
+          "properties": {
+            "mysql": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "required": ["ip_addr", "port"],
+                "properties": {
+                  "ip_addr":  {"type": "string"},
+                  "port":     {"type": ["string", "integer"]},
+                  "version":  {"type": "string"},
+                  "role":     {"type": "string"},
+                  "basedir":  {"type": "string"},
+                  "datadir":  {"type": "string"}
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
