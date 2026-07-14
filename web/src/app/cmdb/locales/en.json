@@ -946,7 +946,6 @@
         "keyAttribute": "Key Attribute",
         "freshness": "Freshness",
         "notSet": "Not Set",
-        "freshnessTimely": "Needs Timely Update (7 days)",
         "freshnessOccasional": "Infrequent Update (90 days)",
         "freshnessStable": "Stable (Excluded from Evaluation)",
         "selectFreshness": "Select freshness"

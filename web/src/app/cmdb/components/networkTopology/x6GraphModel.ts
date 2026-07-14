@@ -27,9 +27,10 @@ const STATUS_COLOR_MAP: Record<string, string> = {
   critical: '#ff4d4f',
 };
 
-const toOpacityAttrs = (dimmed: boolean) => ({
-  opacity: dimmed ? 0.22 : 1,
-});
+// 缓存固定对象,避免 setAttrs 每次生成新引用(否则 x6 会重新创建 <image> 元素,触发 SVG 重请求)
+const OPACITY_ATTR_DIMMED = Object.freeze({ opacity: 0.22 });
+const OPACITY_ATTR_NORMAL = Object.freeze({ opacity: 1 });
+const toOpacityAttrs = (dimmed: boolean) => (dimmed ? OPACITY_ATTR_DIMMED : OPACITY_ATTR_NORMAL);
 
 const stripDevicePrefix = (value?: string, deviceName?: string) => {
   if (!value) return '';
