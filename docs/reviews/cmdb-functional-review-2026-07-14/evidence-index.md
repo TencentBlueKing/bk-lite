@@ -164,12 +164,12 @@
 
 ## 13 跨域架构复核
 
-- 业务承诺：待补充
-- 入口：待补充
-- 核心调用链：待补充
-- 外部依赖：待补充
-- 关键测试：待补充
-- 执行命令：待补充
-- 结果：待补充
-- 覆盖率：待补充
-- 未验证项：待补充
+- 业务承诺：十二域共享的身份、授权 scope、状态、callback、错误、外部依赖和资源预算必须有明确归属；同一根因只保留一个主 Finding，编号不复用，最小安全修复与长期设计分别说明影响和取舍。
+- 入口：十二份功能报告、`00-overview.md`、本证据索引、`BUSINESS_ARCHITECTURE.md`、已批准 design/plan 与 Task 14 brief；不重新修改业务代码或测试。
+- 核心调用链：HTTP/NATS/Beat/callback → CallerContext/权限与 schema → Service/Plugin → Graph/ORM/MinIO/外部 RPC → execution/delivery/callback builder → error mapper/外部可观察终态；横向核对 framework/service/adapter/plugin/task orchestration/callback builder/error mapper/test fixture 职责。
+- 外部依赖：FalkorDB/Neo4j GraphClient、NATS listener/client、NodeMgmt/SystemMgmt RPC、Celery/Beat、Redis/ARQ、MinIO、Stargazer 与 ignored Enterprise Overlay；本任务只消费各域已记录的运行证据。
+- 关键测试：不新增业务测试；综合引用 01–12 各域 fresh pytest/直接复现/coverage 结果。文档终验检查 Finding ID、严重度、十字段、引用目标、统计、报告齐套和 diff。
+- 执行命令：`rg`/`awk`/shell 只读脚本统计 `### Finding CMDB-F`、`Severity`、跨报告 `CMDB-FNN` 引用和固定五段报告结构；`git diff --check -- docs/reviews/cmdb-functional-review-2026-07-14`；`git status --short`/`git diff --cached --name-only` 限定交付范围。
+- 结果：未新增结构性 Finding；`CMDB-F09` 为已归并到 `CMDB-F04` 的保留空号。63 个主 Finding ID 唯一，P0 25/P1 33/P2 5/P3 0；13 份报告齐套，跨域职责与依赖矩阵见 [13-cross-domain-architecture.md](13-cross-domain-architecture.md)。
+- 覆盖率：本任务没有修改业务代码，不运行新 coverage；各域真实覆盖率和未测原因保留在 01–12 节，不能合并声称达到 80%/90%。
+- 未验证项：真实多服务 NATS ACL、真实图双驱动、NodeMgmt/SystemMgmt、Celery 多 Worker、Redis/ARQ、MinIO 故障、Enterprise gitlink 与 ignored 安装态映射、多数据库与大规模基准仍沿用各域未验证项。Recommendation Block；主阻断来自既有 25 个 P0，而非本报告新增数量。
