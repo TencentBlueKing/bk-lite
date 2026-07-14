@@ -4,7 +4,7 @@ from apps.rpc.job_mgmt import JobMgmt
 from apps.alerts.action.handlers.base import ActionHandler
 from apps.alerts.action.payload import build_match_payload, resolve_field
 from apps.alerts.action.resolver import resolve_params
-from apps.alerts.action.target_resolver import resolve_node_target
+from apps.alerts.action.target_resolver import resolve_effective_team, resolve_node_target
 from apps.alerts.action.exceptions import ConfigError
 
 logger = logging.getLogger(__name__)
@@ -16,7 +16,8 @@ class JobActionHandler(ActionHandler):
     def execute(self, rule, alert, execution):
         cfg = rule.action_config or {}
         try:
-            script = JobMgmt().get_script(cfg.get("script_id"))
+            effective_team = resolve_effective_team(alert.team, rule.team)
+            script = JobMgmt().get_script(cfg.get("script_id"), team=effective_team)
             if not script:
                 return self._config_error(execution, "作业不存在")
 
@@ -27,7 +28,7 @@ class JobActionHandler(ActionHandler):
             host_field = (binding.get("host_field") or "ip_addr").strip()
             lookup_key = host_field if "." in host_field else f"labels.{host_field}"
             host_value = resolve_field(payload, lookup_key)
-            target = resolve_node_target(host_value, rule.team)
+            target = resolve_node_target(host_value, effective_team)
 
             params = resolve_params(payload, cfg.get("param_bindings", []), script.get("params", []))
 
@@ -39,7 +40,7 @@ class JobActionHandler(ActionHandler):
                 "script_content": script["content"],
                 "params": params,
                 "timeout": cfg.get("timeout") or script.get("timeout", 600),
-                "team": list(rule.team or []),
+                "team": effective_team,
                 "callback_url": self._callback_url(),
             }
             resp = JobMgmt().job_script_execute(data) or {}

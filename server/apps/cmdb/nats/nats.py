@@ -383,11 +383,25 @@ def search_instances(params):
 @nats_client.register
 def search_instances_batch(params):
     """批量查询实例。params={"model_id":..,"ids":[..],"inst_names":[..]} -> {key: instance}"""
-    return InstanceManage.search_inst_batch(
+    allowed_org_ids = set(_normalize_allowed_org_ids_for_scope(params.get("organization_ids")))
+    if not allowed_org_ids:
+        return {}
+    result = InstanceManage.search_inst_batch(
         model_id=params["model_id"],
         ids=params.get("ids"),
         inst_names=params.get("inst_names"),
     )
+    filtered = {}
+    for key, instance in result.items():
+        instance_org_ids = set()
+        for org_id in (instance.get("organization") or []):
+            try:
+                instance_org_ids.add(int(org_id))
+            except (TypeError, ValueError):
+                continue
+        if allowed_org_ids & instance_org_ids:
+            filtered[key] = instance
+    return filtered
 
 
 def _normalize_allowed_org_ids_for_scope(raw_allowed):

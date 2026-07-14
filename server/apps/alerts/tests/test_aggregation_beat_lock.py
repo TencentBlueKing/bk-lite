@@ -68,3 +68,16 @@ def test_aggregation_releases_lock_after_run(real_cache):
 
     # 锁已释放 → 能重新 add
     assert real_cache.add(LOCK_KEY, "x", 300) is True
+
+
+@pytest.mark.django_db
+def test_aggregation_failure_is_propagated_and_lock_is_released(real_cache):
+    from apps.alerts.tasks.tasks import event_aggregation_alert
+
+    with mock.patch(_PROC, side_effect=RuntimeError("aggregation failed")), mock.patch(
+        _TIMEOUT, return_value=0
+    ):
+        with pytest.raises(RuntimeError, match="aggregation failed"):
+            event_aggregation_alert()
+
+    assert real_cache.add(LOCK_KEY, "after-failure", 300) is True

@@ -232,6 +232,43 @@ def test_receiver_full_flow_success(monkeypatch):
 
 
 @pytest.mark.django_db
+def test_receiver_reports_partial_ingestion(monkeypatch):
+    from apps.alerts.views import receiver as receiver_module
+
+    _make_source(source_id="src-partial", source_type="restful")
+
+    class FakeAdapter:
+        def __init__(self, alert_source=None, secret=None, events=None):
+            self.events = events
+
+        def normalize_payload(self, data):
+            return [{"title": "ok"}, {"bad": True}]
+
+        def authenticate(self):
+            return True
+
+        def main(self):
+            return {"received": 2, "accepted": 1, "skipped": 1, "errored": 0}
+
+    monkeypatch.setattr(
+        receiver_module.AlertSourceAdapterFactory,
+        "get_adapter",
+        staticmethod(lambda src: FakeAdapter),
+    )
+
+    response = receiver_module.receiver_data(
+        _post_body({"source_id": "src-partial"}, secret="sec")
+    )
+    payload = json.loads(response.content)
+
+    assert response.status_code == 207
+    assert payload["status"] == "partial"
+    assert payload["ingestion"] == {
+        "received": 2, "accepted": 1, "skipped": 1, "errored": 0
+    }
+
+
+@pytest.mark.django_db
 def test_receiver_invalid_secret(monkeypatch):
     from apps.alerts.views import receiver as receiver_module
 

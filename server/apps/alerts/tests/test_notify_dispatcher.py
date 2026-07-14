@@ -69,17 +69,22 @@ def test_build_channel_params_nats_skipped_when_no_single_team(_mt, _mc):
     assert any(p["channel_type"] == "email" for p in params)
 
 
-@mock.patch("apps.alerts.tasks.sync_notify.delay")
+@mock.patch("apps.alerts.tasks.deliver_alert_outbox.delay")
 def test_enqueue_notifications_empty_is_noop(mock_delay):
     assert enqueue_notifications([]) is False
     mock_delay.assert_not_called()
 
 
 @pytest.mark.django_db
-@mock.patch("apps.alerts.tasks.sync_notify.delay")
-def test_enqueue_notifications_defers_in_atomic_block(mock_delay, django_capture_on_commit_callbacks):
+@mock.patch("apps.alerts.tasks.deliver_alert_outbox.delay")
+def test_enqueue_notifications_persists_outbox_in_atomic_block(mock_delay, django_capture_on_commit_callbacks):
+    from apps.alerts.models import AlertOutbox
+
     params = [{"username_list": ["u1"], "channel_type": "email", "channel_id": 1,
                "title": "t", "content": "c", "object_id": "A", "notify_action_object": "alert"}]
     with django_capture_on_commit_callbacks(execute=True):
         assert enqueue_notifications(params) is True
-    mock_delay.assert_called_once_with(params)
+    record = AlertOutbox.objects.get()
+    assert record.kind == "notification"
+    assert record.payload == {"params": params}
+    mock_delay.assert_called_once_with(record.pk)

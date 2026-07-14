@@ -65,6 +65,7 @@ def superuser_client(authenticated_user):
     authenticated_user.is_superuser = True
     client = APIClient()
     client.force_authenticate(user=authenticated_user)
+    client.cookies["current_team"] = "1"
     return client
 
 
@@ -99,6 +100,22 @@ def test_viewset_list_create_delete(superuser_client):
     assert resp.status_code in (200, 204), resp.content
 
 
+@pytest.mark.django_db
+def test_viewset_list_is_scoped_to_current_team(superuser_client):
+    from apps.alerts.models.enrichment import EnrichmentRule
+
+    EnrichmentRule.objects.create(name="team-1", provider_type="cmdb", team=[1])
+    EnrichmentRule.objects.create(name="team-2", provider_type="cmdb", team=[2])
+    superuser_client.cookies["current_team"] = "1"
+
+    response = superuser_client.get("/api/v1/alerts/api/enrichment/")
+
+    assert response.status_code == 200
+    data = response.json().get("data", response.json())
+    items = data.get("items", data) if isinstance(data, dict) else data
+    assert {item["name"] for item in items} == {"team-1"}
+
+
 # ============================================================
 # Task 5: metrics action 采纳漏斗
 # ============================================================
@@ -106,8 +123,8 @@ def test_viewset_list_create_delete(superuser_client):
 @pytest.mark.django_db
 def test_metrics_reports_adoption_funnel(superuser_client):
     from apps.alerts.models.enrichment import EnrichmentRule
-    EnrichmentRule.objects.create(name="内置-CMDB资源丰富", provider_type="cmdb", is_active=True)
-    EnrichmentRule.objects.create(name="用户自建规则", provider_type="cmdb", is_active=False)
+    EnrichmentRule.objects.create(name="内置-CMDB资源丰富", provider_type="cmdb", is_active=True, team=[1])
+    EnrichmentRule.objects.create(name="用户自建规则", provider_type="cmdb", is_active=False, team=[1])
 
     resp = superuser_client.get("/api/v1/alerts/api/enrichment/metrics/")
     assert resp.status_code == 200
@@ -117,6 +134,18 @@ def test_metrics_reports_adoption_funnel(superuser_client):
     assert data["user_created_rules"] == 1   # 排除"内置-"前缀
     assert "enriched_alert_ratio" in data
     assert 0.0 <= data["enriched_alert_ratio"] <= 1.0
+
+
+@pytest.mark.django_db
+def test_create_rejects_team_outside_current_scope(superuser_client):
+    response = superuser_client.post(
+        "/api/v1/alerts/api/enrichment/",
+        {"name": "越权规则", "provider_type": "cmdb", "team": [2]},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "team 必须位于当前授权团队范围内" in response.json()["message"]
 
 
 # ============================================================

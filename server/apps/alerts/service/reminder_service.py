@@ -430,30 +430,28 @@ class ReminderService:
             channel_params = build_channel_params(
                 username_list, channel_list, [alert], alert.alert_id
             )
-            # 移动导入到函数内部避免循环导入
-            from apps.alerts.tasks import sync_notify
+            if not channel_params:
+                return False
 
-            def enqueue_and_mark() -> bool:
-                try:
-                    sync_notify.delay(channel_params)
-                    if reminder_id is not None:
-                        return cls._advance_reminder_after_enqueue(reminder_id)
-                    return True
-                except Exception:
-                    logger.exception(
-                        "提醒通知任务投递失败: reminder_id=%s, assignment_id=%s, alert_id=%s",
-                        reminder_id,
-                        assignment.id,
-                        alert.alert_id,
-                    )
+            from apps.alerts.common.notify.dispatcher import enqueue_notifications
+
+            if reminder_id is None:
+                return enqueue_notifications(channel_params)
+
+            with transaction.atomic():
+                locked = (
+                    AlertReminderTask.objects.select_for_update()
+                    .filter(pk=reminder_id, is_active=True)
+                    .first()
+                )
+                if not locked:
                     return False
-
-            # 有外层事务时，提交后再投递，并仅在入队成功后推进提醒状态
-            if transaction.get_connection().in_atomic_block:
-                transaction.on_commit(enqueue_and_mark)
-                return True
-
-            return enqueue_and_mark()
+                sequence = locked.reminder_count + 1
+                enqueue_notifications(
+                    channel_params,
+                    idempotency_key=f"reminder:{reminder_id}:{sequence}",
+                )
+                return cls._advance_reminder_after_enqueue(reminder_id)
 
         except Exception:  # noqa
             logger.error(
