@@ -156,7 +156,8 @@
       "channelTypeCustomWebhook": "自定义Webhook",
       "notificationDesc": "选择告警触发时的通知方式和接收人。",
       "notificationConfig": "通知配置",
-      "notificationChannel": "通知渠道"
+      "notificationChannel": "通知渠道",
+      "addMetric": "添加指标"
     },
     "views": {
       "vmware_esxi_count": "ESXI数量",

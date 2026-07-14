@@ -1,0 +1,28 @@
+TCPPort:
+  name: TCP(Telegraf)
+  desc: Probe TCP port reachability of a target host through the Telegraf net_response
+    plugin, supporting IPv4 and IPv6, with optional send payload and expected response
+    matching.
+monitor_object:
+  TCPPort: TCP
+monitor_object_type:
+  Web: Web
+monitor_object_metric:
+  TCPPort:
+    net_response_response_time:
+      name: Response Time
+      desc: TCP connection round-trip time in milliseconds. net_response emits seconds;
+        the query multiplies by 1000 for display. Higher values indicate slower connections
+        or higher network latency.
+    net_response_result_code:
+      name: Result Code
+      desc: TCP probe result code. 0 success, 1 connection timeout, 2 connection failed,
+        3 read failed, 4 response string mismatch. Any non-zero value indicates a
+        probe failure.
+    net_response_string_found:
+      name: String Found
+      desc: Whether the expected string was matched in the response. Reported only
+        when an expect string is configured; 1 means found, 0 means not found.
+monitor_object_metric_group:
+  TCPPort:
+    TCPPort: TCP

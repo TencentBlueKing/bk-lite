@@ -1,6 +1,6 @@
 # 监控告警阈值单位产品决策记忆
 
-- 最近更新：2026-07-13
+- 最近更新：2026-07-14
 - 当前规格：`docs/superpowers/specs/2026-07-13-monitor-threshold-unit-decoupling-design.md`
 
 ## 产品定位
@@ -22,6 +22,7 @@
 - 数据库存储用户输入的原始阈值数值；预览和扫描在运行时把阈值转换到结果单位后比较，不改写策略配置。
 - 不提供容量、时长等结果到 `%` 的隐式转换。没有分母或基准时，跨体系百分比没有可靠数学语义，必须阻止保存。
 - 历史空 `threshold_unit` 按 `calculation_unit` 回退，避免升级改变告警结果。
+- 阈值型图表（策略预览、告警详情）以 `threshold_unit` 为展示口径：服务端将曲线数据副本换算到阈值单位，Y 轴、曲线和阈值线统一；扫描和持久化仍使用 `calculation_unit`。
 
 ## 明确后置
 
@@ -43,3 +44,4 @@
 - 用户确认采用“结果单位与阈值单位双字段 + 严格换算”的推荐方案，并要求设计及实现。
 - `docs/superpowers/specs/2026-07-08-monitor-formula-result-unit-design.md`
 - `docs/superpowers/specs/2026-07-13-monitor-threshold-unit-decoupling-design.md`
+- `docs/superpowers/specs/2026-07-14-monitor-chart-threshold-unit-design.md`

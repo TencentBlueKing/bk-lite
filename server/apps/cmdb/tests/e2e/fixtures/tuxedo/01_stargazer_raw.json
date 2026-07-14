@@ -1,0 +1,27 @@
+{
+  "model_id": "tuxedo",
+  "captured_at": "2026-07-14T10:30:00+08:00",
+  "image": "N/A-placeholder",
+  "container_meta": {
+    "container_id": "N/A-placeholder",
+    "image": "N/A-placeholder"
+  },
+  "params": {
+    "host": "192.0.2.1",
+    "note": "Task 4.15 archived placeholder 模式"
+  },
+  "raw_stdout": {},
+  "license_status": "missing",
+  "_placeholder_reason": "license_missing",
+  "ip_addr": "192.0.2.1",
+  "inst_name": "tuxedo-placeholder-01",
+  "blocked_reason": "Tuxedo 商业 license 不可达;CMDB 端有 middleware/tuxedo.py 但 archived 占位",
+  "next_steps": [
+    "用户提供 Oracle Tuxedo license + 在 amd64 runner 跑",
+    "实施 middleware/tuxedo.py 真实 plugin 字段映射"
+  ],
+  "references": [
+    "docs/superpowers/plans/2026-07-06-cmdb-collect-v3-roadmap.md §3.4 G2.3(archived 22 套对象说明)",
+    "docs/superpowers/sdd/task-4-brief.md §Task 4.15"
+  ]
+}

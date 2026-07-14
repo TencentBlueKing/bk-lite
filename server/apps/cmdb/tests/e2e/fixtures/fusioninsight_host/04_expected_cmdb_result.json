@@ -1,0 +1,15 @@
+{
+  "model_id": "fusioninsight_host",
+  "instance_count_min": 1,
+  "expected_instance_subset": {
+    "inst_name": "host-prod-01_host-abc123def456",
+    "resource_name": "host-prod-01",
+    "resource_id": "host-abc123def456",
+    "ip_addr": "10.0.10.10",
+    "vcpus": "32",
+    "memory_mb": "131072",
+    "storage_gb": "2048",
+    "status": "running",
+    "os_name": "EulerOS 2.10"
+  }
+}

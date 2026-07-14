@@ -1,0 +1,21 @@
+{
+  "model_id": "vmware_vc",
+  "task_id": 66666,
+  "captured_at": "2026-07-13T10:30:00+08:00",
+  "collected_by": "stargazer/inputs/vmware/vmware_vc.py@1.3.0",
+  "inst_name": "vc-prod-01",
+  "vc_version": "8.0.2.00100",
+  "vc_license": "Enterprise Plus",
+  "vc_build": "23319993",
+  "vcenter_hostname": "vcenter-prod-01.example.com",
+  "datacenter_count": "3",
+  "cluster_count": "12",
+  "host_count": "96",
+  "vm_count": "1024",
+  "datastore_count": "24",
+  "network_count": "18",
+  "resource_pools": "8",
+  "total_cpu_cores": "1536",
+  "total_memory_gb": "6144",
+  "tags": "{\"env\": \"production\", \"location\": \"datacenter-east-1\"}"
+}

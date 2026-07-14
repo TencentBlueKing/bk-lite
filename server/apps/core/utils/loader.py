@@ -48,33 +48,136 @@ class LanguageLoader:
             _translation_cache[cache_key] = translations
             return translations
 
-    def _load_language_file(self, lang: str) -> dict:
-        """加载指定语言的 yaml 文件，包括 enterprise 目录下的翻译"""
+    def _load_language_dir(self, lang: str) -> dict:
+        """扫描 apps/<app>/language/ 下所有 *..yaml,deep-merge。
+
+        目录仅作物理组织;key 第一级 = 文件名(去 .yaml),与历史完全兼容。
+        不包括 enterprise、plugins 目录,这两个由 _load_language_file / _load_plugin_language 单独处理。
+        只加载文件名匹配目标语言的文件(如 lang='en' 只读 en.yaml,不支持 zh-Hans.yaml 跨语言污染)。
+        _legacy.yaml 等以语言后缀命名(如 _legacy_en.yaml)来保持跨语言隔离。
+        """
         result = {}
+        if not os.path.isdir(self.base_dir):
+            return result
+        for root, _, files in os.walk(self.base_dir):
+            for name in sorted(files):
+                if not name.endswith(".yaml"):
+                    continue
+                # 只加载文件名以目标语言开头/结尾的 yaml
+                # 例如 lang='en' 匹配: en.yaml, _legacy_en.yaml, core/monitor_object_en.yaml
+                # lang='zh-Hans' 匹配: zh-Hans.yaml, _legacy_zh-Hans.yaml, core/monitor_object_zh-Hans.yaml,
+                #   以及无语言后缀的子目录文件(如中文遗留文件 core/monitor_object.yaml)
+                # 规则: name 包含目标语言后缀 OR (无任何语言后缀 AND lang in (en, zh-Hans))
+                has_lang_suffix = name.startswith(f"{lang}.") or name.endswith(f"_{lang}.yaml") or name == f"{lang}.yaml"
+                has_any_lang_suffix = any(name.endswith(f"_{l}.yaml") or name == f"{l}.yaml" for l in ("en", "zh-Hans"))
+                if not has_lang_suffix and has_any_lang_suffix:
+                    continue
+                path = os.path.join(root, name)
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        sub = yaml.safe_load(f) or {}
+                        result = self._deep_merge(result, sub)
+                except Exception as e:
+                    logger.error(f"Failed to load language file: {path}, error: {e}")
+        return result
 
-        # 加载主语言文件
-        file_path = os.path.join(self.base_dir, f"{lang}.yaml")
-        if os.path.exists(file_path):
-            try:
-                with open(file_path, "r", encoding="utf-8") as f:
-                    result = yaml.safe_load(f) or {}
-            except Exception as e:
-                logger.error(f"Failed to load language file: {file_path}, error: {e}")
+    def _load_plugin_language(self, lang: str) -> dict:
+        """复用 plugin_migrate 的发现机制找 plugin,扫同目录 language/<lang>.yaml。
 
-        # 加载 enterprise 目录下的翻译文件并合并
-        enterprise_file_path = os.path.join(f"apps/{self.app}/enterprise/language", f"{lang}.yaml")
-        if os.path.exists(enterprise_file_path):
-            try:
-                with open(enterprise_file_path, "r", encoding="utf-8") as f:
-                    enterprise_translations = yaml.safe_load(f) or {}
-                    result = self._deep_merge(result, enterprise_translations)
-                    logger.debug(f"Merged enterprise language file: {enterprise_file_path}")
-            except Exception as e:
-                logger.error(f"Failed to load enterprise language file: {enterprise_file_path}, error: {e}")
+        复用 find_files_by_pattern(已支持 3/4 层目录兼容),读 metrics.json 的 plugin 字段
+        作为翻译 key 第一段。文件缺失记录 warning,不抛异常;文件内顶层 key 与 plugin 字段
+        不一致时记录 error 并跳过。
+        """
+        # 延迟导入避免 apps.monitor 在 apps.core 启动阶段被全量加载
+        from apps.monitor.constants.plugin import PluginConstants
+        from apps.monitor.management.utils import find_files_by_pattern
+
+        collected: Dict[str, Any] = {}
+        for root in (PluginConstants.DIRECTORY, PluginConstants.ENTERPRISE_DIRECTORY):
+            if not os.path.isdir(root):
+                continue
+            for metrics_path in find_files_by_pattern(root, filename_pattern="metrics.json"):
+                try:
+                    with open(metrics_path, "r", encoding="utf-8") as f:
+                        plugin_data = yaml.safe_load(f) or {}
+                except Exception as e:
+                    logger.error(f"Failed to read {metrics_path}: {e}")
+                    continue
+                plugin_name = plugin_data.get("plugin")
+                if not plugin_name:
+                    continue
+                lang_file = os.path.join(os.path.dirname(metrics_path), "language", f"{lang}.yaml")
+                if not os.path.isfile(lang_file):
+                    logger.warning(f"Plugin language missing: {lang_file}")
+                    continue
+                try:
+                    with open(lang_file, "r", encoding="utf-8") as f:
+                        sub = yaml.safe_load(f) or {}
+                    # sub 包含两部分:
+                    #   - sub[plugin_name] = {name, desc} 该 plugin 自身描述
+                    #   - sub[其它 top-level key] = 共享 4 段翻译(monitor_object/metric/group/type)
+                    # 把 plugin 自身包回 monitor_object_plugin.<plugin_name>(保持调用方 key 不变),
+                    # 其余 top-level key 留在 root(供 monitor_object_metric 等直接读取)
+                    if plugin_name in sub:
+                        plugin_desc = sub.pop(plugin_name)
+                        sub.setdefault("monitor_object_plugin", {})[plugin_name] = plugin_desc
+                    collected = self._deep_merge(collected, sub)
+                except Exception as e:
+                    logger.error(f"Failed to load {lang_file}: {e}")
+        return collected
+
+    def _load_enterprise_language(self, lang: str) -> dict:
+        """扫描 apps/<app>/enterprise/language/ 下匹配目标语言的 *.yaml,deep-merge。
+
+        与 _load_language_dir 同样逻辑但扫 enterprise 目录,作为最高优先级覆盖。
+        只加载文件名匹配目标语言的文件(如 lang='en' 只读 en.yaml),避免 zh-Hans.yaml
+        在 deep-merge 时覆盖英文翻译。
+        注:legacy 单文件模式(en.yaml 直接放全部企业翻译)在 Task 5 拆分为子文件前仍被读取。
+        """
+        result = {}
+        enterprise_root = f"apps/{self.app}/enterprise/language"
+        if not os.path.isdir(enterprise_root):
+            return result
+        for root, _, files in os.walk(enterprise_root):
+            for name in sorted(files):
+                if not name.endswith(".yaml"):
+                    continue
+                # 与 _load_language_dir 相同过滤:跳过其他语言后缀的 yaml
+                has_lang_suffix = (
+                    name.startswith(f"{lang}.")
+                    or name.endswith(f"_{lang}.yaml")
+                    or name == f"{lang}.yaml"
+                )
+                has_any_lang_suffix = any(
+                    name.endswith(f"_{l}.yaml") or name == f"{l}.yaml" for l in ("en", "zh-Hans")
+                )
+                if not has_lang_suffix and has_any_lang_suffix:
+                    continue
+                path = os.path.join(root, name)
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        sub = yaml.safe_load(f) or {}
+                        result = self._deep_merge(result, sub)
+                except Exception as e:
+                    logger.error(f"Failed to load enterprise language file: {path}, error: {e}")
+        return result
+
+    def _load_language_file(self, lang: str) -> dict:
+        """加载多源翻译并按优先级合并:base → plugins → enterprise。
+
+        base = apps/<app>/language/ 多 yaml(跨 plugin 共享翻译)
+        plugins = apps/monitor/support-files/plugins/**/language/<lang>.yaml(plugin 翻译)
+        enterprise = apps/<app>/enterprise/language/ 多 yaml(企业版覆盖,优先级最高)
+        """
+        base = self._load_language_dir(lang)
+        plugins = self._load_plugin_language(lang)
+        enterprise = self._load_enterprise_language(lang)
+
+        result = self._deep_merge(base, plugins)
+        result = self._deep_merge(result, enterprise)
 
         if not result:
-            logger.warning(f"Language file not found: {file_path}, using empty translations")
-
+            logger.warning(f"No translations loaded for app={self.app} lang={lang}")
         return result
 
     def _deep_merge(self, base: dict, override: dict) -> dict:

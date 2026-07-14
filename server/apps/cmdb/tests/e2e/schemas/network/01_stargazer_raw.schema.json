@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Stargazer network 采集脚本原始输出(真实形态)",
+  "description": "Task 2.5 真实化版本:SNMP 真实采集器输出,补 sysdescr / snmp_version / interfaces 等。",
+  "type": "object",
+  "required": ["ip_addr", "sysobjectid"],
+  "properties": {
+    "model_id":       {"type": "string"},
+    "task_id":        {"type": "integer"},
+    "captured_at":    {"type": "string"},
+    "collected_by":   {"type": "string"},
+    "ip_addr":        {"type": "string"},
+    "sysname":        {"type": "string"},
+    "sysobjectid":    {"type": "string"},
+    "sysdescr":       {"type": "string"},
+    "port":           {"type": "string"},
+    "community":      {"type": "string"},
+    "snmp_version":   {"type": "string"},
+    "interfaces": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "index":       {"type": "string"},
+          "description": {"type": "string"},
+          "alias":       {"type": "string"},
+          "mac_address": {"type": "string"},
+          "oper_status": {"type": "string"}
+        }
+      }
+    }
+  }
+}

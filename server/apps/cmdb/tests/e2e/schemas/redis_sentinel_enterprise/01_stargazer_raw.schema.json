@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Stargazer redis_sentinel_enterprise 采集原始输出契约(形态 C list-of-dict)",
+  "description": "Task 3.7:商业版 redis_sentinel_enterprise 复用社区版 redis_sentinel plugin + 形态 C(redis 主 6379 + sentinel 26379 双实例)。fixture 是 list of 2 dicts,直接传入 pipeline。",
+  "type": "array",
+  "minItems": 2,
+  "items": {
+    "type": "object",
+    "required": ["model_id", "ip_addr", "port", "bk_obj_id", "inst_name", "version", "topo_mode"],
+    "properties": {
+      "model_id":       {"type": "string", "const": "redis_sentinel_enterprise"},
+      "captured_at":    {"type": "string", "format": "date-time"},
+      "image":          {"type": "string"},
+      "container_meta": {"type": "object"},
+      "params":         {"type": "object"},
+      "inst_name":      {"type": "string", "pattern": "^[0-9.]+-(redis|redis_sentinel|redis_sentinel_enterprise)-[0-9]+$"},
+      "bk_obj_id":      {"type": "string", "const": "redis"},
+      "ip_addr":        {"type": "string"},
+      "port":           {"type": ["string", "integer"]},
+      "version":        {"type": "string"},
+      "install_path":   {"type": "string"},
+      "max_conn":       {"type": ["string", "integer"]},
+      "max_mem":        {"type": ["string", "integer"]},
+      "database_role":  {"type": "string"},
+      "topo_mode":      {"type": "string"},
+      "cluster_uuid":   {"type": "string"},
+      "slaves":         {"type": ["array", "string"]},
+      "master":         {"type": ["object", "string"]}
+    }
+  }
+}

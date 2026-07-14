@@ -1,0 +1,26 @@
+{
+  "model_id": "dameng_enterprise",
+  "captured_at": "2026-07-14T10:30:00+08:00",
+  "image": "docker.m.daocloud.io/library/ubuntu:22.04",
+  "container_meta": {
+    "container_id": "N/A-placeholder",
+    "image": "docker.m.daocloud.io/library/ubuntu:22.04"
+  },
+  "params": {
+    "host": "127.0.0.1",
+    "ssh_port": 12232,
+    "dm_port": 15236
+  },
+  "raw_stdout": {},
+  "license_status": "missing",
+  "_placeholder_reason": "dameng_enterprise_license",
+  "blocked_reason": "商业版 dameng 走与社区版 dameng 同 plugin(apps/cmdb/collection/plugins/community/db/dameng.py),license 阻塞统一处理",
+  "next_steps": [
+    "用户提供达梦官方 license + 在 amd64 CI runner 跑(同 mssql 模式)",
+    "或商业版用户提供 license 文件,本地 amd64 工作站(非 Mac)单独跑"
+  ],
+  "references": [
+    "docs/superpowers/plans/2026-07-14-cmdb-collect-v5-p1-cloud-roadmap.md §3.6",
+    "docs/superpowers/plans/2026-07-06-cmdb-collect-v3-roadmap.md §3.4 G2.3"
+  ]
+}

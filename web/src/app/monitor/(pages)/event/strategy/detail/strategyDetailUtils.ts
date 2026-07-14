@@ -228,6 +228,12 @@ export const resolveMetricDisplayUnit = (
   return unitList.find((item) => item.unit_id === unit)?.display_unit || '';
 };
 
+export const resolvePreviewChartUnit = (
+  responseUnit: string | null | undefined,
+  thresholdUnit: string | null | undefined,
+  calculationUnit: string | null | undefined
+): string | null => responseUnit || thresholdUnit || calculationUnit || null;
+
 export const buildMetricSelectOption = (
   metric: MetricItem,
   unitList: UnitListItem[]
