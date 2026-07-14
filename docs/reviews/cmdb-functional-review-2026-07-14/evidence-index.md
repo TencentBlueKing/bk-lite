@@ -44,15 +44,15 @@
 
 ## 03 查询与拓扑
 
-- 业务承诺：待补充
-- 入口：待补充
-- 核心调用链：待补充
-- 外部依赖：待补充
-- 关键测试：待补充
-- 执行命令：待补充
-- 结果：待补充
-- 覆盖率：待补充
-- 未验证项：待补充
+- 业务承诺：实例列表、全文、关联、拓扑、导入导出与附件查询必须同时满足菜单权限、当前组织/子组织范围和真实模型实例权限；关系两端均需授权，隐藏父级及其子树 fail-closed；分页稳定且所有查询有硬资源上限；Neo4j/FalkorDB 具备同一参数、排序和错误契约。导入裸批写的唯一/恢复问题引用 Task 3 `CMDB-F10/CMDB-F11`，不重复计数。
+- 入口：`InstanceViewSet.search/retrieve/fulltext_search/fulltext_search_stats/fulltext_search_by_model`、`instance_association_instance_list/instance_association`、`topo_search/topo_search_expand_post/network_topology`、`inst_import/inst_export`、`upload_file/download_file/delete_file`；Service/工具入口 `InstanceManage`、`Import`、`Export`、`topology_theme`。
+- 核心调用链：列表/全文 → 按当前 model 构建 permission map → GraphClient → 驱动 CQL；关联查询 → 只校验中心实例 → 无权限关系/对端实体查询；通用/网络拓扑 → 中心实例权限 → 中心 model permission map → 跨模型节点后置裁剪；导入 → 组织单元格范围校验 → 全模型 `batch_save_entity` → 全量关联名称映射/建边 → 审计/自动关系；导出 → 根实例权限图查询 → openpyxl → 无权限关联名称回填；附件由 Enterprise 门面接收实例读权限 callback。
+- 外部依赖：FalkorDB/Neo4j 双图驱动、SystemMgmt 权限/组织 RPC、Django ORM Group、openpyxl、Enterprise instance file overlay/MinIO、审计与 Celery 自动关系。
+- 关键测试：`test_instance_views.py`、`test_search_inst_batch.py`、`test_topology_theme.py`、`test_import_organization.py`、`test_import_asso_export.py`、`test_permission_util.py`；额外静态/直接验证排序驱动契约。
+- 执行命令：`SECRET_KEY=test DB_ENGINE=sqlite DB_NAME=/private/tmp/cmdb-task4-review.sqlite3 ENABLE_CELERY=true INSTALL_APPS=system_mgmt,node_mgmt,cmdb MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false uv run pytest -q -o addopts='' apps/cmdb/tests/test_instance_views.py apps/cmdb/tests/test_search_inst_batch.py apps/cmdb/tests/test_topology_theme.py apps/cmdb/tests/test_import_organization.py apps/cmdb/tests/test_import_asso_export.py apps/cmdb/tests/test_permission_util.py --cov=apps.cmdb.views.instance --cov=apps.cmdb.services.instance --cov=apps.cmdb.services.topology_theme --cov=apps.cmdb.graph.drivers.graph_client --cov=apps.cmdb.graph.falkordb --cov-report=term-missing`；Falkor降序复现为 `.venv/bin/python -c "from apps.cmdb.graph.validators import CQLValidator; CQLValidator.validate_field('inst_name DESC')"`。
+- 结果：沙箱首次退出 2（uv cache 无权限，未收集）；受控缓存权限重跑退出 1，115 passed、1 failed in 7.45s。唯一失败为 subnet 主题实现返回 `ipam`、测试仍断言空列表。排序复现退出 1，验证器按预期抛 `Invalid field name: 'inst_name DESC'`，证明现有 Service 与 Falkor 字段契约不兼容。
+- 覆盖率：`views/instance.py` 53%、`services/instance.py` 16%、`services/topology_theme.py` 95%、`graph_client.py` 29%，合计 33%；FalkorDB 未被测试路径导入，coverage 无可声明数据。本域远低于 75%/核心 90% 门槛。
+- 未验证项：Enterprise 子模块未初始化，真实文件 overlay/MinIO 未验证；无真实 FalkorDB/Neo4j、跨模型关系权限、全文入口、通用/网络拓扑、稳定分页、资源超限、跨组织关联导入、大文件/稠密图、并发和 MySQL/PostgreSQL 验证。主 Findings `CMDB-F14`–`CMDB-F17`（P0 2/P1 1/P2 1），详见 [03-query-topology.md](03-query-topology.md)。
 
 ## 04 自动采集
 
