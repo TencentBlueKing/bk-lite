@@ -1,0 +1,30 @@
+{
+  "model_id": "highgo",
+  "captured_at": "2026-07-10T03:43:18Z",
+  "image": "6dduu4opte8882.xuanyuan.run/library/postgres:16-alpine",
+  "container_meta": {
+    "container_id": "9d91dae75ed4",
+    "image": "6dduu4opte8882.xuanyuan.run/library/postgres:16-alpine"
+  },
+  "params": {
+    "host": "127.0.0.1",
+    "port": 25432,
+    "user": "highgo",
+    "password": "***",
+    "dbname": "highgo"
+  },
+  "raw_stdout": {
+    "result": {
+      "highgo": [
+        {
+          "ip_addr": "127.0.0.1",
+          "port": 25432,
+          "version": "",
+          "database_count": 0,
+          "user_count": 0
+        }
+      ]
+    },
+    "success": true
+  }
+}

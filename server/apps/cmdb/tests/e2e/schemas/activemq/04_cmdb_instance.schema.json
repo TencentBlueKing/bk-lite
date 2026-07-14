@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CMDB activemq 实例契约",
+  "description": "2026-07-10 Phase 4.4 — fixture 由真实落盘数据驱动。字段来自 ActivemqCollectionPlugin.field_mapping(middleware runner)。",
+  "type": "object",
+  "required": ["inst_name", "ip_addr", "port"],
+  "properties": {
+    "inst_name":    {"type": "string", "pattern": "^[0-9.]+-activemq-[0-9]+$"},
+    "ip_addr":      {"type": "string"},
+    "port":         {"type": ["string", "integer"]},
+    "version":      {"type": "string"},
+    "install_path": {"type": "string"},
+    "conf_path":    {"type": "string"},
+    "java_path":    {"type": "string"},
+    "java_version": {"type": "string"},
+    "xms":          {"type": ["string", "integer"]},
+    "xmx":          {"type": ["string", "integer"]}
+  }
+}

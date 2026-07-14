@@ -16,14 +16,20 @@ export default function SigninContentShell({
   methodsTitle,
 }: SigninContentShellProps) {
   const isModalMode = mode === "modal";
+  const pageMethodsClassName =
+    mode === "page"
+      ? "mt-8 border-white/30 pt-7 text-center"
+      : "mt-5 text-center";
 
   return (
-    <div className={`w-full ${isModalMode ? "" : "max-w-md"}`} style={isModalMode ? { maxWidth: 388 } : undefined}>
-      <div className={isModalMode ? "h-[228px]" : "h-[236px]"}>{mainContent}</div>
+    <div className="w-full" style={isModalMode ? { maxWidth: 388 } : undefined}>
+      <div className={isModalMode ? "h-[228px]" : "min-h-[236px]"}>{mainContent}</div>
       {methodsContent ? (
-        <div className={isModalMode ? "mt-5 border-t border-[#E7EDF4] pt-4" : "mt-6 border-t border-[#E7EDF4] pt-4"}>
+        <div className={isModalMode ? "mt-5 text-center" : pageMethodsClassName}>
           {methodsTitle ? (
-            <div className={`mb-3 text-(--color-text-3) ${isModalMode ? "text-[12px] leading-5" : "text-[13px] leading-5"}`}>
+            <div
+              className={`mb-3 ${isModalMode ? "text-(--color-text-3) text-[12px] leading-5" : "text-[13px] leading-5 text-[#7386a7]"}`}
+            >
               {methodsTitle}
             </div>
           ) : null}

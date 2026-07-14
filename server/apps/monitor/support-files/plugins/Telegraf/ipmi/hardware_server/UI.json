@@ -2,7 +2,9 @@
   "object_name": "Hardware Server",
   "instance_type": "hardware_server",
   "collect_type": "ipmi",
-  "config_type": ["hardware_server"],
+  "config_type": [
+    "hardware_server"
+  ],
   "collector": "Telegraf",
   "instance_id": "{{cloud_region}}_hardware_server_ipmi_{{ip}}",
   "form_fields": [
@@ -22,7 +24,8 @@
         "to_form": {
           "regex": "\\(([^)]+)\\)"
         }
-      }
+      },
+      "label_en": "IP"
     },
     {
       "name": "username",
@@ -32,14 +35,17 @@
       "editable": false,
       "description": "用于访问接口的用户名",
       "widget_props": {
-        "placeholder": "用户名"
+        "placeholder": "用户名",
+        "placeholder_en": "Username"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.servers[0]",
         "to_form": {
           "regex": "^([^:]+):"
         }
-      }
+      },
+      "label_en": "Username",
+      "description_en": "Username for accessing the interface"
     },
     {
       "name": "ENV_PASSWORD",
@@ -50,11 +56,14 @@
       "encrypted": true,
       "description": "对应的登录密码",
       "widget_props": {
-        "placeholder": "密码"
+        "placeholder": "密码",
+        "placeholder_en": "Password"
       },
       "transform_on_edit": {
         "origin_path": "child.env_config.PASSWORD__{{config_id}}"
-      }
+      },
+      "label_en": "Password",
+      "description_en": "Corresponding login password"
     },
     {
       "name": "protocol",
@@ -65,27 +74,30 @@
       "default": "lanplus",
       "description": "表示使用 LAN+ 协议进行访问（通常用于较新版本的 IPMI）",
       "widget_props": {
-        "placeholder": "协议"
+        "placeholder": "协议",
+        "placeholder_en": "Protocol"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.servers[0]",
         "to_form": {
           "regex": "@([^(]+)\\("
         }
-      }
+      },
+      "label_en": "Protocol"
     },
     {
       "name": "interval",
       "label": "间隔",
       "type": "inputNumber",
       "required": true,
-      "default_value": 10,
+      "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
       "widget_props": {
         "min": 1,
         "precision": 0,
         "placeholder": "间隔",
-        "addonAfter": "s"
+        "addonAfter": "s",
+        "placeholder_en": "Interval"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.interval",
@@ -95,7 +107,9 @@
         "to_api": {
           "suffix": "s"
         }
-      }
+      },
+      "label_en": "Interval",
+      "description_en": "Collection time interval (unit: seconds)"
     }
   ],
   "table_columns": [
@@ -105,9 +119,11 @@
       "type": "select",
       "required": true,
       "widget_props": {
-        "placeholder": "请选择节点"
+        "placeholder": "请选择节点",
+        "placeholder_en": "Please select node"
       },
-      "enable_row_filter": false
+      "enable_row_filter": false,
+      "label_en": "Node"
     },
     {
       "name": "ip",
@@ -119,9 +135,12 @@
       },
       "change_handler": {
         "type": "simple",
-        "source_fields": ["ip"],
+        "source_fields": [
+          "ip"
+        ],
         "target_field": "instance_name"
-      }
+      },
+      "label_en": "IP"
     },
     {
       "name": "instance_name",
@@ -130,8 +149,10 @@
       "required": true,
       "widget_props": {
         "placeholder": "实例名称",
-        "disabled": false
-      }
+        "disabled": false,
+        "placeholder_en": "Instance Name"
+      },
+      "label_en": "Instance Name"
     },
     {
       "name": "group_ids",
@@ -139,8 +160,10 @@
       "type": "group_select",
       "required": false,
       "widget_props": {
-        "placeholder": "请选择组"
-      }
+        "placeholder": "请选择组",
+        "placeholder_en": "Please select group"
+      },
+      "label_en": "Group"
     }
   ],
   "extra_edit_fields": {}

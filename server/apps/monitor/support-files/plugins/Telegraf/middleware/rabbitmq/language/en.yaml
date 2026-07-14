@@ -1,0 +1,82 @@
+RabbitMQ:
+  name: RabbitMQ(Telegraf)
+  desc: Through the Telegraf collector, regularly collect operational status, resource
+    utilization, message flow, and queue health metrics from RabbitMQ.
+monitor_object:
+  RabbitMQ: RabbitMQ
+monitor_object_type:
+  Middleware: Middleware
+monitor_object_metric:
+  RabbitMQ:
+    rabbitmq_node_uptime:
+      name: Node Uptime
+      desc: Uptime of RabbitMQ node since startup, reflecting node stability
+    rabbitmq_node_running:
+      name: Node Running Status
+      desc: Whether RabbitMQ node is running, 1 indicates running, 0 indicates stopped
+    rabbitmq_overview_connections:
+      name: Connections
+      desc: Number of active client connections, reflecting system load
+    rabbitmq_overview_channels:
+      name: Channels
+      desc: Number of open channels, reflecting message flow control capability
+    rabbitmq_overview_consumers:
+      name: Consumers
+      desc: Number of active consumers, reflecting message consumption capacity
+    rabbitmq_overview_queues:
+      name: Queues
+      desc: Number of defined queues, reflecting message storage structure
+    rabbitmq_overview_messages:
+      name: Total Messages
+      desc: Total messages in all queues, reflecting message backlog
+    rabbitmq_overview_messages_ready:
+      name: Ready Messages
+      desc: Number of messages ready for delivery in queues, reflecting pending messages
+    rabbitmq_overview_messages_unacked:
+      name: Unacknowledged Messages
+      desc: Number of delivered but unacknowledged messages, reflecting message processing
+        delay
+    rabbitmq_overview_messages_published_rate:
+      name: Message Publish Rate
+      desc: Rate of messages published to RabbitMQ, reflecting message production
+        volume
+    rabbitmq_node_run_queue:
+      name: Run Queue
+      desc: Erlang run queue length, reflecting system CPU load and scheduling delay
+    rabbitmq_node_mnesia_disk_tx_count_rate:
+      name: Mnesia Disk Transaction Rate
+      desc: Rate of Mnesia database disk transactions, reflecting data persistence
+        activity intensity
+    rabbitmq_node_mem_used:
+      name: Memory Used
+      desc: Current memory used by RabbitMQ node, reflecting memory resource consumption
+    rabbitmq_node_mem_limit:
+      name: Memory Limit
+      desc: Memory limit for RabbitMQ node, used to calculate memory usage rate
+    rabbitmq_node_mem_alarm:
+      name: Memory Alarm
+      desc: Whether memory usage triggers alarm, 1 indicates alarm, 0 indicates normal
+    rabbitmq_node_disk_free:
+      name: Disk Free Space
+      desc: Available free disk space for RabbitMQ node, reflecting storage capacity
+    rabbitmq_node_disk_free_alarm:
+      name: Disk Space Alarm
+      desc: Whether disk space usage triggers alarm, 1 indicates alarm, 0 indicates
+        normal
+    rabbitmq_node_fd_used:
+      name: File Descriptors Used
+      desc: Number of file descriptors currently used by RabbitMQ node, reflecting
+        system resource usage
+    rabbitmq_node_sockets_used:
+      name: Sockets Used
+      desc: Number of sockets currently used by RabbitMQ node, reflecting network
+        connection status
+    rabbitmq_node_proc_used:
+      name: Processes Used
+      desc: Number of Erlang processes currently used by RabbitMQ node, reflecting
+        system process load
+monitor_object_metric_group:
+  RabbitMQ:
+    Base: Base
+    Performance: Performance
+    Resource: Resource

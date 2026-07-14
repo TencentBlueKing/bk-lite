@@ -170,6 +170,16 @@
     height: 30px;
   }
 
+  // 引导语(默认欢迎语)字号比 markdownBody 小一档,不影响 LLM 回复正文
+  .guideText {
+    font-size: 12px;
+    line-height: 1.6;
+    // markdownBody 默认 h1-h6 + strong 都是 600 (semibold),引导语不加重
+    h1, h2, h3, h4, h5, h6, strong, b {
+      font-weight: 400;
+    }
+  }
+
   .sender {
     background-color: var(--color-bg);
   }
@@ -224,22 +234,13 @@
 .chatContainer :global(.ant-bubble-start .ant-bubble-content) {
   width: 100%;
   max-width: 100%;
-}
-
-.chatContainer :global(.ant-bubble-end .ant-bubble-content-wrapper) {
-  align-items: flex-end;
-}
-
-// Bot messages: no background, clean and open
-.chatContainer :global(.ant-bubble-start .ant-bubble-content) {
   background-color: transparent;
-  padding: 0;
 }
 
-// User messages: subtle rounded bubble
-.chatContainer :global(.ant-bubble-end .ant-bubble-content) {
+// User messages: subtle blue rounded bubble, left tail
+.chatContainer .userBubble :global(.ant-bubble-content) {
   background-color: var(--color-primary-light-1, #e6f4ff);
-  border-radius: 18px 18px 4px 18px;
+  border-radius: 4px 18px 18px 18px;
   padding: 10px 16px;
 }
 

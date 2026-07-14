@@ -1,0 +1,27 @@
+{
+  "model_id": "couchbase",
+  "captured_at": "2026-07-14T10:30:00+08:00",
+  "image": "N/A-placeholder",
+  "container_meta": {
+    "container_id": "N/A-placeholder",
+    "image": "N/A-placeholder"
+  },
+  "params": {
+    "host": "192.0.2.1",
+    "note": "Task 4.7 archived placeholder 模式"
+  },
+  "raw_stdout": {},
+  "license_status": "missing",
+  "_placeholder_reason": "license_missing",
+  "ip_addr": "192.0.2.1",
+  "inst_name": "couchbase-placeholder-01",
+  "blocked_reason": "Couchbase 社区版 docker 可拉,但 plugin 暂未实现;v5 范围外",
+  "next_steps": [
+    "实施 CouchbaseCollectionPlugin(metric_names + field_mapping)",
+    "或商业版用户提供 Enterprise license 后再实施"
+  ],
+  "references": [
+    "docs/superpowers/plans/2026-07-06-cmdb-collect-v3-roadmap.md §3.4 G2.3(archived 22 套对象说明)",
+    "docs/superpowers/sdd/task-4-brief.md §Task 4.7"
+  ]
+}

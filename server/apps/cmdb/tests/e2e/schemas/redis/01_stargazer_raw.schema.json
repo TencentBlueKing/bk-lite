@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Stargazer redis 采集原始输出契约",
+  "description": "2026-07-10 G5.2.x — Phase 2.4 第四闭环,fixture 由 cli.py 真实落盘(db runner,extra_payload_keys=None 平铺)",
+  "type": "object",
+  "required": ["model_id", "captured_at", "raw_stdout"],
+  "properties": {
+    "model_id":    {"type": "string", "pattern": "^redis$"},
+    "captured_at": {"type": "string", "format": "date-time"},
+    "raw_stdout": {
+      "type": "object",
+      "required": ["inst_name", "ip_addr", "port", "version"],
+      "properties": {
+        "inst_name":     {"type": "string"},
+        "bk_obj_id":     {"type": "string"},
+        "ip_addr":       {"type": "string"},
+        "port":          {"type": ["string", "integer"]},
+        "version":       {"type": "string"},
+        "install_path":  {"type": "string"},
+        "max_conn":      {"type": ["string", "integer"]},
+        "max_mem":       {"type": ["string", "integer"]},
+        "database_role": {"type": "string"},
+        "topo_mode":     {"type": "string"},
+        "cluster_uuid":  {"type": "string"},
+        "slaves":        {"type": "array"},
+        "master":        {"type": "object"}
+      }
+    }
+  }
+}

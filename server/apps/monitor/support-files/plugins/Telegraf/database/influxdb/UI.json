@@ -2,7 +2,9 @@
   "object_name": "InfluxDB",
   "instance_type": "influxdb",
   "collect_type": "database",
-  "config_type": ["influxdb"],
+  "config_type": [
+    "influxdb"
+  ],
   "collector": "Telegraf",
   "instance_id": "{{cloud_region}}_{{server}}",
   "form_fields": [
@@ -19,7 +21,8 @@
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.urls[0]"
-      }
+      },
+      "label_en": "Server Address"
     },
     {
       "name": "username",
@@ -29,11 +32,13 @@
       "editable": false,
       "description": "如接口启用 Basic Auth 可填写用户名",
       "widget_props": {
-        "placeholder": "用户名"
+        "placeholder": "用户名",
+        "placeholder_en": "Username"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.username"
-      }
+      },
+      "label_en": "Username"
     },
     {
       "name": "ENV_PASSWORD",
@@ -43,24 +48,27 @@
       "editable": false,
       "description": "如接口启用 Basic Auth 可填写密码",
       "widget_props": {
-        "placeholder": "密码"
+        "placeholder": "密码",
+        "placeholder_en": "Password"
       },
       "transform_on_edit": {
         "origin_path": "child.env_config.PASSWORD__{{config_id}}"
-      }
+      },
+      "label_en": "Password"
     },
     {
       "name": "interval",
       "label": "间隔",
       "type": "inputNumber",
       "required": true,
-      "default_value": 10,
+      "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
       "widget_props": {
         "min": 1,
         "precision": 0,
         "placeholder": "间隔",
-        "addonAfter": "s"
+        "addonAfter": "s",
+        "placeholder_en": "Interval"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.interval",
@@ -70,7 +78,9 @@
         "to_api": {
           "suffix": "s"
         }
-      }
+      },
+      "label_en": "Interval",
+      "description_en": "Collection time interval (unit: seconds)"
     },
     {
       "name": "timeout",
@@ -83,7 +93,8 @@
         "min": 1,
         "precision": 0,
         "placeholder": "超时时间",
-        "addonAfter": "s"
+        "addonAfter": "s",
+        "placeholder_en": "Timeout"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.timeout",
@@ -93,7 +104,8 @@
         "to_api": {
           "suffix": "s"
         }
-      }
+      },
+      "label_en": "Timeout"
     },
     {
       "name": "tls_ca",
@@ -107,7 +119,8 @@
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.tls_ca"
-      }
+      },
+      "label_en": "CA Certificate Path"
     },
     {
       "name": "tls_cert",
@@ -121,7 +134,8 @@
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.tls_cert"
-      }
+      },
+      "label_en": "Client Certificate Path"
     },
     {
       "name": "tls_key",
@@ -135,7 +149,8 @@
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.tls_key"
-      }
+      },
+      "label_en": "Client Key Path"
     },
     {
       "name": "insecure_skip_verify",
@@ -147,7 +162,8 @@
       "widget_props": {},
       "transform_on_edit": {
         "origin_path": "child.content.config.insecure_skip_verify"
-      }
+      },
+      "label_en": "Skip Certificate Verification"
     }
   ],
   "table_columns": [
@@ -157,9 +173,11 @@
       "type": "select",
       "required": true,
       "widget_props": {
-        "placeholder": "请选择节点"
+        "placeholder": "请选择节点",
+        "placeholder_en": "Please select node"
       },
-      "enable_row_filter": false
+      "enable_row_filter": false,
+      "label_en": "Node"
     },
     {
       "name": "server",
@@ -179,10 +197,13 @@
       ],
       "change_handler": {
         "type": "simple",
-        "source_fields": ["server"],
+        "source_fields": [
+          "server"
+        ],
         "target_field": "instance_name",
         "regex": "^(?:https?://)?([^/]+)"
-      }
+      },
+      "label_en": "Server Address"
     },
     {
       "name": "instance_name",
@@ -191,8 +212,10 @@
       "required": true,
       "widget_props": {
         "placeholder": "实例名称",
-        "disabled": false
-      }
+        "disabled": false,
+        "placeholder_en": "Instance Name"
+      },
+      "label_en": "Instance Name"
     },
     {
       "name": "group_ids",
@@ -200,8 +223,10 @@
       "type": "group_select",
       "required": false,
       "widget_props": {
-        "placeholder": "请选择组"
-      }
+        "placeholder": "请选择组",
+        "placeholder_en": "Please select group"
+      },
+      "label_en": "Group"
     }
   ]
 }

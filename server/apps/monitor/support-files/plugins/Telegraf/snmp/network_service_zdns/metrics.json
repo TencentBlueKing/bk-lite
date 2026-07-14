@@ -9,8 +9,11 @@
   "type": "Network Device",
   "description": "",
   "default_metric": "any({instance_type='network_service'}) by (instance_id)",
-  "instance_id_keys": ["instance_id"],
+  "instance_id_keys": [
+    "instance_id"
+  ],
   "supplementary_indicators": [
+    "snmp_uptime",
     "device_cpu_usage",
     "device_memory_usage",
     "device_temperature_celsius",
@@ -25,7 +28,9 @@
       "data_type": "Number",
       "unit": "percent",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Average CPU utilization of the ZDNS appliance from ZDNS private OID 39810.100.1.1, reported directly as a percentage."
     },
     {
@@ -36,7 +41,9 @@
       "data_type": "Number",
       "unit": "percent",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Memory utilization of the ZDNS appliance from ZDNS private OID 39810.100.1.2, reported directly as a percentage."
     },
     {
@@ -47,7 +54,9 @@
       "data_type": "Number",
       "unit": "celsius",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "CPU temperature of the ZDNS appliance from ZDNS private OID 39810.100.1.4, reported directly in degrees Celsius."
     },
     {
@@ -58,7 +67,9 @@
       "data_type": "Enum",
       "unit": "none",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "DNS service state normalized from ZDNS private OID 39810.100.1.5. Value 1 is healthy; every other value is treated as fault."
     },
     {
@@ -69,7 +80,9 @@
       "data_type": "Enum",
       "unit": "none",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "DHCP service state normalized from ZDNS private OID 39810.100.1.6."
     },
     {
@@ -80,7 +93,9 @@
       "data_type": "Enum",
       "unit": "none",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "NTP service state normalized from ZDNS private OID 39810.100.1.7."
     },
     {
@@ -91,7 +106,9 @@
       "data_type": "Enum",
       "unit": "none",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "ZWP service state normalized from ZDNS private OID 39810.100.1.12."
     },
     {
@@ -102,7 +119,9 @@
       "data_type": "Enum",
       "unit": "none",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "TFTP service state normalized from ZDNS private OID 39810.100.1.13."
     },
     {
@@ -113,7 +132,9 @@
       "data_type": "Enum",
       "unit": "none",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "F5 LTM virtual-server availability state from 3375.2.2.10.1.2.1.22, normalized green(1)=healthy and all other values=fault."
     },
     {
@@ -124,7 +145,9 @@
       "data_type": "Enum",
       "unit": "none",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "F5 LTM node availability state from 3375.2.2.4.3.2.1.3, normalized green(1)=healthy and all other values=fault."
     },
     {
@@ -135,7 +158,9 @@
       "data_type": "Enum",
       "unit": "none",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "F5 LTM pool availability state from 3375.2.2.5.5.2.1.2, normalized green(1)=healthy and all other values=fault."
     },
     {
@@ -146,8 +171,59 @@
       "data_type": "Enum",
       "unit": "none",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "F5 LTM pool-member availability state from 3375.2.2.5.6.2.1.5, normalized green(1)=healthy and all other values=fault."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='network_service', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='network_service', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='network_service', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
     }
   ]
 }

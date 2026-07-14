@@ -260,7 +260,12 @@ def test_install_services_runs_commands_via_ssh(monkeypatch):
 
     install_services(handle, spec, ssh_password="x")
 
-    assert calls == ["apt-get update", "apt-get install -y nginx"]
+    # Phase 3 增强(2026-07-08):install 前先 sed 切 ubuntu 源到 aliyun
+    # 所以第一条 call 是 sed(if file),然后才是用户 install_commands
+    assert len(calls) == 3
+    assert "mirrors.aliyun.com" in calls[0]  # sed 切源
+    assert calls[1] == "apt-get update"
+    assert calls[2] == "apt-get install -y nginx"
 
 
 def test_start_services_runs_commands_via_ssh(monkeypatch):

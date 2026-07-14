@@ -372,3 +372,53 @@ def test_get_skill_params_handles_none():
     instance = SimpleNamespace(skill_params=None)
 
     assert LLMSerializer.get_skill_params(instance) == []
+
+
+def test_skill_package_cleanup_storage_path_removes_directory(tmp_path, mocker):
+    """_cleanup_storage_path:storage_path 落在 root 之下时,rmtree 掉。"""
+    from apps.opspilot.viewsets.llm_view import SkillPackageViewSet
+
+    storage_dir = tmp_path / "1" / "my-skill" / "0.1.0"
+    storage_dir.mkdir(parents=True)
+    (storage_dir / "SKILL.md").write_text("# hi")
+
+    mocker.patch(
+        "apps.opspilot.services.skill_package.importer.DEFAULT_SKILL_PACKAGE_ROOT",
+        tmp_path,
+    )
+
+    result = SkillPackageViewSet._cleanup_storage_path(str(storage_dir))
+
+    assert result is True
+    assert not storage_dir.exists()
+    # 上层 /1 目录还在(我们只删 skill_id/version 那一层)
+    assert (tmp_path / "1").exists()
+
+
+def test_skill_package_cleanup_storage_path_refuses_path_outside_root(tmp_path, mocker):
+    """Safety:_cleanup_storage_path 拒绝删 storage_root 之外的目录。"""
+    from apps.opspilot.viewsets.llm_view import SkillPackageViewSet
+
+    outside_dir = tmp_path / "outside"
+    outside_dir.mkdir()
+    (outside_dir / "important.txt").write_text("data")
+
+    mocker.patch(
+        "apps.opspilot.services.skill_package.importer.DEFAULT_SKILL_PACKAGE_ROOT",
+        tmp_path / "totally_unrelated_root",
+    )
+
+    result = SkillPackageViewSet._cleanup_storage_path(str(outside_dir))
+
+    assert result is False
+    # 目录不能被删
+    assert outside_dir.exists()
+    assert (outside_dir / "important.txt").read_text() == "data"
+
+
+def test_skill_package_cleanup_storage_path_empty_string_is_noop(tmp_path, mocker):
+    """空 storage_path(老数据 / 没解压过)不报错,直接返回 False。"""
+    from apps.opspilot.viewsets.llm_view import SkillPackageViewSet
+
+    result = SkillPackageViewSet._cleanup_storage_path("")
+    assert result is False

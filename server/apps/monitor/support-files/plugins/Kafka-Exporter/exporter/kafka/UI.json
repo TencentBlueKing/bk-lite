@@ -2,7 +2,9 @@
   "object_name": "Kafka",
   "instance_type": "kafka",
   "collect_type": "exporter",
-  "config_type": ["kafka"],
+  "config_type": [
+    "kafka"
+  ],
   "collector": "Kafka-Exporter",
   "instance_id": "{{cloud_region}}_{{ENV_KAFKA_SERVER}}",
   "form_fields": [
@@ -17,7 +19,8 @@
       },
       "transform_on_edit": {
         "origin_path": "child.env_config.KAFKA_VERSION__{{config_id}}"
-      }
+      },
+      "label_en": "Version"
     },
     {
       "name": "ENV_SASL_ENABLED",
@@ -36,8 +39,13 @@
         "origin_path": "child.env_config.SASL_ENABLED__{{config_id}}",
         "to_form": {
           "mapping": {
-            "true": ["--sasl.enabled"],
-            "false": ["", null]
+            "true": [
+              "--sasl.enabled"
+            ],
+            "false": [
+              "",
+              null
+            ]
           }
         },
         "to_api": {
@@ -46,7 +54,8 @@
             "false": ""
           }
         }
-      }
+      },
+      "label_en": "Enable Authentication"
     },
     {
       "name": "ENV_SASL_USERNAME",
@@ -55,7 +64,8 @@
       "required": true,
       "description": "用于访问接口的用户名",
       "widget_props": {
-        "placeholder": "用户名"
+        "placeholder": "用户名",
+        "placeholder_en": "Username"
       },
       "dependency": {
         "field": "ENV_SASL_ENABLED",
@@ -63,7 +73,9 @@
       },
       "transform_on_edit": {
         "origin_path": "child.env_config.SASL_USERNAME__{{config_id}}"
-      }
+      },
+      "label_en": "Username",
+      "description_en": "Username for accessing the interface"
     },
     {
       "name": "ENV_SASL_PASSWORD",
@@ -72,7 +84,8 @@
       "required": true,
       "description": "对应的登录密码",
       "widget_props": {
-        "placeholder": "密码"
+        "placeholder": "密码",
+        "placeholder_en": "Password"
       },
       "dependency": {
         "field": "ENV_SASL_ENABLED",
@@ -80,7 +93,9 @@
       },
       "transform_on_edit": {
         "origin_path": "child.env_config.SASL_PASSWORD__{{config_id}}"
-      }
+      },
+      "label_en": "Password",
+      "description_en": "Corresponding login password"
     },
     {
       "name": "ENV_SASL_MECHANISM",
@@ -93,7 +108,8 @@
       },
       "transform_on_edit": {
         "origin_path": "child.env_config.SASL_MECHANISM__{{config_id}}"
-      }
+      },
+      "label_en": "Operation Mode"
     },
     {
       "name": "ENV_LISTEN_PORT",
@@ -105,11 +121,13 @@
       "widget_props": {
         "min": 1,
         "precision": 0,
-        "placeholder": "监听端口"
+        "placeholder": "监听端口",
+        "placeholder_en": "Listen Port"
       },
       "transform_on_edit": {
         "origin_path": "child.env_config.LISTEN_PORT__{{config_id}}"
-      }
+      },
+      "label_en": "Listen Port"
     },
     {
       "name": "ENV_KAFKA_SERVER",
@@ -123,7 +141,8 @@
       },
       "transform_on_edit": {
         "origin_path": "child.env_config.KAFKA_SERVER__{{config_id}}"
-      }
+      },
+      "label_en": "Server Address"
     },
     {
       "name": "ENV_TOPIC_FILTER",
@@ -137,7 +156,8 @@
       },
       "transform_on_edit": {
         "origin_path": "child.env_config.TOPIC_FILTER__{{config_id}}"
-      }
+      },
+      "label_en": "Topic Include"
     },
     {
       "name": "ENV_TOPIC_EXCLUDE",
@@ -151,7 +171,8 @@
       },
       "transform_on_edit": {
         "origin_path": "child.env_config.TOPIC_EXCLUDE__{{config_id}}"
-      }
+      },
+      "label_en": "Topic Exclude"
     },
     {
       "name": "ENV_GROUP_FILTER",
@@ -165,7 +186,8 @@
       },
       "transform_on_edit": {
         "origin_path": "child.env_config.GROUP_FILTER__{{config_id}}"
-      }
+      },
+      "label_en": "Consumer Group Include"
     },
     {
       "name": "ENV_GROUP_EXCLUDE",
@@ -179,20 +201,22 @@
       },
       "transform_on_edit": {
         "origin_path": "child.env_config.GROUP_EXCLUDE__{{config_id}}"
-      }
+      },
+      "label_en": "Consumer Group Exclude"
     },
     {
       "name": "interval",
       "label": "间隔",
       "type": "inputNumber",
       "required": true,
-      "default_value": 10,
+      "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
       "widget_props": {
         "min": 1,
         "precision": 0,
         "placeholder": "间隔",
-        "addonAfter": "s"
+        "addonAfter": "s",
+        "placeholder_en": "Interval"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.interval",
@@ -202,7 +226,9 @@
         "to_api": {
           "suffix": "s"
         }
-      }
+      },
+      "label_en": "Interval",
+      "description_en": "Collection time interval (unit: seconds)"
     }
   ],
   "table_columns": [
@@ -212,9 +238,11 @@
       "type": "select",
       "required": true,
       "widget_props": {
-        "placeholder": "请选择节点"
+        "placeholder": "请选择节点",
+        "placeholder_en": "Please select node"
       },
-      "enable_row_filter": false
+      "enable_row_filter": false,
+      "label_en": "Node"
     },
     {
       "name": "ENV_LISTEN_PORT",
@@ -224,8 +252,10 @@
       "widget_props": {
         "min": 1,
         "precision": 0,
-        "placeholder": "监听端口"
-      }
+        "placeholder": "监听端口",
+        "placeholder_en": "Listen Port"
+      },
+      "label_en": "Listen Port"
     },
     {
       "name": "ENV_KAFKA_SERVER",
@@ -237,9 +267,12 @@
       },
       "change_handler": {
         "type": "simple",
-        "source_fields": ["ENV_KAFKA_SERVER"],
+        "source_fields": [
+          "ENV_KAFKA_SERVER"
+        ],
         "target_field": "instance_name"
-      }
+      },
+      "label_en": "Server Address"
     },
     {
       "name": "instance_name",
@@ -248,8 +281,10 @@
       "required": true,
       "widget_props": {
         "placeholder": "实例名称",
-        "disabled": false
-      }
+        "disabled": false,
+        "placeholder_en": "Instance Name"
+      },
+      "label_en": "Instance Name"
     },
     {
       "name": "group_ids",
@@ -257,8 +292,10 @@
       "type": "group_select",
       "required": false,
       "widget_props": {
-        "placeholder": "请选择组"
-      }
+        "placeholder": "请选择组",
+        "placeholder_en": "Please select group"
+      },
+      "label_en": "Group"
     }
   ]
 }

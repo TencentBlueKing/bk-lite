@@ -53,6 +53,7 @@
 | `GET instance/room_layout/<model_id>/<inst_id>` | `InstanceViewSet.room_layout` | 机房俯视平面图：返回该机房下机柜的 row/col/类型/U 占用率供前端布局渲染 |
 | `GET instance/rack_layout/<model_id>/<inst_id>` | `InstanceViewSet.rack_layout` | 机柜正视 U 图：返回机柜总 U 数及其 contains 设备的 U 位排布 |
 | `POST instance/ipam_reconcile` | `InstanceViewSet.ipam_reconcile` | 手动触发一次 IPAM 与 CMDB 自动对账，内部调用 `services/ipam_reconcile.run_reconciliation` |
+| 3D 机房大屏数据源（**非 ViewSet REST 端点**）【已实现/已存在】：运营分析 3D 大屏组件通过内置数据源 `cmdb/get_room3d_layout`（注册于 `server/apps/operation_analysis/support-files/source_api.json:406`，`rest_api` 类型，`chartType: room3D`）消费 CMDB NATS `get_room3d_layout`（`nats/nats.py:951`），由通用取数器按 path 动态解析调用，不在 ViewSet 路由表内 |
 
 **instance / collect 路由组增量端点**【已实现/已存在】：
 | 端点 | 方法 | 说明 |
@@ -73,21 +74,22 @@
 - NATS：`nats/nats.py` 注册 26 个 `@nats_client.register` handler（取数前按角色/团队构建实例分组权限过滤），对外提供五类能力【已实现/已存在】：
   - **实例/模型取数**：`get_cmdb_module_data`(:264)、`get_cmdb_module_list`(:303)、`search_instances`(:354)、`search_instances_batch`(:368)、`model_inst_count`(:1147)。
   - **实例 CRUD / 显示字段**：`update_instance`(:396)、`sync_display_fields`(:736)。
-  - **采集结果回传（Stargazer→CMDB）**：`receive_config_file_result`(:680，配置文件落库为 ConfigFileVersion)、`receive_collect_credential_result`(:694，凭据探测命中)、`receive_ip_discovery_result`(:1156，IP 发现结果回写 `ip` 台账并更新在线/离线状态)。
+  - **采集结果回传（Stargazer→CMDB）**：`receive_config_file_result`(:696，配置文件落库为 ConfigFileVersion)、`receive_collect_credential_result`(:711，凭据探测命中)。**注：原 `receive_ip_discovery_result` handler 已下线，IP 发现结果回写由服务层 `services/ipam_discovery.py:205` `apply_discovery_result`（落库 `ip` 台账并更新在线/离线状态）与 `:299` `apply_ip_discovery_vm_rows`（回写 VictoriaMetrics 离线 IP 行）协同完成。**
   - **运营分析统计取数**：`get_cmdb_statistics`(:758)、`get_change_trend`(:887)、`get_instance_group_by`(:960)、`get_model_inst_statistics`(:1024)、`get_cmdb_model_instance_top`(:1075)、`get_cmdb_collect_statistics`(:1120)。
-  - **实例/模型/关联通用查询与 CRUD（对外 RPC 供数与维护）**【已实现/已存在】（`nats/nats.py:436-676`，供跨模块经 RPC 调用）：
+  - **机房 3D 布局取数**【已实现/已存在】：`get_room3d_layout`(`nats/nats.py:952-1050`) 返回机房的 row/col 网格、U 占用与设备摘要；payload 中 `rack_type`（`datacenter_type` 枚举 id）由 `_get_room3d_rack_type_name_map`(`nats/nats.py:942-949`) 解析为可读名称 `rack_type_name`（无值时不带该字段），供 3D 大屏图例与机柜顶贴图渲染；`rack_id`/`rack_name` 字段源统一改取 `item['rack_id']` / `item['rack_name']`（当 `instance_name` 缺失时 fallback 到 `rack_id`）。
+  - **实例/模型/关联通用查询与 CRUD（对外 RPC 供数与维护）**【已实现/已存在】（`nats/nats.py:453-679`，供跨模块经 RPC 调用）：
     | handler | 行号 | 说明 |
     |---------|------|------|
-    | `create_instance` | :437 | 创建实例，支持 model_id + instance_info + operator + allowed_org_ids |
-    | `delete_instance` | :466 | 删除实例，支持 inst_ids 批量 / inst_id 单个 / model_id+inst_name 定位 |
-    | `list_instances` | :506 | 分页查询单模型实例列表，支持过滤条件与 format 转换 |
-    | `search_model_attrs` | :545 | 查询模型属性定义列表 |
-    | `search_models` | :559 | 查询模型列表，可按 classification_id 过滤 |
-    | `search_classifications` | :579 | 查询模型分类列表 |
-    | `search_model_associations` | :593 | 查询模型关联定义（源/目标维度） |
-    | `search_instance_associations` | :607 | 查询实例关联列表（按 model_asst_id 分组） |
-    | `create_instance_association` | :627 | 创建实例关联（写，需 src_inst_id/dst_inst_id/model_asst_id） |
-    | `delete_instance_association` | :659 | 删除实例关联（写，需 asso_id） |
+    | `create_instance` | :453 | 创建实例，支持 model_id + instance_info + operator + allowed_org_ids |
+    | `delete_instance` | :482 | 删除实例，支持 inst_ids 批量 / inst_id 单个 / model_id+inst_name 定位 |
+    | `list_instances` | :522 | 分页查询单模型实例列表，支持过滤条件与 format 转换 |
+    | `search_model_attrs` | :562 | 查询模型属性定义列表 |
+    | `search_models` | :576 | 查询模型列表，可按 classification_id 过滤 |
+    | `search_classifications` | :596 | 查询模型分类列表 |
+    | `search_model_associations` | :610 | 查询模型关联定义（源/目标维度） |
+    | `search_instance_associations` | :624 | 查询实例关联列表（按 model_asst_id 分组） |
+    | `create_instance_association` | :643 | 创建实例关联（写，需 src_inst_id/dst_inst_id/model_asst_id） |
+    | `delete_instance_association` | :675 | 删除实例关联（写，需 asso_id） |
 - **RPC 客户端**（`apps/rpc/cmdb.py:44-94`）：为上述第五类 NATS handler 中的 8 个新增 RPC 包装方法供跨模块调用：`list_instances`、`search_model_attrs`、`search_models`、`search_classifications`、`search_model_associations`、`search_instance_associations`、`create_instance_association`、`delete_instance_association`；`search_instances`/`search_instances_batch` 为原有包装方法。注意：第五类 NATS handler 中的 `create_instance`、`delete_instance` 暂无对应 RPC 包装方法，仅可经 NATS 主题直接调用【已实现/已存在】。
 - Celery：`tasks/celery_tasks.py` 注册 14 个 `@shared_task`，详见 §5。
 
@@ -130,7 +132,7 @@
 - **配置文件采集**（task_type=`config_file`，constants.py:578）：由 Stargazer 采集后经 NATS `receive_config_file_result`(nats.py:680) 回传，落库为 `ConfigFileVersion`，内容存 MinIO。
 - **网络设备配置文件采集**【已实现/已存在】：对象树新增 `network_config_file`，节点参数封装登录账号、口令、特权口令、命令列表与配置名称，回调仍走 `receive_config_file_result`，因此复用既有配置文件版本存储与详情查看链路（`constants/constants.py:377-387`、`node_configs/network_config_file.py:5-63`）。
 - **IP 地址管理发现回写**【已实现/已存在】：对象树新增 `ip_discovery`；服务层从任务的 `instances/params` 合并读取 `subnet_ids`、`scan_method`、`ports`，再把 VictoriaMetrics 中的 `ip_info` 行按子网回写为在线 / 离线地址，同时重算子网利用率；手工维护地址不被覆盖（`constants/constants.py:391-403`、`services/ipam_discovery.py:8-175`）。
-- **IP 发现采集**（task_type=`ip` 且 `input_method=CollectInputMethod.SUBNET`）：`sync_collect_task` 在 `tasks/celery_tasks.py:68-74` 调用 `services/ipam_discovery.maybe_dispatch_ip_discovery`，由 Stargazer 扫描子网目标；回调 subject 为 `receive_ip_discovery_result`，结果经 `nats/nats.py:1156-1192` 进入 `apply_discovery_result`，创建/更新在线 IP、标记离线并回写子网利用率。
+- **IP 发现采集**（task_type=`ip` 且 `input_method=CollectInputMethod.SUBNET`）：`sync_collect_task` 在 `tasks/celery_tasks.py:72-74` 派发子网扫描任务，由 Stargazer 执行；结果经 Stargazer 回传后由 `services/ipam_discovery.py`（`apply_discovery_result` 在 `:205` 创建/更新在线 IP、标记离线并回写子网利用率；`apply_ip_discovery_vm_rows` 在 `:299` 处理 VictoriaMetrics 离线行）落库。**注：原 NATS `receive_ip_discovery_result` handler 与 `services.ipam_discovery.maybe_dispatch_ip_discovery` 函数在本轮已下线（被 `tests/test_ipam_discovery_task.py:64` 显式断言不存在），功能改由服务层直连 Stargazer 回调完成。**
 
 对应 PRD：[[spec/prd/CMDB/自动发现.md#3.2 采集任务]]；对应功能清单：[[spec/fuctionlist/01-CMDB配置管理-功能清单.md#5. 自动发现（采集）]]
 
@@ -144,5 +146,10 @@
 - `[cmdb#20260701-002]` NATS handler 数量与 Celery 任务清单按 IPAM 入口新增后的当前位置更新。
 - `[cmdb#20260701-005]` 补录模型初始化、OID 初始化、字段分组初始化、`_display` 字段初始化等管理命令入口。
 
+## 2026-07-09 Code-ARD 校准
+- `[cmdb#20260709-001]` NATS `get_room3d_layout` payload 增 `rack_type_name` 字段：依据 `rack` 模型 `datacenter_type` 枚举属性将 id 解析为可读名称（计算/网络/存储/安全/其他/未分类），无值时不带该字段。消费方为运营分析 3D 大屏 `web/src/app/ops-analysis/components/widgets/room3D/`（数据源 `cmdb/get_room3d_layout` 注册于 `server/apps/operation_analysis/support-files/source_api.json:406`）。
+- `[cmdb#20260709-002]` `get_room3d_layout` 中 `rack_id`/`rack_name` 来源统一为 `item['rack_id']` / `item['rack_name']`（`instance_name` 缺失时 fallback 到 `rack_id`），并配套新增 `test_get_room3d_layout_falls_back_to_rack_id_when_name_missing`、`test_get_room3d_layout_returns_rack_type_name_from_cmdb_enum` 两个测试。
+- `[cmdb#20260709-003]` 双向校验修订：`InstanceViewSet.room3d_layout` REST 端点**不存在**（3D 数据走内置数据源 rest_api，不在 ViewSet 路由表内）；NATS `receive_ip_discovery_result` handler 与 `services.ipam_discovery.maybe_dispatch_ip_discovery` 函数**已下线**（功能下沉到 `services/ipam_discovery.py:205,299` 服务层直连 Stargazer 回调）。spec 删除相关端点行，证据行按代码当前位置刷新。
+
 ## 7. 证据来源
-`server/apps/cmdb/{urls.py,models/*,models/ipam_models.py:7,graph/*,graph/neo4j.py,graph/drivers/graph_client.py,collection/*,collection/collect_plugin/oceanstor.py,constants/constants.py,tasks/celery_tasks.py:68-74,371,372,nats/nats.py:680,1155,1156,1156-1192,services/rack_room.py,services/ipam_*.py,services/ipam_discovery.py:8-175,services/ipam_reconcile.py:169,utils/ipam_cidr.py,node_configs/network_config_file.py:5-63,views/collect.py:66-68,views/instance.py:993-1150,management/commands/{model_init.py:7,init_oid.py:11,init_field_groups.py:15,init_display_fields.py:24},support-files/model_config.xlsx}`；`server/apps/rpc/cmdb.py:44-94`。
+`server/apps/cmdb/{urls.py,models/*,models/ipam_models.py:7,graph/*,graph/neo4j.py,graph/drivers/graph_client.py,collection/*,collection/collect_plugin/oceanstor.py,constants/constants.py,tasks/celery_tasks.py:72-74,397,408,nats/nats.py:696,711,942-949,952-1050,services/rack_room.py,services/ipam_*.py,services/ipam_discovery.py:205,299,services/ipam_reconcile.py,utils/ipam_cidr.py,node_configs/network_config_file.py:5-63,views/collect.py:66-68,views/instance.py:1145,1190,1212,1282,management/commands/{model_init.py:7,init_oid.py:11,init_field_groups.py:15,init_display_fields.py:24},support-files/model_config.xlsx}`、`server/apps/operation_analysis/support-files/source_api.json:406`（3D 机房数据源 `cmdb/get_room3d_layout` 注册）；`server/apps/rpc/cmdb.py:44-94`。

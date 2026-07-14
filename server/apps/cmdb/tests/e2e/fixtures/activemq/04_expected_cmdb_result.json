@@ -1,0 +1,12 @@
+{
+  "model_id": "activemq",
+  "instance_count_min": 1,
+  "expected_instance_subset_fixture_driven": {
+    "inst_name": "172.17.0.3-activemq-61616",
+    "ip_addr":   "172.17.0.3",
+    "port":      "61616",
+    "version":   ""
+  },
+  "fixture_source_fixture_driven": "agents/stargazer/tests/fixtures/collect/activemq.json(2026-07-08 cli 真实落盘,ip=172.17.0.3,port=61616)",
+  "notes": "G5.2.x v4 Phase 4 任务 4.4;middleware runner 走 metric.result JSON 编码,extra_payload_keys={\"result\": True}。stargazer raw_stdout 是形态 B(平铺 dict,无 success/result 包裹),与 nginx/rabbitmq 同构。ActivemqCollectionPlugin.field_mapping 包含 inst_name/ip_addr/port/version/install_path/conf_path/java_path/java_version/xms/xmx;但 stargazer fixture 真实落盘字段为 bin_path/config(而非 install_path/conf_path)且未带 java 路径/内存配置,因此 expected_instance_subset_fixture_driven 只断言 raw_items 实际能命中 plugin field_mapping 的 4 个字段(ip_addr/port/version/inst_name)。version 在 fixture 中为空字符串,inst_name 由 MiddlewareCollectMetrics.get_inst_name 按 {ip}-{model_id}-{port} 规则生成,覆盖 raw_stdout 已存在的 inst_name。"
+}

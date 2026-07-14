@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CMDB minio 实例契约",
+  "description": "2026-07-10 Phase 4 任务 4.5,fixture 由真实落盘数据驱动",
+  "type": "object",
+  "required": ["inst_name", "ip_addr", "port"],
+  "properties": {
+    "inst_name":    {"type": "string", "pattern": "^[0-9.]+-minio-[0-9]+$"},
+    "ip_addr":      {"type": "string"},
+    "port":         {"type": ["string", "integer"]},
+    "version":      {"type": "string"},
+    "bin_path":     {"type": "string"},
+    "data_path":    {"type": "string"},
+    "conf_path":    {"type": "string"},
+    "console_port": {"type": ["string", "integer"]},
+    "deploy_mode":  {"type": "string"},
+    "region":       {"type": "string"},
+    "start_args":   {"type": "string"}
+  }
+}

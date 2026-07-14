@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Stargazer ambari 采集原始输出契约(装包源不可达 placeholder)",
+  "description": "2026-07-10 v4 — ambari raw_stdout 是空 array,ambari 无官方 docker 镜像需手动装(license + 装包源不可达),跑 cli 落盘后是 placeholder",
+  "type": "object",
+  "required": ["model_id", "captured_at", "raw_stdout"],
+  "properties": {
+    "model_id":    {"type": "string", "pattern": "^ambari$"},
+    "captured_at": {"type": "string", "format": "date-time"},
+    "raw_stdout":  {"type": "array", "maxItems": 0}
+  }
+}

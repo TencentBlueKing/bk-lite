@@ -63,6 +63,7 @@
     "publishSuccess": "发布成功",
     "saveFailed": "保存失败",
     "operationFailed": "操作失败",
+    "operationSuccess": "操作成功",
     "operateFailed": "操作失败",
     "loadListFailed": "加载列表失败",
     "markdownLoadFailed": "加载 Markdown 内容失败",
@@ -344,6 +345,11 @@
         "startFailed": "启动认证失败。",
         "popupBlocked": "无法打开认证页面，请允许浏览器弹窗后重试。"
       }
+    },
+    "languageToggle": {
+      "label": "切换语言",
+      "zhItem": "简体中文",
+      "enItem": "English"
     }
   },
   "system": {

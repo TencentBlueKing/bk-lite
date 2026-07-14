@@ -151,6 +151,8 @@ export interface ConfigDiffItem {
   summary: string;
   before_yaml: string;
   after_yaml: string;
+  fix_description?: string;  // 兜底:非 YAML issue 给的文字建议
+  skill_id?: number;  // 可选,后端派 event 时塞入,前端 modal 用它查 k8s 配置
 }
 
 export interface A2UIAction {

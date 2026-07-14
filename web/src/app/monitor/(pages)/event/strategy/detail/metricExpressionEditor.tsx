@@ -1,15 +1,18 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import { Button, Input, Select, Tooltip } from 'antd';
+import { Button, Cascader, Input, Select, Tooltip } from 'antd';
 import { CloseOutlined, PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import {
   FilterItem,
   IndexViewItem,
   ListItem,
-  MetricItem
+  MetricItem,
+  CascaderItem,
+  UnitListItem
 } from '@/app/monitor/types';
+import { findCascaderPath } from '@/app/monitor/utils/common';
 import {
   getMetricDimensionNames,
   sanitizeGroupBy
@@ -21,12 +24,16 @@ import {
   shouldShowFormulaEditor,
   VARIABLE_SEQUENCE
 } from './formulaExpressionUtils';
+import { buildMetricSelectOption } from './strategyDetailUtils';
 
 interface MetricExpressionEditorProps {
   rows: MetricExpressionRow[];
   mode: MetricExpressionMode;
   resultName: string;
   expression: string;
+  resultUnit: string | null;
+  groupedUnitOptions: CascaderItem[];
+  unitList: UnitListItem[];
   labelsByRef: Record<string, string[]>;
   originMetricData: IndexViewItem[];
   groupByOptions: string[];
@@ -36,6 +43,7 @@ interface MetricExpressionEditorProps {
   onRowsChange: (rows: MetricExpressionRow[]) => void;
   onResultNameChange: (value: string) => void;
   onExpressionChange: (value: string) => void;
+  onResultUnitChange: (value: string) => void;
 }
 
 const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
@@ -43,6 +51,9 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
   mode,
   resultName,
   expression,
+  resultUnit,
+  groupedUnitOptions,
+  unitList,
   labelsByRef,
   originMetricData,
   groupByOptions,
@@ -51,7 +62,8 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
   metricsLoading,
   onRowsChange,
   onResultNameChange,
-  onExpressionChange
+  onExpressionChange,
+  onResultUnitChange
 }) => {
   const { t } = useTranslation();
   const showFormula = shouldShowFormulaEditor(mode);
@@ -71,12 +83,11 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
       originMetricData.map((group) => ({
         label: group.display_name,
         title: group.name,
-        options: (group.child || []).map((metric: MetricItem) => ({
-          label: metric.display_name,
-          value: metric.name
-        }))
+        options: (group.child || []).map((metric: MetricItem) =>
+          buildMetricSelectOption(metric, unitList)
+        )
       })),
-    [originMetricData]
+    [originMetricData, unitList]
   );
 
   const updateRow = (rowIndex: number, patch: Partial<MetricExpressionRow>) => {
@@ -347,7 +358,7 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
           {translateWithFallback('monitor.events.addMetric', '添加指标')}
         </Button>
         {showFormula && (
-          <div className="grid grid-cols-[2rem_minmax(0,220px)_16px_minmax(0,1fr)] items-center gap-2 border-t border-[var(--color-border-2)] bg-[rgba(255,255,255,0.68)] px-3 py-3">
+          <div className="grid grid-cols-[2rem_minmax(0,220px)_16px_minmax(0,1fr)_96px] items-center gap-2 border-t border-[var(--color-border-2)] bg-[rgba(255,255,255,0.68)] px-3 py-3">
             <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded border border-[var(--color-border-2)] font-mono text-xs font-semibold text-[var(--color-primary)]">
               fx
             </span>
@@ -363,6 +374,30 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
               value={expression}
               placeholder="a / b * 100"
               onChange={(event) => onExpressionChange(event.target.value)}
+            />
+            <Cascader
+              className="w-full"
+              showSearch
+              allowClear={false}
+              value={
+                resultUnit ? findCascaderPath(groupedUnitOptions, resultUnit) : []
+              }
+              aria-label={translateWithFallback(
+                'monitor.events.formulaResultUnit',
+                '结果单位'
+              )}
+              placeholder={translateWithFallback(
+                'monitor.events.formulaResultUnit',
+                '结果单位'
+              )}
+              options={groupedUnitOptions}
+              onChange={(path) => {
+                // Cascader 清空时 path 是 [],直接忽略,避免把字符串 "undefined" 写入 state
+                const next = (path as (string | number)[]).at(-1);
+                if (typeof next === 'string') {
+                  onResultUnitChange(next);
+                }
+              }}
             />
           </div>
         )}

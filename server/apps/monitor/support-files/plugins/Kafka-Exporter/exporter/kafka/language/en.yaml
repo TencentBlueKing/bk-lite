@@ -1,0 +1,110 @@
+Kafka-Exporter:
+  name: Kafka(Exporter)
+  desc: Through the Kafka Exporter collector, regularly gather metrics from Kafka
+    clusters, including topic statistics, partition counts, consumer group status,
+    and more, to help monitor the health and performance of Kafka clusters.
+monitor_object:
+  Kafka: Kafka
+monitor_object_type:
+  Middleware: Middleware
+monitor_object_metric:
+  Kafka:
+    kafka_up_gauge:
+      name: Probe Status
+      desc: Probe Uptime status. 0 means connection failed, 1 means connection success.
+        Check for no data issues which may indicate a missing connection.
+    kafka_brokers_gauge:
+      name: Broker Count
+      desc: Number of Kafka Brokers in the cluster.
+    kafka_broker_info_gauge:
+      name: Broker Info
+      desc: Information about Kafka node, including node address and ID.
+    kafka_topic_partition_count:
+      name: Topic Partition Count
+      desc: Number of partitions for a given Kafka topic.
+    kafka_topic_partition_current_offset:
+      name: Partition Current Offset
+      desc: Current offset for the specified topic and partition.
+    kafka_topic_partition_oldest_offset:
+      name: Partition Oldest Offset
+      desc: Oldest offset for the specified topic and partition.
+    kafka_topic_partition_in_sync_replica:
+      name: Partition In-Sync Replicas
+      desc: Number of in-sync replicas for the specified topic and partition.
+    kafka_topic_partition_leader_is_preferred:
+      name: Partition Preferred Leader Status
+      desc: Value is 1 if the preferred Broker node is in use for the topic/partition,
+        otherwise 0.
+    kafka_topic_partition_replicas:
+      name: Partition Replica Count
+      desc: Number of replicas for the specified topic and partition.
+    kafka_topic_partition_under_replicated_partition:
+      name: Partition Under-Replicated Status
+      desc: Value is 1 if the topic/partition is under-replicated, otherwise 0.
+    kafka_consumergroup_current_offset:
+      name: Consumer Group Current Offset
+      desc: Current offset for the consumer group in the specified topic and partition.
+    kafka_consumergroup_lag:
+      name: Consumer Group Lag
+      desc: Current approximate lag of the consumer group in the specified topic and
+        partition.
+    up_gauge:
+      name: Probe Status
+      desc: Probe Uptime status. 0 means connection failed, 1 means connection success.
+        Check for no data issues which may indicate a missing connection.
+    brokers_gauge:
+      name: Broker Count
+      desc: Number of Kafka Brokers in the cluster.
+    broker_info_gauge:
+      name: Broker Info
+      desc: Information about Kafka node, including node address and ID.
+    topic_partition_count:
+      name: Topic Partition Count
+      desc: Number of partitions for a given Kafka topic.
+    topic_partition_current_offset:
+      name: Partition Current Offset
+      desc: Current offset for the specified topic and partition.
+    topic_partition_oldest_offset:
+      name: Partition Oldest Offset
+      desc: Oldest offset for the specified topic and partition.
+    topic_partition_in_sync_replica:
+      name: Partition In-Sync Replicas
+      desc: Number of in-sync replicas for the specified topic and partition.
+    topic_partition_leader_is_preferred:
+      name: Partition Preferred Leader Status
+      desc: Value is 1 if the preferred Broker node is in use for the topic/partition,
+        otherwise 0.
+    topic_partition_replicas:
+      name: Partition Replica Count
+      desc: Number of replicas for the specified topic and partition.
+    topic_partition_under_replicated_partition:
+      name: Partition Under-Replicated Status
+      desc: Value is 1 if the topic/partition is under-replicated, otherwise 0.
+    consumergroup_current_offset:
+      name: Consumer Group Current Offset
+      desc: Current offset for the consumer group in the specified topic and partition.
+    consumergroup_lag:
+      name: Consumer Group Lag
+      desc: Current approximate lag of the consumer group in the specified topic and
+        partition.
+    process_cpu_seconds_total:
+      name: Probe Process CPU Time
+      desc: Total CPU time used by the probe process.
+    process_max_fds_gauge:
+      name: Probe Process Max File Descriptors
+      desc: Maximum number of file descriptors that the probe process can open.
+    process_open_fds_gauge:
+      name: Probe Process Open File Descriptors
+      desc: Current number of open file descriptors used by the probe process.
+    process_resident_memory_bytes_gauge:
+      name: Probe Process Resident Memory
+      desc: Current resident memory size of the probe process.
+    process_virtual_memory_bytes_gauge:
+      name: Probe Process Virtual Memory
+      desc: Current virtual memory size of the probe process.
+monitor_object_metric_group:
+  Kafka:
+    Base: Base
+    Topic: Topic
+    ConsumerGroup: ConsumerGroup
+    Process: Process

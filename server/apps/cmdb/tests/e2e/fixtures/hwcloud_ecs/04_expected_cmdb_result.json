@@ -1,0 +1,22 @@
+{
+  "model_id": "hwcloud_ecs",
+  "instance_count_min": 1,
+  "expected_instance_subset": {
+    "inst_name":     "ecs-prod-01_ecs-bp1xxxxxxxx",
+    "resource_name": "ecs-prod-01",
+    "resource_id":   "ecs-bp1xxxxxxxx",
+    "ip_addr":       "192.168.1.10",
+    "public_ip":     "1.2.3.4",
+    "region":        "cn-north-4",
+    "zone":          "cn-north-4a",
+    "vpc":           "vpc-bp1yyyyyy",
+    "status":        "ACTIVE",
+    "instance_type": "s6.large.2",
+    "os_name":       "CentOS 7.6 64bit",
+    "vcpus":         2,
+    "memory_mb":     4096,
+    "charge_type":   "0",
+    "create_time":   "2024-02-01 08:00:00",
+    "expired_time":  "2099-12-31 23:59:59"
+  }
+}

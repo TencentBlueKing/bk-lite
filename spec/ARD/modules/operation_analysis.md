@@ -33,7 +33,7 @@
 ### 前端层：画布组件与展示能力【已实现】
 
 **组件注册表（widgetRegistry）**【已实现】  
-`web/src/app/ops-analysis/components/widgetRegistry.ts:12-29` 以 `chartType` 字符串为键，将组件类型映射至对应 React 组件，由 `getWidgetComponent` 统一解析。当前注册的组件类型（共 9 种）：
+`web/src/app/ops-analysis/components/widgetRegistry.ts:12-29` 以 `chartType` 字符串为键，将组件类型映射至对应 React 组件，由 `getWidgetComponent` 统一解析。当前注册的组件类型（共 10 种）：
 
 | chartType | 组件文件 | 说明 |
 |-----------|---------|------|
@@ -46,8 +46,9 @@
 | gauge | comGauge.tsx | 仪表盘（半圆/整圆） |
 | eventTable | eventTable/eventTable.tsx | 事件表（事件流） |
 | networkStatusTopology | networkStatusTopology/index.tsx | 网络状态拓扑场景组件 |
+| room3D | widgets/room3D/index.tsx | 3D 机房大屏组件：消费 CMDB NATS `get_room3d_layout`，渲染 row/col 网格、U 占用、机柜类型、设备摘要与图例 |
 
-证据：`web/src/app/ops-analysis/components/widgetRegistry.ts:12-21`、`web/src/app/ops-analysis/components/widgets/networkStatusTopology/index.tsx`、`web/src/app/ops-analysis/api/networkStatusTopology.ts:11-25`。
+证据：`web/src/app/ops-analysis/components/widgetRegistry.ts:11,22`、`web/src/app/ops-analysis/components/widgets/networkStatusTopology/index.tsx`、`web/src/app/ops-analysis/api/networkStatusTopology.ts:11-25`、`web/src/app/ops-analysis/components/widgets/room3D/{index.tsx,room3DData.ts,room3DMeshes.ts,room3DScene.ts}`。
 
 **大屏与报表前端入口**【已实现】  
 - `screen`：前端提供独立页面、全屏、统一筛选、命名空间选择、组件布局与保存接口（`(pages)/view/screen/index.tsx:76-213`、`api/screen.ts:4-28`）。
@@ -68,6 +69,12 @@
 ## 2026-07-01 Code-ARD 校准
 - `[operation_analysis#20260701-013]` 补录 `api/scene_widgets/network_status_topology` 路由、view 权限、CMDB 拓扑/实例权限复用和 Alerts 活跃告警汇总边界。
 - `[operation_analysis#20260701-014]` 补录开放导入导出 API Token 认证、组织解析、权限矩阵与实例/组织过滤。
+
+## 2026-07-09 Code-ARD 校准
+- `[operation_analysis#20260709-001]` 3D 机房大屏组件 `room3D` 已注册到 `widgetRegistry`（此前 spec 未覆盖）：消费 CMDB NATS `get_room3d_layout` 返回的机房布局数据（含 `rack_type_name` 可读类型名），渲染 row/col 网格、机柜 U 占用、设备摘要与图例。
+- `[operation_analysis#20260709-002]` `Room3DRack` 数据模型扩展 `rack_type_name?: string | null` 字段：区分 `rack_type` 枚举 id 与可读名称，作为机柜顶部贴图第二行文本（位置 + 类型名双行排版）与图例 label 渲染源（`web/src/app/ops-analysis/components/widgets/room3D/room3DData.ts:17` 定义、`:270-275` 校验、`:292` 返回；`room3DMeshes.ts:128` `createRackTopTexture(label, category?)` 双行排版；`index.tsx:114-125` 图例按 `rack_type_name` 去重）。机柜体颜色统一硬编码 `#82878b`（`room3DMeshes.ts:958`），移除 `RACK_COLOR_MAP` / `getRackVisualMeta`。
+- `[operation_analysis#20260709-003]` `OpsAnalysisWidgetSurface` 收紧为 `'dashboard' | 'screen'`：移除 `'topology'` 表面（`utils/chartTypeSurface.ts:1`），并同步移除 `ROOM3D_CELL_GAP` import（`room3DMeshes.ts:7-9` 原 import 列表）、`room3DScene.ts:22-27` 导出块中的 `ROOM3D_CELL_GAP` re-export，以及 `getRackDoorOpenRotation` 函数（原位于 `room3DScene.ts` 顶部 export 块附近，本轮已整体删除）。
+- `[operation_analysis#20260709-004]` `WidgetWrapper` 中"等待初始数据"判断抽为 `widgetRequestVersion.shouldWaitForInitialWidgetData`（`utils/widgetRequestVersion.ts:9` `WidgetInitialDataWaitOptions` 接口 + 函数收尾于 `:50-54`），调用点 `widgetDataRenderer.tsx:671-680,695-698`，属于纯重构，扩展加入 `hasResolvedDataSource` 因子。
 
 ## 6. 证据来源
 `server/apps/operation_analysis/{urls.py,models/*,views/datasource_view.py,views/view.py,nats/nats.py,common/get_nats_source_data.py,constants/constants.py,tasks/tasks.py,management/commands/*,services/*}`、`apps/operation_analysis/migrations/0010_remove_namespace_groups.py`、`apps/rpc/base.py:OperationAnalysisRpc`、`web/src/app/ops-analysis/{utils/widgetRequestCache.ts,components/widgetDataRenderer.tsx,api/namespace.ts,(pages)/settings/namespace/operateModal.tsx}`。

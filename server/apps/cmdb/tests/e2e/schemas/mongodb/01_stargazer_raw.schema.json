@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Stargazer mongodb 采集原始输出契约",
+  "description": "2026-07-10 G5.2.x — Phase 3 任务 3.2,fixture 由 cli.py 真实落盘(db runner,extra_payload_keys=None,形态 B 平铺)",
+  "type": "object",
+  "required": ["model_id", "captured_at", "raw_stdout"],
+  "properties": {
+    "model_id":    {"type": "string", "pattern": "^mongodb$"},
+    "captured_at": {"type": "string", "format": "date-time"},
+    "raw_stdout": {
+      "type": "object",
+      "required": ["ip_addr", "port"],
+      "properties": {
+        "inst_name":          {"type": "string"},
+        "ip_addr":            {"type": "string"},
+        "obj_id":             {"type": "string"},
+        "bin_path":           {"type": "string"},
+        "mongo_path":         {"type": "string"},
+        "port":               {"type": ["string", "integer"]},
+        "version":            {"type": "string"},
+        "config":             {"type": "string"},
+        "fork":               {"type": "string"},
+        "system_log":         {"type": "string"},
+        "db_path":            {"type": "string"},
+        "max_incoming_conn":  {"type": "string"},
+        "database_role":      {"type": "string"}
+      }
+    }
+  }
+}

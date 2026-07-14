@@ -158,6 +158,68 @@ class TestOrganizationRuleView:
         # 匹配 → 不抛错
         assert _validate_rule_binding(obj.id, "('h2',)") is None
 
+    def test_validate_rule_binding_derivative_object_with_parent_instance(self):
+        """子对象(derivative)规则引用父实例应视为合法:对应 create_default_rule 自动建规则的设计"""
+        from apps.monitor.views.organization_rule import _validate_rule_binding
+        from apps.monitor.models import MonitorInstance
+        parent = MonitorObject.objects.create(name="VRBParent", level="base")
+        child = MonitorObject.objects.create(name="VRBChild", level="derivative", parent=parent)
+        MonitorInstance.objects.create(id="('p1',)", name="p1", monitor_object=parent)
+        # 规则对象=child,实例=parent 的实例 → 应放行
+        assert _validate_rule_binding(child.id, "('p1',)") is None
+
+    def test_validate_rule_binding_derivative_object_with_unrelated_instance(self):
+        """子对象(derivative)规则引用无关实例必须仍报错,避免绕过访问范围"""
+        from apps.core.exceptions.base_app_exception import BaseAppException
+        from apps.monitor.views.organization_rule import _validate_rule_binding
+        from apps.monitor.models import MonitorInstance
+        parent = MonitorObject.objects.create(name="VRBParentU", level="base")
+        child = MonitorObject.objects.create(name="VRBChildU", level="derivative", parent=parent)
+        unrelated = MonitorObject.objects.create(name="VRBUnrelated", level="base")
+        MonitorInstance.objects.create(id="('u1',)", name="u1", monitor_object=unrelated)
+        with pytest.raises(BaseAppException):
+            _validate_rule_binding(child.id, "('u1',)")
+
+    def test_update_derivative_rule_with_parent_instance_succeeds(self, api_client):
+        """回归: vmware 父实例自动建的子规则,编辑保存时不再被 500/校验拦截"""
+        from apps.monitor.models import MonitorObjectOrganizationRule
+        from apps.monitor.models import MonitorInstance
+        parent = MonitorObject.objects.create(name="UpdDeriveParent", level="base")
+        child = MonitorObject.objects.create(name="UpdDeriveChild", level="derivative", parent=parent)
+        MonitorInstance.objects.create(id="('vp1',)", name="vp1", monitor_object=parent)
+        rule = MonitorObjectOrganizationRule.objects.create(
+            monitor_object=child,
+            name="UpdDeriveChild-vp1",
+            organizations=[1],
+            rule={
+                "type": "metric",
+                "metric_id": 1,
+                "filter": [{"name": "instance_id", "method": "=", "value": "vp1"}],
+            },
+            monitor_instance_id="('vp1',)",
+        )
+        # 超级用户路径绕过授权过滤
+        mocker_module = pytest.importorskip("pytest_mock")
+        import pytest_mock  # noqa: F401
+        from unittest.mock import patch
+        with patch(
+            "apps.monitor.views.organization_rule._build_actor_context",
+            return_value={"is_superuser": True, "current_team": 1,
+                          "username": "u", "domain": "domain.com",
+                          "include_children": False, "group_list": []},
+        ):
+            resp = api_client.put(
+                f"{BASE}/api/organization_rule/{rule.id}/",
+                {
+                    "name": "UpdDeriveChild-vp1",
+                    "monitor_object": child.id,
+                    "rule": rule.rule,
+                    "organizations": [1],
+                },
+                format="json",
+            )
+        assert resp.status_code == 200, resp.content
+
     def test_rule_is_authorized_superuser(self):
         from apps.monitor.views.organization_rule import _rule_is_authorized
         from types import SimpleNamespace

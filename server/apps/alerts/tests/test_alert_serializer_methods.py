@@ -18,6 +18,8 @@ def _ser(context=None, notify_map=None):
     s._context = context or {}
     s.parent = None
     s.alert_notify_result_map = notify_map or {}
+    s.alert_notify_total_map = {}
+    s.alert_notify_records_map = {}
     return s
 
 
@@ -34,7 +36,115 @@ def test_set_alert_notify_result_map_aggregates():
     NotifyResult.objects.create(notify_type="alert", notify_object="A1", notify_result=NotifyResultStatus.SUCCESS)
     NotifyResult.objects.create(notify_type="alert", notify_object="A1", notify_result=NotifyResultStatus.FAILED)
     result = AlertModelSerializer.set_alert_notify_result_map([alert])
-    assert result["A1"] == [True, False]
+    assert result["A1"] == [False, True]
+
+
+@pytest.mark.django_db
+def test_notification_details_return_total_latest_five_and_recipient_display_names():
+    from datetime import timedelta
+
+    from apps.alerts.models import NotifyResult
+    from apps.system_mgmt.models.user import User
+
+    alert = Alert.objects.create(alert_id="A1", level="0", title="t", content="c", fingerprint="fp")
+    User.objects.create(username="alice", display_name="Alice Zhang", domain="domain.com")
+    now = timezone.now()
+    rows = []
+    for index in range(6):
+        row = NotifyResult.objects.create(
+            notify_type="alert",
+            notify_object="A1",
+            notify_people=["alice", "deleted-user"],
+            notify_channel="wechat",
+            notify_channel_name="企业微信",
+            notify_result=(
+                NotifyResultStatus.FAILED if index == 5 else NotifyResultStatus.SUCCESS
+            ),
+            failure_reason="receiver rejected" if index == 5 else None,
+        )
+        NotifyResult.objects.filter(pk=row.pk).update(notify_time=now + timedelta(minutes=index))
+        rows.append(row)
+
+    serializer = _ser()
+    (
+        serializer.alert_notify_result_map,
+        serializer.alert_notify_total_map,
+        serializer.alert_notify_records_map,
+    ) = AlertModelSerializer.set_alert_notification_maps([alert])
+
+    assert serializer.get_notify_total(alert) == 6
+    records = serializer.get_notify_records(alert)
+    assert len(records) == 5
+    assert records[0]["result"] == NotifyResultStatus.FAILED
+    assert records[0]["failure_reason"] == "receiver rejected"
+    assert records[0]["channel"] == "wechat"
+    assert records[0]["channel_name"] == "企业微信"
+    assert records[0]["recipients"] == [
+        {"username": "alice", "display_name": "Alice Zhang"},
+        {"username": "deleted-user", "display_name": "deleted-user"},
+    ]
+    assert records[0]["notify_time"] > records[-1]["notify_time"]
+
+
+@pytest.mark.django_db
+def test_notification_detail_maps_use_constant_query_count(django_assert_num_queries):
+    from apps.alerts.models import NotifyResult
+    from apps.system_mgmt.models.user import User
+
+    alerts = [
+        Alert.objects.create(
+            alert_id=f"A{index}", level="0", title="t", content="c", fingerprint=f"fp-{index}"
+        )
+        for index in range(3)
+    ]
+    User.objects.create(username="alice", display_name="Alice", domain="domain.com")
+    for alert in alerts:
+        NotifyResult.objects.create(
+            notify_type="alert",
+            notify_object=alert.alert_id,
+            notify_people=["alice"],
+            notify_channel="email",
+            notify_result=NotifyResultStatus.SUCCESS,
+        )
+
+    with django_assert_num_queries(2):
+        maps = AlertModelSerializer.set_alert_notification_maps(alerts)
+
+    serializer = _ser()
+    (
+        serializer.alert_notify_result_map,
+        serializer.alert_notify_total_map,
+        serializer.alert_notify_records_map,
+    ) = maps
+
+    assert serializer.get_notify_status(alerts[0]) == NotifyResultStatus.SUCCESS
+    assert serializer.get_notify_total(alerts[0]) == 1
+    assert serializer.get_notify_records(alerts[0])[0]["recipients"][0]["display_name"] == "Alice"
+
+
+@pytest.mark.django_db
+def test_notification_details_support_single_alert_instance():
+    from apps.alerts.models import NotifyResult
+
+    alert = Alert.objects.create(alert_id="A1", level="0", title="t", content="c", fingerprint="fp")
+    NotifyResult.objects.create(
+        notify_type="alert",
+        notify_object="A1",
+        notify_people=[],
+        notify_channel="email",
+        notify_result=NotifyResultStatus.SUCCESS,
+    )
+
+    serializer = _ser()
+    (
+        serializer.alert_notify_result_map,
+        serializer.alert_notify_total_map,
+        serializer.alert_notify_records_map,
+    ) = AlertModelSerializer.set_alert_notification_maps(alert)
+
+    assert serializer.get_notify_status(alert) == NotifyResultStatus.SUCCESS
+    assert serializer.get_notify_total(alert) == 1
+    assert len(serializer.get_notify_records(alert)) == 1
 
 
 def test_get_operator_user_empty():

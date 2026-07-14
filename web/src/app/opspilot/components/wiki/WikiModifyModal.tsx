@@ -5,7 +5,6 @@ import { Form, Input, Modal, Select } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import GroupTreeSelect from '@/components/group-tree-select';
 import { useWikiApi } from '@/app/opspilot/api/wiki';
-import { Model } from '@/app/opspilot/types/provider';
 import { PurposeSchemaTemplate, WikiKnowledgeBase } from '@/app/opspilot/types/wiki';
 import { LlmModel } from '@/app/opspilot/types/skill';
 
@@ -24,33 +23,32 @@ const fillTemplate = (tpl: PurposeSchemaTemplate | undefined, intro: string) => 
 const WikiModifyModal: React.FC<WikiModifyModalProps> = ({ visible, onCancel, onConfirm, initialValues }) => {
   const { t } = useTranslation();
   const [form] = Form.useForm();
-  const { fetchTemplates, fetchKnowledgeBase, fetchLlmModels, fetchEmbedProviders } = useWikiApi();
+  const { fetchTemplates, fetchKnowledgeBase, fetchLlmModels } = useWikiApi();
   const [templates, setTemplates] = useState<PurposeSchemaTemplate[]>([]);
   const [llmModels, setLlmModels] = useState<LlmModel[]>([]);
-  const [embedProviders, setEmbedProviders] = useState<Model[]>([]);
   const [confirmLoading, setConfirmLoading] = useState(false);
+  const isEditing = Boolean(initialValues?.id);
 
   useEffect(() => {
     if (!visible) return;
     fetchLlmModels()
       .then((models) => setLlmModels(models || []))
       .catch(() => undefined);
-    fetchEmbedProviders()
-      .then((providers) => setEmbedProviders(providers || []))
-      .catch(() => undefined);
-    fetchTemplates()
-      .then((tpls) => {
-        setTemplates(tpls);
-        // 新建:默认套用「通用知识库」固定内容
-        if (!initialValues) {
+    if (!isEditing) {
+      fetchTemplates()
+        .then((tpls) => {
+          setTemplates(tpls);
+          // 新建:默认套用「通用知识库」固定内容
           const def = tpls.find((x) => x.key === 'general') || tpls[0];
           form.setFieldsValue({ template_key: def?.key, ...fillTemplate(def, '') });
-        }
-      })
-      .catch(() => undefined);
+        })
+        .catch(() => undefined);
+    } else {
+      setTemplates([]);
+    }
     if (initialValues?.id) {
       form.resetFields();
-      // 卡片菜单只透传了部分字段,编辑时拉取完整知识库回写(含用途/结构)
+      // 卡片菜单只透传了部分字段,编辑时拉取完整知识库回写基础信息
       fetchKnowledgeBase(initialValues.id)
         .then((full) => {
           form.setFieldsValue({
@@ -58,11 +56,7 @@ const WikiModifyModal: React.FC<WikiModifyModalProps> = ({ visible, onCancel, on
             introduction: full.introduction,
             team: full.team,
             llm_model: full.llm_model,
-            embed_provider: full.embed_provider,
             vision_model: full.vision_model,
-            template_key: full.template_key || 'general',
-            purpose_md: full.purpose_md,
-            schema_md: full.schema_md,
           });
         })
         .catch(() => undefined);
@@ -80,9 +74,15 @@ const WikiModifyModal: React.FC<WikiModifyModalProps> = ({ visible, onCancel, on
 
   const handleOk = async () => {
     const values = await form.validateFields();
+    const submitValues = { ...values };
+    if (isEditing) {
+      delete submitValues.template_key;
+      delete submitValues.purpose_md;
+      delete submitValues.schema_md;
+    }
     setConfirmLoading(true);
     try {
-      await onConfirm(values);
+      await onConfirm(submitValues);
     } finally {
       setConfirmLoading(false);
     }
@@ -123,13 +123,6 @@ const WikiModifyModal: React.FC<WikiModifyModalProps> = ({ visible, onCancel, on
             options={llmModels.map((m) => ({ value: m.id, label: m.name, disabled: !m.enabled }))}
           />
         </Form.Item>
-        <Form.Item label={t('wiki.embedProvider')} name="embed_provider" tooltip={t('wiki.embedProviderTip')}>
-          <Select
-            allowClear
-            placeholder={t('wiki.embedProviderPlaceholder')}
-            options={embedProviders.map((m) => ({ value: m.id, label: m.name, disabled: !m.enabled }))}
-          />
-        </Form.Item>
         <Form.Item label={t('wiki.visionModel')} name="vision_model" tooltip={t('wiki.visionModelTip')}>
           <Select
             allowClear
@@ -140,15 +133,19 @@ const WikiModifyModal: React.FC<WikiModifyModalProps> = ({ visible, onCancel, on
         <Form.Item label={t('wiki.introduction')} name="introduction">
           <Input.TextArea rows={2} />
         </Form.Item>
-        <Form.Item label={t('wiki.template')} name="template_key">
-          <Select onChange={onTemplateChange} options={templates.map((tp) => ({ value: tp.key, label: tp.name }))} />
-        </Form.Item>
-        <Form.Item label={t('wiki.purpose')} name="purpose_md">
-          <Input.TextArea rows={3} />
-        </Form.Item>
-        <Form.Item label={t('wiki.schema')} name="schema_md">
-          <Input.TextArea rows={3} />
-        </Form.Item>
+        {!isEditing && (
+          <>
+            <Form.Item label={t('wiki.template')} name="template_key">
+              <Select onChange={onTemplateChange} options={templates.map((tp) => ({ value: tp.key, label: tp.name }))} />
+            </Form.Item>
+            <Form.Item label={t('wiki.purpose')} name="purpose_md">
+              <Input.TextArea rows={3} />
+            </Form.Item>
+            <Form.Item label={t('wiki.schema')} name="schema_md">
+              <Input.TextArea rows={3} />
+            </Form.Item>
+          </>
+        )}
       </Form>
     </Modal>
   );

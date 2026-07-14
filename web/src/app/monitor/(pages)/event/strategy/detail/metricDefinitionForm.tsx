@@ -9,7 +9,12 @@ import {
   FormInstance
 } from 'antd';
 import { useTranslation } from '@/utils/i18n';
-import { SegmentedItem, IndexViewItem } from '@/app/monitor/types';
+import {
+  SegmentedItem,
+  IndexViewItem,
+  CascaderItem,
+  UnitListItem
+} from '@/app/monitor/types';
 import { StrategyFields } from '@/app/monitor/types/event';
 import {
   useScheduleList,
@@ -44,11 +49,15 @@ interface MetricDefinitionFormProps {
   metricExpressionMode: MetricExpressionMode;
   resultName: string;
   expression: string;
+  resultUnit: string | null;
   labelsByRef: Record<string, string[]>;
+  groupedUnitOptions: CascaderItem[];
+  unitList: UnitListItem[];
   onCollectTypeChange: (id: string) => void;
   onMetricRowsChange: (rows: MetricExpressionRow[]) => void;
   onResultNameChange: (value: string) => void;
   onExpressionChange: (value: string) => void;
+  onResultUnitChange: (value: string) => void;
   onPeriodChange: (val: number | null) => void;
   onPeriodUnitChange: (val: string) => void;
   onAlgorithmChange: (val: string) => void;
@@ -66,11 +75,15 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
   metricExpressionMode,
   resultName,
   expression,
+  resultUnit,
   labelsByRef,
+  groupedUnitOptions,
+  unitList,
   onCollectTypeChange,
   onMetricRowsChange,
   onResultNameChange,
   onExpressionChange,
+  onResultUnitChange,
   onPeriodChange,
   onPeriodUnitChange,
   onAlgorithmChange,
@@ -189,15 +202,19 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
                   mode={metricExpressionMode}
                   resultName={resultName}
                   expression={expression}
+                  resultUnit={resultUnit}
                   labelsByRef={labelsByRef}
                   originMetricData={originMetricData}
                   groupByOptions={groupByOptions}
                   groupMethods={GROUP_METHOD_LIST}
                   conditionMethods={CONDITION_LIST}
                   metricsLoading={metricsLoading}
+                  groupedUnitOptions={groupedUnitOptions}
+                  unitList={unitList}
                   onRowsChange={onMetricRowsChange}
                   onResultNameChange={onResultNameChange}
                   onExpressionChange={onExpressionChange}
+                  onResultUnitChange={onResultUnitChange}
                 />
               </Form.Item>
             </>

@@ -1,6 +1,7 @@
 from urllib.parse import urlencode
 
 from django.contrib.auth.hashers import make_password
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.core.logger import system_mgmt_logger as logger
@@ -9,9 +10,36 @@ from apps.system_mgmt.models import (
     LoginAuthBinding,
     LoginAuthBindingPlatformFieldChoices,
     LoginAuthBindingUnmatchedActionChoices,
+    Role,
     User,
 )
 from apps.system_mgmt.providers import RuntimeApplicationService
+
+# 微信等第三方登陆首次创建用户时,写入与旧 wechat_user_register
+# (server/apps/system_mgmt/nats/wechat.py:16-26) 对齐的默认 role 集合。
+# 缺 normal@ops-console 会让 verify_token 的菜单汇总为空,opsconsole 在
+# get_client 返回中消失,用户看不到入口。
+_DEFAULT_PLATFORM_ROLE_QUERY = Q(
+    name="normal", app__in=["opspilot", "ops-console"]
+) | Q(
+    name="guest",
+    app__in=[
+        "opspilot",
+        "cmdb",
+        "monitor",
+        "log",
+        "alarm",
+        "node",
+        "mlops",
+        "job",
+    ],
+)
+
+
+def _default_platform_role_ids() -> list:
+    return list(
+        Role.objects.filter(_DEFAULT_PLATFORM_ROLE_QUERY).values_list("id", flat=True)
+    )
 
 
 def get_active_login_auth_bindings():
@@ -51,10 +79,17 @@ def login_with_binding(binding_id: int, auth_code: str = "", *, username: str = 
         .first()
     )
     if not binding:
+        logger.warning(f"login_with_binding: binding not found, binding_id={binding_id}")
         return {"result": False, "message": "Login auth binding not found"}
 
     instance = binding.integration_instance
     if not instance.enabled or instance.capability_status.get("login_auth") != "ready":
+        logger.warning(
+            f"login_with_binding: binding not ready, "
+            f"binding_id={binding_id}, provider_key={instance.provider_key}, "
+            f"instance_enabled={instance.enabled}, "
+            f"capability_status={dict(instance.capability_status or {})}"
+        )
         return {"result": False, "message": "Login auth binding is not ready"}
 
     runtime_service = RuntimeApplicationService()
@@ -69,15 +104,36 @@ def login_with_binding(binding_id: int, auth_code: str = "", *, username: str = 
         password=password,
     )
     if not result.success:
+        # 外部 API 失败（AD/Feishu/WeChat 拒绝或网络错误），记 ERROR 触发运维告警。
+        # 含 provider_key + binding_id + error code + summary + 错误列表，便于区分平台 vs 外部。
+        error_codes = [e.code for e in (result.errors or [])]
+        logger.error(
+            f"login_with_binding: external authenticate failed, "
+            f"binding_id={binding_id}, provider_key={instance.provider_key}, "
+            f"username={username!r}, summary={result.summary!r}, "
+            f"codes={error_codes}, request_id={result.request_id}"
+        )
         return {"result": False, "message": result.summary, "data": result.to_dict()}
 
     adapter_login_result = result.payload.get("login_result") or {}
     if adapter_login_result:
+        logger.info(
+            f"login_with_binding succeeded via adapter-supplied login_result, "
+            f"binding_id={binding_id}, provider_key={instance.provider_key}"
+        )
         return {"result": True, "data": adapter_login_result}
 
     external_user = result.payload.get("external_user") or {}
     user = _resolve_platform_user(binding, external_user)
     if not user:
+        # 外部认证成功但本地无匹配：通常是 binding.platform_field / external_field 配置错，
+        # 或 sync 任务未跑、用户没建。WARNING 提示运维检查，不告警。
+        logger.warning(
+            f"login_with_binding: no matching platform user, "
+            f"binding_id={binding_id}, provider_key={instance.provider_key}, "
+            f"platform_field={binding.platform_field}, "
+            f"external_user={dict(external_user)}"
+        )
         return {"result": False, "message": "No matching platform user found"}
 
     user.last_login = timezone.now()
@@ -87,6 +143,11 @@ def login_with_binding(binding_id: int, auth_code: str = "", *, username: str = 
         # `domain` is a deprecated compatibility field. New login-auth users are
         # intentionally kept in the legacy default domain until the column is removed.
         token_result["data"]["domain"] = "domain.com"
+        logger.info(
+            f"login_with_binding succeeded, "
+            f"binding_id={binding_id}, provider_key={instance.provider_key}, "
+            f"username={user.username}, platform_user_id={user.id}"
+        )
     return token_result
 
 
@@ -136,6 +197,9 @@ def _resolve_platform_user(binding: LoginAuthBinding, external_user: dict):
         # code. Do not treat provider integrations as multi-domain sources here.
         domain="domain.com",
         group_list=[default_group.id] if default_group else [],
+        # 默认 role 与旧 wechat_user_register 路径(server/apps/system_mgmt/nats/wechat.py)
+        # 对齐:normal@ops-console 决定 opsconsole 模块入口可见,guest@* 决定其余模块只读权限。
+        role_list=_default_platform_role_ids(),
     )
     logger.info(f"Created platform user '{username}' from login auth binding '{binding.name}'")
     return user

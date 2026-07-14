@@ -1,4 +1,7 @@
+import shlex
+
 from asgiref.sync import async_to_sync
+from django.db.models import Q
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.crypto.aes_crypto import AESCryptor
@@ -139,7 +142,15 @@ class InstallerService:
         return install_command
 
     @staticmethod
-    def install_controller(cloud_region_id, work_node, package_version_id, nodes, cpu_architecture: str):
+    def install_controller(
+        cloud_region_id,
+        work_node,
+        package_version_id,
+        nodes,
+        cpu_architecture: str,
+        created_by: str = "",
+        domain: str = "domain.com",
+    ):
         """安装控制器"""
         task_obj = ControllerTask.objects.create(
             cloud_region_id=cloud_region_id,
@@ -147,6 +158,10 @@ class InstallerService:
             package_version_id=package_version_id,
             type="install",
             status="waiting",
+            created_by=created_by,
+            updated_by=created_by,
+            domain=domain,
+            updated_by_domain=domain,
         )
         creates = []
         aes_obj = AESCryptor()
@@ -165,6 +180,7 @@ class InstallerService:
             creates.append(
                 ControllerTaskNode(
                     task_id=task_obj.id,
+                    node_id=node.get("node_id", ""),
                     ip=node["ip"],
                     node_name=node["node_name"],
                     os=node["os"],
@@ -199,13 +215,23 @@ class InstallerService:
         return result
 
     @staticmethod
-    def uninstall_controller(cloud_region_id, work_node, nodes):
+    def uninstall_controller(
+        cloud_region_id,
+        work_node,
+        nodes,
+        created_by: str = "",
+        domain: str = "domain.com",
+    ):
         """卸载控制器"""
         task_obj = ControllerTask.objects.create(
             cloud_region_id=cloud_region_id,
             work_node=work_node,
             type="uninstall",
             status="waiting",
+            created_by=created_by,
+            updated_by=created_by,
+            domain=domain,
+            updated_by_domain=domain,
         )
         creates = []
         aes_obj = AESCryptor()
@@ -220,6 +246,7 @@ class InstallerService:
             creates.append(
                 ControllerTaskNode(
                     task_id=task_obj.id,
+                    node_id=node.get("node_id", ""),
                     ip=node["ip"],
                     os=node["os"],
                     cpu_architecture=node.get("cpu_architecture", ""),
@@ -235,14 +262,25 @@ class InstallerService:
         return task_obj.id
 
     @staticmethod
-    def install_controller_nodes(task_id):
+    def install_controller_nodes(task_id, authorized_nodes=None, request_user=None):
         """获取控制器安装节点信息"""
-        task_nodes = ControllerTaskNode.objects.filter(task_id=task_id)
+        task_nodes = ControllerTaskNode.objects.filter(task_id=task_id).select_related("task").order_by("id")
+        if authorized_nodes is not None and not getattr(request_user, "is_superuser", False):
+            authorized_node_ids = list(authorized_nodes.values_list("id", flat=True))
+            username = getattr(request_user, "username", "") if request_user is not None else ""
+            legacy_owner_filter = Q(pk__in=[])
+            if username:
+                legacy_owner_filter = Q(node_id="") & Q(task__created_by=username)
+            task_nodes = task_nodes.filter(
+                (~Q(node_id="") & Q(node_id__in=authorized_node_ids)) | legacy_owner_filter
+            )
+
         result = []
         for task_node in task_nodes:
             result.append(
                 dict(
                     task_node_id=task_node.id,
+                    node_id=task_node.node_id,
                     ip=task_node.ip,
                     os=task_node.os,
                     cpu_architecture=task_node.cpu_architecture,
@@ -307,26 +345,43 @@ class InstallerService:
     @staticmethod
     def get_linux_bootstrap_command(token: str, install_mode: str = MANUAL_INSTALL_MODE) -> str:
         session = InstallerSessionService.build_session_config(token)
-        installer = session["installer"]
-        install_dir = session["install_dir"]
         server_url = session["server_url"].replace("/api/v1/node_mgmt/open_api/node", "")
         bootstrap_url = f"{server_url}/api/v1/node_mgmt/open_api/installer/linux_bootstrap?token={token}"
-        command = f"curl -sSLk {bootstrap_url} | bash -s -- --install-dir '{install_dir}' --installer-name '{installer['filename']}'"
+        quoted_bootstrap_url = shlex.quote(bootstrap_url)
+
+        shell_detection = (
+            'if command -v sh >/dev/null 2>&1; then bootstrap_shell="$(command -v sh)"; '
+            'elif command -v bash >/dev/null 2>&1; then bootstrap_shell="$(command -v bash)"; '
+            "else echo 'Error: controller installation requires sh or bash' >&2; exit 1; fi; "
+        )
 
         if install_mode == InstallerService.AUTO_INSTALL_MODE:
-            return (
+            privilege_detection = (
                 'if [ "$(id -u)" -eq 0 ]; then '
-                f"{command}; "
+                "bootstrap_privilege=root; "
                 "elif command -v sudo >/dev/null 2>&1; then "
-                f"if sudo -n bash -c true >/dev/null 2>&1; then {command.replace('| bash', '| sudo -n bash')}; "
+                'if sudo -n "$bootstrap_shell" -c true >/dev/null 2>&1; then bootstrap_privilege=sudo_non_interactive; '
                 "else echo 'Error: automatic installation requires root or passwordless sudo for the current user'; exit 1; fi; "
-                "else echo 'Error: root or sudo is required to install controller'; exit 1; fi"
+                "else echo 'Error: root or sudo is required to install controller'; exit 1; fi; "
+            )
+        else:
+            privilege_detection = (
+                'if [ "$(id -u)" -eq 0 ]; then '
+                "bootstrap_privilege=root; "
+                "elif command -v sudo >/dev/null 2>&1; then bootstrap_privilege=sudo_interactive; "
+                "else echo 'Error: root or sudo is required to install controller'; exit 1; fi; "
             )
 
         return (
-            'if [ "$(id -u)" -eq 0 ]; then '
-            f"{command}; "
-            "elif command -v sudo >/dev/null 2>&1; then "
-            f"{command.replace('| bash', '| sudo bash')}; "
-            "else echo 'Error: root or sudo is required to install controller'; exit 1; fi"
+            f"{shell_detection}{privilege_detection}"
+            'umask 077; bootstrap_file="$(mktemp)" || exit 1; '
+            'cleanup_bootstrap() { rm -f "$bootstrap_file"; }; '
+            "trap cleanup_bootstrap 0; trap 'exit 1' 1 2 15; "
+            f'curl -fsSLk {quoted_bootstrap_url} -o "$bootstrap_file" || exit 1; '
+            "bootstrap_status=0; "
+            'if [ "$bootstrap_privilege" = root ]; then "$bootstrap_shell" "$bootstrap_file" || bootstrap_status=$?; '
+            'elif [ "$bootstrap_privilege" = sudo_non_interactive ]; then '
+            'sudo -n "$bootstrap_shell" "$bootstrap_file" || bootstrap_status=$?; '
+            'else sudo "$bootstrap_shell" "$bootstrap_file" || bootstrap_status=$?; fi; '
+            'exit "$bootstrap_status"'
         )

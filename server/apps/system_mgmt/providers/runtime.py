@@ -8,6 +8,42 @@ from apps.core.logger import logger
 from .registry import get_capability_adapter_registry, get_provider_registry
 
 
+# 平台内部错误（应用/manifest 配置错、provider 实现 bug）
+# → 触发排查平台代码 / manifest / 配置
+_PLATFORM_INTERNAL_CODES = frozenset(
+    {
+        "provider.invalid_config",
+        "provider.invalid_response",
+        "provider.not_implemented",
+        "provider.operation_not_implemented",
+    }
+)
+
+# 外部 API 错误（远端拒绝、超时、网络问题）
+# → 触发排查外部服务状态 / 凭证 / 网络
+_EXTERNAL_API_CODES = frozenset(
+    {
+        "provider.auth_failed",
+        "provider.request_failed",
+        "provider.timeout",
+    }
+)
+
+
+def _classify_test_connection_failure_tag(error_codes: list[str]) -> str:
+    """根据 error codes 把 test_connection 失败分类为 platform/internal 或 external/api。
+
+    返回 tag 用于日志前缀，让运维一眼看出根因方向（平台代码 vs 外部服务）。
+    多个 code 时按优先级：platform/internal > external/api > unknown。
+    """
+    code_set = set(error_codes or [])
+    if code_set & _PLATFORM_INTERNAL_CODES:
+        return "platform/internal"
+    if code_set & _EXTERNAL_API_CODES:
+        return "external/api"
+    return "unknown"
+
+
 class CapabilityExecutionError(BaseModel):
     code: str = Field(description="平台统一错误码")
     message: str = Field(description="错误摘要")
@@ -128,16 +164,29 @@ class RuntimeApplicationService:
             capability_status[capability.key] = "ready" if result.success else "verification_failed"
             all_success = all_success and result.success
             if not result.success:
+                error_codes = [error.code for error in (result.errors or [])]
+                error_messages = [
+                    {"code": e.code, "message": e.message, "field": e.field}
+                    for e in (result.errors or [])
+                ]
+                # 区分平台 bug vs 外部 API 失败，便于运维一眼定位根因
+                tag = _classify_test_connection_failure_tag(error_codes)
                 logger.warning(
-                    f"Integration instance test connection failed for capability '{capability.key}' "
-                    f"of provider '{manifest.key}': request_id={result.request_id}, "
-                    f"summary='{result.summary}', errors={[error.model_dump() for error in result.errors]}"
+                    f"[{tag}] Integration instance test connection failed for capability "
+                    f"'{capability.key}' of provider '{manifest.key}', "
+                    f"instance_id={getattr(instance, 'id', None)}, "
+                    f"instance_name={getattr(instance, 'name', None)!r}, "
+                    f"request_id={result.request_id}, summary={result.summary!r}, "
+                    f"codes={error_codes}, errors={error_messages}"
                 )
 
         summary = f"Provider '{manifest.key}' connection test succeeded" if all_success else f"Provider '{manifest.key}' connection test failed"
         logger.info(
-            f"Integration instance test connection completed: provider={manifest.key}, "
-            f"success={all_success}, capability_status={capability_status}"
+            f"Integration instance test connection completed, "
+            f"instance_id={getattr(instance, 'id', None)}, "
+            f"instance_name={getattr(instance, 'name', None)!r}, "
+            f"provider_key={manifest.key}, success={all_success}, "
+            f"capability_status={capability_status}"
         )
         return CapabilityExecutionResult(
             success=all_success,

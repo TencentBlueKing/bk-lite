@@ -147,14 +147,10 @@ class TestBuildKnowledgeRetrieveTool:
         assert "ok" in result
 
     def test_default_search_fn_is_knowledge_search_service(self):
-        """未注入 search_fn 时默认使用 KnowledgeSearchService.search。"""
-        from apps.opspilot.services.knowledge_search_service import KnowledgeSearchService
-
-        tool = build_knowledge_retrieve_tool(
-            knowledge_bases=[_make_kb(1, "A")],
-            kwargs_map={1: {}},
-        )
-        # 默认搜索实现被记录在工具的元数据里，便于集成时校验
-        assert tool.metadata is not None
-        # search 为 classmethod，每次取属性都是新的 bound method，故比较底层函数。
-        assert tool.metadata.get("default_search_fn").__func__ is KnowledgeSearchService.search.__func__
+        """不注入 search_fn 时显式抛错(原 KnowledgeSearchService 已随知识库功能一起删除,不再兜底 default)。"""
+        import pytest as _pytest
+        with _pytest.raises(ValueError, match="需要显式 search_fn"):
+            build_knowledge_retrieve_tool(
+                knowledge_bases=[_make_kb(1, "A")],
+                kwargs_map={1: {}},
+            )

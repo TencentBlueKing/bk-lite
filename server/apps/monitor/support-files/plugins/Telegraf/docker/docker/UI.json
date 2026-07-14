@@ -2,7 +2,9 @@
   "object_name": "Docker",
   "instance_type": "docker",
   "collect_type": "docker",
-  "config_type": ["docker"],
+  "config_type": [
+    "docker"
+  ],
   "collector": "Telegraf",
   "instance_id": "{{cloud_region}}_docker_{{endpoint}}",
   "form_fields": [
@@ -19,20 +21,22 @@
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.endpoint"
-      }
+      },
+      "label_en": "Endpoint"
     },
     {
       "name": "interval",
       "label": "间隔",
       "type": "inputNumber",
       "required": true,
-      "default_value": 10,
+      "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
       "widget_props": {
         "min": 1,
         "precision": 0,
         "placeholder": "间隔",
-        "addonAfter": "s"
+        "addonAfter": "s",
+        "placeholder_en": "Interval"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.interval",
@@ -42,7 +46,9 @@
         "to_api": {
           "suffix": "s"
         }
-      }
+      },
+      "label_en": "Interval",
+      "description_en": "Collection time interval (unit: seconds)"
     }
   ],
   "table_columns": [
@@ -52,9 +58,11 @@
       "type": "select",
       "required": true,
       "widget_props": {
-        "placeholder": "请选择节点"
+        "placeholder": "请选择节点",
+        "placeholder_en": "Please select node"
       },
-      "enable_row_filter": false
+      "enable_row_filter": false,
+      "label_en": "Node"
     },
     {
       "name": "endpoint",
@@ -64,12 +72,15 @@
       "default_value": "unix:///var/run/docker.sock",
       "change_handler": {
         "type": "simple",
-        "source_fields": ["endpoint"],
+        "source_fields": [
+          "endpoint"
+        ],
         "target_field": "instance_name"
       },
       "widget_props": {
         "placeholder": "Docer守护进程连接地址，默认为 unix:///var/run/docker.sock"
-      }
+      },
+      "label_en": "Endpoint"
     },
     {
       "name": "instance_name",
@@ -78,8 +89,10 @@
       "required": true,
       "widget_props": {
         "placeholder": "实例名称",
-        "disabled": false
-      }
+        "disabled": false,
+        "placeholder_en": "Instance Name"
+      },
+      "label_en": "Instance Name"
     },
     {
       "name": "group_ids",
@@ -87,8 +100,10 @@
       "type": "group_select",
       "required": false,
       "widget_props": {
-        "placeholder": "请选择组"
-      }
+        "placeholder": "请选择组",
+        "placeholder_en": "Please select group"
+      },
+      "label_en": "Group"
     }
   ],
   "extra_edit_fields": {}

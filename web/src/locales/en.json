@@ -63,6 +63,7 @@
     "publishSuccess": "publish successfully",
     "saveFailed": "Failed to save",
     "operationFailed": "Operation failed",
+    "operationSuccess": "Operation successful",
     "operateFailed": "Operation failed",
     "loadListFailed": "Failed to load list",
     "markdownLoadFailed": "Failed to load markdown content.",
@@ -344,6 +345,11 @@
         "startFailed": "Failed to start authentication.",
         "popupBlocked": "Unable to open the authentication page. Please allow new tabs and try again."
       }
+    },
+    "languageToggle": {
+      "label": "Switch language",
+      "zhItem": "Simplified Chinese",
+      "enItem": "English"
     }
   },
   "system": {

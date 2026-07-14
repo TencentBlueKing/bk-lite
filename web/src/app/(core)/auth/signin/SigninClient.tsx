@@ -10,6 +10,7 @@ import LoginAuthValidationPanel from "./login-auth/LoginAuthValidationPanel";
 import SigninContentShell from "./login-auth/SigninContentShell";
 import { getBindingPasswordCopy } from "./login-auth/bindingPasswordCopy";
 import { useLoginAuthValidation } from "./login-auth/useLoginAuthValidation";
+import SigninLanguageToggle from "./login-auth/SigninLanguageToggle";
 import {
   isBindingSelectionLocked,
   resolveInlineValidationError,
@@ -449,6 +450,7 @@ export default function SigninClient({
 
   const bindingsSelector = showBindingsSelector ? (
     <LoginAuthValidationPanel
+      mode={mode}
       bindings={loginAuthValidation.bindings}
       selectedBindingId={loginAuthValidation.selectedBindingId}
       isSelectionLocked={isValidationSelectionLocked}
@@ -503,28 +505,30 @@ export default function SigninClient({
   }
 
   return (
-    <div className="flex w-[calc(100%+2rem)] h-screen -m-4">
-      <div
-        className="w-3/5 hidden md:block bg-linear-to-br from-blue-500 to-indigo-700"
-        style={{
-          backgroundImage: "url('/system-login-bg.jpg')",
-          backgroundSize: "cover",
-          backgroundPosition: "center"
-        }}
-      >
-      </div>
-
-      <div className="w-full h-full md:w-2/5 flex items-center justify-center p-8 bg-(--bg-color-1) overflow-y-auto">
-        <div className="w-full h-full flex items-center justify-center">
-          <div className="w-full max-w-md">
-            <div className="mb-10 text-center">
-              <div className="mb-6 flex justify-center">
-                <img src={logoUrl} alt="Logo" className="h-14 w-auto object-contain" />
+    <div
+      className="relative h-screen w-[calc(100%+2rem)] -m-4 bg-cover bg-center bg-no-repeat"
+      style={{ backgroundImage: "url('/system-login-bg-wide.jpg')" }}
+    >
+      <div className="flex h-full w-full items-center justify-center overflow-y-auto px-5 py-8 sm:px-8 md:justify-end md:pr-8 lg:pr-12 xl:pr-16">
+        <div className="flex w-full items-center justify-center md:justify-end">
+          <div className="relative w-full max-w-[560px] md:max-w-[520px]">
+            <div className="pointer-events-none absolute inset-x-12 top-10 h-32 rounded-full bg-[#dfeafe]/32 blur-3xl" />
+            <div className="relative overflow-hidden rounded-[32px] border border-white/40 bg-[linear-gradient(180deg,rgba(255,255,255,0.22)_0%,rgba(255,255,255,0.12)_48%,rgba(255,255,255,0.08)_100%)] backdrop-blur-[32px] shadow-[0_26px_72px_rgba(104,132,196,0.12),0_6px_22px_rgba(255,255,255,0.05),inset_0_1px_0_rgba(255,255,255,0.58)] px-5 py-6 sm:px-8 sm:py-8">
+              <div className="pointer-events-none absolute inset-0 rounded-[32px] bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.18),transparent_32%),radial-gradient(circle_at_top_left,rgba(189,214,255,0.1),transparent_28%)]" />
+              <div className="mb-6 flex justify-end">
+                <SigninLanguageToggle />
               </div>
-              <h2 className="text-3xl font-bold text-(--color-text-1)">{t('signin.pageTitle.login')}</h2>
-              <p className="mt-2 text-(--color-text-3)">{t('signin.pageDescription.login')}</p>
+              <div className="mb-8 text-center">
+                <div className="mb-4 flex justify-center">
+                  <div className="flex items-center justify-center">
+                    <img src={logoUrl} alt="Logo" className="h-14 w-auto object-contain" />
+                  </div>
+                </div>
+                <h2 className="text-[34px] font-bold tracking-[0.01em] text-[#23395d]">{t('signin.pageTitle.login')}</h2>
+                <p className="mt-2 text-[14px] text-[#6e84a7]">{t('signin.pageDescription.login')}</p>
+              </div>
+              {sharedContent}
             </div>
-            {sharedContent}
           </div>
         </div>
       </div>

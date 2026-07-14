@@ -124,6 +124,14 @@
         "eventCount": "Event Count",
         "incidentName": "Incident Name",
         "notificationStatus": "Notification Status",
+        "notificationSummary": "{{total}} notifications; showing the latest {{shown}}",
+        "notificationTime": "Notification Time",
+        "notificationChannel": "Channel",
+        "notificationRecipients": "Recipients",
+        "notificationResult": "Result",
+        "notificationFailureReason": "Failure Reason",
+        "notificationReasonUnavailable": "Failure reason was not recorded",
+        "noNotificationRecords": "No notification records",
         "declareIncident": "Declare Incident",
         "declareIncidentErrorMsg": "The selected alert is already linked to an incident",
         "createIncident": "Create Incident",
@@ -636,6 +644,7 @@
         "actionTriggerTip": "Lifecycle events left unchecked will not trigger this rule",
         "actionRecordsTitle": "Execution Records",
         "actionManualTrigger": "Run Action",
+        "noAvailableRules": "No available rules",
         "actionRerun": "Rerun",
         "actionTab": "Actions",
         "actionTargetHostField": "Target Host Field",
@@ -644,6 +653,12 @@
         "actionParamConst": "Constant",
         "actionBindingField": "Field",
         "actionConfigSection": "Action Config",
-        "actionTargetHostFieldTip": "Read from alert labels; default ip_addr"
+        "actionTargetHostFieldTip": "Read from alert labels; default ip_addr",
+        "actionTargetHostMode": "Target Host Source",
+        "actionTargetHostModeFromAlert": "From Alert",
+        "actionTargetHostModeFixed": "Fixed Host",
+        "actionTargetHostModeLegacy": "Default · From Alert",
+        "actionTargetHostIp": "Target Host IP",
+        "actionTargetHostIpTip": "Ignore alert; resolve this IP via node management"
     }
 }

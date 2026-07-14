@@ -1,0 +1,15 @@
+{
+  "model_id": "jboss",
+  "captured_at": "2026-07-08T06:00:00Z",
+  "image": "docker.m.daocloud.io/library/ubuntu:22.04",
+  "container_meta": {
+    "container_id": "N/A-placeholder",
+    "image": "docker.m.daocloud.io/library/ubuntu:22.04"
+  },
+  "params": {
+    "host": "127.0.0.1",
+    "ssh_port": 12250
+  },
+  "raw_stdout": [],
+  "placeholder_reason": "G4.1 jboss/wildfly 装包 4 种方式都失败 2026-07-08:1) ubuntu 22.04 apt 无 wildfly 包;2) aliyun 镜像站无 wildfly 路径;3) download.jboss.org 拉取抽风;4) quay.io/wildfly 镜像超时(quay.io 国内慢)。后续解锁路径:1) amd64 CI runner 跑;2) 走企业内网 Nexus 镜像;3) 改 docker_lifecycle 走更宽松的 init 模式(超出 Phase 4 范围)。见 phase4-execution-report 2026-07-08 §G4.1 详解"
+}

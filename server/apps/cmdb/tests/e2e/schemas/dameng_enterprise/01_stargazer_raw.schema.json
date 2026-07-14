@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Stargazer dameng_enterprise 采集原始输出契约(license 阻塞 placeholder)",
+  "description": "Task 3.6:商业版 dameng 复用社区版 dameng plugin(apps/cmdb/collection/plugins/community/db/dameng.py),license 阻塞统一处理,fixture 走 placeholder 模式",
+  "type": "object",
+  "required": ["model_id", "captured_at", "raw_stdout", "license_status"],
+  "properties": {
+    "model_id":         {"type": "string", "pattern": "^dameng_enterprise$"},
+    "captured_at":      {"type": "string", "format": "date-time"},
+    "raw_stdout":       {"type": "object", "maxProperties": 0},
+    "license_status":   {"type": "string", "const": "missing"},
+    "_placeholder_reason": {"type": "string", "const": "dameng_enterprise_license"},
+    "blocked_reason":   {"type": "string"},
+    "next_steps":       {"type": "array", "items": {"type": "string"}},
+    "references":       {"type": "array", "items": {"type": "string"}}
+  }
+}

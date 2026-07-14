@@ -55,11 +55,16 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
         for result in results:
             if result.get("template_type") in {"api", "pull"}:
                 result["display_name"] = result.get("display_name") or result["name"]
-                result["display_description"] = result["description"]
+                # 优先 i18n 翻译,fallback DB 字段(避免强制覆盖)
+                result["display_description"] = lan.get(
+                    f"{LanguageConstants.MONITOR_OBJECT_PLUGIN}.{result['name']}.desc"
+                ) or result["description"] or result["name"]
             else:
                 plugin_key = f"{LanguageConstants.MONITOR_OBJECT_PLUGIN}.{result['name']}"
+                # 始终优先使用 i18n 翻译,DB 字段只作为最终 fallback
                 result["display_name"] = lan.get(f"{plugin_key}.name") or result.get("display_name") or result["name"]
-                result["display_description"] = lan.get(f"{plugin_key}.desc") or result["description"]
+                # 同 display_name:优先 i18n 翻译,fallback DB 字段(可能多语言混合),最后 fallback 到 name
+                result["display_description"] = lan.get(f"{plugin_key}.desc") or result["description"] or result["name"]
             result["is_custom"] = result.get("template_type") in {"api", "pull", "snmp"}
 
         return WebUtils.response_success(results)
@@ -111,15 +116,19 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
         获取插件的 UI 模板。
 
         :param pk: 插件 ID
-        :return: UI 模板内容（JSON 格式）
+        :return: UI 模板内容（JSON 格式）。form_fields/table_columns 内
+            的 label 字段已按 request.user.locale 自动选 label/label_en。
         """
+        from apps.monitor.services.ui_template_locale import localize_ui_template
+
         plugin = self.get_object()
+        locale = getattr(request.user, "locale", "zh-Hans") or "zh-Hans"
 
         try:
             ui_template = MonitorPluginUITemplate.objects.get(plugin=plugin)
             return WebUtils.response_success(
                 {
-                    "ui_template": ui_template.content,
+                    "ui_template": localize_ui_template(ui_template.content, locale),
                     "node_selector": plugin.node_selector or {},
                     "support_collect_detect": plugin.support_collect_detect,
                 }

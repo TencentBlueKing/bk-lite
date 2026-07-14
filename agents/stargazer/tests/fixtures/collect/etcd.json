@@ -1,0 +1,59 @@
+{
+  "model_id": "etcd",
+  "captured_at": "2026-07-08T06:20:56Z",
+  "image": "docker.m.daocloud.io/library/ubuntu:22.04",
+  "container_meta": {
+    "container_id": "5d0db2d1d89e",
+    "image": "docker.m.daocloud.io/library/ubuntu:22.04"
+  },
+  "params": {
+    "host": "127.0.0.1",
+    "ssh_port": 12243
+  },
+  "raw_stdout": [
+    {
+      "inst_name": "172.17.0.2-etcd-2379",
+      "obj_id": "etcd",
+      "ip_addr": "172.17.0.2",
+      "port": "2379",
+      "install_path": "/usr/bin",
+      "version": "3.3.25",
+      "data_dir": "/var/lib/etcd",
+      "conf_file_path": "",
+      "peer_port": "2380"
+    },
+    {
+      "inst_name": "172.17.0.2-etcd-2379",
+      "obj_id": "etcd",
+      "ip_addr": "172.17.0.2",
+      "port": "2379",
+      "install_path": "/usr/bin",
+      "version": "",
+      "data_dir": "default.etcd",
+      "conf_file_path": "",
+      "peer_port": "2380"
+    },
+    {
+      "inst_name": "172.17.0.2-etcd-2379",
+      "obj_id": "etcd",
+      "ip_addr": "172.17.0.2",
+      "port": "2379",
+      "install_path": "",
+      "version": "",
+      "data_dir": "default.etcd",
+      "conf_file_path": "",
+      "peer_port": "2380"
+    },
+    {
+      "inst_name": "172.17.0.2-etcd-2379",
+      "obj_id": "etcd",
+      "ip_addr": "172.17.0.2",
+      "port": "2379",
+      "install_path": "",
+      "version": "",
+      "data_dir": "default.etcd",
+      "conf_file_path": "",
+      "peer_port": "2380"
+    }
+  ]
+}

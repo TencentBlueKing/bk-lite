@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CMDB memcached 实例契约",
+  "description": "2026-07-10 Phase 5 任务 5.2,fixture 由真实落盘数据驱动。plugin=apps/cmdb/collection/plugins/community/middleware/memcached.py(MemcachedCollectionPlugin)。字段集对齐 plugin.field_mapping,get_inst_name/get_port 走 MiddlewareCollectMetrics 标准实现。",
+  "type": "object",
+  "required": ["inst_name", "ip_addr", "port"],
+  "properties": {
+    "inst_name":    {"type": "string", "pattern": "^[0-9.]+-memcached-[0-9]+$"},
+    "ip_addr":      {"type": "string"},
+    "port":         {"type": ["string", "integer"]},
+    "version":      {"type": "string"},
+    "install_path": {"type": "string"},
+    "maxconn":      {"type": ["string", "integer"]},
+    "cachesize":    {"type": ["string", "integer"]},
+    "user_name":    {"type": "string"}
+  }
+}

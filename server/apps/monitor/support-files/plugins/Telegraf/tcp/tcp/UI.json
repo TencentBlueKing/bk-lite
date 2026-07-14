@@ -2,7 +2,9 @@
   "object_name": "TCPPort",
   "instance_type": "tcp",
   "collect_type": "tcp",
-  "config_type": ["net_response"],
+  "config_type": [
+    "net_response"
+  ],
   "collector": "Telegraf",
   "instance_id": "{{instance_type}}_{{host}}_{{port}}",
   "form_fields": [
@@ -22,7 +24,8 @@
         "to_form": {
           "regex": "^\\[?([^\\]]+?)\\]?:\\d+$"
         }
-      }
+      },
+      "label_en": "Host"
     },
     {
       "name": "port",
@@ -36,27 +39,30 @@
         "min": 1,
         "max": 65535,
         "precision": 0,
-        "placeholder": "端口"
+        "placeholder": "端口",
+        "placeholder_en": "Port"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.address",
         "to_form": {
           "regex": ":(\\d+)$"
         }
-      }
+      },
+      "label_en": "Port"
     },
     {
       "name": "interval",
       "label": "间隔",
       "type": "inputNumber",
       "required": true,
-      "default_value": 10,
+      "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
       "widget_props": {
         "min": 1,
         "precision": 0,
         "placeholder": "间隔",
-        "addonAfter": "s"
+        "addonAfter": "s",
+        "placeholder_en": "Interval"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.interval",
@@ -66,7 +72,9 @@
         "to_api": {
           "suffix": "s"
         }
-      }
+      },
+      "label_en": "Interval",
+      "description_en": "Collection time interval (unit: seconds)"
     },
     {
       "name": "timeout",
@@ -79,7 +87,8 @@
         "min": 1,
         "precision": 0,
         "placeholder": "超时",
-        "addonAfter": "s"
+        "addonAfter": "s",
+        "placeholder_en": "Timeout"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.timeout",
@@ -89,7 +98,8 @@
         "to_api": {
           "suffix": "s"
         }
-      }
+      },
+      "label_en": "Timeout"
     },
     {
       "name": "send",
@@ -102,7 +112,8 @@
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.send"
-      }
+      },
+      "label_en": "Send Content"
     },
     {
       "name": "expect",
@@ -115,7 +126,8 @@
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.expect"
-      }
+      },
+      "label_en": "Expected Response"
     }
   ],
   "table_columns": [
@@ -126,9 +138,11 @@
       "required": true,
       "widget_props": {
         "placeholder": "请选择节点",
-        "width": 200
+        "width": 200,
+        "placeholder_en": "Please select node"
       },
-      "enable_row_filter": false
+      "enable_row_filter": false,
+      "label_en": "Node"
     },
     {
       "name": "host",
@@ -148,10 +162,14 @@
       ],
       "change_handler": {
         "type": "combine",
-        "source_fields": ["host", "port"],
+        "source_fields": [
+          "host",
+          "port"
+        ],
         "target_field": "instance_name",
         "separator": ":"
-      }
+      },
+      "label_en": "Host"
     },
     {
       "name": "port",
@@ -163,14 +181,19 @@
         "max": 65535,
         "precision": 0,
         "placeholder": "端口",
-        "width": 120
+        "width": 120,
+        "placeholder_en": "Port"
       },
       "change_handler": {
         "type": "combine",
-        "source_fields": ["host", "port"],
+        "source_fields": [
+          "host",
+          "port"
+        ],
         "target_field": "instance_name",
         "separator": ":"
-      }
+      },
+      "label_en": "Port"
     },
     {
       "name": "instance_name",
@@ -180,8 +203,10 @@
       "widget_props": {
         "placeholder": "实例名称",
         "disabled": false,
-        "width": 200
-      }
+        "width": 200,
+        "placeholder_en": "Instance Name"
+      },
+      "label_en": "Instance Name"
     },
     {
       "name": "group_ids",
@@ -190,8 +215,10 @@
       "required": false,
       "widget_props": {
         "placeholder": "请选择组",
-        "width": 200
-      }
+        "width": 200,
+        "placeholder_en": "Please select group"
+      },
+      "label_en": "Group"
     }
   ]
 }

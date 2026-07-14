@@ -1,0 +1,22 @@
+{
+  "model_id": "zookeeper",
+  "instance_count_min": 1,
+  "expected_instance_subset_fixture_driven": {
+    "inst_name":    "172.17.0.2-zookeeper-2181",
+    "ip_addr":      "172.17.0.2",
+    "port":         "2181",
+    "version":      "3.4.13",
+    "install_path": "/usr/share",
+    "log_path":     "/var/log/zookeeper",
+    "conf_path":    "/etc/zookeeper/conf/zoo.cfg",
+    "java_path":    "/usr/lib/jvm/java-11-openjdk-arm64/bin/java",
+    "java_version": "11.0.31",
+    "data_dir":     "/var/lib/zookeeper",
+    "tick_time":    "2000",
+    "init_limit":   "10",
+    "sync_limit":   "5",
+    "server":       ""
+  },
+  "fixture_source_fixture_driven": "agents/stargazer/tests/fixtures/collect/zookeeper.json(2026-07-08 cli 真实落盘,ip=172.17.0.2,port=2181)",
+  "notes": "G5.2.x Phase 3 任务 3.6;middleware runner 走 metric.result JSON 编码,extra_payload_keys={\"result\": True}。stargazer raw_stdout 含 inst_name / obj_id 是 v3+ 标准化形态。plugin 字段集来自 ZookeeperCollectionPlugin.field_mapping,与 fixture 字段一一对应;server 字段留空表示该实例无 server 列表成员(zookeeper 单机模式)。"
+}
