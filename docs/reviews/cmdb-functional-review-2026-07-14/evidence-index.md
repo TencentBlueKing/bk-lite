@@ -80,15 +80,15 @@
 
 ## 06 配置文件
 
-- 业务承诺：待补充
-- 入口：待补充
-- 核心调用链：待补充
-- 外部依赖：待补充
-- 关键测试：待补充
-- 执行命令：待补充
-- 结果：待补充
-- 覆盖率：待补充
-- 未验证项：待补充
+- 业务承诺：当前 execution 的配置 callback 必须以任务内实例和稳定版本键幂等落库；正文采用临时对象 + DB PENDING + 提交后发布，只有 READY 才能作为采集成功与可读事实；发布/删除失败可恢复且旧 Worker 不覆盖新状态；手动版本、读取、diff、删除满足实例权限和正文大小契约。通用异步 ack 引用 `CMDB-F04`，周期清理预算引用 `CMDB-F23`，敏感错误引用 `CMDB-F25`，Agent/端到端资源预算引用 `CMDB-F28`。
+- 入口：HTTP `ConfigFileVersionViewSet.list/content/diff/file_list/receive_result/create_manual/destroy`；NATS `receive_config_file_result`；即时 `ConfigFileCollect`；Service `ConfigFileService.process_collect_result/create_manual_version`；Beat/Celery `reconcile_config_file_content_task`。
+- 核心调用链：Stargazer callback → NATS handler → execution/实例/版本校验 → base64 解码/5MB 截断 → 临时 MinIO 对象 → DB `(collect_task, instance_id, version)` PENDING 行与任务汇总 → robust on_commit publish → READY/ERROR；删除先 DB DELETE_PENDING，再 on_commit 删除对象/行；每15分钟恢复过期 PENDING/ERROR/DELETE_PENDING 并清理孤儿临时对象。HTTP 读取/diff 先校验双方实例权限和 READY。
+- 外部依赖：MinIO/django-minio-backend、Django ORM/多数据库唯一与 nullable 语义、NATS callback、Stargazer、Celery/Beat、FalkorDB 实例权限查询、SystemMgmt 组织权限。
+- 关键测试：`test_config_file_process_collect_db.py`、`test_config_file_content_lifecycle.py`、`test_config_file_views.py`、`e2e/test_config_file_pipeline.py`；额外静态复核 serializer、Beat 配置和 Task 5/6 execution/callback/资源/错误主 Findings。
+- 执行命令：`MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false SECRET_KEY=test DB_ENGINE=sqlite DB_NAME=/private/tmp/cmdb-task7-review.sqlite3 ENABLE_CELERY=true INSTALL_APPS=system_mgmt,node_mgmt,cmdb uv run --with jsonschema pytest -q -o addopts='' apps/cmdb/tests/test_config_file_process_collect_db.py apps/cmdb/tests/test_config_file_content_lifecycle.py apps/cmdb/tests/test_config_file_views.py apps/cmdb/tests/e2e/test_config_file_pipeline.py --cov=apps.cmdb.services.config_file_service --cov=apps.cmdb.services.config_file_content_lifecycle --cov=apps.cmdb.views.config_file --cov=apps.cmdb.collection.collect_tasks.config_file_collect --cov=apps.cmdb.nats.nats --cov-report=term-missing`。
+- 结果：沙箱首次退出2（uv cache 无权限，未收集）；受控缓存权限重跑退出0，66 passed in 8.21s。测试证明采集业务键、旧 execution、权限、局部发布/删除失败、恢复和 NATS envelope，但发布失败与任务/callback 被 Mock 分层隔离。
+- 覆盖率：content lifecycle 91%、config service 73%、config View 81%、即时触发协调器 27%、NATS 整文件16%，五目标合计46%；主 Service、触发链和整体未达80%/核心90%门槛。
+- 未验证项：真实 MinIO/NATS/Celery worker、发布与恢复并发、MySQL/PostgreSQL nullable unique、同毫秒手动上传、大文件/base64/diff 输出、大 MinIO 目录和 DB 引用集均未执行。主 Findings `CMDB-F33`–`CMDB-F35`（P1 3）；孤儿清理无界扫描引用 `CMDB-F23`，端到端资源放大引用 `CMDB-F28`，异常泄露引用 `CMDB-F25`，详见 [06-config-file.md](06-config-file.md)。
 
 ## 07 IPAM
 
