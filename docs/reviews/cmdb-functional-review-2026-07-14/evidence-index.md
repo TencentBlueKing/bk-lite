@@ -68,15 +68,15 @@
 
 ## 05 Stargazer 边界
 
-- 业务承诺：待补充
-- 入口：待补充
-- 核心调用链：待补充
-- 外部依赖：待补充
-- 关键测试：待补充
-- 执行命令：待补充
-- 结果：待补充
-- 覆盖率：待补充
-- 未验证项：待补充
+- 业务承诺：CMDB 下发的任务、凭据、远程命令与 callback 必须在 Stargazer 最终执行边界再次 fail-closed 校验；host/instance/execution identity 在拆分、重试和 callback 中保持一致；任务参数、文件、CIDR、并发、输出和 deadline 有硬预算；metrics/callback/凭据事件具备明确投递状态、幂等键和可恢复 checkpoint；日志、缓存与错误响应不泄露凭据、配置正文或设备输出。敏感错误面引用 `CMDB-F25`，通用 fire-and-forget 状态机引用 `CMDB-F04`，不重复计数。
+- 入口：Sanic `GET /collect/collect_info` 与 `/collect/credential_results`；ARQ `collect_plugin_task`；`CollectionService`/`PluginExecutor`；`config_file`、`network_config_file`、`ip`、`network_topo` 插件；周期 `CollectCredentialResultPushService.push_once`；NATS metrics、`receive_config_file_result`、`receive_collect_credential_result`。
+- 核心调用链：CMDB NodeParams/Telegraf header → `collect_info` 解析 `cmdb*` 与 host/credential pool → ARQ enqueue/dedupe → `collect_plugin_task` → `CollectionService` 解析 plugin.yml → job/protocol collector → metrics 或 callback 归一化 → core NATS `publish+flush` → CMDB handler；凭据执行结果同时写 Redis ZSET/cooldown，周期按 finished_at cursor 批推 CMDB。配置文件拆分后的 callback identity 当前按单 host 构造，历史 instance_name 错配线索未复现。
+- 外部依赖：Redis/ARQ、core NATS 与 CMDB consumer、NodeMgmt local/ssh executor、Netmiko/网络设备、PowerShell/POSIX shell、pysnmp/SNMP 设备、icmplib privileged ICMP/TCP、Docker/VM/SSH collect fixtures。
+- 关键测试：`test_collect_multicred.py`、`test_collect_credential_push.py`、`test_ip_discovery_targets.py`、`tests/collect_fixtures/`；额外复核 `test_network_config_file_info.py`、`test_ip_discovery_scanner.py` 与直接命令/转义/未知投递复现。
+- 执行命令：`make lint`；`uv run pytest -q tests/test_collect_multicred.py tests/test_collect_credential_push.py tests/test_ip_discovery_targets.py tests/collect_fixtures/`；拆分 `uv run pytest -q tests/test_collect_multicred.py tests/test_collect_credential_push.py`、`uv run pytest -q tests/collect_fixtures/`、`uv run pytest -q tests/test_network_config_file_info.py`；pytest-cov 探测命令；`.venv/bin/python -c`/受控 `uv run python -c` 复现命令策略、空命令、PowerShell 转义与 NATS 未知态。
+- 结果：`make lint` 退出2，Stargazer 目录无 `.pre-commit-config.yaml`。brief 组合 pytest 退出2，`test_ip_discovery_targets.py` 收集期 `ModuleNotFoundError: plugins.inputs.ip_discovery`；拆分多凭据/凭据推送 49 passed；collect fixtures 203 passed、6 failed（catalog 缺 mssql，实际56而测试要求57）；网络配置现有测试10 passed；IP scanner 测试同样旧路径收集失败。直接复现确认 `request system reboot` 被 Agent 放行、空命令返回 `[]`、PowerShell 产生 POSIX 转义串，首次 generic publish 异常得到 `success_count=0, delivery_detected=True`。
+- 覆盖率：未测量；Stargazer 环境未安装 pytest-cov，`--cov` 命令退出4，不能声明达到相关模块80%或核心路径90%。
+- 未验证项：CodeGraph darwin-x64 bundle 缺失且受控下载超时，调用链改用 rg/逐文件复核；未连接真实 Redis/ARQ、NATS broker/CMDB consumer、Netmiko/SSH/PowerShell/SNMP/ICMP、Docker/VM fixture，也未执行大文件、大 CIDR、真实设备高危命令（安全原因）、多 Worker/进程重启、应用 ack 与 retention 边界。主 Findings `CMDB-F26`–`CMDB-F32`（P0 3/P1 4）；raw result/外部错误泄露引用 `CMDB-F25`，core NATS 无应用确认引用 `CMDB-F04`，详见 [05-stargazer-boundary.md](05-stargazer-boundary.md)。
 
 ## 06 配置文件
 
