@@ -128,15 +128,15 @@
 
 ## 10 Enterprise 自定义上报
 
-- 业务承诺：待补充
-- 入口：待补充
-- 核心调用链：待补充
-- 外部依赖：待补充
-- 关键测试：待补充
-- 执行命令：待补充
-- 结果：待补充
-- 覆盖率：待补充
-- 未验证项：待补充
+- 业务承诺：社区稳定入口在无 Overlay 时必须明确降级；Overlay 启用后，任务管理按功能权限和组织隔离，公开 ingest 只以已签发/可轮换/可作废且绑定 task scope 的 token 授权。Batch 应准确表达完整、部分失败与重投，identity/字段/关系必须验证；merge、pending、snapshot/expire cleanup 与审核只能作用于本 task 拥有的数据，并具备请求、数量、扫描、并发和恢复边界。
+- 入口：社区 `CustomReportingTaskViewSet` 的 CRUD/stats/field_registrations/batch_activity/onboarding/credential/review；`CustomReportingIngestViewSet.create`（`OpenAPIViewSet`、AllowAny、空 authentication）；Enterprise `CmdbEnterpriseConfig.ready → registry_hooks → CustomReportingProvider`；Celery Beat `custom_reporting_expire_cleanup`。
+- 核心调用链：task HTTP → serializer → registry provider → `_allowed_orgs/_require_task` → task/model/credential/document/activity/cleanup services → ORM/Graph；open ingest → Authorization Bearer/raw token → enabled credential SHA-256 全表匹配 → enabled task → Batch RUNNING → quick field register → Model attrs + FieldRegistration → 全模型 old_data → Management add/update + ChangeRecord → relation create/pending/backfill → snapshot direct delete/review → Batch SUCCESS/FAILED + last_reported_at；Beat → enabled expire tasks → 逐 task 全模型扫描 → 图批删 → SQL ChangeRecord。无 Overlay 时 registry 返回社区 `_EMPTY_CUSTOM_REPORTING`，读为空、写明确 `_NOT_ENABLED`。
+- 外部依赖：Django ORM/事务与 JSONField、GraphClient/FalkorDB/Neo4j、社区 ModelManage/Management/InstanceManage/ChangeRecord、Celery Beat/Worker、SystemMgmt 请求组织上下文。来源边界：根 `enterprise` gitlink SHA `7c7db340961d6b010d2c533de92970df253b545f` 且未初始化；worktree 无 Overlay；主工作区 ignored Overlay 的 15 个 custom_reporting Python 源聚合 SHA-256 `1c4d5f1b9e3cbfb17798faf119779565e33bc1d23db7bba61e04cf519ff25ed9`，六测试聚合 SHA-256 `0e4b7eee9e8361f1479546444287ae2c540f303edfc8658c7d9f2ec5f47c8043`。
+- 关键测试：Overlay `test_custom_reporting_authz.py`、`test_custom_reporting_ingest_service.py`、`test_custom_reporting_merge_service.py`、`test_custom_reporting_relation_service.py`、`test_custom_reporting_cleanup_service.py`、`bdd/test_custom_reporting_bdd.py`；社区缺失态补充 `test_custom_reporting_extension.py`、`test_model_custom_reporting_delegation.py`。
+- 执行命令：主工作区 `PYTHONDONTWRITEBYTECODE=1 MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,node_mgmt,cmdb,cmdb_enterprise uv run pytest -q -o addopts='' <六个brief文件> --cov=apps.cmdb_enterprise.custom_reporting --cov-report=term-missing`；worktree 缺失态 `... INSTALL_APPS=system_mgmt,node_mgmt,cmdb uv run pytest -q -o addopts='' apps/cmdb/tests/test_custom_reporting_extension.py apps/cmdb/tests/test_model_custom_reporting_delegation.py`。
+- 结果：两条命令首次都因沙箱拒绝读取 uv cache、退出 2 且未收集；受控权限重跑 Overlay 六文件退出 0，38 passed in 25.02s；无 Overlay 社区两文件退出 0，6 passed in 0.07s。主工作区测试前后 `git status --short --branch` 相同，未修改/清理用户代码与未跟踪文件。
+- 覆盖率：Overlay custom_reporting 15 模块合计 59%（808 statements / 333 missed）；models 92%、provider 67%、activity 21%、cleanup 81%、credential 32%、document 27%、field 27%、ingest 78%、merge 73%、model 20%、relation 84%、task 17%、tasks 0%，未达相关模块80%/核心90%目标。社区缺失态未测 coverage，只证明 no-op/拒绝/registry 委托。
+- 未验证项：当前主仓库 branch 无法单独重建 ignored Overlay，gitlink commit 内容与安装态哈希的映射未知；未验证真实 View 功能权限、create/update 新 team、同模型跨 task/team、partial snapshot、空 identity、真实并发/重投/崩溃、请求/字段/pending/credential 大规模预算、FalkorDB/Neo4j、多数据库、Celery Worker。主 Findings `CMDB-F52`–`CMDB-F55`（P0 3/P1 1）；关系、唯一锁、清理状态机、资源预算引用 `CMDB-F14/F10/F11/F23`。Recommendation Block，详见 [10-custom-reporting.md](10-custom-reporting.md)。
 
 ## 11 变更与订阅
 

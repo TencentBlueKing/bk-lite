@@ -17,7 +17,7 @@
 | 07 IPAM | 已完成 | 2 | 3 | 0 | 0 | Block | [07-ipam.md](07-ipam.md) |
 | 08 专项资源视图 | 已完成 | 2 | 1 | 0 | 0 | Block | [08-specialized-resources.md](08-specialized-resources.md) |
 | 09 Node 同步 | 已完成 | 4 | 4 | 0 | 0 | Block | [09-node-sync.md](09-node-sync.md) |
-| 10 Enterprise 自定义上报 | 未开始 | 0 | 0 | 0 | 0 | 待评审 | [10-enterprise-custom-reporting.md](10-enterprise-custom-reporting.md) |
+| 10 Enterprise 自定义上报 | 已完成 | 3 | 1 | 0 | 0 | Block | [10-custom-reporting.md](10-custom-reporting.md) |
 | 11 变更与订阅 | 未开始 | 0 | 0 | 0 | 0 | 待评审 | [11-change-subscription.md](11-change-subscription.md) |
 | 12 NATS / RPC | 未开始 | 0 | 0 | 0 | 0 | 待评审 | [12-nats-rpc.md](12-nats-rpc.md) |
 | 13 跨域架构复核 | 未开始 | 0 | 0 | 0 | 0 | 待评审 | [13-cross-domain-architecture.md](13-cross-domain-architecture.md) |
@@ -25,3 +25,5 @@
 08 专项资源视图新增 `CMDB-F41`–`CMDB-F43`（P0 2/P1 1）；应用导出、应用/网络遍历和跨模型权限分别引用既有 `CMDB-F17/F18/F14`，不重复计数。
 
 09 Node 同步新增 `CMDB-F44`–`CMDB-F51`（P0 4/P1 4）；父子采集终态断裂与 NodeMgmt 参数交付半完成分别独立登记 `CMDB-F50/F51`，外部错误泄露引用既有 `CMDB-F25`，不重复计数。
+
+10 Enterprise 自定义上报新增 `CMDB-F52`–`CMDB-F55`（P0 3/P1 1）；关系双端授权、批写唯一锁、删除恢复和资源预算分别引用既有 `CMDB-F14/F10/F11/F23`。本域 Overlay 来自主工作区 ignored 安装态，根 gitlink 未初始化，结论可复核当前运行态但不能由当前主仓库分支单独重建。
