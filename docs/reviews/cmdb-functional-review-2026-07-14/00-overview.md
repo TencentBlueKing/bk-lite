@@ -16,7 +16,7 @@
 | 06 配置文件 | 已完成 | 2 | 1 | 0 | 0 | Block | [06-config-file.md](06-config-file.md) |
 | 07 IPAM | 已完成 | 2 | 3 | 0 | 0 | Block | [07-ipam.md](07-ipam.md) |
 | 08 专项资源视图 | 已完成 | 2 | 1 | 0 | 0 | Block | [08-specialized-resources.md](08-specialized-resources.md) |
-| 09 Node 同步 | 已完成 | 3 | 2 | 1 | 0 | Block | [09-node-sync.md](09-node-sync.md) |
+| 09 Node 同步 | 已完成 | 4 | 4 | 0 | 0 | Block | [09-node-sync.md](09-node-sync.md) |
 | 10 Enterprise 自定义上报 | 未开始 | 0 | 0 | 0 | 0 | 待评审 | [10-enterprise-custom-reporting.md](10-enterprise-custom-reporting.md) |
 | 11 变更与订阅 | 未开始 | 0 | 0 | 0 | 0 | 待评审 | [11-change-subscription.md](11-change-subscription.md) |
 | 12 NATS / RPC | 未开始 | 0 | 0 | 0 | 0 | 待评审 | [12-nats-rpc.md](12-nats-rpc.md) |
@@ -24,4 +24,4 @@
 
 08 专项资源视图新增 `CMDB-F41`–`CMDB-F43`（P0 2/P1 1）；应用导出、应用/网络遍历和跨模型权限分别引用既有 `CMDB-F17/F18/F14`，不重复计数。
 
-09 Node 同步新增 `CMDB-F44`–`CMDB-F49`（P0 3/P1 2/P2 1）；采集提交即成功、NodeMgmt 参数同步无恢复和外部错误泄露分别引用既有 `CMDB-F04/F11/F25`，不重复计数。
+09 Node 同步新增 `CMDB-F44`–`CMDB-F51`（P0 4/P1 4）；父子采集终态断裂与 NodeMgmt 参数交付半完成分别独立登记 `CMDB-F50/F51`，外部错误泄露引用既有 `CMDB-F25`，不重复计数。
