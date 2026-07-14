@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "oscar Instance (Placeholder)",
+  "description": "Task 4.9:神舟通用 Oscar 数据库 CMDB 实例 placeholder 定义。license/集群/平台阻塞期间,model 仅有 _placeholder_reason + license_status 两个字段。等阻塞解除后,需要扩展为完整 field_mapping 定义的 CMDB model 04 schema。",
+  "type": "object",
+  "required": [
+    "_placeholder_reason",
+    "license_status"
+  ],
+  "properties": {
+    "_placeholder_reason": {
+      "type": "string",
+      "enum": [
+        "license_missing",
+        "cluster_complex",
+        "platform_constraint"
+      ],
+      "description": "archived 占位模式:license_missing(17 license 对象)/cluster_complex(4 集群对象)/platform_constraint(1 平台对象)"
+    },
+    "license_status": {
+      "type": "string",
+      "enum": [
+        "available",
+        "missing",
+        "unknown"
+      ],
+      "description": "license 状态;archived 对象统一 missing"
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "model_id": "network",
+  "instance_count_min": 1,
+  "expected_instance_subset": {
+    "inst_name": "10.0.0.1-switch",
+    "ip_addr": "10.0.0.1",
+    "brand": "Cisco",
+    "model": "Cisco Catalyst 3850"
+  }
+}

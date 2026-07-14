@@ -1,0 +1,14 @@
+{
+  "model_id": "h3c_cas",
+  "captured_at": "2026-07-14T10:30:00+08:00",
+  "raw_stdout": {},
+  "_placeholder_reason": "plugin_stub",
+  "blocked_reason": "H3C CAS 私有云 SDK 暂未对接,stub plugin 仅供 e2e 占位",
+  "next_steps": [
+    "对接 H3C CAS REST API(CVM/网络/存储等)",
+    "在 stub plugin 里实现 metric_names / field_mappings"
+  ],
+  "references": [
+    "docs/superpowers/plans/2026-07-14-cmdb-collect-v5-p1-cloud-roadmap.md §3.5"
+  ]
+}
