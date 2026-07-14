@@ -1,9 +1,14 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   ClipboardCopyError,
   copyText,
   fallbackCopyText,
 } from '../src/app/node-manager/utils/clipboard.ts';
+import {
+  commandCopyInitialState,
+  commandCopyReducer,
+} from '../src/app/node-manager/hooks/useCommandCopyDialog.tsx';
 
 const run = async () => {
 let written = '';
@@ -95,6 +100,68 @@ fakeDocument.execCommand = () => {
 };
 assert.throws(() => fallbackCopyText('echo cleanup failure', fakeDocument));
 assert.deepEqual(removed, [textarea, textarea]);
+
+const copying = commandCopyReducer(commandCopyInitialState, {
+  type: 'copying',
+  content: 'echo hello',
+});
+assert.equal(copying.open, false);
+assert.equal(copying.copying, true);
+assert.equal(copying.content, 'echo hello');
+
+const success = commandCopyReducer(copying, { type: 'success' });
+assert.equal(success.open, true);
+assert.equal(success.status, 'success');
+assert.equal(success.copying, false);
+
+const failure = commandCopyReducer(copying, {
+  type: 'failure',
+  reason: 'failed',
+});
+assert.equal(failure.open, true);
+assert.equal(failure.status, 'error');
+assert.equal(failure.content, 'echo hello');
+assert.equal(failure.reason, 'failed');
+
+const emptyFailure = commandCopyReducer(commandCopyInitialState, {
+  type: 'failure',
+  reason: 'empty',
+  content: '',
+});
+assert.equal(emptyFailure.open, true);
+assert.equal(emptyFailure.reason, 'empty');
+
+const closed = commandCopyReducer(failure, { type: 'close' });
+assert.deepEqual(closed, commandCopyInitialState);
+
+const locales = ['zh', 'en'].map((name) => ({
+  name,
+  locale: JSON.parse(
+    readFileSync(
+      new URL(
+        `../src/app/node-manager/locales/${name}.json`,
+        import.meta.url
+      ),
+      'utf8'
+    )
+  ),
+}));
+for (const { name, locale } of locales) {
+  const node = locale['node-manager'].cloudregion.node;
+  for (const key of [
+    'commandCopySuccessTitle',
+    'commandCopySuccessDesc',
+    'commandCopyFailedTitle',
+    'commandCopyFailedDesc',
+    'commandCopyEmptyDesc',
+    'copiedOriginal',
+    'copyAgain',
+    'retryCopy',
+    'gotIt',
+  ]) {
+    assert.equal(typeof node[key], 'string', `${name}.${key}`);
+  }
+}
 
 console.log('node-manager command copy dialog tests passed');
 };
