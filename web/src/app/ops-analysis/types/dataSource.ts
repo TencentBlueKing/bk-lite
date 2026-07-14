@@ -82,13 +82,19 @@ export interface OperateModalProps {
   onSuccess?: () => void;
 }
 
+export type DataSourceParamFilterType =
+  | 'filter'
+  | 'fixed'
+  | 'params'
+  | 'widget';
+
 export interface ParamItem {
   id?: string;
   name: string;
   value: string | number | boolean | [number, number] | null;
   alias_name: string;
   type?: string;
-  filterType?: string;
+  filterType?: DataSourceParamFilterType;
   desc?: string;
   required?: boolean;
   options?: Array<{ label: string; value: string | number }>;

@@ -1,16 +1,21 @@
 import React from 'react';
-import { Form, Select } from 'antd';
+import { Form, Select, type FormInstance } from 'antd';
+import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
+import type { WidgetConfigFormValues } from '../utils/submitConfig';
+import { RuntimeParamControlEditor } from './runtimeParamControlEditor';
 
 interface TopNSettingsSectionProps {
   t: (key: string) => string;
+  form: FormInstance<WidgetConfigFormValues>;
   sectionTitle?: string;
-  selectedDataSource: any;
+  selectedDataSource?: DatasourceItem;
   topNLabelFieldOptions: Array<{ label: React.ReactNode; value: string }>;
   topNValueFieldOptions: Array<{ label: React.ReactNode; value: string }>;
 }
 
 export const TopNSettingsSection: React.FC<TopNSettingsSectionProps> = ({
   t,
+  form,
   sectionTitle,
   selectedDataSource,
   topNLabelFieldOptions,
@@ -73,6 +78,12 @@ export const TopNSettingsSection: React.FC<TopNSettingsSectionProps> = ({
             optionFilterProp="value"
           />
         </Form.Item>
+
+        <RuntimeParamControlEditor
+          form={form}
+          selectedDataSource={selectedDataSource}
+          t={t}
+        />
       </div>
     </div>
   );

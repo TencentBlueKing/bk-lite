@@ -38,6 +38,7 @@ import {
   buildDefaultFilterBindings,
 } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { canEnableCompare } from '@/app/ops-analysis/utils/compareQuery';
+import { buildRuntimeParamControlChartTypePatch } from '@/app/ops-analysis/utils/runtimeParamControl';
 import type {
   DatasourceItem,
   ParamItem,
@@ -274,6 +275,8 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           selectedFields: [],
           topNLabelField: undefined,
           topNValueField: undefined,
+          runtimeParamControlEnabled: false,
+          runtimeParamControl: undefined,
           unit: undefined,
           unitId: undefined,
           valueMappings: undefined,
@@ -324,6 +327,8 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         selectedFields: [],
         topNLabelField: undefined,
         topNValueField: undefined,
+        runtimeParamControlEnabled: false,
+        runtimeParamControl: undefined,
         unit: undefined,
         conversionFactor: undefined,
         decimalPlaces: undefined,
@@ -463,7 +468,10 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   const handleChartTypeChange = async (e: any) => {
     const newChartType = e.target.value;
     setChartType(newChartType);
-    form.setFieldsValue({ chartType: newChartType });
+    form.setFieldsValue({
+      chartType: newChartType,
+      ...buildRuntimeParamControlChartTypePatch(newChartType),
+    });
     await tableConfig.handleChartTypeChange(newChartType);
   };
 
@@ -497,6 +505,8 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       params: {},
       tableConfig: valueConfig?.tableConfig,
       actions: valueConfig?.actions || [],
+      runtimeParamControl: valueConfig?.runtimeParamControl,
+      runtimeParamControlEnabled: Boolean(valueConfig?.runtimeParamControl),
     };
     setChartType(formValues.chartType);
     setActions(valueConfig?.actions || []);
@@ -667,7 +677,6 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     if (valueConfig?.topNValueField !== undefined) {
       formValues.topNValueField = valueConfig.topNValueField;
     }
-
     if (valueConfig?.unit !== undefined) {
       formValues.unit = valueConfig.unit;
     }
@@ -795,6 +804,10 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           tableConfig.setDisplayColumnsError(
             t('dashboard.atLeastOneVisibleColumn') || '请至少保留一列可见',
           );
+          return;
+        }
+        if (submitResult.error === 'invalidRuntimeParamControl') {
+          message.error(t('dashboard.runtimeParamControlInvalid'));
           return;
         }
       }
@@ -1129,6 +1142,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         {chartType === 'topN' && (
           <TopNSettingsSection
             t={t}
+            form={form}
             sectionTitle={t('dashboard.displaySettings')}
             selectedDataSource={selectedDataSource}
             topNLabelFieldOptions={topNLabelFieldOptions}

@@ -41,6 +41,7 @@
     "test:cmdb-app-overview-wiring": "node scripts/cmdb-app-overview-wiring-test.mjs",
     "test:opspilot-enterprise-wechat-aibot-node": "pnpm exec tsx scripts/opspilot-enterprise-wechat-aibot-node-test.ts",
     "test:opspilot-execution-preview-order": "pnpm exec tsx scripts/opspilot-execution-preview-order-test.ts",
+    "test:ops-analysis-topn-runtime-param": "pnpm exec tsx scripts/ops-analysis-topn-runtime-param-test.ts",
     "type-check": "pnpm clean && pnpm prepare-enterprise && pnpm precommit && tsc -p tsconfig.lint.json --noEmit",
     "precommit": "node -r dotenv/config scripts/generate-tsconfig.js dotenv_config_path=.env.local",
     "prepare": "husky install",

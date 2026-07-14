@@ -6,6 +6,7 @@ import ComLine from './comLine';
 import ComBar from './comBar';
 import ComTable from './comTable';
 import ComTopN from './comTopN';
+import RuntimeParamSegmented from './runtimeParamSegmented';
 import { ValueMappingsConfigSection } from '@/app/ops-analysis/components/valueMappingsConfigSection';
 import type { ValueMapping } from '@/app/ops-analysis/utils/valueMapping';
 import { useTranslation } from '@/utils/i18n';
@@ -81,6 +82,97 @@ const Section: React.FC<{ title: string; children: React.ReactNode }> = ({
 );
 
 const blueThreshold = [{ value: '0', color: '#366ce4' }];
+
+const TopNRuntimeDimensionPreview: React.FC<{
+  label: string;
+  chartThemeMode?: ValueConfig['chartThemeMode'];
+  background: string;
+}> = ({ label, chartThemeMode, background }) => {
+  const [runtimeParamValue, setRuntimeParamValue] = React.useState<
+    string | number
+  >('instance_type');
+  const runtimeParamControl = {
+    paramName: 'group_by',
+    controlType: 'segmented' as const,
+    defaultValue: 'instance_type',
+    options: [
+      { label: '对象类型', value: 'instance_type' },
+      {
+        label: '使用部门（跨区域成本归属管理部门）',
+        value: 'department',
+      },
+      { label: '申请人', value: 'user' },
+    ],
+  };
+  const rawData = [
+    { key: 'ECS 云服务器', total_cost: 12680.5 },
+    { key: 'RDS 云数据库', total_cost: 8650.25 },
+    { key: 'OSS 对象存储', total_cost: 3920 },
+  ];
+  const config: ValueConfig = {
+    chartType: 'topN',
+    chartThemeMode,
+    topNLabelField: 'key',
+    topNValueField: 'total_cost',
+    runtimeParamControl,
+  };
+
+  return (
+    <div>
+      <div className="mb-2 text-xs text-[#8c8c8c]">{label}</div>
+      <div
+        className="flex h-[260px] w-[360px] flex-col rounded-lg border border-solid border-[#d9d9d9] p-2"
+        style={{ background }}
+      >
+        <div className="mb-2 flex items-start gap-2">
+          <div className="min-w-0 flex-1">
+            <h4 className="truncate text-sm font-medium">
+              超长云资源费用分布标题（验证窄组件标题优先截断）
+            </h4>
+          </div>
+          <div className="ml-auto max-w-[70%] shrink-0 overflow-x-auto">
+            <RuntimeParamSegmented
+              control={runtimeParamControl}
+              value={runtimeParamValue}
+              onChange={setRuntimeParamValue}
+            />
+          </div>
+        </div>
+        <div className="min-h-0 flex-1">
+          <ComTopN
+            rawData={rawData}
+            loading={false}
+            runtimeParamValue={runtimeParamValue}
+            onRuntimeParamChange={setRuntimeParamValue}
+            runtimeParamControlPlacement="header"
+            dataSource={{
+              field_schema: [
+                { key: 'key', title: '排行主体', value_type: 'string' },
+                {
+                  key: 'total_cost',
+                  title: '费用合计(元)',
+                  value_type: 'number',
+                },
+              ],
+            } as any}
+            config={config}
+          />
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const TopNWithRuntimeDimensionDemo: React.FC = () => (
+  <div className="flex flex-wrap gap-5 bg-[#f5f7fa] p-6">
+    <TopNRuntimeDimensionPreview label="默认主题" background="#fff" />
+    <TopNRuntimeDimensionPreview
+      label="大屏深色主题"
+      chartThemeMode="screen-dark"
+      background="#06152b"
+    />
+  </div>
+);
 
 const Showcase = () => (
   <div style={{ padding: 24, background: '#f5f7fa' }}>
@@ -407,3 +499,7 @@ const meta: Meta<typeof Showcase> = {
 export default meta;
 
 export const Default: StoryObj<typeof Showcase> = {};
+
+export const TopNWithRuntimeDimension: StoryObj<typeof Showcase> = {
+  render: () => <TopNWithRuntimeDimensionDemo />,
+};

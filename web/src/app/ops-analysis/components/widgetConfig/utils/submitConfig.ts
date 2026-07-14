@@ -6,11 +6,13 @@ import type {
   TableFilterFieldConfig,
   ValueConfig,
   WidgetConfig,
+  RuntimeParamControl,
 } from '@/app/ops-analysis/types/dashBoard';
 import type { ParamItem } from '@/app/ops-analysis/types/dataSource';
 import type { OpsChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
 import type { ThresholdColorConfig } from '@/app/ops-analysis/utils/thresholdUtils';
 import type { NetworkStatusTopologyConfig } from '@/app/ops-analysis/types/sceneWidget';
+import { validateRuntimeParamControl } from '@/app/ops-analysis/utils/runtimeParamControl';
 
 export interface WidgetConfigFormValues {
   name: string;
@@ -27,6 +29,8 @@ export interface WidgetConfigFormValues {
   selectedFields?: string[];
   topNLabelField?: string;
   topNValueField?: string;
+  runtimeParamControlEnabled?: boolean;
+  runtimeParamControl?: RuntimeParamControl;
   unit?: string;
   unitId?: string;
   valueMappings?: ValueConfig['valueMappings'];
@@ -50,7 +54,8 @@ type SubmitFilterField = TableFilterFieldConfig & {
 
 export type WidgetSubmitError =
   | 'duplicateFieldKey'
-  | 'atLeastOneVisibleColumn';
+  | 'atLeastOneVisibleColumn'
+  | 'invalidRuntimeParamControl';
 
 export interface BuildWidgetSubmitConfigInput {
   values: WidgetConfigFormValues;
@@ -211,6 +216,9 @@ export const buildWidgetSubmitConfig = ({
   }
 
   const result: WidgetConfig = { ...values } as WidgetConfig;
+  delete (result as WidgetConfig & {
+    runtimeParamControlEnabled?: boolean;
+  }).runtimeParamControlEnabled;
 
   if (chartType === 'table' || chartType === 'eventTable') {
     const tableResult = buildTableConfig({
@@ -257,6 +265,21 @@ export const buildWidgetSubmitConfig = ({
   if (chartType === 'topN') {
     result.topNLabelField = values.topNLabelField;
     result.topNValueField = values.topNValueField;
+    if (values.runtimeParamControlEnabled) {
+      if (
+        validateRuntimeParamControl(
+          values.runtimeParamControl,
+          values.dataSourceParams || [],
+        )
+      ) {
+        return { error: 'invalidRuntimeParamControl' };
+      }
+      result.runtimeParamControl = values.runtimeParamControl;
+    } else {
+      delete result.runtimeParamControl;
+    }
+  } else {
+    delete result.runtimeParamControl;
   }
 
   if (filterBindings && Object.keys(filterBindings).length > 0) {

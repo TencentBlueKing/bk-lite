@@ -8,7 +8,10 @@ import CustomTable from "@/components/custom-table";
 import TimeSelector from "@/components/time-selector";
 import { useTranslation } from "@/utils/i18n";
 import { formatOpsRequestTime } from "@/app/ops-analysis/utils/dateTime";
-import { ParamItem } from "@/app/ops-analysis/types/dataSource";
+import type {
+  DataSourceParamFilterType,
+  ParamItem,
+} from "@/app/ops-analysis/types/dataSource";
 import { createDefaultParam, validateParams } from "./operateModalUtils";
 
 export interface ParamTableRef {
@@ -97,10 +100,14 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
       { label: t("dataSource.paramTypes.timeRange"), value: "timeRange" },
     ];
 
-    const filterTypeOptions = [
+    const filterTypeOptions: Array<{
+      label: string;
+      value: DataSourceParamFilterType;
+    }> = [
       { label: t("dataSource.filterTypes.filter"), value: "filter" },
       { label: t("dataSource.filterTypes.fixed"), value: "fixed" },
       { label: t("dataSource.filterTypes.params"), value: "params" },
+      { label: t("dataSource.filterTypes.widget"), value: "widget" },
     ];
 
     const applyValidation = (nextParams: ParamItem[]) => {
@@ -189,7 +196,10 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
       );
     };
 
-    const handleFilterTypeChange = (val: string, id: string) => {
+    const handleFilterTypeChange = (
+      val: DataSourceParamFilterType,
+      id: string,
+    ) => {
       onChange(
         params.map((item) =>
           item.id === id ? { ...item, filterType: val } : item,

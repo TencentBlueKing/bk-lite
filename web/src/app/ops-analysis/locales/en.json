@@ -237,7 +237,8 @@
     "filterTypes": {
       "fixed": "Fixed",
       "params": "Params",
-      "filter": "Filter"
+      "filter": "Filter",
+      "widget": "Widget Interaction"
     },
     "paramType": "Parameter Type",
     "introTitle": "Data Source",
@@ -346,6 +347,18 @@
   "dashboard": {
     "endTime": "End Time",
     "duplicateFieldKey": "Field key must be unique",
+    "runtimeParamControl": "Widget Switch",
+    "runtimeParamControlEnabled": "Enable Switch",
+    "runtimeParamName": "Parameter",
+    "runtimeParamOptions": "Options",
+    "runtimeParamOptionLabel": "Label",
+    "runtimeParamOptionValue": "Value",
+    "runtimeParamDefault": "Default Option",
+    "runtimeParamAddOption": "Add Option",
+    "runtimeParamOptionMoveUp": "Move option up",
+    "runtimeParamOptionMoveDown": "Move option down",
+    "runtimeParamOptionDelete": "Delete option",
+    "runtimeParamControlInvalid": "Complete the widget switch parameter, options, and default option",
     "selectDashboardFirst": "Please select a dashboard first",
     "fetchDataFieldsFailed": "Failed to fetch data fields",
     "timeRange": "Time Range",

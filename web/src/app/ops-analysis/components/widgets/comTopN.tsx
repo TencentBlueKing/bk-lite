@@ -7,6 +7,7 @@ import {
 } from '@/app/ops-analysis/utils/chartTheme';
 import {
   ScreenRenderContext,
+  RuntimeParamValue,
   ValueConfig,
 } from '@/app/ops-analysis/types/dashBoard';
 import type {
@@ -18,6 +19,13 @@ import {
   getScreenWidgetScale,
   scaleScreenMetric,
 } from './shared/screenMetrics';
+import {
+  getRuntimeParamSegmentedOptions,
+  hasRuntimeParamSegmentedValue,
+  isTopNContentReady,
+  resolveTopNContentState,
+} from '@/app/ops-analysis/utils/runtimeParamControl';
+import RuntimeParamSegmented from './runtimeParamSegmented';
 
 interface TopNProps {
   rawData: any;
@@ -26,6 +34,10 @@ interface TopNProps {
   dataSource?: DatasourceItem;
   screenRenderContext?: ScreenRenderContext;
   onReady?: (ready: boolean) => void;
+  runtimeParamValue?: RuntimeParamValue;
+  onRuntimeParamChange?: (value: RuntimeParamValue) => void;
+  runtimeParamControlPlacement?: 'header' | 'inline';
+  errorMessage?: string;
 }
 
 interface TopNItem {
@@ -73,6 +85,10 @@ const TopN: React.FC<TopNProps> = ({
   dataSource,
   screenRenderContext,
   onReady,
+  runtimeParamValue,
+  onRuntimeParamChange,
+  runtimeParamControlPlacement = 'inline',
+  errorMessage,
 }) => {
   const themeName = resolveOpsChartThemeName();
   const isDark = themeName === 'dark';
@@ -154,30 +170,49 @@ const TopN: React.FC<TopNProps> = ({
   const maxValue =
     items.length > 0 ? Math.max(...items.map((i) => i.value)) : 0;
   const isDataReady = items.length > 0;
+  const segmentedOptions = getRuntimeParamSegmentedOptions(
+    config?.runtimeParamControl,
+  );
+  const showRuntimeParamControl =
+    segmentedOptions.length > 0 &&
+    hasRuntimeParamSegmentedValue(
+      config?.runtimeParamControl,
+      runtimeParamValue,
+    );
+  const contentState = resolveTopNContentState({
+    loading,
+    errorMessage,
+    hasRows: isDataReady,
+  });
 
   useEffect(() => {
-    if (!loading && onReady) {
-      onReady(isDataReady);
-    }
-  }, [isDataReady, loading, onReady]);
+    onReady?.(isTopNContentReady(contentState));
+  }, [contentState, onReady]);
 
-  if (loading) {
-    return (
+  let content: React.ReactNode;
+  if (contentState === 'loading') {
+    content = (
       <div className="h-full flex items-center justify-center">
         <Spin size="small" />
       </div>
     );
-  }
-
-  if (!isDataReady) {
-    return (
+  } else if (contentState === 'error') {
+    content = (
+      <div className="h-full flex items-center justify-center">
+        <Empty
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          description={errorMessage}
+        />
+      </div>
+    );
+  } else if (contentState === 'empty') {
+    content = (
       <div className="h-full flex items-center justify-center">
         <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
       </div>
     );
-  }
-
-  return (
+  } else {
+    content = (
     <div
       className="h-full overflow-y-auto"
       style={{
@@ -288,6 +323,23 @@ const TopN: React.FC<TopNProps> = ({
           );
         })}
       </div>
+    </div>
+    );
+  }
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      {runtimeParamControlPlacement !== 'header' && showRuntimeParamControl ? (
+        <div className="shrink-0 overflow-x-auto px-3 pt-2">
+          <RuntimeParamSegmented
+            block
+            control={config?.runtimeParamControl}
+            value={runtimeParamValue}
+            onChange={onRuntimeParamChange}
+          />
+        </div>
+      ) : null}
+      <div className="min-h-0 flex-1">{content}</div>
     </div>
   );
 };

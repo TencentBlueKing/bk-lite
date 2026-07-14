@@ -229,6 +229,7 @@ export const buildValueConfig = (
   if (values.chartType === 'topN') {
     valueConfig.topNLabelField = values.topNLabelField;
     valueConfig.topNValueField = values.topNValueField;
+    valueConfig.runtimeParamControl = values.runtimeParamControl;
   }
   return valueConfig;
 };
