@@ -145,8 +145,11 @@ def job_script_detail(data: dict):
         {"result": True, "data": {id, name, script_type, content, params, timeout}} 或 {"result": False, "message": "..."}
     """
     script_id = data.get("id")
+    authorized_team_ids = normalize_team(data.get("team"))
+    if not authorized_team_ids:
+        return {"result": False, "message": "team 不能为空"}
     script = Script.objects.filter(id=script_id).first()
-    if not script:
+    if not script or not (normalize_team(script.team) & authorized_team_ids):
         return {"result": False, "message": f"脚本不存在: id={script_id}"}
     return {
         "result": True,

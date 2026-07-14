@@ -6,6 +6,7 @@ from django.db import transaction
 from django.db.models import Q
 
 from apps.alerts.aggregation.recovery.recovery_checker import AlertRecoveryChecker
+from apps.alerts.aggregation.recovery.match_key import build_recovery_match_key
 from apps.alerts.models.models import Alert, Event
 from apps.alerts.constants.constants import AlertStatus, EventAction
 from apps.core.logger import alert_logger as logger
@@ -124,7 +125,7 @@ class RecoveryHandler:
             return
 
         # 3. 构建索引：external_id -> [Alert]
-        alert_by_external_id = defaultdict(list)
+        alerts_by_match_key = defaultdict(list)
         alerts_by_fallback_key = defaultdict(list)
         alert_existing_events = {}  # alert.pk -> set(event_id)
 
@@ -137,8 +138,9 @@ class RecoveryHandler:
 
             # 构建 external_id 索引
             for event in prefetched_events:
-                if event.external_id in external_ids:
-                    alert_by_external_id[event.external_id].append(alert)
+                match_key = build_recovery_match_key(event)
+                if event.external_id in external_ids and match_key:
+                    alerts_by_match_key[match_key].append(alert)
                 fallback_key = RecoveryHandler._build_fallback_key(event)
                 if fallback_key and event.action == EventAction.CREATED:
                     alerts_by_fallback_key[fallback_key].append(alert)
@@ -154,7 +156,9 @@ class RecoveryHandler:
                 continue
 
             # 查找匹配的 Alert
-            matching_alerts = alert_by_external_id.get(external_id, [])
+            matching_alerts = alerts_by_match_key.get(
+                build_recovery_match_key(recovery_event), []
+            )
 
             if not matching_alerts:
                 fallback_key = RecoveryHandler._build_fallback_key(recovery_event)

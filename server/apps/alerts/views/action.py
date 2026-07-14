@@ -5,6 +5,7 @@ ActionCallbackView: 接收 job_mgmt 回调，校验 HMAC-SHA256 签名后更新 
 ActionRuleViewSet: ActionRule 的 CRUD REST 视图集。
 """
 
+import hashlib
 import logging
 
 from django.db import transaction
@@ -20,6 +21,11 @@ from apps.alerts.models.action import ActionExecution, ActionRule
 from apps.alerts.models.models import Alert
 from apps.alerts.serializers.action import ActionExecutionSerializer, ActionRuleSerializer
 from apps.alerts.utils.operator_log import record_operator_log
+from apps.alerts.utils.permission_scope import (
+    apply_team_scope_for_request,
+    get_authorized_group_ids,
+    get_current_team_from_request,
+)
 from apps.core.decorators.api_permission import HasPermission
 from apps.job_mgmt.utils.callback_signer import verify_callback_signature
 from apps.rpc.job_mgmt import JobMgmt
@@ -104,7 +110,7 @@ class ActionRuleViewSet(ModelViewSet):
     serializer_class = ActionRuleSerializer
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        qs = apply_team_scope_for_request(super().get_queryset(), self.request)
         name = self.request.query_params.get("name")
         action_type = self.request.query_params.get("action_type")
         is_active = self.request.query_params.get("is_active")
@@ -186,7 +192,8 @@ class ActionExecutionViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = ActionExecutionSerializer
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        scoped_alerts = apply_team_scope_for_request(Alert.objects.all(), self.request)
+        qs = super().get_queryset().filter(alert__in=scoped_alerts)
         alert_id = self.request.query_params.get("alert_id")
         rule_id = self.request.query_params.get("rule_id")
         status_val = self.request.query_params.get("status")
@@ -209,30 +216,56 @@ class ActionExecutionViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=False, methods=["post"])
     @HasPermission("action_exec-Manual")
     def manual_trigger(self, request):
-        alert = Alert.objects.filter(alert_id=request.data.get("alert_id")).first()
-        rule = ActionRule.objects.filter(id=request.data.get("rule_id")).first()
+        client_key = request.headers.get("Idempotency-Key", "").strip()
+        if not client_key or len(client_key) > 128:
+            return Response(
+                {"detail": "Idempotency-Key 必填且长度不能超过 128"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        alert = apply_team_scope_for_request(Alert.objects.all(), request).filter(
+            alert_id=request.data.get("alert_id")
+        ).first()
+        rule = apply_team_scope_for_request(ActionRule.objects.all(), request).filter(
+            id=request.data.get("rule_id")
+        ).first()
         if not alert or not rule:
-            return Response({"result": False, "message": "alert/rule 不存在"}, status=400)
-        execution = ActionExecution.objects.create(
-            rule=rule,
-            alert=alert,
-            trigger_event="manual",
-            trigger_type="manual",
-            idempotency_key=None,
-            status="pending",
-            action_type=rule.action_type,
-            operator=getattr(request.user, "username", None),
+            return Response({"detail": "alert/rule 不存在或无权访问"}, status=status.HTTP_400_BAD_REQUEST)
+
+        operator = getattr(request.user, "username", None) or "anonymous"
+        key_digest = hashlib.sha256(client_key.encode("utf-8")).hexdigest()
+        idempotency_key = f"manual:{operator}:{rule.id}:{alert.alert_id}:{key_digest}"
+        execution, created = ActionExecution.objects.get_or_create(
+            idempotency_key=idempotency_key,
+            defaults={
+                "rule": rule,
+                "alert": alert,
+                "trigger_event": "manual",
+                "trigger_type": "manual",
+                "status": "pending",
+                "action_type": rule.action_type,
+                "operator": operator,
+            },
         )
+        if not created:
+            return Response({"execution_id": execution.id, "status": execution.status, "deduplicated": True})
+
         get_handler(rule.action_type).execute(rule, alert, execution)
-        return Response({"result": True, "data": {"execution_id": execution.id}})
+        execution.refresh_from_db(fields=["status", "result"])
+        response_data = {"execution_id": execution.id, "status": execution.status, "deduplicated": False}
+        if execution.status in {"failed", "config_error"}:
+            return Response(
+                {"detail": execution.result.get("message", "动作执行失败"), "data": response_data},
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
+        return Response(response_data)
 
 
 class ActionJobScriptListView(APIView):
     """代理 job_mgmt 脚本列表，供告警动作规则编辑器使用。"""
 
+    @HasPermission("action_rule-View")
     def get(self, request):
-        from apps.alerts.utils.permission_scope import get_authorized_group_ids, get_current_team_from_request
-
         group_id = get_current_team_from_request(request, required=True)
         if not group_id:
             return Response({"result": False, "message": "缺少团队上下文"}, status=status.HTTP_400_BAD_REQUEST)
@@ -244,6 +277,12 @@ class ActionJobScriptListView(APIView):
 class ActionJobScriptDetailView(APIView):
     """代理 job_mgmt 单个脚本详情（含 params），供告警动作字段绑定表使用。"""
 
+    @HasPermission("action_rule-View")
     def get(self, request, script_id):
-        data = JobMgmt().get_script(script_id)
+        group_id = get_current_team_from_request(request, required=True)
+        if not group_id:
+            return Response({"result": False, "message": "缺少团队上下文"}, status=status.HTTP_400_BAD_REQUEST)
+        data = JobMgmt().get_script(script_id, team=get_authorized_group_ids(request))
+        if not data:
+            return Response({"result": False, "message": "脚本不存在或无权访问"}, status=status.HTTP_404_NOT_FOUND)
         return Response(data)

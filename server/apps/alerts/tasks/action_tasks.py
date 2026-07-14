@@ -21,3 +21,4 @@ def process_alert_actions(alert_id: str, event_name: str):
         ActionEngine().evaluate(alert, event_name)
     except Exception:
         logger.exception("[ActionEngine] 处理动作失败 alert=%s event=%s", alert_id, event_name)
+        raise

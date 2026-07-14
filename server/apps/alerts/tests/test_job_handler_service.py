@@ -4,12 +4,13 @@ from apps.alerts.action.handlers.job import JobActionHandler
 from apps.alerts.action.exceptions import ConfigError, TargetError
 
 
-def _alert():
+def _alert(team=None):
     a = MagicMock()
     a.alert_id = "A1"; a.labels = {"ip": "10.0.0.5", "service": "nginx"}
     a.enrichment = {}; a.title = "t"; a.level = "1"; a.status = "unassigned"
     a.resource_id = a.resource_name = a.resource_type = a.item = a.source_name = None
     a.content = "c"
+    a.team = [1] if team is None else team
     return a
 
 
@@ -69,6 +70,26 @@ def test_execute_success_builds_node_mgmt_payload(mock_target, mock_job):
     assert execution.job_task_id == 4821
     assert execution.status == "running"
     execution.save.assert_called()
+
+
+@patch("apps.alerts.action.handlers.job.JobMgmt")
+@patch("apps.alerts.action.handlers.job.resolve_node_target")
+def test_execute_uses_alert_rule_team_intersection_for_all_external_calls(mock_target, mock_job):
+    mock_target.return_value = {
+        "node_id": "n1", "name": "h", "ip": "10.0.0.5",
+        "os": "linux", "cloud_region_id": 1,
+    }
+    mock_job.return_value.get_script.return_value = SCRIPT
+    mock_job.return_value.job_script_execute.return_value = {
+        "result": True, "data": {"task_id": 4821}
+    }
+
+    JobActionHandler().execute(_rule(team=[1, 2]), _alert(team=[1]), MagicMock())
+
+    mock_job.return_value.get_script.assert_called_once_with(42, team=[1])
+    mock_target.assert_called_once_with("10.0.0.5", [1])
+    payload = mock_job.return_value.job_script_execute.call_args.args[0]
+    assert payload["team"] == [1]
 
 
 @patch("apps.alerts.action.handlers.job.JobMgmt")
