@@ -2874,6 +2874,7 @@ def test_open_api_linux_bootstrap_contains_arch_detection_and_routed_urls(monkey
     assert "trap 'exit 1' 1 2 15" in content
     assert 'exec "$INSTALLER_PATH"' not in content
     assert 'exit "$installer_status"' in content
+    assert 'curl -fsSLk "$INSTALLER_URL"' in content
     assert 'DETECTED_ARCH="$(uname -m' in content
     assert f"EXPECTED_ARCH={shlex.quote('arm64')}" in content
     assert (

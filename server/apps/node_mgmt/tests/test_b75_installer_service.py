@@ -415,19 +415,24 @@ def _write_executable(path, content):
     path.chmod(0o755)
 
 
-def _prepare_bootstrap_shell_test(tmp_path, shell_name, curl_exit_code=0):
+def _prepare_bootstrap_shell_test(tmp_path, shell_name, curl_exit_code=0, uid=0):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     bootstrap_temp = tmp_path / "bootstrap.sh"
     runner_log = tmp_path / "runner.log"
     bootstrap_log = tmp_path / "bootstrap.log"
+    sudo_log = tmp_path / "sudo.log"
 
-    _write_executable(bin_dir / "id", "#!/bin/sh\nprintf '0\\n'\n")
+    _write_executable(bin_dir / "id", f"#!/bin/sh\nprintf '{uid}\\n'\n")
     _write_executable(
         bin_dir / "mktemp",
         '#!/bin/sh\n: > "$BOOTSTRAP_TEMP"\nprintf \'%s\\n\' "$BOOTSTRAP_TEMP"\n',
     )
     _write_executable(bin_dir / "rm", '#!/bin/sh\nexec /bin/rm "$@"\n')
+    _write_executable(
+        bin_dir / "sudo",
+        '#!/bin/sh\nprintf "%s\\n" "$*" >> "$SUDO_LOG"\nif [ "$1" = "-n" ]; then shift; fi\nexec "$@"\n',
+    )
     if curl_exit_code:
         curl_script = f"#!/bin/sh\nexit {curl_exit_code}\n"
     else:
@@ -459,6 +464,7 @@ printf '%s\n' '#!/bin/sh' 'printf "%s" "${SELECTED_SHELL:-bash}" > "$RUNNER_LOG"
             "BOOTSTRAP_TEMP": str(bootstrap_temp),
             "RUNNER_LOG": str(runner_log),
             "BOOTSTRAP_LOG": str(bootstrap_log),
+            "SUDO_LOG": str(sudo_log),
         }
     )
     return env, bootstrap_temp, runner_log, bootstrap_log
@@ -536,6 +542,59 @@ def test_get_linux_bootstrap_command_runs_with_only_one_supported_shell(tmp_path
     assert runner_log.read_text(encoding="utf-8") == shell_name
     assert bootstrap_log.read_text(encoding="utf-8") == "ran"
     assert not bootstrap_temp.exists()
+    assert not (tmp_path / "sudo.log").exists()
+
+
+@pytest.mark.django_db
+def test_get_linux_bootstrap_command_prefers_sh_when_sh_and_bash_are_available(tmp_path):
+    env, _, runner_log, _ = _prepare_bootstrap_shell_test(tmp_path, "sh")
+    (tmp_path / "bin" / "bash").symlink_to("/bin/bash")
+    with patch(
+        "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
+        return_value=_SESSION_CFG,
+    ):
+        cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="auto")
+
+    result = subprocess.run(["/bin/sh", "-c", cmd], env=env, text=True, capture_output=True, check=False)
+
+    assert result.returncode == 0, result.stderr
+    assert runner_log.read_text(encoding="utf-8") == "sh"
+
+
+@pytest.mark.django_db
+def test_get_linux_bootstrap_command_auto_mode_uses_non_interactive_sudo_for_non_root(tmp_path):
+    env, _, _, bootstrap_log = _prepare_bootstrap_shell_test(tmp_path, "sh", uid=1000)
+    with patch(
+        "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
+        return_value=_SESSION_CFG,
+    ):
+        cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="auto")
+
+    result = subprocess.run(["/bin/sh", "-c", cmd], env=env, text=True, capture_output=True, check=False)
+    sudo_calls = (tmp_path / "sudo.log").read_text(encoding="utf-8").splitlines()
+
+    assert result.returncode == 0, result.stderr
+    assert bootstrap_log.read_text(encoding="utf-8") == "ran"
+    assert sudo_calls[0].endswith(" -c true")
+    assert all(call.startswith("-n ") for call in sudo_calls)
+
+
+@pytest.mark.django_db
+def test_get_linux_bootstrap_command_manual_mode_uses_interactive_sudo_for_non_root(tmp_path):
+    env, _, _, bootstrap_log = _prepare_bootstrap_shell_test(tmp_path, "sh", uid=1000)
+    with patch(
+        "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
+        return_value=_SESSION_CFG,
+    ):
+        cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="manual")
+
+    result = subprocess.run(["/bin/sh", "-c", cmd], env=env, text=True, capture_output=True, check=False)
+    sudo_calls = (tmp_path / "sudo.log").read_text(encoding="utf-8").splitlines()
+
+    assert result.returncode == 0, result.stderr
+    assert bootstrap_log.read_text(encoding="utf-8") == "ran"
+    assert len(sudo_calls) == 1
+    assert not sudo_calls[0].startswith("-n ")
 
 
 @pytest.mark.django_db

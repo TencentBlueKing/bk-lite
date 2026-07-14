@@ -628,7 +628,7 @@ trap cleanup 0
 trap 'exit 1' 1 2 15
 
 mkdir -p "$INSTALL_DIR"
-curl -sSLk "$INSTALLER_URL" -o "$INSTALLER_PATH"
+curl -fsSLk "$INSTALLER_URL" -o "$INSTALLER_PATH"
 chmod +x "$INSTALLER_PATH"
 installer_status=0
 "$INSTALLER_PATH" --url "$CONFIG_URL" --install-dir "$INSTALL_DIR" --skip-tls || installer_status=$?
