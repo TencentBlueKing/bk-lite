@@ -18,6 +18,7 @@
     "test:flow-access-complete-navigation": "pnpm exec tsx scripts/flow-access-complete-navigation-test.ts",
     "test:flow-asset-existing-selection": "pnpm exec tsx scripts/flow-asset-existing-selection-test.ts",
     "test:installer-progress": "pnpm exec tsx scripts/installer-progress-test.ts",
+    "test:node-manager-command-copy-dialog": "pnpm exec tsx scripts/node-manager-command-copy-dialog-test.ts",
     "test:collector-operation-architecture": "pnpm exec tsx scripts/collector-operation-architecture-test.ts",
     "test:log-alert-raw-columns": "pnpm exec tsx scripts/log-alert-raw-columns-test.ts",
     "test:log-group-field-bootstrap": "pnpm exec tsx scripts/log-group-field-bootstrap-test.ts",
