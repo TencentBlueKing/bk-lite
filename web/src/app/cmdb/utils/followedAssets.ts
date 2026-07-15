@@ -11,6 +11,16 @@ export interface FollowedAssetsConfig {
   items: FollowedAssetItem[];
 }
 
+export interface FollowedAssetInstance {
+  _id: string | number;
+  model_id: string;
+}
+
+export interface ResolvedFollowedAsset<T extends FollowedAssetInstance> {
+  item: FollowedAssetItem;
+  detail: T;
+}
+
 const isSameAsset = (
   item: FollowedAssetItem,
   modelId: string,
@@ -75,3 +85,54 @@ export const removeFollowedAsset = (
 ): FollowedAssetsConfig => ({
   items: config.items.filter((item) => !isSameAsset(item, modelId, instId)),
 });
+
+export const resolveVisibleFollowedAssets = async <
+  T extends FollowedAssetInstance,
+>(
+  items: FollowedAssetItem[],
+  fetchInstances: (
+    modelId: string,
+    instanceIds: Array<string | number>
+  ) => Promise<T[]>,
+  limit: number
+): Promise<Array<ResolvedFollowedAsset<T>>> => {
+  if (limit <= 0 || items.length === 0) return [];
+
+  const itemsByModel = new Map<string, FollowedAssetItem[]>();
+  items.forEach((item) => {
+    const modelItems = itemsByModel.get(item.model_id) || [];
+    modelItems.push(item);
+    itemsByModel.set(item.model_id, modelItems);
+  });
+
+  const settled = await Promise.allSettled(
+    Array.from(itemsByModel.entries()).map(async ([modelId, modelItems]) => ({
+      modelId,
+      instances: await fetchInstances(
+        modelId,
+        modelItems.map((item) => item.inst_id)
+      ),
+    }))
+  );
+  const instanceByAsset = new Map<string, T>();
+  settled.forEach((result) => {
+    if (result.status !== 'fulfilled') return;
+    result.value.instances.forEach((instance) => {
+      instanceByAsset.set(
+        `${result.value.modelId}:${String(instance._id)}`,
+        instance
+      );
+    });
+  });
+
+  const resolved: Array<ResolvedFollowedAsset<T>> = [];
+  for (const item of items) {
+    const detail = instanceByAsset.get(
+      `${item.model_id}:${String(item.inst_id)}`
+    );
+    if (!detail) continue;
+    resolved.push({ item, detail });
+    if (resolved.length === limit) break;
+  }
+  return resolved;
+};

@@ -71,7 +71,17 @@ def build_room_layout(racks: list) -> dict:
             placed.append(item)
             cells.setdefault((r["row"], r["col"]), []).append(item["inst_id"])
         else:
-            unplaced.append(r)
+            location = r.get("location")
+            unplaced.append(
+                {
+                    **r,
+                    "unplaced_reason": (
+                        "missing_location"
+                        if not isinstance(location, str) or not location.strip()
+                        else "invalid_location"
+                    ),
+                }
+            )
 
     conflicts = [{"row": rc[0], "col": rc[1], "inst_ids": ids} for rc, ids in cells.items() if len(ids) > 1]
     return {

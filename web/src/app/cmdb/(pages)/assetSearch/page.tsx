@@ -2,8 +2,11 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import assetSearchStyle from './index.module.scss';
 import { useTranslation } from '@/utils/i18n';
-import { SearchOutlined } from '@ant-design/icons';
-import { ArrowRightOutlined } from '@ant-design/icons';
+import {
+  ArrowLeftOutlined,
+  ArrowRightOutlined,
+  SearchOutlined,
+} from '@ant-design/icons';
 import { AttrFieldType, UserItem } from '@/app/cmdb/types/assetManage';
 import {
   AssetListItem,
@@ -44,6 +47,7 @@ import AssetSearchLanding, {
   RecentChangeItem,
 } from './landing';
 import { useFollowedAssets } from '@/app/cmdb/hooks/useFollowedAssets';
+import { resolveVisibleFollowedAssets } from '@/app/cmdb/utils/followedAssets';
 import { getChangeOperationTone } from '@/app/cmdb/utils/assetSearchDisplay';
 import {
   buildCategoryEntries,
@@ -67,15 +71,13 @@ interface ChangeRecordListResponse {
   count: number;
 }
 
-interface FollowedAssetDetailResponse {
-  model_id?: string;
+interface FollowedAssetDetailResponse extends AssetListItem {
   model_name?: string;
   inst_name?: string;
   ip_addr?: string;
   classification_id?: string;
   icn?: string;
   organization_display?: string;
-  organization?: string[];
 }
 
 const AssetSearch = () => {
@@ -87,9 +89,9 @@ const AssetSearch = () => {
 
   const { getModelAttrList } = useModelApi();
   const {
+    searchInstances,
     fulltextSearchStats,
     fulltextSearchByModel,
-    getInstanceDetail,
     getModelInstanceCount,
   } = useInstanceApi();
   const { getClassificationList } = useClassificationApi();
@@ -283,16 +285,25 @@ const AssetSearch = () => {
   const loadFollowedAssets = async (sourceItems = followedItems) => {
     setFollowedLoading(true);
     try {
-      const visibleItems = sourceItems.slice(0, FOLLOWED_ASSET_LIMIT);
-      const settled = await Promise.allSettled(
-        visibleItems.map(async (item) => {
-          const detail = await getInstanceDetail(String(item.inst_id)) as FollowedAssetDetailResponse;
-          if (!detail || typeof detail !== 'object') {
-            throw new Error('Invalid followed asset detail');
-          }
-          const model =
-            modelList.find((modelItem) => modelItem.model_id === item.model_id) ||
-            modelList.find((modelItem) => modelItem.model_id === detail.model_id);
+      const resolvedAssets = await resolveVisibleFollowedAssets<FollowedAssetDetailResponse>(
+        sourceItems,
+        async (modelId, instanceIds) => {
+          const response = await searchInstances({
+            model_id: modelId,
+            query_list: [{ field: 'id', type: 'id[]', value: instanceIds }],
+            page: 1,
+            page_size: instanceIds.length,
+          }) as { insts?: FollowedAssetDetailResponse[] };
+          return response.insts || [];
+        },
+        FOLLOWED_ASSET_LIMIT
+      );
+      const modelById = new Map(
+        modelList.map((modelItem) => [modelItem.model_id, modelItem])
+      );
+      setFollowedAssets(
+        resolvedAssets.map(({ item, detail }) => {
+          const model = modelById.get(item.model_id) || modelById.get(detail.model_id);
           const modelId = item.model_id;
           return {
             key: `${modelId}-${item.inst_id}`,
@@ -307,11 +318,6 @@ const AssetSearch = () => {
             followed: true,
           } as FollowedAssetViewItem;
         })
-      );
-      setFollowedAssets(
-        settled
-          .filter((result): result is PromiseFulfilledResult<FollowedAssetViewItem> => result.status === 'fulfilled')
-          .map((result) => result.value)
       );
     } catch {
       setFollowedAssets([]);
@@ -343,15 +349,36 @@ const AssetSearch = () => {
     }
   };
 
+  const resetToLanding = () => {
+    setSearchText('');
+    setShowSearch(true);
+    setModelStats([]);
+    setCurrentModelData([]);
+    setItems([]);
+    setPropertyList([]);
+    setActiveTab('');
+    setActiveInstItem(-1);
+    setCurrentPage(1);
+    setTotalCount(0);
+    setPageLoading(false);
+  };
+
   const handleTextChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchText(e.target.value);
+    const nextSearchText = e.target.value;
+    setSearchText(nextSearchText);
+    if (!nextSearchText) {
+      resetToLanding();
+    }
   };
 
   const handleSearch = async (keyword?: string) => {
     const nextSearchText = typeof keyword === 'string' ? keyword : searchText;
+    if (!nextSearchText) {
+      resetToLanding();
+      return;
+    }
     setSearchText(nextSearchText);
-    setShowSearch(!nextSearchText);
-    if (!nextSearchText) return;
+    setShowSearch(false);
 
     const histories = deepClone(historyList);
     if (
@@ -843,6 +870,13 @@ const AssetSearch = () => {
                 marginBottom: '12px',
               }}
             >
+              <Button
+                type="text"
+                icon={<ArrowLeftOutlined />}
+                onClick={resetToLanding}
+              >
+                {t('common.backToHome')}
+              </Button>
               <Search
                 className={assetSearchStyle.input}
                 value={searchText}
