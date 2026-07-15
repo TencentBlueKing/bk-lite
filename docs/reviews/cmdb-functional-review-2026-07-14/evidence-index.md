@@ -173,3 +173,14 @@
 - 结果：未新增结构性 Finding；`CMDB-F09` 为已归并到 `CMDB-F04` 的保留空号。63 个主 Finding ID 唯一，P0 25/P1 33/P2 5/P3 0；13 份报告齐套，跨域职责与依赖矩阵见 [13-cross-domain-architecture.md](13-cross-domain-architecture.md)。
 - 覆盖率：本任务没有修改业务代码，不运行新 coverage；各域真实覆盖率和未测原因保留在 01–12 节，不能合并声称达到 80%/90%。
 - 未验证项：真实多服务 NATS ACL、真实图双驱动、NodeMgmt/SystemMgmt、Celery 多 Worker、Redis/ARQ、MinIO 故障、Enterprise gitlink 与 ignored 安装态映射、多数据库与大规模基准仍沿用各域未验证项。Recommendation Block；主阻断来自既有 25 个 P0，而非本报告新增数量。
+
+## 最终终验记录
+
+- 终验范围：`00-overview.md`、`evidence-index.md` 与 01–13 全部功能报告；本步骤没有修改生产代码或测试，也没有重复运行已逐域留档的业务套件。
+- 齐套校验：对 13 个报告逐一执行 `test -s`，退出 0。
+- Finding 校验：只读脚本按每个 `### Finding CMDB-FNN` 到下一三级标题的边界检查十个固定字段、严重级别排序、ID 唯一性和全集；结果为 63 个主 Finding、63 个唯一 ID、P0 25/P1 33/P2 5/P3 0，无缺失、无重复、无额外编号。`CMDB-F09` 仅作为归并到 `CMDB-F04` 的保留空号出现，不计主 Finding。
+- 证据字段校验：01–13 每节均具备业务承诺、入口、核心调用链、外部依赖、关键测试、执行命令、结果、覆盖率和未验证项；结果无缺项。
+- 引用与链接校验：所有 `CMDB-FNN` 引用均落在 `F01`–`F64` 范围，报告内 Markdown `.md` 链接均指向存在文件；结果无错误。
+- 占位符校验：按 Task 15 计划中的四类占位词执行全目录扫描，无输出。
+- 格式校验：`git diff --check -- docs/reviews/cmdb-functional-review-2026-07-14` 退出 0。
+- Enterprise provenance：根 gitlink 为 `7c7db340961d6b010d2c533de92970df253b545f` 且 worktree 未初始化；主工作区 ignored Overlay 的 15 个源文件聚合 SHA-256 为 `1c4d5f1b9e3cbfb17798faf119779565e33bc1d23db7bba61e04cf519ff25ed9`，六测试文件聚合 SHA-256 为 `0e4b7eee9e8361f1479546444287ae2c540f303edfc8658c7d9f2ec5f47c8043`。两者映射未知，当前分支不能单独重建该运行态审查对象。

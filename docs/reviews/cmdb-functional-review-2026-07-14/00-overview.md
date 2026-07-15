@@ -1,35 +1,86 @@
 # CMDB 全功能生产级审查总览
 
-本台账跟踪 CMDB 12 个业务功能域及 1 个跨域架构复核任务。审查仅记录可复现证据和结论，不在本阶段修改生产代码或新增测试。
+## 1. Summary
 
-- 初始基线与统一证据字段：[evidence-index.md](evidence-index.md)
-- 主 Finding ID：全局按 `CMDB-FNN` 编号（`NN` 为两位递增序号）；同一根因只建立一个主 Finding，其他报告仅引用。
-- 完成条件：真实入口、主要调用链、权限/状态/失败/恢复/资源/职责边界、测试证明力、验证命令和未验证项均已记录，并给出明确 Recommendation。
+本次审查以 `server/apps/cmdb/BUSINESS_ARCHITECTURE.md` 为业务入口，覆盖 `server/apps/cmdb/`、Enterprise Overlay 自定义上报运行态和 CMDB 相关 Stargazer 链路，排除 Web。十二个业务功能域和一个跨域架构复核均已完成；审查只修改报告，没有修改生产代码或测试。
 
-| 功能域 | 状态 | P0 | P1 | P2 | P3 | Recommendation | 报告链接 |
+整体风险为**极高**，不建议合并或按当前状态发布。共确认 **63 个主 Finding：P0 25 / P1 33 / P2 5 / P3 0**。`CMDB-F09` 已在实例写入复审时归并至 `CMDB-F04`，编号保留且不复用，因此有效主 Finding 是 `CMDB-F01`–`CMDB-F64` 中除 `CMDB-F09` 外的 63 项。
+
+阻断问题不是单一模块缺陷，而是以下生产边界同时失守：关系、任务内资源、Node 同步、订阅、审计和 NATS 调用者的跨组织授权；Stargazer 最终执行边界的高危命令与资源预算；异步传播、采集、配置正文、IPAM、父子任务和快照的错误成功、旧 owner 副作用及不可恢复状态；敏感参数与外部错误跨日志、数据库、wire 和用户界面传播。最终 Recommendation 为 **Block**。
+
+初始基线、逐域调用链、完整测试命令、退出摘要、覆盖率和未验证项见 [evidence-index.md](evidence-index.md)；63 项主 Finding 的归属与去重矩阵见 [13-cross-domain-architecture.md](13-cross-domain-architecture.md)。
+
+| 功能域 | 状态 | P0 | P1 | P2 | P3 | Recommendation | 报告 |
 |---|---|---:|---:|---:|---:|---|---|
-| 01 模型治理 | 已完成 | 1 | 4 | 2 | 0 | Request changes | [01-model-governance.md](01-model-governance.md) |
-| 02 实例写入 | 已完成 | 1 | 2 | 2 | 0 | Request changes | [02-instance-write.md](02-instance-write.md) |
-| 03 查询与拓扑 | 已完成 | 1 | 4 | 1 | 0 | Request changes | [03-query-topology.md](03-query-topology.md) |
-| 04 自动采集 | 已完成 | 3 | 3 | 0 | 0 | Request changes | [04-auto-collection.md](04-auto-collection.md) |
-| 05 Stargazer 边界 | 已完成 | 3 | 4 | 0 | 0 | Block | [05-stargazer-boundary.md](05-stargazer-boundary.md) |
-| 06 配置文件 | 已完成 | 2 | 1 | 0 | 0 | Block | [06-config-file.md](06-config-file.md) |
-| 07 IPAM | 已完成 | 2 | 3 | 0 | 0 | Block | [07-ipam.md](07-ipam.md) |
-| 08 专项资源视图 | 已完成 | 2 | 1 | 0 | 0 | Block | [08-specialized-resources.md](08-specialized-resources.md) |
-| 09 Node 同步 | 已完成 | 4 | 4 | 0 | 0 | Block | [09-node-sync.md](09-node-sync.md) |
-| 10 Enterprise 自定义上报 | 已完成 | 3 | 3 | 0 | 0 | Block | [10-custom-reporting.md](10-custom-reporting.md) |
-| 11 变更与订阅 | 已完成 | 2 | 2 | 0 | 0 | Block | [11-change-subscription.md](11-change-subscription.md) |
-| 12 NATS / RPC | 已完成 | 1 | 2 | 0 | 0 | Block | [12-nats-rpc.md](12-nats-rpc.md) |
-| 13 跨域架构复核 | 已完成 | 0 | 0 | 0 | 0 | Block | [13-cross-domain-architecture.md](13-cross-domain-architecture.md) |
+| 01 模型治理 | 已完成 | 1 | 4 | 2 | 0 | Request changes | [模型治理](01-model-governance.md) |
+| 02 实例写入 | 已完成 | 1 | 2 | 2 | 0 | Request changes | [实例写入](02-instance-write.md) |
+| 03 查询与拓扑 | 已完成 | 1 | 4 | 1 | 0 | Request changes | [查询与拓扑](03-query-topology.md) |
+| 04 自动采集 | 已完成 | 3 | 3 | 0 | 0 | Request changes | [自动采集](04-auto-collection.md) |
+| 05 Stargazer 边界 | 已完成 | 3 | 4 | 0 | 0 | Block | [Stargazer 边界](05-stargazer-boundary.md) |
+| 06 配置文件 | 已完成 | 2 | 1 | 0 | 0 | Block | [配置文件](06-config-file.md) |
+| 07 IPAM | 已完成 | 2 | 3 | 0 | 0 | Block | [IPAM](07-ipam.md) |
+| 08 专项资源视图 | 已完成 | 2 | 1 | 0 | 0 | Block | [专项资源视图](08-specialized-resources.md) |
+| 09 Node 同步 | 已完成 | 4 | 4 | 0 | 0 | Block | [Node 同步](09-node-sync.md) |
+| 10 Enterprise 自定义上报 | 已完成 | 3 | 3 | 0 | 0 | Block | [Enterprise 自定义上报](10-custom-reporting.md) |
+| 11 变更与订阅 | 已完成 | 2 | 2 | 0 | 0 | Block | [变更与订阅](11-change-subscription.md) |
+| 12 NATS / RPC | 已完成 | 1 | 2 | 0 | 0 | Block | [NATS / RPC](12-nats-rpc.md) |
+| 13 跨域架构复核 | 已完成 | 0 | 0 | 0 | 0 | Block | [跨域架构复核](13-cross-domain-architecture.md) |
+| **合计（主 Finding）** | **已完成** | **25** | **33** | **5** | **0** | **Block** | **63 项** |
 
-08 专项资源视图新增 `CMDB-F41`–`CMDB-F43`（P0 2/P1 1）；应用导出、应用/网络遍历和跨模型权限分别引用既有 `CMDB-F17/F18/F14`，不重复计数。
+Enterprise 结论有明确 provenance 限制：根仓库 gitlink `7c7db340961d6b010d2c533de92970df253b545f` 在审查 worktree 未初始化；自定义上报审查对象来自主工作区被忽略的安装态 Overlay。15 个源文件和六个测试文件的聚合 SHA-256 已记录在证据索引，但该运行态与 gitlink commit 的映射未知，因此当前主仓库分支不能单独重建 Enterprise 审查对象。该限制不会使已验证的运行态缺陷失效，但会阻止可重复发布与独立复核。
 
-09 Node 同步新增 `CMDB-F44`–`CMDB-F51`（P0 4/P1 4）；父子采集终态断裂与 NodeMgmt 参数交付半完成分别独立登记 `CMDB-F50/F51`，外部错误泄露引用既有 `CMDB-F25`，不重复计数。
+## 2. Findings
 
-10 Enterprise 自定义上报新增 `CMDB-F52`–`CMDB-F57`（P0 3/P1 3）；关系双端授权、批写唯一锁、删除恢复和资源预算分别引用既有 `CMDB-F14/F10/F11/F23`。本域 Overlay 来自主工作区 ignored 安装态，根 gitlink 未初始化，结论可复核当前运行态但不能由当前主仓库分支单独重建。
+所有 Finding 已按 P0 → P1 → P2 → P3 排序并保留用户要求的十个字段；本总览不复制 63 项正文，以免产生第二份可漂移事实源。逐项证据、触发、影响、测试漏检、最小安全修复和回归测试均在上表对应报告中，跨域主归属在 [去重矩阵](13-cross-domain-architecture.md) 中。
 
-11 变更与订阅新增 `CMDB-F58`–`CMDB-F61`（P0 2/P1 2）；`CMDB-F61` 独立负责订阅规则/Delivery/实例/关系/ChangeRecord 扫描的稳定游标、总预算、deadline 与可恢复 checkpoint，`CMDB-F23` 只作为其他域相似模式及 Mirror 调用方批量参考；原始事件与异常日志引用既有 `CMDB-F25`。Delivery 的租约、代次和永久错误骨架通过聚焦测试，但规则授权、ChangeRecord View 与规模恢复均缺负向证明。
+P0 可按外部后果归为四组：
 
-12 NATS / RPC 新增 `CMDB-F62`–`CMDB-F64`（P0 1/P1 2）：消息体 scope/user_info 无可信调用者绑定、通用 listener 回传原始异常对象且客户端保留条件反序列化兼容路径、adapter 无统一 schema/批量预算和服务端 deadline。关系对端、ChangeRecord、领域错误脱敏、Stargazer 投递、配置 callback、Room3D 预算和 Node 父子终态分别引用既有 `CMDB-F14/F59/F25/F31/F33/F43/F50`，不重复计数。26 个注册入口已逐项盘点；brief 六文件 64 passed，但 NATS 主模块覆盖率仅 54%，listener/client 和多数裸读写入口没有业务安全断言。
+1. **权限绕过与跨租户读写**：`CMDB-F14/F36/F42/F44/F45/F52/F53/F58/F59/F62`。关系对端、任务引用资源、父级资源、全局配置/同步、Enterprise token、订阅/审计和 NATS CallerContext 均存在确定的授权断点。
+2. **远程执行、敏感信息与资源耗尽**：`CMDB-F25/F26/F27/F28`。最终 Agent 边界可放行控制面已禁止的命令，空命令被报成功，文件/CIDR 可无界物化，凭据和外部错误缺统一脱敏。
+3. **任务错误成功、数据丢失与不可恢复副作用**：`CMDB-F04/F08/F21/F33/F35/F46/F50/F54`。公共枚举、文件台账、混合采集、配置正文、Node 更新/父子终态和自定义快照会把失败标为成功、静默删尾或产生错误删除。
+4. **并发代次与副作用 fencing 缺失**：`CMDB-F20/F38/F41`。采集 execution、IPAM 租约和公开安装 token 的旧 owner/并发消费可突破状态与使用边界。
 
-13 跨域架构复核不新增 Finding：`CMDB-F09` 已在 Task 3 复审时归并到主项 `CMDB-F04`，编号保留且不复用；最终共有 63 个主 Finding，P0 25/P1 33/P2 5/P3 0。复核确认 CallerContext/授权 scope、execution/delivery、ErrorEnvelope、ResourceBudget、callback builder 与共享契约测试是主要跨域收敛点；现状 Recommendation 为 Block。
+P1 主要覆盖错误模型失真、批量/跨存储 Operation 缺失、幂等与唯一性竞态、callback/delivery 不一致、timeout/清理/回滚缺口、查询和作业资源预算以及核心业务路径缺少有效回归证明。P2 集中于字段分组、布局、唯一锁 fencing、Outbox 最终失败闭环和 IPAM 主题回归；没有为了数量制造 P3。
+
+## 3. Test Review
+
+现有测试证明了一批局部正确骨架：单实例 Operation/Outbox 的部分 owner 与恢复行为；配置正文 PENDING/READY/ERROR/DELETE_PENDING 局部转换；IPAM 单活行与终态 owner 条件；订阅 Delivery 的事务 checkpoint、租约、代次和退避；若干 HTTP 权限正向、参数校验和小数据分页行为。
+
+测试结果不能汇总为“全套通过”。各域 fresh evidence 同时包含：模型字段删除、查询主题和实例删除夹具失败；Stargazer IP 插件收集失败、fixtures 6 项失败、lint 配置缺失；Enterprise 仅在 ignored Overlay 运行态获得 38 passed。覆盖率多数低于相关模块 80% / 核心路径 90%：实例写入合计 45%、查询拓扑 33%、自动采集 65%、配置文件 46%、专项资源 63%、Node 同步 66%、Enterprise 59%、NATS 主模块 54%；Stargazer 未能获得 coverage。
+
+主要无效或不足的测试模式包括：直接调用 Service/handler 绕过 HTTP/NATS 调用者身份；Mock Graph/RPC/publish 后只验证调用；把空扫描置离线、超限正文静默截断、自报 scope 接受等缺陷行为锁成正向断言；未验证外部可观察终态、拒绝路径零副作用、真实并发/重投、部分成功、deadline、恢复 checkpoint 和 canary secret。
+
+每个 P0/P1 都已在对应报告给出 Required tests。修复阶段应先写跨层负向回归，再实施最小修复；至少覆盖可信 CallerContext/组织与关系双端权限、Agent 高危命令与资源硬上限、generation/owner fencing、父子/快照完整终态、应用级 callback ack、跨存储恢复、错误脱敏，以及真实或等价契约的 FalkorDB/Neo4j、NATS、Celery 多 Worker、Redis、MinIO 和 NodeMgmt 故障路径。
+
+## 4. Maintainability Verdict
+
+1. **六个月后，其他开发者能否快速理解逻辑？** 不能稳定做到。相同 SUCCESS 在不同域分别代表提交、派发、落库或正文 READY，完成条件缺少统一状态图。
+2. **新增同类插件是否需要复制代码？** 需要。权限 scope、命令策略、资源预算、callback identity、错误 payload 和 delivery 判断仍由插件或 handler 各自实现。
+3. **新增错误类型是否需要修改多个模块？** 需要。插件、dispatch、Celery、NATS listener/client、领域状态和展示均有独立映射。
+4. **新增 callback 模式是否容易扩展？** 注册容易，安全扩展困难。默认缺 publisher provenance、版本化 schema、event ID、应用确认、重放和持久化恢复。
+5. **当前接口是否容易被误用？** 是。空 permission map、自报 `allowed_org_ids/user_info`、`skip_permission_check`、裸关系 Service、`.delay()` 返回和布尔投递状态均可能被误当授权或完成证明。
+6. **日志是否足以排障且不会泄露敏感数据？** 否。owner/generation/checkpoint/correlation 信息不足，同时原始异常、凭据、配置或设备输出仍可能进入日志、DB、wire 和 UI。
+7. **状态异常时能否判断任务停在哪个阶段？** 仅少数局部链路可以；父子任务、外部 delete→push、单向 callback、旧 owner 图副作用和 snapshot generation 无法从单一状态实体重建。
+8. **当前设计降低复杂度了吗？** Operation/Outbox、配置正文生命周期和 Delivery lease 降低了局部复杂度，但相似基元被复制且完成边界不同，整体复杂度被移动到故障恢复和人工对账。
+
+剩余结构性缺陷及正确归属为：framework 提供可信 CallerContext 与 schema/deadline；service 消费 AuthorizedResourceScope 和关系双端授权；adapter 统一外部错误、预算、取消与幂等；plugin 只声明能力和单位成本；task orchestration 管 owner/generation/checkpoint/父子终态；callback builder 只构造版本化 envelope；error mapper/sanitizer 统一安全错误；test fixture 提供跨组织、代次、预算和 canary-secret 契约。
+
+### 最小安全修复优先级与长期设计取舍
+
+| 优先级 | 当前范围内的最小安全修复 | 推荐长期设计 | 影响与取舍 |
+|---|---|---|---|
+| 1 | 逐入口关闭全部 P0 越权、远程执行、数据丢失和错误成功；拒绝路径必须零副作用 | `CallerContext + AuthorizedResourceScope + RelationAuthorization` 与执行端共享安全策略 | 最快阻断事故，但若只逐入口修补仍需维护完整入口清单 |
+| 2 | 为采集/IPAM/Node/配置/自定义上报补 owner、generation、明确 PARTIAL/FAILED、父子聚合、应用 ack 和恢复扫描 | 共享 `Execution/Delivery/ParentChildAggregation` 基元 | 最小方案改动较小但保留多套状态机；长期方案迁移面大、能消除完成语义漂移 |
+| 3 | wire 删除 `pickled_exc`，日志/DB/UI 统一 safe code、category、retryable 和 sanitizer | 跨语言 `ErrorEnvelope` 与 adapter 错误映射表 | 需要旧消费者迁移窗口，但不能继续反序列化语言对象换取兼容 |
+| 4 | 为在线入口和后台作业增加 bytes/rows/IDs/pages/time/deadline 硬上限，超限零副作用；大任务改小批 checkpoint | 分层 `ResourceBudget`，在线查询、adapter 与持久作业各自收紧 | 硬上限会改变大客户行为，应以异步导出/作业替代，而不是无限放宽 |
+| 5 | 修正插件注册、shell-specific 参数、Node delivery，并加启动时 registry 校验 | plugin manifest / adapter registry / capability 声明 | 增加注册元数据，但把运行期故障提前到启动与契约测试期 |
+
+上述长期方案超出本次只读 Review 范围；本报告不授权自动重构。建议另开修复计划，按 P0 事故面拆批实施 TDD，关闭一批后重跑对应域和跨域契约复审。
+
+## 5. Recommendation
+
+**Block**。
+
+原因：25 个 P0 中包含确定的权限绕过、远程执行风险、敏感信息泄露、资源耗尽、任务错误成功、数据丢失和旧 owner 不可恢复副作用；33 个 P1 又表明幂等、状态、callback、错误与资源契约尚未形成生产闭环。现有测试既未覆盖这些关键负向路径，也未普遍达到相关模块 80% / 核心路径 90% 目标。
+
+只有在 P0 全部关闭、相关 P1 的跨层契约与恢复路径完成、每项都有明确回归测试，并补齐 Enterprise 可重建 provenance 后，才应重新评估合并结论。
