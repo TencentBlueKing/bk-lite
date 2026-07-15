@@ -35,7 +35,7 @@
 
 #### Scenario: LLM 返回未知 key
 - **WHEN** 生成结果包含不存在、已退役、已合并或属于其他知识库的 key
-- **THEN** 系统 MUST 不自动创建目录，并继续尝试类型默认目录或待归类
+- **THEN** 系统 MUST 不自动创建目录，并继续尝试同一 classification root 范围内的类型默认目录、允许接收页面的 classification root 或待归类
 - **AND** 单页路由失败 MUST 不导致整份资料构建失败
 
 #### Scenario: classification root 与已有 manual 页面

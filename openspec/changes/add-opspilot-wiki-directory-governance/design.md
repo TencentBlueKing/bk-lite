@@ -24,7 +24,7 @@ OpsPilot Wiki 已有知识库、资料、页面、页面版本、证据、关系
 - 结构化目录配置是机器真相；`schema_md` 是说明和生成上下文。
 - 知识库构建通常由管理员发起，不增加结构审批、构建审批或目录 ACL。
 - 本阶段不新增向量生成、检索、重建、权重和 UI。
-- 开发在 `.claude/worktrees/opspilot-wiki-hierarchy` 的 `codex/opspilot-wiki-hierarchy` 分支进行，本地数据库默认名为 `munchkin`。
+- 开发在 `.claude/worktrees/opspilot-wiki-hierarchy` 的 `codex/opspilot-wiki-hierarchy` 分支进行，本地数据库默认名为 `opspilot`。
 
 ## Goals / Non-Goals
 
@@ -118,15 +118,15 @@ revision 的 JSON 快照用于审计、构建固定和完整恢复；`WikiDirect
 
 **替代方案：只保存目录表。** 不采用，因为无法可靠固定构建所使用的完整结构，也不利于 diff、审计和回退。
 
-### 2. 结构保存自动校验、生成 revision 并立即生效
+### 2. 结构保存自动校验，生成相互绑定的 revision/governance generation 并经双 CAS 原子激活
 
-结构编辑器保存完整快照和 `structure_version`。服务端按顺序执行：
+结构编辑器保存完整快照、客户端读取的 `structure_version` 与 `base_generation_id`。服务端按顺序执行：
 
-1. 验证知识库权限和乐观锁版本。
+1. 验证知识库权限，并在知识库锁内复验请求的 `structure_version` 与 `base_generation_id` 分别匹配当前 active structure revision 和 active generation；任一不匹配返回 409 且不写入。
 2. 规范化名称、父子关系与排序。
 3. 验证 key 唯一、同级名称唯一、同库父节点、无循环、最大深度 8、系统目录不变量和规则引用。
 4. 计算 diff 与影响摘要。
-5. 基于当前 active generation 批量构造轻量 governance generation；在有界事务中写入目录投影、不可变 revision、审计，并 CAS 原子切换 active structure/generation 指针。
+5. 基于请求的 base generation 批量构造轻量 governance generation；在同一有界事务中创建 structure revision、governance generation、assignment/projection 与审计，并仅在 `structure_version` 与 `base_generation_id` 双 CAS 仍成功时原子切换 active structure/generation 指针。末端任一 CAS 失败 MUST 返回 409 并回滚整个事务，不得保留未激活 revision、generation、assignment/projection 或审计写入。
 
 非法保存整体失败；不产生部分节点、不产生 revision。破坏性合并/退役需要影响预览和用户确认，但这是操作安全确认，不是审批流。
 
@@ -241,7 +241,7 @@ confidence 只用于构建追踪，不是页面事实，也不触发审批。未
 
 只要页面仍被保留 generation 引用，删除入口只能执行逻辑归档或从当前 generation 成员集合移除，不能物理删除页面身份、版本或历史成员；否则回退无法恢复稳定页面 ID。
 
-回退不重新激活旧行，而是以目标快照创建新的 `rollback_of` generation。预检先比较目标 generation 固定的 structure revision 与当前结构；若目标目录已 merged/retired/移动且当前结构无法完整表达，必须显式联动从旧快照创建新的递增 structure revision，并与 rollback generation 原子切换，否则阻止回退。
+回退不重新激活旧行，而是以目标快照创建新的 `rollback_of` generation。预检先比较目标 generation 固定的 structure revision 与当前结构；若目标目录已 merged/retired/移动且当前结构无法完整表达，必须在显式确认后联动从旧快照创建新的递增 structure revision，未确认则阻止回退。执行请求携带 `structure_version` 与 `base_generation_id`，服务端在知识库锁内复验两个 active 指针；任一 CAS 冲突均返回 409，并在同一事务中回滚全部联动恢复写入，不得保留 structure revision、rollback generation、assignment/projection 或审计等孤儿记录；仅当 structure revision 与 base generation 双 CAS 均成功时，才允许原子切换新 revision 与 rollback generation 并完成回退。
 
 至少保留最近两个成功 generation。失败或取消只清理其独占 staging 数据，不能通过删除所有“本次触及页面”模拟回滚。
 
@@ -302,13 +302,13 @@ pages/<human-readable-directory-path>/<page>.md
 
 manifest 保存格式版本、KB 信息、structure revision/hash、完整树、稳定 key、父子/顺序/状态、空目录、页面映射和时间。Markdown frontmatter 保存 title、page_type、directory_key、tags。展示路径可变，稳定 key 是机器身份。
 
-原生导入优先级：key → manifest mapping → 显式目标 → type 默认 → 待归类。
+原生导入优先级：key → manifest mapping → 显式目标 → 范围内 type 默认 → classification root → 待归类。
 
-目标为仅含系统待归类的新建/空知识库时，管理员可在 preflight 确认恢复原生结构；系统导入器校验后保留 manifest 稳定 key 并先创建新的 active revision。非空知识库仍按上述映射和 fallback，不能因未知 key 静默扩张结构。
+目标为仅含系统待归类的新建/空知识库时，管理员可在 preflight 确认恢复原生结构；系统导入器校验后保留 manifest 稳定 key，准备新的业务 structure revision 与 staging generation，并仅在 base generation 和 active structure revision CAS 均成功时原子激活二者。非空知识库仍按上述映射和 fallback，不能因未知 key 静默扩张结构。
 
-第三方导入优先级：显式目标 → ZIP path 映射现有目录 → type 默认 → 待归类。只有管理员显式开启“从文件夹创建人工目录”且结构预览通过，才能先保存新 revision 再导入。
+第三方导入优先级：显式目标 → ZIP path 映射现有目录 → 范围内 type 默认 → classification root → 待归类。只有管理员显式开启“从文件夹创建人工目录”且结构预览通过，才能通过结构治理服务的 base generation 与 active structure revision 双 CAS 原子发布新 revision 和 governance generation；发布成功后再启动页面导入。
 
-预检查返回标题冲突、未知 key、未映射路径、非法标题、重复、深度、数量和安全限制，并签发短期单次 token，绑定 archive hash、KB、操作者、目标、active structure revision、选项和配额版本。execute 重新鉴权、复验全部绑定值并拒绝 replay。实现必须把所有归档视为不可信输入，防 zip-slip、绝对/驱动器路径、symlink、保留 key 伪造、Unicode 规范化碰撞、大小/数量/深度超限和越权。
+预检查返回标题冲突、未知 key、未映射路径、非法标题、重复、深度、数量和安全限制，并签发短期单次 token，绑定 archive hash、KB、操作者、目标、`structure_version`、`base_generation_id`、选项和配额版本。execute 重新鉴权、复验全部绑定值并拒绝 replay。实现必须把所有归档视为不可信输入，防 zip-slip、绝对/驱动器路径、symlink、保留 key 伪造、Unicode 规范化碰撞、大小/数量/深度超限和越权。
 
 导入成功后更新页面版本、目录历史、WikiLink、关系、图谱、计数和关键词消费面，不修改向量。
 
@@ -322,7 +322,7 @@ manifest 保存格式版本、KB 信息、structure revision/hash、完整树、
 - URL 保存 directory、子树、分页、搜索和 page type 状态。
 - 页面行展示主目录、page type、auto/manual、来源、冲突和更新时间。
 
-日常树只导航；管理员进入结构编辑模式后才能改树。结构保存提交完整快照和 version。409 时保留本地树、加载服务端最新 revision 并显示差异。
+日常树只导航；管理员进入结构编辑模式后才能改树。结构保存提交完整快照、`structure_version` 与 `base_generation_id`。任一结构/base generation 409 冲突时保留本地树、加载服务端最新 revision/generation 并显示差异。
 
 目录树筛选在列表、关键词和图谱间共享。灰度期未就绪 KB 继续使用旧平面列表，不删除目录数据。
 
@@ -381,7 +381,7 @@ manifest 保存格式版本、KB 信息、structure revision/hash、完整树、
 
 1. 在独立 worktree 完成模型/迁移和纯领域测试，所有新字段保持 nullable/兼容读取。
 2. 引入目录/结构服务、统一页面身份/归类服务和 active-generation query service；先迁移所有生产写入与消费读取路径。
-3. 实现幂等 bootstrap/backfill/preflight 命令和按 KB 写入围栏，使用 `munchkin` 数据库做迁移 dry-run，确认不会修改正文、版本、证据、Chunk 或向量，也不会在 backfill 后产生新的 generation 外写入。
+3. 实现幂等 bootstrap/backfill/preflight 命令和按 KB 写入围栏，使用 `opspilot` 数据库做迁移 dry-run，确认不会修改正文、版本、证据、Chunk 或向量，也不会在 backfill 后产生新的 generation 外写入。
 4. 实现普通构建、资料更新、导入和重建 staging generation；接入关系/图谱和关键词消费面后再开放 activation。
 5. 实现目录 API、导入导出和 Web 目录树/结构编辑；目录功能默认关闭。
 6. 选择测试 KB 完成结构初始化、存量自动归类和浏览器真实点击验收。

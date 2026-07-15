@@ -4,7 +4,7 @@
 系统 MUST 使用结构化目录配置的完整快照驱动目录树、页面归类和构建校验；`schema_md` MUST 仅作为用途说明与生成规则上下文，不能覆盖结构化配置中的目录身份、父子关系、顺序或状态。
 
 #### Scenario: 保存合法结构
-- **WHEN** 有知识库管理权限的用户提交完整结构快照和当前 `structure_version`
+- **WHEN** 有知识库管理权限的用户提交完整结构快照、当前 `structure_version` 与 `base_generation_id`
 - **THEN** 系统 MUST 自动完成确定性校验、创建不可变 revision 与基于当前知识快照的轻量 governance generation，并原子激活相互绑定的 structure revision 和 generation
 - **AND** 保存流程 MUST 不创建草稿、审批或人工验证步骤
 
@@ -58,8 +58,13 @@
 
 #### Scenario: 保存多项结构调整
 - **WHEN** 管理员在一次编辑会话中新增、重命名和重排多个目录后保存
-- **THEN** 系统 MUST 将这些调整作为一个原子结构 revision 激活
+- **THEN** 系统 MUST 创建相互绑定的 structure revision 与 governance generation，并仅在 `structure_version`（active structure revision）与 base generation CAS 均成功时原子激活二者
 - **AND** 审计记录 MUST 能还原该 revision 的完整树和节点差异
+
+#### Scenario: 保存末端发生结构或 generation 并发冲突
+- **WHEN** 服务端准备 structure revision、governance generation、assignment/projection 与审计后，末端 `structure_version` 或 `base_generation_id` 任一 CAS 失败
+- **THEN** 系统 MUST 返回 409 并回滚同一事务中的全部写入
+- **AND** 系统 MUST NOT 保留未激活 revision、generation、assignment/projection 或审计记录
 
 #### Scenario: 普通知识库成员编辑结构
 - **WHEN** 只有知识库读取权限的成员调用结构写接口
@@ -72,6 +77,11 @@
 - **WHEN** 管理员 A 先以版本 N 保存成功，管理员 B 随后仍以版本 N 保存
 - **THEN** B 的请求 MUST 返回 `409 structure_version_conflict`
 - **AND** 系统 MUST 不静默合并或覆盖 A 的 revision
+
+#### Scenario: 结构未变但 base generation 已推进
+- **WHEN** 页面治理先激活新 generation 而 active structure revision 未变，管理员仍使用旧 `base_generation_id` 保存结构
+- **THEN** 请求 MUST 返回 `409 base_generation_conflict`
+- **AND** 系统 MUST 不创建 revision、governance generation、assignment/projection 或审计记录
 
 ### Requirement: 目录合并是纯结构操作
 目录合并 MUST 只移动源目录的页面和子目录归属，不得调用 LLM 合并页面正文。系统 MUST 在执行前返回影响预览与短期单次 operation token，绑定 knowledge base、structure version、base generation、源/目标/动作参数和影响 hash；执行时 MUST 重新鉴权、复验绑定值并重算影响。发现同名子目录冲突或预览后状态变化时，v1 MUST 中止整个合并。

@@ -34,7 +34,7 @@
 - **THEN** 展示文件路径 MAY 变化，但 manifest 中 directory key MUST 保持不变
 
 ### Requirement: 原生导入按稳定身份恢复目录
-导入 OpsPilot 原生归档时，目录匹配 MUST 按 `directory_key`、manifest 映射、用户选择目标、page type 默认目录、待归类的顺序执行。只有新建/空知识库在管理员确认“恢复归档结构”后，系统导入器才能校验并使用 manifest 稳定 key 创建首个业务结构 revision；非空知识库的未知或退役 key MUST 不自动创建目录。
+导入 OpsPilot 原生归档时，目录匹配 MUST 按 `directory_key`、manifest 映射、用户选择目标、同一 classification root 范围内的 page type 默认目录、允许接收页面的 classification root、待归类的顺序执行。只有新建/空知识库在管理员确认“恢复归档结构”后，系统导入器才能校验并使用 manifest 稳定 key 准备首个业务 structure revision 与 staging generation，并通过 base generation 和 active structure revision CAS 原子激活二者；非空知识库的未知或退役 key MUST 不自动创建目录。
 
 #### Scenario: 导入相同结构 revision 的原生归档
 - **WHEN** manifest 中的目录 key 在目标知识库均合法可用
@@ -42,15 +42,15 @@
 
 #### Scenario: 导入到新建或空知识库
 - **WHEN** 管理员在仅含系统待归类目录的目标知识库确认恢复原生归档结构
-- **THEN** 系统 MUST 把归档视为不可信输入，先校验格式、key 语法与唯一性、父子关系、深度、名称、系统保留 key 和资源配额，再原子创建新的 active structure revision
+- **THEN** 系统 MUST 把归档视为不可信输入，先校验格式、key 语法与唯一性、父子关系、深度、名称、系统保留 key 和资源配额，再准备首个业务 structure revision 与 staging generation，并仅在 base generation 和 active structure revision CAS 均成功时原子激活二者
 - **AND** 这些 key 只能由受控的原生导入服务在空知识库中写入，界面不得暴露为用户可编辑的原始 ID/key
 
 #### Scenario: manifest 引用未知 key
 - **WHEN** 页面引用目标知识库不存在的 key
-- **THEN** 预检查 MUST 报告未知 key，并按显式目标、类型默认目录或待归类回退
+- **THEN** 预检查 MUST 报告未知 key，并按显式目标、同一 classification root 范围内的类型默认目录、允许接收页面的 classification root 或待归类回退
 
 ### Requirement: 第三方归档默认不创建知识目录
-导入非 OpsPilot 原生归档时，系统 MUST 按用户选择目标、ZIP 路径映射到现有目录、page type 默认目录、待归类的顺序归档。只有用户显式启用“从文件夹创建人工目录”并确认预览时，系统才能创建目录。
+导入非 OpsPilot 原生归档时，系统 MUST 按用户选择目标、ZIP 路径映射到现有目录、同一 classification root 范围内的 page type 默认目录、允许接收页面的 classification root、待归类的顺序归档。只有用户显式启用“从文件夹创建人工目录”并确认预览时，系统才能创建目录。
 
 #### Scenario: 默认导入第三方 ZIP
 - **WHEN** 第三方 ZIP 包含 `docs/api/v1/page.md` 且目标知识库没有对应目录
@@ -58,11 +58,11 @@
 
 #### Scenario: 显式从文件夹创建目录
 - **WHEN** 管理员启用该选项且预览通过名称、深度、冲突和数量校验
-- **THEN** 系统 MUST 把拟创建节点作为一次结构 revision 保存，再导入页面
+- **THEN** 系统 MUST 通过结构治理服务准备新的 structure revision 与 governance generation，并仅在 base generation 和 active structure revision CAS 均成功时原子激活二者；激活成功后才启动页面导入
 - **AND** 任一结构创建失败 MUST 阻止页面导入开始
 
 ### Requirement: 导入执行前提供完整预检查
-导入预检查 MUST 返回新页面数、可更新页面数、标题冲突、未知 key、未映射路径、非法标题、重复文件、目录深度和安全限制结果。预检查不得修改知识库，并 MUST 签发短期、单次使用的 execute token，绑定 archive hash、knowledge base、操作者、目标目录、active structure revision、导入选项和配额版本；执行时 MUST 重新鉴权并复验全部绑定值。
+导入预检查 MUST 返回新页面数、可更新页面数、标题冲突、未知 key、未映射路径、非法标题、重复文件、目录深度和安全限制结果。预检查不得修改知识库，并 MUST 签发短期、单次使用的 execute token，绑定 archive hash、knowledge base、操作者、目标目录、`structure_version`、`base_generation_id`、导入选项和配额版本；执行时 MUST 重新鉴权并复验全部绑定值。
 
 #### Scenario: 预检查发现多个问题
 - **WHEN** 归档同时包含重复标题、未知 key 和超深路径
@@ -70,7 +70,7 @@
 - **AND** 未经用户修复或确认允许 fallback 前不得执行导入
 
 #### Scenario: 预检查后结构或输入变化
-- **WHEN** execute 时归档 hash、操作者、知识库、目标、active revision、导入选项或配额与 token 任一绑定值不同
+- **WHEN** execute 时归档 hash、操作者、知识库、目标、`structure_version`、`base_generation_id`、导入选项或配额与 token 任一绑定值不同
 - **THEN** 系统 MUST 拒绝执行并要求重新 preflight，不得沿用旧目录映射
 
 #### Scenario: execute token 被重复使用

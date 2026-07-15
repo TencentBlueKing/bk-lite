@@ -1,6 +1,6 @@
 ## 1. 隔离环境、基线与对照证据
 
-- [ ] 1.1 在 `.claude/worktrees/opspilot-wiki-hierarchy` 复核分支 `codex/opspilot-wiki-hierarchy`、被忽略的 `server/local_settings.py` 与 `server/.env`，确认默认数据库为 `munchkin`，且环境文件和密钥不会进入 Git。
+- [x] 1.1 在 `.claude/worktrees/opspilot-wiki-hierarchy` 复核分支 `codex/opspilot-wiki-hierarchy`、被忽略的 `server/local_settings.py` 与 `server/.env`，确认默认数据库为 `opspilot`，且环境文件和密钥不会进入 Git。
 - [ ] 1.2 重新运行现有 Wiki 模型与重建基线测试，诊断并记录“12 个断言通过但 pytest 进程不退出”的根因与可正常终止的隔离命令；若修复属于无关基础设施，另立 change，不扩大本功能 diff。
 - [ ] 1.3 在 `docs/superpowers/verifications/2026-07-13-opspilot-wiki-directory-governance-verification.md` 建立 1–15 阶段对照矩阵，固定 `llm_wiki@9b71ade` 对应源码/测试或“无对应实现”，逐阶段记录借鉴点、拒绝项、OpsPilot 差异和验证证据。
 - [ ] 1.4 为 Wiki 测试补齐统一 factory/fixture，禁止测试继续绕过页面标题、目录和 generation 领域入口直接制造无效对象。
@@ -53,7 +53,7 @@
 - [ ] 6.3 实现 KB 行锁内 base generation + structure revision CAS、完整校验和短事务切换 active 指针/兼容镜像；CAS 失败 superseded/rebase，数据失败保持旧 active 不变。
 - [ ] 6.4 新建统一 active-generation query service，用契约/守卫测试强制页面、关键词、Agent、WikiLink/反向链接、关系、图谱、概览和导出读取同一 generation，禁止遗留 current/status 直读。
 - [ ] 6.5 为创建/改名/编辑/移动/恢复/归档/结构保存实现不可变轻量 governance generation；正文变化先准备 WikiLink、关键词和关系，目录-only 变化可复用版本。
-- [ ] 6.6 实现保留、引用计数清理、回退预览和新 `rollback_of` generation；结构不兼容时联动创建递增 revision 或阻止，不得复活旧 generation/revision 行。
+- [ ] 6.6 实现保留、引用计数清理、回退预览和新 `rollback_of` generation；结构不兼容时只允许通过 structure version + base generation 双 CAS 联动创建递增 revision，任一冲突回滚全部联动写入并返回 409，否则阻止；不得复活旧 generation/revision 行。
 - [ ] 6.7 增加确定性并发测试：结构/移动/编辑/归档与构建竞争、两个同 base 构建、staging 同标题共享、旧任务缺少 base/revision 时拒绝激活。
 - [ ] 6.8 对照 `llm_wiki` 的逐文件正式写入和 `src-tauri/src/commands/file_history.rs` 文件历史，验证 OpsPilot 提供集合级原子发布、完整前态和真正可执行的回退，并更新阶段证据。
 
@@ -84,9 +84,9 @@
 - [ ] 9.1 先扩展 import/export/Material 测试，覆盖相对路径、classification root、空目录、空 KB 稳定 key 恢复、保留 key 伪造、unknown/merged fallback、标题冲突、token TOCTOU/replay 和 ZIP 配额。
 - [ ] 9.2 修改资料上传 API 与 `MaterialTab` 请求契约，保留 `source_relative_path/source_identity/source_folder_path/content_hash`，可选 classification root 只限制候选子树，不自动创建知识目录。
 - [ ] 9.3 实现原生导出 `manifest.json + structure.json + pages/<display-path>/*.md`，manifest 保存结构 revision/hash、稳定 key、空目录、页面映射和格式版本。
-- [ ] 9.4 实现共享 preflight/execute：签发短期单次 token，绑定 archive hash/KB/actor/target/revision/options/quota；execute 重新鉴权复验并拒绝 replay、zip-slip、绝对路径、symlink、保留 key 伪造和资源超限。
-- [ ] 9.5 实现原生导入 key → mapping → 显式目标 → 范围内类型默认 → root → 待归类；空 KB 经确认后把归档当不可信输入校验并保留合法 manifest key，创建首个业务 revision + staging generation 原子发布。
-- [ ] 9.6 实现第三方 ZIP 显式目标 → 现有路径映射 → type 默认 → 待归类；只有管理员显式开启并确认结构预览时，才从文件夹创建 manual 目录并先产生新 revision。
+- [ ] 9.4 实现共享 preflight/execute：签发短期单次 token，绑定 archive hash/KB/actor/target/structure version/base generation/options/quota；execute 重新鉴权复验并拒绝 replay、zip-slip、绝对路径、symlink、保留 key 伪造和资源超限。
+- [ ] 9.5 实现原生导入 key → mapping → 显式目标 → 范围内类型默认 → classification root → 待归类；空 KB 经确认后把归档当不可信输入校验并保留合法 manifest key，准备首个业务 revision 与 staging generation，并通过 base generation 和 active structure revision CAS 原子激活二者。
+- [ ] 9.6 实现第三方 ZIP 显式目标 → 现有路径映射 → 范围内 type 默认 → classification root → 待归类；只有管理员显式开启并确认结构预览时，才从文件夹创建 manual 目录，并通过结构治理服务的 base generation 与 active structure revision 双 CAS 原子发布新 revision 和 governance generation；发布成功后再启动页面导入。
 - [ ] 9.7 在同一 staging generation 中准备版本、目录历史、WikiLink/反向链接、关系、图谱、计数和关键词元数据后再激活，保持向量数据不变。
 - [ ] 9.8 增加原生导出→新建/空 KB 确认恢复结构→再次导出的规范化往返测试，并校验空目录、顺序、稳定 key 保留与页面 ID 映射报告。
 - [ ] 9.9 对照 `llm_wiki/src/lib/project-file-sync.ts` 和 `source-lifecycle.ts` 的完整来源路径/hash 移动识别，记录借鉴的 provenance 与未采用的“来源文件夹等于知识目录”。
@@ -96,7 +96,7 @@
 - [ ] 10.1 先新增 `test_wiki_directory_views.py`，覆盖结构/base CAS、operation token、合并/退役、轻量页面治理、bootstrap/readiness/fence/enable、rollback_of + 结构联动、目录筛选与越权。
 - [ ] 10.2 扩展 `wiki_kb_view.py` 提供 bootstrap/readiness/fence/enable，以及创建新 rollback generation、结构兼容 diff 和显式联动递增 revision 的回退接口。
 - [ ] 10.3 扩展 `wiki_page_view.py` 提供目录/breadcrumb/assignment mode、单页和批量移动、恢复 auto、逻辑归档与 409/422 可操作错误。
-- [ ] 10.4 扩展 `wiki_material_view.py` 与 import/export 端点，传递来源路径/classification root 和绑定 archive/KB/actor/target/revision/options/quota 的单次 preflight token，以及 generation/build ID。
+- [ ] 10.4 扩展 `wiki_material_view.py` 与 import/export 端点，传递来源路径/classification root 和绑定 archive/KB/actor/target/structure version/base generation/options/quota 的单次 preflight token，以及 generation/build ID。
 - [ ] 10.5 所有端点复用 KB 管理员权限且不增加目录 ACL；serializer 要求 existing node 回传只读 ID/key 并校验未替换，new node 只收 client_ref，拒绝用户为新节点选择或覆盖 ID/key。
 - [ ] 10.6 为 null directory、待归类比例、unknown key、generation failed/superseded、409、回退和消费面 generation mismatch 增加日志、指标或可查询审计。
 - [ ] 10.7 对照 `llm_wiki` 的前端直连文件命令与无 KB 权限/REST 并发契约，记录 OpsPilot 后端授权、CAS、token、审计和统一错误响应的阶段 10 差异。
@@ -137,7 +137,7 @@
 ## 14. 灰度、迁移演练与运行保护
 
 - [ ] 14.1 新目录 UI 默认按 KB 关闭；backfill 前排空无 base/revision 旧任务并开启写围栏，ready 后所有写入已走新管线，enable 在 KB 锁内复验 readiness/base 指针。
-- [ ] 14.2 在 `munchkin` 运行 audit/backfill dry-run、围栏写请求、实际回填和幂等重跑，记录行数/耗时/锁等待，并证明无新 null directory/generation 外写入及正文/证据/Chunk/向量不变。
+- [ ] 14.2 在 `opspilot` 运行 audit/backfill dry-run、围栏写请求、实际回填和幂等重跑，记录行数/耗时/锁等待，并证明无新 null directory/generation 外写入及正文/证据/Chunk/向量不变。
 - [ ] 14.3 选择测试 KB 保存结构真相、自动归类存量 auto 页面并核对 manual/待归类结果，再按 KB 启用新读写路径。
 - [ ] 14.4 监控并设定告警阈值：null directory、待归类率、unknown key、generation failed/superseded、消费面 mismatch、结构 409 和回退频率。
 - [ ] 14.5 保留旧平面读取一个发布周期，但 ready/enabled KB 的写入永远不退回 legacy；关闭 UI 开关只切兼容读视图并保留 generation/目录数据，不做破坏性 down migration。

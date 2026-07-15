@@ -109,7 +109,7 @@ ready generation MUST 在系统校验通过后自动激活，不得等待管理�
 - **AND** 冲突页面 MUST 保持当前版本并单独保存候选
 
 ### Requirement: generation 失败与回退具有完整前态
-系统 MUST 保留至少最近两个成功 generation，并 MUST 能在不重新调用 LLM 的情况下基于目标快照创建新的 `rollback_of` generation；不得直接重新激活或改写已冻结 generation。回退预检 MUST 校验目标 generation 的 structure revision 与当前目录兼容性；不兼容时只能在显式确认后从旧结构快照创建新的递增 structure revision 并与 rollback generation 原子激活，否则阻止回退。取消或失败不能通过删除“本次触及页面”模拟回滚。
+系统 MUST 保留至少最近两个成功 generation，并 MUST 能在不重新调用 LLM 的情况下基于目标快照创建新的 `rollback_of` generation；不得直接重新激活或改写已冻结 generation。回退预检 MUST 校验目标 generation 的 structure revision 与当前目录兼容性；不兼容时只能在显式确认后从旧结构快照创建新的递增 structure revision，并通过请求携带且锁内复验的 `structure_version` 与 `base_generation_id` 双 CAS 将该 revision 与 rollback generation 原子激活，否则返回 409 并回滚同一事务的全部联动恢复写入。取消或失败不能通过删除“本次触及页面”模拟回滚。
 
 #### Scenario: 切换后业务回退
 - **WHEN** 管理员触发回退到仍在保留期内且与当前结构兼容的成功 generation
@@ -120,6 +120,7 @@ ready generation MUST 在系统校验通过后自动激活，不得等待管理�
 - **WHEN** 回退预检发现目标快照不能由当前 active structure 完整表示
 - **THEN** 系统 MUST 返回结构差异并要求显式联动结构恢复，或阻止执行
 - **AND** 联动恢复 MUST 从旧快照创建新的递增 revision，不能重新激活旧 revision 行
+- **AND** 执行请求 MUST 携带 `structure_version` 与 `base_generation_id`，服务端 MUST 在知识库锁内复验并仅在双 CAS 成功时原子激活新 revision 与 rollback generation；任一冲突 MUST 返回 409、回滚全部联动恢复写入且不保留孤儿对象或审计
 
 #### Scenario: preparing generation 被取消
 - **WHEN** 用户取消尚未激活的 generation

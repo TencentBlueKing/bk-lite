@@ -52,7 +52,7 @@
 
 #### Scenario: 编辑模式保存
 - **WHEN** 管理员完成多项树调整并点击保存
-- **THEN** UI MUST 提交完整快照与读取时的 `structure_version`，成功后刷新 revision、目录树和计数
+- **THEN** UI MUST 提交完整快照与读取时的 `structure_version`、`base_generation_id`，成功后刷新 revision、generation、目录树和计数
 
 ### Requirement: 页面移动形成 manual lock
 页面详情、行菜单和批量操作 MUST 支持移动到同知识库活动目录，并在成功后显示 manual 状态；页面 MUST 提供恢复自动归类操作。
@@ -78,7 +78,7 @@
 - **THEN** UI MUST 等待原子操作完成后刷新树、页面列表和 redirect 状态
 
 ### Requirement: 并发结构冲突保留用户本地修改
-结构保存返回 `409 structure_version_conflict` 时，前端 MUST 保留未保存的本地树，重新加载服务端最新 revision，并提供差异或重新应用入口；不得静默丢弃或覆盖任何一方。
+结构保存返回 `409 structure_version_conflict` 或 `409 base_generation_conflict` 时，前端 MUST 保留未保存的本地树，重新加载服务端最新 revision/generation，并提供差异或重新应用入口；不得静默丢弃或覆盖任何一方。
 
 #### Scenario: 两个浏览器窗口并发编辑
 - **WHEN** 后提交窗口收到 409
