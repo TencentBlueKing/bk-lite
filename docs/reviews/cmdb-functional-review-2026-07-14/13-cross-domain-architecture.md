@@ -16,13 +16,14 @@
 | 权限 helper | HTTP 侧散落在 View/mixin/`permission_util.py`；NATS `_build_nats_permission_map` 仍信任 payload；custom provider `_allowed_orgs`、Node system 写和关系 Service 另建语义（F01/F02/F03/F14/F36/F45/F52/F58/F62） | framework 建可信 `CallerContext`；Service 入口统一解析 `AuthorizedResourceScope`；关系资源使用双端授权器；插件/Worker 只消费不可伪造 scope |
 | 外部依赖 wrapper | `GraphClient` 双驱动、core NATS、NodeMgmt/SystemMgmt RPC、MinIO lifecycle wrapper 均存在，但 deadline、预算、错误和幂等没有统一契约（F15/F31/F51/F60/F63/F64） | adapter 负责 schema、timeout/cancel、错误码和调用相关 ID；Service 不直接解释裸 Response/异常文本；跨系统写由 durable delivery 编排 |
 | 布尔控制参数 | `result`、`processed`、`delivery_detected`、`success`、`skip_permission_check`、空 `permission_map`、`return_entity`、`include_children`、`js=False` 在不同层改变安全或完成语义 | 布尔仅用于局部纯函数；身份、权限、投递、完成度改用枚举/类型化对象，危险 bypass 只允许封装在受审 system capability 内 |
-| fallback | 临时兼容包括 NATS jsonpickle 旧协议（F63）、IPAM 旧 `subnet_id` 关系与 Node display 旧数据源/展示结构；长期运行时策略包括 GraphClient 的 FalkorDB/Neo4j 选择（F15）；永久可选能力包括社区 CustomReporting 空 provider；订阅关系批查失败后还会逐实例 fallback（F61） | 不把所有 fallback 等同为待删除兼容代码：临时兼容归 compatibility layer 并声明版本、指标、失败语义和移除条件；图驱动归 adapter registry 与启动配置校验；可选 provider 以 capability 声明并 fail closed；订阅降级由 service/task orchestration 统一权限、预算和失败语义 |
+| fallback | 临时兼容包括 NATS jsonpickle 旧协议（F63）与 Node display 旧数据源/展示结构；IPAM `subnet_id` 与关系查询是仍有生产者和内部读者的迁移期双轨契约；长期运行时策略包括 GraphClient 的 FalkorDB/Neo4j 选择（F15）；永久可选能力包括社区 CustomReporting 空 provider；订阅关系批查失败后还会逐实例 fallback（F61） | 不把所有 fallback 等同为待删除兼容代码：临时兼容归 compatibility layer 并声明版本、指标、失败语义和移除条件；迁移期双轨先停止/迁移生产者与读者并完成存量回填核对；图驱动归 adapter registry 与启动配置校验；可选 provider 以 capability 声明并 fail closed；订阅降级由 service/task orchestration 统一权限、预算和失败语义 |
 
 ### 1.2 Fallback 分类与治理条件
 
 | 类别 | 当前实例 | 必须具备的生产级契约 |
 |---|---|---|
-| 临时协议/数据兼容 | NATS `pickled_exc/jsonpickle.decode` 旧响应；IPAM 旧 `subnet_id` 关系读取；Node display 对旧采集摘要、实例行和展示结构的兼容 | 在 adapter/compatibility layer 明示支持的生产者与消费者版本、命中/拒绝/失败指标、fail-closed 失败语义和移除条件；未知版本、越权实体、超预算或无法判定完整性的旧数据不得按成功/空结果继续。jsonpickle 兼容还必须有禁用版本与迁移窗口，不能无限期保留跨进程对象反序列化。只有观测证明旧流量归零且发布窗口结束后才能移除。 |
+| 临时协议/数据兼容 | NATS `pickled_exc/jsonpickle.decode` 旧响应；Node display 对旧采集摘要、实例行和展示结构的兼容 | 在 adapter/compatibility layer 明示支持的生产者与消费者版本、命中/拒绝/失败指标、fail-closed 失败语义和移除条件；未知版本、越权实体、超预算或无法判定完整性的旧数据不得按成功/空结果继续。jsonpickle 兼容还必须有禁用版本与迁移窗口，不能无限期保留跨进程对象反序列化。只有观测证明旧流量归零且发布窗口结束后才能移除。 |
+| 迁移期双轨字段/关系契约 | IPAM 同时保留 `subnet_id` 字段与 subnet→IP 关系路径；当前 `_upsert_ip_instance` 仍写 `subnet_id`，`_writeback_subnet_utilization` 仍依赖该字段 | 不能把 `subnet_id` 当成只读历史 fallback 直接删除。退场前必须先停止或迁移所有字段生产者，将内部读者切到有权限与预算约束的关系契约，完成存量字段/关系回填与双向一致性核对；迁移期间对字段/关系分歧 fail closed 并记录指标。仅在旧字段读写命中归零、一致性达到发布门槛且跨过约定发布窗口后移除双轨。 |
 | 长期运行时策略 | `GraphClient` 按部署配置选择 FalkorDB 或 Neo4j | 这是支持多运行时的 adapter strategy，不以“清退 fallback”为目标。由显式 adapter registry/启动配置校验选择唯一驱动；启动时拒绝缺失、冲突或不支持的组合，并以同一结构化查询、排序、预算、错误和契约测试证明双驱动语义一致。环境变量只应承载已校验配置，不能让领域 Service 猜测运行时。 |
 | 永久可选能力 | 社区 `_EMPTY_CUSTOM_REPORTING` provider | 这是 Enterprise Overlay 未安装时的 optional-provider，不要求设置移除条件。framework 应显式暴露 capability availability/version：只读空结果必须可区分“能力未安装”和“已安装但业务数据为空”，所有写入、凭据、审核与 ingest 在无 provider 时稳定 fail closed；provider 注册与启动校验负责确认实现完整。 |
 | 运行期降级路径 | 订阅关系批查失败后逐实例 RPC fallback | 降级前后必须使用同一可信 `CallerContext/AuthorizedResourceScope` 和关系双端权限，不得因 fallback 扩大可见范围；按单规则限制 fallback 实例数、RPC 次数、关系边、响应字节与单调 deadline。批查或降级失败、超限时持久化结构化且可重试的失败/checkpoint，不推进 `last_check_time` 或快照，也不得把部分/空结果解释为成功。 |
