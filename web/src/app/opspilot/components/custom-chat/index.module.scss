@@ -170,6 +170,16 @@
     height: 30px;
   }
 
+  // 引导语(默认欢迎语)字号比 markdownBody 小一档,不影响 LLM 回复正文
+  .guideText {
+    font-size: 12px;
+    line-height: 1.6;
+    // markdownBody 默认 h1-h6 + strong 都是 600 (semibold),引导语不加重
+    h1, h2, h3, h4, h5, h6, strong, b {
+      font-weight: 400;
+    }
+  }
+
   .sender {
     background-color: var(--color-bg);
   }

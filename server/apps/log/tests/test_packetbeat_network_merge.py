@@ -36,6 +36,52 @@ def load_packetbeat_child_fragment(rendered: str):
     return yaml.safe_load(f"packetbeat.protocols:\n{rendered}")
 
 
+def test_update_config_parses_packetbeat_flows_child_fragment():
+    from apps.log.views.collect_config import parse_collect_config_content
+
+    config = types.SimpleNamespace(
+        is_child=True,
+        file_type="yaml",
+        collect_instance=types.SimpleNamespace(
+            collect_type=types.SimpleNamespace(collector="Packetbeat", name="flows")
+        ),
+    )
+
+    content = parse_collect_config_content(config, render_flows_child())
+
+    assert content["packetbeat.protocols"][0]["type"] == "http"
+    assert content["packetbeat.flows"]["period"] == "10s"
+
+
+@pytest.mark.parametrize(
+    ("rendered", "expected"),
+    [
+        ("key: value\n", {"key": "value"}),
+        ("- module: nginx\n", [{"module": "nginx"}]),
+    ],
+)
+def test_update_config_keeps_other_yaml_shapes(rendered, expected):
+    from apps.log.views.collect_config import parse_collect_config_content
+
+    config = types.SimpleNamespace(
+        is_child=True,
+        file_type="yaml",
+        collect_instance=types.SimpleNamespace(
+            collect_type=types.SimpleNamespace(collector="Filebeat", name="nginx")
+        ),
+    )
+
+    assert parse_collect_config_content(config, rendered) == expected
+
+
+def test_update_config_keeps_toml_parsing_without_collect_type_relation():
+    from apps.log.views.collect_config import parse_collect_config_content
+
+    config = types.SimpleNamespace(is_child=False, file_type="toml")
+
+    assert parse_collect_config_content(config, 'key = "value"\n') == {"key": "value"}
+
+
 def test_packetbeat_parent_config_uses_device_template_default():
     collectors = json.loads(COLLECTOR_FILE.read_text(encoding="utf-8"))
     linux_config = next(item for item in collectors if item["id"] == "Packetbeat_linux")["default_config"]["nats"]

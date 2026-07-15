@@ -3,6 +3,7 @@ from collections import defaultdict
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
+from apps.core.logger import system_mgmt_logger as logger
 from apps.system_mgmt.models import (
     IMNotificationChannel,
     IMNotificationChannelStatusChoices,
@@ -41,13 +42,28 @@ def create_im_notification_sync_run(channel_id: int, trigger_mode: str = IMNotif
         with transaction.atomic():
             channel = IMNotificationChannel.objects.select_related("integration_instance").select_for_update().filter(id=channel_id, enabled=True).first()
             if not channel:
+                logger.warning(
+                    f"create_im_notification_sync_run: channel not found or disabled, "
+                    f"channel_id={channel_id}, trigger_mode={trigger_mode}"
+                )
                 return {"result": False, "message": "IM notification channel not found"}
 
             instance = channel.integration_instance
             if not instance.enabled or instance.status != "ready" or instance.capability_status.get("im_notification") != "ready":
+                logger.warning(
+                    f"create_im_notification_sync_run: channel instance not ready, "
+                    f"channel_id={channel_id}, provider_key={instance.provider_key}, "
+                    f"instance_enabled={instance.enabled}, instance_status={instance.status}, "
+                    f"capability_status={dict(instance.capability_status or {})}, "
+                    f"trigger_mode={trigger_mode}"
+                )
                 return {"result": False, "message": "IM notification channel is not ready"}
 
             if IMNotificationSyncRun.objects.filter(channel=channel, status=SYNC_RUN_STATUS_RUNNING).exists():
+                logger.warning(
+                    f"create_im_notification_sync_run: sync already running, "
+                    f"channel_id={channel_id}, trigger_mode={trigger_mode}"
+                )
                 return {"result": False, "message": "IM notification sync is already running"}
 
             run = IMNotificationSyncRun.objects.create(
@@ -58,18 +74,31 @@ def create_im_notification_sync_run(channel_id: int, trigger_mode: str = IMNotif
                 locked_config_snapshot=_build_locked_config_snapshot(channel),
             )
     except IntegrityError:
+        logger.warning(
+            f"create_im_notification_sync_run: IntegrityError (race-condition already-running), "
+            f"channel_id={channel_id}, trigger_mode={trigger_mode}"
+        )
         return {"result": False, "message": "IM notification sync is already running"}
+    logger.info(
+        f"create_im_notification_sync_run: sync task initiated, "
+        f"channel_id={channel_id}, run_id={run.id}, trigger_mode={trigger_mode}"
+    )
     return {"result": True, "message": "IM notification sync task has been initiated", "data": {"run_id": run.id}}
 
 
 def execute_im_notification_sync_run(run_id: int):
     run = IMNotificationSyncRun.objects.select_related("channel", "channel__integration_instance").filter(id=run_id).first()
     if not run:
+        logger.warning(f"execute_im_notification_sync_run: sync run not found, run_id={run_id}")
         return {"result": False, "message": "IM notification sync run not found"}
 
     config_snapshot = run.locked_config_snapshot or {}
     instance = IntegrationInstance.objects.filter(id=config_snapshot.get("integration_instance_id")).first()
     if not instance:
+        logger.error(
+            f"execute_im_notification_sync_run: integration instance deleted after sync started, "
+            f"run_id={run_id}, channel_id={run.channel_id}, integration_instance_id={config_snapshot.get('integration_instance_id')}"
+        )
         return _fail_sync_run(run, "Integration instance not found")
 
     runtime_service = RuntimeApplicationService()
@@ -82,6 +111,15 @@ def execute_im_notification_sync_run(run_id: int):
         run=run,
     )
     if not result.success:
+        # 外部 API 失败（飞书/钉钉/企微 拒绝或网络错误），记 ERROR 触发运维告警。
+        # 含 channel_id / run_id / provider_key / error code / summary，便于区分平台 vs 外部。
+        error_codes = [e.code for e in (result.errors or [])]
+        logger.error(
+            f"execute_im_notification_sync_run: external list_external_users failed, "
+            f"run_id={run_id}, channel_id={run.channel_id}, "
+            f"provider_key={config_snapshot.get('provider_key') or instance.provider_key}, "
+            f"summary={result.summary!r}, codes={error_codes}, request_id={result.request_id}"
+        )
         return _fail_sync_run(run, result.summary, payload=result.to_dict())
 
     manifest = runtime_service.get_provider_manifest(config_snapshot.get("provider_key") or instance.provider_key)
@@ -136,18 +174,33 @@ def execute_im_notification_sync_run(run_id: int):
         run.channel.status = CHANNEL_STATUS_READY if matched_count > 0 else CHANNEL_STATUS_NEEDS_RESYNC
         run.channel.save(update_fields=["status", "updated_at"])
 
+    logger.info(
+        f"execute_im_notification_sync_run: sync completed, "
+        f"run_id={run_id}, channel_id={run.channel_id}, status={status}, "
+        f"total_external_users={len(external_users)}, "
+        f"matched={matched_count}, unmatched={unmatched_count}, conflict={conflict_count}"
+    )
     return {"result": True, "message": summary, "data": {"run_id": run.id}}
 
 
 def send_im_notification(channel_id: int, title: str, content: str, receivers):
     channel = IMNotificationChannel.objects.select_related("integration_instance").filter(id=channel_id, enabled=True).first()
     if not channel:
+        logger.warning(f"send_im_notification: channel not found or disabled, channel_id={channel_id}")
         return {"result": False, "message": "IM notification channel not found"}
     if channel.status != CHANNEL_STATUS_READY:
+        logger.warning(
+            f"send_im_notification: channel requires sync before sending, "
+            f"channel_id={channel_id}, channel_status={channel.status}"
+        )
         return {"result": False, "message": "IM notification channel requires a successful sync before sending"}
 
     users = _resolve_users(receivers)
     if not users:
+        logger.warning(
+            f"send_im_notification: no valid recipients, "
+            f"channel_id={channel_id}, receivers={receivers}"
+        )
         return {"result": False, "message": "No valid recipients found"}
 
     mappings = IMNotificationUserMapping.objects.filter(channel=channel, user_id__in=[user.id for user in users])
@@ -158,6 +211,11 @@ def send_im_notification(channel_id: int, title: str, content: str, receivers):
             receive_ids.append(receive_id)
 
     if not receive_ids:
+        logger.warning(
+            f"send_im_notification: no matched IM recipients, "
+            f"channel_id={channel_id}, candidate_user_ids={[user.id for user in users]}, "
+            f"external_receive_field={channel.external_receive_field}"
+        )
         return {"result": False, "message": "No matched IM recipients found"}
 
     runtime_service = RuntimeApplicationService()
@@ -171,17 +229,39 @@ def send_im_notification(channel_id: int, title: str, content: str, receivers):
         receive_id_type=channel.external_receive_field,
         receive_ids=receive_ids,
     )
+    if result.success:
+        logger.info(
+            f"send_im_notification: send_message succeeded, "
+            f"channel_id={channel_id}, provider_key={channel.integration_instance.provider_key}, "
+            f"title={title!r}, recipient_count={len(receive_ids)}, "
+            f"summary={result.summary!r}"
+        )
+    else:
+        # 外部 API 失败（飞书/钉钉/企微 拒绝或网络错误），记 ERROR 触发运维告警。
+        error_codes = [e.code for e in (result.errors or [])]
+        logger.error(
+            f"send_im_notification: external send_message failed, "
+            f"channel_id={channel_id}, provider_key={channel.integration_instance.provider_key}, "
+            f"title={title!r}, recipient_count={len(receive_ids)}, "
+            f"summary={result.summary!r}, codes={error_codes}, request_id={result.request_id}"
+        )
     return {"result": result.success, "message": result.summary, "data": result.to_dict()}
 
 
 def send_im_notification_to_users(channel_id: int, user_ids: list[int], title: str, content: str):
     channel = IMNotificationChannel.objects.select_related("integration_instance").filter(id=channel_id, enabled=True).first()
     if not channel:
+        logger.warning(f"send_im_notification_to_users: channel not found or disabled, channel_id={channel_id}")
         return {"result": False, "message": "IM notification channel not found"}
     if channel.status != CHANNEL_STATUS_READY:
+        logger.warning(
+            f"send_im_notification_to_users: channel requires sync before sending, "
+            f"channel_id={channel_id}, channel_status={channel.status}"
+        )
         return {"result": False, "message": "IM notification channel requires a successful sync before sending"}
 
     if not user_ids:
+        logger.warning(f"send_im_notification_to_users: no recipients selected, channel_id={channel_id}")
         return {"result": False, "message": "No recipients selected"}
 
     mappings = IMNotificationUserMapping.objects.filter(channel=channel, user_id__in=user_ids)
@@ -192,6 +272,11 @@ def send_im_notification_to_users(channel_id: int, user_ids: list[int], title: s
             receive_ids.append(receive_id)
 
     if not receive_ids:
+        logger.warning(
+            f"send_im_notification_to_users: no matched IM recipients, "
+            f"channel_id={channel_id}, user_ids={user_ids}, "
+            f"external_receive_field={channel.external_receive_field}"
+        )
         return {"result": False, "message": "No matched IM recipients found for selected users"}
 
     runtime_service = RuntimeApplicationService()
@@ -205,6 +290,21 @@ def send_im_notification_to_users(channel_id: int, user_ids: list[int], title: s
         receive_id_type=channel.external_receive_field,
         receive_ids=receive_ids,
     )
+    if result.success:
+        logger.info(
+            f"send_im_notification_to_users: send_message succeeded, "
+            f"channel_id={channel_id}, provider_key={channel.integration_instance.provider_key}, "
+            f"title={title!r}, recipient_count={len(receive_ids)}, "
+            f"summary={result.summary!r}"
+        )
+    else:
+        error_codes = [e.code for e in (result.errors or [])]
+        logger.error(
+            f"send_im_notification_to_users: external send_message failed, "
+            f"channel_id={channel_id}, provider_key={channel.integration_instance.provider_key}, "
+            f"title={title!r}, recipient_count={len(receive_ids)}, "
+            f"summary={result.summary!r}, codes={error_codes}, request_id={result.request_id}"
+        )
     return {"result": result.success, "message": result.summary, "data": result.to_dict()}
 
 

@@ -105,6 +105,19 @@ class TestGetDisplayUnit:
         assert UnitConverter.get_display_unit("unknown_unit") == "unknown_unit"
 
 
+class TestIsKnownUnit:
+    @pytest.mark.parametrize("unit", ["bytes", "percent", "watts"])
+    def test_有效单位返回真(self, unit):
+        assert UnitConverter.is_known_unit(unit) is True
+
+    @pytest.mark.parametrize(
+        "unit",
+        ["none", "short", "unknown", '[{"id": 1, "name": "up"}]'],
+    )
+    def test_无效单位返回假(self, unit):
+        assert UnitConverter.is_known_unit(unit) is False
+
+
 class TestGetAllUnits:
     def test_包含体系单位与独立单位(self):
         units = UnitConverter.get_all_units()

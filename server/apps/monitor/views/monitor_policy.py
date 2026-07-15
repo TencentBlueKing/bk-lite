@@ -285,13 +285,54 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         policy = self.get_object()
         policy_id = policy.id
-        PolicyBaselineService(policy).clear()
-        alerts_to_close = list(MonitorAlert.objects.filter(policy_id=policy_id, status="new"))
-        self.close_alerts(policy, alerts_to_close, request.user.username, "policy_deleted")
-        PeriodicTask.objects.filter(name=f"scan_policy_task_{policy_id}").delete()
-        PolicyOrganization.objects.filter(policy_id=policy_id).delete()
-        policy.delete()
+        # Issue #4040: 5 步串行无事务包裹,任一失败留下半截数据(基线已清但 policy
+        # 还在 / 告警已 close 但 policy 还在 / PeriodicTask 已删但 policy 还在)。
+        # 用 transaction.atomic 包裹所有 DB 写,close_alerts 拆成纯 DB 写版本避免
+        # 在事务内同步触发 NATS(NATS 推送放到事务 commit 之后)。
+        with transaction.atomic():
+            PolicyBaselineService(policy).clear()
+            alerts_to_close = list(
+                MonitorAlert.objects.filter(policy_id=policy_id, status="new")
+            )
+            # 纯 DB 写版本(原 close_alerts 会同步触发 NATS,这里事务内只做 DB 写)
+            self._close_alerts_in_tx(
+                policy, alerts_to_close, request.user.username, "policy_deleted"
+            )
+            PeriodicTask.objects.filter(name=f"scan_policy_task_{policy_id}").delete()
+            PolicyOrganization.objects.filter(policy_id=policy_id).delete()
+            policy.delete()
+        # 事务 commit 后再推 NATS(若 commit 失败此行不会执行)
+        if alerts_to_close:
+            AlertLifecycleNotifier(policy).notify_alerts(
+                alerts_to_close,
+                action="closed",
+                operator=request.user.username,
+                reason="policy_deleted",
+                notify_scope=NOTIFY_SCOPE_ALL_CONFIGURED,
+            )
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    def _close_alerts_in_tx(self, policy, alerts_to_close, operator, reason):
+        """事务内只做 DB 写,不再触发 NATS(NATS 由 destroy 的 on_commit 负责)。"""
+        if not alerts_to_close:
+            return
+        now = datetime.now(timezone.utc)
+        operation_log = {
+            "action": "closed",
+            "reason": reason,
+            "operator": operator,
+            "time": now.isoformat(),
+        }
+        for alert in alerts_to_close:
+            alert.status = "closed"
+            alert.end_event_time = now
+            alert.operator = operator
+            alert.operation_logs = (alert.operation_logs or []) + [operation_log]
+            alert.alert_center_notified = False
+        MonitorAlert.objects.bulk_update(
+            alerts_to_close,
+            fields=["status", "end_event_time", "operator", "operation_logs", "alert_center_notified"],
+        )
 
     def is_no_data_alert_enabled(self, policy):
         return bool(policy and AlertConstants.NO_DATA in (policy.enable_alerts or []))

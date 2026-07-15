@@ -4,6 +4,30 @@ import { DataMapper } from './useDataMapper';
 import useIntegrationApi from '@/app/monitor/api/integration';
 import useApiClient from '@/utils/request';
 
+/**
+ * 兜底：把 formFields 中非必填且用户未填的字段补成空串。
+ * 原因：前端表单只回填用户实际改过的字段，未改的 key 不会出现在 formData 里。
+ * 但后端 Jinja2 模板（child.toml.j2）用 `{{ 字段名 }}` 渲染时，未定义的 key 会抛
+ * UndefinedError,触发 "渲染采集模板失败"。非必填字段以空串提交,模板侧
+ * `{% if send %}{% endif %}` 会跳过该行,既保留可选语义又避免渲染失败。
+ *
+ * 导出供单元测试使用。
+ */
+export const fillOptionalFormFields = (
+  formData: Record<string, any>,
+  formFields: any[] | undefined
+): Record<string, any> => {
+  if (!formFields?.length) return formData;
+  const result = { ...formData };
+  formFields.forEach((field: any) => {
+    if (field.required === true) return;
+    if (result[field.name] === undefined) {
+      result[field.name] = '';
+    }
+  });
+  return result;
+};
+
 export const usePluginFromJson = () => {
   const { isLoading } = useApiClient();
   const [config, setConfig] = useState<any>(null);
@@ -165,8 +189,9 @@ export const usePluginFromJson = () => {
               return acc;
             }, {}) || {},
           getParams: (row: any, tableConfig: any) => {
+            const filledRow = fillOptionalFormFields(row, formFields);
             return DataMapper.transformAutoRequest(
-              row,
+              filledRow,
               tableConfig.dataSource || [],
               {
                 config_type: config.config_type,
@@ -235,9 +260,12 @@ export const usePluginFromJson = () => {
                 env_config: { ...configForm.base.env_config }
               };
             }
+            // 把非必填字段未填的补成空串,避免后端 Jinja2 模板 {{ 字段名 }} 抛
+            // UndefinedError；后端 child.toml.j2 用 {% if 字段 %}{% endif %} 跳过空串
+            const filledFormData = fillOptionalFormFields(formData, formFields);
             formFields?.forEach((field: any) => {
               const { name, transform_on_edit, editable } = field;
-              const formValue = formData[name];
+              const formValue = filledFormData[name];
               // 跳过不可编辑的字段（只用于回显，不应写入）
               if (editable === false) {
                 return;
@@ -251,7 +279,7 @@ export const usePluginFromJson = () => {
                   transform_on_edit,
                   'toApi',
                   undefined,
-                  formData
+                  filledFormData
                 );
                 // 如果转换后的值是 undefined，跳过（表示该字段不需要写入）
                 if (transformedValue === undefined) {
@@ -295,7 +323,7 @@ export const usePluginFromJson = () => {
                       transformConfig,
                       'toApi',
                       undefined,
-                      formData
+                      filledFormData
                     );
                     const targetPath = transformConfig.origin_path;
                     if (targetPath && transformedValue !== undefined) {

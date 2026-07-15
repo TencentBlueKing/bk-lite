@@ -401,6 +401,21 @@ class UnitConverter:
         return source_system is not None and source_system == target_system
 
     @classmethod
+    def is_known_unit(cls, unit: str) -> bool:
+        """判断单位是否属于可配置的有效单位库。"""
+        normalized_unit = cls._normalize_unit(unit)
+        if normalized_unit in {"none", "short"}:
+            return False
+
+        if normalized_unit in UnitConverterConstants.STANDALONE_UNITS:
+            return True
+
+        return any(
+            normalized_unit in system_config["units"]
+            for system_config in UnitConverterConstants.UNIT_SYSTEMS.values()
+        )
+
+    @classmethod
     def get_all_units(cls) -> list:
         """
         获取所有支持的单位列表

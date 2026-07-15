@@ -1077,7 +1077,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
               </div>
               <div
                 dangerouslySetInnerHTML={{ __html: guideData.renderedHtml }}
-                className={`${styles.markdownBody} flex-1 p-3 bg-[var(--color-bg)] rounded-lg`}
+                className={`${styles.markdownBody} ${styles.guideText} flex-1 p-3 bg-[var(--color-bg)] rounded-lg`}
               />
             </div>
           )}

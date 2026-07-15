@@ -581,6 +581,24 @@ def test_k8s_create_instance_requires_organizations(monkeypatch):
     create_instance.assert_not_called()
 
 
+def test_k8s_create_instance_rejects_invalid_organization(monkeypatch):
+    from apps.log.views import collect_config, k8s_collect
+
+    create_instance = Mock()
+    monkeypatch.setattr(
+        collect_config,
+        "get_permissions_rules",
+        Mock(return_value={"data": {"all": {"team": [2]}}, "team": [1]}),
+    )
+    monkeypatch.setattr(k8s_collect.K8sLogCollectService, "create_k8s_collect_instance", create_instance)
+
+    payload = {"collect_type_id": 7, "name": "demo", "organizations": [2, "bad"]}
+    response = K8sCollectViewSet().create_instance(make_request(payload))
+
+    assert response.status_code == 400
+    create_instance.assert_not_called()
+
+
 def test_k8s_create_instance_allows_authorized_target_org_scope(monkeypatch):
     from apps.log.views import collect_config, k8s_collect
 

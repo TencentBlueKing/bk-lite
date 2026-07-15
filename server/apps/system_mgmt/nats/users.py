@@ -1,5 +1,6 @@
 # flake8: noqa
 from .common import *  # noqa: F401,F403
+from .common import _collect_ancestor_group_ids
 
 
 @nats_client.register
@@ -254,3 +255,56 @@ def set_opspilot_guest_group_default_rule(default_group, user):
     UserRule.objects.get_or_create(username=user.username, group_rule_id=monitor_rule.id)
     UserRule.objects.get_or_create(username=user.username, group_rule_id=log_rule.id)
     UserRule.objects.get_or_create(username=user.username, group_rule_id=node_rule.id)
+
+
+@nats_client.register
+def get_user_group_tree(username, sync_source_id=None):
+    """按 (username, sync_source_id) 唯一定位用户，返回其组织树（参照 login_info.group_tree 形态）。
+
+    :param username: 用户名
+    :param sync_source_id: UserSyncSource 主键；None 或空串表示本地用户（User.sync_source IS NULL）；
+                         其它尝试 int() 强转
+    :return: 标准 NATS 三段式，data 包含 user_id/username/domain/group_list/group_tree
+    """
+    if not username:
+        return {"result": False, "message": "username is required"}
+
+    # 归一化 sync_source_id：None 或空串走本地用户；其余尝试 int() 强转
+    if sync_source_id in (None, ""):
+        sync_source_id = None
+    else:
+        try:
+            sync_source_id = int(sync_source_id)
+        except (TypeError, ValueError):
+            return {"result": False, "message": "invalid sync_source_id"}
+
+    try:
+        qs = User.objects.filter(username=username)
+        if sync_source_id is None:
+            qs = qs.filter(sync_source__isnull=True)
+        else:
+            qs = qs.filter(sync_source_id=sync_source_id)
+        count = qs.count()
+        if count == 0:
+            return {"result": False, "message": "user not found"}
+        if count > 1:
+            return {"result": False, "message": f"expected 1 user, got {count}"}
+        user = qs.first()
+
+        user_group_ids = [int(g) for g in (user.group_list or [])]
+        visible_ids = _collect_ancestor_group_ids(user_group_ids)
+        queryset = list(Group.objects.prefetch_related("roles").filter(id__in=visible_ids).order_by("id"))
+        group_tree = GroupUtils.build_group_tree(queryset, is_superuser=False, user_groups=user_group_ids)
+        return {
+            "result": True,
+            "data": {
+                "user_id": user.id,
+                "username": user.username,
+                "domain": user.domain,
+                "group_list": user_group_ids,
+                "group_tree": group_tree,
+            },
+        }
+    except Exception as e:
+        logger.exception(e)
+        return {"result": False, "message": f"internal error: {e}"}

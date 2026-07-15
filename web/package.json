@@ -28,6 +28,7 @@
     "test:monitor-policy-formula-payload": "pnpm exec tsx scripts/monitor-policy-formula-payload-test.ts",
     "test:monitor-query-step": "pnpm exec tsx scripts/monitor-query-step-test.ts",
     "test:monitor-strategy-aggregation-designer": "pnpm exec tsx scripts/monitor-strategy-aggregation-designer-story-test.ts",
+    "test:monitor-alert-detail-snapshot": "pnpm exec tsx scripts/monitor-alert-detail-snapshot-test.ts",
     "test:monitor-strategy-detail-logic": "pnpm exec tsx scripts/monitor-strategy-detail-logic-test.ts",
     "test:monitor-table-change-handler": "pnpm exec tsx scripts/monitor-table-change-handler-test.ts",
     "test:k8s-cluster-filter": "pnpm exec tsx scripts/k8s-cluster-filter-test.ts",

@@ -6,6 +6,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.logger import system_mgmt_logger as logger
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.viewset_utils import MaintainerViewSet
 from apps.system_mgmt.models import IntegrationInstance, IntegrationInstanceStatusChoices
@@ -96,6 +97,12 @@ class IntegrationInstanceViewSet(MaintainerViewSet):
         if response.status_code == 201:
             instance_name = response.data.get("name", "")
             log_operation(request, "create", "system-manager", f"新增集成实例: {instance_name}")
+            logger.info(
+                f"IntegrationInstanceViewSet.create: created, "
+                f"instance_id={response.data.get('id')}, instance_name={instance_name!r}, "
+                f"provider_key={response.data.get('provider_key')}, "
+                f"created_by={getattr(request.user, 'username', 'anonymous')}"
+            )
         return response
 
     @HasPermission("integration_center-Edit")
@@ -112,6 +119,11 @@ class IntegrationInstanceViewSet(MaintainerViewSet):
         if response.status_code == 200:
             instance_name = response.data.get("name", "")
             log_operation(request, "update", "system-manager", f"编辑集成实例: {instance_name}")
+            logger.info(
+                f"IntegrationInstanceViewSet.update: updated, "
+                f"instance_id={obj.id}, instance_name={instance_name!r}, "
+                f"provider_key={obj.provider_key}, updated_by={getattr(request.user, 'username', 'anonymous')}"
+            )
         return response
 
     @HasPermission("integration_center-Delete")
@@ -128,6 +140,11 @@ class IntegrationInstanceViewSet(MaintainerViewSet):
         response = super().destroy(request, *args, **kwargs)
         if response.status_code == 204:
             log_operation(request, "delete", "system-manager", f"删除集成实例: {instance_name}")
+            logger.info(
+                f"IntegrationInstanceViewSet.destroy: deleted, "
+                f"instance_id={obj.id}, instance_name={instance_name!r}, "
+                f"provider_key={obj.provider_key}, deleted_by={getattr(request.user, 'username', 'anonymous')}"
+            )
         return response
 
     @action(methods=["GET"], detail=False)
@@ -160,6 +177,12 @@ class IntegrationInstanceViewSet(MaintainerViewSet):
             return error_response
 
         capability_key = (request.data.get("capability_key") or "").strip()
+        logger.info(
+            f"IntegrationInstanceViewSet.test_connection: invoked, "
+            f"instance_id={obj.id}, instance_name={obj.name!r}, "
+            f"provider_key={obj.provider_key}, capability_key={capability_key or '(all)'}, "
+            f"invoked_by={getattr(request.user, 'username', 'anonymous')}"
+        )
         runtime_service = RuntimeApplicationService()
         result = runtime_service.test_connection(obj, capability_key=capability_key or None)
         payload = result.payload
@@ -179,6 +202,14 @@ class IntegrationInstanceViewSet(MaintainerViewSet):
         obj.save(update_fields=["status", "capability_status", "updated_at"])
 
         log_operation(request, "execute", "system-manager", f"测试集成实例连接: {obj.name}")
+        if not result.success:
+            # 详细失败信息已由 runtime.py warning 记录；viewset 层只记请求 context
+            logger.warning(
+                f"IntegrationInstanceViewSet.test_connection: failed, "
+                f"instance_id={obj.id}, provider_key={obj.provider_key}, "
+                f"capability_key={capability_key or '(all)'}, "
+                f"instance_status={obj.status}, capability_status={dict(obj.capability_status or {})}"
+            )
         return Response({"result": result.success, "data": result.to_dict()})
 
     @action(methods=["GET"], detail=False)

@@ -138,14 +138,19 @@ def test_nodes_invalid_page(superuser):
 @pytest.mark.django_db
 def test_nodes_success(superuser, monkeypatch):
     request = _req("get", superuser, query={"page": "1", "page_size": "10"}, current_team="1")
-    monkeypatch.setattr(
-        "apps.cmdb.views.collect.NodeMgmt.node_list",
-        lambda self, query_data: {"count": 1, "nodes": [{"id": "n1"}]},
-    )
+    captured_query = {}
+
+    def fake_node_list(self, query_data):
+        captured_query.update(query_data)
+        return {"count": 1, "nodes": [{"id": "n1"}]}
+
+    monkeypatch.setattr("apps.cmdb.views.collect.NodeMgmt.node_list", fake_node_list)
     resp = CollectModelViewSet.as_view({"get": "nodes"})(request)
     body = _body(resp)
     assert body["result"] is True
     assert body["data"]["count"] == 1
+    assert captured_query["is_container"] is True
+    assert "node_type" not in captured_query
 
 
 # --------------------------------------------------------------------------

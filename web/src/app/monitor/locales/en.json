@@ -126,6 +126,7 @@
       "avg": "AVG",
       "alertConditions": "Alert Conditions",
       "alertThreshold": "Alert Threshold",
+      "thresholdUnitHelp": "The threshold unit is used for input and display. Thresholds are converted to the calculation unit for evaluation, and only units of the same dimension are available.",
       "metricPreview": "Metric Preview",
       "noDataAlertName": "No Data Alert Name",
       "noDataAlertLevel": "No Data Alert",

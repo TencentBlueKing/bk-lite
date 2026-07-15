@@ -158,6 +158,18 @@ class ModelMigrate:
         user_prompt = attr.get("prompt", "") or attr.get("user_prompt", "")
         attr["user_prompt"] = str(user_prompt) if user_prompt else ""
 
+        # 治理标记：关键属性 / 时效性（来自 xlsx 末尾两列）
+        governance = {}
+        # pandas 从 xlsx 读 True/False 时类型是 float64（1.0/0.0），需要兼容
+        key_value = attr.get("key_attribute")
+        if key_value is True or key_value == "true" or key_value == "True" or key_value == 1 or key_value == 1.0:
+            governance["key_attribute"] = True
+        freshness_value = attr.get("freshness")
+        if freshness_value and not pd.isna(freshness_value) and str(freshness_value).strip():
+            governance["freshness"] = str(freshness_value).strip()
+        if governance:
+            attr["governance"] = governance
+
         return get_model_enterprise_extension().normalize_import_attr(attr)
 
     def model_add_organization(self, model):

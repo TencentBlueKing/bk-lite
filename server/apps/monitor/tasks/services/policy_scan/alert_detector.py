@@ -54,10 +54,13 @@ class AlertDetector:
             "enum_value_map": self.metric_query_service.get_enum_value_map(),
         }
 
+        thresholds = self.metric_query_service.convert_thresholds(
+            self.policy.threshold
+        )
         alert_events, info_events = calculate_alerts(
             self.policy.alert_name,
             df,
-            self.policy.threshold,
+            thresholds,
             template_context,
             n=trigger_count,
         )

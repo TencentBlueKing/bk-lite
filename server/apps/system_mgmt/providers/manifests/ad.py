@@ -168,6 +168,17 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                 "adapter_path": "apps.system_mgmt.providers.adapters.ad.ADLoginAuthAdapter",
                 "connection_template": [
                     {
+                        "key": "base_dn",
+                        "label": "登录搜索 Base DN",
+                        "field_type": "string",
+                        "required": True,
+                        "placeholder": "DC=example,DC=com",
+                        "help_text": (
+                            "登录认证时 LDAP 搜索的根目录，决定可在哪个 OU/子树范围内查找登录用户。"
+                            "与「同步起始目录 (root_dn)」是不同字段：root_dn 限制同步范围，base_dn 限制登录搜索范围。"
+                        ),
+                    },
+                    {
                         "key": "login_auth_identity_field",
                         "label": "登录账号类型",
                         "field_type": "select",

@@ -41,6 +41,7 @@ import { LEVEL_MAP } from '@/app/monitor/constants';
 import type { ListRef } from 'rc-virtual-list';
 import {
   buildAlertSnapshotChartValues,
+  resolveAlertDetailChartUnit,
   resolveAlertDetailMetric
 } from './alertDetailUtils';
 
@@ -62,6 +63,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
     const [formData, setFormData] = useState<TableDataItem>({});
     const [title, setTitle] = useState<string>('');
     const [chartData, setChartData] = useState<ChartData[]>([]);
+    const [chartUnit, setChartUnit] = useState<string>('');
     const [trapData, setTrapData] = useState<TableDataItem>({});
     const [activeTab, setActiveTab] = useState<string>('information');
     const [loading, setLoading] = useState<boolean>(false);
@@ -135,6 +137,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
           alertValue: getEnumValueUnit(metricWithUnit as MetricItem, row.value)
         };
         setFormData(form);
+        setChartUnit(resolveAlertDetailChartUnit(form, ''));
         if (form.policy?.query_condition?.type === 'pmq') {
           getRawData(form);
           return;
@@ -155,6 +158,9 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
         });
         const data = buildAlertSnapshotChartValues(
           responseData?.snapshots || []
+        );
+        setChartUnit(
+          resolveAlertDetailChartUnit(form, responseData?.chart_unit)
         );
         const config = [
           {
@@ -276,6 +282,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
       setGroupVisible(false);
       setActiveTab('information');
       setChartData([]);
+      setChartUnit('');
       setTrapData({});
       setEventData([]);
       timelineRef.current?.scrollTo(0);
@@ -402,6 +409,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
                       onClose={closeModal}
                       trapData={trapData}
                       chartData={chartData}
+                      chartUnit={chartUnit}
                     />
                   </Spin>
                 ) : (

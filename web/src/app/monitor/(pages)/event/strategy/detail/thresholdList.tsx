@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { Select, InputNumber } from 'antd';
+import { Select, InputNumber, Tooltip } from 'antd';
+import { QuestionCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { ListItem } from '@/app/monitor/types';
 import { LEVEL_MAP } from '@/app/monitor/constants';
@@ -26,21 +27,23 @@ interface EnumOption {
 interface ThresholdListProps {
   data: ThresholdItem[];
   onChange?: (data: ThresholdItem[]) => void;
-  calculationUnit: string | null;
-  onUnitChange: (unit: string) => void;
+  thresholdUnit: string | null;
+  onThresholdUnitChange: (unit: string) => void;
   unitOptions?: any[];
   isEnumMetric?: boolean;
   enumOptions?: EnumOption[];
+  showUnitSelector?: boolean;
 }
 
 const ThresholdList: React.FC<ThresholdListProps> = ({
   data = [],
   onChange,
-  calculationUnit,
-  onUnitChange,
+  thresholdUnit,
+  onThresholdUnitChange,
   unitOptions = [],
   isEnumMetric = false,
-  enumOptions = []
+  enumOptions = [],
+  showUnitSelector = true
 }) => {
   const { t } = useTranslation();
 
@@ -61,14 +64,14 @@ const ThresholdList: React.FC<ThresholdListProps> = ({
     onChange?.(newData);
   };
 
-  const handleUnitChange = (value: string) => {
-    onUnitChange(value);
+  const handleThresholdUnitChange = (value: string) => {
+    onThresholdUnitChange(value);
   };
 
   // 获取当前选中单位的显示文本
   const getUnitLabel = () => {
     const selectedUnit = unitOptions.find(
-      (option) => option.unit_id === calculationUnit
+      (option) => option.unit_id === thresholdUnit
     );
     return selectedUnit?.display_unit || selectedUnit?.unit_name || '';
   };
@@ -76,11 +79,14 @@ const ThresholdList: React.FC<ThresholdListProps> = ({
   return (
     <div className="w-full border border-[var(--color-border-2)] rounded-md p-4 bg-[var(--color-bg-1)] shadow-md">
       {/* 单位选择器在右上角 - 枚举类型不显示 */}
-      {!isEnumMetric && (
+      {showUnitSelector && !isEnumMetric && (
         <div className="flex justify-end mb-[10px]">
           <span className="mr-[10px] leading-[32px]">{t('common.unit')}:</span>
+          <Tooltip title={t('monitor.events.thresholdUnitHelp')}>
+            <QuestionCircleOutlined className="mr-[8px] text-[var(--color-text-3)]" />
+          </Tooltip>
           <Select
-            value={calculationUnit}
+            value={thresholdUnit}
             style={{ width: 180 }}
             showSearch
             filterOption={(input, option) =>
@@ -90,7 +96,7 @@ const ThresholdList: React.FC<ThresholdListProps> = ({
               label: option.display_unit || option.unit_name,
               value: option.unit_id
             }))}
-            onChange={handleUnitChange}
+            onChange={handleThresholdUnitChange}
           />
         </div>
       )}
@@ -144,7 +150,6 @@ const ThresholdList: React.FC<ThresholdListProps> = ({
               ) : (
                 <InputNumber
                   style={{ flex: 1 }}
-                  min={0}
                   value={item.value}
                   addonAfter={getUnitLabel()}
                   onChange={(val) => handleValueChange(val, index)}

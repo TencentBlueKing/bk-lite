@@ -7,8 +7,8 @@ import { useCommon } from '@/app/monitor/context/common';
 import { SCHEDULE_UNIT_MAP } from '@/app/monitor/constants/event';
 import {
   getMetricThresholdEnumState,
-  getThresholdUnitFilterBase,
-  getThresholdUnitOptions
+  getThresholdUnitOptions,
+  shouldShowThresholdUnitSelector
 } from './strategyDetailUtils';
 import ThresholdList from './thresholdList';
 
@@ -26,6 +26,7 @@ interface AlertConditionsFormProps {
   enableAlerts: string[];
   threshold: ThresholdField[];
   calculationUnit: string | null;
+  thresholdUnit: string | null;
   noDataAlert: number | null;
   nodataUnit: string;
   noDataRecovery: number | null;
@@ -36,7 +37,7 @@ interface AlertConditionsFormProps {
   isFormulaMode: boolean;
   onEnableAlertsChange: (val: string[]) => void;
   onThresholdChange: (value: ThresholdField[]) => void;
-  onCalculationUnitChange: (val: string) => void;
+  onThresholdUnitChange: (val: string) => void;
   onNodataUnitChange: (val: string) => void;
   onNoDataAlertChange: (e: number | null) => void;
   onNodataRecoveryUnitChange: (val: string) => void;
@@ -49,6 +50,7 @@ interface AlertConditionsFormProps {
 const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   threshold,
   calculationUnit,
+  thresholdUnit,
   noDataAlert,
   nodataUnit,
   noDataAlertLevel,
@@ -56,7 +58,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   metricUnit,
   isFormulaMode,
   onThresholdChange,
-  onCalculationUnitChange,
+  onThresholdUnitChange,
   onNoDataAlertChange,
   onNoDataAlertLevelChange,
   onNoDataAlertNameChange,
@@ -71,24 +73,17 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
     [isFormulaMode, metricUnit]
   );
 
-  const unitFilterBase = useMemo(
-    () =>
-      getThresholdUnitFilterBase({
-        isFormulaMode,
-        formulaResultUnit: calculationUnit,
-        selectedMetricUnit: metricUnit
-      }),
-    [isFormulaMode, calculationUnit, metricUnit]
-  );
+  // 阈值单位只由计算结果量纲约束，与当前选择的阈值展示单位解耦。
+  const thresholdFilterBase = calculationUnit;
 
   const filteredUnitOptions = useMemo(
     () =>
       getThresholdUnitOptions({
         unitList,
-        unitFilterBase,
+        metricUnit: thresholdFilterBase,
         isEnumMetric
       }),
-    [unitList, unitFilterBase, isEnumMetric]
+    [unitList, thresholdFilterBase, isEnumMetric]
   );
 
   // 验证阈值
@@ -98,7 +93,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
       (threshold.some((item) => {
         return !item.method;
       }) ||
-        (!isEnumMetric && !calculationUnit))
+        (!isEnumMetric && !thresholdUnit))
     ) {
       return Promise.reject(new Error(t('monitor.events.thresholdValidate')));
     }
@@ -132,11 +127,15 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                 <ThresholdList
                   data={threshold}
                   onChange={onThresholdChange}
-                  calculationUnit={calculationUnit}
-                  onUnitChange={onCalculationUnitChange}
+                  thresholdUnit={thresholdUnit}
+                  onThresholdUnitChange={onThresholdUnitChange}
                   unitOptions={filteredUnitOptions}
                   isEnumMetric={isEnumMetric}
                   enumOptions={enumOptions}
+                  showUnitSelector={shouldShowThresholdUnitSelector({
+                    isFormulaMode,
+                    isEnumMetric
+                  })}
                 />
               </Form.Item>
 

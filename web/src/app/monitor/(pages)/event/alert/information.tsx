@@ -18,6 +18,7 @@ import Permission from '@/components/permission';
 
 interface InformationProps extends TableDataItem {
   eventData?: TableDataItem[];
+  chartUnit?: string | null;
 }
 
 const Information: React.FC<InformationProps> = ({
@@ -26,7 +27,8 @@ const Information: React.FC<InformationProps> = ({
   objects,
   userList,
   onClose,
-  trapData
+  trapData,
+  chartUnit
 }) => {
   const { t } = useTranslation();
   const { convertToLocalizedTime } = useLocalizedTime();
@@ -215,7 +217,7 @@ const Information: React.FC<InformationProps> = ({
             </h3>
             <div className="text-[12px]">{`${
               formData.metric?.display_name
-            }（${findUnitNameById(formData.metric?.unit)}）`}</div>
+            }（${findUnitNameById(chartUnit || '')}）`}</div>
             <div className="h-[250px]">
               <LineChart
                 allowSelect={false}
@@ -225,7 +227,7 @@ const Information: React.FC<InformationProps> = ({
                     ? []
                     : formData.policy?.threshold
                 }
-                unit={formData.metric?.unit}
+                unit={chartUnit || ''}
                 metric={formData.metric}
               />
             </div>

@@ -21,6 +21,7 @@ def _policy(**overrides):
         "group_by": ["instance_id"],
         "metric_unit": "",
         "calculation_unit": "",
+        "threshold_unit": "",
         "threshold": [{"method": ">", "value": 80, "level": "critical"}],
         "alert_name": "$metric_name $instance_name $metric__status $value",
         "source": {"type": "instance", "values": ["h1"]},
@@ -41,6 +42,7 @@ def _metric_query_service(**overrides):
             "agg", {"data": {"result": []}}
         ),
         "convert_metric_values": lambda data: data,
+        "convert_thresholds": lambda thresholds: thresholds,
         "format_aggregation_metrics": lambda data: overrides.get("formatted", {}),
         "get_display_unit": lambda: "",
         "get_enum_value_map": lambda: {},
@@ -131,6 +133,41 @@ def test_formula_metric_name_template_uses_result_name():
     assert infos == []
     assert alerts[0]["content"].startswith("错误率 主机1 - status:500 500")
     assert alerts[0]["dimensions"] == {"instance_id": "h1", "status": "500"}
+
+
+def test_formula_negative_threshold_conversion_prevents_false_alert():
+    agg = {
+        "data": {
+            "result": [
+                {
+                    "metric": {"instance_id": "h1", "status": "500"},
+                    "values": [[100, str(-5 * 1024**3)]],
+                }
+            ]
+        }
+    }
+    policy = _policy(
+        calculation_unit="bytes",
+        threshold_unit="gibibytes",
+        threshold=[{"method": "<", "value": -10, "level": "critical"}],
+    )
+    query_service = MetricQueryService(policy, {"('h1',)": "主机1"})
+    query_service.instance_id_keys = ["instance_id", "status"]
+    query_service.query_aggregation_metrics = lambda period, points=1: agg
+    query_service.get_result_group_by = lambda: ["instance_id", "status"]
+
+    detector = AlertDetector(
+        policy,
+        {"('h1',)": "主机1"},
+        {},
+        [],
+        query_service,
+    )
+
+    alerts, infos = detector.detect_threshold_alerts()
+
+    assert alerts == []
+    assert infos[0]["value"] == str(-5 * 1024**3)
 
 
 def test_formula_no_data_detection_uses_final_result_group_by():

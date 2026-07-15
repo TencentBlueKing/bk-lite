@@ -126,6 +126,7 @@
       "avg": "平均值",
       "alertConditions": "告警条件",
       "alertThreshold": "告警阈值",
+      "thresholdUnitHelp": "阈值单位仅用于输入和展示；告警判断时会自动换算为计算单位。仅可选择相同量纲的单位。",
       "noDataAlertName": "无数据告警名称",
       "noDataAlertLevel": "无数据告警",
       "noTriggerNoDataAlert": "不触发无数据告警",

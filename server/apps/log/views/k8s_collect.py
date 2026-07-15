@@ -8,6 +8,23 @@ from apps.rpc.node_mgmt import NodeMgmt
 
 
 class K8sCollectViewSet(viewsets.ViewSet):
+    @staticmethod
+    def _normalize_organizations(organizations):
+        if not isinstance(organizations, list):
+            return None
+
+        normalized = []
+        for organization in organizations:
+            if isinstance(organization, bool) or not isinstance(
+                organization, (int, str)
+            ):
+                return None
+            try:
+                normalized.append(int(organization))
+            except ValueError:
+                return None
+        return normalized
+
     @action(methods=["get"], detail=False, url_path="cloud_region_list")
     def cloud_region_list(self, request):
         data = NodeMgmt().cloud_region_list()
@@ -18,6 +35,13 @@ class K8sCollectViewSet(viewsets.ViewSet):
         organizations = request.data.get("organizations", [])
         if not organizations:
             return WebUtils.response_error("organizations is required")
+
+        organizations = self._normalize_organizations(organizations)
+        if organizations is None:
+            return WebUtils.response_error(
+                error_message="organizations must contain only integer values"
+            )
+
         error_response = CollectInstanceViewSet()._authorize_target_organizations(
             request,
             organizations,
@@ -25,7 +49,9 @@ class K8sCollectViewSet(viewsets.ViewSet):
         )
         if error_response:
             return error_response
-        data = K8sLogCollectService.create_k8s_collect_instance(request.data)
+        data = K8sLogCollectService.create_k8s_collect_instance(
+            {**request.data, "organizations": organizations}
+        )
         return WebUtils.response_success(data)
 
     @action(methods=["post"], detail=False, url_path="generate_install_command")

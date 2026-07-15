@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+from django.db import transaction
 from rest_framework import viewsets, mixins
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -27,6 +28,10 @@ from apps.monitor.filters.monitor_alert import MonitorAlertFilter
 from apps.monitor.serializers.monitor_alert import MonitorAlertSerializer
 from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
 from apps.monitor.services.alert_lifecycle_notify import AlertLifecycleNotifier
+from apps.monitor.services.chart_unit import (
+    convert_snapshots_copy,
+    resolve_chart_unit,
+)
 from apps.monitor.services.policy_baseline import PolicyBaselineService
 from apps.monitor.utils.pagination import parse_page_params
 from config.drf.pagination import CustomPageNumberPagination
@@ -225,19 +230,27 @@ class MonitorAlertViewSet(
             if old_status == "new":
                 updated_data["alert_center_notified"] = False
 
+            # 基线清理/刷新 与 告警 status 写库 必须在同一事务中。
+            # 否则 perform_update 失败时 baseline 已删/已刷,下次扫描会再次 new 一条
+            # 一模一样的 no_data 告警，相当于「用户手动关了又自动重开」(issue #4041)。
+            # 注意:refresh() 内部含 VM scan,事务不宜过长——失败 → 整段回滚即满足需求。
             if instance.alert_type == "no_data" and instance.metric_instance_id:
-                update_baseline = request.data.get("update_baseline", False)
-                if update_baseline:
-                    policy = MonitorPolicy.objects.filter(id=instance.policy_id).first()
-                    if policy:
-                        PolicyBaselineService(policy).refresh()
-                else:
-                    PolicyInstanceBaseline.objects.filter(
-                        policy_id=instance.policy_id,
-                        metric_instance_id=instance.metric_instance_id,
-                    ).delete()
-
-        self.perform_update(serializer)
+                with transaction.atomic():
+                    update_baseline = request.data.get("update_baseline", False)
+                    if update_baseline:
+                        policy = MonitorPolicy.objects.filter(id=instance.policy_id).first()
+                        if policy:
+                            PolicyBaselineService(policy).refresh()
+                    else:
+                        PolicyInstanceBaseline.objects.filter(
+                            policy_id=instance.policy_id,
+                            metric_instance_id=instance.metric_instance_id,
+                        ).delete()
+                    self.perform_update(serializer)
+            else:
+                self.perform_update(serializer)
+        else:
+            self.perform_update(serializer)
         instance.refresh_from_db()
 
         if old_status == "new" and instance.status == "closed":
@@ -266,6 +279,22 @@ class MonitorAlertViewSet(
         if not self._check_alert_permission(request, alert_obj):
             return WebUtils.response_error("无权限访问该告警", status_code=403)
 
+        policy_units = (
+            MonitorPolicy.objects.filter(id=alert_obj.policy_id)
+            .values("metric_unit", "calculation_unit", "threshold_unit")
+            .first()
+            or {}
+        )
+        metric_unit = policy_units.get("metric_unit") or ""
+        calculation_unit = policy_units.get("calculation_unit") or ""
+        threshold_unit = policy_units.get("threshold_unit") or ""
+        source_unit = calculation_unit or metric_unit
+        chart_unit = resolve_chart_unit(
+            metric_unit,
+            calculation_unit,
+            threshold_unit,
+        )
+
         # 2. 查询该告警的快照记录
         try:
             snapshot_obj = MonitorAlertMetricSnapshot.objects.get(alert_id=alert_obj.id)
@@ -280,6 +309,7 @@ class MonitorAlertViewSet(
                         "start_event_time": alert_obj.start_event_time,
                         "end_event_time": alert_obj.end_event_time,
                     },
+                    "chart_unit": chart_unit,
                     "snapshots": [],
                 }
             )
@@ -295,6 +325,12 @@ class MonitorAlertViewSet(
             logger.error(f"Failed to load snapshots from S3 for alert {alert_id}: {e}")
             snapshots_data = []
 
+        snapshots_data = convert_snapshots_copy(
+            snapshots_data,
+            source_unit or chart_unit,
+            chart_unit,
+        )
+
         # 4. 返回快照数据
         return WebUtils.response_success(
             {
@@ -306,6 +342,7 @@ class MonitorAlertViewSet(
                     "start_event_time": alert_obj.start_event_time,
                     "end_event_time": alert_obj.end_event_time,
                 },
+                "chart_unit": chart_unit,
                 "snapshots": snapshots_data,
             }
         )

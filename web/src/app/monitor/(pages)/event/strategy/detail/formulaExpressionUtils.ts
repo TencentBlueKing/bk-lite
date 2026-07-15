@@ -4,12 +4,14 @@ import {
   MetricExpressionRow,
   MetricQueryCondition
 } from './metricExpressionTypes';
-import { MetricItem } from '@/app/monitor/types';
+import { MetricItem, ThresholdField } from '@/app/monitor/types';
 import { SourceFeild } from '@/app/monitor/types/event';
 import { InstanceItem } from '@/app/monitor/types/search';
 import { sanitizeGroupBy } from '@/app/monitor/utils/metricDimensions';
+import { isStringArray } from '@/app/monitor/utils/common';
 
 export type MetricExpressionMode = 'metric' | 'formula' | 'auto';
+export type MetricExpressionQueryType = 'metric' | 'formula';
 
 export const DEFAULT_FORMULA_RESULT_NAME = '计算指标';
 export const DEFAULT_FORMULA_EXPRESSION = 'a / b * 100';
@@ -46,6 +48,25 @@ export const shouldShowFormulaEditor = (
 export const getMetricExpressionModeForRows = (
   rows: MetricExpressionRow[]
 ): MetricExpressionMode => (rows.length > 1 ? 'formula' : 'metric');
+
+export const resolveMetricExpressionUnits = ({
+  queryType,
+  metricUnit,
+  calculationUnit,
+  thresholdUnit
+}: {
+  queryType: MetricExpressionQueryType;
+  metricUnit: string | null | undefined;
+  calculationUnit: string | null | undefined;
+  thresholdUnit: string | null | undefined;
+}): { metricUnit: string; calculationUnit: string; thresholdUnit: string } => ({
+  metricUnit:
+    queryType === 'formula' || isStringArray(metricUnit || '')
+      ? ''
+      : metricUnit || '',
+  calculationUnit: calculationUnit || '',
+  thresholdUnit: thresholdUnit || calculationUnit || ''
+});
 
 export const createMetricRow = (
   index: number,
@@ -502,7 +523,9 @@ export const buildMetricExpressionPreviewPayload = ({
   algorithm,
   groupAlgorithm,
   groupBy,
-  calculationUnit
+  threshold,
+  calculationUnit,
+  thresholdUnit
 }: {
   monitorObjId: string | number | null;
   source: SourceFeild;
@@ -520,7 +543,9 @@ export const buildMetricExpressionPreviewPayload = ({
   algorithm: string | null;
   groupAlgorithm: string | null;
   groupBy: string[];
+  threshold: ThresholdField[];
   calculationUnit?: string | null;
+  thresholdUnit?: string | null;
 }) => {
   if (!monitorObjId || !selectedInstance || !algorithm) {
     return null;
@@ -557,6 +582,12 @@ export const buildMetricExpressionPreviewPayload = ({
   const payloadGroupAlgorithm = isFormula
     ? anchorRow.groupAlgorithm || 'avg'
     : groupAlgorithm || 'avg';
+  const units = resolveMetricExpressionUnits({
+    queryType: isFormula ? 'formula' : 'metric',
+    metricUnit: anchorMetric.unit,
+    calculationUnit,
+    thresholdUnit
+  });
 
   return {
     monitor_object: monitorObjId,
@@ -569,8 +600,12 @@ export const buildMetricExpressionPreviewPayload = ({
     algorithm,
     group_algorithm: payloadGroupAlgorithm,
     group_by: payloadGroupBy,
-    metric_unit: isFormula ? '' : anchorMetric.unit || '',
-    calculation_unit: calculationUnit || '',
+    threshold: threshold.filter(
+      (item) => item.value !== null && item.value !== undefined
+    ),
+    metric_unit: units.metricUnit,
+    calculation_unit: units.calculationUnit,
+    threshold_unit: units.thresholdUnit,
     preview: {
       instance_id: selectedInstance.instance_id,
       instance_id_values: selectedInstance.instance_id_values,

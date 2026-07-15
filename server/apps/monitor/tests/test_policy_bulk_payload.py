@@ -77,6 +77,7 @@ def test_build_bulk_policy_payloads_expands_templates_for_each_asset():
     assert all(item["enable"] is False for item in payloads)
     assert all(item["organizations"] in ([7], [8]) for item in payloads)
     assert all(item["trigger_count"] == 1 for item in payloads)
+    assert all(item["threshold_unit"] == "percent" for item in payloads)
     assert all("no_data_level" not in item for item in payloads)
     assert all("no_data_alert_name" not in item for item in payloads)
     assert [(item["group_algorithm"], item["algorithm"]) for item in payloads] == [
@@ -114,6 +115,30 @@ def test_build_bulk_policy_payloads_includes_no_data_fields_only_when_enabled():
     assert payloads[0]["no_data_alert_name"] == "无数据告警"
     assert payloads[0]["group_algorithm"] == "avg"
     assert payloads[0]["algorithm"] == "avg_over_time"
+
+
+def test_build_bulk_policy_payloads_prefers_explicit_threshold_unit():
+    module_path = Path(__file__).resolve().parents[1] / "services" / "policy_bulk.py"
+    module = _load_module(
+        "monitor_policy_bulk_threshold_unit_test_module", module_path
+    )
+
+    payload = module.build_bulk_policy_payloads(
+        monitor_object_id=3,
+        templates=[
+            {
+                "name": "容量告警",
+                "metric_id": 101,
+                "metric_unit": "bytes",
+                "calculation_unit": "mebibytes",
+                "threshold_unit": "gibibytes",
+            }
+        ],
+        assets=[{"instance_id": "('host-a',)", "organizations": [7]}],
+        config={},
+    )[0]
+
+    assert payload["threshold_unit"] == "gibibytes"
 
 
 def test_build_bulk_policy_payloads_prefers_config_trigger_count_then_template_default():

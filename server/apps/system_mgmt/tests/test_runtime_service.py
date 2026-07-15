@@ -557,3 +557,186 @@ def test_get_active_login_auth_bindings_keeps_ready_wechat_binding_without_login
     assert [item.id for item in bindings] == [binding.id]
     assert instance.enabled is True
     assert binding.enabled is True
+
+
+# ---------- login_with_binding 日志分级（按错误码区分 WARNING / ERROR / INFO）----------
+
+import logging as _logging
+
+
+@pytest.mark.django_db
+def test_login_with_binding_logs_warning_when_binding_not_found(caplog):
+    """binding_id 不存在 → WARNING（业务查询 miss，可能合法场景）。"""
+    with caplog.at_level(_logging.WARNING, logger="system-manager"):
+        result = login_with_binding(999999, "auth-code")
+
+    assert result["result"] is False
+    assert result["message"] == "Login auth binding not found"
+    warning_records = [r for r in caplog.records if r.levelno == _logging.WARNING]
+    assert any(
+        "binding not found" in r.message and "binding_id=999999" in r.message
+        for r in warning_records
+    ), f"Expected WARNING about missing binding, got: {[r.message for r in caplog.records]}"
+
+
+@pytest.mark.django_db
+def test_login_with_binding_logs_warning_when_binding_not_ready(caplog):
+    """binding 状态不是 ready → WARNING（状态不一致）。"""
+    instance = IntegrationInstance.objects.create(
+        name="Feishu Login",
+        provider_key="feishu",
+        config={},
+        status=IntegrationInstanceStatusChoices.READY,
+        capability_status={"login_auth": IntegrationInstanceStatusChoices.PENDING_VERIFICATION},
+        enabled=True,
+    )
+    binding = LoginAuthBinding.objects.create(
+        name="Feishu Binding",
+        integration_instance=instance,
+        enabled=True,
+        external_field="user_id",
+        platform_field=LoginAuthBindingPlatformFieldChoices.USERNAME,
+        unmatched_user_action=LoginAuthBindingUnmatchedActionChoices.DENY,
+    )
+
+    with caplog.at_level(_logging.WARNING, logger="system-manager"):
+        result = login_with_binding(binding.id, "auth-code")
+
+    assert result["result"] is False
+    warning_records = [r for r in caplog.records if r.levelno == _logging.WARNING]
+    assert any(
+        "not ready" in r.message and f"binding_id={binding.id}" in r.message
+        and "provider_key=feishu" in r.message
+        for r in warning_records
+    ), f"Expected WARNING with binding_id context, got: {[r.message for r in caplog.records]}"
+
+
+@pytest.mark.django_db
+def test_login_with_binding_logs_error_when_runtime_authenticate_fails(caplog):
+    """runtime.execute 返回 failed_result → ERROR（外部 API 失败值得运维告警）。
+
+    关键回归：今天发现的「AD user not found」bug 之前完全没记日志，这条 ERROR
+    是定位 platform vs external 故障的第一信号。
+    """
+    instance = IntegrationInstance.objects.create(
+        name="AD Login",
+        provider_key="ad",
+        config={"base_dn": "DC=corp,DC=com"},
+        status=IntegrationInstanceStatusChoices.READY,
+        capability_status={"login_auth": IntegrationInstanceStatusChoices.READY},
+        enabled=True,
+    )
+    binding = LoginAuthBinding.objects.create(
+        name="AD Binding",
+        integration_instance=instance,
+        enabled=True,
+        external_field="sAMAccountName",
+        platform_field=LoginAuthBindingPlatformFieldChoices.USERNAME,
+        unmatched_user_action=LoginAuthBindingUnmatchedActionChoices.DENY,
+    )
+    runtime_result = CapabilityExecutionResult.failed_result(
+        "AD user not found", code="provider.auth_failed", field="sAMAccountName"
+    )
+
+    with caplog.at_level(_logging.ERROR, logger="system-manager"), patch(
+        "apps.system_mgmt.services.login_auth_binding_service.RuntimeApplicationService.execute",
+        return_value=runtime_result,
+    ):
+        result = login_with_binding(binding.id, "auth-code", username="zhangsan", password="x")
+
+    assert result["result"] is False
+    error_records = [r for r in caplog.records if r.levelno == _logging.ERROR]
+    assert any(
+        "binding_id=" in r.message
+        and "provider_key=ad" in r.message
+        and "provider.auth_failed" in r.message
+        and 'username=' in r.message
+        for r in error_records
+    ), f"Expected ERROR with full context, got: {[r.message for r in caplog.records]}"
+
+
+@pytest.mark.django_db
+def test_login_with_binding_logs_warning_when_no_matching_platform_user(caplog):
+    """外部用户成功认证但本地无匹配 → WARNING（配置 / 业务逻辑错）。"""
+    instance = IntegrationInstance.objects.create(
+        name="Feishu Login",
+        provider_key="feishu",
+        config={},
+        status=IntegrationInstanceStatusChoices.READY,
+        capability_status={"login_auth": IntegrationInstanceStatusChoices.READY},
+        enabled=True,
+    )
+    binding = LoginAuthBinding.objects.create(
+        name="Feishu Binding",
+        integration_instance=instance,
+        enabled=True,
+        external_field="user_id",
+        platform_field=LoginAuthBindingPlatformFieldChoices.USERNAME,
+        unmatched_user_action=LoginAuthBindingUnmatchedActionChoices.DENY,
+    )
+    runtime_result = CapabilityExecutionResult.success_result("ok", payload={"external_user": {"user_id": "ghost"}})
+
+    with caplog.at_level(_logging.WARNING, logger="system-manager"), patch(
+        "apps.system_mgmt.services.login_auth_binding_service.RuntimeApplicationService.execute",
+        return_value=runtime_result,
+    ):
+        result = login_with_binding(binding.id, "auth-code")
+
+    assert result["result"] is False
+    assert result["message"] == "No matching platform user found"
+    warning_records = [r for r in caplog.records if r.levelno == _logging.WARNING]
+    assert any(
+        "no matching platform user" in r.message
+        and f"binding_id={binding.id}" in r.message
+        for r in warning_records
+    ), f"Expected WARNING about missing user, got: {[r.message for r in caplog.records]}"
+
+
+@pytest.mark.django_db
+def test_login_with_binding_logs_info_on_successful_login(caplog):
+    """成功登录 → INFO（audit trail）。"""
+    instance = IntegrationInstance.objects.create(
+        name="Feishu Login",
+        provider_key="feishu",
+        config={},
+        status=IntegrationInstanceStatusChoices.READY,
+        capability_status={"login_auth": IntegrationInstanceStatusChoices.READY},
+        enabled=True,
+    )
+    binding = LoginAuthBinding.objects.create(
+        name="Feishu Binding",
+        integration_instance=instance,
+        enabled=True,
+        external_field="user_id",
+        platform_field=LoginAuthBindingPlatformFieldChoices.USERNAME,
+        unmatched_user_action=LoginAuthBindingUnmatchedActionChoices.DENY,
+    )
+    user = User.objects.create(
+        username="alice",
+        display_name="Alice",
+        email="alice@example.com",
+        phone="13800000000",
+        password="",
+        domain="domain.com",
+    )
+    runtime_result = CapabilityExecutionResult.success_result(
+        "ok", payload={"external_user": {"user_id": "alice"}}
+    )
+
+    with caplog.at_level(_logging.INFO, logger="system-manager"), patch(
+        "apps.system_mgmt.services.login_auth_binding_service.RuntimeApplicationService.execute",
+        return_value=runtime_result,
+    ), patch(
+        "apps.system_mgmt.nats_api.get_user_login_token",
+        return_value={"result": True, "data": {"token": "login-token", "username": "alice"}},
+    ):
+        result = login_with_binding(binding.id, "auth-code")
+
+    assert result["result"] is True
+    info_records = [r for r in caplog.records if r.levelno == _logging.INFO]
+    assert any(
+        "login_with_binding succeeded" in r.message
+        and f"binding_id={binding.id}" in r.message
+        and "username=alice" in r.message
+        for r in info_records
+    ), f"Expected INFO audit trail, got: {[r.message for r in caplog.records]}"
