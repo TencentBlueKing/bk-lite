@@ -160,6 +160,32 @@ def test_set_role_menus(super_client):
     assert role.menu_list == [m1.id]
 
 
+def test_set_role_menus_invalidates_inherited_group_users(super_client):
+    menu = Menu.objects.create(name="inherited-menu", display_name="I-x", order=1, app="cmdb", menu_type="t")
+    role = Role.objects.create(name="inherited-role", app="cmdb", menu_list=[])
+    parent = Group.objects.create(name="MenuParent", parent_id=0, allow_inherit_roles=True)
+    parent.roles.add(role)
+    child = Group.objects.create(name="MenuChild", parent_id=parent.id)
+    User.objects.create(
+        username="inherited-menu-user",
+        password="x",
+        display_name="Inherited",
+        email="inherited@x.com",
+        group_list=[child.id],
+    )
+
+    with patch("apps.system_mgmt.viewset.role_viewset.clear_users_permission_cache") as clear_cache:
+        resp = super_client.post(
+            f"{BASE}/set_role_menus/",
+            {"role_id": role.id, "menus": [menu.name]},
+            format="json",
+        )
+
+    assert resp.json()["result"] is True
+    affected_users = clear_cache.call_args.args[0]
+    assert {user["username"] for user in affected_users} == {"inherited-menu-user"}
+
+
 def test_batch_assign_and_revoke_group_roles(super_client):
     role = Role.objects.create(name="grouprole", app="cmdb")
     g1 = Group.objects.create(name="GR1", parent_id=0)
@@ -179,6 +205,31 @@ def test_batch_assign_and_revoke_group_roles(super_client):
     )
     assert revoke.json()["result"] is True
     assert role.group_set.count() == 1
+
+
+def test_revoke_group_role_invalidates_descendant_users(super_client):
+    role = Role.objects.create(name="inherited-revoke", app="cmdb")
+    parent = Group.objects.create(name="RevokeParent", parent_id=0, allow_inherit_roles=True)
+    child = Group.objects.create(name="RevokeChild", parent_id=parent.id)
+    parent.roles.add(role)
+    User.objects.create(
+        username="inherited-revoke-user",
+        password="x",
+        display_name="Inherited",
+        email="revoke@x.com",
+        group_list=[child.id],
+    )
+
+    with patch("apps.system_mgmt.viewset.role_viewset.clear_users_permission_cache") as clear_cache:
+        resp = super_client.post(
+            f"{BASE}/revoke_group_roles/",
+            {"group_ids": [parent.id], "role_id": role.id},
+            format="json",
+        )
+
+    assert resp.json()["result"] is True
+    affected_users = clear_cache.call_args.args[0]
+    assert {user["username"] for user in affected_users} == {"inherited-revoke-user"}
 
 
 def test_batch_assign_missing_params(super_client):

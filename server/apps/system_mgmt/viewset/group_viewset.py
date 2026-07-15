@@ -1,4 +1,5 @@
 from django.core.cache import cache
+from django.db.models import Q
 from django.http import JsonResponse
 from rest_framework.decorators import action
 
@@ -235,7 +236,11 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
             obj.roles.set(role_ids)
             # 清除该组织中所有用户的权限缓存和菜单缓存
             group_id = request.data.get("group_id")
-            affected_users = User.objects.filter(group_list__contains=int(group_id)).values("id", "username", "domain")
+            affected_group_ids = GroupUtils.get_group_with_descendants(group_id)
+            affected_users_query = Q()
+            for affected_group_id in affected_group_ids:
+                affected_users_query |= Q(group_list__contains=int(affected_group_id))
+            affected_users = User.objects.filter(affected_users_query).values("id", "username", "domain")
             affected_users_list = list(affected_users)
             if affected_users_list:
                 # 清除权限规则缓存（default 缓存）
