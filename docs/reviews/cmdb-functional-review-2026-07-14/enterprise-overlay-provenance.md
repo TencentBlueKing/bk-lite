@@ -1,0 +1,131 @@
+# Enterprise Overlay 运行态来源清单
+
+> 审查日期：2026-07-15（Asia/Shanghai）
+> 审查对象：主工作区 ignored `server/apps/cmdb_enterprise/`
+> 用途：固定 [14-enterprise-overlay.md](14-enterprise-overlay.md) 与 [10-custom-reporting.md](10-custom-reporting.md) 所引用的运行态输入；不证明其与根仓 gitlink 可重建对应。
+
+## 1. 边界与聚合算法
+
+- 根仓当前 `git ls-tree HEAD enterprise`：gitlink `7c7db340961d6b010d2c533de92970df253b545f`。
+- 主工作区 `enterprise/` 目录未初始化；`git -C enterprise rev-parse HEAD` 实际向上解析到根仓 HEAD，不能当作子模块 SHA。
+- `server/apps/cmdb_enterprise/` 被根 `.gitignore:59` 忽略，是独立安装态目录；仓库没有 manifest 证明它来自上述 gitlink commit。因此 **gitlink ↔ ignored Overlay 映射未知**。
+- 完整运行态边界：`server/apps/cmdb_enterprise/` 下全部普通文件，排除 `__pycache__` 与 `*.pyc`；包含 Python、BDD feature 和接入手册，共 78 个文件。
+- 稳定逐文件命令（主工作区根，env `LC_ALL=C`）：
+
+```bash
+find server/apps/cmdb_enterprise -type f ! -path '*/__pycache__/*' ! -name '*.pyc' -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256
+```
+
+- 稳定聚合命令：对上条命令产生的、按相对路径排序的 `<sha256><two spaces><path>\n` 清单再次 SHA-256。
+
+```bash
+find server/apps/cmdb_enterprise -type f ! -path '*/__pycache__/*' ! -name '*.pyc' -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256 | shasum -a 256
+```
+
+- 本审计聚合值：`9b82d0556665cc80c03a44c2b58e10e77ddc005fdc11aad6fcd27713ce139292`。
+
+## 2. 完整相对文件清单与 SHA-256
+
+```text
+de34cec158c54e8a2ae804feaddb4960ce9c09d800de88ceb0cd74a838029bf6  server/apps/cmdb_enterprise/__init__.py
+3e76fe1a41ae4e7d412c8fc8d59317ede85f5e9536c13cc4790b8f50378affbb  server/apps/cmdb_enterprise/apps.py
+b165a5f87db66b32e23e327aced358baaf2fa369780efcde04540812a1f0c231  server/apps/cmdb_enterprise/collect/__init__.py
+fe1208f8d2b850937f7669e109814bdc026f42a29cb1493f424d67635fad1136  server/apps/cmdb_enterprise/collect/dameng.py
+537bb789aa5ba17d73bee1daa16e32aeb171c90e556fee7a83181c09c8fc5880  server/apps/cmdb_enterprise/collect/highgo.py
+627c007843ce4f724b81ec0444a8234c837e14d9b7c7b8421f2746736b449ca1  server/apps/cmdb_enterprise/collect/ibmmq.py
+caa32d84f799247512accb458dd5938c91bfbeb17ed9b5235b33840046f160f7  server/apps/cmdb_enterprise/collect/nacos.py
+493203e97dc3108cc8dc0d815b377426314079bc673cd7b0552df964559d44a9  server/apps/cmdb_enterprise/collect/new_collect_object_definitions.py
+8137a6d8c5f3c63f6326b78e21c78abec6acaa93a8fcbc51f4ca8276ee4d9111  server/apps/cmdb_enterprise/collect/new_objects.py
+6b5b8a4ad05d21c9b36d6bfd387438a6f1b5b86588bd6db4ea4d667f38989a6f  server/apps/cmdb_enterprise/collect/oceanbase.py
+a9493148ec7b2cc55a1e24d81d911664e51d7085768ee590e6e2f3772d836719  server/apps/cmdb_enterprise/collect/provider.py
+451928048afbc181d4bbb341f23affce6c063e186d02a1a7df5919b6c309b7bb  server/apps/cmdb_enterprise/collect/remaining_collect_metrics.py
+97df58bcc14674f3362794b4069ed809e55dbb5e09c0585c81506264ab12affe  server/apps/cmdb_enterprise/collect/remaining_node_params.py
+0b5e30809ee4e9ed45feaa37989cf0d311df37db38776fd22be2eed5a7303458  server/apps/cmdb_enterprise/collect/remaining_plugins.py
+c720ad26dd428cf8e015fc35622b3aa67955f9d785684090df86d64df88334bb  server/apps/cmdb_enterprise/collect/server_bmc.py
+bbeed80b4f402130529bef09bf535c0152e3c78625389ab1145c55cd368c236a  server/apps/cmdb_enterprise/collect/tree.py
+df0318dab491c885c718b586ce9d4eebec14e13f52ff731af0fc32ef07ef0022  server/apps/cmdb_enterprise/config.py
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  server/apps/cmdb_enterprise/custom_reporting/__init__.py
+65842b6d946249fc105ba44f88c38833f529a5b5188e52f06b48b2143d07843d  server/apps/cmdb_enterprise/custom_reporting/models.py
+b9c50ba008d06e52a712b91afa49b591eaa75dd068633eabd2bb6a57c93c4219  server/apps/cmdb_enterprise/custom_reporting/provider.py
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  server/apps/cmdb_enterprise/custom_reporting/services/__init__.py
+71643fc68d039ea3ac6354e9e73983746d5afbe1f6b9124ab83ca85686126913  server/apps/cmdb_enterprise/custom_reporting/services/activity_service.py
+8bd66243f65f71700d7d599eec696dbc7a9b742f75fedb63e2314de7ba41d2d6  server/apps/cmdb_enterprise/custom_reporting/services/cleanup_service.py
+50135bb1526e20e5fb92b2230326de187fc70de0d9a1f2bc9f0dfc62feb24928  server/apps/cmdb_enterprise/custom_reporting/services/credential_service.py
+4cca6d677c35986c7824f212e512d51c391b88a580cd3a456de3e094d79b113f  server/apps/cmdb_enterprise/custom_reporting/services/document_service.py
+83e0e29c50090ee9e9a1782274175946b159355b557422635f73ce09d9023ca4  server/apps/cmdb_enterprise/custom_reporting/services/field_service.py
+81b34d1ba059c17d82e67712ed924b20a78c8dd43132fb31b3f399269656ed88  server/apps/cmdb_enterprise/custom_reporting/services/ingest_service.py
+ae9bdc220301d75c0ad9153e3a7caa947875754238929fcdb9cb6fcff83de834  server/apps/cmdb_enterprise/custom_reporting/services/merge_service.py
+97aea541b7f29b6dda5ee35c94d45fa71974083ad9b59985b6f09aa3647639c1  server/apps/cmdb_enterprise/custom_reporting/services/model_service.py
+3f03bc71d961768214ffcc90e3bac29b5f70fb7349fd08595b2b44864a23afe4  server/apps/cmdb_enterprise/custom_reporting/services/relation_service.py
+c63150e072960d1847436c2ae4ade6006c88f9fad4e404555ca3f2f284a4d469  server/apps/cmdb_enterprise/custom_reporting/services/task_service.py
+5cecb8cf391b31073b5e53e1552e906314c8e32b7c02c8dd0c85d7344efa77f8  server/apps/cmdb_enterprise/custom_reporting/tasks.py
+7f01e95fde4b071f62d0656d6b514792b059c20d57b0c4117e3ee315be87a9f6  server/apps/cmdb_enterprise/instance_ops/__init__.py
+4d6c3ba08773b110b55c53f2c816b984080093d6ef8d9844a31ced30bb4ad672  server/apps/cmdb_enterprise/instance_ops/constants.py
+008315951be9c8322c38872ec4c10572f0747e334a4ce5b2b5431be6fcf721a9  server/apps/cmdb_enterprise/instance_ops/provider.py
+c5223552582c7b9e09fa1ccd3adbc00eb5355ccedac5ee08a9f4ae43e496b895  server/apps/cmdb_enterprise/instance_ops/service.py
+38c9a5c8633d86a7165f8f544673948d2dc860c8d100515c5aed75ebc8a34dea  server/apps/cmdb_enterprise/instance_ops/storage.py
+8b5e461b908901e16de8db978822686a1db88c7f48d67a101f374120a6ba5e0a  server/apps/cmdb_enterprise/instance_ops/tasks.py
+420bbc34eb32afb0040e0a9a7109d97d57a406cd45bedcb7757dc34548e824c7  server/apps/cmdb_enterprise/migrations/0001_initial.py
+99e14f6f0ff7dbca94bcb15e050d4cb08d6bd29f78f170199dfb0907c9cbd944  server/apps/cmdb_enterprise/migrations/0002_customreportingbatch_customreportingcleanupreview_and_more.py
+b4dcf717bce57f0ff54c9fc6abd841a648e39a7947d3953319c71f1923de8504  server/apps/cmdb_enterprise/migrations/0003_customreportingfieldregistration_and_more.py
+2d0edca53dc774e1ddec7284c0e15ff844d052608a9a8a5954c04e3bce5461a4  server/apps/cmdb_enterprise/migrations/__init__.py
+2e79bcd1c14b90d63422c2cba394de737c3cdbbcb4c7c09c1dde3bbadf95ea16  server/apps/cmdb_enterprise/model_ops/__init__.py
+1ddc1063c78f4d0b070fae8ec6df23083f8ea3e6baed3d5e627f0d506ed55dd6  server/apps/cmdb_enterprise/model_ops/provider.py
+2708350b4eb48ac2530ff9c08526ae9e1b95d61bf2cdbb1a71479ce9e51073e8  server/apps/cmdb_enterprise/models/__init__.py
+f5e5f166c502e16acfbe879832db8bc33c4f6525f52be228e87fea89a5ed9c5f  server/apps/cmdb_enterprise/models/file_object.py
+5cb605def5c49786b846069331f13202d68ff491c891ee83bef878b8a1e724f3  server/apps/cmdb_enterprise/registry_hooks.py
+3e9e7dbb03c8658bf08c8a3e9e602eadadff10bc4e80b1e66c53fde28763c170  server/apps/cmdb_enterprise/tasks/__init__.py
+d17c907e479e81cfcc62d8ab8085d59e147ade94a62197cada7056513817bfb3  server/apps/cmdb_enterprise/tests/__init__.py
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  server/apps/cmdb_enterprise/tests/bdd/__init__.py
+11ab1bce6e0bb62db94cc3c9f8df024aaf36759217b2a8f013154afdf542a338  server/apps/cmdb_enterprise/tests/bdd/custom_reporting.feature
+51fbc99054f50c14d5234688a84c6ed6e9426263b3d962e59ad8b1b284ae7b66  server/apps/cmdb_enterprise/tests/bdd/test_custom_reporting_bdd.py
+6df5465e1b30af3281c498c498d554c2aa5cc407307909dfe10ba66d31307590  server/apps/cmdb_enterprise/tests/conftest.py
+f2d6448040973e1f7c884351bcf2dc2b5ee4c8db2d99bde4fe4eb5ebf6fd5845  server/apps/cmdb_enterprise/tests/test_attachment_view_integration.py
+140083f1929b5d0ce46588c7e02c73926d549a1284426d7bc17371563ac60ca4  server/apps/cmdb_enterprise/tests/test_custom_reporting_activity.py
+2b361daaae80939ba3d4d153ebb5361392f300da7f3b351ecdd3941a334b22e3  server/apps/cmdb_enterprise/tests/test_custom_reporting_authz.py
+f5116042d49337bedef2b79c46d82551fb8560a9e79945a487dacc600440e496  server/apps/cmdb_enterprise/tests/test_custom_reporting_cleanup_service.py
+317ff9fce40c4a2a4c3e899068f5c145256ec2b366ddc84fd570121f71dd7afe  server/apps/cmdb_enterprise/tests/test_custom_reporting_credential_service.py
+65f79cffa56f3b51655cebf81509fc8c291051a3927f0d45b62b5fd281f2ecb8  server/apps/cmdb_enterprise/tests/test_custom_reporting_document_service.py
+66ba48032f7de7a2d9edc836cda784b468b8f981fef21b7d2b502ca1f7055f2b  server/apps/cmdb_enterprise/tests/test_custom_reporting_field_registration.py
+1d57ade9aa9ba92edecc24268f65dd2cf5219493ca552541c09ac977ebcf8fa0  server/apps/cmdb_enterprise/tests/test_custom_reporting_field_service.py
+dbad2a6c0bebcfe9e72e04da3f0c632500f2143f0eedbf73c7ab37535c14fb7a  server/apps/cmdb_enterprise/tests/test_custom_reporting_ingest_service.py
+c6a6b61f3c147d3742fbbad9a753ce6e4a0a486e2bee32e88dc96ed8bb681bd1  server/apps/cmdb_enterprise/tests/test_custom_reporting_merge_service.py
+081472c9fd5d7b8fbedf54fa7b27d824de9f1f52855d1a14544a674e1cf2ba9a  server/apps/cmdb_enterprise/tests/test_custom_reporting_model_behavior.py
+ce334dd9c899ae0fd406a95fc035d96b29a0369d237ef2898891a24a957ceaef  server/apps/cmdb_enterprise/tests/test_custom_reporting_models.py
+cfbaf60878a0c983b3cc90069a5ee50b7edda6f9302a0249cd9c06d4ce69a082  server/apps/cmdb_enterprise/tests/test_custom_reporting_relation_service.py
+3b2e52147d5700887869fd5af47ce6a86b29e9a3ae4aafdbba0d9e469cd5e928  server/apps/cmdb_enterprise/tests/test_custom_reporting_task_service.py
+4bd9510bdcdf3a63bda8a5aa4f5b4790a6f3c403de532e94f4999444a140e222  server/apps/cmdb_enterprise/tests/test_custom_reporting_views.py
+eca96b9aaf41e827f75f3aa38d3a22614431c9b65f383671acb92f5a3522818a  server/apps/cmdb_enterprise/tests/test_dameng_collect_chain_pure.py
+d29e830f1e760d9df2ddb775466eee848719a7f611a234e4c2bf5c32e8509271  server/apps/cmdb_enterprise/tests/test_dameng_node_params_service.py
+68a94e64934075e9bc9a943e67621e641d2bf579e1215fd312ba24ded660f13f  server/apps/cmdb_enterprise/tests/test_file_field_integration.py
+c05b7665bb230b2e1f148e862dfcc7253837fb55357939f92510c20d6dbe5a66  server/apps/cmdb_enterprise/tests/test_file_field_service.py
+66b5f03bac9c197a0d58b74229bf923703764b2e8abcbd74f34a583ebf1e6372  server/apps/cmdb_enterprise/tests/test_fulltext_exclude_file_fields.py
+a0b0a57c2a5f3747f06a69fdd203c30471211df9c5efa92c854cf0200c926c45  server/apps/cmdb_enterprise/tests/test_new_collect_objects_enterprise_boundary.py
+1390c7418215640c8bc3c965760f305de19ac881e32e0f0df24b3bb49b7908fd  server/apps/cmdb_enterprise/tests/test_new_collect_objects_formatters.py
+382301fa6540cce7e7f8fb99aa8df5cb660030346353dbecebb8a698f298eb4d  server/apps/cmdb_enterprise/tests/test_new_collect_objects_pipeline.py
+06375ec2cb258edd0b21e7e38b105e9bd24dd2492084fbe6ac81138f719d5db6  server/apps/cmdb_enterprise/urls.py
+61bb6c984c5a8c88d9d823b7c293b630e94684c96f0c14a603f97fca83c6a315  server/apps/cmdb_enterprise/商业版配置采集插件接入手册.md
+```
+
+## 6. 建议父审查采用的最小修订顺序
+
+1. 先补 line 28、76、112、161 的完整命令/cwd/env/exit/output；这是局部文档修订，不改变 Finding。
+
+## 3. 子域聚合与审查边界
+
+- collect 审查的 46 路径主清单聚合 SHA-256：`a99f7aab27b2e216efb1fef13a636df8fa6660df63e586ee4215cf14b8baa783`。该子域清单还包含社区 caller/test 与 Stargazer 证据文件，因此不能由上方 78 个 Overlay 文件清单单独推导。
+- 既有 custom_reporting 15 源文件聚合 `1c4d5f1b9e3cbfb17798faf119779565e33bc1d23db7bba61e04cf519ff25ed9`、六测试聚合 `0e4b7eee9e8361f1479546444287ae2c540f303edfc8658c7d9f2ec5f47c8043` 仅是 78 文件全集的历史子集证据，不替代本清单。
+- 本轮覆盖运行态 Overlay 的 collect、custom_reporting、model_ops、instance_ops、附件模型、配置、注册、任务、迁移和测试；社区调用链与 Stargazer 文件按各 Finding 的 Location/测试命令另行固定。
+- 未验证真实 FalkorDB/Neo4j、NATS、Celery 多 Worker/Beat、MinIO 故障、多数据库、Ingress 请求体限制、生产镜像依赖，以及真实 Enterprise 设备协议。
+
+## 4. gitlink 限制与重验要求
+
+根仓 `enterprise` gitlink 是 `7c7db340961d6b010d2c533de92970df253b545f`，但隔离 worktree 未初始化该内容；主工作区 ignored Overlay 也没有 manifest 声明自身来源。两者映射因此为**未知**。运行态哈希能固定本次审查事实，却不能证明发布来源、供应链完整性或从当前分支重建。
+
+取得 gitlink 对应内容后必须：
+
+1. 在隔离目录列出同样排除规则下的文件，生成逐文件 SHA-256 和稳定聚合值。
+2. 将 gitlink 内容与本清单逐路径比较，记录新增、删除和内容差异；不得只比较目录名或由父仓 `git rev-parse` 推断子模块 SHA。
+3. 对变化涉及的 Finding 证据链重做静态审查，并完整重跑 [reproduction-commands.md](reproduction-commands.md)。
+4. 在真实或等价运行环境补验图数据库、NATS、Celery、MinIO、多数据库、Ingress/ASGI 入站预算和至少一个真实设备链路。
+5. 只有映射、依赖锁、运行镜像 digest 与测试结果均可追溯后，才可把“运行态缺陷已验证”提升为“当前 gitlink 可重建并已复验”。

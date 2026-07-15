@@ -2,7 +2,7 @@
 
 ## 1. Summary
 
-模型治理以 HTTP ViewSet 为入口：分类与模型主体写入 FalkorDB；字段分组、公共枚举库写入 Django ORM；唯一规则存放在 `MODEL.unique_rules` JSON；自动关联规则存放在 `MODEL_ASSOCIATION.auto_relation_rule` 边属性；展示字段同时存在于模型 `attrs` 与实例冗余属性。社区层通过 `model_ops` 注册表委派企业字段类型规则；HEAD 已通过 `enterprise` gitlink 和 `.gitmodules` 声明 Enterprise 子模块，但本 worktree 未初始化该子模块，因此本域只完成社区委派契约审查，overlay 行为验证仍是未完成范围。
+模型治理以 HTTP ViewSet 为入口：分类与模型主体写入 FalkorDB；字段分组、公共枚举库写入 Django ORM；唯一规则存放在 `MODEL.unique_rules` JSON；自动关联规则存放在 `MODEL_ASSOCIATION.auto_relation_rule` 边属性；展示字段同时存在于模型 `attrs` 与实例冗余属性。社区层通过 `model_ops` 注册表委派企业字段类型规则。隔离 worktree 无 Overlay，但主工作区运行态已按固定哈希补审，见 [14-enterprise-overlay.md](14-enterprise-overlay.md) 与 [enterprise-overlay-provenance.md](enterprise-overlay-provenance.md)；gitlink 与 ignored 安装态映射仍未知。
 
 主模型 CRUD、模型关联创建/删除、字段新增/更新已有菜单权限和部分对象权限；规则校验也能拒绝字段不存在、类型不一致、展示字段及不支持类型。不过，模型子资源、自动关联双端授权和公共枚举租户边界没有保持同一权限契约；字段分组、公共枚举传播与布局保存也缺少可收敛的跨存储状态机。
 
@@ -114,7 +114,7 @@
 - 自动关联测试不经过双端对象权限和全量同步外部效果。
 - 字段分组测试没有跨存储失败注入；布局原子性测试在模型第一笔写之前抛错。
 - 现有 `test_model_attr_delete_ok` 在 SQLite 下单独实跑 **1 failed in 2.26s，exit 1**，直接复现 CMDB-F05；六文件绿灯没有覆盖该入口。
-- Enterprise 扩展仅验证社区注册表默认实现与自定义 stub；HEAD 存在 `enterprise` gitlink 与 `.gitmodules`，但本 worktree 未初始化子模块，overlay 源码在本次审查环境不可用。附件/图片真实校验、导入导出和审计委派属于未完成范围，不能从社区门面测试外推结论。
+- 隔离 worktree 仅验证社区注册表默认实现与自定义 stub；主工作区运行态附件/图片扩展补审见 F71–F74。gitlink 内容本地不可用且与 ignored 安装态映射未知；真实 FalkorDB/MinIO 与发布制品重建仍未验证，不能从运行态哈希外推来源完整性。
 
 ## 4. Maintainability Verdict
 

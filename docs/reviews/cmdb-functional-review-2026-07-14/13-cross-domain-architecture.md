@@ -2,9 +2,9 @@
 
 ## 1. Summary
 
-本复核以十二份已完成、已复审的功能报告为事实源，对 callback payload、错误映射、状态枚举、权限 helper、外部依赖 wrapper、布尔控制参数与 fallback 的定义位置进行横向归并，并按 framework、service、adapter、plugin、task orchestration、callback builder、error mapper、test fixture 判断职责归属。结论是：现有 `CMDB-F01`–`CMDB-F64` 已覆盖本轮能够满足证据门槛的结构性根因，**不新增 Finding，也不改动已复审 Finding 的事实、严重级别或主归属**。
+本复核以十三份已完成、已复审的功能报告为事实源，对 callback payload、错误映射、状态枚举、权限 helper、外部依赖 wrapper、布尔控制参数与 fallback 的定义位置进行横向归并，并按 framework、service、adapter、plugin、task orchestration、callback builder、error mapper、test fixture 判断职责归属。结论是：现有 `CMDB-F01`–`CMDB-F74` 已覆盖本轮能够满足证据门槛的结构性根因，**不新增 Finding，也不改动已复审 Finding 的事实、严重级别或主归属**。
 
-编号中 `CMDB-F09` 不是漏项：Task 3 复审已将其“自动关系 Outbox 把 broker 接收当业务完成”归并到主 Finding `CMDB-F04`，编号按“一经分配不复用”保留。因此共有 **63 个主 Finding**，统计为 **P0 25 / P1 33 / P2 5 / P3 0**。跨域复核自身为 P0/P1/P2/P3 均 0，Recommendation 为 **Block**；阻断原因来自既有 25 个 P0 及其跨层依赖，而非为架构报告制造新数量。
+编号中 `CMDB-F09` 不是漏项：Task 3 复审已将其“自动关系 Outbox 把 broker 接收当业务完成”归并到主 Finding `CMDB-F04`，编号按“一经分配不复用”保留。因此共有 **73 个主 Finding**，统计为 **P0 28 / P1 39 / P2 6 / P3 0**。跨域复核自身为 P0/P1/P2/P3 均 0，Recommendation 为 **Block**；阻断原因来自既有 28 个 P0 及其跨层依赖，而非为架构报告制造新数量。
 
 ### 1.1 跨域定义位置与建议归属
 
@@ -108,10 +108,12 @@
 | F62 | NATS CallerContext/ACL | 主项；NATS 裸关系证据引用 F14 |
 | F63 | NATS 错误对象协议 | 主项；脱敏引用 F25，领域分类引用 F22 |
 | F64 | NATS schema/预算/deadline | 主项；adapter 通用边界，领域预算仍保留 |
+| F65–F70 | Enterprise collect | 主项；凭据 schema、占位成功、IBM MQ 路由、时序过滤、fallback 与原子 registry |
+| F71–F74 | Enterprise 模型/实例/附件 | 主项；附件所有权、字段删除、multipart 入站预算与 GC 终态 |
 
 ## 3. Test Review
 
-跨域复核不运行新的业务测试，也不把静态汇总包装成新鲜业务验证。综合证据来自各域审查时的 fresh tests：模型治理六文件 102 passed，另有字段删除定向测试 1 failed；实例写入 49 passed/1 failed；查询拓扑 115 passed/1 failed；自动采集、配置文件、IPAM、专项资源、Node 同步、变更订阅与 NATS/RPC 分别为 82、66、54、51、36、82、64 passed。Stargazer 分拆结果为 49 passed、fixtures 154 passed/6 failed；Enterprise ignored Overlay 六文件 38 passed，社区降级 6 passed。精确命令、退出码、覆盖率和环境限制均保留在 `evidence-index.md`，不得汇总为“全套测试通过”。
+跨域复核不运行新的业务测试，也不把静态汇总包装成新鲜业务验证。综合证据来自各域审查时的 fresh tests：模型治理六文件 102 passed，另有字段删除定向测试 1 failed；实例写入 49 passed/1 failed；查询拓扑 115 passed/1 failed；自动采集、配置文件、IPAM、专项资源、Node 同步、变更订阅与 NATS/RPC 分别为 82、66、54、51、36、82、64 passed。Stargazer 分拆结果为 49 passed、fixtures 154 passed/6 failed；Enterprise 自定义上报 38 passed、社区降级 6 passed，Enterprise collect Server 26 passed/1 failed、Stargazer 9 passed，附件扩展 21 passed。精确命令、退出码、覆盖率和环境限制均保留在 `evidence-index.md` 与 [reproduction-commands.md](reproduction-commands.md)，不得汇总为“全套测试通过”。
 
 测试结构性缺口与 Finding 分布一致：
 
@@ -120,7 +122,7 @@
 - 缺少共享的跨域契约 fixture：`generation + owner`、`ResourceBudget`、`ErrorEnvelope`、canary secret、跨组织同名/关系双端、父子 execution 与 snapshot completeness；
 - 多个测试把缺陷行为锁成正向断言，例如空扫描置离线、静默截断和自报 scope 接受；修复时必须先改为业务契约测试，而非仅更新 Mock。
 
-本次文档终验使用只读脚本检查：主 Finding 数量/唯一性/严重度、F09 归并、报告十字段、内部统计、跨报告引用目标、13 份报告齐套和 `git diff --check`。不运行 server/Stargazer 业务套件的原因是本任务没有修改业务代码或测试，且功能域 fresh evidence 已逐域留档。
+本次文档终验使用 [可复制命令附录](reproduction-commands.md) 检查：主 Finding 数量/唯一性/严重度、F09 归并、报告十字段、内部统计、跨报告引用目标、14 份报告齐套和 `git diff --check`。不运行 server/Stargazer 业务套件的原因是本任务没有修改业务代码或测试，且功能域 fresh evidence 已逐域留档。
 
 ## 4. Maintainability Verdict
 

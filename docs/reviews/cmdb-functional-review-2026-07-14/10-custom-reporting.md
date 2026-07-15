@@ -4,7 +4,7 @@
 
 社区层提供稳定 URL、序列化和扩展门面：登录态任务接口委派给 `custom_reporting` registry，公开 ingest 明确使用 `OpenAPIViewSet`、`AllowAny`、空 DRF authentication，真实认证完全由 Bearer/raw token 承担。未安装 Overlay 时，读列表/统计为空，任务写、凭据、审核和 ingest 明确返回“商业版能力未启用”，不会偷偷落入社区写路径；安装 Overlay 时，`CmdbEnterpriseConfig.ready()` 注册 provider，链路进入任务/组织、凭据、批次、快速模型字段、实例合并、关系待处理、快照/过期清理和审核。
 
-本次 Overlay 证据不是当前审查分支可独立复现的仓库内容。根仓库 `enterprise` 只记录 gitlink `7c7db340961d6b010d2c533de92970df253b545f`，`git submodule status enterprise` 前缀为 `-`；指定 worktree 没有 `server/apps/cmdb_enterprise/`。主工作区存在被 `.gitignore:59` 整目录忽略的安装态 Overlay，本报告对其只读审查并只读运行测试：15 个 `custom_reporting` Python 源文件清单聚合 SHA-256 为 `1c4d5f1b9e3cbfb17798faf119779565e33bc1d23db7bba61e04cf519ff25ed9`，简报六测试文件聚合 SHA-256 为 `0e4b7eee9e8361f1479546444287ae2c540f303edfc8658c7d9f2ec5f47c8043`。因此结论代表 2026-07-14 主工作区的运行态安装内容，不能声称仅从当前主仓库 branch/gitlink checkout 即可重建；发布前必须把 Overlay commit、制品版本和上述内容哈希建立可追溯映射。
+本次 Overlay 证据不是当前审查分支可独立复现的仓库内容。隔离 worktree 无 Overlay；主工作区 ignored 安装态已按完整 78 个非缓存文件固定逐文件 SHA-256，稳定聚合值为 `9b82d0556665cc80c03a44c2b58e10e77ddc005fdc11aad6fcd27713ce139292`，详见 [enterprise-overlay-provenance.md](enterprise-overlay-provenance.md)。根仓 gitlink `7c7db340961d6b010d2c533de92970df253b545f` 内容本地不可用，且与 ignored 安装态映射未知；结论只代表该固定运行态，发布前必须建立 Overlay commit、制品版本、镜像 digest 与文件清单的可追溯映射。
 
 认证 token 的签发、轮换和作废采用随机明文一次返回、SQL 只保存 SHA-256、常量时间比较；作废凭据和停用任务会拒收。任务详情等既有对象接口也校验请求组织与 task.team 交集。但控制面创建/改组未验证新 team，数据面又仅按 model_id 读取全图实例；这两个边界可让低权限登录用户或合法任务 token 跨组织写入、覆盖和删除资产。快照路径还会把本次更新失败的旧实例当成“未覆盖”直接清理，同时批次仍标 SUCCESS。空 identity_keys 则使整批以空元组折叠，只落最后一条且 errors=0。
 

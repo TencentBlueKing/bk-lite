@@ -16,7 +16,7 @@
 - 主 Finding ID 全局使用 `CMDB-FNN`，其中 `NN` 为从 `01` 开始的两位递增序号；编号一经分配不复用。
 - 同一根因跨多个功能域时只登记一个主 Finding，其他域通过 ID 引用，不重复计数或抬高严重级别。
 - `结果` 记录命令退出状态及关键摘要；`覆盖率` 只登记真实输出，无法获得时明确写入 `未验证项`。
-- 以下字段在对应功能域审查开始后以代码、测试和命令证据替换“待补充”，不得用架构文档推断替代真实验证。
+- 以下字段均以代码、测试和命令证据填写，不得用架构文档推断替代真实验证；完整可复制命令另见 [reproduction-commands.md](reproduction-commands.md)。
 
 ## 01 模型治理
 
@@ -25,10 +25,10 @@
 - 核心调用链：分类 CRUD → `ClassificationManage` → `GraphClient` 的 `CLASSIFICATION`；模型/字段 CRUD → `ModelManage` → `MODEL.attrs`/实例属性；唯一规则 HTTP → `unique_rule` → `MODEL.unique_rules`；自动关联规则 HTTP → 校验双端 attrs → `MODEL_ASSOCIATION.auto_relation_rule` → 全量关系同步；字段分组 HTTP → `FieldGroupService` → ORM `FieldGroup` + `MODEL.attrs.attr_group`；公共枚举 HTTP → ORM `PublicEnumLibrary` → Celery → 模型枚举快照；展示字段由模型 attrs 与实例 `_display` 冗余属性共同承载。
 - 外部依赖：FalkorDB 兼容 `GraphClient`、Django ORM/多数据库 JSONField、Celery broker/worker、SystemMgmt 组织与用户 RPC、`model_ops` Enterprise 注册表。
 - 关键测试：`test_classification_service.py`、`test_model_service_advanced.py`、`test_unique_rule_crud.py`、`test_auto_relation_rule_validate.py`、`test_field_group_service.py`、`test_public_enum_service.py`；额外复现 `test_model_views.py::test_model_attr_delete_ok`。
-- 执行命令：简报原始六文件 `uv run pytest -q -o addopts='' ...`；受控环境重跑在同命令前补充 `SECRET_KEY=test DB_ENGINE=sqlite DB_NAME=/private/tmp/cmdb_task2_review.sqlite3 ENABLE_CELERY=true`；额外单测使用相同环境运行 `apps/cmdb/tests/test_model_views.py::test_model_attr_delete_ok`。
+- 执行命令：六文件组合与字段删除复现的绝对 cwd、完整环境和命令见 [复现命令附录 §1](reproduction-commands.md#1-模型治理)。
 - 结果：沙箱首次退出 2（uv cache 无权限）；受控原始命令退出 1（23 passed、79 setup errors，PostgreSQL `DB_NAME=None`）；显式 SQLite 环境六文件退出 0（102 passed in 2.83s）；字段删除单测退出 1（1 failed in 2.26s，SQLite `JSONField contains` 不支持）。
 - 覆盖率：未测量；简报命令没有 `--cov`，不能声称达到相关模块 80% 或核心路径 90% 目标。
-- 未验证项：Enterprise 子模块存在但未初始化，overlay 源码在本次审查环境不可用；本域仅完成社区委派契约审查，overlay 行为验证属于未完成范围。真实 FalkorDB 故障/恢复、Celery broker 故障与重投、公共枚举大规模实例 `_display` 重建、PostgreSQL/MySQL JSON 行为和并发写未执行。主 Findings：`CMDB-F01`–`CMDB-F07`，其中 `CMDB-F04` 为 P0，详见 [01-model-governance.md](01-model-governance.md)。
+- 未验证项：隔离 worktree 无 Overlay；运行态固定哈希补审见 [14-enterprise-overlay.md](14-enterprise-overlay.md) 与 [enterprise-overlay-provenance.md](enterprise-overlay-provenance.md)，但 gitlink 与 ignored 安装态映射未知。真实 FalkorDB 故障/恢复、Celery broker 故障与重投、公共枚举大规模实例 `_display` 重建、PostgreSQL/MySQL JSON 行为和并发写未执行。主 Findings：`CMDB-F01`–`CMDB-F07`，其中 `CMDB-F04` 为 P0，详见 [01-model-governance.md](01-model-governance.md)。
 
 ## 02 实例写入
 
@@ -40,7 +40,7 @@
 - 执行命令：`SECRET_KEY=test DB_ENGINE=sqlite DB_NAME=/private/tmp/cmdb-task3.sqlite3 ENABLE_CELERY=true INSTALL_APPS=system_mgmt,node_mgmt,cmdb MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false uv run pytest -q -o addopts='' apps/cmdb/tests/test_instance_service_crud.py apps/cmdb/tests/test_operation_service.py apps/cmdb/tests/test_operation_outbox.py apps/cmdb/tests/test_unique_write_lock.py apps/cmdb/tests/bdd/test_instance_crud_bdd.py --cov=apps.cmdb.services.instance --cov=apps.cmdb.services.operation_service --cov-report=term-missing`。
 - 结果：沙箱首次退出 2（uv cache 无权限，未收集）；受控权限原命令退出 1，49 passed、1 failed in 28.76s。唯一失败 `test_instance_batch_delete_ok` 是历史 #0076：夹具未 mock incoming 自动关系图查询而连接空 Neo4j URI，不是本次回归。
 - 覆盖率：`instance.py` 37%（905/567 missed）；`operation_service.py` 82%（192/34 missed）；合计 45%（1097/601 missed）。实例服务和功能域合计未达质量门槛。
-- 未验证项：Enterprise 子模块未初始化，真实文件台账/GC/overlay 行为不可用；未执行真实 FalkorDB、真实 broker/worker 崩溃、并发进程、MySQL/PostgreSQL 和大规模资源验证。旧 Outbox Worker owner 隔离已有测试；旧图 Worker 晚到、5 次 FAILED、批量部分失败和删除副作用没有测试。本域主 Findings 为 `CMDB-F08`、`CMDB-F10`–`CMDB-F13`（P0 1/P1 2/P2 2）；自动关系异步完成语义引用 `CMDB-F04`，详见 [02-instance-write.md](02-instance-write.md)。
+- 未验证项：隔离 worktree 无 Overlay；运行态附件台账/GC 固定哈希补审见 [14-enterprise-overlay.md](14-enterprise-overlay.md) 与 [enterprise-overlay-provenance.md](enterprise-overlay-provenance.md)，但 gitlink 映射未知；未执行真实 FalkorDB、真实 broker/worker 崩溃、并发进程、MySQL/PostgreSQL 和大规模资源验证。旧 Outbox Worker owner 隔离已有测试；旧图 Worker 晚到、5 次 FAILED、批量部分失败和删除副作用没有测试。本域主 Findings 为 `CMDB-F08`、`CMDB-F10`–`CMDB-F13`（P0 1/P1 2/P2 2）；自动关系异步完成语义引用 `CMDB-F04`，详见 [02-instance-write.md](02-instance-write.md)。
 
 ## 03 查询与拓扑
 
@@ -60,9 +60,9 @@
 - 入口：`CollectModelViewSet.create/update/destroy/exec_task`；周期入口 `sync_collect_task`；超时与清理 Beat 入口 `sync_periodic_update_task_status/daily_data_cleanup_task`；派发/轮换入口 `CollectDispatchService`、`CollectCredentialPoolService`、`CollectHitStateService`；实例落地入口 `BaseCollect → MetricsCannula → Management`；Enterprise hook `collect.extensions`。
 - 核心调用链：CRUD → ORM/ChangeRecord → on_commit 周期任务与 NodeMgmt；execute/周期消息 → execution claim → Job/Protocol 或多凭据 dispatch → target×credential attempt → BaseCollect 格式化 add/update/delete/association/raw → Management 图写/关系 → 审计 outbox/Enterprise hook/自动关系 → token 条件结果写回；Beat 每 5 分钟收敛 timeout，每日 02:00 全量扫描过期实例并批删。
 - 外部依赖：Django ORM/多数据库 JSON、Celery broker/worker/Beat/django-celery-beat、FalkorDB/GraphClient、NodeMgmt RPC、Stargazer/采集插件、Enterprise collect extension、ChangeRecord mirror outbox。
-- 关键测试：`test_collect_service_methods.py`、`test_collect_dispatch_service.py`、`test_collect_celery_tasks_svc.py`、`test_collect_management_hooks.py`；Enterprise `test_new_collect_objects_pipeline.py` 因子模块未初始化未执行。
+- 关键测试：`test_collect_service_methods.py`、`test_collect_dispatch_service.py`、`test_collect_celery_tasks_svc.py`、`test_collect_management_hooks.py`；隔离 worktree 无 Overlay，运行态 Enterprise pipeline 补测见 [14-enterprise-overlay.md](14-enterprise-overlay.md)。
 - 执行命令：`SECRET_KEY=test DB_ENGINE=sqlite DB_NAME=/private/tmp/cmdb-task5-review.sqlite3 ENABLE_CELERY=true INSTALL_APPS=system_mgmt,node_mgmt,cmdb MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false uv run pytest -q -o addopts='' apps/cmdb/tests/test_collect_service_methods.py apps/cmdb/tests/test_collect_dispatch_service.py apps/cmdb/tests/test_collect_celery_tasks_svc.py apps/cmdb/tests/test_collect_management_hooks.py --cov=apps.cmdb.services.collect_service --cov=apps.cmdb.services.collect_dispatch_service --cov=apps.cmdb.services.collect_credential_pool_service --cov=apps.cmdb.services.collect_target_service --cov=apps.cmdb.services.collect_hit_state_service --cov=apps.cmdb.collection.common --cov=apps.cmdb.collection.collect_tasks.base --cov=apps.cmdb.tasks.celery_tasks --cov=apps.cmdb.services.data_cleanup_service --cov-report=term-missing`。Enterprise 初始化后必须使用 `uv run --with jsonschema pytest`，本次未执行。
-- 结果：沙箱首次退出 2（uv cache 无权限，未收集）；受控缓存权限重跑退出 0，82 passed in 3.61s。Enterprise gitlink `enterprise` 前缀为 `-`，子模块未初始化，brief 路径在当前 worktree 不存在并明确未验证。
+- 结果：沙箱首次退出 2（uv cache 无权限，未收集）；受控缓存权限重跑退出 0，82 passed in 3.61s。隔离 worktree 无 Overlay；运行态固定哈希补审得到 Server 26 passed/1 failed 与 Stargazer 9 passed，详见 [复现命令附录 §4](reproduction-commands.md#4-enterprise-collect)；gitlink 映射仍未知。
 - 覆盖率：collect_service 85%、dispatch 73%、credential_pool 61%、target 61%、hit_state 76%、common 38%、base 17%、celery_tasks 84%、cleanup 23%，合计 65%，未达 75%/核心 90% 门槛。
 - 未验证项：Enterprise pipeline/overlay hook、真实 FalkorDB、真实 broker/多 Worker 重投与崩溃、NodeMgmt/Stargazer、MySQL/PostgreSQL、大 IP/实例/原始结果和 cleanup 规模均未验证。测试未覆盖相同 token 双 owner、旧 Worker 图副作用、混合目标失败、结构化错误分类、批次/内存上限、删除审计，以及日志/DB/用户摘要的 secret 脱敏。主 Findings `CMDB-F20`–`CMDB-F25`（P0 3/P1 3），详见 [04-auto-collection.md](04-auto-collection.md)。
 
@@ -73,7 +73,7 @@
 - 核心调用链：CMDB NodeParams/Telegraf header → `collect_info` 解析 `cmdb*` 与 host/credential pool → ARQ enqueue/dedupe → `collect_plugin_task` → `CollectionService` 解析 plugin.yml → job/protocol collector → metrics 或 callback 归一化 → core NATS `publish+flush` → CMDB handler；凭据执行结果同时写 Redis ZSET/cooldown，周期按 finished_at cursor 批推 CMDB。配置文件拆分后的 callback identity 当前按单 host 构造，历史 instance_name 错配线索未复现。
 - 外部依赖：Redis/ARQ、core NATS 与 CMDB consumer、NodeMgmt local/ssh executor、Netmiko/网络设备、PowerShell/POSIX shell、pysnmp/SNMP 设备、icmplib privileged ICMP/TCP、Docker/VM/SSH collect fixtures。
 - 关键测试：`test_collect_multicred.py`、`test_collect_credential_push.py`、`test_ip_discovery_targets.py`、`tests/collect_fixtures/`；额外复核 `test_network_config_file_info.py`、`test_ip_discovery_scanner.py` 与直接命令/转义/未知投递复现。
-- 执行命令：`make lint`；`uv run pytest -q tests/test_collect_multicred.py tests/test_collect_credential_push.py tests/test_ip_discovery_targets.py tests/collect_fixtures/`；拆分 `uv run pytest -q tests/test_collect_multicred.py tests/test_collect_credential_push.py`、`uv run pytest -q tests/collect_fixtures/`、`uv run pytest -q tests/test_network_config_file_info.py`；pytest-cov 探测命令；`.venv/bin/python -c`/受控 `uv run python -c` 复现命令策略、空命令、PowerShell 转义与 NATS 未知态。
+- 执行命令：lint、六条 pytest/coverage 命令及 F26/F27/F29/F31 的完整直接探针见 [复现命令附录 §2](reproduction-commands.md#2-stargazer-边界与直接探针)。
 - 结果：`make lint` 退出2，Stargazer 目录无 `.pre-commit-config.yaml`。brief 组合 pytest 退出2，`test_ip_discovery_targets.py` 收集期 `ModuleNotFoundError: plugins.inputs.ip_discovery`；拆分多凭据/凭据推送 49 passed；独立 collect fixtures 154 passed、6 failed、1 warning（catalog 缺 mssql，实际56而测试要求57），与前述49项组合运行时为203 passed、6 failed；网络配置现有测试10 passed；IP scanner 测试同样旧路径收集失败。直接复现确认 `request system reboot` 被 Agent 放行、空命令返回 `[]`、PowerShell 产生 POSIX 转义串，首次 generic publish 异常得到 `success_count=0, delivery_detected=True`。
 - 覆盖率：未测量；Stargazer 环境未安装 pytest-cov，`--cov` 命令退出4，不能声明达到相关模块80%或核心路径90%。
 - 未验证项：CodeGraph darwin-x64 bundle 缺失且受控下载超时，调用链改用 rg/逐文件复核；未连接真实 Redis/ARQ、NATS broker/CMDB consumer、Netmiko/SSH/PowerShell/SNMP/ICMP、Docker/VM fixture，也未执行大文件、大 CIDR、真实设备高危命令（安全原因）、多 Worker/进程重启、应用 ack 与 retention 边界。主 Findings `CMDB-F26`–`CMDB-F32`（P0 3/P1 4）；raw result/外部错误泄露引用 `CMDB-F25`，core NATS 无应用确认引用 `CMDB-F04`，详见 [05-stargazer-boundary.md](05-stargazer-boundary.md)。
@@ -109,7 +109,7 @@
 - 核心调用链：内部 setup 权限 → `K8sSetupService` → cache token/NodeMgmt/Webhook/VictoriaMetrics；公开 token → 非原子 cache get/set 消费 → NodeMgmt NATS 参数 → Webhook YAML；K8s 根 cluster VIEW → 四模型 permission map → Namespace 500 条权限分页 → 批量关系/实体页/统计；应用根 VIEW → 单一根模型 permission map → 逐节点 BFS/分组/openpyxl（容量分别引用 `CMDB-F18/F17`）；network 根 VIEW → depth 钳制 1–4 → 单连接逐节点 BFS → `node_limit=100/truncated`（剩余权限/邻接预算引用 `CMDB-F14/F18`）；room/rack 根 VIEW → 关系实例 → rack/device 权限 → U 位布局，其中 room 逐 rack 查询设备。
 - 外部依赖：FalkorDB/Neo4j GraphClient、Django cache/Redis、NodeMgmt cloud region RPC、infra Webhook、VictoriaMetrics、SystemMgmt 权限与组织上下文、openpyxl。
 - 关键测试：brief 五文件 `test_k8s_resource_overview_service.py`、`test_k8s_resource_overview_views.py`、`test_application_resource_overview_views.py`、`test_infra_service.py`、`test_rack_room_service.py`；补充权限测试 `test_k8s_setup_views.py`。
-- 执行命令：`MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false SECRET_KEY=test DB_ENGINE=sqlite DB_NAME=/private/tmp/cmdb-task9-review.sqlite3 ENABLE_CELERY=true INSTALL_APPS=system_mgmt,node_mgmt,cmdb uv run pytest -q -o addopts='' apps/cmdb/tests/test_k8s_resource_overview_service.py apps/cmdb/tests/test_k8s_resource_overview_views.py apps/cmdb/tests/test_application_resource_overview_views.py apps/cmdb/tests/test_infra_service.py apps/cmdb/tests/test_rack_room_service.py --cov=apps.cmdb.services.k8s_resource_overview --cov=apps.cmdb.services.application_resource_overview --cov=apps.cmdb.services.infra --cov=apps.cmdb.services.rack_room --cov=apps.cmdb.views.k8s_setup --cov-report=term-missing`；补充 `... uv run pytest -q -o addopts='' apps/cmdb/tests/test_k8s_setup_views.py --cov=apps.cmdb.views.k8s_setup --cov=apps.cmdb.services.k8s_setup --cov-report=term-missing`。
+- 执行命令：`MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false SECRET_KEY=test DB_ENGINE=sqlite DB_NAME=/private/tmp/cmdb-task9-review.sqlite3 ENABLE_CELERY=true INSTALL_APPS=system_mgmt,node_mgmt,cmdb uv run pytest -q -o addopts='' apps/cmdb/tests/test_k8s_resource_overview_service.py apps/cmdb/tests/test_k8s_resource_overview_views.py apps/cmdb/tests/test_application_resource_overview_views.py apps/cmdb/tests/test_infra_service.py apps/cmdb/tests/test_rack_room_service.py --cov=apps.cmdb.services.k8s_resource_overview --cov=apps.cmdb.services.application_resource_overview --cov=apps.cmdb.services.infra --cov=apps.cmdb.services.rack_room --cov=apps.cmdb.views.k8s_setup --cov-report=term-missing`；补充测试的完整环境、cwd 和命令见 [复现命令附录 §3](reproduction-commands.md#3-专项资源补测)。
 - 结果：首次五文件命令被沙箱拒绝读取 uv cache，退出 2、未收集；受控权限重跑退出 0，51 passed in 4.75s。补充 setup 权限测试退出 0，6 passed in 0.15s；三项内部入口无权限均 403 且 Service 零调用，有权限 200。
 - 覆盖率：brief 五文件 K8s overview 76%、应用资源 20%、infra 95%、rack_room 89%，合计 63%；setup View 未被五文件导入。补充测试 setup View 79%、setup Service 34%、合计 54%。相关模块与核心路径总体未达 80%/90% 目标。
 - 未验证项：真实 Redis 多进程 token 原子性/绝对 TTL、FalkorDB/Neo4j、NodeMgmt/Webhook/VM、隐藏 Workload/Node 下可见 Pod、K8s 高关系边集、room 大量 rack 的查询次数与内存。brief 未运行网络拓扑测试；其 node_limit/truncated 仅静态复核，跨模型权限、单跳邻接行数/查询数/deadline 归 `CMDB-F14/F18`。应用高扇出/环与超大 node_ids/Excel 归 `CMDB-F18/F17`。主 Findings `CMDB-F41`–`CMDB-F43`（P0 2/P1 1），Recommendation Block，详见 [08-specialized-resources.md](08-specialized-resources.md)。
@@ -158,29 +158,44 @@
 - 外部依赖：Core NATS 与共享连接凭据/TLS、`server/nats_client` 注册/监听/客户端、FalkorDB/Neo4j GraphClient、Django ORM、SystemMgmt 权限/组织、Operation Analysis NATS 数据源、Alerts 丰富、Stargazer callback、配置文件/凭据命中/展示字段同步 Service。
 - 关键测试：brief 六文件 `test_nats_pure.py`、`test_create_delete_instance_nats.py`、`test_update_instance_nats.py`、`test_get_cmdb_module_data_permission_3662.py`、`test_collect_credential_event_nats.py`、`test_room3d_layout_nats.py`；静态补充 `test_model_assoc_nats.py`、`apps/rpc/tests/test_misc_forwarding.py`、Operation Analysis `GetNatsData` 与通用 `server/nats_client` listener/client。
 - 执行命令：`MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false SECRET_KEY=test DB_ENGINE=sqlite DB_NAME=/private/tmp/cmdb-task13-review.sqlite3 ENABLE_CELERY=true INSTALL_APPS=system_mgmt,node_mgmt,cmdb uv run pytest -q -o addopts='' apps/cmdb/tests/test_nats_pure.py apps/cmdb/tests/test_create_delete_instance_nats.py apps/cmdb/tests/test_update_instance_nats.py apps/cmdb/tests/test_get_cmdb_module_data_permission_3662.py apps/cmdb/tests/test_collect_credential_event_nats.py apps/cmdb/tests/test_room3d_layout_nats.py --cov=apps.cmdb.nats.nats --cov-report=term-missing`。异常协议直接复现：`.venv/bin/python -c 'import jsonpickle; e=RuntimeError("password=canary-secret"); print(jsonpickle.encode(e)); print(str(jsonpickle.decode(jsonpickle.encode(e))))'`。
-- 结果：首次 pytest 因沙箱拒绝读取 `~/.cache/uv/sdists-v9/.git` 退出 2、未收集；受控权限重跑退出 0，64 passed in 2.90s。canary codec 复现退出 0，序列化 JSON 的 `py/reduce` tuple 和显式 decode 后异常文本均包含 `password=canary-secret`；这只证明 codec 保留/可还原异常内容，不证明当前普通 listener 响应必经 decode。精确注册计数 `rg '^@nats_client.register$' ... | wc -l` 为 26。
+- 结果：首次 pytest 因沙箱拒绝读取 `~/.cache/uv/sdists-v9/.git` 退出 2、未收集；受控权限重跑退出 0，64 passed in 2.90s。canary codec 复现退出 0，序列化 JSON 的 `py/reduce` tuple 和显式 decode 后异常文本均包含 `password=canary-secret`；这只证明 codec 保留/可还原异常内容，不证明当前普通 listener 响应必经 decode。精确注册计数 `rg -c '^@nats_client\.register。
 - 覆盖率：`apps/cmdb/nats/nats.py` 54%（733 statements / 338 missed），远低于相关模块80%/核心90%；`server/nats_client` listener/handler/client 未纳入 coverage。CRUD 测试主要 Mock 委托并锁定自报 scope，module_data 只覆盖单一实例分支；凭据 callback 有真实 ORM 断言，Room3D 有较完整权限/payload 断言，但都不证明 wire publisher 身份、ACL、预算或真实 NATS。`server/apps/node_mgmt/tests/test_architecture_support.py:4358-4388` 另有无 message `BaseAppException` 的 jsonpickle fallback 测试，但不在 brief 六文件/本次 coverage，也没有覆盖当前普通非空 `error + message` 文本分支或 canary 脱敏。
 - 未验证项：真实 NATS 多 service 账号与 subject ACL、恶意/错误 responder 对 jsonpickle 的完整利用影响、非 Python consumer、FalkorDB/Neo4j、大消息/大响应、并发线程饱和、caller timeout 后服务端取消、多数据库；配置 callback 业务失败引用 `CMDB-F33`，未知投递/cursor 引用 `CMDB-F31/F32`。主 Findings `CMDB-F62`–`CMDB-F64`（P0 1/P1 2），Recommendation Block，详见 [12-nats-rpc.md](12-nats-rpc.md)。
 
 ## 13 跨域架构复核
 
-- 业务承诺：十二域共享的身份、授权 scope、状态、callback、错误、外部依赖和资源预算必须有明确归属；同一根因只保留一个主 Finding，编号不复用，最小安全修复与长期设计分别说明影响和取舍。
-- 入口：十二份功能报告、`00-overview.md`、本证据索引、`BUSINESS_ARCHITECTURE.md`、已批准 design/plan 与 Task 14 brief；不重新修改业务代码或测试。
+- 业务承诺：十三域共享的身份、授权 scope、状态、callback、错误、外部依赖和资源预算必须有明确归属；同一根因只保留一个主 Finding，编号不复用，最小安全修复与长期设计分别说明影响和取舍。
+- 入口：十三份功能报告、`00-overview.md`、本证据索引、`BUSINESS_ARCHITECTURE.md`、已批准 design/plan 与 Task 14 brief；不重新修改业务代码或测试。
 - 核心调用链：HTTP/NATS/Beat/callback → CallerContext/权限与 schema → Service/Plugin → Graph/ORM/MinIO/外部 RPC → execution/delivery/callback builder → error mapper/外部可观察终态；横向核对 framework/service/adapter/plugin/task orchestration/callback builder/error mapper/test fixture 职责。
 - 外部依赖：FalkorDB/Neo4j GraphClient、NATS listener/client、NodeMgmt/SystemMgmt RPC、Celery/Beat、Redis/ARQ、MinIO、Stargazer 与 ignored Enterprise Overlay；本任务只消费各域已记录的运行证据。
-- 关键测试：不新增业务测试；综合引用 01–12 各域 fresh pytest/直接复现/coverage 结果。文档终验检查 Finding ID、严重度、十字段、引用目标、统计、报告齐套和 diff。
-- 执行命令：`rg`/`awk`/shell 只读脚本统计 `### Finding CMDB-F`、`Severity`、跨报告 `CMDB-FNN` 引用和固定五段报告结构；`git diff --check -- docs/reviews/cmdb-functional-review-2026-07-14`；`git status --short`/`git diff --cached --name-only` 限定交付范围。
-- 结果：未新增结构性 Finding；`CMDB-F09` 为已归并到 `CMDB-F04` 的保留空号。63 个主 Finding ID 唯一，P0 25/P1 33/P2 5/P3 0；13 份报告齐套，跨域职责与依赖矩阵见 [13-cross-domain-architecture.md](13-cross-domain-architecture.md)。
+- 关键测试：不新增业务测试；综合引用 01–12 与 14 各域 fresh pytest/直接复现/coverage 结果。文档终验检查 Finding ID、严重度、十字段、引用目标、统计、报告齐套和 diff。
+- 执行命令：完整 Finding/字段/顺序/链接/占位与 diff 校验命令见 [reproduction-commands.md §7](reproduction-commands.md#7-文档终验)；其输出作为本节统计依据。
+- 结果：未新增结构性 Finding；`CMDB-F09` 为已归并到 `CMDB-F04` 的保留空号。73 个主 Finding ID 唯一，P0 28/P1 39/P2 6/P3 0；14 份报告齐套，跨域职责与依赖矩阵见 [13-cross-domain-architecture.md](13-cross-domain-architecture.md)。
 - 覆盖率：本任务没有修改业务代码，不运行新 coverage；各域真实覆盖率和未测原因保留在 01–12 节，不能合并声称达到 80%/90%。
-- 未验证项：真实多服务 NATS ACL、真实图双驱动、NodeMgmt/SystemMgmt、Celery 多 Worker、Redis/ARQ、MinIO 故障、Enterprise gitlink 与 ignored 安装态映射、多数据库与大规模基准仍沿用各域未验证项。Recommendation Block；主阻断来自既有 25 个 P0，而非本报告新增数量。
+- 未验证项：真实多服务 NATS ACL、真实图双驱动、NodeMgmt/SystemMgmt、Celery 多 Worker、Redis/ARQ、MinIO 故障、Enterprise gitlink 与 ignored 安装态映射、多数据库与大规模基准仍沿用各域未验证项。Recommendation Block；主阻断来自既有 28 个 P0，而非本报告新增数量。
+
+## 14 Enterprise Overlay
+
+- 业务承诺：Enterprise 能力必须以可追溯 manifest 注册并 fail closed；秘密字段统一加密/遮蔽；collector 只有真实只读 I/O 与身份验证后才能产出资产；多对象路由、时序快照和 fallback 必须保持 schema；附件引用、字段删除、multipart 入站预算和 GC 终态必须可恢复。
+- 入口：`CmdbEnterpriseConfig.ready`、collect tree/NodeParams/plugin registry、Stargazer Enterprise inputs、社区 model/instance extension 门面、附件 upload/download/delete 与每日 cleanup。
+- 核心调用链：credential/tree → NodeParams → Agent plugin → metric → formatter → CMDB 写；模型/实例字段 → graph metadata → `CmdbFileObject` → MinIO → orphan cleanup。
+- 外部依赖：主工作区 ignored Overlay、Stargazer、FalkorDB/Neo4j、Influx/Prometheus、NATS、Celery、MinIO、Ingress/ASGI multipart。
+- 关键测试：Enterprise collect Server 八文件组合、Stargazer 两文件组合、附件/fulltext 四文件组合、社区实例 CRUD/BDD、migration check 与直接探针。
+- 执行命令：[reproduction-commands.md §4–§5](reproduction-commands.md#4-enterprise-collect) 记录绝对 cwd、完整环境、退出码和关键输出。
+- 结果：collect Server 26 passed/1 failed；Stargazer 9 passed/1 warning；附件扩展 21 passed；社区 hook 37 passed；migration check 无变化。
+- 覆盖率：Enterprise collect 约72%，附件/模型/实例扩展合计72%；Stargazer 当前 venv 无 pytest-cov。
+- 未验证项：真实设备/协议、图双驱动、NATS、Celery 多 Worker、MinIO 故障、多数据库、Ingress 总量限制与生产镜像依赖。主 Findings `CMDB-F65`–`CMDB-F74`（P0 3/P1 6/P2 1），Recommendation Block，详见 [14-enterprise-overlay.md](14-enterprise-overlay.md)。完整 78 文件来源见 [enterprise-overlay-provenance.md](enterprise-overlay-provenance.md)。
 
 ## 最终终验记录
 
-- 终验范围：`00-overview.md`、`evidence-index.md` 与 01–13 全部功能报告；本步骤没有修改生产代码或测试，也没有重复运行已逐域留档的业务套件。
-- 齐套校验：对 13 个报告逐一执行 `test -s`，退出 0。
-- Finding 校验：只读脚本按每个 `### Finding CMDB-FNN` 到下一三级标题的边界检查十个固定字段、严重级别排序、ID 唯一性和全集；结果为 63 个主 Finding、63 个唯一 ID、P0 25/P1 33/P2 5/P3 0，无缺失、无重复、无额外编号。`CMDB-F09` 仅作为归并到 `CMDB-F04` 的保留空号出现，不计主 Finding。
-- 证据字段校验：01–13 每节均具备业务承诺、入口、核心调用链、外部依赖、关键测试、执行命令、结果、覆盖率和未验证项；结果无缺项。
-- 引用与链接校验：所有 `CMDB-FNN` 引用均落在 `F01`–`F64` 范围，报告内 Markdown `.md` 链接均指向存在文件；结果无错误。
-- 占位符校验：按 Task 15 计划中的四类占位词执行全目录扫描，无输出。
+- 终验范围：`00-overview.md`、`evidence-index.md` 与 01–14 全部功能报告；本步骤没有修改生产代码或测试，也没有重复运行已逐域留档的业务套件。
+- 齐套校验：对 14 个报告逐一执行 `test -s`，退出 0。
+- Finding 校验：只读脚本按每个 `### Finding CMDB-FNN` 到下一三级标题的边界检查十个固定字段、严重级别排序、ID 唯一性和全集；结果为 73 个主 Finding、73 个唯一 ID、P0 28/P1 39/P2 6/P3 0，无缺失、无重复、无额外编号。`CMDB-F09` 仅作为归并到 `CMDB-F04` 的保留空号出现，不计主 Finding。
+- 证据字段校验：01–14 每节均具备业务承诺、入口、核心调用链、外部依赖、关键测试、执行命令、结果、覆盖率和未验证项；结果无缺项。
+- 引用与链接校验：所有 `CMDB-FNN` 引用均落在 `F01`–`F74` 范围，报告内 Markdown `.md` 链接均指向存在文件；结果无错误。
+- 占位符校验：按五类占位词执行全目录扫描，无输出；命令通过 shell 字符串拼接避免自匹配，见 [reproduction-commands.md](reproduction-commands.md)。
 - 格式校验：`git diff --check -- docs/reviews/cmdb-functional-review-2026-07-14` 退出 0。
-- Enterprise provenance：根 gitlink 为 `7c7db340961d6b010d2c533de92970df253b545f` 且 worktree 未初始化；主工作区 ignored Overlay 的 15 个源文件聚合 SHA-256 为 `1c4d5f1b9e3cbfb17798faf119779565e33bc1d23db7bba61e04cf519ff25ed9`，六测试文件聚合 SHA-256 为 `0e4b7eee9e8361f1479546444287ae2c540f303edfc8658c7d9f2ec5f47c8043`。两者映射未知，当前分支不能单独重建该运行态审查对象。
+- Enterprise provenance：根 gitlink 为 `7c7db340961d6b010d2c533de92970df253b545f` 且本地内容不可用；主工作区 ignored Overlay 的 78 个非缓存文件聚合 SHA-256 为 `9b82d0556665cc80c03a44c2b58e10e77ddc005fdc11aad6fcd27713ce139292`，逐文件清单见 [enterprise-overlay-provenance.md](enterprise-overlay-provenance.md)。两者映射未知。
+ server/apps/cmdb/nats/nats.py` 为 26。
+- 覆盖率：`apps/cmdb/nats/nats.py` 54%（733 statements / 338 missed），远低于相关模块80%/核心90%；`server/nats_client` listener/handler/client 未纳入 coverage。CRUD 测试主要 Mock 委托并锁定自报 scope，module_data 只覆盖单一实例分支；凭据 callback 有真实 ORM 断言，Room3D 有较完整权限/payload 断言，但都不证明 wire publisher 身份、ACL、预算或真实 NATS。`server/apps/node_mgmt/tests/test_architecture_support.py:4358-4388` 另有无 message `BaseAppException` 的 jsonpickle fallback 测试，但不在 brief 六文件/本次 coverage，也没有覆盖当前普通非空 `error + message` 文本分支或 canary 脱敏。
+- 未验证项：真实 NATS 多 service 账号与 subject ACL、恶意/错误 responder 对 jsonpickle 的完整利用影响、非 Python consumer、FalkorDB/Neo4j、大消息/大响应、并发线程饱和、caller timeout 后服务端取消、多数据库；配置 callback 业务失败引用 `CMDB-F33`，未知投递/cursor 引用 `CMDB-F31/F32`。主 Findings `CMDB-F62`–`CMDB-F64`（P0 1/P1 2），Recommendation Block，详见 [12-nats-rpc.md](12-nats-rpc.md)。

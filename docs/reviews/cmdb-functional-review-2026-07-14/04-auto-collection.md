@@ -104,7 +104,7 @@
 
 覆盖率：`collect_service.py` 85%、`collect_dispatch_service.py` 73%、`collect_credential_pool_service.py` 61%、`collect_target_service.py` 61%、`collect_hit_state_service.py` 76%、`collection/common.py` 38%、`collect_tasks/base.py` 17%、`celery_tasks.py` 84%、`data_cleanup_service.py` 23%，合计 **65%**，未达到改动代码 75%/核心业务 90% 门槛。
 
-Enterprise gitlink `enterprise` 显示前缀 `-`，确认子模块未初始化；brief 指定的 `server/apps/cmdb_enterprise/tests/test_new_collect_objects_pipeline.py` 在本 worktree 不存在，因此没有假装执行 E2E。若初始化后验证，必须按 brief 使用 `uv run --with jsonschema pytest -q -o addopts='' server/apps/cmdb_enterprise/tests/test_new_collect_objects_pipeline.py`，并先以子模块实际目录核对路径；本次 Enterprise pipeline、overlay merge 与审计扩展明确为 **未验证**。
+隔离 worktree 无 Overlay；主工作区运行态已按固定哈希补审 Enterprise pipeline、formatter、NodeParams、registry 与 Stargazer 插件，确认 F65–F70，见 [14-enterprise-overlay.md](14-enterprise-overlay.md) 和 [enterprise-overlay-provenance.md](enterprise-overlay-provenance.md)。Server 定向组合为 26 passed/1 failed，Stargazer 定向组合为 9 passed；完整命令见 [reproduction-commands.md](reproduction-commands.md)。根 gitlink 内容本地不可用，仍不能重建或证明与 ignored 运行态的映射。
 
 有效证明包括：
 

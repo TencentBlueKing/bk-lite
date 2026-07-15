@@ -20,7 +20,7 @@
 - Evidence: `instance_create` 和 `instance_update` 先完成 `create_entity/set_entity_properties`，随后在返回 `graph_write` 闭包前同步调用 Enterprise `commit_instance_files`。这里有两条不同状态路径。第一，文件 hook 主动抛异常时，异常会回到 `execute_graph` 的统一 `except`，Operation 从 `GRAPH_WRITING` 被写成 `ERROR`；图节点已经持久化 `_cmdb_operation_id`，但 `recover_pending`/周期扫描不接受 `ERROR`，相同 Idempotency-Key 也固定冲突。第二，进程在图写之后直接崩溃时，没有 Python `except` 执行，Operation 留在 `GRAPH_WRITING`；租约过期后恢复器能按 marker 推进图结果和两个 Outbox，却不会重新执行或创建任何文件 hook 事件。两条路径都会留下文件台账未收敛；更新 marker 还可能被后续更新覆盖。
 - Trigger: 路径 A——Enterprise 文件台账数据库、文件引用校验或提交显式抛异常；路径 B——进程在图写已提交、文件 hook 完成前崩溃或被终止。
 - Impact: 路径 A 中 API 返回失败、Operation=ERROR 且同 key 不可重放；路径 B 中 Beat 最终可把 Operation 推进至 GRAPH_COMMITTED/COMPLETED，但只补审计和自动关系，不补文件。两者都可能让引用文件保持 pending/orphaned，后续 GC 删除图实例正在引用的对象；路径 A 还不会产生审计和自动关系 Outbox。
-- Why existing tests missed it: 社区默认扩展是 no-op；`test_instance_service_crud.py` 只验证成功 spy 被调用，BDD 明确把 Enterprise 扩展替换为空实现。Enterprise gitlink 在本 worktree 未初始化，真实 overlay 失败行为不可验证。
+- Why existing tests missed it: 社区默认扩展是 no-op；`test_instance_service_crud.py` 只验证成功 spy 被调用，BDD 明确把 Enterprise 扩展替换为空实现。隔离 worktree 无 Overlay；运行态固定哈希补审已确认附件所有权与生命周期问题 F71/F72，但 gitlink 映射未知。
 - Minimal safe fix: `graph_write` 只执行可由 `_cmdb_operation_id` 核对的图事实；文件落账作为带幂等事件 ID 的持久化 Outbox 消费者，或扩展 Operation 阶段明确区分 `GRAPH_COMMITTED/FILE_COMMITTED`。不得把图已成功后的投影失败写成不可恢复 `ERROR`。
 - Required tests: 分别覆盖文件 hook 抛异常后 Operation=ERROR 且图事实存在，以及进程崩溃后 Operation=GRAPH_WRITING、Beat 能恢复图结果但当前实现不补文件；修复后断言两条路径都产生可重投文件事件、同 key 不重复图写，并覆盖 marker 被后续更新覆盖和重投幂等。
 - Long-term design note: Operation 应以“主事实提交 + 多投影 checkpoint”表达跨存储状态，文件、审计和自动关系都是独立可重试消费者。
@@ -112,7 +112,7 @@
 - 批量更新测试把唯一规则清空且候选设为空；未覆盖批内/跨请求冲突、资源上限、部分文件落账。
 - 删除测试失败暴露夹具未隔离；BDD 的删除 then 步骤和 create_entity 次数步骤含空实现，无法证明图调用。所有删除副作用和回滚/恢复都未验证。
 - View 权限测试主要用 superuser/monkeypatch；没有批量多组织、creator 快捷路径与 Service 二次权限的负向组合证明。
-- Enterprise 子模块未初始化，社区测试主动使用 no-op 扩展；真实附件台账、GC 和 overlay 权限行为均为未验证项。
+- 隔离 worktree 无 Overlay，社区测试主动使用 no-op 扩展；运行态固定哈希补审见 [14-enterprise-overlay.md](14-enterprise-overlay.md) 与 [enterprise-overlay-provenance.md](enterprise-overlay-provenance.md)。真实 MinIO、GC Worker、并发图/SQL 故障与 gitlink 映射仍未验证。
 
 ## 4. Maintainability Verdict
 
