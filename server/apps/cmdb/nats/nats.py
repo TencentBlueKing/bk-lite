@@ -1,4 +1,5 @@
 import datetime
+import os
 from functools import reduce
 from operator import or_
 from types import SimpleNamespace
@@ -48,6 +49,12 @@ from apps.system_mgmt.models.role import Role
 from apps.system_mgmt.utils.group_utils import GroupUtils
 
 
+_CHANGE_TREND_MAX_SPAN_SECONDS = {
+    "hour": int(os.getenv("CMDB_CHANGE_TREND_MAX_SPAN_HOUR", str(90 * 24 * 3600))),
+    "day": int(os.getenv("CMDB_CHANGE_TREND_MAX_SPAN_DAY", str(730 * 24 * 3600))),
+    "week": int(os.getenv("CMDB_CHANGE_TREND_MAX_SPAN_WEEK", str(730 * 24 * 3600))),
+    "month": int(os.getenv("CMDB_CHANGE_TREND_MAX_SPAN_MONTH", str(730 * 24 * 3600))),
+}
 def _normalize_to_list(value):
     if value in (None, ""):
         return []
@@ -1150,12 +1157,40 @@ def get_change_trend(time=None, group_by="day", model_id=None, user_info=None, *
     if not time or len(time) != 2:
         return {"result": False, "data": {}, "message": "time parameter is required as [start_time, end_time]"}
 
+    if group_by not in _CHANGE_TREND_MAX_SPAN_SECONDS:
+        return {
+            "result": False,
+            "data": {},
+            "message": "group_by must be one of: hour, day, week, month",
+        }
+
     target_tz = _resolve_target_timezone((user_info or {}).get("timezone") or kwargs.pop("timezone", None))
     start_time, end_time = time
     aware_start = _parse_client_datetime(start_time, target_tz)
     aware_end = _parse_client_datetime(end_time, target_tz)
     local_start = aware_start.astimezone(target_tz)
     local_end = aware_end.astimezone(target_tz)
+
+    if aware_start >= aware_end:
+        return {"result": False, "data": {}, "message": "start_time must be earlier than end_time"}
+
+    span_seconds = (aware_end - aware_start).total_seconds()
+    max_span = _CHANGE_TREND_MAX_SPAN_SECONDS[group_by]
+    if span_seconds > max_span:
+        logger.warning(
+            "get_change_trend range %.0f seconds exceeds %s limit %d seconds",
+            span_seconds,
+            group_by,
+            max_span,
+        )
+        return {
+            "result": False,
+            "data": {},
+            "message": (
+                f"Time range exceeds the maximum limit for {group_by} grouping "
+                f"({max_span} seconds). Use a shorter range or coarser grouping."
+            ),
+        }
 
     trunc_func, _ = _get_trunc_func_and_format(group_by)
     all_periods = _generate_time_periods(local_start, local_end, group_by, target_tz)
