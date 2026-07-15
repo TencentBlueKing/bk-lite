@@ -306,14 +306,6 @@ class S3JSONField(models.CharField):
             return None
 
         try:
-            # 检查文件是否存在
-            exists = self.storage.exists(file_path)
-            logger.info(f"[S3JSONField] File exists check for {file_path}: {exists}")
-
-            if not exists:
-                logger.warning(f"S3 file not found: {file_path}")
-                return None
-
             # 读取文件内容
             with self.storage.open(file_path, "rb") as f:
                 content_bytes = f.read()
