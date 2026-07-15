@@ -5,7 +5,7 @@
 - [x] 1.3 在 `docs/superpowers/verifications/2026-07-13-opspilot-wiki-directory-governance-verification.md` 建立 1–15 阶段对照矩阵，固定 `llm_wiki@9b71ade` 对应源码/测试或“无对应实现”，逐阶段记录借鉴点、拒绝项、OpsPilot 差异和验证证据。
 - [x] 1.4 为 Wiki 测试补齐统一 factory/fixture，禁止测试继续绕过页面标题、目录和 generation 领域入口直接制造无效对象。
 - [x] 1.5 把 design 决策 0 落成可执行的 Structure/Generation/Page 真相源与状态机契约测试，明确 legacy/backfilling/ready/enabled 各阶段允许的读写路径。
-- [ ] 1.6 冻结结构完整快照、generation 激活/回退、目录预览 token、导入 preflight token 的请求/响应 JSON schema，覆盖 existing node 只读 ID/key 与 new node client_ref。
+- [x] 1.6 冻结结构完整快照、generation 激活/回退、目录预览 token、导入 preflight token 的请求/响应 JSON schema，覆盖 existing node 只读 ID/key 与 new node client_ref。
 - [ ] 1.7 冻结 manual/classification root/type 默认/merged redirect/待归类路由矩阵，以及 `KnowledgeCandidateAdapter` 两个冲突方法；相邻 change 不可用时由本 change 提供最小实现。
 - [ ] 1.8 冻结 base generation CAS、staging PageVersion 所有权/引用清理、结构兼容回退和 backfill 写入围栏规则，再允许进入模型实现。
 
