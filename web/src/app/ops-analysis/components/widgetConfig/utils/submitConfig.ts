@@ -167,7 +167,7 @@ const applySingleValueConfig = (
   result.thresholdColors = thresholdColors;
   result.compare = !!values.compare;
   if (values.unit !== undefined) result.unit = values.unit;
-  result.unitId = values.unitId || undefined;
+  result.unitId = values.unitId;
   result.valueMappings = values.valueMappings || undefined;
   if (values.conversionFactor !== undefined) {
     result.conversionFactor = values.conversionFactor;
@@ -186,7 +186,7 @@ const applyGaugeConfig = (
   result.selectedFields = selectedFields;
   result.thresholdColors = thresholdColors;
   if (values.unit !== undefined) result.unit = values.unit;
-  result.unitId = values.unitId || undefined;
+  result.unitId = values.unitId;
   result.valueMappings = values.valueMappings || undefined;
   if (values.conversionFactor !== undefined) {
     result.conversionFactor = values.conversionFactor;
