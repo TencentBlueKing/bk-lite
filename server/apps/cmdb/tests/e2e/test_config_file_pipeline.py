@@ -125,3 +125,38 @@ def test_drift_detection_invalid_status(load_schema):
     schema = load_schema("config_file/02_nats_payload.schema.json")
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate(bad, schema)
+
+
+# ============================================================================
+# Task 2.6: config_file 真实化覆盖(NATS 路径)
+# ============================================================================
+
+
+def test_config_file_a_b_alignment(load_fixture, load_schema):
+    """config_file A/B 端对齐走 NATS 路径占位校验。
+
+    真实采集路径是 Stargazer 通过 NATS publish 'receive_config_file_result',
+    不走 VM pipeline,因此 A 端 metric / B 端 pipeline.run_full_pipeline_generic
+    均不适用。本测试只验证:
+      - 01 fixture 存在(placeholder)
+      - 04 schema 反映 ConfigFileVersion 实例结构
+      - 02 NATS payload schema 仍合规
+    """
+    from apps.cmdb.tests.e2e.utils.model_reflection import get_model_field_def
+
+    raw = load_fixture("config_file/01_stargazer_raw.json")
+    assert raw["_placeholder_reason"] is not None
+
+    nats_payload = load_fixture("config_file/02_nats_payload.json")
+    nats_schema = load_schema("config_file/02_nats_payload.schema.json")
+    jsonschema.validate(nats_payload, nats_schema)
+
+    # 04 schema 反映 ConfigFileVersion 实例结构
+    model_fields = get_model_field_def("config_file")
+    assert "file_path" in model_fields
+    assert "status" in model_fields
+    assert "file_size" in model_fields
+    assert model_fields["file_size"].field_type == "int"
+    # status 字段是 choice 枚举
+    assert model_fields["status"].choice is not None
+    assert "success" in model_fields["status"].choice

@@ -319,13 +319,22 @@ def sync_notify(params):
             "recipient_count=%s ===",
             send_time, channel_type, channel_id, object_id, len(username_list),
         )
-        notify = Notify(
-            username_list=username_list,
-            channel_id=channel_id,
-            title=title,
-            content=content,
-        )
-        result = notify.notify()
+        try:
+            notify = Notify(
+                username_list=username_list,
+                channel_id=channel_id,
+                title=title,
+                content=content,
+            )
+            result = notify.notify()
+        except Exception:
+            logger.exception(
+                "[AlertTask] 通知服务调用异常 channel=%s channel_id=%s object_id=%s",
+                channel_type,
+                channel_id,
+                object_id,
+            )
+            result = {"result": False, "message": "通知服务调用异常"}
         result_list.append(result)
         logger.info("[AlertTask] === 通知任务执行完成 send_time=%s ===", send_time)
         if object_id:

@@ -250,6 +250,24 @@ class ActionExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         if not created:
             return Response({"execution_id": execution.id, "status": execution.status, "deduplicated": True})
 
+        # 与自动触发同源：写 OperatorLog，让"变更记录" Tab 也能展示手动触发。
+        # 仅在首次创建 execution 时记录，幂等重放不会产生重复审计日志。
+        try:
+            record_operator_log(
+                action=LogAction.EXECUTE,
+                target_type=LogTargetType.ALERT,
+                operator=operator,
+                operator_object="告警处理-动作",
+                target_id=alert.alert_id,
+                overview=f"手动执行规则[{rule.name}]触发动作",
+            )
+        except Exception:
+            # 与自动路径（action/engine.py:51-59）的容忍策略一致：审计日志写失败不阻塞主流程，
+            # 但要把异常记录下来以便排障——而不是静默吞掉。
+            logger.exception(
+                "[ActionView] manual_trigger 写 OperatorLog 失败 alert_id=%s rule_id=%s",
+                alert.alert_id, rule.id,
+            )
         get_handler(rule.action_type).execute(rule, alert, execution)
         execution.refresh_from_db(fields=["status", "result"])
         response_data = {"execution_id": execution.id, "status": execution.status, "deduplicated": False}

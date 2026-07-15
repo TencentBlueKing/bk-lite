@@ -650,6 +650,20 @@ class AggregationProcessor:
         normal_level = [str(i) for i in global_level[1:]]
         result["fingerprint"] = str_to_md5(raw_fingerprint)
         fingerprint_is_md5 = re.fullmatch(r"[0-9a-fA-F]{32}", raw_fingerprint)
+        fingerprint_values = [
+            segment.split("=", 1)[1] if "=" in segment else segment
+            for segment in raw_fingerprint.split("|")
+            if segment
+        ]
+        display_fingerprint = ""
+        if fingerprint_values:
+            primary_value = fingerprint_values[-1]
+            context_values = fingerprint_values[:-1]
+            display_fingerprint = (
+                f"{primary_value}（{'，'.join(context_values)}）"
+                if context_values
+                else primary_value
+            )
 
         def _build_description() -> str:
             if event_count == 1 and first_event_description:
@@ -657,12 +671,12 @@ class AggregationProcessor:
             return f"影响范围：{result['alert_description']}"
 
         if str(now_level) in critical_level:
-            if not fingerprint_is_md5:
-                result["alert_title"] = f"{raw_fingerprint} 发生严重问题"
+            if not fingerprint_is_md5 and display_fingerprint:
+                result["alert_title"] = f"{display_fingerprint} 发生严重问题"
                 result["alert_description"] = _build_description()
         if str(now_level) in normal_level:
-            if not fingerprint_is_md5:
-                result["alert_title"] = f"{raw_fingerprint} 检测到异常"
+            if not fingerprint_is_md5 and display_fingerprint:
+                result["alert_title"] = f"{display_fingerprint} 检测到异常"
                 result["alert_description"] = _build_description()
 
     @staticmethod

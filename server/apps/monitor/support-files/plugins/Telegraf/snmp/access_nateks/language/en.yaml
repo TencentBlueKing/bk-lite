@@ -1,0 +1,101 @@
+Access Nateks SNMP:
+  name: Access Nateks SNMP
+  desc: SNMP monitoring template for Nateks access device. It reports per-port inbound
+    traffic rate, per-port outbound traffic rate, and system uptime (IANA PEN 4249).
+monitor_object:
+  Access: Access
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Access:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart,
+        derived from sysUpTime. Monitoring uptime helps administrators understand
+        device stability and identify unexpected reboots or failures.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past
+        5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets
+        counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
+        ifInOctets on high-speed ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5
+        minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets
+        counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
+        ifOutOctets on high-speed ports, keeping the rate accurate.
+    device_total_incoming_traffic:
+      name: Device Total Incoming Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the
+        entire device over the past 5 minutes, measured in bytes per second, summed
+        across all interfaces from the 64-bit ifHCInOctets counter. It helps administrators
+        obtain an overview of incoming traffic for overall monitoring and capacity
+        planning.
+    device_total_outgoing_traffic:
+      name: Device Total Outgoing Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire
+        device over the past 5 minutes, measured in bytes per second, summed across
+        all interfaces from the 64-bit ifHCOutOctets counter. It helps administrators
+        assess sending performance for traffic management and optimization.
+    device_cpu_usage:
+      name: CPU Usage
+      desc: Overall CPU utilization of the access device, reported directly as a percentage
+        by a private scalar. Sustained high usage indicates OLT control-plane or management-plane
+        pressure.
+    device_memory_total:
+      name: Memory Total
+      desc: Total physical memory capacity reported by the access device in bytes.
+        This metric can be combined with free memory to derive overall memory utilization.
+    device_memory_free:
+      name: Memory Free
+      desc: Available physical memory currently reported by the access device in bytes.
+        Persistently decreasing free memory can indicate pressure from control services
+        or service tables.
+    device_memory_usage:
+      name: Memory Usage
+      desc: System memory utilization of the access device, reported directly as a
+        percentage by a private scalar. Sustained high memory can indicate forwarding
+        table, ONU management table, or control-service pressure.
+    device_temperature_celsius:
+      name: System Temperature
+      desc: System temperature of the access device in degrees Celsius. Persistently
+        high values may indicate cooling problems, high ambient temperature, or excessive
+        device load.
+    device_card_temperature_level:
+      name: Card Temperature Level
+      desc: Relative card temperature level of the access device. Values 1-10 indicate
+        coolest to hottest and 999 means no report; this is useful for card temperature
+        trend detection and is not a Celsius reading.
+    device_card_state:
+      name: Card State
+      desc: Primary state of each access-device card. The in-service state is normalized
+        to 1 and every other or unknown state is normalized to 2, indicating that
+        the card may be unavailable or should be checked.
+    device_psu_state:
+      name: Power Module State
+      desc: Power module status of the access device. Normal state is normalized to
+        1 and alarm or unknown states are normalized to 2, indicating possible power
+        input, module, or alarm-light risk.
+    device_fan_state:
+      name: Fan State
+      desc: Fan operating state of the access device. Normal state is normalized to
+        1 and abnormal or unknown states are normalized to 2, indicating possible
+        cooling degradation.
+    device_disk_usage:
+      name: Disk Usage
+      desc: Disk volume usage of the access device, reported as the highest volume
+        usage per device. Sustained high values can risk log, configuration, or runtime-file
+        writes.
+    device_disk_state:
+      name: Disk State
+      desc: Disk volume usage level of the access device. Normal is normalized to
+        1 and minor, major, critical, or unknown states are normalized to 2, indicating
+        disk-space attention is needed.
+monitor_object_metric_group:
+  Access:
+    Base: Base
+    Traffic: Traffic
+    Access: Access
+    Temperature: Temperature
+    Hardware Status: Hardware Status

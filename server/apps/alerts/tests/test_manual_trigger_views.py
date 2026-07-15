@@ -3,6 +3,7 @@ from unittest.mock import patch
 from rest_framework.test import APIClient
 from apps.alerts.models.action import ActionRule, ActionExecution
 from apps.alerts.models.models import Alert
+from apps.alerts.models.operator_log import OperatorLog
 from apps.base.models import User
 
 
@@ -83,3 +84,39 @@ def test_manual_trigger_cannot_cross_current_team(mock_get, superuser_client):
     assert response.status_code == 400
     assert "secret" not in response.content.decode()
     mock_get.return_value.execute.assert_not_called()
+
+
+@pytest.mark.django_db
+@patch("apps.alerts.views.action.get_handler")
+def test_manual_trigger_writes_operator_log_for_change_record_tab(mock_get, superuser_client):
+    """手动触发的执行除了写 ActionExecution，还应在 OperatorLog 落库，
+    '变更记录' Tab（operator_log 接口）才能跟自动触发的执行记录对齐显示。"""
+    mock_get.return_value.execute.return_value = None  # handler 不真跑
+    alert = Alert.objects.create(alert_id="A1", fingerprint="f", title="t", content="c",
+                                 level="0", labels={"ip": "10.0.0.5"}, team=[1])
+    rule = ActionRule.objects.create(name="重启Nginx", team=[1], trigger_events=["created"],
+                                     match_rules=[[{"key": "level", "operator": "eq", "value": "0"}]],
+                                     action_config={"script_id": 1})
+    superuser_client.cookies["current_team"] = "1"
+
+    before = OperatorLog.objects.filter(target_id="A1").count()
+    for _ in range(2):
+        resp = superuser_client.post(
+            "/api/v1/alerts/api/action_execution/manual_trigger/",
+            data={"alert_id": "A1", "rule_id": rule.id},
+            format="json",
+            HTTP_IDEMPOTENCY_KEY="manual-operator-log-1",
+        )
+        assert resp.status_code in (200, 201)
+
+    # 同一个幂等键重放两次，只应执行一次并留下 1 条审计记录。
+    new_logs = list(OperatorLog.objects.filter(target_id="A1"))
+    assert len(new_logs) == before + 1
+    assert mock_get.return_value.execute.call_count == 1
+    log = new_logs[-1]
+    assert log.action == "execute"   # LogAction.EXECUTE
+    assert log.target_type == "alert" # LogTargetType.ALERT
+    assert log.target_id == "A1"
+    assert log.operator == superuser_client.handler._force_user.username
+    # overview 至少包含规则名
+    assert "重启Nginx" in (log.overview or "")

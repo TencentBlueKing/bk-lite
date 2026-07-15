@@ -2,13 +2,10 @@ import React from 'react';
 import { Descriptions } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { AlarmTableDataItem } from '@/app/alarm/types/alarms';
-import {
-  useNotifiedStateMap
-} from '@/app/alarm/constants/alarm';
+import NotificationStatusTooltip from './notificationStatusTooltip';
 
 const BaseInfo: React.FC<{ detail: AlarmTableDataItem }> = ({ detail }) => {
   const { t } = useTranslation();
-  const NOTIFIED_STATE: any = useNotifiedStateMap();
   const descriptionItems = [
     {
       key: 'operator',
@@ -23,7 +20,13 @@ const BaseInfo: React.FC<{ detail: AlarmTableDataItem }> = ({ detail }) => {
     {
       key: 'notificationStatus',
       label: t('alarms.notificationStatus'),
-      value: NOTIFIED_STATE[detail.notification_status] || '--',
+      value: (
+        <NotificationStatusTooltip
+          status={detail.notify_status}
+          total={detail.notify_total}
+          records={detail.notify_records}
+        />
+      ),
     },
     {
       key: 'objectType',

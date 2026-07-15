@@ -14,8 +14,9 @@ import { AlarmTableDataItem } from '@/app/alarm/types/alarms';
 import { useTranslation } from '@/utils/i18n';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { ModalRef } from '@/app/alarm/types/types';
-import { useStateMap, useNotifiedStateMap } from '@/app/alarm/constants/alarm';
+import { useStateMap } from '@/app/alarm/constants/alarm';
 import { useCommon } from '@/app/alarm/context/common';
+import NotificationStatusTooltip from './notificationStatusTooltip';
 
 const AlarmTable: React.FC<AlarmTableProps> = ({
   dataSource,
@@ -33,7 +34,6 @@ const AlarmTable: React.FC<AlarmTableProps> = ({
   const { convertToLocalizedTime } = useLocalizedTime();
   const { levelList, levelMap } = useCommon();
   const STATE_MAP = useStateMap();
-  const NOTIFIED_STATE: any = useNotifiedStateMap();
   const detailRef = useRef<ModalRef>(null);
 
   const columns: ColumnsType<AlarmTableDataItem> = [
@@ -78,6 +78,12 @@ const AlarmTable: React.FC<AlarmTableProps> = ({
       dataIndex: 'title',
       key: 'title',
       width: 280,
+    },
+    {
+      title: t('alarms.alertContent'),
+      dataIndex: 'content',
+      key: 'content',
+      width: 250,
     },
     {
       title: t('alarms.incidentName'),
@@ -132,17 +138,13 @@ const AlarmTable: React.FC<AlarmTableProps> = ({
       dataIndex: 'notify_status',
       key: 'notify_status',
       width: 150,
-      render: (_: any, { notify_status }: AlarmTableDataItem) => {
-        const COLOR_MAP: Record<string, string> = {
-          success: 'success',
-          failed: 'error',
-          partial_success: 'warning',
-        };
-        const key = notify_status ? notify_status : 'not_notified';
-        const color = COLOR_MAP[key] || 'default';
-        const text = NOTIFIED_STATE[key] || '--';
-        return <Tag color={color}>{text}</Tag>;
-      },
+      render: (_: any, { notify_status, notify_total, notify_records }: AlarmTableDataItem) => (
+        <NotificationStatusTooltip
+          status={notify_status}
+          total={notify_total}
+          records={notify_records}
+        />
+      ),
     },
     // {
     //   title: t('alarms.ruleId'),
@@ -150,12 +152,6 @@ const AlarmTable: React.FC<AlarmTableProps> = ({
     //   key: 'rule_id',
     //   width: 250,
     // },
-    {
-      title: t('alarms.alertContent'),
-      dataIndex: 'content',
-      key: 'content',
-      width: 250,
-    },
     {
       title: t('alarms.createTime'),
       dataIndex: 'created_at',

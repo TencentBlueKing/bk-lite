@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 from typing import Any
 
+from apps.monitor.utils.unit_converter import UnitConverter
 
 LEGACY_ALGORITHM_MAPPING = {
     "avg": ("avg", "avg_over_time"),
@@ -16,6 +17,10 @@ LEGACY_ALGORITHM_MAPPING = {
     "count": ("count", "last_over_time"),
     "count_over_time": ("count", "count_over_time"),
     "last_over_time": ("avg", "last_over_time"),
+}
+
+LEGACY_METRIC_UNIT_MAPPING = {
+    "%": "percent",
 }
 
 
@@ -37,6 +42,11 @@ def normalize_template_algorithms(template: dict[str, Any]) -> tuple[str, str]:
     return LEGACY_ALGORITHM_MAPPING.get(str(algorithm).lower(), ("avg", "avg_over_time"))
 
 
+def normalize_default_calculation_unit(metric_unit: str) -> str:
+    normalized_unit = LEGACY_METRIC_UNIT_MAPPING.get(metric_unit, metric_unit)
+    return normalized_unit if UnitConverter.is_known_unit(normalized_unit) else ""
+
+
 def build_bulk_policy_payloads(
     *,
     monitor_object_id: int,
@@ -50,6 +60,8 @@ def build_bulk_policy_payloads(
 
     for template in templates:
         group_algorithm, algorithm = normalize_template_algorithms(template)
+        metric_unit = template.get("metric_unit") or ""
+        default_calculation_unit = normalize_default_calculation_unit(metric_unit)
         for asset in assets:
             instance_id = str(asset["instance_id"])
             display_instance = _display_asset_id(instance_id)
@@ -79,8 +91,9 @@ def build_bulk_policy_payloads(
                 "threshold": template.get("threshold") or [],
                 "trigger_count": config.get("trigger_count", template.get("trigger_count", 1)),
                 "recovery_condition": config.get("recovery_condition", 5),
-                "metric_unit": template.get("metric_unit") or "",
-                "calculation_unit": template.get("calculation_unit") or template.get("metric_unit") or "",
+                "metric_unit": metric_unit,
+                "calculation_unit": template.get("calculation_unit") or default_calculation_unit,
+                "threshold_unit": (template.get("threshold_unit") or template.get("calculation_unit") or default_calculation_unit or ""),
                 "notice": bool(config.get("notice", False)),
                 "notice_type_ids": config.get("notice_type_ids") or [],
                 "notice_users": config.get("notice_users") or [],

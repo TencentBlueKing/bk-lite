@@ -11,6 +11,7 @@ from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
 from apps.job_mgmt.constants import CallbackType, ExecutionStatus, JobType, TriggerSource
 from apps.job_mgmt.models import DangerousPath, DangerousRule, DistributionFile, JobExecution, Playbook, ScheduledTask, Script, Target
 from apps.job_mgmt.services.callback_service import send_callback
+from apps.job_mgmt.services.celery_dispatch import dispatch_celery_task
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
 from apps.job_mgmt.services.execution_stream_service import publish_done_sentinel
 from apps.job_mgmt.services.script_normalize import normalize_script_line_endings
@@ -457,9 +458,8 @@ def job_script_execute(data: dict):
     )
 
     # 触发异步执行（Celery Worker）
-    result = execute_script_task.delay(execution.id)
-    execution.celery_task_id = result.id
-    execution.save(update_fields=["celery_task_id", "updated_at"])
+    if not dispatch_celery_task(execute_script_task, execution):
+        return {"result": False, "message": "任务调度服务暂不可用，请稍后重试"}
 
     return {"result": True, "data": {"task_id": execution.id}}
 
@@ -555,9 +555,8 @@ def job_file_distribute(data: dict):
     )
 
     # 触发异步执行（Celery Worker）
-    result = distribute_files_task.delay(execution.id)
-    execution.celery_task_id = result.id
-    execution.save(update_fields=["celery_task_id", "updated_at"])
+    if not dispatch_celery_task(distribute_files_task, execution):
+        return {"result": False, "message": "任务调度服务暂不可用，请稍后重试"}
 
     return {"result": True, "data": {"task_id": execution.id}}
 

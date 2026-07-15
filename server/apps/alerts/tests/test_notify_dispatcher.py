@@ -5,6 +5,9 @@ from unittest import mock
 import pytest
 
 from apps.alerts.common.notify.dispatcher import build_channel_params, enqueue_notifications
+from apps.alerts.constants.constants import NotifyResultStatus
+from apps.alerts.models.alert_operator import NotifyResult
+from apps.alerts.tasks.tasks import sync_notify
 
 
 @pytest.mark.django_db
@@ -88,3 +91,44 @@ def test_enqueue_notifications_persists_outbox_in_atomic_block(mock_delay, djang
     assert record.kind == "notification"
     assert record.payload == {"params": params}
     mock_delay.assert_called_once_with(record.pk)
+
+
+@pytest.mark.django_db
+@mock.patch("apps.alerts.tasks.tasks.Notify")
+def test_sync_notify_records_exception_and_continues_with_next_notification(mock_notify):
+    mock_notify.return_value.notify.side_effect = [
+        RuntimeError("provider unavailable"),
+        {"result": True},
+    ]
+    params = [
+        {
+            "username_list": ["alice"],
+            "channel_type": "wechat",
+            "channel_id": 1,
+            "title": "first",
+            "content": "first content",
+            "object_id": "ALERT-FAILED",
+        },
+        {
+            "username_list": ["bob"],
+            "channel_type": "email",
+            "channel_id": 2,
+            "title": "second",
+            "content": "second content",
+            "object_id": "ALERT-SUCCESS",
+        },
+    ]
+
+    results = sync_notify(params)
+
+    assert results == [
+        {"result": False, "message": "通知服务调用异常"},
+        {"result": True},
+    ]
+    assert mock_notify.return_value.notify.call_count == 2
+    failed_row = NotifyResult.objects.get(notify_object="ALERT-FAILED")
+    success_row = NotifyResult.objects.get(notify_object="ALERT-SUCCESS")
+    assert failed_row.notify_result == NotifyResultStatus.FAILED
+    assert failed_row.failure_reason == "通知服务调用异常"
+    assert "provider unavailable" not in failed_row.failure_reason
+    assert success_row.notify_result == NotifyResultStatus.SUCCESS

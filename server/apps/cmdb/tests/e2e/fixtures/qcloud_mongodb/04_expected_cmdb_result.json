@@ -1,0 +1,17 @@
+{
+  "model_id": "qcloud_mongodb",
+  "instance_count_min": 1,
+  "expected_instance_subset": {
+    "inst_name": "mongodb-prod-01_cmgo-abc123def456",
+    "resource_name": "mongodb-prod-01",
+    "resource_id": "cmgo-abc123def456",
+    "ip_addr": "10.0.5.50",
+    "vpc": "vpc-abc123",
+    "region": "ap-shanghai",
+    "port": "27017",
+    "status": "RUNNING",
+    "cluster_type": "REPLSET",
+    "version": "5.0.20",
+    "charge_type": "PREPAID"
+  }
+}

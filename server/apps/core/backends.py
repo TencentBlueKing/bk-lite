@@ -403,7 +403,9 @@ class AuthBackend(ModelBackend):
             if user.roles != new_roles:
                 user.roles = new_roles
                 update_fields.append("roles")
-            if user.locale != new_locale:
+            # 不强制从 token 覆盖 user.locale(用户可自行在设置中切换,避免每次登录
+            # 把 LOCALE=en 切换后的状态强制重置回 zh-Hans)。仅新建用户采用 token 的 locale。
+            if created and user.locale != new_locale:
                 user.locale = new_locale
                 update_fields.append("locale")
             if created or update_fields:

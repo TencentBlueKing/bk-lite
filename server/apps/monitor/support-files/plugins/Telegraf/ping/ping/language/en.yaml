@@ -1,0 +1,35 @@
+Ping:
+  desc: Through the Telegraf collector, regularly send ICMP Echo Requests (ECHO_REQUEST)
+    to check the connectivity and response time of target hosts or network devices.
+  name: Ping(Telegraf)
+monitor_object:
+  Ping: Ping
+monitor_object_type:
+  Web: Web
+monitor_object_metric:
+  Ping:
+    ping_average_response_ms:
+      name: Average Response Time
+      desc: Average response time of ICMP Ping requests, reflecting average network
+        latency
+    ping_maximum_response_ms:
+      name: Maximum Response Time
+      desc: Maximum response time of ICMP Ping requests, reflecting peak network latency
+    ping_minimum_response_ms:
+      name: Minimum Response Time
+      desc: Minimum response time of ICMP Ping requests, reflecting best-case network
+        latency
+    ping_percent_packet_loss:
+      name: Packet Loss Percentage
+      desc: Percentage of ICMP packet loss, reflecting network connection stability
+    ping_result_code:
+      name: Result Code
+      desc: Result code of Ping test, indicating success or failure status of Ping
+        operation
+    ping_ttl:
+      name: Time To Live
+      desc: Time To Live value of received ICMP response packets, reflecting number
+        of network hops
+monitor_object_metric_group:
+  Ping:
+    Ping: Ping

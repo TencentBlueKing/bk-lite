@@ -366,9 +366,15 @@ export const OrganizationField: React.FC<{ value: any; hideUserAvatar?: boolean 
 export const iconList = getSvgIcon();
 // 图标套切换点：'/assets/icons'（扁平蓝块） | '/assets/icons-realistic'（写实立体）
 const CMDB_ICON_DIR = '/assets/icons-realistic';
+// 缓存 getIconUrl 结果,避免每次调用都生成新字符串(稳定引用
+// 可让 x6 setAttrs 判断 attrs 没变,跳过 <image> 元素重建,避免 SVG 重请求)
+const iconUrlCache = new Map<string, string>();
 export function getIconUrl(tex: ModelIconItem) {
   try {
     const icn = tex.icn || '';
+    const cacheKey = `${icn}|${tex.model_id || ''}`;
+    const cached = iconUrlCache.get(cacheKey);
+    if (cached !== undefined) return cached;
 
     // 查找显示的图标：
     // 1) icn 直接是完整文件名（后端配置形如 cc-switch2_交换机）
@@ -381,21 +387,22 @@ export function getIconUrl(tex: ModelIconItem) {
     }
 
     // 如果显示图标存在，直接返回相应的图标路径
+    let result: string;
     if (showIcon) {
-      return `${CMDB_ICON_DIR}/${showIcon.url}.svg`;
+      result = `${CMDB_ICON_DIR}/${showIcon.url}.svg`;
+    } else {
+      // 查找内置模型和对应图标
+      const isBuilt = BUILD_IN_MODEL.find((item) => item.key === tex.model_id);
+      const builtIcon = isBuilt
+        ? iconList.find((item) => item.key === isBuilt.icon)
+        : null;
+      // 使用内置模型图标或者默认图标
+      const iconUrl = builtIcon?.url || 'cc-default_默认';
+      result = `${CMDB_ICON_DIR}/${iconUrl}.svg`;
     }
 
-    // 查找内置模型和对应图标
-    const isBuilt = BUILD_IN_MODEL.find((item) => item.key === tex.model_id);
-    const builtIcon = isBuilt
-      ? iconList.find((item) => item.key === isBuilt.icon)
-      : null;
-
-    // 使用内置模型图标或者默认图标
-    const iconUrl = builtIcon?.url || 'cc-default_默认';
-
-    // 返回图标路径
-    return `${CMDB_ICON_DIR}/${iconUrl}.svg`;
+    iconUrlCache.set(cacheKey, result);
+    return result;
   } catch (e) {
     // 记录错误日志并返回默认图标
     console.error('Error in getIconUrl:', e);

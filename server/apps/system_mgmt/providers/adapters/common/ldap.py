@@ -15,13 +15,19 @@ class LDAPConnectionConfig:
 
 def build_connection_config(config: dict[str, Any] | None) -> LDAPConnectionConfig:
     raw = config or {}
+    base_dn = str(raw.get("base_dn") or "").strip()
+    if not base_dn:
+        raise ValueError(
+            "AD login_auth.base_dn is required but missing; "
+            "configure it on the IntegrationInstance (登录认证 connection template)."
+        )
     return LDAPConnectionConfig(
         connection_url=str(raw.get("connection_url") or ""),
         use_ssl=str(raw.get("ssl_encryption") or "").lower() in {"ssl", "ldaps", "true", "1"},
         timeout=int(raw.get("timeout") or 10),
         bind_dn=str(raw.get("bind_dn") or ""),
         bind_password=str(raw.get("bind_password") or ""),
-        base_dn=str(raw.get("base_dn") or ""),
+        base_dn=base_dn,
     )
 
 

@@ -1,0 +1,12 @@
+{
+  "model_id": "fusioninsight_cluster",
+  "task_id": 33031,
+  "account_id": "acct-fusioninsight-prod-001",
+  "captured_at": "2026-07-14T10:30:00+08:00",
+  "collected_by": "stargazer/inputs/fusioninsight/fusioninsight_cluster.py@1.2.0",
+  "request_id": "FI-CLUSTER-12345678-9ABC-DEF0-1234-56789ABCDEF0",
+  "total_count": 1,
+  "resource_name": "hadoop-prod-01",
+  "resource_id": "cluster-abc123def456",
+  "create_time": "2024-01-20 10:00:00"
+}

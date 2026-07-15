@@ -55,3 +55,13 @@ export const resolveAlertDetailMetric = (
     unit: displayUnit || ''
   };
 };
+
+export const resolveAlertDetailChartUnit = (
+  alert: Record<string, any>,
+  responseUnit: string | null | undefined
+): string =>
+  responseUnit ||
+  alert.policy?.threshold_unit ||
+  alert.policy?.calculation_unit ||
+  alert.policy?.metric_unit ||
+  '';
