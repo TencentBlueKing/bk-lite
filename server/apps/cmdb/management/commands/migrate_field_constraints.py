@@ -195,7 +195,7 @@ class Command(BaseCommand):
                 else:
                     option = {}
             else:
-                if not isinstance(option, dict) and attr_type != "enum":
+                if not isinstance(option, dict) and attr_type not in ("enum", "table"):
                     option = {}
 
             attr["option"] = option
