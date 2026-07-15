@@ -1113,6 +1113,19 @@ def _generate_time_periods(start_dt, end_dt, group_by, target_tz):
 
 
 @nats_client.register
+def get_room_list(user_info=None, **kwargs):
+    """获取运营分析参数动态选项源用的机房列表。
+
+    返回 CMDB 原始 server_room 字段（_id, inst_name, model_id, organization, ...），
+    不做 _id→id / inst_name→name 等重命名。复用 ``InstanceManage.instance_list``
+    的现成权限过滤自动按当前用户可见范围过滤。
+    """
+    permission_map = _build_nats_permission_map(user_info) or {}
+    items = rack_room.list_server_rooms(permission_map=permission_map, user_info=user_info)
+    return {"items": items}
+
+
+@nats_client.register
 def get_change_trend(time=None, group_by="day", model_id=None, user_info=None, **kwargs):
     """
     获取 CMDB 变更趋势数据
