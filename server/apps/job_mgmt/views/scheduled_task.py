@@ -222,7 +222,10 @@ class ScheduledTaskViewSet(AuthViewSet):
         serializer.is_valid(raise_exception=True)
 
         ids = serializer.validated_data["ids"]
-        tasks = ScheduledTask.objects.filter(id__in=ids)
+        tasks = self.filter_queryset(self.get_queryset())
+        if not request.user.is_superuser:
+            tasks = self.get_queryset_by_permission(request, tasks)
+        tasks = tasks.filter(id__in=ids)
 
         # 删除关联的 PeriodicTask
         for task in tasks:
