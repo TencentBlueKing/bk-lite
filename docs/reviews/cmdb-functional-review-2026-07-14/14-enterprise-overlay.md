@@ -17,7 +17,7 @@
 - Severity: P0
 - Location: `server/apps/cmdb_enterprise/collect/new_collect_object_definitions.py:347-360`；`server/apps/cmdb_enterprise/collect/tree.py:26-40`；`server/apps/cmdb_enterprise/collect/remaining_node_params.py:39-53`；`server/apps/cmdb/services/encrypt_collect_password.py:9-16`；`server/apps/cmdb/models/collect_model.py:235-285`；`server/apps/cmdb/serializers/collect_serializer.py:210-223`
 - Root cause category: 跨层契约不一致
-- Evidence: Enterprise 树对达梦和全部 49 个新增对象都固定声明 `encrypted_fields=["password"]`。Generic protocol NodeParams 却明确接收并下发 `token/access_key/secret_key/community`；凭据池只校验 dict 形状，不限制字段。`CollectModels.save/decrypt_credentials` 只遍历树中声明的字段加解密，Serializer 也只遮蔽同一字段。直接只读复现输出 `{'encrypted_fields': ['password'], 'accepted_secret_fields': ['community', 'password', 'secret_key', 'token']}`，exit 0。
+- Evidence: Enterprise 树对“达梦 + 48 个新增对象”共 49 个对象都固定声明 `encrypted_fields=["password"]`。Generic protocol NodeParams 却明确接收并下发 `token/access_key/secret_key/community`；凭据池只校验 dict 形状，不限制字段。`CollectModels.save/decrypt_credentials` 只遍历树中声明的字段加解密，Serializer 也只遮蔽同一字段。直接只读复现输出对象数 49、`encrypted_fields=['password']` 与 accepted `access_key/community/secret_key/token`，exit 0。
 - Trigger: 为 XSKY/ZStack/存储/SNMP/安全设备等 Enterprise protocol 任务提交 `token`、`secret_key`、`community`、`authkey`、`privkey` 或其他非 `password` 秘密字段。
 - Impact: 秘密以明文写进 `CollectModels.credential`，并且详情 API 的 `credential` representation 不会将其替换为 `******`；数据库读取、备份、日志/调试或具备任务详情权限的调用方可直接获得设备/云凭据。
 - Why existing tests missed it: Enterprise 测试只检查对象归属、密码下发和成功 formatter；社区凭据测试集中于 password 与池形状，没有遍历每个 Enterprise manifest 的 secret schema，也没有 token/community canary 的 DB-at-rest 与 API masking 断言。
@@ -144,9 +144,7 @@
 
 ## 3. Test Review
 
-### 3.1 Enterprise collect 与 Stargazer
-
-### 4.1 Server 定向组合
+### 3.1 Server 定向组合
 
 - 工作目录：`/Users/windyzhao/Documents/Canway/weops_X/cmdb/bk-lite/server`
 - 环境：`MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false SECRET_KEY=test DB_ENGINE=sqlite DB_NAME=/private/tmp/cmdb-enterprise-collect-audit.sqlite3 ENABLE_CELERY=true INSTALL_APPS=system_mgmt,node_mgmt,cmdb,cmdb_enterprise UV_CACHE_DIR=/private/tmp/uv-cache`
@@ -156,7 +154,7 @@
 - 唯一失败：`test_new_collect_objects_are_added_by_enterprise_extension` 要求 `aix` 独立位于树中；`collect_object_tree.py:6,33-34` 明确把 `aix/hpux/domestic_linux` 合并到 host 并跳过 Enterprise child。属于测试与当前显式合并契约冲突，需产品确认独立对象还是 host 变体后统一，不作为本轮生产 Finding。
 - Coverage：组合总计 **66%（2062 stmts / 701 miss）**；Enterprise collect **约 72%（491 stmts / 137 miss）**，未达 75%。关键短板：`remaining_collect_metrics.py` 25%、`remaining_node_params.py` 51%、Nacos/BMC NodeParams 55%、plugin loader 64%。
 
-### 4.2 Stargazer Enterprise plugin 测试
+### 3.2 Stargazer Enterprise plugin 测试
 
 - 工作目录：`/Users/windyzhao/Documents/Canway/weops_X/cmdb/bk-lite/agents/stargazer`
 - 命令：`.venv/bin/python -m pytest -q -o addopts='' tests/test_new_collect_objects_plugins.py tests/test_remaining_collect_objects_plugins.py`
@@ -164,27 +162,27 @@
 - Coverage 尝试：`.venv/bin/python -m pytest -q -o addopts='' --cov=enterprise.plugins.inputs --cov=core.plugin_executor --cov=core.yaml_reader --cov-report=term-missing tests/test_new_collect_objects_plugins.py tests/test_remaining_collect_objects_plugins.py`，exit 4；该 venv 未安装 pytest-cov，**无 Stargazer coverage，不能声称达标**。
 - 证明力缺口：remaining 测试把 XSKY 不执行 I/O 即 success 当成正确；IBM MQ 只检脚本文本；没有 Agent→metric→CMDB E2E、fallback failure injection、真实依赖镜像 smoke、secret at-rest/API、stale/fresh 顺序或 registry fresh-process 测试。
 
-### 4.3 只读直接复现
+### 3.3 只读直接复现
 
-以下均不联网、不写 tracked 文件：
+以下均不联网、不写生产文件；完整 fixture、绝对 cwd、环境、命令、退出码与原始关键输出见 [reproduction-commands.md §4.3](reproduction-commands.md#43-f65f69-直接探针)：
 
-1. Server credential schema 探针（同 4.1 Django 环境，`.venv/bin/python -c ...`）：exit 0，输出 `encrypted_fields=['password']` 与 accepted `community/password/secret_key/token`。
-2. Server stale→fresh formatter 探针：exit 0，输出 `{'nacos_info_gauge': []}`。
-3. Stargazer XSKY TEST-NET 探针：`.venv/bin/python -c '...XskyInfo({host:"203.0.113.254",password:"wrong"})...'`，exit 0，未 I/O 即 success。
-4. IBM MQ parent+channel 经 CollectionService/Prom converter：exit 0，metric names 为 `['ibmmq_info','ibmmq_info']`，无 child metric。
-5. Enterprise import failure + 非 strict fallback：exit 0，加载 fallback `plugins.script_executor.SSHPlugin`。
+1. F65 credential schema：exit 0，输出对象数 49、`encrypted_fields=['password']` 与 accepted `access_key/community/secret_key/token`。
+2. F68 stale→fresh formatter：exit 0，输出四类 Nacos 结果均为空。
+3. F66 XSKY TEST-NET：exit 0，未 I/O 即 `success=True`。
+4. F67 IBM MQ parent+channel：exit 0，metric names 为 `['ibmmq_info','ibmmq_info']`，无 child metric。
+5. F69 Enterprise import failure + 非 strict fallback：exit 0，加载 `plugins.script_executor.SSHPlugin`。
 
 两次审查探针自身的纠正记录：首次 IBM MQ 断言错误地假设 Prom 名带 `_gauge`，exit 1；输出已显示真实名为 `ibmmq_info`，修正为检查两行同名后 exit 0。首次用本地 Stargazer venv 选择 OSS Nacos 作为 fallback 时，OSS import 因该 venv 缺 `requests` 而 exit 1；随后用不依赖 requests 的 SSHPlugin 验证 fallback 控制流 exit 0。前者同时暴露插件直接依赖/镜像 smoke 缺口，但未把本地陈旧 venv等同于生产镜像事实。
 
-### 4.4 未验证
+### 3.4 未验证
 
 - 未连接真实 FalkorDB/Neo4j、Influx/Prometheus、Celery broker、多 Worker、NodeMgmt、NATS executor、IBM MQ/Nacos/OceanBase/BMC/存储/SNMP/云设备。
 - 未验证 MySQL/PostgreSQL/Dameng DB 方言、生产镜像依赖、TLS/证书、网络 deadline/cancel、真实大结果与清理策略。
 - 未运行整个 `server make test`、整个 Stargazer test/lint，也未取得 Stargazer coverage。
 
-### 3.2 Enterprise 附件、模型与实例扩展
+### 3.5 Enterprise 附件、模型与实例扩展
 
-### 4.1 命令与结果
+#### 3.5.1 命令与结果
 
 1. 首次附件/fulltext 覆盖率命令（沙箱内失败）
 
@@ -237,7 +235,7 @@
 - 退出码：0
 - 结果：`enterprise_index=20`、`cmdb_index=21`、`provider=FileFieldModelExtension`。
 
-### 4.2 未验证项
+#### 3.5.2 未验证项
 
 - 未连接真实 MinIO：presign、Content-Disposition、删除超时/重试和对象已不存在语义只做代码审查/Mock 测试。
 - 未连接真实 FalkorDB：文件 raw metadata 排除、文件名 `_display` 命中和模型字段删除后的实际索引刷新未做真实图 E2E。

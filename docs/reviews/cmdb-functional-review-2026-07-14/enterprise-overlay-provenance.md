@@ -1,30 +1,43 @@
 # Enterprise Overlay 运行态来源清单
 
 > 审查日期：2026-07-15（Asia/Shanghai）
-> 审查对象：主工作区 ignored `server/apps/cmdb_enterprise/`
+> 审查对象：主工作区 ignored `server/apps/cmdb_enterprise/` 与 `agents/stargazer/enterprise/`
 > 用途：固定 [14-enterprise-overlay.md](14-enterprise-overlay.md) 与 [10-custom-reporting.md](10-custom-reporting.md) 所引用的运行态输入；不证明其与根仓 gitlink 可重建对应。
 
 ## 1. 边界与聚合算法
 
 - 根仓当前 `git ls-tree HEAD enterprise`：gitlink `7c7db340961d6b010d2c533de92970df253b545f`。
 - 主工作区 `enterprise/` 目录未初始化；`git -C enterprise rev-parse HEAD` 实际向上解析到根仓 HEAD，不能当作子模块 SHA。
-- `server/apps/cmdb_enterprise/` 被根 `.gitignore:59` 忽略，是独立安装态目录；仓库没有 manifest 证明它来自上述 gitlink commit。因此 **gitlink ↔ ignored Overlay 映射未知**。
-- 完整运行态边界：`server/apps/cmdb_enterprise/` 下全部普通文件，排除 `__pycache__` 与 `*.pyc`；包含 Python、BDD feature 和接入手册，共 78 个文件。
-- 稳定逐文件命令（主工作区根，env `LC_ALL=C`）：
+- `server/apps/cmdb_enterprise/` 与 `agents/stargazer/enterprise/` 均被忽略或不受当前父仓提交追踪；仓库没有 manifest 证明其来源制品、版本或与上述 gitlink commit 的映射。因此 **gitlink、Server Overlay、Stargazer Enterprise 制品三者映射均未知**。
+- 完整运行态边界：两个目录下全部普通文件，排除 `__pycache__` 与 `*.pyc`。Server Overlay 78 个文件，Stargazer Enterprise 102 个文件，合计 180 个。
+- Server 稳定逐文件与聚合命令（主工作区根，env `LC_ALL=C`）：
 
 ```bash
 find server/apps/cmdb_enterprise -type f ! -path '*/__pycache__/*' ! -name '*.pyc' -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256
 ```
 
-- 稳定聚合命令：对上条命令产生的、按相对路径排序的 `<sha256><two spaces><path>\n` 清单再次 SHA-256。
-
 ```bash
 find server/apps/cmdb_enterprise -type f ! -path '*/__pycache__/*' ! -name '*.pyc' -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256 | shasum -a 256
 ```
 
-- 本审计聚合值：`9b82d0556665cc80c03a44c2b58e10e77ddc005fdc11aad6fcd27713ce139292`。
+- Server 聚合值：`9b82d0556665cc80c03a44c2b58e10e77ddc005fdc11aad6fcd27713ce139292`。
+- Stargazer 稳定逐文件与聚合命令：
 
-## 2. 完整相对文件清单与 SHA-256
+```bash
+find agents/stargazer/enterprise -type f ! -path '*/__pycache__/*' ! -name '*.pyc' -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256
+find agents/stargazer/enterprise -type f ! -path '*/__pycache__/*' ! -name '*.pyc' -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256 | shasum -a 256
+```
+
+- Stargazer 聚合值：`f580f0905b5fc9b84b71628b26b1ed6ad33733ce439babd2a38ccad38c67cf53`。
+- Combined 算法：将两个目录的文件放在同一相对路径序列中以 `LC_ALL=C` 排序，再对 `<sha256><two spaces><path>\n` 清单做 SHA-256：
+
+```bash
+find server/apps/cmdb_enterprise agents/stargazer/enterprise -type f ! -path '*/__pycache__/*' ! -name '*.pyc' -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256 | shasum -a 256
+```
+
+- Combined 聚合值：`aeb3c198c773c26593698970cb7e1dfd7c0670cb7e34e3b5349f40511ceaa33f`。
+
+## 2. Server Overlay 完整相对文件清单与 SHA-256
 
 ```text
 de34cec158c54e8a2ae804feaddb4960ce9c09d800de88ceb0cd74a838029bf6  server/apps/cmdb_enterprise/__init__.py
@@ -107,18 +120,122 @@ a0b0a57c2a5f3747f06a69fdd203c30471211df9c5efa92c854cf0200c926c45  server/apps/cm
 61bb6c984c5a8c88d9d823b7c293b630e94684c96f0c14a603f97fca83c6a315  server/apps/cmdb_enterprise/商业版配置采集插件接入手册.md
 ```
 
-## 6. 建议父审查采用的最小修订顺序
++## 3. Stargazer Enterprise 完整相对文件清单与 SHA-256
 
-1. 先补 line 28、76、112、161 的完整命令/cwd/env/exit/output；这是局部文档修订，不改变 Finding。
+```text
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  agents/stargazer/enterprise/__init__.py
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  agents/stargazer/enterprise/plugins/__init__.py
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  agents/stargazer/enterprise/plugins/inputs/__init__.py
+148817177e4bd7abaed427ddc917b1b60e273f18f3b807fc208142bf60a08b0f  agents/stargazer/enterprise/plugins/inputs/aix/aix_default_discover.sh
+c90d4fdff81b87c9db8e0e0a3755e201f736e5c4abdaaec5dca4aef11f1bc4ff  agents/stargazer/enterprise/plugins/inputs/aix/plugin.yml
+1677935ef491c010b71668150da2d33203b20ea0c435437ad3fdbb6a83c2b16e  agents/stargazer/enterprise/plugins/inputs/ambari/ambari_info.py
+4453941fc5126325a1dafd4a31f0f95827d05dfc9ddf7b332086693eb17aa993  agents/stargazer/enterprise/plugins/inputs/ambari/plugin.yml
+fea16756ac6743c396b2883874bfc790ade1147839415465b02d5ccf99216984  agents/stargazer/enterprise/plugins/inputs/apusic/apusic_default_discover.sh
+f5fca1ba52b8c5b3ba46712188ffa858aa5cc32b32fd5ca56e8bfb01d6c016be  agents/stargazer/enterprise/plugins/inputs/apusic/plugin.yml
+4f7b439cadd6b00702e088b616b5663801d0eeced0c2dec419c853d26d233675  agents/stargazer/enterprise/plugins/inputs/bes/bes_default_discover.sh
+fdb2cfe3bd6b9d518d1667ea64e6d626a57c70192ca08d3987207cca5f06b5ca  agents/stargazer/enterprise/plugins/inputs/bes/plugin.yml
+26470b90e5908494d4f88306379e0f1612a68a0c26a8b73d48b302b148d818a7  agents/stargazer/enterprise/plugins/inputs/brocade_fc/brocade_fc_default_discover.sh
+7bec7fb001848ebc608c8c4b3b82d16b56037d2f4adc2882e2732610eece8130  agents/stargazer/enterprise/plugins/inputs/brocade_fc/plugin.yml
+fd9398a0e587c1c078e990b0bde85566ab5b48f9ee0ccee92670966b3695ae80  agents/stargazer/enterprise/plugins/inputs/cics/cics_default_discover.sh
+efd3705b0f669a9232c10010ec83e89387f461ce69c6a1ee8a164e1d4c5dc590  agents/stargazer/enterprise/plugins/inputs/cics/plugin.yml
+4991fc339c7e3fa3ef37ef162b4f26632b50275ea798b6b484ca726841fd6e26  agents/stargazer/enterprise/plugins/inputs/cisco_fc/cisco_fc_default_discover.sh
+fbf33c82879fdbdc82bdd259e54afe518697b9a22afe045e87d0419cb58fd837  agents/stargazer/enterprise/plugins/inputs/cisco_fc/plugin.yml
+2660511e0bde89692f12c512db352b224a9fb306f3149e658bdc00e206673cd6  agents/stargazer/enterprise/plugins/inputs/couchbase/couchbase_info.py
+22d79b591ef902be84266e0fca1a91826824abac4701051cdca58afd7d053fdb  agents/stargazer/enterprise/plugins/inputs/couchbase/plugin.yml
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  agents/stargazer/enterprise/plugins/inputs/dameng/__init__.py
+8fbc9e9a7b248f624ae3d0d867cac0e3b89fa27fae221f9cb29d7c03938990f4  agents/stargazer/enterprise/plugins/inputs/dameng/dameng_default_discover.sh
+5c07ad237008bedf5a0d4830acc11e933d50d5248e4ed484d2cc6f90dc46cd08  agents/stargazer/enterprise/plugins/inputs/dameng/plugin.yml
+3983af9dfc27862011a5515cec4eb53f4cd46132c06b8be5cb2a5cb2545e565d  agents/stargazer/enterprise/plugins/inputs/domestic_linux/domestic_linux_default_discover.sh
+22a8b1d71c5f9bb51d24cee1e5ae3a4f443263b41b0b42f8c679c0c08c16ffae  agents/stargazer/enterprise/plugins/inputs/domestic_linux/plugin.yml
+3c18c53f8a6b01d0d919a33c519f65989d7050f04a9f4fcff53163ec20b4088b  agents/stargazer/enterprise/plugins/inputs/emc_symmetrix/emc_symmetrix_info.py
+22c78d250d1e72a20d81872c054e24c8dc85b4bb8fd12a82e53825a9d9888202  agents/stargazer/enterprise/plugins/inputs/emc_symmetrix/plugin.yml
+bdc3fd61ec6a59cffce1d2241dc2c2c3c6b0cd4050329a4c2a7ae4deefe4e34c  agents/stargazer/enterprise/plugins/inputs/f5/f5_info.py
+72aa7cfa732ac8a2ed96409073fa40052c899d2f0ef985c88f3ba71e7ef40b60  agents/stargazer/enterprise/plugins/inputs/f5/plugin.yml
+62aeb2d7ad1d7881fa0f70c18dbec36041b1e4ae4f9aaf871115a2cb86caa615  agents/stargazer/enterprise/plugins/inputs/gbase8s/gbase8s_default_discover.sh
+7c962df25e650c0f2995afaf0414a0cef9876017073711eaaef13650f88cf264  agents/stargazer/enterprise/plugins/inputs/gbase8s/plugin.yml
+382f7f40011506815ce79314e622cfac640aa2c309dbbb02550e283c2e1856c3  agents/stargazer/enterprise/plugins/inputs/h3c_cas/h3c_cas_info.py
+58c02645d590591c8b4b69d24c4c924b47b36900f2c95c72de4c75fdbb878e8c  agents/stargazer/enterprise/plugins/inputs/h3c_cas/plugin.yml
+39c1d597d7bc39a5acd2ae60ad3c07b00d6fcc2d6657937e2eae72f2e76975c5  agents/stargazer/enterprise/plugins/inputs/hdfs/hdfs_default_discover.sh
+b3a24caf78655695bb7127de0b024616ddba334ae6c61e7f9f889bee28b103fe  agents/stargazer/enterprise/plugins/inputs/hdfs/plugin.yml
+9769d3ad091d2b7a6c620b331e56939cc03e1a9b06ed56cc054c02fcaac87ec6  agents/stargazer/enterprise/plugins/inputs/hds_vsp/hds_vsp_info.py
+0644dd8a2f2b8b23af43d91b123299455b98b96ac01f1482aafe62cfc344e866  agents/stargazer/enterprise/plugins/inputs/hds_vsp/plugin.yml
+c2d611391c1c046c0c6458df81b1f58f2e9b8699979566ef68d6359a0a9cc7fa  agents/stargazer/enterprise/plugins/inputs/highgo/highgo_info.py
+c19326687803664fe34247a21e6db8dae5a5a28b308a31da0681f1698ba5eae7  agents/stargazer/enterprise/plugins/inputs/highgo/plugin.yml
+ee5fb4cdaae102ec1ad2942cbdf23f08b6958c94ed6e6fe05c6f1faa21b6edbd  agents/stargazer/enterprise/plugins/inputs/hmc/hmc_default_discover.sh
+a3ce65e8e1338ddd9a941e0f324fc6fbc43024666c396fc52ee6b7da5ba45879  agents/stargazer/enterprise/plugins/inputs/hmc/plugin.yml
+6f7c328ef031ca25329ae23d76a09dbdfd424cf1947ee49b84b9ae2d1c4147a4  agents/stargazer/enterprise/plugins/inputs/hpux/hpux_default_discover.sh
+e67f4b5fea24ba40ac7fb1e2a61d8508291984fa69a184c28491ab5498685e2c  agents/stargazer/enterprise/plugins/inputs/hpux/plugin.yml
+e28eb78694eda409e79f87085ca209893471ce7ebc9e413feef137d1506d146b  agents/stargazer/enterprise/plugins/inputs/ibm_ds/ibm_ds_info.py
+97d94c5d15fc37f32defef8dd42fd13cd906273893795722cf295a73b3b9647c  agents/stargazer/enterprise/plugins/inputs/ibm_ds/plugin.yml
+fc2249a5a9b1c0c48c6e101fd8b70495a6ceacfab20f684ae7649907f9f73ae3  agents/stargazer/enterprise/plugins/inputs/ibm_storwize/ibm_storwize_info.py
+5dcd685d05d65902957f14fb045e3b3a7276e7f75a56c7a80e91d2470390239f  agents/stargazer/enterprise/plugins/inputs/ibm_storwize/plugin.yml
+e01bfc1451a432ce931046113ed7b9f98de631086a665a4e88d8bf2a8a448951  agents/stargazer/enterprise/plugins/inputs/ibmmq/ibmmq_default_discover.sh
+b7f7fe651b37f811c376bdb0b1baa8c6fa5d473fc0bf5c69ae7abf9cfa28f3f3  agents/stargazer/enterprise/plugins/inputs/ibmmq/plugin.yml
+e76ad73000143727cf0e263a20815df1ef916953d30cbb86153dc9bd2b55577d  agents/stargazer/enterprise/plugins/inputs/ihs/ihs_default_discover.sh
+ecccba0c7d6c65f2203ba4611cb6e3eac723b252e445a286ac0892f659b5eff2  agents/stargazer/enterprise/plugins/inputs/ihs/plugin.yml
+6a8aa409472c0706aa1695ac1a8943d8b4a6f37826869d070234b5d4050abede  agents/stargazer/enterprise/plugins/inputs/infinidat/infinidat_info.py
+7b7ff054f265250b87706f7d6456b51159f2cbdfd98e8edeb7ebde2155ef495b  agents/stargazer/enterprise/plugins/inputs/infinidat/plugin.yml
+1f11f0374a65e9a0c3091daaef0c1636ce1320c2758ebd31011f797212de8a49  agents/stargazer/enterprise/plugins/inputs/informix/informix_default_discover.sh
+6aedf3de0c3e44e76d1199839a030366ff3f34b6d555a33ef7312c25add3d620  agents/stargazer/enterprise/plugins/inputs/informix/plugin.yml
+3915daf7a2cf781e35db255ff980cbe69a1836cb561149f130aee2b0dfa0e7f2  agents/stargazer/enterprise/plugins/inputs/inforsuite_as/inforsuite_as_default_discover.sh
+bc483fcb2a13580174d164114630b662cdf7d0eb867c9c9fd7d374b164816a1c  agents/stargazer/enterprise/plugins/inputs/inforsuite_as/plugin.yml
+28fdabf73e0d6111ea9148b7ab4f5c3dc95cd5d277c958821cf89c1e0285776b  agents/stargazer/enterprise/plugins/inputs/iris/iris_info.py
+05e6d9294ff07a177035e1741a8a5d8a08a2169fc2c1fb5e6b375a15facb38d9  agents/stargazer/enterprise/plugins/inputs/iris/plugin.yml
+f24298d73f77f8e0e318406253f7319834da11cbe0b615867c8e654983eb16c0  agents/stargazer/enterprise/plugins/inputs/macrosan/macrosan_info.py
+aee003b5ad5cf72fb3bced14fb9dde105ab88353d57a71a48c0df40a2267e97d  agents/stargazer/enterprise/plugins/inputs/macrosan/plugin.yml
+46b2b069f790c97aed9642d649aa749f7592bc969a0d11651e267a2205375d43  agents/stargazer/enterprise/plugins/inputs/mycat/mycat_default_discover.sh
+6f2bb49c8d05cf79e0368885ae1ee060f7fbcb0efe0d29ad836f94faf0cd039b  agents/stargazer/enterprise/plugins/inputs/mycat/plugin.yml
+6cb12ca159081662cb2cfab927b094d91b619b16ecc7ddb02c03ece0cb2794aa  agents/stargazer/enterprise/plugins/inputs/nacos/nacos_info.py
+dc9b5ef236d91e12dd48758d4ded77f6e70dd76b4231e7db8506e2f8310e132b  agents/stargazer/enterprise/plugins/inputs/nacos/plugin.yml
+5cbfbb104e6f85374ece6f8b6d95bc0f62a66fcc3d58fe62caa7b11b57ba446e  agents/stargazer/enterprise/plugins/inputs/netapp_cluster/netapp_cluster_info.py
+4a8375f20c75fdc34767ebe2dec40af490442ed234999daa08b6ab3675a3baa5  agents/stargazer/enterprise/plugins/inputs/netapp_cluster/plugin.yml
+c8c3bd3e83a7e8ddf6969a68f16fe16994ff9369200c78b824da1e4865d9b694  agents/stargazer/enterprise/plugins/inputs/oceanbase/oceanbase_info.py
+3af1ca39d085d416d79d4e21252e72a6ef655b6e9a5d10733ed18c3b5e936991  agents/stargazer/enterprise/plugins/inputs/oceanbase/plugin.yml
+c8c0ff60d0a3d3e5aa67644ce1828149f3fee769d27688bc82b8c4b560e355cf  agents/stargazer/enterprise/plugins/inputs/oraclezfs/oraclezfs_info.py
+1d340c1f9252d07986e3e2c3a9ce521fce782e099c6df603bc6788d8e4a3ba67  agents/stargazer/enterprise/plugins/inputs/oraclezfs/plugin.yml
+8c922dd236a3cd7bc85e60444164a1ddd40d92bc16edb5b0c83a8c827cb414c2  agents/stargazer/enterprise/plugins/inputs/oscar/oscar_default_discover.sh
+9946750d38f7c0ea934839d151887eaaa410cb75768bb5dd8ce888380f462413  agents/stargazer/enterprise/plugins/inputs/oscar/plugin.yml
+27164691ab759db643c7d889110b25f3619e2353851c12e3b27611274b22a665  agents/stargazer/enterprise/plugins/inputs/pure_array/plugin.yml
+390960595d701902b547d4dbe2b27660f78f73afdd9435e0693d1ed12a6e8394  agents/stargazer/enterprise/plugins/inputs/pure_array/pure_array_info.py
+afd4cd764ea49633a7bd913eb3b23a881a5f470d847016c0b60d9a41285cf40b  agents/stargazer/enterprise/plugins/inputs/redis_sentinel/plugin.yml
+77047140b9ce343a9b9e01f35837708e1d37708e2207b5e575f3f4ecca72a23a  agents/stargazer/enterprise/plugins/inputs/redis_sentinel/redis_sentinel_default_discover.sh
+911338335e5f7468e9da057fb7065e39e5415f13f29518c3bf2699dfb86a0173  agents/stargazer/enterprise/plugins/inputs/sap_hana/plugin.yml
+3dd31fa8f284b053e67c52b90c785fb785a0feb3069d61724de381627f8e53e8  agents/stargazer/enterprise/plugins/inputs/sap_hana/sap_hana_info.py
+8219a88ca363d253d6be031a8cbad2c1e3bf8438201d01ccf01d4647cdfff482  agents/stargazer/enterprise/plugins/inputs/security_device/plugin.yml
+fa6ba8149b50aee609ba24cd50d7ad7646d2c31e76cce33c84e1f0273ef29894  agents/stargazer/enterprise/plugins/inputs/security_device/security_device_info.py
+4c7ba013d7ca57886dce6316bfd01022d0ee20344fcbe0b71e9d668dc1bc8359  agents/stargazer/enterprise/plugins/inputs/server_bmc/plugin.yml
+38437028163be9cc9376299c5e6fcfa8a6a3e7eeed9b58793cc349bb0b4c7167  agents/stargazer/enterprise/plugins/inputs/server_bmc/server_bmc_info.py
+c613213121d31d34c86ec9cc6e33622ea15498af2eb1ef141d54572332ce7bd2  agents/stargazer/enterprise/plugins/inputs/storm/plugin.yml
+3753c716525b0dd9b2f521faf01adab6acda66718b11d86f9bb6c4ae5c0a8e08  agents/stargazer/enterprise/plugins/inputs/storm/storm_default_discover.sh
+333380998cd780f578dd353f1b401c766673b59931035407b20fbf9d536dd29e  agents/stargazer/enterprise/plugins/inputs/sybase/plugin.yml
+c07e4ec222d28edecb76ecf0d513d5b7a7673ef255d3a5bbd1bd1c8658b37cec  agents/stargazer/enterprise/plugins/inputs/sybase/sybase_default_discover.sh
+0c009a0aa39d15109564909880a229790e45d6039a1dbf111db2c91aa3384da0  agents/stargazer/enterprise/plugins/inputs/tape_library/plugin.yml
+4440842d73c2b7b3a2f25c0ebcf910ef7a8c632d557fcec4322b6c1f2c1f9441  agents/stargazer/enterprise/plugins/inputs/tape_library/tape_library_info.py
+7051490003fd3b8ed4732acebaab432cfe2e1a047014aad31d78c96e413337cd  agents/stargazer/enterprise/plugins/inputs/tdsql/plugin.yml
+225a9f77d567a9aba8cc1c7593f77840e13a4dfabfbf47a5dac0e5d16149c187  agents/stargazer/enterprise/plugins/inputs/tdsql/tdsql_info.py
+b308a322be2ae9f17e100803139b3b2e1c2edd9f32d2d4591b20a74bc08b5cae  agents/stargazer/enterprise/plugins/inputs/tonggtp/plugin.yml
+5c5e018a8ea94533ed06a58e2d2bec7939882f9ed1b86ecf3450c0a3479331be  agents/stargazer/enterprise/plugins/inputs/tonggtp/tonggtp_default_discover.sh
+dceb9bcc74e5e873013b6ab7170cc43a27cbd3a0227fe84ff3c5593b4863236c  agents/stargazer/enterprise/plugins/inputs/tonglinkq/plugin.yml
+7d2e8d7bbf564302ec86af4b25bbed8a944f94c07b476b6aa464fef646a949f7  agents/stargazer/enterprise/plugins/inputs/tonglinkq/tonglinkq_default_discover.sh
+63beb0445df08594e2bb68e9e48257ccd8c3763e940108b0bc6bec35523545f2  agents/stargazer/enterprise/plugins/inputs/tongrds/plugin.yml
+519e39e596e77e5d582bfac43f2d52adcaeddcdaee548440f3c760a98339802f  agents/stargazer/enterprise/plugins/inputs/tongrds/tongrds_info.py
+ca979f21df1b29d8692c702e70a2536992d3a18b0afcbdc31dea676a809d510f  agents/stargazer/enterprise/plugins/inputs/xsky/plugin.yml
+333e012b4c059a1edd4430fc2d82a886b753d72642fc74351c944f85fbe046ec  agents/stargazer/enterprise/plugins/inputs/xsky/xsky_info.py
+a373ee0c9c5f21f4e5dd6b2ffe316f84bc61aaca9c7cda48c15c29c4741aa267  agents/stargazer/enterprise/plugins/inputs/yarn/plugin.yml
+04d3b87bad116918e09e4bb5c08dff443b88982ee97d3b94c6c083d4bb94cc48  agents/stargazer/enterprise/plugins/inputs/yarn/yarn_default_discover.sh
+9c49e36c2730749f6ae57f177b8964c0299f377e213dfd4f38c0f3c504121e2e  agents/stargazer/enterprise/plugins/inputs/zstack/plugin.yml
+7b47f234c1427c001a6d8baf7dd5e6c13142bd4236bee0ae453cbe5789c8cc23  agents/stargazer/enterprise/plugins/inputs/zstack/zstack_info.py
+```
 
-## 3. 子域聚合与审查边界
+
+## 4. 子域聚合与审查边界
 
 - collect 审查的 46 路径主清单聚合 SHA-256：`a99f7aab27b2e216efb1fef13a636df8fa6660df63e586ee4215cf14b8baa783`。该子域清单还包含社区 caller/test 与 Stargazer 证据文件，因此不能由上方 78 个 Overlay 文件清单单独推导。
 - 既有 custom_reporting 15 源文件聚合 `1c4d5f1b9e3cbfb17798faf119779565e33bc1d23db7bba61e04cf519ff25ed9`、六测试聚合 `0e4b7eee9e8361f1479546444287ae2c540f303edfc8658c7d9f2ec5f47c8043` 仅是 78 文件全集的历史子集证据，不替代本清单。
 - 本轮覆盖运行态 Overlay 的 collect、custom_reporting、model_ops、instance_ops、附件模型、配置、注册、任务、迁移和测试；社区调用链与 Stargazer 文件按各 Finding 的 Location/测试命令另行固定。
 - 未验证真实 FalkorDB/Neo4j、NATS、Celery 多 Worker/Beat、MinIO 故障、多数据库、Ingress 请求体限制、生产镜像依赖，以及真实 Enterprise 设备协议。
 
-## 4. gitlink 限制与重验要求
+## 5. 来源映射限制与重验要求
 
 根仓 `enterprise` gitlink 是 `7c7db340961d6b010d2c533de92970df253b545f`，但隔离 worktree 未初始化该内容；主工作区 ignored Overlay 也没有 manifest 声明自身来源。两者映射因此为**未知**。运行态哈希能固定本次审查事实，却不能证明发布来源、供应链完整性或从当前分支重建。
 

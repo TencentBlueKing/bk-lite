@@ -27,14 +27,15 @@
 | 长期运行时策略 | `GraphClient` 按部署配置选择 FalkorDB 或 Neo4j | 这是支持多运行时的 adapter strategy，不以“清退 fallback”为目标。由显式 adapter registry/启动配置校验选择唯一驱动；启动时拒绝缺失、冲突或不支持的组合，并以同一结构化查询、排序、预算、错误和契约测试证明双驱动语义一致。环境变量只应承载已校验配置，不能让领域 Service 猜测运行时。 |
 | 永久可选能力 | 社区 `_EMPTY_CUSTOM_REPORTING` provider | 这是 Enterprise Overlay 未安装时的 optional-provider，不要求设置移除条件。framework 应显式暴露 capability availability/version：只读空结果必须可区分“能力未安装”和“已安装但业务数据为空”，所有写入、凭据、审核与 ingest 在无 provider 时稳定 fail closed；provider 注册与启动校验负责确认实现完整。 |
 | 运行期降级路径 | 订阅关系批查失败后逐实例 RPC fallback | 降级前后必须使用同一可信 `CallerContext/AuthorizedResourceScope` 和关系双端权限，不得因 fallback 扩大可见范围；按单规则限制 fallback 实例数、RPC 次数、关系边、响应字节与单调 deadline。批查或降级失败、超限时持久化结构化且可重试的失败/checkpoint，不推进 `last_check_time` 或快照，也不得把部分/空结果解释为成功。 |
+| Enterprise 实现降级 | Enterprise collector import 失败后默认选择同名 OSS（F69） | 只有 manifest 显式声明 schema/credential/error 版本等价并通过镜像 smoke 才允许降级；否则 `strict_enterprise=true` fail closed，记录来源、版本和失败码。 |
 
 ### 1.3 职责错放与复制成本
 
-- **framework**：NATS registry 只保存 callable，身份、schema、预算和错误协议下放给 26 个 handler，导致 F62–F64。框架应拥有 CallerContext、DTO/预算声明、correlation/deadline 和纯 JSON envelope。
+- **framework**：NATS registry 只保存 callable，身份、schema、预算和错误协议下放给 26 个 handler，导致 F62–F64；Enterprise extension/plugin/NodeParams registry 又可覆盖键、吞 import failure 或发布半成品（F70）。框架应拥有 CallerContext、DTO/预算声明、correlation/deadline、纯 JSON envelope，以及原子 capability manifest、唯一性和 readiness 校验。
 - **service**：多个 Service 同时承担权限解析、外部 RPC、状态终结、展示兼容和错误文本拼接；Node sync 是最明显案例（F44–F51）。Service 应只编排领域规则，外部协议与持久化 execution 分离。
-- **adapter**：Graph/NATS/NodeMgmt/SystemMgmt/MinIO wrapper 没有共同 timeout、错误码、幂等和响应大小契约；新增依赖调用会复制映射与防护。
+- **adapter**：Graph/NATS/NodeMgmt/SystemMgmt/MinIO wrapper 没有共同 timeout、错误码、幂等和响应大小契约；Enterprise 多对象 metric 路由与真实协议 I/O 也缺 adapter 契约（F66/F67/F69）。新增依赖调用会复制映射与防护。
 - **plugin**：Stargazer 插件自行维护命令策略、shell 转义、资源上限、callback identity 和错误分类（F26–F30），把框架安全职责推给每个插件。
-- **task orchestration**：`on_commit`、`.delay()` 或 RPC 返回常被当作业务完成；父子、租约接管、部分成功和跨存储恢复各自实现（F04/F20/F33/F38/F47/F50/F51/F54/F60）。
+- **task orchestration**：`on_commit`、`.delay()` 或 RPC 返回常被当作业务完成；父子、租约接管、部分成功和跨存储恢复各自实现（F04/F20/F33/F38/F47/F50/F51/F54/F60）；附件 GC 无批次/deadline 且部分失败仍 SUCCESS（F74）。
 - **callback builder / error mapper**：payload 与错误在 handler、plugin、Service、Worker 四层重复拼装；新增 callback 或错误类型必须联改多处，且已有 `result=true/processed=false`、未知投递布尔和 jsonpickle 分叉。
 - **test fixture**：大量测试直接调用 Service/handler、Mock 图/RPC/发布或把缺陷行为写成正向断言；共享 fixture 没有强制 CallerContext、generation、budget、canary secret 与跨组织对端，导致跨层契约持续漏检。
 
@@ -108,8 +109,16 @@
 | F62 | NATS CallerContext/ACL | 主项；NATS 裸关系证据引用 F14 |
 | F63 | NATS 错误对象协议 | 主项；脱敏引用 F25，领域分类引用 F22 |
 | F64 | NATS schema/预算/deadline | 主项；adapter 通用边界，领域预算仍保留 |
-| F65–F70 | Enterprise collect | 主项；凭据 schema、占位成功、IBM MQ 路由、时序过滤、fallback 与原子 registry |
-| F71–F74 | Enterprise 模型/实例/附件 | 主项；附件所有权、字段删除、multipart 入站预算与 GC 终态 |
+| F65 | Enterprise secret schema | 主归属 credential/framework；相关 F25 脱敏但本项是落库/API 字段分类，不归并 |
+| F66 | 无 I/O collector 伪成功 | 主归属 plugin/adapter；相关 F21 的真实失败聚合，但本项根本没有外部 attempt，不归并 |
+| F67 | IBM MQ 多对象路由断裂 | 主归属 adapter DTO；相关 F21/F30，但模块可加载且失败点是 object_type→metric 契约，不归并 |
+| F68 | stale 首行终止 fresh 结果 | 主归属 formatter/query normalization；相关 F21/F23，但触发是无序时序结果，不归并 |
+| F69 | Enterprise import 静默 OSS fallback | 主归属 capability routing；相关 F30 模块加载，但本项是加载后 schema/认证降级策略，不归并 |
+| F70 | registry 非原子且冲突可静默 | 主归属 framework registry；相关 F30 单一路径错误，但本项是完整 manifest 发布/唯一性，不归并 |
+| F71 | 文件一对多引用覆盖 owner | 主归属 storage reference state；相关 F10/F12 竞态，但基数与 claim/CAS 根因独立 |
+| F72 | 字段删除绕过文件回收 | 主归属 model/storage lifecycle；相关 F11 副作用恢复，但入口与生命周期 hook 不同 |
+| F73 | multipart 解析前无总量边界 | 主归属 framework/resource budget；相关 F28 Agent 预算，但本项是 Django 入站字节边界 |
+| F74 | GC 无预算且部分失败 SUCCESS | 主归属 task orchestration/storage；相关 F33/F35 终态，但独立周期队列与失败模型不归并 |
 
 ## 3. Test Review
 
@@ -144,6 +153,7 @@
 | 错误与脱敏 | 移除 wire `pickled_exc`，统一 safe code/category/retryable，所有日志/DB/UI 经 sanitizer | 类型化跨语言 `ErrorEnvelope` 与依赖 adapter 映射表 | 兼容窗口可能影响旧消费者；应提供只读版本降级而非继续反序列化 |
 | 资源预算 | 在入口增加 bytes/rows/IDs/page/time 上限，超限零副作用；高风险全量任务先小批 checkpoint | 统一 `ResourceBudget`，在线查询、adapter、作业分别覆写更严格预算 | 硬上限可能改变大客户行为；需异步导出/作业替代而非简单拒绝全部需求 |
 | 插件与外部系统 | 将命令策略、shell adapter、callback schema、Node delivery 修到最终边界 | plugin manifest/adapter registry 启动校验与 capability 声明 | 初期增加注册元数据，但能把运行期失败提前到启动/测试期 |
+| Enterprise storage/task | 拒绝文件多归属、字段删除立即撤销引用、multipart 最外层限流，并给 GC 批次/deadline/失败终态 | durable file reference/claim 状态机 + 有界 cleanup queue；storage adapter 幂等删除、task orchestration 管 checkpoint/重试/死信 | 短期会拒绝部分旧调用；长期需迁移现有台账与对象引用，但能消除图/SQL 双真相和静默泄漏 |
 | 测试 | 为每个 P0/P1 先加跨层负向契约和真实状态断言，保留各域 fresh commands | 建共享 contract suite，所有 HTTP/NATS/plugin/adapter 实现必须通过 | 测试时间上升；换取跨域一致性和显著降低 Mock 绿灯假象 |
 
 ## 5. Recommendation

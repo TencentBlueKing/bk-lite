@@ -28,7 +28,7 @@
 | 14 Enterprise Overlay | 已完成 | 3 | 6 | 1 | 0 | Block | [Enterprise Overlay](14-enterprise-overlay.md) |
 | **合计（主 Finding）** | **已完成** | **28** | **39** | **6** | **0** | **Block** | **73 项** |
 
-Enterprise 结论有明确 provenance 限制：根仓库 gitlink `7c7db340961d6b010d2c533de92970df253b545f` 在审查 worktree 未初始化；审查对象来自主工作区 ignored 安装态 Overlay。完整 78 个非缓存文件逐项哈希与聚合值 `9b82d0556665cc80c03a44c2b58e10e77ddc005fdc11aad6fcd27713ce139292` 见 [enterprise-overlay-provenance.md](enterprise-overlay-provenance.md)。该运行态与 gitlink commit 映射未知，因此当前分支不能单独重建审查对象。
+Enterprise 结论有明确 provenance 限制：根仓库 gitlink `7c7db340961d6b010d2c533de92970df253b545f` 在审查 worktree 未初始化；审查对象来自主工作区 ignored 安装态。Server Overlay 78 文件聚合为 `9b82d0556665cc80c03a44c2b58e10e77ddc005fdc11aad6fcd27713ce139292`，Stargazer Enterprise 102 文件聚合为 `f580f0905b5fc9b84b71628b26b1ed6ad33733ce439babd2a38ccad38c67cf53`，combined 180 文件聚合为 `aeb3c198c773c26593698970cb7e1dfd7c0670cb7e34e3b5349f40511ceaa33f`，逐项见 [enterprise-overlay-provenance.md](enterprise-overlay-provenance.md)。三者与 gitlink/来源制品映射未知，因此当前分支不能单独重建审查对象。
 
 ## 2. Findings
 
@@ -41,7 +41,7 @@ P0 可按外部后果归为四组：
 3. **任务错误成功、数据丢失与不可恢复副作用**：`CMDB-F04/F08/F21/F33/F35/F46/F50/F54/F66/F67`。公共枚举、文件台账、混合采集、配置正文、Node 更新/父子终态和自定义快照会把失败标为成功、静默删尾、制造伪资产或丢失子对象。
 4. **并发代次与副作用 fencing 缺失**：`CMDB-F20/F38/F41`。采集 execution、IPAM 租约和公开安装 token 的旧 owner/并发消费可突破状态与使用边界。
 
-P1 主要覆盖错误模型失真、批量/跨存储 Operation 缺失、幂等与唯一性竞态、callback/delivery 不一致、timeout/清理/回滚缺口、查询和作业资源预算以及核心业务路径缺少有效回归证明。P2 集中于字段分组、布局、唯一锁 fencing、Outbox 最终失败闭环和 IPAM 主题回归；没有为了数量制造 P3。
+P1 主要覆盖错误模型失真、批量/跨存储 Operation 缺失、幂等与唯一性竞态、callback/delivery 不一致、timeout/清理/回滚缺口、查询和作业资源预算以及核心业务路径缺少有效回归证明。P2 集中于字段分组、布局、唯一锁 fencing、Outbox 最终失败闭环、IPAM 主题回归，以及 `CMDB-F74` 附件 GC 的有界扫描与失败终态；没有为了数量制造 P3。
 
 ## 3. Test Review
 

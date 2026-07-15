@@ -117,22 +117,23 @@ NATS_METRICS_PUBLISH_RETRIES=0 .venv/bin/python -c "import asyncio; from unittes
 ## 3. 专项资源补测
 
 - cwd: `/Users/windyzhao/Documents/Canway/weops_X/cmdb/bk-lite/.worktrees/cmdb-functional-production-review/server`
-- source: 当前审查 worktree commit
+- source: `6391586c7476dc700cf27d3a205a2e6b5f8a16c2`；新鲜重跑时间 `2026-07-15 12:10 CST`
 - env: 命令内完整声明
 
 ```bash
 MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false SECRET_KEY=test DB_ENGINE=sqlite DB_NAME=/private/tmp/cmdb-task9-review.sqlite3 ENABLE_CELERY=true INSTALL_APPS=system_mgmt,node_mgmt,cmdb uv run pytest -q -o addopts='' apps/cmdb/tests/test_k8s_resource_overview_service.py apps/cmdb/tests/test_k8s_resource_overview_views.py apps/cmdb/tests/test_application_resource_overview_views.py apps/cmdb/tests/test_infra_service.py apps/cmdb/tests/test_rack_room_service.py --cov=apps.cmdb.services.k8s_resource_overview --cov=apps.cmdb.services.application_resource_overview --cov=apps.cmdb.services.infra --cov=apps.cmdb.services.rack_room --cov=apps.cmdb.views.k8s_setup --cov-report=term-missing
 ```
 
-- exit: 0
-- output: `46 passed in 0.19s`
+- sandbox exit: 101；macOS `system-configuration` panic，未收集
+- approved rerun exit: 0
+- output: `51 passed in 5.26s`；合计 coverage 63%
 
 ```bash
 MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false SECRET_KEY=test DB_ENGINE=sqlite DB_NAME=/private/tmp/cmdb-task9-review.sqlite3 ENABLE_CELERY=true INSTALL_APPS=system_mgmt,node_mgmt,cmdb uv run pytest -q -o addopts='' apps/cmdb/tests/test_k8s_setup_views.py --cov=apps.cmdb.views.k8s_setup --cov=apps.cmdb.services.k8s_setup --cov-report=term-missing
 ```
 
 - exit: 0
-- output: `6 passed in 0.15s`；View 79%、Service 34%、合计 54%
+- output: `6 passed in 0.16s`；View 79%、Service 34%、合计 54%
 
 ## 4. Enterprise collect
 
@@ -169,6 +170,94 @@ MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_
 
 - exit: 4
 - output: pytest 未识别 `--cov` 参数，当前 venv 未安装 pytest-cov
+
++### 4.3 F65–F69 直接探针
+
+只读 fixture：
+
+- [enterprise_server_probes.py](reproductions/enterprise_server_probes.py)
+- [enterprise_stargazer_probes.py](reproductions/enterprise_stargazer_probes.py)
+
+#### F65 credential schema
+
+- cwd: `/Users/windyzhao/Documents/Canway/weops_X/cmdb/bk-lite/server`
+- env: `PYTHONPATH=. DJANGO_SETTINGS_MODULE=settings MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false SECRET_KEY=test DB_ENGINE=sqlite DB_NAME=/private/tmp/cmdb-enterprise-probes.sqlite3 ENABLE_CELERY=true INSTALL_APPS=system_mgmt,node_mgmt,cmdb,cmdb_enterprise UV_CACHE_DIR=/private/tmp/uv-cache`
+
+```bash
+PYTHONPATH=. DJANGO_SETTINGS_MODULE=settings MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false SECRET_KEY=test DB_ENGINE=sqlite DB_NAME=/private/tmp/cmdb-enterprise-probes.sqlite3 ENABLE_CELERY=true INSTALL_APPS=system_mgmt,node_mgmt,cmdb,cmdb_enterprise UV_CACHE_DIR=/private/tmp/uv-cache .venv/bin/python /Users/windyzhao/Documents/Canway/weops_X/cmdb/bk-lite/.worktrees/cmdb-functional-production-review/docs/reviews/cmdb-functional-review-2026-07-14/reproductions/enterprise_server_probes.py f65
+```
+
+- exit: 0
+- output: `{'objects': 49, 'encrypted_fields': ['password'], 'accepted_secret_fields': ['access_key', 'community', 'secret_key', 'token']}`
+
+#### F66 无 I/O success
+
+- cwd: `/Users/windyzhao/Documents/Canway/weops_X/cmdb/bk-lite/agents/stargazer`
+- env: `PYTHONPATH=.`
+
+```bash
+PYTHONPATH=. .venv/bin/python /Users/windyzhao/Documents/Canway/weops_X/cmdb/bk-lite/.worktrees/cmdb-functional-production-review/docs/reviews/cmdb-functional-review-2026-07-14/reproductions/enterprise_stargazer_probes.py f66
+```
+
+- exit: 0
+- output: `{'result': {'xsky': [{'ip_addr': '203.0.113.254', 'port': 443, 'name': 'xsky', 'version': '', 'status': '', 'vendor': '', 'model': '', 'serial_number': '', 'description': ''}]}, 'success': True}`
+
+#### F67 IBM MQ 路由
+
+- cwd: `/Users/windyzhao/Documents/Canway/weops_X/cmdb/bk-lite/agents/stargazer`
+- env: `PYTHONPATH=.`
+
+```bash
+PYTHONPATH=. .venv/bin/python /Users/windyzhao/Documents/Canway/weops_X/cmdb/bk-lite/.worktrees/cmdb-functional-production-review/docs/reviews/cmdb-functional-review-2026-07-14/reproductions/enterprise_stargazer_probes.py f67
+```
+
+- exit: 0
+- output: `['ibmmq_info', 'ibmmq_info']`
+
+首次错误断言完整复现：
+
+```bash
+PYTHONPATH=. .venv/bin/python /Users/windyzhao/Documents/Canway/weops_X/cmdb/bk-lite/.worktrees/cmdb-functional-production-review/docs/reviews/cmdb-functional-review-2026-07-14/reproductions/enterprise_stargazer_probes.py f67_expected_gauge_failure
+```
+
+- exit: 1
+- output: `AssertionError: ['ibmmq_info', 'ibmmq_info']`，断言期望 `ibmmq_info_gauge/ibmmq_channel_info_gauge`；修正命令即上方 F67。
+
+#### F68 stale→fresh
+
+- cwd: `/Users/windyzhao/Documents/Canway/weops_X/cmdb/bk-lite/server`
+- env: `PYTHONPATH=. DJANGO_SETTINGS_MODULE=settings MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false SECRET_KEY=test DB_ENGINE=sqlite DB_NAME=/private/tmp/cmdb-enterprise-probes.sqlite3 ENABLE_CELERY=true INSTALL_APPS=system_mgmt,node_mgmt,cmdb,cmdb_enterprise UV_CACHE_DIR=/private/tmp/uv-cache`
+
+```bash
+PYTHONPATH=. DJANGO_SETTINGS_MODULE=settings MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false SECRET_KEY=test DB_ENGINE=sqlite DB_NAME=/private/tmp/cmdb-enterprise-probes.sqlite3 ENABLE_CELERY=true INSTALL_APPS=system_mgmt,node_mgmt,cmdb,cmdb_enterprise UV_CACHE_DIR=/private/tmp/uv-cache .venv/bin/python /Users/windyzhao/Documents/Canway/weops_X/cmdb/bk-lite/.worktrees/cmdb-functional-production-review/docs/reviews/cmdb-functional-review-2026-07-14/reproductions/enterprise_server_probes.py f68
+```
+
+- exit: 0
+- output: `{'nacos': [], 'nacos_node': [], 'nacos_namespace': [], 'nacos_service': []}`
+
+#### F69 fallback
+
+- cwd: `/Users/windyzhao/Documents/Canway/weops_X/cmdb/bk-lite/agents/stargazer`
+- env: `PYTHONPATH=.`
+
+首次 Nacos fallback 候选 import：
+
+```bash
+PYTHONPATH=. .venv/bin/python -c 'import plugins.inputs.nacos.nacos_info; print("loaded")'
+```
+
+- exit: 1
+- output: `ModuleNotFoundError: No module named 'requests'`
+
+修正为无额外依赖的 SSHPlugin fallback 控制流：
+
+```bash
+PYTHONPATH=. .venv/bin/python /Users/windyzhao/Documents/Canway/weops_X/cmdb/bk-lite/.worktrees/cmdb-functional-production-review/docs/reviews/cmdb-functional-review-2026-07-14/reproductions/enterprise_stargazer_probes.py f69
+```
+
+- exit: 0
+- output: `Plugin fallback triggered: model_id=dameng, failed_source=enterprise, fallback_source=oss`；`plugins.script_executor.SSHPlugin`
+
 
 ## 5. Enterprise 附件、模型与实例扩展
 
@@ -270,4 +359,16 @@ git status --short
 
 ```bash
 git diff --cached --name-only
+```
+
+未闭合反引号：
+
+```bash
+ruby -e 'Dir["docs/reviews/cmdb-functional-review-2026-07-14/**/*.md"].each{|f| fenced=false; File.readlines(f).each_with_index{|line,i| if line.lstrip.start_with?("```" ); fenced=!fenced; next; end; next if fenced; abort("#{f}:#{i+1}: odd backticks") if line.scan(/\x60/).size.odd?}; abort("#{f}: unclosed fence") if fenced}; puts "backticks=ok"'
+```
+
+终验后异常尾部与 EOF：
+
+```bash
+ruby -e 'root="docs/reviews/cmdb-functional-review-2026-07-14"; e=File.read("#{root}/evidence-index.md"); tail=e.split("## 最终终验记录\n",2); abort("missing/multiple final section") unless tail.size==2 && !tail[1].include?("\n## "); abort("unexpected evidence tail") unless tail[1].lines.reject{|x|x.strip.empty?}.last&.start_with?("- Enterprise provenance:","- Enterprise provenance："); Dir["#{root}/**/*.{md,py}"].each{|f| s=File.binread(f); abort("#{f}: EOF") unless s.end_with?("\n") && !s.end_with?("\n\n")}; puts "tail_and_eof=ok"'
 ```
