@@ -117,6 +117,19 @@
       "label_en": "Node"
     },
     {
+      "name": "ENV_LISTEN_PORT",
+      "label": "监听端口",
+      "type": "inputNumber",
+      "required": true,
+      "widget_props": {
+        "placeholder": "监听端口",
+        "min": 1,
+        "precision": 0,
+        "placeholder_en": "Listen Port"
+      },
+      "label_en": "Listen Port"
+    },
+    {
       "name": "jmx_url",
       "label": "URL",
       "type": "input",
@@ -132,19 +145,6 @@
         "target_field": "instance_name"
       },
       "label_en": "URL"
-    },
-    {
-      "name": "ENV_LISTEN_PORT",
-      "label": "监听端口",
-      "type": "inputNumber",
-      "required": true,
-      "widget_props": {
-        "placeholder": "监听端口",
-        "min": 1,
-        "precision": 0,
-        "placeholder_en": "Listen Port"
-      },
-      "label_en": "Listen Port"
     },
     {
       "name": "instance_name",
