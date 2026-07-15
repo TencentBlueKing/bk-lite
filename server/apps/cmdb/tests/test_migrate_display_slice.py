@@ -1282,6 +1282,52 @@ class TestMigrateFieldConstraintsCommand:
         assert all("user_prompt" in a for a in written)
         assert refreshed == ["host"]
 
+    def test_migrate_model_preserves_table_option_when_other_field_triggers_save(self, monkeypatch):
+        from apps.cmdb.management.commands.migrate_field_constraints import Command
+
+        table_option = [
+            {
+                "column_id": "pid",
+                "column_name": "PID",
+                "column_type": "number",
+                "order": 1,
+            }
+        ]
+        model = {
+            "_id": "n1",
+            "model_id": "host",
+            "attrs": json.dumps(
+                [
+                    {
+                        "attr_id": "proc",
+                        "attr_type": "table",
+                        "option": table_option,
+                        "user_prompt": "",
+                    },
+                    {
+                        "attr_id": "legacy",
+                        "attr_type": "str",
+                        "option": {},
+                        "user_prompt": "",
+                    },
+                ]
+            ),
+        }
+        fake = FakeGraph(set_entity_properties={"ok": True})
+        monkeypatch.setattr(
+            "apps.cmdb.display_field.ExcludeFieldsCache.update_on_model_change",
+            classmethod(lambda cls, model_id: True),
+        )
+
+        updated, count = Command()._migrate_model(fake, model, dry_run=False)
+
+        assert updated is True
+        assert count == 1
+        write_call = next(c for c in fake.calls if c[0] == "set_entity_properties")
+        written = json.loads(write_call[1][2]["attrs"])
+        proc = next(attr for attr in written if attr["attr_id"] == "proc")
+        assert proc["option"] == table_option
+
     def test_target_model_not_found(self, monkeypatch):
         text = self._run(monkeypatch, [], model_id="nope")
         assert "未找到模型" in text
