@@ -85,7 +85,7 @@ def test_apply_skill_packages_records_visible_match_summary(mocker):
 
     viewset._apply_skill_packages_to_params(params, skill)
 
-    assert "已命中技能包：Kubernetes Specialist" in params["skill_prompt"]
+    assert "已采用技能包：Kubernetes Specialist" in params["skill_prompt"]
     assert params["matched_skill_packages"] == [
         {
             "id": "kubernetes-specialist",
