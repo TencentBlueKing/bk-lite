@@ -10,6 +10,7 @@ MaterialVersion 也会被级联删除,因此在 MaterialVersion 的 post_delete 
 
 import logging
 
+from django.db import transaction
 from django.db.models.signals import post_delete
 from django.dispatch import receiver
 
@@ -21,25 +22,48 @@ logger = logging.getLogger("opspilot")
 
 @receiver(post_delete, sender=Material, dispatch_uid="wiki_material_delete_minio_file")
 def delete_material_file_on_delete(sender, instance, **kwargs):
-    """资料删除后,删除其 MinIO 文件对象(text/web 资料无 file,跳过)。"""
-    f = instance.file
-    if not f:
+    """事务提交后删除 MinIO 文件；回滚时自动丢弃回调。"""
+    file_field = instance.file
+    file_name = getattr(file_field, "name", "")
+    if not file_name:
         return
-    try:
-        # 实例已被删除,无需 save;仅删除底层存储对象
-        f.delete(save=False)
-    except Exception:
-        logger.exception("删除资料 MinIO 文件失败 material=%s file=%s", instance.pk, getattr(f, "name", ""))
+    storage = file_field.storage
+    material_id = instance.pk
+
+    def cleanup():
+        try:
+            storage.delete(file_name)
+        except Exception:
+            logger.exception(
+                "删除资料 MinIO 文件失败 material=%s file=%s",
+                material_id,
+                file_name,
+            )
+
+    transaction.on_commit(cleanup, using=kwargs.get("using"))
 
 
 @receiver(post_delete, sender=MaterialVersion, dispatch_uid="wiki_material_version_delete_parsed_markdown")
 def delete_parsed_markdown_on_version_delete(sender, instance, **kwargs):
-    """解析版本删除后,删除其 wiki/parsed MinIO 对象。"""
-    if not is_parsed_markdown_locator_for_material(instance.content_locator, instance.material_id):
+    """事务提交后删除解析产物；回滚时自动丢弃回调。"""
+    locator = instance.content_locator
+    material_id = instance.material_id
+    if not is_parsed_markdown_locator_for_material(locator, material_id):
         logger.warning(
             "跳过不属于当前资料的解析产物删除 material=%s locator=%s",
-            instance.material_id,
-            instance.content_locator,
+            material_id,
+            locator,
         )
         return
-    delete_parsed_markdown(instance.content_locator)
+
+    def cleanup():
+        try:
+            delete_parsed_markdown(locator)
+        except Exception:
+            logger.exception(
+                "删除资料解析产物失败 material=%s locator=%s",
+                material_id,
+                locator,
+            )
+
+    transaction.on_commit(cleanup, using=kwargs.get("using"))

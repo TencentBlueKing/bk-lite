@@ -175,7 +175,7 @@ class CheckItem(MaintainerInfo, TimeInfo):
     # conflict / duplicate / stale / missing / orphan / broken_relation / no_source /
     # low_confidence / cannot_merge / all_sources_invalid / schema_mismatch
     check_type = models.CharField(max_length=40)
-    status = models.CharField(max_length=20, default="open")  # open / resolved / dismissed
+    status = models.CharField(max_length=20, default="open")  # open / resolved / dismissed / auto_resolved
     related = models.JSONField(default=dict)  # {pages: [], materials: []}
     candidate_version = models.ForeignKey(PageVersion, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
     suggested_actions = models.JSONField(default=list)
@@ -190,6 +190,12 @@ class CheckItem(MaintainerInfo, TimeInfo):
 
     class Meta:
         db_table = "opspilot_wiki_check_item"
+        constraints = [
+            models.CheckConstraint(
+                check=(~models.Q(status="open") | models.Q(check_type__in=("cannot_merge", "material_update", "duplicate", "conflict"))),
+                name="wiki_check_open_decision_only",
+            )
+        ]
 
 
 class WikiDecisionRule(MaintainerInfo, TimeInfo):

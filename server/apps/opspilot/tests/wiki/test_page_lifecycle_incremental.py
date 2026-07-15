@@ -1,7 +1,7 @@
 import pytest
+from django.db import connection
 
 from apps.opspilot.models import BuildRecord, CheckItem, KnowledgePage, Material
-from apps.opspilot.services.wiki.check_service import accept_candidate
 from apps.opspilot.services.wiki.page_service import edit_page
 
 
@@ -15,6 +15,28 @@ def _page(kb, title, body="", page_type="concept"):
     from apps.opspilot.services.wiki.page_service import create_manual_page
 
     return create_manual_page(kb, page_type=page_type, title=title, body=body, created_by="u")
+
+
+def _capture_for_update_queries(request_call):
+    queries = []
+
+    def capture(execute, sql, params, many, context):
+        normalized = " ".join(sql.lower().split())
+        if "for update" in normalized:
+            queries.append(normalized)
+        return execute(sql, params, many, context)
+
+    with connection.execute_wrapper(capture):
+        response = request_call()
+    return response, queries
+
+
+def _assert_kb_locked_before_page(kb, page, queries):
+    kb_table = kb._meta.db_table.lower()
+    page_table = page._meta.db_table.lower()
+    kb_lock = next(index for index, sql in enumerate(queries) if kb_table in sql)
+    page_lock = next(index for index, sql in enumerate(queries) if page_table in sql)
+    assert kb_lock < page_lock, queries
 
 
 @pytest.mark.django_db
@@ -111,7 +133,10 @@ def test_save_answer_endpoint_runs_incremental_maintenance(monkeypatch, api_clie
 
 
 @pytest.mark.django_db
-def test_save_answer_endpoint_can_create_review_candidate_without_polluting_active_pages(monkeypatch, api_client):
+def test_save_answer_endpoint_legacy_candidate_flag_directly_admits_knowledge(
+    monkeypatch,
+    api_client,
+):
     kb = _kb()
     cascades = []
 
@@ -120,7 +145,6 @@ def test_save_answer_endpoint_can_create_review_candidate_without_polluting_acti
         return {"status": "success", "event": event, "affected_page_ids": affected_page_ids or []}
 
     monkeypatch.setattr("apps.opspilot.viewsets.wiki_page_view.cascade", fake_cascade)
-    monkeypatch.setattr("apps.opspilot.services.wiki.check_service.cascade", fake_cascade)
 
     response = api_client.post(
         "/api/v1/opspilot/wiki_mgmt/page/save_answer/",
@@ -140,56 +164,16 @@ def test_save_answer_endpoint_can_create_review_candidate_without_polluting_acti
 
     assert response.status_code == 201, response.content
     data = response.json()["data"]
-    assert data["check_type"] == "qa_answer_candidate"
-    assert data["status"] == "open"
-    assert data["candidate"]["body"] == "建议补充蓝鲸平台巡检 FAQ。"
-    assert data["related"]["source"]["conversation_id"] == "conv-qa-1"
-    assert cascades == []
-
-    page = KnowledgePage.objects.get(id=data["related"]["pages"][0])
-    assert page.status == "pending_review"
-    assert page.current_version_id is None
-    assert list(KnowledgePage.objects.filter(knowledge_base=kb, status="active").values_list("id", flat=True)) == []
-
-    check = CheckItem.objects.get(id=data["id"])
-    candidate = check.candidate_version
-    assert candidate.is_current is False
-    assert candidate.change_type == "qa_answer_candidate"
-    assert candidate.meta_snapshot["source"]["message_id"] == "msg-qa-2"
-
-    accept_candidate(check, operator="admin")
-
-    page.refresh_from_db()
+    assert data["title"] == "巡检建议"
+    assert data["status"] == "active"
+    page = KnowledgePage.objects.get(id=data["id"])
     assert page.status == "active"
-    assert page.current_version_id == candidate.id
-    assert cascades == [(kb.id, [page.id], "accept")]
-
-
-@pytest.mark.django_db
-def test_rejecting_save_answer_candidate_deletes_pending_shell_page(api_client):
-    kb = _kb()
-
-    response = api_client.post(
-        "/api/v1/opspilot/wiki_mgmt/page/save_answer/",
-        {
-            "knowledge_base": kb.id,
-            "page_type": "faq",
-            "title": "临时回答",
-            "body": "这个回答还需要确认。",
-            "source_conversation_id": "conv-reject",
-            "as_candidate": True,
-        },
-        format="json",
-    )
-
-    assert response.status_code == 201, response.content
-    data = response.json()["data"]
-    page_id = data["related"]["pages"][0]
-
-    reject = api_client.post(f"/api/v1/opspilot/wiki_mgmt/check_item/{data['id']}/reject/", {}, format="json")
-
-    assert reject.status_code == 200, reject.content
-    assert not KnowledgePage.objects.filter(id=page_id).exists()
+    assert page.current_version.body == "建议补充蓝鲸平台巡检 FAQ。"
+    assert page.current_version.change_type == "qa_answer"
+    assert page.current_version.meta_snapshot["source"]["conversation_id"] == "conv-qa-1"
+    assert page.current_version.meta_snapshot["source"]["message_id"] == "msg-qa-2"
+    assert not CheckItem.objects.filter(knowledge_base=kb, check_type="qa_answer_candidate").exists()
+    assert cascades == [(kb.id, [page.id], "qa_answer_save")]
 
 
 @pytest.mark.django_db
@@ -248,7 +232,8 @@ def test_delete_page_endpoint_cleans_incremental_state(monkeypatch, api_client):
         knowledge_base=kb,
         check_type="broken_relation",
         related__pages__contains=[source.id],
-        status="open",
+        status="auto_resolved",
+        related__resolution__action="automatic_maintenance",
     ).exists()
 
     build.refresh_from_db()
@@ -358,6 +343,49 @@ def test_archived_page_can_be_restored_to_active(monkeypatch, api_client):
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("operation", ["delete", "batch_delete", "restore_archive"])
+def test_page_lifecycle_locks_knowledge_base_before_pages(monkeypatch, api_client, operation):
+    monkeypatch.setattr(
+        "apps.opspilot.viewsets.wiki_page_view.cascade",
+        lambda knowledge_base, affected_page_ids, event, **kwargs: {
+            "status": "success",
+            "event": event,
+            "affected_page_ids": list(affected_page_ids),
+            "stages": {},
+        },
+    )
+    kb = _kb()
+    page = _page(kb, f"Lock order {operation}")
+    if operation == "restore_archive":
+        page.status = "archived"
+        page.save(update_fields=["status", "updated_at"])
+
+    if operation == "delete":
+
+        def request_call():
+            return api_client.delete(f"/api/v1/opspilot/wiki_mgmt/page/{page.id}/")
+
+    elif operation == "batch_delete":
+
+        def request_call():
+            return api_client.post(
+                "/api/v1/opspilot/wiki_mgmt/page/batch_delete/",
+                {"knowledge_base": kb.id, "ids": [page.id]},
+                format="json",
+            )
+
+    else:
+
+        def request_call():
+            return api_client.post(f"/api/v1/opspilot/wiki_mgmt/page/{page.id}/restore_from_archive/")
+
+    response, queries = _capture_for_update_queries(request_call)
+
+    assert response.status_code == 200, response.content
+    _assert_kb_locked_before_page(kb, page, queries)
+
+
+@pytest.mark.django_db
 def test_page_list_can_filter_by_title_and_type(api_client):
     kb = _kb()
     concept = _page(kb, "蓝鲸平台介绍", page_type="concept")
@@ -399,8 +427,11 @@ def test_batch_delete_pages_deletes_current_kb_selection_and_cleans_incremental_
     check = CheckItem.objects.create(
         knowledge_base=kb,
         check_type="source_invalid",
-        status="open",
-        related={"pages": [invalid_one.id, invalid_two.id]},
+        status="auto_resolved",
+        related={
+            "pages": [invalid_one.id, invalid_two.id],
+            "resolution": {"action": "automatic_maintenance", "operator": "system"},
+        },
     )
 
     def fail_full_rebuild(*args, **kwargs):
@@ -515,9 +546,7 @@ def test_build_record_endpoint_list_detail_retry_and_cancel(monkeypatch, api_cli
 
     monkeypatch.setattr("apps.opspilot.tasks.wiki_build_material_task.delay", fake_delay)
 
-    listed = api_client.get(
-        f"/api/v1/opspilot/wiki_mgmt/build_record/?knowledge_base={kb.id}" "&status=running&trigger=material&page=bad&page_size=bad"
-    )
+    listed = api_client.get(f"/api/v1/opspilot/wiki_mgmt/build_record/?knowledge_base={kb.id}&status=running&trigger=material&page=bad&page_size=bad")
     detail = api_client.get(f"/api/v1/opspilot/wiki_mgmt/build_record/{running.id}/")
     retry = api_client.post(f"/api/v1/opspilot/wiki_mgmt/build_record/{running.id}/retry/")
     cancel = api_client.post(f"/api/v1/opspilot/wiki_mgmt/build_record/{running.id}/cancel/")
@@ -606,3 +635,159 @@ def test_build_record_retry_requires_existing_material(api_client):
     response = api_client.post(f"/api/v1/opspilot/wiki_mgmt/build_record/{record.id}/retry/")
 
     assert response.status_code == 400, response.content
+
+
+@pytest.mark.django_db
+def test_build_record_retry_dispatches_rebuild_with_original_record(monkeypatch, api_client):
+    kb = _kb()
+    record = BuildRecord.objects.create(
+        knowledge_base=kb,
+        trigger="rebuild",
+        status="failed",
+        stage="failed",
+        errors=["boom"],
+    )
+    delayed = []
+    monkeypatch.setattr(
+        "apps.opspilot.tasks.wiki_rebuild_kb_task.delay",
+        lambda *args: delayed.append(args),
+    )
+
+    response = api_client.post(f"/api/v1/opspilot/wiki_mgmt/build_record/{record.id}/retry/")
+
+    assert response.status_code == 200, response.content
+    assert delayed == [(kb.id, None, "testuser", record.id)]
+    record.refresh_from_db()
+    assert record.status == "running"
+    assert record.stage == "queued"
+    assert record.errors == []
+
+
+@pytest.mark.django_db
+def test_build_record_retry_dispatches_material_update_task(monkeypatch, api_client):
+    kb = _kb()
+    material = Material.objects.create(
+        knowledge_base=kb,
+        name="updated.md",
+        material_type="text",
+        text_content="new facts",
+        status="updated",
+    )
+    record = BuildRecord.objects.create(
+        knowledge_base=kb,
+        trigger="material_update",
+        status="failed",
+        stage="failed",
+        inputs={"material_id": material.id},
+    )
+    delayed = []
+    monkeypatch.setattr(
+        "apps.opspilot.tasks.wiki_propose_update_task.delay",
+        lambda *args: delayed.append(args),
+    )
+
+    response = api_client.post(f"/api/v1/opspilot/wiki_mgmt/build_record/{record.id}/retry/")
+
+    assert response.status_code == 200, response.content
+    assert delayed == [(material.id, None, "testuser")]
+    material.refresh_from_db()
+    assert material.status == "building"
+
+
+@pytest.mark.django_db
+def test_decision_record_original_retry_requires_maintenance_endpoint(api_client):
+    kb = _kb()
+    record = BuildRecord.objects.create(
+        knowledge_base=kb,
+        trigger="decision",
+        status="partial",
+        stage="decision_applied",
+    )
+
+    response = api_client.post(f"/api/v1/opspilot/wiki_mgmt/build_record/{record.id}/retry/")
+
+    assert response.status_code == 400, response.content
+    assert "retry_maintenance" in response.json()["message"]
+
+
+@pytest.mark.django_db
+def test_page_delete_commits_lifecycle_and_records_retryable_partial_when_cascade_raises(
+    monkeypatch,
+    api_client,
+):
+    kb = _kb()
+    page = _page(kb, "Delete safely")
+
+    def fail_cascade(*args, **kwargs):
+        raise RuntimeError("maintenance unavailable")
+
+    monkeypatch.setattr(
+        "apps.opspilot.viewsets.wiki_page_view.cascade",
+        fail_cascade,
+    )
+
+    response = api_client.delete(f"/api/v1/opspilot/wiki_mgmt/page/{page.id}/")
+
+    assert response.status_code == 200, response.content
+    assert not KnowledgePage.objects.filter(pk=page.id).exists()
+    record = BuildRecord.objects.get(knowledge_base=kb, trigger="page_delete")
+    assert record.status == "partial"
+    assert record.maintenance["affected_page_ids"] == [page.id]
+    assert record.maintenance["deleted_titles"] == ["Delete safely"]
+
+    retry_calls = []
+
+    def retry_cascade(knowledge_base, affected_page_ids, event, **kwargs):
+        retry_calls.append((list(affected_page_ids), event, kwargs))
+        return {
+            "status": "success",
+            "event": event,
+            "affected_page_ids": list(affected_page_ids),
+            "stages": {"relations": {"status": "success", "count": 0}},
+        }
+
+    monkeypatch.setattr(
+        "apps.opspilot.viewsets.wiki_page_view.cascade",
+        retry_cascade,
+    )
+    retry = api_client.post(
+        f"/api/v1/opspilot/wiki_mgmt/build_record/{record.id}/retry_maintenance/",
+        {},
+        format="json",
+    )
+
+    assert retry.status_code == 200, retry.content
+    assert retry_calls == [
+        (
+            [page.id],
+            "page_delete",
+            {
+                "deleted_titles": ["Delete safely"],
+                "prune_deleted_pages": True,
+            },
+        )
+    ]
+
+
+@pytest.mark.django_db
+def test_archive_restore_commits_before_failed_maintenance(monkeypatch, api_client):
+    kb = _kb()
+    page = _page(kb, "Restore safely")
+    page.status = "archived"
+    page.save(update_fields=["status", "updated_at"])
+    monkeypatch.setattr(
+        "apps.opspilot.viewsets.wiki_page_view.cascade",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("down")),
+    )
+
+    response = api_client.post(f"/api/v1/opspilot/wiki_mgmt/page/{page.id}/restore_from_archive/")
+
+    assert response.status_code == 200, response.content
+    page.refresh_from_db()
+    assert page.status == "active"
+    record = BuildRecord.objects.get(
+        knowledge_base=kb,
+        trigger="page_restore_archive",
+    )
+    assert record.status == "partial"
+    assert record.maintenance["affected_page_ids"] == [page.id]
