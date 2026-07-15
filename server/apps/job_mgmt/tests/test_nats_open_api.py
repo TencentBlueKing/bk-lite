@@ -1,5 +1,6 @@
 """NATS 开放接口单元测试"""
 
+from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -34,6 +35,22 @@ class TestJobScriptExecute:
 
         assert result["result"] is True
         assert "task_id" in result["data"]
+
+    def test_dispatch_failure_marks_execution_failed(self):
+        from apps.job_mgmt.constants import ExecutionStatus
+        from apps.job_mgmt.models import JobExecution
+        from apps.job_mgmt.nats_api import job_script_execute
+
+        with patch("apps.job_mgmt.services.dangerous_checker.DangerousChecker.check_command") as mock_check, patch(
+            "apps.job_mgmt.nats_api.execute_script_task.delay", side_effect=ConnectionError("broker unavailable")
+        ):
+            mock_check.return_value = MagicMock(can_execute=True, forbidden=[])
+            result = job_script_execute(self._valid_data(name="dispatch-failed-script"))
+
+        assert result == {"result": False, "message": "任务调度服务暂不可用，请稍后重试"}
+        execution = JobExecution.objects.get(name="dispatch-failed-script")
+        assert execution.status == ExecutionStatus.FAILED
+        assert execution.celery_task_id == ""
 
     def test_empty_target_list(self):
         from apps.job_mgmt.nats_api import job_script_execute
@@ -180,6 +197,38 @@ class TestJobScriptExecute:
 @pytest.mark.unit
 @pytest.mark.django_db
 class TestJobFileDistribute:
+    def test_dispatch_failure_marks_execution_failed(self):
+        from django.utils import timezone
+
+        from apps.job_mgmt.constants import ExecutionStatus
+        from apps.job_mgmt.models import DistributionFile, JobExecution
+        from apps.job_mgmt.nats_api import job_file_distribute
+
+        DistributionFile.objects.create(
+            original_name="package.tar.gz",
+            file_key="job-files/package.tar.gz",
+            expire_at=timezone.now() + timedelta(days=1),
+            team=1,
+        )
+        data = {
+            "name": "dispatch-failed-file",
+            "file_keys": ["job-files/package.tar.gz"],
+            "target_source": "node_mgmt",
+            "target_list": [{"node_id": "n1", "name": "h1", "ip": "1.1.1.1", "os": "linux", "cloud_region_id": "r1"}],
+            "target_path": "/tmp/",
+            "team": [1],
+        }
+        with patch("apps.job_mgmt.services.dangerous_checker.DangerousChecker.check_path") as mock_check, patch(
+            "apps.job_mgmt.nats_api.distribute_files_task.delay", side_effect=ConnectionError("broker unavailable")
+        ):
+            mock_check.return_value = MagicMock(can_execute=True, forbidden=[])
+            result = job_file_distribute(data)
+
+        assert result == {"result": False, "message": "任务调度服务暂不可用，请稍后重试"}
+        execution = JobExecution.objects.get(name="dispatch-failed-file")
+        assert execution.status == ExecutionStatus.FAILED
+        assert execution.celery_task_id == ""
+
     def test_empty_file_ids(self):
         from apps.job_mgmt.nats_api import job_file_distribute
 
