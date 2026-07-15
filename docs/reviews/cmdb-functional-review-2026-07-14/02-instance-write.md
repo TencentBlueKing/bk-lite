@@ -8,7 +8,7 @@
 
 相同 Idempotency-Key 的同请求复用、冲突请求 409、`PENDING` 图写单 owner、图写后 SQL 提交失败的事实恢复、Outbox 旧 Worker 不能覆盖新 owner 等关键骨架是正确的。不过，自动关系 Outbox 只保证 Celery broker 接收，不保证 Worker 完成；Worker 失败后 Outbox 已是 SUCCESS，Operation 仍可成为 COMPLETED。该证据与 Task 2 主 Finding `CMDB-F04` 是同一“异步派发/传输 ack 被误当业务完成”的根因，本域只作跨域引用，不重复计数。Outbox 达到 FAILED 后，Operation 又会永久停在 GRAPH_COMMITTED，缺少失败终态和人工重放闭环。
 
-本域确认 5 个主 Finding：P0 1 个、P1 2 个、P2 2 个、P3 0 个，编号为 `CMDB-F08`、`CMDB-F10`–`CMDB-F13`。Task 2 的 `CMDB-F01`（唯一规则管理授权）和 `CMDB-F02`（自动关联双端授权）是本域消费的上游契约；自动关系异步完成语义引用 Task 2 主 Finding `CMDB-F04`，不进入本域计数。Recommendation 为 **Request changes**。
+本域确认 5 个主 Finding：P0 1 个、P1 2 个、P2 2 个、P3 0 个，编号为 `CMDB-F08`、`CMDB-F10`–`CMDB-F13`。Task 2 的 `CMDB-F01`（唯一规则管理授权）和 `CMDB-F02`（自动关联双端授权）是本域消费的上游契约；自动关系异步完成语义引用 Task 2 主 Finding `CMDB-F04`，不进入本域计数。Recommendation 为 **Block**。
 
 ## 2. Findings
 
@@ -127,6 +127,6 @@
 
 ## 5. Recommendation
 
-**Request changes**。
+**Block**。
 
 `CMDB-F08` 是本域发布阻断项：先把文件台账移出图写失败域，确保 hook 异常和进程崩溃两条路径都可恢复且不会删除用户文件。跨域主 Finding `CMDB-F04` 还必须让自动关系以实际 Worker 收敛作为完成条件。随后关闭两个本域 P1：让批量更新复用唯一锁和有界候选；让批量更新/删除进入统一 Operation/Outbox。P2 的锁 fencing 和 Operation 失败终态也应在生产前补齐，否则长尾并发和最终失败仍无可靠闭环。仅修复现有删除测试夹具或增加成功路径 Mock，不能降低上述生产风险。

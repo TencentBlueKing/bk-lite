@@ -12,10 +12,10 @@
 
 | 功能域 | 状态 | P0 | P1 | P2 | P3 | Recommendation | 报告 |
 |---|---|---:|---:|---:|---:|---|---|
-| 01 模型治理 | 已完成 | 1 | 4 | 2 | 0 | Request changes | [模型治理](01-model-governance.md) |
-| 02 实例写入 | 已完成 | 1 | 2 | 2 | 0 | Request changes | [实例写入](02-instance-write.md) |
-| 03 查询与拓扑 | 已完成 | 1 | 4 | 1 | 0 | Request changes | [查询与拓扑](03-query-topology.md) |
-| 04 自动采集 | 已完成 | 3 | 3 | 0 | 0 | Request changes | [自动采集](04-auto-collection.md) |
+| 01 模型治理 | 已完成 | 1 | 4 | 2 | 0 | Block | [模型治理](01-model-governance.md) |
+| 02 实例写入 | 已完成 | 1 | 2 | 2 | 0 | Block | [实例写入](02-instance-write.md) |
+| 03 查询与拓扑 | 已完成 | 1 | 4 | 1 | 0 | Block | [查询与拓扑](03-query-topology.md) |
+| 04 自动采集 | 已完成 | 3 | 3 | 0 | 0 | Block | [自动采集](04-auto-collection.md) |
 | 05 Stargazer 边界 | 已完成 | 3 | 4 | 0 | 0 | Block | [Stargazer 边界](05-stargazer-boundary.md) |
 | 06 配置文件 | 已完成 | 2 | 1 | 0 | 0 | Block | [配置文件](06-config-file.md) |
 | 07 IPAM | 已完成 | 2 | 3 | 0 | 0 | Block | [IPAM](07-ipam.md) |

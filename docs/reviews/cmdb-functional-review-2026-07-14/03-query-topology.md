@@ -10,7 +10,7 @@
 
 资源问题按直接根因拆为三项：在线列表与旧全文缺少请求级上限；导入/导出全量物化并在关联导出形成 N+1；通用拓扑在图层查询深度 4 的全部可变长路径、节点权限和裁剪均发生在查询之后。三者触发方式、影响面和安全修复不同，分别登记。
 
-本域最终确认 6 个主 Finding：P0 1 个、P1 4 个、P2 1 个、P3 0 个，编号为 `CMDB-F14`–`CMDB-F19`。导入通过裸 `batch_save_entity` 修改实例、全量加载唯一候选且缺少 Operation/恢复，与 Task 3 `CMDB-F10/CMDB-F11` 同根因，本域只记录跨域证据。Recommendation 为 **Request changes**。
+本域最终确认 6 个主 Finding：P0 1 个、P1 4 个、P2 1 个、P3 0 个，编号为 `CMDB-F14`–`CMDB-F19`。导入通过裸 `batch_save_entity` 修改实例、全量加载唯一候选且缺少 Operation/恢复，与 Task 3 `CMDB-F10/CMDB-F11` 同根因，本域只记录跨域证据。Recommendation 为 **Block**。
 
 ## 2. Findings
 
@@ -131,6 +131,6 @@
 
 ## 5. Recommendation
 
-**Request changes**。
+**Block**。
 
 先关闭 P0 `CMDB-F14`，确保所有关系端点按真实模型做双端授权。随后修复 P1：结构化排序并统一双驱动契约；为在线列表/旧全文设置请求上限；把导入导出改为有界批次并消除关联 N+1；为通用拓扑建立图层遍历预算。`CMDB-F19` 应按历史决定删除 IPAM 回带分支并保留现有测试。仅更新失败测试、只限制新全文或只保留 network node_limit 均不足以批准生产。
