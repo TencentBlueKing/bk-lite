@@ -416,7 +416,19 @@
             "type": "string",
             "value": "",
             "alias_name": "机房ID",
-            "filterType": "params"
+            "filterType": "params",
+            "inputConfig": {
+                "control": "select",
+                "optionsSource": {
+                    "type": "dynamic",
+                    "sourceRef": {
+                        "type": "rest_api",
+                        "value": "cmdb/get_room_list"
+                    },
+                    "valueField": "_id",
+                    "labelField": "inst_name"
+                }
+            }
         }
     ],
     "field_schema": []
@@ -491,5 +503,16 @@
         {"key": "total_cost_incurred", "title": "已发生费用(元)", "value_type": "string", "description": "窗口内 log.total_cost SUM"},
         {"key": "unit_price", "title": "单价(元/天)", "value_type": "string", "description": "total_cost_incurred / 窗口天数"}
     ]
+},
+{
+    "name": "CMDB 机房列表",
+    "desc": "返回 CMDB 中所有 server_room 列表（按当前用户权限过滤），保留原始字段 _id/inst_name 等。供运维分析参数动态选项源使用；本身不直接出图。",
+    "rest_api": "cmdb/get_room_list",
+    "tag": [
+        "cmdb"
+    ],
+    "chart_type": [],
+    "params": [],
+    "field_schema": []
 }
 ]

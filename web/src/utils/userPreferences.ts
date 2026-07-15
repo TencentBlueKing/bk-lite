@@ -34,7 +34,13 @@ export const getStoredLocale = (): 'en' | 'zh-Hans' => {
     return DEFAULT_LOCALE;
   }
 
-  return normalizeLocale(window.localStorage.getItem('locale'));
+  const stored = window.localStorage.getItem('locale');
+  if (stored) {
+    return normalizeLocale(stored);
+  }
+
+  // 首访或 localStorage 被清:回退到浏览器语言,不持久化。
+  return normalizeLocale(window.navigator?.language);
 };
 
 export const getStoredTimezone = (): string => {

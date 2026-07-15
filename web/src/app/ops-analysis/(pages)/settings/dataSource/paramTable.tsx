@@ -104,11 +104,11 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
       label: string;
       value: DataSourceParamFilterType;
     }> = [
-      { label: t("dataSource.filterTypes.filter"), value: "filter" },
-      { label: t("dataSource.filterTypes.fixed"), value: "fixed" },
-      { label: t("dataSource.filterTypes.params"), value: "params" },
-      { label: t("dataSource.filterTypes.widget"), value: "widget" },
-    ];
+        { label: t("dataSource.filterTypes.filter"), value: "filter" },
+        { label: t("dataSource.filterTypes.fixed"), value: "fixed" },
+        { label: t("dataSource.filterTypes.params"), value: "params" },
+        { label: t("dataSource.filterTypes.widget"), value: "widget" },
+      ];
 
     const applyValidation = (nextParams: ParamItem[]) => {
       const result = validateParams(nextParams);
@@ -258,7 +258,7 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
             onBlur={(e) => handleParamNameBlur(e.target.value, record.id!)}
             status={
               duplicateNames.includes(record.name) ||
-              emptyNames.includes(record.id!)
+                emptyNames.includes(record.id!)
                 ? "error"
                 : undefined
             }

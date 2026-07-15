@@ -1,5 +1,9 @@
 import { TopologyNodeData } from './topology';
-import type { ParamItem, DatasourceItem } from './dataSource';
+import type {
+  ParamItem,
+  DatasourceItem,
+  InputControlConfig,
+} from './dataSource';
 import type { ValueMapping } from '@/app/ops-analysis/utils/valueMapping';
 import type { Dayjs } from 'dayjs';
 import type { OpsChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
@@ -272,7 +276,12 @@ export interface UnifiedFilterDefinition {
   order: number; // 显示顺序
   enabled: boolean; // 是否启用
   inputMode?: 'input' | 'select' | 'radio' | 'organization'; // 输入方式（仅 string 类型有效）
-  options?: FilterOption[]; // 选项（仅 inputMode 为 select/radio 时有效）
+  /**
+   * 旧字段：手动下拉选项（仅 inputMode 为 select/radio 时有效）。
+   * 读取时由 normalizeInputConfig 自动按 static 模式处理。
+   */
+  options?: FilterOption[];
+  inputConfig?: InputControlConfig;
 }
 
 /** Dashboard.filters 运行时结构（hook 内部使用） */

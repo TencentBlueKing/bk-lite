@@ -4,7 +4,7 @@ import type {
   FilterBindings,
   UnifiedFilterDefinition,
 } from '@/app/ops-analysis/types/dashBoard';
-import type { ParamItem } from '@/app/ops-analysis/types/dataSource';
+import type { InputOption, ParamItem } from '@/app/ops-analysis/types/dataSource';
 import { formatOpsRequestTime } from '@/app/ops-analysis/utils/dateTime';
 
 export type BindableParamType = 'string' | 'timeRange';
@@ -35,6 +35,7 @@ export const sanitizeUnifiedFilterDefinition = <T extends UnifiedFilterDefinitio
     const next = { ...definition };
     delete next.inputMode;
     delete next.options;
+    delete next.inputConfig;
     return next;
   }
 
@@ -42,23 +43,34 @@ export const sanitizeUnifiedFilterDefinition = <T extends UnifiedFilterDefinitio
   if (!isOptionInputMode(inputMode)) {
     const next = { ...definition };
     delete next.options;
-    return {
-      ...next,
-      inputMode,
-    };
+    if (inputMode === 'organization') {
+      delete next.inputConfig;
+    }
+    return { ...next, inputMode };
   }
 
-  const options = Array.isArray(definition.options) ? definition.options : [];
-  const optionValues = options.map((item) => item.value);
-  const defaultValue = typeof definition.defaultValue === 'string' &&
-    optionValues.includes(definition.defaultValue)
-    ? definition.defaultValue
-    : null;
+  let staticOptions: InputOption[] | undefined;
+  if (
+    definition.inputConfig?.control === 'select' ||
+    definition.inputConfig?.control === 'radio'
+  ) {
+    if (definition.inputConfig.optionsSource.type === 'static') {
+      staticOptions = definition.inputConfig.optionsSource.staticItems;
+    }
+  } else if (Array.isArray(definition.options)) {
+    staticOptions = definition.options;
+  }
+
+  const defaultValue = staticOptions
+    ? staticOptions.some((item) => item.value === definition.defaultValue)
+      ? definition.defaultValue
+      : null
+    : definition.defaultValue;
 
   return {
     ...definition,
     inputMode,
-    options,
+    options: Array.isArray(definition.options) ? definition.options : undefined,
     defaultValue,
   };
 };

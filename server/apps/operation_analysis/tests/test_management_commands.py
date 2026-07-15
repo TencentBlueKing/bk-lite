@@ -10,6 +10,7 @@ from django.core.management import call_command
 
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, DataSourceTag, NameSpace
 from apps.operation_analysis.models.models import Directory
+from apps.operation_analysis.services.canvas.registry import CANVAS_TYPE_REGISTRY
 
 # --------------------------------------------------------------------------
 # init_default_namespace
@@ -355,6 +356,27 @@ def test_init_default_groups_fills_empty_groups():
     skip.refresh_from_db()
     assert obj.groups  # 已补充默认组织
     assert skip.groups == [5]  # 非空保持不变
+
+
+@pytest.mark.django_db
+def test_init_default_groups_covers_all_registered_canvas_models():
+    from apps.system_mgmt.models.user import Group
+
+    root_default, _ = Group.objects.get_or_create(name="Default", parent_id=0)
+    records = []
+
+    for object_type, meta in CANVAS_TYPE_REGISTRY.items():
+        empty = meta.model.objects.create(name=f"无组织-{object_type}", groups=[], created_by="system")
+        existing = meta.model.objects.create(name=f"已分组-{object_type}", groups=[99], created_by="system")
+        records.append((empty, existing))
+
+    call_command("init_default_groups")
+
+    for empty, existing in records:
+        empty.refresh_from_db()
+        existing.refresh_from_db()
+        assert empty.groups == [root_default.id]
+        assert existing.groups == [99]
 
 
 @pytest.mark.django_db

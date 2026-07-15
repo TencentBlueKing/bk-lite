@@ -675,5 +675,40 @@
     "stepUpload": "Upload File",
     "stepPrecheck": "Precheck",
     "stepResult": "Result"
+  },
+  "paramInput": {
+    "title": "Parameter input settings",
+    "controlType": "Control type",
+    "control": {
+      "input": "Input",
+      "select": "Select",
+      "radio": "Radio"
+    },
+    "sourceType": "Option source",
+    "source": {
+      "static": "Custom options",
+      "dynamic": "Data source options"
+    },
+    "editButton": "Configure input",
+    "static": {
+      "options": "Options",
+      "label": "Label",
+      "value": "Value",
+      "add": "Add option",
+      "emptyError": "Fill in at least one complete option",
+      "duplicateValueError": "Option values must be unique"
+    },
+    "dynamic": {
+      "source": "Data source",
+      "sourcePlaceholder": "Select a data source",
+      "valueField": "Value field",
+      "labelField": "Label field",
+      "valueFieldPlaceholder": "Select a value field",
+      "labelFieldPlaceholder": "Select a label field",
+      "preview": "Preview",
+      "loadDataSourceFailed": "Failed to load data sources",
+      "testFailed": "Option source unavailable",
+      "incomplete": "Select a data source, value field, and label field"
+    }
   }
 }
