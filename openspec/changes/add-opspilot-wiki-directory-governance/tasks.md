@@ -3,7 +3,7 @@
 - [x] 1.1 在 `.claude/worktrees/opspilot-wiki-hierarchy` 复核分支 `codex/opspilot-wiki-hierarchy`、被忽略的 `server/local_settings.py` 与 `server/.env`，确认默认数据库为 `opspilot`，且环境文件和密钥不会进入 Git。
 - [x] 1.2 重新运行现有 Wiki 模型与重建基线测试，诊断并记录“12 个断言通过但 pytest 进程不退出”的根因与可正常终止的隔离命令；若修复属于无关基础设施，另立 change，不扩大本功能 diff。
 - [x] 1.3 在 `docs/superpowers/verifications/2026-07-13-opspilot-wiki-directory-governance-verification.md` 建立 1–15 阶段对照矩阵，固定 `llm_wiki@9b71ade` 对应源码/测试或“无对应实现”，逐阶段记录借鉴点、拒绝项、OpsPilot 差异和验证证据。
-- [ ] 1.4 为 Wiki 测试补齐统一 factory/fixture，禁止测试继续绕过页面标题、目录和 generation 领域入口直接制造无效对象。
+- [x] 1.4 为 Wiki 测试补齐统一 factory/fixture，禁止测试继续绕过页面标题、目录和 generation 领域入口直接制造无效对象。
 - [ ] 1.5 把 design 决策 0 落成可执行的 Structure/Generation/Page 真相源与状态机契约测试，明确 legacy/backfilling/ready/enabled 各阶段允许的读写路径。
 - [ ] 1.6 冻结结构完整快照、generation 激活/回退、目录预览 token、导入 preflight token 的请求/响应 JSON schema，覆盖 existing node 只读 ID/key 与 new node client_ref。
 - [ ] 1.7 冻结 manual/classification root/type 默认/merged redirect/待归类路由矩阵，以及 `KnowledgeCandidateAdapter` 两个冲突方法；相邻 change 不可用时由本 change 提供最小实现。
