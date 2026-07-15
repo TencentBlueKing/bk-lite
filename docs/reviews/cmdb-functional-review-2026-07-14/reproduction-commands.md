@@ -155,7 +155,7 @@ MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_
 ### 4.2 Stargazer Enterprise plugins
 
 - cwd: `/Users/windyzhao/Documents/Canway/weops_X/cmdb/bk-lite/agents/stargazer`
-- source: 当前主工作区运行态
+- source: ignored runtime aggregate `f580f0905b5fc9b84b71628b26b1ed6ad33733ce439babd2a38ccad38c67cf53`
 
 ```bash
 .venv/bin/python -m pytest -q -o addopts='' tests/test_new_collect_objects_plugins.py tests/test_remaining_collect_objects_plugins.py
@@ -171,7 +171,7 @@ MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_
 - exit: 4
 - output: pytest 未识别 `--cov` 参数，当前 venv 未安装 pytest-cov
 
-+### 4.3 F65–F69 直接探针
+### 4.3 F65–F69 直接探针
 
 只读 fixture：
 

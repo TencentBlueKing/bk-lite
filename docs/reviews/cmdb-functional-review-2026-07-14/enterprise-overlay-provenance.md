@@ -120,7 +120,7 @@ a0b0a57c2a5f3747f06a69fdd203c30471211df9c5efa92c854cf0200c926c45  server/apps/cm
 61bb6c984c5a8c88d9d823b7c293b630e94684c96f0c14a603f97fca83c6a315  server/apps/cmdb_enterprise/商业版配置采集插件接入手册.md
 ```
 
-+## 3. Stargazer Enterprise 完整相对文件清单与 SHA-256
+## 3. Stargazer Enterprise 完整相对文件清单与 SHA-256
 
 ```text
 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  agents/stargazer/enterprise/__init__.py
