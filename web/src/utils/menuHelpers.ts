@@ -59,3 +59,34 @@ export const shouldRenderSecondLayerMenu = (
   // Otherwise, render menu
   return true;
 };
+
+/**
+ * Get the deepest matched menu items for the current path.
+ * Returns the children of the deepest matched item, or an empty array if no match.
+ */
+export const getDeepestMatchedMenuItems = (
+  menus: MenuItem[],
+  currentPath: string
+): MenuItem[] => {
+  const matchedPath = findMatchedMenuPath(menus, currentPath);
+  if (!matchedPath || matchedPath.length === 0) return [];
+
+  const deepest = matchedPath[matchedPath.length - 1];
+  return deepest.children ?? [];
+};
+
+/**
+ * Get the first-layer siblings of the matched menu item for the current path.
+ * If the matched item is at the first layer, returns its siblings.
+ * If the matched item is deeper, returns the children of the first-layer ancestor.
+ */
+export const getFirstLayerSiblingMenuItems = (
+  menus: MenuItem[],
+  currentPath: string
+): MenuItem[] => {
+  const matchedPath = findMatchedMenuPath(menus, currentPath);
+  if (!matchedPath || matchedPath.length === 0) return [];
+
+  const firstLayer = matchedPath[0];
+  return firstLayer.children ?? [];
+};

@@ -5,7 +5,7 @@ import styles from './index.module.scss';
 import type { Dayjs } from 'dayjs';
 import dayjs from 'dayjs';
 import CustomTable from '@/components/custom-table';
-import Introduction from '@/app/cmdb/components/introduction';
+import Introduction from '@/components/introduction';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { Input, Select, DatePicker, message, Button } from 'antd';
 import { DownloadOutlined } from '@ant-design/icons';

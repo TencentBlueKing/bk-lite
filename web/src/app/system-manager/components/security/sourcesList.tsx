@@ -6,7 +6,7 @@ import { PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import EntityList from '@/components/entity-list';
 import OperateModal from '@/components/operate-modal';
-import DynamicForm from '@/components/dynamic-form';
+import DynamicForm from '@/components/dynamic-form/editPasswordField';
 import PermissionWrapper from '@/components/permission';
 import { AuthSource } from '@/app/system-manager/types/security';
 import wechatAuthImg from '@/app/system-manager/img/wechat_auth.png';

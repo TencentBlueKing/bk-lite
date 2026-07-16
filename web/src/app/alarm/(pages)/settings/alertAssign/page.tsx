@@ -6,7 +6,7 @@ import OperateModal from './components/operateModal';
 import CustomTable from '@/components/custom-table';
 import PermissionWrapper from '@/components/permission';
 import UserAvatar from '@/components/user-avatar';
-import Introduction from '@/app/alarm/components/introduction';
+import Introduction from '@/components/introduction';
 import { STATUS_TEXT } from '@/app/alarm/constants/colors';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { AlertAssignListItem } from '@/app/alarm/types/settings';

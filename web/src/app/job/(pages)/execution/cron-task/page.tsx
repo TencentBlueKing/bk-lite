@@ -15,7 +15,7 @@ import useApiClient from '@/utils/request';
 import useJobApi from '@/app/job/api';
 import { ScheduledTask } from '@/app/job/types';
 import { ColumnItem } from '@/types';
-import SearchCombination from '@/components/search-combination';
+import SearchCombination from '@/components/search-combination/types';
 import { SearchFilters, FieldConfig } from '@/components/search-combination/types';
 import { useRouter } from 'next/navigation';
 import dayjs from 'dayjs';

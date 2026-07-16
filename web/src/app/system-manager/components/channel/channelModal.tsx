@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Alert, Button, Form, message, Spin } from 'antd';
 import { useTranslation } from '@/utils/i18n';
-import DynamicForm from '@/components/dynamic-form';
+import DynamicForm from '@/components/dynamic-form/editPasswordField';
 import OperateModal from '@/components/operate-modal'
 import { useChannelApi } from '@/app/system-manager/api/channel';
 import { ChannelType } from '@/app/system-manager/types/channel';

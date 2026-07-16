@@ -7,7 +7,7 @@ import { useSearchParams } from 'next/navigation';
 import CustomTable from '@/components/custom-table';
 import GroupTreeSelect from '@/components/group-tree-select';
 import OperateModal from '@/components/operate-modal';
-import DynamicForm from '@/components/dynamic-form';
+import DynamicForm from '@/components/dynamic-form/editPasswordField';
 import PermissionWrapper from "@/components/permission";
 import PermissionRule from '@/app/system-manager/components/application/permissionRule';
 import type { DataItem } from '@/app/system-manager/types/permission';

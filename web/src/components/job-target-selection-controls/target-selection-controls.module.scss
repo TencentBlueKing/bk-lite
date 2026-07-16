@@ -1,0 +1,40 @@
+.targetSourceGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+
+.addTargetHostWrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.addTargetHostButton {
+  min-width: 136px;
+  height: 32px;
+  padding: 0 14px;
+  border-width: 1px;
+  border-style: dashed;
+  border-color: var(--color-primary) !important;
+  border-radius: 8px;
+  color: var(--color-primary) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  font-weight: 500;
+}
+
+.addTargetHostButton:hover,
+.addTargetHostButton:focus,
+.addTargetHostButton:active {
+  border-color: var(--color-primary) !important;
+  color: var(--color-primary) !important;
+  background: rgba(45, 135, 255, 0.04) !important;
+}
+
+.addTargetHostMeta {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--color-text-3);
+}

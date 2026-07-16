@@ -41,7 +41,7 @@ import useJobApi from '@/app/job/api';
 import { useExecutionStream } from '@/app/job/hooks/useExecutionStream';
 import { JobRecord, JobRecordStatus, JobRecordSource, JobRecordDetail, ExecutionTarget, Playbook, FileTreeNode, PlaybookFilePreview } from '@/app/job/types';
 import { ColumnItem } from '@/types';
-import SearchCombination from '@/components/search-combination';
+import SearchCombination from '@/components/search-combination/types';
 import { SearchFilters, FieldConfig } from '@/components/search-combination/types';
 import { useRouter, useSearchParams } from 'next/navigation';
 import dayjs, { Dayjs } from 'dayjs';

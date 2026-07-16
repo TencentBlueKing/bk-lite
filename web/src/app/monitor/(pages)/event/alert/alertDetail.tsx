@@ -11,7 +11,7 @@ import React, {
 } from 'react';
 import { Button, Tag, Tabs, Spin } from 'antd';
 import VirtualList from 'rc-virtual-list';
-import OperateModal from '@/app/monitor/components/operate-drawer';
+import OperateModal from '@/components/operate-drawer';
 import { useTranslation } from '@/utils/i18n';
 import {
   ModalRef,

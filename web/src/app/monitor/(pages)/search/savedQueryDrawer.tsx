@@ -12,7 +12,7 @@ import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import useSearchApi from '@/app/monitor/api/search';
-import CustomDrawer from '@/app/monitor/components/operate-drawer';
+import CustomDrawer from '@/components/operate-drawer';
 import {
   QueryGroup,
   QueryGroupData,

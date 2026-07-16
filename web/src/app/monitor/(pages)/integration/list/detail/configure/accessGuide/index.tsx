@@ -19,7 +19,7 @@ import useIntegrationApi from '@/app/monitor/api/integration';
 import { TemplateAccessGuideDoc } from '@/app/monitor/types/integration';
 import { useUserInfoContext } from '@/context/userInfo';
 import { Group } from '@/types/index';
-import CodeEditor from '@/app/monitor/components/codeEditor';
+import CodeEditor from '@/components/code-editor';
 import { useCopy } from '@/hooks/useCopy';
 
 type SampleFormat = 'curl' | 'python' | 'javascript';

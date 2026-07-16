@@ -5,7 +5,7 @@ import type { UploadFile } from 'antd/es/upload/interface';
 import { Store } from 'antd/lib/form/interface';
 import { useTranslation } from '@/utils/i18n';
 import EntityList from '@/components/entity-list';
-import DynamicForm from '@/components/dynamic-form';
+import DynamicForm from '@/components/dynamic-form/editPasswordField';
 import OperateModal from '@/components/operate-modal';
 import GroupTreeSelect from '@/components/group-tree-select';
 import { useUserInfoContext } from '@/context/userInfo';
