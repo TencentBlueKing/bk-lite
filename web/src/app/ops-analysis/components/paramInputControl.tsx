@@ -5,6 +5,7 @@ import { Radio, Select, Spin } from 'antd';
 import type { InputControlConfig, InputOption } from '@/app/ops-analysis/types/dataSource';
 import { useParamInputOptions } from '@/app/ops-analysis/hooks/useParamInputOptions';
 import { createParamInputOptionsNotifier } from '@/app/ops-analysis/utils/paramInputOptionsLoader';
+import { normalizeParamInputChangeValue } from '@/app/ops-analysis/components/normalizeParamInputChangeValue';
 
 interface ParamInputControlProps {
   inputConfig?: InputControlConfig;
@@ -38,7 +39,8 @@ export const ParamInputControl: React.FC<ParamInputControlProps> = ({
     if (!React.isValidElement(fallback)) return fallback;
     return React.cloneElement(fallback as React.ReactElement<any>, {
       value,
-      onChange,
+      onChange: (valueOrEvent: unknown) =>
+        onChange?.(normalizeParamInputChangeValue(valueOrEvent)),
       disabled,
     });
   };
