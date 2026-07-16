@@ -20,6 +20,21 @@ class NodeMgmtSyncReconcileResult:
     error_message: str = ""
 
 
+@dataclass(frozen=True)
+class NodeConfigClaimResult:
+    outcome: str
+    stage: str = ""
+    token: str = ""
+
+
+@dataclass(frozen=True)
+class NodeConfigReconcileResult:
+    status: str
+    error_code: str = ""
+    error_message: str = ""
+    contended: bool = False
+
+
 class NodeMgmtSyncReconciler:
     NODE_CONFIG_CLAIM_TIMEOUT = timedelta(minutes=5)
 
@@ -43,27 +58,41 @@ class NodeMgmtSyncReconciler:
             node_status = config.node_config_status or "unknown"
             node_error_code = ""
             node_error_message = ""
+            persist_health = True
             if reconcile_node_configs:
-                node_status, node_error_code, node_error_message = cls._reconcile_node_configs(config, service=NodeMgmtSyncService,)
+                node_outcome = cls._reconcile_node_configs(config, service=NodeMgmtSyncService,)
+                if node_outcome.contended:
+                    config.refresh_from_db(fields=("schedule_status", "node_config_status", "reconcile_error_code", "reconcile_error_message",))
+                    node_status = config.node_config_status or "unknown"
+                    node_error_code = config.reconcile_error_code
+                    node_error_message = config.reconcile_error_message
+                    persist_health = False
+                else:
+                    node_status = node_outcome.status
+                    node_error_code = node_outcome.error_code
+                    node_error_message = node_outcome.error_message
             result = NodeMgmtSyncReconcileResult("healthy", node_status, node_error_code, node_error_message,)
         except Exception as exc:
             logger.error("节点管理同步对账失败: %s", type(exc).__name__)
             result = NodeMgmtSyncReconcileResult("degraded", "degraded", "RECONCILE_FAILED", f"{type(exc).__name__}: 节点管理同步对账失败",)
-        cls._persist_health(config, result)
+            persist_health = True
+        if persist_health:
+            cls._persist_health(config, result)
         return result
 
     @classmethod
     def _reconcile_node_configs(cls, config, *, service):
         if config.auto_collect_enabled and not config.auto_sync_enabled:
-            return "waiting_sync", "", ""
+            return NodeConfigReconcileResult("waiting_sync")
 
         from apps.cmdb.services.collect_service import CollectModelService
 
         collect_tasks = service._list_region_collect_tasks()
         if not collect_tasks:
-            return "unknown", "", ""
+            return NodeConfigReconcileResult("unknown")
 
         has_failure = False
+        has_contention = False
         valid_region_count = 0
         for collect_task in collect_tasks:
             cloud_region_id = cls._parse_cloud_region_id(collect_task.system_code, prefix=service.SYSTEM_TASK_PREFIX,)
@@ -100,10 +129,12 @@ class NodeMgmtSyncReconciler:
                 continue
 
             claim = cls._claim_node_config_state(state, auto_collect_enabled=config.auto_collect_enabled,)
-            if claim is None:
-                has_failure = True
+            if claim.outcome == "skip":
                 continue
-            stage, claim_token = claim
+            if claim.outcome == "contended":
+                has_contention = True
+                continue
+            stage, claim_token = claim.stage, claim.token
 
             if stage == "delete":
                 try:
@@ -138,15 +169,13 @@ class NodeMgmtSyncReconciler:
             if not cls._finish_node_config_claim(state, stage="push", claim_token=claim_token, next_status="healthy",):
                 has_failure = True
 
+        if has_contention:
+            return NodeConfigReconcileResult(config.node_config_status or "unknown", contended=True,)
         if has_failure:
-            return (
-                "degraded",
-                "NODE_CONFIG_RECONCILE_FAILED",
-                "节点采集参数对账存在失败区域",
-            )
+            return NodeConfigReconcileResult("degraded", "NODE_CONFIG_RECONCILE_FAILED", "节点采集参数对账存在失败区域",)
         if not valid_region_count:
-            return "unknown", "", ""
-        return ("healthy" if config.auto_collect_enabled else "disabled"), "", ""
+            return NodeConfigReconcileResult("unknown")
+        return NodeConfigReconcileResult("healthy" if config.auto_collect_enabled else "disabled")
 
     @staticmethod
     def _parse_cloud_region_id(system_code, *, prefix):
@@ -161,9 +190,11 @@ class NodeMgmtSyncReconciler:
     def _claim_node_config_state(cls, state, *, auto_collect_enabled):
         current_time = timezone.now()
         current_status = state.node_config_status
+        if (auto_collect_enabled and current_status == "healthy") or (not auto_collect_enabled and current_status == "disabled"):
+            return NodeConfigClaimResult("skip")
         if current_status.endswith("_in_progress"):
             if state.updated_at > current_time - cls.NODE_CONFIG_CLAIM_TIMEOUT:
-                return None
+                return NodeConfigClaimResult("contended")
             stage = current_status.removesuffix("_in_progress")
         elif auto_collect_enabled and current_status == "push_pending":
             stage = "push"
@@ -176,12 +207,12 @@ class NodeMgmtSyncReconciler:
             queryset = queryset.filter(updated_at__lte=current_time - cls.NODE_CONFIG_CLAIM_TIMEOUT)
         updated = queryset.update(node_config_status=f"{stage}_in_progress", reason_code=claim_token, error_message="", updated_at=current_time,)
         if not updated:
-            return None
+            return NodeConfigClaimResult("contended")
         state.node_config_status = f"{stage}_in_progress"
         state.reason_code = claim_token
         state.error_message = ""
         state.updated_at = current_time
-        return stage, claim_token
+        return NodeConfigClaimResult("acquired", stage, claim_token)
 
     @staticmethod
     def _finish_node_config_claim(

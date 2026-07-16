@@ -249,6 +249,112 @@ def test_old_node_config_claim_cannot_overwrite_new_claim(config, region_task):
     assert state.reason_code == "NODE_CONFIG_CLAIM:new-worker"
 
 
+def test_contended_reconciler_cannot_reverse_later_healthy_health(config, region_task):
+    NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=config.version,
+        cloud_region_id="7",
+        collect_task=region_task,
+        scope_key=f"config:{config.version}:region:7",
+        node_config_status="delete_in_progress",
+        reason_code="NODE_CONFIG_CLAIM:worker-a",
+    )
+    config.node_config_status = "degraded"
+    config.save(update_fields=["node_config_status", "updated_at"])
+    original_claim = NodeMgmtSyncReconciler._claim_node_config_state
+
+    def finish_a_after_b_observes_contention(state, *, auto_collect_enabled):
+        outcome = original_claim(state, auto_collect_enabled=auto_collect_enabled)
+        NodeMgmtSyncConfig.objects.filter(pk=config.pk).update(node_config_status="healthy")
+        return outcome
+
+    with patch.object(
+        NodeMgmtSyncReconciler, "_claim_node_config_state", side_effect=finish_a_after_b_observes_contention,
+    ):
+        result = _reconcile(config)
+
+    config.refresh_from_db()
+    assert config.node_config_status == "healthy"
+    assert result.node_config_status == "healthy"
+
+
+def test_degraded_retry_skips_healthy_region_and_only_retries_failed_region(config, region_task):
+    failed_task = _create_region_task(8)
+    NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=config.version,
+        cloud_region_id="7",
+        collect_task=region_task,
+        scope_key=f"config:{config.version}:region:7",
+        node_config_status="healthy",
+    )
+    NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=config.version,
+        cloud_region_id="8",
+        collect_task=failed_task,
+        scope_key=f"config:{config.version}:region:8",
+        node_config_status="delete_pending",
+    )
+    config.node_config_status = "degraded"
+    config.save(update_fields=["node_config_status", "updated_at"])
+
+    with patch.object(CollectModelService, "delete_butch_node_params", side_effect=RuntimeError("still-failing"),) as delete:
+        with patch.object(CollectModelService, "push_butch_node_params") as push:
+            result = _reconcile(config)
+
+    assert result.node_config_status == "degraded"
+    delete.assert_called_once_with(failed_task)
+    push.assert_not_called()
+    assert _state(config, 7).node_config_status == "healthy"
+
+
+def test_disabled_region_is_successful_skip_while_collect_remains_disabled(config, region_task):
+    config.auto_collect_enabled = False
+    config.node_config_status = "degraded"
+    config.save(update_fields=["auto_collect_enabled", "node_config_status", "updated_at"])
+    state = NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=config.version,
+        cloud_region_id="7",
+        collect_task=region_task,
+        scope_key=f"config:{config.version}:region:7",
+        node_config_status="disabled",
+    )
+
+    with patch.object(CollectModelService, "delete_butch_node_params") as delete:
+        with patch.object(CollectModelService, "push_butch_node_params") as push:
+            result = _reconcile(config)
+
+    assert result.node_config_status == "disabled"
+    delete.assert_not_called()
+    push.assert_not_called()
+    state.refresh_from_db()
+    assert state.node_config_status == "disabled"
+
+
+@pytest.mark.parametrize(
+    ("status", "auto_collect_enabled", "expected_outcome"),
+    [("delete_pending", True, "acquired"), ("healthy", True, "skip"), ("disabled", False, "skip"), ("delete_in_progress", True, "contended"),],
+)
+def test_node_config_claim_has_explicit_outcomes(
+    config, region_task, status, auto_collect_enabled, expected_outcome,
+):
+    state = NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=config.version,
+        cloud_region_id="7",
+        collect_task=region_task,
+        scope_key=f"config:{config.version}:region:7",
+        node_config_status=status,
+        reason_code=("NODE_CONFIG_CLAIM:worker-a" if status.endswith("_in_progress") else ""),
+    )
+
+    claim = NodeMgmtSyncReconciler._claim_node_config_state(state, auto_collect_enabled=auto_collect_enabled,)
+
+    assert claim.outcome == expected_outcome
+
+
 def test_collect_enabled_without_sync_waits_and_does_not_dispatch(config, region_task):
     config.auto_sync_enabled = False
     config.save(update_fields=["auto_sync_enabled", "updated_at"])
