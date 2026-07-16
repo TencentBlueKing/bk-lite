@@ -2,11 +2,11 @@ import type { Meta, StoryObj } from '@storybook/nextjs';
 import React from 'react';
 import { expect, fn, userEvent, within } from 'storybook/test';
 import SectionHeader from '@/components/section-header';
-import RoleTransfer from '@/components/system-manager-role-transfer';
-import PermissionModal from '@/components/system-manager-role-transfer/permissionModal';
-import TransferLeftTree from '@/components/system-manager-role-transfer/transferLeftTree';
-import TransferRightTree from '@/components/system-manager-role-transfer/transferRightTree';
-import TransferTreePanel from '@/components/system-manager-transfer-tree-panel';
+import RoleTransfer from '@/app/system-manager/components/system-manager-role-transfer';
+import PermissionModal from '@/app/system-manager/components/system-manager-role-transfer/permissionModal';
+import TransferLeftTree from '@/app/system-manager/components/system-manager-role-transfer/transferLeftTree';
+import TransferRightTree from '@/app/system-manager/components/system-manager-role-transfer/transferRightTree';
+import TransferTreePanel from '@/app/system-manager/components/system-manager-transfer-tree-panel';
 import { groupTreeData } from './system-manager-user-org.fixtures';
 import {
   groupRuleResponse,

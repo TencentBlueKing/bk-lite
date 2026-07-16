@@ -10,7 +10,7 @@ import {
   SubscriptionRuleForm,
   type SubscriptionRuleFormRef,
   type SubscriptionRuleFormProps,
-} from '@/components/cmdb-subscription-drawer';
+} from '@/app/cmdb/components/cmdb-subscription-drawer';
 
 const CmdbSubscriptionRuleFormRuntime = React.forwardRef<
   SubscriptionRuleFormRef,

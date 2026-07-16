@@ -1,13 +1,13 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs';
 import AutoAssociationMatchPairGroup from '@/components/auto-association-match-pair-group';
 import ChartEmptyState from '@/components/chart-empty-state';
-import CmdbConfigFileCompareDrawer from '@/components/cmdb-config-file-compare-drawer';
-import CmdbCredentialPoolEditor from '@/components/cmdb-credential-pool-editor';
+import CmdbConfigFileCompareDrawer from '@/app/cmdb/components/cmdb-config-file-compare-drawer';
+import CmdbCredentialPoolEditor from '@/app/cmdb/components/cmdb-credential-pool-editor';
 import CompactEmptyState from '@/components/compact-empty-state';
 import DetailListPanel from '@/components/detail-list-panel';
 import SectionHeader from '@/components/section-header';
 import StructuredDataPreview from '@/components/structured-data-preview';
-import SubscriptionDrawer from '@/components/cmdb-subscription-drawer';
+import SubscriptionDrawer from '@/app/cmdb/components/cmdb-subscription-drawer';
 import { UserInfoContext } from '@/context/userInfo';
 
 const subscriptionRules = [

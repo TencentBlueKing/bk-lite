@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs';
 import React from 'react';
 import { ArrowLeftOutlined, DeleteOutlined, EditOutlined, InfoCircleOutlined, PlusOutlined } from '@ant-design/icons';
 import { Button, Form, Input, Radio, Segmented, Select } from 'antd';
@@ -19,7 +19,7 @@ import ResizableSidebar from '@/components/resizable-sidebar';
 import SectionHeader from '@/components/section-header';
 import SideMenu from '@/components/layout/sub-layout/side-menu';
 import SummaryDetailLayoutShell from '@/components/summary-detail-layout-shell';
-import TopMenu from '@/components/top-menu';
+import TopMenu from '@/app/(core)/components/top-menu';
 import TreeWorkspaceShell from '@/components/tree-workspace-shell';
 import WithSideMenuLayout from '@/components/layout/sub-layout';
 import TimeSelector from '@/components/time-selector';

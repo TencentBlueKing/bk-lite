@@ -1,9 +1,9 @@
 import React, { useEffect, useRef } from 'react';
-import type { Meta, StoryObj } from '@storybook/react';
-import MlopsDatasetReleaseModal from '@/components/mlops-dataset-release-modal';
-import MlopsDatasetUploadModal from '@/components/mlops-dataset-upload-modal';
-import type { MlopsDatasetModalRef } from '@/components/mlops-dataset-shared/contracts';
-import { DatasetType } from '@/components/mlops-shared';
+import type { Meta, StoryObj } from '@storybook/nextjs';
+import MlopsDatasetReleaseModal from '@/app/mlops/components/mlops-dataset-release-modal';
+import MlopsDatasetUploadModal from '@/app/mlops/components/mlops-dataset-upload-modal';
+import type { MlopsDatasetModalRef } from '@/app/mlops/components/mlops-dataset-shared/contracts';
+import { DatasetType } from '@/app/mlops/components/mlops-shared';
 import SectionHeader from '@/components/section-header';
 
 const DatasetFamilyOverview = () => {

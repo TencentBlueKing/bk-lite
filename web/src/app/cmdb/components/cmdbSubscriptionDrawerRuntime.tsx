@@ -3,7 +3,7 @@
 import React from 'react';
 import SubscriptionDrawer, {
   type SubscriptionDrawerProps,
-} from '@/components/cmdb-subscription-drawer';
+} from '@/app/cmdb/components/cmdb-subscription-drawer';
 import { useSubscriptionList, useSubscriptionMutation } from '@/app/cmdb/hooks/useSubscription';
 import { useModelApi } from '@/app/cmdb/api';
 import { useInstanceApi } from '@/app/cmdb/api/instance';

@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs';
 import { Button, Segmented } from 'antd';
 import SectionHeader from '@/components/section-header';
-import UserInformation from '@/components/top-menu/user-info/userInformation';
-import UserProfilePasswordModal from '@/components/top-menu/user-info/passwordModal';
-import VersionModal from '@/components/top-menu/user-info/versionModal';
+import UserInformation from '@/app/(core)/components/top-menu/user-info/userInformation';
+import UserProfilePasswordModal from '@/app/(core)/components/top-menu/user-info/passwordModal';
+import VersionModal from '@/app/(core)/components/top-menu/user-info/versionModal';
 import {
   renderSystemManagerVersionContent,
   systemManagerStorybookPasswordPolicy,

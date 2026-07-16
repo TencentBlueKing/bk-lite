@@ -14,7 +14,7 @@ import { UserInfoProvider } from '@/context/userInfo';
 import { ClientProvider } from '@/context/client';
 import { PermissionsProvider, usePermissions } from '@/context/permissions';
 import AuthProvider from '@/context/auth';
-import TopMenu from '@/components/top-menu';
+import TopMenu from '@/app/(core)/components/top-menu';
 import { ConfigProvider, Watermark, message } from 'antd';
 import Spin from '@/components/spin';
 import { portalBrandingDefaults, usePortalBranding } from '@/hooks/usePortalBranding';

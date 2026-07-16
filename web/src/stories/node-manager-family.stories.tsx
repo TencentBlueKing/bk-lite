@@ -1,10 +1,10 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs';
 import AuthSecretField from '@/components/auth-secret-field';
 import CodeEditor from '@/components/code-editor';
 import CodeSnippet from '@/components/code-snippet';
-import NodeManagerCollectorPackageModal from '@/components/node-manager-collector-package-modal';
-import NodeManagerOperatingSystemBadge from '@/components/node-manager-operating-system-badge';
-import NodeManagerRuntimeStatusBadge from '@/components/node-manager-runtime-status-badge';
+import NodeManagerCollectorPackageModal from '@/app/node-manager/components/node-manager-collector-package-modal';
+import NodeManagerOperatingSystemBadge from '@/app/node-manager/components/node-manager-operating-system-badge';
+import NodeManagerRuntimeStatusBadge from '@/app/node-manager/components/node-manager-runtime-status-badge';
 import SectionHeader from '@/components/section-header';
 import SummaryDetailLayoutShell from '@/components/summary-detail-layout-shell';
 import TopSection from '@/components/top-section';
@@ -21,7 +21,7 @@ import {
   LinuxOperationGuidanceSection,
   WindowsOperationGuidanceSection,
 } from '@/app/node-manager/(pages)/cloudregion/node/controllerInstall/installing/operationGuidanceSections';
-import type { NodeManagerCollectorPackageModalRef } from '@/components/node-manager-collector-package-modal/types';
+import type { NodeManagerCollectorPackageModalRef } from '@/app/node-manager/components/node-manager-collector-package-modal/types';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 const nodeManagerStoryMessages = {

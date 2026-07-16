@@ -1,10 +1,10 @@
 import type { Meta, StoryObj } from '@storybook/nextjs';
 import { useState } from 'react';
 import SectionHeader from '@/components/section-header';
-import MenuGroupCard from '@/components/system-manager-application-menu/group-card';
-import MenuPageCard from '@/components/system-manager-application-menu/page-card';
-import SourceMenuTree from '@/components/system-manager-application-menu/source-menu-tree';
-import MenuPageItem from '@/components/system-manager-menu-page-item';
+import MenuGroupCard from '@/app/system-manager/components/system-manager-application-menu/group-card';
+import MenuPageCard from '@/app/system-manager/components/system-manager-application-menu/page-card';
+import SourceMenuTree from '@/app/system-manager/components/system-manager-application-menu/source-menu-tree';
+import MenuPageItem from '@/app/system-manager/components/system-manager-menu-page-item';
 import {
   systemManagerGroupPages,
   systemManagerMenuPage,

@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/nextjs';
 
-import UserInfo from '@/components/top-menu/user-info';
+import UserInfo from '@/app/(core)/components/top-menu/user-info';
 
 const meta: Meta<typeof UserInfo> = {
   component: UserInfo,

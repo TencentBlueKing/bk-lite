@@ -1,7 +1,7 @@
 import type {
   FunctionMenuItem,
   SourceMenuNode,
-} from '@/components/system-manager-application-menu/types';
+} from '@/app/system-manager/components/system-manager-application-menu/types';
 
 export const systemManagerSourceMenus: SourceMenuNode[] = [
   {

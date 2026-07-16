@@ -2,7 +2,7 @@
 
 import NodeManagerCollectorPackageModal, {
   type NodeManagerCollectorPackageModalProps,
-} from '@/components/node-manager-collector-package-modal';
+} from '@/app/node-manager/components/node-manager-collector-package-modal';
 import useNodeManagerApi from '@/app/node-manager/api';
 
 type CollectorPackageModalRuntimeProps = Omit<

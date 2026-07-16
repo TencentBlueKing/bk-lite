@@ -4,9 +4,9 @@ import React, { useRef, type ComponentType, type ReactNode } from 'react';
 import { Button } from 'antd';
 import { expect, userEvent, within } from 'storybook/test';
 import SectionHeader from '@/components/section-header';
-import GroupEditModal, { type GroupModalRef } from '@/components/system-manager-group-edit-modal';
-import GroupTree from '@/components/system-manager-group-tree';
-import PasswordModal, { type PasswordModalRef } from '@/components/system-manager-user-password-modal';
+import GroupEditModal, { type GroupModalRef } from '@/app/system-manager/components/system-manager-group-edit-modal';
+import GroupTree from '@/app/system-manager/components/system-manager-group-tree';
+import PasswordModal, { type PasswordModalRef } from '@/app/system-manager/components/system-manager-user-password-modal';
 import { ClientProvider } from '@/context/client';
 import { groupTreeData, mockT, noop } from './system-manager-user-org.fixtures';
 import {
