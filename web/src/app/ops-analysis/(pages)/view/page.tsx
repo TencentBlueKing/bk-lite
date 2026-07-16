@@ -7,6 +7,7 @@ import Topology from './topology/index';
 import Architecture, { ArchitectureRef } from './architecture/index';
 import Screen, { ScreenRef } from './screen/index';
 import Report, { ReportRef } from './report/index';
+import NetworkTopology, { NetworkTopologyRef } from './networkTopology/index';
 import { TopologyRef } from '@/app/ops-analysis/types/topology';
 import { useTranslation } from '@/utils/i18n';
 import { DirectoryType, SidebarRef } from '@/app/ops-analysis/types';
@@ -41,6 +42,7 @@ const ViewPage: React.FC = () => {
   const topologyRef = useRef<TopologyRef>(null);
   const screenRef = useRef<ScreenRef>(null);
   const reportRef = useRef<ReportRef>(null);
+  const networkTopologyRef = useRef<NetworkTopologyRef>(null);
   const sidebarRef = useRef<SidebarRef>(null);
   const previousSelectionRef = useRef<{
     type: DirectoryType;
@@ -74,6 +76,9 @@ const ViewPage: React.FC = () => {
     }
     if (selectedType === 'report' && reportRef.current) {
       return reportRef.current.hasUnsavedChanges();
+    }
+    if (selectedType === 'networkTopology' && networkTopologyRef.current) {
+      return networkTopologyRef.current.hasUnsavedChanges();
     }
     return false;
   };
@@ -198,6 +203,12 @@ const ViewPage: React.FC = () => {
             ref={dashboardRef}
             key={selectedItem.dashboard?.data_id ?? 'dashboard-empty'}
             selectedDashboard={selectedItem.dashboard}
+          />
+        ) : selectedType === 'networkTopology' ? (
+          <NetworkTopology
+            ref={networkTopologyRef}
+            key={selectedItem.networkTopology?.data_id ?? 'networkTopology-empty'}
+            selectedNetworkTopology={selectedItem.networkTopology}
           />
         ) : (
           <Empty
