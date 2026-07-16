@@ -2,7 +2,9 @@
   "object_name": "TCP",
   "instance_type": "qcloud",
   "collect_type": "http",
-  "config_type": ["qcloud"],
+  "config_type": [
+    "qcloud"
+  ],
   "collector": "Telegraf",
   "instance_id": "{{cloud_region}}_qcloud_{{username}}",
   "form_fields": [
@@ -14,7 +16,8 @@
       "editable": false,
       "transform_on_edit": {
         "origin_path": "child.content.config.http_headers.username"
-      }
+      },
+      "label_en": "Username"
     },
     {
       "name": "ENV_PASSWORD",
@@ -25,7 +28,8 @@
       "encrypted": true,
       "transform_on_edit": {
         "origin_path": "child.env_config.PASSWORD__{{config_id}}"
-      }
+      },
+      "label_en": "Password"
     }
   ],
   "table_columns": [
@@ -35,10 +39,12 @@
       "type": "select",
       "required": true,
       "widget_props": {
-        "placeholder": "请选择节点"
+        "placeholder": "请选择节点",
+        "placeholder_en": "Please select node"
       },
       "options_key": "node_ids_option",
-      "enable_row_filter": false
+      "enable_row_filter": false,
+      "label_en": "Node"
     },
     {
       "name": "instance_name",
@@ -47,8 +53,10 @@
       "required": true,
       "widget_props": {
         "placeholder": "实例名称",
-        "disabled": false
-      }
+        "disabled": false,
+        "placeholder_en": "Instance Name"
+      },
+      "label_en": "Instance Name"
     },
     {
       "name": "group_ids",
@@ -56,8 +64,10 @@
       "type": "group_select",
       "required": true,
       "widget_props": {
-        "placeholder": "请选择组"
-      }
+        "placeholder": "请选择组",
+        "placeholder_en": "Please select group"
+      },
+      "label_en": "Group"
     }
   ],
   "extra_fields": {}

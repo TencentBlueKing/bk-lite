@@ -313,6 +313,7 @@ class PolicyViewSet(viewsets.ModelViewSet):
 
         return WebUtils.response_success(dict(count=queryset.count(), items=results))
 
+    @transaction.atomic
     def create(self, request, *args, **kwargs):
         # 补充创建人
         request.data["created_by"] = request.user.username
@@ -343,6 +344,7 @@ class PolicyViewSet(viewsets.ModelViewSet):
         instance = self.get_queryset().get(id=policy_id)
         return self._refresh_response_data(response, instance)
 
+    @transaction.atomic
     def update(self, request, *args, **kwargs):
         instance = self.get_object()
         error_response = self._authorize_policy(request, instance)
@@ -386,6 +388,7 @@ class PolicyViewSet(viewsets.ModelViewSet):
         instance.refresh_from_db()
         return self._refresh_response_data(response, instance)
 
+    @transaction.atomic
     def partial_update(self, request, *args, **kwargs):
         instance = self.get_object()
         error_response = self._authorize_policy(request, instance)

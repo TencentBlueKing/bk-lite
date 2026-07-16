@@ -1,0 +1,42 @@
+InfluxDB:
+  name: InfluxDB 时序数据库
+  desc: InfluxDB 时序数据库指标采集
+monitor_object:
+  InfluxDB: InfluxDB
+monitor_object_type:
+  Database: 数据库
+monitor_object_metric:
+  InfluxDB:
+    influxdb_database_numSeries:
+      name: Series 数量
+      desc: 单个 InfluxDB 数据库中当前的 Series 总数，是高基数风险的重要指标。
+    influxdb_httpd_authFail_rate:
+      name: HTTP 认证失败速率
+      desc: 最近5分钟 HTTP 认证失败的平均速率。
+    influxdb_httpd_clientError_rate:
+      name: HTTP 4XX 错误速率
+      desc: 最近5分钟 HTTP 4XX 响应的平均速率。
+    influxdb_httpd_serverError_rate:
+      name: HTTP 5XX 错误速率
+      desc: 最近5分钟 HTTP 5XX 响应的平均速率。
+    influxdb_httpd_pointsWrittenDropped_rate:
+      name: 写入点丢弃速率
+      desc: 最近5分钟写入 API 已接受但在持久化前被丢弃的数据点平均速率。
+    influxdb_httpd_pointsWrittenFail_rate:
+      name: 写入持久化失败速率
+      desc: 最近5分钟写入 API 已接受但持久化失败的数据点平均速率。
+    influxdb_httpd_writeReq_rate:
+      name: 写请求速率
+      desc: 最近5分钟写请求的平均速率。
+    influxdb_httpd_queryReq_rate:
+      name: 查询请求速率
+      desc: 最近5分钟查询请求的平均速率。
+    influxdb_runtime_HeapAlloc:
+      name: 运行时堆内存分配
+      desc: Go 运行时当前已分配且正在使用的堆内存大小。
+monitor_object_metric_group:
+  InfluxDB:
+    数据库: 数据库
+    请求与错误: 请求与错误
+    写入稳定性: 写入稳定性
+    运行时: 运行时

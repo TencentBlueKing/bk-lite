@@ -1,0 +1,16 @@
+{
+  "model_id": "qcloud_mysql",
+  "instance_count_min": 1,
+  "expected_instance_subset": {
+    "inst_name":     "qmysql-prod-01_qmysql-abc123def456",
+    "resource_name": "qmysql-prod-01",
+    "resource_id":   "qmysql-abc123def456",
+    "ip_addr":       "10.0.4.40",
+    "region":        "ap-shanghai",
+    "zone":          "ap-shanghai-2",
+    "status":        "RUNNING",
+    "volume":        100,
+    "memory_mb":     2048,
+    "charge_type":   "POSTPAID"
+  }
+}

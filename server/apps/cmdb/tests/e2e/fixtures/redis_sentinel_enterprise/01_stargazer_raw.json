@@ -1,0 +1,56 @@
+[
+  {
+    "model_id": "redis_sentinel_enterprise",
+    "captured_at": "2026-07-14T10:30:00+08:00",
+    "image": "redis:7-alpine",
+    "container_meta": {
+      "container_id": "2bde488d1f54",
+      "image": "redis:7-alpine"
+    },
+    "params": {
+      "host": "127.0.0.1",
+      "ports": [6379, 26379],
+      "password": "***"
+    },
+    "inst_name": "127.0.0.1-redis-6379",
+    "bk_obj_id": "redis",
+    "ip_addr": "127.0.0.1",
+    "port": "6379",
+    "version": "7.4.9",
+    "install_path": "",
+    "max_conn": "10000",
+    "max_mem": "0",
+    "database_role": "master",
+    "topo_mode": "replication",
+    "cluster_uuid": "01ff289395f8b7bd8eb5322e08841b791586e610",
+    "slaves": [],
+    "master": {}
+  },
+  {
+    "model_id": "redis_sentinel_enterprise",
+    "captured_at": "2026-07-14T10:30:00+08:00",
+    "image": "redis:7-alpine",
+    "container_meta": {
+      "container_id": "2bde488d1f54",
+      "image": "redis:7-alpine"
+    },
+    "params": {
+      "host": "127.0.0.1",
+      "ports": [6379, 26379],
+      "password": "***"
+    },
+    "inst_name": "127.0.0.1-redis-26379",
+    "bk_obj_id": "redis",
+    "ip_addr": "127.0.0.1",
+    "port": "26379",
+    "version": "7.4.9",
+    "install_path": "",
+    "max_conn": "",
+    "max_mem": "",
+    "database_role": "",
+    "topo_mode": "sentinel",
+    "cluster_uuid": "01ff289395f8b7bd8eb5322e08841b791586e610",
+    "slaves": [],
+    "master": {}
+  }
+]

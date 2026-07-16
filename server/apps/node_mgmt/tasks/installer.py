@@ -594,8 +594,6 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
                 cpu_architecture=resolved_arch,
             )
 
-            if resolved_package.os == NodeConstants.LINUX_OS:
-                install_command = f'sh -lc "{install_command}"'
             exec_result = None
             if resolved_package.os == NodeConstants.LINUX_OS:
                 execution_id = uuid.uuid4().hex

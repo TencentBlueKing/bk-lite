@@ -375,3 +375,111 @@ class TestLayoutViews:
         monkeypatch.setattr(f"{VIEWS}.get_rack_layout", lambda *a, **k: {"ok": 1})
         response = InstanceViewSet.as_view({"get": "rack_layout"})(_get_req(superuser), model_id="rack", inst_id="999")
         assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+@pytest.mark.unit
+class TestListServerRooms:
+    """list_server_rooms：运维分析 dynamic 模式选项源用的"所有机房列表"。
+
+    验证：
+    1. 走 ``InstanceManage.instance_list`` 现成的权限过滤
+    2. 直接返回 cmdb 原始字段（_id, inst_name, ...）不做重命名
+    3. 业务上限 page_size=1000
+    4. 排序按 inst_name
+    """
+
+    @patch.object(rack_room.InstanceManage, "instance_list")
+    def test_returns_raw_cmdb_fields(self, mock_instance_list):
+        """应原样返回 cmdb 实例字段，不做 _id→id 等重命名。"""
+        mock_instance_list.return_value = (
+            [
+                {
+                    "_id": 1,
+                    "inst_name": "机房A",
+                    "model_id": "server_room",
+                    "organization": [10],
+                },
+                {
+                    "_id": 2,
+                    "inst_name": "机房B",
+                    "model_id": "server_room",
+                    "organization": [20],
+                },
+            ],
+            2,
+        )
+        result = rack_room.list_server_rooms(permission_map={}, user_info=None)
+        assert result == [
+            {"_id": 1, "inst_name": "机房A", "model_id": "server_room", "organization": [10]},
+            {"_id": 2, "inst_name": "机房B", "model_id": "server_room", "organization": [20]},
+        ]
+
+    @patch.object(rack_room.InstanceManage, "instance_list")
+    def test_passes_permission_map_to_instance_list(self, mock_instance_list):
+        """permission_map 应透传给 InstanceManage.instance_list 以走现成权限过滤。"""
+        mock_instance_list.return_value = ([], 0)
+        perm = {"10": {"inst_names": ["机房A"], "instance_permission": {}}}
+        rack_room.list_server_rooms(permission_map=perm, user_info=None)
+        kwargs = mock_instance_list.call_args.kwargs
+        assert kwargs["model_id"] == "server_room"
+        assert kwargs["permission_map"] == perm
+        assert kwargs["page"] == 1
+        assert kwargs["page_size"] == 1000  # 业务上限
+        assert kwargs["order"] == "inst_name"
+
+    @patch.object(rack_room.InstanceManage, "instance_list")
+    def test_default_empty_permission_map(self, mock_instance_list):
+        """未传 permission_map 时默认为空 dict（不阻断调用）。"""
+        mock_instance_list.return_value = ([], 0)
+        rack_room.list_server_rooms()
+        kwargs = mock_instance_list.call_args.kwargs
+        assert kwargs["permission_map"] == {}
+
+    @patch.object(rack_room.InstanceManage, "instance_list")
+    def test_handles_empty_list(self, mock_instance_list):
+        """无机房时返回空列表（不返回 None）。"""
+        mock_instance_list.return_value = ([], 0)
+        assert rack_room.list_server_rooms(permission_map={}) == []
+        mock_instance_list.return_value = (None, 0)
+        assert rack_room.list_server_rooms(permission_map={}) == []
+
+
+@pytest.mark.unit
+class TestGetRoomListNatsHandler:
+    """NATS handler ``get_room_list`` 应：
+    1. 返回 ``{"items": [...]}`` 信封
+    2. 走 ``_build_nats_permission_map`` 构造 permission_map 并透传给 list_server_rooms
+    """
+
+    @patch("apps.cmdb.nats.nats.rack_room.list_server_rooms")
+    @patch("apps.cmdb.nats.nats._build_nats_permission_map", return_value={"10": {}})
+    def test_returns_items_envelope(self, mock_perm_map, mock_list_rooms):
+        from apps.cmdb.nats import nats
+
+        mock_list_rooms.return_value = [
+            {"_id": 1, "inst_name": "机房A", "model_id": "server_room"},
+        ]
+        result = nats.get_room_list(user_info={"team": 1, "user": "alice"})
+        assert result == {"items": [{"_id": 1, "inst_name": "机房A", "model_id": "server_room"}]}
+
+    @patch("apps.cmdb.nats.nats.rack_room.list_server_rooms")
+    @patch("apps.cmdb.nats.nats._build_nats_permission_map", return_value={"10": {}})
+    def test_passes_permission_map_to_list_server_rooms(self, mock_perm_map, mock_list_rooms):
+        from apps.cmdb.nats import nats
+
+        mock_list_rooms.return_value = []
+        nats.get_room_list(user_info={"team": 1, "user": "alice"})
+        kwargs = mock_list_rooms.call_args.kwargs
+        assert kwargs["permission_map"] == {"10": {}}
+        assert kwargs["user_info"] == {"team": 1, "user": "alice"}
+
+    @patch("apps.cmdb.nats.nats.rack_room.list_server_rooms")
+    @patch("apps.cmdb.nats.nats._build_nats_permission_map", return_value=None)
+    def test_handles_none_permission_map(self, mock_perm_map, mock_list_rooms):
+        """_build_nats_permission_map 返回 None 时不阻断（list_server_rooms 内部兜底空 dict）。"""
+        from apps.cmdb.nats import nats
+
+        mock_list_rooms.return_value = []
+        nats.get_room_list(user_info={"team": 1})
+        kwargs = mock_list_rooms.call_args.kwargs
+        assert kwargs["permission_map"] == {}

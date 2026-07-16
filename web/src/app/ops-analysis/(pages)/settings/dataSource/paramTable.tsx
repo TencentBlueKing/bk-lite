@@ -8,7 +8,7 @@ import CustomTable from "@/components/custom-table";
 import TimeSelector from "@/components/time-selector";
 import { useTranslation } from "@/utils/i18n";
 import { formatOpsRequestTime } from "@/app/ops-analysis/utils/dateTime";
-import { ParamItem } from "@/app/ops-analysis/types/dataSource";
+import type { ParamItem } from "@/app/ops-analysis/types/dataSource";
 import { createDefaultParam, validateParams } from "./operateModalUtils";
 
 export interface ParamTableRef {

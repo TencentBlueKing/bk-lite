@@ -1,0 +1,11 @@
+{
+  "model_id": "qcloud_cmq",
+  "instance_count_min": 1,
+  "expected_instance_subset": {
+    "inst_name": "cmq-prod-01_topic-abc123def456",
+    "resource_name": "cmq-prod-01",
+    "resource_id": "topic-abc123def456",
+    "region": "ap-shanghai",
+    "status": "RUNNING"
+  }
+}

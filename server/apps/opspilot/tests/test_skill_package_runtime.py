@@ -156,7 +156,16 @@ triggers:
     assert (result.storage_path / "extracted" / "SKILL.md").read_text(encoding="utf-8").startswith("# RCA")
 
 
-def test_skill_package_runtime_selects_relevant_skill_only():
+def test_skill_package_runtime_lists_all_enabled_packages():
+    """所有已启用的技能包都进 prompt,让 LLM 看完整列表后挑相关的用。
+
+    之前 substring match 只显示 match 上的(导致"都展示误区"或"全不展示")。
+    新行为列全部启用 + prompt 写"挑相关用,不要全用上",LLM 看着上下文
+    决定调哪些。
+
+    这里启用了"修复建议"包,虽然用户消息"输出 RCA 复盘"不匹配它的 trigger,
+    但它仍进 prompt 让 LLM 知道有这工具(LLM 自己判断是否调用)。
+    """
     from apps.opspilot.services.skill_package.runtime import append_matching_skill_packages_to_prompt
 
     prompt = append_matching_skill_packages_to_prompt(
@@ -180,9 +189,11 @@ def test_skill_package_runtime_selects_relevant_skill_only():
         available_tool_names={"kubernetes"},
     )
 
+    # 所有已启用的包都进 prompt
     assert "RCA 复盘" in prompt
     assert "输出事件概述" in prompt
-    assert "修复建议" not in prompt
+    assert "修复建议" in prompt
+    assert "只输出修复命令" in prompt
     assert "缺少依赖工具" not in prompt
 
 
@@ -269,7 +280,8 @@ def test_skill_package_runtime_adds_visible_hit_marker():
         available_tool_names={"kubernetes"},
     )
 
-    assert "已命中技能包：Kubernetes Specialist" in prompt
+    # 新文案:"已采用技能包" 替代 "已命中技能包"
+    assert "已采用技能包：Kubernetes Specialist" in prompt
     assert "必须在思考区或最终答复开头写明" in prompt
 
 
@@ -518,3 +530,95 @@ def test_manifest_overlay_tolerates_malformed_skill_md(tmp_path):
     overlay = _manifest_with_storage_overlay(stored)
 
     assert overlay["capabilities"] == ["config_analysis_report"]
+
+
+def test_skill_package_runtime_does_not_match_enabled_package_for_unrelated_message():
+    """无关消息不能把已启用技能包显示为命中。"""
+    from apps.opspilot.services.skill_package.runtime import build_skill_package_prompt
+
+    prompt, matched = build_skill_package_prompt(
+        base_prompt="你是运维助手。",
+        skill_packages=[
+            {
+                "id": "kubernetes-specialist",
+                "name": "Kubernetes Specialist",
+                "description": "K8s 专家",
+                "triggers": ["deployment", "pod"],
+                "skill_markdown": "K8s.",
+            }
+        ],
+        # "今天天气" 跟 k8s 完全无关 — 但启用了的包仍要进 prompt
+        user_message="今天天气怎么样",
+        available_tool_names=set(),
+    )
+
+    assert matched == []
+    # prompt 用"已启用"这个新标签,不用"当前可用"
+    assert "## 已启用的技能包" in prompt
+    assert "## 当前可用技能包" not in prompt
+    assert "Kubernetes Specialist" in prompt
+    # 没有"命中标记"(老 wording 已废弃)
+    assert "命中标记" not in prompt
+
+
+def test_skill_package_runtime_uses_explicit_skill_request_as_strong_match():
+    """用户明确要求使用某技能时,即使任务词弱也应强命中该技能。"""
+    from apps.opspilot.services.skill_package.runtime import build_skill_package_prompt
+
+    prompt, matched = build_skill_package_prompt(
+        base_prompt="你是运维助手。",
+        skill_packages=[
+            {
+                "id": "kubernetes-specialist",
+                "name": "Kubernetes Specialist",
+                "description": "K8s 工具",
+                "triggers": ["kubernetes"],
+                "skill_markdown": "K8s.",
+            },
+            {
+                "id": "markitdown",
+                "name": "Markitdown",
+                "description": "Office 转 markdown",
+                "triggers": ["markdown"],
+                "skill_markdown": "Markitdown.",
+            },
+        ],
+        user_message="使用 Kubernetes Specialist 技能帮我看一下",
+        available_tool_names=set(),
+    )
+
+    assert [p["id"] for p in matched] == ["kubernetes-specialist"]
+    assert "Kubernetes Specialist" in prompt
+    assert "Markitdown" in prompt
+    # 使用规则明确告诉 LLM"挑相关用,不要全用上"
+    assert "挑 1 个或几个最相关的用" in prompt
+    assert "已采用技能包" in prompt
+
+
+def test_skill_package_runtime_matches_kubernetes_semantics_without_explicit_skill_request():
+    """K8s 语义问题即使没写“使用xx技能”,也应自动命中 Kubernetes 技能包。"""
+    from apps.opspilot.services.skill_package.runtime import build_skill_package_prompt
+
+    _, matched = build_skill_package_prompt(
+        base_prompt="你是运维助手。",
+        skill_packages=[
+            {
+                "id": "kubernetes-specialist",
+                "name": "Kubernetes Specialist",
+                "description": "Kubernetes workload troubleshooting",
+                "triggers": ["异常工作负载"],
+                "skill_markdown": "Use Kubernetes troubleshooting workflow.",
+            },
+            {
+                "id": "markitdown",
+                "name": "Markitdown",
+                "description": "Office 转 markdown",
+                "triggers": ["markdown"],
+                "skill_markdown": "Markitdown.",
+            },
+        ],
+        user_message="查看 k8s 集群下所有的工作负载有没有配置问题",
+        available_tool_names=set(),
+    )
+
+    assert [p["id"] for p in matched] == ["kubernetes-specialist"]

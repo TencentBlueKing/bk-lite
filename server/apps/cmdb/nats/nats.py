@@ -1,4 +1,5 @@
 import datetime
+import os
 from functools import reduce
 from operator import or_
 from types import SimpleNamespace
@@ -48,6 +49,12 @@ from apps.system_mgmt.models.role import Role
 from apps.system_mgmt.utils.group_utils import GroupUtils
 
 
+_CHANGE_TREND_MAX_SPAN_SECONDS = {
+    "hour": int(os.getenv("CMDB_CHANGE_TREND_MAX_SPAN_HOUR", str(90 * 24 * 3600))),
+    "day": int(os.getenv("CMDB_CHANGE_TREND_MAX_SPAN_DAY", str(730 * 24 * 3600))),
+    "week": int(os.getenv("CMDB_CHANGE_TREND_MAX_SPAN_WEEK", str(730 * 24 * 3600))),
+    "month": int(os.getenv("CMDB_CHANGE_TREND_MAX_SPAN_MONTH", str(730 * 24 * 3600))),
+}
 def _normalize_to_list(value):
     if value in (None, ""):
         return []
@@ -1113,6 +1120,19 @@ def _generate_time_periods(start_dt, end_dt, group_by, target_tz):
 
 
 @nats_client.register
+def get_room_list(user_info=None, **kwargs):
+    """获取运营分析参数动态选项源用的机房列表。
+
+    返回 CMDB 原始 server_room 字段（_id, inst_name, model_id, organization, ...），
+    不做 _id→id / inst_name→name 等重命名。复用 ``InstanceManage.instance_list``
+    的现成权限过滤自动按当前用户可见范围过滤。
+    """
+    permission_map = _build_nats_permission_map(user_info) or {}
+    items = rack_room.list_server_rooms(permission_map=permission_map, user_info=user_info)
+    return {"items": items}
+
+
+@nats_client.register
 def get_change_trend(time=None, group_by="day", model_id=None, user_info=None, **kwargs):
     """
     获取 CMDB 变更趋势数据
@@ -1137,12 +1157,40 @@ def get_change_trend(time=None, group_by="day", model_id=None, user_info=None, *
     if not time or len(time) != 2:
         return {"result": False, "data": {}, "message": "time parameter is required as [start_time, end_time]"}
 
+    if group_by not in _CHANGE_TREND_MAX_SPAN_SECONDS:
+        return {
+            "result": False,
+            "data": {},
+            "message": "group_by must be one of: hour, day, week, month",
+        }
+
     target_tz = _resolve_target_timezone((user_info or {}).get("timezone") or kwargs.pop("timezone", None))
     start_time, end_time = time
     aware_start = _parse_client_datetime(start_time, target_tz)
     aware_end = _parse_client_datetime(end_time, target_tz)
     local_start = aware_start.astimezone(target_tz)
     local_end = aware_end.astimezone(target_tz)
+
+    if aware_start >= aware_end:
+        return {"result": False, "data": {}, "message": "start_time must be earlier than end_time"}
+
+    span_seconds = (aware_end - aware_start).total_seconds()
+    max_span = _CHANGE_TREND_MAX_SPAN_SECONDS[group_by]
+    if span_seconds > max_span:
+        logger.warning(
+            "get_change_trend range %.0f seconds exceeds %s limit %d seconds",
+            span_seconds,
+            group_by,
+            max_span,
+        )
+        return {
+            "result": False,
+            "data": {},
+            "message": (
+                f"Time range exceeds the maximum limit for {group_by} grouping "
+                f"({max_span} seconds). Use a shorter range or coarser grouping."
+            ),
+        }
 
     trunc_func, _ = _get_trunc_func_and_format(group_by)
     all_periods = _generate_time_periods(local_start, local_end, group_by, target_tz)

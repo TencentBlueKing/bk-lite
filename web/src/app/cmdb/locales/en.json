@@ -153,7 +153,8 @@
         "noRackLayout": "No rack layout data",
         "emptyRoom": "No racks in this room",
         "rackCellConflict": "Multiple racks occupy the same grid cell; check row/col",
-        "rackNoPosition": "Racks without position (row/col missing)",
+        "rackLocationMissing": "Racks without a position",
+        "rackLocationInvalid": "Racks with an invalid position (expected format: A01)",
         "rackUConflict": "Device U positions overlap or overflow; check start U / U size",
         "rackUnplaced": "Devices without U position",
         "viewFullInstance": "View full instance detail",
@@ -946,7 +947,6 @@
         "keyAttribute": "Key Attribute",
         "freshness": "Freshness",
         "notSet": "Not Set",
-        "freshnessTimely": "Needs Timely Update (7 days)",
         "freshnessOccasional": "Infrequent Update (90 days)",
         "freshnessStable": "Stable (Excluded from Evaluation)",
         "selectFreshness": "Select freshness"

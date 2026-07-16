@@ -1,0 +1,5 @@
+{
+  "_placeholder_reason": "k8s 走 VM 路径无 02 stargazer normalized,直接 03 → 04(CollectK8sMetrics.run() 一次性从 VM 拉 4 分组 metric)",
+  "success": true,
+  "result": {}
+}
