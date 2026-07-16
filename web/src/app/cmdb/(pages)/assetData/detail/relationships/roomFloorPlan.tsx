@@ -46,6 +46,12 @@ const RoomFloorPlan: React.FC<Props> = ({ modelId, instId }) => {
   if (!data.racks.length && !data.unplaced.length)
     return <Empty description={t('Model.emptyRoom')} />;
 
+  const missingLocationRacks = data.unplaced.filter(
+    (rack) => rack.unplaced_reason === 'missing_location'
+  );
+  const invalidLocationRacks = data.unplaced.filter(
+    (rack) => rack.unplaced_reason === 'invalid_location'
+  );
   const { cols, rows } = roomGridSize(data);
   const width = PAD + cols * CELL + 16;
   const height = PAD + rows * CELL + 16;
@@ -62,6 +68,19 @@ const RoomFloorPlan: React.FC<Props> = ({ modelId, instId }) => {
 
   return (
     <div className="rf">
+      {data.conflicts.length > 0 && (
+        <Alert style={{ marginBottom: 12 }} type="error" showIcon
+          message={t('Model.rackCellConflict')} />
+      )}
+      {missingLocationRacks.length > 0 && (
+        <Alert style={{ marginBottom: 12 }} type="warning" showIcon
+          message={`${t('Model.rackLocationMissing')}: ${missingLocationRacks.map((rack) => rack.inst_name).join('、')}`} />
+      )}
+      {invalidLocationRacks.length > 0 && (
+        <Alert style={{ marginBottom: 12 }} type="warning" showIcon
+          message={`${t('Model.rackLocationInvalid')}: ${invalidLocationRacks.map((rack) => rack.inst_name).join('、')}`} />
+      )}
+
       <div className="rf-legend">
         <span className="rf-legend-t">{t('Model.legend')}</span>
         {['1', '2', '3', '4', '5', 'other'].map((k) => (
@@ -132,15 +151,6 @@ const RoomFloorPlan: React.FC<Props> = ({ modelId, instId }) => {
           })}
         </div>
       </div>
-
-      {data.conflicts.length > 0 && (
-        <Alert style={{ marginTop: 12 }} type="error" showIcon
-          message={t('Model.rackCellConflict')} />
-      )}
-      {data.unplaced.length > 0 && (
-        <Alert style={{ marginTop: 12 }} type="warning" showIcon
-          message={`${t('Model.rackNoPosition')}: ${data.unplaced.map((u) => u.inst_name).join('、')}`} />
-      )}
 
       {/* 机柜抽屉：正视 U 图 */}
       <Drawer

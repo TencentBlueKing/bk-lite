@@ -346,9 +346,11 @@ def test_tree_node_builder_topology_and_architecture_nodes(authenticated_user):
 def test_canvas_registry_contains_all_first_class_canvas_types():
     from apps.operation_analysis.services.canvas.registry import CANVAS_TYPE_REGISTRY
 
-    assert set(CANVAS_TYPE_REGISTRY.keys()) == {"dashboard", "topology", "architecture", "screen", "report"}
+    assert set(CANVAS_TYPE_REGISTRY.keys()) == {"dashboard", "topology", "architecture", "screen", "report", "networkTopology"}
     assert CANVAS_TYPE_REGISTRY["screen"].permission_key == "directory.screen"
     assert CANVAS_TYPE_REGISTRY["report"].section_name == "reports"
+    assert CANVAS_TYPE_REGISTRY["networkTopology"].model.__name__ == "NetworkTopology"
+    assert CANVAS_TYPE_REGISTRY["networkTopology"].section_name == "network_topologies"
 
 
 def test_all_canvas_serializers_share_canvas_object_base():

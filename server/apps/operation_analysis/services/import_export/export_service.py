@@ -22,7 +22,7 @@ from apps.operation_analysis.constants.import_export import (
     ScopeType,
 )
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, NameSpace
-from apps.operation_analysis.models.models import Architecture, Dashboard, Report, Screen, Topology
+from apps.operation_analysis.models.models import Architecture, Dashboard, NetworkTopology, Report, Screen, Topology
 from apps.operation_analysis.services.import_export.view_sets import (
     normalize_canvas_view_sets_for_storage,
     normalize_canvas_view_sets_for_yaml,
@@ -51,6 +51,7 @@ class ExportService:
         ObjectType.ARCHITECTURE: Architecture,
         ObjectType.SCREEN: Screen,
         ObjectType.REPORT: Report,
+        ObjectType.NETWORK_TOPOLOGY: NetworkTopology,
         ObjectType.DATASOURCE: DataSourceAPIModel,
         ObjectType.NAMESPACE: NameSpace,
     }
@@ -191,7 +192,6 @@ class ExportService:
             "key": ExportService.generate_business_key(canvas, object_type),
             "name": canvas.name,
             "desc": canvas.desc or "",
-            "other": canvas.other or {},
             "view_sets": view_sets,
             "refs": {
                 "datasource_keys": datasource_keys,
@@ -199,11 +199,18 @@ class ExportService:
             },
         }
 
+        if hasattr(canvas, "other"):
+            base_data["other"] = canvas.other or {}
+
         # Dashboard有额外的filters字段
         if object_type == ObjectType.DASHBOARD and hasattr(canvas, "filters"):
             base_data["filters"] = canvas.filters or []
 
-        return base_data
+        if object_type == ObjectType.NETWORK_TOPOLOGY:
+            base_data["base_url"] = canvas.base_url
+            base_data["token"] = canvas.token
+
+        return ExportService.mask_sensitive_fields(base_data)
 
     @classmethod
     def _collect_canvas_dependencies(cls, object_type: str, object_ids: list[int]) -> tuple[set, set]:
