@@ -107,7 +107,6 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
         { label: t("dataSource.filterTypes.filter"), value: "filter" },
         { label: t("dataSource.filterTypes.fixed"), value: "fixed" },
         { label: t("dataSource.filterTypes.params"), value: "params" },
-        { label: t("dataSource.filterTypes.widget"), value: "widget" },
       ];
 
     const applyValidation = (nextParams: ParamItem[]) => {

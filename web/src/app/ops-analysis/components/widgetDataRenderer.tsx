@@ -10,7 +10,6 @@ import { Spin } from "antd";
 import { useTranslation } from "@/utils/i18n";
 import {
   FilterValue,
-  RuntimeParamValue,
   ScreenRenderContext,
   UnifiedFilterDefinition,
   ValueConfig,
@@ -26,10 +25,12 @@ import {
   shouldShowInitialWidgetLoading,
 } from "@/app/ops-analysis/utils/widgetDataTransform";
 import {
-  buildWidgetRuntimeParams,
-  resolveRuntimeParamInitialValue,
-  resolveWidgetRuntimeAuthorizationParams,
-} from "@/app/ops-analysis/utils/runtimeParamControl";
+  findComponentSwitchParams,
+  getTypedValueKey,
+  reconcileComponentSwitchValue,
+  resolveComponentSwitchRuntime,
+} from "@/app/ops-analysis/utils/componentParamSwitch";
+import { useParamInputOptions } from "@/app/ops-analysis/hooks/useParamInputOptions";
 import { fetchCompareData } from "@/app/ops-analysis/utils/compareQuery";
 import { useDataSourceApi } from "@/app/ops-analysis/api/dataSource";
 import { ChartDataTransformer } from "@/app/ops-analysis/utils/chartDataTransform";
@@ -48,7 +49,7 @@ import {
 import WidgetRenderer from "@/app/ops-analysis/components/widgetRenderer";
 import WidgetErrorState from "@/app/ops-analysis/components/widgetErrorState";
 import { useWidgetHeaderRuntimeSlot } from "@/app/ops-analysis/components/widgetHeaderRuntimeSlot";
-import RuntimeParamSegmented from "@/app/ops-analysis/components/widgets/runtimeParamSegmented";
+import ComponentParamSwitchControl from "@/app/ops-analysis/components/componentParamSwitchControl";
 
 const validateTopNData = (
   data: unknown,
@@ -258,34 +259,60 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   );
   const { getSourceDataByApiId } = useDataSourceApi();
   const isSceneWidget = config?.sceneWidgetType === "networkStatusTopology";
-  const runtimeAuthorizationParams = useMemo(
-    () => resolveWidgetRuntimeAuthorizationParams(dataSource?.params),
-    [dataSource?.params],
+  const effectiveComponentParams = useMemo(() => {
+    const overrides = config?.dataSourceParams || [];
+    if (!dataSource?.params?.length) return overrides;
+    return dataSource.params.map((param) => {
+      const override = overrides.find((item) => item.name === param.name);
+      return override ? { ...param, ...override } : param;
+    });
+  }, [config?.dataSourceParams, dataSource?.params]);
+  const componentSwitchParam = useMemo(
+    () => chartType === "topN" ? findComponentSwitchParams(effectiveComponentParams)[0] : undefined,
+    [chartType, effectiveComponentParams],
   );
+  const optionState = useParamInputOptions(componentSwitchParam?.inputConfig);
+  const rawSavedComponentSwitchValue = componentSwitchParam
+    ? config?.params?.[componentSwitchParam.name] ?? componentSwitchParam.value
+    : undefined;
+  const savedComponentSwitchValue =
+    typeof rawSavedComponentSwitchValue === "string" || typeof rawSavedComponentSwitchValue === "number"
+      ? rawSavedComponentSwitchValue
+      : undefined;
   const runtimeParamScopeKey = useMemo(
     () =>
       JSON.stringify({
+        chartType,
         dataSource: config?.dataSource,
-        control: config?.runtimeParamControl,
-        sourceParams: runtimeAuthorizationParams,
+        param: componentSwitchParam?.name,
+        inputConfig: componentSwitchParam?.inputConfig,
+        savedValue:
+          typeof savedComponentSwitchValue === "string" || typeof savedComponentSwitchValue === "number"
+            ? getTypedValueKey(savedComponentSwitchValue)
+            : null,
       }),
     [
+      chartType,
       config?.dataSource,
-      config?.runtimeParamControl,
-      runtimeAuthorizationParams,
+      componentSwitchParam?.inputConfig,
+      componentSwitchParam?.name,
+      savedComponentSwitchValue,
     ],
   );
   const runtimeParamInitialValue = useMemo(
-    () =>
-      resolveRuntimeParamInitialValue(
-        config?.runtimeParamControl,
-        runtimeAuthorizationParams,
-      ),
-    [config?.runtimeParamControl, runtimeAuthorizationParams],
+    () => {
+      const reconciled = optionState.status === "success"
+        ? reconcileComponentSwitchValue(savedComponentSwitchValue, optionState.options)
+        : savedComponentSwitchValue;
+      return typeof reconciled === "string" || typeof reconciled === "number"
+        ? reconciled
+        : undefined;
+    },
+    [optionState, savedComponentSwitchValue],
   );
   const [runtimeParamState, setRuntimeParamState] = useState<{
     scopeKey: string;
-    value?: RuntimeParamValue;
+    value?: string | number;
   }>(() => ({
     scopeKey: runtimeParamScopeKey,
     value: runtimeParamInitialValue,
@@ -306,20 +333,44 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     );
   }, [runtimeParamInitialValue, runtimeParamScopeKey]);
 
+  useEffect(() => {
+    if (optionState.status !== "success") return;
+    setRuntimeParamState((previous) => {
+      if (previous.scopeKey !== runtimeParamScopeKey) {
+        return { scopeKey: runtimeParamScopeKey, value: runtimeParamInitialValue };
+      }
+      const reconciled = reconcileComponentSwitchValue(
+        previous.value,
+        optionState.options,
+      );
+      if (typeof reconciled !== "string" && typeof reconciled !== "number") {
+        return previous;
+      }
+      return reconciled === previous.value
+        ? previous
+        : { ...previous, value: reconciled };
+    });
+  }, [optionState, runtimeParamInitialValue, runtimeParamScopeKey]);
+
   const handleRuntimeParamChange = useCallback(
-    (value: RuntimeParamValue) => {
+    (value: string | number) => {
       setRuntimeParamState({ scopeKey: runtimeParamScopeKey, value });
     },
     [runtimeParamScopeKey],
   );
+  const componentSwitchControl = optionState.status === "success" ? (
+    <ComponentParamSwitchControl
+      inputConfig={componentSwitchParam?.inputConfig}
+      options={optionState.options}
+      value={runtimeParamValue as string | number | undefined}
+      onChange={handleRuntimeParamChange}
+      block={!headerRuntimeSlot}
+    />
+  ) : null;
   const runtimeHeaderControl =
-    chartType === "topN" && headerRuntimeSlot
+    chartType === "topN" && headerRuntimeSlot && componentSwitchControl
       ? createPortal(
-        <RuntimeParamSegmented
-          control={config?.runtimeParamControl}
-          value={runtimeParamValue}
-          onChange={handleRuntimeParamChange}
-        />,
+        componentSwitchControl,
         headerRuntimeSlot,
       )
       : null;
@@ -354,18 +405,18 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     dataSource?.hasAuth !== false &&
     (!widgetUsesNamespace || effectiveNamespaceId !== undefined);
   const runtimeParams = useMemo(
-    () =>
-      chartType === "topN"
-        ? buildWidgetRuntimeParams(
-          config?.runtimeParamControl,
-          runtimeParamValue,
-          runtimeAuthorizationParams,
-        )
-        : {},
+    () => optionState.status === "success"
+      ? resolveComponentSwitchRuntime(
+        chartType,
+        componentSwitchParam,
+        optionState.options,
+        runtimeParamValue,
+      ).params
+      : {},
     [
       chartType,
-      config?.runtimeParamControl,
-      runtimeAuthorizationParams,
+      componentSwitchParam,
+      optionState,
       runtimeParamValue,
     ],
   );
@@ -827,9 +878,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
           screenRenderContext={screenRenderContext}
           onReady={onReady}
           onQueryChange={isTableLikeChart ? handleTableQueryChange : undefined}
-          runtimeParamValue={runtimeParamValue}
-          onRuntimeParamChange={handleRuntimeParamChange}
-          runtimeParamControlPlacement={headerRuntimeSlot ? "header" : "inline"}
+          componentSwitchControl={headerRuntimeSlot ? null : componentSwitchControl}
           errorMessage={
             hasActiveRuntimeControl && dataValidation && !dataValidation.isValid
               ? dataValidation.message || t("dashboard.dataCannotRenderAsChart")

@@ -6,7 +6,7 @@ import ComLine from './comLine';
 import ComBar from './comBar';
 import ComTable from './comTable';
 import ComTopN from './comTopN';
-import RuntimeParamSegmented from './runtimeParamSegmented';
+import ComponentParamSwitchControl from '../componentParamSwitchControl';
 import { ValueMappingsConfigSection } from '@/app/ops-analysis/components/valueMappingsConfigSection';
 import type { ValueMapping } from '@/app/ops-analysis/utils/valueMapping';
 import { useTranslation } from '@/utils/i18n';
@@ -91,18 +91,25 @@ const TopNRuntimeDimensionPreview: React.FC<{
   const [runtimeParamValue, setRuntimeParamValue] = React.useState<
     string | number
   >('instance_type');
-  const runtimeParamControl = {
-    paramName: 'group_by',
-    controlType: 'segmented' as const,
-    defaultValue: 'instance_type',
-    options: [
-      { label: '对象类型', value: 'instance_type' },
-      {
-        label: '使用部门（跨区域成本归属管理部门）',
-        value: 'department',
-      },
-      { label: '申请人', value: 'user' },
-    ],
+  const options = [
+    { label: '对象类型', value: 'instance_type' },
+    {
+      label: '使用部门（跨区域成本归属管理部门）',
+      value: 'department',
+    },
+    { label: '申请人', value: 'user' },
+  ];
+  const switchParam = {
+    name: 'group_by',
+    alias_name: 'group_by',
+    type: 'string',
+    filterType: 'params' as const,
+    value: 'instance_type',
+    inputConfig: {
+      control: 'radio' as const,
+      componentSwitch: true,
+      optionsSource: { type: 'static' as const, staticItems: options },
+    },
   };
   const rawData = [
     { key: 'ECS 云服务器', total_cost: 12680.5 },
@@ -114,7 +121,8 @@ const TopNRuntimeDimensionPreview: React.FC<{
     chartThemeMode,
     topNLabelField: 'key',
     topNValueField: 'total_cost',
-    runtimeParamControl,
+    params: { group_by: runtimeParamValue },
+    dataSourceParams: [switchParam],
   };
 
   return (
@@ -131,8 +139,9 @@ const TopNRuntimeDimensionPreview: React.FC<{
             </h4>
           </div>
           <div className="ml-auto max-w-[70%] shrink-0 overflow-x-auto">
-            <RuntimeParamSegmented
-              control={runtimeParamControl}
+            <ComponentParamSwitchControl
+              inputConfig={switchParam.inputConfig}
+              options={options}
               value={runtimeParamValue}
               onChange={setRuntimeParamValue}
             />
@@ -142,9 +151,6 @@ const TopNRuntimeDimensionPreview: React.FC<{
           <ComTopN
             rawData={rawData}
             loading={false}
-            runtimeParamValue={runtimeParamValue}
-            onRuntimeParamChange={setRuntimeParamValue}
-            runtimeParamControlPlacement="header"
             dataSource={{
               field_schema: [
                 { key: 'key', title: '排行主体', value_type: 'string' },

@@ -5,7 +5,6 @@ import type {
   UnifiedFilterDefinition,
   TableConfig,
   FilterBindings,
-  RuntimeParamControl,
 } from './dashBoard';
 import type { Graph as X6Graph, Cell, Node, Edge } from '@antv/x6';
 import type { Attr } from '@antv/x6/es/registry/attr';
@@ -331,7 +330,6 @@ export interface ViewConfigFormValues {
   selectedFields?: string[];
   topNLabelField?: string;
   topNValueField?: string;
-  runtimeParamControl?: RuntimeParamControl;
   unit?: string;
   conversionFactor?: number;
   decimalPlaces?: number;
@@ -360,7 +358,6 @@ export interface NodeConfigFormValues {
   builtinNamespaceId?: number;
   topNLabelField?: string;
   topNValueField?: string;
-  runtimeParamControl?: RuntimeParamControl;
   width?: number;
   height?: number;
   backgroundColor?: string;

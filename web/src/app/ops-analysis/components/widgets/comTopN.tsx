@@ -7,7 +7,6 @@ import {
 } from '@/app/ops-analysis/utils/chartTheme';
 import {
   ScreenRenderContext,
-  RuntimeParamValue,
   ValueConfig,
 } from '@/app/ops-analysis/types/dashBoard';
 import type {
@@ -19,13 +18,7 @@ import {
   getScreenWidgetScale,
   scaleScreenMetric,
 } from './shared/screenMetrics';
-import {
-  getRuntimeParamSegmentedOptions,
-  hasRuntimeParamSegmentedValue,
-  isTopNContentReady,
-  resolveTopNContentState,
-} from '@/app/ops-analysis/utils/runtimeParamControl';
-import RuntimeParamSegmented from './runtimeParamSegmented';
+import { isTopNContentReady, resolveTopNContentState } from '@/app/ops-analysis/utils/topNContentState';
 
 interface TopNProps {
   rawData: any;
@@ -34,9 +27,7 @@ interface TopNProps {
   dataSource?: DatasourceItem;
   screenRenderContext?: ScreenRenderContext;
   onReady?: (ready: boolean) => void;
-  runtimeParamValue?: RuntimeParamValue;
-  onRuntimeParamChange?: (value: RuntimeParamValue) => void;
-  runtimeParamControlPlacement?: 'header' | 'inline';
+  componentSwitchControl?: React.ReactNode;
   errorMessage?: string;
 }
 
@@ -85,9 +76,7 @@ const TopN: React.FC<TopNProps> = ({
   dataSource,
   screenRenderContext,
   onReady,
-  runtimeParamValue,
-  onRuntimeParamChange,
-  runtimeParamControlPlacement = 'inline',
+  componentSwitchControl,
   errorMessage,
 }) => {
   const themeName = resolveOpsChartThemeName();
@@ -170,15 +159,6 @@ const TopN: React.FC<TopNProps> = ({
   const maxValue =
     items.length > 0 ? Math.max(...items.map((i) => i.value)) : 0;
   const isDataReady = items.length > 0;
-  const segmentedOptions = getRuntimeParamSegmentedOptions(
-    config?.runtimeParamControl,
-  );
-  const showRuntimeParamControl =
-    segmentedOptions.length > 0 &&
-    hasRuntimeParamSegmentedValue(
-      config?.runtimeParamControl,
-      runtimeParamValue,
-    );
   const contentState = resolveTopNContentState({
     loading,
     errorMessage,
@@ -329,14 +309,9 @@ const TopN: React.FC<TopNProps> = ({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {runtimeParamControlPlacement !== 'header' && showRuntimeParamControl ? (
+      {componentSwitchControl ? (
         <div className="shrink-0 overflow-x-auto px-3 pt-2">
-          <RuntimeParamSegmented
-            block
-            control={config?.runtimeParamControl}
-            value={runtimeParamValue}
-            onChange={onRuntimeParamChange}
-          />
+          {componentSwitchControl}
         </div>
       ) : null}
       <div className="min-h-0 flex-1">{content}</div>

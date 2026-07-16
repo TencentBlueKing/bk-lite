@@ -88,20 +88,6 @@ export interface TableConfig {
   columns?: TableColumnConfigItem[];
 }
 
-export type RuntimeParamValue = string | number;
-
-export interface RuntimeParamOption {
-  label: string;
-  value: RuntimeParamValue;
-}
-
-export interface RuntimeParamControl {
-  paramName: string;
-  controlType: 'segmented';
-  defaultValue: RuntimeParamValue;
-  options: RuntimeParamOption[];
-}
-
 import { ThresholdColorConfig } from '@/app/ops-analysis/utils/thresholdUtils';
 
 export interface ValueConfig {
@@ -118,7 +104,6 @@ export interface ValueConfig {
   selectedFields?: string[];
   topNLabelField?: string;
   topNValueField?: string;
-  runtimeParamControl?: RuntimeParamControl;
   unit?: string;
   /** 结构化单位 id（bytesIEC/bps/ms/percent/short…）。设置后启用单位库自动量纲；
    *  未设置时回退到自由文本 unit（向后兼容）。 */

@@ -143,7 +143,7 @@ def test_init_source_api_data_creates_cloud_cost_distribution_contract(settings)
         "type": "string",
         "value": "instance_type",
         "alias_name": "排行主体",
-        "filterType": "widget",
+        "filterType": "params",
     }
     assert "options" not in params["group_by"]
     assert fields["key"]["value_type"] == "string"
@@ -240,7 +240,7 @@ def test_cloud_cost_distribution_migration_updates_existing_group_by_and_is_idem
             "type": "string",
             "value": "instance_type",
             "alias_name": "排行主体",
-            "filterType": "widget",
+            "filterType": "params",
             "legacy_note": "保留",
         },
     ]
@@ -274,7 +274,7 @@ def test_cloud_cost_distribution_migration_appends_missing_group_by_and_preserve
             "alias_name": "排行主体",
             "type": "string",
             "value": "instance_type",
-            "filterType": "widget",
+            "filterType": "params",
         },
     ]
     assert target.field_schema == migration._DISTRIBUTION_FIELD_SCHEMA

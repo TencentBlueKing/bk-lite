@@ -466,7 +466,7 @@
       {"name": "applying_user", "type": "string", "value": "", "alias_name": "申请人", "filterType": "filter"},
       {"name": "inst_type", "type": "string", "value": "", "alias_name": "对象类型", "filterType": "filter"},
       {"name": "billing_period", "type": "timeRange", "value": "", "alias_name": "计费日期", "filterType": "filter"},
-      {"name": "group_by", "type": "string", "value": "instance_type", "alias_name": "排行主体", "filterType": "widget"}
+      {"name": "group_by", "type": "string", "value": "instance_type", "alias_name": "排行主体", "filterType": "params"}
     ],
     "field_schema": [
         {"key": "key", "title": "分组值", "value_type": "string", "description": "group_by 对应字段的取值(对象类型/部门/申请人)"},

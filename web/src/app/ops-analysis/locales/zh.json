@@ -237,8 +237,7 @@
     "filterTypes": {
       "fixed": "固定",
       "params": "参数",
-      "filter": "筛选",
-      "widget": "组件内交互"
+      "filter": "筛选"
     },
     "paramType": "参数类型",
     "introTitle": "数据源",
@@ -347,18 +346,9 @@
   "dashboard": {
     "endTime": "结束时间",
     "duplicateFieldKey": "字段 key 不能重复",
-    "runtimeParamControl": "组件内切换",
-    "runtimeParamControlEnabled": "启用切换",
-    "runtimeParamName": "绑定参数",
-    "runtimeParamOptions": "切换选项",
-    "runtimeParamOptionLabel": "显示名称",
-    "runtimeParamOptionValue": "参数值",
-    "runtimeParamDefault": "默认项",
-    "runtimeParamAddOption": "添加选项",
-    "runtimeParamOptionMoveUp": "上移选项",
-    "runtimeParamOptionMoveDown": "下移选项",
-    "runtimeParamOptionDelete": "删除选项",
-    "runtimeParamControlInvalid": "请完整配置组件内切换参数、选项和默认项",
+    "componentSwitch": "组件内切换",
+    "componentSwitchOccupied": "参数「{label}」已启用组件内切换，每个组件最多只能配置一个",
+    "multipleComponentSwitchParams": "每个组件最多只能配置一个组件内切换参数",
     "selectDashboardFirst": "请先选择一个仪表盘",
     "fetchDataFieldsFailed": "获取数据字段失败",
     "timeRange": "时间范围",
