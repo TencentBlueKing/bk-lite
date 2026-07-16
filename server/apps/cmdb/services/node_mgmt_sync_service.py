@@ -6,17 +6,15 @@ from typing import Any
 
 from django.db import transaction
 from django.utils import timezone
-from django.utils.timezone import localtime
-from django.utils.timezone import now
+from django.utils.timezone import localtime, now
 
 from apps.cmdb.constants.constants import CollectRunStatusType
 from apps.cmdb.models import NodeMgmtSyncConfig, NodeMgmtSyncRun
 from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.model import ModelManage
-from apps.core.utils.celery_utils import CeleryUtils
-from apps.rpc.node_mgmt import NodeMgmt
 from apps.core.logger import cmdb_logger as logger
+from apps.rpc.node_mgmt import NodeMgmt
 
 
 def _get_positive_int_env(name, default):
@@ -251,11 +249,14 @@ class NodeMgmtSyncService:
             task.collect_interval_minutes = int(data.get("collect_interval_minutes", task.collect_interval_minutes))
             task.name = cls.TASK_NAME
             task.is_builtin = True
+            task.version += 1
             task.save()
-            cls.sync_periodic_tasks(task)
 
-            if old_auto_collect_enabled != task.auto_collect_enabled:
-                cls._sync_collect_node_configs(enabled=task.auto_collect_enabled)
+        from apps.cmdb.services.node_mgmt_sync_reconciler import NodeMgmtSyncReconciler
+
+        NodeMgmtSyncReconciler.reconcile(
+            task, reconcile_node_configs=old_auto_collect_enabled != task.auto_collect_enabled,
+        )
 
         return task
 
@@ -265,23 +266,19 @@ class NodeMgmtSyncService:
 
     @classmethod
     def sync_periodic_tasks(cls, task: NodeMgmtSyncConfig) -> None:
-        if task.auto_sync_enabled:
-            CeleryUtils.create_or_update_periodic_task(
-                name=cls.SYNC_PERIODIC_TASK_NAME,
-                crontab=cls._build_cycle(task.sync_interval_minutes),
-                task=cls.SYNC_TASK,
-            )
-        else:
-            CeleryUtils.delete_periodic_task(cls.SYNC_PERIODIC_TASK_NAME)
+        from apps.cmdb.services.node_mgmt_sync_reconciler import NodeMgmtSyncReconciler
 
-        if task.auto_collect_enabled:
-            CeleryUtils.create_or_update_periodic_task(
-                name=cls.COLLECT_PERIODIC_TASK_NAME,
-                crontab=cls._build_cycle(task.collect_interval_minutes),
-                task=cls.COLLECT_TASK,
-            )
-        else:
-            CeleryUtils.delete_periodic_task(cls.COLLECT_PERIODIC_TASK_NAME)
+        NodeMgmtSyncReconciler.reconcile(task)
+
+    @classmethod
+    def get_task_payload(cls, *, reconcile: bool = True) -> dict[str, Any]:
+        task = cls.get_task()
+        if reconcile:
+            from apps.cmdb.services.node_mgmt_sync_reconciler import NodeMgmtSyncReconciler
+
+            NodeMgmtSyncReconciler.reconcile(task)
+            task.refresh_from_db()
+        return cls.serialize_task(task)
 
     @staticmethod
     def _serialize_dt(value):
@@ -302,6 +299,12 @@ class NodeMgmtSyncService:
             "auto_collect_enabled": task.auto_collect_enabled,
             "sync_interval_minutes": task.sync_interval_minutes,
             "collect_interval_minutes": task.collect_interval_minutes,
+            "version": task.version,
+            "schedule_status": task.schedule_status,
+            "node_config_status": task.node_config_status,
+            "last_reconciled_at": cls._serialize_dt(task.last_reconciled_at),
+            "reconcile_error_code": task.reconcile_error_code,
+            "reconcile_error_message": task.reconcile_error_message,
             "last_sync_at": cls._serialize_dt(task.last_sync_at),
             "last_collect_at": cls._serialize_dt(task.last_collect_at),
         }
