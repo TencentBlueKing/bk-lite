@@ -237,8 +237,24 @@ class NodeMgmtSyncService:
             else:
                 CollectModelService.delete_butch_node_params(collect_task)
 
+    @staticmethod
+    def _validate_task_update(data: dict[str, Any]) -> dict[str, Any]:
+        validated = dict(data)
+        for field in ("sync_interval_minutes", "collect_interval_minutes"):
+            if field not in validated:
+                continue
+            try:
+                value = int(validated[field])
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"{field} 必须在 1 到 1440 分钟之间") from exc
+            if not 1 <= value <= 1440:
+                raise ValueError(f"{field} 必须在 1 到 1440 分钟之间")
+            validated[field] = value
+        return validated
+
     @classmethod
     def update_task(cls, data: dict[str, Any]) -> NodeMgmtSyncConfig:
+        data = cls._validate_task_update(data)
         task = cls.get_task()
         old_auto_collect_enabled = task.auto_collect_enabled
 
@@ -247,6 +263,8 @@ class NodeMgmtSyncService:
             task.auto_collect_enabled = bool(data.get("auto_collect_enabled", task.auto_collect_enabled))
             task.sync_interval_minutes = int(data.get("sync_interval_minutes", task.sync_interval_minutes))
             task.collect_interval_minutes = int(data.get("collect_interval_minutes", task.collect_interval_minutes))
+            if task.auto_collect_enabled and not task.auto_sync_enabled:
+                task.node_config_status = "waiting_sync"
             task.name = cls.TASK_NAME
             task.is_builtin = True
             task.version += 1
@@ -255,7 +273,7 @@ class NodeMgmtSyncService:
         from apps.cmdb.services.node_mgmt_sync_reconciler import NodeMgmtSyncReconciler
 
         NodeMgmtSyncReconciler.reconcile(
-            task, reconcile_node_configs=old_auto_collect_enabled != task.auto_collect_enabled,
+            task, reconcile_node_configs=task.auto_sync_enabled and old_auto_collect_enabled != task.auto_collect_enabled,
         )
 
         return task
@@ -291,6 +309,13 @@ class NodeMgmtSyncService:
     @classmethod
     def serialize_task(cls, task: NodeMgmtSyncConfig | None = None) -> dict[str, Any]:
         task = task or cls.get_task()
+        health = {
+            "schedule_status": task.schedule_status,
+            "node_config_status": task.node_config_status,
+            "last_reconciled_at": cls._serialize_dt(task.last_reconciled_at),
+            "reason_code": task.reconcile_error_code,
+            "message": task.reconcile_error_message,
+        }
         return {
             "id": task.id,
             "name": task.name,
@@ -305,6 +330,7 @@ class NodeMgmtSyncService:
             "last_reconciled_at": cls._serialize_dt(task.last_reconciled_at),
             "reconcile_error_code": task.reconcile_error_code,
             "reconcile_error_message": task.reconcile_error_message,
+            "health": health,
             "last_sync_at": cls._serialize_dt(task.last_sync_at),
             "last_collect_at": cls._serialize_dt(task.last_collect_at),
         }
