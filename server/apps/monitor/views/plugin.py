@@ -12,6 +12,7 @@ from apps.monitor.models import MonitorPlugin, MonitorPluginUITemplate
 from apps.monitor.serializers.plugin import MonitorPluginSerializer
 from apps.monitor.services.custom_snmp_plugin import CustomSnmpPluginService
 from apps.monitor.services.plugin import MonitorPluginService
+from apps.monitor.services.plugin_guide import PluginGuideService
 from apps.monitor.services.template_access_guide import TemplateAccessGuideService
 from config.drf.pagination import CustomPageNumberPagination
 
@@ -96,6 +97,14 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
             organization_id=organization_id,
             cloud_region_id=cloud_region_id,
         )
+        return WebUtils.response_success(data)
+
+    @action(methods=["get"], detail=True, url_path="guide")
+    def get_plugin_guide(self, request, pk=None):
+        """返回插件目录 Markdown 指引；无文档时 has_guide=false。"""
+        plugin = self.get_object()
+        locale = getattr(request.user, "locale", None) or request.query_params.get("locale")
+        data = PluginGuideService.get_guide(plugin, locale=locale)
         return WebUtils.response_success(data)
 
     @action(methods=["post"], detail=False, url_path="import")

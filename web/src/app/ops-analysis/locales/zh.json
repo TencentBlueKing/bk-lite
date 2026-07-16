@@ -662,5 +662,40 @@
     "stepUpload": "上传文件",
     "stepPrecheck": "预检冲突",
     "stepResult": "完成导入"
+  },
+  "paramInput": {
+    "title": "参数输入配置",
+    "controlType": "控件类型",
+    "control": {
+      "input": "输入框",
+      "select": "下拉选择",
+      "radio": "单选按钮"
+    },
+    "sourceType": "选项来源",
+    "source": {
+      "static": "自定义选项",
+      "dynamic": "数据源选项"
+    },
+    "editButton": "配置输入方式",
+    "static": {
+      "options": "选项配置",
+      "label": "显示文本",
+      "value": "选项值",
+      "add": "新增选项",
+      "emptyError": "请至少填写一个完整选项",
+      "duplicateValueError": "选项值不能重复"
+    },
+    "dynamic": {
+      "source": "数据源",
+      "sourcePlaceholder": "请选择数据源",
+      "valueField": "值字段",
+      "labelField": "展示字段",
+      "valueFieldPlaceholder": "请选择值字段",
+      "labelFieldPlaceholder": "请选择展示字段",
+      "preview": "预览",
+      "loadDataSourceFailed": "数据源列表加载失败",
+      "testFailed": "选项源不可用",
+      "incomplete": "请选择数据源、value 字段和 label 字段"
+    }
   }
 }

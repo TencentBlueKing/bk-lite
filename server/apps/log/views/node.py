@@ -1,9 +1,10 @@
 from rest_framework.decorators import action
 from rest_framework.viewsets import ViewSet
 
-from apps.core.utils.web_utils import WebUtils
-from apps.rpc.node_mgmt import NodeMgmt
 from apps.core.utils.team_utils import get_current_team
+from apps.core.utils.web_utils import WebUtils
+from apps.log.services.cloud_region_receiver import CloudRegionReceiverService
+from apps.rpc.node_mgmt import NodeMgmt
 
 
 class NodeViewSet(ViewSet):
@@ -34,6 +35,6 @@ class NodeViewSet(ViewSet):
     @action(methods=["post"], detail=False, url_path="cloud_region_proxy_address")
     def get_cloud_region_proxy_address(self, request):
         cloud_region_id = request.data.get("cloud_region_id")
-        organization_ids = [] if request.user.is_superuser else [i["id"] for i in request.user.group_list]
-        proxy_address = NodeMgmt().get_cloud_region_proxy_address(cloud_region_id, organization_ids)
+        organization_ids = None if request.user.is_superuser else [i["id"] for i in request.user.group_list]
+        proxy_address = CloudRegionReceiverService.resolve(NodeMgmt(), cloud_region_id, organization_ids)
         return WebUtils.response_success({"proxy_address": proxy_address or ""})

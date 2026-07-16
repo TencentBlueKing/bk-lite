@@ -5,6 +5,7 @@ from apps.core.utils.permission_cache import clear_user_permission_cache
 
 
 class User(models.Model):
+    user_id = models.CharField(max_length=36, null=True, blank=True, db_index=True, default=None)
     username = models.CharField(max_length=100)
     display_name = models.CharField(max_length=100)
     email = models.EmailField()
@@ -47,6 +48,7 @@ class User(models.Model):
     def display_fields():
         return [
             "id",
+            "user_id",
             "username",
             "display_name",
             "email",

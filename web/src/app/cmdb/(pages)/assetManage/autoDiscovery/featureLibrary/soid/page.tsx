@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import styles from './index.module.scss';
 import OperateOid from './components/operateOid';
 import CustomTable from '@/components/custom-table';
@@ -36,7 +36,7 @@ const OidLibrary: React.FC = () => {
     pageSize: 20,
   });
 
-  const deviceTypeList = getNetworkDeviceOptions(t);
+  const deviceTypeList = useMemo(() => getNetworkDeviceOptions(t), [t]);
   const [deviceType, setDeviceType] = useState<string[]>([]);
   const [tableLoading, setTableLoading] = useState<boolean>(false);
   const [operateVisible, setOperateVisible] = useState<boolean>(false);
@@ -353,7 +353,7 @@ const OidLibrary: React.FC = () => {
         dataSource={dataList}
         pagination={pagination}
         onChange={handleTableChange}
-        scroll={{ y: 'calc(100vh - 450px)' }}
+        scroll={{ y: 'calc(100vh - 370px)' }}
       />
       <OperateOid
         visible={operateVisible}
