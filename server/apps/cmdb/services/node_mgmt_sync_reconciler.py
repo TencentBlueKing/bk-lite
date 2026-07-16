@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from django.utils import timezone
 from django_celery_beat.models import PeriodicTask
 
+from apps.cmdb.models.node_mgmt_sync import NodeMgmtSyncRegionState
 from apps.core.logger import cmdb_logger as logger
 from apps.core.utils.celery_utils import CeleryUtils
 
@@ -36,15 +37,128 @@ class NodeMgmtSyncReconciler:
                 interval=config.collect_interval_minutes,
             )
             node_status = config.node_config_status or "unknown"
+            node_error_code = ""
+            node_error_message = ""
             if reconcile_node_configs:
-                NodeMgmtSyncService._sync_collect_node_configs(enabled=config.auto_collect_enabled)
-                node_status = "healthy"
-            result = NodeMgmtSyncReconcileResult("healthy", node_status)
+                node_status, node_error_code, node_error_message = cls._reconcile_node_configs(config, service=NodeMgmtSyncService,)
+            result = NodeMgmtSyncReconcileResult("healthy", node_status, node_error_code, node_error_message,)
         except Exception as exc:
             logger.error("节点管理同步对账失败: %s", type(exc).__name__)
             result = NodeMgmtSyncReconcileResult("degraded", "degraded", "RECONCILE_FAILED", f"{type(exc).__name__}: 节点管理同步对账失败",)
         cls._persist_health(config, result)
         return result
+
+    @classmethod
+    def _reconcile_node_configs(cls, config, *, service):
+        if config.auto_collect_enabled and not config.auto_sync_enabled:
+            return "waiting_sync", "", ""
+
+        from apps.cmdb.services.collect_service import CollectModelService
+
+        collect_tasks = service._list_region_collect_tasks()
+        if not collect_tasks:
+            return "unknown", "", ""
+
+        has_failure = False
+        valid_region_count = 0
+        for collect_task in collect_tasks:
+            cloud_region_id = cls._parse_cloud_region_id(collect_task.system_code, prefix=service.SYSTEM_TASK_PREFIX,)
+            if cloud_region_id is None:
+                has_failure = True
+                logger.error("节点采集参数对账跳过无效区域编码")
+                continue
+
+            valid_region_count += 1
+            state_defaults = {
+                "config": config,
+                "config_version": config.version,
+                "cloud_region_id": cloud_region_id,
+                "collect_task": collect_task,
+            }
+            state, _ = NodeMgmtSyncRegionState.objects.update_or_create(
+                scope_key=f"config:{config.version}:region:{cloud_region_id}", defaults=state_defaults,
+            )
+            if not CollectModelService.should_sync_node_params(collect_task):
+                state.node_config_status = "disabled"
+                state.reason_code = ""
+                state.error_message = ""
+                state.save(
+                    update_fields=["node_config_status", "reason_code", "error_message", "updated_at",]
+                )
+                continue
+
+            if state.node_config_status != "push_pending":
+                state.node_config_status = "delete_pending"
+                state.reason_code = ""
+                state.error_message = ""
+                state.save(
+                    update_fields=["node_config_status", "reason_code", "error_message", "updated_at",]
+                )
+                try:
+                    CollectModelService.delete_butch_node_params(collect_task)
+                except Exception as exc:
+                    has_failure = True
+                    cls._persist_node_config_failure(
+                        state, stage="delete", exc=exc,
+                    )
+                    continue
+
+                if not config.auto_collect_enabled:
+                    state.node_config_status = "disabled"
+                    state.save(update_fields=["node_config_status", "updated_at"])
+                    continue
+
+                state.node_config_status = "push_pending"
+                state.save(update_fields=["node_config_status", "updated_at"])
+
+            try:
+                CollectModelService.push_butch_node_params(collect_task)
+            except Exception as exc:
+                has_failure = True
+                cls._persist_node_config_failure(
+                    state, stage="push", exc=exc,
+                )
+                continue
+
+            state.node_config_status = "healthy"
+            state.reason_code = ""
+            state.error_message = ""
+            state.save(
+                update_fields=["node_config_status", "reason_code", "error_message", "updated_at",]
+            )
+
+        if has_failure:
+            return (
+                "degraded",
+                "NODE_CONFIG_RECONCILE_FAILED",
+                "节点采集参数对账存在失败区域",
+            )
+        if not valid_region_count:
+            return "unknown", "", ""
+        return ("healthy" if config.auto_collect_enabled else "disabled"), "", ""
+
+    @staticmethod
+    def _parse_cloud_region_id(system_code, *, prefix):
+        if not isinstance(system_code, str) or not system_code.startswith(prefix):
+            return None
+        raw_region_id = system_code[len(prefix) :]
+        if not raw_region_id or not raw_region_id.isascii() or not raw_region_id.isdecimal():
+            return None
+        return str(int(raw_region_id))
+
+    @staticmethod
+    def _persist_node_config_failure(state, *, stage, exc):
+        reason_code = f"NODE_CONFIG_{stage.upper()}_FAILED"
+        stage_label = "删除" if stage == "delete" else "推送"
+        state.node_config_status = f"{stage}_pending"
+        state.reason_code = reason_code
+        state.error_message = f"{type(exc).__name__}: 节点采集参数{stage_label}失败"
+        state.save(
+            update_fields=["node_config_status", "reason_code", "error_message", "updated_at",]
+        )
+        logger.error(
+            "节点采集参数%s失败: task_id=%s, error_type=%s", stage_label, state.collect_task_id, type(exc).__name__,
+        )
 
     @classmethod
     def _reconcile_periodic_task(cls, *, enabled: bool, name: str, task: str, interval: int) -> None:
@@ -87,13 +201,15 @@ class NodeMgmtSyncReconciler:
     @staticmethod
     def _persist_health(config, result: NodeMgmtSyncReconcileResult) -> None:
         reconciled_at = timezone.now()
-        config.__class__.objects.filter(pk=config.pk).update(
+        updated = config.__class__.objects.filter(pk=config.pk, version=config.version,).update(
             schedule_status=result.schedule_status,
             node_config_status=result.node_config_status,
             last_reconciled_at=reconciled_at,
             reconcile_error_code=result.error_code,
             reconcile_error_message=result.error_message[:255],
         )
+        if not updated:
+            return
         config.schedule_status = result.schedule_status
         config.node_config_status = result.node_config_status
         config.last_reconciled_at = reconciled_at

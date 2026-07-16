@@ -394,10 +394,10 @@ class CollectModelService(object):
         """
         node = NodeParamsFactory.get_node_params(instance)
         node_params = node.main()
-        logger.debug("[CollectTask] 推送节点参数 task_id=%s, node_params=%s", instance.id, node_params)
+        logger.debug("[CollectTask] 推送节点参数 task_id=%s", instance.id)
         node_mgmt = NodeMgmt()
-        result = node_mgmt.batch_add_node_child_config(node_params)
-        logger.debug("[CollectTask] 推送节点参数结果 task_id=%s, result=%s", instance.id, result)
+        node_mgmt.batch_add_node_child_config(node_params)
+        logger.debug("[CollectTask] 推送节点参数完成 task_id=%s", instance.id)
 
     @staticmethod
     def delete_butch_node_params(instance):
@@ -406,10 +406,10 @@ class CollectModelService(object):
         """
         node = NodeParamsFactory.get_node_params(instance)
         node_params = node.main(operator="delete")
-        logger.debug("[CollectTask] 删除节点参数 task_id=%s, node_params=%s", instance.id, node_params)
+        logger.debug("[CollectTask] 删除节点参数 task_id=%s", instance.id)
         node_mgmt = NodeMgmt()
-        result = node_mgmt.delete_child_configs(node_params)
-        logger.debug("[CollectTask] 删除节点参数结果 task_id=%s, result=%s", instance.id, result)
+        node_mgmt.delete_child_configs(node_params)
+        logger.debug("[CollectTask] 删除节点参数完成 task_id=%s", instance.id)
 
     @classmethod
     def create(cls, request, view_self):
