@@ -58,7 +58,9 @@
     "prepare": "husky install",
     "analyze": "pnpm prepare-enterprise && cross-env ANALYZE=true next build",
     "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build"
+    "build-storybook": "storybook build",
+    "audit:component-ownership": "node scripts/component-ownership-audit.mjs",
+    "check:component-ownership": "node scripts/component-ownership-audit.mjs --check"
   },
   "dependencies": {
     "@ant-design/colors": "^8.0.1",
