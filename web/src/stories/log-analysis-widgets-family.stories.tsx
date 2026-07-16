@@ -1,5 +1,5 @@
 import React from 'react';
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs';
 import ExecutionStatusBadge from '@/components/execution-status-badge';
 import {
   LogAnalysisBar,
@@ -19,7 +19,7 @@ import {
   LogAnalysisSingle,
   LogAnalysisSummaryBreakdownPie,
   LogAnalysisTable,
-} from '@/components/log-analysis-widgets';
+} from '@/app/log/components/log-analysis-widgets';
 
 const overviewData = [
   { _time: '2025-06-01 10:00', requests: 120, latency: 48, level: 'ERROR', count: 18 },

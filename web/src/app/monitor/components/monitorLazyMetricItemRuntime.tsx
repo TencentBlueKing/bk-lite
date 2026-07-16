@@ -1,7 +1,7 @@
 'use client';
 
 import type { ComponentProps } from 'react';
-import MonitorLazyMetricItem from '@/components/monitor-lazy-metric-item';
+import MonitorLazyMetricItem from '@/app/monitor/components/monitor-lazy-metric-item';
 import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 
 type MonitorLazyMetricItemRuntimeProps = ComponentProps<

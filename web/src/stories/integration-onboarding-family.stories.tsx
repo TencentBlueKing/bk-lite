@@ -9,12 +9,12 @@ import {
 import {
   createLogK8sAccessAssetFieldsCopy,
   createMonitorK8sAccessAssetFieldsCopy,
-} from '@/components/k8s-access-asset-fields/presets';
+} from '@/app/monitor/components/k8s-access-asset-fields/presets';
 import {
   createLogK8sStepCalloutPreset,
   createMonitorK8sStepCalloutPreset,
 } from '@/components/integration-step-callout/presets';
-import K8sAccessAssetFields from '@/components/k8s-access-asset-fields';
+import K8sAccessAssetFields from '@/app/monitor/components/k8s-access-asset-fields';
 import SectionHeader from '@/components/section-header';
 import FormSettingRow from '@/components/form-setting-row';
 import IntegrationStepCallout from '@/components/integration-step-callout';

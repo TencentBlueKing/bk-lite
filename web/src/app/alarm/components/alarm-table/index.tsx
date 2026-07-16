@@ -5,7 +5,7 @@ import { Tag, Button } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import CustomTable from '@/components/custom-table';
 import AlarmLevelIcon from '@/app/alarm/components/alarm-level-icon';
-import EventLevelTag from '@/components/event-level-tag';
+import EventLevelTag from '@/app/alarm/components/event-level-tag';
 import UserAvatar from '@/components/user-avatar';
 import { useTranslation } from '@/utils/i18n';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
@@ -22,7 +22,7 @@ import type {
 } from '@/app/alarm/components/alarm-action/types';
 import DeclareIncident, {
   type DeclareIncidentProps,
-} from '@/components/declare-incident';
+} from '@/app/alarm/components/declare-incident';
 import RelatedAlertsPanel, {
   type RelatedAlertsResponse,
 } from '@/app/alarm/components/related-alerts-panel';

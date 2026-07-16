@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs';
 import { Breadcrumb, Button, Form, message } from 'antd';
 import AlarmEffectiveTime from '@/app/alarm/components/alarm-effective-time';
 import AlarmAction from '@/app/alarm/components/alarm-action';
@@ -15,7 +15,7 @@ import { defaultAlarmBreadcrumbMenus } from '@/app/alarm/components/alarm-page-b
 import AlarmRuleScopeField from '@/app/alarm/components/alarm-rule-scope-field';
 import AlarmSearchFilter from '@/app/alarm/components/alarm-search-filter';
 import AlarmTable from '@/app/alarm/components/alarm-table';
-import DeclareIncident from '@/components/declare-incident';
+import DeclareIncident from '@/app/alarm/components/declare-incident';
 import RelatedAlertsPanel from '@/app/alarm/components/related-alerts-panel';
 import SectionHeader from '@/components/section-header';
 

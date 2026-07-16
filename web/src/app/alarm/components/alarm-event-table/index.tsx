@@ -4,7 +4,7 @@ import type { ColumnsType } from 'antd/es/table';
 import CustomTable from '@/components/custom-table';
 import AlarmLevelIcon from '@/app/alarm/components/alarm-level-icon';
 import ContentFormDrawer from '@/components/content-form-drawer';
-import EventLevelTag from '@/components/event-level-tag';
+import EventLevelTag from '@/app/alarm/components/event-level-tag';
 import StructuredDataPreview from '@/components/structured-data-preview';
 import { useTranslation } from '@/utils/i18n';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';

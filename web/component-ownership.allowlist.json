@@ -1,25 +1,77 @@
 {
   "layout": [
-    {
-      "component": "selection-preview-layout",
-      "reason": "不包含业务语义的主列表与已选项预览布局原语",
-      "contractStory": "selection-family.stories.tsx"
-    }
+    { "component": "selection-preview-layout", "reason": "不包含业务语义的主列表与已选项预览布局原语", "contractStory": "selection-family.stories.tsx" },
+    { "component": "app-view-fullscreen", "reason": "通用应用视图全屏容器", "contractStory": "layout-family.stories.tsx" },
+    { "component": "dashboard-workspace-header", "reason": "通用仪表盘工作区标题与操作区骨架", "contractStory": "layout-family.stories.tsx" },
+    { "component": "detail-intro", "reason": "通用详情页说明区布局", "contractStory": "content-family.stories.tsx" },
+    { "component": "detail-layout-shell", "reason": "通用详情页主侧栏布局骨架", "contractStory": "layout-family.stories.tsx" },
+    { "component": "detail-list-drawer-shell", "reason": "通用列表详情抽屉骨架", "contractStory": "layout-family.stories.tsx" },
+    { "component": "guide-step-panel", "reason": "通用步骤引导面板骨架", "contractStory": "content-family.stories.tsx" },
+    { "component": "introduction-table-workspace-shell", "reason": "通用介绍区与表格工作区组合布局", "contractStory": "layout-family.stories.tsx" },
+    { "component": "management-table-shell", "reason": "通用管理表格页布局骨架", "contractStory": "layout-family.stories.tsx" },
+    { "component": "modal-action-footer", "reason": "通用弹窗操作区布局", "contractStory": "layout-family.stories.tsx" },
+    { "component": "operate-form-drawer", "reason": "通用表单抽屉布局与操作区", "contractStory": "forms-upload-family.stories.tsx" },
+    { "component": "page-form-header-card", "reason": "通用页面表单标题卡片", "contractStory": "layout-family.stories.tsx" },
+    { "component": "page-form-workspace-shell", "reason": "通用页面表单工作区骨架", "contractStory": "layout-family.stories.tsx" },
+    { "component": "page-intro-header", "reason": "通用页面介绍标题区", "contractStory": "layout-family.stories.tsx" },
+    { "component": "page-layout", "reason": "通用页面内容布局容器", "contractStory": "page-layout.stories.tsx" },
+    { "component": "panel-shell", "reason": "通用面板边框、标题与内容骨架", "contractStory": "layout-family.stories.tsx" },
+    { "component": "resizable-sidebar", "reason": "通用可调整宽度侧栏布局", "contractStory": "layout-family.stories.tsx" },
+    { "component": "routed-detail-layout-shell", "reason": "通用路由详情页布局骨架", "contractStory": "layout-family.stories.tsx" },
+    { "component": "summary-detail-layout-shell", "reason": "通用摘要与详情组合布局", "contractStory": "layout-family.stories.tsx" },
+    { "component": "tree-workspace-shell", "reason": "通用树与工作区组合布局", "contractStory": "layout-family.stories.tsx" },
+    { "component": "workspace-panel", "reason": "通用工作区面板容器", "contractStory": "layout-family.stories.tsx" }
   ],
   "form": [
-    {
-      "component": "form-setting-row",
-      "reason": "将无业务语义的表单控件与说明文本并排编排",
-      "contractStory": "integration-onboarding-family.stories.tsx"
-    }
+    { "component": "form-setting-row", "reason": "将无业务语义的表单控件与说明文本并排编排", "contractStory": "integration-onboarding-family.stories.tsx" },
+    { "component": "auto-association-match-pair-group", "reason": "通用字段匹配对编辑控件", "contractStory": "data-entry-family.stories.tsx" },
+    { "component": "custom-cascader", "reason": "通用级联选择输入控件", "contractStory": "custom-cascader.stories.tsx" },
+    { "component": "multi-file-upload-panel", "reason": "通用多文件上传与队列展示控件", "contractStory": "forms-upload-family.stories.tsx" },
+    { "component": "security", "reason": "无具体业务字段语义的密码表单与策略控件集合", "contractStory": "security-family.stories.tsx" },
+    { "component": "tree-selector-panel", "reason": "通用树形选择表单面板", "contractStory": "selection-family.stories.tsx" }
   ],
-  "feedback": [],
+  "feedback": [
+    { "component": "notifications", "reason": "通用通知入口与消息反馈展示", "contractStory": "notifications.stories.tsx" },
+    { "component": "page-status", "reason": "通用页面加载、空态与错误态反馈", "contractStory": "feedback-family.stories.tsx" },
+    { "component": "troubleshooting-card", "reason": "通用故障说明与处理建议反馈卡片", "contractStory": "content-family.stories.tsx" }
+  ],
   "dataDisplay": [
-    {
-      "component": "status-badge-shell",
-      "reason": "由标签与调色板参数驱动的通用状态展示原语",
-      "contractStory": "data-display-family.stories.tsx"
-    }
+    { "component": "status-badge-shell", "reason": "由标签与调色板参数驱动的通用状态展示原语", "contractStory": "data-display-family.stories.tsx" },
+    { "component": "chart-axis-tick-label", "reason": "通用图表坐标轴刻度标签", "contractStory": "charts-family.stories.tsx" },
+    { "component": "chart-dimension-table", "reason": "通用图表维度数据表格", "contractStory": "charts-family.stories.tsx" },
+    { "component": "chart-empty-state", "reason": "通用图表空态展示", "contractStory": "charts-family.stories.tsx" },
+    { "component": "chart-legend", "reason": "通用图表图例展示", "contractStory": "charts-family.stories.tsx" },
+    { "component": "chart-renderer-shell", "reason": "通用图表渲染容器与状态边界", "contractStory": "charts-family.stories.tsx" },
+    { "component": "chart-series-tooltip", "reason": "通用图表序列提示卡", "contractStory": "charts-family.stories.tsx" },
+    { "component": "chart-surface", "reason": "通用图表画布容器", "contractStory": "charts-family.stories.tsx" },
+    { "component": "chart-with-dimension-panel", "reason": "通用图表与维度面板组合展示", "contractStory": "charts-family.stories.tsx" },
+    { "component": "chart-with-sidebar-legend", "reason": "通用图表与侧栏图例组合展示", "contractStory": "charts-family.stories.tsx" },
+    { "component": "echarts-tooltip-card", "reason": "通用 ECharts 提示卡内容", "contractStory": "charts-family.stories.tsx" },
+    { "component": "execution-status-badge", "reason": "不绑定具体业务枚举的执行状态标签", "contractStory": "data-display-family.stories.tsx" },
+    { "component": "horizontal-category-bar-chart", "reason": "通用横向分类柱状图", "contractStory": "charts-family.stories.tsx" },
+    { "component": "http-endpoint-display", "reason": "通用 HTTP 地址展示", "contractStory": "data-display-family.stories.tsx" },
+    { "component": "http-method-badge", "reason": "通用 HTTP 方法标签", "contractStory": "data-display-family.stories.tsx" },
+    { "component": "note-list-panel", "reason": "通用说明项列表展示面板", "contractStory": "content-family.stories.tsx" },
+    { "component": "ratio-progress-cell", "reason": "通用比例与进度单元格", "contractStory": "data-display-family.stories.tsx" },
+    { "component": "secret-value-display", "reason": "通用敏感值掩码与复制展示", "contractStory": "data-display-family.stories.tsx" },
+    { "component": "source-origin-badge", "reason": "通用来源标签展示", "contractStory": "data-display-family.stories.tsx" },
+    { "component": "stacked-bar-chart", "reason": "通用堆叠柱状图", "contractStory": "charts-family.stories.tsx" },
+    { "component": "structured-data-preview", "reason": "通用结构化数据预览", "contractStory": "data-display-family.stories.tsx" },
+    { "component": "summary-metric-card", "reason": "通用摘要指标卡片", "contractStory": "data-display-family.stories.tsx" },
+    { "component": "tag-capsule-group", "reason": "通用胶囊标签组展示", "contractStory": "data-display-family.stories.tsx" },
+    { "component": "time-series-area-chart-canvas", "reason": "通用时序面积图画布", "contractStory": "charts-family.stories.tsx" },
+    { "component": "time-series-bar-chart", "reason": "通用时序柱状图", "contractStory": "charts-family.stories.tsx" },
+    { "component": "time-series-composed-chart", "reason": "通用时序组合图", "contractStory": "charts-family.stories.tsx" },
+    { "component": "version-badge", "reason": "通用版本标签展示", "contractStory": "data-display-family.stories.tsx" }
   ],
-  "interaction": []
+  "interaction": [
+    { "component": "chart-dimension-filter", "reason": "通用图表维度筛选交互", "contractStory": "charts-family.stories.tsx" },
+    { "component": "chart-drag-selection", "reason": "通用图表拖拽框选交互", "contractStory": "charts-family.stories.tsx" },
+    { "component": "filter-toolbar", "reason": "通用筛选工具栏交互", "contractStory": "toolbar-family.stories.tsx" },
+    { "component": "search-combination-toolbar", "reason": "通用组合搜索工具栏", "contractStory": "toolbar-family.stories.tsx" },
+    { "component": "selectable-card-grid", "reason": "通用可选择卡片网格", "contractStory": "selection-family.stories.tsx" },
+    { "component": "selectable-tag-filter-group", "reason": "通用标签筛选组", "contractStory": "selection-family.stories.tsx" },
+    { "component": "sortable-item", "reason": "通用拖拽排序项", "contractStory": "data-entry-family.stories.tsx" },
+    { "component": "theme", "reason": "通用主题切换交互", "contractStory": "theme.stories.tsx" }
+  ]
 }

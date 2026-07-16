@@ -7,10 +7,10 @@ import { InfoCircleOutlined, LinkOutlined, PlusOutlined } from '@ant-design/icon
 import AlarmDetailDrawer from '@/app/alarm/components/alarm-detail-drawer';
 import DeclareIncident, {
   type DeclareIncidentProps,
-} from '@/components/declare-incident';
+} from '@/app/alarm/components/declare-incident';
 import AlarmLevelIcon from '@/app/alarm/components/alarm-level-icon';
 import CompactEmptyState from '@/components/compact-empty-state';
-import EventLevelTag from '@/components/event-level-tag';
+import EventLevelTag from '@/app/alarm/components/event-level-tag';
 import SummaryMetricCard from '@/components/summary-metric-card';
 import type { AlarmActionContextProps } from '@/app/alarm/components/alarm-action/types';
 import type {

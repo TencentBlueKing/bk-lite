@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs';
 import React from 'react';
 import dayjs from 'dayjs';
 import { Button, Card, Space, Tag, Typography } from 'antd';
@@ -24,7 +24,7 @@ import ChartWithDimensionPanel from '@/components/chart-with-dimension-panel';
 import ChartWithSidebarLegend from '@/components/chart-with-sidebar-legend';
 import EChartsTooltipCard from '@/components/echarts-tooltip-card';
 import HorizontalCategoryBarChart from '@/components/horizontal-category-bar-chart';
-import { EChartsLineChart, MiniTrendChart, type MiniTrendChartStyles } from '@/components/monitor-dashboard-widgets';
+import { EChartsLineChart, MiniTrendChart, type MiniTrendChartStyles } from '@/app/monitor/components/monitor-dashboard-widgets';
 import SectionHeader from '@/components/section-header';
 import StackedBarChart from '@/components/stacked-bar-chart';
 import TimeSeriesAreaChartCanvas from '@/components/time-series-area-chart-canvas';

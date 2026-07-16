@@ -25,7 +25,7 @@ import AlarmAction from '@/app/alarm/components/alarm-action';
 import CompactEmptyState from '@/components/compact-empty-state';
 import DetailListPanel from '@/components/detail-list-panel';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
-import EventLevelTag from '@/components/event-level-tag';
+import EventLevelTag from '@/app/alarm/components/event-level-tag';
 import Icon from '@/components/icon';
 import StructuredDataPreview from '@/components/structured-data-preview';
 import { useCopy } from '@/hooks/useCopy';

@@ -6,7 +6,7 @@ import IntegrationStepCallout, {
 } from '@/components/integration-step-callout';
 import K8sAccessAssetFields, {
   type K8sAccessAssetFieldsProps,
-} from '@/components/k8s-access-asset-fields';
+} from '@/app/monitor/components/k8s-access-asset-fields';
 import SectionHeader from '@/components/section-header';
 
 interface IntegrationK8sAccessConfigShellProps {

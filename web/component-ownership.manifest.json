@@ -13,13 +13,9 @@
       "opspilot"
     ],
     "stories": [
-      "alarm-family.stories.tsx",
       "cmdb-family.stories.tsx",
-      "events-family.stories.tsx",
       "feedback-family.stories.tsx",
       "forms-upload-family.stories.tsx",
-      "integrations-family.stories.tsx",
-      "k8s-family.stories.tsx",
       "layout-family.stories.tsx",
       "mlops-dataset-family.stories.tsx",
       "mlops-family.stories.tsx",
@@ -49,8 +45,8 @@
       "ops-analysis-view-toolbar-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用应用视图全屏容器"
   },
   {
     "component": "auth-secret-field",
@@ -79,23 +75,98 @@
       "cmdb-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用字段匹配对编辑控件"
   },
   {
     "component": "auto-fit-metric-value",
-    "directApps": [],
+    "directApps": [
+      "log",
+      "monitor"
+    ],
     "transitiveApps": [
       "alarm",
+      "log",
+      "monitor"
+    ],
+    "stories": [
+      "data-display-family.stories.tsx",
+      "ops-analysis-data-source-family.stories.tsx",
+      "ops-analysis-unified-filter-family.stories.tsx",
+      "ops-analysis-widgets-family.stories.tsx"
+    ],
+    "reverseAppImports": [],
+    "classification": "shared-cross-app",
+    "reason": "consumed transitively by 3 apps"
+  },
+  {
+    "component": "chart-axis-tick-label",
+    "directApps": [
+      "monitor"
+    ],
+    "transitiveApps": [
+      "monitor"
+    ],
+    "stories": [
+      "charts-family.stories.tsx"
+    ],
+    "reverseAppImports": [],
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用图表坐标轴刻度标签"
+  },
+  {
+    "component": "chart-dimension-filter",
+    "directApps": [],
+    "transitiveApps": [
+      "monitor"
+    ],
+    "stories": [
+      "charts-family.stories.tsx"
+    ],
+    "reverseAppImports": [],
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用图表维度筛选交互"
+  },
+  {
+    "component": "chart-dimension-table",
+    "directApps": [],
+    "transitiveApps": [
+      "monitor"
+    ],
+    "stories": [
+      "charts-family.stories.tsx"
+    ],
+    "reverseAppImports": [],
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用图表维度数据表格"
+  },
+  {
+    "component": "chart-drag-selection",
+    "directApps": [],
+    "transitiveApps": [
+      "monitor"
+    ],
+    "stories": [
+      "charts-family.stories.tsx"
+    ],
+    "reverseAppImports": [],
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用图表拖拽框选交互"
+  },
+  {
+    "component": "chart-empty-state",
+    "directApps": [
+      "monitor"
+    ],
+    "transitiveApps": [
+      "log",
       "monitor"
     ],
     "stories": [
       "charts-family.stories.tsx",
-      "data-display-family.stories.tsx",
-      "log-analysis-widgets-family.stories.tsx",
-      "log-family.stories.tsx",
-      "monitor-dashboard-widgets-family.stories.tsx",
-      "monitor-family.stories.tsx",
+      "cmdb-family.stories.tsx",
+      "events-family.stories.tsx",
+      "knowledge-family.stories.tsx",
       "ops-analysis-data-source-family.stories.tsx",
       "ops-analysis-unified-filter-family.stories.tsx",
       "ops-analysis-widgets-family.stories.tsx"
@@ -105,98 +176,22 @@
     "reason": "consumed transitively by 2 apps"
   },
   {
-    "component": "chart-axis-tick-label",
-    "directApps": [],
-    "transitiveApps": [
-      "monitor"
-    ],
-    "stories": [
-      "charts-family.stories.tsx",
-      "monitor-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only monitor"
-  },
-  {
-    "component": "chart-dimension-filter",
-    "directApps": [],
-    "transitiveApps": [
-      "monitor"
-    ],
-    "stories": [
-      "charts-family.stories.tsx",
-      "monitor-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only monitor"
-  },
-  {
-    "component": "chart-dimension-table",
-    "directApps": [],
-    "transitiveApps": [
-      "monitor"
-    ],
-    "stories": [
-      "charts-family.stories.tsx",
-      "monitor-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only monitor"
-  },
-  {
-    "component": "chart-drag-selection",
-    "directApps": [],
-    "transitiveApps": [
-      "monitor"
-    ],
-    "stories": [
-      "charts-family.stories.tsx",
-      "monitor-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only monitor"
-  },
-  {
-    "component": "chart-empty-state",
-    "directApps": [],
-    "transitiveApps": [
-      "monitor"
-    ],
-    "stories": [
-      "charts-family.stories.tsx",
-      "cmdb-family.stories.tsx",
-      "events-family.stories.tsx",
-      "knowledge-family.stories.tsx",
-      "log-analysis-widgets-family.stories.tsx",
-      "log-family.stories.tsx",
-      "monitor-dashboard-widgets-family.stories.tsx",
-      "monitor-family.stories.tsx",
-      "ops-analysis-data-source-family.stories.tsx",
-      "ops-analysis-unified-filter-family.stories.tsx",
-      "ops-analysis-widgets-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only monitor"
-  },
-  {
     "component": "chart-legend",
-    "directApps": [],
-    "transitiveApps": [],
+    "directApps": [
+      "log"
+    ],
+    "transitiveApps": [
+      "log"
+    ],
     "stories": [
       "charts-family.stories.tsx",
-      "log-analysis-widgets-family.stories.tsx",
       "ops-analysis-data-source-family.stories.tsx",
       "ops-analysis-unified-filter-family.stories.tsx",
       "ops-analysis-widgets-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用图表图例展示"
   },
   {
     "component": "chart-renderer-shell",
@@ -206,72 +201,77 @@
       "charts-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用图表渲染容器与状态边界"
   },
   {
     "component": "chart-series-tooltip",
-    "directApps": [],
+    "directApps": [
+      "monitor"
+    ],
     "transitiveApps": [
       "monitor"
     ],
     "stories": [
       "charts-family.stories.tsx",
-      "events-family.stories.tsx",
-      "monitor-family.stories.tsx"
+      "events-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only monitor"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用图表序列提示卡"
   },
   {
     "component": "chart-surface",
-    "directApps": [],
+    "directApps": [
+      "log",
+      "monitor"
+    ],
     "transitiveApps": [
+      "log",
       "monitor"
     ],
     "stories": [
       "charts-family.stories.tsx",
-      "log-analysis-widgets-family.stories.tsx",
-      "log-family.stories.tsx",
-      "monitor-dashboard-widgets-family.stories.tsx",
-      "monitor-family.stories.tsx",
       "ops-analysis-data-source-family.stories.tsx",
       "ops-analysis-unified-filter-family.stories.tsx",
       "ops-analysis-widgets-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only monitor"
+    "classification": "shared-cross-app",
+    "reason": "consumed transitively by 2 apps"
   },
   {
     "component": "chart-with-dimension-panel",
-    "directApps": [],
+    "directApps": [
+      "monitor"
+    ],
     "transitiveApps": [
       "monitor"
     ],
     "stories": [
-      "charts-family.stories.tsx",
-      "monitor-family.stories.tsx"
+      "charts-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only monitor"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用图表与维度面板组合展示"
   },
   {
     "component": "chart-with-sidebar-legend",
-    "directApps": [],
-    "transitiveApps": [],
+    "directApps": [
+      "log"
+    ],
+    "transitiveApps": [
+      "log"
+    ],
     "stories": [
       "charts-family.stories.tsx",
-      "log-analysis-widgets-family.stories.tsx",
       "ops-analysis-data-source-family.stories.tsx",
       "ops-analysis-unified-filter-family.stories.tsx",
       "ops-analysis-widgets-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用图表与侧栏图例组合展示"
   },
   {
     "component": "cmdb-config-file-compare-drawer",
@@ -346,24 +346,24 @@
     "component": "code-snippet",
     "directApps": [
       "alarm",
-      "cmdb"
+      "cmdb",
+      "monitor"
     ],
     "transitiveApps": [
       "alarm",
-      "cmdb"
+      "cmdb",
+      "monitor"
     ],
     "stories": [
       "content-family.stories.tsx",
       "data-display-family.stories.tsx",
-      "feedback-family.stories.tsx",
       "integrations-family.stories.tsx",
-      "k8s-family.stories.tsx",
       "monitor-family.stories.tsx",
       "node-manager-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
-    "reason": "consumed transitively by 2 apps"
+    "reason": "consumed transitively by 3 apps"
   },
   {
     "component": "collapse",
@@ -405,7 +405,6 @@
       "integrations-family.stories.tsx",
       "job-family.stories.tsx",
       "layout-family.stories.tsx",
-      "monitor-family.stories.tsx",
       "navigation-family.stories.tsx",
       "ops-analysis-data-source-family.stories.tsx",
       "ops-analysis-unified-filter-family.stories.tsx",
@@ -499,8 +498,8 @@
       "custom-cascader.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用级联选择输入控件"
   },
   {
     "component": "custom-reporting-cleanup-strategy-value",
@@ -642,10 +641,8 @@
       "charts-family.stories.tsx",
       "custom-table.stories.tsx",
       "data-display-family.stories.tsx",
-      "events-family.stories.tsx",
       "integrations-family.stories.tsx",
       "layout-family.stories.tsx",
-      "log-analysis-widgets-family.stories.tsx",
       "mlops-family.stories.tsx",
       "monitor-family.stories.tsx",
       "ops-analysis-data-source-family.stories.tsx",
@@ -663,34 +660,18 @@
   },
   {
     "component": "dashboard-workspace-header",
-    "directApps": [],
+    "directApps": [
+      "monitor"
+    ],
     "transitiveApps": [
       "monitor"
     ],
     "stories": [
-      "charts-family.stories.tsx",
-      "layout-family.stories.tsx",
-      "monitor-dashboard-widgets-family.stories.tsx",
-      "monitor-family.stories.tsx"
+      "layout-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only monitor"
-  },
-  {
-    "component": "declare-incident",
-    "directApps": [
-      "alarm"
-    ],
-    "transitiveApps": [
-      "alarm"
-    ],
-    "stories": [
-      "alarm-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only alarm"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用仪表盘工作区标题与操作区骨架"
   },
   {
     "component": "detail-intro",
@@ -703,8 +684,8 @@
       "opspilot-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用详情页说明区布局"
   },
   {
     "component": "detail-layout-shell",
@@ -720,8 +701,8 @@
       "opspilot-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only monitor"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用详情页主侧栏布局骨架"
   },
   {
     "component": "detail-list-drawer-shell",
@@ -732,8 +713,8 @@
       "system-manager-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用列表详情抽屉骨架"
   },
   {
     "component": "detail-list-panel",
@@ -782,22 +763,23 @@
   },
   {
     "component": "echarts-tooltip-card",
-    "directApps": [],
+    "directApps": [
+      "log",
+      "monitor"
+    ],
     "transitiveApps": [
+      "log",
       "monitor"
     ],
     "stories": [
       "charts-family.stories.tsx",
-      "log-analysis-widgets-family.stories.tsx",
-      "monitor-dashboard-widgets-family.stories.tsx",
-      "monitor-family.stories.tsx",
       "ops-analysis-data-source-family.stories.tsx",
       "ops-analysis-unified-filter-family.stories.tsx",
       "ops-analysis-widgets-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only monitor"
+    "classification": "shared-cross-app",
+    "reason": "consumed transitively by 2 apps"
   },
   {
     "component": "ellipsis-with-tooltip",
@@ -830,11 +812,9 @@
       "custom-table.stories.tsx",
       "data-display-family.stories.tsx",
       "ellipsis-with-tooltip.stories.tsx",
-      "events-family.stories.tsx",
       "integration-auth.fixtures.ts",
       "integrations-family.stories.tsx",
       "layout-family.stories.tsx",
-      "log-analysis-widgets-family.stories.tsx",
       "mlops-family.stories.tsx",
       "monitor-family.stories.tsx",
       "navigation-family.stories.tsx",
@@ -880,122 +860,6 @@
     "reason": "consumed transitively by 4 apps"
   },
   {
-    "component": "event-alert-information-summary",
-    "directApps": [],
-    "transitiveApps": [],
-    "stories": [
-      "events-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
-  },
-  {
-    "component": "event-alert-workspace-shell",
-    "directApps": [],
-    "transitiveApps": [],
-    "stories": [
-      "events-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
-  },
-  {
-    "component": "event-close-action",
-    "directApps": [],
-    "transitiveApps": [],
-    "stories": [
-      "events-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
-  },
-  {
-    "component": "event-detail-drawer",
-    "directApps": [],
-    "transitiveApps": [],
-    "stories": [
-      "events-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
-  },
-  {
-    "component": "event-level-indicator",
-    "directApps": [],
-    "transitiveApps": [],
-    "stories": [
-      "data-display-family.stories.tsx",
-      "events-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
-  },
-  {
-    "component": "event-level-tag",
-    "directApps": [
-      "alarm"
-    ],
-    "transitiveApps": [
-      "alarm"
-    ],
-    "stories": [
-      "data-display-family.stories.tsx",
-      "events-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only alarm"
-  },
-  {
-    "component": "event-notification-form",
-    "directApps": [],
-    "transitiveApps": [],
-    "stories": [
-      "events-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
-  },
-  {
-    "component": "event-status-tag",
-    "directApps": [],
-    "transitiveApps": [],
-    "stories": [
-      "data-display-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
-  },
-  {
-    "component": "event-strategy-identity-fields",
-    "directApps": [],
-    "transitiveApps": [],
-    "stories": [
-      "events-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
-  },
-  {
-    "component": "event-strategy-panel",
-    "directApps": [],
-    "transitiveApps": [],
-    "stories": [
-      "events-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
-  },
-  {
     "component": "execution-status-badge",
     "directApps": [],
     "transitiveApps": [],
@@ -1004,8 +868,8 @@
       "log-analysis-widgets-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 不绑定具体业务枚举的执行状态标签"
   },
   {
     "component": "filter-toolbar",
@@ -1017,19 +881,19 @@
       "toolbar-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用筛选工具栏交互"
   },
   {
     "component": "form-setting-row",
-    "directApps": [],
+    "directApps": [
+      "monitor"
+    ],
     "transitiveApps": [
       "monitor"
     ],
     "stories": [
-      "integration-onboarding-family.stories.tsx",
-      "integrations-family.stories.tsx",
-      "k8s-family.stories.tsx"
+      "integration-onboarding-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "shared-primitive",
@@ -1062,16 +926,11 @@
       "system-manager"
     ],
     "stories": [
-      "alarm-family.stories.tsx",
       "cmdb-family.stories.tsx",
       "data-entry-family.stories.tsx",
       "dynamic-form.stories.tsx",
-      "events-family.stories.tsx",
       "group-tree-select.stories.tsx",
       "integration-auth.fixtures.ts",
-      "integration-onboarding-family.stories.tsx",
-      "integrations-family.stories.tsx",
-      "k8s-family.stories.tsx",
       "node-manager-family.stories.tsx",
       "ops-analysis-unified-filter-family.stories.tsx",
       "security-family.stories.tsx"
@@ -1094,8 +953,8 @@
       "monitor-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only alarm"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用步骤引导面板骨架"
   },
   {
     "component": "heat-map",
@@ -1116,15 +975,18 @@
   },
   {
     "component": "horizontal-category-bar-chart",
-    "directApps": [],
-    "transitiveApps": [],
+    "directApps": [
+      "log"
+    ],
+    "transitiveApps": [
+      "log"
+    ],
     "stories": [
-      "charts-family.stories.tsx",
-      "log-analysis-widgets-family.stories.tsx"
+      "charts-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用横向分类柱状图"
   },
   {
     "component": "http-endpoint-display",
@@ -1135,8 +997,8 @@
       "integrations-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用 HTTP 地址展示"
   },
   {
     "component": "http-method-badge",
@@ -1147,8 +1009,8 @@
       "integrations-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用 HTTP 方法标签"
   },
   {
     "component": "icon",
@@ -1202,7 +1064,6 @@
       "log-family.stories.tsx",
       "mlops-dataset-family.stories.tsx",
       "mlops-family.stories.tsx",
-      "monitor-dashboard-widgets-family.stories.tsx",
       "monitor-family.stories.tsx",
       "node-manager-family.stories.tsx",
       "notifications.stories.tsx",
@@ -1335,62 +1196,8 @@
       "layout-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
-  },
-  {
-    "component": "k8s-access-asset-fields",
-    "directApps": [
-      "monitor"
-    ],
-    "transitiveApps": [
-      "monitor"
-    ],
-    "stories": [
-      "integration-onboarding-family.stories.tsx",
-      "integrations-family.stories.tsx",
-      "k8s-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only monitor"
-  },
-  {
-    "component": "k8s-collector-install",
-    "directApps": [],
-    "transitiveApps": [],
-    "stories": [
-      "feedback-family.stories.tsx",
-      "integrations-family.stories.tsx",
-      "k8s-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
-  },
-  {
-    "component": "k8s-collector-install-step",
-    "directApps": [],
-    "transitiveApps": [],
-    "stories": [
-      "integrations-family.stories.tsx",
-      "k8s-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
-  },
-  {
-    "component": "k8s-common-issues-drawer",
-    "directApps": [],
-    "transitiveApps": [],
-    "stories": [
-      "integrations-family.stories.tsx",
-      "k8s-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用介绍区与表格工作区组合布局"
   },
   {
     "component": "layout",
@@ -1411,68 +1218,24 @@
     "reason": "consumed transitively by 2 apps"
   },
   {
-    "component": "log-analysis-widgets",
-    "directApps": [],
-    "transitiveApps": [],
-    "stories": [
-      "log-analysis-widgets-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
-  },
-  {
-    "component": "log-donut-chart",
-    "directApps": [],
-    "transitiveApps": [],
-    "stories": [
-      "log-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
-  },
-  {
-    "component": "log-kpi-card",
-    "directApps": [],
-    "transitiveApps": [],
-    "stories": [
-      "log-analysis-widgets-family.stories.tsx",
-      "log-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
-  },
-  {
-    "component": "log-message-preview",
-    "directApps": [],
-    "transitiveApps": [],
-    "stories": [
-      "log-analysis-widgets-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
-  },
-  {
     "component": "management-table-shell",
     "directApps": [
+      "alarm",
       "monitor"
     ],
     "transitiveApps": [
+      "alarm",
       "monitor"
     ],
     "stories": [
-      "events-family.stories.tsx",
       "layout-family.stories.tsx",
       "mlops-family.stories.tsx",
       "monitor-family.stories.tsx",
       "system-manager-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only monitor"
+    "classification": "shared-cross-app",
+    "reason": "consumed transitively by 2 apps"
   },
   {
     "component": "markdown",
@@ -1586,145 +1349,8 @@
       "feedback-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
-  },
-  {
-    "component": "monitor-alert-type-badge",
-    "directApps": [],
-    "transitiveApps": [],
-    "stories": [
-      "monitor-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
-  },
-  {
-    "component": "monitor-chart-runtime",
-    "directApps": [],
-    "transitiveApps": [
-      "monitor"
-    ],
-    "stories": [
-      "monitor-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only monitor"
-  },
-  {
-    "component": "monitor-dashboard-widgets",
-    "directApps": [],
-    "transitiveApps": [
-      "monitor"
-    ],
-    "stories": [
-      "charts-family.stories.tsx",
-      "monitor-dashboard-widgets-family.stories.tsx",
-      "monitor-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only monitor"
-  },
-  {
-    "component": "monitor-integration-access-badge",
-    "directApps": [],
-    "transitiveApps": [],
-    "stories": [
-      "monitor-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
-  },
-  {
-    "component": "monitor-integration-config-state",
-    "directApps": [],
-    "transitiveApps": [],
-    "stories": [
-      "monitor-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
-  },
-  {
-    "component": "monitor-lazy-metric-item",
-    "directApps": [
-      "monitor"
-    ],
-    "transitiveApps": [
-      "monitor"
-    ],
-    "stories": [
-      "monitor-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only monitor"
-  },
-  {
-    "component": "monitor-line-chart",
-    "directApps": [
-      "monitor"
-    ],
-    "transitiveApps": [
-      "monitor"
-    ],
-    "stories": [
-      "monitor-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only monitor"
-  },
-  {
-    "component": "monitor-object-icon",
-    "directApps": [],
-    "transitiveApps": [],
-    "stories": [
-      "monitor-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
-  },
-  {
-    "component": "monitor-object-workspace-shell",
-    "directApps": [],
-    "transitiveApps": [],
-    "stories": [
-      "monitor-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
-  },
-  {
-    "component": "monitor-reporting-status-badge",
-    "directApps": [],
-    "transitiveApps": [],
-    "stories": [
-      "monitor-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
-  },
-  {
-    "component": "monitor-shared",
-    "directApps": [],
-    "transitiveApps": [
-      "monitor"
-    ],
-    "stories": [
-      "monitor-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only monitor"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用弹窗操作区布局"
   },
   {
     "component": "multi-cascade-panel",
@@ -1742,16 +1368,11 @@
       "system-manager"
     ],
     "stories": [
-      "alarm-family.stories.tsx",
       "cmdb-family.stories.tsx",
       "data-entry-family.stories.tsx",
       "dynamic-form.stories.tsx",
-      "events-family.stories.tsx",
       "group-tree-select.stories.tsx",
       "integration-auth.fixtures.ts",
-      "integration-onboarding-family.stories.tsx",
-      "integrations-family.stories.tsx",
-      "k8s-family.stories.tsx",
       "multi-cascade-panel.stories.tsx",
       "node-manager-family.stories.tsx",
       "ops-analysis-unified-filter-family.stories.tsx",
@@ -1769,8 +1390,8 @@
       "forms-upload-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用多文件上传与队列展示控件"
   },
   {
     "component": "node-manager-collector-package-modal",
@@ -1821,8 +1442,8 @@
       "content-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only alarm"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用说明项列表展示面板"
   },
   {
     "component": "notifications",
@@ -1839,8 +1460,8 @@
       "user-info.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only (root)"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用通知入口与消息反馈展示"
   },
   {
     "component": "operate-drawer",
@@ -1849,32 +1470,33 @@
       "node-manager"
     ],
     "transitiveApps": [
+      "alarm",
       "monitor",
       "node-manager"
     ],
     "stories": [
-      "events-family.stories.tsx",
-      "feedback-family.stories.tsx",
-      "integrations-family.stories.tsx",
-      "k8s-family.stories.tsx"
+      "feedback-family.stories.tsx"
+    ],
+    "reverseAppImports": [],
+    "classification": "shared-cross-app",
+    "reason": "consumed transitively by 3 apps"
+  },
+  {
+    "component": "operate-form-drawer",
+    "directApps": [
+      "alarm",
+      "monitor"
+    ],
+    "transitiveApps": [
+      "alarm",
+      "monitor"
+    ],
+    "stories": [
+      "feedback-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
     "reason": "consumed transitively by 2 apps"
-  },
-  {
-    "component": "operate-form-drawer",
-    "directApps": [],
-    "transitiveApps": [],
-    "stories": [
-      "events-family.stories.tsx",
-      "feedback-family.stories.tsx",
-      "integrations-family.stories.tsx",
-      "k8s-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
   },
   {
     "component": "operate-form-modal",
@@ -1894,7 +1516,6 @@
       "opspilot"
     ],
     "stories": [
-      "alarm-family.stories.tsx",
       "cmdb-family.stories.tsx",
       "feedback-family.stories.tsx",
       "forms-upload-family.stories.tsx",
@@ -1948,17 +1569,14 @@
       "system-manager"
     ],
     "stories": [
-      "alarm-family.stories.tsx",
       "charts-family.stories.tsx",
       "cmdb-family.stories.tsx",
       "custom-table.stories.tsx",
       "data-display-family.stories.tsx",
-      "events-family.stories.tsx",
       "feedback-family.stories.tsx",
       "forms-upload-family.stories.tsx",
       "integrations-family.stories.tsx",
       "layout-family.stories.tsx",
-      "log-analysis-widgets-family.stories.tsx",
       "mlops-dataset-family.stories.tsx",
       "mlops-family.stories.tsx",
       "monitor-family.stories.tsx",
@@ -2295,8 +1913,8 @@
       "layout-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only job"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用页面表单标题卡片"
   },
   {
     "component": "page-form-workspace-shell",
@@ -2306,12 +1924,14 @@
       "layout-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用页面表单工作区骨架"
   },
   {
     "component": "page-header-shell",
-    "directApps": [],
+    "directApps": [
+      "alarm"
+    ],
     "transitiveApps": [
       "alarm",
       "job",
@@ -2338,7 +1958,6 @@
       "log-family.stories.tsx",
       "mlops-dataset-family.stories.tsx",
       "mlops-family.stories.tsx",
-      "monitor-dashboard-widgets-family.stories.tsx",
       "monitor-family.stories.tsx",
       "node-manager-family.stories.tsx",
       "ops-analysis-data-source-family.stories.tsx",
@@ -2367,8 +1986,8 @@
       "layout-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用页面介绍标题区"
   },
   {
     "component": "page-layout",
@@ -2383,8 +2002,8 @@
       "page-layout.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only system-manager"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用页面内容布局容器"
   },
   {
     "component": "page-status",
@@ -2394,8 +2013,8 @@
       "layout-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用页面加载、空态与错误态反馈"
   },
   {
     "component": "panel-shell",
@@ -2413,8 +2032,8 @@
       "system-manager-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only alarm"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用面板边框、标题与内容骨架"
   },
   {
     "component": "password",
@@ -2465,10 +2084,8 @@
       "system-manager"
     ],
     "stories": [
-      "alarm-family.stories.tsx",
       "data-display-family.stories.tsx",
       "entity-list.stories.tsx",
-      "events-family.stories.tsx",
       "ops-analysis-view-toolbar-family.stories.tsx",
       "opspilot-cards-family.stories.tsx",
       "opspilot-family.stories.tsx",
@@ -2488,8 +2105,8 @@
       "data-display-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用比例与进度单元格"
   },
   {
     "component": "redirect-menu",
@@ -2549,12 +2166,11 @@
       "monitor"
     ],
     "stories": [
-      "layout-family.stories.tsx",
-      "monitor-family.stories.tsx"
+      "layout-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only monitor"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用可调整宽度侧栏布局"
   },
   {
     "component": "routed-detail-layout-shell",
@@ -2564,19 +2180,19 @@
       "layout-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用路由详情页布局骨架"
   },
   {
     "component": "search-action-bar",
     "directApps": [],
     "transitiveApps": [
+      "alarm",
       "cmdb",
       "monitor"
     ],
     "stories": [
       "cmdb-family.stories.tsx",
-      "events-family.stories.tsx",
       "integrations-family.stories.tsx",
       "layout-family.stories.tsx",
       "mlops-family.stories.tsx",
@@ -2587,7 +2203,7 @@
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
-    "reason": "consumed transitively by 2 apps"
+    "reason": "consumed transitively by 3 apps"
   },
   {
     "component": "search-combination",
@@ -2621,8 +2237,8 @@
       "toolbar-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only job"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用组合搜索工具栏"
   },
   {
     "component": "secret-value-display",
@@ -2632,8 +2248,8 @@
       "data-display-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用敏感值掩码与复制展示"
   },
   {
     "component": "section-header",
@@ -2703,20 +2319,23 @@
       "user-info.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only (root)"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 无具体业务字段语义的密码表单与策略控件集合"
   },
   {
     "component": "selectable-card-grid",
-    "directApps": [],
-    "transitiveApps": [],
+    "directApps": [
+      "alarm"
+    ],
+    "transitiveApps": [
+      "alarm"
+    ],
     "stories": [
-      "events-family.stories.tsx",
       "selection-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用可选择卡片网格"
   },
   {
     "component": "selectable-tag-filter-group",
@@ -2726,8 +2345,8 @@
       "toolbar-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用标签筛选组"
   },
   {
     "component": "selection-preview-layout",
@@ -2751,7 +2370,9 @@
       "opspilot"
     ],
     "transitiveApps": [
+      "alarm",
       "job",
+      "monitor",
       "opspilot"
     ],
     "stories": [
@@ -2761,7 +2382,6 @@
       "integrations-family.stories.tsx",
       "log-analysis-widgets-family.stories.tsx",
       "mlops-family.stories.tsx",
-      "monitor-family.stories.tsx",
       "node-manager-family.stories.tsx",
       "ops-analysis-data-source-family.stories.tsx",
       "ops-analysis-unified-filter-family.stories.tsx",
@@ -2770,7 +2390,7 @@
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
-    "reason": "consumed transitively by 2 apps"
+    "reason": "consumed transitively by 4 apps"
   },
   {
     "component": "single-file-upload-panel",
@@ -2801,8 +2421,8 @@
       "data-display-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用拖拽排序项"
   },
   {
     "component": "source-origin-badge",
@@ -2815,8 +2435,8 @@
       "system-manager-user-org-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用来源标签展示"
   },
   {
     "component": "spin",
@@ -2853,16 +2473,20 @@
       "events-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用堆叠柱状图"
   },
   {
     "component": "status-badge-shell",
     "directApps": [
-      "job"
+      "alarm",
+      "job",
+      "monitor"
     ],
     "transitiveApps": [
-      "job"
+      "alarm",
+      "job",
+      "monitor"
     ],
     "stories": [
       "cmdb-family.stories.tsx",
@@ -2870,7 +2494,6 @@
       "data-display-family.stories.tsx",
       "log-analysis-widgets-family.stories.tsx",
       "mlops-family.stories.tsx",
-      "monitor-family.stories.tsx",
       "node-manager-family.stories.tsx",
       "ops-analysis-data-source-family.stories.tsx",
       "ops-analysis-unified-filter-family.stories.tsx",
@@ -2878,8 +2501,8 @@
       "opspilot-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "shared-primitive",
-    "reason": "primitive allowlist: 由标签与调色板参数驱动的通用状态展示原语"
+    "classification": "shared-cross-app",
+    "reason": "consumed transitively by 3 apps"
   },
   {
     "component": "step-wizard-flow",
@@ -2913,8 +2536,8 @@
       "opspilot-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only alarm"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用结构化数据预览"
   },
   {
     "component": "sub-layout",
@@ -2957,8 +2580,8 @@
       "opspilot-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用摘要与详情组合布局"
   },
   {
     "component": "summary-metric-card",
@@ -2972,8 +2595,8 @@
       "data-display-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only alarm"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用摘要指标卡片"
   },
   {
     "component": "system-manager-application-menu",
@@ -3081,8 +2704,8 @@
       "data-display-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用胶囊标签组展示"
   },
   {
     "component": "theme",
@@ -3092,8 +2715,8 @@
       "theme.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用主题切换交互"
   },
   {
     "component": "time-selector",
@@ -3114,12 +2737,9 @@
       "system-manager"
     ],
     "stories": [
-      "charts-family.stories.tsx",
       "events-family.stories.tsx",
       "integrations-family.stories.tsx",
       "layout-family.stories.tsx",
-      "monitor-dashboard-widgets-family.stories.tsx",
-      "monitor-family.stories.tsx",
       "ops-analysis-data-source-family.stories.tsx",
       "ops-analysis-unified-filter-family.stories.tsx",
       "system-manager-family.stories.tsx",
@@ -3132,17 +2752,18 @@
   },
   {
     "component": "time-series-area-chart-canvas",
-    "directApps": [],
+    "directApps": [
+      "monitor"
+    ],
     "transitiveApps": [
       "monitor"
     ],
     "stories": [
-      "charts-family.stories.tsx",
-      "monitor-family.stories.tsx"
+      "charts-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only monitor"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用时序面积图画布"
   },
   {
     "component": "time-series-bar-chart",
@@ -3152,20 +2773,23 @@
       "charts-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用时序柱状图"
   },
   {
     "component": "time-series-composed-chart",
-    "directApps": [],
-    "transitiveApps": [],
+    "directApps": [
+      "log"
+    ],
+    "transitiveApps": [
+      "log"
+    ],
     "stories": [
-      "charts-family.stories.tsx",
-      "log-analysis-widgets-family.stories.tsx"
+      "charts-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用时序组合图"
   },
   {
     "component": "toolbar-split-shell",
@@ -3173,13 +2797,13 @@
       "monitor"
     ],
     "transitiveApps": [
+      "alarm",
       "cmdb",
       "job",
       "monitor"
     ],
     "stories": [
       "cmdb-family.stories.tsx",
-      "events-family.stories.tsx",
       "integrations-family.stories.tsx",
       "job-family.stories.tsx",
       "layout-family.stories.tsx",
@@ -3191,7 +2815,7 @@
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
-    "reason": "consumed transitively by 3 apps"
+    "reason": "consumed transitively by 4 apps"
   },
   {
     "component": "top-menu",
@@ -3247,12 +2871,11 @@
     ],
     "stories": [
       "layout-family.stories.tsx",
-      "monitor-family.stories.tsx",
       "navigation-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only monitor"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用树形选择表单面板"
   },
   {
     "component": "tree-workspace-shell",
@@ -3263,29 +2886,28 @@
       "monitor"
     ],
     "stories": [
-      "layout-family.stories.tsx",
-      "monitor-family.stories.tsx"
+      "layout-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only monitor"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用树与工作区组合布局"
   },
   {
     "component": "troubleshooting-card",
     "directApps": [
-      "alarm"
+      "alarm",
+      "monitor"
     ],
     "transitiveApps": [
-      "alarm"
+      "alarm",
+      "monitor"
     ],
     "stories": [
-      "content-family.stories.tsx",
-      "integrations-family.stories.tsx",
-      "k8s-family.stories.tsx"
+      "content-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only alarm"
+    "classification": "shared-cross-app",
+    "reason": "consumed transitively by 2 apps"
   },
   {
     "component": "upload-drop-panel",
@@ -3356,8 +2978,8 @@
       "data-display-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only job"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用版本标签展示"
   },
   {
     "component": "workspace-panel",
@@ -3372,7 +2994,7 @@
       "layout-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only job"
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 通用工作区面板容器"
   }
 ]

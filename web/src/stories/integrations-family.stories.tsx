@@ -27,10 +27,10 @@ import IntegrationExcelImportModal, {
   type IntegrationExcelImportModalRef,
 } from '@/app/monitor/components/integration-contract/integration-excel-import-modal';
 import IntegrationStepCallout from '@/components/integration-step-callout';
-import K8sAccessAssetFields from '@/components/k8s-access-asset-fields';
-import { createMonitorK8sAccessAssetFieldsCopy } from '@/components/k8s-access-asset-fields/presets';
-import K8sCollectorInstallStep from '@/components/k8s-collector-install-step';
-import { createMonitorK8sCollectorInstallCopy } from '@/components/k8s-collector-install-step/presets';
+import K8sAccessAssetFields from '@/app/monitor/components/k8s-access-asset-fields';
+import { createMonitorK8sAccessAssetFieldsCopy } from '@/app/monitor/components/k8s-access-asset-fields/presets';
+import K8sCollectorInstallStep from '@/app/monitor/components/k8s-collector-install-step';
+import { createMonitorK8sCollectorInstallCopy } from '@/app/monitor/components/k8s-collector-install-step/presets';
 import SnmpTrapGuidePanel from '@/app/alarm/components/integration-guide/SnmpTrapGuidePanel';
 import SearchActionBar from '@/components/search-action-bar';
 import SemanticBadge from '@/components/semantic-badge';

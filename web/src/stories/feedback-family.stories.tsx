@@ -1,10 +1,10 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs';
 import { Button, Form, Input, Segmented, Tag } from 'antd';
 import CompactEmptyState from '@/components/compact-empty-state';
 import ContentDrawer from '@/components/content-drawer';
 import ContentFormDrawer from '@/components/content-form-drawer';
 import IntegrationAccessComplete from '@/components/integration-access-complete';
-import K8sCollectorInstall from '@/components/k8s-collector-install';
+import K8sCollectorInstall from '@/app/monitor/components/k8s-collector-install';
 import {
   createCmdbK8sAccessCompletePreset,
   createMonitorFlowAccessCompletePreset,

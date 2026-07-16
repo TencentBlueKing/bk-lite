@@ -1,6 +1,6 @@
 import React from 'react';
 import dayjs from 'dayjs';
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs';
 import { DatabaseOutlined } from '@ant-design/icons';
 import { Button, Input, Segmented, Select, Tag } from 'antd';
 import {
@@ -11,10 +11,10 @@ import {
 import CodeEditor from '@/components/code-editor';
 import CodeSnippet from '@/components/code-snippet';
 import GuideStepPanel from '@/components/guide-step-panel';
-import MonitorAlertTypeBadge from '@/components/monitor-alert-type-badge';
-import MonitorIntegrationAccessBadge from '@/components/monitor-integration-access-badge';
-import MonitorIntegrationConfigState from '@/components/monitor-integration-config-state';
-import MonitorLazyMetricItem from '@/components/monitor-lazy-metric-item';
+import MonitorAlertTypeBadge from '@/app/monitor/components/monitor-alert-type-badge';
+import MonitorIntegrationAccessBadge from '@/app/monitor/components/monitor-integration-access-badge';
+import MonitorIntegrationConfigState from '@/app/monitor/components/monitor-integration-config-state';
+import MonitorLazyMetricItem from '@/app/monitor/components/monitor-lazy-metric-item';
 
 const displayFieldsPluginOptions = [
   { label: '主机（Telegraf）', value: 'telegraf' },
@@ -136,10 +136,10 @@ function DisplayFieldsModalPreview() {
     </div>
   );
 }
-import LineChart from '@/components/monitor-line-chart';
-import MonitorObjectIcon, { DEFAULT_OBJECT_ICON } from '@/components/monitor-object-icon';
-import MonitorObjectWorkspaceShell from '@/components/monitor-object-workspace-shell';
-import MonitorReportingStatusBadge from '@/components/monitor-reporting-status-badge';
+import LineChart from '@/app/monitor/components/monitor-line-chart';
+import MonitorObjectIcon, { DEFAULT_OBJECT_ICON } from '@/app/monitor/components/monitor-object-icon';
+import MonitorObjectWorkspaceShell from '@/app/monitor/components/monitor-object-workspace-shell';
+import MonitorReportingStatusBadge from '@/app/monitor/components/monitor-reporting-status-badge';
 import ManagementTableShell from '@/components/management-table-shell';
 import PageHeaderShell from '@/components/page-header-shell';
 import SearchActionBar from '@/components/search-action-bar';
@@ -153,8 +153,8 @@ import {
   type DashboardPageHeaderStyles,
   type DetailPanelStyles,
   type StatCardStyles,
-} from '@/components/monitor-dashboard-widgets';
-import type { ChartData } from '@/components/monitor-dashboard-widgets/types';
+} from '@/app/monitor/components/monitor-dashboard-widgets';
+import type { ChartData } from '@/app/monitor/components/monitor-dashboard-widgets/types';
 
 const headerStyles: DashboardPageHeaderStyles = {
   pageTitleRow:

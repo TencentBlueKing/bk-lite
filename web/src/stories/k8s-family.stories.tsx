@@ -8,18 +8,18 @@ import {
 } from '@/components/integration-access-complete/presets';
 import IntegrationK8sAccessConfigShell from '@/app/monitor/components/integration-contract/integration-k8s-access-config-shell';
 import IntegrationK8sConfigurationShell from '@/components/integration-k8s-configuration-shell';
-import K8sAccessAssetFields from '@/components/k8s-access-asset-fields';
+import K8sAccessAssetFields from '@/app/monitor/components/k8s-access-asset-fields';
 import {
   createLogK8sAccessAssetFieldsCopy,
   createMonitorK8sAccessAssetFieldsCopy,
-} from '@/components/k8s-access-asset-fields/presets';
-import K8sCollectorInstallStep from '@/components/k8s-collector-install-step';
+} from '@/app/monitor/components/k8s-access-asset-fields/presets';
+import K8sCollectorInstallStep from '@/app/monitor/components/k8s-collector-install-step';
 import {
   createCmdbK8sCollectorInstallCopy,
   createLogK8sCollectorInstallCopy,
   createMonitorK8sCollectorInstallCopy,
-} from '@/components/k8s-collector-install-step/presets';
-import K8sCommonIssuesDrawer from '@/components/k8s-common-issues-drawer';
+} from '@/app/monitor/components/k8s-collector-install-step/presets';
+import K8sCommonIssuesDrawer from '@/app/monitor/components/k8s-common-issues-drawer';
 import SectionHeader from '@/components/section-header';
 import {
   createLogK8sStepCalloutPreset,

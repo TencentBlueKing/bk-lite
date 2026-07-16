@@ -1,10 +1,10 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs';
 import IntroRenderer from '@/app/log/(pages)/integration/list/detail/output/introRenderer';
 import GuideStepPanel from '@/components/guide-step-panel';
-import LogDonutChart from '@/components/log-donut-chart';
+import LogDonutChart from '@/app/log/components/log-donut-chart';
 import LogKpiCard, {
   type LogKpiCardCalculateMetric,
-} from '@/components/log-kpi-card';
+} from '@/app/log/components/log-kpi-card';
 import SectionHeader from '@/components/section-header';
 
 const timeseriesRows = [

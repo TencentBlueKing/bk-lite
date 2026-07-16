@@ -5,7 +5,7 @@ import {
   ClockCircleOutlined,
   DatabaseOutlined,
 } from '@ant-design/icons';
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs';
 import {
   BacklogIcon,
   CollectionStatusCard,
@@ -40,8 +40,8 @@ import {
   type StackedBarPanelStyles,
   type StatCardStyles,
   type TrendChartPanelStyles,
-} from '@/components/monitor-dashboard-widgets';
-import type { ChartData, MetricItem } from '@/components/monitor-dashboard-widgets/types';
+} from '@/app/monitor/components/monitor-dashboard-widgets';
+import type { ChartData, MetricItem } from '@/app/monitor/components/monitor-dashboard-widgets/types';
 
 const statStyles: StatCardStyles = {
   statCard:
