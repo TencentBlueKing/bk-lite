@@ -41,6 +41,7 @@ const nodeManagerStoryT = (key: string) =>
 const nodeManagerOperationGuidanceSharedArgs = {
   loading: false,
   downloadLoading: false,
+  copying: false,
   installerSession:
     'powershell.exe -ExecutionPolicy Bypass -File .\\install-controller.ps1 -SessionToken "bk-session-20260702"',
   installerMetadata: {

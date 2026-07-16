@@ -6,7 +6,8 @@ import { useInstanceApi } from '@/app/cmdb/api/instance';
 import { useCommon } from '@/app/cmdb/context/common';
 import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
 import { useChannelApi } from '@/app/system-manager/api/channel';
-import SubscriptionRuleForm, {
+import {
+  SubscriptionRuleForm,
   type SubscriptionRuleFormRef,
   type SubscriptionRuleFormProps,
 } from '@/components/cmdb-subscription-drawer';

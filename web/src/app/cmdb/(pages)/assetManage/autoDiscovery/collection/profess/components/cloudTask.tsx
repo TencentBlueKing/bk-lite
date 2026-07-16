@@ -235,7 +235,10 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
     const initForm = async () => {
       if (copyTaskData) {
         const values = copyTaskData;
-        const regionItem = values.credential?.regions;
+        const credential = Array.isArray(values.credential)
+          ? values.credential[0]
+          : values.credential;
+        const regionItem = credential?.regions;
 
         // 复制任务中回填表单数据（此时任务名称和密码为空，需要用户手动输入）
         form.setFieldsValue(buildFormValues(values, true));

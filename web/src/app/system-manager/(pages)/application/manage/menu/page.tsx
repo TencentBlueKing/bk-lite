@@ -8,7 +8,7 @@ import { useTranslation } from '@/utils/i18n';
 import type { CustomMenu } from '@/app/system-manager/types/menu';
 import PermissionWrapper from '@/components/permission';
 import OperateModal from '@/components/operate-modal';
-import DynamicForm from '@/components/dynamic-form/editPasswordField';
+import DynamicForm from '@/components/dynamic-form';
 import CustomTable from '@/components/custom-table';
 import styles from '@/app/system-manager/styles/common.module.scss';
 import {

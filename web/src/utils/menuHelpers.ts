@@ -90,3 +90,40 @@ export const getFirstLayerSiblingMenuItems = (
   const firstLayer = matchedPath[0];
   return firstLayer.children ?? [];
 };
+
+const filterVisibleMenuItems = (items: MenuItem[] = []): MenuItem[] =>
+  items.filter((item) => !item.isNotMenuItem && !item.isDirectory);
+
+const findClosestAncestorMenuWithChildren = (
+  items: MenuItem[],
+  currentPath: string
+): MenuItem | null => {
+  for (const item of items) {
+    if (item.isDirectory && item.children?.length) {
+      const found = findClosestAncestorMenuWithChildren(item.children, currentPath);
+      if (found) return found;
+      continue;
+    }
+
+    if (item.url && item.url !== currentPath && currentPath.startsWith(item.url)) {
+      if (item.children?.length) {
+        return findClosestAncestorMenuWithChildren(item.children, currentPath) || item;
+      }
+      return item;
+    }
+
+    if (item.children?.length) {
+      const found = findClosestAncestorMenuWithChildren(item.children, currentPath);
+      if (found) return found;
+    }
+  }
+  return null;
+};
+
+export const getClosestAncestorMenuItems = (
+  items: MenuItem[],
+  currentPath: string
+): MenuItem[] => {
+  const matchedMenu = findClosestAncestorMenuWithChildren(items, currentPath);
+  return filterVisibleMenuItems(matchedMenu?.children);
+};

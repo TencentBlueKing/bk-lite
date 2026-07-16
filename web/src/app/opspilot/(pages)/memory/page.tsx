@@ -6,7 +6,7 @@ import {Button, Dropdown, Form, Input, Menu, message, Modal, Spin} from 'antd';
 import {MoreOutlined, PlusOutlined} from '@ant-design/icons';
 import PermissionWrapper from '@/components/permission';
 import OperateModal from '@/components/operate-modal';
-import DynamicForm from '@/components/dynamic-form/editPasswordField';
+import DynamicForm from '@/components/dynamic-form';
 import styles from '@/app/opspilot/styles/common.module.scss';
 import {useTranslation} from '@/utils/i18n';
 import {MemorySpace, useMemoryApi} from '@/app/opspilot/api/memory';

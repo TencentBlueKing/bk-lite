@@ -20,7 +20,7 @@ import useJobApi from '@/app/job/api';
 import { Script, ScriptFormData, ScriptParam, ScriptType } from '@/app/job/types';
 import { ColumnItem } from '@/types';
 import GroupTreeSelect from '@/components/group-tree-select';
-import SearchCombination from '@/components/search-combination/types';
+import SearchCombination from '@/components/search-combination';
 import { SearchFilters, FieldConfig } from '@/components/search-combination/types';
 import ScriptEditor from '@/app/job/components/script-editor';
 import { useRouter } from 'next/navigation';

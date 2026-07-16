@@ -26,10 +26,10 @@ export interface SubscriptionListController {
 
 export interface SubscriptionMutationController {
   submitting: boolean;
-  createRule: (payload: SubscriptionRuleCreate) => Promise<void>;
-  updateRule: (id: number, payload: SubscriptionRuleUpdate) => Promise<void>;
-  deleteRule: (id: number) => Promise<void>;
-  toggleRule: (id: number) => Promise<void>;
+  createRule: (payload: SubscriptionRuleCreate) => Promise<unknown>;
+  updateRule: (id: number, payload: SubscriptionRuleUpdate) => Promise<unknown>;
+  deleteRule: (id: number) => Promise<unknown>;
+  toggleRule: (id: number) => Promise<unknown>;
 }
 
 export interface SubscriptionRuleFormRuntime {

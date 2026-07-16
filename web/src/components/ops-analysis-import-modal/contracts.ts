@@ -2,6 +2,8 @@ export type OpsAnalysisObjectType =
   | 'dashboard'
   | 'topology'
   | 'architecture'
+  | 'screen'
+  | 'report'
   | 'datasource'
   | 'namespace';
 

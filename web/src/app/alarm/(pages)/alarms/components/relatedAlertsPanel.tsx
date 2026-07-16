@@ -127,7 +127,7 @@ const RelatedAlertsPanel = ({ alert, onRefresh }: Props) => {
   const handleOpenDetail = (item: RelatedAlertItem) => {
     detailRef.current?.showModal({
       title: item.title,
-      form: item as AlarmTableDataItem,
+      form: item as unknown as AlarmTableDataItem,
       type: '',
       defaultTab: 'baseInfo',
     });

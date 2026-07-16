@@ -193,6 +193,11 @@ const SubscriptionDrawer: React.FC<SubscriptionDrawerProps> = ({
 };
 
 export type { QuickSubscribeDefaults, SubscriptionRule } from './types';
+export { default as SubscriptionRuleForm } from './subscriptionRuleForm';
+export type {
+  SubscriptionRuleFormProps,
+  SubscriptionRuleFormRef,
+} from './subscriptionRuleForm';
 export type {
   SubscriptionListController,
   SubscriptionMutationController,

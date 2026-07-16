@@ -24,7 +24,7 @@ import useCloudRegionApi from '@/app/node-manager/api/useCloudRegionApi';
 import { Target, WinRMScheme } from '@/app/job/types';
 import { ColumnItem } from '@/types';
 import GroupTreeSelect from '@/components/group-tree-select';
-import SearchCombination from '@/components/search-combination/types';
+import SearchCombination from '@/components/search-combination';
 import { SearchFilters, FieldConfig } from '@/components/search-combination/types';
 
 const { Dragger } = Upload;
