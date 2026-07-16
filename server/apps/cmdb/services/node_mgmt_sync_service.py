@@ -993,10 +993,6 @@ class NodeMgmtSyncService:
 
     @classmethod
     def _load_existing_host_map(cls, task_id: int) -> dict[tuple[str, int], dict[str, Any]]:
-        model_info = ModelManage.search_model_info("host")
-        attrs = model_info.get("attrs", []) if isinstance(model_info, dict) else []
-        if isinstance(attrs, str):
-            attrs = []
         inst_list, _ = InstanceManage.search_inst(model_id="host")
         if not inst_list:
             return {}

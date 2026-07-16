@@ -8,8 +8,7 @@ pytestmark = pytest.mark.unit
 
 
 def test_existing_hosts_are_indexed_by_ip_and_cloud_and_invalid_rows_are_ignored(mocker):
-    mocker.patch.object(ModelManage, "search_model_info", return_value={"attrs": []})
-    mocker.patch.object(
+    search_inst = mocker.patch.object(
         InstanceManage,
         "search_inst",
         return_value=(
@@ -25,6 +24,7 @@ def test_existing_hosts_are_indexed_by_ip_and_cloud_and_invalid_rows_are_ignored
 
     indexed = NodeMgmtSyncService._load_existing_host_map(task_id=99)
 
+    search_inst.assert_called_once_with(model_id="host")
     assert indexed == {
         ("10.0.0.1", 7): {"_id": "host-1", "ip_addr": " 10.0.0.1 ", "cloud": 7},
         ("10.0.0.2", 8): {"_id": "host-2", "ip_addr": "10.0.0.2", "cloud_id": "8"},

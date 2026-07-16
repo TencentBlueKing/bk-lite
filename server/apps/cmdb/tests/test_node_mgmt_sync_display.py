@@ -80,7 +80,16 @@ def test_legacy_collect_instances_are_whitelisted_and_clear_stale_empty_message(
     task = _collect_task(
         7,
         instances=[
-            {"id": "node-7", "name": "legacy-host", "ip": "10.0.0.7", "password": "never-return-this", "token": "never-return-this-either"},
+            {
+                "id": "node-7",
+                "name": "legacy-host",
+                "ip": "10.0.0.7",
+                "password": "never-return-this",
+                "token": "never-return-this-either",
+                "credential": {"username": "root"},
+                "private_key": "never-return-this-key",
+                "unknown_extra": "never-return-this-extra",
+            },
             "invalid-row",
         ],
         collect_digest={"message": "未发现数据"},
@@ -97,8 +106,17 @@ def test_legacy_collect_instances_are_whitelisted_and_clear_stale_empty_message(
     assert row["inst_name"] == "legacy-host"
     assert row["ip_addr"] == "10.0.0.7"
     assert row["_status"] == "success"
-    assert "password" not in row
-    assert "token" not in row
+    assert set(row) == {
+        "id",
+        "model_id",
+        "inst_name",
+        "name",
+        "ip_addr",
+        "ip",
+        "cloud_name",
+        "_status",
+        "_error",
+    }
     assert payload["run"]["id"] == task.pk
 
 
