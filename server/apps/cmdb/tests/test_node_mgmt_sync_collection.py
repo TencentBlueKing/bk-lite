@@ -5,7 +5,7 @@ from django.utils import timezone
 
 from apps.cmdb.constants.constants import CollectRunStatusType
 from apps.cmdb.models.collect_model import CollectModels
-from apps.cmdb.models.node_mgmt_sync import NodeMgmtSyncConfig, NodeMgmtSyncRun
+from apps.cmdb.models.node_mgmt_sync import NodeMgmtSyncConfig, NodeMgmtSyncRegionState, NodeMgmtSyncRun
 from apps.cmdb.services.collect_service import CollectModelService
 from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncService
 from apps.core.utils.web_utils import WebUtils
@@ -52,9 +52,9 @@ def _successful_sync(config, *, config_version=None):
 
 
 def _accept_with_execution(task, execution_id):
-    CollectModels.objects.filter(pk=task.pk).update(
-        task_id=execution_id, exec_status=CollectRunStatusType.RUNNING,
-    )
+    task.task_id = execution_id
+    task.exec_status = CollectRunStatusType.RUNNING
+    task.save(update_fields=["task_id", "exec_status", "updated_at"])
     return WebUtils.response_success(task.pk)
 
 
@@ -185,3 +185,93 @@ def test_periodic_collect_refreshes_submitted_runs_before_starting_next(mocker):
     recover.assert_called_once_with()
     refresh.assert_called_once_with()
     trigger.assert_called_once_with()
+
+
+def test_consecutive_collect_runs_keep_independent_region_history(config):
+    _successful_sync(config)
+    collect_task = _collect_task(7)
+    node_config_state = NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=config.version,
+        cloud_region_id="7",
+        collect_task=collect_task,
+        scope_key=f"config:{config.version}:region:7",
+        node_config_status="healthy",
+    )
+
+    with patch.object(
+        CollectModelService, "exec_task", side_effect=lambda task, operator: _accept_with_execution(task, f"execution-{operator}"),
+    ):
+        first = NodeMgmtSyncService.execute_collect(operator="first")
+        CollectModels.objects.filter(pk=collect_task.pk).update(exec_status=CollectRunStatusType.SUCCESS)
+        NodeMgmtSyncService.refresh_collect_run(first.pk)
+        second = NodeMgmtSyncService.execute_collect(operator="second")
+
+    first_state = first.region_states.get()
+    second_state = second.region_states.get()
+    assert first_state.pk != second_state.pk
+    assert first_state.scope_key == f"collect-run:{first.pk}:region:7"
+    assert second_state.scope_key == f"collect-run:{second.pk}:region:7"
+    assert first_state.child_execution_id == "execution-first"
+    assert second_state.child_execution_id == "execution-second"
+    node_config_state.refresh_from_db()
+    assert node_config_state.run_id is None
+    assert node_config_state.node_config_status == "healthy"
+
+
+def test_invalid_region_child_is_persisted_and_makes_mixed_result_partial(config):
+    _successful_sync(config)
+    invalid_task = _collect_task(7)
+    invalid_task.system_code = f"{NodeMgmtSyncService.SYSTEM_TASK_PREFIX}bad"
+    invalid_task.save(update_fields=["system_code", "updated_at"])
+    valid_task = _collect_task(8)
+
+    with patch.object(
+        CollectModelService, "exec_task", side_effect=lambda task, operator: _accept_with_execution(task, "execution-valid"),
+    ):
+        run = NodeMgmtSyncService.execute_collect(operator="system")
+
+    invalid_state = run.region_states.get(collect_task=invalid_task)
+    assert invalid_state.scope_key == f"collect-run:{run.pk}:task:{invalid_task.pk}"
+    assert invalid_state.status == NodeMgmtSyncRun.STATUS_BLOCKED
+    assert invalid_state.reason_code == "INVALID_REGION_CODE"
+    CollectModels.objects.filter(pk=valid_task.pk).update(exec_status=CollectRunStatusType.SUCCESS)
+
+    refreshed = NodeMgmtSyncService.refresh_collect_run(run.pk)
+
+    assert refreshed.status == NodeMgmtSyncRun.STATUS_PARTIAL_SUCCESS
+
+
+def test_submission_binds_in_memory_execution_id_not_concurrently_overwritten_db_value(config):
+    _successful_sync(config)
+    _collect_task(7)
+
+    def accept_then_overwrite(task, operator):
+        response = _accept_with_execution(task, "execution-this-run")
+        CollectModels.objects.filter(pk=task.pk).update(task_id="execution-other-run")
+        return response
+
+    with patch.object(CollectModelService, "exec_task", side_effect=accept_then_overwrite):
+        run = NodeMgmtSyncService.execute_collect(operator="system")
+
+    state = run.region_states.get()
+    assert state.child_execution_id == "execution-this-run"
+    refreshed = NodeMgmtSyncService.refresh_collect_run(run.pk)
+    assert refreshed.status == NodeMgmtSyncRun.STATUS_FAILED
+    state.refresh_from_db()
+    assert state.reason_code == "COLLECT_EXECUTION_SUPERSEDED"
+
+
+def test_execute_collect_forwards_operator_to_child_submission(config):
+    _successful_sync(config)
+    collect_task = _collect_task(7)
+
+    def accept(task, operator):
+        assert operator == "alice"
+        return _accept_with_execution(task, "execution-alice")
+
+    with patch.object(CollectModelService, "exec_task", side_effect=accept) as submit:
+        run = NodeMgmtSyncService.execute_collect(operator="alice")
+
+    assert run.status == NodeMgmtSyncRun.STATUS_SUBMITTED
+    submit.assert_called_once_with(collect_task, "alice")

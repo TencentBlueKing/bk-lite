@@ -252,7 +252,7 @@ def test_collect_submit_crossing_deadline_cannot_finish_success(mocker):
     )
     mocker.patch.object(NodeMgmtSyncService, "_list_region_collect_tasks", return_value=[collect_task])
 
-    def expire_after_submit(task):
+    def expire_after_submit(task, operator):
         NodeMgmtSyncRun.objects.filter(pk=run.pk).update(deadline_at=timezone.now() - timedelta(seconds=1))
 
     submit = mocker.patch.object(NodeMgmtSyncService, "_execute_collect_task", side_effect=expire_after_submit,)
@@ -260,7 +260,7 @@ def test_collect_submit_crossing_deadline_cannot_finish_success(mocker):
     with pytest.raises(NodeMgmtSyncError, match="^RUN_TIMEOUT$"):
         NodeMgmtSyncService._do_collect_hosts(run, task_config)
 
-    submit.assert_called_once_with(collect_task)
+    submit.assert_called_once_with(collect_task, "system")
     run.refresh_from_db()
     assert run.status == NodeMgmtSyncRun.STATUS_TIMEOUT
     assert run.active_scope is None

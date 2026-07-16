@@ -126,12 +126,14 @@ def test_collect_hosts_continues_past_single_task_failure(sync_config):
     task_bad = _collect_task(1)
     task_ok = _collect_task(2)
 
-    def accept(task):
-        CollectModels.objects.filter(pk=task.pk).update(task_id="execution-ok", exec_status=CollectRunStatusType.RUNNING)
+    def accept(task, operator):
+        task.task_id = "execution-ok"
+        task.exec_status = CollectRunStatusType.RUNNING
+        task.save(update_fields=["task_id", "exec_status", "updated_at"])
         return WebUtils.response_success(task.pk)
 
     with mock.patch.object(NodeMgmtSyncService, "_list_region_collect_tasks", return_value=[task_bad, task_ok]), mock.patch.object(
-        NodeMgmtSyncService, "_execute_collect_task", side_effect=[RuntimeError("exec boom"), accept(task_ok)]
+        NodeMgmtSyncService, "_execute_collect_task", side_effect=[RuntimeError("exec boom"), accept(task_ok, "system")]
     ):
         NodeMgmtSyncService.collect_hosts()
 

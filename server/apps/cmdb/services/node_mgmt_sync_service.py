@@ -1222,13 +1222,13 @@ class NodeMgmtSyncService:
             CollectModels.objects.filter(is_system=True, system_code__startswith=cls.SYSTEM_TASK_PREFIX).order_by("id"))
 
     @staticmethod
-    def _execute_collect_task(task):
+    def _execute_collect_task(task, operator):
         from apps.cmdb.services.collect_service import CollectModelService
 
         logger.info("[NodeMgmtSync] 执行采集任务, task_id=%d, task_name=%s", task.id, task.name)
         result = CollectModelService.exec_task(
             task,
-            "system",
+            operator,
         )
         logger.info("[NodeMgmtSync] 采集任务执行完成, task_id=%d", task.id)
         return result
@@ -1636,7 +1636,7 @@ class NodeMgmtSyncService:
         return run
 
     @classmethod
-    def collect_hosts(cls) -> dict[str, Any]:
+    def collect_hosts(cls, operator: str = "system") -> dict[str, Any]:
         logger.info("[NodeMgmtSync] ========== 开始采集节点管理主机 ==========")
         task_config = cls.get_task()
         logger.info(
@@ -1644,7 +1644,7 @@ class NodeMgmtSyncService:
             task_config.auto_collect_enabled,
             task_config.collect_interval_minutes,
         )
-        return cls.serialize_run(cls.execute_collect(operator="system"))
+        return cls.serialize_run(cls.execute_collect(operator=operator))
 
     @classmethod
     def _region_state_for_collect_task(
@@ -1653,37 +1653,43 @@ class NodeMgmtSyncService:
         run: NodeMgmtSyncRun,
         task_config: NodeMgmtSyncConfig,
         collect_task: CollectModels,
-    ) -> NodeMgmtSyncRegionState | None:
+    ) -> tuple[NodeMgmtSyncRegionState, bool]:
         system_code = collect_task.system_code
-        if not isinstance(system_code, str) or not system_code.startswith(
-            cls.SYSTEM_TASK_PREFIX
-        ):
-            return None
-        raw_region_id = system_code[len(cls.SYSTEM_TASK_PREFIX) :]
-        if (
-            not raw_region_id
-            or not raw_region_id.isascii()
-            or not raw_region_id.isdecimal()
-        ):
-            return None
-        cloud_region_id = str(int(raw_region_id))
+        raw_region_id = (
+            system_code[len(cls.SYSTEM_TASK_PREFIX) :]
+            if isinstance(system_code, str)
+            and system_code.startswith(cls.SYSTEM_TASK_PREFIX)
+            else ""
+        )
+        valid_region = bool(
+            raw_region_id
+            and raw_region_id.isascii()
+            and raw_region_id.isdecimal()
+        )
+        if valid_region:
+            cloud_region_id = str(int(raw_region_id))
+            scope_suffix = f"region:{cloud_region_id}"
+        else:
+            cloud_region_id = f"invalid:{collect_task.pk}"
+            scope_suffix = f"task:{collect_task.pk}"
+        finished_at = None if valid_region else now()
         state, _ = NodeMgmtSyncRegionState.objects.update_or_create(
-            scope_key=f"config:{task_config.version}:region:{cloud_region_id}",
+            scope_key=f"collect-run:{run.pk}:{scope_suffix}",
             defaults={
                 "config": task_config,
                 "run": run,
                 "cloud_region_id": cloud_region_id,
                 "config_version": task_config.version,
                 "collect_task": collect_task,
-                "status": "pending",
-                "reason_code": "",
+                "status": "pending" if valid_region else NodeMgmtSyncRun.STATUS_BLOCKED,
+                "reason_code": "" if valid_region else "INVALID_REGION_CODE",
                 "error_message": "",
                 "child_execution_id": "",
                 "submitted_at": None,
-                "finished_at": None,
+                "finished_at": finished_at,
             },
         )
-        return state
+        return state, valid_region
 
     @staticmethod
     def _collect_response_accepted(response: Any) -> bool:
@@ -1761,10 +1767,10 @@ class NodeMgmtSyncService:
         for collect_task in collect_tasks:
             cls.heartbeat_run(run)
             message["all"] += 1
-            state = cls._region_state_for_collect_task(
+            state, valid_region = cls._region_state_for_collect_task(
                 run=run, task_config=task_config, collect_task=collect_task,
             )
-            if state is None:
+            if not valid_region:
                 detail["failed"].append(
                     {"task_id": collect_task.id, "reason_code": "INVALID_REGION_CODE"}
                 )
@@ -1801,7 +1807,8 @@ class NodeMgmtSyncService:
             )
             try:
                 cls.heartbeat_run(run)
-                response = cls._execute_collect_task(collect_task)
+                response = cls._execute_collect_task(collect_task, operator)
+                submitted_execution_id = str(collect_task.task_id or "")
                 cls.heartbeat_run(run)
             except NodeMgmtSyncError:
                 raise
@@ -1829,12 +1836,22 @@ class NodeMgmtSyncService:
                 )
                 cls._mark_collect_region_blocked(state, "COLLECT_ALREADY_RUNNING")
                 continue
+            if not submitted_execution_id:
+                detail["failed"].append(
+                    {
+                        "task_id": collect_task.id,
+                        "reason_code": "COLLECT_EXECUTION_ID_MISSING",
+                    }
+                )
+                cls._mark_collect_region_blocked(
+                    state, "COLLECT_EXECUTION_ID_MISSING"
+                )
+                continue
 
-            collect_task.refresh_from_db(fields=("task_id", "exec_status"))
             state.status = NodeMgmtSyncRun.STATUS_SUBMITTED
             state.reason_code = ""
             state.error_message = ""
-            state.child_execution_id = str(collect_task.task_id or "")
+            state.child_execution_id = submitted_execution_id
             state.submitted_at = now()
             state.finished_at = None
             state.save(
@@ -1966,5 +1983,5 @@ class NodeMgmtSyncService:
         return data
 
     @classmethod
-    def trigger_collect(cls) -> dict[str, Any]:
-        return cls.collect_hosts()
+    def trigger_collect(cls, operator: str = "system") -> dict[str, Any]:
+        return cls.collect_hosts(operator=operator)
