@@ -12,6 +12,7 @@ import { ExclamationCircleFilled } from '@ant-design/icons';
 import Password from '@/components/password';
 import GroupTreeSelector from '@/components/group-tree-select';
 import { useTranslation } from '@/utils/i18n';
+import FieldGuideTip from '@/app/monitor/(pages)/integration/list/detail/configure/fieldGuideTip';
 import { applyTableChangeHandler } from './tableChangeHandler';
 
 export const useConfigRenderer = () => {
@@ -31,8 +32,10 @@ export const useConfigRenderer = () => {
       dependency,
       rules = [],
       description,
-      editable
+      editable,
+      guide_short
     } = fieldConfig;
+    const hasGuideTip = Boolean(guide_short);
 
     if (type === 'hidden') {
       return (
@@ -226,7 +229,19 @@ export const useConfigRenderer = () => {
         <Form.Item noStyle shouldUpdate={shouldUpdate} key={name}>
           {({ getFieldValue }) =>
             isFieldVisible(getFieldValue) ? (
-              <Form.Item required={required} label={label}>
+              <Form.Item
+                required={required}
+                label={
+                  hasGuideTip ? (
+                    <span className="inline-flex items-center">
+                      {label}
+                      <FieldGuideTip short={guide_short} />
+                    </span>
+                  ) : (
+                    label
+                  )
+                }
+              >
                 <Form.Item
                   noStyle
                   name={name}
@@ -252,7 +267,20 @@ export const useConfigRenderer = () => {
     }
 
     return (
-      <Form.Item key={name} required={required} label={label}>
+      <Form.Item
+        key={name}
+        required={required}
+        label={
+          hasGuideTip ? (
+            <span className="inline-flex items-center">
+              {label}
+              <FieldGuideTip short={guide_short} />
+            </span>
+          ) : (
+            label
+          )
+        }
+      >
         <Form.Item
           noStyle
           name={name}

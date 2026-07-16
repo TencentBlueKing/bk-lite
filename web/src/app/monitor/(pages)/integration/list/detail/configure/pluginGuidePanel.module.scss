@@ -1,0 +1,209 @@
+// 「配置」标题行右侧的内联入口按钮；不使用绝对定位，避免被上层卡片遮住边框。
+.guideEntry {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 12px;
+  font-size: 13px;
+  line-height: 26px;
+  color: var(--color-primary) !important;
+  background: var(--color-bg-1) !important;
+  border: 1px solid var(--color-border-1) !important;
+  border-radius: 6px;
+  box-shadow: none !important;
+  transition: border-color 0.2s ease, color 0.2s ease;
+
+  &:hover,
+  &:focus {
+    color: var(--color-primary) !important;
+    background: var(--color-bg-1) !important;
+    border-color: var(--color-primary) !important;
+  }
+
+  &:active {
+    color: var(--color-primary) !important;
+    background: var(--color-fill-1) !important;
+    border-color: var(--color-primary) !important;
+  }
+
+  :global(.anticon) {
+    color: var(--color-primary);
+  }
+}
+
+.guideContent {
+  :global(.markdown-body) {
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--color-text-2) !important;
+    background: transparent !important;
+  }
+
+  :global(.markdown-body h2),
+  :global(.markdown-body h3) {
+    scroll-margin-top: 24px;
+  }
+
+  :global(.markdown-body h2) {
+    margin: 24px 0 10px;
+    padding: 2px 0 8px 10px;
+    border-bottom: 1px solid var(--color-border-1) !important;
+    border-left: 3px solid var(--color-primary) !important;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 24px;
+    color: var(--color-text-1) !important;
+  }
+
+  :global(.markdown-body h2:first-child) {
+    margin-top: 0;
+  }
+
+  :global(.markdown-body h3) {
+    margin: 16px 0 8px;
+    padding: 0;
+    border-bottom: none !important;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 22px;
+    color: var(--color-text-1) !important;
+  }
+
+  :global(.markdown-body p),
+  :global(.markdown-body li) {
+    color: var(--color-text-2);
+  }
+
+  // Tailwind preflight 会将 ul/ol 重置为 list-style: none，这里显式恢复标记，
+  // 否则「接入步骤」等有序列表会丢失数字、无序列表丢失圆点。
+  :global(.markdown-body ul) {
+    margin: 8px 0 12px;
+    padding-left: 1.6em;
+    list-style: disc outside;
+  }
+
+  :global(.markdown-body ol) {
+    margin: 8px 0 12px;
+    padding-left: 1.6em;
+    list-style: decimal outside;
+  }
+
+  :global(.markdown-body li) {
+    display: list-item;
+  }
+
+  :global(.markdown-body li::marker) {
+    color: var(--color-text-3);
+  }
+
+  :global(.markdown-body li + li) {
+    margin-top: 4px;
+  }
+
+  :global(.md-code-block) {
+    position: relative;
+    margin: 10px 0 14px;
+  }
+
+  :global(.md-code-block pre) {
+    margin: 0;
+    padding: 12px 40px 12px 14px;
+    border-radius: 6px;
+    border: 1px solid var(--color-border-1);
+    background: var(--color-fill-2) !important;
+    color: var(--color-text-1) !important;
+    overflow-x: auto;
+  }
+
+  :global(.md-code-copy) {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid var(--color-border-1);
+    border-radius: 6px;
+    background: var(--color-bg);
+    color: var(--color-text-3);
+    cursor: pointer;
+    transition: color 150ms ease, background 150ms ease, border-color 150ms ease;
+  }
+
+  :global(.md-code-copy:hover),
+  :global(.md-code-copy:focus-visible) {
+    color: var(--color-primary);
+    border-color: var(--color-primary);
+    background: var(--color-bg);
+    outline: none;
+  }
+
+  :global(.md-code-copy.is-copied) {
+    color: var(--color-success, #52c41a);
+    border-color: var(--color-success, #52c41a);
+  }
+
+  :global(.markdown-body pre) {
+    margin: 10px 0 14px;
+    padding: 12px 14px;
+    border-radius: 6px;
+    border: 1px solid var(--color-border-1);
+    background: var(--color-fill-2) !important;
+    color: var(--color-text-1) !important;
+    overflow-x: auto;
+  }
+
+  :global(.markdown-body code) {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 12px;
+  }
+
+  // 覆盖 github-markdown-css 在 prefers-color-scheme:dark 下近白的 --fgColor-default，
+  // 避免浅色抽屉里命令文字几乎看不见。
+  :global(.markdown-body pre code) {
+    padding: 0;
+    background: transparent !important;
+    color: var(--color-text-1) !important;
+  }
+
+  :global(.markdown-body :not(pre) > code) {
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: var(--color-fill-2) !important;
+    color: var(--color-text-1) !important;
+  }
+
+  :global(.markdown-body table) {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+    margin: 12px 0 16px;
+    border: 1px solid var(--color-border-1);
+    border-radius: 6px;
+  }
+
+  :global(.markdown-body th),
+  :global(.markdown-body td) {
+    padding: 8px 12px;
+    border-color: var(--color-border-1);
+  }
+
+  :global(.markdown-body th) {
+    background: var(--color-fill-2);
+    font-weight: 600;
+    color: var(--color-text-1);
+  }
+
+  :global(.markdown-body blockquote) {
+    margin: 12px 0;
+    padding: 8px 12px;
+    border-left: 3px solid var(--color-border-2, var(--color-border-1));
+    background: var(--color-fill-1);
+    color: var(--color-text-2);
+  }
+}
