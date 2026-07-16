@@ -10,11 +10,11 @@
 - RPC 封装：_cloud_region_name_map / _fetch_non_container_nodes / _pick_access_point；
 - DB 序列化：serialize_task / serialize_run（None 与有值）/ get_task 建档。
 """
-import pydantic.root_model  # noqa
-
 import types
 
+import pydantic.root_model  # noqa
 import pytest
+from django.utils import timezone
 
 from apps.cmdb.constants.constants import CollectRunStatusType
 from apps.cmdb.models.node_mgmt_sync import NodeMgmtSyncConfig, NodeMgmtSyncRun
@@ -217,8 +217,12 @@ class TestRpcWrappers:
         assert node["organization_ids"] == [10]
         assert node["model_id"] == "host"
         assert rpc.node_list.call_args_list == [
-            mocker.call({"is_container": False, "page": 1, "page_size": 2}),
-            mocker.call({"is_container": False, "page": 2, "page_size": 2}),
+            mocker.call(
+                {"is_container": False, "skip_permission": True, "page": 1, "page_size": 2}
+            ),
+            mocker.call(
+                {"is_container": False, "skip_permission": True, "page": 2, "page_size": 2}
+            ),
         ]
 
     def test_fetch_node_mgmt_pages_按count继续翻页(self, mocker):
@@ -235,10 +239,79 @@ class TestRpcWrappers:
 
         assert len(nodes) == 1200
         assert rpc.node_list.call_args_list == [
-            mocker.call({"is_container": False, "page": 1, "page_size": 1000}),
-            mocker.call({"is_container": False, "page": 2, "page_size": 1000}),
-            mocker.call({"is_container": False, "page": 3, "page_size": 1000}),
+            mocker.call(
+                {"is_container": False, "skip_permission": True, "page": 1, "page_size": 500}
+            ),
+            mocker.call(
+                {"is_container": False, "skip_permission": True, "page": 2, "page_size": 500}
+            ),
+            mocker.call(
+                {"is_container": False, "skip_permission": True, "page": 3, "page_size": 500}
+            ),
         ]
+
+    def test_fetch_node_mgmt_pages_系统身份不可被调用参数覆盖(self, mocker):
+        rpc = mocker.MagicMock()
+        rpc.node_list.return_value = {"count": 0, "nodes": []}
+        mocker.patch.object(S, "_node_mgmt_client", return_value=rpc)
+
+        S._fetch_node_mgmt_pages({"skip_permission": False, "page_size": 999999})
+
+        assert rpc.node_list.call_args == mocker.call(
+            {"skip_permission": True, "page_size": 500, "page": 1}
+        )
+
+    def test_fetch_node_mgmt_pages_非法页大小回退到硬上限(self, mocker):
+        rpc = mocker.MagicMock()
+        rpc.node_list.return_value = {"count": 0, "nodes": []}
+        mocker.patch.object(S, "_node_mgmt_client", return_value=rpc)
+
+        S._fetch_node_mgmt_pages({"page_size": "invalid"})
+
+        assert rpc.node_list.call_args == mocker.call(
+            {"page_size": 500, "skip_permission": True, "page": 1}
+        )
+
+    @pytest.mark.parametrize(
+        ("response", "error_code"),
+        [
+            ({"result": False, "message": "raw-sensitive-value"}, "remote_rejected"),
+            ("raw-sensitive-value", "invalid_response"),
+        ],
+    )
+    def test_fetch_node_mgmt_pages_异常响应只暴露稳定摘要(
+        self, mocker, caplog, response, error_code
+    ):
+        rpc = mocker.MagicMock()
+        rpc.node_list.return_value = response
+        mocker.patch.object(S, "_node_mgmt_client", return_value=rpc)
+
+        with pytest.raises(RuntimeError, match=f"^NODE_QUERY_FAILED: {error_code}$"):
+            S._fetch_node_mgmt_pages({})
+
+        assert "raw-sensitive-value" not in caplog.text
+
+    def test_fetch_node_mgmt_pages_达到分页预算抛稳定错误码(self, mocker):
+        rpc = mocker.MagicMock()
+        rpc.node_list.return_value = {
+            "count": 999999,
+            "nodes": [{"id": f"n-{idx}"} for idx in range(500)],
+        }
+        mocker.patch.object(S, "_node_mgmt_client", return_value=rpc)
+
+        with pytest.raises(RuntimeError, match="^NODE_PAGE_LIMIT_EXCEEDED$"):
+            S._fetch_node_mgmt_pages({}, max_pages=2)
+
+        assert rpc.node_list.call_count == 2
+
+    def test_fetch_node_mgmt_pages_截止时间到期不发起RPC(self, mocker):
+        rpc = mocker.MagicMock()
+        mocker.patch.object(S, "_node_mgmt_client", return_value=rpc)
+
+        with pytest.raises(RuntimeError, match="^NODE_QUERY_TIMEOUT$"):
+            S._fetch_node_mgmt_pages({}, deadline_at=timezone.now())
+
+        rpc.node_list.assert_not_called()
 
     def test_pick_access_point_无容器节点返回None(self, mocker):
         rpc = mocker.MagicMock()
@@ -267,8 +340,24 @@ class TestRpcWrappers:
         assert ap["cloud"] == 1
         assert ap["cloud_name"] == "华东"
         assert rpc.node_list.call_args_list == [
-            mocker.call({"cloud_region_id": 1, "is_container": True, "page": 1, "page_size": 2}),
-            mocker.call({"cloud_region_id": 1, "is_container": True, "page": 2, "page_size": 2}),
+            mocker.call(
+                {
+                    "cloud_region_id": 1,
+                    "is_container": True,
+                    "skip_permission": True,
+                    "page": 1,
+                    "page_size": 2,
+                }
+            ),
+            mocker.call(
+                {
+                    "cloud_region_id": 1,
+                    "is_container": True,
+                    "skip_permission": True,
+                    "page": 2,
+                    "page_size": 2,
+                }
+            ),
         ]
 
 

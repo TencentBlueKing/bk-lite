@@ -34,6 +34,20 @@ def test_sync_hosts_marks_run_failed_when_fetch_raises(sync_config):
     assert "fetch boom" in run.error_message
 
 
+def test_fetch_node_mgmt_pages_RPC异常只暴露稳定码且日志不泄露敏感详情(mocker, caplog):
+    rpc = mocker.MagicMock()
+    rpc.node_list.side_effect = RuntimeError("secret-node-token=raw-sensitive-value")
+    mocker.patch.object(NodeMgmtSyncService, "_node_mgmt_client", return_value=rpc)
+
+    with pytest.raises(RuntimeError) as error:
+        NodeMgmtSyncService._fetch_node_mgmt_pages({})
+
+    assert str(error.value) == "NODE_QUERY_FAILED: RuntimeError"
+    assert "raw-sensitive-value" not in caplog.text
+    assert "raw-sensitive-value" not in str(error.value)
+    assert len(str(error.value)) <= 255
+
+
 @pytest.mark.django_db
 def test_sync_hosts_continues_past_single_node_failure(sync_config):
     nodes = [

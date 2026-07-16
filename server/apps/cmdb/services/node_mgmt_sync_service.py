@@ -25,6 +25,10 @@ def _get_positive_int_env(name, default):
     return max(1, value)
 
 
+class NodeMgmtSyncError(RuntimeError):
+    """节点管理同步的稳定、可安全外显错误。"""
+
+
 class NodeMgmtSyncService:
     SYNC_PERIODIC_TASK_NAME = "cmdb_node_mgmt_sync_hosts"
     COLLECT_PERIODIC_TASK_NAME = "cmdb_node_mgmt_collect_hosts"
@@ -40,6 +44,9 @@ class NodeMgmtSyncService:
     DISPLAY_SOURCE_SYNC_FALLBACK = "sync_fallback"
     DISPLAY_SOURCE_NONE = "none"
     NODE_MGMT_SYNC_PAGE_SIZE = _get_positive_int_env("CMDB_NODE_MGMT_SYNC_PAGE_SIZE", 500)
+    NODE_PAGE_SIZE = 500
+    MAX_NODE_PAGES = 100
+    SYSTEM_NODE_QUERY = {"skip_permission": True}
     RAW_DATA_FIELDS = (
         "id",
         "_id",
@@ -471,20 +478,56 @@ class NodeMgmtSyncService:
         return result
 
     @classmethod
-    def _fetch_node_mgmt_pages(cls, query: dict[str, Any]) -> list[dict[str, Any]]:
-        page = 1
+    def _raise_for_node_response(cls, response: Any) -> None:
+        if isinstance(response, dict) and response.get("result") is False:
+            logger.error(
+                "[NodeMgmtSync] 节点查询失败 code=NODE_QUERY_FAILED, error_type=remote_rejected"
+            )
+            raise NodeMgmtSyncError("NODE_QUERY_FAILED: remote_rejected")
+        if not isinstance(response, (dict, list)):
+            logger.error(
+                "[NodeMgmtSync] 节点查询失败 code=NODE_QUERY_FAILED, error_type=invalid_response"
+            )
+            raise NodeMgmtSyncError("NODE_QUERY_FAILED: invalid_response")
+
+    @classmethod
+    def _fetch_node_mgmt_pages(
+        cls,
+        query: dict[str, Any],
+        *,
+        max_pages: int = MAX_NODE_PAGES,
+        deadline_at=None,
+    ) -> list[dict[str, Any]]:
+        requested_page_size = query.get("page_size", cls.NODE_MGMT_SYNC_PAGE_SIZE)
+        try:
+            requested_page_size = int(requested_page_size)
+        except (TypeError, ValueError):
+            requested_page_size = cls.NODE_MGMT_SYNC_PAGE_SIZE
+        page_size = min(max(1, requested_page_size), cls.NODE_PAGE_SIZE)
+        max_pages = min(max(1, int(max_pages)), cls.MAX_NODE_PAGES)
+        base_payload = {**query, **cls.SYSTEM_NODE_QUERY, "page_size": page_size}
         nodes: list[dict[str, Any]] = []
         client = cls._node_mgmt_client()
-        while True:
-            payload = {**query, "page": page, "page_size": cls.NODE_MGMT_SYNC_PAGE_SIZE}
-            rows = client.node_list(payload)
+        for page in range(1, max_pages + 1):
+            if deadline_at is not None and timezone.now() >= deadline_at:
+                raise NodeMgmtSyncError("NODE_QUERY_TIMEOUT")
+            payload = {**base_payload, "page": page}
+            try:
+                rows = client.node_list(payload)
+            except Exception as error:
+                error_type = error.__class__.__name__[:200]
+                logger.error(
+                    "[NodeMgmtSync] 节点查询失败 code=NODE_QUERY_FAILED, error_type=%s",
+                    error_type,
+                )
+                raise NodeMgmtSyncError(f"NODE_QUERY_FAILED: {error_type}"[:255]) from None
+            cls._raise_for_node_response(rows)
             page_nodes = cls._extract_nodes(rows)
             nodes.extend(page_nodes)
             count = cls._safe_count(rows.get("count") if isinstance(rows, dict) else len(page_nodes))
-            if not page_nodes or len(nodes) >= count:
-                break
-            page += 1
-        return nodes
+            if not page_nodes or (count > 0 and len(nodes) >= count) or len(page_nodes) < page_size:
+                return nodes
+        raise NodeMgmtSyncError("NODE_PAGE_LIMIT_EXCEEDED")
 
     @classmethod
     def _fetch_non_container_nodes(cls) -> list[dict[str, Any]]:
