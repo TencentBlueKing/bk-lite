@@ -1,7 +1,19 @@
 {
-  "layout": [],
+  "layout": [
+    {
+      "component": "selection-preview-layout",
+      "reason": "不包含业务语义的主列表与已选项预览布局原语",
+      "contractStory": "selection-family.stories.tsx"
+    }
+  ],
   "form": [],
   "feedback": [],
-  "dataDisplay": [],
+  "dataDisplay": [
+    {
+      "component": "status-badge-shell",
+      "reason": "由标签与调色板参数驱动的通用状态展示原语",
+      "contractStory": "data-display-family.stories.tsx"
+    }
+  ],
   "interaction": []
 }

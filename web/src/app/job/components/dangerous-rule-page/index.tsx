@@ -1,28 +1,56 @@
 'use client';
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { Button, Input, Select, Switch, Tag, Modal, message, Form, Radio } from 'antd';
+import { Button, Input, Select, Switch, Modal, message, Form, Radio } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
-import CustomTable from '@/components/custom-table';
-import OperateModal from '@/components/operate-modal';
+import OperateFormModal from '@/components/operate-form-modal';
+import StatusBadgeShell from '@/components/status-badge-shell';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
-import { DangerousRule, DangerousRuleFormData, DangerousRuleListResponse, DangerousRuleMatchType, DangerousRuleParams } from '@/app/job/types';
+import {
+  DangerousRule,
+  DangerousRuleFormData,
+  DangerousRuleListResponse,
+  DangerousRuleMatchType,
+  DangerousRuleParams,
+} from './types';
 import { ColumnItem } from '@/types';
 import GroupTreeSelect from '@/components/group-tree-select';
-import SearchCombination from '@/components/search-combination';
 import { SearchFilters, FieldConfig } from '@/components/search-combination/types';
 import { AxiosRequestConfig } from 'axios';
+import JobListWorkspaceShell from '@/app/job/components/list-workspace-shell';
 
-interface DangerousRuleApiMethods {
-  getList: (params?: DangerousRuleParams, config?: AxiosRequestConfig) => Promise<DangerousRuleListResponse>;
+export interface DangerousRuleApiMethods {
+  getList: (
+    params?: DangerousRuleParams,
+    config?: AxiosRequestConfig,
+  ) => Promise<DangerousRuleListResponse>;
   create: (data: DangerousRuleFormData) => Promise<DangerousRule>;
-  update: (id: number, data: Partial<DangerousRuleFormData>) => Promise<DangerousRule>;
+  update: (
+    id: number,
+    data: Partial<DangerousRuleFormData>,
+  ) => Promise<DangerousRule>;
   patch: (id: number, data: Partial<DangerousRule>) => Promise<DangerousRule>;
   remove: (id: number) => Promise<void>;
 }
 
-interface DangerousRulePageProps {
+export interface DangerousRuleMatchTypeOption {
+  label: string;
+  value: DangerousRuleMatchType;
+  help: string;
+  placeholder: string;
+  examples: string[];
+}
+
+export type {
+  DangerousRule,
+  DangerousRuleFormData,
+  DangerousRuleListResponse,
+  DangerousRuleMatchType,
+  DangerousRuleParams,
+} from './types';
+
+export interface JobDangerousRulePageProps {
   title: string;
   description: string;
   addModalTitle: string;
@@ -36,17 +64,11 @@ interface DangerousRulePageProps {
   strategyHelp: string;
   ruleNamePlaceholder: string;
   matchTypeLabel?: string;
-  matchTypeOptions?: Array<{
-    label: string;
-    value: DangerousRuleMatchType;
-    help: string;
-    placeholder: string;
-    examples: string[];
-  }>;
+  matchTypeOptions?: DangerousRuleMatchTypeOption[];
   api: DangerousRuleApiMethods;
 }
 
-const DangerousRulePage: React.FC<DangerousRulePageProps> = ({
+const JobDangerousRulePage: React.FC<JobDangerousRulePageProps> = ({
   title,
   description,
   addModalTitle,
@@ -81,22 +103,37 @@ const DangerousRulePage: React.FC<DangerousRulePageProps> = ({
   const [editingRule, setEditingRule] = useState<DangerousRule | null>(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set());
-  const currentMatchType = Form.useWatch('match_type', form) as DangerousRuleMatchType | undefined;
+  const currentMatchType = Form.useWatch(
+    'match_type',
+    form,
+  ) as DangerousRuleMatchType | undefined;
 
   const selectedMatchTypeOption = useMemo(() => {
     if (!matchTypeOptions?.length) return null;
-    return matchTypeOptions.find(option => option.value === currentMatchType) || matchTypeOptions[0];
+    return (
+      matchTypeOptions.find((option) => option.value === currentMatchType) ||
+      matchTypeOptions[0]
+    );
   }, [currentMatchType, matchTypeOptions]);
 
-  const resolvedPatternPlaceholder = selectedMatchTypeOption?.placeholder || patternPlaceholder;
+  const resolvedPatternPlaceholder =
+    selectedMatchTypeOption?.placeholder || patternPlaceholder;
   const resolvedPatternHelp = selectedMatchTypeOption?.help || patternHelp;
-  const resolvedPatternExamples = selectedMatchTypeOption?.examples || patternExamples;
-  const matchTypeLabelMap = useMemo(() => {
-    return new Map((matchTypeOptions || []).map(option => [option.value, option.label]));
-  }, [matchTypeOptions]);
+  const resolvedPatternExamples =
+    selectedMatchTypeOption?.examples || patternExamples;
+  const matchTypeLabelMap = useMemo(
+    () => new Map((matchTypeOptions || []).map((option) => [option.value, option.label])),
+    [matchTypeOptions],
+  );
 
   const fetchData = useCallback(
-    async (params: { filters?: SearchFilters; current?: number; pageSize?: number } = {}) => {
+    async (
+      params: {
+        filters?: SearchFilters;
+        current?: number;
+        pageSize?: number;
+      } = {},
+    ) => {
       setLoading(true);
       try {
         const filters = params.filters ?? searchFilters;
@@ -104,13 +141,15 @@ const DangerousRulePage: React.FC<DangerousRulePageProps> = ({
           page: params.current ?? pagination.current,
           page_size: params.pageSize ?? pagination.pageSize,
         };
-        // Convert SearchFilters to flat query params
         if (filters && Object.keys(filters).length > 0) {
           Object.entries(filters).forEach(([field, conditions]) => {
             conditions.forEach((condition) => {
               if (field === 'is_enabled') {
                 queryParams.is_enabled = condition.value;
-              } else if (condition.lookup_expr === 'in' && Array.isArray(condition.value)) {
+              } else if (
+                condition.lookup_expr === 'in' &&
+                Array.isArray(condition.value)
+              ) {
                 queryParams[field] = (condition.value as string[]).join(',');
               } else {
                 queryParams[field] = condition.value;
@@ -128,63 +167,83 @@ const DangerousRulePage: React.FC<DangerousRulePageProps> = ({
         setLoading(false);
       }
     },
-    [searchFilters, pagination.current, pagination.pageSize, api]
+    [api, pagination.current, pagination.pageSize, searchFilters],
   );
 
   useEffect(() => {
     if (!isApiReady) {
       fetchData();
     }
-  }, [isApiReady]);
+  }, [fetchData, isApiReady]);
 
   useEffect(() => {
     if (!isApiReady) {
       fetchData();
     }
-  }, [pagination.current, pagination.pageSize]);
+  }, [fetchData, isApiReady, pagination.current, pagination.pageSize]);
 
-  const handleSearchChange = useCallback((filters: SearchFilters) => {
-    setSearchFilters(filters);
-    setPagination((prev) => ({ ...prev, current: 1 }));
-    fetchData({ filters, current: 1 });
-  }, [fetchData]);
+  const handleSearchChange = useCallback(
+    (filters: SearchFilters) => {
+      setSearchFilters(filters);
+      setPagination((prev) => ({ ...prev, current: 1 }));
+      fetchData({ filters, current: 1 });
+    },
+    [fetchData],
+  );
 
-  const fieldConfigs: FieldConfig[] = useMemo(() => [
-    {
-      name: 'name',
-      label: t('job.ruleName'),
-      lookup_expr: 'icontains',
-    },
-    {
-      name: 'pattern',
-      label: patternLabel,
-      lookup_expr: 'icontains',
-    },
-    {
-      name: 'level',
-      label: t('job.handleStrategy'),
-      lookup_expr: 'in',
-      options: [
-        { id: 'forbidden', name: forbiddenLabel },
-        { id: 'confirm', name: confirmLabel },
-      ],
-    },
-    ...(matchTypeOptions?.length ? [{
-      name: 'match_type',
-      label: matchTypeLabel || t('job.matchType'),
-      lookup_expr: 'in',
-      options: matchTypeOptions.map(option => ({ id: option.value, name: option.label })),
-    } satisfies FieldConfig] : []),
-    {
-      name: 'is_enabled',
-      label: t('job.enableStatus'),
-      lookup_expr: 'bool',
-      options: [
-        { id: 'true', name: t('common.yes') },
-        { id: 'false', name: t('common.no') },
-      ],
-    },
-  ], [confirmLabel, forbiddenLabel, matchTypeLabel, matchTypeOptions, patternLabel, t]);
+  const fieldConfigs: FieldConfig[] = useMemo(
+    () => [
+      {
+        name: 'name',
+        label: t('job.ruleName'),
+        lookup_expr: 'icontains',
+      },
+      {
+        name: 'pattern',
+        label: patternLabel,
+        lookup_expr: 'icontains',
+      },
+      {
+        name: 'level',
+        label: t('job.handleStrategy'),
+        lookup_expr: 'in',
+        options: [
+          { id: 'forbidden', name: forbiddenLabel },
+          { id: 'confirm', name: confirmLabel },
+        ],
+      },
+      ...(matchTypeOptions?.length
+        ? [
+            {
+              name: 'match_type',
+              label: matchTypeLabel || t('job.matchType'),
+              lookup_expr: 'in',
+              options: matchTypeOptions.map((option) => ({
+                id: option.value,
+                name: option.label,
+              })),
+            } satisfies FieldConfig,
+        ]
+        : []),
+      {
+        name: 'is_enabled',
+        label: t('job.enableStatus'),
+        lookup_expr: 'bool',
+        options: [
+          { id: 'true', name: t('common.yes') },
+          { id: 'false', name: t('common.no') },
+        ],
+      },
+    ],
+    [
+      confirmLabel,
+      forbiddenLabel,
+      matchTypeLabel,
+      matchTypeOptions,
+      patternLabel,
+      t,
+    ],
+  );
 
   const handleTableChange = (pag: any) => {
     setPagination(pag);
@@ -197,7 +256,7 @@ const DangerousRulePage: React.FC<DangerousRulePageProps> = ({
         is_enabled: !record.is_enabled,
       });
       message.success(
-        record.is_enabled ? t('job.ruleDisabled') : t('job.ruleEnabled')
+        record.is_enabled ? t('job.ruleDisabled') : t('job.ruleEnabled'),
       );
       fetchData();
     } catch {
@@ -232,7 +291,9 @@ const DangerousRulePage: React.FC<DangerousRulePageProps> = ({
     form.resetFields();
     form.setFieldsValue({
       level: 'forbidden',
-      ...(matchTypeOptions?.length ? { match_type: matchTypeOptions[0].value } : {}),
+      ...(matchTypeOptions?.length
+        ? { match_type: matchTypeOptions[0].value }
+        : {}),
     });
     setModalOpen(true);
   };
@@ -291,7 +352,7 @@ const DangerousRulePage: React.FC<DangerousRulePageProps> = ({
       width: 240,
       render: (_: unknown, record: DangerousRule) => (
         <code
-          className="px-2 py-0.5 rounded text-xs"
+          className="rounded px-2 py-0.5 text-xs"
           style={{
             color: '#d46b08',
             backgroundColor: 'rgba(250, 173, 20, 0.1)',
@@ -302,15 +363,23 @@ const DangerousRulePage: React.FC<DangerousRulePageProps> = ({
         </code>
       ),
     },
-    ...(matchTypeOptions?.length ? [{
-      title: matchTypeLabel || t('job.matchType'),
-      dataIndex: 'match_type',
-      key: 'match_type',
-      width: 120,
-      render: (_: unknown, record: DangerousRule) => (
-        <span>{matchTypeLabelMap.get(record.match_type || matchTypeOptions[0].value) || '-'}</span>
-      ),
-    } satisfies ColumnItem] : []),
+    ...(matchTypeOptions?.length
+      ? [
+          {
+            title: matchTypeLabel || t('job.matchType'),
+            dataIndex: 'match_type',
+            key: 'match_type',
+            width: 120,
+            render: (_: unknown, record: DangerousRule) => (
+              <span>
+                {matchTypeLabelMap.get(
+                  record.match_type || matchTypeOptions[0].value,
+                ) || '-'}
+              </span>
+            ),
+          } satisfies ColumnItem,
+      ]
+      : []),
     {
       title: t('job.handleStrategy'),
       dataIndex: 'level',
@@ -319,12 +388,17 @@ const DangerousRulePage: React.FC<DangerousRulePageProps> = ({
       render: (_: unknown, record: DangerousRule) => {
         const isForbidden = record.level === 'forbidden';
         return (
-          <Tag
-            color={isForbidden ? 'error' : 'processing'}
-            style={{ margin: 0 }}
-          >
-            {isForbidden ? forbiddenLabel : confirmLabel}
-          </Tag>
+          <StatusBadgeShell
+            label={isForbidden ? forbiddenLabel : confirmLabel}
+            palette={{
+              textColor: isForbidden
+                ? 'var(--color-error)'
+                : 'var(--color-primary)',
+              backgroundColor: isForbidden
+                ? 'color-mix(in srgb, var(--color-error) 12%, transparent)'
+                : 'color-mix(in srgb, var(--color-primary) 12%, transparent)',
+            }}
+          />
         );
       },
     },
@@ -352,7 +426,11 @@ const DangerousRulePage: React.FC<DangerousRulePageProps> = ({
         if (!record.updated_at) return <span>-</span>;
         const d = new Date(record.updated_at);
         const pad = (n: number) => String(n).padStart(2, '0');
-        return <span>{`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`}</span>;
+        return (
+          <span>
+            {`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`}
+          </span>
+        );
       },
     },
     {
@@ -363,13 +441,13 @@ const DangerousRulePage: React.FC<DangerousRulePageProps> = ({
       render: (_: unknown, record: DangerousRule) => (
         <div className="flex items-center gap-3">
           <a
-            className="text-(--color-primary) cursor-pointer"
+            className="cursor-pointer text-(--color-primary)"
             onClick={() => openEditModal(record)}
           >
             {t('job.editRule')}
           </a>
           <a
-            className="text-(--color-primary) cursor-pointer"
+            className="cursor-pointer text-(--color-primary)"
             onClick={() => handleDelete(record)}
           >
             {t('job.deleteRule')}
@@ -380,77 +458,40 @@ const DangerousRulePage: React.FC<DangerousRulePageProps> = ({
   ];
 
   return (
-    <div className="w-full h-full flex flex-col overflow-hidden">
-      {/* Header */}
-      <div
-        className="rounded-lg px-6 py-4 mb-4 shrink-0"
-        style={{
-          background: 'var(--color-bg-1)',
-          border: '1px solid var(--color-border-1)',
-        }}
-      >
-        <h2
-          className="text-base font-medium m-0 mb-1"
-          style={{ color: 'var(--color-text-1)' }}
-        >
-          {title}
-        </h2>
-        <p className="text-sm m-0" style={{ color: 'var(--color-text-3)' }}>
-          {description}
-        </p>
-      </div>
-
-      {/* Table Section */}
-      <div
-        className="rounded-lg px-6 py-6 flex-1 flex flex-col overflow-hidden"
-        style={{
-          background: 'var(--color-bg-1)',
-          border: '1px solid var(--color-border-1)',
-        }}
-      >
-        {/* Toolbar */}
-        <div className="flex justify-between mb-4 shrink-0">
-          <SearchCombination
-            fieldConfigs={fieldConfigs}
-            onChange={handleSearchChange}
-            fieldWidth={120}
-            selectWidth={300}
-          />
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={openAddModal}
-          >
-            {t('job.addRule')}
-          </Button>
-        </div>
-
-        {/* Table */}
-        <div className="flex-1 overflow-hidden">
-          <CustomTable
-            columns={columns}
-            dataSource={data}
-            loading={loading}
-            rowKey="id"
-            pagination={pagination}
-            onChange={handleTableChange}
-          />
-        </div>
-      </div>
-
-      {/* Add/Edit Modal */}
-      <OperateModal
+    <JobListWorkspaceShell
+      title={title}
+      description={description}
+      fieldConfigs={fieldConfigs}
+      onSearchChange={handleSearchChange}
+      actions={(
+        <Button type="primary" icon={<PlusOutlined />} onClick={openAddModal}>
+          {t('job.addRule')}
+        </Button>
+      )}
+      contentClassName="flex-1 overflow-hidden"
+      tableColumns={columns}
+      tableDataSource={data}
+      tableLoading={loading}
+      tableRowKey="id"
+      tablePagination={pagination}
+      tableProps={{
+        onChange: handleTableChange,
+      }}
+    >
+      <OperateFormModal
         title={modalType === 'add' ? addModalTitle : editModalTitle}
         open={modalOpen}
-        confirmLoading={confirmLoading}
         onCancel={() => setModalOpen(false)}
-        footer={
-          <div className="flex justify-end gap-2">
-            <Button onClick={() => setModalOpen(false)}>{t('job.cancel')}</Button>
-            <Button loading={confirmLoading} onClick={() => handleSubmit(false)}>{t('job.saveOnly')}</Button>
-            <Button type="primary" loading={confirmLoading} onClick={() => handleSubmit(true)}>{t('job.saveAndEnable')}</Button>
-          </div>
-        }
+        confirmText={t('job.saveAndEnable')}
+        cancelText={t('job.cancel')}
+        confirmLoading={confirmLoading}
+        primaryFirst={false}
+        secondaryActions={(
+          <Button loading={confirmLoading} onClick={() => handleSubmit(false)}>
+            {t('job.saveOnly')}
+          </Button>
+        )}
+        onConfirm={() => handleSubmit(true)}
         width={680}
       >
         <Form form={form} layout="vertical" colon={false}>
@@ -466,11 +507,15 @@ const DangerousRulePage: React.FC<DangerousRulePageProps> = ({
             <Form.Item
               name="match_type"
               label={matchTypeLabel || t('job.matchType')}
-              rules={[{ required: true, message: t('job.matchTypePlaceholder') }]}
+              rules={[
+                { required: true, message: t('job.matchTypePlaceholder') },
+              ]}
             >
               <Radio.Group>
-                {matchTypeOptions.map(option => (
-                  <Radio key={option.value} value={option.value}>{option.label}</Radio>
+                {matchTypeOptions.map((option) => (
+                  <Radio key={option.value} value={option.value}>
+                    {option.label}
+                  </Radio>
                 ))}
               </Radio.Group>
             </Form.Item>
@@ -488,15 +533,20 @@ const DangerousRulePage: React.FC<DangerousRulePageProps> = ({
           >
             <Input placeholder={resolvedPatternPlaceholder} />
           </Form.Item>
-          <div className="text-xs mb-2" style={{ color: 'var(--color-text-3)', marginTop: -16 }}>
+          <div
+            className="mb-2 text-xs"
+            style={{ color: 'var(--color-text-3)', marginTop: -16 }}
+          >
             {resolvedPatternHelp}
           </div>
           <div
-            className="rounded-md px-4 py-3 mb-6 text-xs leading-relaxed bg-[#f5f7fa]"
+            className="mb-6 rounded-md bg-[#f5f7fa] px-4 py-3 text-xs leading-relaxed"
             style={{ color: 'var(--color-text-2)' }}
           >
-            <div className="font-medium mb-1">{t('job.matchPatternExamplesTitle')}</div>
-            <ul className="list-disc pl-4 m-0 space-y-0.5">
+            <div className="mb-1 font-medium">
+              {t('job.matchPatternExamplesTitle')}
+            </div>
+            <ul className="m-0 list-disc space-y-0.5 pl-4">
               {resolvedPatternExamples.map((example, index) => (
                 <li key={index}>{example}</li>
               ))}
@@ -516,7 +566,7 @@ const DangerousRulePage: React.FC<DangerousRulePageProps> = ({
             />
           </Form.Item>
           <div
-            className="text-xs mb-6 whitespace-pre-line"
+            className="mb-6 whitespace-pre-line text-xs"
             style={{ color: 'var(--color-text-3)', marginTop: -16 }}
           >
             {strategyHelp}
@@ -525,9 +575,14 @@ const DangerousRulePage: React.FC<DangerousRulePageProps> = ({
           <Form.Item
             name="team"
             label={t('job.organization')}
-            rules={[{ required: true, message: t('job.organizationPlaceholder') }]}
+            rules={[
+              { required: true, message: t('job.organizationPlaceholder') },
+            ]}
           >
-            <GroupTreeSelect multiple placeholder={t('job.organizationPlaceholder')} />
+            <GroupTreeSelect
+              multiple
+              placeholder={t('job.organizationPlaceholder')}
+            />
           </Form.Item>
 
           <Form.Item name="description" label={t('job.description')}>
@@ -537,9 +592,9 @@ const DangerousRulePage: React.FC<DangerousRulePageProps> = ({
             />
           </Form.Item>
         </Form>
-      </OperateModal>
-    </div>
+      </OperateFormModal>
+    </JobListWorkspaceShell>
   );
 };
 
-export default DangerousRulePage;
+export default JobDangerousRulePage;

@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Input, Button } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
 import CustomTable from '@/components/custom-table';
-import JobDriverBadge from '@/components/job-driver-badge';
+import JobDriverBadge from '@/app/job/components/driver-badge';
 import OperateFormModal from '@/components/operate-form-modal';
 import SelectionPreviewLayout from '@/components/selection-preview-layout';
 import { useTranslation } from '@/utils/i18n';

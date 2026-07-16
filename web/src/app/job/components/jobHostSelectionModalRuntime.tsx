@@ -7,7 +7,7 @@ import JobHostSelectionModal, {
   type JobHostSelectionModalProps,
   type HostItem,
   type TargetSourceType,
-} from '@/components/job-host-selection-modal';
+} from '@/app/job/components/host-selection-modal';
 import useJobApi from '@/app/job/api';
 
 type RuntimeProps = Omit<JobHostSelectionModalProps, 'fetchHosts'>;

@@ -1,24 +1,24 @@
 import type { Meta, StoryObj } from '@storybook/nextjs';
 import { Button, Segmented } from 'antd';
 import CompactEmptyState from '@/components/compact-empty-state';
-import JobDangerousRulePage from '@/components/job-dangerous-rule-page';
-import JobDriverBadge from '@/components/job-driver-badge';
-import JobHostSelectionModal from '@/components/job-host-selection-modal';
+import JobDangerousRulePage from '@/app/job/components/dangerous-rule-page';
+import JobDriverBadge from '@/app/job/components/driver-badge';
+import JobHostSelectionModal from '@/app/job/components/host-selection-modal';
 import JobFilePreviewModal from '@/app/job/components/file-preview-modal';
-import JobListWorkspaceShell from '@/components/job-list-workspace-shell';
-import JobPlaybookDetailDrawer from '@/components/job-playbook-detail-drawer';
-import JobPlaybookUploadModal from '@/components/job-playbook-upload-modal';
-import JobPlaybookUpgradeModal from '@/components/job-playbook-upgrade-modal';
-import JobScriptEditor from '@/components/job-script-editor';
-import JobScriptTypeBadge from '@/components/job-script-type-badge';
+import JobListWorkspaceShell from '@/app/job/components/list-workspace-shell';
+import JobPlaybookDetailDrawer from '@/app/job/components/playbook-detail-drawer';
+import JobPlaybookUploadModal from '@/app/job/components/playbook-upload-modal';
+import JobPlaybookUpgradeModal from '@/app/job/components/playbook-upgrade-modal';
+import JobScriptEditor from '@/app/job/components/script-editor';
+import JobScriptTypeBadge from '@/app/job/components/script-type-badge';
 import PageFormHeaderCard from '@/components/page-form-header-card';
 import SectionHeader from '@/components/section-header';
 import {
   AddTargetHostButton,
   TargetSourceSelector,
-} from '@/components/job-target-selection-controls';
-import JobTriggerSourceBadge from '@/components/job-trigger-source-badge';
-import JobTypeBadge from '@/components/job-type-badge';
+} from '@/app/job/components/target-selection-controls';
+import JobTriggerSourceBadge from '@/app/job/components/trigger-source-badge';
+import JobTypeBadge from '@/app/job/components/type-badge';
 import SearchCombinationToolbar from '@/components/search-combination-toolbar';
 import WorkspacePanel from '@/components/workspace-panel';
 import { Form } from 'antd';
