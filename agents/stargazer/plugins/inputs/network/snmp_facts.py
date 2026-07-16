@@ -153,6 +153,10 @@ class SnmpFacts:
         采集 SNMP 数据，包括系统信息、接口信息和 IP 信息。
         """
         cmdGen = cmdgen.CommandGenerator()
+        probe_transport_opts = {
+            "timeout": min(self.timeout, 5),
+            "retries": self.retries,
+        }
         transport_opts = {"timeout": self.timeout, "retries": self.retries}
         snmp_auth = self._get_snmp_auth()
 
@@ -171,7 +175,7 @@ class SnmpFacts:
             errorIndication, errorStatus, errorIndex, varBinds = cmdGen.getCmd(
                 snmp_auth,
                 cmdgen.UdpTransportTarget(
-                    (self.host, self.snmp_port), **transport_opts
+                    (self.host, self.snmp_port), **probe_transport_opts
                 ),
                 cmdgen.MibVariable(p.sysDescr),
                 cmdgen.MibVariable(p.sysObjectId),
