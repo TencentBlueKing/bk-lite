@@ -278,7 +278,7 @@ class UserViewSet(ViewSetUtils):
         queryset = User.objects.all()
         # 按用户有权限的组筛选
         queryset = self._filter_users_by_accessible_groups(queryset, request.user)
-        data = queryset.values("id", "display_name", "username")
+        data = queryset.values("id", "user_id", "display_name", "username")
         return JsonResponse({"result": True, "data": list(data)})
 
     @action(detail=False, methods=["POST"])

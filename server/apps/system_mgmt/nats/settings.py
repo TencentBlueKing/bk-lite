@@ -70,6 +70,7 @@ def verify_bk_token(bk_token):
                 "username": user.username,
                 "display_name": user.display_name,
                 "id": user.id,
+                "user_id": user.user_id,
                 "domain": user.domain,
                 "locale": user.locale,
                 "timezone": user.timezone,

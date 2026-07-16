@@ -39,6 +39,7 @@ def wechat_user_register(user_id, nick_name):
         "result": True,
         "data": {
             "id": user.id,
+            "user_id": user.user_id,
             "username": user.username,
             "display_name": user.display_name,
             "is_first_login": is_first_login,
