@@ -18,6 +18,7 @@ class NodeMgmtSyncReconcileResult:
     node_config_status: str
     error_code: str = ""
     error_message: str = ""
+    guard_region_failure: bool = False
 
 
 @dataclass(frozen=True)
@@ -33,6 +34,7 @@ class NodeConfigReconcileResult:
     error_code: str = ""
     error_message: str = ""
     contended: bool = False
+    guard_region_failure: bool = False
 
 
 class NodeMgmtSyncReconciler:
@@ -71,7 +73,9 @@ class NodeMgmtSyncReconciler:
                     node_status = node_outcome.status
                     node_error_code = node_outcome.error_code
                     node_error_message = node_outcome.error_message
-            result = NodeMgmtSyncReconcileResult("healthy", node_status, node_error_code, node_error_message,)
+            result = NodeMgmtSyncReconcileResult(
+                "healthy", node_status, node_error_code, node_error_message, node_outcome.guard_region_failure if reconcile_node_configs else False,
+            )
         except Exception as exc:
             logger.error("节点管理同步对账失败: %s", type(exc).__name__)
             result = NodeMgmtSyncReconcileResult("degraded", "degraded", "RECONCILE_FAILED", f"{type(exc).__name__}: 节点管理同步对账失败",)
@@ -91,13 +95,14 @@ class NodeMgmtSyncReconciler:
         if not collect_tasks:
             return NodeConfigReconcileResult("unknown")
 
-        has_failure = False
+        has_tracked_failure = False
+        has_untracked_failure = False
         has_contention = False
         valid_region_count = 0
         for collect_task in collect_tasks:
             cloud_region_id = cls._parse_cloud_region_id(collect_task.system_code, prefix=service.SYSTEM_TASK_PREFIX,)
             if cloud_region_id is None:
-                has_failure = True
+                has_untracked_failure = True
                 logger.error("节点采集参数对账跳过无效区域编码")
                 continue
 
@@ -140,39 +145,41 @@ class NodeMgmtSyncReconciler:
                 try:
                     CollectModelService.delete_butch_node_params(collect_task)
                 except Exception as exc:
-                    has_failure = True
-                    cls._persist_node_config_failure(
-                        state, stage="delete", exc=exc, claim_token=claim_token,
-                    )
+                    if cls._persist_node_config_failure(state, stage="delete", exc=exc, claim_token=claim_token,):
+                        has_tracked_failure = True
+                    else:
+                        has_contention = True
                     continue
 
                 if not config.auto_collect_enabled:
                     if not cls._finish_node_config_claim(state, stage="delete", claim_token=claim_token, next_status="disabled",):
-                        has_failure = True
+                        has_contention = True
                     continue
 
                 if not cls._finish_node_config_claim(
                     state, stage="delete", claim_token=claim_token, next_status="push_in_progress", keep_claim=True,
                 ):
-                    has_failure = True
+                    has_contention = True
                     continue
 
             try:
                 CollectModelService.push_butch_node_params(collect_task)
             except Exception as exc:
-                has_failure = True
-                cls._persist_node_config_failure(
-                    state, stage="push", exc=exc, claim_token=claim_token,
-                )
+                if cls._persist_node_config_failure(state, stage="push", exc=exc, claim_token=claim_token,):
+                    has_tracked_failure = True
+                else:
+                    has_contention = True
                 continue
 
             if not cls._finish_node_config_claim(state, stage="push", claim_token=claim_token, next_status="healthy",):
-                has_failure = True
+                has_contention = True
 
+        if has_untracked_failure:
+            return NodeConfigReconcileResult("degraded", "NODE_CONFIG_RECONCILE_FAILED", "节点采集参数对账存在失败区域",)
+        if has_tracked_failure:
+            return NodeConfigReconcileResult("degraded", "NODE_CONFIG_RECONCILE_FAILED", "节点采集参数对账存在失败区域", guard_region_failure=True,)
         if has_contention:
             return NodeConfigReconcileResult(config.node_config_status or "unknown", contended=True,)
-        if has_failure:
-            return NodeConfigReconcileResult("degraded", "NODE_CONFIG_RECONCILE_FAILED", "节点采集参数对账存在失败区域",)
         if not valid_region_count:
             return NodeConfigReconcileResult("unknown")
         return NodeConfigReconcileResult("healthy" if config.auto_collect_enabled else "disabled")
@@ -247,6 +254,7 @@ class NodeMgmtSyncReconciler:
         logger.error(
             "节点采集参数%s失败: task_id=%s, error_type=%s", stage_label, state.collect_task_id, type(exc).__name__,
         )
+        return bool(updated)
 
     @classmethod
     def _reconcile_periodic_task(cls, *, enabled: bool, name: str, task: str, interval: int) -> None:
@@ -289,7 +297,14 @@ class NodeMgmtSyncReconciler:
     @staticmethod
     def _persist_health(config, result: NodeMgmtSyncReconcileResult) -> None:
         reconciled_at = timezone.now()
-        updated = config.__class__.objects.filter(pk=config.pk, version=config.version,).update(
+        queryset = config.__class__.objects.filter(pk=config.pk, version=config.version,)
+        if result.guard_region_failure:
+            queryset = queryset.filter(
+                region_states__config_version=config.version,
+                region_states__node_config_status__in=("delete_pending", "push_pending",),
+                region_states__reason_code__in=("NODE_CONFIG_DELETE_FAILED", "NODE_CONFIG_PUSH_FAILED",),
+            )
+        updated = queryset.update(
             schedule_status=result.schedule_status,
             node_config_status=result.node_config_status,
             last_reconciled_at=reconciled_at,

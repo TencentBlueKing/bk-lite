@@ -243,7 +243,7 @@ def test_old_node_config_claim_cannot_overwrite_new_claim(config, region_task):
             result = _reconcile(config)
 
     state.refresh_from_db()
-    assert result.node_config_status == "degraded"
+    assert result.node_config_status == "unknown"
     push.assert_not_called()
     assert state.node_config_status == "delete_in_progress"
     assert state.reason_code == "NODE_CONFIG_CLAIM:new-worker"
@@ -353,6 +353,96 @@ def test_node_config_claim_has_explicit_outcomes(
     claim = NodeMgmtSyncReconciler._claim_node_config_state(state, auto_collect_enabled=auto_collect_enabled,)
 
     assert claim.outcome == expected_outcome
+
+
+def test_real_rpc_failure_still_degrades_when_other_region_is_contended(config, region_task):
+    failed_task = _create_region_task(8)
+    NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=config.version,
+        cloud_region_id="7",
+        collect_task=region_task,
+        scope_key=f"config:{config.version}:region:7",
+        node_config_status="delete_in_progress",
+        reason_code="NODE_CONFIG_CLAIM:worker-a",
+    )
+    NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=config.version,
+        cloud_region_id="8",
+        collect_task=failed_task,
+        scope_key=f"config:{config.version}:region:8",
+        node_config_status="delete_pending",
+    )
+    config.node_config_status = "healthy"
+    config.save(update_fields=["node_config_status", "updated_at"])
+
+    with patch.object(
+        CollectModelService, "delete_butch_node_params", side_effect=RuntimeError("rpc-failed"),
+    ):
+        result = _reconcile(config)
+
+    config.refresh_from_db()
+    assert result.node_config_status == "degraded"
+    assert config.node_config_status == "degraded"
+
+
+def test_invalid_region_still_degrades_when_valid_region_is_contended(config, region_task):
+    _create_region_task(
+        "invalid", system_code=f"{NodeMgmtSyncService.SYSTEM_TASK_PREFIX}bad-id",
+    )
+    NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=config.version,
+        cloud_region_id="7",
+        collect_task=region_task,
+        scope_key=f"config:{config.version}:region:7",
+        node_config_status="delete_in_progress",
+        reason_code="NODE_CONFIG_CLAIM:worker-a",
+    )
+    config.node_config_status = "healthy"
+    config.save(update_fields=["node_config_status", "updated_at"])
+
+    result = _reconcile(config)
+
+    config.refresh_from_db()
+    assert result.node_config_status == "degraded"
+    assert config.node_config_status == "degraded"
+
+
+@pytest.mark.parametrize("failure_mode", ["finish", "rpc_failure"])
+def test_old_owner_claim_lost_cannot_pollute_new_owner_health(
+    config, region_task, failure_mode,
+):
+    state = NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=config.version,
+        cloud_region_id="7",
+        collect_task=region_task,
+        scope_key=f"config:{config.version}:region:7",
+        node_config_status="delete_pending",
+    )
+    config.node_config_status = "degraded"
+    config.save(update_fields=["node_config_status", "updated_at"])
+
+    def new_owner_finishes(_task):
+        NodeMgmtSyncRegionState.objects.filter(pk=state.pk).update(
+            node_config_status="healthy", reason_code="", error_message="",
+        )
+        NodeMgmtSyncConfig.objects.filter(pk=config.pk).update(node_config_status="healthy")
+        if failure_mode == "rpc_failure":
+            raise RuntimeError("old-owner-rpc-failure")
+
+    with patch.object(
+        CollectModelService, "delete_butch_node_params", side_effect=new_owner_finishes,
+    ):
+        result = _reconcile(config)
+
+    config.refresh_from_db()
+    state.refresh_from_db()
+    assert result.node_config_status == "healthy"
+    assert config.node_config_status == "healthy"
+    assert state.node_config_status == "healthy"
 
 
 def test_collect_enabled_without_sync_waits_and_does_not_dispatch(config, region_task):

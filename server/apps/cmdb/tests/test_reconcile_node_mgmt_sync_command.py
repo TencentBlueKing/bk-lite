@@ -5,6 +5,7 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
 
+from apps.cmdb.models.node_mgmt_sync import NodeMgmtSyncRegionState
 from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncService
 from apps.cmdb.tasks.node_mgmt_sync import (
     RECOVERY_PERIODIC_TASK_NAME,
@@ -146,3 +147,27 @@ def test_runtime_recovery_does_not_repush_healthy_node_config(mocker):
     recover_node_mgmt_sync()
 
     reconcile.assert_called_once_with(config, reconcile_node_configs=False)
+
+
+@pytest.mark.parametrize("region_status", ["delete_pending", "push_pending", "delete_in_progress"])
+def test_runtime_recovery_checks_current_version_recoverable_region_even_when_global_healthy(
+    mocker, region_status,
+):
+    config = NodeMgmtSyncService.get_task()
+    config.node_config_status = "healthy"
+    config.save(update_fields=["node_config_status", "updated_at"])
+    NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=config.version,
+        cloud_region_id="7",
+        scope_key=f"config:{config.version}:region:7",
+        node_config_status=region_status,
+        reason_code=("NODE_CONFIG_CLAIM:crashed-owner" if region_status.endswith("_in_progress") else ""),
+    )
+    mocker.patch.object(NodeMgmtSyncService, "recover_stale_runs", return_value=0)
+    mocker.patch.object(NodeMgmtSyncService, "refresh_submitted_collect_runs", return_value=0)
+    reconcile = mocker.patch("apps.cmdb.services.node_mgmt_sync_reconciler.NodeMgmtSyncReconciler.reconcile", return_value=_healthy_result(),)
+
+    recover_node_mgmt_sync()
+
+    reconcile.assert_called_once_with(config, reconcile_node_configs=True)

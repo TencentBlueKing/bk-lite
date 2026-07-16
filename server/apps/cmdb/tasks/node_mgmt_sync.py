@@ -2,6 +2,7 @@ from typing import Any
 
 from celery import shared_task
 
+from apps.cmdb.models.node_mgmt_sync import NodeMgmtSyncRegionState
 from apps.cmdb.services.node_mgmt_sync_reconciler import NodeMgmtSyncReconciler
 from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncService
 from apps.core.utils.celery_utils import CeleryUtils
@@ -10,6 +11,12 @@ RECOVERY_PERIODIC_TASK_NAME = "cmdb_node_mgmt_sync_recovery"
 RECOVERY_TASK = "apps.cmdb.tasks.node_mgmt_sync.recover_node_mgmt_sync"
 WATCHDOG_TASK = "apps.cmdb.tasks.node_mgmt_sync.watch_node_mgmt_sync_recovery"
 RECOVERY_CRONTAB = "*/5 * * * *"
+RECOVERABLE_NODE_CONFIG_STATUSES = (
+    "delete_pending",
+    "push_pending",
+    "delete_in_progress",
+    "push_in_progress",
+)
 
 
 def ensure_recovery_periodic_task():
@@ -24,7 +31,10 @@ def recover_node_mgmt_sync() -> dict[str, Any]:
     recovered_runs = NodeMgmtSyncService.recover_stale_runs()
     refreshed_collect_runs = NodeMgmtSyncService.refresh_submitted_collect_runs()
     config = NodeMgmtSyncService.get_task()
-    result = NodeMgmtSyncReconciler.reconcile(config, reconcile_node_configs=config.node_config_status == "degraded",)
+    has_recoverable_region = NodeMgmtSyncRegionState.objects.filter(
+        config=config, config_version=config.version, node_config_status__in=RECOVERABLE_NODE_CONFIG_STATUSES,
+    ).exists()
+    result = NodeMgmtSyncReconciler.reconcile(config, reconcile_node_configs=(config.node_config_status == "degraded" or has_recoverable_region),)
     return {
         "recovered_runs": recovered_runs,
         "refreshed_collect_runs": refreshed_collect_runs,
