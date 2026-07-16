@@ -1,3 +1,5 @@
+import uuid
+
 from django.db.models import Q
 from django.http import JsonResponse
 from rest_framework import viewsets
@@ -201,8 +203,20 @@ class MaintainerViewSet(LanguageViewSet):
             username = getattr(user, "username", self.DEFAULT_USERNAME)
             domain = getattr(user, "domain", "domain.com")
             model = serializer.Meta.model
+            save_kwargs = {}
+            if hasattr(model, "user_id") and not getattr(serializer, "validated_data", {}).get("user_id"):
+                save_kwargs["user_id"] = str(uuid.uuid4())
             if hasattr(model, "created_by"):
-                serializer.save(created_by=username, updated_by=username, domain=domain, updated_by_domain=domain)
+                serializer.save(
+                    created_by=username,
+                    updated_by=username,
+                    domain=domain,
+                    updated_by_domain=domain,
+                    **save_kwargs,
+                )
+                return
+            if save_kwargs:
+                serializer.save(**save_kwargs)
                 return
 
         except Exception as e:
