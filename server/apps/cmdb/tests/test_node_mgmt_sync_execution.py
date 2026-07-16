@@ -4,10 +4,11 @@ from unittest import mock
 
 import pytest
 from django.db import connection
+from django.db.models.query import QuerySet
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
-from apps.cmdb.models import NodeMgmtSyncRun
+from apps.cmdb.models import NodeMgmtSyncConfig, NodeMgmtSyncRun
 from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncError, NodeMgmtSyncService
 
@@ -56,6 +57,70 @@ def test_terminal_transition_clears_active_scope():
     assert run.finished_at is not None
 
 
+@pytest.mark.parametrize(
+    ("run_type", "timestamp_field", "status"),
+    [
+        (NodeMgmtSyncRun.RUN_TYPE_SYNC, "last_sync_at", NodeMgmtSyncRun.STATUS_SUCCESS),
+        (NodeMgmtSyncRun.RUN_TYPE_SYNC, "last_sync_at", NodeMgmtSyncRun.STATUS_PARTIAL_SUCCESS),
+        (NodeMgmtSyncRun.RUN_TYPE_COLLECT, "last_collect_at", NodeMgmtSyncRun.STATUS_SUCCESS),
+        (NodeMgmtSyncRun.RUN_TYPE_COLLECT, "last_collect_at", NodeMgmtSyncRun.STATUS_PARTIAL_SUCCESS),
+    ],
+)
+def test_successful_finish_advances_matching_config_timestamp(run_type, timestamp_field, status):
+    task = NodeMgmtSyncService.get_task()
+    run = NodeMgmtSyncService.acquire_run(run_type, task=task)
+
+    NodeMgmtSyncService.finish_run(
+        run, status=status,
+    )
+
+    task.refresh_from_db()
+    assert getattr(task, timestamp_field) == run.finished_at
+
+
+@pytest.mark.parametrize(
+    ("run_type", "timestamp_field"), [(NodeMgmtSyncRun.RUN_TYPE_SYNC, "last_sync_at"), (NodeMgmtSyncRun.RUN_TYPE_COLLECT, "last_collect_at"),],
+)
+def test_delayed_older_finish_cannot_overwrite_newer_config_timestamp(run_type, timestamp_field):
+    task = NodeMgmtSyncService.get_task()
+    newer_finished_at = timezone.now() + timedelta(minutes=10)
+    setattr(task, timestamp_field, newer_finished_at)
+    task.save(update_fields=[timestamp_field, "updated_at"])
+    delayed_old_run = NodeMgmtSyncService.acquire_run(run_type, task=task)
+
+    NodeMgmtSyncService.finish_run(
+        delayed_old_run, status=NodeMgmtSyncRun.STATUS_SUCCESS,
+    )
+
+    task.refresh_from_db()
+    assert delayed_old_run.finished_at < newer_finished_at
+    assert getattr(task, timestamp_field) == newer_finished_at
+
+
+@pytest.mark.parametrize(
+    "status", [NodeMgmtSyncRun.STATUS_SUCCESS, NodeMgmtSyncRun.STATUS_PARTIAL_SUCCESS],
+)
+def test_successful_finish_and_config_timestamp_update_share_transaction(mocker, status):
+    run = NodeMgmtSyncService.acquire_run(NodeMgmtSyncRun.RUN_TYPE_SYNC)
+    original_update = QuerySet.update
+
+    def fail_config_update(queryset, **kwargs):
+        if queryset.model is NodeMgmtSyncConfig:
+            raise RuntimeError("config timestamp write failed")
+        return original_update(queryset, **kwargs)
+
+    mocker.patch.object(QuerySet, "update", autospec=True, side_effect=fail_config_update)
+
+    with pytest.raises(RuntimeError, match="config timestamp write failed"):
+        NodeMgmtSyncService.finish_run(
+            run, status=status,
+        )
+
+    run.refresh_from_db()
+    assert run.status == NodeMgmtSyncRun.STATUS_RUNNING
+    assert run.active_scope == NodeMgmtSyncService.ACTIVE_SCOPE
+
+
 def test_heartbeat_rejects_expired_run_and_releases_scope():
     run = NodeMgmtSyncService.acquire_run("sync")
     NodeMgmtSyncRun.objects.filter(pk=run.pk).update(deadline_at=timezone.now() - timedelta(seconds=1))
@@ -68,6 +133,70 @@ def test_heartbeat_rejects_expired_run_and_releases_scope():
     assert run.status == NodeMgmtSyncRun.STATUS_TIMEOUT
     assert run.reason_code == "RUN_TIMEOUT"
     assert run.active_scope is None
+
+
+def _expire_active_run():
+    NodeMgmtSyncRun.objects.filter(active_scope=NodeMgmtSyncService.ACTIVE_SCOPE).update(deadline_at=timezone.now() - timedelta(seconds=1))
+
+
+def _assert_latest_run_timed_out(run_type):
+    run = NodeMgmtSyncRun.objects.filter(run_type=run_type).latest("created_at")
+    assert run.status == NodeMgmtSyncRun.STATUS_TIMEOUT
+    assert run.reason_code == NodeMgmtSyncService.REASON_TIMEOUT
+    assert run.active_scope is None
+    return run
+
+
+def test_node_query_exception_crossing_deadline_prefers_timeout(mocker):
+    rpc = mocker.MagicMock()
+    rpc.cloud_region_list.return_value = []
+
+    def expire_then_raise(_payload):
+        _expire_active_run()
+        raise RuntimeError("node query failed after deadline")
+
+    rpc.node_list.side_effect = expire_then_raise
+    mocker.patch.object(NodeMgmtSyncService, "_node_mgmt_client", return_value=rpc)
+
+    with pytest.raises(NodeMgmtSyncError, match="^NODE_QUERY_FAILED: RuntimeError$"):
+        NodeMgmtSyncService.sync_hosts()
+
+    run = _assert_latest_run_timed_out(NodeMgmtSyncRun.RUN_TYPE_SYNC)
+    NodeMgmtSyncService.finish_run(
+        run, status=NodeMgmtSyncRun.STATUS_FAILED, reason_code="RUN_FAILED", error=RuntimeError("late old worker"),
+    )
+    _assert_latest_run_timed_out(NodeMgmtSyncRun.RUN_TYPE_SYNC)
+
+
+def test_cloud_region_exception_crossing_deadline_prefers_timeout(mocker):
+    rpc = mocker.MagicMock()
+
+    def expire_then_raise():
+        _expire_active_run()
+        raise RuntimeError("region query failed after deadline")
+
+    rpc.cloud_region_list.side_effect = expire_then_raise
+    mocker.patch.object(NodeMgmtSyncService, "_node_mgmt_client", return_value=rpc)
+
+    with pytest.raises(RuntimeError, match="region query failed after deadline"):
+        NodeMgmtSyncService.sync_hosts()
+
+    _assert_latest_run_timed_out(NodeMgmtSyncRun.RUN_TYPE_SYNC)
+
+
+def test_collect_external_exception_crossing_deadline_prefers_timeout(mocker):
+    def expire_then_raise():
+        _expire_active_run()
+        raise RuntimeError("collect list failed after deadline")
+
+    mocker.patch.object(
+        NodeMgmtSyncService, "_list_region_collect_tasks", side_effect=expire_then_raise,
+    )
+
+    with pytest.raises(RuntimeError, match="collect list failed after deadline"):
+        NodeMgmtSyncService.collect_hosts()
+
+    _assert_latest_run_timed_out(NodeMgmtSyncRun.RUN_TYPE_COLLECT)
 
 
 def test_persist_hosts_stops_after_first_external_write_expires_lease(mocker):

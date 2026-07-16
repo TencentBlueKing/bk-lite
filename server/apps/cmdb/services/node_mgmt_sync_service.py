@@ -6,6 +6,7 @@ from datetime import timedelta
 from typing import Any
 
 from django.db import IntegrityError, transaction
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.timezone import localtime, now
 
@@ -473,26 +474,70 @@ class NodeMgmtSyncService:
             updates["error_message"] = (
                 f"{reason_code or 'RUN_FAILED'}: {type(error).__name__}"[:255]
             )
-        lease = NodeMgmtSyncRun.objects.filter(
-            pk=run.pk,
-            generation=run.generation,
-            status__in=cls.ACTIVE_STATUSES,
-        )
-        if status in (
+        guard_lease = status in (
             NodeMgmtSyncRun.STATUS_SUCCESS,
             NodeMgmtSyncRun.STATUS_PARTIAL_SUCCESS,
-        ):
-            lease = lease.filter(
-                active_scope=cls.ACTIVE_SCOPE,
-                deadline_at__gt=current_time,
+        ) or (
+            status == NodeMgmtSyncRun.STATUS_FAILED
+            and (run.active_scope is not None or run.deadline_at is not None)
+        )
+        with transaction.atomic():
+            lease = NodeMgmtSyncRun.objects.filter(
+                pk=run.pk,
+                generation=run.generation,
+                status__in=cls.ACTIVE_STATUSES,
             )
-        updated = lease.update(**updates)
+            if guard_lease:
+                lease = lease.filter(
+                    active_scope=cls.ACTIVE_SCOPE,
+                    deadline_at__gt=current_time,
+                )
+            updated = lease.update(**updates)
+
+            if updated and status in (
+                NodeMgmtSyncRun.STATUS_SUCCESS,
+                NodeMgmtSyncRun.STATUS_PARTIAL_SUCCESS,
+            ):
+                timestamp_field = (
+                    "last_sync_at"
+                    if run.run_type == NodeMgmtSyncRun.RUN_TYPE_SYNC
+                    else "last_collect_at"
+                )
+                NodeMgmtSyncConfig.objects.filter(pk=run.task_id).filter(
+                    Q(**{f"{timestamp_field}__isnull": True})
+                    | Q(**{f"{timestamp_field}__lt": current_time})
+                ).update(
+                    **{
+                        timestamp_field: current_time,
+                        "updated_at": current_time,
+                    }
+                )
+
+            expired = 0
+            if not updated and guard_lease:
+                expired = NodeMgmtSyncRun.objects.filter(
+                    pk=run.pk,
+                    generation=run.generation,
+                    active_scope=cls.ACTIVE_SCOPE,
+                    status__in=cls.ACTIVE_STATUSES,
+                    deadline_at__lte=current_time,
+                ).update(
+                    status=NodeMgmtSyncRun.STATUS_TIMEOUT,
+                    reason_code=cls.REASON_TIMEOUT,
+                    active_scope=None,
+                    finished_at=current_time,
+                    updated_at=current_time,
+                )
         run.refresh_from_db()
         if not updated and status in (
             NodeMgmtSyncRun.STATUS_SUCCESS,
             NodeMgmtSyncRun.STATUS_PARTIAL_SUCCESS,
         ):
-            cls.heartbeat_run(run)
+            if expired or (
+                run.status == NodeMgmtSyncRun.STATUS_TIMEOUT
+                and run.reason_code == cls.REASON_TIMEOUT
+            ):
+                raise NodeMgmtSyncError(cls.REASON_TIMEOUT)
             raise NodeMgmtSyncError("RUN_NOT_ACTIVE")
         return run
 
@@ -1530,9 +1575,6 @@ class NodeMgmtSyncService:
             summary_json=message,
             detail_json=detail,
         )
-        task_config.last_sync_at = run.finished_at
-        task_config.save(update_fields=["last_sync_at", "updated_at"])
-
         logger.info("[NodeMgmtSync] ========== 同步完成 ==========")
         logger.info("[NodeMgmtSync] 同步结果: status=%s, all=%d, add=%d, update=%d, delete=%d, todo_count=%d",
                     run.status, message["all"], message["add"], message["update"], message["delete"], len(detail["todo"]))
@@ -1619,9 +1661,6 @@ class NodeMgmtSyncService:
             summary_json=message,
             detail_json=detail,
         )
-        task_config.last_collect_at = run.finished_at
-        task_config.save(update_fields=["last_collect_at", "updated_at"])
-
         logger.info("[NodeMgmtSync] ========== 采集完成 ==========")
         logger.info("[NodeMgmtSync] 采集结果: status=%s, total_tasks=%d, executed=%d, skipped=%d",
                     run.status, message["all"], len(detail["executed"]), len(detail["todo"]))

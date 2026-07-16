@@ -39,3 +39,18 @@
 - GREEN：execution `24 passed`；persistence/resilience `13 passed`；Task 2–6 全回归 `136 passed`。
 - 新增生产可执行行覆盖率：`65/70 = 92.86%`（coverage JSON + 零上下文 diff 等价计算）。
 - 静态门禁：两个触及测试通过 black/isort/flake8，service 通过 isort，`git diff --check` 通过；service 整文件仅保留未触及历史 `E125`（原 922 行，因增量行位移现为 962 行）。
+
+## 第二轮 Important 复审修复
+
+- `success/partial_success` 的运行终态 CAS 与对应 `last_sync_at/last_collect_at` 条件更新现处于同一数据库事务；配置时间仅在为空或小于本次 `finished_at` 时推进，删除编排末尾的旧对象无条件 `save()`，延迟旧 Worker 不再回退新时间。
+- 持锁 `failed` 终态与成功态使用相同的 generation、active scope、非终态及 `deadline_at > now` 原子租约条件；若 deadline 已过，同一事务优先写入 `timeout/RUN_TIMEOUT` 并清锁，旧 Worker 后续失败写不能覆盖。
+- 无 active scope/deadline 的 legacy helper 运行继续保留既有失败收敛语义；本轮只收紧真实持锁运行，不扩大兼容范围。
+- NodeMgmt 节点查询、region 名称查询与 collect 外部调用在跨 deadline 后抛异常时统一收敛为 timeout，而非 RUN_FAILED。
+
+## 第二轮验证
+
+- TDD RED：两类成功终态未更新配置时间、配置更新失败未回滚终态，以及三类外部异常跨 deadline 均稳定失败；GREEN 后全部通过。
+- execution：`35 passed`；persistence/resilience：`13 passed`；Task 2–6 完整组合：`147 passed`。
+- execution/persistence/resilience 覆盖运行：`45 passed`；相对 `7a56ca542` 的新增生产可执行行覆盖率 `15/15 = 100%`。
+- 静态门禁：execution 测试通过 black/isort/flake8，service 通过 isort，`git diff --check` 通过；service 整文件仅保留未触及历史 `E125`（本次行位移后为 1007 行）。
+- projectmem 主问题 `#0242` 保持 open；本轮仅记录并关闭两个已确认的二次复审子问题。
