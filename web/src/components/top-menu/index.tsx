@@ -12,7 +12,7 @@ import { findMatchedMenuPath } from '@/utils/menuHelpers';
 import styles from './index.module.scss';
 import type { TourProps } from 'antd';
 import { TourItem, MenuItem, ClientData } from '@/types/index';
-import UserInfo from '../user-info';
+import UserInfo from './user-info';
 import Notifications from '../notifications';
 import Icon from '@/components/icon';
 

@@ -1,22 +1,22 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs';
 import EntityManagementGrid, {
   type EntityManagementGridApiResponse,
   type EntityManagementGridDataSource,
   type EntityManagementGridFetchParams,
-} from '@/components/opspilot-entity-management-grid';
+} from '@/app/opspilot/components/entity-management-grid';
 import SkillView from '@/app/opspilot/components/custom-chat-sse/SkillView';
 import OpspilotApprovalCard from '@/components/opspilot-approval-card';
 import OpspilotAvailabilityBadge from '@/components/opspilot-availability-badge';
 import OpspilotConfigSeverityBadge from '@/components/opspilot-config-severity-badge';
 import EntityCard from '@/components/opspilot-entity-card';
 import OpspilotKnowledgeBaseSelector from '@/components/opspilot-knowledge-base-selector';
-import OpspilotProviderModelSection from '@/components/opspilot-provider-model-section';
+import OpspilotProviderModelSection from '@/app/opspilot/components/provider/model-section';
 import {
   OpspilotProviderGridSkeleton,
   OpspilotProviderModelTreeSkeleton,
 } from '@/components/opspilot-provider-skeletons';
-import OpspilotProviderVendorConfigFields from '@/components/opspilot-provider-vendor-config-fields';
-import OpspilotProviderVendorGrid from '@/components/opspilot-provider-vendor-grid';
+import OpspilotProviderVendorConfigFields from '@/app/opspilot/components/provider/vendor-config-fields';
+import OpspilotProviderVendorGrid from '@/app/opspilot/components/provider/vendor-grid';
 import OpspilotSelectorOperateModal from '@/components/opspilot-selector-operate-modal';
 import OpspilotProviderEmptyState from '@/components/opspilot-provider-empty-state';
 import {

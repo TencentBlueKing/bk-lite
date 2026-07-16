@@ -35,7 +35,8 @@
       "system-manager-role-transfer-family.stories.tsx",
       "system-manager-user-org-family.stories.tsx",
       "system-manager-user-profile-family.stories.tsx",
-      "top-menu.stories.tsx"
+      "top-menu.stories.tsx",
+      "user-info.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
@@ -391,10 +392,10 @@
     ],
     "transitiveApps": [
       "(root)",
-      "alarm"
+      "alarm",
+      "opspilot"
     ],
     "stories": [
-      "alarm-integration-guides-family.stories.tsx",
       "cmdb-family.stories.tsx",
       "feedback-family.stories.tsx",
       "integrations-family.stories.tsx",
@@ -409,11 +410,12 @@
       "opspilot-tool-editor-family.stories.tsx",
       "system-manager-family.stories.tsx",
       "system-manager-user-profile-family.stories.tsx",
-      "top-menu.stories.tsx"
+      "top-menu.stories.tsx",
+      "user-info.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
-    "reason": "consumed transitively by 2 apps"
+    "reason": "consumed transitively by 3 apps"
   },
   {
     "component": "content-drawer",
@@ -432,7 +434,8 @@
       "layout-family.stories.tsx",
       "system-manager-family.stories.tsx",
       "system-manager-user-profile-family.stories.tsx",
-      "top-menu.stories.tsx"
+      "top-menu.stories.tsx",
+      "user-info.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
@@ -456,7 +459,8 @@
       "layout-family.stories.tsx",
       "system-manager-family.stories.tsx",
       "system-manager-user-profile-family.stories.tsx",
-      "top-menu.stories.tsx"
+      "top-menu.stories.tsx",
+      "user-info.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
@@ -1049,7 +1053,6 @@
       "k8s-family.stories.tsx",
       "node-manager-family.stories.tsx",
       "ops-analysis-unified-filter-family.stories.tsx",
-      "opspilot-family.stories.tsx",
       "security-family.stories.tsx"
     ],
     "reverseAppImports": [],
@@ -1443,19 +1446,6 @@
     "reverseAppImports": [],
     "classification": "app-local",
     "reason": "consumed by only job"
-  },
-  {
-    "component": "job-file-preview-modal",
-    "directApps": [],
-    "transitiveApps": [],
-    "stories": [
-      "job-family.stories.tsx"
-    ],
-    "reverseAppImports": [
-      "job"
-    ],
-    "classification": "invalid-reverse-dependency",
-    "reason": "imports app-owned modules from job"
   },
   {
     "component": "job-host-selection-modal",
@@ -1983,7 +1973,6 @@
       "multi-cascade-panel.stories.tsx",
       "node-manager-family.stories.tsx",
       "ops-analysis-unified-filter-family.stories.tsx",
-      "opspilot-family.stories.tsx",
       "security-family.stories.tsx"
     ],
     "reverseAppImports": [],
@@ -2064,7 +2053,8 @@
       "notifications.stories.tsx",
       "system-manager-family.stories.tsx",
       "system-manager-user-profile-family.stories.tsx",
-      "top-menu.stories.tsx"
+      "top-menu.stories.tsx",
+      "user-info.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "app-local",
@@ -2107,7 +2097,8 @@
   {
     "component": "operate-form-modal",
     "directApps": [
-      "alarm"
+      "alarm",
+      "job"
     ],
     "transitiveApps": [
       "(root)",
@@ -2140,7 +2131,8 @@
       "system-manager-role-transfer-family.stories.tsx",
       "system-manager-user-org-family.stories.tsx",
       "system-manager-user-profile-family.stories.tsx",
-      "top-menu.stories.tsx"
+      "top-menu.stories.tsx",
+      "user-info.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
@@ -2403,19 +2395,6 @@
     "reason": "consumed only by Storybook stories"
   },
   {
-    "component": "opspilot-entity-management-grid",
-    "directApps": [],
-    "transitiveApps": [],
-    "stories": [
-      "opspilot-family.stories.tsx"
-    ],
-    "reverseAppImports": [
-      "opspilot"
-    ],
-    "classification": "invalid-reverse-dependency",
-    "reason": "imports app-owned modules from opspilot"
-  },
-  {
     "component": "opspilot-knowledge-base-selector",
     "directApps": [],
     "transitiveApps": [],
@@ -2428,64 +2407,33 @@
   },
   {
     "component": "opspilot-provider-empty-state",
-    "directApps": [],
-    "transitiveApps": [],
+    "directApps": [
+      "opspilot"
+    ],
+    "transitiveApps": [
+      "opspilot"
+    ],
     "stories": [
       "opspilot-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
-  },
-  {
-    "component": "opspilot-provider-model-section",
-    "directApps": [],
-    "transitiveApps": [],
-    "stories": [
-      "opspilot-family.stories.tsx"
-    ],
-    "reverseAppImports": [
-      "opspilot"
-    ],
-    "classification": "invalid-reverse-dependency",
-    "reason": "imports app-owned modules from opspilot"
+    "classification": "app-local",
+    "reason": "consumed by only opspilot"
   },
   {
     "component": "opspilot-provider-skeletons",
-    "directApps": [],
-    "transitiveApps": [],
+    "directApps": [
+      "opspilot"
+    ],
+    "transitiveApps": [
+      "opspilot"
+    ],
     "stories": [
       "opspilot-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
-  },
-  {
-    "component": "opspilot-provider-vendor-config-fields",
-    "directApps": [],
-    "transitiveApps": [],
-    "stories": [
-      "opspilot-family.stories.tsx"
-    ],
-    "reverseAppImports": [
-      "opspilot"
-    ],
-    "classification": "invalid-reverse-dependency",
-    "reason": "imports app-owned modules from opspilot"
-  },
-  {
-    "component": "opspilot-provider-vendor-grid",
-    "directApps": [],
-    "transitiveApps": [],
-    "stories": [
-      "opspilot-family.stories.tsx"
-    ],
-    "reverseAppImports": [
-      "opspilot"
-    ],
-    "classification": "invalid-reverse-dependency",
-    "reason": "imports app-owned modules from opspilot"
+    "classification": "app-local",
+    "reason": "consumed by only opspilot"
   },
   {
     "component": "opspilot-scheduler-inputs",
@@ -2700,7 +2648,6 @@
       "opspilot"
     ],
     "stories": [
-      "opspilot-family.stories.tsx",
       "password.stories.tsx",
       "security-family.stories.tsx"
     ],
@@ -2959,7 +2906,8 @@
       "system-manager-family.stories.tsx",
       "system-manager-user-org-family.stories.tsx",
       "system-manager-user-profile-family.stories.tsx",
-      "top-menu.stories.tsx"
+      "top-menu.stories.tsx",
+      "user-info.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "app-local",
@@ -3005,9 +2953,12 @@
   },
   {
     "component": "semantic-badge",
-    "directApps": [],
+    "directApps": [
+      "opspilot"
+    ],
     "transitiveApps": [
-      "job"
+      "job",
+      "opspilot"
     ],
     "stories": [
       "cmdb-family.stories.tsx",
@@ -3025,8 +2976,8 @@
       "opspilot-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only job"
+    "classification": "shared-cross-app",
+    "reason": "consumed transitively by 2 apps"
   },
   {
     "component": "single-file-upload-panel",
@@ -3048,20 +2999,6 @@
     "reverseAppImports": [],
     "classification": "shared-cross-app",
     "reason": "consumed transitively by 3 apps"
-  },
-  {
-    "component": "snmp-trap-guide-panel",
-    "directApps": [],
-    "transitiveApps": [],
-    "stories": [
-      "alarm-integration-guides-family.stories.tsx",
-      "integrations-family.stories.tsx"
-    ],
-    "reverseAppImports": [
-      "alarm"
-    ],
-    "classification": "invalid-reverse-dependency",
-    "reason": "imports app-owned modules from alarm"
   },
   {
     "component": "sortable-item",
@@ -3354,20 +3291,13 @@
   {
     "component": "theme",
     "directApps": [],
-    "transitiveApps": [
-      "(root)"
-    ],
+    "transitiveApps": [],
     "stories": [
-      "layout-family.stories.tsx",
-      "system-manager-family.stories.tsx",
-      "system-manager-user-profile-family.stories.tsx",
-      "theme.stories.tsx",
-      "top-menu.stories.tsx",
-      "user-info.stories.tsx"
+      "theme.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only (root)"
+    "classification": "story-only-review",
+    "reason": "consumed only by Storybook stories"
   },
   {
     "component": "time-selector",
@@ -3475,7 +3405,8 @@
       "layout-family.stories.tsx",
       "system-manager-family.stories.tsx",
       "system-manager-user-profile-family.stories.tsx",
-      "top-menu.stories.tsx"
+      "top-menu.stories.tsx",
+      "user-info.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "app-local",
@@ -3591,7 +3522,7 @@
     "reason": "consumed transitively by 2 apps"
   },
   {
-    "component": "user-info",
+    "component": "user-preferences",
     "directApps": [],
     "transitiveApps": [
       "(root)"
@@ -3602,24 +3533,6 @@
       "system-manager-user-profile-family.stories.tsx",
       "top-menu.stories.tsx",
       "user-info.stories.tsx"
-    ],
-    "reverseAppImports": [
-      "system-manager"
-    ],
-    "classification": "invalid-reverse-dependency",
-    "reason": "imports app-owned modules from system-manager"
-  },
-  {
-    "component": "user-preferences",
-    "directApps": [],
-    "transitiveApps": [
-      "(root)"
-    ],
-    "stories": [
-      "layout-family.stories.tsx",
-      "system-manager-family.stories.tsx",
-      "system-manager-user-profile-family.stories.tsx",
-      "top-menu.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "app-local",

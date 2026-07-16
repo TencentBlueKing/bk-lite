@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs';
 import { Button, Dropdown, Form, Tag, Input, Space } from 'antd';
 import { DownOutlined, EllipsisOutlined, PlusOutlined } from '@ant-design/icons';
 import CodeSnippet from '@/components/code-snippet';
@@ -31,7 +31,7 @@ import K8sAccessAssetFields from '@/components/k8s-access-asset-fields';
 import { createMonitorK8sAccessAssetFieldsCopy } from '@/components/k8s-access-asset-fields/presets';
 import K8sCollectorInstallStep from '@/components/k8s-collector-install-step';
 import { createMonitorK8sCollectorInstallCopy } from '@/components/k8s-collector-install-step/presets';
-import SnmpTrapGuidePanel from '@/components/snmp-trap-guide-panel';
+import SnmpTrapGuidePanel from '@/app/alarm/components/integration-guide/SnmpTrapGuidePanel';
 import SearchActionBar from '@/components/search-action-bar';
 import SemanticBadge from '@/components/semantic-badge';
 import SourceOriginBadge from '@/components/source-origin-badge';

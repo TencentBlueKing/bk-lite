@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs';
 import { Alert } from 'antd';
 import AlarmIntegrationGuideCredentialsPanel from '@/app/alarm/components/integration-guide/CredentialsPanel';
 import AlarmIntegrationGuideSectionPanel from '@/app/alarm/components/integration-guide/SectionPanel';
@@ -11,7 +11,7 @@ import type {
   K8sMeta,
   SourceItem,
 } from '@/app/alarm/types/integration-guide';
-import SnmpTrapGuidePanel from '@/components/snmp-trap-guide-panel';
+import SnmpTrapGuidePanel from '@/app/alarm/components/integration-guide/SnmpTrapGuidePanel';
 
 const k8sSource: SourceItem = {
   id: 1,

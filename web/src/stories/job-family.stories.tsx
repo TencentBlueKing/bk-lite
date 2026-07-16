@@ -1,10 +1,10 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs';
 import { Button, Segmented } from 'antd';
 import CompactEmptyState from '@/components/compact-empty-state';
 import JobDangerousRulePage from '@/components/job-dangerous-rule-page';
 import JobDriverBadge from '@/components/job-driver-badge';
 import JobHostSelectionModal from '@/components/job-host-selection-modal';
-import JobFilePreviewModal from '@/components/job-file-preview-modal';
+import JobFilePreviewModal from '@/app/job/components/file-preview-modal';
 import JobListWorkspaceShell from '@/components/job-list-workspace-shell';
 import JobPlaybookDetailDrawer from '@/components/job-playbook-detail-drawer';
 import JobPlaybookUploadModal from '@/components/job-playbook-upload-modal';
