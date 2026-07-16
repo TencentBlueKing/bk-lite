@@ -6,7 +6,13 @@ from django.core.management.base import CommandError
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
 
 from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncService
-from apps.cmdb.tasks.node_mgmt_sync import RECOVERY_PERIODIC_TASK_NAME, RECOVERY_TASK, recover_node_mgmt_sync
+from apps.cmdb.tasks.node_mgmt_sync import (
+    RECOVERY_PERIODIC_TASK_NAME,
+    RECOVERY_TASK,
+    WATCHDOG_TASK,
+    recover_node_mgmt_sync,
+    watch_node_mgmt_sync_recovery,
+)
 
 pytestmark = pytest.mark.django_db
 
@@ -64,6 +70,35 @@ def test_management_command_is_idempotent_and_repairs_recovery_schedule_drift():
     assert task.crontab.minute == "*/5"
 
 
+@pytest.mark.parametrize("drift", ["deleted", "disabled", "wrong_task"])
+def test_independent_watchdog_repairs_runtime_recovery_task_drift_without_command(drift,):
+    call_command("reconcile_node_mgmt_sync")
+    task = PeriodicTask.objects.get(name=RECOVERY_PERIODIC_TASK_NAME)
+    if drift == "deleted":
+        task.delete()
+    elif drift == "disabled":
+        task.enabled = False
+        task.save(update_fields=["enabled"])
+    else:
+        task.task = "wrong.task"
+        task.save(update_fields=["task"])
+
+    watch_node_mgmt_sync_recovery()
+
+    task = PeriodicTask.objects.get(name=RECOVERY_PERIODIC_TASK_NAME)
+    assert task.task == RECOVERY_TASK
+    assert task.enabled is True
+    assert task.crontab.minute == "*/5"
+
+
+def test_static_beat_schedule_runs_independent_watchdog_every_five_minutes():
+    from apps.cmdb.config import CELERY_BEAT_SCHEDULE
+
+    schedule = CELERY_BEAT_SCHEDULE["node_mgmt_sync_recovery_watchdog"]
+    assert schedule["task"] == WATCHDOG_TASK
+    assert schedule["schedule"]._orig_minute == "*/5"
+
+
 def test_management_command_failure_is_stable_and_hides_exception_detail(mocker):
     mocker.patch(
         f"{COMMAND}.NodeMgmtSyncService.recover_stale_runs", side_effect=RuntimeError("credential=secret"),
@@ -84,6 +119,7 @@ def test_runtime_recovery_only_repairs_health_and_degraded_node_config(mocker):
     reconcile = mocker.patch("apps.cmdb.services.node_mgmt_sync_reconciler.NodeMgmtSyncReconciler.reconcile", return_value=_healthy_result(),)
     trigger_sync = mocker.patch.object(NodeMgmtSyncService, "trigger_sync")
     trigger_collect = mocker.patch.object(NodeMgmtSyncService, "trigger_collect")
+    ensure = mocker.patch("apps.cmdb.tasks.node_mgmt_sync.ensure_recovery_periodic_task")
 
     result = recover_node_mgmt_sync()
 
@@ -94,6 +130,7 @@ def test_runtime_recovery_only_repairs_health_and_degraded_node_config(mocker):
         "node_config_status": "healthy",
     }
     reconcile.assert_called_once_with(config, reconcile_node_configs=True)
+    ensure.assert_called_once_with()
     trigger_sync.assert_not_called()
     trigger_collect.assert_not_called()
 
