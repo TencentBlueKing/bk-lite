@@ -8,24 +8,24 @@ import CustomTable from '@/components/custom-table';
 import HttpEndpointDisplay from '@/components/http-endpoint-display';
 import IntegrationAccessComplete from '@/components/integration-access-complete';
 import { createMonitorK8sAccessCompletePreset } from '@/components/integration-access-complete/presets';
-import IntegrationAutomaticConfigurationShell from '@/components/integration-automatic-configuration-shell';
-import IntegrationCatalogCard from '@/components/integration-catalog-card';
-import IntegrationCatalogWorkspaceShell from '@/components/integration-catalog-workspace-shell';
-import IntegrationDetailLayoutShell from '@/components/integration-detail-layout-shell';
-import IntegrationInstanceManagementShell from '@/components/integration-instance-management-shell';
+import IntegrationAutomaticConfigurationShell from '@/app/monitor/components/integration-contract/integration-automatic-configuration-shell';
+import IntegrationCatalogCard from '@/app/monitor/components/integration-contract/integration-catalog-card';
+import IntegrationCatalogWorkspaceShell from '@/app/monitor/components/integration-contract/integration-catalog-workspace-shell';
+import IntegrationDetailLayoutShell from '@/app/monitor/components/integration-contract/integration-detail-layout-shell';
+import IntegrationInstanceManagementShell from '@/app/monitor/components/integration-contract/integration-instance-management-shell';
 import SectionHeader from '@/components/section-header';
 import IntegrationConfigEditModal, {
   type IntegrationConfigEditModalRef,
-} from '@/components/integration-config-edit-modal';
+} from '@/app/monitor/components/integration-contract/integration-config-edit-modal';
 import IntegrationInstanceEditModal, {
   type IntegrationInstanceEditModalRef,
-} from '@/components/integration-instance-edit-modal';
+} from '@/app/monitor/components/integration-contract/integration-instance-edit-modal';
 import IntegrationBatchEditModal, {
   type IntegrationBatchEditModalRef,
-} from '@/components/integration-batch-edit-modal';
+} from '@/app/monitor/components/integration-contract/integration-batch-edit-modal';
 import IntegrationExcelImportModal, {
   type IntegrationExcelImportModalRef,
-} from '@/components/integration-excel-import-modal';
+} from '@/app/monitor/components/integration-contract/integration-excel-import-modal';
 import IntegrationStepCallout from '@/components/integration-step-callout';
 import K8sAccessAssetFields from '@/components/k8s-access-asset-fields';
 import { createMonitorK8sAccessAssetFieldsCopy } from '@/components/k8s-access-asset-fields/presets';

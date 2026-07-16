@@ -1,7 +1,7 @@
 import React from 'react';
 import { Form, Input, Radio, Select } from 'antd';
 import GroupTreeSelector from '@/components/group-tree-select';
-import IntegrationSettingRow from '@/components/integration-setting-row';
+import FormSettingRow from '@/components/form-setting-row';
 
 interface SelectOption {
   value: string | number;
@@ -50,7 +50,7 @@ const K8sAccessAssetFields: React.FC<K8sAccessAssetFieldsProps> = ({
   return (
     <>
       <Form.Item label={copy.accessAsset} required>
-        <IntegrationSettingRow
+        <FormSettingRow
           control={
             <Form.Item
               name="accessType"
@@ -77,7 +77,7 @@ const K8sAccessAssetFields: React.FC<K8sAccessAssetFieldsProps> = ({
           getFieldValue('accessType') === 'new' ? (
             <>
               <Form.Item label={copy.clusterName} required>
-                <IntegrationSettingRow
+                <FormSettingRow
                   control={
                     <Form.Item
                       name="name"
@@ -95,7 +95,7 @@ const K8sAccessAssetFields: React.FC<K8sAccessAssetFieldsProps> = ({
               </Form.Item>
 
               <Form.Item label={copy.organization} required>
-                <IntegrationSettingRow
+                <FormSettingRow
                   control={
                     <Form.Item
                       name="organizations"
@@ -114,7 +114,7 @@ const K8sAccessAssetFields: React.FC<K8sAccessAssetFieldsProps> = ({
             </>
           ) : (
             <Form.Item label={copy.k8sCluster} required>
-              <IntegrationSettingRow
+              <FormSettingRow
                 control={
                   <Form.Item
                     name="k8sCluster"
@@ -138,7 +138,7 @@ const K8sAccessAssetFields: React.FC<K8sAccessAssetFieldsProps> = ({
       </Form.Item>
 
       <Form.Item label={copy.cloudRegion} required>
-        <IntegrationSettingRow
+        <FormSettingRow
           control={
             <Form.Item
               name="cloud_region_id"

@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs';
 import { Button, Form, Input, InputNumber, Radio, Select } from 'antd';
 import IntegrationAccessComplete from '@/components/integration-access-complete';
 import {
@@ -6,7 +6,7 @@ import {
   createLogK8sAccessCompletePreset,
   createMonitorK8sAccessCompletePreset,
 } from '@/components/integration-access-complete/presets';
-import IntegrationK8sAccessConfigShell from '@/components/integration-k8s-access-config-shell';
+import IntegrationK8sAccessConfigShell from '@/app/monitor/components/integration-contract/integration-k8s-access-config-shell';
 import IntegrationK8sConfigurationShell from '@/components/integration-k8s-configuration-shell';
 import K8sAccessAssetFields from '@/components/k8s-access-asset-fields';
 import {

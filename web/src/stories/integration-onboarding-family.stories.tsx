@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs';
 import { Button, Input, Select } from 'antd';
 import IntegrationAccessComplete from '@/components/integration-access-complete';
 import {
@@ -16,7 +16,7 @@ import {
 } from '@/components/integration-step-callout/presets';
 import K8sAccessAssetFields from '@/components/k8s-access-asset-fields';
 import SectionHeader from '@/components/section-header';
-import IntegrationSettingRow from '@/components/integration-setting-row';
+import FormSettingRow from '@/components/form-setting-row';
 import IntegrationStepCallout from '@/components/integration-step-callout';
 import { createK8sStoryT } from './k8s-story.fixtures';
 
@@ -44,11 +44,11 @@ const FamilyOverview = () => {
       <section className="space-y-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-1)] p-4">
         <SectionHeader title="Setting rows" />
         <div className="space-y-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-2)] p-4">
-          <IntegrationSettingRow
+        <FormSettingRow
             control={<Input placeholder="Cluster name" style={{ width: 280 }} />}
             description="The asset name used in the integration list and downstream views."
           />
-          <IntegrationSettingRow
+          <FormSettingRow
             control={(
               <Select
                 style={{ width: 280 }}
@@ -81,11 +81,11 @@ const FamilyOverview = () => {
               ]}
             />
             <div className="space-y-4 rounded-lg bg-[var(--color-bg-1)] p-4">
-              <IntegrationSettingRow
+              <FormSettingRow
                 control={<Input placeholder="Cluster name" style={{ width: 260 }} />}
                 description="Used when the flow creates a new managed asset."
               />
-              <IntegrationSettingRow
+              <FormSettingRow
                 control={(
                   <Select
                     style={{ width: 260 }}

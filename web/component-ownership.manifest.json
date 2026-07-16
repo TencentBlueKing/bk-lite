@@ -7,6 +7,7 @@
       "alarm",
       "cmdb",
       "job",
+      "monitor",
       "node-manager",
       "ops-analysis",
       "opspilot"
@@ -17,7 +18,6 @@
       "events-family.stories.tsx",
       "feedback-family.stories.tsx",
       "forms-upload-family.stories.tsx",
-      "integration-auth.fixtures.ts",
       "integrations-family.stories.tsx",
       "k8s-family.stories.tsx",
       "layout-family.stories.tsx",
@@ -39,7 +39,7 @@
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
-    "reason": "consumed transitively by 7 apps"
+    "reason": "consumed transitively by 8 apps"
   },
   {
     "component": "app-view-fullscreen",
@@ -55,20 +55,21 @@
   {
     "component": "auth-secret-field",
     "directApps": [
+      "monitor",
       "node-manager"
     ],
     "transitiveApps": [
+      "monitor",
       "node-manager"
     ],
     "stories": [
       "integration-auth.fixtures.ts",
-      "integrations-family.stories.tsx",
       "node-manager-family.stories.tsx",
       "security-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only node-manager"
+    "classification": "shared-cross-app",
+    "reason": "consumed transitively by 2 apps"
   },
   {
     "component": "auto-association-match-pair-group",
@@ -388,12 +389,14 @@
     "component": "compact-empty-state",
     "directApps": [
       "alarm",
-      "job"
+      "job",
+      "monitor"
     ],
     "transitiveApps": [
       "(root)",
       "alarm",
       "job",
+      "monitor",
       "opspilot"
     ],
     "stories": [
@@ -416,7 +419,7 @@
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
-    "reason": "consumed transitively by 4 apps"
+    "reason": "consumed transitively by 5 apps"
   },
   {
     "component": "content-drawer",
@@ -705,17 +708,20 @@
   },
   {
     "component": "detail-layout-shell",
-    "directApps": [],
-    "transitiveApps": [],
+    "directApps": [
+      "monitor"
+    ],
+    "transitiveApps": [
+      "monitor"
+    ],
     "stories": [
-      "integrations-family.stories.tsx",
       "layout-family.stories.tsx",
       "node-manager-family.stories.tsx",
       "opspilot-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
+    "classification": "app-local",
+    "reason": "consumed by only monitor"
   },
   {
     "component": "detail-list-drawer-shell",
@@ -758,6 +764,7 @@
       "system-manager"
     ],
     "transitiveApps": [
+      "monitor",
       "node-manager",
       "opspilot",
       "system-manager"
@@ -766,13 +773,12 @@
       "data-entry-family.stories.tsx",
       "dynamic-form.stories.tsx",
       "integration-auth.fixtures.ts",
-      "integrations-family.stories.tsx",
       "node-manager-family.stories.tsx",
       "security-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
-    "reason": "consumed transitively by 3 apps"
+    "reason": "consumed transitively by 4 apps"
   },
   {
     "component": "echarts-tooltip-card",
@@ -1015,6 +1021,21 @@
     "reason": "consumed only by Storybook stories"
   },
   {
+    "component": "form-setting-row",
+    "directApps": [],
+    "transitiveApps": [
+      "monitor"
+    ],
+    "stories": [
+      "integration-onboarding-family.stories.tsx",
+      "integrations-family.stories.tsx",
+      "k8s-family.stories.tsx"
+    ],
+    "reverseAppImports": [],
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 将无业务语义的表单控件与说明文本并排编排"
+  },
+  {
     "component": "group-tree-select",
     "directApps": [
       "alarm",
@@ -1216,26 +1237,32 @@
     "component": "import-file-modal-shell",
     "directApps": [
       "job",
+      "monitor",
       "opspilot"
     ],
     "transitiveApps": [
       "job",
+      "monitor",
       "opspilot"
     ],
     "stories": [
       "forms-upload-family.stories.tsx",
-      "integration-auth.fixtures.ts",
-      "integrations-family.stories.tsx",
       "opspilot-tool-editor-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
-    "reason": "consumed transitively by 2 apps"
+    "reason": "consumed transitively by 3 apps"
   },
   {
     "component": "integration-access-complete",
-    "directApps": [],
-    "transitiveApps": [],
+    "directApps": [
+      "log",
+      "monitor"
+    ],
+    "transitiveApps": [
+      "log",
+      "monitor"
+    ],
     "stories": [
       "feedback-family.stories.tsx",
       "integration-onboarding-family.stories.tsx",
@@ -1243,157 +1270,44 @@
       "k8s-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
-  },
-  {
-    "component": "integration-automatic-configuration-shell",
-    "directApps": [],
-    "transitiveApps": [],
-    "stories": [
-      "integrations-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
-  },
-  {
-    "component": "integration-batch-edit-modal",
-    "directApps": [],
-    "transitiveApps": [],
-    "stories": [
-      "integration-auth.fixtures.ts",
-      "integrations-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
-  },
-  {
-    "component": "integration-catalog-card",
-    "directApps": [],
-    "transitiveApps": [],
-    "stories": [
-      "integrations-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
-  },
-  {
-    "component": "integration-catalog-workspace-shell",
-    "directApps": [],
-    "transitiveApps": [],
-    "stories": [
-      "integrations-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
-  },
-  {
-    "component": "integration-config-edit-modal",
-    "directApps": [],
-    "transitiveApps": [],
-    "stories": [
-      "integrations-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
-  },
-  {
-    "component": "integration-detail-layout-shell",
-    "directApps": [],
-    "transitiveApps": [],
-    "stories": [
-      "integrations-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
-  },
-  {
-    "component": "integration-excel-import-modal",
-    "directApps": [],
-    "transitiveApps": [],
-    "stories": [
-      "integration-auth.fixtures.ts",
-      "integrations-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
-  },
-  {
-    "component": "integration-instance-edit-modal",
-    "directApps": [],
-    "transitiveApps": [],
-    "stories": [
-      "integrations-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
-  },
-  {
-    "component": "integration-instance-management-shell",
-    "directApps": [],
-    "transitiveApps": [],
-    "stories": [
-      "integrations-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
-  },
-  {
-    "component": "integration-k8s-access-config-shell",
-    "directApps": [],
-    "transitiveApps": [],
-    "stories": [
-      "k8s-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
+    "classification": "shared-cross-app",
+    "reason": "consumed transitively by 2 apps"
   },
   {
     "component": "integration-k8s-configuration-shell",
-    "directApps": [],
-    "transitiveApps": [],
+    "directApps": [
+      "log",
+      "monitor"
+    ],
+    "transitiveApps": [
+      "log",
+      "monitor"
+    ],
     "stories": [
       "k8s-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
-  },
-  {
-    "component": "integration-setting-row",
-    "directApps": [],
-    "transitiveApps": [],
-    "stories": [
-      "integration-onboarding-family.stories.tsx",
-      "integrations-family.stories.tsx",
-      "k8s-family.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
+    "classification": "shared-cross-app",
+    "reason": "consumed transitively by 2 apps"
   },
   {
     "component": "integration-step-callout",
-    "directApps": [],
-    "transitiveApps": [],
+    "directApps": [
+      "log",
+      "monitor"
+    ],
+    "transitiveApps": [
+      "log",
+      "monitor"
+    ],
     "stories": [
       "integration-onboarding-family.stories.tsx",
       "integrations-family.stories.tsx",
       "k8s-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
+    "classification": "shared-cross-app",
+    "reason": "consumed transitively by 2 apps"
   },
   {
     "component": "introduction",
@@ -1426,16 +1340,20 @@
   },
   {
     "component": "k8s-access-asset-fields",
-    "directApps": [],
-    "transitiveApps": [],
+    "directApps": [
+      "monitor"
+    ],
+    "transitiveApps": [
+      "monitor"
+    ],
     "stories": [
       "integration-onboarding-family.stories.tsx",
       "integrations-family.stories.tsx",
       "k8s-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
+    "classification": "app-local",
+    "reason": "consumed by only monitor"
   },
   {
     "component": "k8s-collector-install",
@@ -1480,17 +1398,17 @@
       "cmdb"
     ],
     "transitiveApps": [
-      "cmdb"
+      "cmdb",
+      "monitor"
     ],
     "stories": [
-      "integrations-family.stories.tsx",
       "layout-family.stories.tsx",
       "node-manager-family.stories.tsx",
       "opspilot-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only cmdb"
+    "classification": "shared-cross-app",
+    "reason": "consumed transitively by 2 apps"
   },
   {
     "component": "log-analysis-widgets",
@@ -1539,19 +1457,22 @@
   },
   {
     "component": "management-table-shell",
-    "directApps": [],
-    "transitiveApps": [],
+    "directApps": [
+      "monitor"
+    ],
+    "transitiveApps": [
+      "monitor"
+    ],
     "stories": [
       "events-family.stories.tsx",
-      "integrations-family.stories.tsx",
       "layout-family.stories.tsx",
       "mlops-family.stories.tsx",
       "monitor-family.stories.tsx",
       "system-manager-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
+    "classification": "app-local",
+    "reason": "consumed by only monitor"
   },
   {
     "component": "markdown",
@@ -1959,13 +1880,15 @@
     "component": "operate-form-modal",
     "directApps": [
       "alarm",
-      "job"
+      "job",
+      "monitor"
     ],
     "transitiveApps": [
       "(root)",
       "alarm",
       "cmdb",
       "job",
+      "monitor",
       "node-manager",
       "ops-analysis",
       "opspilot"
@@ -1975,8 +1898,6 @@
       "cmdb-family.stories.tsx",
       "feedback-family.stories.tsx",
       "forms-upload-family.stories.tsx",
-      "integration-auth.fixtures.ts",
-      "integrations-family.stories.tsx",
       "layout-family.stories.tsx",
       "mlops-dataset-family.stories.tsx",
       "mlops-family.stories.tsx",
@@ -1996,7 +1917,7 @@
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
-    "reason": "consumed transitively by 7 apps"
+    "reason": "consumed transitively by 8 apps"
   },
   {
     "component": "operate-modal",
@@ -2035,7 +1956,6 @@
       "events-family.stories.tsx",
       "feedback-family.stories.tsx",
       "forms-upload-family.stories.tsx",
-      "integration-auth.fixtures.ts",
       "integrations-family.stories.tsx",
       "layout-family.stories.tsx",
       "log-analysis-widgets-family.stories.tsx",
@@ -2395,6 +2315,7 @@
     "transitiveApps": [
       "alarm",
       "job",
+      "log",
       "monitor"
     ],
     "stories": [
@@ -2436,7 +2357,7 @@
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
-    "reason": "consumed transitively by 3 apps"
+    "reason": "consumed transitively by 4 apps"
   },
   {
     "component": "page-intro-header",
@@ -2548,7 +2469,6 @@
       "data-display-family.stories.tsx",
       "entity-list.stories.tsx",
       "events-family.stories.tsx",
-      "integrations-family.stories.tsx",
       "ops-analysis-view-toolbar-family.stories.tsx",
       "opspilot-cards-family.stories.tsx",
       "opspilot-family.stories.tsx",
@@ -2625,15 +2545,16 @@
   {
     "component": "resizable-sidebar",
     "directApps": [],
-    "transitiveApps": [],
+    "transitiveApps": [
+      "monitor"
+    ],
     "stories": [
-      "integrations-family.stories.tsx",
       "layout-family.stories.tsx",
       "monitor-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
+    "classification": "app-local",
+    "reason": "consumed by only monitor"
   },
   {
     "component": "routed-detail-layout-shell",
@@ -2650,7 +2571,8 @@
     "component": "search-action-bar",
     "directApps": [],
     "transitiveApps": [
-      "cmdb"
+      "cmdb",
+      "monitor"
     ],
     "stories": [
       "cmdb-family.stories.tsx",
@@ -2664,8 +2586,8 @@
       "toolbar-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only cmdb"
+    "classification": "shared-cross-app",
+    "reason": "consumed transitively by 2 apps"
   },
   {
     "component": "search-combination",
@@ -2716,10 +2638,13 @@
   {
     "component": "section-header",
     "directApps": [
-      "alarm"
+      "alarm",
+      "monitor"
     ],
     "transitiveApps": [
-      "alarm"
+      "alarm",
+      "log",
+      "monitor"
     ],
     "stories": [
       "alarm-family.stories.tsx",
@@ -2758,8 +2683,8 @@
       "system-manager-user-profile-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only alarm"
+    "classification": "shared-cross-app",
+    "reason": "consumed transitively by 3 apps"
   },
   {
     "component": "security",
@@ -2852,21 +2777,20 @@
     "directApps": [],
     "transitiveApps": [
       "job",
+      "monitor",
       "node-manager",
       "ops-analysis",
       "opspilot"
     ],
     "stories": [
       "forms-upload-family.stories.tsx",
-      "integration-auth.fixtures.ts",
-      "integrations-family.stories.tsx",
       "node-manager-family.stories.tsx",
       "ops-analysis-settings-family.stories.tsx",
       "opspilot-tool-editor-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
-    "reason": "consumed transitively by 4 apps"
+    "reason": "consumed transitively by 5 apps"
   },
   {
     "component": "sortable-item",
@@ -2960,14 +2884,17 @@
   {
     "component": "step-wizard-flow",
     "directApps": [],
-    "transitiveApps": [],
+    "transitiveApps": [
+      "log",
+      "monitor"
+    ],
     "stories": [
       "k8s-family.stories.tsx",
       "navigation-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
+    "classification": "shared-cross-app",
+    "reason": "consumed transitively by 2 apps"
   },
   {
     "component": "structured-data-preview",
@@ -3242,10 +3169,13 @@
   },
   {
     "component": "toolbar-split-shell",
-    "directApps": [],
+    "directApps": [
+      "monitor"
+    ],
     "transitiveApps": [
       "cmdb",
-      "job"
+      "job",
+      "monitor"
     ],
     "stories": [
       "cmdb-family.stories.tsx",
@@ -3261,7 +3191,7 @@
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
-    "reason": "consumed transitively by 2 apps"
+    "reason": "consumed transitively by 3 apps"
   },
   {
     "component": "top-menu",
@@ -3286,16 +3216,17 @@
     "component": "top-section",
     "directApps": [
       "mlops",
+      "monitor",
       "opspilot",
       "system-manager"
     ],
     "transitiveApps": [
       "mlops",
+      "monitor",
       "opspilot",
       "system-manager"
     ],
     "stories": [
-      "integrations-family.stories.tsx",
       "layout-family.stories.tsx",
       "node-manager-family.stories.tsx",
       "ops-analysis-settings-family.stories.tsx",
@@ -3304,34 +3235,40 @@
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
-    "reason": "consumed transitively by 3 apps"
+    "reason": "consumed transitively by 4 apps"
   },
   {
     "component": "tree-selector-panel",
-    "directApps": [],
-    "transitiveApps": [],
+    "directApps": [
+      "monitor"
+    ],
+    "transitiveApps": [
+      "monitor"
+    ],
     "stories": [
-      "integrations-family.stories.tsx",
       "layout-family.stories.tsx",
       "monitor-family.stories.tsx",
       "navigation-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
+    "classification": "app-local",
+    "reason": "consumed by only monitor"
   },
   {
     "component": "tree-workspace-shell",
-    "directApps": [],
-    "transitiveApps": [],
+    "directApps": [
+      "monitor"
+    ],
+    "transitiveApps": [
+      "monitor"
+    ],
     "stories": [
-      "integrations-family.stories.tsx",
       "layout-family.stories.tsx",
       "monitor-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "story-only-review",
-    "reason": "consumed only by Storybook stories"
+    "classification": "app-local",
+    "reason": "consumed by only monitor"
   },
   {
     "component": "troubleshooting-card",
@@ -3355,14 +3292,13 @@
     "directApps": [],
     "transitiveApps": [
       "job",
+      "monitor",
       "node-manager",
       "ops-analysis",
       "opspilot"
     ],
     "stories": [
       "forms-upload-family.stories.tsx",
-      "integration-auth.fixtures.ts",
-      "integrations-family.stories.tsx",
       "mlops-dataset-family.stories.tsx",
       "mlops-family.stories.tsx",
       "node-manager-family.stories.tsx",
@@ -3371,7 +3307,7 @@
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
-    "reason": "consumed transitively by 4 apps"
+    "reason": "consumed transitively by 5 apps"
   },
   {
     "component": "user-avatar",

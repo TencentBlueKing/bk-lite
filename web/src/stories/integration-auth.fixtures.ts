@@ -1,5 +1,5 @@
-import type { IntegrationBatchEditColumnConfig } from '@/components/integration-batch-edit-modal';
-import type { IntegrationExcelImportColumnConfig } from '@/components/integration-excel-import-modal';
+import type { IntegrationBatchEditColumnConfig } from '@/app/monitor/components/integration-contract/integration-batch-edit-modal';
+import type { IntegrationExcelImportColumnConfig } from '@/app/monitor/components/integration-contract/integration-excel-import-modal';
 import {
   createAuthCredentialFieldConfig,
   createAuthTypeFieldConfig,

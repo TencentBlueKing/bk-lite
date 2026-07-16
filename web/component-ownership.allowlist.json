@@ -6,7 +6,13 @@
       "contractStory": "selection-family.stories.tsx"
     }
   ],
-  "form": [],
+  "form": [
+    {
+      "component": "form-setting-row",
+      "reason": "将无业务语义的表单控件与说明文本并排编排",
+      "contractStory": "integration-onboarding-family.stories.tsx"
+    }
+  ],
   "feedback": [],
   "dataDisplay": [
     {
