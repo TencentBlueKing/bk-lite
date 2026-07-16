@@ -485,7 +485,10 @@ class NodeMgmtSyncService:
             count = response.get("count") if isinstance(response, dict) else None
             nodes = response.get("nodes") if isinstance(response, dict) else None
             is_valid_count = type(count) is int and count >= 0
-            if is_valid_count and isinstance(nodes, list):
+            is_valid_nodes = isinstance(nodes, list) and all(
+                isinstance(node, dict) for node in nodes
+            )
+            if is_valid_count and is_valid_nodes:
                 return
             error_type = "invalid_response"
         logger.error(

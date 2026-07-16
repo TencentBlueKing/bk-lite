@@ -25,3 +25,10 @@
 - 缺字段、非法类型、负数及计划示例 `{"result": true, "data": {"items": []}}` 均抛 `NODE_QUERY_FAILED: invalid_response`，日志不包含原始响应。
 - Important 最终回归：Task 4 聚焦、helpers/resilience、NodeService fail-close、Task 2/3 共 131 passed。
 - Important 增量覆盖率：生产新增可执行行 9/9，100%；`isort`、`py_compile`、`git diff --check` 通过，新增行 flake8 命中 0。
+
+## Important 元素合同复审修复
+
+- RED：纯非法元素、合法字典与非法元素混合、嵌套非字典三类响应均被静默过滤，3 failed / 12 passed。
+- `nodes` 现除要求列表外，还要求每个元素均为字典；空列表继续合法，协议错误不再由 `_extract_nodes` 静默转为空源。
+- 最终聚焦 16 passed；Task 4 与 Task 2/3 完整回归 134 passed。
+- 本轮生产新增可执行行 2/2，增量覆盖率 100%；`isort`、`py_compile`、`git diff --check` 通过，新增行 flake8 命中 0。
