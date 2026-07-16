@@ -1,3 +1,5 @@
+import uuid
+
 # flake8: noqa
 from .common import *  # noqa: F401,F403
 from .common import _build_jwt_payload
@@ -8,7 +10,8 @@ from .users import set_opspilot_guest_group_default_rule
 def wechat_user_register(user_id, nick_name):
     with transaction.atomic():
         user, is_first_login = User.objects.select_for_update().get_or_create(
-            username=user_id, defaults={"display_name": nick_name}
+            username=user_id,
+            defaults={"user_id": str(uuid.uuid4()), "display_name": nick_name},
         )
         default_group = Group.objects.filter(name="OpsPilotGuest", parent_id=0).first()
         if not user.group_list and default_group:

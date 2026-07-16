@@ -1,3 +1,4 @@
+import uuid
 from datetime import timedelta
 
 from celery import shared_task
@@ -217,6 +218,7 @@ def _sync_users(user_list, group_id_mapping, domain, default_role):
         else:
             # 创建新用户
             user_defaults = {
+                "user_id": str(uuid.uuid4()),
                 "username": username,
                 "display_name": user_data.get("display_name", username),
                 "email": user_data.get("email", ""),
