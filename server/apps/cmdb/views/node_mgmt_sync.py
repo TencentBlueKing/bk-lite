@@ -1,9 +1,9 @@
 from rest_framework.decorators import action
 
+from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncService
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.core.utils.web_utils import WebUtils
-from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncService
 
 
 class NodeMgmtSyncViewSet(AuthViewSet):
@@ -14,9 +14,10 @@ class NodeMgmtSyncViewSet(AuthViewSet):
     def task(self, request, *args, **kwargs):
         if request.method.upper() == "PUT":
             task = NodeMgmtSyncService.update_task(request.data)
+            payload = NodeMgmtSyncService.serialize_task(task)
         else:
-            task = NodeMgmtSyncService.get_task()
-        return WebUtils.response_success(NodeMgmtSyncService.serialize_task(task))
+            payload = NodeMgmtSyncService.get_task_payload(reconcile=True)
+        return WebUtils.response_success(payload)
 
     @HasPermission("auto_collection-View")
     @action(methods=["get"], detail=False, url_path="task/latest_run")

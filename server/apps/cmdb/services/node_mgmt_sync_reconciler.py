@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from django.utils import timezone
+from django_celery_beat.models import PeriodicTask
 
 from apps.core.logger import cmdb_logger as logger
 from apps.core.utils.celery_utils import CeleryUtils
@@ -50,7 +51,7 @@ class NodeMgmtSyncReconciler:
         current = CeleryUtils.get_periodic_task(name)
         if not enabled:
             if current is not None:
-                CeleryUtils.delete_periodic_task(name)
+                cls._delete_periodic_task(name)
             return
 
         expected_crontab = f"*/{int(interval)} * * * *"
@@ -66,6 +67,8 @@ class NodeMgmtSyncReconciler:
             return False
         if current.crontab_id is None or current.interval_id is not None:
             return False
+        if current.crontab.timezone != timezone.get_default_timezone():
+            return False
         expected = crontab.split()
         actual = [
             current.crontab.minute,
@@ -75,6 +78,11 @@ class NodeMgmtSyncReconciler:
             current.crontab.day_of_week,
         ]
         return actual == expected
+
+    @staticmethod
+    def _delete_periodic_task(name: str) -> None:
+        PeriodicTask.objects.filter(name=name).delete()
+        logger.info("删除节点管理同步周期任务: %s", name)
 
     @staticmethod
     def _persist_health(config, result: NodeMgmtSyncReconcileResult) -> None:
