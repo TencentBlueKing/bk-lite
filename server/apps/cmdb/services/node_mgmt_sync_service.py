@@ -64,6 +64,7 @@ class NodeMgmtSyncService:
         "_status",
         "_error",
     )
+    HOST_SYNC_UPDATE_FIELDS = ("inst_name", "ip_addr", "organization", "cloud", "os_type")
 
     @staticmethod
     def _empty_display_message() -> dict[str, Any]:
@@ -845,6 +846,110 @@ class NodeMgmtSyncService:
         }
 
     @classmethod
+    def _changed_host_attrs(cls, existing: dict[str, Any], desired: dict[str, Any]) -> dict[str, Any]:
+        return {
+            field: desired.get(field)
+            for field in cls.HOST_SYNC_UPDATE_FIELDS
+            if field in desired and desired.get(field) != existing.get(field)
+        }
+
+    @staticmethod
+    def _host_lookup_key(payload: dict[str, Any]) -> tuple[str, int | None]:
+        ip_addr = str(payload.get("ip_addr") or "").strip()
+        cloud = payload.get("cloud")
+        try:
+            normalized_cloud = int(cloud) if cloud not in (None, "") else None
+        except (TypeError, ValueError):
+            normalized_cloud = None
+        return ip_addr, normalized_cloud
+
+    @classmethod
+    def _persist_hosts(
+            cls,
+            desired_hosts: list[dict[str, Any]],
+            *,
+            existing_hosts: dict[Any, dict[str, Any]],
+            operator: str,
+            operation_id: str,
+    ) -> dict[str, Any]:
+        result = {
+            "add": 0,
+            "add_success": 0,
+            "add_error": 0,
+            "update": 0,
+            "update_success": 0,
+            "update_error": 0,
+            "add_data": [],
+            "update_data": [],
+            "errors": [],
+            "changed_instance_ids": [],
+        }
+
+        for desired in desired_hosts:
+            ip_addr, cloud = cls._host_lookup_key(desired)
+            tuple_key = (ip_addr, cloud)
+            lookup_key: Any = tuple_key if tuple_key in existing_hosts else ip_addr
+            existing = existing_hosts.get(lookup_key)
+
+            if existing:
+                changes = cls._changed_host_attrs(existing, desired)
+                if not changes:
+                    continue
+                result["update"] += 1
+                try:
+                    updated = InstanceManage.instance_update(
+                        user_groups=[],
+                        roles=[],
+                        inst_id=existing["_id"],
+                        update_attr=changes,
+                        operator=operator,
+                        allowed_org_ids=None,
+                        skip_permission_check=True,
+                        operation_id=operation_id,
+                        schedule_post_actions=False,
+                    )
+                except Exception as exc:
+                    error = {"operation": "update", "error": f"HOST_UPDATE_FAILED: {type(exc).__name__}"}
+                    result["update_error"] += 1
+                    result["errors"].append(error)
+                    logger.error("[NodeMgmtSync] 主机更新失败, error_type=%s", type(exc).__name__)
+                    continue
+
+                persisted = updated if isinstance(updated, dict) else {**existing, **changes}
+                existing_hosts[lookup_key] = persisted
+                result["update_success"] += 1
+                result["update_data"].append(persisted)
+                if persisted.get("_id") is not None:
+                    result["changed_instance_ids"].append(persisted["_id"])
+                continue
+
+            try:
+                created = InstanceManage.instance_create(
+                    "host",
+                    desired,
+                    operator=operator,
+                    allowed_org_ids=desired.get("organization", []),
+                    operation_id=operation_id,
+                    schedule_post_actions=False,
+                )
+            except Exception as exc:
+                error = {"operation": "add", "error": f"HOST_CREATE_FAILED: {type(exc).__name__}"}
+                result["add_error"] += 1
+                result["errors"].append(error)
+                logger.error("[NodeMgmtSync] 主机创建失败, error_type=%s", type(exc).__name__)
+                continue
+
+            persisted = created if isinstance(created, dict) else desired
+            existing_hosts[tuple_key] = persisted
+            result["add"] += 1
+            result["add_success"] += 1
+            result["add_data"].append(persisted)
+            if persisted.get("_id") is not None:
+                result["changed_instance_ids"].append(persisted["_id"])
+
+        return result
+
+    @classmethod
     def _list_region_collect_tasks(cls) -> list[CollectModels]:
         return list(
             CollectModels.objects.filter(is_system=True, system_code__startswith=cls.SYSTEM_TASK_PREFIX).order_by("id"))
@@ -1073,6 +1178,7 @@ class NodeMgmtSyncService:
 
         detail = cls._empty_display_detail()
         message = cls._empty_display_message()
+        changed_instance_ids: list[int] = []
 
         for cloud_region_id, region_nodes in grouped_nodes.items():
             cloud_region_name = str(region_nodes[0].get("cloud_region_name") or cloud_region_id)
@@ -1091,41 +1197,35 @@ class NodeMgmtSyncService:
             existing_map = cls._load_existing_host_map(task_id=0)
             logger.debug("[NodeMgmtSync] 加载已有主机映射, existing_count=%d", len(existing_map))
 
-            add_count = 0
-            update_count = 0
+            desired_hosts = []
             for node in region_nodes:
                 try:
                     payload = cls._build_host_instance_payload(node=node, collect_task_id=0)
                     detail["raw_data"]["data"].append(payload)
-                    key = (payload["ip_addr"], cloud_region_id)
-                    existing = existing_map.get(key)
-                    if existing:
-                        detail["update"]["data"].append(existing)
-                        message["update"] += 1
-                        update_count += 1
-                        continue
-                    created = InstanceManage.instance_create(
-                        "host",
-                        payload,
-                        operator="system",
-                        allowed_org_ids=payload.get("organization", []),
-                    )
-                    detail["add"]["data"].append(created if isinstance(created, dict) else payload)
-                    message["add"] += 1
-                    add_count += 1
-                    existing_map[key] = created if isinstance(created, dict) else payload
+                    desired_hosts.append(payload)
                 except Exception as node_exc:
-                    # 单节点失败不中断整批同步：计入失败数并继续下一个节点。
                     message["add_error"] += 1
-                    node_ip = node.get("ip") or node.get("ip_addr") or ""
-                    logger.error(
-                        "[NodeMgmtSync] 单节点同步失败, cloud_region_id=%s, node=%s, error=%s",
-                        cloud_region_id, node_ip, node_exc, exc_info=True,
+                    detail["todo"].append(
+                        {"operation": "add", "error": f"HOST_PAYLOAD_FAILED: {type(node_exc).__name__}"}
                     )
+                    logger.error("[NodeMgmtSync] 主机载荷构建失败, error_type=%s", type(node_exc).__name__)
                     continue
 
+            persistence = cls._persist_hosts(
+                desired_hosts,
+                existing_hosts=existing_map,
+                operator="system",
+                operation_id=str(run.generation),
+            )
+            for key in ("add", "add_success", "add_error", "update", "update_success", "update_error"):
+                message[key] += persistence[key]
+            detail["add"]["data"].extend(persistence["add_data"])
+            detail["update"]["data"].extend(persistence["update_data"])
+            detail["todo"].extend(persistence["errors"])
+            changed_instance_ids.extend(persistence["changed_instance_ids"])
+
             logger.info("[NodeMgmtSync] 云区域主机同步完成: cloud_region_id=%d, add=%d, update=%d",
-                        cloud_region_id, add_count, update_count)
+                        cloud_region_id, persistence["add_success"], persistence["update_success"])
 
             region_instances = cls._query_region_host_instances(cloud_region_id, region_nodes)
             logger.debug("[NodeMgmtSync] 查询区域主机实例, cloud_region_id=%d, instance_count=%d",
@@ -1154,11 +1254,21 @@ class NodeMgmtSyncService:
                     }
                 )
 
+        if changed_instance_ids:
+            from apps.cmdb.services.auto_relation_reconcile import schedule_instance_auto_relation_reconcile
+
+            try:
+                schedule_instance_auto_relation_reconcile(list(dict.fromkeys(changed_instance_ids)))
+            except Exception as relation_exc:
+                message["association_error"] += 1
+                detail["todo"].append(
+                    {"operation": "relation", "error": f"RELATION_RECONCILE_FAILED: {type(relation_exc).__name__}"}
+                )
+                logger.error("[NodeMgmtSync] 关联对账调度失败, error_type=%s", type(relation_exc).__name__)
+
         for key in ("add", "update", "delete", "relation", "raw_data"):
             detail[key]["count"] = len(detail[key]["data"])
         message["all"] = detail["raw_data"]["count"]
-        message["add_success"] = message["add"]
-        message["update_success"] = message["update"]
         message["delete_success"] = message["delete"]
         message["association"] = detail["relation"]["count"]
         message["association_success"] = message["association"]
