@@ -100,6 +100,15 @@ YAML_SCHEMA_VERSION = "1.1.0"
 # 导出时这些字段将被替换为脱敏占位符，导入时需补充实际值
 SENSITIVE_FIELDS = frozenset({"password", "secret", "token"})
 
+# 连接器配置允许嵌套自定义 headers/body，敏感键不一定是固定字段名。
+# 与数据源 API 的脱敏口径保持一致，避免 Authorization、api_key 等配置随 YAML 导出。
+SENSITIVE_FIELD_KEYWORDS = ("password", "token", "secret", "authorization", "api_key", "apikey")
+
+
+def is_sensitive_field_name(field: object) -> bool:
+    normalized = str(field).lower()
+    return any(keyword in normalized for keyword in SENSITIVE_FIELD_KEYWORDS)
+
 # 敏感字段脱敏后的占位符值
 SENSITIVE_PLACEHOLDER = "******"
 

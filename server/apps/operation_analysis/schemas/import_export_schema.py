@@ -103,7 +103,10 @@ class DatasourceItem(BaseModel):
 
     key: str
     name: str
-    rest_api: str
+    rest_api: str = Field(default="")
+    source_type: str = Field(default="nats")
+    connection_config: dict = Field(default_factory=dict)
+    query_config: dict = Field(default_factory=dict)
     desc: str = Field(default="")
     is_active: bool = Field(default=True)
     params: dict | list | None = Field(default_factory=list)
@@ -112,13 +115,31 @@ class DatasourceItem(BaseModel):
     field_schema: list = Field(default_factory=list)
     namespace_keys: list = Field(default_factory=list)
 
-    @field_validator("key", "name", "rest_api")
+    @field_validator("key", "name")
     @classmethod
     def validate_required_non_empty_fields(cls, v: Any, info) -> str:
         value = "" if v is None else str(v).strip()
         if not value:
             raise ValueError(f"字段 '{info.field_name}' 不能为空")
         return value
+
+    @field_validator("rest_api", mode="before")
+    @classmethod
+    def normalize_rest_api(cls, v: Any) -> str:
+        return "" if v is None else str(v).strip()
+
+    @field_validator("source_type")
+    @classmethod
+    def validate_source_type(cls, v: str) -> str:
+        if v not in {"nats", "mysql", "postgresql", "rest_api", "excel"}:
+            raise ValueError("source_type 不支持")
+        return v
+
+    @model_validator(mode="after")
+    def validate_nats_rest_api(self):
+        if self.source_type == "nats" and not self.rest_api:
+            raise ValueError("NATS 数据源的 rest_api 不能为空")
+        return self
 
 
 class CanvasRefs(BaseModel):

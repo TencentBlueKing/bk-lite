@@ -195,13 +195,18 @@ def test_generate_business_key_variants():
 
 
 def test_mask_sensitive_fields_nested():
-    data = {"password": "p", "nested": {"token": "t", "ok": 1}, "list": [{"secret": "s"}, 2]}
+    data = {
+        "password": "p",
+        "nested": {"token": "t", "ok": 1},
+        "list": [{"secret": "s"}, 2, [[{"api_key": "deep-secret"}]]],
+    }
     out = ExportService.mask_sensitive_fields(data)
     assert out["password"] == "******"
     assert out["nested"]["token"] == "******"
     assert out["nested"]["ok"] == 1
     assert out["list"][0]["secret"] == "******"
     assert out["list"][1] == 2
+    assert out["list"][2][0][0]["api_key"] == "******"
 
 
 def test_extract_canvas_dependencies_collects_datasource_ids():
@@ -257,7 +262,20 @@ def test_export_config_namespace():
 @pytest.mark.django_db
 def test_export_config_datasource_pulls_in_namespace():
     ns = NameSpace.objects.create(name="ns-a", domain="d", account="a", password="p")
-    ds = DataSourceAPIModel.objects.create(name="ds-a", rest_api="monitor/q", created_by="s", updated_by="s")
+    ds = DataSourceAPIModel.objects.create(
+        name="ds-a",
+        rest_api="",
+        source_type=DataSourceAPIModel.SOURCE_TYPE_MYSQL,
+        connection_config={
+            "host": "db.example.com",
+            "username": "reader",
+            "password": "db-secret",
+            "headers": {"Authorization": "Bearer secret"},
+        },
+        query_config={"table": "orders"},
+        created_by="s",
+        updated_by="s",
+    )
     ds.namespaces.set([ns.id])
     tag = DataSourceTag.objects.create(tag_id="t1", name="Tag1", created_by="s", updated_by="s")
     ds.tag.set([tag.id])
@@ -269,6 +287,15 @@ def test_export_config_datasource_pulls_in_namespace():
     assert parsed["meta"]["object_counts"]["namespaces"] == 1
     assert parsed["datasources"][0]["namespace_keys"] == ["ns-a"]
     assert parsed["datasources"][0]["tags"] == ["Tag1"]
+    assert parsed["datasources"][0]["rest_api"] == ""
+    assert parsed["datasources"][0]["source_type"] == "mysql"
+    assert parsed["datasources"][0]["connection_config"] == {
+        "host": "db.example.com",
+        "username": "reader",
+        "password": "******",
+        "headers": {"Authorization": "******"},
+    }
+    assert parsed["datasources"][0]["query_config"] == {"table": "orders"}
 
 
 @pytest.mark.django_db

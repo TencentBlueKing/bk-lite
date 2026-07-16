@@ -13,6 +13,7 @@ from apps.operation_analysis.models.datasource_models import DataSourceAPIModel,
 from apps.operation_analysis.models.models import Dashboard, Directory, Topology
 from apps.operation_analysis.schemas.import_export_schema import YAMLDocument
 from apps.operation_analysis.services.import_export.import_service import ImportService
+from apps.operation_analysis.services.import_export.precheck_service import PrecheckService
 from apps.operation_analysis.views import view as view_module
 
 
@@ -227,6 +228,119 @@ def test_import_datasource_overwrite_existing():
     assert result["summary"]["overwritten"] == 1
     existing.refresh_from_db()
     assert existing.desc == "new desc"
+
+
+@pytest.mark.django_db
+def test_import_non_nats_datasource_restores_connector_contract_and_secret():
+    doc = _doc(
+        datasources=[
+            _ds_section(
+                key="mysql-source::",
+                name="mysql-source",
+                rest_api="",
+                source_type="mysql",
+                connection_config={"host": "db.example.com", "password": "******"},
+                query_config={"table": "orders"},
+            )
+        ]
+    )
+
+    result = _service(
+        doc,
+        secret_supplements={"mysql-source::": {"connection_config.password": "real-password"}},
+    ).execute()
+
+    assert result["success"] is True
+    datasource = DataSourceAPIModel.objects.get(name="mysql-source")
+    assert datasource.rest_api == ""
+    assert datasource.source_type == "mysql"
+    assert datasource.connection_config == {"host": "db.example.com", "password": "real-password"}
+    assert datasource.query_config == {"table": "orders"}
+
+
+@pytest.mark.django_db
+def test_import_datasource_overwrite_preserves_redacted_target_secret():
+    existing = DataSourceAPIModel.objects.create(
+        name="mysql-source",
+        rest_api="",
+        source_type="mysql",
+        connection_config={"host": "old.example.com", "password": "target-password"},
+        query_config={"table": "old_table"},
+        created_by="s",
+        updated_by="s",
+    )
+    doc = _doc(
+        datasources=[
+            _ds_section(
+                key="mysql-source::",
+                name="mysql-source",
+                rest_api="",
+                source_type="mysql",
+                connection_config={"host": "new.example.com", "password": "******"},
+                query_config={"table": "new_table"},
+            )
+        ]
+    )
+
+    result = _service(doc, conflict_decisions={"mysql-source::": ConflictAction.OVERWRITE.value}).execute()
+
+    assert result["success"] is True
+    existing.refresh_from_db()
+    assert existing.connection_config == {"host": "new.example.com", "password": "target-password"}
+    assert existing.query_config == {"table": "new_table"}
+
+
+@pytest.mark.django_db
+def test_import_new_datasource_rejects_unresolved_secret_placeholder():
+    doc = _doc(
+        datasources=[
+            _ds_section(
+                source_type="rest_api",
+                rest_api="",
+                connection_config={"headers": {"Authorization": "******"}},
+            )
+        ]
+    )
+
+    result = _service(doc).execute()
+
+    assert result["success"] is False
+    assert "connection_config.headers.Authorization" in result["results"][0]["message"]
+    assert not DataSourceAPIModel.objects.exists()
+
+
+def test_datasource_schema_keeps_legacy_defaults_and_accepts_blank_rest_api():
+    legacy_datasource = _doc(datasources=[_ds_section()]).datasources[0]
+    connector_datasource = _doc(datasources=[_ds_section(rest_api=None, source_type="mysql")]).datasources[0]
+
+    assert legacy_datasource.source_type == "nats"
+    assert legacy_datasource.connection_config == {}
+    assert legacy_datasource.query_config == {}
+    assert connector_datasource.rest_api == ""
+    assert connector_datasource.source_type == "mysql"
+
+
+def test_precheck_warns_for_nested_datasource_secret_placeholder():
+    doc = _doc(
+        datasources=[
+            _ds_section(
+                source_type="rest_api",
+                rest_api="",
+                connection_config={"headers": {"Authorization": "******"}},
+            )
+        ]
+    )
+
+    warnings = PrecheckService.check_sensitive_placeholders(doc)
+
+    assert warnings == [
+        {
+            "code": "OA_SECRET_PLACEHOLDER",
+            "message": "数据源 'ds-a' 的 connection_config.headers.Authorization 字段需要补充",
+            "object_key": "ds1::api/x",
+            "field": "connection_config.headers.Authorization",
+        }
+    ]
 
 
 # --------------------------------------------------------------------------
