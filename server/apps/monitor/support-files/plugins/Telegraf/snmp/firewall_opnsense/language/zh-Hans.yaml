@@ -1,0 +1,231 @@
+Firewall OPNsense SNMP:
+  name: OPNsense（Telegraf）
+  desc: 面向 OPNsense 防火墙的 SNMP 监控模板,可采集 运行时长、CPU 使用率、接口速率等主要指标。
+monitor_object:
+  Firewall: 防火墙
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Firewall:
+    device_temperature_celsius:
+      name: 设备温度
+      desc: 该指标报告设备硬件温度传感器读数，单位摄氏度。温度异常升高可能由风扇故障、散热不良或环境温度过高导致，严重时触发热保护或损坏硬件。
+    device_swap_usage:
+      name: Swap 使用率
+      desc: 该指标报告防火墙的 Swap（交换分区）使用率，0~100 直接百分比。Swap 持续被占用通常意味着物理内存耗尽，会拖慢会话处理性能。
+    device_disk_usage:
+      name: 磁盘使用率
+      desc: 该指标报告防火墙的磁盘空间使用率，0~100 直接百分比。磁盘将满会阻碍日志记录与配置变更，并可能导致设备不稳定。
+    device_web_users:
+      name: 已登录 Web 用户数
+      desc: 该指标报告网关当前已登录的 Web 用户数量。跟踪活动会话数有助于容量规划与发现异常连接激增。
+    device_psu_state:
+      name: 电源状态
+      desc: 该指标报告设备电源模块的运行状态（枚举）。非正常状态表示电源冗余或硬件故障；在冗余电源设备上单个故障会移除冗余，需尽快处理。
+    firewall_pf_states:
+      name: pf 状态表条目数
+      desc: 该指标报告 pfSense 防火墙 pf 状态表中的当前条目数（BEGEMOT-PF-MIB pfStateTableCount），约等于活动连接数。条目数快速攀升可能意味着连接洪泛或状态表逼近上限。
+    firewall_active_connections:
+      name: 活动连接数
+      desc: 该指标报告 WatchGuard 防火墙当前活动的连接数（WATCHGUARD-SYSTEM-STATISTICS-MIB wgSystemCurrActiveConns）。连接数快速上升可能意味着连接洪泛或连接表压力。
+    firewall_current_connections:
+      name: 当前连接数
+      desc: 该指标报告 SonicWall 防火墙当前连接缓存中的连接数（SONICWALL-FIREWALL-IP-STATISTICS-MIB sonicCurrentConnCacheEntries）。连接数快速上升可能意味着连接洪泛或连接表压力。
+    firewall_max_connections:
+      name: 最大连接数
+      desc: 该指标报告 SonicWall 防火墙连接缓存支持的最大连接数（SONICWALL-FIREWALL-IP-STATISTICS-MIB sonicMaxConnCacheEntries）。结合当前连接数可评估连接表余量。
+    firewall_nat_translations:
+      name: NAT 转换数
+      desc: 该指标报告 SonicWall 防火墙当前活动的 NAT 转换条目数（SONICWALL-FIREWALL-IP-STATISTICS-MIB
+        sonicNatTranslationCount）。转换数异常增长可能意味着 NAT 资源压力或异常流量。
+    firewall_session_utilization:
+      name: 会话利用率
+      desc: 该指标报告 Palo Alto 防火墙会话表的使用率（PAN-COMMON-MIB panSessionUtilization），即当前活动会话数占最大会话容量的百分比。接近
+        100% 意味着会话表即将耗尽，可能丢弃新连接。
+    firewall_max_sessions:
+      name: 最大会话数
+      desc: 该指标报告 Palo Alto 防火墙支持的最大并发会话容量（PAN-COMMON-MIB panSessionMax）。结合活动会话数可评估会话表余量。
+    firewall_active_sessions_tcp:
+      name: TCP 活动会话数
+      desc: 该指标报告 Palo Alto 防火墙当前活动的 TCP 会话数（PAN-COMMON-MIB panSessionActiveTcp）。可用于分析会话构成与
+        TCP 负载。
+    firewall_active_sessions_udp:
+      name: UDP 活动会话数
+      desc: 该指标报告 Palo Alto 防火墙当前活动的 UDP 会话数（PAN-COMMON-MIB panSessionActiveUdp）。可用于分析会话构成与
+        UDP 负载。
+    firewall_active_sessions_icmp:
+      name: ICMP 活动会话数
+      desc: 该指标报告 Palo Alto 防火墙当前活动的 ICMP 会话数（PAN-COMMON-MIB panSessionActiveICMP）。ICMP
+        会话异常升高可能意味着扫描或攻击活动。
+    firewall_tcp_connections:
+      name: ASQ TCP 连接数
+      desc: 该指标报告 Stormshield 防火墙 ASQ 引擎当前的 TCP 连接数（STORMSHIELD-SNS-MIB）。连接数快速上升可能意味着连接洪泛或会话表压力。
+    firewall_udp_connections:
+      name: ASQ UDP 连接数
+      desc: 该指标报告 Stormshield 防火墙 ASQ 引擎当前的 UDP 连接数（STORMSHIELD-SNS-MIB）。可结合 TCP 连接数评估整体会话负载与异常。
+    device_memory_free:
+      name: 空闲内存
+      desc: 该指标报告防火墙当前空闲的物理内存字节数（Check Point CHECKPOINT-MIB memTotalReal64 减去 memActiveReal64）。空闲内存持续偏低可能意味着内存压力上升。
+    device_memory_used:
+      name: 已用内存
+      desc: 该指标报告防火墙当前已使用的物理内存字节数（由内存总量减去空闲内存计算得到）。用于评估绝对内存消耗与压力。
+    firewall_vpn_encrypted_pps:
+      name: VPN 加密包速率
+      desc: 该指标报告防火墙 VPN 加密数据包的速率，单位为包每秒（Check Point CHECKPOINT-MIB encpktsPersec）。可用于观察
+        VPN 加密流量负载与异常波动。
+    firewall_vpn_decrypted_pps:
+      name: VPN 解密包速率
+      desc: 该指标报告防火墙 VPN 解密数据包的速率，单位为包每秒（Check Point CHECKPOINT-MIB decpktsPersec）。可用于观察
+        VPN 解密流量负载与异常波动。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: 该指标报告 FortiGate 防火墙整体 CPU 使用率（FORTINET-FORTIGATE-MIB fgSysCpuUsage）。持续高
+        CPU 可能意味着流量检测负载过重、攻击活动或控制平面瓶颈。
+    device_memory_usage:
+      name: 内存使用率
+      desc: 该指标报告 FortiGate 防火墙整体内存使用率（FORTINET-FORTIGATE-MIB fgSysMemUsage，直接以百分比上报）。内存压力过高时设备可能进入保护模式并丢弃新会话。
+    device_memory_total:
+      name: 内存总容量
+      desc: 该指标报告 FortiGate 防火墙的物理内存总容量（FORTINET-FORTIGATE-MIB fgSysMemCapacity，原始单位
+        KB，已换算为字节）。
+    firewall_active_sessions:
+      name: IPv4 活动会话数
+      desc: 该指标报告 FortiGate 防火墙当前跟踪的 IPv4 活动会话数（FORTINET-FORTIGATE-MIB fgSysSesCount）。会话数快速上升可能意味着连接洪泛或会话表耗尽风险。
+    firewall_vpn_tunnels:
+      name: 活动 IPsec VPN 隧道数
+      desc: 该指标报告 FortiGate 防火墙当前活动的 IPsec VPN 隧道数量（FORTINET-FORTIGATE-MIB fgVpnTunnelUpCount）。数量骤降可能意味着
+        VPN 中断，影响站点间互联。
+    firewall_ha_mode:
+      name: 高可用模式
+      desc: 该指标报告 FortiGate 防火墙的高可用模式（FORTINET-FORTIGATE-MIB fgHaSystemMode）：独立、双活或主备。可用于确认设备是否处于预期的
+        HA 拓扑。
+    interface_ifHCInOctets:
+      name: 接口接收流量速率(HC)
+      desc: 该指标表示过去 5 分钟内接收字节数的平均速率，单位为字节每秒，基于 64 位 ifHCInOctets 计数器，在高速接口上不会回绕。
+    interface_ifHCOutOctets:
+      name: 接口发送流量速率(HC)
+      desc: 该指标表示过去 5 分钟内发送字节数的平均速率，单位为字节每秒，基于 64 位 ifHCOutOctets 计数器，在高速接口上不会回绕。
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示设备自上次启动以来的运行时间。通过监测设备的运行时间，网络管理员可以了解到设备的稳定性及可靠性，识别潜在的重启或故障问题。
+    interface_ifAdminStatus:
+      name: 接口管理状态
+      desc: 此指标表示网络交换机接口的管理状态。它用于指示接口是否被管理人员启用（up）或禁用（down），以及其他状态如测试或已删除等。这个信息对网络管理和故障排查非常重要。
+    interface_ifOperStatus:
+      name: 接口操作状态
+      desc: 此指标反映网络交换机接口的实际运行状态，表明接口是否正在工作。与管理状态不同，运行状态指示接口是否能够成功接收和发送流量。这对监测网络健康至关重要。
+    interface_ifSpeed:
+      name: 接口带宽
+      desc: 该指标表示网络接口支持的最高数据传输速度，单位为比特每秒。了解接口的最高速度能够帮助管理员优化流量和利用网络资源。
+    interface_ifInErrors:
+      name: 接收错误数据包速率
+      desc: 此指标计算过去5分钟内接收到的错误包的平均速率，单位为包每秒。通过监测接收错误，管理员可以及时发现潜在的问题，例如物理连接故障或配置错误。
+    interface_ifOutErrors:
+      name: 发送错误数据包速率
+      desc: 该指标计算过去5分钟内发送错误包的平均速率，单位为包每秒。监测发送错误对于识别传输问题和确保数据完整性至关重要。
+    interface_ifInDiscards:
+      name: 接收丢包速率
+      desc: 此指标表示过去5分钟内接收到的丢弃包的平均速率，单位为包每秒。丢包可能表示网络堵塞或资源不足，监控此指标可以帮助管理员优化网络性能。
+    interface_ifOutDiscards:
+      name: 发送丢包速率
+      desc: 本指标计算过去5分钟内发送的丢弃包的平均速率，单位为包每秒。关注发送丢包情况能够帮助识别网络传输问题和配置不当的情况。
+    interface_ifInUcastPkts:
+      name: 接收单播数据包速率
+      desc: 该指标表示过去5分钟内接收到的单播包的平均速率，单位为包每秒。单播包的监测对于评估接口的使用情况及流量负载非常重要。
+    interface_ifOutUcastPkts:
+      name: 发送单播数据包速率
+      desc: 此指标计算过去5分钟内发送的单播包的平均速率，单位为包每秒。通过监测单播包的数量，管理员可以评估接口的传输性能以及流量的使用情况。
+    interface_ifInOctets:
+      name: 接口接收流量速率
+      desc: 此指标表示过去5分钟内接收到的字节数的平均速率，单位为字节每秒。监测字节流量有助于评估接口的负载及带宽使用情况。
+    interface_ifOutOctets:
+      name: 接口发送流量速率
+      desc: 该指标计算过去5分钟内发送的字节数的平均速率，单位为字节每秒。监测发送流量对于确保数据传输质量和优化网络性能非常重要。
+    device_total_incoming_traffic:
+      name: 设备接收总流量速率
+      desc: 此指标表示整个设备在过去5分钟内接收到的总字节流量的平均速率，单位为字节每秒。通过对多个接口的接收字节进行汇总计算，帮助管理员获取整个设备的接收流量情况，从而支持总体流量监控以及容量规划。
+    device_total_outgoing_traffic:
+      name: 设备发送总流量速率
+      desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率，单位为字节每秒。通过对多个接口的发送字节进行汇总，管理员可以全面评估整个系统的发送性能，从而进行更有效的流量管理和优化。
+    device_flow_bytes_rate:
+      name: 设备 Flow 总流量速率
+      desc: 按当前协议指标契约从 Flow 记录估算出的设备总流量速率，用于观察整体带宽压力和容量趋势。
+    device_flow_packets_rate:
+      name: 设备 Flow 总包速率
+      desc: 按当前协议指标契约从 Flow 记录估算出的设备总包速率，用于观察包级负载和突增流量。
+    device_flow_in_bytes_rate:
+      name: 设备 Flow 入方向流量速率
+      desc: 基于 Flow 记录换算并归属到输入侧数据的流量速率；具体协议的接口方向请以接口指标为准。
+    device_flow_out_bytes_rate:
+      name: 设备 Flow 出方向流量速率
+      desc: 基于 Flow 记录换算并归属到输出侧数据的流量速率；具体协议的接口方向请以接口指标为准。
+    device_flow_in_packets_rate:
+      name: 设备 Flow 入方向包速率
+      desc: 基于 Flow 记录换算并归属到输入侧数据的包速率；具体协议的接口方向请以接口指标为准。
+    device_flow_out_packets_rate:
+      name: 设备 Flow 出方向包速率
+      desc: 基于 Flow 记录换算并归属到输出侧数据的包速率；具体协议的接口方向请以接口指标为准。
+    device_flow_avg_packet_size:
+      name: 设备 Flow 平均包大小
+      desc: 基于 Flow 记录计算出的平均包大小或采样帧长，可辅助识别小包风暴或大包传输特征。
+    device_flow_effective_sampling_rate:
+      name: 设备 Flow 生效采样率
+      desc: 当前 Flow 数据计算使用的生效采样率，优先取设备上报字段，缺失时使用资产兜底采样率。
+    device_flow_interface_bytes_rate:
+      name: 接口 Flow 流量速率
+      desc: 按接口和方向聚合的 Flow 流量速率，用于定位接口维度的流量热点。
+    device_flow_interface_packets_rate:
+      name: 接口 Flow 包速率
+      desc: 按接口和方向聚合的 Flow 包速率，用于定位接口维度的包量热点。
+    device_flow_top_interfaces_by_bytes:
+      name: Top 接口 Flow 流量速率
+      desc: 按流量速率排序的接口 Flow 排行，用于快速发现高流量接口。
+    device_flow_protocol_bytes_rate:
+      name: 协议 Flow 流量速率
+      desc: 按协议聚合的 Flow 流量速率，用于识别 TCP、UDP、ICMP 等协议流量占比。
+    device_flow_protocol_packets_rate:
+      name: 协议 Flow 包速率
+      desc: 按协议聚合的 Flow 包速率，用于识别协议层面的包量异常。
+    device_flow_dst_port_bytes_rate:
+      name: 目的端口 Flow 流量速率
+      desc: 按目的端口聚合的 Flow 流量速率，用于分析应用或服务端口流量热点。
+    device_flow_dst_port_packets_rate:
+      name: 目的端口 Flow 包速率
+      desc: 按目的端口聚合的 Flow 包速率，用于分析应用或服务端口包量热点。
+    device_flow_src_port_bytes_rate:
+      name: 源端口 Flow 流量速率
+      desc: 按源端口聚合的 Flow 流量速率，用于辅助分析客户端侧端口流量分布。
+    device_flow_top_src_bytes_rate:
+      name: Top 源地址 Flow 流量速率
+      desc: 按源地址聚合并排序的 Flow 流量速率，用于发现主要流量来源。
+    device_flow_top_dst_bytes_rate:
+      name: Top 目的地址 Flow 流量速率
+      desc: 按目的地址聚合并排序的 Flow 流量速率，用于发现主要流量去向。
+    device_flow_top_src_packets_rate:
+      name: Top 源地址 Flow 包速率
+      desc: 按源地址聚合并排序的 Flow 包速率，用于发现包量异常来源。
+    device_flow_top_dst_packets_rate:
+      name: Top 目的地址 Flow 包速率
+      desc: 按目的地址聚合并排序的 Flow 包速率，用于发现包量异常目标。
+    device_flow_top_conversation_bytes_rate:
+      name: Top 会话 Flow 流量速率
+      desc: 按源地址、目的地址、协议和目的端口聚合的会话流量排行，用于定位主要通信关系。
+monitor_object_metric_group:
+  Firewall:
+    Packet: 数据包
+    Packet Loss: 数据包丢失
+    Base: 基础
+    Packet Error: 数据包错误
+    Status: 状态
+    Bandwidth: 带宽
+    Traffic: 流量
+    Temperature: 温度
+    Hardware Status: 硬件状态
+    Firewall: 防火墙
+    Traffic Overview: 流量总览
+    Sampling: 采样率
+    Interface Traffic: 接口流量
+    Protocol: 协议
+    Application Port: 应用端口
+    Endpoint: 端点
+    Conversation: 会话

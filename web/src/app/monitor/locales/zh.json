@@ -156,7 +156,8 @@
       "channelTypeCustomWebhook": "自定义Webhook",
       "notificationDesc": "选择告警触发时的通知方式和接收人。",
       "notificationConfig": "通知配置",
-      "notificationChannel": "通知渠道"
+      "notificationChannel": "通知渠道",
+      "addMetric": "添加指标"
     },
     "views": {
       "vmware_esxi_count": "ESXI数量",
@@ -520,6 +521,10 @@
       "missingConfigDataTip": "未找到该插件的采集配置内容，请检查配置是否已成功下发。",
       "searchRuleName": "搜索规则名称",
       "batchOperation": "批量操作",
+      "accessAndTroubleshootGuide": "{name} 监控接入指南",
+      "guideFallbackName": "当前监控",
+      "configGuide": "配置指南",
+      "fieldGuideTip": "填写说明",
       "exactMatch": "完全匹配",
       "rulesCount": "条规则",
       "batchEditEmptyWarning": "提交的表单不能为空",

@@ -1,0 +1,242 @@
+Router Juniper MX SNMP:
+  name: Juniper MX (Telegraf)
+  desc: SNMP monitoring template for Juniper MX router. It reports system uptime,
+    CPU utilization, memory utilization, and other key metrics
+monitor_object:
+  Router: Router
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Router:
+    device_temperature_celsius:
+      name: Device Temperature
+      desc: Device hardware temperature sensor reading in degrees Celsius. Abnormally
+        high values may indicate fan failure, poor airflow, or high ambient temperature.
+    device_fan_state:
+      name: Fan Status
+      desc: Operational state of each cooling fan (enum). A non-normal state indicates
+        a cooling fault that can quickly lead to overheating.
+    device_psu_state:
+      name: Power Supply Status
+      desc: Operational state of each power supply unit (enum). A non-normal state
+        indicates a power redundancy or hardware fault and should be remediated promptly.
+    device_memory_total:
+      name: Total Memory
+      desc: This metric reports the total physical memory capacity of the router (UCD-SNMP-MIB
+        memTotalReal, reported in KB and converted to bytes).
+    device_memory_free:
+      name: Free Memory
+      desc: This metric reports the amount of free physical memory in bytes on the
+        router (UCD-SNMP-MIB memAvailReal, reported in KB and converted to bytes).
+        Persistently low free memory can indicate rising memory pressure.
+    device_memory_used:
+      name: Used Memory
+      desc: This metric reports the amount of used physical memory in bytes on the
+        router, derived as total memory minus free memory. It helps gauge absolute
+        memory consumption and pressure.
+    device_cpu_usage:
+      name: CPU Usage
+      desc: This metric reports the average CPU utilization across the operating entities
+        of the Juniper MX router (JUNIPER-MIB jnxOperatingCPU, aggregated per instance_id).
+        Sustained high usage indicates heavy forwarding or control-plane load.
+    device_memory_usage:
+      name: Memory Usage
+      desc: This metric reports the average memory utilization across the operating
+        entities of the Juniper MX router (JUNIPER-MIB jnxOperatingBuffer, reported
+        directly as a percentage). Sustained high usage may be caused by oversized
+        routing tables or memory leaks.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate (HC)
+      desc: This metric indicates the average rate of bytes received over the past
+        5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on
+        high-speed interfaces.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate (HC)
+      desc: This metric calculates the average rate of bytes sent over the past 5
+        minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on
+        high-speed interfaces.
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart.
+        By monitoring the uptime, network administrators can understand the stability
+        and reliability of the device and identify potential reboot or failure issues.
+    interface_ifAdminStatus:
+      name: Interface Admin Status
+      desc: This metric indicates the administrative status of the network switch
+        interface. It serves to indicate whether the interface is enabled (up) or
+        disabled (down) by an administrator, along with other states such as testing
+        or not present. This information is vital for network management and troubleshooting.
+    interface_ifOperStatus:
+      name: Interface Oper Status
+      desc: This metric reflects the actual operational status of the network switch
+        interface, indicating whether the interface is operational. Unlike the administrative
+        status, the operational status shows whether the interface can successfully
+        receive and send traffic, which is crucial for monitoring network health.
+    interface_ifSpeed:
+      name: Interface Bandwidth
+      desc: This metric indicates the maximum data transmission speed supported by
+        the network interface, measured in bits per second. Understanding the maximum
+        speed of the interface helps administrators optimize traffic and utilize network
+        resources effectively.
+    interface_ifInErrors:
+      name: Incoming Errors Rate
+      desc: This metric calculates the average rate of incoming error packets over
+        the past 5 minutes, measured in packets per second. Monitoring incoming errors
+        allows administrators to detect potential issues, such as physical connection
+        faults or configuration errors, in a timely manner.
+    interface_ifOutErrors:
+      name: Outgoing Errors Rate
+      desc: This metric calculates the average rate of outgoing error packets over
+        the past 5 minutes, measured in packets per second. Monitoring outgoing errors
+        is essential for identifying transmission issues and ensuring data integrity.
+    interface_ifInDiscards:
+      name: Incoming Discards Rate
+      desc: This metric represents the average rate of incoming discarded packets
+        over the past 5 minutes, measured in packets per second. Packet discards may
+        indicate network congestion or resource shortages, and monitoring this metric
+        can help administrators optimize network performance.
+    interface_ifOutDiscards:
+      name: Outgoing Discards Rate
+      desc: This metric calculates the average rate of outgoing discarded packets
+        over the past 5 minutes, measured in packets per second. Monitoring outgoing
+        discards can help identify network transmission issues and misconfigurations.
+    interface_ifInUcastPkts:
+      name: Incoming Unicast Packets Rate
+      desc: This metric indicates the average rate of incoming unicast packets over
+        the past 5 minutes, measured in packets per second. Monitoring unicast packets
+        is crucial for assessing interface utilization and traffic load.
+    interface_ifOutUcastPkts:
+      name: Outgoing Unicast Packets Rate
+      desc: This metric calculates the average rate of outgoing unicast packets over
+        the past 5 minutes, measured in packets per second. By monitoring the number
+        of unicast packets, administrators can assess the transmission performance
+        of the interface and the usage of traffic.
+    interface_ifInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past
+        5 minutes, measured in bytes per second. Monitoring byte traffic helps evaluate
+        the load on the interface and bandwidth usage.
+    interface_ifOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5
+        minutes, measured in bytes per second. Monitoring outgoing traffic is crucial
+        for ensuring data transmission quality and optimizing network performance.
+    device_total_incoming_traffic:
+      name: Device Total Incoming Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the
+        entire device over the past 5 minutes, measured in bytes per second. By summing
+        the incoming byte counts from multiple interfaces, this metric helps administrators
+        obtain an overview of the device's incoming traffic, supporting overall traffic
+        monitoring and capacity planning.
+    device_total_outgoing_traffic:
+      name: Device Total Outgoing Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire
+        device over the past 5 minutes, measured in bytes per second. By summing the
+        outgoing byte counts from multiple interfaces, this metric allows administrators
+        to comprehensively assess the sending performance of the entire system, enabling
+        more effective traffic management and optimization.
+    device_flow_bytes_rate:
+      name: Device Flow Traffic Rate
+      desc: Total device traffic rate estimated from Flow records according to the
+        active protocol metric contract, used for bandwidth trend and capacity monitoring.
+    device_flow_packets_rate:
+      name: Device Flow Packet Rate
+      desc: Total device packet rate estimated from Flow records according to the
+        active protocol metric contract, used to observe packet-level load and bursts.
+    device_flow_in_bytes_rate:
+      name: Device Flow Inbound Traffic Rate
+      desc: Flow traffic rate estimated from records attributed to input-side flow
+        data; protocol-specific interface direction is shown in interface metrics.
+    device_flow_out_bytes_rate:
+      name: Device Flow Outbound Traffic Rate
+      desc: Flow traffic rate estimated from records attributed to output-side flow
+        data; protocol-specific interface direction is shown in interface metrics.
+    device_flow_in_packets_rate:
+      name: Device Flow Inbound Packet Rate
+      desc: Flow packet rate estimated from records attributed to input-side flow
+        data; protocol-specific interface direction is shown in interface metrics.
+    device_flow_out_packets_rate:
+      name: Device Flow Outbound Packet Rate
+      desc: Flow packet rate estimated from records attributed to output-side flow
+        data; protocol-specific interface direction is shown in interface metrics.
+    device_flow_avg_packet_size:
+      name: Device Flow Average Packet Size
+      desc: Average packet or sampled frame size from Flow records, useful for identifying
+        small-packet bursts or large-packet transfer patterns.
+    device_flow_effective_sampling_rate:
+      name: Device Flow Effective Sampling Rate
+      desc: Effective sampling rate used for Flow calculation. Device-reported fields
+        are preferred; the asset fallback sampling rate is used when missing.
+    device_flow_interface_bytes_rate:
+      name: Interface Flow Traffic Rate
+      desc: Flow traffic rate grouped by interface and direction, used to locate interface-level
+        traffic hotspots.
+    device_flow_interface_packets_rate:
+      name: Interface Flow Packet Rate
+      desc: Flow packet rate grouped by interface and direction, used to locate interface-level
+        packet hotspots.
+    device_flow_top_interfaces_by_bytes:
+      name: Top Interfaces by Flow Traffic Rate
+      desc: Interfaces ranked by Flow traffic rate, used to quickly identify high-traffic
+        interfaces.
+    device_flow_protocol_bytes_rate:
+      name: Protocol Flow Traffic Rate
+      desc: Flow traffic rate grouped by protocol, used to identify TCP, UDP, ICMP,
+        and other protocol traffic distribution.
+    device_flow_protocol_packets_rate:
+      name: Protocol Flow Packet Rate
+      desc: Flow packet rate grouped by protocol, used to identify protocol-level
+        packet anomalies.
+    device_flow_dst_port_bytes_rate:
+      name: Destination Port Flow Traffic Rate
+      desc: Flow traffic rate grouped by destination port, used to analyze application
+        or service port hotspots.
+    device_flow_dst_port_packets_rate:
+      name: Destination Port Flow Packet Rate
+      desc: Flow packet rate grouped by destination port, used to analyze application
+        or service port packet hotspots.
+    device_flow_src_port_bytes_rate:
+      name: Source Port Flow Traffic Rate
+      desc: Flow traffic rate grouped by source port, used to analyze client-side
+        port traffic distribution.
+    device_flow_top_src_bytes_rate:
+      name: Top Source Flow Traffic Rate
+      desc: Flow traffic rate ranked by source address, used to discover major traffic
+        sources.
+    device_flow_top_dst_bytes_rate:
+      name: Top Destination Flow Traffic Rate
+      desc: Flow traffic rate ranked by destination address, used to discover major
+        traffic destinations.
+    device_flow_top_src_packets_rate:
+      name: Top Source Flow Packet Rate
+      desc: Flow packet rate ranked by source address, used to discover packet-heavy
+        sources.
+    device_flow_top_dst_packets_rate:
+      name: Top Destination Flow Packet Rate
+      desc: Flow packet rate ranked by destination address, used to discover packet-heavy
+        destinations.
+    device_flow_top_conversation_bytes_rate:
+      name: Top Conversation Flow Traffic Rate
+      desc: Conversation traffic ranked by source, destination, protocol, and destination
+        port, used to locate dominant communication pairs.
+monitor_object_metric_group:
+  Router:
+    CPU: CPU
+    Memory: Memory
+    Temperature: Temperature
+    Hardware Status: Hardware Status
+    Packet Loss: Packet Loss
+    Traffic: Traffic
+    Packet Error: Packet Error
+    Packet: Packet
+    Base: Base
+    Bandwidth: Bandwidth
+    Status: Status
+    Router: Router
+    Traffic Overview: Traffic Overview
+    Sampling: Sampling
+    Interface Traffic: Interface Traffic
+    Protocol: Protocol
+    Application Port: Application Port
+    Endpoint: Endpoint
+    Conversation: Conversation

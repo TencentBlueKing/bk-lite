@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CMDB k8s_namespace instance",
+  "description": "Task 2.2:CollectK8sMetrics.format_namespace_metrics 转换后准备写入 FalkorDB 的实例字段约束。inst_name 格式 {namespace}({cluster_name}),关联 k8s_cluster。",
+  "type": "object",
+  "required": ["inst_name", "name", "model_id"],
+  "properties": {
+    "inst_name": {"type": "string", "pattern": "^[^()]+\\([^()]+\\)$"},
+    "model_id":  {"type": "string"},
+    "name":      {"type": "string"},
+    "cluster":   {"type": "string"},
+    "assos":     {"type": ["array", "object"]}
+  }
+}

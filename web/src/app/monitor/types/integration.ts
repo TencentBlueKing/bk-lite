@@ -168,6 +168,14 @@ export interface TemplateAccessGuideDoc {
   line_protocol_example_with_timestamp_ms: string;
 }
 
+export interface PluginGuideDoc {
+  has_guide: boolean;
+  content: string;
+  locale: string;
+  source: string | null;
+  name?: string;
+}
+
 export interface FlowAccessGuideDoc {
   protocol: FlowProtocol;
   endpoint: string;

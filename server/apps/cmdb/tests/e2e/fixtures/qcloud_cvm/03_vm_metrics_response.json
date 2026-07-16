@@ -1,0 +1,44 @@
+{
+  "status": "success",
+  "data": {
+    "resultType": "vector",
+    "result": [
+      {
+        "metric": {
+          "__name__": "qcloud_cvm_info_gauge",
+          "instance_id": "cmdb_33011",
+          "collect_status": "success",
+          "model_id": "qcloud_cvm",
+          "task_id": "33011",
+          "account_id": "acct-qcloud-prod-001",
+          "captured_at": "2026-07-14T10:30:00+08:00",
+          "collected_by": "stargazer/inputs/qcloud/qcloud_cvm.py@1.2.0",
+          "request_id": "QC-CVM-11223344-5566-7788-99AA-BBCCDDEEFF00",
+          "total_count": "1",
+          "resource_name": "cvm-prod-01",
+          "resource_id": "ins-abc123def456",
+          "ip_addr": "10.0.0.10",
+          "public_ip": "81.71.5.123",
+          "region": "ap-shanghai",
+          "zone": "ap-shanghai-2",
+          "vpc": "vpc-abc123",
+          "subnet": "subnet-abc123",
+          "status": "RUNNING",
+          "instance_type": "S5.SMALL2",
+          "charge_type": "POSTPAID_BY_HOUR",
+          "os_name": "TencentOS Server 3.2",
+          "vcpus": "2",
+          "memory_mb": "2048",
+          "image_id": "img-abc123",
+          "security_group_ids": "sg-abc123,sg-def456",
+          "create_time": "2024-03-15 09:00:00",
+          "expired_time": "",
+          "project_id": "100001",
+          "host_name": "cvm-prod-01",
+          "description": "腾讯云生产 CVM 01"
+        },
+        "value": [9999999999, "1"]
+      }
+    ]
+  }
+}

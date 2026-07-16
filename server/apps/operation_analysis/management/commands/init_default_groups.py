@@ -8,7 +8,8 @@ from django.db import transaction
 
 from apps.core.logger import operation_analysis_logger as logger
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
-from apps.operation_analysis.models.models import Architecture, Dashboard, Directory, Topology
+from apps.operation_analysis.models.models import Directory
+from apps.operation_analysis.services.canvas.registry import CANVAS_TYPE_REGISTRY
 
 
 def get_default_group_id():
@@ -45,9 +46,7 @@ class Command(BaseCommand):
         # 定义需要初始化的模型列表
         models_to_init = [
             (Directory, "目录"),
-            (Dashboard, "仪表盘"),
-            (Topology, "拓扑图"),
-            (Architecture, "架构图"),
+            *((meta.model, meta.node_label) for meta in CANVAS_TYPE_REGISTRY.values()),
             (DataSourceAPIModel, "数据源API"),
         ]
 

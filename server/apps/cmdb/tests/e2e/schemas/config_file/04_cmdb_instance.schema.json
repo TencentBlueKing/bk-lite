@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CMDB config_file version record (after NATS consume)",
+  "description": "Task 2.6:ConfigFileService.process_collect_result 落库前/后的 ConfigFileVersion 实例字段约束。config_file 不走 VM pipeline,走 NATS subscribe 'receive_config_file_result'。",
+  "type": "object",
+  "required": ["instance_id", "model_id", "file_path", "status"],
+  "properties": {
+    "instance_id":  {"type": "string"},
+    "model_id":     {"type": "string"},
+    "version":      {"type": "string"},
+    "file_path":    {"type": "string"},
+    "file_name":    {"type": "string"},
+    "content_hash": {"type": "string"},
+    "file_size":    {"type": "integer", "minimum": 0},
+    "status":       {"type": "string", "enum": ["success", "file_not_found", "permission_denied", "file_too_large", "not_text", "error"]},
+    "error_message": {"type": "string"},
+    "created_at":   {"type": "string"}
+  }
+}

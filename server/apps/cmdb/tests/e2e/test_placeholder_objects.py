@@ -28,6 +28,31 @@ PLACEHOLDER_MODEL_IDS = [
     "highgo",      # 2026-07-10 Phase 1 跑通(国产 PG 兼容,临时复用 postgres 镜像),无 plugin 走 placeholder
     "nacos",       # 2026-07-10 Phase 1 跑通(阿里配置中心 v3.0.2),无 plugin 走 placeholder
     "tdsql",       # 2026-07-10 Phase 1 跑通(腾讯分布式 DB,临时复用 mysql 镜像),无 plugin 走 placeholder
+    # Task 4:22 个 archived placeholder 对象(17 license + 4 cluster + 1 platform)
+    # 17 license 类(MIDDLEWARE task_type)
+    "apusic",        # Task 4.1 — 东方通 Apusic
+    "bes",           # Task 4.2 — 宝兰德 BES
+    "informix",      # Task 4.3 — IBM Informix
+    "ihs",           # Task 4.4 — IBM HTTP Server
+    "inforsuite_as", # Task 4.5 — 浪潮 InforSuite AS
+    "iris",          # Task 4.6 — InterSystems IRIS
+    "couchbase",     # Task 4.7 — Couchbase
+    "oceanbase",     # Task 4.8 — 蚂蚁 OceanBase
+    "oscar",         # Task 4.9 — 神舟通用 Oscar
+    "sap_hana",      # Task 4.10 — SAP HANA
+    "sybase",        # Task 4.11 — Sybase
+    "tonggtp",       # Task 4.12 — 东方通 TongGTP
+    "tonglinkq",     # Task 4.13 — 东方通 TongLinkQ
+    "tongrds",       # Task 4.14 — 东方通 TongRDS
+    "tuxedo",        # Task 4.15 — Oracle Tuxedo
+    "weblogic",      # Task 4.16 — Oracle WebLogic
+    "websphere",     # Task 4.17 — IBM WebSphere
+    # 5 集群/平台类
+    "hdfs",          # Task 4.18 — HDFS 集群
+    "storm",         # Task 4.19 — Storm 集群
+    "yarn",          # Task 4.20 — YARN 集群
+    "mycat",         # Task 4.21 — MyCat 集群
+    "domestic_linux", # Task 4.22 — 国产 Linux 平台
 ]
 
 

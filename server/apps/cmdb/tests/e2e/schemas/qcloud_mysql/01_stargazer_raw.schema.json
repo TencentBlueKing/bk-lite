@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Stargazer qcloud_mysql 采集脚本原始输出",
+  "description": "Task 3.2 真实化版本:qcloud_mysql 真实落盘形态",
+  "type": "object",
+  "required": ["resource_name", "resource_id", "region", "status"],
+  "properties": {
+    "model_id":         {"type": "string"},
+    "task_id":          {"type": "integer"},
+    "account_id":       {"type": "string"},
+    "captured_at":      {"type": "string"},
+    "collected_by":     {"type": "string"},
+    "request_id":       {"type": "string"},
+    "total_count":      {"type": "integer"},
+    "resource_name":    {"type": "string"},
+    "resource_id":      {"type": "string", "pattern": "^qmysql-[a-zA-Z0-9]+$"},
+    "ip_addr":          {"type": "string"},
+    "region":           {"type": "string", "pattern": "^[a-z]+-[a-z]+(-[0-9]+)?$"},
+    "zone":             {"type": "string"},
+    "status":           {"type": "string"},
+    "volume":           {"type": "string"},
+    "memory_mb":        {"type": "string"},
+    "charge_type":      {"type": "string"}
+  }
+}

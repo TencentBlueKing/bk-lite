@@ -4,7 +4,6 @@ import { Button, Tag, notification, Modal, Alert, Progress, Tooltip } from 'antd
 import type { TableColumnsType } from 'antd';
 import {
   CheckCircleOutlined,
-  CheckCircleFilled,
   CloseCircleOutlined,
   ClockCircleOutlined,
   SyncOutlined,
@@ -15,7 +14,7 @@ import { useTranslation } from '@/utils/i18n';
 import { ModalRef, TableDataItem } from '@/app/node-manager/types';
 import { OPERATE_SYSTEMS } from '@/app/node-manager/constants/cloudregion';
 import { useGroupNames } from '@/app/node-manager/hooks/node';
-import { useHandleCopy } from '@/app/node-manager/hooks';
+import useCommandCopyDialog from '@/app/node-manager/hooks/useCommandCopyDialog';
 import CustomTable from '@/components/custom-table';
 import useNodeManagerApi from '@/app/node-manager/api';
 import useControllerApi from '@/app/node-manager/api/useControllerApi';
@@ -128,7 +127,7 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
 }) => {
   const { t } = useTranslation();
   const { isLoading } = useApiClient();
-  const { handleCopy } = useHandleCopy();
+  const { copyCommand, commandCopyDialog } = useCommandCopyDialog();
   const {
     getControllerNodes,
     getCollectorNodes,
@@ -897,36 +896,9 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
       }
 
       setCopyingNodeIds((prev) => [...prev, row.id]);
-      const isLinux = row?.os === 'linux';
       const result = await getInstallCommand(row);
       const installCommand = result || '';
-      handleCopy({
-        value: installCommand,
-        showSuccessMessage: false
-      });
-      notification.success({
-        message: t('node-manager.cloudregion.node.commandCopied'),
-        description: isLinux ? (
-          t('node-manager.cloudregion.node.linuxCommandCopiedDesc')
-        ) : (
-          <div>
-            <div className="mb-[12px] text-[var(--color-text-3)]">
-              {t('node-manager.cloudregion.node.commandCopiedDesc')}
-            </div>
-            <Alert
-              description={
-                <span className="text-[13px] text-[var(--color-text-2)]">
-                  {t('node-manager.cloudregion.node.importantNoteDesc')}
-                </span>
-              }
-              type="warning"
-            />
-          </div>
-        ),
-        icon: <CheckCircleFilled style={{ color: 'var(--color-success)' }} />,
-        placement: 'top',
-        style: isLinux ? undefined : { width: 480 }
-      });
+      await copyCommand(installCommand);
     } finally {
       setCopyingNodeIds((prev) => prev.filter((id) => id !== row.id));
     }
@@ -1066,6 +1038,7 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
           <OperationGuidance ref={operationGuidanceRef} />
         </>
       )}
+      {commandCopyDialog}
     </div>
   );
 };

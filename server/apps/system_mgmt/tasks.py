@@ -50,6 +50,7 @@ def sync_user_and_group_by_login_module(login_module_id):
     result = client.request("sync_data")
     if not result["result"]:
         logger.error(f"Failed to sync data for login module {login_module_id}: {result['message']}")
+        return result
     user_list = result["data"]["user_list"]
     group_list = result["data"]["group_list"]
     sync_user_and_groups(user_list, group_list, login_module)

@@ -1,0 +1,7 @@
+{
+  "model_id": "mycat",
+  "instance_count_min": 0,
+  "expected_instance_subset": {},
+  "license_status": "missing",
+  "_placeholder_reason": "cluster_complex"
+}

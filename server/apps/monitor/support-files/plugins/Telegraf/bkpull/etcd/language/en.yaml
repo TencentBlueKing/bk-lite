@@ -1,0 +1,135 @@
+Etcd:
+  name: Etcd
+  desc: Etcd
+monitor_object:
+  Etcd: Etcd
+monitor_object_type:
+  Middleware: Middleware
+monitor_object_metric:
+  Etcd:
+    etcd_server_has_leader_gauge:
+      name: Cluster Has Leader
+      desc: Whether the current member can detect the cluster leader.
+    etcd_server_is_leader_gauge:
+      name: Current Role
+      desc: Role of the current member in the cluster.
+    etcd_network_active_peers_gauge:
+      name: Active Peer Connections
+      desc: Current number of available inter-node connections.
+    etcd_server_leader_changes_seen_total_counter_rate:
+      name: Leader Change Rate
+      desc: Leader change rate over the last 5 minutes.
+    etcd_server_heartbeat_send_failures_total_counter_rate:
+      name: Heartbeat Send Failure Rate
+      desc: Heartbeat send failure rate over the last 5 minutes.
+    etcd_server_health_failures_counter_rate:
+      name: Health Check Failure Rate
+      desc: Health check failure rate over the last 5 minutes.
+    etcd_mvcc_db_total_size_in_bytes_gauge:
+      name: Allocated Backend Space
+      desc: Currently allocated physical space of the etcd backend storage.
+    etcd_mvcc_db_total_size_in_use_in_bytes_gauge:
+      name: Backend Space In Use
+      desc: Currently used logical space of the etcd backend storage.
+    etcd_server_quota_backend_bytes_gauge:
+      name: Backend Storage Quota
+      desc: Configured backend storage capacity limit.
+    etcd_backend_allocated_usage_percent:
+      name: Backend Storage Usage
+      desc: Ratio of allocated backend space to the total quota.
+    etcd_backend_remaining_bytes:
+      name: Backend Remaining Capacity
+      desc: Remaining backend storage capacity before reaching the quota limit.
+    etcd_backend_fragmentation_percent:
+      name: Backend Fragmentation
+      desc: Fragmentation ratio between allocated backend space and actual used space.
+    etcd_backend_urgent_defrag:
+      name: Urgent Defragmentation Needed
+      desc: Whether the backend space has reached the threshold requiring prompt defragmentation.
+    etcd_debugging_mvcc_keys_total_gauge:
+      name: Key Count
+      desc: Total number of keys currently stored.
+    process_resident_memory_bytes_gauge:
+      name: Process Resident Memory
+      desc: Resident memory currently occupied by the etcd process.
+    etcd_disk_wal_fsync_p99_seconds:
+      name: WAL Fsync Latency P99
+      desc: P99 WAL fsync latency over the last 5 minutes.
+    etcd_disk_backend_commit_p99_seconds:
+      name: Backend Commit Latency P99
+      desc: P99 backend commit latency over the last 5 minutes.
+    etcd_debugging_snap_save_total_avg_seconds:
+      name: Snapshot Average Duration
+      desc: Average snapshot save duration over the last 5 minutes.
+    etcd_server_proposals_pending_gauge:
+      name: Pending Proposals
+      desc: Current number of proposals waiting to be committed.
+    etcd_server_proposals_failed_total_counter_rate:
+      name: Proposal Failure Rate
+      desc: Proposal failure rate over the last 5 minutes.
+    etcd_server_proposals_committed_rate:
+      name: Proposal Commit Rate
+      desc: Proposal commit rate over the last 5 minutes.
+    etcd_server_proposals_applied_rate:
+      name: Proposal Apply Rate
+      desc: Proposal apply rate over the last 5 minutes.
+    etcd_server_proposals_apply_lag:
+      name: Proposal Apply Lag
+      desc: Difference between committed proposals and applied proposals.
+    etcd_server_slow_apply_total_counter_rate:
+      name: Slow Apply Request Rate
+      desc: Slow apply request rate over the last 5 minutes.
+    etcd_server_read_indexes_failed_total_counter_rate:
+      name: Read Index Failure Rate
+      desc: Read index failure rate over the last 5 minutes.
+    etcd_server_slow_read_indexes_total_counter_rate:
+      name: Slow Read Index Rate
+      desc: Slow read index request rate over the last 5 minutes.
+    etcd_server_client_requests_total_counter_rate:
+      name: Client Request Rate
+      desc: Rate of client requests handled by etcd over the last 5 minutes.
+    etcd_rpc_rate:
+      name: RPC Request Rate
+      desc: Unary RPC request rate over the last 5 minutes.
+    etcd_rpc_failed_rate:
+      name: RPC Failure Rate
+      desc: Non-OK unary RPC failure rate over the last 5 minutes.
+    etcd_network_client_grpc_received_bytes_total_counter_rate:
+      name: Client Inbound Traffic
+      desc: Inbound traffic from client gRPC requests over the last 5 minutes.
+    etcd_network_client_grpc_sent_bytes_total_counter_rate:
+      name: Client Outbound Traffic
+      desc: Outbound traffic sent to client gRPC requests over the last 5 minutes.
+    etcd_network_peer_received_bytes_total_counter_rate:
+      name: Peer Inbound Traffic
+      desc: Inbound traffic from peer nodes over the last 5 minutes.
+    etcd_network_peer_sent_bytes_total_counter_rate:
+      name: Peer Outbound Traffic
+      desc: Outbound traffic sent to peer nodes over the last 5 minutes.
+    etcd_network_peer_sent_failures_total_counter_rate:
+      name: Peer Send Failure Rate
+      desc: Peer send failure rate over the last 5 minutes.
+    etcd_debugging_mvcc_watcher_total_gauge:
+      name: Watcher Count
+      desc: Current number of watchers.
+    etcd_watch_streams_active:
+      name: Active Watch Streams
+      desc: Current number of active watch streams inferred from established and closed
+        streaming RPCs.
+    etcd_debugging_mvcc_db_compaction_keys_total_counter_rate:
+      name: Compacted Key Rate
+      desc: Rate of keys processed by compaction over the last 5 minutes.
+    etcd_mvcc_put_total_counter_rate:
+      name: Write Rate
+      desc: Write operation rate over the last 5 minutes.
+    etcd_mvcc_delete_total_counter_rate:
+      name: Delete Rate
+      desc: Delete operation rate over the last 5 minutes.
+monitor_object_metric_group:
+  Etcd:
+    集群状态: Cluster Status
+    存储与碎片: Storage and Fragmentation
+    磁盘时延: Disk Latency
+    提案与一致性: Proposals and Consistency
+    请求与流量: Requests and Traffic
+    监听与压缩: Watch and Compaction

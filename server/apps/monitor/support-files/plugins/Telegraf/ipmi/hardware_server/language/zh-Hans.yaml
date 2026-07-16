@@ -1,0 +1,77 @@
+Hardware Server IPMI:
+  name: 硬件服务器IPMI通用（Telegraf）
+  desc: 面向 IPMI 硬件服务器的 SNMP 监控模板,可采集 运行时长、接口速率、入向错误包等主要指标。适用于IPMI 全系列。
+monitor_object:
+  Hardware Server: 硬件服务器
+monitor_object_type:
+  Hardware Device: 硬件设备
+monitor_object_metric:
+  Hardware Server:
+    interface_ifInDiscards:
+      name: 接收丢包速率
+      desc: 此指标表示过去5分钟内接收到的丢弃包的平均速率，单位为每秒。丢包可能表示网络堵塞或资源不足，监控此指标可以帮助管理员优化网络性能。
+    interface_ifAdminStatus:
+      desc: 此指标表示网络交换机接口的管理状态。它用于指示接口是否被管理人员启用（up）或禁用（down），以及其他状态如测试或已删除等。这个信息对网络管理和故障排查非常重要。
+      name: 接口管理状态
+    interface_ifInUcastPkts:
+      name: 接收单播数据包速率
+      desc: 该指标表示过去5分钟内接收到的单播包的平均速率，单位为每秒。单播包的监测对于评估接口的使用情况及流量负载非常重要。
+    interface_ifOutOctets:
+      name: 接口发送流量速率
+      desc: 该指标计算过去5分钟内发送的字节数的平均速率，单位为兆字节（MB）。监测发送流量对于确保数据传输质量和优化网络性能非常重要。
+    device_total_incoming_traffic:
+      desc: 此指标表示整个设备在过去5分钟内接收到的总字节流量的平均速率，单位为兆字节每秒（MB/s）。通过对多个接口的接收字节进行汇总计算，帮助管理员获取整个设备的接收流量情况，从而支持总体流量监控以及容量规划。
+      name: 设备接收总流量速率
+    interface_ifOutUcastPkts:
+      desc: 此指标计算过去5分钟内发送的单播包的平均速率，单位为每秒。通过监测单播包的数量，管理员可以评估接口的传输性能以及流量的使用情况。
+      name: 发送单播数据包速率
+    interface_ifInOctets:
+      name: 接口接收流量速率
+      desc: 此指标表示过去5分钟内接收到的字节数的平均速率，转换为兆字节（MB）单位。监测字节流量有助于评估接口的负载及带宽使用情况。
+    interface_ifInErrors:
+      name: 接收错误数据包速率
+      desc: 此指标计算过去5分钟内接收到的错误包的平均速率，单位为每秒。通过监测接收错误，管理员可以及时发现潜在的问题，例如物理连接故障或配置错误。
+    ipmi_chassis_power_state:
+      name: 电源状态
+      desc: 电源状态指标，用于监测设备是否处于开机状态。其值可以表示电源开启或关闭状态。主要用于远程管理和监控设备的电源情况。
+    ipmi_fan_speed_rpm:
+      desc: 风扇转速指标以每分钟转数 (rpm) 表示，监测设备内风扇的工作状态。高效的风扇运作是维护设备温度的关键。有助于防止过热，确保设备长时间稳定运行。
+      name: 风扇转速
+    ipmi_temperature_celsius:
+      desc: 温度指标以摄氏度 (Celsius) 为单位，监控设备内部温度。通过监测温度可以预防热量累积，防止设备过热。对于维持系统的稳定性和寿命非常关键。
+      name: 温度
+    interface_ifOperStatus:
+      desc: 此指标反映网络交换机接口的实际运行状态，表明接口是否正在工作。与管理状态不同，运行状态指示接口是否能够成功接收和发送流量。这对监测网络健康至关重要。
+      name: 接口操作状态
+    device_total_outgoing_traffic:
+      name: 设备发送总流量速率
+      desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率，单位为兆字节每秒（MB/s）。通过对多个接口的发送字节进行汇总，管理员可以全面评估整个系统的发送性能，从而进行更有效的流量管理和优化。
+    interface_ifOutErrors:
+      name: 发送错误数据包速率
+      desc: 该指标计算过去5分钟内发送错误包的平均速率，单位为每秒。监测发送错误对于识别传输问题和确保数据完整性至关重要。
+    snmp_uptime:
+      desc: 该指标表示设备自上次启动以来的运行时间。通过监测设备的运行时间，网络管理员可以了解到设备的稳定性及可靠性，识别潜在的重启或故障问题。
+      name: 系统运行时间
+    ipmi_voltage_volts:
+      name: 电压
+      desc: 电压指标以伏特 (volts) 为单位，监测设备内部不同电源轨的电压情况。稳定的电压供应对于设备的可靠性至关重要。通过该指标可以快速识别电气问题，保障正常运行。
+    ipmi_power_watts:
+      desc: 功率指标以瓦特 (watts) 为单位，反映设备当前功耗。通过此指标可以评估设备能效和功耗趋势。便于设置节能政策和资源优化。
+      name: 功率
+    interface_ifSpeed:
+      name: 接口带宽
+      desc: 该指标表示网络接口支持的最高数据传输速度，单位通常为MB每秒。了解接口的最高速度能够帮助管理员优化流量和利用网络资源。
+    interface_ifOutDiscards:
+      name: 发送丢包速率
+      desc: 本指标计算过去5分钟内发送的丢弃包的平均速率，单位为每秒。关注发送丢包情况能够帮助识别网络传输问题和配置不当的情况。
+monitor_object_metric_group:
+  Hardware Server:
+    Power: 功率
+    Status: 状态
+    Base: 基础
+    Packet Loss: 数据包丢失
+    Packet Error: 数据包错误
+    Packet: 数据包
+    Bandwidth: 带宽
+    Environment: 环境
+    Traffic: 流量
