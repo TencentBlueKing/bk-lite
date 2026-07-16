@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs';
 import { Button } from 'antd';
 import {
   DownloadOutlined,
@@ -14,9 +14,9 @@ import {
   AppViewFullscreenExit,
   useAppViewFullscreen,
 } from '@/components/app-view-fullscreen';
-import OpsAnalysisDashboardEmptyState from '@/components/ops-analysis-dashboard-empty-state';
-import ViewToolbar from '@/components/ops-analysis-view-toolbar';
-import ViewToolbarEditActions from '@/components/ops-analysis-view-toolbar/editActions';
+import OpsAnalysisDashboardEmptyState from '@/app/ops-analysis/components/ops-analysis-dashboard-empty-state';
+import ViewToolbar from '@/app/ops-analysis/components/ops-analysis-view-toolbar';
+import ViewToolbarEditActions from '@/app/ops-analysis/components/ops-analysis-view-toolbar/editActions';
 import SectionHeader from '@/components/section-header';
 
 const FullscreenCanvasDemo = () => {

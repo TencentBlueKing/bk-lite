@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs';
 import React, { useState } from 'react';
 import { Button } from 'antd';
 import {
@@ -6,14 +6,14 @@ import {
   UnifiedFilterBar,
   UnifiedFilterConfigModal,
   type UnifiedFilterLayoutItemLike,
-} from '@/components/ops-analysis-unified-filter';
+} from '@/app/ops-analysis/components/ops-analysis-unified-filter';
 import SectionHeader from '@/components/section-header';
 import type {
   DatasourceItem,
   FilterValue,
   ParamItem,
   UnifiedFilterDefinition,
-} from '@/components/ops-analysis-widgets';
+} from '@/app/ops-analysis/components/ops-analysis-widgets';
 
 const definitions: UnifiedFilterDefinition[] = [
   {

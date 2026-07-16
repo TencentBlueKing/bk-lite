@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs';
 import {
   SkillImportModal,
   ToolConnectionStatusTag,
@@ -6,7 +6,7 @@ import {
   ToolEditorEmptyState,
   ToolEditorShell,
   ToolInstanceSidebar,
-} from '@/components/opspilot-tool-editor';
+} from '@/app/opspilot/components/opspilot-tool-editor';
 import React from 'react';
 import SectionHeader from '@/components/section-header';
 import type { UploadFile } from 'antd/es/upload/interface';

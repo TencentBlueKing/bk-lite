@@ -5,28 +5,28 @@ import EntityManagementGrid, {
   type EntityManagementGridFetchParams,
 } from '@/app/opspilot/components/entity-management-grid';
 import SkillView from '@/app/opspilot/components/custom-chat-sse/SkillView';
-import OpspilotApprovalCard from '@/components/opspilot-approval-card';
-import OpspilotAvailabilityBadge from '@/components/opspilot-availability-badge';
-import OpspilotConfigSeverityBadge from '@/components/opspilot-config-severity-badge';
-import EntityCard from '@/components/opspilot-entity-card';
-import OpspilotKnowledgeBaseSelector from '@/components/opspilot-knowledge-base-selector';
+import OpspilotApprovalCard from '@/app/opspilot/components/opspilot-approval-card';
+import OpspilotAvailabilityBadge from '@/app/opspilot/components/opspilot-availability-badge';
+import OpspilotConfigSeverityBadge from '@/app/opspilot/components/opspilot-config-severity-badge';
+import EntityCard from '@/app/opspilot/components/opspilot-entity-card';
+import OpspilotKnowledgeBaseSelector from '@/app/opspilot/components/opspilot-knowledge-base-selector';
 import OpspilotProviderModelSection from '@/app/opspilot/components/provider/model-section';
 import {
   OpspilotProviderGridSkeleton,
   OpspilotProviderModelTreeSkeleton,
-} from '@/components/opspilot-provider-skeletons';
+} from '@/app/opspilot/components/opspilot-provider-skeletons';
 import OpspilotProviderVendorConfigFields from '@/app/opspilot/components/provider/vendor-config-fields';
 import OpspilotProviderVendorGrid from '@/app/opspilot/components/provider/vendor-grid';
-import OpspilotSelectorOperateModal from '@/components/opspilot-selector-operate-modal';
-import OpspilotProviderEmptyState from '@/components/opspilot-provider-empty-state';
+import OpspilotSelectorOperateModal from '@/app/opspilot/components/opspilot-selector-operate-modal';
+import OpspilotProviderEmptyState from '@/app/opspilot/components/opspilot-provider-empty-state';
 import {
   CronEditor,
   MonthDayPicker,
   TimeListField,
-} from '@/components/opspilot-scheduler-inputs';
-import SkillCard from '@/components/opspilot-skill-card';
+} from '@/app/opspilot/components/opspilot-scheduler-inputs';
+import SkillCard from '@/app/opspilot/components/opspilot-skill-card';
 import SectionHeader from '@/components/section-header';
-import StudioCard from '@/components/opspilot-studio-card';
+import StudioCard from '@/app/opspilot/components/opspilot-studio-card';
 import SummaryDetailLayoutShell from '@/components/summary-detail-layout-shell';
 import TopSection from '@/components/top-section';
 import React from 'react';

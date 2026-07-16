@@ -1,8 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/nextjs';
-import EntityCard from '@/components/opspilot-entity-card';
+import EntityCard from '@/app/opspilot/components/opspilot-entity-card';
 import SectionHeader from '@/components/section-header';
-import SkillCard from '@/components/opspilot-skill-card';
-import StudioCard from '@/components/opspilot-studio-card';
+import SkillCard from '@/app/opspilot/components/opspilot-skill-card';
+import StudioCard from '@/app/opspilot/components/opspilot-studio-card';
 
 const entityCardArgs = {
   id: '1',

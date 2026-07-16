@@ -1,5 +1,5 @@
 import React from 'react';
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs';
 import { Form } from 'antd';
 import {
   OpsAnalysisBar,
@@ -14,8 +14,8 @@ import {
   OpsAnalysisTextPanel,
   OpsAnalysisTopN,
   OpsAnalysisWidgetErrorState,
-} from '@/components/ops-analysis-widgets';
-import OpsAnalysisWidgetRenderer from '@/components/ops-analysis-widget-renderer';
+} from '@/app/ops-analysis/components/ops-analysis-widgets';
+import OpsAnalysisWidgetRenderer from '@/app/ops-analysis/components/ops-analysis-widget-renderer';
 import {
   GaugeSettingsSection,
   MetricFieldSelectorFormItem,
@@ -24,7 +24,7 @@ import {
   ValueFormatConfigSection,
   ValueMapping,
   ValueMappingsConfigSection,
-} from '@/components/ops-analysis-config-sections';
+} from '@/app/ops-analysis/components/ops-analysis-config-sections';
 
 const thresholdColors = [
   { value: '80', color: '#fd666d' },

@@ -1,10 +1,10 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs';
 import React, { useState } from 'react';
 import { Form } from 'antd';
-import OpsAnalysisDataSourceParamsConfig from '@/components/ops-analysis-data-source-params-config';
-import OpsAnalysisDataSourceSelect from '@/components/ops-analysis-data-source-select';
+import OpsAnalysisDataSourceParamsConfig from '@/app/ops-analysis/components/ops-analysis-data-source-params-config';
+import OpsAnalysisDataSourceSelect from '@/app/ops-analysis/components/ops-analysis-data-source-select';
 import SectionHeader from '@/components/section-header';
-import type { DatasourceItem } from '@/components/ops-analysis-widgets';
+import type { DatasourceItem } from '@/app/ops-analysis/components/ops-analysis-widgets';
 
 const dataSources: DatasourceItem[] = [
   {

@@ -3,7 +3,7 @@
 import React from 'react';
 import { Button, Popconfirm, Switch } from 'antd';
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
-import OpspilotProviderEmptyState from '@/components/opspilot-provider-empty-state';
+import OpspilotProviderEmptyState from '@/app/opspilot/components/opspilot-provider-empty-state';
 import { useTranslation } from '@/utils/i18n';
 import type { Model, ProviderResourceType } from '@/app/opspilot/types/provider';
 

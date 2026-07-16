@@ -1,11 +1,11 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs';
 import { Button, Space } from 'antd';
-import OpsAnalysisImportModal from '@/components/ops-analysis-import-modal';
-import OpsAnalysisSettingsListShell from '@/components/ops-analysis-settings-list-shell';
+import OpsAnalysisImportModal from '@/app/ops-analysis/components/ops-analysis-import-modal';
+import OpsAnalysisSettingsListShell from '@/app/ops-analysis/components/ops-analysis-settings-list-shell';
 import type {
   ImportSubmitResponse,
   PrecheckResponse,
-} from '@/components/ops-analysis-import-modal/contracts';
+} from '@/app/ops-analysis/components/ops-analysis-import-modal/contracts';
 
 const precheckResponse: PrecheckResponse = {
   valid: true,
