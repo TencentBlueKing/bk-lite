@@ -1,11 +1,33 @@
 import datetime
 import json
+import uuid
 
 import nats_client
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import Bot, BotConversationHistory, BotWorkFlow, EmbedProvider, LLMModel, LLMSkill, OCRProvider, RerankProvider, SkillTools
+from apps.opspilot.models.bot_mgmt import BotWebChatSession
 from apps.opspilot.utils.bot_utils import get_user_info
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
+
+
+def _read_nats_node_expose_flag(bot_id, node_id):
+    """读取 NATS 触发节点的 ``data.config.expose_as_web_chat`` 字段。
+
+    仅当该字段显式为 True 时返回 True；缺省、False、或工作流/节点找不到都返回 False。
+    """
+    try:
+        workflow = BotWorkFlow.objects.filter(bot_id=bot_id).order_by("-id").first()
+    except Exception:  # noqa: BLE001
+        return False
+    if not workflow or not isinstance(workflow.flow_json, dict):
+        return False
+    nodes = workflow.flow_json.get("nodes", []) or []
+    for node in nodes:
+        if node.get("id") != node_id:
+            continue
+        config = (node.get("data") or {}).get("config") or {}
+        return bool(config.get("expose_as_web_chat"))
+    return False
 
 
 def _normalize_nats_trigger_input(message, team, user_ids, bot_id, node_id):
@@ -216,6 +238,22 @@ def trigger_workflow_by_nats(message, team, user_ids, bot_id, node_id):
     if not workflow:
         return {"result": False, "message": "Bot workflow not found"}
 
+    expose_as_web_chat = bool(_read_nats_node_expose_flag(normalized_input["bot_id"], normalized_input["node_id"]) and normalized_input["user_ids"])
+
+    session_id = ""
+    if expose_as_web_chat:
+        session_id = uuid.uuid4().hex
+        title = normalized_input["message"][:50]
+        BotWebChatSession.objects.create(
+            session_id=session_id,
+            bot_id=normalized_input["bot_id"],
+            node_id=normalized_input["node_id"],
+            source=BotWebChatSession.SOURCE_NATS,
+            participants=list(normalized_input["user_ids"]),
+            title=title,
+            created_by="nats",
+        )
+
     engine = create_chat_flow_engine(workflow, normalized_input["node_id"], entry_type="nats")
     input_data = {
         "last_message": normalized_input["message"],
@@ -227,10 +265,20 @@ def trigger_workflow_by_nats(message, team, user_ids, bot_id, node_id):
         "entry_type": "nats",
         "is_third_party": True,
     }
+    if session_id:
+        input_data["session_id"] = session_id
+        # 首位 user_id 作为首条 user 消息的 user_id，避免 ExecutionRepository 早返吞掉历史
+        input_data["user_id"] = normalized_input["user_ids"][0]
+
     execution_result = engine.execute(input_data)
-    return {
+
+    response = {
         "result": execution_result.get("success", True) if isinstance(execution_result, dict) else True,
         "data": execution_result,
         "entry_type": "nats",
         "execution_id": engine.execution_id,
     }
+    if session_id:
+        response["session_id"] = session_id
+        response["exposed_as_web_chat"] = True
+    return response
