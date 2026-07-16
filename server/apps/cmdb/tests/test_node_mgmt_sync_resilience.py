@@ -8,16 +8,42 @@
 from unittest import mock
 
 import pytest
+from django.utils import timezone
 
+from apps.cmdb.constants.constants import CollectRunStatusType
 from apps.cmdb.models import NodeMgmtSyncConfig, NodeMgmtSyncRun
+from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncService
+from apps.core.utils.web_utils import WebUtils
 
 SERVICE = "apps.cmdb.services.node_mgmt_sync_service"
 
 
 @pytest.fixture
 def sync_config(db):
-    return NodeMgmtSyncConfig.objects.create(name="节点管理同步", is_builtin=True)
+    config = NodeMgmtSyncConfig.objects.create(name="节点管理同步", is_builtin=True)
+    NodeMgmtSyncRun.objects.create(
+        task=config,
+        run_type=NodeMgmtSyncRun.RUN_TYPE_SYNC,
+        status=NodeMgmtSyncRun.STATUS_SUCCESS,
+        started_at=timezone.now(),
+        finished_at=timezone.now(),
+        detail_json={"config_version": config.version},
+    )
+    return config
+
+
+def _collect_task(region_id):
+    return CollectModels.objects.create(
+        name=f"task-{region_id}",
+        task_type="host",
+        driver_type="job",
+        model_id="host",
+        cycle_value_type="cycle",
+        access_point=[{"id": f"ap-{region_id}"}],
+        system_code=f"{NodeMgmtSyncService.SYSTEM_TASK_PREFIX}{region_id}",
+        is_system=True,
+    )
 
 
 @pytest.mark.django_db
@@ -97,20 +123,25 @@ def test_collect_hosts_marks_run_failed_when_listing_raises(sync_config):
 
 @pytest.mark.django_db
 def test_collect_hosts_continues_past_single_task_failure(sync_config):
-    task_ok = mock.MagicMock(id=1, access_point=[{"id": "ap-1"}])
-    task_ok.name = "task-1"
-    task_bad = mock.MagicMock(id=2, access_point=[{"id": "ap-2"}])
-    task_bad.name = "task-2"
+    task_bad = _collect_task(1)
+    task_ok = _collect_task(2)
 
-    with mock.patch.object(NodeMgmtSyncService, "_list_region_collect_tasks", return_value=[task_bad, task_ok]), \
-            mock.patch.object(NodeMgmtSyncService, "_execute_collect_task", side_effect=[RuntimeError("exec boom"), None]):
+    def accept(task):
+        CollectModels.objects.filter(pk=task.pk).update(task_id="execution-ok", exec_status=CollectRunStatusType.RUNNING)
+        return WebUtils.response_success(task.pk)
+
+    with mock.patch.object(NodeMgmtSyncService, "_list_region_collect_tasks", return_value=[task_bad, task_ok]), mock.patch.object(
+        NodeMgmtSyncService, "_execute_collect_task", side_effect=[RuntimeError("exec boom"), accept(task_ok)]
+    ):
         NodeMgmtSyncService.collect_hosts()
 
     run = NodeMgmtSyncRun.objects.filter(run_type=NodeMgmtSyncRun.RUN_TYPE_COLLECT).latest("created_at")
-    assert run.status == NodeMgmtSyncRun.STATUS_PARTIAL_SUCCESS
-    assert run.finished_at is not None
+    assert run.status == NodeMgmtSyncRun.STATUS_SUBMITTED
+    assert run.finished_at is None
     # 坏任务不阻断好任务
     executed_ids = [item["task_id"] for item in run.detail_json.get("executed", [])]
     failed_ids = [item["task_id"] for item in run.detail_json.get("failed", [])]
-    assert executed_ids == [1]
-    assert failed_ids == [2]
+    assert executed_ids == [task_ok.id]
+    assert failed_ids == [task_bad.id]
+    assert run.region_states.get(collect_task=task_bad).status == "blocked"
+    assert run.region_states.get(collect_task=task_ok).status == "submitted"

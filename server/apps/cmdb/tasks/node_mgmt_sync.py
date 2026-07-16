@@ -10,4 +10,5 @@ def run_sync() -> dict[str, Any]:
 
 def run_collect() -> dict[str, Any]:
     NodeMgmtSyncService.recover_stale_runs()
+    NodeMgmtSyncService.refresh_submitted_collect_runs()
     return NodeMgmtSyncService.trigger_collect()

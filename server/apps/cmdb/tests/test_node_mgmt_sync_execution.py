@@ -139,6 +139,18 @@ def _expire_active_run():
     NodeMgmtSyncRun.objects.filter(active_scope=NodeMgmtSyncService.ACTIVE_SCOPE).update(deadline_at=timezone.now() - timedelta(seconds=1))
 
 
+def _mark_current_sync_success(task=None):
+    task = task or NodeMgmtSyncService.get_task()
+    return NodeMgmtSyncRun.objects.create(
+        task=task,
+        run_type=NodeMgmtSyncRun.RUN_TYPE_SYNC,
+        status=NodeMgmtSyncRun.STATUS_SUCCESS,
+        started_at=timezone.now(),
+        finished_at=timezone.now(),
+        detail_json={"config_version": task.version},
+    )
+
+
 def _assert_latest_run_timed_out(run_type):
     run = NodeMgmtSyncRun.objects.filter(run_type=run_type).latest("created_at")
     assert run.status == NodeMgmtSyncRun.STATUS_TIMEOUT
@@ -185,6 +197,8 @@ def test_cloud_region_exception_crossing_deadline_prefers_timeout(mocker):
 
 
 def test_collect_external_exception_crossing_deadline_prefers_timeout(mocker):
+    _mark_current_sync_success()
+
     def expire_then_raise():
         _expire_active_run()
         raise RuntimeError("collect list failed after deadline")
@@ -226,7 +240,16 @@ def test_persist_hosts_stops_after_first_external_write_expires_lease(mocker):
 def test_collect_submit_crossing_deadline_cannot_finish_success(mocker):
     run = NodeMgmtSyncService.acquire_run("collect")
     task_config = NodeMgmtSyncService.get_task()
-    collect_task = SimpleNamespace(id=11, name="region-1", access_point=[{"id": 1}],)
+    collect_task = CollectModels.objects.create(
+        name="region-1",
+        task_type="host",
+        driver_type="job",
+        model_id="host",
+        cycle_value_type="cycle",
+        access_point=[{"id": 1}],
+        system_code=f"{NodeMgmtSyncService.SYSTEM_TASK_PREFIX}1",
+        is_system=True,
+    )
     mocker.patch.object(NodeMgmtSyncService, "_list_region_collect_tasks", return_value=[collect_task])
 
     def expire_after_submit(task):
@@ -347,6 +370,7 @@ def test_access_point_pagination_uses_run_deadline_and_heartbeat(mocker):
 
 
 def test_collect_hosts_returns_blocked_history_without_submitting_work():
+    _mark_current_sync_success()
     NodeMgmtSyncService.acquire_run("sync")
 
     result = NodeMgmtSyncService.collect_hosts()

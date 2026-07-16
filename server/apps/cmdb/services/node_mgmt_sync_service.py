@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import json
 import os
 from datetime import timedelta
 from typing import Any
@@ -11,7 +12,7 @@ from django.utils import timezone
 from django.utils.timezone import localtime, now
 
 from apps.cmdb.constants.constants import CollectRunStatusType
-from apps.cmdb.models import NodeMgmtSyncConfig, NodeMgmtSyncRun
+from apps.cmdb.models import NodeMgmtSyncConfig, NodeMgmtSyncRegionState, NodeMgmtSyncRun
 from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.model import ModelManage
@@ -1449,6 +1450,7 @@ class NodeMgmtSyncService:
         logger.info("[NodeMgmtSync] 节点按云区域分组完成, region_count=%d", len(grouped_nodes))
 
         detail = cls._empty_display_detail()
+        detail["config_version"] = task_config.version
         message = cls._empty_display_message()
         changed_instance_ids: list[int] = []
 
@@ -1581,18 +1583,47 @@ class NodeMgmtSyncService:
         return cls.serialize_run(run)
 
     @classmethod
-    def collect_hosts(cls) -> dict[str, Any]:
-        logger.info("[NodeMgmtSync] ========== 开始采集节点管理主机 ==========")
+    def _has_current_successful_sync(cls, task_config: NodeMgmtSyncConfig) -> bool:
+        successful_runs = task_config.runs.filter(
+            run_type=NodeMgmtSyncRun.RUN_TYPE_SYNC,
+            status__in=(
+                NodeMgmtSyncRun.STATUS_SUCCESS,
+                NodeMgmtSyncRun.STATUS_PARTIAL_SUCCESS,
+            ),
+        ).order_by("-created_at")
+        for sync_run in successful_runs:
+            detail = (
+                sync_run.detail_json if isinstance(sync_run.detail_json, dict) else {}
+            )
+            if detail.get("config_version") == task_config.version:
+                return True
+        return False
+
+    @classmethod
+    def _build_waiting_sync_run(
+        cls, task_config: NodeMgmtSyncConfig
+    ) -> NodeMgmtSyncRun:
+        return NodeMgmtSyncRun.objects.create(
+            task=task_config,
+            run_type=NodeMgmtSyncRun.RUN_TYPE_COLLECT,
+            status=NodeMgmtSyncRun.STATUS_WAITING_SYNC,
+            reason_code="SYNC_REQUIRED",
+            started_at=now(),
+            detail_json={"config_version": task_config.version},
+        )
+
+    @classmethod
+    def execute_collect(cls, operator: str = "system") -> NodeMgmtSyncRun:
         task_config = cls.get_task()
-        logger.info("[NodeMgmtSync] 采集配置: auto_collect_enabled=%s, collect_interval=%d分钟",
-                    task_config.auto_collect_enabled, task_config.collect_interval_minutes)
+        if not cls._has_current_successful_sync(task_config):
+            return cls._build_waiting_sync_run(task_config)
+
         run = cls._build_collect_run(task=task_config)
-        logger.debug("[NodeMgmtSync] 创建采集运行记录, run_id=%d", run.id)
         if run.status == NodeMgmtSyncRun.STATUS_BLOCKED:
-            return cls.serialize_run(run)
+            return run
 
         try:
-            return cls._do_collect_hosts(run, task_config)
+            cls._do_collect_hosts(run, task_config, operator=operator)
         except Exception as exc:
             cls._mark_run_failed(run, exc)
             logger.error(
@@ -1601,11 +1632,128 @@ class NodeMgmtSyncService:
                 type(exc).__name__,
             )
             raise
+        run.refresh_from_db()
+        return run
 
     @classmethod
-    def _do_collect_hosts(cls, run: NodeMgmtSyncRun, task_config: NodeMgmtSyncConfig) -> dict[str, Any]:
-        detail = {"todo": [], "executed": [], "failed": []}
+    def collect_hosts(cls) -> dict[str, Any]:
+        logger.info("[NodeMgmtSync] ========== 开始采集节点管理主机 ==========")
+        task_config = cls.get_task()
+        logger.info(
+            "[NodeMgmtSync] 采集配置: auto_collect_enabled=%s, collect_interval=%d分钟",
+            task_config.auto_collect_enabled,
+            task_config.collect_interval_minutes,
+        )
+        return cls.serialize_run(cls.execute_collect(operator="system"))
+
+    @classmethod
+    def _region_state_for_collect_task(
+        cls,
+        *,
+        run: NodeMgmtSyncRun,
+        task_config: NodeMgmtSyncConfig,
+        collect_task: CollectModels,
+    ) -> NodeMgmtSyncRegionState | None:
+        system_code = collect_task.system_code
+        if not isinstance(system_code, str) or not system_code.startswith(
+            cls.SYSTEM_TASK_PREFIX
+        ):
+            return None
+        raw_region_id = system_code[len(cls.SYSTEM_TASK_PREFIX) :]
+        if (
+            not raw_region_id
+            or not raw_region_id.isascii()
+            or not raw_region_id.isdecimal()
+        ):
+            return None
+        cloud_region_id = str(int(raw_region_id))
+        state, _ = NodeMgmtSyncRegionState.objects.update_or_create(
+            scope_key=f"config:{task_config.version}:region:{cloud_region_id}",
+            defaults={
+                "config": task_config,
+                "run": run,
+                "cloud_region_id": cloud_region_id,
+                "config_version": task_config.version,
+                "collect_task": collect_task,
+                "status": "pending",
+                "reason_code": "",
+                "error_message": "",
+                "child_execution_id": "",
+                "submitted_at": None,
+                "finished_at": None,
+            },
+        )
+        return state
+
+    @staticmethod
+    def _collect_response_accepted(response: Any) -> bool:
+        try:
+            payload = json.loads(response.content)
+        except (AttributeError, TypeError, ValueError, json.JSONDecodeError):
+            return False
+        return response.status_code < 400 and payload.get("result") is True
+
+    @staticmethod
+    def _mark_collect_region_blocked(
+        state: NodeMgmtSyncRegionState, reason_code: str
+    ) -> None:
+        state.status = NodeMgmtSyncRun.STATUS_BLOCKED
+        state.reason_code = reason_code
+        state.error_message = ""
+        state.finished_at = now()
+        state.save(
+            update_fields=[
+                "status",
+                "reason_code",
+                "error_message",
+                "finished_at",
+                "updated_at",
+            ]
+        )
+
+    @classmethod
+    def _mark_collect_run_submitted(
+        cls,
+        run: NodeMgmtSyncRun,
+        *,
+        summary_json: dict[str, Any],
+        detail_json: dict[str, Any],
+    ) -> None:
+        submitted_at = now()
+        updated = NodeMgmtSyncRun.objects.filter(
+            pk=run.pk,
+            generation=run.generation,
+            active_scope=cls.ACTIVE_SCOPE,
+            status=NodeMgmtSyncRun.STATUS_RUNNING,
+            deadline_at__gt=submitted_at,
+        ).update(
+            status=NodeMgmtSyncRun.STATUS_SUBMITTED,
+            submitted_at=submitted_at,
+            summary_json=summary_json,
+            detail_json=detail_json,
+            updated_at=submitted_at,
+        )
+        if not updated:
+            cls.heartbeat_run(run)
+            raise NodeMgmtSyncError("RUN_NOT_ACTIVE")
+        run.refresh_from_db()
+
+    @classmethod
+    def _do_collect_hosts(
+        cls,
+        run: NodeMgmtSyncRun,
+        task_config: NodeMgmtSyncConfig,
+        *,
+        operator: str = "system",
+    ) -> NodeMgmtSyncRun:
+        detail = {
+            "config_version": task_config.version,
+            "todo": [],
+            "executed": [],
+            "failed": [],
+        }
         message = cls._empty_display_message()
+        accepted_count = 0
 
         collect_tasks = cls._list_region_collect_tasks()
         logger.info("[NodeMgmtSync] 获取区域采集任务列表, task_count=%d", len(collect_tasks))
@@ -1613,23 +1761,47 @@ class NodeMgmtSyncService:
         for collect_task in collect_tasks:
             cls.heartbeat_run(run)
             message["all"] += 1
-            access_point = collect_task.access_point if isinstance(collect_task.access_point, list) else []
-            logger.debug("[NodeMgmtSync] 检查采集任务: task_id=%d, task_name=%s, has_access_point=%s",
-                         collect_task.id, collect_task.name, bool(access_point))
+            state = cls._region_state_for_collect_task(
+                run=run, task_config=task_config, collect_task=collect_task,
+            )
+            if state is None:
+                detail["failed"].append(
+                    {"task_id": collect_task.id, "reason_code": "INVALID_REGION_CODE"}
+                )
+                continue
+            access_point = (
+                collect_task.access_point
+                if isinstance(collect_task.access_point, list)
+                else []
+            )
+            logger.debug(
+                "[NodeMgmtSync] 检查采集任务: task_id=%d, task_name=%s, has_access_point=%s",
+                collect_task.id,
+                collect_task.name,
+                bool(access_point),
+            )
             if not access_point:
-                logger.warning("[NodeMgmtSync] 采集任务无接入点, 跳过执行: task_id=%d, task_name=%s",
-                               collect_task.id, collect_task.name)
+                logger.warning(
+                    "[NodeMgmtSync] 采集任务无接入点, 跳过执行: task_id=%d, task_name=%s",
+                    collect_task.id,
+                    collect_task.name,
+                )
                 detail["todo"].append(
                     {
                         "task_id": collect_task.id,
                         "message": f"TODO: task {collect_task.id} has no available container node access point",
                     }
                 )
+                cls._mark_collect_region_blocked(state, "NO_ACCESS_POINT")
                 continue
-            logger.info("[NodeMgmtSync] 开始执行采集任务: task_id=%d, task_name=%s", collect_task.id, collect_task.name)
+            logger.info(
+                "[NodeMgmtSync] 开始执行采集任务: task_id=%d, task_name=%s",
+                collect_task.id,
+                collect_task.name,
+            )
             try:
                 cls.heartbeat_run(run)
-                cls._execute_collect_task(collect_task)
+                response = cls._execute_collect_task(collect_task)
                 cls.heartbeat_run(run)
             except NodeMgmtSyncError:
                 raise
@@ -1646,25 +1818,147 @@ class NodeMgmtSyncService:
                     collect_task.id,
                     type(task_exc).__name__,
                 )
+                cls._mark_collect_region_blocked(state, "COLLECT_SUBMIT_FAILED")
                 continue
-            detail["executed"].append({"task_id": collect_task.id, "name": collect_task.name})
+            if not cls._collect_response_accepted(response):
+                detail["failed"].append(
+                    {
+                        "task_id": collect_task.id,
+                        "reason_code": "COLLECT_ALREADY_RUNNING",
+                    }
+                )
+                cls._mark_collect_region_blocked(state, "COLLECT_ALREADY_RUNNING")
+                continue
+
+            collect_task.refresh_from_db(fields=("task_id", "exec_status"))
+            state.status = NodeMgmtSyncRun.STATUS_SUBMITTED
+            state.reason_code = ""
+            state.error_message = ""
+            state.child_execution_id = str(collect_task.task_id or "")
+            state.submitted_at = now()
+            state.finished_at = None
+            state.save(
+                update_fields=[
+                    "status",
+                    "reason_code",
+                    "error_message",
+                    "child_execution_id",
+                    "submitted_at",
+                    "finished_at",
+                    "updated_at",
+                ]
+            )
+            accepted_count += 1
+            detail["executed"].append(
+                {
+                    "task_id": collect_task.id,
+                    "name": collect_task.name,
+                    "child_execution_id": state.child_execution_id,
+                }
+            )
             logger.info("[NodeMgmtSync] 采集任务已提交: task_id=%d", collect_task.id)
 
-        final_status = (
-            NodeMgmtSyncRun.STATUS_PARTIAL_SUCCESS
-            if detail["todo"] or detail["failed"]
-            else NodeMgmtSyncRun.STATUS_SUCCESS
+        if accepted_count:
+            cls._mark_collect_run_submitted(
+                run, summary_json=message, detail_json=detail
+            )
+            return run
+
+        reason_code = (
+            "COLLECT_ALREADY_RUNNING"
+            if detail["failed"]
+            and all(
+                item.get("reason_code") == "COLLECT_ALREADY_RUNNING"
+                for item in detail["failed"]
+            )
+            else "COLLECT_SUBMISSION_BLOCKED"
         )
         cls.finish_run(
             run,
-            status=final_status,
+            status=NodeMgmtSyncRun.STATUS_BLOCKED,
+            reason_code=reason_code,
             summary_json=message,
             detail_json=detail,
         )
-        logger.info("[NodeMgmtSync] ========== 采集完成 ==========")
-        logger.info("[NodeMgmtSync] 采集结果: status=%s, total_tasks=%d, executed=%d, skipped=%d",
-                    run.status, message["all"], len(detail["executed"]), len(detail["todo"]))
-        return cls.serialize_run(run)
+        return run
+
+    @classmethod
+    def refresh_collect_run(cls, run_id: int) -> NodeMgmtSyncRun:
+        run = NodeMgmtSyncRun.objects.get(
+            pk=run_id, run_type=NodeMgmtSyncRun.RUN_TYPE_COLLECT
+        )
+        if run.status != NodeMgmtSyncRun.STATUS_SUBMITTED:
+            return run
+
+        cls.heartbeat_run(run)
+        terminal_states = []
+        for state in run.region_states.select_related("collect_task").all():
+            if state.status != NodeMgmtSyncRun.STATUS_SUBMITTED:
+                terminal_states.append(state.status)
+                continue
+            collect_task = state.collect_task
+            if collect_task is None:
+                cls._mark_collect_region_blocked(state, "COLLECT_TASK_MISSING")
+                terminal_states.append(NodeMgmtSyncRun.STATUS_BLOCKED)
+                continue
+            collect_task.refresh_from_db(fields=("task_id", "exec_status"))
+            if str(collect_task.task_id or "") != state.child_execution_id:
+                cls._mark_collect_region_blocked(state, "COLLECT_EXECUTION_SUPERSEDED")
+                terminal_states.append(NodeMgmtSyncRun.STATUS_BLOCKED)
+                continue
+
+            status_map = {
+                CollectRunStatusType.SUCCESS: NodeMgmtSyncRun.STATUS_SUCCESS,
+                CollectRunStatusType.PARTIAL_SUCCESS: NodeMgmtSyncRun.STATUS_PARTIAL_SUCCESS,
+                CollectRunStatusType.ERROR: NodeMgmtSyncRun.STATUS_FAILED,
+                CollectRunStatusType.TIME_OUT: NodeMgmtSyncRun.STATUS_FAILED,
+                CollectRunStatusType.FORCE_STOP: NodeMgmtSyncRun.STATUS_FAILED,
+            }
+            child_status = status_map.get(collect_task.exec_status)
+            if child_status is None:
+                continue
+            state.status = child_status
+            state.reason_code = (
+                ""
+                if child_status == NodeMgmtSyncRun.STATUS_SUCCESS
+                else "COLLECT_CHILD_FAILED"
+            )
+            state.finished_at = now()
+            state.save(
+                update_fields=["status", "reason_code", "finished_at", "updated_at"]
+            )
+            terminal_states.append(child_status)
+
+        if run.region_states.filter(status=NodeMgmtSyncRun.STATUS_SUBMITTED).exists():
+            run.refresh_from_db()
+            return run
+
+        if terminal_states and all(
+            status == NodeMgmtSyncRun.STATUS_SUCCESS for status in terminal_states
+        ):
+            final_status = NodeMgmtSyncRun.STATUS_SUCCESS
+        elif terminal_states and all(
+            status in (NodeMgmtSyncRun.STATUS_FAILED, NodeMgmtSyncRun.STATUS_BLOCKED)
+            for status in terminal_states
+        ):
+            final_status = NodeMgmtSyncRun.STATUS_FAILED
+        else:
+            final_status = NodeMgmtSyncRun.STATUS_PARTIAL_SUCCESS
+        cls.finish_run(run, status=final_status)
+        return run
+
+    @classmethod
+    def refresh_submitted_collect_runs(cls) -> int:
+        run_ids = list(
+            NodeMgmtSyncRun.objects.filter(
+                run_type=NodeMgmtSyncRun.RUN_TYPE_COLLECT,
+                status=NodeMgmtSyncRun.STATUS_SUBMITTED,
+                active_scope=cls.ACTIVE_SCOPE,
+            ).values_list("id", flat=True)
+        )
+        for run_id in run_ids:
+            cls.refresh_collect_run(run_id)
+        return len(run_ids)
 
     @classmethod
     def trigger_sync(cls) -> dict[str, Any]:
