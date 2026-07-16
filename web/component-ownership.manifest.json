@@ -3,10 +3,10 @@
     "component": "_internal",
     "directApps": [],
     "transitiveApps": [
+      "(root)",
       "alarm",
       "cmdb",
       "job",
-      "layout.tsx",
       "node-manager",
       "ops-analysis",
       "opspilot"
@@ -390,8 +390,8 @@
       "alarm"
     ],
     "transitiveApps": [
-      "alarm",
-      "layout.tsx"
+      "(root)",
+      "alarm"
     ],
     "stories": [
       "alarm-integration-guides-family.stories.tsx",
@@ -419,9 +419,9 @@
     "component": "content-drawer",
     "directApps": [],
     "transitiveApps": [
+      "(root)",
       "alarm",
-      "cmdb",
-      "layout.tsx"
+      "cmdb"
     ],
     "stories": [
       "cmdb-family.stories.tsx",
@@ -445,9 +445,9 @@
       "cmdb"
     ],
     "transitiveApps": [
+      "(root)",
       "alarm",
-      "cmdb",
-      "layout.tsx"
+      "cmdb"
     ],
     "stories": [
       "cmdb-family.stories.tsx",
@@ -1143,9 +1143,9 @@
     ],
     "transitiveApps": [
       "(core)",
+      "(root)",
       "alarm",
       "cmdb",
-      "layout.tsx",
       "log",
       "mlops",
       "monitor",
@@ -1710,9 +1710,9 @@
       "opspilot"
     ],
     "transitiveApps": [
+      "(root)",
       "cmdb",
       "job",
-      "layout.tsx",
       "log",
       "monitor",
       "opspilot"
@@ -2057,7 +2057,7 @@
     "component": "notifications",
     "directApps": [],
     "transitiveApps": [
-      "layout.tsx"
+      "(root)"
     ],
     "stories": [
       "layout-family.stories.tsx",
@@ -2068,7 +2068,7 @@
     ],
     "reverseAppImports": [],
     "classification": "app-local",
-    "reason": "consumed by only layout.tsx"
+    "reason": "consumed by only (root)"
   },
   {
     "component": "operate-drawer",
@@ -2110,10 +2110,10 @@
       "alarm"
     ],
     "transitiveApps": [
+      "(root)",
       "alarm",
       "cmdb",
       "job",
-      "layout.tsx",
       "node-manager",
       "ops-analysis",
       "opspilot"
@@ -2161,10 +2161,10 @@
       "system-manager"
     ],
     "transitiveApps": [
+      "(root)",
       "alarm",
       "cmdb",
       "job",
-      "layout.tsx",
       "log",
       "mlops",
       "monitor",
@@ -2763,6 +2763,7 @@
   {
     "component": "redirect-menu",
     "directApps": [
+      "(root)",
       "alarm",
       "cmdb",
       "job",
@@ -2771,10 +2772,10 @@
       "node-manager",
       "ops-analysis",
       "opspilot",
-      "page.tsx",
       "system-manager"
     ],
     "transitiveApps": [
+      "(root)",
       "alarm",
       "cmdb",
       "job",
@@ -2783,7 +2784,6 @@
       "node-manager",
       "ops-analysis",
       "opspilot",
-      "page.tsx",
       "system-manager"
     ],
     "stories": [
@@ -2950,7 +2950,7 @@
     "component": "security",
     "directApps": [],
     "transitiveApps": [
-      "layout.tsx"
+      "(root)"
     ],
     "stories": [
       "layout-family.stories.tsx",
@@ -2963,7 +2963,7 @@
     ],
     "reverseAppImports": [],
     "classification": "app-local",
-    "reason": "consumed by only layout.tsx"
+    "reason": "consumed by only (root)"
   },
   {
     "component": "selectable-card-grid",
@@ -3092,17 +3092,17 @@
   {
     "component": "spin",
     "directApps": [
+      "(root)",
       "alarm",
       "cmdb",
-      "layout.tsx",
       "log",
       "monitor",
       "node-manager"
     ],
     "transitiveApps": [
+      "(root)",
       "alarm",
       "cmdb",
-      "layout.tsx",
       "log",
       "monitor",
       "node-manager"
@@ -3186,8 +3186,8 @@
   {
     "component": "sub-layout",
     "directApps": [
+      "(root)",
       "cmdb",
-      "layout.tsx",
       "log",
       "mlops",
       "monitor",
@@ -3197,8 +3197,8 @@
       "system-manager"
     ],
     "transitiveApps": [
+      "(root)",
       "cmdb",
-      "layout.tsx",
       "log",
       "mlops",
       "monitor",
@@ -3355,7 +3355,7 @@
     "component": "theme",
     "directApps": [],
     "transitiveApps": [
-      "layout.tsx"
+      "(root)"
     ],
     "stories": [
       "layout-family.stories.tsx",
@@ -3367,7 +3367,7 @@
     ],
     "reverseAppImports": [],
     "classification": "app-local",
-    "reason": "consumed by only layout.tsx"
+    "reason": "consumed by only (root)"
   },
   {
     "component": "time-selector",
@@ -3466,10 +3466,10 @@
   {
     "component": "top-menu",
     "directApps": [
-      "layout.tsx"
+      "(root)"
     ],
     "transitiveApps": [
-      "layout.tsx"
+      "(root)"
     ],
     "stories": [
       "layout-family.stories.tsx",
@@ -3479,7 +3479,7 @@
     ],
     "reverseAppImports": [],
     "classification": "app-local",
-    "reason": "consumed by only layout.tsx"
+    "reason": "consumed by only (root)"
   },
   {
     "component": "top-section",
@@ -3594,7 +3594,7 @@
     "component": "user-info",
     "directApps": [],
     "transitiveApps": [
-      "layout.tsx"
+      "(root)"
     ],
     "stories": [
       "layout-family.stories.tsx",
@@ -3613,7 +3613,7 @@
     "component": "user-preferences",
     "directApps": [],
     "transitiveApps": [
-      "layout.tsx"
+      "(root)"
     ],
     "stories": [
       "layout-family.stories.tsx",
@@ -3623,7 +3623,7 @@
     ],
     "reverseAppImports": [],
     "classification": "app-local",
-    "reason": "consumed by only layout.tsx"
+    "reason": "consumed by only (root)"
   },
   {
     "component": "version-badge",

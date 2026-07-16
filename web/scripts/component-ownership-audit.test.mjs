@@ -56,4 +56,7 @@ assert.deepEqual(byName.get('reverse-card').reverseAppImports, ['app-a']);
 assert.equal(byName.get('primitive-control').classification, 'shared-primitive');
 assert.match(byName.get('primitive-control').reason, /allowlist/);
 
+assert.deepEqual(byName.get('root-shell').directApps, ['(root)']);
+assert.equal(byName.get('root-shell').classification, 'app-local');
+
 console.log('component ownership audit fixture tests passed');

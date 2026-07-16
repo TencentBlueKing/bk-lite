@@ -53,7 +53,8 @@ const componentFromFile = (file, componentsRoot) => {
 const appFromFile = (file, appRoot) => {
   const relative = path.relative(appRoot, file);
   if (relative.startsWith('..')) return null;
-  return relative.split(path.sep)[0] || null;
+  const segments = relative.split(path.sep);
+  return segments.length === 1 ? '(root)' : segments[0] || null;
 };
 
 const componentFromImport = (specifier, importer, componentsRoot, knownComponents) => {
