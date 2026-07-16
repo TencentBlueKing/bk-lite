@@ -1,4 +1,5 @@
 import re
+import uuid
 
 from django.contrib.auth.hashers import make_password
 from django.core.cache import cache
@@ -364,6 +365,7 @@ class UserViewSet(ViewSetUtils):
             roles = [Role.objects.get(name="admin", app="").id]
         with transaction.atomic():
             User.objects.create(
+                user_id=str(uuid.uuid4()),
                 username=kwargs["username"],
                 display_name=kwargs["lastName"],
                 email=kwargs["email"],
