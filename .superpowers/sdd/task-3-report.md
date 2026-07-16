@@ -83,3 +83,48 @@
 - `node_mgmt_sync_service.py` 的 HEAD 基线仍有三处 E231、两处 W503 和一处 E125；均不在本任务改动行，按最小 diff 原则保留。
 - 项目环境未安装 `diff-cover`；覆盖率使用 pytest-cov XML 与 `git diff --unified=0` 交叉计算，结果 91.18%。
 - Task 7 实现前，sync 重新开启后 `waiting_sync` 的节点配置补偿不会在本任务中自动下发；这是 brief 明确保留的后续边界。
+
+## Important 审查修复：严格整数 interval 合同
+
+### 问题
+
+初版 `_validate_task_update` 先执行 `int(value)`，因此 JSON `1440.9` / `5.0` 会被截断，`true` 会按 Python `bool` 的整数子类语义变为 `1`，违反 interval 必须是整数分钟的 API 合同。
+
+### RED
+
+先为 `task` 与 `config` 两条真实 PUT action 增加参数化 API 回归，覆盖：
+
+- 拒绝 JSON float：`1440.9`、`5.0`；
+- 拒绝 JSON bool：`true`、`false`；
+- 拒绝非整数字符串：`"5.0"`、`"five"`；
+- 固定既有兼容合同：纯 ASCII 数字字符串 `"5"` 继续接受并序列化为整数 `5`；
+- 拒绝响应固定为 HTTP 400、`result=false` 和字段级稳定消息。
+
+RED 命令：
+
+```bash
+MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test \
+MINIO_USE_HTTPS=false ENABLE_CELERY=true INSTALL_APPS=system_mgmt,node_mgmt,cmdb \
+DB_ENGINE=sqlite DB_NAME=:memory: uv run pytest -q -o addopts='' -o log_cli=false \
+apps/cmdb/tests/test_node_mgmt_sync_views.py \
+-k 'non_integer_interval_types or decimal_integer_string'
+```
+
+结果：**6 failed / 8 passed / 18 deselected**。失败精确证明两条路由均错误接受 float 与 `true`；`false` 因转成 0、非整数字符串因解析失败已返回 400，纯数字字符串兼容测试通过。
+
+### GREEN
+
+校验现先检查原始 JSON 类型：
+
+- `bool` 显式拒绝；
+- float 与其他非 `int` / `str` 类型拒绝；
+- 字符串必须同时满足 `isascii()` 与 `isdecimal()`，再转换为 int；
+- 最终统一校验 1..1440。
+
+同一定向命令结果：**14 passed / 18 deselected**。
+
+完整回归与覆盖命令在上述环境下执行 `test_node_mgmt_sync_views.py`、`test_node_mgmt_sync_reconciler.py`、`test_node_mgmt_sync_helpers.py`、`test_node_mgmt_sync_resilience.py`、`test_node_mgmt_sync_models.py`，结果：**81 passed**。
+
+本轮生产新增可执行行覆盖率：**100%（7/7）**；由 pytest-cov XML 与相对上一 Task 3 commit 的 `git diff --unified=0` 交叉计算。
+
+静态复验：新增测试 black 通过；service/测试 isort 通过；排除 service 既有 E125/E231/W503 后 flake8 通过；两文件 `py_compile` 通过；`git diff --check` 通过。

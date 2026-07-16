@@ -243,10 +243,13 @@ class NodeMgmtSyncService:
         for field in ("sync_interval_minutes", "collect_interval_minutes"):
             if field not in validated:
                 continue
-            try:
-                value = int(validated[field])
-            except (TypeError, ValueError) as exc:
-                raise ValueError(f"{field} 必须在 1 到 1440 分钟之间") from exc
+            value = validated[field]
+            if isinstance(value, bool) or not isinstance(value, (int, str)):
+                raise ValueError(f"{field} 必须在 1 到 1440 分钟之间")
+            if isinstance(value, str):
+                if not value.isascii() or not value.isdecimal():
+                    raise ValueError(f"{field} 必须在 1 到 1440 分钟之间")
+                value = int(value)
             if not 1 <= value <= 1440:
                 raise ValueError(f"{field} 必须在 1 到 1440 分钟之间")
             validated[field] = value

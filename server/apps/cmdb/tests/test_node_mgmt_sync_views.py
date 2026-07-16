@@ -113,6 +113,28 @@ def test_invalid_interval_returns_stable_bad_request_from_update_api():
     assert "必须在 1 到 1440 分钟之间" in json.loads(response.content)["message"]
 
 
+@pytest.mark.parametrize("action", ["task", "config"])
+@pytest.mark.parametrize("value", [1440.9, 5.0, True, False, "5.0", "five"])
+def test_update_api_rejects_non_integer_interval_types(action, value):
+    response = _call(action, "PUT", _user("auto_collection-Execute"), {"sync_interval_minutes": value},)
+
+    body = json.loads(response.content)
+    assert response.status_code == 400
+    assert body == {
+        "data": {},
+        "result": False,
+        "message": "sync_interval_minutes 必须在 1 到 1440 分钟之间",
+    }
+
+
+@pytest.mark.parametrize("action", ["task", "config"])
+def test_update_api_keeps_accepting_decimal_integer_string(action):
+    response = _call(action, "PUT", _user("auto_collection-Execute"), {"sync_interval_minutes": "5"},)
+
+    assert response.status_code == 200
+    assert json.loads(response.content)["data"]["sync_interval_minutes"] == 5
+
+
 def test_auto_collect_with_sync_disabled_is_saved_as_waiting_sync():
     config = NodeMgmtSyncService.update_task({"auto_sync_enabled": False, "auto_collect_enabled": True})
 
