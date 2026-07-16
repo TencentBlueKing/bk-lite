@@ -31,7 +31,8 @@ def test_sync_hosts_marks_run_failed_when_fetch_raises(sync_config):
     run = NodeMgmtSyncRun.objects.filter(run_type=NodeMgmtSyncRun.RUN_TYPE_SYNC).latest("created_at")
     assert run.status == NodeMgmtSyncRun.STATUS_FAILED
     assert run.finished_at is not None
-    assert "fetch boom" in run.error_message
+    assert run.error_message == "节点管理同步失败：RuntimeError"
+    assert "fetch boom" not in run.error_message
 
 
 def test_fetch_node_mgmt_pages_RPC异常只暴露稳定码且日志不泄露敏感详情(mocker, caplog):
@@ -90,7 +91,8 @@ def test_collect_hosts_marks_run_failed_when_listing_raises(sync_config):
     run = NodeMgmtSyncRun.objects.filter(run_type=NodeMgmtSyncRun.RUN_TYPE_COLLECT).latest("created_at")
     assert run.status == NodeMgmtSyncRun.STATUS_FAILED
     assert run.finished_at is not None
-    assert "list boom" in run.error_message
+    assert run.error_message == "节点管理采集失败：RuntimeError"
+    assert "list boom" not in run.error_message
 
 
 @pytest.mark.django_db

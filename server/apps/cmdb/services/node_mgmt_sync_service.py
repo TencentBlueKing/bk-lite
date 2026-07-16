@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import copy
 import os
+from datetime import timedelta
 from typing import Any
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 from django.utils.timezone import localtime, now
 
@@ -30,6 +31,17 @@ class NodeMgmtSyncError(RuntimeError):
 
 
 class NodeMgmtSyncService:
+    ACTIVE_SCOPE = "node_mgmt_sync"
+    RUN_TIMEOUT_MINUTES = 30
+    REASON_ALREADY_ACTIVE = "RUN_ALREADY_ACTIVE"
+    REASON_TIMEOUT = "RUN_TIMEOUT"
+    TERMINAL_STATUSES = (
+        NodeMgmtSyncRun.STATUS_SUCCESS,
+        NodeMgmtSyncRun.STATUS_PARTIAL_SUCCESS,
+        NodeMgmtSyncRun.STATUS_BLOCKED,
+        NodeMgmtSyncRun.STATUS_FAILED,
+        NodeMgmtSyncRun.STATUS_TIMEOUT,
+    )
     SYNC_PERIODIC_TASK_NAME = "cmdb_node_mgmt_sync_hosts"
     COLLECT_PERIODIC_TASK_NAME = "cmdb_node_mgmt_collect_hosts"
     SYNC_TASK = "apps.cmdb.tasks.celery_tasks.sync_node_mgmt_hosts"
@@ -391,23 +403,143 @@ class NodeMgmtSyncService:
 
     @classmethod
     def _build_sync_run(cls, task: NodeMgmtSyncConfig | None = None) -> NodeMgmtSyncRun:
-        task = task or cls.get_task()
-        return NodeMgmtSyncRun.objects.create(
-            task=task,
-            run_type=NodeMgmtSyncRun.RUN_TYPE_SYNC,
-            status=NodeMgmtSyncRun.STATUS_RUNNING,
-            started_at=now(),
-        )
+        return cls.acquire_run(NodeMgmtSyncRun.RUN_TYPE_SYNC, task=task)
 
     @classmethod
     def _build_collect_run(cls, task: NodeMgmtSyncConfig | None = None) -> NodeMgmtSyncRun:
+        return cls.acquire_run(NodeMgmtSyncRun.RUN_TYPE_COLLECT, task=task)
+
+    @classmethod
+    def acquire_run(
+        cls, run_type: str, task: NodeMgmtSyncConfig | None = None
+    ) -> NodeMgmtSyncRun:
         task = task or cls.get_task()
-        return NodeMgmtSyncRun.objects.create(
-            task=task,
-            run_type=NodeMgmtSyncRun.RUN_TYPE_COLLECT,
-            status=NodeMgmtSyncRun.STATUS_RUNNING,
-            started_at=now(),
+        current_time = now()
+        try:
+            # 失败的 INSERT 必须由内层 savepoint 回滚，否则外层事务会进入
+            # rollback-only，无法再写 blocked 历史记录。
+            with transaction.atomic():
+                return NodeMgmtSyncRun.objects.create(
+                    task=task,
+                    run_type=run_type,
+                    status=NodeMgmtSyncRun.STATUS_RUNNING,
+                    active_scope=cls.ACTIVE_SCOPE,
+                    started_at=current_time,
+                    heartbeat_at=current_time,
+                    deadline_at=current_time
+                    + timedelta(minutes=cls.RUN_TIMEOUT_MINUTES),
+                )
+        except IntegrityError:
+            return NodeMgmtSyncRun.objects.create(
+                task=task,
+                run_type=run_type,
+                status=NodeMgmtSyncRun.STATUS_BLOCKED,
+                reason_code=cls.REASON_ALREADY_ACTIVE,
+                started_at=current_time,
+                finished_at=current_time,
+            )
+
+    @classmethod
+    def finish_run(
+        cls,
+        run: NodeMgmtSyncRun,
+        *,
+        status: str,
+        reason_code: str = "",
+        summary_json: dict[str, Any] | None = None,
+        detail_json: dict[str, Any] | None = None,
+        error: Exception | None = None,
+    ) -> NodeMgmtSyncRun:
+        if status not in cls.TERMINAL_STATUSES:
+            raise ValueError("finish_run requires a terminal status")
+        current_time = now()
+        updates: dict[str, Any] = {
+            "status": status,
+            "reason_code": reason_code,
+            "active_scope": None,
+            "finished_at": current_time,
+            "updated_at": current_time,
+        }
+        if summary_json is not None:
+            updates["summary_json"] = summary_json
+        if detail_json is not None:
+            updates["detail_json"] = detail_json
+        if error is not None:
+            updates["error_message"] = (
+                f"{reason_code or 'RUN_FAILED'}: {type(error).__name__}"[:255]
+            )
+        allowed_current_statuses = (
+            NodeMgmtSyncRun.STATUS_RUNNING,
+            NodeMgmtSyncRun.STATUS_WAITING_SYNC,
+            NodeMgmtSyncRun.STATUS_SUBMITTED,
         )
+        if status == NodeMgmtSyncRun.STATUS_SUCCESS:
+            # 同 generation 的成功重试仍可幂等刷新摘要；其它终态不可被覆盖。
+            allowed_current_statuses += (NodeMgmtSyncRun.STATUS_SUCCESS,)
+        NodeMgmtSyncRun.objects.filter(
+            pk=run.pk,
+            generation=run.generation,
+            status__in=allowed_current_statuses,
+        ).update(**updates)
+        run.refresh_from_db()
+        return run
+
+    @classmethod
+    def heartbeat_run(cls, run: NodeMgmtSyncRun) -> None:
+        if run.active_scope is None and run.deadline_at is None:
+            # 内部 helper 的无执行上下文调用不参与运行租约；正式入口必有两字段。
+            return
+        current_time = now()
+        updated = NodeMgmtSyncRun.objects.filter(
+            pk=run.pk,
+            generation=run.generation,
+            active_scope=cls.ACTIVE_SCOPE,
+            deadline_at__gt=current_time,
+        ).exclude(status__in=cls.TERMINAL_STATUSES).update(
+            heartbeat_at=current_time,
+            updated_at=current_time,
+        )
+        if updated:
+            run.heartbeat_at = current_time
+            return
+        run.refresh_from_db()
+        if (
+            run.active_scope == cls.ACTIVE_SCOPE
+            and run.status not in cls.TERMINAL_STATUSES
+            and run.deadline_at is not None
+            and run.deadline_at <= current_time
+        ):
+            cls.finish_run(
+                run,
+                status=NodeMgmtSyncRun.STATUS_TIMEOUT,
+                reason_code=cls.REASON_TIMEOUT,
+            )
+            raise NodeMgmtSyncError(cls.REASON_TIMEOUT)
+        raise NodeMgmtSyncError("RUN_NOT_ACTIVE")
+
+    @classmethod
+    def recover_stale_runs(cls) -> int:
+        current_time = now()
+        candidates = NodeMgmtSyncRun.objects.filter(
+            active_scope__isnull=False,
+            deadline_at__lte=current_time,
+        ).exclude(status__in=cls.TERMINAL_STATUSES).values_list(
+            "pk", "generation", "active_scope"
+        )
+        recovered = 0
+        for run_id, generation, active_scope in list(candidates):
+            recovered += NodeMgmtSyncRun.objects.filter(
+                pk=run_id,
+                generation=generation,
+                active_scope=active_scope,
+            ).exclude(status__in=cls.TERMINAL_STATUSES).update(
+                status=NodeMgmtSyncRun.STATUS_TIMEOUT,
+                reason_code=cls.REASON_TIMEOUT,
+                active_scope=None,
+                finished_at=current_time,
+                updated_at=current_time,
+            )
+        return recovered
 
     @classmethod
     def _mark_run_failed(cls, run: NodeMgmtSyncRun, error: Exception) -> None:
@@ -419,19 +551,24 @@ class NodeMgmtSyncService:
         run_type = getattr(run, "run_type", "")
         action_label = "采集" if run_type == NodeMgmtSyncRun.RUN_TYPE_COLLECT else "同步"
         # 透传到页面的错误信息：带上动作语义，去掉裸异常类名噪声，便于运维定位
-        page_message = "节点管理{}失败：{}".format(action_label, str(error).strip() or error.__class__.__name__)
+        page_message = "节点管理{}失败：{}".format(action_label, type(error).__name__)
         logger.error(
             "[NodeMgmtSync] 运行记录标记失败 run_id=%s, run_type=%s, error=%s",
             getattr(run, "id", None),
             run_type,
-            str(error),
-            exc_info=True,
+            type(error).__name__,
         )
         try:
-            run.status = NodeMgmtSyncRun.STATUS_FAILED
-            run.error_message = page_message
-            run.finished_at = now()
-            run.save(update_fields=["status", "error_message", "finished_at", "updated_at"])
+            cls.finish_run(
+                run,
+                status=NodeMgmtSyncRun.STATUS_FAILED,
+                reason_code="RUN_FAILED",
+                error=error,
+            )
+            if run.status == NodeMgmtSyncRun.STATUS_FAILED:
+                NodeMgmtSyncRun.objects.filter(pk=run.pk).update(
+                    error_message=page_message
+                )
         except Exception:  # pragma: no cover - 兜底：标记失败本身不应再抛
             logger.exception("[NodeMgmtSync] 标记运行记录失败状态时出错, run_id=%s", getattr(run, "id", None))
 
@@ -505,6 +642,7 @@ class NodeMgmtSyncService:
         *,
         max_pages: int = MAX_NODE_PAGES,
         deadline_at=None,
+        run: NodeMgmtSyncRun | None = None,
     ) -> list[dict[str, Any]]:
         requested_page_size = query.get("page_size", cls.NODE_MGMT_SYNC_PAGE_SIZE)
         try:
@@ -517,6 +655,8 @@ class NodeMgmtSyncService:
         nodes: list[dict[str, Any]] = []
         client = cls._node_mgmt_client()
         for page in range(1, max_pages + 1):
+            if run is not None:
+                cls.heartbeat_run(run)
             if deadline_at is not None and timezone.now() >= deadline_at:
                 raise NodeMgmtSyncError("NODE_QUERY_TIMEOUT")
             payload = {**base_payload, "page": page}
@@ -538,11 +678,17 @@ class NodeMgmtSyncService:
         raise NodeMgmtSyncError("NODE_PAGE_LIMIT_EXCEEDED")
 
     @classmethod
-    def _fetch_non_container_nodes(cls) -> list[dict[str, Any]]:
+    def _fetch_non_container_nodes(
+        cls, run: NodeMgmtSyncRun | None = None
+    ) -> list[dict[str, Any]]:
         logger.info("[NodeMgmtSync] 开始获取非容器节点列表")
         cloud_region_names = cls._cloud_region_name_map()
         logger.debug("[NodeMgmtSync] 获取到云区域名称映射, region_count=%d", len(cloud_region_names))
-        nodes = cls._fetch_node_mgmt_pages({"is_container": False})
+        nodes = cls._fetch_node_mgmt_pages(
+            {"is_container": False},
+            deadline_at=getattr(run, "deadline_at", None),
+            run=run,
+        )
         total_nodes = len(nodes)
         logger.info("[NodeMgmtSync] 从节点管理获取到节点数据, total=%d", total_nodes)
         result: list[dict[str, Any]] = []
@@ -586,10 +732,18 @@ class NodeMgmtSyncService:
         return grouped
 
     @classmethod
-    def _pick_access_point(cls, cloud_region_id: int) -> dict[str, Any] | None:
+    def _pick_access_point(
+        cls,
+        cloud_region_id: int,
+        run: NodeMgmtSyncRun | None = None,
+    ) -> dict[str, Any] | None:
         logger.debug("[NodeMgmtSync] 查找云区域接入点, cloud_region_id=%d", cloud_region_id)
         cloud_region_name = cls._cloud_region_name_map().get(int(cloud_region_id), "")
-        nodes = cls._fetch_node_mgmt_pages({"cloud_region_id": cloud_region_id, "is_container": True})
+        nodes = cls._fetch_node_mgmt_pages(
+            {"cloud_region_id": cloud_region_id, "is_container": True},
+            deadline_at=getattr(run, "deadline_at", None),
+            run=run,
+        )
         if not nodes:
             logger.warning("[NodeMgmtSync] 云区域无可用容器节点作为接入点, cloud_region_id=%d", cloud_region_id)
             return None
@@ -1171,18 +1325,24 @@ class NodeMgmtSyncService:
                     task_config.auto_sync_enabled, task_config.sync_interval_minutes, task_config.auto_collect_enabled)
         run = cls._build_sync_run(task=task_config)
         logger.debug("[NodeMgmtSync] 创建同步运行记录, run_id=%d", run.id)
+        if run.status == NodeMgmtSyncRun.STATUS_BLOCKED:
+            return cls.serialize_run(run)
 
         try:
             return cls._do_sync_hosts(run, task_config)
         except Exception as exc:
             cls._mark_run_failed(run, exc)
-            logger.error("[NodeMgmtSync] 同步失败, run_id=%s, error=%s", run.id, exc, exc_info=True)
+            logger.error(
+                "[NodeMgmtSync] 同步失败, run_id=%s, error_type=%s",
+                run.id,
+                type(exc).__name__,
+            )
             raise
 
     @classmethod
     def _do_sync_hosts(cls, run: NodeMgmtSyncRun, task_config: NodeMgmtSyncConfig) -> dict[str, Any]:
         logger.info("[NodeMgmtSync] 开始获取节点管理主机数据")
-        nodes = cls._fetch_non_container_nodes()
+        nodes = cls._fetch_non_container_nodes(run=run)
         logger.info("[NodeMgmtSync] 获取节点完成, total_nodes=%d", len(nodes))
 
         grouped_nodes = cls._group_nodes_by_region(nodes)
@@ -1193,11 +1353,12 @@ class NodeMgmtSyncService:
         changed_instance_ids: list[int] = []
 
         for cloud_region_id, region_nodes in grouped_nodes.items():
+            cls.heartbeat_run(run)
             cloud_region_name = str(region_nodes[0].get("cloud_region_name") or cloud_region_id)
             logger.info("[NodeMgmtSync] 处理云区域: cloud_region_id=%d, cloud_region_name=%s, node_count=%d",
                         cloud_region_id, cloud_region_name, len(region_nodes))
 
-            access_point = cls._pick_access_point(cloud_region_id)
+            access_point = cls._pick_access_point(cloud_region_id, run=run)
             if access_point:
                 logger.debug("[NodeMgmtSync] 云区域接入点: cloud_region_id=%d, access_point_id=%s",
                              cloud_region_id, access_point.get("id"))
@@ -1288,14 +1449,17 @@ class NodeMgmtSyncService:
         has_errors = any(
             message.get(key) for key in ("add_error", "update_error", "delete_error", "association_error")
         )
-        if detail["todo"] or has_errors:
-            run.status = NodeMgmtSyncRun.STATUS_PARTIAL_SUCCESS
-        else:
-            run.status = NodeMgmtSyncRun.STATUS_SUCCESS
-        run.summary_json = message
-        run.detail_json = detail
-        run.finished_at = now()
-        run.save()
+        final_status = (
+            NodeMgmtSyncRun.STATUS_PARTIAL_SUCCESS
+            if detail["todo"] or has_errors
+            else NodeMgmtSyncRun.STATUS_SUCCESS
+        )
+        cls.finish_run(
+            run,
+            status=final_status,
+            summary_json=message,
+            detail_json=detail,
+        )
         task_config.last_sync_at = run.finished_at
         task_config.save(update_fields=["last_sync_at", "updated_at"])
 
@@ -1312,12 +1476,18 @@ class NodeMgmtSyncService:
                     task_config.auto_collect_enabled, task_config.collect_interval_minutes)
         run = cls._build_collect_run(task=task_config)
         logger.debug("[NodeMgmtSync] 创建采集运行记录, run_id=%d", run.id)
+        if run.status == NodeMgmtSyncRun.STATUS_BLOCKED:
+            return cls.serialize_run(run)
 
         try:
             return cls._do_collect_hosts(run, task_config)
         except Exception as exc:
             cls._mark_run_failed(run, exc)
-            logger.error("[NodeMgmtSync] 采集失败, run_id=%s, error=%s", run.id, exc, exc_info=True)
+            logger.error(
+                "[NodeMgmtSync] 采集失败, run_id=%s, error_type=%s",
+                run.id,
+                type(exc).__name__,
+            )
             raise
 
     @classmethod
@@ -1329,6 +1499,7 @@ class NodeMgmtSyncService:
         logger.info("[NodeMgmtSync] 获取区域采集任务列表, task_count=%d", len(collect_tasks))
 
         for collect_task in collect_tasks:
+            cls.heartbeat_run(run)
             message["all"] += 1
             access_point = collect_task.access_point if isinstance(collect_task.access_point, list) else []
             logger.debug("[NodeMgmtSync] 检查采集任务: task_id=%d, task_name=%s, has_access_point=%s",
@@ -1348,20 +1519,32 @@ class NodeMgmtSyncService:
                 cls._execute_collect_task(collect_task)
             except Exception as task_exc:
                 # 单个采集任务下发失败不中断其余任务。
-                detail["failed"].append({"task_id": collect_task.id, "message": str(task_exc)})
+                detail["failed"].append(
+                    {
+                        "task_id": collect_task.id,
+                        "message": f"COLLECT_SUBMIT_FAILED: {type(task_exc).__name__}",
+                    }
+                )
                 logger.error(
-                    "[NodeMgmtSync] 采集任务下发失败, task_id=%s, error=%s",
-                    collect_task.id, task_exc, exc_info=True,
+                    "[NodeMgmtSync] 采集任务下发失败, task_id=%s, error_type=%s",
+                    collect_task.id,
+                    type(task_exc).__name__,
                 )
                 continue
             detail["executed"].append({"task_id": collect_task.id, "name": collect_task.name})
             logger.info("[NodeMgmtSync] 采集任务已提交: task_id=%d", collect_task.id)
 
-        run.status = NodeMgmtSyncRun.STATUS_PARTIAL_SUCCESS if (detail["todo"] or detail["failed"]) else NodeMgmtSyncRun.STATUS_SUCCESS
-        run.summary_json = message
-        run.detail_json = detail
-        run.finished_at = now()
-        run.save()
+        final_status = (
+            NodeMgmtSyncRun.STATUS_PARTIAL_SUCCESS
+            if detail["todo"] or detail["failed"]
+            else NodeMgmtSyncRun.STATUS_SUCCESS
+        )
+        cls.finish_run(
+            run,
+            status=final_status,
+            summary_json=message,
+            detail_json=detail,
+        )
         task_config.last_collect_at = run.finished_at
         task_config.save(update_fields=["last_collect_at", "updated_at"])
 

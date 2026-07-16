@@ -460,5 +460,6 @@ class TestDbSerialization:
         run.refresh_from_db()
         assert run.status == NodeMgmtSyncRun.STATUS_FAILED
         assert "采集失败" in run.error_message
-        assert "接口超时" in run.error_message
+        assert "RuntimeError" in run.error_message
+        assert "接口超时" not in run.error_message
         assert run.finished_at is not None

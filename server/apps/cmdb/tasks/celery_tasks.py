@@ -15,8 +15,8 @@ from apps.cmdb.constants.constants import CollectPluginTypes, CollectRunStatusTy
 from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.services.collect_dispatch_service import CollectDispatchService
 from apps.cmdb.services.collect_tool_service import CollectToolService
-from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncService
 from apps.cmdb.services.subscription_task import SubscriptionTaskService
+from apps.cmdb.tasks.node_mgmt_sync import run_collect, run_sync
 from apps.core.logger import cmdb_logger as logger
 
 
@@ -402,9 +402,12 @@ def full_sync_auto_association_rule_task(model_asst_id: str) -> dict:
 def sync_node_mgmt_hosts() -> dict:
     logger.info("[NodeMgmtSync] 开始同步节点管理主机信息")
     try:
-        data = NodeMgmtSyncService.trigger_sync()
-    except Exception:
-        logger.exception("[NodeMgmtSync] 同步节点管理主机信息失败")
+        data = run_sync()
+    except Exception as exc:
+        logger.error(
+            "[NodeMgmtSync] 同步节点管理主机信息失败, error_type=%s",
+            type(exc).__name__,
+        )
         raise
     logger.info("[NodeMgmtSync] 同步节点管理主机信息完成")
     return data
@@ -414,9 +417,12 @@ def sync_node_mgmt_hosts() -> dict:
 def collect_node_mgmt_hosts():
     logger.info("[NodeMgmtSync] 开始采集节点管理主机信息")
     try:
-        NodeMgmtSyncService.trigger_collect()
-    except Exception:
-        logger.exception("[NodeMgmtSync] 采集节点管理主机信息失败")
+        run_collect()
+    except Exception as exc:
+        logger.error(
+            "[NodeMgmtSync] 采集节点管理主机信息失败, error_type=%s",
+            type(exc).__name__,
+        )
         raise
     logger.info("[NodeMgmtSync] 采集节点管理主机信息结束")
 
