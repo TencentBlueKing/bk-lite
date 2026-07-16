@@ -43,6 +43,9 @@ assert.deepEqual(byName.get('single-panel').transitiveApps, ['app-a']);
 assert.equal(byName.get('story-only').classification, 'story-only-review');
 assert.deepEqual(byName.get('story-only').stories, ['story-only.stories.tsx']);
 
+assert.equal(byName.get('story-leaf').classification, 'story-only-review');
+assert.deepEqual(byName.get('story-leaf').stories, ['nested-story.stories.tsx']);
+
 assert.equal(byName.get('leaf-card').classification, 'shared-cross-app');
 assert.deepEqual(byName.get('leaf-card').directApps, []);
 assert.deepEqual(byName.get('leaf-card').transitiveApps, ['app-a', 'app-b']);

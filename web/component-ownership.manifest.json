@@ -11,7 +11,32 @@
       "ops-analysis",
       "opspilot"
     ],
-    "stories": [],
+    "stories": [
+      "alarm-family.stories.tsx",
+      "cmdb-family.stories.tsx",
+      "events-family.stories.tsx",
+      "feedback-family.stories.tsx",
+      "forms-upload-family.stories.tsx",
+      "integration-auth.fixtures.ts",
+      "integrations-family.stories.tsx",
+      "job-family.stories.tsx",
+      "k8s-family.stories.tsx",
+      "layout-family.stories.tsx",
+      "mlops-dataset-family.stories.tsx",
+      "mlops-family.stories.tsx",
+      "node-manager-family.stories.tsx",
+      "ops-analysis-settings-family.stories.tsx",
+      "ops-analysis-unified-filter-family.stories.tsx",
+      "opspilot-family.stories.tsx",
+      "opspilot-tool-editor-family.stories.tsx",
+      "security-family.stories.tsx",
+      "security-password.fixtures.tsx",
+      "system-manager-family.stories.tsx",
+      "system-manager-role-transfer-family.stories.tsx",
+      "system-manager-user-org-family.stories.tsx",
+      "system-manager-user-profile-family.stories.tsx",
+      "top-menu.stories.tsx"
+    ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
     "reason": "consumed transitively by 7 apps"
@@ -37,6 +62,7 @@
     ],
     "stories": [
       "integration-auth.fixtures.ts",
+      "integrations-family.stories.tsx",
       "node-manager-family.stories.tsx",
       "security-family.stories.tsx"
     ],
@@ -63,7 +89,15 @@
       "monitor"
     ],
     "stories": [
-      "data-display-family.stories.tsx"
+      "charts-family.stories.tsx",
+      "data-display-family.stories.tsx",
+      "log-analysis-widgets-family.stories.tsx",
+      "log-family.stories.tsx",
+      "monitor-dashboard-widgets-family.stories.tsx",
+      "monitor-family.stories.tsx",
+      "ops-analysis-data-source-family.stories.tsx",
+      "ops-analysis-unified-filter-family.stories.tsx",
+      "ops-analysis-widgets-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
@@ -76,7 +110,8 @@
       "monitor"
     ],
     "stories": [
-      "charts-family.stories.tsx"
+      "charts-family.stories.tsx",
+      "monitor-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "app-local",
@@ -89,7 +124,8 @@
       "monitor"
     ],
     "stories": [
-      "charts-family.stories.tsx"
+      "charts-family.stories.tsx",
+      "monitor-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "app-local",
@@ -102,7 +138,8 @@
       "monitor"
     ],
     "stories": [
-      "charts-family.stories.tsx"
+      "charts-family.stories.tsx",
+      "monitor-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "app-local",
@@ -115,7 +152,8 @@
       "monitor"
     ],
     "stories": [
-      "charts-family.stories.tsx"
+      "charts-family.stories.tsx",
+      "monitor-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "app-local",
@@ -130,7 +168,15 @@
     "stories": [
       "charts-family.stories.tsx",
       "cmdb-family.stories.tsx",
-      "knowledge-family.stories.tsx"
+      "events-family.stories.tsx",
+      "knowledge-family.stories.tsx",
+      "log-analysis-widgets-family.stories.tsx",
+      "log-family.stories.tsx",
+      "monitor-dashboard-widgets-family.stories.tsx",
+      "monitor-family.stories.tsx",
+      "ops-analysis-data-source-family.stories.tsx",
+      "ops-analysis-unified-filter-family.stories.tsx",
+      "ops-analysis-widgets-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "app-local",
@@ -141,7 +187,11 @@
     "directApps": [],
     "transitiveApps": [],
     "stories": [
-      "charts-family.stories.tsx"
+      "charts-family.stories.tsx",
+      "log-analysis-widgets-family.stories.tsx",
+      "ops-analysis-data-source-family.stories.tsx",
+      "ops-analysis-unified-filter-family.stories.tsx",
+      "ops-analysis-widgets-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "story-only-review",
@@ -165,7 +215,9 @@
       "monitor"
     ],
     "stories": [
-      "charts-family.stories.tsx"
+      "charts-family.stories.tsx",
+      "events-family.stories.tsx",
+      "monitor-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "app-local",
@@ -178,7 +230,14 @@
       "monitor"
     ],
     "stories": [
-      "charts-family.stories.tsx"
+      "charts-family.stories.tsx",
+      "log-analysis-widgets-family.stories.tsx",
+      "log-family.stories.tsx",
+      "monitor-dashboard-widgets-family.stories.tsx",
+      "monitor-family.stories.tsx",
+      "ops-analysis-data-source-family.stories.tsx",
+      "ops-analysis-unified-filter-family.stories.tsx",
+      "ops-analysis-widgets-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "app-local",
@@ -191,7 +250,8 @@
       "monitor"
     ],
     "stories": [
-      "charts-family.stories.tsx"
+      "charts-family.stories.tsx",
+      "monitor-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "app-local",
@@ -202,7 +262,11 @@
     "directApps": [],
     "transitiveApps": [],
     "stories": [
-      "charts-family.stories.tsx"
+      "charts-family.stories.tsx",
+      "log-analysis-widgets-family.stories.tsx",
+      "ops-analysis-data-source-family.stories.tsx",
+      "ops-analysis-unified-filter-family.stories.tsx",
+      "ops-analysis-widgets-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "story-only-review",
@@ -236,7 +300,9 @@
     "transitiveApps": [
       "cmdb"
     ],
-    "stories": [],
+    "stories": [
+      "cmdb-family.stories.tsx"
+    ],
     "reverseAppImports": [],
     "classification": "app-local",
     "reason": "consumed by only cmdb"
@@ -288,7 +354,9 @@
     "stories": [
       "content-family.stories.tsx",
       "data-display-family.stories.tsx",
+      "feedback-family.stories.tsx",
       "integrations-family.stories.tsx",
+      "k8s-family.stories.tsx",
       "monitor-family.stories.tsx",
       "node-manager-family.stories.tsx"
     ],
@@ -326,10 +394,22 @@
       "layout.tsx"
     ],
     "stories": [
+      "alarm-integration-guides-family.stories.tsx",
       "cmdb-family.stories.tsx",
       "feedback-family.stories.tsx",
       "integrations-family.stories.tsx",
-      "job-family.stories.tsx"
+      "job-family.stories.tsx",
+      "layout-family.stories.tsx",
+      "monitor-family.stories.tsx",
+      "navigation-family.stories.tsx",
+      "ops-analysis-data-source-family.stories.tsx",
+      "ops-analysis-unified-filter-family.stories.tsx",
+      "ops-analysis-widgets-family.stories.tsx",
+      "opspilot-family.stories.tsx",
+      "opspilot-tool-editor-family.stories.tsx",
+      "system-manager-family.stories.tsx",
+      "system-manager-user-profile-family.stories.tsx",
+      "top-menu.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
@@ -344,8 +424,15 @@
       "layout.tsx"
     ],
     "stories": [
+      "cmdb-family.stories.tsx",
       "content-draw.stories.tsx",
-      "feedback-family.stories.tsx"
+      "content-family.stories.tsx",
+      "feedback-family.stories.tsx",
+      "job-family.stories.tsx",
+      "layout-family.stories.tsx",
+      "system-manager-family.stories.tsx",
+      "system-manager-user-profile-family.stories.tsx",
+      "top-menu.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
@@ -363,7 +450,13 @@
       "layout.tsx"
     ],
     "stories": [
-      "feedback-family.stories.tsx"
+      "cmdb-family.stories.tsx",
+      "feedback-family.stories.tsx",
+      "job-family.stories.tsx",
+      "layout-family.stories.tsx",
+      "system-manager-family.stories.tsx",
+      "system-manager-user-profile-family.stories.tsx",
+      "top-menu.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
@@ -376,7 +469,13 @@
       "alarm"
     ],
     "stories": [
-      "data-display-family.stories.tsx"
+      "alarm-integration-guides-family.stories.tsx",
+      "cmdb-family.stories.tsx",
+      "content-family.stories.tsx",
+      "custom-reporting-family.stories.tsx",
+      "data-display-family.stories.tsx",
+      "job-family.stories.tsx",
+      "system-manager-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "app-local",
@@ -464,10 +563,12 @@
     "component": "custom-reporting-shared",
     "directApps": [],
     "transitiveApps": [],
-    "stories": [],
+    "stories": [
+      "custom-reporting-family.stories.tsx"
+    ],
     "reverseAppImports": [],
-    "classification": "unused",
-    "reason": "no app or Storybook consumers"
+    "classification": "story-only-review",
+    "reason": "consumed only by Storybook stories"
   },
   {
     "component": "custom-reporting-target-model-value",
@@ -529,10 +630,24 @@
       "system-manager"
     ],
     "stories": [
+      "charts-family.stories.tsx",
       "custom-table.stories.tsx",
       "data-display-family.stories.tsx",
+      "events-family.stories.tsx",
       "integrations-family.stories.tsx",
-      "selection-family.stories.tsx"
+      "job-family.stories.tsx",
+      "layout-family.stories.tsx",
+      "log-analysis-widgets-family.stories.tsx",
+      "mlops-family.stories.tsx",
+      "monitor-family.stories.tsx",
+      "ops-analysis-data-source-family.stories.tsx",
+      "ops-analysis-settings-family.stories.tsx",
+      "ops-analysis-unified-filter-family.stories.tsx",
+      "ops-analysis-widgets-family.stories.tsx",
+      "selection-family.stories.tsx",
+      "system-manager-family.stories.tsx",
+      "system-manager-role-transfer-family.stories.tsx",
+      "system-manager-user-org-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
@@ -545,7 +660,10 @@
       "monitor"
     ],
     "stories": [
-      "layout-family.stories.tsx"
+      "charts-family.stories.tsx",
+      "layout-family.stories.tsx",
+      "monitor-dashboard-widgets-family.stories.tsx",
+      "monitor-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "app-local",
@@ -571,7 +689,10 @@
     "directApps": [],
     "transitiveApps": [],
     "stories": [
-      "content-family.stories.tsx"
+      "content-family.stories.tsx",
+      "layout-family.stories.tsx",
+      "node-manager-family.stories.tsx",
+      "opspilot-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "story-only-review",
@@ -582,7 +703,10 @@
     "directApps": [],
     "transitiveApps": [],
     "stories": [
-      "layout-family.stories.tsx"
+      "integrations-family.stories.tsx",
+      "layout-family.stories.tsx",
+      "node-manager-family.stories.tsx",
+      "opspilot-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "story-only-review",
@@ -611,8 +735,11 @@
     "stories": [
       "alarm-integration-guides-family.stories.tsx",
       "cmdb-family.stories.tsx",
+      "content-family.stories.tsx",
       "custom-reporting-family.stories.tsx",
-      "data-display-family.stories.tsx"
+      "data-display-family.stories.tsx",
+      "job-family.stories.tsx",
+      "system-manager-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "app-local",
@@ -632,6 +759,9 @@
     "stories": [
       "data-entry-family.stories.tsx",
       "dynamic-form.stories.tsx",
+      "integration-auth.fixtures.ts",
+      "integrations-family.stories.tsx",
+      "node-manager-family.stories.tsx",
       "security-family.stories.tsx"
     ],
     "reverseAppImports": [],
@@ -645,7 +775,13 @@
       "monitor"
     ],
     "stories": [
-      "charts-family.stories.tsx"
+      "charts-family.stories.tsx",
+      "log-analysis-widgets-family.stories.tsx",
+      "monitor-dashboard-widgets-family.stories.tsx",
+      "monitor-family.stories.tsx",
+      "ops-analysis-data-source-family.stories.tsx",
+      "ops-analysis-unified-filter-family.stories.tsx",
+      "ops-analysis-widgets-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "app-local",
@@ -677,8 +813,34 @@
       "system-manager"
     ],
     "stories": [
+      "charts-family.stories.tsx",
+      "content-family.stories.tsx",
+      "custom-table.stories.tsx",
       "data-display-family.stories.tsx",
-      "ellipsis-with-tooltip.stories.tsx"
+      "ellipsis-with-tooltip.stories.tsx",
+      "events-family.stories.tsx",
+      "integration-auth.fixtures.ts",
+      "integrations-family.stories.tsx",
+      "job-family.stories.tsx",
+      "layout-family.stories.tsx",
+      "log-analysis-widgets-family.stories.tsx",
+      "mlops-family.stories.tsx",
+      "monitor-family.stories.tsx",
+      "navigation-family.stories.tsx",
+      "node-manager-family.stories.tsx",
+      "ops-analysis-data-source-family.stories.tsx",
+      "ops-analysis-settings-family.stories.tsx",
+      "ops-analysis-unified-filter-family.stories.tsx",
+      "ops-analysis-widgets-family.stories.tsx",
+      "opspilot-cards-family.stories.tsx",
+      "opspilot-family.stories.tsx",
+      "security-family.stories.tsx",
+      "selection-family.stories.tsx",
+      "system-manager-family.stories.tsx",
+      "system-manager-role-transfer-family.stories.tsx",
+      "system-manager-user-org-family.stories.tsx",
+      "top-section.stories.tsx",
+      "user-avatar.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
@@ -771,7 +933,8 @@
       "alarm"
     ],
     "stories": [
-      "data-display-family.stories.tsx"
+      "data-display-family.stories.tsx",
+      "events-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "app-local",
@@ -873,8 +1036,21 @@
       "system-manager"
     ],
     "stories": [
+      "alarm-family.stories.tsx",
+      "cmdb-family.stories.tsx",
       "data-entry-family.stories.tsx",
-      "group-tree-select.stories.tsx"
+      "dynamic-form.stories.tsx",
+      "events-family.stories.tsx",
+      "group-tree-select.stories.tsx",
+      "integration-auth.fixtures.ts",
+      "integration-onboarding-family.stories.tsx",
+      "integrations-family.stories.tsx",
+      "job-family.stories.tsx",
+      "k8s-family.stories.tsx",
+      "node-manager-family.stories.tsx",
+      "ops-analysis-unified-filter-family.stories.tsx",
+      "opspilot-family.stories.tsx",
+      "security-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
@@ -919,7 +1095,8 @@
     "directApps": [],
     "transitiveApps": [],
     "stories": [
-      "charts-family.stories.tsx"
+      "charts-family.stories.tsx",
+      "log-analysis-widgets-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "story-only-review",
@@ -942,7 +1119,8 @@
     "directApps": [],
     "transitiveApps": [],
     "stories": [
-      "data-display-family.stories.tsx"
+      "data-display-family.stories.tsx",
+      "integrations-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "story-only-review",
@@ -978,9 +1156,54 @@
       "system-manager"
     ],
     "stories": [
+      "alarm-family.stories.tsx",
+      "alarm-integration-guides-family.stories.tsx",
+      "charts-family.stories.tsx",
+      "cmdb-family.stories.tsx",
+      "content-family.stories.tsx",
+      "custom-reporting-family.stories.tsx",
+      "data-display-family.stories.tsx",
+      "data-entry-family.stories.tsx",
+      "entity-list.stories.tsx",
       "events-family.stories.tsx",
+      "feedback-family.stories.tsx",
+      "forms-upload-family.stories.tsx",
       "icon.stories.tsx",
-      "sub-layout.stories.tsx"
+      "integration-onboarding-family.stories.tsx",
+      "integrations-family.stories.tsx",
+      "job-family.stories.tsx",
+      "k8s-family.stories.tsx",
+      "knowledge-family.stories.tsx",
+      "layout-family.stories.tsx",
+      "log-family.stories.tsx",
+      "mlops-dataset-family.stories.tsx",
+      "mlops-family.stories.tsx",
+      "monitor-dashboard-widgets-family.stories.tsx",
+      "monitor-family.stories.tsx",
+      "node-manager-family.stories.tsx",
+      "notifications.stories.tsx",
+      "ops-analysis-data-source-family.stories.tsx",
+      "ops-analysis-settings-family.stories.tsx",
+      "ops-analysis-unified-filter-family.stories.tsx",
+      "ops-analysis-view-toolbar-family.stories.tsx",
+      "opspilot-cards-family.stories.tsx",
+      "opspilot-family.stories.tsx",
+      "opspilot-tool-editor-family.stories.tsx",
+      "security-family.stories.tsx",
+      "selection-family.stories.tsx",
+      "sub-layout.stories.tsx",
+      "system-manager-application-menu-family.stories.tsx",
+      "system-manager-application-menu.fixtures.ts",
+      "system-manager-family.stories.tsx",
+      "system-manager-role-transfer-family.stories.tsx",
+      "system-manager-user-org-family.stories.tsx",
+      "system-manager-user-profile-family.stories.tsx",
+      "theme.stories.tsx",
+      "time-selector.stories.tsx",
+      "toolbar-family.stories.tsx",
+      "top-menu.stories.tsx",
+      "top-section.stories.tsx",
+      "user-info.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
@@ -995,7 +1218,11 @@
       "opspilot"
     ],
     "stories": [
-      "forms-upload-family.stories.tsx"
+      "forms-upload-family.stories.tsx",
+      "integration-auth.fixtures.ts",
+      "integrations-family.stories.tsx",
+      "job-family.stories.tsx",
+      "opspilot-tool-editor-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "app-local",
@@ -1143,7 +1370,9 @@
     "directApps": [],
     "transitiveApps": [],
     "stories": [
-      "integration-onboarding-family.stories.tsx"
+      "integration-onboarding-family.stories.tsx",
+      "integrations-family.stories.tsx",
+      "k8s-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "story-only-review",
@@ -1173,7 +1402,8 @@
       "cmdb"
     ],
     "stories": [
-      "content-family.stories.tsx"
+      "content-family.stories.tsx",
+      "layout-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
@@ -1359,7 +1589,9 @@
     "directApps": [],
     "transitiveApps": [],
     "stories": [
-      "feedback-family.stories.tsx"
+      "feedback-family.stories.tsx",
+      "integrations-family.stories.tsx",
+      "k8s-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "story-only-review",
@@ -1382,6 +1614,7 @@
     "directApps": [],
     "transitiveApps": [],
     "stories": [
+      "integrations-family.stories.tsx",
       "k8s-family.stories.tsx"
     ],
     "reverseAppImports": [],
@@ -1397,7 +1630,10 @@
       "cmdb"
     ],
     "stories": [
-      "layout-family.stories.tsx"
+      "integrations-family.stories.tsx",
+      "layout-family.stories.tsx",
+      "node-manager-family.stories.tsx",
+      "opspilot-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "app-local",
@@ -1430,6 +1666,7 @@
     "directApps": [],
     "transitiveApps": [],
     "stories": [
+      "log-analysis-widgets-family.stories.tsx",
       "log-family.stories.tsx"
     ],
     "reverseAppImports": [],
@@ -1440,18 +1677,24 @@
     "component": "log-message-preview",
     "directApps": [],
     "transitiveApps": [],
-    "stories": [],
+    "stories": [
+      "log-analysis-widgets-family.stories.tsx"
+    ],
     "reverseAppImports": [],
-    "classification": "unused",
-    "reason": "no app or Storybook consumers"
+    "classification": "story-only-review",
+    "reason": "consumed only by Storybook stories"
   },
   {
     "component": "management-table-shell",
     "directApps": [],
     "transitiveApps": [],
     "stories": [
+      "events-family.stories.tsx",
+      "integrations-family.stories.tsx",
       "layout-family.stories.tsx",
-      "monitor-family.stories.tsx"
+      "mlops-family.stories.tsx",
+      "monitor-family.stories.tsx",
+      "system-manager-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "story-only-review",
@@ -1476,8 +1719,17 @@
     ],
     "stories": [
       "data-display-family.stories.tsx",
+      "job-family.stories.tsx",
+      "layout-family.stories.tsx",
       "markdown.stories.tsx",
-      "system-manager-user-profile.fixtures.tsx"
+      "ops-analysis-data-source-family.stories.tsx",
+      "ops-analysis-unified-filter-family.stories.tsx",
+      "ops-analysis-widgets-family.stories.tsx",
+      "system-manager-family.stories.tsx",
+      "system-manager-user-profile-family.stories.tsx",
+      "system-manager-user-profile.fixtures.tsx",
+      "top-menu.stories.tsx",
+      "user-info.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
@@ -1581,7 +1833,9 @@
     "transitiveApps": [
       "monitor"
     ],
-    "stories": [],
+    "stories": [
+      "monitor-family.stories.tsx"
+    ],
     "reverseAppImports": [],
     "classification": "app-local",
     "reason": "consumed by only monitor"
@@ -1692,7 +1946,9 @@
     "transitiveApps": [
       "monitor"
     ],
-    "stories": [],
+    "stories": [
+      "monitor-family.stories.tsx"
+    ],
     "reverseAppImports": [],
     "classification": "app-local",
     "reason": "consumed by only monitor"
@@ -1713,7 +1969,22 @@
       "system-manager"
     ],
     "stories": [
-      "multi-cascade-panel.stories.tsx"
+      "alarm-family.stories.tsx",
+      "cmdb-family.stories.tsx",
+      "data-entry-family.stories.tsx",
+      "dynamic-form.stories.tsx",
+      "events-family.stories.tsx",
+      "group-tree-select.stories.tsx",
+      "integration-auth.fixtures.ts",
+      "integration-onboarding-family.stories.tsx",
+      "integrations-family.stories.tsx",
+      "job-family.stories.tsx",
+      "k8s-family.stories.tsx",
+      "multi-cascade-panel.stories.tsx",
+      "node-manager-family.stories.tsx",
+      "ops-analysis-unified-filter-family.stories.tsx",
+      "opspilot-family.stories.tsx",
+      "security-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
@@ -1789,7 +2060,11 @@
       "layout.tsx"
     ],
     "stories": [
-      "notifications.stories.tsx"
+      "layout-family.stories.tsx",
+      "notifications.stories.tsx",
+      "system-manager-family.stories.tsx",
+      "system-manager-user-profile-family.stories.tsx",
+      "top-menu.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "app-local",
@@ -1806,7 +2081,10 @@
       "node-manager"
     ],
     "stories": [
-      "feedback-family.stories.tsx"
+      "events-family.stories.tsx",
+      "feedback-family.stories.tsx",
+      "integrations-family.stories.tsx",
+      "k8s-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
@@ -1817,7 +2095,10 @@
     "directApps": [],
     "transitiveApps": [],
     "stories": [
-      "feedback-family.stories.tsx"
+      "events-family.stories.tsx",
+      "feedback-family.stories.tsx",
+      "integrations-family.stories.tsx",
+      "k8s-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "story-only-review",
@@ -1838,7 +2119,28 @@
       "opspilot"
     ],
     "stories": [
-      "feedback-family.stories.tsx"
+      "alarm-family.stories.tsx",
+      "cmdb-family.stories.tsx",
+      "feedback-family.stories.tsx",
+      "forms-upload-family.stories.tsx",
+      "integration-auth.fixtures.ts",
+      "integrations-family.stories.tsx",
+      "job-family.stories.tsx",
+      "layout-family.stories.tsx",
+      "mlops-dataset-family.stories.tsx",
+      "mlops-family.stories.tsx",
+      "node-manager-family.stories.tsx",
+      "ops-analysis-settings-family.stories.tsx",
+      "ops-analysis-unified-filter-family.stories.tsx",
+      "opspilot-family.stories.tsx",
+      "opspilot-tool-editor-family.stories.tsx",
+      "security-family.stories.tsx",
+      "security-password.fixtures.tsx",
+      "system-manager-family.stories.tsx",
+      "system-manager-role-transfer-family.stories.tsx",
+      "system-manager-user-org-family.stories.tsx",
+      "system-manager-user-profile-family.stories.tsx",
+      "top-menu.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
@@ -1873,8 +2175,39 @@
       "system-manager"
     ],
     "stories": [
+      "alarm-family.stories.tsx",
+      "charts-family.stories.tsx",
+      "cmdb-family.stories.tsx",
+      "custom-table.stories.tsx",
+      "data-display-family.stories.tsx",
+      "events-family.stories.tsx",
       "feedback-family.stories.tsx",
-      "operate-modal.stories.tsx"
+      "forms-upload-family.stories.tsx",
+      "integration-auth.fixtures.ts",
+      "integrations-family.stories.tsx",
+      "job-family.stories.tsx",
+      "layout-family.stories.tsx",
+      "log-analysis-widgets-family.stories.tsx",
+      "mlops-dataset-family.stories.tsx",
+      "mlops-family.stories.tsx",
+      "monitor-family.stories.tsx",
+      "node-manager-family.stories.tsx",
+      "operate-modal.stories.tsx",
+      "ops-analysis-data-source-family.stories.tsx",
+      "ops-analysis-settings-family.stories.tsx",
+      "ops-analysis-unified-filter-family.stories.tsx",
+      "ops-analysis-widgets-family.stories.tsx",
+      "opspilot-family.stories.tsx",
+      "opspilot-tool-editor-family.stories.tsx",
+      "security-family.stories.tsx",
+      "security-password.fixtures.tsx",
+      "selection-family.stories.tsx",
+      "system-manager-family.stories.tsx",
+      "system-manager-role-transfer-family.stories.tsx",
+      "system-manager-user-org-family.stories.tsx",
+      "system-manager-user-profile-family.stories.tsx",
+      "top-menu.stories.tsx",
+      "user-info.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
@@ -1885,6 +2218,8 @@
     "directApps": [],
     "transitiveApps": [],
     "stories": [
+      "ops-analysis-data-source-family.stories.tsx",
+      "ops-analysis-unified-filter-family.stories.tsx",
       "ops-analysis-widgets-family.stories.tsx"
     ],
     "reverseAppImports": [],
@@ -1976,10 +2311,14 @@
     "component": "ops-analysis-widget-error-state",
     "directApps": [],
     "transitiveApps": [],
-    "stories": [],
+    "stories": [
+      "ops-analysis-data-source-family.stories.tsx",
+      "ops-analysis-unified-filter-family.stories.tsx",
+      "ops-analysis-widgets-family.stories.tsx"
+    ],
     "reverseAppImports": [],
-    "classification": "unused",
-    "reason": "no app or Storybook consumers"
+    "classification": "story-only-review",
+    "reason": "consumed only by Storybook stories"
   },
   {
     "component": "ops-analysis-widget-renderer",
@@ -2021,6 +2360,7 @@
     "directApps": [],
     "transitiveApps": [],
     "stories": [
+      "opspilot-cards-family.stories.tsx",
       "opspilot-family.stories.tsx"
     ],
     "reverseAppImports": [],
@@ -2031,10 +2371,13 @@
     "component": "opspilot-cards",
     "directApps": [],
     "transitiveApps": [],
-    "stories": [],
+    "stories": [
+      "opspilot-cards-family.stories.tsx",
+      "opspilot-family.stories.tsx"
+    ],
     "reverseAppImports": [],
-    "classification": "unused",
-    "reason": "no app or Storybook consumers"
+    "classification": "story-only-review",
+    "reason": "consumed only by Storybook stories"
   },
   {
     "component": "opspilot-config-severity-badge",
@@ -2170,10 +2513,12 @@
     "component": "opspilot-selector-shared",
     "directApps": [],
     "transitiveApps": [],
-    "stories": [],
+    "stories": [
+      "opspilot-family.stories.tsx"
+    ],
     "reverseAppImports": [],
-    "classification": "unused",
-    "reason": "no app or Storybook consumers"
+    "classification": "story-only-review",
+    "reason": "consumed only by Storybook stories"
   },
   {
     "component": "opspilot-skill-card",
@@ -2241,9 +2586,41 @@
       "monitor"
     ],
     "stories": [
+      "alarm-family.stories.tsx",
+      "alarm-integration-guides-family.stories.tsx",
+      "charts-family.stories.tsx",
+      "cmdb-family.stories.tsx",
+      "custom-reporting-family.stories.tsx",
+      "data-display-family.stories.tsx",
+      "data-entry-family.stories.tsx",
+      "events-family.stories.tsx",
       "feedback-family.stories.tsx",
+      "forms-upload-family.stories.tsx",
+      "integration-onboarding-family.stories.tsx",
+      "integrations-family.stories.tsx",
+      "job-family.stories.tsx",
+      "k8s-family.stories.tsx",
+      "knowledge-family.stories.tsx",
       "layout-family.stories.tsx",
-      "monitor-family.stories.tsx"
+      "log-family.stories.tsx",
+      "mlops-dataset-family.stories.tsx",
+      "mlops-family.stories.tsx",
+      "monitor-dashboard-widgets-family.stories.tsx",
+      "monitor-family.stories.tsx",
+      "node-manager-family.stories.tsx",
+      "ops-analysis-data-source-family.stories.tsx",
+      "ops-analysis-unified-filter-family.stories.tsx",
+      "ops-analysis-view-toolbar-family.stories.tsx",
+      "opspilot-cards-family.stories.tsx",
+      "opspilot-family.stories.tsx",
+      "opspilot-tool-editor-family.stories.tsx",
+      "security-family.stories.tsx",
+      "system-manager-application-menu-family.stories.tsx",
+      "system-manager-application-menu.fixtures.ts",
+      "system-manager-family.stories.tsx",
+      "system-manager-role-transfer-family.stories.tsx",
+      "system-manager-user-org-family.stories.tsx",
+      "system-manager-user-profile-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
@@ -2297,7 +2674,10 @@
     ],
     "stories": [
       "custom-reporting-family.stories.tsx",
-      "layout-family.stories.tsx"
+      "layout-family.stories.tsx",
+      "system-manager-application-menu-family.stories.tsx",
+      "system-manager-application-menu.fixtures.ts",
+      "system-manager-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "app-local",
@@ -2320,6 +2700,7 @@
       "opspilot"
     ],
     "stories": [
+      "opspilot-family.stories.tsx",
       "password.stories.tsx",
       "security-family.stories.tsx"
     ],
@@ -2352,7 +2733,17 @@
       "system-manager"
     ],
     "stories": [
-      "permission.stories.tsx"
+      "alarm-family.stories.tsx",
+      "data-display-family.stories.tsx",
+      "entity-list.stories.tsx",
+      "events-family.stories.tsx",
+      "integrations-family.stories.tsx",
+      "ops-analysis-view-toolbar-family.stories.tsx",
+      "opspilot-cards-family.stories.tsx",
+      "opspilot-family.stories.tsx",
+      "permission.stories.tsx",
+      "system-manager-family.stories.tsx",
+      "system-manager-user-org-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
@@ -2425,7 +2816,9 @@
     "directApps": [],
     "transitiveApps": [],
     "stories": [
-      "layout-family.stories.tsx"
+      "integrations-family.stories.tsx",
+      "layout-family.stories.tsx",
+      "monitor-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "story-only-review",
@@ -2449,8 +2842,14 @@
       "cmdb"
     ],
     "stories": [
+      "cmdb-family.stories.tsx",
+      "events-family.stories.tsx",
       "integrations-family.stories.tsx",
+      "layout-family.stories.tsx",
+      "mlops-family.stories.tsx",
       "monitor-family.stories.tsx",
+      "ops-analysis-settings-family.stories.tsx",
+      "system-manager-family.stories.tsx",
       "toolbar-family.stories.tsx"
     ],
     "reverseAppImports": [],
@@ -2468,6 +2867,7 @@
       "node-manager"
     ],
     "stories": [
+      "job-family.stories.tsx",
       "search-combination.stories.tsx",
       "toolbar-family.stories.tsx"
     ],
@@ -2536,6 +2936,7 @@
       "opspilot-tool-editor-family.stories.tsx",
       "security-family.stories.tsx",
       "system-manager-application-menu-family.stories.tsx",
+      "system-manager-application-menu.fixtures.ts",
       "system-manager-family.stories.tsx",
       "system-manager-role-transfer-family.stories.tsx",
       "system-manager-user-org-family.stories.tsx",
@@ -2552,9 +2953,13 @@
       "layout.tsx"
     ],
     "stories": [
+      "layout-family.stories.tsx",
       "security-family.stories.tsx",
       "security-password.fixtures.tsx",
-      "system-manager-user-org-family.stories.tsx"
+      "system-manager-family.stories.tsx",
+      "system-manager-user-org-family.stories.tsx",
+      "system-manager-user-profile-family.stories.tsx",
+      "top-menu.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "app-local",
@@ -2565,6 +2970,7 @@
     "directApps": [],
     "transitiveApps": [],
     "stories": [
+      "events-family.stories.tsx",
       "selection-family.stories.tsx"
     ],
     "reverseAppImports": [],
@@ -2590,6 +2996,7 @@
     ],
     "stories": [
       "feedback-family.stories.tsx",
+      "job-family.stories.tsx",
       "selection-family.stories.tsx"
     ],
     "reverseAppImports": [],
@@ -2603,8 +3010,19 @@
       "job"
     ],
     "stories": [
+      "cmdb-family.stories.tsx",
+      "custom-reporting-family.stories.tsx",
       "data-display-family.stories.tsx",
-      "integrations-family.stories.tsx"
+      "integrations-family.stories.tsx",
+      "job-family.stories.tsx",
+      "log-analysis-widgets-family.stories.tsx",
+      "mlops-family.stories.tsx",
+      "monitor-family.stories.tsx",
+      "node-manager-family.stories.tsx",
+      "ops-analysis-data-source-family.stories.tsx",
+      "ops-analysis-unified-filter-family.stories.tsx",
+      "opspilot-cards-family.stories.tsx",
+      "opspilot-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "app-local",
@@ -2619,7 +3037,13 @@
       "opspilot"
     ],
     "stories": [
-      "forms-upload-family.stories.tsx"
+      "forms-upload-family.stories.tsx",
+      "integration-auth.fixtures.ts",
+      "integrations-family.stories.tsx",
+      "job-family.stories.tsx",
+      "node-manager-family.stories.tsx",
+      "ops-analysis-settings-family.stories.tsx",
+      "opspilot-tool-editor-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
@@ -2644,6 +3068,7 @@
     "directApps": [],
     "transitiveApps": [],
     "stories": [
+      "cmdb-family.stories.tsx",
       "data-display-family.stories.tsx"
     ],
     "reverseAppImports": [],
@@ -2656,7 +3081,9 @@
     "transitiveApps": [],
     "stories": [
       "data-display-family.stories.tsx",
-      "integrations-family.stories.tsx"
+      "integrations-family.stories.tsx",
+      "ops-analysis-view-toolbar-family.stories.tsx",
+      "system-manager-user-org-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "story-only-review",
@@ -2707,7 +3134,18 @@
       "job"
     ],
     "stories": [
-      "data-display-family.stories.tsx"
+      "cmdb-family.stories.tsx",
+      "custom-reporting-family.stories.tsx",
+      "data-display-family.stories.tsx",
+      "job-family.stories.tsx",
+      "log-analysis-widgets-family.stories.tsx",
+      "mlops-family.stories.tsx",
+      "monitor-family.stories.tsx",
+      "node-manager-family.stories.tsx",
+      "ops-analysis-data-source-family.stories.tsx",
+      "ops-analysis-unified-filter-family.stories.tsx",
+      "opspilot-cards-family.stories.tsx",
+      "opspilot-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "app-local",
@@ -2718,6 +3156,7 @@
     "directApps": [],
     "transitiveApps": [],
     "stories": [
+      "k8s-family.stories.tsx",
       "navigation-family.stories.tsx"
     ],
     "reverseAppImports": [],
@@ -2734,7 +3173,11 @@
     ],
     "stories": [
       "cmdb-family.stories.tsx",
-      "data-display-family.stories.tsx"
+      "data-display-family.stories.tsx",
+      "ops-analysis-data-source-family.stories.tsx",
+      "ops-analysis-unified-filter-family.stories.tsx",
+      "ops-analysis-widgets-family.stories.tsx",
+      "opspilot-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "app-local",
@@ -2840,7 +3283,9 @@
     "directApps": [],
     "transitiveApps": [],
     "stories": [
-      "system-manager-application-menu-family.stories.tsx"
+      "system-manager-application-menu-family.stories.tsx",
+      "system-manager-application-menu.fixtures.ts",
+      "system-manager-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "story-only-review",
@@ -2863,7 +3308,8 @@
     "transitiveApps": [],
     "stories": [
       "system-manager-family.stories.tsx",
-      "system-manager-role-transfer-family.stories.tsx"
+      "system-manager-role-transfer-family.stories.tsx",
+      "system-manager-user-org-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "story-only-review",
@@ -2874,7 +3320,9 @@
     "directApps": [],
     "transitiveApps": [],
     "stories": [
-      "system-manager-role-transfer-family.stories.tsx"
+      "system-manager-family.stories.tsx",
+      "system-manager-role-transfer-family.stories.tsx",
+      "system-manager-user-org-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "story-only-review",
@@ -2896,6 +3344,7 @@
     "directApps": [],
     "transitiveApps": [],
     "stories": [
+      "custom-reporting-family.stories.tsx",
       "data-display-family.stories.tsx"
     ],
     "reverseAppImports": [],
@@ -2909,7 +3358,12 @@
       "layout.tsx"
     ],
     "stories": [
-      "theme.stories.tsx"
+      "layout-family.stories.tsx",
+      "system-manager-family.stories.tsx",
+      "system-manager-user-profile-family.stories.tsx",
+      "theme.stories.tsx",
+      "top-menu.stories.tsx",
+      "user-info.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "app-local",
@@ -2934,9 +3388,14 @@
       "system-manager"
     ],
     "stories": [
+      "charts-family.stories.tsx",
       "events-family.stories.tsx",
       "integrations-family.stories.tsx",
       "layout-family.stories.tsx",
+      "monitor-dashboard-widgets-family.stories.tsx",
+      "monitor-family.stories.tsx",
+      "ops-analysis-data-source-family.stories.tsx",
+      "ops-analysis-unified-filter-family.stories.tsx",
       "system-manager-family.stories.tsx",
       "time-selector.stories.tsx",
       "toolbar-family.stories.tsx"
@@ -2952,7 +3411,8 @@
       "monitor"
     ],
     "stories": [
-      "charts-family.stories.tsx"
+      "charts-family.stories.tsx",
+      "monitor-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "app-local",
@@ -2974,7 +3434,8 @@
     "directApps": [],
     "transitiveApps": [],
     "stories": [
-      "charts-family.stories.tsx"
+      "charts-family.stories.tsx",
+      "log-analysis-widgets-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "story-only-review",
@@ -2987,6 +3448,15 @@
       "cmdb"
     ],
     "stories": [
+      "cmdb-family.stories.tsx",
+      "events-family.stories.tsx",
+      "integrations-family.stories.tsx",
+      "job-family.stories.tsx",
+      "layout-family.stories.tsx",
+      "mlops-family.stories.tsx",
+      "monitor-family.stories.tsx",
+      "ops-analysis-settings-family.stories.tsx",
+      "system-manager-family.stories.tsx",
       "toolbar-family.stories.tsx"
     ],
     "reverseAppImports": [],
@@ -3024,8 +3494,10 @@
       "system-manager"
     ],
     "stories": [
+      "integrations-family.stories.tsx",
       "layout-family.stories.tsx",
       "node-manager-family.stories.tsx",
+      "ops-analysis-settings-family.stories.tsx",
       "opspilot-family.stories.tsx",
       "top-section.stories.tsx"
     ],
@@ -3038,6 +3510,9 @@
     "directApps": [],
     "transitiveApps": [],
     "stories": [
+      "integrations-family.stories.tsx",
+      "layout-family.stories.tsx",
+      "monitor-family.stories.tsx",
       "navigation-family.stories.tsx"
     ],
     "reverseAppImports": [],
@@ -3049,7 +3524,9 @@
     "directApps": [],
     "transitiveApps": [],
     "stories": [
-      "layout-family.stories.tsx"
+      "integrations-family.stories.tsx",
+      "layout-family.stories.tsx",
+      "monitor-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "story-only-review",
@@ -3064,7 +3541,9 @@
       "alarm"
     ],
     "stories": [
-      "content-family.stories.tsx"
+      "content-family.stories.tsx",
+      "integrations-family.stories.tsx",
+      "k8s-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "app-local",
@@ -3079,7 +3558,15 @@
       "opspilot"
     ],
     "stories": [
-      "forms-upload-family.stories.tsx"
+      "forms-upload-family.stories.tsx",
+      "integration-auth.fixtures.ts",
+      "integrations-family.stories.tsx",
+      "job-family.stories.tsx",
+      "mlops-dataset-family.stories.tsx",
+      "mlops-family.stories.tsx",
+      "node-manager-family.stories.tsx",
+      "ops-analysis-settings-family.stories.tsx",
+      "opspilot-tool-editor-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
@@ -3110,6 +3597,10 @@
       "layout.tsx"
     ],
     "stories": [
+      "layout-family.stories.tsx",
+      "system-manager-family.stories.tsx",
+      "system-manager-user-profile-family.stories.tsx",
+      "top-menu.stories.tsx",
       "user-info.stories.tsx"
     ],
     "reverseAppImports": [
@@ -3124,7 +3615,12 @@
     "transitiveApps": [
       "layout.tsx"
     ],
-    "stories": [],
+    "stories": [
+      "layout-family.stories.tsx",
+      "system-manager-family.stories.tsx",
+      "system-manager-user-profile-family.stories.tsx",
+      "top-menu.stories.tsx"
+    ],
     "reverseAppImports": [],
     "classification": "app-local",
     "reason": "consumed by only layout.tsx"
@@ -3134,7 +3630,8 @@
     "directApps": [],
     "transitiveApps": [],
     "stories": [
-      "data-display-family.stories.tsx"
+      "data-display-family.stories.tsx",
+      "job-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "story-only-review",

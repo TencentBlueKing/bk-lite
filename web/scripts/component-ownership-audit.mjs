@@ -122,6 +122,7 @@ export const auditComponentOwnership = async ({ rootDir, primitiveAllowlist = {}
   }
 
   const transitiveApps = new Map([...directApps].map(([name, apps]) => [name, new Set(apps)]));
+  const transitiveStories = new Map([...stories].map(([name, files]) => [name, new Set(files)]));
   let changed = true;
   while (changed) {
     changed = false;
@@ -133,6 +134,12 @@ export const auditComponentOwnership = async ({ rootDir, primitiveAllowlist = {}
             changed = true;
           }
         }
+        for (const story of transitiveStories.get(consumer)) {
+          if (!transitiveStories.get(dependency).has(story)) {
+            transitiveStories.get(dependency).add(story);
+            changed = true;
+          }
+        }
       }
     }
   }
@@ -140,7 +147,7 @@ export const auditComponentOwnership = async ({ rootDir, primitiveAllowlist = {}
   return components.map((component) => {
     const direct = [...directApps.get(component)].sort();
     const transitive = [...transitiveApps.get(component)].sort();
-    const storyFiles = [...stories.get(component)].sort();
+    const storyFiles = [...transitiveStories.get(component)].sort();
     const reverse = [...reverseApps.get(component)].sort();
     let classification;
     let reason;
