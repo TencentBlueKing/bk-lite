@@ -66,6 +66,7 @@ class TestPureHelpers:
 
     def test_collect_status_to_text(self):
         assert S._collect_status_to_text(CollectRunStatusType.SUCCESS) == "success"
+        assert S._collect_status_to_text(CollectRunStatusType.PARTIAL_SUCCESS) == "partial_success"
         assert S._collect_status_to_text(CollectRunStatusType.ERROR) == "error"
         assert S._collect_status_to_text(999) == "unknown"
 

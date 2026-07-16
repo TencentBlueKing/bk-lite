@@ -694,8 +694,7 @@
             "runStatus": "Latest Run Status",
             "todoNotice": "This run has {count} item(s) requiring attention. Use the status and stable error code for troubleshooting.",
             "health": {
-                "reconciling": "Node Management sync configuration is reconciling. Refresh again shortly.",
-                "nextRetryAt": "Next retry at: {time}"
+                "reconciling": "Node Management sync configuration is reconciling. Refresh again shortly."
             },
             "status": {
                 "waitingSync": "Collection will start after the first sync completes",

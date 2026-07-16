@@ -16,6 +16,7 @@ import type {
 import {
   NODE_MGMT_SYNC_STATUS_BADGE,
   createNodeMgmtSyncRequestGuard,
+  getNodeMgmtSyncDisplayEmptyStateKey,
   getNodeMgmtSyncEmptyStateKey,
   getNodeMgmtSyncReasonTextKey,
   getNodeMgmtSyncStatusTextKey,
@@ -145,7 +146,6 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
     || task?.health?.reason_code
     || task?.reconcile_error_code
     || '';
-  const nextRetryAt = syncRun?.next_retry_at || displayPayload?.next_retry_at || task?.health?.next_retry_at;
   const detail = displayPayload?.detail;
   const displayMessage: CollectTaskMessage = displayPayload?.message || syncRun?.message || {
     all: 0,
@@ -190,12 +190,14 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
     }
     return null;
   }, [loadFailed, normalizedRunStatus.isUnknown, reasonCode, runStatus, task]);
-  const emptyStateKey = getNodeMgmtSyncEmptyStateKey({
-    status: runStatus,
-    reasonCode,
-    total: displayMessage.all || 0,
-    loadFailed,
-  });
+  const emptyStateKey = displayPayload
+    ? getNodeMgmtSyncDisplayEmptyStateKey(displayPayload, loadFailed)
+    : getNodeMgmtSyncEmptyStateKey({
+      status: runStatus,
+      reasonCode,
+      total: displayMessage.all || 0,
+      loadFailed,
+    });
   useEffect(() => {
     const tabOrder = ['add', 'update', 'delete', 'relation', 'raw_data'] as const;
     const firstWithData = tabOrder.find((key) => (detail?.[key]?.count || 0) > 0);
@@ -343,7 +345,6 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
             <Alert
               type={healthAlert.type}
               message={t(healthAlert.textKey)}
-              description={nextRetryAt ? t('Collection.nodeMgmtSync.health.nextRetryAt', undefined, { time: nextRetryAt }) : undefined}
               showIcon
             />
           ) : null}

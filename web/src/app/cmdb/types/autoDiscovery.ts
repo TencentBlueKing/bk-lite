@@ -206,7 +206,6 @@ export interface NodeMgmtSyncHealth {
   last_reconciled_at: string | null;
   reason_code: string;
   message: string;
-  next_retry_at?: string | null;
 }
 
 export interface NodeMgmtSyncTask {
@@ -263,7 +262,6 @@ export interface NodeMgmtSyncRun {
   submitted_at?: string | null;
   finished_at: string | null;
   deadline_at?: string | null;
-  next_retry_at?: string | null;
   message: CollectTaskMessage;
   summary: NodeMgmtSyncSummary;
   detail: NodeMgmtSyncDetailData;
@@ -278,5 +276,4 @@ export interface NodeMgmtSyncDisplayPayload {
   summary: NodeMgmtSyncSummary;
   detail: NodeMgmtSyncDetailData;
   run: NodeMgmtSyncRun;
-  next_retry_at?: string | null;
 }

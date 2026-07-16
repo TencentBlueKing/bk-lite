@@ -1346,6 +1346,7 @@ class NodeMgmtSyncService:
             CollectRunStatusType.NOT_START: "unexecuted",
             CollectRunStatusType.RUNNING: "running",
             CollectRunStatusType.SUCCESS: "success",
+            CollectRunStatusType.PARTIAL_SUCCESS: "partial_success",
             CollectRunStatusType.ERROR: "error",
             CollectRunStatusType.TIME_OUT: "timeout",
             CollectRunStatusType.WRITING: "writing",
@@ -1887,15 +1888,21 @@ class NodeMgmtSyncService:
             )
             return run
 
-        reason_code = (
-            "COLLECT_ALREADY_RUNNING"
-            if detail["failed"]
-            and all(
-                item.get("reason_code") == "COLLECT_ALREADY_RUNNING"
-                for item in detail["failed"]
+        blocked_reason_codes = list(
+            run.region_states.exclude(reason_code="").values_list(
+                "reason_code", flat=True
             )
-            else "COLLECT_SUBMISSION_BLOCKED"
         )
+        if blocked_reason_codes and all(
+            reason == "NO_ACCESS_POINT" for reason in blocked_reason_codes
+        ):
+            reason_code = "NO_ACCESS_POINT"
+        elif blocked_reason_codes and all(
+            reason == "COLLECT_ALREADY_RUNNING" for reason in blocked_reason_codes
+        ):
+            reason_code = "COLLECT_ALREADY_RUNNING"
+        else:
+            reason_code = "COLLECT_SUBMISSION_BLOCKED"
         cls.finish_run(
             run,
             status=NodeMgmtSyncRun.STATUS_BLOCKED,

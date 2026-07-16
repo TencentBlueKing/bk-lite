@@ -99,6 +99,39 @@ def test_rejected_child_submission_is_blocked_not_success(config):
     assert state.child_execution_id == ""
 
 
+def test_all_regions_without_access_points_aggregate_parent_reason(config):
+    _successful_sync(config)
+    first = _collect_task(7)
+    second = _collect_task(8)
+    CollectModels.objects.filter(pk__in=[first.pk, second.pk]).update(access_point=[])
+
+    run = NodeMgmtSyncService.execute_collect(operator="system")
+
+    assert run.status == NodeMgmtSyncRun.STATUS_BLOCKED
+    assert run.reason_code == "NO_ACCESS_POINT"
+    assert set(run.region_states.values_list("reason_code", flat=True)) == {"NO_ACCESS_POINT"}
+    assert NodeMgmtSyncService.serialize_run(run)["reason_code"] == "NO_ACCESS_POINT"
+
+
+def test_mixed_blocked_regions_use_generic_parent_reason(config):
+    _successful_sync(config)
+    no_access_point = _collect_task(7)
+    no_access_point.access_point = []
+    no_access_point.save(update_fields=["access_point", "updated_at"])
+    invalid = _collect_task(8)
+    invalid.system_code = f"{NodeMgmtSyncService.SYSTEM_TASK_PREFIX}bad"
+    invalid.save(update_fields=["system_code", "updated_at"])
+
+    run = NodeMgmtSyncService.execute_collect(operator="system")
+
+    assert run.status == NodeMgmtSyncRun.STATUS_BLOCKED
+    assert run.reason_code == "COLLECT_SUBMISSION_BLOCKED"
+    assert set(run.region_states.values_list("reason_code", flat=True)) == {
+        "INVALID_REGION_CODE",
+        "NO_ACCESS_POINT",
+    }
+
+
 def test_accepted_child_makes_parent_submitted_not_success(config):
     _successful_sync(config)
     collect_task = _collect_task(7)

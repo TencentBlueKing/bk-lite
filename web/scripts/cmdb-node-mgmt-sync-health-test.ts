@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import {
   NODE_MGMT_SYNC_STATUS_BADGE,
   createNodeMgmtSyncRequestGuard,
+  getNodeMgmtSyncDisplayEmptyStateKey,
   getNodeMgmtSyncEmptyStateKey,
   normalizeNodeMgmtSyncStatus,
 } from '../src/app/cmdb/(pages)/assetManage/autoDiscovery/collection/profess/components/nodeMgmtSyncViewModel';
@@ -17,7 +18,6 @@ const normalizedStatuses = {
   blocked: 'blocked',
   failed: 'failed',
   timeout: 'timeout',
-  unexecuted: 'submitted',
   error: 'failed',
   writing: 'running',
   force_stop: 'blocked',
@@ -30,7 +30,7 @@ for (const [raw, expected] of Object.entries(normalizedStatuses)) {
   assert.ok(result.status && NODE_MGMT_SYNC_STATUS_BADGE[result.status]);
 }
 
-for (const raw of ['unknown', 'future_backend_status', 42]) {
+for (const raw of ['unknown', 'future_backend_status', 'unexecuted', 42]) {
   const result = normalizeNodeMgmtSyncStatus(raw);
   assert.equal(result.status, 'blocked');
   assert.equal(result.isUnknown, true);
@@ -45,6 +45,15 @@ assert.equal(
 assert.equal(
   getNodeMgmtSyncEmptyStateKey({ status: 'partial_success', reasonCode: '', total: 0 }),
   'Collection.nodeMgmtSync.empty.partialFailure'
+);
+assert.equal(
+  getNodeMgmtSyncDisplayEmptyStateKey({
+    message: { all: 0 },
+    run: { status: 'blocked', reason_code: 'NO_ACCESS_POINT' },
+    task: { health: { reason_code: '' } },
+  }),
+  'Collection.nodeMgmtSync.empty.noAccessPoint',
+  '真实展示 payload 的父任务 NO_ACCESS_POINT 必须进入专用空态'
 );
 
 interface Deferred<T> {

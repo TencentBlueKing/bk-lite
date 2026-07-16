@@ -25,7 +25,6 @@ const STATUS_TEXT_KEYS: Record<NodeMgmtSyncStatus, string> = {
 };
 
 const LEGACY_STATUS_MAP: Record<string, NodeMgmtSyncStatus> = {
-  unexecuted: 'submitted',
   error: 'failed',
   writing: 'running',
   force_stop: 'blocked',
@@ -111,6 +110,23 @@ export const getNodeMgmtSyncEmptyStateKey = ({
     return 'Collection.nodeMgmtSync.empty.noNodes';
   }
   return 'Collection.nodeMgmtSync.empty.noData';
+};
+
+export const getNodeMgmtSyncDisplayEmptyStateKey = (
+  payload: {
+    message?: { all?: number };
+    run?: { status?: unknown; reason_code?: string };
+    task?: { health?: { reason_code?: string } };
+  },
+  loadFailed = false
+) => {
+  const normalizedStatus = normalizeNodeMgmtSyncStatus(payload.run?.status);
+  return getNodeMgmtSyncEmptyStateKey({
+    status: normalizedStatus.status,
+    reasonCode: payload.run?.reason_code || payload.task?.health?.reason_code,
+    total: payload.message?.all || 0,
+    loadFailed,
+  });
 };
 
 export interface NodeMgmtSyncGuardToken {

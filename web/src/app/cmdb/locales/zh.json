@@ -714,8 +714,7 @@
             "runStatus": "最近运行状态",
             "todoNotice": "本次运行有 {count} 项需要关注，请根据状态和稳定错误码排查。",
             "health": {
-                "reconciling": "节点管理同步配置正在对账，请稍候刷新。",
-                "nextRetryAt": "预计下次重试时间：{time}"
+                "reconciling": "节点管理同步配置正在对账，请稍候刷新。"
             },
             "status": {
                 "waitingSync": "等待首次同步完成后开始采集",
