@@ -17,3 +17,11 @@
 - 覆盖率：coverage JSON 与 `git diff --unified=0` 交叉核验，生产新增可执行行 35/35，增量覆盖率 100%；service 全文件为 70%。
 - 静态检查：`py_compile`、`isort --check-only`、`git diff --check` 通过，新增行 flake8 命中 0。
 - 已知基线：整文件 black 会格式化三个历史文件；flake8 仅报告 service 既有 E125 与 resilience 既有 E501，未做超范围格式化。
+
+## Important 审查修复
+
+- RED：12 类畸形响应均未按稳定协议错误拒绝，其中 `nodes=None` 还泄漏为裸 `TypeError`；合法合同用例通过。
+- 响应现集中要求字典同时包含 `count` 与 `nodes`：`count` 必须是非负且非 `bool` 的整数，`nodes` 必须是列表。
+- 缺字段、非法类型、负数及计划示例 `{"result": true, "data": {"items": []}}` 均抛 `NODE_QUERY_FAILED: invalid_response`，日志不包含原始响应。
+- Important 最终回归：Task 4 聚焦、helpers/resilience、NodeService fail-close、Task 2/3 共 131 passed。
+- Important 增量覆盖率：生产新增可执行行 9/9，100%；`isort`、`py_compile`、`git diff --check` 通过，新增行 flake8 命中 0。

@@ -480,15 +480,19 @@ class NodeMgmtSyncService:
     @classmethod
     def _raise_for_node_response(cls, response: Any) -> None:
         if isinstance(response, dict) and response.get("result") is False:
-            logger.error(
-                "[NodeMgmtSync] 节点查询失败 code=NODE_QUERY_FAILED, error_type=remote_rejected"
-            )
-            raise NodeMgmtSyncError("NODE_QUERY_FAILED: remote_rejected")
-        if not isinstance(response, (dict, list)):
-            logger.error(
-                "[NodeMgmtSync] 节点查询失败 code=NODE_QUERY_FAILED, error_type=invalid_response"
-            )
-            raise NodeMgmtSyncError("NODE_QUERY_FAILED: invalid_response")
+            error_type = "remote_rejected"
+        else:
+            count = response.get("count") if isinstance(response, dict) else None
+            nodes = response.get("nodes") if isinstance(response, dict) else None
+            is_valid_count = type(count) is int and count >= 0
+            if is_valid_count and isinstance(nodes, list):
+                return
+            error_type = "invalid_response"
+        logger.error(
+            "[NodeMgmtSync] 节点查询失败 code=NODE_QUERY_FAILED, error_type=%s",
+            error_type,
+        )
+        raise NodeMgmtSyncError(f"NODE_QUERY_FAILED: {error_type}")
 
     @classmethod
     def _fetch_node_mgmt_pages(

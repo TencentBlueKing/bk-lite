@@ -291,6 +291,40 @@ class TestRpcWrappers:
 
         assert "raw-sensitive-value" not in caplog.text
 
+    @pytest.mark.parametrize(
+        "response",
+        [
+            {},
+            {"count": 0},
+            {"nodes": []},
+            {"count": -1, "nodes": []},
+            {"count": True, "nodes": []},
+            {"count": 1.0, "nodes": []},
+            {"count": "1", "nodes": []},
+            {"count": 0, "nodes": None},
+            {"count": 0, "nodes": {}},
+            {"count": 0, "nodes": ()},
+            [],
+            {"result": True, "data": {"items": [], "count": 0}},
+        ],
+    )
+    def test_fetch_node_mgmt_pages_拒绝畸形真实响应合同(self, mocker, caplog, response):
+        rpc = mocker.MagicMock()
+        rpc.node_list.return_value = response
+        mocker.patch.object(S, "_node_mgmt_client", return_value=rpc)
+
+        with pytest.raises(RuntimeError, match="^NODE_QUERY_FAILED: invalid_response$"):
+            S._fetch_node_mgmt_pages({})
+
+        assert repr(response) not in caplog.text
+
+    def test_fetch_node_mgmt_pages_接受合法真实响应合同(self, mocker):
+        rpc = mocker.MagicMock()
+        rpc.node_list.return_value = {"count": 0, "nodes": []}
+        mocker.patch.object(S, "_node_mgmt_client", return_value=rpc)
+
+        assert S._fetch_node_mgmt_pages({}) == []
+
     def test_fetch_node_mgmt_pages_达到分页预算抛稳定错误码(self, mocker):
         rpc = mocker.MagicMock()
         rpc.node_list.return_value = {
@@ -316,7 +350,7 @@ class TestRpcWrappers:
     def test_pick_access_point_无容器节点返回None(self, mocker):
         rpc = mocker.MagicMock()
         rpc.cloud_region_list.return_value = [{"id": 1, "name": "华东"}]
-        rpc.node_list.return_value = {"nodes": []}
+        rpc.node_list.return_value = {"count": 0, "nodes": []}
         mocker.patch.object(S, "_node_mgmt_client", return_value=rpc)
         assert S._pick_access_point(1) is None
 
