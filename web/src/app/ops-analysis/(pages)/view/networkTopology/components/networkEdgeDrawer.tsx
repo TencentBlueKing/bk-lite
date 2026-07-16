@@ -1,19 +1,16 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Drawer, Button, Select, Space, Popconfirm, Tag, Empty, Spin } from 'antd';
+import { Drawer, Button, Select, Space, Popconfirm, Empty, Spin } from 'antd';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import type {
   NetworkInterfaceRef,
-  NetworkInterfaceRuntime,
   NetworkPortPair,
   NetworkTopologyLink,
   NetworkTopologyNode,
 } from '@/app/ops-analysis/types/networkTopology';
 import { useTranslation } from '@/utils/i18n';
-import { formatNetworkMetricValue } from '../utils/metricValueFormat';
 import {
   DEFAULT_LINK_INTERFACE_METRICS,
   PORT_VIEW_INTERFACE_METRIC_FIELDS,
-  normalizeInterfaceStatus,
   normalizeLinkInterfaceMetrics,
 } from '../utils/networkTopologyUtils';
 
@@ -24,14 +21,10 @@ export interface NetworkEdgeDrawerProps {
   targetNode: NetworkTopologyNode | null;
   sourceInterfaces: NetworkInterfaceRef[];
   targetInterfaces: NetworkInterfaceRef[];
-  linkRuntime?: {
-    status?: 'normal' | 'critical' | 'unknown';
-    interfaces?: NetworkInterfaceRuntime[];
-  };
   loading?: boolean;
   loadMessage?: string | null;
   readonly?: boolean;
-  /** initial port_pairs 来自父级。保存时回填到父级。 */
+  /** initial port_pairs 来自父级。保存时按接口对回填到父级。 */
   onCommit: (nextPortPairs: NetworkPortPair[], interfaceMetrics: string[]) => void;
   onClose: () => void;
   zIndex?: number;
@@ -62,11 +55,35 @@ const findInterface = (
 ): NetworkInterfaceRef | undefined =>
   list.find((item) => String(item.bk_inst_id) === String(instId));
 
+const drawerFooterStyle: React.CSSProperties = {
+  display: 'flex',
+  justifyContent: 'flex-end',
+};
+const drawerInfoCardStyle: React.CSSProperties = {
+  border: '1px solid var(--color-border-1,#dce5ed)',
+  borderRadius: 8,
+  overflow: 'hidden',
+  background: 'var(--color-bg-1,#fff)',
+  boxShadow: '0 1px 2px rgba(15, 23, 42, 0.04)',
+};
+const drawerPanelStyle: React.CSSProperties = {
+  padding: 12,
+  border: '1px solid var(--color-border-1,#dce5ed)',
+  borderRadius: 8,
+  background: 'var(--color-fill-1,#f8fafc)',
+};
+const drawerConfigRowStyle: React.CSSProperties = {
+  padding: 10,
+  border: '1px solid var(--color-border-1,#dce5ed)',
+  borderRadius: 8,
+  background: 'var(--color-bg-1,#fff)',
+  boxShadow: '0 1px 2px rgba(15, 23, 42, 0.04)',
+};
+
 /**
  * 连线配置 Drawer(design.md §7.5):
  * - 源/目标节点只读
- * - 端口对(source + target),至少 1 对
- * - 链路运行态摘要(基于 weops batch 接口的返回)
+ * - 接口对(source + target),至少 1 对
  * - 删除连线二次确认
  */
 const NetworkEdgeDrawer: React.FC<NetworkEdgeDrawerProps> = ({
@@ -76,7 +93,6 @@ const NetworkEdgeDrawer: React.FC<NetworkEdgeDrawerProps> = ({
   targetNode,
   sourceInterfaces,
   targetInterfaces,
-  linkRuntime,
   loading = false,
   readonly = false,
   onCommit,
@@ -144,7 +160,6 @@ const NetworkEdgeDrawer: React.FC<NetworkEdgeDrawerProps> = ({
     !loading &&
     draftPairs.length > 0 &&
     draftPairs.every((pair) => pair.source_interface.bk_inst_id && pair.target_interface.bk_inst_id);
-  const status = linkRuntime?.status ?? 'unknown';
 
   const updatePair = (index: number, partial: Partial<NetworkPortPair>) => {
     setDraftPairs((prev) =>
@@ -166,13 +181,6 @@ const NetworkEdgeDrawer: React.FC<NetworkEdgeDrawerProps> = ({
     setDraftPairs((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const statusLabelKey =
-    status === 'critical'
-      ? 'opsAnalysis.networkTopology.link.statusCritical'
-      : status === 'normal'
-        ? 'opsAnalysis.networkTopology.link.statusNormal'
-        : 'opsAnalysis.networkTopology.link.statusUnknown';
-
   const drawerTitle =
     sourceNode && targetNode
       ? t('opsAnalysis.networkTopology.link.drawerTitleWithNodes', undefined, {
@@ -187,25 +195,7 @@ const NetworkEdgeDrawer: React.FC<NetworkEdgeDrawerProps> = ({
         target: targetNode.bk_inst_name,
       })
       : t('opsAnalysis.networkTopology.link.detailTitle');
-  const statusTag = (
-    <Tag
-      color={status === 'critical' ? 'red' : status === 'normal' ? 'green' : 'default'}
-      data-testid="network-edge-drawer-status"
-    >
-      {t(statusLabelKey)}
-    </Tag>
-  );
   const infoRows = [
-    {
-      label: t('opsAnalysis.networkTopology.link.runtimeStatus'),
-      value: statusTag,
-    },
-    {
-      label: t('opsAnalysis.networkTopology.link.labelPairCount'),
-      value: t('opsAnalysis.networkTopology.link.pairCount', undefined, {
-        count: draftPairs.length,
-      }),
-    },
     {
       label: t('opsAnalysis.networkTopology.link.labelSourceNode'),
       value: sourceNode?.bk_inst_name ?? '--',
@@ -229,28 +219,25 @@ const NetworkEdgeDrawer: React.FC<NetworkEdgeDrawerProps> = ({
   ];
   const infoLabelStyle: React.CSSProperties = {
     padding: '9px 12px',
-    borderRight: '1px solid #e5e9ef',
-    borderBottom: '1px solid #e5e9ef',
-    background: '#f7f9fc',
-    color: '#5f7290',
+    borderRight: '1px solid var(--color-border-1,#e5e9ef)',
+    borderBottom: '1px solid var(--color-border-1,#e5e9ef)',
+    background: 'var(--color-fill-1,#f7f9fc)',
+    color: 'var(--color-text-3,#5f7290)',
     fontSize: 12,
+    lineHeight: '20px',
     width: 112,
   };
   const infoValueStyle: React.CSSProperties = {
-    padding: '9px 14px 9px 18px',
-    borderRight: '1px solid #e5e9ef',
-    borderBottom: '1px solid #e5e9ef',
-    color: '#1f2933',
+    padding: '9px 12px',
+    borderRight: '1px solid var(--color-border-1,#e5e9ef)',
+    borderBottom: '1px solid var(--color-border-1,#e5e9ef)',
+    color: 'var(--color-text-1,#1f2933)',
     fontSize: 12,
+    lineHeight: '20px',
     minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
   };
-  const portStatusColor = (value: ReturnType<typeof normalizeInterfaceStatus>) => {
-    if (value === 'up') return 'green';
-    if (value === 'down') return 'red';
-    if (value === 'testing') return 'blue';
-    return 'default';
-  };
-
   return (
     <Drawer
       open={open}
@@ -262,44 +249,39 @@ const NetworkEdgeDrawer: React.FC<NetworkEdgeDrawerProps> = ({
       data-testid={testId ?? 'network-edge-drawer'}
       footer={
         readonly ? (
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <div style={drawerFooterStyle}>
             <Button onClick={onClose}>{t('opsAnalysis.networkTopology.actions.close')}</Button>
           </div>
         ) : (
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <div style={drawerFooterStyle}>
             <Space>
-            <Button onClick={onClose}>{t('opsAnalysis.networkTopology.actions.cancel')}</Button>
-            <Button
-              type="primary"
-              disabled={readonly || loading || !canSave}
-              data-testid="network-edge-drawer-save"
-              onClick={() => {
-                onCommit(
-                  draftPairs
-                    .filter((p) => p.source_interface.bk_inst_id && p.target_interface.bk_inst_id)
-                    .map((p) => ({
-                      source_interface: { ...p.source_interface },
-                      target_interface: { ...p.target_interface },
-                    })),
-                  normalizeLinkInterfaceMetrics(draftInterfaceMetrics),
-                );
-                onClose();
-              }}
-            >
-              {t('opsAnalysis.networkTopology.actions.confirm')}
-            </Button>
+              <Button onClick={onClose}>{t('opsAnalysis.networkTopology.actions.cancel')}</Button>
+              <Button
+                type="primary"
+                disabled={readonly || loading || !canSave}
+                data-testid="network-edge-drawer-save"
+                onClick={() => {
+                  onCommit(
+                    draftPairs
+                      .filter((p) => p.source_interface.bk_inst_id && p.target_interface.bk_inst_id)
+                      .map((p) => ({
+                        source_interface: { ...p.source_interface },
+                        target_interface: { ...p.target_interface },
+                      })),
+                    normalizeLinkInterfaceMetrics(draftInterfaceMetrics),
+                  );
+                  onClose();
+                }}
+              >
+                {t('opsAnalysis.networkTopology.actions.confirm')}
+              </Button>
             </Space>
           </div>
         )
       }
     >
       <div
-        style={{
-          border: '1px solid #e0e7ee',
-          borderRadius: 8,
-          overflow: 'hidden',
-          background: '#fff',
-        }}
+        style={drawerInfoCardStyle}
       >
         <div
           style={{
@@ -318,14 +300,16 @@ const NetworkEdgeDrawer: React.FC<NetworkEdgeDrawerProps> = ({
 
       <Space direction="vertical" size={8} style={{ marginTop: 12, width: '100%' }}>
         <div
-          style={{
-            padding: 10,
-            border: '1px solid #e0e7ee',
-            borderRadius: 8,
-            background: '#f8fafb',
-          }}
+          style={drawerPanelStyle}
         >
-          <div style={{ marginBottom: 6, color: '#334250', fontSize: 13, fontWeight: 600 }}>
+          <div
+            style={{
+              marginBottom: 8,
+              color: 'var(--color-text-1,#1f2937)',
+              fontSize: 13,
+              fontWeight: 600,
+            }}
+          >
             {t('opsAnalysis.networkTopology.link.interfaceMetricsTitle')}
           </div>
           <Select
@@ -346,15 +330,13 @@ const NetworkEdgeDrawer: React.FC<NetworkEdgeDrawerProps> = ({
         {loading && (
           <div
             style={{
+              ...drawerPanelStyle,
               padding: '18px 12px',
-              border: '1px solid #e0e7ee',
-              borderRadius: 8,
-              background: '#f8fafb',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               gap: 8,
-              color: '#64748b',
+              color: 'var(--color-text-3,#64748b)',
             }}
             data-testid="network-edge-drawer-loading"
           >
@@ -372,18 +354,16 @@ const NetworkEdgeDrawer: React.FC<NetworkEdgeDrawerProps> = ({
           <div
             key={`pair-${index}`}
             style={{
-              padding: 10,
-              border: '1px solid #e0e7ee',
-              borderRadius: 8,
-              background: '#f8fafb',
-              display: 'flex',
+              ...drawerConfigRowStyle,
+              display: 'grid',
+              gridTemplateColumns: 'minmax(0, 1fr) 18px minmax(0, 1fr) 28px',
               gap: 8,
               alignItems: 'center',
             }}
             data-testid="network-edge-drawer-pair-row"
           >
             <Select
-              style={{ flex: 1 }}
+              style={{ width: '100%' }}
               placeholder={t('opsAnalysis.networkTopology.link.labelSourcePort')}
               options={interfaceOptions(sourceInterfaces)}
               getPopupContainer={(trigger) =>
@@ -397,9 +377,9 @@ const NetworkEdgeDrawer: React.FC<NetworkEdgeDrawerProps> = ({
               disabled={readonly || loading}
               data-testid={`network-edge-drawer-source-select-${index}`}
             />
-            <span style={{ color: '#94a3b8' }}>→</span>
+            <span style={{ color: 'var(--color-text-3,#94a3b8)' }}>→</span>
             <Select
-              style={{ flex: 1 }}
+              style={{ width: '100%' }}
               placeholder={t('opsAnalysis.networkTopology.link.labelTargetPort')}
               options={interfaceOptions(targetInterfaces)}
               getPopupContainer={(trigger) =>
@@ -431,7 +411,7 @@ const NetworkEdgeDrawer: React.FC<NetworkEdgeDrawerProps> = ({
         <Button
           icon={<PlusOutlined />}
           type="dashed"
-          style={{ marginTop: 12 }}
+          style={{ marginTop: 12, width: '100%' }}
           onClick={addPair}
           disabled={loading}
           data-testid="network-edge-drawer-add-pair"
@@ -440,130 +420,6 @@ const NetworkEdgeDrawer: React.FC<NetworkEdgeDrawerProps> = ({
         </Button>
       )}
 
-      {linkRuntime?.interfaces && linkRuntime.interfaces.length > 0 && (
-        <div
-          style={{
-            marginTop: 18,
-            padding: 12,
-            border: '1px solid #e0e7ee',
-            borderRadius: 8,
-            background: '#f8fafc',
-          }}
-          data-testid="network-edge-drawer-runtime"
-        >
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              marginBottom: 10,
-            }}
-          >
-            <strong style={{ fontSize: 13, color: '#1f2933' }}>
-              {t('opsAnalysis.networkTopology.link.runtimeSummary')}
-            </strong>
-            <span style={{ fontSize: 12, color: '#64748b' }}>
-              {t('opsAnalysis.networkTopology.link.interfaceCountShort', undefined, {
-                count: linkRuntime.interfaces.length,
-              })}
-            </span>
-          </div>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-              gap: 8,
-            }}
-          >
-            {linkRuntime.interfaces.map((iface, idx) => {
-              const admin = normalizeInterfaceStatus(iface.admin_status);
-              const oper = normalizeInterfaceStatus(iface.oper_status);
-              const name =
-                (iface as { interface_name?: string }).interface_name ??
-                iface.source_interface?.interface_name ??
-                '-';
-              return (
-                <div
-                  key={idx}
-                  style={{
-                    minWidth: 0,
-                    padding: '9px 10px',
-                    border: '1px solid #e0e7ee',
-                    borderRadius: 6,
-                    background: '#fff',
-                  }}
-                >
-                  <div
-                    style={{
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                      fontSize: 12,
-                      fontWeight: 600,
-                      color: '#1f2933',
-                    }}
-                    title={name}
-                  >
-                    {name}
-                  </div>
-                  <div
-                    style={{
-                      display: 'flex',
-                      flexWrap: 'wrap',
-                      gap: 6,
-                      marginTop: 7,
-                    }}
-                  >
-                    <Tag color={portStatusColor(admin)} style={{ marginInlineEnd: 0 }}>
-                      admin {admin}
-                    </Tag>
-                    <Tag color={portStatusColor(oper)} style={{ marginInlineEnd: 0 }}>
-                      oper {oper}
-                    </Tag>
-                  </div>
-                  {draftInterfaceMetrics.length > 0 && (
-                    <div style={{ marginTop: 8, display: 'grid', gap: 5 }}>
-                      {draftInterfaceMetrics.map((field) => {
-                        const metric = iface.metrics?.[field];
-                        const value =
-                          metric && metric.value !== null && metric.value !== undefined
-                            ? formatNetworkMetricValue(metric.value, metric.unit)
-                            : '--';
-                        return (
-                          <div
-                            key={field}
-                            style={{
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              gap: 10,
-                              fontSize: 12,
-                            }}
-                          >
-                            <span
-                              style={{
-                                minWidth: 0,
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                                color: '#64748b',
-                              }}
-                            >
-                              {metricLabels[field] ?? field}
-                            </span>
-                            <span style={{ flexShrink: 0, color: '#1f2933', fontWeight: 600 }}>
-                              {value}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
     </Drawer>
   );
 };

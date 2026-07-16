@@ -22,6 +22,7 @@ import {
   buildNetworkTopologyLinkTerminals,
   buildNetworkTopologyLinkRenderOptions,
   findNetworkTopologyMetricRuntime,
+  isNetworkTopologyLinkPendingInterfaceSelection,
   isMetricRuntimeLoading,
   nextSequentialId,
 } from "../utils/networkTopologyUtils";
@@ -46,7 +47,7 @@ export interface NetworkCanvasProps {
   fatalMessage?: string | null;
   /** 是否处于 stale(整画布运行态拉取失败但有上次缓存)。 */
   stale?: boolean;
-  /** 节点运行态(可来自 useNetworkRefresh)。 */
+  /** 节点运行态(逐节点查询后合并)。 */
   runtimeNodes?: ReadonlyArray<NetworkNodeRuntime>;
   /** 连线运行态(简化结构即可)。 */
   runtimeLinks?: ReadonlyArray<NetworkLinkRuntimeSummary>;
@@ -231,6 +232,7 @@ const buildNodeAttrs = (
   node: NetworkTopologyNode,
   runtime: NetworkNodeRuntime | undefined,
   t: CanvasT,
+  editMode = false,
 ) => {
   const nodeHeight = getNetworkNodeHeight(node);
   const runtimeMetrics = runtime?.metrics ?? [];
@@ -397,7 +399,11 @@ const buildNodeAttrs = (
           ? t("opsAnalysis.networkTopology.nodeShape.metricCount", undefined, {
             count: node.metrics.length,
           })
-          : t("opsAnalysis.networkTopology.nodeShape.clickHint"),
+          : t(
+            editMode
+              ? "opsAnalysis.networkTopology.nodeShape.editHint"
+              : "opsAnalysis.networkTopology.nodeShape.clickHint",
+          ),
       fill: "#536270",
       fontSize: 11,
       textAnchor: "start",
@@ -545,6 +551,7 @@ const registerNetworkNodeShapeOnce = () => {
         },
         undefined,
         noopT,
+        false,
       ),
     },
     true,
@@ -570,6 +577,19 @@ const lineAttrsFromStatus = (
     size: 8,
   },
 });
+
+const pendingInterfaceSelectionLineAttrs = () => ({
+  ...lineAttrsFromStatus("unknown"),
+  strokeDasharray: "6 4",
+});
+
+const lineAttrsForLinkRuntime = (
+  link: NetworkTopologyLink,
+  runtimeItem?: NetworkLinkRuntimeSummary,
+) =>
+  isNetworkTopologyLinkPendingInterfaceSelection(link)
+    ? pendingInterfaceSelectionLineAttrs()
+    : lineAttrsFromStatus(runtimeItem?.status);
 
 const terminalPortId = (terminal: unknown): string | undefined => {
   const port = (terminal as { port?: unknown } | null)?.port;
@@ -706,7 +726,7 @@ const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
             zIndex: 1,
             width: NETWORK_NODE_WIDTH,
             height: nodeHeight,
-            attrs: buildNodeAttrs(node, runtimeItem, t),
+            attrs: buildNodeAttrs(node, runtimeItem, t, editModeRef.current),
             data: {
               node,
               shapeVersion: NETWORK_NODE_SHAPE_VERSION,
@@ -735,9 +755,12 @@ const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
           },
           { overwrite: true },
         );
-        (cell as X6Cell).setAttrs(buildNodeAttrs(node, runtimeItem, t), {
-          overwrite: true,
-        });
+        (cell as X6Cell).setAttrs(
+          buildNodeAttrs(node, runtimeItem, t, editModeRef.current),
+          {
+            overwrite: true,
+          },
+        );
         syncNodePorts(cell as X6Node, editModeRef.current);
         existing.delete(node.id);
         return;
@@ -750,7 +773,7 @@ const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
         zIndex: 1,
         width: NETWORK_NODE_WIDTH,
         height: nodeHeight,
-        attrs: buildNodeAttrs(node, runtimeItem, t),
+        attrs: buildNodeAttrs(node, runtimeItem, t, editModeRef.current),
         data: {
           node,
           shapeVersion: NETWORK_NODE_SHAPE_VERSION,
@@ -788,7 +811,7 @@ const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
           { ...(data ?? {}), link, runtime: runtimeItem },
           { overwrite: false },
         );
-        (cell as X6Cell).setAttrs({ line: lineAttrsFromStatus(runtimeItem?.status) });
+        (cell as X6Cell).setAttrs({ line: lineAttrsForLinkRuntime(link, runtimeItem) });
         edge.setConnector(renderOptions.connector);
         edge.removeRouter();
         const nextVertices = renderOptions.vertices;
@@ -821,7 +844,7 @@ const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
         connector: renderOptions.connector,
         zIndex: 0,
         attrs: {
-          line: lineAttrsFromStatus(runtimeItem?.status),
+          line: lineAttrsForLinkRuntime(link, runtimeItem),
         },
         data: { link, runtime: runtimeItem },
       });
@@ -1054,7 +1077,7 @@ const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
       }
       suppressSelectionBriefly(600);
       edge.prop("id", result.linkId);
-      edge.setAttrs({ line: { stroke: "#16a34a", strokeWidth: 2 } });
+      edge.setAttrs({ line: pendingInterfaceSelectionLineAttrs() });
       syncEdgeTools(edge as X6Edge, true);
     });
     graph.on("edge:change:vertices", ({ edge }) => {
@@ -1187,9 +1210,18 @@ const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
     const graph = graphRef.current;
     if (!graph) return;
     graph.getNodes().forEach((node) => {
+      const data = (node as X6Cell).getData() as
+        | { node?: NetworkTopologyNode; runtime?: NetworkNodeRuntime }
+        | undefined;
+      if (data?.node) {
+        (node as X6Cell).setAttrs(
+          buildNodeAttrs(data.node, data.runtime, t, editMode),
+          { overwrite: true },
+        );
+      }
       syncNodePorts(node as X6Node, editMode);
     });
-  }, [editMode]);
+  }, [editMode, t]);
 
   return (
     // 三层嵌套结构(对齐 topology/components/canvasShell.tsx 的高度链路):

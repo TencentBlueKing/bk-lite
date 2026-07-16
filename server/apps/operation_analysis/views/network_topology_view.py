@@ -11,9 +11,6 @@ Public endpoints (mounted under ``/api/network_topology/``):
 * ``DELETE /<id>/`` — remove canvas
 * ``POST /test_connection/`` — probe the WeOps API and surface
   ``weops_token_invalid`` (401/403) distinctly from transport errors.
-* ``GET  /<id>/runtime/`` — pull a fresh runtime payload (node colors +
-  link status) from WeOps. Upstream errors fail fast; the frontend may keep
-  its previous in-memory runtime for display continuity.
 * ``PUT  /<id>/config/`` — replace ``view_sets`` JSON.
 * ``DELETE /<id>/config/nodes/<node_id>/`` — cascade remove a node.
 * ``GET  /<id>/weops/node_models/`` — proxy: list WeOps device models.
@@ -174,20 +171,6 @@ class NetworkTopologyViewSet(ModelViewSet):
             return self._adapter_error_response(exc)
         return Response({"status": "ok"})
 
-    @action(detail=True, methods=["get"], url_path="runtime")
-    def runtime(self, request, pk: str | None = None):
-        """每次都重新请求 WeOps,不读取/写入 last_runtime_cache(spec §7.6)。"""
-        topology = self.get_object()
-        adapter = _adapter_for(topology)
-        try:
-            payload = NetworkTopologyRuntimeService.build_runtime(topology, adapter)
-        except WeOpsTopologyAdapterError as exc:
-            return self._adapter_error_response(exc)
-        # `build_runtime` wraps its result in ``{"result": True, "data": ...}``
-        # for internal callers; the HTTP API only cares about ``data``.
-        data = payload.get("data", payload) if isinstance(payload, dict) else payload
-        return Response(data)
-
     @action(detail=True, methods=["get", "put"], url_path="config")
     def config(self, request, pk: str | None = None):
         """Read or replace the canvas ``view_sets`` JSON.
@@ -322,15 +305,38 @@ class NetworkTopologyViewSet(ModelViewSet):
     def weops_metric_values(self, request, pk: str | None = None):
         """Proxy: query current metric values for draft node metric config.
 
-        The normal runtime endpoint reads persisted ``view_sets``. The editor
-        drawer needs a lighter request boundary so a newly selected metric can
-        show its current value before the whole canvas is saved.
+        整图 runtime 接口已废弃。编辑器按节点批量查询当前值,
+        使新选指标在保存整个画布前即可展示。
         """
         payload = request.data or {}
         items = payload.get("items") or []
         if not isinstance(items, list):
             raise DRFValidationError({"items": ["items 必须是数组"]})
         return self._run_weops_call(pk, lambda adapter: adapter.batch_metric_values(items))
+
+    @action(detail=True, methods=["post"], url_path=r"weops/link_runtime")
+    def weops_link_runtime(self, request, pk: str | None = None):
+        """Query runtime for one edited link without running full canvas refresh."""
+        topology = self.get_object()
+        payload = request.data or {}
+        link_payload = payload.get("link") or {}
+        nodes_payload = payload.get("nodes")
+        if not isinstance(link_payload, dict) or not link_payload:
+            raise DRFValidationError({"link": ["link 必须是对象"]})
+        if nodes_payload is not None and not isinstance(nodes_payload, list):
+            raise DRFValidationError({"nodes": ["nodes 必须是数组"]})
+        adapter = _adapter_for(topology)
+        try:
+            response = NetworkTopologyRuntimeService.build_link_runtime_preview(
+                topology,
+                adapter,
+                link_payload,
+                nodes_payload=nodes_payload,
+            )
+        except WeOpsTopologyAdapterError as exc:
+            return self._adapter_error_response(exc)
+        data = response.get("data", response) if isinstance(response, dict) else response
+        return Response(data)
 
     @staticmethod
     def _decode_node_ref(node_ref: str | None) -> dict | None:

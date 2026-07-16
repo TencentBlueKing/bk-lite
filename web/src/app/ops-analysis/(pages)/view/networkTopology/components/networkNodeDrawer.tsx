@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   Drawer,
   Button,
-  Tag,
   Select,
   Form,
   Radio,
@@ -23,7 +22,6 @@ import type {
   NetworkMetricConditionFilter,
   NetworkMetricDisplayMode,
   NetworkInterfaceRef,
-  NetworkNodeRuntime,
   NetworkTopologyMetric,
   NetworkTopologyNode,
 } from "@/app/ops-analysis/types/networkTopology";
@@ -60,7 +58,6 @@ const AGGREGATE_OPTIONS: Array<{
 export interface NetworkNodeDrawerProps {
   open: boolean;
   node: NetworkTopologyNode | null;
-  nodeRuntime?: NetworkNodeRuntime;
   /** WeOps 接口下拉选项(从后端返回的当前节点的接口)。 */
   interfaces?: Array<NetworkInterfaceRef>;
   readonly?: boolean;
@@ -137,6 +134,57 @@ const normalizeConditionFilterFormValue = (
     }, [])
     : [];
 
+const drawerFooterStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "flex-end",
+};
+const drawerInfoCardStyle: React.CSSProperties = {
+  border: "1px solid var(--color-border-1,#dce5ed)",
+  borderRadius: 8,
+  overflow: "hidden",
+  background: "var(--color-bg-1,#fff)",
+  boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)",
+};
+const drawerInfoLabelStyle: React.CSSProperties = {
+  minWidth: 0,
+  padding: "9px 12px",
+  borderRight: "1px solid var(--color-border-1,#e5e9ef)",
+  borderBottom: "1px solid var(--color-border-1,#e5e9ef)",
+  background: "var(--color-fill-1,#f7f9fc)",
+  color: "var(--color-text-3,#5f7290)",
+  fontSize: 12,
+  lineHeight: "20px",
+};
+const drawerInfoValueStyle: React.CSSProperties = {
+  minWidth: 0,
+  padding: "9px 12px",
+  borderRight: "1px solid var(--color-border-1,#e5e9ef)",
+  borderBottom: "1px solid var(--color-border-1,#e5e9ef)",
+  color: "var(--color-text-1,#1f2933)",
+  fontSize: 12,
+  lineHeight: "20px",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+};
+const drawerSectionTitleStyle: React.CSSProperties = {
+  color: "var(--color-text-1,#1f2937)",
+  fontSize: 13,
+  fontWeight: 600,
+};
+const drawerConfigCardStyle: React.CSSProperties = {
+  padding: "10px 12px",
+  border: "1px solid var(--color-border-1,#dce5ed)",
+  borderRadius: 8,
+  background: "var(--color-bg-1,#fff)",
+  boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)",
+};
+const drawerSubtlePanelStyle: React.CSSProperties = {
+  padding: 12,
+  border: "1px solid var(--color-border-1,#dce5ed)",
+  borderRadius: 8,
+  background: "var(--color-fill-1,#f8fafc)",
+};
+
 /**
  * 节点配置 Drawer(design.md §7.4):
  * - 基本信息只读
@@ -146,7 +194,6 @@ const normalizeConditionFilterFormValue = (
 const NetworkNodeDrawer: React.FC<NetworkNodeDrawerProps> = ({
   open,
   node,
-  nodeRuntime,
   readonly = false,
   metricOptions = [],
   dimensionValueOptions = {},
@@ -233,12 +280,10 @@ const NetworkNodeDrawer: React.FC<NetworkNodeDrawerProps> = ({
   }, [draftMetrics, metricOptions]);
   const compactFormItemStyle: React.CSSProperties = { marginBottom: 10 };
   const compactLabelStyle: React.CSSProperties = {
-    color: "#334250",
+    color: "var(--color-text-2,#334250)",
     fontSize: 14,
     fontWeight: 400,
   };
-  const interfaceSummary = nodeRuntime?.interface_summary;
-
   const onSelectMetric = (
     metricKey: string,
     options?: { preserveConfig?: boolean },
@@ -421,7 +466,7 @@ const NetworkNodeDrawer: React.FC<NetworkNodeDrawerProps> = ({
                   style={{
                     marginBottom: 10,
                     fontSize: 12,
-                    color: "#94a3b8",
+                    color: "var(--color-text-3,#94a3b8)",
                   }}
                 >
                   {t(
@@ -497,7 +542,7 @@ const NetworkNodeDrawer: React.FC<NetworkNodeDrawerProps> = ({
                       <div style={{ marginBottom: 10 }}>
                         <div
                           style={{
-                            color: "#334250",
+                            color: "var(--color-text-2,#334250)",
                             fontSize: 14,
                             marginBottom: 6,
                           }}
@@ -557,7 +602,7 @@ const NetworkNodeDrawer: React.FC<NetworkNodeDrawerProps> = ({
                                     }}
                                   />
                                 </Form.Item>
-                                <span style={{ color: "#64748b" }}>=</span>
+                                <span style={{ color: "var(--color-text-3,#64748b)" }}>=</span>
                                 <Form.Item
                                   name={[field.name, "value"]}
                                   style={{ marginBottom: 0 }}
@@ -679,15 +724,15 @@ const NetworkNodeDrawer: React.FC<NetworkNodeDrawerProps> = ({
     <Drawer
       open={open}
       onClose={closeWithPendingMetric}
-      width={640}
+      width={620}
       zIndex={zIndex}
       destroyOnClose
       title={
         node
           ? t(
             readonly
-              ? "opsAnalysis.networkTopology.node.detailTitleWithName"
-              : "opsAnalysis.networkTopology.node.drawerTitleWithName",
+              ? 'opsAnalysis.networkTopology.node.detailTitleWithName'
+              : 'opsAnalysis.networkTopology.node.drawerTitleWithName',
             undefined,
             {
               name: node.bk_inst_name,
@@ -695,23 +740,20 @@ const NetworkNodeDrawer: React.FC<NetworkNodeDrawerProps> = ({
           )
           : t(
             readonly
-              ? "opsAnalysis.networkTopology.node.detailTitle"
-              : "opsAnalysis.networkTopology.node.drawerTitle",
+              ? 'opsAnalysis.networkTopology.node.detailTitle'
+              : 'opsAnalysis.networkTopology.node.drawerTitle',
           )
       }
-      data-testid={testId ?? "network-node-drawer"}
+      data-testid={testId ?? 'network-node-drawer'}
       footer={
-        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <div style={drawerFooterStyle}>
           <Space>
             <Button onClick={closeWithPendingMetric}>
-              {t("opsAnalysis.networkTopology.node.closeButton")}
+              {t('opsAnalysis.networkTopology.node.closeButton')}
             </Button>
             {!readonly && (
-              <Button
-                type="primary"
-                onClick={commitMetricsAndClose}
-              >
-                {t("opsAnalysis.networkTopology.node.confirmEdit")}
+              <Button type="primary" onClick={commitMetricsAndClose}>
+                {t('opsAnalysis.networkTopology.node.confirmEdit')}
               </Button>
             )}
           </Space>
@@ -720,122 +762,51 @@ const NetworkNodeDrawer: React.FC<NetworkNodeDrawerProps> = ({
     >
       {!node ? (
         <Empty
-          description={t("opsAnalysis.networkTopology.node.emptySelection")}
+          description={t('opsAnalysis.networkTopology.node.emptySelection')}
         />
       ) : (
         <>
           <div
             data-testid="network-node-drawer-basic"
-            style={{
-              border: "1px solid #e5e9ef",
-              borderRadius: 4,
-              overflow: "hidden",
-              background: "#fff",
-            }}
+            style={drawerInfoCardStyle}
           >
             <div
               style={{
-                display: "grid",
-                gridTemplateColumns: "132px minmax(0, 1fr)",
+                display: 'grid',
+                gridTemplateColumns: '132px minmax(0, 1fr)',
               }}
             >
               {[
                 {
-                  label: t("opsAnalysis.networkTopology.node.labelAsset"),
-                  value: node.bk_inst_name || "--",
+                  label: t('opsAnalysis.networkTopology.node.labelAsset'),
+                  value: node.bk_inst_name || '--',
                 },
                 {
-                  label: t("opsAnalysis.networkTopology.node.labelAssetId"),
+                  label: t('opsAnalysis.networkTopology.node.labelAssetId'),
                   value: `${node.bk_obj_id}:${node.bk_inst_id}`,
                 },
                 {
-                  label: t("opsAnalysis.networkTopology.node.labelAddress"),
-                  value: node.ip_addr || "--",
+                  label: t('opsAnalysis.networkTopology.node.labelAddress'),
+                  value: node.ip_addr || '--',
                 },
                 {
-                  label: t("opsAnalysis.networkTopology.node.labelTemplate"),
+                  label: t('opsAnalysis.networkTopology.node.labelTemplate'),
                   value:
                     node.plugin_template_name ||
                     node.plugin_template_id ||
-                    "--",
-                },
-                {
-                  label: t(
-                    "opsAnalysis.networkTopology.node.labelInterfaceSummary",
-                  ),
-                  value: interfaceSummary ? (
-                    <Space size={6} wrap>
-                      <Tag color="green">
-                        {t(
-                          "opsAnalysis.networkTopology.node.interfaceUp",
-                          undefined,
-                          {
-                            count: interfaceSummary.up,
-                          },
-                        )}
-                      </Tag>
-                      <Tag color="red">
-                        {t(
-                          "opsAnalysis.networkTopology.node.interfaceDown",
-                          undefined,
-                          {
-                            count: interfaceSummary.down,
-                          },
-                        )}
-                      </Tag>
-                      <Tag>
-                        {t(
-                          "opsAnalysis.networkTopology.node.interfaceUnknown",
-                          undefined,
-                          {
-                            count: interfaceSummary.unknown,
-                          },
-                        )}
-                      </Tag>
-                      <Tag>
-                        {t(
-                          "opsAnalysis.networkTopology.node.interfaceTotal",
-                          undefined,
-                          {
-                            count: interfaceSummary.total,
-                          },
-                        )}
-                      </Tag>
-                    </Space>
-                  ) : (
-                    "--"
-                  ),
+                    '--',
                 },
               ].map((item) => (
                 <React.Fragment key={item.label}>
+                  <div style={drawerInfoLabelStyle}>{item.label}</div>
                   <div
                     style={{
-                      minWidth: 0,
-                      padding: "10px 12px",
-                      borderRight: "1px solid #e5e9ef",
-                      borderBottom: "1px solid #e5e9ef",
-                      background: "#f7f9fc",
-                      color: "#5f7290",
-                      fontSize: 12,
-                    }}
-                  >
-                    {item.label}
-                  </div>
-                  <div
-                    style={{
-                      minWidth: 0,
-                      padding: "10px 12px",
-                      borderRight: "1px solid #e5e9ef",
-                      borderBottom: "1px solid #e5e9ef",
-                      color: "#1f2933",
-                      fontSize: 12,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
+                      ...drawerInfoValueStyle,
                       whiteSpace:
-                        typeof item.value === "string" ? "nowrap" : undefined,
+                        typeof item.value === 'string' ? 'nowrap' : undefined,
                     }}
                     title={
-                      typeof item.value === "string" ? item.value : undefined
+                      typeof item.value === 'string' ? item.value : undefined
                     }
                   >
                     {item.value}
@@ -848,21 +819,21 @@ const NetworkNodeDrawer: React.FC<NetworkNodeDrawerProps> = ({
           {sortedMetrics.length > 0 && (
             <div
               style={{
-                marginTop: 14,
+                marginTop: 12,
               }}
               data-testid="network-node-drawer-bound-metrics"
             >
               <div
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
                   marginBottom: 8,
                 }}
               >
-                <strong style={{ color: "#1f2937", fontSize: 13 }}>
+                <strong style={drawerSectionTitleStyle}>
                   {t(
-                    "opsAnalysis.networkTopology.node.boundMetricsTitle",
+                    'opsAnalysis.networkTopology.node.boundMetricsTitle',
                     undefined,
                     {
                       count: sortedMetrics.length,
@@ -870,11 +841,7 @@ const NetworkNodeDrawer: React.FC<NetworkNodeDrawerProps> = ({
                   )}
                 </strong>
               </div>
-              <Space
-                direction="vertical"
-                size={10}
-                style={{ width: "100%" }}
-              >
+              <Space direction="vertical" size={10} style={{ width: '100%' }}>
                 {sortedMetrics.map((metric, index) => {
                   const row = boundMetricRows[index];
                   const isEditing = editingSortOrder === metric.sort_order;
@@ -882,52 +849,54 @@ const NetworkNodeDrawer: React.FC<NetworkNodeDrawerProps> = ({
                   return (
                     <div
                       key={`${metric.result_table_id}:${metric.metric_field}:${metric.sort_order}`}
-                      style={{
-                        padding: "10px 12px",
-                        border: "1px solid #e6edf5",
-                        borderRadius: 6,
-                        background: "#fff",
-                        boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)",
-                      }}
+                      style={drawerConfigCardStyle}
                       data-testid="network-node-drawer-metric-row"
                     >
-                      <div style={{ display: "flex", alignItems: "center" }}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                        }}
+                      >
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <strong
                             style={{
-                              display: "block",
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              whiteSpace: "nowrap",
-                              color: "#111827",
+                              display: 'block',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                              color: 'var(--color-text-1,#111827)',
                               fontSize: 13,
                               fontWeight: 600,
                             }}
                             title={row?.label}
                           >
-                            {row?.label ?? metric.display_name ?? metric.metric_field}
+                            {row?.label ??
+                              metric.display_name ??
+                              metric.metric_field}
                           </strong>
                           {!isEditing && (
                             <div
                               style={{
-                                display: "inline-flex",
-                                alignItems: "center",
-                                maxWidth: "100%",
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                maxWidth: '100%',
                                 marginTop: 5,
-                                padding: "2px 7px",
+                                padding: '2px 7px',
                                 borderRadius: 4,
-                                background: "#f3f6fb",
-                                color: "#5f6f85",
+                                background: 'var(--color-fill-2,#f3f6fb)',
+                                color: 'var(--color-text-2,#5f6f85)',
                                 fontSize: 11,
-                                lineHeight: "18px",
+                                lineHeight: '18px',
                               }}
                               title={row?.scopeText}
                             >
                               <span
                                 style={{
-                                  overflow: "hidden",
-                                  textOverflow: "ellipsis",
-                                  whiteSpace: "nowrap",
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
                                 }}
                               >
                                 {row?.scopeText}
@@ -938,7 +907,7 @@ const NetworkNodeDrawer: React.FC<NetworkNodeDrawerProps> = ({
                         {!isEditing && (
                           <Tooltip
                             title={t(
-                              "opsAnalysis.networkTopology.node.editThresholdTooltip",
+                              'opsAnalysis.networkTopology.node.editThresholdTooltip',
                             )}
                           >
                             <Button
@@ -950,31 +919,34 @@ const NetworkNodeDrawer: React.FC<NetworkNodeDrawerProps> = ({
                                 const metricKey = metricKeyOf(metric);
                                 const metricDisplayMode =
                                   metric.display_mode ??
-                                  (Object.keys(metric.dimensions ?? {}).length > 0
-                                    ? "dimension"
-                                    : "aggregate");
+                                  (Object.keys(metric.dimensions ?? {}).length >
+                                  0
+                                    ? 'dimension'
+                                    : 'aggregate');
                                 setEditingSortOrder(metric.sort_order);
                                 setSelectedMetricKey(metricKey);
                                 form.setFieldsValue({
                                   display_mode: metricDisplayMode,
-                                  aggregate_type: metric.aggregate_type ?? "sum",
+                                  aggregate_type:
+                                    metric.aggregate_type ?? 'sum',
                                   dimensions: metric.dimensions ?? {},
-                                  condition_filter:
-                                    metric.condition_filter?.length
-                                      ? metric.condition_filter
-                                      : conditionFilterFromDimensions(
-                                        metric.dimensions,
-                                      ),
+                                  condition_filter: metric.condition_filter
+                                    ?.length
+                                    ? metric.condition_filter
+                                    : conditionFilterFromDimensions(
+                                      metric.dimensions,
+                                    ),
                                 });
                                 setThresholds(
                                   buildThresholdDraftFromMetric(metric),
                                 );
                                 const option = combinedMetricOptions.find(
                                   (item) =>
-                                    `${item.metric_field}::${item.result_table_id}` === metricKey,
+                                    `${item.metric_field}::${item.result_table_id}` ===
+                                    metricKey,
                                 );
                                 if (
-                                  metricDisplayMode === "dimension" &&
+                                  metricDisplayMode === 'dimension' &&
                                   option &&
                                   (option.supported_dimensions ?? []).length > 0
                                 ) {
@@ -998,13 +970,13 @@ const NetworkNodeDrawer: React.FC<NetworkNodeDrawerProps> = ({
                         )}
                         <Popconfirm
                           title={t(
-                            "opsAnalysis.networkTopology.node.removeMetricTitle",
+                            'opsAnalysis.networkTopology.node.removeMetricTitle',
                           )}
                           okText={t(
-                            "opsAnalysis.networkTopology.actions.delete",
+                            'opsAnalysis.networkTopology.actions.delete',
                           )}
                           cancelText={t(
-                            "opsAnalysis.networkTopology.actions.cancel",
+                            'opsAnalysis.networkTopology.actions.cancel',
                           )}
                           okButtonProps={{ danger: true }}
                           disabled={readonly}
@@ -1022,46 +994,53 @@ const NetworkNodeDrawer: React.FC<NetworkNodeDrawerProps> = ({
                       {!isEditing && (
                         <div
                           style={{
-                            display: "flex",
-                            alignItems: "center",
+                            display: 'flex',
+                            alignItems: 'center',
                             gap: 8,
-                            flexWrap: "wrap",
+                            flexWrap: 'wrap',
                             marginTop: 9,
                           }}
                         >
                           {thresholdPreviewItems.length === 0 && (
-                            <span style={{ color: "#94a3b8", fontSize: 11 }}>
+                            <span
+                              style={{
+                                color: 'var(--color-text-3,#94a3b8)',
+                                fontSize: 11,
+                              }}
+                            >
                               {t(
-                                "opsAnalysis.networkTopology.node.noThresholds",
+                                'opsAnalysis.networkTopology.node.noThresholds',
                               )}
                             </span>
                           )}
-                          {thresholdPreviewItems.map((threshold, thresholdIndex) => (
-                            <span
-                              key={`${threshold.value}-${threshold.color}-${thresholdIndex}`}
-                              style={{
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: 5,
-                                color: "#64748b",
-                                fontSize: 11,
-                                lineHeight: "16px",
-                              }}
-                            >
+                          {thresholdPreviewItems.map(
+                            (threshold, thresholdIndex) => (
                               <span
-                                aria-hidden="true"
+                                key={`${threshold.value}-${threshold.color}-${thresholdIndex}`}
                                 style={{
-                                  width: 7,
-                                  height: 7,
-                                  borderRadius: "50%",
-                                  background: threshold.color,
-                                  boxShadow:
-                                    "0 0 0 1px rgba(15, 23, 42, 0.08)",
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 5,
+                                  color: 'var(--color-text-3,#64748b)',
+                                  fontSize: 11,
+                                  lineHeight: '16px',
                                 }}
-                              />
-                              <span>{threshold.value}</span>
-                            </span>
-                          ))}
+                              >
+                                <span
+                                  aria-hidden="true"
+                                  style={{
+                                    width: 7,
+                                    height: 7,
+                                    borderRadius: '50%',
+                                    background: threshold.color,
+                                    boxShadow:
+                                      '0 0 0 1px rgba(15, 23, 42, 0.08)',
+                                  }}
+                                />
+                                <span>{threshold.value}</span>
+                              </span>
+                            ),
+                          )}
                         </div>
                       )}
                       {isEditing && (
@@ -1072,7 +1051,7 @@ const NetworkNodeDrawer: React.FC<NetworkNodeDrawerProps> = ({
                               setEditingSortOrder(null);
                               resetPendingMetric();
                             },
-                            "small",
+                            'small',
                           )}
                         </div>
                       )}
@@ -1087,36 +1066,39 @@ const NetworkNodeDrawer: React.FC<NetworkNodeDrawerProps> = ({
             <div
               style={{
                 marginTop: 12,
-                padding: 12,
-                border: "1px solid #dce5ed",
-                borderRadius: 8,
-                background: "#f9fbfc",
+                ...drawerSubtlePanelStyle,
               }}
               data-testid="network-node-drawer-add-metric"
             >
-              <div style={{ display: "flex", alignItems: "center" }}>
-                <strong style={{ flex: 1 }}>
-                  {t("opsAnalysis.networkTopology.node.addMetric")}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  marginBottom: 10,
+                }}
+              >
+                <strong style={{ ...drawerSectionTitleStyle, flex: 1 }}>
+                  {t('opsAnalysis.networkTopology.node.addMetric')}
                 </strong>
               </div>
               {!selectedMetricKey ? (
                 <div
                   style={{
-                    display: "grid",
-                    gridTemplateColumns: "52px minmax(0, 1fr)",
-                    alignItems: "center",
+                    display: 'grid',
+                    gridTemplateColumns: '52px minmax(0, 1fr)',
+                    alignItems: 'center',
                     gap: 10,
                   }}
                 >
                   <span style={compactLabelStyle}>
-                    {t("opsAnalysis.networkTopology.node.labelMetric")}
+                    {t('opsAnalysis.networkTopology.node.labelMetric')}
                   </span>
                   <Select
                     showSearch
                     optionFilterProp="label"
                     filterOption={isMetricOptionMatched}
                     placeholder={t(
-                      "opsAnalysis.networkTopology.node.selectMetricPlaceholder",
+                      'opsAnalysis.networkTopology.node.selectMetricPlaceholder',
                     )}
                     loading={metricOptionsLoading}
                     getPopupContainer={(trigger) =>
@@ -1132,10 +1114,7 @@ const NetworkNodeDrawer: React.FC<NetworkNodeDrawerProps> = ({
                   />
                 </div>
               ) : (
-                renderMetricEditor(
-                  onSaveNewMetric,
-                  resetPendingMetric,
-                )
+                renderMetricEditor(onSaveNewMetric, resetPendingMetric)
               )}
             </div>
           )}

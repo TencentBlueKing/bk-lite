@@ -281,6 +281,68 @@ class NetworkTopologyRuntimeService:
             },
         }
 
+    @classmethod
+    def build_link_runtime_preview(
+        cls,
+        topology,
+        adapter: WeOpsTopologyAdapter,
+        link_payload: dict[str, Any],
+        nodes_payload: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Build run-state for one edited link without refreshing the canvas."""
+        view_sets = topology.view_sets or {}
+        nodes = nodes_payload if isinstance(nodes_payload, list) else view_sets.get("nodes") or []
+        node_index: dict[str, dict[str, Any]] = {n.get("id"): n for n in nodes if isinstance(n, dict)}
+        links_payload = [link_payload]
+        interface_requests, link_port_pairs, _interface_node_links = cls._build_interface_requests(node_index, links_payload)
+        errors: list[dict[str, str]] = []
+
+        if interface_requests:
+            try:
+                interface_response = adapter.batch_interface_status(interface_requests, include_summary=True)
+            except Exception as exc:
+                if _is_fatal_adapter_error(exc):
+                    raise
+                interface_response = {"items": [], "node_interface_summary": {}}
+                errors.append(
+                    {
+                        "scope": "interfaces",
+                        "code": "interface_query_failed",
+                        "message": str(exc),
+                    }
+                )
+        else:
+            interface_response = {"items": [], "node_interface_summary": {}}
+
+        link_runtime = cls._aggregate_links(
+            link_port_pairs,
+            list(interface_response.get("items") or []),
+            links_payload,
+        )
+        if not link_runtime and isinstance(link_payload, dict):
+            status = resolve_link_status([])
+            link_runtime = [
+                {
+                    "id": link_payload.get("id"),
+                    "source_node_id": link_payload.get("source_node_id"),
+                    "target_node_id": link_payload.get("target_node_id"),
+                    "status": status["status"],
+                    "reason": status.get("reason"),
+                    "interfaces": [],
+                    "interface_metrics": cls._normalize_interface_metric_fields(link_payload.get("interface_metrics")),
+                    "is_draft": bool(link_payload.get("is_draft")),
+                }
+            ]
+
+        return {
+            "result": True,
+            "data": {
+                "link": link_runtime[0] if link_runtime else None,
+                "node_interface_summary": interface_response.get("node_interface_summary") or {},
+                "errors": errors,
+            },
+        }
+
     # ------------------------------------------------------------------ #
     # Helpers                                                             #
     # ------------------------------------------------------------------ #

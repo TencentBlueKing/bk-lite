@@ -126,7 +126,7 @@ class AdapterSettings:
 
     base_url: str
     token: str
-    timeout: int = 10
+    timeout: int = 30
     retry: int = 1
 
 
@@ -147,14 +147,14 @@ class WeOpsTopologyAdapter:
         self,
         base_url: str,
         token: str,
-        timeout: int = 10,
+        timeout: int = 30,
         retry: int = 1,
         http_client: Any = None,
         trace_id_factory: Callable[[], str] | None = None,
     ):
         self.base_url = (base_url or "").rstrip("/") + "/"
         self.token = token or ""
-        self.timeout = max(int(timeout or 10), 1)
+        self.timeout = max(int(timeout or 30), 1)
         self.retry = max(int(retry or 1), 1)
         # Lazy import ``requests`` so unit tests can pass a fake without
         # pulling the real network stack.

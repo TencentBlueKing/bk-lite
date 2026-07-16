@@ -3,10 +3,12 @@ import useApiClient from '@/utils/request';
 import type {
   NetworkTopologyConfig,
   NetworkTopologyDetail,
-  NetworkTopologyRuntime,
   NetworkNodeLibraryItem,
   NetworkNodeModel,
   NetworkMetricRuntime,
+  NetworkTopologyLink,
+  NetworkLinkRuntime,
+  NetworkNodeRuntime,
 } from '@/app/ops-analysis/types/networkTopology';
 
 /**
@@ -15,7 +17,7 @@ import type {
  * 实际后端路由(由 Worker A 实现,见 `server/apps/operation_analysis/views/network_topology_view.py`):
  * - 标准 canvas CRUD: `POST /network_topology/`, `GET/PUT/PATCH/DELETE /network_topology/<id>/`
  * - `POST /network_topology/test_connection/` —— 试探 base_url + token,不落库
- * - `GET /network_topology/<id>/runtime/` —— 节点 + 连线运行态(后端实时拉 WeOps;前端保留上次内存态兜底)
+ * - 运行态逐节点/连线查询,不再等待整图运行态接口
  * - `GET /network_topology/<id>/config` / `PUT /network_topology/<id>/config` —— view_sets JSON 读写
  * - WeOps 代理:
  *   - `GET /network_topology/<id>/weops/node_models/`
@@ -113,14 +115,6 @@ export const useNetworkTopologyApi = () => {
         view_sets,
       ),
     [put],
-  );
-
-  const getRuntime = useCallback(
-    (id: string | number) =>
-      get<NetworkTopologyRuntime>(
-        `/operation_analysis/api/network_topology/${id}/runtime/`,
-      ),
-    [get],
   );
 
   /** 验证 WeOps 连接(form 临时传 token,后端不落库)。 */
@@ -255,6 +249,28 @@ export const useNetworkTopologyApi = () => {
     [post],
   );
 
+  const getLinkRuntime = useCallback(
+    (
+      canvasId: string | number,
+      payload: {
+        link: NetworkTopologyLink;
+        nodes: NetworkTopologyConfig['nodes'];
+      },
+    ) =>
+      post<{
+        link?: NetworkLinkRuntime | null;
+        node_interface_summary?: Record<
+          string,
+          NonNullable<NetworkNodeRuntime['interface_summary']>
+        >;
+        errors?: Array<{ code?: string; message?: string; scope?: string }>;
+      }>(
+        `/operation_analysis/api/network_topology/${canvasId}/weops/link_runtime/`,
+        payload,
+      ),
+    [post],
+  );
+
   return useMemo(
     () => ({
       // 画布 CRUD
@@ -265,8 +281,6 @@ export const useNetworkTopologyApi = () => {
       // view_sets 读写
       getViewSets,
       saveViewSets,
-      // 运行态
-      getRuntime,
       // 连接测试
       testConnection,
       testSavedConnection,
@@ -277,6 +291,7 @@ export const useNetworkTopologyApi = () => {
       getNodeMetrics,
       getDimensionValues,
       getMetricValues,
+      getLinkRuntime,
     }),
     [
       getNetworkTopologyDetail,
@@ -285,7 +300,6 @@ export const useNetworkTopologyApi = () => {
       deleteNetworkTopology,
       getViewSets,
       saveViewSets,
-      getRuntime,
       testConnection,
       testSavedConnection,
       getNodeModels,
@@ -294,6 +308,7 @@ export const useNetworkTopologyApi = () => {
       getNodeMetrics,
       getDimensionValues,
       getMetricValues,
+      getLinkRuntime,
     ],
   );
 };

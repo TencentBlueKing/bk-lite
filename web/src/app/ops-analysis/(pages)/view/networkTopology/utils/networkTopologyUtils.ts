@@ -79,8 +79,15 @@ export const mergeNetworkTopologyRuntimeNodes = (
   baseRuntimeNodes: ReadonlyArray<NetworkNodeRuntime>,
   nodes: ReadonlyArray<NetworkTopologyNode>,
   runtimeMetricOverrides: Record<string, NetworkMetricRuntime[]>,
+  interfaceSummaryOverrides: Record<
+    string,
+    NonNullable<NetworkNodeRuntime['interface_summary']>
+  > = {},
 ): NetworkNodeRuntime[] => {
-  if (Object.keys(runtimeMetricOverrides).length === 0) {
+  if (
+    Object.keys(runtimeMetricOverrides).length === 0 &&
+    Object.keys(interfaceSummaryOverrides).length === 0
+  ) {
     return [...baseRuntimeNodes];
   }
   const nodeById = new Map<string, NetworkTopologyNode>();
@@ -100,6 +107,35 @@ export const mergeNetworkTopologyRuntimeNodes = (
       error_message: existing?.error_message,
       metrics: mergeNetworkTopologyRuntimeMetrics(existing?.metrics ?? [], metrics),
     });
+  });
+  Object.entries(interfaceSummaryOverrides).forEach(([nodeId, summary]) => {
+    const node = nodeById.get(nodeId);
+    const runtimeId = node ? buildNetworkNodeClientId(node) : nodeId;
+    const existing = byId.get(runtimeId);
+    byId.set(runtimeId, {
+      id: runtimeId,
+      outer_color: existing?.outer_color ?? null,
+      status: existing?.status ?? 'unknown',
+      interface_summary: summary,
+      error_code: existing?.error_code,
+      error_message: existing?.error_message,
+      metrics: existing?.metrics ?? [],
+    });
+  });
+  return Array.from(byId.values());
+};
+
+export const mergeNetworkTopologyRuntimeLinks = (
+  baseRuntimeLinks: ReadonlyArray<NetworkLinkRuntime>,
+  runtimeLinkOverrides: Record<string, NetworkLinkRuntime>,
+): NetworkLinkRuntime[] => {
+  if (Object.keys(runtimeLinkOverrides).length === 0) {
+    return [...baseRuntimeLinks];
+  }
+  const byId = new Map<string, NetworkLinkRuntime>();
+  baseRuntimeLinks.forEach((link) => byId.set(link.id, link));
+  Object.entries(runtimeLinkOverrides).forEach(([linkId, link]) => {
+    byId.set(linkId, link);
   });
   return Array.from(byId.values());
 };
@@ -277,6 +313,10 @@ export const buildNetworkTopologyLinkRenderOptions = (
   };
 };
 
+export const isNetworkTopologyLinkPendingInterfaceSelection = (
+  link: Pick<NetworkTopologyLink, 'is_draft' | 'port_pairs'>,
+): boolean => Boolean(link.is_draft) || (link.port_pairs ?? []).length === 0;
+
 export interface NodeDetailMetricRow {
   key: string;
   label: string;
@@ -295,12 +335,6 @@ export interface BoundMetricConfigRow {
   label: string;
   scopeText: string;
   thresholds: Array<{ value: number; color: string }>;
-}
-
-export interface NodeDetailPortRow {
-  key: string;
-  name: string;
-  status: 'up' | 'down' | 'testing' | 'unknown';
 }
 
 export interface LinkDetailPortRow {
@@ -438,38 +472,6 @@ const findRuntimeInterface = (
     return sameEndpoint && (sameId || sameName);
   });
 
-export const buildNodeDetailPortRows = (
-  node: NetworkTopologyNode,
-  links: ReadonlyArray<NetworkTopologyLink>,
-  runtimeLinks: ReadonlyArray<NetworkLinkRuntime>,
-): NodeDetailPortRow[] => {
-  const rows: NodeDetailPortRow[] = [];
-  links.forEach((link) => {
-    const endpoint =
-      link.source_node_id === node.id
-        ? 'source'
-        : link.target_node_id === node.id
-          ? 'target'
-          : null;
-    if (!endpoint) return;
-    const runtime = runtimeLinks.find((item) => item.id === link.id);
-    link.port_pairs.forEach((pair) => {
-      const ref =
-        endpoint === 'source' ? pair.source_interface : pair.target_interface;
-      if (!ref?.bk_inst_id || !ref.interface_name) return;
-      const runtimeInterface = findRuntimeInterface(runtime, endpoint, ref);
-      rows.push({
-        key: `${link.id}:${endpoint}:${ref.bk_inst_id}`,
-        name: ref.interface_name,
-        status: normalizeInterfaceStatus(
-          runtimeInterface?.oper_status ?? runtimeInterface?.admin_status,
-        ),
-      });
-    });
-  });
-  return rows;
-};
-
 export const buildLinkDetailPortRows = (
   link: NetworkTopologyLink,
   runtime: NetworkLinkRuntime | undefined,
@@ -520,12 +522,12 @@ export const buildLinkInterfaceMetricRows = (
   if (selectedMetrics.length === 0) return [];
   const runtimeInterfaces = runtime?.interfaces ?? [];
   if (runtimeInterfaces.length > 0) {
-    return runtimeInterfaces.flatMap((iface) => {
+    return runtimeInterfaces.flatMap((iface, ifaceIndex) => {
       const interfaceName = iface.interface_name || '--';
       return selectedMetrics.map((field) => {
         const metric = iface.metrics?.[field];
         return {
-          key: `${link.id}:${iface.endpoint ?? 'interface'}:${iface.bk_inst_id ?? interfaceName}:${field}`,
+          key: `${link.id}:${iface.endpoint ?? 'interface'}:${ifaceIndex}:${iface.bk_inst_id ?? interfaceName}:${field}`,
           interfaceName,
           metricLabel: labels[field] ?? field,
           value:
@@ -542,7 +544,7 @@ export const buildLinkInterfaceMetricRows = (
       ['target', pair.target_interface],
     ] as const).flatMap(([endpoint, ref]) =>
       selectedMetrics.map((field) => ({
-        key: `${link.id}:${endpoint}:${ref.bk_inst_id || index}:${field}`,
+        key: `${link.id}:${index}:${endpoint}:${ref.bk_inst_id || ref.interface_name || 'interface'}:${field}`,
         interfaceName: ref.interface_name || '--',
         metricLabel: labels[field] ?? field,
         value: '--',

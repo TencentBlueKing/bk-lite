@@ -77,8 +77,10 @@ const NetworkNodeShape: React.FC<NetworkNodeShapeProps> = ({
         width: 190,
         minHeight: 112,
         padding: 10,
-        background: '#fff',
-        border: '1px solid ' + (selected ? '#2f8fb0' : '#cfdbe5'),
+        background: 'var(--color-bg-1,#ffffff)',
+        border: `1px solid ${
+          selected ? 'var(--color-primary,#2f8fb0)' : 'var(--color-border-2,#cfdbe5)'
+        }`,
         borderTop: `3px solid ${outerColor}`,
         borderRadius: 8,
         boxShadow: selected
@@ -94,9 +96,9 @@ const NetworkNodeShape: React.FC<NetworkNodeShapeProps> = ({
             placeItems: 'center',
             width: 32,
             height: 32,
-            background: '#eef4f6',
+            background: 'var(--color-fill-2,#eef4f6)',
             borderRadius: 6,
-            color: '#335364',
+            color: 'var(--color-text-2,#335364)',
             fontWeight: 700,
             fontSize: 11,
           }}
@@ -111,7 +113,7 @@ const NetworkNodeShape: React.FC<NetworkNodeShapeProps> = ({
               whiteSpace: 'nowrap',
               fontWeight: 650,
               fontSize: 13,
-              color: '#1f2933',
+              color: 'var(--color-text-1,#1f2933)',
             }}
           >
             {node.bk_inst_name}
@@ -119,7 +121,7 @@ const NetworkNodeShape: React.FC<NetworkNodeShapeProps> = ({
           <div
             style={{
               fontSize: 11,
-              color: '#73808c',
+              color: 'var(--color-text-3,#73808c)',
               marginTop: 2,
             }}
           >
@@ -144,9 +146,9 @@ const NetworkNodeShape: React.FC<NetworkNodeShapeProps> = ({
           justifyContent: 'space-between',
           marginTop: 8,
           paddingTop: 6,
-          borderTop: '1px solid #e4ebf0',
+          borderTop: '1px solid var(--color-border-1,#e4ebf0)',
           fontSize: 11,
-          color: '#536270',
+          color: 'var(--color-text-2,#536270)',
         }}
       >
         <span>
@@ -162,7 +164,7 @@ const NetworkNodeShape: React.FC<NetworkNodeShapeProps> = ({
             display: 'flex',
             justifyContent: 'space-between',
             fontSize: 11,
-            color: '#334250',
+            color: 'var(--color-text-2,#334250)',
             marginTop: 4,
           }}
         >
@@ -176,13 +178,13 @@ const NetworkNodeShape: React.FC<NetworkNodeShapeProps> = ({
           >
             {metric.display_name || metric.metric_field}
           </span>
-          <strong style={{ color: '#192733' }}>
+          <strong style={{ color: 'var(--color-text-1,#192733)' }}>
             {formatMetricValue(metric, runtimeMetrics, t)}
           </strong>
         </div>
       ))}
       {node.metrics.length === 0 && (
-        <div style={{ fontSize: 11, color: '#8a98a5', marginTop: 6 }}>
+        <div style={{ fontSize: 11, color: 'var(--color-text-3,#8a98a5)', marginTop: 6 }}>
           {t('opsAnalysis.networkTopology.nodeShape.noMetrics')}
         </div>
       )}
