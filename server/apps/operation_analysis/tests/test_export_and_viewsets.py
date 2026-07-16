@@ -8,7 +8,8 @@ import yaml
 
 from apps.operation_analysis.constants.import_export import ObjectType, ScopeType
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, DataSourceTag, NameSpace
-from apps.operation_analysis.models.models import Dashboard
+from apps.operation_analysis.models.models import Dashboard, Directory, NetworkTopology
+from apps.operation_analysis.serializers.import_export_serializers import ExportRequestSerializer
 from apps.operation_analysis.services.import_export import view_sets as vs
 from apps.operation_analysis.services.import_export.export_service import ExportService
 
@@ -317,3 +318,37 @@ def test_export_canvas_screen_and_report_sections():
     assert screen_yaml["screens"][0]["key"] == "screen::screen-a"
     assert report_yaml["meta"]["object_counts"]["reports"] == 1
     assert report_yaml["reports"][0]["key"] == "report::report-a"
+
+
+def test_export_request_serializer_accepts_network_topology():
+    serializer = ExportRequestSerializer(
+        data={
+            "object_type": "networkTopology",
+            "object_ids": [1],
+        }
+    )
+
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["scope"] == ScopeType.CANVAS.value
+
+
+@pytest.mark.django_db
+def test_export_canvas_network_topology_yaml_section_and_secret_mask():
+    directory = Directory.objects.create(name="网络拓扑目录", groups=[1], created_by="s")
+    network_topology = NetworkTopology.objects.create(
+        name="net-a",
+        directory=directory,
+        groups=[1],
+        created_by="s",
+        base_url="https://weops.example.com",
+        token="plain-token",
+        view_sets={"nodes": [], "links": []},
+    )
+
+    result = ExportService.export_objects(ScopeType.CANVAS.value, ObjectType.NETWORK_TOPOLOGY.value, [network_topology.id])
+    parsed = yaml.safe_load(result["yaml_content"])
+
+    assert parsed["meta"]["object_counts"]["network_topologies"] == 1
+    assert parsed["network_topologies"][0]["key"] == "networkTopology::net-a"
+    assert parsed["network_topologies"][0]["base_url"] == "https://weops.example.com"
+    assert parsed["network_topologies"][0]["token"] == "******"

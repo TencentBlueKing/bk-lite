@@ -415,6 +415,106 @@ def test_build_runtime_aggregates_node_color_and_link_status_from_view_sets():
 
 
 @pytest.mark.django_db
+def test_build_link_runtime_preview_queries_single_link_and_returns_node_summary():
+    topology = _build_topology()
+    topology.view_sets = {
+        "nodes": [
+            {
+                "id": "node-a",
+                "bk_obj_id": "bk_switch",
+                "bk_inst_id": 10001,
+                "bk_inst_name": "source-switch",
+                "network_collect_task_id": 12,
+                "network_collect_instance_id": 345,
+                "plugin_group_id": 3,
+                "plugin_template_id": "tpl-a",
+                "position": {"x": 0, "y": 0},
+                "metrics": [],
+            },
+            {
+                "id": "node-b",
+                "bk_obj_id": "bk_router",
+                "bk_inst_id": 10002,
+                "bk_inst_name": "target-router",
+                "network_collect_task_id": 13,
+                "network_collect_instance_id": 346,
+                "plugin_group_id": 4,
+                "plugin_template_id": "tpl-b",
+                "position": {"x": 120, "y": 0},
+                "metrics": [],
+            },
+        ],
+        "links": [],
+    }
+    topology.save()
+    link_payload = {
+        "id": "link-draft",
+        "source_node_id": "node-a",
+        "target_node_id": "node-b",
+        "is_draft": False,
+        "interface_metrics": ["ifInOctets_5min"],
+        "port_pairs": [
+            {
+                "source_interface": {"bk_obj_id": "bk_interface", "bk_inst_id": 90001, "interface_name": "GigE0/1"},
+                "target_interface": {"bk_obj_id": "bk_interface", "bk_inst_id": 90002, "interface_name": "GigE0/2"},
+            }
+        ],
+    }
+    captured_items = []
+
+    class FakeAdapter:
+        def batch_interface_status(self, items, include_summary=True):
+            captured_items.extend(items)
+            assert include_summary is True
+            return {
+                "items": [
+                    {
+                        "request_id": "link-draft::src::0",
+                        "oper_status": "up",
+                        "admin_status": "up",
+                        "status": "ok",
+                        "metrics": {
+                            "ifInOctets_5min": {"value": 12.5, "unit": "bps"},
+                            "ifOutOctets_5min": {"value": 33.5, "unit": "bps"},
+                        },
+                    },
+                    {
+                        "request_id": "link-draft::dst::0",
+                        "oper_status": "down",
+                        "admin_status": "up",
+                        "status": "ok",
+                        "metrics": {
+                            "ifInOctets_5min": {"value": 21.5, "unit": "bps"},
+                            "ifOutOctets_5min": {"value": 44.5, "unit": "bps"},
+                        },
+                    },
+                ],
+                "node_interface_summary": {
+                    "bk_switch:10001": {"total": 2, "up": 1, "down": 1, "unknown": 0},
+                    "bk_router:10002": {"total": 1, "up": 0, "down": 1, "unknown": 0},
+                },
+            }
+
+    response = NetworkTopologyRuntimeService.build_link_runtime_preview(
+        topology,
+        FakeAdapter(),
+        link_payload,
+        nodes_payload=topology.view_sets["nodes"],
+    )
+
+    assert [item["request_id"] for item in captured_items] == ["link-draft::src::0", "link-draft::dst::0"]
+    assert captured_items[0]["node_ref"]["bk_inst_id"] == 10001
+    assert captured_items[1]["node_ref"]["bk_inst_id"] == 10002
+    assert response["result"] is True
+    link = response["data"]["link"]
+    assert link["id"] == "link-draft"
+    assert link["status"] == "critical"
+    assert link["interface_metrics"] == ["ifInOctets_5min"]
+    assert link["interfaces"][0]["metrics"] == {"ifInOctets_5min": {"value": 12.5, "unit": "bps"}}
+    assert response["data"]["node_interface_summary"]["bk_switch:10001"]["down"] == 1
+
+
+@pytest.mark.django_db
 def test_build_runtime_unknown_color_when_metrics_lack_data():
     topology = _build_topology()
     topology.view_sets = {

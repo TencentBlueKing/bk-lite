@@ -14,6 +14,7 @@ import { useTranslation } from '@/utils/i18n';
 
 export interface UseNetworkLibraryParams {
   canvasId: string | number | undefined;
+  enabled?: boolean;
   loadModels: (canvasId: string | number) => Promise<NetworkNodeModel[]>;
   loadNodes: (
     canvasId: string | number,
@@ -38,12 +39,13 @@ export interface UseNetworkLibraryReturn {
 
 export const useNetworkLibrary = ({
   canvasId,
+  enabled = true,
   loadModels,
   loadNodes,
 }: UseNetworkLibraryParams): UseNetworkLibraryReturn => {
   const { t } = useTranslation();
   const [models, setModels] = useState<NetworkNodeModel[]>([]);
-  const [nodes, setNodes] = useState<NetworkNodeLibraryItem[]>([]);
+  const [allNodes, setAllNodes] = useState<NetworkNodeLibraryItem[]>([]);
   const [modelFilter, setModelFilter] = useState<string | undefined>(undefined);
   const [keyword, setKeyword] = useState<string>('');
   const [loading, setLoading] = useState(false);
@@ -63,14 +65,18 @@ export const useNetworkLibrary = ({
       requestSeqRef.current += 1;
       inFlightRef.current = null;
       setModels([]);
-      setNodes([]);
+      setAllNodes([]);
+      setLoading(false);
+      return;
+    }
+    if (!enabled) {
+      requestSeqRef.current += 1;
+      inFlightRef.current = null;
       setLoading(false);
       return;
     }
     const requestKey = JSON.stringify({
       canvasId,
-      modelFilter: modelFilter ?? '',
-      keyword: keyword || '',
     });
     if (inFlightRef.current?.key === requestKey) {
       return inFlightRef.current.promise;
@@ -87,14 +93,11 @@ export const useNetworkLibrary = ({
       try {
         const [modelList, nodePage] = await Promise.all([
           loadModelsRef.current(canvasId),
-          loadNodesRef.current(canvasId, {
-            bk_obj_id: modelFilter,
-            keyword: keyword || undefined,
-          }),
+          loadNodesRef.current(canvasId),
         ]);
         if (requestSeqRef.current !== seq) return;
         setModels(modelList);
-        setNodes(nodePage.results);
+        setAllNodes(nodePage.results);
       } catch (err) {
         if (requestSeqRef.current !== seq) return;
         setError(
@@ -102,7 +105,7 @@ export const useNetworkLibrary = ({
             ? err.message
             : t('opsAnalysis.networkTopology.library.loadFailed'),
         );
-        setNodes([]);
+        setAllNodes([]);
       } finally {
         if (requestSeqRef.current === seq) {
           setLoading(false);
@@ -115,11 +118,27 @@ export const useNetworkLibrary = ({
     request.promise = promise;
     inFlightRef.current = request;
     return promise;
-  }, [canvasId, keyword, modelFilter]);
+  }, [canvasId, enabled, t]);
 
   useEffect(() => {
     fetchAll();
   }, [fetchAll]);
+
+  const nodes = useMemo(() => {
+    const normalizedKeyword = keyword.trim().toLowerCase();
+    return allNodes.filter((node) => {
+      if (modelFilter && node.bk_obj_id !== modelFilter) return false;
+      if (!normalizedKeyword) return true;
+      return [
+        node.bk_inst_name,
+        node.ip_addr,
+        node.bk_obj_id,
+        String(node.bk_inst_id ?? ''),
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(normalizedKeyword));
+    });
+  }, [allNodes, keyword, modelFilter]);
 
   const isSingleSource = useCallback(
     (item: NetworkNodeLibraryItem) =>

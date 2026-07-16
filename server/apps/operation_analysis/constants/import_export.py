@@ -38,12 +38,20 @@ class ObjectType(str, Enum):
     ARCHITECTURE = "architecture"
     SCREEN = "screen"
     REPORT = "report"
+    NETWORK_TOPOLOGY = "networkTopology"
     DATASOURCE = "datasource"
     NAMESPACE = "namespace"
 
 
 # 画布类型集合，用于判断对象是否为画布对象
-CANVAS_TYPES = {ObjectType.DASHBOARD, ObjectType.TOPOLOGY, ObjectType.ARCHITECTURE, ObjectType.SCREEN, ObjectType.REPORT}
+CANVAS_TYPES = {
+    ObjectType.DASHBOARD,
+    ObjectType.TOPOLOGY,
+    ObjectType.ARCHITECTURE,
+    ObjectType.SCREEN,
+    ObjectType.REPORT,
+    ObjectType.NETWORK_TOPOLOGY,
+}
 
 # 配置对象类型集合
 CONFIG_TYPES = {ObjectType.DATASOURCE, ObjectType.NAMESPACE}
@@ -158,6 +166,7 @@ OBJECT_TYPE_TO_SECTION = {
     ObjectType.ARCHITECTURE: "architectures",
     ObjectType.SCREEN: "screens",
     ObjectType.REPORT: "reports",
+    ObjectType.NETWORK_TOPOLOGY: "network_topologies",
     ObjectType.DATASOURCE: "datasources",
     ObjectType.NAMESPACE: "namespaces",
 }

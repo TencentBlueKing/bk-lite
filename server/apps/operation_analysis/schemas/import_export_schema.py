@@ -285,6 +285,39 @@ class ReportItem(BaseModel):
         return _normalize_canvas_view_sets_for_storage(v, ObjectType.REPORT)
 
 
+class NetworkTopologyItem(BaseModel):
+    """网络拓扑对象结构"""
+
+    key: str
+    name: str
+    desc: str = Field(default="")
+    base_url: str
+    token: str = Field(default="")
+    view_sets: dict = Field(default_factory=dict)
+    refs: CanvasRefs = Field(default_factory=CanvasRefs)
+
+    @field_validator("key", "name", "base_url")
+    @classmethod
+    def validate_required_non_empty_fields(cls, v: Any, info) -> str:
+        value = "" if v is None else str(v).strip()
+        if not value:
+            raise ValueError(f"字段 '{info.field_name}' 不能为空")
+        return value
+
+    @field_validator("desc", mode="before")
+    @classmethod
+    def normalize_desc(cls, v: Any) -> str:
+        if v is None:
+            return ""
+        return str(v)
+
+    @field_validator("view_sets", mode="before")
+    @classmethod
+    def normalize_view_sets(cls, v: Any) -> dict:
+        normalized = _normalize_canvas_view_sets_for_storage(v, ObjectType.NETWORK_TOPOLOGY)
+        return normalized if isinstance(normalized, dict) else {}
+
+
 class YAMLDocument(BaseModel):
     """
     完整YAML文档结构校验
@@ -298,6 +331,7 @@ class YAMLDocument(BaseModel):
     architectures: list[ArchitectureItem] = Field(default_factory=list)
     screens: list[ScreenItem] = Field(default_factory=list)
     reports: list[ReportItem] = Field(default_factory=list)
+    network_topologies: list[NetworkTopologyItem] = Field(default_factory=list)
     datasources: list[DatasourceItem] = Field(default_factory=list)
     namespaces: list[NamespaceItem] = Field(default_factory=list)
 
@@ -318,6 +352,22 @@ DB_ID_FIELD_PATTERN = re.compile(r"(^|_)(id|ids)$", re.IGNORECASE)
 
 # 纯数字值检测（可能是数据库ID）
 PURE_NUMERIC_PATTERN = re.compile(r"^\d+$")
+
+NETWORK_TOPOLOGY_EXTERNAL_ID_FIELDS = {
+    "bk_inst_id",
+    "plugin_group_id",
+    "plugin_template_id",
+    "network_collect_task_id",
+    "network_collect_instance_id",
+    "source_node_id",
+    "target_node_id",
+    "id",
+}
+
+
+def _is_allowed_external_id_field(path: str, field: str) -> bool:
+    """网络拓扑 view_sets 中的 ID 是 WeOps/CMDB 外部标识或画布内局部 ID。"""
+    return path.startswith("network_topologies[") and ".view_sets." in path and field in NETWORK_TOPOLOGY_EXTERNAL_ID_FIELDS
 
 
 def detect_db_id_references(data: Any, path: str = "") -> list[dict]:
@@ -340,6 +390,8 @@ def detect_db_id_references(data: Any, path: str = "") -> list[dict]:
             if DB_ID_FIELD_PATTERN.search(key):
                 # 跳过organization_id（这是meta中的合法字段）
                 if key == "organization_id":
+                    continue
+                if _is_allowed_external_id_field(current_path, key):
                     continue
                 is_numeric_scalar = isinstance(value, int) or (isinstance(value, str) and PURE_NUMERIC_PATTERN.match(value))
                 is_numeric_list = isinstance(value, list) and any(
@@ -408,6 +460,7 @@ def count_objects(doc: YAMLDocument) -> dict:
             + len(doc.architectures)
             + len(doc.screens)
             + len(doc.reports)
+            + len(doc.network_topologies)
             + len(doc.datasources)
             + len(doc.namespaces)
         ),
@@ -417,6 +470,7 @@ def count_objects(doc: YAMLDocument) -> dict:
             ObjectType.ARCHITECTURE.value: len(doc.architectures),
             ObjectType.SCREEN.value: len(doc.screens),
             ObjectType.REPORT.value: len(doc.reports),
+            ObjectType.NETWORK_TOPOLOGY.value: len(doc.network_topologies),
             ObjectType.DATASOURCE.value: len(doc.datasources),
             ObjectType.NAMESPACE.value: len(doc.namespaces),
         },

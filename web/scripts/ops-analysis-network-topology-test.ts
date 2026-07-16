@@ -29,12 +29,13 @@ import {
   buildLinkDetailPortRows,
   buildLinkInterfaceMetricRows,
   buildNodeDetailMetricRows,
-  buildNodeDetailPortRows,
   buildBoundMetricConfigRows,
   buildNetworkTopologyMetricDraft,
   buildNetworkTopologyLinkRenderOptions,
   buildNetworkTopologyLinkTerminals,
+  isNetworkTopologyLinkPendingInterfaceSelection,
   mergeNetworkTopologyRuntimeNodes,
+  mergeNetworkTopologyRuntimeLinks,
   isMetricRuntimeLoading,
   isMetricOptionMatched,
   replaceNetworkTopologyMetricDraft,
@@ -476,6 +477,20 @@ assert.deepEqual(
   'config-only save responses should not discard runtime metrics already loaded in memory',
 );
 
+const runtimeNodesWithInterfaceSummary = mergeNetworkTopologyRuntimeNodes(
+  [detailNodeRuntime],
+  [detailNode],
+  {},
+  {
+    [detailNode.id]: { total: 4, up: 2, down: 1, unknown: 1 },
+  },
+);
+assert.deepEqual(
+  runtimeNodesWithInterfaceSummary[0].interface_summary,
+  { total: 4, up: 2, down: 1, unknown: 1 },
+  'link runtime preview should merge node interface summaries without requiring a full runtime refresh',
+);
+
 assert.deepEqual(
   buildBoundMetricConfigRows(detailNode.metrics, {
     aggregate: '聚合值',
@@ -591,12 +606,20 @@ const detailLinkRuntime: NetworkLinkRuntime[] = [
 ];
 
 assert.deepEqual(
-  buildNodeDetailPortRows(detailNode, detailLinks, detailLinkRuntime),
+  mergeNetworkTopologyRuntimeLinks(detailLinkRuntime, {
+    'link-1': {
+      id: 'link-1',
+      status: 'critical',
+      reason: 'interface_down',
+      interfaces: [{ endpoint: 'target', bk_inst_id: 22, interface_name: 'eth1', oper_status: 'down' }],
+      interface_metrics: ['ifInOctets_5min'],
+    },
+  }).map((item) => ({ id: item.id, status: item.status, reason: item.reason })),
   [
-    { key: 'link-1:source:11', name: 'eth0', status: 'up' },
-    { key: 'link-2:target:44', name: 'eth2', status: 'down' },
+    { id: 'link-1', status: 'critical', reason: 'interface_down' },
+    { id: 'link-2', status: 'critical', reason: undefined },
   ],
-  'node detail ports come from related links and link runtime interface statuses',
+  'link runtime preview should replace only the edited link while preserving other full-runtime links',
 );
 
 assert.deepEqual(
@@ -621,13 +644,13 @@ assert.deepEqual(
   }),
   [
     {
-      key: 'link-1:source:11:ifInOctets_5min',
+      key: 'link-1:source:0:11:ifInOctets_5min',
       interfaceName: 'eth0',
       metricLabel: '入网流速',
       value: '84.24 Mbps',
     },
     {
-      key: 'link-1:source:11:ifOutOctets_5min',
+      key: 'link-1:source:0:11:ifOutOctets_5min',
       interfaceName: 'eth0',
       metricLabel: '出网流速',
       value: '28.36 Kbps',
@@ -643,25 +666,25 @@ assert.deepEqual(
   }),
   [
     {
-      key: 'link-1:source:11:ifInOctets_5min',
+      key: 'link-1:0:source:11:ifInOctets_5min',
       interfaceName: 'eth0',
       metricLabel: '入网流速',
       value: '--',
     },
     {
-      key: 'link-1:source:11:ifOutOctets_5min',
+      key: 'link-1:0:source:11:ifOutOctets_5min',
       interfaceName: 'eth0',
       metricLabel: '出网流速',
       value: '--',
     },
     {
-      key: 'link-1:target:22:ifInOctets_5min',
+      key: 'link-1:0:target:22:ifInOctets_5min',
       interfaceName: 'eth1',
       metricLabel: '入网流速',
       value: '--',
     },
     {
-      key: 'link-1:target:22:ifOutOctets_5min',
+      key: 'link-1:0:target:22:ifOutOctets_5min',
       interfaceName: 'eth1',
       metricLabel: '出网流速',
       value: '--',
@@ -669,6 +692,34 @@ assert.deepEqual(
   ],
   'link detail interface metrics fall back to configured port pairs before runtime arrives',
 );
+
+{
+  const rows = buildLinkInterfaceMetricRows(
+    detailLinks[0],
+    {
+      id: 'link-1',
+      status: 'critical',
+      interfaces: [
+        {
+          endpoint: 'source',
+          bk_inst_id: 11,
+          interface_name: 'eth0',
+          oper_status: 'down',
+          metrics: { ifOutOctets_5min: { value: 1, unit: 'bps' } },
+        },
+        {
+          endpoint: 'source',
+          bk_inst_id: 11,
+          interface_name: 'eth0',
+          oper_status: 'down',
+          metrics: { ifOutOctets_5min: { value: 2, unit: 'bps' } },
+        },
+      ],
+    },
+    { ifOutOctets_5min: '出网流速' },
+  );
+  assert.equal(new Set(rows.map((row) => row.key)).size, rows.length, 'duplicated runtime interfaces should still produce unique React keys');
+}
 
 assert.deepEqual(
   updateNetworkTopologyLinkTerminals(detailLinks, 'link-1', {
@@ -863,6 +914,29 @@ assert.deepEqual(
   'legacy links without anchor fields still render with cell-only terminals',
 );
 
+assert.equal(
+  isNetworkTopologyLinkPendingInterfaceSelection({
+    id: 'link-draft',
+    source_node_id: 'node-a',
+    target_node_id: 'node-b',
+    port_pairs: [],
+    is_draft: true,
+  }),
+  true,
+  'draft links without selected interfaces should stay in neutral pending state instead of using runtime status colors',
+);
+assert.equal(
+  isNetworkTopologyLinkPendingInterfaceSelection({
+    id: 'link-configured',
+    source_node_id: 'node-a',
+    target_node_id: 'node-b',
+    port_pairs: [{ source: 'eth0', target: 'eth1' }],
+    is_draft: false,
+  }),
+  false,
+  'configured links should use interface-pair runtime status colors',
+);
+
 assert.deepEqual(
   buildNetworkTopologyLinkRenderOptions({ vertices: [] }),
   {
@@ -880,6 +954,183 @@ assert.deepEqual(
     vertices: [{ x: 10, y: 20 }, { x: 40, y: 50 }],
   },
   'links with manual vertices should keep dragged bend points and ignore invalid points',
+);
+
+const topologyIndexSource = readRepoFile('src/app/ops-analysis/(pages)/view/networkTopology/index.tsx');
+const topologyApiSource = readRepoFile('src/app/ops-analysis/api/networkTopology.ts');
+const networkLibraryHookSource = readRepoFile(
+  'src/app/ops-analysis/(pages)/view/networkTopology/hooks/useNetworkLibrary.ts',
+);
+const networkLibrarySource = readRepoFile(
+  'src/app/ops-analysis/(pages)/view/networkTopology/components/networkLibrary.tsx',
+);
+const networkEdgeDrawerSource = readRepoFile(
+  'src/app/ops-analysis/(pages)/view/networkTopology/components/networkEdgeDrawer.tsx',
+);
+assert.match(
+  networkLibraryHookSource,
+  /enabled\?: boolean/,
+  'network library hook should support a request gate so read-only collapsed panels do not load WeOps data',
+);
+assert.match(
+  topologyIndexSource,
+  /enabled:\s*Boolean\(canvasId\)/,
+  'network library should load once when entering a canvas instead of reloading on every panel expand/edit toggle',
+);
+assert.match(
+  networkLibraryHookSource,
+  /const \[allNodes, setAllNodes\] = useState<NetworkNodeLibraryItem\[\]>\(\[\]\)/,
+  'network library should retain one full device list and filter it locally',
+);
+assert.match(
+  networkLibraryHookSource,
+  /loadNodesRef\.current\(canvasId\)/,
+  'network library should request the full device list once without server-side model/keyword filters',
+);
+assert.doesNotMatch(
+  networkLibraryHookSource,
+  /modelCacheRef|loadedNodesKeyRef/,
+  'network library reload should not reuse persistent model or node request caches',
+);
+assert.match(
+  networkLibraryHookSource,
+  /inFlightRef/,
+  'network library should still deduplicate only concurrent requests',
+);
+assert.match(
+  networkLibrarySource,
+  /onChange=\{\(e\) => \{\s*const nextKeyword = e\.target\.value;\s*setKeywordDraft\(nextKeyword\);\s*if \(!nextKeyword\) \{\s*onKeywordChange\(''\);\s*\}\s*\}\}/,
+  'network library keyword input should follow existing Search pattern: typing is local, clearing resets search',
+);
+assert.match(
+  networkLibrarySource,
+  /onSearch=\{\(v\) => onKeywordChange\(v\.trim\(\)\)\}/,
+  'network library keyword search should submit through Input.Search onSearch instead of querying on every keypress',
+);
+assert.match(
+  topologyIndexSource,
+  /if \(node && canvasId && editor\.editMode\) \{\s*loadNodeMetrics\(node\);\s*\}/,
+  'read-only node detail selection should not fetch metric options; metrics are only needed in edit drawer',
+);
+assert.match(
+  topologyIndexSource,
+  /if \(!id \|\| !canvasId \|\| !options\?\.openConfig\)/,
+  'view-only link selection should not load full source/target interface lists; only link edit mode needs them',
+);
+assert.match(
+  topologyIndexSource,
+  /const loadLinkInterfaces = useCallback\(\s*\(link: NetworkTopologyLink\)/,
+  'link interface loading should use one shared loader that refreshes whenever config opens',
+);
+assert.match(
+  topologyIndexSource,
+  /handleSelectLink[\s\S]*loadLinkInterfaces\(link\)/,
+  'opening an existing link config should refresh source and target interface lists through the shared loader',
+);
+assert.doesNotMatch(
+  topologyIndexSource,
+  /interfacesLoading \? \(\s*<span[^>]*>\s*\{t\('opsAnalysis\.networkTopology\.link\.loadingInterfaces'\)\}/,
+  'link detail popover should render configured port_pairs immediately instead of hiding behind interface-list loading',
+);
+assert.doesNotMatch(
+  networkEdgeDrawerSource,
+  /linkRuntime|network-edge-drawer-runtime|runtimeSummary/,
+  'link config drawer should stay configuration-only and not render stale runtime summaries',
+);
+assert.match(
+  topologyIndexSource,
+  /const DETAIL_POPOVER_MAX_HEIGHT_PX = 3\d{2};/,
+  'detail popovers should keep a compact capped height while leaving room for node information',
+);
+assert.match(
+  topologyIndexSource,
+  /top: clampDetailPopoverTop\(linkDetailPoint\.y\)/,
+  'link detail popover top should be clamped so it cannot overflow below the viewport',
+);
+assert.match(
+  topologyIndexSource,
+  /left: clampDetailPopoverLeft\(linkDetailPoint\.x\)/,
+  'link detail popover left should be clamped so clicking right-side links still shows the card onscreen',
+);
+assert.match(
+  topologyIndexSource,
+  /top: clampDetailPopoverTop\(nodeDetailPoint\.y\)/,
+  'node detail popover top should be clamped so it cannot overflow below the viewport',
+);
+assert.match(
+  topologyIndexSource,
+  /grid grid-cols-2 gap-x-3 gap-y-1\.5/,
+  'detail basic info rows should keep a compact two-column summary layout',
+);
+assert.match(
+  topologyApiSource,
+  /getLinkRuntime[\s\S]*weops\/link_runtime\//,
+  'network topology API client should expose the local link runtime preview endpoint',
+);
+assert.match(
+  topologyIndexSource,
+  /api\s*\.\s*getLinkRuntime\(\s*String\(canvasId\),\s*\{\s*link:\s*nextLink,\s*nodes:\s*prev\.nodes\s*\}/,
+  'committing link interfaces should request local link runtime with the current unsaved node list',
+);
+assert.doesNotMatch(
+  topologyIndexSource,
+  /normalizedMetrics\.forEach\(\(metric\) => \{\s*void loadDraftMetricRuntime\(node, metric\);/,
+  'committing node metrics should not send one metric-value request per metric',
+);
+assert.match(
+  topologyIndexSource,
+  /const metricRequests = metrics\.map\(\(metric\) =>/,
+  'committing node metrics should build one batched metric_values payload',
+);
+assert.match(
+  topologyIndexSource,
+  /api\.getMetricValues\(String\(canvasId\), metricRequests\)/,
+  'committing node metrics should query draft metric runtime in one batch request',
+);
+assert.doesNotMatch(
+  topologyIndexSource,
+  /useNetworkRefresh|getRuntime\(/,
+  'network topology view should not wait for the full-canvas runtime endpoint',
+);
+assert.doesNotMatch(
+  topologyApiSource,
+  /getRuntime|\/runtime\//,
+  'network topology API client should remove the deprecated full-canvas runtime endpoint',
+);
+assert.doesNotMatch(
+  topologyIndexSource,
+  /nodeMetricsRequestKeyRef/,
+  'opening node edit should not reuse a permanent metric-options request cache key',
+);
+assert.match(
+  topologyIndexSource,
+  /nodeMetricsRequestGenerationRef/,
+  'node metric options should ignore stale responses with a request generation',
+);
+assert.doesNotMatch(
+  topologyIndexSource,
+  /linkInterfacesRequestKeyRef/,
+  'opening link config should not reuse a permanent interface-options request cache key',
+);
+assert.match(
+  topologyIndexSource,
+  /linkInterfacesRequestGenerationRef/,
+  'link interface options should ignore stale responses with a request generation',
+);
+assert.match(
+  topologyIndexSource,
+  /查看态不再调用整图 `\/runtime\/`/,
+  'network topology view should document why the full runtime endpoint is not used',
+);
+assert.match(
+  topologyIndexSource,
+  /runtimeConfig\.nodes[\s\S]*api\.getMetricValues/,
+  'configured node metrics should load independently after the canvas config is available',
+);
+assert.match(
+  topologyIndexSource,
+  /runtimeConfig\.links[\s\S]*api\.getLinkRuntime/,
+  'configured links should load independently after the canvas config is available',
 );
 
 console.log('ops-analysis-network-topology-test passed');

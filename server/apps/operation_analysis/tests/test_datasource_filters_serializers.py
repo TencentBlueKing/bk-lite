@@ -229,6 +229,49 @@ def test_detect_db_id_references_flags_numeric_ids():
     assert "organization_id" not in fields
 
 
+def test_detect_db_id_references_allows_network_topology_external_ids():
+    from apps.operation_analysis.schemas.import_export_schema import detect_db_id_references
+
+    data = {
+        "network_topologies": [
+            {
+                "key": "networkTopology::demo",
+                "name": "demo",
+                "base_url": "https://weops.example",
+                "token": "******",
+                "view_sets": {
+                    "nodes": [
+                        {
+                            "id": "node-1",
+                            "bk_obj_id": "bk_firewall",
+                            "bk_inst_id": 383679,
+                            "plugin_template_id": 2170,
+                            "network_collect_task_id": 197,
+                            "network_collect_instance_id": 1994,
+                        }
+                    ],
+                    "links": [
+                        {
+                            "id": "link-1",
+                            "source_node_id": "node-1",
+                            "target_node_id": "node-2",
+                            "port_pairs": [
+                                {
+                                    "source_interface": {"bk_obj_id": "bk_interface", "bk_inst_id": 383676},
+                                    "target_interface": {"bk_obj_id": "bk_interface", "bk_inst_id": 36563},
+                                }
+                            ],
+                        }
+                    ],
+                },
+                "refs": {"datasource_keys": [], "namespace_keys": []},
+            }
+        ]
+    }
+
+    assert detect_db_id_references(data) == []
+
+
 def test_count_objects():
     from apps.operation_analysis.schemas.import_export_schema import YAMLDocument, count_objects
 

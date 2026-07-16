@@ -13,16 +13,34 @@ import type {
 import { useTranslation } from "@/utils/i18n";
 import { buildNetworkNodeClientId } from "../utils/networkTopologyUtils";
 
-const MODEL_TAG_COLORS: Record<string, string> = {
-  bk_switch: "cyan",
-  bk_router: "blue",
-  bk_firewall: "volcano",
-  bk_loadbalance: "purple",
-  bk_load_balancer: "purple",
+const MODEL_TAG_ACCENTS: Record<string, string> = {
+  bk_switch: "#4f46e5",
+  bk_router: "#2563eb",
+  bk_firewall: "#f97316",
+  bk_loadbalance: "#7c3aed",
+  bk_load_balancer: "#7c3aed",
 };
 
-export const getModelTagColor = (bkObjId: string) =>
-  MODEL_TAG_COLORS[bkObjId] ?? "geekblue";
+export const getModelTagStyle = (bkObjId: string): React.CSSProperties => {
+  const accent = MODEL_TAG_ACCENTS[bkObjId] ?? "#4f46e5";
+  return {
+    color: `color-mix(in srgb, ${accent} 78%, var(--color-text-1,#111827) 22%)`,
+    background: `color-mix(in srgb, ${accent} 12%, var(--color-bg-1,#ffffff) 88%)`,
+    border: `1px solid color-mix(in srgb, ${accent} 32%, var(--color-border-2,#e5e6eb) 68%)`,
+  };
+};
+
+const libraryFilterActiveStyle: React.CSSProperties = {
+  backgroundColor: "var(--color-primary,#1d4ed8)",
+  borderColor: "var(--color-primary,#1d4ed8)",
+  color: "#ffffff",
+};
+
+const libraryFilterInactiveStyle: React.CSSProperties = {
+  backgroundColor: "var(--color-fill-2,#f1f5f9)",
+  borderColor: "transparent",
+  color: "var(--color-text-2,#475569)",
+};
 
 export interface NetworkLibraryProps {
   models: NetworkNodeModel[];
@@ -80,6 +98,10 @@ const NetworkLibrary: React.FC<NetworkLibraryProps> = ({
     return map;
   }, [models]);
   const handleToggleCollapsed = () => onCollapsedChange?.(!collapsed);
+
+  useEffect(() => {
+    setKeywordDraft(keyword);
+  }, [keyword]);
 
   // 编辑/只读切换时自动同步侧栏状态(参考 topology/components/nodeSidebar):
   // - 切到只读(disabled=true): 收起
@@ -149,10 +171,13 @@ const NetworkLibrary: React.FC<NetworkLibraryProps> = ({
                 )}
                 value={keywordDraft}
                 onChange={(e) => {
-                  setKeywordDraft(e.target.value);
-                  onKeywordChange(e.target.value);
+                  const nextKeyword = e.target.value;
+                  setKeywordDraft(nextKeyword);
+                  if (!nextKeyword) {
+                    onKeywordChange('');
+                  }
                 }}
-                onSearch={(v) => onKeywordChange(v)}
+                onSearch={(v) => onKeywordChange(v.trim())}
                 data-testid="network-library-keyword"
               />
               {/* 设备类型筛选 chip(参考 spec HTML .filter-chips)。
@@ -171,16 +196,8 @@ const NetworkLibrary: React.FC<NetworkLibraryProps> = ({
                   className="cursor-pointer rounded-full border px-2.5 py-0.5 text-[11px] transition-colors"
                   style={
                     !modelFilter
-                      ? {
-                        backgroundColor: "#1d4ed8",
-                        borderColor: "#1d4ed8",
-                        color: "#ffffff",
-                      }
-                      : {
-                        backgroundColor: "#f1f5f9",
-                        borderColor: "transparent",
-                        color: "#475569",
-                      }
+                      ? libraryFilterActiveStyle
+                      : libraryFilterInactiveStyle
                   }
                 >
                   {t("opsAnalysis.networkTopology.library.allModels")}
@@ -198,16 +215,8 @@ const NetworkLibrary: React.FC<NetworkLibraryProps> = ({
                       className="cursor-pointer rounded-full border px-2.5 py-0.5 text-[11px] transition-colors"
                       style={
                         active
-                          ? {
-                            backgroundColor: "#1d4ed8",
-                            borderColor: "#1d4ed8",
-                            color: "#ffffff",
-                          }
-                          : {
-                            backgroundColor: "#f1f5f9",
-                            borderColor: "transparent",
-                            color: "#475569",
-                          }
+                          ? libraryFilterActiveStyle
+                          : libraryFilterInactiveStyle
                       }
                     >
                       {m.display_name}
@@ -246,7 +255,7 @@ const NetworkLibrary: React.FC<NetworkLibraryProps> = ({
                         event.dataTransfer.effectAllowed = "copy";
                         onDragStart?.();
                       }}
-                      className={`rounded border border-[var(--color-border-1)] bg-white px-3 py-2.5 transition-colors ${
+                      className={`rounded border border-[var(--color-border-1)] bg-[var(--color-bg-1)] px-3 py-2.5 transition-colors ${
                         disabled
                           ? "cursor-not-allowed opacity-60"
                           : "cursor-grab hover:border-[var(--color-border-2)] hover:bg-[var(--color-fill-2)] active:cursor-grabbing"
@@ -266,8 +275,8 @@ const NetworkLibrary: React.FC<NetworkLibraryProps> = ({
                             </span>
                             <Tag
                               bordered={false}
-                              color={getModelTagColor(item.bk_obj_id)}
                               style={{
+                                ...getModelTagStyle(item.bk_obj_id),
                                 marginInlineEnd: 0,
                                 maxWidth: 64,
                                 height: 18,

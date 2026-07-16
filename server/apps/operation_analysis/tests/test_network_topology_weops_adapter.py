@@ -26,6 +26,7 @@ import pytest
 
 from apps.operation_analysis.services.network_topology.weops_adapter import (
     WEOPS_TOKEN_INVALID,
+    AdapterSettings,
     NetworkTopologyErrorType,
     WeOpsTopologyAdapter,
     WeOpsTopologyAdapterError,
@@ -94,6 +95,21 @@ def test_adapter_injects_x_token_and_trace_id():
     assert call["headers"]["x-token"] == "service-token"
     assert call["headers"]["x-bklite-trace-id"] == "trace-1"
     assert call["url"] == "https://weops.example.com/open_api/bklite/network_topology/node_models/"
+
+
+def test_adapter_defaults_to_30_second_timeout():
+    client = FakeHttpClient(responses=[FakeResponse(200, {"result": True, "data": []})])
+    adapter = WeOpsTopologyAdapter(
+        base_url="https://weops.example.com",
+        token="service-token",
+        http_client=client,
+        trace_id_factory=lambda: "trace-1",
+    )
+
+    adapter.list_node_models()
+
+    assert AdapterSettings(base_url="https://weops.example.com", token="service-token").timeout == 30
+    assert client.calls[0]["timeout"] == 30
 
 
 def test_adapter_uses_all_true_for_list_nodes_without_pagination_fallback():

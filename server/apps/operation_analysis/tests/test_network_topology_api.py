@@ -15,9 +15,7 @@ Covers:
   plaintext is never echoed back.
 * ``POST /api/network_topology/test_connection/`` against a mock adapter
   for the success and ``weops_token_invalid`` paths.
-* ``GET /api/network_topology/<id>/runtime/`` against the in-memory
-  ``NetworkTopologyRuntimeService`` flow: fresh payload, stale fallback
-  when WeOps is down, and an error response when the cache is also gone.
+* 整图 ``/runtime/`` 接口已移除,运行态改为逐节点/连线查询。
 * ``PUT /api/network_topology/<id>/config`` validates ``view_sets`` and
   cascade-removes links when a node is dropped.
 """
@@ -25,16 +23,13 @@ Covers:
 from __future__ import annotations
 
 import json
-from datetime import timedelta
 
 import pytest
-from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.operation_analysis.models.models import Directory, NetworkTopology
 from apps.operation_analysis.services.network_topology import canvas_config
-from apps.operation_analysis.services.network_topology.runtime import NetworkTopologyRuntimeService
 from apps.operation_analysis.services.network_topology.weops_adapter import WEOPS_TOKEN_INVALID, WeOpsTopologyAdapterError
 from apps.operation_analysis.views.network_topology_view import NetworkTopologyViewSet
 
@@ -352,185 +347,78 @@ def test_test_connection_rejects_bad_url(authenticated_user):
 
 
 # --------------------------------------------------------------------------- #
-# Runtime + cache                                                              #
+# Runtime                                                                      #
 # --------------------------------------------------------------------------- #
 
 
+def test_full_runtime_action_is_removed():
+    assert not hasattr(NetworkTopologyViewSet, "runtime")
+
+
 @pytest.mark.django_db
-def test_runtime_returns_error_without_cache_fallback_when_weops_unavailable(monkeypatch, authenticated_user):
-    """需求变更:每次进入画布都重新请求 WeOps,失败直接返回错误,不再回退
-    到 ``last_runtime_cache``(spec/requirements/运营分析/网络拓扑大屏
-    需求设计 §7.6)。原先的 stale fallback 行为在 P1 后由缓存层单独管理。
-    """
+def test_weops_link_runtime_preview_returns_single_link_runtime(monkeypatch, authenticated_user):
     authenticated_user.is_superuser = True
     topology = _make_topology()
     topology.view_sets = {
         "nodes": [
-            _node_payload("node-1", "bk_switch", 10001)
-            | {
-                "metrics": [
-                    {
-                        "metric_field": "ifHCInOctets",
-                        "result_table_id": "snmp_network",
-                        "display_name": "入口流量",
-                        "unit": "bps",
-                        "dimensions": {},
-                        "thresholds": [{"value": 0, "color": "#22c55e"}],
-                    }
-                ]
-            }
+            _node_payload("node-1", "bk_switch", 10001),
+            _node_payload("node-2", "bk_router", 10002),
         ],
-        "links": [
-            _link_payload("link-1", "node-1", "node-1"),
-        ],
+        "links": [],
     }
-    # 即便历史有 cache,也不允许 stale fallback —— 直接 502。
-    topology.last_runtime_cache = NetworkTopologyRuntimeService.cache_payload({"nodes": [{"id": "node-1", "outer_color": "#dc2626"}], "links": []})
     topology.save()
 
+    captured = {}
+
+    def fake_build_link_runtime_preview(topology_obj, adapter, link_payload, nodes_payload=None):
+        captured["topology_id"] = topology_obj.id
+        captured["adapter"] = adapter
+        captured["link_payload"] = link_payload
+        captured["nodes_payload"] = nodes_payload
+        return {
+            "result": True,
+            "data": {
+                "link": {
+                    "id": "link-1",
+                    "source_node_id": "node-1",
+                    "target_node_id": "node-2",
+                    "status": "critical",
+                    "reason": "interface_down",
+                    "interfaces": [],
+                    "interface_metrics": ["ifInOctets_5min"],
+                },
+                "node_interface_summary": {
+                    "bk_switch:10001": {"total": 2, "up": 1, "down": 1, "unknown": 0},
+                },
+            },
+        }
+
+    monkeypatch.setattr(
+        "apps.operation_analysis.views.network_topology_view.NetworkTopologyRuntimeService.build_link_runtime_preview",
+        fake_build_link_runtime_preview,
+    )
     monkeypatch.setattr(
         "apps.operation_analysis.views.network_topology_view._adapter_for",
-        lambda topology_obj: _exploding_adapter(),
+        lambda topology_obj: object(),
     )
 
+    link_payload = _link_payload("link-1", "node-1", "node-2") | {"interface_metrics": ["ifInOctets_5min"]}
     request = _request(
-        "get",
-        f"/operation_analysis/api/network_topology/{topology.id}/runtime/",
+        "post",
+        f"/operation_analysis/api/network_topology/{topology.id}/weops/link_runtime/",
         authenticated_user,
+        data={"link": link_payload, "nodes": topology.view_sets["nodes"]},
     )
-    response = NetworkTopologyViewSet.as_view({"get": "runtime"})(request, pk=str(topology.id))
+
+    response = NetworkTopologyViewSet.as_view({"post": "weops_link_runtime"})(request, pk=str(topology.id))
     payload = _render(response)
 
-    assert response.status_code == status.HTTP_502_BAD_GATEWAY
-    assert payload["data"]["stale"] is False
-    assert payload["data"]["code"] == "weops_unavailable"
-
-
-@pytest.mark.django_db
-def test_runtime_returns_error_when_cache_expired(monkeypatch, authenticated_user):
-    authenticated_user.is_superuser = True
-    topology = _make_topology()
-    topology.view_sets = {
-        "nodes": [
-            _node_payload("node-1", "bk_switch", 10001)
-            | {
-                "metrics": [
-                    {
-                        "metric_field": "ifHCInOctets",
-                        "result_table_id": "snmp_network",
-                        "display_name": "入口流量",
-                        "unit": "bps",
-                        "dimensions": {},
-                        "thresholds": [{"value": 0, "color": "#22c55e"}],
-                    }
-                ]
-            }
-        ],
-        "links": [
-            _link_payload("link-1", "node-1", "node-1"),
-        ],
-    }
-    topology.last_runtime_cache = {
-        "nodes": [{"id": "node-1"}],
-        NetworkTopologyRuntimeService.CACHE_GENERATED_AT_KEY: (
-            timezone.now() - timedelta(seconds=NetworkTopologyRuntimeService.CACHE_TTL_SECONDS + 30)
-        ).isoformat(),
-    }
-    topology.save()
-
-    monkeypatch.setattr(
-        "apps.operation_analysis.views.network_topology_view._adapter_for",
-        lambda topology_obj: _exploding_adapter(),
-    )
-
-    request = _request(
-        "get",
-        f"/operation_analysis/api/network_topology/{topology.id}/runtime/",
-        authenticated_user,
-    )
-    response = NetworkTopologyViewSet.as_view({"get": "runtime"})(request, pk=str(topology.id))
-    payload = _render(response)  # noqa: F841 — exercises the response renderer even when unused
-    assert response.status_code == status.HTTP_502_BAD_GATEWAY
-    assert payload["result"] is False
-    assert payload["data"]["stale"] is False
-    assert "nodes" not in payload["data"]
-
-
-@pytest.mark.django_db
-def test_runtime_token_invalid_returns_error_without_cache_fallback(monkeypatch, authenticated_user):
-    """需求变更:WeOps Token 失效时不再 stale fallback 到 last_runtime_cache,
-    直接返回 401 + 错误信息(spec/requirements/运营分析/网络拓扑大屏
-    需求设计 §7.6)。前端在 ``fatalMessage`` 上显示横幅,让用户去画布
-    配置页改 token。
-    """
-    authenticated_user.is_superuser = True
-    topology = _make_topology()
-    topology.view_sets = {
-        "nodes": [
-            _node_payload("node-1", "bk_switch", 10001)
-            | {
-                "metrics": [
-                    {
-                        "metric_field": "ifHCInOctets",
-                        "result_table_id": "snmp_network",
-                        "display_name": "入口流量",
-                        "unit": "bps",
-                        "dimensions": {},
-                        "thresholds": [{"value": 0, "color": "#22c55e"}],
-                    }
-                ]
-            }
-        ],
-        "links": [
-            _link_payload("link-1", "node-1", "node-1"),
-        ],
-    }
-    # 即便历史有 cache,也不允许 stale fallback。
-    topology.last_runtime_cache = NetworkTopologyRuntimeService.cache_payload({"nodes": [{"id": "node-1"}], "links": []})
-    topology.save()
-
-    class TokenInvalidAdapter:
-        def batch_metric_values(self, items):
-            raise WeOpsTopologyAdapterError(
-                "WeOps Token 已失效",
-                code=WEOPS_TOKEN_INVALID,
-                status_code=403,
-            )
-
-        def batch_interface_status(self, items, include_summary=True):
-            raise WeOpsTopologyAdapterError(
-                "WeOps Token 已失效",
-                code=WEOPS_TOKEN_INVALID,
-                status_code=403,
-            )
-
-    monkeypatch.setattr(
-        "apps.operation_analysis.views.network_topology_view._adapter_for",
-        lambda topology_obj: TokenInvalidAdapter(),
-    )
-
-    request = _request(
-        "get",
-        f"/operation_analysis/api/network_topology/{topology.id}/runtime/",
-        authenticated_user,
-    )
-    response = NetworkTopologyViewSet.as_view({"get": "runtime"})(request, pk=str(topology.id))
-    payload = _render(response)
-    # 直接返回 403 + weops_token_invalid,不再 stale fallback。
-    assert response.status_code == status.HTTP_403_FORBIDDEN
-    assert payload["data"]["code"] == WEOPS_TOKEN_INVALID
-    assert "stale" not in payload["data"] or payload["data"].get("stale") is False
-
-
-def _exploding_adapter():
-    class _Adapter:
-        def batch_metric_values(self, items):
-            raise WeOpsTopologyAdapterError("WeOps 不可用", code="weops_unavailable", status_code=502)
-
-        def batch_interface_status(self, items, include_summary=True):
-            raise WeOpsTopologyAdapterError("WeOps 不可用", code="weops_unavailable", status_code=502)
-
-    return _Adapter()
+    assert response.status_code == status.HTTP_200_OK
+    assert captured["topology_id"] == topology.id
+    assert captured["link_payload"] == link_payload
+    assert [node["id"] for node in captured["nodes_payload"]] == ["node-1", "node-2"]
+    assert payload["data"]["link"]["status"] == "critical"
+    assert payload["data"]["node_interface_summary"]["bk_switch:10001"]["down"] == 1
 
 
 # --------------------------------------------------------------------------- #

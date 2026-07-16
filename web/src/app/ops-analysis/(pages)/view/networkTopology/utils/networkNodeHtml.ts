@@ -96,40 +96,40 @@ export const renderNetworkNodeHtml = (
     .map((m) => {
       const label = escapeText(m.display_name || m.metric_field);
       const value = escapeText(formatMetricValue(m, runtimeMetrics, t));
-      return `<div style="display:flex;justify-content:space-between;font-size:11px;color:#334250;margin-top:4px;">
+      return `<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--color-text-2,#334250);margin-top:4px;">
         <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:130px;">${label}</span>
-        <strong style="color:#192733;">${value}</strong>
+        <strong style="color:var(--color-text-1,#192733);">${value}</strong>
       </div>`;
     })
     .join('');
   const noMetricsHtml =
     node.metrics.length === 0
-      ? `<div style="font-size:11px;color:#8a98a5;margin-top:6px;">${escapeText(t('opsAnalysis.networkTopology.nodeShape.noMetrics'))}</div>`
+      ? `<div style="font-size:11px;color:var(--color-text-3,#8a98a5);margin-top:6px;">${escapeText(t('opsAnalysis.networkTopology.nodeShape.noMetrics'))}</div>`
       : '';
 
-  const borderColor = selected ? '#2f8fb0' : '#cfdbe5';
+  const borderColor = selected ? 'var(--color-primary,#2f8fb0)' : 'var(--color-border-2,#cfdbe5)';
   const boxShadow = selected
     ? '0 0 0 2px rgba(47,143,176,0.18), 0 16px 34px rgba(36,50,63,0.18)'
     : '0 12px 26px rgba(36,50,63,0.12)';
 
   return (
     `<div data-testid="network-node-shape" data-status="${escapeAttr(status)}" ` +
-    `style="width:190px;min-height:112px;padding:10px;background:#fff;` +
+    `style="width:190px;min-height:112px;padding:10px;background:var(--color-bg-1,#fff);` +
     `border:1px solid ${borderColor};border-top:3px solid ${escapeAttr(outerColor)};` +
     `border-radius:8px;${`box-shadow:${boxShadow};`}user-select:none;box-sizing:border-box;">` +
     `<div style="display:flex;align-items:center;gap:8px;">` +
     `<span style="display:inline-grid;place-items:center;width:32px;height:32px;` +
-    `background:#eef4f6;border-radius:6px;color:#335364;font-weight:700;font-size:11px;">` +
+    `background:var(--color-fill-2,#eef4f6);border-radius:6px;color:var(--color-text-2,#335364);font-weight:700;font-size:11px;">` +
     `${escapeText(init)}</span>` +
     `<div style="min-width:0;flex:1;">` +
     `<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;` +
-    `font-weight:650;font-size:13px;color:#1f2933;">${displayName}</div>` +
-    `<div style="font-size:11px;color:#73808c;margin-top:2px;">${ipOrObj}</div>` +
+    `font-weight:650;font-size:13px;color:var(--color-text-1,#1f2933);">${displayName}</div>` +
+    `<div style="font-size:11px;color:var(--color-text-3,#73808c);margin-top:2px;">${ipOrObj}</div>` +
     `</div>` +
     `<span style="width:9px;height:9px;border-radius:999px;background:${escapeAttr(outerColor)};"></span>` +
     `</div>` +
     `<div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;` +
-    `padding-top:6px;border-top:1px solid #e4ebf0;font-size:11px;color:#536270;">` +
+    `padding-top:6px;border-top:1px solid var(--color-border-1,#e4ebf0);font-size:11px;color:var(--color-text-2,#536270);">` +
     `<span>${escapeText(t('opsAnalysis.networkTopology.nodeShape.interfaceLabel', { summary: summaryText }))}</span>` +
     `<span>${escapeText(errorCode)}</span>` +
     `</div>` +

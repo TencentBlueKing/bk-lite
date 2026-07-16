@@ -23,11 +23,10 @@ import {
 } from '@/app/ops-analysis/api/networkTopology';
 import { useNetworkEditor } from './hooks/useNetworkEditor';
 import { useNetworkLibrary } from './hooks/useNetworkLibrary';
-import { useNetworkRefresh } from './hooks/useNetworkRefresh';
 import { useTranslation } from '@/utils/i18n';
 import { useCollapsedState } from '../hooks/useCollapsedState';
 import NetworkToolbar from './components/networkToolbar';
-import NetworkLibrary, { getModelTagColor } from './components/networkLibrary';
+import NetworkLibrary, { getModelTagStyle } from './components/networkLibrary';
 import NetworkCanvas, { buildDraftLinkId } from './components/networkCanvas';
 import NetworkNodeDrawer from './components/networkNodeDrawer';
 import NetworkEdgeDrawer from './components/networkEdgeDrawer';
@@ -37,15 +36,14 @@ import {
   buildLinkDetailPortRows,
   buildLinkInterfaceMetricRows,
   buildNodeDetailMetricRows,
-  buildNodeDetailPortRows,
   DEFAULT_LINK_INTERFACE_METRICS,
   buildNetworkTopologyNode,
   buildNetworkNodeClientId,
   mergeNetworkTopologyRuntimeMetrics,
+  mergeNetworkTopologyRuntimeLinks,
   mergeNetworkTopologyRuntimeNodes,
   defaultNodePosition,
   filterLinksByNode,
-  normalizeInterfaceStatus,
   updateNetworkTopologyLinkTerminals,
   updateNodeMetrics,
 } from './utils/networkTopologyUtils';
@@ -61,7 +59,6 @@ import type {
   NetworkTopologyLink,
   NetworkTopologyMetric,
   NetworkTopologyNode,
-  NetworkTopologyRuntime,
 } from '@/app/ops-analysis/types/networkTopology';
 import './index.module.scss';
 
@@ -72,13 +69,83 @@ import './index.module.scss';
  * - X6 + Drawer + 自写 hooks,代码独立于 topology/,方便整体删除
  * - view_sets JSON 与其他画布一致(Dashboard/Topology/Architecture/Screen/Report)
  * - 节点外层颜色 = 阈值命中聚合结果,通过 inline style / X6 ReactShape data 传入
- * - 运行态刷新由工具栏选择频率控制,in-flight 边界由 useNetworkRefresh 保证
+ * - 查看态不再调用整图 `/runtime/`,先展示配置,再逐节点/连线填充运行态
  */
 export interface NetworkTopologyRef {
   hasUnsavedChanges: () => boolean;
 }
 
 const emptyConfig: NetworkTopologyConfig = { nodes: [], links: [] };
+const DETAIL_POPOVER_WIDTH_PX = 420;
+const DETAIL_POPOVER_MAX_HEIGHT_PX = 320;
+const DETAIL_POPOVER_MAX_HEIGHT = `${DETAIL_POPOVER_MAX_HEIGHT_PX}px`;
+const clampDetailPopoverLeft = (x: number) => {
+  const preferredLeft = Math.max(12, x + 28);
+  if (typeof window === 'undefined') return preferredLeft;
+  const maxLeft = window.innerWidth - DETAIL_POPOVER_WIDTH_PX - 12;
+  return Math.max(12, Math.min(preferredLeft, maxLeft));
+};
+const clampDetailPopoverTop = (y: number) => {
+  const preferredTop = Math.max(12, y + 22);
+  if (typeof window === 'undefined') return preferredTop;
+  const maxTop = window.innerHeight - DETAIL_POPOVER_MAX_HEIGHT_PX - 12;
+  return Math.max(12, Math.min(preferredTop, maxTop));
+};
+const detailPopoverClassName =
+  'fixed flex w-[420px] max-w-[calc(100vw-24px)] flex-col overflow-hidden rounded-lg border bg-[var(--color-bg-1,#fff)]';
+const detailPopoverFrameStyle = {
+  borderColor: '#d8e3ef',
+  boxShadow: '0 8px 24px rgba(37, 64, 96, 0.10), 0 0 0 1px rgba(238, 244, 251, 0.9)',
+};
+const detailPopoverHeaderClassName =
+  'flex items-start justify-between gap-3 border-b px-3 py-2.5';
+const detailPopoverHeaderStyle = {
+  borderBottomColor: '#edf3f9',
+};
+const detailPopoverBodyClassName =
+  'min-h-0 space-y-2 overflow-y-auto px-3 py-2.5 text-[12px]';
+const detailSummaryCardClassName =
+  'rounded-md border border-[var(--color-border-1,#e3eaf2)] bg-[var(--color-fill-1,#f8fafc)] p-2.5';
+const detailSummaryGridClassName =
+  'grid grid-cols-2 gap-x-3 gap-y-1.5 text-[var(--color-text-1,#1f2933)]';
+const detailSummaryRowClassName =
+  'flex min-w-0 items-center';
+const detailLabelClassName =
+  'w-[64px] shrink-0 text-right text-[var(--color-text-3,#6b7280)]';
+const detailColonClassName =
+  'mx-1 shrink-0 text-[var(--color-text-3,#6b7280)]';
+const detailSectionTitleClassName =
+  'mb-1.5 text-[12px] font-semibold text-[var(--color-text-1,#1f2933)]';
+const detailListRowClassName =
+  'flex min-h-[28px] items-center justify-between gap-3 rounded-md border border-[var(--color-border-1,#edf1f6)] bg-[var(--color-bg-1,#fbfcfe)] px-2 py-1.5';
+
+const groupLinkMetricRowsByInterface = (
+  rows: Array<{ key: string; interfaceName: string; metricLabel: string; value: string }>,
+) => {
+  const groups = new Map<
+    string,
+    {
+      key: string;
+      interfaceName: string;
+      metrics: Array<{ key: string; metricLabel: string; value: string }>;
+    }
+  >();
+  rows.forEach((row) => {
+    const groupKey = row.interfaceName || '--';
+    const group = groups.get(groupKey) ?? {
+      key: groupKey,
+      interfaceName: groupKey,
+      metrics: [],
+    };
+    group.metrics.push({
+      key: row.key,
+      metricLabel: row.metricLabel,
+      value: row.value,
+    });
+    groups.set(groupKey, group);
+  });
+  return Array.from(groups.values());
+};
 
 const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
   ({ selectedNetworkTopology }, ref) => {
@@ -137,8 +204,18 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
     const [runtimeMetricOverrides, setRuntimeMetricOverrides] = useState<
       Record<string, NetworkMetricRuntime[]>
     >({});
-    const nodeMetricsRequestKeyRef = useRef<string>('');
-    const linkInterfacesRequestKeyRef = useRef<string>('');
+    const [runtimeLinkOverrides, setRuntimeLinkOverrides] = useState<
+      Record<string, NetworkLinkRuntime>
+    >({});
+    const [runtimeInterfaceSummaryOverrides, setRuntimeInterfaceSummaryOverrides] =
+      useState<Record<string, NonNullable<NetworkNodeRuntime['interface_summary']>>>({});
+    const nodeMetricsRequestGenerationRef = useRef(0);
+    const linkInterfacesRequestGenerationRef = useRef(0);
+    const runtimeLoadGenerationRef = useRef(0);
+    const runtimeRefreshPromiseRef = useRef<{
+      canvasId: string;
+      promise: Promise<void>;
+    } | null>(null);
     const [graph, setGraph] = useState<X6Graph | null>(null);
     const [refreshIntervalMs, setRefreshIntervalMs] = useState(0);
     const { isFullscreen, enterFullscreen, exitFullscreen } =
@@ -153,18 +230,164 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
     // 设备库侧栏的展开/收起状态(参考 topology 侧栏的折叠交互)。
     const libraryCollapsed = useCollapsedState(true);
 
+    const loadConfiguredRuntime = useCallback(
+      (id: string | number, runtimeConfig: NetworkTopologyConfig): Promise<void> => {
+        const runtimeCanvasId = String(id);
+        const current = runtimeRefreshPromiseRef.current;
+        if (current?.canvasId === runtimeCanvasId) return current.promise;
+
+        const generation = ++runtimeLoadGenerationRef.current;
+        const isCurrent = () => runtimeLoadGenerationRef.current === generation;
+
+        const nodeTasks = runtimeConfig.nodes
+          .filter((node) => node.metrics.length > 0)
+          .map(async (node) => {
+            const metrics = node.metrics;
+            const metricRequests = metrics.map((metric) => {
+              const requestId = buildMetricRuntimeRequestId(node.id, metric);
+              return {
+                request_id: requestId,
+                node_ref: nodeRef(node),
+                metric_ref: {
+                  metric_field: metric.metric_field,
+                  result_table_id: metric.result_table_id,
+                },
+                dimensions: metric.dimensions ?? {},
+                condition_filter: metric.condition_filter ?? [],
+                display_mode:
+                  metric.display_mode ??
+                  ((metric.condition_filter ?? []).length > 0 ||
+                  Object.keys(metric.dimensions ?? {}).length > 0
+                    ? 'dimension'
+                    : 'aggregate'),
+                aggregate_type: metric.aggregate_type ?? 'sum',
+              };
+            });
+            const loadingMetrics = metrics.map((metric, index) =>
+              toRuntimeMetric(
+                {
+                  request_id: metricRequests[index].request_id,
+                  status: 'loading',
+                  value: null,
+                },
+                metric,
+                metricRequests[index].request_id,
+              ),
+            );
+            if (isCurrent()) {
+              setRuntimeMetricOverrides((prev) => ({
+                ...prev,
+                [node.id]: mergeNetworkTopologyRuntimeMetrics(
+                  prev[node.id] ?? [],
+                  loadingMetrics,
+                ),
+              }));
+            }
+            try {
+              const res = await api.getMetricValues(runtimeCanvasId, metricRequests);
+              if (!isCurrent()) return;
+              const itemByRequestId = new Map(
+                (res.items ?? []).map((item) => [item.request_id, item]),
+              );
+              const runtimeMetrics = metrics.map((metric, index) => {
+                const requestId = metricRequests[index].request_id;
+                return toRuntimeMetric(itemByRequestId.get(requestId), metric, requestId);
+              });
+              setRuntimeMetricOverrides((prev) => ({
+                ...prev,
+                [node.id]: mergeNetworkTopologyRuntimeMetrics(
+                  prev[node.id] ?? [],
+                  runtimeMetrics,
+                ),
+              }));
+            } catch (err) {
+              if (!isCurrent()) return;
+              const errorMetrics = metrics.map((metric, index) =>
+                toRuntimeMetric(
+                  {
+                    request_id: metricRequests[index].request_id,
+                    status: 'error',
+                    error_message: err instanceof Error ? err.message : String(err),
+                  },
+                  metric,
+                  metricRequests[index].request_id,
+                ),
+              );
+              setRuntimeMetricOverrides((prev) => ({
+                ...prev,
+                [node.id]: mergeNetworkTopologyRuntimeMetrics(
+                  prev[node.id] ?? [],
+                  errorMetrics,
+                ),
+              }));
+            }
+          });
+
+        const linkTasks = runtimeConfig.links
+          .filter((link) => !link.is_draft && link.port_pairs.length > 0)
+          .map(async (link) => {
+            try {
+              const res = await api.getLinkRuntime(runtimeCanvasId, {
+                link,
+                nodes: runtimeConfig.nodes,
+              });
+              if (!isCurrent()) return;
+              if (res?.link) {
+                setRuntimeLinkOverrides((prev) => ({
+                  ...prev,
+                  [res.link!.id]: res.link!,
+                }));
+              }
+              const summaries = res?.node_interface_summary ?? {};
+              if (Object.keys(summaries).length > 0) {
+                setRuntimeInterfaceSummaryOverrides((prev) => ({
+                  ...prev,
+                  ...summaries,
+                }));
+              }
+            } catch {
+              // 单条连线失败时保留旧值/未知态,不阻塞其他运行态返回。
+            }
+          });
+
+        const task = Promise.allSettled([...nodeTasks, ...linkTasks])
+          .then(() => undefined)
+          .finally(() => {
+            if (runtimeRefreshPromiseRef.current?.promise === task) {
+              runtimeRefreshPromiseRef.current = null;
+            }
+          });
+        runtimeRefreshPromiseRef.current = { canvasId: runtimeCanvasId, promise: task };
+        return task;
+      },
+      [api],
+    );
+
     // 加载画布 view_sets(GET /config/ 由后端 network_topology_view 提供,
     // 失败时降级到空画布,显示「加载画布失败」toast)。
     useEffect(() => {
       if (!canvasId) {
+        nodeMetricsRequestGenerationRef.current += 1;
+        linkInterfacesRequestGenerationRef.current += 1;
+        runtimeLoadGenerationRef.current += 1;
+        runtimeRefreshPromiseRef.current = null;
         setConfig(emptyConfig);
         setSavedConfig(emptyConfig);
         setRuntimeMetricOverrides({});
+        setRuntimeLinkOverrides({});
+        setRuntimeInterfaceSummaryOverrides({});
         editor.resetConfig(emptyConfig);
         return;
       }
       const id = canvasId;
       let active = true;
+      nodeMetricsRequestGenerationRef.current += 1;
+      linkInterfacesRequestGenerationRef.current += 1;
+      runtimeLoadGenerationRef.current += 1;
+      runtimeRefreshPromiseRef.current = null;
+      setRuntimeMetricOverrides({});
+      setRuntimeLinkOverrides({});
+      setRuntimeInterfaceSummaryOverrides({});
       setViewSetsLoading(true);
       api
         .getViewSets(id)
@@ -174,7 +397,10 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
           setConfig(next);
           setSavedConfig(next);
           setRuntimeMetricOverrides({});
+          setRuntimeLinkOverrides({});
+          setRuntimeInterfaceSummaryOverrides({});
           editor.resetConfig(next);
+          void loadConfiguredRuntime(id, next);
         })
         .catch((err: unknown) => {
           if (!active) return;
@@ -201,44 +427,16 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
         api.getNodes(id, params),
       [api],
     );
-    const fetchRuntime = useCallback(
-      (id: string | number) => api.getRuntime(id) as Promise<NetworkTopologyRuntime>,
-      [api],
-    );
-
     const library = useNetworkLibrary({
       canvasId,
+      enabled: Boolean(canvasId),
       loadModels: loadNodeModels,
       loadNodes: loadLibraryNodes,
     });
 
-    const refresh = useNetworkRefresh({
-      canvasId,
-      fetcher: fetchRuntime,
-      refreshIntervalMs,
-    });
-    // API 返回的是 NetworkTopologyRuntime,这里运行时即回到那种类型
-    // 由于 useNetworkRefresh 内部已经做错误兜底,在这里不必二次 unwrap
-    const baseRuntimeNodes: NetworkNodeRuntime[] = useMemo(() => {
-      // getRuntime 返回值见 api/networkTopology.ts(顶层或 data 包络)
-      const raw = (
-        refresh.runtime as unknown as {
-          nodes?: NetworkNodeRuntime[];
-          links?: NetworkLinkRuntime[];
-        } | null
-      );
-      return raw?.nodes ?? [];
-    }, [refresh.runtime]);
     const runtimeLinks = useMemo(() => {
-      const raw = (
-        refresh.runtime as unknown as {
-          links?: NetworkLinkRuntime[];
-        } | null
-      );
-      // 后端 runtime 端点用 `id` 标识每条连线（与画布内
-      // NetworkTopologyLink.id 一致），所以这里直接透传。
-      return raw?.links ?? [];
-    }, [refresh.runtime]);
+      return mergeNetworkTopologyRuntimeLinks([], runtimeLinkOverrides);
+    }, [runtimeLinkOverrides]);
 
     const nodeById = useMemo(() => {
       const map = new Map<string, NetworkTopologyNode>();
@@ -248,36 +446,42 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
 
     const runtimeNodes: NetworkNodeRuntime[] = useMemo(() => {
       return mergeNetworkTopologyRuntimeNodes(
-        baseRuntimeNodes,
+        [],
         config.nodes,
         runtimeMetricOverrides,
+        runtimeInterfaceSummaryOverrides,
       );
-    }, [baseRuntimeNodes, config.nodes, runtimeMetricOverrides]);
+    }, [
+      config.nodes,
+      runtimeMetricOverrides,
+      runtimeInterfaceSummaryOverrides,
+    ]);
 
     const runtimeNodeMap = useMemo(() => {
       const map = new Map<string, NetworkNodeRuntime>();
-      // 后端 runtime 端点用 `id` 字段（也就是 `bk_obj_id:bk_inst_id`）
-      // 标识节点 —— 见 buildNetworkNodeClientId。
       runtimeNodes.forEach((node) => map.set(node.id, node));
       return map;
     }, [runtimeNodes]);
 
+    useEffect(() => {
+      if (!canvasId || refreshIntervalMs <= 0) return undefined;
+      const timer = setInterval(() => {
+        void loadConfiguredRuntime(canvasId, config);
+      }, refreshIntervalMs);
+      return () => clearInterval(timer);
+    }, [canvasId, config, loadConfiguredRuntime, refreshIntervalMs]);
+
     const loadNodeMetrics = useCallback(
-      (node: NetworkTopologyNode, options?: { force?: boolean }) => {
+      (node: NetworkTopologyNode) => {
         if (!canvasId) return;
-        const requestKey = `${canvasId}:${node.id}`;
-        if (!options?.force && nodeMetricsRequestKeyRef.current === requestKey) {
-          return;
-        }
-        nodeMetricsRequestKeyRef.current = requestKey;
+        const generation = ++nodeMetricsRequestGenerationRef.current;
         setDimensionValueOptions({});
         setMetricOptionsLoading(true);
-        if (options?.force) {
-          setMetricOptions([]);
-        }
+        setMetricOptions([]);
         api
           .getNodeMetrics(String(canvasId), nodeRef(node))
           .then((metricsRes) => {
+            if (nodeMetricsRequestGenerationRef.current !== generation) return;
             const items = (metricsRes as { items?: unknown[] })?.items ?? [];
             setMetricOptions(
               items.map((item) => {
@@ -297,10 +501,14 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
             );
           })
           .catch(() => {
+            if (nodeMetricsRequestGenerationRef.current !== generation) return;
             setMetricOptions([]);
-            nodeMetricsRequestKeyRef.current = '';
           })
-          .finally(() => setMetricOptionsLoading(false));
+          .finally(() => {
+            if (nodeMetricsRequestGenerationRef.current === generation) {
+              setMetricOptionsLoading(false);
+            }
+          });
       },
       [api, canvasId],
     );
@@ -359,7 +567,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
     const handleSelectNode = useCallback(
       (
         id: string | null,
-        options?: { forceMetrics?: boolean; point?: { x: number; y: number } },
+        options?: { point?: { x: number; y: number } },
       ) => {
         editor.setSelectedNodeId(id);
         editor.setSelectedLinkId(null);
@@ -367,21 +575,61 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
         setNodeDetailPoint(!editor.editMode && id ? options?.point ?? null : null);
         if (id) {
           const node = nodeById.get(id);
-          if (node && canvasId) {
-            loadNodeMetrics(node, { force: options?.forceMetrics });
+          if (node && canvasId && editor.editMode) {
+            loadNodeMetrics(node);
           }
         } else {
-          nodeMetricsRequestKeyRef.current = '';
+          nodeMetricsRequestGenerationRef.current += 1;
           setMetricOptions([]);
           setMetricOptionsLoading(false);
           setDimensionValueOptions({});
           setNodeDetailPoint(null);
         }
       },
-      // 故意省略 api/editor/setDimensionValueOptions 等稳定依赖,
-      // 仅在 canvasId 或选中节点变化时刷新。
+      // editMode 必须在依赖中,否则进入编辑模式后会读到旧的 false,
+      // 抽屉虽能打开但不会请求指标列表。
       // eslint-disable-next-line react-hooks/exhaustive-deps
-      [canvasId, loadNodeMetrics, nodeById],
+      [canvasId, editor.editMode, loadNodeMetrics, nodeById],
+    );
+
+    const loadLinkInterfaces = useCallback(
+      (link: NetworkTopologyLink) => {
+        if (!canvasId) return;
+        const sourceNode = nodeById.get(link.source_node_id);
+        const targetNode = nodeById.get(link.target_node_id);
+        if (!sourceNode || !targetNode) return;
+        const generation = ++linkInterfacesRequestGenerationRef.current;
+        setInterfaceLoadMessage(null);
+        setSourceInterfaces([]);
+        setTargetInterfaces([]);
+        setInterfacesLoading(true);
+        Promise.all([
+          api.getNodeInterfaces(String(canvasId), nodeRef(sourceNode)),
+          api.getNodeInterfaces(String(canvasId), nodeRef(targetNode)),
+        ])
+          .then(([src, tgt]) => {
+            if (linkInterfacesRequestGenerationRef.current !== generation) return;
+            setSourceInterfaces(extractInterfaceItems(src));
+            setTargetInterfaces(extractInterfaceItems(tgt));
+            setInterfaceLoadMessage(buildInterfaceLoadMessage(src, tgt));
+          })
+          .catch((err) => {
+            if (linkInterfacesRequestGenerationRef.current !== generation) return;
+            setInterfaceLoadMessage(
+              err instanceof Error
+                ? err.message
+                : t('opsAnalysis.networkTopology.link.loadInterfacesFailed'),
+            );
+          })
+          .finally(() => {
+            if (linkInterfacesRequestGenerationRef.current === generation) {
+              setInterfacesLoading(false);
+            }
+          });
+      },
+      // 故意省略 api/editor/handleSelectNode 等稳定依赖。
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      [canvasId, nodeById],
     );
 
     const handleSelectLink = useCallback(
@@ -392,87 +640,28 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
           openConfig?: boolean;
         },
       ) => {
+        const link = id ? config.links.find((l) => l.id === id) : null;
         editor.setSelectedLinkId(id);
         editor.setSelectedNodeId(null);
         setNodeDetailPoint(null);
-        setLinkDetailPoint(id && !options?.openConfig ? options?.point ?? null : null);
+        setLinkDetailPoint(
+          link && !options?.openConfig
+            ? options?.point ?? { x: 12, y: 12 }
+            : null,
+        );
         setLinkConfigOpen(Boolean(id && options?.openConfig));
-        setInterfaceLoadMessage(null);
-        if (!id || !canvasId) {
-          linkInterfacesRequestKeyRef.current = '';
+        if (!id || !canvasId || !options?.openConfig) {
+          linkInterfacesRequestGenerationRef.current += 1;
+          setSourceInterfaces([]);
+          setTargetInterfaces([]);
+          setInterfacesLoading(false);
+          setInterfaceLoadMessage(null);
           return;
         }
-        const link = config.links.find((l) => l.id === id);
         if (!link) return;
-        const sourceNode = nodeById.get(link.source_node_id);
-        const targetNode = nodeById.get(link.target_node_id);
-        if (!sourceNode || !targetNode) return;
-        const requestKey = `${canvasId}:${link.id}:${link.source_node_id}:${link.target_node_id}`;
-        if (linkInterfacesRequestKeyRef.current === requestKey) return;
-        linkInterfacesRequestKeyRef.current = requestKey;
-        setSourceInterfaces([]);
-        setTargetInterfaces([]);
-        setInterfacesLoading(true);
-        Promise.all([
-          api.getNodeInterfaces(String(canvasId), nodeRef(sourceNode)),
-          api.getNodeInterfaces(String(canvasId), nodeRef(targetNode)),
-        ])
-          .then(([src, tgt]) => {
-            setSourceInterfaces(extractInterfaceItems(src));
-            setTargetInterfaces(extractInterfaceItems(tgt));
-            setInterfaceLoadMessage(buildInterfaceLoadMessage(src, tgt));
-          })
-          .catch((err) => {
-            linkInterfacesRequestKeyRef.current = '';
-            setInterfaceLoadMessage(
-              err instanceof Error
-                ? err.message
-                : t('opsAnalysis.networkTopology.link.loadInterfacesFailed'),
-            );
-          })
-          .finally(() => setInterfacesLoading(false));
+        loadLinkInterfaces(link);
       },
-      // 故意省略 api/editor/handleSelectNode 等稳定依赖,
-      // 仅在 canvasId/links/nodeById 变化时重新加载链路接口。
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-      [canvasId, config.links, nodeById],
-    );
-
-    const loadLinkInterfaces = useCallback(
-      (link: NetworkTopologyLink) => {
-        if (!canvasId) return;
-        const sourceNode = nodeById.get(link.source_node_id);
-        const targetNode = nodeById.get(link.target_node_id);
-        if (!sourceNode || !targetNode) return;
-        const requestKey = `${canvasId}:${link.id}:${link.source_node_id}:${link.target_node_id}`;
-        if (linkInterfacesRequestKeyRef.current === requestKey) return;
-        linkInterfacesRequestKeyRef.current = requestKey;
-        setInterfaceLoadMessage(null);
-        setSourceInterfaces([]);
-        setTargetInterfaces([]);
-        setInterfacesLoading(true);
-        Promise.all([
-          api.getNodeInterfaces(String(canvasId), nodeRef(sourceNode)),
-          api.getNodeInterfaces(String(canvasId), nodeRef(targetNode)),
-        ])
-          .then(([src, tgt]) => {
-            setSourceInterfaces(extractInterfaceItems(src));
-            setTargetInterfaces(extractInterfaceItems(tgt));
-            setInterfaceLoadMessage(buildInterfaceLoadMessage(src, tgt));
-          })
-          .catch((err) => {
-            linkInterfacesRequestKeyRef.current = '';
-            setInterfaceLoadMessage(
-              err instanceof Error
-                ? err.message
-                : t('opsAnalysis.networkTopology.link.loadInterfacesFailed'),
-            );
-          })
-          .finally(() => setInterfacesLoading(false));
-      },
-      // 故意省略 api/editor/handleSelectNode 等稳定依赖。
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-      [canvasId, nodeById],
+      [canvasId, config.links, editor, loadLinkInterfaces],
     );
 
     const onSaveConfig = useCallback(async () => {
@@ -623,72 +812,82 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
     }, [deleteModal]);
 
     const loadDraftMetricRuntime = useCallback(
-      async (node: NetworkTopologyNode, metric: NetworkTopologyMetric) => {
-        if (!canvasId) return;
-        const requestId = buildMetricRuntimeRequestId(node.id, metric);
+      async (node: NetworkTopologyNode, metrics: NetworkTopologyMetric[]) => {
+        if (!canvasId || metrics.length === 0) return;
+        const metricRequests = metrics.map((metric) => {
+          const requestId = buildMetricRuntimeRequestId(node.id, metric);
+          return {
+            request_id: requestId,
+            node_ref: nodeRef(node),
+            metric_ref: {
+              metric_field: metric.metric_field,
+              result_table_id: metric.result_table_id,
+            },
+            dimensions: metric.dimensions ?? {},
+            condition_filter: metric.condition_filter ?? [],
+            display_mode:
+              metric.display_mode ??
+              ((metric.condition_filter ?? []).length > 0 ||
+              Object.keys(metric.dimensions ?? {}).length > 0
+                ? 'dimension'
+                : 'aggregate'),
+            aggregate_type: metric.aggregate_type ?? 'sum',
+          };
+        });
+        const loadingMetrics = metrics.map((metric, index) =>
+          toRuntimeMetric(
+            {
+              request_id: metricRequests[index].request_id,
+              status: 'loading',
+              value: null,
+            },
+            metric,
+            metricRequests[index].request_id,
+          ),
+        );
         setRuntimeMetricOverrides((prev) => ({
           ...prev,
-          [node.id]: mergeNetworkTopologyRuntimeMetrics(prev[node.id] ?? [], [
-            toRuntimeMetric(
-              {
-                request_id: requestId,
-                status: 'loading',
-                value: null,
-              },
-              metric,
-              requestId,
-            ),
-          ]),
+          [node.id]: mergeNetworkTopologyRuntimeMetrics(prev[node.id] ?? [], loadingMetrics),
         }));
         try {
-          const res = await api.getMetricValues(String(canvasId), [
-            {
-              request_id: requestId,
-              node_ref: nodeRef(node),
-              metric_ref: {
-                metric_field: metric.metric_field,
-                result_table_id: metric.result_table_id,
-              },
-              dimensions: metric.dimensions ?? {},
-              condition_filter: metric.condition_filter ?? [],
-              display_mode:
-                metric.display_mode ??
-                ((metric.condition_filter ?? []).length > 0 ||
-                Object.keys(metric.dimensions ?? {}).length > 0
-                  ? 'dimension'
-                  : 'aggregate'),
-              aggregate_type: metric.aggregate_type ?? 'sum',
-            },
-          ]);
-          const item = (res.items ?? [])[0];
-          const runtimeMetric = toRuntimeMetric(item, metric, requestId);
+          const res = await api.getMetricValues(String(canvasId), metricRequests);
+          const itemByRequestId = new Map(
+            (res.items ?? []).map((item) => [item.request_id, item]),
+          );
+          const runtimeMetrics = metrics.map((metric, index) => {
+            const requestId = metricRequests[index].request_id;
+            return toRuntimeMetric(itemByRequestId.get(requestId), metric, requestId);
+          });
           setRuntimeMetricOverrides((prev) => ({
             ...prev,
-            [node.id]: mergeNetworkTopologyRuntimeMetrics(prev[node.id] ?? [], [runtimeMetric]),
+            [node.id]: mergeNetworkTopologyRuntimeMetrics(prev[node.id] ?? [], runtimeMetrics),
           }));
-          if (runtimeMetric.status === 'error') {
+          const failedMetric = runtimeMetrics.find((metric) => metric.status === 'error');
+          if (failedMetric) {
             message.warning(
-              runtimeMetric.error_message ||
-                runtimeMetric.error_code ||
+              failedMetric.error_message ||
+                failedMetric.error_code ||
                 t('opsAnalysis.networkTopology.node.valueNoData'),
             );
           }
         } catch (err) {
+          const errorMetrics = metrics.map((metric, index) =>
+            toRuntimeMetric(
+              {
+                request_id: metricRequests[index].request_id,
+                status: 'error',
+                error_message:
+                  err instanceof Error
+                    ? err.message
+                    : t('opsAnalysis.networkTopology.node.valueFailed'),
+              },
+              metric,
+              metricRequests[index].request_id,
+            ),
+          );
           setRuntimeMetricOverrides((prev) => ({
             ...prev,
-            [node.id]: mergeNetworkTopologyRuntimeMetrics(prev[node.id] ?? [], [
-              toRuntimeMetric(
-                {
-                  status: 'error',
-                  error_message:
-                    err instanceof Error
-                      ? err.message
-                      : t('opsAnalysis.networkTopology.node.valueFailed'),
-                },
-                metric,
-                requestId,
-              ),
-            ]),
+            [node.id]: mergeNetworkTopologyRuntimeMetrics(prev[node.id] ?? [], errorMetrics),
           }));
         }
       },
@@ -720,9 +919,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
           ),
         }));
         if (node) {
-          normalizedMetrics.forEach((metric) => {
-            void loadDraftMetricRuntime(node, metric);
-          });
+          void loadDraftMetricRuntime(node, normalizedMetrics);
         }
       },
       [loadDraftMetricRuntime, nodeById],
@@ -784,26 +981,62 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
     // 连线 Drawer handlers
     const onCommitLink = useCallback(
       (linkId: string, portPairs: NetworkPortPair[], interfaceMetrics: string[]) => {
-        setConfig((prev) => ({
+        const prev = config;
+        let nextLink: NetworkTopologyLink | null = null;
+        const nextConfig: NetworkTopologyConfig = {
           ...prev,
           links: prev.links.map((link) => {
             if (link.id !== linkId) return link;
-            // 用户完成端口配对：草稿 -> 正式连线。
-            // 草稿允许空 port_pairs（拖出端口磁铁但还没选端口的状态），
-            // 正式连线必须至少 1 对端口——后端 canvas_config._validate_payload
+            // 用户完成接口配对：草稿 -> 正式连线。
+            // 草稿允许空 port_pairs（拖出画布磁铁但还没选接口的状态），
+            // 正式连线必须至少 1 对接口——后端 canvas_config._validate_payload
             // 会强制这个不变量；如果 commit 时还空就保持 is_draft 让
             // 用户看到草稿态继续编辑。
             const isComplete = portPairs.length > 0;
-            return {
+            nextLink = {
               ...link,
               port_pairs: portPairs,
               interface_metrics: interfaceMetrics,
               is_draft: isComplete ? false : true,
             };
+            return nextLink;
           }),
-        }));
+        };
+        setConfig(nextConfig);
+        if (!canvasId || !nextLink || portPairs.length === 0) {
+          setRuntimeLinkOverrides((prevOverrides) => {
+            const nextOverrides = { ...prevOverrides };
+            delete nextOverrides[linkId];
+            return nextOverrides;
+          });
+          return;
+        }
+        void api
+          .getLinkRuntime(String(canvasId), { link: nextLink, nodes: prev.nodes })
+          .then((res) => {
+            if (res?.link) {
+              setRuntimeLinkOverrides((prevOverrides) => ({
+                ...prevOverrides,
+                [res.link!.id]: res.link!,
+              }));
+            }
+            const summaries = res?.node_interface_summary ?? {};
+            if (Object.keys(summaries).length > 0) {
+              setRuntimeInterfaceSummaryOverrides((prevOverrides) => ({
+                ...prevOverrides,
+                ...summaries,
+              }));
+            }
+          })
+          .catch((err: unknown) => {
+            message.warning(
+              err instanceof Error
+                ? err.message
+                : t('opsAnalysis.networkTopology.link.loadRuntimeFailed'),
+            );
+          });
       },
-      [],
+      [api, canvasId, config, t],
     );
 
     const onConnectPorts = useCallback(
@@ -819,7 +1052,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
         }
         const linkId = buildDraftLinkId(config.links);
         // 草稿连线必须显式标 is_draft=true，否则后端 canvas_config
-        // 校验会 400 拒绝（非草稿连线至少 1 对端口）。
+        // 校验会 400 拒绝（非草稿连线至少 1 对接口）。
         const newLink: NetworkTopologyLink = {
           id: linkId,
           source_node_id: sourceId,
@@ -837,7 +1070,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
         setLinkDetailPoint(null);
         setLinkConfigOpen(true);
         // 自动打开 Drawer。新连线还没进入当前 render 的 config.links，
-        // 这里按 newLink 直接加载端口，避免读到旧闭包。
+        // 这里按 newLink 直接加载接口，避免读到旧闭包。
         loadLinkInterfaces(newLink);
         return { linkId };
       },
@@ -886,14 +1119,13 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
     const editingLinkMetricRows = editingLink
       ? buildLinkInterfaceMetricRows(editingLink, editingLinkRuntime, interfaceMetricLabels)
       : [];
+    const editingLinkMetricGroups =
+      groupLinkMetricRowsByInterface(editingLinkMetricRows);
     const editingNodeRuntime = editingNode
       ? runtimeNodeMap.get(buildNetworkNodeClientId(editingNode))
       : undefined;
     const editingNodeMetricRows = editingNode
       ? buildNodeDetailMetricRows(editingNode, editingNodeRuntime)
-      : [];
-    const editingNodePortRows = editingNode
-      ? buildNodeDetailPortRows(editingNode, config.links, runtimeLinks ?? [])
       : [];
 
     const sidebarExtra = (
@@ -926,7 +1158,9 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
           setDeleteModal(null);
           enterFullscreen();
         }}
-        onRefresh={() => void refresh.refresh()}
+        onRefresh={() => {
+          if (canvasId) void loadConfiguredRuntime(canvasId, config);
+        }}
         onFrequencyChange={setRefreshIntervalMs}
         onEnterEdit={onEnterEdit}
         onCancelEdit={onCancelEdit}
@@ -951,7 +1185,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
           <AppViewFullscreenExit visible={isFullscreen} onExit={exitFullscreen} />
           <ViewWorkspace
             selectedItem={selectedNetworkTopology}
-            loading={viewSetsLoading || refresh.loading}
+            loading={viewSetsLoading}
             titleFallback={t('opsAnalysis.networkTopology.title')}
             emptyDescription={t('opsAnalysis.networkTopology.selectFirst')}
             toolbar={isFullscreen ? null : selectedNetworkTopology ? sidebarExtra : null}
@@ -1005,9 +1239,6 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
                     runtimeNodes={runtimeNodes}
                     runtimeLinks={runtimeLinks}
                     editMode={editor.editMode}
-                    loading={refresh.refreshing}
-                    fatalMessage={refresh.fatalMessage}
-                    stale={refresh.stale}
                     onGraphReady={setGraph}
                     onSelectNode={handleSelectNode}
                     onSelectLink={handleSelectLink}
@@ -1062,9 +1293,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
                 role="menuitem"
                 onClick={() => {
                   if (nodeContextMenu) {
-                    handleSelectNode(nodeContextMenu.node.id, {
-                      forceMetrics: true,
-                    });
+                    handleSelectNode(nodeContextMenu.node.id);
                   }
                   if (linkContextMenu) {
                     handleSelectLink(linkContextMenu.link.id, {
@@ -1106,16 +1335,17 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
 
         {editingLink && linkDetailPoint && !linkConfigOpen && (
           <div
-            className="fixed flex max-h-[min(72vh,620px)] w-[440px] max-w-[calc(100vw-24px)] flex-col overflow-hidden rounded-[10px] border border-[#dce5ed] bg-[var(--color-bg-1,#fff)] shadow-[0_24px_56px_rgba(15,23,42,0.22)]"
+            className={detailPopoverClassName}
             style={{
-              left: Math.max(12, linkDetailPoint.x + 28),
-              top: Math.max(12, linkDetailPoint.y + 22),
+              ...detailPopoverFrameStyle,
+              left: clampDetailPopoverLeft(linkDetailPoint.x),
+              top: clampDetailPopoverTop(linkDetailPoint.y),
+              maxHeight: DETAIL_POPOVER_MAX_HEIGHT,
               zIndex: isFullscreen ? 2200 : 1000,
             }}
             data-testid="network-link-detail-popover"
           >
-            <div className="absolute -left-1 top-4 h-3 w-3 rotate-45 border-b border-l border-[#dce5ed] bg-[var(--color-bg-1,#fff)]" />
-            <div className="flex items-start justify-between gap-3 border-b border-[#eef2f7] px-4 py-3">
+            <div className={detailPopoverHeaderClassName} style={detailPopoverHeaderStyle}>
               <div className="min-w-0">
                 <div className="truncate text-[14px] font-semibold text-[var(--color-text-1,#1f2933)]">
                   {editingLinkSource?.bk_inst_name || '--'} →{' '}
@@ -1146,36 +1376,36 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
                 )}
               </Tag>
             </div>
-            <div className="min-h-0 space-y-3 overflow-y-auto px-4 py-3 text-[12px]">
-              <div className="rounded-lg border border-[#dce5ed] bg-[#f9fbfc] p-3">
-                <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[var(--color-text-1,#1f2933)]">
-                  <div className="flex min-w-0 items-center">
-                    <span className="w-[64px] shrink-0 text-[var(--color-text-3,#6b7280)]">
+            <div className={detailPopoverBodyClassName}>
+              <div className={detailSummaryCardClassName}>
+                <div className={detailSummaryGridClassName}>
+                  <div className={detailSummaryRowClassName}>
+                    <span className={detailLabelClassName}>
                       {t('opsAnalysis.networkTopology.link.labelSourceNode')}
                     </span>
-                    <span className="mx-1 shrink-0 text-[var(--color-text-3,#6b7280)]">
+                    <span className={detailColonClassName}>
                       ：
                     </span>
                     <span className="min-w-0 truncate font-medium">
                       {editingLinkSource?.bk_inst_name || '--'}
                     </span>
                   </div>
-                  <div className="flex min-w-0 items-center">
-                    <span className="w-[64px] shrink-0 text-[var(--color-text-3,#6b7280)]">
+                  <div className={detailSummaryRowClassName}>
+                    <span className={detailLabelClassName}>
                       {t('opsAnalysis.networkTopology.link.labelTargetNode')}
                     </span>
-                    <span className="mx-1 shrink-0 text-[var(--color-text-3,#6b7280)]">
+                    <span className={detailColonClassName}>
                       ：
                     </span>
                     <span className="min-w-0 truncate font-medium">
                       {editingLinkTarget?.bk_inst_name || '--'}
                     </span>
                   </div>
-                  <div className="flex min-w-0 items-center">
-                    <span className="w-[64px] shrink-0 text-[var(--color-text-3,#6b7280)]">
+                  <div className={detailSummaryRowClassName}>
+                    <span className={detailLabelClassName}>
                       {t('opsAnalysis.networkTopology.link.runtimeStatus')}
                     </span>
-                    <span className="mx-1 shrink-0 text-[var(--color-text-3,#6b7280)]">
+                    <span className={detailColonClassName}>
                       ：
                     </span>
                     <span className="min-w-0 truncate font-medium">
@@ -1188,11 +1418,11 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
                       )}
                     </span>
                   </div>
-                  <div className="flex min-w-0 items-center">
-                    <span className="w-[64px] shrink-0 text-[var(--color-text-3,#6b7280)]">
+                  <div className={detailSummaryRowClassName}>
+                    <span className={detailLabelClassName}>
                       {t('opsAnalysis.networkTopology.link.labelPairCount')}
                     </span>
-                    <span className="mx-1 shrink-0 text-[var(--color-text-3,#6b7280)]">
+                    <span className={detailColonClassName}>
                       ：
                     </span>
                     <span className="min-w-0 truncate font-medium">
@@ -1205,19 +1435,15 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
               </div>
 
               <div>
-                <div className="mb-1.5 font-medium text-[var(--color-text-1,#1f2933)]">
+                <div className={detailSectionTitleClassName}>
                   {t('opsAnalysis.networkTopology.link.labelPairCount')}
                 </div>
                 <div className="space-y-1">
-                  {interfacesLoading ? (
-                    <span className="text-[var(--color-text-3,#6b7280)]">
-                      {t('opsAnalysis.networkTopology.link.loadingInterfaces')}
-                    </span>
-                  ) : editingLinkPortRows.length > 0 ? (
+                  {editingLinkPortRows.length > 0 ? (
                     editingLinkPortRows.map((port) => (
                       <div
                         key={port.key}
-                        className="flex items-center justify-between gap-3 rounded border border-[#eef2f7] bg-[#fbfcfe] px-2 py-1"
+                        className={detailListRowClassName}
                       >
                         <span className="min-w-0 truncate text-[var(--color-text-2,#4b5563)]">
                           {port.sourceName}
@@ -1264,23 +1490,35 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
                 </div>
               </div>
 
-              {editingLinkMetricRows.length > 0 && (
+              {editingLinkMetricGroups.length > 0 && (
                 <div>
-                  <div className="mb-1.5 font-medium text-[var(--color-text-1,#1f2933)]">
+                  <div className={detailSectionTitleClassName}>
                     {t('opsAnalysis.networkTopology.link.interfaceMetricsTitle')}
                   </div>
-                  <div className="space-y-1">
-                    {editingLinkMetricRows.map((metric) => (
+                  <div className="space-y-1.5">
+                    {editingLinkMetricGroups.map((group) => (
                       <div
-                        key={metric.key}
-                        className="flex items-center justify-between gap-3 rounded border border-[#eef2f7] bg-[#fbfcfe] px-2 py-1"
+                        key={group.key}
+                        className="rounded-md border border-[var(--color-border-1,#edf1f6)] bg-[var(--color-bg-1,#fbfcfe)] px-2 py-1.5"
                       >
-                        <span className="min-w-0 truncate text-[var(--color-text-2,#4b5563)]">
-                          {metric.interfaceName} · {metric.metricLabel}
-                        </span>
-                        <span className="shrink-0 font-semibold text-[var(--color-text-1,#1f2933)]">
-                          {metric.value}
-                        </span>
+                        <div className="mb-1 truncate font-medium text-[var(--color-text-2,#4b5563)]">
+                          {group.interfaceName}
+                        </div>
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-[var(--color-text-2,#4b5563)]">
+                          {group.metrics.map((metric) => (
+                            <span
+                              key={metric.key}
+                              className="inline-flex min-w-0 items-center gap-1"
+                            >
+                              <span className="shrink-0 text-[var(--color-text-3,#6b7280)]">
+                                {metric.metricLabel}：
+                              </span>
+                              <span className="shrink-0 font-semibold text-[var(--color-text-1,#1f2933)]">
+                                {metric.value}
+                              </span>
+                            </span>
+                          ))}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -1292,16 +1530,17 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
 
         {editingNode && !editor.editMode && nodeDetailPoint && (
           <div
-            className="fixed flex max-h-[min(72vh,620px)] w-[440px] max-w-[calc(100vw-24px)] flex-col overflow-hidden rounded-[10px] border border-[#dce5ed] bg-[var(--color-bg-1,#fff)] shadow-[0_24px_56px_rgba(15,23,42,0.22)]"
+            className={detailPopoverClassName}
             style={{
-              left: Math.max(12, nodeDetailPoint.x + 28),
-              top: Math.max(12, nodeDetailPoint.y + 22),
+              ...detailPopoverFrameStyle,
+              left: clampDetailPopoverLeft(nodeDetailPoint.x),
+              top: clampDetailPopoverTop(nodeDetailPoint.y),
+              maxHeight: DETAIL_POPOVER_MAX_HEIGHT,
               zIndex: isFullscreen ? 2200 : 1000,
             }}
             data-testid="network-node-detail-popover"
           >
-            <div className="absolute -left-1 top-4 h-3 w-3 rotate-45 border-b border-l border-[#dce5ed] bg-[var(--color-bg-1,#fff)]" />
-            <div className="flex items-start justify-between gap-3 border-b border-[#eef2f7] px-4 py-3">
+            <div className={detailPopoverHeaderClassName} style={detailPopoverHeaderStyle}>
               <div className="min-w-0">
                 <div className="truncate text-[14px] font-semibold text-[var(--color-text-1,#1f2933)]">
                   {editingNode.bk_inst_name || '--'}
@@ -1315,42 +1554,42 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
               </div>
               <Tag
                 bordered={false}
-                color={getModelTagColor(editingNode.bk_obj_id)}
                 className="m-0 shrink-0"
+                style={getModelTagStyle(editingNode.bk_obj_id)}
               >
                 {editingNode.bk_obj_id}
               </Tag>
             </div>
-            <div className="min-h-0 space-y-3 overflow-y-auto px-4 py-3 text-[12px]">
-              <div className="rounded-lg border border-[#dce5ed] bg-[#f9fbfc] p-3">
-                <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[var(--color-text-1,#1f2933)]">
-                  <div className="flex min-w-0 items-center">
-                    <span className="w-[64px] shrink-0 text-[var(--color-text-3,#6b7280)]">
+            <div className={detailPopoverBodyClassName}>
+              <div className={detailSummaryCardClassName}>
+                <div className={detailSummaryGridClassName}>
+                  <div className={detailSummaryRowClassName}>
+                    <span className={detailLabelClassName}>
                       {t('opsAnalysis.networkTopology.node.labelAssetId')}
                     </span>
-                    <span className="mx-1 shrink-0 text-[var(--color-text-3,#6b7280)]">
+                    <span className={detailColonClassName}>
                       ：
                     </span>
                     <span className="min-w-0 truncate font-medium">
                       {editingNode.bk_inst_id || '--'}
                     </span>
                   </div>
-                  <div className="flex min-w-0 items-center">
-                    <span className="w-[64px] shrink-0 text-[var(--color-text-3,#6b7280)]">
+                  <div className={detailSummaryRowClassName}>
+                    <span className={detailLabelClassName}>
                       {t('opsAnalysis.networkTopology.node.labelAddress')}
                     </span>
-                    <span className="mx-1 shrink-0 text-[var(--color-text-3,#6b7280)]">
+                    <span className={detailColonClassName}>
                       ：
                     </span>
                     <span className="min-w-0 truncate font-medium">
                       {editingNode.ip_addr || '--'}
                     </span>
                   </div>
-                  <div className="col-span-2 flex min-w-0 items-center">
-                    <span className="w-[64px] shrink-0 text-[var(--color-text-3,#6b7280)]">
+                  <div className={`col-span-2 ${detailSummaryRowClassName}`}>
+                    <span className={detailLabelClassName}>
                       {t('opsAnalysis.networkTopology.node.labelTemplate')}
                     </span>
-                    <span className="mx-1 shrink-0 text-[var(--color-text-3,#6b7280)]">
+                    <span className={detailColonClassName}>
                       ：
                     </span>
                     <span className="min-w-0 truncate font-medium">
@@ -1363,7 +1602,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
               </div>
 
               <div>
-                <div className="mb-1.5 font-medium text-[var(--color-text-1,#1f2933)]">
+                <div className={detailSectionTitleClassName}>
                   {t('opsAnalysis.networkTopology.node.detailMetricsTitle')}
                 </div>
                 <div className="space-y-1">
@@ -1371,7 +1610,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
                     editingNodeMetricRows.map((metric) => (
                       <div
                         key={metric.key}
-                        className="flex items-center justify-between gap-3 rounded border border-[#eef2f7] bg-[#fbfcfe] px-2 py-1"
+                        className={detailListRowClassName}
                       >
                         <span className="min-w-0 truncate text-[var(--color-text-2,#4b5563)]">
                           {metric.label}
@@ -1393,45 +1632,6 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
                   )}
                 </div>
               </div>
-
-              <div>
-                <div className="mb-1.5 font-medium text-[var(--color-text-1,#1f2933)]">
-                  {t('opsAnalysis.networkTopology.node.detailPortsTitle')}
-                </div>
-                <div className="space-y-1">
-                  {editingNodePortRows.length > 0 ? (
-                    editingNodePortRows.map((port) => (
-                      <div
-                        key={port.key}
-                        className="flex items-center justify-between gap-3 rounded border border-[#eef2f7] bg-[#fbfcfe] px-2 py-1"
-                      >
-                        <span className="min-w-0 truncate text-[var(--color-text-2,#4b5563)]">
-                          {t('opsAnalysis.networkTopology.node.detailPortName', undefined, {
-                            name: port.name,
-                          })}
-                        </span>
-                        <Tag
-                          bordered={false}
-                          color={
-                            port.status === 'up'
-                              ? 'green'
-                              : port.status === 'down'
-                                ? 'red'
-                                : 'default'
-                          }
-                          className="m-0 shrink-0"
-                        >
-                          {port.status}
-                        </Tag>
-                      </div>
-                    ))
-                  ) : (
-                    <span className="text-[var(--color-text-3,#6b7280)]">
-                      {t('opsAnalysis.networkTopology.node.detailNoPorts')}
-                    </span>
-                  )}
-                </div>
-              </div>
             </div>
           </div>
         )}
@@ -1439,7 +1639,6 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
         <NetworkNodeDrawer
           open={!!editingNode && editor.editMode}
           node={editingNode ?? null}
-          nodeRuntime={editingNodeRuntime}
           metricOptions={metricOptions}
           metricOptionsLoading={metricOptionsLoading}
           dimensionValueOptions={dimensionValueOptions}
@@ -1447,10 +1646,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
           dimensionLoadError={dimensionLoadError}
           onLoadDimensionValues={onLoadMetricDimensionValues}
           readonly={false}
-          onClose={() => {
-            editor.setSelectedNodeId(null);
-            setNodeDetailPoint(null);
-          }}
+          onClose={() => handleSelectNode(null)}
           onCommitMetrics={(metrics) =>
             editingNode && onCommitNodeMetrics(editingNode.id, metrics)
           }
@@ -1465,27 +1661,11 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
           targetInterfaces={targetInterfaces}
           loading={interfacesLoading}
           loadMessage={interfaceLoadMessage}
-          linkRuntime={
-            editingLinkRuntime
-              ? {
-                status: editingLinkRuntime.status,
-                interfaces: (editingLinkRuntime.interfaces ?? []).map((iface) => ({
-                  ...iface,
-                  admin_status: normalizeInterfaceStatus(iface.admin_status),
-                  oper_status: normalizeInterfaceStatus(iface.oper_status),
-                })),
-              }
-              : undefined
-          }
           readonly={!editor.editMode}
           onCommit={(pairs, interfaceMetrics) =>
             editingLink && onCommitLink(editingLink.id, pairs, interfaceMetrics)
           }
-          onClose={() => {
-            editor.setSelectedLinkId(null);
-            setLinkConfigOpen(false);
-            setLinkDetailPoint(null);
-          }}
+          onClose={() => handleSelectLink(null)}
           zIndex={isFullscreen ? 2300 : undefined}
         />
         <MonitorSourcePickerModal

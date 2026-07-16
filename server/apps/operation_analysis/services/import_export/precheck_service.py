@@ -28,7 +28,7 @@ from apps.operation_analysis.constants.import_export import (
     ObjectType,
 )
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, NameSpace
-from apps.operation_analysis.models.models import Architecture, Dashboard, Report, Screen, Topology
+from apps.operation_analysis.models.models import Architecture, Dashboard, NetworkTopology, Report, Screen, Topology
 from apps.operation_analysis.schemas.import_export_schema import ImportExportValidationError, YAMLDocument, count_objects, detect_db_id_references
 
 
@@ -53,6 +53,7 @@ class PrecheckService:
         ObjectType.ARCHITECTURE: Architecture,
         ObjectType.SCREEN: Screen,
         ObjectType.REPORT: Report,
+        ObjectType.NETWORK_TOPOLOGY: NetworkTopology,
         ObjectType.DATASOURCE: DataSourceAPIModel,
         ObjectType.NAMESPACE: NameSpace,
     }
@@ -230,6 +231,17 @@ class PrecheckService:
                         }
                     )
 
+        for network_topology in doc.network_topologies:
+            if network_topology.token == SENSITIVE_PLACEHOLDER:
+                warnings.append(
+                    {
+                        "code": ImportExportWarningCode.SECRET_PLACEHOLDER,
+                        "message": f"网络拓扑 '{network_topology.name}' 的 token 字段需要补充",
+                        "object_key": network_topology.key,
+                        "field": "token",
+                    }
+                )
+
         return warnings
 
     @staticmethod
@@ -261,6 +273,7 @@ class PrecheckService:
             (doc.architectures, ObjectType.ARCHITECTURE),
             (doc.screens, ObjectType.SCREEN),
             (doc.reports, ObjectType.REPORT),
+            (doc.network_topologies, ObjectType.NETWORK_TOPOLOGY),
         ]
 
         for canvas_list, obj_type in all_canvases:
@@ -332,6 +345,7 @@ class PrecheckService:
             (doc.architectures, ObjectType.ARCHITECTURE, Architecture),
             (doc.screens, ObjectType.SCREEN, Screen),
             (doc.reports, ObjectType.REPORT, Report),
+            (doc.network_topologies, ObjectType.NETWORK_TOPOLOGY, NetworkTopology),
         ]
 
         for canvas_list, obj_type, model in canvas_checks:
@@ -363,7 +377,7 @@ class PrecheckService:
     @classmethod
     def has_canvas_objects(cls, doc: YAMLDocument) -> bool:
         """检查YAML是否包含画布对象"""
-        return bool(doc.dashboards or doc.topologies or doc.architectures or doc.screens or doc.reports)
+        return bool(doc.dashboards or doc.topologies or doc.architectures or doc.screens or doc.reports or doc.network_topologies)
 
     @classmethod
     def precheck(
