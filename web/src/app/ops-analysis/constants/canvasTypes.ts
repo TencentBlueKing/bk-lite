@@ -3,7 +3,8 @@ export type CanvasType =
   | 'topology'
   | 'architecture'
   | 'screen'
-  | 'report';
+  | 'report'
+  | 'networkTopology';
 
 export interface CanvasTypeMeta {
   type: CanvasType;
@@ -13,7 +14,7 @@ export interface CanvasTypeMeta {
   addLabelKey: string;
   editLabelKey: string;
   descriptionKey: string;
-  icon: 'dashboard' | 'topology' | 'architecture' | 'screen' | 'report';
+  icon: 'dashboard' | 'topology' | 'architecture' | 'screen' | 'report' | 'networkTopology';
 }
 
 export const CANVAS_TYPE_ORDER: CanvasType[] = [
@@ -22,6 +23,7 @@ export const CANVAS_TYPE_ORDER: CanvasType[] = [
   'architecture',
   'screen',
   'report',
+  'networkTopology',
 ];
 
 export const CANVAS_TYPE_REGISTRY: Record<CanvasType, CanvasTypeMeta> = {
@@ -74,6 +76,16 @@ export const CANVAS_TYPE_REGISTRY: Record<CanvasType, CanvasTypeMeta> = {
     editLabelKey: 'opsAnalysisSidebar.editReport',
     descriptionKey: 'opsAnalysisSidebar.reportDesc',
     icon: 'report',
+  },
+  networkTopology: {
+    type: 'networkTopology',
+    objectType: 'networkTopology',
+    endpoint: '/operation_analysis/api/network_topology/',
+    nameKey: 'opsAnalysisSidebar.networkTopologyType',
+    addLabelKey: 'opsAnalysisSidebar.addNetworkTopology',
+    editLabelKey: 'opsAnalysisSidebar.editNetworkTopology',
+    descriptionKey: 'opsAnalysisSidebar.networkTopologyDesc',
+    icon: 'networkTopology',
   },
 };
 
