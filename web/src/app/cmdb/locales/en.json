@@ -690,6 +690,52 @@
             "searchPlaceholder": "Search by instance/IP/cloud region",
             "loadFailed": "Failed to load node management sync data",
             "saveFailed": "Failed to save node management sync config",
+            "refreshSuccess": "Node Management sync status refreshed",
+            "runStatus": "Latest Run Status",
+            "todoNotice": "This run has {count} item(s) requiring attention. Use the status and stable error code for troubleshooting.",
+            "health": {
+                "reconciling": "Node Management sync configuration is reconciling. Refresh again shortly.",
+                "nextRetryAt": "Next retry at: {time}"
+            },
+            "status": {
+                "waitingSync": "Collection will start after the first sync completes",
+                "running": "Node Management sync is running",
+                "submitted": "Submitted to regional collection tasks; waiting for results",
+                "success": "Execution succeeded",
+                "partialSuccess": "Partially successful; check failed regions",
+                "blocked": "Execution is blocked",
+                "failed": "Execution failed",
+                "timeout": "Execution timed out"
+            },
+            "empty": {
+                "noNodes": "Node Management returned 0 nodes",
+                "queryFailed": "Node Management query failed",
+                "noAccessPoint": "No available access point in the region",
+                "noData": "No Node Management sync data"
+            },
+            "reason": {
+                "syncRequired": "Collection is waiting for the first sync of the current configuration version.",
+                "runAlreadyActive": "Another Node Management sync or collection run is active.",
+                "runTimeout": "The Node Management sync run timed out. Wait for recovery and retry.",
+                "runFailed": "The Node Management sync run failed. Retry later.",
+                "nodeQueryFailed": "The Node Management query failed. Check the Node Management service.",
+                "nodeQueryTimeout": "The Node Management query timed out. Retry later.",
+                "nodePageLimitExceeded": "The node count exceeds the safe limit for this run. Narrow the scope and retry.",
+                "invalidRegionCode": "The node has an invalid cloud region and cannot be collected.",
+                "noAccessPoint": "The region has no available access point for collection.",
+                "collectAlreadyRunning": "A collection run is already active in this region.",
+                "collectSubmissionBlocked": "The regional collection task cannot be submitted yet.",
+                "collectSubmitFailed": "The regional collection task could not be submitted. Retry later.",
+                "collectChildFailed": "One or more regional collection tasks failed.",
+                "collectExecutionMissing": "The regional collection task returned no valid execution ID.",
+                "collectExecutionSuperseded": "The regional collection run was superseded by a newer execution.",
+                "collectTaskMissing": "The regional collection task is missing and will be reconciled.",
+                "reconcileFailed": "Automatic schedule reconciliation failed and will be retried.",
+                "nodeConfigFailed": "Node collection configuration reconciliation failed and will be retried.",
+                "nodeConfigDeleteFailed": "Deleting the previous node collection configuration failed and will be retried.",
+                "nodeConfigPushFailed": "Pushing the node collection configuration failed and will be retried.",
+                "unknown": "Node Management sync is temporarily unavailable. Use the error code or retry later."
+            },
             "table": {
                 "objectType": "Object Type",
                 "instanceName": "Instance Name",
