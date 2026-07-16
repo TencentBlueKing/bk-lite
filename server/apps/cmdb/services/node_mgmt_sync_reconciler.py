@@ -87,7 +87,7 @@ class NodeMgmtSyncReconciler:
                 )
                 continue
 
-            if state.node_config_status != "push_pending":
+            if not config.auto_collect_enabled or state.node_config_status != "push_pending":
                 state.node_config_status = "delete_pending"
                 state.reason_code = ""
                 state.error_message = ""

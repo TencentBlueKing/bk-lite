@@ -71,6 +71,56 @@ def test_disable_collect_only_deletes_node_params(config, region_task):
     assert state.scope_key == f"config:{config.version}:region:7"
 
 
+def test_disable_collect_restarts_old_push_pending_from_delete(config, region_task):
+    config.auto_collect_enabled = False
+    config.save(update_fields=["auto_collect_enabled", "updated_at"])
+    NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=config.version,
+        cloud_region_id="7",
+        collect_task=region_task,
+        scope_key=f"config:{config.version}:region:7",
+        node_config_status="push_pending",
+    )
+
+    with patch.object(CollectModelService, "delete_butch_node_params") as delete:
+        with patch.object(CollectModelService, "push_butch_node_params") as push:
+            result = _reconcile(config)
+
+    delete.assert_called_once_with(region_task)
+    push.assert_not_called()
+    assert result.node_config_status == "disabled"
+    assert _state(config).node_config_status == "disabled"
+
+
+def test_disable_collect_old_push_pending_delete_failure_is_retryable(config, region_task):
+    config.auto_collect_enabled = False
+    config.save(update_fields=["auto_collect_enabled", "updated_at"])
+    NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=config.version,
+        cloud_region_id="7",
+        collect_task=region_task,
+        scope_key=f"config:{config.version}:region:7",
+        node_config_status="push_pending",
+    )
+
+    with patch.object(CollectModelService, "delete_butch_node_params", side_effect=[RuntimeError("delete-secret"), None],) as delete:
+        with patch.object(CollectModelService, "push_butch_node_params") as push:
+            first = _reconcile(config)
+            pending_state = _state(config)
+            second = _reconcile(config)
+
+    assert first.node_config_status == "degraded"
+    assert pending_state.node_config_status == "delete_pending"
+    assert pending_state.reason_code == "NODE_CONFIG_DELETE_FAILED"
+    assert "delete-secret" not in pending_state.error_message
+    assert delete.call_count == 2
+    push.assert_not_called()
+    assert second.node_config_status == "disabled"
+    assert _state(config).node_config_status == "disabled"
+
+
 def test_enable_collect_deletes_then_pushes(config, region_task):
     calls = []
     with patch.object(
