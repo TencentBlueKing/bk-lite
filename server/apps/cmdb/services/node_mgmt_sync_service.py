@@ -853,6 +853,17 @@ class NodeMgmtSyncService:
             if field in desired and desired.get(field) != existing.get(field)
         }
 
+    @classmethod
+    def _host_persistence_payload(cls, payload: dict[str, Any]) -> dict[str, Any]:
+        return {field: payload.get(field) for field in cls.HOST_SYNC_UPDATE_FIELDS if field in payload}
+
+    @classmethod
+    def _host_display_payload(cls, payload: dict[str, Any]) -> dict[str, Any]:
+        result = cls._host_persistence_payload(payload)
+        if payload.get("_id") is not None:
+            result["_id"] = payload["_id"]
+        return result
+
     @staticmethod
     def _host_lookup_key(payload: dict[str, Any]) -> tuple[str, int | None]:
         ip_addr = str(payload.get("ip_addr") or "").strip()
@@ -886,6 +897,7 @@ class NodeMgmtSyncService:
         }
 
         for desired in desired_hosts:
+            persistence_payload = cls._host_persistence_payload(desired)
             ip_addr, cloud = cls._host_lookup_key(desired)
             tuple_key = (ip_addr, cloud)
             lookup_key: Any = tuple_key if tuple_key in existing_hosts else ip_addr
@@ -918,7 +930,7 @@ class NodeMgmtSyncService:
                 persisted = updated if isinstance(updated, dict) else {**existing, **changes}
                 existing_hosts[lookup_key] = persisted
                 result["update_success"] += 1
-                result["update_data"].append(persisted)
+                result["update_data"].append(cls._host_display_payload(persisted))
                 if persisted.get("_id") is not None:
                     result["changed_instance_ids"].append(persisted["_id"])
                 continue
@@ -926,9 +938,9 @@ class NodeMgmtSyncService:
             try:
                 created = InstanceManage.instance_create(
                     "host",
-                    desired,
+                    persistence_payload,
                     operator=operator,
-                    allowed_org_ids=desired.get("organization", []),
+                    allowed_org_ids=persistence_payload.get("organization", []),
                     operation_id=operation_id,
                     schedule_post_actions=False,
                 )
@@ -939,11 +951,11 @@ class NodeMgmtSyncService:
                 logger.error("[NodeMgmtSync] 主机创建失败, error_type=%s", type(exc).__name__)
                 continue
 
-            persisted = created if isinstance(created, dict) else desired
+            persisted = created if isinstance(created, dict) else persistence_payload
             existing_hosts[tuple_key] = persisted
             result["add"] += 1
             result["add_success"] += 1
-            result["add_data"].append(persisted)
+            result["add_data"].append(cls._host_display_payload(persisted))
             if persisted.get("_id") is not None:
                 result["changed_instance_ids"].append(persisted["_id"])
 
@@ -1201,7 +1213,7 @@ class NodeMgmtSyncService:
             for node in region_nodes:
                 try:
                     payload = cls._build_host_instance_payload(node=node, collect_task_id=0)
-                    detail["raw_data"]["data"].append(payload)
+                    detail["raw_data"]["data"].append(cls._host_display_payload(payload))
                     desired_hosts.append(payload)
                 except Exception as node_exc:
                     message["add_error"] += 1

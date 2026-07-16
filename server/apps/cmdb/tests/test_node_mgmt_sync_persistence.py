@@ -101,29 +101,24 @@ def test_update_failure_is_counted_and_sanitized(mocker, caplog, existing_host, 
 
 def test_new_host_success_is_counted_and_uses_generation(mocker, desired_host):
     create = mocker.patch(f"{SERVICE}.InstanceManage.instance_create", return_value={**desired_host, "_id": 8},)
+    persisted_host = {
+        "inst_name": "new-name",
+        "ip_addr": "10.0.0.7",
+        "organization": [2],
+        "cloud": 2,
+        "os_type": "2",
+    }
 
     result = NodeMgmtSyncService._persist_hosts([desired_host], existing_hosts={}, operator="system", operation_id=str(GENERATION),)
 
     create.assert_called_once_with(
-        "host", desired_host, operator="system", allowed_org_ids=[2], operation_id=str(GENERATION), schedule_post_actions=False,
+        "host", persisted_host, operator="system", allowed_org_ids=[2], operation_id=str(GENERATION), schedule_post_actions=False,
     )
     assert result["add"] == 1
     assert result["add_success"] == 1
     assert result["add_error"] == 0
+    assert result["add_data"] == [{**persisted_host, "_id": 8}]
     assert result["changed_instance_ids"] == [8]
-
-
-def test_retry_with_same_generation_does_not_create_duplicate(mocker, desired_host):
-    create = mocker.patch(f"{SERVICE}.InstanceManage.instance_create", return_value={**desired_host, "_id": 8},)
-    existing_hosts = {}
-
-    first = NodeMgmtSyncService._persist_hosts([desired_host], existing_hosts=existing_hosts, operator="system", operation_id=str(GENERATION))
-    second = NodeMgmtSyncService._persist_hosts([desired_host], existing_hosts=existing_hosts, operator="system", operation_id=str(GENERATION))
-
-    assert first["add_success"] == 1
-    assert second["add"] == 0
-    assert second["update"] == 0
-    create.assert_called_once()
 
 
 @pytest.fixture
@@ -138,9 +133,41 @@ def _sync_mocks(mocker, nodes, existing_hosts):
     mocker.patch.object(NodeMgmtSyncService, "_group_nodes_by_region", return_value={2: nodes})
     mocker.patch.object(NodeMgmtSyncService, "_pick_access_point", return_value={"id": "ap-2"})
     mocker.patch.object(NodeMgmtSyncService, "_normalize_org_ids", side_effect=lambda value: value or [])
-    mocker.patch.object(NodeMgmtSyncService, "_load_existing_host_map", return_value=existing_hosts)
+    existing_loader = mocker.patch.object(NodeMgmtSyncService, "_load_existing_host_map", return_value=existing_hosts)
     mocker.patch.object(NodeMgmtSyncService, "_query_region_host_instances", return_value=[])
     mocker.patch.object(NodeMgmtSyncService, "_ensure_region_collect_task", return_value=mock.MagicMock())
+    return existing_loader
+
+
+@pytest.mark.django_db
+def test_retry_reloads_persisted_hosts_without_duplicate_create(mocker, sync_run, desired_host):
+    run, config = sync_run
+    nodes = [{"ip": desired_host["ip_addr"], "cloud_region_id": 2, "organization_ids": [2]}]
+    persisted_host = {
+        "_id": 8,
+        "inst_name": "new-name",
+        "ip_addr": "10.0.0.7",
+        "organization": [2],
+        "cloud": 2,
+        "os_type": "2",
+    }
+    existing_loader = _sync_mocks(mocker, nodes, {})
+    existing_loader.side_effect = [{}, {(desired_host["ip_addr"], 2): persisted_host}]
+    mocker.patch.object(NodeMgmtSyncService, "_build_host_instance_payload", return_value=desired_host)
+    create = mocker.patch(f"{SERVICE}.InstanceManage.instance_create", return_value={**desired_host, "_id": 8},)
+    mocker.patch(RECONCILE)
+
+    first = NodeMgmtSyncService._do_sync_hosts(run, config)
+    second = NodeMgmtSyncService._do_sync_hosts(run, config)
+
+    assert first["summary"]["add_success"] == 1
+    assert second["summary"]["add"] == 0
+    assert second["summary"]["update"] == 0
+    assert existing_loader.call_count == 2
+    create.assert_called_once()
+    run.refresh_from_db()
+    forbidden_fields = {"cloud_id", "cloud_name", "node_id", "source", "secret"}
+    assert forbidden_fields.isdisjoint(run.detail_json["raw_data"]["data"][0])
 
 
 @pytest.mark.django_db
