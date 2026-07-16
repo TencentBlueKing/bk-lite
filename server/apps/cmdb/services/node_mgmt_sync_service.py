@@ -42,6 +42,11 @@ class NodeMgmtSyncService:
         NodeMgmtSyncRun.STATUS_FAILED,
         NodeMgmtSyncRun.STATUS_TIMEOUT,
     )
+    ACTIVE_STATUSES = (
+        NodeMgmtSyncRun.STATUS_RUNNING,
+        NodeMgmtSyncRun.STATUS_WAITING_SYNC,
+        NodeMgmtSyncRun.STATUS_SUBMITTED,
+    )
     SYNC_PERIODIC_TASK_NAME = "cmdb_node_mgmt_sync_hosts"
     COLLECT_PERIODIC_TASK_NAME = "cmdb_node_mgmt_collect_hosts"
     SYNC_TASK = "apps.cmdb.tasks.celery_tasks.sync_node_mgmt_hosts"
@@ -468,20 +473,27 @@ class NodeMgmtSyncService:
             updates["error_message"] = (
                 f"{reason_code or 'RUN_FAILED'}: {type(error).__name__}"[:255]
             )
-        allowed_current_statuses = (
-            NodeMgmtSyncRun.STATUS_RUNNING,
-            NodeMgmtSyncRun.STATUS_WAITING_SYNC,
-            NodeMgmtSyncRun.STATUS_SUBMITTED,
-        )
-        if status == NodeMgmtSyncRun.STATUS_SUCCESS:
-            # 同 generation 的成功重试仍可幂等刷新摘要；其它终态不可被覆盖。
-            allowed_current_statuses += (NodeMgmtSyncRun.STATUS_SUCCESS,)
-        NodeMgmtSyncRun.objects.filter(
+        lease = NodeMgmtSyncRun.objects.filter(
             pk=run.pk,
             generation=run.generation,
-            status__in=allowed_current_statuses,
-        ).update(**updates)
+            status__in=cls.ACTIVE_STATUSES,
+        )
+        if status in (
+            NodeMgmtSyncRun.STATUS_SUCCESS,
+            NodeMgmtSyncRun.STATUS_PARTIAL_SUCCESS,
+        ):
+            lease = lease.filter(
+                active_scope=cls.ACTIVE_SCOPE,
+                deadline_at__gt=current_time,
+            )
+        updated = lease.update(**updates)
         run.refresh_from_db()
+        if not updated and status in (
+            NodeMgmtSyncRun.STATUS_SUCCESS,
+            NodeMgmtSyncRun.STATUS_PARTIAL_SUCCESS,
+        ):
+            cls.heartbeat_run(run)
+            raise NodeMgmtSyncError("RUN_NOT_ACTIVE")
         return run
 
     @classmethod
@@ -502,44 +514,41 @@ class NodeMgmtSyncService:
         if updated:
             run.heartbeat_at = current_time
             return
+        expired = NodeMgmtSyncRun.objects.filter(
+            pk=run.pk,
+            generation=run.generation,
+            active_scope=cls.ACTIVE_SCOPE,
+            status__in=cls.ACTIVE_STATUSES,
+            deadline_at__lte=current_time,
+        ).update(
+            status=NodeMgmtSyncRun.STATUS_TIMEOUT,
+            reason_code=cls.REASON_TIMEOUT,
+            active_scope=None,
+            finished_at=current_time,
+            updated_at=current_time,
+        )
         run.refresh_from_db()
-        if (
-            run.active_scope == cls.ACTIVE_SCOPE
-            and run.status not in cls.TERMINAL_STATUSES
-            and run.deadline_at is not None
-            and run.deadline_at <= current_time
+        if expired or (
+            run.status == NodeMgmtSyncRun.STATUS_TIMEOUT
+            and run.reason_code == cls.REASON_TIMEOUT
         ):
-            cls.finish_run(
-                run,
-                status=NodeMgmtSyncRun.STATUS_TIMEOUT,
-                reason_code=cls.REASON_TIMEOUT,
-            )
             raise NodeMgmtSyncError(cls.REASON_TIMEOUT)
         raise NodeMgmtSyncError("RUN_NOT_ACTIVE")
 
     @classmethod
     def recover_stale_runs(cls) -> int:
         current_time = now()
-        candidates = NodeMgmtSyncRun.objects.filter(
-            active_scope__isnull=False,
+        return NodeMgmtSyncRun.objects.filter(
+            active_scope=cls.ACTIVE_SCOPE,
+            status__in=cls.ACTIVE_STATUSES,
             deadline_at__lte=current_time,
-        ).exclude(status__in=cls.TERMINAL_STATUSES).values_list(
-            "pk", "generation", "active_scope"
+        ).update(
+            status=NodeMgmtSyncRun.STATUS_TIMEOUT,
+            reason_code=cls.REASON_TIMEOUT,
+            active_scope=None,
+            finished_at=current_time,
+            updated_at=current_time,
         )
-        recovered = 0
-        for run_id, generation, active_scope in list(candidates):
-            recovered += NodeMgmtSyncRun.objects.filter(
-                pk=run_id,
-                generation=generation,
-                active_scope=active_scope,
-            ).exclude(status__in=cls.TERMINAL_STATUSES).update(
-                status=NodeMgmtSyncRun.STATUS_TIMEOUT,
-                reason_code=cls.REASON_TIMEOUT,
-                active_scope=None,
-                finished_at=current_time,
-                updated_at=current_time,
-            )
-        return recovered
 
     @classmethod
     def _mark_run_failed(cls, run: NodeMgmtSyncRun, error: Exception) -> None:
@@ -603,8 +612,14 @@ class NodeMgmtSyncService:
         return []
 
     @classmethod
-    def _cloud_region_name_map(cls) -> dict[int, str]:
+    def _cloud_region_name_map(
+        cls, run: NodeMgmtSyncRun | None = None
+    ) -> dict[int, str]:
+        if run is not None:
+            cls.heartbeat_run(run)
         rows = cls._node_mgmt_client().cloud_region_list()
+        if run is not None:
+            cls.heartbeat_run(run)
         result: dict[int, str] = {}
         for item in rows if isinstance(rows, list) else []:
             if not isinstance(item, dict):
@@ -669,6 +684,8 @@ class NodeMgmtSyncService:
                     error_type,
                 )
                 raise NodeMgmtSyncError(f"NODE_QUERY_FAILED: {error_type}"[:255]) from None
+            if run is not None:
+                cls.heartbeat_run(run)
             cls._raise_for_node_response(rows)
             page_nodes = cls._extract_nodes(rows)
             nodes.extend(page_nodes)
@@ -682,7 +699,7 @@ class NodeMgmtSyncService:
         cls, run: NodeMgmtSyncRun | None = None
     ) -> list[dict[str, Any]]:
         logger.info("[NodeMgmtSync] 开始获取非容器节点列表")
-        cloud_region_names = cls._cloud_region_name_map()
+        cloud_region_names = cls._cloud_region_name_map(run=run)
         logger.debug("[NodeMgmtSync] 获取到云区域名称映射, region_count=%d", len(cloud_region_names))
         nodes = cls._fetch_node_mgmt_pages(
             {"is_container": False},
@@ -738,7 +755,9 @@ class NodeMgmtSyncService:
         run: NodeMgmtSyncRun | None = None,
     ) -> dict[str, Any] | None:
         logger.debug("[NodeMgmtSync] 查找云区域接入点, cloud_region_id=%d", cloud_region_id)
-        cloud_region_name = cls._cloud_region_name_map().get(int(cloud_region_id), "")
+        cloud_region_name = cls._cloud_region_name_map(run=run).get(
+            int(cloud_region_id), ""
+        )
         nodes = cls._fetch_node_mgmt_pages(
             {"cloud_region_id": cloud_region_id, "is_container": True},
             deadline_at=getattr(run, "deadline_at", None),
@@ -846,6 +865,7 @@ class NodeMgmtSyncService:
             team: list[int],
             instances: list[dict[str, Any]],
             interval_minutes: int,
+            run: NodeMgmtSyncRun | None = None,
     ) -> CollectModels:
         from apps.cmdb.services.collect_service import CollectModelService
 
@@ -853,6 +873,8 @@ class NodeMgmtSyncService:
                      cloud_region_id, cloud_region_name, len(instances))
         auto_collect_enabled = bool(getattr(cls.get_task(), "auto_collect_enabled", False))
 
+        if run is not None:
+            cls.heartbeat_run(run)
         payload = cls._collect_task_payload(
             cloud_region_id=cloud_region_id,
             cloud_region_name=cloud_region_name,
@@ -871,17 +893,29 @@ class NodeMgmtSyncService:
             task.cycle_value_type = "cycle"
             task.cycle_value = str(interval_minutes)
             task.scan_cycle = cls._build_cycle(interval_minutes)
+            if run is not None:
+                cls.heartbeat_run(run)
             task.save()
+            if run is not None:
+                cls.heartbeat_run(run)
             if (
                     auto_collect_enabled
                     and CollectModelService.should_sync_node_params(task)
                     and cls._should_repush_collect_task_node_params(old_task, task)
             ):
                 logger.info("[NodeMgmtSync] 采集任务参数变更, 重新推送节点参数, task_id=%d", task.id)
+                if run is not None:
+                    cls.heartbeat_run(run)
                 CollectModelService.delete_butch_node_params(old_task)
+                if run is not None:
+                    cls.heartbeat_run(run)
                 CollectModelService.push_butch_node_params(task)
+                if run is not None:
+                    cls.heartbeat_run(run)
             return task
         logger.info("[NodeMgmtSync] 创建新采集任务, cloud_region_id=%d, cloud_region_name=%s", cloud_region_id, cloud_region_name)
+        if run is not None:
+            cls.heartbeat_run(run)
         task = CollectModels.objects.create(
             **payload,
             created_by="system",
@@ -893,10 +927,16 @@ class NodeMgmtSyncService:
             cycle_value=str(interval_minutes),
             scan_cycle=cls._build_cycle(interval_minutes),
         )
+        if run is not None:
+            cls.heartbeat_run(run)
         logger.info("[NodeMgmtSync] 采集任务创建成功, task_id=%d, cloud_region_id=%d", task.id, cloud_region_id)
         if auto_collect_enabled and CollectModelService.should_sync_node_params(task):
             logger.debug("[NodeMgmtSync] 推送新任务节点参数, task_id=%d", task.id)
+            if run is not None:
+                cls.heartbeat_run(run)
             CollectModelService.push_butch_node_params(task)
+            if run is not None:
+                cls.heartbeat_run(run)
         return task
 
     @classmethod
@@ -1036,6 +1076,7 @@ class NodeMgmtSyncService:
             existing_hosts: dict[Any, dict[str, Any]],
             operator: str,
             operation_id: str,
+            run: NodeMgmtSyncRun | None = None,
     ) -> dict[str, Any]:
         result = {
             "add": 0,
@@ -1051,6 +1092,8 @@ class NodeMgmtSyncService:
         }
 
         for desired in desired_hosts:
+            if run is not None:
+                cls.heartbeat_run(run)
             persistence_payload = cls._host_persistence_payload(desired)
             ip_addr, cloud = cls._host_lookup_key(desired)
             tuple_key = (ip_addr, cloud)
@@ -1063,6 +1106,8 @@ class NodeMgmtSyncService:
                     continue
                 result["update"] += 1
                 try:
+                    if run is not None:
+                        cls.heartbeat_run(run)
                     updated = InstanceManage.instance_update(
                         user_groups=[],
                         roles=[],
@@ -1074,6 +1119,10 @@ class NodeMgmtSyncService:
                         operation_id=operation_id,
                         schedule_post_actions=False,
                     )
+                    if run is not None:
+                        cls.heartbeat_run(run)
+                except NodeMgmtSyncError:
+                    raise
                 except Exception as exc:
                     error = {"operation": "update", "error": f"HOST_UPDATE_FAILED: {type(exc).__name__}"}
                     result["update_error"] += 1
@@ -1090,6 +1139,8 @@ class NodeMgmtSyncService:
                 continue
 
             try:
+                if run is not None:
+                    cls.heartbeat_run(run)
                 created = InstanceManage.instance_create(
                     "host",
                     persistence_payload,
@@ -1098,6 +1149,10 @@ class NodeMgmtSyncService:
                     operation_id=operation_id,
                     schedule_post_actions=False,
                 )
+                if run is not None:
+                    cls.heartbeat_run(run)
+            except NodeMgmtSyncError:
+                raise
             except Exception as exc:
                 error = {"operation": "add", "error": f"HOST_CREATE_FAILED: {type(exc).__name__}"}
                 result["add_error"] += 1
@@ -1373,9 +1428,12 @@ class NodeMgmtSyncService:
             desired_hosts = []
             for node in region_nodes:
                 try:
+                    cls.heartbeat_run(run)
                     payload = cls._build_host_instance_payload(node=node, collect_task_id=0)
                     detail["raw_data"]["data"].append(cls._host_display_payload(payload))
                     desired_hosts.append(payload)
+                except NodeMgmtSyncError:
+                    raise
                 except Exception as node_exc:
                     message["add_error"] += 1
                     detail["todo"].append(
@@ -1389,6 +1447,7 @@ class NodeMgmtSyncService:
                 existing_hosts=existing_map,
                 operator="system",
                 operation_id=str(run.generation),
+                run=run,
             )
             for key in ("add", "add_success", "add_error", "update", "update_success", "update_error"):
                 message[key] += persistence[key]
@@ -1400,7 +1459,11 @@ class NodeMgmtSyncService:
             logger.info("[NodeMgmtSync] 云区域主机同步完成: cloud_region_id=%d, add=%d, update=%d",
                         cloud_region_id, persistence["add_success"], persistence["update_success"])
 
-            region_instances = cls._query_region_host_instances(cloud_region_id, region_nodes)
+            cls.heartbeat_run(run)
+            region_instances = cls._query_region_host_instances(
+                cloud_region_id, region_nodes
+            )
+            cls.heartbeat_run(run)
             logger.debug("[NodeMgmtSync] 查询区域主机实例, cloud_region_id=%d, instance_count=%d",
                          cloud_region_id, len(region_instances))
 
@@ -1411,13 +1474,16 @@ class NodeMgmtSyncService:
                 team=team,
                 instances=region_instances,
                 interval_minutes=task_config.collect_interval_minutes,
+                run=run,
             )
 
             collect_task.instances = region_instances
             collect_task.team = team
             collect_task.access_point = [access_point] if access_point else []
             if hasattr(collect_task, "save"):
+                cls.heartbeat_run(run)
                 collect_task.save()
+                cls.heartbeat_run(run)
 
             if access_point is None:
                 detail["todo"].append(
@@ -1431,7 +1497,11 @@ class NodeMgmtSyncService:
             from apps.cmdb.services.auto_relation_reconcile import schedule_instance_auto_relation_reconcile
 
             try:
+                cls.heartbeat_run(run)
                 schedule_instance_auto_relation_reconcile(list(dict.fromkeys(changed_instance_ids)))
+                cls.heartbeat_run(run)
+            except NodeMgmtSyncError:
+                raise
             except Exception as relation_exc:
                 message["association_error"] += 1
                 detail["todo"].append(
@@ -1516,7 +1586,11 @@ class NodeMgmtSyncService:
                 continue
             logger.info("[NodeMgmtSync] 开始执行采集任务: task_id=%d, task_name=%s", collect_task.id, collect_task.name)
             try:
+                cls.heartbeat_run(run)
                 cls._execute_collect_task(collect_task)
+                cls.heartbeat_run(run)
+            except NodeMgmtSyncError:
+                raise
             except Exception as task_exc:
                 # 单个采集任务下发失败不中断其余任务。
                 detail["failed"].append(

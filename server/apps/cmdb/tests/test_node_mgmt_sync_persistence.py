@@ -124,7 +124,7 @@ def test_new_host_success_is_counted_and_uses_generation(mocker, desired_host):
 @pytest.fixture
 def sync_run(db):
     config = NodeMgmtSyncConfig.objects.create(name="节点管理同步", is_builtin=True)
-    run = NodeMgmtSyncRun.objects.create(task=config, run_type=NodeMgmtSyncRun.RUN_TYPE_SYNC, generation=GENERATION,)
+    run = NodeMgmtSyncService.acquire_run(NodeMgmtSyncRun.RUN_TYPE_SYNC, task=config,)
     return run, config
 
 
@@ -158,16 +158,17 @@ def test_retry_reloads_persisted_hosts_without_duplicate_create(mocker, sync_run
     mocker.patch(RECONCILE)
 
     first = NodeMgmtSyncService._do_sync_hosts(run, config)
-    second = NodeMgmtSyncService._do_sync_hosts(run, config)
+    retry_run = NodeMgmtSyncService.acquire_run(NodeMgmtSyncRun.RUN_TYPE_SYNC, task=config,)
+    second = NodeMgmtSyncService._do_sync_hosts(retry_run, config)
 
     assert first["summary"]["add_success"] == 1
     assert second["summary"]["add"] == 0
     assert second["summary"]["update"] == 0
     assert existing_loader.call_count == 2
     create.assert_called_once()
-    run.refresh_from_db()
+    retry_run.refresh_from_db()
     forbidden_fields = {"cloud_id", "cloud_name", "node_id", "source", "secret"}
-    assert forbidden_fields.isdisjoint(run.detail_json["raw_data"]["data"][0])
+    assert forbidden_fields.isdisjoint(retry_run.detail_json["raw_data"]["data"][0])
 
 
 @pytest.mark.django_db

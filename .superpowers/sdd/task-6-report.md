@@ -24,3 +24,18 @@
 
 - Task 8 的 submitted 父子运行聚合未提前实现。
 - `diff-cover` 未安装，覆盖率使用 coverage XML 与 git diff 等价计算。
+
+## Critical / Important 审查修复
+
+- 统一租约守卫现以 `pk + generation + active_scope=node_mgmt_sync + 非终态 + deadline_at>now` 原子校验并刷新心跳；节点 RPC、区域载荷、每条主机 create/update、区域采集任务写入/参数推送、关联调度及每个 collect submit 均在副作用前后复验。
+- 单次已发出的外部调用无法中途取消；调用返回后立即复验，失租或超时 Worker 抛出稳定 `RUN_TIMEOUT` / `RUN_NOT_ACTIVE`，不会进入下一副作用。已完成的外部调用不宣称回滚。
+- `success/partial_success` 终态使用同 generation、仍持全局锁且 deadline 未过期的原子 CAS；stale 回收或过期后，旧 Worker 不能覆盖 `timeout`。
+- `recover_stale_runs()` 收敛为包含 `active_scope + status + deadline_at__lte` 的单条条件 UPDATE，不再先物化候选后以缺少 deadline 的条件更新。
+- 未额外加入 heartbeat stale 回收条件；本轮严格保持 Task 6 的硬 deadline 语义，活跃长 RPC 依靠返回后栅栏停止后续副作用。
+
+## 审查修复验证
+
+- TDD RED：首条主机写后过期仍继续、最后一次 collect submit 跨 deadline 仍成功、stale 最终 UPDATE 缺 deadline 条件均稳定失败；旧 Worker 覆盖保护测试同时固化。
+- GREEN：execution `24 passed`；persistence/resilience `13 passed`；Task 2–6 全回归 `136 passed`。
+- 新增生产可执行行覆盖率：`65/70 = 92.86%`（coverage JSON + 零上下文 diff 等价计算）。
+- 静态门禁：两个触及测试通过 black/isort/flake8，service 通过 isort，`git diff --check` 通过；service 整文件仅保留未触及历史 `E125`（原 922 行，因增量行位移现为 962 行）。

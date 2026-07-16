@@ -1,10 +1,14 @@
 from datetime import timedelta
+from types import SimpleNamespace
 from unittest import mock
 
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from apps.cmdb.models import NodeMgmtSyncRun
+from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncError, NodeMgmtSyncService
 
 pytestmark = pytest.mark.django_db
@@ -64,6 +68,81 @@ def test_heartbeat_rejects_expired_run_and_releases_scope():
     assert run.status == NodeMgmtSyncRun.STATUS_TIMEOUT
     assert run.reason_code == "RUN_TIMEOUT"
     assert run.active_scope is None
+
+
+def test_persist_hosts_stops_after_first_external_write_expires_lease(mocker):
+    run = NodeMgmtSyncService.acquire_run("sync")
+    desired_hosts = [
+        {"ip_addr": "10.0.0.1", "cloud": 1, "organization": [1]},
+        {"ip_addr": "10.0.0.2", "cloud": 1, "organization": [1]},
+    ]
+
+    def expire_after_create(*args, **kwargs):
+        NodeMgmtSyncRun.objects.filter(pk=run.pk).update(deadline_at=timezone.now() - timedelta(seconds=1))
+        return {"_id": 1, **args[1]}
+
+    create = mocker.patch("apps.cmdb.services.node_mgmt_sync_service.InstanceManage.instance_create", side_effect=expire_after_create,)
+
+    with pytest.raises(NodeMgmtSyncError, match="^RUN_TIMEOUT$"):
+        NodeMgmtSyncService._persist_hosts(
+            desired_hosts, existing_hosts={}, operator="system", operation_id=str(run.generation), run=run,
+        )
+
+    assert create.call_count == 1
+    run.refresh_from_db()
+    assert run.status == NodeMgmtSyncRun.STATUS_TIMEOUT
+    assert run.active_scope is None
+
+
+def test_collect_submit_crossing_deadline_cannot_finish_success(mocker):
+    run = NodeMgmtSyncService.acquire_run("collect")
+    task_config = NodeMgmtSyncService.get_task()
+    collect_task = SimpleNamespace(id=11, name="region-1", access_point=[{"id": 1}],)
+    mocker.patch.object(NodeMgmtSyncService, "_list_region_collect_tasks", return_value=[collect_task])
+
+    def expire_after_submit(task):
+        NodeMgmtSyncRun.objects.filter(pk=run.pk).update(deadline_at=timezone.now() - timedelta(seconds=1))
+
+    submit = mocker.patch.object(NodeMgmtSyncService, "_execute_collect_task", side_effect=expire_after_submit,)
+
+    with pytest.raises(NodeMgmtSyncError, match="^RUN_TIMEOUT$"):
+        NodeMgmtSyncService._do_collect_hosts(run, task_config)
+
+    submit.assert_called_once_with(collect_task)
+    run.refresh_from_db()
+    assert run.status == NodeMgmtSyncRun.STATUS_TIMEOUT
+    assert run.active_scope is None
+
+
+def test_recovered_stale_run_cannot_be_overwritten_by_old_worker_finish():
+    run = NodeMgmtSyncService.acquire_run("sync")
+    NodeMgmtSyncRun.objects.filter(pk=run.pk).update(deadline_at=timezone.now() - timedelta(seconds=1))
+
+    assert NodeMgmtSyncService.recover_stale_runs() == 1
+    with pytest.raises(NodeMgmtSyncError, match="^RUN_TIMEOUT$"):
+        NodeMgmtSyncService.finish_run(
+            run, status=NodeMgmtSyncRun.STATUS_SUCCESS, summary_json={"all": 2},
+        )
+
+    run.refresh_from_db()
+    assert run.status == NodeMgmtSyncRun.STATUS_TIMEOUT
+    assert run.reason_code == "RUN_TIMEOUT"
+    assert run.summary_json == {}
+
+
+def test_recover_stale_runs_uses_single_deadline_guarded_update():
+    run = NodeMgmtSyncService.acquire_run("sync")
+    NodeMgmtSyncRun.objects.filter(pk=run.pk).update(deadline_at=timezone.now() - timedelta(seconds=1))
+
+    with CaptureQueriesContext(connection) as queries:
+        assert NodeMgmtSyncService.recover_stale_runs() == 1
+
+    updates = [query["sql"] for query in queries if query["sql"].lstrip().upper().startswith("UPDATE")]
+    assert len(updates) == 1
+    normalized_sql = updates[0].lower()
+    assert "deadline_at" in normalized_sql
+    assert "active_scope" in normalized_sql
+    assert "status" in normalized_sql
 
 
 def test_sync_hosts_returns_blocked_history_without_starting_work():
@@ -170,7 +249,71 @@ def test_pagination_refreshes_run_heartbeat(mocker):
 
     assert NodeMgmtSyncService._fetch_node_mgmt_pages({}, run=run) == []
 
-    heartbeat.assert_called_once_with(run)
+    assert heartbeat.call_args_list == [mock.call(run), mock.call(run)]
+
+
+def test_cloud_region_rpc_is_guarded_before_and_after(mocker):
+    run = NodeMgmtSyncService.acquire_run("sync")
+    rpc = mocker.Mock()
+    rpc.cloud_region_list.return_value = [{"id": 1, "name": "region-1"}]
+    mocker.patch.object(NodeMgmtSyncService, "_node_mgmt_client", return_value=rpc)
+    heartbeat = mocker.patch.object(NodeMgmtSyncService, "heartbeat_run")
+
+    assert NodeMgmtSyncService._cloud_region_name_map(run=run) == {1: "region-1"}
+
+    assert heartbeat.call_args_list == [mock.call(run), mock.call(run)]
+
+
+def test_existing_collect_task_writes_and_pushes_are_lease_guarded(mocker):
+    run = NodeMgmtSyncService.acquire_run("sync")
+    collect_task = SimpleNamespace(id=21, instances=[], access_point=[], save=mocker.Mock(),)
+    queryset = mocker.Mock()
+    queryset.first.return_value = collect_task
+    mocker.patch.object(CollectModels.objects, "filter", return_value=queryset)
+    mocker.patch.object(
+        NodeMgmtSyncService, "_should_repush_collect_task_node_params", return_value=True,
+    )
+    collect_service = SimpleNamespace(
+        should_sync_node_params=mocker.Mock(return_value=True), delete_butch_node_params=mocker.Mock(), push_butch_node_params=mocker.Mock(),
+    )
+    heartbeat = mocker.patch.object(NodeMgmtSyncService, "heartbeat_run")
+
+    with mock.patch.dict(
+        "sys.modules", {"apps.cmdb.services.collect_service": SimpleNamespace(CollectModelService=collect_service)},
+    ):
+        result = NodeMgmtSyncService._ensure_region_collect_task(
+            cloud_region_id=1, cloud_region_name="region-1", access_point={"id": 1}, team=[1], instances=[{"_id": 1}], interval_minutes=30, run=run,
+        )
+
+    assert result is collect_task
+    collect_task.save.assert_called_once_with()
+    collect_service.should_sync_node_params.assert_called_once_with(collect_task)
+    collect_service.delete_butch_node_params.assert_called_once()
+    collect_service.push_butch_node_params.assert_called_once_with(collect_task)
+    assert heartbeat.call_count == 6
+
+
+def test_new_collect_task_create_and_push_are_lease_guarded(mocker):
+    run = NodeMgmtSyncService.acquire_run("sync")
+    collect_task = SimpleNamespace(id=22)
+    queryset = mocker.Mock()
+    queryset.first.return_value = None
+    mocker.patch.object(CollectModels.objects, "filter", return_value=queryset)
+    create = mocker.patch.object(CollectModels.objects, "create", return_value=collect_task,)
+    collect_service = SimpleNamespace(should_sync_node_params=mocker.Mock(return_value=True), push_butch_node_params=mocker.Mock(),)
+    heartbeat = mocker.patch.object(NodeMgmtSyncService, "heartbeat_run")
+
+    with mock.patch.dict(
+        "sys.modules", {"apps.cmdb.services.collect_service": SimpleNamespace(CollectModelService=collect_service)},
+    ):
+        result = NodeMgmtSyncService._ensure_region_collect_task(
+            cloud_region_id=1, cloud_region_name="region-1", access_point={"id": 1}, team=[1], instances=[{"_id": 1}], interval_minutes=30, run=run,
+        )
+
+    assert result is collect_task
+    create.assert_called_once()
+    collect_service.push_butch_node_params.assert_called_once_with(collect_task)
+    assert heartbeat.call_count == 5
 
 
 def test_celery_entries_preserve_external_return_contracts(mocker):
