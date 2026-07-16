@@ -705,12 +705,14 @@
                 "partialSuccess": "Partially successful; check failed regions",
                 "blocked": "Execution is blocked",
                 "failed": "Execution failed",
-                "timeout": "Execution timed out"
+                "timeout": "Execution timed out",
+                "unknown": "Run status is unknown. Refresh later or troubleshoot by error code."
             },
             "empty": {
                 "noNodes": "Node Management returned 0 nodes",
                 "queryFailed": "Node Management query failed",
                 "noAccessPoint": "No available access point in the region",
+                "partialFailure": "Some regions failed and no display data is available",
                 "noData": "No Node Management sync data"
             },
             "reason": {

@@ -725,12 +725,14 @@
                 "partialSuccess": "部分成功，请关注失败区域",
                 "blocked": "执行被阻塞",
                 "failed": "执行失败",
-                "timeout": "执行超时"
+                "timeout": "执行超时",
+                "unknown": "运行状态未知，请稍后刷新或根据错误码排查"
             },
             "empty": {
                 "noNodes": "节点管理返回 0 个节点",
                 "queryFailed": "节点管理查询失败",
                 "noAccessPoint": "区域没有可用接入点",
+                "partialFailure": "部分区域执行失败，暂无可展示数据",
                 "noData": "暂无节点管理同步数据"
             },
             "reason": {

@@ -1,11 +1,13 @@
 import json
+from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+from django.utils import timezone
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from apps.cmdb.models.node_mgmt_sync import NodeMgmtSyncConfig
+from apps.cmdb.models.node_mgmt_sync import NodeMgmtSyncConfig, NodeMgmtSyncRun
 from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncService
 from apps.cmdb.views.node_mgmt_sync import NodeMgmtSyncViewSet
 
@@ -95,6 +97,27 @@ def test_config_response_exposes_stable_reconciliation_health_contract():
         "reason_code": "RECONCILE_FAILED",
         "message": "RuntimeError: 节点管理同步对账失败",
     }
+
+
+def test_run_response_exposes_stable_reason_and_real_timestamps():
+    config = NodeMgmtSyncConfig.objects.create()
+    submitted_at = timezone.now()
+    deadline_at = submitted_at + timedelta(minutes=10)
+    run = NodeMgmtSyncRun.objects.create(
+        task=config,
+        run_type=NodeMgmtSyncRun.RUN_TYPE_COLLECT,
+        status=NodeMgmtSyncRun.STATUS_BLOCKED,
+        reason_code="NO_ACCESS_POINT",
+        submitted_at=submitted_at,
+        deadline_at=deadline_at,
+    )
+
+    payload = NodeMgmtSyncService.serialize_run(run)
+
+    assert payload["reason_code"] == "NO_ACCESS_POINT"
+    assert payload["submitted_at"] == NodeMgmtSyncService._serialize_dt(submitted_at)
+    assert payload["deadline_at"] == NodeMgmtSyncService._serialize_dt(deadline_at)
+    assert "next_retry_at" not in payload
 
 
 @pytest.mark.parametrize(

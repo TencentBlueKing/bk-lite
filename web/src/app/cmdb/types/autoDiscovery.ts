@@ -257,9 +257,8 @@ export interface NodeMgmtSyncRun {
   id: number | null;
   task_id?: number | null;
   run_type: string | null;
-  status: NodeMgmtSyncStatus | null;
+  status: string | null;
   reason_code?: string;
-  error_code?: string;
   started_at: string | null;
   submitted_at?: string | null;
   finished_at: string | null;
@@ -279,6 +278,5 @@ export interface NodeMgmtSyncDisplayPayload {
   summary: NodeMgmtSyncSummary;
   detail: NodeMgmtSyncDetailData;
   run: NodeMgmtSyncRun;
-  error_code?: string;
   next_retry_at?: string | null;
 }

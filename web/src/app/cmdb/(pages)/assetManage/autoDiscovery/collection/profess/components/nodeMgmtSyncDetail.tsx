@@ -1,8 +1,7 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Badge, Button, Card, Empty, Input, Space, Spin, Switch, Tabs, message } from 'antd';
-import type { BadgeProps } from 'antd';
 import CustomTable from '@/components/custom-table';
 import { useNodeMgmtSyncApi } from '@/app/cmdb/api';
 import { useTranslation } from '@/utils/i18n';
@@ -12,9 +11,17 @@ import type {
   NodeMgmtSyncRun,
   NodeMgmtSyncItem,
   NodeMgmtSyncDisplayPayload,
-  NodeMgmtSyncStatus,
   TaskData,
 } from '@/app/cmdb/types/autoDiscovery';
+import {
+  NODE_MGMT_SYNC_STATUS_BADGE,
+  createNodeMgmtSyncRequestGuard,
+  getNodeMgmtSyncEmptyStateKey,
+  getNodeMgmtSyncReasonTextKey,
+  getNodeMgmtSyncStatusTextKey,
+  normalizeNodeMgmtSyncStatus,
+} from './nodeMgmtSyncViewModel';
+import type { NodeMgmtSyncGuardToken } from './nodeMgmtSyncViewModel';
 
 interface NodeMgmtSyncDetailProps {
   open: boolean;
@@ -30,89 +37,6 @@ const StatisticCard = ({ title, value, accentClass }: { title: string; value: nu
 };
 
 const EMPTY_TASK_DATA: TaskData = { data: [], count: 0 };
-type BadgeStatus = BadgeProps['status'];
-
-export const NODE_MGMT_SYNC_STATUS_BADGE: Record<NodeMgmtSyncStatus, BadgeStatus> = {
-  waiting_sync: 'warning',
-  running: 'processing',
-  submitted: 'processing',
-  success: 'success',
-  partial_success: 'warning',
-  blocked: 'error',
-  failed: 'error',
-  timeout: 'error',
-};
-
-const STATUS_TEXT_KEYS: Record<NodeMgmtSyncStatus, string> = {
-  waiting_sync: 'Collection.nodeMgmtSync.status.waitingSync',
-  running: 'Collection.nodeMgmtSync.status.running',
-  submitted: 'Collection.nodeMgmtSync.status.submitted',
-  success: 'Collection.nodeMgmtSync.status.success',
-  partial_success: 'Collection.nodeMgmtSync.status.partialSuccess',
-  blocked: 'Collection.nodeMgmtSync.status.blocked',
-  failed: 'Collection.nodeMgmtSync.status.failed',
-  timeout: 'Collection.nodeMgmtSync.status.timeout',
-};
-
-const REASON_TEXT_KEYS: Record<string, string> = {
-  SYNC_REQUIRED: 'Collection.nodeMgmtSync.reason.syncRequired',
-  RUN_ALREADY_ACTIVE: 'Collection.nodeMgmtSync.reason.runAlreadyActive',
-  RUN_TIMEOUT: 'Collection.nodeMgmtSync.reason.runTimeout',
-  RUN_FAILED: 'Collection.nodeMgmtSync.reason.runFailed',
-  NODE_QUERY_FAILED: 'Collection.nodeMgmtSync.reason.nodeQueryFailed',
-  NODE_QUERY_TIMEOUT: 'Collection.nodeMgmtSync.reason.nodeQueryTimeout',
-  NODE_PAGE_LIMIT_EXCEEDED: 'Collection.nodeMgmtSync.reason.nodePageLimitExceeded',
-  INVALID_REGION_CODE: 'Collection.nodeMgmtSync.reason.invalidRegionCode',
-  NO_ACCESS_POINT: 'Collection.nodeMgmtSync.reason.noAccessPoint',
-  COLLECT_ALREADY_RUNNING: 'Collection.nodeMgmtSync.reason.collectAlreadyRunning',
-  COLLECT_SUBMISSION_BLOCKED: 'Collection.nodeMgmtSync.reason.collectSubmissionBlocked',
-  COLLECT_SUBMIT_FAILED: 'Collection.nodeMgmtSync.reason.collectSubmitFailed',
-  COLLECT_CHILD_FAILED: 'Collection.nodeMgmtSync.reason.collectChildFailed',
-  COLLECT_EXECUTION_ID_MISSING: 'Collection.nodeMgmtSync.reason.collectExecutionMissing',
-  COLLECT_EXECUTION_SUPERSEDED: 'Collection.nodeMgmtSync.reason.collectExecutionSuperseded',
-  COLLECT_TASK_MISSING: 'Collection.nodeMgmtSync.reason.collectTaskMissing',
-  RECONCILE_FAILED: 'Collection.nodeMgmtSync.reason.reconcileFailed',
-  NODE_CONFIG_RECONCILE_FAILED: 'Collection.nodeMgmtSync.reason.nodeConfigFailed',
-  NODE_CONFIG_DELETE_FAILED: 'Collection.nodeMgmtSync.reason.nodeConfigDeleteFailed',
-  NODE_CONFIG_PUSH_FAILED: 'Collection.nodeMgmtSync.reason.nodeConfigPushFailed',
-};
-
-const normalizeReasonCode = (reasonCode?: string) => (reasonCode || '').split(':', 1)[0];
-
-export const getNodeMgmtSyncStatusTextKey = (status: NodeMgmtSyncStatus) => STATUS_TEXT_KEYS[status];
-
-export const getNodeMgmtSyncReasonTextKey = (reasonCode?: string) =>
-  REASON_TEXT_KEYS[normalizeReasonCode(reasonCode)] || 'Collection.nodeMgmtSync.reason.unknown';
-
-export const getNodeMgmtSyncEmptyStateKey = ({
-  status,
-  reasonCode,
-  total,
-  loadFailed = false,
-}: {
-  status: NodeMgmtSyncStatus | null;
-  reasonCode?: string;
-  total: number;
-  loadFailed?: boolean;
-}) => {
-  const normalizedReason = normalizeReasonCode(reasonCode);
-  if (loadFailed || ['NODE_QUERY_FAILED', 'NODE_QUERY_TIMEOUT', 'NODE_PAGE_LIMIT_EXCEEDED'].includes(normalizedReason)) {
-    return 'Collection.nodeMgmtSync.empty.queryFailed';
-  }
-  if (normalizedReason === 'NO_ACCESS_POINT') {
-    return 'Collection.nodeMgmtSync.empty.noAccessPoint';
-  }
-  if (status === 'waiting_sync') {
-    return 'Collection.nodeMgmtSync.status.waitingSync';
-  }
-  if (status === 'submitted') {
-    return 'Collection.nodeMgmtSync.status.submitted';
-  }
-  if (total === 0 && (status === 'success' || status === 'partial_success')) {
-    return 'Collection.nodeMgmtSync.empty.noNodes';
-  }
-  return 'Collection.nodeMgmtSync.empty.noData';
-};
 
 const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
   const { t } = useTranslation();
@@ -125,8 +49,14 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
   const [activeTab, setActiveTab] = useState('add');
   const [searchText, setSearchText] = useState('');
   const [pendingSearchText, setPendingSearchText] = useState('');
+  const requestGuard = useRef(createNodeMgmtSyncRequestGuard()).current;
+  const savingRef = useRef(false);
 
-  const fetchData = async (showFeedback = false) => {
+  const fetchData = async (showFeedback = false, mutationToken?: NodeMgmtSyncGuardToken) => {
+    const requestToken = requestGuard.beginRequest();
+    if (!requestGuard.isRequestCurrent(requestToken)) {
+      return false;
+    }
     try {
       setLoading(true);
       setLoadFailed(false);
@@ -134,53 +64,84 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
         api.getNodeMgmtSyncTask(),
         api.getNodeMgmtSyncDisplay(),
       ]);
+      if (!requestGuard.isRequestCurrent(requestToken)
+        || (mutationToken && !requestGuard.isMutationCurrent(mutationToken))) {
+        return false;
+      }
       setTask(taskRes);
       setDisplayPayload(displayRes);
       if (showFeedback) {
         message.success(t('Collection.nodeMgmtSync.refreshSuccess'));
       }
+      return true;
     } catch (error) {
+      if (!requestGuard.isRequestCurrent(requestToken)
+        || (mutationToken && !requestGuard.isMutationCurrent(mutationToken))) {
+        return false;
+      }
       console.error('Failed to fetch node management sync data:', error);
       setLoadFailed(true);
       message.error(t('Collection.nodeMgmtSync.loadFailed'));
+      return false;
     } finally {
-      setLoading(false);
+      if (requestGuard.isRequestCurrent(requestToken)
+        && (!mutationToken || requestGuard.isMutationCurrent(mutationToken))) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
     if (!open) {
+      requestGuard.close();
+      savingRef.current = false;
+      setSaving(false);
       return;
     }
+    requestGuard.open();
     void fetchData();
+    return () => requestGuard.close();
   }, [open]);
 
   const handleConfigChange = async (patch: Partial<NodeMgmtSyncTask>) => {
-    if (!task) {
+    if (!task || savingRef.current) {
       return;
     }
+    savingRef.current = true;
+    const mutationToken = requestGuard.beginMutation();
+    setLoading(false);
     const nextTask = { ...task, ...patch };
     setTask(nextTask);
     try {
       setSaving(true);
       const response = await api.updateNodeMgmtSyncTask(patch);
+      if (!requestGuard.isMutationCurrent(mutationToken)) {
+        return;
+      }
       setTask(response);
-      await fetchData();
-      message.success(t('successfulSetted'));
+      await fetchData(false, mutationToken);
+      if (requestGuard.isMutationCurrent(mutationToken)) {
+        message.success(t('successfulSetted'));
+      }
     } catch (error) {
+      if (!requestGuard.isMutationCurrent(mutationToken)) {
+        return;
+      }
       console.error('Failed to update node management sync config:', error);
       message.error(t('Collection.nodeMgmtSync.saveFailed'));
       setTask(task);
     } finally {
-      setSaving(false);
+      if (requestGuard.isMutationCurrent(mutationToken)) {
+        savingRef.current = false;
+        setSaving(false);
+      }
     }
   };
 
   const syncRun: NodeMgmtSyncRun | null = displayPayload?.run || null;
-  const runStatus = syncRun?.status || null;
+  const normalizedRunStatus = normalizeNodeMgmtSyncStatus(syncRun?.status);
+  const runStatus = normalizedRunStatus.status;
   const reasonCode = syncRun?.reason_code
-    || syncRun?.error_code
-    || displayPayload?.error_code
     || task?.health?.reason_code
     || task?.reconcile_error_code
     || '';
@@ -215,6 +176,9 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
     if (task?.health?.schedule_status === 'reconciling' || task?.health?.node_config_status === 'reconciling') {
       return { type: 'info' as const, textKey: 'Collection.nodeMgmtSync.health.reconciling' };
     }
+    if (normalizedRunStatus.isUnknown) {
+      return { type: 'error' as const, textKey: 'Collection.nodeMgmtSync.status.unknown' };
+    }
     if (runStatus && ['blocked', 'failed', 'timeout'].includes(runStatus)) {
       return { type: 'error' as const, textKey: getNodeMgmtSyncReasonTextKey(reasonCode) };
     }
@@ -225,7 +189,7 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
       return { type: 'warning' as const, textKey: 'Collection.nodeMgmtSync.status.partialSuccess' };
     }
     return null;
-  }, [loadFailed, reasonCode, runStatus, task]);
+  }, [loadFailed, normalizedRunStatus.isUnknown, reasonCode, runStatus, task]);
   const emptyStateKey = getNodeMgmtSyncEmptyStateKey({
     status: runStatus,
     reasonCode,
@@ -369,7 +333,7 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
                   onChange={(checked) => void handleConfigChange({ auto_collect_enabled: checked })}
                 />
               </Space>
-              <Button loading={loading} onClick={() => void fetchData(true)}>
+              <Button disabled={saving} loading={loading} onClick={() => void fetchData(true)}>
                 {t('common.refresh')}
               </Button>
             </Space>
@@ -387,7 +351,10 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
           {runStatus ? (
             <div className="text-sm text-[var(--color-text-2)]">
               {t('Collection.nodeMgmtSync.runStatus')}：
-              <Badge status={NODE_MGMT_SYNC_STATUS_BADGE[runStatus]} text={t(getNodeMgmtSyncStatusTextKey(runStatus))} />
+              <Badge
+                status={NODE_MGMT_SYNC_STATUS_BADGE[runStatus]}
+                text={t(getNodeMgmtSyncStatusTextKey(runStatus, normalizedRunStatus.isUnknown))}
+              />
             </div>
           ) : null}
 
