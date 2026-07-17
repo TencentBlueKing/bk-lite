@@ -4,6 +4,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import timedelta
 
+from django.db.models import Q
 from django.utils import timezone
 from django_celery_beat.models import PeriodicTask
 
@@ -39,6 +40,7 @@ class NodeConfigReconcileResult:
 
 class NodeMgmtSyncReconciler:
     NODE_CONFIG_CLAIM_TIMEOUT = timedelta(minutes=5)
+    NODE_CONFIG_DIRTY_MARKER = "NODE_CONFIG_DIRTY"
 
     @staticmethod
     def _node_config_scope(cloud_region_id) -> str:
@@ -49,17 +51,52 @@ class NodeMgmtSyncReconciler:
         """按区域复用唯一交付状态；旧的 version scope 在首次触达时原位迁移。"""
         scope_key = cls._node_config_scope(cloud_region_id)
         state = NodeMgmtSyncRegionState.objects.filter(scope_key=scope_key).first()
-        if state is None:
-            state = (
-                NodeMgmtSyncRegionState.objects.filter(
-                    config=config,
-                    cloud_region_id=cloud_region_id,
-                    scope_key__startswith="config:",
-                )
-                .order_by("-config_version", "-id")
-                .first()
+        legacy_states = list(
+            NodeMgmtSyncRegionState.objects.filter(
+                config=config,
+                cloud_region_id=cloud_region_id,
+                scope_key__startswith="config:",
+            ).order_by("-config_version", "-id")
+        )
+        claim_cutoff = timezone.now() - cls.NODE_CONFIG_CLAIM_TIMEOUT
+        active_legacy = [
+            item
+            for item in legacy_states
+            if item.node_config_status.endswith("_in_progress") and item.updated_at > claim_cutoff
+        ]
+        stale_legacy = [
+            item
+            for item in legacy_states
+            if item.node_config_status.endswith("_in_progress") and item.updated_at <= claim_cutoff
+        ]
+        if active_legacy:
+            # 活动旧 claim 仍可能正在执行远端 RPC。先等待其 CAS 收口，绝不让
+            # stable scope 同时取得第二把区域锁。
+            return active_legacy[0], False
+        if state is not None:
+            pending_legacy = (stale_legacy[0] if stale_legacy else None) or next(
+                (item for item in legacy_states if item.node_config_status in ("delete_pending", "push_pending")),
+                None,
             )
-        if state is None:
+            if pending_legacy is not None and state.node_config_status not in ("delete_pending", "push_pending"):
+                NodeMgmtSyncRegionState.objects.filter(pk=state.pk).update(
+                    config_version=pending_legacy.config_version,
+                    collect_task=pending_legacy.collect_task,
+                    node_config_status=pending_legacy.node_config_status,
+                    reason_code=pending_legacy.reason_code,
+                    error_message=pending_legacy.error_message,
+                    updated_at=pending_legacy.updated_at,
+                )
+                state.config_version = pending_legacy.config_version
+                state.collect_task = pending_legacy.collect_task
+                state.node_config_status = pending_legacy.node_config_status
+                state.reason_code = pending_legacy.reason_code
+                state.error_message = pending_legacy.error_message
+                state.updated_at = pending_legacy.updated_at
+            if legacy_states:
+                NodeMgmtSyncRegionState.objects.filter(pk__in=[item.pk for item in legacy_states]).delete()
+            return state, False
+        if not legacy_states:
             return NodeMgmtSyncRegionState.objects.get_or_create(
                 scope_key=scope_key,
                 defaults={
@@ -69,29 +106,62 @@ class NodeMgmtSyncReconciler:
                     "collect_task": collect_task,
                 },
             )
+        state = (stale_legacy[0] if stale_legacy else None) or next(
+            (item for item in legacy_states if item.node_config_status in ("delete_pending", "push_pending")),
+            legacy_states[0],
+        )
         if state.scope_key != scope_key:
             # scope 迁移不能刷新 lease 时间，否则会把原本可回收的陈旧 claim
             # 伪装成仍在运行。
             NodeMgmtSyncRegionState.objects.filter(pk=state.pk).update(scope_key=scope_key)
             state.scope_key = scope_key
+        other_legacy_ids = [item.pk for item in legacy_states if item.pk != state.pk]
+        if other_legacy_ids:
+            NodeMgmtSyncRegionState.objects.filter(pk__in=other_legacy_ids).delete()
         return state, False
 
     @classmethod
     def mark_region_delivery_pending(cls, config, *, cloud_region_id, collect_task) -> None:
         """只登记交付意图，不在同步事务中执行远端 RPC。"""
-        state, _ = cls._get_or_create_region_state(config, str(cloud_region_id), collect_task)
-        if state.node_config_status.endswith("_in_progress"):
-            return
-        NodeMgmtSyncRegionState.objects.filter(pk=state.pk).update(
-            config=config,
-            config_version=config.version,
-            cloud_region_id=str(cloud_region_id),
-            collect_task=collect_task,
-            node_config_status="delete_pending",
-            reason_code="",
-            error_message="",
-            updated_at=timezone.now(),
+        cloud_region_id = str(cloud_region_id)
+        cls._get_or_create_region_state(config, cloud_region_id, collect_task)
+        state_ids = list(
+            NodeMgmtSyncRegionState.objects.filter(
+                config=config, cloud_region_id=cloud_region_id,
+            )
+            .filter(
+                Q(scope_key=cls._node_config_scope(cloud_region_id))
+                | Q(scope_key__startswith="config:")
+            )
+            .values_list("pk", flat=True)
         )
+        for state_id in state_ids:
+            for _attempt in range(8):
+                state = NodeMgmtSyncRegionState.objects.get(pk=state_id)
+                guarded = NodeMgmtSyncRegionState.objects.filter(
+                    pk=state.pk,
+                    node_config_status=state.node_config_status,
+                    reason_code=state.reason_code,
+                )
+                updates = {
+                    "config": config,
+                    "config_version": config.version,
+                    "cloud_region_id": cloud_region_id,
+                    "collect_task": collect_task,
+                }
+                if state.node_config_status.endswith("_in_progress"):
+                    updates["error_message"] = cls.NODE_CONFIG_DIRTY_MARKER
+                else:
+                    updates.update(
+                        node_config_status="delete_pending",
+                        reason_code="",
+                        error_message="",
+                        updated_at=timezone.now(),
+                    )
+                if guarded.update(**updates):
+                    break
+            else:
+                raise RuntimeError("NODE_CONFIG_INTENT_CONTENDED")
 
     @classmethod
     def reconcile(cls, config, *, reconcile_node_configs: bool = False):
@@ -206,6 +276,9 @@ class NodeMgmtSyncReconciler:
                 ):
                     has_contention = True
                     continue
+                if state.node_config_status != "push_in_progress":
+                    has_contention = True
+                    continue
 
             try:
                 CollectModelService.push_butch_node_params(collect_task)
@@ -272,9 +345,31 @@ class NodeMgmtSyncReconciler:
     ):
         current_time = timezone.now()
         reason_code = claim_token if keep_claim else ""
-        updated = NodeMgmtSyncRegionState.objects.filter(
-            pk=state.pk, config_version=state.config_version, node_config_status=f"{stage}_in_progress", reason_code=claim_token,
-        ).update(node_config_status=next_status, reason_code=reason_code, error_message="", updated_at=current_time,)
+        claim = NodeMgmtSyncRegionState.objects.filter(
+            pk=state.pk,
+            node_config_status=f"{stage}_in_progress",
+            reason_code=claim_token,
+        )
+        dirty_updated = claim.filter(
+            error_message=NodeMgmtSyncReconciler.NODE_CONFIG_DIRTY_MARKER,
+        ).update(
+            node_config_status="delete_pending",
+            reason_code="",
+            error_message="",
+            updated_at=current_time,
+        )
+        if dirty_updated:
+            state.node_config_status = "delete_pending"
+            state.reason_code = ""
+            state.error_message = ""
+            state.updated_at = current_time
+            return True
+        updated = claim.filter(error_message="").update(
+            node_config_status=next_status,
+            reason_code=reason_code,
+            error_message="",
+            updated_at=current_time,
+        )
         if updated:
             state.node_config_status = next_status
             state.reason_code = reason_code
@@ -288,9 +383,31 @@ class NodeMgmtSyncReconciler:
         stage_label = "删除" if stage == "delete" else "推送"
         error_message = f"{type(exc).__name__}: 节点采集参数{stage_label}失败"
         updated_at = timezone.now()
-        updated = NodeMgmtSyncRegionState.objects.filter(
-            pk=state.pk, config_version=state.config_version, node_config_status=f"{stage}_in_progress", reason_code=claim_token,
-        ).update(node_config_status=f"{stage}_pending", reason_code=reason_code, error_message=error_message, updated_at=updated_at,)
+        claim = NodeMgmtSyncRegionState.objects.filter(
+            pk=state.pk,
+            node_config_status=f"{stage}_in_progress",
+            reason_code=claim_token,
+        )
+        dirty_updated = claim.filter(
+            error_message=NodeMgmtSyncReconciler.NODE_CONFIG_DIRTY_MARKER,
+        ).update(
+            node_config_status="delete_pending",
+            reason_code="",
+            error_message="",
+            updated_at=updated_at,
+        )
+        if dirty_updated:
+            state.node_config_status = "delete_pending"
+            state.reason_code = ""
+            state.error_message = ""
+            state.updated_at = updated_at
+            return True
+        updated = claim.filter(error_message="").update(
+            node_config_status=f"{stage}_pending",
+            reason_code=reason_code,
+            error_message=error_message,
+            updated_at=updated_at,
+        )
         if updated:
             state.node_config_status = f"{stage}_pending"
             state.reason_code = reason_code

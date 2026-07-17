@@ -272,6 +272,122 @@ def test_sync_task_update_push_failure_is_retried_by_reconciler(config, region_t
     assert _state(config).node_config_status == "healthy"
 
 
+def test_delivery_intent_arriving_during_claim_preserves_token_and_stays_pending(config, region_task):
+    state = NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=config.version,
+        cloud_region_id="7",
+        collect_task=region_task,
+        scope_key="node-config:region:7",
+        node_config_status="push_in_progress",
+        reason_code="NODE_CONFIG_CLAIM:worker-a",
+    )
+    config.version += 1
+    config.save(update_fields=["version", "updated_at"])
+
+    NodeMgmtSyncReconciler.mark_region_delivery_pending(
+        config, cloud_region_id=7, collect_task=region_task,
+    )
+
+    state.refresh_from_db()
+    assert state.node_config_status == "push_in_progress"
+    assert state.reason_code == "NODE_CONFIG_CLAIM:worker-a"
+    assert state.config_version == config.version
+    assert NodeMgmtSyncReconciler._finish_node_config_claim(
+        state,
+        stage="push",
+        claim_token="NODE_CONFIG_CLAIM:worker-a",
+        next_status="healthy",
+    )
+    state.refresh_from_db()
+    assert state.node_config_status == "delete_pending"
+
+
+def test_delivery_intent_cas_does_not_overwrite_claim_started_after_read(config, region_task):
+    state = NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=config.version,
+        cloud_region_id="7",
+        collect_task=region_task,
+        scope_key="node-config:region:7",
+        node_config_status="healthy",
+    )
+    original_get = NodeMgmtSyncReconciler._get_or_create_region_state
+
+    def claim_after_read(*args, **kwargs):
+        loaded, created = original_get(*args, **kwargs)
+        NodeMgmtSyncRegionState.objects.filter(pk=loaded.pk).update(
+            node_config_status="push_in_progress",
+            reason_code="NODE_CONFIG_CLAIM:worker-b",
+        )
+        return loaded, created
+
+    with patch.object(
+        NodeMgmtSyncReconciler,
+        "_get_or_create_region_state",
+        side_effect=claim_after_read,
+    ):
+        NodeMgmtSyncReconciler.mark_region_delivery_pending(
+            config, cloud_region_id=7, collect_task=region_task,
+        )
+
+    state.refresh_from_db()
+    assert state.node_config_status == "push_in_progress"
+    assert state.reason_code == "NODE_CONFIG_CLAIM:worker-b"
+    assert NodeMgmtSyncReconciler._finish_node_config_claim(
+        state,
+        stage="push",
+        claim_token="NODE_CONFIG_CLAIM:worker-b",
+        next_status="healthy",
+    )
+    state.refresh_from_db()
+    assert state.node_config_status == "delete_pending"
+
+
+def test_multiple_legacy_rows_wait_for_active_claim_then_consolidate(config, region_task):
+    stable = NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=3,
+        cloud_region_id="7",
+        collect_task=region_task,
+        scope_key="node-config:region:7",
+        node_config_status="healthy",
+    )
+    historical = NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=1,
+        cloud_region_id="7",
+        collect_task=region_task,
+        scope_key="config:1:region:7",
+        node_config_status="healthy",
+    )
+    active = NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=2,
+        cloud_region_id="7",
+        collect_task=region_task,
+        scope_key="config:2:region:7",
+        node_config_status="push_in_progress",
+        reason_code="NODE_CONFIG_CLAIM:legacy-worker",
+    )
+
+    selected, _ = NodeMgmtSyncReconciler._get_or_create_region_state(config, "7", region_task)
+    assert selected.pk == active.pk
+    stable.refresh_from_db()
+    assert stable.scope_key == "node-config:region:7"
+
+    NodeMgmtSyncRegionState.objects.filter(pk=active.pk).update(
+        node_config_status="healthy", reason_code="",
+    )
+    selected, _ = NodeMgmtSyncReconciler._get_or_create_region_state(config, "7", region_task)
+
+    assert selected.scope_key == "node-config:region:7"
+    assert NodeMgmtSyncRegionState.objects.filter(
+        config=config, cloud_region_id="7", scope_key__startswith="config:",
+    ).count() == 0
+    assert not NodeMgmtSyncRegionState.objects.filter(pk=historical.pk).exists()
+
+
 def test_concurrent_degraded_recovery_claims_region_side_effect_once(config, region_task):
     state = NodeMgmtSyncRegionState.objects.create(
         config=config,
