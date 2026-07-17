@@ -1765,6 +1765,7 @@ class NodeMgmtSyncService:
             reason_code = cls.REASON_NODE_SOURCE_EMPTY if source_total == 0 else cls.REASON_NO_VALID_NODES
             current_config = cls.get_task()
             cls._retire_missing_region_collect_tasks(current_config, desired_region_ids=set())
+            latest_config = cls.get_task()
             cls.finish_run(
                 run,
                 status=NodeMgmtSyncRun.STATUS_BLOCKED,
@@ -1781,7 +1782,7 @@ class NodeMgmtSyncService:
             from apps.cmdb.services.node_mgmt_sync_reconciler import NodeMgmtSyncReconciler
 
             NodeMgmtSyncReconciler.reconcile(
-                current_config,
+                latest_config,
                 reconcile_node_configs=True,
             )
             return cls.serialize_run(run)
@@ -1891,9 +1892,9 @@ class NodeMgmtSyncService:
             current_config,
             desired_region_ids=set(grouped_nodes),
         )
+        latest_config = cls.get_task()
         has_delivery_intent = NodeMgmtSyncRegionState.objects.filter(
-            config=current_config,
-            config_version=current_config.version,
+            config=latest_config,
             node_config_status__in=(
                 "delete_pending",
                 "delete_in_progress",
@@ -1934,8 +1935,8 @@ class NodeMgmtSyncService:
         from apps.cmdb.services.node_mgmt_sync_reconciler import NodeMgmtSyncReconciler
 
         NodeMgmtSyncReconciler.reconcile(
-            current_config,
-            reconcile_node_configs=current_config.auto_sync_enabled or retired_regions or has_delivery_intent,
+            latest_config,
+            reconcile_node_configs=latest_config.auto_sync_enabled or retired_regions or has_delivery_intent,
         )
         logger.info("[NodeMgmtSync] ========== 同步完成 ==========")
         logger.info(
