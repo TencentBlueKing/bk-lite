@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from django.utils import timezone
-from django_celery_beat.models import CrontabSchedule, IntervalSchedule, PeriodicTask
+from django_celery_beat.models import ClockedSchedule, CrontabSchedule, IntervalSchedule, PeriodicTask, SolarSchedule
 
 from apps.cmdb.models.node_mgmt_sync import NodeMgmtSyncConfig
 from apps.cmdb.services.node_mgmt_sync_reconciler import NodeMgmtSyncReconciler
@@ -20,7 +20,14 @@ def _task_names():
 
 
 def _get_task_from_view():
-    request = SimpleNamespace(method="GET", user=SimpleNamespace(permission={"auto_collection-View"}, is_superuser=False, locale="zh",),)
+    request = SimpleNamespace(
+        method="GET",
+        user=SimpleNamespace(
+            permission={"auto_collection-View"},
+            is_superuser=False,
+            locale="zh",
+        ),
+    )
     response = NodeMgmtSyncViewSet().task(request)
     assert response.status_code == 200
     return json.loads(response.content)["data"]
@@ -83,7 +90,13 @@ def test_reconcile_repairs_deleted_or_wrong_schedule():
     PeriodicTask.objects.filter(name=NodeMgmtSyncService.SYNC_PERIODIC_TASK_NAME).delete()
 
     collect_task = PeriodicTask.objects.get(name=NodeMgmtSyncService.COLLECT_PERIODIC_TASK_NAME)
-    wrong_crontab = CrontabSchedule.objects.create(minute="*/1", hour="*", day_of_week="*", day_of_month="*", month_of_year="*",)
+    wrong_crontab = CrontabSchedule.objects.create(
+        minute="*/1",
+        hour="*",
+        day_of_week="*",
+        day_of_month="*",
+        month_of_year="*",
+    )
     collect_task.task = "wrong.task"
     collect_task.crontab = wrong_crontab
     collect_task.interval = None
@@ -111,7 +124,12 @@ def test_reconcile_migrates_legacy_crontab_to_real_interval():
     expected_timezone = timezone.get_default_timezone()
     wrong_timezone = ZoneInfo("Asia/Shanghai") if str(expected_timezone) != "Asia/Shanghai" else ZoneInfo("UTC")
     wrong_crontab = CrontabSchedule.objects.create(
-        minute="*/5", hour="*", day_of_week="*", day_of_month="*", month_of_year="*", timezone=wrong_timezone,
+        minute="*/5",
+        hour="*",
+        day_of_week="*",
+        day_of_month="*",
+        month_of_year="*",
+        timezone=wrong_timezone,
     )
     sync_task.crontab = wrong_crontab
     sync_task.interval = None
@@ -125,11 +143,9 @@ def test_reconcile_migrates_legacy_crontab_to_real_interval():
     assert sync_task.interval.period == IntervalSchedule.SECONDS
 
 
-@pytest.mark.parametrize("minutes", [60, 90, 1440])
+@pytest.mark.parametrize("minutes", [1, 60, 90, 1440])
 def test_reconcile_uses_exact_minute_interval_for_long_cycles(minutes):
-    NodeMgmtSyncService.update_task(
-        {"sync_interval_minutes": minutes, "collect_interval_minutes": minutes}
-    )
+    NodeMgmtSyncService.update_task({"sync_interval_minutes": minutes, "collect_interval_minutes": minutes})
 
     for name in (
         NodeMgmtSyncService.SYNC_PERIODIC_TASK_NAME,
@@ -141,15 +157,93 @@ def test_reconcile_uses_exact_minute_interval_for_long_cycles(minutes):
         assert periodic_task.interval.period == IntervalSchedule.SECONDS
 
 
+def test_reconcile_deterministically_repairs_duplicate_interval_and_all_schedule_fks():
+    NodeMgmtSyncService.get_task_payload(reconcile=True)
+    periodic_task = PeriodicTask.objects.get(name=NodeMgmtSyncService.SYNC_PERIODIC_TASK_NAME)
+    duplicate = IntervalSchedule.objects.create(every=5 * 60, period=IntervalSchedule.SECONDS)
+    winner_id = min(periodic_task.interval_id, duplicate.pk)
+    crontab = CrontabSchedule.objects.create(
+        minute="*/5",
+        hour="*",
+        day_of_week="*",
+        day_of_month="*",
+        month_of_year="*",
+    )
+    solar = SolarSchedule.objects.create(event="sunrise", latitude=0, longitude=0)
+    clocked = ClockedSchedule.objects.create(clocked_time=timezone.now())
+    PeriodicTask.objects.filter(pk=periodic_task.pk).update(
+        task=NodeMgmtSyncService.SYNC_TASK,
+        interval=duplicate,
+        crontab=crontab,
+        solar=solar,
+        clocked=clocked,
+    )
+
+    NodeMgmtSyncService.get_task_payload(reconcile=True)
+
+    periodic_task.refresh_from_db()
+    assert periodic_task.task == NodeMgmtSyncService.SYNC_TASK
+    assert periodic_task.interval_id == winner_id
+    assert periodic_task.crontab_id is None
+    assert periodic_task.solar_id is None
+    assert periodic_task.clocked_id is None
+
+
+def test_update_returns_health_from_reconciled_current_database_row(mocker):
+    config = NodeMgmtSyncService.get_task()
+
+    def persist_new_health(stale, **kwargs):
+        NodeMgmtSyncConfig.objects.filter(pk=stale.pk).update(
+            schedule_status="degraded",
+            reconcile_error_code="RECONCILE_FAILED",
+        )
+
+    mocker.patch.object(NodeMgmtSyncReconciler, "reconcile", side_effect=persist_new_health)
+
+    returned = NodeMgmtSyncService.update_task({"sync_interval_minutes": 10})
+
+    assert returned.version == config.version + 1
+    assert returned.schedule_status == "degraded"
+    assert returned.reconcile_error_code == "RECONCILE_FAILED"
+
+
+def test_update_retries_version_cas_after_interleaved_winner(mocker):
+    config = NodeMgmtSyncService.get_task()
+    initial_version = config.version
+    original_filter = NodeMgmtSyncConfig.objects.filter
+    winner_injected = False
+
+    def inject_winner_before_first_cas(*args, **kwargs):
+        nonlocal winner_injected
+        if kwargs.get("version") == initial_version and not winner_injected:
+            winner_injected = True
+            original_filter(pk=config.pk).update(
+                version=initial_version + 1,
+                auto_sync_enabled=False,
+                auto_collect_enabled=False,
+            )
+        return original_filter(*args, **kwargs)
+
+    mocker.patch.object(
+        NodeMgmtSyncConfig.objects,
+        "filter",
+        side_effect=inject_winner_before_first_cas,
+    )
+
+    returned = NodeMgmtSyncService.update_task({"auto_sync_enabled": True, "auto_collect_enabled": True})
+
+    returned.refresh_from_db()
+    assert winner_injected is True
+    assert returned.version == initial_version + 2
+    assert returned.auto_sync_enabled is True
+    assert returned.auto_collect_enabled is True
+
+
 def test_stale_config_reconcile_cannot_reverse_newer_schedule():
     original = NodeMgmtSyncService.get_task()
-    disabled = NodeMgmtSyncService.update_task(
-        {"auto_sync_enabled": False, "auto_collect_enabled": False}
-    )
+    disabled = NodeMgmtSyncService.update_task({"auto_sync_enabled": False, "auto_collect_enabled": False})
     disabled_snapshot = NodeMgmtSyncConfig.objects.get(pk=disabled.pk)
-    enabled = NodeMgmtSyncService.update_task(
-        {"auto_sync_enabled": True, "auto_collect_enabled": True}
-    )
+    enabled = NodeMgmtSyncService.update_task({"auto_sync_enabled": True, "auto_collect_enabled": True})
 
     NodeMgmtSyncReconciler.reconcile(disabled_snapshot)
 
@@ -177,12 +271,15 @@ def test_reconcile_does_not_rewrite_already_matching_schedules():
     delete_task.assert_not_called()
 
 
-def test_update_increments_version_and_persists_degraded_health_on_beat_failure(caplog,):
+def test_update_increments_version_and_persists_degraded_health_on_beat_failure(
+    caplog,
+):
     config = NodeMgmtSyncService.get_task()
     original_version = config.version
 
     with patch(
-        "apps.core.utils.celery_utils.CeleryUtils.create_or_update_periodic_task", side_effect=RuntimeError("secret-detail"),
+        "apps.core.utils.celery_utils.CeleryUtils.create_or_update_periodic_task",
+        side_effect=RuntimeError("secret-detail"),
     ):
         result = NodeMgmtSyncService.update_task({"sync_interval_minutes": 10})
 

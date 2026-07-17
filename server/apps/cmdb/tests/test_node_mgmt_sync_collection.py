@@ -7,10 +7,7 @@ from apps.cmdb.constants.constants import CollectRunStatusType
 from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.models.node_mgmt_sync import NodeMgmtSyncConfig, NodeMgmtSyncRegionState, NodeMgmtSyncRun
 from apps.cmdb.services.collect_service import CollectModelService
-from apps.cmdb.services.node_mgmt_sync_service import (
-    NodeMgmtSyncError,
-    NodeMgmtSyncService,
-)
+from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncError, NodeMgmtSyncService
 from apps.core.utils.web_utils import WebUtils
 
 pytestmark = pytest.mark.django_db
@@ -19,7 +16,10 @@ pytestmark = pytest.mark.django_db
 @pytest.fixture
 def config():
     return NodeMgmtSyncConfig.objects.create(
-        auto_sync_enabled=True, auto_collect_enabled=True, schedule_status="healthy", node_config_status="healthy",
+        auto_sync_enabled=True,
+        auto_collect_enabled=True,
+        schedule_status="healthy",
+        node_config_status="healthy",
     )
 
 
@@ -77,12 +77,19 @@ def test_waiting_sync_is_reused_for_same_config_version(config):
     second = NodeMgmtSyncService.execute_collect(operator="second")
 
     assert second.pk == first.pk
-    assert NodeMgmtSyncRun.objects.filter(
-        task=config,
-        run_type=NodeMgmtSyncRun.RUN_TYPE_COLLECT,
-        status=NodeMgmtSyncRun.STATUS_WAITING_SYNC,
-        detail_json={"config_version": config.version},
-    ).count() == 1
+    assert (
+        NodeMgmtSyncRun.objects.filter(
+            task=config,
+            run_type=NodeMgmtSyncRun.RUN_TYPE_COLLECT,
+            status=NodeMgmtSyncRun.STATUS_WAITING_SYNC,
+        ).count()
+        == 1
+    )
+    assert second.detail_json == {
+        "config_version": config.version,
+        "operator": "second",
+        "trigger": "periodic",
+    }
 
 
 def test_waiting_sync_is_scoped_by_config_version(config):
@@ -90,14 +97,94 @@ def test_waiting_sync_is_scoped_by_config_version(config):
     config.version += 1
     config.save(update_fields=["version", "updated_at"])
 
-    second = NodeMgmtSyncService.execute_collect(operator="second")
+    second = NodeMgmtSyncService.execute_collect(operator="second", trigger="manual")
 
-    assert second.pk != first.pk
-    assert NodeMgmtSyncRun.objects.filter(
-        task=config,
-        run_type=NodeMgmtSyncRun.RUN_TYPE_COLLECT,
-        status=NodeMgmtSyncRun.STATUS_WAITING_SYNC,
-    ).count() == 2
+    assert second.pk == first.pk
+    assert (
+        NodeMgmtSyncRun.objects.filter(
+            task=config,
+            run_type=NodeMgmtSyncRun.RUN_TYPE_COLLECT,
+            status=NodeMgmtSyncRun.STATUS_WAITING_SYNC,
+        ).count()
+        == 1
+    )
+    assert second.detail_json == {
+        "config_version": config.version,
+        "operator": "second",
+        "trigger": "manual",
+    }
+
+
+def test_waiting_builder_rechecks_successful_sync_after_taking_config_lock(
+    config,
+    mocker,
+):
+    collect_task = _collect_task(7)
+    original_select_for_update = NodeMgmtSyncConfig.objects.select_for_update
+    sync_created = False
+
+    def sync_wins_before_lock(*args, **kwargs):
+        nonlocal sync_created
+        if not sync_created:
+            sync_created = True
+            _successful_sync(config)
+        return original_select_for_update(*args, **kwargs)
+
+    mocker.patch.object(
+        NodeMgmtSyncConfig.objects,
+        "select_for_update",
+        side_effect=sync_wins_before_lock,
+    )
+    mocker.patch.object(
+        CollectModelService,
+        "exec_task",
+        side_effect=lambda task, operator: _accept_with_execution(task, "execution-after-race"),
+    )
+
+    run = NodeMgmtSyncService.execute_collect(operator="system")
+
+    assert run.status == NodeMgmtSyncRun.STATUS_SUBMITTED
+    assert run.region_states.get().collect_task_id == collect_task.pk
+    assert not NodeMgmtSyncRun.objects.filter(status=NodeMgmtSyncRun.STATUS_WAITING_SYNC).exists()
+
+
+def test_collect_reloads_current_version_inside_serialized_precondition(config):
+    _successful_sync(config)
+    stale = NodeMgmtSyncConfig.objects.get(pk=config.pk)
+    NodeMgmtSyncConfig.objects.filter(pk=config.pk).update(version=config.version + 1)
+
+    with patch.object(NodeMgmtSyncService, "get_task", return_value=stale):
+        with patch.object(CollectModelService, "exec_task") as submit:
+            run = NodeMgmtSyncService.execute_collect(operator="system")
+
+    assert run.status == NodeMgmtSyncRun.STATUS_WAITING_SYNC
+    assert run.detail_json["config_version"] == config.version + 1
+    submit.assert_not_called()
+
+
+def test_collect_blocks_without_submission_when_config_changes_before_children(
+    config,
+):
+    _successful_sync(config)
+    _collect_task(7)
+    original_list = NodeMgmtSyncService._list_region_collect_tasks
+
+    def change_version_before_children():
+        NodeMgmtSyncConfig.objects.filter(pk=config.pk).update(version=config.version + 1)
+        return original_list()
+
+    with patch.object(
+        NodeMgmtSyncService,
+        "_list_region_collect_tasks",
+        side_effect=change_version_before_children,
+    ):
+        with patch.object(CollectModelService, "exec_task") as submit:
+            run = NodeMgmtSyncService.execute_collect(operator="system")
+
+    run.refresh_from_db()
+    assert run.status == NodeMgmtSyncRun.STATUS_BLOCKED
+    assert run.reason_code == "COLLECT_SUBMISSION_BLOCKED"
+    submit.assert_not_called()
 
 
 def test_successful_sync_does_not_reuse_waiting_collect_run(config):
@@ -108,9 +195,7 @@ def test_successful_sync_does_not_reuse_waiting_collect_run(config):
     with patch.object(
         CollectModelService,
         "exec_task",
-        side_effect=lambda task, operator: _accept_with_execution(
-            task, "execution-after-sync"
-        ),
+        side_effect=lambda task, operator: _accept_with_execution(task, "execution-after-sync"),
     ):
         submitted = NodeMgmtSyncService.execute_collect(operator="after-sync")
 
@@ -135,7 +220,9 @@ def test_rejected_child_submission_is_blocked_not_success(config):
     collect_task = _collect_task(7)
 
     with patch.object(
-        CollectModelService, "exec_task", return_value=WebUtils.response_error({}, "任务正在执行", status_code=400),
+        CollectModelService,
+        "exec_task",
+        return_value=WebUtils.response_error({}, "任务正在执行", status_code=400),
     ):
         run = NodeMgmtSyncService.execute_collect(operator="system")
 
@@ -187,7 +274,9 @@ def test_accepted_child_makes_parent_submitted_not_success(config):
     collect_task = _collect_task(7)
 
     with patch.object(
-        CollectModelService, "exec_task", side_effect=lambda task, operator: _accept_with_execution(task, "execution-7"),
+        CollectModelService,
+        "exec_task",
+        side_effect=lambda task, operator: _accept_with_execution(task, "execution-7"),
     ):
         run = NodeMgmtSyncService.execute_collect(operator="system")
 
@@ -208,9 +297,18 @@ def test_accepted_child_makes_parent_submitted_not_success(config):
 @pytest.mark.parametrize(
     ("child_statuses", "expected"),
     [
-        ([CollectRunStatusType.SUCCESS, CollectRunStatusType.SUCCESS], NodeMgmtSyncRun.STATUS_SUCCESS,),
-        ([CollectRunStatusType.SUCCESS, CollectRunStatusType.ERROR], NodeMgmtSyncRun.STATUS_PARTIAL_SUCCESS,),
-        ([CollectRunStatusType.ERROR, CollectRunStatusType.ERROR], NodeMgmtSyncRun.STATUS_FAILED,),
+        (
+            [CollectRunStatusType.SUCCESS, CollectRunStatusType.SUCCESS],
+            NodeMgmtSyncRun.STATUS_SUCCESS,
+        ),
+        (
+            [CollectRunStatusType.SUCCESS, CollectRunStatusType.ERROR],
+            NodeMgmtSyncRun.STATUS_PARTIAL_SUCCESS,
+        ),
+        (
+            [CollectRunStatusType.ERROR, CollectRunStatusType.ERROR],
+            NodeMgmtSyncRun.STATUS_FAILED,
+        ),
     ],
 )
 def test_parent_finishes_from_child_terminal_states(config, child_statuses, expected):
@@ -241,7 +339,9 @@ def test_parent_stays_submitted_while_any_child_is_running(config):
     second = _collect_task(8)
 
     with patch.object(
-        CollectModelService, "exec_task", side_effect=lambda task, operator: _accept_with_execution(task, f"execution-{task.pk}"),
+        CollectModelService,
+        "exec_task",
+        side_effect=lambda task, operator: _accept_with_execution(task, f"execution-{task.pk}"),
     ):
         run = NodeMgmtSyncService.execute_collect(operator="system")
 
@@ -262,7 +362,11 @@ def test_periodic_collect_refreshes_submitted_runs_before_starting_next(mocker):
 
     recover = mocker.patch.object(NodeMgmtSyncService, "recover_stale_runs")
     refresh = mocker.patch.object(NodeMgmtSyncService, "refresh_submitted_collect_runs")
-    trigger = mocker.patch.object(NodeMgmtSyncService, "trigger_collect", return_value={"status": "submitted"},)
+    trigger = mocker.patch.object(
+        NodeMgmtSyncService,
+        "trigger_collect",
+        return_value={"status": "submitted"},
+    )
 
     assert run_collect() == {"status": "submitted"}
     recover.assert_called_once_with()
@@ -283,7 +387,9 @@ def test_consecutive_collect_runs_keep_independent_region_history(config):
     )
 
     with patch.object(
-        CollectModelService, "exec_task", side_effect=lambda task, operator: _accept_with_execution(task, f"execution-{operator}"),
+        CollectModelService,
+        "exec_task",
+        side_effect=lambda task, operator: _accept_with_execution(task, f"execution-{operator}"),
     ):
         first = NodeMgmtSyncService.execute_collect(operator="first")
         CollectModels.objects.filter(pk=collect_task.pk).update(exec_status=CollectRunStatusType.SUCCESS)
@@ -310,7 +416,9 @@ def test_invalid_region_child_is_persisted_and_makes_mixed_result_partial(config
     valid_task = _collect_task(8)
 
     with patch.object(
-        CollectModelService, "exec_task", side_effect=lambda task, operator: _accept_with_execution(task, "execution-valid"),
+        CollectModelService,
+        "exec_task",
+        side_effect=lambda task, operator: _accept_with_execution(task, "execution-valid"),
     ):
         run = NodeMgmtSyncService.execute_collect(operator="system")
 
@@ -381,12 +489,16 @@ def test_refresh_same_terminal_result_is_idempotent_when_another_worker_wins(con
         if not raced:
             raced = True
             NodeMgmtSyncRun.objects.filter(pk=stale_run.pk).update(
-                status=kwargs["status"], active_scope=None, finished_at=timezone.now(),
+                status=kwargs["status"],
+                active_scope=None,
+                finished_at=timezone.now(),
             )
         return original_finish(stale_run, **kwargs)
 
     mocker.patch.object(
-        NodeMgmtSyncService, "finish_run", side_effect=finish_after_other_worker,
+        NodeMgmtSyncService,
+        "finish_run",
+        side_effect=finish_after_other_worker,
     )
 
     refreshed = NodeMgmtSyncService.refresh_collect_run(run.pk)
@@ -411,7 +523,9 @@ def test_refresh_batch_isolates_one_run_error_and_sanitizes_log(config, mocker, 
     submitted = mocker.MagicMock()
     submitted.values_list.return_value = [first.pk, second.pk]
     mocker.patch.object(
-        NodeMgmtSyncRun.objects, "filter", return_value=submitted,
+        NodeMgmtSyncRun.objects,
+        "filter",
+        return_value=submitted,
     )
 
     refresh = mocker.patch.object(
@@ -437,10 +551,13 @@ def test_refresh_batch_isolates_one_run_error_and_sanitizes_log(config, mocker, 
     ],
 )
 def test_refresh_heartbeat_race_only_accepts_matching_aggregated_terminal(
-    config, mocker, parent_status, should_raise,
+    config,
+    mocker,
+    parent_status,
+    should_raise,
 ):
     _successful_sync(config)
-    collect_task = _collect_task(7)
+    _collect_task(7)
     with patch.object(
         CollectModelService,
         "exec_task",
@@ -462,7 +579,9 @@ def test_refresh_heartbeat_race_only_accepts_matching_aggregated_terminal(
         raise NodeMgmtSyncError("RUN_NOT_ACTIVE")
 
     mocker.patch.object(
-        NodeMgmtSyncService, "heartbeat_run", side_effect=other_worker_finishes,
+        NodeMgmtSyncService,
+        "heartbeat_run",
+        side_effect=other_worker_finishes,
     )
 
     if should_raise:
@@ -475,7 +594,7 @@ def test_refresh_heartbeat_race_only_accepts_matching_aggregated_terminal(
 
 def test_region_and_parent_terminal_cas_rejects_reverse_worker_result(config):
     _successful_sync(config)
-    collect_task = _collect_task(7)
+    _collect_task(7)
     with patch.object(
         CollectModelService,
         "exec_task",
@@ -503,7 +622,8 @@ def test_region_and_parent_terminal_cas_rejects_reverse_worker_result(config):
         )
     with pytest.raises(NodeMgmtSyncError, match="RUN_NOT_ACTIVE"):
         NodeMgmtSyncService.finish_run(
-            run, status=NodeMgmtSyncRun.STATUS_FAILED,
+            run,
+            status=NodeMgmtSyncRun.STATUS_FAILED,
         )
 
     stale_state.refresh_from_db()

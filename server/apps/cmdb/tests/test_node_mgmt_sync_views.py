@@ -16,13 +16,22 @@ pytestmark = pytest.mark.django_db
 
 def _user(*permissions, is_superuser=False):
     return SimpleNamespace(
-        username="operator", is_superuser=is_superuser, is_authenticated=True, is_active=True,
-        permission={"cmdb": set(permissions)}, locale="zh", group_list=[{"id": 7}],
+        username="operator",
+        is_superuser=is_superuser,
+        is_authenticated=True,
+        is_active=True,
+        permission={"cmdb": set(permissions)},
+        locale="zh",
+        group_list=[{"id": 7}],
     )
 
 
 def _call(action, method, user, data=None):
-    request = getattr(APIRequestFactory(), method.lower())(f"/api/v1/cmdb/api/node_mgmt_sync/{action}/", data=data or {}, format="json",)
+    request = getattr(APIRequestFactory(), method.lower())(
+        f"/api/v1/cmdb/api/node_mgmt_sync/{action}/",
+        data=data or {},
+        format="json",
+    )
     force_authenticate(request, user=user)
     return NodeMgmtSyncViewSet.as_view({method.lower(): action})(request)
 
@@ -46,9 +55,16 @@ def test_execute_permission_can_update_both_config_urls(action):
     config = SimpleNamespace()
     with patch.object(NodeMgmtSyncService, "update_task", return_value=config) as update_task:
         with patch.object(
-            NodeMgmtSyncService, "serialize_task", return_value={"auto_sync_enabled": False},
+            NodeMgmtSyncService,
+            "serialize_task",
+            return_value={"auto_sync_enabled": False},
         ):
-            response = _call(action, "PUT", _user("auto_collection-Execute"), {"auto_sync_enabled": False},)
+            response = _call(
+                action,
+                "PUT",
+                _user("auto_collection-Execute"),
+                {"auto_sync_enabled": False},
+            )
 
     assert response.status_code == 200
     assert json.loads(response.content)["data"]["auto_sync_enabled"] is False
@@ -71,7 +87,10 @@ def test_superuser_can_start_global_run(action, service_method):
         response = _call(action, "POST", _user(is_superuser=True))
 
     assert response.status_code == 200
-    trigger.assert_called_once_with()
+    if action == "run_collect":
+        trigger.assert_called_once_with(operator="operator", trigger="manual")
+    else:
+        trigger.assert_called_once_with()
 
 
 @pytest.mark.parametrize("action", ["latest_run", "display", "detail_compat"])
@@ -131,7 +150,12 @@ def test_update_rejects_interval_outside_one_to_1440(field, value):
 
 
 def test_invalid_interval_returns_stable_bad_request_from_update_api():
-    response = _call("task", "PUT", _user("auto_collection-Execute"), {"sync_interval_minutes": 0},)
+    response = _call(
+        "task",
+        "PUT",
+        _user("auto_collection-Execute"),
+        {"sync_interval_minutes": 0},
+    )
 
     assert response.status_code == 400
     assert "必须在 1 到 1440 分钟之间" in json.loads(response.content)["message"]
@@ -140,7 +164,12 @@ def test_invalid_interval_returns_stable_bad_request_from_update_api():
 @pytest.mark.parametrize("action", ["task", "config"])
 @pytest.mark.parametrize("value", [1440.9, 5.0, True, False, "5.0", "five"])
 def test_update_api_rejects_non_integer_interval_types(action, value):
-    response = _call(action, "PUT", _user("auto_collection-Execute"), {"sync_interval_minutes": value},)
+    response = _call(
+        action,
+        "PUT",
+        _user("auto_collection-Execute"),
+        {"sync_interval_minutes": value},
+    )
 
     body = json.loads(response.content)
     assert response.status_code == 400
@@ -153,7 +182,12 @@ def test_update_api_rejects_non_integer_interval_types(action, value):
 
 @pytest.mark.parametrize("action", ["task", "config"])
 def test_update_api_keeps_accepting_decimal_integer_string(action):
-    response = _call(action, "PUT", _user("auto_collection-Execute"), {"sync_interval_minutes": "5"},)
+    response = _call(
+        action,
+        "PUT",
+        _user("auto_collection-Execute"),
+        {"sync_interval_minutes": "5"},
+    )
 
     assert response.status_code == 200
     assert json.loads(response.content)["data"]["sync_interval_minutes"] == 5
@@ -175,7 +209,10 @@ def test_reenable_sync_reconciles_waiting_node_config(mocker):
     config.node_config_status = "waiting_sync"
     config.save(
         update_fields=[
-            "auto_sync_enabled", "auto_collect_enabled", "node_config_status", "updated_at",
+            "auto_sync_enabled",
+            "auto_collect_enabled",
+            "node_config_status",
+            "updated_at",
         ]
     )
     reconcile = mocker.patch(
@@ -343,7 +380,13 @@ def test_non_superuser_display_is_rebuilt_from_fixed_schema_and_validates_scalar
 
     data = json.loads(response.content)["data"]
     assert set(data) == {
-        "display_source", "display_schema", "message", "summary", "detail", "run", "task",
+        "display_source",
+        "display_schema",
+        "message",
+        "summary",
+        "detail",
+        "run",
+        "task",
     }
     assert data["message"]["all"] == 2
     assert data["message"]["add"] == 0
@@ -414,10 +457,22 @@ def test_non_superuser_task_get_uses_fixed_safe_task_projection(action):
 
     data = json.loads(response.content)["data"]
     assert set(data) == {
-        "id", "name", "is_builtin", "auto_sync_enabled", "auto_collect_enabled",
-        "sync_interval_minutes", "collect_interval_minutes", "version", "schedule_status",
-        "node_config_status", "last_reconciled_at", "reconcile_error_code",
-        "reconcile_error_message", "health", "last_sync_at", "last_collect_at",
+        "id",
+        "name",
+        "is_builtin",
+        "auto_sync_enabled",
+        "auto_collect_enabled",
+        "sync_interval_minutes",
+        "collect_interval_minutes",
+        "version",
+        "schedule_status",
+        "node_config_status",
+        "last_reconciled_at",
+        "reconcile_error_code",
+        "reconcile_error_message",
+        "health",
+        "last_sync_at",
+        "last_collect_at",
     }
     assert data["name"] == "节点管理同步"
     assert data["reconcile_error_code"] == ""
@@ -432,7 +487,9 @@ def test_non_superuser_task_get_uses_fixed_safe_task_projection(action):
 def test_non_superuser_put_success_uses_fixed_safe_task_projection(action):
     payload = _sensitive_task_payload()
     with patch.object(NodeMgmtSyncService, "update_task", return_value=SimpleNamespace()), patch.object(
-        NodeMgmtSyncService, "serialize_task", return_value=payload,
+        NodeMgmtSyncService,
+        "serialize_task",
+        return_value=payload,
     ):
         response = _call(action, "PUT", _user("auto_collection-Execute"), {"auto_sync_enabled": True})
 
@@ -457,7 +514,9 @@ def test_superuser_task_get_keeps_complete_payload(action, method):
 def test_superuser_task_put_keeps_complete_payload(action):
     payload = _sensitive_task_payload()
     with patch.object(NodeMgmtSyncService, "update_task", return_value=SimpleNamespace()), patch.object(
-        NodeMgmtSyncService, "serialize_task", return_value=payload,
+        NodeMgmtSyncService,
+        "serialize_task",
+        return_value=payload,
     ):
         response = _call(action, "PUT", _user(is_superuser=True), {"auto_sync_enabled": True})
 

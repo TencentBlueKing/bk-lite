@@ -93,7 +93,7 @@ class NodeMgmtSyncViewSet(AuthViewSet):
     def _safe_id(cls, value):
         if isinstance(value, bool) or not isinstance(value, int):
             return None
-        return value if 0 < value <= 2 ** 63 - 1 else None
+        return value if 0 < value <= 2**63 - 1 else None
 
     @classmethod
     def _safe_time(cls, value):
@@ -168,16 +168,32 @@ class NodeMgmtSyncViewSet(AuthViewSet):
             if type(source.get("collect_interval_minutes")) is int and 1 <= source.get("collect_interval_minutes") <= 1440
             else 0,
             "version": cls._safe_count(source.get("version")),
-            "schedule_status": cls._safe_choice(source.get("schedule_status"), cls.SCHEDULE_STATUSES, "degraded",),
-            "node_config_status": cls._safe_choice(source.get("node_config_status"), cls.NODE_CONFIG_STATUSES, "unknown",),
+            "schedule_status": cls._safe_choice(
+                source.get("schedule_status"),
+                cls.SCHEDULE_STATUSES,
+                "degraded",
+            ),
+            "node_config_status": cls._safe_choice(
+                source.get("node_config_status"),
+                cls.NODE_CONFIG_STATUSES,
+                "unknown",
+            ),
             "last_reconciled_at": cls._safe_time(source.get("last_reconciled_at")),
             "reconcile_error_code": cls._safe_reason_code(source.get("reconcile_error_code")),
             "reconcile_error_message": "",
             "last_sync_at": cls._safe_time(source.get("last_sync_at")),
             "last_collect_at": cls._safe_time(source.get("last_collect_at")),
             "health": {
-                "schedule_status": cls._safe_choice(health.get("schedule_status"), cls.SCHEDULE_STATUSES, "degraded",),
-                "node_config_status": cls._safe_choice(health.get("node_config_status"), cls.NODE_CONFIG_STATUSES, "unknown",),
+                "schedule_status": cls._safe_choice(
+                    health.get("schedule_status"),
+                    cls.SCHEDULE_STATUSES,
+                    "degraded",
+                ),
+                "node_config_status": cls._safe_choice(
+                    health.get("node_config_status"),
+                    cls.NODE_CONFIG_STATUSES,
+                    "unknown",
+                ),
                 "last_reconciled_at": cls._safe_time(health.get("last_reconciled_at")),
                 "reason_code": cls._safe_reason_code(health.get("reason_code")),
                 "message": "",
@@ -188,7 +204,11 @@ class NodeMgmtSyncViewSet(AuthViewSet):
     def _safe_display(cls, payload):
         source = payload if isinstance(payload, dict) else {}
         return {
-            "display_source": cls._safe_choice(source.get("display_source"), {"sync", "collect", "sync_fallback", "none"}, "none",),
+            "display_source": cls._safe_choice(
+                source.get("display_source"),
+                {"sync", "collect", "sync_fallback", "none"},
+                "none",
+            ),
             "display_schema": "host_collect",
             "message": cls._safe_summary(source.get("message")),
             "summary": cls._safe_summary(source.get("summary")),
@@ -254,7 +274,7 @@ class NodeMgmtSyncViewSet(AuthViewSet):
     def run_collect(self, request, *args, **kwargs):
         if not request.user.is_superuser:
             return WebUtils.response_403("仅平台管理员可执行全局节点同步")
-        return WebUtils.response_success(NodeMgmtSyncService.trigger_collect())
+        return WebUtils.response_success(NodeMgmtSyncService.trigger_collect(operator=str(request.user.username), trigger="manual"))
 
     @action(methods=["get", "put"], detail=False, url_path="config")
     def config(self, request, *args, **kwargs):
