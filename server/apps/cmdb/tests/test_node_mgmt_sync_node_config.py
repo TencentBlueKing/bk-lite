@@ -133,6 +133,46 @@ def test_manual_sync_mode_deletes_retired_task_but_does_not_push_active_task(con
     assert result.node_config_status == "waiting_sync"
 
 
+def test_manual_sync_mode_with_only_retired_tasks_stays_waiting_sync(config):
+    config.auto_sync_enabled = False
+    config.save(update_fields=["auto_sync_enabled", "updated_at"])
+    retired_task = _create_region_task(8)
+    retired_task.is_interval = False
+    retired_task.save(update_fields=["is_interval", "updated_at"])
+    NodeMgmtSyncReconciler.mark_region_delivery_pending(
+        config,
+        cloud_region_id=8,
+        collect_task=retired_task,
+    )
+
+    with patch.object(CollectModelService, "delete_butch_node_params") as delete:
+        result = _reconcile(config)
+
+    delete.assert_called_once_with(retired_task)
+    assert _state(config, 8).node_config_status == "disabled"
+    assert result.node_config_status == "waiting_sync"
+
+
+def test_interval_only_update_reconciles_existing_retirement_intent(config):
+    config.auto_sync_enabled = False
+    config.save(update_fields=["auto_sync_enabled", "updated_at"])
+    retired_task = _create_region_task(8)
+    retired_task.is_interval = False
+    retired_task.save(update_fields=["is_interval", "updated_at"])
+    NodeMgmtSyncReconciler.mark_region_delivery_pending(
+        config,
+        cloud_region_id=8,
+        collect_task=retired_task,
+    )
+
+    with patch.object(CollectModelService, "delete_butch_node_params") as delete:
+        updated = NodeMgmtSyncService.update_task({"collect_interval_minutes": 31})
+
+    delete.assert_called_once_with(retired_task)
+    assert _state(updated, 8).node_config_status == "disabled"
+    assert updated.node_config_status == "waiting_sync"
+
+
 def test_foreign_config_region_state_cannot_suppress_current_delete_intent(config):
     retired_task = _create_region_task(9)
     foreign_config = NodeMgmtSyncConfig.objects.create(singleton_key="legacy")

@@ -372,9 +372,22 @@ class NodeMgmtSyncService:
 
         from apps.cmdb.services.node_mgmt_sync_reconciler import NodeMgmtSyncReconciler
 
+        switches_changed = (
+            old_auto_sync_enabled != task.auto_sync_enabled
+            or old_auto_collect_enabled != task.auto_collect_enabled
+        )
+        has_delivery_intent = NodeMgmtSyncRegionState.objects.filter(
+            config=task,
+            node_config_status__in=(
+                "delete_pending",
+                "delete_in_progress",
+                "push_pending",
+                "push_in_progress",
+            ),
+        ).exists()
         NodeMgmtSyncReconciler.reconcile(
             task,
-            reconcile_node_configs=(old_auto_sync_enabled != task.auto_sync_enabled or old_auto_collect_enabled != task.auto_collect_enabled),
+            reconcile_node_configs=switches_changed or has_delivery_intent,
         )
 
         return NodeMgmtSyncConfig.objects.get(pk=task.pk)
