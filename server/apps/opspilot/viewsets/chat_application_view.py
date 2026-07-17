@@ -35,11 +35,13 @@ def _filter_sessions_by_user(session_qs, request):
     """对 BotWebChatSession queryset 应用参与者授权过滤。
 
     匹配规则：当前用户在 participants 中（username 或 username@domain 任一命中即视为干系人）。
+    注意：PostgreSQL JSONField __contains=str 不会匹配数组元素，必须传 list（每个 candidate
+    构造 [cand] 列表），否则 participants 永远不会出现在结果集里。
     """
     candidates = _current_user_candidates(request)
     user_filter = Q()
     for cand in candidates:
-        user_filter |= Q(participants__contains=cand)
+        user_filter |= Q(participants__contains=[cand])
     return session_qs.filter(user_filter)
 
 

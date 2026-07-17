@@ -512,6 +512,57 @@ def test_multiple_participants_share_session_id(bot):
     assert "nats-sess-7" not in ids
 
 
+@pytest.mark.django_db(transaction=True)
+def test_filter_sessions_by_user_uses_list_contains(bot):
+    """回归测试：JSONField participants 列表匹配必须用 [cand]，不能用 str。
+
+    早期版本用 participants__contains="admin"（str）导致查询不返回结果。
+    本测试确保 admin 用户能从其拥有的 participants 中看到 session。
+    """
+    from apps.opspilot.viewsets.chat_application_view import _filter_sessions_by_user
+    from apps.base.models import User
+
+    BotWebChatSession.objects.create(
+        session_id="nats-filter-test",
+        bot_id=bot.id,
+        node_id="nats_entry",
+        source="nats",
+        participants=["admin", "alice"],
+    )
+
+    admin_user = User.objects.create_user(
+        username="admin", password="x", domain="domain.com", locale="en",
+        group_list=[{"id": 1}], roles=["admin"],
+    )
+    admin_user.is_superuser = True
+    admin_user.save()
+
+    # 直接构造 query 验证 _filter_sessions_by_user 能命中 admin
+    qs = BotWebChatSession.objects.filter(is_active=True)
+    filtered = _filter_sessions_by_user(qs, _build_mock_request(admin_user))
+    assert filtered.filter(session_id="nats-filter-test").exists()
+
+    # 同样验证 alice@domain.com 命中
+    alice_user = User.objects.create_user(
+        username="alice", password="x", domain="domain.com", locale="en",
+        group_list=[{"id": 1}], roles=["admin"],
+    )
+    alice_user.is_superuser = True
+    alice_user.save()
+    filtered_alice = _filter_sessions_by_user(qs, _build_mock_request(alice_user))
+    assert filtered_alice.filter(session_id="nats-filter-test").exists()
+
+
+def _build_mock_request(user):
+    """构造一个带 user 属性的最小 request 替身供 _filter_sessions_by_user 测试用。"""
+    class _R:
+        pass
+
+    r = _R()
+    r.user = user
+    return r
+
+
 # ============================================================================
 # Section 1: BotWebChatSession 模型
 # ============================================================================
