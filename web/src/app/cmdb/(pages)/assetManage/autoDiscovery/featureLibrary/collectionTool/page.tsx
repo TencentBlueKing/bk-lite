@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useCollectApi } from '@/app/cmdb/api';
 import { useTranslation } from '@/utils/i18n';
 import { useCollectToolApi } from '@/app/cmdb/api/collectTool';
+import Introduction from '@/app/cmdb/components/introduction';
 import type { CollectToolPrefillResponse, Protocol } from '@/app/cmdb/types/collectTool';
 import SnmpTool from './components/snmpDebugTool';
 import IpmiTool from './components/ipmiDebugTool';
@@ -190,8 +191,12 @@ const CollectionToolPage: React.FC = () => {
   ];
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-hidden px-4 pb-4">
+    <div className="flex h-full min-h-0 flex-col">
+      <Introduction
+        title={t('CollectTool.pageTitle')}
+        message={t('CollectTool.pageDesc')}
+      />
+      <div className="min-h-0 flex-1 overflow-hidden pb-4">
         <Tabs
           activeKey={activeTab}
           onChange={setActiveTab}

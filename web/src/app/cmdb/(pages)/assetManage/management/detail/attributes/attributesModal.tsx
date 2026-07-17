@@ -59,6 +59,10 @@ import { useTranslation } from '@/utils/i18n';
 import { useModelApi } from '@/app/cmdb/api';
 const { Option } = Select;
 
+const LONG_TOOLTIP_OVERLAY_STYLE = {
+  maxWidth: 'min(520px, calc(100vw - 48px))',
+};
+
 const useAttributeEnterpriseExtension = loadAttributeEnterpriseExtension();
 
 const TAG_VALUE_REGEX = /^[^\s:\n\r]+$/;
@@ -678,8 +682,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
           <Form
             ref={formRef}
             name="basic"
-            labelCol={{ span: 4 }}
-            wrapperCol={{ span: 20 }}
+            layout="vertical"
             onValuesChange={(changedValues) => {
               if (changedValues.attr_type === 'tag') {
                 formRef.current?.setFieldsValue({
@@ -978,9 +981,19 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                       )}
                       <div className="pl-[72px] mt-4">
                         <Form.Item<AttrFieldType>
-                          label={t('Model.defaultValue')}
+                          label={(
+                            <span>
+                              {t('Model.defaultValue')}
+                              <Tooltip
+                                overlayStyle={LONG_TOOLTIP_OVERLAY_STYLE}
+                                title={t('Model.defaultValueHint')}
+                              >
+                                <QuestionCircleOutlined className="ml-1 text-[var(--color-text-tertiary)]" />
+                              </Tooltip>
+                            </span>
+                          )}
                           name="default_value"
-                          className="mb-2"
+                          className="mb-0"
                         >
                           <Select
                             mode={
@@ -1002,9 +1015,6 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                             ))}
                           </Select>
                         </Form.Item>
-                        <div className="text-xs text-[var(--color-text-tertiary)]">
-                          {t('Model.defaultValueHint')}
-                        </div>
                       </div>
                     </div>
                   </Form.Item>
@@ -1413,13 +1423,11 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                       <div className="mb-1 flex items-center gap-1 text-sm font-medium text-[var(--color-text-primary)]">
                         <span>{t('Model.systemConstraints')}</span>
                         <Tooltip
+                          overlayStyle={LONG_TOOLTIP_OVERLAY_STYLE}
                           title={t('Model.systemConstraintsDescription')}
                         >
                           <QuestionCircleOutlined className="text-[var(--color-text-tertiary)]" />
                         </Tooltip>
-                      </div>
-                      <div className="mb-3 text-xs text-[var(--color-text-secondary)]">
-                        {t('Model.systemConstraintsDescription')}
                       </div>
                       <div className="overflow-hidden rounded border border-[var(--color-border-1)] bg-[var(--color-bg-1)]">
                         {constraintItems.map((item, index) => (
@@ -1448,13 +1456,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                 const isFileType = isFileFieldType(attrType);
                 const unsupportedHint = isFileType || attrType === 'tag';
                 return (
-                  <Form.Item
-                    label=" "
-                    colon={false}
-                    className="mb-4"
-                    labelCol={{ span: 1 }}
-                    wrapperCol={{ span: 23 }}
-                  >
+                  <Form.Item className="mb-4">
                     <div className="rounded border border-[var(--color-border-1)] bg-[var(--color-bg-1)] px-4 py-3">
                       <div className="mb-3 text-sm font-medium text-[var(--color-text-primary)]">
                         {t('Model.fieldBehavior')}

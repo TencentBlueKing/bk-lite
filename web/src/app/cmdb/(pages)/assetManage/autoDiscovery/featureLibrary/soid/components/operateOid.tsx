@@ -137,7 +137,7 @@ const OperateOid: React.FC<OperateOidProps> = ({
     >
       <Form
         ref={formRef}
-        labelCol={{ span: 5 }}
+        layout="vertical"
         initialValues={formData}
         onValuesChange={(changedValues, values) => setFormData(values)}
       >

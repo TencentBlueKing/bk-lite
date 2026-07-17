@@ -516,7 +516,7 @@ export default function CredentialPoolEditor({
   cloudRegionLoading = false,
   onCloudRegionRefresh,
   onCredentialFieldChange,
-}: CredentialPoolEditorProps): JSX.Element {
+}: CredentialPoolEditorProps): React.ReactElement {
   const { t } = useTranslation();
   const sensors = useSensors(useSensor(PointerSensor));
   const normalizedValue = useMemo(() => ensureClientIds(value), [value]);
