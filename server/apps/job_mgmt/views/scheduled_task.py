@@ -204,6 +204,12 @@ class ScheduledTaskViewSet(AuthViewSet):
     @HasPermission("cron_task-Delete")
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
+        if not request.user.is_superuser:
+            current_team = self._validate_current_team_permission(request)
+            include_children = request.COOKIES.get("include_children", "0") == "1"
+            if not self.get_has_permission(request.user, instance, current_team, include_children=include_children):
+                message = self.loader.get("error.no_permission_delete") if self.loader else "User does not have permission to delete this instance"
+                return self.value_error(message)
 
         # 删除关联的 celery-beat PeriodicTask
         ScheduledTaskService.delete_periodic_task(instance.id)
@@ -222,10 +228,16 @@ class ScheduledTaskViewSet(AuthViewSet):
         serializer.is_valid(raise_exception=True)
 
         ids = serializer.validated_data["ids"]
-        tasks = self.filter_queryset(self.get_queryset())
+        tasks = self.filter_queryset(self.get_queryset()).filter(id__in=ids)
         if not request.user.is_superuser:
-            tasks = self.get_queryset_by_permission(request, tasks)
-        tasks = tasks.filter(id__in=ids)
+            current_team = self._validate_current_team_permission(request)
+            include_children = request.COOKIES.get("include_children", "0") == "1"
+            authorized_ids = [
+                task.id
+                for task in tasks
+                if self.get_has_permission(request.user, task, current_team, include_children=include_children)
+            ]
+            tasks = tasks.filter(id__in=authorized_ids)
 
         # 删除关联的 PeriodicTask
         for task in tasks:

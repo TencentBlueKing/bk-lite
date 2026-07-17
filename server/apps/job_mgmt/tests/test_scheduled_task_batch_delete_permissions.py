@@ -68,6 +68,74 @@ def test_batch_delete_foreign_team_id_is_noop(api_client, authenticated_user):
     delete_periodic_task.assert_not_called()
 
 
+def test_batch_delete_view_only_instance_rule_is_noop(api_client, authenticated_user):
+    task = _make_task("view-only", [1])
+    _grant_delete_permission(api_client, authenticated_user)
+
+    rules = {"team": [], "instance": [{"id": task.id, "permission": ["View"]}]}
+    with (
+        patch("apps.core.utils.viewset_utils.get_permission_rules", return_value=rules),
+        patch(VIEW_SVC + ".delete_periodic_task") as delete_periodic_task,
+    ):
+        response = api_client.post(URL, {"ids": [task.id]}, format="json")
+
+    assert response.status_code == 200
+    assert response.data["deleted_count"] == 0
+    assert ScheduledTask.objects.filter(id=task.id).exists()
+    delete_periodic_task.assert_not_called()
+
+
+def test_batch_delete_operate_instance_rule_allows_same_team(api_client, authenticated_user):
+    task = _make_task("operate", [1])
+    _grant_delete_permission(api_client, authenticated_user)
+
+    rules = {"team": [], "instance": [{"id": task.id, "permission": ["Operate"]}]}
+    with (
+        patch("apps.core.utils.viewset_utils.get_permission_rules", return_value=rules),
+        patch(VIEW_SVC + ".delete_periodic_task") as delete_periodic_task,
+    ):
+        response = api_client.post(URL, {"ids": [task.id]}, format="json")
+
+    assert response.status_code == 200
+    assert response.data["deleted_count"] == 1
+    assert not ScheduledTask.objects.filter(id=task.id).exists()
+    delete_periodic_task.assert_called_once_with(task.id)
+
+
+def test_batch_delete_foreign_team_operate_instance_rule_is_noop(api_client, authenticated_user):
+    foreign_task = _make_task("foreign-operate", [2])
+    _grant_delete_permission(api_client, authenticated_user)
+
+    rules = {"team": [], "instance": [{"id": foreign_task.id, "permission": ["Operate"]}]}
+    with (
+        patch("apps.core.utils.viewset_utils.get_permission_rules", return_value=rules),
+        patch(VIEW_SVC + ".delete_periodic_task") as delete_periodic_task,
+    ):
+        response = api_client.post(URL, {"ids": [foreign_task.id]}, format="json")
+
+    assert response.status_code == 200
+    assert response.data["deleted_count"] == 0
+    assert ScheduledTask.objects.filter(id=foreign_task.id).exists()
+    delete_periodic_task.assert_not_called()
+
+
+def test_destroy_foreign_team_task_is_denied(api_client, authenticated_user):
+    foreign_task = _make_task("foreign-single", [2])
+    _grant_delete_permission(api_client, authenticated_user)
+
+    with (
+        patch("apps.core.utils.viewset_utils.get_permission_rules") as get_permission_rules,
+        patch(VIEW_SVC + ".delete_periodic_task") as delete_periodic_task,
+    ):
+        response = api_client.delete(f"/api/v1/job_mgmt/api/scheduled_task/{foreign_task.id}/")
+
+    assert response.status_code == 200
+    assert response.json()["result"] is False
+    assert ScheduledTask.objects.filter(id=foreign_task.id).exists()
+    get_permission_rules.assert_not_called()
+    delete_periodic_task.assert_not_called()
+
+
 def test_batch_delete_superuser_keeps_cross_team_semantics(su_client):
     own_task = _make_task("own", [1])
     foreign_task = _make_task("foreign", [2])
