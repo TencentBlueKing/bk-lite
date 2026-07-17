@@ -274,7 +274,8 @@ def _build_run_payload(
     2026-07-15 修:之前会整个覆盖 payload,导致 _sync_users 内
     password_init_service._stash_to_vault 写入的 password_vault /
     email_status 被清空,Celery 任务看到 vault 缺。
-    现在从 current_run.payload 继承 password_vault / email_status。
+    现在从 current_run.payload 继承 password_vault / email_status /
+    email_dispatch，避免异步批量邮件任务丢失待领取条目。
     """
     provider_payload = result.payload or {}
     payload = {
@@ -285,10 +286,10 @@ def _build_run_payload(
     if sync_summary is not None:
         payload["conflict_usernames"] = list(sync_summary.get("conflict_usernames") or [])
         payload["conflict_user_count"] = len(payload["conflict_usernames"])
-    # 继承 service 之前写入的 password_vault 和 email_status(避免被覆盖)
+    # 继承 service 之前写入的密码邮件状态(避免被同步结果覆盖)
     if current_run is not None:
         existing = current_run.payload or {}
-        for key in ("password_vault", "email_status"):
+        for key in ("password_vault", "email_status", "email_dispatch"):
             if key in existing and key not in payload:
                 payload[key] = existing[key]
     return payload
@@ -457,10 +458,8 @@ def _sync_users(
     new_users = []  # 本次同步新建的 user(需要触发密码初始化)
     update_users = []
 
-    # 解析 password_init 配置;仅在新建用户时触发。
-    # 字段位置迁移:从 source.business_config.password_init → source.password_init_config
-    # 后者避开 provider manifest contract 校验。
-    password_init_cfg = source.password_init_config or {}
+    # 解析平台侧 password_init 配置;仅在新建用户时触发。
+    password_init_cfg = (source.platform_config or {}).get("password_init") or {}
     password_init_mode = password_init_cfg.get("mode")
 
     for item in normalized_users:
@@ -499,8 +498,22 @@ def _sync_users(
         ).first()
         for new_user in new_users:
             try:
-                init_password_for_user(new_user, password_init_mode, password_init_cfg, run_for_init)
+                init_result = init_password_for_user(new_user, password_init_mode, password_init_cfg, run_for_init)
+                if init_result.get("status") != "ok":
+                    from apps.system_mgmt.services.password_init_service import PASSWORD_INIT_SENTINEL_MARK
+
+                    new_user.password = PASSWORD_INIT_SENTINEL_MARK
+                    new_user.temporary_pwd = False
+                    new_user.save(update_fields=["password", "temporary_pwd"])
+                    logger.warning(
+                        f"init_password_for_user 被拒绝 username={new_user.username}: {init_result.get('reason')}"
+                    )
             except Exception as e:
+                from apps.system_mgmt.services.password_init_service import PASSWORD_INIT_SENTINEL_MARK
+
+                new_user.password = PASSWORD_INIT_SENTINEL_MARK
+                new_user.temporary_pwd = False
+                new_user.save(update_fields=["password", "temporary_pwd"])
                 logger.warning(
                     f"init_password_for_user 失败 username={new_user.username}: {e}",
                 )

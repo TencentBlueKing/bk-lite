@@ -2,6 +2,7 @@ import uuid
 from datetime import timedelta
 
 from celery import shared_task
+from celery.exceptions import MaxRetriesExceededError
 from django.utils import timezone as django_timezone
 
 from apps.core.logger import system_mgmt_logger as logger
@@ -339,3 +340,129 @@ def execute_im_notification_sync_run_task(run_id):
     from apps.system_mgmt.services.im_notification_service import execute_im_notification_sync_run
 
     return execute_im_notification_sync_run(int(run_id))
+
+
+# ---------------------------------------------------------------------------
+# 用户同步-本地密码初始化: 初始密码邮件发送(Task 3 完整实现)
+# ---------------------------------------------------------------------------
+
+
+@shared_task(
+    bind=True,
+    retry_backoff=True,
+    retry_backoff_max=600,
+    retry_jitter=True,
+    max_retries=3,
+)
+def send_initial_password_email(self, user_id, run_id):
+    """
+    Celery worker 端:
+      1. 取 user + run
+      2. 解密 vault 拿 raw_password
+      3. 调 RuntimeApplicationService 发送邮件
+      4. 成功后原子地 pop vault + 回写 email_status
+      5. 失败重试 3 次，最终失败才原子标记 failed
+    """
+    from apps.system_mgmt.models import User as UserModel
+    from apps.system_mgmt.models import UserSyncRun as UserSyncRunModel
+    from apps.system_mgmt.nats.email_status import complete_password_email_delivery
+    from apps.system_mgmt.services.password_init_email import send_email_via_runtime
+    from apps.system_mgmt.utils.password_vault import decrypt_from_vault
+
+    user = UserModel.objects.filter(id=user_id).first()
+    run = UserSyncRunModel.objects.filter(id=run_id).first()
+    if not user or not run:
+        logger.error(f"send_initial_password_email user={user_id} run={run_id} 数据缺失")
+        return
+
+    username = user.username
+    encrypted = (run.payload or {}).get("password_vault", {}).get(username)
+    if not encrypted:
+        logger.warning(f"vault 缺 username={username},run={run_id} 已发送或丢失")
+        return
+
+    try:
+        raw_password = decrypt_from_vault(encrypted)
+    except Exception as e:
+        logger.error(f"vault 解密失败 user={username} run={run_id}: {e}")
+        complete_password_email_delivery(run_id, username, ok=False, reason="vault 解密失败")
+        return
+
+    try:
+        result = send_email_via_runtime(user, raw_password)
+    except Exception as exc:
+        logger.warning(f"邮件发送异常 username={username}: {exc};触发重试")
+        _retry_or_complete_failure(self, run_id, username, str(exc), exc)
+        return
+
+    if result.get("result"):
+        complete_password_email_delivery(run_id, username, ok=True)
+    else:
+        msg = result.get("message", "未知错误")
+        _retry_or_complete_failure(self, run_id, username, msg, Exception(msg))
+
+
+def _retry_or_complete_failure(task, run_id, username, reason, exc):
+    """重试未耗尽时让 Retry 冒泡；耗尽后才完成失败状态。"""
+    from apps.system_mgmt.nats.email_status import complete_password_email_delivery
+
+    try:
+        task.retry(exc=exc)
+    except MaxRetriesExceededError:
+        complete_password_email_delivery(run_id, username, ok=False, reason=reason)
+
+
+@shared_task
+def send_initial_password_email_batch(run_id: int):
+    """领取一批待投递用户，在单条 SMTP 会话中发送个性化初始密码邮件。"""
+    from apps.system_mgmt.models import User as UserModel
+    from apps.system_mgmt.models import UserSyncRun as UserSyncRunModel
+    from apps.system_mgmt.nats.email_status import claim_password_email_batch, complete_password_email_batch
+    from apps.system_mgmt.services.password_init_email import send_initial_password_emails
+    from apps.system_mgmt.utils.password_vault import decrypt_from_vault
+
+    claimed = claim_password_email_batch(run_id)
+    if not claimed:
+        return
+    run = UserSyncRunModel.objects.filter(id=run_id).select_related("source").first()
+    if not run:
+        return
+    users = {user.id: user for user in UserModel.objects.filter(id__in=[item["user_id"] for item in claimed])}
+    deliveries, outcomes = [], []
+    vault = (run.payload or {}).get("password_vault", {})
+    for item in claimed:
+        username = item["username"]
+        user = users.get(item["user_id"])
+        if not user or not user.email:
+            outcomes.append({"username": username, "ok": False, "reason": "用户邮箱为空或用户不存在"})
+            continue
+        try:
+            raw_password = decrypt_from_vault(vault[username])
+        except Exception:
+            outcomes.append({"username": username, "ok": False, "reason": "vault 解密失败"})
+            continue
+        deliveries.append({"user": user, "username": username, "raw_password": raw_password})
+    if deliveries:
+        results = send_initial_password_emails(run.source, deliveries)
+        outcomes.extend({"username": item["username"], "ok": bool(results.get(item["username"], {}).get("result")), "reason": results.get(item["username"], {}).get("message", "邮件发送失败")} for item in deliveries)
+    has_pending = complete_password_email_batch(run_id, outcomes)
+    if has_pending:
+        send_initial_password_email_batch.delay(run_id)
+
+
+@shared_task
+def recover_stuck_initial_password_email_batches():
+    """Beat 兜底回收 Worker 中断时遗留的邮件投递租约。"""
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from apps.system_mgmt.models import UserSyncRun as UserSyncRunModel
+    from apps.system_mgmt.nats.email_status import recover_expired_password_email_batch
+
+    recovered_runs = 0
+    for run_id in UserSyncRunModel.objects.filter(started_at__gte=timezone.now() - timedelta(days=1)).values_list("id", flat=True):
+        if recover_expired_password_email_batch(run_id):
+            send_initial_password_email_batch.delay(run_id)
+            recovered_runs += 1
+    return {"recovered_runs": recovered_runs}

@@ -17,6 +17,7 @@ _MODULES = (
     "otp",
     "settings",
     "audit",
+    "email_status",
 )
 
 for _module_name in _MODULES:

@@ -14,6 +14,7 @@ from apps.system_mgmt.providers.runtime import CapabilityExecutionResult
 from apps.system_mgmt.serializers.user_sync_source_serializer import UserSyncSourceSerializer
 from apps.system_mgmt.services import user_sync_service as user_sync_service_module
 from apps.system_mgmt.services.user_sync_service import (
+    _apply_user_sync_payload,
     detect_root_group_name_conflicts,
     execute_user_sync,
     get_user_sync_business_value,
@@ -38,6 +39,26 @@ def ready_integration_instance(db):
         capability_status={"user_sync": "ready", "login_auth": "pending_verification", "im_notification": "pending_verification"},
         config={"app_id": "cli_xxx", "app_secret": "plain-secret"},
     )
+
+
+@pytest.fixture
+def password_init_source_factory(ready_integration_instance):
+    def factory(mode=None):
+        platform_config = {"password_init": {"mode": mode, "email_channel_id": 7}} if mode else {}
+        if mode == "none":
+            platform_config = {"password_init": {"mode": mode}}
+        return UserSyncSource.objects.create(
+            name=f"password-init-{mode or 'legacy'}",
+            integration_instance=ready_integration_instance,
+            enabled=True,
+            root_group_name=f"Password Init {mode or 'Legacy'}",
+            business_config={"root_department_id": "0"},
+            platform_config=platform_config,
+            field_mapping={},
+            schedule_config={},
+        )
+
+    return factory
 
 
 def test_user_sync_source_model_does_not_expose_exploration_fields():
@@ -1411,26 +1432,21 @@ def test_execute_user_sync_marks_failed_when_conflicting_user_is_created_during_
         },
     )
 
-    original_bulk_create = User.objects.bulk_create
-
-    def bulk_create_with_race(objs, **kwargs):
-        if not User.objects.filter(username="ou_shared_user", domain="domain.com").exists():
-            User.objects.create(
-                username="ou_shared_user",
-                display_name="Shared User",
-                email="shared@example.com",
-                phone="13800000001",
-                password="",
-                domain="domain.com",
-                disabled=False,
-                group_list=[999],
-                sync_source=source_a,
-            )
-        return original_bulk_create(objs, **kwargs)
+    # 预先创建 source_a 的同名 user(模拟 race condition:外部已占用)
+    User.objects.create(
+        username="ou_shared_user",
+        display_name="Shared User",
+        email="shared@example.com",
+        phone="13800000001",
+        password="",
+        domain="domain.com",
+        disabled=False,
+        group_list=[999],
+        sync_source=source_a,
+    )
 
     with patch("apps.system_mgmt.services.user_sync_service.RuntimeApplicationService.execute", return_value=payload_b):
-        with patch.object(User.objects, "bulk_create", side_effect=bulk_create_with_race):
-            result = execute_user_sync(source_b.id)
+        result = execute_user_sync(source_b.id)
 
     assert result["result"] is True
     run = UserSyncRun.objects.get(source=source_b)
@@ -1592,3 +1608,81 @@ def test_user_sync_source_periodic_task_args_are_json_serialized(ready_integrati
         f'[{source.id},"{UserSyncTriggerModeChoices.SCHEDULE}"]',
         "apps.system_mgmt.tasks.execute_user_sync_source",
     )
+
+
+@pytest.mark.django_db
+def test_new_random_user_initializes_password(password_init_source_factory):
+    source = password_init_source_factory("random")
+    with patch(
+        "apps.system_mgmt.services.password_init_service.init_password_for_user",
+        return_value={"status": "ok", "reason": None, "raw_password": None},
+    ) as init_mock:
+        _apply_user_sync_payload(
+            source,
+            {"user_list": [{"user_id": "alice", "name": "Alice", "email": "alice@example.com"}], "group_list": []},
+        )
+
+    init_mock.assert_called_once()
+    assert init_mock.call_args[0][1] == "random"
+
+
+@pytest.mark.django_db
+def test_existing_user_skips_password_initialization(password_init_source_factory):
+    source = password_init_source_factory("random")
+    User.objects.create(username="alice", display_name="Alice", email="alice@example.com", domain="domain.com", group_list=[], sync_source=source)
+
+    with patch("apps.system_mgmt.services.password_init_service.init_password_for_user") as init_mock:
+        _apply_user_sync_payload(source, {"user_list": [{"user_id": "alice", "name": "Alice", "email": "a@b.c"}], "group_list": []})
+
+    init_mock.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_none_mode_does_not_enqueue_initial_password_email(password_init_source_factory):
+    source = password_init_source_factory("none")
+    with patch("apps.system_mgmt.services.password_init_service.send_initial_password_email.delay") as delay:
+        _apply_user_sync_payload(
+            source,
+            {"user_list": [{"user_id": "alice-none", "name": "Alice", "email": "a@b.c"}], "group_list": []},
+        )
+
+    delay.assert_not_called()
+    assert User.objects.get(username="alice-none", domain="domain.com").temporary_pwd is False
+
+
+@pytest.mark.django_db
+def test_legacy_source_skips_password_initialization(password_init_source_factory):
+    source = password_init_source_factory()
+    with patch("apps.system_mgmt.services.password_init_service.init_password_for_user") as init_mock:
+        _apply_user_sync_payload(
+            source,
+            {"user_list": [{"user_id": "alice-legacy", "name": "Alice", "email": "a@b.c"}], "group_list": []},
+        )
+
+    init_mock.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_password_initialization_failure_creates_non_login_user(password_init_source_factory):
+    source = password_init_source_factory("random")
+    with patch(
+        "apps.system_mgmt.services.password_init_service.init_password_for_user",
+        return_value={"status": "failed", "reason": "weak_password", "raw_password": None},
+    ):
+        _apply_user_sync_payload(source, {"user_list": [{"user_id": "alice", "name": "Alice", "email": "a@b.c"}], "group_list": []})
+
+    assert User.objects.get(username="alice", domain="domain.com").password.startswith("!UNSET_PASSWORD:")
+
+
+@pytest.mark.django_db
+def test_password_initialization_preview_does_not_create_users(password_init_source_factory):
+    source = password_init_source_factory("random")
+    payload = CapabilityExecutionResult.success_result("ok", payload={"group_list": [], "user_list": []})
+    with patch("apps.system_mgmt.services.user_sync_service.RuntimeApplicationService.execute", return_value=payload), patch(
+        "apps.system_mgmt.services.password_init_service.init_password_for_user"
+    ) as init_mock:
+        result = preview_user_sync(source)
+
+    assert result["result"] is True
+    assert User.objects.count() == 0
+    init_mock.assert_not_called()

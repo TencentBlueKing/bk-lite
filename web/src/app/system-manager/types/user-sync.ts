@@ -23,6 +23,8 @@ export interface UserSyncSource {
   field_mapping: Record<string, unknown>;
   /** Canonical provider business parameters rendered from manifest */
   business_config?: Record<string, unknown>;
+  /** BK-Lite 平台级配置:不归 provider manifest 管 */
+  platform_config?: PlatformConfig;
   root_scope_field?: string;
   schedule_config: ScheduleConfig | null;
   latest_run: UserSyncRun | null;
@@ -85,6 +87,30 @@ export interface UserSyncSourceBasicFormValues {
 export interface UserSyncSourceConfigFormValues {
   /** Dynamic manifest-driven provider business fields */
   business_config?: Record<string, unknown>;
+  /** BK-Lite 平台级配置:避开 provider manifest contract 校验 */
+  platform_config?: PlatformConfig;
+}
+
+/** 用户同步-本地密码初始化方式配置(每个同步源独立一套) */
+export type PasswordInitMode = 'none' | 'uniform' | 'random';
+
+export interface PasswordInitConfig {
+  /** 模式;空配置时 undefined,UI 默认渲染为 'none' */
+  mode?: PasswordInitMode;
+  /** 仅 mode=uniform 必填:管理员指定的统一初始密码 */
+  uniform_password?: string;
+  /** 服务端脱敏返回：已有加密统一密码，留空保存时保持不变 */
+  uniform_password_configured?: boolean;
+  /** 仅 mode=uniform/random 必填:通知中心邮件通道 ID */
+  email_channel_id?: number;
+  /** 通知中心邮件模板 key,默认走模板自带 */
+  email_template_key?: string;
+}
+
+export interface PlatformConfig {
+  /** 用户同步-本地密码初始化方式配置 */
+  password_init?: PasswordInitConfig;
+  [key: string]: unknown;
 }
 
 export interface UserSyncSourceStrategyFormValues {

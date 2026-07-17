@@ -134,6 +134,17 @@ def reset_pwd(username, domain, password, caller_token=""):
     if not user:
         return {"result": False, "message": "Username not exists"}
 
+    # 守卫:外部同步用户 + password 字段是 sentinel 标记 → 拒绝本地重置
+    # sentinel 由 PasswordInitService 在 mode=none 时写入,格式 "!UNSET_PASSWORD:..."
+    # (非合法 hash 格式 → Django check_password 永远 False,用户本地无法登录)
+    if user.password.startswith("!UNSET_PASSWORD:"):
+        loader = LanguageLoader(app="system_mgmt", default_lang=user.locale or "en")
+        msg = loader.get(
+            "login.external_sync_no_password",
+            "外部同步用户未设置本地密码,无法在此修改",
+        )
+        return {"result": False, "message": msg}
+
     # 校验密码复杂度
     is_valid, error_message = PasswordValidator.validate_password(password)
     if not is_valid:

@@ -51,6 +51,12 @@ export function toFieldMappingPayload(rows: MappingRow[]): Record<string, string
   }, {});
 }
 
+export function validateRequiredUserMapping(rows: MappingRow[]): boolean {
+  return rows.some(
+    (row) => row.platformField === 'username' && row.externalField.trim().length > 0,
+  );
+}
+
 export function updateMappingRowField(
   rows: MappingRow[],
   index: number,
@@ -98,6 +104,35 @@ function formatTemplate(
   );
 }
 
+interface EmailStatus {
+  total?: number;
+  sent?: number;
+  failed?: number;
+  completed?: boolean;
+}
+
+function getEmailStatusSummary(
+  emailStatus: EmailStatus | undefined,
+  t: (key: string, fallback?: string) => string
+): string {
+  if (!emailStatus) return '';
+
+  const total = Number(emailStatus.total || 0);
+  const sent = Number(emailStatus.sent || 0);
+  const failed = Number(emailStatus.failed || 0);
+
+  if (!emailStatus.completed) {
+    return formatTemplate(t('system.user.userSyncPage.runSummary.emailSending'), { total });
+  }
+  if (failed === 0) {
+    return formatTemplate(t('system.user.userSyncPage.runSummary.emailSent'), { sent });
+  }
+  if (sent > 0) {
+    return formatTemplate(t('system.user.userSyncPage.runSummary.emailPartialFailed'), { sent, failed });
+  }
+  return formatTemplate(t('system.user.userSyncPage.runSummary.emailFailed'), { failed });
+}
+
 export function getUserSyncRunSummary(
   record: Pick<RecordRow, 'status' | 'summary' | 'synced_user_count' | 'synced_group_count' | 'payload'>,
   t: (key: string, fallback?: string) => string
@@ -110,6 +145,7 @@ export function getUserSyncRunSummary(
       fetched_user_count?: number;
       fetched_group_count?: number;
     };
+    email_status?: EmailStatus;
   };
   const conflictUsernames = Array.isArray(payload.conflict_usernames) ? payload.conflict_usernames : [];
   const conflictCount = Number(payload.conflict_user_count ?? conflictUsernames.length ?? 0);
@@ -119,49 +155,51 @@ export function getUserSyncRunSummary(
     groups: payload.input_summary?.fetched_group_count ?? '--',
   });
 
+  let summary: string;
   if (record.status === 'success') {
-    return formatTemplate(t('system.user.userSyncPage.runSummary.success'), {
+    summary = formatTemplate(t('system.user.userSyncPage.runSummary.success'), {
       external: externalSummary,
       users: record.synced_user_count,
       groups: record.synced_group_count,
     });
-  }
-
-  if (record.status === 'partial') {
+  } else if (record.status === 'partial') {
     if (conflictUsernames.length > 0) {
-      return formatTemplate(t('system.user.userSyncPage.runSummary.partialWithUsers'), {
+      summary = formatTemplate(t('system.user.userSyncPage.runSummary.partialWithUsers'), {
         external: externalSummary,
         users: record.synced_user_count,
         groups: record.synced_group_count,
         conflicts: conflictCount,
         usernames: conflictUsernames.join('、'),
       });
+    } else {
+      summary = formatTemplate(t('system.user.userSyncPage.runSummary.partial'), {
+        external: externalSummary,
+        users: record.synced_user_count,
+        groups: record.synced_group_count,
+        conflicts: conflictCount,
+      });
     }
-    return formatTemplate(t('system.user.userSyncPage.runSummary.partial'), {
-      external: externalSummary,
-      users: record.synced_user_count,
-      groups: record.synced_group_count,
-      conflicts: conflictCount,
-    });
-  }
-
-  if (record.status === 'failed') {
+  } else if (record.status === 'failed') {
     if (firstErrorMessage) {
-      return formatTemplate(t('system.user.userSyncPage.runSummary.failed'), {
+      summary = formatTemplate(t('system.user.userSyncPage.runSummary.failed'), {
         external: externalSummary,
         reason: firstErrorMessage,
       });
-    }
-    if (conflictUsernames.length > 0) {
-      return formatTemplate(t('system.user.userSyncPage.runSummary.failedConflict'), {
+    } else if (conflictUsernames.length > 0) {
+      summary = formatTemplate(t('system.user.userSyncPage.runSummary.failedConflict'), {
         external: externalSummary,
         users: record.synced_user_count,
         groups: record.synced_group_count,
         conflicts: conflictCount,
         usernames: conflictUsernames.join('、'),
       });
+    } else {
+      summary = `同步结果：${externalSummary}；${record.summary}`;
     }
+  } else {
+    summary = `同步结果：${externalSummary}；${record.summary}`;
   }
 
-  return `同步结果：${externalSummary}；${record.summary}`;
+  const emailSummary = getEmailStatusSummary(payload.email_status, t);
+  return emailSummary ? `${summary}；${emailSummary}` : summary;
 }
