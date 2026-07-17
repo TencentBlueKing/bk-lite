@@ -227,14 +227,14 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
-              textAlign: 'right',
+              textAlign: 'left',
             };
           }
           return {
             ...baseStyle,
             whiteSpace: 'nowrap',
             overflow: 'visible',
-            textAlign: 'right',
+            textAlign: 'left',
           };
         };
 
@@ -247,7 +247,7 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
                   display: 'flex',
                   alignItems: 'center',
                   gap: 4,
-                  justifyContent: isVeryLongText ? 'flex-start' : 'flex-end',
+                  justifyContent: 'flex-start',
                 }}
               >
                 <div style={getLabelStyle()} title={labelText}>
@@ -272,8 +272,6 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
             name={fieldName}
             initialValue={!preserveValues && mounted ? initialValue : undefined}
             tooltip={param.desc || undefined}
-            labelCol={{ span: isVeryLongText ? 24 : 5 }}
-            wrapperCol={{ span: isVeryLongText ? 24 : 18 }}
             style={{ marginBottom: isVeryLongText ? 20 : 16 }}
             rules={[
               { required: param.required, message: `请配置${labelText}` },

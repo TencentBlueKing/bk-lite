@@ -56,11 +56,6 @@ interface SortableStaticRowProps {
 
 const newId = () => Math.random().toString(36).slice(2);
 const createRow = (): StaticRow => ({ uid: newId(), label: '', value: '' });
-const formItemLayout = {
-  labelCol: { flex: '88px' },
-  wrapperCol: { flex: 1 },
-};
-
 const SortableStaticRow: React.FC<SortableStaticRowProps> = ({
   row,
   onChange,
@@ -267,9 +262,9 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
       prev.map((row) =>
         row.uid === uid
           ? {
-              ...row,
-              [field]: nextValue,
-            }
+            ...row,
+            [field]: nextValue,
+          }
           : row,
       ),
     );
@@ -361,7 +356,7 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
         body: { maxHeight: 'calc(100vh - 200px)', overflowY: 'auto' },
       }}
     >
-      <Form layout="horizontal" colon={false} {...formItemLayout}>
+      <Form layout="vertical" colon={false}>
         <Form.Item label={t('paramInput.controlType')} className="mb-3">
           <Radio.Group
             value={control}

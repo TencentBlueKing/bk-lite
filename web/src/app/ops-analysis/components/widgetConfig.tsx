@@ -889,7 +889,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     >
       <Form
         form={form}
-        labelCol={{ span: 4 }}
+        layout="vertical"
         onValuesChange={handleFormValuesChange}
       >
         <div className="mb-6">
