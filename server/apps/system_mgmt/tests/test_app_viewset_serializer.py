@@ -9,11 +9,12 @@
 """
 
 import types
+from unittest.mock import patch
 
 import pytest
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from apps.system_mgmt.models import App, Role
+from apps.system_mgmt.models import App, Group, Role, User
 from apps.system_mgmt.serializers.app_serializer import AppSerializer
 from apps.system_mgmt.viewset.app_viewset import AppViewSet
 
@@ -121,11 +122,50 @@ def test_app_viewset_destroy_removes_custom_app_and_roles():
     app = App.objects.create(
         name="deletable_app", display_name="可删", description="x", url="/d", is_build_in=False
     )
-    Role.objects.create(name="user", app="deletable_app")
+    role = Role.objects.create(name="user", app="deletable_app")
+    parent = Group.objects.create(name="AppParent", parent_id=0, allow_inherit_roles=True)
+    child = Group.objects.create(name="AppChild", parent_id=parent.id)
+    parent.roles.add(role)
+    User.objects.create(
+        username="app-descendant",
+        password="x",
+        display_name="App Descendant",
+        email="app-descendant@example.com",
+        group_list=[child.id],
+    )
     view = AppViewSet.as_view({"delete": "destroy"})
     request = _request("delete")
     force_authenticate(request, user=request.user)
-    response = view(request, pk=app.id)
+    with patch("apps.system_mgmt.viewset.app_viewset.clear_users_permission_cache") as clear_cache:
+        response = view(request, pk=app.id)
     assert response.status_code == 204
     assert not App.objects.filter(id=app.id).exists()
     assert not Role.objects.filter(app="deletable_app").exists()
+    assert {user["username"] for user in clear_cache.call_args.args[0]} == {"app-descendant"}
+
+
+def test_app_viewset_rename_invalidates_role_users():
+    app = App.objects.create(name="old_app", display_name="Old", description="x", url="/old", is_build_in=False)
+    role = Role.objects.create(name="user", app="old_app")
+    User.objects.create(
+        username="app-direct",
+        password="x",
+        display_name="App Direct",
+        email="app-direct@example.com",
+        role_list=[role.id],
+    )
+    view = AppViewSet.as_view({"put": "update"})
+    request = APIRequestFactory().put(
+        "/system_mgmt/api/application/",
+        {"name": "new_app", "display_name": "New", "description": "x", "url": "/new", "tags": []},
+        format="json",
+    )
+    force_authenticate(request, user=_request().user)
+
+    with patch("apps.system_mgmt.viewset.app_viewset.clear_users_permission_cache") as clear_cache:
+        response = view(request, pk=app.id)
+
+    assert response.status_code == 200
+    role.refresh_from_db()
+    assert role.app == "new_app"
+    assert {user["username"] for user in clear_cache.call_args.args[0]} == {"app-direct"}

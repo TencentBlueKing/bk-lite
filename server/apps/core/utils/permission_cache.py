@@ -289,6 +289,8 @@ def clear_all_permission_cache() -> None:
             # 清除所有权限缓存（含新格式 perm_rules:{user_prefix}:* 和旧版索引键）
             cache.delete_pattern(f"{PERM_CACHE_PREFIX}*")
             cache.delete_pattern(f"{USER_PERM_KEYS_PREFIX}*")
+            cache.delete_pattern(f"{API_TOKEN_PERMISSION_CACHE_PREFIX}:*")
+            cache.delete_pattern(f"{API_TOKEN_PERMISSION_KEYS_PREFIX}*")
             logger.info("All permission rules cache cleared")
         else:
             logger.warning("Cannot clear all permission cache: cache backend does not support pattern delete")

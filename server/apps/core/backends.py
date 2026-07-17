@@ -147,7 +147,13 @@ class APISecretAuthBackend(ModelBackend):
             user.is_superuser = is_superuser
             user.role_ids = list(all_role_ids)
 
-            # 缓存结果
+            # 先登记再写入快照：登记失败时必须 fail-closed，避免留下无法精确失效的权限缓存。
+            register_api_token_permission_cache_key(
+                user.username,
+                user.domain,
+                cache_key,
+                self.PERMISSION_CACHE_TTL,
+            )
             cache.set(
                 cache_key,
                 {
@@ -156,12 +162,6 @@ class APISecretAuthBackend(ModelBackend):
                     "is_superuser": is_superuser,
                     "role_ids": list(all_role_ids),
                 },
-                self.PERMISSION_CACHE_TTL,
-            )
-            register_api_token_permission_cache_key(
-                user.username,
-                user.domain,
-                cache_key,
                 self.PERMISSION_CACHE_TTL,
             )
 

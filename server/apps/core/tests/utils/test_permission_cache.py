@@ -232,6 +232,8 @@ class TestPatternBackendBranches:
         mocker.patch.object(pc, "cache", fake)
         fake.store[f"{pc.PERM_CACHE_PREFIX}abc:hash"] = {"team": []}
         fake.store[f"{pc.USER_PERM_KEYS_PREFIX}u:d"] = {"x"}
+        fake.store[f"{pc.API_TOKEN_PERMISSION_CACHE_PREFIX}:u:d:1"] = {"roles": [1]}
+        fake.store[f"{pc.API_TOKEN_PERMISSION_KEYS_PREFIX}u:d"] = {"api_token_permissions:u:d:1"}
         pc.clear_all_permission_cache()
         assert fake.store == {}
 
