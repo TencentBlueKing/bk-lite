@@ -18,12 +18,10 @@ from apps.opspilot.utils.team_permission_mixin import TeamPermissionMixin
 
 
 def _current_user_candidates(request):
-    """构造当前 web 用户的身份候选集（username + username@domain + user_id）。
+    """构造当前 web 用户的身份候选集（username + username@domain）。
 
-    参与者授权同时兼容三种 NATS 调用方约定的 user_id 格式：
-    - username: ['alice']
-    - username@domain: ['alice@domain.com']
-    - 整型 user_id: [1, 6]（user 模型主键，由告警中心 send_msg_with_channel 链路传入）
+    participants 字段在 nats_api 已把 user_ids 解析为 username 列表，这里只
+    需要 username / username@domain 两种形态匹配即可。
     """
     user = request.user
     username = getattr(user, "username", "") or ""
@@ -31,9 +29,6 @@ def _current_user_candidates(request):
     candidates = {username}
     if domain:
         candidates.add(f"{username}@{domain}")
-    user_id = getattr(user, "id", None)
-    if user_id is not None:
-        candidates.add(str(user_id))
     return candidates
 
 

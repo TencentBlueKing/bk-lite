@@ -8,6 +8,7 @@ from apps.opspilot.models import Bot, BotConversationHistory, BotWorkFlow, Embed
 from apps.opspilot.models.bot_mgmt import BotWebChatSession
 from apps.opspilot.utils.bot_utils import get_user_info
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
+from apps.system_mgmt.models import User as SystemMgmtUser
 
 
 def _read_nats_node_expose_flag(bot_id, node_id):
@@ -28,6 +29,55 @@ def _read_nats_node_expose_flag(bot_id, node_id):
         config = (node.get("data") or {}).get("config") or {}
         return bool(config.get("expose_as_web_chat"))
     return False
+
+
+def _resolve_participants(user_ids):
+    """把 NATS 入参的 user_ids 解析为 username 列表，用于写入 BotWebChatSession.participants。
+
+    支持三种输入形态：
+    - 整型 ID（数据库主键，例如 [1, 6]）：查 system_mgmt.User 映射为 username
+    - 数字字符串（'1', '6'）：同上，按 id 查询
+    - 普通字符串（'alice', 'bob'）：视为已存在的 username，原样保留
+
+    解析失败或用户不存在的元素会被丢弃（不抛错，避免阻断 NATS 热路径）。
+    """
+    if not user_ids:
+        return []
+
+    int_ids = []
+    name_candidates = []
+    for uid in user_ids:
+        if uid is None:
+            continue
+        raw = str(uid).strip()
+        if not raw:
+            continue
+        if raw.isdigit():
+            int_ids.append(int(raw))
+        else:
+            name_candidates.append(raw)
+
+    id_to_username: dict[int, str] = {}
+    if int_ids:
+        try:
+            rows = SystemMgmtUser.objects.filter(id__in=int_ids).values_list("id", "username")
+            id_to_username = {uid: uname for uid, uname in rows}
+        except Exception:  # noqa: BLE001
+            logger.exception("resolve participants: failed to query users by id")
+
+    resolved: list[str] = []
+    seen: set[str] = set()
+    for original in user_ids:
+        if original is None:
+            continue
+        raw = str(original).strip()
+        if not raw:
+            continue
+        username = id_to_username.get(int(raw)) if raw.isdigit() else raw
+        if username and username not in seen:
+            resolved.append(username)
+            seen.add(username)
+    return resolved
 
 
 def _normalize_nats_trigger_input(message, team, user_ids, bot_id, node_id):
@@ -249,7 +299,7 @@ def trigger_workflow_by_nats(message, team, user_ids, bot_id, node_id):
             bot_id=normalized_input["bot_id"],
             node_id=normalized_input["node_id"],
             source=BotWebChatSession.SOURCE_NATS,
-            participants=list(normalized_input["user_ids"]),
+            participants=_resolve_participants(normalized_input["user_ids"]),
             title=title,
             created_by="nats",
         )
