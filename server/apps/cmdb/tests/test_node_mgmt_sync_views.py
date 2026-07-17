@@ -336,7 +336,7 @@ def test_non_superuser_display_is_rebuilt_from_fixed_schema_and_validates_scalar
     assert data["run"]["submitted_at"] == ""
     assert data["run"]["detail"]["raw_data"] == {"data": [], "count": 0}
     assert data["run"]["error_message"] == ""
-    assert "name" not in data["task"]
+    assert data["task"]["name"] == "节点管理同步"
     assert data["task"]["last_sync_at"] == ""
     assert data["task"]["last_collect_at"] == valid_time
     assert data["task"]["health"]["message"] == ""
@@ -356,3 +356,117 @@ def test_non_superuser_latest_run_non_dict_payload_returns_fixed_empty_schema():
     assert data["message"]["all"] == 0
     assert data["detail"]["raw_data"] == {"data": [], "count": 0}
     assert "10.0.0.1" not in json.dumps(data)
+
+
+def _sensitive_task_payload():
+    return {
+        "id": 1,
+        "name": "伪造任务 10.0.0.8",
+        "is_builtin": True,
+        "auto_sync_enabled": True,
+        "auto_collect_enabled": False,
+        "sync_interval_minutes": 5,
+        "collect_interval_minutes": 30,
+        "version": 2,
+        "schedule_status": "degraded",
+        "node_config_status": "healthy",
+        "last_reconciled_at": "2026-07-17 03:00:00+0800",
+        "last_sync_at": None,
+        "last_collect_at": None,
+        "reconcile_error_code": "IP_10_0_0_8",
+        "reconcile_error_message": "organization=8 ip=10.0.0.8",
+        "health": {
+            "schedule_status": "degraded",
+            "node_config_status": "healthy",
+            "last_reconciled_at": "2026-07-17 03:00:00+0800",
+            "reason_code": "ORGANIZATION_8",
+            "message": "ip=10.0.0.8",
+        },
+        "unknown": {"raw_data": [{"ip": "10.0.0.8"}]},
+    }
+
+
+@pytest.mark.parametrize("action", ["task", "config"])
+def test_non_superuser_task_get_uses_fixed_safe_task_projection(action):
+    payload = _sensitive_task_payload()
+    with patch.object(NodeMgmtSyncService, "get_task_payload", return_value=payload):
+        response = _call(action, "GET", _user("auto_collection-View"))
+
+    data = json.loads(response.content)["data"]
+    assert set(data) == {
+        "id", "name", "is_builtin", "auto_sync_enabled", "auto_collect_enabled",
+        "sync_interval_minutes", "collect_interval_minutes", "version", "schedule_status",
+        "node_config_status", "last_reconciled_at", "reconcile_error_code",
+        "reconcile_error_message", "health", "last_sync_at", "last_collect_at",
+    }
+    assert data["name"] == "节点管理同步"
+    assert data["reconcile_error_code"] == ""
+    assert data["reconcile_error_message"] == ""
+    assert data["health"]["reason_code"] == ""
+    assert data["health"]["message"] == ""
+    assert "10.0.0.8" not in json.dumps(data)
+    assert "organization" not in json.dumps(data)
+
+
+@pytest.mark.parametrize("action", ["task", "config"])
+def test_non_superuser_put_success_uses_fixed_safe_task_projection(action):
+    payload = _sensitive_task_payload()
+    with patch.object(NodeMgmtSyncService, "update_task", return_value=SimpleNamespace()), patch.object(
+        NodeMgmtSyncService, "serialize_task", return_value=payload,
+    ):
+        response = _call(action, "PUT", _user("auto_collection-Execute"), {"auto_sync_enabled": True})
+
+    data = json.loads(response.content)["data"]
+    assert data["name"] == "节点管理同步"
+    assert data["reconcile_error_code"] == ""
+    assert data["reconcile_error_message"] == ""
+    assert data["health"]["message"] == ""
+    assert "10.0.0.8" not in json.dumps(data)
+
+
+@pytest.mark.parametrize("action,method", [("task", "get_task_payload"), ("config", "get_task_payload")])
+def test_superuser_task_get_keeps_complete_payload(action, method):
+    payload = _sensitive_task_payload()
+    with patch.object(NodeMgmtSyncService, method, return_value=payload):
+        response = _call(action, "GET", _user(is_superuser=True))
+
+    assert json.loads(response.content)["data"] == payload
+
+
+@pytest.mark.parametrize("action", ["task", "config"])
+def test_superuser_task_put_keeps_complete_payload(action):
+    payload = _sensitive_task_payload()
+    with patch.object(NodeMgmtSyncService, "update_task", return_value=SimpleNamespace()), patch.object(
+        NodeMgmtSyncService, "serialize_task", return_value=payload,
+    ):
+        response = _call(action, "PUT", _user(is_superuser=True), {"auto_sync_enabled": True})
+
+    assert json.loads(response.content)["data"] == payload
+
+
+@pytest.mark.parametrize("reason_code", ["IP_10_0_0_8", "ORGANIZATION_8"])
+def test_non_superuser_run_rejects_format_valid_but_unapproved_reason_code(reason_code):
+    payload = _sensitive_run_payload()
+    payload["reason_code"] = reason_code
+    with patch.object(NodeMgmtSyncService, "get_latest_run_payload", return_value=payload):
+        response = _call("latest_run", "GET", _user("auto_collection-View"))
+
+    assert json.loads(response.content)["data"]["reason_code"] == ""
+
+
+def test_non_superuser_projection_keeps_explicitly_approved_reason_codes():
+    run_payload = _sensitive_run_payload()
+    run_payload["reason_code"] = "RUN_TIMEOUT"
+    task_payload = _sensitive_task_payload()
+    task_payload["reconcile_error_code"] = "RECONCILE_FAILED"
+    task_payload["health"]["reason_code"] = "RECONCILE_FAILED"
+
+    with patch.object(NodeMgmtSyncService, "get_latest_run_payload", return_value=run_payload):
+        run_response = _call("latest_run", "GET", _user("auto_collection-View"))
+    with patch.object(NodeMgmtSyncService, "get_task_payload", return_value=task_payload):
+        task_response = _call("task", "GET", _user("auto_collection-View"))
+
+    assert json.loads(run_response.content)["data"]["reason_code"] == "RUN_TIMEOUT"
+    task_data = json.loads(task_response.content)["data"]
+    assert task_data["reconcile_error_code"] == "RECONCILE_FAILED"
+    assert task_data["health"]["reason_code"] == "RECONCILE_FAILED"

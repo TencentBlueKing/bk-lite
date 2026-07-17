@@ -1,4 +1,3 @@
-import re
 from datetime import datetime
 
 from rest_framework.decorators import action
@@ -50,6 +49,31 @@ class NodeMgmtSyncViewSet(AuthViewSet):
         "waiting_sync",
         "unknown",
     }
+    REASON_CODES = {
+        "",
+        "COLLECT_ALREADY_RUNNING",
+        "COLLECT_CHILD_FAILED",
+        "COLLECT_EXECUTION_ID_MISSING",
+        "COLLECT_EXECUTION_SUPERSEDED",
+        "COLLECT_SUBMISSION_BLOCKED",
+        "COLLECT_SUBMIT_FAILED",
+        "COLLECT_TASK_MISSING",
+        "INVALID_REGION_CODE",
+        "NODE_CONFIG_DELETE_FAILED",
+        "NODE_CONFIG_PUSH_FAILED",
+        "NODE_CONFIG_RECONCILE_FAILED",
+        "NODE_PAGE_LIMIT_EXCEEDED",
+        "NODE_QUERY_FAILED",
+        "NODE_QUERY_TIMEOUT",
+        "NO_ACCESS_POINT",
+        "RECONCILE_FAILED",
+        "RECOVERY_FAILED",
+        "RUN_ALREADY_ACTIVE",
+        "RUN_FAILED",
+        "RUN_NOT_ACTIVE",
+        "RUN_TIMEOUT",
+        "SYNC_REQUIRED",
+    }
     TIME_FORMAT = "%Y-%m-%d %H:%M:%S%z"
 
     @classmethod
@@ -78,11 +102,9 @@ class NodeMgmtSyncViewSet(AuthViewSet):
     def _safe_choice(value, allowed, default=None):
         return value if isinstance(value, str) and value in allowed else default
 
-    @staticmethod
-    def _safe_reason_code(value):
-        if isinstance(value, str) and re.fullmatch(r"[A-Z0-9_]{0,64}", value):
-            return value
-        return ""
+    @classmethod
+    def _safe_reason_code(cls, value):
+        return value if isinstance(value, str) and value in cls.REASON_CODES else ""
 
     @classmethod
     def _safe_summary(cls, summary):
@@ -128,6 +150,7 @@ class NodeMgmtSyncViewSet(AuthViewSet):
         health = source.get("health") if isinstance(source.get("health"), dict) else {}
         return {
             "id": cls._safe_id(source.get("id")),
+            "name": NodeMgmtSyncService.TASK_NAME,
             "is_builtin": source.get("is_builtin") if isinstance(source.get("is_builtin"), bool) else False,
             "auto_sync_enabled": source.get("auto_sync_enabled") if isinstance(source.get("auto_sync_enabled"), bool) else False,
             "auto_collect_enabled": source.get("auto_collect_enabled") if isinstance(source.get("auto_collect_enabled"), bool) else False,
@@ -141,6 +164,8 @@ class NodeMgmtSyncViewSet(AuthViewSet):
             "schedule_status": cls._safe_choice(source.get("schedule_status"), cls.HEALTH_STATUSES, ""),
             "node_config_status": cls._safe_choice(source.get("node_config_status"), cls.HEALTH_STATUSES, ""),
             "last_reconciled_at": cls._safe_time(source.get("last_reconciled_at")),
+            "reconcile_error_code": cls._safe_reason_code(source.get("reconcile_error_code")),
+            "reconcile_error_message": "",
             "last_sync_at": cls._safe_time(source.get("last_sync_at")),
             "last_collect_at": cls._safe_time(source.get("last_collect_at")),
             "health": {
@@ -171,6 +196,12 @@ class NodeMgmtSyncViewSet(AuthViewSet):
             return payload
         return cls._safe_display(payload) if display else cls._safe_run(payload)
 
+    @classmethod
+    def _project_task_payload(cls, request, payload):
+        if request.user.is_superuser:
+            return payload
+        return cls._safe_task(payload)
+
     @action(methods=["get", "put"], detail=False, url_path="task")
     def task(self, request, *args, **kwargs):
         if request.method.upper() == "PUT":
@@ -180,7 +211,7 @@ class NodeMgmtSyncViewSet(AuthViewSet):
     @HasPermission("auto_collection-View")
     def _get_task(self, request):
         payload = NodeMgmtSyncService.get_task_payload(reconcile=True)
-        return WebUtils.response_success(payload)
+        return WebUtils.response_success(self._project_task_payload(request, payload))
 
     @HasPermission("auto_collection-Execute")
     def _update_task(self, request):
@@ -188,7 +219,8 @@ class NodeMgmtSyncViewSet(AuthViewSet):
             task = NodeMgmtSyncService.update_task(request.data)
         except ValueError as exc:
             return WebUtils.response_error(error_message=str(exc))
-        return WebUtils.response_success(NodeMgmtSyncService.serialize_task(task))
+        payload = NodeMgmtSyncService.serialize_task(task)
+        return WebUtils.response_success(self._project_task_payload(request, payload))
 
     @HasPermission("auto_collection-View")
     @action(methods=["get"], detail=False, url_path="task/latest_run")
