@@ -168,6 +168,26 @@ def test_auto_collect_with_sync_disabled_is_saved_as_waiting_sync():
     assert config.node_config_status == "waiting_sync"
 
 
+def test_reenable_sync_reconciles_waiting_node_config(mocker):
+    config = NodeMgmtSyncService.get_task()
+    config.auto_sync_enabled = False
+    config.auto_collect_enabled = True
+    config.node_config_status = "waiting_sync"
+    config.save(
+        update_fields=[
+            "auto_sync_enabled", "auto_collect_enabled", "node_config_status", "updated_at",
+        ]
+    )
+    reconcile = mocker.patch(
+        "apps.cmdb.services.node_mgmt_sync_reconciler.NodeMgmtSyncReconciler.reconcile",
+    )
+
+    NodeMgmtSyncService.update_task({"auto_sync_enabled": True})
+
+    reconcile.assert_called_once()
+    assert reconcile.call_args.kwargs["reconcile_node_configs"] is True
+
+
 def _sensitive_run_payload():
     row = {
         "model_id": "host",
@@ -470,3 +490,25 @@ def test_non_superuser_projection_keeps_explicitly_approved_reason_codes():
     task_data = json.loads(task_response.content)["data"]
     assert task_data["reconcile_error_code"] == "RECONCILE_FAILED"
     assert task_data["health"]["reason_code"] == "RECONCILE_FAILED"
+
+
+def test_safe_task_schedule_status_rejects_disabled_and_defaults_degraded():
+    payload = _sensitive_task_payload()
+    payload["schedule_status"] = "disabled"
+    payload["health"]["schedule_status"] = "unknown"
+
+    safe = NodeMgmtSyncViewSet._safe_task(payload)
+
+    assert safe["schedule_status"] == "degraded"
+    assert safe["health"]["schedule_status"] == "degraded"
+
+
+def test_safe_task_node_config_status_keeps_real_disabled_and_defaults_unknown():
+    payload = _sensitive_task_payload()
+    payload["node_config_status"] = "disabled"
+    payload["health"]["node_config_status"] = "invalid"
+
+    safe = NodeMgmtSyncViewSet._safe_task(payload)
+
+    assert safe["node_config_status"] == "disabled"
+    assert safe["health"]["node_config_status"] == "unknown"

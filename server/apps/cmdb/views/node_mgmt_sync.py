@@ -41,7 +41,12 @@ class NodeMgmtSyncViewSet(AuthViewSet):
         "force_stop",
         "unknown",
     }
-    HEALTH_STATUSES = {
+    SCHEDULE_STATUSES = {
+        "reconciling",
+        "healthy",
+        "degraded",
+    }
+    NODE_CONFIG_STATUSES = {
         "reconciling",
         "healthy",
         "degraded",
@@ -161,16 +166,16 @@ class NodeMgmtSyncViewSet(AuthViewSet):
             if type(source.get("collect_interval_minutes")) is int and 1 <= source.get("collect_interval_minutes") <= 1440
             else 0,
             "version": cls._safe_count(source.get("version")),
-            "schedule_status": cls._safe_choice(source.get("schedule_status"), cls.HEALTH_STATUSES, ""),
-            "node_config_status": cls._safe_choice(source.get("node_config_status"), cls.HEALTH_STATUSES, ""),
+            "schedule_status": cls._safe_choice(source.get("schedule_status"), cls.SCHEDULE_STATUSES, "degraded",),
+            "node_config_status": cls._safe_choice(source.get("node_config_status"), cls.NODE_CONFIG_STATUSES, "unknown",),
             "last_reconciled_at": cls._safe_time(source.get("last_reconciled_at")),
             "reconcile_error_code": cls._safe_reason_code(source.get("reconcile_error_code")),
             "reconcile_error_message": "",
             "last_sync_at": cls._safe_time(source.get("last_sync_at")),
             "last_collect_at": cls._safe_time(source.get("last_collect_at")),
             "health": {
-                "schedule_status": cls._safe_choice(health.get("schedule_status"), cls.HEALTH_STATUSES, ""),
-                "node_config_status": cls._safe_choice(health.get("node_config_status"), cls.HEALTH_STATUSES, ""),
+                "schedule_status": cls._safe_choice(health.get("schedule_status"), cls.SCHEDULE_STATUSES, "degraded",),
+                "node_config_status": cls._safe_choice(health.get("node_config_status"), cls.NODE_CONFIG_STATUSES, "unknown",),
                 "last_reconciled_at": cls._safe_time(health.get("last_reconciled_at")),
                 "reason_code": cls._safe_reason_code(health.get("reason_code")),
                 "message": "",
