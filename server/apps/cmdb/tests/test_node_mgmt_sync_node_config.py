@@ -388,6 +388,41 @@ def test_multiple_legacy_rows_wait_for_active_claim_then_consolidate(config, reg
     assert not NodeMgmtSyncRegionState.objects.filter(pk=historical.pk).exists()
 
 
+@pytest.mark.parametrize("legacy_status", ["delete_pending", "push_in_progress"])
+def test_fresh_stable_claim_blocks_legacy_merge(config, region_task, legacy_status):
+    stable = NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=3,
+        cloud_region_id="7",
+        collect_task=region_task,
+        scope_key="node-config:region:7",
+        node_config_status="delete_in_progress",
+        reason_code="NODE_CONFIG_CLAIM:stable-worker",
+    )
+    legacy = NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=2,
+        cloud_region_id="7",
+        collect_task=region_task,
+        scope_key="config:2:region:7",
+        node_config_status=legacy_status,
+        reason_code=("NODE_CONFIG_CLAIM:stale-legacy" if legacy_status.endswith("_in_progress") else ""),
+    )
+    if legacy_status.endswith("_in_progress"):
+        NodeMgmtSyncRegionState.objects.filter(pk=legacy.pk).update(
+            updated_at=timezone.now() - timedelta(minutes=6),
+        )
+
+    selected, _ = NodeMgmtSyncReconciler._get_or_create_region_state(config, "7", region_task)
+
+    assert selected.pk == stable.pk
+    stable.refresh_from_db()
+    assert stable.node_config_status == "delete_in_progress"
+    assert stable.reason_code == "NODE_CONFIG_CLAIM:stable-worker"
+    assert stable.config_version == 3
+    assert NodeMgmtSyncRegionState.objects.filter(pk=legacy.pk).exists()
+
+
 def test_concurrent_degraded_recovery_claims_region_side_effect_once(config, region_task):
     state = NodeMgmtSyncRegionState.objects.create(
         config=config,

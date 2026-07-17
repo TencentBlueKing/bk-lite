@@ -74,6 +74,14 @@ class NodeMgmtSyncReconciler:
             # stable scope 同时取得第二把区域锁。
             return active_legacy[0], False
         if state is not None:
+            if (
+                state.node_config_status.endswith("_in_progress")
+                and state.updated_at > claim_cutoff
+            ):
+                # stable scope 的活动 claim 优先级最高。此时合并 legacy 会覆盖
+                # token/status，而原 worker 的远端 RPC 仍可能在执行，造成同区域
+                # 第二次并发交付。等待当前 claim 收口后再合并遗留意图。
+                return state, False
             pending_legacy = (stale_legacy[0] if stale_legacy else None) or next(
                 (item for item in legacy_states if item.node_config_status in ("delete_pending", "push_pending")),
                 None,
