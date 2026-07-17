@@ -43,7 +43,8 @@ def test_collector_list(api_client):
 
 
 @pytest.mark.django_db
-def test_collector_create(api_client):
+def test_collector_create(api_client, authenticated_user):
+    authenticated_user.permission = {"node": {"collector_list-Add"}}
     payload = {
         "id": "col-created",
         "name": "NewCollector",
