@@ -1388,22 +1388,29 @@ class NodeMgmtSyncService:
             raw_region_id = system_code.removeprefix(cls.SYSTEM_TASK_PREFIX)
             if not raw_region_id.isascii() or not raw_region_id.isdecimal():
                 continue
-            scope_key = NodeMgmtSyncReconciler._node_config_scope(int(raw_region_id))
-            needs_intent = collect_task.is_interval or not NodeMgmtSyncRegionState.objects.filter(
-                config=task_config,
-                scope_key=scope_key,
-            ).exists()
-            if collect_task.is_interval:
-                collect_task.is_interval = False
-                collect_task.save(update_fields=["is_interval", "updated_at"])
-                retired_any = True
-            if needs_intent:
-                NodeMgmtSyncReconciler.mark_region_delivery_pending(
-                    task_config,
-                    cloud_region_id=int(raw_region_id),
-                    collect_task=collect_task,
+            region_id = int(raw_region_id)
+            scope_key = NodeMgmtSyncReconciler._node_config_scope(region_id)
+            with transaction.atomic():
+                collect_task = CollectModels.objects.select_for_update().get(pk=collect_task.pk)
+                state = NodeMgmtSyncRegionState.objects.filter(
+                    config=task_config,
+                    scope_key=scope_key,
+                ).first()
+                needs_intent = collect_task.is_interval or state is None or state.node_config_status not in (
+                    "delete_pending",
+                    "delete_in_progress",
+                    "disabled",
                 )
-                retired_any = True
+                if collect_task.is_interval:
+                    collect_task.is_interval = False
+                    collect_task.save(update_fields=["is_interval", "updated_at"])
+                if needs_intent:
+                    NodeMgmtSyncReconciler.mark_region_delivery_pending(
+                        task_config,
+                        cloud_region_id=region_id,
+                        collect_task=collect_task,
+                    )
+            retired_any = True
         return retired_any
 
     @staticmethod
@@ -1742,7 +1749,8 @@ class NodeMgmtSyncService:
         message = cls._empty_display_message()
         if not grouped_nodes:
             reason_code = cls.REASON_NODE_SOURCE_EMPTY if source_total == 0 else cls.REASON_NO_VALID_NODES
-            cls._retire_missing_region_collect_tasks(task_config, desired_region_ids=set())
+            current_config = cls.get_task()
+            cls._retire_missing_region_collect_tasks(current_config, desired_region_ids=set())
             cls.finish_run(
                 run,
                 status=NodeMgmtSyncRun.STATUS_BLOCKED,
@@ -1759,7 +1767,7 @@ class NodeMgmtSyncService:
             from apps.cmdb.services.node_mgmt_sync_reconciler import NodeMgmtSyncReconciler
 
             NodeMgmtSyncReconciler.reconcile(
-                task_config,
+                current_config,
                 reconcile_node_configs=True,
             )
             return cls.serialize_run(run)
@@ -1864,10 +1872,21 @@ class NodeMgmtSyncService:
                     }
                 )
 
+        current_config = cls.get_task()
         retired_regions = cls._retire_missing_region_collect_tasks(
-            task_config,
+            current_config,
             desired_region_ids=set(grouped_nodes),
         )
+        has_delivery_intent = NodeMgmtSyncRegionState.objects.filter(
+            config=current_config,
+            config_version=current_config.version,
+            node_config_status__in=(
+                "delete_pending",
+                "delete_in_progress",
+                "push_pending",
+                "push_in_progress",
+            ),
+        ).exists()
 
         if changed_instance_ids:
             from apps.cmdb.services.auto_relation_reconcile import schedule_instance_auto_relation_reconcile
@@ -1900,10 +1919,9 @@ class NodeMgmtSyncService:
         )
         from apps.cmdb.services.node_mgmt_sync_reconciler import NodeMgmtSyncReconciler
 
-        current_config = cls.get_task()
         NodeMgmtSyncReconciler.reconcile(
             current_config,
-            reconcile_node_configs=current_config.auto_sync_enabled or retired_regions,
+            reconcile_node_configs=current_config.auto_sync_enabled or retired_regions or has_delivery_intent,
         )
         logger.info("[NodeMgmtSync] ========== 同步完成 ==========")
         logger.info(

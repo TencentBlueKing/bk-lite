@@ -233,9 +233,6 @@ class NodeMgmtSyncReconciler:
 
     @classmethod
     def _reconcile_node_configs(cls, config, *, service):
-        if config.auto_collect_enabled and not config.auto_sync_enabled:
-            return NodeConfigReconcileResult("waiting_sync")
-
         from apps.cmdb.services.collect_service import CollectModelService
 
         collect_tasks = service._list_region_collect_tasks(active_only=False)
@@ -245,8 +242,12 @@ class NodeMgmtSyncReconciler:
         has_tracked_failure = False
         has_untracked_failure = False
         has_contention = False
+        has_waiting_active = False
         valid_region_count = 0
         for collect_task in collect_tasks:
+            if config.auto_collect_enabled and not config.auto_sync_enabled and collect_task.is_interval:
+                has_waiting_active = True
+                continue
             cloud_region_id = cls._parse_cloud_region_id(
                 collect_task.system_code,
                 prefix=service.SYSTEM_TASK_PREFIX,
@@ -373,6 +374,8 @@ class NodeMgmtSyncReconciler:
                 config.node_config_status or "unknown",
                 contended=True,
             )
+        if has_waiting_active:
+            return NodeConfigReconcileResult("waiting_sync")
         if not valid_region_count:
             return NodeConfigReconcileResult("unknown")
         return NodeConfigReconcileResult("healthy" if config.auto_collect_enabled else "disabled")

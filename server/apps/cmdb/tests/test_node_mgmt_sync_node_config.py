@@ -91,6 +91,48 @@ def test_retired_region_is_excluded_from_dispatch_and_records_delete_intent(conf
     assert state.node_config_status == "delete_pending"
 
 
+def test_retirement_rolls_back_when_delivery_intent_cannot_be_recorded(config, region_task, mocker):
+    mark = mocker.patch.object(
+        NodeMgmtSyncReconciler,
+        "mark_region_delivery_pending",
+        side_effect=RuntimeError("intent-failed"),
+    )
+
+    with pytest.raises(RuntimeError, match="intent-failed"):
+        NodeMgmtSyncService._retire_missing_region_collect_tasks(config, desired_region_ids=set())
+
+    region_task.refresh_from_db()
+    assert region_task.is_interval is True
+    mocker.stop(mark)
+    NodeMgmtSyncService._retire_missing_region_collect_tasks(config, desired_region_ids=set())
+    region_task.refresh_from_db()
+    assert region_task.is_interval is False
+    assert _state(config).node_config_status == "delete_pending"
+
+
+def test_manual_sync_mode_deletes_retired_task_but_does_not_push_active_task(config):
+    config.auto_sync_enabled = False
+    config.save(update_fields=["auto_sync_enabled", "updated_at"])
+    _create_region_task(7)
+    retired_task = _create_region_task(8)
+    retired_task.is_interval = False
+    retired_task.save(update_fields=["is_interval", "updated_at"])
+    NodeMgmtSyncReconciler.mark_region_delivery_pending(
+        config,
+        cloud_region_id=8,
+        collect_task=retired_task,
+    )
+
+    with patch.object(CollectModelService, "delete_butch_node_params") as delete:
+        with patch.object(CollectModelService, "push_butch_node_params") as push:
+            result = _reconcile(config)
+
+    delete.assert_called_once_with(retired_task)
+    push.assert_not_called()
+    assert _state(config, 8).node_config_status == "disabled"
+    assert result.node_config_status == "waiting_sync"
+
+
 def test_foreign_config_region_state_cannot_suppress_current_delete_intent(config):
     retired_task = _create_region_task(9)
     foreign_config = NodeMgmtSyncConfig.objects.create(singleton_key="legacy")
