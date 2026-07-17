@@ -14,6 +14,7 @@ def superuser_client(authenticated_user):
     authenticated_user.save()
     client = APIClient()
     client.force_authenticate(user=authenticated_user)
+    client.cookies["current_team"] = "1"
     return client
 
 
@@ -65,3 +66,50 @@ def test_manual_trigger_writes_operator_log_for_change_record_tab(mock_get, supe
     assert log.operator == superuser_client.handler._force_user.username
     # overview 至少包含规则名
     assert "重启Nginx" in (log.overview or "")
+
+
+@pytest.mark.django_db
+@patch("apps.alerts.views.action.get_handler")
+def test_manual_trigger_rejects_other_team_alert_and_rule(mock_get, superuser_client):
+    own_alert = Alert.objects.create(
+        alert_id="A-OWN", fingerprint="f-own", title="own", content="c", level="0", team=[1]
+    )
+    other_alert = Alert.objects.create(
+        alert_id="A-OTHER", fingerprint="f-other", title="other", content="c", level="0", team=[2]
+    )
+    other_rule = ActionRule.objects.create(name="other-rule", team=[2])
+
+    other_alert_resp = superuser_client.post(
+        "/api/v1/alerts/api/action_execution/manual_trigger/",
+        data={"alert_id": other_alert.alert_id, "rule_id": other_rule.id},
+        format="json",
+    )
+    other_rule_resp = superuser_client.post(
+        "/api/v1/alerts/api/action_execution/manual_trigger/",
+        data={"alert_id": own_alert.alert_id, "rule_id": other_rule.id},
+        format="json",
+    )
+
+    assert other_alert_resp.status_code == 400
+    assert other_rule_resp.status_code == 400
+    assert ActionExecution.objects.count() == 0
+    mock_get.assert_not_called()
+
+
+@pytest.mark.django_db
+@patch("apps.alerts.views.action.get_handler")
+def test_manual_trigger_allows_global_rule_for_authorized_alert(mock_get, superuser_client):
+    mock_get.return_value.execute.return_value = None
+    alert = Alert.objects.create(
+        alert_id="A-OWN", fingerprint="f-own", title="own", content="c", level="0", team=[1]
+    )
+    global_rule = ActionRule.objects.create(name="global-rule", team=[])
+
+    resp = superuser_client.post(
+        "/api/v1/alerts/api/action_execution/manual_trigger/",
+        data={"alert_id": alert.alert_id, "rule_id": global_rule.id},
+        format="json",
+    )
+
+    assert resp.status_code == 200
+    assert ActionExecution.objects.filter(alert=alert, rule=global_rule).exists()
