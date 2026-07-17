@@ -1,4 +1,5 @@
 import threading
+from datetime import timedelta
 from unittest.mock import patch
 
 import pytest
@@ -583,6 +584,40 @@ def test_old_dispatch_owner_cannot_release_newer_claim(config):
     config.refresh_from_db()
     assert released is False
     assert config.collect_dispatch_claim_token == "new-owner"
+
+
+def test_stale_dispatch_owner_cannot_submit_after_config_is_disabled(config):
+    _successful_sync(config)
+    collect_task = _collect_task(7)
+    run = NodeMgmtSyncRun.objects.create(
+        task=config,
+        run_type=NodeMgmtSyncRun.RUN_TYPE_COLLECT,
+        status=NodeMgmtSyncRun.STATUS_RUNNING,
+        active_scope=NodeMgmtSyncService.ACTIVE_SCOPE,
+    )
+    claim_token = NodeMgmtSyncService._claim_collect_dispatch_version(
+        run_id=run.pk,
+        config_id=config.pk,
+        config_version=config.version,
+    )
+    NodeMgmtSyncConfig.objects.filter(pk=config.pk).update(
+        collect_dispatch_claimed_at=timezone.now() - timedelta(seconds=NodeMgmtSyncService.COLLECT_DISPATCH_CLAIM_TIMEOUT_SECONDS + 1)
+    )
+
+    updated = NodeMgmtSyncService.update_task({"auto_sync_enabled": False, "auto_collect_enabled": False})
+    with patch.object(NodeMgmtSyncService, "_execute_collect_task") as submit:
+        fenced, response = NodeMgmtSyncService._execute_collect_task_with_claim(
+            collect_task,
+            "system",
+            config_id=config.pk,
+            config_version=config.version,
+            claim_token=claim_token,
+        )
+
+    assert updated.auto_collect_enabled is False
+    assert fenced is False
+    assert response is None
+    submit.assert_not_called()
 
 
 def test_refresh_same_terminal_result_is_idempotent_when_another_worker_wins(config, mocker):

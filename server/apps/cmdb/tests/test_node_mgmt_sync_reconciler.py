@@ -242,6 +242,18 @@ def test_update_retries_version_cas_after_interleaved_winner(mocker):
     assert returned.auto_collect_enabled is True
 
 
+def test_disabling_collect_reconciles_node_configs_when_sync_already_disabled(mocker):
+    NodeMgmtSyncService.update_task({"auto_sync_enabled": False, "auto_collect_enabled": True})
+    reconcile = mocker.patch.object(NodeMgmtSyncReconciler, "reconcile")
+
+    updated = NodeMgmtSyncService.update_task({"auto_collect_enabled": False})
+
+    assert updated.auto_sync_enabled is False
+    assert updated.auto_collect_enabled is False
+    reconcile.assert_called_once()
+    assert reconcile.call_args.kwargs["reconcile_node_configs"] is True
+
+
 @pytest.mark.django_db(transaction=True)
 def test_sqlite_real_write_contention_exhausts_as_stable_business_error(mocker):
     if connection.vendor != "sqlite":
@@ -266,8 +278,11 @@ def test_sqlite_real_write_contention_exhausts_as_stable_business_error(mocker):
     holder = threading.Thread(target=hold_write_lock)
     holder.start()
     assert lock_acquired.wait(timeout=5)
-    with connection.cursor() as cursor:
-        cursor.execute("PRAGMA busy_timeout = 0")
+    options = connection.settings_dict.setdefault("OPTIONS", {})
+    original_timeout = options.get("timeout")
+    connection.close()
+    options["timeout"] = 0
+    connection.connect()
     sleep = mocker.patch("apps.cmdb.services.node_mgmt_sync_service.time.sleep")
 
     try:
@@ -276,6 +291,12 @@ def test_sqlite_real_write_contention_exhausts_as_stable_business_error(mocker):
     finally:
         release_lock.set()
         holder.join(timeout=5)
+        connection.close()
+        if original_timeout is None:
+            options.pop("timeout", None)
+        else:
+            options["timeout"] = original_timeout
+        connection.connect()
 
     assert not holder.is_alive()
     assert holder_failures == []

@@ -358,9 +358,7 @@ class NodeMgmtSyncService:
 
         NodeMgmtSyncReconciler.reconcile(
             task,
-            reconcile_node_configs=(
-                task.auto_sync_enabled and (old_auto_sync_enabled != task.auto_sync_enabled or old_auto_collect_enabled != task.auto_collect_enabled)
-            ),
+            reconcile_node_configs=(old_auto_sync_enabled != task.auto_sync_enabled or old_auto_collect_enabled != task.auto_collect_enabled),
         )
 
         return NodeMgmtSyncConfig.objects.get(pk=task.pk)
@@ -1407,6 +1405,30 @@ class NodeMgmtSyncService:
         return False
 
     @classmethod
+    def _execute_collect_task_with_claim(
+        cls,
+        task,
+        operator,
+        *,
+        config_id,
+        config_version,
+        claim_token,
+    ):
+        """在真正下发点再次校验 owner fence，阻止过期 worker 恢复执行。"""
+        with transaction.atomic():
+            current = NodeMgmtSyncConfig.objects.select_for_update().get(pk=config_id)
+            if (
+                current.version != config_version
+                or not current.auto_collect_enabled
+                or current.collect_dispatch_claim_token != claim_token
+                or current.collect_dispatch_claim_version != config_version
+            ):
+                return False, None
+            task.node_mgmt_config_id = config_id
+            task.node_mgmt_config_version = config_version
+            return True, cls._execute_collect_task(task, operator)
+
+    @classmethod
     def _build_collect_display_payload(cls, source: str) -> dict[str, Any] | None:
         collect_tasks = cls._list_region_collect_tasks()
         if not collect_tasks:
@@ -2168,9 +2190,24 @@ class NodeMgmtSyncService:
                     cls._mark_collect_region_blocked(state, "SYNC_REQUIRED")
                     break
                 try:
-                    response = cls._execute_collect_task(collect_task, operator)
+                    fenced, response = cls._execute_collect_task_with_claim(
+                        collect_task,
+                        operator,
+                        config_id=task_config.pk,
+                        config_version=task_config.version,
+                        claim_token=claim_token,
+                    )
                 finally:
                     cls._release_collect_dispatch_claim(task_config.pk, claim_token)
+                if not fenced:
+                    detail["failed"].append(
+                        {
+                            "task_id": collect_task.id,
+                            "reason_code": "SYNC_REQUIRED",
+                        }
+                    )
+                    cls._mark_collect_region_blocked(state, "SYNC_REQUIRED")
+                    break
                 submitted_execution_id = str(collect_task.task_id or "")
                 cls.heartbeat_run(run)
             except NodeMgmtSyncError:

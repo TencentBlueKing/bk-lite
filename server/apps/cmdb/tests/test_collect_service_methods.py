@@ -11,10 +11,9 @@
 - schedule_delayed_sync_if_needed（阈值/类型/非法值分支，mock transaction.on_commit）。
 仅 mock 真实外部边界：NodeMgmt RPC、Stargazer RPC、transaction.on_commit。
 """
-import pydantic.root_model  # noqa
-
 import types
 
+import pydantic.root_model  # noqa
 import pytest
 
 from apps.cmdb.constants.constants import CollectPluginTypes, CollectRunStatusType
@@ -342,9 +341,7 @@ class TestFormatUpdateCredential:
         assert data["credential"] == {}
 
     def test_仅改regions_用旧凭据(self):
-        inst = fake_instance(
-            is_k8s=False, decrypt_credentials={"user": "admin", "pwd": "x"}
-        )
+        inst = fake_instance(is_k8s=False, decrypt_credentials={"user": "admin", "pwd": "x"})
         data = {"credential": {"regions": ["cn-north"]}}
         CollectModelService.format_update_credential(inst, data)
         assert data["credential"]["user"] == "admin"
@@ -364,9 +361,7 @@ class TestFormatUpdateCredential:
         assert data["credential"] == {"token": "t"}
 
     def test_dict合并旧新(self):
-        inst = fake_instance(
-            is_k8s=False, decrypt_credentials={"user": "old", "pwd": "p"}
-        )
+        inst = fake_instance(is_k8s=False, decrypt_credentials={"user": "old", "pwd": "p"})
         data = {"credential": {"user": "new"}}
         CollectModelService.format_update_credential(inst, data)
         assert data["credential"] == {"user": "new", "pwd": "p"}
@@ -374,9 +369,7 @@ class TestFormatUpdateCredential:
     def test_list池合并保留旧项字段(self):
         inst = fake_instance(
             is_k8s=False,
-            decrypt_credentials=[
-                {"credential_id": "c1", "user": "u1", "pwd": "secret"}
-            ],
+            decrypt_credentials=[{"credential_id": "c1", "user": "u1", "pwd": "secret"}],
         )
         data = {"credential": [{"credential_id": "c1", "user": "u1-new"}]}
         CollectModelService.format_update_credential(inst, data)
@@ -393,15 +386,9 @@ class TestFormatUpdateCredential:
 
 class TestScheduleAndMisc:
     def test_is_schedule_config_changed(self):
-        old = fake_instance(
-            is_interval=True, cycle_value_type="cycle", cycle_value="5", scan_cycle="a"
-        )
-        same = fake_instance(
-            is_interval=True, cycle_value_type="cycle", cycle_value="5", scan_cycle="a"
-        )
-        diff = fake_instance(
-            is_interval=True, cycle_value_type="cycle", cycle_value="20", scan_cycle="a"
-        )
+        old = fake_instance(is_interval=True, cycle_value_type="cycle", cycle_value="5", scan_cycle="a")
+        same = fake_instance(is_interval=True, cycle_value_type="cycle", cycle_value="5", scan_cycle="a")
+        diff = fake_instance(is_interval=True, cycle_value_type="cycle", cycle_value="20", scan_cycle="a")
         assert CollectModelService.is_schedule_config_changed(old, same) is False
         assert CollectModelService.is_schedule_config_changed(old, diff) is True
 
@@ -410,16 +397,12 @@ class TestScheduleAndMisc:
         assert CollectModelService._normalize_cloud_regions("aws", regions) is regions
 
     def test_normalize_cloud_regions_qcloud补字段(self):
-        out = CollectModelService._normalize_cloud_regions(
-            "qcloud", [{"Region": "ap-1", "RegionName": "广州"}]
-        )
+        out = CollectModelService._normalize_cloud_regions("qcloud", [{"Region": "ap-1", "RegionName": "广州"}])
         assert out[0]["resource_name"] == "广州"
         assert out[0]["resource_id"] == "ap-1"
 
     def test_schedule_delayed_sync_非interval跳过(self, mocker):
-        on_commit = mocker.patch(
-            "apps.cmdb.services.collect_service.transaction.on_commit"
-        )
+        on_commit = mocker.patch("apps.cmdb.services.collect_service.transaction.on_commit")
         CollectModelService.schedule_delayed_sync_if_needed(
             fake_instance(cycle_value_type="cycle", cycle_value="20", id=1),
             is_interval=False,
@@ -427,9 +410,7 @@ class TestScheduleAndMisc:
         on_commit.assert_not_called()
 
     def test_schedule_delayed_sync_非cycle类型跳过(self, mocker):
-        on_commit = mocker.patch(
-            "apps.cmdb.services.collect_service.transaction.on_commit"
-        )
+        on_commit = mocker.patch("apps.cmdb.services.collect_service.transaction.on_commit")
         CollectModelService.schedule_delayed_sync_if_needed(
             fake_instance(cycle_value_type="timing", cycle_value="20", id=1),
             is_interval=True,
@@ -437,9 +418,7 @@ class TestScheduleAndMisc:
         on_commit.assert_not_called()
 
     def test_schedule_delayed_sync_非法值跳过(self, mocker):
-        on_commit = mocker.patch(
-            "apps.cmdb.services.collect_service.transaction.on_commit"
-        )
+        on_commit = mocker.patch("apps.cmdb.services.collect_service.transaction.on_commit")
         CollectModelService.schedule_delayed_sync_if_needed(
             fake_instance(cycle_value_type="cycle", cycle_value="abc", id=1),
             is_interval=True,
@@ -447,9 +426,7 @@ class TestScheduleAndMisc:
         on_commit.assert_not_called()
 
     def test_schedule_delayed_sync_低于阈值跳过(self, mocker):
-        on_commit = mocker.patch(
-            "apps.cmdb.services.collect_service.transaction.on_commit"
-        )
+        on_commit = mocker.patch("apps.cmdb.services.collect_service.transaction.on_commit")
         CollectModelService.schedule_delayed_sync_if_needed(
             fake_instance(cycle_value_type="cycle", cycle_value="5", id=1),
             is_interval=True,
@@ -457,9 +434,7 @@ class TestScheduleAndMisc:
         on_commit.assert_not_called()
 
     def test_schedule_delayed_sync_达阈值注册on_commit(self, mocker):
-        on_commit = mocker.patch(
-            "apps.cmdb.services.collect_service.transaction.on_commit"
-        )
+        on_commit = mocker.patch("apps.cmdb.services.collect_service.transaction.on_commit")
         CollectModelService.schedule_delayed_sync_if_needed(
             fake_instance(cycle_value_type="cycle", cycle_value="20", id=1),
             is_interval=True,
@@ -490,7 +465,7 @@ def test_exec_task_passes_execution_token_to_sync_collect_task(settings, mocker)
     mocker.patch.object(CollectModelService, "repair_host_cloud_snapshot")
     mocker.patch(
         "apps.cmdb.services.collect_service.sync_collect_task",
-        side_effect=lambda task_id, execution_id=None: called.update(
+        side_effect=lambda task_id, execution_id=None, config_id=None, config_version=None: called.update(
             {"sync_task_id": task_id, "sync_execution_id": execution_id}
         ),
     )
@@ -504,6 +479,37 @@ def test_exec_task_passes_execution_token_to_sync_collect_task(settings, mocker)
     assert called["sync_execution_id"] == called["saved_task_id"]
 
 
+def test_exec_task_defers_celery_publish_until_transaction_commit(settings, mocker):
+    settings.DEBUG = False
+    task = fake_instance(
+        id=7,
+        name="manual",
+        model_id="host",
+        exec_status=CollectRunStatusType.SUCCESS,
+        exec_time=None,
+        format_data={},
+        collect_data={},
+        collect_digest={},
+        task_id="",
+        save=mocker.Mock(),
+    )
+    mocker.patch.object(CollectModelService, "repair_host_cloud_snapshot")
+    delay = mocker.patch("apps.cmdb.services.collect_service.sync_collect_task.delay")
+    mocker.patch("apps.cmdb.services.collect_service.create_change_record")
+    callbacks = []
+    mocker.patch(
+        "apps.cmdb.services.collect_service.transaction.on_commit",
+        side_effect=callbacks.append,
+    )
+
+    CollectModelService.exec_task(task, operator="tester")
+
+    delay.assert_not_called()
+    assert len(callbacks) == 1
+    callbacks[0]()
+    delay.assert_called_once_with(task.id, task.task_id, None, None)
+
+
 class TestListRegions:
     def test_成功路径(self, mocker):
         sg = mocker.MagicMock()
@@ -511,12 +517,8 @@ class TestListRegions:
             "success": True,
             "regions": {"success": True, "result": [{"Region": "ap-1"}]},
         }
-        mocker.patch(
-            "apps.cmdb.services.collect_service.Stargazer", return_value=sg
-        )
-        out = CollectModelService.list_regions(
-            {"model_id": "qcloud"}, "tencent"
-        )
+        mocker.patch("apps.cmdb.services.collect_service.Stargazer", return_value=sg)
+        out = CollectModelService.list_regions({"model_id": "qcloud"}, "tencent")
         assert out["success"] is True
         assert out["result"][0]["resource_id"] == "ap-1"
 
@@ -526,9 +528,7 @@ class TestListRegions:
             "success": False,
             "regions": {"success": False, "result": [], "message": "鉴权失败"},
         }
-        mocker.patch(
-            "apps.cmdb.services.collect_service.Stargazer", return_value=sg
-        )
+        mocker.patch("apps.cmdb.services.collect_service.Stargazer", return_value=sg)
         out = CollectModelService.list_regions({"model_id": "aws"}, "aws")
         assert out["success"] is False
         assert out["message"] == "鉴权失败"

@@ -118,8 +118,11 @@ def test_real_sqlite_lock_returns_stable_409_api_response(mocker):
     holder = threading.Thread(target=hold_write_lock)
     holder.start()
     assert lock_acquired.wait(timeout=5)
-    with connection.cursor() as cursor:
-        cursor.execute("PRAGMA busy_timeout = 0")
+    options = connection.settings_dict.setdefault("OPTIONS", {})
+    original_timeout = options.get("timeout")
+    connection.close()
+    options["timeout"] = 0
+    connection.connect()
     mocker.patch("apps.cmdb.services.node_mgmt_sync_service.time.sleep")
 
     try:
@@ -132,6 +135,12 @@ def test_real_sqlite_lock_returns_stable_409_api_response(mocker):
     finally:
         release_lock.set()
         holder.join(timeout=5)
+        connection.close()
+        if original_timeout is None:
+            options.pop("timeout", None)
+        else:
+            options["timeout"] = original_timeout
+        connection.connect()
 
     assert not holder.is_alive()
     assert holder_failures == []
