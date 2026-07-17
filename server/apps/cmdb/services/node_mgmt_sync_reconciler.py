@@ -237,6 +237,8 @@ class NodeMgmtSyncReconciler:
 
         collect_tasks = service._list_region_collect_tasks(active_only=False)
         if not collect_tasks:
+            if config.auto_collect_enabled and not config.auto_sync_enabled:
+                return NodeConfigReconcileResult("waiting_sync")
             return NodeConfigReconcileResult("unknown")
 
         has_tracked_failure = False
