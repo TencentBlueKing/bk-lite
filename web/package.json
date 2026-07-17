@@ -15,6 +15,7 @@
     "test:alarm-action-i18n": "pnpm exec tsx scripts/alarm-action-i18n-test.ts",
     "test:alarm-table-column-order": "pnpm exec tsx scripts/alarm-table-column-order-test.ts",
     "test:alarm-notification-tooltip": "pnpm exec tsx scripts/alarm-notification-tooltip-test.ts",
+    "test:alert-assignment-level-multiselect": "pnpm exec tsx scripts/alert-assignment-level-multiselect-test.ts",
     "test:flow-access-complete-navigation": "pnpm exec tsx scripts/flow-access-complete-navigation-test.ts",
     "test:flow-asset-existing-selection": "pnpm exec tsx scripts/flow-asset-existing-selection-test.ts",
     "test:installer-progress": "pnpm exec tsx scripts/installer-progress-test.ts",
