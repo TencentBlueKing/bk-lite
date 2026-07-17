@@ -641,6 +641,44 @@ def test_sync_collect_task_handles_collect_exception(monkeypatch):
 
 
 @pytest.mark.django_db
+def test_repair_snapshot_exception_closes_owned_execution_and_same_delivery_does_not_rerun(monkeypatch):
+    task = CollectModels.objects.create(
+        name="repair-snapshot-error",
+        task_type=CollectPluginTypes.HOST,
+        model_id="host",
+        driver_type="job",
+        cycle_value_type="cycle",
+        team=[1],
+    )
+    repair_calls = []
+
+    def broken_repair(instance):
+        repair_calls.append(instance.task_id)
+        raise RuntimeError("repair snapshot exploded")
+
+    monkeypatch.setattr(
+        "apps.cmdb.services.collect_service.CollectModelService.repair_host_cloud_snapshot",
+        broken_repair,
+    )
+    monkeypatch.setattr(
+        ct.CollectDispatchService,
+        "should_dispatch",
+        staticmethod(lambda instance: (_ for _ in ()).throw(AssertionError("collection must not start"))),
+    )
+
+    ct.sync_collect_task(task.id, execution_id="execution-repair")
+    ct.sync_collect_task(task.id, execution_id="execution-repair")
+
+    task.refresh_from_db()
+    assert repair_calls == ["execution-repair"]
+    assert task.task_id == "execution-repair"
+    assert task.exec_status == CollectRunStatusType.ERROR
+    assert task.execution_claim_token is None
+    assert "repair snapshot exploded" in task.collect_digest["message"]
+    assert "RuntimeError: repair snapshot exploded" in task.collect_digest["traceback"]
+
+
+@pytest.mark.django_db
 def test_sync_collect_task_handles_numeric_exception_with_traceback(monkeypatch):
     task = CollectModels.objects.create(
         name="numeric-collect",

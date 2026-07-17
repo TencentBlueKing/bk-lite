@@ -214,13 +214,13 @@ def sync_collect_task(self, instance_id, execution_id=None):
     claim_token = instance.claim_token
     from apps.cmdb.services.collect_service import CollectModelService
 
-    CollectModelService.repair_host_cloud_snapshot(instance)
     exec_error_message = ""
     exec_traceback_excerpt = ""
     exec_traceback_location = ""
     task_exec_status = CollectRunStatusType.SUCCESS
     config_file_pending = False
     try:
+        CollectModelService.repair_host_cloud_snapshot(instance)
         if CollectDispatchService.should_dispatch(instance):
             result, format_data = CollectDispatchService.execute_task(instance)
         else:
