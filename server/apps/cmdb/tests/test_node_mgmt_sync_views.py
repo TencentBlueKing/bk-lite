@@ -200,7 +200,9 @@ def test_non_superuser_latest_run_get_keeps_counts_but_hides_global_rows():
 
     assert response.status_code == 200
     data = json.loads(response.content)["data"]
-    assert data["summary"] == {"all": 1, "add": 1, "message": ""}
+    assert data["summary"]["all"] == 1
+    assert data["summary"]["add"] == 1
+    assert data["summary"]["message"] == ""
     assert data["detail"]["add"] == {"data": [], "count": 1}
     assert data["detail"]["raw_data"] == {"data": [], "count": 1}
     assert data["detail"]["todo"] == []
@@ -255,3 +257,102 @@ def test_update_api_only_accepts_json_boolean_for_switches(action, field, value)
 
     assert response.status_code == 400
     assert json.loads(response.content)["message"] == f"{field} 必须是布尔值"
+
+
+def test_non_superuser_display_is_rebuilt_from_fixed_schema_and_validates_scalars():
+    valid_time = "2026-07-17 03:00:00+0800"
+    malicious = {
+        "display_source": "collect",
+        "display_schema": "host_collect",
+        "root_secret": "10.0.0.99",
+        "message": {
+            "all": 2,
+            "add": True,
+            "update": "3",
+            "delete": -1,
+            "association": 10_000_001,
+            "message": "10.0.0.98",
+            "last_time": "not-a-time 10.0.0.97",
+            "unknown": "10.0.0.96",
+        },
+        "summary": {"all": 2},
+        "detail": "not-a-dict 10.0.0.95",
+        "run": {
+            "id": 9,
+            "task_id": 1,
+            "run_type": "collect",
+            "status": "success",
+            "reason_code": "OK",
+            "started_at": valid_time,
+            "submitted_at": "yesterday 10.0.0.94",
+            "finished_at": valid_time,
+            "deadline_at": None,
+            "message": {"all": 2, "message": "10.0.0.93"},
+            "summary": {"all": 2, "message": "10.0.0.92"},
+            "detail": {"raw_data": {"count": "2", "data": [{"ip": "10.0.0.91"}]}},
+            "error_message": "10.0.0.90",
+            "run_secret": {"organization": [8]},
+        },
+        "task": {
+            "id": 1,
+            "name": "10.0.0.89",
+            "is_builtin": True,
+            "auto_sync_enabled": True,
+            "auto_collect_enabled": False,
+            "sync_interval_minutes": 5,
+            "collect_interval_minutes": 30,
+            "version": 2,
+            "schedule_status": "healthy",
+            "node_config_status": "healthy",
+            "last_reconciled_at": valid_time,
+            "last_sync_at": "invalid 10.0.0.88",
+            "last_collect_at": valid_time,
+            "health": {
+                "schedule_status": "healthy",
+                "node_config_status": "healthy",
+                "last_reconciled_at": valid_time,
+                "reason_code": "",
+                "message": "10.0.0.87",
+                "health_secret": "10.0.0.86",
+            },
+            "task_secret": {"raw_data": [{"ip": "10.0.0.85"}]},
+        },
+    }
+    with patch.object(NodeMgmtSyncService, "get_display_payload", return_value=malicious):
+        response = _call("display", "GET", _user("auto_collection-View"))
+
+    data = json.loads(response.content)["data"]
+    assert set(data) == {
+        "display_source", "display_schema", "message", "summary", "detail", "run", "task",
+    }
+    assert data["message"]["all"] == 2
+    assert data["message"]["add"] == 0
+    assert data["message"]["update"] == 0
+    assert data["message"]["delete"] == 0
+    assert data["message"]["association"] == 0
+    assert data["message"]["last_time"] == ""
+    assert data["detail"]["raw_data"] == {"data": [], "count": 0}
+    assert data["run"]["started_at"] == valid_time
+    assert data["run"]["submitted_at"] == ""
+    assert data["run"]["detail"]["raw_data"] == {"data": [], "count": 0}
+    assert data["run"]["error_message"] == ""
+    assert "name" not in data["task"]
+    assert data["task"]["last_sync_at"] == ""
+    assert data["task"]["last_collect_at"] == valid_time
+    assert data["task"]["health"]["message"] == ""
+    serialized = json.dumps(data)
+    assert "10.0.0." not in serialized
+    assert "secret" not in serialized
+    assert "organization" not in serialized
+
+
+def test_non_superuser_latest_run_non_dict_payload_returns_fixed_empty_schema():
+    with patch.object(NodeMgmtSyncService, "get_latest_run_payload", return_value="10.0.0.1"):
+        response = _call("latest_run", "GET", _user("auto_collection-View"))
+
+    data = json.loads(response.content)["data"]
+    assert data["id"] is None
+    assert data["status"] is None
+    assert data["message"]["all"] == 0
+    assert data["detail"]["raw_data"] == {"data": [], "count": 0}
+    assert "10.0.0.1" not in json.dumps(data)

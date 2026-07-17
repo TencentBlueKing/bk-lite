@@ -1,4 +1,5 @@
-import copy
+import re
+from datetime import datetime
 
 from rest_framework.decorators import action
 
@@ -10,71 +11,165 @@ from apps.core.utils.web_utils import WebUtils
 
 class NodeMgmtSyncViewSet(AuthViewSet):
     queryset = None
-
-    @staticmethod
-    def _safe_count_only_payload(payload):
-        """普通用户仅可查看全局运行健康和计数，不外显跨组织主机明细。"""
-        projected = copy.deepcopy(payload)
-
-        def count_only_detail(detail):
-            if not isinstance(detail, dict):
-                return detail
-            safe_detail = {}
-            for bucket_name in ("add", "update", "delete", "relation", "raw_data"):
-                bucket = detail.get(bucket_name)
-                if isinstance(bucket, dict):
-                    safe_detail[bucket_name] = {
-                        "data": [],
-                        "count": bucket.get("count", 0),
-                    }
-            safe_detail["todo"] = []
-            return safe_detail
-
-        def strip_free_text(run_payload):
-            if not isinstance(run_payload, dict):
-                return
-            for key in ("message", "summary"):
-                summary = run_payload.get(key)
-                if isinstance(summary, dict):
-                    run_payload[key] = {
-                        item_key: ("" if item_key == "message" else value)
-                        for item_key, value in summary.items()
-                        if item_key
-                        in {
-                            "all",
-                            "add",
-                            "update",
-                            "delete",
-                            "association",
-                            "add_error",
-                            "add_success",
-                            "update_error",
-                            "update_success",
-                            "delete_error",
-                            "delete_success",
-                            "association_error",
-                            "association_success",
-                            "message",
-                            "last_time",
-                        }
-                    }
-            if "error_message" in run_payload:
-                run_payload["error_message"] = ""
-
-        if isinstance(projected, dict):
-            projected["detail"] = count_only_detail(projected.get("detail"))
-            strip_free_text(projected)
-            run = projected.get("run")
-            if isinstance(run, dict):
-                run["detail"] = count_only_detail(run.get("detail"))
-                strip_free_text(run)
-        return projected
+    MAX_SAFE_COUNT = 10_000_000
+    COUNT_FIELDS = (
+        "all",
+        "add",
+        "update",
+        "delete",
+        "association",
+        "add_error",
+        "add_success",
+        "update_error",
+        "update_success",
+        "delete_error",
+        "delete_success",
+        "association_error",
+        "association_success",
+    )
+    RUN_STATUSES = {
+        "running",
+        "waiting_sync",
+        "submitted",
+        "success",
+        "partial_success",
+        "blocked",
+        "failed",
+        "timeout",
+        "unexecuted",
+        "error",
+        "writing",
+        "force_stop",
+        "unknown",
+    }
+    HEALTH_STATUSES = {
+        "reconciling",
+        "healthy",
+        "degraded",
+        "disabled",
+        "waiting_sync",
+        "unknown",
+    }
+    TIME_FORMAT = "%Y-%m-%d %H:%M:%S%z"
 
     @classmethod
-    def _project_read_payload(cls, request, payload):
+    def _safe_count(cls, value):
+        if isinstance(value, bool) or not isinstance(value, int):
+            return 0
+        return value if 0 <= value <= cls.MAX_SAFE_COUNT else 0
+
+    @classmethod
+    def _safe_id(cls, value):
+        if isinstance(value, bool) or not isinstance(value, int):
+            return None
+        return value if 0 < value <= 2 ** 63 - 1 else None
+
+    @classmethod
+    def _safe_time(cls, value):
+        if not isinstance(value, str):
+            return ""
+        try:
+            parsed = datetime.strptime(value, cls.TIME_FORMAT)
+        except ValueError:
+            return ""
+        return value if parsed.strftime(cls.TIME_FORMAT) == value else ""
+
+    @staticmethod
+    def _safe_choice(value, allowed, default=None):
+        return value if isinstance(value, str) and value in allowed else default
+
+    @staticmethod
+    def _safe_reason_code(value):
+        if isinstance(value, str) and re.fullmatch(r"[A-Z0-9_]{0,64}", value):
+            return value
+        return ""
+
+    @classmethod
+    def _safe_summary(cls, summary):
+        source = summary if isinstance(summary, dict) else {}
+        result = {field: cls._safe_count(source.get(field)) for field in cls.COUNT_FIELDS}
+        result["message"] = ""
+        result["last_time"] = cls._safe_time(source.get("last_time"))
+        return result
+
+    @classmethod
+    def _safe_detail(cls, detail):
+        source = detail if isinstance(detail, dict) else {}
+        result = {}
+        for name in ("add", "update", "delete", "relation", "raw_data"):
+            bucket = source.get(name)
+            count = cls._safe_count(bucket.get("count")) if isinstance(bucket, dict) else 0
+            result[name] = {"data": [], "count": count}
+        result["todo"] = []
+        return result
+
+    @classmethod
+    def _safe_run(cls, payload):
+        source = payload if isinstance(payload, dict) else {}
+        return {
+            "id": cls._safe_id(source.get("id")),
+            "task_id": cls._safe_id(source.get("task_id")),
+            "run_type": cls._safe_choice(source.get("run_type"), {"sync", "collect"}),
+            "status": cls._safe_choice(source.get("status"), cls.RUN_STATUSES),
+            "reason_code": cls._safe_reason_code(source.get("reason_code")),
+            "started_at": cls._safe_time(source.get("started_at")),
+            "submitted_at": cls._safe_time(source.get("submitted_at")),
+            "finished_at": cls._safe_time(source.get("finished_at")),
+            "deadline_at": cls._safe_time(source.get("deadline_at")),
+            "message": cls._safe_summary(source.get("message")),
+            "summary": cls._safe_summary(source.get("summary")),
+            "detail": cls._safe_detail(source.get("detail")),
+            "error_message": "",
+        }
+
+    @classmethod
+    def _safe_task(cls, payload):
+        source = payload if isinstance(payload, dict) else {}
+        health = source.get("health") if isinstance(source.get("health"), dict) else {}
+        return {
+            "id": cls._safe_id(source.get("id")),
+            "is_builtin": source.get("is_builtin") if isinstance(source.get("is_builtin"), bool) else False,
+            "auto_sync_enabled": source.get("auto_sync_enabled") if isinstance(source.get("auto_sync_enabled"), bool) else False,
+            "auto_collect_enabled": source.get("auto_collect_enabled") if isinstance(source.get("auto_collect_enabled"), bool) else False,
+            "sync_interval_minutes": source.get("sync_interval_minutes")
+            if type(source.get("sync_interval_minutes")) is int and 1 <= source.get("sync_interval_minutes") <= 1440
+            else 0,
+            "collect_interval_minutes": source.get("collect_interval_minutes")
+            if type(source.get("collect_interval_minutes")) is int and 1 <= source.get("collect_interval_minutes") <= 1440
+            else 0,
+            "version": cls._safe_count(source.get("version")),
+            "schedule_status": cls._safe_choice(source.get("schedule_status"), cls.HEALTH_STATUSES, ""),
+            "node_config_status": cls._safe_choice(source.get("node_config_status"), cls.HEALTH_STATUSES, ""),
+            "last_reconciled_at": cls._safe_time(source.get("last_reconciled_at")),
+            "last_sync_at": cls._safe_time(source.get("last_sync_at")),
+            "last_collect_at": cls._safe_time(source.get("last_collect_at")),
+            "health": {
+                "schedule_status": cls._safe_choice(health.get("schedule_status"), cls.HEALTH_STATUSES, ""),
+                "node_config_status": cls._safe_choice(health.get("node_config_status"), cls.HEALTH_STATUSES, ""),
+                "last_reconciled_at": cls._safe_time(health.get("last_reconciled_at")),
+                "reason_code": cls._safe_reason_code(health.get("reason_code")),
+                "message": "",
+            },
+        }
+
+    @classmethod
+    def _safe_display(cls, payload):
+        source = payload if isinstance(payload, dict) else {}
+        return {
+            "display_source": cls._safe_choice(source.get("display_source"), {"sync", "collect", "sync_fallback", "none"}, "none",),
+            "display_schema": "host_collect",
+            "message": cls._safe_summary(source.get("message")),
+            "summary": cls._safe_summary(source.get("summary")),
+            "detail": cls._safe_detail(source.get("detail")),
+            "run": cls._safe_run(source.get("run")),
+            "task": cls._safe_task(source.get("task")),
+        }
+
+    @classmethod
+    def _project_read_payload(cls, request, payload, *, display=False):
         if request.user.is_superuser:
             return payload
-        return cls._safe_count_only_payload(payload)
+        return cls._safe_display(payload) if display else cls._safe_run(payload)
 
     @action(methods=["get", "put"], detail=False, url_path="task")
     def task(self, request, *args, **kwargs):
@@ -106,7 +201,7 @@ class NodeMgmtSyncViewSet(AuthViewSet):
     @action(methods=["get"], detail=False, url_path="task/display")
     def display(self, request, *args, **kwargs):
         payload = NodeMgmtSyncService.get_display_payload()
-        return WebUtils.response_success(self._project_read_payload(request, payload))
+        return WebUtils.response_success(self._project_read_payload(request, payload, display=True))
 
     @HasPermission("auto_collection-Execute")
     @action(methods=["post"], detail=False, url_path="task/run_sync")
