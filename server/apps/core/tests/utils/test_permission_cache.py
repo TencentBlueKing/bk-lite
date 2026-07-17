@@ -83,6 +83,11 @@ class TestKeyDerivation:
         padding = "=" * (-len(encoded_dimensions) % 4)
         assert json.loads(base64.urlsafe_b64decode(encoded_dimensions + padding)) == [0, 1, "cmdb", "view", False]
 
+    def test_cache_key_separates_query_scopes(self):
+        app_key = pc._get_cache_key("alice", "domain.com", 1, "log", "policy", query_scope="app")
+        module_key = pc._get_cache_key("alice", "domain.com", 1, "log", "policy", query_scope="module")
+        assert app_key != module_key
+
     def test_token_info_key_format(self):
         assert pc._get_token_info_key("u", "d") == "token_info:u:d:v0"
 
@@ -140,6 +145,26 @@ class TestPermissionRulesCache:
         data = {"team": [1], "instance": []}
         pc.set_cached_permission_rules("u", "domain.com", 1, "cmdb", "view", data)
         assert pc.get_cached_permission_rules("u", "domain.com", 1, "cmdb", "view") == data
+
+    def test_query_scopes_do_not_share_cached_payloads(self):
+        app_data = {"team": [1], "instance": []}
+        module_data = {"result": True, "data": {"1": app_data}, "team": [1]}
+        pc.set_cached_permission_rules("u", "domain.com", 1, "log", "policy", app_data)
+        pc.set_cached_permission_rules(
+            "u",
+            "domain.com",
+            1,
+            "log",
+            "policy",
+            module_data,
+            query_scope="module",
+        )
+
+        assert pc.get_cached_permission_rules("u", "domain.com", 1, "log", "policy") == app_data
+        assert (
+            pc.get_cached_permission_rules("u", "domain.com", 1, "log", "policy", query_scope="module")
+            == module_data
+        )
 
     def test_set_maintains_key_index_on_non_pattern_backend(self):
         pc.set_cached_permission_rules("u", "domain.com", 1, "cmdb", "view", {"team": []})
