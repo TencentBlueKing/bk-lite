@@ -3,6 +3,7 @@
 from unittest import mock
 
 import pytest
+from django.utils import timezone
 
 from apps.cmdb.models import NodeMgmtSyncConfig, NodeMgmtSyncRun
 from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncService
@@ -61,6 +62,22 @@ def test_node_source_empty_is_blocked_without_advancing_last_sync(mocker, config
     assert run.detail_json["invalid_node_count"] == 0
     assert config.last_sync_at is None
     assert NodeMgmtSyncService._has_current_successful_sync(config) is False
+
+    NodeMgmtSyncRun.objects.create(
+        task=config,
+        run_type=NodeMgmtSyncRun.RUN_TYPE_SYNC,
+        status=NodeMgmtSyncRun.STATUS_PARTIAL_SUCCESS,
+        detail_json={"config_version": config.version},
+    )
+    NodeMgmtSyncRun.objects.create(
+        task=config,
+        run_type=NodeMgmtSyncRun.RUN_TYPE_SYNC,
+        status=NodeMgmtSyncRun.STATUS_FAILED,
+        reason_code="RUN_FAILED",
+        detail_json={"config_version": config.version},
+    )
+
+    assert NodeMgmtSyncService._has_current_successful_sync(config) is True
 
 
 @pytest.mark.django_db
@@ -155,3 +172,58 @@ def test_full_retry_reloads_schema_once_for_each_run(mocker, config):
     assert runs[1].detail_json["raw_data"]["data"][0]["os_type"] == "linux-v2"
     assert search_model.call_count == 2
     assert resolve_options.call_count == 2
+
+
+@pytest.mark.django_db
+def test_empty_source_remains_authoritative_after_newer_non_authoritative_noise(config):
+    NodeMgmtSyncRun.objects.create(
+        task=config,
+        run_type=NodeMgmtSyncRun.RUN_TYPE_SYNC,
+        status=NodeMgmtSyncRun.STATUS_SUCCESS,
+        detail_json={"config_version": config.version},
+    )
+    NodeMgmtSyncRun.objects.create(
+        task=config,
+        run_type=NodeMgmtSyncRun.RUN_TYPE_SYNC,
+        status=NodeMgmtSyncRun.STATUS_BLOCKED,
+        reason_code="NODE_SOURCE_EMPTY",
+        detail_json={"config_version": config.version},
+    )
+    for status, reason_code in (
+        (NodeMgmtSyncRun.STATUS_BLOCKED, "RUN_ALREADY_ACTIVE"),
+        (NodeMgmtSyncRun.STATUS_FAILED, "RUN_FAILED"),
+        (NodeMgmtSyncRun.STATUS_TIMEOUT, "RUN_TIMEOUT"),
+    ):
+        NodeMgmtSyncRun.objects.create(
+            task=config,
+            run_type=NodeMgmtSyncRun.RUN_TYPE_SYNC,
+            status=status,
+            reason_code=reason_code,
+            detail_json={"config_version": config.version},
+        )
+
+    assert NodeMgmtSyncService._has_current_successful_sync(config) is False
+
+
+@pytest.mark.django_db
+def test_authoritative_sync_tie_is_broken_by_primary_key(config):
+    same_time = timezone.now()
+    success = NodeMgmtSyncRun.objects.create(
+        task=config,
+        run_type=NodeMgmtSyncRun.RUN_TYPE_SYNC,
+        status=NodeMgmtSyncRun.STATUS_PARTIAL_SUCCESS,
+        detail_json={"config_version": config.version},
+    )
+    empty = NodeMgmtSyncRun.objects.create(
+        task=config,
+        run_type=NodeMgmtSyncRun.RUN_TYPE_SYNC,
+        status=NodeMgmtSyncRun.STATUS_BLOCKED,
+        reason_code="NO_VALID_NODES",
+        detail_json={"config_version": config.version},
+    )
+    NodeMgmtSyncRun.objects.filter(pk__in=(success.pk, empty.pk)).update(
+        created_at=same_time
+    )
+
+    assert empty.pk > success.pk
+    assert NodeMgmtSyncService._has_current_successful_sync(config) is False

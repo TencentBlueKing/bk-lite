@@ -1734,24 +1734,30 @@ class NodeMgmtSyncService:
 
     @classmethod
     def _has_current_successful_sync(cls, task_config: NodeMgmtSyncConfig) -> bool:
-        latest_sync_run = task_config.runs.filter(run_type=NodeMgmtSyncRun.RUN_TYPE_SYNC).order_by("-created_at").first()
-        if latest_sync_run and latest_sync_run.reason_code in (
-            cls.REASON_NODE_SOURCE_EMPTY,
-            cls.REASON_NO_VALID_NODES,
-        ):
+        authoritative_run = (
+            task_config.runs.filter(run_type=NodeMgmtSyncRun.RUN_TYPE_SYNC)
+            .filter(
+                Q(
+                    status__in=(
+                        NodeMgmtSyncRun.STATUS_SUCCESS,
+                        NodeMgmtSyncRun.STATUS_PARTIAL_SUCCESS,
+                    )
+                )
+                | Q(
+                    status=NodeMgmtSyncRun.STATUS_BLOCKED,
+                    reason_code__in=(
+                        cls.REASON_NODE_SOURCE_EMPTY,
+                        cls.REASON_NO_VALID_NODES,
+                    ),
+                )
+            )
+            .order_by("-created_at", "-pk")
+            .first()
+        )
+        if authoritative_run is None or authoritative_run.status == NodeMgmtSyncRun.STATUS_BLOCKED:
             return False
-        successful_runs = task_config.runs.filter(
-            run_type=NodeMgmtSyncRun.RUN_TYPE_SYNC,
-            status__in=(
-                NodeMgmtSyncRun.STATUS_SUCCESS,
-                NodeMgmtSyncRun.STATUS_PARTIAL_SUCCESS,
-            ),
-        ).order_by("-created_at")
-        for sync_run in successful_runs:
-            detail = sync_run.detail_json if isinstance(sync_run.detail_json, dict) else {}
-            if detail.get("config_version") == task_config.version:
-                return True
-        return False
+        detail = authoritative_run.detail_json if isinstance(authoritative_run.detail_json, dict) else {}
+        return detail.get("config_version") == task_config.version
 
     @classmethod
     def _upsert_waiting_sync_run_locked(
