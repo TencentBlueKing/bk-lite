@@ -18,7 +18,10 @@ from django.utils import timezone
 
 from apps.cmdb.constants.constants import CollectRunStatusType
 from apps.cmdb.models.node_mgmt_sync import NodeMgmtSyncConfig, NodeMgmtSyncRun
-from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncService as S
+from apps.cmdb.services.node_mgmt_sync_service import (
+    NodeMgmtSyncService as S,
+    _get_bounded_positive_int_env,
+)
 
 
 class TestPureHelpers:
@@ -28,6 +31,12 @@ class TestPureHelpers:
         assert S._safe_count("3") == 3
         assert S._safe_count(None) == 0
         assert S._safe_count("bad") == 0
+
+    def test_node_budget_env_只能降低不能突破硬上限(self, monkeypatch):
+        monkeypatch.setenv("TEST_NODE_BUDGET", "999999")
+        assert _get_bounded_positive_int_env("TEST_NODE_BUDGET", 100, 100) == 100
+        monkeypatch.setenv("TEST_NODE_BUDGET", "40")
+        assert _get_bounded_positive_int_env("TEST_NODE_BUDGET", 100, 100) == 40
 
     def test_safe_int(self):
         assert S._safe_int("9") == 9
@@ -341,6 +350,44 @@ class TestRpcWrappers:
             S._fetch_node_mgmt_pages({}, max_pages=2)
 
         assert rpc.node_list.call_count == 2
+
+    def test_fetch_node_mgmt_pages_单页节点数超预算时拒绝结果(self, mocker):
+        rpc = mocker.MagicMock()
+        rpc.node_list.return_value = {
+            "count": 3,
+            "nodes": [{"id": "n-1"}, {"id": "n-2"}, {"id": "n-3"}],
+        }
+        mocker.patch.object(S, "MAX_NODE_COUNT", 2)
+        mocker.patch.object(S, "_node_mgmt_client", return_value=rpc)
+
+        with pytest.raises(RuntimeError, match="^NODE_COUNT_LIMIT_EXCEEDED$"):
+            S._fetch_node_mgmt_pages({"page_size": 3})
+
+    def test_fetch_node_mgmt_pages_跨页累计节点数超预算时停止翻页(self, mocker):
+        rpc = mocker.MagicMock()
+        rpc.node_list.side_effect = [
+            {"count": 4, "nodes": [{"id": "n-1"}, {"id": "n-2"}]},
+            {"count": 4, "nodes": [{"id": "n-3"}, {"id": "n-4"}]},
+        ]
+        mocker.patch.object(S, "MAX_NODE_COUNT", 3)
+        mocker.patch.object(S, "_node_mgmt_client", return_value=rpc)
+
+        with pytest.raises(RuntimeError, match="^NODE_COUNT_LIMIT_EXCEEDED$"):
+            S._fetch_node_mgmt_pages({"page_size": 2})
+
+        assert rpc.node_list.call_count == 2
+
+    def test_fetch_node_mgmt_pages_单节点字节超预算时拒绝结果(self, mocker):
+        rpc = mocker.MagicMock()
+        rpc.node_list.return_value = {
+            "count": 1,
+            "nodes": [{"id": "n-1", "name": "超大节点" * 20}],
+        }
+        mocker.patch.object(S, "MAX_NODE_BYTES", 32)
+        mocker.patch.object(S, "_node_mgmt_client", return_value=rpc)
+
+        with pytest.raises(RuntimeError, match="^NODE_BYTES_LIMIT_EXCEEDED$"):
+            S._fetch_node_mgmt_pages({})
 
     def test_fetch_node_mgmt_pages_截止时间到期不发起RPC(self, mocker):
         rpc = mocker.MagicMock()

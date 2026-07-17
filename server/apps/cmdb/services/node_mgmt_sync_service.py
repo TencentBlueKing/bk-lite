@@ -30,6 +30,10 @@ def _get_positive_int_env(name, default):
     return max(1, value)
 
 
+def _get_bounded_positive_int_env(name, default, hard_max):
+    return min(_get_positive_int_env(name, default), hard_max)
+
+
 class NodeMgmtSyncError(RuntimeError):
     """节点管理同步的稳定、可安全外显错误。"""
 
@@ -73,6 +77,18 @@ class NodeMgmtSyncService:
     NODE_MGMT_SYNC_PAGE_SIZE = _get_positive_int_env("CMDB_NODE_MGMT_SYNC_PAGE_SIZE", 500)
     NODE_PAGE_SIZE = 500
     MAX_NODE_PAGES = 100
+    HARD_MAX_NODE_COUNT = 100_000
+    HARD_MAX_NODE_BYTES = 128 * 1024 * 1024
+    MAX_NODE_COUNT = _get_bounded_positive_int_env(
+        "CMDB_NODE_MGMT_MAX_NODE_COUNT",
+        HARD_MAX_NODE_COUNT,
+        HARD_MAX_NODE_COUNT,
+    )
+    MAX_NODE_BYTES = _get_bounded_positive_int_env(
+        "CMDB_NODE_MGMT_MAX_NODE_BYTES",
+        HARD_MAX_NODE_BYTES,
+        HARD_MAX_NODE_BYTES,
+    )
     MAX_EXISTING_HOSTS = _get_positive_int_env("CMDB_NODE_MGMT_MAX_EXISTING_HOSTS", 100_000)
     MAX_EXISTING_HOST_BYTES = _get_positive_int_env("CMDB_NODE_MGMT_MAX_EXISTING_HOST_BYTES", 128 * 1024 * 1024)
     EXISTING_HOST_PAGE_SIZE = _get_positive_int_env("CMDB_NODE_MGMT_EXISTING_HOST_PAGE_SIZE", 500)
@@ -758,6 +774,8 @@ class NodeMgmtSyncService:
         max_pages = min(max(1, int(max_pages)), cls.MAX_NODE_PAGES)
         base_payload = {**query, **cls.SYSTEM_NODE_QUERY, "page_size": page_size}
         nodes: list[dict[str, Any]] = []
+        encoded_bytes = 2  # JSON 数组的方括号；节点正文使用流式编码，避免整页二次拷贝。
+        encoder = json.JSONEncoder(ensure_ascii=False, separators=(",", ":"))
         client = cls._node_mgmt_client()
         for page in range(1, max_pages + 1):
             if run is not None:
@@ -778,6 +796,15 @@ class NodeMgmtSyncService:
                 cls.heartbeat_run(run)
             cls._raise_for_node_response(rows)
             page_nodes = cls._extract_nodes(rows)
+            if len(nodes) + len(page_nodes) > cls.MAX_NODE_COUNT:
+                raise NodeMgmtSyncError("NODE_COUNT_LIMIT_EXCEEDED")
+            for node in page_nodes:
+                if encoded_bytes > 2:
+                    encoded_bytes += 1
+                for chunk in encoder.iterencode(node):
+                    encoded_bytes += len(chunk.encode("utf-8"))
+                    if encoded_bytes > cls.MAX_NODE_BYTES:
+                        raise NodeMgmtSyncError("NODE_BYTES_LIMIT_EXCEEDED")
             nodes.extend(page_nodes)
             count = cls._safe_count(rows.get("count") if isinstance(rows, dict) else len(page_nodes))
             if not page_nodes or (count > 0 and len(nodes) >= count) or len(page_nodes) < page_size:
