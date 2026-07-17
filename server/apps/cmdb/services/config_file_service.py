@@ -56,7 +56,8 @@ class ConfigFileService(object):
         if not task_id:
             raise BaseAppException("配置文件采集回调缺少任务 ID")
 
-        task = CollectModels.objects.filter(id=task_id).first()
+        # 配置文件回调属于普通采集入口，不能按可枚举 ID 改写专用编排器维护的系统任务。
+        task = CollectModels.objects.filter(id=task_id, is_system=False).first()
         if not task:
             raise BaseAppException(f"配置文件采集任务不存在: {task_id}")
 
@@ -94,7 +95,7 @@ class ConfigFileService(object):
             stale_callback = cls._is_stale_callback(task, version)
 
             with transaction.atomic():
-                task = CollectModels.objects.select_for_update().get(id=task.id)
+                task = CollectModels.objects.select_for_update().get(id=task.id, is_system=False)
                 execution_error = cls._get_execution_rejection(task, payload)
                 if execution_error:
                     return {
