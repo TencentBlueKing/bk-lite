@@ -6,7 +6,7 @@ import pytest
 from django.utils import timezone
 
 from apps.cmdb.models.collect_model import CollectModels
-from apps.cmdb.models.node_mgmt_sync import NodeMgmtSyncConfig, NodeMgmtSyncRegionState
+from apps.cmdb.models.node_mgmt_sync import NodeMgmtSyncConfig, NodeMgmtSyncRegionState, NodeMgmtSyncRun
 from apps.cmdb.services.collect_service import CollectModelService
 from apps.cmdb.services.node_mgmt_sync_reconciler import NodeMgmtSyncReconciler
 from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncService
@@ -52,7 +52,7 @@ def _reconcile(config):
 
 
 def _state(config, region_id=7):
-    return NodeMgmtSyncRegionState.objects.get(config=config, config_version=config.version, cloud_region_id=str(region_id),)
+    return NodeMgmtSyncRegionState.objects.get(config=config, scope_key=f"node-config:region:{region_id}")
 
 
 def test_disable_collect_only_deletes_node_params(config, region_task):
@@ -70,7 +70,40 @@ def test_disable_collect_only_deletes_node_params(config, region_task):
     assert result.node_config_status == "disabled"
     assert config.node_config_status == "disabled"
     assert state.node_config_status == "disabled"
-    assert state.scope_key == f"config:{config.version}:region:7"
+    assert state.scope_key == "node-config:region:7"
+
+
+def test_config_versions_share_region_claim_and_new_disable_deletes_after_old_push(config, region_task):
+    effects = []
+
+    def push(_task):
+        effects.append("push_start")
+        NodeMgmtSyncConfig.objects.filter(pk=config.pk).update(
+            version=config.version + 1,
+            auto_collect_enabled=False,
+        )
+        newer = NodeMgmtSyncConfig.objects.get(pk=config.pk)
+        nested = _reconcile(newer)
+        assert nested.node_config_status in ("unknown", "reconciling")
+        effects.append("push_finish")
+
+    with patch.object(
+        CollectModelService,
+        "delete_butch_node_params",
+        side_effect=lambda _task: effects.append("delete"),
+    ):
+        with patch.object(CollectModelService, "push_butch_node_params", side_effect=push):
+            _reconcile(config)
+            newer = NodeMgmtSyncConfig.objects.get(pk=config.pk)
+            result = _reconcile(newer)
+
+    assert effects == ["delete", "push_start", "push_finish", "delete"]
+    assert result.node_config_status == "disabled"
+    assert NodeMgmtSyncRegionState.objects.filter(config=config, cloud_region_id="7").count() == 1
+    state = _state(newer)
+    assert state.scope_key == "node-config:region:7"
+    assert state.config_version == newer.version
+    assert state.node_config_status == "disabled"
 
 
 def test_disable_collect_restarts_old_push_pending_from_delete(config, region_task):
@@ -140,6 +173,32 @@ def test_enable_collect_deletes_then_pushes(config, region_task):
     assert _state(config).node_config_status == "healthy"
 
 
+def test_node_config_scope_does_not_reuse_collect_run_region_history(config, region_task):
+    run = NodeMgmtSyncRun.objects.create(
+        task=config,
+        run_type=NodeMgmtSyncRun.RUN_TYPE_COLLECT,
+        status=NodeMgmtSyncRun.STATUS_SUCCESS,
+    )
+    history = NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        run=run,
+        config_version=config.version,
+        cloud_region_id="7",
+        collect_task=region_task,
+        scope_key=f"collect-run:{run.pk}:region:7",
+        status="success",
+    )
+
+    with patch.object(CollectModelService, "delete_butch_node_params"):
+        with patch.object(CollectModelService, "push_butch_node_params"):
+            _reconcile(config)
+
+    history.refresh_from_db()
+    assert history.scope_key == f"collect-run:{run.pk}:region:7"
+    assert NodeMgmtSyncRegionState.objects.filter(config=config, cloud_region_id="7").count() == 2
+    assert _state(config).node_config_status == "healthy"
+
+
 def test_delete_failure_stays_delete_pending_and_is_retryable(config, region_task):
     delete_calls = []
     with patch.object(CollectModelService, "delete_butch_node_params", side_effect=[RuntimeError("delete-secret"), None],) as delete:
@@ -168,6 +227,46 @@ def test_push_failure_stays_push_pending_and_retries_from_push(config, region_ta
     assert pending_state.reason_code == "NODE_CONFIG_PUSH_FAILED"
     assert "push-secret" not in pending_state.error_message
     delete.assert_called_once_with(region_task)
+    assert push.call_count == 2
+    assert second.node_config_status == "healthy"
+    assert _state(config).node_config_status == "healthy"
+
+
+def test_sync_task_update_push_failure_is_retried_by_reconciler(config, region_task):
+    NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=config.version,
+        cloud_region_id="7",
+        collect_task=region_task,
+        scope_key="node-config:region:7",
+        node_config_status="healthy",
+    )
+
+    with patch.object(NodeMgmtSyncService, "get_task", return_value=config):
+        with patch.object(NodeMgmtSyncService, "_should_repush_collect_task_node_params", return_value=True):
+            with patch.object(CollectModelService, "delete_butch_node_params") as delete:
+                with patch.object(
+                    CollectModelService,
+                    "push_butch_node_params",
+                    side_effect=[RuntimeError("push-secret"), None],
+                ) as push:
+                    NodeMgmtSyncService._ensure_region_collect_task(
+                        cloud_region_id=7,
+                        cloud_region_name="region-7",
+                        access_point={"id": 1},
+                        team=[1],
+                        instances=[{"_id": 1}],
+                        interval_minutes=30,
+                    )
+                    delete.assert_not_called()
+                    push.assert_not_called()
+
+                    first = _reconcile(config)
+                    assert first.node_config_status == "degraded"
+                    assert _state(config).node_config_status == "push_pending"
+                    second = _reconcile(config)
+
+    delete.assert_called_once()
     assert push.call_count == 2
     assert second.node_config_status == "healthy"
     assert _state(config).node_config_status == "healthy"

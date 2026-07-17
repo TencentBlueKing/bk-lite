@@ -953,20 +953,18 @@ class NodeMgmtSyncService:
             task.save()
             if run is not None:
                 cls.heartbeat_run(run)
-            if (
-                    auto_collect_enabled
-                    and CollectModelService.should_sync_node_params(task)
-                    and cls._should_repush_collect_task_node_params(old_task, task)
-            ):
-                logger.info("[NodeMgmtSync] 采集任务参数变更, 重新推送节点参数, task_id=%d", task.id)
-                if run is not None:
-                    cls.heartbeat_run(run)
-                CollectModelService.delete_butch_node_params(old_task)
-                if run is not None:
-                    cls.heartbeat_run(run)
-                CollectModelService.push_butch_node_params(task)
-                if run is not None:
-                    cls.heartbeat_run(run)
+            needs_delivery = (
+                auto_collect_enabled
+                and CollectModelService.should_sync_node_params(task)
+                and cls._should_repush_collect_task_node_params(old_task, task)
+            )
+            if needs_delivery:
+                from apps.cmdb.services.node_mgmt_sync_reconciler import NodeMgmtSyncReconciler
+
+                logger.info("[NodeMgmtSync] 采集任务参数变更, 登记节点参数交付, task_id=%d", task.id)
+                NodeMgmtSyncReconciler.mark_region_delivery_pending(
+                    cls.get_task(), cloud_region_id=cloud_region_id, collect_task=task,
+                )
             return task
         logger.info("[NodeMgmtSync] 创建新采集任务, cloud_region_id=%d, cloud_region_name=%s", cloud_region_id, cloud_region_name)
         if run is not None:
@@ -986,12 +984,12 @@ class NodeMgmtSyncService:
             cls.heartbeat_run(run)
         logger.info("[NodeMgmtSync] 采集任务创建成功, task_id=%d, cloud_region_id=%d", task.id, cloud_region_id)
         if auto_collect_enabled and CollectModelService.should_sync_node_params(task):
-            logger.debug("[NodeMgmtSync] 推送新任务节点参数, task_id=%d", task.id)
-            if run is not None:
-                cls.heartbeat_run(run)
-            CollectModelService.push_butch_node_params(task)
-            if run is not None:
-                cls.heartbeat_run(run)
+            from apps.cmdb.services.node_mgmt_sync_reconciler import NodeMgmtSyncReconciler
+
+            logger.debug("[NodeMgmtSync] 登记新任务节点参数交付, task_id=%d", task.id)
+            NodeMgmtSyncReconciler.mark_region_delivery_pending(
+                cls.get_task(), cloud_region_id=cloud_region_id, collect_task=task,
+            )
         return task
 
     @classmethod
@@ -1009,8 +1007,9 @@ class NodeMgmtSyncService:
         return result
 
     @classmethod
-    def _query_region_host_instances(cls, cloud_region_id: int, region_nodes: list[dict[str, Any]]) -> list[
-        dict[str, Any]]:
+    def _query_region_host_instances(
+        cls, cloud_region_id: int, region_nodes: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
         existing_map = cls._load_existing_host_map(task_id=0)
         region_instances: list[dict[str, Any]] = []
         for node in region_nodes:
@@ -1582,6 +1581,12 @@ class NodeMgmtSyncService:
             status=final_status,
             summary_json=message,
             detail_json=detail,
+        )
+        from apps.cmdb.services.node_mgmt_sync_reconciler import NodeMgmtSyncReconciler
+
+        current_config = cls.get_task()
+        NodeMgmtSyncReconciler.reconcile(
+            current_config, reconcile_node_configs=current_config.auto_sync_enabled,
         )
         logger.info("[NodeMgmtSync] ========== 同步完成 ==========")
         logger.info("[NodeMgmtSync] 同步结果: status=%s, all=%d, add=%d, update=%d, delete=%d, todo_count=%d",

@@ -5,7 +5,7 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
 
-from apps.cmdb.models.node_mgmt_sync import NodeMgmtSyncRegionState
+from apps.cmdb.models.node_mgmt_sync import NodeMgmtSyncRegionState, NodeMgmtSyncRun
 from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncService
 from apps.cmdb.tasks.node_mgmt_sync import (
     RECOVERY_PERIODIC_TASK_NAME,
@@ -143,6 +143,61 @@ def test_runtime_recovery_does_not_repush_healthy_node_config(mocker):
     mocker.patch.object(NodeMgmtSyncService, "recover_stale_runs", return_value=0)
     mocker.patch.object(NodeMgmtSyncService, "refresh_submitted_collect_runs", return_value=0)
     reconcile = mocker.patch("apps.cmdb.services.node_mgmt_sync_reconciler.NodeMgmtSyncReconciler.reconcile", return_value=_healthy_result(),)
+
+    recover_node_mgmt_sync()
+
+    reconcile.assert_called_once_with(config, reconcile_node_configs=False)
+
+
+def test_runtime_recovery_reconciles_region_owned_by_older_config_version(mocker):
+    config = NodeMgmtSyncService.get_task()
+    config.version = 2
+    config.auto_collect_enabled = False
+    config.node_config_status = "healthy"
+    config.save(update_fields=["version", "auto_collect_enabled", "node_config_status", "updated_at"])
+    NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=1,
+        cloud_region_id="7",
+        scope_key="node-config:region:7",
+        node_config_status="healthy",
+    )
+    mocker.patch.object(NodeMgmtSyncService, "recover_stale_runs", return_value=0)
+    mocker.patch.object(NodeMgmtSyncService, "refresh_submitted_collect_runs", return_value=0)
+    reconcile = mocker.patch(
+        "apps.cmdb.services.node_mgmt_sync_reconciler.NodeMgmtSyncReconciler.reconcile",
+        return_value=_healthy_result(),
+    )
+
+    recover_node_mgmt_sync()
+
+    reconcile.assert_called_once_with(config, reconcile_node_configs=True)
+
+
+def test_runtime_recovery_ignores_old_collect_run_region_history(mocker):
+    config = NodeMgmtSyncService.get_task()
+    config.version = 2
+    config.node_config_status = "healthy"
+    config.save(update_fields=["version", "node_config_status", "updated_at"])
+    run = NodeMgmtSyncRun.objects.create(
+        task=config,
+        run_type=NodeMgmtSyncRun.RUN_TYPE_COLLECT,
+        status=NodeMgmtSyncRun.STATUS_SUCCESS,
+    )
+    NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        run=run,
+        config_version=1,
+        cloud_region_id="7",
+        scope_key=f"collect-run:{run.pk}:region:7",
+        status="success",
+    )
+    mocker.patch.object(NodeMgmtSyncService, "recover_stale_runs", return_value=0)
+    mocker.patch.object(NodeMgmtSyncService, "refresh_submitted_collect_runs", return_value=0)
+    reconcile = mocker.patch(
+        "apps.cmdb.services.node_mgmt_sync_reconciler.NodeMgmtSyncReconciler.reconcile",
+        return_value=_healthy_result(),
+    )
 
     recover_node_mgmt_sync()
 

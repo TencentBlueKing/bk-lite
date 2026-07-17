@@ -1,6 +1,7 @@
 from typing import Any
 
 from celery import shared_task
+from django.db.models import Q
 
 from apps.cmdb.models.node_mgmt_sync import NodeMgmtSyncRegionState
 from apps.cmdb.services.node_mgmt_sync_reconciler import NodeMgmtSyncReconciler
@@ -31,9 +32,16 @@ def recover_node_mgmt_sync() -> dict[str, Any]:
     recovered_runs = NodeMgmtSyncService.recover_stale_runs()
     refreshed_collect_runs = NodeMgmtSyncService.refresh_submitted_collect_runs()
     config = NodeMgmtSyncService.get_task()
-    has_recoverable_region = NodeMgmtSyncRegionState.objects.filter(
-        config=config, config_version=config.version, node_config_status__in=RECOVERABLE_NODE_CONFIG_STATUSES,
-    ).exists()
+    region_states = NodeMgmtSyncRegionState.objects.filter(config=config).filter(
+        Q(scope_key__startswith="node-config:") | Q(scope_key__startswith="config:")
+    )
+    has_recoverable_region = (
+        region_states.filter(
+            config_version=config.version,
+            node_config_status__in=RECOVERABLE_NODE_CONFIG_STATUSES,
+        ).exists()
+        or region_states.exclude(config_version=config.version).exists()
+    )
     result = NodeMgmtSyncReconciler.reconcile(config, reconcile_node_configs=(config.node_config_status == "degraded" or has_recoverable_region),)
     return {
         "recovered_runs": recovered_runs,

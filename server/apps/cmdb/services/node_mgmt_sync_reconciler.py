@@ -40,6 +40,59 @@ class NodeConfigReconcileResult:
 class NodeMgmtSyncReconciler:
     NODE_CONFIG_CLAIM_TIMEOUT = timedelta(minutes=5)
 
+    @staticmethod
+    def _node_config_scope(cloud_region_id) -> str:
+        return f"node-config:region:{cloud_region_id}"
+
+    @classmethod
+    def _get_or_create_region_state(cls, config, cloud_region_id, collect_task):
+        """按区域复用唯一交付状态；旧的 version scope 在首次触达时原位迁移。"""
+        scope_key = cls._node_config_scope(cloud_region_id)
+        state = NodeMgmtSyncRegionState.objects.filter(scope_key=scope_key).first()
+        if state is None:
+            state = (
+                NodeMgmtSyncRegionState.objects.filter(
+                    config=config,
+                    cloud_region_id=cloud_region_id,
+                    scope_key__startswith="config:",
+                )
+                .order_by("-config_version", "-id")
+                .first()
+            )
+        if state is None:
+            return NodeMgmtSyncRegionState.objects.get_or_create(
+                scope_key=scope_key,
+                defaults={
+                    "config": config,
+                    "config_version": config.version,
+                    "cloud_region_id": cloud_region_id,
+                    "collect_task": collect_task,
+                },
+            )
+        if state.scope_key != scope_key:
+            # scope 迁移不能刷新 lease 时间，否则会把原本可回收的陈旧 claim
+            # 伪装成仍在运行。
+            NodeMgmtSyncRegionState.objects.filter(pk=state.pk).update(scope_key=scope_key)
+            state.scope_key = scope_key
+        return state, False
+
+    @classmethod
+    def mark_region_delivery_pending(cls, config, *, cloud_region_id, collect_task) -> None:
+        """只登记交付意图，不在同步事务中执行远端 RPC。"""
+        state, _ = cls._get_or_create_region_state(config, str(cloud_region_id), collect_task)
+        if state.node_config_status.endswith("_in_progress"):
+            return
+        NodeMgmtSyncRegionState.objects.filter(pk=state.pk).update(
+            config=config,
+            config_version=config.version,
+            cloud_region_id=str(cloud_region_id),
+            collect_task=collect_task,
+            node_config_status="delete_pending",
+            reason_code="",
+            error_message="",
+            updated_at=timezone.now(),
+        )
+
     @classmethod
     def reconcile(cls, config, *, reconcile_node_configs: bool = False):
         try:
@@ -107,16 +160,8 @@ class NodeMgmtSyncReconciler:
                 continue
 
             valid_region_count += 1
-            state_defaults = {
-                "config": config,
-                "config_version": config.version,
-                "cloud_region_id": cloud_region_id,
-                "collect_task": collect_task,
-            }
-            state, created = NodeMgmtSyncRegionState.objects.get_or_create(
-                scope_key=f"config:{config.version}:region:{cloud_region_id}", defaults=state_defaults,
-            )
-            if not created:
+            state, created = cls._get_or_create_region_state(config, cloud_region_id, collect_task)
+            if not created and not state.node_config_status.endswith("_in_progress"):
                 NodeMgmtSyncRegionState.objects.filter(pk=state.pk).update(
                     config=config, config_version=config.version, cloud_region_id=cloud_region_id, collect_task=collect_task,
                 )

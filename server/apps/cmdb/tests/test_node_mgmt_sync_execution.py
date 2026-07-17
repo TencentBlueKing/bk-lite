@@ -10,6 +10,7 @@ from django.utils import timezone
 
 from apps.cmdb.models import NodeMgmtSyncConfig, NodeMgmtSyncRun
 from apps.cmdb.models.collect_model import CollectModels
+from apps.cmdb.services.node_mgmt_sync_reconciler import NodeMgmtSyncReconciler
 from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncError, NodeMgmtSyncService
 
 pytestmark = pytest.mark.django_db
@@ -417,7 +418,7 @@ def test_cloud_region_rpc_is_guarded_before_and_after(mocker):
     assert heartbeat.call_args_list == [mock.call(run), mock.call(run)]
 
 
-def test_existing_collect_task_writes_and_pushes_are_lease_guarded(mocker):
+def test_existing_collect_task_only_persists_delivery_intent(mocker):
     run = NodeMgmtSyncService.acquire_run("sync")
     collect_task = SimpleNamespace(id=21, instances=[], access_point=[], save=mocker.Mock(),)
     queryset = mocker.Mock()
@@ -429,6 +430,7 @@ def test_existing_collect_task_writes_and_pushes_are_lease_guarded(mocker):
     collect_service = SimpleNamespace(
         should_sync_node_params=mocker.Mock(return_value=True), delete_butch_node_params=mocker.Mock(), push_butch_node_params=mocker.Mock(),
     )
+    delivery = mocker.patch.object(NodeMgmtSyncReconciler, "mark_region_delivery_pending")
     heartbeat = mocker.patch.object(NodeMgmtSyncService, "heartbeat_run")
 
     with mock.patch.dict(
@@ -441,12 +443,13 @@ def test_existing_collect_task_writes_and_pushes_are_lease_guarded(mocker):
     assert result is collect_task
     collect_task.save.assert_called_once_with()
     collect_service.should_sync_node_params.assert_called_once_with(collect_task)
-    collect_service.delete_butch_node_params.assert_called_once()
-    collect_service.push_butch_node_params.assert_called_once_with(collect_task)
-    assert heartbeat.call_count == 6
+    collect_service.delete_butch_node_params.assert_not_called()
+    collect_service.push_butch_node_params.assert_not_called()
+    delivery.assert_called_once()
+    assert heartbeat.call_count == 3
 
 
-def test_new_collect_task_create_and_push_are_lease_guarded(mocker):
+def test_new_collect_task_only_persists_delivery_intent(mocker):
     run = NodeMgmtSyncService.acquire_run("sync")
     collect_task = SimpleNamespace(id=22)
     queryset = mocker.Mock()
@@ -454,6 +457,7 @@ def test_new_collect_task_create_and_push_are_lease_guarded(mocker):
     mocker.patch.object(CollectModels.objects, "filter", return_value=queryset)
     create = mocker.patch.object(CollectModels.objects, "create", return_value=collect_task,)
     collect_service = SimpleNamespace(should_sync_node_params=mocker.Mock(return_value=True), push_butch_node_params=mocker.Mock(),)
+    delivery = mocker.patch.object(NodeMgmtSyncReconciler, "mark_region_delivery_pending")
     heartbeat = mocker.patch.object(NodeMgmtSyncService, "heartbeat_run")
 
     with mock.patch.dict(
@@ -465,8 +469,9 @@ def test_new_collect_task_create_and_push_are_lease_guarded(mocker):
 
     assert result is collect_task
     create.assert_called_once()
-    collect_service.push_butch_node_params.assert_called_once_with(collect_task)
-    assert heartbeat.call_count == 5
+    collect_service.push_butch_node_params.assert_not_called()
+    delivery.assert_called_once()
+    assert heartbeat.call_count == 3
 
 
 def test_celery_entries_preserve_external_return_contracts(mocker):
