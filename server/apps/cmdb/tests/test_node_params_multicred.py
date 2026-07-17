@@ -91,10 +91,13 @@ def test_base_node_params_push_params_renders_template_with_default_filter():
 
     node = HostNodeParams(instance)
     result = node.push_params()
+    rendered_lines = {line.strip() for line in result[0]["content"].splitlines()}
 
     assert len(result) == 1
-    assert 'interval = "300s"' in result[0]["content"]
-    assert 'timeout = "60s"' in result[0]["content"]
+    assert node.custom_headers()["cmdbtimeout"] == "60"
+    assert 'interval = "300s"' in rendered_lines
+    assert 'timeout = "30s"' in rendered_lines
+    assert 'response_timeout = "30s"' in rendered_lines
     assert 'http_headers = {' in result[0]["content"]
 
 
