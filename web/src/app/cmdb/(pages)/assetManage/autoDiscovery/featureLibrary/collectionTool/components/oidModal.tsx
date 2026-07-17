@@ -1,10 +1,13 @@
 'use client';
 
 import React from 'react';
-import { Modal, Input, Form, Typography } from 'antd';
+import { Modal, Input, Form, Tooltip } from 'antd';
+import { QuestionCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 
-const { Text } = Typography;
+const LONG_TOOLTIP_OVERLAY_STYLE = {
+  maxWidth: 'min(520px, calc(100vw - 48px))',
+};
 
 interface OidModalProps {
   open: boolean;
@@ -54,7 +57,17 @@ const OidModal: React.FC<OidModalProps> = ({
     >
       <Form form={form} layout="vertical">
         <Form.Item
-          label={label || 'OID'}
+          label={(
+            <span>
+              {label || 'OID'}
+              <Tooltip
+                overlayStyle={LONG_TOOLTIP_OVERLAY_STYLE}
+                title={t('CollectTool.oidHint')}
+              >
+                <QuestionCircleOutlined className="ml-1 text-[var(--color-text-tertiary)]" />
+              </Tooltip>
+            </span>
+          )}
           name="oid"
           style={{ marginBottom: 8 }}
           rules={[
@@ -67,9 +80,6 @@ const OidModal: React.FC<OidModalProps> = ({
         >
           <Input placeholder={placeholder || t('CollectTool.oidPlaceholder')} />
         </Form.Item>
-        <Text type="secondary" className="block text-xs leading-5">
-          {t('CollectTool.oidHint')}
-        </Text>
       </Form>
     </Modal>
   );
