@@ -314,7 +314,7 @@ const buildNodeAttrs = (
       ry: 8,
       filter: {
         name: "dropShadow",
-        args: { dx: 0, dy: 8, blur: 12, color: "rgba(36,50,63,0.14)" },
+        args: { dx: 0, dy: 2, blur: 4, color: "rgba(36,50,63,0.08)" },
       },
     },
     topLine: {
@@ -564,24 +564,25 @@ const strokeFromStatus = (status?: "normal" | "critical" | "unknown") => {
   return "#64748b";
 };
 
+// 流动虚线:dasharray 5+3=8,与 index.module.scss 里 networkEdgeFlow 的
+// stroke-dashoffset 8→0 周期对齐,动画才能无缝循环;class 经 X6 特殊 attr
+// 挂到 line path 上(参考 topology 模块 edge-flow-animation 的做法)。
 const lineAttrsFromStatus = (
   status?: "normal" | "critical" | "unknown",
 ) => ({
   stroke: strokeFromStatus(status),
-  strokeWidth: status === "critical" ? 2.4 : 2.2,
+  strokeWidth: status === "critical" ? 2 : 1.8,
   strokeLinecap: "round",
   strokeLinejoin: "round",
-  strokeDasharray: "",
+  strokeDasharray: "5 3",
+  class: "network-edge-flow",
   targetMarker: {
     name: "block",
     size: 8,
   },
 });
 
-const pendingInterfaceSelectionLineAttrs = () => ({
-  ...lineAttrsFromStatus("unknown"),
-  strokeDasharray: "6 4",
-});
+const pendingInterfaceSelectionLineAttrs = () => lineAttrsFromStatus("unknown");
 
 const lineAttrsForLinkRuntime = (
   link: NetworkTopologyLink,
@@ -870,41 +871,40 @@ const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
       container: host,
       autoResize: true,
       background: {
-        color: "#f5f7fa",
+        color: '#ffffff',
       },
-      // 始终显示小网格,跟原 topology 一样,空画布也能让用户看到画布范围。
+      // 点阵网格(对齐 OpsPilot 画布 Dots gap=12),点色放淡。
       grid: {
         visible: true,
-        type: "mesh",
-        size: 16,
-        args: { color: "#e2e8f0", thickness: 1 },
+        type: 'dot',
+        size: 12,
+        args: { color: '#ccd6e0', thickness: 1.2 },
       },
       panning: true,
       mousewheel: {
         enabled: true,
-        modifiers: ["ctrl", "meta"],
+        modifiers: ['ctrl', 'meta'],
       },
       connecting: {
         snap: { radius: 24 },
         allowBlank: false,
         allowLoop: false,
-        allowMulti: "withPort",
-        connector: { name: "normal" },
-        connectionPoint: { name: "boundary" },
+        allowMulti: 'withPort',
+        connector: { name: 'normal' },
+        connectionPoint: { name: 'boundary' },
         createEdge: () =>
           graph.createEdge({
-            connector: { name: "normal" },
+            connector: { name: 'normal' },
             attrs: {
               line: {
-                ...lineAttrsFromStatus("unknown"),
-                stroke: "#2d7df0",
-                strokeDasharray: "",
+                ...lineAttrsFromStatus('unknown'),
+                stroke: '#2d7df0',
               },
             },
             zIndex: 0,
           }),
         validateMagnet: ({ magnet }) =>
-          magnet?.getAttribute("magnet") === "true",
+          magnet?.getAttribute('magnet') === 'true',
         validateConnection: ({
           sourceMagnet,
           targetMagnet,
@@ -915,8 +915,8 @@ const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
           if (sourceCell === targetCell) return false;
           // 仅允许端口之间连线;若拖到 body 上则不创建。
           return (
-            sourceMagnet.getAttribute("magnet") === "true" &&
-            targetMagnet.getAttribute("magnet") === "true"
+            sourceMagnet.getAttribute('magnet') === 'true' &&
+            targetMagnet.getAttribute('magnet') === 'true'
           );
         },
       },
