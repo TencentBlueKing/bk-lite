@@ -12,7 +12,9 @@ from django.utils import timezone as dj_timezone
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.log.constants.alert_policy import AlertConstants
 from apps.log.models.policy import Alert, Event, Policy
+from apps.log.services.alert_lifecycle_notify import LogAlertLifecycleNotifier
 from apps.log.tasks.policy import compensate_log_notice_task, scan_log_policy_task
+from apps.system_mgmt.models.channel import Channel
 
 pytestmark = pytest.mark.django_db
 
@@ -95,6 +97,16 @@ class TestScanLogPolicyTask:
 
 
 class TestCompensateLogNoticeTask:
+    @staticmethod
+    def _make_channel(name="告警中心", channel_type="nats", method_name="receive_alert_events"):
+        config = {"method_name": method_name} if method_name else {}
+        return Channel.objects.create(
+            name=name,
+            channel_type=channel_type,
+            config=config,
+            description="",
+        )
+
     def _make_event(self, policy, alert, **overrides):
         now = datetime.now(timezone.utc)
         data = dict(
@@ -131,6 +143,36 @@ class TestCompensateLogNoticeTask:
         assert ev.notified is True
         assert result["compensated"] == 0
 
+    def test_alert_center_without_notice_users_is_retried(self, mocker):
+        channel = self._make_channel()
+        policy = _make_policy(
+            notice=True,
+            enable=True,
+            notice_users=[],
+            notice_type="nats",
+            notice_type_id=channel.id,
+        )
+        alert = Alert.objects.create(
+            id="a-c-nats",
+            policy=policy,
+            source_id="s",
+            level="warning",
+            status="new",
+            start_event_time=dj_timezone.now(),
+        )
+        ev = self._make_event(policy, alert, id="ev-nats-nousers")
+        send_notice = mocker.patch(
+            "apps.log.tasks.services.policy_scan.LogPolicyScan.send_notice",
+            return_value=(True, {"result": True}),
+        )
+
+        result = compensate_log_notice_task()
+
+        ev.refresh_from_db()
+        assert ev.notified is True
+        assert result["compensated"] == 1
+        send_notice.assert_called_once_with(ev, max_attempts=1)
+
     def test_successful_resend_marks_alert(self, mocker):
         policy = _make_policy(notice=True, enable=True, notice_users=["u1"])
         alert = Alert.objects.create(id="a-c2", policy=policy, source_id="s", level="warning", status="new", start_event_time=dj_timezone.now(), notice=False)
@@ -160,3 +202,133 @@ class TestCompensateLogNoticeTask:
         assert ev.notified is False
         assert ev.notice_retry_count == 1
         assert result["compensated"] == 0
+
+    def test_late_created_success_does_not_complete_closed_alert(self, mocker):
+        policy = _make_policy(notice=True, enable=True, notice_users=["u1"])
+        alert = Alert.objects.create(
+            id="a-c-closed-race",
+            policy=policy,
+            source_id="s",
+            level="warning",
+            status="closed",
+            start_event_time=dj_timezone.now() - timedelta(minutes=10),
+            end_event_time=dj_timezone.now() - timedelta(minutes=5),
+            notice=False,
+        )
+        self._make_event(policy, alert, id="ev-closed-race")
+        mocker.patch(
+            "apps.log.tasks.services.policy_scan.LogPolicyScan.send_notice",
+            return_value=(True, {"result": True}),
+        )
+
+        compensate_log_notice_task()
+
+        alert.refresh_from_db()
+        assert alert.notice is False
+
+    def test_closed_alert_success_is_compensated_when_policy_disabled(self, mocker):
+        channel = self._make_channel()
+        policy = _make_policy(
+            notice=True,
+            enable=False,
+            notice_type="nats",
+            notice_type_id=channel.id,
+        )
+        closed_at = dj_timezone.now() - timedelta(
+            seconds=AlertConstants.NOTICE_COMPENSATE_MIN_AGE_SECONDS + 60
+        )
+        alert = Alert.objects.create(
+            id="a-closed-compensate",
+            policy=policy,
+            source_id="s",
+            level="warning",
+            status="closed",
+            start_event_time=closed_at - timedelta(minutes=5),
+            end_event_time=closed_at,
+            notice=False,
+        )
+        notify_closed = mocker.patch.object(
+            LogAlertLifecycleNotifier,
+            "notify_closed",
+            return_value=(True, {"result": True}),
+        )
+
+        result = compensate_log_notice_task()
+
+        alert.refresh_from_db()
+        assert alert.notice is True
+        assert result["scanned"] == 1
+        assert result["compensated"] == 1
+        notify_closed.assert_called_once_with(alert, max_attempts=1)
+
+    def test_closed_alert_failure_stays_pending(self, mocker):
+        channel = self._make_channel()
+        policy = _make_policy(
+            notice=True,
+            notice_type="nats",
+            notice_type_id=channel.id,
+        )
+        closed_at = dj_timezone.now() - timedelta(
+            seconds=AlertConstants.NOTICE_COMPENSATE_MIN_AGE_SECONDS + 60
+        )
+        alert = Alert.objects.create(
+            id="a-closed-fail",
+            policy=policy,
+            source_id="s",
+            level="warning",
+            status="closed",
+            start_event_time=closed_at - timedelta(minutes=5),
+            end_event_time=closed_at,
+            notice=False,
+        )
+        notify_closed = mocker.patch.object(
+            LogAlertLifecycleNotifier,
+            "notify_closed",
+            return_value=(False, {"result": False, "message": "down"}),
+        )
+
+        result = compensate_log_notice_task()
+
+        alert.refresh_from_db()
+        assert alert.notice is False
+        assert result["scanned"] == 1
+        assert result["compensated"] == 0
+        notify_closed.assert_called_once_with(alert, max_attempts=1)
+
+    def test_closed_compensation_filters_ineligible_alerts(self, mocker):
+        alert_center = self._make_channel()
+        email = self._make_channel(name="邮件", channel_type="email", method_name=None)
+        now = dj_timezone.now()
+        eligible_age = now - timedelta(seconds=AlertConstants.NOTICE_COMPENSATE_MIN_AGE_SECONDS + 60)
+        outside_window = now - timedelta(seconds=AlertConstants.NOTICE_COMPENSATE_WINDOW_SECONDS + 60)
+
+        cases = [
+            ("recent", alert_center, True, now),
+            ("outside", alert_center, True, outside_window),
+            ("ordinary", email, True, eligible_age),
+            ("disabled-notice", alert_center, False, eligible_age),
+        ]
+        for name, channel, notice, closed_at in cases:
+            policy = _make_policy(
+                name=f"policy-{name}",
+                notice=notice,
+                notice_type=channel.channel_type,
+                notice_type_id=channel.id,
+            )
+            Alert.objects.create(
+                id=f"alert-{name}",
+                policy=policy,
+                source_id="s",
+                level="warning",
+                status="closed",
+                start_event_time=closed_at - timedelta(minutes=5),
+                end_event_time=closed_at,
+                notice=False,
+            )
+        notify_closed = mocker.patch.object(LogAlertLifecycleNotifier, "notify_closed")
+
+        result = compensate_log_notice_task()
+
+        assert result["scanned"] == 0
+        assert result["compensated"] == 0
+        notify_closed.assert_not_called()
