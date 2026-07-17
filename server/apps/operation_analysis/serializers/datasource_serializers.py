@@ -5,41 +5,43 @@
 from rest_framework import serializers
 
 from apps.core.utils.serializers import AuthSerializer
+from apps.operation_analysis.constants.import_export import SENSITIVE_PLACEHOLDER, is_sensitive_field_name
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, DataSourceTag, NameSpace
 from apps.operation_analysis.serializers.base_serializers import BaseFormatTimeSerializer
 
-SENSITIVE_CONFIG_KEYWORDS = ("password", "token", "secret", "authorization", "api_key", "apikey")
-
 
 def redact_sensitive_config(value):
+    if isinstance(value, list):
+        return [redact_sensitive_config(item) for item in value]
     if not isinstance(value, dict):
         return value
 
     redacted = {}
     for key, item in value.items():
-        normalized_key = str(key).lower()
-        if any(keyword in normalized_key for keyword in SENSITIVE_CONFIG_KEYWORDS):
-            redacted[key] = "******" if item not in (None, "") else item
-        elif isinstance(item, dict):
-            redacted[key] = redact_sensitive_config(item)
+        if is_sensitive_field_name(key):
+            redacted[key] = SENSITIVE_PLACEHOLDER if item not in (None, "") else item
         else:
-            redacted[key] = item
+            redacted[key] = redact_sensitive_config(item)
     return redacted
 
 
 def merge_redacted_config(existing, incoming):
-    if not isinstance(existing, dict) or not isinstance(incoming, dict):
+    if isinstance(incoming, list):
+        existing_items = existing if isinstance(existing, list) else []
+        return [
+            merge_redacted_config(existing_items[index] if index < len(existing_items) else None, item)
+            for index, item in enumerate(incoming)
+        ]
+    if not isinstance(incoming, dict):
         return incoming
 
+    existing_items = existing if isinstance(existing, dict) else {}
     merged = {}
     for key, item in incoming.items():
-        normalized_key = str(key).lower()
-        if item == "******" and any(keyword in normalized_key for keyword in SENSITIVE_CONFIG_KEYWORDS):
-            merged[key] = existing.get(key)
-        elif isinstance(item, dict):
-            merged[key] = merge_redacted_config(existing.get(key, {}), item)
+        if item == SENSITIVE_PLACEHOLDER and is_sensitive_field_name(key):
+            merged[key] = existing_items.get(key)
         else:
-            merged[key] = item
+            merged[key] = merge_redacted_config(existing_items.get(key), item)
     return merged
 
 
@@ -77,6 +79,8 @@ class DataSourceAPIModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
             return {}
         if not isinstance(value, dict):
             raise serializers.ValidationError("query_config 必须为对象")
+        if self.instance:
+            return merge_redacted_config(self.instance.query_config or {}, value)
         return value
 
     def validate_field_schema(self, value):
@@ -100,6 +104,7 @@ class DataSourceAPIModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
     def to_representation(self, instance):
         data = super().to_representation(instance)
         data["connection_config"] = redact_sensitive_config(data.get("connection_config"))
+        data["query_config"] = redact_sensitive_config(data.get("query_config"))
         return data
 
 

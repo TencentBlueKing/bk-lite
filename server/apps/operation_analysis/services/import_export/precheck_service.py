@@ -26,6 +26,7 @@ from apps.operation_analysis.constants.import_export import (
     ImportExportErrorCode,
     ImportExportWarningCode,
     ObjectType,
+    is_sensitive_field_name,
 )
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, NameSpace
 from apps.operation_analysis.models.models import Architecture, Dashboard, NetworkTopology, Report, Screen, Topology
@@ -241,6 +242,33 @@ class PrecheckService:
                         "field": "token",
                     }
                 )
+
+        def collect_config_placeholders(value, path=""):
+            placeholders = []
+            if isinstance(value, dict):
+                for key, item in value.items():
+                    item_path = f"{path}.{key}" if path else str(key)
+                    if item == SENSITIVE_PLACEHOLDER and is_sensitive_field_name(key):
+                        placeholders.append(item_path)
+                    else:
+                        placeholders.extend(collect_config_placeholders(item, item_path))
+            elif isinstance(value, list):
+                for index, item in enumerate(value):
+                    placeholders.extend(collect_config_placeholders(item, f"{path}[{index}]"))
+            return placeholders
+
+        for datasource in doc.datasources:
+            for config_field in ("connection_config", "query_config"):
+                config = getattr(datasource, config_field)
+                for field_path in collect_config_placeholders(config, config_field):
+                    warnings.append(
+                        {
+                            "code": ImportExportWarningCode.SECRET_PLACEHOLDER,
+                            "message": f"数据源 '{datasource.name}' 的 {field_path} 字段需要补充",
+                            "object_key": datasource.key,
+                            "field": field_path,
+                        }
+                    )
 
         return warnings
 
