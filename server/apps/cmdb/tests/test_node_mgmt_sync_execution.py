@@ -175,9 +175,10 @@ def test_node_query_exception_crossing_deadline_prefers_timeout(mocker):
         NodeMgmtSyncService.sync_hosts()
 
     run = _assert_latest_run_timed_out(NodeMgmtSyncRun.RUN_TYPE_SYNC)
-    NodeMgmtSyncService.finish_run(
-        run, status=NodeMgmtSyncRun.STATUS_FAILED, reason_code="RUN_FAILED", error=RuntimeError("late old worker"),
-    )
+    with pytest.raises(NodeMgmtSyncError, match="^RUN_TIMEOUT$"):
+        NodeMgmtSyncService.finish_run(
+            run, status=NodeMgmtSyncRun.STATUS_FAILED, reason_code="RUN_FAILED", error=RuntimeError("late old worker"),
+        )
     _assert_latest_run_timed_out(NodeMgmtSyncRun.RUN_TYPE_SYNC)
 
 
@@ -328,9 +329,10 @@ def test_finish_run_does_not_overwrite_existing_terminal_state():
         run, status=NodeMgmtSyncRun.STATUS_PARTIAL_SUCCESS,
     )
 
-    NodeMgmtSyncService.finish_run(
-        run, status=NodeMgmtSyncRun.STATUS_FAILED, reason_code="RUN_FAILED",
-    )
+    with pytest.raises(NodeMgmtSyncError, match="^RUN_NOT_ACTIVE$"):
+        NodeMgmtSyncService.finish_run(
+            run, status=NodeMgmtSyncRun.STATUS_FAILED, reason_code="RUN_FAILED",
+        )
 
     run.refresh_from_db()
     assert run.status == NodeMgmtSyncRun.STATUS_PARTIAL_SUCCESS

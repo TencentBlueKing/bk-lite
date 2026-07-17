@@ -250,6 +250,16 @@ def test_search_inst(fake_graph):
 
 
 @pytest.mark.django_db
+def test_search_inst_supports_bounded_page(fake_graph):
+    fg = fake_graph(MODULE, query_entity=([{"_id": 2}], 3))
+
+    InstanceManage.search_inst("host", page=2, page_size=1)
+
+    call = next(item for item in fg.calls if item[0] == "query_entity")
+    assert call[2]["page"] == {"skip": 1, "limit": 1}
+
+
+@pytest.mark.django_db
 def test_group_inst_count(fake_graph):
     fg = fake_graph(MODULE, entity_count=[{"model_id": "host", "count": 3}])
     out = InstanceManage.group_inst_count("model_id", permissions_map={1: {"inst_names": []}})

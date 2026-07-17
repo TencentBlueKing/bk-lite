@@ -71,6 +71,9 @@ class NodeMgmtSyncService:
     MAX_EXISTING_HOST_BYTES = _get_positive_int_env(
         "CMDB_NODE_MGMT_MAX_EXISTING_HOST_BYTES", 128 * 1024 * 1024
     )
+    EXISTING_HOST_PAGE_SIZE = _get_positive_int_env(
+        "CMDB_NODE_MGMT_EXISTING_HOST_PAGE_SIZE", 500
+    )
     SYSTEM_NODE_QUERY = {"skip_permission": True}
     RAW_DATA_FIELDS = (
         "id",
@@ -244,7 +247,13 @@ class NodeMgmtSyncService:
                     defaults={"name": cls.TASK_NAME, "is_builtin": True},
                 )
         except IntegrityError:
-            task = NodeMgmtSyncConfig.objects.get(singleton_key="default")
+            # 只有固定 singleton_key 的赢家真实存在时，才能把异常判定为
+            # 初始化竞争；否则保留原 IntegrityError，不能用 DoesNotExist 覆盖根因。
+            task = NodeMgmtSyncConfig.objects.filter(
+                singleton_key="default"
+            ).first()
+            if task is None:
+                raise
 
         updated = False
         if not getattr(task, "name", ""):
@@ -561,10 +570,7 @@ class NodeMgmtSyncService:
                     updated_at=current_time,
                 )
         run.refresh_from_db()
-        if not updated and status in (
-            NodeMgmtSyncRun.STATUS_SUCCESS,
-            NodeMgmtSyncRun.STATUS_PARTIAL_SUCCESS,
-        ):
+        if not updated:
             if expired or (
                 run.status == NodeMgmtSyncRun.STATUS_TIMEOUT
                 and run.reason_code == cls.REASON_TIMEOUT
@@ -1018,32 +1024,54 @@ class NodeMgmtSyncService:
     def _load_existing_host_map(
         cls, task_id: int, run: NodeMgmtSyncRun | None = None
     ) -> dict[tuple[str, int], dict[str, Any]]:
-        if run is not None:
-            cls.heartbeat_run(run)
-        inst_list, _ = InstanceManage.search_inst(model_id="host")
-        if run is not None:
-            cls.heartbeat_run(run)
-        if not inst_list:
-            return {}
-        if len(inst_list) > cls.MAX_EXISTING_HOSTS:
-            logger.error(
-                "[NodeMgmtSync] 主机快照超过资源预算 code=HOST_SCAN_LIMIT_EXCEEDED, count=%d, limit=%d",
-                len(inst_list),
-                cls.MAX_EXISTING_HOSTS,
-            )
-            raise NodeMgmtSyncError("HOST_SCAN_LIMIT_EXCEEDED")
-
+        inst_list: list[dict[str, Any]] = []
         encoded_size = 0
-        for item in inst_list:
-            encoded_size += len(
-                json.dumps(item, ensure_ascii=False, default=str, separators=(",", ":")).encode("utf-8")
+        page = 1
+        page_size = min(cls.EXISTING_HOST_PAGE_SIZE, cls.MAX_EXISTING_HOSTS)
+        while True:
+            if run is not None:
+                cls.heartbeat_run(run)
+            rows, total = InstanceManage.search_inst(
+                model_id="host", page=page, page_size=page_size,
             )
-            if encoded_size > cls.MAX_EXISTING_HOST_BYTES:
+            if run is not None:
+                cls.heartbeat_run(run)
+            if not isinstance(rows, list):
+                raise NodeMgmtSyncError("HOST_SCAN_INVALID_RESPONSE")
+            total_count = cls._safe_count(total)
+            if total_count > cls.MAX_EXISTING_HOSTS:
                 logger.error(
-                    "[NodeMgmtSync] 主机快照超过资源预算 code=HOST_SCAN_BYTES_EXCEEDED, limit=%d",
-                    cls.MAX_EXISTING_HOST_BYTES,
+                    "[NodeMgmtSync] 主机快照超过资源预算 code=HOST_SCAN_LIMIT_EXCEEDED, count=%d, limit=%d",
+                    total_count,
+                    cls.MAX_EXISTING_HOSTS,
                 )
-                raise NodeMgmtSyncError("HOST_SCAN_BYTES_EXCEEDED")
+                raise NodeMgmtSyncError("HOST_SCAN_LIMIT_EXCEEDED")
+            for item in rows:
+                if len(inst_list) >= cls.MAX_EXISTING_HOSTS:
+                    raise NodeMgmtSyncError("HOST_SCAN_LIMIT_EXCEEDED")
+                encoded_size += len(
+                    json.dumps(
+                        item,
+                        ensure_ascii=False,
+                        default=str,
+                        separators=(",", ":"),
+                    ).encode("utf-8")
+                )
+                if encoded_size > cls.MAX_EXISTING_HOST_BYTES:
+                    logger.error(
+                        "[NodeMgmtSync] 主机快照超过资源预算 code=HOST_SCAN_BYTES_EXCEEDED, limit=%d",
+                        cls.MAX_EXISTING_HOST_BYTES,
+                    )
+                    raise NodeMgmtSyncError("HOST_SCAN_BYTES_EXCEEDED")
+                inst_list.append(item)
+            if not rows or (total_count and len(inst_list) >= total_count):
+                break
+            if len(rows) < page_size:
+                break
+            if len(inst_list) >= cls.MAX_EXISTING_HOSTS:
+                raise NodeMgmtSyncError("HOST_SCAN_LIMIT_EXCEEDED")
+            page += 1
+
         result: dict[tuple[str, int], dict[str, Any]] = {}
         for item in inst_list:
             ip = str(item.get("ip_addr") or "").strip()
@@ -1781,6 +1809,50 @@ class NodeMgmtSyncService:
         )
 
     @classmethod
+    def _cas_collect_region_terminal(
+        cls,
+        state: NodeMgmtSyncRegionState,
+        *,
+        status: str,
+        reason_code: str,
+    ) -> NodeMgmtSyncRegionState:
+        current_time = now()
+        updated = NodeMgmtSyncRegionState.objects.filter(
+            pk=state.pk,
+            run_id=state.run_id,
+            status=NodeMgmtSyncRun.STATUS_SUBMITTED,
+            child_execution_id=state.child_execution_id,
+        ).update(
+            status=status,
+            reason_code=reason_code,
+            error_message="",
+            finished_at=current_time,
+            updated_at=current_time,
+        )
+        state.refresh_from_db()
+        if updated:
+            return state
+        if state.status == status and state.reason_code == reason_code:
+            return state
+        raise NodeMgmtSyncError("COLLECT_REGION_STATE_CONFLICT")
+
+    @classmethod
+    def _aggregate_collect_terminal_status(
+        cls, run: NodeMgmtSyncRun
+    ) -> str | None:
+        statuses = list(run.region_states.values_list("status", flat=True))
+        if not statuses or NodeMgmtSyncRun.STATUS_SUBMITTED in statuses:
+            return None
+        if all(status == NodeMgmtSyncRun.STATUS_SUCCESS for status in statuses):
+            return NodeMgmtSyncRun.STATUS_SUCCESS
+        if all(
+            status in (NodeMgmtSyncRun.STATUS_FAILED, NodeMgmtSyncRun.STATUS_BLOCKED)
+            for status in statuses
+        ):
+            return NodeMgmtSyncRun.STATUS_FAILED
+        return NodeMgmtSyncRun.STATUS_PARTIAL_SUCCESS
+
+    @classmethod
     def _mark_collect_run_submitted(
         cls,
         run: NodeMgmtSyncRun,
@@ -1976,7 +2048,16 @@ class NodeMgmtSyncService:
         if run.status != NodeMgmtSyncRun.STATUS_SUBMITTED:
             return run
 
-        cls.heartbeat_run(run)
+        try:
+            cls.heartbeat_run(run)
+        except NodeMgmtSyncError as error:
+            if str(error) != "RUN_NOT_ACTIVE":
+                raise
+            run.refresh_from_db()
+            expected_status = cls._aggregate_collect_terminal_status(run)
+            if expected_status is not None and run.status == expected_status:
+                return run
+            raise
         terminal_states = []
         for state in run.region_states.select_related("collect_task").all():
             if state.status != NodeMgmtSyncRun.STATUS_SUBMITTED:
@@ -1984,13 +2065,21 @@ class NodeMgmtSyncService:
                 continue
             collect_task = state.collect_task
             if collect_task is None:
-                cls._mark_collect_region_blocked(state, "COLLECT_TASK_MISSING")
-                terminal_states.append(NodeMgmtSyncRun.STATUS_BLOCKED)
+                state = cls._cas_collect_region_terminal(
+                    state,
+                    status=NodeMgmtSyncRun.STATUS_BLOCKED,
+                    reason_code="COLLECT_TASK_MISSING",
+                )
+                terminal_states.append(state.status)
                 continue
             collect_task.refresh_from_db(fields=("task_id", "exec_status"))
             if str(collect_task.task_id or "") != state.child_execution_id:
-                cls._mark_collect_region_blocked(state, "COLLECT_EXECUTION_SUPERSEDED")
-                terminal_states.append(NodeMgmtSyncRun.STATUS_BLOCKED)
+                state = cls._cas_collect_region_terminal(
+                    state,
+                    status=NodeMgmtSyncRun.STATUS_BLOCKED,
+                    reason_code="COLLECT_EXECUTION_SUPERSEDED",
+                )
+                terminal_states.append(state.status)
                 continue
 
             status_map = {
@@ -2003,33 +2092,25 @@ class NodeMgmtSyncService:
             child_status = status_map.get(collect_task.exec_status)
             if child_status is None:
                 continue
-            state.status = child_status
-            state.reason_code = (
-                ""
-                if child_status == NodeMgmtSyncRun.STATUS_SUCCESS
-                else "COLLECT_CHILD_FAILED"
+            state = cls._cas_collect_region_terminal(
+                state,
+                status=child_status,
+                reason_code=(
+                    ""
+                    if child_status == NodeMgmtSyncRun.STATUS_SUCCESS
+                    else "COLLECT_CHILD_FAILED"
+                ),
             )
-            state.finished_at = now()
-            state.save(
-                update_fields=["status", "reason_code", "finished_at", "updated_at"]
-            )
-            terminal_states.append(child_status)
+            terminal_states.append(state.status)
 
         if run.region_states.filter(status=NodeMgmtSyncRun.STATUS_SUBMITTED).exists():
             run.refresh_from_db()
             return run
 
-        if terminal_states and all(
-            status == NodeMgmtSyncRun.STATUS_SUCCESS for status in terminal_states
-        ):
-            final_status = NodeMgmtSyncRun.STATUS_SUCCESS
-        elif terminal_states and all(
-            status in (NodeMgmtSyncRun.STATUS_FAILED, NodeMgmtSyncRun.STATUS_BLOCKED)
-            for status in terminal_states
-        ):
-            final_status = NodeMgmtSyncRun.STATUS_FAILED
-        else:
-            final_status = NodeMgmtSyncRun.STATUS_PARTIAL_SUCCESS
+        final_status = cls._aggregate_collect_terminal_status(run)
+        if final_status is None:
+            run.refresh_from_db()
+            return run
         try:
             cls.finish_run(run, status=final_status)
         except NodeMgmtSyncError as error:

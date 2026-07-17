@@ -7,7 +7,10 @@ from apps.cmdb.constants.constants import CollectRunStatusType
 from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.models.node_mgmt_sync import NodeMgmtSyncConfig, NodeMgmtSyncRegionState, NodeMgmtSyncRun
 from apps.cmdb.services.collect_service import CollectModelService
-from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncService
+from apps.cmdb.services.node_mgmt_sync_service import (
+    NodeMgmtSyncError,
+    NodeMgmtSyncService,
+)
 from apps.core.utils.web_utils import WebUtils
 
 pytestmark = pytest.mark.django_db
@@ -377,3 +380,86 @@ def test_refresh_batch_isolates_one_run_error_and_sanitizes_log(config, mocker, 
     assert refresh.call_args_list == [mocker.call(first.pk), mocker.call(second.pk)]
     assert "raw-sensitive-value" not in caplog.text
     assert "RuntimeError" in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("parent_status", "should_raise"),
+    [
+        (NodeMgmtSyncRun.STATUS_SUCCESS, False),
+        (NodeMgmtSyncRun.STATUS_FAILED, True),
+    ],
+)
+def test_refresh_heartbeat_race_only_accepts_matching_aggregated_terminal(
+    config, mocker, parent_status, should_raise,
+):
+    _successful_sync(config)
+    collect_task = _collect_task(7)
+    with patch.object(
+        CollectModelService,
+        "exec_task",
+        side_effect=lambda task, operator: _accept_with_execution(task, "execution-7"),
+    ):
+        run = NodeMgmtSyncService.execute_collect(operator="system")
+    state = run.region_states.get()
+    state.status = NodeMgmtSyncRun.STATUS_SUCCESS
+    state.reason_code = ""
+    state.finished_at = timezone.now()
+    state.save(update_fields=["status", "reason_code", "finished_at", "updated_at"])
+
+    def other_worker_finishes(_run):
+        NodeMgmtSyncRun.objects.filter(pk=run.pk).update(
+            status=parent_status,
+            active_scope=None,
+            finished_at=timezone.now(),
+        )
+        raise NodeMgmtSyncError("RUN_NOT_ACTIVE")
+
+    mocker.patch.object(
+        NodeMgmtSyncService, "heartbeat_run", side_effect=other_worker_finishes,
+    )
+
+    if should_raise:
+        with pytest.raises(NodeMgmtSyncError, match="RUN_NOT_ACTIVE"):
+            NodeMgmtSyncService.refresh_collect_run(run.pk)
+    else:
+        refreshed = NodeMgmtSyncService.refresh_collect_run(run.pk)
+        assert refreshed.status == NodeMgmtSyncRun.STATUS_SUCCESS
+
+
+def test_region_and_parent_terminal_cas_rejects_reverse_worker_result(config):
+    _successful_sync(config)
+    collect_task = _collect_task(7)
+    with patch.object(
+        CollectModelService,
+        "exec_task",
+        side_effect=lambda task, operator: _accept_with_execution(task, "execution-7"),
+    ):
+        run = NodeMgmtSyncService.execute_collect(operator="system")
+    stale_state = run.region_states.get()
+
+    NodeMgmtSyncRegionState.objects.filter(pk=stale_state.pk).update(
+        status=NodeMgmtSyncRun.STATUS_SUCCESS,
+        reason_code="",
+        finished_at=timezone.now(),
+    )
+    NodeMgmtSyncRun.objects.filter(pk=run.pk).update(
+        status=NodeMgmtSyncRun.STATUS_SUCCESS,
+        active_scope=None,
+        finished_at=timezone.now(),
+    )
+
+    with pytest.raises(NodeMgmtSyncError, match="COLLECT_REGION_STATE_CONFLICT"):
+        NodeMgmtSyncService._cas_collect_region_terminal(
+            stale_state,
+            status=NodeMgmtSyncRun.STATUS_FAILED,
+            reason_code="COLLECT_CHILD_FAILED",
+        )
+    with pytest.raises(NodeMgmtSyncError, match="RUN_NOT_ACTIVE"):
+        NodeMgmtSyncService.finish_run(
+            run, status=NodeMgmtSyncRun.STATUS_FAILED,
+        )
+
+    stale_state.refresh_from_db()
+    run.refresh_from_db()
+    assert stale_state.status == NodeMgmtSyncRun.STATUS_SUCCESS
+    assert run.status == NodeMgmtSyncRun.STATUS_SUCCESS

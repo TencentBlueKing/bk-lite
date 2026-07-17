@@ -428,6 +428,24 @@ class TestDbSerialization:
         assert second.pk == winner.pk
         assert get_or_create.call_count == 2
 
+    def test_get_task_非单例完整性错误保留原异常(self, mocker):
+        from django.db import IntegrityError
+
+        original = IntegrityError("another unique constraint failed")
+        mocker.patch.object(
+            NodeMgmtSyncConfig.objects, "get_or_create", side_effect=original,
+        )
+        mocker.patch.object(
+            NodeMgmtSyncConfig.objects,
+            "get",
+            side_effect=NodeMgmtSyncConfig.DoesNotExist,
+        )
+
+        with pytest.raises(IntegrityError) as caught:
+            S.get_task()
+
+        assert caught.value is original
+
     def test_serialize_task_字段完整(self):
         task = NodeMgmtSyncConfig.objects.create(
             name="同步", is_builtin=True, auto_sync_enabled=True,

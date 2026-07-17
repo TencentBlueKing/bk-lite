@@ -24,7 +24,10 @@ def test_existing_hosts_are_indexed_by_ip_and_cloud_and_invalid_rows_are_ignored
 
     indexed = NodeMgmtSyncService._load_existing_host_map(task_id=99)
 
-    search_inst.assert_called_once_with(model_id="host")
+    search_inst.assert_called_once_with(
+        model_id="host", page=1,
+        page_size=NodeMgmtSyncService.EXISTING_HOST_PAGE_SIZE,
+    )
     assert indexed == {
         ("10.0.0.1", 7): {"_id": "host-1", "ip_addr": " 10.0.0.1 ", "cloud": 7},
         ("10.0.0.2", 8): {"_id": "host-2", "ip_addr": "10.0.0.2", "cloud_id": "8"},
@@ -55,6 +58,27 @@ def test_existing_host_scan_fails_closed_when_byte_budget_is_exceeded(mocker, ca
         NodeMgmtSyncService._load_existing_host_map(task_id=0)
 
     assert "raw-sensitive-value" not in caplog.text
+
+
+def test_existing_host_scan_stops_before_second_page_when_count_exceeds_budget(mocker):
+    mocker.patch.object(NodeMgmtSyncService, "MAX_EXISTING_HOSTS", 2)
+    mocker.patch.object(NodeMgmtSyncService, "EXISTING_HOST_PAGE_SIZE", 2, create=True)
+    search = mocker.patch.object(
+        InstanceManage,
+        "search_inst",
+        side_effect=[
+            ([
+                {"_id": 1, "ip_addr": "10.0.0.1", "cloud": 1},
+                {"_id": 2, "ip_addr": "10.0.0.2", "cloud": 1},
+            ], 3),
+            AssertionError("不应请求或物化第二页"),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="HOST_SCAN_LIMIT_EXCEEDED"):
+        NodeMgmtSyncService._load_existing_host_map(task_id=0)
+
+    search.assert_called_once_with(model_id="host", page=1, page_size=2)
 
 
 def test_region_collection_reuses_only_hosts_matching_both_ip_and_cloud(mocker):
