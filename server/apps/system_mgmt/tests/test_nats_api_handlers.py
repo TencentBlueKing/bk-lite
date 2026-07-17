@@ -5,8 +5,8 @@ nats handler 直接可调用（@nats_client.register 返回原函数）。
 """
 import types
 
-import nats_client
 import pytest
+from nats_client.registry import default_registry
 
 from apps.system_mgmt import nats_api
 from apps.system_mgmt.models import (
@@ -23,7 +23,7 @@ from apps.system_mgmt.models.channel import ChannelChoices
 pytestmark = pytest.mark.django_db
 
 
-def test_nats_api_compat_exports_all_nats_entrypoints():
+def test_nats_api_compat_exports_local_and_nats_entrypoints():
     expected_entrypoints = {
         "get_pilot_permission_by_token",
         "verify_token",
@@ -70,13 +70,15 @@ def test_nats_api_compat_exports_all_nats_entrypoints():
         "save_error_log",
         "save_operation_log",
     }
-    registered_entrypoints = expected_entrypoints - {"_list_opspilot_nats_channels"}
+    local_only_entrypoints = {"_list_opspilot_nats_channels", "create_default_rule"}
+    registered_entrypoints = expected_entrypoints - local_only_entrypoints
 
     exported_entrypoints = {name for name in expected_entrypoints if callable(getattr(nats_api, name, None))}
-    actual_registered_entrypoints = {item["name"] for item in nats_client.default_registry.registry.values()}
+    actual_registered_entrypoints = {item["name"] for item in default_registry.registry.values()}
 
     assert exported_entrypoints == expected_entrypoints
     assert registered_entrypoints <= actual_registered_entrypoints
+    assert "create_default_rule" not in actual_registered_entrypoints
 
 
 # ---------------------------------------------------------------------------

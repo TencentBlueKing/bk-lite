@@ -191,7 +191,9 @@ def create_guest_role():
     return {"result": True, "data": {"group_id": app_guest_group.id}}
 
 
-@nats_client.register
+# This initializer is intentionally local-only: console_mgmt calls it through
+# AppClient, while exposing it on NATS would let unauthenticated publishers
+# create the built-in OpsPilot data rule when it is missing.
 def create_default_rule(llm_model, ocr_model, embed_model, rerank_model):
     guest_group = Group.objects.get(name="OpsPilotGuest", parent_id=0)
     GroupDataRule.objects.get_or_create(
