@@ -1124,6 +1124,8 @@
       "natsOptionalAppDescription": "Web App Description",
       "natsOptionalAppNamePlaceholder": "Enter web app name (shown in app list)",
       "natsOptionalAppDescriptionPlaceholder": "Enter web app description",
+      "exposeAsWebChatAppNameRequired": "Please enter Web app name",
+      "exposeAsWebChatAppDescriptionRequired": "Please enter Web app description",
       "appTagAutomation": "Automation",
       "appTagSecurityAudit": "Security Audit",
       "appTagOpsPlanning": "Ops Planning",

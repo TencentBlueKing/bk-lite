@@ -1125,6 +1125,8 @@
       "natsOptionalAppDescription": "Web 应用描述",
       "natsOptionalAppNamePlaceholder": "输入 Web 应用名称（用于在应用列表中展示）",
       "natsOptionalAppDescriptionPlaceholder": "输入 Web 应用描述",
+      "exposeAsWebChatAppNameRequired": "请输入 Web 应用名称",
+      "exposeAsWebChatAppDescriptionRequired": "请输入 Web 应用描述",
       "appTagAutomation": "自动化",
       "appTagSecurityAudit": "安全审计",
       "appTagOpsPlanning": "运维规划",

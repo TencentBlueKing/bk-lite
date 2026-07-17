@@ -7,7 +7,8 @@ const { TextArea } = Input;
 export const NatsNodeConfig: React.FC = () => {
   const { t } = useTranslation();
 
-  // Form.useWatchValue 让 field 状态驱动条件渲染：仅当 exposeAsWebChat=true 时显示 Web 应用名/描述字段。
+  // 条件渲染 + 联动必填：仅当 exposeAsWebChat=true 时显示 appName/appDescription，
+  // 且 require=true，避免用户开启开关后忘填导致后续 sync 生不成应用。
   return (
     <>
       <Form.Item
@@ -25,10 +26,18 @@ export const NatsNodeConfig: React.FC = () => {
         {({ getFieldValue }) =>
           getFieldValue('exposeAsWebChat') ? (
             <>
-              <Form.Item name="appName" label={t('chatflow.nodeConfig.natsOptionalAppName')}>
+              <Form.Item
+                name="appName"
+                label={t('chatflow.nodeConfig.natsOptionalAppName')}
+                rules={[{ required: true, message: t('chatflow.nodeConfig.exposeAsWebChatAppNameRequired') }]}
+              >
                 <Input placeholder={t('chatflow.nodeConfig.natsOptionalAppNamePlaceholder')} />
               </Form.Item>
-              <Form.Item name="appDescription" label={t('chatflow.nodeConfig.natsOptionalAppDescription')}>
+              <Form.Item
+                name="appDescription"
+                label={t('chatflow.nodeConfig.natsOptionalAppDescription')}
+                rules={[{ required: true, message: t('chatflow.nodeConfig.exposeAsWebChatAppDescriptionRequired') }]}
+              >
                 <TextArea rows={3} placeholder={t('chatflow.nodeConfig.natsOptionalAppDescriptionPlaceholder')} />
               </Form.Item>
             </>
