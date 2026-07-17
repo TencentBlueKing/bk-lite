@@ -40,6 +40,7 @@ def _collect_task(region_id):
         credential=[],
         params={},
         team=[],
+        is_interval=True,
         is_system=True,
         is_visible=False,
         system_code=f"{NodeMgmtSyncService.SYSTEM_TASK_PREFIX}{region_id}",

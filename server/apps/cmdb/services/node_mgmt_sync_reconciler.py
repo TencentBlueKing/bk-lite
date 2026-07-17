@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from django.db import transaction
-from django.db.models import Q
 from django.utils import timezone
 from django_celery_beat.models import IntervalSchedule, PeriodicTask
 
@@ -122,16 +121,8 @@ class NodeMgmtSyncReconciler:
     def mark_region_delivery_pending(cls, config, *, cloud_region_id, collect_task) -> None:
         """只登记交付意图，不在同步事务中执行远端 RPC。"""
         cloud_region_id = str(cloud_region_id)
-        cls._get_or_create_region_state(config, cloud_region_id, collect_task)
-        state_ids = list(
-            NodeMgmtSyncRegionState.objects.filter(
-                config=config,
-                cloud_region_id=cloud_region_id,
-            )
-            .filter(Q(scope_key=cls._node_config_scope(cloud_region_id)) | Q(scope_key__startswith="config:"))
-            .values_list("pk", flat=True)
-        )
-        for state_id in state_ids:
+        state, _ = cls._get_or_create_region_state(config, cloud_region_id, collect_task)
+        for state_id in (state.pk,):
             for _attempt in range(8):
                 state = NodeMgmtSyncRegionState.objects.get(pk=state_id)
                 guarded = NodeMgmtSyncRegionState.objects.filter(
@@ -247,7 +238,7 @@ class NodeMgmtSyncReconciler:
 
         from apps.cmdb.services.collect_service import CollectModelService
 
-        collect_tasks = service._list_region_collect_tasks()
+        collect_tasks = service._list_region_collect_tasks(active_only=False)
         if not collect_tasks:
             return NodeConfigReconcileResult("unknown")
 
@@ -292,9 +283,10 @@ class NodeMgmtSyncReconciler:
                 )
                 continue
 
+            desired_enabled = config.auto_collect_enabled and collect_task.is_interval
             claim = cls._claim_node_config_state(
                 state,
-                auto_collect_enabled=config.auto_collect_enabled,
+                auto_collect_enabled=desired_enabled,
             )
             if claim.outcome == "skip":
                 continue
@@ -318,7 +310,7 @@ class NodeMgmtSyncReconciler:
                         has_contention = True
                     continue
 
-                if not config.auto_collect_enabled:
+                if not desired_enabled:
                     if not cls._finish_node_config_claim(
                         state,
                         stage="delete",

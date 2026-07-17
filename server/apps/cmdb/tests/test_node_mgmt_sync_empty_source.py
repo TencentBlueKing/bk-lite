@@ -5,7 +5,7 @@ from unittest import mock
 import pytest
 from django.utils import timezone
 
-from apps.cmdb.models import NodeMgmtSyncConfig, NodeMgmtSyncRun
+from apps.cmdb.models import CollectModels, NodeMgmtSyncConfig, NodeMgmtSyncRegionState, NodeMgmtSyncRun
 from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncService
 
 
@@ -38,7 +38,7 @@ def _patch_sync_boundaries(mocker, *, raw_nodes):
         "errors": [],
         "changed_instance_ids": [],
     })
-    mocker.patch("apps.cmdb.services.node_mgmt_sync_reconciler.NodeMgmtSyncReconciler.reconcile")
+    return mocker.patch("apps.cmdb.services.node_mgmt_sync_reconciler.NodeMgmtSyncReconciler.reconcile")
 
 
 @pytest.mark.django_db
@@ -78,6 +78,73 @@ def test_node_source_empty_is_blocked_without_advancing_last_sync(mocker, config
     )
 
     assert NodeMgmtSyncService._has_current_successful_sync(config) is True
+
+
+@pytest.mark.django_db
+def test_empty_source_retires_existing_region_without_deleting_history(mocker, config):
+    task = CollectModels.objects.create(
+        name="区域采集-7",
+        task_type="host",
+        driver_type="job",
+        model_id="host",
+        is_interval=True,
+        cycle_value_type="cycle",
+        cycle_value="30",
+        scan_cycle="*/30 * * * *",
+        instances=[{"_id": 701, "ip_addr": "10.0.0.7"}],
+        access_point=[{"id": "ap-7"}],
+        credential=[],
+        params={},
+        team=[],
+        is_system=True,
+        is_visible=False,
+        system_code=f"{NodeMgmtSyncService.SYSTEM_TASK_PREFIX}7",
+    )
+    _patch_sync_boundaries(mocker, raw_nodes=[])
+
+    result = NodeMgmtSyncService.sync_hosts()
+
+    task.refresh_from_db()
+    assert result["reason_code"] == "NODE_SOURCE_EMPTY"
+    assert task.is_interval is False
+    assert task.instances == [{"_id": 701, "ip_addr": "10.0.0.7"}]
+    assert task.system_code == f"{NodeMgmtSyncService.SYSTEM_TASK_PREFIX}7"
+    state = NodeMgmtSyncRegionState.objects.get(scope_key="node-config:region:7")
+    assert state.collect_task_id == task.id
+    assert state.node_config_status == "delete_pending"
+
+
+@pytest.mark.django_db
+def test_manual_sync_with_auto_sync_disabled_forces_retired_region_reconcile(mocker, config):
+    config.auto_sync_enabled = False
+    config.save(update_fields=["auto_sync_enabled", "updated_at"])
+    retired = CollectModels.objects.create(
+        name="区域采集-2",
+        task_type="host",
+        driver_type="job",
+        model_id="host",
+        is_interval=True,
+        instances=[],
+        access_point=[{"id": "ap-2"}],
+        credential=[],
+        params={},
+        team=[],
+        is_system=True,
+        is_visible=False,
+        system_code=f"{NodeMgmtSyncService.SYSTEM_TASK_PREFIX}2",
+    )
+    reconcile = _patch_sync_boundaries(
+        mocker,
+        raw_nodes=[{"id": "node-a", "ip": "10.0.0.1", "cloud_region_id": 1}],
+    )
+    mocker.patch.object(NodeMgmtSyncService, "_host_attr_map", return_value={})
+    mocker.patch.object(NodeMgmtSyncService, "_host_os_type_options", return_value=[])
+
+    NodeMgmtSyncService.sync_hosts()
+
+    retired.refresh_from_db()
+    assert retired.is_interval is False
+    assert reconcile.call_args.kwargs["reconcile_node_configs"] is True
 
 
 @pytest.mark.django_db

@@ -40,6 +40,7 @@ def _create_region_task(region_id, *, system_code=None):
         credential=[],
         params={},
         team=[],
+        is_interval=True,
         is_system=True,
         is_visible=False,
         system_code=system_code or f"{NodeMgmtSyncService.SYSTEM_TASK_PREFIX}{region_id}",
@@ -71,6 +72,101 @@ def test_disable_collect_only_deletes_node_params(config, region_task):
     assert config.node_config_status == "disabled"
     assert state.node_config_status == "disabled"
     assert state.scope_key == "node-config:region:7"
+
+
+def test_retired_region_is_excluded_from_dispatch_and_records_delete_intent(config):
+    active_task = _create_region_task(8)
+    retired_task = _create_region_task(9)
+
+    NodeMgmtSyncService._retire_missing_region_collect_tasks(
+        config,
+        desired_region_ids={7, 8},
+    )
+
+    retired_task.refresh_from_db()
+    assert retired_task.is_interval is False
+    assert [task.id for task in NodeMgmtSyncService._list_region_collect_tasks()] == [active_task.id]
+    state = _state(config, 9)
+    assert state.collect_task_id == retired_task.id
+    assert state.node_config_status == "delete_pending"
+
+
+def test_foreign_config_region_state_cannot_suppress_current_delete_intent(config):
+    retired_task = _create_region_task(9)
+    foreign_config = NodeMgmtSyncConfig.objects.create(singleton_key="legacy")
+    foreign_state = NodeMgmtSyncRegionState.objects.create(
+        config=foreign_config,
+        config_version=foreign_config.version,
+        cloud_region_id="9",
+        collect_task=retired_task,
+        scope_key="node-config:region:9",
+        node_config_status="disabled",
+    )
+
+    NodeMgmtSyncService._retire_missing_region_collect_tasks(config, desired_region_ids=set())
+
+    foreign_state.refresh_from_db()
+    assert foreign_state.config_id == config.id
+    assert foreign_state.config_version == config.version
+    assert foreign_state.node_config_status == "delete_pending"
+
+
+def test_retired_legacy_region_without_state_is_deleted_and_failure_is_retryable(config, region_task):
+    region_task.is_interval = False
+    region_task.save(update_fields=["is_interval", "updated_at"])
+
+    with patch.object(
+        CollectModelService,
+        "delete_butch_node_params",
+        side_effect=[RuntimeError("delete-secret"), None],
+    ) as delete:
+        with patch.object(CollectModelService, "push_butch_node_params") as push:
+            first = _reconcile(config)
+            pending = _state(config)
+            second = _reconcile(config)
+
+    assert first.node_config_status == "degraded"
+    assert pending.node_config_status == "delete_pending"
+    assert pending.reason_code == "NODE_CONFIG_DELETE_FAILED"
+    assert delete.call_count == 2
+    push.assert_not_called()
+    assert second.node_config_status == "healthy"
+    assert _state(config).node_config_status == "disabled"
+
+
+def test_retired_region_reactivation_reuses_task_and_pushes_again(config, region_task, mocker):
+    region_task.is_interval = False
+    region_task.access_point = [{"id": "ap-7"}]
+    region_task.save(update_fields=["is_interval", "access_point", "updated_at"])
+    NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=config.version,
+        cloud_region_id="7",
+        collect_task=region_task,
+        scope_key="node-config:region:7",
+        node_config_status="disabled",
+    )
+    mocker.patch.object(NodeMgmtSyncService, "get_task", return_value=config)
+    mocker.patch.object(NodeMgmtSyncService, "heartbeat_run")
+
+    restored = NodeMgmtSyncService._ensure_region_collect_task(
+        cloud_region_id=7,
+        cloud_region_name="区域 7",
+        access_point={"id": "ap-7"},
+        team=[],
+        instances=[],
+        interval_minutes=30,
+    )
+
+    with patch.object(CollectModelService, "delete_butch_node_params") as delete:
+        with patch.object(CollectModelService, "push_butch_node_params") as push:
+            result = _reconcile(config)
+
+    assert restored.id == region_task.id
+    assert restored.is_interval is True
+    delete.assert_called_once_with(restored)
+    push.assert_called_once_with(restored)
+    assert result.node_config_status == "healthy"
 
 
 def test_config_versions_share_region_claim_and_new_disable_deletes_after_old_push(config, region_task):

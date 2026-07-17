@@ -909,10 +909,12 @@ class NodeMgmtSyncService:
         old_snapshot = {
             "instances": cls._normalize_sync_snapshot(getattr(old_task, "instances", [])),
             "access_point": cls._normalize_sync_snapshot(getattr(old_task, "access_point", [])),
+            "is_interval": bool(getattr(old_task, "is_interval", False)),
         }
         new_snapshot = {
             "instances": cls._normalize_sync_snapshot(getattr(new_task, "instances", [])),
             "access_point": cls._normalize_sync_snapshot(getattr(new_task, "access_point", [])),
+            "is_interval": bool(getattr(new_task, "is_interval", False)),
         }
         return old_snapshot != new_snapshot
 
@@ -1331,8 +1333,51 @@ class NodeMgmtSyncService:
         return result
 
     @classmethod
-    def _list_region_collect_tasks(cls) -> list[CollectModels]:
-        return list(CollectModels.objects.filter(is_system=True, system_code__startswith=cls.SYSTEM_TASK_PREFIX).order_by("id"))
+    def _list_region_collect_tasks(cls, *, active_only: bool = True) -> list[CollectModels]:
+        queryset = CollectModels.objects.filter(
+            is_system=True,
+            system_code__startswith=cls.SYSTEM_TASK_PREFIX,
+        )
+        if active_only:
+            queryset = queryset.filter(is_interval=True)
+        return list(queryset.order_by("id"))
+
+    @classmethod
+    def _retire_missing_region_collect_tasks(
+        cls,
+        task_config: NodeMgmtSyncConfig,
+        *,
+        desired_region_ids: set[int],
+    ) -> bool:
+        """暂停已从节点源消失的区域，并登记可补偿的节点配置删除。"""
+        from apps.cmdb.services.node_mgmt_sync_reconciler import NodeMgmtSyncReconciler
+
+        desired_codes = {cls._system_code(region_id) for region_id in desired_region_ids}
+        retired_any = False
+        for collect_task in cls._list_region_collect_tasks(active_only=False):
+            system_code = str(collect_task.system_code or "")
+            if system_code in desired_codes:
+                continue
+            raw_region_id = system_code.removeprefix(cls.SYSTEM_TASK_PREFIX)
+            if not raw_region_id.isascii() or not raw_region_id.isdecimal():
+                continue
+            scope_key = NodeMgmtSyncReconciler._node_config_scope(int(raw_region_id))
+            needs_intent = collect_task.is_interval or not NodeMgmtSyncRegionState.objects.filter(
+                config=task_config,
+                scope_key=scope_key,
+            ).exists()
+            if collect_task.is_interval:
+                collect_task.is_interval = False
+                collect_task.save(update_fields=["is_interval", "updated_at"])
+                retired_any = True
+            if needs_intent:
+                NodeMgmtSyncReconciler.mark_region_delivery_pending(
+                    task_config,
+                    cloud_region_id=int(raw_region_id),
+                    collect_task=collect_task,
+                )
+                retired_any = True
+        return retired_any
 
     @staticmethod
     def _execute_collect_task(task, operator):
@@ -1670,6 +1715,7 @@ class NodeMgmtSyncService:
         message = cls._empty_display_message()
         if not grouped_nodes:
             reason_code = cls.REASON_NODE_SOURCE_EMPTY if source_total == 0 else cls.REASON_NO_VALID_NODES
+            cls._retire_missing_region_collect_tasks(task_config, desired_region_ids=set())
             cls.finish_run(
                 run,
                 status=NodeMgmtSyncRun.STATUS_BLOCKED,
@@ -1682,6 +1728,12 @@ class NodeMgmtSyncService:
                 reason_code,
                 source_total,
                 invalid_node_count,
+            )
+            from apps.cmdb.services.node_mgmt_sync_reconciler import NodeMgmtSyncReconciler
+
+            NodeMgmtSyncReconciler.reconcile(
+                task_config,
+                reconcile_node_configs=True,
             )
             return cls.serialize_run(run)
 
@@ -1785,6 +1837,11 @@ class NodeMgmtSyncService:
                     }
                 )
 
+        retired_regions = cls._retire_missing_region_collect_tasks(
+            task_config,
+            desired_region_ids=set(grouped_nodes),
+        )
+
         if changed_instance_ids:
             from apps.cmdb.services.auto_relation_reconcile import schedule_instance_auto_relation_reconcile
 
@@ -1819,7 +1876,7 @@ class NodeMgmtSyncService:
         current_config = cls.get_task()
         NodeMgmtSyncReconciler.reconcile(
             current_config,
-            reconcile_node_configs=current_config.auto_sync_enabled,
+            reconcile_node_configs=current_config.auto_sync_enabled or retired_regions,
         )
         logger.info("[NodeMgmtSync] ========== 同步完成 ==========")
         logger.info(
