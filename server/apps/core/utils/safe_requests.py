@@ -14,6 +14,7 @@
 """
 
 from typing import Any, Optional
+from urllib.parse import urlparse
 
 import requests
 from requests import Response
@@ -26,6 +27,78 @@ class SafeRequestsError(Exception):
     """安全请求错误"""
 
     pass
+
+
+def _should_strip_credentials(current_url: str, redirect_url: str) -> bool:
+    """Match requests' auth boundary, including its compatible HTTP-to-HTTPS upgrade."""
+    current = urlparse(current_url)
+    redirect = urlparse(redirect_url)
+    if current.hostname != redirect.hostname:
+        return True
+    if (
+        current.scheme == "http"
+        and current.port in (80, None)
+        and redirect.scheme == "https"
+        and redirect.port in (443, None)
+    ):
+        return False
+
+    changed_port = current.port != redirect.port
+    changed_scheme = current.scheme != redirect.scheme
+    default_port = ({"http": 80, "https": 443}.get(current.scheme), None)
+    if not changed_scheme and current.port in default_port and redirect.port in default_port:
+        return False
+    return changed_port or changed_scheme
+
+
+def _without_headers(headers: dict[str, Any], names: set[str]) -> dict[str, Any]:
+    blocked = {name.lower() for name in names}
+    return {name: value for name, value in headers.items() if name.lower() not in blocked}
+
+
+def _prepare_redirect_request(
+    method: str,
+    current_url: str,
+    redirect_url: str,
+    status_code: int,
+    kwargs: dict[str, Any],
+) -> tuple[str, dict[str, Any]]:
+    """Apply requests-compatible method rules and credential boundaries to one redirect."""
+    redirect_method = method
+    upper_method = method.upper()
+    if status_code == requests.codes.see_other and upper_method != "HEAD":
+        redirect_method = "GET"
+    elif status_code == requests.codes.found and upper_method != "HEAD":
+        redirect_method = "GET"
+    elif status_code == requests.codes.moved and upper_method == "POST":
+        redirect_method = "GET"
+
+    redirect_kwargs = kwargs.copy()
+    # The original query parameters have already been applied to the first URL.
+    redirect_kwargs.pop("params", None)
+
+    headers = redirect_kwargs.get("headers")
+    if headers is not None:
+        headers = dict(headers)
+
+    # requests discards the entity when following 301/302/303 responses. 307/308
+    # intentionally preserve both the method and body.
+    if status_code not in (requests.codes.temporary_redirect, requests.codes.permanent_redirect):
+        for key in ("data", "files", "json"):
+            redirect_kwargs.pop(key, None)
+        if headers is not None:
+            headers = _without_headers(headers, {"Content-Length", "Content-Type", "Transfer-Encoding"})
+
+    if _should_strip_credentials(current_url, redirect_url):
+        redirect_kwargs.pop("auth", None)
+        redirect_kwargs.pop("cookies", None)
+        if headers is not None:
+            headers = _without_headers(headers, {"Authorization", "Cookie", "Host", "Proxy-Authorization"})
+
+    if headers is not None:
+        redirect_kwargs["headers"] = headers
+
+    return redirect_method, redirect_kwargs
 
 
 def safe_request(
@@ -66,6 +139,7 @@ def safe_request(
 
     try:
         response = requests.request(method, validated_url, **kwargs)
+        current_url = validated_url
 
         # 3. 手动处理重定向
         redirect_count = 0
@@ -82,7 +156,11 @@ def safe_request(
             # 校验重定向目标
             validated_redirect = SSRFValidator.validate(redirect_url, allowlist=allowlist)
             logger.info(f"[SafeRequests] 重定向: {url} -> {validated_redirect}")
+            method, kwargs = _prepare_redirect_request(
+                method, current_url, validated_redirect, response.status_code, kwargs
+            )
             response = requests.request(method, validated_redirect, **kwargs)
+            current_url = validated_redirect
             redirect_count += 1
 
         return response
@@ -162,6 +240,7 @@ def safe_request_llm_endpoint(
 
     try:
         response = requests.request(method, validated_url, **kwargs)
+        current_url = validated_url
 
         # 3. 手动处理重定向
         redirect_count = 0
@@ -178,7 +257,11 @@ def safe_request_llm_endpoint(
             # 校验重定向目标（宽松模式）
             validated_redirect = SSRFValidator.validate_llm_endpoint(redirect_url)
             logger.info(f"[SafeRequests-LLM] 重定向: {url} -> {validated_redirect}")
+            method, kwargs = _prepare_redirect_request(
+                method, current_url, validated_redirect, response.status_code, kwargs
+            )
             response = requests.request(method, validated_redirect, **kwargs)
+            current_url = validated_redirect
             redirect_count += 1
 
         return response
