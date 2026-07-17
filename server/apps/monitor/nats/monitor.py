@@ -615,14 +615,19 @@ def monitor_metrics(monitor_obj_id: str, *args, **kwargs):
         return {"result": False, "data": [], "message": "监控对象不存在"}
 
     # 查询监控对象关联的指标
-    metrics = Metric.objects.filter(monitor_object=monitor_obj).order_by("metric_group__sort_order", "sort_order")
+    metrics = (
+        Metric.objects.filter(monitor_object=monitor_obj)
+        .select_related("monitor_plugin")
+        .order_by("metric_group__sort_order", "sort_order")
+    )
 
     serializer = MetricSerializer(metrics, many=True)
     results = serializer.data
     user_info = kwargs.get("user_info", {}) or {}
     locale = user_info.get("locale", "en")
     lan = LanguageLoader(app=LanguageConstants.APP, default_lang=locale)
-    for result in results:
+    for metric, result in zip(metrics, results):
+        result["monitor_plugin_name"] = metric.monitor_plugin.name if metric.monitor_plugin else ""
         lan_key = f"{LanguageConstants.MONITOR_OBJECT_METRIC}.{monitor_obj.name}.{result['name']}"
         result["display_name"] = lan.get(f"{lan_key}.name") or result.get("display_name") or result["name"]
         result["display_description"] = lan.get(f"{lan_key}.desc") or result.get("description")
