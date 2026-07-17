@@ -48,19 +48,16 @@ export default function LoginAuthBindingContent({
   const isModalMode = mode === "modal";
   const helperMessage = t('signin.loginAuth.bindingContent.helperMessage');
   const pageBindingCardClassName =
-    "rounded-[8px] border-[1.5px] border-white/60 bg-[linear-gradient(180deg,rgba(255,255,255,0.16)_0%,rgba(255,255,255,0.07)_100%)] px-[14px] py-[12px] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.32)] backdrop-blur-[16px]";
-  const modalBindingCardClassName =
-    "rounded-[8px] border border-[#DBE5F2] bg-[linear-gradient(180deg,#FBFCFE_0%,#F4F8FC_100%)] px-[14px] py-[12px]";
+    "rounded-md border border-(--color-border) bg-(--color-bg) px-[14px] py-[12px]";
+  const modalBindingCardClassName = pageBindingCardClassName;
   const bindingCardClassName = isModalMode ? modalBindingCardClassName : pageBindingCardClassName;
   const pageHelperCardClassName =
-    "mt-3 rounded-[8px] border-[1.5px] border-white/60 bg-[linear-gradient(180deg,rgba(255,255,255,0.16)_0%,rgba(255,255,255,0.07)_100%)] px-3 py-[10px] text-[12px] leading-[1.6] text-[#708094] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.32)] backdrop-blur-[16px]";
-  const modalHelperCardClassName =
-    "mt-3 rounded-[8px] border border-[#D7E0EA] bg-[#F8FAFC] px-3 py-[10px] text-[12px] leading-[1.6] text-[#708094]";
+    "mt-3 rounded-md bg-(--color-fill-1) px-3 py-[10px] text-[12px] leading-[1.6] text-(--color-text-2)";
+  const modalHelperCardClassName = pageHelperCardClassName;
   const helperCardClassName = isModalMode ? modalHelperCardClassName : pageHelperCardClassName;
   const pageBindingIconClassName =
-    "flex h-[40px] w-[40px] shrink-0 items-center justify-center rounded-[10px] bg-[linear-gradient(180deg,rgba(255,255,255,0.26)_0%,rgba(232,240,255,0.12)_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.88)]";
-  const modalBindingIconClassName =
-    "flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[8px] bg-[#E8F0FF]";
+    "flex h-[40px] w-[40px] shrink-0 items-center justify-center rounded-md bg-(--color-primary-bg-active)";
+  const modalBindingIconClassName = pageBindingIconClassName;
   const bindingIconClassName = isModalMode ? modalBindingIconClassName : pageBindingIconClassName;
   const bindingIconSizeClassName = isModalMode ? "h-5! w-5!" : "h-6! w-6!";
   const bindingFallbackIconClassName = isModalMode ? "text-[18px]" : "text-[20px]";
