@@ -1,8 +1,11 @@
 import datetime
+import re
+from datetime import date, datetime as _datetime, timezone as _timezone
 import os
 from functools import reduce
 from operator import or_
 from types import SimpleNamespace
+from typing import Optional
 from zoneinfo import ZoneInfo
 
 from django.db.models import Count, Q
@@ -1427,3 +1430,144 @@ def model_inst_count(*args, **kwargs):
     """
     result = InstanceManage.model_inst_count(permissions_map={}, creator="")
     return {"result": True, "message": "", "data": result}
+
+
+
+# === 云资源成本分析 Report Responder ===
+# 前端数据源通过 rest_api "cmdb/get_cloud_resource_cost_*" 路由到这里。
+# 入参约定:user_info(由 GetNatsData 注入) + 过滤项 kwargs。
+# 过滤项 department 映射到 bill 维度 user_department;billing_period 为 [start, end] 字符串列表。
+#
+# 注意:本段使用 stdlib 的 `date` / `_datetime` / `_timezone`(与模块顶部 Django
+# `timezone` 工具区分),以及 `Optional`(typing)。调用 apps.cmdb.services.cloud_cost
+# 下的业务聚合服务,数据走 CMDB 动态模型 resource_bill / transaction_log。
+
+# Python date.max = 9999-12-31。超过该值 fromisoformat 会抛 OverflowError,在此统一收口。
+_MAX_DATE = date(9999, 12, 31)
+
+
+def _to_date(value) -> Optional[date]:
+    """把单个原始值解析为 UTC 日历日。
+
+    支持的输入(均为字符串):
+      - ``"YYYY-MM-DD"``  纯 date
+      - ``"YYYY-MM-DDTHH:mm:ss[.ffffff]"``  naive ISO datetime
+      - ``"YYYY-MM-DDTHH:mm:ss[.ffffff]Z"``  UTC ISO datetime
+      - ``"YYYY-MM-DDTHH:mm:ss[.ffffff]±HH:MM"``  带偏移 ISO datetime
+
+    时区策略:**naive 输入视为 UTC;带时区输入先 astimezone(UTC) 再取 .date()**。
+    这一约定对齐 ``transaction_log.billing_date`` 的存储层语义(纯 ``YYYY-MM-DD``,无时区)。
+
+    非字符串、数字时间戳、无法解析的字符串、超过 ``date.max`` 的日期均返回 ``None``。
+    """
+    if not isinstance(value, str) or not value:
+        return None
+
+    # 1. 纯 date 路径:date.fromisoformat 拒绝任何时间部分。
+    try:
+        d = date.fromisoformat(value)
+        return d if d <= _MAX_DATE else None
+    except ValueError:
+        pass
+
+    # 2. ISO datetime 路径。把 'Z' 标准化为 '+00:00'(datetime.fromisoformat 在 3.11+ 才接受 Z,
+    # 显式替换兼容 3.10 及以下)。
+    candidate = value[:-1] + "+00:00" if value.endswith("Z") else value
+    try:
+        dt = _datetime.fromisoformat(candidate)
+    except ValueError:
+        return None
+
+    if dt.tzinfo is None:
+        # naive 视为 UTC,与纯 date 路径保持同一日历语义。
+        dt = dt.replace(tzinfo=_timezone.utc)
+    else:
+        dt = dt.astimezone(_timezone.utc)
+
+    d = dt.date()
+    return d if d <= _MAX_DATE else None
+
+
+def _parse_billing_period(raw) -> Optional[tuple]:
+    """[start, end] → (date, date)(UTC 日历日)。
+
+    - 接受纯 date / naive ISO datetime / Z 后缀 / 带偏移量 4 种输入形态。
+    - ``start > end`` 时自动 swap,允许前端 RangePicker 反向选区。
+    - 数组长度不对、元素不是字符串、字符串无法解析时返回 ``None`` 并 ``logger.warning``。
+    - 数字时间戳(秒级/毫秒级)**不支持** → ``None``(避免歧义)。
+
+    时区策略:naive 当 UTC,带时区转 UTC → 与 ``transaction_log.billing_date``
+    存储层语义对齐。详见 ``_to_date`` docstring。
+    """
+    if not raw or not isinstance(raw, (list, tuple)) or len(raw) != 2:
+        return None
+
+    start = _to_date(raw[0])
+    end = _to_date(raw[1])
+    if start is None or end is None:
+        logger.warning(
+            "billing_period 解析失败 raw=%r;要求每端为 'YYYY-MM-DD' 或 ISO datetime(naive 当 UTC)",
+            raw,
+        )
+        return None
+
+    if start > end:
+        start, end = end, start
+    return start, end
+
+
+def _jsonable(value):
+    """Decimal → str,便于 JSON 序列化。"""
+    return str(value) if hasattr(value, "quantize") else value
+
+
+@nats_client.register
+def get_cloud_resource_cost_summary(user_info=None, **kwargs):
+    """云资源成本 KPI 汇总卡。kwargs: department / applying_user / inst_type / billing_period。"""
+    from apps.cmdb.services.cloud_cost.service import CloudCostService
+
+    data = CloudCostService.summary(
+        user_info or {},
+        inst_type=kwargs.get("inst_type"),
+        user_department=kwargs.get("department"),
+        applying_user=kwargs.get("applying_user"),
+        billing_period=_parse_billing_period(kwargs.get("billing_period")),
+    )
+    data = {k: _jsonable(v) for k, v in data.items()}
+    return {"result": True, "data": data, "message": ""}
+
+
+@nats_client.register
+def get_cloud_resource_cost_distribution(user_info=None, **kwargs):
+    """云资源费用分布。kwargs: department / applying_user / inst_type / billing_period / group_by。"""
+    from apps.cmdb.services.cloud_cost.service import CloudCostService
+
+    data = CloudCostService.distribution(
+        user_info or {},
+        inst_type=kwargs.get("inst_type"),
+        user_department=kwargs.get("department"),
+        applying_user=kwargs.get("applying_user"),
+        billing_period=_parse_billing_period(kwargs.get("billing_period")),
+        group_by=kwargs.get("group_by", "instance_type"),
+    )
+    return {"result": True, "data": data, "message": ""}
+
+
+@nats_client.register
+def get_cloud_resource_cost_bill_detail(user_info=None, **kwargs):
+    """云资源账单明细。kwargs: department / applying_user / inst_type / billing_period / page / page_size / sort_by / order。"""
+    from apps.cmdb.services.cloud_cost.service import CloudCostService
+
+    data = CloudCostService.instance_list(
+        user_info or {},
+        inst_type=kwargs.get("inst_type"),
+        user_department=kwargs.get("department"),
+        applying_user=kwargs.get("applying_user"),
+        billing_period=_parse_billing_period(kwargs.get("billing_period")),
+        page=int(kwargs.get("page", 1)),
+        page_size=int(kwargs.get("page_size", 20)),
+        sort_by=kwargs.get("sort_by", "total_cost_incurred"),
+        order=kwargs.get("order", "desc"),
+    )
+    data["items"] = [{k: _jsonable(v) for k, v in item.items()} for item in data["items"]]
+    return {"result": True, "data": data, "message": ""}

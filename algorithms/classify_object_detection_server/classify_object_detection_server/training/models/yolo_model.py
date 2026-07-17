@@ -87,7 +87,8 @@ class YOLODetectionModel(BaseObjectDetectionModel):
         logger.warning(
             f"⚠️  本地模型文件不存在: {local_model_path}\n"
             f"   将使用 Ultralytics 在线下载模式: {model_name}\n"
-            f"   提示：请在构建 Docker 镜像前将模型文件放入 yolo_models/ 目录"
+            f"   提示：镜像仅内置 Dockerfile 声明的官方权重；"
+            f"自定义权重请在运行时通过绝对路径提供"
         )
         return model_name
 

@@ -1,3 +1,4 @@
+import uuid
 import importlib
 import json
 import os
@@ -775,6 +776,7 @@ def test_user_serializer_exposes_derived_status_with_priority_order():
     now = timezone.now()
     users = [
         User(
+            user_id=str(uuid.uuid4()),
             username="disabled-user",
             display_name="禁用用户",
             email="disabled@example.com",
@@ -786,6 +788,7 @@ def test_user_serializer_exposes_derived_status_with_priority_order():
             password_last_modified=now - timedelta(days=400),
         ),
         User(
+            user_id=str(uuid.uuid4()),
             username="locked-user",
             display_name="锁定用户",
             email="locked@example.com",
@@ -797,6 +800,7 @@ def test_user_serializer_exposes_derived_status_with_priority_order():
             password_last_modified=now - timedelta(days=400),
         ),
         User(
+            user_id=str(uuid.uuid4()),
             username="expired-user",
             display_name="过期用户",
             email="expired@example.com",
@@ -808,6 +812,7 @@ def test_user_serializer_exposes_derived_status_with_priority_order():
             password_last_modified=now - timedelta(days=400),
         ),
         User(
+            user_id=str(uuid.uuid4()),
             username="normal-user",
             display_name="正常用户",
             email="normal@example.com",
@@ -841,6 +846,7 @@ def test_user_serializer_treats_missing_password_time_and_non_positive_validity_
     now = timezone.now()
     users = [
         User(
+            user_id=str(uuid.uuid4()),
             username="permanent-user",
             display_name="永久有效用户",
             email="permanent@example.com",
@@ -852,6 +858,7 @@ def test_user_serializer_treats_missing_password_time_and_non_positive_validity_
             password_last_modified=now - timedelta(days=400),
         ),
         User(
+            user_id=str(uuid.uuid4()),
             username="missing-password-time-user",
             display_name="缺少密码时间用户",
             email="missing@example.com",

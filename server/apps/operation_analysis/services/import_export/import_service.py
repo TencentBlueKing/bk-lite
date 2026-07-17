@@ -18,12 +18,13 @@ from django.db import transaction
 from apps.core.logger import operation_analysis_logger as logger
 from apps.operation_analysis.constants.import_export import RENAME_SUFFIX, SENSITIVE_PLACEHOLDER, ConflictAction, ImportStatus, ObjectType
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, DataSourceTag, NameSpace
-from apps.operation_analysis.models.models import Architecture, Dashboard, Directory, Report, Screen, Topology
+from apps.operation_analysis.models.models import Architecture, Dashboard, Directory, NetworkTopology, Report, Screen, Topology
 from apps.operation_analysis.schemas.import_export_schema import (
     ArchitectureItem,
     DashboardItem,
     DatasourceItem,
     NamespaceItem,
+    NetworkTopologyItem,
     ReportItem,
     ScreenItem,
     TopologyItem,
@@ -49,6 +50,7 @@ class ImportService:
         ObjectType.ARCHITECTURE: Architecture,
         ObjectType.SCREEN: Screen,
         ObjectType.REPORT: Report,
+        ObjectType.NETWORK_TOPOLOGY: NetworkTopology,
         ObjectType.DATASOURCE: DataSourceAPIModel,
         ObjectType.NAMESPACE: NameSpace,
     }
@@ -359,7 +361,7 @@ class ImportService:
 
     def _import_canvas(
         self,
-        canvas_item: DashboardItem | TopologyItem | ArchitectureItem | ScreenItem | ReportItem,
+        canvas_item: DashboardItem | TopologyItem | ArchitectureItem | ScreenItem | ReportItem | NetworkTopologyItem,
         object_type: ObjectType,
         model,
     ) -> int | None:
@@ -382,7 +384,6 @@ class ImportService:
         # 构建基础数据
         canvas_data = {
             "desc": canvas_item.desc,
-            "other": canvas_item.other,
             "view_sets": rewrite_canvas_view_sets_refs_for_storage(
                 normalize_canvas_view_sets_for_storage(canvas_item.view_sets, object_type),
                 object_type,
@@ -391,6 +392,16 @@ class ImportService:
             "directory": directory,
             "groups": canvas_groups,
         }
+
+        if object_type == ObjectType.NETWORK_TOPOLOGY:
+            canvas_data["base_url"] = canvas_item.base_url
+            token = self._get_secret_value(canvas_item.key, "token")
+            if not token and canvas_item.token != SENSITIVE_PLACEHOLDER:
+                token = canvas_item.token
+            if token and token != SENSITIVE_PLACEHOLDER:
+                canvas_data["token"] = token
+        else:
+            canvas_data["other"] = canvas_item.other
 
         # Dashboard有额外的filters字段
         if object_type == ObjectType.DASHBOARD and hasattr(canvas_item, "filters"):
@@ -472,7 +483,7 @@ class ImportService:
             }
         """
         logger.info(
-            "[CanvasImport] 开始导入：命名空间 %s、数据源 %s、仪表盘 %s、拓扑 %s、架构 %s、大屏 %s、报表 %s",
+            "[CanvasImport] 开始导入：命名空间 %s、数据源 %s、仪表盘 %s、拓扑 %s、架构 %s、大屏 %s、报表 %s、网络拓扑 %s",
             len(self.doc.namespaces),
             len(self.doc.datasources),
             len(self.doc.dashboards),
@@ -480,6 +491,7 @@ class ImportService:
             len(self.doc.architectures),
             len(self.doc.screens),
             len(self.doc.reports),
+            len(self.doc.network_topologies),
         )
 
         try:
@@ -518,6 +530,9 @@ class ImportService:
 
             for report in self.doc.reports:
                 self._import_canvas(report, ObjectType.REPORT, Report)
+
+            for network_topology in self.doc.network_topologies:
+                self._import_canvas(network_topology, ObjectType.NETWORK_TOPOLOGY, NetworkTopology)
 
             rollback_result = self._rollback_on_failure()
             if rollback_result:

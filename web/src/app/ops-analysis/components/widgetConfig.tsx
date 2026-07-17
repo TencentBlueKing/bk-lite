@@ -39,9 +39,15 @@ import {
   buildDefaultFilterBindings,
 } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { canEnableCompare } from '@/app/ops-analysis/utils/compareQuery';
+import {
+  clearComponentParamSwitch,
+  findComponentSwitchParams,
+  reconcileComponentParamValue,
+} from '@/app/ops-analysis/utils/componentParamSwitch';
 import type {
   DatasourceItem,
   InputControlConfig,
+  InputOption,
   ParamItem,
   ResponseFieldDefinition,
 } from '@/app/ops-analysis/types/dataSource';
@@ -116,6 +122,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   const [widgetParamOverrides, setWidgetParamOverrides] = useState<ParamItem[]>([]);
   const { getSourceDataByApiId } = useDataSourceApi();
   const configRequestIdRef = useRef(0);
+  const resolvedParamOptionsRef = useRef(new Map<string, InputOption[]>());
 
   const {
     selectedDataSource,
@@ -254,6 +261,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   const handleDataSourceChangeFromSelector = useCallback(
     async (item: DatasourceItem) => {
       const requestId = nextConfigRequestId();
+      resolvedParamOptionsRef.current.clear();
       setDataSourceSelectorVisible(false);
 
       if (isSceneWidgetSelection(item)) {
@@ -469,7 +477,12 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   const handleChartTypeChange = async (e: any) => {
     const newChartType = e.target.value;
     setChartType(newChartType);
-    form.setFieldsValue({ chartType: newChartType });
+    form.setFieldValue('chartType', newChartType);
+    if (newChartType !== 'topN') {
+      setWidgetParamOverrides((previous) =>
+        previous.map(clearComponentParamSwitch),
+      );
+    }
     await tableConfig.handleChartTypeChange(newChartType);
   };
 
@@ -477,6 +490,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     widgetItem: ViewConfigItem,
     requestId: number,
   ): Promise<void> => {
+    resolvedParamOptionsRef.current.clear();
     if (!isCurrentConfigRequest(requestId)) {
       return;
     }
@@ -678,7 +692,6 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     if (valueConfig?.topNValueField !== undefined) {
       formValues.topNValueField = valueConfig.topNValueField;
     }
-
     if (valueConfig?.unit !== undefined) {
       formValues.unit = valueConfig.unit;
     }
@@ -734,8 +747,25 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     setEditingInputConfigParam(override ?? param);
   };
 
-  const handleInputConfigConfirm = (newConfig: InputControlConfig) => {
+  const reconcileParamWithOptions = useCallback(
+    (paramName: string, options: InputOption[]) => {
+      if (options.length === 0) return;
+      resolvedParamOptionsRef.current.set(paramName, options);
+      const currentParams = form.getFieldValue('params') || {};
+      const nextValue = reconcileComponentParamValue(currentParams[paramName], options);
+      if (nextValue !== currentParams[paramName]) {
+        form.setFieldValue(['params', paramName], nextValue);
+      }
+    },
+    [form],
+  );
+
+  const handleInputConfigConfirm = (
+    newConfig: InputControlConfig,
+    resolvedOptions?: InputOption[],
+  ) => {
     if (!editingInputConfigParam) return;
+    const editingParamName = editingInputConfigParam.name;
     setWidgetParamOverrides((prev) => {
       const existing = prev.find((o) => o.name === editingInputConfigParam.name);
       const baseParam = {
@@ -751,6 +781,11 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       }
       return [...prev, { ...baseParam, inputConfig: newConfig }];
     });
+    if (resolvedOptions?.length) {
+      reconcileParamWithOptions(editingParamName, resolvedOptions);
+    } else {
+      resolvedParamOptionsRef.current.delete(editingParamName);
+    }
     setEditingInputConfigParam(null);
   };
 
@@ -768,6 +803,13 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       }),
     };
   }, [selectedDataSource, widgetParamOverrides]);
+
+  const componentSwitchOwner = useMemo(() => {
+    const owner = findComponentSwitchParams(effectiveDataSource?.params)[0];
+    return owner
+      ? { name: owner.name, label: owner.alias_name || owner.name }
+      : undefined;
+  }, [effectiveDataSource]);
 
   const handleFormValuesChange = (changedValues: Record<string, any>) => {
     if (!isTableLikeChartType) {
@@ -814,8 +856,22 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         selectedDataSource?.params?.length
       ) {
         const formParams = values.params || form.getFieldValue('params') || {};
+        const reconciledFormParams = { ...formParams };
+        effectiveDataSource?.params.forEach((param) => {
+          const options = resolvedParamOptionsRef.current.get(param.name);
+          if (!options?.length) return;
+          reconciledFormParams[param.name] = reconcileComponentParamValue(
+            reconciledFormParams[param.name],
+            options,
+          );
+        });
+        if (Object.keys(reconciledFormParams).some(
+          (name) => reconciledFormParams[name] !== formParams[name],
+        )) {
+          form.setFieldValue('params', reconciledFormParams);
+        }
         const processed = processFormParamsForSubmit(
-          formParams,
+          reconciledFormParams,
           selectedDataSource.params,
         );
         // 合并组件级 inputConfig 覆盖
@@ -855,6 +911,10 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           tableConfig.setDisplayColumnsError(
             t('dashboard.atLeastOneVisibleColumn') || '请至少保留一列可见',
           );
+          return;
+        }
+        if (submitResult.error === 'multipleComponentSwitchParams') {
+          message.error(t('dashboard.multipleComponentSwitchParams'));
           return;
         }
       }
@@ -1068,6 +1128,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
               selectedDataSource={effectiveDataSource}
               includeFilterTypes={['params', 'fixed']}
               onEditInputConfig={handleEditInputConfig}
+              onParamOptionsResolved={(param, options) =>
+                reconcileParamWithOptions(param.name, options)
+              }
             />
           </div>
         )}
@@ -1211,6 +1274,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         onConfirm={handleInputConfigConfirm}
         onCancel={() => setEditingInputConfigParam(null)}
         excludeSourceIds={selectedDataSource ? [selectedDataSource.id] : []}
+        componentSwitchEnabled={chartType === 'topN'}
+        componentSwitchOwner={componentSwitchOwner}
+        editingParamName={editingInputConfigParam?.name}
       />
     </Drawer>
   );

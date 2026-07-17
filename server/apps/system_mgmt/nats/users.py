@@ -13,12 +13,12 @@ def get_group_users(group=None, include_children=False):
     """
     if not group:
         # 如果没有指定组织，返回所有用户
-        users = User.objects.all().values("id", "username", "display_name")
+        users = User.objects.all().values("id", "user_id", "username", "display_name")
     elif include_children:
         group_ids = GroupUtils.get_group_with_descendants(group)
-        users = User.objects.filter(group_list__overlap=group_ids).values("id", "username", "display_name")
+        users = User.objects.filter(group_list__overlap=group_ids).values("id", "user_id", "username", "display_name")
     else:
-        users = User.objects.filter(group_list__contains=int(group)).values("id", "username", "display_name")
+        users = User.objects.filter(group_list__contains=int(group)).values("id", "user_id", "username", "display_name")
     return {"result": True, "data": list(users)}
 
 
@@ -99,7 +99,7 @@ def get_group_users_scoped(actor_context, group=None, include_children=False):
     user_filter = Q()
     for group_id in query_groups:
         user_filter |= Q(group_list__contains=int(group_id))
-    users = User.objects.filter(user_filter).values("id", "username", "display_name")
+    users = User.objects.filter(user_filter).values("id", "user_id", "username", "display_name")
     return {"result": True, "data": list(users)}
 
 
