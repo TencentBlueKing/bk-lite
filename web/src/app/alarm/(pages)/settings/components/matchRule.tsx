@@ -13,10 +13,10 @@ import {
   initialConditionLists,
 } from '@/app/alarm/constants/settings';
 import {
-  LEVEL_MULTI_OPERATOR_OPTIONS,
   MatchRuleValue,
-  isLevelMultiSelectEnabled,
-  normalizeMultipleRuleValue,
+  getMatchRuleOperatorOptions,
+  getMatchRuleValueAfterOperatorChange,
+  getMatchRuleValueSelectState,
 } from './matchRuleValue';
 
 const { Option } = Select;
@@ -172,27 +172,21 @@ const RulesMatch: React.FC<MatchRuleProps> = ({
                             const updatedPolicyList = [...policyList];
                             const item = updatedPolicyList[index][ind];
                             item.operator = value;
-                            if (
-                              isLevelMultiSelectEnabled(
-                                item.key,
-                                enableLevelMultiSelect,
-                              )
-                            ) {
-                              item.value = undefined;
-                            }
+                            item.value = getMatchRuleValueAfterOperatorChange(
+                              item.key,
+                              enableLevelMultiSelect,
+                              item.value,
+                            );
                             setPolicyList(updatedPolicyList);
                             onChange?.(updatedPolicyList);
                           }}
                         >
-                          {(
-                            isLevelMultiSelectEnabled(
-                              i.key,
-                              enableLevelMultiSelect,
-                            )
-                              ? LEVEL_MULTI_OPERATOR_OPTIONS
-                              : ((conditionOptions || initialConditionLists)[
-                                i.key as string
-                              ] || [])
+                          {getMatchRuleOperatorOptions(
+                            i.key,
+                            enableLevelMultiSelect,
+                            (conditionOptions || initialConditionLists)[
+                              i.key as string
+                            ] || [],
                           ).map((item) => (
                               <Option key={item.name} value={item.name}>
                                 {item.desc}
@@ -204,20 +198,18 @@ const RulesMatch: React.FC<MatchRuleProps> = ({
                         {['level', 'source_id', 'source_name'].includes(i.key as string) ? (
                           <Select
                             mode={
-                              isLevelMultiSelectEnabled(
+                              getMatchRuleValueSelectState(
                                 i.key,
                                 enableLevelMultiSelect,
-                              )
-                                ? 'multiple'
-                                : undefined
+                                i.value,
+                              ).mode
                             }
                             value={
-                              isLevelMultiSelectEnabled(
+                              getMatchRuleValueSelectState(
                                 i.key,
                                 enableLevelMultiSelect,
-                              )
-                                ? normalizeMultipleRuleValue(i.value)
-                                : i.value
+                                i.value,
+                              ).value
                             }
                             showSearch
                             loading={(i.key === 'source_id' || i.key === 'source_name') && sourceLoading}
