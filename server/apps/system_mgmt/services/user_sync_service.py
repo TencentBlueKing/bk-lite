@@ -1,6 +1,8 @@
-from copy import deepcopy
-from types import SimpleNamespace
+import os
 import uuid
+from copy import deepcopy
+from datetime import timedelta
+from types import SimpleNamespace
 
 from django.contrib.auth.hashers import make_password
 from django.db import IntegrityError, transaction
@@ -27,6 +29,39 @@ DEFAULT_FIELD_MAPPING = {
     "phone": "mobile",
 }
 ALL_DEPARTMENT_SELECTION_ID = "__all__"
+DEFAULT_USER_SYNC_STALE_TIMEOUT_SECONDS = 6 * 60 * 60
+
+
+def _get_user_sync_stale_timeout_seconds() -> int:
+    raw_value = os.getenv(
+        "USER_SYNC_STALE_TIMEOUT_SECONDS",
+        str(DEFAULT_USER_SYNC_STALE_TIMEOUT_SECONDS),
+    )
+    try:
+        timeout_seconds = int(raw_value)
+    except (TypeError, ValueError):
+        logger.warning(
+            "Invalid USER_SYNC_STALE_TIMEOUT_SECONDS=%r; using default %s",
+            raw_value,
+            DEFAULT_USER_SYNC_STALE_TIMEOUT_SECONDS,
+        )
+        return DEFAULT_USER_SYNC_STALE_TIMEOUT_SECONDS
+    return max(timeout_seconds, 60)
+
+
+def _release_stale_user_sync_runs(source: UserSyncSource) -> int:
+    now = timezone.now()
+    stale_before = now - timedelta(seconds=_get_user_sync_stale_timeout_seconds())
+    return UserSyncRun.objects.filter(
+        source=source,
+        status=UserSyncRunStatusChoices.RUNNING,
+        started_at__lt=stale_before,
+    ).update(
+        status=UserSyncRunStatusChoices.FAILED,
+        summary="User sync timed out and was released automatically",
+        finished_at=now,
+        updated_at=now,
+    )
 
 
 def get_user_sync_business_value(source, key: str, default=None):
@@ -123,6 +158,14 @@ def execute_user_sync(source_id: int, trigger_mode: str = UserSyncTriggerModeCho
     instance = source.integration_instance
     if not instance.enabled or instance.status != "ready" or instance.capability_status.get("user_sync") != "ready":
         return {"result": False, "message": "User sync source is not ready"}
+
+    released_count = _release_stale_user_sync_runs(source)
+    if released_count:
+        logger.warning(
+            "Released %s stale user sync run(s) for source '%s'",
+            released_count,
+            source.name,
+        )
 
     if UserSyncRun.objects.filter(source=source, status=UserSyncRunStatusChoices.RUNNING).exists():
         return {"result": False, "message": "User sync is already running"}
