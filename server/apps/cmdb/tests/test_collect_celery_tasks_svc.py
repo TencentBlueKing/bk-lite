@@ -289,28 +289,55 @@ def test_full_sync_rule_task_delegates(monkeypatch):
 # node mgmt sync delegation
 # --------------------------------------------------------------------------
 def test_sync_node_mgmt_hosts_delegates(monkeypatch):
+    calls = []
     monkeypatch.setattr(
-        "apps.cmdb.services.node_mgmt_sync_service.NodeMgmtSyncService.trigger_sync", staticmethod(lambda: {"synced": 5}),
+        "apps.cmdb.services.node_mgmt_sync_service.NodeMgmtSyncService.recover_stale_runs",
+        staticmethod(lambda: calls.append("recover")),
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.services.node_mgmt_sync_service.NodeMgmtSyncService.trigger_sync",
+        staticmethod(lambda: calls.append("sync") or {"synced": 5}),
     )
     assert ct.sync_node_mgmt_hosts() == {"synced": 5}
+    assert calls == ["recover", "sync"]
 
 
 def test_sync_node_mgmt_hosts_propagates_error(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        "apps.cmdb.services.node_mgmt_sync_service.NodeMgmtSyncService.recover_stale_runs",
+        staticmethod(lambda: calls.append("recover")),
+    )
+
+    def raise_sync_error():
+        calls.append("sync")
+        raise RuntimeError("sync err")
+
     monkeypatch.setattr(
         "apps.cmdb.services.node_mgmt_sync_service.NodeMgmtSyncService.trigger_sync",
-        staticmethod(lambda: (_ for _ in ()).throw(RuntimeError("sync err"))),
+        staticmethod(raise_sync_error),
     )
     with pytest.raises(RuntimeError, match="sync err"):
         ct.sync_node_mgmt_hosts()
+    assert calls == ["recover", "sync"]
 
 
 def test_collect_node_mgmt_hosts_delegates(monkeypatch):
-    called = []
+    calls = []
     monkeypatch.setattr(
-        "apps.cmdb.services.node_mgmt_sync_service.NodeMgmtSyncService.trigger_collect", staticmethod(lambda: called.append(True)),
+        "apps.cmdb.services.node_mgmt_sync_service.NodeMgmtSyncService.recover_stale_runs",
+        staticmethod(lambda: calls.append("recover")),
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.services.node_mgmt_sync_service.NodeMgmtSyncService.refresh_submitted_collect_runs",
+        staticmethod(lambda: calls.append("refresh")),
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.services.node_mgmt_sync_service.NodeMgmtSyncService.trigger_collect",
+        staticmethod(lambda: calls.append("collect")),
     )
     ct.collect_node_mgmt_hosts()
-    assert called == [True]
+    assert calls == ["recover", "refresh", "collect"]
 
 
 # --------------------------------------------------------------------------
