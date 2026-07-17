@@ -94,6 +94,11 @@ def test_sync_hosts_节点源超预算时不进入持久化(sync_config, mocker)
         NodeMgmtSyncService.sync_hosts()
 
     persist_hosts.assert_not_called()
+    run = NodeMgmtSyncRun.objects.filter(run_type=NodeMgmtSyncRun.RUN_TYPE_SYNC).latest("created_at")
+    assert run.status == NodeMgmtSyncRun.STATUS_FAILED
+    assert run.active_scope is None
+    assert run.reason_code == "RUN_FAILED"
+    assert run.error_message == "节点管理同步失败：NodeMgmtSyncError"
 
 
 @pytest.mark.django_db

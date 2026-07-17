@@ -10,6 +10,7 @@
 - RPC 封装：_cloud_region_name_map / _fetch_non_container_nodes / _pick_access_point；
 - DB 序列化：serialize_task / serialize_run（None 与有值）/ get_task 建档。
 """
+import json
 import types
 
 import pydantic.root_model  # noqa
@@ -363,6 +364,17 @@ class TestRpcWrappers:
         with pytest.raises(RuntimeError, match="^NODE_COUNT_LIMIT_EXCEEDED$"):
             S._fetch_node_mgmt_pages({"page_size": 3})
 
+    def test_fetch_node_mgmt_pages_节点数等于预算时允许(self, mocker):
+        rpc = mocker.MagicMock()
+        rpc.node_list.return_value = {
+            "count": 2,
+            "nodes": [{"id": "n-1"}, {"id": "n-2"}],
+        }
+        mocker.patch.object(S, "MAX_NODE_COUNT", 2)
+        mocker.patch.object(S, "_node_mgmt_client", return_value=rpc)
+
+        assert len(S._fetch_node_mgmt_pages({"page_size": 2})) == 2
+
     def test_fetch_node_mgmt_pages_跨页累计节点数超预算时停止翻页(self, mocker):
         rpc = mocker.MagicMock()
         rpc.node_list.side_effect = [
@@ -388,6 +400,36 @@ class TestRpcWrappers:
 
         with pytest.raises(RuntimeError, match="^NODE_BYTES_LIMIT_EXCEEDED$"):
             S._fetch_node_mgmt_pages({})
+
+    def test_fetch_node_mgmt_pages_字节数等于预算时允许(self, mocker):
+        node = {"id": "n-1", "name": "节点"}
+        exact_bytes = len(
+            json.dumps([node], ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        )
+        rpc = mocker.MagicMock()
+        rpc.node_list.return_value = {"count": 1, "nodes": [node]}
+        mocker.patch.object(S, "MAX_NODE_BYTES", exact_bytes)
+        mocker.patch.object(S, "_node_mgmt_client", return_value=rpc)
+
+        assert S._fetch_node_mgmt_pages({}) == [node]
+
+    def test_fetch_node_mgmt_pages_跨页累计字节超预算(self, mocker):
+        nodes = [{"id": "n-1", "name": "甲"}, {"id": "n-2", "name": "乙"}]
+        exact_bytes = len(
+            json.dumps(nodes, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        )
+        rpc = mocker.MagicMock()
+        rpc.node_list.side_effect = [
+            {"count": 2, "nodes": [nodes[0]]},
+            {"count": 2, "nodes": [nodes[1]]},
+        ]
+        mocker.patch.object(S, "MAX_NODE_BYTES", exact_bytes - 1)
+        mocker.patch.object(S, "_node_mgmt_client", return_value=rpc)
+
+        with pytest.raises(RuntimeError, match="^NODE_BYTES_LIMIT_EXCEEDED$"):
+            S._fetch_node_mgmt_pages({"page_size": 1})
+
+        assert rpc.node_list.call_count == 2
 
     def test_fetch_node_mgmt_pages_截止时间到期不发起RPC(self, mocker):
         rpc = mocker.MagicMock()
