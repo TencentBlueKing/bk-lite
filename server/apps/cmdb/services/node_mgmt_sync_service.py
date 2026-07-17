@@ -65,6 +65,12 @@ class NodeMgmtSyncService:
     NODE_MGMT_SYNC_PAGE_SIZE = _get_positive_int_env("CMDB_NODE_MGMT_SYNC_PAGE_SIZE", 500)
     NODE_PAGE_SIZE = 500
     MAX_NODE_PAGES = 100
+    MAX_EXISTING_HOSTS = _get_positive_int_env(
+        "CMDB_NODE_MGMT_MAX_EXISTING_HOSTS", 100_000
+    )
+    MAX_EXISTING_HOST_BYTES = _get_positive_int_env(
+        "CMDB_NODE_MGMT_MAX_EXISTING_HOST_BYTES", 128 * 1024 * 1024
+    )
     SYSTEM_NODE_QUERY = {"skip_permission": True}
     RAW_DATA_FIELDS = (
         "id",
@@ -229,19 +235,27 @@ class NodeMgmtSyncService:
 
     @classmethod
     def get_task(cls) -> NodeMgmtSyncConfig:
-        task = NodeMgmtSyncConfig.objects.order_by("id").first()
-        if task:
-            updated = False
-            if not getattr(task, "name", ""):
-                task.name = cls.TASK_NAME
-                updated = True
-            if getattr(task, "is_builtin", None) is not True:
-                task.is_builtin = True
-                updated = True
-            if updated:
-                task.save(update_fields=["name", "is_builtin", "updated_at"])
-            return task
-        return NodeMgmtSyncConfig.objects.create(name=cls.TASK_NAME, is_builtin=True)
+        try:
+            # 固定唯一键是空库并发初始化的仲裁点；内层 savepoint 避免冲突后
+            # 污染调用方事务，再回读已经获胜的记录。
+            with transaction.atomic():
+                task, _ = NodeMgmtSyncConfig.objects.get_or_create(
+                    singleton_key="default",
+                    defaults={"name": cls.TASK_NAME, "is_builtin": True},
+                )
+        except IntegrityError:
+            task = NodeMgmtSyncConfig.objects.get(singleton_key="default")
+
+        updated = False
+        if not getattr(task, "name", ""):
+            task.name = cls.TASK_NAME
+            updated = True
+        if getattr(task, "is_builtin", None) is not True:
+            task.is_builtin = True
+            updated = True
+        if updated:
+            task.save(update_fields=["name", "is_builtin", "updated_at"])
+        return task
 
     @classmethod
     def get_config(cls) -> NodeMgmtSyncConfig:
@@ -289,6 +303,7 @@ class NodeMgmtSyncService:
     def update_task(cls, data: dict[str, Any]) -> NodeMgmtSyncConfig:
         data = cls._validate_task_update(data)
         task = cls.get_task()
+        old_auto_sync_enabled = task.auto_sync_enabled
         old_auto_collect_enabled = task.auto_collect_enabled
 
         with transaction.atomic():
@@ -306,7 +321,14 @@ class NodeMgmtSyncService:
         from apps.cmdb.services.node_mgmt_sync_reconciler import NodeMgmtSyncReconciler
 
         NodeMgmtSyncReconciler.reconcile(
-            task, reconcile_node_configs=task.auto_sync_enabled and old_auto_collect_enabled != task.auto_collect_enabled,
+            task,
+            reconcile_node_configs=(
+                task.auto_sync_enabled
+                and (
+                    old_auto_sync_enabled != task.auto_sync_enabled
+                    or old_auto_collect_enabled != task.auto_collect_enabled
+                )
+            ),
         )
 
         return task
@@ -993,10 +1015,35 @@ class NodeMgmtSyncService:
         return task
 
     @classmethod
-    def _load_existing_host_map(cls, task_id: int) -> dict[tuple[str, int], dict[str, Any]]:
+    def _load_existing_host_map(
+        cls, task_id: int, run: NodeMgmtSyncRun | None = None
+    ) -> dict[tuple[str, int], dict[str, Any]]:
+        if run is not None:
+            cls.heartbeat_run(run)
         inst_list, _ = InstanceManage.search_inst(model_id="host")
+        if run is not None:
+            cls.heartbeat_run(run)
         if not inst_list:
             return {}
+        if len(inst_list) > cls.MAX_EXISTING_HOSTS:
+            logger.error(
+                "[NodeMgmtSync] 主机快照超过资源预算 code=HOST_SCAN_LIMIT_EXCEEDED, count=%d, limit=%d",
+                len(inst_list),
+                cls.MAX_EXISTING_HOSTS,
+            )
+            raise NodeMgmtSyncError("HOST_SCAN_LIMIT_EXCEEDED")
+
+        encoded_size = 0
+        for item in inst_list:
+            encoded_size += len(
+                json.dumps(item, ensure_ascii=False, default=str, separators=(",", ":")).encode("utf-8")
+            )
+            if encoded_size > cls.MAX_EXISTING_HOST_BYTES:
+                logger.error(
+                    "[NodeMgmtSync] 主机快照超过资源预算 code=HOST_SCAN_BYTES_EXCEEDED, limit=%d",
+                    cls.MAX_EXISTING_HOST_BYTES,
+                )
+                raise NodeMgmtSyncError("HOST_SCAN_BYTES_EXCEEDED")
         result: dict[tuple[str, int], dict[str, Any]] = {}
         for item in inst_list:
             ip = str(item.get("ip_addr") or "").strip()
@@ -1008,9 +1055,13 @@ class NodeMgmtSyncService:
 
     @classmethod
     def _query_region_host_instances(
-        cls, cloud_region_id: int, region_nodes: list[dict[str, Any]]
+        cls,
+        cloud_region_id: int,
+        region_nodes: list[dict[str, Any]],
+        existing_map: dict[tuple[str, int], dict[str, Any]] | None = None,
     ) -> list[dict[str, Any]]:
-        existing_map = cls._load_existing_host_map(task_id=0)
+        if existing_map is None:
+            existing_map = cls._load_existing_host_map(task_id=0)
         region_instances: list[dict[str, Any]] = []
         for node in region_nodes:
             ip = str(node.get("ip") or node.get("ip_addr") or "").strip()
@@ -1458,6 +1509,10 @@ class NodeMgmtSyncService:
         detail["config_version"] = task_config.version
         message = cls._empty_display_message()
         changed_instance_ids: list[int] = []
+        # 每次完整同步读取一次新鲜快照，并在本次 run 的所有区域间复用。
+        # _persist_hosts 会把本轮新增/更新写回该映射，区域任务因此能立即引用。
+        existing_map = cls._load_existing_host_map(task_id=0, run=run)
+        logger.debug("[NodeMgmtSync] 加载已有主机映射, existing_count=%d", len(existing_map))
 
         for cloud_region_id, region_nodes in grouped_nodes.items():
             cls.heartbeat_run(run)
@@ -1474,9 +1529,6 @@ class NodeMgmtSyncService:
 
             team = cls._normalize_org_ids(
                 [org_id for node in region_nodes for org_id in node.get("organization_ids", [])])
-            existing_map = cls._load_existing_host_map(task_id=0)
-            logger.debug("[NodeMgmtSync] 加载已有主机映射, existing_count=%d", len(existing_map))
-
             desired_hosts = []
             for node in region_nodes:
                 try:
@@ -1513,7 +1565,7 @@ class NodeMgmtSyncService:
 
             cls.heartbeat_run(run)
             region_instances = cls._query_region_host_instances(
-                cloud_region_id, region_nodes
+                cloud_region_id, region_nodes, existing_map=existing_map,
             )
             cls.heartbeat_run(run)
             logger.debug("[NodeMgmtSync] 查询区域主机实例, cloud_region_id=%d, instance_count=%d",
@@ -1978,7 +2030,14 @@ class NodeMgmtSyncService:
             final_status = NodeMgmtSyncRun.STATUS_FAILED
         else:
             final_status = NodeMgmtSyncRun.STATUS_PARTIAL_SUCCESS
-        cls.finish_run(run, status=final_status)
+        try:
+            cls.finish_run(run, status=final_status)
+        except NodeMgmtSyncError as error:
+            if str(error) != "RUN_NOT_ACTIVE":
+                raise
+            run.refresh_from_db()
+            if run.status != final_status:
+                raise
         return run
 
     @classmethod
@@ -1991,7 +2050,14 @@ class NodeMgmtSyncService:
             ).values_list("id", flat=True)
         )
         for run_id in run_ids:
-            cls.refresh_collect_run(run_id)
+            try:
+                cls.refresh_collect_run(run_id)
+            except Exception as error:
+                logger.error(
+                    "[NodeMgmtSync] 采集运行刷新失败 code=COLLECT_REFRESH_FAILED, run_id=%s, error_type=%s",
+                    run_id,
+                    type(error).__name__,
+                )
         return len(run_ids)
 
     @classmethod

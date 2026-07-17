@@ -239,3 +239,38 @@ def test_relation_reconcile_failure_marks_parent_partial_and_is_sanitized(mocker
     assert run.detail_json["todo"] == [{"operation": "relation", "error": "RELATION_RECONCILE_FAILED: RuntimeError"}]
     assert "raw-sensitive-value" not in caplog.text
     assert "raw-sensitive-value" not in str(run.detail_json)
+
+
+@pytest.mark.django_db
+def test_multi_region_sync_loads_existing_hosts_once_and_reuses_snapshot(mocker, sync_run):
+    run, config = sync_run
+    nodes = [
+        {"ip": "10.0.0.1", "cloud_region_id": 1, "organization_ids": []},
+        {"ip": "10.0.0.2", "cloud_region_id": 2, "organization_ids": []},
+    ]
+    existing = {
+        ("10.0.0.1", 1): {"_id": 1, "ip_addr": "10.0.0.1", "cloud": 1},
+        ("10.0.0.2", 2): {"_id": 2, "ip_addr": "10.0.0.2", "cloud": 2},
+    }
+    mocker.patch.object(NodeMgmtSyncService, "_fetch_non_container_nodes", return_value=nodes)
+    mocker.patch.object(
+        NodeMgmtSyncService,
+        "_group_nodes_by_region",
+        return_value={1: [nodes[0]], 2: [nodes[1]]},
+    )
+    mocker.patch.object(NodeMgmtSyncService, "_pick_access_point", return_value={"id": "ap"})
+    loader = mocker.patch.object(NodeMgmtSyncService, "_load_existing_host_map", return_value=existing)
+    mocker.patch.object(
+        NodeMgmtSyncService,
+        "_build_host_instance_payload",
+        side_effect=[
+            {"ip_addr": "10.0.0.1", "cloud": 1},
+            {"ip_addr": "10.0.0.2", "cloud": 2},
+        ],
+    )
+    mocker.patch.object(NodeMgmtSyncService, "_ensure_region_collect_task", return_value=mock.MagicMock())
+    mocker.patch("apps.cmdb.services.node_mgmt_sync_reconciler.NodeMgmtSyncReconciler.reconcile")
+
+    NodeMgmtSyncService._do_sync_hosts(run, config)
+
+    loader.assert_called_once_with(task_id=0, run=run)

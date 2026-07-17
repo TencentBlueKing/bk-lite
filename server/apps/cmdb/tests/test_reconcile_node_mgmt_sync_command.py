@@ -149,6 +149,28 @@ def test_runtime_recovery_does_not_repush_healthy_node_config(mocker):
     reconcile.assert_called_once_with(config, reconcile_node_configs=False)
 
 
+def test_runtime_recovery_reconciles_waiting_sync_after_sync_reenabled(mocker):
+    config = NodeMgmtSyncService.get_task()
+    config.auto_sync_enabled = True
+    config.auto_collect_enabled = True
+    config.node_config_status = "waiting_sync"
+    config.save(
+        update_fields=[
+            "auto_sync_enabled", "auto_collect_enabled", "node_config_status", "updated_at",
+        ]
+    )
+    mocker.patch.object(NodeMgmtSyncService, "recover_stale_runs", return_value=0)
+    mocker.patch.object(NodeMgmtSyncService, "refresh_submitted_collect_runs", return_value=0)
+    reconcile = mocker.patch(
+        "apps.cmdb.services.node_mgmt_sync_reconciler.NodeMgmtSyncReconciler.reconcile",
+        return_value=_healthy_result(),
+    )
+
+    recover_node_mgmt_sync()
+
+    reconcile.assert_called_once_with(config, reconcile_node_configs=True)
+
+
 def test_runtime_recovery_reconciles_region_owned_by_older_config_version(mocker):
     config = NodeMgmtSyncService.get_task()
     config.version = 2

@@ -308,3 +308,72 @@ def test_execute_collect_forwards_operator_to_child_submission(config):
 
     assert run.status == NodeMgmtSyncRun.STATUS_SUBMITTED
     submit.assert_called_once_with(collect_task, "alice")
+
+
+def test_refresh_same_terminal_result_is_idempotent_when_another_worker_wins(config, mocker):
+    _successful_sync(config)
+    collect_task = _collect_task(7)
+    with patch.object(
+        CollectModelService,
+        "exec_task",
+        side_effect=lambda task, operator: _accept_with_execution(task, "execution-7"),
+    ):
+        run = NodeMgmtSyncService.execute_collect(operator="system")
+    CollectModels.objects.filter(pk=collect_task.pk).update(
+        exec_status=CollectRunStatusType.SUCCESS,
+    )
+
+    original_finish = NodeMgmtSyncService.finish_run
+    raced = False
+
+    def finish_after_other_worker(stale_run, **kwargs):
+        nonlocal raced
+        if not raced:
+            raced = True
+            NodeMgmtSyncRun.objects.filter(pk=stale_run.pk).update(
+                status=kwargs["status"], active_scope=None, finished_at=timezone.now(),
+            )
+        return original_finish(stale_run, **kwargs)
+
+    mocker.patch.object(
+        NodeMgmtSyncService, "finish_run", side_effect=finish_after_other_worker,
+    )
+
+    refreshed = NodeMgmtSyncService.refresh_collect_run(run.pk)
+
+    assert refreshed.status == NodeMgmtSyncRun.STATUS_SUCCESS
+
+
+def test_refresh_batch_isolates_one_run_error_and_sanitizes_log(config, mocker, caplog):
+    first = NodeMgmtSyncRun.objects.create(
+        task=config,
+        run_type=NodeMgmtSyncRun.RUN_TYPE_COLLECT,
+        status=NodeMgmtSyncRun.STATUS_SUBMITTED,
+        active_scope=NodeMgmtSyncService.ACTIVE_SCOPE,
+        deadline_at=timezone.now() + timezone.timedelta(minutes=5),
+    )
+    second = NodeMgmtSyncRun.objects.create(
+        task=config,
+        run_type=NodeMgmtSyncRun.RUN_TYPE_COLLECT,
+        status=NodeMgmtSyncRun.STATUS_SUBMITTED,
+        active_scope=None,
+    )
+    submitted = mocker.MagicMock()
+    submitted.values_list.return_value = [first.pk, second.pk]
+    mocker.patch.object(
+        NodeMgmtSyncRun.objects, "filter", return_value=submitted,
+    )
+
+    refresh = mocker.patch.object(
+        NodeMgmtSyncService,
+        "refresh_collect_run",
+        side_effect=[
+            RuntimeError("credential=raw-sensitive-value"),
+            second,
+        ],
+    )
+
+    assert NodeMgmtSyncService.refresh_submitted_collect_runs() == 2
+    assert refresh.call_args_list == [mocker.call(first.pk), mocker.call(second.pk)]
+    assert "raw-sensitive-value" not in caplog.text
+    assert "RuntimeError" in caplog.text

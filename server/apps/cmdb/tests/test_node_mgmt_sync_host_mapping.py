@@ -31,6 +31,32 @@ def test_existing_hosts_are_indexed_by_ip_and_cloud_and_invalid_rows_are_ignored
     }
 
 
+def test_existing_host_scan_fails_closed_when_host_budget_is_exceeded(mocker):
+    mocker.patch.object(NodeMgmtSyncService, "MAX_EXISTING_HOSTS", 1, create=True)
+    mocker.patch.object(
+        InstanceManage,
+        "search_inst",
+        return_value=([{"_id": 1}, {"_id": 2}], 2),
+    )
+
+    with pytest.raises(RuntimeError, match="HOST_SCAN_LIMIT_EXCEEDED"):
+        NodeMgmtSyncService._load_existing_host_map(task_id=0)
+
+
+def test_existing_host_scan_fails_closed_when_byte_budget_is_exceeded(mocker, caplog):
+    mocker.patch.object(NodeMgmtSyncService, "MAX_EXISTING_HOST_BYTES", 8, create=True)
+    mocker.patch.object(
+        InstanceManage,
+        "search_inst",
+        return_value=([{"_id": 1, "secret": "raw-sensitive-value"}], 1),
+    )
+
+    with pytest.raises(RuntimeError, match="HOST_SCAN_BYTES_EXCEEDED"):
+        NodeMgmtSyncService._load_existing_host_map(task_id=0)
+
+    assert "raw-sensitive-value" not in caplog.text
+
+
 def test_region_collection_reuses_only_hosts_matching_both_ip_and_cloud(mocker):
     existing = {
         ("10.0.0.1", 7): {"_id": "region-7-host"},

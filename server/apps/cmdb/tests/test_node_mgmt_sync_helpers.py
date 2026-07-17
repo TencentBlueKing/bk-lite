@@ -409,6 +409,25 @@ class TestDbSerialization:
         # 幂等：第二次返回同一条
         assert S.get_task().id == task.id
 
+    def test_get_task_空库唯一冲突后回读并复用赢家(self, mocker):
+        from django.db import IntegrityError
+
+        winner = NodeMgmtSyncConfig.objects.create(
+            singleton_key="default", name="节点管理同步", is_builtin=True,
+        )
+        get_or_create = mocker.patch.object(
+            NodeMgmtSyncConfig.objects,
+            "get_or_create",
+            side_effect=[IntegrityError("simulated singleton race"), (winner, False)],
+        )
+
+        first = S.get_task()
+        second = S.get_task()
+
+        assert first.pk == winner.pk
+        assert second.pk == winner.pk
+        assert get_or_create.call_count == 2
+
     def test_serialize_task_字段完整(self):
         task = NodeMgmtSyncConfig.objects.create(
             name="同步", is_builtin=True, auto_sync_enabled=True,

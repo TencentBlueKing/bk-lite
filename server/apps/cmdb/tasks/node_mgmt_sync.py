@@ -42,7 +42,18 @@ def recover_node_mgmt_sync() -> dict[str, Any]:
         ).exists()
         or region_states.exclude(config_version=config.version).exists()
     )
-    result = NodeMgmtSyncReconciler.reconcile(config, reconcile_node_configs=(config.node_config_status == "degraded" or has_recoverable_region),)
+    should_reconcile_node_configs = (
+        config.node_config_status == "degraded"
+        or (
+            config.node_config_status == "waiting_sync"
+            and config.auto_sync_enabled
+            and config.auto_collect_enabled
+        )
+        or has_recoverable_region
+    )
+    result = NodeMgmtSyncReconciler.reconcile(
+        config, reconcile_node_configs=should_reconcile_node_configs,
+    )
     return {
         "recovered_runs": recovered_runs,
         "refreshed_collect_runs": refreshed_collect_runs,
