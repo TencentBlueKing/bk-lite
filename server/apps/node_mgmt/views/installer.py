@@ -6,6 +6,7 @@ from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.web_utils import WebUtils
 from apps.node_mgmt.constants.installer import InstallerConstants
 from apps.node_mgmt.models.installer import CollectorTask, CollectorTaskNode
+from apps.node_mgmt.models.sidecar import Node
 from apps.node_mgmt.serializers.installer import (
     ControllerInstallRequestSerializer,
     ControllerManualInstallRequestSerializer,
@@ -241,6 +242,10 @@ class InstallerViewSet(ViewSet):
         error_response = authorize_target_organizations(request, None, data.get("organizations", []))
         if error_response:
             return error_response
+        if Node.objects.filter(id=data["node_id"]).exists():
+            _, error_response = authorize_node_ids(request, [data["node_id"]])
+            if error_response:
+                return error_response
         data = InstallerService.get_install_command(
             request.user.username,
             data["ip"],

@@ -95,6 +95,51 @@ def test_get_install_command_rejects_unauthorized_target_organizations(monkeypat
 
 
 @pytest.mark.django_db
+def test_get_install_command_rejects_unauthorized_existing_node(monkeypatch):
+    class ExistingNodeQuery:
+        @staticmethod
+        def exists():
+            return True
+
+    monkeypatch.setattr(
+        "apps.node_mgmt.views.installer.Node.objects.filter",
+        lambda **kwargs: ExistingNodeQuery(),
+    )
+    monkeypatch.setattr(
+        "apps.node_mgmt.views.installer.authorize_target_organizations",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        "apps.node_mgmt.views.installer.authorize_node_ids",
+        lambda *args, **kwargs: (None, WebUtils.response_403("denied")),
+    )
+    monkeypatch.setattr(
+        InstallerService,
+        "get_install_command",
+        lambda *args, **kwargs: pytest.fail("install command must not be issued"),
+    )
+    request = APIRequestFactory().post(
+        "/node_mgmt/api/installer/get_install_command/",
+        {
+            "ip": "10.0.0.31",
+            "node_id": "existing-node-31",
+            "os": "linux",
+            "package_id": 1,
+            "cloud_region_id": 1,
+            "organizations": [],
+            "node_name": "node-31",
+            "cpu_architecture": "x86_64",
+        },
+        format="json",
+    )
+    force_authenticate(request, user=_build_admin_user())
+
+    response = InstallerViewSet.as_view({"post": "get_install_command"})(request)
+
+    assert response.status_code == 403
+
+
+@pytest.mark.django_db
 def test_controller_manual_install_rejects_unauthorized_target_organizations(monkeypatch):
     captured = _deny_target_organizations(monkeypatch)
     request = APIRequestFactory().post(
