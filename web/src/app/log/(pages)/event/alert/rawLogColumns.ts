@@ -1,12 +1,12 @@
 import type { ReactNode } from 'react';
 import { ColumnItem, TableDataItem } from '@/app/log/types';
 
-type BuildLogAlertRawColumnsParams = {
+interface BuildLogAlertRawColumnsParams {
   isAggregate: boolean;
   showFields?: string[];
   rawData?: TableDataItem[];
   renderTime?: (value?: string) => ReactNode;
-};
+}
 
 const FIELD_ALIAS: Record<string, string> = {
   timestamp: '_time',
