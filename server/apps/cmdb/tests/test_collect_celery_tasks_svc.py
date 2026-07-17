@@ -370,13 +370,123 @@ def test_claim_collect_task_execution_only_one_runner_can_acquire(monkeypatch):
         driver_type="protocol",
         cycle_value_type="cycle",
         team=[1],
-        exec_status=CollectRunStatusType.RUNNING,
-        task_id="owner-token",
+        exec_status=CollectRunStatusType.NOT_START,
     )
+    assert ct._claim_collect_task_execution(preclaimed.id, start_time, execution_id="owner-token") is not None
     assert ct._claim_collect_task_execution(preclaimed.id, start_time, execution_id="other-token") is None
-    token_owner = ct._claim_collect_task_execution(preclaimed.id, start_time, execution_id="owner-token")
-    assert token_owner is not None
-    assert token_owner.task_id == "owner-token"
+    assert ct._claim_collect_task_execution(preclaimed.id, start_time, execution_id="owner-token") is None
+
+
+@pytest.mark.django_db
+def test_same_execution_id_duplicate_delivery_cannot_acquire_or_execute(monkeypatch):
+    task = CollectModels.objects.create(
+        name="same-execution-delivery-once",
+        task_type=CollectPluginTypes.PROTOCOL,
+        model_id="mysql",
+        driver_type="protocol",
+        cycle_value_type="cycle",
+        team=[1],
+        exec_status=CollectRunStatusType.RUNNING,
+        task_id="execution-A",
+        collect_digest={},
+    )
+    first = ct._claim_collect_task_execution(task.id, now(), execution_id="execution-A")
+    second = ct._claim_collect_task_execution(task.id, now(), execution_id="execution-A")
+
+    assert first is not None
+    assert first.claim_token
+    assert second is None
+
+    monkeypatch.setattr(
+        ct, "ProtocolCollect", lambda task: (_ for _ in ()).throw(AssertionError("duplicate delivery must not execute")),
+    )
+    ct.sync_collect_task(task.id, execution_id="execution-A")
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "terminal_status",
+    [CollectRunStatusType.SUCCESS, CollectRunStatusType.ERROR, CollectRunStatusType.FORCE_STOP],
+)
+def test_delayed_duplicate_delivery_cannot_reopen_terminal_execution(monkeypatch, terminal_status):
+    task = CollectModels.objects.create(
+        name=f"terminal-delivery-{terminal_status}",
+        task_type=CollectPluginTypes.PROTOCOL,
+        model_id="mysql",
+        driver_type="protocol",
+        cycle_value_type="cycle",
+        team=[1],
+        exec_status=terminal_status,
+        task_id="execution-terminal",
+        collect_digest={"message": "terminal"},
+    )
+    monkeypatch.setattr(
+        ct, "ProtocolCollect", lambda task: (_ for _ in ()).throw(AssertionError("terminal delivery must not execute")),
+    )
+
+    ct.sync_collect_task(task.id, execution_id="execution-terminal")
+
+    task.refresh_from_db()
+    assert task.exec_status == terminal_status
+    assert task.task_id == "execution-terminal"
+    assert task.collect_digest == {"message": "terminal"}
+
+
+@pytest.mark.django_db
+def test_new_execution_id_can_acquire_not_started_task():
+    task = CollectModels.objects.create(
+        name="new-execution-can-start",
+        task_type=CollectPluginTypes.PROTOCOL,
+        model_id="mysql",
+        driver_type="protocol",
+        cycle_value_type="cycle",
+        team=[1],
+        exec_status=CollectRunStatusType.NOT_START,
+    )
+
+    claimed = ct._claim_collect_task_execution(task.id, now(), execution_id="execution-new")
+
+    assert claimed is not None
+    assert claimed.task_id == "execution-new"
+    assert claimed.claim_token
+
+
+@pytest.mark.django_db
+def test_collect_result_requires_current_execution_owner():
+    task = CollectModels.objects.create(
+        name="execution-owner-fence",
+        task_type=CollectPluginTypes.PROTOCOL,
+        model_id="mysql",
+        driver_type="protocol",
+        cycle_value_type="cycle",
+        team=[1],
+        exec_status=CollectRunStatusType.NOT_START,
+    )
+    owner_a = ct._claim_collect_task_execution(task.id, now(), execution_id="execution-A")
+    CollectModels.objects.filter(id=task.id).update(
+        exec_status=CollectRunStatusType.NOT_START,
+        task_id="",
+        collect_digest={},
+    )
+    owner_b = ct._claim_collect_task_execution(task.id, now(), execution_id="execution-B")
+
+    assert not ct._save_collect_result_if_current(
+        task.id,
+        "execution-A",
+        owner_a.claim_token,
+        {"exec_status": CollectRunStatusType.SUCCESS, "collect_digest": {"owner": "A"}},
+    )
+    assert ct._save_collect_result_if_current(
+        task.id,
+        "execution-B",
+        owner_b.claim_token,
+        {"exec_status": CollectRunStatusType.SUCCESS, "collect_digest": {"owner": "B"}},
+    )
+
+    task.refresh_from_db()
+    assert task.task_id == "execution-B"
+    assert task.exec_status == CollectRunStatusType.SUCCESS
+    assert task.collect_digest == {"owner": "B"}
 
 
 @pytest.mark.django_db
