@@ -7,6 +7,8 @@ from datetime import timedelta
 from uuid import uuid4
 
 from celery import shared_task
+from django.db import transaction
+from django.db.models import Q
 from django.utils.timezone import now
 
 from apps.cmdb.collection.collect_tasks.job_collect import JobCollect
@@ -15,9 +17,17 @@ from apps.cmdb.constants.constants import CollectPluginTypes, CollectRunStatusTy
 from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.services.collect_dispatch_service import CollectDispatchService
 from apps.cmdb.services.collect_tool_service import CollectToolService
-from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncService
 from apps.cmdb.services.subscription_task import SubscriptionTaskService
+from apps.cmdb.tasks.node_mgmt_sync import run_collect, run_sync
 from apps.core.logger import cmdb_logger as logger
+
+_COLLECT_TERMINAL_STATUSES = (
+    CollectRunStatusType.SUCCESS,
+    CollectRunStatusType.ERROR,
+    CollectRunStatusType.TIME_OUT,
+    CollectRunStatusType.FORCE_STOP,
+    CollectRunStatusType.PARTIAL_SUCCESS,
+)
 
 
 def _is_unhelpful_error_message(message: str) -> bool:
@@ -71,25 +81,70 @@ def _build_traceback_location(traceback_text: str) -> str:
 
 
 def _claim_collect_task_execution(instance_id, start_time, execution_id=None):
+    """以数据库 CAS 领取一次采集执行。
+
+    ``RUNNING + execution_id + 空摘要 + 无 claim`` 表示生产者已排队但尚未领取；
+    execution_id 标识业务执行，独立的 execution_claim_token 标识唯一 worker。
+    Beat 每轮使用不同 request.id，新一轮仅能从上一轮终态进入；同 request.id 重投
+    不能重开终态，也不能共享 owner 身份。
+    """
     queryset = CollectModels._default_manager.filter(id=instance_id)
     execution_id = execution_id or str(uuid4())
+    claim_token = f"{execution_id}:{uuid4().hex}"
     update_fields = {
         "exec_status": CollectRunStatusType.RUNNING,
         "exec_time": start_time,
         "task_id": execution_id,
+        "execution_claim_token": claim_token,
     }
-    updated = queryset.filter(exec_status=CollectRunStatusType.RUNNING, task_id=execution_id,).update(**update_fields)
-    if not updated:
-        updated = queryset.exclude(exec_status=CollectRunStatusType.RUNNING).update(**update_fields)
+    queued_execution = (
+        Q(exec_status=CollectRunStatusType.NOT_START)
+        | (
+            Q(
+                exec_status=CollectRunStatusType.RUNNING,
+                task_id=execution_id,
+                collect_digest={},
+            )
+            & (Q(execution_claim_token__isnull=True) | ~Q(execution_claim_token__startswith=f"{execution_id}:"))
+        )
+        | (Q(exec_status__in=_COLLECT_TERMINAL_STATUSES) & ~Q(task_id=execution_id))
+    )
+    updated = queryset.filter(queued_execution).update(**update_fields)
     if not updated:
         return None
-    return CollectModels._default_manager.filter(id=instance_id).first()
-
-
-def _save_collect_result_if_current(instance_id, execution_id, values):
-    return bool(
-        CollectModels._default_manager.filter(id=instance_id, task_id=execution_id, exec_status=CollectRunStatusType.RUNNING,).update(**values)
+    instance = CollectModels._default_manager.filter(
+        id=instance_id,
+        exec_status=CollectRunStatusType.RUNNING,
+        task_id=execution_id,
+        execution_claim_token=claim_token,
     )
+    instance = instance.first()
+    if instance:
+        instance.claim_token = claim_token
+    return instance
+
+
+def _save_collect_result_if_current(instance_id, execution_id, claim_token, values):
+    """仅允许当前 execution 的唯一 owner 提交结果。"""
+    terminal_values = {**values, "execution_claim_token": None}
+    updated = bool(
+        CollectModels._default_manager.filter(
+            id=instance_id,
+            task_id=execution_id,
+            exec_status=CollectRunStatusType.RUNNING,
+            execution_claim_token=claim_token,
+        ).update(**terminal_values)
+    )
+    if not updated:
+        # 外部回调可能先一步写入终态；仅释放同 execution、同 owner 的内部 claim，
+        # 不触碰回调已经提交的业务结果。旧 worker 无法匹配新 execution 的 token。
+        CollectModels._default_manager.filter(
+            id=instance_id,
+            task_id=execution_id,
+            execution_claim_token=claim_token,
+            exec_status__in=_COLLECT_TERMINAL_STATUSES,
+        ).update(execution_claim_token=None)
+    return updated
 
 
 def _resolve_execution_timeout_seconds(task):
@@ -119,20 +174,58 @@ def _timeout_collect_task_if_current(task, checked_at):
     }
     return bool(
         CollectModels._default_manager.filter(
-            id=task.id, task_id=task.task_id, exec_status=CollectRunStatusType.RUNNING, exec_time=task.exec_time,
+            id=task.id,
+            task_id=task.task_id,
+            exec_status=CollectRunStatusType.RUNNING,
+            exec_time=task.exec_time,
+            execution_claim_token=task.execution_claim_token,
         ).update(
-            exec_status=CollectRunStatusType.TIME_OUT, collect_digest=collect_digest, updated_at=checked_at,
+            exec_status=CollectRunStatusType.TIME_OUT,
+            execution_claim_token=None,
+            collect_digest=collect_digest,
+            updated_at=checked_at,
         )
     )
 
 
-@shared_task
-def sync_collect_task(instance_id, execution_id=None):
+def _node_mgmt_collect_version_allowed(instance_id, execution_id, config_id, config_version):
+    if config_id is None or config_version is None:
+        return True
+    from apps.cmdb.models.node_mgmt_sync import NodeMgmtSyncConfig
+
+    with transaction.atomic():
+        config = NodeMgmtSyncConfig.objects.select_for_update().filter(pk=config_id).first()
+        if config and config.auto_collect_enabled and config.version == config_version:
+            return True
+        CollectModels._default_manager.filter(
+            id=instance_id,
+            task_id=execution_id,
+            exec_status=CollectRunStatusType.RUNNING,
+        ).update(
+            exec_status=CollectRunStatusType.ERROR,
+            execution_claim_token=None,
+            collect_digest={"message": "NODE_MGMT_CONFIG_STALE"},
+            updated_at=now(),
+        )
+        return False
+
+
+@shared_task(bind=True)
+def sync_collect_task(self, instance_id, execution_id=None, node_config_id=None, node_config_version=None):
     """
     同步采集任务
     """
     logger.info("[CollectTask] 开始采集任务 task_id=%s", instance_id)
     start_time = now()
+    execution_id = execution_id or self.request.id or str(uuid4())
+    if not _node_mgmt_collect_version_allowed(
+        instance_id,
+        execution_id,
+        node_config_id,
+        node_config_version,
+    ):
+        logger.info("[CollectTask] 节点同步配置已变化，跳过旧版本任务 task_id=%s", instance_id)
+        return
     instance = _claim_collect_task_execution(instance_id, start_time, execution_id=execution_id)
     if not instance:
         exists = CollectModels._default_manager.filter(id=instance_id).exists()
@@ -142,15 +235,16 @@ def sync_collect_task(instance_id, execution_id=None):
             logger.warning("[CollectTask] 采集任务不存在，跳过执行 task_id=%s", instance_id)
         return
     execution_id = instance.task_id
+    claim_token = instance.claim_token
     from apps.cmdb.services.collect_service import CollectModelService
 
-    CollectModelService.repair_host_cloud_snapshot(instance)
     exec_error_message = ""
     exec_traceback_excerpt = ""
     exec_traceback_location = ""
     task_exec_status = CollectRunStatusType.SUCCESS
     config_file_pending = False
     try:
+        CollectModelService.repair_host_cloud_snapshot(instance)
         if CollectDispatchService.should_dispatch(instance):
             result, format_data = CollectDispatchService.execute_task(instance)
         else:
@@ -172,7 +266,9 @@ def sync_collect_task(instance_id, execution_id=None):
 
         traceback_text = traceback.format_exc()
         logger.error(
-            "[CollectTask] 同步采集数据失败 task_id=%s, error=%s", instance_id, traceback_text,
+            "[CollectTask] 同步采集数据失败 task_id=%s, error=%s",
+            instance_id,
+            traceback_text,
         )
         exec_error_message = "采集任务执行失败（task_id={}）：{}".format(instance_id, _build_safe_error_message(err))
         exec_traceback_excerpt = _build_traceback_excerpt(traceback_text)
@@ -245,23 +341,38 @@ def sync_collect_task(instance_id, execution_id=None):
             "exec_status": instance.exec_status,
             "updated_at": now(),
         }
-        updated = _save_collect_result_if_current(instance_id, execution_id, update_values,)
+        updated = _save_collect_result_if_current(
+            instance_id,
+            execution_id,
+            claim_token,
+            update_values,
+        )
         if not updated:
             logger.info(
-                "[CollectTask] 忽略旧执行结果 stale_execution_result " "task_id=%s, execution_id=%s", instance_id, execution_id,
+                "[CollectTask] 忽略旧执行结果 stale_execution_result " "task_id=%s, execution_id=%s",
+                instance_id,
+                execution_id,
             )
     except Exception as err:
         import traceback
 
         logger.error(
-            "[CollectTask] 保存采集结果失败 task_id=%s, error=%s", instance_id, traceback.format_exc(),
+            "[CollectTask] 保存采集结果失败 task_id=%s, error=%s",
+            instance_id,
+            traceback.format_exc(),
         )
         _save_collect_result_if_current(
             instance_id,
             execution_id,
+            claim_token,
             {
                 "exec_status": CollectRunStatusType.ERROR,
-                "collect_digest": {"message": "采集结果写入失败（task_id={}）：{}".format(instance_id, _build_safe_error_message(err),)},
+                "collect_digest": {
+                    "message": "采集结果写入失败（task_id={}）：{}".format(
+                        instance_id,
+                        _build_safe_error_message(err),
+                    )
+                },
                 "updated_at": now(),
             },
         )
@@ -274,16 +385,23 @@ def sync_periodic_update_task_status():
     """按每次 execution 的 deadline 收敛超时状态。"""
     checked_at = now()
     logger.info("[CollectTask] 开始周期巡检超时采集任务")
+    CollectModels._default_manager.filter(
+        exec_status__in=_COLLECT_TERMINAL_STATUSES,
+        execution_claim_token__isnull=False,
+    ).update(execution_claim_token=None)
     timeout_count = 0
     tasks = (
-        CollectModels._default_manager.filter(exec_status=CollectRunStatusType.RUNNING,)
-        .only("id", "task_id", "exec_status", "exec_time", "params")
+        CollectModels._default_manager.filter(
+            exec_status=CollectRunStatusType.RUNNING,
+        )
+        .only("id", "task_id", "exec_status", "exec_time", "execution_claim_token", "params")
         .iterator(chunk_size=200)
     )
     for task in tasks:
         timeout_count += int(_timeout_collect_task_if_current(task, checked_at))
     logger.info(
-        "[CollectTask] 周期巡检超时采集任务完成，超时任务数 rows=%s", timeout_count,
+        "[CollectTask] 周期巡检超时采集任务完成，超时任务数 rows=%s",
+        timeout_count,
     )
 
 
@@ -350,7 +468,11 @@ def execute_collect_tool_debug_task(debug_id: str, payload: dict, service_name: 
     except Exception as exc:
         logger.error(f"采集工具调试任务失败 debug_id={debug_id}, error={exc}", exc_info=True)
         result = CollectToolService.build_error_result(
-            debug_id=debug_id, payload=payload, stage="unknown", summary=f"调试任务执行失败: {exc}", raw_log=str(exc),
+            debug_id=debug_id,
+            payload=payload,
+            stage="unknown",
+            summary=f"调试任务执行失败: {exc}",
+            raw_log=str(exc),
         )
         CollectToolService.save_debug_state(debug_id, "error", result)
         return result
@@ -370,7 +492,9 @@ def check_subscription_rules() -> None:
 
 
 @shared_task
-def send_subscription_notifications(delivery_ids: list[int] | None = None,) -> None:
+def send_subscription_notifications(
+    delivery_ids: list[int] | None = None,
+) -> None:
     SubscriptionTaskService.send_notifications(delivery_ids=delivery_ids)
 
 
@@ -402,9 +526,12 @@ def full_sync_auto_association_rule_task(model_asst_id: str) -> dict:
 def sync_node_mgmt_hosts() -> dict:
     logger.info("[NodeMgmtSync] 开始同步节点管理主机信息")
     try:
-        data = NodeMgmtSyncService.trigger_sync()
-    except Exception:
-        logger.exception("[NodeMgmtSync] 同步节点管理主机信息失败")
+        data = run_sync()
+    except Exception as exc:
+        logger.error(
+            "[NodeMgmtSync] 同步节点管理主机信息失败, error_type=%s",
+            type(exc).__name__,
+        )
         raise
     logger.info("[NodeMgmtSync] 同步节点管理主机信息完成")
     return data
@@ -414,9 +541,12 @@ def sync_node_mgmt_hosts() -> dict:
 def collect_node_mgmt_hosts():
     logger.info("[NodeMgmtSync] 开始采集节点管理主机信息")
     try:
-        NodeMgmtSyncService.trigger_collect()
-    except Exception:
-        logger.exception("[NodeMgmtSync] 采集节点管理主机信息失败")
+        run_collect()
+    except Exception as exc:
+        logger.error(
+            "[NodeMgmtSync] 采集节点管理主机信息失败, error_type=%s",
+            type(exc).__name__,
+        )
         raise
     logger.info("[NodeMgmtSync] 采集节点管理主机信息结束")
 

@@ -190,6 +190,24 @@ export interface StatisticCardConfig {
   showFailed?: boolean;
 }
 
+export type NodeMgmtSyncStatus =
+  | 'waiting_sync'
+  | 'running'
+  | 'submitted'
+  | 'success'
+  | 'partial_success'
+  | 'blocked'
+  | 'failed'
+  | 'timeout';
+
+export interface NodeMgmtSyncHealth {
+  schedule_status: 'healthy' | 'reconciling' | 'degraded';
+  node_config_status: 'healthy' | 'waiting_sync' | 'reconciling' | 'degraded' | 'disabled' | 'unknown';
+  last_reconciled_at: string | null;
+  reason_code: string;
+  message: string;
+}
+
 export interface NodeMgmtSyncTask {
   id: number;
   name: string;
@@ -198,6 +216,13 @@ export interface NodeMgmtSyncTask {
   auto_collect_enabled: boolean;
   sync_interval_minutes: number;
   collect_interval_minutes: number;
+  version: number;
+  schedule_status: NodeMgmtSyncHealth['schedule_status'];
+  node_config_status: NodeMgmtSyncHealth['node_config_status'];
+  last_reconciled_at: string | null;
+  reconcile_error_code: string;
+  reconcile_error_message: string;
+  health: NodeMgmtSyncHealth;
   last_sync_at: string | null;
   last_collect_at: string | null;
 }
@@ -232,8 +257,11 @@ export interface NodeMgmtSyncRun {
   task_id?: number | null;
   run_type: string | null;
   status: string | null;
+  reason_code?: string;
   started_at: string | null;
+  submitted_at?: string | null;
   finished_at: string | null;
+  deadline_at?: string | null;
   message: CollectTaskMessage;
   summary: NodeMgmtSyncSummary;
   detail: NodeMgmtSyncDetailData;

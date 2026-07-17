@@ -160,7 +160,7 @@ def _get_collect_task_queryset(user_info):
     if not team_queries:
         return CollectModels.objects.none()
 
-    return CollectModels.objects.filter(reduce(or_, team_queries)).distinct()
+    return CollectModels.objects.filter(is_system=False).filter(reduce(or_, team_queries)).distinct()
 
 
 def _build_authoritative_maps(instances, attrs):
@@ -282,7 +282,10 @@ def get_cmdb_module_data(module, child_module, page, page_size, group_id, user_i
         # 计算分页
         start = (page - 1) * page_size
         end = page * page_size
-        instances = CollectModels.objects.filter(task_type=child_module).values("id", "name", "model_id")[start:end]
+        instances = CollectModels.objects.filter(
+            task_type=child_module,
+            is_system=False,
+        ).values("id", "name", "model_id")[start:end]
         count = instances.count()
         queryset = [{"id": str(i["id"]), "name": f"{i['model_id']}_{i['name']}"} for i in instances]
     elif module == PERMISSION_INSTANCES:

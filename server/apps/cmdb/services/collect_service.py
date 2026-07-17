@@ -10,22 +10,21 @@ from django.conf import settings
 from django.db import transaction
 from django.utils.timezone import now
 
-from apps.cmdb.constants.constants import CollectPluginTypes, CollectRunStatusType, OPERATOR_COLLECT_TASK, DataCleanupStrategy
-from apps.cmdb.models import CREATE_INST, UPDATE_INST, DELETE_INST, EXECUTE
+from apps.cmdb.constants.constants import OPERATOR_COLLECT_TASK, CollectPluginTypes, CollectRunStatusType, DataCleanupStrategy
+from apps.cmdb.models import CREATE_INST, DELETE_INST, EXECUTE, UPDATE_INST
+from apps.cmdb.models.change_record import COLLECT_AUTOMATION_CHANGE
 from apps.cmdb.node_configs.config_factory import NodeParamsFactory
-from apps.cmdb.collection.collect_tasks.protocol_collect import ProtocolCollect
 from apps.cmdb.services.collect_credential_pool_service import CollectCredentialPoolService
 from apps.cmdb.services.collect_hit_state_service import CollectHitStateService
-from apps.cmdb.models.change_record import COLLECT_AUTOMATION_CHANGE
-from apps.cmdb.utils.change_record import create_change_record
+from apps.cmdb.tasks.celery_tasks import sync_collect_task
 from apps.cmdb.utils.base import get_current_team_from_request
+from apps.cmdb.utils.change_record import create_change_record
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
-from apps.core.utils.celery_utils import crontab_format, CeleryUtils
+from apps.core.utils.celery_utils import CeleryUtils, crontab_format
 from apps.core.utils.web_utils import WebUtils
 from apps.rpc.node_mgmt import NodeMgmt
 from apps.rpc.stargazer import Stargazer
-from apps.cmdb.tasks.celery_tasks import sync_collect_task
 
 
 class CollectModelService(object):
@@ -39,12 +38,31 @@ class CollectModelService(object):
     # 采集任务快照不纳入超大字段 collect_data / format_data / collect_digest，
     # 避免单条变更记录膨胀到 MB 级。
     _SNAPSHOT_FIELDS = (
-        "id", "name", "task_type", "driver_type", "model_id",
-        "is_interval", "cycle_value_type", "cycle_value", "scan_cycle",
-        "ip_range", "instances", "access_point", "credential",
-        "timeout", "exec_status", "task_id", "params", "plugin_id",
-        "input_method", "data_cleanup_strategy", "expire_days",
-        "team", "is_system", "is_visible", "system_code",
+        "id",
+        "name",
+        "task_type",
+        "driver_type",
+        "model_id",
+        "is_interval",
+        "cycle_value_type",
+        "cycle_value",
+        "scan_cycle",
+        "ip_range",
+        "instances",
+        "access_point",
+        "credential",
+        "timeout",
+        "exec_status",
+        "task_id",
+        "params",
+        "plugin_id",
+        "input_method",
+        "data_cleanup_strategy",
+        "expire_days",
+        "team",
+        "is_system",
+        "is_visible",
+        "system_code",
     )
 
     @classmethod
@@ -315,11 +333,7 @@ class CollectModelService(object):
                 return
             if isinstance(credential, list):
                 old_pool = old_credential if isinstance(old_credential, list) else []
-                old_pool_map = {
-                    item.get("credential_id"): dict(item)
-                    for item in old_pool
-                    if isinstance(item, dict) and item.get("credential_id")
-                }
+                old_pool_map = {item.get("credential_id"): dict(item) for item in old_pool if isinstance(item, dict) and item.get("credential_id")}
                 merged_pool = []
                 for item in credential:
                     if not isinstance(item, dict):
@@ -394,10 +408,10 @@ class CollectModelService(object):
         """
         node = NodeParamsFactory.get_node_params(instance)
         node_params = node.main()
-        logger.debug("[CollectTask] 推送节点参数 task_id=%s, node_params=%s", instance.id, node_params)
+        logger.debug("[CollectTask] 推送节点参数 task_id=%s", instance.id)
         node_mgmt = NodeMgmt()
-        result = node_mgmt.batch_add_node_child_config(node_params)
-        logger.debug("[CollectTask] 推送节点参数结果 task_id=%s, result=%s", instance.id, result)
+        node_mgmt.batch_add_node_child_config(node_params)
+        logger.debug("[CollectTask] 推送节点参数完成 task_id=%s", instance.id)
 
     @staticmethod
     def delete_butch_node_params(instance):
@@ -406,10 +420,10 @@ class CollectModelService(object):
         """
         node = NodeParamsFactory.get_node_params(instance)
         node_params = node.main(operator="delete")
-        logger.debug("[CollectTask] 删除节点参数 task_id=%s, node_params=%s", instance.id, node_params)
+        logger.debug("[CollectTask] 删除节点参数 task_id=%s", instance.id)
         node_mgmt = NodeMgmt()
-        result = node_mgmt.delete_child_configs(node_params)
-        logger.debug("[CollectTask] 删除节点参数结果 task_id=%s, result=%s", instance.id, result)
+        node_mgmt.delete_child_configs(node_params)
+        logger.debug("[CollectTask] 删除节点参数完成 task_id=%s", instance.id)
 
     @classmethod
     def create(cls, request, view_self):
@@ -652,10 +666,24 @@ class CollectModelService(object):
         instance.collect_data = {}
         instance.collect_digest = {}
         instance.save()
+        node_config_id = getattr(instance, "node_mgmt_config_id", None)
+        node_config_version = getattr(instance, "node_mgmt_config_version", None)
         if not settings.DEBUG:
-            sync_collect_task.delay(instance.id, execution_id)
+            transaction.on_commit(
+                lambda task_id=instance.id, token=execution_id: sync_collect_task.delay(
+                    task_id,
+                    token,
+                    node_config_id,
+                    node_config_version,
+                )
+            )
         else:
-            sync_collect_task(instance.id, execution_id)
+            sync_collect_task(
+                instance.id,
+                execution_id,
+                node_config_id,
+                node_config_version,
+            )
 
         create_change_record(
             operator=operator,

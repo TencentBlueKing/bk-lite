@@ -542,7 +542,15 @@ class InstanceManage(object):
             update_attr[display_field_id] = display_value
 
     @classmethod
-    def search_inst(cls, model_id: str, inst_name: str = None, _id: int = None):
+    def search_inst(
+        cls,
+        model_id: str,
+        inst_name: str = None,
+        _id: int = None,
+        *,
+        page: int | None = None,
+        page_size: int | None = None,
+    ):
         """查询实例"""
         with GraphClient() as ag:
             params = [{"field": "model_id", "type": "str=", "value": model_id}]
@@ -550,7 +558,15 @@ class InstanceManage(object):
                 params.append({"field": "id", "type": "id=", "value": int(_id)})
             if inst_name:
                 params.append({"field": "inst_name", "type": "str=", "value": inst_name})
-            inst_list, count = ag.query_entity(INSTANCE, params)
+            query = {"label": INSTANCE, "params": params}
+            if page is not None or page_size is not None:
+                normalized_page = max(1, int(page or 1))
+                normalized_page_size = max(1, int(page_size or 50))
+                query["page"] = {
+                    "skip": (normalized_page - 1) * normalized_page_size,
+                    "limit": normalized_page_size,
+                }
+            inst_list, count = ag.query_entity(**query)
         return inst_list, count
 
     @staticmethod
