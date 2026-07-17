@@ -267,6 +267,9 @@ class NodeMgmtSyncService:
     @staticmethod
     def _validate_task_update(data: dict[str, Any]) -> dict[str, Any]:
         validated = dict(data)
+        for field in ("auto_sync_enabled", "auto_collect_enabled"):
+            if field in validated and not isinstance(validated[field], bool):
+                raise ValueError(f"{field} 必须是布尔值")
         for field in ("sync_interval_minutes", "collect_interval_minutes"):
             if field not in validated:
                 continue

@@ -16,7 +16,8 @@ pytestmark = pytest.mark.django_db
 
 def _user(*permissions, is_superuser=False):
     return SimpleNamespace(
-        username="operator", is_superuser=is_superuser, is_authenticated=True, is_active=True, permission={"cmdb": set(permissions)}, locale="zh",
+        username="operator", is_superuser=is_superuser, is_authenticated=True, is_active=True,
+        permission={"cmdb": set(permissions)}, locale="zh", group_list=[{"id": 7}],
     )
 
 
@@ -165,3 +166,92 @@ def test_auto_collect_with_sync_disabled_is_saved_as_waiting_sync():
     assert config.auto_sync_enabled is False
     assert config.auto_collect_enabled is True
     assert config.node_config_status == "waiting_sync"
+
+
+def _sensitive_run_payload():
+    row = {
+        "model_id": "host",
+        "inst_name": "other-org-host",
+        "ip_addr": "10.0.0.8",
+        "organization": [8],
+    }
+    detail = {
+        "add": {"data": [row], "count": 1, "metadata": "10.0.0.9"},
+        "update": {"data": [], "count": 0},
+        "delete": {"data": [], "count": 0},
+        "relation": {"data": [], "count": 0},
+        "raw_data": {"data": [row], "count": 1},
+        "todo": [{"organization": [8], "ip_addr": "10.0.0.8"}],
+    }
+    return {
+        "id": 1,
+        "status": "success",
+        "message": {"all": 1, "add": 1, "message": "10.0.0.9 同步失败"},
+        "summary": {"all": 1, "add": 1, "message": "10.0.0.9 同步失败"},
+        "detail": detail,
+        "error_message": "organization=[8]",
+    }
+
+
+def test_non_superuser_latest_run_get_keeps_counts_but_hides_global_rows():
+    payload = _sensitive_run_payload()
+    with patch.object(NodeMgmtSyncService, "get_latest_run_payload", return_value=payload):
+        response = _call("latest_run", "GET", _user("auto_collection-View"))
+
+    assert response.status_code == 200
+    data = json.loads(response.content)["data"]
+    assert data["summary"] == {"all": 1, "add": 1, "message": ""}
+    assert data["detail"]["add"] == {"data": [], "count": 1}
+    assert data["detail"]["raw_data"] == {"data": [], "count": 1}
+    assert data["detail"]["todo"] == []
+    assert "10.0.0.8" not in json.dumps(data)
+    assert "10.0.0.9" not in json.dumps(data)
+    assert "organization" not in json.dumps(data)
+
+
+def test_forged_current_team_fails_closed_in_display_projection():
+    run = _sensitive_run_payload()
+    payload = {
+        "display_source": "collect",
+        "message": run["message"],
+        "summary": run["summary"],
+        "detail": run["detail"],
+        "run": run,
+    }
+    request = APIRequestFactory().get(
+        "/api/v1/cmdb/api/node_mgmt_sync/display/",
+        HTTP_COOKIE="current_team=8; include_children=1",
+    )
+    force_authenticate(request, user=_user("auto_collection-View"))
+    with patch.object(NodeMgmtSyncService, "get_display_payload", return_value=payload):
+        response = NodeMgmtSyncViewSet.as_view({"get": "display"})(request)
+
+    assert response.status_code == 200
+    data = json.loads(response.content)["data"]
+    assert data["detail"]["raw_data"] == {"data": [], "count": 1}
+    assert data["run"]["detail"]["raw_data"] == {"data": [], "count": 1}
+    assert "10.0.0.8" not in json.dumps(data)
+    assert "organization" not in json.dumps(data)
+
+
+@pytest.mark.parametrize("action", ["latest_run", "display"])
+def test_superuser_read_keeps_complete_global_detail(action):
+    run = _sensitive_run_payload()
+    payload = run if action == "latest_run" else {"detail": run["detail"], "run": run}
+    method = "get_latest_run_payload" if action == "latest_run" else "get_display_payload"
+    with patch.object(NodeMgmtSyncService, method, return_value=payload):
+        response = _call(action, "GET", _user("auto_collection-View", is_superuser=True))
+
+    data = json.loads(response.content)["data"]
+    assert "10.0.0.8" in json.dumps(data)
+    assert "organization" in json.dumps(data)
+
+
+@pytest.mark.parametrize("action", ["task", "config"])
+@pytest.mark.parametrize("field", ["auto_sync_enabled", "auto_collect_enabled"])
+@pytest.mark.parametrize("value", ["false", "0", None, 0, 1])
+def test_update_api_only_accepts_json_boolean_for_switches(action, field, value):
+    response = _call(action, "PUT", _user("auto_collection-Execute"), {field: value})
+
+    assert response.status_code == 400
+    assert json.loads(response.content)["message"] == f"{field} 必须是布尔值"
