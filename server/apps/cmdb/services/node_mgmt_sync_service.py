@@ -37,6 +37,8 @@ class NodeMgmtSyncService:
     RUN_TIMEOUT_MINUTES = 30
     REASON_ALREADY_ACTIVE = "RUN_ALREADY_ACTIVE"
     REASON_TIMEOUT = "RUN_TIMEOUT"
+    REASON_NODE_SOURCE_EMPTY = "NODE_SOURCE_EMPTY"
+    REASON_NO_VALID_NODES = "NO_VALID_NODES"
     TERMINAL_STATUSES = (
         NodeMgmtSyncRun.STATUS_SUCCESS,
         NodeMgmtSyncRun.STATUS_PARTIAL_SUCCESS,
@@ -780,7 +782,10 @@ class NodeMgmtSyncService:
 
     @classmethod
     def _fetch_non_container_nodes(
-        cls, run: NodeMgmtSyncRun | None = None
+        cls,
+        run: NodeMgmtSyncRun | None = None,
+        *,
+        source_stats: dict[str, int] | None = None,
     ) -> list[dict[str, Any]]:
         logger.info("[NodeMgmtSync] 开始获取非容器节点列表")
         cloud_region_names = cls._cloud_region_name_map(run=run)
@@ -791,6 +796,8 @@ class NodeMgmtSyncService:
             run=run,
         )
         total_nodes = len(nodes)
+        if source_stats is not None:
+            source_stats["source_total"] = total_nodes
         logger.info("[NodeMgmtSync] 从节点管理获取到节点数据, total=%d", total_nodes)
         result: list[dict[str, Any]] = []
         skipped_count = 0
@@ -820,6 +827,8 @@ class NodeMgmtSyncService:
                 }
             )
         logger.info("[NodeMgmtSync] 非容器节点过滤完成, valid=%d, skipped=%d", len(result), skipped_count)
+        if source_stats is not None:
+            source_stats["invalid_node_count"] = skipped_count
         return result
 
     @classmethod
@@ -1110,18 +1119,31 @@ class NodeMgmtSyncService:
         return {str(attr.get("attr_id")): attr for attr in attrs if isinstance(attr, dict) and attr.get("attr_id")}
 
     @classmethod
-    def _map_host_os_type(cls, operating_system: Any) -> str:
+    def _host_os_type_options(
+        cls, host_attr_map: dict[str, dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        attr = host_attr_map.get("os_type") or {}
+        options = ModelManage.resolve_runtime_enum_options(attr) if attr else []
+        return options if isinstance(options, list) else []
+
+    @classmethod
+    def _map_host_os_type(
+        cls,
+        operating_system: Any,
+        *,
+        host_attr_map: dict[str, dict[str, Any]] | None = None,
+        os_type_options: list[dict[str, Any]] | None = None,
+    ) -> str:
         raw_value = str(operating_system or "").strip()
         if not raw_value:
             return "other"
 
-        attr = cls._host_attr_map().get("os_type") or {}
-        options = ModelManage.resolve_runtime_enum_options(attr) if attr else []
-        if not isinstance(options, list):
-            options = []
+        if os_type_options is None:
+            host_attr_map = host_attr_map if host_attr_map is not None else cls._host_attr_map()
+            os_type_options = cls._host_os_type_options(host_attr_map)
 
         normalized = raw_value.lower()
-        for option in options:
+        for option in os_type_options:
             if not isinstance(option, dict):
                 continue
             option_id = str(option.get("id") or "").strip()
@@ -1147,6 +1169,8 @@ class NodeMgmtSyncService:
             *,
             node: dict[str, Any],
             collect_task_id: int,
+            host_attr_map: dict[str, dict[str, Any]] | None = None,
+            os_type_options: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         cloud_region_id = int(node["cloud_region_id"])
         cloud_region_name = node.get("cloud_region_name") or ""
@@ -1161,7 +1185,11 @@ class NodeMgmtSyncService:
             "cloud": cloud_region_id,
             "cloud_id": cloud_region_id,
             "cloud_name": cloud_region_name,
-            "os_type": cls._map_host_os_type(node.get("operating_system") or node.get("os_type")),
+            "os_type": cls._map_host_os_type(
+                node.get("operating_system") or node.get("os_type"),
+                host_attr_map=host_attr_map,
+                os_type_options=os_type_options,
+            ),
             "collect_task": collect_task_id,
             "node_id": node.get("id"),
             "source": cls.SYSTEM_SOURCE,
@@ -1528,7 +1556,12 @@ class NodeMgmtSyncService:
     @classmethod
     def _do_sync_hosts(cls, run: NodeMgmtSyncRun, task_config: NodeMgmtSyncConfig) -> dict[str, Any]:
         logger.info("[NodeMgmtSync] 开始获取节点管理主机数据")
-        nodes = cls._fetch_non_container_nodes(run=run)
+        source_stats: dict[str, int] = {}
+        nodes = cls._fetch_non_container_nodes(run=run, source_stats=source_stats)
+        source_total = source_stats.get("source_total", len(nodes))
+        invalid_node_count = source_stats.get(
+            "invalid_node_count", max(source_total - len(nodes), 0)
+        )
         logger.info("[NodeMgmtSync] 获取节点完成, total_nodes=%d", len(nodes))
 
         grouped_nodes = cls._group_nodes_by_region(nodes)
@@ -1536,8 +1569,35 @@ class NodeMgmtSyncService:
 
         detail = cls._empty_display_detail()
         detail["config_version"] = task_config.version
+        detail["source_total"] = source_total
+        detail["invalid_node_count"] = invalid_node_count
         message = cls._empty_display_message()
+        if not grouped_nodes:
+            reason_code = (
+                cls.REASON_NODE_SOURCE_EMPTY
+                if source_total == 0
+                else cls.REASON_NO_VALID_NODES
+            )
+            cls.finish_run(
+                run,
+                status=NodeMgmtSyncRun.STATUS_BLOCKED,
+                reason_code=reason_code,
+                summary_json=message,
+                detail_json=detail,
+            )
+            logger.warning(
+                "[NodeMgmtSync] 节点源不可用于同步, reason_code=%s, source_total=%d, invalid_count=%d",
+                reason_code,
+                source_total,
+                invalid_node_count,
+            )
+            return cls.serialize_run(run)
+
         changed_instance_ids: list[int] = []
+        # 模型结构与动态枚举属于本轮同步快照：每轮读取一次，在所有节点间复用；
+        # 下一轮完整重试重新读取，避免进程级缓存导致结构陈旧。
+        host_attr_map = cls._host_attr_map()
+        os_type_options = cls._host_os_type_options(host_attr_map)
         # 每次完整同步读取一次新鲜快照，并在本次 run 的所有区域间复用。
         # _persist_hosts 会把本轮新增/更新写回该映射，区域任务因此能立即引用。
         existing_map = cls._load_existing_host_map(task_id=0, run=run)
@@ -1562,7 +1622,12 @@ class NodeMgmtSyncService:
             for node in region_nodes:
                 try:
                     cls.heartbeat_run(run)
-                    payload = cls._build_host_instance_payload(node=node, collect_task_id=0)
+                    payload = cls._build_host_instance_payload(
+                        node=node,
+                        collect_task_id=0,
+                        host_attr_map=host_attr_map,
+                        os_type_options=os_type_options,
+                    )
                     detail["raw_data"]["data"].append(cls._host_display_payload(payload))
                     desired_hosts.append(payload)
                 except NodeMgmtSyncError:
@@ -1676,6 +1741,14 @@ class NodeMgmtSyncService:
 
     @classmethod
     def _has_current_successful_sync(cls, task_config: NodeMgmtSyncConfig) -> bool:
+        latest_sync_run = task_config.runs.filter(
+            run_type=NodeMgmtSyncRun.RUN_TYPE_SYNC
+        ).order_by("-created_at").first()
+        if latest_sync_run and latest_sync_run.reason_code in (
+            cls.REASON_NODE_SOURCE_EMPTY,
+            cls.REASON_NO_VALID_NODES,
+        ):
+            return False
         successful_runs = task_config.runs.filter(
             run_type=NodeMgmtSyncRun.RUN_TYPE_SYNC,
             status__in=(

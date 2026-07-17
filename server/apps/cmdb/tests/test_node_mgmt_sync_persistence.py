@@ -136,6 +136,7 @@ def _sync_mocks(mocker, nodes, existing_hosts):
     existing_loader = mocker.patch.object(NodeMgmtSyncService, "_load_existing_host_map", return_value=existing_hosts)
     mocker.patch.object(NodeMgmtSyncService, "_query_region_host_instances", return_value=[])
     mocker.patch.object(NodeMgmtSyncService, "_ensure_region_collect_task", return_value=mock.MagicMock())
+    mocker.patch.object(NodeMgmtSyncService, "_host_attr_map", return_value={})
     return existing_loader
 
 
@@ -259,6 +260,7 @@ def test_multi_region_sync_loads_existing_hosts_once_and_reuses_snapshot(mocker,
         return_value={1: [nodes[0]], 2: [nodes[1]]},
     )
     mocker.patch.object(NodeMgmtSyncService, "_pick_access_point", return_value={"id": "ap"})
+    mocker.patch.object(NodeMgmtSyncService, "_host_attr_map", return_value={})
     loader = mocker.patch.object(NodeMgmtSyncService, "_load_existing_host_map", return_value=existing)
     mocker.patch.object(
         NodeMgmtSyncService,

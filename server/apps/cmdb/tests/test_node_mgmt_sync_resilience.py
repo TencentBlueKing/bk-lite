@@ -91,7 +91,8 @@ def test_sync_hosts_continues_past_single_node_failure(sync_config):
             mock.patch.object(NodeMgmtSyncService, "_pick_access_point", return_value={"id": "ap-1"}), \
             mock.patch.object(NodeMgmtSyncService, "_normalize_org_ids", return_value=[]), \
             mock.patch.object(NodeMgmtSyncService, "_load_existing_host_map", return_value={}), \
-            mock.patch.object(NodeMgmtSyncService, "_build_host_instance_payload", side_effect=lambda node, collect_task_id=0: payloads[node["ip"]]), \
+            mock.patch.object(NodeMgmtSyncService, "_host_attr_map", return_value={}), \
+            mock.patch.object(NodeMgmtSyncService, "_build_host_instance_payload", side_effect=lambda node, collect_task_id=0, **kwargs: payloads[node["ip"]]), \
             mock.patch.object(NodeMgmtSyncService, "_query_region_host_instances", return_value=[]), \
             mock.patch.object(NodeMgmtSyncService, "_ensure_region_collect_task", return_value=mock.MagicMock()), \
             mock.patch(f"{SERVICE}.InstanceManage.instance_create", side_effect=[RuntimeError("node boom"), {"_id": "h2"}]):

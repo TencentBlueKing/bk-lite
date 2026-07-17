@@ -70,6 +70,8 @@ class NodeMgmtSyncViewSet(AuthViewSet):
         "NODE_PAGE_LIMIT_EXCEEDED",
         "NODE_QUERY_FAILED",
         "NODE_QUERY_TIMEOUT",
+        "NODE_SOURCE_EMPTY",
+        "NO_VALID_NODES",
         "NO_ACCESS_POINT",
         "RECONCILE_FAILED",
         "RECOVERY_FAILED",

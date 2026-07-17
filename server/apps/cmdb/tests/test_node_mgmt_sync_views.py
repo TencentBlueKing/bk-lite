@@ -492,6 +492,17 @@ def test_non_superuser_projection_keeps_explicitly_approved_reason_codes():
     assert task_data["health"]["reason_code"] == "RECONCILE_FAILED"
 
 
+@pytest.mark.parametrize("reason_code", ["NODE_SOURCE_EMPTY", "NO_VALID_NODES"])
+def test_non_superuser_projection_keeps_empty_node_source_reason_codes(reason_code):
+    payload = _sensitive_run_payload()
+    payload["reason_code"] = reason_code
+
+    with patch.object(NodeMgmtSyncService, "get_latest_run_payload", return_value=payload):
+        response = _call("latest_run", "GET", _user("auto_collection-View"))
+
+    assert json.loads(response.content)["data"]["reason_code"] == reason_code
+
+
 def test_safe_task_schedule_status_rejects_disabled_and_defaults_degraded():
     payload = _sensitive_task_payload()
     payload["schedule_status"] = "disabled"

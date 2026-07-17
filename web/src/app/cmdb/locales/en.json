@@ -722,6 +722,8 @@
                 "nodeQueryFailed": "The Node Management query failed. Check the Node Management service.",
                 "nodeQueryTimeout": "The Node Management query timed out. Retry later.",
                 "nodePageLimitExceeded": "The node count exceeds the safe limit for this run. Narrow the scope and retry.",
+                "nodeSourceEmpty": "Node Management returned 0 nodes, so this sync was not marked successful.",
+                "noValidNodes": "All returned nodes lack a valid cloud region, so this sync was not marked successful.",
                 "invalidRegionCode": "The node has an invalid cloud region and cannot be collected.",
                 "noAccessPoint": "The region has no available access point for collection.",
                 "collectAlreadyRunning": "A collection run is already active in this region.",

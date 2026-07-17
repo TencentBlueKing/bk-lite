@@ -59,6 +59,8 @@ const REASON_TEXT_KEYS: Record<string, string> = {
   NODE_QUERY_FAILED: 'Collection.nodeMgmtSync.reason.nodeQueryFailed',
   NODE_QUERY_TIMEOUT: 'Collection.nodeMgmtSync.reason.nodeQueryTimeout',
   NODE_PAGE_LIMIT_EXCEEDED: 'Collection.nodeMgmtSync.reason.nodePageLimitExceeded',
+  NODE_SOURCE_EMPTY: 'Collection.nodeMgmtSync.reason.nodeSourceEmpty',
+  NO_VALID_NODES: 'Collection.nodeMgmtSync.reason.noValidNodes',
   INVALID_REGION_CODE: 'Collection.nodeMgmtSync.reason.invalidRegionCode',
   NO_ACCESS_POINT: 'Collection.nodeMgmtSync.reason.noAccessPoint',
   COLLECT_ALREADY_RUNNING: 'Collection.nodeMgmtSync.reason.collectAlreadyRunning',
@@ -96,6 +98,9 @@ export const getNodeMgmtSyncEmptyStateKey = ({
   }
   if (normalizedReason === 'NO_ACCESS_POINT') {
     return 'Collection.nodeMgmtSync.empty.noAccessPoint';
+  }
+  if (['NODE_SOURCE_EMPTY', 'NO_VALID_NODES'].includes(normalizedReason)) {
+    return 'Collection.nodeMgmtSync.empty.noNodes';
   }
   if (status === 'waiting_sync') {
     return 'Collection.nodeMgmtSync.status.waitingSync';

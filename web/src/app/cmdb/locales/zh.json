@@ -742,6 +742,8 @@
                 "nodeQueryFailed": "节点管理查询失败，请检查节点管理服务状态。",
                 "nodeQueryTimeout": "节点管理查询超时，请稍后重试。",
                 "nodePageLimitExceeded": "节点数量超过本次同步安全上限，请缩小范围后重试。",
+                "nodeSourceEmpty": "节点管理当前返回 0 个节点，本次同步未标记成功。",
+                "noValidNodes": "节点管理返回的节点均缺少有效云区域，本次同步未标记成功。",
                 "invalidRegionCode": "节点所属云区域无效，无法提交采集。",
                 "noAccessPoint": "区域没有可用接入点，无法提交采集。",
                 "collectAlreadyRunning": "该区域已有采集任务正在执行。",

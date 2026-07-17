@@ -6,6 +6,7 @@ import {
   createNodeMgmtSyncRequestGuard,
   getNodeMgmtSyncDisplayEmptyStateKey,
   getNodeMgmtSyncEmptyStateKey,
+  getNodeMgmtSyncReasonTextKey,
   normalizeNodeMgmtSyncStatus,
 } from '../src/app/cmdb/(pages)/assetManage/autoDiscovery/collection/profess/components/nodeMgmtSyncViewModel';
 
@@ -42,6 +43,17 @@ assert.equal(
   getNodeMgmtSyncEmptyStateKey({ status: 'success', reasonCode: '', total: 0 }),
   'Collection.nodeMgmtSync.empty.noNodes'
 );
+for (const reasonCode of ['NODE_SOURCE_EMPTY', 'NO_VALID_NODES']) {
+  assert.equal(
+    getNodeMgmtSyncEmptyStateKey({ status: 'blocked', reasonCode, total: 0 }),
+    'Collection.nodeMgmtSync.empty.noNodes'
+  );
+  assert.notEqual(
+    getNodeMgmtSyncReasonTextKey(reasonCode),
+    'Collection.nodeMgmtSync.reason.unknown',
+    `${reasonCode} 必须映射到稳定本地化错误文案`
+  );
+}
 assert.equal(
   getNodeMgmtSyncEmptyStateKey({ status: 'partial_success', reasonCode: '', total: 0 }),
   'Collection.nodeMgmtSync.empty.partialFailure'
@@ -121,6 +133,8 @@ const testRequestGuard = async () => {
     assert.ok(nodeMgmtSync.status?.unknown, `${locale}: 缺少未知状态 fallback`);
     assert.ok(nodeMgmtSync.empty?.partialFailure, `${locale}: 缺少部分失败空态`);
     assert.ok(nodeMgmtSync.reason?.unknown, `${locale}: 缺少未知错误码脱敏 fallback`);
+    assert.ok(nodeMgmtSync.reason?.nodeSourceEmpty, `${locale}: 缺少节点源为空文案`);
+    assert.ok(nodeMgmtSync.reason?.noValidNodes, `${locale}: 缺少无有效节点文案`);
   }
 };
 
