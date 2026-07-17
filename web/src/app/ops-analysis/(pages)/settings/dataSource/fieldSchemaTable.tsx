@@ -193,7 +193,7 @@ const FieldSchemaTable = React.forwardRef<
   ];
 
   return (
-    <div style={{ margin: "24px 0 0 42px" }}>
+    <div style={{ margin: "24px 0 0" }}>
       <div
         style={{
           marginBottom: "8px",

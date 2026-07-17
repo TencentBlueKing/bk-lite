@@ -182,7 +182,6 @@ const OperateModal: React.FC<OperateModalProps> = ({
           name="namespace"
           label={t('settings.enrichmentNamespace')}
           tooltip={t('settings.enrichmentNamespaceTip')}
-          extra={t('settings.enrichmentNamespaceTip')}
           rules={[{ required: true, message: t('common.inputTip') }]}
         >
           <Input placeholder="cmdb" />

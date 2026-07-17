@@ -1,7 +1,7 @@
 import useApiClient from '@/utils/request';
 
 export const useIncidentsApi = () => {
-  const { get, post, patch } = useApiClient();
+  const { get, post, patch, del } = useApiClient();
 
   const getIncidentList = async (params: any) => {
     return get('/alerts/api/incident/', { params });
