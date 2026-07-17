@@ -84,17 +84,27 @@ const NodeConfigDrawer: React.FC<NodeConfigDrawerProps> = ({
       if (node.data.type === 'celery') {
         const freq = config.frequency === 'crontab' ? 'cron' : (config.frequency || 'daily');
         formValues.frequency = freq;
-        
+
         formValues.times = Array.isArray(config.time) ? config.time : (config.time ? [config.time] : ['09:00']);
         formValues.weekdays = Array.isArray(config.weekdays) ? config.weekdays : [];
-        
+
         if (config.days && Array.isArray(config.days) && config.days.length > 0) {
           formValues.monthDay = config.days[0];
         } else if (freq === 'monthly') {
           formValues.monthDay = 1;
         }
-        
+
         formValues.cron = config.crontab_expression || (freq === 'cron' ? '* * * * *' : '');
+      }
+
+      // NATS 节点：snake_case → camelCase 字段映射，使 Switch 显示当前值
+      if (node.data.type === 'nats') {
+        if ('expose_as_web_chat' in config) {
+          formValues.exposeAsWebChat = Boolean(config.expose_as_web_chat);
+          delete formValues.expose_as_web_chat;
+        } else {
+          formValues.exposeAsWebChat = false;
+        }
       }
 
       form.setFieldsValue(formValues);
@@ -172,6 +182,14 @@ const NodeConfigDrawer: React.FC<NodeConfigDrawerProps> = ({
 
       if (node.data.type === 'enterprise_wechat_aibot') {
         configData = normalizeEnterpriseWechatAibotConfig(configData);
+      }
+
+      if (node.data.type === 'nats') {
+        // form key 是 camelCase exposeAsWebChat；后端 / ChatApplication.node_config.data.config.expose_as_web_chat 用 snake_case
+        if ('exposeAsWebChat' in configData) {
+          configData.expose_as_web_chat = Boolean(configData.exposeAsWebChat);
+          delete configData.exposeAsWebChat;
+        }
       }
 
       if (node.data.type === 'celery') {

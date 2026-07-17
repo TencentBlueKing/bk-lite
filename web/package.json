@@ -53,6 +53,8 @@
     "test:monitor-network-device-cloud-region-fill": "pnpm exec tsx scripts/monitor-network-device-cloud-region-fill-test.ts",
     "test:opspilot-enterprise-wechat-aibot-node": "pnpm exec tsx scripts/opspilot-enterprise-wechat-aibot-node-test.ts",
     "test:opspilot-execution-preview-order": "pnpm exec tsx scripts/opspilot-execution-preview-order-test.ts",
+    "test:wiki-decision-center": "pnpm exec tsx scripts/wiki-decision-center-test.ts && pnpm exec tsx scripts/wiki-check-review-i18n-test.ts && pnpm exec tsx scripts/wiki-check-filter-test.ts",
+    "type-check:wiki-decision": "tsc -p tsconfig.wiki-decision.json --noEmit",
     "test:ops-analysis-component-param-switch": "pnpm exec tsx scripts/ops-analysis-component-param-switch-test.ts",
     "test:ops-analysis-unified-filter-input": "pnpm exec tsx scripts/ops-analysis-unified-filter-input-test.ts",
     "type-check": "pnpm clean && pnpm prepare-enterprise && pnpm precommit && tsc -p tsconfig.lint.json --noEmit",
