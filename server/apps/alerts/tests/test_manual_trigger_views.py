@@ -77,11 +77,12 @@ def test_manual_trigger_rejects_other_team_alert_and_rule(mock_get, superuser_cl
     other_alert = Alert.objects.create(
         alert_id="A-OTHER", fingerprint="f-other", title="other", content="c", level="0", team=[2]
     )
+    global_rule = ActionRule.objects.create(name="global-rule", team=[])
     other_rule = ActionRule.objects.create(name="other-rule", team=[2])
 
     other_alert_resp = superuser_client.post(
         "/api/v1/alerts/api/action_execution/manual_trigger/",
-        data={"alert_id": other_alert.alert_id, "rule_id": other_rule.id},
+        data={"alert_id": other_alert.alert_id, "rule_id": global_rule.id},
         format="json",
     )
     other_rule_resp = superuser_client.post(
