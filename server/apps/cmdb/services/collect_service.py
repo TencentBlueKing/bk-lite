@@ -11,6 +11,7 @@ from django.utils.timezone import now
 
 from apps.cmdb.constants.constants import CollectPluginTypes, CollectRunStatusType, OPERATOR_COLLECT_TASK, DataCleanupStrategy
 from apps.cmdb.models import CREATE_INST, UPDATE_INST, DELETE_INST, EXECUTE
+from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.node_configs.config_factory import NodeParamsFactory
 from apps.cmdb.collection.collect_tasks.protocol_collect import ProtocolCollect
 from apps.cmdb.services.collect_credential_pool_service import CollectCredentialPoolService
@@ -55,6 +56,29 @@ class CollectModelService(object):
         exec_time = getattr(instance, "exec_time", None)
         snapshot["exec_time"] = exec_time.isoformat() if exec_time else None
         return snapshot
+
+    @classmethod
+    def claim_execution(cls, instance_id: int, *, clear_results: bool = False):
+        """原子抢占采集任务，已在运行时返回 None。"""
+        claimed_at = now()
+        update_fields = {
+            "exec_status": CollectRunStatusType.RUNNING,
+            "exec_time": claimed_at,
+        }
+        if clear_results:
+            update_fields.update(
+                format_data={},
+                collect_data={},
+                collect_digest={},
+            )
+
+        # 条件 UPDATE 在数据库层完成抢占，避免手动与周期任务同时通过状态检查。
+        updated = (
+            CollectModels._default_manager.filter(id=instance_id)
+            .exclude(exec_status=CollectRunStatusType.RUNNING)
+            .update(**update_fields)
+        )
+        return claimed_at if updated == 1 else None
 
     @staticmethod
     def _safe_int(value):
@@ -628,21 +652,33 @@ class CollectModelService(object):
         """
         执行任务
         """
-        if instance.exec_status == CollectRunStatusType.RUNNING:
+        before_snapshot = cls._snapshot_task(instance)
+        previous_execution = {
+            "exec_status": instance.exec_status,
+            "exec_time": instance.exec_time,
+            "format_data": copy.deepcopy(instance.format_data),
+            "collect_data": copy.deepcopy(instance.collect_data),
+            "collect_digest": copy.deepcopy(instance.collect_digest),
+        }
+        # 手动入口先抢占再投递，Celery 收到消息后不再重复抢占。
+        claimed_at = cls.claim_execution(instance.id, clear_results=True)
+        if claimed_at is None:
             return WebUtils.response_error(error_message="任务正在执行中!无法重复执行！", status_code=400)
 
-        before_snapshot = cls._snapshot_task(instance)
-        cls.repair_host_cloud_snapshot(instance)
-        instance.exec_time = now()
-        instance.exec_status = CollectRunStatusType.RUNNING
-        instance.format_data = {}
-        instance.collect_data = {}
-        instance.collect_digest = {}
-        instance.save()
-        if not settings.DEBUG:
-            sync_collect_task.delay(instance.id)
-        else:
-            sync_collect_task(instance.id)
+        try:
+            instance.refresh_from_db()
+            cls.repair_host_cloud_snapshot(instance)
+            if not settings.DEBUG:
+                sync_collect_task.delay(instance.id, preclaimed=True)
+            else:
+                sync_collect_task(instance.id, preclaimed=True)
+        except Exception:
+            CollectModels._default_manager.filter(
+                id=instance.id,
+                exec_status=CollectRunStatusType.RUNNING,
+                exec_time=claimed_at,
+            ).update(**previous_execution)
+            raise
 
         create_change_record(
             operator=operator,

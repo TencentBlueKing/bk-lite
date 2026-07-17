@@ -189,7 +189,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 0 12px 4px;
+  padding: 0 0 4px;
 }
 
 .credentialPoolTitle {
@@ -251,7 +251,7 @@
 
 .credentialPoolList {
   list-style: none;
-  padding: 0 0 0 12px;
+  padding: 0;
   margin: 0;
 }
 
@@ -273,8 +273,7 @@
   height: 22px;
   justify-content: center;
   line-height: 22px;
-  margin-right: 7px;
-  margin-top: 12px;
+  margin: 0;
   width: 22px;
 }
 
@@ -283,17 +282,15 @@
   color: #8f9daf;
   cursor: grab !important;
   display: inline-flex;
+  flex: 0 0 16px;
   font-size: 12px;
-  height: 18px;
+  height: 44px;
   justify-content: center;
-  left: 39px;
   line-height: 1;
-  opacity: 0.9;
-  position: absolute;
-  top: 13px;
+  margin-right: 8px;
+  opacity: 0.75;
   transition: opacity 0.18s ease;
-  width: 12px;
-  z-index: 1;
+  width: 16px;
 }
 
 .credentialDragHandle:hover {
@@ -336,9 +333,11 @@
 }
 
 .credentialTitleBlock {
-  flex: 0 0 64px;
+  align-items: center;
+  display: inline-flex;
+  flex: 0 0 124px;
+  gap: 8px;
   min-width: 0;
-  padding-left: 12px;
 }
 
 .credentialTitle {
@@ -346,6 +345,7 @@
   font-size: 14px;
   font-weight: 600;
   line-height: 20px;
+  white-space: nowrap;
 }
 
 .credentialMetaList {
@@ -420,7 +420,7 @@
 }
 
 .credentialCardBody {
-  padding: 4px 0 12px 16px;
+  padding: 4px 0 12px;
 }
 
 .credentialFieldGrid {
@@ -430,10 +430,10 @@
 }
 
 .credentialFieldRow {
-  display: grid;
-  grid-template-columns: 80px minmax(0, 1fr);
-  gap: 10px;
-  align-items: center;
+  align-items: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .credentialFieldLabel {
@@ -441,8 +441,18 @@
   color: var(--color-text-2);
   display: inline-flex;
   gap: 4px;
-  justify-content: flex-end;
-  text-align: right;
+  justify-content: flex-start;
+  line-height: 20px;
+  text-align: left;
+}
+
+.collectionTaskTable {
+  height: 100%;
+  min-height: 0;
+
+  :global(.ant-pagination) {
+    transform: translateY(-10px);
+  }
 }
 
 .credentialRequiredMark {
@@ -453,10 +463,12 @@
 
 .credentialFieldControl {
   min-width: 0;
+  width: 100%;
 
   :global(.ant-input),
   :global(.ant-input-number),
   :global(.ant-input-affix-wrapper),
+  :global(.ant-select),
   :global(.ant-select-selector) {
     height: 30px !important;
     min-height: 30px !important;
@@ -470,6 +482,10 @@
       height: auto !important;
       min-height: 0 !important;
     }
+  }
+
+  :global(.ant-select) {
+    width: 100%;
   }
 }
 

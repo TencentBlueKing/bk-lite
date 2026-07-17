@@ -92,7 +92,7 @@ def test_build_traceback_location_returns_last_file_frame():
 # sync_periodic_update_task_status
 # --------------------------------------------------------------------------
 @pytest.mark.django_db
-def test_sync_periodic_update_marks_stale_running_failed():
+def test_sync_periodic_update_only_marks_stale_config_file_failed():
     old_time = now() - timedelta(minutes=10)
     stale = CollectModels.objects.create(
         name="stale", task_type=CollectPluginTypes.HOST, model_id="host", cycle_value_type="cycle",
@@ -110,7 +110,8 @@ def test_sync_periodic_update_marks_stale_running_failed():
     stale.refresh_from_db()
     cfg.refresh_from_db()
     fresh.refresh_from_db()
-    assert stale.exec_status == CollectRunStatusType.ERROR
+    # 普通同步采集可能运行超过 5 分钟，不能由巡检提前解除 RUNNING 防重状态。
+    assert stale.exec_status == CollectRunStatusType.RUNNING
     assert cfg.exec_status == CollectRunStatusType.ERROR
     assert "5 分钟" in cfg.collect_digest["message"]
     # 未超时的保持 RUNNING

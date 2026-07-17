@@ -413,7 +413,6 @@
         "addDimensionFilter": "Add condition",
         "dimensionLoadFailed": "Failed to load dimension candidates",
         "dimensionLoadFailedDescription": "WeOps is temporarily unavailable. You can leave dimensions empty and save the metric first.",
-        "noThresholds": "(none)",
         "thresholdLabel": "Threshold",
         "currentValueLabel": "Current value",
         "thresholdList": "{list}",

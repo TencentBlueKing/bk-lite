@@ -1056,7 +1056,7 @@ const ProfessionalCollection: React.FC = () => {
         ></div>
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto pb-1 pr-1">
-          <div className="flex min-h-[360px] min-w-0 flex-1 flex-col overflow-hidden rounded border border-gray-200 bg-white pb-1 shadow-sm">
+          <div className="flex min-h-[360px] min-w-0 flex-1 flex-col overflow-hidden rounded border border-gray-200 bg-white shadow-sm">
             <div className="px-4 py-2 border-b border-gray-100 flex items-center gap-2">
               <span className="text-base font-semibold text-gray-900">
                 {currentPlugin?.name || ''}
@@ -1091,7 +1091,7 @@ const ProfessionalCollection: React.FC = () => {
             </div>
 
             <div className="min-h-0 flex-1 overflow-hidden px-4 pb-1 pt-1">
-              <div className="h-full min-h-0">
+              <div className={styles.collectionTaskTable}>
                 <CustomTable
                   loading={tableLoading}
                   key={selectedCategoryRef.current.categoryId}

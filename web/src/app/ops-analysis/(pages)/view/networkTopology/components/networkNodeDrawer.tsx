@@ -150,7 +150,9 @@ const drawerInfoLabelStyle: React.CSSProperties = {
   padding: "9px 12px",
   borderRight: "1px solid var(--color-border-1,#e5e9ef)",
   borderBottom: "1px solid var(--color-border-1,#e5e9ef)",
-  background: "var(--color-fill-1,#f7f9fc)",
+  // fill-1 向底色混合 55%,比纯 fill-1 更淡(深浅主题都适用)
+  background:
+    "color-mix(in srgb, var(--color-fill-1,#f7f9fc) 45%, var(--color-bg-1,#ffffff))",
   color: "var(--color-text-3,#5f7290)",
   fontSize: 12,
   lineHeight: "20px",
@@ -845,7 +847,6 @@ const NetworkNodeDrawer: React.FC<NetworkNodeDrawerProps> = ({
                 {sortedMetrics.map((metric, index) => {
                   const row = boundMetricRows[index];
                   const isEditing = editingSortOrder === metric.sort_order;
-                  const thresholdPreviewItems = row?.thresholds ?? [];
                   return (
                     <div
                       key={`${metric.result_table_id}:${metric.metric_field}:${metric.sort_order}`}
@@ -991,58 +992,6 @@ const NetworkNodeDrawer: React.FC<NetworkNodeDrawerProps> = ({
                           />
                         </Popconfirm>
                       </div>
-                      {!isEditing && (
-                        <div
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 8,
-                            flexWrap: 'wrap',
-                            marginTop: 9,
-                          }}
-                        >
-                          {thresholdPreviewItems.length === 0 && (
-                            <span
-                              style={{
-                                color: 'var(--color-text-3,#94a3b8)',
-                                fontSize: 11,
-                              }}
-                            >
-                              {t(
-                                'opsAnalysis.networkTopology.node.noThresholds',
-                              )}
-                            </span>
-                          )}
-                          {thresholdPreviewItems.map(
-                            (threshold, thresholdIndex) => (
-                              <span
-                                key={`${threshold.value}-${threshold.color}-${thresholdIndex}`}
-                                style={{
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: 5,
-                                  color: 'var(--color-text-3,#64748b)',
-                                  fontSize: 11,
-                                  lineHeight: '16px',
-                                }}
-                              >
-                                <span
-                                  aria-hidden="true"
-                                  style={{
-                                    width: 7,
-                                    height: 7,
-                                    borderRadius: '50%',
-                                    background: threshold.color,
-                                    boxShadow:
-                                      '0 0 0 1px rgba(15, 23, 42, 0.08)',
-                                  }}
-                                />
-                                <span>{threshold.value}</span>
-                              </span>
-                            ),
-                          )}
-                        </div>
-                      )}
                       {isEditing && (
                         <div style={{ marginTop: 8 }}>
                           {renderMetricEditor(

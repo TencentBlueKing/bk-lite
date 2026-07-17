@@ -791,8 +791,6 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
               {({ getFieldValue }) =>
                 getFieldValue('attr_type') === 'enum' ? (
                   <Form.Item<AttrFieldType>
-                    label=" "
-                    colon={false}
                     name="option"
                     rules={[{ validator: validateEnumList }]}
                   >
@@ -840,7 +838,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                         </Radio.Group>
                       </div>
                       {enumRuleType === 'public_library' ? (
-                        <div className="pl-[72px]">
+                        <div>
                           <div className="flex items-center gap-2 mb-3">
                             <Select
                               value={publicLibraryId || undefined}
@@ -928,7 +926,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                             items={enumList.map((_, idx) => idx.toString())}
                             strategy={verticalListSortingStrategy}
                           >
-                            <ul className="pl-[72px]">
+                            <ul>
                               <li className="flex items-center mb-2 text-sm text-[var(--color-text-secondary)]">
                                 <span className="mr-[4px] w-[14px]"></span>
                                 <span className="mr-[10px] w-2/5">
@@ -979,7 +977,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                           </SortableContext>
                         </DndContext>
                       )}
-                      <div className="pl-[72px] mt-4">
+                      <div className="mt-4">
                         <Form.Item<AttrFieldType>
                           label={(
                             <span>
@@ -1019,7 +1017,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                     </div>
                   </Form.Item>
                 ) : getFieldValue('attr_type') === 'time' ? (
-                  <Form.Item label=" " colon={false}>
+                  <Form.Item>
                     <div className="bg-[var(--color-fill-1)] p-4 rounded">
                       <div className="text-sm text-[var(--color-text-secondary)] mb-3">
                         {t('Model.validationRules')}
@@ -1037,7 +1035,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                     </div>
                   </Form.Item>
                 ) : getFieldValue('attr_type') === 'int' ? (
-                  <Form.Item label=" " colon={false}>
+                  <Form.Item>
                     <div className="bg-[var(--color-fill-1)] p-4 rounded">
                       <div className="text-sm text-[var(--color-text-secondary)] mb-3">
                         {t('Model.validationRules')}
@@ -1063,8 +1061,6 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                   </Form.Item>
                 ) : getFieldValue('attr_type') === 'table' ? (
                   <Form.Item<AttrFieldType>
-                    label=" "
-                    colon={false}
                     name="option"
                     rules={[{ validator: validateTableColumns }]}
                   >
@@ -1183,7 +1179,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                     </div>
                   </Form.Item>
                 ) : getFieldValue('attr_type') === 'str' ? (
-                  <Form.Item label=" " colon={false}>
+                  <Form.Item>
                     <div className="bg-[var(--color-fill-1)] p-4 rounded">
                       <div className="text-sm text-[var(--color-text-secondary)] mb-3">
                         {t('Model.validationRules')}
@@ -1257,8 +1253,6 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                   </Form.Item>
                 ) : getFieldValue('attr_type') === 'tag' ? (
                   <Form.Item<AttrFieldType>
-                    label=" "
-                    colon={false}
                     name="option"
                     rules={[{ validator: validateTagList }]}
                   >
@@ -1418,7 +1412,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                 ];
 
                 return (
-                  <Form.Item label=" " colon={false}>
+                  <Form.Item>
                     <div className="rounded border border-[var(--color-border-1)] bg-[var(--color-fill-1)] p-4">
                       <div className="mb-1 flex items-center gap-1 text-sm font-medium text-[var(--color-text-primary)]">
                         <span>{t('Model.systemConstraints')}</span>

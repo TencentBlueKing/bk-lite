@@ -692,49 +692,35 @@ const OperateModal: React.FC<OperateModalProps> = ({
         </div>
 
         <SectionTitle title={t('settings.correlation.basicConfig')} />
-        <div className="mb-4 space-y-4 pl-3">
-          <div className="flex items-center">
-            <div className="w-[100px] pr-2 text-right text-sm">
-              <span className="text-red-500">* </span>
-              {t('settings.correlation.policyName')}
-            </div>
-            <Form.Item
-              name="name"
-              rules={[{ required: true, message: t('common.inputTip') }]}
-              className="mb-0 flex-1"
-            >
-              <Input placeholder={t('common.inputTip')} />
-            </Form.Item>
-          </div>
-          <div className="flex items-center">
-            <div className="w-[100px] pr-2 text-right text-sm">
-              <span className="text-red-500">* </span>
-              {t('settings.correlation.organization')}
-            </div>
-            <Form.Item
-              name="organization"
-              rules={[{ required: true, message: t('common.selectTip') }]}
-              className="mb-0 flex-1"
-            >
-              <GroupTreeSelect multiple placeholder={t('common.selectTip')} />
-            </Form.Item>
-          </div>
-          <div className="flex items-center">
-            <div className="w-[100px] pr-2 text-right text-sm">
-              <span className="text-red-500">* </span>
-              {t('settings.correlation.assignOrganization')}
-              <Tooltip title={t('settings.correlation.assignOrganizationTip')}>
-                <QuestionCircleOutlined className="ml-1 cursor-help text-gray-400" />
-              </Tooltip>
-            </div>
-            <Form.Item
-              name="assign_organization"
-              rules={[{ required: true, message: t('common.selectTip') }]}
-              className="mb-0 flex-1"
-            >
-              <GroupTreeSelect multiple={false} placeholder={t('common.selectTip')} />
-            </Form.Item>
-          </div>
+        <div className="mb-4 pl-3">
+          <Form.Item
+            name="name"
+            label={t('settings.correlation.policyName')}
+            rules={[{ required: true, message: t('common.inputTip') }]}
+          >
+            <Input placeholder={t('common.inputTip')} />
+          </Form.Item>
+          <Form.Item
+            name="organization"
+            label={t('settings.correlation.organization')}
+            rules={[{ required: true, message: t('common.selectTip') }]}
+          >
+            <GroupTreeSelect multiple placeholder={t('common.selectTip')} />
+          </Form.Item>
+          <Form.Item
+            name="assign_organization"
+            label={
+              <span>
+                {t('settings.correlation.assignOrganization')}
+                <Tooltip title={t('settings.correlation.assignOrganizationTip')}>
+                  <QuestionCircleOutlined className="ml-1 cursor-help text-gray-400" />
+                </Tooltip>
+              </span>
+            }
+            rules={[{ required: true, message: t('common.selectTip') }]}
+          >
+            <GroupTreeSelect multiple={false} placeholder={t('common.selectTip')} />
+          </Form.Item>
         </div>
 
         <SectionTitle
@@ -825,36 +811,24 @@ const OperateModal: React.FC<OperateModalProps> = ({
         {strategyType === 'instant' ? (
           <>
             <SectionTitle title={t('settings.correlation.alertTemplate')} />
-            <div className="space-y-4 pl-3">
-              <div className="flex items-start">
-                <div className="w-[100px] shrink-0 pr-2 pt-1 text-right text-sm">
-                  <span className="text-red-500">* </span>
-                  {t('settings.correlation.alertTitle')}
-                </div>
-                <Form.Item
-                  name="it_alert_title"
-                  className="mb-0 flex-1"
-                  rules={[{ required: true, message: t('common.inputTip') }]}
-                >
-                  <Input placeholder={t('settings.correlation.instantTemplatePlaceholder')} />
-                </Form.Item>
-              </div>
-              <div className="flex items-start">
-                <div className="w-[100px] shrink-0 pr-2 pt-1 text-right text-sm">
-                  <span className="text-red-500">* </span>
-                  {t('settings.correlation.alertDescription')}
-                </div>
-                <Form.Item
-                  name="it_alert_description"
-                  className="mb-0 flex-1"
-                  rules={[{ required: true, message: t('common.inputTip') }]}
-                >
-                  <Input.TextArea
-                    rows={3}
-                    placeholder={t('settings.correlation.instantDescPlaceholder')}
-                  />
-                </Form.Item>
-              </div>
+            <div className="pl-3">
+              <Form.Item
+                name="it_alert_title"
+                label={t('settings.correlation.alertTitle')}
+                rules={[{ required: true, message: t('common.inputTip') }]}
+              >
+                <Input placeholder={t('settings.correlation.instantTemplatePlaceholder')} />
+              </Form.Item>
+              <Form.Item
+                name="it_alert_description"
+                label={t('settings.correlation.alertDescription')}
+                rules={[{ required: true, message: t('common.inputTip') }]}
+              >
+                <Input.TextArea
+                  rows={3}
+                  placeholder={t('settings.correlation.instantDescPlaceholder')}
+                />
+              </Form.Item>
               <Typography.Text type="secondary" className="block text-xs leading-5">
                 {t('settings.correlation.instantTemplateHint')}
               </Typography.Text>
@@ -892,53 +866,51 @@ const OperateModal: React.FC<OperateModalProps> = ({
 
               {detailExpanded && (
                 <div className="space-y-4 rounded-lg border border-slate-100 bg-slate-50/80 p-4">
-                  <div className="flex items-center">
-                    <div className="w-[72px] shrink-0 text-[13px] text-slate-600">
+                  <div>
+                    <div className="mb-2 text-[13px] text-slate-600">
                       {t('settings.correlation.aggregationDimension')}
                     </div>
-                    <div className="flex-1">
-                      <DndContext
-                        sensors={sensors}
-                        collisionDetection={closestCenter}
-                        onDragEnd={handleDragEnd}
+                    <DndContext
+                      sensors={sensors}
+                      collisionDetection={closestCenter}
+                      onDragEnd={handleDragEnd}
+                    >
+                      <SortableContext
+                        items={dimensions}
+                        strategy={horizontalListSortingStrategy}
                       >
-                        <SortableContext
-                          items={dimensions}
-                          strategy={horizontalListSortingStrategy}
-                        >
-                          <Select
-                            mode="multiple"
-                            placeholder={t('common.selectTip')}
-                            value={dimensions}
-                            style={{ width: '100%' }}
-                            onChange={(selected) =>
-                              handleDimensionChange(selected as AggregationDimension[])
-                            }
-                            options={DIMENSION_OPTIONS.map((d) => ({
-                              value: d,
-                              label: t(`settings.correlation.${d === 'resource_name' ? 'resourceName' : d}`),
-                            }))}
-                            tagRender={({ value, onClose }) => (
-                              <DraggableTag
-                                id={value as string}
-                                onClose={(e) => {
-                                  if (dimensions.length > 1) {
-                                    onClose(e);
-                                  }
-                                }}
-                              />
-                            )}
-                          />
-                        </SortableContext>
-                      </DndContext>
-                    </div>
+                        <Select
+                          mode="multiple"
+                          placeholder={t('common.selectTip')}
+                          value={dimensions}
+                          style={{ width: '100%' }}
+                          onChange={(selected) =>
+                            handleDimensionChange(selected as AggregationDimension[])
+                          }
+                          options={DIMENSION_OPTIONS.map((d) => ({
+                            value: d,
+                            label: t(`settings.correlation.${d === 'resource_name' ? 'resourceName' : d}`),
+                          }))}
+                          tagRender={({ value, onClose }) => (
+                            <DraggableTag
+                              id={value as string}
+                              onClose={(e) => {
+                                if (dimensions.length > 1) {
+                                  onClose(e);
+                                }
+                              }}
+                            />
+                          )}
+                        />
+                      </SortableContext>
+                    </DndContext>
                   </div>
 
-                  <div className="flex items-center">
-                    <div className="w-[72px] shrink-0 text-[13px] text-slate-600">
+                  <div>
+                    <div className="mb-2 text-[13px] text-slate-600">
                       {t('settings.correlation.detectionWindow')}
                     </div>
-                    <div className="flex flex-1 items-center gap-3">
+                    <div className="flex items-center gap-3">
                       <div className="flex-1 px-1">
                         <Slider
                           min={1}
@@ -974,8 +946,8 @@ const OperateModal: React.FC<OperateModalProps> = ({
                 className="mb-3"
               />
               {selfHealingEnabled && (
-                <div className="flex items-center gap-3">
-                  <span className="flex items-center text-sm text-gray-600">
+                <div>
+                  <span className="mb-2 flex items-center text-sm text-gray-600">
                     {t('settings.correlation.observationTime')}
                     <Tooltip title={t('settings.correlation.observationTimeTip')}>
                       <QuestionCircleOutlined className="ml-1 text-xs text-gray-400" />
@@ -1002,8 +974,8 @@ const OperateModal: React.FC<OperateModalProps> = ({
                 className="mb-3"
               />
               {autoCloseEnabled && (
-                <div className="flex items-center gap-3">
-                  <span className="flex items-center text-sm text-gray-600">
+                <div>
+                  <span className="mb-2 flex items-center text-sm text-gray-600">
                     {t('settings.correlation.autoCloseTime')}
                     <Tooltip title={t('settings.correlation.autoCloseTip')}>
                       <QuestionCircleOutlined className="ml-1 text-xs text-gray-400" />
@@ -1058,8 +1030,8 @@ const OperateModal: React.FC<OperateModalProps> = ({
             <SectionTitle title={t('settings.correlation.recoveryRules')} />
             <div className="pl-3">
               <div className="space-y-2">
-                <div className="flex items-center gap-3">
-                  <span className="flex items-center text-sm text-gray-600">
+                <div>
+                  <span className="mb-2 flex items-center text-sm text-gray-600">
                     {t('settings.correlation.autoRecovery')}
                     <Tooltip title={t('settings.correlation.autoRecoveryTip')}>
                       <QuestionCircleOutlined className="ml-1 cursor-help text-xs text-gray-400" />

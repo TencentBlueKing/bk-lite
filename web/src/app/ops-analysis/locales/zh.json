@@ -413,7 +413,6 @@
         "addDimensionFilter": "添加条件",
         "dimensionLoadFailed": "维度候选值加载失败",
         "dimensionLoadFailedDescription": "WeOps 暂时不可用，可先不选择维度并保存指标。",
-        "noThresholds": "(无)",
         "thresholdLabel": "阈值",
         "currentValueLabel": "当前值",
         "thresholdList": "{list}",
