@@ -97,6 +97,13 @@ class CollectModels(MaintainerInfo, TimeInfo):
     exec_time = models.DateTimeField(blank=True, null=True, help_text="执行时间")
 
     task_id = models.CharField(max_length=64, blank=True, null=True, help_text="任务执行id")
+    execution_claim_token = models.CharField(
+        max_length=128,
+        blank=True,
+        null=True,
+        editable=False,
+        help_text="采集执行内部领取令牌",
+    )
 
     params = JSONField(default=dict, help_text="采集任务额外的参数(各种实例或者不包括在凭据里的参数)")
 

@@ -21,6 +21,15 @@ from apps.cmdb.tasks.node_mgmt_sync import run_collect, run_sync
 from apps.core.logger import cmdb_logger as logger
 
 
+_COLLECT_TERMINAL_STATUSES = (
+    CollectRunStatusType.SUCCESS,
+    CollectRunStatusType.ERROR,
+    CollectRunStatusType.TIME_OUT,
+    CollectRunStatusType.FORCE_STOP,
+    CollectRunStatusType.PARTIAL_SUCCESS,
+)
+
+
 def _is_unhelpful_error_message(message: str) -> bool:
     text = str(message or "").strip()
     return text in {"0", "1", "None", "null", "False", "True"}
@@ -71,34 +80,40 @@ def _build_traceback_location(traceback_text: str) -> str:
     return file_lines[-1] if file_lines else ""
 
 
-_COLLECT_CLAIM_DIGEST_KEY = "_execution_claim_token"
-
-
-def _collect_claim_digest(claim_token):
-    return {_COLLECT_CLAIM_DIGEST_KEY: claim_token}
-
-
 def _claim_collect_task_execution(instance_id, start_time, execution_id=None):
     """以数据库 CAS 领取一次采集执行。
 
-    ``RUNNING + execution_id + 空摘要`` 表示生产者已排队但尚未领取；领取后把独立
-    ``claim_token`` 写入摘要。execution_id 标识业务执行，claim_token 标识唯一 worker，
-    因而相同 Celery 消息的并发或延迟重复投递不能共享 owner 身份。
+    ``RUNNING + execution_id + 空摘要 + 无 claim`` 表示生产者已排队但尚未领取；
+    execution_id 标识业务执行，独立的 execution_claim_token 标识唯一 worker。
+    Beat 每轮使用不同 request.id，新一轮仅能从上一轮终态进入；同 request.id 重投
+    不能重开终态，也不能共享 owner 身份。
     """
     queryset = CollectModels._default_manager.filter(id=instance_id)
     execution_id = execution_id or str(uuid4())
-    claim_token = uuid4().hex
-    claim_digest = _collect_claim_digest(claim_token)
+    claim_token = f"{execution_id}:{uuid4().hex}"
     update_fields = {
         "exec_status": CollectRunStatusType.RUNNING,
         "exec_time": start_time,
         "task_id": execution_id,
-        "collect_digest": claim_digest,
+        "execution_claim_token": claim_token,
     }
-    queued_execution = Q(exec_status=CollectRunStatusType.NOT_START) | Q(
-        exec_status=CollectRunStatusType.RUNNING,
-        task_id=execution_id,
-        collect_digest={},
+    queued_execution = (
+        Q(exec_status=CollectRunStatusType.NOT_START)
+        | (
+            Q(
+                exec_status=CollectRunStatusType.RUNNING,
+                task_id=execution_id,
+                collect_digest={},
+            )
+            & (
+                Q(execution_claim_token__isnull=True)
+                | ~Q(execution_claim_token__startswith=f"{execution_id}:")
+            )
+        )
+        | (
+            Q(exec_status__in=_COLLECT_TERMINAL_STATUSES)
+            & ~Q(task_id=execution_id)
+        )
     )
     updated = queryset.filter(queued_execution).update(**update_fields)
     if not updated:
@@ -107,8 +122,9 @@ def _claim_collect_task_execution(instance_id, start_time, execution_id=None):
         id=instance_id,
         exec_status=CollectRunStatusType.RUNNING,
         task_id=execution_id,
-        collect_digest=claim_digest,
-    ).first()
+        execution_claim_token=claim_token,
+    )
+    instance = instance.first()
     if instance:
         instance.claim_token = claim_token
     return instance
@@ -116,14 +132,25 @@ def _claim_collect_task_execution(instance_id, start_time, execution_id=None):
 
 def _save_collect_result_if_current(instance_id, execution_id, claim_token, values):
     """仅允许当前 execution 的唯一 owner 提交结果。"""
-    return bool(
+    terminal_values = {**values, "execution_claim_token": None}
+    updated = bool(
         CollectModels._default_manager.filter(
             id=instance_id,
             task_id=execution_id,
             exec_status=CollectRunStatusType.RUNNING,
-            collect_digest=_collect_claim_digest(claim_token),
-        ).update(**values)
+            execution_claim_token=claim_token,
+        ).update(**terminal_values)
     )
+    if not updated:
+        # 外部回调可能先一步写入终态；仅释放同 execution、同 owner 的内部 claim，
+        # 不触碰回调已经提交的业务结果。旧 worker 无法匹配新 execution 的 token。
+        CollectModels._default_manager.filter(
+            id=instance_id,
+            task_id=execution_id,
+            execution_claim_token=claim_token,
+            exec_status__in=_COLLECT_TERMINAL_STATUSES,
+        ).update(execution_claim_token=None)
+    return updated
 
 
 def _resolve_execution_timeout_seconds(task):
@@ -153,20 +180,28 @@ def _timeout_collect_task_if_current(task, checked_at):
     }
     return bool(
         CollectModels._default_manager.filter(
-            id=task.id, task_id=task.task_id, exec_status=CollectRunStatusType.RUNNING, exec_time=task.exec_time,
+            id=task.id,
+            task_id=task.task_id,
+            exec_status=CollectRunStatusType.RUNNING,
+            exec_time=task.exec_time,
+            execution_claim_token=task.execution_claim_token,
         ).update(
-            exec_status=CollectRunStatusType.TIME_OUT, collect_digest=collect_digest, updated_at=checked_at,
+            exec_status=CollectRunStatusType.TIME_OUT,
+            execution_claim_token=None,
+            collect_digest=collect_digest,
+            updated_at=checked_at,
         )
     )
 
 
-@shared_task
-def sync_collect_task(instance_id, execution_id=None):
+@shared_task(bind=True)
+def sync_collect_task(self, instance_id, execution_id=None):
     """
     同步采集任务
     """
     logger.info("[CollectTask] 开始采集任务 task_id=%s", instance_id)
     start_time = now()
+    execution_id = execution_id or self.request.id or str(uuid4())
     instance = _claim_collect_task_execution(instance_id, start_time, execution_id=execution_id)
     if not instance:
         exists = CollectModels._default_manager.filter(id=instance_id).exists()
@@ -310,10 +345,14 @@ def sync_periodic_update_task_status():
     """按每次 execution 的 deadline 收敛超时状态。"""
     checked_at = now()
     logger.info("[CollectTask] 开始周期巡检超时采集任务")
+    CollectModels._default_manager.filter(
+        exec_status__in=_COLLECT_TERMINAL_STATUSES,
+        execution_claim_token__isnull=False,
+    ).update(execution_claim_token=None)
     timeout_count = 0
     tasks = (
         CollectModels._default_manager.filter(exec_status=CollectRunStatusType.RUNNING,)
-        .only("id", "task_id", "exec_status", "exec_time", "params")
+        .only("id", "task_id", "exec_status", "exec_time", "execution_claim_token", "params")
         .iterator(chunk_size=200)
     )
     for task in tasks:

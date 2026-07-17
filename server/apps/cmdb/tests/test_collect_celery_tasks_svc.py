@@ -95,6 +95,7 @@ def test_sync_periodic_update使用任务deadline写入超时终态():
 
     task.refresh_from_db()
     assert task.exec_status == CollectRunStatusType.TIME_OUT
+    assert task.execution_claim_token is None
     assert task.collect_digest["execution_id"] == "execution-30"
     assert task.collect_digest["deadline_seconds"] == 30
     assert task.collect_digest["started_at"] == started_at.isoformat()
@@ -155,6 +156,52 @@ def test_timeout条件写回不能覆盖新execution():
     assert updated is False
     assert task.task_id == "execution-B"
     assert task.exec_status == CollectRunStatusType.RUNNING
+
+
+@pytest.mark.django_db
+def test_timeout条件写回校验owner并清理claim_token():
+    task = CollectModels.objects.create(
+        name="timeout-owner-fence",
+        task_type=CollectPluginTypes.HOST,
+        model_id="host",
+        cycle_value_type="cycle",
+        exec_status=CollectRunStatusType.RUNNING,
+        exec_time=now() - timedelta(seconds=31),
+        task_id="execution-A",
+        execution_claim_token="owner-A",
+        params={"task_job_timeout": 30},
+        team=[1],
+    )
+    stale_owner = CollectModels.objects.get(id=task.id)
+    CollectModels.objects.filter(id=task.id).update(execution_claim_token="owner-B")
+
+    assert ct._timeout_collect_task_if_current(stale_owner, now()) is False
+
+    current_owner = CollectModels.objects.get(id=task.id)
+    assert ct._timeout_collect_task_if_current(current_owner, now()) is True
+    task.refresh_from_db()
+    assert task.exec_status == CollectRunStatusType.TIME_OUT
+    assert task.execution_claim_token is None
+
+
+@pytest.mark.django_db
+def test_periodic_recovery_clears_force_stopped_execution_claim():
+    task = CollectModels.objects.create(
+        name="force-stop-claim-cleanup",
+        task_type=CollectPluginTypes.HOST,
+        model_id="host",
+        cycle_value_type="cycle",
+        exec_status=CollectRunStatusType.FORCE_STOP,
+        task_id="execution-stopped",
+        execution_claim_token="execution-stopped:owner",
+        team=[1],
+    )
+
+    ct.sync_periodic_update_task_status()
+
+    task.refresh_from_db()
+    assert task.exec_status == CollectRunStatusType.FORCE_STOP
+    assert task.execution_claim_token is None
 
 
 # --------------------------------------------------------------------------
@@ -395,12 +442,64 @@ def test_same_execution_id_duplicate_delivery_cannot_acquire_or_execute(monkeypa
 
     assert first is not None
     assert first.claim_token
+    assert first.claim_token.startswith("execution-A:")
+    assert first.collect_digest == {}
     assert second is None
 
     monkeypatch.setattr(
         ct, "ProtocolCollect", lambda task: (_ for _ in ()).throw(AssertionError("duplicate delivery must not execute")),
     )
     ct.sync_collect_task(task.id, execution_id="execution-A")
+
+
+@pytest.mark.django_db
+def test_beat_request_id_deduplicates_redelivery_and_allows_next_period(monkeypatch):
+    task = CollectModels.objects.create(
+        name="beat-periodic-execution",
+        task_type=CollectPluginTypes.PROTOCOL,
+        model_id="mysql",
+        driver_type="protocol",
+        cycle_value_type="cycle",
+        team=[1],
+    )
+    executions = []
+    monkeypatch.setattr(ct.CollectDispatchService, "should_dispatch", staticmethod(lambda instance: False))
+    monkeypatch.setattr(
+        "apps.cmdb.services.collect_service.CollectModelService.repair_host_cloud_snapshot", lambda instance: None,
+    )
+
+    class FakeCollect:
+        def __init__(self, task):
+            self.task = task
+
+        def main(self):
+            executions.append(self.task.task_id)
+            return {"execution_id": self.task.task_id}, {
+                "add": [],
+                "update": [],
+                "delete": [],
+                "association": [],
+                "__raw_data__": [{"__time__": "2026-07-17T00:00:00Z"}],
+            }
+
+    monkeypatch.setattr(ct, "ProtocolCollect", FakeCollect)
+
+    ct.sync_collect_task.apply(args=[task.id], task_id="beat-delivery-1", throw=True)
+    ct.sync_collect_task.apply(args=[task.id], task_id="beat-delivery-1", throw=True)
+
+    task.refresh_from_db()
+    assert executions == ["beat-delivery-1"]
+    assert task.task_id == "beat-delivery-1"
+    assert task.exec_status == CollectRunStatusType.SUCCESS
+    assert task.execution_claim_token is None
+
+    ct.sync_collect_task.apply(args=[task.id], task_id="beat-delivery-2", throw=True)
+
+    task.refresh_from_db()
+    assert executions == ["beat-delivery-1", "beat-delivery-2"]
+    assert task.task_id == "beat-delivery-2"
+    assert task.exec_status == CollectRunStatusType.SUCCESS
+    assert task.execution_claim_token is None
 
 
 @pytest.mark.django_db
@@ -452,6 +551,27 @@ def test_new_execution_id_can_acquire_not_started_task():
 
 
 @pytest.mark.django_db
+def test_newly_queued_execution_can_replace_stale_claim_from_previous_execution():
+    task = CollectModels.objects.create(
+        name="replace-stale-claim",
+        task_type=CollectPluginTypes.PROTOCOL,
+        model_id="mysql",
+        driver_type="protocol",
+        cycle_value_type="cycle",
+        team=[1],
+        exec_status=CollectRunStatusType.RUNNING,
+        task_id="execution-new",
+        execution_claim_token="execution-old:stale-owner",
+        collect_digest={},
+    )
+
+    claimed = ct._claim_collect_task_execution(task.id, now(), execution_id="execution-new")
+
+    assert claimed is not None
+    assert claimed.claim_token.startswith("execution-new:")
+
+
+@pytest.mark.django_db
 def test_collect_result_requires_current_execution_owner():
     task = CollectModels.objects.create(
         name="execution-owner-fence",
@@ -466,7 +586,7 @@ def test_collect_result_requires_current_execution_owner():
     CollectModels.objects.filter(id=task.id).update(
         exec_status=CollectRunStatusType.NOT_START,
         task_id="",
-        collect_digest={},
+        execution_claim_token=None,
     )
     owner_b = ct._claim_collect_task_execution(task.id, now(), execution_id="execution-B")
 
@@ -487,6 +607,7 @@ def test_collect_result_requires_current_execution_owner():
     assert task.task_id == "execution-B"
     assert task.exec_status == CollectRunStatusType.SUCCESS
     assert task.collect_digest == {"owner": "B"}
+    assert task.execution_claim_token is None
 
 
 @pytest.mark.django_db
@@ -669,3 +790,4 @@ def test_config_file_pending不能覆盖同execution回调终态(monkeypatch):
     assert task.exec_status == CollectRunStatusType.SUCCESS
     assert task.collect_data == {"owner": "callback"}
     assert task.collect_digest == {"owner": "callback"}
+    assert task.execution_claim_token is None
