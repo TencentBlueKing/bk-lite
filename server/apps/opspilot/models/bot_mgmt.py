@@ -704,13 +704,13 @@ class ChatApplication(models.Model):
             }
 
         elif node_type == ChatApplication.APP_TYPE_NATS:
-            # nats 入口不需要强制 appName；若缺省回退到 node_id，便于 expose=web_chat 命名
+            # nats 入口：expose_as_web_chat=true 时同样需要 icon/name/description 用于发布的 web_chat 应用
             app_name = node_config.get("appName") or ""
             return {
                 "app_name": app_name,
                 "app_description": node_config.get("appDescription", ""),
                 "app_tags": [],
-                "app_icon": "",
+                "app_icon": node_config.get("appIcon", ""),
             }
 
         return None

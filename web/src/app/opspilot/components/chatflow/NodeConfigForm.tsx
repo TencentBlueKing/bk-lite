@@ -154,7 +154,7 @@ export const NodeConfigForm: React.FC<any> = ({
 
       {nodeType === 'mobile' && <MobileNodeConfig t={t} />}
 
-      {nodeType === 'nats' && <NatsNodeConfig />}
+      {nodeType === 'nats' && <NatsNodeConfig form={form} />}
 
       {nodeType === 'condition' && <ConditionNodeConfig t={t} nodes={nodes} />}
 
