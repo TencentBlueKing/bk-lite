@@ -4,9 +4,10 @@ import uuid
 from dataclasses import dataclass
 from datetime import timedelta
 
+from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
-from django_celery_beat.models import PeriodicTask
+from django_celery_beat.models import IntervalSchedule, PeriodicTask
 
 from apps.cmdb.models.node_mgmt_sync import NodeMgmtSyncRegionState
 from apps.core.logger import cmdb_logger as logger
@@ -176,23 +177,24 @@ class NodeMgmtSyncReconciler:
         try:
             from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncService
 
-            cls._reconcile_periodic_task(
-                enabled=config.auto_sync_enabled,
-                name=NodeMgmtSyncService.SYNC_PERIODIC_TASK_NAME,
-                task=NodeMgmtSyncService.SYNC_TASK,
-                interval=config.sync_interval_minutes,
-            )
-            cls._reconcile_periodic_task(
-                enabled=config.auto_collect_enabled,
-                name=NodeMgmtSyncService.COLLECT_PERIODIC_TASK_NAME,
-                task=NodeMgmtSyncService.COLLECT_TASK,
-                interval=config.collect_interval_minutes,
-            )
+            if not cls._reconcile_schedules_if_current(
+                config, service=NodeMgmtSyncService
+            ):
+                current = config.__class__.objects.get(pk=config.pk)
+                return NodeMgmtSyncReconcileResult(
+                    current.schedule_status,
+                    current.node_config_status,
+                    current.reconcile_error_code,
+                    current.reconcile_error_message,
+                )
             node_status = config.node_config_status or "unknown"
             node_error_code = ""
             node_error_message = ""
             persist_health = True
-            if reconcile_node_configs:
+            node_outcome = NodeConfigReconcileResult(node_status)
+            if reconcile_node_configs and config.__class__.objects.filter(
+                pk=config.pk, version=config.version
+            ).exists():
                 node_outcome = cls._reconcile_node_configs(config, service=NodeMgmtSyncService,)
                 if node_outcome.contended:
                     config.refresh_from_db(fields=("schedule_status", "node_config_status", "reconcile_error_code", "reconcile_error_message",))
@@ -214,6 +216,31 @@ class NodeMgmtSyncReconciler:
         if persist_health:
             cls._persist_health(config, result)
         return result
+
+    @classmethod
+    def _reconcile_schedules_if_current(cls, config, *, service) -> bool:
+        """短事务串行化配置更新与 Beat 对账；远端节点 RPC 不进入该事务。"""
+        with transaction.atomic():
+            current = (
+                config.__class__.objects.select_for_update()
+                .filter(pk=config.pk, version=config.version)
+                .first()
+            )
+            if current is None:
+                return False
+            cls._reconcile_periodic_task(
+                enabled=current.auto_sync_enabled,
+                name=service.SYNC_PERIODIC_TASK_NAME,
+                task=service.SYNC_TASK,
+                interval=current.sync_interval_minutes,
+            )
+            cls._reconcile_periodic_task(
+                enabled=current.auto_collect_enabled,
+                name=service.COLLECT_PERIODIC_TASK_NAME,
+                task=service.COLLECT_TASK,
+                interval=current.collect_interval_minutes,
+            )
+            return True
 
     @classmethod
     def _reconcile_node_configs(cls, config, *, service):
@@ -434,30 +461,23 @@ class NodeMgmtSyncReconciler:
                 cls._delete_periodic_task(name)
             return
 
-        expected_crontab = f"*/{int(interval)} * * * *"
-        if cls._matches(current, task=task, crontab=expected_crontab):
+        interval_seconds = int(interval) * 60
+        if cls._matches(current, task=task, interval_seconds=interval_seconds):
             return
         CeleryUtils.create_or_update_periodic_task(
-            name=name, crontab=expected_crontab, task=task, enabled=True,
+            name=name, interval=interval_seconds, task=task, enabled=True,
         )
 
     @staticmethod
-    def _matches(current, *, task: str, crontab: str) -> bool:
+    def _matches(current, *, task: str, interval_seconds: int) -> bool:
         if current is None or current.task != task or not current.enabled:
             return False
-        if current.crontab_id is None or current.interval_id is not None:
+        if current.interval_id is None or current.crontab_id is not None:
             return False
-        if current.crontab.timezone != timezone.get_default_timezone():
-            return False
-        expected = crontab.split()
-        actual = [
-            current.crontab.minute,
-            current.crontab.hour,
-            current.crontab.day_of_month,
-            current.crontab.month_of_year,
-            current.crontab.day_of_week,
-        ]
-        return actual == expected
+        return (
+            current.interval.every == interval_seconds
+            and current.interval.period == IntervalSchedule.SECONDS
+        )
 
     @staticmethod
     def _delete_periodic_task(name: str) -> None:

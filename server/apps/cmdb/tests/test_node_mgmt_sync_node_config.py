@@ -760,14 +760,16 @@ def test_stale_config_version_cannot_overwrite_current_health(config, region_tas
         version=config.version + 1, node_config_status="waiting_sync",
     )
 
-    with patch.object(CollectModelService, "delete_butch_node_params"):
-        with patch.object(CollectModelService, "push_butch_node_params"):
+    with patch.object(CollectModelService, "delete_butch_node_params") as delete:
+        with patch.object(CollectModelService, "push_butch_node_params") as push:
             _reconcile(stale_config)
 
     config.refresh_from_db()
     assert config.version == stale_config.version + 1
     assert config.node_config_status == "waiting_sync"
-    assert _state(stale_config).node_config_status == "healthy"
+    assert not NodeMgmtSyncRegionState.objects.filter(config=stale_config).exists()
+    delete.assert_not_called()
+    push.assert_not_called()
 
 
 def test_collect_service_logs_do_not_include_node_payload_or_rpc_result(region_task):

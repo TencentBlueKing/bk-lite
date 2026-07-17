@@ -5,8 +5,10 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from django.utils import timezone
-from django_celery_beat.models import CrontabSchedule, PeriodicTask
+from django_celery_beat.models import CrontabSchedule, IntervalSchedule, PeriodicTask
 
+from apps.cmdb.models.node_mgmt_sync import NodeMgmtSyncConfig
+from apps.cmdb.services.node_mgmt_sync_reconciler import NodeMgmtSyncReconciler
 from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncService
 from apps.cmdb.views.node_mgmt_sync import NodeMgmtSyncViewSet
 
@@ -84,6 +86,7 @@ def test_reconcile_repairs_deleted_or_wrong_schedule():
     wrong_crontab = CrontabSchedule.objects.create(minute="*/1", hour="*", day_of_week="*", day_of_month="*", month_of_year="*",)
     collect_task.task = "wrong.task"
     collect_task.crontab = wrong_crontab
+    collect_task.interval = None
     collect_task.enabled = False
     collect_task.save()
 
@@ -92,13 +95,17 @@ def test_reconcile_repairs_deleted_or_wrong_schedule():
     sync_task = PeriodicTask.objects.get(name=NodeMgmtSyncService.SYNC_PERIODIC_TASK_NAME)
     collect_task.refresh_from_db()
     assert sync_task.task == NodeMgmtSyncService.SYNC_TASK
-    assert sync_task.crontab.minute == "*/5"
+    assert sync_task.crontab_id is None
+    assert sync_task.interval.every == 5 * 60
+    assert sync_task.interval.period == IntervalSchedule.SECONDS
     assert collect_task.task == NodeMgmtSyncService.COLLECT_TASK
-    assert collect_task.crontab.minute == "*/30"
+    assert collect_task.crontab_id is None
+    assert collect_task.interval.every == 30 * 60
+    assert collect_task.interval.period == IntervalSchedule.SECONDS
     assert collect_task.enabled is True
 
 
-def test_reconcile_repairs_crontab_timezone_drift():
+def test_reconcile_migrates_legacy_crontab_to_real_interval():
     NodeMgmtSyncService.get_task_payload(reconcile=True)
     sync_task = PeriodicTask.objects.get(name=NodeMgmtSyncService.SYNC_PERIODIC_TASK_NAME)
     expected_timezone = timezone.get_default_timezone()
@@ -107,12 +114,55 @@ def test_reconcile_repairs_crontab_timezone_drift():
         minute="*/5", hour="*", day_of_week="*", day_of_month="*", month_of_year="*", timezone=wrong_timezone,
     )
     sync_task.crontab = wrong_crontab
-    sync_task.save(update_fields=["crontab"])
+    sync_task.interval = None
+    sync_task.save(update_fields=["crontab", "interval"])
 
     NodeMgmtSyncService.get_task_payload(reconcile=True)
 
     sync_task.refresh_from_db()
-    assert sync_task.crontab.timezone == expected_timezone
+    assert sync_task.crontab_id is None
+    assert sync_task.interval.every == 5 * 60
+    assert sync_task.interval.period == IntervalSchedule.SECONDS
+
+
+@pytest.mark.parametrize("minutes", [60, 90, 1440])
+def test_reconcile_uses_exact_minute_interval_for_long_cycles(minutes):
+    NodeMgmtSyncService.update_task(
+        {"sync_interval_minutes": minutes, "collect_interval_minutes": minutes}
+    )
+
+    for name in (
+        NodeMgmtSyncService.SYNC_PERIODIC_TASK_NAME,
+        NodeMgmtSyncService.COLLECT_PERIODIC_TASK_NAME,
+    ):
+        periodic_task = PeriodicTask.objects.get(name=name)
+        assert periodic_task.crontab_id is None
+        assert periodic_task.interval.every == minutes * 60
+        assert periodic_task.interval.period == IntervalSchedule.SECONDS
+
+
+def test_stale_config_reconcile_cannot_reverse_newer_schedule():
+    original = NodeMgmtSyncService.get_task()
+    disabled = NodeMgmtSyncService.update_task(
+        {"auto_sync_enabled": False, "auto_collect_enabled": False}
+    )
+    disabled_snapshot = NodeMgmtSyncConfig.objects.get(pk=disabled.pk)
+    enabled = NodeMgmtSyncService.update_task(
+        {"auto_sync_enabled": True, "auto_collect_enabled": True}
+    )
+
+    NodeMgmtSyncReconciler.reconcile(disabled_snapshot)
+
+    current = NodeMgmtSyncConfig.objects.get(pk=enabled.pk)
+    assert disabled.version == original.version + 1
+    assert enabled.version == disabled.version + 1
+    assert current.version == enabled.version
+    assert current.auto_sync_enabled is True
+    assert current.auto_collect_enabled is True
+    assert _task_names() == {
+        NodeMgmtSyncService.SYNC_PERIODIC_TASK_NAME,
+        NodeMgmtSyncService.COLLECT_PERIODIC_TASK_NAME,
+    }
 
 
 def test_reconcile_does_not_rewrite_already_matching_schedules():

@@ -72,6 +72,53 @@ def test_collect_waits_for_first_successful_sync(config):
     collect_tasks.assert_not_called()
 
 
+def test_waiting_sync_is_reused_for_same_config_version(config):
+    first = NodeMgmtSyncService.execute_collect(operator="first")
+    second = NodeMgmtSyncService.execute_collect(operator="second")
+
+    assert second.pk == first.pk
+    assert NodeMgmtSyncRun.objects.filter(
+        task=config,
+        run_type=NodeMgmtSyncRun.RUN_TYPE_COLLECT,
+        status=NodeMgmtSyncRun.STATUS_WAITING_SYNC,
+        detail_json={"config_version": config.version},
+    ).count() == 1
+
+
+def test_waiting_sync_is_scoped_by_config_version(config):
+    first = NodeMgmtSyncService.execute_collect(operator="first")
+    config.version += 1
+    config.save(update_fields=["version", "updated_at"])
+
+    second = NodeMgmtSyncService.execute_collect(operator="second")
+
+    assert second.pk != first.pk
+    assert NodeMgmtSyncRun.objects.filter(
+        task=config,
+        run_type=NodeMgmtSyncRun.RUN_TYPE_COLLECT,
+        status=NodeMgmtSyncRun.STATUS_WAITING_SYNC,
+    ).count() == 2
+
+
+def test_successful_sync_does_not_reuse_waiting_collect_run(config):
+    waiting = NodeMgmtSyncService.execute_collect(operator="before-sync")
+    _successful_sync(config)
+    collect_task = _collect_task(7)
+
+    with patch.object(
+        CollectModelService,
+        "exec_task",
+        side_effect=lambda task, operator: _accept_with_execution(
+            task, "execution-after-sync"
+        ),
+    ):
+        submitted = NodeMgmtSyncService.execute_collect(operator="after-sync")
+
+    assert submitted.pk != waiting.pk
+    assert submitted.status == NodeMgmtSyncRun.STATUS_SUBMITTED
+    assert submitted.region_states.get().collect_task_id == collect_task.pk
+
+
 def test_collect_waits_when_successful_sync_is_for_older_config_version(config):
     _successful_sync(config, config_version=config.version)
     config.version += 1

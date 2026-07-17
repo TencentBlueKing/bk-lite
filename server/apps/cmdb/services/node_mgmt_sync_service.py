@@ -312,10 +312,11 @@ class NodeMgmtSyncService:
     def update_task(cls, data: dict[str, Any]) -> NodeMgmtSyncConfig:
         data = cls._validate_task_update(data)
         task = cls.get_task()
-        old_auto_sync_enabled = task.auto_sync_enabled
-        old_auto_collect_enabled = task.auto_collect_enabled
 
         with transaction.atomic():
+            task = NodeMgmtSyncConfig.objects.select_for_update().get(pk=task.pk)
+            old_auto_sync_enabled = task.auto_sync_enabled
+            old_auto_collect_enabled = task.auto_collect_enabled
             task.auto_sync_enabled = bool(data.get("auto_sync_enabled", task.auto_sync_enabled))
             task.auto_collect_enabled = bool(data.get("auto_collect_enabled", task.auto_collect_enabled))
             task.sync_interval_minutes = int(data.get("sync_interval_minutes", task.sync_interval_minutes))
@@ -1694,14 +1695,38 @@ class NodeMgmtSyncService:
     def _build_waiting_sync_run(
         cls, task_config: NodeMgmtSyncConfig
     ) -> NodeMgmtSyncRun:
-        return NodeMgmtSyncRun.objects.create(
-            task=task_config,
-            run_type=NodeMgmtSyncRun.RUN_TYPE_COLLECT,
-            status=NodeMgmtSyncRun.STATUS_WAITING_SYNC,
-            reason_code="SYNC_REQUIRED",
-            started_at=now(),
-            detail_json={"config_version": task_config.version},
-        )
+        with transaction.atomic():
+            # 与配置更新串行化，避免同一 config/version 的周期任务并发插入
+            # 多条永久 waiting_sync 历史。
+            task_config = NodeMgmtSyncConfig.objects.select_for_update().get(
+                pk=task_config.pk
+            )
+            detail = {"config_version": task_config.version}
+            waiting_run = (
+                NodeMgmtSyncRun.objects.filter(
+                    task=task_config,
+                    run_type=NodeMgmtSyncRun.RUN_TYPE_COLLECT,
+                    status=NodeMgmtSyncRun.STATUS_WAITING_SYNC,
+                    detail_json=detail,
+                )
+                .order_by("-created_at")
+                .first()
+            )
+            if waiting_run is None:
+                return NodeMgmtSyncRun.objects.create(
+                    task=task_config,
+                    run_type=NodeMgmtSyncRun.RUN_TYPE_COLLECT,
+                    status=NodeMgmtSyncRun.STATUS_WAITING_SYNC,
+                    reason_code="SYNC_REQUIRED",
+                    started_at=now(),
+                    detail_json=detail,
+                )
+            waiting_run.reason_code = "SYNC_REQUIRED"
+            waiting_run.started_at = now()
+            waiting_run.save(
+                update_fields=["reason_code", "started_at", "updated_at"]
+            )
+            return waiting_run
 
     @classmethod
     def execute_collect(cls, operator: str = "system") -> NodeMgmtSyncRun:
