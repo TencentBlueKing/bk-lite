@@ -5,7 +5,9 @@ from apps.base.models import User
 from apps.core.utils.web_utils import WebUtils
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.services.installer import InstallerService
+from apps.node_mgmt.utils.permission import authorize_target_organizations
 from apps.node_mgmt.views.installer import InstallerViewSet
+from apps.system_mgmt.utils.group_utils import GroupUtils
 
 
 def _build_admin_user():
@@ -15,6 +17,17 @@ def _build_admin_user():
         locale="en",
         is_superuser=True,
         roles=["admin"],
+        group_list=[{"id": 1, "name": "Team"}],
+    )
+
+
+def _build_regular_user():
+    return User(
+        username="installer-authorization-regular-user",
+        domain="domain.com",
+        locale="en",
+        is_superuser=False,
+        roles=[],
         group_list=[{"id": 1, "name": "Team"}],
     )
 
@@ -32,6 +45,23 @@ def _deny_target_organizations(monkeypatch):
         raising=False,
     )
     return captured
+
+
+def test_target_organization_authorization_normalizes_dict_group_list(monkeypatch):
+    captured = {}
+
+    def get_descendants(group_ids):
+        captured["group_ids"] = group_ids
+        return [1, 2]
+
+    monkeypatch.setattr(GroupUtils, "get_group_with_descendants", staticmethod(get_descendants))
+    request = APIRequestFactory().post("/node_mgmt/api/installer/controller/install/", {}, format="json")
+    force_authenticate(request, user=_build_regular_user())
+
+    response = authorize_target_organizations(request, None, [2])
+
+    assert response is None
+    assert captured["group_ids"] == [1]
 
 
 @pytest.mark.django_db
