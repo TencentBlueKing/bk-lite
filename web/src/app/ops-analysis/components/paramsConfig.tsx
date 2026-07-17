@@ -13,52 +13,27 @@ import type {
 import CompactEmptyState from '@/app/ops-analysis/components/compactEmptyState';
 import { ParamInputControl } from '@/app/ops-analysis/components/paramInputControl';
 import { normalizeInputConfig } from '@/app/ops-analysis/utils/paramInputConfigUtils';
-
-type TimeValue = number | [number, number];
+import {
+  getTimeSelectorDefaultValue,
+  getTimeSelectorKey,
+  type TimeValue,
+} from './paramsConfigTimeRange';
 
 const FormTimeSelector: React.FC<{
   value?: TimeValue;
   disabled?: boolean;
   onChange?: (value: TimeValue) => void;
 }> = ({ value, disabled = false, onChange }) => {
-  const [selectValue, setSelectValue] = useState<number | [number, number]>(
-    value ?? 10080
-  );
-  const [rangeValue, setRangeValue] = useState<[number, number] | null>(null);
-
-  useEffect(() => {
-    if (value !== undefined) {
-      if (Array.isArray(value)) {
-        setSelectValue(0);
-        setRangeValue(value as [number, number]);
-      } else {
-        setSelectValue(value);
-        setRangeValue(null);
-      }
-    }
-  }, [value]);
-
   const handleChange = (range: number[], originValue: number | null) => {
     if (originValue === 0 && range.length === 2) {
       const tupleRange: [number, number] = [range[0], range[1]];
-      setSelectValue(0);
-      setRangeValue(tupleRange);
       onChange?.(tupleRange);
     } else if (originValue !== null) {
-      setSelectValue(originValue);
-      setRangeValue(null);
       onChange?.(originValue);
     }
   };
 
-  const formatRangeValue = (
-    value: TimeValue | null
-  ): [dayjs.Dayjs, dayjs.Dayjs] | null => {
-    if (Array.isArray(value) && value.length === 2) {
-      return [dayjs(value[0] as number), dayjs(value[1] as number)];
-    }
-    return null;
-  };
+  const defaultValue = getTimeSelectorDefaultValue(value);
 
   return (
     <div
@@ -66,12 +41,10 @@ const FormTimeSelector: React.FC<{
       style={disabled ? { pointerEvents: 'none', opacity: 0.6 } : undefined}
     >
       <TimeSelector
+        key={getTimeSelectorKey(value)}
         onlyTimeSelect
         className="w-full"
-        defaultValue={{
-          selectValue: typeof selectValue === 'number' ? selectValue : 0,
-          rangePickerVaule: formatRangeValue(rangeValue),
-        }}
+        defaultValue={defaultValue}
         onChange={handleChange}
       />
     </div>
