@@ -1,7 +1,7 @@
 # CMDB 首页查询权限修复设计
 
 - 日期：2026-07-16
-- 状态：待用户书面审阅
+- 状态：已批准，待实施计划
 - 范围：`server/apps/cmdb`、`web/src/app/cmdb`
 - 关联问题：projectmem #0307
 
