@@ -211,6 +211,35 @@ def test_retired_region_reactivation_reuses_task_and_pushes_again(config, region
     assert result.node_config_status == "healthy"
 
 
+def test_region_task_create_unique_race_reloads_and_reuses_winner(config, region_task, mocker):
+    original_filter = CollectModels.objects.filter
+    stale_read = mocker.MagicMock()
+    stale_read.first.return_value = None
+    filter_calls = 0
+
+    def filter_after_stale_read(*args, **kwargs):
+        nonlocal filter_calls
+        if kwargs == {"system_code": NodeMgmtSyncService._system_code(7)} and filter_calls == 0:
+            filter_calls += 1
+            return stale_read
+        return original_filter(*args, **kwargs)
+
+    mocker.patch.object(CollectModels.objects, "filter", side_effect=filter_after_stale_read)
+    mocker.patch.object(NodeMgmtSyncService, "get_task", return_value=config)
+
+    winner = NodeMgmtSyncService._ensure_region_collect_task(
+        cloud_region_id=7,
+        cloud_region_name="区域 7",
+        access_point={"id": "ap-7"},
+        team=[],
+        instances=[],
+        interval_minutes=30,
+    )
+
+    assert winner.id == region_task.id
+    assert CollectModels.objects.filter(system_code=NodeMgmtSyncService._system_code(7)).count() == 1
+
+
 def test_config_versions_share_region_claim_and_new_disable_deletes_after_old_push(config, region_task):
     effects = []
 

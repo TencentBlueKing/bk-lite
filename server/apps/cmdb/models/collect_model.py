@@ -125,7 +125,7 @@ class CollectModels(MaintainerInfo, TimeInfo):
 
     is_system = models.BooleanField(default=False, help_text="是否为系统内置任务")
     is_visible = models.BooleanField(default=True, help_text="是否在普通采集页面展示")
-    system_code = models.CharField(max_length=128, blank=True, null=True, help_text="系统任务编码")
+    system_code = models.CharField(max_length=128, blank=True, null=True, unique=True, help_text="系统任务编码")
 
     class Meta:
         verbose_name = "采集任务"

@@ -1042,17 +1042,31 @@ class NodeMgmtSyncService:
         logger.info("[NodeMgmtSync] 创建新采集任务, cloud_region_id=%d, cloud_region_name=%s", cloud_region_id, cloud_region_name)
         if run is not None:
             cls.heartbeat_run(run)
-        task = CollectModels.objects.create(
-            **payload,
-            created_by="system",
-            updated_by="system",
-            domain="domain.com",
-            updated_by_domain="domain.com",
-            is_interval=True,
-            cycle_value_type="cycle",
-            cycle_value=str(interval_minutes),
-            scan_cycle=cls._build_cycle(interval_minutes),
-        )
+        try:
+            with transaction.atomic():
+                task = CollectModels.objects.create(
+                    **payload,
+                    created_by="system",
+                    updated_by="system",
+                    domain="domain.com",
+                    updated_by_domain="domain.com",
+                    is_interval=True,
+                    cycle_value_type="cycle",
+                    cycle_value=str(interval_minutes),
+                    scan_cycle=cls._build_cycle(interval_minutes),
+                )
+        except IntegrityError:
+            if not CollectModels.objects.filter(system_code=cls._system_code(cloud_region_id)).exists():
+                raise
+            return cls._ensure_region_collect_task(
+                cloud_region_id=cloud_region_id,
+                cloud_region_name=cloud_region_name,
+                access_point=access_point,
+                team=team,
+                instances=instances,
+                interval_minutes=interval_minutes,
+                run=run,
+            )
         if run is not None:
             cls.heartbeat_run(run)
         logger.info("[NodeMgmtSync] 采集任务创建成功, task_id=%d, cloud_region_id=%d", task.id, cloud_region_id)
