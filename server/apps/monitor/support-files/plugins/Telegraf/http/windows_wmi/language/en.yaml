@@ -1,7 +1,7 @@
 Windows WMI:
   desc: Through the Telegraf collector, gather and analyze host performance data,
     including CPU, memory, disk, and network utilization.
-  name: Host(Telegraf)
+  name: Windows Host Collection (WMI / Telegraf)
 monitor_object:
   Host: Host
 monitor_object_type:
