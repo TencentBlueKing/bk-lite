@@ -3,6 +3,8 @@ from __future__ import annotations
 import copy
 import json
 import os
+import time
+import uuid
 from datetime import timedelta
 from typing import Any
 
@@ -35,7 +37,10 @@ class NodeMgmtSyncError(RuntimeError):
 class NodeMgmtSyncService:
     ACTIVE_SCOPE = "node_mgmt_sync"
     RUN_TIMEOUT_MINUTES = 30
-    CONFIG_UPDATE_MAX_RETRIES = 3
+    CONFIG_UPDATE_MAX_RETRIES = 4
+    CONFIG_UPDATE_RETRY_BASE_SECONDS = 0.05
+    COLLECT_DISPATCH_MAX_RETRIES = 3
+    COLLECT_DISPATCH_CLAIM_TIMEOUT_SECONDS = 120
     REASON_ALREADY_ACTIVE = "RUN_ALREADY_ACTIVE"
     REASON_TIMEOUT = "RUN_TIMEOUT"
     REASON_NODE_SOURCE_EMPTY = "NODE_SOURCE_EMPTY"
@@ -301,42 +306,51 @@ class NodeMgmtSyncService:
     @classmethod
     def update_task(cls, data: dict[str, Any]) -> NodeMgmtSyncConfig:
         data = cls._validate_task_update(data)
-        task_id = cls.get_task().pk
         task = None
         old_auto_sync_enabled = False
         old_auto_collect_enabled = False
         for attempt in range(cls.CONFIG_UPDATE_MAX_RETRIES):
+            claim_contended = False
             try:
+                task_id = cls.get_task().pk
                 with transaction.atomic():
                     snapshot = NodeMgmtSyncConfig.objects.select_for_update().get(pk=task_id)
-                    old_auto_sync_enabled = snapshot.auto_sync_enabled
-                    old_auto_collect_enabled = snapshot.auto_collect_enabled
-                    auto_sync_enabled = data.get("auto_sync_enabled", snapshot.auto_sync_enabled)
-                    auto_collect_enabled = data.get("auto_collect_enabled", snapshot.auto_collect_enabled)
-                    next_version = snapshot.version + 1
-                    updates = {
-                        "auto_sync_enabled": auto_sync_enabled,
-                        "auto_collect_enabled": auto_collect_enabled,
-                        "sync_interval_minutes": data.get("sync_interval_minutes", snapshot.sync_interval_minutes),
-                        "collect_interval_minutes": data.get(
-                            "collect_interval_minutes",
-                            snapshot.collect_interval_minutes,
-                        ),
-                        "name": cls.TASK_NAME,
-                        "is_builtin": True,
-                        "version": next_version,
-                        "updated_at": now(),
-                    }
-                    if auto_collect_enabled and not auto_sync_enabled:
-                        updates["node_config_status"] = "waiting_sync"
-                    updated = NodeMgmtSyncConfig.objects.filter(pk=task_id, version=snapshot.version).update(**updates)
-                if updated:
+                    claim_contended = cls._has_live_collect_dispatch_claim(snapshot)
+                    if claim_contended:
+                        updated = 0
+                    else:
+                        old_auto_sync_enabled = snapshot.auto_sync_enabled
+                        old_auto_collect_enabled = snapshot.auto_collect_enabled
+                        auto_sync_enabled = data.get("auto_sync_enabled", snapshot.auto_sync_enabled)
+                        auto_collect_enabled = data.get("auto_collect_enabled", snapshot.auto_collect_enabled)
+                        next_version = snapshot.version + 1
+                        updates = {
+                            "auto_sync_enabled": auto_sync_enabled,
+                            "auto_collect_enabled": auto_collect_enabled,
+                            "sync_interval_minutes": data.get("sync_interval_minutes", snapshot.sync_interval_minutes),
+                            "collect_interval_minutes": data.get(
+                                "collect_interval_minutes",
+                                snapshot.collect_interval_minutes,
+                            ),
+                            "name": cls.TASK_NAME,
+                            "is_builtin": True,
+                            "version": next_version,
+                            "updated_at": now(),
+                            "collect_dispatch_claim_token": None,
+                            "collect_dispatch_claim_version": None,
+                            "collect_dispatch_claimed_at": None,
+                        }
+                        if auto_collect_enabled and not auto_sync_enabled:
+                            updates["node_config_status"] = "waiting_sync"
+                        updated = NodeMgmtSyncConfig.objects.filter(pk=task_id, version=snapshot.version).update(**updates)
+                if updated and not claim_contended:
                     task = NodeMgmtSyncConfig.objects.get(pk=task_id, version=next_version)
                     break
             except OperationalError:
                 if attempt + 1 == cls.CONFIG_UPDATE_MAX_RETRIES:
-                    raise
-                continue
+                    raise NodeMgmtSyncError("CONFIG_UPDATE_CONTENDED") from None
+            if attempt + 1 < cls.CONFIG_UPDATE_MAX_RETRIES:
+                time.sleep(cls.CONFIG_UPDATE_RETRY_BASE_SECONDS * (2**attempt))
         if task is None:
             raise NodeMgmtSyncError("CONFIG_UPDATE_CONTENDED")
 
@@ -350,6 +364,13 @@ class NodeMgmtSyncService:
         )
 
         return NodeMgmtSyncConfig.objects.get(pk=task.pk)
+
+    @classmethod
+    def _has_live_collect_dispatch_claim(cls, config, *, at=None):
+        if not config.collect_dispatch_claim_token or not config.collect_dispatch_claimed_at:
+            return False
+        at = at or now()
+        return config.collect_dispatch_claimed_at >= at - timedelta(seconds=cls.COLLECT_DISPATCH_CLAIM_TIMEOUT_SECONDS)
 
     @classmethod
     def update_config(cls, data: dict[str, Any]) -> NodeMgmtSyncConfig:
@@ -1328,6 +1349,64 @@ class NodeMgmtSyncService:
         return result
 
     @classmethod
+    def _claim_collect_dispatch_version(cls, *, run_id, config_id, config_version):
+        """按配置版本领取短生命周期持久化下发 claim。"""
+        for attempt in range(cls.COLLECT_DISPATCH_MAX_RETRIES):
+            try:
+                with transaction.atomic():
+                    current = NodeMgmtSyncConfig.objects.select_for_update().get(pk=config_id)
+                    if current.version != config_version or not current.auto_collect_enabled:
+                        return None
+                    if cls._has_live_collect_dispatch_claim(current):
+                        return None
+                    if not NodeMgmtSyncRun.objects.filter(
+                        pk=run_id,
+                        task_id=config_id,
+                        run_type=NodeMgmtSyncRun.RUN_TYPE_COLLECT,
+                        active_scope=cls.ACTIVE_SCOPE,
+                        status=NodeMgmtSyncRun.STATUS_RUNNING,
+                    ).exists():
+                        return None
+                    claim_token = uuid.uuid4().hex
+                    current.collect_dispatch_claim_token = claim_token
+                    current.collect_dispatch_claim_version = config_version
+                    current.collect_dispatch_claimed_at = now()
+                    current.save(
+                        update_fields=(
+                            "collect_dispatch_claim_token",
+                            "collect_dispatch_claim_version",
+                            "collect_dispatch_claimed_at",
+                            "updated_at",
+                        )
+                    )
+                    return claim_token
+            except OperationalError:
+                if attempt + 1 == cls.COLLECT_DISPATCH_MAX_RETRIES:
+                    return None
+                time.sleep(cls.CONFIG_UPDATE_RETRY_BASE_SECONDS * (2**attempt))
+        return None
+
+    @classmethod
+    def _release_collect_dispatch_claim(cls, config_id, claim_token):
+        for attempt in range(cls.COLLECT_DISPATCH_MAX_RETRIES):
+            try:
+                return bool(
+                    NodeMgmtSyncConfig.objects.filter(
+                        pk=config_id,
+                        collect_dispatch_claim_token=claim_token,
+                    ).update(
+                        collect_dispatch_claim_token=None,
+                        collect_dispatch_claim_version=None,
+                        collect_dispatch_claimed_at=None,
+                    )
+                )
+            except OperationalError:
+                if attempt + 1 < cls.COLLECT_DISPATCH_MAX_RETRIES:
+                    time.sleep(cls.CONFIG_UPDATE_RETRY_BASE_SECONDS * (2**attempt))
+        logger.warning("[NodeMgmtSync] 采集下发 claim 释放失败, config_id=%s", config_id)
+        return False
+
+    @classmethod
     def _build_collect_display_payload(cls, source: str) -> dict[str, Any] | None:
         collect_tasks = cls._list_region_collect_tasks()
         if not collect_tasks:
@@ -2074,7 +2153,24 @@ class NodeMgmtSyncService:
                 break
             try:
                 cls.heartbeat_run(run)
-                response = cls._execute_collect_task(collect_task, operator)
+                claim_token = cls._claim_collect_dispatch_version(
+                    run_id=run.pk,
+                    config_id=task_config.pk,
+                    config_version=task_config.version,
+                )
+                if not claim_token:
+                    detail["failed"].append(
+                        {
+                            "task_id": collect_task.id,
+                            "reason_code": "SYNC_REQUIRED",
+                        }
+                    )
+                    cls._mark_collect_region_blocked(state, "SYNC_REQUIRED")
+                    break
+                try:
+                    response = cls._execute_collect_task(collect_task, operator)
+                finally:
+                    cls._release_collect_dispatch_claim(task_config.pk, claim_token)
                 submitted_execution_id = str(collect_task.task_id or "")
                 cls.heartbeat_run(run)
             except NodeMgmtSyncError:

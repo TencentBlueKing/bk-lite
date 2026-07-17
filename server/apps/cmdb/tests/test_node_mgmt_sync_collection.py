@@ -1,6 +1,8 @@
+import threading
 from unittest.mock import patch
 
 import pytest
+from django.db import close_old_connections
 from django.utils import timezone
 
 from apps.cmdb.constants.constants import CollectRunStatusType
@@ -466,6 +468,121 @@ def test_execute_collect_forwards_operator_to_child_submission(config):
 
     assert run.status == NodeMgmtSyncRun.STATUS_SUBMITTED
     submit.assert_called_once_with(collect_task, "alice")
+
+
+@pytest.mark.django_db(transaction=True)
+def test_disable_cannot_succeed_after_dispatch_claim_before_remote_rpc():
+    config = NodeMgmtSyncConfig.objects.create(
+        auto_sync_enabled=True,
+        auto_collect_enabled=True,
+        schedule_status="healthy",
+        node_config_status="healthy",
+    )
+    _successful_sync(config)
+    _collect_task(7)
+    rpc_window = threading.Event()
+    release_rpc = threading.Event()
+    update_started = threading.Event()
+    update_done = threading.Event()
+    failures = []
+    expected_contention = []
+    order = []
+
+    def remote_rpc(task, operator):
+        rpc_window.set()
+        assert release_rpc.wait(timeout=5)
+        order.append("rpc")
+        return _accept_with_execution(task, "execution-serialized")
+
+    def dispatch():
+        close_old_connections()
+        try:
+            NodeMgmtSyncService.execute_collect(operator="system")
+        except Exception as exc:  # pragma: no cover - 由主线程统一断言
+            failures.append(exc)
+        finally:
+            close_old_connections()
+
+    def disable():
+        close_old_connections()
+        update_started.set()
+        try:
+            NodeMgmtSyncService.update_task({"auto_sync_enabled": False, "auto_collect_enabled": False})
+            order.append("update")
+        except NodeMgmtSyncError as exc:
+            expected_contention.append(str(exc))
+        except Exception as exc:  # pragma: no cover - 由主线程统一断言
+            failures.append(exc)
+        finally:
+            update_done.set()
+            close_old_connections()
+
+    with patch.object(CollectModelService, "exec_task", side_effect=remote_rpc):
+        dispatch_thread = threading.Thread(target=dispatch)
+        dispatch_thread.start()
+        assert rpc_window.wait(timeout=5)
+
+        update_thread = threading.Thread(target=disable)
+        update_thread.start()
+        assert update_started.wait(timeout=5)
+        assert update_done.wait(timeout=5)
+        try:
+            current = NodeMgmtSyncConfig.objects.get(pk=config.pk)
+            assert current.auto_sync_enabled is True
+            assert current.auto_collect_enabled is True
+            assert order == []
+            assert expected_contention == ["CONFIG_UPDATE_CONTENDED"]
+        finally:
+            release_rpc.set()
+            dispatch_thread.join(timeout=5)
+            update_thread.join(timeout=5)
+
+    assert not dispatch_thread.is_alive()
+    assert not update_thread.is_alive()
+    assert failures == []
+    assert order == ["rpc"]
+
+
+def test_submitted_active_run_without_dispatch_claim_can_be_disabled(config):
+    _successful_sync(config)
+    _collect_task(7)
+
+    with patch.object(
+        CollectModelService,
+        "exec_task",
+        side_effect=lambda task, operator: _accept_with_execution(
+            task,
+            "execution-submitted",
+        ),
+    ):
+        run = NodeMgmtSyncService.execute_collect(operator="system")
+
+    config.refresh_from_db()
+    assert run.status == NodeMgmtSyncRun.STATUS_SUBMITTED
+    assert run.active_scope == NodeMgmtSyncService.ACTIVE_SCOPE
+    assert config.collect_dispatch_claim_token is None
+
+    updated = NodeMgmtSyncService.update_task({"auto_sync_enabled": False, "auto_collect_enabled": False})
+
+    assert updated.auto_sync_enabled is False
+    assert updated.auto_collect_enabled is False
+
+
+def test_old_dispatch_owner_cannot_release_newer_claim(config):
+    NodeMgmtSyncConfig.objects.filter(pk=config.pk).update(
+        collect_dispatch_claim_token="new-owner",
+        collect_dispatch_claim_version=config.version,
+        collect_dispatch_claimed_at=timezone.now(),
+    )
+
+    released = NodeMgmtSyncService._release_collect_dispatch_claim(
+        config.pk,
+        "old-owner",
+    )
+
+    config.refresh_from_db()
+    assert released is False
+    assert config.collect_dispatch_claim_token == "new-owner"
 
 
 def test_refresh_same_terminal_result_is_idempotent_when_another_worker_wins(config, mocker):

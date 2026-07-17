@@ -22,6 +22,9 @@ class NodeMgmtSyncConfig(TimeInfo):
     last_reconciled_at = models.DateTimeField(null=True, blank=True)
     reconcile_error_code = models.CharField(max_length=64, blank=True, default="")
     reconcile_error_message = models.CharField(max_length=255, blank=True, default="")
+    collect_dispatch_claim_token = models.CharField(max_length=64, null=True, blank=True, editable=False)
+    collect_dispatch_claim_version = models.PositiveBigIntegerField(null=True, blank=True, editable=False)
+    collect_dispatch_claimed_at = models.DateTimeField(null=True, blank=True, editable=False)
 
     class Meta:
         verbose_name = "节点管理同步配置"
@@ -78,7 +81,13 @@ class NodeMgmtSyncRun(TimeInfo):
 
 class NodeMgmtSyncRegionState(TimeInfo):
     config = models.ForeignKey(NodeMgmtSyncConfig, related_name="region_states", on_delete=models.CASCADE)
-    run = models.ForeignKey(NodeMgmtSyncRun, null=True, blank=True, related_name="region_states", on_delete=models.CASCADE,)
+    run = models.ForeignKey(
+        NodeMgmtSyncRun,
+        null=True,
+        blank=True,
+        related_name="region_states",
+        on_delete=models.CASCADE,
+    )
     scope_key = models.CharField(max_length=160, unique=True)
     cloud_region_id = models.CharField(max_length=64)
     config_version = models.PositiveBigIntegerField(default=1)

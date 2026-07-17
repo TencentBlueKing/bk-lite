@@ -1,8 +1,9 @@
 from datetime import datetime
 
+from rest_framework import status
 from rest_framework.decorators import action
 
-from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncService
+from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncError, NodeMgmtSyncService
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.core.utils.web_utils import WebUtils
@@ -246,6 +247,11 @@ class NodeMgmtSyncViewSet(AuthViewSet):
             task = NodeMgmtSyncService.update_task(request.data)
         except ValueError as exc:
             return WebUtils.response_error(error_message=str(exc))
+        except NodeMgmtSyncError:
+            return WebUtils.response_error(
+                error_message="CONFIG_UPDATE_CONTENDED",
+                status_code=status.HTTP_409_CONFLICT,
+            )
         payload = NodeMgmtSyncService.serialize_task(task)
         return WebUtils.response_success(self._project_task_payload(request, payload))
 

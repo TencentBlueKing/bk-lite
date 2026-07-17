@@ -1,15 +1,18 @@
 import json
+import threading
 from types import SimpleNamespace
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 import pytest
+from django.db import close_old_connections, connection, transaction
+from django.db.models import F
 from django.utils import timezone
 from django_celery_beat.models import ClockedSchedule, CrontabSchedule, IntervalSchedule, PeriodicTask, SolarSchedule
 
 from apps.cmdb.models.node_mgmt_sync import NodeMgmtSyncConfig
 from apps.cmdb.services.node_mgmt_sync_reconciler import NodeMgmtSyncReconciler
-from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncService
+from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncError, NodeMgmtSyncService
 from apps.cmdb.views.node_mgmt_sync import NodeMgmtSyncViewSet
 
 pytestmark = pytest.mark.django_db
@@ -237,6 +240,46 @@ def test_update_retries_version_cas_after_interleaved_winner(mocker):
     assert returned.version == initial_version + 2
     assert returned.auto_sync_enabled is True
     assert returned.auto_collect_enabled is True
+
+
+@pytest.mark.django_db(transaction=True)
+def test_sqlite_real_write_contention_exhausts_as_stable_business_error(mocker):
+    if connection.vendor != "sqlite":
+        pytest.skip("仅验证 SQLite 的真实写锁错误路径")
+    config = NodeMgmtSyncService.get_task()
+    lock_acquired = threading.Event()
+    release_lock = threading.Event()
+    holder_failures = []
+
+    def hold_write_lock():
+        close_old_connections()
+        try:
+            with transaction.atomic():
+                NodeMgmtSyncConfig.objects.filter(pk=config.pk).update(name=F("name"))
+                lock_acquired.set()
+                assert release_lock.wait(timeout=5)
+        except Exception as exc:  # pragma: no cover - 由主线程统一断言
+            holder_failures.append(exc)
+        finally:
+            close_old_connections()
+
+    holder = threading.Thread(target=hold_write_lock)
+    holder.start()
+    assert lock_acquired.wait(timeout=5)
+    with connection.cursor() as cursor:
+        cursor.execute("PRAGMA busy_timeout = 0")
+    sleep = mocker.patch("apps.cmdb.services.node_mgmt_sync_service.time.sleep")
+
+    try:
+        with pytest.raises(NodeMgmtSyncError, match="CONFIG_UPDATE_CONTENDED"):
+            NodeMgmtSyncService.update_task({"sync_interval_minutes": 10})
+    finally:
+        release_lock.set()
+        holder.join(timeout=5)
+
+    assert not holder.is_alive()
+    assert holder_failures == []
+    assert sleep.call_count == NodeMgmtSyncService.CONFIG_UPDATE_MAX_RETRIES - 1
 
 
 def test_stale_config_reconcile_cannot_reverse_newer_schedule():

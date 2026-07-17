@@ -1,14 +1,17 @@
 import json
+import threading
 from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+from django.db import close_old_connections, connection, transaction
+from django.db.models import F
 from django.utils import timezone
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.cmdb.models.node_mgmt_sync import NodeMgmtSyncConfig, NodeMgmtSyncRun
-from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncService
+from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncError, NodeMgmtSyncService
 from apps.cmdb.views.node_mgmt_sync import NodeMgmtSyncViewSet
 
 pytestmark = pytest.mark.django_db
@@ -69,6 +72,72 @@ def test_execute_permission_can_update_both_config_urls(action):
     assert response.status_code == 200
     assert json.loads(response.content)["data"]["auto_sync_enabled"] is False
     update_task.assert_called_once_with({"auto_sync_enabled": False})
+
+
+@pytest.mark.parametrize("action", ["task", "config"])
+def test_config_contention_returns_stable_409_without_database_detail(action):
+    with patch.object(
+        NodeMgmtSyncService,
+        "update_task",
+        side_effect=NodeMgmtSyncError("database is locked: secret-table"),
+    ):
+        response = _call(
+            action,
+            "PUT",
+            _user("auto_collection-Execute"),
+            {"auto_sync_enabled": False},
+        )
+
+    payload = json.loads(response.content)
+    assert response.status_code == 409
+    assert payload["message"] == "CONFIG_UPDATE_CONTENDED"
+    assert "secret-table" not in response.content.decode()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_real_sqlite_lock_returns_stable_409_api_response(mocker):
+    if connection.vendor != "sqlite":
+        pytest.skip("仅验证 SQLite 的真实写锁 API 路径")
+    config = NodeMgmtSyncService.get_task()
+    lock_acquired = threading.Event()
+    release_lock = threading.Event()
+    holder_failures = []
+
+    def hold_write_lock():
+        close_old_connections()
+        try:
+            with transaction.atomic():
+                NodeMgmtSyncConfig.objects.filter(pk=config.pk).update(name=F("name"))
+                lock_acquired.set()
+                assert release_lock.wait(timeout=5)
+        except Exception as exc:  # pragma: no cover - 由主线程统一断言
+            holder_failures.append(exc)
+        finally:
+            close_old_connections()
+
+    holder = threading.Thread(target=hold_write_lock)
+    holder.start()
+    assert lock_acquired.wait(timeout=5)
+    with connection.cursor() as cursor:
+        cursor.execute("PRAGMA busy_timeout = 0")
+    mocker.patch("apps.cmdb.services.node_mgmt_sync_service.time.sleep")
+
+    try:
+        response = _call(
+            "task",
+            "PUT",
+            _user("auto_collection-Execute"),
+            {"auto_sync_enabled": False},
+        )
+    finally:
+        release_lock.set()
+        holder.join(timeout=5)
+
+    assert not holder.is_alive()
+    assert holder_failures == []
+    assert response.status_code == 409
+    assert json.loads(response.content)["message"] == "CONFIG_UPDATE_CONTENDED"
+    assert "locked" not in response.content.decode().lower()
 
 
 @pytest.mark.parametrize("action,service_method", [("run_sync", "trigger_sync"), ("run_collect", "trigger_collect")])
