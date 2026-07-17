@@ -3,7 +3,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Form, Input, Spin, Tooltip } from 'antd';
 import { InfoCircleOutlined } from '@ant-design/icons';
-import { useLocale } from '@/context/locale';
 import { useUserInfoContext } from '@/context/userInfo';
 import BaseTaskForm, { BaseTaskRef } from './baseTask';
 import CredentialPoolEditor from './credentialPoolEditor';
@@ -41,7 +40,6 @@ const NetworkConfigFileTask: React.FC<NetworkConfigFileTaskProps> = ({
   modelItem,
   editId,
 }) => {
-  const localeContext = useLocale();
   const { selectedGroup } = useUserInfoContext();
   const baseRef = useRef<BaseTaskRef>(null as any);
   const copyTaskData = useAssetManageStore((state) => state.copyTaskData);
@@ -165,8 +163,7 @@ const NetworkConfigFileTask: React.FC<NetworkConfigFileTaskProps> = ({
     <Spin spinning={loading}>
       <Form
         form={form}
-        layout="horizontal"
-        labelCol={{ span: localeContext.locale === 'en' ? 6 : 5 }}
+        layout="vertical"
         onFinish={onFinish}
         initialValues={initialFormValues}
       >

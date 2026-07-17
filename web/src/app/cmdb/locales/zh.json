@@ -22,7 +22,9 @@
         "filterNameRequired": "请输入收藏名称",
         "noFiltersToSave": "没有可收藏的筛选条件",
         "saveFailed": "保存失败",
-        "deleteFailed": "删除失败"
+        "deleteFailed": "删除失败",
+        "cancel": "取消",
+        "confirm": "确认"
     },
     "deleteTitle": "您确定要删除这个项目吗？",
     "disassociationTitle": "您确定要取消关联吗？",
@@ -844,7 +846,9 @@
                 "failed": "失败"
             },
             "noTaskSelected": "请选择任务查看详情"
-        }
+        },
+        "password": "密码",
+        "sslVerify": "SSL 校验"
     },
     "OidLibrary": {
         "title": "SOID库",
