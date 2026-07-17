@@ -1,3 +1,4 @@
+import json
 import os
 import threading
 from typing import Any, Dict, List, Optional, Tuple
@@ -10,6 +11,11 @@ from apps.core.logger import logger
 # 缓存永不过期，进程重启时自动清空，部署时通过 preload_language_cache() 预热
 _translation_cache: Dict[Tuple[str, str], dict] = {}
 _cache_lock = threading.Lock()
+
+# 插件翻译与调用它的 app 无关；以语言和插件根目录共享，避免 core/cmdb/monitor
+# 各自冷加载时重复扫描同一批插件。根目录进入 key，保证测试和运行时配置切换安全。
+_plugin_translation_cache: Dict[Tuple[str, str, str], dict] = {}
+_plugin_cache_lock = threading.Lock()
 
 
 class LanguageLoader:
@@ -92,39 +98,47 @@ class LanguageLoader:
         from apps.monitor.constants.plugin import PluginConstants
         from apps.monitor.management.utils import find_files_by_pattern
 
-        collected: Dict[str, Any] = {}
-        for root in (PluginConstants.DIRECTORY, PluginConstants.ENTERPRISE_DIRECTORY):
-            if not os.path.isdir(root):
-                continue
-            for metrics_path in find_files_by_pattern(root, filename_pattern="metrics.json"):
-                try:
-                    with open(metrics_path, "r", encoding="utf-8") as f:
-                        plugin_data = yaml.safe_load(f) or {}
-                except Exception as e:
-                    logger.error(f"Failed to read {metrics_path}: {e}")
+        roots = (PluginConstants.DIRECTORY, PluginConstants.ENTERPRISE_DIRECTORY)
+        cache_key = (lang, *roots)
+        cached = _plugin_translation_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        with _plugin_cache_lock:
+            cached = _plugin_translation_cache.get(cache_key)
+            if cached is not None:
+                return cached
+
+            collected: Dict[str, Any] = {}
+            for root in roots:
+                if not os.path.isdir(root):
                     continue
-                plugin_name = plugin_data.get("plugin")
-                if not plugin_name:
-                    continue
-                lang_file = os.path.join(os.path.dirname(metrics_path), "language", f"{lang}.yaml")
-                if not os.path.isfile(lang_file):
-                    logger.warning(f"Plugin language missing: {lang_file}")
-                    continue
-                try:
-                    with open(lang_file, "r", encoding="utf-8") as f:
-                        sub = yaml.safe_load(f) or {}
-                    # sub 包含两部分:
-                    #   - sub[plugin_name] = {name, desc} 该 plugin 自身描述
-                    #   - sub[其它 top-level key] = 共享 4 段翻译(monitor_object/metric/group/type)
-                    # 把 plugin 自身包回 monitor_object_plugin.<plugin_name>(保持调用方 key 不变),
-                    # 其余 top-level key 留在 root(供 monitor_object_metric 等直接读取)
-                    if plugin_name in sub:
-                        plugin_desc = sub.pop(plugin_name)
-                        sub.setdefault("monitor_object_plugin", {})[plugin_name] = plugin_desc
-                    collected = self._deep_merge(collected, sub)
-                except Exception as e:
-                    logger.error(f"Failed to load {lang_file}: {e}")
-        return collected
+                for metrics_path in find_files_by_pattern(root, filename_pattern="metrics.json"):
+                    try:
+                        with open(metrics_path, "r", encoding="utf-8") as f:
+                            plugin_data = json.load(f)
+                    except Exception as e:
+                        logger.error(f"Failed to read {metrics_path}: {e}")
+                        continue
+                    plugin_name = plugin_data.get("plugin")
+                    if not plugin_name:
+                        continue
+                    lang_file = os.path.join(os.path.dirname(metrics_path), "language", f"{lang}.yaml")
+                    if not os.path.isfile(lang_file):
+                        logger.warning(f"Plugin language missing: {lang_file}")
+                        continue
+                    try:
+                        with open(lang_file, "r", encoding="utf-8") as f:
+                            sub = yaml.safe_load(f) or {}
+                        if plugin_name in sub:
+                            plugin_desc = sub.pop(plugin_name)
+                            sub.setdefault("monitor_object_plugin", {})[plugin_name] = plugin_desc
+                        collected = self._deep_merge(collected, sub)
+                    except Exception as e:
+                        logger.error(f"Failed to load {lang_file}: {e}")
+
+            _plugin_translation_cache[cache_key] = collected
+            return collected
 
     def _load_enterprise_language(self, lang: str) -> dict:
         """扫描 apps/<app>/enterprise/language/ 下匹配目标语言的 *.yaml,deep-merge。
@@ -170,7 +184,7 @@ class LanguageLoader:
         enterprise = apps/<app>/enterprise/language/ 多 yaml(企业版覆盖,优先级最高)
         """
         base = self._load_language_dir(lang)
-        plugins = self._load_plugin_language(lang)
+        plugins = self._load_plugin_language(lang) if self.app == "monitor" else {}
         enterprise = self._load_enterprise_language(lang)
 
         result = self._deep_merge(base, plugins)
@@ -236,10 +250,17 @@ def clear_language_cache(app: Optional[str] = None, lang: Optional[str] = None) 
     with _cache_lock:
         if app is None and lang is None:
             _translation_cache.clear()
+            with _plugin_cache_lock:
+                _plugin_translation_cache.clear()
         else:
             keys_to_remove = [key for key in _translation_cache if (app is None or key[0] == app) and (lang is None or key[1] == lang)]
             for key in keys_to_remove:
                 del _translation_cache[key]
+            if app is None or app == "monitor":
+                with _plugin_cache_lock:
+                    plugin_keys = [key for key in _plugin_translation_cache if lang is None or key[0] == lang]
+                    for key in plugin_keys:
+                        del _plugin_translation_cache[key]
 
 
 # 支持的语言列表
