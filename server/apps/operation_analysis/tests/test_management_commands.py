@@ -3,6 +3,8 @@
 对照 spec/prd/运营分析·管理：内置命名空间/数据源/默认组织的初始化。
 """
 
+import importlib
+
 import pytest
 from django.core.management import call_command
 
@@ -121,6 +123,162 @@ def test_init_source_api_data_creates_room3d_datasource(settings):
         }
     ]
     assert list(source.tag.values_list("tag_id", flat=True)) == ["cmdb"]
+
+
+@pytest.mark.django_db
+def test_init_source_api_data_creates_cloud_cost_distribution_contract(settings):
+    settings.NATS_SERVERS = "nats://admin:secret@127.0.0.1:4222"
+    call_command("init_default_namespace")
+    call_command("init_source_api_data")
+
+    source = DataSourceAPIModel.objects.get(
+        rest_api="cmdb/get_cloud_resource_cost_distribution"
+    )
+    params = {item["name"]: item for item in source.params}
+    fields = {item["key"]: item for item in source.field_schema}
+
+    assert source.chart_type == ["topN"]
+    assert params["group_by"] == {
+        "name": "group_by",
+        "type": "string",
+        "value": "instance_type",
+        "alias_name": "排行主体",
+        "filterType": "params",
+    }
+    assert "options" not in params["group_by"]
+    assert fields["key"]["value_type"] == "string"
+    assert fields["total_cost"]["value_type"] == "number"
+    assert fields["instance_count"]["value_type"] == "number"
+    assert fields["pct"]["value_type"] == "number"
+
+
+class _MigrationTarget:
+    def __init__(self, params, field_schema):
+        self.params = params
+        self.field_schema = field_schema
+        self.save_calls = []
+
+    def save(self, *, update_fields):
+        self.save_calls.append(tuple(update_fields))
+
+
+class _MigrationQuerySet:
+    def __init__(self, target):
+        self.target = target
+
+    def first(self):
+        return self.target
+
+
+class _MigrationManager:
+    def __init__(self, target, expected_rest_api):
+        self.target = target
+        self.expected_rest_api = expected_rest_api
+
+    def filter(self, **kwargs):
+        assert kwargs == {"rest_api": self.expected_rest_api}
+        return _MigrationQuerySet(self.target)
+
+
+class _MigrationApps:
+    def __init__(self, target, expected_rest_api):
+        self.model = type(
+            "FakeDataSourceAPIModel",
+            (),
+            {"objects": _MigrationManager(target, expected_rest_api)},
+        )
+
+    def get_model(self, app_label, model_name):
+        assert (app_label, model_name) == (
+            "operation_analysis",
+            "DataSourceAPIModel",
+        )
+        return self.model
+
+
+def _distribution_migration():
+    return importlib.import_module(
+        "apps.operation_analysis.migrations.0018_set_cloud_cost_distribution_field_schema"
+    )
+
+
+def test_cloud_cost_distribution_migration_updates_existing_group_by_and_is_idempotent():
+    migration = _distribution_migration()
+    target = _MigrationTarget(
+        params=[
+            {
+                "name": "department",
+                "type": "string",
+                "value": "研发部",
+                "filterType": "filter",
+            },
+            {
+                "name": "group_by",
+                "type": "number",
+                "value": "legacy",
+                "alias_name": "旧排行字段",
+                "filterType": "params",
+                "options": ["instance_type", "department", "user"],
+                "legacy_note": "保留",
+            },
+        ],
+        field_schema=[],
+    )
+    apps = _MigrationApps(target, migration._TARGET_REST_API)
+
+    migration._set_distribution_field_schema(apps, schema_editor=None)
+
+    assert target.params == [
+        {
+            "name": "department",
+            "type": "string",
+            "value": "研发部",
+            "filterType": "filter",
+        },
+        {
+            "name": "group_by",
+            "type": "string",
+            "value": "instance_type",
+            "alias_name": "排行主体",
+            "filterType": "params",
+            "legacy_note": "保留",
+        },
+    ]
+    assert target.field_schema == migration._DISTRIBUTION_FIELD_SCHEMA
+    assert target.save_calls == [("params", "field_schema", "updated_at")]
+
+    migration._set_distribution_field_schema(apps, schema_editor=None)
+
+    assert target.save_calls == [("params", "field_schema", "updated_at")]
+
+
+def test_cloud_cost_distribution_migration_appends_missing_group_by_and_preserves_other_params():
+    migration = _distribution_migration()
+    existing_param = {
+        "name": "billing_period",
+        "type": "timeRange",
+        "value": "",
+        "alias_name": "计费日期",
+        "filterType": "filter",
+        "options": ["不应被迁移删除"],
+    }
+    target = _MigrationTarget(params=[existing_param], field_schema=None)
+    apps = _MigrationApps(target, migration._TARGET_REST_API)
+
+    migration._set_distribution_field_schema(apps, schema_editor=None)
+
+    assert target.params == [
+        existing_param,
+        {
+            "name": "group_by",
+            "alias_name": "排行主体",
+            "type": "string",
+            "value": "instance_type",
+            "filterType": "params",
+        },
+    ]
+    assert target.field_schema == migration._DISTRIBUTION_FIELD_SCHEMA
+    assert target.save_calls == [("params", "field_schema", "updated_at")]
 
 
 @pytest.mark.django_db

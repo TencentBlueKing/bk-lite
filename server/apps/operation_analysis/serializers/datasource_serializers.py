@@ -109,7 +109,14 @@ class DataSourceBriefSerializer(BaseFormatTimeSerializer, AuthSerializer):
 
     class Meta:
         model = DataSourceAPIModel
-        fields = ["id", "name", "rest_api", "source_type", "desc", "chart_type", "tag", "groups"]
+        # 包含 params / field_schema,确保 widgetSelector 选中后能直接拿到完整配置,
+        # 不用再回查 detail endpoint 也能渲染"展示列"和"搜索字段"。
+        # connection_config / query_config 仍不返(可能含敏感信息)。
+        fields = [
+            "id", "name", "rest_api", "source_type", "desc",
+            "chart_type", "tag", "groups",
+            "params", "field_schema",
+        ]
 
 
 class DataSourceDetailSerializer(DataSourceAPIModelSerializer):

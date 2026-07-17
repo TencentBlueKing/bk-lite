@@ -526,6 +526,9 @@
   "dashboard": {
     "endTime": "End Time",
     "duplicateFieldKey": "Field key must be unique",
+    "componentSwitch": "Widget Switch",
+    "componentSwitchOccupied": "Parameter \"{label}\" already uses the widget switch. Each widget can configure only one",
+    "multipleComponentSwitchParams": "Each widget can configure only one widget switch parameter",
     "selectDashboardFirst": "Please select a dashboard first",
     "fetchDataFieldsFailed": "Failed to fetch data fields",
     "timeRange": "Time Range",

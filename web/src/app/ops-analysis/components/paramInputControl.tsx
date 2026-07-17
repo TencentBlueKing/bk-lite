@@ -1,14 +1,11 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Radio, Select, Spin } from 'antd';
 import type { InputControlConfig, InputOption } from '@/app/ops-analysis/types/dataSource';
-import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
-import {
-  extractDataSourceItems,
-  mapDynamicItems,
-  resolveDynamicSourceId,
-} from '@/app/ops-analysis/utils/paramInputConfigUtils';
+import { useParamInputOptions } from '@/app/ops-analysis/hooks/useParamInputOptions';
+import { createParamInputOptionsNotifier } from '@/app/ops-analysis/utils/paramInputOptionsLoader';
+import { normalizeParamInputChangeValue } from '@/app/ops-analysis/components/normalizeParamInputChangeValue';
 
 interface ParamInputControlProps {
   inputConfig?: InputControlConfig;
@@ -19,13 +16,8 @@ interface ParamInputControlProps {
   placeholder?: string;
   allowClear?: boolean;
   style?: React.CSSProperties;
+  onOptionsResolved?: (options: InputOption[]) => void;
 }
-
-type FetchState =
-  | { status: 'idle' }
-  | { status: 'loading' }
-  | { status: 'success'; options: InputOption[] }
-  | { status: 'error' };
 
 export const ParamInputControl: React.FC<ParamInputControlProps> = ({
   inputConfig,
@@ -36,68 +28,32 @@ export const ParamInputControl: React.FC<ParamInputControlProps> = ({
   placeholder,
   allowClear = true,
   style,
+  onOptionsResolved,
 }) => {
-  const { getDataSourceList, getSourceDataByApiId } = useDataSourceApi();
-  const requestIdRef = useRef(0);
-  const [state, setState] = useState<FetchState>({ status: 'idle' });
+  const state = useParamInputOptions(inputConfig);
+  const onOptionsResolvedRef = useRef(onOptionsResolved);
+  const notifierRef = useRef(createParamInputOptionsNotifier());
+  onOptionsResolvedRef.current = onOptionsResolved;
 
   const renderFallback = () => {
     if (!React.isValidElement(fallback)) return fallback;
     return React.cloneElement(fallback as React.ReactElement<any>, {
       value,
-      onChange,
+      onChange: (valueOrEvent: unknown) =>
+        onChange?.(normalizeParamInputChangeValue(valueOrEvent)),
       disabled,
     });
   };
 
   useEffect(() => {
-    const requestId = ++requestIdRef.current;
-
-    if (!inputConfig || inputConfig.control === 'input') {
-      setState({ status: 'idle' });
-      return;
-    }
-
-    if (inputConfig.optionsSource.type === 'static') {
-      const options = inputConfig.optionsSource.staticItems;
-      setState(options.length > 0 ? { status: 'success', options } : { status: 'error' });
-      return;
-    }
-
-    const source = inputConfig.optionsSource;
-    setState({ status: 'loading' });
-
-    const loadOptions = async () => {
-      try {
-        const dataSources = source.sourceRef
-          ? await getDataSourceList({ page_size: -1 })
-          : [];
-        const sourceItems = Array.isArray(dataSources)
-          ? dataSources
-          : dataSources?.items || [];
-        const sourceId = resolveDynamicSourceId(source, sourceItems);
-        if (!sourceId) {
-          if (requestId === requestIdRef.current) setState({ status: 'error' });
-          return;
-        }
-
-        const response = await getSourceDataByApiId(sourceId, {});
-        const options = mapDynamicItems(
-          extractDataSourceItems(response),
-          source.valueField,
-          source.labelField,
-        );
-
-        if (requestId === requestIdRef.current) {
-          setState(options.length > 0 ? { status: 'success', options } : { status: 'error' });
-        }
-      } catch {
-        if (requestId === requestIdRef.current) setState({ status: 'error' });
-      }
-    };
-
-    loadOptions();
-  }, [getDataSourceList, getSourceDataByApiId, inputConfig]);
+    if (state.status !== 'success' || !onOptionsResolvedRef.current) return;
+    if (!state.resultKey) return;
+    notifierRef.current.notify(
+      state.resultKey,
+      state.options,
+      onOptionsResolvedRef.current,
+    );
+  }, [state]);
 
   if (!inputConfig || inputConfig.control === 'input') return <>{renderFallback()}</>;
   if (state.status === 'loading') return <Spin size="small" />;

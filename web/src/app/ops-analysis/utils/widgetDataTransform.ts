@@ -222,6 +222,135 @@ export const fetchWidgetData = async ({
   }
 };
 
+export const buildWidgetExtraParams = ({
+  namespaceId,
+  isTableLikeChart,
+  tableQueryParams,
+  runtimeParams,
+}: {
+  namespaceId?: number;
+  isTableLikeChart: boolean;
+  tableQueryParams: Record<string, unknown>;
+  runtimeParams: Record<string, unknown>;
+}) => ({
+  ...(namespaceId !== undefined ? { namespace_id: namespaceId } : {}),
+  ...(isTableLikeChart ? tableQueryParams : {}),
+  ...runtimeParams,
+});
+
+export interface WidgetRequestHistory {
+  signature: string | null;
+  filterSearchVersion: number;
+  namespaceSearchVersion: number;
+  reloadVersion: string;
+  tableQueryKey: string;
+  hasRequested: boolean;
+}
+
+export interface WidgetRequestSnapshot {
+  requestEnabled: boolean;
+  requestSignature: string | null;
+  hasRequestParams: boolean;
+  hasRequestKey: boolean;
+  filterSearchVersion: number;
+  namespaceSearchVersion: number;
+  reloadVersion: string;
+  tableQueryKey: string;
+  hasEnabledFilterBindings: boolean;
+  widgetUsesNamespace: boolean;
+  isTableLikeChart: boolean;
+}
+
+export const createWidgetRequestHistory = (
+  current: WidgetRequestSnapshot,
+): WidgetRequestHistory => ({
+  signature: null,
+  filterSearchVersion: current.filterSearchVersion,
+  namespaceSearchVersion: current.namespaceSearchVersion,
+  reloadVersion: current.reloadVersion,
+  tableQueryKey: current.tableQueryKey,
+  hasRequested: false,
+});
+
+export const decideWidgetRequest = ({
+  history,
+  current,
+  suppressInitialCacheFetch,
+}: {
+  history: WidgetRequestHistory;
+  current: WidgetRequestSnapshot;
+  suppressInitialCacheFetch: boolean;
+}): { shouldFetch: boolean; nextHistory: WidgetRequestHistory } => {
+  const requestAvailable =
+    current.requestEnabled &&
+    Boolean(current.requestSignature) &&
+    current.hasRequestParams &&
+    current.hasRequestKey;
+
+  if (!requestAvailable) {
+    return {
+      shouldFetch: false,
+      nextHistory: {
+        signature: current.requestSignature,
+        filterSearchVersion: current.filterSearchVersion,
+        namespaceSearchVersion: current.namespaceSearchVersion,
+        reloadVersion: current.reloadVersion,
+        tableQueryKey: current.tableQueryKey,
+        hasRequested: false,
+      },
+    };
+  }
+
+  const shouldFetchForFilterSearch =
+    history.filterSearchVersion !== current.filterSearchVersion &&
+    current.hasEnabledFilterBindings;
+  const shouldFetchForNamespaceSearch =
+    history.namespaceSearchVersion !== current.namespaceSearchVersion &&
+    current.widgetUsesNamespace;
+  const shouldFetchForTableQuery =
+    current.isTableLikeChart &&
+    history.tableQueryKey !== current.tableQueryKey;
+  const shouldFetch =
+    !suppressInitialCacheFetch &&
+    (!history.hasRequested ||
+      history.signature !== current.requestSignature ||
+      history.reloadVersion !== current.reloadVersion ||
+      shouldFetchForFilterSearch ||
+      shouldFetchForNamespaceSearch ||
+      shouldFetchForTableQuery);
+
+  return {
+    shouldFetch,
+    nextHistory: {
+      signature: current.requestSignature,
+      filterSearchVersion: current.filterSearchVersion,
+      namespaceSearchVersion: current.namespaceSearchVersion,
+      reloadVersion: current.reloadVersion,
+      tableQueryKey: current.tableQueryKey,
+      hasRequested:
+        history.hasRequested || shouldFetch || suppressInitialCacheFetch,
+    },
+  };
+};
+
+export const shouldShowInitialWidgetLoading = ({
+  loading,
+  isTableLikeChart,
+  hasRawPayload,
+  hasSettledRequest,
+}: {
+  loading: boolean;
+  isTableLikeChart: boolean;
+  hasRawPayload: boolean;
+  hasSettledRequest: boolean;
+}): boolean =>
+  loading && !isTableLikeChart && !hasRawPayload && !hasSettledRequest;
+
+export const hasActiveWidgetRuntimeParams = (
+  chartType: string | undefined,
+  runtimeParams: Record<string, unknown>,
+): boolean => chartType === 'topN' && Object.keys(runtimeParams).length > 0;
+
 export const buildWidgetRequestParams = ({
   config,
   dataSource,

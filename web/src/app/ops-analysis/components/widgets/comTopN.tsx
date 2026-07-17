@@ -18,6 +18,7 @@ import {
   getScreenWidgetScale,
   scaleScreenMetric,
 } from './shared/screenMetrics';
+import { isTopNContentReady, resolveTopNContentState } from '@/app/ops-analysis/utils/topNContentState';
 
 interface TopNProps {
   rawData: any;
@@ -26,6 +27,8 @@ interface TopNProps {
   dataSource?: DatasourceItem;
   screenRenderContext?: ScreenRenderContext;
   onReady?: (ready: boolean) => void;
+  componentSwitchControl?: React.ReactNode;
+  errorMessage?: string;
 }
 
 interface TopNItem {
@@ -73,6 +76,8 @@ const TopN: React.FC<TopNProps> = ({
   dataSource,
   screenRenderContext,
   onReady,
+  componentSwitchControl,
+  errorMessage,
 }) => {
   const themeName = resolveOpsChartThemeName();
   const isDark = themeName === 'dark';
@@ -154,30 +159,40 @@ const TopN: React.FC<TopNProps> = ({
   const maxValue =
     items.length > 0 ? Math.max(...items.map((i) => i.value)) : 0;
   const isDataReady = items.length > 0;
+  const contentState = resolveTopNContentState({
+    loading,
+    errorMessage,
+    hasRows: isDataReady,
+  });
 
   useEffect(() => {
-    if (!loading && onReady) {
-      onReady(isDataReady);
-    }
-  }, [isDataReady, loading, onReady]);
+    onReady?.(isTopNContentReady(contentState));
+  }, [contentState, onReady]);
 
-  if (loading) {
-    return (
+  let content: React.ReactNode;
+  if (contentState === 'loading') {
+    content = (
       <div className="h-full flex items-center justify-center">
         <Spin size="small" />
       </div>
     );
-  }
-
-  if (!isDataReady) {
-    return (
+  } else if (contentState === 'error') {
+    content = (
+      <div className="h-full flex items-center justify-center">
+        <Empty
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          description={errorMessage}
+        />
+      </div>
+    );
+  } else if (contentState === 'empty') {
+    content = (
       <div className="h-full flex items-center justify-center">
         <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
       </div>
     );
-  }
-
-  return (
+  } else {
+    content = (
     <div
       className="h-full overflow-y-auto"
       style={{
@@ -288,6 +303,18 @@ const TopN: React.FC<TopNProps> = ({
           );
         })}
       </div>
+    </div>
+    );
+  }
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      {componentSwitchControl ? (
+        <div className="shrink-0 overflow-x-auto px-3 pt-2">
+          {componentSwitchControl}
+        </div>
+      ) : null}
+      <div className="min-h-0 flex-1">{content}</div>
     </div>
   );
 };
