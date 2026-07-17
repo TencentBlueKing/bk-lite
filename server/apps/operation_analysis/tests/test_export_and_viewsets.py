@@ -197,12 +197,13 @@ def test_generate_business_key_variants():
 def test_mask_sensitive_fields_nested():
     data = {
         "password": "p",
-        "nested": {"token": "t", "ok": 1},
+        "nested": {"token": "t", "ok": 1, "X-API-Key": "header-secret"},
         "list": [{"secret": "s"}, 2, [[{"api_key": "deep-secret"}]]],
     }
     out = ExportService.mask_sensitive_fields(data)
     assert out["password"] == "******"
     assert out["nested"]["token"] == "******"
+    assert out["nested"]["X-API-Key"] == "******"
     assert out["nested"]["ok"] == 1
     assert out["list"][0]["secret"] == "******"
     assert out["list"][1] == 2

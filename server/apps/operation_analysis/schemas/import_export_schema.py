@@ -16,6 +16,7 @@ from apps.operation_analysis.constants.import_export import (
     CANVAS_TYPES,
     OBJECT_TYPE_TO_SECTION,
     YAML_SCHEMA_VERSION,
+    YAML_SUPPORTED_SCHEMA_VERSIONS,
     ImportExportErrorCode,
     ObjectType,
 )
@@ -69,10 +70,10 @@ class YAMLMeta(BaseModel):
     @field_validator("schema_version")
     @classmethod
     def validate_schema_version(cls, v: str) -> str:
-        if v != YAML_SCHEMA_VERSION:
+        if v not in YAML_SUPPORTED_SCHEMA_VERSIONS:
             raise ImportExportValidationError(
                 code=ImportExportErrorCode.YAML_SCHEMA_INVALID,
-                message=f"不支持的schema版本: {v}，当前仅支持 {YAML_SCHEMA_VERSION}",
+                message=f"不支持的schema版本: {v}，当前支持 {', '.join(sorted(YAML_SUPPORTED_SCHEMA_VERSIONS))}",
             )
         return v
 

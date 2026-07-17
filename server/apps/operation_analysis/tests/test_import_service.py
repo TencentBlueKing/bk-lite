@@ -310,7 +310,10 @@ def test_import_new_datasource_rejects_unresolved_secret_placeholder():
 
 
 def test_datasource_schema_keeps_legacy_defaults_and_accepts_blank_rest_api():
-    legacy_datasource = _doc(datasources=[_ds_section()]).datasources[0]
+    legacy_datasource = YAMLDocument(
+        meta={"schema_version": "1.1.0"},
+        datasources=[_ds_section()],
+    ).datasources[0]
     connector_datasource = _doc(datasources=[_ds_section(rest_api=None, source_type="mysql")]).datasources[0]
 
     assert legacy_datasource.source_type == "nats"
