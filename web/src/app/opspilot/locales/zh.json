@@ -1119,7 +1119,7 @@
       "enterAppDescription": "输入应用描述",
       "appName": "应用名称",
       "pleaseSelectAppTags": "请选择应用标签",
-      "exposeAsWebChat": "作为 Web 对话",
+      "exposeAsWebChat": "Web 应用",
       "exposeAsWebChatTooltip": "开启后，NATS 触发产生的会话可被 user_ids 中干系人在 Web 端查看并继续对话",
       "natsOptionalAppName": "Web 应用名称",
       "natsOptionalAppDescription": "Web 应用描述",

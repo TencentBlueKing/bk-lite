@@ -1118,7 +1118,7 @@
       "enterAppDescription": "Enter app description",
       "appName": "App Name",
       "pleaseSelectAppTags": "Please select app tags",
-      "exposeAsWebChat": "Expose as Web Chat",
+      "exposeAsWebChat": "Web App",
       "exposeAsWebChatTooltip": "When enabled, NATS-triggered sessions can be viewed and continued by the user_ids participants in the Web UI",
       "natsOptionalAppName": "Web App Name",
       "natsOptionalAppDescription": "Web App Description",
