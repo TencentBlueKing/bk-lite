@@ -45,6 +45,7 @@
     "test:operation-log-time-filter": "pnpm exec tsx scripts/operation-log-time-filter-test.ts",
     "test:cmdb-attr-type-i18n": "pnpm exec tsx scripts/cmdb-attr-type-i18n-test.ts",
     "test:operation-log-detail": "pnpm exec tsx scripts/operation-log-detail-test.ts",
+    "test:proxy-request-timeout": "pnpm exec tsx scripts/proxy-request-timeout-test.ts",
     "test:cmdb-relationships-imports": "node scripts/cmdb-relationships-imports-test.mjs",
     "test:cmdb-ipam-grid-height": "node scripts/cmdb-ipam-grid-height-test.mjs",
     "test:cmdb-network-topo-editing": "pnpm exec tsx scripts/cmdb-network-topo-editing-test.ts",

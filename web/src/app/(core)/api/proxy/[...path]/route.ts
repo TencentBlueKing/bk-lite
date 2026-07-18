@@ -1,11 +1,7 @@
 import {NextRequest, NextResponse} from 'next/server';
+import {DEFAULT_TIMEOUT_MS, getInitialProxyTimeoutMs} from './timeout';
 
 const TARGET_SERVER = process.env.NEXTAPI_URL + '/api/v1' || 'http://localhost:3000';
-
-// SSE 连接超时时间（5 分钟），与后端 Agent 总超时一致
-const SSE_TIMEOUT_MS = 300_000;
-// 普通请求超时时间（60 秒）
-const DEFAULT_TIMEOUT_MS = 60_000;
 
 export async function GET(req: NextRequest) {
   return await handleProxy(req);
@@ -87,8 +83,11 @@ async function handleProxy(req: NextRequest): Promise<NextResponse | Response> {
 
   // 创建 AbortController 用于超时控制
   const controller = new AbortController();
-  // 初始使用默认超时，SSE 响应检测后会调整
-  let timeoutId = setTimeout(() => controller.abort(), SSE_TIMEOUT_MS);
+  // fetch 返回前无法从响应 Content-Type 判断 SSE，因此由请求 Accept 显式选择首包超时。
+  let timeoutId = setTimeout(
+    () => controller.abort(),
+    getInitialProxyTimeoutMs(req.headers.get('accept'))
+  );
 
   // 直接转发 body，而不对其进行解析
   const fetchOptions: RequestInit & { duplex?: string } = {
