@@ -298,9 +298,10 @@ class InstallerService:
             return task_nodes
 
         username = getattr(request_user, "username", "") if request_user is not None else ""
+        domain = getattr(request_user, "domain", "") if request_user is not None else ""
         legacy_owner_filter = Q(pk__in=[])
-        if username:
-            legacy_owner_filter = Q(node_id="") & Q(task__created_by=username)
+        if username and domain:
+            legacy_owner_filter = Q(node_id="") & Q(task__created_by=username, task__domain=domain)
         return task_nodes.filter(~Q(node_id="") | legacy_owner_filter)
 
     @staticmethod
