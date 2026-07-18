@@ -88,6 +88,19 @@ class TestKeyDerivation:
         module_key = pc._get_cache_key("alice", "domain.com", 1, "log", "policy", query_scope="module")
         assert app_key != module_key
 
+    def test_default_scope_preserves_legacy_cache_key(self):
+        default_key = pc._get_cache_key("alice", "domain.com", 1, "log", "policy", permission_version=0)
+        explicit_app_key = pc._get_cache_key(
+            "alice",
+            "domain.com",
+            1,
+            "log",
+            "policy",
+            permission_version=0,
+            query_scope="app",
+        )
+        assert default_key == explicit_app_key
+
     def test_token_info_key_format(self):
         assert pc._get_token_info_key("u", "d") == "token_info:u:d:v0"
 
