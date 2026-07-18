@@ -80,11 +80,18 @@ assert.deepEqual(buildSecretSupplements(warnings, {
   },
 ]);
 assert.deepEqual(buildSecretSupplements([newDatasourceWarning], {}, {
-  [newDatasourceKey]: '  normalized-api-key  ',
+  [newDatasourceKey]: '  whitespace-sensitive-api-key  ',
 }), [{
   object_key: 'new-source::',
   field: 'connection_config.headers.X-API-Key',
-  value: 'normalized-api-key',
+  value: '  whitespace-sensitive-api-key  ',
+}]);
+assert.deepEqual(buildSecretSupplements([newDatasourceWarning], {}, {
+  [newDatasourceKey]: ' ****** ',
+}), [{
+  object_key: 'new-source::',
+  field: 'connection_config.headers.X-API-Key',
+  value: ' ****** ',
 }]);
 assert.deepEqual(buildSecretSupplements([newDatasourceWarning], {}, {
   [newDatasourceKey]: '******',

@@ -14,10 +14,9 @@ export const getSecretSupplementKey = (warning: WarningItem) => {
   return JSON.stringify([warning.object_key, warning.field]);
 };
 
-const normalizeSecretSupplementValue = (value: string | undefined) => {
-  const normalized = value?.trim() || '';
-  return normalized === '******' ? '' : normalized;
-};
+const isValidSecretSupplementValue = (value: string | undefined): value is string => (
+  !!value?.trim() && value !== '******'
+);
 
 export const getVisibleImportWarnings = (
   warnings: WarningItem[],
@@ -37,7 +36,7 @@ export const hasBlockingImportWarnings = (
   }
 
   const key = getSecretSupplementKey(warning);
-  return !key || !normalizeSecretSupplementValue(secretSupplementValues[key]);
+  return !key || !isValidSecretSupplementValue(secretSupplementValues[key]);
 });
 
 export const buildSecretSupplements = (
@@ -48,10 +47,13 @@ export const buildSecretSupplements = (
   .filter((warning) => warning.code === SECRET_PLACEHOLDER_WARNING_CODE)
   .flatMap((warning) => {
     const key = getSecretSupplementKey(warning);
-    const value = key
-      ? normalizeSecretSupplementValue(secretSupplementValues[key])
-      : '';
-    if (!key || !value || !warning.object_key || !warning.field) return [];
+    const value = key ? secretSupplementValues[key] : undefined;
+    if (
+      !key
+      || !isValidSecretSupplementValue(value)
+      || !warning.object_key
+      || !warning.field
+    ) return [];
     return [{
       object_key: warning.object_key,
       field: warning.field,
