@@ -48,13 +48,31 @@ def _release_stale_user_sync_runs(source: UserSyncSource) -> int:
     return UserSyncRun.objects.filter(
         source=source,
         status=UserSyncRunStatusChoices.RUNNING,
-        started_at__lt=stale_before,
+        updated_at__lt=stale_before,
     ).update(
         status=UserSyncRunStatusChoices.FAILED,
         summary="User sync timed out and was released automatically",
         finished_at=now,
         updated_at=now,
     )
+
+
+class UserSyncRunExpired(RuntimeError):
+    pass
+
+
+def _lock_running_user_sync_run(run_id: int) -> UserSyncRun:
+    run = UserSyncRun.objects.select_for_update().get(pk=run_id)
+    if run.status != UserSyncRunStatusChoices.RUNNING:
+        raise UserSyncRunExpired("User sync run expired before applying provider result")
+    return run
+
+
+def _touch_running_user_sync_run(run_id: int) -> UserSyncRun:
+    run = _lock_running_user_sync_run(run_id)
+    run.updated_at = timezone.now()
+    run.save(update_fields=["updated_at"])
+    return run
 
 
 # 同步进度阶段 key(在 payload.phase_progress 下作为子键使用)
@@ -114,7 +132,7 @@ def _mutate_run_payload(run_id: int, mutate) -> None:
     都必须通过该入口或同事务已锁定的 run 实例进行,不得直接使用外层旧实例覆盖。
     """
     with transaction.atomic():
-        run = UserSyncRun.objects.select_for_update().get(pk=run_id)
+        run = _lock_running_user_sync_run(run_id)
         next_payload = dict(run.payload or {})
         mutate(next_payload)
         run.payload = next_payload
@@ -309,51 +327,63 @@ def execute_user_sync(source_id: int, trigger_mode: str = UserSyncTriggerModeCho
     )
     input_summary = _extract_input_summary(result.payload)
 
-    # 写 request_id(同步元数据,不需要走 _mutate_run_payload)
-    UserSyncRun.objects.filter(id=run.id).update(request_id=result.request_id or "")
-    # 同步 in-memory 实例,避免 _apply_user_sync_payload 读到空 request_id
-    run.refresh_from_db(fields=["request_id", "payload"])
+    try:
+        with transaction.atomic():
+            run = _lock_running_user_sync_run(run.id)
+            run.request_id = result.request_id or ""
+            run.updated_at = timezone.now()
+            run.save(update_fields=["request_id", "updated_at"])
+    except UserSyncRunExpired as error:
+        return {"result": False, "message": str(error)}
 
     # 阶段 1: 拉取目录
     if not result.success:
         # provider 调用失败,写 fetch_directory 阶段脱敏错误
         safe_error_code = "provider_fetch_failed"
-        _write_phase_error(
-            run.id,
-            PHASE_FETCH_DIRECTORY,
-            0,
-            0,
-            Exception(result.summary or "provider call failed"),
-            error_code=safe_error_code,
-        )
-        _save_terminal_state(
-            run.id,
-            status=UserSyncRunStatusChoices.FAILED,
-            summary=safe_error_code,
-            payload_overrides={"request_id": result.request_id or ""},
-        )
+        try:
+            _write_phase_error(
+                run.id,
+                PHASE_FETCH_DIRECTORY,
+                0,
+                0,
+                Exception(result.summary or "provider call failed"),
+                error_code=safe_error_code,
+            )
+            _save_terminal_state(
+                run.id,
+                status=UserSyncRunStatusChoices.FAILED,
+                summary=safe_error_code,
+                payload_overrides={"request_id": result.request_id or ""},
+            )
+        except UserSyncRunExpired as error:
+            return {"result": False, "message": str(error)}
         return {"result": False, "message": safe_error_code}
 
     user_list = result.payload.get("user_list") or []
     group_list = result.payload.get("group_list") or []
     fetch_total = len(user_list) + len(group_list)
-    _write_phase_progress(run.id, PHASE_FETCH_DIRECTORY, current=fetch_total, total=fetch_total, status="finish")
 
     # 阶段 2-4: 同步组织 / 同步用户(按 batch)/ 全量对账
     try:
+        _write_phase_progress(run.id, PHASE_FETCH_DIRECTORY, current=fetch_total, total=fetch_total, status="finish")
         sync_summary = _apply_user_sync_payload(source, result.payload, current_run=run)
+    except UserSyncRunExpired as error:
+        return {"result": False, "message": str(error)}
     except Exception as error:
         logger.exception(f"User sync failed for source '{source.name}': request_id={result.request_id}, error={error!r}")
         safe_error_code = _to_safe_error_code(error)
-        _save_terminal_state(
-            run.id,
-            status=UserSyncRunStatusChoices.FAILED,
-            summary=safe_error_code,
-            payload_overrides={
-                "request_id": result.request_id or "",
-                "external_request_id": str((result.payload or {}).get("external_request_id") or ""),
-            },
-        )
+        try:
+            _save_terminal_state(
+                run.id,
+                status=UserSyncRunStatusChoices.FAILED,
+                summary=safe_error_code,
+                payload_overrides={
+                    "request_id": result.request_id or "",
+                    "external_request_id": str((result.payload or {}).get("external_request_id") or ""),
+                },
+            )
+        except UserSyncRunExpired as expired_error:
+            return {"result": False, "message": str(expired_error)}
         return {"result": False, "message": safe_error_code}
 
     # 终态保存
@@ -366,17 +396,20 @@ def execute_user_sync(source_id: int, trigger_mode: str = UserSyncTriggerModeCho
         )
     else:
         final_status = UserSyncRunStatusChoices.SUCCESS
-    _save_terminal_state(
-        run.id,
-        status=final_status,
-        summary=sync_summary["summary"],
-        payload_overrides=payload_overrides,
-        instance_overrides={
-            "synced_user_count": sync_summary["synced_user_count"],
-            "synced_group_count": sync_summary["synced_group_count"],
-            "disabled_user_count": sync_summary["disabled_user_count"],
-        },
-    )
+    try:
+        _save_terminal_state(
+            run.id,
+            status=final_status,
+            summary=sync_summary["summary"],
+            payload_overrides=payload_overrides,
+            instance_overrides={
+                "synced_user_count": sync_summary["synced_user_count"],
+                "synced_group_count": sync_summary["synced_group_count"],
+                "disabled_user_count": sync_summary["disabled_user_count"],
+            },
+        )
+    except UserSyncRunExpired as error:
+        return {"result": False, "message": str(error)}
     return {"result": True, "message": sync_summary["summary"], "data": {"run_id": run.id}}
 
 
@@ -393,7 +426,7 @@ def _save_terminal_state(
     再保存终态字段。任何终态保存都必须经此入口,禁止直接操作外层旧 run 实例。
     """
     with transaction.atomic():
-        run = UserSyncRun.objects.select_for_update().get(pk=run_id)
+        run = _lock_running_user_sync_run(run_id)
         run.status = status
         run.summary = summary
         if payload_overrides:
@@ -561,6 +594,8 @@ def _apply_user_sync_payload(source: UserSyncSource, payload: dict, current_run:
     group_counters = {"created_groups": 0, "updated_groups": 0}
     try:
         with transaction.atomic():
+            if has_run:
+                _touch_running_user_sync_run(current_run.id)
             root_group = _get_or_create_root_group(source)
             group_id_mapping, active_group_ids = _sync_groups(
                 source, group_list, root_group, root_scope_value, group_counters
@@ -598,7 +633,7 @@ def _apply_user_sync_payload(source: UserSyncSource, payload: dict, current_run:
                 with transaction.atomic():
                     # 锁定 run,供 batch 内的 password_init_service 复用同一实例
                     if has_run:
-                        locked_run = UserSyncRun.objects.select_for_update().get(pk=current_run.id)
+                        locked_run = _touch_running_user_sync_run(current_run.id)
                     else:
                         locked_run = None
                     batch_result = _process_user_batch(
@@ -635,6 +670,8 @@ def _apply_user_sync_payload(source: UserSyncSource, payload: dict, current_run:
     # 阶段 C: 全量对账 (单事务) - 依据完整同步名单禁用 stale 用户、删除 stale 组织
     try:
         with transaction.atomic():
+            if has_run:
+                _touch_running_user_sync_run(current_run.id)
             reconcile_result = _reconcile_synced_directory(
                 source=source,
                 synced_usernames=all_synced_usernames,

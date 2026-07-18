@@ -43,6 +43,11 @@ def test_execute_user_sync_releases_stale_running_run(monkeypatch, ready_user_sy
         status=UserSyncRunStatusChoices.RUNNING,
         started_at=timezone.now() - timedelta(hours=1),
     )
+    stale_timestamp = timezone.now() - timedelta(hours=1)
+    UserSyncRun.objects.filter(pk=stale_run.pk).update(
+        started_at=stale_timestamp,
+        updated_at=stale_timestamp,
+    )
     provider_failure = CapabilityExecutionResult.failed_result(
         "provider unavailable",
         code="provider.request_failed",
@@ -57,12 +62,12 @@ def test_execute_user_sync_releases_stale_running_run(monkeypatch, ready_user_sy
 
     stale_run.refresh_from_db()
     replacement_run = UserSyncRun.objects.exclude(id=stale_run.id).get(source=ready_user_sync_source)
-    assert result["message"] == "provider unavailable"
+    assert result["message"] == "provider_fetch_failed"
     assert stale_run.status == UserSyncRunStatusChoices.FAILED
     assert stale_run.finished_at is not None
     assert "timed out" in stale_run.summary.lower()
     assert replacement_run.status == UserSyncRunStatusChoices.FAILED
-    assert replacement_run.summary == "provider unavailable"
+    assert replacement_run.summary == "provider_fetch_failed"
 
 
 @pytest.mark.django_db
@@ -71,7 +76,11 @@ def test_execute_user_sync_keeps_fresh_running_run(monkeypatch, ready_user_sync_
     fresh_run = UserSyncRun.objects.create(
         source=ready_user_sync_source,
         status=UserSyncRunStatusChoices.RUNNING,
-        started_at=timezone.now() - timedelta(minutes=10),
+        started_at=timezone.now() - timedelta(hours=1),
+    )
+    UserSyncRun.objects.filter(pk=fresh_run.pk).update(
+        started_at=timezone.now() - timedelta(hours=1),
+        updated_at=timezone.now() - timedelta(minutes=10),
     )
 
     with patch("apps.system_mgmt.services.user_sync_service.RuntimeApplicationService.execute") as mock_execute:
@@ -81,3 +90,74 @@ def test_execute_user_sync_keeps_fresh_running_run(monkeypatch, ready_user_sync_
     assert result == {"result": False, "message": "User sync is already running"}
     assert fresh_run.status == UserSyncRunStatusChoices.RUNNING
     mock_execute.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_execute_user_sync_does_not_apply_result_after_run_was_released(ready_user_sync_source):
+    provider_result = CapabilityExecutionResult.success_result(
+        "ok",
+        payload={"group_list": [], "user_list": []},
+    )
+
+    def release_run_before_returning_result(**_kwargs):
+        UserSyncRun.objects.filter(
+            source=ready_user_sync_source,
+            status=UserSyncRunStatusChoices.RUNNING,
+        ).update(
+            status=UserSyncRunStatusChoices.FAILED,
+            summary="User sync timed out and was released automatically",
+            finished_at=timezone.now(),
+        )
+        return provider_result
+
+    with (
+        patch(
+            "apps.system_mgmt.services.user_sync_service.RuntimeApplicationService.execute",
+            side_effect=release_run_before_returning_result,
+        ),
+        patch("apps.system_mgmt.services.user_sync_service._apply_user_sync_payload") as mock_apply,
+    ):
+        result = execute_user_sync(ready_user_sync_source.id)
+
+    assert result == {
+        "result": False,
+        "message": "User sync run expired before applying provider result",
+    }
+    mock_apply.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_execute_user_sync_stops_before_group_write_when_run_expires_after_provider_result(
+    ready_user_sync_source,
+):
+    provider_result = CapabilityExecutionResult.success_result(
+        "ok",
+        payload={"group_list": [], "user_list": []},
+    )
+
+    def expire_after_fetch_progress(run_id, phase, **_kwargs):
+        if phase == "fetch_directory":
+            UserSyncRun.objects.filter(pk=run_id).update(
+                status=UserSyncRunStatusChoices.FAILED,
+                summary="User sync timed out and was released automatically",
+                finished_at=timezone.now(),
+            )
+
+    with (
+        patch(
+            "apps.system_mgmt.services.user_sync_service.RuntimeApplicationService.execute",
+            return_value=provider_result,
+        ),
+        patch(
+            "apps.system_mgmt.services.user_sync_service._write_phase_progress",
+            side_effect=expire_after_fetch_progress,
+        ),
+        patch("apps.system_mgmt.services.user_sync_service._get_or_create_root_group") as mock_create_root,
+    ):
+        result = execute_user_sync(ready_user_sync_source.id)
+
+    assert result == {
+        "result": False,
+        "message": "User sync run expired before applying provider result",
+    }
+    mock_create_root.assert_not_called()
