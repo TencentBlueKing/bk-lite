@@ -5,7 +5,7 @@ import functools
 import json
 import queue
 from typing import Optional
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import unquote, urlsplit, urlunsplit
 
 import jsonpickle
 from django.conf import settings
@@ -56,11 +56,21 @@ def _sanitize_connection_error(error, servers, user=None, password=None) -> str:
     """Remove connection credentials from third-party exception messages."""
     detail = str(error)
     server_items = servers if isinstance(servers, (list, tuple)) else [servers]
+    credentials = {str(value) for value in (user, password) if value}
     for server in server_items:
         if server:
-            detail = detail.replace(str(server), _mask_server_url(str(server)))
-    credentials = sorted({str(value) for value in (user, password) if value}, key=len, reverse=True)
-    for credential in credentials:
+            server_text = str(server)
+            detail = detail.replace(server_text, _mask_server_url(server_text))
+            try:
+                parsed = urlsplit(server_text)
+                credentials.update(
+                    unquote(value)
+                    for value in (parsed.username, parsed.password)
+                    if value
+                )
+            except Exception:
+                pass
+    for credential in sorted(credentials, key=len, reverse=True):
         detail = detail.replace(credential, "***")
     return detail
 
@@ -105,6 +115,9 @@ async def get_nc_client(nc=None, server: str = "", user: Optional[str] = None, p
     if password is not None:
         options["password"] = password
 
+    effective_user = options.get("user")
+    effective_password = options.get("password")
+
     # 连接超时保护：避免 connect 阶段无上限阻塞
     connect_timeout = options.pop("connect_timeout", getattr(settings, "NATS_CONNECT_TIMEOUT", 10))
     try:
@@ -116,7 +129,7 @@ async def get_nc_client(nc=None, server: str = "", user: Optional[str] = None, p
         logger.error(
             "NATS connect failed, servers=%s, error=%s",
             _mask_servers(servers),
-            _sanitize_connection_error(e, servers, user=user, password=password),
+            _sanitize_connection_error(e, servers, user=effective_user, password=effective_password),
         )
         raise
     return nc
@@ -188,8 +201,8 @@ async def request_v2(
     method_name: str,
     server: str = "",
     *args,
-    user: Optional[str] = None,
-    password: Optional[str] = None,
+    _nats_user: Optional[str] = None,
+    _nats_password: Optional[str] = None,
     _timeout: Optional[float] = None,
     _raw=False,
     **kwargs,
@@ -197,13 +210,13 @@ async def request_v2(
     payload = parse_arguments(args, kwargs)
 
     try:
-        nc = await get_nc_client(server=server, user=user, password=password)
+        nc = await get_nc_client(server=server, user=_nats_user, password=_nats_password)
     except Exception as e:  # noqa
         logger.error(
             "request_v2 NATS connect failed, method_name=%s, server=%s, error=%s",
             method_name,
             _mask_server_url(server),
-            _sanitize_connection_error(e, server, user=user, password=password),
+            _sanitize_connection_error(e, server, user=_nats_user, password=_nats_password),
         )
         raise NatsClientException(f"Cannot connect to NATS server: {_mask_server_url(server)}") from None
 

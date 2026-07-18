@@ -94,11 +94,21 @@ class TestOperationAnalysisRpc:
             rpc.run("method", _nats_user="alice", _nats_password="secret", query="value")
 
         call = m.request_v2.call_args
-        assert call.kwargs["user"] == "alice"
-        assert call.kwargs["password"] == "secret"
+        assert call.kwargs["_nats_user"] == "alice"
+        assert call.kwargs["_nats_password"] == "secret"
         assert call.kwargs["query"] == "value"
-        assert "_nats_user" not in call.kwargs
-        assert "_nats_password" not in call.kwargs
+
+    def test_run_保留业务载荷中的user与password字段(self):
+        rpc = OperationAnalysisRpc(namespace="ana_ns", server="nats://host:4222")
+        with mock.patch("apps.rpc.base.nats_client") as m:
+            m.request_v2.side_effect = _coro({"data": 1})
+            rpc.run("method", user="business-user", password="business-password")
+
+        call = m.request_v2.call_args
+        assert call.kwargs["user"] == "business-user"
+        assert call.kwargs["password"] == "business-password"
+        assert call.kwargs["_nats_user"] is None
+        assert call.kwargs["_nats_password"] is None
 
 
 class TestBaseOperationAnaRpc:

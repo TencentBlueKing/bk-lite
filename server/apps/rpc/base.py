@@ -70,8 +70,8 @@ class OperationAnalysisRpc(RpcClient):
                 self.namespace,
                 method_name,
                 server=self.server,
-                user=nats_user,
-                password=nats_password,
+                _nats_user=nats_user,
+                _nats_password=nats_password,
                 *args,
                 **kwargs,
             )
