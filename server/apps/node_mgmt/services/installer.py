@@ -264,7 +264,7 @@ class InstallerService:
 
     @staticmethod
     def get_authorized_controller_task_nodes(task_id, authorized_nodes=None, scope=None):
-        task_nodes = ControllerTaskNode.objects.filter(task_id=task_id).order_by("id")
+        task_nodes = ControllerTaskNode.objects.filter(task_id=task_id).select_related("task").order_by("id")
         if authorized_nodes is None:
             return list(task_nodes)
 
@@ -278,6 +278,30 @@ class InstallerService:
             item for item in task_nodes.filter(Q(node_id="") | Q(node_id__isnull=True)) if normalize_orgs(item.organizations) & data_team_ids
         ]
         return sorted([*linked_nodes, *legacy_nodes], key=lambda item: item.id)
+
+    @staticmethod
+    def get_authorized_controller_task_node_queryset(
+        task_id,
+        authorized_nodes=None,
+        scope=None,
+        request_user=None,
+    ):
+        """返回可重试的任务节点，同时满足数据范围与历史任务归属。"""
+        scoped_task_nodes = InstallerService.get_authorized_controller_task_nodes(
+            task_id,
+            authorized_nodes=authorized_nodes,
+            scope=scope,
+        )
+        scoped_ids = [task_node.id for task_node in scoped_task_nodes]
+        task_nodes = ControllerTaskNode.objects.filter(id__in=scoped_ids).select_related("task").order_by("id")
+        if getattr(request_user, "is_superuser", False):
+            return task_nodes
+
+        username = getattr(request_user, "username", "") if request_user is not None else ""
+        legacy_owner_filter = Q(pk__in=[])
+        if username:
+            legacy_owner_filter = Q(node_id="") & Q(task__created_by=username)
+        return task_nodes.filter(~Q(node_id="") | legacy_owner_filter)
 
     @staticmethod
     def install_controller_nodes(task_id, authorized_nodes=None, scope=None):
