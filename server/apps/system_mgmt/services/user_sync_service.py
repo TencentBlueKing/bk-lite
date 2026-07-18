@@ -193,44 +193,49 @@ def execute_user_sync(source_id: int, trigger_mode: str = UserSyncTriggerModeCho
         run.save(update_fields=["request_id", "status", "summary", "payload", "finished_at", "updated_at"])
         return {"result": False, "message": result.summary, "data": UserSyncRun.objects.filter(id=run.id).values().first()}
 
-    try:
-        sync_summary = _apply_user_sync_payload(source, result.payload, current_run=run)
-    except Exception as error:
-        logger.exception(f"User sync failed for source '{source.name}': {error}")
-        run.status = UserSyncRunStatusChoices.FAILED
-        run.summary = str(error)
-        run.payload = _build_run_payload(result, input_summary, current_run=run)
-        run.finished_at = timezone.now()
-        run.save(update_fields=["request_id", "status", "summary", "payload", "finished_at", "updated_at"])
-        return {"result": False, "message": str(error)}
+    with transaction.atomic():
+        run = UserSyncRun.objects.select_for_update().get(id=run.id)
+        if run.status != UserSyncRunStatusChoices.RUNNING:
+            return {"result": False, "message": "User sync run expired before applying provider result"}
 
-    if sync_summary["conflict_usernames"]:
-        run.status = (
-            UserSyncRunStatusChoices.FAILED
-            if sync_summary["synced_user_count"] == 0
-            else UserSyncRunStatusChoices.PARTIAL
+        try:
+            sync_summary = _apply_user_sync_payload(source, result.payload, current_run=run)
+        except Exception as error:
+            logger.exception(f"User sync failed for source '{source.name}': {error}")
+            run.status = UserSyncRunStatusChoices.FAILED
+            run.summary = str(error)
+            run.payload = _build_run_payload(result, input_summary, current_run=run)
+            run.finished_at = timezone.now()
+            run.save(update_fields=["request_id", "status", "summary", "payload", "finished_at", "updated_at"])
+            return {"result": False, "message": str(error)}
+
+        if sync_summary["conflict_usernames"]:
+            run.status = (
+                UserSyncRunStatusChoices.FAILED
+                if sync_summary["synced_user_count"] == 0
+                else UserSyncRunStatusChoices.PARTIAL
+            )
+        else:
+            run.status = UserSyncRunStatusChoices.SUCCESS
+        run.summary = sync_summary["summary"]
+        run.synced_user_count = sync_summary["synced_user_count"]
+        run.synced_group_count = sync_summary["synced_group_count"]
+        run.disabled_user_count = sync_summary["disabled_user_count"]
+        run.payload = _build_run_payload(result, input_summary, sync_summary, current_run=run)
+        run.finished_at = timezone.now()
+        run.save(
+            update_fields=[
+                "request_id",
+                "status",
+                "summary",
+                "synced_user_count",
+                "synced_group_count",
+                "disabled_user_count",
+                "payload",
+                "finished_at",
+                "updated_at",
+            ]
         )
-    else:
-        run.status = UserSyncRunStatusChoices.SUCCESS
-    run.summary = sync_summary["summary"]
-    run.synced_user_count = sync_summary["synced_user_count"]
-    run.synced_group_count = sync_summary["synced_group_count"]
-    run.disabled_user_count = sync_summary["disabled_user_count"]
-    run.payload = _build_run_payload(result, input_summary, sync_summary, current_run=run)
-    run.finished_at = timezone.now()
-    run.save(
-        update_fields=[
-            "request_id",
-            "status",
-            "summary",
-            "synced_user_count",
-            "synced_group_count",
-            "disabled_user_count",
-            "payload",
-            "finished_at",
-            "updated_at",
-        ]
-    )
     return {"result": True, "message": run.summary, "data": {"run_id": run.id}}
 
 

@@ -81,3 +81,37 @@ def test_execute_user_sync_keeps_fresh_running_run(monkeypatch, ready_user_sync_
     assert result == {"result": False, "message": "User sync is already running"}
     assert fresh_run.status == UserSyncRunStatusChoices.RUNNING
     mock_execute.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_execute_user_sync_does_not_apply_result_after_run_was_released(ready_user_sync_source):
+    provider_result = CapabilityExecutionResult.success_result(
+        "ok",
+        payload={"group_list": [], "user_list": []},
+    )
+
+    def release_run_before_returning_result(**_kwargs):
+        UserSyncRun.objects.filter(
+            source=ready_user_sync_source,
+            status=UserSyncRunStatusChoices.RUNNING,
+        ).update(
+            status=UserSyncRunStatusChoices.FAILED,
+            summary="User sync timed out and was released automatically",
+            finished_at=timezone.now(),
+        )
+        return provider_result
+
+    with (
+        patch(
+            "apps.system_mgmt.services.user_sync_service.RuntimeApplicationService.execute",
+            side_effect=release_run_before_returning_result,
+        ),
+        patch("apps.system_mgmt.services.user_sync_service._apply_user_sync_payload") as mock_apply,
+    ):
+        result = execute_user_sync(ready_user_sync_source.id)
+
+    assert result == {
+        "result": False,
+        "message": "User sync run expired before applying provider result",
+    }
+    mock_apply.assert_not_called()
