@@ -5,6 +5,8 @@ import pydantic.root_model  # noqa
 对支持 delete_pattern 的后端分支，用具备 delete_pattern 的 fake cache 注入到模块的 cache 引用。
 断言真实缓存副作用（get/set/delete 后的可见性）与键派生的确定性。
 """
+import hashlib
+
 import pytest
 from django.core.cache import cache
 from django.test import override_settings
@@ -71,6 +73,11 @@ class TestKeyDerivation:
         app_key = pc._get_cache_key("alice", "domain.com", 1, "log", "policy", query_scope="app")
         module_key = pc._get_cache_key("alice", "domain.com", 1, "log", "policy", query_scope="module")
         assert app_key != module_key
+
+    def test_default_scope_preserves_legacy_cache_key(self):
+        prefix = pc._get_user_perm_prefix("alice", "domain.com")
+        legacy_hash = hashlib.md5("1:log:policy:False".encode()).hexdigest()
+        assert pc._get_cache_key("alice", "domain.com", 1, "log", "policy") == f"{prefix}{legacy_hash}"
 
     def test_token_info_key_format(self):
         assert pc._get_token_info_key("u", "d") == "token_info:u:d"

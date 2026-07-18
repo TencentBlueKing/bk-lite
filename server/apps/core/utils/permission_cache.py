@@ -93,7 +93,10 @@ def _get_cache_key(
     """
     user_prefix = _get_user_perm_prefix(username, domain)
     # 剩余维度继续 MD5 哈希，避免键过长
-    key_data = f"{current_team}:{app_name}:{permission_key}:{include_children}:{query_scope}"
+    key_data = f"{current_team}:{app_name}:{permission_key}:{include_children}"
+    # 默认范围沿用历史键，避免滚动发布时让全部既有权限缓存同时冷启动。
+    if query_scope != "app":
+        key_data = f"{key_data}:{query_scope}"
     key_hash = hashlib.md5(key_data.encode()).hexdigest()
     return f"{user_prefix}{key_hash}"
 

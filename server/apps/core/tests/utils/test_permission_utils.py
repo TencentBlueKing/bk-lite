@@ -136,6 +136,32 @@ class TestGetPermissionsRules:
             query_scope="module",
         )
 
+    def test_cache_read_failure_falls_back_to_rpc(self, mocker):
+        mocker.patch.object(pu, "get_cached_permission_rules", side_effect=RuntimeError("redis down"))
+        mocker.patch.object(pu, "set_cached_permission_rules")
+        client = mocker.MagicMock()
+        client.get_user_rules_by_module.return_value = {"result": True, "data": {}, "team": [3]}
+        mocker.patch.object(pu, "SystemMgmt", return_value=client)
+
+        assert pu.get_permissions_rules(_user(), "3", "log", "policy") == {
+            "result": True,
+            "data": {},
+            "team": [3],
+        }
+
+    def test_cache_write_failure_keeps_rpc_result(self, mocker):
+        mocker.patch.object(pu, "get_cached_permission_rules", return_value=None)
+        mocker.patch.object(pu, "set_cached_permission_rules", side_effect=RuntimeError("redis down"))
+        client = mocker.MagicMock()
+        client.get_user_rules_by_module.return_value = {"result": True, "data": {}, "team": [3]}
+        mocker.patch.object(pu, "SystemMgmt", return_value=client)
+
+        assert pu.get_permissions_rules(_user(), "3", "log", "policy") == {
+            "result": True,
+            "data": {},
+            "team": [3],
+        }
+
     def test_exception_returns_empty(self, mocker):
         mocker.patch.object(pu, "get_cached_permission_rules", return_value=None)
         mock_set = mocker.patch.object(pu, "set_cached_permission_rules")

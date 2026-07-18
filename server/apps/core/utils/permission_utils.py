@@ -70,15 +70,19 @@ def set_rules_module_params(app_name, permission_key):
 
 def get_permissions_rules(user, current_team, app_name, permission_key, include_children=False):
     """获取某app某类权限规则"""
-    cached = get_cached_permission_rules(
-        username=user.username,
-        domain=user.domain,
-        current_team=int(current_team),
-        app_name=app_name,
-        permission_key=permission_key,
-        include_children=include_children,
-        query_scope="module",
-    )
+    try:
+        cached = get_cached_permission_rules(
+            username=user.username,
+            domain=user.domain,
+            current_team=int(current_team),
+            app_name=app_name,
+            permission_key=permission_key,
+            include_children=include_children,
+            query_scope="module",
+        )
+    except Exception as exc:
+        logger.warning(f"Failed to read module permission cache: {exc}")
+        cached = None
     if cached is not None:
         return cached
 
@@ -103,6 +107,10 @@ def get_permissions_rules(user, current_team, app_name, permission_key, include_
             user.domain,
             include_children,
         )
+    except Exception:
+        return {}
+
+    try:
         set_cached_permission_rules(
             username=user.username,
             domain=user.domain,
@@ -113,9 +121,9 @@ def get_permissions_rules(user, current_team, app_name, permission_key, include_
             include_children=include_children,
             query_scope="module",
         )
-        return permission_data
-    except Exception:
-        return {}
+    except Exception as exc:
+        logger.warning(f"Failed to write module permission cache: {exc}")
+    return permission_data
 
 
 def permission_filter(model, permission, team_key="teams__id__in", id_key="id__in"):
