@@ -75,9 +75,30 @@ class InstallerViewSet(ViewSet):
     @action(detail=False, methods=["post"], url_path="controller/retry")
     @HasPermission("cloud_region_node-Edit")
     def controller_retry(self, request):
+        task_node_ids = request.data["task_node_ids"]
+        if not isinstance(task_node_ids, list):
+            task_node_ids = [task_node_ids]
+
+        authorized_task_nodes = InstallerService.get_authorized_controller_task_node_queryset(
+            request.data["task_id"],
+            authorized_nodes=get_authorized_node_queryset(request),
+            request_user=request.user,
+        )
+        selected_task_nodes = list(authorized_task_nodes.filter(id__in=task_node_ids))
+        requested_ids = {str(task_node_id) for task_node_id in task_node_ids}
+        authorized_ids = {str(task_node.id) for task_node in selected_task_nodes}
+        if not requested_ids or authorized_ids != requested_ids:
+            return WebUtils.response_403("User does not have permission to retry this controller installation")
+
+        node_ids = [task_node.node_id for task_node in selected_task_nodes if task_node.node_id]
+        if node_ids:
+            _, error_response = authorize_node_ids(request, node_ids)
+            if error_response:
+                return error_response
+
         retry_controller.delay(
             request.data["task_id"],
-            request.data["task_node_ids"],
+            task_node_ids,
             password=request.data.get("password"),
             private_key=request.data.get("private_key"),
             passphrase=request.data.get("passphrase"),
