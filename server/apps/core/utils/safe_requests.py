@@ -14,7 +14,7 @@
 """
 
 from typing import Any, Optional
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import requests
 from requests import Response
@@ -80,6 +80,9 @@ def _prepare_redirect_request(
     headers = redirect_kwargs.get("headers")
     if headers is not None:
         headers = dict(headers)
+        # Proxy credentials are rebuilt from ``proxies`` by requests and must
+        # never be copied as an origin header across redirect hops.
+        headers = _without_headers(headers, {"Proxy-Authorization"})
 
     # requests discards the entity when following 301/302/303 responses. 307/308
     # intentionally preserve both the method and body.
@@ -147,6 +150,7 @@ def safe_request(
         while response.is_redirect and redirect_count < max_redirects:
             if not allow_redirects:
                 logger.warning(f"[SafeRequests] 禁止重定向: url={url}, location={response.headers.get('Location')}")
+                response.close()
                 raise SSRFError("不允许重定向")
 
             redirect_url = response.headers.get("Location")
@@ -154,11 +158,15 @@ def safe_request(
                 break
 
             # 校验重定向目标
-            validated_redirect = SSRFValidator.validate(redirect_url, allowlist=allowlist)
-            logger.info(f"[SafeRequests] 重定向: {url} -> {validated_redirect}")
-            method, kwargs = _prepare_redirect_request(
-                method, current_url, validated_redirect, response.status_code, kwargs
-            )
+            redirect_url = urljoin(current_url, redirect_url)
+            try:
+                validated_redirect = SSRFValidator.validate(redirect_url, allowlist=allowlist)
+                logger.info(f"[SafeRequests] 重定向: {current_url} -> {validated_redirect}")
+                method, kwargs = _prepare_redirect_request(
+                    method, current_url, validated_redirect, response.status_code, kwargs
+                )
+            finally:
+                response.close()
             response = requests.request(method, validated_redirect, **kwargs)
             current_url = validated_redirect
             redirect_count += 1
@@ -248,6 +256,7 @@ def safe_request_llm_endpoint(
         while response.is_redirect and redirect_count < max_redirects:
             if not allow_redirects:
                 logger.warning(f"[SafeRequests-LLM] 禁止重定向: url={url}, location={response.headers.get('Location')}")
+                response.close()
                 raise SSRFError("不允许重定向")
 
             redirect_url = response.headers.get("Location")
@@ -255,11 +264,15 @@ def safe_request_llm_endpoint(
                 break
 
             # 校验重定向目标（宽松模式）
-            validated_redirect = SSRFValidator.validate_llm_endpoint(redirect_url)
-            logger.info(f"[SafeRequests-LLM] 重定向: {url} -> {validated_redirect}")
-            method, kwargs = _prepare_redirect_request(
-                method, current_url, validated_redirect, response.status_code, kwargs
-            )
+            redirect_url = urljoin(current_url, redirect_url)
+            try:
+                validated_redirect = SSRFValidator.validate_llm_endpoint(redirect_url)
+                logger.info(f"[SafeRequests-LLM] 重定向: {current_url} -> {validated_redirect}")
+                method, kwargs = _prepare_redirect_request(
+                    method, current_url, validated_redirect, response.status_code, kwargs
+                )
+            finally:
+                response.close()
             response = requests.request(method, validated_redirect, **kwargs)
             current_url = validated_redirect
             redirect_count += 1

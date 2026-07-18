@@ -10,12 +10,39 @@ from apps.core.utils.ssrf_validator import SSRFError
 def _make_response(*, is_redirect=False, location=None, status_code=None):
     resp = requests.Response()
     resp.status_code = status_code if status_code is not None else (302 if is_redirect else 200)
+    resp._content = b""
+    resp._content_consumed = True
     if location:
         resp.headers["Location"] = location
     return resp
 
 
 class TestSafeRequest:
+    @pytest.mark.parametrize(
+        ("status_code", "method", "expected_method", "keeps_body"),
+        [
+            (301, "POST", "GET", False),
+            (301, "PUT", "PUT", False),
+            (302, "PATCH", "GET", False),
+            (303, "DELETE", "GET", False),
+            (303, "HEAD", "HEAD", False),
+            (307, "POST", "POST", True),
+            (308, "PATCH", "PATCH", True),
+        ],
+    )
+    def test_redirect_method_and_body_matrix(self, status_code, method, expected_method, keeps_body):
+        redirect_method, redirect_kwargs = sr._prepare_redirect_request(
+            method,
+            "https://service.example/start",
+            "https://service.example/next",
+            status_code,
+            {"json": {"state": "ready"}, "headers": {"Content-Type": "application/json"}},
+        )
+
+        assert redirect_method == expected_method
+        assert ("json" in redirect_kwargs) is keeps_body
+        assert ("Content-Type" in redirect_kwargs["headers"]) is keeps_body
+
     def test_validates_url_and_returns_response(self, mocker):
         validate = mocker.patch.object(sr.SSRFValidator, "validate", return_value="https://safe.example/api")
         req = mocker.patch.object(sr.requests, "request", return_value=_make_response())
@@ -53,6 +80,22 @@ class TestSafeRequest:
         assert validate.call_args_list[1][0][0] == "https://redirect-target"
         assert req.call_count == 2
 
+    def test_relative_redirect_is_resolved_and_intermediate_response_closed(self, mocker):
+        validate = mocker.patch.object(
+            sr.SSRFValidator,
+            "validate",
+            side_effect=["https://service.example/v1/start", "https://service.example/v2/next"],
+        )
+        first = _make_response(status_code=302, location="../v2/next")
+        close = mocker.patch.object(first, "close")
+        req = mocker.patch.object(sr.requests, "request", side_effect=[first, _make_response()])
+
+        sr.safe_request("GET", "https://service.example/v1/start", allow_redirects=True)
+
+        assert validate.call_args_list[1].args[0] == "https://service.example/v2/next"
+        assert req.call_args_list[1].args == ("GET", "https://service.example/v2/next")
+        close.assert_called_once_with()
+
     def test_cross_origin_303_uses_get_without_body_or_credentials(self, mocker):
         mocker.patch.object(
             sr.SSRFValidator,
@@ -64,6 +107,7 @@ class TestSafeRequest:
         headers = {
             "Authorization": "Bearer secret",
             "Cookie": "session=secret",
+            "Proxy-Authorization": "Basic proxy-secret",
             "Content-Type": "application/json",
             "X-Request-ID": "request-id",
         }
@@ -99,7 +143,7 @@ class TestSafeRequest:
             "PUT",
             "https://service.example/start",
             allow_redirects=True,
-            headers={"Authorization": "Bearer secret"},
+            headers={"Authorization": "Bearer secret", "Proxy-Authorization": "Basic proxy-secret"},
             cookies={"session": "secret"},
             json={"state": "ready"},
         )
@@ -107,6 +151,7 @@ class TestSafeRequest:
         redirect_call = req.call_args_list[1]
         assert redirect_call.args == ("PUT", "https://service.example/next")
         assert redirect_call.kwargs["headers"]["Authorization"] == "Bearer secret"
+        assert "Proxy-Authorization" not in redirect_call.kwargs["headers"]
         assert redirect_call.kwargs["cookies"] == {"session": "secret"}
         assert redirect_call.kwargs["json"] == {"state": "ready"}
 
