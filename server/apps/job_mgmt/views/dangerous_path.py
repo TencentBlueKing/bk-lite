@@ -46,6 +46,7 @@ class DangerousPathViewSet(BaseDangerousItemViewSet):
         return self.destroy_with_log(request, *args, **kwargs)
 
     @action(detail=False, methods=["GET"])
+    @HasPermission("dangerous_path-View")
     def enabled_paths(self, request):
         """获取当前组启用的所有高危路径规则"""
         current_team = int(get_current_team(request, 0))

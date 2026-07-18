@@ -46,6 +46,7 @@ class DangerousRuleViewSet(BaseDangerousItemViewSet):
         return self.destroy_with_log(request, *args, **kwargs)
 
     @action(detail=False, methods=["GET"])
+    @HasPermission("dangerous_command-View")
     def enabled_rules(self, request):
         current_team = int(get_current_team(request, 0))
         rules = DangerousRule.objects.filter(is_enabled=True, team__contains=current_team)
