@@ -79,6 +79,8 @@ def test_request_v2_redacts_legacy_url_and_separate_credentials_on_connect_error
     public_error = str(exc_info.value)
     public_traceback = "".join(traceback.format_exception(exc_info.value))
     log_call = str(logger.error.call_args)
+    assert exc_info.value.__context__ is None
+    assert exc_info.value.__cause__ is None
     assert "legacy-secret" not in public_error
     assert "legacy-secret" not in public_traceback
     assert "legacy-secret" not in log_call

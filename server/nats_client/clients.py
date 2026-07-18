@@ -209,6 +209,7 @@ async def request_v2(
 ) -> ResponseType:
     payload = parse_arguments(args, kwargs)
 
+    connection_exception = None
     try:
         nc = await get_nc_client(server=server, user=_nats_user, password=_nats_password)
     except Exception as e:  # noqa
@@ -218,7 +219,13 @@ async def request_v2(
             _mask_server_url(server),
             _sanitize_connection_error(e, server, user=_nats_user, password=_nats_password),
         )
-        raise NatsClientException(f"Cannot connect to NATS server: {_mask_server_url(server)}") from None
+        # Raise outside the active exception handler so the sanitized exception
+        # does not retain the third-party exception and its credential-bearing frames.
+        connection_exception = NatsClientException(
+            f"Cannot connect to NATS server: {_mask_server_url(server)}"
+        )
+    if connection_exception is not None:
+        raise connection_exception
 
     timeout = _timeout or getattr(settings, "NATS_REQUEST_TIMEOUT", DEFAULT_REQUEST_TIMEOUT)
     try:
