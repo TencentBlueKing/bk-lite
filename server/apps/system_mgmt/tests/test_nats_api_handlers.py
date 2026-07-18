@@ -10,6 +10,7 @@ import pytest
 from nats_client.registry import default_registry
 
 import nats_client
+from apps.rpc.system_mgmt import SystemMgmt
 from apps.system_mgmt import nats_api
 from apps.system_mgmt.models import App, Channel, Group, GroupDataRule, Menu, Role, User
 from apps.system_mgmt.models.channel import ChannelChoices
@@ -78,6 +79,29 @@ def test_nats_api_compat_exports_local_and_nats_entrypoints():
     assert registered_entrypoints <= actual_registered_entrypoints
     assert "create_default_rule" not in actual_registered_entrypoints
     assert "bk_lite_user_login" not in actual_registered_entrypoints
+
+
+def test_bk_lite_user_login_keeps_local_app_client_path(monkeypatch):
+    user = User.objects.create(
+        username="cross_domain_user",
+        password="x",
+        display_name="Cross Domain User",
+        email="cross-domain@example.com",
+        domain="corp.example.com",
+    )
+    issued = {}
+
+    def fake_get_user_login_token(actual_user, username):
+        issued.update(user=actual_user, username=username)
+        return {"result": True, "data": {"token": "local-only"}}
+
+    monkeypatch.setattr(nats_api._login, "get_user_login_token", fake_get_user_login_token)
+
+    result = SystemMgmt().bk_lite_user_login(user.username, user.domain)
+
+    assert result == {"result": True, "data": {"token": "local-only"}}
+    assert issued == {"user": user, "username": user.username}
+    assert "bk_lite_user_login" not in {item["name"] for item in default_registry.registry.values()}
 
 
 # ---------------------------------------------------------------------------
