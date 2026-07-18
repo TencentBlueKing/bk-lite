@@ -64,7 +64,11 @@ def test_nats_api_compat_exports_local_and_nats_entrypoints():
         "save_error_log",
         "save_operation_log",
     }
-    local_only_entrypoints = {"_list_opspilot_nats_channels", "create_default_rule"}
+    local_only_entrypoints = {
+        "_list_opspilot_nats_channels",
+        "create_default_rule",
+        "bk_lite_user_login",
+    }
     registered_entrypoints = expected_entrypoints - local_only_entrypoints
 
     exported_entrypoints = {name for name in expected_entrypoints if callable(getattr(nats_api, name, None))}
@@ -73,6 +77,7 @@ def test_nats_api_compat_exports_local_and_nats_entrypoints():
     assert exported_entrypoints == expected_entrypoints
     assert registered_entrypoints <= actual_registered_entrypoints
     assert "create_default_rule" not in actual_registered_entrypoints
+    assert "bk_lite_user_login" not in actual_registered_entrypoints
 
 
 # ---------------------------------------------------------------------------
