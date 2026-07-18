@@ -7,6 +7,7 @@ import types
 
 import nats_client
 import pytest
+from nats_client.registry import default_registry
 
 from apps.system_mgmt import nats_api
 from apps.system_mgmt.models import (
@@ -70,13 +71,17 @@ def test_nats_api_compat_exports_all_nats_entrypoints():
         "save_error_log",
         "save_operation_log",
     }
-    registered_entrypoints = expected_entrypoints - {"_list_opspilot_nats_channels"}
+    registered_entrypoints = expected_entrypoints - {
+        "_list_opspilot_nats_channels",
+        "bk_lite_user_login",
+    }
 
     exported_entrypoints = {name for name in expected_entrypoints if callable(getattr(nats_api, name, None))}
-    actual_registered_entrypoints = {item["name"] for item in nats_client.default_registry.registry.values()}
+    actual_registered_entrypoints = {item["name"] for item in default_registry.registry.values()}
 
     assert exported_entrypoints == expected_entrypoints
     assert registered_entrypoints <= actual_registered_entrypoints
+    assert "bk_lite_user_login" not in actual_registered_entrypoints
 
 
 # ---------------------------------------------------------------------------
