@@ -267,9 +267,10 @@ class InstallerService:
         if authorized_nodes is not None and not getattr(request_user, "is_superuser", False):
             authorized_node_ids = list(authorized_nodes.values_list("id", flat=True))
             username = getattr(request_user, "username", "") if request_user is not None else ""
+            domain = getattr(request_user, "domain", "") if request_user is not None else ""
             legacy_owner_filter = Q(pk__in=[])
-            if username:
-                legacy_owner_filter = Q(node_id="") & Q(task__created_by=username)
+            if username and domain:
+                legacy_owner_filter = Q(node_id="") & Q(task__created_by=username, task__domain=domain)
             task_nodes = task_nodes.filter(
                 (~Q(node_id="") & Q(node_id__in=authorized_node_ids)) | legacy_owner_filter
             )
