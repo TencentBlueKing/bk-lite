@@ -42,6 +42,16 @@ def _create_instance(instance_id, collect_type, organization):
     return instance
 
 
+def test_matching_primary_keys_preserves_legacy_string_normalization():
+    assert CollectTypeViewSet._matching_primary_keys(Policy, [{"id": 1}]) == [1]
+    assert CollectTypeViewSet._matching_primary_keys(
+        Policy, [{"id": True}, {"id": "01"}]
+    ) == []
+    assert CollectTypeViewSet._matching_primary_keys(
+        CollectInstance, [{"id": None}]
+    ) == ["None"]
+
+
 @pytest.mark.django_db
 def test_collect_type_counts_use_permission_aware_aggregate_queries(
     authenticated_user,
@@ -67,14 +77,18 @@ def test_collect_type_counts_use_permission_aware_aggregate_queries(
         1,
     )
     _create_policy("fallback", collect_type_b, 1)
-    _create_policy("admin", collect_type_b, 9)
+    admin_policy = _create_policy("admin", collect_type_b, 9)
+    PolicyOrganization.objects.create(policy=admin_policy, organization=1)
     _create_policy("blocked", collect_type_b, 8)
 
     explicit_instance = _create_instance("explicit", collect_type_a, None)
     _create_instance("team", collect_type_a, 2)
     _create_instance("blocked-fallback", collect_type_a, 1)
     _create_instance("fallback", collect_type_b, 1)
-    _create_instance("admin", collect_type_b, 9)
+    admin_instance = _create_instance("admin", collect_type_b, 9)
+    CollectInstanceOrganization.objects.create(
+        collect_instance=admin_instance, organization=1
+    )
     _create_instance("blocked", collect_type_b, 8)
 
     def get_permissions_rules(user, current_team, app_name, permission_key, **kwargs):
