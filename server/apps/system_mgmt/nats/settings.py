@@ -26,7 +26,7 @@ def verify_bk_token(bk_token):
     login_module = LoginModule.objects.filter(source_type="bk_login", enabled=True).first()
     if not login_module:
         return {"result": True, "data": {"bk_login_open": False}}
-    bk_config = login_module.other_config
+    bk_config = login_module.decrypted_other_config
     if not bk_token:
         return {
             "result": True,
@@ -43,7 +43,7 @@ def verify_bk_token(bk_token):
             "result": True,
             "data": {"bk_login_open": True, "user": {}, "url": bk_config.get("bk_url")},
         }
-    group_obj = Group.objects.get(name=login_module.other_config.get("root_group", "蓝鲸"), parent_id=0)
+    group_obj = Group.objects.get(name=bk_config.get("root_group", "蓝鲸"), parent_id=0)
     user, _ = User.objects.get_or_create(
         username=bk_user["username"],
         domain=bk_user.get("domain"),
@@ -53,7 +53,7 @@ def verify_bk_token(bk_token):
             "group_list": [group_obj.id],
             "locale": bk_user.get("language", "zh-Hans"),
             "timezone": bk_user.get("time_zone", "Asia/Shanghai"),
-            "role_list": login_module.other_config.get("default_roles", []),
+            "role_list": bk_config.get("default_roles", []),
         },
     )
     user.email = bk_user.get("email", "")
