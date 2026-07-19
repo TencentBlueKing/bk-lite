@@ -5,6 +5,8 @@
 """
 
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from pydantic import ValidationError
 from rest_framework.test import APIRequestFactory, force_authenticate
 
@@ -197,6 +199,38 @@ def test_import_datasource_links_namespace_and_tags():
     ds = DataSourceAPIModel.objects.get(name="ds-a")
     assert ds.namespaces.count() == 1
     assert ds.tag.count() == 1
+
+
+@pytest.mark.django_db
+def test_import_datasource_relation_queries_do_not_grow_with_datasource_count():
+    NameSpace.objects.create(name="shared-ns", domain="d", account="a", password="p")
+    DataSourceTag.objects.create(tag_id="shared", name="Shared", created_by="s", updated_by="s")
+    doc = _doc(
+        datasources=[
+            _ds_section(key="ds1", name="ds-1", namespace_keys=["shared-ns"], tags=["Shared"]),
+            _ds_section(key="ds2", name="ds-2", namespace_keys=["shared-ns"], tags=["Shared"]),
+        ]
+    )
+
+    with CaptureQueriesContext(connection) as queries:
+        result = _service(doc).execute()
+
+    relation_tables = {
+        connection.ops.quote_name(NameSpace._meta.db_table),
+        connection.ops.quote_name(DataSourceTag._meta.db_table),
+    }
+    relation_selects = [
+        query["sql"]
+        for query in queries.captured_queries
+        if " INNER JOIN " not in query["sql"]
+        and any(f"FROM {table}" in query["sql"] for table in relation_tables)
+    ]
+    assert result["success"] is True
+    assert len(relation_selects) == 2, relation_selects
+    assert (
+        DataSourceAPIModel.objects.filter(namespaces__name="shared-ns", tag__name="Shared").distinct().count()
+        == 2
+    )
 
 
 @pytest.mark.django_db
