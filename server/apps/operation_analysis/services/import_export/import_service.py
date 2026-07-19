@@ -172,10 +172,19 @@ class ImportService:
 
         规则：{original_name}_copy，若仍冲突则继续追加_copy
         """
-        new_name = f"{original_name}{RENAME_SUFFIX}"
-        while model.objects.filter(name=new_name).exists():
-            new_name = f"{new_name}{RENAME_SUFFIX}"
-        return new_name
+        name_max_length = model._meta.get_field("name").max_length
+        max_suffixes = (name_max_length - len(original_name)) // len(RENAME_SUFFIX)
+        candidates = [
+            f"{original_name}{RENAME_SUFFIX * count}"
+            for count in range(1, max_suffixes + 1)
+        ]
+        existing_names = set(model.objects.filter(name__in=candidates).values_list("name", flat=True))
+
+        for candidate in candidates:
+            if candidate not in existing_names:
+                return candidate
+
+        raise ValueError(f"名称 {original_name} 已无可用的重命名空间")
 
     def _record_result(
         self,
