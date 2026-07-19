@@ -1022,7 +1022,7 @@ def test_session_messages_missing_session_id_returns_400(bot):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_get_guest_provider_adds_team_to_models(bot, mocker):
+def test_get_guest_provider_adds_team_to_models(bot):
     """get_guest_provider：为默认 llm/rerank/embed/ocr 模型追加 group_id 到 team。"""
     from apps.opspilot import nats_api
     from apps.opspilot.models.model_provider_mgmt import EmbedProvider, LLMModel, OCRProvider, RerankProvider
@@ -1035,29 +1035,18 @@ def test_get_guest_provider_adds_team_to_models(bot, mocker):
     azure = OCRProvider.objects.create(name="AzureOCR", is_build_in=True, team=[])
     olm = OCRProvider.objects.create(name="OlmOCR", is_build_in=True, team=[])
 
-    def _fake_get(name=None, **kwargs):
-        mapping = {
-            "GPT-4o": llm,
-            "bce-reranker-base_v1": rerank,
-            "bce-embedding-base_v1": embed1,
-            "FastEmbed(BAAI/bge-small-zh-v1.5)": embed2,
-            "PaddleOCR": paddle,
-            "AzureOCR": azure,
-            "OlmOCR": olm,
-        }
-        return mapping[name]
-
-    mocker.patch.object(nats_api.LLMModel.objects, "get", side_effect=lambda **kw: _fake_get(name=kw.get("name")))
-    mocker.patch.object(nats_api.RerankProvider.objects, "get", side_effect=lambda **kw: _fake_get(name=kw.get("name")))
-    mocker.patch.object(nats_api.EmbedProvider.objects, "get", side_effect=lambda **kw: _fake_get(name=kw.get("name")))
-    mocker.patch.object(nats_api.OCRProvider.objects, "get", side_effect=lambda **kw: _fake_get(name=kw.get("name")))
-
     result = nats_api.get_guest_provider(group_id=1)
+    for provider in (llm, rerank, embed1, embed2, paddle, azure, olm):
+        provider.refresh_from_db()
+
     assert result["result"] is True
     assert 1 in llm.team
     assert 1 in rerank.team
     assert 1 in embed1.team
+    assert 1 in embed2.team
     assert 1 in paddle.team
+    assert 1 in azure.team
+    assert 1 in olm.team
 
 
 @pytest.mark.django_db(transaction=True)
