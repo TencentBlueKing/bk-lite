@@ -175,9 +175,9 @@ class CollectTypeViewSet(ModelViewSet):
         primary_keys = []
         primary_key_field = model._meta.pk
         for item in instance_permissions:
-            if not isinstance(item, dict) or item.get("id") is None:
+            if not isinstance(item, dict) or "id" not in item:
                 continue
-            permission_id = item["id"]
+            permission_id = str(item["id"])
             try:
                 primary_key = primary_key_field.to_python(permission_id)
             except (TypeError, ValueError, ValidationError):
