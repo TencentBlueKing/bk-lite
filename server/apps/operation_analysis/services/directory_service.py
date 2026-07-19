@@ -122,7 +122,7 @@ class DictDirectoryService:
             return {"count": 0, "items": []}
 
         result = []
-        queryset = model_class.objects.all()
+        queryset = model_class.objects.select_related("directory")
         filter_queryset = GroupPermissionMixin.apply_group_filter(queryset, group_id)
         queryset_count = filter_queryset.count()
         instances = filter_queryset[(page - 1) * page_size : page * page_size]
