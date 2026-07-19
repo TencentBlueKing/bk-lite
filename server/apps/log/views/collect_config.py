@@ -1,13 +1,13 @@
 import toml
 import yaml
-from django.db.models import Q
+from django.core.exceptions import ValidationError
+from django.db.models import Count, Q
 from rest_framework.decorators import action
 from rest_framework.viewsets import ModelViewSet, ViewSet
 
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.permission_utils import (
     get_permissions_rules,
-    check_instance_permission,
     get_instance_permissions,
     get_instance_permission_map,
     get_permission_rules,
@@ -90,6 +90,101 @@ class CollectTypeViewSet(ModelViewSet):
             request.query_params.get("scope")
             == CollectTypeViewSet.LOG_GROUP_CREATE_SCOPE
         )
+
+    @staticmethod
+    def _get_accessible_count_map(
+        model,
+        organization_relation,
+        permissions,
+        current_teams,
+        collect_type_ids,
+    ):
+        """Count accessible objects without materializing every object and organization."""
+        collect_type_ids = list(collect_type_ids)
+        if not collect_type_ids:
+            return {}
+
+        permissions = permissions if isinstance(permissions, dict) else {}
+        organization_lookup = f"{organization_relation}__organization__in"
+        permission_scope = Q(pk__in=[])
+
+        all_permission = permissions.get("all") or {}
+        if isinstance(all_permission, dict) and all_permission.get("team"):
+            permission_scope |= Q(
+                **{
+                    organization_lookup: CollectTypeViewSet._matching_team_ids(
+                        all_permission["team"],
+                        nested_ids=True,
+                    )
+                }
+            )
+
+        for collect_type_id in collect_type_ids:
+            collect_type_permission = permissions.get(str(collect_type_id))
+            object_scope = Q(pk__in=[])
+
+            if collect_type_permission and isinstance(collect_type_permission, dict):
+                instance_ids = CollectTypeViewSet._matching_primary_keys(
+                    model,
+                    collect_type_permission.get("instance", []),
+                )
+                if instance_ids:
+                    object_scope |= Q(pk__in=instance_ids)
+
+                team_ids = CollectTypeViewSet._matching_team_ids(
+                    collect_type_permission.get("team", []),
+                    nested_ids=True,
+                )
+            else:
+                # Preserve check_instance_permission's fallback for object types
+                # without an explicit permission rule.
+                team_ids = CollectTypeViewSet._matching_team_ids(current_teams)
+
+            if team_ids:
+                object_scope |= Q(**{organization_lookup: team_ids})
+
+            permission_scope |= Q(collect_type_id=collect_type_id) & object_scope
+
+        counts = (
+            model.objects.filter(collect_type_id__in=collect_type_ids)
+            .filter(permission_scope)
+            .values("collect_type_id")
+            .annotate(count=Count("id", distinct=True))
+        )
+        return {item["collect_type_id"]: item["count"] for item in counts}
+
+    @staticmethod
+    def _matching_team_ids(values, nested_ids=False):
+        """Keep the integer IDs that can intersect model-side organization IDs."""
+        if not isinstance(values, (list, tuple, set)):
+            return []
+        result = []
+        for value in values:
+            if nested_ids and isinstance(value, dict):
+                value = value.get("id")
+            if isinstance(value, int):
+                result.append(value)
+        return result
+
+    @staticmethod
+    def _matching_primary_keys(model, instance_permissions):
+        """Mirror get_instance_permissions' string-normalized primary-key match."""
+        if not isinstance(instance_permissions, list):
+            return []
+
+        primary_keys = []
+        primary_key_field = model._meta.pk
+        for item in instance_permissions:
+            if not isinstance(item, dict) or item.get("id") is None:
+                continue
+            permission_id = item["id"]
+            try:
+                primary_key = primary_key_field.to_python(permission_id)
+            except (TypeError, ValueError, ValidationError):
+                continue
+            if str(primary_key) == str(permission_id):
+                primary_keys.append(primary_key)
+        return primary_keys
 
     def _get_log_group_create_attrs(self, request, query, start_time, end_time):
         try:
@@ -181,23 +276,13 @@ class CollectTypeViewSet(ModelViewSet):
                 policy_res.get("team", []),
             )
 
-            # 获取所有策略并进行权限检查
-            policy_objs = Policy.objects.select_related("collect_type").prefetch_related("policyorganization_set").all()
-            policy_map = {}
-
-            for policy_obj in policy_objs:
-                collect_type_id = str(policy_obj.collect_type_id)
-                policy_id = policy_obj.id
-                teams = {org.organization for org in policy_obj.policyorganization_set.all()}
-
-                # 使用通用权限检查函数
-                _check = check_instance_permission(collect_type_id, policy_id, teams, policy_permissions, cur_team)
-                if not _check:
-                    continue
-
-                if policy_obj.collect_type_id not in policy_map:
-                    policy_map[policy_obj.collect_type_id] = 0
-                policy_map[policy_obj.collect_type_id] += 1
+            policy_map = self._get_accessible_count_map(
+                Policy,
+                "policyorganization",
+                policy_permissions,
+                cur_team,
+                (result["id"] for result in results),
+            )
 
             # 添加策略数量到结果中
             for result in results:
@@ -220,23 +305,13 @@ class CollectTypeViewSet(ModelViewSet):
                 instance_res.get("team", []),
             )
 
-            # 获取所有采集实例并进行权限检查
-            instance_objs = CollectInstance.objects.select_related("collect_type").prefetch_related("collectinstanceorganization_set").all()
-            instance_map = {}
-
-            for instance_obj in instance_objs:
-                collect_type_id = str(instance_obj.collect_type_id)
-                instance_id = instance_obj.id
-                teams = {org.organization for org in instance_obj.collectinstanceorganization_set.all()}
-
-                # 使用通用权限检查函数
-                _check = check_instance_permission(collect_type_id, instance_id, teams, instance_permissions, cur_team)
-                if not _check:
-                    continue
-
-                if instance_obj.collect_type_id not in instance_map:
-                    instance_map[instance_obj.collect_type_id] = 0
-                instance_map[instance_obj.collect_type_id] += 1
+            instance_map = self._get_accessible_count_map(
+                CollectInstance,
+                "collectinstanceorganization",
+                instance_permissions,
+                cur_team,
+                (result["id"] for result in results),
+            )
 
             # 添加实例数量到结果中
             for result in results:
