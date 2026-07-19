@@ -503,3 +503,15 @@ def test_generate_rename_name_increments_on_repeated_conflict():
     svc = _service(_doc())
     new_name = svc._generate_rename_name("ns-a", NameSpace)
     assert new_name == "ns-a_copy_copy"
+
+
+@pytest.mark.django_db
+def test_generate_rename_name_uses_one_query_for_conflict_chain():
+    for name in ("ns-a_copy", "ns-a_copy_copy", "ns-a_copy_copy_copy"):
+        NameSpace.objects.create(name=name, domain="d", account="a", password="p")
+
+    with CaptureQueriesContext(connection) as queries:
+        new_name = _service(_doc())._generate_rename_name("ns-a", NameSpace)
+
+    assert new_name == "ns-a_copy_copy_copy_copy"
+    assert len(queries) == 1, queries.captured_queries
