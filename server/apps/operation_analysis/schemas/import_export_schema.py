@@ -7,6 +7,7 @@ YAML导入导出契约校验模块
 """
 
 import re
+from datetime import date
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -19,6 +20,46 @@ from apps.operation_analysis.constants.import_export import (
     ImportExportErrorCode,
     ObjectType,
 )
+
+
+DATE_RANGE_QUICK_TYPES = {
+    "today",
+    "yesterday",
+    "this_week",
+    "last_week",
+    "this_month",
+    "last_month",
+    "last_7_days",
+    "last_30_days",
+    "last_90_days",
+}
+DATE_ONLY_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _is_valid_date_only(value: Any) -> bool:
+    if not isinstance(value, str) or not DATE_ONLY_PATTERN.fullmatch(value):
+        return False
+    try:
+        return date.fromisoformat(value).isoformat() == value
+    except ValueError:
+        return False
+
+
+def _validate_date_range_value(value: Any) -> bool:
+    if value is None:
+        return True
+    if not isinstance(value, dict):
+        return False
+
+    range_type = value.get("rangeType")
+    if range_type in DATE_RANGE_QUICK_TYPES:
+        return set(value) == {"rangeType"}
+    if range_type != "custom" or set(value) != {"rangeType", "startDate", "endDate"}:
+        return False
+
+    start_date = value["startDate"]
+    end_date = value["endDate"]
+    return _is_valid_date_only(start_date) and _is_valid_date_only(end_date) and start_date <= end_date
 
 
 def _normalize_canvas_view_sets_for_storage(v, object_type):
@@ -345,6 +386,31 @@ class YAMLDocument(BaseModel):
         if "meta" not in values or values["meta"] is None:
             values["meta"] = {}
         return values
+
+
+def validate_date_range_params(doc: YAMLDocument) -> list[dict]:
+    """Validate persisted dateRange rules without resolving business dates."""
+    violations = []
+    for datasource_index, datasource in enumerate(doc.datasources):
+        params = datasource.params
+        if isinstance(params, list):
+            items = params
+        elif isinstance(params, dict):
+            items = [params] if params.get("type") == "dateRange" else list(params.values())
+        else:
+            continue
+
+        for param_index, param in enumerate(items):
+            if not isinstance(param, dict) or param.get("type") != "dateRange":
+                continue
+            if not _validate_date_range_value(param.get("value")):
+                violations.append(
+                    {
+                        "path": f"datasources[{datasource_index}].params[{param_index}].value",
+                        "message": "dateRange value must be null or a canonical persisted date-range rule",
+                    }
+                )
+    return violations
 
 
 # 非法DB ID引用检测正则：字段名以id或ids结尾

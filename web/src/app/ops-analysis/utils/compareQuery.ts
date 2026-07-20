@@ -3,6 +3,7 @@ import type { ValueConfig, FilterBindings, UnifiedFilterDefinition, FilterValue 
 import type { DatasourceItem, ParamItem } from '@/app/ops-analysis/types/dataSource';
 import { buildWidgetRequestParams } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { getValueByPath } from '@/app/ops-analysis/utils/objectPath';
+import type { DateRangeResolutionContext } from '@/app/ops-analysis/utils/dateRange';
 
 type RequestParams = Record<string, any>;
 
@@ -21,6 +22,7 @@ interface BuildRequestParamsInput {
   unifiedFilterValues?: Record<string, FilterValue>;
   filterBindings?: FilterBindings;
   filterDefinitions?: UnifiedFilterDefinition[];
+  resolutionContext?: DateRangeResolutionContext;
 }
 
 interface FetchCompareDataInput extends BuildRequestParamsInput {
@@ -75,6 +77,7 @@ export const buildCompareRequestParams = ({
   unifiedFilterValues,
   filterBindings,
   filterDefinitions,
+  resolutionContext,
 }: BuildRequestParamsInput): { currentParams: RequestParams; baselineParams: RequestParams | null } => {
   const currentParams = buildWidgetRequestParams({
     config,
@@ -83,6 +86,7 @@ export const buildCompareRequestParams = ({
     unifiedFilterValues,
     filterBindings,
     filterDefinitions,
+    resolutionContext,
   });
 
   if (!config?.compare) {

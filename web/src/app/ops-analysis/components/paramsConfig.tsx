@@ -13,6 +13,8 @@ import type {
 import CompactEmptyState from '@/app/ops-analysis/components/compactEmptyState';
 import { ParamInputControl } from '@/app/ops-analysis/components/paramInputControl';
 import { normalizeInputConfig } from '@/app/ops-analysis/utils/paramInputConfigUtils';
+import { DEFAULT_DATE_RANGE_VALUE } from '@/app/ops-analysis/types/dateRange';
+import DateRangeSelector from './dateRangeSelector';
 import {
   getTimeSelectorDefaultValue,
   getTimeSelectorKey,
@@ -110,6 +112,8 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
       switch (type) {
         case 'timeRange':
           return <FormTimeSelector disabled={isDisabled} />;
+        case 'dateRange':
+          return <DateRangeSelector disabled={isDisabled} allowClear className="w-full" />;
         case 'date':
           return (
             <DatePicker
@@ -168,6 +172,8 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
         return value ?? 0;
       case 'timeRange':
         return value ?? 10080;
+      case 'dateRange':
+        return value === undefined ? { ...DEFAULT_DATE_RANGE_VALUE } : value;
       case 'date':
         if (value && (typeof value === 'string' || typeof value === 'number')) {
           return dayjs(value);

@@ -25,6 +25,27 @@ The first release does not add or extend:
 - URL/shared-link parameters;
 - enterprise-specific quick ranges.
 
+## Parameter type registration
+
+The first release adds the exact parameter type identifier:
+
+```ts
+type: "dateRange"
+```
+
+For supported NATS data-source parameter configuration, `dateRange` participates in the same parameter-type selection mechanism as the existing types. The selectable type list becomes:
+
+```text
+string
+number
+boolean
+date
+timeRange
+dateRange
+```
+
+Selecting `dateRange` activates its configuration, persistence, edit-echo, selector, validation, and request-resolution paths. It is not a runtime-only type. Parameter-type lists outside the first-release scope are not expanded automatically.
+
 ## Date semantics
 
 `dateRange` represents natural dates and never time instants. Its resolved request value is an inclusive, ordered pair of `YYYY-MM-DD` strings:
@@ -38,6 +59,24 @@ Both endpoints are included. The frontend does not append start-of-day, end-of-d
 The generic selector allows same-day ranges, future dates, and arbitrary span lengths. It validates only date format and `startDate <= endDate`. Data-source-specific restrictions belong to separate business validation.
 
 ## Quick ranges
+
+The canonical quick-rule discriminator is a closed string union:
+
+```ts
+type DateRangeType =
+  | "today"
+  | "yesterday"
+  | "this_week"
+  | "last_week"
+  | "this_month"
+  | "last_month"
+  | "last_7_days"
+  | "last_30_days"
+  | "last_90_days"
+  | "custom";
+```
+
+`DateRangeValue.rangeType` must use `DateRangeType`. UI options, persisted values, validation, edit echo, and request-time resolution use these exact identifiers; aliases and spelling variants are invalid.
 
 Supported quick rules are:
 
@@ -83,7 +122,7 @@ Custom persisted value:
 }
 ```
 
-Optional empty value:
+Empty value:
 
 ```json
 null
@@ -97,13 +136,13 @@ Resolved runtime value:
 
 The persisted field must never alternate between a rule object and a resolved array. Dayjs values, JavaScript `Date`, timestamps, and ISO datetime strings must not cross the selector boundary or be persisted.
 
-## Defaults, required values, and clearing
+## Defaults and clearing
 
-- A required `dateRange` defaults to `{ "rangeType": "last_7_days" }`.
-- An optional `dateRange` may be `null`; a null optional value is omitted from the request.
-- Explicitly clearing a required value restores `last_7_days`.
-- Explicitly clearing an optional value produces `null`.
-- Switching another parameter type to `dateRange` discards the incompatible old value and applies the required/optional initialization above.
+- `dateRange` is an optional parameter type with no mandatory state, field, configuration switch, or validation dependency.
+- A newly initialized `dateRange` defaults to `{ "rangeType": "last_7_days" }`. This is the type's own initial value, not a mandatory-value fallback.
+- A user may explicitly clear the selector. Clearing emits and persists `null`, meaning unconfigured, explicitly cleared, or currently without an effective date range.
+- A `null` effective value is omitted from request parameters. Request construction does not replace it with `last_7_days`.
+- Switching another parameter type to `dateRange` discards the incompatible old value and initializes `last_7_days`.
 - Switching `dateRange` to another type discards the rule object and uses the target type's existing initialization behavior.
 - No conversion between `timeRange` and `dateRange` is attempted.
 
@@ -111,12 +150,13 @@ The persisted field must never alternate between a rule object and a resolved ar
 
 `DateRangeSelector` is a dedicated control and does not reuse `TimeSelector`.
 
+- When initialized without an existing persisted value, it displays and emits the `last_7_days` default rule.
 - Selecting a quick item immediately emits its rule object.
 - Selecting custom opens the date-range panel without changing the current business value.
 - A one-sided custom selection remains internal UI state and is not emitted or persisted.
 - Completing both dates emits one valid custom rule object.
 - Cancelling or closing an incomplete custom selection preserves the value that existed before custom was opened.
-- Only an explicit clear action applies the required/optional clearing rules.
+- Only an explicit clear action emits `null`; opening, cancelling, or closing an incomplete custom selection does not clear the current value.
 
 The selector may use Dayjs internally to drive Ant Design controls, but its external API is `DateRangeValue | null`.
 
@@ -143,10 +183,9 @@ The validator rejects:
 
 Handling by stage:
 
-- configuration save and import precheck reject invalid values with field-level errors;
+- configuration save and import precheck accept `null` but reject invalid non-null values with field-level errors;
 - edit echo preserves and displays invalid persisted values rather than silently replacing them;
-- runtime blocks a required parameter's component request and reports a configuration error;
-- runtime omits an invalid optional parameter and reports a configuration error.
+- runtime omits the invalid parameter from the request and reports a configuration error without blocking unrelated parameters or silently applying a default.
 
 Invalid persisted data is not silently converted to `last_7_days`. Explicit clearing and invalid-data recovery are separate behaviors.
 
@@ -168,15 +207,16 @@ DateRangeValue | null
         v
 validateDateRangeValue
         |
-        v
-resolveDateRange(value, referenceNow, timezone)
+        +---- null or invalid ----> omit request parameter
         |
-        v
-ResolvedDateRange
-        |
-        +----> request parameters
-        |
-        +----> request signature/cache key
+        +---- valid rule --------> resolveDateRange(value, referenceNow, timezone)
+                                        |
+                                        v
+                                ResolvedDateRange
+                                        |
+                                        +----> request parameters
+                                        |
+                                        +----> request signature/cache key
 ```
 
 One request build resolves a rule once and shares the resulting tuple between request parameters and request-signature construction. This prevents midnight races where the request and signature represent different dates.
@@ -198,7 +238,7 @@ fixed
 
 Even a fixed quick rule is resolved again for every request; fixed means user read-only, not calendar-static.
 
-When a unified filter bound to a required `dateRange` is cleared, request construction falls back to the data-source parameter's valid default rule, then to `last_7_days` if that default is invalid. Clearing a bound optional `dateRange` omits the request parameter.
+Within the mutable parameter chain, the existing precedence remains unified-filter override, then component parameter value, then data-source default. Precedence selects the effective value; it does not add a mandatory-value fallback. If the selected effective value is `null`, request construction omits the parameter instead of falling through to a lower-priority value or synthesizing `last_7_days`.
 
 ## Unified-filter integration
 
@@ -249,20 +289,20 @@ Use fixed reference instants and explicit timezones to cover today, yesterday, M
 
 ### Validation
 
-Cover every legal quick rule, valid custom and same-day ranges, future dates, null optional values, invalid formats, ISO strings, timestamps, incomplete custom values, reversed ranges, invalid calendar dates, unknown rules, and conflicting fields.
+Cover every legal quick rule, valid custom and same-day ranges, future dates, `null`, invalid formats, ISO strings, timestamps, incomplete custom values, reversed ranges, invalid calendar dates, unknown rules, and conflicting fields.
 
 ### Configuration and selector behavior
 
-Cover required and optional initialization, quick and custom save/echo, type switching, incomplete-custom cancellation, explicit clearing, invalid-value display, and fixed read-only behavior.
+Cover `last_7_days` initialization, quick and custom save/echo, type switching, incomplete-custom cancellation, explicit clearing to `null`, invalid-value display, and fixed read-only behavior.
 
 ### Unified filters
 
-Cover exact-type matching, binding cleanup after type changes, required and optional clearing behavior, and definition restoration across Dashboard, Screen, and Topology.
+Cover exact-type matching, binding cleanup after type changes, clearing to an effective `null` without lower-priority fallback, and definition restoration across Dashboard, Screen, and Topology.
 
 ### Request construction
 
-Cover fixed, params, and filter paths; request-time resolution; date-only arrays; shared request/signature resolution; cross-midnight signature changes; invalid required and optional values; and regression coverage proving `timeRange` behavior is unchanged.
+Cover fixed, params, and filter paths; request-time resolution; date-only arrays; omission of `null` and invalid values; shared request/signature resolution; cross-midnight signature changes; and regression coverage proving `timeRange` behavior is unchanged.
 
 ## Non-goals
 
-This change does not normalize or refactor the existing `timeRange` mixed model. It does not add backend date parsing, business-date-to-datetime conversion, generic date limits, report scheduling, new REST query serialization, or enterprise-only presets.
+This change does not normalize or refactor the existing `timeRange` mixed model. It does not complete or modify the existing parameter mandatory-state capability. It does not add backend date parsing, business-date-to-datetime conversion, generic date limits, report scheduling, new REST query serialization, or enterprise-only presets.

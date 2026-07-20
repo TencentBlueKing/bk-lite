@@ -1,3 +1,5 @@
+import type { DateRangeValue } from '@/app/ops-analysis/types/dateRange';
+
 export type ChartType =
   | 'line'
   | 'bar'
@@ -124,7 +126,7 @@ export type InputControlConfig =
 export interface ParamItem {
   id?: string;
   name: string;
-  value: string | number | boolean | [number, number] | null;
+  value: string | number | boolean | [number, number] | DateRangeValue | null;
   alias_name: string;
   type?: string;
   filterType?: DataSourceParamFilterType;

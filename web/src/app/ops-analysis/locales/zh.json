@@ -177,11 +177,28 @@
     "tls": "TLS",
     "tlsDisabled": "未启用"
   },
+  "dateRange": {
+    "today": "今天",
+    "yesterday": "昨天",
+    "this_week": "本周",
+    "last_week": "上周",
+    "this_month": "本月",
+    "last_month": "上月",
+    "last_7_days": "最近7天",
+    "last_30_days": "最近30天",
+    "last_90_days": "最近90天",
+    "custom": "自定义",
+    "placeholder": "请选择日期范围",
+    "startDate": "开始日期",
+    "endDate": "结束日期",
+    "invalid": "日期范围无效"
+  },
   "dataSource": {
     "duplicateParamNames": "参数名重复：",
     "addParam": "添加参数",
     "paramTypes": {
       "timeRange": "时间范围",
+      "dateRange": "日期范围",
       "number": "数字",
       "boolean": "布尔",
       "date": "日期",
@@ -532,6 +549,7 @@
     "selectDashboardFirst": "请先选择一个仪表盘",
     "fetchDataFieldsFailed": "获取数据字段失败",
     "timeRange": "时间范围",
+    "dateRange": "日期范围",
     "noData": "暂无数据",
     "dataSourceAttr": "数据源属性",
     "dataSource": "数据源",
