@@ -207,7 +207,7 @@ const meta = {
   parameters: { layout: 'fullscreen' },
   decorators: [
     (Story) => (
-      <div className="min-h-screen bg-[#f4f7ff] p-4 lg:p-6">
+      <div className="min-h-screen bg-[var(--color-background-body)] p-4 lg:p-6">
         <Story />
       </div>
     ),

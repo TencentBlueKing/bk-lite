@@ -28,24 +28,6 @@ const markdownHtml = (body: string) => ({ __html: DOMPurify.sanitize(markdown.re
 const MARKDOWN_CLASS =
   'break-words text-sm leading-7 text-[var(--color-text-2)] [&_h1]:text-base [&_h2]:text-[15px] [&_h3]:text-sm [&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-medium [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_code]:rounded [&_code]:bg-[var(--color-primary-bg-active)] [&_code]:px-1';
 
-const DECISION_THEME = {
-  '--decision-canvas': '#f4f7ff',
-  '--decision-list-bg': '#fbfcff',
-  '--decision-current-bg': '#fffdf7',
-  '--decision-current-border': '#f0dfb7',
-  '--decision-current-accent': '#e4a53d',
-  '--decision-incoming-bg': '#fafaff',
-  '--decision-incoming-border': '#dfe2ff',
-  '--decision-incoming-accent': '#6963ee',
-  '--decision-accent': '#5146e5',
-  '--decision-accent-soft': '#f2f3ff',
-  '--decision-selected-bg': '#edf3ff',
-  '--decision-ink': '#14213d',
-  '--decision-text': '#34415e',
-  '--decision-muted': '#73809f',
-  '--decision-border': '#e3e9f5',
-} as React.CSSProperties;
-
 const splitSnapshotBody = (body: string) => {
   const lines = body.split('\n');
   const differenceIndex = lines.findLastIndex((line) => /^\s*[-*+]\s+/.test(line));
@@ -105,9 +87,9 @@ const SnapshotCard = ({
     className="min-w-0 overflow-hidden rounded-[14px] border"
     style={{
       borderTopWidth: 3,
-      borderColor: incoming ? 'var(--decision-incoming-border)' : 'var(--decision-current-border)',
-      borderTopColor: incoming ? 'var(--decision-incoming-accent)' : 'var(--decision-current-accent)',
-      background: incoming ? 'var(--decision-incoming-bg)' : 'var(--decision-current-bg)',
+      borderColor: 'var(--color-border-1)',
+      borderTopColor: incoming ? 'var(--color-primary)' : 'var(--color-text-3)',
+      background: 'var(--color-bg)',
     }}
   >
     <div className="flex min-h-16 items-start justify-between gap-3 border-b border-[var(--color-border-1)] px-4 py-3">
@@ -123,8 +105,8 @@ const SnapshotCard = ({
           className="m-0 shrink-0 rounded-md"
           style={
             incoming
-              ? { color: 'var(--decision-accent)', background: '#f0f1ff' }
-              : { color: '#9a6708', background: '#fff8e6' }
+              ? { color: 'var(--color-primary)', background: 'var(--color-primary-bg-active)' }
+              : { color: 'var(--color-text-2)', background: 'var(--color-fill-2)' }
           }
         >
           {snapshot.versionLabel}
@@ -139,8 +121,8 @@ const SnapshotCard = ({
             className="max-w-full truncate rounded-full px-2.5 py-1"
             style={
               incoming
-                ? { background: '#eef0ff', color: '#5960bd' }
-                : { background: '#fff5d9', color: '#8f6b25' }
+                ? { background: 'var(--color-primary-bg-active)', color: 'var(--color-primary)' }
+                : { background: 'var(--color-fill-2)', color: 'var(--color-text-2)' }
             }
             title={snapshot.sourceLabel}
           >
@@ -162,11 +144,11 @@ const SnapshotCard = ({
         <div
           className="mt-3 flex items-start gap-3 rounded-[9px] px-3 py-2.5 text-sm leading-6"
           style={{
-            background: incoming ? '#ecfaf2' : '#fff3ef',
-            color: 'var(--decision-text)',
+            background: 'var(--color-fill-1)',
+            color: 'var(--color-text-2)',
           }}
         >
-          <span className="font-bold" style={{ color: incoming ? '#22a563' : '#d34c3f' }}>
+          <span className="font-bold" style={{ color: incoming ? 'var(--color-success)' : 'var(--color-fail)' }}>
             {incoming ? '+' : '−'}
           </span>
           <span>{difference}</span>
@@ -189,7 +171,7 @@ const SnapshotCard = ({
 };
 
 const ComparisonConnector = () => (
-  <div className="hidden h-10 w-10 self-center items-center justify-center rounded-full border border-[var(--decision-incoming-border)] bg-[var(--decision-accent-soft)] text-[var(--decision-accent)] xl:flex">
+  <div className="hidden h-10 w-10 self-center items-center justify-center rounded-full border border-[var(--color-border-2)] bg-[var(--color-primary-bg-active)] text-[var(--color-primary)] xl:flex">
     <SwapOutlined aria-hidden="true" />
   </div>
 );
@@ -411,18 +393,15 @@ const WikiDecisionCenter: React.FC<WikiDecisionCenterProps> = ({
   );
 
   return (
-    <main
-      className="flex min-h-[700px] flex-col overflow-hidden rounded-2xl border bg-white shadow-[0_10px_30px_rgba(68,88,145,0.08)]"
-      style={{ ...DECISION_THEME, borderColor: 'var(--decision-border)' }}
-    >
-      <header className="flex min-h-[76px] flex-wrap items-center justify-between gap-4 border-b border-[var(--decision-border)] px-5 py-3">
+    <main className="flex min-h-[700px] flex-col overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg)]">
+      <header className="flex min-h-[76px] flex-wrap items-center justify-between gap-4 border-b border-[var(--color-border)] px-5 py-3">
         <div>
           <div className="flex items-center gap-2">
             <h2 className="m-0 text-xl font-bold leading-6 text-[var(--color-text-1)]">
               {view === 'pending' ? t('wiki.decisionCenterTitle') : t('wiki.decisionRecordTitle')}
             </h2>
             {currentCount > 0 && (
-              <span className="inline-flex h-[22px] min-w-[22px] items-center justify-center rounded-md bg-[var(--decision-accent-soft)] px-1.5 text-xs font-bold tabular-nums text-[var(--decision-accent)]">
+              <span className="inline-flex h-[22px] min-w-[22px] items-center justify-center rounded-md bg-[var(--color-primary-bg-active)] px-1.5 text-xs font-bold tabular-nums text-[var(--color-primary)]">
                 {view === 'pending' ? pendingCount : processedCount}
               </span>
             )}
@@ -437,7 +416,7 @@ const WikiDecisionCenter: React.FC<WikiDecisionCenterProps> = ({
       </header>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[330px_minmax(0,1fr)]">
-        <aside className="flex min-h-0 flex-col border-b border-[var(--decision-border)] bg-[var(--decision-list-bg)] p-3.5 lg:border-b-0 lg:border-r">
+        <aside className="flex min-h-0 flex-col border-b border-[var(--color-border)] bg-[var(--color-fill-1)] p-3.5 lg:border-b-0 lg:border-r">
           <div className="flex items-center justify-between px-1 pb-3 pt-0.5">
             <span className="text-[13px] font-bold text-[var(--color-text-1)]">
               {view === 'pending' ? t('wiki.decisionListTitlePending') : t('wiki.decisionListTitleProcessed')}
@@ -462,8 +441,8 @@ const WikiDecisionCenter: React.FC<WikiDecisionCenterProps> = ({
                     onClick={() => onSelect?.(item)}
                     className={`w-full rounded-xl border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] ${
                       active
-                        ? 'border-[#cbd8ff] bg-[var(--decision-selected-bg)] shadow-[0_8px_22px_rgba(83,105,180,0.10)]'
-                        : 'border-[var(--decision-border)] bg-white hover:border-[#cbd8ff]'
+                        ? 'border-[var(--color-primary)] bg-[var(--color-primary-bg-active)]'
+                        : 'border-[var(--color-border)] bg-[var(--color-bg)] hover:border-[var(--color-border-3)]'
                     }`}
                   >
                     <div className="mb-2 flex items-center justify-between gap-3">
@@ -537,14 +516,14 @@ const WikiDecisionCenter: React.FC<WikiDecisionCenterProps> = ({
                   </p>
                 </div>
 
-                <div className="grid grid-cols-1 gap-px overflow-hidden rounded-xl border border-[var(--decision-border)] bg-[var(--decision-border)] md:grid-cols-2 xl:grid-cols-4">
+                <div className="grid grid-cols-1 gap-px overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-border)] md:grid-cols-2 xl:grid-cols-4">
                   {[
                     { label: t('wiki.decisionWhyNeeded'), value: model.reason || (model.kind === 'knowledge_conflict' ? t('wiki.decisionReasonConflictFallback') : t('wiki.decisionReasonIdentityFallback')), labelColor: 'var(--color-primary)' },
                     { label: t('wiki.decisionTriggerSource'), value: model.triggerSource || t('wiki.decisionSourceUnknown'), labelColor: 'var(--color-primary)' },
                     { label: t('wiki.decisionImpactScope'), value: model.impactScope || (model.kind === 'knowledge_conflict' ? t('wiki.decisionImpactConflictFallback') : t('wiki.decisionImpactIdentityFallback')), labelColor: 'var(--color-primary)' },
                     { label: t('wiki.decisionRecoverability'), value: model.recoverability || (model.kind === 'knowledge_conflict' ? t('wiki.decisionRecoveryConflictFallback') : t('wiki.decisionRecoveryIdentityFallback')), labelColor: 'var(--color-success)' },
                   ].map(({ label, value, labelColor }) => (
-                    <div key={label} className="min-w-0 bg-[#fbfcff] px-4 py-3.5">
+                    <div key={label} className="min-w-0 bg-[var(--color-fill-1)] px-4 py-3.5">
                       <div className="mb-1 text-xs font-medium" style={{ color: labelColor }}>{label}</div>
                       <div className="truncate text-sm font-semibold text-[var(--color-text-1)]" title={value}>{value}</div>
                     </div>
