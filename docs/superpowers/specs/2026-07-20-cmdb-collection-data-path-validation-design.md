@@ -86,7 +86,15 @@ Stargazer → NATS → Telegraf → VictoriaMetrics → CMDB → FalkorDB
 
 ### 5.1 真相源
 
-生产插件注册中心是对象覆盖的唯一真相源。测试启动时动态取得生产启用对象集合，并与显式维护的验证清单进行双向比较：
+生产插件注册中心是对象覆盖的唯一真相源。覆盖单位不是单一 `supported_model_id`，而是三元组：
+
+```text
+(task_type, supported_model_id, emitted_model_id)
+```
+
+测试从每个生产插件的 `metric_names`、`field_mapping`、`field_mappings`、`related_field_mappings` 及同类声明中展开全部 `emitted_model_id`。云、VMware、Host 等一个任务产生多个模型时，每个产出模型都必须独立进入验证矩阵；只有同一 fixture 和 Golden 确实覆盖全部产出模型时，才允许共享测试用例。
+
+测试启动时动态取得上述生产启用三元组集合，并与显式维护的验证清单进行双向比较：
 
 - 注册中心新增对象但验证清单未登记：失败；
 - 验证清单登记对象但注册中心不存在或已停用：失败；
@@ -142,6 +150,9 @@ Stargazer → NATS → Telegraf → VictoriaMetrics → CMDB → FalkorDB
 | `03_line_protocol.txt` | `influxdb_client.Point` 生成的期望 Line Protocol 语义 |
 | `04_vm_response.json` | 与真实 VM 查询结果结构一致的 Lane B 输入 |
 | `05_expected_cmdb.json` | 独立编写的最终模型实例、字段和关联 Golden |
+| `schemas/source.schema.json` | 插件结果或 SDK/API 原始响应契约 |
+| `schemas/vm.schema.json` | VM vector 查询响应契约 |
+| `schemas/cmdb.schema.json` | 最终模型实例及关联契约 |
 
 动态时间戳不做脆弱的整行文本比较，而是解析后校验精度、范围和传播关系。所有 fixture 在提交前执行凭据、Token、密钥和真实环境标识扫描。
 
@@ -272,7 +283,7 @@ Lane A 运行真实生产函数，测试边界停在 NATS 发布调用之前。
 
 仅在以下条件全部满足后允许创建 PR：
 
-- 生产注册中心对象与验证矩阵双向一致，覆盖率为 100%；
+- 生产注册中心展开的 `(task_type, supported_model_id, emitted_model_id)` 与验证矩阵双向一致，覆盖率为 100%；
 - 每个生产对象同时通过 Lane A 和 Lane B；
 - 生产对象没有无理由 `skip` 或 `xfail`；
 - 真实环境 fixture 已脱敏，云 fixture 的官方来源和 API/SDK 版本完整；
