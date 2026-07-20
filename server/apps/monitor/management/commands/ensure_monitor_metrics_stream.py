@@ -1,10 +1,11 @@
 """声明监控指标的 JetStream 流。"""
 
+import asyncio
 import os
 
 from django.core.management.base import BaseCommand, CommandError
 
-from nats_client.clients import ensure_stream_sync
+from nats_client.clients import ensure_stream_sync, get_nc_client
 
 
 MONITOR_METRICS_STREAM_NAME = "BK_MONITOR_METRICS"
@@ -25,6 +26,20 @@ def _positive_int_from_env(name: str, default: int) -> int:
     return parsed
 
 
+def _find_existing_stream_name() -> str | None:
+    async def find_stream_name() -> str | None:
+        try:
+            nc = await get_nc_client()
+            try:
+                return await nc.jetstream_manager().find_stream_name_by_subject(MONITOR_METRICS_SUBJECTS[0])
+            finally:
+                await nc.close()
+        except Exception:
+            return None
+
+    return asyncio.run(find_stream_name())
+
+
 class Command(BaseCommand):
     help = "幂等创建或更新监控指标 JetStream 流"
 
@@ -35,6 +50,7 @@ class Command(BaseCommand):
         max_bytes = _positive_int_from_env(
             "MONITOR_METRICS_STREAM_MAX_BYTES", MONITOR_METRICS_MAX_BYTES
         )
+        stream_name = MONITOR_METRICS_STREAM_NAME
         try:
             ensure_stream_sync(
                 MONITOR_METRICS_STREAM_NAME,
@@ -43,12 +59,14 @@ class Command(BaseCommand):
                 max_bytes,
             )
         except Exception as error:
-            raise CommandError(
-                "无法声明监控指标 JetStream 流；请确认 NATS 已启用 JetStream，"
-                "并检查 NATS 连通性与 MONITOR_METRICS_STREAM_MAX_BYTES 容量配置。"
-            ) from error
+            stream_name = _find_existing_stream_name()
+            if stream_name is None:
+                raise CommandError(
+                    "无法声明监控指标 JetStream 流；请确认 NATS 已启用 JetStream，"
+                    "并检查 NATS 连通性与 MONITOR_METRICS_STREAM_MAX_BYTES 容量配置。"
+                ) from error
         self.stdout.write(
             self.style.SUCCESS(
-                f"监控指标 JetStream 流已就绪: {MONITOR_METRICS_STREAM_NAME} ({', '.join(MONITOR_METRICS_SUBJECTS)})"
+                f"监控指标 JetStream 流已就绪: {stream_name} ({', '.join(MONITOR_METRICS_SUBJECTS)})"
             )
         )
