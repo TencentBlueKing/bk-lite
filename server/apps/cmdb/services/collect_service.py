@@ -30,6 +30,7 @@ from apps.cmdb.tasks.celery_tasks import sync_collect_task
 
 class CollectModelService(object):
     TASK = "apps.cmdb.tasks.celery_tasks.sync_collect_task"
+    FIRST_COLLECTION_TASK = "apps.cmdb.tasks.celery_tasks.trigger_first_collection"
     NAME = "sync_collect_task"
     # 周期任务达到该分钟阈值时，触发一次“下发后 4 分钟补跑”
     DELAY_SYNC_THRESHOLD_MINUTES = 15
@@ -362,6 +363,58 @@ class CollectModelService(object):
             data["credential"] = old_credential
 
     @classmethod
+    def schedule_first_collection_if_needed(
+        cls,
+        instance,
+        old_instance=None,
+        reason="create",
+    ):
+        from apps.cmdb.constants import constants as cmdb_constants
+        from apps.cmdb.services.first_collection_policy import FirstCollectionPolicy
+
+        if not cmdb_constants.CMDB_FIRST_COLLECTION_ENABLED:
+            return False
+        if not FirstCollectionPolicy.is_eligible(instance):
+            return False
+
+        if old_instance is not None:
+            changed_fields = FirstCollectionPolicy.changed_fields(old_instance, instance)
+            if not changed_fields:
+                return False
+            reason = f"update:{','.join(changed_fields)}"
+
+        fingerprint = FirstCollectionPolicy.fingerprint(instance)
+
+        def dispatch_first_collection(
+            task_id=instance.id,
+            expected=fingerprint,
+            trigger_reason=reason,
+        ):
+            try:
+                current_app.send_task(
+                    cls.FIRST_COLLECTION_TASK,
+                    args=[task_id, expected, trigger_reason],
+                )
+            except Exception as exc:
+                logger.error(
+                    "[FirstCollection] 事务后触发投递失败 "
+                    "task_id=%s fingerprint=%s reason=%s error_type=%s",
+                    task_id,
+                    expected[:12],
+                    trigger_reason,
+                    type(exc).__name__,
+                )
+
+        transaction.on_commit(dispatch_first_collection)
+        logger.info(
+            "[FirstCollection] 已注册事务后触发 task_id=%s fingerprint=%s reason=%s",
+            instance.id,
+            fingerprint[:12],
+            reason,
+        )
+        return True
+
+    @classmethod
     def schedule_delayed_sync_if_needed(cls, instance, is_interval):
         # 仅对开启周期巡检的任务生效
         if not is_interval:
@@ -456,6 +509,7 @@ class CollectModelService(object):
                 if is_interval:
                     task_name = f"{cls.NAME}_{instance.id}"
                     CeleryUtils.create_or_update_periodic_task(name=task_name, crontab=scan_cycle, args=[instance.id], task=cls.TASK)
+                    cls.schedule_first_collection_if_needed(instance=instance, reason="create")
                     # create 场景满足阈值则注册一次延迟补跑
                     cls.schedule_delayed_sync_if_needed(instance=instance, is_interval=is_interval)
 
@@ -518,9 +572,6 @@ class CollectModelService(object):
                 # 更新定时任务
                 if is_interval:
                     CeleryUtils.create_or_update_periodic_task(name=task_name, crontab=scan_cycle, args=[instance.id], task=cls.TASK)
-                    if cls.is_schedule_config_changed(old_instance=old_instance, new_instance=instance):
-                        # update 场景仅在调度参数变更时注册延迟补跑
-                        cls.schedule_delayed_sync_if_needed(instance=instance, is_interval=is_interval)
                 else:
                     CeleryUtils.delete_periodic_task(task_name)
 
@@ -528,6 +579,21 @@ class CollectModelService(object):
                 if cls.should_sync_node_params(instance):
                     cls.delete_butch_node_params(old_instance)
                     cls.push_butch_node_params(instance)
+
+                schedule_changed = cls.is_schedule_config_changed(
+                    old_instance=old_instance,
+                    new_instance=instance,
+                )
+                first_collection_scheduled = cls.schedule_first_collection_if_needed(
+                    instance=instance,
+                    old_instance=old_instance,
+                    reason="update",
+                )
+                if is_interval and (schedule_changed or first_collection_scheduled):
+                    cls.schedule_delayed_sync_if_needed(
+                        instance=instance,
+                        is_interval=is_interval,
+                    )
             except Exception as e:
                 # 外部操作失败，记录错误并抛出异常，触发事务回滚
                 logger.error(
