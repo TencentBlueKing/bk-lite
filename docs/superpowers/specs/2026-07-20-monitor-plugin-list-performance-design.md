@@ -60,9 +60,9 @@ if parent_objects.exists():
 
 仅在 `MonitorPluginViewSet.list()` 的过滤后 queryset 上预取 `monitor_object`。这样不会让详情、创建、更新或删除路径承担额外查询。
 
-`MonitorPluginSerializer.get_parent_monitor_object()` 改为遍历 `obj.monitor_object.all()` 得到的关联对象，并返回所有父对象中最小的 ID。列表路径会直接命中预取缓存；serializer 在其他路径单独使用时最多执行一次关系查询。
+`MonitorPluginSerializer.get_parent_monitor_object()` 改为遍历 `obj.monitor_object.all()` 得到的关联对象，并返回按 `MonitorObject.Meta.ordering` 排序后的第一个父对象 ID。列表路径会直接命中预取缓存；serializer 在其他路径单独使用时最多执行一次关系查询。
 
-选择最小 ID用于严格保持原有语义：Django 对无显式排序 queryset 调用 `first()` 时会按主键升序选择第一条记录。
+必须保留模型默认的 `type__order, order, id` 排序，不能简化成选择最小 ID。原实现的关联 queryset 继承 `MonitorObject.Meta.ordering`，因此 `.first()` 会返回该排序下的第一条记录；普通 `prefetch_related("monitor_object")` 同样按该默认顺序填充关系缓存。
 
 ### 不采用：轻量列表 serializer
 
@@ -80,7 +80,7 @@ if parent_objects.exists():
 2. 现有 `MonitorPluginFilter` 原样执行请求参数过滤。
 3. 过滤后的 queryset 通过 `prefetch_related("monitor_object")` 批量加载插件及其监控对象关系。
 4. DRF 序列化 `monitor_object` 时读取预取缓存。
-5. `parent_monitor_object` 在同一批关联对象中筛选 `parent_id is None` 的对象，并返回最小 ID；没有父对象时仍返回 `None`。
+5. `parent_monitor_object` 按预取列表的模型默认顺序筛选第一个 `parent_id is None` 的对象并返回其 ID；没有父对象时仍返回 `None`。
 6. ViewSet 原样执行国际化名称、描述和 `is_custom` 补充逻辑。
 7. `WebUtils.response_success()` 原样返回结果。
 
@@ -91,7 +91,7 @@ if parent_objects.exists():
 - 空参数、缺少参数和 `monitor_object_id=""` 的结果一致。
 - 指定对象时只返回与该对象绑定的插件。
 - 一个插件绑定多个对象时，`monitor_object` ID 集合与原实现一致。
-- 同时存在多个父对象时，`parent_monitor_object` 仍取最小主键。
+- 同时存在多个父对象时，`parent_monitor_object` 仍取 `MonitorObject.Meta.ordering`（`type__order, order, id`）下的第一条记录。
 - 仅绑定子对象或没有父对象时，`parent_monitor_object` 仍为 `None`。
 - 返回插件的默认顺序不因预取发生变化。
 - 中文、英文 locale 下的展示名称和描述保持原样。
@@ -113,7 +113,7 @@ if parent_objects.exists():
 
 - 单父对象绑定；
 - 父对象与子对象同时绑定；
-- 多父对象绑定且创建顺序与主键顺序不同；
+- 多父对象绑定且 `order` 顺序与主键顺序相反；
 - 仅子对象绑定；
 - 内置插件与自定义 `api`、`pull`、`snmp` 插件。
 
@@ -147,7 +147,7 @@ cd server
 
 | 风险 | 控制措施 |
 |---|---|
-| Python 侧选择父对象与原 `first()` 顺序不一致 | 显式返回父对象最小主键，并用多父对象测试锁定 |
+| Python 侧选择父对象与原 `first()` 顺序不一致 | 复用预取列表的 `MonitorObject.Meta.ordering`，并用 `order` 与主键相反的多父对象测试锁定 |
 | 预取意外影响其他 ViewSet action | 仅在 `list()` 的过滤后 queryset 上增加预取 |
 | 测试只验证查询数而遗漏功能回归 | 同时增加完整响应等价测试 |
 | 固定 SQL 数断言受认证公共查询干扰 | 使用强制认证或在 serializer/list 核心边界捕获查询 |
