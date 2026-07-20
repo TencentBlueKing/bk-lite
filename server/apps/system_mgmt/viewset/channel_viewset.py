@@ -11,7 +11,13 @@ from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.viewset_utils import GenericViewSetFun
 from apps.system_mgmt.models import Channel, ChannelChoices, User
 from apps.system_mgmt.serializers import ChannelSerializer
-from apps.system_mgmt.utils.channel_utils import send_by_dingtalk_bot, send_by_feishu_bot, send_by_wecom_bot, send_email
+from apps.system_mgmt.utils.channel_utils import (
+    send_by_custom_webhook,
+    send_by_dingtalk_bot,
+    send_by_feishu_bot,
+    send_by_wecom_bot,
+    send_email,
+)
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
@@ -285,6 +291,7 @@ class ChannelViewSet(viewsets.ModelViewSet, GenericViewSetFun):
             ChannelChoices.ENTERPRISE_WECHAT_BOT,
             ChannelChoices.FEISHU_BOT,
             ChannelChoices.DINGTALK_BOT,
+            ChannelChoices.CUSTOM_WEBHOOK,
         }
         if channel_type not in supported_types:
             return Response({"result": False, "message": "Unsupported channel type"}, status=400)
@@ -303,6 +310,8 @@ class ChannelViewSet(viewsets.ModelViewSet, GenericViewSetFun):
             result = send_by_wecom_bot(test_channel, content, [receiver_name])
         elif channel_type == ChannelChoices.FEISHU_BOT:
             result = send_by_feishu_bot(test_channel, title, content, [receiver_name])
+        elif channel_type == ChannelChoices.CUSTOM_WEBHOOK:
+            result = send_by_custom_webhook(test_channel, content, [receiver_name])
         else:
             result = send_by_dingtalk_bot(test_channel, title, content, [receiver_name])
 
