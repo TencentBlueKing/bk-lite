@@ -1,7 +1,6 @@
 """MonitorPluginViewSet 视图规格测试。"""
 
 import pytest
-
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 
@@ -30,7 +29,10 @@ class TestPluginList:
     def test_list_marks_custom_and_display(self, api_client):
         MonitorPlugin.objects.create(name="builtinp", template_type="builtin", description="d1")
         MonitorPlugin.objects.create(
-            name="apip", template_type="api", display_name="API插件", description="d2",
+            name="apip",
+            template_type="api",
+            display_name="API插件",
+            description="d2",
         )
         resp = api_client.get(f"{BASE}/api/monitor_plugin/")
         assert resp.status_code == 200
@@ -80,9 +82,7 @@ class TestPluginList:
             plugin.monitor_object.add(parent)
 
         with CaptureQueriesContext(connection) as queries:
-            response = api_client.get(
-                f"{BASE}/api/monitor_plugin/?monitor_object_id=&name=PVPerfPlugin"
-            )
+            response = api_client.get(f"{BASE}/api/monitor_plugin/?monitor_object_id=&name=PVPerfPlugin")
 
         assert response.status_code == 200
         assert len(response.json()["data"]) == 4
@@ -99,17 +99,16 @@ class TestGetAccessGuide:
     def test_api_template_returns_document(self, api_client, mocker):
         obj = MonitorObject.objects.create(name="AGObj", level="base", instance_id_keys=["instance_id"])
         plugin = MonitorPlugin.objects.create(
-            name="apip2", template_type="api", template_id="t-api", display_name="API2",
+            name="apip2",
+            template_type="api",
+            template_id="t-api",
+            display_name="API2",
         )
         plugin.monitor_object.add(obj)
-        mocker.patch(
-            "apps.monitor.services.template_access_guide.NodeMgmt"
-        ).return_value.get_cloud_region_envconfig.return_value = {
+        mocker.patch("apps.monitor.services.template_access_guide.NodeMgmt").return_value.get_cloud_region_envconfig.return_value = {
             "NODE_SERVER_URL": "https://node.example.com:8080"
         }
-        resp = api_client.get(
-            f"{BASE}/api/monitor_plugin/{plugin.id}/access_guide/?organization_id=1&cloud_region_id=2"
-        )
+        resp = api_client.get(f"{BASE}/api/monitor_plugin/{plugin.id}/access_guide/?organization_id=1&cloud_region_id=2")
         assert resp.status_code == 200
         data = resp.json()["data"]
         assert data["template_id"] == "t-api"

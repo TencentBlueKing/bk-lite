@@ -1,7 +1,6 @@
 """MonitorPluginSerializer 规格测试。"""
 
 import pytest
-
 from rest_framework import serializers
 
 from apps.monitor.models import MonitorPlugin
@@ -36,10 +35,14 @@ class TestValidate:
         obj2 = MonitorObject.objects.create(name="PSObj2", level="base")
         s = MonitorPluginSerializer()
         with pytest.raises(serializers.ValidationError):
-            s.validate({
-                "template_type": "api", "template_id": "t1", "display_name": "n",
-                "monitor_object": [obj1, obj2],
-            })
+            s.validate(
+                {
+                    "template_type": "api",
+                    "template_id": "t1",
+                    "display_name": "n",
+                    "monitor_object": [obj1, obj2],
+                }
+            )
 
     def test_builtin_passes_without_template_id(self):
         s = MonitorPluginSerializer()
@@ -106,10 +109,15 @@ class TestBuildDefaultStatusQuery:
 class TestCreate:
     def test_api_create_sets_collect_fields(self, mocker):
         obj = MonitorObject.objects.create(name="PSCreateObj", level="base")
-        s = MonitorPluginSerializer(data={
-            "name": "apiplugin", "template_type": "api", "template_id": "api-1",
-            "display_name": "API插件", "monitor_object": [obj.id],
-        })
+        s = MonitorPluginSerializer(
+            data={
+                "name": "apiplugin",
+                "template_type": "api",
+                "template_id": "api-1",
+                "display_name": "API插件",
+                "monitor_object": [obj.id],
+            }
+        )
         assert s.is_valid(), s.errors
         plugin = s.save()
         assert plugin.collect_type == "push_api"

@@ -1,6 +1,6 @@
+from django.db import ProgrammingError
 from rest_framework import viewsets
 from rest_framework.decorators import action
-from django.db import ProgrammingError
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -56,9 +56,9 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
             if result.get("template_type") in {"api", "pull"}:
                 result["display_name"] = result.get("display_name") or result["name"]
                 # 优先 i18n 翻译,fallback DB 字段(避免强制覆盖)
-                result["display_description"] = lan.get(
-                    f"{LanguageConstants.MONITOR_OBJECT_PLUGIN}.{result['name']}.desc"
-                ) or result["description"] or result["name"]
+                result["display_description"] = (
+                    lan.get(f"{LanguageConstants.MONITOR_OBJECT_PLUGIN}.{result['name']}.desc") or result["description"] or result["name"]
+                )
             else:
                 plugin_key = f"{LanguageConstants.MONITOR_OBJECT_PLUGIN}.{result['name']}"
                 # 始终优先使用 i18n 翻译,DB 字段只作为最终 fallback

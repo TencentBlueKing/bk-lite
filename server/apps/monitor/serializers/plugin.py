@@ -1,5 +1,5 @@
-from rest_framework import serializers
 from django.db import transaction
+from rest_framework import serializers
 
 from apps.monitor.models import MonitorPlugin
 from apps.monitor.services.custom_pull_plugin import CustomPullPluginService
@@ -64,11 +64,7 @@ class MonitorPluginSerializer(serializers.ModelSerializer):
     def get_parent_monitor_object(self, obj):
         """获取 MonitorObject 默认排序下的第一个父监控对象 ID。"""
         return next(
-            (
-                monitor_object.id
-                for monitor_object in obj.monitor_object.all()
-                if monitor_object.parent_id is None
-            ),
+            (monitor_object.id for monitor_object in obj.monitor_object.all() if monitor_object.parent_id is None),
             None,
         )
 
