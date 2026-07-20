@@ -1,8 +1,17 @@
 import { tauriFetch, isTauriApp } from '../utils/tauriFetch';
 import { tauriApiStream } from '../utils/tauriApiProxy';
 import { getTokenSync, clearAuthData } from '../utils/secureStorage';
+import { withBasePath } from '../utils/basePath';
+import { clearCurrentTeamCookie } from '../utils/teamCookie';
 
-const TARGET_SERVER = (process.env.NEXT_PUBLIC_API_URL || 'https://bklite.canway.net') + '/api/v1';
+const API_PROXY_PREFIX = '/api/proxy';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '') || '';
+const TARGET_SERVER = `${API_BASE_URL}${API_PROXY_PREFIX}`;
+
+function buildTargetUrl(endpoint: string): string {
+  const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  return `${TARGET_SERVER}${normalizedEndpoint}`;
+}
 
 /**
  * 处理 401 未授权错误
@@ -13,10 +22,11 @@ async function handle401Error() {
 
   // 清空存储的认证信息
   await clearAuthData();
+  clearCurrentTeamCookie();
 
   // 跳转到登录页
   if (typeof window !== 'undefined') {
-    window.location.href = '/login';
+    window.location.href = withBasePath('/login');
   }
 }
 
@@ -24,9 +34,7 @@ export async function apiRequest<T = any>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const targetPath = endpoint.replace('/api/proxy', '');
-
-  const targetUrl = `${TARGET_SERVER}${targetPath}`;
+  const targetUrl = buildTargetUrl(endpoint);
   // 从安全存储的内存缓存获取 token（同步方法）
   const token = getTokenSync();
 
@@ -175,8 +183,7 @@ export async function* apiStream<T = any>(
   data?: any,
   options?: RequestInit
 ): AsyncGenerator<T, void, unknown> {
-  const targetPath = endpoint.replace('/api/proxy', '');
-  const targetUrl = `${TARGET_SERVER}${targetPath}`;
+  const targetUrl = buildTargetUrl(endpoint);
   const token = getTokenSync();
 
   const config: RequestInit = {
