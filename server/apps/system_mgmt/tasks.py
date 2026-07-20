@@ -366,7 +366,7 @@ def send_initial_password_email(self, user_id, run_id):
     """
     from apps.system_mgmt.models import User as UserModel
     from apps.system_mgmt.models import UserSyncRun as UserSyncRunModel
-    from apps.system_mgmt.nats.email_status import complete_password_email_delivery
+    from apps.system_mgmt.services.password_init_dispatch import complete_password_email_delivery
     from apps.system_mgmt.services.password_init_email import send_email_via_runtime
     from apps.system_mgmt.utils.password_vault import decrypt_from_vault
 
@@ -405,7 +405,7 @@ def send_initial_password_email(self, user_id, run_id):
 
 def _retry_or_complete_failure(task, run_id, username, reason, exc):
     """重试未耗尽时让 Retry 冒泡；耗尽后才完成失败状态。"""
-    from apps.system_mgmt.nats.email_status import complete_password_email_delivery
+    from apps.system_mgmt.services.password_init_dispatch import complete_password_email_delivery
 
     try:
         task.retry(exc=exc)
@@ -418,7 +418,7 @@ def send_initial_password_email_batch(run_id: int):
     """领取一批待投递用户，在单条 SMTP 会话中发送个性化初始密码邮件。"""
     from apps.system_mgmt.models import User as UserModel
     from apps.system_mgmt.models import UserSyncRun as UserSyncRunModel
-    from apps.system_mgmt.nats.email_status import claim_password_email_batch, complete_password_email_batch
+    from apps.system_mgmt.services.password_init_dispatch import claim_password_email_batch, complete_password_email_batch
     from apps.system_mgmt.services.password_init_email import send_initial_password_emails
     from apps.system_mgmt.utils.password_vault import decrypt_from_vault
 
@@ -459,7 +459,7 @@ def recover_stuck_initial_password_email_batches():
     from django.utils import timezone
 
     from apps.system_mgmt.models import UserSyncRun as UserSyncRunModel
-    from apps.system_mgmt.nats.email_status import recover_expired_password_email_batch
+    from apps.system_mgmt.services.password_init_dispatch import recover_expired_password_email_batch
 
     recovered_runs = 0
     for run_id in UserSyncRunModel.objects.filter(started_at__gte=timezone.now() - timedelta(days=1)).values_list("id", flat=True):

@@ -1,7 +1,4 @@
-"""用户同步-初始密码邮件发送状态回写。
-
-worker 端(可能跨进程)调此 handler 增量更新 UserSyncRun.payload.email_status。
-"""
+"""用户同步初始密码邮件的批次投递状态服务。"""
 from datetime import timedelta
 
 from django.db import transaction
@@ -111,13 +108,7 @@ def recover_expired_password_email_batch(run_id: int) -> bool:
 
 
 def complete_password_email_delivery(run_id: int, username: str, ok: bool, reason: str = "") -> dict:
-    """
-    增量更新 UserSyncRun.payload.email_status。
-
-    ok=True  → sent += 1
-    ok=False → failed += 1, failed_usernames += [username], failed_reasons[username] = reason
-    当 (sent + failed) >= total 时 completed=True。
-    """
+    """回写单封邮件结果并清理对应加密密码。"""
     try:
         with transaction.atomic():
             run = UserSyncRun.objects.select_for_update().filter(id=run_id).first()
@@ -168,8 +159,3 @@ def complete_password_email_delivery(run_id: int, username: str, ok: bool, reaso
             exc_info=True,
         )
         return {"result": False, "message": str(e)}
-
-
-def update_email_status_via_rpc(run_id: int, username: str, ok: bool, reason: str = "") -> dict:
-    """兼容旧调用，统一走原子完成操作。"""
-    return complete_password_email_delivery(run_id, username, ok, reason)

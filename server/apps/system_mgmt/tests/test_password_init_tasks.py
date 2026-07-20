@@ -143,7 +143,7 @@ def test_channel_failure_marks_failed_and_pops_vault(user_with_vault):
 @pytest.mark.django_db
 def test_complete_delivery_updates_status_and_vault_together(user_with_vault):
     """邮件结果必须在同一事务内累计状态并移除 vault，避免并发任务互相覆盖。"""
-    from apps.system_mgmt.nats.email_status import complete_password_email_delivery
+    from apps.system_mgmt.services.password_init_dispatch import complete_password_email_delivery
 
     user, run = user_with_vault
     result = complete_password_email_delivery(run.id, user.username, ok=True)
@@ -235,7 +235,7 @@ def test_batch_task_sends_claimed_users_and_updates_status_together(user_with_va
 @pytest.mark.django_db
 def test_claim_batch_limits_pending_users_to_200(source):
     """领取操作最多取 200 个用户，剩余用户仍保持待投递。"""
-    from apps.system_mgmt.nats.email_status import claim_password_email_batch
+    from apps.system_mgmt.services.password_init_dispatch import claim_password_email_batch
 
     pending = [{"user_id": index, "username": f"user-{index}"} for index in range(201)]
     run = UserSyncRun.objects.create(
@@ -259,7 +259,7 @@ def test_recover_expired_batch_lease_returns_users_to_pending(source):
 
     from django.utils import timezone
 
-    from apps.system_mgmt.nats.email_status import recover_expired_password_email_batch
+    from apps.system_mgmt.services.password_init_dispatch import recover_expired_password_email_batch
 
     run = UserSyncRun.objects.create(
         source=source,
