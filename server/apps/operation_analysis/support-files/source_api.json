@@ -447,7 +447,7 @@
       {"name": "department", "type": "string", "value": "", "alias_name": "使用部门", "filterType": "filter"},
       {"name": "applying_user", "type": "string", "value": "", "alias_name": "申请人", "filterType": "filter"},
       {"name": "inst_type", "type": "string", "value": "", "alias_name": "对象类型", "filterType": "filter"},
-      {"name": "billing_period", "type": "timeRange", "value": "", "alias_name": "计费日期", "filterType": "filter"}
+      {"name": "billing_period", "type": "dateRange", "value": "", "alias_name": "计费日期", "filterType": "filter"}
     ],
     "field_schema": []
 },
@@ -465,7 +465,7 @@
       {"name": "department", "type": "string", "value": "", "alias_name": "使用部门", "filterType": "filter"},
       {"name": "applying_user", "type": "string", "value": "", "alias_name": "申请人", "filterType": "filter"},
       {"name": "inst_type", "type": "string", "value": "", "alias_name": "对象类型", "filterType": "filter"},
-      {"name": "billing_period", "type": "timeRange", "value": "", "alias_name": "计费日期", "filterType": "filter"},
+      {"name": "billing_period", "type": "dateRange", "value": "", "alias_name": "计费日期", "filterType": "filter"},
       {"name": "group_by", "type": "string", "value": "instance_type", "alias_name": "排行主体", "filterType": "params"}
     ],
     "field_schema": [
@@ -489,7 +489,7 @@
         {"name": "department", "type": "string", "value": "", "alias_name": "使用部门", "filterType": "filter"},
         {"name": "applying_user", "type": "string", "value": "", "alias_name": "申请人", "filterType": "filter"},
         {"name": "inst_type", "type": "string", "value": "", "alias_name": "对象类型", "filterType": "filter"},
-        {"name": "billing_period", "type": "timeRange", "value": "", "alias_name": "计费日期", "filterType": "filter"},
+        {"name": "billing_period", "type": "dateRange", "value": "", "alias_name": "计费日期", "filterType": "filter"},
         {"name": "page", "type": "number", "value": 1, "alias_name": "页码", "filterType": "params"},
         {"name": "page_size", "type": "number", "value": 20, "alias_name": "每页数量", "filterType": "params"}
     ],
