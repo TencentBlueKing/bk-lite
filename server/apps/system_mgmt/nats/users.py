@@ -128,7 +128,7 @@ def get_assignable_groups(actor_context):
     if not user_group_list:
         return {"result": True, "data": []}
 
-    groups = GroupUtils.get_group_with_descendants_filtered(user_group_list, group_list=user_group_list)
+    groups = GroupUtils.get_group_with_descendants(user_group_list)
     return {"result": True, "data": groups}
 
 

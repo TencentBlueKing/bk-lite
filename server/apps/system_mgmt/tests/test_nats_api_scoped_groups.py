@@ -1,5 +1,7 @@
 import types
 
+import pytest
+
 from apps.system_mgmt import nats_api
 from apps.system_mgmt.nats_api import get_assignable_groups, get_authorized_groups_scoped, get_group_users_scoped
 
@@ -111,12 +113,11 @@ def test_get_assignable_groups_uses_persisted_authorization_not_actor_group_list
     monkeypatch.setattr(nats_api.User, "objects", _UserManager())
     captured = {}
 
-    def fake_get_group_with_descendants_filtered(group_ids, group_list=None):
+    def fake_get_group_with_descendants(group_ids):
         captured["group_ids"] = group_ids
-        captured["group_list"] = group_list
         return [7, 8, 9]
 
-    monkeypatch.setattr(nats_api.GroupUtils, "get_group_with_descendants_filtered", fake_get_group_with_descendants_filtered)
+    monkeypatch.setattr(nats_api.GroupUtils, "get_group_with_descendants", fake_get_group_with_descendants)
 
     result = get_assignable_groups(
         {
@@ -128,7 +129,7 @@ def test_get_assignable_groups_uses_persisted_authorization_not_actor_group_list
     )
 
     assert result == {"result": True, "data": [7, 8, 9]}
-    assert captured == {"group_ids": [7, 8], "group_list": [7, 8]}
+    assert captured == {"group_ids": [7, 8]}
 
 
 def test_get_assignable_groups_returns_all_existing_groups_for_superuser(monkeypatch):
@@ -157,3 +158,23 @@ def test_get_assignable_groups_returns_all_existing_groups_for_superuser(monkeyp
     result = get_assignable_groups({"username": "admin", "domain": "domain.com", "is_superuser": True})
 
     assert result == {"result": True, "data": [8, 2]}
+
+
+@pytest.mark.django_db
+def test_get_assignable_groups_expands_persisted_root_to_unlisted_descendant():
+    from apps.system_mgmt.models import Group, User
+
+    root = Group.objects.create(name="assignable-root", parent_id=0)
+    child = Group.objects.create(name="assignable-child", parent_id=root.id)
+    User.objects.create(
+        username="assignable-actor",
+        password="x",
+        display_name="assignable actor",
+        email="assignable-actor@example.com",
+        domain="domain.com",
+        group_list=[root.id],
+    )
+
+    result = get_assignable_groups({"username": "assignable-actor", "domain": "domain.com"})
+
+    assert set(result["data"]) == {root.id, child.id}

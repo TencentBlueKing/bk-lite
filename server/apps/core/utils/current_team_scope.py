@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass
 
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -31,9 +32,24 @@ def _normalize_organization_ids(organization_ids):
         raise BaseAppException("organization_ids 参数非法")
 
     try:
-        return frozenset(int(organization_id) for organization_id in organization_ids)
+        organization_ids = list(organization_ids)
     except (TypeError, ValueError):
         raise BaseAppException("organization_ids 参数非法")
+
+    normalized_ids = set()
+    for organization_id in organization_ids:
+        if type(organization_id) is int and organization_id > 0:
+            normalized_ids.add(organization_id)
+            continue
+        if type(organization_id) is str and re.fullmatch(r"[1-9][0-9]*", organization_id):
+            normalized_ids.add(int(organization_id))
+            continue
+        raise BaseAppException("organization_ids 参数非法")
+
+    if not normalized_ids:
+        raise BaseAppException("organization_ids 参数不能为空")
+
+    return frozenset(normalized_ids)
 
 
 def _get_assignable_groups(actor_context):
@@ -54,8 +70,8 @@ def resolve_current_team_data_scope(request):
         raise BaseAppException("缺少 current_team")
 
     try:
-        current_team = int(current_team)
-    except (TypeError, ValueError):
+        current_team = next(iter(_normalize_organization_ids([current_team])))
+    except BaseAppException:
         raise BaseAppException("current_team 参数非法")
 
     actor_context = _get_actor_context(request)

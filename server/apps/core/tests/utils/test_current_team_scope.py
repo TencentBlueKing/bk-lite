@@ -79,6 +79,14 @@ def test_missing_current_team_fails_closed():
         resolve_current_team_data_scope(make_request(current_team=None))
 
 
+@pytest.mark.parametrize(("current_team", "authorized_ids"), [(0, [0]), (-1, [-1]), ("01", [1])])
+def test_current_team_scope_rejects_noncanonical_organization_id(monkeypatch, current_team, authorized_ids):
+    patch_scoped_groups(monkeypatch, authorized_ids)
+
+    with pytest.raises(BaseAppException, match="current_team"):
+        resolve_current_team_data_scope(make_request(current_team=current_team))
+
+
 def test_assignable_organizations_are_resolved_from_server_context(monkeypatch):
     request = make_request(current_team=1)
     patch_scoped_groups(monkeypatch, [1, 2, 3])
@@ -92,3 +100,31 @@ def test_validate_assignable_organizations_rejects_unassigned_request_id(monkeyp
 
     with pytest.raises(BaseAppException, match="organization"):
         validate_assignable_organizations(request, [1, 3])
+
+
+@pytest.mark.parametrize(
+    ("organization_ids", "assignable_ids"),
+    [
+        ([True], [1]),
+        ([1.0], [1]),
+        ([0], [0]),
+        ([-1], [-1]),
+        (["01"], [1]),
+        (["1.0"], [1]),
+    ],
+)
+def test_validate_assignable_organizations_rejects_noncanonical_ids(monkeypatch, organization_ids, assignable_ids):
+    request = make_request(current_team=1)
+    patch_scoped_groups(monkeypatch, assignable_ids)
+
+    with pytest.raises(BaseAppException, match="organization"):
+        validate_assignable_organizations(request, organization_ids)
+
+
+@pytest.mark.parametrize("organization_ids", [None, []])
+def test_validate_assignable_organizations_requires_at_least_one_id(monkeypatch, organization_ids):
+    request = make_request(current_team=1)
+    patch_scoped_groups(monkeypatch, [1])
+
+    with pytest.raises(BaseAppException, match="organization"):
+        validate_assignable_organizations(request, organization_ids)
