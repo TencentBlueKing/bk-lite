@@ -191,7 +191,7 @@ def _make_reset_caller(username: str):
     "stored_password",
     [PASSWORD_INIT_SENTINEL_MARK, "!UNSET_PASSWORD:some-other-value"],
 )
-def test_nats_reset_password_rejects_sentinel_password(sentinel_group, stored_password):
+def test_nats_reset_password_allows_sentinel_password(sentinel_group, stored_password):
     user = User.objects.create(
         username=f"sentinel-{stored_password[-1]}",
         display_name="Sentinel",
@@ -205,10 +205,10 @@ def test_nats_reset_password_rejects_sentinel_password(sentinel_group, stored_pa
     with patch("apps.system_mgmt.nats.login._verify_token", return_value=_make_reset_caller(user.username)):
         result = reset_pwd(user.username, user.domain, "NewP@ssw0rd!", caller_token="any-token")
 
-    assert result["result"] is False
-    assert "未设置本地密码" in result["message"]
+    assert result["result"] is True
     user.refresh_from_db()
-    assert user.password == stored_password
+    assert check_password("NewP@ssw0rd!", user.password)
+    assert user.temporary_pwd is False
 
 
 @pytest.mark.django_db
