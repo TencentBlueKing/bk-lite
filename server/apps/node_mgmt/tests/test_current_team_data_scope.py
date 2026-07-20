@@ -5,12 +5,17 @@ import pytest
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.core.utils import current_team_scope
+from apps.node_mgmt.models.action import CollectorActionTask, CollectorActionTaskNode
 from apps.node_mgmt.models.installer import CollectorTask, CollectorTaskNode, ControllerTask, ControllerTaskNode
-from apps.node_mgmt.models.sidecar import CloudRegion, Collector, CollectorConfiguration, Node, NodeOrganization
+from apps.node_mgmt.models.sidecar import CloudRegion, Collector, CollectorConfiguration, Node, NodeOrganization, SidecarApiToken
 from apps.node_mgmt.services import node as node_service
 from apps.node_mgmt.services.installer import InstallerService
 from apps.node_mgmt.utils import permission as node_permission
+from apps.node_mgmt.utils.task_result_schema import project_task_status_from_summary
+from apps.node_mgmt.utils.token_auth import generate_node_token
+from apps.node_mgmt.views import collector_configuration as collector_configuration_view
 from apps.node_mgmt.views import installer as installer_view
+from apps.node_mgmt.views import node as node_view
 
 
 class _ScopedSystemMgmt:
@@ -27,8 +32,8 @@ class _ScopedSystemMgmt:
         return {"result": True, "data": self.assignable_team_ids}
 
 
-def _request(data=None, *, permissions=()):
-    request = APIRequestFactory().post("/node-mgmt/test", data or {}, format="json")
+def _request(data=None, *, permissions=(), method="post"):
+    request = getattr(APIRequestFactory(), method)("/node-mgmt/test", data or {}, format="json")
     request.COOKIES["current_team"] = "1"
     request.COOKIES["include_children"] = "0"
     user = SimpleNamespace(
@@ -327,6 +332,82 @@ def test_shared_configuration_with_unassigned_node_is_not_mutable(monkeypatch):
     assert not writable.filter(id=shared_config.id).exists()
 
 
+@pytest.mark.django_db
+def test_shared_configuration_list_projects_nodes_to_current_team(monkeypatch):
+    region = _region("shared-configuration-list-projection")
+    current_node = _node(region, "shared-list-node-current", 1)
+    sibling_node = _node(region, "shared-list-node-sibling", 2)
+    collector = Collector.objects.create(
+        id="shared-list-collector",
+        name="shared-list-collector",
+        service_type="exec",
+        node_operating_system="linux",
+        executable_path="/bin/collector",
+        execute_parameters="",
+        created_by="tester",
+        updated_by="tester",
+    )
+    shared_config = CollectorConfiguration.objects.create(
+        id="shared-list-config",
+        name="shared-list-config",
+        collector=collector,
+        config_template="template",
+        cloud_region=region,
+        created_by="admin",
+        updated_by="admin",
+    )
+    shared_config.nodes.add(current_node, sibling_node)
+    for node in (current_node, sibling_node):
+        node.status = {"collectors": [{"configuration_id": [shared_config.id]}]}
+        node.save(update_fields=["status"])
+    _patch_broad_permission(monkeypatch)
+
+    response = collector_configuration_view.CollectorConfigurationViewSet.as_view({"get": "list"})(_request(method="get"))
+    items = response.data.get("items", []) if isinstance(response.data, dict) else response.data
+    serialized = next(item for item in items if item["id"] == shared_config.id)
+
+    assert response.status_code == 200
+    assert serialized["nodes"] == [current_node.id]
+    assert sibling_node.id not in serialized["nodes"]
+
+
+@pytest.mark.django_db
+def test_shared_configuration_retrieve_projects_nodes_to_current_team(monkeypatch):
+    region = _region("shared-configuration-detail-projection")
+    current_node = _node(region, "shared-detail-node-current", 1)
+    sibling_node = _node(region, "shared-detail-node-sibling", 2)
+    collector = Collector.objects.create(
+        id="shared-detail-collector",
+        name="shared-detail-collector",
+        service_type="exec",
+        node_operating_system="linux",
+        executable_path="/bin/collector",
+        execute_parameters="",
+        created_by="tester",
+        updated_by="tester",
+    )
+    shared_config = CollectorConfiguration.objects.create(
+        id="shared-detail-config",
+        name="shared-detail-config",
+        collector=collector,
+        config_template="template",
+        cloud_region=region,
+        created_by="admin",
+        updated_by="admin",
+    )
+    shared_config.nodes.add(current_node, sibling_node)
+    _patch_broad_permission(monkeypatch)
+
+    response = collector_configuration_view.CollectorConfigurationViewSet.as_view({"get": "retrieve"})(
+        _request(method="get"),
+        pk=shared_config.id,
+    )
+
+    assert response.status_code == 200
+    assert response.data["nodes"] == [current_node.id]
+    assert sibling_node.id not in response.data["nodes"]
+
+
 def test_superuser_target_organizations_must_be_assignable(monkeypatch):
     monkeypatch.setattr(current_team_scope, "SystemMgmt", _ScopedSystemMgmt)
 
@@ -463,7 +544,7 @@ def test_controller_manual_install_rejects_empty_organizations(monkeypatch):
         )
     )
 
-    assert response.status_code == 403
+    assert response.status_code == 400
 
 
 def test_get_install_command_rejects_unassignable_organization_before_token(
@@ -494,6 +575,241 @@ def test_get_install_command_rejects_unassignable_organization_before_token(
 
     assert response.status_code == 403
     assert generated == []
+
+
+def _installer_payload(action, organizations, *, node_id="strict-install-node"):
+    node = {
+        "ip": "10.0.6.1",
+        "node_id": node_id,
+        "node_name": node_id,
+        "os": "linux",
+        "cpu_architecture": "x86_64",
+        "organizations": organizations,
+        "port": 22,
+        "username": "root",
+    }
+    if action == "controller_install":
+        return {
+            "cloud_region_id": 1,
+            "work_node": "worker",
+            "package_id": 1,
+            "cpu_architecture": "x86_64",
+            "nodes": [node],
+        }
+    if action == "controller_manual_install":
+        return {
+            "cloud_region_id": 1,
+            "os": "linux",
+            "cpu_architecture": "x86_64",
+            "package_id": 1,
+            "nodes": [node],
+        }
+    return {
+        "ip": node["ip"],
+        "node_id": node["node_id"],
+        "node_name": node["node_name"],
+        "os": node["os"],
+        "cpu_architecture": node["cpu_architecture"],
+        "package_id": 1,
+        "cloud_region_id": 1,
+        "organizations": organizations,
+    }
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "action",
+    ["controller_install", "controller_manual_install", "get_install_command"],
+)
+@pytest.mark.parametrize(
+    "organizations",
+    [[True], [1.0], ["01"], [0], [-1], [""], []],
+)
+def test_installer_endpoints_reject_noncanonical_organizations_before_business_logic(
+    monkeypatch,
+    action,
+    organizations,
+):
+    monkeypatch.setattr(current_team_scope, "SystemMgmt", _ScopedSystemMgmt)
+    business_calls = []
+    monkeypatch.setattr(
+        installer_view.InstallerService,
+        "install_controller",
+        lambda *args, **kwargs: business_calls.append((args, kwargs)) or 1,
+    )
+    monkeypatch.setattr(
+        installer_view.InstallerService,
+        "get_install_command",
+        lambda *args, **kwargs: business_calls.append((args, kwargs)) or "command",
+    )
+    monkeypatch.setattr(installer_view.install_controller, "delay", lambda *args, **kwargs: None)
+    monkeypatch.setattr(installer_view.timeout_controller_install_task, "apply_async", lambda *args, **kwargs: None)
+
+    response = installer_view.InstallerViewSet.as_view({"post": action})(
+        _request(
+            _installer_payload(
+                action,
+                organizations,
+                node_id="" if action == "controller_install" else "strict-install-node",
+            ),
+            permissions=("cloud_region_node-Edit",),
+        )
+    )
+
+    assert response.status_code == 400
+    assert business_calls == []
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "action",
+    ["controller_install", "controller_manual_install", "get_install_command"],
+)
+def test_installer_endpoints_accept_canonical_numeric_string_organization(monkeypatch, action):
+    monkeypatch.setattr(current_team_scope, "SystemMgmt", _ScopedSystemMgmt)
+    business_calls = []
+    monkeypatch.setattr(
+        installer_view.InstallerService,
+        "install_controller",
+        lambda *args, **kwargs: business_calls.append((args, kwargs)) or 1,
+    )
+    monkeypatch.setattr(
+        installer_view.InstallerService,
+        "get_install_command",
+        lambda *args, **kwargs: business_calls.append((args, kwargs)) or "command",
+    )
+    monkeypatch.setattr(installer_view.install_controller, "delay", lambda *args, **kwargs: None)
+    monkeypatch.setattr(installer_view.timeout_controller_install_task, "apply_async", lambda *args, **kwargs: None)
+
+    response = installer_view.InstallerViewSet.as_view({"post": action})(
+        _request(
+            _installer_payload(
+                action,
+                ["1"],
+                node_id="" if action == "controller_install" else "strict-install-node",
+            ),
+            permissions=("cloud_region_node-Edit",),
+        )
+    )
+
+    assert response.status_code == 200
+    if action == "controller_manual_install":
+        assert _response_data(response)[0]["organizations"] == [1]
+    else:
+        assert business_calls
+
+
+def _patch_install_command_side_effect(monkeypatch, generated_tokens):
+    def fake_get_install_command(user, ip, node_id, *args, **kwargs):
+        generated_tokens.append(node_id)
+        generate_node_token(node_id, ip, user)
+        return "command"
+
+    monkeypatch.setattr(
+        installer_view.InstallerService,
+        "get_install_command",
+        fake_get_install_command,
+    )
+
+
+@pytest.mark.django_db
+def test_get_install_command_rejects_existing_sibling_node_before_token_side_effect(
+    monkeypatch,
+):
+    region = _region("install-token-sibling")
+    sibling_node = _node(region, "install-token-node-sibling", 2)
+    SidecarApiToken.objects.create(node_id=sibling_node.id, token="original-token")
+    _patch_broad_permission(monkeypatch)
+    generated_tokens = []
+    _patch_install_command_side_effect(monkeypatch, generated_tokens)
+
+    response = installer_view.InstallerViewSet.as_view({"post": "get_install_command"})(
+        _request(
+            _installer_payload("get_install_command", [1], node_id=sibling_node.id),
+            permissions=("cloud_region_node-Edit",),
+        )
+    )
+
+    assert response.status_code == 403
+    assert generated_tokens == []
+    assert SidecarApiToken.objects.get(node_id=sibling_node.id).token == "original-token"
+
+
+@pytest.mark.django_db
+def test_get_install_command_allows_existing_current_team_node(monkeypatch):
+    region = _region("install-token-current")
+    current_node = _node(region, "install-token-node-current", 1)
+    _patch_broad_permission(monkeypatch)
+    generated_tokens = []
+    _patch_install_command_side_effect(monkeypatch, generated_tokens)
+
+    response = installer_view.InstallerViewSet.as_view({"post": "get_install_command"})(
+        _request(
+            _installer_payload("get_install_command", [1], node_id=current_node.id),
+            permissions=("cloud_region_node-Edit",),
+        )
+    )
+
+    assert response.status_code == 200
+    assert generated_tokens == [current_node.id]
+    assert SidecarApiToken.objects.filter(node_id=current_node.id).exists()
+
+
+@pytest.mark.django_db
+def test_get_install_command_allows_new_node_id(monkeypatch):
+    _patch_broad_permission(monkeypatch)
+    generated_tokens = []
+    _patch_install_command_side_effect(monkeypatch, generated_tokens)
+
+    response = installer_view.InstallerViewSet.as_view({"post": "get_install_command"})(
+        _request(
+            _installer_payload("get_install_command", [1], node_id="install-token-node-new"),
+            permissions=("cloud_region_node-Edit",),
+        )
+    )
+
+    assert response.status_code == 200
+    assert generated_tokens == ["install-token-node-new"]
+    assert SidecarApiToken.objects.filter(node_id="install-token-node-new").exists()
+
+
+@pytest.mark.django_db
+def test_controller_install_allows_new_node_id_before_node_registration(monkeypatch):
+    _patch_broad_permission(monkeypatch)
+    installed = []
+    delayed = []
+    timeouts = []
+    monkeypatch.setattr(
+        installer_view.InstallerService,
+        "install_controller",
+        lambda *args, **kwargs: installed.append((args, kwargs)) or 1,
+    )
+    monkeypatch.setattr(
+        installer_view.install_controller,
+        "delay",
+        lambda *args, **kwargs: delayed.append((args, kwargs)),
+    )
+    monkeypatch.setattr(
+        installer_view.timeout_controller_install_task,
+        "apply_async",
+        lambda *args, **kwargs: timeouts.append((args, kwargs)),
+    )
+
+    response = installer_view.InstallerViewSet.as_view({"post": "controller_install"})(
+        _request(
+            _installer_payload(
+                "controller_install",
+                [1],
+                node_id="auto-install-node-new",
+            ),
+            permissions=("cloud_region_node-Edit",),
+        )
+    )
+
+    assert response.status_code == 200
+    assert installed
+    assert delayed == [((1,), {})]
+    assert len(timeouts) == 1
 
 
 @pytest.mark.django_db
@@ -529,6 +845,82 @@ def test_collector_task_summary_counts_only_current_team_nodes(monkeypatch):
     assert {item["node_id"] for item in data["items"]} == {current_node.id}
     assert data["summary"]["total"] == 1
     assert data["summary"]["success"] == 1
+
+
+@pytest.mark.django_db
+def test_collector_install_task_status_is_projected_from_current_team_nodes(monkeypatch):
+    region = _region("collector-install-status-projection")
+    current_node = _node(region, "collector-install-status-current", 1)
+    sibling_node = _node(region, "collector-install-status-sibling", 2)
+    task = CollectorTask.objects.create(
+        type="install",
+        status="error",
+        package_version_id=1,
+    )
+    CollectorTaskNode.objects.create(task=task, node=current_node, status="success", result={})
+    CollectorTaskNode.objects.create(task=task, node=sibling_node, status="error", result={})
+    _patch_broad_permission(monkeypatch)
+
+    response = installer_view.InstallerViewSet.as_view({"post": "collector_install_nodes"})(
+        _request(permissions=("cloud_region_node-OperateCollector",)),
+        task_id=str(task.id),
+    )
+    data = _response_data(response)
+
+    assert data["status"] == "finished"
+    assert data["summary"]["success"] == 1
+    assert data["summary"]["error"] == 0
+
+
+@pytest.mark.django_db
+def test_collector_action_task_status_is_projected_from_current_team_nodes(monkeypatch):
+    region = _region("collector-action-status-projection")
+    current_node = _node(region, "collector-action-status-current", 1)
+    sibling_node = _node(region, "collector-action-status-sibling", 2)
+    collector = Collector.objects.create(
+        id="collector-action-status",
+        name="collector-action-status",
+        service_type="exec",
+        node_operating_system="linux",
+        executable_path="/bin/collector",
+        execute_parameters="",
+        created_by="tester",
+        updated_by="tester",
+    )
+    task = CollectorActionTask.objects.create(
+        collector=collector,
+        cloud_region=region,
+        action="start",
+        status="error",
+        total_count=2,
+    )
+    CollectorActionTaskNode.objects.create(task=task, node=current_node, status="success", result={})
+    CollectorActionTaskNode.objects.create(task=task, node=sibling_node, status="error", result={})
+    _patch_broad_permission(monkeypatch)
+
+    response = node_view.NodeViewSet.as_view({"post": "collector_action_nodes"})(
+        _request(),
+        task_id=str(task.id),
+    )
+    data = _response_data(response)
+
+    assert data["status"] == "finished"
+    assert data["summary"]["success"] == 1
+    assert data["summary"]["error"] == 0
+
+
+@pytest.mark.parametrize(
+    ("summary", "expected"),
+    [
+        ({"total": 0}, "waiting"),
+        ({"total": 2, "waiting": 2}, "waiting"),
+        ({"total": 2, "waiting": 1, "success": 1}, "running"),
+        ({"total": 2, "running": 1, "error": 1}, "running"),
+        ({"total": 1, "success": 1}, "finished"),
+    ],
+)
+def test_project_task_status_uses_only_projected_summary(summary, expected):
+    assert project_task_status_from_summary(summary) == expected
 
 
 @pytest.mark.django_db

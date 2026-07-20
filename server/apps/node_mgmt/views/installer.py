@@ -8,7 +8,8 @@ from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.current_team_scope import resolve_current_team_data_scope, validate_assignable_organizations
 from apps.core.utils.web_utils import WebUtils
 from apps.node_mgmt.constants.installer import InstallerConstants
-from apps.node_mgmt.models.installer import CollectorTask, CollectorTaskNode
+from apps.node_mgmt.models.installer import CollectorTaskNode
+from apps.node_mgmt.models.sidecar import Node
 from apps.node_mgmt.serializers.installer import (
     ControllerInstallRequestSerializer,
     ControllerManualInstallRequestSerializer,
@@ -26,7 +27,7 @@ from apps.node_mgmt.tasks.installer import (
     uninstall_controller,
 )
 from apps.node_mgmt.utils.permission import authorize_node_ids, get_authorized_node_queryset
-from apps.node_mgmt.utils.task_result_schema import normalize_task_result_for_read
+from apps.node_mgmt.utils.task_result_schema import normalize_task_result_for_read, project_task_status_from_summary
 
 
 def _validate_install_target_organizations(request, nodes):
@@ -44,6 +45,18 @@ def _validate_install_target_organizations(request, nodes):
     return None
 
 
+def _authorize_existing_install_nodes(request, node_ids):
+    existing_node_ids = list(Node.objects.filter(id__in=node_ids).values_list("id", flat=True))
+    if not existing_node_ids:
+        return None
+    _, error_response = authorize_node_ids(
+        request,
+        existing_node_ids,
+        required_permission="Operate",
+    )
+    return error_response
+
+
 class InstallerViewSet(ViewSet):
     @action(detail=False, methods=["post"], url_path="controller/install")
     @HasPermission("cloud_region_node-Edit")
@@ -56,7 +69,7 @@ class InstallerViewSet(ViewSet):
             return organization_error
         node_ids = [node["node_id"] for node in data["nodes"] if node.get("node_id")]
         if node_ids:
-            _, error_response = authorize_node_ids(request, node_ids)
+            error_response = _authorize_existing_install_nodes(request, node_ids)
             if error_response:
                 return error_response
         task_id = InstallerService.install_controller(
@@ -240,13 +253,10 @@ class InstallerViewSet(ViewSet):
             "cancelled": summary_queryset.filter(result__overall_status="cancelled").count(),
         }
 
-        task_obj = CollectorTask.objects.filter(id=task_id).first()
-        task_status = task_obj.status if task_obj else "waiting"
-
         return WebUtils.response_success(
             {
                 "task_id": task_id,
-                "status": task_status,
+                "status": project_task_status_from_summary(summary),
                 "summary": summary,
                 "items": data,
                 "count": total,
@@ -265,6 +275,9 @@ class InstallerViewSet(ViewSet):
         organization_error = _validate_install_target_organizations(request, [data])
         if organization_error:
             return organization_error
+        node_error = _authorize_existing_install_nodes(request, [data["node_id"]])
+        if node_error:
+            return node_error
         data = InstallerService.get_install_command(
             request.user.username,
             data["ip"],
