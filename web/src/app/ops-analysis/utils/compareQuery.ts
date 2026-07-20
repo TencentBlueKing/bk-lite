@@ -52,12 +52,37 @@ const deriveBaselineTimeRange = (timeRange: [string, string]): [string, string] 
   ];
 };
 
-const getTimeRangeParamName = (params?: ValueConfig['dataSourceParams']): string | null => {
-  const timeRangeParams = (Array.isArray(params) ? params : []).filter((param) => param.type === 'timeRange');
-  if (timeRangeParams.length !== 1) {
+const deriveBaselineDateRange = (dateRange: [string, string]): [string, string] | null => {
+  const [start, end] = dateRange;
+  const startAt = dayjs(start, 'YYYY-MM-DD', true);
+  const endAt = dayjs(end, 'YYYY-MM-DD', true);
+  if (!startAt.isValid() || !endAt.isValid() || endAt.isBefore(startAt, 'day')) {
     return null;
   }
-  return timeRangeParams[0].name;
+
+  const duration = endAt.diff(startAt, 'day') + 1;
+  return [
+    startAt.subtract(duration, 'day').format('YYYY-MM-DD'),
+    startAt.subtract(1, 'day').format('YYYY-MM-DD'),
+  ];
+};
+
+const isDateRangeTuple = (value: unknown): value is [string, string] =>
+  Array.isArray(value)
+  && value.length === 2
+  && value.every((item) => typeof item === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(item));
+
+const getComparableRangeParam = (params?: ValueConfig['dataSourceParams']): { name: string; type: 'timeRange' | 'dateRange' } | null => {
+  const rangeParams = (Array.isArray(params) ? params : []).filter(
+    (param) => param.type === 'timeRange' || param.type === 'dateRange',
+  );
+  if (rangeParams.length !== 1) {
+    return null;
+  }
+  return {
+    name: rangeParams[0].name,
+    type: rangeParams[0].type as 'timeRange' | 'dateRange',
+  };
 };
 
 export const canEnableCompare = ({
@@ -67,7 +92,7 @@ export const canEnableCompare = ({
   const sourceParams = Array.isArray(config?.dataSourceParams) && config.dataSourceParams.length > 0
     ? config.dataSourceParams
     : dataSource?.params;
-  return getTimeRangeParamName(sourceParams) !== null;
+  return getComparableRangeParam(sourceParams) !== null;
 };
 
 export const buildCompareRequestParams = ({
@@ -96,18 +121,16 @@ export const buildCompareRequestParams = ({
   const sourceParams = Array.isArray(config?.dataSourceParams) && config.dataSourceParams.length > 0
     ? config.dataSourceParams
     : dataSource?.params;
-  const timeRangeParamName = getTimeRangeParamName(sourceParams);
-  if (!timeRangeParamName) {
+  const comparableRangeParam = getComparableRangeParam(sourceParams);
+  if (!comparableRangeParam) {
     return { currentParams, baselineParams: null };
   }
 
-  const rawTimeRange = currentParams[timeRangeParamName];
-  if (!isTimeRangeTuple(rawTimeRange)) {
-    return { currentParams, baselineParams: null };
-  }
-
-  const baselineTimeRange = deriveBaselineTimeRange(rawTimeRange);
-  if (!baselineTimeRange) {
+  const rawRange = currentParams[comparableRangeParam.name];
+  const baselineRange = comparableRangeParam.type === 'dateRange'
+    ? isDateRangeTuple(rawRange) ? deriveBaselineDateRange(rawRange) : null
+    : isTimeRangeTuple(rawRange) ? deriveBaselineTimeRange(rawRange) : null;
+  if (!baselineRange) {
     return { currentParams, baselineParams: null };
   }
 
@@ -115,7 +138,7 @@ export const buildCompareRequestParams = ({
     currentParams,
     baselineParams: {
       ...currentParams,
-      [timeRangeParamName]: baselineTimeRange,
+      [comparableRangeParam.name]: baselineRange,
     },
   };
 };

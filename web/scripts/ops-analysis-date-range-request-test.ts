@@ -7,7 +7,8 @@ import {
   formatTimeRange,
   processDataSourceParams,
 } from '../src/app/ops-analysis/utils/widgetDataTransform';
-import { buildCompareRequestParams } from '../src/app/ops-analysis/utils/compareQuery';
+import { buildCompareRequestParams, canEnableCompare } from '../src/app/ops-analysis/utils/compareQuery';
+import type { ParamItem } from '../src/app/ops-analysis/types/dataSource';
 
 const resolutionContext = {
   referenceNow: '2026-07-17T03:08:00.176Z',
@@ -17,7 +18,13 @@ const resolutionContext = {
 const dateRangeParam = (
   filterType: 'fixed' | 'filter' | 'params',
   value: unknown,
-) => ({ name: 'period', type: 'dateRange', filterType, value });
+): ParamItem => ({
+  name: 'period',
+  alias_name: 'Period',
+  type: 'dateRange' as const,
+  filterType,
+  value: value as ParamItem['value'],
+});
 
 assert.deepEqual(
   processDataSourceParams({
@@ -74,9 +81,11 @@ assert.deepEqual(
 const filterDefinition = {
   id: 'period__dateRange',
   key: 'period',
+  name: 'Period',
   type: 'dateRange' as const,
   label: 'Period',
   enabled: true,
+  order: 0,
   defaultValue: { rangeType: 'last_30_days' as const },
 };
 
@@ -190,6 +199,33 @@ assert.deepEqual(
     baselineParams: null,
   },
   'compare requests must resolve component dateRange values with the shared context exactly once',
+);
+
+assert.equal(
+  canEnableCompare({
+    config: { dataSourceParams: [dateRangeParam('params', { rangeType: 'last_7_days' })] },
+  }),
+  true,
+  'single-value compare is available for one dateRange parameter',
+);
+
+assert.deepEqual(
+  buildCompareRequestParams({
+    config: {
+      compare: true,
+      dataSourceParams: [dateRangeParam('params', {
+        rangeType: 'custom',
+        startDate: '2026-07-01',
+        endDate: '2026-07-17',
+      })],
+    },
+    resolutionContext,
+  }),
+  {
+    currentParams: { period: ['2026-07-01', '2026-07-17'] },
+    baselineParams: { period: ['2026-06-14', '2026-06-30'] },
+  },
+  'dateRange compare uses the previous adjacent equal-length date interval',
 );
 
 const absoluteTimeRange = [1784246400000, 1784332800000];
