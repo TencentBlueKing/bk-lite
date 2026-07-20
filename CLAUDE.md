@@ -87,6 +87,7 @@
 - **TODO 策略**:无法确认的写 `TODO:` 并附「确认位置(路径+关键词)」。
 - **中文优先**:回答、注释、commit、PR、文档一律中文。
 - **测试红线**:新功能/bugfix **先写测试**(TDD 红-绿-重构);改动代码**覆盖率 ≥75%**;测行为不测实现,**不写凑数/无效测试**。见 [QUALITY_SCORE](QUALITY_SCORE.md)、`server/docs/testing-guide.md`。
+- **启动红线**:禁止把**非关键、可重建**的外部资源声明、同步或探测接入会阻断服务启动的必经路径。修改 `startup.sh`、`batch_init`、容器 entrypoint 或启动钩子时,必须先做关键性分级;非关键失败须告警并可重试/补偿,不得退出进程,且必须覆盖存量升级、重复执行、异名资源冲突与依赖不可用场景。见 [RELIABILITY §2.6](RELIABILITY.md#26-启动安全非关键初始化不得阻断服务红线)。
 - **下发红线**:向目标主机下发插件/作业,**绝不能致其崩溃、死机或数据丢失**;高危/不可逆操作须 dry-run + 资源边界 + 幂等/可回滚,并有对应测试。见 [RELIABILITY](RELIABILITY.md)。
 - **禁用原生 SQL**:统一走 Django ORM,**禁止** raw SQL / `.raw()` / `RawSQL` / `cursor.execute`(`DB_ENGINE` 多方言,原生 SQL 跨库易碎)。
 
