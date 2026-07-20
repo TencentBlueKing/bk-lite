@@ -1,4 +1,7 @@
 import importlib
+import os
+import subprocess
+import sys
 import tomllib
 import warnings
 from importlib.metadata import version
@@ -36,15 +39,61 @@ def test_lock_contains_the_approved_tracerite_version() -> None:
     assert [package["version"] for package in tracerite_packages] == ["1.1.3"]
 
 
-def test_dockerfile_installs_the_frozen_uv_environment() -> None:
+def test_dockerfile_installs_the_locked_uv_environment() -> None:
     dockerfile = _logical_dockerfile()
 
     assert "pip3 install uv==0.8.16" in dockerfile
     assert 'ENV PATH="/app/.venv/bin:$PATH"' in dockerfile
-    assert dockerfile.count("uv sync --frozen --all-groups --all-extras") == 2
+    assert dockerfile.count("uv sync ") == 2
+    assert dockerfile.count("uv sync --locked --all-groups --all-extras") == 2
     assert '--default-index "$NEXUS_PYTHON_REPOSITY"' in dockerfile
     assert '--allow-insecure-host "$(echo $NEXUS_PYTHON_REPOSITY' in dockerfile
     assert "pip3 install -e" not in dockerfile
+
+
+def test_locked_sync_rejects_stale_lockfile_offline(tmp_path: Path) -> None:
+    uv_environment = {**os.environ, "UV_CACHE_DIR": str(tmp_path / ".uv-cache")}
+    uv_environment.pop("VIRTUAL_ENV", None)
+    pyproject_path = tmp_path / "pyproject.toml"
+    pyproject_path.write_text(
+        """\
+[project]
+name = "dependency-lock-contract"
+version = "0.1.1"
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.uv]
+package = false
+""",
+        encoding="utf-8",
+    )
+    (tmp_path / "uv.lock").write_text(
+        """\
+version = 1
+revision = 3
+requires-python = ">=3.12"
+
+[[package]]
+name = "dependency-lock-contract"
+version = "0.1.0"
+source = { virtual = "." }
+""",
+        encoding="utf-8",
+    )
+
+    locked_sync = subprocess.run(
+        ["uv", "sync", "--locked", "--offline", "--python", sys.executable],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=uv_environment,
+    )
+    output = f"{locked_sync.stdout}\n{locked_sync.stderr}".lower()
+
+    assert locked_sync.returncode != 0
+    assert "needs to be updated, but `--locked` was provided" in output
 
 
 def test_sanic_imports_with_the_approved_tracerite_api() -> None:

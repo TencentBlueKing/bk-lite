@@ -24,11 +24,11 @@ RUN if [ -n "$NEXUS_PYTHON_REPOSITY" ]; then \
 RUN pip3 install uv==0.8.16
 
 RUN if [ -n "$NEXUS_PYTHON_REPOSITY" ]; then \
-    uv sync --frozen --all-groups --all-extras \
+    uv sync --locked --all-groups --all-extras \
         --default-index "$NEXUS_PYTHON_REPOSITY" \
         --allow-insecure-host "$(echo $NEXUS_PYTHON_REPOSITY | sed -E 's|^https?://([^/:]+).*|\1|')"; \
     else \
-    uv sync --frozen --all-groups --all-extras; \
+    uv sync --locked --all-groups --all-extras; \
     fi
 
 ENV PATH="/app/.venv/bin:$PATH"

@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - 不升级 Sanic、sanic-ext 或 tracerite；精确版本必须为 `sanic==24.6.0`、`sanic-ext==23.12.0`、`tracerite==1.1.3`。
-- 生产镜像必须执行 `uv sync --frozen --all-groups --all-extras`，不得执行 `pip3 install -e` 重新求解应用依赖。
+- 生产镜像必须执行 `uv sync --locked --all-groups --all-extras`，使 `pyproject.toml` 与 `uv.lock` 漂移时构建 fail-closed；不得执行 `pip3 install -e` 重新求解应用依赖。
 - uv 构建工具固定为 `uv==0.8.16`。
 - `/app/.venv/bin` 必须位于镜像 PATH 首位，Supervisor 现有 `sanic` 与 `python` 命令保持不变。
 - `NEXUS_PYTHON_REPOSITY` 非空时必须作为 uv 默认索引；空值时使用 uv 默认索引。
@@ -26,7 +26,7 @@
 - `agents/stargazer/tests/test_dependency_lock_contract.py`：唯一新增测试文件，验证声明、锁文件、Docker 安装策略和实际 Python 运行时兼容性。
 - `agents/stargazer/pyproject.toml`：增加 tracerite 直接精确约束。
 - `agents/stargazer/uv.lock`：由 uv 重新生成 Stargazer 根包的直接依赖元数据；tracerite 制品版本仍为 1.1.3。
-- `agents/stargazer/support-files/docker/Dockerfile`：安装固定 uv、使用 frozen lock 同步依赖、显式传递 Nexus 索引并设置虚拟环境 PATH。
+- `agents/stargazer/support-files/docker/Dockerfile`：安装固定 uv、使用 `--locked` 严格校验并同步依赖、显式传递 Nexus 索引并设置虚拟环境 PATH。
 
 ### Task 1: 用合同测试驱动完整依赖锁定
 
@@ -38,7 +38,7 @@
 
 **Interfaces:**
 - Consumes: `pyproject.toml` 的 PEP 621 `project.dependencies`、uv lock v1 的 `package` 数组、环境中已安装的 Python distribution metadata。
-- Produces: `tracerite==1.1.3` 直接依赖合同、`/app/.venv` 镜像运行环境，以及 `test_dependency_lock_contract.py` 中四个持续回归测试。
+- Produces: `tracerite==1.1.3` 直接依赖合同、`/app/.venv` 镜像运行环境，以及 `test_dependency_lock_contract.py` 中五个持续回归测试。
 
 - [ ] **Step 1: 写入失败的依赖与镜像合同测试**
 
@@ -46,6 +46,9 @@
 
 ```python
 import importlib
+import os
+import subprocess
+import sys
 import tomllib
 from importlib.metadata import version
 from pathlib import Path
@@ -82,15 +85,61 @@ def test_lock_contains_the_approved_tracerite_version() -> None:
     assert [package["version"] for package in tracerite_packages] == ["1.1.3"]
 
 
-def test_dockerfile_installs_the_frozen_uv_environment() -> None:
+def test_dockerfile_installs_the_locked_uv_environment() -> None:
     dockerfile = _logical_dockerfile()
 
     assert "pip3 install uv==0.8.16" in dockerfile
     assert 'ENV PATH="/app/.venv/bin:$PATH"' in dockerfile
-    assert dockerfile.count("uv sync --frozen --all-groups --all-extras") == 2
+    assert dockerfile.count("uv sync ") == 2
+    assert dockerfile.count("uv sync --locked --all-groups --all-extras") == 2
     assert '--default-index "$NEXUS_PYTHON_REPOSITY"' in dockerfile
     assert '--allow-insecure-host "$(echo $NEXUS_PYTHON_REPOSITY' in dockerfile
     assert "pip3 install -e" not in dockerfile
+
+
+def test_locked_sync_rejects_stale_lockfile_offline(tmp_path: Path) -> None:
+    uv_environment = {**os.environ, "UV_CACHE_DIR": str(tmp_path / ".uv-cache")}
+    uv_environment.pop("VIRTUAL_ENV", None)
+    pyproject_path = tmp_path / "pyproject.toml"
+    pyproject_path.write_text(
+        """\
+[project]
+name = "dependency-lock-contract"
+version = "0.1.1"
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.uv]
+package = false
+""",
+        encoding="utf-8",
+    )
+    (tmp_path / "uv.lock").write_text(
+        """\
+version = 1
+revision = 3
+requires-python = ">=3.12"
+
+[[package]]
+name = "dependency-lock-contract"
+version = "0.1.0"
+source = { virtual = "." }
+""",
+        encoding="utf-8",
+    )
+
+    locked_sync = subprocess.run(
+        ["uv", "sync", "--locked", "--offline", "--python", sys.executable],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=uv_environment,
+    )
+    output = f"{locked_sync.stdout}\n{locked_sync.stderr}".lower()
+
+    assert locked_sync.returncode != 0
+    assert "needs to be updated, but `--locked` was provided" in output
 
 
 def test_sanic_imports_with_the_approved_tracerite_api() -> None:
@@ -114,10 +163,10 @@ uv run pytest tests/test_dependency_lock_contract.py -v
 
 ```text
 FAILED test_pyproject_directly_pins_tracerite
-FAILED test_dockerfile_installs_the_frozen_uv_environment
+FAILED test_dockerfile_installs_the_locked_uv_environment
 ```
 
-若本地环境尚未同步 1.1.3，`test_sanic_imports_with_the_approved_tracerite_api` 也会以实际 tracerite 版本不等于 1.1.3 失败，这是允许的第三个 RED。
+`test_locked_sync_rejects_stale_lockfile_offline` 必须实际执行 uv 并通过，错误消息包含 `needs to be updated, but \`--locked\` was provided`。若本地环境尚未同步 1.1.3，`test_sanic_imports_with_the_approved_tracerite_api` 也会以实际 tracerite 版本不等于 1.1.3 失败。
 
 - [ ] **Step 3: 在 pyproject 中增加最小直接依赖约束**
 
@@ -143,7 +192,7 @@ uv lock
 
 预期：命令成功；`uv.lock` 的 `[[package]] name = "tracerite"` 仍为 1.1.3，同时 `name = "stargazer"` 包的 dependency metadata 新增直接 `tracerite` 约束。
 
-- [ ] **Step 5: 将 Dockerfile 改为 frozen lock 安装**
+- [ ] **Step 5: 将 Dockerfile 改为 `--locked` 严格锁校验安装**
 
 保留 Dockerfile 的基础镜像、apt 安装、源码复制和 Supervisor 配置，将依赖安装部分替换为以下完整内容：
 
@@ -156,11 +205,11 @@ RUN if [ -n "$NEXUS_PYTHON_REPOSITY" ]; then \
 RUN pip3 install uv==0.8.16
 
 RUN if [ -n "$NEXUS_PYTHON_REPOSITY" ]; then \
-    uv sync --frozen --all-groups --all-extras \
+    uv sync --locked --all-groups --all-extras \
         --default-index "$NEXUS_PYTHON_REPOSITY" \
         --allow-insecure-host "$(echo $NEXUS_PYTHON_REPOSITY | sed -E 's|^https?://([^/:]+).*|\1|')"; \
     else \
-    uv sync --frozen --all-groups --all-extras; \
+    uv sync --locked --all-groups --all-extras; \
     fi
 
 ENV PATH="/app/.venv/bin:$PATH"
@@ -180,7 +229,7 @@ uv lock --check
 uv run pytest tests/test_dependency_lock_contract.py -v
 ```
 
-预期：锁文件检查成功，测试输出 `4 passed`；不得出现 warning、skip 或 xfail。
+预期：锁文件检查成功，测试输出 `5 passed`；不得出现 warning、skip 或 xfail。
 
 - [ ] **Step 7: 运行 Stargazer 最小质量门禁**
 
@@ -230,7 +279,7 @@ git commit -m "fix(stargazer): 锁定镜像 Python 依赖"
 docker build --no-cache -t bklite/stargazer:dependency-lock-test -f support-files/docker/Dockerfile .
 ```
 
-预期：镜像构建成功；依赖阶段输出 `uv sync --frozen --all-groups --all-extras`，不出现 `pip3 install -e`。
+预期：镜像构建成功；依赖阶段输出 `uv sync --locked --all-groups --all-extras`，不出现 `pip3 install -e`。
 
 - [ ] **Step 2: 验证镜像内版本、API 与可执行路径**
 
@@ -264,7 +313,7 @@ service-worker-imports-ok
 
 - [ ] **Step 4: 验证 Nexus 构建分支的命令合同**
 
-无需在计划中记录或提交真实 Nexus 地址。复用 Task 1 的 `test_dockerfile_installs_the_frozen_uv_environment`，确认非空 `NEXUS_PYTHON_REPOSITY` 分支包含 `--default-index` 和 `--allow-insecure-host`。发布环境把测试地址注入 `STARGAZER_TEST_NEXUS_URL` 后，在 `agents/stargazer` 依次执行：
+无需在计划中记录或提交真实 Nexus 地址。复用 Task 1 的 `test_dockerfile_installs_the_locked_uv_environment`，确认非空 `NEXUS_PYTHON_REPOSITY` 分支包含 `--default-index` 和 `--allow-insecure-host`。发布环境把测试地址注入 `STARGAZER_TEST_NEXUS_URL` 后，在 `agents/stargazer` 依次执行：
 
 ```bash
 test -n "$STARGAZER_TEST_NEXUS_URL"
@@ -282,4 +331,4 @@ git status --short
 git log -1 --oneline
 ```
 
-预期：Task 1 提交存在，Task 2 不产生新文件或未提交改动。记录以下证据用于交付说明：聚焦测试 `4 passed`、`uv lock --check` 成功、`make lint` 成功、默认索引无缓存镜像成功、镜像版本输出和 service/worker 导入输出。
+预期：Task 1 提交存在，Task 2 不产生新文件或未提交改动。记录以下证据用于交付说明：聚焦测试 `5 passed`、`uv lock --check` 成功、`make lint` 成功、默认索引无缓存镜像成功、镜像版本输出和 service/worker 导入输出。
