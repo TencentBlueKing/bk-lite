@@ -49,7 +49,7 @@
       "display_name": "Disk Usage",
       "data_type": "Number",
       "unit": "%",
-      "dimensions": [{"name": "device"}],
+      "dimensions": [{"name": "device"}, {"name": "path"}, {"name": "fstype"}],
       "instance_id_keys": ["instance_id"],
       "description": "Disk usage percentage per logical disk"
     },
@@ -82,7 +82,7 @@
       "display_name": "Disk Total",
       "data_type": "Number",
       "unit": "bytes",
-      "dimensions": [{"name": "device"}],
+      "dimensions": [{"name": "device"}, {"name": "path"}, {"name": "fstype"}],
       "instance_id_keys": ["instance_id"],
       "description": "Total disk space in bytes per logical disk"
     },
@@ -93,7 +93,7 @@
       "display_name": "Disk Free",
       "data_type": "Number",
       "unit": "bytes",
-      "dimensions": [{"name": "device"}],
+      "dimensions": [{"name": "device"}, {"name": "path"}, {"name": "fstype"}],
       "instance_id_keys": ["instance_id"],
       "description": "Free disk space in bytes per logical disk"
     },

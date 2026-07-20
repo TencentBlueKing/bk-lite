@@ -77,6 +77,8 @@ class WindowsWmiCollector(BaseCollector):
             results,
             self.params.get("tags") or {},
             host=self.params["host"],
+            disk_include_fstypes=self.params.get("disk_include_fstypes"),
+            disk_exclude_fstypes=self.params.get("disk_exclude_fstypes"),
         )
         duration_ms = int((time.monotonic() - started) * 1000)
         logger.info("event=wmi_collect_success duration_ms=%s %s", duration_ms, context)
