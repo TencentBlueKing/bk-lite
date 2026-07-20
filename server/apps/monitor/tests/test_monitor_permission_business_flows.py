@@ -75,6 +75,14 @@ def _policy(monitor_object, *, org=1, name=None):
 def _patch_policy_business_permissions(mocker, *, teams=None, instances=None):
     permission = {"team": teams or [], "instance": instances or []}
     mocker.patch(
+        "apps.core.utils.current_team_scope.SystemMgmt.get_authorized_groups_scoped",
+        return_value={"result": True, "data": [1]},
+    )
+    mocker.patch(
+        "apps.core.utils.current_team_scope.SystemMgmt.get_assignable_groups",
+        return_value={"result": True, "data": [1]},
+    )
+    mocker.patch(
         "apps.monitor.views.monitor_policy.get_permission_rules",
         return_value=permission,
     )
@@ -90,12 +98,16 @@ def _patch_policy_business_permissions(mocker, *, teams=None, instances=None):
 
 def _patch_condition_business_permissions(mocker, *, teams=None, instances=None):
     mocker.patch(
-        "apps.monitor.views.monitor_condition.get_permission_rules",
-        return_value={"team": teams or [], "instance": instances or []},
+        "apps.core.utils.current_team_scope.SystemMgmt.get_authorized_groups_scoped",
+        return_value={"result": True, "data": [1]},
     )
     mocker.patch(
-        "apps.monitor.views.monitor_condition.InstanceConfigService._get_actor_scope_groups",
-        return_value=teams or [],
+        "apps.core.utils.current_team_scope.SystemMgmt.get_assignable_groups",
+        return_value={"result": True, "data": [1]},
+    )
+    mocker.patch(
+        "apps.monitor.views.monitor_condition.get_permission_rules",
+        return_value={"team": teams or [], "instance": instances or []},
     )
 
 

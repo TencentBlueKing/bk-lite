@@ -3,62 +3,47 @@ import json
 from datetime import datetime, timezone
 
 from django.db import transaction
-from django_celery_beat.models import PeriodicTask, CrontabSchedule
-from rest_framework import status
-from rest_framework.response import Response
-from rest_framework import viewsets
+from django_celery_beat.models import CrontabSchedule, PeriodicTask
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.response import Response
 
 from apps.core.exceptions.base_app_exception import BaseAppException, UnauthorizedException
-from apps.core.utils.permission_utils import get_permission_rules, permission_filter
+from apps.core.utils.current_team_scope import resolve_current_team_data_scope, scope_permission_queryset, validate_assignable_organizations
+from apps.core.utils.permission_utils import get_permission_rules
+from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.user_group import normalize_user_group_ids
 from apps.core.utils.web_utils import WebUtils
 from apps.monitor.constants.alert_policy import AlertConstants
 from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.constants.permission import PermissionConstants
 from apps.monitor.filters.monitor_policy import MonitorPolicyFilter
-from apps.monitor.models import PolicyOrganization, MonitorAlert
+from apps.monitor.models import MonitorAlert, PolicyOrganization
 from apps.monitor.models.monitor_policy import MonitorPolicy
 from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
-from apps.monitor.services.alert_lifecycle_notify import (
-    AlertLifecycleNotifier,
-    NOTIFY_SCOPE_ALERT_CENTER_ONLY,
-    NOTIFY_SCOPE_ALL_CONFIGURED,
-)
-from apps.monitor.services.policy import PolicyService
-from apps.monitor.services.policy_bulk import build_bulk_policy_payloads
-from apps.monitor.services.policy_baseline import PolicyBaselineService
-from apps.monitor.services.policy_preview import PolicyPreviewService
+from apps.monitor.services.alert_lifecycle_notify import NOTIFY_SCOPE_ALERT_CENTER_ONLY, NOTIFY_SCOPE_ALL_CONFIGURED, AlertLifecycleNotifier
 from apps.monitor.services.node_mgmt import InstanceConfigService
+from apps.monitor.services.policy import PolicyService
+from apps.monitor.services.policy_baseline import PolicyBaselineService
+from apps.monitor.services.policy_bulk import build_bulk_policy_payloads
+from apps.monitor.services.policy_preview import PolicyPreviewService
 from apps.monitor.utils.pagination import parse_page_params
 from config.drf.pagination import CustomPageNumberPagination
-from apps.core.utils.team_utils import get_current_team
 
 
 def _build_actor_context(request):
-    current_team = get_current_team(request)
-    if current_team in (None, ""):
-        raise BaseAppException("缺少 current_team 参数")
-    try:
-        current_team = int(current_team)
-    except (TypeError, ValueError):
-        raise BaseAppException("current_team 参数非法")
+    scope = resolve_current_team_data_scope(request)
 
     return {
-        "username": request.user.username,
-        "domain": request.user.domain,
-        "current_team": current_team,
-        "include_children": request.COOKIES.get("include_children", "0") == "1",
-        "is_superuser": request.user.is_superuser,
+        "username": scope.username,
+        "domain": scope.domain,
+        "current_team": scope.current_team,
+        "include_children": scope.include_children,
+        "is_superuser": scope.is_superuser,
         "group_list": normalize_user_group_ids(getattr(request.user, "group_list", [])),
+        "data_scope": scope,
+        "request": request,
     }
-
-
-def _normalize_orgs(organizations):
-    try:
-        return {int(org) for org in (organizations or []) if org not in (None, "")}
-    except (TypeError, ValueError):
-        raise BaseAppException("组织参数非法")
 
 
 def _operate_only_permission(permission):
@@ -103,10 +88,22 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
             include_children=request.COOKIES.get("include_children", "0") == "1",
         )
 
-    def _scope_queryset(self, queryset, permission):
-        permitted_qs = permission_filter(
+    def _get_data_scope(self):
+        if not hasattr(self, "_current_team_data_scope"):
+            self._current_team_data_scope = resolve_current_team_data_scope(self.request)
+        return self._current_team_data_scope
+
+    def _get_effective_permission(self, monitor_object_id=None):
+        scope = self._get_data_scope()
+        if self.request.user.is_superuser:
+            return {"team": list(scope.data_team_ids), "instance": []}
+        return self._get_permission(monitor_object_id)
+
+    def _scope_queryset(self, queryset, permission, scope):
+        permitted_qs = scope_permission_queryset(
             MonitorPolicy,
             permission,
+            scope,
             team_key="policyorganization__organization__in",
             id_key="id__in",
         )
@@ -122,38 +119,19 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
         if monitor_object_id not in (None, ""):
             queryset = queryset.filter(monitor_object_id=monitor_object_id)
 
-        if request.user.is_superuser:
-            return queryset
-
-        permission = self._get_permission(monitor_object_id)
-        if getattr(self, "action", "") in {"update", "partial_update", "destroy"}:
+        scope = self._get_data_scope()
+        permission = self._get_effective_permission(monitor_object_id)
+        if not request.user.is_superuser and getattr(self, "action", "") in {"update", "partial_update", "destroy"}:
             permission = _operate_only_permission(permission)
-        return self._scope_queryset(queryset, permission)
-
-    def _get_authorized_scope_groups(self, actor_context):
-        if actor_context["is_superuser"]:
-            return None
-
-        groups = set(InstanceConfigService._get_actor_scope_groups(actor_context) or [])
-        if not groups:
-            raise UnauthorizedException("当前组织无可用权限范围")
-        return groups
+        return self._scope_queryset(queryset, permission, scope)
 
     def _ensure_target_organizations(self, organizations, actor_context=None):
-        target_orgs = _normalize_orgs(organizations)
-        if not target_orgs:
+        if not organizations:
             return
-
-        actor_context = actor_context or _build_actor_context(self.request)
-        if actor_context["is_superuser"]:
-            return
-
-        unauthorized_orgs = target_orgs - self._get_authorized_scope_groups(actor_context)
-        if unauthorized_orgs:
-            raise UnauthorizedException("无权限关联指定组织")
+        validate_assignable_organizations(self.request, organizations)
 
     def list(self, request, *args, **kwargs):
-        permission = self._get_permission(request.query_params.get("monitor_object_id", None))
+        permission = self._get_effective_permission(request.query_params.get("monitor_object_id", None))
         queryset = self.filter_queryset(self.get_queryset())
 
         queryset = queryset.distinct()
@@ -619,7 +597,7 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
 
         normalized_ids = [str(asset_id) for asset_id in asset_ids if asset_id not in (None, "")]
         request = getattr(self, "request", None)
-        if request is None or request.user.is_superuser or not normalized_ids:
+        if request is None or not normalized_ids:
             return ""
 
         actor_context = _build_actor_context(request)
@@ -673,7 +651,7 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
             raise BaseAppException(f"监控资产不存在: {', '.join(missing_ids)}")
 
         request = getattr(self, "request", None)
-        if request is not None and not request.user.is_superuser:
+        if request is not None:
             actor_context = _build_actor_context(request)
             authorized_ids = {
                 str(instance_id)

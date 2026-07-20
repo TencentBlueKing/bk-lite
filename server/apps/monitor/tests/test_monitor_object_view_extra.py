@@ -2,12 +2,26 @@
 
 import pytest
 
+from apps.core.utils.current_team_scope import CurrentTeamDataScope
 from apps.monitor.models import MonitorObjectOrganizationRule
 from apps.monitor.models.monitor_object import MonitorObject, MonitorObjectType
 
 pytestmark = pytest.mark.django_db
 
 BASE = "/api/v1/monitor"
+
+
+def _superuser_actor_context():
+    scope = CurrentTeamDataScope(1, frozenset({1}), False, "u", "domain.com", True)
+    return {
+        "is_superuser": True,
+        "current_team": 1,
+        "username": "u",
+        "domain": "domain.com",
+        "include_children": False,
+        "group_list": [],
+        "data_scope": scope,
+    }
 
 
 class TestMonitorObjectList:
@@ -115,12 +129,9 @@ class TestOrganizationRuleView:
         rule = MonitorObjectOrganizationRule.objects.create(
             monitor_object=obj, name="r", organizations=[1], rule={},
         )
-        # 超级用户路径绕过授权过滤
         mocker.patch(
             "apps.monitor.views.organization_rule._build_actor_context",
-            return_value={"is_superuser": True, "current_team": 1,
-                          "username": "u", "domain": "domain.com",
-                          "include_children": False, "group_list": []},
+            return_value=_superuser_actor_context(),
         )
         spy = mocker.patch(
             "apps.monitor.views.organization_rule.OrganizationRule.del_organization_rule"
@@ -183,10 +194,11 @@ class TestOrganizationRuleView:
     def test_update_derivative_rule_with_parent_instance_succeeds(self, api_client):
         """回归: vmware 父实例自动建的子规则,编辑保存时不再被 500/校验拦截"""
         from apps.monitor.models import MonitorObjectOrganizationRule
-        from apps.monitor.models import MonitorInstance
+        from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization
         parent = MonitorObject.objects.create(name="UpdDeriveParent", level="base")
         child = MonitorObject.objects.create(name="UpdDeriveChild", level="derivative", parent=parent)
-        MonitorInstance.objects.create(id="('vp1',)", name="vp1", monitor_object=parent)
+        instance = MonitorInstance.objects.create(id="('vp1',)", name="vp1", monitor_object=parent)
+        MonitorInstanceOrganization.objects.create(monitor_instance=instance, organization=1)
         rule = MonitorObjectOrganizationRule.objects.create(
             monitor_object=child,
             name="UpdDeriveChild-vp1",
@@ -198,15 +210,15 @@ class TestOrganizationRuleView:
             },
             monitor_instance_id="('vp1',)",
         )
-        # 超级用户路径绕过授权过滤
         mocker_module = pytest.importorskip("pytest_mock")
         import pytest_mock  # noqa: F401
         from unittest.mock import patch
         with patch(
             "apps.monitor.views.organization_rule._build_actor_context",
-            return_value={"is_superuser": True, "current_team": 1,
-                          "username": "u", "domain": "domain.com",
-                          "include_children": False, "group_list": []},
+            return_value=_superuser_actor_context(),
+        ), patch(
+            "apps.core.utils.current_team_scope.SystemMgmt.get_assignable_groups",
+            return_value={"result": True, "data": [1]},
         ):
             resp = api_client.put(
                 f"{BASE}/api/organization_rule/{rule.id}/",
@@ -224,4 +236,22 @@ class TestOrganizationRuleView:
         from apps.monitor.views.organization_rule import _rule_is_authorized
         from types import SimpleNamespace
         rule = SimpleNamespace(organizations=[1], monitor_instance_id="", monitor_object_id=1)
-        assert _rule_is_authorized(rule, {"is_superuser": True}) is True
+        assert _rule_is_authorized(rule, _superuser_actor_context()) is True
+
+    def test_rule_serializer_hides_sibling_organizations(self):
+        from apps.monitor.serializers.monitor_object import MonitorObjectOrganizationRuleSerializer
+
+        obj = MonitorObject.objects.create(name="ORVProjectionObj", level="base")
+        rule = MonitorObjectOrganizationRule.objects.create(
+            monitor_object=obj,
+            name="shared-rule",
+            organizations=[1, 2],
+            rule={},
+        )
+
+        data = MonitorObjectOrganizationRuleSerializer(
+            rule,
+            context={"data_team_ids": frozenset({1})},
+        ).data
+
+        assert data["organizations"] == [1]

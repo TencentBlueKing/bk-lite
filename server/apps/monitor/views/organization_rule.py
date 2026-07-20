@@ -3,22 +3,15 @@ from rest_framework import viewsets
 from apps.core.exceptions.base_app_exception import BaseAppException, UnauthorizedException
 from apps.core.utils.web_utils import WebUtils
 from apps.monitor.filters.monitor_object import MonitorObjectOrganizationRuleFilter
-from apps.monitor.models import MonitorObjectOrganizationRule, MonitorInstance, MonitorObject
+from apps.monitor.models import MonitorInstance, MonitorObject, MonitorObjectOrganizationRule
 from apps.monitor.serializers.monitor_object import MonitorObjectOrganizationRuleSerializer
-from apps.monitor.services.organization_rule import OrganizationRule
 from apps.monitor.services.node_mgmt import InstanceConfigService
-from apps.monitor.views.monitor_instance import (
-    _build_actor_context,
-    _ensure_operate_instances,
-    _ensure_target_organizations,
-)
+from apps.monitor.services.organization_rule import OrganizationRule
+from apps.monitor.views.monitor_instance import _build_actor_context, _ensure_operate_instances, _ensure_target_organizations
 from config.drf.pagination import CustomPageNumberPagination
 
 
 def _get_authorized_scope_groups(actor_context):
-    if actor_context["is_superuser"]:
-        return None
-
     groups = set(InstanceConfigService._get_actor_scope_groups(actor_context) or [])
     if not groups:
         raise UnauthorizedException("当前组织无可用权限范围")
@@ -33,21 +26,22 @@ def _normalize_rule_organizations(organizations):
 
 
 def _rule_is_authorized(rule, actor_context, require_operate=False, authorized_instance_cache=None):
-    if actor_context["is_superuser"]:
-        return True
-
     rule_orgs = _normalize_rule_organizations(rule.organizations)
     if not rule_orgs:
         return False
 
     allowed_groups = _get_authorized_scope_groups(actor_context)
-    if rule_orgs - allowed_groups:
+    if not rule_orgs.intersection(allowed_groups):
         return False
 
     if not rule.monitor_instance_id:
         return True
 
-    cache_key = (str(rule.monitor_object_id), require_operate)
+    instance_monitor_object_id = MonitorInstance.objects.filter(id=rule.monitor_instance_id).values_list("monitor_object_id", flat=True).first()
+    if instance_monitor_object_id is None:
+        return False
+
+    cache_key = (str(instance_monitor_object_id), require_operate)
     if authorized_instance_cache is None:
         authorized_instance_cache = {}
 
@@ -56,7 +50,7 @@ def _rule_is_authorized(rule, actor_context, require_operate=False, authorized_i
             str(instance_id)
             for instance_id in InstanceConfigService._get_authorized_monitor_instances(
                 actor_context,
-                rule.monitor_object_id,
+                instance_monitor_object_id,
                 require_operate=require_operate,
             ).values_list("id", flat=True)
         }
@@ -83,7 +77,7 @@ def _validate_rule_binding(monitor_object_id, monitor_instance_id):
 
 
 def _validate_rule_payload(request, actor_context, monitor_object_id, monitor_instance_id, organizations):
-    _ensure_target_organizations(organizations or [], actor_context)
+    _ensure_target_organizations(organizations or [], actor_context, request)
     if monitor_instance_id not in (None, ""):
         _ensure_operate_instances(request, [monitor_instance_id], actor_context)
         _validate_rule_binding(monitor_object_id, monitor_instance_id)
@@ -95,15 +89,23 @@ class MonitorObjectOrganizationRuleViewSet(viewsets.ModelViewSet):
     filterset_class = MonitorObjectOrganizationRuleFilter
     pagination_class = CustomPageNumberPagination
 
+    def _get_actor_context(self):
+        if not hasattr(self, "_actor_context_cache"):
+            self._actor_context_cache = _build_actor_context(self.request)
+        return self._actor_context_cache
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["data_team_ids"] = self._get_actor_context()["data_scope"].data_team_ids
+        return context
+
     def get_queryset(self):
         queryset = super().get_queryset().select_related("monitor_object")
         request = getattr(self, "request", None)
         if request is None:
             return queryset
 
-        actor_context = _build_actor_context(request)
-        if actor_context["is_superuser"]:
-            return queryset
+        actor_context = self._get_actor_context()
 
         require_operate = getattr(self, "action", "") in {"update", "partial_update", "destroy"}
         authorized_instance_cache = {}

@@ -1,49 +1,17 @@
-from rest_framework import viewsets
-from rest_framework import status
+from rest_framework import status, viewsets
 from rest_framework.response import Response
 
-from apps.core.exceptions.base_app_exception import BaseAppException, UnauthorizedException
-from apps.core.utils.permission_utils import get_permission_rules, permission_filter
-from apps.core.utils.user_group import normalize_user_group_ids
+from apps.core.utils.current_team_scope import resolve_current_team_data_scope, scope_permission_queryset, validate_assignable_organizations
+from apps.core.utils.permission_utils import get_permission_rules
+from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.web_utils import WebUtils
 from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.constants.permission import PermissionConstants
 from apps.monitor.filters.monitor_condition import MonitorConditionFilter
-from apps.monitor.models.monitor_condition import (
-    MonitorCondition,
-    MonitorConditionOrganization,
-)
+from apps.monitor.models.monitor_condition import MonitorCondition, MonitorConditionOrganization
 from apps.monitor.serializers.monitor_condition import MonitorConditionSerializer
-from apps.monitor.services.node_mgmt import InstanceConfigService
 from apps.monitor.utils.pagination import parse_page_params
 from config.drf.pagination import CustomPageNumberPagination
-from apps.core.utils.team_utils import get_current_team
-
-
-def _build_actor_context(request):
-    current_team = get_current_team(request)
-    if current_team in (None, ""):
-        raise BaseAppException("缺少 current_team 参数")
-    try:
-        current_team = int(current_team)
-    except (TypeError, ValueError):
-        raise BaseAppException("current_team 参数非法")
-
-    return {
-        "username": request.user.username,
-        "domain": request.user.domain,
-        "current_team": current_team,
-        "include_children": request.COOKIES.get("include_children", "0") == "1",
-        "is_superuser": request.user.is_superuser,
-        "group_list": normalize_user_group_ids(getattr(request.user, "group_list", [])),
-    }
-
-
-def _normalize_orgs(organizations):
-    try:
-        return {int(org) for org in (organizations or []) if org not in (None, "")}
-    except (TypeError, ValueError):
-        raise BaseAppException("组织参数非法")
 
 
 def _operate_only_permission(permission):
@@ -69,10 +37,22 @@ class MonitorConditionViewSet(viewsets.ModelViewSet):
             include_children=self.request.COOKIES.get("include_children", "0") == "1",
         )
 
-    def _scope_queryset(self, queryset, permission):
-        permitted_qs = permission_filter(
+    def _get_data_scope(self):
+        if not hasattr(self, "_current_team_data_scope"):
+            self._current_team_data_scope = resolve_current_team_data_scope(self.request)
+        return self._current_team_data_scope
+
+    def _get_effective_permission(self):
+        scope = self._get_data_scope()
+        if self.request.user.is_superuser:
+            return {"team": list(scope.data_team_ids), "instance": []}
+        return self._get_permission()
+
+    def _scope_queryset(self, queryset, permission, scope):
+        permitted_qs = scope_permission_queryset(
             MonitorCondition,
             permission,
+            scope,
             team_key="organizations__organization__in",
             id_key="id__in",
         )
@@ -81,38 +61,22 @@ class MonitorConditionViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = super().get_queryset()
         request = getattr(self, "request", None)
-        if request is None or request.user.is_superuser:
+        if request is None:
             return queryset
 
-        permission = self._get_permission()
-        if getattr(self, "action", "") in {"update", "partial_update", "destroy"}:
+        scope = self._get_data_scope()
+        permission = self._get_effective_permission()
+        if not request.user.is_superuser and getattr(self, "action", "") in {"update", "partial_update", "destroy"}:
             permission = _operate_only_permission(permission)
-        return self._scope_queryset(queryset, permission)
-
-    def _get_authorized_scope_groups(self, actor_context):
-        if actor_context["is_superuser"]:
-            return None
-
-        groups = set(InstanceConfigService._get_actor_scope_groups(actor_context) or [])
-        if not groups:
-            raise UnauthorizedException("当前组织无可用权限范围")
-        return groups
+        return self._scope_queryset(queryset, permission, scope)
 
     def _ensure_target_organizations(self, organizations, actor_context=None):
-        target_orgs = _normalize_orgs(organizations)
-        if not target_orgs:
+        if not organizations:
             return
-
-        actor_context = actor_context or _build_actor_context(self.request)
-        if actor_context["is_superuser"]:
-            return
-
-        unauthorized_orgs = target_orgs - self._get_authorized_scope_groups(actor_context)
-        if unauthorized_orgs:
-            raise UnauthorizedException("无权限关联指定组织")
+        validate_assignable_organizations(self.request, organizations)
 
     def list(self, request, *args, **kwargs):
-        permission = self._get_permission()
+        permission = self._get_effective_permission()
         queryset = self.filter_queryset(self.get_queryset())
         queryset = queryset.distinct()
 
