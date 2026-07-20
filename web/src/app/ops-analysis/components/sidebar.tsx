@@ -94,6 +94,9 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
     const activeCanvasType =
       selectedCanvasType || (isCanvasType(newItemType) ? newItemType : undefined);
     const isCreatingCanvas = modalAction !== 'edit' && isCanvasType(newItemType);
+    const showNetworkTopologyConnectionTest =
+      (isCreatingCanvas || modalAction === 'edit') &&
+      activeCanvasType === 'networkTopology';
 
     useImperativeHandle(
       ref,
@@ -742,17 +745,40 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
           open={modalVisible}
           centered
           width={isCreatingCanvas ? 760 : 520}
-          okText={t('common.confirm')}
-          cancelText={t('common.cancel')}
-          onOk={handleModalOk}
           onCancel={handleModalCancel}
-          confirmLoading={submitLoading}
+          footer={[
+            showNetworkTopologyConnectionTest ? (
+              <Button
+                key="testConnection"
+                onClick={handleTestNetworkConnection}
+                loading={connectionTesting}
+              >
+                {t('opsAnalysisSidebar.testConnection')}
+              </Button>
+            ) : null,
+            <Button key="cancel" onClick={handleModalCancel}>
+              {t('common.cancel')}
+            </Button>,
+            <Button
+              key="submit"
+              type="primary"
+              onClick={handleModalOk}
+              loading={submitLoading}
+            >
+              {t('common.confirm')}
+            </Button>,
+          ]}
+          styles={{
+            body: {
+              maxHeight: 'calc(100vh - 200px)',
+              overflowY: 'auto',
+            },
+          }}
         >
           <Form
             form={form}
             className="mt-5"
-            labelCol={{ flex: '104px' }}
-            wrapperCol={{ flex: 1 }}
+            layout="vertical"
           >
             {isCreatingCanvas && (
               <Form.Item
@@ -842,7 +868,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
             >
               <Input placeholder={t('opsAnalysisSidebar.inputPlaceholder')} />
             </Form.Item>
-            {(isCreatingCanvas || modalAction === 'edit') && activeCanvasType === 'networkTopology' && (
+            {showNetworkTopologyConnectionTest && (
               <>
                 <Form.Item
                   name="baseUrl"
@@ -887,14 +913,6 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
                     placeholder={t('opsAnalysisSidebar.tokenPlaceholder')}
                     autoComplete="new-password"
                   />
-                </Form.Item>
-                <Form.Item label=" " colon={false}>
-                  <Button
-                    onClick={handleTestNetworkConnection}
-                    loading={connectionTesting}
-                  >
-                    {t('opsAnalysisSidebar.testConnection')}
-                  </Button>
                 </Form.Item>
               </>
             )}

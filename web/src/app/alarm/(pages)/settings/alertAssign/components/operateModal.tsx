@@ -42,7 +42,6 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
   onClose,
   onSuccess,
 }) => {
-  const locale = localStorage.getItem('locale') || 'en';
   const { t } = useTranslation();
   const { levelList, levelMap, userList } = useCommon();
   const { createAssignment, updateAssignment, getChannelList } =
@@ -236,8 +235,7 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
     >
       <Form
         form={form}
-        layout="horizontal"
-        labelCol={{ span: locale === 'en' ? 5 : 4 }}
+        layout="vertical"
         onFinish={onFinish}
       >
         <Form.Item
@@ -271,7 +269,6 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
             name="match_rules"
             validateTrigger={[]}
             style={{
-              marginLeft: '110px',
               marginTop: '-10px',
               marginBottom: '26px',
             }}

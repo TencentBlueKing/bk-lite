@@ -61,3 +61,8 @@ class TestL4Fix:
             entry = zh_loader.get(f"monitor_object_plugin.{p}")
             assert entry is not None, f"{p} 翻译缺失"
             assert entry.get("name"), f"{p} 缺 name"
+
+    def test_windows_wmi展示名说明采集方式(self, zh_loader, en_loader):
+        """WMI 与本机 Telegraf 采集必须在展示指标配置中可区分。"""
+        assert zh_loader.get("monitor_object_plugin.Windows WMI.name") == "Windows 主机采集（WMI / Telegraf）"
+        assert en_loader.get("monitor_object_plugin.Windows WMI.name") == "Windows Host Collection (WMI / Telegraf)"

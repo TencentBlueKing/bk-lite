@@ -310,7 +310,7 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
         </div>
       }
     >
-      <Form form={form} labelCol={{ span: 5 }} layout="horizontal">
+      <Form form={form} layout="vertical">
         {/* 基础设置 */}
         <div className="mb-6">
           <div className="font-bold text-(--color-text-1) mb-4">

@@ -113,7 +113,7 @@ const IpmiTool: React.FC<IpmiToolProps> = ({
       {/* Left: Form，max-height 限制高度，内容溢出时表单区滚动，按钮固定底部 */}
       <div
         className="w-100 shrink-0 flex flex-col"
-        style={{ height: 'calc(100vh - 276px)' }}
+        style={{ height: 'calc(100vh - 380px)' }}
       >
         <div className="flex-1 overflow-y-auto min-h-0 pr-2">
           <Form

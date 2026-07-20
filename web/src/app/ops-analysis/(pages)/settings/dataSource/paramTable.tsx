@@ -449,7 +449,7 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
     ];
 
     return (
-      <div style={{ margin: "0 0 0 42px" }}>
+      <div style={{ margin: 0 }}>
         <div
           style={{
             marginBottom: "8px",

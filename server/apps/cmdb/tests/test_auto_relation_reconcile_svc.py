@@ -425,6 +425,65 @@ def test_reconcile_for_instance_schedules_full_sync_when_incoming(monkeypatch):
     assert scheduled == ["vm_run_host"]
 
 
+def test_reconcile_for_instances_dedupes_incoming_full_sync_rules(monkeypatch):
+    instances = [
+        {"_id": 1, "model_id": "vmware_vm"},
+        {"_id": 2, "model_id": "vmware_vm"},
+        {"_id": 3, "model_id": "vmware_vm"},
+    ]
+    fake = FakeGraph(query_entity=(instances, len(instances)))
+    monkeypatch.setattr(mod, "GraphClient", lambda *a, **k: fake)
+    monkeypatch.setattr(
+        SVC, "_list_enabled_rules_by_src_model", classmethod(lambda cls, mid: [])
+    )
+    monkeypatch.setattr(
+        SVC,
+        "_list_enabled_rule_ids_by_dst_model",
+        classmethod(lambda cls, mid: ["host_run_vmware_vm"]),
+    )
+    scheduled = []
+    monkeypatch.setattr(
+        mod,
+        "schedule_rule_auto_relation_full_sync",
+        lambda ids: scheduled.append(list(ids)),
+    )
+    result = SVC.reconcile_for_instances([1, 2, 3])
+    assert result["instances"] == 3
+    assert result["full_sync_rules"] == 1
+    assert scheduled == [["host_run_vmware_vm"]]
+
+
+def test_reconcile_for_instances_runs_source_locally_and_reports_missing(monkeypatch):
+    instances = [
+        {"_id": 1, "model_id": "vm", "ip": "10.0.0.1"},
+        {"_id": 2, "model_id": "vm", "ip": "10.0.0.2"},
+    ]
+    fake = FakeGraph(query_entity=(instances, len(instances)))
+    monkeypatch.setattr(mod, "GraphClient", lambda *a, **k: fake)
+    association = {"model_asst_id": "vm_run_host"}
+    rules = [_rule([_pair("ip", "host_ip")])]
+    monkeypatch.setattr(
+        SVC,
+        "_list_enabled_rules_by_src_model",
+        classmethod(lambda cls, mid: [(association, rules)]),
+    )
+    monkeypatch.setattr(
+        SVC, "_list_enabled_rule_ids_by_dst_model", classmethod(lambda cls, mid: [])
+    )
+    reconciled = []
+
+    def fake_reconcile(cls, instance, assoc, enabled_rules):
+        reconciled.append(instance["_id"])
+        return {"created": 1, "deleted": 0, "skipped": 0, "conflicts": 0}
+
+    monkeypatch.setattr(SVC, "reconcile_source_instance", classmethod(fake_reconcile))
+    result = SVC.reconcile_for_instances([1, 2, 99])
+    assert reconciled == [1, 2]
+    assert result["missing"] == [99]
+    assert result["source_rules"] == 2
+    assert result["created"] == 2
+
+
 # --------------------------------------------------------------------------
 # full_sync_rule
 # --------------------------------------------------------------------------
@@ -468,16 +527,18 @@ def test_full_sync_rule_full_sync_path(monkeypatch):
 # --------------------------------------------------------------------------
 # schedule_* 调度入口
 # --------------------------------------------------------------------------
-def test_schedule_instance_reconcile_normalizes_and_dedupes(monkeypatch, settings):
+def test_schedule_instance_reconcile_normalizes_and_dispatches_one_batch(monkeypatch, settings):
     settings.DEBUG = True
     called = []
     # transaction.on_commit 在非事务下立即执行回调
     monkeypatch.setattr(mod.transaction, "on_commit", lambda fn: fn())
     import apps.cmdb.tasks.celery_tasks as ct
-    monkeypatch.setattr(ct, "reconcile_instance_auto_association_task", lambda iid: called.append(iid))
+    monkeypatch.setattr(
+        ct, "reconcile_instances_auto_association_task", lambda ids: called.append(ids)
+    )
 
     schedule_instance_auto_relation_reconcile([3, "3", 0, -1, "bad", 5])
-    assert called == [3, 5]
+    assert called == [[3, 5]]
 
 
 def test_schedule_instance_reconcile_empty_noop(monkeypatch):
@@ -487,13 +548,25 @@ def test_schedule_instance_reconcile_empty_noop(monkeypatch):
     assert on_commit_called == []
 
 
-def test_schedule_instance_reconcile_send_task_when_not_debug(monkeypatch, settings):
+def test_schedule_instance_reconcile_sends_one_batch_task_when_not_debug(monkeypatch, settings):
     settings.DEBUG = False
     monkeypatch.setattr(mod.transaction, "on_commit", lambda fn: fn())
     sent = []
     monkeypatch.setattr(mod.current_app, "send_task", lambda name, args: sent.append((name, args)))
-    schedule_instance_auto_relation_reconcile([9])
-    assert sent == [(mod.INSTANCE_RECONCILE_TASK, [9])]
+    schedule_instance_auto_relation_reconcile([9, 10])
+    assert sent == [(mod.INSTANCE_BATCH_RECONCILE_TASK, [[9, 10]])]
+
+
+def test_batch_reconcile_task_delegates_to_service(monkeypatch):
+    monkeypatch.setattr(
+        SVC,
+        "reconcile_for_instances",
+        classmethod(lambda cls, ids: {"instances": len(ids), "success": True}),
+    )
+    from apps.cmdb.tasks.celery_tasks import reconcile_instances_auto_association_task
+
+    result = reconcile_instances_auto_association_task.run([1, 2])
+    assert result == {"instances": 2, "success": True}
 
 
 def test_schedule_rule_full_sync_dedupes_and_clears_pending(monkeypatch, settings):

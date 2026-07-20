@@ -34,6 +34,9 @@ export interface LoginUserInfo {
   id: number;
   domain: string;
   locale: string;
+  is_superuser?: boolean;
+  group_list?: Array<{ id: number | string; name?: string } | number | string>;
+  group_tree?: any[];
   temporary_pwd: boolean;
   enable_otp: boolean;
   qrcode: boolean;

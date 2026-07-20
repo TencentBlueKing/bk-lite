@@ -289,6 +289,7 @@ const UserSyncPage: React.FC = () => {
       configSource,
       values.business_config,
       toFieldMappingPayload(mappingRows),
+      values.platform_config,
     );
 
     setConfigLoading(true);
@@ -319,6 +320,7 @@ const UserSyncPage: React.FC = () => {
           values.business_config,
           toFieldMappingPayload(mappingRows),
           writeOnlyKeys,
+          values.platform_config,
         )
       );
       showPreviewSuccess(result);
