@@ -14,6 +14,7 @@ import { getDisplayFieldType } from '@/app/monitor/utils/displayFieldType';
 import { useRouter } from 'next/navigation';
 import ViewModal from './viewModal';
 import MetricDimensionTooltip from './metricDimensionTooltip';
+import { resolveDisplayMetric } from './displayFieldMetric';
 import {
   ColumnItem,
   ModalRef,
@@ -298,10 +299,7 @@ const ViewList: React.FC<ViewListProps> = ({
       setMetrics(res[0] || []);
       if (objName) {
         const allMetrics: MetricItem[] = res[0] || [];
-        const metricByName = (name: string) =>
-          allMetrics.find((m: MetricItem) => m.name === name);
-
-        // 解析某行在某列应展示的绑定指标值（按绑定顺序取首个有值），返回 {value, unit, metricName}
+        // 解析某行在某列应展示的绑定指标值（按绑定顺序取首个有值），保留插件信息以精确定位指标元数据。
         const resolveCell = (record: TableDataItem, col: DisplayCol) => {
           for (const binding of col.metrics || []) {
             const key = displayFieldKey(
@@ -319,7 +317,8 @@ const ViewList: React.FC<ViewListProps> = ({
                 return {
                   value: cell as string | number,
                   unit: undefined,
-                  metricName: binding.metric
+                  metricName: binding.metric,
+                  pluginName: binding.plugin
                 };
               }
               continue;
@@ -330,14 +329,20 @@ const ViewList: React.FC<ViewListProps> = ({
                 : undefined;
             const v = metricCell?.value;
             if (v != null && v !== '') {
-              return { value: v, unit: metricCell?.unit, metricName: binding.metric };
+              return {
+                value: v,
+                unit: metricCell?.unit,
+                metricName: binding.metric,
+                pluginName: binding.plugin
+              };
             }
           }
           const primary = col.metrics?.[0]?.metric;
           return {
             value: undefined as string | number | undefined,
             unit: undefined as string | undefined,
-            metricName: primary
+            metricName: primary,
+            pluginName: col.metrics?.[0]?.plugin
           };
         };
 
@@ -347,8 +352,7 @@ const ViewList: React.FC<ViewListProps> = ({
 
         // 注：dataIndex 用占位键 df_<index>（display_fields 无稳定 id）；真实取值在 render 中经 resolveCell 完成
         const _columns = displayCols.map((col: DisplayCol, colIndex: number) => {
-          const primaryMetricName = col.metrics?.[0]?.metric as string | undefined;
-          const primaryMeta = primaryMetricName ? metricByName(primaryMetricName) : undefined;
+          const primaryMeta = resolveDisplayMetric(allMetrics, col.metrics?.[0] || {});
           const colType = getDisplayFieldType(primaryMeta);
           const dataKey = `df_${colIndex}`;
 
@@ -395,7 +399,10 @@ const ViewList: React.FC<ViewListProps> = ({
               sorter: baseSorter,
               render: (_: unknown, record: TableDataItem) => {
                 const cell = resolveCell(record, col);
-                const meta = cell.metricName ? metricByName(cell.metricName) : primaryMeta;
+                const meta = resolveDisplayMetric(allMetrics, {
+                  plugin: cell.pluginName,
+                  metric: cell.metricName
+                }) || primaryMeta;
                 const hasDimensions = (meta?.dimensions?.length ?? 0) > 0;
                 const size: [number, number] = hasDimensions ? [220, 20] : [240, 20];
                 const metricUnit = cell.unit || meta?.unit || '';
@@ -436,7 +443,10 @@ const ViewList: React.FC<ViewListProps> = ({
             ...(colType === 'value' ? { sorter: baseSorter } : {}),
             render: (_: unknown, record: TableDataItem) => {
               const cell = resolveCell(record, col);
-              const meta = cell.metricName ? metricByName(cell.metricName) : primaryMeta;
+              const meta = resolveDisplayMetric(allMetrics, {
+                plugin: cell.pluginName,
+                metric: cell.metricName
+              }) || primaryMeta;
               const color = getEnumColor(meta, cell.value);
               const hasDimensions = (meta?.dimensions?.length ?? 0) > 0;
               const metricUnit = cell.unit || meta?.unit || '';

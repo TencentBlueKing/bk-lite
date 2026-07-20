@@ -35,11 +35,13 @@ export default function CustomReportingPage() {
   const closeBatch = () => setBatchTask(null);
 
   return (
-    <div className="flex flex-col h-full">
-      <Introduction
-        title={t('CustomReporting.title')}
-        message={t('CustomReporting.message')}
-      />
+    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
+      <div className="shrink-0">
+        <Introduction
+          title={t('CustomReporting.title')}
+          message={t('CustomReporting.message')}
+        />
+      </div>
       <TaskTable
         refreshToken={refreshToken}
         onCreate={openCreateWizard}

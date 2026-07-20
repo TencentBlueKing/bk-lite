@@ -278,8 +278,6 @@ const ShapeNodePanel: React.FC<NodeConfPanelProps> = ({
         </Form.Item>
 
         <Form.Item
-          label=" "
-          colon={false}
           name={logoType === 'default' ? 'logoIcon' : 'logoUrl'}
         >
           {logoType === 'default' ? (
@@ -619,7 +617,7 @@ const ShapeNodePanel: React.FC<NodeConfPanelProps> = ({
         </div>
       }
     >
-      <Form form={form} labelCol={{ span: 5 }} layout="horizontal">
+      <Form form={form} layout="vertical">
         {renderBasicSettings}
         {renderStyleConfig}
       </Form>

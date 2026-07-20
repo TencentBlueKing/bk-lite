@@ -1,29 +1,22 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { AutoComplete, Button, Descriptions, Drawer, Form, Input, List, Modal, Popconfirm, Select, Space, Tag, Tooltip, Upload, message } from 'antd';
+import { AutoComplete, Button, Descriptions, Drawer, Form, Input, List, Modal, Popconfirm, Select, Space, Tag, Upload, message } from 'antd';
 import { DeleteOutlined, DownloadOutlined, PlusOutlined, UploadOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import CustomTable from '@/components/custom-table';
 import MarkdownRenderer from '@/components/markdown';
 import { useTranslation } from '@/utils/i18n';
 import { useWikiApi } from '@/app/opspilot/api/wiki';
-import { KnowledgePage, MaterialInfo, MaterialType, PageVersion, WikiIndexStageDetail, WikiPageSource } from '@/app/opspilot/types/wiki';
+import { KnowledgePage, MaterialInfo, MaterialType, PageVersion, WikiPageSource } from '@/app/opspilot/types/wiki';
 import ContributionTag from './ContributionTag';
-import { INDEX_REASON_LABEL, INDEX_STATUS_LABEL, PAGE_STATUS_LABEL } from './wikiFormat';
+import { PAGE_STATUS_LABEL } from './wikiFormat';
 
 const PAGE_STATUS_COLOR: Record<string, string> = { active: 'green', archived: 'default', source_invalid: 'red' };
 const MATERIAL_TYPE_KEY: Record<MaterialType, string> = {
   file: 'wiki.materialFile',
   text: 'wiki.materialText',
   web: 'wiki.materialWeb',
-};
-const INDEX_STATUS_COLOR: Record<string, string> = {
-  indexed: 'green',
-  indexing: 'blue',
-  not_indexed: 'gold',
-  failed: 'red',
-  skipped: 'default',
 };
 const isArchivedPage = (record: KnowledgePage) => record.status === 'archived';
 const SHOW_PAGE_REINDEX_ACTION = false;
@@ -355,31 +348,6 @@ const PageTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   };
 
   const isReadOnlyPage = !!editing && isArchivedPage(editing);
-  const indexStageTip = (detail?: WikiIndexStageDetail) => {
-    if (!detail) return '';
-    if (detail.error) return detail.error;
-    if (detail.reason) return INDEX_REASON_LABEL[detail.reason] ? t(INDEX_REASON_LABEL[detail.reason]) : detail.reason;
-    if (typeof detail.indexed_chunks === 'number' && typeof detail.expected_chunks === 'number') {
-      return `${detail.indexed_chunks}/${detail.expected_chunks}`;
-    }
-    return '';
-  };
-  const renderIndexTag = (label: string, detail?: WikiIndexStageDetail) => {
-    const status = detail?.status || 'not_indexed';
-    const content = (
-      <Tag color={INDEX_STATUS_COLOR[status] || 'default'} className="m-0">
-        {label}: {INDEX_STATUS_LABEL[status] ? t(INDEX_STATUS_LABEL[status]) : status}
-      </Tag>
-    );
-    const tip = indexStageTip(detail);
-    return tip ? <Tooltip title={tip}>{content}</Tooltip> : content;
-  };
-  const renderIndexStatus = (record: KnowledgePage) => (
-    <Space size={[4, 4]} wrap>
-      {renderIndexTag(t('wiki.pageIndex'), record.index_detail?.page_embedding)}
-      {renderIndexTag(t('wiki.chunkIndex'), record.index_detail?.chunk_embedding)}
-    </Space>
-  );
   const materialTypeLabel = (type: MaterialType) => (MATERIAL_TYPE_KEY[type] ? t(MATERIAL_TYPE_KEY[type]) : type);
   const renderPageSource = (source: WikiPageSource) => (
     <List.Item key={source.id}>
@@ -446,12 +414,6 @@ const PageTab: React.FC<{ kbId: number }> = ({ kbId }) => {
       render: (s: string) => (
         <Tag color={PAGE_STATUS_COLOR[s] || 'default'}>{PAGE_STATUS_LABEL[s] ? t(PAGE_STATUS_LABEL[s]) : s}</Tag>
       ),
-    },
-    {
-      title: t('wiki.indexStatus'),
-      key: 'index_status',
-      width: 220,
-      render: (_: unknown, record) => renderIndexStatus(record),
     },
     {
       title: t('common.actions'),

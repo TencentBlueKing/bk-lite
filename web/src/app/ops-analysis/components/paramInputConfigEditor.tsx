@@ -1,7 +1,20 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Empty, Form, Input, message, Modal, Radio, Select, Space, Table } from 'antd';
+import {
+  Button,
+  Empty,
+  Form,
+  Input,
+  message,
+  Modal,
+  Radio,
+  Select,
+  Space,
+  Switch,
+  Table,
+  Tooltip,
+} from 'antd';
 import { HolderOutlined, MinusOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import {
   DndContext,
@@ -40,9 +53,12 @@ interface StaticRow extends InputOption {
 interface ParamInputConfigEditorProps {
   open: boolean;
   value?: InputControlConfig;
-  onConfirm: (value: InputControlConfig) => void;
+  onConfirm: (value: InputControlConfig, resolvedOptions?: InputOption[]) => void;
   onCancel: () => void;
   excludeSourceIds?: number[];
+  componentSwitchEnabled?: boolean;
+  componentSwitchOwner?: { name: string; label: string };
+  editingParamName?: string;
 }
 
 interface SortableStaticRowProps {
@@ -56,11 +72,6 @@ interface SortableStaticRowProps {
 
 const newId = () => Math.random().toString(36).slice(2);
 const createRow = (): StaticRow => ({ uid: newId(), label: '', value: '' });
-const formItemLayout = {
-  labelCol: { flex: '88px' },
-  wrapperCol: { flex: 1 },
-};
-
 const SortableStaticRow: React.FC<SortableStaticRowProps> = ({
   row,
   onChange,
@@ -116,10 +127,14 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
   onConfirm,
   onCancel,
   excludeSourceIds = [],
+  componentSwitchEnabled = false,
+  componentSwitchOwner,
+  editingParamName,
 }) => {
   const { t } = useTranslation();
   const { getDataSourceList, getSourceDataByApiId } = useDataSourceApi();
   const [control, setControl] = useState<InputControlConfig['control']>('input');
+  const [componentSwitch, setComponentSwitch] = useState(false);
   const [sourceType, setSourceType] = useState<'static' | 'dynamic'>('static');
   const [staticRows, setStaticRows] = useState<StaticRow[]>([createRow()]);
   const [dataSourceList, setDataSourceList] = useState<DatasourceItem[]>([]);
@@ -141,6 +156,7 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
     if (!open) return;
     if (!value) {
       setControl('input');
+      setComponentSwitch(false);
       setSourceType('static');
       setStaticRows([createRow()]);
       setDynamicSourceId(undefined);
@@ -151,6 +167,9 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
     }
 
     setControl(value.control);
+    setComponentSwitch(
+      value.control === 'input' ? false : Boolean(value.componentSwitch),
+    );
     if (value.control === 'input') {
       setSourceType('static');
       setStaticRows([createRow()]);
@@ -249,8 +268,8 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
         setDynamicPreview([]);
         message.error(
           error?.response?.data?.message ||
-            error?.message ||
-            t('paramInput.dynamic.testFailed'),
+          error?.message ||
+          t('paramInput.dynamic.testFailed'),
         );
       })
       .finally(() => {
@@ -267,9 +286,9 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
       prev.map((row) =>
         row.uid === uid
           ? {
-              ...row,
-              [field]: nextValue,
-            }
+            ...row,
+            [field]: nextValue,
+          }
           : row,
       ),
     );
@@ -321,13 +340,17 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
         return;
       }
 
-      onConfirm({
-        control,
-        optionsSource: {
-          type: 'static',
-          staticItems,
+      onConfirm(
+        {
+          control,
+          componentSwitch: componentSwitch || undefined,
+          optionsSource: {
+            type: 'static',
+            staticItems,
+          },
         },
-      });
+        staticItems,
+      );
       return;
     }
 
@@ -343,7 +366,11 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
       labelField: dynamicLabelField,
     };
 
-    onConfirm({ control, optionsSource });
+    onConfirm({
+      control,
+      componentSwitch: componentSwitch || undefined,
+      optionsSource,
+    });
   };
 
   return (
@@ -361,11 +388,15 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
         body: { maxHeight: 'calc(100vh - 200px)', overflowY: 'auto' },
       }}
     >
-      <Form layout="horizontal" colon={false} {...formItemLayout}>
+      <Form layout="vertical" colon={false}>
         <Form.Item label={t('paramInput.controlType')} className="mb-3">
           <Radio.Group
             value={control}
-            onChange={(event) => setControl(event.target.value)}
+            onChange={(event) => {
+              const nextControl = event.target.value as InputControlConfig['control'];
+              setControl(nextControl);
+              if (nextControl === 'input') setComponentSwitch(false);
+            }}
             options={[
               { label: t('paramInput.control.input'), value: 'input' },
               { label: t('paramInput.control.select'), value: 'select' },
@@ -376,6 +407,33 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
 
         {control !== 'input' && (
           <>
+            {componentSwitchEnabled && (
+              <Form.Item
+                label={t('dashboard.componentSwitch')}
+                className="mb-3"
+              >
+                <Tooltip
+                  title={
+                    componentSwitchOwner &&
+                      componentSwitchOwner.name !== editingParamName
+                      ? t('dashboard.componentSwitchOccupied', undefined, {
+                        label: componentSwitchOwner.label,
+                      })
+                      : undefined
+                  }
+                >
+                  <Switch
+                    size='small'
+                    checked={componentSwitch}
+                    disabled={Boolean(
+                      componentSwitchOwner &&
+                      componentSwitchOwner.name !== editingParamName,
+                    )}
+                    onChange={setComponentSwitch}
+                  />
+                </Tooltip>
+              </Form.Item>
+            )}
             <Form.Item label={t('paramInput.sourceType')} className="mb-3">
               <Radio.Group
                 value={sourceType}

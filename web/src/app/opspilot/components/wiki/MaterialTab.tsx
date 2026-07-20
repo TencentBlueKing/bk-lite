@@ -174,15 +174,19 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     try {
       let successMessage = t('wiki.saveSuccess');
       if (editingMaterial) {
+        // 编辑任何类型都带上 ocr_enhance:web 含图,text 字段保留一致。
+        const common = { ocr_enhance: Boolean(values.ocr_enhance) };
         if (editingMaterial.material_type === 'file') {
-          await updateMaterial(editingMaterial.id, { ocr_enhance: Boolean(values.ocr_enhance) });
+          await updateMaterial(editingMaterial.id, common);
         } else if (editingMaterial.material_type === 'web') {
           await updateMaterial(editingMaterial.id, {
+            ...common,
             name: values.name,
             sync_policy: { enabled: !!values.sync_enabled, interval_hours: values.sync_interval_hours ?? 24 },
           });
         } else if (editingMaterial.material_type === 'text') {
           await updateMaterial(editingMaterial.id, {
+            ...common,
             name: values.name,
             text_content: values.text_content ?? '',
           });
@@ -642,8 +646,9 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
               </Form.Item>
             </>
           )}
-          {/* 新增时可选择图片增强;编辑文件资料时只允许修改该开关 */}
-          {(!isEditing || type === 'file') && (
+          {/* 新增 + 编辑(file/web 都可修改):ocr_enhance 让 LLM 在解析时调用 vision
+              抽取图片内容;text 类型无图片,不放该开关。 */}
+          {(!isEditing || type === 'file' || type === 'web') && (
             <Form.Item
               label={t('wiki.imageEnhance')}
               name="ocr_enhance"

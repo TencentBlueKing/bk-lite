@@ -219,7 +219,7 @@ const CorrelationRulesPage: React.FC = () => {
         title={t('settings.correlationRules')}
         message={t('settings.correlationRulesMessage')}
       />
-      <div className="p-4 pt-0 bg-[var(--color-bg-1)] rounded-lg shadow">
+      <div className="p-4 bg-[var(--color-bg-1)] rounded-lg shadow">
         <div>
           <div className="nav-box flex justify-between mb-[14px]">
             <div className="flex items-center">
@@ -247,7 +247,7 @@ const CorrelationRulesPage: React.FC = () => {
             dataSource={dataList}
             pagination={pagination}
             onChange={handleTableChange}
-            scroll={{ y: 'calc(100vh - 480px)' }}
+            scroll={{ y: 'calc(100vh - 460px)' }}
           />
           <OperateModal
             open={operateVisible}

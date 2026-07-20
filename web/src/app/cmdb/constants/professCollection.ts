@@ -225,7 +225,7 @@ export const SNMP_FORM_INITIAL_VALUES = {
   enterType: ENTER_TYPE.AUTOMATIC,
   version: 'v2',
   snmp_port: '161',
-  timeout: 20,
+  timeout: 5,
   level: 'authNoPriv',
   integrity: 'sha',
   privacy: 'aes',

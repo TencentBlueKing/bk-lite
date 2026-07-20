@@ -17,6 +17,7 @@ const precheckResponse: PrecheckResponse = {
       architecture: 1,
       screen: 0,
       report: 0,
+      networkTopology: 0,
       datasource: 0,
       namespace: 0,
     },

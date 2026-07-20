@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import styles from './index.module.scss';
 import OperateOid from './components/operateOid';
 import CustomTable from '@/components/custom-table';
+import Introduction from '@/components/introduction';
 import PermissionWrapper from '@/components/permission';
 import { getNetworkDeviceOptions } from '@/app/cmdb/constants/professCollection';
 import { Button, Input, Select, Modal, message, Space } from 'antd';
@@ -313,8 +314,14 @@ const OidLibrary: React.FC = () => {
   };
 
   return (
-    <div className="oid-library-container">
-      <div className="nav-box flex justify-between mb-[20px]">
+    <div className="oid-library-container flex h-full min-h-0 flex-col overflow-hidden">
+      <div className="shrink-0 overflow-x-auto">
+        <Introduction
+          title={t('OidLibrary.soidTitle')}
+          message={t('OidLibrary.soidMessage')}
+        />
+      </div>
+      <div className="nav-box mb-[20px] flex shrink-0 flex-wrap items-center justify-between gap-3">
         <div className={`flex items-center ${styles.wrapper}`}>
           <Space.Compact>
             <Select
@@ -345,16 +352,18 @@ const OidLibrary: React.FC = () => {
           </Button>
         </PermissionWrapper>
       </div>
-      <CustomTable
-        size="middle"
-        rowKey="id"
-        loading={tableLoading}
-        columns={columns}
-        dataSource={dataList}
-        pagination={pagination}
-        onChange={handleTableChange}
-        scroll={{ y: 'calc(100vh - 370px)' }}
-      />
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <CustomTable
+          size="middle"
+          rowKey="id"
+          loading={tableLoading}
+          columns={columns}
+          dataSource={dataList}
+          pagination={pagination}
+          onChange={handleTableChange}
+          scroll={{ y: 'calc(100vh - 456px)' }}
+        />
+      </div>
       <OperateOid
         visible={operateVisible}
         data={currentRow}

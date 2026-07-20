@@ -42,19 +42,19 @@ def _truncate_candidate_title(text, limit=60):
 
 
 def _maybe_save_answer_as_wiki_candidate(kwargs, chat_result, doc_map):
-    """如果 kwargs.wiki_save_answer_as_candidate=True 且有 wiki_kb_ids 且回答引用了 wiki 文档,
-    自动调用 save_answer_candidate_page 把回答保存为待审核候选页。
+    """将命中的高价值回答直接写入知识库。
 
-    用于"高价值回答沉淀"——避免 UI 漏触发。返回落库后的 KnowledgePage 或 None。
+    wiki_save_answer_as_candidate 作为旧调用方的兼容开关保留，但不再创建
+    qa_answer_candidate 审批；新调用方可改用 wiki_save_answer。
     """
-    if not kwargs.get("wiki_save_answer_as_candidate"):
+    if not (kwargs.get("wiki_save_answer") or kwargs.get("wiki_save_answer_as_candidate")):
         return None
     if not chat_result.get("success"):
         return None
     wiki_kb_ids = kwargs.get("wiki_kb_ids") or []
     if not wiki_kb_ids:
         return None
-    # 只在 doc_map 中存在 wiki 来源时才落候选——避免把非 wiki 回答存到 wiki
+    # 只在 doc_map 中存在 wiki 来源时才保存，避免把非 wiki 回答写入知识库。
     wiki_doc_marker = kwargs.get("wiki_doc_marker", "wiki")
     has_wiki_doc = False
     if isinstance(doc_map, dict):
@@ -64,9 +64,10 @@ def _maybe_save_answer_as_wiki_candidate(kwargs, chat_result, doc_map):
                 break
     if not has_wiki_doc:
         return None
-    # 落候选(用第一个 wiki KB,实际 KB 由调用方按规则选)
+
     from apps.opspilot.models import WikiKnowledgeBase
-    from apps.opspilot.services.wiki.page_service import save_answer_candidate_page
+    from apps.opspilot.services.wiki.cascade_service import cascade
+    from apps.opspilot.services.wiki.page_service import save_answer_page
 
     kb = WikiKnowledgeBase.objects.filter(id=wiki_kb_ids[0]).first()
     if not kb:
@@ -76,7 +77,7 @@ def _maybe_save_answer_as_wiki_candidate(kwargs, chat_result, doc_map):
     if not title:
         return None
     try:
-        return save_answer_candidate_page(
+        page = save_answer_page(
             knowledge_base=kb,
             page_type="qa",
             title=title,
@@ -86,8 +87,10 @@ def _maybe_save_answer_as_wiki_candidate(kwargs, chat_result, doc_map):
             source_channel="chat_service",
             created_by=str(kwargs.get("user") or kwargs.get("username") or ""),
         )
-    except Exception:  # noqa: BLE001 - 自动落候选失败不应阻塞 chat 主流程
-        logger.exception("chat_service 自动落候选失败")
+        cascade(kb, [page.id], "qa_answer_save")
+        return page
+    except Exception:  # noqa: BLE001 - 自动保存失败不应阻塞 chat 主流程
+        logger.exception("chat_service 自动保存 Wiki 回答失败")
         return None
 
 
@@ -477,8 +480,13 @@ class ChatService:
             )
 
         import logging as _dbg_log
+
         if kwargs.get("matched_skill_packages") is not None:
-            _dbg_log.warning("DEBUG_CHAT: matched_skill_packages count=%s, capabilities=%s", len(kwargs.get("matched_skill_packages") or []), kwargs.get("skill_package_capabilities"))
+            _dbg_log.warning(
+                "DEBUG_CHAT: matched_skill_packages count=%s, capabilities=%s",
+                len(kwargs.get("matched_skill_packages") or []),
+                kwargs.get("skill_package_capabilities"),
+            )
             extra_config.update(
                 {
                     "matched_skill_packages": kwargs.get("matched_skill_packages") or [],

@@ -1,0 +1,510 @@
+import type { Meta, StoryObj } from '@storybook/nextjs';
+import {
+  CheckCircleOutlined,
+  SwapOutlined,
+  EditOutlined,
+  FileTextOutlined,
+  HistoryOutlined,
+  InfoCircleOutlined,
+  LinkOutlined,
+  RightOutlined,
+} from '@ant-design/icons';
+import { Button, Empty, Segmented, Space, Tag, Tooltip } from 'antd';
+import { useMemo, useState } from 'react';
+
+type DecisionKind = 'knowledge_conflict' | 'page_merge';
+type ViewMode = 'pending' | 'processed';
+
+interface DecisionItem {
+  id: string;
+  kind: DecisionKind;
+  title: string;
+  summary: string;
+  createdAt: string;
+  sourceLabel: string;
+}
+
+interface WikiDecisionCenterPrototypeProps {
+  initialDecisionId?: string;
+}
+
+const DECISIONS: DecisionItem[] = [
+  {
+    id: 'conflict-1',
+    kind: 'knowledge_conflict',
+    title: 'Kubernetes 节点磁盘告警阈值',
+    summary: '新资料将告警阈值从 80% 调整为 85%，与当前知识不一致',
+    createdAt: '10 分钟前',
+    sourceLabel: 'SRE 运行标准 v2026.06',
+  },
+  {
+    id: 'merge-1',
+    kind: 'page_merge',
+    title: '“CMDB”与“配置平台”可能是同一知识',
+    summary: '标题别名、页面类型与核心内容高度一致，需要确认知识边界',
+    createdAt: '昨天 16:42',
+    sourceLabel: '资产管理规范 / 平台介绍',
+  },
+];
+
+const TYPE_META: Record<DecisionKind, { label: string; color: string }> = {
+  knowledge_conflict: { label: '知识更新冲突', color: 'orange' },
+  page_merge: { label: '页面合并决策', color: 'blue' },
+};
+
+const DecisionIcon = () => <SwapOutlined aria-hidden="true" />;
+
+const ComparisonConnector = () => (
+  <div className="hidden h-10 w-10 self-center items-center justify-center rounded-full border border-[#d7e5fa] bg-[#eef5ff] text-[var(--color-primary)] xl:flex">
+    <SwapOutlined aria-hidden="true" />
+  </div>
+);
+
+const DecisionListItem = ({
+  item,
+  active,
+  processed,
+  onClick,
+}: {
+  item: DecisionItem;
+  active: boolean;
+  processed: boolean;
+  onClick: () => void;
+}) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className={`w-full rounded-xl border p-3 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] ${
+      active
+        ? 'border-[#8bb7ff] bg-[#eaf3ff] shadow-[0_3px_10px_rgba(55,104,180,0.08)]'
+        : 'border-[#e1eaf7] bg-white hover:border-[#b9d2f6] hover:bg-[#f8fbff]'
+    }`}
+  >
+    <div className="mb-2 flex items-center justify-between gap-3">
+      <Tag color={processed ? 'success' : TYPE_META[item.kind].color} className="m-0">
+        {processed ? '已处理' : TYPE_META[item.kind].label}
+      </Tag>
+      <span className="text-xs text-[var(--color-text-3)]">{item.createdAt}</span>
+    </div>
+    <div className="flex items-start gap-2">
+      <span className="mt-0.5 text-[var(--color-primary)]">
+        <DecisionIcon />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="mb-1 text-sm font-medium leading-6 text-[var(--color-text-1)]">{item.title}</div>
+        <p className="m-0 line-clamp-2 text-xs leading-5 text-[var(--color-text-3)]">{item.summary}</p>
+      </div>
+      <RightOutlined className="mt-1 text-[10px] text-[var(--color-text-4)]" aria-hidden="true" />
+    </div>
+  </button>
+);
+
+const ContextBand = ({ item }: { item: DecisionItem }) => {
+  const isConflict = item.kind === 'knowledge_conflict';
+  const cells = [
+    {
+      icon: <InfoCircleOutlined aria-hidden="true" />,
+      label: '为什么需要决策',
+      value: isConflict ? '关键结论发生变化' : '身份相同但系统无法确认',
+    },
+    {
+      icon: <FileTextOutlined aria-hidden="true" />,
+      label: '触发来源',
+      value: item.sourceLabel,
+    },
+    {
+      icon: <LinkOutlined aria-hidden="true" />,
+      label: '影响范围',
+      value: isConflict ? '1 个页面 · 3 条关系 · 8 个分块' : '2 个页面 · 5 条关系 · 4 份证据',
+    },
+    {
+      icon: <HistoryOutlined aria-hidden="true" />,
+      label: '可恢复性',
+      value: isConflict ? '旧版本保留，可随时恢复' : '来源页面归档，可随时恢复',
+    },
+  ];
+  const iconTones = [
+    'bg-[#eef4ff] text-[#4f6ee8]',
+    'bg-[#eaf9ff] text-[#1687a7]',
+    'bg-[#f1efff] text-[#6d55d9]',
+    'bg-[#eaf9f0] text-[#2f9b61]',
+  ];
+
+  return (
+    <div className="grid grid-cols-1 gap-2 rounded-xl border border-[#dce9fb] bg-[#f5f9ff] p-2 md:grid-cols-2 xl:grid-cols-4">
+      {cells.map((cell, index) => (
+        <div
+          key={cell.label}
+          className="min-w-0 rounded-lg border border-[#e4edf9] bg-white px-3.5 py-3 shadow-[0_1px_2px_rgba(38,78,130,0.04)]"
+        >
+          <div className="mb-1 flex items-center gap-1.5 text-xs text-[var(--color-text-3)]">
+            <span className={`inline-flex h-6 w-6 items-center justify-center rounded-md ${iconTones[index]}`}>{cell.icon}</span>
+            {cell.label}
+          </div>
+          <div className="truncate text-sm text-[var(--color-text-1)]" title={cell.value}>
+            {cell.value}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const MarkdownPreview = ({
+  eyebrow,
+  title,
+  source,
+  tone,
+  children,
+}: {
+  eyebrow: string;
+  title: string;
+  source: string;
+  tone: 'current' | 'candidate';
+  children: React.ReactNode;
+}) => (
+  <section
+    className={`min-w-0 overflow-hidden rounded-xl border ${
+      tone === 'candidate'
+        ? 'border-[#8bb7ff] bg-[#f2f7ff] shadow-[0_3px_12px_rgba(55,104,180,0.07)]'
+        : 'border-[#dfe8f5] bg-white'
+    }`}
+  >
+    <div className="flex items-start justify-between gap-3 border-b border-[#e5edf8] px-4 py-3">
+      <div className="min-w-0">
+        <div className="mb-1 text-xs font-medium text-[var(--color-text-3)]">{eyebrow}</div>
+        <div className="truncate text-sm font-semibold text-[var(--color-text-1)]">{title}</div>
+      </div>
+      <Tag color={tone === 'candidate' ? 'processing' : 'default'} className="m-0 shrink-0">
+        {tone === 'candidate' ? '候选 v13' : '当前 v12'}
+      </Tag>
+    </div>
+    <div
+      className={`mx-4 mt-3 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs ${
+        tone === 'candidate'
+          ? 'border-[#cbdcf7] bg-white text-[#5170a5]'
+          : 'border-[#dce7f5] bg-[#f8fbff] text-[#60789f]'
+      }`}
+    >
+      <FileTextOutlined aria-hidden="true" />
+      {source}
+    </div>
+    <div className="space-y-3 px-4 pb-4 pt-3 text-sm leading-7 text-[var(--color-text-2)]">{children}</div>
+  </section>
+);
+
+const ChangeLine = ({ kind, children }: { kind: 'removed' | 'added'; children: React.ReactNode }) => (
+  <div
+    className="rounded-md px-3 py-2"
+    style={{
+      background:
+        kind === 'added'
+          ? 'color-mix(in srgb, var(--color-success) 9%, var(--color-bg-1))'
+          : 'color-mix(in srgb, var(--color-fail) 7%, var(--color-bg-1))',
+    }}
+  >
+    <span
+      className="mr-2 inline-block w-4 font-mono font-semibold"
+      style={{ color: kind === 'added' ? 'var(--color-success)' : 'var(--color-fail)' }}
+    >
+      {kind === 'added' ? '+' : '−'}
+    </span>
+    {children}
+  </div>
+);
+
+const ConflictDetail = () => (
+  <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_40px_minmax(0,1fr)] xl:items-stretch">
+      <MarkdownPreview eyebrow="当前知识" title="Kubernetes 节点磁盘告警阈值" source="Kubernetes 运维手册 v2025.12" tone="current">
+        <div>
+          <strong className="text-[var(--color-text-1)]">告警条件</strong>
+          <p className="mb-0 mt-1">节点磁盘使用率达到阈值，并连续 3 次采集超过阈值时触发。</p>
+        </div>
+        <ChangeLine kind="removed">
+          节点磁盘使用率达到 <strong>80%</strong> 时触发告警。
+        </ChangeLine>
+        <div>处置前至少保留最近 7 天的业务日志。</div>
+      </MarkdownPreview>
+      <ComparisonConnector />
+      <MarkdownPreview eyebrow="新知识" title="Kubernetes 节点磁盘告警阈值" source="SRE 运行标准 v2026.06" tone="candidate">
+        <div>
+          <strong className="text-[var(--color-text-1)]">告警条件</strong>
+          <p className="mb-0 mt-1">节点磁盘使用率达到阈值，并持续 5 分钟超过阈值时触发。</p>
+        </div>
+        <ChangeLine kind="added">
+          节点磁盘使用率达到 <strong>85%</strong> 时触发告警。
+        </ChangeLine>
+        <div>处置前至少保留最近 7 天的业务日志。</div>
+      </MarkdownPreview>
+    </div>
+);
+
+const PageSnapshot = ({
+  eyebrow,
+  title,
+  pageType,
+  contribution,
+  sourceCount,
+  relationCount,
+  description,
+  tone,
+}: {
+  eyebrow: string;
+  title: string;
+  pageType: string;
+  contribution: string;
+  sourceCount: number;
+  relationCount: number;
+  description: string;
+  tone: 'current' | 'candidate';
+}) => (
+  <section
+    className={`relative min-w-0 rounded-xl border p-4 ${
+      tone === 'candidate'
+        ? 'border-[#8bb7ff] bg-[#f2f7ff] shadow-[0_3px_12px_rgba(55,104,180,0.07)]'
+        : 'border-[#dfe8f5] bg-white'
+    }`}
+  >
+    <div className="mb-3 flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        <div className="mb-1 text-xs font-medium text-[var(--color-text-3)]">{eyebrow}</div>
+        <div className="truncate text-base font-semibold text-[var(--color-text-1)]">{title}</div>
+      </div>
+      <Tag color={tone === 'candidate' ? 'processing' : 'default'} className="m-0 shrink-0">
+        {tone === 'candidate' ? '待合并' : '当前页面'}
+      </Tag>
+    </div>
+    <div className="mb-3">
+      <Space size={4} wrap>
+        <Tag className="m-0">{pageType}</Tag>
+        <Tag color={contribution === '人工维护' ? 'gold' : 'default'} className="m-0">
+          {contribution}
+        </Tag>
+      </Space>
+    </div>
+    <p className="mb-4 min-h-12 text-sm leading-6 text-[var(--color-text-2)]">{description}</p>
+    <div className="flex gap-5 border-t border-[var(--color-border-1)] pt-3 text-xs text-[var(--color-text-3)]">
+      <span>{sourceCount} 份资料证据</span>
+      <span>{relationCount} 条页面关系</span>
+    </div>
+  </section>
+);
+
+const MergeDetail = () => (
+  <div className="space-y-4">
+    <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_40px_minmax(0,1fr)] xl:items-stretch">
+      <PageSnapshot
+        eyebrow="当前知识"
+        title="配置平台"
+        pageType="实体"
+        contribution="人工维护"
+        sourceCount={3}
+        relationCount={4}
+        description="统一管理业务、主机、服务实例与模型关系，是资产数据的主要事实来源。"
+        tone="current"
+      />
+      <ComparisonConnector />
+      <PageSnapshot
+        eyebrow="新知识"
+        title="CMDB"
+        pageType="实体"
+        contribution="AI 生成"
+        sourceCount={1}
+        relationCount={2}
+        description="配置管理数据库，用于记录基础设施资源、属性以及资源之间的关联。"
+        tone="candidate"
+      />
+    </div>
+    <div className="rounded-xl border border-[#dce9fb] bg-white px-4 py-3 shadow-[0_2px_8px_rgba(46,86,140,0.04)]">
+      <div className="mb-2 text-sm font-medium text-[var(--color-text-1)]">确认合并后</div>
+      <div className="grid grid-cols-1 gap-2 text-sm text-[var(--color-text-2)] md:grid-cols-2">
+        <span>· 新知识正文去重后并入当前知识</span>
+        <span>· 4 份资料证据迁移到当前知识</span>
+        <span>· 新知识原页面进入可恢复归档</span>
+        <span>· 关系、图谱与索引自动重建</span>
+      </div>
+    </div>
+  </div>
+);
+
+const DecisionFooter = ({
+  kind,
+  processedAction,
+  onDecision,
+  onReset,
+}: {
+  kind: DecisionKind;
+  processedAction?: string;
+  onDecision: (action: string) => void;
+  onReset: () => void;
+}) => {
+  if (processedAction) {
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--color-border-1)] bg-[var(--color-bg-1)] px-5 py-3">
+        <div className="flex items-center gap-2 text-sm text-[var(--color-success)]">
+          <CheckCircleOutlined aria-hidden="true" />
+          已记录决策：{processedAction}
+        </div>
+        <Button size="small" onClick={onReset}>
+          重置原型状态
+        </Button>
+      </div>
+    );
+  }
+
+  if (kind === 'knowledge_conflict') {
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--color-border-1)] bg-[var(--color-bg-1)] px-5 py-3">
+        <div className="text-xs text-[var(--color-text-3)]">决定后将自动更新关系、图谱和索引，旧版本仍可恢复。</div>
+        <Space size={8} wrap>
+          <Button onClick={() => onDecision('保留当前知识')}>保留当前知识</Button>
+          <Button icon={<EditOutlined aria-hidden="true" />} onClick={() => onDecision('编辑后采用')}>
+            编辑后采用
+          </Button>
+          <Button type="primary" onClick={() => onDecision('使用新知识')}>
+            使用新知识
+          </Button>
+        </Space>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--color-border-1)] bg-[var(--color-bg-1)] px-5 py-3">
+      <div className="text-xs text-[var(--color-text-3)]">拒绝合并后会记录“不是重复”，内容未变化前不再提示。</div>
+      <Space size={8} wrap>
+        <Button onClick={() => onDecision('保留为独立页面')}>保留为独立页面</Button>
+        <Button type="primary" onClick={() => onDecision('确认合并')}>
+          确认合并
+        </Button>
+      </Space>
+    </div>
+  );
+};
+
+const WikiDecisionCenterPrototype = ({ initialDecisionId = DECISIONS[0].id }: WikiDecisionCenterPrototypeProps) => {
+  const [view, setView] = useState<ViewMode>('pending');
+  const [activeId, setActiveId] = useState(initialDecisionId);
+  const [processed, setProcessed] = useState<Record<string, string>>({});
+  const active = useMemo(() => DECISIONS.find((item) => item.id === activeId) || DECISIONS[0], [activeId]);
+  const pendingCount = DECISIONS.filter((item) => !processed[item.id]).length;
+
+  const visibleItems = view === 'pending' ? DECISIONS.filter((item) => !processed[item.id]) : DECISIONS.filter((item) => processed[item.id]);
+
+  return (
+    <div className="min-h-screen bg-[#f1f6ff] p-4 lg:p-6">
+      <main className="mx-auto flex min-h-[720px] max-w-[1480px] flex-col overflow-hidden rounded-xl border border-[#d9e5f5] bg-white shadow-[0_8px_24px_rgba(43,78,126,0.06)]">
+        <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--color-border-1)] px-5 py-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="m-0 text-base font-semibold text-[var(--color-text-1)]">待决策</h1>
+              {pendingCount > 0 && <Tag color="processing" className="m-0">{pendingCount}</Tag>}
+            </div>
+            <p className="mb-0 mt-1 text-xs text-[var(--color-text-3)]">只展示需要你选择知识结果的事项，结构维护已自动完成</p>
+          </div>
+          <Tooltip title="关系、图谱、索引和重建产生的失效不会进入此处">
+            <div className="flex items-center gap-2 rounded-lg border border-[#d7f0e0] bg-[#f1fbf5] px-3 py-2 text-xs text-[#3f6f53]">
+              <CheckCircleOutlined className="text-[var(--color-success)]" aria-hidden="true" />
+              自动维护正常
+              <InfoCircleOutlined className="text-[var(--color-text-3)]" aria-hidden="true" />
+            </div>
+          </Tooltip>
+        </header>
+
+        <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[340px_minmax(0,1fr)]">
+          <aside className="border-b border-[#dfe8f5] bg-[#f7faff] p-3 lg:border-b-0 lg:border-r">
+            <Segmented
+              block
+              className="bg-[#eaf2ff]"
+              value={view}
+              onChange={(value) => setView(String(value) as ViewMode)}
+              options={[
+                { value: 'pending', label: `待决策 ${pendingCount}` },
+                { value: 'processed', label: `已处理 ${Object.keys(processed).length}` },
+              ]}
+            />
+            <div className="mt-3 space-y-2">
+              {visibleItems.length ? (
+                visibleItems.map((item) => (
+                  <DecisionListItem
+                    key={item.id}
+                    item={item}
+                    active={item.id === active.id}
+                    processed={Boolean(processed[item.id])}
+                    onClick={() => setActiveId(item.id)}
+                  />
+                ))
+              ) : (
+                <div className="rounded-lg bg-[var(--color-bg-1)] py-12">
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={view === 'pending' ? '暂无待决策事项' : '暂无已处理事项'} />
+                </div>
+              )}
+            </div>
+          </aside>
+
+          <section className="flex min-h-0 min-w-0 flex-col bg-[#fcfdff]">
+            <div className="flex-1 overflow-y-auto px-5 py-5">
+              <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <Tag color={TYPE_META[active.kind].color} className="m-0">{TYPE_META[active.kind].label}</Tag>
+                    <Tag className="m-0">{processed[active.id] ? '已处理' : '待决策'}</Tag>
+                  </div>
+                  <h2 className="m-0 text-base font-semibold leading-7 text-[var(--color-text-1)]">{active.title}</h2>
+                  <p className="mb-0 mt-1 text-sm leading-6 text-[var(--color-text-2)]">{active.summary}</p>
+                </div>
+                <Button icon={<HistoryOutlined aria-hidden="true" />}>查看变更记录</Button>
+              </div>
+
+              <ContextBand item={active} />
+
+              <div className="mb-2 mt-5 flex items-center justify-between gap-3">
+                <div className="text-sm font-semibold text-[var(--color-text-1)]">
+                  {active.kind === 'knowledge_conflict' ? '比较知识差异' : '比较页面内容与身份'}
+                </div>
+                <span className="text-xs text-[var(--color-text-3)]">
+                  {active.kind === 'knowledge_conflict' ? '仅突出发生变化的结论' : '新知识的正文、来源和关系将并入当前知识'}
+                </span>
+              </div>
+
+              {active.kind === 'knowledge_conflict' ? (
+                <ConflictDetail />
+              ) : (
+                <MergeDetail />
+              )}
+            </div>
+
+            <DecisionFooter
+              kind={active.kind}
+              processedAction={processed[active.id]}
+              onDecision={(action) => setProcessed((current) => ({ ...current, [active.id]: action }))}
+              onReset={() => setProcessed((current) => {
+                const next = { ...current };
+                delete next[active.id];
+                return next;
+              })}
+            />
+          </section>
+        </div>
+      </main>
+    </div>
+  );
+};
+
+const meta: Meta<typeof WikiDecisionCenterPrototype> = {
+  component: WikiDecisionCenterPrototype,
+  title: 'OpsPilot/WikiDecisionCenter',
+  parameters: { layout: 'fullscreen' },
+};
+
+export default meta;
+
+type Story = StoryObj<typeof WikiDecisionCenterPrototype>;
+
+export const KnowledgeConflict: Story = {
+  args: { initialDecisionId: 'conflict-1' },
+};
+
+export const PageMerge: Story = {
+  args: { initialDecisionId: 'merge-1' },
+};

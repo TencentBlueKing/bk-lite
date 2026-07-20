@@ -82,6 +82,10 @@ export interface OperateModalProps {
   onSuccess?: () => void;
 }
 
+export type DataSourceParamFilterType =
+  | 'filter'
+  | 'fixed'
+  | 'params';
 export interface InputOption {
   label: string;
   value: string | number;
@@ -94,27 +98,28 @@ export interface RestApiSourceRef {
 
 export type SourceRef = RestApiSourceRef;
 
-export type StaticOptionsSource = {
+export interface StaticOptionsSource {
   type: 'static';
   staticItems: InputOption[];
-};
+}
 
-export type DynamicOptionsSource = {
+export interface DynamicOptionsSource {
   type: 'dynamic';
   sourceId?: number;
   sourceRef?: SourceRef;
   valueField: string;
   labelField: string;
-};
+}
 
 export type InputControlConfig =
   | {
-      control: 'input';
-    }
+    control: 'input';
+  }
   | {
-      control: 'select' | 'radio';
-      optionsSource: StaticOptionsSource | DynamicOptionsSource;
-    };
+    control: 'select' | 'radio';
+    optionsSource: StaticOptionsSource | DynamicOptionsSource;
+    componentSwitch?: boolean;
+  };
 
 export interface ParamItem {
   id?: string;
@@ -122,7 +127,7 @@ export interface ParamItem {
   value: string | number | boolean | [number, number] | null;
   alias_name: string;
   type?: string;
-  filterType?: string;
+  filterType?: DataSourceParamFilterType;
   desc?: string;
   required?: boolean;
   /**

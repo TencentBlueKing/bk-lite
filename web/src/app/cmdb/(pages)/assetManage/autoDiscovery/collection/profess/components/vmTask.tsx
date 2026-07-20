@@ -2,7 +2,6 @@
 
 import React, { useEffect, useRef } from 'react';
 import BaseTaskForm, { BaseTaskRef } from './baseTask';
-import { useLocale } from '@/context/locale';
 import { useTranslation } from '@/utils/i18n';
 import { useTaskForm } from '../hooks/useTaskForm';
 import { getCleanupFormValues } from '../hooks/useTaskForm';
@@ -35,7 +34,6 @@ const VMTask: React.FC<VMTaskFormProps> = ({
 }) => {
   const { t } = useTranslation();
   const baseRef = useRef<BaseTaskRef>(null as any);
-  const localeContext = useLocale();
   const { copyTaskData, setCopyTaskData } = useAssetManageStore();
   const { model_id: modelId } = modelItem;
 
@@ -145,8 +143,7 @@ const VMTask: React.FC<VMTaskFormProps> = ({
     <Spin spinning={loading}>
       <Form
         form={form}
-        layout="horizontal"
-        labelCol={{ span: localeContext.locale === 'en' ? 6 : 5 }}
+        layout="vertical"
         onFinish={onFinish}
         initialValues={VM_FORM_INITIAL_VALUES}
       >

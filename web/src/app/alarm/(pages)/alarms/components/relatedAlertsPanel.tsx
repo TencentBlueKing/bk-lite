@@ -124,10 +124,28 @@ const RelatedAlertsPanel = ({ alert, onRefresh }: Props) => {
     return getMatchedDimensionsText(item.matched_dimensions || {});
   };
 
+  const toAlarmTableDataItem = (item: RelatedAlertItem): AlarmTableDataItem => ({
+    ...item,
+    level: item.level as AlarmTableDataItem['level'],
+    event_count: 0,
+    source_names: '',
+    duration: '--',
+    operator_user: '',
+    operator: [],
+    created_at: item.first_event_time || '',
+    updated_at: item.last_event_time || '',
+    item: '',
+    resource_id: '',
+    resource_name: '',
+    resource_type: '',
+    operate: null,
+    incident_name: (item.incidents || []).map((incident) => incident.title).join(', '),
+  });
+
   const handleOpenDetail = (item: RelatedAlertItem) => {
     detailRef.current?.showModal({
       title: item.title,
-      form: item as unknown as AlarmTableDataItem,
+      form: toAlarmTableDataItem(item),
       type: '',
       defaultTab: 'baseInfo',
     });

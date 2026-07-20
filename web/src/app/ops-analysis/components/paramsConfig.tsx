@@ -5,7 +5,11 @@ import { Form, Input, Select, DatePicker, Switch, InputNumber, Button, Tooltip }
 import type { FormInstance } from 'antd';
 import { SettingOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
-import { DatasourceItem, ParamItem } from '@/app/ops-analysis/types/dataSource';
+import type {
+  DatasourceItem,
+  InputOption,
+  ParamItem,
+} from '@/app/ops-analysis/types/dataSource';
 import CompactEmptyState from '@/app/ops-analysis/components/compactEmptyState';
 import { ParamInputControl } from '@/app/ops-analysis/components/paramInputControl';
 import { normalizeInputConfig } from '@/app/ops-analysis/utils/paramInputConfigUtils';
@@ -82,6 +86,7 @@ interface DataSourceParamsConfigProps {
   form?: FormInstance;
   preserveValues?: boolean;
   onEditInputConfig?: (param: ParamItem) => void;
+  onParamOptionsResolved?: (param: ParamItem, options: InputOption[]) => void;
 }
 
 const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
@@ -91,6 +96,7 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
   fieldPrefix = 'params',
   preserveValues = false,
   onEditInputConfig,
+  onParamOptionsResolved,
 }) => {
   const { t } = useTranslation();
   const [mounted, setMounted] = useState(false);
@@ -173,6 +179,9 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
         fallback={fallbackInput}
         disabled={isDisabled}
         placeholder={t('common.selectTip')}
+        onOptionsResolved={(resolvedOptions) =>
+          onParamOptionsResolved?.(param, resolvedOptions)
+        }
       />
     );
   };
@@ -227,14 +236,14 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
-              textAlign: 'right',
+              textAlign: 'left',
             };
           }
           return {
             ...baseStyle,
             whiteSpace: 'nowrap',
             overflow: 'visible',
-            textAlign: 'right',
+            textAlign: 'left',
           };
         };
 
@@ -247,7 +256,7 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
                   display: 'flex',
                   alignItems: 'center',
                   gap: 4,
-                  justifyContent: isVeryLongText ? 'flex-start' : 'flex-end',
+                  justifyContent: 'flex-start',
                 }}
               >
                 <div style={getLabelStyle()} title={labelText}>
@@ -272,8 +281,6 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
             name={fieldName}
             initialValue={!preserveValues && mounted ? initialValue : undefined}
             tooltip={param.desc || undefined}
-            labelCol={{ span: isVeryLongText ? 24 : 5 }}
-            wrapperCol={{ span: isVeryLongText ? 24 : 18 }}
             style={{ marginBottom: isVeryLongText ? 20 : 16 }}
             rules={[
               { required: param.required, message: `请配置${labelText}` },

@@ -4,6 +4,7 @@ export type OpsAnalysisObjectType =
   | 'architecture'
   | 'screen'
   | 'report'
+  | 'networkTopology'
   | 'datasource'
   | 'namespace';
 
