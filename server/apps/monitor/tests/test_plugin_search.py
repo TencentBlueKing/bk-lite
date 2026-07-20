@@ -28,6 +28,12 @@ pytestmark = pytest.mark.django_db
 BASE = "/api/v1/monitor"
 
 
+@pytest.fixture(autouse=True)
+def disable_license_guard(settings):
+    """让视图测试绕过企业版许可证守卫，专注验证搜索行为。"""
+    settings.LICENSE_MGMT_ENABLED = False
+
+
 @pytest.fixture
 def switch_object():
     return MonitorObject.objects.create(name="switch", display_name="交换机", level="base")
