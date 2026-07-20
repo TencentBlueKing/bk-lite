@@ -96,6 +96,52 @@ def test_get_node_list_page_size_all(setup):
 
 
 @pytest.mark.django_db
+def test_get_node_list_page_size_all_is_capped(setup, monkeypatch):
+    region, collector, node = setup
+    Node.objects.create(
+        id="node-svc-2", name="beta", ip="10.1.1.2", operating_system="linux",
+        collector_configuration_directory="/etc", cloud_region=region,
+    )
+    Node.objects.create(
+        id="node-svc-3", name="gamma", ip="10.1.1.3", operating_system="linux",
+        collector_configuration_directory="/etc", cloud_region=region,
+    )
+    monkeypatch.setattr(NodeService, "NODE_LIST_PAGE_SIZE_MAX", 2)
+
+    result = NodeService.get_node_list(
+        organization_ids=[], cloud_region_id=None, name=None, ip=None, os=None,
+        page=1, page_size=-1, is_active=None, is_manual=None, is_container=None,
+        skip_permission=True,
+    )
+
+    assert result["count"] == 3
+    assert len(result["nodes"]) == 2
+
+
+@pytest.mark.django_db
+def test_get_node_list_page_size_above_limit_is_capped(setup, monkeypatch):
+    region, collector, node = setup
+    Node.objects.create(
+        id="node-svc-2", name="beta", ip="10.1.1.2", operating_system="linux",
+        collector_configuration_directory="/etc", cloud_region=region,
+    )
+    Node.objects.create(
+        id="node-svc-3", name="gamma", ip="10.1.1.3", operating_system="linux",
+        collector_configuration_directory="/etc", cloud_region=region,
+    )
+    monkeypatch.setattr(NodeService, "NODE_LIST_PAGE_SIZE_MAX", 2)
+
+    result = NodeService.get_node_list(
+        organization_ids=[], cloud_region_id=None, name=None, ip=None, os=None,
+        page=1, page_size=999, is_active=None, is_manual=None, is_container=None,
+        skip_permission=True,
+    )
+
+    assert result["count"] == 3
+    assert len(result["nodes"]) == 2
+
+
+@pytest.mark.django_db
 def test_get_node_list_is_container_and_is_manual_filters(setup):
     region, collector, node = setup
     Node.objects.create(

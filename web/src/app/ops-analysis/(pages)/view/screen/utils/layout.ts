@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import type {
   FilterBindings,
+  ScreenWidgetAppearance,
   UnifiedFilterDefinition,
   WidgetConfig,
 } from "@/app/ops-analysis/types/dashBoard";
@@ -32,6 +33,18 @@ const clamp = (value: number, min: number, max: number) =>
 const getNextZIndex = (items: ScreenItem[]) =>
   items.reduce((max, item) => Math.max(max, item.zIndex || 0), 0) + 1;
 
+export const normalizeScreenWidgetAppearance = (
+  appearance?: ScreenWidgetAppearance,
+): Required<ScreenWidgetAppearance> => ({
+  frame: appearance?.frame === "bare" ? "bare" : "panel",
+});
+
+export const getDefaultScreenWidgetAppearance = (
+  chartType?: ScreenWidgetChartType | string,
+): Required<ScreenWidgetAppearance> => ({
+  frame: chartType === "room3D" ? "bare" : "panel",
+});
+
 export const isScreenItemInsideViewport = (
   item: ScreenItem,
   viewport: ScreenViewportConfig,
@@ -46,19 +59,6 @@ export const isScreenItemInsideViewport = (
   item.h > 0 &&
   item.x + item.w <= viewport.width &&
   item.y + item.h <= viewport.height;
-
-export const sanitizeScreenItems = (
-  items: ScreenItem[],
-  viewport: ScreenViewportConfig,
-) => {
-  const seen = new Set<string>();
-  return items.filter((item) => {
-    if (!item.id || seen.has(item.id)) return false;
-    if (!isScreenItemInsideViewport(item, viewport)) return false;
-    seen.add(item.id);
-    return true;
-  });
-};
 
 export const canViewportContainItems = (
   items: ScreenItem[],
@@ -245,20 +245,13 @@ export const createScreenWidgetItem = (
     valueConfig: {
       chartType,
       chartThemeMode: "screen-dark",
+      appearance: getDefaultScreenWidgetAppearance(chartType),
       ...(chartType === "networkStatusTopology"
         ? { sceneWidgetType: "networkStatusTopology" as const }
         : {}),
     },
   };
 };
-
-export const addScreenWidget = (
-  viewSets: ScreenViewSets,
-  chartType: ScreenWidgetChartType,
-): ScreenViewSets => ({
-  ...viewSets,
-  items: [...viewSets.items, createScreenWidgetItem(chartType, viewSets.items)],
-});
 
 export const isScreenWidgetChartType = (
   chartType?: string,
@@ -293,6 +286,8 @@ export const addConfiguredScreenWidget = (
           ...values,
           chartType,
           chartThemeMode: "screen-dark",
+          appearance:
+            values.appearance || getDefaultScreenWidgetAppearance(chartType),
           ...(chartType === "networkStatusTopology"
             ? { sceneWidgetType: "networkStatusTopology" as const }
             : {}),

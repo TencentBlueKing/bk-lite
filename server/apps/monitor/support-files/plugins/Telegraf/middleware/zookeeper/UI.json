@@ -2,7 +2,9 @@
   "object_name": "Zookeeper",
   "instance_type": "zookeeper",
   "collect_type": "middleware",
-  "config_type": ["zookeeper"],
+  "config_type": [
+    "zookeeper"
+  ],
   "collector": "Telegraf",
   "instance_id": "{{cloud_region}}_{{url}}",
   "form_fields": [
@@ -19,7 +21,8 @@
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.servers[0]"
-      }
+      },
+      "label_en": "Server Address"
     },
     {
       "name": "timeout",
@@ -32,7 +35,8 @@
         "min": 1,
         "precision": 0,
         "placeholder": "超时时间",
-        "addonAfter": "s"
+        "addonAfter": "s",
+        "placeholder_en": "Timeout"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.timeout",
@@ -42,20 +46,22 @@
         "to_api": {
           "suffix": "s"
         }
-      }
+      },
+      "label_en": "Timeout"
     },
     {
       "name": "interval",
       "label": "间隔",
       "type": "inputNumber",
       "required": true,
-      "default_value": 10,
+      "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
       "widget_props": {
         "min": 1,
         "precision": 0,
         "placeholder": "间隔",
-        "addonAfter": "s"
+        "addonAfter": "s",
+        "placeholder_en": "Interval"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.interval",
@@ -65,7 +71,9 @@
         "to_api": {
           "suffix": "s"
         }
-      }
+      },
+      "label_en": "Interval",
+      "description_en": "Collection time interval (unit: seconds)"
     }
   ],
   "table_columns": [
@@ -75,9 +83,11 @@
       "type": "select",
       "required": true,
       "widget_props": {
-        "placeholder": "请选择节点"
+        "placeholder": "请选择节点",
+        "placeholder_en": "Please select node"
       },
-      "enable_row_filter": false
+      "enable_row_filter": false,
+      "label_en": "Node"
     },
     {
       "name": "url",
@@ -89,9 +99,12 @@
       },
       "change_handler": {
         "type": "simple",
-        "source_fields": ["url"],
+        "source_fields": [
+          "url"
+        ],
         "target_field": "instance_name"
-      }
+      },
+      "label_en": "Server Address"
     },
     {
       "name": "instance_name",
@@ -100,8 +113,10 @@
       "required": true,
       "widget_props": {
         "placeholder": "实例名称",
-        "disabled": false
-      }
+        "disabled": false,
+        "placeholder_en": "Instance Name"
+      },
+      "label_en": "Instance Name"
     },
     {
       "name": "group_ids",
@@ -109,8 +124,10 @@
       "type": "group_select",
       "required": false,
       "widget_props": {
-        "placeholder": "请选择组"
-      }
+        "placeholder": "请选择组",
+        "placeholder_en": "Please select group"
+      },
+      "label_en": "Group"
     }
   ]
 }

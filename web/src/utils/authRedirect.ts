@@ -52,6 +52,30 @@ function isSameOriginUrl(targetUrl: string, knownOrigin?: string): boolean {
   }
 }
 
+export function toSafeRelativeCallbackUrl(callbackUrl?: string, currentOrigin?: string): string {
+  const targetUrl = callbackUrl || '/';
+  const isProtocolRelative = targetUrl.startsWith('//');
+
+  if (targetUrl.startsWith('/') && !isProtocolRelative) {
+    return targetUrl;
+  }
+
+  if (isProtocolRelative) {
+    return '/';
+  }
+
+  try {
+    const parsed = new URL(targetUrl);
+    if (!isSameOriginUrl(targetUrl, currentOrigin)) {
+      return '/';
+    }
+
+    return `${parsed.pathname}${parsed.search}${parsed.hash}` || '/';
+  } catch {
+    return '/';
+  }
+}
+
 export function buildThirdLoginCallbackUrl(
   callbackUrl?: string,
   token?: string,

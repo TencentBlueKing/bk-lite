@@ -1,6 +1,6 @@
 "use client";
 
-import React, {
+import {
   forwardRef,
   useCallback,
   useEffect,
@@ -47,8 +47,10 @@ import {
   buildFiltersFromScreenItems,
   canViewportContainItems,
   deleteScreenItem,
+  getDefaultScreenWidgetAppearance,
   isScreenWidgetChartType,
   moveScreenItem,
+  normalizeScreenWidgetAppearance,
   resizeScreenItem,
   syncScreenFilterBindings,
   updateScreenItemConfig,
@@ -125,6 +127,9 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen }, ref) => {
             dataSource: pendingConfigItem.dataSource,
             chartType: pendingConfigItem.chartType,
             sceneWidgetType: pendingConfigItem.sceneWidgetType,
+            appearance: getDefaultScreenWidgetAppearance(
+              pendingConfigItem.chartType,
+            ),
             dataSourceParams: [],
           },
         }
@@ -478,6 +483,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen }, ref) => {
           ...values,
           chartType: nextChartType,
           chartThemeMode: "screen-dark" as const,
+          appearance: normalizeScreenWidgetAppearance(values.appearance),
         },
       };
       setDraftViewSets((current) =>
@@ -597,6 +603,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen }, ref) => {
         visible={widgetSelectorOpen}
         onCancel={() => setWidgetSelectorOpen(false)}
         onOpenConfig={handleOpenNewWidgetConfig}
+        surface="screen"
       />
       <ScreenConfigModal
         open={settingsOpen}
@@ -649,10 +656,14 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen }, ref) => {
               ...currentConfigItem.valueConfig,
               chartType: currentConfigItem.chartType,
               chartThemeMode: "screen-dark",
+              appearance: normalizeScreenWidgetAppearance(
+                currentConfigItem.valueConfig?.appearance,
+              ),
             },
           }}
           dataSourceManager={dataSourceManager}
           showChartThemeMode={false}
+          surface="screen"
           builtinNamespaceId={queryState.namespaceDraftId}
           filterDefinitions={queryState.definitions}
           unifiedFilterValues={queryState.filterValues}
@@ -666,6 +677,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen }, ref) => {
           item={pendingViewConfigItem}
           dataSourceManager={dataSourceManager}
           showChartThemeMode={false}
+          surface="screen"
           builtinNamespaceId={queryState.namespaceDraftId}
           filterDefinitions={queryState.definitions}
           unifiedFilterValues={queryState.filterValues}

@@ -9,6 +9,18 @@ class SystemMgmt(object):
         return_data = self.client.run("bk_lite_user_login", username=username, domain=domain)
         return return_data
 
+    def login_with_binding(self, binding_id, auth_code="", username="", password=""):
+        return self.client.run(
+            "login_with_binding",
+            binding_id=binding_id,
+            auth_code=auth_code,
+            username=username,
+            password=password,
+        )
+
+    def get_login_auth_bindings(self):
+        return self.client.run("get_login_auth_bindings")
+
     def create_default_rule(self, llm_model, ocr_model, embed_model, rerank_model):
         return_data = self.client.run(
             "create_default_rule",
@@ -52,6 +64,22 @@ class SystemMgmt(object):
             "get_authorized_groups_scoped",
             actor_context=actor_context,
             include_children=include_children,
+        )
+        return return_data
+
+    def get_user_group_tree(self, username, sync_source_id=None):
+        """
+        按 (username, sync_source_id) 唯一定位用户，返回其组织树。
+        返回结构与 login_info.group_tree 形态一致。
+
+        :param username: 用户名
+        :param sync_source_id: UserSyncSource 主键(int)；None 或空串表示本地用户(User.sync_source IS NULL)
+        :return: {"result": bool, "data": {"user_id", "username", "domain", "group_list", "group_tree"} | "message": str}
+        """
+        return_data = self.client.run(
+            "get_user_group_tree",
+            username=username,
+            sync_source_id=sync_source_id,
         )
         return return_data
 
@@ -171,8 +199,7 @@ class SystemMgmt(object):
         """
         return self.client.run("save_error_log", username=username, app=app, module=module, error_message=error_message, domain=domain)
 
-    def save_operation_log(self, username, source_ip, app, action_type, summary="", domain="domain.com",
-                           target_type="", target_id="", detail=None):
+    def save_operation_log(self, username, source_ip, app, action_type, summary="", domain="domain.com", target_type="", target_id="", detail=None):
         """
         保存操作日志
         :param username: 用户名
@@ -186,8 +213,16 @@ class SystemMgmt(object):
         :param detail: 操作详情 JSON（可选，默认空字典）
         """
         return self.client.run(
-            "save_operation_log", username=username, source_ip=source_ip, app=app, action_type=action_type,
-            summary=summary, domain=domain, target_type=target_type, target_id=target_id, detail=detail,
+            "save_operation_log",
+            username=username,
+            source_ip=source_ip,
+            app=app,
+            action_type=action_type,
+            summary=summary,
+            domain=domain,
+            target_type=target_type,
+            target_id=target_id,
+            detail=detail,
         )
 
     def search_channel_list(self, channel_type, teams, include_children):

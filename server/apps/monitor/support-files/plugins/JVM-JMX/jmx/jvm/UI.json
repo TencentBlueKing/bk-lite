@@ -2,7 +2,9 @@
   "object_name": "JVM",
   "instance_type": "jvm",
   "collect_type": "jmx",
-  "config_type": ["jvm"],
+  "config_type": [
+    "jvm"
+  ],
   "collector": "JVM-JMX",
   "instance_id": "{{cloud_region}}_jvm_{{jmx_url}}",
   "form_fields": [
@@ -14,11 +16,14 @@
       "editable": false,
       "description": "用于访问接口的用户名",
       "widget_props": {
-        "placeholder": "用户名"
+        "placeholder": "用户名",
+        "placeholder_en": "Username"
       },
       "transform_on_edit": {
         "origin_path": "base.content.username"
-      }
+      },
+      "label_en": "Username",
+      "description_en": "Username for accessing the interface"
     },
     {
       "name": "password",
@@ -28,11 +33,14 @@
       "editable": false,
       "description": "对应的登录密码",
       "widget_props": {
-        "placeholder": "密码"
+        "placeholder": "密码",
+        "placeholder_en": "Password"
       },
       "transform_on_edit": {
         "origin_path": "base.content.password"
-      }
+      },
+      "label_en": "Password",
+      "description_en": "Corresponding login password"
     },
     {
       "name": "monitor_url",
@@ -47,7 +55,8 @@
       },
       "transform_on_edit": {
         "origin_path": "base.content.jmxUrl"
-      }
+      },
+      "label_en": "JMX URL"
     },
     {
       "name": "LISTEN_PORT",
@@ -59,24 +68,27 @@
       "widget_props": {
         "min": 1,
         "precision": 0,
-        "placeholder": "监听端口"
+        "placeholder": "监听端口",
+        "placeholder_en": "Listen Port"
       },
       "transform_on_edit": {
         "origin_path": "child.env_config.LISTEN_PORT__{{config_id}}"
-      }
+      },
+      "label_en": "Listen Port"
     },
     {
       "name": "interval",
       "label": "间隔",
       "type": "inputNumber",
       "required": true,
-      "default_value": 10,
+      "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
       "widget_props": {
         "min": 1,
         "precision": 0,
         "placeholder": "间隔",
-        "addonAfter": "s"
+        "addonAfter": "s",
+        "placeholder_en": "Interval"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.interval",
@@ -86,7 +98,9 @@
         "to_api": {
           "suffix": "s"
         }
-      }
+      },
+      "label_en": "Interval",
+      "description_en": "Collection time interval (unit: seconds)"
     }
   ],
   "table_columns": [
@@ -96,9 +110,24 @@
       "type": "select",
       "required": true,
       "widget_props": {
-        "placeholder": "请选择节点"
+        "placeholder": "请选择节点",
+        "placeholder_en": "Please select node"
       },
-      "enable_row_filter": false
+      "enable_row_filter": false,
+      "label_en": "Node"
+    },
+    {
+      "name": "ENV_LISTEN_PORT",
+      "label": "监听端口",
+      "type": "inputNumber",
+      "required": true,
+      "widget_props": {
+        "placeholder": "监听端口",
+        "min": 1,
+        "precision": 0,
+        "placeholder_en": "Listen Port"
+      },
+      "label_en": "Listen Port"
     },
     {
       "name": "jmx_url",
@@ -110,20 +139,12 @@
       },
       "change_handler": {
         "type": "simple",
-        "source_fields": ["jmx_url"],
+        "source_fields": [
+          "jmx_url"
+        ],
         "target_field": "instance_name"
-      }
-    },
-    {
-      "name": "ENV_LISTEN_PORT",
-      "label": "监听端口",
-      "type": "inputNumber",
-      "required": true,
-      "widget_props": {
-        "placeholder": "监听端口",
-        "min": 1,
-        "precision": 0
-      }
+      },
+      "label_en": "URL"
     },
     {
       "name": "instance_name",
@@ -132,8 +153,10 @@
       "required": true,
       "widget_props": {
         "placeholder": "实例名称",
-        "disabled": false
-      }
+        "disabled": false,
+        "placeholder_en": "Instance Name"
+      },
+      "label_en": "Instance Name"
     },
     {
       "name": "group_ids",
@@ -141,8 +164,10 @@
       "type": "group_select",
       "required": false,
       "widget_props": {
-        "placeholder": "请选择组"
-      }
+        "placeholder": "请选择组",
+        "placeholder_en": "Please select group"
+      },
+      "label_en": "Group"
     }
   ],
   "extra_edit_fields": {}

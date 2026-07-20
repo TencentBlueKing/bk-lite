@@ -271,6 +271,7 @@ export interface MetricItem {
   metric_group: number;
   metric_object: number;
   name: string;
+  monitor_plugin_name?: string;
   type: string;
   display_name?: string;
   display_description?: string;
@@ -304,6 +305,7 @@ export interface ThresholdField {
 }
 
 export interface FilterItem {
+  logic?: 'and' | 'or' | null;
   name: string | null;
   method: string | null;
   value: string;

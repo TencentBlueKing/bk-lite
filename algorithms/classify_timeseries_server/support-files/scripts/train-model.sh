@@ -22,10 +22,10 @@ DOWNLOAD_DIR="${DOWNLOAD_DIR:-${SCRIPT_DIR}/data/downloads}"
 EXTRACT_DIR="${EXTRACT_DIR:-${SCRIPT_DIR}/data/datasets}"
 CONFIG_DIR="${CONFIG_DIR:-${SCRIPT_DIR}/data/configs}"
 
-# MinIO 连接配置（通过环境变量配置）
-MINIO_ENDPOINT="${MINIO_ENDPOINT:-}"
-MINIO_ACCESS_KEY="${MINIO_ACCESS_KEY:-}"
-MINIO_SECRET_KEY="${MINIO_SECRET_KEY:-}"
+# MinIO 连接配置（必须通过环境变量提供）
+MINIO_ENDPOINT="${MINIO_ENDPOINT:?必须设置 MINIO_ENDPOINT 环境变量}"
+MINIO_ACCESS_KEY="${MINIO_ACCESS_KEY:?必须设置 MINIO_ACCESS_KEY 环境变量}"
+MINIO_SECRET_KEY="${MINIO_SECRET_KEY:?必须设置 MINIO_SECRET_KEY 环境变量}"
 MINIO_USE_HTTPS="${MINIO_USE_HTTPS:-0}"
 
 # ==================== 参数解析 ====================
@@ -33,8 +33,8 @@ MINIO_BUCKET="${1:-${MINIO_BUCKET:-datasets}}"
 DATASET_NAME="${2:-${DATASET_NAME:-timeseries_train_data.zip}}"
 CONFIG_NAME="$3"
 
-# MLflow 配置
-MLFLOW_TRACKING_URI="${MLFLOW_TRACKING_URI:-http://10.10.41.149:15000}"
+# MLflow 配置（必须通过环境变量提供）
+MLFLOW_TRACKING_URI="${MLFLOW_TRACKING_URI:?必须设置 MLFLOW_TRACKING_URI 环境变量}"
 
 # ==================== 函数定义 ====================
 function log_info() {
@@ -64,16 +64,7 @@ fi
 
 log_info "使用下载脚本: ${DOWNLOAD_SCRIPT}"
 
-# 检查 MinIO 连接配置
-if [ -z "${MINIO_ENDPOINT}" ] || [ -z "${MINIO_ACCESS_KEY}" ] || [ -z "${MINIO_SECRET_KEY}" ]; then
-    log_error "MinIO 连接信息未配置"
-    log_error "请设置以下环境变量："
-    log_error "  MINIO_ENDPOINT=10.10.41.149:9000"
-    log_error "  MINIO_ACCESS_KEY=minio"
-    log_error "  MINIO_SECRET_KEY=your-secret-key"
-    log_error "  MINIO_USE_HTTPS=0  # 可选，默认为 0"
-    exit 1
-fi
+# MinIO / MLflow 连接配置已在上方强制校验，缺失时立即退出。
 
 log_info "MinIO Endpoint: ${MINIO_ENDPOINT}"
 

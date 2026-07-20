@@ -15,14 +15,14 @@ from apps.operation_analysis.constants.import_export import (
     BUSINESS_KEY_SEPARATOR,
     CANVAS_TYPES,
     OBJECT_TYPE_TO_SECTION,
-    SENSITIVE_FIELDS,
     SENSITIVE_PLACEHOLDER,
     YAML_SCHEMA_VERSION,
     ObjectType,
     ScopeType,
+    is_sensitive_field_name,
 )
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, NameSpace
-from apps.operation_analysis.models.models import Architecture, Dashboard, Report, Screen, Topology
+from apps.operation_analysis.models.models import Architecture, Dashboard, NetworkTopology, Report, Screen, Topology
 from apps.operation_analysis.services.import_export.view_sets import (
     normalize_canvas_view_sets_for_storage,
     normalize_canvas_view_sets_for_yaml,
@@ -51,6 +51,7 @@ class ExportService:
         ObjectType.ARCHITECTURE: Architecture,
         ObjectType.SCREEN: Screen,
         ObjectType.REPORT: Report,
+        ObjectType.NETWORK_TOPOLOGY: NetworkTopology,
         ObjectType.DATASOURCE: DataSourceAPIModel,
         ObjectType.NAMESPACE: NameSpace,
     }
@@ -73,22 +74,23 @@ class ExportService:
             return f"{object_type.value}{BUSINESS_KEY_SEPARATOR}{obj.name}"
 
     @staticmethod
-    def mask_sensitive_fields(data: dict) -> dict:
+    def mask_sensitive_fields(data: Any) -> Any:
         """
         对敏感字段进行脱敏处理
 
-        遍历字典，将SENSITIVE_FIELDS中定义的字段值替换为占位符。
+        遍历字典，将敏感字段值替换为占位符。
         """
+        if isinstance(data, list):
+            return [ExportService.mask_sensitive_fields(item) for item in data]
+        if not isinstance(data, dict):
+            return data
+
         result = {}
         for key, value in data.items():
-            if key in SENSITIVE_FIELDS and value:
+            if is_sensitive_field_name(key) and value:
                 result[key] = SENSITIVE_PLACEHOLDER
-            elif isinstance(value, dict):
-                result[key] = ExportService.mask_sensitive_fields(value)
-            elif isinstance(value, list):
-                result[key] = [ExportService.mask_sensitive_fields(item) if isinstance(item, dict) else item for item in value]
             else:
-                result[key] = value
+                result[key] = ExportService.mask_sensitive_fields(value)
         return result
 
     @staticmethod
@@ -118,6 +120,9 @@ class ExportService:
                 "key": ExportService.generate_business_key(ds, ObjectType.DATASOURCE),
                 "name": ds.name,
                 "rest_api": ds.rest_api,
+                "source_type": ds.source_type,
+                "connection_config": ds.connection_config or {},
+                "query_config": ds.query_config or {},
                 "desc": ds.desc or "",
                 # [内部预留] is_active 字段仅内部使用，无产品功能依赖
                 "is_active": ds.is_active,
@@ -191,7 +196,6 @@ class ExportService:
             "key": ExportService.generate_business_key(canvas, object_type),
             "name": canvas.name,
             "desc": canvas.desc or "",
-            "other": canvas.other or {},
             "view_sets": view_sets,
             "refs": {
                 "datasource_keys": datasource_keys,
@@ -199,11 +203,18 @@ class ExportService:
             },
         }
 
+        if hasattr(canvas, "other"):
+            base_data["other"] = canvas.other or {}
+
         # Dashboard有额外的filters字段
         if object_type == ObjectType.DASHBOARD and hasattr(canvas, "filters"):
             base_data["filters"] = canvas.filters or []
 
-        return base_data
+        if object_type == ObjectType.NETWORK_TOPOLOGY:
+            base_data["base_url"] = canvas.base_url
+            base_data["token"] = canvas.token
+
+        return ExportService.mask_sensitive_fields(base_data)
 
     @classmethod
     def _collect_canvas_dependencies(cls, object_type: str, object_ids: list[int]) -> tuple[set, set]:

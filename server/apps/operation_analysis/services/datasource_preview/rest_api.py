@@ -1,3 +1,4 @@
+import json
 from typing import Any
 
 import requests
@@ -6,6 +7,26 @@ from apps.operation_analysis.services.datasource_preview.base import BaseConnect
 from apps.operation_analysis.services.datasource_preview.schema import infer_fields
 
 MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+RESPONSE_CHUNK_BYTES = 64 * 1024
+
+
+def read_limited_json(response) -> Any:
+    content_length = response.headers.get("content-length")
+    try:
+        declared_length = int(content_length) if content_length is not None else 0
+    except (TypeError, ValueError):
+        declared_length = 0
+    if declared_length > MAX_RESPONSE_BYTES:
+        raise ConnectorError("REST API 响应体过大", code="rest_response_too_large", status_code=400)
+
+    content = bytearray()
+    for chunk in response.iter_content(chunk_size=RESPONSE_CHUNK_BYTES):
+        if not chunk:
+            continue
+        content.extend(chunk)
+        if len(content) > MAX_RESPONSE_BYTES:
+            raise ConnectorError("REST API 响应体过大", code="rest_response_too_large", status_code=400)
+    return json.loads(content)
 
 
 def extract_response_path(payload: Any, response_path: str | None) -> Any:
@@ -73,12 +94,13 @@ class RestApiConnectorExecutor(BaseConnectorExecutor):
                 params=params,
                 json=body if method == "POST" else None,
                 timeout=timeout,
+                stream=True,
             )
-            content_length = int(response.headers.get("content-length") or 0)
-            if content_length > MAX_RESPONSE_BYTES:
-                raise ConnectorError("REST API 响应体过大", code="rest_response_too_large", status_code=400)
-            response.raise_for_status()
-            payload = response.json()
+            try:
+                response.raise_for_status()
+                payload = read_limited_json(response)
+            finally:
+                response.close()
         except ConnectorError:
             raise
         except Exception as exc:

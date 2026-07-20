@@ -1,5 +1,9 @@
+from types import SimpleNamespace
+
 import pytest
 
+from apps.node_mgmt.constants.installer import InstallerConstants
+from apps.node_mgmt.tasks import installer as installer_tasks
 from apps.node_mgmt.tasks.installer import _handle_step_exception
 from apps.node_mgmt.utils.installer_schema import build_installer_event_record, normalize_failure
 from apps.node_mgmt.utils.task_result_schema import normalize_task_result_for_read
@@ -12,6 +16,55 @@ class _DummyNode:
 
     def save(self, update_fields=None):
         return None
+
+
+class _InstallNode(_DummyNode):
+    def __init__(self, password="", private_key="", passphrase=""):
+        super().__init__(
+            result={InstallerConstants.EXECUTION_PHASE_KEY: InstallerConstants.EXECUTION_PHASE_BOOTSTRAP_RUNNING}
+        )
+        self.password = password
+        self.private_key = private_key
+        self.passphrase = passphrase
+        self.status = InstallerConstants.STEP_STATUS_RUNNING
+        self.cpu_architecture = ""
+
+
+class _FailingCryptor:
+    def decode(self, ciphertext):
+        if ciphertext == "invalid-ciphertext":
+            raise ValueError("invalid encrypted value")
+        return "decoded-value"
+
+
+@pytest.mark.parametrize(
+    ("password", "private_key", "passphrase"),
+    [
+        ("invalid-ciphertext", "", ""),
+        ("", "invalid-ciphertext", ""),
+        ("", "valid-ciphertext", "invalid-ciphertext"),
+    ],
+)
+def test_install_controller_on_nodes_converges_credential_decryption_failure(
+    monkeypatch, password, private_key, passphrase
+):
+    node = _InstallNode(password=password, private_key=private_key, passphrase=passphrase)
+    dispatch_calls = []
+    monkeypatch.setattr(installer_tasks, "AESCryptor", _FailingCryptor)
+    monkeypatch.setattr(
+        installer_tasks,
+        "_dispatch_or_finalize_controller_task",
+        lambda task_id: dispatch_calls.append(task_id),
+    )
+
+    installer_tasks.install_controller_on_nodes(SimpleNamespace(id=4076), [node], SimpleNamespace())
+
+    assert node.status == InstallerConstants.STEP_STATUS_ERROR
+    assert node.result[InstallerConstants.EXECUTION_PHASE_KEY] == InstallerConstants.EXECUTION_PHASE_FINISHED
+    assert node.result["overall_status"] == InstallerConstants.OVERALL_STATUS_ERROR
+    assert node.result["final_message"] == "Credential decryption failed"
+    assert node.result["steps"][-1]["status"] == InstallerConstants.STEP_STATUS_ERROR
+    assert dispatch_calls == [4076]
 
 
 def test_normalize_failure_classifies_object_missing_and_preserves_context():

@@ -19,28 +19,28 @@ class TestPeriodToSeconds:
         assert period_to_seconds({"type": "day", "value": 1}) == 86400
 
     def test_empty_period_raises(self):
-        with pytest.raises(BaseAppException, match="policy period is empty"):
+        with pytest.raises(BaseAppException, match="period.type"):
             period_to_seconds({})
 
     def test_none_period_raises(self):
-        with pytest.raises(BaseAppException, match="policy period is empty"):
+        with pytest.raises(BaseAppException, match="period must be an object"):
             period_to_seconds(None)
 
     def test_missing_type_raises(self):
-        with pytest.raises(BaseAppException, match="invalid period format"):
+        with pytest.raises(BaseAppException, match="period.type"):
             period_to_seconds({"value": 5})
 
     def test_missing_value_raises(self):
-        with pytest.raises(BaseAppException, match="invalid period format"):
+        with pytest.raises(BaseAppException, match="period.value"):
             period_to_seconds({"type": "min"})
 
     def test_unknown_type_raises(self):
-        with pytest.raises(BaseAppException, match="invalid period type: week"):
+        with pytest.raises(BaseAppException, match="period.type"):
             period_to_seconds({"type": "week", "value": 1})
 
-    def test_value_zero_is_accepted_as_not_none(self):
-        # value=0 不是 None，应当走正常换算分支
-        assert period_to_seconds({"type": "min", "value": 0}) == 0
+    def test_value_zero_raises(self):
+        with pytest.raises(BaseAppException, match="period.value"):
+            period_to_seconds({"type": "min", "value": 0})
 
 
 class TestFormatPeriod:

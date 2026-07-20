@@ -182,6 +182,9 @@ class NotifyResult(models.Model):
     notify_result = models.CharField(
         max_length=30, choices=NotifyResultStatus.CHOICES, help_text="通知结果"
     )
+    failure_reason = models.TextField(
+        null=True, blank=True, help_text="通知失败原因"
+    )
     notify_object = models.CharField(
         max_length=100, null=True, blank=True, help_text="通知对象ID"
     )

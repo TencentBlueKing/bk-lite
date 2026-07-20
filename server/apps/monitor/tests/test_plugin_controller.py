@@ -3,6 +3,8 @@
 聚焦 TOML 转义/内联表、模板上下文归一化、Jinja 模板渲染、模板按采集器分组。
 """
 
+from pathlib import Path
+
 import pytest
 
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -69,6 +71,59 @@ class TestRenderTemplate:
         ctrl = Controller({})
         out = ctrl.render_template("port={{ port }}", {"port": "161", "instance_id": "('h1',)"})
         assert out == "port=161"
+
+    def test_send_variable_renders(self):
+        """回归:net_response.child.toml.j2 引用 {{ send }} 必须能渲染。
+
+        Bug: send 不在 _MONITOR_TEMPLATE_ALLOWED_VARIABLES 白名单里,
+        validate_template_variables 直接抛 TemplateSecurityError,
+        上层包成 BaseAppException('采集模板包含未授权变量: ...')。
+        fix: 把 send 加进白名单。本测试断言:加完后不抛错且能渲染出非空字符串。
+        注意 context 里故意不放 'send' —— 这才能复现客户现场路径:
+        validate_template_variables 只看 safe_context.keys() | 白名单,
+        把 send 同时放 context 会让测试哪怕在没有白名单时也通过(误判)。
+        """
+        ctrl = Controller({})
+        out = ctrl.render_template(
+            'send = "{{ send }}"',
+            {"instance_id": "('h',)"},
+        )
+        assert isinstance(out, str)
+        assert out.startswith("send = ")
+        assert "BaseAppException" not in type(out).__name__  # 纯保险,不抛错覆盖在调用本身
+
+    def test_expect_variable_renders(self):
+        """回归:net_response.child.toml.j2 引用 {{ expect }} 必须能渲染。
+
+        与 test_send_variable_renders 对称,见其 docstring。
+        """
+        ctrl = Controller({})
+        out = ctrl.render_template(
+            'expect = "{{ expect }}"',
+            {"instance_id": "('h',)"},
+        )
+        assert isinstance(out, str)
+        assert out.startswith("expect = ")
+
+    def test_host_os_disk_template_uses_defaults_when_fstype_config_is_missing(self):
+        """回归：Host/OS 磁盘模板缺省文件系统过滤配置时仍可通过 default 渲染。"""
+        template_path = (
+            Path(__file__).resolve().parents[1]
+            / "support-files/plugins/Telegraf/host/os/disk.child.toml.j2"
+        )
+        template_content = template_path.read_text()
+
+        out = Controller({}).render_template(
+            template_content,
+            {
+                "instance_id": "('host-1',)",
+                "instance_type": "host",
+                "interval": "60",
+            },
+        )
+
+        assert 'disk_include_fstypes = ""' in out
+        assert 'disk_exclude_fstypes = "tmpfs,devtmpfs,devfs,iso9660,overlay,aufs,squashfs,vfat,exfat,fat,fat32"' in out
 
 
 @pytest.mark.django_db

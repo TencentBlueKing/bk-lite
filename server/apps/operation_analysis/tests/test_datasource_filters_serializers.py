@@ -199,6 +199,35 @@ def test_datasource_serializer_preserves_redacted_connection_secret(authenticate
     assert serializer.validated_data["connection_config"]["password"] == "real-password"
 
 
+@pytest.mark.django_db
+def test_datasource_serializer_redacts_and_preserves_nested_separator_variants(authenticated_user):
+    from apps.operation_analysis.serializers.datasource_serializers import DataSourceAPIModelSerializer
+
+    datasource = DataSourceAPIModel.objects.create(
+        name="rest-source",
+        rest_api="",
+        source_type="rest_api",
+        connection_config={"headers": {"X-API-Key": "real-api-key"}},
+        query_config={"body": {"items": [{"client-secret": "real-client-secret"}]}},
+        groups=[1],
+        created_by="s",
+        updated_by="s",
+    )
+
+    output = DataSourceAPIModelSerializer(datasource, context={"request": _serializer_request(authenticated_user)}).data
+    assert output["connection_config"]["headers"]["X-API-Key"] == "******"
+    assert output["query_config"]["body"]["items"][0]["client-secret"] == "******"
+
+    serializer = DataSourceAPIModelSerializer(
+        datasource,
+        context={"request": _serializer_request(authenticated_user)},
+        data={**output, "namespaces": [], "tag": []},
+    )
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["connection_config"]["headers"]["X-API-Key"] == "real-api-key"
+    assert serializer.validated_data["query_config"]["body"]["items"][0]["client-secret"] == "real-client-secret"
+
+
 # --------------------------------------------------------------------------
 # schema 校验工具函数
 # --------------------------------------------------------------------------
@@ -227,6 +256,49 @@ def test_detect_db_id_references_flags_numeric_ids():
     assert "namespace_ids" in fields
     # organization_id 被豁免
     assert "organization_id" not in fields
+
+
+def test_detect_db_id_references_allows_network_topology_external_ids():
+    from apps.operation_analysis.schemas.import_export_schema import detect_db_id_references
+
+    data = {
+        "network_topologies": [
+            {
+                "key": "networkTopology::demo",
+                "name": "demo",
+                "base_url": "https://weops.example",
+                "token": "******",
+                "view_sets": {
+                    "nodes": [
+                        {
+                            "id": "node-1",
+                            "bk_obj_id": "bk_firewall",
+                            "bk_inst_id": 383679,
+                            "plugin_template_id": 2170,
+                            "network_collect_task_id": 197,
+                            "network_collect_instance_id": 1994,
+                        }
+                    ],
+                    "links": [
+                        {
+                            "id": "link-1",
+                            "source_node_id": "node-1",
+                            "target_node_id": "node-2",
+                            "port_pairs": [
+                                {
+                                    "source_interface": {"bk_obj_id": "bk_interface", "bk_inst_id": 383676},
+                                    "target_interface": {"bk_obj_id": "bk_interface", "bk_inst_id": 36563},
+                                }
+                            ],
+                        }
+                    ],
+                },
+                "refs": {"datasource_keys": [], "namespace_keys": []},
+            }
+        ]
+    }
+
+    assert detect_db_id_references(data) == []
 
 
 def test_count_objects():

@@ -91,11 +91,64 @@ def test_base_node_params_push_params_renders_template_with_default_filter():
 
     node = HostNodeParams(instance)
     result = node.push_params()
+    rendered_lines = {line.strip() for line in result[0]["content"].splitlines()}
 
     assert len(result) == 1
-    assert 'interval = "300s"' in result[0]["content"]
-    assert 'timeout = "60s"' in result[0]["content"]
+    assert node.custom_headers()["cmdbtimeout"] == "60"
+    assert 'interval = "300s"' in rendered_lines
+    assert 'timeout = "30s"' in rendered_lines
+    assert 'response_timeout = "30s"' in rendered_lines
     assert 'http_headers = {' in result[0]["content"]
+
+
+def test_base_node_params_push_params_uses_task_cycle_interval_when_present():
+    from apps.cmdb.node_configs.ssh.host import HostNodeParams
+
+    instance = SimpleNamespace(
+        id=94,
+        model_id="host",
+        driver_type="job",
+        decrypt_credentials=[
+            {"credential_id": "cred-1", "username": "admin", "password": "first-secret", "port": 22},
+        ],
+        params={},
+        timeout=60,
+        access_point=[{"id": 3}],
+        instances=[{"ip_addr": "10.0.0.10"}],
+        ip_range="",
+        cycle_value_type="cycle",
+        cycle_value="2",
+    )
+
+    node = HostNodeParams(instance)
+    result = node.push_params()
+
+    assert 'interval = "120s"' in result[0]["content"]
+
+
+def test_base_node_params_push_params_uses_minute_one_as_60_seconds():
+    from apps.cmdb.node_configs.ssh.host import HostNodeParams
+
+    instance = SimpleNamespace(
+        id=95,
+        model_id="host",
+        driver_type="job",
+        decrypt_credentials=[
+            {"credential_id": "cred-1", "username": "admin", "password": "first-secret", "port": 22},
+        ],
+        params={},
+        timeout=60,
+        access_point=[{"id": 3}],
+        instances=[{"ip_addr": "10.0.0.11"}],
+        ip_range="",
+        cycle_value_type="cycle",
+        cycle_value="1",
+    )
+
+    node = HostNodeParams(instance)
+    result = node.push_params()
+
+    assert 'interval = "60s"' in result[0]["content"]
 
 
 @pytest.mark.parametrize(

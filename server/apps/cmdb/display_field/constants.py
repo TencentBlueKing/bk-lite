@@ -70,6 +70,10 @@ CACHE_KEY_MODEL_FIELDS_MAPPING = "cmdb:model_fields_mapping"
 # 模型 attrs 缓存 key 前缀
 CACHE_KEY_MODEL_ATTRS_PREFIX = "cmdb:model_attrs:"
 
+# P2-2.6: 已缓存 model_id 索引集合,用于 clear_cache 精准删具体 model attrs key
+# (本仓 cache 后端 locmem/Django-RedisCache 都不支持 delete_pattern,原兜底只 log warning)
+CACHE_KEY_MODEL_ATTRS_INDEX = "cmdb:model_attrs:__index__"
+
 # 缓存过期时间（秒）- 默认 1 小时
 CACHE_TTL_SECONDS = 3600
 

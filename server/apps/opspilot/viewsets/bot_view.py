@@ -22,6 +22,7 @@ from apps.opspilot.utils.bot_utils import set_time_range
 from apps.opspilot.utils.celery_task_utils import create_celery_task, delete_celery_task
 from apps.opspilot.utils.pin_mixin import PinMixin
 from apps.opspilot.utils.schedule_utils import get_crontab_next_runs
+from apps.opspilot.utils.workflow_sensitive_config import merge_masked_workflow_sensitive_config
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
@@ -91,6 +92,16 @@ class BotViewSet(PinMixin, AuthViewSet):
     def query_by_groups(self, request, queryset):
         """重写排序逻辑：当前用户置顶优先，再按 ID 倒序"""
         return self.query_by_groups_with_pinned(request, queryset)
+
+    @action(detail=False, methods=["GET"])
+    def get_teams(self, request):
+        """返回当前用户可访问的团队(组)列表。
+
+        通用工具接口：原挂在已删除的知识库 ViewSet 上（与知识库无关），
+        知识库功能移除后迁移到此处。前端 useGroups hook 调用它获取用户团队。
+        """
+        groups = request.user.group_list
+        return JsonResponse({"result": True, "data": groups})
 
     @HasPermission("bot_list-View")
     def list(self, request, *args, **kwargs):
@@ -200,17 +211,27 @@ class BotViewSet(PinMixin, AuthViewSet):
             # 直接使用 workflow_data 作为 flow_json
             flow = BotWorkFlow.objects.get(bot_id=obj.id)
             old_flow_json = flow.flow_json
+            workflow_data = merge_masked_workflow_sensitive_config(workflow_data, old_flow_json)
             flow.flow_json = workflow_data
             flow.web_json = workflow_data
+            # flow.save() 末尾的 ChatApplication.sync_applications_from_workflow 会按
+            # bot.online 决定创建/删除 ChatApplication 记录;若此时 online 还是旧值
+            # (False),sync 会把 ChatApplication 全部删掉,导致"workflow publish 后
+            # 应用对话页面列表查不到,要再点开 web 应用节点保存一次才出现"的竞态。
+            # 这里先 obj.save() 把 is_publish 同步到 online,再 flow.save() 触发 sync,
+            # 保证 sync 读到的是最新 online 状态。
+            obj.updated_by = request.user.username
+            obj.online = bool(is_publish)
+            obj.save()
             flow.save()
             _schedule_memory_write_cache_flush(flow, old_flow_json, workflow_data)
-        obj.updated_by = request.user.username
-        obj.save()
+        else:
+            obj.updated_by = request.user.username
+            obj.save()
         if is_publish:
             # 只有 CHAT_FLOW 类型,创建 Celery 任务
             create_celery_task(obj.id, workflow_data)
-            obj.online = is_publish
-            obj.save()
+            # online 已在 flow.save() 之前更新,这里不重复写,避免多写一次 DB
             # 发布时同步 nats 触发节点对应的 system_mgmt 通道
             sync_opspilot_nats_channels_for_bot(obj)
 
@@ -572,9 +593,7 @@ class BotViewSet(PinMixin, AuthViewSet):
         for row in title_rows:
             row_day = row["conversation_time"].date()
             title_key = (row["bot_id"], row["user_id"], row_day)
-            if title_key in title_keys and (
-                title_key not in title_map or row["conversation_time"] < title_map[title_key][0]
-            ):
+            if title_key in title_keys and (title_key not in title_map or row["conversation_time"] < title_map[title_key][0]):
                 title_map[title_key] = (row["conversation_time"], row["conversation_content"])
 
         for entry in page_entries:

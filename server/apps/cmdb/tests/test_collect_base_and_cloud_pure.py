@@ -6,6 +6,7 @@ check_metrics 断言。aliyun/qcloud：inst_name 拼接、belong 关联、check_
 只 mock 真实外部边界（CollectModels DB、VM 查询）。
 """
 import time
+from types import SimpleNamespace
 
 import pytest
 
@@ -57,6 +58,26 @@ def test_collect_base_init_metrics_dict(monkeypatch):
     assert r.asso == "assos"
 
 
+def test_collect_base_init_backfills_inst_name_from_list_instances(monkeypatch):
+    monkeypatch.setattr(
+        CollectBase,
+        "get_collect_inst",
+        lambda self: SimpleNamespace(instances=[{"inst_name": "host-a"}], model_id="host"),
+    )
+    runner = _DummyCollect(inst_name="", inst_id=1, task_id=42)
+    assert runner.inst_name == "host-a"
+
+
+def test_collect_base_init_skips_dict_instances_for_ip_tasks(monkeypatch):
+    monkeypatch.setattr(
+        CollectBase,
+        "get_collect_inst",
+        lambda self: SimpleNamespace(instances={"subnet_ids": [714], "scan_method": "icmp"}, model_id="ip"),
+    )
+    runner = _DummyCollect(inst_name="", inst_id=None, task_id=294)
+    assert runner.inst_name == ""
+
+
 def test_collect_base_prom_sql(monkeypatch):
     r = _dummy(monkeypatch)
     sql = r.prom_sql()
@@ -93,6 +114,38 @@ def test_collect_base_run_orchestration(monkeypatch):
     out = r.run()
     assert out["formatted"] is True
     assert r.raw_data == [{"metric": {}, "value": [1, "1"]}]
+
+
+def test_collect_base_run_keeps_failed_raw_rows_but_formats_only_success(monkeypatch):
+    runner = _dummy(monkeypatch)
+    rows = [
+        {
+            "metric": {"__name__": "host_info_gauge", "host": "10.0.0.1"},
+            "value": [1, "1"],
+        },
+        {
+            "metric": {
+                "__name__": "network_info_gauge",
+                "host": "10.0.0.2",
+                "collect_status": "failed",
+            },
+            "value": [1, "0"],
+        },
+        {
+            "metric": {
+                "__name__": "cloud_info_gauge",
+                "host": "10.0.0.3",
+                "cmdb_collect_error": "auth failed",
+            },
+            "value": [1, "0"],
+        },
+    ]
+    monkeypatch.setattr(runner, "query_data", lambda: {"result": rows})
+
+    result = runner.run()
+
+    assert runner.raw_data == rows
+    assert result["raw"]["result"] == [rows[0]]
 
 
 def test_collect_base_query_data(monkeypatch):

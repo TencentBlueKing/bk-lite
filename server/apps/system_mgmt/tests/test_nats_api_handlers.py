@@ -4,8 +4,8 @@ nats handler 直接可调用（@nats_client.register 返回原函数）。
 只 mock 真实外部边界（cache、send_msg、jwt token 验证等），断言真实 DB 行为与返回结构。
 """
 import types
-from unittest.mock import MagicMock, patch
 
+import nats_client
 import pytest
 
 from apps.system_mgmt import nats_api
@@ -16,12 +16,67 @@ from apps.system_mgmt.models import (
     GroupDataRule,
     Menu,
     Role,
-    SystemSettings,
     User,
 )
 from apps.system_mgmt.models.channel import ChannelChoices
 
 pytestmark = pytest.mark.django_db
+
+
+def test_nats_api_compat_exports_all_nats_entrypoints():
+    expected_entrypoints = {
+        "get_pilot_permission_by_token",
+        "verify_token",
+        "revoke_token",
+        "get_user_menus",
+        "get_client",
+        "get_client_detail",
+        "get_group_users",
+        "get_group_users_scoped",
+        "get_authorized_groups_scoped",
+        "get_all_users",
+        "search_groups",
+        "search_users",
+        "init_user_default_attributes",
+        "create_guest_role",
+        "create_default_rule",
+        "get_all_groups",
+        "get_channel_detail",
+        "search_channel_list",
+        "search_channel_list_scoped",
+        "send_msg_with_channel",
+        "_list_opspilot_nats_channels",
+        "sync_opspilot_nats_channels",
+        "delete_opspilot_nats_channels",
+        "search_opspilot_nats_channels",
+        "send_email_to_receiver",
+        "get_user_rules",
+        "get_user_rules_by_module",
+        "get_user_rules_by_app",
+        "get_group_id",
+        "login",
+        "reset_pwd",
+        "wechat_user_register",
+        "get_wechat_settings",
+        "generate_qr_code_by_user_id",
+        "verify_otp_code",
+        "verify_otp_code_by_user_id",
+        "verify_otp_login",
+        "get_namespace_by_domain",
+        "bk_lite_user_login",
+        "get_login_module_domain_list",
+        "delete_rules",
+        "verify_bk_token",
+        "save_error_log",
+        "save_operation_log",
+    }
+    registered_entrypoints = expected_entrypoints - {"_list_opspilot_nats_channels"}
+
+    exported_entrypoints = {name for name in expected_entrypoints if callable(getattr(nats_api, name, None))}
+    actual_registered_entrypoints = {item["name"] for item in nats_client.default_registry.registry.values()}
+
+    assert exported_entrypoints == expected_entrypoints
+    assert registered_entrypoints <= actual_registered_entrypoints
 
 
 # ---------------------------------------------------------------------------
@@ -56,6 +111,54 @@ def test_get_user_all_roles_personal_and_group_inherit():
     roles = set(nats_api.get_user_all_roles(user))
     # 个人角色 + 子组角色 + 继承的父组角色（父 allow_inherit_roles=True）
     assert {role_personal.id, role_group.id, role_parent.id} <= roles
+
+
+def test_verify_token_regular_user_resolves_underscore_import(monkeypatch):
+    """回归测试：apps/system_mgmt/nats/auth.py 通过 `from .common import *` 引入
+    `_collect_ancestor_group_ids`，但 Python 的 import * 默认不导入下划线名字，
+    导致非超管用户的 verify_token 在调用 _collect_ancestor_group_ids 时抛 NameError，
+    上游 AuthBackend 捕获后返回 None → 前端表现为「登录持续过期」。
+
+    触发链路：
+        AuthBackend._verify_token_with_system_mgmt
+          → SystemMgmt().verify_token (RPC)
+            → apps.system_mgmt.nats.auth.verify_token
+              → _collect_ancestor_group_ids(user.group_list)  ← NameError
+
+    这里把 nats_api._verify_token 桩成 fake，强制走非超管分支
+    （is_superuser=False → 必须调用 _collect_ancestor_group_ids）。
+    """
+    from apps.core.utils.permission_cache import clear_token_info_cache
+
+    parent = Group.objects.create(name="VT_Parent", parent_id=0)
+    user = User.objects.create(
+        username="vt_regular", password="x", display_name="vt", email="vt@x.com",
+        domain="domain.com", role_list=[], group_list=[parent.id],
+    )
+    # 避免 get_cached_token_info 命中旧数据
+    clear_token_info_cache(user.username, user.domain)
+
+    fake_user = types.SimpleNamespace(
+        id=user.id,
+        username=user.username,
+        domain=user.domain,
+        display_name=user.display_name,
+        email=user.email,
+        role_list=user.role_list,
+        group_list=user.group_list,
+        locale=user.locale,
+        timezone=user.timezone,
+    )
+    # 同步到 _auth._verify_token（nats_api.verify_token 入口会 _sync_compat_globals）
+    monkeypatch.setattr(nats_api, "_verify_token", lambda token: fake_user)
+
+    # 修复前：此处抛 NameError: name '_collect_ancestor_group_ids' is not defined
+    # 修复后：返回成功结果，且 group_list 含 user 直属组
+    result = nats_api.verify_token("dummy-token")
+
+    assert result["result"] is True, f"verify_token 应返回成功，实际: {result}"
+    assert result["data"]["username"] == "vt_regular"
+    assert any(g["id"] == parent.id for g in result["data"]["group_list"])
 
 
 # ---------------------------------------------------------------------------
@@ -96,7 +199,7 @@ def test_get_client_superuser_sees_all():
 
 
 def test_get_client_detail_found_and_missing():
-    app = App.objects.create(name="dc", display_name="DC", description="d", description_cn="中文", url="/dc")
+    App.objects.create(name="dc", display_name="DC", description="d", description_cn="中文", url="/dc")
     ok = nats_api.get_client_detail("dc")
     assert ok["result"] is True
     assert ok["data"]["name"] == "dc"

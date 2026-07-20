@@ -1,0 +1,90 @@
+Postgres:
+  name: Postgres（Telegraf）
+  desc: 通过Telegraf采集器定期收集PostgreSQL的会话管理、事务指标和 I/O性能相关数据。
+monitor_object:
+  Postgres: Postgres
+monitor_object_type:
+  Database: 数据库
+monitor_object_metric:
+  Postgres:
+    postgresql_numbackends:
+      name: 当前活跃数据库连接数
+      desc: 监控数据库活跃会话数量，用于评估并发负载和连接池使用情况
+    postgresql_xact_commit_rate:
+      name: 事务提交速率
+      desc: 反映数据库写入操作频率，用于衡量业务活动水平
+    postgresql_xact_rollback_rate:
+      name: 事务回滚速率
+      desc: 跟踪事务失败或冲突导致的回滚情况
+    postgresql_tup_returned_rate:
+      name: 查询返回行速率
+      desc: 统计查询结果集中返回的数据行数量
+    postgresql_tup_fetched_rate:
+      name: 查询读取行速率
+      desc: 监控查询从存储层读取的数据行数量
+    postgresql_tup_inserted_rate:
+      name: 数据插入行速率
+      desc: 跟踪插入操作频率，评估数据增长和写入负载
+    postgresql_tup_updated_rate:
+      name: 数据更新行速率
+      desc: 反映数据修改活动和并发更新压力
+    postgresql_tup_deleted_rate:
+      name: 数据删除行速率
+      desc: 监控数据清理活动和空间回收情况
+    postgresql_blks_hit_rate:
+      name: 缓冲区缓存命中速率
+      desc: 反映共享缓冲区缓存的命中效率
+    postgresql_blks_read_rate:
+      name: 磁盘数据块读取速率
+      desc: 评估磁盘 I/O 负载及缓存不足情况
+    postgresql_deadlocks_rate:
+      name: 死锁发生速率
+      desc: 检测事务间死锁发生频率
+    postgresql_conflicts_rate:
+      name: 并发冲突速率
+      desc: 跟踪并发操作引发的冲突情况
+    postgresql_temp_files_rate:
+      name: 临时文件创建速率
+      desc: 反映复杂查询对临时文件的依赖程度
+    postgresql_temp_bytes_rate:
+      name: 临时文件写入速率
+      desc: 评估排序、哈希等操作的磁盘资源消耗
+    postgresql_checkpoints_timed_rate:
+      name: 定时检查点速率
+      desc: 监控系统周期性检查点执行情况
+    postgresql_checkpoints_req_rate:
+      name: 请求检查点速率
+      desc: 反映 WAL 写入压力和配置合理性
+    postgresql_buffers_alloc_rate:
+      name: 缓冲区分配速率
+      desc: 反映共享缓冲区内存使用趋势
+    postgresql_buffers_backend_rate:
+      name: 后端缓冲区写入速率
+      desc: 表示客户端驱动的直接写入活动
+    postgresql_buffers_checkpoint_rate:
+      name: 检查点缓冲区写入速率
+      desc: 反映检查点对磁盘 I/O 的影响
+    postgresql_maxwritten_clean_rate:
+      name: 后台干净页写入速率
+      desc: 表示写入压力过高导致的提前清理
+    postgresql_blk_write_time:
+      name: 磁盘块写入耗时速率
+      desc: 累计数据块写入耗时（pg_stat_database.blk_write_time）的速率，表示每秒累积的写入耗时（毫秒/秒）。数值偏高表明磁盘
+        I/O 写入压力大或存储存在瓶颈
+    postgresql_active_time:
+      name: SQL 活跃执行耗时速率
+      desc: 累计 SQL 语句执行耗时（pg_stat_database.active_time）的速率，表示每秒累积的活跃执行耗时（毫秒/秒）。持续偏高表明存在异常长事务或高并发语句执行
+    postgresql_sessions_killed:
+      name: 会话异常终止速率
+      desc: 因管理员命令、空闲会话超时、死锁处理等致命错误被终止的会话速率（pg_stat_database.sessions_killed，个/秒）。速率上升表明连接不稳定
+monitor_object_metric_group:
+  Postgres:
+    Connection: 连接
+    Query: 查询
+    DataOperation: 数据操作
+    Cache: 缓存
+    Concurrency: 并发
+    TempFiles: 临时文件
+    Checkpoint: 检查点
+    Buffer: 缓冲
+    WriteActivity: 写入行为

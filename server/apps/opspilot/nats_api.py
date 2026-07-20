@@ -1,22 +1,84 @@
 import datetime
 import json
+import uuid
 
 import nats_client
+from django.db import transaction
 from apps.core.logger import opspilot_logger as logger
-from apps.opspilot.models import (
-    Bot,
-    BotConversationHistory,
-    BotWorkFlow,
-    EmbedProvider,
-    KnowledgeBase,
-    LLMModel,
-    LLMSkill,
-    OCRProvider,
-    RerankProvider,
-    SkillTools,
-)
+from apps.opspilot.models import Bot, BotConversationHistory, BotWorkFlow, EmbedProvider, LLMModel, LLMSkill, OCRProvider, RerankProvider, SkillTools
+from apps.opspilot.models.bot_mgmt import BotWebChatSession
 from apps.opspilot.utils.bot_utils import get_user_info
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
+from apps.system_mgmt.models import User as SystemMgmtUser
+
+
+def _read_nats_node_expose_flag(bot_id, node_id):
+    """读取 NATS 触发节点的 ``data.config.expose_as_web_chat`` 字段。
+
+    仅当该字段显式为 True 时返回 True；缺省、False、或工作流/节点找不到都返回 False。
+    """
+    try:
+        workflow = BotWorkFlow.objects.filter(bot_id=bot_id).order_by("-id").first()
+    except Exception:  # noqa: BLE001
+        return False
+    if not workflow or not isinstance(workflow.flow_json, dict):
+        return False
+    nodes = workflow.flow_json.get("nodes", []) or []
+    for node in nodes:
+        if node.get("id") != node_id:
+            continue
+        config = (node.get("data") or {}).get("config") or {}
+        return bool(config.get("expose_as_web_chat"))
+    return False
+
+
+def _resolve_participants(user_ids):
+    """把 NATS 入参的 user_ids 解析为 username 列表，用于写入 BotWebChatSession.participants。
+
+    支持三种输入形态：
+    - 整型 ID（数据库主键，例如 [1, 6]）：查 system_mgmt.User 映射为 username
+    - 数字字符串（'1', '6'）：同上，按 id 查询
+    - 普通字符串（'alice', 'bob'）：视为已存在的 username，原样保留
+
+    解析失败或用户不存在的元素会被丢弃（不抛错，避免阻断 NATS 热路径）。
+    """
+    if not user_ids:
+        return []
+
+    int_ids = []
+    name_candidates = []
+    for uid in user_ids:
+        if uid is None:
+            continue
+        raw = str(uid).strip()
+        if not raw:
+            continue
+        if raw.isdigit():
+            int_ids.append(int(raw))
+        else:
+            name_candidates.append(raw)
+
+    id_to_username: dict[int, str] = {}
+    if int_ids:
+        try:
+            rows = SystemMgmtUser.objects.filter(id__in=int_ids).values_list("id", "username")
+            id_to_username = {uid: uname for uid, uname in rows}
+        except Exception:  # noqa: BLE001
+            logger.exception("resolve participants: failed to query users by id")
+
+    resolved: list[str] = []
+    seen: set[str] = set()
+    for original in user_ids:
+        if original is None:
+            continue
+        raw = str(original).strip()
+        if not raw:
+            continue
+        username = id_to_username.get(int(raw)) if raw.isdigit() else raw
+        if username and username not in seen:
+            resolved.append(username)
+            seen.add(username)
+    return resolved
 
 
 def _normalize_nats_trigger_input(message, team, user_ids, bot_id, node_id):
@@ -62,12 +124,21 @@ def _normalize_nats_trigger_input(message, team, user_ids, bot_id, node_id):
     }, None
 
 
+def _grant_provider_team_access(model, name, group_id):
+    provider = model.objects.select_for_update().get(name=name, is_build_in=True)
+    team = list(provider.team or [])
+    if group_id not in team:
+        team.append(group_id)
+        provider.team = team
+        provider.save(update_fields=["team"])
+    return provider
+
+
 @nats_client.register
 def get_opspilot_module_list():
     return [
         {"name": "bot", "display_name": "Studio"},
         {"name": "skill", "display_name": "Agent"},
-        {"name": "knowledge", "display_name": "Knowledge"},
         {"name": "tools", "display_name": "Tool"},
         {
             "name": "provider",
@@ -87,7 +158,6 @@ def get_opspilot_module_data(module, child_module, page, page_size, group_id):
     model_map = {
         "bot": Bot,
         "skill": LLMSkill,
-        "knowledge": KnowledgeBase,
         "tools": SkillTools,
     }
     provider_model_map = {
@@ -121,37 +191,16 @@ def get_opspilot_module_data(module, child_module, page, page_size, group_id):
 
 @nats_client.register
 def get_guest_provider(group_id):
-    default_llm_model = LLMModel.objects.get(name="GPT-4o", is_build_in=True)
-    if group_id not in default_llm_model.team:
-        default_llm_model.team.append(group_id)
-        default_llm_model.save()
-    rerank_model = RerankProvider.objects.get(name="bce-reranker-base_v1", is_build_in=True)
-    if group_id not in rerank_model.team:
-        rerank_model.team.append(group_id)
-        rerank_model.save()
-
-    embed_model_1 = EmbedProvider.objects.get(name="bce-embedding-base_v1", is_build_in=True)
-    if group_id not in embed_model_1.team:
-        embed_model_1.team.append(group_id)
-        embed_model_1.save()
-    embed_model_2 = EmbedProvider.objects.get(name="FastEmbed(BAAI/bge-small-zh-v1.5)", is_build_in=True)
-    if group_id not in embed_model_2.team:
-        embed_model_2.team.append(group_id)
-        embed_model_2.save()
-
-    paddle_ocr = OCRProvider.objects.get(name="PaddleOCR", is_build_in=True)
-    if group_id not in paddle_ocr.team:
-        paddle_ocr.team.append(group_id)
-        paddle_ocr.save()
-
-    azure_ocr = OCRProvider.objects.get(name="AzureOCR", is_build_in=True)
-    if group_id not in azure_ocr.team:
-        azure_ocr.team.append(group_id)
-        azure_ocr.save()
-    olm_ocr = OCRProvider.objects.get(name="OlmOCR", is_build_in=True)
-    if group_id not in olm_ocr.team:
-        olm_ocr.team.append(group_id)
-        olm_ocr.save()
+    with transaction.atomic():
+        default_llm_model = _grant_provider_team_access(LLMModel, "GPT-4o", group_id)
+        rerank_model = _grant_provider_team_access(RerankProvider, "bce-reranker-base_v1", group_id)
+        embed_model_1 = _grant_provider_team_access(EmbedProvider, "bce-embedding-base_v1", group_id)
+        embed_model_2 = _grant_provider_team_access(
+            EmbedProvider, "FastEmbed(BAAI/bge-small-zh-v1.5)", group_id
+        )
+        paddle_ocr = _grant_provider_team_access(OCRProvider, "PaddleOCR", group_id)
+        azure_ocr = _grant_provider_team_access(OCRProvider, "AzureOCR", group_id)
+        olm_ocr = _grant_provider_team_access(OCRProvider, "OlmOCR", group_id)
     return {
         "result": True,
         "data": {
@@ -173,7 +222,6 @@ def consume_bot_event(kwargs):
         timestamp： 对话时间
         event：("user", "用户"), ("bot", "机器人")
         input_channel：web,enterprise_wechat,dingtalk,wechat_official_account
-        citing_knowledge: 引用知识，列表 []
     """
     text = kwargs.get("text", "") or ""
     if not text.strip():
@@ -194,11 +242,6 @@ def consume_bot_event(kwargs):
             return {"result": True}
         user, _ = get_user_info(bot_id, input_channel, sender_id)
         bot = Bot.objects.get(id=bot_id)
-        citing_knowledge = kwargs.get("citing_knowledge", [])
-        if not citing_knowledge:
-            msg = kwargs.get("metadata", {}).get("other_data", {}).get("citing_knowledge", [])
-            msg_str = json.dumps(msg).replace("\u0000", " ").replace(r"\u0000", " ")
-            citing_knowledge = json.loads(msg_str)
         BotConversationHistory.objects.create(
             bot_id=bot_id,
             channel_user_id=user.id,
@@ -207,7 +250,6 @@ def consume_bot_event(kwargs):
             domain=bot.domain,
             conversation_role=kwargs["event"],
             conversation=kwargs["text"] or "",
-            citing_knowledge=citing_knowledge,
         )
     except (KeyError, ValueError, TypeError, AttributeError, Bot.DoesNotExist, json.JSONDecodeError) as e:
         # 预期内的数据/解析错误：记录详细堆栈并向 NATS 调用方回传失败结果，
@@ -236,6 +278,22 @@ def trigger_workflow_by_nats(message, team, user_ids, bot_id, node_id):
     if not workflow:
         return {"result": False, "message": "Bot workflow not found"}
 
+    expose_as_web_chat = bool(_read_nats_node_expose_flag(normalized_input["bot_id"], normalized_input["node_id"]) and normalized_input["user_ids"])
+
+    session_id = ""
+    if expose_as_web_chat:
+        session_id = uuid.uuid4().hex
+        title = normalized_input["message"][:50]
+        BotWebChatSession.objects.create(
+            session_id=session_id,
+            bot_id=normalized_input["bot_id"],
+            node_id=normalized_input["node_id"],
+            source=BotWebChatSession.SOURCE_NATS,
+            participants=_resolve_participants(normalized_input["user_ids"]),
+            title=title,
+            created_by="nats",
+        )
+
     engine = create_chat_flow_engine(workflow, normalized_input["node_id"], entry_type="nats")
     input_data = {
         "last_message": normalized_input["message"],
@@ -247,10 +305,20 @@ def trigger_workflow_by_nats(message, team, user_ids, bot_id, node_id):
         "entry_type": "nats",
         "is_third_party": True,
     }
+    if session_id:
+        input_data["session_id"] = session_id
+        # 首位 user_id 作为首条 user 消息的 user_id，避免 ExecutionRepository 早返吞掉历史
+        input_data["user_id"] = normalized_input["user_ids"][0]
+
     execution_result = engine.execute(input_data)
-    return {
+
+    response = {
         "result": execution_result.get("success", True) if isinstance(execution_result, dict) else True,
         "data": execution_result,
         "entry_type": "nats",
         "execution_id": engine.execution_id,
     }
+    if session_id:
+        response["session_id"] = session_id
+        response["exposed_as_web_chat"] = True
+    return response

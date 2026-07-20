@@ -174,9 +174,19 @@ export interface LevelFormItem {
   built_in?: boolean;
 }
 
+export interface TargetBinding {
+  source: 'node_mgmt';
+  match_by?: 'ip' | 'name';
+  // 主机来源模式：
+  //   'from_alert'(默认) — 用 host_field 从告警 payload 里解析主机 IP
+  //   'fixed'           — 不读 alert，直接用 ip 字段写死的 IP
+  mode?: 'from_alert' | 'fixed';
+  host_field?: string;
+  ip?: string;
+}
 export interface ActionConfig {
   script_id?: number;
-  target_binding: { source: 'node_mgmt'; match_by?: 'ip' | 'name'; host_field: string };
+  target_binding: TargetBinding;
   param_bindings: Array<{ name: string; from: 'field' | 'const'; value: string }>;
   timeout?: number;
 }

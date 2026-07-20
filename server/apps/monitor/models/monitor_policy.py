@@ -50,6 +50,12 @@ class MonitorPolicy(TimeInfo, MaintainerInfo):
         blank=True,
         verbose_name="计算单位（用于阈值对比和结果记录）",
     )
+    threshold_unit = models.CharField(
+        max_length=50,
+        default="",
+        blank=True,
+        verbose_name="告警阈值单位",
+    )
 
     no_data_period = models.JSONField(default=dict, verbose_name="无数据告警的数据周期（eg:10m内无数据）")
     no_data_level = models.CharField(max_length=20, default="", verbose_name="无数据告警级别")

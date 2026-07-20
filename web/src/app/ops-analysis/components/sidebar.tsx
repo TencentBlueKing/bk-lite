@@ -20,8 +20,8 @@ import {
   Form,
   Input,
   Menu,
+  message,
   Modal,
-  Radio,
   Spin,
   Tree,
 } from 'antd';
@@ -32,6 +32,9 @@ import { useUserInfoContext } from '@/context/userInfo';
 import { ExportModal, ImportModal } from './importExport';
 import { ObjectType } from '@/app/ops-analysis/api/importExport';
 import { buildDefaultScreenViewSets } from '@/app/ops-analysis/(pages)/view/screen/utils/viewport';
+import {
+  useNetworkTopologyApi,
+} from '@/app/ops-analysis/api/networkTopology';
 import {
   CANVAS_TYPES,
   getCanvasTypeMeta,
@@ -55,6 +58,8 @@ import {
   ApartmentOutlined,
   DesktopOutlined,
   FileTextOutlined,
+  CheckOutlined,
+  BranchesOutlined,
 } from '@ant-design/icons';
 
 const Sidebar = forwardRef<SidebarRef, SidebarProps>(
@@ -67,9 +72,11 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
     const searchParams = useSearchParams();
     const { selectedGroup } = useUserInfoContext();
     const { hasPermission } = useBtnPermissions();
+    const networkTopologyApi = useNetworkTopologyApi();
     const [dirs, setDirs] = useState<DirItem[]>([]);
     const [loading, setLoading] = useState(false);
     const [submitLoading, setSubmitLoading] = useState(false);
+    const [connectionTesting, setConnectionTesting] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [modalVisible, setModalVisible] = useState(false);
     const [modalTitle, setModalTitle] = useState('');
@@ -87,6 +94,9 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
     const activeCanvasType =
       selectedCanvasType || (isCanvasType(newItemType) ? newItemType : undefined);
     const isCreatingCanvas = modalAction !== 'edit' && isCanvasType(newItemType);
+    const showNetworkTopologyConnectionTest =
+      (isCreatingCanvas || modalAction === 'edit') &&
+      activeCanvasType === 'networkTopology';
 
     useImperativeHandle(
       ref,
@@ -135,6 +145,9 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
         desc: action === 'edit' && dir ? dir.desc : '',
         groups: initialGroups,
         canvasType: isCanvasType(itemType) ? itemType : undefined,
+        // 编辑网络拓扑时用占位符 `******` 兜底展示;若用户输入新 token 才覆盖。
+        baseUrl: '',
+        token: '',
       };
 
       form.setFieldsValue(formData);
@@ -147,6 +160,24 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
       setCurrentDir(dir);
       setNewItemType(itemType);
       setModalVisible(true);
+
+      // 编辑网络拓扑时拉详情填充 baseUrl/token_set(token 永远不返回明文)。
+      if (
+        action === 'edit' &&
+        itemType === 'networkTopology' &&
+        dir?.data_id
+      ) {
+        networkTopologyApi
+          .getNetworkTopologyDetail(dir.data_id)
+          .then((detail) => {
+            form.setFieldsValue({
+              baseUrl: detail.base_url ?? '',
+              // 已配置 token 时显示占位符;空字符串表示未配置。
+              token: detail.token_set ? '******' : '',
+            });
+          })
+          .catch(() => undefined);
+      }
     };
 
     const handleSubmit = async (values: FormValues) => {
@@ -161,11 +192,19 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
 
         if (modalAction === 'edit') {
           if (!currentDir) return;
-          const updateData = {
+          const updateData: Record<string, unknown> = {
             name: values.name,
             desc: values.desc,
             groups: values.groups,
           };
+          // 网络拓扑编辑:支持改 base_url + 重置 token。
+          // 占位符 `******` 或空串都表示不修改 token,后端会保留旧值。
+          if (targetItemType === 'networkTopology') {
+            if (values.baseUrl) updateData.base_url = values.baseUrl;
+            if (values.token && values.token !== '******') {
+              updateData.token = values.token;
+            }
+          }
           await updateItem(newItemType, currentDir.data_id, updateData);
           if (onDataUpdate) {
             const updatedItem = {
@@ -183,6 +222,10 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
           };
           if (targetItemType === 'screen') {
             itemData.view_sets = buildDefaultScreenViewSets();
+          }
+          if (targetItemType === 'networkTopology') {
+            itemData.base_url = values.baseUrl;
+            itemData.token = values.token;
           }
           if (modalAction === 'addChild' && currentDir?.data_id) {
             if (isCanvasType(targetItemType)) {
@@ -212,9 +255,44 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
         return;
       }
       try {
-        handleSubmit(values);
+        await handleSubmit(values);
       } catch (error) {
         console.error('Modal action failed:', error);
+      }
+    };
+
+    const handleTestNetworkConnection = async () => {
+      const isEditNetworkTopology =
+        modalAction === 'edit' &&
+        newItemType === 'networkTopology' &&
+        Boolean(currentDir?.data_id);
+
+      try {
+        const values = await form.validateFields(['baseUrl', 'token']);
+        const baseUrl = typeof values.baseUrl === 'string' ? values.baseUrl.trim() : '';
+        const token = typeof values.token === 'string' ? values.token.trim() : '';
+
+        setConnectionTesting(true);
+        if (isEditNetworkTopology && currentDir?.data_id) {
+          const payload: { base_url?: string; token?: string } = {};
+          if (baseUrl) payload.base_url = baseUrl;
+          if (token && token !== '******') payload.token = token;
+          await networkTopologyApi.testSavedConnection(currentDir.data_id, payload);
+        } else {
+          await networkTopologyApi.testConnection({
+            base_url: baseUrl,
+            token,
+          });
+        }
+        message.success(t('opsAnalysisSidebar.connectionTestSuccess'));
+      } catch (error) {
+        const maybeValidationError = error as { errorFields?: unknown[] };
+        if (!maybeValidationError?.errorFields) {
+          console.error('Network topology connection test failed:', error);
+          message.error(t('opsAnalysisSidebar.connectionTestFailed'));
+        }
+      } finally {
+        setConnectionTesting(false);
       }
     };
 
@@ -222,6 +300,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
       setModalVisible(false);
       form.resetFields();
       setCurrentDir(null);
+      setConnectionTesting(false);
     };
 
     const handleSearch = (value: string) => setSearchTerm(value);
@@ -272,6 +351,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
         architecture: <ApartmentOutlined className={`${className} text-green-600`} />,
         screen: <DesktopOutlined className={`${className} text-cyan-600`} />,
         report: <FileTextOutlined className={`${className} text-orange-600`} />,
+        networkTopology: <BranchesOutlined className={`${className} text-blue-600`} />,
       };
       return iconMap[meta.icon];
     };
@@ -284,6 +364,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
         architecture: <ApartmentOutlined className={`${className} text-green-600`} />,
         screen: <DesktopOutlined className={`${className} text-cyan-600`} />,
         report: <FileTextOutlined className={`${className} text-orange-600`} />,
+        networkTopology: <BranchesOutlined className={`${className} text-blue-600`} />,
       };
       return iconMap[type];
     };
@@ -664,58 +745,120 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
           open={modalVisible}
           centered
           width={isCreatingCanvas ? 760 : 520}
-          okText={t('common.confirm')}
-          cancelText={t('common.cancel')}
-          onOk={handleModalOk}
           onCancel={handleModalCancel}
-          confirmLoading={submitLoading}
+          footer={[
+            showNetworkTopologyConnectionTest ? (
+              <Button
+                key="testConnection"
+                onClick={handleTestNetworkConnection}
+                loading={connectionTesting}
+              >
+                {t('opsAnalysisSidebar.testConnection')}
+              </Button>
+            ) : null,
+            <Button key="cancel" onClick={handleModalCancel}>
+              {t('common.cancel')}
+            </Button>,
+            <Button
+              key="submit"
+              type="primary"
+              onClick={handleModalOk}
+              loading={submitLoading}
+            >
+              {t('common.confirm')}
+            </Button>,
+          ]}
+          styles={{
+            body: {
+              maxHeight: 'calc(100vh - 200px)',
+              overflowY: 'auto',
+            },
+          }}
         >
-          <Form form={form} className="mt-5" labelCol={{ span: 4 }}>
+          <Form
+            form={form}
+            className="mt-5"
+            layout="vertical"
+          >
             {isCreatingCanvas && (
               <Form.Item
-                name="canvasType"
                 label={t('opsAnalysisSidebar.canvasType')}
-                rules={[{ required: true, message: t('common.selectMsg') }]}
+                required
               >
-                <Radio.Group
+                <Form.Item
+                  name="canvasType"
+                  noStyle
+                  rules={[{ required: true, message: t('common.selectMsg') }]}
+                >
+                  <Input type="hidden" />
+                </Form.Item>
+                <div
+                  role="radiogroup"
+                  aria-label={t('opsAnalysisSidebar.canvasType')}
                   className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3"
-                  onChange={(event) => setNewItemType(event.target.value)}
                 >
                   {CANVAS_TYPES.map((canvasType) => {
                     const meta = getCanvasTypeMeta(canvasType)!;
                     const selected = activeCanvasType === canvasType;
 
                     return (
-                      <Radio
+                      <button
                         key={canvasType}
-                        value={canvasType}
-                        className={`!m-0 flex min-h-[104px] w-full rounded-md border px-3 py-2.5 transition-all ${
+                        type="button"
+                        role="radio"
+                        aria-checked={selected}
+                        onClick={() => {
+                          form.setFieldValue('canvasType', canvasType);
+                          form.validateFields(['canvasType']).catch(() => undefined);
+                          setNewItemType(canvasType);
+                        }}
+                        className={`group relative flex min-h-[104px] w-full cursor-pointer overflow-hidden rounded-md border px-3 py-3 text-left transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
                           selected
-                            ? 'border-blue-500 bg-blue-50 shadow-sm'
-                            : 'border-gray-200 bg-white hover:border-blue-300 hover:bg-gray-50'
+                            ? 'border-blue-500 bg-gradient-to-br from-blue-50 to-white shadow-[0_2px_8px_rgba(37,99,235,0.08)]'
+                            : 'border-gray-200 bg-white hover:border-blue-300 hover:bg-slate-50 hover:shadow-[0_2px_6px_rgba(15,23,42,0.05)]'
                         }`}
                       >
-                        <span className="block min-w-0">
-                          <span className="flex items-center gap-2">
+                        <span
+                          aria-hidden="true"
+                          className={`absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full text-[10px] transition-all ${
+                            selected
+                              ? 'scale-100 bg-blue-600 text-white opacity-100 shadow-sm'
+                              : 'scale-90 bg-gray-100 text-transparent opacity-0'
+                          }`}
+                        >
+                          <CheckOutlined />
+                        </span>
+                        <span className="block min-w-0 pr-6">
+                          <span className="flex items-center gap-2.5">
                             <span
-                              className={`flex h-7 w-7 flex-none items-center justify-center rounded-md ${
-                                selected ? 'bg-white' : 'bg-gray-50'
+                              className={`flex h-8 w-8 flex-none items-center justify-center rounded-md border transition-colors ${
+                                selected
+                                  ? 'border-blue-100 bg-white shadow-sm'
+                                  : 'border-gray-100 bg-gray-50 group-hover:border-blue-100 group-hover:bg-white'
                               }`}
                             >
                               {renderCanvasTypeIcon(canvasType)}
                             </span>
-                            <span className="block text-sm font-medium text-gray-900">
+                            <span
+                              className={`block text-sm font-semibold ${
+                                selected ? 'text-blue-700' : 'text-gray-900'
+                              }`}
+                            >
                               {t(meta.nameKey)}
                             </span>
                           </span>
-                          <span className="mt-1.5 block text-xs leading-5 text-gray-500">
+                          <span
+                            className={`mt-2 block text-xs leading-5 ${
+                              selected ? 'text-slate-600' : 'text-gray-500'
+                            }`}
+                          >
                             {t(meta.descriptionKey)}
                           </span>
                         </span>
-                      </Radio>
+                      </button>
                     );
                   })}
-                </Radio.Group>
+                </div>
               </Form.Item>
             )}
             <Form.Item
@@ -725,6 +868,54 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
             >
               <Input placeholder={t('opsAnalysisSidebar.inputPlaceholder')} />
             </Form.Item>
+            {showNetworkTopologyConnectionTest && (
+              <>
+                <Form.Item
+                  name="baseUrl"
+                  label={t('opsAnalysisSidebar.baseUrlLabel')}
+                  rules={[
+                    // 编辑模式下 baseUrl 可留空(表示不改);创建模式必填。
+                    { required: isCreatingCanvas, message: t('common.inputMsg') },
+                    { type: 'url', message: t('opsAnalysisSidebar.baseUrlFormat') },
+                  ]}
+                >
+                  <Input
+                    placeholder={t('opsAnalysisSidebar.baseUrlPlaceholder')}
+                    allowClear
+                  />
+                </Form.Item>
+                <Form.Item
+                  name="token"
+                  label={t('opsAnalysisSidebar.tokenLabel')}
+                  style={{ marginBottom: 8 }}
+                  // 占位符 `******` 在编辑模式代表「保持原 token」,空字符串
+                  // 代表「未配置」;两者都不再强制 >=4 字符。
+                  rules={[
+                    {
+                      required: isCreatingCanvas,
+                      message: t('common.inputMsg'),
+                    },
+                    {
+                      validator: (_rule, value) => {
+                        if (!value) return Promise.resolve();
+                        if (value === '******') return Promise.resolve();
+                        if (value.length < 4) {
+                          return Promise.reject(
+                            new Error(t('opsAnalysisSidebar.tokenMinLength')),
+                          );
+                        }
+                        return Promise.resolve();
+                      },
+                    },
+                  ]}
+                >
+                  <Input.Password
+                    placeholder={t('opsAnalysisSidebar.tokenPlaceholder')}
+                    autoComplete="new-password"
+                  />
+                </Form.Item>
+              </>
+            )}
             <Form.Item
               name="groups"
               label={t('common.group')}

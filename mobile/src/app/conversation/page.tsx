@@ -151,19 +151,20 @@ export default function ConversationDetail() {
 
       if (fileType === 'image') {
         // 图片类型：横向排列，可滚动
+        // 使用已转换的 base64 数据展示，避免创建不可回收的 Blob URL
         filePreview = (
           <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide" style={{ maxWidth: '100%' }}>
             {files.map((file, index) => {
-              const url = URL.createObjectURL(file);
+              const src = base64Data[index] ?? '';
               return (
                 <div
                   key={index}
                   className="flex-shrink-0 cursor-pointer"
                   style={{ width: '80px', height: '80px' }}
-                  onClick={() => handleImageClick(url)}
+                  onClick={() => handleImageClick(src)}
                 >
                   <img
-                    src={url}
+                    src={src}
                     alt={file.name}
                     className="w-full h-full rounded-lg object-cover"
                   />

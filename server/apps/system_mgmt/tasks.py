@@ -1,3 +1,4 @@
+import uuid
 from datetime import timedelta
 
 from celery import shared_task
@@ -50,6 +51,7 @@ def sync_user_and_group_by_login_module(login_module_id):
     result = client.request("sync_data")
     if not result["result"]:
         logger.error(f"Failed to sync data for login module {login_module_id}: {result['message']}")
+        return result
     user_list = result["data"]["user_list"]
     group_list = result["data"]["group_list"]
     sync_user_and_groups(user_list, group_list, login_module)
@@ -217,6 +219,7 @@ def _sync_users(user_list, group_id_mapping, domain, default_role):
         else:
             # 创建新用户
             user_defaults = {
+                "user_id": str(uuid.uuid4()),
                 "username": username,
                 "display_name": user_data.get("display_name", username),
                 "email": user_data.get("email", ""),
@@ -309,3 +312,31 @@ def check_password_expiry_and_notify():
 
     logger.info(f"== 密码过期提醒完成 == 通知={notified}, 失败={skipped}")
     return {"result": True, "notified": notified, "failed": skipped}
+
+
+@shared_task
+def execute_user_sync_source(source_id, trigger_mode="manual"):
+    from apps.system_mgmt.services.user_sync_service import execute_user_sync
+
+    return execute_user_sync(int(source_id), trigger_mode)
+
+
+@shared_task
+def schedule_im_notification_sync(channel_id):
+    from apps.system_mgmt.services.im_notification_service import create_im_notification_sync_run
+
+    result = create_im_notification_sync_run(int(channel_id), trigger_mode="schedule")
+    if not result.get("result"):
+        logger.info(f"Skip scheduled IM notification sync for channel {channel_id}: {result.get('message', '')}")
+        return result
+
+    run_id = result["data"]["run_id"]
+    execute_im_notification_sync_run_task.delay(run_id)
+    return result
+
+
+@shared_task
+def execute_im_notification_sync_run_task(run_id):
+    from apps.system_mgmt.services.im_notification_service import execute_im_notification_sync_run
+
+    return execute_im_notification_sync_run(int(run_id))

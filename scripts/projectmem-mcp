@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+export PATH="$HOME/.local/bin:$HOME/bin:$PATH"
+
+find_projectmem_python() {
+  if [ -n "${PROJECTMEM_PYTHON:-}" ] && [ -x "$PROJECTMEM_PYTHON" ]; then
+    printf '%s\n' "$PROJECTMEM_PYTHON"
+    return 0
+  fi
+
+  if command -v pjm >/dev/null 2>&1; then
+    local pjm_bin first_line py
+    pjm_bin="$(command -v pjm)"
+    first_line="$(head -n 1 "$pjm_bin" 2>/dev/null || true)"
+    case "$first_line" in
+      '#!'*)
+        py="${first_line#\#!}"
+        py="${py%% *}"
+        if [ -x "$py" ]; then
+          printf '%s\n' "$py"
+          return 0
+        fi
+        ;;
+    esac
+  fi
+
+  if command -v uv >/dev/null 2>&1; then
+    if ! command -v pjm >/dev/null 2>&1; then
+      uv tool install projectmem >/dev/null
+    fi
+    local uv_tool_root
+    uv_tool_root="$(uv tool dir)/projectmem"
+    # uv tool: Windows 用 Scripts/python.exe,Unix 用 bin/python;两个都试
+    if [ -x "$uv_tool_root/Scripts/python.exe" ]; then
+      printf '%s\n' "$uv_tool_root/Scripts/python.exe"
+      return 0
+    fi
+    if [ -x "$uv_tool_root/bin/python" ]; then
+      printf '%s\n' "$uv_tool_root/bin/python"
+      return 0
+    fi
+  fi
+
+  if command -v python3 >/dev/null 2>&1 && python3 -c 'import projectmem.mcp_server' >/dev/null 2>&1; then
+    command -v python3
+    return 0
+  fi
+
+  return 1
+}
+
+PYTHON_BIN="$(find_projectmem_python || true)"
+if [ -z "$PYTHON_BIN" ]; then
+  echo "projectmem is missing. Run scripts/agent-tooling-bootstrap, then retry." >&2
+  exit 127
+fi
+
+cd "$ROOT"
+exec "$PYTHON_BIN" -m projectmem.mcp_server --root "$ROOT"

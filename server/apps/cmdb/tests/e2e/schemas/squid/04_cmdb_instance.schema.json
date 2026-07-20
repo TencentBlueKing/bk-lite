@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CMDB squid 实例契约",
+  "description": "2026-07-10 v4 — Phase 5 任务 5.3,实例 schema 严格对应 SquidCollectionPlugin.field_mapping(middleware runner,extra_payload_keys={\"result\": True},业务字段从 metric.result 解码)。\n\nfield_mapping 包含 10 个字段:inst_name/ip_addr/port/version/install_path/config_file_path/cache_dir/access_log/error_log/visible_hostname。\n\ninst_name 规则 {ip}-squid-{port},由 MiddlewareCollectMetrics.get_inst_name 拼装;stargazer 真实落盘 port 字段在 ubuntu 容器下为 'instead.'(脚本解析异常),所以 pattern 放宽为 '^[0-9.]+-squid-.+$' 以反映现场真实数据;正常生产环境 port 为数字时仍满足该 pattern。version 在容器内为空字符串,pick_value 兜底返回空。",
+  "type": "object",
+  "required": ["inst_name", "ip_addr", "port"],
+  "properties": {
+    "inst_name":       {"type": "string", "pattern": "^[0-9.]+-squid-.+$"},
+    "ip_addr":         {"type": "string"},
+    "port":            {"type": ["string", "integer"]},
+    "version":         {"type": "string"},
+    "install_path":    {"type": "string"},
+    "config_file_path":{"type": "string"},
+    "cache_dir":       {"type": "string"},
+    "access_log":      {"type": "string"},
+    "error_log":       {"type": "string"},
+    "visible_hostname":{"type": "string"}
+  }
+}

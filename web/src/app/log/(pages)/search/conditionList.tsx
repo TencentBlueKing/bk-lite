@@ -165,7 +165,7 @@ const ConditionList = forwardRef<ModalRef, ModalConfig>(
           title={title}
           visible={visible}
           width={600}
-          destroyOnClose
+          destroyOnHidden
           onClose={handleCancel}
           footer={
             <div>

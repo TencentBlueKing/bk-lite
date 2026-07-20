@@ -14,7 +14,7 @@ import {
 } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useSettingApi } from '@/app/alarm/api/settings';
-import MatchRule from '@/app/alarm/(pages)/settings/components/matchRule';
+import MatchRule from './matchRule';
 import GroupTreeSelect from '@/components/group-tree-select';
 import FieldBindingTable, { ScriptParam } from './fieldBindingTable';
 import { ActionConfig, ActionRuleListItem } from '@/app/alarm/types/settings';
@@ -46,10 +46,6 @@ const OperateModal: React.FC<OperateModalProps> = ({
   onClose,
   onSuccess,
 }) => {
-  const locale =
-    typeof window !== 'undefined'
-      ? localStorage.getItem('locale') || 'en'
-      : 'en';
   const { t } = useTranslation();
   const {
     createActionRule,
@@ -132,7 +128,9 @@ const OperateModal: React.FC<OperateModalProps> = ({
             : DEFAULT_MATCH_RULES,
         action_type: currentRow.action_type || 'job',
         script_id: config.script_id,
+        host_mode: config.target_binding?.mode || 'from_alert',
         host_field: config.target_binding?.host_field || 'ip_addr',
+        host_ip: config.target_binding?.ip || '',
         param_bindings: config.param_bindings || [],
       });
 
@@ -147,7 +145,9 @@ const OperateModal: React.FC<OperateModalProps> = ({
       form.setFieldsValue({
         is_active: true,
         action_type: 'job',
+        host_mode: 'from_alert',
         host_field: 'ip_addr',
+        host_ip: '',
         param_bindings: [],
         match_rules: DEFAULT_MATCH_RULES,
         trigger_events: [],
@@ -172,16 +172,23 @@ const OperateModal: React.FC<OperateModalProps> = ({
     setSubmitLoading(true);
     try {
       const scriptId = values.script_id as number | undefined;
-      const hostField = (values.host_field as string) || 'ip_addr';
+      const hostMode = ((values.host_mode as string) || 'from_alert') as 'from_alert' | 'fixed';
       const paramBindings = (values.param_bindings as ActionConfig['param_bindings']) || [];
+
+      const targetBinding: ActionConfig['target_binding'] = {
+        source: 'node_mgmt',
+        match_by: 'ip',
+        mode: hostMode,
+      };
+      if (hostMode === 'fixed') {
+        targetBinding.ip = ((values.host_ip as string) || '').trim();
+      } else {
+        targetBinding.host_field = (values.host_field as string) || 'ip_addr';
+      }
 
       const actionConfig: ActionConfig = {
         script_id: scriptId,
-        target_binding: {
-          source: 'node_mgmt',
-          match_by: 'ip',
-          host_field: hostField,
-        },
+        target_binding: targetBinding,
         param_bindings: paramBindings,
       };
 
@@ -255,9 +262,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
     >
       <Form
         form={form}
-        layout="horizontal"
-        labelCol={{ span: locale === 'en' ? 6 : 5 }}
-        wrapperCol={{ span: locale === 'en' ? 18 : 19 }}
+        layout="vertical"
         onFinish={onFinish}
       >
         {/* ① 基本信息 */}
@@ -292,7 +297,6 @@ const OperateModal: React.FC<OperateModalProps> = ({
 
         <Form.Item
           name="trigger_events"
-          wrapperCol={{ span: 24 }}
           rules={[{ required: true, message: t('common.selectTip') }]}
         >
           <Checkbox.Group
@@ -360,12 +364,54 @@ const OperateModal: React.FC<OperateModalProps> = ({
         </Form.Item>
 
         <Form.Item
-          name="host_field"
-          label={t('settings.actionTargetHostField')}
-          extra={t('settings.actionTargetHostFieldTip')}
-          rules={[{ required: true, message: t('common.inputTip') }]}
+          name="host_mode"
+          label={t('settings.actionTargetHostMode')}
+          rules={[{ required: true, message: t('common.selectTip') }]}
         >
-          <Input placeholder="ip_addr" />
+          <Select
+            options={[
+              { value: 'from_alert', label: t('settings.actionTargetHostModeFromAlert') },
+              { value: 'fixed', label: t('settings.actionTargetHostModeFixed') },
+            ]}
+          />
+        </Form.Item>
+
+        <Form.Item
+          noStyle
+          shouldUpdate={(prev, curr) => prev.host_mode !== curr.host_mode}
+        >
+          {({ getFieldValue }) => {
+            const mode = getFieldValue('host_mode') || 'from_alert';
+            if (mode === 'fixed') {
+              return (
+                <Form.Item
+                  name="host_ip"
+                  label={t('settings.actionTargetHostIp')}
+                  extra={t('settings.actionTargetHostIpTip')}
+                  rules={[
+                    {
+                      validator: (_: unknown, value: string) =>
+                        value && value.trim()
+                          ? Promise.resolve()
+                          : Promise.reject(new Error(t('common.inputTip'))),
+                    },
+                  ]}
+                >
+                  <Input placeholder="10.0.0.5" />
+                </Form.Item>
+              );
+            }
+            return (
+              <Form.Item
+                name="host_field"
+                label={t('settings.actionTargetHostField')}
+                extra={t('settings.actionTargetHostFieldTip')}
+                rules={[{ required: true, message: t('common.inputTip') }]}
+              >
+                <Input placeholder="ip_addr" />
+              </Form.Item>
+            );
+          }}
         </Form.Item>
 
         <Form.Item

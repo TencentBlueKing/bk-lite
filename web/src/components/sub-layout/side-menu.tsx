@@ -50,6 +50,19 @@ const SideMenu: React.FC<SideMenuProps> = ({
     return pathname.startsWith(path);
   };
 
+  const renderIcon = (item: MenuItem) => {
+    if (item.iconNode) {
+      return (
+        <span className="mr-2 flex h-4 w-4 items-center justify-center text-[16px] leading-none">
+          {item.iconNode}
+        </span>
+      );
+    }
+
+    if (!item.icon) return null;
+    return <Icon type={item.icon} className="text-xl pr-1.5" />;
+  };
+
   return (
     <aside className={`w-[216px] pr-4 flex flex-shrink-0 flex-col h-full ${sideMenuStyle.sideMenu}`}>
       {children && (
@@ -61,11 +74,12 @@ const SideMenu: React.FC<SideMenuProps> = ({
         <ul className="p-3">
           {menuItems.map((item) => (
             <li key={item.url} className={`rounded-md mb-1 ${isActive(item.url, item.name) ? sideMenuStyle.active : ''}`}>
-              <Link legacyBehavior href={buildUrlWithParams(item.url)}>
-                <a className={`group flex items-center h-9 rounded-md py-2 text-sm font-normal px-3`}>
-                  {item.icon && <Icon type={item.icon} className="text-xl pr-1.5" />}
-                  {item.title}
-                </a>
+              <Link
+                href={buildUrlWithParams(item.url)}
+                className="group flex items-center h-9 rounded-md py-2 text-sm font-normal px-3"
+              >
+                {renderIcon(item)}
+                {item.title}
               </Link>
             </li>
           ))}

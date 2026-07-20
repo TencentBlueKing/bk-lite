@@ -1,4 +1,5 @@
 import re
+import uuid
 
 from django.contrib.auth.hashers import make_password
 from django.core.cache import cache
@@ -277,7 +278,7 @@ class UserViewSet(ViewSetUtils):
         queryset = User.objects.all()
         # 按用户有权限的组筛选
         queryset = self._filter_users_by_accessible_groups(queryset, request.user)
-        data = queryset.values("id", "display_name", "username")
+        data = queryset.values("id", "user_id", "display_name", "username")
         return JsonResponse({"result": True, "data": list(data)})
 
     @action(detail=False, methods=["POST"])
@@ -364,6 +365,7 @@ class UserViewSet(ViewSetUtils):
             roles = [Role.objects.get(name="admin", app="").id]
         with transaction.atomic():
             User.objects.create(
+                user_id=str(uuid.uuid4()),
                 username=kwargs["username"],
                 display_name=kwargs["lastName"],
                 email=kwargs["email"],
@@ -393,12 +395,12 @@ class UserViewSet(ViewSetUtils):
 
         # 校验密码是否为空
         if not password:
-            raise ValueError("密码不能为空")
+            return JsonResponse({"result": False, "message": "密码不能为空"}, status=400)
 
         # 校验密码复杂度
         is_valid, error_message = PasswordValidator.validate_password(password)
         if not is_valid:
-            raise ValueError(error_message)
+            return JsonResponse({"result": False, "message": error_message}, status=400)
 
         user = User.objects.get(id=user_id)
 
@@ -426,6 +428,15 @@ class UserViewSet(ViewSetUtils):
             is_valid, error_response = self._validate_target_user_permission(request, user)
             if not is_valid:
                 return error_response
+
+        synced_users = list(users.filter(sync_source__isnull=False).values_list("id", flat=True))
+        if synced_users:
+            return JsonResponse(
+                {
+                    "result": False,
+                    "message": "Synced users cannot be deleted directly. Please delete them from the user sync source.",
+                }
+            )
 
         usernames = list(users.values_list("username", flat=True))
 

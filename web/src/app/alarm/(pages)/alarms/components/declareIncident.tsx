@@ -128,7 +128,7 @@ const DeclareModal: React.FC<DeclareModalProps> = ({ rowData, onSuccess }) => {
       >
         <Form
           form={form}
-          layout="horizontal"
+          layout="vertical"
           onFinish={onFinish}
           initialValues={{
             mode: 'create',
@@ -139,7 +139,7 @@ const DeclareModal: React.FC<DeclareModalProps> = ({ rowData, onSuccess }) => {
           <Radio.Group
             value={mode}
             onChange={(e) => setMode(e.target.value)}
-            className="mb-6 pl-6"
+            className="mb-6"
           >
             <Radio value="create">{t('alarms.createIncident')}</Radio>
             <Radio value="link">{t('alarms.linkIncident')}</Radio>
@@ -150,8 +150,6 @@ const DeclareModal: React.FC<DeclareModalProps> = ({ rowData, onSuccess }) => {
               <Form.Item
                 name="title"
                 label={t('alarms.title')}
-                labelCol={{ span: 4 }}
-                wrapperCol={{ span: 20 }}
                 rules={[{ required: true, message: t('common.inputTip') }]}
               >
                 <Input placeholder={t('common.inputTip')} />
@@ -160,8 +158,6 @@ const DeclareModal: React.FC<DeclareModalProps> = ({ rowData, onSuccess }) => {
               <Form.Item
                 name="level"
                 label={t('alarms.level')}
-                labelCol={{ span: 4 }}
-                wrapperCol={{ span: 20 }}
                 rules={[{ required: true, message: t('common.selectTip') }]}
               >
                 <Radio.Group>
@@ -176,8 +172,6 @@ const DeclareModal: React.FC<DeclareModalProps> = ({ rowData, onSuccess }) => {
               <Form.Item
                 name="assignee"
                 label={t('alarms.assignee')}
-                labelCol={{ span: 4 }}
-                wrapperCol={{ span: 20 }}
                 rules={[{ required: true, message: t('common.selectTip') }]}
               >
                 <Select
@@ -198,8 +192,6 @@ const DeclareModal: React.FC<DeclareModalProps> = ({ rowData, onSuccess }) => {
               <Form.Item
                 name="team"
                 label={t('incidents.team')}
-                labelCol={{ span: 4 }}
-                wrapperCol={{ span: 20 }}
                 rules={[{ required: true, message: t('incidents.teamRequired') }]}
               >
                 <GroupTreeSelect
@@ -213,8 +205,6 @@ const DeclareModal: React.FC<DeclareModalProps> = ({ rowData, onSuccess }) => {
             <Form.Item
               name="incidentId"
               label={t('alarms.incident')}
-              labelCol={{ span: 4 }}
-              wrapperCol={{ span: 20 }}
               rules={[{ required: true, message: t('common.selectTip') }]}
             >
               <Select

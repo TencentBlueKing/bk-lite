@@ -108,7 +108,7 @@ CMDB 商业版已产出数据治理健康度快照，包含全局、模型、组
 | 数据治理健康度概览 | `model_id?`, `organization_id?` |
 | 数据治理健康度趋势 | `time`, `model_id?`, `organization_id?` |
 | 数据治理健康度排行 | `dimension`, `limit?` |
-| 数据治理问题对象排行 | `dimension`, `limit?`, `rank_by?` |
+| 数据治理问题对象排行 | `dimension`, `limit?` |
 
 ### 参数说明
 
@@ -117,8 +117,6 @@ CMDB 商业版已产出数据治理健康度快照，包含全局、模型、组
 | `time` | `timeRange` | 数据治理健康度趋势 | 快照日期范围，复用运营分析现有 `timeRange` 参数类型 |
 | `dimension` | `model` / `organization` | 数据治理健康度排行、数据治理问题对象排行 | 决定排行对象是模型还是组织 |
 | `limit` | number | 数据治理健康度排行、数据治理问题对象排行 | 返回条数，默认 10 |
-| `rank_by` | `health_score` / `problem_count` | 数据治理问题对象排行 | 排序方式，默认 `health_score` |
-
 `dimension` 不是快照表里的四个维度名，只允许传 `model` 或 `organization`。真实快照维度由后端结合用户身份和筛选条件推导。
 
 ## 查询维度推导

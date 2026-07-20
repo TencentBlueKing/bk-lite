@@ -66,6 +66,13 @@ export const SCREEN_WIDGET_DEFINITIONS: ScreenWidgetDefinition[] = [
     defaultHeight: 360,
   },
   {
+    chartType: 'room3D',
+    titleKey: 'dataSource.room3D',
+    descriptionKey: 'opsAnalysis.screen.widgetDescriptions.room3D',
+    defaultWidth: 640,
+    defaultHeight: 420,
+  },
+  {
     chartType: 'networkStatusTopology',
     titleKey: 'opsAnalysis.screen.widgets.networkStatusTopology',
     descriptionKey: 'opsAnalysis.screen.widgetDescriptions.networkStatusTopology',

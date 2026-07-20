@@ -73,8 +73,13 @@ class TestMetricView:
         plugin = MonitorPlugin.objects.create(name="MViewPlugin")
         group = MetricGroup.objects.create(monitor_object=obj, monitor_plugin=plugin, name="g")
         m = Metric.objects.create(
-            monitor_object=obj, monitor_plugin=plugin, metric_group=group,
-            name="cpu", display_name="CPU", description="d", sort_order=3,
+            monitor_object=obj,
+            monitor_plugin=plugin,
+            metric_group=group,
+            name="cpu",
+            display_name="CPU",
+            description="d",
+            sort_order=3,
         )
         resp = api_client.get(f"{BASE}/api/metrics/?monitor_object_id={obj.id}")
         assert resp.status_code == 200
@@ -101,6 +106,11 @@ class TestMonitorConditionView:
         assert any(item["name"] == "c1" for item in body["items"])
 
     def test_create_with_organizations(self, api_client, mocker):
+        api_client.cookies["current_team"] = "1"
+        mocker.patch(
+            "apps.monitor.views.monitor_condition.InstanceConfigService._get_actor_scope_groups",
+            return_value=[3, 4],
+        )
         resp = api_client.post(
             f"{BASE}/api/monitor_condition/",
             {"name": "newc", "condition": {"x": 1}, "organizations": [3, 4]},
@@ -108,16 +118,17 @@ class TestMonitorConditionView:
         )
         assert resp.status_code in (200, 201)
         cond = MonitorCondition.objects.get(name="newc")
-        orgs = set(
-            MonitorConditionOrganization.objects.filter(
-                monitor_condition_id=cond.id
-            ).values_list("organization", flat=True)
-        )
+        orgs = set(MonitorConditionOrganization.objects.filter(monitor_condition_id=cond.id).values_list("organization", flat=True))
         assert orgs == {3, 4}
 
-    def test_destroy_cleans_organizations(self, api_client):
+    def test_destroy_cleans_organizations(self, api_client, mocker):
+        api_client.cookies["current_team"] = "1"
         cond = MonitorCondition.objects.create(name="delc", condition={})
         MonitorConditionOrganization.objects.create(monitor_condition=cond, organization=9)
+        mocker.patch(
+            "apps.monitor.views.monitor_condition.get_permission_rules",
+            return_value={"team": [], "instance": [{"id": cond.id, "permission": ["View", "Operate"]}]},
+        )
         resp = api_client.delete(f"{BASE}/api/monitor_condition/{cond.id}/")
         assert resp.status_code in (200, 204)
         assert not MonitorCondition.objects.filter(id=cond.id).exists()

@@ -89,7 +89,7 @@ const SubscriptionDrawer: React.FC<SubscriptionDrawerProps> = ({
         onClose();
       }}
       title={t('subscription.ruleManagement')}
-      destroyOnClose
+      destroyOnHidden
     >
       <div className="flex items-center justify-between gap-2 mb-4">
         <Input.Search
@@ -132,13 +132,13 @@ const SubscriptionDrawer: React.FC<SubscriptionDrawerProps> = ({
 
       <Modal
         open={formOpen}
-        width={800}
+        width="min(880px, calc(100vw - 48px))"
         title={editingRule ? t('subscription.editRule') : t('subscription.createRule')}
         centered
         maskClosable={false}
         onCancel={handleRuleFormCancel}
         footer={(
-          <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
+          <Space wrap style={{ width: '100%', justifyContent: 'flex-end' }}>
             <Button
               type="primary"
               loading={submitting}
@@ -157,7 +157,7 @@ const SubscriptionDrawer: React.FC<SubscriptionDrawerProps> = ({
             </Button>
           </Space>
         )}
-        destroyOnClose
+        destroyOnHidden
         styles={{
           body: {
             maxHeight: 'calc(100vh - 220px)',

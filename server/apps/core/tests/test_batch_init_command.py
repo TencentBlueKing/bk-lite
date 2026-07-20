@@ -1,4 +1,5 @@
 import pydantic.root_model  # noqa
+
 """apps/core/management/commands/batch_init.py 的真实行为测试。
 
 被测对象是初始化编排命令 Command。它的核心逻辑是“按 app 分发到对应的
@@ -51,10 +52,13 @@ class TestHandleDispatch:
         names = [c[0] for c in calls]
         assert names == ["node_init"]
 
-    def test_monitor_app_runs_plugin_init(self, calls):
+    def test_monitor_app_initializes_plugins_and_metrics_stream(self, calls):
         cmd = _make_command()
         cmd.handle(apps="monitor", continue_on_error=False)
-        assert [c[0] for c in calls] == ["plugin_init"]
+        assert [c[0] for c in calls] == [
+            "plugin_init",
+            "ensure_monitor_metrics_stream",
+        ]
 
     def test_multiple_apps_dispatched_in_order(self, calls):
         cmd = _make_command()
@@ -94,6 +98,12 @@ class TestHandleDispatch:
         assert args == ("admin", "password")
         assert kwargs.get("is_superuser") is True
 
+    def test_system_mgmt_runs_opspilot_legacy_menu_cleanup_before_realm_resource(self, calls):
+        cmd = _make_command()
+        cmd.handle(apps="system_mgmt", continue_on_error=False)
+        names = [c[0] for c in calls]
+        assert names.index("cleanup_opspilot_legacy_knowledge_menus") < names.index("init_realm_resource")
+
 
 class TestErrorHandlingPolicy:
     def test_system_mgmt_failure_reraises_and_aborts(self, monkeypatch):
@@ -105,9 +115,7 @@ class TestErrorHandlingPolicy:
                 raise RuntimeError("sysmgmt boom")
 
         monkeypatch.setattr(bi, "call_command", fake_call_command)
-        monkeypatch.setattr(
-            bi, "preload_language_cache", lambda *a, **k: {"loaded": [], "skipped": [], "failed": []}
-        )
+        monkeypatch.setattr(bi, "preload_language_cache", lambda *a, **k: {"loaded": [], "skipped": [], "failed": []})
         cmd = _make_command()
         with pytest.raises(RuntimeError, match="sysmgmt boom"):
             cmd.handle(apps="system_mgmt,cmdb", continue_on_error=False)
@@ -122,14 +130,30 @@ class TestErrorHandlingPolicy:
                 raise RuntimeError("monitor boom")
 
         monkeypatch.setattr(bi, "call_command", fake_call_command)
-        monkeypatch.setattr(
-            bi, "preload_language_cache", lambda *a, **k: {"loaded": [], "skipped": [], "failed": []}
-        )
+        monkeypatch.setattr(bi, "preload_language_cache", lambda *a, **k: {"loaded": [], "skipped": [], "failed": []})
         cmd = _make_command()
         with pytest.raises(RuntimeError, match="monitor boom"):
             cmd.handle(apps="monitor,log", continue_on_error=False)
         assert "log_init" not in calls
         assert any("ERR:" in m and "monitor" in m for m in cmd.stdout.messages)
+
+    def test_metrics_stream_failure_aborts_monitor_initialization(self, monkeypatch):
+        calls = []
+
+        def fake_call_command(name, *args, **kwargs):
+            calls.append(name)
+            if name == "ensure_monitor_metrics_stream":
+                raise RuntimeError("JetStream unavailable")
+
+        monkeypatch.setattr(bi, "call_command", fake_call_command)
+        monkeypatch.setattr(bi, "preload_language_cache", lambda *a, **k: {"loaded": [], "skipped": [], "failed": []})
+        cmd = _make_command()
+
+        with pytest.raises(RuntimeError, match="JetStream unavailable"):
+            cmd.handle(apps="monitor,log", continue_on_error=False)
+
+        assert calls == ["plugin_init", "ensure_monitor_metrics_stream"]
+        assert any("ERR:" in m and "初始化 monitor 失败: JetStream unavailable" in m for m in cmd.stdout.messages)
 
     def test_continue_on_error_runs_remaining_apps_and_reports_failures(self, monkeypatch):
         calls = []
@@ -140,19 +164,14 @@ class TestErrorHandlingPolicy:
                 raise RuntimeError("plugin init failed")
 
         monkeypatch.setattr(bi, "call_command", fake_call_command)
-        monkeypatch.setattr(
-            bi, "preload_language_cache", lambda *a, **k: {"loaded": [], "skipped": [], "failed": []}
-        )
+        monkeypatch.setattr(bi, "preload_language_cache", lambda *a, **k: {"loaded": [], "skipped": [], "failed": []})
         cmd = _make_command()
 
         cmd.handle(apps="monitor,node_mgmt", continue_on_error=True)
 
         assert calls == [("plugin_init", (), {}), ("node_init", (), {})]
         assert any("ERR:" in m and "初始化 monitor 失败: plugin init failed" in m for m in cmd.stdout.messages)
-        assert any(
-            "WARN:" in m and "批量初始化完成，失败模块: monitor: plugin init failed" in m
-            for m in cmd.stdout.messages
-        )
+        assert any("WARN:" in m and "批量初始化完成，失败模块: monitor: plugin init failed" in m for m in cmd.stdout.messages)
 
 
 class TestGetAdminPassword:

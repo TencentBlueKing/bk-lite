@@ -9,10 +9,9 @@ import { isValidCronExpression } from './cronPresetUtils';
 
 const CheckPeriod: React.FC = () => {
   const { t } = useTranslation();
-  const labelClassName = 'w-[100px] shrink-0 pr-2 pt-[5px] text-right text-sm text-gray-600';
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-6">
       <Form.Item
         name="md_cron_expr"
         rules={[
@@ -31,25 +30,20 @@ const CheckPeriod: React.FC = () => {
         <CronPresetInput />
       </Form.Item>
 
-      <div className="flex items-start">
-        <div className={labelClassName}>
+      <Form.Item
+        name="md_grace_period"
+        label={
           <span className="inline-flex items-center">
             {t('settings.correlation.gracePeriod')}
             <Tooltip title={t('settings.correlation.gracePeriodTip')}>
               <QuestionCircleOutlined className="ml-1 cursor-help text-xs text-gray-400" />
             </Tooltip>
           </span>
-        </div>
-        <div className="w-[180px]">
-          <Form.Item
-            name="md_grace_period"
-            rules={[{ required: true, message: t('common.inputTip') }]}
-            className="mb-0"
-          >
-            <InputNumber min={1} addonAfter={t('settings.correlation.min')} className="w-full" />
-          </Form.Item>
-        </div>
-      </div>
+        }
+        rules={[{ required: true, message: t('common.inputTip') }]}
+      >
+        <InputNumber min={1} addonAfter={t('settings.correlation.min')} className="w-[180px]" />
+      </Form.Item>
     </div>
   );
 };

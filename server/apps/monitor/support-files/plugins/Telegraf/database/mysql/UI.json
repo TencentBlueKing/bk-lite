@@ -2,7 +2,9 @@
   "object_name": "Mysql",
   "instance_type": "mysql",
   "collect_type": "database",
-  "config_type": ["mysql"],
+  "config_type": [
+    "mysql"
+  ],
   "collector": "Telegraf",
   "instance_id": "{{cloud_region}}_{{host}}_{{port}}",
   "form_fields": [
@@ -14,14 +16,16 @@
       "editable": false,
       "description": "用于连接 MySQL 数据库的用户名",
       "widget_props": {
-        "placeholder": "用户名"
+        "placeholder": "用户名",
+        "placeholder_en": "Username"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.servers[0]",
         "to_form": {
           "regex": "^([^:]+):"
         }
-      }
+      },
+      "label_en": "Username"
     },
     {
       "name": "ENV_PASSWORD",
@@ -31,11 +35,13 @@
       "editable": false,
       "description": "用于连接 MySQL 数据库的密码",
       "widget_props": {
-        "placeholder": "密码"
+        "placeholder": "密码",
+        "placeholder_en": "Password"
       },
       "transform_on_edit": {
         "origin_path": "child.env_config.PASSWORD__{{config_id}}"
-      }
+      },
+      "label_en": "Password"
     },
     {
       "name": "host",
@@ -53,7 +59,8 @@
         "to_form": {
           "regex": "@tcp\\(([^:]+):"
         }
-      }
+      },
+      "label_en": "Host"
     },
     {
       "name": "port",
@@ -66,27 +73,30 @@
       "widget_props": {
         "min": 1,
         "precision": 0,
-        "placeholder": "端口"
+        "placeholder": "端口",
+        "placeholder_en": "Port"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.servers[0]",
         "to_form": {
           "regex": "@tcp\\([^:]+:(\\d+)\\)"
         }
-      }
+      },
+      "label_en": "Port"
     },
     {
       "name": "interval",
       "label": "间隔",
       "type": "inputNumber",
       "required": true,
-      "default_value": 10,
+      "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
       "widget_props": {
         "min": 1,
         "precision": 0,
         "placeholder": "间隔",
-        "addonAfter": "s"
+        "addonAfter": "s",
+        "placeholder_en": "Interval"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.interval",
@@ -96,7 +106,9 @@
         "to_api": {
           "suffix": "s"
         }
-      }
+      },
+      "label_en": "Interval",
+      "description_en": "Collection time interval (unit: seconds)"
     }
   ],
   "table_columns": [
@@ -106,9 +118,11 @@
       "type": "select",
       "required": true,
       "widget_props": {
-        "placeholder": "请选择节点"
+        "placeholder": "请选择节点",
+        "placeholder_en": "Please select node"
       },
-      "enable_row_filter": false
+      "enable_row_filter": false,
+      "label_en": "Node"
     },
     {
       "name": "host",
@@ -120,10 +134,14 @@
       },
       "change_handler": {
         "type": "combine",
-        "source_fields": ["host", "port"],
+        "source_fields": [
+          "host",
+          "port"
+        ],
         "target_field": "instance_name",
         "separator": ":"
-      }
+      },
+      "label_en": "Host"
     },
     {
       "name": "port",
@@ -133,14 +151,19 @@
       "widget_props": {
         "min": 1,
         "precision": 0,
-        "placeholder": "端口"
+        "placeholder": "端口",
+        "placeholder_en": "Port"
       },
       "change_handler": {
         "type": "combine",
-        "source_fields": ["host", "port"],
+        "source_fields": [
+          "host",
+          "port"
+        ],
         "target_field": "instance_name",
         "separator": ":"
-      }
+      },
+      "label_en": "Port"
     },
     {
       "name": "instance_name",
@@ -149,8 +172,10 @@
       "required": true,
       "widget_props": {
         "placeholder": "实例名称",
-        "disabled": false
-      }
+        "disabled": false,
+        "placeholder_en": "Instance Name"
+      },
+      "label_en": "Instance Name"
     },
     {
       "name": "group_ids",
@@ -158,8 +183,10 @@
       "type": "group_select",
       "required": false,
       "widget_props": {
-        "placeholder": "请选择组"
-      }
+        "placeholder": "请选择组",
+        "placeholder_en": "Please select group"
+      },
+      "label_en": "Group"
     }
   ]
 }

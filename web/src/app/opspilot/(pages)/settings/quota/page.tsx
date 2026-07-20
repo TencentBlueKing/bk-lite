@@ -20,12 +20,6 @@ const QuotaUsage: React.FC = () => {
         const res = await fetchMyQuota();
         const formattedData: QuotaData[] = [
           {
-            label: `${t('settings.myQuota.knowledgeBase')} (${res.is_file_uniform ? t('settings.myQuota.uniform') : t('settings.myQuota.shared')})`,
-            usage: res.used_file_size,
-            total: res.all_file_size,
-            unit: 'M'
-          },
-          {
             label: `${t('settings.myQuota.skills')} (${res.is_skill_uniform ? t('settings.myQuota.uniform') : t('settings.myQuota.shared')})`,
             usage: res.used_skill_count,
             total: res.all_skill_count,

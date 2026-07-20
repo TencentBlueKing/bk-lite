@@ -16,35 +16,32 @@ const SkillView: React.FC<SkillViewProps> = ({ items }) => {
   if (visibleItems.length === 0) return null;
 
   return (
-    <div className="my-3 overflow-hidden rounded-xl border border-[#dbe7ff] bg-white text-sm text-[var(--color-text-1)] shadow-[0_2px_8px_rgba(30,64,175,0.08)]">
+    <div className="my-2 overflow-hidden rounded-lg border border-[#dbe7ff] bg-white text-xs text-[var(--color-text-1)] shadow-[0_2px_8px_rgba(30,64,175,0.08)]">
       <button
         type="button"
-        className="flex w-full items-center justify-between gap-3 bg-gradient-to-r from-[#f4f8ff] to-white px-4 py-3 text-left transition-colors hover:from-[#eff5ff]"
+        className="flex w-full items-center justify-between gap-3 bg-gradient-to-r from-[#f4f8ff] to-white px-3 py-1.5 text-left transition-colors hover:from-[#eff5ff]"
         onClick={() => setExpanded(prev => !prev)}
       >
-        <span className="flex min-w-0 items-center gap-3">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#e8f0ff] text-[var(--color-primary)]">
-            <BookOutlined />
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#e8f0ff] text-[var(--color-primary)]">
+            <BookOutlined className="text-sm" />
           </span>
           <span className="min-w-0">
-            <span className="flex items-center gap-2">
-              <span className="font-semibold text-[#172033]">技能包命中</span>
-              <span className="rounded-full bg-[#e8f0ff] px-2 py-0.5 text-xs font-medium text-[var(--color-primary)]">
+            <span className="flex items-center gap-1.5">
+              <span className="text-xs font-medium text-[#172033]">技能包命中</span>
+              <span className="rounded-full bg-[#e8f0ff] px-1.5 py-0 text-[10px] font-medium text-[var(--color-primary)]">
                 {visibleItems.length} 个
               </span>
               {missingToolCount > 0 && (
-                <span className="rounded-full bg-[#fff7e8] px-2 py-0.5 text-xs font-medium text-[#b7791f]">
+                <span className="rounded-full bg-[#fff7e8] px-1.5 py-0 text-[10px] font-medium text-[#b7791f]">
                   缺少 {missingToolCount} 个工具
                 </span>
               )}
             </span>
-            <span className="mt-0.5 block truncate text-xs text-[var(--color-text-3)]">
-              已注入当前任务的领域策略与工具依赖提示
-            </span>
           </span>
         </span>
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[var(--color-text-3)] transition-colors hover:bg-[#e8f0ff]">
-          <DownOutlined className={`text-xs transition-transform ${expanded ? 'rotate-180' : ''}`} />
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[var(--color-text-3)] transition-colors hover:bg-[#e8f0ff]">
+          <DownOutlined className={`text-[10px] transition-transform ${expanded ? 'rotate-180' : ''}`} />
         </span>
       </button>
       {expanded && (

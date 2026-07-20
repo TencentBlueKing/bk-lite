@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { useSession, signIn } from 'next-auth/react';
 import type { Session } from 'next-auth';
@@ -73,9 +73,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const { setLocale } = useLocale();
   const { t } = useTranslation();
 
-  const authPaths = ['/auth/signin', '/auth/signout', '/auth/callback'];
+  const authPaths = ['/auth/signin', '/auth/signout', '/auth/callback', '/auth/signin/login-auth-result'];
   const isCurrentAuthPath = isAuthPath(pathname);
   const isSessionValid = extendedSession && extendedSession.user && (extendedSession.user.id || extendedSession.user.username);
+  const authenticatedSessionIdentityRef = useRef<string | null>(null);
+  authenticatedSessionIdentityRef.current = status === 'authenticated' && isSessionValid
+    ? String(extendedSession.user.token || extendedSession.user.id || extendedSession.user.username)
+    : null;
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -83,19 +87,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     const nativeFetch = window.fetch.bind(window);
+    const axiosRequestSessionIdentities = new WeakMap<object, string | null>();
+    const shouldTriggerForSession = (
+      input: RequestInfo | URL | string | null | undefined,
+      requestSessionIdentity: string | null,
+    ) => (
+      shouldTriggerSessionExpiry(
+        input,
+        authenticatedSessionIdentityRef.current,
+        requestSessionIdentity,
+      )
+    );
 
     window.fetch = async (input, init) => {
-      if (shouldTriggerSessionExpiry(input) && isSessionExpiredState()) {
+      const requestSessionIdentity = authenticatedSessionIdentityRef.current;
+
+      if (shouldTriggerForSession(input, requestSessionIdentity) && isSessionExpiredState()) {
         throw createSessionExpiredRequestError();
       }
 
       const response = await nativeFetch(input, init);
 
-      if (response.status === 460 && shouldTriggerSessionExpiry(input)) {
+      if (response.status === 460 && shouldTriggerForSession(input, requestSessionIdentity)) {
         void forceLogoutAndRedirect();
       }
 
-      if (response.status === 401 && shouldTriggerSessionExpiry(input)) {
+      if (response.status === 401 && shouldTriggerForSession(input, requestSessionIdentity)) {
         emitSessionExpired({ reason: 'global-fetch-session-expired', status: 401 });
       }
 
@@ -103,7 +120,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     const axiosRequestInterceptor = axios.interceptors.request.use((config) => {
-      if (shouldTriggerSessionExpiry(config.url) && isSessionExpiredState()) {
+      const requestSessionIdentity = authenticatedSessionIdentityRef.current;
+      axiosRequestSessionIdentities.set(config, requestSessionIdentity);
+
+      if (shouldTriggerForSession(config.url, requestSessionIdentity) && isSessionExpiredState()) {
         return Promise.reject(createSessionExpiredRequestError());
       }
 
@@ -112,22 +132,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const axiosResponseInterceptor = axios.interceptors.response.use(
       (response) => {
-        if (response.status === 460 && shouldTriggerSessionExpiry(response.config.url)) {
+        const requestSessionIdentity = axiosRequestSessionIdentities.get(response.config) ?? null;
+
+        if (response.status === 460 && shouldTriggerForSession(response.config.url, requestSessionIdentity)) {
           void forceLogoutAndRedirect();
         }
 
-        if (response.status === 401 && shouldTriggerSessionExpiry(response.config.url)) {
+        if (response.status === 401 && shouldTriggerForSession(response.config.url, requestSessionIdentity)) {
           emitSessionExpired({ reason: 'global-axios-session-expired', status: 401 });
         }
 
         return response;
       },
       (error) => {
-        if (axios.isAxiosError(error) && error.response?.status === 460 && shouldTriggerSessionExpiry(error.config?.url)) {
+        const requestSessionIdentity = error.config
+          ? axiosRequestSessionIdentities.get(error.config) ?? null
+          : null;
+
+        if (axios.isAxiosError(error) && error.response?.status === 460 && shouldTriggerForSession(error.config?.url, requestSessionIdentity)) {
           void forceLogoutAndRedirect();
         }
 
-        if (axios.isAxiosError(error) && error.response?.status === 401 && shouldTriggerSessionExpiry(error.config?.url)) {
+        if (axios.isAxiosError(error) && error.response?.status === 401 && shouldTriggerForSession(error.config?.url, requestSessionIdentity)) {
           emitSessionExpired({ reason: 'global-axios-session-expired', status: 401 });
         }
 
@@ -382,41 +408,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           style={{ backdropFilter: 'blur(4px)' }}
         >
           <div
-            className="relative w-full overflow-hidden rounded-[28px] border backdrop-blur-xl"
+            className="relative w-full overflow-hidden rounded-[16px] border"
             style={{
-              maxWidth: 460,
-              borderColor: themeName === 'dark' ? 'var(--color-border-1)' : 'rgba(255,255,255,0.6)',
-              background: themeName === 'dark' ? 'rgba(12,37,54,0.94)' : 'rgba(255,255,255,0.96)',
-              boxShadow: themeName === 'dark' ? '0 30px 90px rgba(0,0,0,0.42)' : '0 30px 90px rgba(15,23,42,0.28)',
+              maxWidth: 420,
+              borderColor: themeName === 'dark' ? 'var(--color-border-1)' : '#DBE3EC',
+              background: themeName === 'dark' ? 'var(--bg-color-2)' : '#FFFFFF',
+              boxShadow: themeName === 'dark' ? '0 18px 42px rgba(0,0,0,0.42)' : '0 10px 28px rgba(15,23,42,0.10)',
             }}
           >
-            <div
-              className="pointer-events-none absolute inset-x-0 top-0 h-24"
-              style={{
-                background: themeName === 'dark'
-                  ? 'linear-gradient(180deg, rgba(21,90,239,0.18) 0%, rgba(12,37,54,0) 100%)'
-                  : 'linear-gradient(180deg, rgba(236, 244, 255, 0.9) 0%, rgba(255, 255, 255, 0) 100%)',
-              }}
-            />
-            <div className="relative px-7 pb-7 pt-6">
-              <div className="mb-6">
-                <div className="mx-auto max-w-md text-center">
-                  <div className="text-[16px] font-semibold leading-none text-(--color-text-1)">
+            <div className="relative px-6 pb-5 pt-6">
+              <div className="mb-5">
+                <div className="max-w-[388px]">
+                  <div className="text-[24px] leading-[1.18] font-bold text-(--color-text-1)">
                     {t('common.sessionExpiredTitle')}
                   </div>
 
-                  <div className="mx-auto mt-2 max-w-sm text-[12px] leading-5 text-(--color-text-2)">
+                  <div className="mt-2 text-[13px] leading-[1.65] text-(--color-text-2)">
                     {t('common.sessionExpiredDescription')}
                   </div>
-
-                  <div className="mx-auto mt-4 h-px w-14 bg-[linear-gradient(90deg,transparent_0%,var(--color-border-2)_50%,transparent_100%)]" />
                 </div>
               </div>
               <SigninClient
                 mode="modal"
                 signinErrors={modalSigninErrors}
                 onAuthenticated={handleReloginSuccess}
-                showThirdPartyLogin
               />
             </div>
           </div>

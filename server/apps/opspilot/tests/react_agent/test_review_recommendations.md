@@ -206,7 +206,7 @@ else:
 ```
 
 **修复文件**：`server/apps/opspilot/utils/base_chat_flow_utils.py`
-**测试文件**：`server/apps/opspilot/tests/react_agent/cases/test_external_channel_message_dedup.py`（新增 `TestConcurrentSafety` 测试类）
+**测试文件**：`server/apps/opspilot/tests/DeepAgent cases/test_external_channel_message_dedup.py`（新增 `TestConcurrentSafety` 测试类）
 
 ---
 

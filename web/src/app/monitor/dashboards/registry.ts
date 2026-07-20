@@ -30,18 +30,19 @@ import AccessDashboard from './objects/access';
 import NetworkServiceDashboard from './objects/network_service';
 import ConsoleServerDashboard from './objects/console_server';
 import VoiceGatewayDashboard from './objects/voice_gateway';
+import { ENTERPRISE_PROFESSIONAL_DASHBOARDS } from './objects/(enterprise)-registry';
 import { normalizeDashboardKey } from './shared/utils';
 
 export const PROFESSIONAL_DASHBOARD_GROUPS = {
   hardware: { label: '硬件设备', order: 10 },
   container: { label: '容器', order: 15 },
-  os: { label: '操作系统', order: 20 },
+  os: { label: '主机资源', order: 20 },
   network: { label: '网络', order: 30 },
   database: { label: '数据库', order: 40 },
   middleware: { label: '中间件', order: 50 }
 } as const;
 
-export const PROFESSIONAL_DASHBOARDS: ProfessionalDashboardRegistryItem[] = [
+const COMMUNITY_DASHBOARDS: ProfessionalDashboardRegistryItem[] = [
   {
     key: 'mysql',
     groupKey: 'database',
@@ -310,6 +311,11 @@ export const PROFESSIONAL_DASHBOARDS: ProfessionalDashboardRegistryItem[] = [
     inheritedPermissionPath: '/monitor/view',
     component: K8sPodDashboard
   }
+];
+
+export const PROFESSIONAL_DASHBOARDS: ProfessionalDashboardRegistryItem[] = [
+  ...COMMUNITY_DASHBOARDS,
+  ...ENTERPRISE_PROFESSIONAL_DASHBOARDS,
 ];
 
 export const PROFESSIONAL_DASHBOARD_MAP = new Map(

@@ -32,7 +32,7 @@ const ProChatComponentWrapper: React.FC<ChatComponentProps> = ({ initialChats, c
       if (data.length === 0) {
         setHasMore(false);
       } else {
-        const newMessages = await createConversation(data, get);
+        const newMessages = await createConversation(data);
         setMessages((prevMessages) => {
           const updatedMessages = [...prevMessages, ...newMessages];
           if (updatedMessages.length >= count) {
@@ -86,7 +86,6 @@ const ProChatComponentWrapper: React.FC<ChatComponentProps> = ({ initialChats, c
       <CustomChatSSE
         initialMessages={messages}
         mode="display"
-        showMarkOnly={true}
         useAGUIProtocol={false}
         showHeader={false}
       />

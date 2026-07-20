@@ -116,6 +116,7 @@ class TestTestConnectionSerializer:
 
 
 class TestLLMSerializerMethods:
+    @pytest.mark.skip(reason="LLMSerializer.get_rag_score_threshold 已随 RAG 功能一起删除,后续单独 PR 重启用")
     def test_rag_score_threshold_转列表(self):
         inst = SimpleNamespace(rag_score_threshold_map={"kb1": 0.5, "kb2": 0.8})
         out = LLMSerializer.get_rag_score_threshold(inst)

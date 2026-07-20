@@ -22,7 +22,9 @@
         "filterNameRequired": "请输入收藏名称",
         "noFiltersToSave": "没有可收藏的筛选条件",
         "saveFailed": "保存失败",
-        "deleteFailed": "删除失败"
+        "deleteFailed": "删除失败",
+        "cancel": "取消",
+        "confirm": "确认"
     },
     "deleteTitle": "您确定要删除这个项目吗？",
     "disassociationTitle": "您确定要取消关联吗？",
@@ -345,6 +347,7 @@
         "discardLayoutConfirm": "当前改动未保存，确认放弃？",
         "fieldUnavailable": "字段不可用",
         "networkTopo": "网络拓扑",
+        "applicationResourceOverview": "应用拓扑",
         "ipView": "IP 视图",
         "ipViewEmptyHint": "请先补全子网网段与子网掩码",
         "ipViewCapacity": "总量",
@@ -369,7 +372,8 @@
         "noRackLayout": "暂无机柜布局数据",
         "emptyRoom": "该机房暂无机柜",
         "rackCellConflict": "存在多个机柜占用同一网格位，请检查行/列",
-        "rackNoPosition": "未定位机柜（缺行/列）",
+        "rackLocationMissing": "未定位机柜（位置为空）",
+        "rackLocationInvalid": "未定位机柜（位置格式不正确，应为 A01 格式）",
         "rackUConflict": "存在设备 U 位重叠或越界，请检查起始U位/占用U数",
         "rackUnplaced": "未分配 U 位的设备",
         "viewFullInstance": "查看完整实例详情",
@@ -416,6 +420,50 @@
         "networkTopoDeleteLinkContent": "删除后，如果这条连线来自自动采集，下次采集可能会重新发现并加回来。确认删除？",
         "searchModelPlaceholder": "搜索模型名称",
         "exportSelectAtLeastOne": "请至少选择一个模型"
+    },
+    "ApplicationResourceOverview": {
+        "systemAppListTitle": "系统下应用列表",
+        "emptyApps": "该系统下暂无应用",
+        "openApp": "查看资源全景",
+        "backToApps": "返回应用列表",
+        "topologyTab": "拓扑图",
+        "resourcesTab": "资源清单",
+        "topologyHint": "点击节点可切换当前目标节点，并对当前节点快速展开下一层、两层或三层关联资源。",
+        "expandOne": "展开下一层",
+        "expandTwo": "向下展开 2 层",
+        "expandThree": "向下展开 3 层",
+        "reset": "回到初始视图",
+        "truncated": "资源较多，当前仅展示已加载部分。",
+        "selectedNode": "当前选中节点",
+        "topologyCanvasTitle": "资源拓扑画布",
+        "layerBusiness": "业务层",
+        "layerBusinessSub": "业务域 / 业务应用",
+        "layerService": "应用服务层",
+        "layerServiceSub": "微服务 / 中间件",
+        "layerResource": "基础设施层",
+        "layerResourceSub": "基础资源 / 设备",
+        "hopLabel": "第 {hop} 层",
+        "noSelectedNode": "请先选择节点",
+        "hopGroupTitle": "第 {hop} 层节点",
+        "linksTitle": "关联连线",
+        "emptyLinks": "暂无关联连线",
+        "linkSource": "源节点",
+        "linkType": "关系",
+        "linkTarget": "目标节点",
+        "export": "导出清单",
+        "emptyResources": "暂无资源清单",
+        "resourceName": "资源名称",
+        "resourceModel": "资源模型",
+        "resourceHop": "层级",
+        "groupApplication": "应用",
+        "groupHost": "主机",
+        "groupDatabase": "数据库",
+        "groupMiddleware": "中间件",
+        "groupCache": "缓存",
+        "groupMessageQueue": "消息队列",
+        "groupHardware": "硬件资源",
+        "groupRackRoom": "机房机柜",
+        "groupOther": "其他资源"
     },
     "PublicEnumLibrary": {
         "title": "公共选项库",
@@ -529,6 +577,7 @@
             "selectK8S": "K8S",
             "second": "秒",
             "intervalRequired": "请输入执行间隔时间",
+            "everyMinuteMin": "执行间隔最小为1分钟",
             "timeRequired": "请选择执行时间",
             "timeoutRequired": "请输入超时时间",
             "accessConfig": "接入配置",
@@ -797,7 +846,9 @@
                 "failed": "失败"
             },
             "noTaskSelected": "请选择任务查看详情"
-        }
+        },
+        "password": "密码",
+        "sslVerify": "SSL 校验"
     },
     "OidLibrary": {
         "title": "SOID库",
@@ -1012,7 +1063,6 @@
         "keyAttribute": "关键属性",
         "freshness": "时效性",
         "notSet": "未设置",
-        "freshnessTimely": "需要及时更新（7天）",
         "freshnessOccasional": "不频繁更新（90天）",
         "freshnessStable": "基本不变（不参与判定）",
         "selectFreshness": "请选择时效性"
@@ -1138,5 +1188,30 @@
     },
     "IPAM": {
         "conflictFilter": "冲突 IP"
+    },
+    "K8sResourceOverview": {
+        "title": "K8S 资源",
+        "resourceDetails": "资源详情",
+        "nav": {
+            "overview": "概览",
+            "namespace": "命名空间",
+            "deployment": "Deployment",
+            "statefulset": "StatefulSet",
+            "daemonset": "DaemonSet",
+            "job": "Job",
+            "cronjob": "CronJob",
+            "other_workload": "其他工作负载",
+            "pod": "Pod",
+            "node": "Node",
+            "workloadGroup": "工作负载"
+        },
+        "navGroups": { "workload": "工作负载", "pod": "Pod", "node": "Node" },
+        "metrics": { "namespace": "命名空间", "workload": "工作负载", "otherWorkload": "其他工作负载 {count}", "pod": "Pod", "node": "Node" },
+        "facts": { "title": "采集事实", "lastReported": "最近上报时间", "lastSuccess": "最近成功采集时间", "lastResult": "最近采集结果 / 错误", "collectorTask": "采集任务" },
+        "actions": { "refresh": "刷新", "retry": "重试", "expandNav": "展开资源导航", "collapseNav": "折叠资源导航", "expandPods": "展开 Pod", "collapsePods": "收起 Pod", "loadMorePods": "继续加载 Pod", "retryPods": "重试加载 Pod", "expandUnowned": "展开未归属 Pod", "collapseUnowned": "收起未归属 Pod", "viewResources": "查看关联资源列表", "loadMore": "展开更多", "zoomOut": "缩小", "zoomIn": "放大", "fit": "适应画布" },
+        "states": { "emptyTopology": "暂无可见拓扑资源", "overviewError": "Kubernetes 资源概览加载失败", "listError": "资源列表加载失败", "podError": "Pod 加载失败", "unownedError": "未归属 Pod 加载失败", "waiting": "等待加载", "loading": "加载中", "failed": "加载失败", "shown": "已显示 {loaded}/{count}", "layerShown": "已展示 {shown} / {count}", "noData": "—" },
+        "list": { "search": "搜索名称", "namespaceFilter": "命名空间", "workloadFilter": "工作负载", "nodeFilter": "Node", "total": "共 {total} 条" },
+        "columns": { "name": "名称", "workload_count": "工作负载", "pod_count": "Pod", "namespace": "命名空间", "workload": "工作负载", "workload_type": "类型", "replicas": "副本数", "node": "Node", "ip_addr": "Pod IP", "request_cpu": "CPU 请求", "request_memory": "内存请求", "limit_cpu": "CPU 限制", "limit_memory": "内存限制", "role": "角色", "cpu": "CPU", "memory": "内存", "disk": "磁盘" },
+        "accessibility": { "topology": "Kubernetes 资源拓扑，单击聚焦，右键打开只读菜单", "legend": "图例" }
     }
 }

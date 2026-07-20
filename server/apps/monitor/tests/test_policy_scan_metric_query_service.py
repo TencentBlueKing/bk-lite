@@ -25,6 +25,7 @@ def _policy(**kwargs):
         algorithm="max",
         metric_unit="",
         calculation_unit="",
+        threshold_unit="",
         last_run_time=datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
     )
     base.update(kwargs)
@@ -60,9 +61,15 @@ class TestFormatPmq:
 
     def test_metric_type_substitutes_labels(self):
         svc = MetricQueryService(
-            _policy(query_condition={"type": "metric", "metric_id": 9, "filter": [
-                {"name": "instance_id", "method": "=", "value": "h1"},
-            ]}),
+            _policy(
+                query_condition={
+                    "type": "metric",
+                    "metric_id": 9,
+                    "filter": [
+                        {"name": "instance_id", "method": "=", "value": "h1"},
+                    ],
+                }
+            ),
             {},
         )
         svc.metric = SimpleNamespace(query="cpu{__$labels__}", data_type="Number", unit="")
@@ -97,8 +104,12 @@ class TestSetMonitorObjInstanceKey:
         plugin = MonitorPlugin.objects.create(name="MQPlugin")
         group = MetricGroup.objects.create(monitor_object=obj, monitor_plugin=plugin, name="g")
         metric = Metric.objects.create(
-            monitor_object=obj, monitor_plugin=plugin, metric_group=group,
-            name="m", query="m{__$labels__}", instance_id_keys=["instance_id", "device"],
+            monitor_object=obj,
+            monitor_plugin=plugin,
+            metric_group=group,
+            name="m",
+            query="m{__$labels__}",
+            instance_id_keys=["instance_id", "device"],
         )
         svc = MetricQueryService(_policy(query_condition={"type": "metric", "metric_id": metric.id}), {})
         svc.set_monitor_obj_instance_key()
@@ -139,9 +150,7 @@ class TestQueryAggregationMetrics:
 class TestQueryRawMetrics:
     def test_uses_vm_query_range(self, mocker):
         svc = MetricQueryService(_policy(), {})
-        vm = mocker.patch(
-            "apps.monitor.tasks.services.policy_scan.metric_query.VictoriaMetricsAPI"
-        )
+        vm = mocker.patch("apps.monitor.tasks.services.policy_scan.metric_query.VictoriaMetricsAPI")
         vm.return_value.query_range.return_value = {"data": {"result": [1]}}
         out = svc.query_raw_metrics({"type": "min", "value": 5})
         assert out == {"data": {"result": [1]}}
@@ -171,6 +180,47 @@ class TestConvertMetricValues:
         assert vals[0][0] == 100
         assert float(vals[0][1]) == pytest.approx(2.0)
         assert float(vals[1][1]) == pytest.approx(1.0)
+
+    def test_convertible_skips_non_finite_values(self):
+        svc = MetricQueryService(_policy(metric_unit="bytes", calculation_unit="kibibytes"), {})
+        data = {"data": {"result": [{"values": [[100, "inf"]]}]}}
+        out = svc.convert_metric_values(data)
+
+        assert out["data"]["result"][0]["values"] == [[100, "inf"]]
+
+
+class TestConvertThresholds:
+    def test_legacy_empty_threshold_unit_uses_calculation_unit(self):
+        svc = MetricQueryService(
+            _policy(calculation_unit="bytes", threshold_unit=""), {}
+        )
+        original = [{"level": "critical", "method": ">", "value": 10}]
+
+        converted = svc.convert_thresholds(original)
+
+        assert converted == original
+        assert converted is not original
+
+    def test_gibibytes_threshold_converts_to_bytes_without_mutating_policy(self):
+        svc = MetricQueryService(
+            _policy(calculation_unit="bytes", threshold_unit="gibibytes"), {}
+        )
+        original = [{"level": "critical", "method": "<", "value": -2}]
+
+        converted = svc.convert_thresholds(original)
+
+        assert converted[0]["value"] == pytest.approx(-2 * 1024**3)
+        assert original[0]["value"] == -2
+
+    def test_cross_system_threshold_raises(self):
+        svc = MetricQueryService(
+            _policy(calculation_unit="bytes", threshold_unit="percent"), {}
+        )
+
+        with pytest.raises(BaseAppException, match="不能转换"):
+            svc.convert_thresholds(
+                [{"level": "critical", "method": ">", "value": 80}]
+            )
 
 
 class TestGetDisplayUnit:
@@ -217,18 +267,39 @@ class TestEnumHelpers:
 class TestFormatAggregationMetrics:
     def test_groups_by_keys_and_takes_last_value(self):
         svc = MetricQueryService(_policy(group_by=["instance_id"]), {})
-        metrics = {"data": {"result": [
-            {"metric": {"instance_id": "h1"}, "values": [[0, "1"], [10, "5"]]},
-        ]}}
+        metrics = {
+            "data": {
+                "result": [
+                    {"metric": {"instance_id": "h1"}, "values": [[0, "1"], [10, "5"]]},
+                ]
+            }
+        }
         out = svc.format_aggregation_metrics(metrics)
         assert out["('h1',)"]["value"] == 5.0
         assert out["('h1',)"]["raw_data"]["metric"]["instance_id"] == "h1"
 
     def test_instances_map_filters_out_unknown(self):
         svc = MetricQueryService(_policy(group_by=["instance_id"]), {"('h1',)": "name"})
-        metrics = {"data": {"result": [
-            {"metric": {"instance_id": "h1"}, "values": [[0, "1"]]},
-            {"metric": {"instance_id": "h2"}, "values": [[0, "2"]]},
-        ]}}
+        metrics = {
+            "data": {
+                "result": [
+                    {"metric": {"instance_id": "h1"}, "values": [[0, "1"]]},
+                    {"metric": {"instance_id": "h2"}, "values": [[0, "2"]]},
+                ]
+            }
+        }
         out = svc.format_aggregation_metrics(metrics)
         assert set(out.keys()) == {"('h1',)"}
+
+    @pytest.mark.parametrize("bad_value", ["inf", "-inf", "nan"])
+    def test_skips_non_finite_last_value(self, bad_value):
+        svc = MetricQueryService(_policy(group_by=["instance_id"]), {})
+        metrics = {
+            "data": {
+                "result": [
+                    {"metric": {"instance_id": "h1"}, "values": [[0, bad_value]]},
+                ]
+            }
+        }
+
+        assert svc.format_aggregation_metrics(metrics) == {}

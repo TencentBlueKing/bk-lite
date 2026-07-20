@@ -2,7 +2,9 @@
   "object_name": "Firewall",
   "instance_type": "firewall",
   "collect_type": "snmp",
-  "config_type": ["firewall"],
+  "config_type": [
+    "firewall"
+  ],
   "collector": "Telegraf",
   "instance_id": "{{cloud_region}}_{{instance_type}}_snmp_{{ip}}",
   "form_fields": [
@@ -22,7 +24,8 @@
         "to_form": {
           "regex": "://([^:]+):"
         }
-      }
+      },
+      "label_en": "IP"
     },
     {
       "name": "port",
@@ -35,14 +38,16 @@
       "widget_props": {
         "min": 1,
         "placeholder": "SNMP 端口",
-        "addonAfter": ""
+        "addonAfter": "",
+        "placeholder_en": "SNMP port"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.agents[0]",
         "to_form": {
           "regex": ":(\\d+)$"
         }
-      }
+      },
+      "label_en": "Port"
     },
     {
       "name": "version",
@@ -53,15 +58,24 @@
       "default_value": 2,
       "description": "指定要使用的 SNMP 协议版本，例如 v2c 或 v3，定义通信机制和安全级别",
       "options": [
-        { "label": "v2c", "value": 2 },
-        { "label": "v3", "value": 3 }
+        {
+          "label": "v2c",
+          "value": 2,
+          "label_en": "v2c"
+        },
+        {
+          "label": "v3",
+          "value": 3,
+          "label_en": "v3"
+        }
       ],
       "widget_props": {
         "placeholder": "选择 SNMP 版本"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.version"
-      }
+      },
+      "label_en": "Version"
     },
     {
       "name": "community",
@@ -80,7 +94,8 @@
       "transform_on_edit": {
         "origin_path": "child.content.config.community",
         "to_api": {}
-      }
+      },
+      "label_en": "Community"
     },
     {
       "name": "sec_name",
@@ -98,7 +113,8 @@
       "transform_on_edit": {
         "origin_path": "child.content.config.sec_name",
         "to_api": {}
-      }
+      },
+      "label_en": "Name"
     },
     {
       "name": "sec_level",
@@ -108,9 +124,21 @@
       "default_value": "authPriv",
       "description": "安全级别设置，例如 authPriv 表示同时使用认证和隐私（加密）",
       "options": [
-        { "label": "noAuthNoPriv", "value": "noAuthNoPriv" },
-        { "label": "authNoPriv", "value": "authNoPriv" },
-        { "label": "authPriv", "value": "authPriv" }
+        {
+          "label": "noAuthNoPriv",
+          "value": "noAuthNoPriv",
+          "label_en": "noAuthNoPriv"
+        },
+        {
+          "label": "authNoPriv",
+          "value": "authNoPriv",
+          "label_en": "authNoPriv"
+        },
+        {
+          "label": "authPriv",
+          "value": "authPriv",
+          "label_en": "authPriv"
+        }
       ],
       "widget_props": {
         "placeholder": "选择安全级别"
@@ -122,7 +150,8 @@
       "transform_on_edit": {
         "origin_path": "child.content.config.sec_level",
         "to_api": {}
-      }
+      },
+      "label_en": "Level"
     },
     {
       "name": "auth_protocol",
@@ -141,7 +170,8 @@
       "transform_on_edit": {
         "origin_path": "child.content.config.auth_protocol",
         "to_api": {}
-      }
+      },
+      "label_en": "Auth Protocol"
     },
     {
       "name": "auth_password",
@@ -150,7 +180,8 @@
       "required": false,
       "description": "用于认证的密码，与选择的认证协议对应",
       "widget_props": {
-        "placeholder": "认证密码"
+        "placeholder": "认证密码",
+        "placeholder_en": "Auth Password"
       },
       "dependency": {
         "field": "version",
@@ -159,7 +190,8 @@
       "transform_on_edit": {
         "origin_path": "child.content.config.auth_password",
         "to_api": {}
-      }
+      },
+      "label_en": "Auth Password"
     },
     {
       "name": "priv_protocol",
@@ -178,7 +210,8 @@
       "transform_on_edit": {
         "origin_path": "child.content.config.priv_protocol",
         "to_api": {}
-      }
+      },
+      "label_en": "Privacy Protocol"
     },
     {
       "name": "priv_password",
@@ -187,7 +220,8 @@
       "required": false,
       "description": "用于加密的密码，与选择的加密协议对应",
       "widget_props": {
-        "placeholder": "加密密码"
+        "placeholder": "加密密码",
+        "placeholder_en": "Privacy Password"
       },
       "dependency": {
         "field": "version",
@@ -196,7 +230,8 @@
       "transform_on_edit": {
         "origin_path": "child.content.config.priv_password",
         "to_api": {}
-      }
+      },
+      "label_en": "Privacy Password"
     },
     {
       "name": "timeout",
@@ -218,20 +253,22 @@
         "to_api": {
           "suffix": "s"
         }
-      }
+      },
+      "label_en": "Timeout"
     },
     {
       "name": "interval",
       "label": "间隔",
       "type": "inputNumber",
       "required": true,
-      "default_value": 10,
+      "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
       "widget_props": {
         "min": 1,
         "precision": 0,
         "placeholder": "采集间隔",
-        "addonAfter": "s"
+        "addonAfter": "s",
+        "placeholder_en": "Collection Interval"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.interval",
@@ -241,7 +278,9 @@
         "to_api": {
           "suffix": "s"
         }
-      }
+      },
+      "label_en": "Interval",
+      "description_en": "Collection time interval (unit: seconds)"
     }
   ],
   "table_columns": [
@@ -251,10 +290,12 @@
       "type": "select",
       "required": true,
       "widget_props": {
-        "placeholder": "请选择节点"
+        "placeholder": "请选择节点",
+        "placeholder_en": "Please select node"
       },
       "options_key": "node_ids_option",
-      "enable_row_filter": false
+      "enable_row_filter": false,
+      "label_en": "Node"
     },
     {
       "name": "ip",
@@ -265,9 +306,12 @@
       },
       "change_handler": {
         "type": "simple",
-        "source_fields": ["ip"],
+        "source_fields": [
+          "ip"
+        ],
         "target_field": "instance_name"
-      }
+      },
+      "label_en": "IP"
     },
     {
       "name": "instance_name",
@@ -276,8 +320,10 @@
       "required": true,
       "widget_props": {
         "placeholder": "实例名称",
-        "disabled": false
-      }
+        "disabled": false,
+        "placeholder_en": "Instance Name"
+      },
+      "label_en": "Instance Name"
     },
     {
       "name": "group_ids",
@@ -285,8 +331,10 @@
       "type": "group_select",
       "required": true,
       "widget_props": {
-        "placeholder": "请选择组"
-      }
+        "placeholder": "请选择组",
+        "placeholder_en": "Please select group"
+      },
+      "label_en": "Group"
     }
   ],
   "extra_edit_fields": {

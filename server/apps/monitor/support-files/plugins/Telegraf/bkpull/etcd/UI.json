@@ -2,7 +2,9 @@
   "object_name": "Etcd",
   "instance_type": "etcd",
   "collect_type": "bkpull",
-  "config_type": ["etcd"],
+  "config_type": [
+    "etcd"
+  ],
   "collector": "Telegraf",
   "instance_id": "{{cloud_region}}_{{instance_type}}_{{server_url}}",
   "form_fields": [
@@ -26,7 +28,8 @@
       ],
       "transform_on_edit": {
         "origin_path": "child.content.config.urls[0]"
-      }
+      },
+      "label_en": "URL"
     },
     {
       "name": "tls_ca",
@@ -39,7 +42,8 @@
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.tls_ca"
-      }
+      },
+      "label_en": "CA Certificate Path"
     },
     {
       "name": "tls_cert",
@@ -52,7 +56,8 @@
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.tls_cert"
-      }
+      },
+      "label_en": "Client Certificate Path"
     },
     {
       "name": "tls_key",
@@ -65,20 +70,22 @@
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.tls_key"
-      }
+      },
+      "label_en": "Client Key Path"
     },
     {
       "name": "interval",
       "label": "间隔",
       "type": "inputNumber",
       "required": true,
-      "default_value": 10,
+      "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
       "widget_props": {
         "min": 1,
         "precision": 0,
         "placeholder": "间隔",
-        "addonAfter": "s"
+        "addonAfter": "s",
+        "placeholder_en": "Interval"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.interval",
@@ -88,7 +95,9 @@
         "to_api": {
           "suffix": "s"
         }
-      }
+      },
+      "label_en": "Interval",
+      "description_en": "Collection time interval (unit: seconds)"
     },
     {
       "name": "insecure_skip_verify",
@@ -100,7 +109,8 @@
       "widget_props": {},
       "transform_on_edit": {
         "origin_path": "child.content.config.insecure_skip_verify"
-      }
+      },
+      "label_en": "Skip Certificate Verification"
     }
   ],
   "table_columns": [
@@ -110,9 +120,11 @@
       "type": "select",
       "required": true,
       "widget_props": {
-        "placeholder": "请选择节点"
+        "placeholder": "请选择节点",
+        "placeholder_en": "Please select node"
       },
-      "enable_row_filter": false
+      "enable_row_filter": false,
+      "label_en": "Node"
     },
     {
       "name": "server_url",
@@ -132,10 +144,13 @@
       ],
       "change_handler": {
         "type": "simple",
-        "source_fields": ["server_url"],
+        "source_fields": [
+          "server_url"
+        ],
         "target_field": "instance_name"
       },
-      "is_only": true
+      "is_only": true,
+      "label_en": "URL"
     },
     {
       "name": "instance_name",
@@ -143,8 +158,10 @@
       "type": "input",
       "required": true,
       "widget_props": {
-        "placeholder": "实例名称"
-      }
+        "placeholder": "实例名称",
+        "placeholder_en": "Instance Name"
+      },
+      "label_en": "Instance Name"
     },
     {
       "name": "group_ids",
@@ -152,8 +169,10 @@
       "type": "group_select",
       "required": false,
       "widget_props": {
-        "placeholder": "请选择组"
-      }
+        "placeholder": "请选择组",
+        "placeholder_en": "Please select group"
+      },
+      "label_en": "Group"
     }
   ],
   "extra_edit_fields": {}

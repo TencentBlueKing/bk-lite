@@ -53,6 +53,7 @@ INSTANCE_ASSOCIATION = "instance_association"
 # 拓扑主题：模型 -> 可用主题。network 主题表示「网络拓扑」视图
 TOPO_THEME_NETWORK = "network"
 TOPO_THEME_IPAM = "ipam"
+TOPO_THEME_APP_OVERVIEW = "app_overview"
 # 网络设备判定：存在 interface --belong--> <model> 的模型关联即视为网络设备
 NETWORK_INTERFACE_MODEL = "interface"
 NETWORK_INTERFACE_BELONG_ASST = "belong"
@@ -552,7 +553,7 @@ COLLECT_OBJ_TREE = [
     },
     {
         "id": "host_manage",
-        "name": "主机管理",
+        "name": "主机逻辑主机",
         "children": [
             {
                 "id": "host",
@@ -801,6 +802,10 @@ COLLECT_OBJ_TREE = [
 VICTORIAMETRICS_HOST = os.getenv("VICTORIAMETRICS_HOST", "")
 
 STARGAZER_URL = os.getenv("STARGAZER_URL", "http://stargazer:8083")
+CMDB_FIRST_COLLECTION_ENABLED = (
+    os.getenv("CMDB_FIRST_COLLECTION_ENABLED", "true").strip().lower()
+    in {"1", "true", "yes", "on"}
+)
 # ===== 实例权限 =====
 PERMISSION_INSTANCES = "instances"  # 实例
 PERMISSION_TASK = "task"  # 采集任务

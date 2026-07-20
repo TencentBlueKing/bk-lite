@@ -1,6 +1,7 @@
 "use client";
 import {useState} from "react";
 import {Button, Input} from "antd";
+import {useTranslation} from "@/utils/i18n";
 
 interface LoginResponse {
   temporary_pwd?: boolean;
@@ -36,17 +37,18 @@ export default function OtpVerificationForm({
 }: OtpVerificationFormProps) {
   const [otpCode, setOtpCode] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const { t } = useTranslation();
 
   const handleOtpVerification = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!otpCode) {
-      onError("Please enter the OTP code");
+      onError(t('signin.errors.otpRequired'));
       return;
     }
 
     if (!loginData.challenge_id) {
-      onError("Invalid session. Please try logging in again.");
+      onError(t('signin.errors.invalidSession'));
       return;
     }
     
@@ -84,12 +86,12 @@ export default function OtpVerificationForm({
         };
         onOtpVerification(verifiedLoginData);
       } else {
-        onError(responseData.message || "Invalid OTP code");
+        onError(responseData.message || t('signin.errors.invalidOtp'));
         setIsLoading(false);
       }
     } catch (error) {
       console.error("Error verifying OTP:", error);
-      onError("Failed to verify OTP code");
+      onError(t('signin.errors.otpVerifyFailed'));
       setIsLoading(false);
     }
   };
@@ -97,28 +99,28 @@ export default function OtpVerificationForm({
   return (
     <div>
       <div className="text-center mb-6">
-        <h3 className="text-xl font-semibold text-[var(--color-text-1)]">OTP Verification</h3>
-        <p className="text-[var(--color-text-2)] mt-2">Please enter the verification code to complete your login.</p>
+        <h3 className="text-xl font-semibold text-[var(--color-text-1)]">{t('signin.otp.title')}</h3>
+        <p className="text-[var(--color-text-2)] mt-2">{t('signin.otp.description')}</p>
       </div>
       
       {qrCodeUrl && (
         <div className="mb-6">
-          <p className="text-sm text-[var(--color-text-1)] mb-3">1. Install one of the following apps on your device:</p>
+          <p className="text-sm text-[var(--color-text-1)] mb-3">{t('signin.otp.installAppsStep')}</p>
           <div className="text-sm text-[var(--color-text-2)] mb-3 pl-4">
             <div>Microsoft Authenticator</div>
             <div>FreeOTP</div>
             <div>Google Authenticator</div>
           </div>
-          <p className="text-sm text-[var(--color-text-1)] mb-3">2. Scan the QR code with your authenticator app:</p>
+          <p className="text-sm text-[var(--color-text-1)] mb-3">{t('signin.otp.scanQrStep')}</p>
           <div className="flex pl-4">
-            <img src={`data:image/png;base64, ${qrCodeUrl}`} alt="QR Code" className="w-48 h-48 border border-gray-300 rounded-lg" />
+            <img src={`data:image/png;base64, ${qrCodeUrl}`} alt={t('signin.otp.qrAlt')} className="h-48 w-48 rounded-md border border-(--color-border)" />
           </div>
         </div>
       )}
       
       <form onSubmit={handleOtpVerification} className="flex flex-col space-y-6 w-full">
         <div className="space-y-2">
-          <label htmlFor="username-display-otp" className="text-sm font-medium text-[var(--color-text-1)]">Username</label>
+          <label htmlFor="username-display-otp" className="text-sm font-medium text-[var(--color-text-1)]">{t('signin.form.username')}</label>
           <Input
             id="username-display-otp"
             type="text"
@@ -130,11 +132,11 @@ export default function OtpVerificationForm({
         </div>
         
         <div className="space-y-2">
-          <label htmlFor="otp-code" className="text-sm font-medium text-[var(--color-text-1)]">Verification Code</label>
+          <label htmlFor="otp-code" className="text-sm font-medium text-[var(--color-text-1)]">{t('signin.otp.verificationCode')}</label>
           <Input
             id="otp-code"
             type="text"
-            placeholder="Enter 6-digit code"
+            placeholder={t('signin.otp.codePlaceholder')}
             value={otpCode}
             onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
             className="w-full text-center text-lg tracking-wider"
@@ -150,7 +152,7 @@ export default function OtpVerificationForm({
           className="w-full"
           size="large"
         >
-          {isLoading ? 'Verifying...' : 'Verify Code'}
+          {isLoading ? t('signin.otp.verifying') : t('signin.otp.verifyCode')}
         </Button>
       </form>
     </div>

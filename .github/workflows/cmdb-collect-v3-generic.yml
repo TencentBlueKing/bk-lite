@@ -1,0 +1,160 @@
+# CMDB 采集 Fixture v3 — 通用 amd64 CI 采集
+# -----------------------------------------------------------------------------
+# 用法:GitHub Actions UI → Run workflow → 选 model_id → 跑真实采集
+#
+# 覆盖范围:catalog 中所有 57 个对象
+# - ✅ 已落盘(27):真跑通,fixture 已在 repo
+# - 🟡 catalog 占位(28):等 CI 跑通落盘
+# - 🔴 license 阻塞(2):不会跑通
+#
+# 真跑通的关键依赖:
+# 1. 镜像可达(国产 binary 用国内 daocloud mirror)
+# 2. amd64 架构匹配(部分国产 binary 只支持 x86_64)
+# 3. license 可用(weblogic/websphere/tuxedo/sap_hana/iris)
+# -----------------------------------------------------------------------------
+
+name: CMDB Collect v3 — generic amd64
+
+on:
+  workflow_dispatch:
+    inputs:
+      model_id:
+        description: "model_id (see tests/collect_fixtures/catalog.py MODEL_SPECS)"
+        required: true
+        type: choice
+        default: "mycat"
+        options:
+          # 已落盘(快速回归)
+          - mysql
+          - postgresql
+          - redis
+          - redis_sentinel
+          - mongodb
+          - nginx
+          - rabbitmq
+          - tomcat
+          - elasticsearch
+          - kafka
+          - activemq
+          - dameng
+          - ibmmq
+          - memcached
+          - openresty
+          - consul
+          - etcd
+          - haproxy
+          - zookeeper
+          - minio
+          - jboss
+          - jetty
+          - tongweb
+          - apache
+          - squid
+          - keepalived
+          - rocketmq
+          # catalog 占位(amd64 CI 跑通目标)
+          - mycat
+          - mssql
+          - ihs
+          - gbase8s
+          - oscar
+          - tonglinkq
+          - tonggtp
+          - apusic
+          - inforsuite_as
+          - bes
+          - domestic_linux
+          - informix
+          - sybase
+          - hdfs
+          - yarn
+          - storm
+          # SDK 真实现(plugin 真写完,镜像可达)
+          - influxdb
+          - nacos
+          - highgo
+          - tdsql
+          - server_bmc
+          # license 阻塞(不会跑通,但跑会给出完整错误日志)
+          - weblogic
+          - websphere
+          - tuxedo
+          - ambari
+          - oceanbase
+          - tongrds
+          - couchbase
+          - sap_hana
+          - iris
+
+jobs:
+  collect:
+    runs-on: ubuntu-22.04  # amd64 runner,国产 binary / 商业软件匹配
+    timeout-minutes: 30    # 单对象最长 30 分钟(包含 install + start + 采集)
+    env:
+      DOCKER_HOST: unix:///var/run/docker.sock
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install stargazer deps
+        working-directory: agents/stargazer
+        run: |
+          uv sync --all-extras
+          # G5.2 protocol SDK 依赖(如跑 nacos/highgo/tdsql/server_bmc 需要)
+          .venv/bin/python -m pip install requests psycopg2-binary pymysql || true
+
+      - name: Pull image pre-cache
+        # 提前拉镜像(国产 mirror + amd64)
+        run: |
+          python3 -c "
+          import sys
+          sys.path.insert(0, 'agents/stargazer')
+          from tests.collect_fixtures.catalog import lookup
+          spec = lookup('${{ inputs.model_id }}')
+          print(f'image: {spec.image}, platform: {spec.platform}')
+          " 2>&1 | tee /tmp/spec.log
+          IMAGE=$(grep '^image:' /tmp/spec.log | awk '{print $2}')
+          PLATFORM=$(grep '^platform:' /tmp/spec.log | awk '{print $2}')
+          if [ -n "$IMAGE" ]; then
+            docker pull --platform "${PLATFORM:-linux/amd64}" "$IMAGE" 2>&1 | tail -5 || true
+          fi
+
+      - name: Run ${{ inputs.model_id }} fixture collection
+        working-directory: agents/stargazer
+        run: |
+          .venv/bin/python -m tests.collect_fixtures.cli ${{ inputs.model_id }} 2>&1 | tee /tmp/collect.log
+          # 检查产物
+          if [ -f "tests/fixtures/collect/${{ inputs.model_id }}.json" ]; then
+            echo "✅ fixture ${{ inputs.model_id }}.json 落盘成功"
+            cat "tests/fixtures/collect/${{ inputs.model_id }}.json" | head -30
+          else
+            echo "❌ ${{ inputs.model_id }}.json 未落盘(可能 license / amd64 / 镜像阻塞,见 /tmp/collect.log)"
+            exit 1
+          fi
+
+      - name: Upload fixture artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.model_id }}-fixture-json
+          path: agents/stargazer/tests/fixtures/collect/${{ inputs.model_id }}.json
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Upload collect log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.model_id }}-collect-log
+          path: /tmp/collect.log
+          retention-days: 7
+          if-no-files-found: ignore

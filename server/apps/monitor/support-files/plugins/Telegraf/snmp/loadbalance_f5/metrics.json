@@ -397,6 +397,19 @@
         "instance_id"
       ],
       "description": "This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes."
+    },
+    {
+      "metric_group": "Connection",
+      "name": "loadbalance_current_connections",
+      "query": "loadbalance_current_connections{instance_type='loadbalance', __$labels__}",
+      "display_name": "Current Connections",
+      "data_type": "Number",
+      "unit": "connections",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the current number of active connections through the load balancer."
     }
   ]
 }

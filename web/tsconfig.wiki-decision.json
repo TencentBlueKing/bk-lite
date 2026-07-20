@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "incremental": false,
+    "allowImportingTsExtensions": true
+  },
+  "include": [
+    "src/app/opspilot/types/wiki.ts",
+    "src/app/opspilot/api/wiki.ts",
+    "src/app/opspilot/components/wiki/CheckTab.tsx",
+    "src/app/opspilot/components/wiki/WikiDecisionCenter.tsx",
+    "src/app/opspilot/components/wiki/wikiDecisionModel.ts",
+    "src/stories/wiki-decision-center.stories.tsx"
+  ],
+  "exclude": ["node_modules"]
+}

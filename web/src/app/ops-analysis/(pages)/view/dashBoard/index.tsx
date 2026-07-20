@@ -1,4 +1,4 @@
-import React, {
+import {
   useState,
   useEffect,
   useMemo,
@@ -582,6 +582,10 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           topNLabelField: config.topNLabelField,
           topNValueField: config.topNValueField,
           unit: config.unit,
+          unitId: config.unitId,
+          valueMappings: config.valueMappings,
+          chartThemeMode: config.chartThemeMode,
+          appearance: config.appearance,
           conversionFactor: config.conversionFactor,
           decimalPlaces: config.decimalPlaces,
           thresholdColors: config.thresholdColors,
@@ -949,6 +953,10 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                 topNLabelField: values.topNLabelField,
                 topNValueField: values.topNValueField,
                 unit: values.unit,
+                unitId: values.unitId,
+                valueMappings: values.valueMappings,
+                chartThemeMode: values.chartThemeMode,
+                appearance: values.appearance,
                 conversionFactor: values.conversionFactor,
                 decimalPlaces: values.decimalPlaces,
                 thresholdColors: values.thresholdColors,

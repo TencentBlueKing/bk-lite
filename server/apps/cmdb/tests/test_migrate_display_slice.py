@@ -15,6 +15,7 @@ import pydantic.root_model  # noqa: F401  预热避免 cov 竞态
 
 import io
 import json
+import sys
 from collections import defaultdict
 
 import pandas as pd
@@ -232,6 +233,30 @@ class TestModelMigrateParsing:
         assert existing["attr_name"] == "new"
         assert existing["option"] == {"k": 1}
         assert existing["is_required"] is True
+
+    def test_merge_existing_attr_config_updates_attr_type(self, monkeypatch):
+        m = self._make(monkeypatch)
+        existing = {
+            "attr_id": "ip_status",
+            "attr_type": "str",
+            "attr_name": "旧状态",
+            "option": dict(DEFAULT_STRING_CONSTRAINT),
+        }
+        incoming = {
+            "attr_id": "ip_status",
+            "attr_type": "enum",
+            "attr_name": "IP状态",
+            "option": [{"id": "online", "name": "在线"}],
+            "enum_rule_type": "custom",
+            "public_library_id": None,
+            "enum_select_mode": "single",
+        }
+
+        changed = m._merge_existing_attr_config(existing, incoming)
+
+        assert changed is True
+        assert existing["attr_type"] == "enum"
+        assert existing["option"] == [{"id": "online", "name": "在线"}]
 
     def test_merge_existing_attr_config_no_change(self, monkeypatch):
         m = self._make(monkeypatch)
@@ -1006,6 +1031,62 @@ class TestExcludeFieldsCache:
         _patch_graph(monkeypatch, "apps.cmdb.display_field.cache", query_entity=([], 0))
         assert ExcludeFieldsCache.update_on_model_change("host") is True
 
+    # -----------------------------------------------------------------
+    # P2-2.6 — clear_cache 必须真的清掉 model attrs 缓存,不能只 log 一句 warning
+    # -----------------------------------------------------------------
+
+    def test_clear_cache_removes_model_attrs_entries(self, monkeypatch):
+        """P2-2.6: 原 _clear_all_caches 的 cache.delete_pattern 在本仓所有 cache 后端
+        (locmem / Django 内置 RedisCache) 都不存在,实际什么都不做。
+        模型被删除后,其 attrs 缓存键会留 1h TTL,期间所有 get_model_attrs(model_id)
+        仍返回已删模型的数据。
+
+        修复:_build_and_cache_model_attrs 维护 model_id 索引,refresh 时比对新旧
+        索引,删掉已下线的 model 的 attrs 缓存键。"""
+        from apps.cmdb.display_field.cache import ExcludeFieldsCache
+        from django.core.cache import cache as dj_cache
+
+        # 模拟生产路径:第一次 build 含 host / switch,索引写入这两个 model
+        models_v1 = [
+            {"model_id": "host", "attrs": json.dumps([{"attr_id": "ip", "attr_type": "str"}])},
+            {"model_id": "switch", "attrs": json.dumps([{"attr_id": "port", "attr_type": "int"}])},
+        ]
+        _patch_graph(monkeypatch, "apps.cmdb.display_field.cache", query_entity=(models_v1, len(models_v1)))
+        assert ExcludeFieldsCache.refresh_cache() is True
+        host_key = f"{ExcludeFieldsCache.MODEL_ATTRS_KEY_PREFIX}host"
+        assert dj_cache.get(host_key) is not None, "precondition: refresh 后 host attrs 已缓存"
+
+        # 第二次 refresh:host 被删,只剩 switch
+        models_v2 = [
+            {"model_id": "switch", "attrs": json.dumps([{"attr_id": "port", "attr_type": "int"}])},
+        ]
+        _patch_graph(monkeypatch, "apps.cmdb.display_field.cache", query_entity=(models_v2, len(models_v2)))
+        assert ExcludeFieldsCache.refresh_cache() is True
+
+        # host 的 attrs 缓存键必须被精准删(否则会留 1h TTL 持续返回陈旧数据)
+        assert dj_cache.get(host_key) is None, (
+            f"{host_key} 必须被精准清掉,实际保留说明模型被删后缓存未同步"
+        )
+
+    def test_update_on_model_change_purges_only_target_model_attrs(self, monkeypatch):
+        """P2-2.6 附加:update_on_model_change(model_id) 应精准清掉该 model 的 attrs
+        缓存,其他 model 的 attrs 不受影响(避免误清 + 减少缓存抖动)。"""
+        from apps.cmdb.display_field.cache import ExcludeFieldsCache
+        from django.core.cache import cache as dj_cache
+
+        target_key = f"{ExcludeFieldsCache.MODEL_ATTRS_KEY_PREFIX}host"
+        other_key = f"{ExcludeFieldsCache.MODEL_ATTRS_KEY_PREFIX}switch"
+        dj_cache.set(target_key, [{"stale": True}])
+        dj_cache.set(other_key, [{"stale": True}])
+
+        # mock 图查询返空(只关心缓存清理,不需要刷数据)
+        _patch_graph(monkeypatch, "apps.cmdb.display_field.cache", query_entity=([], 0))
+        ExcludeFieldsCache.update_on_model_change("host")
+
+        assert dj_cache.get(target_key) is None, "目标 model 的 attrs 缓存必须被清掉"
+        # other_key 不一定要保留(update_on_model_change 整体刷会重建),
+        # 但至少不应抛错
+
     def test_clear_cache(self, monkeypatch):
         from apps.cmdb.display_field.cache import ExcludeFieldsCache
         from django.core.cache import cache as dj_cache
@@ -1040,6 +1121,72 @@ class TestExcludeFieldsCache:
         assert cache_mod.init_all_caches_on_startup() is True
         assert cache_mod.initialize_exclude_fields_cache() is True
         assert cache_mod.initialize_model_fields_mapping_cache() is True
+
+    def test_startup_init_skip_when_global_cache_exists(self, monkeypatch):
+        from django.core.cache import cache as dj_cache
+
+        from apps.cmdb.display_field import cache as cache_mod
+        from apps.cmdb.display_field.cache import ExcludeFieldsCache
+
+        dj_cache.set(ExcludeFieldsCache.EXCLUDE_FIELDS_KEY, ["organization"])
+        dj_cache.set(ExcludeFieldsCache.MODEL_FIELDS_MAPPING_KEY, {"host": {"organization": ["organization"], "user": []}})
+        fake = _patch_graph(monkeypatch, "apps.cmdb.display_field.cache", query_entity=([], 0))
+
+        assert cache_mod.init_all_caches_on_startup() is True
+        assert fake.calls == []
+
+    def test_startup_init_refresh_when_global_cache_missing(self, monkeypatch):
+        from django.core.cache import cache as dj_cache
+
+        from apps.cmdb.display_field import cache as cache_mod
+        from apps.cmdb.display_field.cache import ExcludeFieldsCache
+
+        dj_cache.delete(ExcludeFieldsCache.EXCLUDE_FIELDS_KEY)
+        dj_cache.delete(ExcludeFieldsCache.MODEL_FIELDS_MAPPING_KEY)
+        models = [{"model_id": "host", "attrs": json.dumps([{"attr_id": "org", "attr_type": "organization"}])}]
+        fake = _patch_graph(monkeypatch, "apps.cmdb.display_field.cache", query_entity=(models, 1))
+
+        assert cache_mod.init_all_caches_on_startup() is True
+        assert ("query_entity", ("model", []), {}) in fake.calls
+        assert "org" in ExcludeFieldsCache.get_exclude_fields()
+
+    def test_startup_init_skip_when_lock_exists(self, monkeypatch):
+        from django.core.cache import cache as dj_cache
+
+        from apps.cmdb.display_field import cache as cache_mod
+        from apps.cmdb.display_field.cache import ExcludeFieldsCache
+
+        dj_cache.delete(ExcludeFieldsCache.EXCLUDE_FIELDS_KEY)
+        dj_cache.delete(ExcludeFieldsCache.MODEL_FIELDS_MAPPING_KEY)
+        dj_cache.set(ExcludeFieldsCache.STARTUP_INIT_LOCK_KEY, "1", timeout=ExcludeFieldsCache.STARTUP_INIT_LOCK_TTL)
+        fake = _patch_graph(monkeypatch, "apps.cmdb.display_field.cache", query_entity=([], 0))
+
+        assert cache_mod.init_all_caches_on_startup() is True
+        assert fake.calls == []
+
+    def test_cmdb_ready_skips_startup_cache_for_management(self, monkeypatch):
+        import apps.cmdb as cmdb_module
+        from apps.cmdb.apps import CmdbConfig
+
+        calls = []
+        monkeypatch.setattr(sys, "argv", ["manage.py", "migrate"])
+        monkeypatch.setattr("apps.cmdb.display_field.init_all_caches_on_startup", lambda: calls.append("init"))
+
+        CmdbConfig("apps.cmdb", cmdb_module).ready()
+
+        assert calls == []
+
+    def test_cmdb_ready_initializes_startup_cache_for_runserver(self, monkeypatch):
+        import apps.cmdb as cmdb_module
+        from apps.cmdb.apps import CmdbConfig
+
+        calls = []
+        monkeypatch.setattr(sys, "argv", ["manage.py", "runserver", "0.0.0.0:8011"])
+        monkeypatch.setattr("apps.cmdb.display_field.init_all_caches_on_startup", lambda: calls.append("init"))
+
+        CmdbConfig("apps.cmdb", cmdb_module).ready()
+
+        assert calls == ["init"]
 
 
 # ===========================================================================
@@ -1134,6 +1281,52 @@ class TestMigrateFieldConstraintsCommand:
         # 所有字段补 user_prompt
         assert all("user_prompt" in a for a in written)
         assert refreshed == ["host"]
+
+    def test_migrate_model_preserves_table_option_when_other_field_triggers_save(self, monkeypatch):
+        from apps.cmdb.management.commands.migrate_field_constraints import Command
+
+        table_option = [
+            {
+                "column_id": "pid",
+                "column_name": "PID",
+                "column_type": "number",
+                "order": 1,
+            }
+        ]
+        model = {
+            "_id": "n1",
+            "model_id": "host",
+            "attrs": json.dumps(
+                [
+                    {
+                        "attr_id": "proc",
+                        "attr_type": "table",
+                        "option": table_option,
+                        "user_prompt": "",
+                    },
+                    {
+                        "attr_id": "legacy",
+                        "attr_type": "str",
+                        "option": {},
+                        "user_prompt": "",
+                    },
+                ]
+            ),
+        }
+        fake = FakeGraph(set_entity_properties={"ok": True})
+        monkeypatch.setattr(
+            "apps.cmdb.display_field.ExcludeFieldsCache.update_on_model_change",
+            classmethod(lambda cls, model_id: True),
+        )
+
+        updated, count = Command()._migrate_model(fake, model, dry_run=False)
+
+        assert updated is True
+        assert count == 1
+        write_call = next(c for c in fake.calls if c[0] == "set_entity_properties")
+        written = json.loads(write_call[1][2]["attrs"])
+        proc = next(attr for attr in written if attr["attr_id"] == "proc")
+        assert proc["option"] == table_option
 
     def test_target_model_not_found(self, monkeypatch):
         text = self._run(monkeypatch, [], model_id="nope")

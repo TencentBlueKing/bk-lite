@@ -1,10 +1,12 @@
 import logging
+import math
 import re
 
 from rest_framework import serializers
 
 from apps.monitor.constants.alert_policy import AlertConstants
 from apps.monitor.models.monitor_policy import MonitorPolicy
+from apps.monitor.utils.unit_converter import UnitConverter
 
 logger = logging.getLogger(__name__)
 
@@ -53,9 +55,84 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(f"threshold[{index}].method 非法，须为 {sorted(valid_methods)} 之一")
             if "value" not in item:
                 raise serializers.ValidationError(f"threshold[{index}] 缺少 value")
+            raw_value = item.get("value")
+            if isinstance(raw_value, bool):
+                raise serializers.ValidationError(
+                    f"threshold[{index}].value 必须是有限数值"
+                )
+            try:
+                number = float(raw_value)
+            except (TypeError, ValueError) as err:
+                raise serializers.ValidationError(
+                    f"threshold[{index}].value 必须是有限数值"
+                ) from err
+            if not math.isfinite(number):
+                raise serializers.ValidationError(
+                    f"threshold[{index}].value 必须是有限数值"
+                )
             if item.get("level") not in _VALID_THRESHOLD_LEVELS:
                 raise serializers.ValidationError(f"threshold[{index}].level 非法，须为 {sorted(_VALID_THRESHOLD_LEVELS)} 之一")
         return value
+
+    def _get_value(self, attrs, field, default):
+        if field in attrs:
+            return attrs[field]
+        if self.instance is not None:
+            return getattr(self.instance, field, default)
+        return default
+
+    def get_effective_units(self, attrs):
+        metric_unit = self._get_value(attrs, "metric_unit", "") or ""
+        calculation_unit = (
+            self._get_value(attrs, "calculation_unit", "") or metric_unit
+        )
+        threshold_unit = (
+            self._get_value(attrs, "threshold_unit", "") or calculation_unit
+        )
+        return calculation_unit, threshold_unit
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        relevant_fields = {
+            "threshold",
+            "metric_unit",
+            "calculation_unit",
+            "threshold_unit",
+            "query_condition",
+        }
+        if self.instance is not None and not relevant_fields.intersection(attrs):
+            return attrs
+
+        threshold = self._get_value(attrs, "threshold", [])
+        if not threshold:
+            return attrs
+
+        query_condition = self._get_value(attrs, "query_condition", {}) or {}
+        calculation_unit, threshold_unit = self.get_effective_units(attrs)
+        if not calculation_unit and not threshold_unit:
+            # Trap、枚举指标与历史 PMQ 策略没有数值单位，保持现有契约。
+            if query_condition.get("type") in {"pmq", "metric"}:
+                return attrs
+            raise serializers.ValidationError(
+                {"threshold_unit": "数值型告警阈值必须配置结果单位和阈值单位"}
+            )
+
+        if not UnitConverter.is_known_unit(calculation_unit):
+            raise serializers.ValidationError(
+                {"calculation_unit": "结果单位无效"}
+            )
+        if not UnitConverter.is_known_unit(threshold_unit):
+            raise serializers.ValidationError({"threshold_unit": "阈值单位无效"})
+        if not UnitConverter.is_convertible(threshold_unit, calculation_unit):
+            raise serializers.ValidationError(
+                {
+                    "threshold_unit": (
+                        f"阈值单位 {threshold_unit} 不能转换为结果单位 "
+                        f"{calculation_unit}"
+                    )
+                }
+            )
+        return attrs
 
     def validate_trigger_count(self, value):
         """校验阈值告警触发条件：连续 N 个汇聚周期满足阈值，N 必须为正整数。"""
@@ -84,6 +161,16 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
             # pmq 类型直接传原始 PromQL，不校验 filter
             return value
 
+        if query_type == "formula":
+            from apps.core.exceptions.base_app_exception import BaseAppException
+            from apps.monitor.expression.query import build_formula_query
+
+            try:
+                build_formula_query(value)
+            except BaseAppException as err:
+                raise serializers.ValidationError(str(err)) from err
+            return value
+
         if "metric_id" not in value:
             raise serializers.ValidationError("query_condition 缺少 metric_id")
 
@@ -105,6 +192,8 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     f"filter[{idx}].method={method!r} 不是合法运算符，只允许 {sorted(_VALID_LABEL_METHODS)}"
                 )
+            if isinstance(condition.get("value"), (list, tuple, set, dict)):
+                raise serializers.ValidationError(f"filter[{idx}].value 必须是标量")
         return value
 
     def validate_source(self, value):
@@ -140,6 +229,11 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
         """校验 group_by 首位必须是监控对象的实例主键，防止下游扫描链路误判实例归属。"""
         if not value:
             return value
+        if not isinstance(value, list) or not all(isinstance(item, str) and item for item in value):
+            raise serializers.ValidationError("group_by 必须是非空字符串列表")
+        invalid_items = [item for item in value if not _LABEL_NAME_RE.match(item)]
+        if invalid_items:
+            raise serializers.ValidationError(f"group_by 包含非法字符：{', '.join(invalid_items)}")
 
         monitor_object = self._get_monitor_object()
         if monitor_object is None:

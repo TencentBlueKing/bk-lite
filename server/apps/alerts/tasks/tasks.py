@@ -46,6 +46,7 @@ def event_aggregation_alert():
             AggregationProcessor,
         )
 
+        aggregation_error = None
         try:
             processor = AggregationProcessor()
             processor.process_aggregation()
@@ -53,6 +54,7 @@ def event_aggregation_alert():
 
         except Exception as e:
             logger.exception("[AlertTask] 告警聚合任务执行失败: %s", e)
+            aggregation_error = e
 
         try:
             from apps.alerts.aggregation.recovery.timeout_checker import TimeoutChecker
@@ -62,6 +64,9 @@ def event_aggregation_alert():
         except Exception as e:
             logger.exception("[AlertTask] 聚合后会话超时检查失败: %s", e)
             raise
+
+        if aggregation_error is not None:
+            raise aggregation_error
     finally:
         cache.delete(AGGREGATION_LOCK_KEY)
 
@@ -279,13 +284,22 @@ def sync_notify(params):
             "username_list=%s content=%s ===",
             send_time, channel_type, channel_id, object_id, username_list, content,
         )
-        notify = Notify(
-            username_list=username_list,
-            channel_id=channel_id,
-            title=title,
-            content=content,
-        )
-        result = notify.notify()
+        try:
+            notify = Notify(
+                username_list=username_list,
+                channel_id=channel_id,
+                title=title,
+                content=content,
+            )
+            result = notify.notify()
+        except Exception:
+            logger.exception(
+                "[AlertTask] 通知服务调用异常 channel=%s channel_id=%s object_id=%s",
+                channel_type,
+                channel_id,
+                object_id,
+            )
+            result = {"result": False, "message": "通知服务调用异常"}
         result_list.append(result)
         logger.info("[AlertTask] === 通知任务执行完成 send_time=%s ===", send_time)
         if object_id:

@@ -11,38 +11,27 @@ import time
 from asgiref.sync import sync_to_async
 
 from apps.core.logger import opspilot_logger as logger
-from apps.opspilot.metis.llm.agent.chatbot_workflow import ChatBotWorkflowGraph, ChatBotWorkflowRequest
-from apps.opspilot.metis.llm.agent.lats_agent import LatsAgentGraph, LatsAgentRequest
-from apps.opspilot.metis.llm.agent.plan_and_execute_agent import PlanAndExecuteAgentGraph, PlanAndExecuteAgentRequest
-from apps.opspilot.metis.llm.agent.react_agent import ReActAgentGraph, ReActAgentRequest
-from apps.opspilot.models import SkillTypeChoices
+from apps.opspilot.metis.llm.agent.deep_agent import DeepAgentGraph, DeepAgentRequest
 
 
 def create_agent_instance(skill_type, chat_kwargs):
     """
-    根据技能类型创建对应的 Agent 实例和请求对象
+    创建 Agent 实例和请求对象。
+
+    单 Agent 架构：所有 skill_type 都统一进入 DeepAgent 引擎。
+    deepagents 原生提供规划、子代理、虚拟文件系统与技能；知识库通过
+    knowledge_retrieve 工具 + 可选预检索接入。
+    skill_type 只作为持久化配置字段透传，不参与运行时分流。
 
     Args:
-        skill_type: 技能类型，来自 SkillTypeChoices
+        skill_type: 技能类型配置字段；运行时统一路由到 DeepAgent
         chat_kwargs: Agent 请求参数字典
 
     Returns:
         tuple: (graph, request) - Agent 图实例和请求对象
     """
-    if skill_type == SkillTypeChoices.BASIC_TOOL:
-        request = ReActAgentRequest(**chat_kwargs)
-        graph = ReActAgentGraph()
-    elif skill_type == SkillTypeChoices.PLAN_EXECUTE:
-        request = PlanAndExecuteAgentRequest(**chat_kwargs)
-        graph = PlanAndExecuteAgentGraph()
-    elif skill_type == SkillTypeChoices.LATS:
-        request = LatsAgentRequest(**chat_kwargs)
-        graph = LatsAgentGraph()
-    else:
-        # 默认使用 ChatBot Workflow
-        request = ChatBotWorkflowRequest(**chat_kwargs)
-        graph = ChatBotWorkflowGraph()
-
+    request = DeepAgentRequest(**chat_kwargs)
+    graph = DeepAgentGraph()
     return graph, request
 
 

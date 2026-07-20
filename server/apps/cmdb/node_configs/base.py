@@ -19,6 +19,7 @@ class BaseNodeParams(metaclass=ABCMeta):
     # 同一个 model（例如 physcial_server）可以同时存在 SSH/job 和 IPMI/protocol 两条下发链路。
     _registry = {}  # 自动收集支持的 model_id 对应的子类
     interval = 300  # 默认的采集间隔时间（秒）
+    MIN_INTERVAL_SECONDS = 60
 
     @classmethod
     def build_registry_key(cls, model_id, driver_type=None):
@@ -58,7 +59,8 @@ class BaseNodeParams(metaclass=ABCMeta):
         if not hasattr(self.__class__, 'host_field'):
             self.host_field = "ip_addr"  # 默认的 ip字段 若不一样重新定义
         self.timeout = instance.timeout
-        self.response_timeout = 10
+        self.response_timeout = 30
+        self.telegraf_timeout = self.response_timeout
         self.executor_type = "protocol"  # 默认执行器类型
         self.has_network_topo = bool(self.instance.params.get("has_network_topo"))  # 是否包含网络拓扑采集
 
@@ -202,6 +204,20 @@ class BaseNodeParams(metaclass=ABCMeta):
         """
         return f"cmdb_{self.instance.id}"
 
+    @property
+    def resolved_interval(self) -> int:
+        """节点侧采集间隔：优先跟随任务周期，异常时回退类默认值。"""
+        cycle_value_type = getattr(self.instance, "cycle_value_type", "")
+        cycle_value = getattr(self.instance, "cycle_value", None)
+        if cycle_value_type == "cycle":
+            try:
+                interval_seconds = int(cycle_value) * 60
+            except (TypeError, ValueError):
+                interval_seconds = 0
+            if interval_seconds >= self.MIN_INTERVAL_SECONDS:
+                return interval_seconds
+        return self.interval
+
     def push_params(self):
         """
         生成节点管理创建配置的参数
@@ -213,9 +229,10 @@ class BaseNodeParams(metaclass=ABCMeta):
         node = self.instance.access_point[0]
         content = {
             "instance_id": self._instance_id,
-            "interval": self.interval,
+            "interval": self.resolved_interval,
             "instance_type": self.get_instance_type,
             "timeout": self.timeout,
+            "telegraf_timeout": self.telegraf_timeout,
             "response_timeout": self.response_timeout,
             "headers": self.custom_headers(),
             "config_type": self.model_id,

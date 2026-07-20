@@ -32,13 +32,9 @@ class DispatchAttemptResult:
 class CollectDispatchService:
     """负责目标分组、凭据选择、复用现有采集链路并聚合结果。"""
 
-    SUPPORTED_TASK_TYPES = {
-        CollectPluginTypes.HOST,
-        CollectPluginTypes.DB,
-        CollectPluginTypes.MIDDLEWARE,
+    # 仅保留真正需要逐目标触发采集的类型；VM 结果由 Server 按任务统一消费。
+    TARGET_DISPATCH_TASK_TYPES = {
         CollectPluginTypes.CONFIG_FILE,
-        CollectPluginTypes.SNMP,
-        CollectPluginTypes.PROTOCOL,
     }
 
     CREDENTIAL_ERROR_KEYWORDS = (
@@ -56,9 +52,9 @@ class CollectDispatchService:
 
     @classmethod
     def should_dispatch(cls, task) -> bool:
-        """仅在首期支持任务且凭据池大于 1 时启用多凭据派发。"""
+        """仅异步逐目标触发任务启用多凭据派发；VM 结果型任务按任务同步一次。"""
         pool = CollectCredentialPoolService.normalize_pool(cls._resolve_task_credentials(task))
-        return len(pool) > 1 and task.task_type in cls.SUPPORTED_TASK_TYPES
+        return len(pool) > 1 and task.task_type in cls.TARGET_DISPATCH_TASK_TYPES
 
     @classmethod
     def execute_task(cls, task) -> tuple[dict[str, Any], dict[str, Any]]:

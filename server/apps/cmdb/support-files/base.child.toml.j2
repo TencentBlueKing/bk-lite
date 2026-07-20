@@ -1,7 +1,7 @@
 [[inputs.prometheus]]
     urls = ["${STARGAZER_URL}/api/collect/collect_info"]
     interval = "{{ interval | default(60, true) }}s"
-    timeout = "{{ timeout | default(60, true) }}s"
+    timeout = "{{ telegraf_timeout | default(60, true) }}s"
     response_timeout = "{{ response_timeout | default(60, true) }}s"
     http_headers = {{ headers | default({}) | to_toml }}
     [inputs.prometheus.tags]

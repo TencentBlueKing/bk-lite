@@ -74,6 +74,40 @@ def test_get_collect_obj_tree_no_enterprise(monkeypatch):
     assert len(tree) > 0
 
 
+def test_get_collect_obj_tree_host_group_uses_logical_host_name(monkeypatch):
+    _patch_collect_extension(monkeypatch, [])
+    tree = get_collect_obj_tree()
+
+    host_group = next((group for group in tree if group.get("id") == "host_manage"), None)
+    assert host_group is not None
+    assert host_group["name"] == "主机逻辑主机"
+
+
+def test_get_collect_obj_tree_skips_host_objects_merged_to_host(monkeypatch):
+    _patch_collect_extension(
+        monkeypatch,
+        [
+            {
+                "id": "host_manage",
+                "children": [
+                    {"id": "aix", "model_id": "aix"},
+                    {"id": "hpux", "model_id": "hpux"},
+                    {"id": "domestic_linux", "model_id": "domestic_linux"},
+                    {"id": "hmc", "model_id": "hmc"},
+                ],
+            }
+        ],
+    )
+    tree = get_collect_obj_tree()
+
+    host_group = next(group for group in tree if group.get("id") == "host_manage")
+    model_ids = {child.get("model_id") for child in host_group.get("children", [])}
+    assert "aix" not in model_ids
+    assert "hpux" not in model_ids
+    assert "domestic_linux" not in model_ids
+    assert "hmc" in model_ids
+
+
 def test_get_collect_obj_tree_includes_ipam_discovery(monkeypatch):
     _patch_collect_extension(monkeypatch, [])
     tree = get_collect_obj_tree()

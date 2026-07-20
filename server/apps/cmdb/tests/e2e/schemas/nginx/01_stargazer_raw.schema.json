@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Stargazer nginx 采集原始输出契约",
+  "description": "2026-07-10 G5.2.x — Phase 2.3 第三闭环,fixture 由 cli.py 真实落盘(middleware runner,extra_payload_keys={\"result\":True})",
+  "type": "object",
+  "required": ["model_id", "captured_at", "raw_stdout"],
+  "properties": {
+    "model_id":    {"type": "string", "pattern": "^nginx$"},
+    "captured_at": {"type": "string", "format": "date-time"},
+    "raw_stdout": {
+      "type": "object",
+      "required": ["ip_addr", "listen_port", "version"],
+      "properties": {
+        "bk_inst_name": {"type": "string"},
+        "bk_obj_id":    {"type": "string"},
+        "ip_addr":      {"type": "string"},
+        "listen_port":  {"type": ["string", "integer"]},
+        "nginx_path":   {"type": "string"},
+        "version":      {"type": "string"},
+        "log_path":     {"type": "string"},
+        "config_path":  {"type": "string"}
+      }
+    }
+  }
+}

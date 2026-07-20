@@ -274,7 +274,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
           title={title}
           visible={groupVisible}
           width={900}
-          destroyOnClose
+          destroyOnHidden
           onClose={handleCancel}
           styles={{
             body: {

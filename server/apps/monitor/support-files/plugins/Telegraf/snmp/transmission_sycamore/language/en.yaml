@@ -1,0 +1,74 @@
+Transmission Sycamore SNMP:
+  name: Sycamore (Telegraf)
+  desc: SNMP monitoring template for Sycamore transmission device. It reports per-port
+    inbound traffic rate, per-port outbound traffic rate, and system uptime (IANA
+    PEN 2411).
+monitor_object:
+  Transmission: Transmission
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Transmission:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart,
+        derived from sysUpTime. Monitoring uptime helps administrators understand
+        device stability and identify unexpected reboots or failures.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past
+        5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets
+        counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
+        ifInOctets on high-speed ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5
+        minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets
+        counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
+        ifOutOctets on high-speed ports, keeping the rate accurate.
+    device_total_incoming_traffic:
+      name: Device Total Incoming Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the
+        entire device over the past 5 minutes, measured in bytes per second, summed
+        across all interfaces from the 64-bit ifHCInOctets counter. It helps administrators
+        obtain an overview of incoming traffic for overall monitoring and capacity
+        planning.
+    device_total_outgoing_traffic:
+      name: Device Total Outgoing Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire
+        device over the past 5 minutes, measured in bytes per second, summed across
+        all interfaces from the 64-bit ifHCOutOctets counter. It helps administrators
+        assess sending performance for traffic management and optimization.
+    device_cpu_usage:
+      name: CPU Usage
+      desc: CPU utilization of the transmission device reported directly as a 0-100
+        percentage. Sustained high CPU usage can indicate wireless backhaul traffic
+        pressure, control-plane load or abnormal traffic.
+    device_memory_usage:
+      name: Memory Usage
+      desc: Memory utilization of the transmission device reported directly as a 0-100
+        percentage. Sustained high memory usage may indicate control-plane resource
+        pressure or unstable device services.
+    device_temperature_celsius:
+      name: Temperature
+      desc: CPU or chassis temperature of the transmission device in degrees Celsius.
+        High values may indicate cooling problems, high ambient temperature or overloaded
+        hardware.
+    device_fan_state:
+      name: Fan Status
+      desc: Operational state of each transmission device fan or fan controller. A
+        non-normal state indicates a cooling module fault, offline module, or communication
+        failure and may lead to overheating.
+    device_psu_state:
+      name: Power Supply Status
+      desc: Operational state of each transmission device power supply. A non-normal
+        state indicates offline power, missing input, over-temperature, hardware fault,
+        or alert condition that should be investigated.
+monitor_object_metric_group:
+  Transmission:
+    Base: Base
+    Traffic: Traffic
+    CPU: CPU
+    Memory: Memory
+    Temperature: Temperature
+    Hardware Status: Hardware Status

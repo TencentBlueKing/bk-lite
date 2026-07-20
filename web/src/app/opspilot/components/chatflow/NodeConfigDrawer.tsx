@@ -7,6 +7,7 @@ import {DeleteOutlined} from '@ant-design/icons';
 import {Node} from '@xyflow/react';
 import {useTranslation} from '@/utils/i18n';
 import {useSearchParams} from 'next/navigation';
+import {normalizeEnterpriseWechatAibotConfig} from '@/app/opspilot/constants/chatflow';
 import {useNodeConfigData} from './hooks/useNodeConfigData';
 import {useKeyValueRows} from './hooks/useKeyValueRows';
 import {NodeConfigForm} from './NodeConfigForm';
@@ -50,7 +51,7 @@ const NodeConfigDrawer: React.FC<NodeConfigDrawerProps> = ({
   // 状态管理
   const [frequency, setFrequency] = useState('daily');
   const [uploadedFiles, setUploadedFiles] = useState<UploadFile[]>([]);
-  const [notificationType, setNotificationType] = useState<'email' | 'enterprise_wechat_bot'>('email');
+  const [notificationType, setNotificationType] = useState<string>('email');
 
   // 使用自定义 Hooks
   const {
@@ -83,17 +84,27 @@ const NodeConfigDrawer: React.FC<NodeConfigDrawerProps> = ({
       if (node.data.type === 'celery') {
         const freq = config.frequency === 'crontab' ? 'cron' : (config.frequency || 'daily');
         formValues.frequency = freq;
-        
+
         formValues.times = Array.isArray(config.time) ? config.time : (config.time ? [config.time] : ['09:00']);
         formValues.weekdays = Array.isArray(config.weekdays) ? config.weekdays : [];
-        
+
         if (config.days && Array.isArray(config.days) && config.days.length > 0) {
           formValues.monthDay = config.days[0];
         } else if (freq === 'monthly') {
           formValues.monthDay = 1;
         }
-        
+
         formValues.cron = config.crontab_expression || (freq === 'cron' ? '* * * * *' : '');
+      }
+
+      // NATS 节点：snake_case → camelCase 字段映射，使 Switch 显示当前值
+      if (node.data.type === 'nats') {
+        if ('expose_as_web_chat' in config) {
+          formValues.exposeAsWebChat = Boolean(config.expose_as_web_chat);
+          delete formValues.expose_as_web_chat;
+        } else {
+          formValues.exposeAsWebChat = false;
+        }
       }
 
       form.setFieldsValue(formValues);
@@ -122,14 +133,14 @@ const NodeConfigDrawer: React.FC<NodeConfigDrawerProps> = ({
         loadSkills();
       }
 
-      // 加载模型列表（意图分类节点、记忆写入节点）
-      if (node.data.type === 'intent_classification' || node.data.type === 'memory_write') {
+      // 加载模型列表（意图分类节点、记忆写入节点、通知节点邮件优化）
+      if (node.data.type === 'intent_classification' || node.data.type === 'memory_write' || node.data.type === 'notification') {
         loadLlmModels();
       }
 
       // 加载通知渠道和用户
       if (node.data.type === 'notification') {
-        const type = (config.notificationType || 'email') as 'email' | 'enterprise_wechat_bot';
+        const type = config.notificationType || 'email';
         setNotificationType(type);
         loadChannels(type);
         loadUsers();
@@ -152,7 +163,7 @@ const NodeConfigDrawer: React.FC<NodeConfigDrawerProps> = ({
     if (!node) return;
 
     form.validateFields().then((values) => {
-      const configData: any = {
+      let configData: any = {
         ...values,
         params: paramRows.rows.filter(row => row.key && row.value),
         headers: headerRows.rows.filter(row => row.key && row.value)
@@ -167,6 +178,18 @@ const NodeConfigDrawer: React.FC<NodeConfigDrawerProps> = ({
 
       if (node.data.type === 'notification') {
         configData.notificationChannels = notificationChannels;
+      }
+
+      if (node.data.type === 'enterprise_wechat_aibot') {
+        configData = normalizeEnterpriseWechatAibotConfig(configData);
+      }
+
+      if (node.data.type === 'nats') {
+        // form key 是 camelCase exposeAsWebChat；后端 / ChatApplication.node_config.data.config.expose_as_web_chat 用 snake_case
+        if ('exposeAsWebChat' in configData) {
+          configData.expose_as_web_chat = Boolean(configData.exposeAsWebChat);
+          delete configData.exposeAsWebChat;
+        }
       }
 
       if (node.data.type === 'celery') {

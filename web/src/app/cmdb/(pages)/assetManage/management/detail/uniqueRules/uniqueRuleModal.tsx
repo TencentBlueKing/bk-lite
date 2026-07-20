@@ -27,10 +27,6 @@ const UniqueRuleModal = forwardRef<UniqueRuleModalRef, Props>(({ onSubmit }, ref
   const [mode, setMode] = useState<'create' | 'edit'>('create')
   const [rule, setRule] = useState<ModelUniqueRuleItem | undefined>()
   const [candidateFields, setCandidateFields] = useState<UniqueRuleFieldMeta[]>([])
-  const horizontalLayout = {
-    labelCol: { flex: '84px' },
-    wrapperCol: { flex: 1 },
-  };
 
   useImperativeHandle(ref, () => ({
     showModal: (config) => {
@@ -92,8 +88,6 @@ const UniqueRuleModal = forwardRef<UniqueRuleModalRef, Props>(({ onSubmit }, ref
           label={t('Model.uniqueRuleFields')}
           name="field_ids"
           rules={[{ required: true, message: t('required') }]}
-          layout="horizontal"
-          {...horizontalLayout}
         >
           <Select
             mode="multiple"

@@ -12,6 +12,8 @@ import { ExclamationCircleFilled } from '@ant-design/icons';
 import Password from '@/components/password';
 import GroupTreeSelector from '@/components/group-tree-select';
 import { useTranslation } from '@/utils/i18n';
+import FieldGuideTip from '@/app/monitor/(pages)/integration/list/detail/configure/fieldGuideTip';
+import { applyTableChangeHandler } from './tableChangeHandler';
 
 export const useConfigRenderer = () => {
   const { t } = useTranslation();
@@ -30,8 +32,12 @@ export const useConfigRenderer = () => {
       dependency,
       rules = [],
       description,
-      editable
+      editable,
+      guide_short,
+      tooltip
     } = fieldConfig;
+    const guideTip = guide_short || tooltip;
+    const hasGuideTip = Boolean(guideTip);
 
     if (type === 'hidden') {
       return (
@@ -225,7 +231,19 @@ export const useConfigRenderer = () => {
         <Form.Item noStyle shouldUpdate={shouldUpdate} key={name}>
           {({ getFieldValue }) =>
             isFieldVisible(getFieldValue) ? (
-              <Form.Item required={required} label={label}>
+              <Form.Item
+                required={required}
+                label={
+                  hasGuideTip ? (
+                    <span className="inline-flex items-center">
+                      {label}
+                      <FieldGuideTip short={guideTip} />
+                    </span>
+                  ) : (
+                    label
+                  )
+                }
+              >
                 <Form.Item
                   noStyle
                   name={name}
@@ -251,7 +269,20 @@ export const useConfigRenderer = () => {
     }
 
     return (
-      <Form.Item key={name} required={required} label={label}>
+      <Form.Item
+        key={name}
+        required={required}
+        label={
+          hasGuideTip ? (
+            <span className="inline-flex items-center">
+              {label}
+              <FieldGuideTip short={guideTip} />
+            </span>
+          ) : (
+            label
+          )
+        }
+      >
         <Form.Item
           noStyle
           name={name}
@@ -374,26 +405,16 @@ export const useConfigRenderer = () => {
       const errorMsg = validateField(value);
       newData[index][`${name}_error`] = errorMsg;
       if (change_handler) {
-        const {
-          type,
-          target_field,
-          source_fields = [],
-          separator = ':'
-        } = change_handler;
-        if (type === 'simple') {
-          const sourceValue = source_fields[0]
-            ? newData[index][source_fields[0]]
-            : value;
-          newData[index][target_field] = sourceValue;
+        const changedRow = applyTableChangeHandler(
+          newData[index],
+          value,
+          options,
+          change_handler
+        );
+        if (changedRow !== newData[index]) {
+          newData[index] = changedRow;
           // 清除目标字段的错误状态（因为值已经被更新了）
-          newData[index][`${target_field}_error`] = null;
-        } else if (type === 'combine') {
-          const values = source_fields.map(
-            (field: string) => newData[index][field] || ''
-          );
-          newData[index][target_field] = values.join(separator);
-          // 清除目标字段的错误状态（因为值已经被更新了）
-          newData[index][`${target_field}_error`] = null;
+          newData[index][`${change_handler.target_field}_error`] = null;
         }
       }
       onTableDataChange(newData);

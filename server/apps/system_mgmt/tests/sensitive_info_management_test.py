@@ -1,3 +1,4 @@
+import uuid
 import importlib
 import json
 import os
@@ -12,7 +13,18 @@ from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from apps.system_mgmt.models import Channel, Group, OperationLog, SensitiveInfoAuthorization, SystemSettings, User
+from apps.system_mgmt.models import (
+    Channel,
+    Group,
+    IntegrationInstance,
+    IntegrationInstanceStatusChoices,
+    OperationLog,
+    SensitiveInfoAuthorization,
+    SystemSettings,
+    User,
+    UserRule,
+    UserSyncSource,
+)
 from apps.system_mgmt.models.channel import ChannelChoices
 from apps.system_mgmt.nats_api import get_all_users, login
 from apps.system_mgmt.serializers.user_serializer import UserSerializer
@@ -291,6 +303,173 @@ def test_user_viewset_update_user_keeps_existing_sensitive_fields_when_omitted()
 
 
 @pytest.mark.django_db
+def test_user_viewset_delete_user_allows_manual_user():
+    from apps.system_mgmt.viewset.user_viewset import UserViewSet
+
+    group = Group.objects.create(name="group-for-delete-manual")
+    user = User.objects.create(
+        username="manual-delete-user",
+        display_name="手工用户",
+        email="manual-delete@example.com",
+        password=make_password("password123"),
+        group_list=[group.id],
+    )
+    UserRule.objects.create(username=user.username, domain=user.domain, group_rule_id=1)
+
+    factory = APIRequestFactory()
+    view = UserViewSet.as_view({"post": "delete_user"})
+    request = factory.post(
+        "/system_mgmt/api/user/delete_user/",
+        {"user_ids": [user.id]},
+        format="json",
+    )
+    force_authenticate(
+        request,
+        user=_build_authenticated_request_user(
+            username="delete-admin",
+            permission={"system-manager": {"user_group-Delete User"}},
+            group_list=[{"id": group.id, "name": group.name}],
+            is_superuser=False,
+        ),
+    )
+
+    response = view(request)
+    payload = json.loads(response.content)
+
+    assert response.status_code == 200
+    assert payload == {"result": True}
+    assert User.objects.filter(id=user.id).exists() is False
+
+
+@pytest.mark.django_db
+def test_user_viewset_delete_user_rejects_synced_user():
+    from apps.system_mgmt.viewset.user_viewset import UserViewSet
+
+    group = Group.objects.create(name="group-for-delete-synced")
+    instance = IntegrationInstance.objects.create(
+        name="feishu-sync",
+        provider_key="feishu",
+        enabled=True,
+        status=IntegrationInstanceStatusChoices.READY,
+        capability_status={"user_sync": IntegrationInstanceStatusChoices.READY},
+        capability_enabled={"user_sync": True},
+        config={},
+    )
+    source = UserSyncSource.objects.create(
+        name="sync-source-a",
+        integration_instance=instance,
+        enabled=True,
+        root_group_name="Root A",
+        business_config={},
+        field_mapping={},
+        schedule_config={},
+    )
+    user = User.objects.create(
+        username="synced-delete-user",
+        display_name="同步用户",
+        email="synced-delete@example.com",
+        password=make_password("password123"),
+        group_list=[group.id],
+        sync_source=source,
+    )
+
+    factory = APIRequestFactory()
+    view = UserViewSet.as_view({"post": "delete_user"})
+    request = factory.post(
+        "/system_mgmt/api/user/delete_user/",
+        {"user_ids": [user.id]},
+        format="json",
+    )
+    force_authenticate(
+        request,
+        user=_build_authenticated_request_user(
+            username="delete-admin",
+            permission={"system-manager": {"user_group-Delete User"}},
+            group_list=[{"id": group.id, "name": group.name}],
+            is_superuser=False,
+        ),
+    )
+
+    response = view(request)
+    payload = json.loads(response.content)
+
+    assert response.status_code == 200
+    assert payload == {
+        "result": False,
+        "message": "Synced users cannot be deleted directly. Please delete them from the user sync source.",
+    }
+    assert User.objects.filter(id=user.id).exists() is True
+
+
+@pytest.mark.django_db
+def test_user_viewset_delete_user_rejects_mixed_batch_when_any_user_is_synced():
+    from apps.system_mgmt.viewset.user_viewset import UserViewSet
+
+    group = Group.objects.create(name="group-for-delete-mixed")
+    instance = IntegrationInstance.objects.create(
+        name="feishu-sync-mixed",
+        provider_key="feishu",
+        enabled=True,
+        status=IntegrationInstanceStatusChoices.READY,
+        capability_status={"user_sync": IntegrationInstanceStatusChoices.READY},
+        capability_enabled={"user_sync": True},
+        config={},
+    )
+    source = UserSyncSource.objects.create(
+        name="sync-source-b",
+        integration_instance=instance,
+        enabled=True,
+        root_group_name="Root B",
+        business_config={},
+        field_mapping={},
+        schedule_config={},
+    )
+    manual_user = User.objects.create(
+        username="manual-batch-user",
+        display_name="手工用户",
+        email="manual-batch@example.com",
+        password=make_password("password123"),
+        group_list=[group.id],
+    )
+    synced_user = User.objects.create(
+        username="synced-batch-user",
+        display_name="同步用户",
+        email="synced-batch@example.com",
+        password=make_password("password123"),
+        group_list=[group.id],
+        sync_source=source,
+    )
+
+    factory = APIRequestFactory()
+    view = UserViewSet.as_view({"post": "delete_user"})
+    request = factory.post(
+        "/system_mgmt/api/user/delete_user/",
+        {"user_ids": [manual_user.id, synced_user.id]},
+        format="json",
+    )
+    force_authenticate(
+        request,
+        user=_build_authenticated_request_user(
+            username="delete-admin",
+            permission={"system-manager": {"user_group-Delete User"}},
+            group_list=[{"id": group.id, "name": group.name}],
+            is_superuser=False,
+        ),
+    )
+
+    response = view(request)
+    payload = json.loads(response.content)
+
+    assert response.status_code == 200
+    assert payload == {
+        "result": False,
+        "message": "Synced users cannot be deleted directly. Please delete them from the user sync source.",
+    }
+    assert User.objects.filter(id=manual_user.id).exists() is True
+    assert User.objects.filter(id=synced_user.id).exists() is True
+
+
+@pytest.mark.django_db
 # 验证保护开启且无明文查看授权时，显式提交的新敏感字段值仍允许更新保存。
 def test_user_viewset_update_user_allows_sensitive_change_when_protection_enabled_without_view_authorization():
     from apps.system_mgmt.models import Group, Role
@@ -422,6 +601,57 @@ def test_user_viewset_search_user_list_masks_sensitive_fields_for_unauthorized_s
 
 @requires_enterprise_mask
 @pytest.mark.django_db
+# 验证用户列表查询会返回用户所属同步源标识，供前端删除控制使用。
+def test_user_viewset_search_user_list_includes_sync_source_identifier():
+    from apps.system_mgmt.viewset.user_viewset import UserViewSet
+
+    _set_sensitive_info_settings(enabled=False)
+    instance = IntegrationInstance.objects.create(
+        name="sync-source-instance",
+        provider_key="feishu",
+        status=IntegrationInstanceStatusChoices.READY,
+        capability_status={"user_sync": IntegrationInstanceStatusChoices.READY},
+        config={"host": "ldap.example.com"},
+    )
+    source = UserSyncSource.objects.create(
+        name="sync-source-a",
+        integration_instance=instance,
+        root_group_name="Root A",
+        field_mapping={"username": "uid"},
+        business_config={},
+        schedule_config={},
+    )
+    synced_user = User.objects.create(
+        username="sync-source-user",
+        display_name="同步源用户",
+        email="sync-user@example.com",
+        phone="13800001234",
+        password=make_password("password123"),
+        locale="zh-Hans",
+        sync_source=source,
+    )
+
+    factory = APIRequestFactory()
+    view = UserViewSet.as_view({"get": "search_user_list"})
+    request = factory.get("/system_mgmt/api/user/search_user_list/", {"search": synced_user.username})
+    force_authenticate(
+        request,
+        user=_build_authenticated_request_user(
+            username="viewer-sync-source",
+            is_superuser=False,
+            permission={"system-manager": {"user_group-View"}},
+        ),
+    )
+
+    response = view(request)
+    payload = json.loads(response.content)
+
+    assert response.status_code == 200
+    returned_user = payload["data"]["users"][0]
+    assert returned_user["sync_source"] == source.id
+
+
+@pytest.mark.django_db
 # 验证用户详情查询会按授权粒度只放行对应敏感类型的明文，其他类型继续脱敏。
 def test_user_viewset_get_user_detail_only_reveals_authorized_sensitive_type():
     from apps.system_mgmt.models import Group
@@ -546,6 +776,7 @@ def test_user_serializer_exposes_derived_status_with_priority_order():
     now = timezone.now()
     users = [
         User(
+            user_id=str(uuid.uuid4()),
             username="disabled-user",
             display_name="禁用用户",
             email="disabled@example.com",
@@ -557,6 +788,7 @@ def test_user_serializer_exposes_derived_status_with_priority_order():
             password_last_modified=now - timedelta(days=400),
         ),
         User(
+            user_id=str(uuid.uuid4()),
             username="locked-user",
             display_name="锁定用户",
             email="locked@example.com",
@@ -568,6 +800,7 @@ def test_user_serializer_exposes_derived_status_with_priority_order():
             password_last_modified=now - timedelta(days=400),
         ),
         User(
+            user_id=str(uuid.uuid4()),
             username="expired-user",
             display_name="过期用户",
             email="expired@example.com",
@@ -579,6 +812,7 @@ def test_user_serializer_exposes_derived_status_with_priority_order():
             password_last_modified=now - timedelta(days=400),
         ),
         User(
+            user_id=str(uuid.uuid4()),
             username="normal-user",
             display_name="正常用户",
             email="normal@example.com",
@@ -612,6 +846,7 @@ def test_user_serializer_treats_missing_password_time_and_non_positive_validity_
     now = timezone.now()
     users = [
         User(
+            user_id=str(uuid.uuid4()),
             username="permanent-user",
             display_name="永久有效用户",
             email="permanent@example.com",
@@ -623,6 +858,7 @@ def test_user_serializer_treats_missing_password_time_and_non_positive_validity_
             password_last_modified=now - timedelta(days=400),
         ),
         User(
+            user_id=str(uuid.uuid4()),
             username="missing-password-time-user",
             display_name="缺少密码时间用户",
             email="missing@example.com",

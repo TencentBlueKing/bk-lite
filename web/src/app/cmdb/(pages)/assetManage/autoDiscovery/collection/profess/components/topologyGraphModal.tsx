@@ -317,7 +317,7 @@ const TopologyGraphModal: React.FC<TopologyGraphModalProps> = ({
       onCancel={onClose}
       footer={null}
       width="80vw"
-      destroyOnClose
+      destroyOnHidden
       styles={{ body: { padding: 0 } }}
     >
       <div style={{ height: '72vh', position: 'relative' }}>

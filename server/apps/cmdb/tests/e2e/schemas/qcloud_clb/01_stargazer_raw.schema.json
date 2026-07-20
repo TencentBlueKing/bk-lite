@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Stargazer qcloud_clb 采集脚本原始输出",
+  "description": "Task 3.2 真实化版本:qcloud_clb 真实落盘形态",
+  "type": "object",
+  "required": [
+    "resource_name",
+    "resource_id",
+    "region",
+    "status"
+  ],
+  "properties": {
+    "model_id": {
+      "type": "string"
+    },
+    "total_count": {
+      "type": "integer"
+    },
+    "master_zone": {
+      "type": "string"
+    },
+    "backup_zone": {
+      "type": "string"
+    },
+    "domain": {
+      "type": "string"
+    },
+    "ip_addr": {
+      "type": "string"
+    },
+    "type": {
+      "type": "string"
+    },
+    "isp": {
+      "type": "string"
+    },
+    "tag": {
+      "type": "string"
+    },
+    "project_id": {
+      "type": "integer"
+    },
+    "security_group_id": {
+      "type": "string"
+    },
+    "vpc": {
+      "type": "string"
+    },
+    "charge_type": {
+      "type": "string"
+    },
+    "create_time": {
+      "type": "string"
+    }
+  }
+}

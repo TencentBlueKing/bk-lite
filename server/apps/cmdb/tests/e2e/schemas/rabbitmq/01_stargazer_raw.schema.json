@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Stargazer rabbitmq 采集原始输出契约",
+  "description": "2026-07-10 v4 Phase 3 — fixture 由 stargazer cli 真实落盘(middleware runner,extra_payload_keys={\"result\":True})。raw_stdout 是形态 B(平铺 dict,无 success/result 包裹),与 nginx 同构。",
+  "type": "object",
+  "required": ["model_id", "captured_at", "raw_stdout"],
+  "properties": {
+    "model_id":    {"type": "string", "pattern": "^rabbitmq$"},
+    "captured_at": {"type": "string", "format": "date-time"},
+    "raw_stdout": {
+      "type": "object",
+      "required": ["ip_addr", "port", "version"],
+      "properties": {
+        "inst_name":           {"type": "string"},
+        "port":                {"type": ["string", "integer"]},
+        "allport":             {"type": "string"},
+        "ip_addr":             {"type": "string"},
+        "node_name":           {"type": "string"},
+        "log_path":            {"type": "string"},
+        "conf_path":           {"type": "string"},
+        "version":             {"type": "string"},
+        "enabled_plugin_file": {"type": "string"},
+        "erlang_version":      {"type": "string"}
+      }
+    }
+  }
+}

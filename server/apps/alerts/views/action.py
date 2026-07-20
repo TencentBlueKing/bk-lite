@@ -213,6 +213,7 @@ class ActionExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         rule = ActionRule.objects.filter(id=request.data.get("rule_id")).first()
         if not alert or not rule:
             return Response({"result": False, "message": "alert/rule 不存在"}, status=400)
+        operator_name = getattr(request.user, "username", None) or ""
         execution = ActionExecution.objects.create(
             rule=rule,
             alert=alert,
@@ -221,8 +222,26 @@ class ActionExecutionViewSet(viewsets.ReadOnlyModelViewSet):
             idempotency_key=None,
             status="pending",
             action_type=rule.action_type,
-            operator=getattr(request.user, "username", None),
+            operator=operator_name or None,
         )
+        # 与自动触发同源：写 OperatorLog，让"变更记录" Tab 也能展示手动触发。
+        # 与自动路径区别：operator 是真实用户名字符串（缺失则落 None），而不是 'system'。
+        try:
+            record_operator_log(
+                action=LogAction.EXECUTE,
+                target_type=LogTargetType.ALERT,
+                operator=operator_name,
+                operator_object="告警处理-动作",
+                target_id=alert.alert_id,
+                overview=f"手动执行规则[{rule.name}]触发动作",
+            )
+        except Exception:
+            # 与自动路径（action/engine.py:51-59）的容忍策略一致：审计日志写失败不阻塞主流程，
+            # 但要把异常记录下来以便排障——而不是静默吞掉。
+            logger.exception(
+                "[ActionView] manual_trigger 写 OperatorLog 失败 alert_id=%s rule_id=%s",
+                alert.alert_id, rule.id,
+            )
         get_handler(rule.action_type).execute(rule, alert, execution)
         return Response({"result": True, "data": {"execution_id": execution.id}})
 
@@ -231,10 +250,13 @@ class ActionJobScriptListView(APIView):
     """代理 job_mgmt 脚本列表，供告警动作规则编辑器使用。"""
 
     def get(self, request):
-        from apps.alerts.utils.permission_scope import get_current_team_from_request
+        from apps.alerts.utils.permission_scope import get_authorized_group_ids, get_current_team_from_request
 
         group_id = get_current_team_from_request(request, required=True)
-        data = JobMgmt().list_scripts(group_id=group_id)
+        if not group_id:
+            return Response({"result": False, "message": "缺少团队上下文"}, status=status.HTTP_400_BAD_REQUEST)
+
+        data = JobMgmt().list_scripts(group_id=group_id, team=get_authorized_group_ids(request))
         return Response(data)
 
 

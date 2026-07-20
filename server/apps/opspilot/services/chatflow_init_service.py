@@ -25,13 +25,8 @@ class ChatFlowInitService:
     DEFAULT_SKILL_CONFIG = {
         "enable_conversation_history": False,
         "conversation_window_size": 10,
-        "enable_rag": False,
-        "enable_rag_knowledge_source": False,
-        "rag_score_threshold_map": {},
         "temperature": 0.7,
-        "enable_rag_strict_mode": False,
         "is_template": False,
-        "enable_km_route": False,
         "enable_suggest": False,
         "enable_query_rewrite": False,
         "show_think": False,

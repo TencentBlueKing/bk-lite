@@ -85,6 +85,59 @@ def test_collect_builds_success_payload(monkeypatch):
     assert fake.enabled is True
 
 
+def test_collect_enables_privilege_mode_when_enable_password_is_present(monkeypatch):
+    fake = FakeNetConnect()
+    monkeypatch.setattr(
+        "plugins.inputs.network_config_file.network_config_file_info.ConnectHandler",
+        lambda **kwargs: fake,
+    )
+    plugin = NetworkConfigFileInfo(
+        {
+            "host": "10.0.0.1",
+            "username": "admin",
+            "password": "secret",
+            "enable_password": "enable-secret",
+            "device_type": "cisco_ios",
+            "commands": "show running-config",
+            "config_name": "running-config",
+            "collect_task_id": "42",
+            "target_model_id": "switch",
+            "target_instance_id": "101",
+        }
+    )
+
+    result = plugin.list_all_resources()
+
+    assert result["success"] is True
+    assert fake.enabled is True
+
+
+def test_collect_skips_privilege_mode_without_enable_password(monkeypatch):
+    fake = FakeNetConnect()
+    monkeypatch.setattr(
+        "plugins.inputs.network_config_file.network_config_file_info.ConnectHandler",
+        lambda **kwargs: fake,
+    )
+    plugin = NetworkConfigFileInfo(
+        {
+            "host": "10.0.0.1",
+            "username": "admin",
+            "password": "secret",
+            "device_type": "cisco_ios",
+            "commands": "show running-config",
+            "config_name": "running-config",
+            "collect_task_id": "42",
+            "target_model_id": "switch",
+            "target_instance_id": "101",
+        }
+    )
+
+    result = plugin.list_all_resources()
+
+    assert result["success"] is True
+    assert fake.enabled is False
+
+
 def test_collect_returns_error_when_one_command_fails(monkeypatch):
     class FailingNetConnect(FakeNetConnect):
         def send_command(self, command, **kwargs):

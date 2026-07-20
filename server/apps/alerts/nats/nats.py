@@ -8,6 +8,7 @@
 
 import datetime
 import os
+from types import SimpleNamespace
 from typing import Any, Dict
 from zoneinfo import ZoneInfo
 
@@ -17,29 +18,31 @@ from django.utils import timezone
 
 import nats_client
 from apps.alerts.common.source_adapter.base import AlertSourceAdapterFactory
-from apps.alerts.constants.constants import AlertsSourceTypes, AlertStatus, EventLevel, LevelType
+from apps.alerts.constants.constants import PERMISSION_ALERT, AlertsSourceTypes, AlertStatus, EventLevel, LevelType
 from apps.alerts.models.alert_operator import NotifyResult
 from apps.alerts.models.alert_source import AlertSource
 from apps.alerts.models.models import Alert, Event, Incident, Level
 from apps.core.logger import alert_logger as logger
+from apps.core.utils.permission_utils import get_permission_rules
 from apps.core.utils.viewset_utils import GenericViewSetFun
 
 ALERT_LEVEL_DISPLAY_MAP = dict(EventLevel.CHOICES)
+TRUSTED_INTERNAL_PUSHERS = {"lite-monitor", "lite-log"}
 
 # 各粒度允许的最大时间跨度（秒）；可通过环境变量调整（保守默认值）
 _MAX_SPAN_SECONDS = {
-    "minute": int(os.getenv("ALERT_TREND_MAX_SPAN_MINUTE", str(7 * 24 * 3600))),   # 7 天 → 10,080 点
-    "hour":   int(os.getenv("ALERT_TREND_MAX_SPAN_HOUR",   str(90 * 24 * 3600))),  # 90 天 → 2,160 点
-    "day":    int(os.getenv("ALERT_TREND_MAX_SPAN_DAY",    str(730 * 24 * 3600))), # 2 年 → 730 点
-    "week":   int(os.getenv("ALERT_TREND_MAX_SPAN_WEEK",   str(730 * 24 * 3600))), # 2 年 → ~104 点
-    "month":  int(os.getenv("ALERT_TREND_MAX_SPAN_MONTH",  str(730 * 24 * 3600))), # 2 年 → 24 点
+    "minute": int(os.getenv("ALERT_TREND_MAX_SPAN_MINUTE", str(7 * 24 * 3600))),  # 7 天 → 10,080 点
+    "hour": int(os.getenv("ALERT_TREND_MAX_SPAN_HOUR", str(90 * 24 * 3600))),  # 90 天 → 2,160 点
+    "day": int(os.getenv("ALERT_TREND_MAX_SPAN_DAY", str(730 * 24 * 3600))),  # 2 年 → 730 点
+    "week": int(os.getenv("ALERT_TREND_MAX_SPAN_WEEK", str(730 * 24 * 3600))),  # 2 年 → ~104 点
+    "month": int(os.getenv("ALERT_TREND_MAX_SPAN_MONTH", str(730 * 24 * 3600))),  # 2 年 → 24 点
 }
 _MAX_SPAN_LABEL = {
     "minute": "7 天",
-    "hour":   "90 天",
-    "day":    "2 年",
-    "week":   "2 年",
-    "month":  "2 年",
+    "hour": "90 天",
+    "day": "2 年",
+    "week": "2 年",
+    "month": "2 年",
 }
 
 
@@ -63,6 +66,16 @@ def _has_alerts_view_permission(user_info: dict) -> bool:
     return "Alarms-View" in set(app_permissions)
 
 
+def _build_permission_user(user_info: dict):
+    user = (user_info or {}).get("user")
+    if hasattr(user, "username") and hasattr(user, "domain"):
+        return user
+    domain = (user_info or {}).get("domain")
+    if not isinstance(user, str) or not user.strip() or not isinstance(domain, str) or not domain.strip():
+        return None
+    return SimpleNamespace(username=user.strip(), domain=domain.strip())
+
+
 def _get_authorized_alert_queryset(user_info: dict):
     user_info = user_info or {}
     current_team = user_info.get("team")
@@ -83,7 +96,46 @@ def _get_authorized_alert_queryset(user_info: dict):
     for team_id in team_ids:
         team_query |= Q(team__contains=team_id)
 
-    return Alert.objects.filter(team_query), None
+    if user_info.get("is_superuser"):
+        return Alert.objects.filter(team_query), None
+
+    permission_user = _build_permission_user(user_info)
+    if not permission_user:
+        return None, {"result": False, "data": [], "message": "缺少用户信息"}
+
+    permission_data = get_permission_rules(
+        permission_user,
+        int(current_team),
+        "alerts",
+        PERMISSION_ALERT,
+        user_info.get("include_children", False),
+    )
+    instance_ids = [item["id"] for item in permission_data.get("instance", []) if isinstance(item, dict) and item.get("id") is not None]
+    permission_team_ids = permission_data.get("team", [])
+
+    if not instance_ids and not permission_team_ids:
+        return Alert.objects.none(), None
+
+    query = team_query
+    if instance_ids:
+        query |= Q(id__in=instance_ids)
+
+    for team_id in permission_team_ids:
+        try:
+            query |= Q(team__contains=int(team_id))
+        except (TypeError, ValueError):
+            logger.warning("Invalid alert permission team id: %s", team_id)
+
+    return Alert.objects.filter(query), None
+
+
+def _get_authorized_alert_notify_queryset(user_info: dict):
+    queryset, error = _get_authorized_alert_queryset(user_info)
+    if error:
+        return None, error
+
+    alert_ids = queryset.values_list("alert_id", flat=True)
+    return NotifyResult.objects.filter(notify_type="alert", notify_object__in=alert_ids), None
 
 
 def group_dy_date_format(group_by):
@@ -250,7 +302,9 @@ def get_alert_trend_data(*args, **kwargs) -> Dict[str, Any]:
         label = _MAX_SPAN_LABEL.get(group_by, "2 年")
         logger.warning(
             "[AlertNatsRPC] get_alert_trend_data 时间跨度 %.0f 秒超过 %s 粒度上限 %d 秒，已拒绝",
-            span_seconds, group_by, max_span,
+            span_seconds,
+            group_by,
+            max_span,
         )
         return {
             "result": False,
@@ -349,26 +403,29 @@ def get_alert_source_statistics(*args, **kwargs) -> Dict[str, Any]:
     """
     logger.info("[AlertNatsRPC] === get_alert_source_statistics ===, args=%s, kwargs=%s", args, kwargs)
     user_info = kwargs.pop("user_info", {})
-    if not _has_alerts_view_permission(user_info):
-        return {"result": False, "data": {}, "message": "Insufficient permissions"}
+    queryset, error = _get_authorized_alert_queryset(user_info)
+    if error:
+        return error
     target_tz = _resolve_target_timezone((user_info or {}).get("timezone") or kwargs.pop("timezone", None))
 
     time = kwargs.pop("time", [])
 
-    total_count = AlertSource.objects.count()
-    enabled_count = AlertSource.objects.filter(is_active=True).count()
+    event_qs = Event.objects.filter(alert__in=queryset).distinct()
+    visible_source_ids = event_qs.values_list("source_id", flat=True).distinct()
+    visible_sources = AlertSource.objects.filter(id__in=visible_source_ids)
+
+    total_count = visible_sources.count()
+    enabled_count = visible_sources.filter(is_active=True).count()
     enabled_rate = round((enabled_count / total_count * 100), 1) if total_count > 0 else 0
 
-    # 活跃告警源：在时间范围内有 last_active_time
+    # 活跃告警源：当前授权告警范围内，时间窗口中实际收到过事件的来源。
     if time and len(time) == 2:
         aware_start = _parse_client_datetime(time[0], target_tz)
         aware_end = _parse_client_datetime(time[1], target_tz)
-        active_count = AlertSource.objects.filter(
-            last_active_time__gte=aware_start,
-            last_active_time__lt=aware_end,
-        ).count()
+        active_source_ids = event_qs.filter(received_at__gte=aware_start, received_at__lt=aware_end).values_list("source_id", flat=True).distinct()
+        active_count = visible_sources.filter(id__in=active_source_ids).count()
     else:
-        active_count = AlertSource.objects.filter(last_active_time__isnull=False).count()
+        active_count = total_count
 
     return {
         "result": True,
@@ -403,13 +460,13 @@ def get_notification_statistics(*args, **kwargs) -> Dict[str, Any]:
     """
     logger.info("[AlertNatsRPC] === get_notification_statistics ===, args=%s, kwargs=%s", args, kwargs)
     user_info = kwargs.pop("user_info", {})
-    if not _has_alerts_view_permission(user_info):
-        return {"result": False, "data": {}, "message": "Insufficient permissions"}
+    qs, error = _get_authorized_alert_notify_queryset(user_info)
+    if error:
+        return error
     target_tz = _resolve_target_timezone((user_info or {}).get("timezone") or kwargs.pop("timezone", None))
 
     time = kwargs.pop("time", [])
 
-    qs = NotifyResult.objects.all()
     if time and len(time) == 2:
         aware_start = _parse_client_datetime(time[0], target_tz)
         aware_end = _parse_client_datetime(time[1], target_tz)
@@ -455,13 +512,13 @@ def get_notification_channel_stats(*args, **kwargs) -> Dict[str, Any]:
     """
     logger.info("[AlertNatsRPC] === get_notification_channel_stats ===, args=%s, kwargs=%s", args, kwargs)
     user_info = kwargs.pop("user_info", {})
-    if not _has_alerts_view_permission(user_info):
-        return {"result": False, "data": [], "message": "Insufficient permissions"}
+    qs, error = _get_authorized_alert_notify_queryset(user_info)
+    if error:
+        return error
     target_tz = _resolve_target_timezone((user_info or {}).get("timezone") or kwargs.pop("timezone", None))
 
     time = kwargs.pop("time", [])
 
-    qs = NotifyResult.objects.all()
     if time and len(time) == 2:
         aware_start = _parse_client_datetime(time[0], target_tz)
         aware_end = _parse_client_datetime(time[1], target_tz)
@@ -575,7 +632,7 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
         kwargs: 包含以下字段
             - source_id: 告警源ID（可选 默认nats）
             - events: 事件列表（必填）
-            - pusher: 推送者标识，如系统名称或服务名（必填）如 lite-monitor
+            - pusher: 推送者标识，如系统名称或服务名（必填）如 lite-monitor、lite-log
 
     Returns:
         {
@@ -621,7 +678,12 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
               }
             }
     """
-    logger.info("[AlertEvent] === receive_alert_events via NATS ===, kwargs=%s", kwargs)
+    logger.info(
+        "[AlertEvent] receive_alert_events source_id=%s pusher=%s event_count=%s",
+        kwargs.get("source_id", ""),
+        kwargs.get("pusher"),
+        len(kwargs.get("events") or []),
+    )
 
     try:
         # 提取参数
@@ -666,9 +728,9 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
             normalized_event.setdefault("push_source_id", pusher)
             normalized_events.append(normalized_event)
 
-        # 内部约定：NATS 生效源（event_source 已校验）+ lite-monitor 推送方，双重判断为可信内部推送。
+        # 内部约定：NATS 生效源（event_source 已校验）+ 明确允许的内部推送方，双重判断为可信内部推送。
         # 此时采信每个 event 自带的 organizations 作为归属组织，无需走组织级 secret。
-        trusted_internal = pusher == "lite-monitor"
+        trusted_internal = pusher in TRUSTED_INTERNAL_PUSHERS
 
         # 创建适配器（内部调用无需密钥验证）
         adapter_class = AlertSourceAdapterFactory.get_adapter(event_source)

@@ -73,7 +73,7 @@
         "fatal": "Fatal",
         "severity": "Severity",
         "warning": "Warning",
-        "remaining": "Remain",
+        "remaining": "Remaining",
         "pending": "Pending",
         "processing": "Processing",
         "shield": "Shield",
@@ -124,6 +124,14 @@
         "eventCount": "Event Count",
         "incidentName": "Incident Name",
         "notificationStatus": "Notification Status",
+        "notificationSummary": "{{total}} notifications; showing the latest {{shown}}",
+        "notificationTime": "Notification Time",
+        "notificationChannel": "Channel",
+        "notificationRecipients": "Recipients",
+        "notificationResult": "Result",
+        "notificationFailureReason": "Failure Reason",
+        "notificationReasonUnavailable": "Failure reason was not recorded",
+        "noNotificationRecords": "No notification records",
         "declareIncident": "Declare Incident",
         "declareIncidentErrorMsg": "The selected alert is already linked to an incident",
         "createIncident": "Create Incident",
@@ -339,6 +347,10 @@
         "correlationRules": "Correlation Rules",
         "assignStrategyMessage": "You can configure an automatic dispatch strategy to assign alerts that meet the filtering criteria to designated personnel and choose the notification method.",
         "shieldStrategyMessage": "By implementing a blocking strategy, you can manage the sending of alarm information more efficiently, improving the efficiency and user experience of the alarm system.",
+        "shieldStrategyForm": {
+            "editTitle": "Edit Shielding Strategy",
+            "addTitle": "Add Shielding Strategy"
+        },
         "correlationRulesMessage": "Explore the correlation between low-level events and aggregate them into high-level events. Here, you can define aggregation rules from 'Event' to 'Alert' to reduce the amount of information that needs to be processed and improve the information value of individual events.",
         "correlationAlertPlaceholder": "Alert to Incident aggregation rules feature is under development, stay tuned...",
         "alertAssignTableName": "Name",
@@ -622,6 +634,7 @@
             }
         },
         "actionRuleTitle": "Alert Action Rules",
+        "actionRuleMessage": "Trigger automated actions from alert lifecycle events and match conditions, including job execution, field binding, and status control.",
         "actionRuleName": "Rule Name",
         "actionTriggerEvent": "Trigger Events",
         "actionMatchSummary": "Match Conditions",
@@ -632,6 +645,7 @@
         "actionTriggerTip": "Lifecycle events left unchecked will not trigger this rule",
         "actionRecordsTitle": "Execution Records",
         "actionManualTrigger": "Run Action",
+        "noAvailableRules": "No available rules",
         "actionRerun": "Rerun",
         "actionTab": "Actions",
         "actionTargetHostField": "Target Host Field",
@@ -640,6 +654,12 @@
         "actionParamConst": "Constant",
         "actionBindingField": "Field",
         "actionConfigSection": "Action Config",
-        "actionTargetHostFieldTip": "Read from alert labels; default ip_addr"
+        "actionTargetHostFieldTip": "Read from alert labels; default ip_addr",
+        "actionTargetHostMode": "Target Host Source",
+        "actionTargetHostModeFromAlert": "From Alert",
+        "actionTargetHostModeFixed": "Fixed Host",
+        "actionTargetHostModeLegacy": "Default · From Alert",
+        "actionTargetHostIp": "Target Host IP",
+        "actionTargetHostIpTip": "Ignore alert; resolve this IP via node management"
     }
 }

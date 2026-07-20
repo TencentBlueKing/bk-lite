@@ -36,6 +36,7 @@ import {
   IntentClassificationNode,
   NotificationNode,
   EnterpriseWechatNode,
+  EnterpriseWechatAibotNode,
   DingtalkNode,
   WechatOfficialNode,
   WebChatNode,
@@ -166,11 +167,12 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
       });
 
       if (currentData !== lastSaveData.current) {
+        // 同步触发 onSave,不要 setTimeout:
+        // 之前 100ms 延迟会导致"节点配置保存后立刻发布"路径拿不到最新 workflowData,
+        // 出现应用对话列表查不到,要再点开 web 应用节点保存一次才出现的时序竞态。
+        // onSave 本身是 React setState,不卡 UI;React 事件循环内同步执行也安全。
         lastSaveData.current = currentData;
-        const timeoutId = setTimeout(() => {
-          onSave(nodes, edges);
-        }, 100);
-        return () => clearTimeout(timeoutId);
+        onSave(nodes, edges);
       }
     }
   }, [nodes, edges, onSave, isInitialized]);
@@ -291,6 +293,7 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
       http: createNodeComponent(HttpRequestNode),
       notification: createNodeComponent(NotificationNode),
       enterprise_wechat: createNodeComponent(EnterpriseWechatNode),
+      enterprise_wechat_aibot: createNodeComponent(EnterpriseWechatAibotNode),
       dingtalk: createNodeComponent(DingtalkNode),
       wechat_official: createNodeComponent(WechatOfficialNode),
       memory_read: createNodeComponent(MemoryReadNode),
@@ -335,7 +338,7 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
 
           if (targetNodeId && targetNodeId !== sourceNodeId) {
             const targetNodeData = nodes.find(n => n.id === targetNodeId);
-            const noInputTypes = ['celery', 'nats', 'restful', 'openai', 'agui', 'embedded_chat', 'web_chat', 'mobile', 'enterprise_wechat', 'dingtalk', 'wechat_official'];
+            const noInputTypes = ['celery', 'nats', 'restful', 'openai', 'agui', 'embedded_chat', 'web_chat', 'mobile', 'enterprise_wechat', 'enterprise_wechat_aibot', 'dingtalk', 'wechat_official'];
             const nodeType = targetNodeData?.data?.type as string;
             const hasInputHandle = nodeType && !noInputTypes.includes(nodeType);
 
@@ -528,6 +531,8 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
           streamingContent={executionProps.streamingContent || executionProps.executeResult?.content || ''}
           rawExecutionData={executionProps.executeResult?.rawResponse}
           items={executionProps.executionDetails}
+          workflowNodes={nodes}
+          workflowEdges={edges}
           activeNodeId={executionProps.activeExecutionNodeId}
           onClose={executionProps.closePreviewPanel}
           approvalRequests={executionProps.approvalRequests}

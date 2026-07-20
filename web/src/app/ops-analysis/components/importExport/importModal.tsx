@@ -10,6 +10,7 @@ import {
   Radio,
   Alert,
   Typography,
+  Input,
 } from 'antd';
 import {
   InboxOutlined,
@@ -26,6 +27,14 @@ import {
   ConflictItem,
   ConflictDecision,
 } from '../../api/importExport';
+import {
+  buildSecretSupplements,
+  getSecretSupplementKey,
+  getVisibleImportWarnings,
+  hasBlockingImportWarnings,
+  SECRET_PLACEHOLDER_WARNING_CODE,
+  SecretSupplementValues,
+} from './secretSupplements';
 import type { UploadFile, UploadProps } from 'antd';
 
 const { Dragger } = Upload;
@@ -52,6 +61,7 @@ const ImportModal: React.FC<ImportModalProps> = ({
   const [yamlContent, setYamlContent] = useState('');
   const [precheckData, setPrecheckData] = useState<PrecheckResponse | null>(null);
   const [conflictDecisions, setConflictDecisions] = useState<Record<string, any>>({});
+  const [secretSupplementValues, setSecretSupplementValues] = useState<SecretSupplementValues>({});
   const [submitResult, setSubmitResult] = useState<ImportSubmitResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [fileList, setFileList] = useState<UploadFile[]>([]);
@@ -62,6 +72,7 @@ const ImportModal: React.FC<ImportModalProps> = ({
     setYamlContent('');
     setPrecheckData(null);
     setConflictDecisions({});
+    setSecretSupplementValues({});
     setSubmitResult(null);
     setErrorMessage('');
     setFileList([]);
@@ -112,6 +123,7 @@ const ImportModal: React.FC<ImportModalProps> = ({
       try {
         const text = await file.text();
         setYamlContent(text);
+        setSecretSupplementValues({});
         const res = await importPrecheck({
           yaml_content: text,
           target_directory_id: targetDirectoryId,
@@ -156,6 +168,11 @@ const ImportModal: React.FC<ImportModalProps> = ({
         yaml_content: yamlContent,
         target_directory_id: targetDirectoryId,
         conflict_decisions: decisions,
+        secret_supplements: buildSecretSupplements(
+          precheckData?.warnings || [],
+          conflictDecisions,
+          secretSupplementValues,
+        ),
       });
 
       if (res.success) {
@@ -258,12 +275,15 @@ const ImportModal: React.FC<ImportModalProps> = ({
           },
         ];
 
-        const filteredWarnings = precheckData?.warnings?.filter((w) => {
-          if (!w.object_key) return true;
-          const decision = conflictDecisions[w.object_key];
-          return decision !== 'skip';
-        }) || [];
-        const hasBlockingWarnings = filteredWarnings.length > 0;
+        const filteredWarnings = getVisibleImportWarnings(
+          precheckData?.warnings || [],
+          conflictDecisions,
+        );
+        const hasBlockingWarnings = hasBlockingImportWarnings(
+          precheckData?.warnings || [],
+          conflictDecisions,
+          secretSupplementValues,
+        );
 
         return (
           <div className="py-4">
@@ -282,9 +302,38 @@ const ImportModal: React.FC<ImportModalProps> = ({
                       {t('opsAnalysisSidebar.importWarnings')}
                     </div>
                     <ul className="mt-1 mb-0 text-sm leading-6 text-[rgba(0,0,0,0.65)]">
-                      {filteredWarnings.map((w, idx) => (
-                        <li key={idx}>{w.message}</li>
-                      ))}
+                      {filteredWarnings.map((w, idx) => {
+                        const supplementKey = getSecretSupplementKey(w);
+                        const isSecretPlaceholder = (
+                          w.code === SECRET_PLACEHOLDER_WARNING_CODE && supplementKey
+                        );
+                        const isOverwrite = (
+                          !!w.object_key && conflictDecisions[w.object_key] === 'overwrite'
+                        );
+
+                        return (
+                          <li key={supplementKey || idx} className="mb-2 last:mb-0">
+                            <div>{w.message}</div>
+                            {isSecretPlaceholder && (
+                              <Input.Password
+                                className="mt-1 max-w-xl"
+                                value={secretSupplementValues[supplementKey] || ''}
+                                onChange={(event) => setSecretSupplementValues((current) => ({
+                                  ...current,
+                                  [supplementKey]: event.target.value,
+                                }))}
+                                placeholder={t(
+                                  isOverwrite
+                                    ? 'opsAnalysisSidebar.importSecretOverwritePlaceholder'
+                                    : 'opsAnalysisSidebar.importSecretPlaceholder',
+                                )}
+                                aria-label={`${w.object_key} ${w.field}`}
+                                autoComplete="new-password"
+                              />
+                            )}
+                          </li>
+                        );
+                      })}
                     </ul>
                   </div>
                 </div>
@@ -432,7 +481,7 @@ const ImportModal: React.FC<ImportModalProps> = ({
       onCancel={handleClose}
       footer={null}
       width={700}
-      destroyOnClose
+      destroyOnHidden
       centered
       maskClosable={false}
     >

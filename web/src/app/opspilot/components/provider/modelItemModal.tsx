@@ -76,7 +76,7 @@ const ModelItemModal: React.FC<ModelItemModalProps> = ({
       okText={t(mode === 'add' ? 'provider.model.add' : 'common.save')}
       cancelText={t('common.cancel')}
       width={520}
-      destroyOnClose
+      destroyOnHidden
     >
       <Form form={form} layout="vertical">
         <Form.Item

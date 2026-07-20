@@ -2,7 +2,9 @@
   "object_name": "Ping",
   "instance_type": "ping",
   "collect_type": "ping",
-  "config_type": ["ping"],
+  "config_type": [
+    "ping"
+  ],
   "collector": "Telegraf",
   "instance_id": "{{instance_type}}_{{url}}",
   "form_fields": [
@@ -19,20 +21,22 @@
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.urls[0]"
-      }
+      },
+      "label_en": "URL"
     },
     {
       "name": "interval",
       "label": "间隔",
       "type": "inputNumber",
       "required": true,
-      "default_value": 10,
+      "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
       "widget_props": {
         "min": 1,
         "precision": 0,
         "placeholder": "间隔",
-        "addonAfter": "s"
+        "addonAfter": "s",
+        "placeholder_en": "Interval"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.interval",
@@ -42,7 +46,9 @@
         "to_api": {
           "suffix": "s"
         }
-      }
+      },
+      "label_en": "Interval",
+      "description_en": "Collection time interval (unit: seconds)"
     }
   ],
   "table_columns": [
@@ -53,9 +59,11 @@
       "required": true,
       "widget_props": {
         "placeholder": "请选择节点",
-        "width": 220
+        "width": 220,
+        "placeholder_en": "Please select node"
       },
-      "enable_row_filter": false
+      "enable_row_filter": false,
+      "label_en": "Node"
     },
     {
       "name": "url",
@@ -76,9 +84,12 @@
       ],
       "change_handler": {
         "type": "simple",
-        "source_fields": ["url"],
+        "source_fields": [
+          "url"
+        ],
         "target_field": "instance_name"
-      }
+      },
+      "label_en": "Target Address"
     },
     {
       "name": "instance_name",
@@ -88,8 +99,10 @@
       "widget_props": {
         "placeholder": "实例名称",
         "disabled": false,
-        "width": 220
-      }
+        "width": 220,
+        "placeholder_en": "Instance Name"
+      },
+      "label_en": "Instance Name"
     },
     {
       "name": "group_ids",
@@ -98,8 +111,10 @@
       "required": false,
       "widget_props": {
         "placeholder": "请选择组",
-        "width": 220
-      }
+        "width": 220,
+        "placeholder_en": "Please select group"
+      },
+      "label_en": "Group"
     }
   ]
 }

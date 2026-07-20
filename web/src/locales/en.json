@@ -63,6 +63,7 @@
     "publishSuccess": "publish successfully",
     "saveFailed": "Failed to save",
     "operationFailed": "Operation failed",
+    "operationSuccess": "Operation successful",
     "operateFailed": "Operation failed",
     "loadListFailed": "Failed to load list",
     "markdownLoadFailed": "Failed to load markdown content.",
@@ -226,6 +227,130 @@
     "verificationFailedMaxAttempts": "Maximum verification attempts reached, please resend the code",
     "attemptsRemaining": "Remaining attempts: {remaining}",
     "verifyCodeSuccess": "Email verification successful, click the 'Save' button at the bottom of the page to save changes"
+  },
+  "signin": {
+    "errors": {
+      "default": "Unable to sign in.",
+      "signin": "Try signing in with a different account.",
+      "oauthSignin": "Try signing in with a different account.",
+      "oauthCallbackError": "Try signing in with a different account.",
+      "oauthCreateAccount": "Try signing in with a different account.",
+      "emailCreateAccount": "Try signing in with a different account.",
+      "callback": "Try signing in with a different account.",
+      "oauthAccountNotLinked": "To confirm your identity, sign in with the same account you used originally.",
+      "sessionRequired": "Please sign in to access this page.",
+      "popupBlocked": "Unable to open login popup. Please allow popups and try again.",
+      "loginFailed": "Login failed",
+      "loginError": "An error occurred during login",
+      "authenticationFailed": "Authentication failed",
+      "wechatUnavailable": "WeChat login is not available.",
+      "passwordMismatch": "Passwords do not match",
+      "passwordTooShort": "Password must be at least 8 characters long",
+      "passwordResetFailed": "Password reset failed",
+      "unknown": "An unknown error occurred",
+      "otpRequired": "Please enter the OTP code",
+      "invalidSession": "Invalid session. Please try logging in again.",
+      "invalidOtp": "Invalid OTP code",
+      "otpVerifyFailed": "Failed to verify OTP code"
+    },
+    "form": {
+      "domain": "Domain",
+      "loadingDomains": "Loading domains...",
+      "selectDomain": "Select a domain",
+      "loading": "Loading...",
+      "noDomains": "No domains available",
+      "username": "Username",
+      "usernamePlaceholder": "Enter your username",
+      "password": "Password",
+      "passwordPlaceholder": "Enter your password",
+      "signingIn": "Signing in...",
+      "signIn": "Sign In"
+    },
+    "pageTitle": {
+      "login": "Sign In",
+      "resetPassword": "Reset Password",
+      "otpVerification": "Verify Identity"
+    },
+    "pageDescription": {
+      "login": "Enter your credentials to continue",
+      "resetPassword": "Create a new password to secure your account",
+      "otpVerification": "Complete the verification process"
+    },
+    "passwordReset": {
+      "title": "Reset",
+      "description": "You are using a temporary password. Please create a new password to continue.",
+      "newPassword": "New Password",
+      "newPasswordPlaceholder": "Enter new password",
+      "confirmPassword": "Confirm Password",
+      "confirmPasswordPlaceholder": "Confirm new password",
+      "submit": "Reset Password"
+    },
+    "otp": {
+      "title": "OTP Verification",
+      "description": "Please enter the verification code to complete your login.",
+      "installAppsStep": "1. Install one of the following apps on your device:",
+      "scanQrStep": "2. Scan the QR code with your authenticator app:",
+      "qrAlt": "QR Code",
+      "verificationCode": "Verification Code",
+      "codePlaceholder": "Enter 6-digit code",
+      "verifying": "Verifying...",
+      "verifyCode": "Verify Code"
+    },
+    "thirdParty": {
+      "orContinueWith": "Or continue with",
+      "wechat": "Sign in with WeChat",
+      "blueking": "Sign in with BlueKing",
+      "wechatBrowserTip": "You are using WeChat browser, for best experience use the WeChat login.",
+      "wechatScanTitle": "Scan with WeChat to sign in",
+      "back": "Back"
+    },
+    "wechatQr": {
+      "unavailable": "WeChat login is not available.",
+      "settingsFailed": "Failed to load WeChat login settings",
+      "qrLoadFailed": "Failed to load WeChat QR code",
+      "loading": "Loading QR code...",
+      "unableToDisplay": "Unable to display QR code"
+    },
+    "loginAuth": {
+      "methodsTitle": "Switch login method",
+      "bindingPassword": {
+        "usernameLabel": "{bindingName} Username",
+        "usernamePlaceholder": "Enter your {bindingName} username",
+        "passwordLabel": "{bindingName} Password",
+        "passwordPlaceholder": "Enter your {bindingName} password",
+        "submitText": "Sign in with {bindingName}",
+        "loadingText": "Signing in with {bindingName}..."
+      },
+      "bindingContent": {
+        "completingSignIn": "Completing sign-in",
+        "startingAuthentication": "Starting authentication",
+        "waitingForAuthentication": "Waiting for authentication",
+        "loadErrorTitle": "Unable to load login methods",
+        "loadErrorDescription": "Please retry to load the available sign-in options.",
+        "retry": "Retry",
+        "bindingTitle": "{bindingName} sign-in",
+        "bindingDescription": "Use your {bindingName} account to sign in",
+        "continueSignIn": "Click to continue sign in",
+        "waiting": "Waiting...",
+        "helperMessage": "After clicking, complete verification in the new window. If no window opens, check whether the browser blocked popups."
+      },
+      "validation": {
+        "loadMethodsFailed": "Failed to load login methods. Please refresh and try again.",
+        "timedOut": "Authentication timed out. Please try again.",
+        "cancelled": "Authentication was cancelled. Please try again.",
+        "failed": "Authentication failed. Please try again.",
+        "incompletePayload": "Authentication succeeded, but the returned login payload is incomplete.",
+        "syncFailed": "Authentication succeeded, but session synchronization failed.",
+        "queryStatusFailed": "Failed to query authentication status.",
+        "startFailed": "Failed to start authentication.",
+        "popupBlocked": "Unable to open the authentication page. Please allow new tabs and try again."
+      }
+    },
+    "languageToggle": {
+      "label": "Switch language",
+      "zhItem": "Simplified Chinese",
+      "enItem": "English"
+    }
   },
   "system": {
     "zoneinfo": {

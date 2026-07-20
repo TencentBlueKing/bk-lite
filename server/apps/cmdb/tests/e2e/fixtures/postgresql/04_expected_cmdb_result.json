@@ -1,0 +1,13 @@
+{
+  "model_id": "postgresql",
+  "instance_count_min": 1,
+  "expected_instance_subset_fixture_driven": {
+    "inst_name": "127.0.0.1-pg-15432",
+    "ip_addr":   "127.0.0.1",
+    "port":      "15432",
+    "version":   "16.14"
+  },
+  "fixture_source_fixture_driven": "agents/stargazer/tests/fixtures/collect/postgresql.json (2026-07-04 cli 真实落盘,ip=127.0.0.1,port=15432)",
+  "inst_name_alias": "pg",
+  "notes": "G5.2.x Phase 3.1 第 5 闭环;db 类 runner 用 DatabasesCollectMetrics,extra_payload_keys=None(平铺);plugin inst_name 短名 pg 而非 postgresql(apps/cmdb/collection/plugins/community/db/postgresql.py 写死)"
+}

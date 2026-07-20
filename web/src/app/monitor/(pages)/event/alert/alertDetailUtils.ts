@@ -31,3 +31,37 @@ export const buildAlertSnapshotChartValues = (
 
   return Array.from(pointMap.values()).sort((prev, next) => prev[0] - next[0]);
 };
+
+export const resolveAlertDetailMetric = (
+  alert: Record<string, any>,
+  metricInfo: Record<string, any> = {}
+): Record<string, any> => {
+  const queryCondition = alert.policy?.query_condition;
+  const displayUnit =
+    alert.policy?.calculation_unit || alert.policy?.metric_unit || metricInfo.unit;
+
+  if (queryCondition?.type === 'formula') {
+    const resultName = queryCondition.result_name || metricInfo.display_name || metricInfo.name || '--';
+    return {
+      ...metricInfo,
+      name: metricInfo.name || resultName,
+      display_name: resultName,
+      unit: displayUnit || ''
+    };
+  }
+
+  return {
+    ...metricInfo,
+    unit: displayUnit || ''
+  };
+};
+
+export const resolveAlertDetailChartUnit = (
+  alert: Record<string, any>,
+  responseUnit: string | null | undefined
+): string =>
+  responseUnit ||
+  alert.policy?.threshold_unit ||
+  alert.policy?.calculation_unit ||
+  alert.policy?.metric_unit ||
+  '';

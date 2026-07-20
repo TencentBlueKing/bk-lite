@@ -1,0 +1,27 @@
+{
+  "model_id": "minio",
+  "captured_at": "2026-07-08T06:30:30Z",
+  "image": "docker.m.daocloud.io/library/ubuntu:22.04",
+  "container_meta": {
+    "container_id": "cc180e26923d",
+    "image": "docker.m.daocloud.io/library/ubuntu:22.04"
+  },
+  "params": {
+    "host": "127.0.0.1",
+    "ssh_port": 12240
+  },
+  "raw_stdout": {
+    "bk_inst_name": "172.17.0.2-minio-9000",
+    "bk_obj_id": "minio",
+    "ip_addr": "172.17.0.2",
+    "port": "9000",
+    "console_port": "9001",
+    "version": "RELEASE.2025-09-07T16-13-09Z",
+    "bin_path": "minio",
+    "data_path": "/data",
+    "conf_path": "/etc/default/minio",
+    "deploy_mode": "standalone",
+    "region": "",
+    "start_args": "/run/rosetta/rosetta /usr/local/bin/minio minio server /data --address :9000 --console-address :9001 "
+  }
+}

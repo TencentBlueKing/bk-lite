@@ -73,7 +73,7 @@
         "fatal": "致命",
         "severity": "严重",
         "warning": "预警",
-        "remain": "提醒",
+        "remaining": "剩余",
         "notified": "已通知",
         "unnotified": "未通知",
         "alertName": "告警名称",
@@ -123,6 +123,14 @@
         "eventTitle": "标题",
         "eventCount": "事件数量",
         "notificationStatus": "通知情况",
+        "notificationSummary": "共 {{total}} 次通知，显示最近 {{shown}} 次",
+        "notificationTime": "通知时间",
+        "notificationChannel": "通知渠道",
+        "notificationRecipients": "接收人",
+        "notificationResult": "通知结果",
+        "notificationFailureReason": "失败原因",
+        "notificationReasonUnavailable": "未记录失败原因",
+        "noNotificationRecords": "暂无通知记录",
         "incidentName": "事故名称",
         "declareIncident": "升级为事故",
         "declareIncidentErrorMsg": "你选择的告警已关联事故",
@@ -339,6 +347,10 @@
         "correlationRules": "相关性规则",
         "assignStrategyMessage": "您可以配置自动分派策略，让符合筛选条件的告警，分派给指定人员，并可选择通知方式。",
         "shieldStrategyMessage": "通过屏蔽策略，您可以更加高效地管理告警信息的发送，提高告警系统的效率和用户体验。",
+        "shieldStrategyForm": {
+            "editTitle": "编辑屏蔽策略",
+            "addTitle": "新增屏蔽策略"
+        },
         "correlationRulesMessage": "挖掘低层次事件的关联性，从而聚合为高层次事件，在这里您可以定义Event到Alert的聚合规则，以减少需要处理的信息量，提高单个事件的信息价值。",
         "correlationAlertPlaceholder": "Alert 到 Incident 的聚合规则功能开发中，敬请期待...",
         "alertAssignTableName": "名称",
@@ -622,6 +634,7 @@
             }
         },
         "actionRuleTitle": "告警处理规则",
+        "actionRuleMessage": "根据告警生命周期事件和匹配条件触发自动化动作，支持执行作业、字段绑定与状态启停管理。",
         "actionRuleName": "规则名称",
         "actionTriggerEvent": "触发事件",
         "actionMatchSummary": "匹配条件",
@@ -632,6 +645,7 @@
         "actionTriggerTip": "未勾选的生命周期事件不会触发本规则",
         "actionRecordsTitle": "执行记录",
         "actionManualTrigger": "执行动作",
+        "noAvailableRules": "暂无可用规则",
         "actionRerun": "重跑",
         "actionTab": "处理动作",
         "actionTargetHostField": "目标主机字段",
@@ -640,6 +654,12 @@
         "actionParamConst": "常量",
         "actionBindingField": "字段",
         "actionConfigSection": "动作配置",
-        "actionTargetHostFieldTip": "从告警 labels 取，默认 ip_addr"
+        "actionTargetHostFieldTip": "从告警 labels 取，默认 ip_addr",
+        "actionTargetHostMode": "目标主机来源",
+        "actionTargetHostModeFromAlert": "从告警取",
+        "actionTargetHostModeFixed": "固定主机",
+        "actionTargetHostModeLegacy": "默认·从告警取",
+        "actionTargetHostIp": "目标主机 IP",
+        "actionTargetHostIpTip": "不读告警；按此 IP 在节点管理中查找唯一主机"
     }
 }

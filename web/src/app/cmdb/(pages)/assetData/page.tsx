@@ -17,7 +17,14 @@ import {
   Tooltip,
 } from 'antd';
 import type { MenuProps } from 'antd';
-import { DownOutlined, StarFilled, StarOutlined, UnorderedListOutlined } from '@ant-design/icons';
+import {
+  DownOutlined,
+  MinusSquareOutlined,
+  PlusSquareOutlined,
+  StarFilled,
+  StarOutlined,
+  UnorderedListOutlined,
+} from '@ant-design/icons';
 import { useSearchParams, usePathname, useRouter } from 'next/navigation';
 import CustomTable from '@/components/custom-table';
 import GroupTreeSelector from '@/components/group-tree-select';
@@ -56,14 +63,33 @@ import { useQuickSubscribeDefaults, useSubscriptionMutation } from '@/app/cmdb/h
 import { useFollowedAssets } from '@/app/cmdb/hooks/useFollowedAssets';
 import type { QuickSubscribeDefaults, QuickSubscribeSource } from '@/app/cmdb/types/subscription';
 import assetDataStyle from './index.module.scss';
+import {
+  applyTreeExpansionPreferenceOperation,
+  buildGroupKey,
+  createTreeExpansionPreferenceState,
+  getClassificationIdFromGroupKey,
+  readCollapsedClassificationIds,
+  reconcileTreeExpansionPreference,
+  recordTreeExpansionPreferenceWrite,
+  selectCollapsedClassificationIds,
+  transitionTreeExpansionSearch,
+  updateCollapsedClassificationIds,
+  writeCollapsedClassificationIds,
+} from './treeExpansionPreference';
 
 const { confirm } = Modal;
 
-const GROUP_KEY_PREFIX = 'group:';
 const COPY_EXCLUDE_FIELDS = ['_id', 'inst_id', 'id', 'created_at', 'updated_at', 'created_by', 'updated_by'];
 
-const buildGroupKey = (classificationId: string) => `${GROUP_KEY_PREFIX}${classificationId}`;
-const isGroupKey = (key: string) => key.startsWith(GROUP_KEY_PREFIX);
+const isGroupKey = (key: string) => getClassificationIdFromGroupKey(key) !== null;
+
+const getBrowserStorage = () => {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+};
 
 const parseUrlQueryList = (urlQueryList: string): FilterItem[] | null => {
   if (!urlQueryList) return null;
@@ -220,6 +246,7 @@ const AssetDataContent = () => {
   const [organization, setOrganization] = useState<number[]>([]);
   const [selectedTreeKeys, setSelectedTreeKeys] = useState<string[]>([]);
   const [expandedTreeKeys, setExpandedTreeKeys] = useState<string[]>([]);
+  const preferenceStateRef = useRef(createTreeExpansionPreferenceState());
   const [subscriptionDrawerOpen, setSubscriptionDrawerOpen] = useState(false);
   const [quickSubscribeModalOpen, setQuickSubscribeModalOpen] = useState(false);
   const [subscriptionSource, setSubscriptionSource] = useState<QuickSubscribeSource>('drawer');
@@ -302,7 +329,7 @@ const AssetDataContent = () => {
 
   useEffect(() => {
     // 主页中当模型为host时，获取云区域选项test8.7
-    if (modelId === 'host') {
+    if (['host', 'subnet'].includes(modelId)) {
       getInstanceProxys()
         .then((data: any[]) => {
           setProxyOptions(data || []);
@@ -464,8 +491,45 @@ const AssetDataContent = () => {
   }, [pagination?.current, pagination?.pageSize, queryList, organization]);
 
   useEffect(() => {
-    setExpandedTreeKeys(modelGroup.map((item) => buildGroupKey(item.classification_id)));
-  }, [modelGroup]);
+    const validClassificationIds = modelGroup.map((item) => item.classification_id);
+    if (validClassificationIds.length === 0) {
+      if (!preferenceStateRef.current.searchActive) setExpandedTreeKeys([]);
+      return;
+    }
+
+    const preferenceUserId = userId ? String(userId) : null;
+    const storedCollapsedClassificationIds = preferenceUserId
+      ? readCollapsedClassificationIds(
+        getBrowserStorage(),
+        preferenceUserId,
+        validClassificationIds
+      )
+      : [];
+    const transition = reconcileTreeExpansionPreference(
+      preferenceStateRef.current,
+      preferenceUserId,
+      validClassificationIds,
+      storedCollapsedClassificationIds
+    );
+    preferenceStateRef.current = transition.state;
+    if (transition.writeRequest) {
+      const { userId: writeUserId, collapsedClassificationIds } = transition.writeRequest;
+      const succeeded = writeCollapsedClassificationIds(
+        getBrowserStorage(),
+        writeUserId,
+        collapsedClassificationIds
+      );
+      preferenceStateRef.current = recordTreeExpansionPreferenceWrite(
+        preferenceStateRef.current,
+        writeUserId,
+        succeeded
+      );
+    }
+
+    if (!preferenceStateRef.current.searchActive) {
+      setExpandedTreeKeys(transition.expandedKeys);
+    }
+  }, [modelGroup, userId]);
 
   const fetchData = async () => {
     setTableLoading(true);
@@ -820,19 +884,84 @@ const AssetDataContent = () => {
     [modelInstCount]
   );
 
+  const persistCollapsedClassificationIds = useCallback(
+    (nextIds: string[]) => {
+      const validClassificationIds = modelGroup.map((item) => item.classification_id);
+      const transition = applyTreeExpansionPreferenceOperation(
+        preferenceStateRef.current,
+        userId ? String(userId) : null,
+        validClassificationIds,
+        nextIds
+      );
+      preferenceStateRef.current = transition.state;
+      if (transition.writeRequest) {
+        const { userId: writeUserId, collapsedClassificationIds } = transition.writeRequest;
+        const succeeded = writeCollapsedClassificationIds(
+          getBrowserStorage(),
+          writeUserId,
+          collapsedClassificationIds
+        );
+        preferenceStateRef.current = recordTreeExpansionPreferenceWrite(
+          preferenceStateRef.current,
+          writeUserId,
+          succeeded
+        );
+      }
+      return transition;
+    },
+    [modelGroup, userId]
+  );
+
+  const handleTreeExpand = useCallback(
+    (keys: React.Key[], info: { expanded: boolean; node: { key: React.Key } }) => {
+      setExpandedTreeKeys(keys.map(String));
+      const classificationId = getClassificationIdFromGroupKey(String(info.node.key));
+      if (!classificationId) return;
+
+      const validClassificationIds = modelGroup.map((item) => item.classification_id);
+      const nextIds = updateCollapsedClassificationIds(
+        validClassificationIds,
+        selectCollapsedClassificationIds(
+          preferenceStateRef.current,
+          userId ? String(userId) : null,
+          validClassificationIds
+        ),
+        classificationId,
+        info.expanded
+      );
+      persistCollapsedClassificationIds(nextIds);
+    },
+    [modelGroup, persistCollapsedClassificationIds, userId]
+  );
+
+  const handleExpandAllTreeGroups = useCallback(() => {
+    const transition = persistCollapsedClassificationIds([]);
+    setExpandedTreeKeys(transition.expandedKeys);
+  }, [modelGroup, persistCollapsedClassificationIds]);
+
+  const handleCollapseAllTreeGroups = useCallback(() => {
+    const validClassificationIds = modelGroup.map((item) => item.classification_id);
+    persistCollapsedClassificationIds(validClassificationIds);
+    setExpandedTreeKeys([]);
+  }, [modelGroup, persistCollapsedClassificationIds]);
+
   const handleTreeSearch = useCallback(
     (searchText: string) => {
       setTreeSearchText(searchText);
       const treeData = buildTreeData(modelGroup, renderModelTitle);
       const filtered = filterTreeNodes(treeData, searchText, renderModelTitle);
       setFilteredTreeData(filtered);
-
-      const expandedKeys = searchText
-        ? getAllTreeKeys(filtered)
-        : modelGroup.map((item) => buildGroupKey(item.classification_id));
-      setExpandedTreeKeys(expandedKeys);
+      const validClassificationIds = modelGroup.map((item) => item.classification_id);
+      const transition = transitionTreeExpansionSearch(
+        preferenceStateRef.current,
+        userId ? String(userId) : null,
+        validClassificationIds,
+        searchText ? getAllTreeKeys(filtered) : null
+      );
+      preferenceStateRef.current = transition.state;
+      setExpandedTreeKeys(transition.expandedKeys);
     },
-    [modelGroup, renderModelTitle]
+    [modelGroup, renderModelTitle, userId]
   );
 
   useEffect(() => {
@@ -1026,6 +1155,7 @@ const AssetDataContent = () => {
         <div className={`${assetDataStyle.groupSelector}`}>
           <div className={assetDataStyle.treeSearchWrapper}>
             <Input.Search
+              className={assetDataStyle.treeSearchInput}
               placeholder={t('common.search')}
               value={treeSearchText}
               allowClear
@@ -1033,6 +1163,28 @@ const AssetDataContent = () => {
               onSearch={handleTreeSearch}
               onChange={(e) => setTreeSearchText(e.target.value)}
             />
+            <div className={assetDataStyle.treeSearchActions}>
+              <Tooltip title={t('common.expandAll')}>
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<PlusSquareOutlined aria-hidden="true" />}
+                  aria-label={t('common.expandAll')}
+                  disabled={modelGroup.length === 0}
+                  onClick={handleExpandAllTreeGroups}
+                />
+              </Tooltip>
+              <Tooltip title={t('common.collapseAll')}>
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<MinusSquareOutlined aria-hidden="true" />}
+                  aria-label={t('common.collapseAll')}
+                  disabled={modelGroup.length === 0}
+                  onClick={handleCollapseAllTreeGroups}
+                />
+              </Tooltip>
+            </div>
           </div>
           <div className={assetDataStyle.treeWrapper}>
             {filteredTreeData.length > 0 ? (
@@ -1040,7 +1192,7 @@ const AssetDataContent = () => {
                 showLine
                 selectedKeys={selectedTreeKeys}
                 expandedKeys={expandedTreeKeys}
-                onExpand={(keys) => setExpandedTreeKeys(keys as string[])}
+                onExpand={handleTreeExpand}
                 onSelect={onSelectUnified}
                 treeData={filteredTreeData}
               />
@@ -1255,7 +1407,7 @@ const AssetDataContent = () => {
                 </Button>
               </Space>
             )}
-            destroyOnClose
+            destroyOnHidden
             styles={{
               body: {
                 maxHeight: 'calc(100vh - 220px)',

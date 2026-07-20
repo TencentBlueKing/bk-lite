@@ -5,6 +5,7 @@ from apps.core.utils.permission_cache import clear_user_permission_cache
 
 
 class User(models.Model):
+    user_id = models.CharField(max_length=36, null=True, blank=True, db_index=True, default=None)
     username = models.CharField(max_length=100)
     display_name = models.CharField(max_length=100)
     email = models.EmailField()
@@ -22,6 +23,7 @@ class User(models.Model):
     password_last_modified = models.DateTimeField(default=django_timezone.now, verbose_name="密码最后修改时间")
     password_error_count = models.IntegerField(default=0, verbose_name="密码错误次数")
     account_locked_until = models.DateTimeField(null=True, blank=True, verbose_name="账号锁定截止时间")
+    sync_source = models.ForeignKey("system_mgmt.UserSyncSource", null=True, blank=True, on_delete=models.SET_NULL, related_name="synced_users")
 
     class Meta:
         unique_together = ("username", "domain")
@@ -46,6 +48,7 @@ class User(models.Model):
     def display_fields():
         return [
             "id",
+            "user_id",
             "username",
             "display_name",
             "email",
@@ -70,6 +73,7 @@ class Group(models.Model):
     roles = models.ManyToManyField("Role", blank=True, verbose_name="角色列表")
     is_virtual = models.BooleanField(default=False, verbose_name="是否虚拟组")
     allow_inherit_roles = models.BooleanField(default=False, verbose_name="允许子组织继承角色")
+    sync_source = models.ForeignKey("system_mgmt.UserSyncSource", null=True, blank=True, on_delete=models.SET_NULL, related_name="synced_groups")
 
     class Meta:
         unique_together = ("name", "parent_id")

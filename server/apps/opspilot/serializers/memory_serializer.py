@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from apps.core.utils.serializers import AuthSerializer, TeamSerializer
+from apps.opspilot.memory.visibility import get_visible_memories_qs
 from apps.opspilot.models.memory_mgmt import Memory, MemorySpace
 
 
@@ -38,7 +39,9 @@ class MemorySpaceSerializer(TeamSerializer, AuthSerializer):
         }
 
     def get_memory_count(self, instance: MemorySpace):
-        return instance.memories.count()
+        request = self.context.get("request") if hasattr(self, "context") else None
+        user = getattr(request, "user", None)
+        return get_visible_memories_qs(user).filter(memory_space_id=instance.id).count()
 
     def get_masked_storage_config(self, instance: MemorySpace):
         """返回脱敏后的配置"""

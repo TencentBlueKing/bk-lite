@@ -19,8 +19,6 @@ interface QuotaRecord {
   target_type: string;
   target_list: string[];
   rule_type: string;
-  file_size: number;
-  unit: string;
   skill_count: number;
   bot_count: number;
 }
@@ -86,8 +84,6 @@ const QuotaManagementPage: React.FC = () => {
         targetType: record.target_type,
         targetList: record.target_list,
         rule: record.rule_type,
-        file_size: record.file_size.toString(), // Ensure the value is a string if it needs to be
-        unit: record.unit,
         skills: record.skill_count.toString(),
         bots: record.bot_count.toString(),
       };
@@ -103,14 +99,12 @@ const QuotaManagementPage: React.FC = () => {
   };
 
   const handleConfirm = async (values: any) => {
-    const { name, targetType, targetList, rule, file_size, unit, skills, bots } = values;
+    const { name, targetType, targetList, rule, skills, bots } = values;
     const payload = {
       name,
       target_type: targetType,
       target_list: targetList,
       rule_type: rule,
-      file_size: parseInt(file_size, 10),
-      unit,
       skill_count: parseInt(skills, 10),
       bot_count: parseInt(bots, 10),
     };
@@ -134,12 +128,6 @@ const QuotaManagementPage: React.FC = () => {
       title: t('settings.manageQuota.name'),
       dataIndex: 'name',
       key: 'name',
-    },
-    {
-      title: t('settings.manageQuota.knowledgeBase'),
-      dataIndex: 'knowledgeBase',
-      key: 'knowledgeBase',
-      render: (text, record) => `${record.file_size} ${record.unit}`,
     },
     {
       title: t('settings.manageQuota.skill'),

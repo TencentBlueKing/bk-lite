@@ -366,9 +366,15 @@ export const OrganizationField: React.FC<{ value: any; hideUserAvatar?: boolean 
 export const iconList = getSvgIcon();
 // 图标套切换点：'/assets/icons'（扁平蓝块） | '/assets/icons-realistic'（写实立体）
 const CMDB_ICON_DIR = '/assets/icons-realistic';
+// 缓存 getIconUrl 结果,避免每次调用都生成新字符串(稳定引用
+// 可让 x6 setAttrs 判断 attrs 没变,跳过 <image> 元素重建,避免 SVG 重请求)
+const iconUrlCache = new Map<string, string>();
 export function getIconUrl(tex: ModelIconItem) {
   try {
     const icn = tex.icn || '';
+    const cacheKey = `${icn}|${tex.model_id || ''}`;
+    const cached = iconUrlCache.get(cacheKey);
+    if (cached !== undefined) return cached;
 
     // 查找显示的图标：
     // 1) icn 直接是完整文件名（后端配置形如 cc-switch2_交换机）
@@ -381,21 +387,22 @@ export function getIconUrl(tex: ModelIconItem) {
     }
 
     // 如果显示图标存在，直接返回相应的图标路径
+    let result: string;
     if (showIcon) {
-      return `${CMDB_ICON_DIR}/${showIcon.url}.svg`;
+      result = `${CMDB_ICON_DIR}/${showIcon.url}.svg`;
+    } else {
+      // 查找内置模型和对应图标
+      const isBuilt = BUILD_IN_MODEL.find((item) => item.key === tex.model_id);
+      const builtIcon = isBuilt
+        ? iconList.find((item) => item.key === isBuilt.icon)
+        : null;
+      // 使用内置模型图标或者默认图标
+      const iconUrl = builtIcon?.url || 'cc-default_默认';
+      result = `${CMDB_ICON_DIR}/${iconUrl}.svg`;
     }
 
-    // 查找内置模型和对应图标
-    const isBuilt = BUILD_IN_MODEL.find((item) => item.key === tex.model_id);
-    const builtIcon = isBuilt
-      ? iconList.find((item) => item.key === isBuilt.icon)
-      : null;
-
-    // 使用内置模型图标或者默认图标
-    const iconUrl = builtIcon?.url || 'cc-default_默认';
-
-    // 返回图标路径
-    return `${CMDB_ICON_DIR}/${iconUrl}.svg`;
+    iconUrlCache.set(cacheKey, result);
+    return result;
   } catch (e) {
     // 记录错误日志并返回默认图标
     console.error('Error in getIconUrl:', e);
@@ -671,18 +678,17 @@ export const getAssetColumns = (config: {
         return {
           ...columnItem,
           render: (_: unknown, record: any) => {
-            const cloudOptions = useAssetDataStore.getState().cloud_list;
             const modelId = record.model_id;
-            if (attrId === 'cloud' && modelId === 'host') {
-              const cloudId = +record[attrId];
-              const cloudName = cloudOptions.find(
-                (option: any) => option.proxy_id === cloudId
-              );
-              const displayText = cloudName ? cloudName.proxy_name : (cloudName || '--');
+            const displayText = getCloudRegionDisplayName(
+              attrId,
+              modelId,
+              record[attrId],
+            );
+            if (displayText !== null) {
               return (
                 <EllipsisWithTooltip
                   className="whitespace-nowrap overflow-hidden text-ellipsis"
-                  text={displayText as string}
+                  text={displayText}
                 ></EllipsisWithTooltip>
               );
             }
@@ -703,6 +709,32 @@ export const getAssetColumns = (config: {
   });
 };
 
+const getCloudRegionDisplayName = (
+  attrId: string,
+  modelId: string,
+  value: unknown,
+) => {
+  const cloudOptions = useAssetDataStore.getState().cloud_list || [];
+  const normalizedValue = String(value ?? '').trim();
+  if (!normalizedValue) {
+    return '--';
+  }
+
+  if (
+    !(
+      (attrId === 'cloud' && modelId === 'host') ||
+      (attrId === 'cloud_id' && modelId === 'subnet')
+    )
+  ) {
+    return null;
+  }
+
+  const matched = cloudOptions.find(
+    (option: any) => String(option.proxy_id) === normalizedValue,
+  );
+  return matched?.proxy_name || normalizedValue;
+};
+
 
 export const getFieldItem = (config: {
   fieldItem: AttrFieldType;
@@ -718,6 +750,31 @@ export const getFieldItem = (config: {
 }) => {
   const { disabled, placeholder } = config;
   if (config.isEdit) {
+    if (
+      (config.fieldItem.attr_id === 'cloud' && config.modelId === 'host') ||
+      (config.fieldItem.attr_id === 'cloud_id' && config.modelId === 'subnet')
+    ) {
+      const cloudOptions = useAssetDataStore.getState().cloud_list || [];
+      return (
+        <Select
+          showSearch
+          disabled={disabled}
+          placeholder={placeholder}
+          filterOption={(input, opt: any) => {
+            if (typeof opt?.children === 'string') {
+              return opt.children.toLowerCase().includes(input.toLowerCase());
+            }
+            return true;
+          }}
+        >
+          {cloudOptions.map((opt: any) => (
+            <Select.Option key={String(opt.proxy_id)} value={String(opt.proxy_id)}>
+              {opt.proxy_name}
+            </Select.Option>
+          ))}
+        </Select>
+      );
+    }
     if (config.fieldItem.attr_id === 'collect_task') {
       return (
         <CollectTaskTreeSelect
@@ -914,6 +971,16 @@ export const getFieldItem = (config: {
         '--'
       );
     case 'str':
+      if (config.modelId) {
+        const cloudDisplayName = getCloudRegionDisplayName(
+          config.fieldItem.attr_id,
+          config.modelId,
+          config.value,
+        );
+        if (cloudDisplayName !== null) {
+          return cloudDisplayName;
+        }
+      }
       if (config.fieldItem.attr_id === 'collect_task') {
         // Given 详情页字段为只读展示，When collect_task 可解析路由，Then 渲染可点击新标签链接。
         const meta = getCollectTaskLinkMeta(config.value);

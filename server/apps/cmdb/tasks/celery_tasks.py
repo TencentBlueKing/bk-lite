@@ -2,11 +2,13 @@
 # @File: tasks.py
 # @Time: 2025/3/3 15:34
 # @Author: windyzhao
+import time
 from datetime import timedelta
 
 from celery import shared_task
 from django.utils.timezone import now
 
+from apps.cmdb.collection.collect_plugin.base import is_failed_vm_metric
 from apps.cmdb.collection.collect_tasks.job_collect import JobCollect
 from apps.cmdb.collection.collect_tasks.protocol_collect import ProtocolCollect
 from apps.cmdb.constants.constants import CollectPluginTypes, CollectRunStatusType
@@ -18,9 +20,22 @@ from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncService
 from apps.core.logger import cmdb_logger as logger
 
 
+def _is_unhelpful_error_message(message: str) -> bool:
+    text = str(message or "").strip()
+    return text in {"0", "1", "None", "null", "False", "True"}
+
+
+def _build_exception_args_message(err: Exception) -> str:
+    args = getattr(err, "args", ()) or ()
+    if not args:
+        return ""
+    rendered = ", ".join(repr(arg) for arg in args)
+    return f"{err.__class__.__name__}({rendered})"
+
+
 def _build_safe_error_message(err: Exception) -> str:
     message = str(err).strip()
-    if message:
+    if message and not _is_unhelpful_error_message(message):
         return message
 
     attr_message = getattr(err, "message", None)
@@ -31,11 +46,151 @@ def _build_safe_error_message(err: Exception) -> str:
     if isinstance(detail, str) and detail.strip():
         return detail.strip()
 
+    args_message = _build_exception_args_message(err)
+    if args_message:
+        return args_message
+
     return err.__class__.__name__
 
 
+def _build_traceback_excerpt(traceback_text: str, max_lines: int = 16) -> str:
+    if not traceback_text:
+        return ""
+    lines = [line.rstrip() for line in str(traceback_text).splitlines() if line.strip()]
+    if not lines:
+        return ""
+    return "\n".join(lines[-max_lines:])
+
+
+def _build_traceback_location(traceback_text: str) -> str:
+    if not traceback_text:
+        return ""
+    lines = [line.strip() for line in str(traceback_text).splitlines() if line.strip()]
+    file_lines = [line for line in lines if line.startswith('File "')]
+    return file_lines[-1] if file_lines else ""
+
+
+def _count_raw_collection_outcomes(raw_data) -> tuple[int, int]:
+    """统计已经扁平化到原始详情中的 VM 成功、失败指标行数。"""
+    rows = [row for row in (raw_data or []) if isinstance(row, dict)]
+    failed = sum(1 for row in rows if is_failed_vm_metric({"metric": row}))
+    return len(rows) - failed, failed
+
+
+@shared_task(
+    bind=True,
+    max_retries=2,
+    name="apps.cmdb.tasks.celery_tasks.trigger_first_collection",
+)
+def trigger_first_collection(self, task_id, expected_fingerprint, reason):
+    from apps.cmdb.constants import constants as cmdb_constants
+    from apps.cmdb.services.first_collection_policy import FirstCollectionPolicy
+    from apps.cmdb.services.stargazer_collect_trigger import (
+        StargazerCollectPermanentError,
+        StargazerCollectRetryableError,
+        StargazerCollectTriggerClient,
+    )
+
+    started_at = time.monotonic()
+    if not cmdb_constants.CMDB_FIRST_COLLECTION_ENABLED:
+        return {"status": "disabled", "task_id": task_id, "reason": reason}
+
+    task = CollectModels._default_manager.filter(id=task_id).first()
+    if not task:
+        return {"status": "missing", "task_id": task_id, "reason": reason}
+    if not FirstCollectionPolicy.is_eligible(task):
+        return {"status": "ineligible", "task_id": task_id, "reason": reason}
+
+    cycle_minutes = int(task.cycle_value)
+    attempt = int(self.request.retries) + 1
+    current_fingerprint = FirstCollectionPolicy.fingerprint(task)
+    fingerprint_short = current_fingerprint[:12]
+    if current_fingerprint != expected_fingerprint:
+        logger.info(
+            "[FirstCollection] 跳过过期配置 task_id=%s fingerprint=%s reason=%s "
+            "cycle=%s attempt=%s elapsed_ms=%s result=stale",
+            task_id,
+            fingerprint_short,
+            reason,
+            cycle_minutes,
+            attempt,
+            int((time.monotonic() - started_at) * 1000),
+        )
+        return {"status": "stale", "task_id": task_id, "reason": reason}
+
+    try:
+        result = StargazerCollectTriggerClient().trigger(task)
+    except StargazerCollectRetryableError as exc:
+        retry_number = int(self.request.retries)
+        if retry_number >= self.max_retries:
+            logger.warning(
+                "[FirstCollection] 可重试次数耗尽 task_id=%s fingerprint=%s reason=%s "
+                "cycle=%s attempt=%s elapsed_ms=%s error_type=%s "
+                "result=failed retry_exhausted=true",
+                task_id,
+                fingerprint_short,
+                reason,
+                cycle_minutes,
+                attempt,
+                int((time.monotonic() - started_at) * 1000),
+                exc.__class__.__name__,
+            )
+            return {
+                "status": "failed",
+                "task_id": task_id,
+                "reason": reason,
+                "retry_exhausted": True,
+            }
+
+        countdown = 10 * (2**retry_number)
+        logger.warning(
+            "[FirstCollection] 可重试失败 task_id=%s fingerprint=%s reason=%s "
+            "cycle=%s attempt=%s elapsed_ms=%s error_type=%s",
+            task_id,
+            fingerprint_short,
+            reason,
+            cycle_minutes,
+            attempt,
+            int((time.monotonic() - started_at) * 1000),
+            exc.__class__.__name__,
+        )
+        raise self.retry(exc=exc, countdown=countdown)
+    except StargazerCollectPermanentError as exc:
+        logger.warning(
+            "[FirstCollection] 永久失败 task_id=%s fingerprint=%s reason=%s "
+            "cycle=%s attempt=%s elapsed_ms=%s error_type=%s",
+            task_id,
+            fingerprint_short,
+            reason,
+            cycle_minutes,
+            attempt,
+            int((time.monotonic() - started_at) * 1000),
+            exc.__class__.__name__,
+        )
+        return {"status": "failed", "task_id": task_id, "reason": reason}
+
+    logger.info(
+        "[FirstCollection] 已接收 task_id=%s fingerprint=%s reason=%s "
+        "cycle=%s attempt=%s elapsed_ms=%s result=%s",
+        task_id,
+        fingerprint_short,
+        reason,
+        cycle_minutes,
+        attempt,
+        int((time.monotonic() - started_at) * 1000),
+        result.status,
+    )
+    return {
+        "status": result.status,
+        "task_id": task_id,
+        "reason": reason,
+        "total": result.total,
+        "accepted": result.accepted,
+    }
+
+
 @shared_task
-def sync_collect_task(instance_id):
+def sync_collect_task(instance_id, preclaimed=False):
     """
     同步采集任务
     """
@@ -46,22 +201,28 @@ def sync_collect_task(instance_id):
         return
     from apps.cmdb.services.collect_service import CollectModelService
 
+    # 手动任务已在投递前抢占；周期任务必须在 Worker 内自行抢占。
+    if preclaimed:
+        if instance.exec_status != CollectRunStatusType.RUNNING:
+            logger.info(
+                "[CollectTask] 已抢占消息状态失效，跳过执行 task_id=%s duplicate_skipped=true",
+                instance_id,
+            )
+            return
+    else:
+        claimed_at = CollectModelService.claim_execution(instance_id)
+        if claimed_at is None:
+            logger.info(
+                "[CollectTask] 任务正在执行，本轮跳过 task_id=%s exec_time=%s duplicate_skipped=true",
+                instance_id,
+                instance.exec_time,
+            )
+            return
+        instance.refresh_from_db()
     CollectModelService.repair_host_cloud_snapshot(instance)
-    if instance.exec_status == CollectRunStatusType.NOT_START:
-        CollectModels._default_manager.filter(id=instance_id).update(exec_status=CollectRunStatusType.RUNNING)
-    # 防止周期触发与延迟补跑重叠导致同一任务并发执行
-    # if instance.exec_status == CollectRunStatusType.RUNNING:
-    #     logger.info("采集任务已在执行中，跳过重复执行 task_id={}".format(instance_id))
-    #     return
-    # 统一在 Celery 执行入口更新任务开始时间和运行状态
-    start_time = now()
-    instance.exec_status = CollectRunStatusType.RUNNING
-    instance.exec_time = start_time
-    CollectModels._default_manager.filter(id=instance_id).update(
-        exec_status=CollectRunStatusType.RUNNING,
-        exec_time=start_time,
-    )
     exec_error_message = ""
+    exec_traceback_excerpt = ""
+    exec_traceback_location = ""
     task_exec_status = CollectRunStatusType.SUCCESS
     config_file_pending = False
     try:
@@ -87,14 +248,19 @@ def sync_collect_task(instance_id):
     except Exception as err:
         import traceback
 
+        traceback_text = traceback.format_exc()
         logger.error(
             "[CollectTask] 同步采集数据失败 task_id=%s, error=%s",
             instance_id,
-            traceback.format_exc(),
+            traceback_text,
         )
         exec_error_message = "采集任务执行失败（task_id={}）：{}".format(
             instance_id, _build_safe_error_message(err)
         )
+        exec_traceback_excerpt = _build_traceback_excerpt(traceback_text)
+        exec_traceback_location = _build_traceback_location(traceback_text)
+        if exec_traceback_location:
+            exec_error_message = f"{exec_error_message} @ {exec_traceback_location}"
         result = {}
         format_data = {}
         instance.exec_status = CollectRunStatusType.ERROR
@@ -114,6 +280,10 @@ def sync_collect_task(instance_id):
             "association_error": len([i for i in format_data.get("association", []) if i.get("_status") != "success"]),
             "all": format_data.get("all", 0),  # 总数是发现的正常数据总数，例如：扫描了10个ip，其中6个是真的ip，4个ip不存在，总数为6
         }
+        raw_data = format_data.get("__raw_data__", [])
+        collect_success, collect_failed = _count_raw_collection_outcomes(raw_data)
+        collect_digest["collect_success"] = collect_success
+        collect_digest["collect_failed"] = collect_failed
         # add是需要新增的数据，add_success是实际新增成功的数据（实际到cmdb的数据），add_error是新增失败的数据，其他以此类推
         collect_digest["add_success"] = collect_digest["add"] - collect_digest["add_error"]
         collect_digest["update_success"] = collect_digest["update"] - collect_digest["update_error"]
@@ -122,15 +292,17 @@ def sync_collect_task(instance_id):
         # 如果任务执行失败，添加错误信息提示
         if task_exec_status == CollectRunStatusType.ERROR:
             collect_digest["message"] = exec_error_message
+            if exec_traceback_excerpt:
+                collect_digest["traceback"] = exec_traceback_excerpt
         elif config_file_pending:
             collect_digest["message"] = "配置文件采集已触发，等待回传中"
-        elif format_data.get("__raw_data__", []).__len__() == 0:
+        elif len(raw_data) == 0:
             collect_digest["message"] = "未发现任何有效数据，请检查采集目标连通性、凭据与采集范围配置"
             instance.exec_status = CollectRunStatusType.ERROR
         else:
             # 计算最后数据的最后上报时间
             last_time = ""
-            for i in format_data["__raw_data__"]:
+            for i in raw_data:
                 if i.get("__time__"):
                     if i["__time__"] > last_time:
                         last_time = i["__time__"]
@@ -148,12 +320,15 @@ def sync_collect_task(instance_id):
             any_failure = any(
                 collect_digest.get(f"{k}_error", 0) > 0 for k in ("add", "update", "delete", "association")
             )
-            if data_total > 0 and data_success == 0:
+            if collect_success == 0 and collect_failed > 0:
+                instance.exec_status = CollectRunStatusType.ERROR
+                collect_digest["message"] = "本轮采集结果全部失败，请检查原始数据中的采集错误"
+            elif data_total > 0 and data_success == 0:
                 instance.exec_status = CollectRunStatusType.ERROR
                 collect_digest["message"] = "实例数据写入全部失败，请检查 add/update/delete 错误数"
-            elif any_failure:
+            elif any_failure or collect_failed > 0:
                 instance.exec_status = CollectRunStatusType.PARTIAL_SUCCESS
-                collect_digest["message"] = "部分数据写入失败，请检查 add/update/delete/association 错误数"
+                collect_digest["message"] = "部分采集或数据写入失败，请检查原始数据及错误数"
         instance.collect_digest = collect_digest
         if config_file_pending:
             updated = CollectModels._default_manager.filter(id=instance_id, collect_data={}).update(
@@ -194,11 +369,14 @@ def sync_collect_task(instance_id):
 @shared_task
 def sync_periodic_update_task_status():
     """
-    执行脚本5分钟更新一次脚本结果
+    将超过 5 分钟未回传的配置文件采集置为失败。
+
+    普通采集由当前执行 Worker 写入最终状态，不能在这里提前解除 RUNNING，
+    否则下一轮周期调度会重新抢占并与仍在运行的任务重叠。
     :param :
     :return:
     """
-    logger.info("[CollectTask] 开始周期巡检超时采集任务，将运行超过 5 分钟未回传的任务置为失败")
+    logger.info("[CollectTask] 开始周期巡检超时配置文件采集任务")
     five_minutes_ago = now() - timedelta(minutes=5)
     config_file_rows = CollectModels._default_manager.filter(
         task_type=CollectPluginTypes.CONFIG_FILE,
@@ -208,15 +386,8 @@ def sync_periodic_update_task_status():
         exec_status=CollectRunStatusType.ERROR,
         collect_digest={"message": "配置文件采集已触发，但在 5 分钟内未收到回传结果"},
     )
-    rows = CollectModels._default_manager.filter(
-        exec_status=CollectRunStatusType.RUNNING,
-        exec_time__lt=five_minutes_ago,
-    ).exclude(task_type=CollectPluginTypes.CONFIG_FILE).update(
-        exec_status=CollectRunStatusType.ERROR
-    )
     logger.info(
-        "[CollectTask] 周期巡检超时采集任务完成，超时置失败任务数 rows=%s, 配置文件超时任务数 config_file_rows=%s",
-        rows,
+        "[CollectTask] 周期巡检超时配置文件采集任务完成，超时任务数 config_file_rows=%s",
         config_file_rows,
     )
 
@@ -328,6 +499,18 @@ def reconcile_instance_auto_association_task(instance_id: int) -> dict:
 
     logger.info("[AutoRelationRule] start instance reconcile, instance_id=%s", instance_id)
     return AutoRelationRuleReconcileService.reconcile_for_instance(instance_id)
+
+
+@shared_task
+def reconcile_instances_auto_association_task(instance_ids: list[int]) -> dict:
+    """批量重算实例关联，并在服务层合并重复的目标侧规则。"""
+    from apps.cmdb.services.auto_relation_reconcile import AutoRelationRuleReconcileService
+
+    logger.info(
+        "[AutoRelationRule] start batch instance reconcile, count=%s",
+        len(instance_ids or []),
+    )
+    return AutoRelationRuleReconcileService.reconcile_for_instances(instance_ids)
 
 
 @shared_task

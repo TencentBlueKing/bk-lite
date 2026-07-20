@@ -11,6 +11,7 @@ from django.utils.timezone import now
 
 from apps.cmdb.constants.constants import CollectPluginTypes, CollectRunStatusType, OPERATOR_COLLECT_TASK, DataCleanupStrategy
 from apps.cmdb.models import CREATE_INST, UPDATE_INST, DELETE_INST, EXECUTE
+from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.node_configs.config_factory import NodeParamsFactory
 from apps.cmdb.collection.collect_tasks.protocol_collect import ProtocolCollect
 from apps.cmdb.services.collect_credential_pool_service import CollectCredentialPoolService
@@ -29,6 +30,7 @@ from apps.cmdb.tasks.celery_tasks import sync_collect_task
 
 class CollectModelService(object):
     TASK = "apps.cmdb.tasks.celery_tasks.sync_collect_task"
+    FIRST_COLLECTION_TASK = "apps.cmdb.tasks.celery_tasks.trigger_first_collection"
     NAME = "sync_collect_task"
     # 周期任务达到该分钟阈值时，触发一次“下发后 4 分钟补跑”
     DELAY_SYNC_THRESHOLD_MINUTES = 15
@@ -55,6 +57,29 @@ class CollectModelService(object):
         exec_time = getattr(instance, "exec_time", None)
         snapshot["exec_time"] = exec_time.isoformat() if exec_time else None
         return snapshot
+
+    @classmethod
+    def claim_execution(cls, instance_id: int, *, clear_results: bool = False):
+        """原子抢占采集任务，已在运行时返回 None。"""
+        claimed_at = now()
+        update_fields = {
+            "exec_status": CollectRunStatusType.RUNNING,
+            "exec_time": claimed_at,
+        }
+        if clear_results:
+            update_fields.update(
+                format_data={},
+                collect_data={},
+                collect_digest={},
+            )
+
+        # 条件 UPDATE 在数据库层完成抢占，避免手动与周期任务同时通过状态检查。
+        updated = (
+            CollectModels._default_manager.filter(id=instance_id)
+            .exclude(exec_status=CollectRunStatusType.RUNNING)
+            .update(**update_fields)
+        )
+        return claimed_at if updated == 1 else None
 
     @staticmethod
     def _safe_int(value):
@@ -95,6 +120,7 @@ class CollectModelService(object):
 
     @staticmethod
     def format_params(data):
+        CollectModelService.validate_scan_cycle(data.get("scan_cycle") or {})
         not_required = ["access_point", "ip_range", "instances", "credential", "plugin_id", "params"]
         is_interval, scan_cycle = crontab_format(data["scan_cycle"]["value_type"], data["scan_cycle"]["value"])
         params = {
@@ -120,6 +146,22 @@ class CollectModelService(object):
             params["scan_cycle"] = scan_cycle
 
         return params, is_interval, scan_cycle
+
+    @staticmethod
+    def validate_scan_cycle(scan_cycle: dict) -> None:
+        if not isinstance(scan_cycle, dict):
+            return
+        if scan_cycle.get("value_type") != "cycle":
+            return
+
+        value = scan_cycle.get("value")
+        try:
+            interval_minutes = int(value)
+        except (TypeError, ValueError) as exc:
+            raise BaseAppException("周期任务最小执行间隔为1分钟") from exc
+
+        if interval_minutes < 1:
+            raise BaseAppException("周期任务最小执行间隔为1分钟")
 
     @staticmethod
     def _get_snapshot_item(snapshot):
@@ -279,7 +321,8 @@ class CollectModelService(object):
         格式化更新时的凭据参数
         """
         credential = data.get("credential")
-        if not credential and not instance.is_k8s:
+        task_type = getattr(instance, "task_type", "")
+        if not credential and not instance.is_k8s and task_type != CollectPluginTypes.IP:
             raise BaseAppException("采集凭据不能为空！")
         if credential and "regions" in credential:
             regions = credential.pop("regions")
@@ -318,6 +361,58 @@ class CollectModelService(object):
                 raise BaseAppException("采集凭据格式错误！")
             old_credential.update(credential)
             data["credential"] = old_credential
+
+    @classmethod
+    def schedule_first_collection_if_needed(
+        cls,
+        instance,
+        old_instance=None,
+        reason="create",
+    ):
+        from apps.cmdb.constants import constants as cmdb_constants
+        from apps.cmdb.services.first_collection_policy import FirstCollectionPolicy
+
+        if not cmdb_constants.CMDB_FIRST_COLLECTION_ENABLED:
+            return False
+        if not FirstCollectionPolicy.is_eligible(instance):
+            return False
+
+        if old_instance is not None:
+            changed_fields = FirstCollectionPolicy.changed_fields(old_instance, instance)
+            if not changed_fields:
+                return False
+            reason = f"update:{','.join(changed_fields)}"
+
+        fingerprint = FirstCollectionPolicy.fingerprint(instance)
+
+        def dispatch_first_collection(
+            task_id=instance.id,
+            expected=fingerprint,
+            trigger_reason=reason,
+        ):
+            try:
+                current_app.send_task(
+                    cls.FIRST_COLLECTION_TASK,
+                    args=[task_id, expected, trigger_reason],
+                )
+            except Exception as exc:
+                logger.error(
+                    "[FirstCollection] 事务后触发投递失败 "
+                    "task_id=%s fingerprint=%s reason=%s error_type=%s",
+                    task_id,
+                    expected[:12],
+                    trigger_reason,
+                    type(exc).__name__,
+                )
+
+        transaction.on_commit(dispatch_first_collection)
+        logger.info(
+            "[FirstCollection] 已注册事务后触发 task_id=%s fingerprint=%s reason=%s",
+            instance.id,
+            fingerprint[:12],
+            reason,
+        )
+        return True
 
     @classmethod
     def schedule_delayed_sync_if_needed(cls, instance, is_interval):
@@ -414,6 +509,7 @@ class CollectModelService(object):
                 if is_interval:
                     task_name = f"{cls.NAME}_{instance.id}"
                     CeleryUtils.create_or_update_periodic_task(name=task_name, crontab=scan_cycle, args=[instance.id], task=cls.TASK)
+                    cls.schedule_first_collection_if_needed(instance=instance, reason="create")
                     # create 场景满足阈值则注册一次延迟补跑
                     cls.schedule_delayed_sync_if_needed(instance=instance, is_interval=is_interval)
 
@@ -476,9 +572,6 @@ class CollectModelService(object):
                 # 更新定时任务
                 if is_interval:
                     CeleryUtils.create_or_update_periodic_task(name=task_name, crontab=scan_cycle, args=[instance.id], task=cls.TASK)
-                    if cls.is_schedule_config_changed(old_instance=old_instance, new_instance=instance):
-                        # update 场景仅在调度参数变更时注册延迟补跑
-                        cls.schedule_delayed_sync_if_needed(instance=instance, is_interval=is_interval)
                 else:
                     CeleryUtils.delete_periodic_task(task_name)
 
@@ -486,6 +579,21 @@ class CollectModelService(object):
                 if cls.should_sync_node_params(instance):
                     cls.delete_butch_node_params(old_instance)
                     cls.push_butch_node_params(instance)
+
+                schedule_changed = cls.is_schedule_config_changed(
+                    old_instance=old_instance,
+                    new_instance=instance,
+                )
+                first_collection_scheduled = cls.schedule_first_collection_if_needed(
+                    instance=instance,
+                    old_instance=old_instance,
+                    reason="update",
+                )
+                if is_interval and (schedule_changed or first_collection_scheduled):
+                    cls.schedule_delayed_sync_if_needed(
+                        instance=instance,
+                        is_interval=is_interval,
+                    )
             except Exception as e:
                 # 外部操作失败，记录错误并抛出异常，触发事务回滚
                 logger.error(
@@ -610,21 +718,33 @@ class CollectModelService(object):
         """
         执行任务
         """
-        if instance.exec_status == CollectRunStatusType.RUNNING:
+        before_snapshot = cls._snapshot_task(instance)
+        previous_execution = {
+            "exec_status": instance.exec_status,
+            "exec_time": instance.exec_time,
+            "format_data": copy.deepcopy(instance.format_data),
+            "collect_data": copy.deepcopy(instance.collect_data),
+            "collect_digest": copy.deepcopy(instance.collect_digest),
+        }
+        # 手动入口先抢占再投递，Celery 收到消息后不再重复抢占。
+        claimed_at = cls.claim_execution(instance.id, clear_results=True)
+        if claimed_at is None:
             return WebUtils.response_error(error_message="任务正在执行中!无法重复执行！", status_code=400)
 
-        before_snapshot = cls._snapshot_task(instance)
-        cls.repair_host_cloud_snapshot(instance)
-        instance.exec_time = now()
-        instance.exec_status = CollectRunStatusType.RUNNING
-        instance.format_data = {}
-        instance.collect_data = {}
-        instance.collect_digest = {}
-        instance.save()
-        if not settings.DEBUG:
-            sync_collect_task.delay(instance.id)
-        else:
-            sync_collect_task(instance.id)
+        try:
+            instance.refresh_from_db()
+            cls.repair_host_cloud_snapshot(instance)
+            if not settings.DEBUG:
+                sync_collect_task.delay(instance.id, preclaimed=True)
+            else:
+                sync_collect_task(instance.id, preclaimed=True)
+        except Exception:
+            CollectModels._default_manager.filter(
+                id=instance.id,
+                exec_status=CollectRunStatusType.RUNNING,
+                exec_time=claimed_at,
+            ).update(**previous_execution)
+            raise
 
         create_change_record(
             operator=operator,

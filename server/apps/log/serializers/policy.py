@@ -2,9 +2,12 @@ from rest_framework import serializers
 from apps.log.models.policy import Policy, Alert, Event, EventRawData
 from apps.log.services.access_scope import LogAccessScopeService
 from apps.log.utils.log_group import LogGroupQueryBuilder
+from apps.log.utils.policy_config import validate_timing_config
 
 
 class PolicySerializer(serializers.ModelSerializer):
+    schedule = serializers.JSONField(required=True)
+    period = serializers.JSONField(required=True)
     organizations = serializers.SerializerMethodField()
     log_groups = serializers.ListField(
         child=serializers.CharField(),
@@ -64,6 +67,18 @@ class PolicySerializer(serializers.ModelSerializer):
             if not is_valid:
                 raise serializers.ValidationError(error_msg)
         return value
+
+    def validate_schedule(self, value):
+        try:
+            return validate_timing_config(value, "schedule")
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
+
+    def validate_period(self, value):
+        try:
+            return validate_timing_config(value, "period")
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
 
 
 class AlertSerializer(serializers.ModelSerializer):

@@ -8,7 +8,8 @@ import yaml
 
 from apps.operation_analysis.constants.import_export import ObjectType, ScopeType
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, DataSourceTag, NameSpace
-from apps.operation_analysis.models.models import Dashboard
+from apps.operation_analysis.models.models import Dashboard, Directory, NetworkTopology
+from apps.operation_analysis.serializers.import_export_serializers import ExportRequestSerializer
 from apps.operation_analysis.services.import_export import view_sets as vs
 from apps.operation_analysis.services.import_export.export_service import ExportService
 
@@ -194,13 +195,19 @@ def test_generate_business_key_variants():
 
 
 def test_mask_sensitive_fields_nested():
-    data = {"password": "p", "nested": {"token": "t", "ok": 1}, "list": [{"secret": "s"}, 2]}
+    data = {
+        "password": "p",
+        "nested": {"token": "t", "ok": 1, "X-API-Key": "header-secret"},
+        "list": [{"secret": "s"}, 2, [[{"api_key": "deep-secret"}]]],
+    }
     out = ExportService.mask_sensitive_fields(data)
     assert out["password"] == "******"
     assert out["nested"]["token"] == "******"
+    assert out["nested"]["X-API-Key"] == "******"
     assert out["nested"]["ok"] == 1
     assert out["list"][0]["secret"] == "******"
     assert out["list"][1] == 2
+    assert out["list"][2][0][0]["api_key"] == "******"
 
 
 def test_extract_canvas_dependencies_collects_datasource_ids():
@@ -256,7 +263,20 @@ def test_export_config_namespace():
 @pytest.mark.django_db
 def test_export_config_datasource_pulls_in_namespace():
     ns = NameSpace.objects.create(name="ns-a", domain="d", account="a", password="p")
-    ds = DataSourceAPIModel.objects.create(name="ds-a", rest_api="monitor/q", created_by="s", updated_by="s")
+    ds = DataSourceAPIModel.objects.create(
+        name="ds-a",
+        rest_api="",
+        source_type=DataSourceAPIModel.SOURCE_TYPE_MYSQL,
+        connection_config={
+            "host": "db.example.com",
+            "username": "reader",
+            "password": "db-secret",
+            "headers": {"Authorization": "Bearer secret"},
+        },
+        query_config={"table": "orders"},
+        created_by="s",
+        updated_by="s",
+    )
     ds.namespaces.set([ns.id])
     tag = DataSourceTag.objects.create(tag_id="t1", name="Tag1", created_by="s", updated_by="s")
     ds.tag.set([tag.id])
@@ -268,6 +288,15 @@ def test_export_config_datasource_pulls_in_namespace():
     assert parsed["meta"]["object_counts"]["namespaces"] == 1
     assert parsed["datasources"][0]["namespace_keys"] == ["ns-a"]
     assert parsed["datasources"][0]["tags"] == ["Tag1"]
+    assert parsed["datasources"][0]["rest_api"] == ""
+    assert parsed["datasources"][0]["source_type"] == "mysql"
+    assert parsed["datasources"][0]["connection_config"] == {
+        "host": "db.example.com",
+        "username": "reader",
+        "password": "******",
+        "headers": {"Authorization": "******"},
+    }
+    assert parsed["datasources"][0]["query_config"] == {"table": "orders"}
 
 
 @pytest.mark.django_db
@@ -317,3 +346,37 @@ def test_export_canvas_screen_and_report_sections():
     assert screen_yaml["screens"][0]["key"] == "screen::screen-a"
     assert report_yaml["meta"]["object_counts"]["reports"] == 1
     assert report_yaml["reports"][0]["key"] == "report::report-a"
+
+
+def test_export_request_serializer_accepts_network_topology():
+    serializer = ExportRequestSerializer(
+        data={
+            "object_type": "networkTopology",
+            "object_ids": [1],
+        }
+    )
+
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["scope"] == ScopeType.CANVAS.value
+
+
+@pytest.mark.django_db
+def test_export_canvas_network_topology_yaml_section_and_secret_mask():
+    directory = Directory.objects.create(name="网络拓扑目录", groups=[1], created_by="s")
+    network_topology = NetworkTopology.objects.create(
+        name="net-a",
+        directory=directory,
+        groups=[1],
+        created_by="s",
+        base_url="https://weops.example.com",
+        token="plain-token",
+        view_sets={"nodes": [], "links": []},
+    )
+
+    result = ExportService.export_objects(ScopeType.CANVAS.value, ObjectType.NETWORK_TOPOLOGY.value, [network_topology.id])
+    parsed = yaml.safe_load(result["yaml_content"])
+
+    assert parsed["meta"]["object_counts"]["network_topologies"] == 1
+    assert parsed["network_topologies"][0]["key"] == "networkTopology::net-a"
+    assert parsed["network_topologies"][0]["base_url"] == "https://weops.example.com"
+    assert parsed["network_topologies"][0]["token"] == "******"

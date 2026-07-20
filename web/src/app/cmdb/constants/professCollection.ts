@@ -225,7 +225,7 @@ export const SNMP_FORM_INITIAL_VALUES = {
   enterType: ENTER_TYPE.AUTOMATIC,
   version: 'v2',
   snmp_port: '161',
-  timeout: 20,
+  timeout: 5,
   level: 'authNoPriv',
   integrity: 'sha',
   privacy: 'aes',
@@ -405,6 +405,9 @@ const cycleValidators = (context: ValidationContext) => ({
           return Promise.reject(
             new Error(context.t('Collection.k8sTask.intervalRequired'))
           );
+        }
+        if (cycle === CYCLE_OPTIONS.INTERVAL && Number(value) < 1) {
+          return Promise.reject(new Error(context.t('Collection.everyMinuteMin')));
         }
         return Promise.resolve();
       },

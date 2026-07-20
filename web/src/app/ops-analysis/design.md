@@ -4,7 +4,7 @@
 
 `ops-analysis` 是面向运营分析场景的工作台模块，当前主要包含：
 
-- `view`：分析视图入口，承载 dashboard、topology、screen、architecture 等内容视图。
+- `view`：分析视图入口，承载 dashboard、topology、screen、architecture、networkTopology 等内容视图。
 - `settings`：数据源、命名空间等基础配置。
 - `components/unifiedFilter`：dashboard、topology、screen 等视图共享的统一筛选能力。
 - `components/widgetConfig`：图表、表格、单值等组件的公共配置入口。
@@ -15,7 +15,7 @@
 
 ## Goals
 
-- 沉淀 dashboard、topology、screen、architecture、settings 的共性页面模式。
+- 沉淀 dashboard、topology、screen、architecture、networkTopology、settings 的共性页面模式。
 - 明确统一筛选、图表配置、图表主题、画布编辑等公共能力的复用边界。
 - 约束亮色 / 暗色主题下的基础视觉规则。
 - 为后续新增页面、组件、节点、widget 提供实现前检查清单。

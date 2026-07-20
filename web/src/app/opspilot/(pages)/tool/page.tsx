@@ -37,13 +37,14 @@ const ToolListPage: React.FC = () => {
   const [availableTools, setAvailableTools] = useState<any[]>([]);
   const [fetchingTools, setFetchingTools] = useState<boolean>(false);
   const [enableAuth, setEnableAuth] = useState<boolean>(false);
-  const [assetView, setAssetView] = useState<'builtin' | 'mcp' | 'skills'>('skills');
+  const [assetView, setAssetView] = useState<'builtin' | 'mcp' | 'skills'>('builtin');
   const [skillAssets, setSkillAssets] = useState<SkillPackage[]>([]);
   const [skillAssetsLoading, setSkillAssetsLoading] = useState<boolean>(false);
   const [skillSearchKeyword, setSkillSearchKeyword] = useState('');
   const [hoveredSkillAssetKey, setHoveredSkillAssetKey] = useState<string | null>(null);
   const [selectedSkillAssetForDetail, setSelectedSkillAssetForDetail] = useState<SkillPackage | null>(null);
   const [isImportSkillModalVisible, setIsImportSkillModalVisible] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   const [skillPackageFileList, setSkillPackageFileList] = useState<UploadFile[]>([]);
 
   const iconTypes = ['yinliugongju-biaotiyouhua', 'yinliugongju-biaotifenxi', 'yinliugongju-dijiayinliu', 'gongjuqu', 'gongjuxiang', 'gongju1'];
@@ -449,11 +450,16 @@ const ToolListPage: React.FC = () => {
       message.warning('请选择包含 SKILL.md 的 ZIP 技能包');
       return;
     }
-    await importSkillPackageZip(file);
-    await fetchSkillPackageData();
-    setSkillPackageFileList([]);
-    setIsImportSkillModalVisible(false);
-    message.success('技能包已导入');
+    setIsImporting(true);
+    try {
+      await importSkillPackageZip(file);
+      await fetchSkillPackageData();
+      setSkillPackageFileList([]);
+      setIsImportSkillModalVisible(false);
+      message.success('技能包已导入');
+    } finally {
+      setIsImporting(false);
+    }
   };
 
   const handleDeleteSkillAsset = (asset: SkillPackage) => {
@@ -473,8 +479,8 @@ const ToolListPage: React.FC = () => {
       value={assetView}
       onChange={(value) => setAssetView(value as 'builtin' | 'mcp' | 'skills')}
       options={[
+        { label: '工具', value: 'builtin' },
         { label: '技能', value: 'skills' },
-        { label: '内置', value: 'builtin' },
         { label: 'MCP', value: 'mcp' },
       ]}
     />
@@ -696,6 +702,7 @@ const ToolListPage: React.FC = () => {
         }}
         okText="确认导入"
         cancelText="取消"
+        confirmLoading={isImporting}
         width={760}
       >
         <div>

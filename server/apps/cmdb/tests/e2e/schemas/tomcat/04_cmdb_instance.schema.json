@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CMDB tomcat 实例契约",
+  "description": "2026-07-10 Phase 3 任务 3.3,字段对齐 TomcatCollectionPlugin.field_mapping;inst_name 由 runner.get_inst_name 规则 {ip}-{model_id}-{port} 生成。",
+  "type": "object",
+  "required": ["inst_name", "ip_addr", "port"],
+  "properties": {
+    "inst_name":      {"type": "string", "pattern": "^[0-9.]+-tomcat-[0-9]+$"},
+    "ip_addr":        {"type": "string"},
+    "port":           {"type": ["string", "integer"]},
+    "catalina_path":  {"type": "string"},
+    "version":        {"type": "string"},
+    "xms":            {"type": ["string", "integer"]},
+    "xmx":            {"type": ["string", "integer"]},
+    "max_perm_size":  {"type": ["string", "integer"]},
+    "permsize":       {"type": ["string", "integer"]},
+    "log_path":       {"type": "string"},
+    "java_version":   {"type": "string"}
+  }
+}

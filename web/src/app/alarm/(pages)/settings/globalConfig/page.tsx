@@ -237,88 +237,95 @@ export default function UnallocatedNotificationConfig() {
   };
 
   return (
-    <Card style={{ height: '100%' }}>
-      <style jsx global>{`
-        .level-table-clean .ant-table,
-        .level-table-clean .ant-table-container {
-          background: transparent;
-        }
+    <div className="flex h-full min-h-0 flex-col">
+      <Card
+        className="min-h-0 flex-1 overflow-hidden"
+        styles={{
+          body: { height: '100%', overflow: 'auto' },
+        }}
+      >
+        <style jsx global>{`
+          .level-table-clean .ant-table,
+          .level-table-clean .ant-table-container {
+            background: transparent;
+          }
 
-        .compact-config-form .ant-form-item {
-          margin-bottom: 18px;
-        }
+          .compact-config-form .ant-form-item {
+            margin-bottom: 18px;
+          }
 
-        .compact-config-form .ant-checkbox-group {
-          display: flex;
-          flex-direction: column;
-          gap: 4px;
-        }
+          .compact-config-form .ant-checkbox-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+          }
 
-        .level-table-clean .ant-table-thead > tr > th {
-          background: color-mix(in srgb, var(--color-fill-1) 34%, white);
-          color: var(--color-text-2);
-          font-weight: 500;
-          border-bottom: 1px solid var(--color-border-1);
-          padding-top: 6px;
-          padding-bottom: 6px;
-          font-size: 12px;
-        }
+          .level-table-clean .ant-table-thead > tr > th {
+            background: color-mix(in srgb, var(--color-fill-1) 34%, white);
+            color: var(--color-text-2);
+            font-weight: 500;
+            border-bottom: 1px solid var(--color-border-1);
+            padding-top: 6px;
+            padding-bottom: 6px;
+            font-size: 12px;
+          }
 
-        .level-table-clean .ant-table-tbody > tr > td {
-          border-bottom: 1px solid
-            color-mix(in srgb, var(--color-border-1) 70%, transparent);
-          padding-top: 6px;
-          padding-bottom: 6px;
-          font-size: 12px;
-        }
+          .level-table-clean .ant-table-tbody > tr > td {
+            border-bottom: 1px solid
+              color-mix(in srgb, var(--color-border-1) 70%, transparent);
+            padding-top: 6px;
+            padding-bottom: 6px;
+            font-size: 12px;
+          }
 
-        .level-table-clean .ant-table-tbody > tr:last-child > td {
-          border-bottom: none;
-        }
+          .level-table-clean .ant-table-tbody > tr:last-child > td {
+            border-bottom: none;
+          }
 
-        .level-table-clean .ant-table-cell::before {
-          display: none !important;
-        }
-      `}</style>
-      {loading ? (
-        <div className="flex justify-center pt-[20px] mt-[20vh]">
-          <Spin spinning={loading} />
-        </div>
-      ) : (
-        <div className="h-full">
-          <NoDispatchConfigCard
-            expanded={expanded}
-            activationLoading={activationLoading}
-            editMode={editMode}
-            form={form}
-            config={config}
-            assigneeOptions={assigneeOptions}
-            notifyOptions={notifyOptions}
-            channelLoading={channelLoading}
-            updateLoading={updateLoading}
-            onToggleActivation={handleToggleActivation}
-            onEnterEdit={enterEdit}
-            onCancelEdit={cancelEdit}
-            onConfirmEdit={confirmEdit}
-          />
+          .level-table-clean .ant-table-cell::before {
+            display: none !important;
+          }
+        `}</style>
+        {loading ? (
+          <div className="flex justify-center pt-[20px] mt-[20vh]">
+            <Spin spinning={loading} />
+          </div>
+        ) : (
+          <div className="h-full">
+            <NoDispatchConfigCard
+              expanded={expanded}
+              activationLoading={activationLoading}
+              editMode={editMode}
+              form={form}
+              config={config}
+              assigneeOptions={assigneeOptions}
+              notifyOptions={notifyOptions}
+              channelLoading={channelLoading}
+              updateLoading={updateLoading}
+              onToggleActivation={handleToggleActivation}
+              onEnterEdit={enterEdit}
+              onCancelEdit={cancelEdit}
+              onConfirmEdit={confirmEdit}
+            />
 
-          <LevelManagementPanel
-            levelMeta={levelMeta}
-            onOpenLevelModal={openLevelModal}
-            onDeleteLevel={handleDeleteLevel}
-          />
-        </div>
-      )}
+            <LevelManagementPanel
+              levelMeta={levelMeta}
+              onOpenLevelModal={openLevelModal}
+              onDeleteLevel={handleDeleteLevel}
+            />
+          </div>
+        )}
 
-      <LevelFormModal
-        open={levelModalOpen}
-        form={levelForm}
-        editingLevel={editingLevel}
-        currentLevelType={currentLevelType}
-        submitting={levelSubmitLoading}
-        onCancel={closeLevelModal}
-        onSubmit={submitLevel}
-      />
-    </Card>
+        <LevelFormModal
+          open={levelModalOpen}
+          form={levelForm}
+          editingLevel={editingLevel}
+          currentLevelType={currentLevelType}
+          submitting={levelSubmitLoading}
+          onCancel={closeLevelModal}
+          onSubmit={submitLevel}
+        />
+      </Card>
+    </div>
   );
 }

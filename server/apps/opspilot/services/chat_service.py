@@ -8,8 +8,8 @@ from typing import Any, Dict, Tuple
 from apps.core.logger import opspilot_logger as logger
 from apps.core.mixinx import EncryptMixin
 from apps.core.utils.loader import LanguageLoader
-from apps.opspilot.enum import SkillTypeChoices
-from apps.opspilot.models import LLMModel, SkillTools
+from apps.opspilot.models import LLMModel, SkillTools, SkillTypeChoices
+from apps.opspilot.metis.llm.chain.report_renderers import strip_phantom_tool_calls
 from apps.opspilot.services.builtin_tools import (
     BUILTIN_ATTACHMENT_FILE_TOOL_NAME,
     BUILTIN_MONITOR_TOOL_NAME,
@@ -26,9 +26,98 @@ from apps.opspilot.services.builtin_tools import (
 )
 from apps.opspilot.services.chat_request import ChatRequest
 from apps.opspilot.services.history_service import history_service
-from apps.opspilot.services.rag_service import rag_service
+from apps.opspilot.services.wiki.wiki_context_service import augment_prompt
 from apps.opspilot.utils.agent_factory import create_agent_instance
 from apps.opspilot.utils.prompt_utils import resolve_skill_params
+
+
+def _truncate_candidate_title(text, limit=60):
+    """从回答文本截取候选页标题(首行/前 N 字符)。"""
+    if not text:
+        return ""
+    first_line = (text.strip().splitlines() or [""])[0].strip()
+    if not first_line:
+        return ""
+    return first_line[:limit]
+
+
+def _maybe_save_answer_as_wiki_candidate(kwargs, chat_result, doc_map):
+    """将命中的高价值回答直接写入知识库。
+
+    wiki_save_answer_as_candidate 作为旧调用方的兼容开关保留，但不再创建
+    qa_answer_candidate 审批；新调用方可改用 wiki_save_answer。
+    """
+    if not (kwargs.get("wiki_save_answer") or kwargs.get("wiki_save_answer_as_candidate")):
+        return None
+    if not chat_result.get("success"):
+        return None
+    wiki_kb_ids = kwargs.get("wiki_kb_ids") or []
+    if not wiki_kb_ids:
+        return None
+    # 只在 doc_map 中存在 wiki 来源时才保存，避免把非 wiki 回答写入知识库。
+    wiki_doc_marker = kwargs.get("wiki_doc_marker", "wiki")
+    has_wiki_doc = False
+    if isinstance(doc_map, dict):
+        for value in doc_map.values():
+            if isinstance(value, dict) and value.get("source") == wiki_doc_marker:
+                has_wiki_doc = True
+                break
+    if not has_wiki_doc:
+        return None
+
+    from apps.opspilot.models import WikiKnowledgeBase
+    from apps.opspilot.services.wiki.cascade_service import cascade
+    from apps.opspilot.services.wiki.page_service import save_answer_page
+
+    kb = WikiKnowledgeBase.objects.filter(id=wiki_kb_ids[0]).first()
+    if not kb:
+        return None
+    body = chat_result.get("message", "") or ""
+    title = _truncate_candidate_title(body)
+    if not title:
+        return None
+    try:
+        page = save_answer_page(
+            knowledge_base=kb,
+            page_type="qa",
+            title=title,
+            body=body,
+            source_conversation_id=str(kwargs.get("chat_id") or ""),
+            source_message_id=str(kwargs.get("message_id") or ""),
+            source_channel="chat_service",
+            created_by=str(kwargs.get("user") or kwargs.get("username") or ""),
+        )
+        cascade(kb, [page.id], "qa_answer_save")
+        return page
+    except Exception:  # noqa: BLE001 - 自动保存失败不应阻塞 chat 主流程
+        logger.exception("chat_service 自动保存 Wiki 回答失败")
+        return None
+
+
+def _optional_positive_int(value):
+    if value in (None, ""):
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed >= 0 else None
+
+
+def _wiki_context_options(kwargs):
+    options = {}
+    if kwargs.get("wiki_retrieval_mode"):
+        options["retrieval_mode"] = kwargs["wiki_retrieval_mode"]
+    graph_hops = _optional_positive_int(kwargs.get("wiki_graph_hops"))
+    if graph_hops is not None:
+        options["graph_hops"] = graph_hops
+    token_budget = _optional_positive_int(kwargs.get("wiki_token_budget"))
+    if token_budget:
+        options["token_budget"] = token_budget
+    top_k = _optional_positive_int(kwargs.get("wiki_top_k"))
+    if top_k:
+        options["top_k"] = top_k
+    return options
 
 
 def _resolve_agent_execute_timeout() -> int:
@@ -74,28 +163,8 @@ class ChatService:
         Returns:
             包含回复内容和引用知识的字典
         """
-        # 将原始 kwargs 一次性解析为类型化的 ChatRequest（容忍未知键），
-        # 避免在方法体内零散地 kwargs[...] / kwargs.get(...) 读取导致 KeyError。
-        request = ChatRequest.from_kwargs(kwargs)
-
-        citing_knowledge = []
-        data, doc_map, title_map = ChatService.invoke_chat(kwargs)
-
-        # 如果启用了知识源引用，构建引用信息
-        if request.enable_rag_knowledge_source:
-            citing_knowledge = [
-                {
-                    "knowledge_title": doc_map.get(k, {}).get("name"),
-                    "knowledge_id": k,
-                    "knowledge_base_id": doc_map.get(k, {}).get("knowledge_base_id"),
-                    "result": v,
-                    "knowledge_source_type": doc_map.get(k, {}).get("knowledge_source_type"),
-                    "citing_num": len(v),
-                }
-                for k, v in title_map.items()
-            ]
-
-        return {"content": data["message"], "citing_knowledge": citing_knowledge}
+        data, _doc_map, _title_map = ChatService.invoke_chat(kwargs)
+        return {"content": data["message"], "citing_knowledge": []}
 
     @staticmethod
     def invoke_chat(kwargs: Dict[str, Any]) -> Tuple[Dict, Dict, Dict]:
@@ -166,6 +235,18 @@ class ChatService:
             if not show_think:
                 content = re.sub(r"<think>.*?</think>", "", result["message"], flags=re.DOTALL).strip()
                 result["message"] = content
+
+            # 抹掉 LLM 幻觉的 phantom <tool_call> 文本
+            # 流式 agui_stream 路径已在 _handle_chat_model_stream_content /
+            # _handle_chat_model_end_event 中 strip,这里是非流式 invoke_chat 路径
+            # 的兜底,避免漏到 wiki 候选/调用方。
+            if result.get("message"):
+                result["message"] = strip_phantom_tool_calls(result["message"])
+
+            # 自动落候选:在 chat 完成后,如果 kwargs 标记保存且有 wiki 引用,把回答落为待审核候选页
+            saved_page = _maybe_save_answer_as_wiki_candidate(kwargs, result, doc_map)
+            if saved_page is not None:
+                result["saved_wiki_candidate_id"] = saved_page.id
 
             return result, doc_map, title_map
 
@@ -344,13 +425,7 @@ class ChatService:
         """
         show_think = kwargs.get("show_think", True)
         title_map = doc_map = {}
-        naive_rag_request = []
         extra_config = {"show_think": show_think}
-
-        # 如果启用RAG，搜索文档
-        if kwargs["enable_rag"]:
-            naive_rag_request, km_request, doc_map = rag_service.format_naive_rag_kwargs(kwargs)
-            extra_config.update(km_request)
 
         user_message, image_data = history_service.process_user_message_and_images(kwargs["user_message"])
 
@@ -359,6 +434,13 @@ class ChatService:
 
         # 处理 skill_params: 解密并替换 prompt 中的 {{key}} 占位符
         resolved_prompt = resolve_skill_params(kwargs["skill_prompt"], kwargs.get("skill_params", []))
+
+        # Wiki 知识库复用:若技能选择了 Wiki 知识库,则检索并把上下文注入系统提示词
+        wiki_kb_ids = kwargs.get("wiki_kb_ids")
+        if wiki_kb_ids:
+            resolved_prompt, wiki_citations = augment_prompt(resolved_prompt, wiki_kb_ids, user_message, **_wiki_context_options(kwargs))
+            if wiki_citations:
+                extra_config["wiki_citations"] = wiki_citations
 
         # 构建聊天参数
         chat_kwargs = {
@@ -372,9 +454,8 @@ class ChatService:
             "user_message": user_message,
             "chat_history": chat_history,
             "user_id": str(kwargs["user_id"]),
-            "enable_naive_rag": kwargs["enable_rag"],
+            "enable_naive_rag": False,
             "rag_stage": "string",
-            "naive_rag_request": naive_rag_request,
             "enable_suggest": kwargs.get("enable_suggest", False),
             "enable_query_rewrite": kwargs.get("enable_query_rewrite", False),
             "locale": kwargs.get("locale", "en"),
@@ -388,10 +469,6 @@ class ChatService:
             chat_kwargs["thread_id"] = str(uuid.uuid4())
 
         chat_kwargs["execution_id"] = kwargs.get("execution_id") or chat_kwargs.get("thread_id")
-        if kwargs["enable_rag_knowledge_source"]:
-            extra_config.update({"enable_rag_source": True})
-        if kwargs.get("enable_rag_strict_mode"):
-            extra_config.update({"enable_rag_strict_mode": kwargs["enable_rag_strict_mode"]})
 
         if kwargs.get("browser_use_force_task"):
             extra_config.update(
@@ -402,7 +479,14 @@ class ChatService:
                 }
             )
 
+        import logging as _dbg_log
+
         if kwargs.get("matched_skill_packages") is not None:
+            _dbg_log.warning(
+                "DEBUG_CHAT: matched_skill_packages count=%s, capabilities=%s",
+                len(kwargs.get("matched_skill_packages") or []),
+                kwargs.get("skill_package_capabilities"),
+            )
             extra_config.update(
                 {
                     "matched_skill_packages": kwargs.get("matched_skill_packages") or [],
@@ -411,6 +495,11 @@ class ChatService:
                     "skill_package_workflows": kwargs.get("skill_package_workflows") or {},
                 }
             )
+
+        # 用户显式选中的技能包全集(独立于 matched_skill_packages),
+        # 用于 backend 物化,绕开 substring 匹配丢包。
+        if kwargs.get("enabled_skill_packages") is not None:
+            extra_config["enabled_skill_packages"] = kwargs.get("enabled_skill_packages") or []
 
         if kwargs["skill_type"] != SkillTypeChoices.KNOWLEDGE_TOOL:
             ChatService._process_tools_and_extra_config(kwargs, chat_kwargs, extra_config)

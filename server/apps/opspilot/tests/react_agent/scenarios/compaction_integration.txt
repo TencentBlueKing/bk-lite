@@ -1,11 +1,11 @@
-场景名称: 上下文 Compaction 集成测试（ReAct Agent 级别）
+场景名称: 上下文 Compaction 集成测试（DeepAgent 级别）
 
 对应计划: Phase 2 — #8 上下文 compaction
 
 功能描述:
   在 agent_node 调用 LLM 前，检测消息 token 总量是否超阈值，
   超过时自动压缩历史消息为摘要。独立的 compaction 单元测试在
-  workflow/cases/test_compaction.py 中，这里测试与 ReAct 循环的集成。
+  workflow/cases/test_compaction.py 中，这里测试与 DeepAgent 工具调用流程的集成。
 
 涉及代码:
   - server/apps/opspilot/metis/llm/chain/node.py: agent_node 中 compact_messages 调用

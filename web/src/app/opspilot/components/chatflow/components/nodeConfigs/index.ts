@@ -8,8 +8,10 @@ export { ConditionNodeConfig } from './ConditionNodeConfig';
 export { IntentClassificationNodeConfig } from './IntentClassificationNodeConfig';
 export { NotificationNodeConfig } from './NotificationNodeConfig';
 export { EnterpriseWechatNodeConfig } from './EnterpriseWechatNodeConfig';
+export { EnterpriseWechatAibotNodeConfig } from './EnterpriseWechatAibotNodeConfig';
 export { DingtalkNodeConfig } from './DingtalkNodeConfig';
 export { WechatOfficialNodeConfig } from './WechatOfficialNodeConfig';
 export { MemoryNodeConfig } from './MemoryNodeConfig';
+export { NatsNodeConfig } from './NatsNodeConfig';
 
 export type * from './types';

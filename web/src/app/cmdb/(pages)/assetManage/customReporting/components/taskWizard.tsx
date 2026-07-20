@@ -210,7 +210,7 @@ export default function TaskWizard({
       maskClosable={false}
       keyboard={false}
       width={640}
-      destroyOnClose
+      destroyOnHidden
       extra={
         <Space size="middle" align="center">
           <Typography.Text
@@ -364,8 +364,8 @@ export default function TaskWizard({
         <Form.Item
           label={t('CustomReporting.identityKeys')}
           name="identity_keys"
+          tooltip={t('CustomReporting.identityKeysHelp')}
           rules={[{ required: true, message: t('required') }]}
-          extra={t('CustomReporting.identityKeysHelp')}
         >
           <Select
             mode="tags"

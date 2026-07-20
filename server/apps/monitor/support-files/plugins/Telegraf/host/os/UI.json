@@ -35,42 +35,50 @@
         {
           "label": "CPU",
           "value": "cpu",
-          "description": "监控CPU使用情况，包括利用率百分比、平均负载以及系统时间与用户时间的占比"
+          "description": "监控CPU使用情况，包括利用率百分比、平均负载以及系统时间与用户时间的占比",
+          "label_en": "CPU"
         },
         {
           "label": "Disk",
           "value": "disk",
-          "description": "监控磁盘使用情况，包括磁盘空间、读/写速率以及其他相关指标"
+          "description": "监控磁盘使用情况，包括磁盘空间、读/写速率以及其他相关指标",
+          "label_en": "Disk"
         },
         {
           "label": "Disk IO",
           "value": "diskio",
-          "description": "监控磁盘输入/输出操作的性能和活动情况"
+          "description": "监控磁盘输入/输出操作的性能和活动情况",
+          "label_en": "Disk IO"
         },
         {
           "label": "Memory",
           "value": "mem",
-          "description": "监控内存使用情况，包括内存利用率和可用内存"
+          "description": "监控内存使用情况，包括内存利用率和可用内存",
+          "label_en": "Memory"
         },
         {
           "label": "Net",
           "value": "net",
-          "description": "监控网络性能，包括网络流量、带宽使用率和延迟"
+          "description": "监控网络性能，包括网络流量、带宽使用率和延迟",
+          "label_en": "Net"
         },
         {
           "label": "Processes",
           "value": "processes",
-          "description": "监控运行进程的信息，包括进程数量、CPU 使用率和内存消耗"
+          "description": "监控运行进程的信息，包括进程数量、CPU 使用率和内存消耗",
+          "label_en": "Processes"
         },
         {
           "label": "System",
           "value": "system",
-          "description": "监控整体系统性能和运行状况，包括系统运行时间、平均负载以及一般活动水平等指标"
+          "description": "监控整体系统性能和运行状况，包括系统运行时间、平均负载以及一般活动水平等指标",
+          "label_en": "System"
         },
         {
           "label": "Nvidia-GPU",
           "value": "gpu",
-          "description": "监控Nvidia-GPU使用情况，包括利用率百分比、显存使用和温度等指标"
+          "description": "监控Nvidia-GPU使用情况，包括利用率百分比、显存使用和温度等指标",
+          "label_en": "Nvidia GPU"
         }
       ],
       "widget_props": {},
@@ -79,20 +87,56 @@
         "to_form": {
           "array": true
         }
-      }
+      },
+      "label_en": "Metric Type"
+    },
+    {
+      "name": "disk_include_fstypes",
+      "label": "仅采集的文件系统类型",
+      "type": "input",
+      "required": false,
+      "default_value": "",
+      "description": "逗号分隔；留空表示不限制类型，例如 ext4,xfs。",
+      "tooltip": "推荐仅采集 Linux 的 ext4、xfs、btrfs，或 Windows 的 NTFS、ReFS；留空表示不按类型限制。",
+      "guide_short": "推荐仅采集 Linux 的 ext4、xfs、btrfs，或 Windows 的 NTFS、ReFS；留空表示不按类型限制。",
+      "widget_props": {
+        "placeholder": "ext4,xfs"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.disk_include_fstypes"
+      },
+      "label_en": "Included Filesystem Types"
+    },
+    {
+      "name": "disk_exclude_fstypes",
+      "label": "排除的文件系统类型",
+      "type": "input",
+      "required": false,
+      "default_value": "tmpfs,devtmpfs,devfs,iso9660,overlay,aufs,squashfs,vfat,exfat,fat,fat32",
+      "description": "逗号分隔；黑名单优先于仅采集列表，例如 vfat,exfat,ntfs。",
+      "tooltip": "临时盘/容器盘：tmpfs、devtmpfs、overlay、aufs、squashfs；光盘：iso9660；常见 U 盘：vfat、exfat、fat、fat32。黑名单优先于仅采集列表；不默认排除 ntfs。",
+      "guide_short": "临时盘/容器盘：tmpfs、devtmpfs、overlay、aufs、squashfs；光盘：iso9660；常见 U 盘：vfat、exfat、fat、fat32。黑名单优先于仅采集列表；不默认排除 ntfs。",
+      "widget_props": {
+        "placeholder": "vfat,exfat,ntfs"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.disk_exclude_fstypes"
+      },
+      "label_en": "Excluded Filesystem Types"
     },
     {
       "name": "interval",
       "label": "间隔",
       "type": "inputNumber",
       "required": true,
-      "default_value": 10,
+      "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
       "widget_props": {
         "min": 1,
         "precision": 0,
         "placeholder": "间隔",
-        "addonAfter": "s"
+        "addonAfter": "s",
+        "placeholder_en": "Interval"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.interval",
@@ -102,7 +146,9 @@
         "to_api": {
           "suffix": "s"
         }
-      }
+      },
+      "label_en": "Interval",
+      "description_en": "Collection time interval (unit: seconds)"
     }
   ],
   "table_columns": [
@@ -112,9 +158,16 @@
       "type": "select",
       "required": true,
       "widget_props": {
-        "placeholder": "请选择节点"
+        "placeholder": "请选择节点",
+        "placeholder_en": "Please select node"
       },
-      "enable_row_filter": true
+      "change_handler": {
+        "type": "option_field",
+        "source_field": "name",
+        "target_field": "instance_name"
+      },
+      "enable_row_filter": true,
+      "label_en": "Node"
     },
     {
       "name": "instance_name",
@@ -123,8 +176,10 @@
       "required": true,
       "is_only": true,
       "widget_props": {
-        "placeholder": "实例名称"
-      }
+        "placeholder": "实例名称",
+        "placeholder_en": "Instance Name"
+      },
+      "label_en": "Instance Name"
     },
     {
       "name": "group_ids",
@@ -132,8 +187,10 @@
       "type": "group_select",
       "required": false,
       "widget_props": {
-        "placeholder": "请选择组"
-      }
+        "placeholder": "请选择组",
+        "placeholder_en": "Please select group"
+      },
+      "label_en": "Group"
     }
   ]
 }

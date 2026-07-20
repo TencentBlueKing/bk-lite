@@ -11,7 +11,7 @@ from django.utils import timezone
 
 from apps.job_mgmt import tasks
 from apps.job_mgmt.constants import ConcurrencyPolicy, DangerousLevel, ExecutionStatus, JobType
-from apps.job_mgmt.models import DangerousPath, DangerousRule, DistributionFile, JobExecution, ScheduledTask
+from apps.job_mgmt.models import DangerousPath, DangerousRule, DistributionFile, JobExecution, ScheduledTask, Script
 
 pytestmark = [pytest.mark.unit, pytest.mark.django_db]
 
@@ -104,6 +104,15 @@ class TestExecuteScheduledTask:
         tasks.execute_scheduled_task(st.id)
         assert JobExecution.objects.filter(scheduled_task=st).count() == 0
 
+    def test_dangerous_script_library_content_blocks(self):
+        DangerousRule.objects.create(name="no-rm", pattern="rm -rf", level=DangerousLevel.FORBIDDEN, is_enabled=True, team=[])
+        script = Script.objects.create(name="lib", content="rm -rf /", script_type="shell", team=[1])
+        st = _task(script=script, script_content="")
+
+        tasks.execute_scheduled_task(st.id)
+
+        assert JobExecution.objects.filter(scheduled_task=st).count() == 0
+
     def test_dangerous_path_blocks_file_distribution(self):
         DangerousPath.objects.create(name="etc", pattern="/etc", match_type="exact", level=DangerousLevel.FORBIDDEN, is_enabled=True, team=[])
         st = _task(job_type=JobType.FILE_DISTRIBUTION, script_content="", target_path="/etc/x", files=[{"file_key": "k"}])
@@ -118,10 +127,10 @@ class TestDispatchExecutionJob:
     def test_script_dispatch_sets_celery_id(self):
         ex = self._exec(JobType.SCRIPT)
         with patch("apps.job_mgmt.tasks.current_app") as app:
-            app.send_task.return_value = MagicMock(id="celery-1")
             assert tasks._dispatch_execution_job(JobType.SCRIPT, ex.id) is True
+            persisted_task_id = app.send_task.call_args.kwargs["task_id"]
         ex.refresh_from_db()
-        assert ex.celery_task_id == "celery-1"
+        assert ex.celery_task_id == persisted_task_id
 
     def test_unknown_job_type_returns_false(self):
         ex = self._exec(JobType.SCRIPT)
@@ -132,6 +141,8 @@ class TestDispatchExecutionJob:
         with patch("apps.job_mgmt.tasks.current_app") as app:
             app.send_task.side_effect = ConnectionError("broker down")
             assert tasks._dispatch_execution_job(JobType.PLAYBOOK, ex.id) is False
+        ex.refresh_from_db()
+        assert ex.celery_task_id
 
 
 class TestCleanupExpiredFiles:

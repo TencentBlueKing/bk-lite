@@ -379,11 +379,14 @@ const ConfigAnalysisReportCard: React.FC<ConfigAnalysisReportCardProps> = ({ rep
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 bg-white text-slate-700">
-                      {recommendationRows.map(row => {
+                      {recommendationRows.map((row, idx) => {
                         const priorityStyle = recommendationPriorityStyles[row.priority];
 
                         return (
-                          <tr key={`${row.priority}-${row.action}`} className="align-top">
+                          // 用 idx + priority + action + target 保证 key unique
+                          // 同 severity 同修复动作 的 issue 会重复(例如两个 high 都推荐
+                          // "添加 livenessProbe 和 readinessProbe"),单靠 priority+action 撞 key
+                          <tr key={`${idx}-${row.priority}-${row.action}-${row.target}`} className="align-top">
                             <td className="px-4 py-2.5">
                               <span className={`inline-flex h-7 min-w-10 items-center justify-center whitespace-nowrap rounded-full border px-2.5 text-xs font-semibold ${priorityStyle}`}>
                                 {row.priority}
