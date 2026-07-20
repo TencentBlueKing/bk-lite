@@ -1,6 +1,5 @@
 [[inputs.disk]]
     startup_error_behavior = "retry"
-    ignore_fs = ["tmpfs", "devtmpfs", "devfs", "iso9660", "overlay", "aufs", "squashfs", "vfat", "exfat", "fat", "fat32"]
     interval = "{{ interval }}s"
     [inputs.disk.tags]
         instance_id = "{{ instance_id }}"

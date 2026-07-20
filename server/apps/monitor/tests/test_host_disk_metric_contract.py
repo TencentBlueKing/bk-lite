@@ -33,6 +33,7 @@ def test_all_host_templates_expose_fstype_allow_and_deny_lists():
 def test_host_telegraf_template_filters_only_disk_measurements_by_fstype():
     template = (PLUGIN_PATHS["host"] / "disk.child.toml.j2").read_text()
 
+    assert "ignore_fs" not in template
     assert "[[processors.starlark]]" in template
     assert 'namepass = ["disk"]' in template
     assert 'metric.tags.get("fstype", "")' in template
