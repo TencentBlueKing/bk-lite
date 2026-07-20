@@ -125,11 +125,14 @@ if parent_objects.exists():
 
 ```bash
 cd server
-.venv/bin/pytest apps/monitor/tests/<新增测试文件> -q
-.venv/bin/black --check apps/monitor/views/plugin.py apps/monitor/serializers/plugin.py apps/monitor/tests/<新增测试文件>
-.venv/bin/isort --check-only apps/monitor/views/plugin.py apps/monitor/serializers/plugin.py apps/monitor/tests/<新增测试文件>
-.venv/bin/flake8 apps/monitor/views/plugin.py apps/monitor/serializers/plugin.py apps/monitor/tests/<新增测试文件>
+.venv/bin/pytest apps/monitor/tests/test_plugin_view.py apps/monitor/tests/test_plugin_serializer.py -q
 .venv/bin/python manage.py makemigrations --check --dry-run
+cd ..
+pre-commit run --config server/.pre-commit-config.yaml --files \
+  server/apps/monitor/views/plugin.py \
+  server/apps/monitor/serializers/plugin.py \
+  server/apps/monitor/tests/test_plugin_view.py \
+  server/apps/monitor/tests/test_plugin_serializer.py
 ```
 
 再运行仓库中现有 monitor plugin 相关测试；若全量 `make test` 被已知环境或非 monitor 模块问题阻断，需记录完整阻断证据，同时保证本次聚焦回归全部通过。
