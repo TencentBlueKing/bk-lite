@@ -55,7 +55,14 @@ def test_instance_permission_cannot_cross_current_team(monkeypatch, team_model):
     qs = scope_permission_queryset(
         team_model.model,
         permission,
-        CurrentTeamDataScope.for_test(1),
+        CurrentTeamDataScope(
+            current_team=1,
+            data_team_ids=frozenset({1}),
+            include_children=False,
+            username="admin",
+            domain="domain.com",
+            is_superuser=True,
+        ),
         team_key=team_model.team_key,
     )
     assert list(qs.values_list("id", flat=True)) == []
@@ -157,10 +164,16 @@ Expected: FAIL，超级管理员仍看到同级组织、共享配置影响范围
 task_nodes = ControllerTaskNode.objects.filter(task_id=task_id).order_by("id")
 if authorized_nodes is not None:
     authorized_ids = {str(node_id) for node_id in authorized_nodes.values_list("id", flat=True)}
-    task_nodes = task_nodes.filter(Q(node_id__in=authorized_ids) | Q(node_id="", organizations__overlap=list(scope.data_team_ids)))
+    linked_nodes = list(task_nodes.filter(node_id__in=authorized_ids))
+    legacy_nodes = [
+        item
+        for item in task_nodes.filter(Q(node_id="") | Q(node_id__isnull=True))
+        if set(item.organizations or []) & set(scope.data_team_ids)
+    ]
+    task_nodes = linked_nodes + legacy_nodes
 ```
 
-所有任务明细、汇总、动作结果和局部重试只使用过滤后的任务节点；有 Node 的记录以 Node 当前组织为准，只有无法关联 Node 的旧 `ControllerTaskNode` 才使用任务时 `organizations` 快照。
+`ControllerTaskNode.node_id` 是字符串兼容字段，旧快照兜底必须在已按 `task_id` 收窄的小集合上用 Python 判断，禁止使用 PostgreSQL 专属 JSON `overlap` 查询。所有任务明细、汇总、动作结果和局部重试只使用过滤后的任务节点；有 Node 的记录以 Node 当前组织为准，只有无法关联 Node 的旧 `ControllerTaskNode` 才使用任务时 `organizations` 快照。
 
 - [ ] **Step 5: 运行节点测试确认 GREEN 和回归**
 
