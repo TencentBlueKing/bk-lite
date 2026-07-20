@@ -1,6 +1,6 @@
 [[inputs.disk]]
     startup_error_behavior = "retry"
-    ignore_fs = ["tmpfs", "devtmpfs", "devfs", "iso9660", "overlay", "aufs", "squashfs"]
+    ignore_fs = ["tmpfs", "devtmpfs", "devfs", "iso9660", "overlay", "aufs", "squashfs", "vfat", "exfat", "fat", "fat32"]
     interval = "{{ interval }}s"
     [inputs.disk.tags]
         instance_id = "{{ instance_id }}"
@@ -25,4 +25,4 @@ def apply(metric):
 
     [processors.starlark.constants]
         disk_include_fstypes = "{{ disk_include_fstypes | default('', true) | replace('\\', '\\\\') | replace('"', '\\"') }}"
-        disk_exclude_fstypes = "{{ disk_exclude_fstypes | default('tmpfs,devtmpfs,devfs,iso9660,overlay,aufs,squashfs', true) | replace('\\', '\\\\') | replace('"', '\\"') }}"
+        disk_exclude_fstypes = "{{ disk_exclude_fstypes | default('tmpfs,devtmpfs,devfs,iso9660,overlay,aufs,squashfs,vfat,exfat,fat,fat32', true) | replace('\\', '\\\\') | replace('"', '\\"') }}"

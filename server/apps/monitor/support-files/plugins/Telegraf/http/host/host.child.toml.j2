@@ -17,7 +17,7 @@
         port = "{{ port | default('', true) }}"
         metrics_modules = "{{ metrics_modules | default('cpu,mem,disk,diskio,net,processes,system', true) }}"
         disk_include_fstypes = "{{ disk_include_fstypes | default('', true) }}"
-        disk_exclude_fstypes = "{{ disk_exclude_fstypes | default('tmpfs,devtmpfs,devfs,iso9660,overlay,aufs,squashfs', true) }}"
+        disk_exclude_fstypes = "{{ disk_exclude_fstypes | default('tmpfs,devtmpfs,devfs,iso9660,overlay,aufs,squashfs,vfat,exfat,fat,fat32', true) }}"
         winrm_scheme = "{{ winrm_scheme | default('https', true) }}"
         winrm_transport = "{{ winrm_transport | default('ntlm', true) }}"
         winrm_cert_validation = "{{ winrm_cert_validation | default('false', true) }}"

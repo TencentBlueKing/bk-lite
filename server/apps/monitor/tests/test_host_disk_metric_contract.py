@@ -10,6 +10,9 @@ PLUGIN_PATHS = {
     "host_remote": PLUGIN_ROOT / "http" / "host",
 }
 
+DEFAULT_EXCLUDE_FSTYPES = "tmpfs,devtmpfs,devfs,iso9660,overlay,aufs,squashfs,vfat,exfat,fat,fat32"
+API_MONITOR_PATH = Path(__file__).resolve().parents[4] / "agents" / "stargazer" / "api" / "monitor.py"
+
 
 def _disk_metrics(plugin_path: Path) -> list[dict]:
     metrics = json.loads((plugin_path / "metrics.json").read_text())
@@ -46,3 +49,28 @@ def test_all_disk_metrics_keep_path_and_fstype_dimensions():
 def test_host_disk_aggregation_keeps_path_and_fstype():
     for metric in _disk_metrics(PLUGIN_PATHS["host"]):
         assert "by (instance_id, device, path, fstype)" in metric["query"], metric["name"]
+
+
+def test_all_host_disk_configs_default_exclude_usb_filesystems_and_explain_filtering():
+    for plugin_path in PLUGIN_PATHS.values():
+        ui = json.loads((plugin_path / "UI.json").read_text())
+        fields = {field["name"]: field for field in ui["form_fields"]}
+        template_text = "\n".join(path.read_text() for path in plugin_path.glob("*.child.toml.j2"))
+
+        exclude_types = set(fields["disk_exclude_fstypes"]["default_value"].split(","))
+        assert DEFAULT_EXCLUDE_FSTYPES.split(",") == fields["disk_exclude_fstypes"]["default_value"].split(",")
+        assert {"vfat", "exfat", "fat", "fat32"} <= exclude_types
+        assert "ntfs" not in exclude_types
+        assert fields["disk_include_fstypes"]["tooltip"]
+        assert fields["disk_exclude_fstypes"]["tooltip"]
+        assert DEFAULT_EXCLUDE_FSTYPES in template_text
+
+    assert API_MONITOR_PATH.read_text().count(DEFAULT_EXCLUDE_FSTYPES) == 2
+
+
+if __name__ == "__main__":
+    test_all_host_templates_expose_fstype_allow_and_deny_lists()
+    test_host_telegraf_template_filters_only_disk_measurements_by_fstype()
+    test_all_disk_metrics_keep_path_and_fstype_dimensions()
+    test_host_disk_aggregation_keeps_path_and_fstype()
+    test_all_host_disk_configs_default_exclude_usb_filesystems_and_explain_filtering()
