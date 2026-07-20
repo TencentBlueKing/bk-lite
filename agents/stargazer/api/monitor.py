@@ -366,6 +366,11 @@ async def windows_wmi_metrics(request):
     password = request.headers.get("password")
     namespace = request.headers.get("namespace", "root\\cimv2")
     metrics_modules = request.headers.get("metrics_modules", "cpu,mem,disk,diskio,net,processes,system")
+    disk_include_fstypes = request.headers.get("disk_include_fstypes", "")
+    disk_exclude_fstypes = request.headers.get(
+        "disk_exclude_fstypes",
+        "tmpfs,devtmpfs,devfs,iso9660,overlay,aufs,squashfs",
+    )
     raw_timeout = request.headers.get("timeout", "60")
     instance_id = request.headers.get("instance_id")
     instance_type = request.headers.get("instance_type", "os")
@@ -391,6 +396,8 @@ async def windows_wmi_metrics(request):
         "password": password,
         "namespace": namespace,
         "metrics_modules": metrics_modules,
+        "disk_include_fstypes": disk_include_fstypes,
+        "disk_exclude_fstypes": disk_exclude_fstypes,
         "timeout": timeout,
         "tags": {
             "instance_id": instance_id,
@@ -437,6 +444,11 @@ async def host_metrics(request):
     password = request.headers.get("password")
     port = request.headers.get("port", "22" if os_type == "linux" else "5986")
     metrics_modules = request.headers.get("metrics_modules", "cpu,mem,disk,diskio,net,processes,system")
+    disk_include_fstypes = request.headers.get("disk_include_fstypes", "")
+    disk_exclude_fstypes = request.headers.get(
+        "disk_exclude_fstypes",
+        "tmpfs,devtmpfs,devfs,iso9660,overlay,aufs,squashfs",
+    )
     ansible_node_id = request.headers.get("ansible_node_id", "")
 
     agent_id = request.headers.get("agent_id", "")
@@ -482,6 +494,8 @@ async def host_metrics(request):
             "password": password,
             "port": port,
             "metrics_modules": metrics_modules,
+            "disk_include_fstypes": disk_include_fstypes,
+            "disk_exclude_fstypes": disk_exclude_fstypes,
             "ansible_node_id": ansible_node_id,
             "tags": {
                 "agent_id": agent_id,

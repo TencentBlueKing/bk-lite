@@ -349,10 +349,10 @@ class TestBuildScript:
         fake_df = bin_dir / "df"
         fake_df.write_text(
             """#!/bin/sh
-if [ "$1" = "-P" ] && [ "$2" = "-B1" ]; then
+if [ "$1" = "-PT" ] && [ "$2" = "-B1" ]; then
   cat <<'DATA'
-Filesystem 1B-blocks Used Available Capacity Mounted on
-/dev/sda1 100 50 50 50% /
+Filesystem Type 1B-blocks Used Available Capacity Mounted on
+/dev/sda1 ext4 100 50 50 50% /
 DATA
   exit 0
 fi
@@ -371,7 +371,7 @@ exit 1
         env = {**os.environ, "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}"}
 
         result = subprocess.run(
-            ["bash", "-c", build_script("linux", ["disk"])],
+            ["bash", "-c", build_script("linux", ["disk"], monitor_type="host")],
             check=True,
             env=env,
             capture_output=True,
@@ -380,6 +380,24 @@ exit 1
 
         payload = json.loads(result.stdout)
         assert payload["disk"][0]["inodes_used_percent"] == 0
+        assert payload["disk"][0]["path"] == "/"
+        assert payload["disk"][0]["fstype"] == "ext4"
+
+    def test_monitor_disk_metadata_is_isolated_from_generic_host_script(self):
+        generic_script = build_script("linux", ["disk"])
+        monitor_script = build_script("linux", ["disk"], monitor_type="host")
+
+        assert "df -P -B1" in generic_script
+        assert "df -PT -B1" not in generic_script
+        assert "df -PT -B1" in monitor_script
+        assert '\\"fstype\\":\\"$fstype_json\\"' in monitor_script
+
+    def test_windows_monitor_disk_metadata_is_isolated_from_generic_host_script(self):
+        generic_script = build_script("windows", ["disk"])
+        monitor_script = build_script("windows", ["disk"], monitor_type="host")
+
+        assert "fstype = $d.FileSystem" not in generic_script
+        assert "fstype = $d.FileSystem" in monitor_script
 
     def test_linux_net_script_filters_virtual_interfaces(self):
         script = build_script("linux", ["net"])
@@ -498,6 +516,28 @@ class TestParseMetricsToPrometheus:
         assert 'mount="/"' in result
         assert 'mount="/data"' in result
         assert "host_disk_used_percent" in result
+
+    def test_disk_metrics_filter_by_fstype_and_keep_path_labels(self):
+        data = {
+            "disk": [
+                {"mount": "/", "path": "/", "fstype": "ext4", "total_bytes": 100, "used_bytes": 50, "used_percent": 50},
+                {"mount": "/media/usb", "path": "/media/usb", "fstype": "vfat", "total_bytes": 100, "used_bytes": 50, "used_percent": 50},
+                {"mount": "/data", "path": "/data", "fstype": "xfs", "total_bytes": 100, "used_bytes": 50, "used_percent": 50},
+            ]
+        }
+
+        result = parse_metrics_to_prometheus(
+            data,
+            "inst1",
+            "linux",
+            disk_include_fstypes=" ext4, vfat ",
+            disk_exclude_fstypes="vfat",
+        )
+
+        assert 'path="/"' in result
+        assert 'fstype="ext4"' in result
+        assert "/media/usb" not in result
+        assert "/data" not in result
 
     def test_disk_metrics_escape_prometheus_label_values(self):
         data = {

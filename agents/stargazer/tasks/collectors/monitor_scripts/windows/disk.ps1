@@ -1,0 +1,20 @@
+# Host Remote 监控专属磁盘采集：保留文件系统类型，供监控白黑名单过滤。
+$disks = Get-MetricData 'Win32_LogicalDisk' | Where-Object { $_.DriveType -eq 3 }
+$diskArr = @()
+foreach ($d in $disks) {
+    $total = [int64]$d.Size
+    $free = [int64]$d.FreeSpace
+    $used = $total - $free
+    $pct = if ($total -gt 0) { [math]::Round($used / $total * 100, 2) } else { 0 }
+    $diskArr += @{
+        mount = $d.DeviceID
+        path = $d.DeviceID
+        fstype = $d.FileSystem
+        total_bytes = $total
+        free_bytes = $free
+        used_bytes = $used
+        used_percent = $pct
+        inodes_used_percent = 0
+    }
+}
+$result['disk'] = $diskArr

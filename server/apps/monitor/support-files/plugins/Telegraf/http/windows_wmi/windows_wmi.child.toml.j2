@@ -11,6 +11,8 @@
         password = "${PASSWORD__{{ config_id }}}"
         namespace = "{{ namespace | default('root\\cimv2', true) }}"
         metrics_modules = "{{ metrics_modules | default('cpu,mem,disk,diskio,net,processes,system', true) }}"
+        disk_include_fstypes = "{{ disk_include_fstypes | default('', true) }}"
+        disk_exclude_fstypes = "{{ disk_exclude_fstypes | default('tmpfs,devtmpfs,devfs,iso9660,overlay,aufs,squashfs', true) }}"
         timeout = "{{ timeout | default(60, true) }}"
         instance_id = "{{ instance_id }}"
         instance_type = "{{ instance_type | default('os', true) }}"
