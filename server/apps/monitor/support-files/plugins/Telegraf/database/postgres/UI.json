@@ -15,6 +15,7 @@
       "required": true,
       "editable": false,
       "description": "用于访问接口的用户名",
+      "guide_short": "建议使用只读监控账号，按 Telegraf inputs.postgresql 官方步骤 GRANT pg_read_all_stats（PostgreSQL 10+ 预定义角色，可读全部 pg_stat_* 视图）；老版本回退 GRANT pg_monitor。",
       "widget_props": {
         "placeholder": "用户名",
         "placeholder_en": "Username"
@@ -36,6 +37,7 @@
       "editable": false,
       "encrypted": true,
       "description": "对应的登录密码",
+      "guide_short": "填写与用户名对应的登录密码，注意不要带入首尾空格；支持含特殊字符的密码。",
       "widget_props": {
         "placeholder": "密码",
         "placeholder_en": "Password"
@@ -54,6 +56,7 @@
       "visible_in": "edit",
       "editable": false,
       "description": "与设备进行通信的主机",
+      "guide_short": "填写 PostgreSQL 服务所在的主机 IP 或域名，例如 10.0.0.10；保存前在采集节点 ping/telnet 验证可达。",
       "widget_props": {
         "placeholder": "主机地址"
       },
@@ -73,6 +76,7 @@
       "visible_in": "edit",
       "editable": false,
       "description": "与设备进行通信的端口",
+      "guide_short": "PostgreSQL 服务端口，默认 5432；如使用非默认端口请如实填写。",
       "widget_props": {
         "min": 1,
         "precision": 0,
@@ -94,6 +98,7 @@
       "required": true,
       "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
+      "guide_short": "默认 60 秒；过低会增加数据库压力，过高会延误告警。",
       "widget_props": {
         "min": 1,
         "precision": 0,

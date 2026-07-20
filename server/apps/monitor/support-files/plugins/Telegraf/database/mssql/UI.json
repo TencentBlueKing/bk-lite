@@ -15,6 +15,7 @@
       "required": true,
       "editable": false,
       "description": "用于访问接口的用户名",
+      "guide_short": "建议使用只读监控账号，按 Telegraf inputs.sqlserver 官方步骤 CREATE LOGIN 后 GRANT VIEW SERVER STATE；采集可用性组/复制指标需附加 GRANT VIEW ANY DEFINITION；每个业务库内单独 CREATE USER + GRANT VIEW DATABASE STATE。",
       "widget_props": {
         "placeholder": "用户名",
         "placeholder_en": "Username"
@@ -35,6 +36,7 @@
       "required": true,
       "editable": false,
       "description": "对应的登录密码",
+      "guide_short": "填写与用户名对应的登录密码，注意不要带入首尾空格；若含特殊字符，在 sqlcmd 中请用单引号包裹 -P 参数。",
       "widget_props": {
         "placeholder": "密码",
         "placeholder_en": "Password"
@@ -53,6 +55,7 @@
       "visible_in": "edit",
       "editable": false,
       "description": "与设备进行通信的主机",
+      "guide_short": "填写 SQL Server 的 IP 或主机名；命名实例请确认 TCP 端口或 SQL Server Browser（UDP 1434）可达。",
       "widget_props": {
         "placeholder": "主机地址"
       },
@@ -72,6 +75,7 @@
       "visible_in": "edit",
       "editable": false,
       "description": "与设备进行通信的端口",
+      "guide_short": "SQL Server 数据库服务端口，默认 1433；命名实例可能为动态端口，请按实际填写。",
       "widget_props": {
         "min": 1,
         "precision": 0,
@@ -93,6 +97,7 @@
       "required": true,
       "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
+      "guide_short": "默认 60 秒；过低会增加 SQL Server 的 DMV 查询压力，过高会延误告警与指标刷新。",
       "widget_props": {
         "min": 1,
         "precision": 0,
