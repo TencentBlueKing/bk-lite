@@ -9,6 +9,7 @@ const knowledgeConflict: CheckItem = {
   check_type: 'material_update',
   decision_type: 'knowledge_conflict',
   status: 'open',
+  decision_key: 'wiki-story-knowledge-conflict-v13',
   created_at: '2026-07-14T10:20:00+08:00',
   candidate_version: 13,
   related_pages: [
@@ -26,7 +27,42 @@ const knowledgeConflict: CheckItem = {
     id: 301,
     body: '## 告警条件\n\n节点磁盘使用率达到阈值，并持续 5 分钟超过阈值时触发。\n\n- 节点磁盘使用率达到 **85%** 时触发告警。\n\n处置前至少保留最近 7 天的业务日志。',
   },
+  current_knowledge: {
+    id: 201,
+    page_id: 201,
+    title: 'Kubernetes 节点磁盘告警阈值',
+    page_type: '运维规则',
+    body: '## 告警条件\n\n节点磁盘使用率达到阈值，并连续 3 次采集超过阈值时触发。\n\n- 节点磁盘使用率达到 **80%** 时触发告警。',
+    source_label: 'Kubernetes 运维手册 v2025.12',
+    source_count: 3,
+    relation_count: 3,
+    version_label: '当前 v12',
+  },
+  new_knowledge: {
+    id: 201,
+    page_id: 201,
+    title: 'Kubernetes 节点磁盘告警阈值',
+    page_type: '运维规则',
+    body: '## 告警条件\n\n节点磁盘使用率达到阈值，并持续 5 分钟超过阈值时触发。\n\n- 节点磁盘使用率达到 **85%** 时触发告警。',
+    source_label: 'SRE 运行标准 v2026.06',
+    source_count: 2,
+    relation_count: 3,
+    version_label: '候选 v13',
+  },
   decision_context: {
+    locked_current_version_id: 12,
+    candidate_version_id: 13,
+    decision_type: 'knowledge_conflict',
+    subject_key: 'page::rule::kubernetes-node-disk-alert-threshold',
+    schema_fingerprint: 'schema-v1',
+    current_body_hash: 'current-body-hash',
+    candidate_body_hash: 'candidate-body-hash',
+    participants: [
+      { material_id: 501, content_hash: 'current-content-hash' },
+      { material_id: 502, content_hash: 'incoming-content-hash' },
+    ],
+    incoming: { material_id: 502, content_hash: 'incoming-content-hash' },
+    page_identity: { page_id: 201, title: 'Kubernetes 节点磁盘告警阈值', page_type: '运维规则' },
     title: 'Kubernetes 节点磁盘告警阈值',
     summary: '新资料将告警阈值从 80% 调整为 85%，与当前知识不一致',
     reason: '关键结论发生变化',
@@ -171,7 +207,7 @@ const meta = {
   parameters: { layout: 'fullscreen' },
   decorators: [
     (Story) => (
-      <div className="min-h-screen bg-[var(--color-primary-bg-active)] p-4 lg:p-6">
+      <div className="min-h-screen bg-[#f4f7ff] p-4 lg:p-6">
         <Story />
       </div>
     ),
@@ -194,9 +230,10 @@ type Story = StoryObj<typeof meta>;
 
 export const KnowledgeConflict: Story = {
   args: {
-    items: [knowledgeConflict],
+    items: [knowledgeConflict, pageIdentity],
     view: 'pending',
-    pendingCount: 1,
+    total: 2,
+    pendingCount: 2,
     processedCount: 0,
     activeId: knowledgeConflict.id,
   },
