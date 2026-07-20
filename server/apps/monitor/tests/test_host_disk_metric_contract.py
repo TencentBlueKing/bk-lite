@@ -64,6 +64,8 @@ def test_all_host_disk_configs_default_exclude_usb_filesystems_and_explain_filte
         assert "ntfs" not in exclude_types
         assert fields["disk_include_fstypes"]["tooltip"]
         assert fields["disk_exclude_fstypes"]["tooltip"]
+        assert fields["disk_include_fstypes"]["guide_short"]
+        assert fields["disk_exclude_fstypes"]["guide_short"]
         assert DEFAULT_EXCLUDE_FSTYPES in template_text
         assert f"disk_exclude_fstypes | default('{DEFAULT_EXCLUDE_FSTYPES}')" in template_text
         assert f"disk_exclude_fstypes | default('{DEFAULT_EXCLUDE_FSTYPES}', true)" not in template_text

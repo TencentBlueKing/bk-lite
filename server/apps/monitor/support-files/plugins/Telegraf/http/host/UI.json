@@ -78,6 +78,7 @@
       "default_value": "",
       "description": "逗号分隔；留空表示不限制类型，例如 ext4,xfs 或 NTFS,ReFS。",
       "tooltip": "推荐仅采集 Linux 的 ext4、xfs、btrfs，或 Windows 的 NTFS、ReFS；留空表示不按类型限制。",
+      "guide_short": "推荐仅采集 Linux 的 ext4、xfs、btrfs，或 Windows 的 NTFS、ReFS；留空表示不按类型限制。",
       "widget_props": {
         "placeholder": "ext4,xfs"
       },
@@ -94,6 +95,7 @@
       "default_value": "tmpfs,devtmpfs,devfs,iso9660,overlay,aufs,squashfs,vfat,exfat,fat,fat32",
       "description": "逗号分隔；黑名单优先于仅采集列表，例如 vfat,exfat,ntfs。",
       "tooltip": "临时盘/容器盘：tmpfs、devtmpfs、overlay、aufs、squashfs；光盘：iso9660；常见 U 盘：vfat、exfat、fat、fat32。黑名单优先于仅采集列表；不默认排除 ntfs。",
+      "guide_short": "临时盘/容器盘：tmpfs、devtmpfs、overlay、aufs、squashfs；光盘：iso9660；常见 U 盘：vfat、exfat、fat、fat32。黑名单优先于仅采集列表；不默认排除 ntfs。",
       "widget_props": {
         "placeholder": "vfat,exfat,ntfs"
       },
