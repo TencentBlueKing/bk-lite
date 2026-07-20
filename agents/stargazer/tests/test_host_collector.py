@@ -321,12 +321,17 @@ class TestBuildScript:
         assert "cpu_user_2" in script
         assert "used_delta" in script
 
-    def test_linux_disk_script_filters_container_overlay_mounts(self):
-        script = build_script("linux", ["disk"])
+    def test_monitor_linux_disk_script_leaves_filesystem_filtering_to_collector(self):
+        script = build_script("linux", ["disk"], monitor_type="host")
 
-        assert "overlay:*" in script
-        assert "/var/lib/docker/overlay2/*/merged" in script
-        assert "/data/lib/docker/overlay2/*/merged" in script
+        assert "df -PT -B1" in script
+        assert " -x " not in script
+        assert "overlay:*" not in script
+        assert "/var/lib/docker/overlay2/" not in script
+        assert "/data/lib/docker/overlay2/" not in script
+        assert "/run/containerd/" not in script
+        assert '\\"path\\":\\"$mount_json\\"' in script
+        assert '\\"fstype\\":\\"$fstype_json\\"' in script
 
     def test_linux_header_script_provides_json_escape_helper(self):
         script = build_script("linux", ["disk"])

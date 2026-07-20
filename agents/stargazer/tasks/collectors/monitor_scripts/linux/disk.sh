@@ -12,12 +12,7 @@ disk_number_or_zero() {
       ;;
   esac
 }
-df -PT -B1 -x tmpfs -x devtmpfs -x squashfs 2>/dev/null | tail -n +2 | while read fs fstype size used avail pct mount; do
-  case "$fs:$mount" in
-    overlay:*|*:/var/lib/docker/overlay2/*/merged|*:/data/lib/docker/overlay2/*/merged|*:/run/containerd/*)
-      continue
-      ;;
-  esac
+df -PT -B1 2>/dev/null | tail -n +2 | while read fs fstype size used avail pct mount; do
   if [ $_disk_first -eq 0 ]; then echo ','; fi; _disk_first=0
   used_pct=$(echo "$pct" | tr -d '%')
   size=$(disk_number_or_zero "$size")
