@@ -71,6 +71,22 @@ class TestGetParentMonitorObject:
         plugin.monitor_object.add(child)
         assert MonitorPluginSerializer().get_parent_monitor_object(plugin) is None
 
+    def test_returns_first_parent_using_monitor_object_default_ordering(self):
+        lower_id_later = MonitorObject.objects.create(
+            name="PSParentOrderedLater",
+            level="base",
+            order=200,
+        )
+        higher_id_earlier = MonitorObject.objects.create(
+            name="PSParentOrderedEarlier",
+            level="base",
+            order=100,
+        )
+        plugin = MonitorPlugin.objects.create(name="PSPluginOrderedParents")
+        plugin.monitor_object.add(lower_id_later, higher_id_earlier)
+
+        assert MonitorPluginSerializer().get_parent_monitor_object(plugin) == higher_id_earlier.id
+
 
 class TestBuildDefaultStatusQuery:
     def test_uses_instance_id_keys(self):

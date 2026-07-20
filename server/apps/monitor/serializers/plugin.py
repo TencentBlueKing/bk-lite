@@ -62,18 +62,15 @@ class MonitorPluginSerializer(serializers.ModelSerializer):
         return value
 
     def get_parent_monitor_object(self, obj):
-        """
-        获取唯一的父监控对象ID（过滤掉子对象）
-        """
-        # 获取所有关联的监控对象中的父对象（parent 为 None 的对象）
-        parent_objects = obj.monitor_object.filter(parent__isnull=True)
-
-        # 如果存在父对象，返回第一个父对象的 ID
-        if parent_objects.exists():
-            return parent_objects.first().id
-
-        # 如果没有父对象，返回 None
-        return None
+        """获取 MonitorObject 默认排序下的第一个父监控对象 ID。"""
+        return next(
+            (
+                monitor_object.id
+                for monitor_object in obj.monitor_object.all()
+                if monitor_object.parent_id is None
+            ),
+            None,
+        )
 
     @staticmethod
     def build_default_status_query(plugin):

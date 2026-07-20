@@ -2,6 +2,9 @@
 
 import pytest
 
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
+
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.monitor.models import MonitorPlugin
 from apps.monitor.models.monitor_object import MonitorObject
@@ -35,6 +38,55 @@ class TestPluginList:
         assert rows["apip"]["is_custom"] is True
         assert rows["apip"]["display_name"] == "API插件"
         assert rows["builtinp"]["is_custom"] is False
+
+    def test_list_preserves_related_object_order_and_parent_choice(self, api_client):
+        lower_id_later = MonitorObject.objects.create(
+            name="PVParentOrderedLater",
+            level="base",
+            order=200,
+        )
+        higher_id_earlier = MonitorObject.objects.create(
+            name="PVParentOrderedEarlier",
+            level="base",
+            order=100,
+        )
+        child = MonitorObject.objects.create(
+            name="PVChildOrderedFirst",
+            level="derivative",
+            parent=higher_id_earlier,
+            order=50,
+        )
+        plugin = MonitorPlugin.objects.create(
+            name="PVOrderingPlugin",
+            template_type="builtin",
+        )
+        plugin.monitor_object.add(lower_id_later, higher_id_earlier, child)
+
+        response = api_client.get(f"{BASE}/api/monitor_plugin/?name=PVOrderingPlugin")
+
+        assert response.status_code == 200
+        rows = response.json()["data"]
+        assert len(rows) == 1
+        assert rows[0]["monitor_object"] == [child.id, higher_id_earlier.id, lower_id_later.id]
+        assert rows[0]["parent_monitor_object"] == higher_id_earlier.id
+
+    def test_list_queries_remain_constant_for_multiple_plugins(self, api_client):
+        parent = MonitorObject.objects.create(name="PVPerfParent", level="base")
+        for index in range(4):
+            plugin = MonitorPlugin.objects.create(
+                name=f"PVPerfPlugin{index}",
+                template_type="builtin",
+            )
+            plugin.monitor_object.add(parent)
+
+        with CaptureQueriesContext(connection) as queries:
+            response = api_client.get(
+                f"{BASE}/api/monitor_plugin/?monitor_object_id=&name=PVPerfPlugin"
+            )
+
+        assert response.status_code == 200
+        assert len(response.json()["data"]) == 4
+        assert len(queries) == 2
 
 
 class TestGetAccessGuide:

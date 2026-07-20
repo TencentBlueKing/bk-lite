@@ -47,7 +47,7 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
         return super().partial_update(request, *args, **kwargs)
 
     def list(self, request, *args, **kwargs):
-        queryset = self.filter_queryset(self.get_queryset())
+        queryset = self.filter_queryset(self.get_queryset()).prefetch_related("monitor_object")
         serializer = self.get_serializer(queryset, many=True)
         results = serializer.data
 
