@@ -33,9 +33,11 @@ export const useConfigRenderer = () => {
       rules = [],
       description,
       editable,
-      guide_short
+      guide_short,
+      tooltip
     } = fieldConfig;
-    const hasGuideTip = Boolean(guide_short);
+    const guideTip = guide_short || tooltip;
+    const hasGuideTip = Boolean(guideTip);
 
     if (type === 'hidden') {
       return (
@@ -235,7 +237,7 @@ export const useConfigRenderer = () => {
                   hasGuideTip ? (
                     <span className="inline-flex items-center">
                       {label}
-                      <FieldGuideTip short={guide_short} />
+                      <FieldGuideTip short={guideTip} />
                     </span>
                   ) : (
                     label
@@ -274,7 +276,7 @@ export const useConfigRenderer = () => {
           hasGuideTip ? (
             <span className="inline-flex items-center">
               {label}
-              <FieldGuideTip short={guide_short} />
+              <FieldGuideTip short={guideTip} />
             </span>
           ) : (
             label
