@@ -892,7 +892,6 @@ Expected: PASS(既有 reset_password 测试 #0004 不破)
     mode: "none" | "uniform" | "random";
     uniform_password?: string;
     email_channel_id?: number;
-    email_template_key?: string;
   }
   ```
 
@@ -946,7 +945,6 @@ export interface PasswordInitConfig {
   mode: PasswordInitMode;
   uniform_password?: string;
   email_channel_id?: number;
-  email_template_key?: string;
 }
 
 // UserSyncSourceConfigFormValues 加字段

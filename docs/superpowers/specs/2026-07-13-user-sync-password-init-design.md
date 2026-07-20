@@ -86,8 +86,7 @@
 │   { password_init: {                                           │
 │       mode: none|uniform|random,                               │
 │       uniform_password: "...",                                 │
-│       email_channel_id: 7,                                     │
-│       email_template_key: "..." } }                            │
+│       email_channel_id: 7 } }                                  │
 └─────────────────────────────────────────────────────────────────┘
                             │
                             ▼
@@ -146,8 +145,7 @@
   "password_init": {
     "mode": "none" | "uniform" | "random",
     "uniform_password": "<AES encrypted secret>",
-    "email_channel_id": 7,
-    "email_template_key": "user_sync_initial_password"
+    "email_channel_id": 7
   }
 }
 ```
@@ -155,7 +153,6 @@
 - `mode`：三选一，可选（form 空值时为 undefined）
 - `uniform_password`：仅 `mode=uniform` 必填；写入时先过 `PasswordValidator` 再 AES 加密，读取接口不返回该字段；已有统一密码的更新请求可留空保持原密文
 - `email_channel_id`：仅 `mode ∈ {uniform, random}` 必填；下拉数据来自通用 `Channel` 表 `channel_type='email'` 通道
-- `email_template_key`：通知中心模板 key，留空用默认模板
 
 **字段位置关键决策**：从最初设计的 `business_config.password_init` 改为独立 `platform_config.password_init`。原因：飞书 / 企微等 provider manifest 校验 `business_config` 内的字段，未声明的字段被拒绝（"Unsupported user_sync business config fields: password_init"）。而 `platform_config` 明确承载 BK-Lite 平台侧策略，既绕开 provider contract，也为未来新增本地策略保留统一扩展位。
 

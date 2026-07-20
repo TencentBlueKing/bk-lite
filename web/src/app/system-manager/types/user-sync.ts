@@ -103,8 +103,6 @@ export interface PasswordInitConfig {
   uniform_password_configured?: boolean;
   /** 仅 mode=uniform/random 必填:通知中心邮件通道 ID */
   email_channel_id?: number;
-  /** 通知中心邮件模板 key,默认走模板自带 */
-  email_template_key?: string;
 }
 
 export interface PlatformConfig {
