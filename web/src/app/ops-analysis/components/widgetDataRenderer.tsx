@@ -5,6 +5,7 @@ import React, {
   useMemo,
   useRef,
 } from "react";
+import { createPortal } from "react-dom";
 import { Spin } from "antd";
 import { useTranslation } from "@/utils/i18n";
 import {
@@ -15,9 +16,21 @@ import {
 } from "@/app/ops-analysis/types/dashBoard";
 import { DatasourceItem } from "@/app/ops-analysis/types/dataSource";
 import {
+  buildWidgetExtraParams,
   buildWidgetRequestParams,
   buildWidgetRequestSignatureParams,
+  createWidgetRequestHistory,
+  decideWidgetRequest,
+  hasActiveWidgetRuntimeParams,
+  shouldShowInitialWidgetLoading,
 } from "@/app/ops-analysis/utils/widgetDataTransform";
+import {
+  findComponentSwitchParams,
+  getTypedValueKey,
+  reconcileComponentSwitchValue,
+  resolveComponentSwitchRuntime,
+} from "@/app/ops-analysis/utils/componentParamSwitch";
+import { useParamInputOptions } from "@/app/ops-analysis/hooks/useParamInputOptions";
 import { fetchCompareData } from "@/app/ops-analysis/utils/compareQuery";
 import { useDataSourceApi } from "@/app/ops-analysis/api/dataSource";
 import { ChartDataTransformer } from "@/app/ops-analysis/utils/chartDataTransform";
@@ -35,6 +48,8 @@ import {
 } from "@/app/ops-analysis/utils/widgetRequestVersion";
 import WidgetRenderer from "@/app/ops-analysis/components/widgetRenderer";
 import WidgetErrorState from "@/app/ops-analysis/components/widgetErrorState";
+import { useWidgetHeaderRuntimeSlot } from "@/app/ops-analysis/components/widgetHeaderRuntimeSlot";
+import ComponentParamSwitchControl from "@/app/ops-analysis/components/componentParamSwitchControl";
 
 const validateTopNData = (
   data: unknown,
@@ -227,9 +242,13 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   screenRenderContext,
 }) => {
   const { t } = useTranslation();
+  const headerRuntimeSlot = useWidgetHeaderRuntimeSlot();
   const [rawData, setRawData] = useState<any>(null);
   const [baselineData, setBaselineData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [hasSettledRequest, setHasSettledRequest] = useState(false);
+  const hasSettledRequestRef = useRef(false);
+  const suppressInitialCacheRequestKeyRef = useRef<string | null>(null);
   const [tableLoading, setTableLoading] = useState(false);
   const [dataValidation, setDataValidation] = useState<{
     isValid: boolean;
@@ -240,6 +259,121 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   );
   const { getSourceDataByApiId } = useDataSourceApi();
   const isSceneWidget = config?.sceneWidgetType === "networkStatusTopology";
+  const effectiveComponentParams = useMemo(() => {
+    const overrides = config?.dataSourceParams || [];
+    if (!dataSource?.params?.length) return overrides;
+    return dataSource.params.map((param) => {
+      const override = overrides.find((item) => item.name === param.name);
+      return override ? { ...param, ...override } : param;
+    });
+  }, [config?.dataSourceParams, dataSource?.params]);
+  const componentSwitchParam = useMemo(
+    () => chartType === "topN" ? findComponentSwitchParams(effectiveComponentParams)[0] : undefined,
+    [chartType, effectiveComponentParams],
+  );
+  const optionState = useParamInputOptions(componentSwitchParam?.inputConfig);
+  const rawSavedComponentSwitchValue = componentSwitchParam
+    ? config?.params?.[componentSwitchParam.name] ?? componentSwitchParam.value
+    : undefined;
+  const savedComponentSwitchValue =
+    typeof rawSavedComponentSwitchValue === "string" || typeof rawSavedComponentSwitchValue === "number"
+      ? rawSavedComponentSwitchValue
+      : undefined;
+  const runtimeParamScopeKey = useMemo(
+    () =>
+      JSON.stringify({
+        chartType,
+        dataSource: config?.dataSource,
+        param: componentSwitchParam?.name,
+        inputConfig: componentSwitchParam?.inputConfig,
+        savedValue:
+          typeof savedComponentSwitchValue === "string" || typeof savedComponentSwitchValue === "number"
+            ? getTypedValueKey(savedComponentSwitchValue)
+            : null,
+      }),
+    [
+      chartType,
+      config?.dataSource,
+      componentSwitchParam?.inputConfig,
+      componentSwitchParam?.name,
+      savedComponentSwitchValue,
+    ],
+  );
+  const runtimeParamInitialValue = useMemo(
+    () => {
+      const reconciled = optionState.status === "success"
+        ? reconcileComponentSwitchValue(savedComponentSwitchValue, optionState.options)
+        : savedComponentSwitchValue;
+      return typeof reconciled === "string" || typeof reconciled === "number"
+        ? reconciled
+        : undefined;
+    },
+    [optionState, savedComponentSwitchValue],
+  );
+  const [runtimeParamState, setRuntimeParamState] = useState<{
+    scopeKey: string;
+    value?: string | number;
+  }>(() => ({
+    scopeKey: runtimeParamScopeKey,
+    value: runtimeParamInitialValue,
+  }));
+  const runtimeParamValue =
+    runtimeParamState.scopeKey === runtimeParamScopeKey
+      ? runtimeParamState.value
+      : runtimeParamInitialValue;
+
+  useEffect(() => {
+    setRuntimeParamState((previous) =>
+      previous.scopeKey === runtimeParamScopeKey
+        ? previous
+        : {
+          scopeKey: runtimeParamScopeKey,
+          value: runtimeParamInitialValue,
+        },
+    );
+  }, [runtimeParamInitialValue, runtimeParamScopeKey]);
+
+  useEffect(() => {
+    if (optionState.status !== "success") return;
+    setRuntimeParamState((previous) => {
+      if (previous.scopeKey !== runtimeParamScopeKey) {
+        return { scopeKey: runtimeParamScopeKey, value: runtimeParamInitialValue };
+      }
+      const reconciled = reconcileComponentSwitchValue(
+        previous.value,
+        optionState.options,
+      );
+      if (typeof reconciled !== "string" && typeof reconciled !== "number") {
+        return previous;
+      }
+      return reconciled === previous.value
+        ? previous
+        : { ...previous, value: reconciled };
+    });
+  }, [optionState, runtimeParamInitialValue, runtimeParamScopeKey]);
+
+  const handleRuntimeParamChange = useCallback(
+    (value: string | number) => {
+      setRuntimeParamState({ scopeKey: runtimeParamScopeKey, value });
+    },
+    [runtimeParamScopeKey],
+  );
+  const componentSwitchControl = optionState.status === "success" ? (
+    <ComponentParamSwitchControl
+      inputConfig={componentSwitchParam?.inputConfig}
+      options={optionState.options}
+      value={runtimeParamValue as string | number | undefined}
+      onChange={handleRuntimeParamChange}
+      block={!headerRuntimeSlot}
+    />
+  ) : null;
+  const runtimeHeaderControl =
+    chartType === "topN" && headerRuntimeSlot && componentSwitchControl
+      ? createPortal(
+        componentSwitchControl,
+        headerRuntimeSlot,
+      )
+      : null;
 
   const fetchIdRef = useRef(0);
   const tableQueryKey = useMemo(
@@ -270,6 +404,38 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     Boolean(dataSource) &&
     dataSource?.hasAuth !== false &&
     (!widgetUsesNamespace || effectiveNamespaceId !== undefined);
+  const runtimeParams = useMemo(
+    () => optionState.status === "success"
+      ? resolveComponentSwitchRuntime(
+        chartType,
+        componentSwitchParam,
+        optionState.options,
+        runtimeParamValue,
+      ).params
+      : {},
+    [
+      chartType,
+      componentSwitchParam,
+      optionState,
+      runtimeParamValue,
+    ],
+  );
+  const requestExtraParams = useMemo(
+    () =>
+      buildWidgetExtraParams({
+        namespaceId: widgetUsesNamespace ? effectiveNamespaceId : undefined,
+        isTableLikeChart,
+        tableQueryParams,
+        runtimeParams,
+      }),
+    [
+      effectiveNamespaceId,
+      isTableLikeChart,
+      runtimeParams,
+      tableQueryParams,
+      widgetUsesNamespace,
+    ],
+  );
 
   const requestParams = useMemo(() => {
     if (!requestEnabled) {
@@ -279,12 +445,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     return buildWidgetRequestParams({
       config,
       dataSource,
-      extraParams: {
-        ...(widgetUsesNamespace && effectiveNamespaceId !== undefined
-          ? { namespace_id: effectiveNamespaceId }
-          : {}),
-        ...(isTableLikeChart ? tableQueryParams : {}),
-      },
+      extraParams: requestExtraParams,
       unifiedFilterValues,
       filterBindings: config?.filterBindings,
       filterDefinitions,
@@ -293,10 +454,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     requestEnabled,
     config,
     dataSource,
-    widgetUsesNamespace,
-    effectiveNamespaceId,
-    isTableLikeChart,
-    tableQueryParams,
+    requestExtraParams,
     unifiedFilterValues,
     filterDefinitions,
   ]);
@@ -309,12 +467,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     return buildWidgetRequestSignatureParams({
       config,
       dataSource,
-      extraParams: {
-        ...(widgetUsesNamespace && effectiveNamespaceId !== undefined
-          ? { namespace_id: effectiveNamespaceId }
-          : {}),
-        ...(isTableLikeChart ? tableQueryParams : {}),
-      },
+      extraParams: requestExtraParams,
       unifiedFilterValues,
       filterBindings: config?.filterBindings,
       filterDefinitions,
@@ -323,10 +476,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     requestEnabled,
     config,
     dataSource,
-    widgetUsesNamespace,
-    effectiveNamespaceId,
-    isTableLikeChart,
-    tableQueryParams,
+    requestExtraParams,
     unifiedFilterValues,
     filterDefinitions,
   ]);
@@ -446,12 +596,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
           getSourceDataByApiId,
           config,
           dataSource,
-          extraParams: {
-            ...(widgetUsesNamespace && effectiveNamespaceId !== undefined
-              ? { namespace_id: effectiveNamespaceId }
-              : {}),
-            ...(chartType === "table" ? tableQueryParams : {}),
-          },
+          extraParams: requestExtraParams,
           unifiedFilterValues,
           filterBindings: config?.filterBindings,
           filterDefinitions,
@@ -486,6 +631,8 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       setWidgetRequestFailureCache(requestKey, message);
     } finally {
       if (currentFetchId !== fetchIdRef.current) return;
+      hasSettledRequestRef.current = true;
+      setHasSettledRequest(true);
       if (isTableLikeChart) {
         setTableLoading(false);
       } else {
@@ -538,21 +685,21 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     t,
   ]);
 
-  const previousRequestRef = useRef<{
-    signature: string | null;
-    filterSearchVersion: number;
-    namespaceSearchVersion: number;
-    reloadVersion: string;
-    tableQueryKey: string;
-    hasRequested: boolean;
-  }>({
-    signature: null,
-    filterSearchVersion,
-    namespaceSearchVersion,
-    reloadVersion,
-    tableQueryKey,
-    hasRequested: false,
-  });
+  const previousRequestRef = useRef(
+    createWidgetRequestHistory({
+      requestEnabled: false,
+      requestSignature: null,
+      hasRequestParams: false,
+      hasRequestKey: false,
+      filterSearchVersion,
+      namespaceSearchVersion,
+      reloadVersion,
+      tableQueryKey,
+      hasEnabledFilterBindings: false,
+      widgetUsesNamespace: false,
+      isTableLikeChart: false,
+    }),
+  );
 
   useEffect(() => {
     if (!requestEnabled || !requestSignature || !requestKey) {
@@ -577,14 +724,14 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     );
     setLoading(false);
     setTableLoading(false);
-    previousRequestRef.current = {
-      signature: requestSignature,
-      filterSearchVersion,
-      namespaceSearchVersion,
-      reloadVersion,
-      tableQueryKey,
-      hasRequested: true,
-    };
+    if (
+      !hasSettledRequestRef.current &&
+      !previousRequestRef.current.hasRequested
+    ) {
+      suppressInitialCacheRequestKeyRef.current = requestKey;
+    }
+    hasSettledRequestRef.current = true;
+    setHasSettledRequest(true);
   }, [
     filterSearchVersion,
     namespaceSearchVersion,
@@ -598,51 +745,31 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   ]);
 
   useEffect(() => {
-    const previousRequest = previousRequestRef.current;
-    const signatureChanged = previousRequest.signature !== requestSignature;
-    const filterSearchChanged =
-      previousRequest.filterSearchVersion !== filterSearchVersion;
-    const namespaceSearchChanged =
-      previousRequest.namespaceSearchVersion !== namespaceSearchVersion;
-    const reloadChanged = previousRequest.reloadVersion !== reloadVersion;
-    const tableQueryChanged = previousRequest.tableQueryKey !== tableQueryKey;
-    const isInitialRequest = !previousRequest.hasRequested;
-    const shouldFetchForFilterSearch =
-      filterSearchChanged && hasEnabledFilterBindings;
-    const shouldFetchForNamespaceSearch =
-      namespaceSearchChanged && widgetUsesNamespace;
-    const shouldFetchForTableQuery = isTableLikeChart && tableQueryChanged;
-
-    if (!requestEnabled || !requestSignature || !requestParams || !requestKey) {
-      previousRequestRef.current = {
-        signature: requestSignature,
+    const suppressInitialCacheFetch =
+      suppressInitialCacheRequestKeyRef.current === requestKey;
+    if (suppressInitialCacheFetch) {
+      suppressInitialCacheRequestKeyRef.current = null;
+    }
+    const decision = decideWidgetRequest({
+      history: previousRequestRef.current,
+      current: {
+        requestEnabled,
+        requestSignature,
+        hasRequestParams: Boolean(requestParams),
+        hasRequestKey: Boolean(requestKey),
         filterSearchVersion,
         namespaceSearchVersion,
         reloadVersion,
         tableQueryKey,
-        hasRequested: false,
-      };
-      return;
-    }
+        hasEnabledFilterBindings,
+        widgetUsesNamespace,
+        isTableLikeChart,
+      },
+      suppressInitialCacheFetch,
+    });
+    previousRequestRef.current = decision.nextHistory;
 
-    const shouldFetch =
-      isInitialRequest ||
-      signatureChanged ||
-      reloadChanged ||
-      shouldFetchForFilterSearch ||
-      shouldFetchForNamespaceSearch ||
-      shouldFetchForTableQuery;
-
-    previousRequestRef.current = {
-      signature: requestSignature,
-      filterSearchVersion,
-      namespaceSearchVersion,
-      reloadVersion,
-      tableQueryKey,
-      hasRequested: previousRequest.hasRequested || shouldFetch,
-    };
-
-    if (!shouldFetch) {
+    if (!decision.shouldFetch || !requestKey) {
       return;
     }
 
@@ -667,6 +794,8 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     <WidgetErrorState message={message} />
   );
   const hasRawPayload = rawData !== null && rawData !== undefined;
+  const hasActiveRuntimeControl =
+    hasActiveWidgetRuntimeParams(chartType, runtimeParams);
   const isWaitingForInitialData = shouldWaitForInitialWidgetData({
     isSceneWidget,
     isTableLikeChart,
@@ -680,56 +809,87 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
 
   if (isSceneWidget) {
     return (
+      <>
+        {runtimeHeaderControl}
+        <div style={{ position: "relative", height: "100%" }}>
+          <WidgetRenderer
+            chartType={chartType}
+            rawData={null}
+            loading={false}
+            config={config}
+            refreshKey={reloadVersion}
+            screenRenderContext={screenRenderContext}
+            onReady={onReady}
+            fallback={renderError(
+              `${t("dashboard.unknownComponentType")}: ${chartType}`,
+            )}
+          />
+        </div>
+      </>
+    );
+  }
+
+  const isInitialNonTableLoading =
+    shouldShowInitialWidgetLoading({
+      loading,
+      isTableLikeChart,
+      hasRawPayload,
+      hasSettledRequest,
+    });
+  if (isInitialNonTableLoading || isWaitingForInitialData) {
+    return (
+      <>
+        {runtimeHeaderControl}
+        <div className="h-full flex items-center justify-center">
+          <Spin spinning />
+        </div>
+      </>
+    );
+  }
+
+  // 如果数据校验失败，显示错误提示
+  if (
+    dataValidation &&
+    !dataValidation.isValid &&
+    !hasActiveRuntimeControl
+  ) {
+    return (
+      <>
+        {runtimeHeaderControl}
+        {renderError(
+          dataValidation.message || t("dashboard.dataCannotRenderAsChart"),
+        )}
+      </>
+    );
+  }
+
+  return (
+    <>
+      {runtimeHeaderControl}
       <div style={{ position: "relative", height: "100%" }}>
         <WidgetRenderer
           chartType={chartType}
-          rawData={null}
-          loading={false}
+          rawData={rawData}
+          baselineData={baselineData}
+          loading={isTableLikeChart ? tableLoading : loading}
           config={config}
           refreshKey={reloadVersion}
+          dataSource={dataSource}
           screenRenderContext={screenRenderContext}
           onReady={onReady}
+          onQueryChange={isTableLikeChart ? handleTableQueryChange : undefined}
+          componentSwitchControl={headerRuntimeSlot ? null : componentSwitchControl}
+          errorMessage={
+            hasActiveRuntimeControl && dataValidation && !dataValidation.isValid
+              ? dataValidation.message || t("dashboard.dataCannotRenderAsChart")
+              : undefined
+          }
           fallback={renderError(
             `${t("dashboard.unknownComponentType")}: ${chartType}`,
           )}
         />
       </div>
-    );
-  }
-
-  if ((loading && !isTableLikeChart) || isWaitingForInitialData) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <Spin spinning />
-      </div>
-    );
-  }
-
-  // 如果数据校验失败，显示错误提示
-  if (dataValidation && !dataValidation.isValid) {
-    return renderError(
-      dataValidation.message || t("dashboard.dataCannotRenderAsChart"),
-    );
-  }
-
-  return (
-    <div style={{ position: "relative", height: "100%" }}>
-      <WidgetRenderer
-        chartType={chartType}
-        rawData={rawData}
-        baselineData={baselineData}
-        loading={isTableLikeChart ? tableLoading : loading}
-        config={config}
-        refreshKey={reloadVersion}
-        dataSource={dataSource}
-        screenRenderContext={screenRenderContext}
-        onReady={onReady}
-        onQueryChange={isTableLikeChart ? handleTableQueryChange : undefined}
-        fallback={renderError(
-          `${t("dashboard.unknownComponentType")}: ${chartType}`,
-        )}
-      />
-    </div>
+    </>
   );
 };
 

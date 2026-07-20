@@ -2,7 +2,6 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import BaseTaskForm, { BaseTaskRef } from './baseTask';
-import { useLocale } from '@/context/locale';
 import { useTranslation } from '@/utils/i18n';
 import {
   useTaskForm,
@@ -109,7 +108,6 @@ const IpTask: React.FC<IpTaskFormProps> = ({
 }) => {
   const { t } = useTranslation();
   const baseRef = useRef<BaseTaskRef>(null as any);
-  const localeContext = useLocale();
   const instanceApi = useInstanceApi();
   const instanceApiRef = useRef(instanceApi);
   const { copyTaskData, setCopyTaskData } = useAssetManageStore();
@@ -275,8 +273,7 @@ const IpTask: React.FC<IpTaskFormProps> = ({
     <Spin spinning={loading}>
       <Form
         form={form}
-        layout="horizontal"
-        labelCol={{ span: localeContext.locale === 'en' ? 6 : 5 }}
+        layout="vertical"
         onFinish={handleFinish}
         initialValues={IP_TASK_INITIAL_VALUES}
       >

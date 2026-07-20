@@ -113,6 +113,7 @@ class Command(BaseCommand):
         """监控资源初始化"""
         self.stdout.write("初始化监控资源...")
         call_command("plugin_init")
+        call_command("ensure_monitor_metrics_stream")
 
     def _init_node_mgmt(self):
         """节点管理初始化"""

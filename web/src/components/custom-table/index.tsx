@@ -9,6 +9,7 @@ import { cloneDeep } from 'lodash';
 import EllipsisWithTooltip from '../ellipsis-with-tooltip';
 import { useTranslation } from '@/utils/i18n';
 import ResizableTitle from './resizableTitle';
+import { createRafScheduler, resolveTableDimensions } from './tableHeight';
 
 interface CustomTableProps<T>
   extends Omit<TableProps<T>, 'bordered' | 'fieldSetting' | 'onSelectFields'> {
@@ -67,58 +68,56 @@ const CustomTable = <T extends object>({
   const [extra, setExtra] = useState<TableCurrentDataSource<T>>();
   const [columns, setColumns] = useState<any[]>([]);
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
+  const scrollY = scroll?.y;
+  const hasPagination = Boolean(pagination);
 
   // 监听父容器高度变化
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
+    const parentElement = container.parentElement;
+    if (!parentElement) return;
 
     const updateTableHeight = () => {
-      const parentElement = container.parentElement;
-      if (!parentElement) return;
-
-      // 如果已经设置了 scroll.y，优先使用设置的值
-      if (scroll?.y) {
-        const parsedHeight = parseCalcY(scroll.y as string);
-        setTableHeight(parsedHeight);
-        // 容器高度 = 表格滚动高度 + 表头高度 + 分页高度
-        const TABLE_HEADER_HEIGHT = size === 'small' ? 47 : size === 'middle' ? 55 : 63;
-        const PAGINATION_HEIGHT = pagination ? 56 : 0;
-        setContainerHeight(parsedHeight + TABLE_HEADER_HEIGHT + PAGINATION_HEIGHT);
-        return;
-      }
-
-      // 否则根据父容器高度自动计算
-      if (pagination) {
-        const parentHeight = parentElement.clientHeight;
-        const TABLE_HEADER_HEIGHT =
-          size === 'small' ? 47 : size === 'middle' ? 55 : 63;
-        const PAGINATION_HEIGHT = pagination ? 56 : 0;
-        const calculatedHeight =
-          parentHeight - TABLE_HEADER_HEIGHT - PAGINATION_HEIGHT;
-        setTableHeight(calculatedHeight > 0 ? calculatedHeight : undefined);
-        setContainerHeight(parentHeight);
-      }
+      const dimensions = resolveTableDimensions({
+        scrollY,
+        viewportHeight: window.innerHeight,
+        parentHeight: parentElement.clientHeight,
+        size,
+        hasPagination,
+      });
+      setTableHeight(previous =>
+        previous === dimensions.tableHeight ? previous : dimensions.tableHeight
+      );
+      setContainerHeight(previous =>
+        previous === dimensions.containerHeight
+          ? previous
+          : dimensions.containerHeight
+      );
     };
 
     updateTableHeight();
 
-    const resizeObserver = new ResizeObserver(() => {
-      updateTableHeight();
-    });
+    const scheduler = createRafScheduler(
+      updateTableHeight,
+      window.requestAnimationFrame.bind(window),
+      window.cancelAnimationFrame.bind(window)
+    );
+    let resizeObserver: ResizeObserver | undefined;
 
-    if (container.parentElement) {
-      resizeObserver.observe(container.parentElement);
+    if (typeof scrollY === 'string' && scrollY.includes('vh')) {
+      window.addEventListener('resize', scheduler.schedule);
+    } else if (scrollY === undefined && hasPagination) {
+      resizeObserver = new ResizeObserver(scheduler.schedule);
+      resizeObserver.observe(parentElement);
     }
 
-    // 监听窗口大小变化
-    window.addEventListener('resize', updateTableHeight);
-
     return () => {
-      resizeObserver.disconnect();
-      window.removeEventListener('resize', updateTableHeight);
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', scheduler.schedule);
+      scheduler.cancel();
     };
-  }, [scroll, pagination, size]);
+  }, [scrollY, hasPagination, size]);
 
   useEffect(() => {
     const initialColumns = renderColumns();
@@ -209,36 +208,6 @@ const CustomTable = <T extends object>({
     const cols = resizableColumns();
     return cols.reduce((sum: number, col: any) => sum + (col.width || DEFAULT_COL_WIDTH), 0);
   }, [resizableColumns]);
-
-  const parseCalcY = (value: string): number => {
-    const vh = window.innerHeight;
-    let total = 0;
-
-    // Regex to parse expressions and capture operators, numbers, and units
-    const calcRegex = /([-+]?)\s*(\d*\.?\d+)(vh|px)/g;
-    let match: RegExpExecArray | null;
-
-    while ((match = calcRegex.exec(value)) !== null) {
-      const sign = match[1] || '+';
-      const numValue = parseFloat(match[2]);
-      const unit = match[3];
-
-      let result = 0;
-      if (unit === 'vh') {
-        result = (numValue / 100) * vh;
-      } else if (unit === 'px') {
-        result = numValue;
-      }
-
-      if (sign === '-') {
-        total -= result;
-      } else {
-        total += result;
-      }
-    }
-
-    return total;
-  };
 
   const showFieldSetting = () => {
     fieldRef.current?.showModal();
@@ -340,7 +309,7 @@ const CustomTable = <T extends object>({
   };
   const mergedScroll = {
     ...(autoScrollX ? { x: getScrollX() } : {}),
-    ...(tableHeight ? { ...scroll, y: tableHeight } : scroll),
+    ...(tableHeight !== undefined ? { ...scroll, y: tableHeight } : scroll),
   };
 
   return (
@@ -348,7 +317,10 @@ const CustomTable = <T extends object>({
       ref={containerRef}
       className={`relative ${customTableStyle.customTable}`}
       style={{
-        height: containerHeight && pagination ? `${containerHeight}px` : 'auto',
+        height:
+          containerHeight !== undefined && hasPagination
+            ? `${containerHeight}px`
+            : 'auto',
       }}
     >
       <Table

@@ -122,8 +122,8 @@ def test_get_check_attr_map_classifies(monkeypatch):
 # --------------------------------------------------------------------------
 def test_contrast_classifies_add_and_update(monkeypatch):
     fake = FakeGraph()
-    old = [{"inst_name": "a", "_id": 1}]
-    new = [{"inst_name": "a"}, {"inst_name": "b"}]
+    old = [{"inst_name": "a", "ip_addr": "10.0.0.1", "_id": 1}]
+    new = [{"inst_name": "a", "ip_addr": "10.0.0.2"}, {"inst_name": "b"}]
     m = _mgmt(monkeypatch, fake, old, new)
     assert [i["inst_name"] for i in m.add_list] == ["b"]
     assert [i["inst_name"] for i in m.update_list] == ["a"]
@@ -131,6 +131,42 @@ def test_contrast_classifies_add_and_update(monkeypatch):
     assert m.update_list[0]["_id"] == 1
     # 默认策略不删除
     assert m.delete_list == []
+
+
+def test_contrast_routes_identical_business_fields_to_heartbeat(monkeypatch):
+    fake = FakeGraph()
+    old = [{"inst_name": "a", "ip_addr": "10.0.0.1", "collect_time": "old", "_id": 1}]
+    new = [{"inst_name": "a", "ip_addr": "10.0.0.1"}]
+    m = _mgmt(monkeypatch, fake, old, new)
+    assert m.update_list == []
+    assert [item["_id"] for item in m.heartbeat_list] == [1]
+
+
+def test_contrast_routes_changed_business_field_to_update(monkeypatch):
+    fake = FakeGraph()
+    old = [{"inst_name": "a", "ip_addr": "10.0.0.1", "_id": 1}]
+    new = [{"inst_name": "a", "ip_addr": "10.0.0.2"}]
+    m = _mgmt(monkeypatch, fake, old, new)
+    assert [item["_id"] for item in m.update_list] == [1]
+    assert m.heartbeat_list == []
+
+
+def test_contrast_ignores_old_fields_absent_from_incremental_payload(monkeypatch):
+    fake = FakeGraph()
+    old = [{"inst_name": "a", "ip_addr": "10.0.0.1", "note": "keep", "_id": 1}]
+    new = [{"inst_name": "a", "ip_addr": "10.0.0.1"}]
+    m = _mgmt(monkeypatch, fake, old, new)
+    assert m.update_list == []
+    assert len(m.heartbeat_list) == 1
+
+
+def test_contrast_keeps_nonempty_associations_on_full_update(monkeypatch):
+    fake = FakeGraph()
+    old = [{"inst_name": "a", "ip_addr": "10.0.0.1", "_id": 1}]
+    new = [{"inst_name": "a", "ip_addr": "10.0.0.1", "assos": [{"model_id": "host"}]}]
+    m = _mgmt(monkeypatch, fake, old, new)
+    assert len(m.update_list) == 1
+    assert m.heartbeat_list == []
 
 
 def test_contrast_immediately_cleanup_deletes_missing(monkeypatch):
@@ -223,6 +259,45 @@ def test_update_inst_queries_only_unique_candidates(monkeypatch):
             ],
         )
     ]
+
+
+def test_refresh_heartbeat_updates_only_runtime_metadata(monkeypatch):
+    fake = FakeGraph(query_entity=lambda l, c: ([{"_id": 7, "inst_name": "a"}], 1))
+    m = _mgmt(monkeypatch, fake, [], [])
+    scheduled = []
+    import apps.cmdb.services.auto_relation_reconcile as ar
+
+    monkeypatch.setattr(ar, "schedule_instance_auto_relation_reconcile", lambda ids: scheduled.append(ids))
+    result = m.refresh_heartbeat([{"_id": 7, "inst_name": "a"}])
+    assert len(result["success"]) == 1
+    assert fake.set_props == [
+        {
+            "_id": 7,
+            "model_id": "host",
+            "organization": [1],
+            "collect_task": 1,
+            "auto_collect": True,
+            "collect_time": "2026-06-24",
+        }
+    ]
+    assert scheduled == []
+
+
+def test_controller_heartbeat_is_reported_but_excluded_from_audit(monkeypatch):
+    fake = FakeGraph(query_entity=lambda l, c: ([{"_id": 1, "inst_name": "a"}], 1))
+    old = [{"inst_name": "a", "_id": 1}]
+    new = [{"inst_name": "a"}]
+    m = _mgmt(monkeypatch, fake, old, new)
+    audited = []
+    monkeypatch.setattr(
+        mod,
+        "write_collect_instance_change_records",
+        lambda management, result: audited.append(result),
+    )
+    result = m.controller()
+    assert len(result["update"]["success"]) == 1
+    assert result["update"]["success"][0]["heartbeat"] is True
+    assert audited[0]["update"]["success"] == []
 
 
 # --------------------------------------------------------------------------
@@ -336,7 +411,6 @@ def test_controller_add_and_update_query_unique_candidates(monkeypatch):
             "instance",
             [
                 {"field": "model_id", "type": "str=", "value": "host"},
-                {"field": "inst_name", "type": "str[]", "value": ["a"]},
             ],
         ),
     ]

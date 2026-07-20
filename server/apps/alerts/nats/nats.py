@@ -28,6 +28,7 @@ from apps.core.utils.permission_utils import get_permission_rules
 from apps.core.utils.viewset_utils import GenericViewSetFun
 
 ALERT_LEVEL_DISPLAY_MAP = dict(EventLevel.CHOICES)
+TRUSTED_INTERNAL_PUSHERS = {"lite-monitor", "lite-log"}
 
 # 各粒度允许的最大时间跨度（秒）；可通过环境变量调整（保守默认值）
 _MAX_SPAN_SECONDS = {
@@ -632,7 +633,7 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
         kwargs: 包含以下字段
             - source_id: 告警源ID（可选 默认nats）
             - events: 事件列表（必填）
-            - pusher: 推送者标识，如系统名称或服务名（必填）如 lite-monitor
+            - pusher: 推送者标识，如系统名称或服务名（必填）如 lite-monitor、lite-log
 
     Returns:
         {
@@ -678,7 +679,12 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
               }
             }
     """
-    logger.info("[AlertEvent] === receive_alert_events via NATS ===, kwargs=%s", kwargs)
+    logger.info(
+        "[AlertEvent] receive_alert_events source_id=%s pusher=%s event_count=%s",
+        kwargs.get("source_id", ""),
+        kwargs.get("pusher"),
+        len(kwargs.get("events") or []),
+    )
 
     try:
         # 提取参数
@@ -723,9 +729,9 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
             normalized_event.setdefault("push_source_id", pusher)
             normalized_events.append(normalized_event)
 
-        # 内部约定：NATS 生效源（event_source 已校验）+ lite-monitor 推送方，双重判断为可信内部推送。
+        # 内部约定：NATS 生效源（event_source 已校验）+ 明确允许的内部推送方，双重判断为可信内部推送。
         # 此时采信每个 event 自带的 organizations 作为归属组织，无需走组织级 secret。
-        trusted_internal = pusher == "lite-monitor"
+        trusted_internal = pusher in TRUSTED_INTERNAL_PUSHERS
 
         # 创建适配器（内部调用无需密钥验证）
         adapter_class = AlertSourceAdapterFactory.get_adapter(event_source)

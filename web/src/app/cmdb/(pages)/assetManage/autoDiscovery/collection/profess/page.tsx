@@ -207,6 +207,12 @@ const ProfessionalCollection: React.FC = () => {
       (item) => item.id === selectedPluginId
     );
   }, [selectedPluginId]);
+  const taskDrawerWidth =
+    (currentPlugin?.task_type || currentPlugin?.type) === 'k8s' ? 740 : 700;
+  const docDrawerNested = taskDocDrawerVisible && drawerVisible;
+  const docDrawerWidth = docDrawerNested
+    ? `min(600px, calc(100vw - ${taskDrawerWidth}px - 24px))`
+    : 600;
 
   const getParams = (pluginId?: string) => {
     const currentPluginId = pluginId || stateRef.current.selectedPluginId;
@@ -655,7 +661,7 @@ const ProfessionalCollection: React.FC = () => {
         loadingExec;
 
       return (
-        <div className="flex gap-3">
+        <div className="flex gap-3 whitespace-nowrap">
           <Button
             type="link"
             size="small"
@@ -858,7 +864,7 @@ const ProfessionalCollection: React.FC = () => {
         dataIndex: 'action',
         key: 'action',
         fixed: 'right',
-        width: 260,
+        width: 320,
         render: (_, record) => actionRender(record),
       },
     ],
@@ -1050,7 +1056,7 @@ const ProfessionalCollection: React.FC = () => {
         ></div>
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto pb-1 pr-1">
-          <div className="flex min-h-[360px] min-w-0 flex-1 flex-col overflow-hidden rounded border border-gray-200 bg-white pb-1 shadow-sm">
+          <div className="flex min-h-[360px] min-w-0 flex-1 flex-col overflow-hidden rounded border border-gray-200 bg-white shadow-sm">
             <div className="px-4 py-2 border-b border-gray-100 flex items-center gap-2">
               <span className="text-base font-semibold text-gray-900">
                 {currentPlugin?.name || ''}
@@ -1085,7 +1091,7 @@ const ProfessionalCollection: React.FC = () => {
             </div>
 
             <div className="min-h-0 flex-1 overflow-hidden px-4 pb-1 pt-1">
-              <div className="h-full min-h-0">
+              <div className={styles.collectionTaskTable}>
                 <CustomTable
                   loading={tableLoading}
                   key={selectedCategoryRef.current.categoryId}
@@ -1140,9 +1146,7 @@ const ProfessionalCollection: React.FC = () => {
           </div>
         }
         placement="right"
-        width={
-          (currentPlugin?.task_type || currentPlugin?.type) === 'k8s' ? 960 : 680
-        }
+        width={taskDrawerWidth}
         onClose={closeDrawer}
         open={drawerVisible}
         maskClosable={false}
@@ -1161,30 +1165,30 @@ const ProfessionalCollection: React.FC = () => {
       <Drawer
         title={t('Collection.pluginDoc')}
         placement="right"
-        width={600}
+        width={docDrawerWidth}
         onClose={() => {
           setTaskDocDrawerVisible(false);
           setDocDrawerVisible(false);
         }}
-        open={docDrawerVisible || (taskDocDrawerVisible && drawerVisible)}
-        getContainer={taskDocDrawerVisible && drawerVisible ? false : undefined}
+        open={docDrawerVisible || docDrawerNested}
+        getContainer={docDrawerNested ? false : undefined}
         styles={{
           wrapper: {
             boxShadow:
-              taskDocDrawerVisible && drawerVisible ? 'none' : undefined,
+              docDrawerNested ? 'none' : undefined,
             borderRight:
-              taskDocDrawerVisible && drawerVisible
+              docDrawerNested
                 ? '1px solid var(--color-border-1)'
                 : undefined,
           },
         }}
-        mask={taskDocDrawerVisible && drawerVisible ? false : true}
+        mask={docDrawerNested ? false : true}
         rootStyle={
-          taskDocDrawerVisible && drawerVisible
+          docDrawerNested
             ? {
               position: 'absolute',
               left: 'auto',
-              right: '640px',
+              right: `${taskDrawerWidth}px`,
             }
             : undefined
         }

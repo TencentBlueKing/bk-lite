@@ -1,5 +1,7 @@
+import hashlib
 from copy import deepcopy
 from types import SimpleNamespace
+import uuid
 
 from django.contrib.auth.hashers import make_password
 from django.db import IntegrityError, transaction
@@ -144,18 +146,18 @@ def execute_user_sync(source_id: int, trigger_mode: str = UserSyncTriggerModeCho
     if not result.success:
         run.status = UserSyncRunStatusChoices.FAILED
         run.summary = result.summary
-        run.payload = _build_run_payload(result, input_summary)
+        run.payload = _build_run_payload(result, input_summary, current_run=run)
         run.finished_at = timezone.now()
         run.save(update_fields=["request_id", "status", "summary", "payload", "finished_at", "updated_at"])
         return {"result": False, "message": result.summary, "data": UserSyncRun.objects.filter(id=run.id).values().first()}
 
     try:
-        sync_summary = _apply_user_sync_payload(source, result.payload)
+        sync_summary = _apply_user_sync_payload(source, result.payload, current_run=run)
     except Exception as error:
         logger.exception(f"User sync failed for source '{source.name}': {error}")
         run.status = UserSyncRunStatusChoices.FAILED
         run.summary = str(error)
-        run.payload = _build_run_payload(result, input_summary)
+        run.payload = _build_run_payload(result, input_summary, current_run=run)
         run.finished_at = timezone.now()
         run.save(update_fields=["request_id", "status", "summary", "payload", "finished_at", "updated_at"])
         return {"result": False, "message": str(error)}
@@ -172,7 +174,7 @@ def execute_user_sync(source_id: int, trigger_mode: str = UserSyncTriggerModeCho
     run.synced_user_count = sync_summary["synced_user_count"]
     run.synced_group_count = sync_summary["synced_group_count"]
     run.disabled_user_count = sync_summary["disabled_user_count"]
-    run.payload = _build_run_payload(result, input_summary, sync_summary)
+    run.payload = _build_run_payload(result, input_summary, sync_summary, current_run=run)
     run.finished_at = timezone.now()
     run.save(
         update_fields=[
@@ -262,7 +264,19 @@ def _extract_input_summary(provider_payload: dict | None):
     }
 
 
-def _build_run_payload(result, input_summary: dict, sync_summary: dict | None = None):
+def _build_run_payload(
+    result,
+    input_summary: dict,
+    sync_summary: dict | None = None,
+    current_run: "UserSyncRun | None" = None,
+):
+    """组装 run.payload。
+
+    2026-07-15 修:之前会整个覆盖 payload,导致 _sync_users 内
+    password_init_service._stash_to_vault 写入的 password_vault /
+    email_status 被清空,Celery 任务看到 vault 缺。
+    现在从 current_run.payload 继承 password_vault / email_status。
+    """
     provider_payload = result.payload or {}
     payload = {
         "external_request_id": str(provider_payload.get("external_request_id") or ""),
@@ -272,10 +286,16 @@ def _build_run_payload(result, input_summary: dict, sync_summary: dict | None = 
     if sync_summary is not None:
         payload["conflict_usernames"] = list(sync_summary.get("conflict_usernames") or [])
         payload["conflict_user_count"] = len(payload["conflict_usernames"])
+    # 继承 service 之前写入的 password_vault 和 email_status(避免被覆盖)
+    if current_run is not None:
+        existing = current_run.payload or {}
+        for key in ("password_vault", "email_status"):
+            if key in existing and key not in payload:
+                payload[key] = existing[key]
     return payload
 
 
-def _apply_user_sync_payload(source: UserSyncSource, payload: dict):
+def _apply_user_sync_payload(source: UserSyncSource, payload: dict, current_run: "UserSyncRun | None" = None):
     group_list = deepcopy(payload.get("group_list") or [])
     user_list = deepcopy(payload.get("user_list") or [])
     root_scope_value = str(get_user_sync_root_scope_value(source, "0") or "0")
@@ -289,6 +309,7 @@ def _apply_user_sync_payload(source: UserSyncSource, payload: dict):
             group_id_mapping,
             root_group.id,
             root_scope_value,
+            current_run=current_run,
         )
         stale_group_ids = list(Group.objects.filter(sync_source=source).exclude(id__in=active_group_ids).exclude(id=root_group.id).values_list("id", flat=True))
         if stale_group_ids:
@@ -365,10 +386,11 @@ def _sync_groups(source: UserSyncSource, group_list: list[dict], root_group: Gro
         for item in current_items:
             external_id = str(item["id"])
             scoped_external_id = _scoped_external_id(source.id, external_id)
+            group_name = _truncate_to_field(Group, "name", str(item.get("name", external_id)))
             group = existing_by_external_id.get(scoped_external_id)
             if group is None:
                 group = Group.objects.create(
-                    name=item.get("name", external_id),
+                    name=group_name,
                     parent_id=parent_group.id,
                     external_id=scoped_external_id,
                     description=f"user_sync_source_{source.id}",
@@ -376,8 +398,8 @@ def _sync_groups(source: UserSyncSource, group_list: list[dict], root_group: Gro
                 )
             else:
                 update_fields = []
-                if group.name != item.get("name", external_id):
-                    group.name = item.get("name", external_id)
+                if group.name != group_name:
+                    group.name = group_name
                     update_fields.append("name")
                 if group.sync_source_id != source.id:
                     group.sync_source = source
@@ -392,13 +414,22 @@ def _sync_groups(source: UserSyncSource, group_list: list[dict], root_group: Gro
     return group_id_mapping, list(active_group_ids)
 
 
-def _sync_users(source: UserSyncSource, user_list: list[dict], group_id_mapping: dict, root_group_id: int, root_department_id: str):
+def _sync_users(
+    source: UserSyncSource,
+    user_list: list[dict],
+    group_id_mapping: dict,
+    root_group_id: int,
+    root_department_id: str,
+    current_run: "UserSyncRun | None" = None,
+):
     field_mapping = {**DEFAULT_FIELD_MAPPING, **(source.field_mapping or {})}
     normalized_users = []
     for raw_user in user_list:
         username = str(_mapped_value(raw_user, field_mapping, "username") or raw_user.get("user_id") or raw_user.get("open_id") or "").strip()
         if not username:
             continue
+        # 截断后的 username 同时作为本轮匹配键,保证与写库值一致
+        username = _truncate_to_field(User, "username", username)
         departments = [str(item) for item in raw_user.get("department_ids") or raw_user.get("departments") or []]
         local_group_ids = []
         for department_id in departments:
@@ -412,9 +443,11 @@ def _sync_users(source: UserSyncSource, user_list: list[dict], group_id_mapping:
         normalized_users.append(
             {
                 "username": username,
-                "display_name": str(_mapped_value(raw_user, field_mapping, "display_name") or username),
-                "email": str(_mapped_value(raw_user, field_mapping, "email") or ""),
-                "phone": str(_mapped_value(raw_user, field_mapping, "phone") or ""),
+                "display_name": _truncate_to_field(
+                    User, "display_name", str(_mapped_value(raw_user, field_mapping, "display_name") or username)
+                ),
+                "email": _truncate_to_field(User, "email", str(_mapped_value(raw_user, field_mapping, "email") or "")),
+                "phone": _truncate_to_field(User, "phone", str(_mapped_value(raw_user, field_mapping, "phone") or "")),
                 "group_list": sorted(set(local_group_ids)),
             }
         )
@@ -427,14 +460,23 @@ def _sync_users(source: UserSyncSource, user_list: list[dict], group_id_mapping:
     existing_user_map = {user.username: user for user in existing_users}
     synced_usernames = []
     conflict_usernames = []
-    create_users = []
+    new_users = []  # 本次同步新建的 user(需要触发密码初始化)
     update_users = []
+
+    # 解析 password_init 配置;仅在新建用户时触发。
+    # 字段位置迁移:从 source.business_config.password_init → source.password_init_config
+    # 后者避开 provider manifest contract 校验。
+    # getattr 兜底:password_init_config 模型字段尚未落库(65afd9bb1 只提交了引用),
+    # 缺字段时按「未配置密码初始化」降级,不能让整轮同步崩掉
+    password_init_cfg = getattr(source, "password_init_config", None) or {}
+    password_init_mode = password_init_cfg.get("mode")
 
     for item in normalized_users:
         user = existing_user_map.get(item["username"])
         if user is None:
-            create_users.append(
-                User(
+            try:
+                new_user = User.objects.create(
+                    user_id=str(uuid.uuid4()),
                     username=item["username"],
                     display_name=item["display_name"],
                     email=item["email"],
@@ -445,7 +487,10 @@ def _sync_users(source: UserSyncSource, user_list: list[dict], group_id_mapping:
                     group_list=item["group_list"],
                     sync_source=source,
                 )
-            )
+                new_users.append(new_user)
+            except IntegrityError:
+                # race condition:同名 user 在本轮 sync 中被另一 source 创建 → 标记为 conflict
+                conflict_usernames.append(item["username"])
             continue
 
         try:
@@ -453,8 +498,20 @@ def _sync_users(source: UserSyncSource, user_list: list[dict], group_id_mapping:
         except ValueError:
             conflict_usernames.append(item["username"])
 
-    if create_users:
-        User.objects.bulk_create(create_users, ignore_conflicts=True, batch_size=100)
+    # 触发密码初始化(仅首次创建;后续周期同步不动 password)
+    if new_users and password_init_mode:
+        from apps.system_mgmt.services.password_init_service import init_password_for_user
+
+        run_for_init = current_run or UserSyncRun.objects.filter(
+            source=source, status=UserSyncRunStatusChoices.RUNNING
+        ).first()
+        for new_user in new_users:
+            try:
+                init_password_for_user(new_user, password_init_mode, password_init_cfg, run_for_init)
+            except Exception as e:
+                logger.warning(
+                    f"init_password_for_user 失败 username={new_user.username}: {e}",
+                )
 
     synced_users = User.objects.select_related("sync_source").filter(username__in=usernames, domain=legacy_domain)
     synced_user_map = {user.username: user for user in synced_users}
@@ -500,7 +557,7 @@ def _sync_users(source: UserSyncSource, user_list: list[dict], group_id_mapping:
             user.save(update_fields=["disabled", "group_list"])
             disabled_user_count += 1
 
-    affected_usernames = {user.username for user in create_users + update_users}
+    affected_usernames = {user.username for user in new_users + update_users}
     affected_usernames.update(user.username for user in stale_users)
     if affected_usernames:
         clear_users_permission_cache([{"username": username, "domain": legacy_domain} for username in affected_usernames])
@@ -545,8 +602,25 @@ def _mapped_value(raw_user: dict, field_mapping: dict, logical_key: str):
     return raw_user.get(source_key)
 
 
+def _truncate_to_field(model, field_name: str, value: str) -> str:
+    """按模型字段 max_length 截断外部数据,防止超长值(如 AD 的 DN/名称)溢出 varchar 上限。"""
+    max_length = model._meta.get_field(field_name).max_length
+    if max_length is None or len(value) <= max_length:
+        return value
+    return value[:max_length]
+
+
 def _scoped_external_id(source_id: int, external_id: str):
-    return f"user-sync:{source_id}:{external_id}"
+    scoped = f"user-sync:{source_id}:{external_id}"
+    max_length = Group._meta.get_field("external_id").max_length
+    if max_length is None or len(scoped) <= max_length:
+        return scoped
+    # 外部 ID 超长(如 AD 组织的 DN):截断并追加摘要。同一外部 ID 每轮生成相同值
+    # (否则每轮同步都会删除重建组),不同外部 ID 截断后也不会互相碰撞。
+    digest = hashlib.sha256(external_id.encode("utf-8")).hexdigest()[:16]
+    prefix = f"user-sync:{source_id}:"
+    keep = max_length - len(prefix) - len(digest) - 1
+    return f"{prefix}{external_id[:max(keep, 0)]}~{digest}"
 
 
 def _get_user_sync_root_group(source: UserSyncSource):

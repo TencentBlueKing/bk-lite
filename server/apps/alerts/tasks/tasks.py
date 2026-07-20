@@ -78,6 +78,7 @@ def event_aggregation_alert():
             AggregationProcessor,
         )
 
+        aggregation_error = None
         try:
             processor = AggregationProcessor()
             processor.process_aggregation()
@@ -85,7 +86,7 @@ def event_aggregation_alert():
 
         except Exception as e:
             logger.exception("[AlertTask] 告警聚合任务执行失败: %s", e)
-            raise
+            aggregation_error = e
 
         try:
             from apps.alerts.aggregation.recovery.timeout_checker import TimeoutChecker
@@ -95,6 +96,9 @@ def event_aggregation_alert():
         except Exception as e:
             logger.exception("[AlertTask] 聚合后会话超时检查失败: %s", e)
             raise
+
+        if aggregation_error is not None:
+            raise aggregation_error
     finally:
         cache.delete(AGGREGATION_LOCK_KEY)
 

@@ -157,12 +157,17 @@ const combineMenus = async () => {
   console.log('Menus combined successfully to public/menus directory');
 };
 
-const copyPublicDirectories = () => {
-  const mainDestinationPath = path.resolve(process.cwd(), 'public', 'app');
+const copyPublicDirectories = ({
+  communityAppRoots = COMMUNITY_APP_ROOTS,
+  enterpriseAppRoot = ENTERPRISE_APP_ROOT,
+  enterprisePublicRoot = ENTERPRISE_PUBLIC_ROOT,
+  destinationRoot = path.resolve(process.cwd(), 'public', 'app'),
+} = {}) => {
+  const mainDestinationPath = destinationRoot;
   fs.emptyDirSync(mainDestinationPath);
   fs.ensureFileSync(path.join(mainDestinationPath, '.gitkeep'));
 
-  COMMUNITY_APP_ROOTS.forEach(rootPath => {
+  [...communityAppRoots, enterpriseAppRoot].forEach(rootPath => {
     if (!fs.existsSync(rootPath)) {
       return;
     }
@@ -193,16 +198,16 @@ const copyPublicDirectories = () => {
     });
   });
 
-  if (fs.existsSync(ENTERPRISE_PUBLIC_ROOT)) {
+  if (fs.existsSync(enterprisePublicRoot)) {
     try {
-      fs.copySync(ENTERPRISE_PUBLIC_ROOT, mainDestinationPath, {
+      fs.copySync(enterprisePublicRoot, mainDestinationPath, {
         dereference: true,
         overwrite: true,
         filter: itemPath => path.basename(itemPath) !== '.DS_Store',
       });
-      console.log(`Copied contents of ${ENTERPRISE_PUBLIC_ROOT} to ${mainDestinationPath}`);
+      console.log(`Copied contents of ${enterprisePublicRoot} to ${mainDestinationPath}`);
     } catch (err) {
-      console.error(`Failed to copy contents of ${ENTERPRISE_PUBLIC_ROOT} to ${mainDestinationPath}:`, err);
+      console.error(`Failed to copy contents of ${enterprisePublicRoot} to ${mainDestinationPath}:`, err);
     }
   }
 };

@@ -251,7 +251,7 @@ const OperationLog: React.FC = () => {
           dataSource={dataList}
           pagination={pagination}
           onChange={handleTableChange}
-          scroll={{ y: 'calc(100vh - 470px)' }}
+          scroll={{ y: 'calc(100vh - 490px)' }}
         />
       </div>
     </div>

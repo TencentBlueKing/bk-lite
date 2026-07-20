@@ -497,6 +497,37 @@ class TestMonitorEndpointLogic:
         assert task_params["monitor_type"] == "windows_wmi"
         assert task_params["metrics_modules"] == FULL_HOST_MODULES
 
+    async def test_host_metrics_passes_disk_fstype_filters_to_collector(self):
+        await self.mod.host_metrics(self._req(
+            headers={
+                "host": "10.0.0.10",
+                "username": "root",
+                "password": "pass",
+                "ansible_node_id": "node-1",
+                "disk_include_fstypes": "ext4,xfs",
+                "disk_exclude_fstypes": "vfat,exfat",
+            }
+        ))
+
+        task_params = self.task_queue.enqueue_collect_task.call_args.args[0]
+        assert task_params["disk_include_fstypes"] == "ext4,xfs"
+        assert task_params["disk_exclude_fstypes"] == "vfat,exfat"
+
+    async def test_windows_wmi_metrics_passes_disk_fstype_filters_to_collector(self):
+        await self.mod.windows_wmi_metrics(self._req(
+            headers={
+                "host": "10.0.0.20",
+                "username": "DOMAIN\\monitor",
+                "password": "pass",
+                "disk_include_fstypes": "NTFS,ReFS",
+                "disk_exclude_fstypes": "FAT32,exFAT",
+            }
+        ))
+
+        task_params = self.task_queue.enqueue_collect_task.call_args.args[0]
+        assert task_params["disk_include_fstypes"] == "NTFS,ReFS"
+        assert task_params["disk_exclude_fstypes"] == "FAT32,exFAT"
+
 
 # ---------------------------------------------------------------------------
 # health.py — HTTP handler 逻辑测试

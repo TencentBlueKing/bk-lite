@@ -1,6 +1,6 @@
 Windows WMI:
   desc: 通过Telegraf采集器收集和分析主机的性能数据，包括CPU、内存、磁盘和网络使用情况。
-  name: 主机（Telegraf）
+  name: Windows 主机采集（WMI / Telegraf）
 monitor_object:
   Host: 主机
 monitor_object_type:

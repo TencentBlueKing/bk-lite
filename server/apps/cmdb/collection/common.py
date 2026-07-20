@@ -11,6 +11,16 @@ load_dotenv()
 
 
 class Management:
+    # 这些字段仅反映采集运行状态，不应触发审计和关联重算。
+    RUNTIME_FIELDS = {
+        "assos",
+        "model_id",
+        "organization",
+        "collect_task",
+        "auto_collect",
+        "collect_time",
+    }
+
     def __init__(
         self,
         organization,
@@ -36,7 +46,9 @@ class Management:
         self.task_id = task_id
         self.data_cleanup_strategy = data_cleanup_strategy or DataCleanupStrategy.NO_CLEANUP
         self.old_map, self.new_map = self.format_data()
-        self.add_list, self.update_list, self.delete_list = self.contrast(self.old_map, self.new_map)
+        self.add_list, self.update_list, self.heartbeat_list, self.delete_list = self.contrast(
+            self.old_map, self.new_map
+        )
 
     def get_check_attr_map(self):
         attrs = ModelManage.search_model_attr(self.model_id)
@@ -62,15 +74,29 @@ class Management:
             new_map[key] = info
         return old_map, new_map
 
+    @classmethod
+    def has_business_changes(cls, old_info, new_info):
+        if new_info.get("assos"):
+            return True
+        for field, new_value in new_info.items():
+            if field in cls.RUNTIME_FIELDS or field.startswith("_"):
+                continue
+            if old_info.get(field) != new_value:
+                return True
+        return False
+
     def contrast(self, old_map, new_map):
-        add_list, update_list, delete_list = [], [], []
+        add_list, update_list, heartbeat_list, delete_list = [], [], [], []
         for key, info in new_map.items():
             info["model_id"] = self.model_id
             if key not in old_map:
                 add_list.append(info)
             else:
                 info.update(_id=old_map[key]["_id"])
-                update_list.append(info)
+                if self.has_business_changes(old_map[key], info):
+                    update_list.append(info)
+                else:
+                    heartbeat_list.append(info)
 
         should_delete = (
             self.data_cleanup_strategy == DataCleanupStrategy.IMMEDIATELY and getattr(self.collect_plugin, "_MODEL_ID", None) is not None and new_map
@@ -82,7 +108,7 @@ class Management:
                 if key not in new_map:
                     delete_list.append(info)
 
-        return add_list, update_list, delete_list
+        return add_list, update_list, heartbeat_list, delete_list
 
     def _query_existing_unique_candidates(self, ag, inst_list):
         unique_fields = list(self.check_attr_map.get("is_only", {}).keys())
@@ -189,6 +215,50 @@ class Management:
         schedule_instance_auto_relation_reconcile([item["inst_info"]["_id"] for item in result["success"]])
         return result
 
+    def refresh_heartbeat(self, inst_list):
+        """仅刷新采集运行元数据，不触发关联、审计或自动关联。"""
+        result = {"success": [], "failed": []}
+        if not inst_list:
+            return result
+
+        with GraphClient() as ag:
+            exist_items, _ = ag.query_entity(
+                INSTANCE,
+                [{"field": "model_id", "type": "str=", "value": self.model_id}],
+            )
+            for instance_info in inst_list:
+                heartbeat_info = {
+                    "_id": instance_info["_id"],
+                    "model_id": self.model_id,
+                    "organization": self.organization,
+                    "collect_task": self.task_id,
+                    "auto_collect": True,
+                    "collect_time": self.collect_time,
+                }
+                try:
+                    current_items = [
+                        item for item in exist_items if item["_id"] != heartbeat_info["_id"]
+                    ]
+                    entity = ag.set_entity_properties(
+                        INSTANCE,
+                        [heartbeat_info["_id"]],
+                        heartbeat_info,
+                        self.check_attr_map,
+                        current_items,
+                    )
+                    result["success"].append(
+                        {"inst_info": entity[0], "assos_result": {}, "heartbeat": True}
+                    )
+                except Exception as e:
+                    result["failed"].append(
+                        {
+                            "instance_info": heartbeat_info,
+                            "error": getattr(e, "message", e),
+                            "heartbeat": True,
+                        }
+                    )
+        return result
+
     @staticmethod
     def delete_inst(inst_list):
         """删除实例"""
@@ -261,6 +331,9 @@ class Management:
 
     def update(self):
         update_result = self.update_inst(self.update_list)
+        heartbeat_result = self.refresh_heartbeat(self.heartbeat_list)
+        update_result["success"].extend(heartbeat_result["success"])
+        update_result["failed"].extend(heartbeat_result["failed"])
         result = dict(add={"success": [], "failed": []}, update=update_result, delete={"success": [], "failed": []})
         self._after_instances_applied(result)
         return result
@@ -269,10 +342,23 @@ class Management:
         delete_result = self.delete_inst(self.delete_list)
         add_result = self.add_inst(self.add_list)
         update_result = self.update_inst(self.update_list)
+        heartbeat_result = self.refresh_heartbeat(self.heartbeat_list)
+        update_result["success"].extend(heartbeat_result["success"])
+        update_result["failed"].extend(heartbeat_result["failed"])
         result = dict(add=add_result, update=update_result, delete=delete_result)
         self._after_instances_applied(result)
         return result
 
     def _after_instances_applied(self, result):
-        write_collect_instance_change_records(self, result)
-        get_collect_enterprise_extension().on_collect_instances_applied(management=self, result=result)
+        # 心跳更新已落图，但不属于业务变更。
+        business_result = {
+            operator: {
+                status: [item for item in items if not item.get("heartbeat")]
+                for status, items in result.get(operator, {}).items()
+            }
+            for operator in ("add", "update", "delete")
+        }
+        write_collect_instance_change_records(self, business_result)
+        get_collect_enterprise_extension().on_collect_instances_applied(
+            management=self, result=business_result
+        )

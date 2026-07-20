@@ -1,12 +1,12 @@
 """chat_service._maybe_save_answer_as_wiki_candidate 单元测试。
 
 覆盖:
-- 未配置 wiki_save_answer_as_candidate:不落候选
+- 未配置 wiki_save_answer_as_candidate:不保存
 - chat 失败:不落候选
 - 没有 wiki_kb_ids:不落候选
 - doc_map 没有 wiki 来源:不落候选
-- 全部条件满足:落候选,KnowledgePage.status=pending_review,CheckItem=qa_answer_candidate
-- 落候选异常被吞掉(不阻塞 chat 主流程)
+- 全部条件满足:直接准入 active KnowledgePage,不创建第三类审批
+- 自动保存异常被吞掉(不阻塞 chat 主流程)
 """
 
 from types import SimpleNamespace
@@ -61,10 +61,10 @@ def test_doc_map_not_dict_skips_save():
 
 
 def test_empty_body_skips_save():
-    """body 为空:不落候选(避免空页)。"""
+    """body 为空:不自动保存(避免空页)。"""
     with (
         patch("apps.opspilot.models.WikiKnowledgeBase.objects") as kb_mgr,
-        patch("apps.opspilot.services.wiki.page_service.save_answer_candidate_page") as save_fn,
+        patch("apps.opspilot.services.wiki.page_service.save_answer_page") as save_fn,
     ):
         kb_mgr.filter.return_value.first.return_value = SimpleNamespace(id=1)
         kwargs = {"wiki_save_answer_as_candidate": True, "wiki_kb_ids": [1]}
@@ -75,16 +75,15 @@ def test_empty_body_skips_save():
     save_fn.assert_not_called()
 
 
-def test_happy_path_creates_pending_review_page_with_check_item():
-    """全部条件满足:落候选,KnowledgePage.status=pending_review,CheckItem=qa_answer_candidate。
-    worktree 迁移图历史债务:用 mock 模拟 KB 查询和 save_answer_candidate_page,验证 helper 调用逻辑。
+def test_happy_path_directly_admits_page_without_approval():
+    """全部条件满足时直接准入 active KnowledgePage,不产生 qa_answer_candidate。
+    保留旧配置键仅用于调用兼容,保存行为不再进入人工审批。
     """
-    page_mock = SimpleNamespace(
-        id=42, status="pending_review", knowledge_base_id=1, title="CMDB 是什么", contribution="mixed", update_method="qa_answer"
-    )
+    page_mock = SimpleNamespace(id=42, status="active", knowledge_base_id=1, title="CMDB 是什么", contribution="mixed", update_method="qa_answer")
     with (
         patch("apps.opspilot.models.WikiKnowledgeBase.objects") as kb_mgr,
-        patch("apps.opspilot.services.wiki.page_service.save_answer_candidate_page", return_value=page_mock) as save_fn,
+        patch("apps.opspilot.services.wiki.page_service.save_answer_page", return_value=page_mock) as save_fn,
+        patch("apps.opspilot.services.wiki.cascade_service.cascade") as cascade_fn,
     ):
         kb_mgr.filter.return_value.first.return_value = SimpleNamespace(id=1)
         kwargs = {
@@ -101,7 +100,7 @@ def test_happy_path_creates_pending_review_page_with_check_item():
 
     assert page is not None
     assert page.id == 42
-    # 验证 save_answer_candidate_page 被以正确参数调用
+    # 验证回答直接通过 save_answer_page 准入
     save_fn.assert_called_once()
     call_kwargs = save_fn.call_args.kwargs
     assert call_kwargs["knowledge_base"].id == 1
@@ -112,14 +111,15 @@ def test_happy_path_creates_pending_review_page_with_check_item():
     assert call_kwargs["source_message_id"] == "msg-456"
     assert call_kwargs["source_channel"] == "chat_service"
     assert call_kwargs["created_by"] == "alice"
+    cascade_fn.assert_called_once_with(call_kwargs["knowledge_base"], [page.id], "qa_answer_save")
 
 
 def test_exception_does_not_break_chat():
-    """落候选异常时不应抛错(自动保存失败不应阻塞 chat 主流程)。"""
+    """自动保存异常时不应抛错(不阻塞 chat 主流程)。"""
     with (
         patch("apps.opspilot.models.WikiKnowledgeBase.objects") as kb_mgr,
         patch(
-            "apps.opspilot.services.wiki.page_service.save_answer_candidate_page",
+            "apps.opspilot.services.wiki.page_service.save_answer_page",
             side_effect=RuntimeError("disk full"),
         ),
     ):
@@ -134,10 +134,11 @@ def test_exception_does_not_break_chat():
 
 def test_custom_wiki_doc_marker():
     """wiki_doc_marker 可定制:用于不同业务来源标识。"""
-    page_mock = SimpleNamespace(id=7, status="pending_review")
+    page_mock = SimpleNamespace(id=7, status="active")
     with (
         patch("apps.opspilot.models.WikiKnowledgeBase.objects") as kb_mgr,
-        patch("apps.opspilot.services.wiki.page_service.save_answer_candidate_page", return_value=page_mock),
+        patch("apps.opspilot.services.wiki.page_service.save_answer_page", return_value=page_mock),
+        patch("apps.opspilot.services.wiki.cascade_service.cascade"),
     ):
         kb_mgr.filter.return_value.first.return_value = SimpleNamespace(id=1)
         kwargs = {

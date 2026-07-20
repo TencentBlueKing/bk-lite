@@ -10,6 +10,13 @@ from django.utils import timezone
 from apps.opspilot.models import BuildRecord, CheckItem, KnowledgePage, LLMSkill, Material, PageEvidence, PageRelation
 from apps.opspilot.services.wiki.graph_service import build_graph
 
+_DECISION_CHECK_TYPES = (
+    "cannot_merge",
+    "material_update",
+    "duplicate",
+    "conflict",
+)
+
 
 def _group_count(queryset, field):
     return {row[field]: row["c"] for row in queryset.values(field).annotate(c=Count("id"))}
@@ -28,7 +35,11 @@ def get_overview(knowledge_base):
     kb = knowledge_base
     pages = KnowledgePage.objects.filter(knowledge_base=kb, status="active")
     materials = Material.objects.filter(knowledge_base=kb)
-    open_checks = CheckItem.objects.filter(knowledge_base=kb, status="open")
+    open_checks = CheckItem.objects.filter(
+        knowledge_base=kb,
+        status="open",
+        check_type__in=_DECISION_CHECK_TYPES,
+    )
     relations = PageRelation.objects.filter(from_page__knowledge_base=kb)
 
     graph = build_graph(kb)

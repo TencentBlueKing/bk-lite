@@ -30,10 +30,15 @@ find_projectmem_python() {
     if ! command -v pjm >/dev/null 2>&1; then
       uv tool install projectmem >/dev/null
     fi
-    local uv_tool_python
-    uv_tool_python="$(uv tool dir)/projectmem/bin/python"
-    if [ -x "$uv_tool_python" ]; then
-      printf '%s\n' "$uv_tool_python"
+    local uv_tool_root
+    uv_tool_root="$(uv tool dir)/projectmem"
+    # uv tool: Windows 用 Scripts/python.exe,Unix 用 bin/python;两个都试
+    if [ -x "$uv_tool_root/Scripts/python.exe" ]; then
+      printf '%s\n' "$uv_tool_root/Scripts/python.exe"
+      return 0
+    fi
+    if [ -x "$uv_tool_root/bin/python" ]; then
+      printf '%s\n' "$uv_tool_root/bin/python"
       return 0
     fi
   fi

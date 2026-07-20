@@ -3,7 +3,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import BaseTaskForm, { BaseTaskRef } from './baseTask';
 import { useCollectApi } from '@/app/cmdb/api';
-import { useLocale } from '@/context/locale';
 import { useTranslation } from '@/utils/i18n';
 import { useTaskForm } from '../hooks/useTaskForm';
 import { getCleanupFormValues } from '../hooks/useTaskForm';
@@ -46,7 +45,6 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
 }) => {
   const { t } = useTranslation();
   const baseRef = useRef<BaseTaskRef>(null as any);
-  const localeContext = useLocale();
   const { model_id: modelId } = modelItem;
   const [regions, setRegions] = useState<RegionItem[]>([]);
   const [loadingRegions, setLoadingRegions] = useState(false);
@@ -235,7 +233,7 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
     const initForm = async () => {
       if (copyTaskData) {
         const values = copyTaskData;
-        const regionItem = values.credential?.regions;
+        const regionItem = normalizeCredentialPool(values.credential)[0]?.regions;
 
         // 复制任务中回填表单数据（此时任务名称和密码为空，需要用户手动输入）
         form.setFieldsValue(buildFormValues(values, true));
@@ -280,8 +278,7 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
     <Spin spinning={loading}>
       <Form
         form={form}
-        layout="horizontal"
-        labelCol={{ span: localeContext.locale === 'en' ? 6 : 5 }}
+        layout="vertical"
         onFinish={onFinish}
         initialValues={CLOUD_FORM_INITIAL_VALUES}
       >
