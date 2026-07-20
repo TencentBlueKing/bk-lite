@@ -58,9 +58,6 @@ def _get_authorized_scope_groups(actor_context):
 
 
 def _ensure_target_organizations(organizations, actor_context, request=None):
-    if not organizations:
-        return
-
     request = request or actor_context.get("request")
     if request is None:
         raise BaseAppException("缺少组织分配请求上下文")
@@ -178,6 +175,7 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
             qs,
             add_metrics,
             request.GET.get("monitor_plugin_id"),
+            visible_organization_ids=scope.data_team_ids,
         )
         # 如果有权限规则，则添加到数据中
         inst_permission_map = {i["id"]: i["permission"] for i in permission.get("instance", [])}
@@ -225,6 +223,7 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
             dict(**request.data),
             qs=qs,
             locale=request.user.locale,
+            visible_organization_ids=scope.data_team_ids,
         )
         data = search_obj.search()
         # 如果有权限规则，则添加到数据中
@@ -302,6 +301,7 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
             dict(**request.data),
             qs=qs,
             locale=request.user.locale,
+            visible_organization_ids=scope.data_team_ids,
         )
         data = search_obj.search_by_primary_object()
         # 如果有权限规则，则添加到数据中
@@ -391,11 +391,13 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
             [request.data.get("instance_id")],
             actor_context,
         )
-        _ensure_target_organizations(request.data.get("organizations", []), actor_context, request)
+        organizations = request.data.get("organizations")
+        if "organizations" in request.data:
+            _ensure_target_organizations(organizations, actor_context, request)
         MonitorObjectService.update_instance(
             request.data.get("instance_id"),
             request.data.get("name"),
-            request.data.get("organizations", []),
+            organizations,
         )
         return WebUtils.response_success()
 

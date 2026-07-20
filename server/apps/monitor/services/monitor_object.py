@@ -114,6 +114,7 @@ class MonitorObjectService:
         qs,
         add_metrics=False,
         monitor_plugin_id=None,
+        visible_organization_ids=None,
     ):
         """获取监控对象实例"""
         qs = qs.filter(monitor_object_id=monitor_object_id, is_deleted=False)
@@ -164,6 +165,8 @@ class MonitorObjectService:
         else:
             objs = projected_qs[start:end]
         org_objs = MonitorInstanceOrganization.objects.filter(monitor_instance_id__in=[obj.id for obj in objs])
+        if visible_organization_ids is not None:
+            org_objs = org_objs.filter(organization__in=visible_organization_ids)
         org_map = {}
         for org in org_objs:
             if org.monitor_instance_id not in org_map:

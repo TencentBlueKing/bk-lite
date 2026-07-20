@@ -82,6 +82,58 @@ def test_monitor_instance_list_returns_flow_asset_fields(db, monkeypatch):
     }
 
 
+def test_monitor_instance_list_hides_sibling_organizations(db, monkeypatch):
+    monitor_object = MonitorObject.objects.create(
+        name="ScopedSwitch",
+        default_metric="up",
+        instance_id_keys=["instance_id"],
+    )
+    instance = MonitorInstance.objects.create(
+        id="('shared-flow-device',)",
+        name="Shared Switch",
+        monitor_object=monitor_object,
+    )
+    MonitorInstanceOrganization.objects.create(monitor_instance=instance, organization=7)
+    MonitorInstanceOrganization.objects.create(monitor_instance=instance, organization=8)
+    monkeypatch.setattr(MonitorObjectService, "get_instances_by_metric", lambda *args, **kwargs: {})
+    monkeypatch.setattr(MonitorObjectService, "add_attr", lambda result: None)
+
+    data = MonitorObjectService.get_monitor_instance(
+        monitor_object.id,
+        page=1,
+        page_size=-1,
+        name=None,
+        qs=MonitorInstance.objects.all(),
+        visible_organization_ids=frozenset({7}),
+    )
+
+    assert data["results"][0]["organizations"] == [7]
+
+
+def test_instance_search_hides_sibling_organizations(db):
+    monitor_object = MonitorObject.objects.create(
+        name="ScopedPrimary",
+        default_metric="up",
+        instance_id_keys=["instance_id"],
+    )
+    instance = MonitorInstance.objects.create(
+        id="('shared-primary',)",
+        name="Shared Primary",
+        monitor_object=monitor_object,
+    )
+    MonitorInstanceOrganization.objects.create(monitor_instance=instance, organization=7)
+    MonitorInstanceOrganization.objects.create(monitor_instance=instance, organization=8)
+
+    data = InstanceSearch(
+        monitor_object,
+        {"page": 1, "page_size": -1},
+        qs=MonitorInstance.objects.all(),
+        visible_organization_ids=frozenset({7}),
+    ).get_objs_v2()
+
+    assert data["results"][0]["organizations"] == [7]
+
+
 def test_monitor_instance_list_filters_instances_by_plugin_status_query(db, monkeypatch):
     monitor_object = MonitorObject.objects.create(
         name="Host",

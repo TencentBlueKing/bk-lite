@@ -28,12 +28,13 @@ PLUGIN_STATUS_QUERY_MAX_WORKERS = int(os.getenv("MONITOR_PLUGIN_STATUS_QUERY_MAX
 
 
 class InstanceSearch:
-    def __init__(self, monitor_obj, query_data, qs=None, locale=None):
+    def __init__(self, monitor_obj, query_data, qs=None, locale=None, visible_organization_ids=None):
         self.monitor_obj = monitor_obj
         self.query_data = query_data
         self.obj_metric_map = self.get_obj_metric_map()
         self.qs = qs
         self.locale = locale or "zh-Hans"
+        self.visible_organization_ids = visible_organization_ids
 
     @staticmethod
     def get_parent_instance_ids(query):
@@ -280,6 +281,8 @@ class InstanceSearch:
 
         # 组织映射
         org_objs = MonitorInstanceOrganization.objects.filter(monitor_instance_id__in=[i["instance_id"] for i in data["results"]])
+        if self.visible_organization_ids is not None:
+            org_objs = org_objs.filter(organization__in=self.visible_organization_ids)
         org_map = {}
         for org in org_objs:
             if org.monitor_instance_id not in org_map:
@@ -419,6 +422,8 @@ class InstanceSearch:
             end = start + page_size
             results = projected_qs[start:end]
         org_objs = MonitorInstanceOrganization.objects.filter(monitor_instance_id__in=[obj.id for obj in results])
+        if self.visible_organization_ids is not None:
+            org_objs = org_objs.filter(organization__in=self.visible_organization_ids)
         org_map = {}
         for org in org_objs:
             if org.monitor_instance_id not in org_map:

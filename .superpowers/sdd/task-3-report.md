@@ -68,3 +68,27 @@ uv run --extra dev pytest -o addopts='' \
 - `server/apps/monitor/views/organization_rule.py`
 
 本任务未修改告警、事件、快照、原始数据和日志模块；它们分别由后续继承权限链任务处理。
+
+## 独立审查修复（2026-07-21）
+
+### 修复内容
+
+- 组织规则持久化 `organizations` 复用 Task 1 的规范正组织 ID 解析；bool、float、前导零、空集合及混合非法快照整行不可授权，不再宽松转换或跳过坏元素。
+- `OrganizationRule` 普通 PATCH 未携带 `organizations` 时不再重新校验旧共享组织；PUT 与显式 PATCH 仍严格校验目标组织，绑定实例和源对象操作权限保持不变。
+- Policy、Condition、Instance、OrganizationRule 的显式组织写入不再跳过空值；创建、替换、显式 PATCH 与批量设置在数据库、调度任务和服务调用前 fail-closed。实例仅改名称时以 `organizations=None` 保留原关联。
+- 修正 DRF `partial_update -> self.update(partial=True)` 的二次进入：Policy、Condition 与 OrganizationRule 的 PATCH 只执行一次组织校验和业务副作用。
+- Policy serializer、MonitorObjectService 和 InstanceSearch 的组织响应按 `current_team.data_team_ids` 投影；共享对象仍可见，数据库中的完整组织关联不变。
+
+### TDD 与回归证据
+
+- RED：规则 bool/float/前导零/混合非法/空快照 6 项失败；Policy、Condition、Instance 空/None 组织 helper 6 项失败；Policy、Instance service/search 投影 3 项失败；共享 Rule 普通 PATCH 首次因 DRF 二次进入误拒。
+- GREEN：严格快照、空组织、投影、共享 PATCH、合法 sibling 分配与零副作用专项全部通过。
+- 扩大回归：Task 3 原回归集合并入新增用例后 `259 passed in 46.63s`；覆盖率复跑同一集合 `259 passed in 76.24s`。
+- 差异覆盖率：`42` 个差异可执行行、`6` 行未覆盖，`85%`，高于 `75%` 门禁。
+
+### 静态门禁
+
+- `python -m py_compile`、`git diff --check`、原生 SQL 扫描、`makemigrations --check --dry-run` 通过。
+- isort 5.10.1 对本次新增 import 所在生产文件与业务测试通过；未改 import 的 service/既有测试仍保留基线格式，不做机械格式化。
+- Black 23.1 对本次新增且无基线格式债务的 5 个触及文件通过；`monitor_policy.py`、`monitor_object.py`、`monitor_instance.py`、既有 projection/object-extra 测试仍复现 HEAD 基线格式差异。
+- flake8 7.1.1 除既有 `C901` 与测试 `F841` 基线外通过；本次引入的 `E303` 已修复。

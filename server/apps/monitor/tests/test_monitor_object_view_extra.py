@@ -123,6 +123,118 @@ class TestMonitorObjectTypeList:
 
 
 class TestOrganizationRuleView:
+    def test_create_with_empty_organizations_has_no_rule_side_effect(self, api_client, mocker):
+        api_client.cookies["current_team"] = "1"
+        obj = MonitorObject.objects.create(name="ORVEmptyCreateObj", level="base")
+        mocker.patch(
+            "apps.core.utils.current_team_scope.SystemMgmt.get_authorized_groups_scoped",
+            return_value={"result": True, "data": [1]},
+        )
+        mocker.patch(
+            "apps.core.utils.current_team_scope.SystemMgmt.get_assignable_groups",
+            return_value={"result": True, "data": [1]},
+        )
+
+        resp = api_client.post(
+            f"{BASE}/api/organization_rule/",
+            {
+                "monitor_object": obj.id,
+                "name": "empty-org-rule",
+                "organizations": [],
+                "rule": {},
+            },
+            format="json",
+        )
+
+        assert resp.status_code == 500
+        assert not MonitorObjectOrganizationRule.objects.filter(name="empty-org-rule").exists()
+
+    def test_partial_update_shared_rule_without_organizations_keeps_existing_assignment(self, api_client, mocker):
+        api_client.cookies["current_team"] = "1"
+        obj = MonitorObject.objects.create(name="ORVSharedPatchObj", level="base")
+        rule = MonitorObjectOrganizationRule.objects.create(
+            monitor_object=obj,
+            name="shared-rule",
+            organizations=[1, 2],
+            rule={},
+        )
+        mocker.patch(
+            "apps.core.utils.current_team_scope.SystemMgmt.get_authorized_groups_scoped",
+            return_value={"result": True, "data": [1]},
+        )
+        assignable = mocker.patch(
+            "apps.core.utils.current_team_scope.SystemMgmt.get_assignable_groups",
+            return_value={"result": True, "data": [1]},
+        )
+
+        resp = api_client.patch(
+            f"{BASE}/api/organization_rule/{rule.id}/",
+            {"name": "renamed-shared-rule"},
+            format="json",
+        )
+
+        assert resp.status_code == 200, resp.content
+        rule.refresh_from_db()
+        assert rule.name == "renamed-shared-rule"
+        assert rule.organizations == [1, 2]
+        assignable.assert_not_called()
+
+    def test_partial_update_shared_rule_allows_assignable_sibling(self, api_client, mocker):
+        api_client.cookies["current_team"] = "1"
+        obj = MonitorObject.objects.create(name="ORVSharedAssignObj", level="base")
+        rule = MonitorObjectOrganizationRule.objects.create(
+            monitor_object=obj,
+            name="shared-rule",
+            organizations=[1, 2],
+            rule={},
+        )
+        mocker.patch(
+            "apps.core.utils.current_team_scope.SystemMgmt.get_authorized_groups_scoped",
+            return_value={"result": True, "data": [1]},
+        )
+        mocker.patch(
+            "apps.core.utils.current_team_scope.SystemMgmt.get_assignable_groups",
+            return_value={"result": True, "data": [1, 2]},
+        )
+
+        resp = api_client.patch(
+            f"{BASE}/api/organization_rule/{rule.id}/",
+            {"organizations": [2]},
+            format="json",
+        )
+
+        assert resp.status_code == 200, resp.content
+        rule.refresh_from_db()
+        assert rule.organizations == [2]
+
+    def test_partial_update_shared_rule_rejects_explicit_empty_organizations(self, api_client, mocker):
+        api_client.cookies["current_team"] = "1"
+        obj = MonitorObject.objects.create(name="ORVSharedEmptyPatchObj", level="base")
+        rule = MonitorObjectOrganizationRule.objects.create(
+            monitor_object=obj,
+            name="shared-rule",
+            organizations=[1, 2],
+            rule={},
+        )
+        mocker.patch(
+            "apps.core.utils.current_team_scope.SystemMgmt.get_authorized_groups_scoped",
+            return_value={"result": True, "data": [1]},
+        )
+        mocker.patch(
+            "apps.core.utils.current_team_scope.SystemMgmt.get_assignable_groups",
+            return_value={"result": True, "data": [1, 2]},
+        )
+
+        resp = api_client.patch(
+            f"{BASE}/api/organization_rule/{rule.id}/",
+            {"organizations": []},
+            format="json",
+        )
+
+        assert resp.status_code == 500
+        rule.refresh_from_db()
+        assert rule.organizations == [1, 2]
+
     def test_destroy_calls_service(self, api_client, mocker):
         api_client.cookies["current_team"] = "1"
         obj = MonitorObject.objects.create(name="ORVObj", level="base")
@@ -143,13 +255,26 @@ class TestOrganizationRuleView:
 
     def test_normalize_rule_organizations(self):
         from apps.monitor.views.organization_rule import _normalize_rule_organizations
-        assert _normalize_rule_organizations([1, "2", None, ""]) == {1, 2}
 
-    def test_normalize_rule_organizations_invalid(self):
+        assert _normalize_rule_organizations([1, "2"]) == {1, 2}
+
+    @pytest.mark.parametrize(
+        "organizations",
+        [
+            [True],
+            [1.5],
+            ["01"],
+            [1, "2", True],
+            [1, None],
+            [],
+        ],
+    )
+    def test_normalize_rule_organizations_rejects_noncanonical_or_empty_snapshot(self, organizations):
         from apps.core.exceptions.base_app_exception import BaseAppException
         from apps.monitor.views.organization_rule import _normalize_rule_organizations
+
         with pytest.raises(BaseAppException):
-            _normalize_rule_organizations(["abc"])
+            _normalize_rule_organizations(organizations)
 
     def test_validate_rule_binding_mismatch(self):
         from apps.core.exceptions.base_app_exception import BaseAppException

@@ -1,6 +1,7 @@
 from rest_framework import viewsets
 
 from apps.core.exceptions.base_app_exception import BaseAppException, UnauthorizedException
+from apps.core.utils.current_team_scope import _normalize_organization_ids
 from apps.core.utils.web_utils import WebUtils
 from apps.monitor.filters.monitor_object import MonitorObjectOrganizationRuleFilter
 from apps.monitor.models import MonitorInstance, MonitorObject, MonitorObjectOrganizationRule
@@ -19,15 +20,13 @@ def _get_authorized_scope_groups(actor_context):
 
 
 def _normalize_rule_organizations(organizations):
-    try:
-        return {int(org) for org in (organizations or []) if org not in (None, "")}
-    except (TypeError, ValueError):
-        raise BaseAppException("组织参数非法")
+    return set(_normalize_organization_ids(organizations))
 
 
 def _rule_is_authorized(rule, actor_context, require_operate=False, authorized_instance_cache=None):
-    rule_orgs = _normalize_rule_organizations(rule.organizations)
-    if not rule_orgs:
+    try:
+        rule_orgs = _normalize_rule_organizations(rule.organizations)
+    except BaseAppException:
         return False
 
     allowed_groups = _get_authorized_scope_groups(actor_context)
@@ -76,8 +75,17 @@ def _validate_rule_binding(monitor_object_id, monitor_instance_id):
     raise BaseAppException("监控实例与监控对象不匹配")
 
 
-def _validate_rule_payload(request, actor_context, monitor_object_id, monitor_instance_id, organizations):
-    _ensure_target_organizations(organizations or [], actor_context, request)
+def _validate_rule_payload(
+    request,
+    actor_context,
+    monitor_object_id,
+    monitor_instance_id,
+    organizations,
+    *,
+    validate_organizations=True,
+):
+    if validate_organizations:
+        _ensure_target_organizations(organizations, actor_context, request)
     if monitor_instance_id not in (None, ""):
         _ensure_operate_instances(request, [monitor_instance_id], actor_context)
         _validate_rule_binding(monitor_object_id, monitor_instance_id)
@@ -138,25 +146,18 @@ class MonitorObjectOrganizationRuleViewSet(viewsets.ModelViewSet):
     def update(self, request, *args, **kwargs):
         rule = self.get_object()
         actor_context = _build_actor_context(request)
+        is_partial = kwargs.get("partial", False)
         _validate_rule_payload(
             request,
             actor_context,
             request.data.get("monitor_object", rule.monitor_object_id),
             request.data.get("monitor_instance_id", rule.monitor_instance_id),
-            request.data.get("organizations", rule.organizations),
+            request.data.get("organizations"),
+            validate_organizations=not is_partial or "organizations" in request.data,
         )
         return super().update(request, *args, **kwargs)
 
     def partial_update(self, request, *args, **kwargs):
-        rule = self.get_object()
-        actor_context = _build_actor_context(request)
-        _validate_rule_payload(
-            request,
-            actor_context,
-            request.data.get("monitor_object", rule.monitor_object_id),
-            request.data.get("monitor_instance_id", rule.monitor_instance_id),
-            request.data.get("organizations", rule.organizations),
-        )
         return super().partial_update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):

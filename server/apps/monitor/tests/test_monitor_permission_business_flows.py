@@ -112,6 +112,52 @@ def _patch_condition_business_permissions(mocker, *, teams=None, instances=None)
 
 
 class TestMonitorPolicyBusinessFlow:
+    def test_partial_update_without_organizations_keeps_assignment_and_explicit_empty_is_rejected(self, api_client, mocker):
+        api_client.cookies["current_team"] = "1"
+        _patch_policy_business_permissions(mocker, teams=[1])
+        monitor_object = _monitor_object("PolicyPatchOrgObj")
+        policy = _policy(monitor_object, org=1, name=_name("policy-patch-org"))
+        policy.organizations = [1, 2]
+        policy.save(update_fields=["organizations"])
+
+        ok_resp = api_client.patch(
+            f"{BASE}/api/monitor_policy/{policy.id}/",
+            {"name": "renamed-policy"},
+            format="json",
+        )
+
+        assert ok_resp.status_code == 200, ok_resp.content
+        policy.refresh_from_db()
+        assert policy.name == "renamed-policy"
+        assert policy.organizations == [1, 2]
+        assert set(PolicyOrganization.objects.filter(policy=policy).values_list("organization", flat=True)) == {1}
+
+        rejected_resp = api_client.patch(
+            f"{BASE}/api/monitor_policy/{policy.id}/",
+            {"organizations": []},
+            format="json",
+        )
+
+        assert rejected_resp.status_code == 500
+        policy.refresh_from_db()
+        assert policy.organizations == [1, 2]
+        assert set(PolicyOrganization.objects.filter(policy=policy).values_list("organization", flat=True)) == {1}
+
+    def test_create_with_empty_organizations_has_no_policy_or_task_side_effect(self, api_client, mocker):
+        api_client.cookies["current_team"] = "1"
+        _patch_policy_business_permissions(mocker, teams=[1])
+        monitor_object = _monitor_object("PolicyEmptyOrgObj")
+        name = _name("policy-empty-org")
+        payload = _policy_payload(monitor_object, name=name)
+        payload["organizations"] = []
+        before_tasks = set(PeriodicTask.objects.values_list("name", flat=True))
+
+        resp = api_client.post(f"{BASE}/api/monitor_policy/", payload, format="json")
+
+        assert resp.status_code == 500
+        assert not MonitorPolicy.objects.filter(name=name).exists()
+        assert set(PeriodicTask.objects.values_list("name", flat=True)) == before_tasks
+
     def test_authorized_user_can_manage_policy_lifecycle(self, api_client, mocker):
         api_client.cookies["current_team"] = "1"
         _patch_policy_business_permissions(mocker, teams=[1])
@@ -176,6 +222,46 @@ class TestMonitorPolicyBusinessFlow:
 
 
 class TestMonitorConditionBusinessFlow:
+    def test_partial_update_without_organizations_keeps_assignment_and_explicit_empty_is_rejected(self, api_client, mocker):
+        api_client.cookies["current_team"] = "1"
+        _patch_condition_business_permissions(mocker, teams=[1])
+        condition = MonitorCondition.objects.create(name=_name("condition-patch-org"), condition={})
+        MonitorConditionOrganization.objects.create(monitor_condition=condition, organization=1)
+
+        ok_resp = api_client.patch(
+            f"{BASE}/api/monitor_condition/{condition.id}/",
+            {"description": "updated-without-org"},
+            format="json",
+        )
+
+        assert ok_resp.status_code == 200, ok_resp.content
+        condition.refresh_from_db()
+        assert condition.description == "updated-without-org"
+        assert set(condition.organizations.values_list("organization", flat=True)) == {1}
+
+        rejected_resp = api_client.patch(
+            f"{BASE}/api/monitor_condition/{condition.id}/",
+            {"organizations": []},
+            format="json",
+        )
+
+        assert rejected_resp.status_code == 500
+        assert set(condition.organizations.values_list("organization", flat=True)) == {1}
+
+    def test_create_with_empty_organizations_has_no_condition_side_effect(self, api_client, mocker):
+        api_client.cookies["current_team"] = "1"
+        _patch_condition_business_permissions(mocker, teams=[1])
+        name = _name("condition-empty-org")
+
+        resp = api_client.post(
+            f"{BASE}/api/monitor_condition/",
+            {"name": name, "condition": {}, "organizations": []},
+            format="json",
+        )
+
+        assert resp.status_code == 500
+        assert not MonitorCondition.objects.filter(name=name).exists()
+
     def test_authorized_user_can_manage_condition_lifecycle(self, api_client, mocker):
         api_client.cookies["current_team"] = "1"
         _patch_condition_business_permissions(mocker, teams=[1])

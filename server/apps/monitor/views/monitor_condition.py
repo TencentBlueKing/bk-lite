@@ -71,8 +71,6 @@ class MonitorConditionViewSet(viewsets.ModelViewSet):
         return self._scope_queryset(queryset, permission, scope)
 
     def _ensure_target_organizations(self, organizations, actor_context=None):
-        if not organizations:
-            return
         validate_assignable_organizations(self.request, organizations)
 
     def list(self, request, *args, **kwargs):
@@ -110,14 +108,16 @@ class MonitorConditionViewSet(viewsets.ModelViewSet):
         return response
 
     def update(self, request, *args, **kwargs):
+        if kwargs.get("partial", False):
+            return super().update(request, *args, **kwargs)
+
         condition = self.get_object()
         self._ensure_target_organizations(request.data.get("organizations", []))
         request.data["updated_by"] = request.user.username
         condition_id = condition.id
         response = super().update(request, *args, **kwargs)
-        organizations = request.data.get("organizations", [])
-        if organizations:
-            self.update_condition_organizations(condition_id, organizations)
+        organizations = request.data.get("organizations")
+        self.update_condition_organizations(condition_id, organizations)
         return response
 
     def partial_update(self, request, *args, **kwargs):
@@ -127,8 +127,8 @@ class MonitorConditionViewSet(viewsets.ModelViewSet):
         request.data["updated_by"] = request.user.username
         condition_id = condition.id
         response = super().partial_update(request, *args, **kwargs)
-        organizations = request.data.get("organizations", [])
-        if organizations:
+        organizations = request.data.get("organizations")
+        if "organizations" in request.data:
             self.update_condition_organizations(condition_id, organizations)
         return response
 

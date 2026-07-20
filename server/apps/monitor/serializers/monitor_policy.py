@@ -32,6 +32,15 @@ _LABEL_NAME_RE = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
 
 
 class MonitorPolicySerializer(serializers.ModelSerializer):
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        data_team_ids = self.context.get("data_team_ids")
+        if data_team_ids is not None:
+            representation["organizations"] = [
+                organization for organization in representation.get("organizations", []) if organization in data_team_ids
+            ]
+        return representation
+
     class Meta:
         model = MonitorPolicy
         fields = "__all__"

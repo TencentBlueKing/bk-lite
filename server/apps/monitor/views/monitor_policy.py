@@ -99,6 +99,11 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
             return {"team": list(scope.data_team_ids), "instance": []}
         return self._get_permission(monitor_object_id)
 
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["data_team_ids"] = self._get_data_scope().data_team_ids
+        return context
+
     def _scope_queryset(self, queryset, permission, scope):
         permitted_qs = scope_permission_queryset(
             MonitorPolicy,
@@ -126,8 +131,6 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
         return self._scope_queryset(queryset, permission, scope)
 
     def _ensure_target_organizations(self, organizations, actor_context=None):
-        if not organizations:
-            return
         validate_assignable_organizations(self.request, organizations)
 
     def list(self, request, *args, **kwargs):
@@ -176,6 +179,9 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
         return response
 
     def update(self, request, *args, **kwargs):
+        if kwargs.get("partial", False):
+            return super().update(request, *args, **kwargs)
+
         policy = self.get_object()
         self._ensure_target_organizations(request.data.get("organizations", []))
         request.data["updated_by"] = request.user.username
@@ -192,9 +198,8 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
             schedule = request.data.get("schedule")
             if schedule:
                 self.update_or_create_task(policy_id, schedule)
-            organizations = request.data.get("organizations", [])
-            if organizations:
-                self.update_policy_organizations(policy_id, organizations)
+            organizations = request.data.get("organizations")
+            self.update_policy_organizations(policy_id, organizations)
             if self.should_update_policy_baselines(policy, old_baseline_state, updated_policy):
                 self.update_policy_baselines(
                     policy_id,
@@ -235,8 +240,8 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
             schedule = request.data.get("schedule")
             if schedule:
                 self.update_or_create_task(policy_id, schedule)
-            organizations = request.data.get("organizations", [])
-            if organizations:
+            organizations = request.data.get("organizations")
+            if "organizations" in request.data:
                 self.update_policy_organizations(policy_id, organizations)
             if self.should_update_policy_baselines(policy, old_baseline_state, updated_policy):
                 self.update_policy_baselines(

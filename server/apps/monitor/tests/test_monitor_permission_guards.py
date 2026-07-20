@@ -16,7 +16,7 @@ from apps.monitor.models.monitor_condition import (
 )
 from apps.monitor.models.monitor_policy import MonitorPolicy, PolicyOrganization
 from apps.monitor.views.monitor_condition import MonitorConditionViewSet
-from apps.monitor.views.monitor_instance import _ensure_operate_instances
+from apps.monitor.views.monitor_instance import _ensure_operate_instances, _ensure_target_organizations
 from apps.monitor.views.monitor_policy import MonitorPolicyViewSet
 from apps.monitor.views.organization_rule import MonitorObjectOrganizationRuleViewSet
 
@@ -100,6 +100,18 @@ def _patch_scope_contract(mocker, *, teams=None, assignable=None):
 
 
 class TestMonitorPolicyObjectPermission:
+    def test_serializer_hides_sibling_organizations(self):
+        from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
+
+        obj = _monitor_object("PolicyProjectionObj")
+        policy = _policy(obj, name="shared-policy", org=1)
+        policy.organizations = [1, 2]
+        policy.save(update_fields=["organizations"])
+
+        data = MonitorPolicySerializer(policy, context={"data_team_ids": frozenset({1})}).data
+
+        assert data["organizations"] == [1]
+
     def test_superuser_queryset_stays_in_current_team(self, mocker):
         obj = _monitor_object("PolicySuperuserScopeObj")
         allowed = _policy(obj, name="superuser-current", org=1)
@@ -166,6 +178,15 @@ class TestMonitorPolicyObjectPermission:
 
         assert view._ensure_target_organizations([2]) is None
 
+    @pytest.mark.parametrize("organizations", [[], None])
+    def test_rejects_empty_explicit_organizations(self, mocker, organizations):
+        _patch_scope_contract(mocker, teams=[1], assignable=[1, 2])
+        view = MonitorPolicyViewSet()
+        view.request = _request(current_team=1)
+
+        with pytest.raises(BaseAppException):
+            view._ensure_target_organizations(organizations)
+
     def test_superuser_cannot_assign_unauthorized_organization(self, mocker):
         _patch_policy_permission(mocker, teams=[1])
         _patch_scope_contract(mocker, teams=[1], assignable=[1, 2])
@@ -219,6 +240,55 @@ class TestMonitorPolicyBulkAssetPermission:
 
 
 class TestMonitorInstanceObjectPermission:
+    def test_name_only_update_keeps_existing_organizations(self, mocker):
+        from apps.monitor.views.monitor_instance import MonitorInstanceViewSet
+
+        obj = _monitor_object("InstanceNameOnlyObj")
+        inst = MonitorInstance.objects.create(id="('name-only',)", name="old-name", monitor_object=obj)
+        MonitorInstanceOrganization.objects.create(monitor_instance=inst, organization=1)
+        _patch_scope_contract(mocker, teams=[1], assignable=[1])
+        mocker.patch(
+            "apps.monitor.services.node_mgmt.get_permission_rules",
+            return_value={"team": [1], "instance": []},
+        )
+        request = _request(current_team=1)
+        request.data = {"instance_id": inst.id, "name": "new-name"}
+
+        MonitorInstanceViewSet().update_monitor_instance(request)
+
+        inst.refresh_from_db()
+        assert inst.name == "new-name"
+        assert set(inst.monitorinstanceorganization_set.values_list("organization", flat=True)) == {1}
+
+    def test_set_empty_organizations_has_no_service_side_effect(self, mocker):
+        from apps.monitor.views.monitor_instance import MonitorInstanceViewSet
+
+        obj = _monitor_object("InstanceEmptySetObj")
+        inst = MonitorInstance.objects.create(id="('empty-set',)", name="empty-set", monitor_object=obj)
+        MonitorInstanceOrganization.objects.create(monitor_instance=inst, organization=1)
+        _patch_scope_contract(mocker, teams=[1], assignable=[1])
+        mocker.patch(
+            "apps.monitor.services.node_mgmt.get_permission_rules",
+            return_value={"team": [1], "instance": []},
+        )
+        sync = mocker.patch("apps.monitor.views.monitor_instance.MonitorObjectService.set_instances_organizations")
+        request = _request(current_team=1)
+        request.data = {"instance_ids": [inst.id], "organizations": []}
+
+        with pytest.raises(BaseAppException):
+            MonitorInstanceViewSet().set_instances_organizations(request)
+
+        sync.assert_not_called()
+        assert set(inst.monitorinstanceorganization_set.values_list("organization", flat=True)) == {1}
+
+    @pytest.mark.parametrize("organizations", [[], None])
+    def test_rejects_empty_explicit_organizations(self, mocker, organizations):
+        _patch_scope_contract(mocker, teams=[1], assignable=[1, 2])
+        request = _request(current_team=1)
+
+        with pytest.raises(BaseAppException):
+            _ensure_target_organizations(organizations, {"request": request}, request)
+
     def test_superuser_cannot_operate_sibling_instance(self, mocker):
         obj = _monitor_object("InstanceSuperuserScopeObj")
         inst = MonitorInstance.objects.create(id="('sibling',)", name="sibling", monitor_object=obj)
@@ -235,6 +305,23 @@ class TestMonitorInstanceObjectPermission:
 
 
 class TestOrganizationRuleObjectPermission:
+    @pytest.mark.parametrize("organizations", [[True], [1.5], ["01"], [1, True]])
+    def test_invalid_persisted_organization_snapshot_is_hidden(self, mocker, organizations):
+        obj = _monitor_object("RuleInvalidSnapshotObj")
+        rule = MonitorObjectOrganizationRule.objects.create(
+            monitor_object=obj,
+            name="invalid-snapshot",
+            organizations=organizations,
+            rule={},
+        )
+        _patch_scope_contract(mocker, teams=[1], assignable=[1])
+
+        view = MonitorObjectOrganizationRuleViewSet()
+        view.request = _request(current_team=1)
+        view.action = "retrieve"
+
+        assert not view.get_queryset().filter(id=rule.id).exists()
+
     def test_superuser_queryset_stays_in_current_team(self, mocker):
         obj = _monitor_object("RuleSuperuserScopeObj")
         allowed = MonitorObjectOrganizationRule.objects.create(
@@ -337,6 +424,15 @@ class TestMonitorConditionObjectPermission:
 
         with pytest.raises(BaseAppException):
             view._ensure_target_organizations([1, 2])
+
+    @pytest.mark.parametrize("organizations", [[], None])
+    def test_rejects_empty_explicit_organizations(self, mocker, organizations):
+        _patch_scope_contract(mocker, teams=[1], assignable=[1])
+        view = MonitorConditionViewSet()
+        view.request = _request(current_team=1)
+
+        with pytest.raises(BaseAppException):
+            view._ensure_target_organizations(organizations)
 
     def test_destroy_queryset_blocks_side_effect_targets(self, mocker):
         blocked = _condition(name="condition-destroy-blocked", org=2)
