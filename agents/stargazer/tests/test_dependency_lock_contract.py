@@ -1,5 +1,6 @@
 import importlib
 import tomllib
+import warnings
 from importlib.metadata import version
 from pathlib import Path
 
@@ -52,4 +53,11 @@ def test_sanic_imports_with_the_approved_tracerite_api() -> None:
     assert version("sanic") == "24.6.0"
     assert version("tracerite") == "1.1.3"
     assert hasattr(tracerite_html, "style")
-    importlib.import_module("sanic")
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message="websockets\\.connection was renamed to websockets\\.protocol",
+            category=DeprecationWarning,
+            module="websockets\\.connection",
+        )
+        importlib.import_module("sanic")
