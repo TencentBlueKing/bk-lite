@@ -1,3 +1,4 @@
+import hashlib
 from copy import deepcopy
 from types import SimpleNamespace
 import uuid
@@ -386,10 +387,11 @@ def _sync_groups(source: UserSyncSource, group_list: list[dict], root_group: Gro
         for item in current_items:
             external_id = str(item["id"])
             scoped_external_id = _scoped_external_id(source.id, external_id)
+            group_name = _truncate_to_field(Group, "name", str(item.get("name", external_id)))
             group = existing_by_external_id.get(scoped_external_id)
             if group is None:
                 group = Group.objects.create(
-                    name=item.get("name", external_id),
+                    name=group_name,
                     parent_id=parent_group.id,
                     external_id=scoped_external_id,
                     description=f"user_sync_source_{source.id}",
@@ -397,8 +399,8 @@ def _sync_groups(source: UserSyncSource, group_list: list[dict], root_group: Gro
                 )
             else:
                 update_fields = []
-                if group.name != item.get("name", external_id):
-                    group.name = item.get("name", external_id)
+                if group.name != group_name:
+                    group.name = group_name
                     update_fields.append("name")
                 if group.sync_source_id != source.id:
                     group.sync_source = source
@@ -427,6 +429,8 @@ def _sync_users(
         username = str(_mapped_value(raw_user, field_mapping, "username") or raw_user.get("user_id") or raw_user.get("open_id") or "").strip()
         if not username:
             continue
+        # 截断后的 username 同时作为本轮匹配键,保证与写库值一致
+        username = _truncate_to_field(User, "username", username)
         departments = [str(item) for item in raw_user.get("department_ids") or raw_user.get("departments") or []]
         local_group_ids = []
         for department_id in departments:
@@ -440,9 +444,11 @@ def _sync_users(
         normalized_users.append(
             {
                 "username": username,
-                "display_name": str(_mapped_value(raw_user, field_mapping, "display_name") or username),
-                "email": str(_mapped_value(raw_user, field_mapping, "email") or ""),
-                "phone": str(_mapped_value(raw_user, field_mapping, "phone") or ""),
+                "display_name": _truncate_to_field(
+                    User, "display_name", str(_mapped_value(raw_user, field_mapping, "display_name") or username)
+                ),
+                "email": _truncate_to_field(User, "email", str(_mapped_value(raw_user, field_mapping, "email") or "")),
+                "phone": _truncate_to_field(User, "phone", str(_mapped_value(raw_user, field_mapping, "phone") or "")),
                 "group_list": sorted(set(local_group_ids)),
             }
         )
@@ -607,8 +613,25 @@ def _mapped_value(raw_user: dict, field_mapping: dict, logical_key: str):
     return raw_user.get(source_key)
 
 
+def _truncate_to_field(model, field_name: str, value: str) -> str:
+    """按模型字段 max_length 截断外部数据,防止超长值(如 AD 的 DN/名称)溢出 varchar 上限。"""
+    max_length = model._meta.get_field(field_name).max_length
+    if max_length is None or len(value) <= max_length:
+        return value
+    return value[:max_length]
+
+
 def _scoped_external_id(source_id: int, external_id: str):
-    return f"user-sync:{source_id}:{external_id}"
+    scoped = f"user-sync:{source_id}:{external_id}"
+    max_length = Group._meta.get_field("external_id").max_length
+    if max_length is None or len(scoped) <= max_length:
+        return scoped
+    # 外部 ID 超长(如 AD 组织的 DN):截断并追加摘要。同一外部 ID 每轮生成相同值
+    # (否则每轮同步都会删除重建组),不同外部 ID 截断后也不会互相碰撞。
+    digest = hashlib.sha256(external_id.encode("utf-8")).hexdigest()[:16]
+    prefix = f"user-sync:{source_id}:"
+    keep = max_length - len(prefix) - len(digest) - 1
+    return f"{prefix}{external_id[:max(keep, 0)]}~{digest}"
 
 
 def _get_user_sync_root_group(source: UserSyncSource):

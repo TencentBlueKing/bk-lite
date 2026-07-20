@@ -26,9 +26,10 @@ from apps.operation_analysis.constants.import_export import (
     ImportExportErrorCode,
     ImportExportWarningCode,
     ObjectType,
+    is_sensitive_field_name,
 )
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, NameSpace
-from apps.operation_analysis.models.models import Architecture, Dashboard, Report, Screen, Topology
+from apps.operation_analysis.models.models import Architecture, Dashboard, NetworkTopology, Report, Screen, Topology
 from apps.operation_analysis.schemas.import_export_schema import ImportExportValidationError, YAMLDocument, count_objects, detect_db_id_references
 
 
@@ -53,6 +54,7 @@ class PrecheckService:
         ObjectType.ARCHITECTURE: Architecture,
         ObjectType.SCREEN: Screen,
         ObjectType.REPORT: Report,
+        ObjectType.NETWORK_TOPOLOGY: NetworkTopology,
         ObjectType.DATASOURCE: DataSourceAPIModel,
         ObjectType.NAMESPACE: NameSpace,
     }
@@ -230,6 +232,44 @@ class PrecheckService:
                         }
                     )
 
+        for network_topology in doc.network_topologies:
+            if network_topology.token == SENSITIVE_PLACEHOLDER:
+                warnings.append(
+                    {
+                        "code": ImportExportWarningCode.SECRET_PLACEHOLDER,
+                        "message": f"网络拓扑 '{network_topology.name}' 的 token 字段需要补充",
+                        "object_key": network_topology.key,
+                        "field": "token",
+                    }
+                )
+
+        def collect_config_placeholders(value, path=""):
+            placeholders = []
+            if isinstance(value, dict):
+                for key, item in value.items():
+                    item_path = f"{path}.{key}" if path else str(key)
+                    if item == SENSITIVE_PLACEHOLDER and is_sensitive_field_name(key):
+                        placeholders.append(item_path)
+                    else:
+                        placeholders.extend(collect_config_placeholders(item, item_path))
+            elif isinstance(value, list):
+                for index, item in enumerate(value):
+                    placeholders.extend(collect_config_placeholders(item, f"{path}[{index}]"))
+            return placeholders
+
+        for datasource in doc.datasources:
+            for config_field in ("connection_config", "query_config"):
+                config = getattr(datasource, config_field)
+                for field_path in collect_config_placeholders(config, config_field):
+                    warnings.append(
+                        {
+                            "code": ImportExportWarningCode.SECRET_PLACEHOLDER,
+                            "message": f"数据源 '{datasource.name}' 的 {field_path} 字段需要补充",
+                            "object_key": datasource.key,
+                            "field": field_path,
+                        }
+                    )
+
         return warnings
 
     @staticmethod
@@ -261,6 +301,7 @@ class PrecheckService:
             (doc.architectures, ObjectType.ARCHITECTURE),
             (doc.screens, ObjectType.SCREEN),
             (doc.reports, ObjectType.REPORT),
+            (doc.network_topologies, ObjectType.NETWORK_TOPOLOGY),
         ]
 
         for canvas_list, obj_type in all_canvases:
@@ -302,8 +343,11 @@ class PrecheckService:
         all_actions = [ConflictAction.SKIP.value, ConflictAction.OVERWRITE.value, ConflictAction.RENAME.value]
         rename_only = [ConflictAction.RENAME.value]
 
+        existing_namespace_names = set(
+            NameSpace.objects.filter(name__in=[ns.name for ns in doc.namespaces]).values_list("name", flat=True)
+        )
         for ns in doc.namespaces:
-            if NameSpace.objects.filter(name=ns.name).exists():
+            if ns.name in existing_namespace_names:
                 conflicts.append(
                     {
                         "object_key": ns.key,
@@ -313,8 +357,14 @@ class PrecheckService:
                     }
                 )
 
+        datasource_keys = {(ds.name, ds.rest_api) for ds in doc.datasources}
+        existing_datasources = {
+            (datasource.name, datasource.rest_api): datasource
+            for datasource in DataSourceAPIModel.objects.filter(name__in={name for name, _ in datasource_keys})
+            if (datasource.name, datasource.rest_api) in datasource_keys
+        }
         for ds in doc.datasources:
-            existing = DataSourceAPIModel.objects.filter(name=ds.name, rest_api=ds.rest_api).first()
+            existing = existing_datasources.get((ds.name, ds.rest_api))
             if existing:
                 has_permission = cls._check_group_permission(existing, current_team)
                 conflicts.append(
@@ -332,11 +382,15 @@ class PrecheckService:
             (doc.architectures, ObjectType.ARCHITECTURE, Architecture),
             (doc.screens, ObjectType.SCREEN, Screen),
             (doc.reports, ObjectType.REPORT, Report),
+            (doc.network_topologies, ObjectType.NETWORK_TOPOLOGY, NetworkTopology),
         ]
 
         for canvas_list, obj_type, model in canvas_checks:
+            existing_canvases = {
+                canvas.name: canvas for canvas in model.objects.filter(name__in=[item.name for item in canvas_list])
+            }
             for canvas in canvas_list:
-                existing = model.objects.filter(name=canvas.name).first()
+                existing = existing_canvases.get(canvas.name)
                 if existing:
                     has_permission = cls._check_group_permission(existing, current_team)
                     conflicts.append(
@@ -363,7 +417,7 @@ class PrecheckService:
     @classmethod
     def has_canvas_objects(cls, doc: YAMLDocument) -> bool:
         """检查YAML是否包含画布对象"""
-        return bool(doc.dashboards or doc.topologies or doc.architectures or doc.screens or doc.reports)
+        return bool(doc.dashboards or doc.topologies or doc.architectures or doc.screens or doc.reports or doc.network_topologies)
 
     @classmethod
     def precheck(

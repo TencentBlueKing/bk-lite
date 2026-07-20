@@ -1,0 +1,32 @@
+Consul:
+  name: Consul（Telegraf）
+  desc: 通过Telegraf采集器定期收集Consul的服务健康状态，采集状态检查结果，分析通过、警告和关键性指标。
+monitor_object:
+  Consul: Consul
+monitor_object_type:
+  Middleware: 中间件
+monitor_object_metric:
+  Consul:
+    consul_health_checks_passing:
+      name: 健康检查通过数
+      desc: Consul节点上健康检查结果为通过状态的数量，值为1表示检查通过，0表示未通过
+    consul_health_checks_critical:
+      name: 健康检查危险数
+      desc: Consul节点上健康检查结果为危险状态的数量，值为1表示检查处于危险状态，0表示正常
+    consul_health_checks_warning:
+      name: 健康检查警告数
+      desc: Consul节点上健康检查结果为警告状态的数量，值为1表示检查处于警告状态，0表示正常
+    consul_health_checks_status:
+      name: 健康检查状态
+      desc: Consul节点上健康检查的当前状态值，通常用于表示检查的具体状态代码
+    consul_health_checks_check_name:
+      name: 检查名称标识
+      desc: 健康检查的名称标识符，用于区分不同类型的检查（如serfHealth表示Serf集群健康检查）
+    consul_health_checks_service_id:
+      name: 服务ID标识
+      desc: 健康检查关联的服务ID标识符，值为0表示节点级检查，非0表示关联特定服务
+monitor_object_metric_group:
+  Consul:
+    Health: 健康检查
+    Node: 节点状态
+    Service: 服务状态

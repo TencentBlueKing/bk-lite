@@ -1,5 +1,11 @@
 {
   "model_id": "k8s_namespace",
-  "expected_namespace_names": ["default", "kube-system"],
-  "expected_inst_name_pattern": "default(k8s-cluster-prod)"
+  "expected_namespace_names": ["default", "kube-system", "monitoring"],
+  "expected_inst_name_pattern": "default(k8s-cluster-prod)",
+  "expected_workload_count_min": 5,
+  "expected_workload_types": ["deployment", "statefulset", "daemonset", "job", "cronjob"],
+  "expected_pod_count_min": 2,
+  "expected_pod_names": ["web-frontend-7f8b9c4d5-x2k4p", "redis-cluster-0"],
+  "expected_node_count_min": 2,
+  "expected_node_names": ["node-1", "node-2"]
 }

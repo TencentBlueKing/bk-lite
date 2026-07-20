@@ -1,0 +1,4 @@
+VMWare:
+  desc: Through the Telegraf collector, utilize Stargazer's capability to regularly
+    gather key metrics from VMware vCenter, ESXi, virtual machines, and datastores.
+  name: VMWare

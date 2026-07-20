@@ -116,6 +116,38 @@ def test_collect_base_run_orchestration(monkeypatch):
     assert r.raw_data == [{"metric": {}, "value": [1, "1"]}]
 
 
+def test_collect_base_run_keeps_failed_raw_rows_but_formats_only_success(monkeypatch):
+    runner = _dummy(monkeypatch)
+    rows = [
+        {
+            "metric": {"__name__": "host_info_gauge", "host": "10.0.0.1"},
+            "value": [1, "1"],
+        },
+        {
+            "metric": {
+                "__name__": "network_info_gauge",
+                "host": "10.0.0.2",
+                "collect_status": "failed",
+            },
+            "value": [1, "0"],
+        },
+        {
+            "metric": {
+                "__name__": "cloud_info_gauge",
+                "host": "10.0.0.3",
+                "cmdb_collect_error": "auth failed",
+            },
+            "value": [1, "0"],
+        },
+    ]
+    monkeypatch.setattr(runner, "query_data", lambda: {"result": rows})
+
+    result = runner.run()
+
+    assert runner.raw_data == rows
+    assert result["raw"]["result"] == [rows[0]]
+
+
 def test_collect_base_query_data(monkeypatch):
     r = _dummy(monkeypatch)
     captured = {}

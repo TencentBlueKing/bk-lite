@@ -18,6 +18,119 @@
           "namespace": "kube-system"
         },
         "value": [9999999999, "1"]
+      },
+      {
+        "metric": {
+          "__name__": "prometheus_kube_namespace_labels",
+          "instance_id": "k8s-cluster-prod",
+          "namespace": "monitoring"
+        },
+        "value": [9999999999, "1"]
+      },
+      {
+        "metric": {
+          "__name__": "prometheus_kube_deployment_created",
+          "instance_id": "k8s-cluster-prod",
+          "namespace": "default",
+          "deployment": "web-frontend"
+        },
+        "value": [9999999999, "1"]
+      },
+      {
+        "metric": {
+          "__name__": "prometheus_kube_statefulset_created",
+          "instance_id": "k8s-cluster-prod",
+          "namespace": "default",
+          "statefulset": "redis-cluster"
+        },
+        "value": [9999999999, "1"]
+      },
+      {
+        "metric": {
+          "__name__": "prometheus_kube_daemonset_created",
+          "instance_id": "k8s-cluster-prod",
+          "namespace": "kube-system",
+          "daemonset": "fluentd"
+        },
+        "value": [9999999999, "1"]
+      },
+      {
+        "metric": {
+          "__name__": "prometheus_kube_job_info",
+          "instance_id": "k8s-cluster-prod",
+          "namespace": "batch",
+          "job_name": "backup-daily"
+        },
+        "value": [9999999999, "1"]
+      },
+      {
+        "metric": {
+          "__name__": "prometheus_kube_cronjob_info",
+          "instance_id": "k8s-cluster-prod",
+          "namespace": "batch",
+          "cronjob": "cleanup-weekly"
+        },
+        "value": [9999999999, "1"]
+      },
+      {
+        "metric": {
+          "__name__": "prometheus_kube_pod_info",
+          "instance_id": "k8s-cluster-prod",
+          "namespace": "default",
+          "pod": "web-frontend-7f8b9c4d5-x2k4p",
+          "node": "node-1",
+          "created_by_kind": "ReplicaSet",
+          "created_by_name": "web-frontend-7f8b9c4d5"
+        },
+        "value": [9999999999, "1"]
+      },
+      {
+        "metric": {
+          "__name__": "prometheus_kube_pod_info",
+          "instance_id": "k8s-cluster-prod",
+          "namespace": "default",
+          "pod": "redis-cluster-0",
+          "node": "node-2",
+          "created_by_kind": "StatefulSet",
+          "created_by_name": "redis-cluster"
+        },
+        "value": [9999999999, "1"]
+      },
+      {
+        "metric": {
+          "__name__": "prometheus_kube_node_info",
+          "instance_id": "k8s-cluster-prod",
+          "node": "node-1"
+        },
+        "value": [9999999999, "1"]
+      },
+      {
+        "metric": {
+          "__name__": "prometheus_kube_node_info",
+          "instance_id": "k8s-cluster-prod",
+          "node": "node-2"
+        },
+        "value": [9999999999, "1"]
+      },
+      {
+        "metric": {
+          "__name__": "prometheus_kube_node_status_capacity",
+          "instance_id": "k8s-cluster-prod",
+          "node": "node-1",
+          "resource": "cpu",
+          "unit": "core"
+        },
+        "value": [9999999999, "8"]
+      },
+      {
+        "metric": {
+          "__name__": "prometheus_kube_node_status_capacity",
+          "instance_id": "k8s-cluster-prod",
+          "node": "node-1",
+          "resource": "memory",
+          "unit": "byte"
+        },
+        "value": [9999999999, "34359738368"]
       }
     ]
   }

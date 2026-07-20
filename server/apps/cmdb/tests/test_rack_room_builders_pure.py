@@ -47,14 +47,18 @@ def test_build_room_layout_zero_u_count_guards_division():
 
 @pytest.mark.unit
 def test_build_room_layout_partial_position_is_unplaced():
-    # 只有 row 没有 col → 未定位
     racks = [
-        {"inst_id": "7", "inst_name": "半坐标", "row": 1, "col": None,
+        {"inst_id": "7", "inst_name": "位置为空", "row": None, "col": None, "location": "",
+         "u_count": 42, "datacenter_type": "1", "datacenter_state": "1", "used_u": 0},
+        {"inst_id": "8", "inst_name": "位置格式错误", "row": None, "col": None, "location": "R01-14",
          "u_count": 42, "datacenter_type": "1", "datacenter_state": "1", "used_u": 0},
     ]
     out = build_room_layout(racks)
     assert out["racks"] == []
-    assert [r["inst_id"] for r in out["unplaced"]] == ["7"]
+    assert [(r["inst_id"], r["unplaced_reason"]) for r in out["unplaced"]] == [
+        ("7", "missing_location"),
+        ("8", "invalid_location"),
+    ]
 
 
 @pytest.mark.unit

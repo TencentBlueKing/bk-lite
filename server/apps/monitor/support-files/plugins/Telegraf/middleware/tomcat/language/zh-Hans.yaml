@@ -1,0 +1,75 @@
+Tomcat:
+  name: Tomcat（Telegraf）
+  desc: 通过Telegraf采集器定期收集Tomcat的连接器和JVM内存的关键性能指标。
+monitor_object:
+  Tomcat: Tomcat
+monitor_object_type:
+  Middleware: 中间件
+monitor_object_metric:
+  Tomcat:
+    tomcat_connector_request_count:
+      name: 请求处理总数
+      desc: 连接器处理的HTTP请求累计总数，反映连接器的总工作负载
+    tomcat_connector_error_count:
+      name: 错误请求总数
+      desc: 连接器处理过程中发生的错误请求累计总数，反映服务可靠性问题
+    tomcat_connector_bytes_received:
+      name: 接收字节总数
+      desc: 连接器从客户端接收的字节数据累计总量，反映网络输入流量
+    tomcat_connector_bytes_sent:
+      name: 发送字节总数
+      desc: 连接器向客户端发送的字节数据累计总量，反映网络输出流量
+    tomcat_connector_processing_time:
+      name: 总处理时间
+      desc: 连接器处理所有请求花费的时间累计总量，反映处理性能
+    tomcat_connector_max_time:
+      name: 最长请求处理时间
+      desc: 连接器处理单个请求的最长时间记录，反映极端性能情况
+    tomcat_connector_current_thread_count:
+      name: 当前线程总数
+      desc: 连接器当前管理的线程池中的线程总数，反映资源分配情况
+    tomcat_connector_current_threads_busy:
+      name: 忙碌线程数
+      desc: 连接器当前正在处理请求的线程数量，反映实时负载情况
+    tomcat_connector_max_threads:
+      name: 最大线程数
+      desc: 连接器线程池允许的最大线程数量，反映并发处理能力上限
+    tomcat_jvm_memory_free:
+      name: 空闲内存大小
+      desc: JVM堆内存当前空闲的空间大小，反映内存可用余量
+    tomcat_jvm_memory_total:
+      name: 总分配内存大小
+      desc: JVM堆内存当前分配的总空间大小，反映内存使用规模
+    tomcat_jvm_memory_max:
+      name: 最大可用内存大小
+      desc: JVM堆内存配置的最大可用空间大小，反映内存容量限制
+    tomcat_jvm_memorypool_used:
+      name: 内存池使用量
+      desc: JVM特定内存池当前已使用的内存大小，反映详细内存分配情况
+    tomcat_jvm_memorypool_committed:
+      name: 内存池提交量
+      desc: JVM特定内存池已提交给操作系统的内存大小，反映内存预留情况
+    tomcat_jvm_memorypool_max:
+      name: 内存池最大值
+      desc: JVM特定内存池允许的最大内存大小，反映内存池容量限制
+    tomcat_jvm_memorypool_init:
+      name: 内存池初始值
+      desc: JVM特定内存池初始分配的内存大小，反映启动时内存配置
+    tomcat_connector_request_count_rate:
+      name: 请求处理速率
+      desc: 基于5分钟时间窗口计算的每秒请求处理速率，反映实时吞吐量
+    tomcat_connector_error_count_rate:
+      name: 错误请求速率
+      desc: 基于5分钟时间窗口计算的每秒错误请求速率，反映服务稳定性趋势
+    tomcat_connector_bytes_sent_rate:
+      name: 数据发送速率
+      desc: 基于5分钟时间窗口计算的每秒数据发送速率，反映网络输出流量趋势
+    tomcat_connector_current_thread_utilization:
+      name: 线程池利用率
+      desc: 当前忙碌线程数占最大线程数的百分比，反映线程资源使用效率
+monitor_object_metric_group:
+  Tomcat:
+    Connector: 连接器性能
+    JVM Memory: JVM内存
+    Memory Pool: 内存池状态
+    Performance: 性能监控

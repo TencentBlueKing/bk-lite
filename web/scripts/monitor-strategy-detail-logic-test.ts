@@ -2,18 +2,28 @@ import assert from 'node:assert/strict';
 
 import {
   FORMULA_DEFAULT_RESULT_UNIT,
+  buildMetricSelectOption,
   buildMetricUnitCascaderOptions,
   filterInvalidCalculationUnit,
   getCalculationUnitOnMetricRowsChange,
   getMetricThresholdEnumState,
   getReverseModeCalculationUnit,
+  getThresholdUnitOnCalculationUnitChange,
   getThresholdUnitOptions,
   getValidThresholdUnitOptions,
-  isValidMetricUnit,
   resolveFormulaResultUnit,
+  resolveEffectiveCalculationUnit,
   resolveInitialMetricPluginId,
+  resolveMetricDisplayUnit,
+  resolvePreviewChartUnit,
+  resolveThresholdUnit,
+  restoreCalculationUnitState,
+  shouldShowThresholdUnitSelector,
 } from '../src/app/monitor/(pages)/event/strategy/detail/strategyDetailUtils';
-import type { MetricExpressionMode } from '../src/app/monitor/(pages)/event/strategy/detail/formulaExpressionUtils';
+import {
+  resolveMetricExpressionUnits,
+  type MetricExpressionMode,
+} from '../src/app/monitor/(pages)/event/strategy/detail/formulaExpressionUtils';
 import type { GroupedUnitList } from '../src/app/monitor/types';
 import { UnitListItem } from '../src/app/monitor/types';
 
@@ -112,6 +122,162 @@ const unitList: UnitListItem[] = [
     is_standalone: true,
   },
 ];
+
+assert.equal(resolveMetricDisplayUnit('percent', unitList), '%');
+assert.equal(resolveMetricDisplayUnit('bytes', unitList), 'B');
+assert.equal(resolveMetricDisplayUnit('none', unitList), '');
+assert.equal(resolveMetricDisplayUnit('short', unitList), '');
+assert.equal(
+  resolveMetricDisplayUnit('[{"id":1,"name":"up"}]', unitList),
+  ''
+);
+assert.equal(resolveMetricDisplayUnit('unknown-unit', unitList), '');
+assert.equal(resolveMetricDisplayUnit('percent', []), '');
+
+assert.equal(
+  resolvePreviewChartUnit('kibibytes', 'kibibytes', 'bytes'),
+  'kibibytes'
+);
+assert.equal(resolvePreviewChartUnit('', null, 'bytes'), 'bytes');
+assert.equal(resolvePreviewChartUnit('', '', ''), null);
+
+assert.deepEqual(
+  buildMetricSelectOption(
+    {
+      id: 1,
+      metric_group: 1,
+      metric_object: 1,
+      name: 'disk_usage',
+      type: 'gauge',
+      display_name: '磁盘使用率',
+      dimensions: [],
+      unit: 'percent',
+    },
+    unitList
+  ),
+  { label: '磁盘使用率（%）', value: 'disk_usage' }
+);
+assert.deepEqual(
+  buildMetricSelectOption(
+    {
+      id: 2,
+      metric_group: 1,
+      metric_object: 1,
+      name: 'disk_state',
+      type: 'gauge',
+      display_name: '磁盘状态',
+      dimensions: [],
+      unit: '[{"id":1,"name":"up"}]',
+    },
+    unitList
+  ),
+  { label: '磁盘状态', value: 'disk_state' }
+);
+
+assert.equal(
+  resolveEffectiveCalculationUnit({
+    isFormulaMode: true,
+    unit: null,
+    unitList: [],
+  }),
+  null
+);
+assert.equal(
+  resolveEffectiveCalculationUnit({
+    isFormulaMode: true,
+    unit: null,
+    unitList,
+  }),
+  FORMULA_DEFAULT_RESULT_UNIT
+);
+assert.equal(
+  resolveEffectiveCalculationUnit({
+    isFormulaMode: false,
+    unit: 'unknown-unit',
+    unitList,
+  }),
+  null
+);
+assert.equal(
+  resolveEffectiveCalculationUnit({
+    isFormulaMode: false,
+    unit: 'percent',
+    unitList,
+  }),
+  'percent'
+);
+assert.equal(restoreCalculationUnitState('kilobytes'), 'kilobytes');
+assert.equal(restoreCalculationUnitState('unknown-unit'), 'unknown-unit');
+assert.equal(restoreCalculationUnitState('none'), null);
+const restoredFormulaUnit = restoreCalculationUnitState('kilobytes');
+assert.equal(
+  resolveEffectiveCalculationUnit({
+    isFormulaMode: true,
+    unit: restoredFormulaUnit,
+    unitList: [],
+  }),
+  null
+);
+assert.equal(
+  resolveEffectiveCalculationUnit({
+    isFormulaMode: true,
+    unit: restoredFormulaUnit,
+    unitList,
+  }),
+  'kilobytes'
+);
+
+assert.deepEqual(
+  resolveMetricExpressionUnits({
+    queryType: 'metric',
+    metricUnit: 'bytes',
+    calculationUnit: 'megabytes',
+    thresholdUnit: 'kilobytes',
+  }),
+  { metricUnit: 'bytes', calculationUnit: 'megabytes', thresholdUnit: 'kilobytes' }
+);
+
+assert.deepEqual(
+  resolveMetricExpressionUnits({
+    queryType: 'formula',
+    metricUnit: 'bytes',
+    calculationUnit: 'percent',
+    thresholdUnit: 'percent',
+  }),
+  { metricUnit: '', calculationUnit: 'percent', thresholdUnit: 'percent' }
+);
+
+assert.deepEqual(
+  resolveMetricExpressionUnits({
+    queryType: 'metric',
+    metricUnit: '[{"id":1,"name":"up"}]',
+    calculationUnit: null,
+    thresholdUnit: null,
+  }),
+  { metricUnit: '', calculationUnit: '', thresholdUnit: '' }
+);
+
+assert.equal(
+  shouldShowThresholdUnitSelector({
+    isFormulaMode: false,
+    isEnumMetric: false,
+  }),
+  true
+);
+assert.equal(
+  shouldShowThresholdUnitSelector({
+    isFormulaMode: true,
+    isEnumMetric: false,
+  }),
+  true
+);
+assert.equal(
+  shouldShowThresholdUnitSelector({
+    isFormulaMode: false,
+    isEnumMetric: true,
+  }),
+  false
+);
 
 assert.equal(FORMULA_DEFAULT_RESULT_UNIT, 'percent');
 assert.deepEqual(
@@ -232,6 +398,39 @@ assert.deepEqual(
   }),
   []
 );
+
+assert.equal(
+  resolveThresholdUnit({
+    thresholdUnit: null,
+    calculationUnit: 'bytes',
+    unitList,
+  }),
+  'bytes'
+);
+assert.equal(
+  resolveThresholdUnit({
+    thresholdUnit: 'kilobytes',
+    calculationUnit: 'bytes',
+    unitList,
+  }),
+  'kilobytes'
+);
+assert.equal(
+  getThresholdUnitOnCalculationUnitChange({
+    thresholdUnit: 'milliseconds',
+    calculationUnit: 'bytes',
+    unitList,
+  }),
+  'bytes'
+);
+assert.equal(
+  resolveThresholdUnit({
+    thresholdUnit: 'historical-unit',
+    calculationUnit: 'bytes',
+    unitList: [],
+  }),
+  'historical-unit'
+);
 assert.deepEqual(
   getThresholdUnitOptions({
     unitList,
@@ -348,26 +547,17 @@ const groupedUnitList: GroupedUnitList[] = [
     label: 'Base',
     children: [
       { unit_id: 'none', unit_name: '无单位', display_unit: '', label: '无单位', value: 'none', unit: '' },
+      { unit_id: 'short', unit_name: '短数字', display_unit: '', label: '短数字', value: 'short', unit: '' },
     ],
   },
 ];
 
-// buildMetricUnitCascaderOptions:保留全量节点(value=unit_id,label=unit_name)
+// buildMetricUnitCascaderOptions:过滤不能用于计算的 none/short 分组
 const cascaderOptions = buildMetricUnitCascaderOptions(groupedUnitList);
-assert.equal(cascaderOptions.length, 3);
+assert.equal(cascaderOptions.length, 2);
 assert.equal(cascaderOptions[0].value, 'Data');
 assert.equal(cascaderOptions[0].children?.length, 2);
 assert.equal(cascaderOptions[0].children?.[0].value, 'bytes');
-
-// isValidMetricUnit:含 'none'/'short'/空/undefined 一律 false
-assert.equal(isValidMetricUnit('bytes', groupedUnitList), true);
-assert.equal(isValidMetricUnit('kibibytes', groupedUnitList), true);
-assert.equal(isValidMetricUnit('seconds', groupedUnitList), true);
-assert.equal(isValidMetricUnit('none', groupedUnitList), false);
-assert.equal(isValidMetricUnit('unknown', groupedUnitList), false);
-assert.equal(isValidMetricUnit(null, groupedUnitList), false);
-assert.equal(isValidMetricUnit(undefined, groupedUnitList), false);
-assert.equal(isValidMetricUnit('', groupedUnitList), false);
 
 // getThresholdUnitOptions(新签名:metricUnit 基准) — 同 system 过滤
 const crossSystemUnitList: UnitListItem[] = [

@@ -34,11 +34,15 @@ const SUPPORTED_LANGUAGES: ReadonlyArray<LanguageOption> = [
  *      dropdown 仍 absolute(不参与文档流、不挤下方)。
  *
  * 行为契约:
- *   - 不引入 fetch / useSession / try-catch。
+ *   - 不引入 fetch / useSession / try-catch / async 副作用。
  *   - 仅作为 useLocale().setLocale 的触发器;副作用收敛到
  *     LocaleProvider.changeLocale。
  *   - Dropdown 项过滤当前 locale,只展示另一语言。
  *   - aria-label 走 signin.languageToggle.label(i18n 键)。
+ *   - 后端 User.locale 持久化由个人设置 console_mgmt/update_user_base_info,
+ *     登录页 toggle 只改前端 localStorage,登录后由后端按 user.locale 渲染。
+ *     (曾尝试 syncBackendLocale→editUser/update_user,但该接口受
+ *     user_group-Edit User 限制,会越权 / 清空 profile,故撤销。)
  */
 export default function SigninLanguageToggle() {
   const { t } = useTranslation();

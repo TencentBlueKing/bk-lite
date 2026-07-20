@@ -4,9 +4,6 @@
       "duration": "Duration",
       "conditionValidate": "The Condition cannot be empty",
       "thresholdValidate": "Unit or condition cannot be empty",
-      "metricUnit": "Calculation Metric Unit",
-      "metricUnitPlaceholder": "Select the calculation metric unit",
-      "metricUnitTip": "When the metric switches to a different category, units reload by the new category. The threshold unit can be freely picked within the same category.",
       "conditionFieldValidate": "Label, condition or value cannot be empty",
       "strategy": "Strategy",
       "setGroup": "Please set the organization to which the generated alert belongs.",
@@ -129,6 +126,7 @@
       "avg": "AVG",
       "alertConditions": "Alert Conditions",
       "alertThreshold": "Alert Threshold",
+      "thresholdUnitHelp": "The threshold unit is used for input and display. Thresholds are converted to the calculation unit for evaluation, and only units of the same dimension are available.",
       "metricPreview": "Metric Preview",
       "noDataAlertName": "No Data Alert Name",
       "noDataAlertLevel": "No Data Alert",
@@ -158,7 +156,8 @@
       "channelTypeCustomWebhook": "Custom Webhook",
       "notificationDesc": "Select the notification method and recipients when an alert is triggered.",
       "notificationConfig": "Notify",
-      "notificationChannel": "Channel"
+      "notificationChannel": "Channel",
+      "addMetric": "Add Metric"
     },
     "views": {
       "vmware_esxi_count": "Number of ESXi",
@@ -522,6 +521,10 @@
       "missingConfigDataTip": "Collection configuration content was not found. Check whether the configuration was delivered successfully.",
       "searchRuleName": "Search Rule Name",
       "batchOperation": "Batch Operation",
+      "accessAndTroubleshootGuide": "{name} Monitoring Guide",
+      "guideFallbackName": "Current Monitor",
+      "configGuide": "Configuration Guide",
+      "fieldGuideTip": "Field Tip",
       "exactMatch": "Exact match",
       "rulesCount": "rule(s)",
       "batchEditEmptyWarning": "The submitted form cannot be empty",

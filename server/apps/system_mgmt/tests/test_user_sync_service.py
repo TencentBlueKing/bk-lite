@@ -1686,3 +1686,103 @@ def test_password_initialization_preview_does_not_create_users(password_init_sou
     assert result["result"] is True
     assert User.objects.count() == 0
     init_mock.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# 超长外部字段防溢出(AD 场景:组织 id 为 LDAP DN,中文 OU 的 DN 轻易超过
+# Group.external_id / Group.name 等 varchar(100) 上限,曾导致整轮同步
+# StringDataRightTruncation 崩溃)
+# ---------------------------------------------------------------------------
+
+
+def _long_department_dn(rdn_label: str) -> str:
+    """构造一个超过 100 字符的 LDAP DN(模拟 AD 组织)。"""
+    return f"OU={rdn_label},OU=" + "部" * 60 + ",OU=某集团中国,DC=example,DC=com"
+
+
+def test_scoped_external_id_fits_group_field_and_stays_deterministic():
+    external_id_max_length = Group._meta.get_field("external_id").max_length
+
+    assert user_sync_service_module._scoped_external_id(1, "dept-a") == "user-sync:1:dept-a"
+
+    long_dn_a = _long_department_dn("研发中心")
+    long_dn_b = _long_department_dn("行政中心")
+    assert len(f"user-sync:1:{long_dn_a}") > external_id_max_length
+
+    scoped_a = user_sync_service_module._scoped_external_id(1, long_dn_a)
+    assert len(scoped_a) <= external_id_max_length
+    assert scoped_a.startswith("user-sync:1:")
+    # 同一外部 ID 每轮同步必须生成相同值,否则每轮都会删除重建组
+    assert scoped_a == user_sync_service_module._scoped_external_id(1, long_dn_a)
+    # 不同外部 ID 压缩后不能互相碰撞,不同 source 之间也要隔离
+    assert scoped_a != user_sync_service_module._scoped_external_id(1, long_dn_b)
+    assert scoped_a != user_sync_service_module._scoped_external_id(2, long_dn_a)
+
+
+@pytest.mark.django_db
+def test_execute_user_sync_survives_overlong_group_and_user_fields(ready_integration_instance):
+    root_dn = _long_department_dn("根组织")
+    parent_dn = _long_department_dn("华南分公司")
+    child_dn = _long_department_dn("华南分公司二级事业部")
+    source = UserSyncSource.objects.create(
+        name="source-ad-long-dn",
+        integration_instance=ready_integration_instance,
+        enabled=True,
+        root_group_name="AD Long Root",
+        business_config={"root_department_id": root_dn},
+        field_mapping={},
+        schedule_config={},
+    )
+
+    overlong_username = "u" * 130
+    payload = CapabilityExecutionResult.success_result(
+        "ok",
+        payload={
+            "group_list": [
+                {"id": parent_dn, "parent_id": root_dn, "name": "部" * 120},
+                {"id": child_dn, "parent_id": parent_dn, "name": "二级事业部"},
+            ],
+            "user_list": [
+                {
+                    "user_id": overlong_username,
+                    "name": "名" * 150,
+                    "email": "user1@example.com",
+                    "mobile": "1" * 40,
+                    "department_ids": [child_dn],
+                }
+            ],
+        },
+    )
+
+    with patch("apps.system_mgmt.services.user_sync_service.RuntimeApplicationService.execute", return_value=payload):
+        first_result = execute_user_sync(source.id)
+
+    assert first_result["result"] is True, first_result["message"]
+
+    external_id_max_length = Group._meta.get_field("external_id").max_length
+    name_max_length = Group._meta.get_field("name").max_length
+
+    root_group = Group.objects.get(parent_id=0, name="AD Long Root")
+    assert len(root_group.external_id) <= external_id_max_length
+
+    parent_group = Group.objects.get(parent_id=root_group.id, sync_source=source)
+    assert len(parent_group.external_id) <= external_id_max_length
+    assert parent_group.name == "部" * name_max_length
+
+    child_group = Group.objects.get(parent_id=parent_group.id, sync_source=source)
+    assert child_group.name == "二级事业部"
+    assert len(child_group.external_id) <= external_id_max_length
+
+    user = User.objects.get(username=overlong_username[: User._meta.get_field("username").max_length])
+    assert user.display_name == "名" * User._meta.get_field("display_name").max_length
+    assert user.phone == "1" * User._meta.get_field("phone").max_length
+    assert user.group_list == [child_group.id]
+
+    # 再次同步必须幂等:组不重建、不残留重复,用户不翻倍
+    with patch("apps.system_mgmt.services.user_sync_service.RuntimeApplicationService.execute", return_value=payload):
+        second_result = execute_user_sync(source.id)
+
+    assert second_result["result"] is True, second_result["message"]
+    assert Group.objects.filter(sync_source=source).count() == 3
+    assert Group.objects.get(parent_id=root_group.id, sync_source=source).id == parent_group.id
+    assert User.objects.filter(username__startswith="u").count() == 1

@@ -4,7 +4,7 @@ import type {
   FilterBindings,
   UnifiedFilterDefinition,
 } from '@/app/ops-analysis/types/dashBoard';
-import type { ParamItem } from '@/app/ops-analysis/types/dataSource';
+import type { InputOption, ParamItem } from '@/app/ops-analysis/types/dataSource';
 import { formatOpsRequestTime } from '@/app/ops-analysis/utils/dateTime';
 
 export type BindableParamType = 'string' | 'timeRange';
@@ -35,6 +35,7 @@ export const sanitizeUnifiedFilterDefinition = <T extends UnifiedFilterDefinitio
     const next = { ...definition };
     delete next.inputMode;
     delete next.options;
+    delete next.inputConfig;
     return next;
   }
 
@@ -42,23 +43,34 @@ export const sanitizeUnifiedFilterDefinition = <T extends UnifiedFilterDefinitio
   if (!isOptionInputMode(inputMode)) {
     const next = { ...definition };
     delete next.options;
-    return {
-      ...next,
-      inputMode,
-    };
+    if (inputMode === 'organization') {
+      delete next.inputConfig;
+    }
+    return { ...next, inputMode };
   }
 
-  const options = Array.isArray(definition.options) ? definition.options : [];
-  const optionValues = options.map((item) => item.value);
-  const defaultValue = typeof definition.defaultValue === 'string' &&
-    optionValues.includes(definition.defaultValue)
-    ? definition.defaultValue
-    : null;
+  let staticOptions: InputOption[] | undefined;
+  if (
+    definition.inputConfig?.control === 'select' ||
+    definition.inputConfig?.control === 'radio'
+  ) {
+    if (definition.inputConfig.optionsSource.type === 'static') {
+      staticOptions = definition.inputConfig.optionsSource.staticItems;
+    }
+  } else if (Array.isArray(definition.options)) {
+    staticOptions = definition.options;
+  }
+
+  const defaultValue = staticOptions
+    ? staticOptions.some((item) => item.value === definition.defaultValue)
+      ? definition.defaultValue
+      : null
+    : definition.defaultValue;
 
   return {
     ...definition,
     inputMode,
-    options,
+    options: Array.isArray(definition.options) ? definition.options : undefined,
     defaultValue,
   };
 };
@@ -209,6 +221,135 @@ export const fetchWidgetData = async ({
     return null;
   }
 };
+
+export const buildWidgetExtraParams = ({
+  namespaceId,
+  isTableLikeChart,
+  tableQueryParams,
+  runtimeParams,
+}: {
+  namespaceId?: number;
+  isTableLikeChart: boolean;
+  tableQueryParams: Record<string, unknown>;
+  runtimeParams: Record<string, unknown>;
+}) => ({
+  ...(namespaceId !== undefined ? { namespace_id: namespaceId } : {}),
+  ...(isTableLikeChart ? tableQueryParams : {}),
+  ...runtimeParams,
+});
+
+export interface WidgetRequestHistory {
+  signature: string | null;
+  filterSearchVersion: number;
+  namespaceSearchVersion: number;
+  reloadVersion: string;
+  tableQueryKey: string;
+  hasRequested: boolean;
+}
+
+export interface WidgetRequestSnapshot {
+  requestEnabled: boolean;
+  requestSignature: string | null;
+  hasRequestParams: boolean;
+  hasRequestKey: boolean;
+  filterSearchVersion: number;
+  namespaceSearchVersion: number;
+  reloadVersion: string;
+  tableQueryKey: string;
+  hasEnabledFilterBindings: boolean;
+  widgetUsesNamespace: boolean;
+  isTableLikeChart: boolean;
+}
+
+export const createWidgetRequestHistory = (
+  current: WidgetRequestSnapshot,
+): WidgetRequestHistory => ({
+  signature: null,
+  filterSearchVersion: current.filterSearchVersion,
+  namespaceSearchVersion: current.namespaceSearchVersion,
+  reloadVersion: current.reloadVersion,
+  tableQueryKey: current.tableQueryKey,
+  hasRequested: false,
+});
+
+export const decideWidgetRequest = ({
+  history,
+  current,
+  suppressInitialCacheFetch,
+}: {
+  history: WidgetRequestHistory;
+  current: WidgetRequestSnapshot;
+  suppressInitialCacheFetch: boolean;
+}): { shouldFetch: boolean; nextHistory: WidgetRequestHistory } => {
+  const requestAvailable =
+    current.requestEnabled &&
+    Boolean(current.requestSignature) &&
+    current.hasRequestParams &&
+    current.hasRequestKey;
+
+  if (!requestAvailable) {
+    return {
+      shouldFetch: false,
+      nextHistory: {
+        signature: current.requestSignature,
+        filterSearchVersion: current.filterSearchVersion,
+        namespaceSearchVersion: current.namespaceSearchVersion,
+        reloadVersion: current.reloadVersion,
+        tableQueryKey: current.tableQueryKey,
+        hasRequested: false,
+      },
+    };
+  }
+
+  const shouldFetchForFilterSearch =
+    history.filterSearchVersion !== current.filterSearchVersion &&
+    current.hasEnabledFilterBindings;
+  const shouldFetchForNamespaceSearch =
+    history.namespaceSearchVersion !== current.namespaceSearchVersion &&
+    current.widgetUsesNamespace;
+  const shouldFetchForTableQuery =
+    current.isTableLikeChart &&
+    history.tableQueryKey !== current.tableQueryKey;
+  const shouldFetch =
+    !suppressInitialCacheFetch &&
+    (!history.hasRequested ||
+      history.signature !== current.requestSignature ||
+      history.reloadVersion !== current.reloadVersion ||
+      shouldFetchForFilterSearch ||
+      shouldFetchForNamespaceSearch ||
+      shouldFetchForTableQuery);
+
+  return {
+    shouldFetch,
+    nextHistory: {
+      signature: current.requestSignature,
+      filterSearchVersion: current.filterSearchVersion,
+      namespaceSearchVersion: current.namespaceSearchVersion,
+      reloadVersion: current.reloadVersion,
+      tableQueryKey: current.tableQueryKey,
+      hasRequested:
+        history.hasRequested || shouldFetch || suppressInitialCacheFetch,
+    },
+  };
+};
+
+export const shouldShowInitialWidgetLoading = ({
+  loading,
+  isTableLikeChart,
+  hasRawPayload,
+  hasSettledRequest,
+}: {
+  loading: boolean;
+  isTableLikeChart: boolean;
+  hasRawPayload: boolean;
+  hasSettledRequest: boolean;
+}): boolean =>
+  loading && !isTableLikeChart && !hasRawPayload && !hasSettledRequest;
+
+export const hasActiveWidgetRuntimeParams = (
+  chartType: string | undefined,
+  runtimeParams: Record<string, unknown>,
+): boolean => chartType === 'topN' && Object.keys(runtimeParams).length > 0;
 
 export const buildWidgetRequestParams = ({
   config,

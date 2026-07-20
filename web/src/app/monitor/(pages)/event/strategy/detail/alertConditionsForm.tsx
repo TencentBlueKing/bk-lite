@@ -7,7 +7,8 @@ import { useCommon } from '@/app/monitor/context/common';
 import { SCHEDULE_UNIT_MAP } from '@/app/monitor/constants/event';
 import {
   getMetricThresholdEnumState,
-  getThresholdUnitOptions
+  getThresholdUnitOptions,
+  shouldShowThresholdUnitSelector
 } from './strategyDetailUtils';
 import ThresholdList from './thresholdList';
 
@@ -24,6 +25,7 @@ const NO_DATA_ALERT_OPTIONS = [
 interface AlertConditionsFormProps {
   enableAlerts: string[];
   threshold: ThresholdField[];
+  calculationUnit: string | null;
   thresholdUnit: string | null;
   noDataAlert: number | null;
   nodataUnit: string;
@@ -32,7 +34,6 @@ interface AlertConditionsFormProps {
   noDataAlertLevel: string;
   noDataAlertName: string;
   metricUnit: string | null;
-  resultUnit: string | null;
   isFormulaMode: boolean;
   onEnableAlertsChange: (val: string[]) => void;
   onThresholdChange: (value: ThresholdField[]) => void;
@@ -48,13 +49,13 @@ interface AlertConditionsFormProps {
 
 const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   threshold,
+  calculationUnit,
   thresholdUnit,
   noDataAlert,
   nodataUnit,
   noDataAlertLevel,
   noDataAlertName,
   metricUnit,
-  resultUnit,
   isFormulaMode,
   onThresholdChange,
   onThresholdUnitChange,
@@ -72,9 +73,8 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
     [isFormulaMode, metricUnit]
   );
 
-  // 阈值单位过滤基准: 公式模式下用 resultUnit(结果单位定阈值范围),
-  // 非公式模式下用 metricUnit(指标单位定阈值范围)
-  const thresholdFilterBase = isFormulaMode ? resultUnit : metricUnit;
+  // 阈值单位只由计算结果量纲约束，与当前选择的阈值展示单位解耦。
+  const thresholdFilterBase = calculationUnit;
 
   const filteredUnitOptions = useMemo(
     () =>
@@ -132,6 +132,10 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                   unitOptions={filteredUnitOptions}
                   isEnumMetric={isEnumMetric}
                   enumOptions={enumOptions}
+                  showUnitSelector={shouldShowThresholdUnitSelector({
+                    isFormulaMode,
+                    isEnumMetric
+                  })}
                 />
               </Form.Item>
 

@@ -73,7 +73,7 @@
         "fatal": "致命",
         "severity": "严重",
         "warning": "预警",
-        "remain": "提醒",
+        "remaining": "剩余",
         "notified": "已通知",
         "unnotified": "未通知",
         "alertName": "告警名称",
@@ -634,6 +634,7 @@
             }
         },
         "actionRuleTitle": "告警处理规则",
+        "actionRuleMessage": "根据告警生命周期事件和匹配条件触发自动化动作，支持执行作业、字段绑定与状态启停管理。",
         "actionRuleName": "规则名称",
         "actionTriggerEvent": "触发事件",
         "actionMatchSummary": "匹配条件",

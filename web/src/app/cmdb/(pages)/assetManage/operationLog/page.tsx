@@ -318,7 +318,9 @@ const OperationLog: React.FC = () => {
                 placeholder={t('common.selectTip')}
                 options={scenarioOptions}
                 value={filters.scenarios}
-                onChange={(value) => handleFilterChange('scenarios', value || [])}
+                onChange={(value) =>
+                  handleFilterChange('scenarios', value || [])
+                }
                 allowClear
                 maxTagCount="responsive"
               />
@@ -367,7 +369,7 @@ const OperationLog: React.FC = () => {
           dataSource={dataList}
           pagination={pagination}
           onChange={handleTableChange}
-          scroll={{ y: 'calc(100vh - 470px)' }}
+          scroll={{ y: 'calc(100vh - 490px)' }}
         />
       </div>
     </div>
