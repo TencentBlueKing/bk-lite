@@ -219,6 +219,11 @@ def test_authorize_node_ids_requires_operate_permission(monkeypatch):
     monkeypatch.setattr(node_permission.Node.objects, "filter", lambda **kwargs: _FakeNodeQuerySet([node]))
     monkeypatch.setattr(
         node_permission,
+        "get_authorized_node_queryset",
+        lambda request, permission=None: _FakeNodeQuerySet([node]),
+    )
+    monkeypatch.setattr(
+        node_permission,
         "get_node_permission",
         lambda request: {"instance": [{"id": node.id, "permission": ["View"]}], "team": []},
     )
@@ -3050,6 +3055,10 @@ def test_get_install_command_view_passes_cpu_architecture(monkeypatch):
         return "curl command"
 
     monkeypatch.setattr(InstallerService, "get_install_command", fake_get_install_command)
+    monkeypatch.setattr(
+        "apps.node_mgmt.views.installer.validate_assignable_organizations",
+        lambda request, organizations: frozenset(organizations),
+    )
 
     request = factory.post(
         "/node_mgmt/api/installer/get_install_command/",
@@ -3075,9 +3084,13 @@ def test_get_install_command_view_passes_cpu_architecture(monkeypatch):
 
 
 @pytest.mark.django_db
-def test_controller_manual_install_includes_normalized_cpu_architecture():
+def test_controller_manual_install_includes_normalized_cpu_architecture(monkeypatch):
     factory = APIRequestFactory()
     view = InstallerViewSet.as_view({"post": "controller_manual_install"})
+    monkeypatch.setattr(
+        "apps.node_mgmt.views.installer.validate_assignable_organizations",
+        lambda request, organizations: frozenset(organizations),
+    )
     request = factory.post(
         "/node_mgmt/api/installer/controller/manual_install/",
         {

@@ -42,8 +42,8 @@ def get_node_permission(request):
         return {}
 
     try:
-        current_team_int = int(current_team)
-    except (TypeError, ValueError):
+        current_team_int = next(iter(_normalize_organization_ids([current_team])))
+    except BaseAppException:
         return {}
 
     scope_result = SystemMgmt(is_local_client=True).get_authorized_groups_scoped(
@@ -55,8 +55,14 @@ def get_node_permission(request):
         },
         include_children=include_children,
     )
-    authorized_groups = scope_result.get("data", []) if isinstance(scope_result, dict) else []
-    if not authorized_groups:
+    if not isinstance(scope_result, dict) or not scope_result.get("result") or not isinstance(scope_result.get("data"), list):
+        return {}
+
+    try:
+        authorized_groups = _normalize_organization_ids(scope_result["data"])
+    except BaseAppException:
+        return {}
+    if not authorized_groups or current_team_int not in authorized_groups:
         return {}
 
     permission = get_permission_rules(
@@ -182,12 +188,18 @@ def authorize_node_ids(request, node_ids, required_permission="Operate"):
     if not normalized_ids:
         return None, WebUtils.response_error(error_message="node_ids is required")
 
-    nodes = list(Node.objects.filter(id__in=normalized_ids).prefetch_related("nodeorganization_set").distinct())
-    node_map = {str(node.id): node for node in nodes}
-    if any(node_id not in node_map for node_id in normalized_ids):
+    existing_node_ids = set(Node.objects.filter(id__in=normalized_ids).values_list("id", flat=True))
+    if any(node_id not in existing_node_ids for node_id in normalized_ids):
         return None, WebUtils.response_error(error_message="node does not exist")
 
     permission = get_node_permission(request)
+    nodes = list(
+        get_authorized_node_queryset(request, permission=permission).filter(id__in=normalized_ids).prefetch_related("nodeorganization_set").distinct()
+    )
+    node_map = {str(node.id): node for node in nodes}
+    if any(node_id not in node_map for node_id in normalized_ids):
+        return None, WebUtils.response_403("User does not have permission to operate this node")
+
     unauthorized_ids = [node_id for node_id in normalized_ids if required_permission not in get_node_permissions(node_map[node_id], permission)]
     if unauthorized_ids:
         return None, WebUtils.response_403("User does not have permission to operate this node")

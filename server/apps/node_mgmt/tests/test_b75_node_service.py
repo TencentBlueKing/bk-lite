@@ -436,13 +436,11 @@ def test_get_authorized_nodes_empty_ids_returns_empty():
 
 
 @pytest.mark.django_db
-def test_get_authorized_nodes_no_permission_returns_all(setup):
+def test_get_authorized_nodes_no_permission_fails_closed(setup):
     region, collector, node = setup
     NodeOrganization.objects.create(node=node, organization=7)
     result = NodeService.get_authorized_nodes_by_ids([node.id])
-    assert len(result) == 1
-    assert result[0]["id"] == node.id
-    assert 7 in result[0]["organization_ids"]
+    assert result == []
 
 
 @pytest.mark.django_db

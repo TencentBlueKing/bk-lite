@@ -122,6 +122,123 @@ def test_node_service_superuser_scope_intersects_object_permission(monkeypatch):
 
 
 @pytest.mark.django_db
+def test_authorize_node_ids_rejects_sibling_team_even_with_broad_operate_permission(
+    monkeypatch,
+):
+    region = _region("authorize-node-current-team")
+    _node(region, "authorize-node-current", 1)
+    sibling_node = _node(region, "authorize-node-sibling", 2)
+    _patch_broad_permission(monkeypatch)
+
+    nodes, response = node_permission.authorize_node_ids(
+        _request(),
+        [sibling_node.id],
+        required_permission="Operate",
+    )
+
+    assert nodes is None
+    assert response.status_code == 403
+
+
+@pytest.mark.django_db
+def test_controller_uninstall_rejects_sibling_team_before_task_creation(
+    monkeypatch,
+):
+    region = _region("uninstall-node-current-team")
+    sibling_node = _node(region, "uninstall-node-sibling", 2)
+    _patch_broad_permission(monkeypatch)
+    uninstalled = []
+    delayed = []
+    monkeypatch.setattr(
+        installer_view.InstallerService,
+        "uninstall_controller",
+        lambda *args, **kwargs: uninstalled.append((args, kwargs)) or 1,
+    )
+    monkeypatch.setattr(
+        installer_view.uninstall_controller,
+        "delay",
+        lambda *args, **kwargs: delayed.append((args, kwargs)),
+    )
+
+    response = installer_view.InstallerViewSet.as_view({"post": "controller_uninstall"})(
+        _request(
+            {
+                "cloud_region_id": region.id,
+                "work_node": "worker",
+                "nodes": [
+                    {
+                        "node_id": sibling_node.id,
+                        "ip": sibling_node.ip,
+                        "node_name": sibling_node.name,
+                        "os": "linux",
+                        "organizations": [2],
+                    }
+                ],
+            },
+            permissions=("cloud_region_node-Delete",),
+        )
+    )
+
+    assert response.status_code == 403
+    assert uninstalled == []
+    assert delayed == []
+
+
+def test_get_node_permission_rejects_noncanonical_current_team(monkeypatch):
+    class _UnexpectedSystemMgmt:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("非规范 current_team 不应发起范围 RPC")
+
+    monkeypatch.setattr(node_permission, "SystemMgmt", _UnexpectedSystemMgmt)
+    request = _request()
+    request.COOKIES["current_team"] = "01"
+
+    assert node_permission.get_node_permission(request) == {}
+
+
+@pytest.mark.parametrize("authorized_groups", [[True], [1.0], [1, "02"]])
+def test_get_node_permission_rejects_noncanonical_authorized_group_range(
+    monkeypatch,
+    authorized_groups,
+):
+    class _NoncanonicalScopedSystemMgmt:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def get_authorized_groups_scoped(self, actor_context, include_children=False):
+            return {"result": True, "data": authorized_groups}
+
+    monkeypatch.setattr(
+        node_permission,
+        "SystemMgmt",
+        _NoncanonicalScopedSystemMgmt,
+    )
+    monkeypatch.setattr(
+        node_permission,
+        "get_permission_rules",
+        lambda *args, **kwargs: pytest.fail("非规范授权组织范围不得进入对象权限查询"),
+    )
+
+    assert node_permission.get_node_permission(_request()) == {}
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("permission_data", [None, {}])
+def test_get_authorized_nodes_by_ids_without_permission_context_returns_nothing(
+    permission_data,
+):
+    region = _region("node-service-empty-permission")
+    _node(region, "service-node-empty-permission", 1)
+
+    result = node_service.NodeService.get_authorized_nodes_by_ids(
+        ["service-node-empty-permission"],
+        permission_data=permission_data,
+    )
+
+    assert result == []
+
+
+@pytest.mark.django_db
 def test_shared_configuration_write_requires_all_impacted_orgs(monkeypatch):
     region = _region("shared-configuration")
     current_node = _node(region, "shared-node-current", 1)
@@ -216,6 +333,167 @@ def test_superuser_target_organizations_must_be_assignable(monkeypatch):
     response = node_permission.authorize_target_organizations(_request(), SimpleNamespace(), [2])
 
     assert response.status_code == 403
+
+
+@pytest.mark.django_db
+def test_controller_install_rejects_unassignable_organization_batch_without_side_effects(
+    monkeypatch,
+):
+    monkeypatch.setattr(current_team_scope, "SystemMgmt", _ScopedSystemMgmt)
+    installed = []
+    delayed = []
+    monkeypatch.setattr(
+        installer_view.InstallerService,
+        "install_controller",
+        lambda *args, **kwargs: installed.append((args, kwargs)) or 1,
+    )
+    monkeypatch.setattr(
+        installer_view.install_controller,
+        "delay",
+        lambda *args, **kwargs: delayed.append((args, kwargs)),
+    )
+
+    response = installer_view.InstallerViewSet.as_view({"post": "controller_install"})(
+        _request(
+            {
+                "cloud_region_id": 1,
+                "work_node": "worker",
+                "package_id": 1,
+                "cpu_architecture": "x86_64",
+                "nodes": [
+                    {
+                        "ip": "10.0.3.1",
+                        "node_name": "assignable",
+                        "os": "linux",
+                        "organizations": [1],
+                        "port": 22,
+                        "username": "root",
+                    },
+                    {
+                        "ip": "10.0.3.2",
+                        "node_name": "unassignable",
+                        "os": "linux",
+                        "organizations": [2],
+                        "port": 22,
+                        "username": "root",
+                    },
+                ],
+            },
+            permissions=("cloud_region_node-Edit",),
+        )
+    )
+
+    assert response.status_code == 403
+    assert installed == []
+    assert delayed == []
+
+
+@pytest.mark.django_db
+def test_controller_install_allows_assignment_to_authorized_sibling_organization(
+    monkeypatch,
+):
+    monkeypatch.setattr(_ScopedSystemMgmt, "assignable_team_ids", [1, 2])
+    monkeypatch.setattr(current_team_scope, "SystemMgmt", _ScopedSystemMgmt)
+    installed = []
+    delayed = []
+    timeouts = []
+    monkeypatch.setattr(
+        installer_view.InstallerService,
+        "install_controller",
+        lambda *args, **kwargs: installed.append((args, kwargs)) or 1,
+    )
+    monkeypatch.setattr(
+        installer_view.install_controller,
+        "delay",
+        lambda *args, **kwargs: delayed.append((args, kwargs)),
+    )
+    monkeypatch.setattr(
+        installer_view.timeout_controller_install_task,
+        "apply_async",
+        lambda *args, **kwargs: timeouts.append((args, kwargs)),
+    )
+
+    response = installer_view.InstallerViewSet.as_view({"post": "controller_install"})(
+        _request(
+            {
+                "cloud_region_id": 1,
+                "work_node": "worker",
+                "package_id": 1,
+                "cpu_architecture": "x86_64",
+                "nodes": [
+                    {
+                        "ip": "10.0.3.3",
+                        "node_name": "authorized-sibling",
+                        "os": "linux",
+                        "organizations": [2],
+                        "port": 22,
+                        "username": "root",
+                    }
+                ],
+            },
+            permissions=("cloud_region_node-Edit",),
+        )
+    )
+
+    assert response.status_code == 200
+    assert installed[0][0][3][0]["organizations"] == [2]
+    assert delayed == [((1,), {})]
+    assert len(timeouts) == 1
+
+
+def test_controller_manual_install_rejects_empty_organizations(monkeypatch):
+    monkeypatch.setattr(current_team_scope, "SystemMgmt", _ScopedSystemMgmt)
+
+    response = installer_view.InstallerViewSet.as_view({"post": "controller_manual_install"})(
+        _request(
+            {
+                "cloud_region_id": 1,
+                "os": "linux",
+                "cpu_architecture": "x86_64",
+                "package_id": 1,
+                "nodes": [
+                    {
+                        "ip": "10.0.4.1",
+                        "node_id": "manual-node",
+                        "organizations": [],
+                    }
+                ],
+            },
+            permissions=("cloud_region_node-Edit",),
+        )
+    )
+
+    assert response.status_code == 403
+
+
+def test_get_install_command_rejects_unassignable_organization_before_token(
+    monkeypatch,
+):
+    monkeypatch.setattr(current_team_scope, "SystemMgmt", _ScopedSystemMgmt)
+    generated = []
+    monkeypatch.setattr(
+        installer_view.InstallerService,
+        "get_install_command",
+        lambda *args, **kwargs: generated.append((args, kwargs)) or "command",
+    )
+
+    response = installer_view.InstallerViewSet.as_view({"post": "get_install_command"})(
+        _request(
+            {
+                "ip": "10.0.5.1",
+                "node_id": "manual-token-node",
+                "os": "linux",
+                "cpu_architecture": "x86_64",
+                "package_id": 1,
+                "cloud_region_id": 1,
+                "organizations": [2],
+            },
+            permissions=("cloud_region_node-Edit",),
+        )
+    )
+
+    assert response.status_code == 403
+    assert generated == []
 
 
 @pytest.mark.django_db

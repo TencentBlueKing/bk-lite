@@ -487,7 +487,7 @@ class NodeService:
                     .distinct()
                 )
         else:
-            qs = Node.objects.all()
+            qs = Node.objects.none()
 
         nodes = qs.filter(id__in=normalized_node_ids).distinct().prefetch_related("nodeorganization_set")
         return [
