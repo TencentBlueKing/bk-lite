@@ -2,6 +2,7 @@
 # @File: tasks.py
 # @Time: 2025/3/3 15:34
 # @Author: windyzhao
+import time
 from datetime import timedelta
 
 from celery import shared_task
@@ -74,6 +75,118 @@ def _count_raw_collection_outcomes(raw_data) -> tuple[int, int]:
     rows = [row for row in (raw_data or []) if isinstance(row, dict)]
     failed = sum(1 for row in rows if is_failed_vm_metric({"metric": row}))
     return len(rows) - failed, failed
+
+
+@shared_task(
+    bind=True,
+    max_retries=2,
+    name="apps.cmdb.tasks.celery_tasks.trigger_first_collection",
+)
+def trigger_first_collection(self, task_id, expected_fingerprint, reason):
+    from apps.cmdb.constants import constants as cmdb_constants
+    from apps.cmdb.services.first_collection_policy import FirstCollectionPolicy
+    from apps.cmdb.services.stargazer_collect_trigger import (
+        StargazerCollectPermanentError,
+        StargazerCollectRetryableError,
+        StargazerCollectTriggerClient,
+    )
+
+    started_at = time.monotonic()
+    if not cmdb_constants.CMDB_FIRST_COLLECTION_ENABLED:
+        return {"status": "disabled", "task_id": task_id, "reason": reason}
+
+    task = CollectModels._default_manager.filter(id=task_id).first()
+    if not task:
+        return {"status": "missing", "task_id": task_id, "reason": reason}
+    if not FirstCollectionPolicy.is_eligible(task):
+        return {"status": "ineligible", "task_id": task_id, "reason": reason}
+
+    cycle_minutes = int(task.cycle_value)
+    attempt = int(self.request.retries) + 1
+    current_fingerprint = FirstCollectionPolicy.fingerprint(task)
+    fingerprint_short = current_fingerprint[:12]
+    if current_fingerprint != expected_fingerprint:
+        logger.info(
+            "[FirstCollection] 跳过过期配置 task_id=%s fingerprint=%s reason=%s "
+            "cycle=%s attempt=%s elapsed_ms=%s result=stale",
+            task_id,
+            fingerprint_short,
+            reason,
+            cycle_minutes,
+            attempt,
+            int((time.monotonic() - started_at) * 1000),
+        )
+        return {"status": "stale", "task_id": task_id, "reason": reason}
+
+    try:
+        result = StargazerCollectTriggerClient().trigger(task)
+    except StargazerCollectRetryableError as exc:
+        retry_number = int(self.request.retries)
+        if retry_number >= self.max_retries:
+            logger.warning(
+                "[FirstCollection] 可重试次数耗尽 task_id=%s fingerprint=%s reason=%s "
+                "cycle=%s attempt=%s elapsed_ms=%s error_type=%s "
+                "result=failed retry_exhausted=true",
+                task_id,
+                fingerprint_short,
+                reason,
+                cycle_minutes,
+                attempt,
+                int((time.monotonic() - started_at) * 1000),
+                exc.__class__.__name__,
+            )
+            return {
+                "status": "failed",
+                "task_id": task_id,
+                "reason": reason,
+                "retry_exhausted": True,
+            }
+
+        countdown = 10 * (2**retry_number)
+        logger.warning(
+            "[FirstCollection] 可重试失败 task_id=%s fingerprint=%s reason=%s "
+            "cycle=%s attempt=%s elapsed_ms=%s error_type=%s",
+            task_id,
+            fingerprint_short,
+            reason,
+            cycle_minutes,
+            attempt,
+            int((time.monotonic() - started_at) * 1000),
+            exc.__class__.__name__,
+        )
+        raise self.retry(exc=exc, countdown=countdown)
+    except StargazerCollectPermanentError as exc:
+        logger.warning(
+            "[FirstCollection] 永久失败 task_id=%s fingerprint=%s reason=%s "
+            "cycle=%s attempt=%s elapsed_ms=%s error_type=%s",
+            task_id,
+            fingerprint_short,
+            reason,
+            cycle_minutes,
+            attempt,
+            int((time.monotonic() - started_at) * 1000),
+            exc.__class__.__name__,
+        )
+        return {"status": "failed", "task_id": task_id, "reason": reason}
+
+    logger.info(
+        "[FirstCollection] 已接收 task_id=%s fingerprint=%s reason=%s "
+        "cycle=%s attempt=%s elapsed_ms=%s result=%s",
+        task_id,
+        fingerprint_short,
+        reason,
+        cycle_minutes,
+        attempt,
+        int((time.monotonic() - started_at) * 1000),
+        result.status,
+    )
+    return {
+        "status": result.status,
+        "task_id": task_id,
+        "reason": reason,
+        "total": result.total,
+        "accepted": result.accepted,
+    }
 
 
 @shared_task
