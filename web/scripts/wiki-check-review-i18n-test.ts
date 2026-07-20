@@ -106,8 +106,11 @@ assert.doesNotMatch(
   /unknownSource/,
   'empty source labels should be omitted instead of rendered as an alarming placeholder tag'
 );
+assert.doesNotMatch(decisionCenter, /DECISION_THEME/, 'decision center should use the shared web theme tokens');
+assert.doesNotMatch(decisionCenter, /#[\da-fA-F]{3,8}/, 'decision center should not define a private hex color palette');
 
 assert.match(decisionStory, /import WikiDecisionCenter from '@\/app\/opspilot\/components\/wiki\/WikiDecisionCenter'/);
+assert.doesNotMatch(decisionStory, /#[\da-fA-F]{3,8}/, 'decision center story should use the shared web theme tokens');
 assert.match(decisionStory, /current_knowledge:/);
 assert.match(decisionStory, /new_knowledge:/);
 assert.match(decisionStory, /target_identity:/);

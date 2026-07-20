@@ -7,9 +7,9 @@ from django.db.models import Count
 from django_celery_beat.models import PeriodicTask, CrontabSchedule
 from rest_framework import viewsets
 from rest_framework.decorators import action
-from django.db import models
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.logger import log_logger as logger
 from apps.core.utils.permission_utils import (
     get_permission_rules,
     get_permissions_rules,
@@ -28,6 +28,7 @@ from apps.log.filters.policy import (
     EventRawDataFilter,
 )
 from apps.log.models.policy import Policy, PolicyOrganization, Alert, Event, EventRawData
+from apps.log.services.alert_lifecycle_notify import LogAlertLifecycleNotifier
 from apps.log.serializers.policy import (
     PolicySerializer,
     AlertSerializer,
@@ -584,6 +585,78 @@ class AlertViewSet(viewsets.ModelViewSet):
             .order_by("-created_at")
         )
 
+    @staticmethod
+    def _deliver_closed_event(alert_id, closed_at):
+        try:
+            alert = (
+                Alert.objects.select_related("policy", "collect_type")
+                .prefetch_related("policy__policyorganization_set")
+                .get(id=alert_id)
+            )
+            notifier = LogAlertLifecycleNotifier(alert.policy)
+            if not alert.policy.notice or not notifier.is_alert_center_channel():
+                return
+
+            success, _ = notifier.notify_closed(alert)
+            if success:
+                # 仅确认同一次关闭，避免迟到回执写入已变化的告警。
+                Alert.objects.filter(
+                    id=alert_id,
+                    status=AlertConstants.STATUS_CLOSED,
+                    end_event_time=closed_at,
+                    notice=False,
+                ).update(notice=True)
+        except Exception:
+            logger.error(
+                "日志告警关闭事件推送异常 alert=%s",
+                alert_id,
+                exc_info=True,
+            )
+
+    def _close_alert(self, request, alert):
+        auth_error = self._authorize_alert_operate(request, alert)
+        if auth_error:
+            return alert, auth_error
+
+        notifier = LogAlertLifecycleNotifier(alert.policy)
+        should_notify_alert_center = alert.policy.notice and notifier.is_alert_center_channel()
+        closed_at = datetime.now(timezone.utc)
+        update_values = {
+            "status": AlertConstants.STATUS_CLOSED,
+            "operator": request.user.username,
+            "end_event_time": closed_at,
+        }
+        if should_notify_alert_center:
+            # notice=False 作为告警中心 closed 的待补偿标记，不改变普通渠道语义。
+            update_values["notice"] = False
+
+        with transaction.atomic():
+            changed = Alert.objects.filter(
+                id=alert.id,
+                status=AlertConstants.STATUS_NEW,
+            ).update(**update_values)
+            if changed and should_notify_alert_center:
+                # 提交后再发送，确保远端不会先于本地关闭状态收到事件。
+                transaction.on_commit(
+                    lambda alert_id=alert.id, event_time=closed_at: self._deliver_closed_event(
+                        alert_id,
+                        event_time,
+                    )
+                )
+
+        alert.refresh_from_db()
+        return alert, None
+
+    def partial_update(self, request, *args, **kwargs):
+        if request.data.get("status") != AlertConstants.STATUS_CLOSED:
+            return super().partial_update(request, *args, **kwargs)
+
+        alert = self.get_object()
+        alert, auth_error = self._close_alert(request, alert)
+        if auth_error:
+            return auth_error
+        return WebUtils.response_success(self.get_serializer(alert).data)
+
     def list(self, request, *args, **kwargs):
         """
         告警列表查询
@@ -686,17 +759,16 @@ class AlertViewSet(viewsets.ModelViewSet):
     @action(methods=["post"], detail=True, url_path="closed")
     def closed(self, request, pk=None):
         alert = self.get_object()
-
-        auth_error = self._authorize_alert_operate(request, alert)
+        alert, auth_error = self._close_alert(request, alert)
         if auth_error:
             return auth_error
 
-        operator = request.user.username
-        alert.status = AlertConstants.STATUS_CLOSED
-        alert.operator = operator
-        alert.save()
-
-        return WebUtils.response_success({"status": AlertConstants.STATUS_CLOSED, "operator": operator})
+        return WebUtils.response_success(
+            {
+                "status": alert.status,
+                "operator": alert.operator,
+            }
+        )
 
     @action(methods=["get"], detail=False, url_path="last_event")
     def get_last_event(self, request):

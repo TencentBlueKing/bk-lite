@@ -802,6 +802,10 @@ COLLECT_OBJ_TREE = [
 VICTORIAMETRICS_HOST = os.getenv("VICTORIAMETRICS_HOST", "")
 
 STARGAZER_URL = os.getenv("STARGAZER_URL", "http://stargazer:8083")
+CMDB_FIRST_COLLECTION_ENABLED = (
+    os.getenv("CMDB_FIRST_COLLECTION_ENABLED", "true").strip().lower()
+    in {"1", "true", "yes", "on"}
+)
 # ===== 实例权限 =====
 PERMISSION_INSTANCES = "instances"  # 实例
 PERMISSION_TASK = "task"  # 采集任务

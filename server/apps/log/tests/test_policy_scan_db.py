@@ -12,7 +12,9 @@ from django.utils import timezone
 
 from apps.log.constants.alert_policy import AlertConstants
 from apps.log.models.policy import Alert, AlertSnapshot, Event, EventRawData, Policy
+from apps.log.services.alert_lifecycle_notify import LogAlertLifecycleNotifier
 from apps.log.tasks.services.policy_scan import LogPolicyScan
+from apps.system_mgmt.models.channel import Channel
 
 pytestmark = pytest.mark.django_db
 
@@ -284,6 +286,166 @@ class TestSendNotice:
         assert ok is False
         assert result["result"] is False
 
+    def test_alert_center_notice_without_users_sends_created_event(self, mocker):
+        channel = Channel.objects.create(
+            name="告警中心",
+            channel_type="nats",
+            config={"method_name": "receive_alert_events"},
+            description="",
+        )
+        policy = _make_policy(
+            notice=True,
+            notice_type="nats",
+            notice_type_id=channel.id,
+            notice_users=[],
+        )
+        alert = Alert.objects.create(
+            id="a-nats-no-users",
+            policy=policy,
+            source_id="s",
+            level="warning",
+            status="new",
+            start_event_time=timezone.now(),
+        )
+        event = Event.objects.create(
+            id="e-nats-no-users",
+            policy=policy,
+            alert=alert,
+            source_id="s",
+            event_time=timezone.now(),
+            level="warning",
+            content="c",
+        )
+        notify = mocker.patch.object(
+            LogAlertLifecycleNotifier,
+            "notify_created",
+            return_value=(True, {"result": True}),
+        )
+
+        ok, result = LogPolicyScan(policy).send_notice(event)
+
+        assert ok is True
+        assert result == {"result": True}
+        notify.assert_called_once_with(event, max_attempts=None)
+
+    def test_created_success_replays_closed_when_alert_closed_during_send(self, mocker):
+        channel = Channel.objects.create(
+            name="告警中心并发关闭",
+            channel_type="nats",
+            config={"method_name": "receive_alert_events"},
+            description="",
+        )
+        policy = _make_policy(
+            notice=True,
+            notice_type="nats",
+            notice_type_id=channel.id,
+            notice_users=[],
+        )
+        alert = Alert.objects.create(
+            id="a-created-closed-race",
+            policy=policy,
+            source_id="s",
+            level="warning",
+            status="new",
+            start_event_time=timezone.now(),
+        )
+        event = Event.objects.create(
+            id="e-created-closed-race",
+            policy=policy,
+            alert=alert,
+            source_id="s",
+            event_time=timezone.now(),
+            level="warning",
+            content="c",
+        )
+        closed_at = timezone.now()
+
+        def close_during_created(*args, **kwargs):
+            Alert.objects.filter(id=alert.id).update(
+                status=AlertConstants.STATUS_CLOSED,
+                end_event_time=closed_at,
+                notice=True,
+            )
+            return True, {"result": True}
+
+        mocker.patch.object(
+            LogAlertLifecycleNotifier,
+            "notify_created",
+            side_effect=close_during_created,
+        )
+        notify_closed = mocker.patch.object(
+            LogAlertLifecycleNotifier,
+            "notify_closed",
+            return_value=(True, {"result": True}),
+        )
+
+        ok, _ = LogPolicyScan(policy).send_notice(event, max_attempts=1)
+
+        assert ok is True
+        replayed_alert = notify_closed.call_args.args[0]
+        assert replayed_alert.status == AlertConstants.STATUS_CLOSED
+        assert replayed_alert.end_event_time == closed_at
+        notify_closed.assert_called_once_with(replayed_alert, max_attempts=1)
+
+    def test_failed_closed_replay_restores_pending_notice(self, mocker):
+        channel = Channel.objects.create(
+            name="告警中心关闭重放失败",
+            channel_type="nats",
+            config={"method_name": "receive_alert_events"},
+            description="",
+        )
+        policy = _make_policy(
+            notice=True,
+            notice_type="nats",
+            notice_type_id=channel.id,
+            notice_users=[],
+        )
+        alert = Alert.objects.create(
+            id="a-closed-replay-fail",
+            policy=policy,
+            source_id="s",
+            level="warning",
+            status="new",
+            start_event_time=timezone.now(),
+        )
+        event = Event.objects.create(
+            id="e-closed-replay-fail",
+            policy=policy,
+            alert=alert,
+            source_id="s",
+            event_time=timezone.now(),
+            level="warning",
+            content="c",
+        )
+        closed_at = timezone.now()
+
+        def close_during_created(*args, **kwargs):
+            Alert.objects.filter(id=alert.id).update(
+                status=AlertConstants.STATUS_CLOSED,
+                end_event_time=closed_at,
+                notice=True,
+            )
+            return True, {"result": True}
+
+        mocker.patch.object(
+            LogAlertLifecycleNotifier,
+            "notify_created",
+            side_effect=close_during_created,
+        )
+        mocker.patch.object(
+            LogAlertLifecycleNotifier,
+            "notify_closed",
+            return_value=(False, {"result": False, "message": "down"}),
+        )
+
+        ok, _ = LogPolicyScan(policy).send_notice(event, max_attempts=1)
+
+        assert ok is True
+        alert.refresh_from_db()
+        assert alert.status == AlertConstants.STATUS_CLOSED
+        assert alert.end_event_time == closed_at
+        assert alert.notice is False
+
 
 class TestNotice:
     def _persist_event(self, policy, alert, level="warning"):
@@ -331,6 +493,28 @@ class TestNotice:
         alert.refresh_from_db()
         assert ev.notified is True
         assert alert.notice is True
+
+    def test_late_created_success_does_not_mark_closed_alert_noticed(self, mocker):
+        policy = _make_policy(notice=True, notice_users=["u1"])
+        alert = Alert.objects.create(
+            id="a-closed-race",
+            policy=policy,
+            source_id="s",
+            level="warning",
+            status=AlertConstants.STATUS_CLOSED,
+            start_event_time=timezone.now(),
+            end_event_time=timezone.now(),
+            notice=False,
+        )
+        event = self._persist_event(policy, alert, level="warning")
+        mocker.patch.object(LogPolicyScan, "send_notice", return_value=(True, {"result": True}))
+
+        LogPolicyScan(policy).notice([event])
+
+        event.refresh_from_db()
+        alert.refresh_from_db()
+        assert event.notified is True
+        assert alert.notice is False
 
 
 class TestRun:

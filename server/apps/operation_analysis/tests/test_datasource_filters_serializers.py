@@ -199,6 +199,35 @@ def test_datasource_serializer_preserves_redacted_connection_secret(authenticate
     assert serializer.validated_data["connection_config"]["password"] == "real-password"
 
 
+@pytest.mark.django_db
+def test_datasource_serializer_redacts_and_preserves_nested_separator_variants(authenticated_user):
+    from apps.operation_analysis.serializers.datasource_serializers import DataSourceAPIModelSerializer
+
+    datasource = DataSourceAPIModel.objects.create(
+        name="rest-source",
+        rest_api="",
+        source_type="rest_api",
+        connection_config={"headers": {"X-API-Key": "real-api-key"}},
+        query_config={"body": {"items": [{"client-secret": "real-client-secret"}]}},
+        groups=[1],
+        created_by="s",
+        updated_by="s",
+    )
+
+    output = DataSourceAPIModelSerializer(datasource, context={"request": _serializer_request(authenticated_user)}).data
+    assert output["connection_config"]["headers"]["X-API-Key"] == "******"
+    assert output["query_config"]["body"]["items"][0]["client-secret"] == "******"
+
+    serializer = DataSourceAPIModelSerializer(
+        datasource,
+        context={"request": _serializer_request(authenticated_user)},
+        data={**output, "namespaces": [], "tag": []},
+    )
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["connection_config"]["headers"]["X-API-Key"] == "real-api-key"
+    assert serializer.validated_data["query_config"]["body"]["items"][0]["client-secret"] == "real-client-secret"
+
+
 # --------------------------------------------------------------------------
 # schema 校验工具函数
 # --------------------------------------------------------------------------

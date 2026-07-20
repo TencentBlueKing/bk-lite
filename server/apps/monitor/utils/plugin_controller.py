@@ -36,6 +36,8 @@ _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
     "credential_encoding",
     "database",
     "dbname",
+    "disk_exclude_fstypes",
+    "disk_include_fstypes",
     "endpoint",
     "expect",
     "host",
