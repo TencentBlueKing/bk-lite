@@ -1,8 +1,10 @@
-from rest_framework.decorators import action
-from rest_framework.viewsets import ViewSet
 from typing import Any, cast
 
+from rest_framework.decorators import action
+from rest_framework.viewsets import ViewSet
+
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.utils.current_team_scope import resolve_current_team_data_scope
 from apps.core.utils.web_utils import WebUtils
 from apps.node_mgmt.constants.installer import InstallerConstants
 from apps.node_mgmt.models.installer import CollectorTask, CollectorTaskNode
@@ -15,12 +17,12 @@ from apps.node_mgmt.serializers.installer import (
 from apps.node_mgmt.serializers.node import TaskNodesQuerySerializer
 from apps.node_mgmt.services.installer import InstallerService
 from apps.node_mgmt.tasks.installer import (
-    install_controller,
+    CONTROLLER_INSTALL_TASK_TIMEOUT_SECONDS,
     install_collector,
-    uninstall_controller,
+    install_controller,
     retry_controller,
     timeout_controller_install_task,
-    CONTROLLER_INSTALL_TASK_TIMEOUT_SECONDS,
+    uninstall_controller,
 )
 from apps.node_mgmt.utils.permission import authorize_node_ids, get_authorized_node_queryset
 from apps.node_mgmt.utils.task_result_schema import normalize_task_result_for_read
@@ -75,9 +77,23 @@ class InstallerViewSet(ViewSet):
     @action(detail=False, methods=["post"], url_path="controller/retry")
     @HasPermission("cloud_region_node-Edit")
     def controller_retry(self, request):
+        scope = resolve_current_team_data_scope(request)
+        authorized_nodes = get_authorized_node_queryset(request)
+        authorized_task_nodes = InstallerService.get_authorized_controller_task_nodes(
+            request.data["task_id"],
+            authorized_nodes=authorized_nodes,
+            scope=scope,
+        )
+        requested_task_node_ids = request.data["task_node_ids"]
+        if not isinstance(requested_task_node_ids, list):
+            requested_task_node_ids = [requested_task_node_ids]
+        authorized_task_node_ids = {str(task_node.id) for task_node in authorized_task_nodes}
+        if not requested_task_node_ids or any(str(task_node_id) not in authorized_task_node_ids for task_node_id in requested_task_node_ids):
+            return WebUtils.response_403("User does not have permission to retry this task node")
+
         retry_controller.delay(
             request.data["task_id"],
-            request.data["task_node_ids"],
+            requested_task_node_ids,
             password=request.data.get("password"),
             private_key=request.data.get("private_key"),
             passphrase=request.data.get("passphrase"),
@@ -127,11 +143,12 @@ class InstallerViewSet(ViewSet):
     )
     @HasPermission("cloud_region_node-Edit")
     def controller_install_nodes(self, request, task_id):
+        scope = resolve_current_team_data_scope(request)
         authorized_nodes = get_authorized_node_queryset(request)
         data = InstallerService.install_controller_nodes(
             task_id,
             authorized_nodes=authorized_nodes,
-            request_user=request.user,
+            scope=scope,
         )
         return WebUtils.response_success(data)
 

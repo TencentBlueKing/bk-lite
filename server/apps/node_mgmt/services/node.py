@@ -1,32 +1,24 @@
 import os
-from datetime import timezone
+from datetime import datetime, timedelta, timezone
+
 from django.utils import timezone as dj_timezone
 
 from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.core.utils.permission_utils import get_permission_rules
+from apps.core.logger import node_logger as logger
+from apps.core.utils.current_team_scope import CurrentTeamDataScope
+from apps.core.utils.permission_utils import get_permission_rules, permission_filter
+from apps.core.utils.safe_template import build_sandboxed_env
 from apps.node_mgmt.constants.collector import CollectorConstants
 from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models import NodeCollectorInstallStatus
-from apps.node_mgmt.models.sidecar import (
-    Node,
-    Collector,
-    CollectorConfiguration,
-    Action,
-)
 from apps.node_mgmt.models.action import CollectorActionTask, CollectorActionTaskNode
-from apps.node_mgmt.tasks.action_task import (
-    timeout_collector_action_task,
-    ACTION_TASK_TIMEOUT_SECONDS,
-)
+from apps.node_mgmt.models.sidecar import Action, Collector, CollectorConfiguration, Node
 from apps.node_mgmt.serializers.node import NodeSerializer
-from datetime import datetime, timedelta
-
-from apps.system_mgmt.models import User
-from apps.core.logger import node_logger as logger
 from apps.node_mgmt.services.sidecar import Sidecar
+from apps.node_mgmt.tasks.action_task import ACTION_TASK_TIMEOUT_SECONDS, timeout_collector_action_task
 from apps.rpc.system_mgmt import SystemMgmt
-from apps.core.utils.safe_template import build_sandboxed_env
+from apps.system_mgmt.models import User
 
 
 def _get_positive_int_env(name, default):
@@ -47,12 +39,12 @@ class NodeService:
         current_team = permission_data.get("current_team")
 
         if current_team in (None, ""):
-            return {}
+            return {}, None
 
         try:
             current_team = int(current_team)
         except (TypeError, ValueError):
-            return {}
+            return {}, None
 
         scope_result = SystemMgmt(is_local_client=True).get_authorized_groups_scoped(
             {
@@ -63,17 +55,32 @@ class NodeService:
             },
             include_children=include_children,
         )
-        authorized_groups = scope_result.get("data", []) if isinstance(scope_result, dict) else []
-        if not authorized_groups:
-            return {}
+        if not isinstance(scope_result, dict) or not scope_result.get("result") or not isinstance(scope_result.get("data"), list):
+            return {}, None
 
-        return get_permission_rules(
+        try:
+            authorized_groups = frozenset(int(group_id) for group_id in scope_result["data"])
+        except (TypeError, ValueError):
+            return {}, None
+        if not authorized_groups or current_team not in authorized_groups:
+            return {}, None
+
+        permission = get_permission_rules(
             user_obj,
             current_team,
             "node_mgmt",
             NodeConstants.MODULE,
             include_children=include_children,
         )
+        scope = CurrentTeamDataScope(
+            current_team=current_team,
+            data_team_ids=authorized_groups,
+            include_children=include_children,
+            username=permission_data["username"],
+            domain=permission_data["domain"],
+            is_superuser=permission_data.get("is_superuser", False),
+        )
+        return permission, scope
 
     @staticmethod
     def process_node_data(node_data):
@@ -366,16 +373,21 @@ class NodeService:
     ):
         """获取节点列表"""
         if permission_data:
-            from apps.core.utils.permission_utils import permission_filter
-
-            permission = NodeService._build_scoped_permission(permission_data)
+            permission, scope = NodeService._build_scoped_permission(permission_data)
             # 如果提供了权限信息，使用权限过滤
-            qs = permission_filter(
-                Node,
-                permission,
-                team_key="nodeorganization__organization__in",
-                id_key="id__in",
-            )
+            if scope is None:
+                qs = Node.objects.none()
+            else:
+                qs = (
+                    permission_filter(
+                        Node,
+                        permission,
+                        team_key="nodeorganization__organization__in",
+                        id_key="id__in",
+                    )
+                    .filter(nodeorganization__organization__in=scope.data_team_ids)
+                    .distinct()
+                )
         elif skip_permission or organization_ids:
             # 系统级调用显式跳过权限检查，或通过 organization_ids 限定范围
             qs = Node.objects.all()
@@ -459,15 +471,20 @@ class NodeService:
             return []
 
         if permission_data:
-            from apps.core.utils.permission_utils import permission_filter
-
-            permission = NodeService._build_scoped_permission(permission_data)
-            qs = permission_filter(
-                Node,
-                permission,
-                team_key="nodeorganization__organization__in",
-                id_key="id__in",
-            )
+            permission, scope = NodeService._build_scoped_permission(permission_data)
+            if scope is None:
+                qs = Node.objects.none()
+            else:
+                qs = (
+                    permission_filter(
+                        Node,
+                        permission,
+                        team_key="nodeorganization__organization__in",
+                        id_key="id__in",
+                    )
+                    .filter(nodeorganization__organization__in=scope.data_team_ids)
+                    .distinct()
+                )
         else:
             qs = Node.objects.all()
 

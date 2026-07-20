@@ -1,6 +1,13 @@
-from django.db.models import Count, F, Q
+from django.db.models import Q
 
-from apps.core.utils.permission_utils import get_instance_permission_map, get_permission_rules, permission_filter
+from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.utils.current_team_scope import (
+    resolve_assignable_organization_ids,
+    resolve_current_team_data_scope,
+    scope_permission_queryset,
+    validate_assignable_organizations,
+)
+from apps.core.utils.permission_utils import get_instance_permission_map, get_permission_rules
 from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.web_utils import WebUtils
 from apps.node_mgmt.constants.node import NodeConstants
@@ -76,9 +83,11 @@ def get_request_user(request):
 
 def get_authorized_node_queryset(request, permission=None):
     permission = permission or get_node_permission(request)
-    return permission_filter(
+    scope = resolve_current_team_data_scope(request)
+    return scope_permission_queryset(
         Node,
         permission,
+        scope,
         team_key="nodeorganization__organization__in",
         id_key="id__in",
     )
@@ -107,24 +116,26 @@ def get_authorized_child_config_queryset(request, permission=None):
 
 
 def get_mutable_collector_configuration_queryset(request, permission=None):
-    permission = permission or get_node_permission(request)
-    authorized_node_ids = list(get_authorized_node_queryset(request, permission).distinct().values_list("id", flat=True))
+    authorized_configs = get_authorized_collector_configuration_queryset(request, permission)
     username = getattr(get_request_user(request), "username", "")
 
     writable_unbound_ids = []
     if username:
-        writable_unbound_ids = list(CollectorConfiguration.objects.filter(created_by=username, nodes__isnull=True).values_list("id", flat=True))
+        writable_unbound_ids = list(authorized_configs.filter(created_by=username, nodes__isnull=True).values_list("id", flat=True))
 
     writable_bound_ids = []
-    if authorized_node_ids:
-        writable_bound_ids = list(
-            CollectorConfiguration.objects.annotate(
-                total_nodes=Count("nodes", distinct=True),
-                authorized_nodes=Count("nodes", filter=Q(nodes__id__in=authorized_node_ids), distinct=True),
-            )
-            .filter(total_nodes__gt=0, total_nodes=F("authorized_nodes"))
-            .values_list("id", flat=True)
-        )
+    bound_config_ids = list(authorized_configs.filter(nodes__isnull=False).values_list("id", flat=True).distinct())
+    if bound_config_ids:
+        assignable_orgs = set(resolve_assignable_organization_ids(request))
+        impacted_orgs_by_config = {config_id: set() for config_id in bound_config_ids}
+        for config_id, organization_id in CollectorConfiguration.objects.filter(id__in=bound_config_ids).values_list(
+            "id", "nodes__nodeorganization__organization"
+        ):
+            if organization_id is not None:
+                impacted_orgs_by_config[config_id].add(organization_id)
+        writable_bound_ids = [
+            config_id for config_id, impacted_orgs in impacted_orgs_by_config.items() if impacted_orgs and impacted_orgs.issubset(assignable_orgs)
+        ]
 
     writable_ids = list(dict.fromkeys([*writable_unbound_ids, *writable_bound_ids]))
     if not writable_ids:
@@ -256,25 +267,12 @@ def authorize_mutable_child_config_ids(request, child_config_ids, permission=Non
 
 
 def authorize_target_organizations(request, node, organizations):
-    target_orgs = normalize_orgs(organizations)
-    if not target_orgs:
+    if organizations is None:
         return None
 
-    user = get_request_user(request)
-    if user is None:
-        return WebUtils.response_403("User does not have permission to assign nodes to these organizations")
-
-    if getattr(user, "is_superuser", False):
-        return None
-
-    user_group_list = getattr(user, "group_list", []) or []
-    if not user_group_list:
-        return WebUtils.response_403("User does not have permission to assign nodes to these organizations")
-
-    from apps.system_mgmt.utils.group_utils import GroupUtils
-    allowed_orgs = set(GroupUtils.get_group_with_descendants(user_group_list))
-
-    if not target_orgs.issubset(allowed_orgs):
+    try:
+        validate_assignable_organizations(request, organizations)
+    except BaseAppException:
         return WebUtils.response_403("User does not have permission to assign nodes to these organizations")
 
     return None

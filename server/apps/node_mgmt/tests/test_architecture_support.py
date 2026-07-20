@@ -13,11 +13,11 @@ from django.core.management import call_command
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.base.models import User
-from apps.node_mgmt.constants.controller import ControllerConstants
-from apps.node_mgmt.constants.installer import InstallerConstants
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.crypto.aes_crypto import AESCryptor
 from apps.core.utils.web_utils import WebUtils
+from apps.node_mgmt.constants.controller import ControllerConstants
+from apps.node_mgmt.constants.installer import InstallerConstants
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.filters.package import PackageVersionFilter
 from apps.node_mgmt.management.commands.backfill_node_cpu_architecture import Command as BackfillNodeCpuArchitectureCommand
@@ -30,16 +30,16 @@ from apps.node_mgmt.management.services.node_init.collector_init import import_c
 from apps.node_mgmt.management.services.node_init.controller_init import controller_init
 from apps.node_mgmt.management.services.node_init.definition_loader import load_definition_records
 from apps.node_mgmt.models import CloudRegion, Collector, CollectorConfiguration, Controller, Node, NodeComponentVersion, PackageVersion, SidecarEnv
-from apps.node_mgmt.models.sidecar import ChildConfig, NodeOrganization
 from apps.node_mgmt.models.installer import ControllerTask, ControllerTaskNode
+from apps.node_mgmt.models.sidecar import ChildConfig, NodeOrganization
 from apps.node_mgmt.nats.node import NatsService
 from apps.node_mgmt.serializers.collector import CollectorSerializer
 from apps.node_mgmt.serializers.package import PackageVersionSerializer
+from apps.node_mgmt.services import node as node_service
+from apps.node_mgmt.services.cloudregion import RegionService
 from apps.node_mgmt.services.installer import InstallerService
 from apps.node_mgmt.services.installer_session import InstallerSessionService
-from apps.node_mgmt.services import node as node_service
 from apps.node_mgmt.services.package import PackageService
-from apps.node_mgmt.services.cloudregion import RegionService
 from apps.node_mgmt.services.sidecar import Sidecar
 from apps.node_mgmt.services.version_upgrade import VersionUpgradeService
 from apps.node_mgmt.tasks import installer as installer_tasks
@@ -48,7 +48,8 @@ from apps.node_mgmt.tasks.version_discovery import _calculate_upgrade_info, _dis
 from apps.node_mgmt.utils import permission as node_permission
 from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
 from apps.node_mgmt.utils.token_auth import generate_node_token
-from apps.node_mgmt.views import collector_configuration, node as node_view
+from apps.node_mgmt.views import collector_configuration
+from apps.node_mgmt.views import node as node_view
 from apps.node_mgmt.views.collector import CollectorViewSet
 from apps.node_mgmt.views.installer import InstallerViewSet
 from apps.node_mgmt.views.sidecar import OpenSidecarViewSet
@@ -154,7 +155,9 @@ def _make_node_request(data=None, method="post"):
     request = request_factory("/node-mgmt/test", data=data or {}, format="json")
     request.COOKIES["current_team"] = "1"
     request.COOKIES["include_children"] = "0"
-    force_authenticate(request, user=_build_admin_user())
+    user = _build_admin_user()
+    force_authenticate(request, user=user)
+    request.user = user
     return request
 
 
@@ -164,8 +167,23 @@ def _make_permission_request(data=None, method="post", permissions=()):
     request = request_factory("/node-mgmt/test", data=data or {}, format="json")
     request.COOKIES["current_team"] = "1"
     request.COOKIES["include_children"] = "0"
-    force_authenticate(request, user=_build_permission_user(*permissions))
+    user = _build_permission_user(*permissions)
+    force_authenticate(request, user=user)
+    request.user = user
     return request
+
+
+def _patch_node_data_scope(monkeypatch, data_team_ids=(1,), assignable_team_ids=(1,)):
+    monkeypatch.setattr(
+        node_permission,
+        "resolve_current_team_data_scope",
+        lambda request: SimpleNamespace(data_team_ids=frozenset(data_team_ids)),
+    )
+    monkeypatch.setattr(
+        node_permission,
+        "resolve_assignable_organization_ids",
+        lambda request: frozenset(assignable_team_ids),
+    )
 
 
 def _build_sidecar_request(method, path, *, query_params=None, headers=None):
@@ -213,15 +231,11 @@ def test_authorize_node_ids_requires_operate_permission(monkeypatch):
 
 def test_authorize_target_organizations_allows_in_scope_team_org(monkeypatch):
     node = _FakeNode(organizations=[2])
-
-    class _ScopedSystemMgmt:
-        def __init__(self, is_local_client=True):
-            pass
-
-        def get_authorized_groups_scoped(self, actor_context, include_children=False):
-            return {"data": [2]}
-
-    monkeypatch.setattr(node_permission, "SystemMgmt", _ScopedSystemMgmt)
+    monkeypatch.setattr(
+        node_permission,
+        "validate_assignable_organizations",
+        lambda request, organizations: frozenset({2}),
+    )
 
     response = node_permission.authorize_target_organizations(_make_node_request(), node, [2])
 
@@ -231,9 +245,14 @@ def test_authorize_target_organizations_allows_in_scope_team_org(monkeypatch):
 def test_authorize_target_organizations_rejects_org_outside_user_group_scope(monkeypatch):
     node = _FakeNode(organizations=[2])
 
-    from apps.system_mgmt.utils.group_utils import GroupUtils
+    def _reject_assignable_organizations(request, organizations):
+        raise BaseAppException("organization_ids 包含无权分配的组织")
 
-    monkeypatch.setattr(GroupUtils, "get_group_with_descendants", staticmethod(lambda group_ids: [1]))
+    monkeypatch.setattr(
+        node_permission,
+        "validate_assignable_organizations",
+        _reject_assignable_organizations,
+    )
 
     response = node_permission.authorize_target_organizations(_make_permission_request(), node, [2, 3])
 
@@ -242,29 +261,30 @@ def test_authorize_target_organizations_rejects_org_outside_user_group_scope(mon
 
 def test_authorize_target_organizations_allows_org_inside_user_group_scope(monkeypatch):
     node = _FakeNode(organizations=[2])
-
-    from apps.system_mgmt.utils.group_utils import GroupUtils
-
-    monkeypatch.setattr(GroupUtils, "get_group_with_descendants", staticmethod(lambda group_ids: [1, 2, 3]))
+    monkeypatch.setattr(
+        node_permission,
+        "validate_assignable_organizations",
+        lambda request, organizations: frozenset({2, 3}),
+    )
 
     response = node_permission.authorize_target_organizations(_make_permission_request(), node, [2, 3])
 
     assert response is None
 
 
-def test_authorize_target_organizations_superuser_bypasses_group_scope(monkeypatch):
+def test_authorize_target_organizations_superuser_uses_assignable_scope(monkeypatch):
     node = _FakeNode(organizations=[2])
-
-    from apps.system_mgmt.utils.group_utils import GroupUtils
-
-    def _unexpected(group_ids):
-        raise AssertionError("superuser should not consult group scope")
-
-    monkeypatch.setattr(GroupUtils, "get_group_with_descendants", staticmethod(_unexpected))
+    captured = []
+    monkeypatch.setattr(
+        node_permission,
+        "validate_assignable_organizations",
+        lambda request, organizations: captured.append(organizations),
+    )
 
     response = node_permission.authorize_target_organizations(_make_node_request(), node, [99])
 
     assert response is None
+    assert captured == [[99]]
 
 
 def test_get_node_permission_rejects_forged_current_team(monkeypatch):
@@ -449,6 +469,7 @@ def test_get_authorized_collector_configuration_queryset_includes_authorized_nod
         created_by="permission-test-user",
     )
 
+    _patch_node_data_scope(monkeypatch)
     monkeypatch.setattr(node_permission, "get_node_permission", lambda request: {"team": [1], "instance": []})
 
     result_ids = set(node_permission.get_authorized_collector_configuration_queryset(_make_permission_request()).values_list("id", flat=True))
@@ -480,6 +501,7 @@ def test_get_authorized_collector_configuration_queryset_excludes_creator_owned_
         bind_nodes=[denied_node],
     )
 
+    _patch_node_data_scope(monkeypatch)
     monkeypatch.setattr(node_permission, "get_node_permission", lambda request: {"team": [1], "instance": []})
 
     result_ids = set(node_permission.get_authorized_collector_configuration_queryset(_make_permission_request()).values_list("id", flat=True))
@@ -529,6 +551,7 @@ def test_authorize_child_config_ids_rejects_out_of_scope_config(monkeypatch):
         updated_by_domain="domain.com",
     )
 
+    _patch_node_data_scope(monkeypatch)
     monkeypatch.setattr(node_permission, "get_node_permission", lambda request: {"team": [1], "instance": []})
 
     child_configs, response = node_permission.authorize_child_config_ids(_make_permission_request(), [denied_child.id])
@@ -556,6 +579,7 @@ def test_authorize_mutable_collector_configuration_ids_rejects_shared_config_wit
     denied_node = _create_node_mgmt_node(region, node_id="node-mutable-2", organization=2)
     shared_config = _create_node_mgmt_configuration(region, collector, "cfg-mutable-1", bind_nodes=[allowed_node, denied_node])
 
+    _patch_node_data_scope(monkeypatch)
     monkeypatch.setattr(node_permission, "get_node_permission", lambda request: {"team": [1], "instance": []})
 
     configurations, response = node_permission.authorize_mutable_collector_configuration_ids(_make_permission_request(), [shared_config.id])
@@ -586,6 +610,7 @@ def test_authorize_mutable_collector_configuration_ids_allows_unbound_creator_dr
         created_by="permission-test-user",
     )
 
+    _patch_node_data_scope(monkeypatch)
     monkeypatch.setattr(node_permission, "get_node_permission", lambda request: {"team": [1], "instance": []})
 
     configurations, response = node_permission.authorize_mutable_collector_configuration_ids(_make_permission_request(), [draft_config.id])
@@ -624,6 +649,7 @@ def test_authorize_mutable_child_config_ids_rejects_shared_parent_with_unauthori
         updated_by_domain="domain.com",
     )
 
+    _patch_node_data_scope(monkeypatch)
     monkeypatch.setattr(node_permission, "get_node_permission", lambda request: {"team": [1], "instance": []})
 
     child_configs, response = node_permission.authorize_mutable_child_config_ids(_make_permission_request(), [child_config.id])
@@ -725,7 +751,7 @@ def test_node_write_endpoints_require_explicit_action_permission(monkeypatch, vi
         else:
             monkeypatch.setattr(target, service_attr, lambda *args, **kwargs: called.__setitem__("value", True) or (True, "ok"))
     elif action == "cancel_apply_to_node":
-        config = SimpleNamespace(nodes=SimpleNamespace(remove=lambda node: called.__setitem__("value", True)))
+        pass
     elif action == "destroy":
         monkeypatch.setattr(node_view.NodeViewSet, "perform_destroy", lambda self, instance: called.__setitem__("value", True))
 
@@ -779,11 +805,16 @@ def test_controller_install_nodes_passes_authorized_queryset(monkeypatch):
         "apps.node_mgmt.views.installer.get_authorized_node_queryset",
         lambda request: authorized_nodes,
     )
+    scope = SimpleNamespace(data_team_ids=frozenset({1}))
+    monkeypatch.setattr(
+        "apps.node_mgmt.views.installer.resolve_current_team_data_scope",
+        lambda request: scope,
+    )
 
-    def fake_install_controller_nodes(task_id, authorized_nodes=None, request_user=None):
+    def fake_install_controller_nodes(task_id, authorized_nodes=None, scope=None):
         captured["task_id"] = task_id
         captured["authorized_nodes"] = authorized_nodes
-        captured["request_user"] = request_user
+        captured["scope"] = scope
         return []
 
     monkeypatch.setattr(
@@ -800,7 +831,7 @@ def test_controller_install_nodes_passes_authorized_queryset(monkeypatch):
     assert response.status_code != 403
     assert captured["task_id"] == "task-3923"
     assert captured["authorized_nodes"] is authorized_nodes
-    assert captured["request_user"].username == "permission-test-user"
+    assert captured["scope"] is scope
 
 
 def test_apply_to_node_prevalidates_permissions_before_mutation(monkeypatch):
