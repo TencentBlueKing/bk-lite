@@ -3,10 +3,10 @@
 仅 mock celery.apply_async、SystemMgmt RPC、Sidecar.get_cloud_region_envconfig 边界。
 断言真实 DB 副作用与返回值。
 """
-import pytest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
+import pytest
 from django.utils import timezone as dj_timezone
 
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -14,11 +14,7 @@ from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.models import Collector, Node
 from apps.node_mgmt.models.action import CollectorActionTask, CollectorActionTaskNode
 from apps.node_mgmt.models.cloud_region import CloudRegion
-from apps.node_mgmt.models.sidecar import (
-    Action,
-    CollectorConfiguration,
-    NodeOrganization,
-)
+from apps.node_mgmt.models.sidecar import Action, CollectorConfiguration, NodeOrganization
 from apps.node_mgmt.services.node import NodeService
 
 
@@ -50,8 +46,16 @@ def setup(db):
 @pytest.mark.django_db
 def test_get_node_list_fail_closed_without_permission_or_org(setup):
     result = NodeService.get_node_list(
-        organization_ids=[], cloud_region_id=None, name=None, ip=None, os=None,
-        page=1, page_size=10, is_active=None, is_manual=None, is_container=None,
+        organization_ids=[],
+        cloud_region_id=None,
+        name=None,
+        ip=None,
+        os=None,
+        page=1,
+        page_size=10,
+        is_active=None,
+        is_manual=None,
+        is_container=None,
     )
     assert result["count"] == 0
     assert result["nodes"] == []
@@ -61,8 +65,16 @@ def test_get_node_list_fail_closed_without_permission_or_org(setup):
 def test_get_node_list_skip_permission_returns_nodes(setup):
     region, collector, node = setup
     result = NodeService.get_node_list(
-        organization_ids=[], cloud_region_id=None, name=None, ip=None, os=None,
-        page=1, page_size=10, is_active=None, is_manual=None, is_container=None,
+        organization_ids=[],
+        cloud_region_id=None,
+        name=None,
+        ip=None,
+        os=None,
+        page=1,
+        page_size=10,
+        is_active=None,
+        is_manual=None,
+        is_container=None,
         skip_permission=True,
     )
     assert result["count"] == 1
@@ -73,12 +85,24 @@ def test_get_node_list_skip_permission_returns_nodes(setup):
 def test_get_node_list_filters_by_name_ip_os(setup):
     region, collector, node = setup
     Node.objects.create(
-        id="node-svc-2", name="beta", ip="192.168.0.9", operating_system="windows",
-        collector_configuration_directory="/etc", cloud_region=region,
+        id="node-svc-2",
+        name="beta",
+        ip="192.168.0.9",
+        operating_system="windows",
+        collector_configuration_directory="/etc",
+        cloud_region=region,
     )
     result = NodeService.get_node_list(
-        organization_ids=[], cloud_region_id=None, name="alph", ip="10.1", os="linux",
-        page=1, page_size=10, is_active=None, is_manual=None, is_container=None,
+        organization_ids=[],
+        cloud_region_id=None,
+        name="alph",
+        ip="10.1",
+        os="linux",
+        page=1,
+        page_size=10,
+        is_active=None,
+        is_manual=None,
+        is_container=None,
         skip_permission=True,
     )
     assert result["count"] == 1
@@ -88,8 +112,16 @@ def test_get_node_list_filters_by_name_ip_os(setup):
 @pytest.mark.django_db
 def test_get_node_list_page_size_all(setup):
     result = NodeService.get_node_list(
-        organization_ids=[], cloud_region_id=None, name=None, ip=None, os=None,
-        page=1, page_size=-1, is_active=None, is_manual=None, is_container=None,
+        organization_ids=[],
+        cloud_region_id=None,
+        name=None,
+        ip=None,
+        os=None,
+        page=1,
+        page_size=-1,
+        is_active=None,
+        is_manual=None,
+        is_container=None,
         skip_permission=True,
     )
     assert result["count"] == 1
@@ -99,18 +131,34 @@ def test_get_node_list_page_size_all(setup):
 def test_get_node_list_page_size_all_is_capped(setup, monkeypatch):
     region, collector, node = setup
     Node.objects.create(
-        id="node-svc-2", name="beta", ip="10.1.1.2", operating_system="linux",
-        collector_configuration_directory="/etc", cloud_region=region,
+        id="node-svc-2",
+        name="beta",
+        ip="10.1.1.2",
+        operating_system="linux",
+        collector_configuration_directory="/etc",
+        cloud_region=region,
     )
     Node.objects.create(
-        id="node-svc-3", name="gamma", ip="10.1.1.3", operating_system="linux",
-        collector_configuration_directory="/etc", cloud_region=region,
+        id="node-svc-3",
+        name="gamma",
+        ip="10.1.1.3",
+        operating_system="linux",
+        collector_configuration_directory="/etc",
+        cloud_region=region,
     )
     monkeypatch.setattr(NodeService, "NODE_LIST_PAGE_SIZE_MAX", 2)
 
     result = NodeService.get_node_list(
-        organization_ids=[], cloud_region_id=None, name=None, ip=None, os=None,
-        page=1, page_size=-1, is_active=None, is_manual=None, is_container=None,
+        organization_ids=[],
+        cloud_region_id=None,
+        name=None,
+        ip=None,
+        os=None,
+        page=1,
+        page_size=-1,
+        is_active=None,
+        is_manual=None,
+        is_container=None,
         skip_permission=True,
     )
 
@@ -122,18 +170,34 @@ def test_get_node_list_page_size_all_is_capped(setup, monkeypatch):
 def test_get_node_list_page_size_above_limit_is_capped(setup, monkeypatch):
     region, collector, node = setup
     Node.objects.create(
-        id="node-svc-2", name="beta", ip="10.1.1.2", operating_system="linux",
-        collector_configuration_directory="/etc", cloud_region=region,
+        id="node-svc-2",
+        name="beta",
+        ip="10.1.1.2",
+        operating_system="linux",
+        collector_configuration_directory="/etc",
+        cloud_region=region,
     )
     Node.objects.create(
-        id="node-svc-3", name="gamma", ip="10.1.1.3", operating_system="linux",
-        collector_configuration_directory="/etc", cloud_region=region,
+        id="node-svc-3",
+        name="gamma",
+        ip="10.1.1.3",
+        operating_system="linux",
+        collector_configuration_directory="/etc",
+        cloud_region=region,
     )
     monkeypatch.setattr(NodeService, "NODE_LIST_PAGE_SIZE_MAX", 2)
 
     result = NodeService.get_node_list(
-        organization_ids=[], cloud_region_id=None, name=None, ip=None, os=None,
-        page=1, page_size=999, is_active=None, is_manual=None, is_container=None,
+        organization_ids=[],
+        cloud_region_id=None,
+        name=None,
+        ip=None,
+        os=None,
+        page=1,
+        page_size=999,
+        is_active=None,
+        is_manual=None,
+        is_container=None,
         skip_permission=True,
     )
 
@@ -145,20 +209,40 @@ def test_get_node_list_page_size_above_limit_is_capped(setup, monkeypatch):
 def test_get_node_list_is_container_and_is_manual_filters(setup):
     region, collector, node = setup
     Node.objects.create(
-        id="node-container", name="cont", ip="10.1.1.2", operating_system="linux",
-        collector_configuration_directory="/etc", cloud_region=region,
+        id="node-container",
+        name="cont",
+        ip="10.1.1.2",
+        operating_system="linux",
+        collector_configuration_directory="/etc",
+        cloud_region=region,
         node_type=ControllerConstants.NODE_TYPE_CONTAINER,
         install_method=ControllerConstants.MANUAL,
     )
     container_only = NodeService.get_node_list(
-        organization_ids=[], cloud_region_id=None, name=None, ip=None, os=None,
-        page=1, page_size=10, is_active=None, is_manual=None, is_container=True,
+        organization_ids=[],
+        cloud_region_id=None,
+        name=None,
+        ip=None,
+        os=None,
+        page=1,
+        page_size=10,
+        is_active=None,
+        is_manual=None,
+        is_container=True,
         skip_permission=True,
     )
     assert container_only["count"] == 1
     manual_only = NodeService.get_node_list(
-        organization_ids=[], cloud_region_id=None, name=None, ip=None, os=None,
-        page=1, page_size=10, is_active=None, is_manual=True, is_container=None,
+        organization_ids=[],
+        cloud_region_id=None,
+        name=None,
+        ip=None,
+        os=None,
+        page=1,
+        page_size=10,
+        is_active=None,
+        is_manual=True,
+        is_container=None,
         skip_permission=True,
     )
     assert manual_only["count"] == 1
@@ -171,14 +255,30 @@ def test_get_node_list_is_active_filter(setup):
     old = dj_timezone.now() - timedelta(minutes=2)
     Node.objects.filter(id=node.id).update(updated_at=old)
     inactive = NodeService.get_node_list(
-        organization_ids=[], cloud_region_id=None, name=None, ip=None, os=None,
-        page=1, page_size=10, is_active=False, is_manual=None, is_container=None,
+        organization_ids=[],
+        cloud_region_id=None,
+        name=None,
+        ip=None,
+        os=None,
+        page=1,
+        page_size=10,
+        is_active=False,
+        is_manual=None,
+        is_container=None,
         skip_permission=True,
     )
     assert inactive["count"] == 1
     active = NodeService.get_node_list(
-        organization_ids=[], cloud_region_id=None, name=None, ip=None, os=None,
-        page=1, page_size=10, is_active=True, is_manual=None, is_container=None,
+        organization_ids=[],
+        cloud_region_id=None,
+        name=None,
+        ip=None,
+        os=None,
+        page=1,
+        page_size=10,
+        is_active=True,
+        is_manual=None,
+        is_container=None,
         skip_permission=True,
     )
     assert active["count"] == 0
@@ -190,9 +290,7 @@ def test_get_node_list_is_active_filter(setup):
 @pytest.mark.django_db
 def test_batch_binding_node_configuration_success(setup):
     region, collector, node = setup
-    config = CollectorConfiguration.objects.create(
-        name="cfg-bind", collector=collector, cloud_region=region
-    )
+    config = CollectorConfiguration.objects.create(name="cfg-bind", collector=collector, cloud_region=region)
     ok, msg = NodeService.batch_binding_node_configuration([node.id], config.id)
     assert ok is True
     assert config.nodes.filter(id=node.id).exists()
@@ -208,13 +306,9 @@ def test_batch_binding_node_configuration_not_found(setup):
 @pytest.mark.django_db
 def test_batch_binding_overrides_existing_config(setup):
     region, collector, node = setup
-    old_config = CollectorConfiguration.objects.create(
-        name="cfg-old", collector=collector, cloud_region=region
-    )
+    old_config = CollectorConfiguration.objects.create(name="cfg-old", collector=collector, cloud_region=region)
     old_config.nodes.add(node)
-    new_config = CollectorConfiguration.objects.create(
-        name="cfg-new", collector=collector, cloud_region=region
-    )
+    new_config = CollectorConfiguration.objects.create(name="cfg-new", collector=collector, cloud_region=region)
     ok, _ = NodeService.batch_binding_node_configuration([node.id], new_config.id)
     assert ok is True
     assert not old_config.nodes.filter(id=node.id).exists()
@@ -234,12 +328,8 @@ def test_batch_operate_no_nodes_raises():
 @pytest.mark.django_db
 def test_batch_operate_stop_creates_task_and_actions(setup):
     region, collector, node = setup
-    with patch(
-        "apps.node_mgmt.services.node.timeout_collector_action_task.apply_async"
-    ) as apply_mock:
-        task_id = NodeService.batch_operate_node_collector(
-            [node.id], collector.id, "stop", created_by="tester"
-        )
+    with patch("apps.node_mgmt.services.node.timeout_collector_action_task.apply_async") as apply_mock:
+        task_id = NodeService.batch_operate_node_collector([node.id], collector.id, "stop", created_by="tester")
     apply_mock.assert_called_once()
     task = CollectorActionTask.objects.get(id=task_id)
     assert task.action == "stop"
@@ -259,9 +349,7 @@ def test_batch_operate_start_creates_default_config(setup):
     region, collector, node = setup
     collector.default_config = {"nats": "key = value"}
     collector.save()
-    with patch(
-        "apps.node_mgmt.services.node.timeout_collector_action_task.apply_async"
-    ), patch(
+    with patch("apps.node_mgmt.services.node.timeout_collector_action_task.apply_async"), patch(
         "apps.node_mgmt.services.node.Sidecar.get_cloud_region_envconfig",
         return_value={"SIDECAR_INPUT_MODE": "nats"},
     ):
@@ -392,20 +480,14 @@ def test_get_nodes_by_ids_empty():
 @pytest.mark.django_db
 def test_process_node_data_marks_active_and_collector_names(setup):
     region, collector, node = setup
-    config = CollectorConfiguration.objects.create(
-        name="cfg-process", collector=collector, cloud_region=region
-    )
+    config = CollectorConfiguration.objects.create(name="cfg-process", collector=collector, cloud_region=region)
     now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S%z")
     node_data = [
         {
             "id": node.id,
             "name": node.name,
             "updated_at": now_iso,
-            "status": {
-                "collectors": [
-                    {"collector_id": collector.id, "configuration_id": config.id, "status": 0}
-                ]
-            },
+            "status": {"collectors": [{"collector_id": collector.id, "configuration_id": config.id, "status": 0}]},
         }
     ]
     result = NodeService.process_node_data(node_data)
@@ -429,12 +511,8 @@ def test_process_node_data_includes_install_status(setup):
     region, collector, node = setup
     from apps.node_mgmt.models.installer import NodeCollectorInstallStatus
 
-    NodeCollectorInstallStatus.objects.create(
-        node=node, collector=collector, status="success", result={"msg": "ok"}
-    )
-    NodeCollectorInstallStatus.objects.create(
-        node=node, collector=collector, status="error", result={"msg": "bad"}
-    )
+    NodeCollectorInstallStatus.objects.create(node=node, collector=collector, status="success", result={"msg": "ok"})
+    NodeCollectorInstallStatus.objects.create(node=node, collector=collector, status="error", result={"msg": "bad"})
     now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S%z")
     node_data = [{"id": node.id, "name": node.name, "updated_at": now_iso, "status": {}}]
     result = NodeService.process_node_data(node_data)
@@ -444,13 +522,132 @@ def test_process_node_data_includes_install_status(setup):
     assert all(item["collector_name"] == "Telegraf" for item in installs)
 
 
-@pytest.mark.django_db
 def test_build_scoped_permission_no_team_returns_empty():
-    assert NodeService._build_scoped_permission({"username": "u", "domain": "d"}) == {}
+    assert NodeService._build_scoped_permission({"username": "u", "domain": "d"}) == ({}, None)
 
 
-@pytest.mark.django_db
 def test_build_scoped_permission_invalid_team_returns_empty():
+    assert NodeService._build_scoped_permission({"username": "u", "domain": "d", "current_team": "abc"}) == ({}, None)
+
+
+@pytest.mark.parametrize("current_team", [True, 1.0, 0, -1, "01", "1.0"])
+def test_build_scoped_permission_rejects_noncanonical_current_team(
+    monkeypatch,
+    current_team,
+):
+    class _EchoSystemMgmt:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def get_authorized_groups_scoped(self, actor_context, include_children=False):
+            return {"result": True, "data": [actor_context["current_team"]]}
+
+    monkeypatch.setattr("apps.node_mgmt.services.node.SystemMgmt", _EchoSystemMgmt)
+    monkeypatch.setattr(
+        "apps.node_mgmt.services.node.get_permission_rules",
+        lambda *args, **kwargs: {"team": [1], "instance": []},
+    )
+
     assert NodeService._build_scoped_permission(
-        {"username": "u", "domain": "d", "current_team": "abc"}
-    ) == {}
+        {
+            "username": "u",
+            "domain": "d",
+            "current_team": current_team,
+        }
+    ) == ({}, None)
+
+
+@pytest.mark.parametrize(
+    "authorized_groups",
+    [[True], [1.0], ["01"], [1, True], [1, None]],
+)
+def test_build_scoped_permission_rejects_noncanonical_authorized_groups(
+    monkeypatch,
+    authorized_groups,
+):
+    class _ScopedSystemMgmt:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def get_authorized_groups_scoped(self, actor_context, include_children=False):
+            return {"result": True, "data": authorized_groups}
+
+    monkeypatch.setattr("apps.node_mgmt.services.node.SystemMgmt", _ScopedSystemMgmt)
+    monkeypatch.setattr(
+        "apps.node_mgmt.services.node.get_permission_rules",
+        lambda *args, **kwargs: {"team": [1], "instance": []},
+    )
+
+    assert NodeService._build_scoped_permission({"username": "u", "domain": "d", "current_team": 1}) == ({}, None)
+
+
+@pytest.mark.parametrize("include_children", [False, 0, 1, "0", "true"])
+def test_build_scoped_permission_does_not_enable_children_for_pseudo_true_values(
+    monkeypatch,
+    include_children,
+):
+    calls = []
+
+    class _ScopedSystemMgmt:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def get_authorized_groups_scoped(self, actor_context, include_children=False):
+            calls.append(("scope", include_children))
+            return {"result": True, "data": [1]}
+
+    def get_permission_rules(*args, **kwargs):
+        calls.append(("permission", kwargs["include_children"]))
+        return {"team": [1], "instance": []}
+
+    monkeypatch.setattr("apps.node_mgmt.services.node.SystemMgmt", _ScopedSystemMgmt)
+    monkeypatch.setattr(
+        "apps.node_mgmt.services.node.get_permission_rules",
+        get_permission_rules,
+    )
+
+    _, scope = NodeService._build_scoped_permission(
+        {
+            "username": "u",
+            "domain": "d",
+            "current_team": 1,
+            "include_children": include_children,
+        }
+    )
+
+    assert scope.include_children is False
+    assert calls == [("scope", False), ("permission", False)]
+
+
+@pytest.mark.parametrize("include_children", [True, "1"])
+def test_build_scoped_permission_enables_children_only_for_explicit_values(
+    monkeypatch,
+    include_children,
+):
+    calls = []
+
+    class _ScopedSystemMgmt:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def get_authorized_groups_scoped(self, actor_context, include_children=False):
+            calls.append(include_children)
+            return {"result": True, "data": [1]}
+
+    monkeypatch.setattr("apps.node_mgmt.services.node.SystemMgmt", _ScopedSystemMgmt)
+    monkeypatch.setattr(
+        "apps.node_mgmt.services.node.get_permission_rules",
+        lambda *args, **kwargs: {"team": [1], "instance": []},
+    )
+
+    _, scope = NodeService._build_scoped_permission(
+        {
+            "username": "u",
+            "domain": "d",
+            "current_team": 1,
+            "include_children": include_children,
+        }
+    )
+
+    assert scope.include_children is True
+    assert calls == [True]

@@ -5,7 +5,7 @@ from django.utils import timezone as dj_timezone
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import node_logger as logger
-from apps.core.utils.current_team_scope import CurrentTeamDataScope
+from apps.core.utils.current_team_scope import CurrentTeamDataScope, _normalize_organization_ids
 from apps.core.utils.permission_utils import get_permission_rules, permission_filter
 from apps.core.utils.safe_template import build_sandboxed_env
 from apps.node_mgmt.constants.collector import CollectorConstants
@@ -35,15 +35,16 @@ class NodeService:
     @staticmethod
     def _build_scoped_permission(permission_data):
         user_obj = User(username=permission_data["username"], domain=permission_data["domain"])
-        include_children = permission_data.get("include_children", False)
+        include_children_value = permission_data.get("include_children", False)
+        include_children = include_children_value is True or (type(include_children_value) is str and include_children_value == "1")
         current_team = permission_data.get("current_team")
 
         if current_team in (None, ""):
             return {}, None
 
         try:
-            current_team = int(current_team)
-        except (TypeError, ValueError):
+            current_team = next(iter(_normalize_organization_ids([current_team])))
+        except BaseAppException:
             return {}, None
 
         scope_result = SystemMgmt(is_local_client=True).get_authorized_groups_scoped(
@@ -59,8 +60,8 @@ class NodeService:
             return {}, None
 
         try:
-            authorized_groups = frozenset(int(group_id) for group_id in scope_result["data"])
-        except (TypeError, ValueError):
+            authorized_groups = _normalize_organization_ids(scope_result["data"])
+        except BaseAppException:
             return {}, None
         if not authorized_groups or current_team not in authorized_groups:
             return {}, None

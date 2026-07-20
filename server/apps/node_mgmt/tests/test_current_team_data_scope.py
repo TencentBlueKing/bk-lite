@@ -8,6 +8,7 @@ from apps.core.utils import current_team_scope
 from apps.node_mgmt.models.installer import CollectorTask, CollectorTaskNode, ControllerTask, ControllerTaskNode
 from apps.node_mgmt.models.sidecar import CloudRegion, Collector, CollectorConfiguration, Node, NodeOrganization
 from apps.node_mgmt.services import node as node_service
+from apps.node_mgmt.services.installer import InstallerService
 from apps.node_mgmt.utils import permission as node_permission
 from apps.node_mgmt.views import installer as installer_view
 
@@ -162,6 +163,53 @@ def test_shared_configuration_write_requires_all_impacted_orgs(monkeypatch):
     assert not writable.filter(id=shared_config.id).exists()
 
 
+@pytest.mark.django_db
+def test_shared_configuration_with_unassigned_node_is_not_mutable(monkeypatch):
+    region = _region("shared-configuration-unassigned")
+    assigned_node = _node(region, "shared-node-assigned", 1)
+    unassigned_node = Node.objects.create(
+        id="shared-node-unassigned",
+        name="shared-node-unassigned",
+        ip="10.0.1.2",
+        operating_system="linux",
+        cpu_architecture="x86_64",
+        collector_configuration_directory="/etc/collector",
+        cloud_region=region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    collector = Collector.objects.create(
+        id="shared-collector-unassigned",
+        name="shared-collector-unassigned",
+        service_type="exec",
+        node_operating_system="linux",
+        executable_path="/bin/collector",
+        execute_parameters="",
+        created_by="tester",
+        updated_by="tester",
+    )
+    shared_config = CollectorConfiguration.objects.create(
+        id="shared-config-unassigned",
+        name="shared-config-unassigned",
+        collector=collector,
+        config_template="template",
+        cloud_region=region,
+        created_by="admin",
+        updated_by="admin",
+    )
+    shared_config.nodes.add(assigned_node, unassigned_node)
+    monkeypatch.setattr(current_team_scope, "SystemMgmt", _ScopedSystemMgmt)
+    monkeypatch.setattr(
+        node_permission,
+        "get_authorized_collector_configuration_queryset",
+        lambda request, permission=None: CollectorConfiguration.objects.filter(id=shared_config.id),
+    )
+
+    writable = node_permission.get_mutable_collector_configuration_queryset(_request())
+
+    assert not writable.filter(id=shared_config.id).exists()
+
+
 def test_superuser_target_organizations_must_be_assignable(monkeypatch):
     monkeypatch.setattr(current_team_scope, "SystemMgmt", _ScopedSystemMgmt)
 
@@ -257,6 +305,46 @@ def test_controller_task_nodes_follow_current_node_org_and_legacy_snapshot(
         linked_current.id,
         legacy_current.id,
     ]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "organizations",
+    [[True], [1.0], ["01"], [1, None], [1, ""], [1, "invalid"]],
+)
+def test_legacy_controller_task_snapshot_rejects_any_noncanonical_organization(
+    organizations,
+):
+    region = _region("controller-task-invalid-snapshot")
+    task = ControllerTask.objects.create(
+        cloud_region=region,
+        type="install",
+        status="running",
+        work_node="worker",
+        package_version_id=1,
+        created_by="admin",
+        updated_by="admin",
+    )
+    ControllerTaskNode.objects.create(
+        task=task,
+        node_id="",
+        ip="10.0.2.1",
+        node_name="legacy-invalid",
+        os="linux",
+        organizations=organizations,
+        port=22,
+        username="root",
+        password="",
+        status="waiting",
+    )
+
+    task_nodes = InstallerService.get_authorized_controller_task_nodes(
+        task.id,
+        authorized_nodes=Node.objects.none(),
+        scope=SimpleNamespace(data_team_ids=frozenset({1})),
+    )
+
+    assert task_nodes == []
 
 
 @pytest.mark.django_db

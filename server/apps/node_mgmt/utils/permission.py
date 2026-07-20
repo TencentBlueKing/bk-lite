@@ -2,6 +2,7 @@ from django.db.models import Q
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.current_team_scope import (
+    _normalize_organization_ids,
     resolve_assignable_organization_ids,
     resolve_current_team_data_scope,
     scope_permission_queryset,
@@ -24,18 +25,12 @@ def normalize_ids(values):
 
 
 def normalize_orgs(values):
-    if not values:
+    if values is None:
         return set()
-    if not isinstance(values, list):
-        values = [values]
-
-    organizations = set()
-    for value in values:
-        try:
-            organizations.add(int(value))
-        except (TypeError, ValueError):
-            continue
-    return organizations
+    try:
+        return set(_normalize_organization_ids(values))
+    except BaseAppException:
+        return set()
 
 
 def get_node_permission(request):
@@ -128,13 +123,23 @@ def get_mutable_collector_configuration_queryset(request, permission=None):
     if bound_config_ids:
         assignable_orgs = set(resolve_assignable_organization_ids(request))
         impacted_orgs_by_config = {config_id: set() for config_id in bound_config_ids}
-        for config_id, organization_id in CollectorConfiguration.objects.filter(id__in=bound_config_ids).values_list(
-            "id", "nodes__nodeorganization__organization"
+        associated_nodes_by_config = {config_id: set() for config_id in bound_config_ids}
+        assigned_nodes_by_config = {config_id: set() for config_id in bound_config_ids}
+        for config_id, node_id, organization_id in CollectorConfiguration.objects.filter(id__in=bound_config_ids).values_list(
+            "id", "nodes__id", "nodes__nodeorganization__organization"
         ):
+            if node_id is None:
+                continue
+            associated_nodes_by_config[config_id].add(node_id)
             if organization_id is not None:
+                assigned_nodes_by_config[config_id].add(node_id)
                 impacted_orgs_by_config[config_id].add(organization_id)
         writable_bound_ids = [
-            config_id for config_id, impacted_orgs in impacted_orgs_by_config.items() if impacted_orgs and impacted_orgs.issubset(assignable_orgs)
+            config_id
+            for config_id, impacted_orgs in impacted_orgs_by_config.items()
+            if associated_nodes_by_config[config_id]
+            and associated_nodes_by_config[config_id] == assigned_nodes_by_config[config_id]
+            and impacted_orgs.issubset(assignable_orgs)
         ]
 
     writable_ids = list(dict.fromkeys([*writable_unbound_ids, *writable_bound_ids]))
