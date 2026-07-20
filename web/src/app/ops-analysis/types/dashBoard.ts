@@ -98,6 +98,7 @@ export interface ValueConfig {
   chartThemeMode?: OpsChartThemeMode;
   dataSource?: string | number;
   compare?: boolean;
+  compareMode?: 'percent' | 'value';
   params?: Record<string, string | number | boolean | [number, number] | null>;
   dataSourceParams?: ParamItem[];
   tableConfig?: TableConfig;

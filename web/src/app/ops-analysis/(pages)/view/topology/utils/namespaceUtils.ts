@@ -214,6 +214,7 @@ export const buildValueConfig = (
   }
   if (values.chartType === 'single') {
     valueConfig.compare = !!values.compare;
+    valueConfig.compareMode = values.compareMode || 'percent';
     valueConfig.selectedFields = values.selectedFields;
     valueConfig.thresholdColors = values.thresholdColors;
     if (values.unit !== undefined) valueConfig.unit = values.unit;
