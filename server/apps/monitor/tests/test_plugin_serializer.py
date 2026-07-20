@@ -4,7 +4,7 @@ import pytest
 from rest_framework import serializers
 
 from apps.monitor.models import MonitorPlugin
-from apps.monitor.models.monitor_object import MonitorObject
+from apps.monitor.models.monitor_object import MonitorObject, MonitorObjectType
 from apps.monitor.serializers.plugin import MonitorPluginSerializer
 
 pytestmark = pytest.mark.django_db
@@ -75,15 +75,19 @@ class TestGetParentMonitorObject:
         assert MonitorPluginSerializer().get_parent_monitor_object(plugin) is None
 
     def test_returns_first_parent_using_monitor_object_default_ordering(self):
+        later_type = MonitorObjectType.objects.create(id="PSLaterType", name="Later", order=200)
+        earlier_type = MonitorObjectType.objects.create(id="PSEarlierType", name="Earlier", order=100)
         lower_id_later = MonitorObject.objects.create(
             name="PSParentOrderedLater",
             level="base",
-            order=200,
+            type=later_type,
+            order=1,
         )
         higher_id_earlier = MonitorObject.objects.create(
             name="PSParentOrderedEarlier",
             level="base",
-            order=100,
+            type=earlier_type,
+            order=999,
         )
         plugin = MonitorPlugin.objects.create(name="PSPluginOrderedParents")
         plugin.monitor_object.add(lower_id_later, higher_id_earlier)
