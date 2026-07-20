@@ -9,6 +9,7 @@ import Image from 'next/image';
 import { useTranslation } from '@/utils/i18n';
 import { getApplication } from '@/api/bot';
 import { getAvatar } from '@/utils/avatar';
+import { withBasePath } from '@/utils/basePath';
 
 type SearchType = 'ConversationList' | 'WorkbenchPage' | 'ChatHistory';
 
@@ -149,7 +150,7 @@ export default function SearchPage() {
                 arrowIcon={false}
                 prefix={
                     <Avatar
-                        src={isConversation ? chatItem.avatar : messageItem.chatAvatar}
+                        src={withBasePath(isConversation ? chatItem.avatar : messageItem.chatAvatar)}
                         style={{ '--size': '48px' }}
                         className="ml-1 mr-1"
                     />
