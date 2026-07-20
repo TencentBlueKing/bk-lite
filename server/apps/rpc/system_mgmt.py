@@ -67,6 +67,9 @@ class SystemMgmt(object):
         )
         return return_data
 
+    def get_assignable_groups(self, actor_context):
+        return self.client.run("get_assignable_groups", actor_context=actor_context)
+
     def get_client(self, client_id, username="", domain="domain.com"):
         return_data = self.client.run("get_client", client_id=client_id, username=username, domain=domain)
         return return_data

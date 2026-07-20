@@ -1,7 +1,7 @@
 import types
 
 from apps.system_mgmt import nats_api
-from apps.system_mgmt.nats_api import get_authorized_groups_scoped, get_group_users_scoped
+from apps.system_mgmt.nats_api import get_assignable_groups, get_authorized_groups_scoped, get_group_users_scoped
 
 
 def test_get_authorized_groups_scoped_prefers_actor_context_group_list(monkeypatch):
@@ -93,3 +93,67 @@ def test_get_group_users_scoped_filters_json_group_list_with_contains(monkeypatc
     args, kwargs = user_manager.calls[1]
     assert kwargs == {}
     assert args[0].children == [("group_list__contains", 7)]
+
+
+def test_get_assignable_groups_uses_persisted_authorization_not_actor_group_list(monkeypatch):
+    user = types.SimpleNamespace(username="actor", domain="domain.com", group_list=[7, 8])
+
+    class _UserQuerySet:
+        @staticmethod
+        def first():
+            return user
+
+    class _UserManager:
+        @staticmethod
+        def filter(**kwargs):
+            return _UserQuerySet()
+
+    monkeypatch.setattr(nats_api.User, "objects", _UserManager())
+    captured = {}
+
+    def fake_get_group_with_descendants_filtered(group_ids, group_list=None):
+        captured["group_ids"] = group_ids
+        captured["group_list"] = group_list
+        return [7, 8, 9]
+
+    monkeypatch.setattr(nats_api.GroupUtils, "get_group_with_descendants_filtered", fake_get_group_with_descendants_filtered)
+
+    result = get_assignable_groups(
+        {
+            "username": "actor",
+            "domain": "domain.com",
+            "group_list": [999],
+            "is_superuser": False,
+        }
+    )
+
+    assert result == {"result": True, "data": [7, 8, 9]}
+    assert captured == {"group_ids": [7, 8], "group_list": [7, 8]}
+
+
+def test_get_assignable_groups_returns_all_existing_groups_for_superuser(monkeypatch):
+    user = types.SimpleNamespace(username="admin", domain="domain.com", group_list=[], is_superuser=True)
+
+    class _UserQuerySet:
+        @staticmethod
+        def first():
+            return user
+
+    class _UserManager:
+        @staticmethod
+        def filter(**kwargs):
+            return _UserQuerySet()
+
+    class _GroupManager:
+        @staticmethod
+        def values_list(*fields, **kwargs):
+            assert fields == ("id",)
+            assert kwargs == {"flat": True}
+            return [8, 2]
+
+    monkeypatch.setattr(nats_api.User, "objects", _UserManager())
+    monkeypatch.setattr(nats_api.Group, "objects", _GroupManager())
+
+    result = get_assignable_groups({"username": "admin", "domain": "domain.com", "is_superuser": True})
+
+    assert result == {"result": True, "data": [8, 2]}

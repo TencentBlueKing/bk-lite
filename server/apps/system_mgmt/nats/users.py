@@ -110,6 +110,29 @@ def get_authorized_groups_scoped(actor_context, include_children=False):
 
 
 @nats_client.register
+def get_assignable_groups(actor_context):
+    """返回调用方可作为组织分配目标的真实组织范围。"""
+    username = (actor_context or {}).get("username")
+    domain = (actor_context or {}).get("domain", "domain.com")
+    if not username:
+        return {"result": True, "data": []}
+
+    user_obj = User.objects.filter(username=username, domain=domain).first()
+    if not user_obj:
+        return {"result": True, "data": []}
+
+    if getattr(user_obj, "is_superuser", False):
+        return {"result": True, "data": list(Group.objects.values_list("id", flat=True))}
+
+    user_group_list = list(user_obj.group_list or [])
+    if not user_group_list:
+        return {"result": True, "data": []}
+
+    groups = GroupUtils.get_group_with_descendants_filtered(user_group_list, group_list=user_group_list)
+    return {"result": True, "data": groups}
+
+
+@nats_client.register
 def get_all_users():
     data = User.objects.all().values(*User.display_fields())
     return {"result": True, "data": list(data)}
