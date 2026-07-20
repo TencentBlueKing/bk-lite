@@ -55,7 +55,7 @@ redis-cli -h <host> -p <port> --user <username> -a <password> INFO server
 | --- | --- | --- |
 | 用户名 | 否 | 仅 Redis 6+ 启用 ACL 时填写；未启用 ACL 可留空 |
 | 密码 | 否 | Redis 设置 `requirepass` 时填写对应密码，未启用认证可留空 |
-| 主机 | 是 | 负责采集的探针节点 |
+| 主机 | 是 | Redis 服务所在主机地址（采集目标，非探针节点） |
 | 端口 | 是 | Redis 服务端口，默认 `6379` |
 | 间隔 | 是 | 采集周期，单位秒，默认 `60` |
 | 节点 | 是 | 采集节点 |

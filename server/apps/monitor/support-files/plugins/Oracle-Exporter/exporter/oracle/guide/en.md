@@ -57,7 +57,7 @@ curl -sS "http://127.0.0.1:<listen_port>/metrics" | head
 The integration is basically healthy when:
 
 - `sqlplus` can log in to the target Oracle instance
-- `curl http://127.0.0.1:<listen_port>/metrics` returns `200` and contains `oracle_*` metric lines
+- `curl http://127.0.0.1:<listen_port>/metrics` returns `200` and contains `oracledb_*` metric lines
 
 ## Field Reference
 
@@ -92,7 +92,7 @@ The integration is basically healthy when:
 ### 3. Exporter not listening / port conflict
 
 - In this plugin, "Listen Port" is the local port on which Oracle-Exporter exposes `/metrics` on the collector node, distinct from "Port" (the Oracle database itself, default `1521`). Do not confuse them.
-- Run `curl -v http://127.0.0.1:<listen_port>/metrics` on the collector node; it should return `200` and contain `oracle_*` metric lines.
+- Run `curl -v http://127.0.0.1:<listen_port>/metrics` on the collector node; it should return `200` and contain `oracledb_*` metric lines.
 - If the port is already in use, change the Oracle-Exporter listen port and update "Listen Port" in this plugin configuration accordingly.
 - Inspect Oracle-Exporter logs to identify startup failures (for example, an incorrect connection string or insufficient account privileges).
 

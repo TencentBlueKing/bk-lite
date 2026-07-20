@@ -39,7 +39,7 @@ sqlcmd -S <host>,<port> -U <user> -P '<password>' -Q "SELECT @@VERSION"
 满足以下条件可认为账号与网络基本可用：
 
 - 命令无认证错误，能正常返回 `SELECT @@VERSION` 结果（含 SQL Server 版本号）。
-- 若使用命名实例，请使用 `-S <host>\\<instance_name>` 形式连接。
+- 若使用命名实例，请使用 `-S <host>\<instance_name>` 形式连接。
 
 ## 页面字段说明
 

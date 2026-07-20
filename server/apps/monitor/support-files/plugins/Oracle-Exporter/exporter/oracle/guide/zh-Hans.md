@@ -57,7 +57,7 @@ curl -sS "http://127.0.0.1:<监听端口>/metrics" | head
 满足以下条件可认为接入基本可用：
 
 - `sqlplus` 能成功登录目标 Oracle 实例
-- `curl http://127.0.0.1:<监听端口>/metrics` 返回 `200` 且包含 `oracle_*` 指标行
+- `curl http://127.0.0.1:<监听端口>/metrics` 返回 `200` 且包含 `oracledb_*` 指标行
 
 ## 页面字段说明
 
@@ -92,7 +92,7 @@ curl -sS "http://127.0.0.1:<监听端口>/metrics" | head
 ### 3. exporter 未监听 / 端口冲突
 
 - 本插件中「监听端口」是 Oracle-Exporter 在采集节点本地暴露 `/metrics` 的端口，区别于「端口」（Oracle 数据库本身，默认 `1521`）。两者不可混用。
-- 在采集节点执行 `curl -v http://127.0.0.1:<监听端口>/metrics`，确认返回 `200` 且包含 `oracle_*` 指标行。
+- 在采集节点执行 `curl -v http://127.0.0.1:<监听端口>/metrics`，确认返回 `200` 且包含 `oracledb_*` 指标行。
 - 若端口被占用，调整 Oracle-Exporter 的监听端口并同步更新本插件配置中的「监听端口」。
 - 查看 Oracle-Exporter 日志，定位启动失败原因（如数据库连接串错误、账号权限不足）。
 
