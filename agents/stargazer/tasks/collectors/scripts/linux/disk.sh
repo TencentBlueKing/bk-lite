@@ -11,7 +11,7 @@ disk_number_or_zero() {
       ;;
   esac
 }
-df -P -B1 -x tmpfs -x devtmpfs -x squashfs 2>/dev/null | tail -n +2 | while read fs size used avail pct mount; do
+df -PT -B1 -x tmpfs -x devtmpfs -x squashfs 2>/dev/null | tail -n +2 | while read fs fstype size used avail pct mount; do
   case "$fs:$mount" in
     overlay:*|*:/var/lib/docker/overlay2/*/merged|*:/data/lib/docker/overlay2/*/merged|*:/run/containerd/*)
       continue
@@ -26,6 +26,7 @@ df -P -B1 -x tmpfs -x devtmpfs -x squashfs 2>/dev/null | tail -n +2 | while read
   mount_json=$(json_escape "$mount")
   inode_pct=$(df -Pi "$mount" 2>/dev/null | tail -n 1 | awk '{print $5}' | tr -d '%')
   inode_pct=$(disk_number_or_zero "$inode_pct")
-  echo "{\"mount\":\"$mount_json\",\"total_bytes\":$size,\"free_bytes\":$avail,\"used_bytes\":$used,\"used_percent\":$used_pct,\"inodes_used_percent\":${inode_pct:-0}}"
+  fstype_json=$(json_escape "$fstype")
+  echo "{\"mount\":\"$mount_json\",\"path\":\"$mount_json\",\"fstype\":\"$fstype_json\",\"total_bytes\":$size,\"free_bytes\":$avail,\"used_bytes\":$used,\"used_percent\":$used_pct,\"inodes_used_percent\":${inode_pct:-0}}"
 done
 echo ']'

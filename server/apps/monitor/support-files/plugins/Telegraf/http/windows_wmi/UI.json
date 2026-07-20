@@ -92,6 +92,36 @@
       }
     },
     {
+      "name": "disk_include_fstypes",
+      "label": "仅采集的文件系统类型",
+      "type": "input",
+      "required": false,
+      "default_value": "",
+      "description": "逗号分隔；留空表示不限制类型，例如 NTFS,ReFS。",
+      "widget_props": {
+        "placeholder": "NTFS,ReFS"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.http_headers.disk_include_fstypes"
+      },
+      "label_en": "Included Filesystem Types"
+    },
+    {
+      "name": "disk_exclude_fstypes",
+      "label": "排除的文件系统类型",
+      "type": "input",
+      "required": false,
+      "default_value": "tmpfs,devtmpfs,devfs,iso9660,overlay,aufs,squashfs",
+      "description": "逗号分隔；黑名单优先于仅采集列表，例如 FAT,FAT32,exFAT。",
+      "widget_props": {
+        "placeholder": "FAT,FAT32,exFAT"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.http_headers.disk_exclude_fstypes"
+      },
+      "label_en": "Excluded Filesystem Types"
+    },
+    {
       "name": "timeout",
       "label": "超时",
       "type": "inputNumber",

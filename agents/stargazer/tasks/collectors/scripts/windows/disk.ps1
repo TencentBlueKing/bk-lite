@@ -7,6 +7,8 @@ foreach ($d in $disks) {
     $pct = if ($total -gt 0) { [math]::Round($used / $total * 100, 2) } else { 0 }
     $diskArr += @{
         mount = $d.DeviceID
+        path = $d.DeviceID
+        fstype = $d.FileSystem
         total_bytes = $total
         free_bytes = $free
         used_bytes = $used

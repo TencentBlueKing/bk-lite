@@ -7,6 +7,7 @@ from typing import Dict, Any, List
 from urllib.parse import unquote
 
 from .base_collector import BaseCollector
+from .disk_filter import should_collect_disk
 
 logger = logging.getLogger("stargazer.host_collector")
 
@@ -137,7 +138,13 @@ def _append_gauge(lines: List[str], name: str, labels: str, value: Any, timestam
 
 
 def parse_metrics_to_prometheus(
-    data: Dict[str, Any], instance_id: str, os_type: str, timestamp: int | None = None
+    data: Dict[str, Any],
+    instance_id: str,
+    os_type: str,
+    timestamp: int | None = None,
+    *,
+    disk_include_fstypes: Any = None,
+    disk_exclude_fstypes: Any = None,
 ) -> str:
     lines = []
     timestamp = int(timestamp) if timestamp is not None else int(time.time() * 1000)
@@ -185,7 +192,15 @@ def parse_metrics_to_prometheus(
         if isinstance(disks, list):
             for disk in disks:
                 mount = disk.get("mount", "unknown")
-                disk_labels = f"{base_labels},{_format_prometheus_labels(mount=mount)}"
+                path = disk.get("path") or mount
+                fstype = disk.get("fstype") or ""
+                if not should_collect_disk(
+                    fstype,
+                    include_fstypes=disk_include_fstypes,
+                    exclude_fstypes=disk_exclude_fstypes,
+                ):
+                    continue
+                disk_labels = f"{base_labels},{_format_prometheus_labels(mount=mount, path=path, fstype=fstype)}"
                 total = disk.get("total_bytes", 0)
                 used = disk.get("used_bytes", 0)
                 free = _metric_value(disk, "free_bytes", "available_bytes", default=max(float(total or 0) - float(used or 0), 0))
@@ -404,6 +419,8 @@ class HostCollector(BaseCollector):
             instance_id,
             os_type,
             timestamp=callback_timestamp,
+            disk_include_fstypes=self.params.get("disk_include_fstypes"),
+            disk_exclude_fstypes=self.params.get("disk_exclude_fstypes"),
         )
 
         logger.info(f"[Host Collector] Completed: host={host}, metrics_size={len(prometheus_metrics)}")

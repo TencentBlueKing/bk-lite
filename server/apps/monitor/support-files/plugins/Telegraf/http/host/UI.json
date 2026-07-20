@@ -71,6 +71,36 @@
       }
     },
     {
+      "name": "disk_include_fstypes",
+      "label": "仅采集的文件系统类型",
+      "type": "input",
+      "required": false,
+      "default_value": "",
+      "description": "逗号分隔；留空表示不限制类型，例如 ext4,xfs 或 NTFS,ReFS。",
+      "widget_props": {
+        "placeholder": "ext4,xfs"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.http_headers.disk_include_fstypes"
+      },
+      "label_en": "Included Filesystem Types"
+    },
+    {
+      "name": "disk_exclude_fstypes",
+      "label": "排除的文件系统类型",
+      "type": "input",
+      "required": false,
+      "default_value": "tmpfs,devtmpfs,devfs,iso9660,overlay,aufs,squashfs",
+      "description": "逗号分隔；黑名单优先于仅采集列表，例如 vfat,exfat,ntfs。",
+      "widget_props": {
+        "placeholder": "vfat,exfat,ntfs"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.http_headers.disk_exclude_fstypes"
+      },
+      "label_en": "Excluded Filesystem Types"
+    },
+    {
       "name": "username",
       "label": "用户名",
       "type": "input",
