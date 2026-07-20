@@ -24,4 +24,4 @@ def apply(metric):
 
     [processors.starlark.constants]
         disk_include_fstypes = "{{ disk_include_fstypes | default('', true) | replace('\\', '\\\\') | replace('"', '\\"') }}"
-        disk_exclude_fstypes = "{{ disk_exclude_fstypes | default('tmpfs,devtmpfs,devfs,iso9660,overlay,aufs,squashfs,vfat,exfat,fat,fat32', true) | replace('\\', '\\\\') | replace('"', '\\"') }}"
+        disk_exclude_fstypes = "{{ disk_exclude_fstypes | default('tmpfs,devtmpfs,devfs,iso9660,overlay,aufs,squashfs,vfat,exfat,fat,fat32') | replace('\\', '\\\\') | replace('"', '\\"') }}"
