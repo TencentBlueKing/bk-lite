@@ -1,9 +1,15 @@
 """MonitorObjectViewSet / MonitorObjectTypeViewSet / 组织规则视图补充测试。"""
 
+from types import SimpleNamespace
+
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 
 from apps.monitor.models import MonitorObjectOrganizationRule
 from apps.monitor.models.monitor_object import MonitorObject, MonitorObjectType
+from apps.monitor.serializers.monitor_object import MonitorObjectSerializer
+from apps.monitor.views.monitor_object import MonitorObjectViewSet
 
 pytestmark = pytest.mark.django_db
 
@@ -27,6 +33,24 @@ class TestMonitorObjectList:
         resp = api_client.get(f"{BASE}/api/monitor_object/?parent_only=true")
         names = {r["name"] for r in resp.json()["data"]}
         assert "OVP2" in names and "OVC2" not in names
+
+    def test_type_serialization_query_count_is_constant(self):
+        single_type = MonitorObjectType.objects.create(id="query-single", name="单对象类型")
+        multiple_type = MonitorObjectType.objects.create(id="query-multiple", name="多对象类型")
+        MonitorObject.objects.create(name="OVQuerySingle0", level="base", type=single_type)
+        for index in range(4):
+            MonitorObject.objects.create(name=f"OVQueryMultiple{index}", level="base", type=multiple_type)
+
+        view = MonitorObjectViewSet()
+        view.request = SimpleNamespace(query_params={})
+
+        def serialize(prefix):
+            queryset = view.get_queryset().filter(name__startswith=prefix)
+            with CaptureQueriesContext(connection) as queries:
+                MonitorObjectSerializer(queryset, many=True).data
+            return len(queries)
+
+        assert serialize("OVQuerySingle") == serialize("OVQueryMultiple") == 1
 
 
 class TestMonitorObjectCreate:

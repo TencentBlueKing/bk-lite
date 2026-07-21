@@ -30,7 +30,7 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         """默认返回所有对象（父+子），传 parent_only=true 时只返回父对象"""
-        queryset = super().get_queryset()
+        queryset = super().get_queryset().select_related("type")
         if "parent" in self.request.query_params:
             return queryset
         if self.request.query_params.get("parent_only") in ["true", "True"]:
