@@ -1,0 +1,72 @@
+import uuid
+
+import pytest
+from django.db import IntegrityError, transaction
+
+from apps.alerts.models import Incident, IncidentIMGroup, IncidentIMMember
+from apps.system_mgmt.models import IMNotificationChannel, IntegrationInstance
+
+
+@pytest.fixture
+def incident(db):
+    return Incident.objects.create(
+        incident_id=f"INC-{uuid.uuid4().hex}",
+        level="warning",
+        title="Incident IM 模型测试",
+    )
+
+
+@pytest.fixture
+def channel(db):
+    instance = IntegrationInstance.objects.create(
+        name=f"feishu-{uuid.uuid4().hex}",
+        provider_key="feishu",
+        enabled=True,
+        status="ready",
+    )
+    return IMNotificationChannel.objects.create(
+        name=f"channel-{uuid.uuid4().hex}",
+        integration_instance=instance,
+        enabled=True,
+        status="ready",
+    )
+
+
+@pytest.fixture
+def group(incident, channel):
+    return make_group(incident, channel, status=IncidentIMGroup.Status.ACTIVE)
+
+
+def make_group(incident, channel, status):
+    return IncidentIMGroup.objects.create(
+        incident=incident,
+        channel=channel,
+        provider_key="feishu",
+        channel_name_snapshot=channel.name,
+        member_id_type="open_id",
+        group_name=f"[INC-{incident.id}] test-{uuid.uuid4().hex[:8]}",
+        status=status,
+        idempotency_key=f"bklite-{uuid.uuid4().hex}",
+    )
+
+
+@pytest.mark.django_db
+def test_incident_has_only_one_non_unlinked_im_group(incident, channel):
+    make_group(incident, channel, status=IncidentIMGroup.Status.ACTIVE)
+    with pytest.raises(IntegrityError):
+        with transaction.atomic():
+            make_group(incident, channel, status=IncidentIMGroup.Status.PENDING_CREATE)
+
+
+@pytest.mark.django_db
+def test_unlinked_history_allows_new_binding(incident, channel):
+    make_group(incident, channel, status=IncidentIMGroup.Status.UNLINKED)
+    current = make_group(incident, channel, status=IncidentIMGroup.Status.PENDING_CREATE)
+    assert current.status == IncidentIMGroup.Status.PENDING_CREATE
+
+
+@pytest.mark.django_db
+def test_member_identity_is_snapshot_not_mapping_foreign_key(group):
+    field_names = {field.name for field in IncidentIMMember._meta.fields}
+    assert "mapping" not in field_names
+    assert {"username", "external_id", "external_id_type"} <= field_names

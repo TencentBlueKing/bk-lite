@@ -39,6 +39,7 @@ from .enrichment import EnrichmentRule  # noqa: F401
 from .action import ActionRule, ActionExecution  # noqa: F401
 from .active_fingerprint import ActiveAlertFingerprint  # noqa: F401
 from .outbox import AlertOutbox  # noqa: F401
+from .incident_im import IncidentIMGroup, IncidentIMMember  # noqa: F401
 
 __all__ = [
     # 告警源
@@ -72,4 +73,6 @@ __all__ = [
     "ActionExecution",
     "ActiveAlertFingerprint",
     "AlertOutbox",
+    "IncidentIMGroup",
+    "IncidentIMMember",
 ]
