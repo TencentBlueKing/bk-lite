@@ -5,13 +5,16 @@
   "scripts": {
     "dev": "next dev --turbopack --port 3001",
     "dev:tauri": "tauri dev",
-    "build": "next build --turbopack",
     "start": "next start --port 3001",
     "lint": "eslint .",
     "type-check": "tsc --noEmit",
+    "test:h5-deploy": "node --test scripts/mobile-h5-deploy-config-test.mjs",
+    "test:h5-image": "node scripts/mobile-h5-image-test.mjs",
     "clean": "rm -rf .next",
     "prepare": "husky",
     "tauri": "tauri",
+    "build": "node scripts/next-build.mjs",
+    "build:h5": "node scripts/next-build.mjs --target h5",
     "build:android": "node scripts/android-build.mjs --release",
     "build:android-debug": "node scripts/android-build.mjs",
     "build:android-all": "node scripts/android-build.mjs --release --all-targets",
@@ -40,6 +43,7 @@
     "react-intl": "^7.0.1"
   },
   "devDependencies": {
+    "@next/env": "15.5.9",
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
     "@tauri-apps/cli": "^2.8.4",

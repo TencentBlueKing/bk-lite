@@ -50,6 +50,7 @@ import WidgetRenderer from "@/app/ops-analysis/components/widgetRenderer";
 import WidgetErrorState from "@/app/ops-analysis/components/widgetErrorState";
 import { useWidgetHeaderRuntimeSlot } from "@/app/ops-analysis/components/widgetHeaderRuntimeSlot";
 import ComponentParamSwitchControl from "@/app/ops-analysis/components/componentParamSwitchControl";
+import { getDateRangeTimezone } from "@/app/ops-analysis/utils/dateRange";
 
 const validateTopNData = (
   data: unknown,
@@ -436,6 +437,40 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       widgetUsesNamespace,
     ],
   );
+  const dateRangeResolutionInputKey = useMemo(
+    () => JSON.stringify({
+      dataSource: normalizedDataSourceId,
+      dataSourceParams: config?.dataSourceParams ?? dataSource?.params,
+      requestExtraParams,
+      unifiedFilterValues,
+      filterBindings: config?.filterBindings,
+      filterDefinitions,
+      compare: config?.compare,
+    }),
+    [
+      normalizedDataSourceId,
+      config?.dataSourceParams,
+      dataSource?.params,
+      requestExtraParams,
+      unifiedFilterValues,
+      config?.filterBindings,
+      filterDefinitions,
+      config?.compare,
+    ],
+  );
+  const dateRangeResolutionContext = useMemo(
+    () => ({
+      referenceNow: Date.now(),
+      timezone: getDateRangeTimezone(),
+    }),
+    [
+      dateRangeResolutionInputKey,
+      reloadVersion,
+      filterSearchVersion,
+      namespaceSearchVersion,
+      tableQueryKey,
+    ],
+  );
 
   const requestParams = useMemo(() => {
     if (!requestEnabled) {
@@ -449,6 +484,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       unifiedFilterValues,
       filterBindings: config?.filterBindings,
       filterDefinitions,
+      resolutionContext: dateRangeResolutionContext,
     });
   }, [
     requestEnabled,
@@ -457,6 +493,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     requestExtraParams,
     unifiedFilterValues,
     filterDefinitions,
+    dateRangeResolutionContext,
   ]);
 
   const requestSignatureParams = useMemo(() => {
@@ -471,6 +508,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       unifiedFilterValues,
       filterBindings: config?.filterBindings,
       filterDefinitions,
+      resolutionContext: dateRangeResolutionContext,
     });
   }, [
     requestEnabled,
@@ -479,6 +517,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     requestExtraParams,
     unifiedFilterValues,
     filterDefinitions,
+    dateRangeResolutionContext,
   ]);
 
   const requestSignature = useMemo(() => {
@@ -600,6 +639,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
           unifiedFilterValues,
           filterBindings: config?.filterBindings,
           filterDefinitions,
+          resolutionContext: dateRangeResolutionContext,
         }),
       );
 

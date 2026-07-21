@@ -217,6 +217,7 @@ class AlertSourceAdapter(ABC):
                     skipped_missing += 1
                     logger.warning("[AlertSource] 事件缺少必填字段，已跳过: %s", add_event)
                     continue
+                data["team"] = self._resolve_event_team(add_event)
                 data.setdefault("enrichment", {})
                 event_dicts.append((data, add_event))
             except Exception as e:
@@ -253,6 +254,13 @@ class AlertSourceAdapter(ABC):
                 self.alert_source.source_id, len(add_events), len(events),
             )
         bulk_events = self.bulk_save_events(events)
+        accepted = sum(len(batch or []) for batch in (bulk_events or []))
+        self.last_ingestion_result = {
+            "received": len(add_events),
+            "accepted": accepted,
+            "skipped": max(0, len(add_events) - accepted - errored),
+            "errored": errored,
+        }
         return bulk_events
 
     @staticmethod
@@ -592,7 +600,11 @@ class AlertSourceAdapter(ABC):
             events = self.events
         bulk_events = self.create_events(events)
         if not bulk_events:
-            return
+            return getattr(
+                self,
+                "last_ingestion_result",
+                {"received": len(events or []), "accepted": 0, "skipped": len(events or []), "errored": 0},
+            )
 
         # 先执行屏蔽：被屏蔽的事件不应再产出告警，因此屏蔽必须先于即时旁路与聚合，
         # 确保即时旁路按最新屏蔽状态过滤。
@@ -611,6 +623,7 @@ class AlertSourceAdapter(ABC):
             logger.exception("instant dispatch invocation failed; main pipeline continues")
 
         self.handle_recovery_events(bulk_events)
+        return self.last_ingestion_result
 
     @staticmethod
     def handle_recovery_events(bulk_events):

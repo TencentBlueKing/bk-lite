@@ -55,12 +55,17 @@ function formatNumericValue(
 function buildCompareSuffix(
   compareLabel: string,
   changePercent: number | null,
+  compareMode: 'percent' | 'value' = 'percent',
+  displayValue?: string,
 ): string {
   if (changePercent === null) {
     return ` (${compareLabel} --)`;
   }
   const arrow = changePercent > 0 ? '↑' : changePercent < 0 ? '↓' : '';
-  return ` (${compareLabel} ${arrow}${Math.abs(changePercent).toFixed(1)}%)`;
+  const amount = compareMode === 'value' && displayValue !== undefined
+    ? displayValue
+    : `${Math.abs(changePercent).toFixed(compareMode === 'value' ? 2 : 1)}${compareMode === 'value' ? '' : '%'}`;
+  return ` (${compareLabel} ${arrow}${amount})`;
 }
 
 function mergeStyleConfig(
@@ -187,6 +192,25 @@ export const useGraphNodeOperations = ({
             toComparableNumber(baselineValue),
           )
           : null;
+        const currentNumeric = toComparableNumber(value);
+        const baselineNumeric = toComparableNumber(baselineValue);
+        const changeValue = valueConfig.compare
+          && currentNumeric !== null
+          && baselineNumeric !== null
+          ? currentNumeric - baselineNumeric
+          : null;
+        const changeDisplayValue = valueConfig.compareMode === 'value' && changeValue !== null
+          ? valueConfig.unitId
+            ? formatUnit(changeValue, valueConfig.unitId, {
+              decimals: nodeConfig.decimalPlaces,
+              conversionFactor: nodeConfig.conversionFactor,
+            }).text
+            : `${formatNumericValue(
+              changeValue,
+              nodeConfig.conversionFactor,
+              nodeConfig.decimalPlaces,
+            )}${nodeConfig.unit?.trim() ? ` ${nodeConfig.unit}` : ''}`
+          : undefined;
 
         // 值映射优先；其次结构化单位库自动量纲；最后回退到原数值+自由文本单位
         const valueMapping = applyValueMapping(value, valueConfig.valueMappings);
@@ -212,7 +236,9 @@ export const useGraphNodeOperations = ({
         const compareSuffix = valueConfig.compare
           ? buildCompareSuffix(
             t('dashboard.comparePreviousShortLabel'),
-            changePercent,
+            valueConfig.compareMode === 'value' ? changeValue : changePercent,
+            valueConfig.compareMode,
+            changeDisplayValue,
           )
           : '';
         const nodeText = `${displayValue}${compareSuffix}`;

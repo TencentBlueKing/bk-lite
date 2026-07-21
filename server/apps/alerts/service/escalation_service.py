@@ -176,7 +176,7 @@ class EscalationService:
     @classmethod
     def _send_escalation_notification(
         cls, alert: Alert, assignment: AlertAssignment,
-        roster: List[str], layer_channels: List[dict],
+        roster: List[str], layer_channels: List[dict], idempotency_key: str = None,
     ) -> bool:
         """升级通知：走统一通知出口(build_channel_params + enqueue_notifications)。"""
         from apps.alerts.common.notify.dispatcher import (
@@ -195,7 +195,7 @@ class EscalationService:
             return False
 
         params = build_channel_params(roster, channels, [alert], alert.alert_id)
-        return enqueue_notifications(params)
+        return enqueue_notifications(params, idempotency_key=idempotency_key)
 
     @classmethod
     def _advance_layer(cls, task: AlertEscalationTask) -> bool:
@@ -215,7 +215,11 @@ class EscalationService:
         cls._union_into_operator(alert, task.layers[next_index]["personnel"])
         cls._reset_reminder_for_new_roster(alert)
         cls._send_escalation_notification(
-            alert, task.assignment, roster, task.layers[next_index].get("notify_channels") or []
+            alert,
+            task.assignment,
+            roster,
+            task.layers[next_index].get("notify_channels") or [],
+            idempotency_key=f"escalation:{alert.alert_id}:{next_index}",
         )
         logger.info("告警升级到第 %s 层: alert_id=%s, roster=%s",
                     next_index, alert.alert_id, roster)

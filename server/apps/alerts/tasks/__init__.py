@@ -12,6 +12,8 @@ from apps.alerts.tasks.tasks import (
     check_and_send_escalations,
     check_and_send_reminders,
     cleanup_reminder_tasks,
+    deliver_alert_outbox,
+    dispatch_pending_alert_outbox,
     event_aggregation_alert,
     sync_no_dispatch_alert_notice_task,
     sync_notify,

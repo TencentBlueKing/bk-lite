@@ -11,7 +11,9 @@ from rest_framework import status
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.cmdb.models.config_file_version import ConfigFileVersion
+from apps.cmdb.services.config_file_content_lifecycle import ConfigFileContentLifecycle
 from apps.cmdb.views.config_file import ConfigFileVersionViewSet
+from apps.core.utils.web_utils import WebUtils
 
 VIEWS = "apps.cmdb.views.config_file"
 
@@ -140,6 +142,103 @@ def test_diff_no_content(superuser, version):
     assert response.status_code == status.HTTP_400_BAD_REQUEST
 
 
+@pytest.mark.django_db
+def test_diff_denies_version_2_without_permission_and_does_not_read_it(superuser, monkeypatch):
+    v1 = ConfigFileVersion.objects.create(
+        instance_id="5", model_id="host", version="v1",
+        file_path="/etc/app.conf", file_name="app.conf", status="success", content="v1.txt", content_status="ready",
+    )
+    v2 = ConfigFileVersion.objects.create(
+        instance_id="6", model_id="host", version="v2",
+        file_path="/etc/app.conf", file_name="app.conf", status="success", content="v2.txt",
+    )
+    monkeypatch.setattr(
+        f"{VIEWS}.InstanceManage.query_entity_by_id",
+        lambda pk: {"_id": pk, "model_id": "host", "organization": [1] if pk == 5 else [2], "inst_name": "h"},
+    )
+
+    def require_permission(self, request, instance, operator=None):
+        if instance["_id"] == 6:
+            return WebUtils.response_error(error_message="denied", status_code=status.HTTP_403_FORBIDDEN)
+        return None
+
+    read_ids = []
+    monkeypatch.setattr(f"{VIEWS}.ConfigFileVersionViewSet.require_instance_permission", require_permission)
+    monkeypatch.setattr(
+        f"{VIEWS}.ConfigFileVersion.read_content",
+        lambda self: read_ids.append(self.id) or f"content-{self.id}",
+    )
+
+    response = ConfigFileVersionViewSet.as_view({"get": "diff"})(
+        _req("get", superuser, query=f"version_id_1={v1.id}&version_id_2={v2.id}")
+    )
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert v2.id not in read_ids
+
+
+@pytest.mark.django_db
+def test_diff_rejects_different_instance(superuser, monkeypatch):
+    v1 = ConfigFileVersion.objects.create(
+        instance_id="5", model_id="host", version="v1",
+        file_path="/etc/app.conf", file_name="app.conf", status="success", content="v1.txt",
+    )
+    v2 = ConfigFileVersion.objects.create(
+        instance_id="6", model_id="host", version="v2",
+        file_path="/etc/app.conf", file_name="app.conf", status="success", content="v2.txt",
+    )
+    monkeypatch.setattr(f"{VIEWS}.ConfigFileVersion.read_content", lambda self: f"content-{self.id}")
+
+    response = ConfigFileVersionViewSet.as_view({"get": "diff"})(
+        _req("get", superuser, query=f"version_id_1={v1.id}&version_id_2={v2.id}")
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+@pytest.mark.django_db
+def test_diff_rejects_different_file_path(superuser, monkeypatch):
+    v1 = ConfigFileVersion.objects.create(
+        instance_id="5", model_id="host", version="v1",
+        file_path="/etc/app.conf", file_name="app.conf", status="success", content="v1.txt",
+    )
+    v2 = ConfigFileVersion.objects.create(
+        instance_id="5", model_id="host", version="v2",
+        file_path="/etc/other.conf", file_name="other.conf", status="success", content="v2.txt",
+    )
+    monkeypatch.setattr(f"{VIEWS}.ConfigFileVersion.read_content", lambda self: f"content-{self.id}")
+
+    response = ConfigFileVersionViewSet.as_view({"get": "diff"})(
+        _req("get", superuser, query=f"version_id_1={v1.id}&version_id_2={v2.id}")
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+@pytest.mark.django_db
+def test_diff_ok_for_same_instance_and_file_with_permission(superuser, monkeypatch):
+    v1 = ConfigFileVersion.objects.create(
+        instance_id="5", model_id="host", version="v1",
+        file_path="/etc/app.conf", file_name="app.conf", status="success", content="v1.txt", content_status="ready",
+    )
+    v2 = ConfigFileVersion.objects.create(
+        instance_id="5", model_id="host", version="v2",
+        file_path="/etc/app.conf", file_name="app.conf", status="success", content="v2.txt", content_status="ready",
+    )
+    monkeypatch.setattr(
+        f"{VIEWS}.ConfigFileVersion.read_content",
+        lambda self: "old" if self.id == v1.id else "new",
+    )
+
+    response = ConfigFileVersionViewSet.as_view({"get": "diff"})(
+        _req("get", superuser, query=f"version_id_1={v1.id}&version_id_2={v2.id}")
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert _body(response)["data"]["version_1"] == "v1"
+    assert _body(response)["data"]["version_2"] == "v2"
+
+
 # --------------------------------------------------------------------------
 # file_list
 # --------------------------------------------------------------------------
@@ -235,7 +334,17 @@ def test_destroy_not_found(superuser):
 
 
 @pytest.mark.django_db
-def test_destroy_ok(superuser, version):
+def test_destroy_ok(superuser, version, monkeypatch):
+    requested_deletes = []
+    monkeypatch.setattr(
+        ConfigFileContentLifecycle,
+        "request_delete",
+        staticmethod(lambda version_id: requested_deletes.append(version_id) or True),
+    )
+
     response = ConfigFileVersionViewSet.as_view({"delete": "destroy"})(_req("delete", superuser), pk=version.id)
+
     assert response.status_code == status.HTTP_200_OK
     assert _body(response)["data"]["deleted_id"] == version.id
+    assert _body(response)["data"]["content_status"] == "delete_pending"
+    assert requested_deletes == [version.id]

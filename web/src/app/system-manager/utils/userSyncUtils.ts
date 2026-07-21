@@ -4,6 +4,7 @@ import type {
 } from '@/app/system-manager/types/integration-center';
 import type {
   AvailableInstance,
+  PlatformConfig,
   UserSyncSource,
   UserSyncSourceBasicFormValues,
   UserSyncSourceCreateFormValues,
@@ -203,6 +204,7 @@ function buildExistingSourcePayload(source: UserSyncSource): Partial<UserSyncSou
     field_mapping: { ...(source.field_mapping || {}) },
     schedule_config: source.schedule_config ? { ...source.schedule_config } : { mode: 'disabled', timezone: 'Asia/Shanghai' },
     business_config: { ...(source.business_config || {}) },
+    platform_config: { ...(source.platform_config || {}) },
   };
 }
 
@@ -235,6 +237,7 @@ export function buildCreateSyncSourcePayload(
     business_config: {
       ...(values.business_config || {}),
     },
+    platform_config: { ...(values.platform_config || {}) },
   };
 }
 
@@ -252,13 +255,18 @@ export function buildBasicUpdatePayload(
 export function buildConfigUpdatePayload(
   source: UserSyncSource,
   businessConfig: Record<string, unknown> | undefined,
-  fieldMapping: Record<string, string>
+  fieldMapping: Record<string, string>,
+  platformConfig?: Partial<PlatformConfig>
 ): Partial<UserSyncSource> {
   return {
     ...buildExistingSourcePayload(source),
     field_mapping: fieldMapping,
     business_config: {
       ...(businessConfig || {}),
+    },
+    platform_config: {
+      ...(source.platform_config || {}),
+      ...(platformConfig || {}),
     },
   };
 }
@@ -278,9 +286,15 @@ export function buildConfigPreviewPayload(
   source: UserSyncSource,
   businessConfig: Record<string, unknown> | undefined,
   fieldMapping: Record<string, string>,
-  writeOnlyKeys: Set<string>
+  writeOnlyKeys: Set<string>,
+  platformConfig?: Partial<PlatformConfig>
 ): Record<string, unknown> {
-  const payload = buildConfigUpdatePayload(source, businessConfig, fieldMapping);
+  const payload = buildConfigUpdatePayload(
+    source,
+    businessConfig,
+    fieldMapping,
+    platformConfig
+  );
   return {
     source_id: source.id,
     ...payload,

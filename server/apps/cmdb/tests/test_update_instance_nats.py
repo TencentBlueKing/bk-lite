@@ -6,7 +6,10 @@
 
 from unittest.mock import patch
 
+import django
 import pytest
+
+django.setup()
 
 from apps.cmdb.nats import nats as N
 
@@ -16,31 +19,31 @@ def test_update_instance_by_inst_id(mock_im):
     mock_im.instance_update.return_value = {"_id": 123, "inst_name": "host-01"}
 
     result = N.update_instance(
-        {"inst_id": 123, "update_attr": {"ip": "1.2.3.4"}, "operator": "admin"}
+        {"inst_id": 123, "update_attr": {"ip": "1.2.3.4"}, "operator": "admin", "allowed_org_ids": [3]}
     )
 
     assert result == {"_id": 123, "inst_name": "host-01"}
     mock_im.search_inst.assert_not_called()
     mock_im.instance_update.assert_called_once_with(
-        user_groups=[],
+        user_groups=[{"id": 3}],
         roles=[],
         inst_id=123,
         update_attr={"ip": "1.2.3.4"},
         operator="admin",
-        allowed_org_ids=None,
-        skip_permission_check=True,
+        allowed_org_ids=[3],
+        skip_permission_check=False,
     )
 
 
 @patch("apps.cmdb.nats.nats.InstanceManage")
-def test_update_instance_org_scope_defaults_to_payload(mock_im):
-    """带 organization 时默认放行其自身（机器接口无范围限制）。"""
+def test_update_instance_missing_auth_context_rejects(mock_im):
+    """缺少 user_info / allowed_org_ids / service_scope 时拒绝写入。"""
     mock_im.instance_update.return_value = {"_id": 1}
 
-    N.update_instance({"inst_id": 1, "update_attr": {"organization": [3, 5]}})
+    with pytest.raises(ValueError, match="authorization scope"):
+        N.update_instance({"inst_id": 1, "update_attr": {"organization": [3, 5]}})
 
-    _, kwargs = mock_im.instance_update.call_args
-    assert kwargs["allowed_org_ids"] == [3, 5]
+    mock_im.instance_update.assert_not_called()
 
 
 @patch("apps.cmdb.nats.nats.InstanceManage")
@@ -54,13 +57,24 @@ def test_update_instance_explicit_allowed_org_ids(mock_im):
 
     _, kwargs = mock_im.instance_update.call_args
     assert kwargs["allowed_org_ids"] == [3, 9]
+    assert kwargs["user_groups"] == [{"id": 3}, {"id": 9}]
+
+
+@patch("apps.cmdb.nats.nats.InstanceManage")
+def test_update_instance_organization_outside_scope_rejects(mock_im):
+    mock_im.instance_update.return_value = {"_id": 1}
+
+    with pytest.raises(ValueError, match="organization .*授权范围"):
+        N.update_instance({"inst_id": 1, "update_attr": {"organization": [9]}, "allowed_org_ids": [3]})
+
+    mock_im.instance_update.assert_not_called()
 
 
 @patch("apps.cmdb.nats.nats.InstanceManage")
 def test_update_instance_by_underscore_id(mock_im):
     mock_im.instance_update.return_value = {"_id": 9}
 
-    N.update_instance({"_id": 9, "update_attr": {"k": "v"}})
+    N.update_instance({"_id": 9, "update_attr": {"k": "v"}, "allowed_org_ids": [1]})
 
     _, kwargs = mock_im.instance_update.call_args
     assert kwargs["inst_id"] == 9
@@ -73,7 +87,7 @@ def test_update_instance_by_model_and_name(mock_im):
     mock_im.instance_update.return_value = {"_id": 55}
 
     N.update_instance(
-        {"model_id": "host", "inst_name": "host-01", "update_attr": {"ip": "10.0.0.1"}}
+        {"model_id": "host", "inst_name": "host-01", "update_attr": {"ip": "10.0.0.1"}, "allowed_org_ids": [1]}
     )
 
     mock_im.search_inst.assert_called_once_with(model_id="host", inst_name="host-01")
@@ -91,7 +105,7 @@ def test_update_instance_empty_update_attr_raises(mock_im):
 @patch("apps.cmdb.nats.nats.InstanceManage")
 def test_update_instance_missing_locator_raises(mock_im):
     with pytest.raises(ValueError, match="inst_id or"):
-        N.update_instance({"update_attr": {"k": "v"}})
+        N.update_instance({"update_attr": {"k": "v"}, "allowed_org_ids": [1]})
     mock_im.instance_update.assert_not_called()
 
 
@@ -100,6 +114,6 @@ def test_update_instance_not_found_raises(mock_im):
     mock_im.search_inst.return_value = ([], 0)
     with pytest.raises(ValueError, match="实例不存在"):
         N.update_instance(
-            {"model_id": "host", "inst_name": "ghost", "update_attr": {"k": "v"}}
+            {"model_id": "host", "inst_name": "ghost", "update_attr": {"k": "v"}, "allowed_org_ids": [1]}
         )
     mock_im.instance_update.assert_not_called()

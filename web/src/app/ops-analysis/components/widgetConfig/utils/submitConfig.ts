@@ -22,6 +22,7 @@ export interface WidgetConfigFormValues {
   chartThemeMode?: OpsChartThemeMode;
   dataSource?: string | number;
   compare?: boolean;
+  compareMode?: 'percent' | 'value';
   dataSourceParams?: ParamItem[];
   params?: Record<string, string | number | boolean | [number, number] | null>;
   tableConfig?: TableConfig;
@@ -163,6 +164,7 @@ const applySingleValueConfig = (
   result.selectedFields = selectedFields;
   result.thresholdColors = thresholdColors;
   result.compare = !!values.compare;
+  result.compareMode = values.compareMode || 'percent';
   if (values.unit !== undefined) result.unit = values.unit;
   result.unitId = values.unitId;
   result.valueMappings = values.valueMappings || undefined;

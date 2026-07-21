@@ -17,9 +17,7 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--apps", type=str, default="", help="逗号分隔的应用列表，为空则初始化所有应用")
         parser.add_argument(
-            "--continue-on-error",
-            action="store_true",
-            help="初始化失败时继续执行后续模块，并在末尾输出失败列表",
+            "--continue-on-error", action="store_true", help="初始化失败时继续执行后续模块，并在末尾输出失败列表",
         )
 
     def handle(self, *args, **options):
@@ -104,6 +102,7 @@ class Command(BaseCommand):
         call_command("init_display_fields")
         call_command("cmdb_migrate_scalar_to_list")
         call_command("migrate_field_constraints")
+        call_command("reconcile_node_mgmt_sync")
 
     def _init_console_mgmt(self):
         """控制台管理资源初始化"""
@@ -114,7 +113,6 @@ class Command(BaseCommand):
         """监控资源初始化"""
         self.stdout.write("初始化监控资源...")
         call_command("plugin_init")
-        call_command("ensure_monitor_metrics_stream")
 
     def _init_node_mgmt(self):
         """节点管理初始化"""
