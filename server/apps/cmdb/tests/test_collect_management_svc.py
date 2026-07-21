@@ -25,6 +25,7 @@ class FakeGraph:
         self.created_edges = []
         self.deleted = []
         self.set_props = []
+        self.queries = []
 
     def __enter__(self):
         return self
@@ -33,6 +34,7 @@ class FakeGraph:
         return False
 
     def query_entity(self, label, conds):
+        self.queries.append((label, conds))
         cb = self.returns.get("query_entity")
         if callable(cb):
             return cb(label, conds)
@@ -241,6 +243,24 @@ def test_update_inst_success(monkeypatch):
     assert result["success"][0]["inst_info"]["inst_name"] == "a"
 
 
+def test_update_inst_queries_only_unique_candidates(monkeypatch):
+    fake = FakeGraph(query_entity=lambda l, c: ([{"_id": 7, "inst_name": "a"}], 1))
+    attrs = [{"attr_id": "inst_name", "attr_name": "名称", "is_only": True, "editable": True}]
+    m = _mgmt(monkeypatch, fake, [], [], attrs=attrs)
+
+    m.update_inst([{"_id": 7, "inst_name": "a", "assos": []}])
+
+    assert fake.queries == [
+        (
+            "instance",
+            [
+                {"field": "model_id", "type": "str=", "value": "host"},
+                {"field": "inst_name", "type": "str[]", "value": ["a"]},
+            ],
+        )
+    ]
+
+
 def test_refresh_heartbeat_updates_only_runtime_metadata(monkeypatch):
     fake = FakeGraph(query_entity=lambda l, c: ([{"_id": 7, "inst_name": "a"}], 1))
     m = _mgmt(monkeypatch, fake, [], [])
@@ -368,6 +388,32 @@ def test_controller_runs_delete_add_update(monkeypatch):
     assert set(result.keys()) == {"add", "update", "delete"}
     # b 为新增
     assert len(result["add"]["success"]) == 1
+
+
+def test_controller_add_and_update_query_unique_candidates(monkeypatch):
+    fake = FakeGraph(query_entity=lambda l, c: ([{"_id": 1, "inst_name": "a"}], 1))
+    attrs = [{"attr_id": "inst_name", "attr_name": "名称", "is_only": True, "editable": True}]
+    old = [{"inst_name": "a", "_id": 1}]
+    new = [{"inst_name": "a"}, {"inst_name": "b"}]
+    m = _mgmt(monkeypatch, fake, old, new, attrs=attrs)
+
+    m.controller()
+
+    assert fake.queries == [
+        (
+            "instance",
+            [
+                {"field": "model_id", "type": "str=", "value": "host"},
+                {"field": "inst_name", "type": "str[]", "value": ["b"]},
+            ],
+        ),
+        (
+            "instance",
+            [
+                {"field": "model_id", "type": "str=", "value": "host"},
+            ],
+        ),
+    ]
 
 
 def test_update_only_runs_update(monkeypatch):

@@ -2,6 +2,8 @@ import re
 import uuid
 from typing import Any, Dict, Optional
 
+from django.db import transaction
+
 from apps.alerts.constants import AlertStatus, AlarmStrategyType
 from apps.alerts.aggregation.builder.alert_builder import AlertBuilder
 from apps.alerts.models import Alert
@@ -45,35 +47,38 @@ class SyntheticAlertBuilder:
 
     @staticmethod
     def create_alert(strategy: AlarmStrategy, params: Dict[str, Any], now) -> Alert:
-        active_alert = SyntheticAlertBuilder.find_active_alert(strategy)
-        if active_alert:
-            return active_alert
-
-        template = params.get("alert_template") or {}
-        context = params.get("last_heartbeat_context") or {}
         fingerprint = SyntheticAlertBuilder.build_fingerprint(strategy.id)
-        title = SyntheticAlertBuilder.render_template(
-            template.get("title", ""), context
-        )
-        content = SyntheticAlertBuilder.render_template(
-            template.get("description", ""), context
-        )
+        with transaction.atomic():
+            from apps.alerts.service.active_fingerprint import (
+                bind_active_fingerprint,
+                claim_active_fingerprint,
+            )
 
-        return Alert.objects.create(
-            alert_id=f"ALERT-{uuid.uuid4().hex.upper()}",
-            status=AlertStatus.UNASSIGNED,
-            level=str(template.get("level") or "0"),
-            title=title or "缺失检查告警",
-            content=content,
-            labels=context,
-            first_event_time=now,
-            last_event_time=now,
-            item=context.get("item"),
-            resource_id=context.get("resource_id"),
-            resource_name=context.get("resource_name"),
-            resource_type=context.get("resource_type"),
-            fingerprint=fingerprint,
-            group_by_field=AlarmStrategyType.MISSING_DETECTION,
-            rule_id=str(strategy.id),
-            team=AlertBuilder._get_safe_strategy_team(strategy),
-        )
+            lease, active_alert = claim_active_fingerprint(fingerprint)
+            if active_alert:
+                return active_alert
+
+            template = params.get("alert_template") or {}
+            context = params.get("last_heartbeat_context") or {}
+            title = SyntheticAlertBuilder.render_template(template.get("title", ""), context)
+            content = SyntheticAlertBuilder.render_template(template.get("description", ""), context)
+            alert = Alert.objects.create(
+                alert_id=f"ALERT-{uuid.uuid4().hex.upper()}",
+                status=AlertStatus.UNASSIGNED,
+                level=str(template.get("level") or "0"),
+                title=title or "缺失检查告警",
+                content=content,
+                labels=context,
+                first_event_time=now,
+                last_event_time=now,
+                item=context.get("item"),
+                resource_id=context.get("resource_id"),
+                resource_name=context.get("resource_name"),
+                resource_type=context.get("resource_type"),
+                fingerprint=fingerprint,
+                group_by_field=AlarmStrategyType.MISSING_DETECTION,
+                rule_id=str(strategy.id),
+                team=AlertBuilder._get_safe_strategy_team(strategy),
+            )
+            bind_active_fingerprint(lease, alert)
+            return alert

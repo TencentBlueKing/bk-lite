@@ -60,6 +60,7 @@ class ConfigFileNodeParams(SSHNodeParamsMixin, BaseNodeParams):
             {
                 "config_file_path": params.get("config_file_path", ""),
                 "collect_task_id": self.instance.id,
+                "execution_id": self.instance.task_id,
                 "target_model_id": target_instance.get("model_id") or params.get("target_model_id") or "host",
                 "callback_subject": "receive_config_file_result",
             }

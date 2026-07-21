@@ -91,6 +91,40 @@ def test_handle_recovery_associates_event_to_alert(source):
 
 
 @pytest.mark.django_db
+def test_handle_recovery_matches_source_push_source_and_team(source):
+    other_source = AlertSource.objects.create(
+        name="源2", source_id="s2", source_type="restful", secret="x"
+    )
+    created_expected = _make_event(
+        source, "E-created-expected", external_id="same-ext", push_source_id="p1", team=[1]
+    )
+    created_other_source = _make_event(
+        other_source, "E-created-source", external_id="same-ext", push_source_id="p1", team=[1]
+    )
+    created_other_team = _make_event(
+        source, "E-created-team", external_id="same-ext", push_source_id="p1", team=[2]
+    )
+    expected_alert = _make_active_alert(created_expected, alert_id="A-expected")
+    other_source_alert = _make_active_alert(created_other_source, alert_id="A-other-source")
+    other_team_alert = _make_active_alert(created_other_team, alert_id="A-other-team")
+    recovery = _make_event(
+        source,
+        "E-recovery",
+        external_id="same-ext",
+        action=EventAction.RECOVERY,
+        start_minutes_ago=1,
+        push_source_id="p1",
+        team=[1],
+    )
+
+    RecoveryHandler.handle_recovery_events([recovery])
+
+    assert expected_alert.events.filter(pk=recovery.pk).exists()
+    assert not other_source_alert.events.filter(pk=recovery.pk).exists()
+    assert not other_team_alert.events.filter(pk=recovery.pk).exists()
+
+
+@pytest.mark.django_db
 def test_handle_recovery_without_external_id_skipped(source):
     created = _make_event(source, "E1", external_id="ext-1", action=EventAction.CREATED)
     alert = _make_active_alert(created)
