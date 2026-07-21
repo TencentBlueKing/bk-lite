@@ -52,7 +52,7 @@ def mapping(channel, users):
         user=users["alice"],
         external_identity_key="open_id",
         external_identity_value="identity-alice",
-        external_receive_key="user_id",
+        external_receive_key="open_id",
         external_display_name="Alice 外部显示名",
         external_snapshot={"user_id": "u_alice", "open_id": "ou_alice"},
     )
@@ -134,7 +134,7 @@ def test_mapping_uses_mapping_receive_key_snapshot(incident, channel, mapping):
 def test_resolver_marks_missing_receive_snapshot_as_unmapped(incident, channel, mapping):
     incident.operator = ["alice"]
     incident.save(update_fields=["operator"])
-    mapping.external_snapshot = {"open_id": "ou_alice"}
+    mapping.external_snapshot = {"user_id": "u_alice"}
     mapping.save(update_fields=["external_snapshot"])
 
     member = resolve_incident_members(incident, channel)[0]
@@ -189,8 +189,26 @@ def test_reconcile_creates_new_member_and_promotes_mapped_waiting_to_pending(gro
 
     member = group.members.get(username="alice")
     assert member.role == "operator"
-    assert member.external_id == "u_alice"
+    assert member.external_id == "ou_alice"
     assert member.sync_status == "pending"
+
+
+@pytest.mark.django_db
+def test_reconcile_keeps_member_waiting_when_mapping_receive_type_differs_from_group(group, mapping):
+    group.incident.operator = ["alice"]
+    group.incident.save(update_fields=["operator"])
+    mapping.external_receive_key = "user_id"
+    mapping.external_snapshot = {"user_id": "u_alice", "open_id": "ou_alice"}
+    mapping.save(update_fields=["external_receive_key", "external_snapshot"])
+
+    reconcile_member_snapshots(group, group.incident)
+
+    member = group.members.get(username="alice")
+    assert member.mapping_status == "unmapped"
+    assert member.sync_status == "waiting"
+    assert member.external_id == ""
+    assert member.external_id_type == ""
+    assert member.last_error_code == "IM_USER_RECEIVE_ID_MISSING"
 
 
 @pytest.mark.django_db
@@ -209,7 +227,7 @@ def test_reconcile_updates_snapshot_but_never_reverts_joined_member(group, mappi
 
     joined.refresh_from_db()
     assert joined.role == "operator"
-    assert joined.external_id == "u_alice"
+    assert joined.external_id == "ou_alice"
     assert joined.sync_status == "joined"
 
 

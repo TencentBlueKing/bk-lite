@@ -18,7 +18,7 @@ class ResolvedIncidentMember:
     error_message: str
 
 
-def resolve_incident_members(incident, channel) -> list[ResolvedIncidentMember]:
+def resolve_incident_members(incident, channel, member_id_type: str = "") -> list[ResolvedIncidentMember]:
     desired_roles = _collect_desired_roles(incident)
     if not desired_roles:
         return []
@@ -33,12 +33,12 @@ def resolve_incident_members(incident, channel) -> list[ResolvedIncidentMember]:
     for username, role in desired_roles.items():
         user = users_by_username.get(username)
         mapping = mappings_by_user_id.get(user.id) if user else None
-        resolved.append(_resolve_member(username, role, user, mapping, conflict_user_ids))
+        resolved.append(_resolve_member(username, role, user, mapping, conflict_user_ids, member_id_type))
     return sorted(resolved, key=lambda item: (item.role != IncidentIMMember.Role.OPERATOR, item.username))
 
 
 def reconcile_member_snapshots(group, incident) -> list[ResolvedIncidentMember]:
-    resolved_members = resolve_incident_members(incident, group.channel)
+    resolved_members = resolve_incident_members(incident, group.channel, member_id_type=group.member_id_type)
     existing_members = {member.username: member for member in group.members.all()}
     now = timezone.now()
     creates = []
@@ -128,7 +128,7 @@ def _latest_conflict_user_ids(channel) -> set[int]:
     return conflict_user_ids
 
 
-def _resolve_member(username, role, user, mapping, conflict_user_ids) -> ResolvedIncidentMember:
+def _resolve_member(username, role, user, mapping, conflict_user_ids, member_id_type) -> ResolvedIncidentMember:
     display_name = (getattr(user, "display_name", "") or username).strip()
     if mapping is None:
         if user and user.id in conflict_user_ids:
@@ -153,19 +153,13 @@ def _resolve_member(username, role, user, mapping, conflict_user_ids) -> Resolve
             error_message="用户未完成外部映射",
         )
 
-    external_id_type = str(mapping.external_receive_key or "").strip()
+    configured_id_type = str(mapping.external_receive_key or "").strip()
+    external_id_type = str(member_id_type or configured_id_type).strip()
+    if member_id_type and configured_id_type != external_id_type:
+        return _missing_receive_id_member(username, role, mapping, display_name)
     external_id = str((mapping.external_snapshot or {}).get(external_id_type) or "").strip()
     if not external_id_type or not external_id:
-        return ResolvedIncidentMember(
-            username=username,
-            role=role,
-            display_name=(mapping.external_display_name or display_name).strip(),
-            mapping_status=IncidentIMMember.MappingStatus.UNMAPPED,
-            external_id="",
-            external_id_type=external_id_type,
-            error_code="IM_USER_RECEIVE_ID_MISSING",
-            error_message="外部接收标识缺失",
-        )
+        return _missing_receive_id_member(username, role, mapping, display_name)
     return ResolvedIncidentMember(
         username=username,
         role=role,
@@ -175,4 +169,17 @@ def _resolve_member(username, role, user, mapping, conflict_user_ids) -> Resolve
         external_id_type=external_id_type,
         error_code="",
         error_message="",
+    )
+
+
+def _missing_receive_id_member(username, role, mapping, display_name) -> ResolvedIncidentMember:
+    return ResolvedIncidentMember(
+        username=username,
+        role=role,
+        display_name=(mapping.external_display_name or display_name).strip(),
+        mapping_status=IncidentIMMember.MappingStatus.UNMAPPED,
+        external_id="",
+        external_id_type="",
+        error_code="IM_USER_RECEIVE_ID_MISSING",
+        error_message="外部接收标识缺失",
     )
