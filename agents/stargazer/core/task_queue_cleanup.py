@@ -560,11 +560,13 @@ def restore_cleanup_backup(
     watch_keys = tuple(
         sorted({QUEUE_KEY, *restore_keys, *temporary_keys.values()})
     )
+    created_temporary_keys = []
 
     try:
         for key, (ttl, dumped) in sorted(restore_keys.items()):
             temporary_key = temporary_keys[key]
             redis_client.restore(temporary_key, ttl, dumped, replace=False)
+            created_temporary_keys.append(temporary_key)
             if _type_name(redis_client, temporary_key) != b"string":
                 raise CleanupRestoreError("backup key type is invalid")
             if (
@@ -607,9 +609,9 @@ def restore_cleanup_backup(
     except Exception as exc:
         raise CleanupRestoreError("task queue restore failed") from exc
     finally:
-        if temporary_keys:
+        if created_temporary_keys:
             try:
-                redis_client.delete(*temporary_keys.values())
+                redis_client.delete(*created_temporary_keys)
             except Exception:
                 pass
 

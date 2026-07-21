@@ -6,6 +6,7 @@ import stat
 from unittest.mock import Mock
 
 import pytest
+from core import task_queue_cleanup as cleanup
 from core.task_queue_cleanup import (
     CleanupBackupError,
     CleanupDriftError,
@@ -597,3 +598,23 @@ def test_damaged_dump_does_not_partially_restore_target_keys(tmp_path):
         key.startswith(b"stargazer:task-queue-restore:tmp:")
         for key in redis_client.strings
     )
+
+
+def test_restore_temp_key_collision_never_deletes_existing_data(
+    tmp_path, monkeypatch,
+):
+    redis_client, plan = _selected_plan_fixture()
+    backup_path, _result = backup_and_apply_cleanup(
+        redis_client, plan, backup_dir=tmp_path / "backups", redis_db=1,
+    )
+    monkeypatch.setattr(cleanup.secrets, "token_hex", lambda _size: "fixed")
+    collision_key = b"stargazer:task-queue-restore:tmp:fixed:0"
+    redis_client.strings[collision_key] = b"existing-data"
+    redis_client.ttls[collision_key] = -1
+
+    with pytest.raises(CleanupRestoreError):
+        restore_cleanup_backup(
+            redis_client, backup_path=backup_path, redis_db=1
+        )
+
+    assert redis_client.strings[collision_key] == b"existing-data"
