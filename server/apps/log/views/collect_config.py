@@ -14,7 +14,6 @@ from apps.core.utils.permission_utils import (
     get_permission_rules,
     get_permissions_rules,
 )
-from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.web_utils import WebUtils
 from apps.log.constants.collect_type import DISPLAY_CATEGORY_ORDER
 from apps.log.constants.language import LanguageConstants
@@ -149,24 +148,38 @@ class CollectTypeViewSet(ModelViewSet):
                 result["display_description"] = lan.get(f"{lan_key}.description") or result.get("description", "")
 
         # 检查是否需要添加策略数量统计（带权限控制）
-        if request.GET.get("add_policy_count") in ["true", "True"]:
-            # 获取策略权限
-            include_children = request.COOKIES.get("include_children", "0") == "1"
-            policy_res = get_permissions_rules(
-                request.user,
-                get_current_team(request),
-                "log",
-                PermissionConstants.POLICY_MODULE,
-                include_children=include_children,
-            )
+        count_scope = None
+        if request.GET.get("add_policy_count") in ["true", "True"] or request.GET.get("add_instance_count") in ["true", "True"]:
+            try:
+                count_scope = LogAccessScopeService.get_data_scope(request)
+            except ValueError as exc:
+                return WebUtils.response_error(
+                    error_message=str(exc),
+                    status_code=403,
+                )
 
-            policy_permissions, cur_team = (
-                policy_res.get("data", {}),
-                policy_res.get("team", []),
+        if request.GET.get("add_policy_count") in ["true", "True"]:
+            policy_res = (
+                {}
+                if count_scope.is_superuser
+                else get_permissions_rules(
+                    request.user,
+                    count_scope.current_team,
+                    "log",
+                    PermissionConstants.POLICY_MODULE,
+                    include_children=count_scope.include_children,
+                )
             )
+            policy_permissions = policy_res.get("data", {}) if isinstance(policy_res, dict) else {}
+            cur_team = list(count_scope.data_team_ids)
 
             # 获取所有策略并进行权限检查
-            policy_objs = Policy.objects.select_related("collect_type").prefetch_related("policyorganization_set").all()
+            policy_objs = (
+                Policy.objects.filter(policyorganization__organization__in=cur_team)
+                .select_related("collect_type")
+                .prefetch_related("policyorganization_set")
+                .distinct()
+            )
             policy_map = {}
 
             for policy_obj in policy_objs:
@@ -175,7 +188,13 @@ class CollectTypeViewSet(ModelViewSet):
                 teams = {org.organization for org in policy_obj.policyorganization_set.all()}
 
                 # 使用通用权限检查函数
-                _check = check_instance_permission(collect_type_id, policy_id, teams, policy_permissions, cur_team)
+                _check = count_scope.is_superuser or check_instance_permission(
+                    collect_type_id,
+                    policy_id,
+                    teams,
+                    policy_permissions,
+                    cur_team,
+                )
                 if not _check:
                     continue
 
@@ -189,23 +208,27 @@ class CollectTypeViewSet(ModelViewSet):
 
         # 检查是否需要添加实例数量统计（带权限控制，参考监控模块实现）
         if request.GET.get("add_instance_count") in ["true", "True"]:
-            # 获取采集实例权限
-            include_children = request.COOKIES.get("include_children", "0") == "1"
-            instance_res = get_permissions_rules(
-                request.user,
-                get_current_team(request),
-                "log",
-                PermissionConstants.INSTANCE_MODULE,
-                include_children=include_children,
+            instance_res = (
+                {}
+                if count_scope.is_superuser
+                else get_permissions_rules(
+                    request.user,
+                    count_scope.current_team,
+                    "log",
+                    PermissionConstants.INSTANCE_MODULE,
+                    include_children=count_scope.include_children,
+                )
             )
-
-            instance_permissions, cur_team = (
-                instance_res.get("data", {}),
-                instance_res.get("team", []),
-            )
+            instance_permissions = instance_res.get("data", {}) if isinstance(instance_res, dict) else {}
+            cur_team = list(count_scope.data_team_ids)
 
             # 获取所有采集实例并进行权限检查
-            instance_objs = CollectInstance.objects.select_related("collect_type").prefetch_related("collectinstanceorganization_set").all()
+            instance_objs = (
+                CollectInstance.objects.filter(collectinstanceorganization__organization__in=cur_team)
+                .select_related("collect_type")
+                .prefetch_related("collectinstanceorganization_set")
+                .distinct()
+            )
             instance_map = {}
 
             for instance_obj in instance_objs:
@@ -214,7 +237,13 @@ class CollectTypeViewSet(ModelViewSet):
                 teams = {org.organization for org in instance_obj.collectinstanceorganization_set.all()}
 
                 # 使用通用权限检查函数
-                _check = check_instance_permission(collect_type_id, instance_id, teams, instance_permissions, cur_team)
+                _check = count_scope.is_superuser or check_instance_permission(
+                    collect_type_id,
+                    instance_id,
+                    teams,
+                    instance_permissions,
+                    cur_team,
+                )
                 if not _check:
                     continue
 
@@ -472,10 +501,10 @@ class CollectInstanceViewSet(ViewSet):
             page, page_size = self._normalize_page_params(request.data)
         except ValueError as exc:
             return WebUtils.response_error(error_message=str(exc))
+        scope = LogAccessScopeService.get_data_scope(request)
 
         if collect_type_id:
             # 单采集类型查询 - 使用与监控模块完全一致的权限检查方式
-            scope = LogAccessScopeService.get_data_scope(request)
             permission = (
                 {"team": list(scope.data_team_ids), "instance": []}
                 if scope.is_superuser
@@ -501,6 +530,7 @@ class CollectInstanceViewSet(ViewSet):
                 page=page,
                 page_size=page_size,
                 queryset=qs,
+                visible_organization_ids=scope.data_team_ids,
             )
             # 添加实例级别权限信息（与监控模块保持一致）
             inst_permission_map = get_instance_permission_map(permission)
@@ -514,6 +544,7 @@ class CollectInstanceViewSet(ViewSet):
                 page=page,
                 page_size=page_size,
                 queryset=qs,
+                visible_organization_ids=scope.data_team_ids,
             )
             data = self._apply_all_type_permissions(data, permission_data, current_teams, is_admin_scope)
             return WebUtils.response_success(data)
@@ -613,6 +644,42 @@ class CollectConfigViewSet(ViewSet):
         _, error_response = helper._authorize_instances(request, instance_ids, required_permission)
         return error_response
 
+    @staticmethod
+    def _validate_update_config_targets(instance, collect_type_id, child, base):
+        requested_configs = [
+            ("child", child, True),
+            ("base", base, False),
+        ]
+        supplied_configs = [item for item in requested_configs if item[1] is not None]
+        if not supplied_configs:
+            return None
+
+        for config_role, config_info, _is_child in supplied_configs:
+            if not isinstance(config_info, dict) or not config_info.get("id"):
+                return WebUtils.response_error(f"{config_role}.id is required")
+
+        config_ids = [config_info["id"] for _, config_info, _ in supplied_configs]
+        config_map = {
+            str(config.id): config for config in CollectConfig.objects.filter(id__in=config_ids).select_related("collect_instance__collect_type")
+        }
+        if len(config_map) != len(set(map(str, config_ids))):
+            return WebUtils.response_error("collect config does not exist")
+
+        for config_role, config_info, expected_is_child in supplied_configs:
+            config = config_map.get(str(config_info["id"]))
+            if config is None:
+                return WebUtils.response_error("collect config does not exist")
+            if str(config.collect_instance_id) != str(instance.id):
+                return WebUtils.response_403("User does not have permission to operate this config")
+            if str(config.collect_instance.collect_type_id) != str(collect_type_id) or str(config.collect_instance.collect_type_id) != str(
+                instance.collect_type_id
+            ):
+                return WebUtils.response_error(error_message="collect_type does not match config")
+            if config.is_child is not expected_is_child:
+                return WebUtils.response_error(error_message=f"{config_role} config role is invalid")
+
+        return None
+
     @action(methods=["post"], detail=False, url_path="get_config_content")
     def get_config_content(self, request):
         config_objs = list(CollectConfig.objects.filter(id__in=request.data["ids"]).select_related("collect_instance__collect_type"))
@@ -656,6 +723,15 @@ class CollectConfigViewSet(ViewSet):
             return error_response
         if str(instances[0].collect_type_id) != str(collect_type_id):
             return WebUtils.response_error(error_message="collect_type does not match instance")
+
+        error_response = self._validate_update_config_targets(
+            instances[0],
+            collect_type_id,
+            child,
+            base,
+        )
+        if error_response:
+            return error_response
 
         CollectTypeService.update_instance_config_v2(
             child,

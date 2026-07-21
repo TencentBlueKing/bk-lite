@@ -323,7 +323,9 @@ class PolicyViewSet(viewsets.ModelViewSet):
         if schedule:
             self.update_or_create_task(policy_id, schedule)
 
-        instance = self.get_queryset().get(id=policy_id)
+        # 新对象可能只绑定到当前用户可分配、但不属于 current_team 读取范围的组织。
+        # 创建响应直接使用本事务内主键回取，序列化时仍按 current_team 投影组织。
+        instance = Policy.objects.get(id=policy_id)
         return self._refresh_response_data(response, instance)
 
     @transaction.atomic

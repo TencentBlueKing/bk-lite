@@ -5,6 +5,7 @@ from unittest.mock import Mock
 import pytest
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.log.models import CollectConfig, CollectInstance, CollectType
 from apps.log.services.collect_type import CollectTypeService
 from apps.log.views.collect_config import CollectConfigViewSet, CollectInstanceViewSet
 from apps.log.views.k8s_collect import K8sCollectViewSet
@@ -693,6 +694,12 @@ def test_update_instance_collect_config_requires_operate_permission(monkeypatch)
 
 def test_update_instance_collect_config_allows_authorized_instance(monkeypatch):
     instance = make_instance()
+    base_config = SimpleNamespace(
+        id="config-base",
+        collect_instance_id=instance.id,
+        collect_instance=instance,
+        is_child=False,
+    )
     from apps.log.views import collect_config
 
     update_config = Mock()
@@ -715,18 +722,138 @@ def test_update_instance_collect_config_allows_authorized_instance(monkeypatch):
             }
         ),
     )
+    monkeypatch.setattr(
+        collect_config.CollectConfig.objects,
+        "filter",
+        Mock(return_value=FakeQuerySet([base_config])),
+    )
     monkeypatch.setattr(collect_config.CollectTypeService, "update_instance_config_v2", update_config)
 
     payload = {
         "instance_id": instance.id,
         "collect_type_id": instance.collect_type_id,
         "child": None,
-        "base": {"content": "key: value"},
+        "base": {"id": base_config.id, "content": "key: value"},
     }
     response = CollectConfigViewSet().update_instance_collect_config(make_request(payload))
 
     assert response.status_code == 200
-    update_config.assert_called_once_with(None, {"content": "key: value"}, instance.id, instance.collect_type_id)
+    update_config.assert_called_once_with(
+        None,
+        {"id": base_config.id, "content": "key: value"},
+        instance.id,
+        instance.collect_type_id,
+    )
+
+
+@pytest.mark.django_db
+def test_update_instance_collect_config_rejects_foreign_config_batch_before_side_effect(
+    monkeypatch,
+):
+    collect_type = CollectType.objects.create(
+        name="idor-type",
+        collector="Filebeat",
+        icon="",
+    )
+    own_instance = CollectInstance.objects.create(
+        id="idor-own",
+        name="own",
+        collect_type=collect_type,
+    )
+    foreign_instance = CollectInstance.objects.create(
+        id="idor-foreign",
+        name="foreign",
+        collect_type=collect_type,
+    )
+    own_config = CollectConfig.objects.create(
+        id="idor-own-child",
+        collect_instance=own_instance,
+        file_type="toml",
+        is_child=True,
+    )
+    foreign_config = CollectConfig.objects.create(
+        id="idor-foreign-base",
+        collect_instance=foreign_instance,
+        file_type="yaml",
+        is_child=False,
+    )
+    update_config = Mock()
+    monkeypatch.setattr(
+        CollectInstanceViewSet,
+        "_authorize_instances",
+        Mock(return_value=([own_instance], None)),
+    )
+    monkeypatch.setattr(
+        CollectTypeService,
+        "update_instance_config_v2",
+        update_config,
+    )
+
+    response = CollectConfigViewSet().update_instance_collect_config(
+        make_request(
+            {
+                "instance_id": own_instance.id,
+                "collect_type_id": collect_type.id,
+                "child": {"id": own_config.id, "content": {"key": "value"}},
+                "base": {"id": foreign_config.id, "content": {"key": "value"}},
+            }
+        )
+    )
+
+    assert response.status_code == 403
+    update_config.assert_not_called()
+    assert CollectConfig.objects.filter(
+        id=foreign_config.id,
+        collect_instance=foreign_instance,
+        is_child=False,
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_update_instance_collect_config_rejects_invalid_config_role_before_side_effect(
+    monkeypatch,
+):
+    collect_type = CollectType.objects.create(
+        name="role-type",
+        collector="Filebeat",
+        icon="",
+    )
+    instance = CollectInstance.objects.create(
+        id="role-instance",
+        name="role instance",
+        collect_type=collect_type,
+    )
+    base_config = CollectConfig.objects.create(
+        id="role-base",
+        collect_instance=instance,
+        file_type="yaml",
+        is_child=False,
+    )
+    update_config = Mock()
+    monkeypatch.setattr(
+        CollectInstanceViewSet,
+        "_authorize_instances",
+        Mock(return_value=([instance], None)),
+    )
+    monkeypatch.setattr(
+        CollectTypeService,
+        "update_instance_config_v2",
+        update_config,
+    )
+
+    response = CollectConfigViewSet().update_instance_collect_config(
+        make_request(
+            {
+                "instance_id": instance.id,
+                "collect_type_id": collect_type.id,
+                "child": {"id": base_config.id, "content": {"key": "value"}},
+                "base": None,
+            }
+        )
+    )
+
+    assert response.status_code == 400
+    update_config.assert_not_called()
 
 
 def test_k8s_create_instance_rejects_target_org_outside_authorized_scope(monkeypatch):

@@ -261,7 +261,14 @@ class CollectTypeService:
                 CollectInstanceOrganization.objects.bulk_create(creates, batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE)
 
     @staticmethod
-    def search_instance_with_permission(collect_type_id, name, page, page_size, queryset):
+    def search_instance_with_permission(
+        collect_type_id,
+        name,
+        page,
+        page_size,
+        queryset,
+        visible_organization_ids,
+    ):
         """
         使用权限过滤后的查询集查询采集实例列表（参考监控模块实现）
         支持单采集类型查询和全部采集类型查询
@@ -300,7 +307,10 @@ class CollectTypeService:
 
         # 补充组织与配置信息
         org_map = defaultdict(list)
-        org_objs = CollectInstanceOrganization.objects.filter(collect_instance_id__in=instance_ids).values_list("collect_instance_id", "organization")
+        org_objs = CollectInstanceOrganization.objects.filter(
+            collect_instance_id__in=instance_ids,
+            organization__in=list(visible_organization_ids),
+        ).values_list("collect_instance_id", "organization")
         for instance_id, organization in org_objs:
             org_map[instance_id].append(organization)
 

@@ -2,6 +2,16 @@
 from .common import *  # noqa: F401,F403
 
 
+def _is_persisted_superuser(user_obj):
+    """仅从持久化用户角色解析超管身份。"""
+    explicit_flag = getattr(user_obj, "is_superuser", None)
+    if explicit_flag is not None:
+        return bool(explicit_flag)
+
+    role_ids = get_user_all_roles(user_obj)
+    return Role.objects.filter(id__in=role_ids, name="admin").filter(Q(app="") | Q(app="system-manager")).exists()
+
+
 @nats_client.register
 def get_group_users(group=None, include_children=False):
     """
@@ -34,7 +44,6 @@ def _get_actor_user_scope(actor_context, include_children=False):
     username = (actor_context or {}).get("username")
     domain = (actor_context or {}).get("domain", "domain.com")
     current_team = (actor_context or {}).get("current_team")
-    is_superuser = (actor_context or {}).get("is_superuser", False)
     actor_group_list = (actor_context or {}).get("group_list")
 
     if not username or current_team in (None, ""):
@@ -43,6 +52,9 @@ def _get_actor_user_scope(actor_context, include_children=False):
     user_obj = User.objects.filter(username=username, domain=domain).first()
     if not user_obj:
         return None, []
+
+    # 超管身份只能来自持久化用户，RPC 调用方声明不得提升权限。
+    is_superuser = _is_persisted_superuser(user_obj)
 
     try:
         current_team = int(current_team)
@@ -121,7 +133,7 @@ def get_assignable_groups(actor_context):
     if not user_obj:
         return {"result": True, "data": []}
 
-    if getattr(user_obj, "is_superuser", False):
+    if _is_persisted_superuser(user_obj):
         return {"result": True, "data": list(Group.objects.values_list("id", flat=True))}
 
     user_group_list = list(user_obj.group_list or [])

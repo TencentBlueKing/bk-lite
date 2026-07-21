@@ -7,7 +7,12 @@ from apps.system_mgmt.nats_api import get_assignable_groups, get_authorized_grou
 
 
 def test_get_authorized_groups_scoped_prefers_actor_context_group_list(monkeypatch):
-    user = types.SimpleNamespace(username="scope-context-user", domain="domain.com", group_list=[])
+    user = types.SimpleNamespace(
+        username="scope-context-user",
+        domain="domain.com",
+        group_list=[],
+        role_list=[],
+    )
 
     class _UserQuerySet:
         @staticmethod
@@ -49,8 +54,78 @@ def test_get_authorized_groups_scoped_prefers_actor_context_group_list(monkeypat
     }
 
 
+def test_get_authorized_groups_scoped_rejects_forged_superuser_claim(monkeypatch):
+    user = types.SimpleNamespace(
+        username="ordinary-user",
+        domain="domain.com",
+        group_list=[1],
+        is_superuser=False,
+    )
+
+    class _UserQuerySet:
+        @staticmethod
+        def first():
+            return user
+
+    class _UserManager:
+        @staticmethod
+        def filter(**kwargs):
+            return _UserQuerySet()
+
+    monkeypatch.setattr(nats_api.User, "objects", _UserManager())
+
+    result = get_authorized_groups_scoped(
+        {
+            "username": "ordinary-user",
+            "domain": "domain.com",
+            "current_team": 2,
+            "is_superuser": True,
+        }
+    )
+
+    assert result == {"result": True, "data": []}
+
+
+def test_get_authorized_groups_scoped_uses_persisted_superuser_flag(monkeypatch):
+    user = types.SimpleNamespace(
+        username="database-admin",
+        domain="domain.com",
+        group_list=[],
+        is_superuser=True,
+    )
+
+    class _UserQuerySet:
+        @staticmethod
+        def first():
+            return user
+
+    class _UserManager:
+        @staticmethod
+        def filter(**kwargs):
+            return _UserQuerySet()
+
+    monkeypatch.setattr(nats_api.User, "objects", _UserManager())
+
+    result = get_authorized_groups_scoped(
+        {
+            "username": "database-admin",
+            "domain": "domain.com",
+            "current_team": 1,
+            "is_superuser": False,
+        }
+    )
+
+    assert result == {"result": True, "data": [1]}
+
+
+@pytest.mark.django_db
 def test_get_group_users_scoped_filters_json_group_list_with_contains(monkeypatch):
-    actor = types.SimpleNamespace(username="actor", domain="domain.com", group_list=[7])
+    actor = types.SimpleNamespace(
+        username="actor",
+        domain="domain.com",
+        group_list=[7],
+        role_list=[],
+    )
     user_rows = [{"id": 3, "username": "test", "display_name": "test"}]
 
     class _ActorQuerySet:
@@ -97,8 +172,14 @@ def test_get_group_users_scoped_filters_json_group_list_with_contains(monkeypatc
     assert args[0].children == [("group_list__contains", 7)]
 
 
+@pytest.mark.django_db
 def test_get_assignable_groups_uses_persisted_authorization_not_actor_group_list(monkeypatch):
-    user = types.SimpleNamespace(username="actor", domain="domain.com", group_list=[7, 8])
+    user = types.SimpleNamespace(
+        username="actor",
+        domain="domain.com",
+        group_list=[7, 8],
+        role_list=[],
+    )
 
     class _UserQuerySet:
         @staticmethod

@@ -138,6 +138,8 @@ def log_search(query, time_range, limit=10, *args, **kwargs):
         limit = VictoriaLogsConstants.normalize_query_limit(limit, default=10)
     except ValueError as exc:
         return {"result": False, "data": [], "message": str(exc)}
+    if query == LogGroupQueryBuilder.DENY_ALL_QUERY:
+        return {"result": True, "data": [], "message": ""}
     vm_api = VictoriaMetricsAPI()
     data = vm_api.query(query, start_time, end_time, limit)
     return {"result": True, "data": data, "message": ""}
@@ -156,6 +158,8 @@ def log_hits(query, time_range, field, fields_limit=5, step="5m", *args, **kwarg
         fields_limit = VictoriaLogsConstants.normalize_hits_fields_limit(fields_limit, default=5)
     except ValueError as exc:
         return {"result": False, "data": [], "message": str(exc)}
+    if query == LogGroupQueryBuilder.DENY_ALL_QUERY:
+        return {"result": True, "data": [], "message": ""}
     vm_api = VictoriaMetricsAPI()
     resp = vm_api.hits(query, start_time, end_time, field, fields_limit, step)
     data = []

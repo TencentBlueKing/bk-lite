@@ -5,11 +5,13 @@ import pytest
 from rest_framework import status
 from rest_framework.test import APIRequestFactory, force_authenticate
 
+from apps.log.models import CollectInstance, CollectInstanceOrganization, CollectType
 from apps.log.models.log_group import LogGroup, LogGroupOrganization
 from apps.log.models.policy import Policy, PolicyOrganization
 from apps.log.serializers.log_group import LogGroupSerializer
 from apps.log.serializers.policy import PolicySerializer
 from apps.log.services.access_scope import LogAccessScopeService
+from apps.log.views.collect_config import CollectInstanceViewSet, CollectTypeViewSet
 from apps.log.views.log_group import LogGroupViewSet
 from apps.log.views.node import NodeViewSet
 from apps.log.views.policy import PolicyViewSet
@@ -326,3 +328,263 @@ def test_shared_policy_response_projects_organizations_to_current_team(mocker):
     ).data
 
     assert data["organizations"] == [1]
+
+
+@pytest.mark.parametrize("include_collect_type", [True, False])
+def test_shared_collect_instance_response_projects_organizations_to_current_team(
+    authenticated_user,
+    mocker,
+    include_collect_type,
+):
+    authenticated_user.is_superuser = True
+    authenticated_user.save(update_fields=["is_superuser"])
+    collect_type = CollectType.objects.create(
+        name=f"projection-{include_collect_type}",
+        collector="Filebeat",
+        icon="",
+    )
+    instance = CollectInstance.objects.create(
+        id=f"shared-instance-{include_collect_type}",
+        name="shared instance",
+        collect_type=collect_type,
+    )
+    CollectInstanceOrganization.objects.bulk_create(
+        [
+            CollectInstanceOrganization(
+                collect_instance=instance,
+                organization=1,
+            ),
+            CollectInstanceOrganization(
+                collect_instance=instance,
+                organization=2,
+            ),
+        ]
+    )
+    _patch_actor_scope(mocker, scoped_ids=[1])
+    payload = {"page": 1, "page_size": 10}
+    if include_collect_type:
+        payload["collect_type_id"] = collect_type.id
+    request = APIRequestFactory().post(
+        "/api/v1/log/collect_instances/search/",
+        payload,
+        format="json",
+    )
+    request.COOKIES["current_team"] = "1"
+    force_authenticate(request, user=authenticated_user)
+
+    response = CollectInstanceViewSet.as_view({"post": "search"})(request)
+
+    assert response.status_code == status.HTTP_200_OK
+    items = json.loads(response.content)["data"]["items"]
+    assert items[0]["organization"] == [1]
+
+
+def _list_collect_types_with_count(
+    authenticated_user,
+    mocker,
+    query_param,
+):
+    authenticated_user.is_superuser = False
+    authenticated_user.save(update_fields=["is_superuser"])
+    _patch_actor_scope(mocker, scoped_ids=[1])
+    mocker.patch(
+        "apps.log.views.collect_config.get_permissions_rules",
+        return_value={
+            "data": {"all": {"team": [1, 2]}},
+            "team": [1, 2],
+        },
+    )
+    language = mocker.patch("apps.log.views.collect_config.LanguageLoader").return_value
+    language.get.return_value = None
+    request = APIRequestFactory().get(
+        "/api/v1/log/collect_types/",
+        {query_param: "true"},
+    )
+    request.COOKIES["current_team"] = "1"
+    force_authenticate(request, user=authenticated_user)
+    return CollectTypeViewSet.as_view({"get": "list"})(request)
+
+
+def test_policy_count_intersects_permission_with_current_team(
+    authenticated_user,
+    mocker,
+):
+    collect_type = CollectType.objects.create(
+        name="policy-count-scope",
+        collector="Filebeat",
+        icon="",
+    )
+    own = _policy("policy-count-own")
+    own.collect_type = collect_type
+    own.save(update_fields=["collect_type"])
+    sibling = _policy("policy-count-sibling")
+    sibling.collect_type = collect_type
+    sibling.save(update_fields=["collect_type"])
+    PolicyOrganization.objects.create(policy=own, organization=1)
+    PolicyOrganization.objects.create(policy=sibling, organization=2)
+
+    response = _list_collect_types_with_count(
+        authenticated_user,
+        mocker,
+        "add_policy_count",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    item = next(item for item in json.loads(response.content)["data"] if item["id"] == collect_type.id)
+    assert item["policy_count"] == 1
+
+
+def test_instance_count_intersects_permission_with_current_team(
+    authenticated_user,
+    mocker,
+):
+    collect_type = CollectType.objects.create(
+        name="instance-count-scope",
+        collector="Filebeat",
+        icon="",
+    )
+    own = CollectInstance.objects.create(
+        id="instance-count-own",
+        name="own",
+        collect_type=collect_type,
+    )
+    sibling = CollectInstance.objects.create(
+        id="instance-count-sibling",
+        name="sibling",
+        collect_type=collect_type,
+    )
+    CollectInstanceOrganization.objects.create(
+        collect_instance=own,
+        organization=1,
+    )
+    CollectInstanceOrganization.objects.create(
+        collect_instance=sibling,
+        organization=2,
+    )
+
+    response = _list_collect_types_with_count(
+        authenticated_user,
+        mocker,
+        "add_instance_count",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    item = next(item for item in json.loads(response.content)["data"] if item["id"] == collect_type.id)
+    assert item["instance_count"] == 1
+
+
+def test_policy_create_allows_assignable_sibling_and_projects_response(
+    authenticated_user,
+    mocker,
+):
+    authenticated_user.is_superuser = False
+    authenticated_user.save(update_fields=["is_superuser"])
+    _patch_actor_scope(mocker, scoped_ids=[1], assignable_ids=[1, 2])
+    mocker.patch(
+        "apps.log.views.policy.get_permissions_rules",
+        return_value={"data": {}, "team": [1]},
+    )
+    mocker.patch.object(PolicyViewSet, "update_or_create_task")
+    request = APIRequestFactory().post(
+        "/api/v1/log/policy/",
+        {
+            "name": "assignable-sibling-policy",
+            "alert_type": "keyword",
+            "alert_name": "assignable sibling",
+            "alert_level": "warning",
+            "alert_condition": {"query": "error"},
+            "schedule": {"type": "min", "value": 5},
+            "period": {"type": "min", "value": 5},
+            "organizations": [2],
+        },
+        format="json",
+    )
+    request.COOKIES["current_team"] = "1"
+    force_authenticate(request, user=authenticated_user)
+
+    response = PolicyViewSet.as_view({"post": "create"})(request)
+
+    assert response.status_code == status.HTTP_201_CREATED
+    policy = Policy.objects.get(name="assignable-sibling-policy")
+    assert list(policy.policyorganization_set.values_list("organization", flat=True)) == [2]
+    assert response.data["organizations"] == []
+
+
+@pytest.mark.parametrize("partial", [False, True])
+def test_log_group_update_without_organizations_preserves_binding(
+    mocker,
+    partial,
+):
+    group = LogGroup.objects.create(
+        id=f"preserve-{partial}",
+        name="before",
+        rule={},
+    )
+    LogGroupOrganization.objects.create(log_group=group, organization=1)
+    request = _request(is_superuser=False)
+    _patch_actor_scope(mocker, scoped_ids=[1], assignable_ids=[1, 2])
+    serializer = LogGroupSerializer(
+        group,
+        data={"name": "after", "rule": {}},
+        partial=partial,
+        context={"request": request},
+    )
+
+    assert serializer.is_valid(), serializer.errors
+    serializer.save()
+
+    assert list(group.loggrouporganization_set.values_list("organization", flat=True)) == [1]
+
+
+@pytest.mark.parametrize(
+    "organizations",
+    [
+        [],
+        [True],
+        [1.0],
+        ["01"],
+        [0],
+        [-1],
+    ],
+)
+def test_log_group_rejects_empty_or_noncanonical_organization_ids(
+    mocker,
+    organizations,
+):
+    request = _request(is_superuser=False)
+    _patch_actor_scope(mocker, scoped_ids=[1], assignable_ids=[1, 2])
+    serializer = LogGroupSerializer(
+        data={
+            "id": f"invalid-org-{organizations!s}",
+            "name": "invalid organizations",
+            "rule": {},
+            "organizations": organizations,
+        },
+        context={"request": request},
+    )
+
+    assert not serializer.is_valid()
+    assert "organizations" in serializer.errors
+
+
+def test_log_group_accepts_canonical_integer_and_numeric_string_ids(mocker):
+    request = _request(is_superuser=False)
+    _patch_actor_scope(mocker, scoped_ids=[1], assignable_ids=[1, 2])
+    serializer = LogGroupSerializer(
+        data={
+            "id": "canonical-organizations",
+            "name": "canonical organizations",
+            "rule": {},
+            "organizations": ["1", 2],
+        },
+        context={"request": request},
+    )
+
+    assert serializer.is_valid(), serializer.errors
+    group = serializer.save()
+    assert list(
+        group.loggrouporganization_set.order_by("organization").values_list(
+            "organization",
+            flat=True,
+        )
+    ) == [1, 2]
