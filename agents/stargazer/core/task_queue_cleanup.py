@@ -1,6 +1,12 @@
 from __future__ import annotations
 
+import base64
+import json
+import os
+import secrets
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from arq.constants import (
@@ -9,6 +15,7 @@ from arq.constants import (
     job_key_prefix,
     retry_key_prefix,
 )
+from redis.exceptions import WatchError
 
 
 QUEUE_KEY = default_queue_name.encode()
@@ -21,6 +28,25 @@ DEDUPE_PATTERN = b"task:dedupe:*"
 
 class CleanupStateError(RuntimeError):
     """Redis state is not safe to interpret as a Stargazer task queue."""
+
+
+class CleanupBackupError(RuntimeError):
+    """A recoverable backup could not be created."""
+
+
+class CleanupDriftError(RuntimeError):
+    """Redis state changed after the cleanup plan was built."""
+
+
+class CleanupExecutionError(RuntimeError):
+    """The cleanup transaction failed."""
+
+
+@dataclass(frozen=True)
+class CleanupResult:
+    deleted_job_count: int
+    deleted_marker_count: int
+    remaining_queue_jobs: int
 
 
 @dataclass(frozen=True)
@@ -45,6 +71,13 @@ class CleanupPlan:
             keys.add(RETRY_PREFIX + job_id)
             if self.include_in_progress:
                 keys.add(IN_PROGRESS_PREFIX + job_id)
+        return tuple(sorted(keys))
+
+    @property
+    def watch_keys(self) -> tuple[bytes, ...]:
+        keys = {QUEUE_KEY, *self.target_keys}
+        for job_id in self.selected_job_ids + self.protected_job_ids:
+            keys.add(IN_PROGRESS_PREFIX + job_id)
         return tuple(sorted(keys))
 
 
@@ -106,6 +139,7 @@ def _read_marker_items(redis_client) -> dict[bytes, bytes]:
 
 
 def _build_fingerprint(
+    redis_client,
     *,
     queue_scores: dict[bytes, float],
     marker_items: dict[bytes, bytes],
@@ -135,6 +169,22 @@ def _build_fingerprint(
                     job_id.decode(errors="backslashreplace"),
                 )
             )
+    target_keys = set()
+    for job_id in selected_job_ids:
+        target_keys.add(JOB_PREFIX + job_id)
+        target_keys.add(RETRY_PREFIX + job_id)
+        target_keys.add(IN_PROGRESS_PREFIX + job_id)
+    for key, job_id in marker_items.items():
+        if job_id in selected_job_ids:
+            target_keys.add(key)
+    for key in sorted(target_keys):
+        entries.append(
+            (
+                "type",
+                key.decode(errors="backslashreplace"),
+                _type_name(redis_client, key).decode(errors="replace"),
+            )
+        )
     return tuple(entries)
 
 
@@ -190,10 +240,129 @@ def build_cleanup_plan(
         marker_items=selected_marker_items,
         queue_scores=selected_queue_scores,
         fingerprint=_build_fingerprint(
+            redis_client,
             queue_scores=queue_scores,
             marker_items=marker_items,
             selected_job_ids=selected_job_ids,
             protected_job_ids=protected_job_ids,
             in_progress_job_ids=in_progress_job_ids,
         ),
+    )
+
+
+def _decode_identifier(value: bytes) -> str:
+    return value.decode(errors="backslashreplace")
+
+
+def _backup_payload(redis_client, plan: CleanupPlan, *, redis_db: int) -> dict:
+    key_payload = {}
+    for key in plan.target_keys:
+        dumped = redis_client.dump(key)
+        if dumped is None:
+            continue
+        key_payload[_decode_identifier(key)] = {
+            "dump": base64.b64encode(_as_bytes(dumped)).decode(),
+            "pttl": int(redis_client.pttl(key)),
+            "type": _type_name(redis_client, key).decode(errors="replace"),
+        }
+
+    return {
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "redis_db": int(redis_db),
+        "mode": "all_pending" if plan.all_pending else "blocking",
+        "include_in_progress": plan.include_in_progress,
+        "selected_job_ids": [
+            _decode_identifier(job_id) for job_id in plan.selected_job_ids
+        ],
+        "protected_job_ids": [
+            _decode_identifier(job_id) for job_id in plan.protected_job_ids
+        ],
+        "queue_scores": {
+            _decode_identifier(job_id): score for job_id, score in plan.queue_scores
+        },
+        "marker_items": {
+            _decode_identifier(key): _decode_identifier(job_id)
+            for key, job_id in plan.marker_items
+        },
+        "keys": key_payload,
+    }
+
+
+def create_cleanup_backup(
+    redis_client,
+    plan: CleanupPlan,
+    *,
+    backup_dir: Path,
+    redis_db: int,
+) -> Path:
+    backup_path = None
+    try:
+        backup_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+        os.chmod(backup_dir, 0o700)
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        backup_path = backup_dir / (
+            f"stargazer-task-queue-{timestamp}-{secrets.token_hex(4)}.json"
+        )
+        payload = _backup_payload(redis_client, plan, redis_db=redis_db)
+        file_descriptor = os.open(
+            backup_path,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+        )
+        with os.fdopen(file_descriptor, "w", encoding="utf-8") as file_obj:
+            json.dump(payload, file_obj, ensure_ascii=False, sort_keys=True)
+            file_obj.flush()
+            os.fsync(file_obj.fileno())
+        os.chmod(backup_path, 0o600)
+        return backup_path
+    except Exception as exc:
+        if backup_path is not None:
+            try:
+                backup_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        raise CleanupBackupError("failed to create task queue backup") from exc
+
+
+def apply_cleanup_plan(redis_client, plan: CleanupPlan) -> CleanupResult:
+    if not plan.selected_job_ids:
+        return CleanupResult(
+            deleted_job_count=0,
+            deleted_marker_count=0,
+            remaining_queue_jobs=int(redis_client.zcard(QUEUE_KEY)),
+        )
+
+    try:
+        with redis_client.pipeline() as pipe:
+            pipe.watch(*plan.watch_keys)
+            try:
+                current_plan = build_cleanup_plan(
+                    pipe,
+                    all_pending=plan.all_pending,
+                    include_in_progress=plan.include_in_progress,
+                )
+            except CleanupStateError as exc:
+                pipe.unwatch()
+                raise CleanupDriftError("cleanup target state changed") from exc
+
+            if current_plan != plan:
+                pipe.unwatch()
+                raise CleanupDriftError("cleanup target state changed")
+
+            pipe.multi()
+            pipe.zrem(QUEUE_KEY, *plan.selected_job_ids)
+            if plan.target_keys:
+                pipe.delete(*plan.target_keys)
+            pipe.execute()
+    except WatchError as exc:
+        raise CleanupDriftError("cleanup target state changed") from exc
+    except CleanupDriftError:
+        raise
+    except Exception as exc:
+        raise CleanupExecutionError("cleanup transaction failed") from exc
+
+    return CleanupResult(
+        deleted_job_count=len(plan.selected_job_ids),
+        deleted_marker_count=len(plan.marker_items),
+        remaining_queue_jobs=int(redis_client.zcard(QUEUE_KEY)),
     )
