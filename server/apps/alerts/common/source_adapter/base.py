@@ -560,8 +560,9 @@ class AlertSourceAdapter(ABC):
             from apps.alerts.models import AlertShield
 
             shields = AlertShield.objects.filter(is_active=True)
-            if shields.exists():
-                logger.debug("[AlertSource] 加载了 %s 个活跃屏蔽策略", shields.count())
+            shield_count = shields.count()
+            if shield_count:
+                logger.debug("[AlertSource] 加载了 %s 个活跃屏蔽策略", shield_count)
                 return shields
             return None
         except Exception as e:

@@ -42,6 +42,59 @@ def _make_get_nats_data(request):
     return obj
 
 
+class _Namespace:
+    id = 1
+    name = "custom"
+    namespace = "custom_namespace"
+    account = "nats-user"
+    decrypt_password = "plain-secret"
+    domain = "nats.example.com"
+    enable_tls = False
+
+
+class TestNamespaceCredentials:
+    def test_instance_state_does_not_retain_plaintext_credentials(self):
+        obj = GetNatsData(
+            namespace="custom",
+            path="query",
+            namespace_list=[_Namespace()],
+            request=_make_request(current_team_cookie="1"),
+        )
+
+        assert obj.namespace_server_map == {1: "nats://nats.example.com:4222"}
+        assert "plain-secret" not in repr(obj.__dict__)
+
+    def test_credentials_are_only_passed_at_rpc_call_boundary(self):
+        captured = {}
+
+        class FakeClient:
+            DEFAULT_NATS = True
+
+            def __init__(self, **kwargs):
+                captured["init"] = kwargs
+
+            def get_customization_nast_data(self, **kwargs):
+                captured["call"] = kwargs
+                return {"ok": True}
+
+        class TestGetNatsData(GetNatsData):
+            @property
+            def default_nats_client(self):
+                return FakeClient
+
+        obj = TestGetNatsData(
+            namespace="custom",
+            path="query",
+            namespace_list=[_Namespace()],
+            request=_make_request(current_team_cookie="1"),
+        )
+
+        assert obj.get_data() == {"ok": True}
+        assert captured["init"]["server"] == "nats://nats.example.com:4222"
+        assert captured["call"]["_nats_user"] == "nats-user"
+        assert captured["call"]["_nats_password"] == "plain-secret"
+
+
 class TestUpdateRequestParamsGuard:
     """
     Regression: int(get_current_team()) must not raise TypeError/ValueError.

@@ -14,8 +14,8 @@ revert 修复后,所有测试的"after close check, build.counts.pending_review
 
 import pytest
 
-from apps.opspilot.models import BuildRecord, CheckItem, WikiKnowledgeBase
-from apps.opspilot.services.wiki.check_service import accept_candidate, create_candidate, reject_candidate, resolve_check
+from apps.opspilot.models import BuildRecord, WikiKnowledgeBase
+from apps.opspilot.services.wiki.check_service import accept_candidate, create_candidate, reject_candidate
 from apps.opspilot.services.wiki.page_service import create_manual_page
 
 
@@ -78,34 +78,17 @@ def test_reject_candidate_decrements_pending_review():
 
 
 @pytest.mark.django_db
-def test_resolve_check_with_no_candidate_recomputes_for_all_builds():
-    """resolve_check 处理无 candidate_version 的检查(系统扫描),
-    fallback 按 KB 全 build 重算 pending_review(此 KB 下所有 build)。"""
+def test_automatic_check_with_no_candidate_recomputes_for_all_builds():
+    """自动维护项没有 candidate_version 时，按 KB 全 build 重算待审批数。"""
     kb, build = _make_kb_with_build(pending_review=2)
-    # 模拟"扫描发现 2 条 open 的 KB 级检查",直接建 2 条无 candidate 的 CheckItem
-    from apps.opspilot.services.wiki.page_service import create_manual_page
+    from apps.opspilot.services.wiki.check_service import _recount_pending_review, ensure_check
 
     page = _make_page(kb, title="orphan")
-    CheckItem.objects.create(
-        knowledge_base=kb,
-        check_type="orphan",
-        status="open",
-        related={"pages": [page.id]},
-    )
-    CheckItem.objects.create(
-        knowledge_base=kb,
-        check_type="no_source",
-        status="open",
-        related={"pages": [page.id]},
-    )
-
-    # 找到其中一条 resolve,触发 KB 级重算
-    target = CheckItem.objects.filter(knowledge_base=kb, check_type="orphan").first()
-    resolve_check(target, operator="u")
+    target = ensure_check(kb, "orphan", page)[0]
+    ensure_check(kb, "no_source", page)
+    _recount_pending_review(target)
 
     build.refresh_from_db()
-    # resolve 走 KB 级 fallback,会把所有 build 的 pending_review 刷成 0
-    # (因为系统扫描 CheckItem 没有 candidate_version,不挂在具体 build 上)
     assert build.counts["pending_review"] == 0
 
 
@@ -114,16 +97,10 @@ def test_recount_is_idempotent_when_no_change():
     """counts 值与实际一致时不应触发不必要的 save(避免 updated_at 噪声)。"""
     kb, build = _make_kb_with_build(pending_review=0)  # 已无 open check
     # 直接调 _recount_pending_review,不应写库
-    from apps.opspilot.services.wiki.check_service import _recount_pending_review
-    from apps.opspilot.services.wiki.page_service import create_manual_page
+    from apps.opspilot.services.wiki.check_service import _recount_pending_review, ensure_check
 
     page = _make_page(kb)
-    check = CheckItem.objects.create(
-        knowledge_base=kb,
-        check_type="orphan",
-        status="open",
-        related={"pages": [page.id]},
-    )
+    check = ensure_check(kb, "orphan", page)[0]
     # 模拟: counts 已经是 0(没有 candidate 关联 check),不应触发 recount save
     build.refresh_from_db()
     updated_at_before = build.updated_at
@@ -137,16 +114,11 @@ def test_recount_is_idempotent_when_no_change():
 def test_recount_updates_when_count_differs():
     """counts 与实际不符时必须更新。"""
     kb, build = _make_kb_with_build(pending_review=10)  # 故意错
-    # 无 candidate 的检查,resolve_check 走 KB fallback → 应该把 10 改回 0
-    from apps.opspilot.services.wiki.check_service import _recount_pending_review
+    # 无 candidate 的自动维护记录走 KB fallback，应把 10 改回 0。
+    from apps.opspilot.services.wiki.check_service import _recount_pending_review, ensure_check
 
     page = _make_page(kb)
-    check = CheckItem.objects.create(
-        knowledge_base=kb,
-        check_type="orphan",
-        status="open",
-        related={"pages": [page.id]},
-    )
+    check = ensure_check(kb, "orphan", page)[0]
     _recount_pending_review(check)
     build.refresh_from_db()
     assert build.counts["pending_review"] == 0

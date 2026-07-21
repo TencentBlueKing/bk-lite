@@ -89,6 +89,25 @@ class MonitorPluginService:
         MonitorPluginService._sync_plugin_monitor_objects(plugin_name, monitor_object_names)
 
     @staticmethod
+    def _ensure_language_skeleton(plugin_dir, plugin_name: str) -> None:
+        """为新 plugin 在 metrics.json 同目录生成 language/{en,zh-Hans}.yaml 空骨架。
+
+        若文件已存在且非空,不覆盖。
+        """
+        import yaml
+        from pathlib import Path
+
+        lang_dir = Path(plugin_dir) / "language"
+        lang_dir.mkdir(parents=True, exist_ok=True)
+        skeleton = {plugin_name: {"name": "", "desc": ""}}
+        for lang in ("en", "zh-Hans"):
+            target = lang_dir / f"{lang}.yaml"
+            if target.is_file() and target.stat().st_size > 0:
+                continue
+            with target.open("w", encoding="utf-8") as f:
+                yaml.safe_dump(skeleton, f, allow_unicode=True, sort_keys=False, default_flow_style=False)
+
+    @staticmethod
     def import_basic_monitor_object(data: dict):
         """导入基础监控对象"""
         metrics = data.pop("metrics")

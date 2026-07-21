@@ -63,7 +63,7 @@ class GetNatsData:
 
     def set_namespace_servers(self):
         """
-        构建NATS服务器连接URL
+        构建不含凭据的 NATS 服务器连接 URL
         根据enable_tls字段决定使用nats://或tls://协议
         """
         result = {}
@@ -71,13 +71,13 @@ class GetNatsData:
             # 根据enable_tls字段确定协议
             protocol = "tls" if namespace.enable_tls else "nats"
 
-            # 构建完整的服务器URL
+            # 凭据只在发起连接时单独传递，避免明文密码驻留在实例属性中。
             if ":" not in namespace.domain:
                 # 域名不包含端口,使用默认端口4222
-                server_url = f"{protocol}://{namespace.account}:{namespace.decrypt_password}@{namespace.domain}:4222"
+                server_url = f"{protocol}://{namespace.domain}:4222"
             else:
                 # 域名已包含端口,直接使用
-                server_url = f"{protocol}://{namespace.account}:{namespace.decrypt_password}@{namespace.domain}"
+                server_url = f"{protocol}://{namespace.domain}"
 
             result[namespace.id] = server_url
         return result
@@ -142,4 +142,10 @@ class GetNatsData:
             "[DataSourceQuery] 调用 NATS 取数 namespace=%s(id=%s) nats_namespace=%s path=%s",
             namespace.name, namespace.id, nats_namespace, self.path,
         )
+        if hasattr(nats_client, "DEFAULT_NATS"):
+            return fun(
+                _nats_user=namespace.account,
+                _nats_password=namespace.decrypt_password,
+                **self.params,
+            )
         return fun(**self.params)

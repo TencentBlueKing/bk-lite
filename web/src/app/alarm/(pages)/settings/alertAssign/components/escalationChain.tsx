@@ -19,12 +19,6 @@ interface EscalationChainProps {
 // 当前 UI 约束最多 3 层；后端与数据模型不限层数，可后续放开。
 const MAX_LAYERS = 3;
 
-// 升级层级内字段统一竖排（label 独占一行），避免长 label 在窄标签列被截断/遮挡。
-const layerItemLayout = {
-  labelCol: { span: 24 },
-  wrapperCol: { span: 24 },
-};
-
 const EscalationChain: React.FC<EscalationChainProps> = ({
   enabled,
   personnelOptions,
@@ -64,7 +58,7 @@ const EscalationChain: React.FC<EscalationChainProps> = ({
               {fields.map((field, index) => (
                 <div
                   key={field.key}
-                  className="border rounded p-3 mb-3 ml-[110px]"
+                  className="border rounded p-3 mb-3"
                 >
                   <Space align="baseline" className="w-full justify-between">
                     <span className="font-bold">
@@ -74,7 +68,6 @@ const EscalationChain: React.FC<EscalationChainProps> = ({
                   </Space>
                   <Form.Item
                     {...field}
-                    {...layerItemLayout}
                     key={`${field.key}-personnel`}
                     name={[field.name, 'personnel']}
                     label={t('settings.assignStrategy.formPersonnelSelect')}
@@ -89,7 +82,6 @@ const EscalationChain: React.FC<EscalationChainProps> = ({
                   </Form.Item>
                   <Form.Item
                     {...field}
-                    {...layerItemLayout}
                     key={`${field.key}-wait`}
                     name={[field.name, 'wait_minutes']}
                     label={t('settings.assignStrategy.escalationWaitMinutes')}
@@ -105,7 +97,6 @@ const EscalationChain: React.FC<EscalationChainProps> = ({
                   </Form.Item>
                   <Form.Item
                     {...field}
-                    {...layerItemLayout}
                     key={`${field.key}-channels`}
                     name={[field.name, 'notify_channels']}
                     label={t('settings.assignStrategy.escalationLayerChannel')}
@@ -115,7 +106,7 @@ const EscalationChain: React.FC<EscalationChainProps> = ({
                 </div>
               ))}
               {fields.length < MAX_LAYERS && (
-                <Form.Item className="ml-[110px]">
+                <Form.Item>
                   <Button
                     type="dashed"
                     onClick={() => add()}

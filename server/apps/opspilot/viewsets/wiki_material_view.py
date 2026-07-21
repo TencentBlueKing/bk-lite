@@ -12,10 +12,11 @@ from apps.opspilot.services.wiki.embedding_service import index_version, reindex
 from apps.opspilot.services.wiki.index_rebuild_service import rebuild_page_indexes
 from apps.opspilot.services.wiki.material_service import ingest_material
 from apps.opspilot.services.wiki.update_service import handle_material_deletion, preview_material_deletion, preview_material_update, propose_update
+from apps.opspilot.viewsets.wiki_team_scope import WikiTeamScopeMixin
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
-class WikiMaterialViewSet(AuthViewSet):
+class WikiMaterialViewSet(WikiTeamScopeMixin, AuthViewSet):
     """Wiki 资料 CRUD + 摄取(解析 + AI 摘要)。按 knowledge_base 维度组织。"""
 
     queryset = Material.objects.all().order_by("-id")
@@ -115,6 +116,9 @@ class WikiMaterialViewSet(AuthViewSet):
         return self.update(request, *args, **kwargs)
 
     def create(self, request, *args, **kwargs):
+        if self.accessible_knowledge_base_or_none(request.data.get("knowledge_base")) is None:
+            return JsonResponse({"result": False, "message": "知识库不存在"}, status=400)
+
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
@@ -134,10 +138,25 @@ class WikiMaterialViewSet(AuthViewSet):
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
+        material_id = instance.id
         name = instance.name
         build = handle_material_deletion(instance, operator=getattr(request.user, "username", ""))
         log_operation(request, "delete", "opspilot", f"删除资料: {name}")
-        return JsonResponse({"result": True, "data": {"pending_review": build.counts.get("pending_review", 0)}})
+        counts = build.counts or {}
+        return JsonResponse(
+            {
+                "result": True,
+                "data": {
+                    "deleted": True,
+                    "material_id": material_id,
+                    "build_record_id": build.id,
+                    "status": build.status,
+                    "counts": counts,
+                    "maintenance": build.maintenance or {},
+                    "pending_review": counts.get("pending_review", 0),
+                },
+            }
+        )
 
     @action(methods=["GET"], detail=True)
     def delete_impact(self, request, pk=None):
@@ -231,6 +250,9 @@ class WikiMaterialViewSet(AuthViewSet):
         kb_id = request.data.get("knowledge_base")
         if not kb_id:
             return JsonResponse({"result": False, "message": "knowledge_base 必填"}, status=400)
+        kb = self.accessible_knowledge_base_or_none(kb_id)
+        if kb is None:
+            return JsonResponse({"result": False, "message": "知识库不存在"}, status=400)
 
         ocr_enhance = str(request.data.get("ocr_enhance", "")).lower() in ("1", "true", "yes")
         files = request.FILES.getlist("files")
@@ -244,7 +266,7 @@ class WikiMaterialViewSet(AuthViewSet):
                 # 每条记录包在独立 savepoint 中:失败只回滚当前 savepoint,不污染整批事务
                 with transaction.atomic():
                     material = Material.objects.create(
-                        knowledge_base_id=kb_id,
+                        knowledge_base=kb,
                         name=f.name,
                         material_type="file",
                         file=f,

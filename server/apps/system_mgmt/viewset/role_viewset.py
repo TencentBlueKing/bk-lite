@@ -57,6 +57,7 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
                     "id": client_obj["id"] * 886,
                     "name": client_obj["name"],
                     "is_build_in": client_obj.get("is_build_in", True),
+                    "display_name": client_obj.get("display_name", ""),
                     "children": app_role,
                 }
             )

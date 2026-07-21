@@ -11,6 +11,7 @@ import type { ParamItem } from '@/app/ops-analysis/types/dataSource';
 import type { OpsChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
 import type { ThresholdColorConfig } from '@/app/ops-analysis/utils/thresholdUtils';
 import type { NetworkStatusTopologyConfig } from '@/app/ops-analysis/types/sceneWidget';
+import { validateComponentSwitchParams } from '@/app/ops-analysis/utils/componentParamSwitch';
 
 export interface WidgetConfigFormValues {
   name: string;
@@ -50,7 +51,8 @@ type SubmitFilterField = TableFilterFieldConfig & {
 
 export type WidgetSubmitError =
   | 'duplicateFieldKey'
-  | 'atLeastOneVisibleColumn';
+  | 'atLeastOneVisibleColumn'
+  | 'multipleComponentSwitchParams';
 
 export interface BuildWidgetSubmitConfigInput {
   values: WidgetConfigFormValues;
@@ -162,7 +164,7 @@ const applySingleValueConfig = (
   result.thresholdColors = thresholdColors;
   result.compare = !!values.compare;
   if (values.unit !== undefined) result.unit = values.unit;
-  result.unitId = values.unitId || undefined;
+  result.unitId = values.unitId;
   result.valueMappings = values.valueMappings || undefined;
   if (values.conversionFactor !== undefined) {
     result.conversionFactor = values.conversionFactor;
@@ -181,7 +183,7 @@ const applyGaugeConfig = (
   result.selectedFields = selectedFields;
   result.thresholdColors = thresholdColors;
   if (values.unit !== undefined) result.unit = values.unit;
-  result.unitId = values.unitId || undefined;
+  result.unitId = values.unitId;
   result.valueMappings = values.valueMappings || undefined;
   if (values.conversionFactor !== undefined) {
     result.conversionFactor = values.conversionFactor;
@@ -211,6 +213,9 @@ export const buildWidgetSubmitConfig = ({
   }
 
   const result: WidgetConfig = { ...values } as WidgetConfig;
+  if (validateComponentSwitchParams(values.dataSourceParams)) {
+    return { error: 'multipleComponentSwitchParams' };
+  }
 
   if (chartType === 'table' || chartType === 'eventTable') {
     const tableResult = buildTableConfig({

@@ -21,7 +21,8 @@
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.urls[0]"
-      }
+      },
+      "label_en": "URL"
     },
     {
       "name": "interval",
@@ -34,7 +35,8 @@
         "min": 1,
         "precision": 0,
         "placeholder": "间隔",
-        "addonAfter": "s"
+        "addonAfter": "s",
+        "placeholder_en": "Interval"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.interval",
@@ -44,7 +46,9 @@
         "to_api": {
           "suffix": "s"
         }
-      }
+      },
+      "label_en": "Interval",
+      "description_en": "Collection time interval (unit: seconds)"
     },
     {
       "name": "insecure_skip_verify",
@@ -56,7 +60,8 @@
       "widget_props": {},
       "transform_on_edit": {
         "origin_path": "child.content.config.insecure_skip_verify"
-      }
+      },
+      "label_en": "Skip Certificate Verification"
     }
   ],
   "table_columns": [
@@ -67,9 +72,11 @@
       "required": true,
       "widget_props": {
         "placeholder": "请选择节点",
-        "width": 220
+        "width": 220,
+        "placeholder_en": "Please select node"
       },
-      "enable_row_filter": false
+      "enable_row_filter": false,
+      "label_en": "Node"
     },
     {
       "name": "url",
@@ -94,7 +101,8 @@
           "url"
         ],
         "target_field": "instance_name"
-      }
+      },
+      "label_en": "URL (IPv4/IPv6)"
     },
     {
       "name": "instance_name",
@@ -104,8 +112,10 @@
       "widget_props": {
         "placeholder": "实例名称",
         "disabled": false,
-        "width": 220
-      }
+        "width": 220,
+        "placeholder_en": "Instance Name"
+      },
+      "label_en": "Instance Name"
     },
     {
       "name": "group_ids",
@@ -114,8 +124,10 @@
       "required": false,
       "widget_props": {
         "placeholder": "请选择组",
-        "width": 220
-      }
+        "width": 220,
+        "placeholder_en": "Please select group"
+      },
+      "label_en": "Group"
     }
   ]
 }

@@ -9,15 +9,16 @@ import json
 import logging
 import os
 
+from django.db import transaction
+
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
-from apps.opspilot.models import BuildRecord, KnowledgePage, LLMModel, PageEvidence, PageVersion
+from apps.opspilot.models import BuildRecord, KnowledgePage, LLMModel, PageEvidence, PageVersion, WikiKnowledgeBase
 from apps.opspilot.services.wiki.cascade_service import cascade
 from apps.opspilot.services.wiki.check_service import create_candidate
 from apps.opspilot.services.wiki.material_service import load_parsed_markdown
 from apps.opspilot.services.wiki.text_utils import split_text_for_llm
 from apps.opspilot.services.wiki.title_service import canonical_title as _canonical_title
-from apps.opspilot.services.wiki.title_service import compact_title_key
 from apps.opspilot.services.wiki.title_service import title_alias_terms_for_enrichment as _title_alias_terms_for_enrichment
 from apps.opspilot.services.wiki.wikilink_enrichment_service import enrich_pages_wikilinks
 
@@ -25,6 +26,7 @@ logger = logging.getLogger("opspilot")
 
 _split_text_for_llm = split_text_for_llm
 _WIKI_LLM_TIMEOUT_SECONDS = 300.0
+_CURRENT_MATERIAL_VERSION = object()
 _EVIDENCE_SNIPPET_CHARS = 500
 _SOURCE_CHUNK_PREVIEW_CHARS = 240
 
@@ -82,27 +84,55 @@ def _llm_extract_facts(text, llm_model_id):
 def _llm_generate_pages(kb, source_text, llm_model_id):
     """Stage2:依据 Purpose/Schema 从(已抽取的)要点生成页面列表。
 
-    返回 [{"page_type","title","tags","body"}, ...];无模型或解析失败时返回 []。
+    返回 [{"page_type","title","tags","body","existing_page_id"}, ...];
+    无模型或解析失败时返回 []。
     """
     if not llm_model_id or not (source_text or "").strip():
         return []
     pages = []
     chunks = _split_text_for_llm(source_text)
+    existing_catalog = json.dumps(
+        [
+            {"id": page.id, "title": page.title, "page_type": page.page_type}
+            for page in KnowledgePage.objects.filter(
+                knowledge_base=kb,
+                status__in=["active", "source_invalid"],
+            ).order_by("id")
+        ],
+        ensure_ascii=False,
+    )
     for idx, chunk in enumerate(chunks, start=1):
         prompt = (
             "你是企业知识库构建助手。请依据下面的 Purpose 与 Schema,从已抽取的要点生成知识页面。\n"
-            '只输出 JSON,格式为 {"pages":[{"page_type":"...","title":"...","tags":["..."],"body":"markdown"}]}。\n'
+            '只输出 JSON,格式为 {"pages":[{"page_type":"...","title":"...","tags":["..."],'
+            '"body":"markdown","existing_page_id":123或null}]}。\n'
             'page_type 必须来自 Schema 定义的类型;无可提取内容时输出 {"pages":[]}。\n'
             "生成原则:不要只输出总览页面;对资料中反复出现的产品、平台、组件、模块、能力中心、"
             "依赖项、服务、表格行中的核心对象,应优先拆成独立实体页或概念页。\n"
+            "先对照现有页面清单判断是否为同一知识主题。语义相同但标题不同也应复用现有页面标题,"
+            "并填写对应 existing_page_id;确实是新主题时 existing_page_id 填 null。\n"
             "同一对象的缩写、英文名、中文全称必须使用同一个页面标题;优先使用中文全称,"
             "例如 CMDB 与 配置平台 使用 配置平台,JOB 与 作业平台 使用 作业平台,不要分别建页。\n"
             "页面正文应使用 [[目标页面标题]] 引用相关页面,便于后续关系图谱建边。\n"
             "注意:这是同一份资料的分块处理,如果当前片段补充了已有主题,可以输出同名页面,"
             "系统会合并同名页面内容。\n\n"
-            f"# Purpose\n{kb.purpose_md}\n\n# Schema\n{kb.schema_md}\n\n# 要点片段 {idx}/{len(chunks)}\n{chunk}\n"
+            f"# Purpose\n{kb.purpose_md}\n\n# Schema\n{kb.schema_md}"
+            f"\n\n# 现有页面清单\n{existing_catalog}"
+            f"\n\n# 要点片段 {idx}/{len(chunks)}\n{chunk}\n"
         )
-        pages.extend(_parse_pages(_invoke_llm(llm_model_id, prompt)))
+        raw_result = _invoke_llm(llm_model_id, prompt)
+        parsed_pages = _parse_pages(raw_result)
+        logger.info(
+            "wiki_build_stage2_chunk kb_id=%s model_id=%s chunk=%s/%s output_chars=%s response_empty=%s page_count=%s",
+            kb.id,
+            llm_model_id,
+            idx,
+            len(chunks),
+            len(raw_result or ""),
+            not bool((raw_result or "").strip()),
+            len(parsed_pages),
+        )
+        pages.extend(parsed_pages)
     return _merge_pages(pages, kb=kb)
 
 
@@ -147,16 +177,21 @@ def _merge_pages(pages, kb=None):
         tags = [tag for tag in page.get("tags", []) or [] if tag]
         body = (page.get("body") or "").strip()
         if key not in merged:
-            merged[key] = {
+            merged_page = {
                 "page_type": page.get("page_type", "concept"),
                 "title": title,
                 "tags": list(dict.fromkeys(tags)),
                 "body": body,
             }
+            if page.get("existing_page_id") is not None:
+                merged_page["existing_page_id"] = page["existing_page_id"]
+            merged[key] = merged_page
             order.append(key)
             continue
         current = merged[key]
         current["tags"] = list(dict.fromkeys([*current.get("tags", []), *tags]))
+        if current.get("existing_page_id") is None and page.get("existing_page_id") is not None:
+            current["existing_page_id"] = page["existing_page_id"]
         if body and body not in current.get("body", ""):
             current["body"] = "\n\n".join(part for part in [current.get("body", ""), body] if part)
     return [merged[key] for key in order]
@@ -187,6 +222,24 @@ def _existing_pages_by_title(kb):
         if key and key not in result:
             result[key] = page
     return result
+
+
+def _existing_page_by_id(kb, page_id):
+    try:
+        page_id = int(page_id)
+    except (TypeError, ValueError):
+        return None
+    if page_id <= 0:
+        return None
+    return (
+        KnowledgePage.objects.filter(
+            id=page_id,
+            knowledge_base=kb,
+            status__in=["active", "source_invalid"],
+        )
+        .select_related("current_version")
+        .first()
+    )
 
 
 def _source_chunks_with_offsets(text):
@@ -332,18 +385,28 @@ def _source_locator_for_page(material, source_text, page_data, chunks=None):
     return json.dumps(locator, ensure_ascii=False)
 
 
-def _ensure_evidence(page, material, locator=""):
-    evidence, created = PageEvidence.objects.get_or_create(
-        page=page,
-        material=material,
-        defaults={"material_version": material.current_version, "locator": locator or ""},
+def _ensure_evidence(page, material, locator="", material_version=_CURRENT_MATERIAL_VERSION):
+    if material_version is _CURRENT_MATERIAL_VERSION:
+        material_version = getattr(material, "current_version", None)
+    material_version_id = getattr(material_version, "id", None)
+    evidence = (
+        PageEvidence.objects.filter(
+            page=page,
+            material=material,
+            material_version_id=material_version_id,
+        )
+        .order_by("id")
+        .first()
     )
-    if created:
+    if evidence is None:
+        PageEvidence.objects.create(
+            page=page,
+            material=material,
+            material_version=material_version,
+            locator=locator or "",
+        )
         return True
     update_fields = []
-    if material.current_version_id and evidence.material_version_id != material.current_version_id:
-        evidence.material_version = material.current_version
-        update_fields.append("material_version")
     if locator and evidence.locator != locator:
         evidence.locator = locator
         update_fields.append("locator")
@@ -391,6 +454,87 @@ def _merged_body_for_material(page, material, incoming_body):
     if not current_body:
         return body
     return "\n\n".join([current_body, body])
+
+
+def _classify_page_change(page, page_data, llm_model_id):
+    """判断新旧正文是否为同一主题，以及属于无变化、补充还是事实冲突。"""
+    current_body = page.current_version.body if page.current_version_id else ""
+    incoming_body = (page_data.get("body") or "").strip()
+    if not current_body.strip() or not incoming_body:
+        logger.info(
+            "wiki_conflict_compare kb_id=%s page_id=%s model_id=%s status=skipped_empty_body",
+            page.knowledge_base_id,
+            page.id,
+            llm_model_id,
+        )
+        return None
+    if current_body.strip() == incoming_body:
+        logger.info(
+            "wiki_conflict_compare kb_id=%s page_id=%s model_id=%s status=deterministic_equal " "same_subject=true relation=unchanged",
+            page.knowledge_base_id,
+            page.id,
+            llm_model_id,
+        )
+        return {"same_subject": True, "relation": "unchanged", "reason": ""}
+
+    prompt = (
+        "你是企业知识冲突检测助手。请比较当前知识与新知识，只判断事实结论是否互相矛盾。\n"
+        "同一主题下新增不矛盾的细节属于 supplement；事实结论相同属于 unchanged；"
+        "同一条件下数值、责任人、状态、步骤或规则互斥才属于 conflict。\n"
+        '只输出 JSON：{"same_subject":true或false,"relation":"unchanged|supplement|conflict","reason":"简短原因"}。\n\n'
+        f"# 当前知识\n标题：{page.title}\n正文：\n{current_body}\n\n"
+        f"# 新知识\n标题：{page_data.get('title') or ''}\n正文：\n{incoming_body}\n"
+    )
+    raw = (_invoke_llm(llm_model_id, prompt) or "").strip()
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start == -1 or end == -1:
+        logger.warning(
+            "wiki_conflict_compare kb_id=%s page_id=%s model_id=%s status=invalid_json output_chars=%s",
+            page.knowledge_base_id,
+            page.id,
+            llm_model_id,
+            len(raw),
+        )
+        return None
+    try:
+        result = json.loads(raw[start : end + 1])
+    except (TypeError, ValueError):
+        logger.warning(
+            "wiki_conflict_compare kb_id=%s page_id=%s model_id=%s status=json_parse_failed output_chars=%s",
+            page.knowledge_base_id,
+            page.id,
+            llm_model_id,
+            len(raw),
+        )
+        return None
+    if not isinstance(result, dict) or not isinstance(result.get("same_subject"), bool):
+        logger.warning(
+            "wiki_conflict_compare kb_id=%s page_id=%s model_id=%s status=invalid_schema output_chars=%s",
+            page.knowledge_base_id,
+            page.id,
+            llm_model_id,
+            len(raw),
+        )
+        return None
+    if result.get("relation") not in {"unchanged", "supplement", "conflict"}:
+        logger.warning(
+            "wiki_conflict_compare kb_id=%s page_id=%s model_id=%s status=invalid_relation output_chars=%s",
+            page.knowledge_base_id,
+            page.id,
+            llm_model_id,
+            len(raw),
+        )
+        return None
+    return {
+        "same_subject": result["same_subject"],
+        "relation": result["relation"],
+        "reason": str(result.get("reason") or "").strip(),
+    }
+
+
+def _has_other_material_source(page, material):
+    return PageEvidence.objects.filter(page=page).exclude(material=material).exists()
 
 
 def _merge_ai_page(page, material, build, page_data, operator="", update_method="ai_merge", change_type="ai_merge", locator=""):
@@ -445,65 +589,137 @@ def _merge_ai_page(page, material, build, page_data, operator="", update_method=
     return "unchanged"
 
 
-def _create_review_candidate(page, material, build, page_data, operator=""):
-    # phase 4.2: 调决策服务查规则,命中回放不创建 CheckItem,BuildRecord 记 decision_reused
+def _incoming_material_snapshot(material, material_version=_CURRENT_MATERIAL_VERSION):
+    if material_version is _CURRENT_MATERIAL_VERSION:
+        material_version = getattr(material, "current_version", None)
+    return {
+        "material_id": getattr(material, "id", None),
+        "material_version_id": getattr(material_version, "id", None),
+        "content_hash": (getattr(material_version, "content_hash", "") or getattr(material, "content_hash", "") or ""),
+    }
+
+
+def resolve_knowledge_conflict(
+    page,
+    material,
+    build,
+    candidate_body,
+    *,
+    operator="",
+    check_type="cannot_merge",
+    reason="知识结论发生变化，需人工选择当前知识或新知识",
+    related=None,
+    locator="",
+):
+    """在短事务内以最新页面状态执行 unchanged / replayed / pending 三态编排。"""
     from apps.opspilot.services.wiki.decision_service import (
-        build_participants_from_materials,
+        build_participants_from_page_evidence,
         compute_schema_fingerprint,
         replay_decision,
         subject_key_for_page,
     )
 
-    schema_fingerprint = compute_schema_fingerprint(page.knowledge_base)
-    subject_key = subject_key_for_page(
-        page_type=page.page_type or "concept",
-        canonical_title=compact_title_key(page.title or ""),
+    incoming_material_version = getattr(material, "current_version", None)
+    incoming_snapshot = _incoming_material_snapshot(
+        material,
+        material_version=incoming_material_version,
     )
-    result, rule = replay_decision(
-        knowledge_base=page.knowledge_base,
-        decision_type="page_identity",
-        subject_key=subject_key,
-        schema_fingerprint=schema_fingerprint,
-        participants=build_participants_from_materials([material]),
-        page=page,
-    )
-    if result == "replayed":
-        # 命中规则,记录到 BuildRecord 供审计,直接返回 unchanged
-        _record_decision_reused(build, rule, action=rule.action, page=page)
-        return "unchanged"
-    if result == "unchanged":
-        return "unchanged"
+    with transaction.atomic():
+        locked_kb = WikiKnowledgeBase.objects.select_for_update().get(pk=page.knowledge_base_id)
+        locked_page = KnowledgePage.objects.select_for_update().get(
+            pk=page.pk,
+            knowledge_base=locked_kb,
+        )
+        locked_page.knowledge_base = locked_kb
+        if locked_page.current_version_id:
+            locked_page.current_version = PageVersion.objects.select_for_update().get(pk=locked_page.current_version_id)
+        participants = build_participants_from_page_evidence(
+            locked_page,
+            incoming_snapshot=incoming_snapshot,
+        )
+        schema_fingerprint = compute_schema_fingerprint(locked_page.knowledge_base)
+        subject_key = subject_key_for_page(
+            page_type=locked_page.page_type or "concept",
+            canonical_title=_canonical_title(locked_page.knowledge_base, locked_page.title),
+        )
+        result, rule = replay_decision(
+            knowledge_base=locked_page.knowledge_base,
+            decision_type="knowledge_conflict",
+            subject_key=subject_key,
+            schema_fingerprint=schema_fingerprint,
+            participants=participants,
+            page=locked_page,
+            candidate_body=candidate_body,
+        )
+        if result == "replayed":
+            return (
+                "unchanged",
+                {
+                    "decision_reused": True,
+                    "rule_id": rule.id,
+                    "action": rule.action,
+                },
+            )
+        if result == "unchanged":
+            _ensure_evidence(
+                locked_page,
+                material,
+                locator=locator,
+                material_version=incoming_material_version,
+            )
+            return "unchanged", {}
 
-    # result == "pending" 或规则不适配:创建候选 + 决策
-    create_candidate(
+        check = create_candidate(
+            locked_page,
+            body=candidate_body,
+            reason=reason,
+            check_type=check_type,
+            build_record=build,
+            created_by=operator,
+            related=related or {"pages": [locked_page.id], "materials": [material.id]},
+            incoming_material=material,
+            incoming_material_version=incoming_material_version,
+        )
+        return "pending_review", {"check_id": check.id}
+
+
+def _create_review_candidate(page, material, build, page_data, operator="", locator=""):
+    return resolve_knowledge_conflict(
         page,
-        body=page_data.get("body", "") or "",
-        reason="构建资料命中同名人工知识,需人工确认后合并",
+        material,
+        build,
+        page_data.get("body", "") or "",
+        operator=operator,
         check_type="cannot_merge",
-        build_record=build,
-        created_by=operator,
+        reason="构建资料产生了不同知识结论，需人工选择",
         related={"pages": [page.id], "materials": [material.id]},
+        locator=locator,
     )
-    return "pending_review"
 
 
-def _record_decision_reused(build, rule, *, action, page):
-    """phase 4: 把决策回放写入 BuildRecord.inputs.source_trace,审计用。"""
-    trace = dict(build.inputs.get("source_trace") or {})
-    page_actions = list(trace.get("page_actions") or [])
-    page_actions.append(
-        {
-            "page_id": page.id,
-            "decision_reused": True,
-            "rule_id": rule.id,
-            "action": action,
+def _maintenance_errors(maintenance):
+    errors = []
+    if maintenance.get("error"):
+        errors.append(maintenance["error"])
+    for stage in (maintenance.get("stages") or {}).values():
+        if isinstance(stage, dict) and stage.get("error"):
+            errors.append(stage["error"])
+    return list(dict.fromkeys(errors))
+
+
+def _run_build_cascade(knowledge_base, affected_page_ids):
+    try:
+        return cascade(knowledge_base, affected_page_ids, "build")
+    except Exception as exc:
+        logger.exception("wiki 构建级联维护异常 kb=%s", knowledge_base.id)
+        error = str(exc)
+        return {
+            "status": "partial",
+            "event": "build",
+            "affected_page_ids": list(affected_page_ids),
+            "stages": {"cascade": {"status": "failed", "error": error}},
+            "error": error,
         }
-    )
-    trace["page_actions"] = page_actions
-    inputs = dict(build.inputs or {})
-    inputs["source_trace"] = trace
-    build.inputs = inputs
-    build.save(update_fields=["inputs", "updated_at"])
 
 
 def build_from_material(material, llm_model_id=None, operator="", trigger="material"):
@@ -542,18 +758,49 @@ def build_from_material(material, llm_model_id=None, operator="", trigger="mater
             pd = _normalize_page_data_title(kb, pd)
             key = _title_key(pd.get("title"), kb)
             page = existing_by_title.get(key)
+            matched_by_candidate = False
+            comparison = None
+            if not page and pd.get("existing_page_id") is not None:
+                candidate_page = _existing_page_by_id(kb, pd.get("existing_page_id"))
+                if candidate_page:
+                    comparison = _classify_page_change(candidate_page, pd, llm_model_id)
+                    if comparison and comparison["same_subject"]:
+                        page = candidate_page
+                        matched_by_candidate = True
+                        pd = {**pd, "title": page.title}
+                        key = _title_key(page.title, kb)
+
             locator = _source_locator_for_page(material, text, pd, chunks=source_chunks)
             if not page:
                 page = _create_ai_page(kb, material, build, pd, locator=locator)
                 existing_by_title[key] = page
                 action = "new"
+                decision_trace = {}
             elif page.contribution == "ai":
-                action = _merge_ai_page(page, material, build, pd, operator=operator, locator=locator)
+                if comparison is None and not matched_by_candidate and _has_other_material_source(page, material):
+                    comparison = _classify_page_change(page, pd, llm_model_id)
+                if comparison and comparison["same_subject"] and comparison["relation"] == "conflict":
+                    action, decision_trace = resolve_knowledge_conflict(
+                        page,
+                        material,
+                        build,
+                        pd.get("body", "") or "",
+                        operator=operator,
+                        check_type="cannot_merge",
+                        reason=comparison["reason"] or "构建资料产生了不同知识结论，需人工选择",
+                        related={"pages": [page.id], "materials": [material.id]},
+                        locator=locator,
+                    )
+                else:
+                    action = _merge_ai_page(page, material, build, pd, operator=operator, locator=locator)
+                    decision_trace = {}
             else:
-                action = _create_review_candidate(page, material, build, pd, operator=operator)
+                action, decision_trace = _create_review_candidate(page, material, build, pd, operator=operator, locator=locator)
 
             counts[action] += 1
-            source_trace["page_actions"].append(_page_action_trace(page, action, locator))
+            page_trace = _page_action_trace(page, action, locator)
+            page_trace.update(decision_trace)
+            source_trace["page_actions"].append(page_trace)
             if action in ("new", "updated"):
                 affected.append(page.id)
                 cascade_ids.append(page.id)
@@ -573,7 +820,7 @@ def build_from_material(material, llm_model_id=None, operator="", trigger="mater
             )
             cascade_ids = list(dict.fromkeys([*cascade_ids, *enriched_ids]))
             # 新页面与同库其他页面建立关系并增量维护索引。
-            maintenance = cascade(kb, cascade_ids, "build")
+            maintenance = _run_build_cascade(kb, cascade_ids)
         build.counts = counts
         build.affected_pages = affected
         build.inputs = {
@@ -581,10 +828,23 @@ def build_from_material(material, llm_model_id=None, operator="", trigger="mater
             "source_trace": source_trace,
         }
         build.maintenance = maintenance
+        build.errors = _maintenance_errors(maintenance)
         build.stage = "done"
-        build.status = "success"
+        build.status = "partial" if maintenance.get("status") in {"partial", "failed"} else "success"
         build.progress = 100
-        build.save(update_fields=["counts", "affected_pages", "inputs", "maintenance", "stage", "status", "progress", "updated_at"])
+        build.save(
+            update_fields=[
+                "counts",
+                "affected_pages",
+                "inputs",
+                "maintenance",
+                "errors",
+                "stage",
+                "status",
+                "progress",
+                "updated_at",
+            ]
+        )
         material.status = "built"
         material.save(update_fields=["status", "updated_at"])
         return build

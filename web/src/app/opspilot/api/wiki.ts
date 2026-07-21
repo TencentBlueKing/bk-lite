@@ -5,6 +5,11 @@ import {
   BuildMaintenanceBatchRetryResult,
   BuildRecord,
   CheckItem,
+  CheckDecisionRequest,
+  CheckDecisionResponse,
+  FetchDecisionItemsParams,
+  RevokeDecisionRuleRequest,
+  RevokeDecisionRuleResponse,
   KnowledgePage,
   MarkdownImportResult,
   Material,
@@ -235,26 +240,20 @@ export const useWikiApi = () => {
     params?: Record<string, unknown>
   ): Promise<Paged<CheckItem>> => get(`${BASE}/check_item/`, { params: { ...params, knowledge_base: kbId } });
 
-  const acceptCheck = (id: number): Promise<unknown> => post(`${BASE}/check_item/${id}/accept/`, {});
+  const fetchDecisionItems = (
+    kbId: number,
+    params: FetchDecisionItemsParams
+  ): Promise<Paged<CheckItem>> =>
+    fetchCheckItems(kbId, { ...params, decision_only: true, view: params.view });
 
-  const rejectCheck = (id: number): Promise<unknown> => post(`${BASE}/check_item/${id}/reject/`, {});
-
-  // phase 7: 决策中心 API(取代通用 accept/reject)
-  const decideCheck = (
-    id: number,
-    payload: { action: string; body?: string; material_id?: number }
-  ): Promise<{ check: CheckItem; rule_id: number | null }> =>
+  const decideCheck = (id: number, payload: CheckDecisionRequest): Promise<CheckDecisionResponse> =>
     post(`${BASE}/check_item/${id}/decide/`, payload);
 
-  const batchAcceptChecks = (
-    ids: number[]
-  ): Promise<{ accepted: number; skipped: number; skipped_ids: number[] }> =>
-    post(`${BASE}/check_item/batch_accept/`, { ids });
-
-  const batchRejectChecks = (
-    ids: number[]
-  ): Promise<{ rejected: number; skipped: number; skipped_ids: number[] }> =>
-    post(`${BASE}/check_item/batch_reject/`, { ids });
+  const revokeDecisionRule = (
+    id: number,
+    payload: RevokeDecisionRuleRequest = {}
+  ): Promise<RevokeDecisionRuleResponse> =>
+    post(`${BASE}/check_item/${id}/revoke_rule/`, payload);
 
   const assignCheck = (
     id: number,
@@ -319,11 +318,9 @@ export const useWikiApi = () => {
     batchRetryBuildMaintenance,
     cancelBuild,
     fetchCheckItems,
-    acceptCheck,
-    rejectCheck,
+    fetchDecisionItems,
     decideCheck,
-    batchAcceptChecks,
-    batchRejectChecks,
+    revokeDecisionRule,
     assignCheck,
   };
 };

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useStudioApi } from '@/app/opspilot/api/studio';
-import { List, Button, Dropdown, Skeleton, Popconfirm } from 'antd';
+import { List, Button, Dropdown, Skeleton, Popconfirm, Tag } from 'antd';
 import CustomChatSSE from '@/app/opspilot/components/custom-chat-sse';
 import { processHistoryMessageWithExtras } from '@/app/opspilot/components/custom-chat-sse/historyMessageProcessor';
 import Icon from '@/components/icon';
@@ -81,6 +81,7 @@ const StudioChatPage: React.FC = () => {
             id: item.session_id,
             title: item.title,
             icon: 'jiqiren3',
+            source: item.source,
           }))
         );
         if (currentAgent?.bot_id && currentAgent?.node_id) {
@@ -306,6 +307,15 @@ const StudioChatPage: React.FC = () => {
                   >
                     <div className="flex items-center justify-between w-full gap-2">
                       <div className={`text-sm px-2 font-normal flex-1 truncate ${selectedItem === item.id ? 'text-blue-600' : 'text-gray-900'}`}>
+                        <span className="mr-2">
+                          {item.source === 'nats' ? (
+                            <Tag color="orange">NATS</Tag>
+                          ) : item.source === 'mobile' ? (
+                            <Tag color="green">Mobile</Tag>
+                          ) : (
+                            <Tag color="blue">Web</Tag>
+                          )}
+                        </span>
                         {item.title}
                       </div>
                       <Popconfirm
@@ -316,7 +326,7 @@ const StudioChatPage: React.FC = () => {
                         cancelText="取消"
                         okButtonProps={{ danger: true }}
                       >
-                        <div 
+                        <div
                           className="invisible group-hover:visible flex-shrink-0 p-1 hover:bg-red-50 rounded cursor-pointer transition-all"
                           onClick={(e) => e.stopPropagation()}
                         >

@@ -59,7 +59,8 @@ class BaseNodeParams(metaclass=ABCMeta):
         if not hasattr(self.__class__, 'host_field'):
             self.host_field = "ip_addr"  # 默认的 ip字段 若不一样重新定义
         self.timeout = instance.timeout
-        self.response_timeout = 10
+        self.response_timeout = 30
+        self.telegraf_timeout = self.response_timeout
         self.executor_type = "protocol"  # 默认执行器类型
         self.has_network_topo = bool(self.instance.params.get("has_network_topo"))  # 是否包含网络拓扑采集
 
@@ -231,6 +232,7 @@ class BaseNodeParams(metaclass=ABCMeta):
             "interval": self.resolved_interval,
             "instance_type": self.get_instance_type,
             "timeout": self.timeout,
+            "telegraf_timeout": self.telegraf_timeout,
             "response_timeout": self.response_timeout,
             "headers": self.custom_headers(),
             "config_type": self.model_id,

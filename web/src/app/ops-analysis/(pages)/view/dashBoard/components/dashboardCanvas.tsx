@@ -32,6 +32,7 @@ import {
 
 import GroupHeader from './groupHeader';
 import WidgetWrapper from '@/app/ops-analysis/components/widgetDataRenderer';
+import { WidgetHeaderRuntimeSlotProvider } from '@/app/ops-analysis/components/widgetHeaderRuntimeSlot';
 
 import 'gridstack/dist/gridstack.min.css';
 
@@ -490,61 +491,69 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
       );
 
       return (
-        <div
-          className="widget rounded-lg overflow-hidden p-3 flex h-full flex-col"
-          style={{
-            backgroundColor: chartTheme.panelBg,
-            border: `1px solid ${chartTheme.panelBorderColor}`,
-          }}
-        >
-          <div className="widget-header mb-2 flex justify-between items-start gap-2">
-            <div className="flex-1 min-w-0">
-              <h4 className="truncate text-[14px] font-medium leading-5 text-(--color-text-2)">
-                {item.name}
-              </h4>
-              {item.description?.trim() && (
-                <p className="mt-0.5 text-[11px] leading-4 text-(--color-text-3) wrap-break-word whitespace-normal">
-                  {item.description}
-                </p>
-              )}
+        <WidgetHeaderRuntimeSlotProvider>
+          {(runtimeSlotRef) => (
+            <div
+              className="widget rounded-lg overflow-hidden p-3 flex h-full flex-col"
+              style={{
+                backgroundColor: chartTheme.panelBg,
+                border: `1px solid ${chartTheme.panelBorderColor}`,
+              }}
+            >
+              <div className="widget-header mb-2 flex justify-between items-start gap-2">
+                <div className="flex-1 min-w-0">
+                  <h4 className="truncate text-[14px] font-medium leading-5 text-(--color-text-2)">
+                    {item.name}
+                  </h4>
+                  {item.description?.trim() && (
+                    <p className="mt-0.5 text-[11px] leading-4 text-(--color-text-3) wrap-break-word whitespace-normal">
+                      {item.description}
+                    </p>
+                  )}
+                </div>
+                <div
+                  ref={runtimeSlotRef}
+                  className="no-drag ml-auto max-w-[70%] shrink-0 overflow-x-auto"
+                />
+                {isEditMode && (
+                  <Dropdown overlay={menu} trigger={['click']}>
+                    <button
+                      type="button"
+                      aria-label={t('common.more')}
+                      className="no-drag text-(--color-text-2) hover:text-(--color-text-1) transition-colors cursor-pointer"
+                    >
+                      <MoreOutlined
+                        aria-hidden="true"
+                        style={{ fontSize: '18px' }}
+                      />
+                    </button>
+                  </Dropdown>
+                )}
+              </div>
+              <div
+                className="widget-body flex-1 h-full"
+                style={{
+                  overflow: isTableWidget ? 'visible' : 'hidden',
+                }}
+              >
+                <WidgetWrapper
+                  dashboardId={dashboardId}
+                  widgetId={item.i}
+                  key={`${dashboardId ?? 'dashboard'}:${item.i}`}
+                  chartType={item.valueConfig?.chartType}
+                  config={item.valueConfig}
+                  filterSearchVersion={filterSearchVersion}
+                  namespaceSearchVersion={namespaceSearchVersion}
+                  reloadVersion={`${dashboardReloadVersion}:${widgetReloadVersions[item.i] || 0}`}
+                  dataSource={dataSourceResolver(item.valueConfig?.dataSource)}
+                  unifiedFilterValues={appliedFilterValues}
+                  filterDefinitions={appliedFilterDefinitions}
+                  builtinNamespaceId={appliedNamespaceId}
+                />
+              </div>
             </div>
-            {isEditMode && (
-              <Dropdown overlay={menu} trigger={['click']}>
-                <button
-                  type="button"
-                  aria-label={t('common.more')}
-                  className="no-drag text-(--color-text-2) hover:text-(--color-text-1) transition-colors cursor-pointer"
-                >
-                  <MoreOutlined
-                    aria-hidden="true"
-                    style={{ fontSize: '18px' }}
-                  />
-                </button>
-              </Dropdown>
-            )}
-          </div>
-          <div
-            className="widget-body flex-1 h-full"
-            style={{
-              overflow: isTableWidget ? 'visible' : 'hidden',
-            }}
-          >
-            <WidgetWrapper
-              dashboardId={dashboardId}
-              widgetId={item.i}
-              key={`${dashboardId ?? 'dashboard'}:${item.i}`}
-              chartType={item.valueConfig?.chartType}
-              config={item.valueConfig}
-              filterSearchVersion={filterSearchVersion}
-              namespaceSearchVersion={namespaceSearchVersion}
-              reloadVersion={`${dashboardReloadVersion}:${widgetReloadVersions[item.i] || 0}`}
-              dataSource={dataSourceResolver(item.valueConfig?.dataSource)}
-              unifiedFilterValues={appliedFilterValues}
-              filterDefinitions={appliedFilterDefinitions}
-              builtinNamespaceId={appliedNamespaceId}
-            />
-          </div>
-        </div>
+          )}
+        </WidgetHeaderRuntimeSlotProvider>
       );
     },
     [

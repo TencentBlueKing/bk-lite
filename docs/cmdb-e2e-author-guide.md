@@ -200,3 +200,215 @@ DB_ENGINE=sqlite INSTALL_APPS=cmdb,system_mgmt,core \
 - 已有 4 个对象的范本(2026-07-10 commit):`test_influxdb_pipeline.py` / `test_mysql_pipeline.py` / `test_nginx_pipeline.py` / `test_redis_pipeline.py`
 - v3 路线图 + Phase 1-5 执行报告:`docs/superpowers/plans/2026-07-0[6-8]-cmdb-collect-v3-*.md`
 - 调研报告(本 change 立项依据):`docs/superpowers/plans/2026-07-10-cmdb-collect-next-step-discussion.md`
+
+---
+
+# 6. v2 章节:A/B 端对齐检查 / Placeholder 模式 / Drift Report(2026-07-13)
+
+> 本章节是 v5 阶段(53 commit / 315 files / 521 passed e2e)新增能力。**v3+v4 工作(33 真实落盘对象 e2e 100% 覆盖)沿用 §1-§5 的 5 步流程,本章节仅适用于新增对象 / license 解锁升级 / 字段漂移检测**。
+
+## 6.1 A/B 端对齐检查(基于 `model_reflection` + alignment test)
+
+### 6.1.1 model_reflection 反射工具
+
+**位置**:`server/apps/cmdb/tests/e2e/utils/model_reflection.py`
+
+**接口**:
+```python
+from apps.cmdb.tests.e2e.utils.model_reflection import get_model_field_def, ModelFieldDef
+
+# 返回 {field_name: ModelFieldDef} 字典
+fields = get_model_field_def("mysql")
+# fields["inst_name"] = ModelFieldDef(name="inst_name", field_type="str", is_required=True)
+# fields["port"] = ModelFieldDef(name="port", field_type="str", is_required=False)
+```
+
+**数据源**:读 `04_cmdb_instance.schema.json`(JSON Schema),**不是 Django ORM Model**。**CMDB 实例模型是 graph-backed 动态 model,不是 Django ORM**。
+
+**SCHEMA_DIR_ALIAS 机制**:model_id 跟 schema 目录名不一致时(`aliyun_ecs` → `aliyun/`, `vmware_vc` → `vmware/`, `k8s_namespace` → `k8s/`),加 alias 映射。
+
+### 6.1.2 A 端对齐检查(`test_stargazer_prometheus_alignment.py`)
+
+**3 个参数化测试**:
+
+| 测试 | 检查项 | 失败信号 |
+|---|---|---|
+| `test_a_alignment_metric_name_suffix` | `metric.__name__` 后缀合法(`_<model_id>_info_gauge` / `prometheus_kube_*`) | 后缀错 |
+| `test_a_alignment_instance_id_label` | `metric.instance_id == "cmdb_<task_id>"` | 格式错 |
+| `test_a_alignment_business_labels` | 业务 label 集合 ⊇ model 必填字段 | 漏字段 |
+
+**A_LABEL_EXCLUDE 机制**:`inst_name` / `cpu_arch` / `model_id` / `id` / `create_time` / `update_time` / `assos` 是 runner 派生字段,不在 03 metric label 里,需排除。
+
+**A 端主 metric filter**:`test_a_alignment_business_labels` 只查主 metric `{model_id}_info_gauge`,跳过附属 metric(如 `host_proc_usage_info_gauge`)。
+
+**K8s 走 minimal path**:K8s 走 `CollectK8sMetrics.run()` 直接拉 VM,不走 `step1_normalize + step2_push_to_vm`,A 端对齐检查 `pytest.skip` 当 `model_id.startswith("k8s_")`。
+
+### 6.1.3 B 端对齐检查(`test_cmdb_vm_format_alignment.py`)
+
+**2 个参数化测试**:
+
+| 测试 | 检查项 | 失败信号 |
+|---|---|---|
+| `test_b_alignment_field_subset` | 实例字段 ⊆ model 字段定义 | 漏字段 |
+| `test_b_alignment_required_nonempty` | Model `is_required` 字段非空 | 必填空 |
+
+**P0_RUNNER_PLUGIN 注册表**:对象特殊路径(aliyun / vmware 走 sub-model mapping;network 走 CollectNetworkMetrics 特殊路径),`P0_RUNNER_PLUGIN` 集中管理。
+
+**B 端 placeholder skip**:archived 对象 plugin stub 空 `metric_names/field_mappings` 触发 `KeyError`,B 端加 `pytest.skip` 当 `_placeholder_reason` 存在。
+
+**B 端 `@pytest.mark.django_db`**:alibaba-style plugin 实例化需 DB。
+
+### 6.1.4 加新对象 A/B 端覆盖
+
+1. 加进 `ALIGNMENT_COVERED_MODEL_IDS`(`conftest.py` 末尾 fixture,append 不重写)
+2. 写 `04_cmdb_instance.schema.json`(model 字段定义)
+3. 写 `01_stargazer_raw.json` / `04_expected_cmdb_result.json`(fixture)
+4. 跑 A/B 端 alignment test 验证
+5. 跑 `make e2e-drift-report` 验证 fixture 跟 model 一致
+
+## 6.2 Placeholder 模式(`_placeholder_reason` + `license_status` + archived plugin stub)
+
+### 6.2.1 3 种 `_placeholder_reason` 标注
+
+| 标注 | 对象 | 数量 |
+|---|---|---|
+| `license_missing` | 17 license 类(apusic / bes / informix / ihs / inforsuite_as / iris / couchbase / oceanbase / oscar / sap_hana / sybase / tonggtp / tonglinkq / tongrds / tuxedo / weblogic / websphere) | 17 |
+| `cluster_complex` | 4 cluster 类(hdfs / storm / yarn / mycat) | 4 |
+| `platform_constraint` | 1 platform 类(domestic_linux) | 1 |
+
+### 6.2.2 Placeholder fixture 模板
+
+**01_stargazer_raw.json**(最小集):
+```json
+{
+  "_placeholder_reason": "license_missing",
+  "model_id": "<model_id>",
+  "ip_addr": "192.0.2.1",
+  "inst_name": "<model_id>-placeholder-01"
+}
+```
+
+**04_expected_cmdb_result.json**:
+```json
+{
+  "model_id": "<model_id>",
+  "instance_count_min": 0,
+  "expected_instance_subset": {},
+  "license_status": "missing"
+}
+```
+
+**04_cmdb_instance.schema.json**:
+```json
+{
+  "type": "object",
+  "required": ["_placeholder_reason", "license_status"],
+  "properties": {
+    "_placeholder_reason": {"type": "string", "enum": ["license_missing", "cluster_complex", "platform_constraint"]},
+    "license_status": {"type": "string", "enum": ["available", "missing", "unknown"]}
+  }
+}
+```
+
+### 6.2.3 archived plugin stub 复用
+
+**位置**:`server/apps/cmdb/collection/plugins/community/archived/<model_id>.py`
+
+**模板**:
+```python
+from apps.cmdb.collection.plugins.base import AutoRegisterCollectionPluginMixin
+from apps.cmdb.constants.constants import CollectPluginTypes
+
+
+class ApusicCollectionPlugin(AutoRegisterCollectionPluginMixin):
+    supported_task_type = CollectPluginTypes.MIDDLEWARE
+    supported_model_id = "apusic"
+    plugin_source = "community"
+    priority = 1  # fallback,真实 plugin 替代后失效
+    metric_names = []  # stub
+    field_mappings = {}  # stub
+```
+
+**注意**:`archived/tuxedo.py` 会被既有 `middleware/tuxedo.py`(priority=10)覆盖,这是 by design(priority 差异),archived 是 fallback。
+
+### 6.2.4 license 解锁后升级流程
+
+1. 业务方提供 license + 真实 SDK
+2. 替换 `fixtures/<model_id>/{01,02,03,04}.json` 为真实数据
+3. 删 `_placeholder_reason` 字段
+4. `license_status: "available"`
+5. e2e test 自动从 placeholder 升级为 3 层验证(contract / pipeline / field alignment)
+6. 测试代码无需改动
+
+## 6.3 Drift Report 工具(字段漂移检测)
+
+### 6.3.1 用途
+
+扫描 `fixtures/<model_id>/04_expected_cmdb_result.json` 跟 `apps.cmdb.models.<Model>` 反射字段定义比对,生成漂移报告。
+
+### 6.3.2 用法
+
+**JSON 格式**(stdout):
+```bash
+cd server
+.venv/bin/python -m apps.cmdb.tests.e2e.utils.drift_report --format json
+```
+
+**Markdown 格式**(写文件):
+```bash
+cd server
+.venv/bin/python -m apps.cmdb.tests.e2e.utils.drift_report --format markdown -o drift_report.md
+```
+
+**Makefile target**:
+```bash
+cd server
+make e2e-drift-report
+```
+
+**测试**(2 tests):
+```bash
+cd server
+.venv/bin/python -m pytest apps/cmdb/tests/e2e/test_drift_report.py -v
+```
+
+### 6.3.3 输出字段
+
+| 字段 | 含义 |
+|---|---|
+| `model_id` | 对象 ID |
+| `status` | `ok` / `missing_or_mismatch` / `extra_fields` / `no_fixture` / `no_expected_subset` |
+| `missing_fields` | model 有但 expected 没有(漏字段) |
+| `extra_fields` | expected 有但 model 没有(多字段) |
+| `type_mismatch` | 字段类型不匹配(如 vcpus 应该是 int 但成了 str) |
+
+### 6.3.4 报告样例
+
+参考 `server/apps/cmdb/tests/e2e/drift_report.md`(首次运行生成)。
+
+### 6.3.5 集成到 CI(后续 follow-up)
+
+当前:手动跑。下期集成到 CI,每次 PR 跑 + 报告写 artifact。
+
+## 6.4 v2 章节速查表
+
+| 能力 | 位置 | 用法 |
+|---|---|---|
+| `get_model_field_def` | `utils/model_reflection.py` | `from apps.cmdb.tests.e2e.utils.model_reflection import get_model_field_def` |
+| A 端 alignment | `test_stargazer_prometheus_alignment.py` | 3 个参数化测试 |
+| B 端 alignment | `test_cmdb_vm_format_alignment.py` | 2 个参数化测试 |
+| Placeholder 模式 | `fixtures/<model_id>/{01,04}.json` | `_placeholder_reason` + `license_status` |
+| Archived stub | `plugins/community/archived/<model_id>.py` | 空 metric_names / field_mappings |
+| Drift report | `utils/drift_report.py` | `python -m ...utils.drift_report` |
+| Makefile | `e2e-drift-report` target | `make e2e-drift-report` |
+
+---
+
+# 7. v2 章节:参考(2026-07-13)
+
+- v5 阶段 spec:`docs/superpowers/specs/2026-07-13-cmdb-collect-full-e2e-alignment-design.md`
+- v5 阶段 plan:`docs/superpowers/plans/2026-07-13-cmdb-collect-full-e2e-alignment.md`
+- v5 阶段 follow-up 文档:`docs/superpowers/plans/2026-07-14-cmdb-collect-full-e2e-follow-up.md`
+- v5 阶段 merge audit:`docs/superpowers/plans/2026-07-14-cmdb-collect-merge-audit.md`
+- v5 阶段 PR description:`docs/superpowers/plans/2026-07-14-cmdb-collect-full-e2e-alignment-pr-description.md`
+- 9 个 hwcloud 子对象 follow-up spec:`docs/superpowers/specs/2026-07-13-cmdb-collect-hwcloud-subobjects-design.md`

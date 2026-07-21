@@ -53,6 +53,8 @@ def test_wmi_results_to_prometheus_emits_host_metrics():
             "disk": [
                 {
                     "device": "C:",
+                    "path": "C:",
+                    "fstype": "NTFS",
                     "total_bytes": 1000,
                     "free_bytes": 250,
                     "used_bytes": 750,
@@ -74,7 +76,38 @@ def test_wmi_results_to_prometheus_emits_host_metrics():
     assert f"host_cpu_usage_percent_gauge{{{base}}} 12.5 1700000000000" in output
     assert f"host_cpu_core_count_gauge{{{base}}} 4 1700000000000" in output
     assert f"host_mem_used_percent_gauge{{{base}}} 50 1700000000000" in output
-    assert f'host_disk_used_percent_gauge{{{base},device="C:"}} 75 1700000000000' in output
+    assert f'host_disk_used_percent_gauge{{{base},device="C:",path="C:",fstype="NTFS"}} 75 1700000000000' in output
+
+
+def test_wmi_disk_metrics_filter_fstype_and_emit_path_labels():
+    output = wmi_results_to_prometheus(
+        {
+            "disk": [
+                {"device": "C:", "path": "C:", "fstype": "NTFS", "total_bytes": 1000, "free_bytes": 250, "used_bytes": 750, "used_percent": 75},
+                {"device": "E:", "path": "E:", "fstype": "FAT32", "total_bytes": 1000, "free_bytes": 250, "used_bytes": 750, "used_percent": 75},
+            ]
+        },
+        {"instance_id": "region_os_10.0.0.8"},
+        host="10.0.0.8",
+        timestamp=1700000000000,
+        disk_include_fstypes="NTFS,FAT32",
+        disk_exclude_fstypes="FAT32",
+    )
+
+    assert 'device="C:",path="C:",fstype="NTFS"' in output
+    assert 'device="E:"' not in output
+
+
+def test_wmi_disk_module_exposes_filesystem_as_fstype():
+    class DiskClient:
+        def query(self, _query):
+            return [{"DeviceID": "C:", "FileSystem": "NTFS", "Size": 1000, "FreeSpace": 250}]
+
+    disks = wmi_modules.DiskModule().collect(DiskClient())
+
+    assert disks == [
+        {"device": "C:", "path": "C:", "fstype": "NTFS", "total_bytes": 1000, "free_bytes": 250, "used_bytes": 750, "used_percent": 75.0}
+    ]
 
 
 def test_wmi_modules_collect_telegraf_aligned_host_metrics():

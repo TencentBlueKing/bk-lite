@@ -7,8 +7,10 @@ from apps.log.constants.alert_policy import AlertConstants
 from apps.log.constants.database import DatabaseConstants
 from apps.log.models.policy import Alert, Event, Policy
 from apps.core.logger import celery_logger as logger
+from apps.log.services.alert_lifecycle_notify import LogAlertLifecycleNotifier
 from apps.log.tasks.services.policy_scan import LogPolicyScan
 from apps.log.tasks.utils.policy import period_to_seconds
+from apps.system_mgmt.models.channel import Channel, ChannelChoices
 
 
 @shared_task(base=Singleton, raise_on_duplicate=False)
@@ -111,11 +113,11 @@ def scan_log_policy_task(policy_id):
 
 @shared_task(base=Singleton, raise_on_duplicate=False)
 def compensate_log_notice_task():
-    """日志告警通知补偿（范围B）。
+    """日志告警生命周期通知补偿。
 
-    回扫近 NOTICE_COMPENSATE_WINDOW_SECONDS 内、发送未成功（notified=False）且重投未超限的事件并重发，
-    兜住瞬时通道故障导致的永久漏通知。仅处理 notice 开启、策略启用、非 info 级别的事件；
-    存量历史事件已在迁移中标记为 notified=True，不在补偿范围内（避免重发风暴）。
+    产生事件复用 Event 的发送状态与重试次数；关闭事件复用 Alert 的状态、关闭时间与
+    notice。
+    两类对象均限制在补偿窗口、最小落库年龄与批量上限内，通知语义为 at-least-once。
     """
     start_time = time.time()
     now = datetime.now(timezone.utc)
@@ -123,6 +125,13 @@ def compensate_log_notice_task():
     # 仅补偿落库已超 MIN_AGE 的事件：等待本轮扫描的同步 notice() 完成，降低与首发并发双投的概率
     # （门槛取值须大于 notice() 最坏耗时量级，见 AlertConstants 说明；通知语义为 at-least-once）
     settle_before = now - timedelta(seconds=AlertConstants.NOTICE_COMPENSATE_MIN_AGE_SECONDS)
+
+    # closed 没有独立重试字段，仅扫描明确指向告警中心的策略。
+    alert_center_channel_ids = {
+        channel.id
+        for channel in Channel.objects.filter(channel_type=ChannelChoices.NATS)
+        if (channel.config or {}).get("method_name") == LogAlertLifecycleNotifier.ALERT_CENTER_METHOD
+    }
 
     pending = list(
         Event.objects.filter(
@@ -134,13 +143,27 @@ def compensate_log_notice_task():
             policy__enable=True,
         )
         .exclude(level=AlertConstants.LEVEL_INFO)
-        .select_related("policy")
+        .select_related("policy", "alert")
         .order_by("event_time")[: AlertConstants.NOTICE_COMPENSATE_BATCH_SIZE]
     )
 
-    if not pending:
+    pending_closed = list(
+        Alert.objects.filter(
+            status=AlertConstants.STATUS_CLOSED,
+            notice=False,
+            end_event_time__gte=window_start,
+            end_event_time__lte=settle_before,
+            policy__notice=True,
+            policy__notice_type_id__in=alert_center_channel_ids,
+        )
+        .select_related("policy", "collect_type")
+        .prefetch_related("policy__policyorganization_set")
+        .order_by("end_event_time")[: AlertConstants.NOTICE_COMPENSATE_BATCH_SIZE]
+    )
+
+    if not pending and not pending_closed:
         duration = time.time() - start_time
-        logger.info(f"日志通知补偿：无待补偿事件，耗时: {duration:.2f}s")
+        logger.info(f"日志通知补偿：无待补偿生命周期，耗时: {duration:.2f}s")
         return {"success": True, "scanned": 0, "compensated": 0, "duration": duration}
 
     scanners = {}  # 按策略复用 scanner，避免重复构造
@@ -149,8 +172,9 @@ def compensate_log_notice_task():
 
     for event in pending:
         policy = event.policy
-        # 无通知人 → 永远发不出，直接标记已处理避免无意义重投占用配额
-        if not policy.notice_users:
+        # 普通渠道没有通知人时直接结束；告警中心 NATS 不依赖 notice_users。
+        is_alert_center = policy.notice_type_id in alert_center_channel_ids
+        if not policy.notice_users and not is_alert_center:
             event.notified = True
             updated_events.append(event)
             continue
@@ -177,12 +201,40 @@ def compensate_log_notice_task():
         )
 
     if success_alert_ids:
-        Alert.objects.bulk_update(
-            [Alert(id=alert_id, notice=True) for alert_id in success_alert_ids],
-            ["notice"],
-            batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE,
-        )
+        # 状态条件防止 created 的迟到回执覆盖并发关闭留下的补偿标记。
+        Alert.objects.filter(
+            id__in=success_alert_ids,
+            status=AlertConstants.STATUS_NEW,
+        ).update(notice=True)
+
+    closed_success_count = 0
+    for alert in pending_closed:
+        notifier = LogAlertLifecycleNotifier(alert.policy)
+        if not notifier.is_alert_center_channel():
+            continue
+
+        success, _ = notifier.notify_closed(alert, max_attempts=1)
+        if success:
+            # 关闭时间参与条件更新，避免迟到回执写入新的生命周期状态。
+            closed_success_count += Alert.objects.filter(
+                id=alert.id,
+                status=AlertConstants.STATUS_CLOSED,
+                end_event_time=alert.end_event_time,
+                notice=False,
+            ).update(notice=True)
 
     duration = time.time() - start_time
-    logger.info(f"日志通知补偿完成：扫描 {len(pending)} 个事件，成功补发 {len(success_alert_ids)} 个告警，耗时: {duration:.2f}s")
-    return {"success": True, "scanned": len(pending), "compensated": len(success_alert_ids), "duration": duration}
+    scanned_count = len(pending) + len(pending_closed)
+    compensated_count = len(success_alert_ids) + closed_success_count
+    logger.info(
+        "日志通知补偿完成：扫描 %s 个生命周期，成功补发 %s 个，耗时: %.2fs",
+        scanned_count,
+        compensated_count,
+        duration,
+    )
+    return {
+        "success": True,
+        "scanned": scanned_count,
+        "compensated": compensated_count,
+        "duration": duration,
+    }

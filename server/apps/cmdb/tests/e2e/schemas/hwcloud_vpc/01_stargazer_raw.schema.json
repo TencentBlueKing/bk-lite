@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Stargazer hwcloud_vpc 采集脚本原始输出(stargazer 端真实落盘形态)",
+  "description": "Task 3.1 真实化版本:参考华为云 VPC ListVpcs 真实 API 响应。",
+  "type": "object",
+  "required": ["model_id", "resource_name", "resource_id", "region", "status", "cidr"],
+  "properties": {
+    "model_id":         {"type": "string"},
+    "task_id":          {"type": "integer"},
+    "account_id":       {"type": "string"},
+    "captured_at":      {"type": "string"},
+    "collected_by":     {"type": "string"},
+    "request_id":       {"type": "string"},
+    "total_count":      {"type": "integer"},
+    "resource_name":    {"type": "string"},
+    "resource_id":      {"type": "string", "pattern": "^vpc-[a-zA-Z0-9]+$"},
+    "region":           {"type": "string", "pattern": "^[a-z]+-[a-z]+-[0-9]+$"},
+    "zone":             {"type": "string"},
+    "status":           {"type": "string", "enum": ["ACTIVE", "PENDING", "DELETED", "ERROR"]},
+    "cidr":             {"type": "string", "pattern": "^[0-9./]+$"},
+    "is_default":       {"type": "string", "enum": ["true", "false"]},
+    "subnet_count":     {"type": "string"},
+    "route_table_count": {"type": "string"},
+    "enable_shared":    {"type": "string", "enum": ["true", "false"]},
+    "tenant_id":        {"type": "string"},
+    "project_id":       {"type": "string"},
+    "create_time":      {"type": "string"},
+    "description":      {"type": "string"}
+  }
+}

@@ -13,11 +13,15 @@ PasswordValidator 的中文错误消息（"密码不能为空" / "密码长度�
 
 import json
 import types
+from unittest.mock import MagicMock, patch
 
 import pytest
+from django.contrib.auth.hashers import check_password, make_password
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from apps.system_mgmt.models import User
+from apps.system_mgmt.models import Group, User
+from apps.system_mgmt.nats.login import reset_pwd
+from apps.system_mgmt.services.password_init_service import PASSWORD_INIT_SENTINEL_MARK
 from apps.system_mgmt.viewset.user_viewset import UserViewSet
 
 
@@ -153,8 +157,6 @@ def test_reset_password_strong_password_succeeds():
     回归保护：合法密码必须 200 + {"result": True}, 避免 fix 误伤正常路径。
     并验证 user.password 已被 make_password 重哈希(不等于明文)。
     """
-    from django.contrib.auth.hashers import check_password
-
     target = _make_target_user("victim-ok")
     new_password = "StrongPwd1!"
 
@@ -170,3 +172,61 @@ def test_reset_password_strong_password_succeeds():
     target.refresh_from_db()
     assert target.password != new_password, "password 字段应被 make_password 哈希, 不得明文存储"
     assert check_password(new_password, target.password), "新密码哈希应通过 check_password 验证"
+
+
+@pytest.fixture
+def sentinel_group(db):
+    return Group.objects.create(name="sentinel-root", parent_id=0)
+
+
+def _make_reset_caller(username: str):
+    caller = MagicMock()
+    caller.username = username
+    caller.domain = "domain.com"
+    return caller
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "stored_password",
+    [PASSWORD_INIT_SENTINEL_MARK, "!UNSET_PASSWORD:some-other-value"],
+)
+def test_nats_reset_password_allows_sentinel_password(sentinel_group, stored_password):
+    user = User.objects.create(
+        username=f"sentinel-{stored_password[-1]}",
+        display_name="Sentinel",
+        email="sentinel@example.com",
+        password=stored_password,
+        domain="domain.com",
+        disabled=False,
+        group_list=[sentinel_group.id],
+    )
+
+    with patch("apps.system_mgmt.nats.login._verify_token", return_value=_make_reset_caller(user.username)):
+        result = reset_pwd(user.username, user.domain, "NewP@ssw0rd!", caller_token="any-token")
+
+    assert result["result"] is True
+    user.refresh_from_db()
+    assert check_password("NewP@ssw0rd!", user.password)
+    assert user.temporary_pwd is False
+
+
+@pytest.mark.django_db
+def test_nats_reset_password_allows_normal_password(sentinel_group):
+    user = User.objects.create(
+        username="normal-user",
+        display_name="Normal",
+        email="normal@example.com",
+        password=make_password("OldP@ssw0rd!"),
+        domain="domain.com",
+        disabled=False,
+        group_list=[sentinel_group.id],
+    )
+
+    with patch("apps.system_mgmt.nats.login._verify_token", return_value=_make_reset_caller(user.username)):
+        result = reset_pwd(user.username, user.domain, "NewP@ssw0rd!", caller_token="any-token")
+
+    assert result["result"] is True
+    user.refresh_from_db()
+    assert check_password("NewP@ssw0rd!", user.password)
+    assert user.temporary_pwd is False

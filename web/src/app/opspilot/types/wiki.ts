@@ -261,11 +261,41 @@ export interface MarkdownImportResult {
   build_record?: BuildRecord;
 }
 
+export type DecisionListView = 'pending' | 'processed';
+
+export type WikiDecisionType = 'knowledge_conflict' | 'page_identity';
+
+export type WikiDecisionRuleStatus = 'active' | 'revoked' | 'superseded';
+
+export interface WikiDecisionRule {
+  id: number;
+  status: WikiDecisionRuleStatus;
+  action: CheckDecisionAction;
+  match_snapshot: Record<string, unknown>;
+  result_snapshot: Record<string, unknown>;
+  replay_count: number;
+  last_replayed_at?: string | null;
+  revoked_reason?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface CheckPage {
   id: number;
+  page_id?: number;
   title: string;
   page_type: string;
   body: string;
+  contribution?: string;
+  current_version?: number | null;
+  version_id?: number | null;
+  source_count?: number;
+  relation_count?: number;
+  source_label?: string;
+  version_label?: string;
+  material_id?: number;
+  material_version_id?: number;
+  content_hash?: string;
 }
 
 export interface CheckItem {
@@ -277,6 +307,8 @@ export interface CheckItem {
   related_pages?: CheckPage[];
   candidate_version?: number | null;
   candidate?: { id: number; body: string } | null;
+  current_knowledge?: CheckPage | null;
+  new_knowledge?: CheckPage | null;
   suggested_actions?: string[];
   assignee?: string;
   due_at?: string | null;
@@ -286,6 +318,11 @@ export interface CheckItem {
   // phase 7: 决策中心字段
   decision_key?: string;
   decision_context?: Record<string, unknown>;
+  decision_type?: WikiDecisionType;
+  decision_action?: CheckDecisionAction;
+  decision_operator?: string;
+  decision_processed_at?: string;
+  decision_rule?: WikiDecisionRule | null;
 }
 
 // phase 7: 决策动作枚举(决策中心 API 接受)
@@ -308,7 +345,34 @@ export const KNOWLEDGE_CONFLICT_ACTIONS: CheckDecisionAction[] = [
 // 页面合并决策二选一
 export const PAGE_IDENTITY_ACTIONS: CheckDecisionAction[] = ['keep_separate', 'merge'];
 
+export interface FetchDecisionItemsParams {
+  view: DecisionListView;
+  page?: number;
+  page_size?: number;
+}
+
+export interface CheckDecisionRequest {
+  action: CheckDecisionAction;
+  body?: string;
+  material_id?: number;
+}
+
+export interface CheckDecisionResponse {
+  check: CheckItem;
+  rule_id: number | null;
+}
+
+export interface RevokeDecisionRuleRequest {
+  rule_id?: number;
+  reason?: string;
+}
+
+export interface RevokeDecisionRuleResponse {
+  check: CheckItem;
+}
+
 export interface PurposeSchemaTemplate {
+
   key: string;
   name: string;
   description?: string;
@@ -399,10 +463,9 @@ export interface SaveAnswerPageInput {
   source_conversation_id: string;
   source_message_id?: string;
   source_channel?: string;
-  as_candidate?: boolean;
 }
 
-export type SaveAnswerPageResult = KnowledgePage | CheckItem;
+export type SaveAnswerPageResult = KnowledgePage;
 
 export interface GraphNode {
   id: number;

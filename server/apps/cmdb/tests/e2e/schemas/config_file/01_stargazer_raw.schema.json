@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Stargazer config_file 采集脚本原始输出(placeholder 形态)",
+  "description": "Task 2.6:config_file 走 NATS 路径,无 01 raw 输入。此 schema 仅用于 placeholder 模式标记。",
+  "type": "object",
+  "required": ["_placeholder_reason", "model_id"],
+  "properties": {
+    "_placeholder_reason": {"type": "string"},
+    "model_id":              {"type": "string"},
+    "task_id":               {"type": "integer"},
+    "captured_at":           {"type": "string"},
+    "collected_by":          {"type": "string"}
+  }
+}

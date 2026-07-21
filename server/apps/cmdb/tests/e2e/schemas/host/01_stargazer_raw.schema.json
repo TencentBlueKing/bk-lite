@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Stargazer host 采集脚本原始输出(真实形态)",
+  "description": "Task 2.4 真实化版本:跟 01_shell_output.json 形态一致(都是 stargazer 真实落盘数据),补 task_id / captured_at / collected_by 元信息。",
+  "type": "object",
+  "required": ["hostname", "ip_addr", "os_type", "cpu_cores", "mac_address"],
+  "properties": {
+    "model_id":           {"type": "string"},
+    "task_id":            {"type": "integer"},
+    "captured_at":        {"type": "string"},
+    "collected_by":       {"type": "string"},
+    "hostname":           {"type": "string", "minLength": 1},
+    "os_type":            {"type": "string"},
+    "os_name":            {"type": "string"},
+    "os_version":         {"type": "string"},
+    "os_bits":            {"type": "string"},
+    "cpu_architecture":   {"type": "string"},
+    "cpu_model":          {"type": "string"},
+    "cpu_cores":          {"type": "string"},
+    "mem_total_mb":       {"type": "string"},
+    "disk_total_gb":      {"type": "string"},
+    "mac_address":        {"type": "string"},
+    "ip_addr":            {"type": "string"},
+    "proc": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "pid":   {"type": "string"},
+          "name":  {"type": "string"},
+          "arg":   {"type": "string"},
+          "exe":   {"type": "string"},
+          "cwd":   {"type": "string"},
+          "ports": {"type": "string"}
+        }
+      }
+    }
+  }
+}

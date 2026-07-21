@@ -1,3 +1,4 @@
+import uuid
 import importlib.util
 import logging
 import sys
@@ -124,6 +125,7 @@ def create_test_users():
     """创建测试用户数据"""
     test_users = [
         {
+            "user_id": str(uuid.uuid4()),
             "username": "test_user1",
             "display_name": "测试用户1",
             "email": "test1@example.com",
@@ -131,6 +133,7 @@ def create_test_users():
             "locale": "zh-Hans",
         },
         {
+            "user_id": str(uuid.uuid4()),
             "username": "test_user2",
             "display_name": "测试用户2",
             "email": "test2@example.com",

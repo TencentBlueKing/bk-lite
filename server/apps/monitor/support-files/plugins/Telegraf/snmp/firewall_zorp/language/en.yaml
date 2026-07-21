@@ -1,0 +1,341 @@
+Firewall Zorp SNMP:
+  name: Zorp (Telegraf)
+  desc: SNMP monitoring template for Zorp firewall. It reports system uptime, CPU
+    utilization, memory utilization, and other key metrics
+monitor_object:
+  Firewall: Firewall
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Firewall:
+    device_temperature_celsius:
+      name: Device Temperature
+      desc: Device hardware temperature sensor reading in degrees Celsius. Abnormally
+        high values may indicate fan failure, poor airflow, or high ambient temperature.
+    device_swap_usage:
+      name: Swap Usage
+      desc: Swap-space utilization of the firewall reported directly as a 0-100 percentage.
+        Sustained swap usage indicates memory exhaustion and degrades session performance.
+    device_disk_usage:
+      name: Disk Usage
+      desc: Disk-space utilization of the firewall reported directly as a 0-100 percentage.
+        A nearly full disk can prevent logging and configuration changes and may destabilize
+        the device.
+    device_web_users:
+      name: Signed-In Web Users
+      desc: Number of currently signed-in web users on the gateway. Tracking the active
+        session count helps capacity planning and detecting abnormal connection spikes.
+    device_psu_state:
+      name: Power Supply Status
+      desc: Operational state of each power supply unit (enum). A non-normal state
+        indicates a power redundancy or hardware fault and should be remediated promptly.
+    firewall_pf_states:
+      name: PF State Table Entries
+      desc: This metric reports the current number of entries in the pfSense firewall
+        pf state table (BEGEMOT-PF-MIB pfStateTableCount), roughly equal to the number
+        of active connections. A rapidly rising count can indicate a connection flood
+        or the state table approaching its limit.
+    firewall_active_connections:
+      name: Active Connections
+      desc: This metric reports the number of currently active connections on the
+        WatchGuard firewall (WATCHGUARD-SYSTEM-STATISTICS-MIB wgSystemCurrActiveConns).
+        A rapidly rising count can indicate a connection flood or connection-table
+        pressure.
+    firewall_current_connections:
+      name: Current Connections
+      desc: This metric reports the number of entries currently in the SonicWall firewall
+        connection cache (SONICWALL-FIREWALL-IP-STATISTICS-MIB sonicCurrentConnCacheEntries).
+        A rapidly rising count can indicate a connection flood or connection-table
+        pressure.
+    firewall_max_connections:
+      name: Max Connections
+      desc: This metric reports the maximum number of connections supported by the
+        SonicWall firewall connection cache (SONICWALL-FIREWALL-IP-STATISTICS-MIB
+        sonicMaxConnCacheEntries). Combined with the current count it gauges remaining
+        connection-table headroom.
+    firewall_nat_translations:
+      name: NAT Translations
+      desc: This metric reports the number of currently active NAT translation entries
+        on the SonicWall firewall (SONICWALL-FIREWALL-IP-STATISTICS-MIB sonicNatTranslationCount).
+        An abnormal rise can indicate NAT resource pressure or anomalous traffic.
+    firewall_session_utilization:
+      name: Session Utilization
+      desc: This metric reports the session-table utilization of the Palo Alto firewall
+        (PAN-COMMON-MIB panSessionUtilization), the percentage of active sessions
+        against the maximum session capacity. Approaching 100% means the session table
+        is nearly exhausted and new connections may be dropped.
+    firewall_max_sessions:
+      name: Max Sessions
+      desc: This metric reports the maximum concurrent session capacity supported
+        by the Palo Alto firewall (PAN-COMMON-MIB panSessionMax). Combined with the
+        active session count it gauges remaining session headroom.
+    firewall_active_sessions_tcp:
+      name: Active TCP Sessions
+      desc: This metric reports the number of currently active TCP sessions on the
+        Palo Alto firewall (PAN-COMMON-MIB panSessionActiveTcp). It helps analyse
+        session composition and TCP load.
+    firewall_active_sessions_udp:
+      name: Active UDP Sessions
+      desc: This metric reports the number of currently active UDP sessions on the
+        Palo Alto firewall (PAN-COMMON-MIB panSessionActiveUdp). It helps analyse
+        session composition and UDP load.
+    firewall_active_sessions_icmp:
+      name: Active ICMP Sessions
+      desc: This metric reports the number of currently active ICMP sessions on the
+        Palo Alto firewall (PAN-COMMON-MIB panSessionActiveICMP). An abnormal rise
+        in ICMP sessions can indicate scanning or attack activity.
+    firewall_tcp_connections:
+      name: ASQ TCP Connections
+      desc: This metric reports the current number of TCP connections tracked by the
+        Stormshield firewall ASQ engine (STORMSHIELD-SNS-MIB). A rapidly rising count
+        can indicate a connection flood or session-table pressure.
+    firewall_udp_connections:
+      name: ASQ UDP Connections
+      desc: This metric reports the current number of UDP connections tracked by the
+        Stormshield firewall ASQ engine (STORMSHIELD-SNS-MIB). Combined with the TCP
+        connection count it helps gauge overall session load and anomalies.
+    device_memory_free:
+      name: Free Memory
+      desc: This metric reports the amount of free physical memory in bytes on the
+        firewall (Check Point CHECKPOINT-MIB memTotalReal64 minus memActiveReal64).
+        Persistently low free memory can indicate rising memory pressure.
+    device_memory_used:
+      name: Used Memory
+      desc: This metric reports the amount of used physical memory in bytes on the
+        firewall, derived as total memory minus free memory. It helps gauge absolute
+        memory consumption and pressure.
+    firewall_vpn_encrypted_pps:
+      name: VPN Encrypted Packets Rate
+      desc: This metric reports the rate of VPN-encrypted packets on the firewall
+        in packets per second (Check Point CHECKPOINT-MIB encpktsPersec). It is useful
+        for observing VPN encryption load and anomalous spikes.
+    firewall_vpn_decrypted_pps:
+      name: VPN Decrypted Packets Rate
+      desc: This metric reports the rate of VPN-decrypted packets on the firewall
+        in packets per second (Check Point CHECKPOINT-MIB decpktsPersec). It is useful
+        for observing VPN decryption load and anomalous spikes.
+    device_cpu_usage:
+      name: CPU Usage
+      desc: This metric reports the overall CPU utilization of the FortiGate firewall
+        (FORTINET-FORTIGATE-MIB fgSysCpuUsage). Sustained high CPU usage may indicate
+        heavy traffic inspection load, attack activity or a control-plane bottleneck.
+    device_memory_usage:
+      name: Memory Usage
+      desc: This metric reports the overall memory utilization of the FortiGate firewall
+        (FORTINET-FORTIGATE-MIB fgSysMemUsage, reported directly as a percentage).
+        When memory pressure is high the device may enter conserve mode and drop new
+        sessions.
+    device_memory_total:
+      name: Total Memory
+      desc: This metric reports the total physical memory capacity of the FortiGate
+        firewall (FORTINET-FORTIGATE-MIB fgSysMemCapacity, reported in KB and converted
+        to bytes).
+    firewall_active_sessions:
+      name: IPv4 Active Sessions
+      desc: This metric reports the number of active IPv4 sessions currently tracked
+        by the FortiGate firewall (FORTINET-FORTIGATE-MIB fgSysSesCount). A rapidly
+        rising session count can indicate a connection flood or session-table exhaustion
+        risk.
+    firewall_vpn_tunnels:
+      name: Active IPsec VPN Tunnels
+      desc: This metric reports the number of currently active IPsec VPN tunnels on
+        the FortiGate firewall (FORTINET-FORTIGATE-MIB fgVpnTunnelUpCount). A sudden
+        drop may indicate a VPN outage affecting site-to-site connectivity.
+    firewall_ha_mode:
+      name: HA Mode
+      desc: This metric reports the high-availability mode of the FortiGate firewall
+        (FORTINET-FORTIGATE-MIB fgHaSystemMode) as standalone, active-active or active-passive.
+        It helps confirm whether the expected HA topology is in effect.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate (HC)
+      desc: This metric indicates the average rate of bytes received over the past
+        5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on
+        high-speed interfaces.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate (HC)
+      desc: This metric calculates the average rate of bytes sent over the past 5
+        minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on
+        high-speed interfaces.
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart.
+        By monitoring the uptime, network administrators can understand the stability
+        and reliability of the device and identify potential reboot or failure issues.
+    interface_ifAdminStatus:
+      name: Interface Admin Status
+      desc: This metric indicates the administrative status of the network switch
+        interface. It serves to indicate whether the interface is enabled (up) or
+        disabled (down) by an administrator, along with other states such as testing
+        or not present. This information is vital for network management and troubleshooting.
+    interface_ifOperStatus:
+      name: Interface Oper Status
+      desc: This metric reflects the actual operational status of the network switch
+        interface, indicating whether the interface is operational. Unlike the administrative
+        status, the operational status shows whether the interface can successfully
+        receive and send traffic, which is crucial for monitoring network health.
+    interface_ifSpeed:
+      name: Interface Bandwidth
+      desc: This metric indicates the maximum data transmission speed supported by
+        the network interface, measured in bits per second. Understanding the maximum
+        speed of the interface helps administrators optimize traffic and utilize network
+        resources effectively.
+    interface_ifInErrors:
+      name: Incoming Errors Rate
+      desc: This metric calculates the average rate of incoming error packets over
+        the past 5 minutes, measured in packets per second. Monitoring incoming errors
+        allows administrators to detect potential issues, such as physical connection
+        faults or configuration errors, in a timely manner.
+    interface_ifOutErrors:
+      name: Outgoing Errors Rate
+      desc: This metric calculates the average rate of outgoing error packets over
+        the past 5 minutes, measured in packets per second. Monitoring outgoing errors
+        is essential for identifying transmission issues and ensuring data integrity.
+    interface_ifInDiscards:
+      name: Incoming Discards Rate
+      desc: This metric represents the average rate of incoming discarded packets
+        over the past 5 minutes, measured in packets per second. Packet discards may
+        indicate network congestion or resource shortages, and monitoring this metric
+        can help administrators optimize network performance.
+    interface_ifOutDiscards:
+      name: Outgoing Discards Rate
+      desc: This metric calculates the average rate of outgoing discarded packets
+        over the past 5 minutes, measured in packets per second. Monitoring outgoing
+        discards can help identify network transmission issues and misconfigurations.
+    interface_ifInUcastPkts:
+      name: Incoming Unicast Packets Rate
+      desc: This metric indicates the average rate of incoming unicast packets over
+        the past 5 minutes, measured in packets per second. Monitoring unicast packets
+        is crucial for assessing interface utilization and traffic load.
+    interface_ifOutUcastPkts:
+      name: Outgoing Unicast Packets Rate
+      desc: This metric calculates the average rate of outgoing unicast packets over
+        the past 5 minutes, measured in packets per second. By monitoring the number
+        of unicast packets, administrators can assess the transmission performance
+        of the interface and the usage of traffic.
+    interface_ifInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past
+        5 minutes, measured in bytes per second. Monitoring byte traffic helps evaluate
+        the load on the interface and bandwidth usage.
+    interface_ifOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5
+        minutes, measured in bytes per second. Monitoring outgoing traffic is crucial
+        for ensuring data transmission quality and optimizing network performance.
+    device_total_incoming_traffic:
+      name: Device Total Incoming Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the
+        entire device over the past 5 minutes, measured in bytes per second. By summing
+        the incoming byte counts from multiple interfaces, this metric helps administrators
+        obtain an overview of the device's incoming traffic, supporting overall traffic
+        monitoring and capacity planning.
+    device_total_outgoing_traffic:
+      name: Device Total Outgoing Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire
+        device over the past 5 minutes, measured in bytes per second. By summing the
+        outgoing byte counts from multiple interfaces, this metric allows administrators
+        to comprehensively assess the sending performance of the entire system, enabling
+        more effective traffic management and optimization.
+    device_flow_bytes_rate:
+      name: Device Flow Traffic Rate
+      desc: Total device traffic rate estimated from Flow records according to the
+        active protocol metric contract, used for bandwidth trend and capacity monitoring.
+    device_flow_packets_rate:
+      name: Device Flow Packet Rate
+      desc: Total device packet rate estimated from Flow records according to the
+        active protocol metric contract, used to observe packet-level load and bursts.
+    device_flow_in_bytes_rate:
+      name: Device Flow Inbound Traffic Rate
+      desc: Flow traffic rate estimated from records attributed to input-side flow
+        data; protocol-specific interface direction is shown in interface metrics.
+    device_flow_out_bytes_rate:
+      name: Device Flow Outbound Traffic Rate
+      desc: Flow traffic rate estimated from records attributed to output-side flow
+        data; protocol-specific interface direction is shown in interface metrics.
+    device_flow_in_packets_rate:
+      name: Device Flow Inbound Packet Rate
+      desc: Flow packet rate estimated from records attributed to input-side flow
+        data; protocol-specific interface direction is shown in interface metrics.
+    device_flow_out_packets_rate:
+      name: Device Flow Outbound Packet Rate
+      desc: Flow packet rate estimated from records attributed to output-side flow
+        data; protocol-specific interface direction is shown in interface metrics.
+    device_flow_avg_packet_size:
+      name: Device Flow Average Packet Size
+      desc: Average packet or sampled frame size from Flow records, useful for identifying
+        small-packet bursts or large-packet transfer patterns.
+    device_flow_effective_sampling_rate:
+      name: Device Flow Effective Sampling Rate
+      desc: Effective sampling rate used for Flow calculation. Device-reported fields
+        are preferred; the asset fallback sampling rate is used when missing.
+    device_flow_interface_bytes_rate:
+      name: Interface Flow Traffic Rate
+      desc: Flow traffic rate grouped by interface and direction, used to locate interface-level
+        traffic hotspots.
+    device_flow_interface_packets_rate:
+      name: Interface Flow Packet Rate
+      desc: Flow packet rate grouped by interface and direction, used to locate interface-level
+        packet hotspots.
+    device_flow_top_interfaces_by_bytes:
+      name: Top Interfaces by Flow Traffic Rate
+      desc: Interfaces ranked by Flow traffic rate, used to quickly identify high-traffic
+        interfaces.
+    device_flow_protocol_bytes_rate:
+      name: Protocol Flow Traffic Rate
+      desc: Flow traffic rate grouped by protocol, used to identify TCP, UDP, ICMP,
+        and other protocol traffic distribution.
+    device_flow_protocol_packets_rate:
+      name: Protocol Flow Packet Rate
+      desc: Flow packet rate grouped by protocol, used to identify protocol-level
+        packet anomalies.
+    device_flow_dst_port_bytes_rate:
+      name: Destination Port Flow Traffic Rate
+      desc: Flow traffic rate grouped by destination port, used to analyze application
+        or service port hotspots.
+    device_flow_dst_port_packets_rate:
+      name: Destination Port Flow Packet Rate
+      desc: Flow packet rate grouped by destination port, used to analyze application
+        or service port packet hotspots.
+    device_flow_src_port_bytes_rate:
+      name: Source Port Flow Traffic Rate
+      desc: Flow traffic rate grouped by source port, used to analyze client-side
+        port traffic distribution.
+    device_flow_top_src_bytes_rate:
+      name: Top Source Flow Traffic Rate
+      desc: Flow traffic rate ranked by source address, used to discover major traffic
+        sources.
+    device_flow_top_dst_bytes_rate:
+      name: Top Destination Flow Traffic Rate
+      desc: Flow traffic rate ranked by destination address, used to discover major
+        traffic destinations.
+    device_flow_top_src_packets_rate:
+      name: Top Source Flow Packet Rate
+      desc: Flow packet rate ranked by source address, used to discover packet-heavy
+        sources.
+    device_flow_top_dst_packets_rate:
+      name: Top Destination Flow Packet Rate
+      desc: Flow packet rate ranked by destination address, used to discover packet-heavy
+        destinations.
+    device_flow_top_conversation_bytes_rate:
+      name: Top Conversation Flow Traffic Rate
+      desc: Conversation traffic ranked by source, destination, protocol, and destination
+        port, used to locate dominant communication pairs.
+monitor_object_metric_group:
+  Firewall:
+    Packet: Packet
+    Packet Loss: Packet Loss
+    Base: Base
+    Packet Error: Packet Error
+    Status: Status
+    Bandwidth: Bandwidth
+    Traffic: Traffic
+    Temperature: Temperature
+    Hardware Status: Hardware Status
+    Firewall: Firewall
+    Traffic Overview: Traffic Overview
+    Sampling: Sampling
+    Interface Traffic: Interface Traffic
+    Protocol: Protocol
+    Application Port: Application Port
+    Endpoint: Endpoint
+    Conversation: Conversation

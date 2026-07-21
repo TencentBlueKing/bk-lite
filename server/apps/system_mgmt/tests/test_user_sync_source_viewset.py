@@ -4,10 +4,14 @@ import pytest
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
+from rest_framework.test import APIClient
 
 from apps.system_mgmt.models import Group, IntegrationInstance, User, UserSyncRun, UserSyncSource
+from apps.system_mgmt.providers import RuntimeApplicationService
 from apps.system_mgmt.providers.runtime import CapabilityExecutionResult
+from apps.system_mgmt.serializers.user_sync_source_serializer import UserSyncSourceSerializer
 from apps.system_mgmt.services.user_sync_service import delete_user_sync_source
+from apps.system_mgmt.utils.password_vault import encrypt_for_vault
 
 
 @pytest.fixture
@@ -30,7 +34,7 @@ def user_sync_source(ready_integration_instance):
         enabled=True,
         root_group_name="Root A",
         business_config={"root_department_id": "0"},
-        field_mapping={},
+        field_mapping={"username": "user_id"},
         schedule_config={"mode": "disabled", "timezone": "Asia/Shanghai"},
     )
 
@@ -214,8 +218,8 @@ def test_create_source_logs_operation(api_client, authenticated_user, ready_inte
                 "enabled": True,
                 "root_group_name": "Root B",
                 "business_config": {"root_department_id": "dept-root"},
-                "field_mapping": {},
-                "schedule_config": {},
+                "field_mapping": {"username": "user_id"},
+                "schedule_config": {"mode": "disabled", "timezone": "Asia/Shanghai"},
             },
             format="json",
         )
@@ -242,7 +246,7 @@ def test_create_source_accepts_weekly_schedule_config(api_client, authenticated_
                 "enabled": True,
                 "root_group_name": "Weekly Root",
                 "business_config": {"root_department_id": "dept-root"},
-                "field_mapping": {},
+                "field_mapping": {"username": "user_id"},
                 "schedule_config": {
                     "mode": "weekly",
                     "time": "02:00",
@@ -275,7 +279,7 @@ def test_create_source_rejects_legacy_schedule_payload(api_client, authenticated
                 "enabled": True,
                 "root_group_name": "Legacy Root",
                 "business_config": {"root_department_id": "dept-root"},
-                "field_mapping": {},
+                "field_mapping": {"username": "user_id"},
                 "schedule_config": {"enabled": True, "sync_time": "02:00"},
             },
             format="json",
@@ -324,6 +328,37 @@ def test_department_options_requires_integration_instance(api_client, authentica
     response = api_client.get("/api/v1/system_mgmt/user_sync_source/department_options/")
 
     assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_root_group_name_available_reads_current_database(api_client, authenticated_user, user_sync_source):
+    authenticated_user.is_superuser = True
+    authenticated_user.permission = {"system-manager": {"user_sync-Add"}}
+    authenticated_user.save(update_fields=["is_superuser"])
+
+    response = api_client.get(
+        "/api/v1/system_mgmt/user_sync_source/root_group_name_available/",
+        {"root_group_name": user_sync_source.root_group_name},
+    )
+
+    assert response.status_code == 200
+    assert response.data["available"] is False
+
+
+@pytest.mark.django_db
+def test_root_group_name_available_rejects_existing_root_group(api_client, authenticated_user):
+    authenticated_user.is_superuser = True
+    authenticated_user.permission = {"system-manager": {"user_sync-Add"}}
+    authenticated_user.save(update_fields=["is_superuser"])
+    Group.objects.create(name="Existing Root", parent_id=0)
+
+    response = api_client.get(
+        "/api/v1/system_mgmt/user_sync_source/root_group_name_available/",
+        {"root_group_name": "Existing Root"},
+    )
+
+    assert response.status_code == 200
+    assert response.data["available"] is False
 
 
 @pytest.mark.django_db
@@ -531,7 +566,7 @@ def test_preview_rejects_invalid_payload(api_client, authenticated_user, ready_i
                 "enabled": True,
                 "root_group_name": "",
                 "business_config": {"root_department_id": "dept-root"},
-                "field_mapping": {},
+                "field_mapping": {"username": "user_id"},
                 "schedule_config": {},
             },
             format="json",
@@ -602,7 +637,7 @@ def test_sync_source_accepts_root_dn_without_base_dn_rail(
             "enabled": True,
             "root_group_name": "AD Root",
             "business_config": {"root_dn": "OU=A,DC=x,DC=y"},
-            "field_mapping": {},
+            "field_mapping": {"username": "sAMAccountName"},
             "schedule_config": {"mode": "disabled", "timezone": "Asia/Shanghai"},
         },
         format="json",
@@ -630,10 +665,140 @@ def test_sync_source_still_requires_root_dn_non_empty(
             "enabled": True,
             "root_group_name": "AD Empty Root",
             "business_config": {"root_dn": ""},
-            "field_mapping": {},
+            "field_mapping": {"username": "sAMAccountName"},
             "schedule_config": {"mode": "disabled", "timezone": "Asia/Shanghai"},
         },
         format="json",
     )
 
     assert response.status_code == 400
+
+
+PREVIEW_URL = "/api/v1/system_mgmt/user_sync_source/preview/"
+
+
+@pytest.fixture
+def password_init_preview_admin(db):
+    from apps.base.models import User as BaseUser
+
+    admin = BaseUser.objects.create_user(username="preview_admin", password="pw", domain="domain.com", locale="en")
+    admin.is_superuser = True
+    admin.group_list = [{"id": 1, "name": "Default"}]
+    admin.save()
+    client = APIClient()
+    client.force_authenticate(user=admin)
+    return client
+
+
+def _password_init_preview_payload(integration_instance, **overrides):
+    import uuid
+
+    payload = {
+        "name": overrides.pop("name", f"test-source-{uuid.uuid4().hex[:6]}"),
+        "integration_instance": integration_instance.id,
+        "root_group_name": overrides.pop("root_group_name", f"Feishu Root {uuid.uuid4().hex[:6]}"),
+        "business_config": overrides.pop("business_config", {"root_department_id": "0"}),
+        "schedule_config": overrides.pop("schedule_config", {"mode": "disabled"}),
+        "field_mapping": overrides.pop("field_mapping", {"username": "user_id"}),
+        "root_scope_field": overrides.pop("root_scope_field", "root_department_id"),
+        "description": overrides.pop("description", ""),
+        "enabled": overrides.pop("enabled", True),
+    }
+    payload.update(overrides)
+    return payload
+
+
+def _password_init_preview_result():
+    return CapabilityExecutionResult.success_result(
+        "ok",
+        payload={
+            "all_department_id": "0",
+            "items": [{"id": "dept-a", "parent_id": "0", "name": "Dept A"}],
+            "user_list": [{"user_id": "ou_0", "name": "User 0", "email": "u0@b.c", "mobile": "", "department_ids": ["dept-a"]}],
+        },
+    )
+
+
+@pytest.mark.django_db
+def test_source_serializer_redacts_uniform_password(ready_integration_instance):
+    source = UserSyncSource.objects.create(
+        name="redacted-password-source",
+        integration_instance=ready_integration_instance,
+        root_group_name="Redacted Root",
+        business_config={"root_department_id": "0"},
+        platform_config={"password_init": {"mode": "uniform", "uniform_password": encrypt_for_vault("Str0ngP@ss!"), "email_channel_id": 7}},
+    )
+
+    password_init = UserSyncSourceSerializer(source).data["platform_config"]["password_init"]
+    assert "uniform_password" not in password_init
+    assert password_init["uniform_password_configured"] is True
+
+
+@pytest.mark.django_db
+def test_preview_rejects_missing_username_mapping(password_init_preview_admin, ready_integration_instance):
+    response = password_init_preview_admin.post(
+        PREVIEW_URL,
+        _password_init_preview_payload(ready_integration_instance, field_mapping={}),
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "username" in str(response.json()["errors"])
+
+
+@pytest.mark.django_db
+@patch.object(RuntimeApplicationService, "execute", return_value=_password_init_preview_result())
+@pytest.mark.parametrize(
+    ("config_key", "password_init", "status"),
+    [
+        ("business_config", {"mode": "random", "email_channel_id": 7}, 400),
+        ("platform_config", {"mode": "random", "email_channel_id": 7}, 200),
+        ("platform_config", {"mode": "none"}, 200),
+        ("business_config", {"mode": "none"}, 400),
+    ],
+)
+def test_preview_keeps_password_init_in_platform_config(
+    mock_execute, config_key, password_init, status, password_init_preview_admin, ready_integration_instance
+):
+    if config_key == "business_config":
+        payload = _password_init_preview_payload(
+            ready_integration_instance,
+            business_config={"root_department_id": "0", "password_init": password_init},
+        )
+    else:
+        payload = _password_init_preview_payload(
+            ready_integration_instance,
+            platform_config={"password_init": password_init},
+        )
+
+    response = password_init_preview_admin.post(PREVIEW_URL, payload, format="json")
+    assert response.status_code == status, response.content
+    if status == 400:
+        assert "password_init" in str(response.json())
+    else:
+        assert response.json()["result"] is True
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("password_init", "expected_error"),
+    [
+        ({"mode": "typo"}, "Unsupported password_init mode"),
+        ({"mode": "random"}, "email_channel_id is required"),
+        ({"mode": "uniform", "uniform_password": "Abc12345!"}, "email_channel_id is required"),
+        ({"mode": "uniform", "email_channel_id": 7}, "uniform_password is required"),
+        ({"mode": "uniform", "uniform_password": "123", "email_channel_id": 7}, "密码"),
+    ],
+)
+def test_preview_rejects_invalid_platform_password_init(
+    password_init, expected_error, password_init_preview_admin, ready_integration_instance
+):
+    response = password_init_preview_admin.post(
+        PREVIEW_URL,
+        _password_init_preview_payload(ready_integration_instance, platform_config={"password_init": password_init}),
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert response.json()["result"] is False
+    assert expected_error in str(response.json())

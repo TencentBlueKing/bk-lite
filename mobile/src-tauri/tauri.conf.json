@@ -7,7 +7,7 @@
     "frontendDist": "../out",
     "devUrl": "http://127.0.0.1:3001",
     "beforeDevCommand": "pnpm dev",
-    "beforeBuildCommand": "pnpm build"
+    "beforeBuildCommand": "pnpm build -- --target tauri"
   },
   "app": {
     "windows": [

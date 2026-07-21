@@ -20,6 +20,19 @@ class RestApiClient:
     def set_token(self, token):
         self.token = token
 
+    def set_header(self, key, value):
+        """Attach a sticky header for subsequent session requests.
+
+        Enterprise storage monitors (PowerStore, OceanStor, StorageGRID, …)
+        rely on this for token / CSRF / cookie headers issued at login.
+        """
+        if isinstance(self.session, requests.Session):
+            self.session.headers[key] = value
+        else:
+            if not hasattr(self, "_sticky_headers"):
+                self._sticky_headers = {}
+            self._sticky_headers[key] = value
+
     def request(
         self,
         method,
@@ -38,6 +51,10 @@ class RestApiClient:
 
         if headers is None:
             headers = {}
+        sticky = getattr(self, "_sticky_headers", None)
+        if sticky:
+            for key, value in sticky.items():
+                headers.setdefault(key, value)
         enable_json = json if json is not None else self.json
         if enable_json:
             headers.setdefault("Content-Type", "application/json")

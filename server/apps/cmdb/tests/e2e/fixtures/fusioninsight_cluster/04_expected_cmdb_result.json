@@ -1,0 +1,9 @@
+{
+  "model_id": "fusioninsight_cluster",
+  "instance_count_min": 1,
+  "expected_instance_subset": {
+    "inst_name":     "hadoop-prod-01_cluster-abc123def456",
+    "resource_name": "hadoop-prod-01",
+    "resource_id":   "cluster-abc123def456"
+  }
+}

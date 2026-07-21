@@ -1,0 +1,30 @@
+ActiveMQ:
+  desc: Through the Telegraf collector, regularly collect topic-related metrics from
+    ActiveMQ, including real-time monitoring of consumer count, enqueue/dequeue rates,
+    and topic message backlog.
+  name: ActiveMQ(Telegraf)
+monitor_object:
+  ActiveMQ: ActiveMQ
+monitor_object_type:
+  Middleware: Middleware
+monitor_object_metric:
+  ActiveMQ:
+    activemq_topics_consumer_count:
+      name: Topic Consumer Count
+      desc: Current number of consumer connections for a specific topic, reflecting
+        message consumption capacity
+    activemq_topics_dequeue_count:
+      name: Topic Dequeue Count
+      desc: Total number of messages dequeued from a specific topic, reflecting processed
+        message volume
+    activemq_topics_enqueue_count:
+      name: Topic Enqueue Count
+      desc: Total number of messages enqueued to a specific topic, reflecting received
+        message volume
+    activemq_topics_size:
+      name: Topic Current Size
+      desc: Current number of messages stored in a specific topic, reflecting backlog
+        status
+monitor_object_metric_group:
+  ActiveMQ:
+    Topic: Topic

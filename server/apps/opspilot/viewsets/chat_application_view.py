@@ -5,15 +5,45 @@ from django_filters import filters
 from django_filters.rest_framework import FilterSet
 from rest_framework import viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import ChatApplication, WorkFlowConversationHistory
-from apps.opspilot.models.bot_mgmt import BotWorkFlow
+from apps.opspilot.models.bot_mgmt import BotWebChatSession, BotWorkFlow
 from apps.opspilot.models.model_provider_mgmt import LLMSkill
 from apps.opspilot.serializers.chat_application_serializer import ChatApplicationSerializer
 from apps.opspilot.utils.team_permission_mixin import TeamPermissionMixin
+
+
+def _current_user_candidates(request):
+    """构造当前 web 用户的身份候选集（username + username@domain）。
+
+    participants 字段在 nats_api 已把 user_ids 解析为 username 列表，这里只
+    需要 username / username@domain 两种形态匹配即可。
+    """
+    user = request.user
+    username = getattr(user, "username", "") or ""
+    domain = getattr(user, "domain", "") or ""
+    candidates = {username}
+    if domain:
+        candidates.add(f"{username}@{domain}")
+    return candidates
+
+
+def _filter_sessions_by_user(session_qs, request):
+    """对 BotWebChatSession queryset 应用参与者授权过滤。
+
+    匹配规则：当前用户在 participants 中（username 或 username@domain 任一命中即视为干系人）。
+    注意：PostgreSQL JSONField __contains=str 不会匹配数组元素，必须传 list（每个 candidate
+    构造 [cand] 列表），否则 participants 永远不会出现在结果集里。
+    """
+    candidates = _current_user_candidates(request)
+    user_filter = Q()
+    for cand in candidates:
+        user_filter |= Q(participants__contains=[cand])
+    return session_qs.filter(user_filter)
 
 
 class ChatApplicationFilter(FilterSet):
@@ -96,7 +126,7 @@ class ChatApplicationViewSet(TeamPermissionMixin, viewsets.ReadOnlyModelViewSet)
         Query Parameters:
             bot_id (int, optional): 机器人ID，用于过滤特定机器人的会话
 
-        返回格式: [{"session_id": "xxx", "title": "xxx"}]
+        返回格式: [{"session_id": "xxx", "title": "xxx", "bot_id": ..., "source": "..."}]
         """
         # 拼接 user_id
         username = request.user.username
@@ -127,8 +157,8 @@ class ChatApplicationViewSet(TeamPermissionMixin, viewsets.ReadOnlyModelViewSet)
             .order_by("-first_time")  # 按时间倒序
         )
 
-        # 获取每个 session_id 的第一条记录内容作为标题
         result = []
+        seen_session_ids = set()
         for session in sessions:
             session_id = session["session_id"]
 
@@ -146,8 +176,31 @@ class ChatApplicationViewSet(TeamPermissionMixin, viewsets.ReadOnlyModelViewSet)
                         "session_id": session_id,
                         "title": title,
                         "bot_id": first_record.bot_id,
+                        "source": entry_type,
                     }
                 )
+                seen_session_ids.add(session_id)
+
+        # 附加：当前用户作为干系人的 BotWebChatSession 会话（NATS 触发场景）
+        session_qs = BotWebChatSession.objects.filter(is_active=True)
+        if bot_id:
+            session_qs = session_qs.filter(bot_id=bot_id)
+        if node_id:
+            session_qs = session_qs.filter(node_id=node_id)
+        session_qs = _filter_sessions_by_user(session_qs, request).order_by("-created_at")
+
+        for sess in session_qs:
+            if sess.session_id in seen_session_ids:
+                continue
+            result.append(
+                {
+                    "session_id": sess.session_id,
+                    "title": sess.title,
+                    "bot_id": sess.bot_id,
+                    "source": sess.source,
+                    "created_at": sess.created_at.isoformat() if sess.created_at else None,
+                }
+            )
 
         return Response(result)
 
@@ -179,7 +232,37 @@ class ChatApplicationViewSet(TeamPermissionMixin, viewsets.ReadOnlyModelViewSet)
         if not session_id:
             return Response({"result": False, "message": "session_id 参数是必填的"}, status=400)
 
-        # 拼接 user_id
+        # 优先查 BotWebChatSession（覆盖 NATS / 暴露场景）：做参与者授权
+        web_session = BotWebChatSession.objects.filter(session_id=session_id).first()
+        if web_session is not None:
+            if not web_session.is_participant(request.user):
+                raise PermissionDenied("当前用户不在该会话的干系人列表中")
+            messages = (
+                WorkFlowConversationHistory.objects.filter(session_id=session_id)
+                .order_by("conversation_time")
+                .values(
+                    "id",
+                    "bot_id",
+                    "node_id",
+                    "user_id",
+                    "conversation_role",
+                    "conversation_content",
+                    "conversation_time",
+                    "entry_type",
+                    "session_id",
+                )
+            )
+            return_data = []
+            for i in messages:
+                obj = dict(i, **{})
+                try:
+                    obj["conversation_content"] = json.loads(i["conversation_content"])
+                except Exception:
+                    pass
+                return_data.append(obj)
+            return Response(return_data)
+
+        # 兼容旧路径：owner == {username}@{domain} 的 web_chat / mobile 会话
         username = request.user.username
         domain = getattr(request.user, "domain", "")
         user_id = f"{username}@{domain}" if domain else username
@@ -325,12 +408,22 @@ class ChatApplicationViewSet(TeamPermissionMixin, viewsets.ReadOnlyModelViewSet)
         if not session_id:
             return Response({"result": False, "message": "session_id 参数是必填的"}, status=400)
 
-        # 拼接 user_id
+        # 优先按 BotWebChatSession 做参与者授权（NAT / 暴露场景）
+        web_session = BotWebChatSession.objects.filter(session_id=session_id).first()
+        if web_session is not None:
+            if not web_session.is_participant(request.user):
+                raise PermissionDenied("当前用户不在该会话的干系人列表中")
+            deleted_count, _ = WorkFlowConversationHistory.objects.filter(session_id=session_id).delete()
+            web_session.is_active = False
+            web_session.save(update_fields=["is_active", "updated_at"])
+            logger.info(f"Soft-deleted BotWebChatSession {session_id} by user={request.user.username}, " f"history deleted count={deleted_count}")
+            return Response({"result": True})
+
+        # 旧路径：owner == {username}@{domain} 的 web_chat / mobile 会话
         username = request.user.username
         domain = getattr(request.user, "domain", "")
         user_id = f"{username}@{domain}" if domain else username
 
-        # 删除符合条件的会话历史
         deleted_count, _ = WorkFlowConversationHistory.objects.filter(user_id=user_id, node_id=node_id, session_id=session_id).delete()
 
         logger.info(f"Deleted {deleted_count} conversation history records for user={user_id}, node_id={node_id}, session_id={session_id}")

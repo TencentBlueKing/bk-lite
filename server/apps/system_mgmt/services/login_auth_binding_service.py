@@ -1,3 +1,4 @@
+import uuid
 from urllib.parse import urlencode
 
 from django.contrib.auth.hashers import make_password
@@ -188,6 +189,7 @@ def _resolve_platform_user(binding: LoginAuthBinding, external_user: dict):
     email = external_user.get("email", "") if platform_field != "email" else external_value
     phone = external_user.get("mobile", "") if platform_field != "phone" else external_value
     user = User.objects.create(
+        user_id=str(uuid.uuid4()),
         username=username,
         display_name=display_name,
         email=email,

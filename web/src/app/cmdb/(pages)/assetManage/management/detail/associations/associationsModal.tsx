@@ -141,8 +141,7 @@ const AssociationsModal = forwardRef<AssoModalRef, AssoModalProps>(
             className={associationsModalStyle.associationsModal}
             ref={formRef}
             name="basic"
-            labelCol={{ span: 6 }}
-            wrapperCol={{ span: 18 }}
+            layout="vertical"
             disabled={assoType === 'edit'}
           >
             <Form.Item<AssoFieldType>

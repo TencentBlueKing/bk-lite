@@ -173,7 +173,7 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
 
   const layoutContent = (
     <AntdRegistry>
-      <div className="flex flex-col min-h-screen">
+      <div className={`flex min-h-screen flex-col ${!isAuthRoute ? 'min-w-[1280px]' : ''}`}>
         {isAuthenticated && hasResolvedPathname && !isAuthRoute && (
           <header className="sticky top-0 left-0 right-0 flex justify-between items-center header-bg">
             <TopMenu hideMainMenu={hideTopMenu} />

@@ -12,5 +12,6 @@ export { EnterpriseWechatAibotNodeConfig } from './EnterpriseWechatAibotNodeConf
 export { DingtalkNodeConfig } from './DingtalkNodeConfig';
 export { WechatOfficialNodeConfig } from './WechatOfficialNodeConfig';
 export { MemoryNodeConfig } from './MemoryNodeConfig';
+export { NatsNodeConfig } from './NatsNodeConfig';
 
 export type * from './types';

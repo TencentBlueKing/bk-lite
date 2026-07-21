@@ -44,6 +44,12 @@ export const useUserSyncApi = () => {
     return await get('/system_mgmt/user_sync_source/department_options/', { params });
   }
 
+  async function checkRootGroupNameAvailable(rootGroupName: string): Promise<{ available: boolean }> {
+    return await get('/system_mgmt/user_sync_source/root_group_name_available/', {
+      params: { root_group_name: rootGroupName },
+    });
+  }
+
   async function syncNow(id: number): Promise<void> {
     await post(`/system_mgmt/user_sync_source/${id}/sync_now/`);
   }
@@ -69,6 +75,7 @@ export const useUserSyncApi = () => {
     deleteSyncSource,
     getAvailableInstances,
     getDepartmentOptions,
+    checkRootGroupNameAvailable,
     syncNow,
     getRecords,
     getPagedRecords,

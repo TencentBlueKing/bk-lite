@@ -56,6 +56,7 @@ class TestMonitorMetricsHandler:
         out = nm.monitor_metrics(obj.id, user_info={"locale": "en"})
         assert out["result"] is True
         assert any(m["name"] == "cpu" for m in out["data"])
+        assert next(m for m in out["data"] if m["name"] == "cpu")["monitor_plugin_name"] == "NMMPlugin"
 
 
 class TestMonitorObjectInstancesHandler:

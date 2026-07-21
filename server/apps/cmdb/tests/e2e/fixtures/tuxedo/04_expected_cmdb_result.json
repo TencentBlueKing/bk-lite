@@ -1,0 +1,7 @@
+{
+  "model_id": "tuxedo",
+  "instance_count_min": 0,
+  "expected_instance_subset": {},
+  "license_status": "missing",
+  "_placeholder_reason": "license_missing"
+}

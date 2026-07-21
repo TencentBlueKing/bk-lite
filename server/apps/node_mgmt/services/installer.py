@@ -1,3 +1,5 @@
+import shlex
+
 from asgiref.sync import async_to_sync
 from django.db.models import Q
 
@@ -343,26 +345,43 @@ class InstallerService:
     @staticmethod
     def get_linux_bootstrap_command(token: str, install_mode: str = MANUAL_INSTALL_MODE) -> str:
         session = InstallerSessionService.build_session_config(token)
-        installer = session["installer"]
-        install_dir = session["install_dir"]
         server_url = session["server_url"].replace("/api/v1/node_mgmt/open_api/node", "")
         bootstrap_url = f"{server_url}/api/v1/node_mgmt/open_api/installer/linux_bootstrap?token={token}"
-        command = f"curl -sSLk {bootstrap_url} | bash -s -- --install-dir '{install_dir}' --installer-name '{installer['filename']}'"
+        quoted_bootstrap_url = shlex.quote(bootstrap_url)
+
+        shell_detection = (
+            'if command -v sh >/dev/null 2>&1; then bootstrap_shell="$(command -v sh)"; '
+            'elif command -v bash >/dev/null 2>&1; then bootstrap_shell="$(command -v bash)"; '
+            "else echo 'Error: controller installation requires sh or bash' >&2; exit 1; fi; "
+        )
 
         if install_mode == InstallerService.AUTO_INSTALL_MODE:
-            return (
+            privilege_detection = (
                 'if [ "$(id -u)" -eq 0 ]; then '
-                f"{command}; "
+                "bootstrap_privilege=root; "
                 "elif command -v sudo >/dev/null 2>&1; then "
-                f"if sudo -n bash -c true >/dev/null 2>&1; then {command.replace('| bash', '| sudo -n bash')}; "
+                'if sudo -n "$bootstrap_shell" -c true >/dev/null 2>&1; then bootstrap_privilege=sudo_non_interactive; '
                 "else echo 'Error: automatic installation requires root or passwordless sudo for the current user'; exit 1; fi; "
-                "else echo 'Error: root or sudo is required to install controller'; exit 1; fi"
+                "else echo 'Error: root or sudo is required to install controller'; exit 1; fi; "
+            )
+        else:
+            privilege_detection = (
+                'if [ "$(id -u)" -eq 0 ]; then '
+                "bootstrap_privilege=root; "
+                "elif command -v sudo >/dev/null 2>&1; then bootstrap_privilege=sudo_interactive; "
+                "else echo 'Error: root or sudo is required to install controller'; exit 1; fi; "
             )
 
         return (
-            'if [ "$(id -u)" -eq 0 ]; then '
-            f"{command}; "
-            "elif command -v sudo >/dev/null 2>&1; then "
-            f"{command.replace('| bash', '| sudo bash')}; "
-            "else echo 'Error: root or sudo is required to install controller'; exit 1; fi"
+            f"{shell_detection}{privilege_detection}"
+            'umask 077; bootstrap_file="$(mktemp)" || exit 1; '
+            'cleanup_bootstrap() { rm -f "$bootstrap_file"; }; '
+            "trap cleanup_bootstrap 0; trap 'exit 1' 1 2 15; "
+            f'curl -fsSLk {quoted_bootstrap_url} -o "$bootstrap_file" || exit 1; '
+            "bootstrap_status=0; "
+            'if [ "$bootstrap_privilege" = root ]; then "$bootstrap_shell" "$bootstrap_file" || bootstrap_status=$?; '
+            'elif [ "$bootstrap_privilege" = sudo_non_interactive ]; then '
+            'sudo -n "$bootstrap_shell" "$bootstrap_file" || bootstrap_status=$?; '
+            'else sudo "$bootstrap_shell" "$bootstrap_file" || bootstrap_status=$?; fi; '
+            'exit "$bootstrap_status"'
         )

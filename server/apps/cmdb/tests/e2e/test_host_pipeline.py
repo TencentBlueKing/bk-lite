@@ -185,3 +185,70 @@ def test_drift_detection_bad_vm_response_caught_by_schema(load_schema):
     schema = load_schema("host/03_vm_metrics.schema.json")
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate(bad_vm, schema)
+
+
+# ============================================================================
+# Task 2.4: host A 端 + B 端对齐全覆盖测试
+# ============================================================================
+
+
+def test_host_a_b_alignment(load_fixture, load_schema, monkeypatch):
+    """host A 端 + B 端对齐全覆盖测试。
+
+    host 走 step3_cmdb_consume_host(简化 mapping)而非 generic pipeline。
+    A 端验证 metric.__name__ / instance_id / business labels
+    B 端验证实例字段 ⊆ model 字段定义 + cpu_core / memory / disk 是 int
+    """
+    from apps.cmdb.tests.e2e.utils.model_reflection import get_model_field_def
+
+    raw = load_fixture("host/01_stargazer_raw.json")
+    expected = load_fixture("host/04_expected_cmdb_result.json")
+
+    # A 端:01 → 02 → 03
+    p2 = pipeline.step1_stargazer_normalize_host(raw)
+    p3 = pipeline.step2_push_to_vm(p2, task_id=11111)
+
+    for result_item in p3["data"]["result"]:
+        assert result_item["metric"]["__name__"].endswith("_info_gauge")
+        assert result_item["metric"]["instance_id"] == "cmdb_11111"
+        # 业务 label 集合 ⊇ model 必填字段
+        model_fields = get_model_field_def("host")
+        required = {f.name for f in model_fields.values() if f.is_required}
+        labels = set(result_item["metric"].keys())
+        # host 必填字段:inst_name / ip_addr / os_type / cpu_arch
+        # inst_name 由 runner set,cpu_arch 由 runner set_cpu_arch 从 cpu_architecture 转换
+        # 都需要排除 A 端 label 检查
+        exclude = {"__name__", "instance_id", "collect_status", "inst_name",
+                   "model_id", "id", "create_time", "update_time", "assos",
+                   "cpu_arch", "os_type"}  # os_type 也是 runner set_os_type 转换
+        missing = required - labels - exclude
+        assert not missing, f"A 端 03 metric 缺 model 必填字段: {missing}"
+
+    # B 端:03 → 04
+    vm_response = load_fixture("host/03_vm_metrics_response.json")
+    result = pipeline.step3_cmdb_consume_host(vm_response, task_id=11111, monkeypatch=monkeypatch)
+
+    instances = result["host"]
+    assert len(instances) >= 1
+
+    inst = instances[0]
+    # B 端:实例字段 ⊆ model 字段定义
+    model_fields = get_model_field_def("host")
+    system_fields = {
+        "inst_name", "model_id", "id", "create_time", "update_time",
+        "_placeholder_reason", "license_status", "assos",
+    }
+    model_field_names = set(model_fields.keys()) - system_fields
+    inst_fields = set(inst.keys())
+    missing = model_field_names - inst_fields
+    assert not missing, f"B 端 04 实例缺 model 字段: {missing}"
+
+    # B 端:cpu_core / memory / disk 是 int(plugin 里有 transform_int)
+    assert isinstance(inst.get("cpu_core"), int), f"cpu_core 应该是 int,实际 {type(inst.get('cpu_core'))}"
+    assert isinstance(inst.get("memory"), int), f"memory 应该是 int,实际 {type(inst.get('memory'))}"
+    assert isinstance(inst.get("disk"), int), f"disk 应该是 int,实际 {type(inst.get('disk'))}"
+
+    # B 端:必填字段非空
+    for field_name in {"inst_name", "ip_addr", "os_type", "cpu_arch"}:
+        value = inst.get(field_name)
+        assert value, f"必填字段 {field_name!r} 为空: {value}"

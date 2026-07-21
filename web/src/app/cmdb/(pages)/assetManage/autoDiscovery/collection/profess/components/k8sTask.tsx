@@ -157,8 +157,7 @@ const K8sTaskForm: React.FC<K8sTaskFormProps> = ({
     <Spin spinning={loading} wrapperClassName={styles.k8sTaskSpin}>
       <Form
         form={form}
-        layout="horizontal"
-        labelCol={{ span: 5 }}
+        layout="vertical"
         onFinish={onFinish}
         initialValues={K8S_FORM_INITIAL_VALUES}
       >

@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CMDB fusioninsight_cluster instance",
+  "description": "Task 3.3 真实化版本:fusioninsight_cluster CMDB 实例契约(platform 对象无业务字段,仅 inst_name + assos)",
+  "type": "object",
+  "required": ["inst_name", "resource_name", "resource_id"],
+  "properties": {
+    "inst_name":     {"type": "string"},
+    "resource_name": {"type": "string"},
+    "resource_id":   {"type": "string"},
+    "assos":         {"type": ["array", "object"], "description": "belong fusioninsight 平台关联"}
+  }
+}

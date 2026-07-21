@@ -18,8 +18,8 @@ const CronPresetInput: React.FC<CronPresetInputProps> = ({ value, onChange }) =>
   const [preset, setPreset] = useState<CronPresetKey>(CUSTOM_PRESET);
   const { status, errors } = Form.Item.useStatus();
 
-  const labelClassName = 'w-[100px] shrink-0 pr-2 pt-[5px] text-right text-sm text-gray-600';
-  const controlClassName = 'w-[420px]';
+  const labelClassName = 'mb-1 block text-sm text-gray-600';
+  const controlClassName = 'w-full';
   const getEveryNMinutesLabel = (minutes: number) => t('settings.correlation.cronPreset.everyNMinutes').replace('{n}', `${minutes}`);
 
   const presetOptions = useMemo(
@@ -97,7 +97,7 @@ const CronPresetInput: React.FC<CronPresetInputProps> = ({ value, onChange }) =>
 
   return (
     <div className="space-y-3">
-      <div className="flex items-start">
+      <div>
         <div className={labelClassName}>
           {t('settings.correlation.quickSelect')}
         </div>
@@ -112,7 +112,7 @@ const CronPresetInput: React.FC<CronPresetInputProps> = ({ value, onChange }) =>
         </div>
       </div>
 
-      <div className="flex items-start">
+      <div>
         <div className={labelClassName}>
           <span className="break-all">{t('settings.correlation.cronExpression')}</span>
         </div>

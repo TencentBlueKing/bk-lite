@@ -1,0 +1,27 @@
+{
+  "model_id": "mycat",
+  "captured_at": "2026-07-14T10:30:00+08:00",
+  "image": "N/A-placeholder",
+  "container_meta": {
+    "container_id": "N/A-placeholder",
+    "image": "N/A-placeholder"
+  },
+  "params": {
+    "host": "192.0.2.1",
+    "note": "Task 4.21 archived placeholder 模式"
+  },
+  "raw_stdout": {},
+  "license_status": "missing",
+  "_placeholder_reason": "cluster_complex",
+  "ip_addr": "192.0.2.1",
+  "inst_name": "mycat-placeholder-01",
+  "blocked_reason": "MyCat 需 mycat server + 至少 2 MySQL 后端;v5 CI 范围单 MySQL 跑不通",
+  "next_steps": [
+    "搭建 mycat 1.6 + 2 MySQL 8.0 docker-compose",
+    "实施 MyCatCollectionPlugin(9066 管理端口采集)"
+  ],
+  "references": [
+    "docs/superpowers/plans/2026-07-06-cmdb-collect-v3-roadmap.md §3.4 G2.3(archived 22 套对象说明)",
+    "docs/superpowers/sdd/task-4-brief.md §Task 4.21"
+  ]
+}

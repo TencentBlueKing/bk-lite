@@ -1,0 +1,29 @@
+{
+  "success": true,
+  "result": {
+    "host": [
+      {
+        "model_id": "host",
+        "task_id": 11111,
+        "captured_at": "2026-07-13T10:30:00+08:00",
+        "collected_by": "stargazer/inputs/host/host.sh@2.1.0",
+        "hostname": "web01.prod.example.com",
+        "os_type": "Linux",
+        "os_name": "Ubuntu",
+        "os_version": "22.04.4 LTS",
+        "os_bits": "64",
+        "cpu_architecture": "x86_64",
+        "cpu_model": "Intel(R) Xeon(R) Gold 6248R CPU @ 3.00GHz",
+        "cpu_cores": "8",
+        "mem_total_mb": "16384.0",
+        "disk_total_gb": "500.0",
+        "mac_address": "02:42:ac:11:00:02",
+        "ip_addr": "10.0.0.11"
+      }
+    ],
+    "host_proc_usage": [
+      {"pid": "1234", "name": "nginx",        "arg": "-g daemon off;", "exe": "/usr/sbin/nginx",       "cwd": "/",              "ports": "80,443", "self_device": "web01.prod.example.com", "ip_addr": "10.0.0.11"},
+      {"pid": "5678", "name": "redis-server", "arg": "*:6379",         "exe": "/usr/bin/redis-server", "cwd": "/var/lib/redis", "ports": "6379",   "self_device": "web01.prod.example.com", "ip_addr": "10.0.0.11"}
+    ]
+  }
+}

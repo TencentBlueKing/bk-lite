@@ -1,0 +1,45 @@
+InfluxDB:
+  name: InfluxDB
+  desc: InfluxDB
+monitor_object:
+  InfluxDB: InfluxDB
+monitor_object_type:
+  Database: Database
+monitor_object_metric:
+  InfluxDB:
+    influxdb_database_numSeries:
+      name: Series Count
+      desc: Total number of series in a single InfluxDB database, one of the most
+        important indicators for high-cardinality risk.
+    influxdb_httpd_authFail_rate:
+      name: HTTP Authentication Failure Rate
+      desc: Average rate of HTTP authentication failures over the last 5 minutes.
+    influxdb_httpd_clientError_rate:
+      name: HTTP 4XX Error Rate
+      desc: Average rate of HTTP 4XX responses over the last 5 minutes.
+    influxdb_httpd_serverError_rate:
+      name: HTTP 5XX Error Rate
+      desc: Average rate of HTTP 5XX responses over the last 5 minutes.
+    influxdb_httpd_pointsWrittenDropped_rate:
+      name: Dropped Points Write Rate
+      desc: Average rate of points accepted by the write API but dropped before persistence
+        over the last 5 minutes.
+    influxdb_httpd_pointsWrittenFail_rate:
+      name: Write Persistence Failure Rate
+      desc: Average rate of points accepted by the write API but failed during persistence
+        over the last 5 minutes.
+    influxdb_httpd_writeReq_rate:
+      name: Write Request Rate
+      desc: Average write request rate over the last 5 minutes.
+    influxdb_httpd_queryReq_rate:
+      name: Query Request Rate
+      desc: Average query request rate over the last 5 minutes.
+    influxdb_runtime_HeapAlloc:
+      name: Runtime Heap Allocation
+      desc: Current size of memory allocated and in use on the Go runtime heap.
+monitor_object_metric_group:
+  InfluxDB:
+    数据库: Database
+    请求与错误: Requests and Errors
+    写入稳定性: Write Stability
+    运行时: Runtime

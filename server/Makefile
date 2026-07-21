@@ -98,3 +98,17 @@ test-db-down:
 test-db:
 	DB_ENGINE=postgresql DB_NAME=bklite DB_USER=postgres DB_PASSWORD=testpass \
 		DB_HOST=localhost DB_PORT=$(TEST_DB_PORT) uv run pytest
+
+# CMDB e2e 字段漂移报告 —— 扫描 fixtures 跟 model schema 字段对齐
+# 用法:make e2e-drift-report(默认 markdown 到 stdout)
+#      make e2e-drift-report-fmt(写文件到 apps/cmdb/tests/e2e/drift_report.md)
+E2E_DRIFT_OUTPUT ?= apps/cmdb/tests/e2e/drift_report.md
+e2e-drift-report:
+	uv run python -m apps.cmdb.tests.e2e.utils.drift_report --format markdown
+
+e2e-drift-report-fmt:
+	uv run python -m apps.cmdb.tests.e2e.utils.drift_report --format markdown --output $(E2E_DRIFT_OUTPUT)
+
+# 字段漂移报告对应的测试(2 tests)
+e2e-drift-report-test:
+	uv run pytest apps/cmdb/tests/e2e/test_drift_report.py -v --no-cov

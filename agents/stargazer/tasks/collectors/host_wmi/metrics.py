@@ -1,6 +1,8 @@
 import time
 from typing import Any
 
+from ..disk_filter import should_collect_disk
+
 
 def _escape_label(value: Any) -> str:
     return str(value).replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
@@ -29,6 +31,8 @@ def wmi_results_to_prometheus(
     *,
     host: str,
     timestamp: int | None = None,
+    disk_include_fstypes: Any = None,
+    disk_exclude_fstypes: Any = None,
 ) -> str:
     timestamp = timestamp or int(time.time() * 1000)
     base_labels = {
@@ -55,7 +59,19 @@ def wmi_results_to_prometheus(
     _append_gauge(lines, "mem_used_percent_gauge", base_labels, mem.get("used_percent"), timestamp)
 
     for disk in results.get("disk") or []:
-        disk_labels = {**base_labels, "device": disk.get("device")}
+        fstype = disk.get("fstype") or ""
+        if not should_collect_disk(
+            fstype,
+            include_fstypes=disk_include_fstypes,
+            exclude_fstypes=disk_exclude_fstypes,
+        ):
+            continue
+        disk_labels = {
+            **base_labels,
+            "device": disk.get("device"),
+            "path": disk.get("path") or disk.get("device"),
+            "fstype": fstype,
+        }
         _append_gauge(lines, "host_disk_total_bytes_gauge", disk_labels, disk.get("total_bytes"), timestamp)
         _append_gauge(lines, "host_disk_free_bytes_gauge", disk_labels, disk.get("free_bytes"), timestamp)
         _append_gauge(lines, "host_disk_used_bytes_gauge", disk_labels, disk.get("used_bytes"), timestamp)

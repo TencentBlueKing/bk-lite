@@ -74,8 +74,8 @@ const AlarmAssignModal: React.FC<AlarmAssignModalProps> = ({
         onCancel();
       }}
     >
-      <div className="flex justify-between items-center mt-2 mb-4">
-        <label className="block mr-2">
+      <div className="mt-2 mb-4">
+        <label className="block mb-2">
           {t('common.select')}
           {t('alarms.user')}
         </label>
@@ -84,7 +84,7 @@ const AlarmAssignModal: React.FC<AlarmAssignModalProps> = ({
           showSearch
           mode="multiple"
           optionFilterProp="label"
-          style={{ width: '100%', flex: 1 }}
+          style={{ width: '100%' }}
           placeholder={t('common.selectTip')}
           options={options}
           value={selectedIds}

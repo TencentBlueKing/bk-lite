@@ -159,7 +159,19 @@ const SelectInstance = forwardRef<RelationInstanceRef, SelectInstanceProps>(
               const _modelId = relationData[0]?.id || '';
               setRelationList(relationData);
               setAssoModelId(currentAssoModelId);
-              initPage(_modelId);
+              if (_modelId) {
+                initPage(_modelId);
+              } else {
+                setIntancePropertyList([]);
+                setTableData([]);
+                setColumns([]);
+                setPagination((prev) => ({
+                  ...prev,
+                  total: 0,
+                  current: 1,
+                }));
+                setLoading(false);
+              }
               if (needFetchAssoInstIds) {
                 const assoIds = res[1].reduce(
                   (pre: RelationListInstItem[], cur: CrentialsAssoInstItem) => {
@@ -352,7 +364,9 @@ const SelectInstance = forwardRef<RelationInstanceRef, SelectInstanceProps>(
           <div className="flex items-center justify-between mb-[16px]">
             <Select
               className="w-[300px]"
-              value={assoModelId}
+              value={relationList.length ? assoModelId : undefined}
+              placeholder={t('Model.noAssociations')}
+              disabled={!relationList.length}
               onChange={handleModelChange}
             >
               {relationList.map((item, index) => {

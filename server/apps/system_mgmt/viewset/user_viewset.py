@@ -1,4 +1,5 @@
 import re
+import uuid
 
 from django.contrib.auth.hashers import make_password
 from django.core.cache import cache
@@ -277,7 +278,7 @@ class UserViewSet(ViewSetUtils):
         queryset = User.objects.all()
         # 按用户有权限的组筛选
         queryset = self._filter_users_by_accessible_groups(queryset, request.user)
-        data = queryset.values("id", "display_name", "username")
+        data = queryset.values("id", "user_id", "display_name", "username")
         return JsonResponse({"result": True, "data": list(data)})
 
     @action(detail=False, methods=["POST"])
@@ -364,6 +365,7 @@ class UserViewSet(ViewSetUtils):
             roles = [Role.objects.get(name="admin", app="").id]
         with transaction.atomic():
             User.objects.create(
+                user_id=str(uuid.uuid4()),
                 username=kwargs["username"],
                 display_name=kwargs["lastName"],
                 email=kwargs["email"],

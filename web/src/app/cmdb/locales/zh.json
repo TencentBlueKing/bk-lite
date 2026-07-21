@@ -22,7 +22,9 @@
         "filterNameRequired": "请输入收藏名称",
         "noFiltersToSave": "没有可收藏的筛选条件",
         "saveFailed": "保存失败",
-        "deleteFailed": "删除失败"
+        "deleteFailed": "删除失败",
+        "cancel": "取消",
+        "confirm": "确认"
     },
     "deleteTitle": "您确定要删除这个项目吗？",
     "disassociationTitle": "您确定要取消关联吗？",
@@ -370,7 +372,8 @@
         "noRackLayout": "暂无机柜布局数据",
         "emptyRoom": "该机房暂无机柜",
         "rackCellConflict": "存在多个机柜占用同一网格位，请检查行/列",
-        "rackNoPosition": "未定位机柜（缺行/列）",
+        "rackLocationMissing": "未定位机柜（位置为空）",
+        "rackLocationInvalid": "未定位机柜（位置格式不正确，应为 A01 格式）",
         "rackUConflict": "存在设备 U 位重叠或越界，请检查起始U位/占用U数",
         "rackUnplaced": "未分配 U 位的设备",
         "viewFullInstance": "查看完整实例详情",
@@ -843,7 +846,9 @@
                 "failed": "失败"
             },
             "noTaskSelected": "请选择任务查看详情"
-        }
+        },
+        "password": "密码",
+        "sslVerify": "SSL 校验"
     },
     "OidLibrary": {
         "title": "SOID库",

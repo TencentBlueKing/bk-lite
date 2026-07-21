@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CMDB hwcloud_ecs instance",
+  "description": "Task 3.1 真实化版本:hwcloud_ecs CMDB 实例契约,字段对齐 plugin.field_mappings['hwcloud_ecs']",
+  "type": "object",
+  "required": ["inst_name", "resource_name", "resource_id"],
+  "properties": {
+    "inst_name":     {"type": "string", "description": "{resource_name}_{resource_id} 格式,plugin.set_instance_inst_name 生成"},
+    "resource_name": {"type": "string"},
+    "resource_id":   {"type": "string"},
+    "ip_addr":       {"type": "string"},
+    "public_ip":     {"type": "string"},
+    "region":        {"type": "string"},
+    "zone":          {"type": "string"},
+    "vpc":           {"type": "string"},
+    "status":        {"type": "string", "enum": ["ACTIVE", "SHUTOFF", "REBOOT", "HARD_REBOOT", "DELETED", "ERROR"]},
+    "instance_type": {"type": "string"},
+    "os_name":       {"type": "string"},
+    "vcpus":         {"type": "integer"},
+    "memory_mb":     {"type": "integer"},
+    "charge_type":   {"type": "string"},
+    "create_time":   {"type": "string"},
+    "expired_time":  {"type": "string"},
+    "assos":         {"type": ["array", "object"], "description": "belong hwcloud 关联"}
+  }
+}

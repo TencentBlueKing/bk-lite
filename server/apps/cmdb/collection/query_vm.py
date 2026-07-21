@@ -29,7 +29,7 @@ class Collection:
 
         对连接类异常与 5xx 做有限次退避重试；4xx 直接失败（重试无意义）。
         """
-        query_with_time = f"last_over_time({sql}[1h])"
+        query_with_time = f"last_over_time(({sql})[1h:])"
         params = {"query": query_with_time}
         attempts = max(1, int(retries))
         last_error: Exception | None = None

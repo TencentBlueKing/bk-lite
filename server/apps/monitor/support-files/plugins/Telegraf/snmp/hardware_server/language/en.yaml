@@ -1,0 +1,130 @@
+Hardware Server SNMP General:
+  name: Physical Server SNMP General(Telegraf)
+  desc: Telegraf SNMP template for general hardware servers. It collects standard
+    network interface metrics and traffic statistics to monitor device health
+monitor_object:
+  Hardware Server: Hardware Server
+monitor_object_type:
+  Hardware Device: Hardware Device
+monitor_object_metric:
+  Hardware Server:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart.
+        By monitoring the uptime, network administrators can understand the stability
+        and reliability of the device and identify potential reboot or failure issues.
+    interface_ifAdminStatus:
+      name: Interface Admin Status
+      desc: This metric indicates the administrative status of the network switch
+        interface. It serves to indicate whether the interface is enabled (up) or
+        disabled (down) by an administrator, along with other states such as testing
+        or not present. This information is vital for network management and troubleshooting.
+    interface_ifOperStatus:
+      name: Interface Oper Status
+      desc: This metric reflects the actual operational status of the network switch
+        interface, indicating whether the interface is operational. Unlike the administrative
+        status, the operational status shows whether the interface can successfully
+        receive and send traffic, which is crucial for monitoring network health.
+    interface_ifSpeed:
+      name: Interface Bandwidth
+      desc: This metric indicates the maximum data transmission speed supported by
+        the network interface, measured in bits per second. Understanding the maximum
+        speed of the interface helps administrators optimize traffic and utilize network
+        resources effectively.
+    interface_ifInErrors:
+      name: Incoming Errors Rate
+      desc: This metric calculates the average rate of incoming error packets over
+        the past 5 minutes, measured in packets per second. Monitoring incoming errors
+        allows administrators to detect potential issues, such as physical connection
+        faults or configuration errors, in a timely manner.
+    interface_ifOutErrors:
+      name: Outgoing Errors Rate
+      desc: This metric calculates the average rate of outgoing error packets over
+        the past 5 minutes, measured in packets per second. Monitoring outgoing errors
+        is essential for identifying transmission issues and ensuring data integrity.
+    interface_ifInDiscards:
+      name: Incoming Discards Rate
+      desc: This metric represents the average rate of incoming discarded packets
+        over the past 5 minutes, measured in packets per second. Packet discards may
+        indicate network congestion or resource shortages, and monitoring this metric
+        can help administrators optimize network performance.
+    interface_ifOutDiscards:
+      name: Outgoing Discards Rate
+      desc: This metric calculates the average rate of outgoing discarded packets
+        over the past 5 minutes, measured in packets per second. Monitoring outgoing
+        discards can help identify network transmission issues and misconfigurations.
+    interface_ifInUcastPkts:
+      name: Incoming Unicast Packets Rate
+      desc: This metric indicates the average rate of incoming unicast packets over
+        the past 5 minutes, measured in packets per second. Monitoring unicast packets
+        is crucial for assessing interface utilization and traffic load.
+    interface_ifOutUcastPkts:
+      name: Outgoing Unicast Packets Rate
+      desc: This metric calculates the average rate of outgoing unicast packets over
+        the past 5 minutes, measured in packets per second. By monitoring the number
+        of unicast packets, administrators can assess the transmission performance
+        of the interface and the usage of traffic.
+    interface_ifInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past
+        5 minutes, measured in bytes per second. Monitoring byte traffic helps evaluate
+        the load on the interface and bandwidth usage.
+    interface_ifOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5
+        minutes, measured in bytes per second. Monitoring outgoing traffic is crucial
+        for ensuring data transmission quality and optimizing network performance.
+    device_total_incoming_traffic:
+      name: Device Total Incoming Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the
+        entire device over the past 5 minutes, measured in bytes per second. By summing
+        the incoming byte counts from multiple interfaces, this metric helps administrators
+        obtain an overview of the device's incoming traffic, supporting overall traffic
+        monitoring and capacity planning.
+    device_total_outgoing_traffic:
+      name: Device Total Outgoing Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire
+        device over the past 5 minutes, measured in bytes per second. By summing the
+        outgoing byte counts from multiple interfaces, this metric allows administrators
+        to comprehensively assess the sending performance of the entire system, enabling
+        more effective traffic management and optimization.
+    ipmi_chassis_power_state:
+      name: Power State
+      desc: The power state indicator is used to monitor if the device is powered
+        on. Its value can indicate whether the power is on or off. It is mainly used
+        for remote management and monitoring of the device's power state.
+    ipmi_fan_speed_rpm:
+      name: Fan Speed
+      desc: The fan speed, measured in revolutions per minute (RPM), monitors the
+        operational status of the device fans. Efficient fan operation is key to maintaining
+        device temperature. It helps prevent overheating and ensures the device's
+        stable long-term operation.
+    ipmi_temperature_celsius:
+      name: Temperature
+      desc: The temperature indicator measured in degrees Celsius monitors the internal
+        temperature of the device. Monitoring temperature prevents heat accumulation
+        and avoids device overheating. It is crucial for maintaining system stability
+        and longevity.
+    ipmi_voltage_volts:
+      name: Voltage
+      desc: The voltage indicator measured in volts monitors the voltage levels of
+        different power rails within the device. Stable voltage supply is crucial
+        for the reliability of the device. This indicator helps quickly identify electrical
+        issues, ensuring normal operation.
+    ipmi_power_watts:
+      name: Power Consumption
+      desc: The power indicator is measured in watts and reflects the current power
+        consumption of the device. This indicator helps evaluate the device's energy
+        efficiency and power consumption trends. It facilitates the implementation
+        of energy-saving policies and resource optimization.
+monitor_object_metric_group:
+  Hardware Server:
+    Power: Power
+    Status: Status
+    Base: Base
+    Packet Loss: Packet Loss
+    Packet Error: Packet Error
+    Packet: Packet
+    Bandwidth: Bandwidth
+    Environment: Environment
+    Traffic: Traffic

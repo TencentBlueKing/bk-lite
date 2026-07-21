@@ -176,7 +176,7 @@ const ShieldStrategy: React.FC = () => {
           dataSource={dataList}
           pagination={pagination}
           onChange={handleTableChange}
-          scroll={{ y: 'calc(100vh - 440px)' }}
+          scroll={{ y: 'calc(100vh - 460px)' }}
         />
         <OperateModal
           open={operateVisible}

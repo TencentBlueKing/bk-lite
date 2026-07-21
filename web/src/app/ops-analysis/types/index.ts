@@ -30,6 +30,8 @@ export interface FormValues {
   desc?: string;
   groups?: number[];
   canvasType?: CanvasType;
+  baseUrl?: string;
+  token?: string;
 }
 
 export interface ItemData {
@@ -39,6 +41,8 @@ export interface ItemData {
   parent?: number | null;
   groups?: number[];
   view_sets?: unknown;
+  base_url?: string;
+  token?: string;
 }
 
 export interface IconWithSize {

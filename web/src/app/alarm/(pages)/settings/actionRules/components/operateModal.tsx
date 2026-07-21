@@ -46,10 +46,6 @@ const OperateModal: React.FC<OperateModalProps> = ({
   onClose,
   onSuccess,
 }) => {
-  const locale =
-    typeof window !== 'undefined'
-      ? localStorage.getItem('locale') || 'en'
-      : 'en';
   const { t } = useTranslation();
   const {
     createActionRule,
@@ -266,9 +262,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
     >
       <Form
         form={form}
-        layout="horizontal"
-        labelCol={{ span: locale === 'en' ? 6 : 5 }}
-        wrapperCol={{ span: locale === 'en' ? 18 : 19 }}
+        layout="vertical"
         onFinish={onFinish}
       >
         {/* ① 基本信息 */}
@@ -303,7 +297,6 @@ const OperateModal: React.FC<OperateModalProps> = ({
 
         <Form.Item
           name="trigger_events"
-          wrapperCol={{ span: 24 }}
           rules={[{ required: true, message: t('common.selectTip') }]}
         >
           <Checkbox.Group

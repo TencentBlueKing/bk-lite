@@ -2,7 +2,6 @@
 
 import React, { useEffect, useRef } from 'react';
 import BaseTaskForm, { BaseTaskRef } from './baseTask';
-import { useLocale } from '@/context/locale';
 import { useTranslation } from '@/utils/i18n';
 import { useTaskForm } from '../hooks/useTaskForm';
 import { getCleanupFormValues } from '../hooks/useTaskForm';
@@ -43,7 +42,6 @@ const IPMITask: React.FC<IPMITaskFormProps> = ({
 }) => {
   const { t } = useTranslation();
   const baseRef = useRef<BaseTaskRef>(null as any);
-  const localeContext = useLocale();
   const { copyTaskData } = useAssetManageStore();
   const { model_id: modelId } = modelItem;
 
@@ -148,8 +146,7 @@ const IPMITask: React.FC<IPMITaskFormProps> = ({
     <Spin spinning={loading}>
       <Form
         form={form}
-        layout="horizontal"
-        labelCol={{ span: localeContext.locale === 'en' ? 6 : 5 }}
+        layout="vertical"
         onFinish={onFinish}
         initialValues={IPMI_FORM_INITIAL_VALUES}
       >

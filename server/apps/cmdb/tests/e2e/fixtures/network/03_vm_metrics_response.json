@@ -10,6 +10,7 @@
           "ip_addr": "10.0.0.1",
           "sysname": "edge-sw-1",
           "sysobjectid": "1.3.6.1.4.1.9.1.1208",
+          "sysdescr": "Cisco IOS Software, C3750E Software (C3750E-UNIVERSALK9-M), Version 15.0(2)SE10",
           "port": "161"
         },
         "value": [9999999999, "1"]

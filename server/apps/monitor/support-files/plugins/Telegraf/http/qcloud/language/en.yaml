@@ -1,0 +1,6 @@
+Tencent Cloud:
+  name: Tencent Cloud
+  desc: Real-time collection of Tencent Cloud monitoring metrics spans dimensions
+    such as computing resources, network performance, and storage usage. This empowers
+    users to gain deep insights into resource status, precisely pinpoint anomalies,
+    and efficiently accomplish operational management and cost optimization.

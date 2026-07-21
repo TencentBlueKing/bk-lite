@@ -1,0 +1,185 @@
+{
+  "task": "Task 4: P2 Archived placeholder(22 套)— 17 license + 5 集群/平台",
+  "generated_at": "2026-07-14T10:30:00+08:00",
+  "total_objects": 22,
+  "license_count": 17,
+  "cluster_platform_count": 5,
+  "objects": [
+    {
+      "model_id": "apusic",
+      "task_n": "Task 4.1",
+      "display_name": "东方通 Apusic 应用服务器",
+      "task_type": "MIDDLEWARE",
+      "placeholder_reason": "license_missing",
+      "test_filename": "test_apusic_pipeline.py"
+    },
+    {
+      "model_id": "bes",
+      "task_n": "Task 4.2",
+      "display_name": "宝兰德 BES 中间件",
+      "task_type": "MIDDLEWARE",
+      "placeholder_reason": "license_missing",
+      "test_filename": "test_bes_pipeline.py"
+    },
+    {
+      "model_id": "informix",
+      "task_n": "Task 4.3",
+      "display_name": "IBM Informix 数据库",
+      "task_type": "MIDDLEWARE",
+      "placeholder_reason": "license_missing",
+      "test_filename": "test_informix_pipeline.py"
+    },
+    {
+      "model_id": "ihs",
+      "task_n": "Task 4.4",
+      "display_name": "IBM HTTP Server",
+      "task_type": "MIDDLEWARE",
+      "placeholder_reason": "license_missing",
+      "test_filename": "test_ihs_pipeline.py"
+    },
+    {
+      "model_id": "inforsuite_as",
+      "task_n": "Task 4.5",
+      "display_name": "浪潮 InforSuite AS",
+      "task_type": "MIDDLEWARE",
+      "placeholder_reason": "license_missing",
+      "test_filename": "test_inforsuite_as_pipeline.py"
+    },
+    {
+      "model_id": "iris",
+      "task_n": "Task 4.6",
+      "display_name": "InterSystems IRIS",
+      "task_type": "MIDDLEWARE",
+      "placeholder_reason": "license_missing",
+      "test_filename": "test_iris_pipeline.py"
+    },
+    {
+      "model_id": "couchbase",
+      "task_n": "Task 4.7",
+      "display_name": "Couchbase NoSQL",
+      "task_type": "MIDDLEWARE",
+      "placeholder_reason": "license_missing",
+      "test_filename": "test_couchbase_pipeline.py"
+    },
+    {
+      "model_id": "oceanbase",
+      "task_n": "Task 4.8",
+      "display_name": "蚂蚁 OceanBase 分布式数据库",
+      "task_type": "MIDDLEWARE",
+      "placeholder_reason": "license_missing",
+      "test_filename": "test_oceanbase_pipeline.py"
+    },
+    {
+      "model_id": "oscar",
+      "task_n": "Task 4.9",
+      "display_name": "神舟通用 Oscar 数据库",
+      "task_type": "MIDDLEWARE",
+      "placeholder_reason": "license_missing",
+      "test_filename": "test_oscar_pipeline.py"
+    },
+    {
+      "model_id": "sap_hana",
+      "task_n": "Task 4.10",
+      "display_name": "SAP HANA 内存数据库",
+      "task_type": "MIDDLEWARE",
+      "placeholder_reason": "license_missing",
+      "test_filename": "test_sap_hana_pipeline.py"
+    },
+    {
+      "model_id": "sybase",
+      "task_n": "Task 4.11",
+      "display_name": "Sybase 数据库",
+      "task_type": "MIDDLEWARE",
+      "placeholder_reason": "license_missing",
+      "test_filename": "test_sybase_pipeline.py"
+    },
+    {
+      "model_id": "tonggtp",
+      "task_n": "Task 4.12",
+      "display_name": "东方通 TongGTP 消息中间件",
+      "task_type": "MIDDLEWARE",
+      "placeholder_reason": "license_missing",
+      "test_filename": "test_tonggtp_pipeline.py"
+    },
+    {
+      "model_id": "tonglinkq",
+      "task_n": "Task 4.13",
+      "display_name": "东方通 TongLinkQ 消息中间件",
+      "task_type": "MIDDLEWARE",
+      "placeholder_reason": "license_missing",
+      "test_filename": "test_tonglinkq_pipeline.py"
+    },
+    {
+      "model_id": "tongrds",
+      "task_n": "Task 4.14",
+      "display_name": "东方通 TongRDS 关系数据库",
+      "task_type": "MIDDLEWARE",
+      "placeholder_reason": "license_missing",
+      "test_filename": "test_tongrds_pipeline.py"
+    },
+    {
+      "model_id": "tuxedo",
+      "task_n": "Task 4.15",
+      "display_name": "Oracle Tuxedo 交易中间件",
+      "task_type": "MIDDLEWARE",
+      "placeholder_reason": "license_missing",
+      "test_filename": "test_tuxedo_pipeline.py"
+    },
+    {
+      "model_id": "weblogic",
+      "task_n": "Task 4.16",
+      "display_name": "Oracle WebLogic 应用服务器",
+      "task_type": "MIDDLEWARE",
+      "placeholder_reason": "license_missing",
+      "test_filename": "test_weblogic_pipeline.py"
+    },
+    {
+      "model_id": "websphere",
+      "task_n": "Task 4.17",
+      "display_name": "IBM WebSphere 应用服务器",
+      "task_type": "MIDDLEWARE",
+      "placeholder_reason": "license_missing",
+      "test_filename": "test_websphere_pipeline.py"
+    },
+    {
+      "model_id": "hdfs",
+      "task_n": "Task 4.18",
+      "display_name": "HDFS 分布式文件系统",
+      "task_type": "PROTOCOL",
+      "placeholder_reason": "cluster_complex",
+      "test_filename": "test_hdfs_pipeline.py"
+    },
+    {
+      "model_id": "storm",
+      "task_n": "Task 4.19",
+      "display_name": "Apache Storm 流处理",
+      "task_type": "PROTOCOL",
+      "placeholder_reason": "cluster_complex",
+      "test_filename": "test_storm_pipeline.py"
+    },
+    {
+      "model_id": "yarn",
+      "task_n": "Task 4.20",
+      "display_name": "Hadoop YARN 资源调度",
+      "task_type": "PROTOCOL",
+      "placeholder_reason": "cluster_complex",
+      "test_filename": "test_yarn_pipeline.py"
+    },
+    {
+      "model_id": "mycat",
+      "task_n": "Task 4.21",
+      "display_name": "MyCat 数据库中间件",
+      "task_type": "HOST",
+      "placeholder_reason": "cluster_complex",
+      "test_filename": "test_mycat_pipeline.py"
+    },
+    {
+      "model_id": "domestic_linux",
+      "task_n": "Task 4.22",
+      "display_name": "国产 Linux(统信 UOS/麒麟)",
+      "task_type": "HOST",
+      "placeholder_reason": "platform_constraint",
+      "test_filename": "test_domestic_linux_pipeline.py"
+    }
+  ]
+}

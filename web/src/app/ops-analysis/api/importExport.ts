@@ -6,6 +6,7 @@ export type ObjectType =
   | 'architecture'
   | 'screen'
   | 'report'
+  | 'networkTopology'
   | 'datasource'
   | 'namespace';
 export type ConflictAction = 'skip' | 'overwrite' | 'rename';

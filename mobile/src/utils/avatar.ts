@@ -1,13 +1,15 @@
+import { withBasePath } from './basePath';
+
 /**
  * 头像工具函数
  */
 
 // 头像列表
 const avatarList = [
-    '/avatars/01.png',
-    '/avatars/02.png',
-    '/avatars/03.png',
-    '/avatars/04.png',
+    withBasePath('/avatars/01.png'),
+    withBasePath('/avatars/02.png'),
+    withBasePath('/avatars/03.png'),
+    withBasePath('/avatars/04.png'),
 ];
 
 /**

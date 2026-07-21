@@ -73,7 +73,7 @@
         "fatal": "Fatal",
         "severity": "Severity",
         "warning": "Warning",
-        "remaining": "Remain",
+        "remaining": "Remaining",
         "pending": "Pending",
         "processing": "Processing",
         "shield": "Shield",
@@ -634,6 +634,7 @@
             }
         },
         "actionRuleTitle": "Alert Action Rules",
+        "actionRuleMessage": "Trigger automated actions from alert lifecycle events and match conditions, including job execution, field binding, and status control.",
         "actionRuleName": "Rule Name",
         "actionTriggerEvent": "Trigger Events",
         "actionMatchSummary": "Match Conditions",

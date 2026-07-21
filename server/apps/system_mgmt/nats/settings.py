@@ -1,3 +1,5 @@
+import uuid
+
 # flake8: noqa
 from .common import *  # noqa: F401,F403
 from .common import _build_jwt_payload
@@ -46,6 +48,7 @@ def verify_bk_token(bk_token):
         username=bk_user["username"],
         domain=bk_user.get("domain"),
         defaults={
+            "user_id": str(uuid.uuid4()),
             "email": bk_user.get("email", ""),
             "group_list": [group_obj.id],
             "locale": bk_user.get("language", "zh-Hans"),
@@ -70,6 +73,7 @@ def verify_bk_token(bk_token):
                 "username": user.username,
                 "display_name": user.display_name,
                 "id": user.id,
+                "user_id": user.user_id,
                 "domain": user.domain,
                 "locale": user.locale,
                 "timezone": user.timezone,

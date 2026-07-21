@@ -44,6 +44,15 @@ def test_query_retries_on_connection_error_then_succeeds():
     assert post.call_count == 2
 
 
+def test_query_applies_time_range_to_entire_union_expression():
+    with mock.patch(f"{MODULE}.requests.post", return_value=_ok_response()) as post:
+        Collection().query("metric_a or metric_b", retries=1)
+
+    assert post.call_args.kwargs["data"]["query"] == (
+        "last_over_time((metric_a or metric_b)[1h:])"
+    )
+
+
 def test_query_retries_on_5xx_then_succeeds():
     with mock.patch(
         f"{MODULE}.requests.post",

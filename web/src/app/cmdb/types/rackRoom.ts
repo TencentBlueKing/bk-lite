@@ -4,6 +4,7 @@ export interface RoomRack {
   row: number;
   col: number;
   col_letter: string;
+  location: string | null;
   u_count: number;
   used_u: number;
   usage: number;
@@ -15,7 +16,11 @@ export interface RoomRack {
 
 export interface RoomLayoutData {
   racks: RoomRack[];
-  unplaced: Array<Omit<RoomRack, 'col_letter' | 'usage'>>;
+  unplaced: Array<
+    Omit<RoomRack, 'col_letter' | 'usage'> & {
+      unplaced_reason: 'missing_location' | 'invalid_location';
+    }
+  >;
   conflicts: Array<{ row: number; col: number; inst_ids: string[] }>;
   grid: { max_row: number; max_col: number };
 }

@@ -225,7 +225,7 @@ const Integration = () => {
   const onTxtPressEnter = () => {
     const params = {
       monitor_object_id: objectId === 'all' ? '' : objectId,
-      name: searchText
+      keyword: searchText
     };
     getPluginList(params);
   };
@@ -234,7 +234,7 @@ const Integration = () => {
     setSearchText('');
     getPluginList({
       monitor_object_id: objectId === 'all' ? '' : objectId,
-      name: ''
+      keyword: ''
     });
   };
 

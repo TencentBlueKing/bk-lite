@@ -273,6 +273,10 @@ def _resolve_request_params(instance, request_data):
             raw_value = default_value
         elif param_name in request_data:
             raw_value = request_data[param_name]
+            # timeRange 空值视为"无过滤"跳过,避免 _normalize_time_range("") 抛 ValueError
+            # 导致整个请求 400(空字符串、null、空数组都被视为"未选时段")
+            if param_type == "timeRange" and raw_value in (None, "", [], {}):
+                continue
         elif default_value not in (None, ""):
             raw_value = default_value
         else:

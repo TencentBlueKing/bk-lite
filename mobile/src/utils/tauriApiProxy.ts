@@ -3,6 +3,8 @@
  * 使用 Tauri 命令来处理 HTTP 请求，避免 CORS 问题
  */
 
+import { getCurrentTeamCookie } from './teamCookie';
+
 export interface ApiRequest {
   url: string;
   method: string;
@@ -100,6 +102,26 @@ export function getTauriProxyInfo(response: Response): {
   };
 }
 
+function appendCurrentTeamCookie(headers: Record<string, string>) {
+  const currentTeam = getCurrentTeamCookie();
+  if (!currentTeam) {
+    return;
+  }
+
+  const cookieHeaderKey = Object.keys(headers).find((key) => key.toLowerCase() === 'cookie');
+  const currentTeamCookie = `current_team=${encodeURIComponent(currentTeam)}`;
+
+  if (cookieHeaderKey) {
+    const existingCookie = headers[cookieHeaderKey];
+    if (!existingCookie.includes('current_team=')) {
+      headers[cookieHeaderKey] = `${existingCookie}; ${currentTeamCookie}`;
+    }
+    return;
+  }
+
+  headers.Cookie = currentTeamCookie;
+}
+
 /**
  * 兼容 fetch API 的 Tauri 代理包装器
  */
@@ -120,6 +142,8 @@ export async function tauriApiFetch(
       Object.assign(headers, options.headers);
     }
   }
+
+  appendCurrentTeamCookie(headers);
 
   // 处理请求体
   let body: string | undefined;
@@ -167,6 +191,8 @@ export async function* tauriApiStream(
       Object.assign(headers, options.headers);
     }
   }
+
+  appendCurrentTeamCookie(headers);
 
   // 处理请求体
   let body: string | undefined;

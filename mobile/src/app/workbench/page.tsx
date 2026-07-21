@@ -8,6 +8,7 @@ import Image from 'next/image';
 import { useTranslation } from '@/utils/i18n';
 import { getApplication } from '@/api/bot';
 import { getAvatar } from '@/utils/avatar';
+import { getAppTagColor, getAppTagLabel } from '@/constants/workbenchTags';
 
 type TabKey =
     | 'all'
@@ -110,25 +111,6 @@ export default function WorkbenchPage() {
         }
     }, [activeTab]);
 
-    // app_tags 映射
-    const appTagsMap: { [key: string]: string } = {
-        'routine_ops': t('workbench.routineOps'),
-        'monitor_alarm': t('workbench.monitorAlarm'),
-        'automation': t('workbench.automation'),
-        'security_audit': t('workbench.securityAudit'),
-        'performance_analysis': t('workbench.performanceAnalysis'),
-        'ops_plan': t('workbench.opsPlan'),
-    };
-
-    const appTagColors: { [key: string]: { bg: string; text: string } } = {
-        'routine_ops': { bg: '#E5F4FF', text: '#4A9EFF' },
-        'monitor_alarm': { bg: '#FFE5E5', text: '#FF6B9D' },
-        'automation': { bg: '#FFF4E5', text: '#FFB84D' },
-        'security_audit': { bg: '#E5FFE5', text: '#52C41A' },
-        'performance_analysis': { bg: '#F0E5FF', text: '#9B59B6' },
-        'ops_plan': { bg: '#E5F0FF', text: '#3498DB' },
-    };
-
     const handleTabChange = (key: string) => {
         setActiveTab(key as TabKey);
     };
@@ -182,18 +164,21 @@ export default function WorkbenchPage() {
                     {/* 标签按钮 */}
                     {item.app_tags && item.app_tags.length > 0 && (
                         <div className="flex flex-wrap gap-1 justify-end">
-                            {item.app_tags.map((tag: string) => (
-                                <span
-                                    key={tag}
-                                    className="px-2 py-0.5 text-xs font-medium rounded"
-                                    style={{
-                                        backgroundColor: appTagColors[tag]?.bg || '#F0F0F0',
-                                        color: appTagColors[tag]?.text || '#666666',
-                                    }}
-                                >
-                                    {appTagsMap[tag] || tag}
-                                </span>
-                            ))}
+                            {item.app_tags.map((tag: string) => {
+                                const tagColor = getAppTagColor(tag);
+                                return (
+                                    <span
+                                        key={tag}
+                                        className="px-2 py-0.5 text-xs font-medium rounded"
+                                        style={{
+                                            backgroundColor: tagColor.bg,
+                                            color: tagColor.text,
+                                        }}
+                                    >
+                                        {getAppTagLabel(tag, t)}
+                                    </span>
+                                );
+                            })}
                         </div>
                     )}
                 </div>

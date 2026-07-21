@@ -191,8 +191,7 @@ const ModelModal = forwardRef<ModelModalRef, ModelModalProps>(
           <Form
             ref={formRef}
             name="basic"
-            labelCol={{ span: 4 }}
-            wrapperCol={{ span: 20 }}
+            layout="vertical"
           >
             <Form.Item<ModelItem>
               label={t('Model.modelGroup')}

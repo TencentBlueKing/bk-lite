@@ -516,7 +516,7 @@ export default function CredentialPoolEditor({
   cloudRegionLoading = false,
   onCloudRegionRefresh,
   onCredentialFieldChange,
-}: CredentialPoolEditorProps): JSX.Element {
+}: CredentialPoolEditorProps): React.ReactElement {
   const { t } = useTranslation();
   const sensors = useSensors(useSensor(PointerSensor));
   const normalizedValue = useMemo(() => ensureClientIds(value), [value]);
@@ -601,11 +601,11 @@ export default function CredentialPoolEditor({
 
     return (
       <>
-        <span className={styles.credentialOrderNumber}>{index + 1}</span>
         <div className={`${styles.credentialCard} ${expanded ? styles.credentialCardExpanded : ''}`}>
           <div className={styles.credentialCardHeader}>
             <div className={styles.credentialCardSummary} onClick={() => toggleExpanded(itemKey)}>
               <div className={styles.credentialTitleBlock}>
+                <span className={styles.credentialOrderNumber}>{index + 1}</span>
                 <div className={styles.credentialTitle}>{`${t('Collection.credential', '凭据')} ${index + 1}`}</div>
               </div>
               {!expanded && (

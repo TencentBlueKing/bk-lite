@@ -107,9 +107,13 @@ export default function MemoriesPage() {
     : memories;
 
   return (
-    <div className="flex gap-4 h-full">
-      {/* Left: Memory List - flex-[6] for 6:4 ratio */}
-      <section className="flex-[6] border border-(--color-border-1) rounded-[10px] bg-(--color-bg) min-h-0 flex flex-col overflow-hidden">
+    /* 响应式:小屏单列堆叠,lg(≥1024px)及以上恢复 6:4 双列。
+       h-full 改为 lg:h-full,小屏让出自然高度,触发 sub-layout .sectionContext
+       overflow-auto 出滚动条;大屏撑满让 list 表格 / preview textarea 拿高度。
+       详见 config 页同款注释。 */
+    <div className="grid grid-cols-1 gap-4 lg:h-full lg:grid-cols-10">
+      {/* Left: Memory List - 6/10 on large screens */}
+      <section className="border border-(--color-border-1) rounded-[10px] bg-(--color-bg) min-h-0 flex flex-col overflow-hidden lg:col-span-6">
         {/* Outer card header */}
         <div className="h-10 border-b border-(--color-border-1) px-4 flex items-center bg-(--color-fill-1) shrink-0">
           <span className="text-[13px] font-bold text-(--color-text-1)">{t('memory.memoryList')}</span>
@@ -217,8 +221,8 @@ export default function MemoriesPage() {
         </div>
       </section>
 
-      {/* Right: Memory Preview - flex-[4] for 6:4 ratio */}
-      <aside className="flex-[4] border border-(--color-border-1) rounded-[10px] bg-(--color-bg) min-h-0 flex flex-col overflow-hidden">
+      {/* Right: Memory Preview - 4/10 on large screens */}
+      <aside className="border border-(--color-border-1) rounded-[10px] bg-(--color-bg) min-h-0 flex flex-col overflow-hidden lg:col-span-4">
         {/* Header */}
         <div className="h-10 border-b border-(--color-border-1) px-4 flex items-center justify-between bg-(--color-fill-1) shrink-0">
           <span className="text-[13px] font-bold text-(--color-text-1)">{t('memory.preview')}</span>

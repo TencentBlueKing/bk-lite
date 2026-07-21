@@ -1,4 +1,5 @@
 import logging
+import uuid
 
 from django.contrib.auth.hashers import make_password
 from django.core.management import BaseCommand
@@ -35,6 +36,7 @@ class Command(BaseCommand):
         # 创建用户
         try:
             user = User.objects.create(
+                user_id=str(uuid.uuid4()),
                 username=username,
                 password=make_password(password),  # 加密密码
                 email=email,

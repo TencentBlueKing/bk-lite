@@ -19,7 +19,7 @@ export const getApplication = (
   },
   options?: RequestInit
 ) => {
-  return apiGet<any>('/api/proxy/opspilot/bot_mgmt/chat_application/', { app_type: 'mobile', ...params }, options);
+  return apiGet<any>('/opspilot/bot_mgmt/chat_application/', { app_type: 'mobile', ...params }, options);
 }
 
 /**
@@ -29,7 +29,7 @@ export const getApplicationDetail = (
   id: string | number,
   options?: RequestInit
 ) => {
-  return apiGet<any>(`/api/proxy/opspilot/bot_mgmt/chat_application/${id}/`, options);
+  return apiGet<any>(`/opspilot/bot_mgmt/chat_application/${id}/`, options);
 }
 
 /** 
@@ -42,7 +42,7 @@ export async function* aiChatStream(
   message: string | Array<any>,
   session_id?: string
 ): AsyncGenerator<AIChatEvent, void, unknown> {
-  const endpoint = `/api/proxy/opspilot/bot_mgmt/execute_chat_flow/${bot}/${node_id}/`;
+  const endpoint = `/opspilot/bot_mgmt/execute_chat_flow/${bot}/${node_id}/`;
   const data = { message, ...(session_id && { session_id }) };
 
   yield* apiStream<AIChatEvent>(endpoint, data);
@@ -55,7 +55,7 @@ export const getSessions = (
   entry_type = 'mobile'
 ) => {
   return apiGet<any>(
-    '/api/proxy/opspilot/bot_mgmt/chat_application/web_chat_sessions/',
+    '/opspilot/bot_mgmt/chat_application/web_chat_sessions/',
     { entry_type }
   );
 }
@@ -68,7 +68,7 @@ export const getSessionMessages = (
   options?: RequestInit
 ) => {
   return apiGet<any>(
-    '/api/proxy/opspilot/bot_mgmt/chat_application/session_messages/',
+    '/opspilot/bot_mgmt/chat_application/session_messages/',
     { session_id: sessionId },
     options
   );
@@ -83,7 +83,7 @@ export const getWelcomeMessage = (
   options?: RequestInit
 ) => {
   return apiGet<any>(
-    '/api/proxy/opspilot/bot_mgmt/chat_application/skill_guide/',
+    '/opspilot/bot_mgmt/chat_application/skill_guide/',
     { bot_id, node_id },
     options
   );

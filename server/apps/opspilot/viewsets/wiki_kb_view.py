@@ -30,6 +30,7 @@ from apps.opspilot.services.wiki.retrieval_service import hybrid_search as wiki_
 from apps.opspilot.services.wiki.retrieval_service import search as wiki_search
 from apps.opspilot.services.wiki.title_service import canonical_title, compact_title_key, title_alias_map
 from apps.opspilot.services.wiki.wiki_context_service import build_context
+from apps.opspilot.viewsets.wiki_team_scope import WikiTeamScopeMixin
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
@@ -52,27 +53,21 @@ def _optional_int_param(params, key, minimum=1):
     return max(value, minimum)
 
 
-class WikiKnowledgeBaseViewSet(AuthViewSet):
+class WikiKnowledgeBaseViewSet(WikiTeamScopeMixin, AuthViewSet):
     """新 Wiki 知识库 CRUD + 创建流程(模板/AI 生成 Purpose+Schema)。沿用团队权限。"""
 
     queryset = WikiKnowledgeBase.objects.all().order_by("-id")
     serializer_class = WikiKnowledgeBaseSerializer
     ordering = ("-id",)
     search_fields = ("name",)
-
-    def _user_group_ids(self, request):
-        return [g["id"] for g in getattr(request.user, "group_list", []) or [] if isinstance(g, dict) and "id" in g]
+    team_scope_field = "id"
 
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
         search = (request.GET.get("search") or "").strip()
         if search:
             queryset = queryset.filter(name__icontains=search)
-        if not getattr(request.user, "is_superuser", False):
-            group_ids = set(self._user_group_ids(request))
-            items = [kb for kb in queryset if set(kb.team or []) & group_ids]
-        else:
-            items = list(queryset)
+        items = list(queryset)
         try:
             page = max(int(request.GET.get("page", 1)), 1)
             page_size = max(int(request.GET.get("page_size", 20)), 1)
@@ -90,9 +85,10 @@ class WikiKnowledgeBaseViewSet(AuthViewSet):
         return JsonResponse({"result": True, "data": serializer.data})
 
     def create(self, request, *args, **kwargs):
-        params = request.data
+        params = request.data.copy()
         if not params.get("team"):
             params["team"] = [self._parse_current_team_cookie(request)]
+        self.validate_team_assignment(params.get("team"))
         serializer = self.get_serializer(data=params)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
@@ -102,6 +98,8 @@ class WikiKnowledgeBaseViewSet(AuthViewSet):
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop("partial", False)
         instance = self.get_object()
+        if "team" in request.data:
+            self.validate_team_assignment(request.data.get("team"))
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
@@ -418,6 +416,13 @@ class WikiKnowledgeBaseViewSet(AuthViewSet):
     def context(self, request):
         """多智能体复用:按所选知识库 + 问题取回可注入提示词的上下文 + 引用。"""
         kb_ids = request.data.get("kb_ids") or []
+        if not isinstance(kb_ids, list):
+            return JsonResponse({"result": False, "message": "kb_ids 必须为数组"}, status=400)
+        try:
+            kb_ids = list(dict.fromkeys(int(kb_id) for kb_id in kb_ids))
+        except (TypeError, ValueError):
+            return JsonResponse({"result": False, "message": "kb_ids 必须为整数数组"}, status=400)
+        self.ensure_knowledge_base_ids_accessible(kb_ids)
         query = request.data.get("query", "")
         top_k = _int_param(request.data, "top_k", 5, minimum=1)
         graph_hops = _int_param(request.data, "graph_hops", 1, minimum=0)

@@ -85,7 +85,7 @@ class MetricGroupViewSet(viewsets.ModelViewSet):
 
 
 class MetricViewSet(viewsets.ModelViewSet):
-    queryset = Metric.objects.select_related('monitor_object').all().order_by("sort_order")
+    queryset = Metric.objects.select_related("monitor_object", "monitor_plugin").all().order_by("sort_order")
     serializer_class = MetricSerializer
     filterset_class = MetricFilter
     pagination_class = CustomPageNumberPagination

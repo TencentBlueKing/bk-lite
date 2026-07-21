@@ -24,20 +24,34 @@
     }
 
     .groupSelector {
+      display: flex;
+      flex-direction: column;
       height: calc(100vh - 124px);
       padding: 12px 0 0 4px;
-      overflow: auto;
+      overflow: hidden;
       width: 240px;
       min-width: 240px;
       position: relative;
 
       .treeSearchWrapper {
-        position: sticky;
-        top: 0;
-        z-index: 1;
+        display: flex;
+        flex: none;
+        flex-direction: column;
         padding-bottom: 12px;
         padding-right: 16px;
         background-color: var(--color-bg-1);
+      }
+
+      .treeSearchInput {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .treeSearchActions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 4px;
+        margin-top: 4px;
       }
 
       .treeLabel {
@@ -49,7 +63,9 @@
       }
 
       .treeWrapper {
-        height: calc(100% - 44px);
+        flex: 1;
+        min-height: 0;
+        height: auto;
         overflow: auto;
       }
     }

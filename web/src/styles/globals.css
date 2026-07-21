@@ -165,7 +165,6 @@
 body {
   color: var(--color-components-nav-button-text);
   background: var(--color-background-body);
-  min-width: 1280px;
 }
 
 html:not(.dark) body {

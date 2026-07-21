@@ -1,0 +1,30 @@
+Ping:
+  desc: 通过Telegraf采集器定期发送ICMP回显请求（ECHO_REQUEST）来检查目标主机或网络设备的连通性和响应时间。
+  name: Ping（Telegraf）
+monitor_object:
+  Ping: Ping
+monitor_object_type:
+  Web: 网络
+monitor_object_metric:
+  Ping:
+    ping_average_response_ms:
+      name: 平均响应时间
+      desc: ICMP 请求的平均响应时间，反映网络延迟的平均水平
+    ping_maximum_response_ms:
+      name: 最大响应时间
+      desc: ICMP 请求的最大响应时间，反映网络延迟的峰值情况
+    ping_minimum_response_ms:
+      name: 最小响应时间
+      desc: ICMP 请求的最小响应时间，反映网络延迟的最佳情况
+    ping_percent_packet_loss:
+      name: 数据包丢失率
+      desc: ICMP数据包丢失百分比，反映网络连接的稳定性
+    ping_result_code:
+      name: Ping结果代码
+      desc: Ping测试的结果代码，表示Ping操作的成功或失败状态
+    ping_ttl:
+      name: 生存时间(TTL)
+      desc: 接收到的ICMP响应包的生存时间值，反映数据包经过的网络跳数
+monitor_object_metric_group:
+  Ping:
+    Ping: Ping

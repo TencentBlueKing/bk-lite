@@ -19,7 +19,6 @@ import {
   RocketOutlined,
   StarOutlined,
   EditOutlined,
-  CheckCircleFilled,
   SyncOutlined,
   CheckOutlined,
   ExclamationCircleFilled,
@@ -31,13 +30,14 @@ import MainLayout from '../mainlayout/layout';
 import useNodeManagerApi from '@/app/node-manager/api';
 import useCloudId from '@/app/node-manager/hooks/useCloudRegionId';
 import { ServiceItem } from '@/app/node-manager/types/cloudregion';
-import { useHandleCopy } from '@/app/node-manager/hooks';
+import useCommandCopyDialog from '@/app/node-manager/hooks/useCommandCopyDialog';
 import PermissionWrapper from '@/components/permission';
 
 const EnvironmentPage = () => {
   const { t } = useTranslation();
   const router = useRouter();
-  const { handleCopy } = useHandleCopy();
+  const { copyCommand, commandCopyDialog, copying } =
+    useCommandCopyDialog();
   const pathname = usePathname();
   const commonContext = useCommon();
   const nodeStateEnum = commonContext?.nodeStateEnum || {};
@@ -226,23 +226,7 @@ const EnvironmentPage = () => {
   };
 
   const copyScript = () => {
-    handleCopy({
-      value: script,
-      showSuccessMessage: false,
-    });
-    Modal.confirm({
-      title: t('node-manager.cloudregion.environment.copySuccess'),
-      icon: <CheckCircleFilled style={{ color: 'var(--color-success)' }} />,
-      content: t('node-manager.cloudregion.environment.copySuccessDesc'),
-      okText: t('node-manager.cloudregion.environment.refreshProxyStatus'),
-      cancelText: t('common.close'),
-      okButtonProps: {
-        icon: <SyncOutlined />,
-      },
-      onOk: () => {
-        return refreshEnvStatus();
-      },
-    });
+    void copyCommand(script);
   };
 
   // 刷新环境状态
@@ -458,6 +442,7 @@ const EnvironmentPage = () => {
                       </span>
                       <Button
                         type="link"
+                        loading={copying}
                         onClick={copyScript}
                         style={{ padding: 0 }}
                       >
@@ -505,6 +490,7 @@ const EnvironmentPage = () => {
           )}
         </div>
       </div>
+      {commandCopyDialog}
     </MainLayout>
   );
 };

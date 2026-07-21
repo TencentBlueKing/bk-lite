@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Stargazer fusioninsight_host 采集脚本原始输出",
+  "description": "Task 3.3 真实化版本:fusioninsight 主机(参考华为云 FusionInsight 真实 API 响应)",
+  "type": "object",
+  "required": ["model_id", "resource_name", "resource_id", "ip_addr", "status"],
+  "properties": {
+    "model_id":         {"type": "string"},
+    "task_id":          {"type": "integer"},
+    "account_id":       {"type": "string"},
+    "captured_at":      {"type": "string"},
+    "collected_by":     {"type": "string"},
+    "request_id":       {"type": "string"},
+    "total_count":      {"type": "integer"},
+    "resource_name":    {"type": "string"},
+    "resource_id":      {"type": "string", "pattern": "^host-[a-zA-Z0-9]+$"},
+    "ip_addr":          {"type": "string"},
+    "vcpus":            {"type": "string"},
+    "memory_mb":        {"type": "string"},
+    "storage_gb":       {"type": "string"},
+    "status":           {"type": "string", "enum": ["running", "stopped", "offline", "fault", "unknown"]},
+    "os_name":          {"type": "string"},
+    "cluster_id":       {"type": "string"}
+  }
+}

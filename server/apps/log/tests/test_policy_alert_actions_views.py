@@ -7,8 +7,10 @@ import pytest
 from django.utils import timezone
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
 from rest_framework import status
+from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.utils.web_utils import WebUtils
 from apps.log.models.policy import (
     Alert,
     Event,
@@ -16,7 +18,9 @@ from apps.log.models.policy import (
     Policy,
     PolicyOrganization,
 )
-from apps.log.views.policy import PolicyViewSet
+from apps.log.services.alert_lifecycle_notify import LogAlertLifecycleNotifier
+from apps.log.views.policy import AlertViewSet, PolicyViewSet
+from apps.system_mgmt.models.channel import Channel
 
 
 def _mock_policy_permission(mocker, policy_id=None, organization=1):
@@ -32,17 +36,19 @@ def _mock_policy_permission(mocker, policy_id=None, organization=1):
     )
 
 
-def _create_policy(name, organization, collect_type=None):
-    policy = Policy.objects.create(
-        name=name,
-        alert_type="keyword",
-        alert_name=name,
-        alert_level="warning",
-        alert_condition={"query": "error"},
-        schedule={"type": "min", "value": 5},
-        period={"type": "min", "value": 5},
-        collect_type=collect_type,
-    )
+def _create_policy(name, organization, collect_type=None, **overrides):
+    data = {
+        "name": name,
+        "alert_type": "keyword",
+        "alert_name": name,
+        "alert_level": "warning",
+        "alert_condition": {"query": "error"},
+        "schedule": {"type": "min", "value": 5},
+        "period": {"type": "min", "value": 5},
+        "collect_type": collect_type,
+    }
+    data.update(overrides)
+    policy = Policy.objects.create(**data)
     PolicyOrganization.objects.create(policy=policy, organization=organization)
     return policy
 
@@ -57,6 +63,28 @@ def _create_alert(policy, alert_id, status_value="new"):
         status=status_value,
         start_event_time=timezone.now(),
     )
+
+
+def _invoke_alert_view(user, alert_id, method, action, data=None):
+    factory = APIRequestFactory()
+    request_factory = getattr(factory, method)
+    request = request_factory(
+        f"/api/v1/log/alert/{alert_id}/",
+        data or {},
+        format="json",
+    )
+    force_authenticate(request, user=user)
+    view = AlertViewSet.as_view({method: action})
+    return view(request, pk=alert_id)
+
+
+def _allow_alert_view(mocker, policy_id):
+    mocker.patch.object(
+        AlertViewSet,
+        "_get_all_accessible_policy_ids",
+        return_value=[policy_id],
+    )
+    mocker.patch.object(AlertViewSet, "_authorize_alert_operate", return_value=None)
 
 
 # --------------------------- format_crontab (纯逻辑) ---------------------------
@@ -183,6 +211,206 @@ def test_alert_closed_success_updates_status_and_operator(api_client, authentica
     alert.refresh_from_db()
     assert alert.status == body["status"]
     assert alert.operator == authenticated_user.username
+
+
+@pytest.mark.django_db
+def test_patch_close_sends_closed_event_after_persisting_stable_time(authenticated_user, mocker):
+    channel = Channel.objects.create(
+        name="告警中心",
+        channel_type="nats",
+        config={"method_name": "receive_alert_events"},
+        description="",
+    )
+    policy = _create_policy(
+        "patch-close-nats",
+        organization=1,
+        notice=True,
+        notice_type="nats",
+        notice_type_id=channel.id,
+    )
+    alert = _create_alert(policy, "patch-close-nats-alert")
+    _allow_alert_view(mocker, policy.id)
+    notify_closed = mocker.patch.object(
+        LogAlertLifecycleNotifier,
+        "notify_closed",
+        return_value=(True, {"result": True}),
+    )
+    mocker.patch(
+        "apps.log.views.policy.transaction.on_commit",
+        side_effect=lambda callback: callback(),
+    )
+
+    response = _invoke_alert_view(
+        authenticated_user,
+        alert.id,
+        "patch",
+        "partial_update",
+        {"status": "closed"},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    alert.refresh_from_db()
+    assert alert.status == "closed"
+    assert alert.operator == authenticated_user.username
+    assert alert.end_event_time is not None
+    assert alert.notice is True
+    sent_alert = notify_closed.call_args.args[0]
+    assert sent_alert.id == alert.id
+    assert sent_alert.end_event_time == alert.end_event_time
+
+
+@pytest.mark.django_db
+def test_patch_close_failure_is_idempotent_and_keeps_pending_notice(authenticated_user, mocker):
+    channel = Channel.objects.create(
+        name="告警中心",
+        channel_type="nats",
+        config={"method_name": "receive_alert_events"},
+        description="",
+    )
+    policy = _create_policy(
+        "patch-close-fail",
+        organization=1,
+        notice=True,
+        notice_type="nats",
+        notice_type_id=channel.id,
+    )
+    alert = _create_alert(policy, "patch-close-fail-alert")
+    _allow_alert_view(mocker, policy.id)
+    notify_closed = mocker.patch.object(
+        LogAlertLifecycleNotifier,
+        "notify_closed",
+        return_value=(False, {"result": False, "message": "down"}),
+    )
+    mocker.patch(
+        "apps.log.views.policy.transaction.on_commit",
+        side_effect=lambda callback: callback(),
+    )
+
+    first = _invoke_alert_view(
+        authenticated_user,
+        alert.id,
+        "patch",
+        "partial_update",
+        {"status": "closed"},
+    )
+    alert.refresh_from_db()
+    closed_at = alert.end_event_time
+    second = _invoke_alert_view(
+        authenticated_user,
+        alert.id,
+        "patch",
+        "partial_update",
+        {"status": "closed"},
+    )
+
+    assert first.status_code == status.HTTP_200_OK
+    assert second.status_code == status.HTTP_200_OK
+    alert.refresh_from_db()
+    assert alert.end_event_time == closed_at
+    assert alert.notice is False
+    notify_closed.assert_called_once()
+
+
+@pytest.mark.django_db
+def test_patch_close_on_normal_channel_preserves_notice_state(authenticated_user, mocker):
+    channel = Channel.objects.create(name="邮件", channel_type="email", config={}, description="")
+    policy = _create_policy(
+        "patch-close-mail",
+        organization=1,
+        notice=True,
+        notice_type="email",
+        notice_type_id=channel.id,
+        notice_users=["admin"],
+    )
+    alert = _create_alert(policy, "patch-close-mail-alert")
+    alert.notice = True
+    alert.save(update_fields=["notice"])
+    _allow_alert_view(mocker, policy.id)
+    notify_closed = mocker.patch.object(LogAlertLifecycleNotifier, "notify_closed")
+
+    response = _invoke_alert_view(
+        authenticated_user,
+        alert.id,
+        "patch",
+        "partial_update",
+        {"status": "closed"},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    alert.refresh_from_db()
+    assert alert.status == "closed"
+    assert alert.notice is True
+    notify_closed.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_legacy_closed_action_reuses_alert_lifecycle(authenticated_user, mocker):
+    channel = Channel.objects.create(
+        name="告警中心旧入口",
+        channel_type="nats",
+        config={"method_name": "receive_alert_events"},
+        description="",
+    )
+    policy = _create_policy(
+        "legacy-close-nats",
+        organization=1,
+        notice=True,
+        notice_type="nats",
+        notice_type_id=channel.id,
+    )
+    alert = _create_alert(policy, "legacy-close-nats-alert")
+    _allow_alert_view(mocker, policy.id)
+    notify_closed = mocker.patch.object(
+        LogAlertLifecycleNotifier,
+        "notify_closed",
+        return_value=(True, {"result": True}),
+    )
+    mocker.patch(
+        "apps.log.views.policy.transaction.on_commit",
+        side_effect=lambda callback: callback(),
+    )
+
+    response = _invoke_alert_view(
+        authenticated_user,
+        alert.id,
+        "post",
+        "closed",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    alert.refresh_from_db()
+    assert alert.status == "closed"
+    assert alert.end_event_time is not None
+    assert alert.notice is True
+    notify_closed.assert_called_once()
+
+
+@pytest.mark.django_db
+def test_patch_close_denied_by_operate_permission(authenticated_user, mocker):
+    policy = _create_policy("patch-close-denied", organization=1)
+    alert = _create_alert(policy, "patch-close-denied-alert")
+    mocker.patch.object(
+        AlertViewSet,
+        "_get_all_accessible_policy_ids",
+        return_value=[policy.id],
+    )
+    mocker.patch.object(
+        AlertViewSet,
+        "_authorize_alert_operate",
+        return_value=WebUtils.response_403("denied"),
+    )
+
+    response = _invoke_alert_view(
+        authenticated_user,
+        alert.id,
+        "patch",
+        "partial_update",
+        {"status": "closed"},
+    )
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    alert.refresh_from_db()
+    assert alert.status == "new"
 
 
 # --------------------------- last_event ---------------------------

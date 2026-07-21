@@ -1,0 +1,32 @@
+{
+  "success": true,
+  "result": {
+    "qcloud_clb": [
+      {
+        "model_id": "qcloud_clb",
+        "task_id": 33013,
+        "account_id": "acct-qcloud-prod-001",
+        "captured_at": "2026-07-14T10:30:00+08:00",
+        "collected_by": "stargazer/inputs/qcloud/qcloud_clb.py@1.2.0",
+        "request_id": "QC-CLB-12345678-9ABC-DEF0-1234-56789ABCDEF0",
+        "total_count": 1,
+        "resource_name": "clb-prod-01",
+        "resource_id": "clb-abc123def456",
+        "region": "ap-shanghai",
+        "master_zone": "ap-shanghai-2",
+        "backup_zone": "ap-shanghai-3",
+        "status": "RUNNING",
+        "domain": "clb-prod-01.example.com",
+        "ip_addr": "10.0.1.10",
+        "type": "OPEN",
+        "isp": "BGP",
+        "tag": "prod|lb",
+        "project_id": 100001,
+        "security_group_id": "sg-abc123",
+        "vpc": "vpc-abc123",
+        "charge_type": "POSTPAID_BY_HOUR",
+        "create_time": "2024-02-10 11:00:00"
+      }
+    ]
+  }
+}

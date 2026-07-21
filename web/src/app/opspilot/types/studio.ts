@@ -329,6 +329,9 @@ export interface WebChatSession {
   created_at: string;
   updated_at: string;
   message_count: number;
+  /** 会话来源：web_chat / mobile / nats（NATS 暴露触发场景）。 */
+  source?: 'web_chat' | 'mobile' | 'nats';
+  bot_id?: number;
 }
 
 export interface SessionMessage {

@@ -1,7 +1,7 @@
 /** 「数据库压力排行」TopN 数据库数量;单一常量同时驱动 topk 查询与展示。 */
 export const MSSQL_TOP_N = 8;
 
-type GuideItem = { label: string; detail: string };
+interface GuideItem { label: string; detail: string }
 
 export interface MssqlTopDbQuery {
   /** 用作 React key 与 state 键 */

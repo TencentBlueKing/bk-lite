@@ -1,0 +1,4 @@
+Docker:
+  name: Docker(Telegraf)
+  desc: Through the Telegraf collector, regularly collect Docker container status,
+    resource utilization (CPU, memory, network, I/O), and performance metrics.

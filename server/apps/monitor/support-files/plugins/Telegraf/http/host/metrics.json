@@ -148,7 +148,7 @@
       "display_name": "Disk Total",
       "data_type": "Number",
       "unit": "bytes",
-      "dimensions": [{"name": "mount"}],
+      "dimensions": [{"name": "mount"}, {"name": "path"}, {"name": "fstype"}],
       "instance_id_keys": ["instance_id"],
       "description": "Total disk space in bytes per mount"
     },
@@ -159,7 +159,7 @@
       "display_name": "Disk Used",
       "data_type": "Number",
       "unit": "bytes",
-      "dimensions": [{"name": "mount"}],
+      "dimensions": [{"name": "mount"}, {"name": "path"}, {"name": "fstype"}],
       "instance_id_keys": ["instance_id"],
       "description": "Used disk space in bytes per mount"
     },
@@ -170,7 +170,7 @@
       "display_name": "Disk Usage",
       "data_type": "Number",
       "unit": "%",
-      "dimensions": [{"name": "mount"}],
+      "dimensions": [{"name": "mount"}, {"name": "path"}, {"name": "fstype"}],
       "instance_id_keys": ["instance_id"],
       "description": "Disk usage percentage per mount"
     },
@@ -445,7 +445,7 @@
       "display_name": "Disk Free",
       "data_type": "Number",
       "unit": "bytes",
-      "dimensions": [{"name": "mount"}],
+      "dimensions": [{"name": "mount"}, {"name": "path"}, {"name": "fstype"}],
       "instance_id_keys": ["instance_id"],
       "description": "Free disk space in bytes"
     },
@@ -456,7 +456,7 @@
       "display_name": "Disk Inodes Usage",
       "data_type": "Number",
       "unit": "%",
-      "dimensions": [{"name": "mount"}],
+      "dimensions": [{"name": "mount"}, {"name": "path"}, {"name": "fstype"}],
       "instance_id_keys": ["instance_id"],
       "description": "Disk inode usage percentage"
     },

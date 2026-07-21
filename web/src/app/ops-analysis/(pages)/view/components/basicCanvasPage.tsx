@@ -19,6 +19,11 @@ interface BasicCanvasPageProps {
   stats?: StatItem[];
   children?: React.ReactNode;
   extra?: React.ReactNode;
+  /**
+   * 内层容器的额外 className —— 例如网络拓扑需要 ``p-0`` 去掉
+   * 默认 padding，让画布占满全屏。
+   */
+  contentClassName?: string;
 }
 
 const BasicCanvasPage: React.FC<BasicCanvasPageProps> = ({
@@ -29,6 +34,7 @@ const BasicCanvasPage: React.FC<BasicCanvasPageProps> = ({
   stats = [],
   children,
   extra,
+  contentClassName,
 }) => {
   const { t } = useTranslation();
 
@@ -82,7 +88,7 @@ const BasicCanvasPage: React.FC<BasicCanvasPageProps> = ({
         )}
       </div>
       <Spin spinning={loading} wrapperClassName="h-full">
-        <div className="h-full flex-1 overflow-auto p-6">{children}</div>
+        <div className={contentClassName ? `h-full flex-1 overflow-auto ${contentClassName}` : 'h-full flex-1 overflow-auto p-6'}>{children}</div>
       </Spin>
     </div>
   );

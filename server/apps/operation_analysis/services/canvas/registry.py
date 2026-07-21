@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from apps.operation_analysis.models.models import Architecture, Dashboard, Report, Screen, Topology
+from apps.operation_analysis.models.models import Architecture, Dashboard, NetworkTopology, Report, Screen, Topology
 
 
 @dataclass(frozen=True)
@@ -18,4 +18,5 @@ CANVAS_TYPE_REGISTRY = {
     "architecture": CanvasTypeMeta("architecture", Architecture, "directory.architecture", "architectures", "架构图"),
     "screen": CanvasTypeMeta("screen", Screen, "directory.screen", "screens", "大屏"),
     "report": CanvasTypeMeta("report", Report, "directory.report", "reports", "报表"),
+    "networkTopology": CanvasTypeMeta("networkTopology", NetworkTopology, "directory.networkTopology", "network_topologies", "网络拓扑"),
 }

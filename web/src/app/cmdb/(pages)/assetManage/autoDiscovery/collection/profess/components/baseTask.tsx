@@ -63,6 +63,9 @@ const ACCESS_POINT_TASK_TYPES = [
   'ipmi',
   'ip', // IP 发现：由接入点直连目标网段执行探测（规格 §13.1）
 ];
+const LONG_TOOLTIP_OVERLAY_STYLE = {
+  maxWidth: 'min(520px, calc(100vw - 48px))',
+};
 
 import {
   CaretRightOutlined,
@@ -763,22 +766,31 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
             {/* 接入点 */}
             {requiresAccessPointSelect && (
               <Form.Item
-                label={t('Collection.accessPoint')}
+                label={
+                  <span>
+                    {t('Collection.accessPoint')}
+                    <Tooltip
+                      overlayStyle={LONG_TOOLTIP_OVERLAY_STYLE}
+                      title={
+                        <span>
+                          {t('Collection.accessPointHelp')}
+                          <a
+                            className="ml-2 text-blue-500 hover:text-blue-600"
+                            href="/node-manager/cloudregion"
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {t('Collection.accessPointLink')}
+                          </a>
+                        </span>
+                      }
+                    >
+                      <QuestionCircleOutlined className="ml-1 cursor-help text-gray-400" />
+                    </Tooltip>
+                  </span>
+                }
                 name="accessPointId"
                 required
-                extra={
-                  <div className="text-xs leading-5">
-                    <span>{t('Collection.accessPointHelp')}</span>
-                    <a
-                      className="ml-2 text-blue-500 hover:text-blue-600"
-                      href="/node-manager/cloudregion"
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      {t('Collection.accessPointLink')}
-                    </a>
-                  </div>
-                }
                 rules={[
                   {
                     required: true,
@@ -828,7 +840,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                 {supportsIpSelection ? (
                   <Radio.Group
                     value={collectionType}
-                    className="ml-8 mb-6"
+                    className="mb-6"
                     onChange={(e) => handleCollectionTypeChange(e.target.value)}
                   >
                     <Radio value="ip">{t('Collection.chooseIp')}</Radio>
@@ -898,7 +910,10 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                     <div>
                       <Space>
                         {isCommonSelectInstTask ? (
-                          <Tooltip title={hostAssetSelectTooltip}>
+                          <Tooltip
+                            overlayStyle={LONG_TOOLTIP_OVERLAY_STYLE}
+                            title={hostAssetSelectTooltip}
+                          >
                             <span>
                               <Button
                                 type="primary"

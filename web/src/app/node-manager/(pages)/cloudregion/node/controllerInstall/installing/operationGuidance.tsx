@@ -11,6 +11,7 @@ import {
 } from '@/app/node-manager/types/controller';
 import { useTranslation } from '@/utils/i18n';
 import { useHandleCopy } from '@/app/node-manager/hooks';
+import useCommandCopyDialog from '@/app/node-manager/hooks/useCommandCopyDialog';
 import useControllerApi from '@/app/node-manager/api/useControllerApi';
 import { useAuth } from '@/context/auth';
 import axios from 'axios';
@@ -22,6 +23,8 @@ import {
 const OperationGuidance = forwardRef<ModalRef>(({}, ref) => {
   const { t } = useTranslation();
   const { handleCopy } = useHandleCopy();
+  const { copyCommand, commandCopyDialog, copying } =
+    useCommandCopyDialog();
   const { getInstallCommand, getInstallerManifest, getInstallerMetadata } =
     useControllerApi();
   const authContext = useAuth();
@@ -106,9 +109,7 @@ const OperationGuidance = forwardRef<ModalRef>(({}, ref) => {
   };
 
   const handleCopyCommand = () => {
-    handleCopy({
-      value: nodeInfo.installerSession || ''
-    });
+    void copyCommand(nodeInfo.installerSession || '');
   };
 
   const handleCopyDebugValue = (value: string) => {
@@ -213,6 +214,7 @@ const OperationGuidance = forwardRef<ModalRef>(({}, ref) => {
         {isLinux ? (
           <LinuxOperationGuidanceSection
             loading={loading}
+            copying={copying}
             downloadLoading={downloadLoading}
             installerSession={nodeInfo.installerSession || ''}
             installerMetadata={installerMetadata}
@@ -224,6 +226,7 @@ const OperationGuidance = forwardRef<ModalRef>(({}, ref) => {
         ) : (
           <WindowsOperationGuidanceSection
             loading={loading}
+            copying={copying}
             downloadLoading={downloadLoading}
             installerSession={nodeInfo.installerSession || ''}
             installerMetadata={installerMetadata}
@@ -242,6 +245,7 @@ const OperationGuidance = forwardRef<ModalRef>(({}, ref) => {
           showIcon
           className="mb-[16px]"
         />
+        {commandCopyDialog}
       </div>
     </OperateDrawer>
   );

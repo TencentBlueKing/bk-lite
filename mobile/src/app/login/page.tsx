@@ -15,6 +15,7 @@ import {
   GlobalOutline,
   ExclamationTriangleOutline
 } from 'antd-mobile-icons';
+import { withBasePath } from '@/utils/basePath';
 
 export default function LoginPage() {
   const { t } = useTranslation();
@@ -175,7 +176,7 @@ export default function LoginPage() {
         <div className="text-center mb-6">
           <div className="flex justify-center mb-2">
             <Image
-              src="/logo-site.png"
+              src={withBasePath('/logo-site.png')}
               alt="WeOps Logo"
               width={68}
               height={68}

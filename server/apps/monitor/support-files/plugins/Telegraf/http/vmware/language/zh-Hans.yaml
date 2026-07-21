@@ -1,0 +1,3 @@
+VMWare:
+  desc: 通过Telegraf采集器利用Stargazer能力定期收集VMware中vCenter、ESXi、虚拟机、数据存储的关键指标。
+  name: VMWare

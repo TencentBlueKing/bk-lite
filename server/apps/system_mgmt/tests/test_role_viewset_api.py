@@ -51,13 +51,31 @@ def test_get_role_tree(super_client):
     Role.objects.create(name="ra", app="cmdb")
     resp = super_client.post(
         f"{BASE}/get_role_tree/",
-        {"client_list": [{"id": 2, "name": "cmdb", "is_build_in": False}]},
+        {"client_list": [{"id": 2, "name": "cmdb", "is_build_in": False, "display_name": "CMDB"}]},
         format="json",
     )
     assert resp.status_code == 200
     tree = resp.json()["data"]
     assert tree[0]["id"] == 2 * 886
     assert any(c["name"] == "ra" for c in tree[0]["children"])
+    # 应用层 display_name 透传
+    assert tree[0]["display_name"] == "CMDB"
+
+
+def test_get_role_tree_display_name_missing(super_client):
+    """display_name 缺失时不影响原有路径，且应用层兜底为空串，角色层不携带该字段。"""
+    Role.objects.create(name="rb", app="cmdb")
+    resp = super_client.post(
+        f"{BASE}/get_role_tree/",
+        {"client_list": [{"id": 2, "name": "cmdb", "is_build_in": False}]},
+        format="json",
+    )
+    assert resp.status_code == 200
+    tree = resp.json()["data"]
+    assert tree[0]["display_name"] == ""
+    assert tree[0]["name"] == "cmdb"
+    assert tree[0]["children"][0]["name"] == "rb"
+    assert "display_name" not in tree[0]["children"][0]
 
 
 def test_create_role(super_client):

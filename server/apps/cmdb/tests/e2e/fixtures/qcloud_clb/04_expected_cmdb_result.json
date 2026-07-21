@@ -1,0 +1,16 @@
+{
+  "model_id": "qcloud_clb",
+  "instance_count_min": 1,
+  "expected_instance_subset": {
+    "inst_name": "clb-prod-01_clb-abc123def456",
+    "resource_name": "clb-prod-01",
+    "resource_id": "clb-abc123def456",
+    "region": "ap-shanghai",
+    "status": "RUNNING",
+    "domain": "clb-prod-01.example.com",
+    "ip_addr": "10.0.1.10",
+    "type": "OPEN",
+    "isp": "BGP",
+    "charge_type": "POSTPAID_BY_HOUR"
+  }
+}

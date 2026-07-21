@@ -17,6 +17,8 @@ interface WidgetRendererProps {
   screenRenderContext?: ScreenRenderContext;
   onReady?: (ready?: boolean) => void;
   onQueryChange?: (params: Record<string, any>) => void;
+  componentSwitchControl?: React.ReactNode;
+  errorMessage?: string;
   fallback?: React.ReactNode;
 }
 
@@ -31,6 +33,8 @@ const WidgetRenderer: React.FC<WidgetRendererProps> = ({
   screenRenderContext,
   onReady,
   onQueryChange,
+  componentSwitchControl,
+  errorMessage,
   fallback = null,
 }) => {
   const Component = getWidgetComponent(chartType);
@@ -49,6 +53,7 @@ const WidgetRenderer: React.FC<WidgetRendererProps> = ({
       screenRenderContext={screenRenderContext}
       onReady={onReady}
       onQueryChange={onQueryChange}
+      {...(chartType === 'topN' ? { componentSwitchControl, errorMessage } : {})}
     />
   );
 };

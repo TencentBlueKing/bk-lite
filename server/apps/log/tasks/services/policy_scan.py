@@ -23,6 +23,7 @@ from apps.log.constants.database import DatabaseConstants
 from apps.log.constants.web import WebConstants
 
 from apps.log.models.policy import Alert, Event, EventRawData, AlertSnapshot
+from apps.log.services.alert_lifecycle_notify import LogAlertLifecycleNotifier
 from apps.log.tasks.utils.policy import period_to_seconds
 from apps.log.utils.query_log import VictoriaMetricsAPI
 from apps.log.utils.log_group import LogGroupQueryBuilder
@@ -935,6 +936,21 @@ class LogPolicyScan:
         兜住亚秒级通道抖动；仍失败则返回 (False, 最后一次结果)，由持久化补偿任务（范围B）后续重投。
         补偿任务本身即外层重试循环，调用时传 max_attempts=1 做单次发送，避免在 worker 内叠加 sleep 阻塞。
         """
+        lifecycle_notifier = LogAlertLifecycleNotifier(self.policy)
+        # 告警中心接收结构化生命周期 Event；其他渠道继续使用原有文本通知。
+        if lifecycle_notifier.is_alert_center_channel():
+            success, result = lifecycle_notifier.notify_created(
+                event_obj,
+                max_attempts=max_attempts,
+            )
+            if success:
+                self._reconcile_closed_after_created(
+                    event_obj,
+                    lifecycle_notifier,
+                    max_attempts=max_attempts,
+                )
+            return success, result
+
         if not self.policy.notice_users:
             return False, []
 
@@ -967,13 +983,39 @@ class LogPolicyScan:
 
         return False, last_result if last_result is not None else {"result": False, "message": "Unknown error"}
 
+    @staticmethod
+    def _reconcile_closed_after_created(event_obj, lifecycle_notifier, max_attempts=None):
+        """created 成功后重放并发发生的关闭，保证远端最终事件顺序。"""
+        closed_alert = (
+            Alert.objects.select_related("policy", "collect_type")
+            .prefetch_related("policy__policyorganization_set")
+            .filter(
+                id=event_obj.alert_id,
+                status=AlertConstants.STATUS_CLOSED,
+                end_event_time__isnull=False,
+            )
+            .first()
+        )
+        if not closed_alert:
+            return
+
+        closed_success, _ = lifecycle_notifier.notify_closed(
+            closed_alert,
+            max_attempts=max_attempts,
+        )
+        Alert.objects.filter(
+            id=closed_alert.id,
+            status=AlertConstants.STATUS_CLOSED,
+            end_event_time=closed_alert.end_event_time,
+        ).update(notice=closed_success)
+
     def notice(self, event_objs):
         """通知"""
         if not event_objs or not self.policy.notice:
             return
 
         try:
-            alerts = []
+            success_alert_ids = set()
 
             for event in event_objs:
                 # info级别事件不通知
@@ -994,7 +1036,7 @@ class LogPolicyScan:
 
                 if is_notice:
                     event.alert.notice = True
-                    alerts.append((event.alert_id, is_notice))
+                    success_alert_ids.add(event.alert_id)
 
             # 批量更新通知结果
             Event.objects.bulk_update(
@@ -1005,12 +1047,12 @@ class LogPolicyScan:
             logger.info(f"Completed notification for {len(event_objs)} events")
 
             # 批量更新告警的通知状态
-            if alerts:
-                Alert.objects.bulk_update(
-                    [Alert(id=i[0], notice=i[1]) for i in alerts],
-                    ["notice"],
-                    batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE,
-                )
+            if success_alert_ids:
+                # 仅活跃告警接收 created 回执，避免覆盖并发关闭留下的补偿状态。
+                Alert.objects.filter(
+                    id__in=success_alert_ids,
+                    status=AlertConstants.STATUS_NEW,
+                ).update(notice=True)
 
         except Exception as e:
             logger.error(f"notice failed for policy {self.policy.id}: {e}")

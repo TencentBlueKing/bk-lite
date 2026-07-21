@@ -7,6 +7,7 @@ from apps.system_mgmt.utils.user_status import get_password_validity_days, get_u
 
 USER_PUBLIC_FIELDS = [
     "id",
+    "user_id",
     "username",
     "display_name",
     "email",

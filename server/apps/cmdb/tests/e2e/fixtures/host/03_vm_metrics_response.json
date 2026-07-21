@@ -6,10 +6,13 @@
       {
         "metric": {
           "__name__": "host_info_gauge",
-          "instance_id": "cmdb_1001",
+          "instance_id": "cmdb_11111",
           "collect_status": "success",
+          "model_id": "host",
+          "task_id": "11111",
+          "captured_at": "2026-07-13T10:30:00+08:00",
+          "collected_by": "stargazer/inputs/host/host.sh@2.1.0",
           "hostname": "web01.prod.example.com",
-          "ip_addr": "10.0.0.11",
           "os_type": "Linux",
           "os_name": "Ubuntu",
           "os_version": "22.04.4 LTS",
@@ -17,14 +20,15 @@
           "cpu_cores": "8",
           "mem_total_mb": "16384.0",
           "disk_total_gb": "500.0",
-          "mac_address": "02:42:ac:11:00:02"
+          "mac_address": "02:42:ac:11:00:02",
+          "ip_addr": "10.0.0.11"
         },
         "value": [9999999999, "1"]
       },
       {
         "metric": {
           "__name__": "host_proc_usage_info_gauge",
-          "instance_id": "cmdb_1001",
+          "instance_id": "cmdb_11111",
           "collect_status": "success",
           "self_device": "web01.prod.example.com",
           "ip_addr": "10.0.0.11",
@@ -40,7 +44,7 @@
       {
         "metric": {
           "__name__": "host_proc_usage_info_gauge",
-          "instance_id": "cmdb_1001",
+          "instance_id": "cmdb_11111",
           "collect_status": "success",
           "self_device": "web01.prod.example.com",
           "ip_addr": "10.0.0.11",

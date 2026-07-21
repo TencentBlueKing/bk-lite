@@ -1,0 +1,261 @@
+Mysql:
+  name: Mysql(Telegraf)
+  desc: Through the Telegraf collector, regularly collect key metrics regarding the
+    health status and performance of MySQL databases.
+monitor_object:
+  Mysql: MySQL
+monitor_object_type:
+  Database: Database
+monitor_object_metric:
+  Mysql:
+    mysql_threads_connected:
+      name: Current Connections
+      desc: Number of currently open connections; new connections are rejected when
+        approaching max_connections
+    mysql_threads_running:
+      name: Running Threads
+      desc: Number of threads currently executing queries, reflecting concurrent processing
+        capacity
+    mysql_threads_cached:
+      name: Cached Threads
+      desc: Number of reusable cached threads, reflecting connection reuse efficiency
+    mysql_process_list_threads_idle:
+      name: Idle Process List Threads
+      desc: Number of process list threads in idle state, used to identify idle connection
+        accumulation
+    mysql_process_list_threads_executing:
+      name: Executing Process List Threads
+      desc: Number of process list threads currently executing queries, used to assess
+        active query concurrency
+    mysql_process_list_threads_sending_data:
+      name: Sending Data Process List Threads
+      desc: Number of process list threads in Sending data state, often related to
+        large scans or slow result processing
+    mysql_process_list_threads_waiting_for_lock:
+      name: Lock Waiting Process List Threads
+      desc: Number of process list threads waiting for locks, used to identify blocking
+        and lock contention
+    mysql_variables_max_connections:
+      name: Max Connections Setting
+      desc: Configured max_connections value used as the true connection capacity
+        baseline
+    mysql_max_used_connections:
+      name: Max Used Connections
+      desc: Peak number of used connections since startup, used to assess connection
+        headroom
+    mysql_aborted_connects:
+      name: Aborted Connections
+      desc: Number of failed connection attempts, possibly due to permissions, network,
+        or configuration
+    mysql_aborted_connects_rate:
+      name: Aborted Connections Rate
+      desc: Rate of failed connection attempts, useful for detecting authentication,
+        network, or configuration issues
+    mysql_aborted_clients:
+      name: Aborted Clients
+      desc: Number of clients disconnected abnormally, often related to network instability
+        or timeouts
+    mysql_aborted_clients_rate:
+      name: Aborted Clients Rate
+      desc: Rate of abnormal client disconnects, useful for identifying network instability,
+        timeout, or connection pool issues
+    mysql_connection_errors_internal:
+      name: Internal Connection Errors
+      desc: Connection failures caused by internal MySQL server errors
+    mysql_connection_errors_max_connections:
+      name: Max Connections Errors
+      desc: Number of connection failures caused by reaching max_connections
+    mysql_connection_errors_max_connections_rate:
+      name: Max Connections Errors Rate
+      desc: Rate of connection failures caused by reaching max_connections, indicating
+        immediate connection saturation impact
+    mysql_connection_errors_peer_address:
+      name: Peer Address Connection Errors
+      desc: Number of connection failures caused by invalid or rejected peer addresses
+    mysql_connection_errors_select:
+      name: Socket Poll Connection Errors
+      desc: Number of connection failures caused during socket select handling
+    mysql_connection_errors_tcpwrap:
+      name: Access Control Connection Errors
+      desc: Number of connection failures caused by TCP wrapper access control
+    mysql_connection_utilization:
+      name: Connection Utilization
+      desc: Ratio of current open connections to configured max_connections, used
+        to estimate connection pressure
+    mysql_uptime:
+      name: MySQL Uptime
+      desc: Duration since the MySQL instance was last started, used to observe restart
+        frequency and runtime stability
+    mysql_slave_seconds_behind_master:
+      name: Replication Delay
+      desc: Seconds the replica is behind its source, used to assess replication lag
+    mysql_slave_io_running:
+      name: Replication IO Thread
+      desc: Replica IO thread status; usually 1 means running and 0 means abnormal
+    mysql_slave_sql_running:
+      name: Replication SQL Thread
+      desc: Replica SQL thread status; usually 1 means running and 0 means abnormal
+    mysql_variables_read_only:
+      name: Read Only Setting
+      desc: MySQL read_only setting, commonly used with replication signals to infer
+        instance role
+    mysql_variables_super_read_only:
+      name: Super Read Only Setting
+      desc: MySQL super_read_only setting, commonly enabled on replicas to prevent
+        accidental writes
+    mysql_variables_log_bin:
+      name: Binary Log Enabled
+      desc: Whether binary logging is enabled, used to identify primary or replication-capable
+        instances
+    mysql_variables_log_slave_updates:
+      name: Log Replica Updates Enabled
+      desc: Whether replayed replication changes are written to binary logs, useful
+        for chained replication role analysis
+    mysql_slow_queries_rate:
+      name: Slow Query Request Trigger Rate
+      desc: Number of slow query requests, reflecting the frequency of slow queries
+    mysql_queries_rate:
+      name: QPS (Queries)
+      desc: Overall query throughput, reflecting total database access pressure
+    mysql_questions_rate:
+      name: Questions Rate
+      desc: Rate of client statements sent to MySQL, reflecting front-end request
+        pressure
+    mysql_com_select_rate:
+      name: SELECT Query Rate
+      desc: SELECT queries, reflecting read load trends
+    mysql_com_insert_rate:
+      name: INSERT Write Rate
+      desc: INSERT queries, reflecting write load trends
+    mysql_com_update_rate:
+      name: UPDATE Update Rate
+      desc: UPDATE operations, reflecting data update frequency
+    mysql_com_delete_rate:
+      name: DELETE Delete Rate
+      desc: DELETE operations; a spike requires checking data cleanup rationality
+    mysql_innodb_row_lock_time_avg:
+      name: Avg Row Lock Wait Time
+      desc: Average row lock wait time; >50ms indicates severe lock contention
+    mysql_innodb_row_lock_waits_rate:
+      name: Row Lock Waits Rate
+      desc: Number of InnoDB row lock waits
+    mysql_innodb_data_reads_rate:
+      name: InnoDB Data Reads Rate
+      desc: Rate of physical read operations issued by InnoDB
+    mysql_innodb_data_writes_rate:
+      name: InnoDB Data Writes Rate
+      desc: Rate of physical write operations issued by InnoDB
+    mysql_innodb_data_fsyncs_rate:
+      name: InnoDB Data Fsyncs Rate
+      desc: Rate of fsync operations issued for InnoDB data files, reflecting data
+        file flush pressure
+    mysql_innodb_os_log_fsyncs_rate:
+      name: InnoDB Log Fsyncs Rate
+      desc: Redo log fsync rate, reflecting transaction flush pressure
+    mysql_innodb_buffer_pool_read_requests_rate:
+      name: Buffer Pool Read Requests Rate
+      desc: Buffer pool read requests, reflecting database read load
+    mysql_innodb_buffer_pool_reads_rate:
+      name: Buffer Pool Disk Reads Rate
+      desc: Buffer pool disk reads; high values indicate insufficient memory
+    mysql_innodb_buffer_pool_pages_free:
+      name: Free Buffer Pool Pages
+      desc: Number of free pages in the buffer pool, used to estimate cache headroom
+    mysql_innodb_buffer_pool_pages_dirty:
+      name: Dirty Pages
+      desc: Number of dirty pages in buffer pool (not yet written to disk); indicates
+        buffer pool utilization
+    mysql_innodb_buffer_pool_pages_total:
+      name: Total Buffer Pool Pages
+      desc: Total pages in buffer pool; used to calculate buffer pool utilization
+    mysql_buffer_pool_hit_ratio:
+      name: Buffer Pool Hit Ratio
+      desc: Ratio of logical reads served from buffer pool instead of disk
+    mysql_buffer_pool_dirty_ratio:
+      name: Dirty Pages Ratio
+      desc: Ratio of dirty pages in total buffer pool pages
+    mysql_buffer_pool_used_ratio:
+      name: Buffer Pool Used Ratio
+      desc: Ratio of used pages in total buffer pool pages
+    mysql_bytes_received_rate:
+      name: Data Received Rate
+      desc: Data received, reflecting database input traffic
+    mysql_bytes_sent_rate:
+      name: Data Sent Rate
+      desc: Data sent, reflecting database output traffic
+    mysql_open_tables:
+      name: Open Tables
+      desc: Number of currently open table handles
+    mysql_opened_tables_rate:
+      name: Opened Tables Rate
+      desc: Rate of table openings; sustained elevation may indicate insufficient
+        table cache
+    mysql_open_files:
+      name: Open Files
+      desc: Number of open file handles used by MySQL
+    mysql_open_files_utilization:
+      name: Open Files Utilization
+      desc: Ratio of current open files to configured open_files_limit, used to assess
+        file descriptor pressure
+    mysql_table_open_cache_utilization:
+      name: Table Open Cache Utilization
+      desc: Ratio of current open tables to configured table_open_cache, used to assess
+        table cache capacity pressure
+    mysql_variables_table_open_cache:
+      name: Table Open Cache Setting
+      desc: Configured table_open_cache value used to assess table handle capacity
+    mysql_variables_open_files_limit:
+      name: Open Files Limit Setting
+      desc: Configured open_files_limit value used as the file descriptor capacity
+        baseline
+    mysql_table_open_cache_hits_rate:
+      name: Table Cache Hits Ratio
+      desc: Table cache hit rate; <95% requires adjusting table_open_cache configuration
+    mysql_table_open_cache_misses_rate:
+      name: Table Cache Misses Rate
+      desc: Number of table open cache miss requests, reflecting table cache hit status
+    mysql_key_reads_rate:
+      name: Key Reads Rate
+      desc: Rate of MyISAM key block reads from disk
+    mysql_key_read_requests_rate:
+      name: Key Read Requests Rate
+      desc: Rate of logical MyISAM key read requests
+    mysql_key_cache_hit_ratio:
+      name: Key Cache Hit Ratio
+      desc: Ratio of MyISAM key reads served from cache
+    mysql_created_tmp_disk_tables_rate:
+      name: Disk Temporary Tables Create Rate
+      desc: Number of disk temporary tables created
+    mysql_created_tmp_tables_rate:
+      name: Total Temporary Tables Create Rate
+      desc: Total number of temporary tables (memory + disk) created
+    mysql_created_tmp_memory_tables_rate:
+      name: Memory Temporary Tables Create Rate
+      desc: Estimated rate of temporary tables created in memory, derived from total
+        temporary tables minus disk temporary tables
+    mysql_tmp_disk_table_ratio:
+      name: Disk Temp Table Ratio
+      desc: Ratio of temporary tables created on disk; high values usually indicate
+        SQL or memory tuning issues
+    mysql_variables_tmp_table_size:
+      name: Tmp Table Size Setting
+      desc: Configured tmp_table_size threshold used to assess temporary table memory
+        headroom
+    mysql_variables_max_heap_table_size:
+      name: Max Heap Table Size Setting
+      desc: Configured max_heap_table_size threshold used to assess in-memory temp
+        table limits
+    mysql_variables_innodb_buffer_pool_size:
+      name: InnoDB Buffer Pool Size Setting
+      desc: Configured innodb_buffer_pool_size used as the cache capacity baseline
+monitor_object_metric_group:
+  Mysql:
+    Base: Base
+    ConnStatus: Connection Status
+    QueryPerf: Query Performance
+    InnoDBPerf: InnoDB Performance
+    NetTraffic: Network Traffic
+    TableCache: Table Cache
+    KeyCache: Key Cache
+    TempTable: Temporary Tables
+    Replication: Replication

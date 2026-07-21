@@ -6,7 +6,7 @@ service 层的 ``dispatch_celery_task``（走 ``.delay``）并行，需独立锁
 
 - 未知作业类型 → 返回 False（不发起派发）；
 - send_task 抛异常（broker 不可用）→ 返回 False；
-- 派发成功 → 返回 True 且回填 ``celery_task_id``。
+- 派发前写入 ``celery_task_id``，成功时返回 True。
 """
 
 from types import SimpleNamespace
@@ -25,21 +25,62 @@ class TestDispatchExecutionJob:
             assert _dispatch_execution_job("not-a-job-type", 1) is False
             mock_app.send_task.assert_not_called()
 
-    def test_broker_error_returns_false(self):
+    def test_broker_error_retains_task_id_and_revokes(self):
         with patch("apps.job_mgmt.tasks.current_app") as mock_app, patch("apps.job_mgmt.tasks.JobExecution") as mock_exec:
             mock_app.send_task.side_effect = ConnectionError("broker down")
-            assert _dispatch_execution_job(JobType.SCRIPT, 7) is False
-            # 失败时不回填 celery_task_id
-            mock_exec.objects.filter.assert_not_called()
+            mock_exec.objects.filter.return_value.update.return_value = 1
 
-    def test_success_backfills_celery_task_id(self):
+            assert _dispatch_execution_job(JobType.SCRIPT, 7) is False
+
+            persisted_task_id = mock_exec.objects.filter.return_value.update.call_args_list[0].kwargs["celery_task_id"]
+            mock_app.send_task.assert_called_once_with(
+                "apps.job_mgmt.tasks.execute_script_task",
+                args=[7],
+                task_id=persisted_task_id,
+            )
+            mock_app.control.revoke.assert_called_once_with(persisted_task_id)
+            mock_exec.objects.filter.assert_called_once_with(id=7)
+            mock_exec.objects.filter.return_value.update.assert_called_once_with(celery_task_id=persisted_task_id)
+
+    def test_missing_execution_returns_false_without_dispatch(self):
         with patch("apps.job_mgmt.tasks.current_app") as mock_app, patch("apps.job_mgmt.tasks.JobExecution") as mock_exec:
-            mock_app.send_task.return_value = SimpleNamespace(id="celery-xyz")
+            mock_exec.objects.filter.return_value.update.return_value = 0
+
+            assert _dispatch_execution_job(JobType.SCRIPT, 7) is False
+
+            mock_app.send_task.assert_not_called()
+
+    def test_persist_error_returns_false_without_dispatch(self):
+        with patch("apps.job_mgmt.tasks.current_app") as mock_app, patch("apps.job_mgmt.tasks.JobExecution") as mock_exec:
+            mock_exec.objects.filter.return_value.update.side_effect = OSError("database unavailable")
+
+            assert _dispatch_execution_job(JobType.SCRIPT, 7) is False
+
+            mock_app.send_task.assert_not_called()
+
+    def test_broker_and_revoke_errors_retain_task_id(self):
+        with patch("apps.job_mgmt.tasks.current_app") as mock_app, patch("apps.job_mgmt.tasks.JobExecution") as mock_exec:
+            mock_exec.objects.filter.return_value.update.return_value = 1
+            mock_app.send_task.side_effect = ConnectionError("publish result unknown")
+            mock_app.control.revoke.side_effect = ConnectionError("control unavailable")
+
+            assert _dispatch_execution_job(JobType.SCRIPT, 7) is False
+
+            mock_exec.objects.filter.return_value.update.assert_called_once()
+
+    def test_success_persists_task_id_before_dispatch(self):
+        with patch("apps.job_mgmt.tasks.current_app") as mock_app, patch("apps.job_mgmt.tasks.JobExecution") as mock_exec:
             mock_update = MagicMock()
             mock_exec.objects.filter.return_value = mock_update
+            events = []
+            mock_update.update.side_effect = lambda **kwargs: events.append(("persist", kwargs)) or 1
+            mock_app.send_task.side_effect = lambda *args, **kwargs: events.append(("dispatch", kwargs)) or SimpleNamespace(id=kwargs["task_id"])
 
             assert _dispatch_execution_job(JobType.SCRIPT, 7) is True
 
-            mock_app.send_task.assert_called_once_with("apps.job_mgmt.tasks.execute_script_task", args=[7])
             mock_exec.objects.filter.assert_called_once_with(id=7)
-            mock_update.update.assert_called_once_with(celery_task_id="celery-xyz")
+            persisted_task_id = events[0][1]["celery_task_id"]
+            assert events == [
+                ("persist", {"celery_task_id": persisted_task_id}),
+                ("dispatch", {"args": [7], "task_id": persisted_task_id}),
+            ]

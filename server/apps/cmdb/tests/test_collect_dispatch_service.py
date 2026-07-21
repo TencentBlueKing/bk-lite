@@ -1,4 +1,5 @@
 from datetime import datetime
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -126,39 +127,129 @@ def test_collect_dispatch_execute_task_falls_back_to_next_credential(monkeypatch
     assert second_state.status == CollectTaskCredentialHit.STATUS_SUCCESS
 
 
+@pytest.mark.parametrize(
+    "task_type,driver_type",
+    [
+        (CollectPluginTypes.HOST, CollectDriverTypes.JOB),
+        (CollectPluginTypes.DB, CollectDriverTypes.JOB),
+        (CollectPluginTypes.MIDDLEWARE, CollectDriverTypes.JOB),
+        (CollectPluginTypes.SNMP, CollectDriverTypes.PROTOCOL),
+        (CollectPluginTypes.PROTOCOL, CollectDriverTypes.PROTOCOL),
+    ],
+)
+def test_vm_result_tasks_do_not_use_target_dispatch(task_type, driver_type):
+    task = SimpleNamespace(
+        task_type=task_type,
+        driver_type=driver_type,
+        credential=[{"credential_id": "cred-1"}, {"credential_id": "cred-2"}],
+    )
+
+    assert CollectDispatchService.should_dispatch(task) is False
+
+
+def test_multicred_config_file_keeps_target_dispatch():
+    task = SimpleNamespace(
+        task_type=CollectPluginTypes.CONFIG_FILE,
+        credential=[{"credential_id": "cred-1"}, {"credential_id": "cred-2"}],
+    )
+
+    assert CollectDispatchService.should_dispatch(task) is True
+
+
 @pytest.mark.django_db
-def test_sync_collect_task_uses_dispatch_service_for_multicred(monkeypatch):
-    task = _create_task()
-    called = {}
+def test_sync_collect_task_runs_multicred_snmp_reconciliation_once(monkeypatch):
+    task = _create_task(task_type=CollectPluginTypes.SNMP, driver_type=CollectDriverTypes.PROTOCOL)
+    collect = MagicMock()
+    collect.main.return_value = (
+        {"network": {"ok": True}},
+        {
+            "add": [{"_status": "success", "inst_name": "10.0.0.1"}],
+            "update": [],
+            "delete": [],
+            "association": [],
+            "__raw_data__": [{"host": "10.0.0.1"}],
+            "all": 1,
+        },
+    )
 
     monkeypatch.setattr(
         "apps.cmdb.services.collect_service.CollectModelService.repair_host_cloud_snapshot",
         lambda instance: None,
     )
+    monkeypatch.setattr("apps.cmdb.tasks.celery_tasks.ProtocolCollect", lambda task: collect)
     monkeypatch.setattr(
         CollectDispatchService,
         "execute_task",
-        staticmethod(
-            lambda instance: (
-                called.setdefault("task_id", instance.id) or {"demo": {"ok": True}},
-                {
-                    "add": [{"_status": "success", "inst_name": "10.0.0.1"}],
-                    "update": [],
-                    "delete": [],
-                    "association": [],
-                    "__raw_data__": [{"inst_name": "10.0.0.1"}],
-                    "all": 1,
-                },
-            )
-        ),
+        staticmethod(lambda instance: (_ for _ in ()).throw(AssertionError("VM results must reconcile once"))),
     )
 
     sync_collect_task(task.id)
     task.refresh_from_db()
 
-    assert called["task_id"] == task.id
+    collect.main.assert_called_once_with()
     assert task.exec_status == CollectRunStatusType.SUCCESS
     assert task.collect_digest["all"] == 1
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "raw_data,all_count,expected_status,expected_success,expected_failed",
+    [
+        (
+            [
+                {"host": "10.0.0.1", "collect_status": "failed", "collect_error": "timeout"},
+                {"host": "10.0.0.2", "collect_status": "failed", "collect_error": "auth failed"},
+            ],
+            0,
+            CollectRunStatusType.ERROR,
+            0,
+            2,
+        ),
+        (
+            [
+                {"host": "10.0.0.1"},
+                {"host": "10.0.0.2", "collect_status": "failed", "collect_error": "timeout"},
+            ],
+            1,
+            CollectRunStatusType.PARTIAL_SUCCESS,
+            1,
+            1,
+        ),
+    ],
+)
+def test_sync_collect_task_uses_raw_vm_outcomes_for_status(
+    monkeypatch,
+    raw_data,
+    all_count,
+    expected_status,
+    expected_success,
+    expected_failed,
+):
+    task = _create_task(task_type=CollectPluginTypes.SNMP, driver_type=CollectDriverTypes.PROTOCOL)
+    collect = MagicMock()
+    collect.main.return_value = (
+        {},
+        {
+            "add": [],
+            "update": [],
+            "delete": [],
+            "association": [],
+            "__raw_data__": raw_data,
+            "all": all_count,
+        },
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.services.collect_service.CollectModelService.repair_host_cloud_snapshot",
+        lambda instance: None,
+    )
+    monkeypatch.setattr("apps.cmdb.tasks.celery_tasks.ProtocolCollect", lambda task: collect)
+
+    sync_collect_task(task.id)
+    task.refresh_from_db()
+
+    assert task.exec_status == expected_status
+    assert task.collect_digest["collect_success"] == expected_success
+    assert task.collect_digest["collect_failed"] == expected_failed
 
 
 @pytest.mark.django_db

@@ -192,8 +192,7 @@ const CopyModelModal = forwardRef<CopyModelModalRef, CopyModelModalProps>(
           <Form
             ref={formRef}
             name="copy_model_form"
-            labelCol={{ span: 6 }}
-            wrapperCol={{ span: 18 }}
+            layout="vertical"
           >
             <Form.Item<CopyModelFormData>
               label={t('Model.modelGroup')}

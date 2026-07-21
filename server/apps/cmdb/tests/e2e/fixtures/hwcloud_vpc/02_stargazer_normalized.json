@@ -1,0 +1,30 @@
+{
+  "success": true,
+  "result": {
+    "hwcloud_vpc": [
+      {
+        "model_id": "hwcloud_vpc",
+        "task_id": 33002,
+        "account_id": "acct-hwcloud-prod-001",
+        "captured_at": "2026-07-14T10:30:00+08:00",
+        "collected_by": "stargazer/inputs/hwcloud/hwcloud_vpc.py@1.2.0",
+        "request_id": "HWC-VPC-A1B2C3D4-5E6F-7A8B-9C0D-1E2F3A4B5C6D",
+        "total_count": 1,
+        "resource_name": "vpc-prod-01",
+        "resource_id": "vpc-bp1yyyyyy",
+        "region": "cn-north-4",
+        "zone": "cn-north-4a",
+        "status": "ACTIVE",
+        "cidr": "192.168.0.0/16",
+        "is_default": "false",
+        "subnet_count": "8",
+        "route_table_count": "2",
+        "enable_shared": "false",
+        "tenant_id": "05b1db5ce5cf4b00a06cef2dc61b1b1f",
+        "project_id": "cn-north-4-prod-001",
+        "create_time": "2024-01-15 10:00:00",
+        "description": "电商生产 VPC"
+      }
+    ]
+  }
+}

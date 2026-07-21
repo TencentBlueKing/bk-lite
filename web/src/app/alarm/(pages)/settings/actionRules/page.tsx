@@ -156,7 +156,7 @@ const ActionRules: React.FC = () => {
     <>
       <Introduction
         title={t('settings.actionRuleTitle')}
-        message={t('settings.actionRuleTitle')}
+        message={t('settings.actionRuleMessage')}
       />
       <div className="oid-library-container p-4 bg-[var(--color-bg-1)] rounded-lg shadow">
         <div className="nav-box flex justify-between mb-[20px]">

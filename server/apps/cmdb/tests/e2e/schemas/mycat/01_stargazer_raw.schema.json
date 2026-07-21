@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Stargazer mycat 采集原始输出契约(archived placeholder)",
+  "description": "Task 4.21:MyCat 数据库中间件 走 archived placeholder 模式(_placeholder_reason=cluster_complex);license/集群/平台阻塞,e2e 仅验证公共契约命中。",
+  "type": "object",
+  "required": [
+    "model_id",
+    "captured_at",
+    "raw_stdout",
+    "license_status",
+    "_placeholder_reason"
+  ],
+  "properties": {
+    "model_id": {
+      "type": "string",
+      "pattern": "^mycat$"
+    },
+    "captured_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "raw_stdout": {
+      "type": "object",
+      "maxProperties": 0
+    },
+    "license_status": {
+      "type": "string",
+      "const": "missing"
+    },
+    "_placeholder_reason": {
+      "type": "string",
+      "const": "cluster_complex"
+    },
+    "ip_addr": {
+      "type": "string"
+    },
+    "inst_name": {
+      "type": "string"
+    },
+    "blocked_reason": {
+      "type": "string"
+    },
+    "next_steps": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "references": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

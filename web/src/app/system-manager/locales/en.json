@@ -239,6 +239,7 @@
       },
       "userSyncPage": {
         "rootGroupNameLabel": "Name of the root organization",
+        "rootGroupNameConflict": "The root organization name is already used by another user sync source. Please choose a different name and try again.",
         "integrationSystem": "Integrated System",
         "integrationSystemPlaceholder": "Please select an integrated system",
         "basicConfig": "Basic Configuration",
@@ -261,6 +262,21 @@
         "syncNow": "Sync Now",
         "records": "Synchronized Log",
         "deleteConfirm": "Delete User Source",
+        "passwordInit": {
+          "sectionTitle": "Local Password Initialization",
+          "modeNone": "No Password",
+          "modeUniform": "Uniform Password",
+          "modeRandom": "Random Password",
+          "modeNoneHint": "Synced users can only sign in via external identity source, no local password",
+          "modeUniformHint": "All synced users share the same initial password",
+          "modeRandomHint": "Each synced user gets an independent random password",
+          "uniformPasswordLabel": "Uniform Initial Password",
+          "uniformPasswordPlaceholder": "Enter a password that meets system security policy",
+          "uniformPasswordKeepHint": "A shared password is already configured. Leave this blank to keep it unchanged.",
+          "emailChannelLabel": "Email Notification Channel",
+          "emailChannelPlaceholder": "Select an email channel",
+          "uniformWarning": "Warning: In uniform password mode, all synced users share the same password. If the email list is leaked, all accounts are at risk."
+        },
         "syncStarted": "Sync started",
         "syncFailed": "Failed to start sync",
         "runStatus": {
@@ -282,7 +298,11 @@
           "partialWithUsers": "Partial success: {{external}}; synced {{users}} users, {{groups}} groups, {{conflicts}} conflicts (conflict users: {{usernames}})",
           "failed": "Sync failed: {{external}}; {{reason}}",
           "failedConflict": "Sync failed: {{external}}; synced {{users}} users, {{groups}} groups, {{conflicts}} conflicting users (conflict users: {{usernames}})",
-          "externalCounts": "External users: {{users}}, external groups: {{groups}}"
+          "externalCounts": "External users: {{users}}, external groups: {{groups}}",
+          "emailSending": "Initial password emails are being sent ({{total}} total)",
+          "emailSent": "Initial password emails sent: {{sent}}",
+          "emailPartialFailed": "Initial password emails sent: {{sent}}; failed: {{failed}}. Please check user email addresses and the email channel.",
+          "emailFailed": "Initial password emails failed: {{failed}}. Please check user email addresses and the email channel."
         },
         "basicConfigDesc": "Select a system and enter the root organization",
         "pageDesc": "User synchronization defines how the platform integrates with primary identity data. It supports multiple user sources simultaneously, enabling collaboration across different organizational directories, supplementary directories, or active import directories.",
@@ -322,6 +342,7 @@
         "externalFieldColumn": "External Platform User Fields",
         "externalFieldsHint": "Reference for Available Fields in External Systems:",
         "externalFieldPlaceholder": "Leave blank by default and fill in the external field name when needed",
+        "usernameMappingRequired": "Enter the external field name mapped to Username",
         "deleteConfirmContent": "Deleting user source \"{{sourceName}}\" will also delete the root organization, all child organizations, and users under it. This action cannot be undone."
       }
     },

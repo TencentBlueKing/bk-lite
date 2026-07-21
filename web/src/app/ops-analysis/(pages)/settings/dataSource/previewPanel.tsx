@@ -47,7 +47,7 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
   }, [previewData]);
 
   return (
-    <div style={{ margin: "24px 0 0 42px" }}>
+    <div style={{ margin: "24px 0 0" }}>
       <div
         style={{
           marginBottom: 8,

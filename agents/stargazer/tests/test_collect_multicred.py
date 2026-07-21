@@ -1155,6 +1155,57 @@ def test_snmp_topo_default_oid_collection_includes_fdb_fallback_without_duplicat
     assert len(default_oids) == len(set(default_oids))
 
 
+@pytest.mark.parametrize(
+    ("configured_timeout", "expected_probe_timeout"),
+    [(3, 3), (5, 5), (10, 5)],
+)
+def test_snmp_facts_caps_initial_probe_timeout_without_shortening_followup_collection(
+    monkeypatch,
+    configured_timeout,
+    expected_probe_timeout,
+):
+    snmp_facts_module = _import_snmp_facts_with_stubbed_deps(monkeypatch)
+    transport_options = []
+
+    class FakeCommandGenerator:
+        @staticmethod
+        def getCmd(*args, **kwargs):
+            return None, None, None, []
+
+        @staticmethod
+        def nextCmd(*args, **kwargs):
+            return None, None, None, []
+
+    def capture_transport_target(address, **kwargs):
+        transport_options.append(kwargs)
+        return "udp", address, kwargs
+
+    monkeypatch.setattr(
+        snmp_facts_module.cmdgen,
+        "CommandGenerator",
+        FakeCommandGenerator,
+    )
+    monkeypatch.setattr(
+        snmp_facts_module.cmdgen,
+        "UdpTransportTarget",
+        capture_transport_target,
+    )
+
+    collector = snmp_facts_module.SnmpFacts(
+        {
+            "host": "127.0.0.1",
+            "version": "v2c",
+            "community": "public",
+            "timeout": configured_timeout,
+        }
+    )
+
+    collector.collect()
+
+    assert transport_options[0] == {"timeout": expected_probe_timeout, "retries": 2}
+    assert transport_options[1] == {"timeout": configured_timeout, "retries": 2}
+
+
 def test_snmp_facts_list_all_resources_adds_network_topology_facts_without_changing_raw_topo(monkeypatch):
     snmp_facts_module = _import_snmp_facts_with_stubbed_deps(monkeypatch)
 

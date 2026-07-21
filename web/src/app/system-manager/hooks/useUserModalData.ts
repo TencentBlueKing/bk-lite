@@ -92,6 +92,8 @@ export function useUserModalData(): UseUserModalDataReturn {
   const [organizationRoleSourceMap, setOrganizationRoleSourceMap] = useState<Record<string, string>>({});
   const [isSuperuser, setIsSuperuser] = useState<boolean>(false);
   const [groupTreeData, setGroupTreeData] = useState<TreeSelectNode[]>([]);
+  // 普通→超级管理员切换时缓存个人角色；切回普通时恢复，避免来回切换清空
+  const cachedPersonalRoleIds = useRef<number[]>([]);
 
   const { addUser, editUser, getUserDetail, getRoleList } = useUserApi();
   const { batchGetGroupDetailWithRoles } = useGroupApi();
@@ -340,9 +342,20 @@ export function useUserModalData(): UseUserModalDataReturn {
   const handleSuperuserChange = useCallback(
     (value: boolean) => {
       setIsSuperuser(value);
-      setPersonalRoleIds([]);
 
-      const nextSelectedRoles = value ? [] : organizationRoleIds;
+      let nextSelectedRoles: number[];
+      if (value) {
+        // 普通→超级管理员：备份个人角色后清空
+        cachedPersonalRoleIds.current = personalRoleIds;
+        setPersonalRoleIds([]);
+        nextSelectedRoles = [];
+      } else {
+        // 超级管理员→普通：恢复之前备份的个人角色，并合并到 selectedRoles
+        const restoredPersonalRoleIds = cachedPersonalRoleIds.current;
+        setPersonalRoleIds(restoredPersonalRoleIds);
+        nextSelectedRoles = mergeRoles(restoredPersonalRoleIds, organizationRoleIds);
+      }
+
       setSelectedRoles(nextSelectedRoles);
 
       formRef.current?.setFieldsValue({
@@ -350,7 +363,7 @@ export function useUserModalData(): UseUserModalDataReturn {
         roles: nextSelectedRoles,
       });
     },
-    [organizationRoleIds]
+    [personalRoleIds, organizationRoleIds]
   );
 
   const handleGroupChange = useCallback(

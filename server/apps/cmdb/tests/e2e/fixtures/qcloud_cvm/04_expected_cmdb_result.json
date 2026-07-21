@@ -1,0 +1,20 @@
+{
+  "model_id": "qcloud_cvm",
+  "instance_count_min": 1,
+  "expected_instance_subset": {
+    "inst_name":     "cvm-prod-01_ins-abc123def456",
+    "resource_name": "cvm-prod-01",
+    "resource_id":   "ins-abc123def456",
+    "ip_addr":       "10.0.0.10",
+    "public_ip":     "81.71.5.123",
+    "region":        "ap-shanghai",
+    "zone":          "ap-shanghai-2",
+    "vpc":           "vpc-abc123",
+    "status":        "RUNNING",
+    "instance_type": "S5.SMALL2",
+    "os_name":       "TencentOS Server 3.2",
+    "vcpus":         2,
+    "memory_mb":     2048,
+    "charge_type":   "POSTPAID_BY_HOUR"
+  }
+}

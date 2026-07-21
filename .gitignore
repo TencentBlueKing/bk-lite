@@ -62,3 +62,4 @@ automation/
 .projectmem/.current_issue
 .projectmem/watch.pid
 .projectmem/watch.log
+.pnpm-store/*

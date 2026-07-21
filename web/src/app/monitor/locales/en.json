@@ -156,7 +156,8 @@
       "channelTypeCustomWebhook": "Custom Webhook",
       "notificationDesc": "Select the notification method and recipients when an alert is triggered.",
       "notificationConfig": "Notify",
-      "notificationChannel": "Channel"
+      "notificationChannel": "Channel",
+      "addMetric": "Add Metric"
     },
     "views": {
       "vmware_esxi_count": "Number of ESXi",
@@ -520,6 +521,10 @@
       "missingConfigDataTip": "Collection configuration content was not found. Check whether the configuration was delivered successfully.",
       "searchRuleName": "Search Rule Name",
       "batchOperation": "Batch Operation",
+      "accessAndTroubleshootGuide": "{name} Monitoring Guide",
+      "guideFallbackName": "Current Monitor",
+      "configGuide": "Configuration Guide",
+      "fieldGuideTip": "Field Tip",
       "exactMatch": "Exact match",
       "rulesCount": "rule(s)",
       "batchEditEmptyWarning": "The submitted form cannot be empty",

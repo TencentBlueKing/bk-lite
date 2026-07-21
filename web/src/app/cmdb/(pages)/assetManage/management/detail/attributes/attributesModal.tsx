@@ -59,6 +59,10 @@ import { useTranslation } from '@/utils/i18n';
 import { useModelApi } from '@/app/cmdb/api';
 const { Option } = Select;
 
+const LONG_TOOLTIP_OVERLAY_STYLE = {
+  maxWidth: 'min(520px, calc(100vw - 48px))',
+};
+
 const useAttributeEnterpriseExtension = loadAttributeEnterpriseExtension();
 
 const TAG_VALUE_REGEX = /^[^\s:\n\r]+$/;
@@ -678,8 +682,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
           <Form
             ref={formRef}
             name="basic"
-            labelCol={{ span: 4 }}
-            wrapperCol={{ span: 20 }}
+            layout="vertical"
             onValuesChange={(changedValues) => {
               if (changedValues.attr_type === 'tag') {
                 formRef.current?.setFieldsValue({
@@ -788,8 +791,6 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
               {({ getFieldValue }) =>
                 getFieldValue('attr_type') === 'enum' ? (
                   <Form.Item<AttrFieldType>
-                    label=" "
-                    colon={false}
                     name="option"
                     rules={[{ validator: validateEnumList }]}
                   >
@@ -837,7 +838,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                         </Radio.Group>
                       </div>
                       {enumRuleType === 'public_library' ? (
-                        <div className="pl-[72px]">
+                        <div>
                           <div className="flex items-center gap-2 mb-3">
                             <Select
                               value={publicLibraryId || undefined}
@@ -925,7 +926,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                             items={enumList.map((_, idx) => idx.toString())}
                             strategy={verticalListSortingStrategy}
                           >
-                            <ul className="pl-[72px]">
+                            <ul>
                               <li className="flex items-center mb-2 text-sm text-[var(--color-text-secondary)]">
                                 <span className="mr-[4px] w-[14px]"></span>
                                 <span className="mr-[10px] w-2/5">
@@ -976,11 +977,21 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                           </SortableContext>
                         </DndContext>
                       )}
-                      <div className="pl-[72px] mt-4">
+                      <div className="mt-4">
                         <Form.Item<AttrFieldType>
-                          label={t('Model.defaultValue')}
+                          label={(
+                            <span>
+                              {t('Model.defaultValue')}
+                              <Tooltip
+                                overlayStyle={LONG_TOOLTIP_OVERLAY_STYLE}
+                                title={t('Model.defaultValueHint')}
+                              >
+                                <QuestionCircleOutlined className="ml-1 text-[var(--color-text-tertiary)]" />
+                              </Tooltip>
+                            </span>
+                          )}
                           name="default_value"
-                          className="mb-2"
+                          className="mb-0"
                         >
                           <Select
                             mode={
@@ -1002,14 +1013,11 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                             ))}
                           </Select>
                         </Form.Item>
-                        <div className="text-xs text-[var(--color-text-tertiary)]">
-                          {t('Model.defaultValueHint')}
-                        </div>
                       </div>
                     </div>
                   </Form.Item>
                 ) : getFieldValue('attr_type') === 'time' ? (
-                  <Form.Item label=" " colon={false}>
+                  <Form.Item>
                     <div className="bg-[var(--color-fill-1)] p-4 rounded">
                       <div className="text-sm text-[var(--color-text-secondary)] mb-3">
                         {t('Model.validationRules')}
@@ -1027,7 +1035,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                     </div>
                   </Form.Item>
                 ) : getFieldValue('attr_type') === 'int' ? (
-                  <Form.Item label=" " colon={false}>
+                  <Form.Item>
                     <div className="bg-[var(--color-fill-1)] p-4 rounded">
                       <div className="text-sm text-[var(--color-text-secondary)] mb-3">
                         {t('Model.validationRules')}
@@ -1053,8 +1061,6 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                   </Form.Item>
                 ) : getFieldValue('attr_type') === 'table' ? (
                   <Form.Item<AttrFieldType>
-                    label=" "
-                    colon={false}
                     name="option"
                     rules={[{ validator: validateTableColumns }]}
                   >
@@ -1173,7 +1179,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                     </div>
                   </Form.Item>
                 ) : getFieldValue('attr_type') === 'str' ? (
-                  <Form.Item label=" " colon={false}>
+                  <Form.Item>
                     <div className="bg-[var(--color-fill-1)] p-4 rounded">
                       <div className="text-sm text-[var(--color-text-secondary)] mb-3">
                         {t('Model.validationRules')}
@@ -1247,8 +1253,6 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                   </Form.Item>
                 ) : getFieldValue('attr_type') === 'tag' ? (
                   <Form.Item<AttrFieldType>
-                    label=" "
-                    colon={false}
                     name="option"
                     rules={[{ validator: validateTagList }]}
                   >
@@ -1408,18 +1412,16 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                 ];
 
                 return (
-                  <Form.Item label=" " colon={false}>
+                  <Form.Item>
                     <div className="rounded border border-[var(--color-border-1)] bg-[var(--color-fill-1)] p-4">
                       <div className="mb-1 flex items-center gap-1 text-sm font-medium text-[var(--color-text-primary)]">
                         <span>{t('Model.systemConstraints')}</span>
                         <Tooltip
+                          overlayStyle={LONG_TOOLTIP_OVERLAY_STYLE}
                           title={t('Model.systemConstraintsDescription')}
                         >
                           <QuestionCircleOutlined className="text-[var(--color-text-tertiary)]" />
                         </Tooltip>
-                      </div>
-                      <div className="mb-3 text-xs text-[var(--color-text-secondary)]">
-                        {t('Model.systemConstraintsDescription')}
                       </div>
                       <div className="overflow-hidden rounded border border-[var(--color-border-1)] bg-[var(--color-bg-1)]">
                         {constraintItems.map((item, index) => (
@@ -1448,13 +1450,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                 const isFileType = isFileFieldType(attrType);
                 const unsupportedHint = isFileType || attrType === 'tag';
                 return (
-                  <Form.Item
-                    label=" "
-                    colon={false}
-                    className="mb-4"
-                    labelCol={{ span: 1 }}
-                    wrapperCol={{ span: 23 }}
-                  >
+                  <Form.Item className="mb-4">
                     <div className="rounded border border-[var(--color-border-1)] bg-[var(--color-bg-1)] px-4 py-3">
                       <div className="mb-3 text-sm font-medium text-[var(--color-text-primary)]">
                         {t('Model.fieldBehavior')}

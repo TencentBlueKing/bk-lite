@@ -1,0 +1,17 @@
+{
+  "model_id": "qcloud_redis",
+  "instance_count_min": 1,
+  "expected_instance_subset": {
+    "inst_name": "redis-prod-01_crs-abc123def456",
+    "resource_name": "redis-prod-01",
+    "resource_id": "crs-abc123def456",
+    "ip_addr": "10.0.3.30",
+    "vpc": "vpc-abc123",
+    "region": "ap-shanghai",
+    "port": "6379",
+    "status": "RUNNING",
+    "engine": "Redis",
+    "version": "7.2.4",
+    "type": "cluster"
+  }
+}

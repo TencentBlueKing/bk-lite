@@ -432,6 +432,12 @@ const OperateModal: React.FC<OperateModalProps> = ({
       open={open}
       maskClosable={false}
       onClose={handleClose}
+      styles={{
+        body: {
+          maxHeight: "calc(100vh - 112px)",
+          overflowY: "auto",
+        },
+      }}
       footer={
         <div style={{ textAlign: "right" }}>
           <Button
@@ -449,8 +455,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
     >
       <Form
         form={form}
-        layout="horizontal"
-        labelCol={{ span: 3 }}
+        layout="vertical"
         onFinish={onFinish}
       >
         <Form.Item
@@ -520,7 +525,6 @@ const OperateModal: React.FC<OperateModalProps> = ({
               ) : namespaceList.length === 0 ? (
                 <div
                   style={{
-                    paddingLeft: "4px",
                     color: "var(--color-text-4)",
                     fontSize: "13px",
                   }}
@@ -567,7 +571,6 @@ const OperateModal: React.FC<OperateModalProps> = ({
           ) : tagList.length === 0 ? (
             <div
               style={{
-                paddingLeft: "4px",
                 color: "var(--color-text-4)",
                 fontSize: "13px",
               }}
@@ -626,8 +629,6 @@ const OperateModal: React.FC<OperateModalProps> = ({
                 <Form.Item
                   name={["connection_config", "url"]}
                   label={t("dataSource.url")}
-                  labelCol={{ span: 24 }}
-                  wrapperCol={{ span: 24 }}
                   className="!mb-2"
                   rules={[{ required: true, message: t("common.inputMsg") }]}
                 >
@@ -636,8 +637,6 @@ const OperateModal: React.FC<OperateModalProps> = ({
                 <Form.Item
                   name={["connection_config", "method"]}
                   label={t("dataSource.method")}
-                  labelCol={{ span: 24 }}
-                  wrapperCol={{ span: 24 }}
                   className="!mb-2"
                   initialValue="GET"
                 >
@@ -651,8 +650,6 @@ const OperateModal: React.FC<OperateModalProps> = ({
                 <Form.Item
                   name={["connection_config", "timeout"]}
                   label={t("dataSource.timeout")}
-                  labelCol={{ span: 24 }}
-                  wrapperCol={{ span: 24 }}
                   className="!mb-2"
                   initialValue={10}
                 >
@@ -661,8 +658,6 @@ const OperateModal: React.FC<OperateModalProps> = ({
                 <Form.Item
                   name={["query_config", "response_path"]}
                   label={t("dataSource.responsePath")}
-                  labelCol={{ span: 24 }}
-                  wrapperCol={{ span: 24 }}
                   className="!mb-2"
                 >
                   <Input placeholder="data.items" />
@@ -671,8 +666,6 @@ const OperateModal: React.FC<OperateModalProps> = ({
               <Form.Item
                 name={["connection_config", "headersText"]}
                 label={t("dataSource.headers")}
-                labelCol={{ span: 24 }}
-                wrapperCol={{ span: 24 }}
                 className="!mb-2"
               >
                 <Input.TextArea
@@ -683,8 +676,6 @@ const OperateModal: React.FC<OperateModalProps> = ({
               <Form.Item
                 name={["query_config", "paramsText"]}
                 label={t("dataSource.queryParams")}
-                labelCol={{ span: 24 }}
-                wrapperCol={{ span: 24 }}
                 className="!mb-2"
               >
                 <Input.TextArea rows={3} placeholder='{"page":1}' />
@@ -692,8 +683,6 @@ const OperateModal: React.FC<OperateModalProps> = ({
               <Form.Item
                 name={["query_config", "bodyText"]}
                 label={t("dataSource.requestBody")}
-                labelCol={{ span: 24 }}
-                wrapperCol={{ span: 24 }}
                 className="!mb-2"
               >
                 <Input.TextArea rows={3} placeholder='{"limit":50}' />
@@ -708,8 +697,6 @@ const OperateModal: React.FC<OperateModalProps> = ({
                 <Form.Item
                   name={["connection_config", "host"]}
                   label={t("dataSource.host")}
-                  labelCol={{ span: 24 }}
-                  wrapperCol={{ span: 24 }}
                   className="!mb-2"
                   rules={[{ required: true, message: t("common.inputMsg") }]}
                 >
@@ -718,8 +705,6 @@ const OperateModal: React.FC<OperateModalProps> = ({
                 <Form.Item
                   name={["connection_config", "port"]}
                   label={t("dataSource.port")}
-                  labelCol={{ span: 24 }}
-                  wrapperCol={{ span: 24 }}
                   className="!mb-2"
                   rules={[{ required: true, message: t("common.inputMsg") }]}
                 >
@@ -728,8 +713,6 @@ const OperateModal: React.FC<OperateModalProps> = ({
                 <Form.Item
                   name={["connection_config", "database"]}
                   label={t("dataSource.database")}
-                  labelCol={{ span: 24 }}
-                  wrapperCol={{ span: 24 }}
                   className="!mb-2"
                   rules={[{ required: true, message: t("common.inputMsg") }]}
                 >
@@ -738,8 +721,6 @@ const OperateModal: React.FC<OperateModalProps> = ({
                 <Form.Item
                   name={["connection_config", "username"]}
                   label={t("dataSource.username")}
-                  labelCol={{ span: 24 }}
-                  wrapperCol={{ span: 24 }}
                   className="!mb-2"
                   rules={[{ required: true, message: t("common.inputMsg") }]}
                 >
@@ -748,8 +729,6 @@ const OperateModal: React.FC<OperateModalProps> = ({
                 <Form.Item
                   name={["connection_config", "password"]}
                   label={t("dataSource.password")}
-                  labelCol={{ span: 24 }}
-                  wrapperCol={{ span: 24 }}
                   className="!mb-2"
                   rules={[{ required: true, message: t("common.inputMsg") }]}
                 >
@@ -762,8 +741,6 @@ const OperateModal: React.FC<OperateModalProps> = ({
                 <Form.Item
                   name={["query_config", "table"]}
                   label={t("dataSource.tableName")}
-                  labelCol={{ span: 24 }}
-                  wrapperCol={{ span: 24 }}
                   className="!mb-2"
                 >
                   <Input />
@@ -772,8 +749,6 @@ const OperateModal: React.FC<OperateModalProps> = ({
               <Form.Item
                 name={["query_config", "sql"]}
                 label={t("dataSource.sql")}
-                labelCol={{ span: 24 }}
-                wrapperCol={{ span: 24 }}
                 className="!mb-2"
               >
                 <Input.TextArea

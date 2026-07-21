@@ -8,7 +8,8 @@ import difflib
 from django.db import transaction
 
 from apps.opspilot.models import KnowledgePage, PageVersion
-from apps.opspilot.services.wiki.check_service import create_candidate
+from apps.opspilot.services.wiki.decision_service import revoke_rules_for_identity_change, subject_key_for_page
+from apps.opspilot.services.wiki.title_service import canonical_title
 
 
 def _next_no(page):
@@ -92,43 +93,6 @@ def save_answer_page(
 
 
 @transaction.atomic
-def save_answer_candidate_page(
-    knowledge_base,
-    page_type,
-    title,
-    body,
-    tags=None,
-    source_conversation_id="",
-    source_message_id="",
-    source_channel="qa",
-    created_by="",
-):
-    """将 QA/Bot 回答保存为待审核候选页,接受前不进入正式知识消费面。"""
-    source = _answer_source_meta(source_conversation_id, source_message_id, source_channel)
-    page = KnowledgePage.objects.create(
-        knowledge_base=knowledge_base,
-        page_type=page_type,
-        title=title,
-        tags=tags or [],
-        contribution="mixed",
-        update_method="qa_answer",
-        status="pending_review",
-        created_by=created_by or "",
-    )
-    return create_candidate(
-        page,
-        body=body,
-        reason="qa_answer_pending_review",
-        check_type="qa_answer_candidate",
-        created_by=created_by,
-        related={"pages": [page.id], "source": source},
-        suggested_actions=["accept", "reject", "edit_accept"],
-        change_type="qa_answer_candidate",
-        meta_snapshot={"source": source},
-    )
-
-
-@transaction.atomic
 def import_markdown_page(knowledge_base, page_type, title, body, tags=None, source_meta=None, operator=""):
     """导入 Markdown 为知识页面;同标题同类型的非归档页面更新为新版本。"""
     page = (
@@ -175,19 +139,54 @@ def import_markdown_page(knowledge_base, page_type, title, body, tags=None, sour
 
 
 @transaction.atomic
-def edit_page(page, body=None, title=None, tags=None, updated_by=""):
-    """人工编辑页面:更新元数据并生成新版本。AI 页面被人工编辑后贡献来源升级为 mixed。"""
-    if title is not None:
-        page.title = title
+def edit_page(
+    page,
+    body=None,
+    title=None,
+    tags=None,
+    page_type=None,
+    updated_by="",
+):
+    """人工编辑页面，并在稳定身份变化前撤销相关页面身份规则。"""
+    next_title = page.title if title is None else title
+    next_page_type = page.page_type if page_type is None else page_type
+    if next_title != page.title or next_page_type != page.page_type:
+        old_subject_key = subject_key_for_page(
+            page_type=page.page_type or "concept",
+            canonical_title=canonical_title(page.knowledge_base, page.title),
+        )
+        revoke_rules_for_identity_change(
+            page.knowledge_base,
+            old_subject_key,
+            reason="page identity changed",
+            operator=updated_by,
+        )
+    page.title = next_title
+    page.page_type = next_page_type
     if tags is not None:
         page.tags = tags
     if page.contribution == "ai":
         page.contribution = "mixed"
     page.update_method = "human_edit"
     page.updated_by = updated_by or ""
-    page.save(update_fields=["title", "tags", "contribution", "update_method", "updated_by", "updated_at"])
+    page.save(
+        update_fields=[
+            "title",
+            "page_type",
+            "tags",
+            "contribution",
+            "update_method",
+            "updated_by",
+            "updated_at",
+        ]
+    )
     new_body = body if body is not None else (page.current_version.body if page.current_version_id else "")
-    return _new_current_version(page, body=new_body, change_type="human_edit", created_by=updated_by)
+    return _new_current_version(
+        page,
+        body=new_body,
+        change_type="human_edit",
+        created_by=updated_by,
+    )
 
 
 @transaction.atomic

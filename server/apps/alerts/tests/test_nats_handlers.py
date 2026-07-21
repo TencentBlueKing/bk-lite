@@ -745,6 +745,73 @@ def test_receive_alert_events_success():
     assert Event.objects.filter(title="事件A").exists()
 
 
+@pytest.mark.django_db
+def test_receive_alert_events_marks_lite_log_as_trusted_internal(mocker):
+    from apps.alerts.models.alert_source import AlertSource
+
+    source = AlertSource.objects.create(
+        name="日志中心 NATS 源",
+        source_id="nats",
+        source_type="nats",
+        secret="source-secret",
+        team_secrets={"3": "team-secret"},
+        is_active=True,
+        is_effective=True,
+        config={},
+    )
+    adapter = mocker.Mock()
+    adapter_class = mocker.Mock(return_value=adapter)
+    mocker.patch.object(N.AlertSourceAdapterFactory, "get_adapter", return_value=adapter_class)
+
+    result = N.receive_alert_events(
+        source_id="nats",
+        pusher="lite-log",
+        events=[{"title": "日志错误", "organizations": [3]}],
+    )
+
+    assert result["result"] is True
+    adapter_class.assert_called_once_with(
+        alert_source=source,
+        secret="",
+        events=[{"title": "日志错误", "organizations": [3], "push_source_id": "lite-log"}],
+        trusted_internal=True,
+    )
+    adapter.main.assert_called_once_with()
+
+
+@pytest.mark.django_db
+def test_receive_alert_events_does_not_log_event_payload_or_secret(mocker):
+    from apps.alerts.models.alert_source import AlertSource
+
+    AlertSource.objects.create(
+        name="日志中心 NATS 源",
+        source_id="nats",
+        source_type="nats",
+        secret="source-secret",
+        team_secrets={"3": "team-secret"},
+        is_active=True,
+        is_effective=True,
+        config={},
+    )
+    adapter = mocker.Mock()
+    adapter_class = mocker.Mock(return_value=adapter)
+    mocker.patch.object(N.AlertSourceAdapterFactory, "get_adapter", return_value=adapter_class)
+    info = mocker.patch.object(N.logger, "info")
+
+    N.receive_alert_events(
+        source_id="nats",
+        pusher="lite-log",
+        events=[{"title": "sensitive-log-content", "organizations": [3], "secret": "event-secret"}],
+    )
+
+    logged = " ".join(str(call) for call in info.call_args_list)
+    assert "sensitive-log-content" not in logged
+    assert "event-secret" not in logged
+    assert "source_id=%s" in logged
+    assert "pusher=%s" in logged
+    assert "event_count=%s" in logged
+
+
 # --------------------------------------------------------------------------
 # get_notification_channel_stats
 # --------------------------------------------------------------------------

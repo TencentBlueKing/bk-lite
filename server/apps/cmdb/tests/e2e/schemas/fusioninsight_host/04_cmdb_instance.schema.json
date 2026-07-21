@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CMDB fusioninsight_host instance",
+  "description": "Task 3.3 真实化版本:fusioninsight_host CMDB 实例契约",
+  "type": "object",
+  "required": [
+    "inst_name",
+    "resource_name",
+    "resource_id",
+    "ip_addr"
+  ],
+  "properties": {
+    "inst_name": {
+      "type": "string"
+    },
+    "resource_name": {
+      "type": "string"
+    },
+    "resource_id": {
+      "type": "string"
+    },
+    "ip_addr": {
+      "type": "string"
+    },
+    "vcpus": {
+      "type": [
+        "string",
+        "integer"
+      ]
+    },
+    "memory_mb": {
+      "type": [
+        "string",
+        "integer"
+      ]
+    },
+    "storage_gb": {
+      "type": [
+        "string",
+        "integer"
+      ]
+    },
+    "status": {
+      "type": "string"
+    },
+    "os_name": {
+      "type": "string"
+    },
+    "assos": {
+      "type": [
+        "array",
+        "object"
+      ],
+      "description": "belong fusioninsight_cluster 关联"
+    }
+  }
+}

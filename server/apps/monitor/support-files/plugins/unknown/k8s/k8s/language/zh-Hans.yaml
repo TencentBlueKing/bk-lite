@@ -1,0 +1,3 @@
+K8S:
+  name: K8s
+  desc: 利用K8s主动上报监控数据的能力，收集Kubernetes集群的状态和健康，包括节点、容器和pod的性能指标。

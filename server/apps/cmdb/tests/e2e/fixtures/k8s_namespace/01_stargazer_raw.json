@@ -1,0 +1,7 @@
+{
+  "_placeholder_reason": "k8s 走 VM 路径无 01 raw(Pre-Flight Issue 1 决策,CollectK8sMetrics 一次性从 VM 查 4 分组 metric 不经过 stargazer 标准化 step1)",
+  "model_id": "k8s_namespace",
+  "cluster_name": "k8s-cluster-prod",
+  "captured_at": "2026-07-13T10:30:00+08:00",
+  "collected_by": "stargazer/inputs/k8s/k8s_namespace.py@1.2.0"
+}

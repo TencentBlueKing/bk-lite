@@ -7,6 +7,7 @@ from typing import Dict, Any, List
 from urllib.parse import unquote
 
 from .base_collector import BaseCollector
+from .disk_filter import should_collect_disk
 
 logger = logging.getLogger("stargazer.host_collector")
 
@@ -29,19 +30,25 @@ def _url_decode_secret(value: Any, credential_encoding: Any = "url") -> str:
     return unquote(str(value))
 
 SCRIPTS_DIR = Path(__file__).parent / "scripts"
+MONITOR_SCRIPTS_DIR = Path(__file__).parent / "monitor_scripts"
 
 VALID_MODULES = {"cpu", "mem", "disk", "net", "diskio", "processes", "system"}
 HOST_REMOTE_CALLBACK_REQUEST_TIMEOUT = 60
 LINUX_SCRIPT_WRAPPER_EOF = "STARGAZER_HOST_COLLECT_EOF"
 
 
-def build_script(os_type: str, modules: List[str]) -> str:
+def build_script(os_type: str, modules: List[str], monitor_type: str | None = None) -> str:
     base_dir = SCRIPTS_DIR / ("linux" if os_type == "linux" else "windows")
+    monitor_base_dir = MONITOR_SCRIPTS_DIR / ("linux" if os_type == "linux" else "windows")
     ext = ".sh" if os_type == "linux" else ".ps1"
 
     parts = [_read_script(base_dir / f"header{ext}")]
     for mod in modules:
         script_file = base_dir / f"{mod}{ext}"
+        if monitor_type == "host" and mod == "disk":
+            monitor_script_file = monitor_base_dir / f"{mod}{ext}"
+            if monitor_script_file.exists():
+                script_file = monitor_script_file
         if script_file.exists():
             parts.append(_read_script(script_file))
     parts.append(_read_script(base_dir / f"footer{ext}"))
@@ -137,7 +144,13 @@ def _append_gauge(lines: List[str], name: str, labels: str, value: Any, timestam
 
 
 def parse_metrics_to_prometheus(
-    data: Dict[str, Any], instance_id: str, os_type: str, timestamp: int | None = None
+    data: Dict[str, Any],
+    instance_id: str,
+    os_type: str,
+    timestamp: int | None = None,
+    *,
+    disk_include_fstypes: Any = None,
+    disk_exclude_fstypes: Any = None,
 ) -> str:
     lines = []
     timestamp = int(timestamp) if timestamp is not None else int(time.time() * 1000)
@@ -185,7 +198,15 @@ def parse_metrics_to_prometheus(
         if isinstance(disks, list):
             for disk in disks:
                 mount = disk.get("mount", "unknown")
-                disk_labels = f"{base_labels},{_format_prometheus_labels(mount=mount)}"
+                path = disk.get("path") or mount
+                fstype = disk.get("fstype") or ""
+                if not should_collect_disk(
+                    fstype,
+                    include_fstypes=disk_include_fstypes,
+                    exclude_fstypes=disk_exclude_fstypes,
+                ):
+                    continue
+                disk_labels = f"{base_labels},{_format_prometheus_labels(mount=mount, path=path, fstype=fstype)}"
                 total = disk.get("total_bytes", 0)
                 used = disk.get("used_bytes", 0)
                 free = _metric_value(disk, "free_bytes", "available_bytes", default=max(float(total or 0) - float(used or 0), 0))
@@ -279,7 +300,7 @@ class HostCollector(BaseCollector):
 
         logger.info(f"[Host Collector] host={host}, os={os_type}, modules={modules}")
 
-        script = build_script(os_type, modules)
+        script = build_script(os_type, modules, monitor_type=self.params.get("monitor_type"))
 
         connection = "ssh" if os_type == "linux" else "winrm"
         module = "raw" if os_type == "linux" else "win_shell"
@@ -404,6 +425,8 @@ class HostCollector(BaseCollector):
             instance_id,
             os_type,
             timestamp=callback_timestamp,
+            disk_include_fstypes=self.params.get("disk_include_fstypes"),
+            disk_exclude_fstypes=self.params.get("disk_exclude_fstypes"),
         )
 
         logger.info(f"[Host Collector] Completed: host={host}, metrics_size={len(prometheus_metrics)}")

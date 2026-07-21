@@ -1,7 +1,4 @@
-"""资料更新的安全合并(P1):资料变更后,受影响页面统一进人工审核(不自动覆盖)。
-
-按"全部人工审批"策略:任何页面(含纯 AI 页面)的资料更新都不自动生效,统一生成候选版本
-(change_type=candidate, is_current=False)+ 检查事项,交「检查与审核」人工确认后才成为当前版本。
+"""资料更新的安全编排：自动维护确定性结果，仅将真实知识冲突交给用户决策。
 
 调用前提:material 已完成"重新摄取"(text_content/ai_summary/版本已更新)。
 页面正文的"提议内容"由 generator(page, material) 产出(默认走 LLM,可注入以便测试)。
@@ -10,12 +7,13 @@
 import logging
 
 from django.db import transaction
+from django.utils import timezone
 
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
-from apps.opspilot.models import BuildRecord, KnowledgePage, LLMModel, MaterialVersion, PageEvidence
+from apps.opspilot.models import BuildRecord, CheckItem, KnowledgePage, LLMModel, Material, MaterialVersion, PageEvidence, WikiKnowledgeBase
+from apps.opspilot.services.wiki import decision_service
 from apps.opspilot.services.wiki.cascade_service import cascade
-from apps.opspilot.services.wiki.check_service import create_candidate, ensure_check
 from apps.opspilot.services.wiki.material_service import load_parsed_markdown
 
 logger = logging.getLogger("opspilot")
@@ -25,6 +23,18 @@ def affected_pages(material):
     """返回引用了该资料的有效页面。"""
     page_ids = list(PageEvidence.objects.filter(material=material).values_list("page_id", flat=True).distinct())
     return list(KnowledgePage.objects.filter(id__in=page_ids, status="active").order_by("id"))
+
+
+def _material_evidence_page_ids(material_id):
+    return list(PageEvidence.objects.filter(material_id=material_id).values_list("page_id", flat=True).distinct().order_by("page_id"))
+
+
+def _material_evidence_pages(material, *, for_update=False):
+    page_ids = _material_evidence_page_ids(material.id)
+    pages = KnowledgePage.objects.filter(knowledge_base_id=material.knowledge_base_id, id__in=page_ids).order_by("id")
+    if for_update:
+        pages = pages.select_for_update()
+    return list(pages)
 
 
 def _page_impact_payload(page, reason):
@@ -49,27 +59,41 @@ def _version_impact_payload(version):
 
 
 def preview_material_deletion(material):
-    """预览删除资料的影响,不修改任何资料、证据或页面状态。"""
-    pages = affected_pages(material)
+    """预览物理删除影响；归档页面可恢复，但被删资料来源不可恢复。"""
+    pages = _material_evidence_pages(material)
     page_ids = [page.id for page in pages]
     protected_page_ids = set(
         PageEvidence.objects.filter(page_id__in=page_ids).exclude(material=material).values_list("page_id", flat=True).distinct()
     )
-    # reason 文案:让用户在预览时知道"为什么这个页面会受影响"——按"是否共享来源"分流
+    active_pages = [page for page in pages if page.status == "active"]
+    archived_pages = [page for page in pages if page.status == "archived"]
     will_lose_reason = "此页面唯一来源,删除后会变 source_invalid"
     shared_reason = "此页面共享来源,删除后来源失效但页面保留"
-    affected = [_page_impact_payload(page, will_lose_reason if page.id not in protected_page_ids else shared_reason) for page in pages]
-    will_be_source_invalid = [_page_impact_payload(page, will_lose_reason) for page in pages if page.id not in protected_page_ids]
-    shared_source_protected = [_page_impact_payload(page, shared_reason) for page in pages if page.id in protected_page_ids]
+    archived_reason = "页面仍保持归档且可恢复，但被删除的资料来源将永久失去"
+    inactive_reason = "页面保持当前状态，但被删除的资料来源将永久失去"
+
+    def impact_reason(page):
+        if page.status == "archived":
+            return archived_reason
+        if page.status != "active":
+            return inactive_reason
+        return shared_reason if page.id in protected_page_ids else will_lose_reason
+
+    affected = [_page_impact_payload(page, impact_reason(page)) for page in pages]
+    will_be_source_invalid = [_page_impact_payload(page, will_lose_reason) for page in active_pages if page.id not in protected_page_ids]
+    shared_source_protected = [_page_impact_payload(page, shared_reason) for page in active_pages if page.id in protected_page_ids]
+    archived_recoverable = [_page_impact_payload(page, archived_reason) for page in archived_pages]
     return {
         "material_id": material.id,
         "material_name": material.name,
         "affected_count": len(affected),
         "will_be_source_invalid_count": len(will_be_source_invalid),
         "shared_source_protected_count": len(shared_source_protected),
+        "archived_recoverable_count": len(archived_recoverable),
         "affected_pages": affected,
         "will_be_source_invalid": will_be_source_invalid,
         "shared_source_protected": shared_source_protected,
+        "archived_recoverable": archived_recoverable,
     }
 
 
@@ -79,8 +103,7 @@ def preview_material_update(material):
     versions = list(MaterialVersion.objects.filter(material=material).order_by("-id")[:2])
     latest = versions[0] if versions else None
     previous = versions[1] if len(versions) > 1 else None
-    # 更新预览只有"已变更"状态:reason 提示用户"此页面继承新内容,旧版本将转入待审核"
-    update_reason = "此页面继承新内容,旧版本将进入待审核"
+    update_reason = "资料更新后将自动重新评估；仅知识结论冲突时需要人工选择"
     affected = [_page_impact_payload(page, update_reason) for page in pages]
     content_changed = bool(
         material.status == "updated"
@@ -95,28 +118,38 @@ def preview_material_update(material):
         "latest_version": _version_impact_payload(latest),
         "previous_version": _version_impact_payload(previous),
         "affected_count": len(affected),
-        "pending_review_count": len(affected),
+        "pending_review_count": 0,
         "affected_pages": affected,
-        "pending_review_pages": affected,
+        "pending_review_pages": [],
     }
 
 
 @transaction.atomic
-def apply_material_update(page, new_body, build_record=None, operator=""):
-    """对单个页面应用资料更新结果:一律生成候选版本 + 检查事项,交人工审核,返回 (action, obj)。
+def apply_material_update(page, new_body, material=None, build_record=None, operator=""):
+    """对单个页面编排资料更新决策，返回 (action, check_or_trace)。
 
-    按"全部人工审批"策略,资料更新不再对任何页面(含纯 AI 页面)自动覆盖当前有效版本,
-    统一走候选 + 检查,人工接受后才生效。action 恒为 "pending_review"。
+    完整签名命中旧规则时自动回放；正文未变直接 unchanged；其余才创建候选。
     """
-    check = create_candidate(
+    if material is None:
+        raise ValueError("material context is required")
+    from apps.opspilot.services.wiki.build_service import resolve_knowledge_conflict
+
+    action, decision_trace = resolve_knowledge_conflict(
         page,
-        body=new_body,
-        reason="资料更新,需人工确认后生效",
+        material,
+        build_record,
+        new_body,
+        operator=operator,
         check_type="material_update",
-        build_record=build_record,
-        created_by=operator,
+        reason="资料更新,需人工确认后生效",
+        related={
+            "pages": [page.id],
+            "materials": [material.id] if material is not None else [],
+        },
     )
-    return "pending_review", check
+    if action == "pending_review":
+        return action, CheckItem.objects.get(pk=decision_trace["check_id"])
+    return action, decision_trace
 
 
 def _default_generator(page, material, llm_model_id):
@@ -143,38 +176,381 @@ def _default_generator(page, material, llm_model_id):
         return ""
 
 
-@transaction.atomic
-def handle_material_deletion(material, operator=""):
-    """删除资料并记录影响:级联移除证据后,把因此失去全部来源的页面标记为待审。
+_MATERIAL_DELETE_METRIC_KEYS = (
+    "relations",
+    "indexed_pages",
+    "indexed_chunks",
+    "cleared_pages",
+    "auto_resolved",
+    "pruned_checks",
+    "pruned_build_records",
+)
 
-    返回 BuildRecord(trigger=material_delete)。失去来源的页面生成 source_invalid 检查,
-    交人工决定补充来源或归档,不自动隐藏页面。
-    """
-    kb = material.knowledge_base
-    page_ids = [p.id for p in affected_pages(material)]  # 删除前捕获
-    build = BuildRecord.objects.create(
-        knowledge_base=kb,
-        trigger="material_delete",
-        operator=operator,
-        inputs={"material_id": material.id, "material_name": material.name},
-        stage="done",
-        status="success",
-        progress=100,
+
+def _combine_material_delete_stage(invalidated_stage, shared_stage):
+    components = {
+        name: dict(stage)
+        for name, stage in (
+            ("invalidated", invalidated_stage),
+            ("shared", shared_stage),
+        )
+        if isinstance(stage, dict)
+    }
+    if len(components) == 1:
+        return dict(next(iter(components.values())))
+    statuses = {stage.get("status") for stage in components.values()}
+    status = "failed" if "failed" in statuses else "success" if "success" in statuses else "skipped"
+    result = {
+        "status": status,
+        "count": sum(stage.get("count", 0) for stage in components.values()),
+        "components": components,
+    }
+    errors = [stage.get("error") for stage in components.values() if stage.get("error")]
+    if errors:
+        result["error"] = "; ".join(errors)
+    return result
+
+
+def _combine_material_delete_maintenance(
+    invalidated_maintenance,
+    shared_maintenance,
+    invalidated_page_ids,
+    shared_page_ids,
+    *,
+    event="material_delete",
+):
+    """汇总失效页清理与共享来源页重建，并保留各自可重试上下文。"""
+    invalidated_maintenance = dict(invalidated_maintenance or {})
+    shared_maintenance = dict(shared_maintenance or {})
+    invalidated_stages = invalidated_maintenance.get("stages") if isinstance(invalidated_maintenance.get("stages"), dict) else {}
+    shared_stages = shared_maintenance.get("stages") if isinstance(shared_maintenance.get("stages"), dict) else {}
+    stages = {
+        stage: _combine_material_delete_stage(
+            invalidated_stages.get(stage),
+            shared_stages.get(stage),
+        )
+        for stage in dict.fromkeys([*invalidated_stages, *shared_stages])
+    }
+    maintenance_items = [item for item in (invalidated_maintenance, shared_maintenance) if item]
+    maintenance_statuses = {item.get("status") for item in maintenance_items}
+    has_failure = bool({"partial", "failed"}.intersection(maintenance_statuses)) or any(stage.get("status") == "failed" for stage in stages.values())
+    status = "partial" if has_failure else "pending" if {"pending", "running"}.intersection(maintenance_statuses) else "success"
+    result = {
+        "status": status,
+        "event": event,
+        "affected_page_ids": list(dict.fromkeys([*invalidated_page_ids, *shared_page_ids])),
+        "stages": stages,
+    }
+    if invalidated_maintenance:
+        result["invalidated"] = invalidated_maintenance
+    if shared_maintenance:
+        result["shared"] = shared_maintenance
+    for key in _MATERIAL_DELETE_METRIC_KEYS:
+        values = [item.get(key) for item in maintenance_items if isinstance(item.get(key), (int, float))]
+        if values:
+            result[key] = sum(values)
+    return result
+
+
+def _related_keys(value):
+    if isinstance(value, (list, tuple, set)):
+        values = value
+    elif value in (None, ""):
+        values = []
+    else:
+        values = [value]
+    return {str(item) for item in values if item not in (None, "")}
+
+
+def _check_material_keys(check):
+    """Return every frozen material id that can invalidate this decision."""
+    related = check.related if isinstance(check.related, dict) else {}
+    keys = set(_related_keys(related.get("materials")))
+    context = check.decision_context if isinstance(check.decision_context, dict) else {}
+    for participant in context.get("participants") or []:
+        if isinstance(participant, dict):
+            keys.update(_related_keys(participant.get("material_id")))
+    incoming = context.get("incoming")
+    if isinstance(incoming, dict):
+        keys.update(_related_keys(incoming.get("material_id")))
+    return keys
+
+
+def _auto_resolve_material_deletion_checks(
+    knowledge_base,
+    *,
+    material_id,
+    invalidated_page_ids,
+    checks=None,
+):
+    """关闭删除资料或页面失效后已无决策意义的检查，并回算来源构建待审数。"""
+    from apps.opspilot.services.wiki.check_service import _recount_pending_review
+
+    material_key = str(material_id)
+    invalidated_page_keys = {str(page_id) for page_id in invalidated_page_ids}
+    resolved = 0
+    if checks is None:
+        checks = CheckItem.objects.select_for_update().filter(knowledge_base=knowledge_base, status="open").order_by("id")
+    for check in checks:
+        if check.status != "open":
+            continue
+        related = check.related if isinstance(check.related, dict) else {}
+        material_obsolete = material_key in _check_material_keys(check)
+        invalidated_page_obsolete = bool(invalidated_page_keys.intersection(_related_keys(related.get("pages"))))
+        if not material_obsolete and not invalidated_page_obsolete:
+            continue
+        related = dict(related)
+        related["resolution"] = {
+            "action": "automatic_maintenance",
+            "reason": "material_deleted",
+            "operator": "system",
+            "processed_at": timezone.now().isoformat(),
+        }
+        check.related = related
+        check.status = "auto_resolved"
+        check.suggested_actions = []
+        check.updated_by = "system"
+        check.save(update_fields=["related", "status", "suggested_actions", "updated_by", "updated_at"])
+        _recount_pending_review(check)
+        resolved += 1
+    return resolved
+
+
+def _pending_material_delete_maintenance(page_ids, event):
+    return {
+        "status": "partial",
+        "event": event,
+        "affected_page_ids": list(page_ids),
+        "stages": {},
+    }
+
+
+def _run_material_delete_cascade(knowledge_base, page_ids, event):
+    page_ids = list(page_ids)
+    if not page_ids:
+        return {}
+    try:
+        return cascade(knowledge_base, page_ids, event)
+    except Exception as exc:
+        logger.exception(
+            "wiki 资料删除级联维护异常 kb=%s event=%s",
+            knowledge_base.id,
+            event,
+        )
+        error = str(exc)
+        return {
+            "status": "partial",
+            "event": event,
+            "affected_page_ids": page_ids,
+            "stages": {"cascade": {"status": "failed", "error": error}},
+            "error": error,
+        }
+
+
+def _finalize_material_delete_maintenance(
+    build,
+    knowledge_base,
+    maintenance_prune_page_ids,
+    shared_page_ids,
+):
+    """Run derived maintenance only after the deleting transaction commits."""
+    invalidated_maintenance = _run_material_delete_cascade(
+        knowledge_base,
+        maintenance_prune_page_ids,
+        "material_delete",
     )
-    material.delete()  # 级联删除该资料的 PageEvidence
-    flagged = []
-    for page in KnowledgePage.objects.filter(id__in=page_ids, status="active"):
-        if not PageEvidence.objects.filter(page=page).exists():
+    shared_maintenance = _run_material_delete_cascade(
+        knowledge_base,
+        shared_page_ids,
+        "build",
+    )
+    maintenance = _combine_material_delete_maintenance(
+        invalidated_maintenance,
+        shared_maintenance,
+        maintenance_prune_page_ids,
+        shared_page_ids,
+    )
+    build.maintenance = maintenance
+    build.errors = _maintenance_errors(maintenance)
+    build.stage = "done"
+    build.status = maintenance.get("status", "success")
+    build.progress = 100
+    build.save(
+        update_fields=[
+            "maintenance",
+            "errors",
+            "stage",
+            "status",
+            "progress",
+            "updated_at",
+        ]
+    )
+
+
+def handle_material_deletion(material, operator=""):
+    """短事务提交物理删除，再在事务外 best-effort 维护派生结构。"""
+    kb = material.knowledge_base
+    knowledge_base_id = material.knowledge_base_id
+    material_id = material.id
+    frozen_page_ids = _material_evidence_page_ids(material_id)
+
+    with transaction.atomic():
+        kb = WikiKnowledgeBase.objects.select_for_update().get(pk=knowledge_base_id)
+        locked_checks = list(CheckItem.objects.select_for_update().filter(knowledge_base_id=knowledge_base_id).order_by("id"))
+        pages = list(KnowledgePage.objects.select_for_update().filter(knowledge_base_id=knowledge_base_id, id__in=frozen_page_ids).order_by("id"))
+        material = Material.objects.select_for_update().get(
+            pk=material_id,
+            knowledge_base_id=knowledge_base_id,
+        )
+        current_page_ids = _material_evidence_page_ids(material_id)
+        if current_page_ids != frozen_page_ids:
+            raise RuntimeError("资料关联页面已并发变化，请重试删除")
+        material_name = material.name
+        rules_revoked = decision_service.revoke_rules_for_materials(
+            [material],
+            reason="资料已物理删除",
+            operator=operator,
+        )
+        all_evidence_page_ids = [page.id for page in pages]
+        active_pages = [page for page in pages if page.status == "active"]
+        archived_pages = [page for page in pages if page.status == "archived"]
+        inactive_pages = [page for page in pages if page.status not in {"active", "archived"}]
+        build = BuildRecord.objects.create(
+            knowledge_base=kb,
+            trigger="material_delete",
+            operator=operator,
+            inputs={
+                "material_id": material_id,
+                "material_name": material_name,
+                "all_evidence_page_ids": all_evidence_page_ids,
+            },
+            stage="done",
+            status="partial",
+            progress=100,
+        )
+
+        material.delete()
+
+        remaining_page_ids = set(PageEvidence.objects.filter(page_id__in=all_evidence_page_ids).values_list("page_id", flat=True).distinct())
+        invalidated_pages = [page for page in active_pages if page.id not in remaining_page_ids]
+        shared_pages = [page for page in active_pages if page.id in remaining_page_ids]
+        invalidated_page_ids = [page.id for page in invalidated_pages]
+        shared_page_ids = [page.id for page in shared_pages]
+        archived_recoverable_page_ids = [page.id for page in archived_pages]
+        inactive_source_loss_page_ids = [page.id for page in inactive_pages]
+        shared_page_id_set = set(shared_page_ids)
+        # 归档/既有失效页保持状态，但同样进入 material_delete 维护以清理残留关系与索引。
+        maintenance_prune_page_ids = [page.id for page in pages if page.id not in shared_page_id_set]
+        for page in invalidated_pages:
             page.status = "source_invalid"
             page.save(update_fields=["status", "updated_at"])
-            if ensure_check(kb, "source_invalid", page, suggested_actions=["supplement_source", "archive"]):
-                flagged.append(page.id)
-    maintenance = cascade(kb, page_ids, "material_delete")
-    build.counts = {"new": 0, "updated": 0, "unchanged": 0, "pending_review": len(flagged)}
-    build.affected_pages = flagged
-    build.maintenance = maintenance
-    build.save(update_fields=["counts", "affected_pages", "maintenance", "updated_at"])
+
+        checks_auto_resolved = _auto_resolve_material_deletion_checks(
+            kb,
+            material_id=material_id,
+            invalidated_page_ids=invalidated_page_ids,
+            checks=locked_checks,
+        )
+        pending_maintenance = _combine_material_delete_maintenance(
+            (
+                _pending_material_delete_maintenance(
+                    maintenance_prune_page_ids,
+                    "material_delete",
+                )
+                if maintenance_prune_page_ids
+                else {}
+            ),
+            (_pending_material_delete_maintenance(shared_page_ids, "build") if shared_page_ids else {}),
+            maintenance_prune_page_ids,
+            shared_page_ids,
+        )
+        build.inputs = {
+            **(build.inputs or {}),
+            "invalidated_page_ids": invalidated_page_ids,
+            "shared_page_ids": shared_page_ids,
+            "archived_recoverable_page_ids": archived_recoverable_page_ids,
+            "inactive_source_loss_page_ids": inactive_source_loss_page_ids,
+            "maintenance_prune_page_ids": maintenance_prune_page_ids,
+            **({"archived_source_loss": "页面可恢复，但被删除的资料来源不可恢复"} if archived_recoverable_page_ids else {}),
+            "rules_revoked": rules_revoked,
+            "checks_auto_resolved": checks_auto_resolved,
+        }
+        counts = {
+            "new": 0,
+            "updated": len(invalidated_page_ids),
+            "unchanged": len(shared_page_ids),
+            "pending_review": 0,
+        }
+        if archived_recoverable_page_ids:
+            counts["archived_recoverable"] = len(archived_recoverable_page_ids)
+        if inactive_source_loss_page_ids:
+            counts["inactive_source_loss"] = len(inactive_source_loss_page_ids)
+        build.counts = counts
+        build.affected_pages = all_evidence_page_ids
+        build.maintenance = pending_maintenance
+        has_maintenance = bool(maintenance_prune_page_ids or shared_page_ids)
+        build.stage = "done"
+        build.status = "partial" if has_maintenance else "success"
+        build.progress = 100
+        build.save(
+            update_fields=[
+                "inputs",
+                "counts",
+                "affected_pages",
+                "maintenance",
+                "stage",
+                "status",
+                "progress",
+                "updated_at",
+            ]
+        )
+
+        if has_maintenance:
+            transaction.on_commit(
+                lambda: _finalize_material_delete_maintenance(
+                    build,
+                    kb,
+                    maintenance_prune_page_ids,
+                    shared_page_ids,
+                )
+            )
     return build
+
+
+def _maintenance_errors(maintenance):
+    errors = []
+
+    def collect(value):
+        if isinstance(value, dict):
+            error = value.get("error")
+            if error and str(error) not in errors:
+                errors.append(str(error))
+            for key, nested in value.items():
+                if key == "error":
+                    continue
+                if isinstance(nested, (dict, list, tuple)):
+                    collect(nested)
+        elif isinstance(value, (list, tuple)):
+            for item in value:
+                collect(item)
+
+    collect(maintenance)
+    return [error for error in errors if not (";" in error and all(part.strip() in errors for part in error.split(";") if part.strip()))]
+
+
+def _run_update_cascade(knowledge_base, affected_page_ids):
+    try:
+        return cascade(knowledge_base, affected_page_ids, "material_update")
+    except Exception as exc:
+        logger.exception("wiki 资料更新级联维护异常 kb=%s", knowledge_base.id)
+        error = str(exc)
+        return {
+            "status": "partial",
+            "event": "material_update",
+            "affected_page_ids": list(affected_page_ids),
+            "stages": {"cascade": {"status": "failed", "error": error}},
+            "error": error,
+        }
 
 
 def propose_update(material, llm_model_id=None, operator="", generator=None):
@@ -184,25 +560,68 @@ def propose_update(material, llm_model_id=None, operator="", generator=None):
         knowledge_base=kb,
         trigger="material_update",
         operator=operator,
-        inputs={"material_id": material.id},
+        inputs={
+            "material_id": material.id,
+            "material_name": material.name,
+            "source_trace": {"page_actions": []},
+        },
         stage="generating",
         status="running",
     )
     try:
         gen = generator or (lambda p, m: _default_generator(p, m, llm_model_id))
-        updated, pending = [], []
+        counts = {"new": 0, "updated": 0, "unchanged": 0, "pending_review": 0}
+        affected = []
+        cascade_ids = []
+        maintenance = {}
+        source_trace = {"page_actions": []}
         for page in affected_pages(material):
             new_body = gen(page, material)
             if not (new_body or "").strip():
                 continue
-            action, _ = apply_material_update(page, new_body, build_record=build, operator=operator)
-            (updated if action == "updated" else pending).append(page.id)
-        build.counts = {"new": 0, "updated": len(updated), "unchanged": 0, "pending_review": len(pending)}
-        build.affected_pages = updated + pending
+            action, result = apply_material_update(
+                page,
+                new_body,
+                material=material,
+                build_record=build,
+                operator=operator,
+            )
+            counts[action] += 1
+            page_trace = {
+                "page_id": page.id,
+                "title": page.title,
+                "page_type": page.page_type,
+                "action": action,
+            }
+            if isinstance(result, dict):
+                page_trace.update(result)
+            source_trace["page_actions"].append(page_trace)
+            affected.append(page.id)
+            if action != "pending_review":
+                cascade_ids.append(page.id)
+        if cascade_ids:
+            maintenance = _run_update_cascade(kb, cascade_ids)
+        build.counts = counts
+        build.affected_pages = affected
+        build.inputs = {**(build.inputs or {}), "source_trace": source_trace}
+        build.maintenance = maintenance
+        build.errors = _maintenance_errors(maintenance)
         build.stage = "done"
-        build.status = "success"
+        build.status = "partial" if maintenance.get("status") in {"partial", "failed"} else "success"
         build.progress = 100
-        build.save(update_fields=["counts", "affected_pages", "stage", "status", "progress", "updated_at"])
+        build.save(
+            update_fields=[
+                "counts",
+                "affected_pages",
+                "inputs",
+                "maintenance",
+                "errors",
+                "stage",
+                "status",
+                "progress",
+                "updated_at",
+            ]
+        )
         return build
     except Exception as exc:
         logger.exception("wiki 资料更新失败 material=%s", material.id)

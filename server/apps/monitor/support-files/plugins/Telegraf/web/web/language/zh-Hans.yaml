@@ -1,0 +1,28 @@
+Website:
+  desc: 通过Telegraf采集器定期拨测HTTP/HTTPS连接的可用性和性能。
+  name: 网站拨测（Telegraf）
+monitor_object:
+  Website: 网站
+monitor_object_type:
+  Web: 网络
+monitor_object_metric:
+  Website:
+    http_response_result_code:
+      name: 拨测结果
+      desc: 根据 Telegraf http_response 的 result_code 字段识别拨测结果，0 表示成功，非 0 表示响应内容不匹配、响应体读取失败、连接失败、超时、DNS
+        错误或响应状态码不匹配等异常。
+    http_node_success_rate:
+      name: 单点成功率
+      desc: 统计每个拨测节点5分钟的拨测成功率，用于反映特定地域或网络环境下的访问情况。
+    http_response_response_time:
+      name: HTTP响应时间
+      desc: 从发起HTTP请求到接收到HTTP响应的总时间。用于评估Web服务的性能，尤其是在处理用户请求时。
+    http_response_http_response_code:
+      name: HTTP 响应状态码
+      desc: 该指标用于表示HTTP请求的响应状态码。它记录了HTTP响应状态码的值，例如200（成功）、404（未找到）、500（服务器错误）等。
+    http_response_content_length:
+      name: HTTP内容长度
+      desc: 该指标表示HTTP响应的内容长度。较大的内容长度可能导致数据传输时间过长，并消耗更多带宽。
+monitor_object_metric_group:
+  Website:
+    HTTP: HTTP

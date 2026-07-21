@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CMDB Instance (Generic)",
+  "description": "通用 04 阶段 schema —— CMDB 实例字典,基于 apps.cmdb.tests.e2e.schemas.<model_id>/04_cmdb_instance.schema.json 反射。",
+  "type": "object",
+  "required": ["inst_name", "model_id"],
+  "properties": {
+    "inst_name": {"type": "string", "description": "{ip}-{name_token}-{port} 或自定义"},
+    "model_id": {"type": "string", "description": "CMDB model_id(如 'mysql' / 'es' / 'k8s_namespace')"},
+    "ip_addr": {"type": "string"},
+    "port": {"type": ["string", "integer", "null"]},
+    "_placeholder_reason": {
+      "type": "string",
+      "description": "placeholder 模式标记 — license_missing / cluster_complex / platform_constraint"
+    },
+    "license_status": {
+      "type": "string",
+      "enum": ["available", "missing", "unknown"],
+      "description": "license 状态 — v4 placeholder 模式新增"
+    }
+  },
+  "additionalProperties": true
+}

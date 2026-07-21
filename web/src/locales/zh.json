@@ -312,7 +312,7 @@
       "unableToDisplay": "无法显示二维码"
     },
     "loginAuth": {
-      "methodsTitle": "切换登录方式",
+      "methodsTitle": "登陆方式",
       "bindingPassword": {
         "usernameLabel": "{bindingName} 用户名",
         "usernamePlaceholder": "请输入 {bindingName} 用户名",

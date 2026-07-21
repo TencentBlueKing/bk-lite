@@ -17,6 +17,32 @@ from core.redis_config import REDIS_CONFIG
 from sanic.log import logger
 
 
+def _is_safe_monitor_type(monitor_type: Any) -> bool:
+    if not isinstance(monitor_type, str) or not monitor_type:
+        return False
+    return all(ch.isalnum() or ch == "_" for ch in monitor_type)
+
+
+async def _try_collect_enterprise_monitor_task(
+    ctx: Dict, params: Dict[str, Any], task_id: str, monitor_type: str
+):
+    """Dispatch optional WeOpsX enterprise monitors without CE brand data."""
+    if not _is_safe_monitor_type(monitor_type):
+        return None
+
+    try:
+        from enterprise.tasks.handlers import storage_handler
+    except ImportError:
+        return None
+
+    handler_name = f"collect_{monitor_type}_metrics_task"
+    handler = getattr(storage_handler, handler_name, None)
+    if handler is None:
+        return None
+
+    return await handler(ctx, params, task_id)
+
+
 async def collect_task(
     ctx: Dict, params: Dict[str, Any], task_id: str
 ) -> Dict[str, Any]:
@@ -58,9 +84,13 @@ async def collect_task(
             result = await collect_qcloud_metrics_task(ctx, params, task_id)
 
         elif monitor_type == "oceanstor":
-            from tasks.handlers.monitor_handler import collect_oceanstor_metrics_task
+            result = await _try_collect_enterprise_monitor_task(
+                ctx, params, task_id, monitor_type
+            )
+            if result is None:
+                from tasks.handlers.monitor_handler import collect_oceanstor_metrics_task
 
-            result = await collect_oceanstor_metrics_task(ctx, params, task_id)
+                result = await collect_oceanstor_metrics_task(ctx, params, task_id)
 
         elif monitor_type == "host":
             from tasks.handlers.monitor_handler import collect_host_metrics_task
@@ -103,6 +133,19 @@ async def collect_task(
             from tasks.handlers.plugin_handler import collect_plugin_task
 
             result = await collect_plugin_task(ctx, params, task_id)
+
+        elif monitor_type:
+            result = await _try_collect_enterprise_monitor_task(
+                ctx, params, task_id, monitor_type
+            )
+            if result is None:
+                logger.error(f"Unknown task type for {task_id}")
+                result = {
+                    "task_id": task_id,
+                    "status": "failed",
+                    "error": "Unknown task type",
+                    "completed_at": int(time.time() * 1000),
+                }
 
         else:
             logger.error(f"Unknown task type for {task_id}")

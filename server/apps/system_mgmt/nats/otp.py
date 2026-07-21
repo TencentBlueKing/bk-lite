@@ -178,6 +178,7 @@ def verify_otp_login(challenge_id, otp_code, client_ip=""):
             "username": username,
             "display_name": user.display_name,
             "id": user.id,
+            "user_id": user.user_id,
             "domain": user.domain,
             "locale": user.locale,
             "timezone": user.timezone,

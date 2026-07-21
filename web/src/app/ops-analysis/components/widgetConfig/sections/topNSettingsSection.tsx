@@ -1,10 +1,11 @@
 import React from 'react';
 import { Form, Select } from 'antd';
+import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 
 interface TopNSettingsSectionProps {
   t: (key: string) => string;
   sectionTitle?: string;
-  selectedDataSource: any;
+  selectedDataSource?: DatasourceItem;
   topNLabelFieldOptions: Array<{ label: React.ReactNode; value: string }>;
   topNValueFieldOptions: Array<{ label: React.ReactNode; value: string }>;
 }

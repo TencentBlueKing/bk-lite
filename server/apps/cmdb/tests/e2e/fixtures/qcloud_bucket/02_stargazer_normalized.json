@@ -1,0 +1,21 @@
+{
+  "success": true,
+  "result": {
+    "qcloud_bucket": [
+      {
+        "model_id": "qcloud_bucket",
+        "task_id": 33016,
+        "account_id": "acct-qcloud-prod-001",
+        "captured_at": "2026-07-14T10:30:00+08:00",
+        "collected_by": "stargazer/inputs/qcloud/qcloud_bucket.py@1.2.0",
+        "request_id": "QC-BUCKET-1234ABCD-EF56-7890-1234-567890ABCDEF",
+        "total_count": 1,
+        "resource_name": "cos-prod-01",
+        "resource_id": "cos-prod-01-1300000000",
+        "region": "ap-shanghai",
+        "tag": "prod|bucket",
+        "create_time": "2024-03-01 14:00:00"
+      }
+    ]
+  }
+}

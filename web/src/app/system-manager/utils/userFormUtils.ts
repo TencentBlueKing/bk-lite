@@ -90,7 +90,7 @@ export function hasNormalGroupSelection(groupIds: React.Key[], treeData: TreeSel
  * Marks roles that come from organization as disabled
  */
 export function processRoleTreeData(
-  roleData: Array<{ id: number; name: string; is_build_in?: boolean; children: Array<{ id: number; name: string }> }>,
+  roleData: Array<{ id: number; name: string; display_name?: string; is_build_in?: boolean; children: Array<{ id: number; name: string }> }>,
   externalAppLabel = 'External App'
 ): TreeDataNode[] {
   return roleData.map((item) => ({
@@ -98,6 +98,7 @@ export function processRoleTreeData(
     title: item.is_build_in === false
       ? React.createElement('span', null, item.name, React.createElement(Tag, { color: 'green', className: 'ml-1', style: { fontSize: 11, padding: '0 4px' } }, externalAppLabel))
       : item.name,
+    display_name: item.display_name,
     selectable: false,
     children: item.children.map((child) => ({
       key: child.id,

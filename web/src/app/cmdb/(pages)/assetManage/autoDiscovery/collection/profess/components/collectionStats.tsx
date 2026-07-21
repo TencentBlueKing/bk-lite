@@ -163,7 +163,7 @@ const CollectionStats: React.FC = () => {
       value: formatRelative(o.recent_sync_at, t),
       iconBg: '#E8F0FF',
       iconColor: '#155AEF',
-      valueClassName: 'text-[22px] xl:text-[24px] 2xl:text-[26px]',
+      valueClassName: 'text-[18px] xl:text-[19px] 2xl:text-[20px]',
       icon: <ClockCircleIcon />,
     },
   ];
@@ -188,7 +188,7 @@ const CollectionStats: React.FC = () => {
                 >
                   {c.icon}
                 </div>
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <div className="truncate text-xs font-medium text-[#5f6f86]">{c.label}</div>
                   <div className={`mt-1 whitespace-nowrap font-bold leading-none tracking-tight tabular-nums text-[#0f172a] ${c.valueClassName || 'text-[26px]'}`}>
                     {c.value}

@@ -19,6 +19,7 @@ import {
   WebChatNodeConfig,
   WechatOfficialNodeConfig,
   EnterpriseWechatAibotNodeConfig,
+  NatsNodeConfig,
 } from './components/nodeConfigs';
 
 export const NodeConfigForm: React.FC<any> = ({
@@ -152,6 +153,8 @@ export const NodeConfigForm: React.FC<any> = ({
       {nodeType === 'web_chat' && <WebChatNodeConfig t={t} form={form} />}
 
       {nodeType === 'mobile' && <MobileNodeConfig t={t} />}
+
+      {nodeType === 'nats' && <NatsNodeConfig form={form} />}
 
       {nodeType === 'condition' && <ConditionNodeConfig t={t} nodes={nodes} />}
 

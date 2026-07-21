@@ -6,6 +6,13 @@
   }
   h1, h2, h3, h4, h5, h6 {
     border-bottom: 1px solid var(--color-border-1) !important;
+    scroll-margin-top: 64px;
+    &:target,
+    &.is-highlight {
+      background: linear-gradient(90deg, rgba(2, 132, 199, 0.16), transparent 75%);
+      border-radius: 6px;
+      transition: background 800ms ease-out;
+    }
   }
   table {
     border-collapse: collapse;
@@ -25,6 +32,57 @@
     }
     tbody {
       background-color: inherit;
+    }
+  }
+
+  :global(.md-code-block) {
+    position: relative;
+  }
+
+  :global(.md-code-block > pre) {
+    padding-right: 44px;
+  }
+
+  :global(.md-code-copy) {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid var(--color-border-1);
+    border-radius: 6px;
+    background: var(--color-bg);
+    color: var(--color-text-3);
+    cursor: pointer;
+    opacity: 0.85;
+    transition: color 150ms ease, background 150ms ease, border-color 150ms ease,
+      opacity 150ms ease;
+
+    &:hover {
+      opacity: 1;
+      color: var(--color-primary);
+      border-color: var(--color-primary);
+      background: var(--color-fill-1);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--color-primary);
+      outline-offset: 1px;
+    }
+
+    &.is-copied {
+      color: var(--color-success, #52c41a);
+      border-color: var(--color-success, #52c41a);
+    }
+
+    svg {
+      width: 14px;
+      height: 14px;
     }
   }
 }

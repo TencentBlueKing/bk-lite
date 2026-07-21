@@ -30,15 +30,28 @@
 }
 
 .collectionTaskDrawer {
+  :global(.ant-drawer-content-wrapper) {
+    max-width: 100vw;
+  }
+
   :global(.ant-drawer-content) {
+    display: flex;
+    flex-direction: column;
     height: 100%;
+    min-height: 0;
+  }
+
+  :global(.ant-drawer-header) {
+    flex: 0 0 auto;
   }
 
   :global(.ant-drawer-body) {
     display: flex;
     flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
     overflow: hidden;
-    padding: 0 8px 0 24px;
+    padding: 16px 8px 0 24px;
   }
 
   :global(.ant-drawer-body > *) {
@@ -89,8 +102,21 @@
   scrollbar-gutter: stable;
 }
 
-.mainContent :global(.ant-collapse-content-box) {
-  padding-left: 0 !important;
+.collectionTaskDrawer .sectionTitle {
+  padding-left: 0;
+}
+
+.collectionTaskDrawer .mainContent :global(.ant-collapse-header) {
+  align-items: center;
+  padding: 8px 0 12px !important;
+}
+
+.collectionTaskDrawer .mainContent :global(.ant-collapse-expand-icon) {
+  padding-inline-end: 8px !important;
+}
+
+.collectionTaskDrawer .mainContent :global(.ant-collapse-content-box) {
+  padding: 0 !important;
 }
 
 .mainContent :global(.ant-form-item:has(.credentialPoolEditor)) {
@@ -163,7 +189,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 0 12px 4px;
+  padding: 0 0 4px;
 }
 
 .credentialPoolTitle {
@@ -205,8 +231,10 @@
   color: #155bd4 !important;
   font-weight: 500;
   height: 30px !important;
+  min-width: 124px;
   padding-inline: 14px !important;
-  width: 116px;
+  width: auto;
+  white-space: nowrap;
 
   &:hover {
     background: #e2edff !important;
@@ -223,7 +251,7 @@
 
 .credentialPoolList {
   list-style: none;
-  padding: 0 0 0 12px;
+  padding: 0;
   margin: 0;
 }
 
@@ -245,8 +273,7 @@
   height: 22px;
   justify-content: center;
   line-height: 22px;
-  margin-right: 7px;
-  margin-top: 12px;
+  margin: 0;
   width: 22px;
 }
 
@@ -255,17 +282,15 @@
   color: #8f9daf;
   cursor: grab !important;
   display: inline-flex;
+  flex: 0 0 16px;
   font-size: 12px;
-  height: 18px;
+  height: 44px;
   justify-content: center;
-  left: 39px;
   line-height: 1;
-  opacity: 0.9;
-  position: absolute;
-  top: 13px;
+  margin-right: 8px;
+  opacity: 0.75;
   transition: opacity 0.18s ease;
-  width: 12px;
-  z-index: 1;
+  width: 16px;
 }
 
 .credentialDragHandle:hover {
@@ -277,17 +302,17 @@
 .credentialCard {
   flex: 1;
   min-width: 0;
-  border: 1px solid rgba(204, 214, 226, 0.72);
-  border-radius: 8px;
+  border: 1px solid #dde5ef;
+  border-radius: 6px;
   padding: 0 12px;
   background: #fff;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.035);
-  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+  box-shadow: none;
+  transition: border-color 0.18s ease, background-color 0.18s ease;
 }
 
 .credentialCardExpanded {
-  border-color: rgba(178, 194, 215, 0.86);
-  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.055);
+  border-color: #c8d4e3;
+  background: #fff;
 }
 
 .credentialCardHeader {
@@ -308,9 +333,11 @@
 }
 
 .credentialTitleBlock {
-  flex: 0 0 64px;
+  align-items: center;
+  display: inline-flex;
+  flex: 0 0 124px;
+  gap: 8px;
   min-width: 0;
-  padding-left: 12px;
 }
 
 .credentialTitle {
@@ -318,6 +345,7 @@
   font-size: 14px;
   font-weight: 600;
   line-height: 20px;
+  white-space: nowrap;
 }
 
 .credentialMetaList {
@@ -392,7 +420,7 @@
 }
 
 .credentialCardBody {
-  padding: 4px 0 12px 16px;
+  padding: 4px 0 12px;
 }
 
 .credentialFieldGrid {
@@ -402,10 +430,10 @@
 }
 
 .credentialFieldRow {
-  display: grid;
-  grid-template-columns: 80px minmax(0, 1fr);
-  gap: 10px;
-  align-items: center;
+  align-items: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .credentialFieldLabel {
@@ -413,8 +441,18 @@
   color: var(--color-text-2);
   display: inline-flex;
   gap: 4px;
-  justify-content: flex-end;
-  text-align: right;
+  justify-content: flex-start;
+  line-height: 20px;
+  text-align: left;
+}
+
+.collectionTaskTable {
+  height: 100%;
+  min-height: 0;
+
+  :global(.ant-pagination) {
+    transform: translateY(-10px);
+  }
 }
 
 .credentialRequiredMark {
@@ -425,10 +463,12 @@
 
 .credentialFieldControl {
   min-width: 0;
+  width: 100%;
 
   :global(.ant-input),
   :global(.ant-input-number),
   :global(.ant-input-affix-wrapper),
+  :global(.ant-select),
   :global(.ant-select-selector) {
     height: 30px !important;
     min-height: 30px !important;
@@ -442,6 +482,10 @@
       height: auto !important;
       min-height: 0 !important;
     }
+  }
+
+  :global(.ant-select) {
+    width: 100%;
   }
 }
 

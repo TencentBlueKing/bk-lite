@@ -28,6 +28,7 @@ class _FakeStorage:
     def __init__(self):
         self.objects = {}
         self.deleted = []
+        self.calls = []
 
     def save(self, filename, content):
         # 模拟 storage 真实行为：读取 ContentFile 字节并以路径为键存储
@@ -36,9 +37,11 @@ class _FakeStorage:
         return filename
 
     def exists(self, path):
+        self.calls.append(("exists", path))
         return path in self.objects
 
     def open(self, path, mode="rb"):
+        self.calls.append(("open", path, mode))
         return io.BytesIO(self.objects[path])
 
     def delete(self, path):
@@ -112,6 +115,13 @@ class TestUploadAndLoadRoundTrip:
 
 
 class TestLoadFromS3EdgeCases:
+    def test_load_opens_object_without_exists_request(self):
+        field = _make_field()
+        field.storage.objects["one-request.json"] = b'{"ok": true}'
+
+        assert field._load_from_s3("one-request.json") == {"ok": True}
+        assert field.storage.calls == [("open", "one-request.json", "rb")]
+
     def test_empty_path_returns_none(self):
         field = _make_field()
         assert field._load_from_s3("") is None
@@ -132,7 +142,7 @@ class TestLoadFromS3EdgeCases:
 
     def test_storage_error_returns_none(self, mocker):
         field = _make_field()
-        mocker.patch.object(field.storage, "exists", side_effect=RuntimeError("s3 down"))
+        mocker.patch.object(field.storage, "open", side_effect=RuntimeError("s3 down"))
         assert field._load_from_s3("x") is None
 
 
