@@ -22,6 +22,7 @@ from config.drf.pagination import CustomPageNumberPagination
 from apps.core.utils.team_utils import get_current_team
 
 MAX_CANDIDATE_TEAM_ID = 2_147_483_647
+MAX_CANDIDATE_TEAM_ID_TEXT = str(MAX_CANDIDATE_TEAM_ID)
 
 
 def _normalize_candidate_values(values):
@@ -47,6 +48,8 @@ def _normalize_candidate_team_ids(values):
         if type(value) is int:
             team_id = value
         elif isinstance(value, str) and value.isascii() and value.isdigit() and not value.startswith("0"):
+            if len(value) > len(MAX_CANDIDATE_TEAM_ID_TEXT) or (len(value) == len(MAX_CANDIDATE_TEAM_ID_TEXT) and value > MAX_CANDIDATE_TEAM_ID_TEXT):
+                continue
             team_id = int(value)
         else:
             continue

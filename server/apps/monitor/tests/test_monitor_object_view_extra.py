@@ -28,6 +28,9 @@ class TestMonitorObjectList:
     def test_candidate_team_ids_accept_canonical_positive_values(self):
         assert monitor_object_view._normalize_candidate_team_ids([1, "2", {"id": 3}, 2_147_483_647]) == {1, 2, 3, 2_147_483_647}
 
+    def test_candidate_team_ids_reject_oversized_numeric_string(self):
+        assert monitor_object_view._normalize_candidate_team_ids(["9" * 5000]) == set()
+
     def test_list_adds_display_and_children_count(self, api_client):
         parent = MonitorObject.objects.create(name="OVParent", display_name="父对象", level="base")
         MonitorObject.objects.create(name="OVChild", level="derivative", parent=parent)
