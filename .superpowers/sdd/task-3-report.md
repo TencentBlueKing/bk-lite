@@ -92,3 +92,11 @@ uv run --extra dev pytest -o addopts='' \
 - isort 5.10.1 对本次新增 import 所在生产文件与业务测试通过；未改 import 的 service/既有测试仍保留基线格式，不做机械格式化。
 - Black 23.1 对本次新增且无基线格式债务的 5 个触及文件通过；`monitor_policy.py`、`monitor_object.py`、`monitor_instance.py`、既有 projection/object-extra 测试仍复现 HEAD 基线格式差异。
 - flake8 7.1.1 除既有 `C901` 与测试 `F841` 基线外通过；本次引入的 `E303` 已修复。
+
+## 终审补充：实例双组织字段投影
+
+- RED：共享实例 A+B 在 A 范围读取时，`organizations` 已过滤但 `add_attr()` 回填的 `organization` 仍包含 sibling；`InstanceSearch.search()` 还缺少统一的 `organizations` 投影字段，2 项按预期失败。
+- 修复：`add_attr()` 接收 `visible_organization_ids`，统一写入范围内的 `organizations` 与 `organization`；列表和搜索调用均透传 current_team 范围。显式空/非法范围 fail-closed 为两个空列表，`None` 仅保留既有非权限后台调用语义。
+- 聚焦回归：projection 全文件 `14 passed`；扩大回归 `262 passed in 40.55s`。
+- 差异覆盖率：本次 20 个差异可执行行全部覆盖，`100%`。
+- 静态与迁移：py_compile、flake8（排除既有 C901）、git diff、原生 SQL 扫描及 `makemigrations --check --dry-run` 通过；未机械格式化 service 既有 Black/isort 基线。

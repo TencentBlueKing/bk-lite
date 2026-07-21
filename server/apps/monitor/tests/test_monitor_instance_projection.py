@@ -58,7 +58,7 @@ def test_monitor_instance_list_returns_flow_asset_fields(db, monkeypatch):
     )
     MonitorInstanceOrganization.objects.create(monitor_instance_id=instance.id, organization=7)
     monkeypatch.setattr(MonitorObjectService, "get_instances_by_metric", lambda *args, **kwargs: {})
-    monkeypatch.setattr(MonitorObjectService, "add_attr", lambda result: None)
+    monkeypatch.setattr(MonitorObjectService, "add_attr", lambda result, visible_organization_ids=None: None)
 
     data = MonitorObjectService.get_monitor_instance(
         monitor_object.id,
@@ -96,7 +96,6 @@ def test_monitor_instance_list_hides_sibling_organizations(db, monkeypatch):
     MonitorInstanceOrganization.objects.create(monitor_instance=instance, organization=7)
     MonitorInstanceOrganization.objects.create(monitor_instance=instance, organization=8)
     monkeypatch.setattr(MonitorObjectService, "get_instances_by_metric", lambda *args, **kwargs: {})
-    monkeypatch.setattr(MonitorObjectService, "add_attr", lambda result: None)
 
     data = MonitorObjectService.get_monitor_instance(
         monitor_object.id,
@@ -108,6 +107,7 @@ def test_monitor_instance_list_hides_sibling_organizations(db, monkeypatch):
     )
 
     assert data["results"][0]["organizations"] == [7]
+    assert data["results"][0]["organization"] == [7]
 
 
 def test_instance_search_hides_sibling_organizations(db):
@@ -132,6 +132,62 @@ def test_instance_search_hides_sibling_organizations(db):
     ).get_objs_v2()
 
     assert data["results"][0]["organizations"] == [7]
+
+
+def test_instance_search_response_hides_sibling_organizations(db, monkeypatch):
+    monitor_object = MonitorObject.objects.create(
+        name="ScopedSearch",
+        default_metric="up",
+        instance_id_keys=["instance_id"],
+    )
+    instance = MonitorInstance.objects.create(
+        id="('shared-search',)",
+        name="Shared Search",
+        monitor_object=monitor_object,
+    )
+    MonitorInstanceOrganization.objects.create(monitor_instance=instance, organization=7)
+    MonitorInstanceOrganization.objects.create(monitor_instance=instance, organization=8)
+    search = InstanceSearch(
+        monitor_object,
+        {"page": 1, "page_size": -1},
+        qs=MonitorInstance.objects.all(),
+        visible_organization_ids=frozenset({7}),
+    )
+    monkeypatch.setattr(
+        search,
+        "get_vm_metrics",
+        lambda: [{"metric": {"instance_id": "shared-search"}, "value": [1, "1"]}],
+    )
+
+    data = search.search()
+
+    assert data["results"][0]["organizations"] == [7]
+    assert data["results"][0]["organization"] == [7]
+
+
+def test_add_attr_fails_closed_for_empty_or_invalid_visible_scope(db):
+    monitor_object = MonitorObject.objects.create(name="ScopedAddAttr", default_metric="up")
+    instance = MonitorInstance.objects.create(id="('add-attr',)", name="Add Attr", monitor_object=monitor_object)
+    MonitorInstanceOrganization.objects.create(monitor_instance=instance, organization=7)
+    invalid_scopes = ([], [True], [1.5], ["01"])
+
+    for visible_scope in invalid_scopes:
+        item = {"instance_id": instance.id, "time": 1}
+        MonitorObjectService.add_attr([item], visible_scope)
+        assert item["organizations"] == []
+        assert item["organization"] == []
+
+
+def test_add_attr_keeps_legacy_background_scope_when_projection_is_not_requested(db):
+    monitor_object = MonitorObject.objects.create(name="BackgroundAddAttr", default_metric="up")
+    instance = MonitorInstance.objects.create(id="('background',)", name="Background", monitor_object=monitor_object)
+    MonitorInstanceOrganization.objects.create(monitor_instance=instance, organization=7)
+    item = {"instance_id": instance.id, "time": 1}
+
+    MonitorObjectService.add_attr([item])
+
+    assert item["organizations"] == [7]
+    assert item["organization"] == [7]
 
 
 def test_monitor_instance_list_filters_instances_by_plugin_status_query(db, monkeypatch):
@@ -189,7 +245,7 @@ def test_monitor_instance_list_filters_instances_by_plugin_status_query(db, monk
         "get_instances_by_metric",
         fake_get_instances_by_metric,
     )
-    monkeypatch.setattr(MonitorObjectService, "add_attr", lambda result: None)
+    monkeypatch.setattr(MonitorObjectService, "add_attr", lambda result, visible_organization_ids=None: None)
 
     data = MonitorObjectService.get_monitor_instance(
         monitor_object.id,
@@ -295,7 +351,7 @@ def test_instance_search_results_include_collection_interval_for_gap_detection(d
             }
         ],
     )
-    monkeypatch.setattr(MonitorObjectService, "add_attr", lambda result: None)
+    monkeypatch.setattr(MonitorObjectService, "add_attr", lambda result, visible_organization_ids=None: None)
 
     data = search.search()
 
