@@ -6,12 +6,9 @@ import sys
 from pathlib import Path
 from typing import Sequence
 
-
 STARGAZER_ROOT = Path(__file__).resolve().parents[1]
 if str(STARGAZER_ROOT) not in sys.path:
     sys.path.insert(0, str(STARGAZER_ROOT))
-
-from redis import Redis  # noqa: E402
 
 from core.redis_config import REDIS_CONFIG  # noqa: E402
 from core.task_queue_cleanup import (  # noqa: E402
@@ -24,7 +21,7 @@ from core.task_queue_cleanup import (  # noqa: E402
     build_cleanup_plan,
     create_cleanup_backup,
 )
-
+from redis import Redis  # noqa: E402
 
 DEFAULT_BACKUP_DIR = Path("/tmp/stargazer-task-queue-backups")
 
@@ -60,9 +57,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help=f"backup directory (default: {DEFAULT_BACKUP_DIR})",
     )
     parser.add_argument(
-        "--json",
-        action="store_true",
-        help="emit stable JSON output",
+        "--json", action="store_true", help="emit stable JSON output",
     )
     return parser
 
@@ -71,7 +66,9 @@ def _decode_identifier(value: bytes) -> str:
     return value.decode(errors="backslashreplace")
 
 
-def _result_payload(args, plan, *, redis_db: int, remaining_queue_jobs: int) -> dict:
+def _result_payload(
+    args, plan, *, redis_db: int, remaining_queue_jobs: int
+) -> dict:
     return {
         "backup_path": None,
         "deleted_jobs": 0,
@@ -112,11 +109,17 @@ def _error_payload(args, *, redis_db: int, error_code: str) -> dict:
 def _emit(payload: dict, *, as_json: bool, error: bool = False) -> None:
     output = sys.stderr if error else sys.stdout
     if as_json:
-        print(json.dumps(payload, ensure_ascii=False, sort_keys=True), file=output)
+        print(
+            json.dumps(payload, ensure_ascii=False, sort_keys=True),
+            file=output,
+        )
         return
 
     if error:
-        print(f"ERROR [{payload['error_code']}] operation stopped safely", file=output)
+        print(
+            f"ERROR [{payload['error_code']}] operation stopped safely",
+            file=output,
+        )
         return
 
     print(f"Mode: {payload['mode']}", file=output)
@@ -133,7 +136,10 @@ def _emit(payload: dict, *, as_json: bool, error: bool = False) -> None:
         print(f"Backup: {payload['backup_path']}", file=output)
         print(f"Deleted jobs: {payload['deleted_jobs']}", file=output)
         print(f"Deleted markers: {payload['deleted_markers']}", file=output)
-        print(f"Remaining queued jobs: {payload['remaining_queue_jobs']}", file=output)
+        print(
+            f"Remaining queued jobs: {payload['remaining_queue_jobs']}",
+            file=output,
+        )
 
 
 def _emit_error(args, *, redis_db: int, error_code: str) -> None:
@@ -144,11 +150,7 @@ def _emit_error(args, *, redis_db: int, error_code: str) -> None:
     )
 
 
-def run(
-    argv: Sequence[str] | None = None,
-    *,
-    redis_factory=Redis,
-) -> int:
+def run(argv: Sequence[str] | None = None, *, redis_factory=Redis,) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
     redis_db = int(REDIS_CONFIG["database"])
@@ -182,7 +184,9 @@ def run(
         _emit_error(args, redis_db=redis_db, error_code="QUEUE_STATE_INVALID")
         return 3
     except Exception:
-        _emit_error(args, redis_db=redis_db, error_code="REDIS_CONNECTION_FAILED")
+        _emit_error(
+            args, redis_db=redis_db, error_code="REDIS_CONNECTION_FAILED"
+        )
         return 3
 
     payload = _result_payload(
@@ -202,10 +206,7 @@ def run(
 
     try:
         backup_path = create_cleanup_backup(
-            redis_client,
-            plan,
-            backup_dir=args.backup_dir,
-            redis_db=redis_db,
+            redis_client, plan, backup_dir=args.backup_dir, redis_db=redis_db,
         )
     except CleanupBackupError:
         _emit_error(args, redis_db=redis_db, error_code="BACKUP_FAILED")

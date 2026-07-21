@@ -5,8 +5,6 @@ import stat
 from unittest.mock import Mock
 
 import pytest
-from redis.exceptions import WatchError
-
 from core.task_queue_cleanup import (
     CleanupBackupError,
     CleanupDriftError,
@@ -15,6 +13,7 @@ from core.task_queue_cleanup import (
     build_cleanup_plan,
     create_cleanup_backup,
 )
+from redis.exceptions import WatchError
 
 
 class FakeRedis:
@@ -172,17 +171,12 @@ def test_default_plan_selects_only_marker_referenced_queued_jobs():
     )
 
     plan = build_cleanup_plan(
-        redis_client,
-        all_pending=False,
-        include_in_progress=False,
+        redis_client, all_pending=False, include_in_progress=False,
     )
 
     assert plan.selected_job_ids == (b"queued-blocker",)
     assert plan.protected_job_ids == (b"running-job",)
-    assert plan.marker_keys == (
-        b"task:dedupe:key-1",
-        b"task:running:task-1",
-    )
+    assert plan.marker_keys == (b"task:dedupe:key-1", b"task:running:task-1",)
     assert plan.queue_scores == ((b"queued-blocker", 1000.0),)
 
 
@@ -193,9 +187,7 @@ def test_all_pending_selects_unreferenced_queue_jobs():
     )
 
     plan = build_cleanup_plan(
-        redis_client,
-        all_pending=True,
-        include_in_progress=False,
+        redis_client, all_pending=True, include_in_progress=False,
     )
 
     assert plan.selected_job_ids == (b"referenced", b"unreferenced")
@@ -212,9 +204,7 @@ def test_default_plan_never_selects_in_progress_job():
     )
 
     plan = build_cleanup_plan(
-        redis_client,
-        all_pending=False,
-        include_in_progress=False,
+        redis_client, all_pending=False, include_in_progress=False,
     )
 
     assert plan.selected_job_ids == ()
@@ -232,9 +222,7 @@ def test_include_in_progress_selects_only_related_jobs():
     )
 
     plan = build_cleanup_plan(
-        redis_client,
-        all_pending=False,
-        include_in_progress=True,
+        redis_client, all_pending=False, include_in_progress=True,
     )
 
     assert plan.selected_job_ids == (b"running-job",)
@@ -247,9 +235,7 @@ def test_plan_rejects_wrong_queue_type():
 
     with pytest.raises(CleanupStateError, match="arq:queue"):
         build_cleanup_plan(
-            redis_client,
-            all_pending=False,
-            include_in_progress=False,
+            redis_client, all_pending=False, include_in_progress=False,
         )
 
 
@@ -262,9 +248,7 @@ def test_plan_rejects_wrong_marker_type():
 
     with pytest.raises(CleanupStateError, match="task:running:task-1"):
         build_cleanup_plan(
-            redis_client,
-            all_pending=False,
-            include_in_progress=False,
+            redis_client, all_pending=False, include_in_progress=False,
         )
 
 
@@ -273,9 +257,7 @@ def test_plan_rejects_empty_marker_job_id():
 
     with pytest.raises(CleanupStateError, match="empty job id"):
         build_cleanup_plan(
-            redis_client,
-            all_pending=False,
-            include_in_progress=False,
+            redis_client, all_pending=False, include_in_progress=False,
         )
 
 
@@ -283,9 +265,7 @@ def test_plan_uses_scan_instead_of_keys():
     redis_client = FakeRedis()
 
     build_cleanup_plan(
-        redis_client,
-        all_pending=False,
-        include_in_progress=False,
+        redis_client, all_pending=False, include_in_progress=False,
     )
 
     assert redis_client.keys_calls == 0
@@ -314,14 +294,10 @@ def _selected_plan_fixture(*, watch_error=False, with_unrelated_keys=False):
             }
         )
     redis_client = FakeRedis(
-        queue=queue,
-        strings=strings,
-        watch_error=watch_error,
+        queue=queue, strings=strings, watch_error=watch_error,
     )
     plan = build_cleanup_plan(
-        redis_client,
-        all_pending=False,
-        include_in_progress=False,
+        redis_client, all_pending=False, include_in_progress=False,
     )
     return redis_client, plan
 
@@ -330,10 +306,7 @@ def test_backup_is_created_with_restricted_permissions(tmp_path):
     redis_client, plan = _selected_plan_fixture()
 
     backup_path = create_cleanup_backup(
-        redis_client,
-        plan,
-        backup_dir=tmp_path / "backups",
-        redis_db=1,
+        redis_client, plan, backup_dir=tmp_path / "backups", redis_db=1,
     )
 
     assert stat.S_IMODE(backup_path.parent.stat().st_mode) == 0o700
@@ -352,10 +325,7 @@ def test_backup_failure_performs_no_redis_writes(tmp_path, monkeypatch):
 
     with pytest.raises(CleanupBackupError):
         create_cleanup_backup(
-            redis_client,
-            plan,
-            backup_dir=tmp_path / "backups",
-            redis_db=1,
+            redis_client, plan, backup_dir=tmp_path / "backups", redis_db=1,
         )
 
     assert redis_client.write_calls == []

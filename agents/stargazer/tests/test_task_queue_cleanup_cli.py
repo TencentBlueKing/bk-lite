@@ -6,14 +6,12 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
-
 from core.task_queue_cleanup import (
     CleanupBackupError,
     CleanupDriftError,
     CleanupExecutionError,
 )
 from scripts import clear_task_queue as cli
-
 
 STARGAZER_ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_JSON_KEYS = {
@@ -77,7 +75,12 @@ def cli_dependencies(monkeypatch):
     monkeypatch.setattr(
         cli,
         "REDIS_CONFIG",
-        {"host": "redis.internal", "port": 6379, "password": "secret", "database": 7},
+        {
+            "host": "redis.internal",
+            "port": 6379,
+            "password": "secret",
+            "database": 7,
+        },
     )
     return SimpleNamespace(
         redis_client=redis_client,
@@ -97,10 +100,11 @@ def cli_dependencies(monkeypatch):
     ],
 )
 def test_include_in_progress_requires_apply_and_worker_confirmation(
-    argv,
-    capsys,
+    argv, capsys,
 ):
-    redis_factory = Mock(side_effect=AssertionError("must validate before Redis"))
+    redis_factory = Mock(
+        side_effect=AssertionError("must validate before Redis")
+    )
 
     assert cli.run(argv, redis_factory=redis_factory) == 2
 
@@ -109,8 +113,7 @@ def test_include_in_progress_requires_apply_and_worker_confirmation(
 
 
 def test_default_cli_is_dry_run_and_does_not_create_backup(
-    cli_dependencies,
-    capsys,
+    cli_dependencies, capsys,
 ):
     dependencies = cli_dependencies
 
@@ -169,8 +172,7 @@ def test_json_output_has_stable_safe_schema(cli_dependencies, capsys):
 
 
 def test_redis_connection_failure_returns_three_without_secret(
-    monkeypatch,
-    capsys,
+    monkeypatch, capsys,
 ):
     redis_factory = Mock(
         return_value=FakeRedisClient(
@@ -180,7 +182,12 @@ def test_redis_connection_failure_returns_three_without_secret(
     monkeypatch.setattr(
         cli,
         "REDIS_CONFIG",
-        {"host": "redis.internal", "port": 6379, "password": "secret-value", "database": 7},
+        {
+            "host": "redis.internal",
+            "port": 6379,
+            "password": "secret-value",
+            "database": 7,
+        },
     )
 
     assert cli.run([], redis_factory=redis_factory) == 3
@@ -216,7 +223,9 @@ def test_drift_returns_five(cli_dependencies, monkeypatch, capsys):
     assert "STATE_DRIFT" in capsys.readouterr().err
 
 
-def test_transaction_failure_returns_six(cli_dependencies, monkeypatch, capsys):
+def test_transaction_failure_returns_six(
+    cli_dependencies, monkeypatch, capsys
+):
     dependencies = cli_dependencies
     monkeypatch.setattr(
         cli,

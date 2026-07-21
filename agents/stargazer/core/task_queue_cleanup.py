@@ -17,7 +17,6 @@ from arq.constants import (
 )
 from redis.exceptions import WatchError
 
-
 QUEUE_KEY = default_queue_name.encode()
 IN_PROGRESS_PREFIX = in_progress_key_prefix.encode()
 JOB_PREFIX = job_key_prefix.encode()
@@ -96,8 +95,9 @@ def _type_name(redis_client, key: bytes) -> bytes:
 def _read_queue_scores(redis_client) -> dict[bytes, float]:
     queue_type = _type_name(redis_client, QUEUE_KEY)
     if queue_type not in {b"none", b"zset"}:
+        actual_type = queue_type.decode(errors="replace")
         raise CleanupStateError(
-            f"{default_queue_name} must be a zset, got {queue_type.decode(errors='replace')}"
+            f"{default_queue_name} must be a zset, got {actual_type}"
         )
     if queue_type == b"none":
         return {}
@@ -105,10 +105,7 @@ def _read_queue_scores(redis_client) -> dict[bytes, float]:
     return {
         _as_bytes(job_id): float(score)
         for job_id, score in redis_client.zrange(
-            QUEUE_KEY,
-            0,
-            -1,
-            withscores=True,
+            QUEUE_KEY, 0, -1, withscores=True,
         )
     }
 
@@ -152,7 +149,13 @@ def _build_fingerprint(
     for job_id in sorted(relevant_job_ids):
         decoded_job_id = job_id.decode(errors="backslashreplace")
         score = queue_scores.get(job_id)
-        entries.append(("queue", decoded_job_id, "missing" if score is None else repr(score)))
+        entries.append(
+            (
+                "queue",
+                decoded_job_id,
+                "missing" if score is None else repr(score),
+            )
+        )
         entries.append(
             (
                 "in_progress",
@@ -189,10 +192,7 @@ def _build_fingerprint(
 
 
 def build_cleanup_plan(
-    redis_client,
-    *,
-    all_pending: bool,
-    include_in_progress: bool,
+    redis_client, *, all_pending: bool, include_in_progress: bool,
 ) -> CleanupPlan:
     queue_scores = _read_queue_scores(redis_client)
     marker_items = _read_marker_items(redis_client)
@@ -278,7 +278,8 @@ def _backup_payload(redis_client, plan: CleanupPlan, *, redis_db: int) -> dict:
             _decode_identifier(job_id) for job_id in plan.protected_job_ids
         ],
         "queue_scores": {
-            _decode_identifier(job_id): score for job_id, score in plan.queue_scores
+            _decode_identifier(job_id): score
+            for job_id, score in plan.queue_scores
         },
         "marker_items": {
             _decode_identifier(key): _decode_identifier(job_id)
@@ -289,11 +290,7 @@ def _backup_payload(redis_client, plan: CleanupPlan, *, redis_db: int) -> dict:
 
 
 def create_cleanup_backup(
-    redis_client,
-    plan: CleanupPlan,
-    *,
-    backup_dir: Path,
-    redis_db: int,
+    redis_client, plan: CleanupPlan, *, backup_dir: Path, redis_db: int,
 ) -> Path:
     backup_path = None
     try:
@@ -305,9 +302,7 @@ def create_cleanup_backup(
         )
         payload = _backup_payload(redis_client, plan, redis_db=redis_db)
         file_descriptor = os.open(
-            backup_path,
-            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
-            0o600,
+            backup_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600,
         )
         with os.fdopen(file_descriptor, "w", encoding="utf-8") as file_obj:
             json.dump(payload, file_obj, ensure_ascii=False, sort_keys=True)
@@ -343,7 +338,9 @@ def apply_cleanup_plan(redis_client, plan: CleanupPlan) -> CleanupResult:
                 )
             except CleanupStateError as exc:
                 pipe.unwatch()
-                raise CleanupDriftError("cleanup target state changed") from exc
+                raise CleanupDriftError(
+                    "cleanup target state changed"
+                ) from exc
 
             if current_plan != plan:
                 pipe.unwatch()
