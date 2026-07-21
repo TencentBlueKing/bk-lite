@@ -20,6 +20,11 @@ from apps.alerts.models.action import ActionExecution, ActionRule
 from apps.alerts.models.models import Alert
 from apps.alerts.serializers.action import ActionExecutionSerializer, ActionRuleSerializer
 from apps.alerts.utils.operator_log import record_operator_log
+from apps.alerts.utils.permission_scope import (
+    apply_team_scope_with_group_ids,
+    filter_alert_queryset_for_request,
+    get_authorized_group_ids,
+)
 from apps.core.decorators.api_permission import HasPermission
 from apps.job_mgmt.utils.callback_signer import verify_callback_signature
 from apps.rpc.job_mgmt import JobMgmt
@@ -187,6 +192,8 @@ class ActionExecutionViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        scoped_alerts = filter_alert_queryset_for_request(Alert.objects.all(), self.request)
+        qs = qs.filter(alert__in=scoped_alerts)
         alert_id = self.request.query_params.get("alert_id")
         rule_id = self.request.query_params.get("rule_id")
         status_val = self.request.query_params.get("status")
@@ -209,10 +216,22 @@ class ActionExecutionViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=False, methods=["post"])
     @HasPermission("action_exec-Manual")
     def manual_trigger(self, request):
-        alert = Alert.objects.filter(alert_id=request.data.get("alert_id")).first()
+        authorized_group_ids = get_authorized_group_ids(request)
+        alert = apply_team_scope_with_group_ids(Alert.objects.all(), authorized_group_ids).filter(
+            alert_id=request.data.get("alert_id")
+        ).first()
         rule = ActionRule.objects.filter(id=request.data.get("rule_id")).first()
         if not alert or not rule:
             return Response({"result": False, "message": "alert/rule 不存在"}, status=400)
+
+        authorized_teams = {str(team_id) for team_id in authorized_group_ids}
+        alert_teams = {str(team_id) for team_id in (alert.team or [])}
+        rule_teams = {str(team_id) for team_id in (rule.team or [])}
+        rule_out_of_scope = rule_teams and not (rule_teams & authorized_teams)
+        rule_incompatible_with_alert = alert_teams and rule_teams and not (alert_teams & rule_teams)
+        if rule_out_of_scope or rule_incompatible_with_alert:
+            return Response({"result": False, "message": "alert/rule 不存在"}, status=400)
+
         operator_name = getattr(request.user, "username", None) or ""
         execution = ActionExecution.objects.create(
             rule=rule,
