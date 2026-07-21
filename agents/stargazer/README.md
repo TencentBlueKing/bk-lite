@@ -277,21 +277,22 @@ docker exec <stargazer-container> \
   python /app/scripts/clear_task_queue.py
 ```
 
-确认 dry-run 中的 job ID 和数量后，清理阻塞新任务的待执行 job：
+确认 dry-run 中的 job ID 和数量后，先在 Server 侧暂停新的任务下发，再清理阻塞新任务的待执行 job。所有正式清理都必须用 `--dispatch-stopped` 显式确认；CLI 不会自行暂停下发：
 
 ```bash
 docker exec <stargazer-container> \
-  python /app/scripts/clear_task_queue.py --apply
+  python /app/scripts/clear_task_queue.py --dispatch-stopped --apply
 ```
 
 显式清理 `arq:queue` 中全部安全待执行 job：
 
 ```bash
 docker exec <stargazer-container> \
-  python /app/scripts/clear_task_queue.py --all-pending --apply
+  python /app/scripts/clear_task_queue.py \
+  --all-pending --dispatch-stopped --apply
 ```
 
-`--all-pending` 会影响默认 ARQ 队列中的全部待执行 job，可能包含 host callback processing job。执行前必须暂停新的任务下发。
+`--all-pending` 会影响默认 ARQ 队列中的全部待执行 job，可能包含 host callback processing job。
 
 只有确认全部 Stargazer Worker 已在外部停止后，才允许包含相关 in-progress 状态：
 
@@ -300,6 +301,7 @@ docker exec <stargazer-container> \
   python /app/scripts/clear_task_queue.py \
   --all-pending \
   --include-in-progress \
+  --dispatch-stopped \
   --worker-stopped \
   --apply
 ```
@@ -311,9 +313,22 @@ kubectl exec -n <namespace> <stargazer-pod> -- \
   python /app/scripts/clear_task_queue.py
 ```
 
-正式清理前会自动在 `/tmp/stargazer-task-queue-backups/` 创建 `0600` 备份；目录权限为 `0700`。备份中的 Redis DUMP 可能包含序列化任务参数或凭据，须安全复制出临时容器并按敏感制品管理。备份、状态复核或 Redis transaction 任一步失败时，CLI 都会停止删除。
+正式清理前会自动在 `/tmp/stargazer-task-queue-backups/` 创建 `0600` 备份；目录权限为 `0700`。备份读取和删除受同一个 Redis `WATCH` 窗口保护，目标状态漂移时不会执行删除。备份中的 Redis DUMP 可能包含序列化任务参数或凭据，须安全复制出临时容器并按敏感制品管理。
 
-清理后重新启动 Worker 并下发一个任务，确认返回 `status=queued`，同时检查 Worker 日志出现 `Task received:`。CLI 的稳定退出码为：`0` 成功/无目标、`2` 参数非法、`3` Redis 读取失败、`4` 备份失败、`5` 状态漂移、`6` transaction 失败。
+需要回滚时，保持新任务下发和全部 Worker 停止，使用清理成功时输出的备份路径：
+
+```bash
+docker exec <stargazer-container> \
+  python /app/scripts/clear_task_queue.py \
+  --restore-backup /tmp/stargazer-task-queue-backups/<backup>.json \
+  --dispatch-stopped \
+  --worker-stopped \
+  --apply
+```
+
+恢复入口会校验备份格式和 Redis DB，并在同一个 `WATCH/MULTI/EXEC` 中恢复 Redis DUMP、TTL 和队列 score；只要任一目标 key 或队列成员已经存在，就会拒绝覆盖并安全退出。恢复成功并确认队列状态后，再启动 Worker 和恢复任务下发。
+
+清理后重新启动 Worker 并恢复任务下发，提交一个任务确认返回 `status=queued`，同时检查 Worker 日志出现 `Task received:`。CLI 的稳定退出码为：`0` 成功/无目标、`2` 参数非法、`3` Redis 读取失败、`4` 备份失败、`5` 状态漂移、`6` transaction 失败、`7` 恢复失败。
 
 ---
 

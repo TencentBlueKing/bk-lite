@@ -10,6 +10,7 @@ from core.task_queue_cleanup import (
     CleanupBackupError,
     CleanupDriftError,
     CleanupExecutionError,
+    CleanupRestoreError,
 )
 from scripts import clear_task_queue as cli
 
@@ -61,17 +62,24 @@ def cli_dependencies(monkeypatch):
     redis_client = FakeRedisClient()
     redis_factory = Mock(return_value=redis_client)
     build_plan = Mock(return_value=_plan())
-    create_backup = Mock(return_value=Path("/tmp/backup.json"))
-    apply_plan = Mock(
+    backup_and_apply = Mock(
+        return_value=(
+            Path("/tmp/backup.json"),
+            SimpleNamespace(
+                deleted_job_count=1,
+                deleted_marker_count=1,
+                remaining_queue_jobs=1,
+            ),
+        )
+    )
+    restore_backup = Mock(
         return_value=SimpleNamespace(
-            deleted_job_count=1,
-            deleted_marker_count=1,
-            remaining_queue_jobs=1,
+            restored_key_count=4, restored_queue_job_count=1,
         )
     )
     monkeypatch.setattr(cli, "build_cleanup_plan", build_plan)
-    monkeypatch.setattr(cli, "create_cleanup_backup", create_backup)
-    monkeypatch.setattr(cli, "apply_cleanup_plan", apply_plan)
+    monkeypatch.setattr(cli, "backup_and_apply_cleanup", backup_and_apply)
+    monkeypatch.setattr(cli, "restore_cleanup_backup", restore_backup)
     monkeypatch.setattr(
         cli,
         "REDIS_CONFIG",
@@ -86,8 +94,8 @@ def cli_dependencies(monkeypatch):
         redis_client=redis_client,
         redis_factory=redis_factory,
         build_plan=build_plan,
-        create_backup=create_backup,
-        apply_plan=apply_plan,
+        backup_and_apply=backup_and_apply,
+        restore_backup=restore_backup,
     )
 
 
@@ -112,6 +120,36 @@ def test_include_in_progress_requires_apply_and_worker_confirmation(
     redis_factory.assert_not_called()
 
 
+def test_apply_requires_dispatch_stopped_confirmation(capsys):
+    redis_factory = Mock(
+        side_effect=AssertionError("must validate before Redis")
+    )
+
+    assert cli.run(["--apply"], redis_factory=redis_factory) == 2
+
+    assert "--dispatch-stopped" in capsys.readouterr().err
+    redis_factory.assert_not_called()
+
+
+def test_restore_requires_all_safety_confirmations(capsys):
+    redis_factory = Mock(
+        side_effect=AssertionError("must validate before Redis")
+    )
+
+    assert (
+        cli.run(
+            ["--restore-backup", "/tmp/backup.json", "--apply"],
+            redis_factory=redis_factory,
+        )
+        == 2
+    )
+
+    output = capsys.readouterr().err
+    assert "--dispatch-stopped" in output
+    assert "--worker-stopped" in output
+    redis_factory.assert_not_called()
+
+
 def test_default_cli_is_dry_run_and_does_not_create_backup(
     cli_dependencies, capsys,
 ):
@@ -122,28 +160,21 @@ def test_default_cli_is_dry_run_and_does_not_create_backup(
     output = capsys.readouterr().out
     assert "DRY-RUN" in output
     assert "job-1" in output
-    dependencies.create_backup.assert_not_called()
-    dependencies.apply_plan.assert_not_called()
+    dependencies.backup_and_apply.assert_not_called()
 
 
-def test_apply_creates_backup_before_cleanup(cli_dependencies, capsys):
+def test_apply_uses_atomic_backup_and_cleanup(cli_dependencies, capsys):
     dependencies = cli_dependencies
-    call_order = []
-    dependencies.create_backup.side_effect = lambda *args, **kwargs: (
-        call_order.append("backup") or Path("/tmp/backup.json")
-    )
-    dependencies.apply_plan.side_effect = lambda *args, **kwargs: (
-        call_order.append("apply")
-        or SimpleNamespace(
-            deleted_job_count=1,
-            deleted_marker_count=1,
-            remaining_queue_jobs=1,
+
+    assert (
+        cli.run(
+            ["--apply", "--dispatch-stopped"],
+            redis_factory=dependencies.redis_factory,
         )
+        == 0
     )
 
-    assert cli.run(["--apply"], redis_factory=dependencies.redis_factory) == 0
-
-    assert call_order == ["backup", "apply"]
+    dependencies.backup_and_apply.assert_called_once()
     assert "/tmp/backup.json" in capsys.readouterr().out
 
 
@@ -151,10 +182,15 @@ def test_apply_with_no_targets_skips_backup_and_writes(cli_dependencies):
     dependencies = cli_dependencies
     dependencies.build_plan.return_value = _plan(selected=(), protected=())
 
-    assert cli.run(["--apply"], redis_factory=dependencies.redis_factory) == 0
+    assert (
+        cli.run(
+            ["--apply", "--dispatch-stopped"],
+            redis_factory=dependencies.redis_factory,
+        )
+        == 0
+    )
 
-    dependencies.create_backup.assert_not_called()
-    dependencies.apply_plan.assert_not_called()
+    dependencies.backup_and_apply.assert_not_called()
 
 
 def test_json_output_has_stable_safe_schema(cli_dependencies, capsys):
@@ -201,11 +237,17 @@ def test_backup_failure_returns_four(cli_dependencies, monkeypatch, capsys):
     dependencies = cli_dependencies
     monkeypatch.setattr(
         cli,
-        "create_cleanup_backup",
+        "backup_and_apply_cleanup",
         Mock(side_effect=CleanupBackupError("disk contains secret")),
     )
 
-    assert cli.run(["--apply"], redis_factory=dependencies.redis_factory) == 4
+    assert (
+        cli.run(
+            ["--apply", "--dispatch-stopped"],
+            redis_factory=dependencies.redis_factory,
+        )
+        == 4
+    )
 
     assert "BACKUP_FAILED" in capsys.readouterr().err
 
@@ -214,11 +256,17 @@ def test_drift_returns_five(cli_dependencies, monkeypatch, capsys):
     dependencies = cli_dependencies
     monkeypatch.setattr(
         cli,
-        "apply_cleanup_plan",
+        "backup_and_apply_cleanup",
         Mock(side_effect=CleanupDriftError("changed")),
     )
 
-    assert cli.run(["--apply"], redis_factory=dependencies.redis_factory) == 5
+    assert (
+        cli.run(
+            ["--apply", "--dispatch-stopped"],
+            redis_factory=dependencies.redis_factory,
+        )
+        == 5
+    )
 
     assert "STATE_DRIFT" in capsys.readouterr().err
 
@@ -229,14 +277,73 @@ def test_transaction_failure_returns_six(
     dependencies = cli_dependencies
     monkeypatch.setattr(
         cli,
-        "apply_cleanup_plan",
+        "backup_and_apply_cleanup",
         Mock(side_effect=CleanupExecutionError("secret payload")),
     )
 
-    assert cli.run(["--apply"], redis_factory=dependencies.redis_factory) == 6
+    assert (
+        cli.run(
+            ["--apply", "--dispatch-stopped"],
+            redis_factory=dependencies.redis_factory,
+        )
+        == 6
+    )
 
     output = capsys.readouterr().err
     assert "TRANSACTION_FAILED" in output
+    assert "secret payload" not in output
+
+
+def test_restore_backup_uses_the_safe_restore_service(
+    cli_dependencies, capsys,
+):
+    dependencies = cli_dependencies
+
+    assert (
+        cli.run(
+            [
+                "--restore-backup",
+                "/tmp/backup.json",
+                "--apply",
+                "--dispatch-stopped",
+                "--worker-stopped",
+            ],
+            redis_factory=dependencies.redis_factory,
+        )
+        == 0
+    )
+
+    dependencies.restore_backup.assert_called_once()
+    dependencies.build_plan.assert_not_called()
+    assert "Restored keys: 4" in capsys.readouterr().out
+
+
+def test_restore_failure_returns_seven(
+    cli_dependencies, monkeypatch, capsys,
+):
+    dependencies = cli_dependencies
+    monkeypatch.setattr(
+        cli,
+        "restore_cleanup_backup",
+        Mock(side_effect=CleanupRestoreError("secret payload")),
+    )
+
+    assert (
+        cli.run(
+            [
+                "--restore-backup",
+                "/tmp/backup.json",
+                "--apply",
+                "--dispatch-stopped",
+                "--worker-stopped",
+            ],
+            redis_factory=dependencies.redis_factory,
+        )
+        == 7
+    )
+
+    output = capsys.readouterr().err
+    assert "RESTORE_FAILED" in output
     assert "secret payload" not in output
 
 

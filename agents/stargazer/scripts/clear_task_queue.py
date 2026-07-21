@@ -16,10 +16,11 @@ from core.task_queue_cleanup import (  # noqa: E402
     CleanupBackupError,
     CleanupDriftError,
     CleanupExecutionError,
+    CleanupRestoreError,
     CleanupStateError,
-    apply_cleanup_plan,
+    backup_and_apply_cleanup,
     build_cleanup_plan,
-    create_cleanup_backup,
+    restore_cleanup_backup,
 )
 from redis import Redis  # noqa: E402
 
@@ -51,10 +52,20 @@ def _build_parser() -> argparse.ArgumentParser:
         help="confirm all Stargazer workers were stopped externally",
     )
     parser.add_argument(
+        "--dispatch-stopped",
+        action="store_true",
+        help="confirm new task dispatch was stopped externally",
+    )
+    parser.add_argument(
         "--backup-dir",
         type=Path,
         default=DEFAULT_BACKUP_DIR,
         help=f"backup directory (default: {DEFAULT_BACKUP_DIR})",
+    )
+    parser.add_argument(
+        "--restore-backup",
+        type=Path,
+        help="restore a backup created by this CLI without overwriting data",
     )
     parser.add_argument(
         "--json", action="store_true", help="emit stable JSON output",
@@ -150,15 +161,57 @@ def _emit_error(args, *, redis_db: int, error_code: str) -> None:
     )
 
 
+def _emit_restore_result(
+    args, result, *, redis_db: int, backup_path: Path
+) -> None:
+    payload = {
+        "backup_path": str(backup_path),
+        "error_code": None,
+        "redis_db": redis_db,
+        "restored_keys": result.restored_key_count,
+        "restored_queue_jobs": result.restored_queue_job_count,
+        "status": "restored",
+    }
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+        return
+    print(f"Backup: {backup_path}")
+    print(f"Restored keys: {result.restored_key_count}")
+    print(f"Restored queue jobs: {result.restored_queue_job_count}")
+
+
 def run(argv: Sequence[str] | None = None, *, redis_factory=Redis,) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
     redis_db = int(REDIS_CONFIG["database"])
 
+    if args.restore_backup:
+        valid_restore = (
+            args.apply
+            and args.dispatch_stopped
+            and args.worker_stopped
+            and not args.all_pending
+            and not args.include_in_progress
+        )
+        if not valid_restore:
+            print(
+                "ERROR [INVALID_ARGUMENTS] --restore-backup requires "
+                "--apply, --dispatch-stopped and --worker-stopped; it "
+                "cannot be combined with cleanup selectors",
+                file=sys.stderr,
+            )
+            return 2
+
     if args.include_in_progress and not (args.apply and args.worker_stopped):
         print(
             "ERROR [INVALID_ARGUMENTS] --include-in-progress requires "
             "--worker-stopped and --apply",
+            file=sys.stderr,
+        )
+        return 2
+    if args.apply and not args.dispatch_stopped:
+        print(
+            "ERROR [INVALID_ARGUMENTS] --apply requires " "--dispatch-stopped",
             file=sys.stderr,
         )
         return 2
@@ -174,12 +227,28 @@ def run(argv: Sequence[str] | None = None, *, redis_factory=Redis,) -> int:
             socket_timeout=5,
         )
         redis_client.ping()
+        if args.restore_backup:
+            result = restore_cleanup_backup(
+                redis_client,
+                backup_path=args.restore_backup,
+                redis_db=redis_db,
+            )
+            _emit_restore_result(
+                args,
+                result,
+                redis_db=redis_db,
+                backup_path=args.restore_backup,
+            )
+            return 0
         plan = build_cleanup_plan(
             redis_client,
             all_pending=args.all_pending,
             include_in_progress=args.include_in_progress,
         )
         remaining_queue_jobs = int(redis_client.zcard(QUEUE_KEY))
+    except CleanupRestoreError:
+        _emit_error(args, redis_db=redis_db, error_code="RESTORE_FAILED")
+        return 7
     except CleanupStateError:
         _emit_error(args, redis_db=redis_db, error_code="QUEUE_STATE_INVALID")
         return 3
@@ -205,15 +274,12 @@ def run(argv: Sequence[str] | None = None, *, redis_factory=Redis,) -> int:
         return 0
 
     try:
-        backup_path = create_cleanup_backup(
+        backup_path, result = backup_and_apply_cleanup(
             redis_client, plan, backup_dir=args.backup_dir, redis_db=redis_db,
         )
     except CleanupBackupError:
         _emit_error(args, redis_db=redis_db, error_code="BACKUP_FAILED")
         return 4
-
-    try:
-        result = apply_cleanup_plan(redis_client, plan)
     except CleanupDriftError:
         _emit_error(args, redis_db=redis_db, error_code="STATE_DRIFT")
         return 5

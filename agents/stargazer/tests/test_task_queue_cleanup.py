@@ -8,10 +8,13 @@ import pytest
 from core.task_queue_cleanup import (
     CleanupBackupError,
     CleanupDriftError,
+    CleanupRestoreError,
     CleanupStateError,
     apply_cleanup_plan,
+    backup_and_apply_cleanup,
     build_cleanup_plan,
     create_cleanup_backup,
+    restore_cleanup_backup,
 )
 from redis.exceptions import WatchError
 
@@ -35,6 +38,8 @@ class FakeRedis:
         self.keys_calls = 0
         self.write_calls = []
         self.committed_writes = []
+        self.events = []
+        self.ttls = {key: 60_000 for key in self.strings}
 
     def type(self, key):
         key = _as_bytes(key)
@@ -79,13 +84,14 @@ class FakeRedis:
         return len(self.queue)
 
     def dump(self, key):
+        self.events.append("dump")
         key = _as_bytes(key)
         if key in self.strings:
-            return b"redis-dump:" + key
+            return b"redis-dump:" + self.strings[key]
         return None
 
     def pttl(self, key):
-        return 60_000 if _as_bytes(key) in self.strings else -2
+        return self.ttls.get(_as_bytes(key), -2)
 
     def pipeline(self):
         return FakePipeline(self)
@@ -105,6 +111,16 @@ class FakeRedis:
             elif command == "delete":
                 for key in args:
                     self.strings.pop(_as_bytes(key), None)
+                    self.ttls.pop(_as_bytes(key), None)
+            elif command == "restore":
+                key, ttl, dumped = args
+                self.strings[_as_bytes(key)] = dumped.removeprefix(
+                    b"redis-dump:"
+                )
+                self.ttls[_as_bytes(key)] = -1 if ttl == 0 else ttl
+            elif command == "zadd":
+                _key, mapping = args
+                self.queue.update(mapping)
 
 
 class FakePipeline:
@@ -119,6 +135,7 @@ class FakePipeline:
         return False
 
     def watch(self, *keys):
+        self.redis_client.events.append("watch")
         self.watched_keys = tuple(_as_bytes(key) for key in keys)
 
     def unwatch(self):
@@ -144,6 +161,17 @@ class FakePipeline:
         self.commands.append(("delete", tuple(_as_bytes(key) for key in keys)))
         return self
 
+    def restore(self, key, ttl, dumped, *, replace=False):
+        assert replace is False
+        self.commands.append(
+            ("restore", (_as_bytes(key), ttl, _as_bytes(dumped)))
+        )
+        return self
+
+    def zadd(self, key, mapping):
+        self.commands.append(("zadd", (_as_bytes(key), mapping)))
+        return self
+
     def zcard(self, key):
         self.commands.append(("zcard", (_as_bytes(key),)))
         return self
@@ -162,6 +190,15 @@ class FakePipeline:
 
     def exists(self, key):
         return self.redis_client.exists(key)
+
+    def zscore(self, key, value):
+        return self.redis_client.zscore(key, value)
+
+    def dump(self, key):
+        return self.redis_client.dump(key)
+
+    def pttl(self, key):
+        return self.redis_client.pttl(key)
 
 
 def _as_bytes(value):
@@ -408,3 +445,79 @@ def test_apply_reads_remaining_count_inside_the_cleanup_transaction():
 
     assert result.remaining_queue_jobs == 0
     assert redis_client.committed_writes[-1][0] == "zcard"
+
+
+def test_backup_reads_are_protected_by_the_cleanup_watch(tmp_path):
+    redis_client, plan = _selected_plan_fixture()
+
+    backup_path, result = backup_and_apply_cleanup(
+        redis_client, plan, backup_dir=tmp_path / "backups", redis_db=1,
+    )
+
+    assert backup_path.is_file()
+    assert result.deleted_job_count == 1
+    assert redis_client.events.index("watch") < redis_client.events.index(
+        "dump"
+    )
+
+
+def test_backup_can_restore_values_ttls_and_queue_scores(tmp_path):
+    redis_client, plan = _selected_plan_fixture()
+    original_strings = dict(redis_client.strings)
+    original_ttls = dict(redis_client.ttls)
+
+    backup_path, _result = backup_and_apply_cleanup(
+        redis_client, plan, backup_dir=tmp_path / "backups", redis_db=1,
+    )
+    restore_result = restore_cleanup_backup(
+        redis_client, backup_path=backup_path, redis_db=1,
+    )
+
+    for key in plan.target_keys:
+        if key in original_strings:
+            assert redis_client.strings[key] == original_strings[key]
+            assert redis_client.ttls[key] == original_ttls[key]
+    assert redis_client.queue[b"queued-blocker"] == 1000.0
+    expected_restored_keys = set(plan.target_keys) & set(original_strings)
+    assert restore_result.restored_key_count == len(expected_restored_keys)
+    assert restore_result.restored_queue_job_count == 1
+
+
+def test_restore_never_overwrites_existing_queue_state(tmp_path):
+    redis_client, plan = _selected_plan_fixture()
+    backup_path, _result = backup_and_apply_cleanup(
+        redis_client, plan, backup_dir=tmp_path / "backups", redis_db=1,
+    )
+    restore_cleanup_backup(redis_client, backup_path=backup_path, redis_db=1)
+    committed_write_count = len(redis_client.committed_writes)
+
+    with pytest.raises(CleanupRestoreError, match="already exists"):
+        restore_cleanup_backup(
+            redis_client, backup_path=backup_path, redis_db=1
+        )
+
+    assert len(redis_client.committed_writes) == committed_write_count
+
+
+def test_restore_rejects_wrong_database_and_unexpected_keys(tmp_path):
+    redis_client, plan = _selected_plan_fixture()
+    backup_path = create_cleanup_backup(
+        redis_client, plan, backup_dir=tmp_path / "backups", redis_db=1,
+    )
+
+    with pytest.raises(CleanupRestoreError, match="invalid task queue backup"):
+        restore_cleanup_backup(
+            redis_client, backup_path=backup_path, redis_db=2
+        )
+
+    payload = json.loads(backup_path.read_text(encoding="utf-8"))
+    payload["keys"]["credential:state:1"] = next(
+        iter(payload["keys"].values())
+    )
+    payload["marker_items"]["credential:state:1"] = "queued-blocker"
+    backup_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(CleanupRestoreError, match="invalid task queue backup"):
+        restore_cleanup_backup(
+            redis_client, backup_path=backup_path, redis_db=1
+        )

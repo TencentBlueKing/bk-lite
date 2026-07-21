@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import math
 import os
 import secrets
 from dataclasses import dataclass
@@ -41,11 +42,21 @@ class CleanupExecutionError(RuntimeError):
     """The cleanup transaction failed."""
 
 
+class CleanupRestoreError(RuntimeError):
+    """A cleanup backup could not be restored safely."""
+
+
 @dataclass(frozen=True)
 class CleanupResult:
     deleted_job_count: int
     deleted_marker_count: int
     remaining_queue_jobs: int
+
+
+@dataclass(frozen=True)
+class RestoreResult:
+    restored_key_count: int
+    restored_queue_job_count: int
 
 
 @dataclass(frozen=True)
@@ -267,6 +278,7 @@ def _backup_payload(redis_client, plan: CleanupPlan, *, redis_db: int) -> dict:
         }
 
     return {
+        "format_version": 1,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "redis_db": int(redis_db),
         "mode": "all_pending" if plan.all_pending else "blocking",
@@ -317,6 +329,160 @@ def create_cleanup_backup(
             except OSError:
                 pass
         raise CleanupBackupError("failed to create task queue backup") from exc
+
+
+def backup_and_apply_cleanup(
+    redis_client, plan: CleanupPlan, *, backup_dir: Path, redis_db: int,
+) -> tuple[Path, CleanupResult]:
+    """Back up and delete one stable Redis version under a single WATCH."""
+    if not plan.selected_job_ids:
+        raise CleanupStateError("cleanup plan has no selected jobs")
+
+    try:
+        with redis_client.pipeline() as pipe:
+            pipe.watch(*plan.watch_keys)
+            try:
+                current_plan = build_cleanup_plan(
+                    pipe,
+                    all_pending=plan.all_pending,
+                    include_in_progress=plan.include_in_progress,
+                )
+                if current_plan != plan:
+                    raise CleanupDriftError("cleanup target state changed")
+                backup_path = create_cleanup_backup(
+                    pipe, plan, backup_dir=backup_dir, redis_db=redis_db,
+                )
+            except (CleanupStateError, CleanupDriftError) as exc:
+                pipe.unwatch()
+                raise CleanupDriftError(
+                    "cleanup target state changed"
+                ) from exc
+            except CleanupBackupError:
+                pipe.unwatch()
+                raise
+
+            pipe.multi()
+            pipe.zrem(QUEUE_KEY, *plan.selected_job_ids)
+            if plan.target_keys:
+                pipe.delete(*plan.target_keys)
+            pipe.zcard(QUEUE_KEY)
+            transaction_results = pipe.execute()
+    except WatchError as exc:
+        raise CleanupDriftError("cleanup target state changed") from exc
+    except (CleanupBackupError, CleanupDriftError):
+        raise
+    except Exception as exc:
+        raise CleanupExecutionError("cleanup transaction failed") from exc
+
+    return (
+        backup_path,
+        CleanupResult(
+            deleted_job_count=len(plan.selected_job_ids),
+            deleted_marker_count=len(plan.marker_items),
+            remaining_queue_jobs=int(transaction_results[-1]),
+        ),
+    )
+
+
+def _load_restore_payload(
+    backup_path: Path, *, redis_db: int
+) -> tuple[dict[bytes, tuple[int, bytes]], dict[bytes, float]]:
+    try:
+        payload = json.loads(backup_path.read_text(encoding="utf-8"))
+        if payload.get("format_version") != 1:
+            raise ValueError("unsupported backup format")
+        if int(payload["redis_db"]) != int(redis_db):
+            raise ValueError("backup Redis DB does not match")
+
+        selected_job_ids = {
+            str(job_id).encode() for job_id in payload["selected_job_ids"]
+        }
+        marker_keys = set()
+        for raw_key, raw_job_id in payload["marker_items"].items():
+            key = str(raw_key).encode()
+            job_id = str(raw_job_id).encode()
+            valid_prefix = any(
+                key.startswith(pattern.removesuffix(b"*"))
+                for pattern in (RUNNING_PATTERN, DEDUPE_PATTERN)
+            )
+            if not valid_prefix or job_id not in selected_job_ids:
+                raise ValueError("backup contains an invalid marker")
+            marker_keys.add(key)
+        allowed_keys = set(marker_keys)
+        for job_id in selected_job_ids:
+            allowed_keys.update(
+                {
+                    JOB_PREFIX + job_id,
+                    RETRY_PREFIX + job_id,
+                    IN_PROGRESS_PREFIX + job_id,
+                }
+            )
+
+        restore_keys: dict[bytes, tuple[int, bytes]] = {}
+        for raw_key, key_payload in payload["keys"].items():
+            key = str(raw_key).encode()
+            if key not in allowed_keys:
+                raise ValueError("backup contains an unexpected key")
+            pttl = int(key_payload["pttl"])
+            if pttl < -1:
+                raise ValueError("backup contains an invalid TTL")
+            ttl = 0 if pttl == -1 else max(1, pttl)
+            dumped = base64.b64decode(key_payload["dump"], validate=True)
+            restore_keys[key] = (ttl, dumped)
+
+        queue_scores: dict[bytes, float] = {}
+        for raw_job_id, raw_score in payload["queue_scores"].items():
+            job_id = str(raw_job_id).encode()
+            score = float(raw_score)
+            if job_id not in selected_job_ids or not math.isfinite(score):
+                raise ValueError("backup contains an invalid queue member")
+            queue_scores[job_id] = score
+    except Exception as exc:
+        raise CleanupRestoreError("invalid task queue backup") from exc
+
+    return restore_keys, queue_scores
+
+
+def restore_cleanup_backup(
+    redis_client, *, backup_path: Path, redis_db: int,
+) -> RestoreResult:
+    """Restore one cleanup backup without overwriting current Redis state."""
+    restore_keys, queue_scores = _load_restore_payload(
+        backup_path, redis_db=redis_db
+    )
+    watch_keys = tuple(sorted({QUEUE_KEY, *restore_keys}))
+
+    try:
+        with redis_client.pipeline() as pipe:
+            pipe.watch(*watch_keys)
+            queue_type = _type_name(pipe, QUEUE_KEY)
+            if queue_type not in {b"none", b"zset"}:
+                raise CleanupRestoreError("queue is not restorable")
+            if any(pipe.exists(key) for key in restore_keys):
+                raise CleanupRestoreError("restore target already exists")
+            if any(
+                pipe.zscore(QUEUE_KEY, job_id) is not None
+                for job_id in queue_scores
+            ):
+                raise CleanupRestoreError("queue member already exists")
+
+            pipe.multi()
+            for key, (ttl, dumped) in sorted(restore_keys.items()):
+                pipe.restore(key, ttl, dumped, replace=False)
+            if queue_scores:
+                pipe.zadd(QUEUE_KEY, queue_scores)
+            pipe.execute()
+    except WatchError as exc:
+        raise CleanupRestoreError("restore target state changed") from exc
+    except CleanupRestoreError:
+        raise
+    except Exception as exc:
+        raise CleanupRestoreError("task queue restore failed") from exc
+
+    return RestoreResult(
+        restored_key_count=len(restore_keys),
+        restored_queue_job_count=len(queue_scores),
+    )
 
 
 def apply_cleanup_plan(redis_client, plan: CleanupPlan) -> CleanupResult:

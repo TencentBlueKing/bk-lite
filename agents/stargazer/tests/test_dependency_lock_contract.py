@@ -62,6 +62,8 @@ def test_docker_context_and_runbook_expose_task_queue_cleanup_cli() -> None:
     assert "python /app/scripts/clear_task_queue.py" in readme
     assert "--all-pending" in readme
     assert "--include-in-progress" in readme
+    assert "--dispatch-stopped" in readme
+    assert "--restore-backup" in readme
     assert "FLUSHDB" in readme
 
 
