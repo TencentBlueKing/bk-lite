@@ -177,6 +177,53 @@
      ]
 },
 {
+    "name": "主机资源使用率Top10",
+    "desc": "查询当前组织权限范围内主机的CPU、内存、磁盘使用率排行榜",
+    "rest_api": "monitor/get_host_resource_top",
+    "tag": [
+      "monitor"
+    ],
+    "chart_type": [
+      "topN",
+      "table"
+    ],
+    "params": [
+      {
+        "name": "metric_type",
+        "type": "string",
+        "value": "cpu",
+        "alias_name": "指标类型",
+        "filterType": "params",
+        "required": true,
+        "inputConfig": {
+          "control": "select",
+          "componentSwitch": true,
+          "optionsSource": {
+            "type": "static",
+            "staticItems": [
+              {"label": "CPU使用率", "value": "cpu"},
+              {"label": "内存使用率", "value": "memory"},
+              {"label": "磁盘使用率", "value": "disk"}
+            ]
+          }
+        }
+      }
+    ],
+    "field_schema": [
+      {"key": "rank", "title": "排名", "value_type": "number"},
+      {"key": "display_name", "title": "主机", "value_type": "string"},
+      {"key": "usage_percent", "title": "使用率(%)", "value_type": "number"},
+      {"key": "instance_id", "title": "实例ID", "value_type": "string"},
+      {"key": "host_name", "title": "主机名", "value_type": "string"},
+      {"key": "ip", "title": "IP地址", "value_type": "string"},
+      {"key": "metric_type", "title": "指标类型", "value_type": "string"},
+      {"key": "mount", "title": "挂载点", "value_type": "string"},
+      {"key": "path", "title": "路径", "value_type": "string"},
+      {"key": "fstype", "title": "文件系统类型", "value_type": "string"},
+      {"key": "sampled_at", "title": "采样时间", "value_type": "datetime"}
+    ]
+},
+{
     "name": "监控活跃告警",
     "desc": "查询当前用户可访问范围内最新活跃告警信息，可选按监控对象收窄",
     "rest_api": "monitor/query_latest_active_alerts",

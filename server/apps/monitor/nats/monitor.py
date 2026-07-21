@@ -33,6 +33,7 @@ from apps.monitor.serializers.monitor_object import MonitorObjectSerializer, Mon
 from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
 from apps.monitor.serializers.plugin import MonitorPluginSerializer
 from apps.monitor.services.metrics import Metrics
+from apps.monitor.services.host_resource_top import HostResourceTopService, validate_metric_type
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.instance_id_keys import resolve_monitor_object_instance_id_keys
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
@@ -1138,6 +1139,31 @@ def mm_query(query: str, step="5m", *args, **kwargs):
             data.append({"name": values[0], "value": values[-1]})
         return {"result": True, "data": data, "message": ""}
     return _build_vm_query_failure_result(resp, "查询单个指标数据失败")
+
+
+@nats_client.register
+def get_host_resource_top(metric_type: str, *args, **kwargs):
+    """Return the latest authorized host CPU, memory, or disk Top10."""
+    try:
+        metric_type = validate_metric_type(metric_type)
+    except ValueError as exc:
+        return {"result": False, "data": [], "message": str(exc)}
+
+    authorized_instances, error = _get_authorized_monitor_instances(kwargs.get("user_info") or {})
+    if error:
+        return error
+    if not authorized_instances:
+        return {"result": True, "data": [], "message": ""}
+
+    try:
+        rows = HostResourceTopService(vm_api=VictoriaMetricsAPI()).run(
+            metric_type,
+            list(authorized_instances.values()),
+        )
+    except Exception:
+        logger.exception("host resource top query failed metric_type=%s", metric_type)
+        return {"result": False, "data": [], "message": "主机资源指标查询失败"}
+    return {"result": True, "data": rows, "message": ""}
 
 
 def _scope_count_queryset(qs, *, is_superuser: bool, team, org_field: str):
