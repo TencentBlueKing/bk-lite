@@ -8,6 +8,8 @@
     "start": "next start --port 3001",
     "lint": "eslint .",
     "type-check": "tsc --noEmit",
+    "test:h5-deploy": "node --test scripts/mobile-h5-deploy-config-test.mjs",
+    "test:h5-image": "node scripts/mobile-h5-image-test.mjs",
     "clean": "rm -rf .next",
     "prepare": "husky",
     "tauri": "tauri",
@@ -41,6 +43,7 @@
     "react-intl": "^7.0.1"
   },
   "devDependencies": {
+    "@next/env": "15.5.9",
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
     "@tauri-apps/cli": "^2.8.4",
