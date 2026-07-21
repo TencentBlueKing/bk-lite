@@ -5,7 +5,9 @@ import { Message } from '@/types/conversation';
 import { formatMessageTime, shouldShowTime } from '../utils/timeUtils';
 import { actionItems } from '../utils/constants';
 import { ToolCallItem } from './custom-components/ToolCallItem';
-import { ApplicationForm, InformationCard, SelectionButtons } from './index';
+import { ApplicationForm } from './custom-components/ApplicationForm';
+import { InformationCard } from './custom-components/InformationCard';
+import { SelectionButtons } from './custom-components/SelectionButtons';
 import { useTranslation } from '@/utils/i18n';
 interface MessageListProps {
     messages: Message[];
