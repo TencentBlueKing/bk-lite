@@ -159,7 +159,7 @@ def test_rebuilding_material_after_partial_page_delete_does_not_duplicate_existi
 
 
 @pytest.mark.django_db
-def test_same_title_from_different_materials_preserves_existing_body_and_sources():
+def test_same_title_from_different_materials_preserves_existing_body_and_sources(monkeypatch):
     from apps.opspilot.models import KnowledgePage, Material, PageEvidence, WikiKnowledgeBase
     from apps.opspilot.services.wiki import build_service
 
@@ -177,6 +177,15 @@ def test_same_title_from_different_materials_preserves_existing_body_and_sources
     ):
         first_record = build_service.build_from_material(first_material, llm_model_id=1)
 
+    monkeypatch.setattr(
+        build_service,
+        "_classify_page_change",
+        lambda page, page_data, llm_model_id: {
+            "same_subject": True,
+            "relation": "supplement",
+            "reason": "新资料补充了非矛盾信息",
+        },
+    )
     with (
         patch.object(build_service, "_llm_extract_facts", return_value="facts"),
         patch.object(
@@ -194,6 +203,105 @@ def test_same_title_from_different_materials_preserves_existing_body_and_sources
     assert "第一份资料正文" in body
     assert "第二份资料正文" in body
     assert PageEvidence.objects.filter(page=page).count() == 2
+
+
+@pytest.mark.django_db
+def test_llm_generate_pages_exposes_existing_page_catalog_and_preserves_match_id(monkeypatch):
+    from apps.opspilot.models import KnowledgePage, WikiKnowledgeBase
+    from apps.opspilot.services.wiki import build_service
+
+    kb = WikiKnowledgeBase.objects.create(name="kb-catalog", team=[1], purpose_md="# P", schema_md="# S")
+    existing = KnowledgePage.objects.create(
+        knowledge_base=kb,
+        page_type="concept",
+        title="出差报销流程",
+        contribution="ai",
+    )
+
+    def fake_invoke(llm_model_id, prompt):
+        assert "existing_page_id" in prompt
+        assert str(existing.id) in prompt
+        assert existing.title in prompt
+        return json.dumps(
+            {
+                "pages": [
+                    {
+                        "page_type": "concept",
+                        "title": "差旅报销",
+                        "tags": ["报销"],
+                        "body": "超过 5000 元由 Leader B 终审。",
+                        "existing_page_id": existing.id,
+                    }
+                ]
+            },
+            ensure_ascii=False,
+        )
+
+    monkeypatch.setattr(build_service, "_invoke_llm", fake_invoke)
+
+    pages = build_service._llm_generate_pages(kb, "报销规则", llm_model_id=1)
+
+    assert pages[0]["existing_page_id"] == existing.id
+
+
+@pytest.mark.django_db
+def test_build_ai_conflict_for_drifted_title_creates_review_candidate(monkeypatch):
+    from apps.opspilot.models import CheckItem, KnowledgePage, PageEvidence, PageVersion, WikiKnowledgeBase
+    from apps.opspilot.services.wiki import build_service
+
+    kb = WikiKnowledgeBase.objects.create(name="kb-ai-conflict", team=[1], purpose_md="# P", schema_md="# S")
+    material_a, version_a = _decision_material(kb, "A", "hash-a")
+    material_b, _version_b = _decision_material(kb, "B", "hash-b")
+    page = KnowledgePage.objects.create(
+        knowledge_base=kb,
+        page_type="concept",
+        title="出差报销流程",
+        contribution="ai",
+    )
+    current = PageVersion.objects.create(
+        page=page,
+        no=1,
+        body="超过 5000 元由 Leader A 终审。",
+        change_type="ai_create",
+        is_current=True,
+    )
+    page.current_version = current
+    page.save(update_fields=["current_version", "updated_at"])
+    PageEvidence.objects.create(page=page, material=material_a, material_version=version_a)
+
+    monkeypatch.setattr(build_service, "_llm_extract_facts", lambda text, llm_model_id: text)
+    monkeypatch.setattr(
+        build_service,
+        "_llm_generate_pages",
+        lambda kb, source_text, llm_model_id: [
+            {
+                "page_type": "concept",
+                "title": "差旅报销",
+                "tags": ["报销"],
+                "body": "超过 5000 元由 Leader B 终审。",
+                "existing_page_id": page.id,
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        build_service,
+        "_classify_page_change",
+        lambda page, page_data, llm_model_id: {
+            "same_subject": True,
+            "relation": "conflict",
+            "reason": "同一金额区间的最终审批人不一致",
+        },
+        raising=False,
+    )
+
+    record = build_service.build_from_material(material_b, llm_model_id=1, operator="admin")
+
+    assert record.counts == {"new": 0, "updated": 0, "unchanged": 0, "pending_review": 1}
+    assert KnowledgePage.objects.filter(knowledge_base=kb).count() == 1
+    check = CheckItem.objects.get(knowledge_base=kb, status="open")
+    assert check.related == {"pages": [page.id], "materials": [material_b.id]}
+    page.refresh_from_db()
+    assert page.current_version.body == "超过 5000 元由 Leader A 终审。"
 
 
 @pytest.mark.django_db
