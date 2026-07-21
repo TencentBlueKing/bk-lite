@@ -248,11 +248,11 @@ sudo systemctl restart stargazer-server
 ### 查看队列状态
 
 ```bash
-# 连接 Redis 查看
-redis-cli -h <host> -p <port> -a <password> -n <db>
-> KEYS task:running:*    # 查看正在执行的任务
-> ZCARD arq:queue        # 查看队列中的任务数
-> KEYS arq:result:*      # 查看任务结果
+# 在 Stargazer 容器内只读预览队列和阻塞标记
+python /app/scripts/clear_task_queue.py
+
+# 仅查看 ARQ 待执行数量
+redis-cli -h <host> -p <port> -n <db> ZCARD arq:queue
 ```
 
 ### 监控指标
@@ -260,15 +260,60 @@ redis-cli -h <host> -p <port> -a <password> -n <db>
 Redis 中的关键键：
 
 - `task:running:{task_id}` - 正在执行的任务
+- `task:dedupe:{dedupe_key}` - 采集参数去重标记，值为 ARQ job ID
 - `arq:queue` - 待执行队列
-- `arq:result:{task_id}` - 任务结果
+- `arq:job:{job_id}` - 待执行任务载荷
+- `arq:in-progress:{job_id}` - Worker 执行锁
+- `arq:result:{job_id}` - 任务结果
 
-### 清理旧数据
+### 任务队列清理 CLI
+
+当 `task:running:*` 或 `task:dedupe:*` 指向长期滞留的 ARQ job 时，新的相同任务会返回 `status=skipped`。使用镜像内置 CLI 精准清理；**禁止使用 `FLUSHDB`**，同一 Redis DB 还可能保存 callback、凭据状态和其他运行数据。
+
+默认命令是只读 dry-run，不修改 Redis：
 
 ```bash
-# 清理旧的任务结果（可选）
-python clean_old_results.py
+docker exec <stargazer-container> \
+  python /app/scripts/clear_task_queue.py
 ```
+
+确认 dry-run 中的 job ID 和数量后，清理阻塞新任务的待执行 job：
+
+```bash
+docker exec <stargazer-container> \
+  python /app/scripts/clear_task_queue.py --apply
+```
+
+显式清理 `arq:queue` 中全部安全待执行 job：
+
+```bash
+docker exec <stargazer-container> \
+  python /app/scripts/clear_task_queue.py --all-pending --apply
+```
+
+`--all-pending` 会影响默认 ARQ 队列中的全部待执行 job，可能包含 host callback processing job。执行前必须暂停新的任务下发。
+
+只有确认全部 Stargazer Worker 已在外部停止后，才允许包含相关 in-progress 状态：
+
+```bash
+docker exec <stargazer-container> \
+  python /app/scripts/clear_task_queue.py \
+  --all-pending \
+  --include-in-progress \
+  --worker-stopped \
+  --apply
+```
+
+CLI 不会自行停止 Worker；`--worker-stopped` 是操作者对外部状态的显式确认。Kubernetes 环境使用等价入口：
+
+```bash
+kubectl exec -n <namespace> <stargazer-pod> -- \
+  python /app/scripts/clear_task_queue.py
+```
+
+正式清理前会自动在 `/tmp/stargazer-task-queue-backups/` 创建 `0600` 备份；目录权限为 `0700`。备份中的 Redis DUMP 可能包含序列化任务参数或凭据，须安全复制出临时容器并按敏感制品管理。备份、状态复核或 Redis transaction 任一步失败时，CLI 都会停止删除。
+
+清理后重新启动 Worker 并下发一个任务，确认返回 `status=queued`，同时检查 Worker 日志出现 `Task received:`。CLI 的稳定退出码为：`0` 成功/无目标、`2` 参数非法、`3` Redis 读取失败、`4` 备份失败、`5` 状态漂移、`6` transaction 失败。
 
 ---
 
@@ -294,12 +339,13 @@ python clean_old_results.py
 
 2. 验证 Redis 配置是否一致
    ```bash
-   python verify_config.py
+   # Server 与 Worker 日志应显示相同的 Redis host、port 和 DB（密码只显示 ***）
+   python /app/scripts/clear_task_queue.py --json
    ```
 
 3. 检查 Redis 连接
    ```bash
-   python check_redis_status.py
+   python /app/scripts/clear_task_queue.py
    ```
 
 4. 查看 Worker 日志是否有错误

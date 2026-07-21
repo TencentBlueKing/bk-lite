@@ -2,16 +2,18 @@ import importlib
 import os
 import subprocess
 import sys
-import tomllib
 import warnings
 from importlib.metadata import version
 from pathlib import Path
 
+import tomllib
 
 STARGAZER_ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT_PATH = STARGAZER_ROOT / "pyproject.toml"
 LOCK_PATH = STARGAZER_ROOT / "uv.lock"
 DOCKERFILE_PATH = STARGAZER_ROOT / "support-files" / "docker" / "Dockerfile"
+README_PATH = STARGAZER_ROOT / "README.md"
+TASK_QUEUE_CLI_PATH = STARGAZER_ROOT / "scripts" / "clear_task_queue.py"
 
 
 def _read_toml(path: Path) -> dict:
@@ -51,8 +53,23 @@ def test_dockerfile_installs_the_locked_uv_environment() -> None:
     assert "pip3 install -e" not in dockerfile
 
 
+def test_docker_context_and_runbook_expose_task_queue_cleanup_cli() -> None:
+    dockerfile = _logical_dockerfile()
+    readme = README_PATH.read_text(encoding="utf-8")
+
+    assert TASK_QUEUE_CLI_PATH.is_file()
+    assert "ADD . ." in dockerfile
+    assert "python /app/scripts/clear_task_queue.py" in readme
+    assert "--all-pending" in readme
+    assert "--include-in-progress" in readme
+    assert "FLUSHDB" in readme
+
+
 def test_locked_sync_rejects_stale_lockfile_offline(tmp_path: Path) -> None:
-    uv_environment = {**os.environ, "UV_CACHE_DIR": str(tmp_path / ".uv-cache")}
+    uv_environment = {
+        **os.environ,
+        "UV_CACHE_DIR": str(tmp_path / ".uv-cache"),
+    }
     uv_environment.pop("VIRTUAL_ENV", None)
     pyproject_path = tmp_path / "pyproject.toml"
     pyproject_path.write_text(
@@ -105,7 +122,10 @@ def test_sanic_imports_with_the_approved_tracerite_api() -> None:
     with warnings.catch_warnings():
         warnings.filterwarnings(
             "ignore",
-            message="websockets\\.connection was renamed to websockets\\.protocol",
+            message=(
+                "websockets\\.connection was renamed to "
+                "websockets\\.protocol"
+            ),
             category=DeprecationWarning,
             module="websockets\\.connection",
         )
