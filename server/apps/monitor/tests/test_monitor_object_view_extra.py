@@ -6,9 +6,10 @@ import pytest
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 
-from apps.monitor.models import MonitorObjectOrganizationRule
+from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, MonitorObjectOrganizationRule
 from apps.monitor.models.monitor_object import MonitorObject, MonitorObjectType
 from apps.monitor.serializers.monitor_object import MonitorObjectSerializer
+from apps.monitor.views import monitor_object as monitor_object_view
 from apps.monitor.views.monitor_object import MonitorObjectViewSet
 
 pytestmark = pytest.mark.django_db
@@ -51,6 +52,96 @@ class TestMonitorObjectList:
             return len(queries)
 
         assert serialize("OVQuerySingle") == serialize("OVQueryMultiple") == 1
+
+    def test_instance_count_only_checks_permission_candidates(self, api_client, mocker):
+        allowed_object = MonitorObject.objects.create(name="OVCountAllowed", level="base")
+        fallback_object = MonitorObject.objects.create(name="OVCountFallback", level="base")
+
+        allowed_by_team = MonitorInstance.objects.create(
+            id="ov-count-team",
+            name="团队授权实例",
+            monitor_object=allowed_object,
+        )
+        allowed_explicitly = MonitorInstance.objects.create(
+            id="ov-count-explicit",
+            name="显式授权实例",
+            monitor_object=allowed_object,
+        )
+        denied = MonitorInstance.objects.create(
+            id="ov-count-denied",
+            name="无关实例",
+            monitor_object=allowed_object,
+        )
+        allowed_by_current_team = MonitorInstance.objects.create(
+            id="ov-count-current-team",
+            name="当前团队实例",
+            monitor_object=fallback_object,
+        )
+        unrelated = MonitorInstance.objects.create(
+            id="ov-count-unrelated",
+            name="范围外实例",
+            monitor_object=fallback_object,
+        )
+
+        for instance, organization in (
+            (allowed_by_team, 10),
+            (allowed_explicitly, 99),
+            (denied, 99),
+            (allowed_by_current_team, 20),
+            (unrelated, 99),
+        ):
+            MonitorInstanceOrganization.objects.create(monitor_instance=instance, organization=organization)
+
+        permissions = {
+            str(allowed_object.id): {
+                "team": [10],
+                "instance": [{"id": allowed_explicitly.id, "permission": ["View"]}],
+            }
+        }
+        mocker.patch(
+            "apps.monitor.views.monitor_object.get_permissions_rules",
+            return_value={"data": permissions, "team": [20]},
+        )
+        permission_spy = mocker.spy(monitor_object_view, "check_instance_permission")
+
+        response = api_client.get(f"{BASE}/api/monitor_object/?add_instance_count=true")
+
+        assert response.status_code == 200
+        rows = {row["name"]: row for row in response.json()["data"]}
+        assert rows[allowed_object.name]["instance_count"] == 2
+        assert rows[fallback_object.name]["instance_count"] == 1
+
+        checked_ids = {
+            call.args[1]
+            for call in permission_spy.call_args_list
+            if call.args[0] in {allowed_object.id, fallback_object.id}
+        }
+        assert checked_ids == {
+            allowed_by_team.id,
+            allowed_explicitly.id,
+            allowed_by_current_team.id,
+        }
+
+    def test_instance_count_skips_query_candidates_when_permissions_are_empty(self, api_client, mocker):
+        monitor_object = MonitorObject.objects.create(name="OVCountEmpty", level="base")
+        instance = MonitorInstance.objects.create(
+            id="ov-count-empty",
+            name="无授权实例",
+            monitor_object=monitor_object,
+        )
+        MonitorInstanceOrganization.objects.create(monitor_instance=instance, organization=99)
+        mocker.patch(
+            "apps.monitor.views.monitor_object.get_permissions_rules",
+            return_value={"data": {}, "team": []},
+        )
+        permission_spy = mocker.spy(monitor_object_view, "check_instance_permission")
+
+        response = api_client.get(f"{BASE}/api/monitor_object/?add_instance_count=true")
+
+        assert response.status_code == 200
+        rows = {row["name"]: row for row in response.json()["data"]}
+        assert rows[monitor_object.name]["instance_count"] == 0
+        assert all(call.args[1] != instance.id for call in permission_spy.call_args_list)
 
 
 class TestMonitorObjectCreate:
