@@ -33,7 +33,6 @@ def _resolve_log_group_scope(user_info):
     domain = user_info.get("domain")
     current_team = user_info.get("team")
     include_children = user_info.get("include_children", False)
-    is_superuser = user_info.get("is_superuser", False)
 
     if (
         not isinstance(username, str)
@@ -41,7 +40,6 @@ def _resolve_log_group_scope(user_info):
         or not isinstance(domain, str)
         or not domain.strip()
         or type(include_children) is not bool
-        or type(is_superuser) is not bool
     ):
         return []
 
@@ -54,7 +52,6 @@ def _resolve_log_group_scope(user_info):
         "username": username,
         "domain": domain,
         "current_team": current_team,
-        "is_superuser": is_superuser,
     }
     try:
         scope_result = SystemMgmt().get_authorized_groups_scoped(
@@ -72,7 +69,9 @@ def _resolve_log_group_scope(user_info):
     if current_team not in scope_ids:
         return []
 
-    if is_superuser:
+    # 超管身份必须来自 SystemMgmt 对持久化用户角色的服务端判定，
+    # caller user_info 中的同名字段仅是非可信上下文，不能用于授权。
+    if scope_result.get("is_superuser") is True:
         queryset = LogGroup.objects.filter(loggrouporganization__organization__in=list(scope_ids)).distinct()
         return list(queryset.only("id", "name", "rule"))
 

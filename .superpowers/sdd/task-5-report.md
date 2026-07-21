@@ -71,3 +71,11 @@ DONE
 - 差异覆盖率：相对 `c7af5098359cd52fd50f17eb7ec4799833eabff9` 为 `88%`（75 行变更，9 行未覆盖），达到 75% 门禁。
 - Black、isort、flake8、compileall、`makemigrations --check --dry-run log system_mgmt`、`git diff --check` 均通过。
 - 差异中未引入 `RawSQL`、`.raw()` 或 `cursor.execute`；告警/事件 Task 6 文件未在本轮修改。
+
+## 最终复审：NATS caller 超管伪造
+
+- RED：普通数据库用户在合法 `current_team=A` 下伪造 `user_info.is_superuser=true` 时，`log_search` 和 `log_hits` 均绕过对象权限并返回无权日志，新增两条参数化场景稳定失败。
+- 修复：`get_authorized_groups_scoped` 在响应中返回由持久化用户角色判定的 `is_superuser`；日志 NATS 不再读取或透传 caller 的同名字段，仅在服务端结果严格为 `True` 时使用超管当前组织范围，否则始终叠加日志分组对象权限。
+- 正向：数据库真实超管即使 caller 标记为 false，仍按服务端真值正常读取当前组织范围；普通用户伪造 true 时 search/hits 均返回空且不调用 VictoriaLogs。
+- 最终联合回归：`315 passed, 1 deselected`（44.92s）；唯一排除项仍为已确认的本地 `nats_client.default_registry` 依赖基线。
+- 相对 `c25ed0d81` 的生产代码差异覆盖率为 `100%`；Black、isort、flake8、compileall、迁移检查、diff 检查与原生 SQL 扫描均通过。

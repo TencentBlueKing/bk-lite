@@ -163,7 +163,7 @@ def test_resolve_log_group_scope_superuser_is_current_team_scoped(mocker):
     groups = [SimpleNamespace(id="g1", name="g1", rule=None)]
     mocker.patch(
         "apps.rpc.system_mgmt.SystemMgmt.get_authorized_groups_scoped",
-        return_value={"result": True, "data": [1]},
+        return_value={"result": True, "data": [1], "is_superuser": True},
     )
     qs = mocker.MagicMock()
     qs.filter.return_value = qs
@@ -178,12 +178,75 @@ def test_resolve_log_group_scope_superuser_is_current_team_scoped(mocker):
                 "domain": "domain.com",
                 "team": 1,
                 "include_children": False,
-                "is_superuser": True,
+                "is_superuser": False,
             }
         )
         == groups
     )
     qs.filter.assert_not_called()
+
+
+@pytest.mark.parametrize("endpoint", ["search", "hits"])
+def test_log_query_forged_superuser_still_applies_object_permission(mocker, endpoint):
+    group = SimpleNamespace(id="group-a", name="group-a", rule={})
+    mocker.patch(
+        "apps.rpc.system_mgmt.SystemMgmt.get_authorized_groups_scoped",
+        return_value={"result": True, "data": [1], "is_superuser": False},
+    )
+    permission_rpc = mocker.patch.object(
+        nats_log,
+        "get_permission_rules",
+        return_value={"team": [], "instance": []},
+    )
+
+    forged_superuser_queryset = mocker.MagicMock()
+    forged_superuser_queryset.distinct.return_value = forged_superuser_queryset
+    forged_superuser_queryset.only.return_value = [group]
+    mocker.patch.object(
+        nats_log.LogGroup.objects,
+        "filter",
+        return_value=forged_superuser_queryset,
+    )
+
+    permission_queryset = mocker.MagicMock()
+    permission_queryset.filter.return_value = permission_queryset
+    permission_queryset.distinct.return_value = permission_queryset
+    permission_queryset.only.return_value = []
+    mocker.patch.object(
+        nats_log,
+        "permission_filter",
+        return_value=permission_queryset,
+    )
+    mocker.patch.object(
+        nats_log.LogGroupQueryBuilder,
+        "build_query_with_groups",
+        return_value=("SCOPED", []),
+    )
+    mocker.patch.object(nats_log, "format_time_iso", side_effect=lambda value: value)
+    victoria_logs = mocker.patch.object(nats_log, "VictoriaMetricsAPI")
+    victoria_logs.return_value.query.return_value = [{"message": "leaked"}]
+    victoria_logs.return_value.hits.return_value = {"hits": [{"timestamps": ["t1"], "values": [1]}]}
+    user_info = {
+        "user": "ordinary-user",
+        "domain": "domain.com",
+        "team": 1,
+        "include_children": False,
+        "is_superuser": True,
+    }
+
+    if endpoint == "search":
+        result = nats_log.log_search("q", ("start", "end"), user_info=user_info)
+    else:
+        result = nats_log.log_hits(
+            "q",
+            ("start", "end"),
+            "host",
+            user_info=user_info,
+        )
+
+    assert result == {"result": True, "data": [], "message": ""}
+    permission_rpc.assert_called_once()
+    victoria_logs.assert_not_called()
 
 
 def test_resolve_log_group_scope_filters_accessible_groups(mocker):

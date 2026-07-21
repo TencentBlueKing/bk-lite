@@ -46,7 +46,7 @@ def test_get_authorized_groups_scoped_prefers_actor_context_group_list(monkeypat
         }
     )
 
-    assert result == {"result": True, "data": [7]}
+    assert result == {"result": True, "data": [7], "is_superuser": False}
     assert captured == {
         "user_group_list": [7],
         "target_group_id": 7,
@@ -83,7 +83,7 @@ def test_get_authorized_groups_scoped_rejects_forged_superuser_claim(monkeypatch
         }
     )
 
-    assert result == {"result": True, "data": []}
+    assert result == {"result": True, "data": [], "is_superuser": False}
 
 
 def test_get_authorized_groups_scoped_uses_persisted_superuser_flag(monkeypatch):
@@ -115,7 +115,7 @@ def test_get_authorized_groups_scoped_uses_persisted_superuser_flag(monkeypatch)
         }
     )
 
-    assert result == {"result": True, "data": [1]}
+    assert result == {"result": True, "data": [1], "is_superuser": True}
 
 
 @pytest.mark.django_db
