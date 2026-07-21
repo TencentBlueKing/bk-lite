@@ -2,6 +2,7 @@ from django.db.models import Count, F, Q
 
 from apps.core.utils.permission_utils import get_instance_permission_map, get_permission_rules, permission_filter
 from apps.core.utils.team_utils import get_current_team
+from apps.core.utils.user_group import normalize_user_group_ids
 from apps.core.utils.web_utils import WebUtils
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models.sidecar import ChildConfig, CollectorConfiguration, Node
@@ -268,11 +269,12 @@ def authorize_target_organizations(request, node, organizations):
         return None
 
     user_group_list = getattr(user, "group_list", []) or []
-    if not user_group_list:
+    user_group_ids = normalize_user_group_ids(user_group_list)
+    if not user_group_ids:
         return WebUtils.response_403("User does not have permission to assign nodes to these organizations")
 
     from apps.system_mgmt.utils.group_utils import GroupUtils
-    allowed_orgs = set(GroupUtils.get_group_with_descendants(user_group_list))
+    allowed_orgs = set(GroupUtils.get_group_with_descendants(user_group_ids))
 
     if not target_orgs.issubset(allowed_orgs):
         return WebUtils.response_403("User does not have permission to assign nodes to these organizations")

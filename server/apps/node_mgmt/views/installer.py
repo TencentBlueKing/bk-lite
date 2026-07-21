@@ -6,6 +6,7 @@ from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.web_utils import WebUtils
 from apps.node_mgmt.constants.installer import InstallerConstants
 from apps.node_mgmt.models.installer import CollectorTask, CollectorTaskNode
+from apps.node_mgmt.models.sidecar import Node
 from apps.node_mgmt.serializers.installer import (
     ControllerInstallRequestSerializer,
     ControllerManualInstallRequestSerializer,
@@ -22,8 +23,17 @@ from apps.node_mgmt.tasks.installer import (
     timeout_controller_install_task,
     CONTROLLER_INSTALL_TASK_TIMEOUT_SECONDS,
 )
-from apps.node_mgmt.utils.permission import authorize_node_ids, get_authorized_node_queryset
+from apps.node_mgmt.utils.permission import (
+    authorize_node_ids,
+    authorize_target_organizations,
+    get_authorized_node_queryset,
+)
 from apps.node_mgmt.utils.task_result_schema import normalize_task_result_for_read
+
+
+def _authorize_install_organizations(request, nodes):
+    organizations = [organization for node in nodes for organization in node.get("organizations", [])]
+    return authorize_target_organizations(request, None, organizations)
 
 
 class InstallerViewSet(ViewSet):
@@ -33,6 +43,9 @@ class InstallerViewSet(ViewSet):
         serializer = ControllerInstallRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = cast(dict[str, Any], serializer.validated_data)
+        error_response = _authorize_install_organizations(request, data["nodes"])
+        if error_response:
+            return error_response
         node_ids = [node["node_id"] for node in data["nodes"] if node.get("node_id")]
         if node_ids:
             _, error_response = authorize_node_ids(request, node_ids)
@@ -91,6 +104,9 @@ class InstallerViewSet(ViewSet):
         serializer = ControllerManualInstallRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = cast(dict[str, Any], serializer.validated_data)
+        error_response = _authorize_install_organizations(request, data["nodes"])
+        if error_response:
+            return error_response
         cpu_architecture = data["cpu_architecture"]
         result = []
         for node in data["nodes"]:
@@ -223,6 +239,13 @@ class InstallerViewSet(ViewSet):
         serializer = InstallCommandRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = cast(dict[str, Any], serializer.validated_data)
+        error_response = authorize_target_organizations(request, None, data.get("organizations", []))
+        if error_response:
+            return error_response
+        if Node.objects.filter(id=data["node_id"]).exists():
+            _, error_response = authorize_node_ids(request, [data["node_id"]])
+            if error_response:
+                return error_response
         data = InstallerService.get_install_command(
             request.user.username,
             data["ip"],
