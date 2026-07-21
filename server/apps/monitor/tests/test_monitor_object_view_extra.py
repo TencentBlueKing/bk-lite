@@ -111,11 +111,7 @@ class TestMonitorObjectList:
         assert rows[allowed_object.name]["instance_count"] == 2
         assert rows[fallback_object.name]["instance_count"] == 1
 
-        checked_ids = {
-            call.args[1]
-            for call in permission_spy.call_args_list
-            if call.args[0] in {allowed_object.id, fallback_object.id}
-        }
+        checked_ids = {call.args[1] for call in permission_spy.call_args_list if call.args[0] in {allowed_object.id, fallback_object.id}}
         assert checked_ids == {
             allowed_by_team.id,
             allowed_explicitly.id,
@@ -133,6 +129,55 @@ class TestMonitorObjectList:
         mocker.patch(
             "apps.monitor.views.monitor_object.get_permissions_rules",
             return_value={"data": {}, "team": []},
+        )
+        permission_spy = mocker.spy(monitor_object_view, "check_instance_permission")
+
+        response = api_client.get(f"{BASE}/api/monitor_object/?add_instance_count=true")
+
+        assert response.status_code == 200
+        rows = {row["name"]: row for row in response.json()["data"]}
+        assert rows[monitor_object.name]["instance_count"] == 0
+        assert all(call.args[1] != instance.id for call in permission_spy.call_args_list)
+
+    def test_instance_count_keeps_all_team_permission_semantics(self, api_client, mocker):
+        monitor_object = MonitorObject.objects.create(name="OVCountAllTeam", level="base")
+        allowed = MonitorInstance.objects.create(
+            id="ov-count-all-team",
+            name="全局团队授权实例",
+            monitor_object=monitor_object,
+        )
+        unrelated = MonitorInstance.objects.create(
+            id="ov-count-all-unrelated",
+            name="全局范围外实例",
+            monitor_object=monitor_object,
+        )
+        MonitorInstanceOrganization.objects.create(monitor_instance=allowed, organization=30)
+        MonitorInstanceOrganization.objects.create(monitor_instance=unrelated, organization=99)
+        mocker.patch(
+            "apps.monitor.views.monitor_object.get_permissions_rules",
+            return_value={"data": {"all": {"team": [30]}}, "team": []},
+        )
+        permission_spy = mocker.spy(monitor_object_view, "check_instance_permission")
+
+        response = api_client.get(f"{BASE}/api/monitor_object/?add_instance_count=true")
+
+        assert response.status_code == 200
+        rows = {row["name"]: row for row in response.json()["data"]}
+        assert rows[monitor_object.name]["instance_count"] == 1
+        checked_ids = {call.args[1] for call in permission_spy.call_args_list if call.args[0] == monitor_object.id}
+        assert checked_ids == {allowed.id}
+
+    def test_instance_count_ignores_invalid_team_candidate(self, api_client, mocker):
+        monitor_object = MonitorObject.objects.create(name="OVCountInvalidTeam", level="base")
+        instance = MonitorInstance.objects.create(
+            id="ov-count-invalid-team",
+            name="非法团队候选实例",
+            monitor_object=monitor_object,
+        )
+        MonitorInstanceOrganization.objects.create(monitor_instance=instance, organization=10)
+        mocker.patch(
+            "apps.monitor.views.monitor_object.get_permissions_rules",
+            return_value={"data": {str(monitor_object.id): {"team": ["not-a-team"]}}, "team": []},
         )
         permission_spy = mocker.spy(monitor_object_view, "check_instance_permission")
 

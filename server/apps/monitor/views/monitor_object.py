@@ -39,15 +39,25 @@ def _normalize_candidate_values(values):
     return normalized
 
 
+def _normalize_candidate_team_ids(values):
+    normalized = set()
+    for value in _normalize_candidate_values(values):
+        try:
+            normalized.add(int(value))
+        except (TypeError, ValueError):
+            continue
+    return normalized
+
+
 def _build_instance_count_queryset(instance_permissions, cur_team):
-    candidate_teams = _normalize_candidate_values(cur_team)
+    candidate_teams = _normalize_candidate_team_ids(cur_team)
     candidate_instance_ids = set()
 
     if isinstance(instance_permissions, dict):
         for permission in instance_permissions.values():
             if not isinstance(permission, dict):
                 continue
-            candidate_teams.update(_normalize_candidate_values(permission.get("team", [])))
+            candidate_teams.update(_normalize_candidate_team_ids(permission.get("team", [])))
             candidate_instance_ids.update(_normalize_candidate_values(permission.get("instance", [])))
 
     queryset = MonitorInstance.objects.filter(is_deleted=False).prefetch_related("monitorinstanceorganization_set")
