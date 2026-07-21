@@ -212,6 +212,7 @@ def test_group_member_validation_rejects_unsupported_id_type_and_batches_over_fi
 
 
 def test_group_request_logs_no_authorization_header(caplog):
+    endpoint = "https://provider.example/chats/oc_sensitive?member_id_type=open_id"
     with caplog.at_level(logging.INFO), mock.patch(
         "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
         return_value=("tenant-secret-token", None),
@@ -220,7 +221,7 @@ def test_group_request_logs_no_authorization_header(caplog):
         return_value=FakeResponse({"code": 0, "data": {"chat_id": "oc_1"}}),
     ):
         FeishuIMGroupAdapter.create_group(
-            config={},
+            config={"im_group_create_chat_url": endpoint},
             provider_key="feishu",
             capability_key="im_group",
             group_name="DB",
@@ -232,3 +233,38 @@ def test_group_request_logs_no_authorization_header(caplog):
 
     assert "Authorization" not in caplog.text
     assert "tenant-secret-token" not in caplog.text
+    assert endpoint not in caplog.text
+    assert "open_id" not in caplog.text
+    assert "status=200" not in caplog.text
+    assert "stage=group_request" in caplog.text
+    assert "error_code=ok" in caplog.text
+    assert "request_id=req-1" in caplog.text
+    assert "member_count=1" in caplog.text
+
+
+def test_group_request_exception_logs_only_whitelisted_fields(caplog):
+    exception_text = "request failed at https://provider.example/chats/oc_secret?token=secret"
+    with caplog.at_level(logging.WARNING), mock.patch(
+        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        return_value=("tenant-secret-token", None),
+    ), mock.patch(
+        "apps.system_mgmt.providers.adapters.feishu.requests.post",
+        side_effect=requests.RequestException(exception_text),
+    ):
+        result = FeishuIMGroupAdapter.add_members(
+            config={},
+            provider_key="feishu",
+            capability_key="im_group",
+            chat_id="oc_1",
+            member_ids=["ou_user"],
+            member_id_type="open_id",
+        )
+
+    assert result.success is False
+    assert exception_text not in caplog.text
+    assert "tenant-secret-token" not in caplog.text
+    assert "open_id" not in caplog.text
+    assert "stage=group_request" in caplog.text
+    assert "error_code=provider.request_failed" in caplog.text
+    assert "request_id=" in caplog.text
+    assert "member_count=1" in caplog.text
