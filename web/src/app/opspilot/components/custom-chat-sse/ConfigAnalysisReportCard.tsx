@@ -1,6 +1,7 @@
 import React from 'react';
 
 import { ConfigAnalysisReport, ConfigAnalysisReportItem, ConfigAnalysisSeveritySection } from '@/app/opspilot/types/global';
+import { getConfigAnalysisSummaryText } from './configAnalysisReportSummary';
 
 interface ConfigAnalysisReportCardProps {
   report: ConfigAnalysisReport;
@@ -176,14 +177,16 @@ const ConfigAnalysisReportCard: React.FC<ConfigAnalysisReportCardProps> = ({ rep
   const hasIssues = severitySections.length > 0 || problematicCount > 0;
   const hasIssueDetails = severitySections.length > 0 || recommendationRows.length > 0;
   const degradedCount = severitySections.filter(section => section.degraded).length;
-  const summaryText =
-    report.summary.top_recommendation?.trim() ||
-    (hasIssues
-      ? '当前报告返回了问题统计，但结构化明细暂未返回，请结合原始扫描结果继续排查。'
-      : '当前扫描结果未发现明显风险，暂无额外修复建议。');
+  const summaryText = getConfigAnalysisSummaryText({
+    problematicCount,
+    hasIssueDetails,
+    topRecommendation: report.summary.top_recommendation,
+  });
   const scopeItems = [
     report.scope?.cluster_name || report.cluster_name,
-    report.scope?.namespace ? `命名空间：${report.scope.namespace}` : null,
+    report.scope?.namespace
+      ? `命名空间：${Array.isArray(report.scope.namespace) ? report.scope.namespace.join('、') : report.scope.namespace}`
+      : null,
     report.scope?.instance_name ? `实例：${report.scope.instance_name}` : null,
     report.scope?.target_name
       ? `对象：${report.scope.target_name}`

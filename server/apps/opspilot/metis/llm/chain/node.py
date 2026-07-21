@@ -944,106 +944,8 @@ class ToolsNodes(BasicNode):
             merged = merge_analysis_results(parsed_list) if len(parsed_list) > 1 else parsed_list[0]
             self._emit_report_event(capability, merged, event_dispatcher=event_dispatcher)
 
-        # 联动 emit:analysis 出完之后,如果 repair_diff_report 能力也启了,自动出 summary diff
-        # 卡片(不依赖 LLM 调 generate_repair_report)。这样在 Gemma/Gemini 这些
-        # 不严格服从 system prompt "必须调 user_choice → repair_report" 的模型上,
-        # 用户也能直接看到修复建议清单。关掉就在 capabilities 里删 repair_diff_report。
-        if self._has_report_capability("repair_diff_report") and accumulated.get("config_analysis_report"):
-            from apps.opspilot.metis.llm.chain.report_renderers.k8s import (
-                build_summary_diff_from_analysis,
-            )
-            analysis_merged = accumulated["config_analysis_report"]
-            # skill_id 由 caller(_post_process_tool_results 形参)透传,caller 在
-            # deep_wrapper_node:2799 已用 getattr(graph_request, "skill_id", None) 解析;
-            # 拿不到就 None,k8s renderer 自己兜底不依赖 skill_id。
-            if len(analysis_merged) == 1:
-                summary_payload = build_summary_diff_from_analysis(analysis_merged[0], skill_id=skill_id)
-            else:
-                summary_payload = build_summary_diff_from_analysis(
-                    merge_analysis_results(analysis_merged), skill_id=skill_id,
-                )
-            if summary_payload:
-                if event_dispatcher is not None:
-                    try:
-                        import asyncio as _asyncio
-                        coro = event_dispatcher("repair_diff_report", summary_payload)
-                        try:
-                            _asyncio.get_running_loop()
-                        except RuntimeError:
-                            _asyncio.run(coro)
-                        else:
-                            _asyncio.ensure_future(coro)
-                    except Exception as e:
-                        logger.warning(f"auto-dispatch summary diff (async) failed: {e}")
-                else:
-                    try:
-                        from langchain_core.callbacks import dispatch_custom_event
-                        dispatch_custom_event("repair_diff_report", summary_payload)
-                    except Exception as e:
-                        logger.warning(f"auto-dispatch summary diff failed: {e}")
-
-                # 顺手出 report_file_download(.docx 文件下载),前端 ReportDownloadCard
-                # 自动渲染。docx 用 summary diff items 转 raw_items 喂现有 report_generator。
-                # 完全同步执行,小集群下 < 1s,大集群可能稍长但加 try/except 兜底。
-                try:
-                    from datetime import datetime
-                    from apps.opspilot.metis.llm.tools.kubernetes.report_generator import (
-                        generate_k8s_report_docx,
-                    )
-                    from apps.opspilot.services.generated_file_delivery_service import (
-                        build_generated_file_download_event,
-                    )
-
-                    raw_items = [
-                        {
-                            "namespace": str(item.get("namespace") or "all"),
-                            "target_name": str(item.get("workload_name") or "unknown"),
-                            "target_type": str(item.get("workload_type") or "Deployment"),
-                            "severity": str(item.get("severity") or "info"),
-                            "summary": str(item.get("summary") or ""),
-                            "category": "summary_diff",
-                        }
-                        for item in summary_payload.get("items", [])
-                    ]
-                    report_data = {
-                        "cluster_name": summary_payload.get("cluster_name") or "Kubernetes",
-                        "raw_items": raw_items,
-                    }
-                    docx_bytes = generate_k8s_report_docx(report_data)
-                    if docx_bytes:
-                        cluster = report_data["cluster_name"]
-                        filename = (
-                            f"K8S配置检查报告_{cluster}_"
-                            f"{datetime.now().strftime('%Y%m%d')}.docx"
-                        )
-                        download_event = build_generated_file_download_event(
-                            filename=filename,
-                            content_bytes=docx_bytes,
-                            mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        )
-                        if event_dispatcher is not None:
-                            try:
-                                import asyncio as _asyncio_dl
-                                coro = event_dispatcher("report_file_download", download_event)
-                                try:
-                                    _asyncio_dl.get_running_loop()
-                                except RuntimeError:
-                                    _asyncio_dl.run(coro)
-                                else:
-                                    _asyncio_dl.ensure_future(coro)
-                            except Exception as e:
-                                logger.warning(f"auto-dispatch docx report (async) failed: {e}")
-                        else:
-                            try:
-                                from langchain_core.callbacks import dispatch_custom_event
-                                dispatch_custom_event("report_file_download", download_event)
-                            except Exception as e:
-                                logger.warning(f"auto-dispatch docx report failed: {e}")
-                except Exception as e:
-                    logger.warning(f"auto-dispatch docx report failed: {e}")
-
     def _filter_basic_k8s_analysis_loop_calls(self, tool_calls: list, analysis_cache: dict) -> tuple[list, bool]:
-        if self._enable_config_analysis_report() or self._enable_repair_diff_report():
+        if self._enable_config_analysis_report() and self._enable_repair_diff_report():
             return tool_calls, False
         if not analysis_cache.get("deployments"):
             return tool_calls, False
@@ -1277,6 +1179,7 @@ class ToolsNodes(BasicNode):
             question: str,
             question_type: str,
             options: Optional[List[str]] = None,
+            config: RunnableConfig = None,
         ) -> str:
             from apps.opspilot.metis.llm.tools.common.user_choice_guard import validate_user_choice_options
             from apps.opspilot.metis.llm.tools.kubernetes.user_choice_guard import build_kubernetes_cluster_choice_guard
@@ -1341,7 +1244,7 @@ class ToolsNodes(BasicNode):
             }
 
             try:
-                dispatch_custom_event("user_choice_request", choice_request_data)
+                dispatch_custom_event("user_choice_request", choice_request_data, config=config)
             except Exception:
                 pass
 
@@ -1372,6 +1275,7 @@ class ToolsNodes(BasicNode):
                         "selected": selected,
                         "source": source,
                     },
+                    config=config,
                 )
             except Exception:
                 pass
@@ -2163,7 +2067,67 @@ class ToolsNodes(BasicNode):
         kb_tool = self._build_knowledge_retrieve_tool(graph_request)
         if kb_tool is not None:
             tools.append(kb_tool)
+
+        # Kubernetes 修复闭环是双 capability 的组合能力。迁移到 DeepAgent 后，
+        # 这三个本地工具不会再由旧 ReAct 节点自动注入，必须在这里显式加入；
+        # 缺少任一 capability 时均不暴露，避免普通分析或单独 diff 能力触发选择流程。
+        if self._enable_config_analysis_report() and self._enable_repair_diff_report():
+            existing_names = {getattr(tool, "name", "") for tool in tools}
+            repair_tools = [
+                self._build_choice_tool(),
+                self._build_bulk_repair_tool(),
+                self._build_diff_report_tool(),
+            ]
+            tools.extend(tool for tool in repair_tools if tool.name not in existing_names)
         return tools
+
+    async def _run_pending_k8s_repair_workflow(self, messages: list, config: RunnableConfig) -> bool:
+        """模型漏调选择工具时，确定性完成“选择 → 修复对比”闭环。"""
+        if not (self._enable_config_analysis_report() and self._enable_repair_diff_report()):
+            return False
+
+        analysis = find_pending_k8s_analysis_choice(messages)
+        if not analysis:
+            return False
+
+        choice_tool = self._build_choice_tool()
+        configurable = (config or {}).get("configurable", {})
+        choice_func = getattr(choice_tool, "_request_choice_func", None)
+        if choice_func is not None:
+            choice_func._configurable = configurable
+            choice_func._execution_id = configurable.get("execution_id", "")
+            choice_func._node_id = configurable.get("node_id") or "skill_test"
+
+        choice_result = await choice_tool.ainvoke(build_repair_mode_choice_args(analysis), config=config)
+        group_by = self._normalize_repair_group_by(str(choice_result or ""))
+
+        from apps.opspilot.metis.llm.tools.kubernetes.analysis import (
+            _take_cached_k8s_analysis_details,
+        )
+
+        configurable = (config or {}).get("configurable", {})
+        deployments = (
+            analysis.get("_deployments_full")
+            or _take_cached_k8s_analysis_details(configurable.get("execution_id", ""))
+            or []
+        )
+        analysis_cache = {
+            "deployments": deployments if isinstance(deployments, list) else [],
+            "cluster_name": analysis.get("cluster_name") or "Kubernetes",
+        }
+        repair_tool = self._build_bulk_repair_tool(analysis_cache)
+        await repair_tool.ainvoke(
+            {
+                "title": "K8S 配置修复对比",
+                "context_name": analysis_cache["cluster_name"],
+                "items": [],
+                "target_names": [],
+                "expected_target_count": int(analysis.get("problematic") or 0),
+                "group_by": group_by,
+            },
+            config=config,
+        )
+        return True
 
     def _build_knowledge_retrieve_tool(self, graph_request):
         """构建 agent 可调用的 knowledge_retrieve 工具（双模式中的“工具模式”）。
@@ -2725,6 +2689,7 @@ class ToolsNodes(BasicNode):
                     skill_id=getattr(graph_request, "skill_id", None),
                     event_dispatcher=_emit_via_async_config,
                 )
+                await self._run_pending_k8s_repair_workflow(new_messages, config)
             except Exception:
                 # PPR 失败时 re-raise,让上层 langgraph 走正常 ERROR 处理路径
                 raise
