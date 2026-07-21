@@ -61,3 +61,23 @@ class BaseIMNotificationAdapter(BaseCapabilityAdapter):
     @classmethod
     def send_message(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
         return CapabilityExecutionResult.not_implemented(capability_key, "send_message")
+
+
+class BaseIMGroupAdapter(BaseCapabilityAdapter):
+    capability_key = "im_group"
+
+    @classmethod
+    def create_group(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
+        return CapabilityExecutionResult.not_implemented(capability_key, "create_group")
+
+    @classmethod
+    def get_group(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
+        return CapabilityExecutionResult.not_implemented(capability_key, "get_group")
+
+    @classmethod
+    def add_members(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
+        return CapabilityExecutionResult.not_implemented(capability_key, "add_members")
+
+    @classmethod
+    def send_group_message(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
+        return CapabilityExecutionResult.not_implemented(capability_key, "send_group_message")

@@ -6,7 +6,7 @@ from urllib.parse import urlencode
 
 from apps.core.logger import logger
 
-from .base import BaseIMNotificationAdapter, BaseLoginAuthAdapter, BaseUserSyncAdapter
+from .base import BaseIMGroupAdapter, BaseIMNotificationAdapter, BaseLoginAuthAdapter, BaseUserSyncAdapter
 from ..runtime import CapabilityExecutionResult
 
 FEISHU_TOKEN_URL = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
@@ -17,6 +17,9 @@ FEISHU_AUTH_USER_INFO_URL = "https://open.feishu.cn/open-apis/authen/v1/user_inf
 FEISHU_DEPARTMENT_CHILDREN_URL = "https://open.feishu.cn/open-apis/contact/v3/departments/{department_id}/children"
 FEISHU_USERS_BY_DEPARTMENT_URL = "https://open.feishu.cn/open-apis/contact/v3/users/find_by_department"
 FEISHU_SEND_MESSAGE_URL = "https://open.feishu.cn/open-apis/im/v1/messages"
+FEISHU_CREATE_CHAT_URL = "https://open.feishu.cn/open-apis/im/v1/chats"
+FEISHU_CHAT_URL = "https://open.feishu.cn/open-apis/im/v1/chats/{chat_id}"
+FEISHU_CHAT_MEMBERS_URL = "https://open.feishu.cn/open-apis/im/v1/chats/{chat_id}/members"
 FEISHU_TOKEN_REFRESH_WINDOW = 300
 _FEISHU_TENANT_TOKEN_CACHE = {}
 _FEISHU_TENANT_TOKEN_CACHE_LOCK = Lock()
@@ -198,6 +201,103 @@ def _fetch_tenant_access_token(config: dict, force_refresh: bool = False):
             "expires_at": current_time + max(expires_in, 0),
         }
         return token, None
+
+
+def _validate_group_members(member_id_type: str, member_ids: list[str]):
+    if member_id_type not in {"user_id", "open_id"}:
+        return CapabilityExecutionResult.failed_result(
+            "Feishu group member_id_type must be user_id or open_id",
+            code="provider.invalid_config",
+            field="member_id_type",
+        )
+    if len(member_ids) > 50:
+        return CapabilityExecutionResult.failed_result(
+            "Feishu group requests support at most 50 members per batch",
+            code="provider.invalid_config",
+            field="member_ids",
+        )
+    return None
+
+
+def _execute_feishu_group_request(*, config: dict, method: str, url: str, params: dict, payload: dict | None, success_payload):
+    tenant_access_token, error = _fetch_tenant_access_token(config)
+    if error:
+        return error
+
+    try:
+        request_kwargs = {
+            "headers": {
+                "Authorization": f"Bearer {tenant_access_token}",
+                "Content-Type": "application/json; charset=utf-8",
+            },
+            "params": params,
+            "timeout": FEISHU_TIMEOUT,
+        }
+        if payload is not None:
+            request_kwargs["json"] = payload
+        request = requests.get if method == "get" else requests.post
+        response = request(url, **request_kwargs)
+        data = response.json()
+    except requests.Timeout:
+        logger.warning("Feishu IM group request timed out")
+        return CapabilityExecutionResult.failed_result(
+            "Feishu IM group request timed out",
+            code="provider.timeout",
+            retryable=True,
+        )
+    except requests.RequestException as request_error:
+        logger.warning(f"Feishu IM group request failed: {request_error}")
+        return CapabilityExecutionResult.failed_result(
+            "Feishu IM group request failed",
+            code="provider.request_failed",
+            retryable=True,
+        )
+    except ValueError:
+        logger.warning("Feishu IM group response returned invalid JSON")
+        return CapabilityExecutionResult.failed_result(
+            "Feishu IM group response returned invalid JSON",
+            code="provider.invalid_response",
+        )
+
+    request_id = response.headers.get("X-Tt-Logid", "")
+    logger.info(
+        f"Feishu IM group response: url={url}, method={method}, status={response.status_code}, "
+        f"request_id={request_id}, params={params}"
+    )
+    if response.status_code == 404:
+        return CapabilityExecutionResult.failed_result(
+            (data or {}).get("msg") or "Feishu group was not found",
+            code="provider.group_not_found",
+            external_code=str((data or {}).get("code") or response.status_code),
+            external_request_id=request_id,
+        )
+    if response.status_code in (401, 403):
+        return CapabilityExecutionResult.failed_result(
+            (data or {}).get("msg") or "Feishu group request is unauthorized",
+            code="provider.auth_failed",
+            external_code=str((data or {}).get("code") or response.status_code),
+            external_request_id=request_id,
+        )
+    if response.status_code == 429 or response.status_code >= 500:
+        return CapabilityExecutionResult.failed_result(
+            (data or {}).get("msg") or "Feishu group request failed",
+            code="provider.request_failed",
+            retryable=True,
+            external_code=str((data or {}).get("code") or response.status_code),
+            external_request_id=request_id,
+        )
+    if response.status_code != 200 or (data or {}).get("code") not in (0, None):
+        return CapabilityExecutionResult.failed_result(
+            (data or {}).get("msg") or "Feishu group request failed",
+            code="provider.request_failed",
+            external_code=str((data or {}).get("code") or response.status_code),
+            external_request_id=request_id,
+        )
+
+    return CapabilityExecutionResult.success_result(
+        "Feishu IM group request succeeded",
+        payload=success_payload(data or {}, request_id),
+    )
 
 
 def _feishu_get_paginated(url: str, token: str, *, params: dict | None = None, config: dict | None = None):
@@ -649,3 +749,94 @@ class FeishuIMNotificationAdapter(BaseIMNotificationAdapter):
                 payload={"sent_count": sent_count, "failures": failures},
             )
         return CapabilityExecutionResult.success_result("Feishu IM message sent", payload={"sent_count": sent_count})
+
+
+class FeishuIMGroupAdapter(BaseIMGroupAdapter):
+    capability_key = "im_group"
+
+    @classmethod
+    def test_connection(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
+        return _request_tenant_access_token(config, capability_key)
+
+    @classmethod
+    def create_group(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
+        member_id_type = kwargs["member_id_type"]
+        member_ids = list(dict.fromkeys(kwargs.get("member_ids") or []))
+        validation_error = _validate_group_members(member_id_type, member_ids)
+        if validation_error:
+            return validation_error
+        return _execute_feishu_group_request(
+            config=config,
+            method="post",
+            url=_get_config_value(config, "im_group_create_chat_url", FEISHU_CREATE_CHAT_URL),
+            params={"user_id_type": member_id_type},
+            payload={
+                "name": kwargs["group_name"],
+                "owner_id": kwargs["owner_id"],
+                "user_id_list": member_ids,
+                "chat_mode": "group",
+                "chat_type": "private",
+                "set_bot_manager": True,
+                "uuid": kwargs["idempotency_key"],
+            },
+            success_payload=lambda data, request_id: {
+                "chat_id": str((data.get("data") or {}).get("chat_id") or ""),
+                "external_request_id": request_id,
+            },
+        )
+
+    @classmethod
+    def get_group(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
+        chat_id = kwargs["chat_id"]
+        return _execute_feishu_group_request(
+            config=config,
+            method="get",
+            url=_get_config_value(config, "im_group_chat_url", FEISHU_CHAT_URL).format(chat_id=chat_id),
+            params={},
+            payload=None,
+            success_payload=lambda data, request_id: {
+                "chat_id": str((data.get("data") or {}).get("chat_id") or chat_id),
+                "external_request_id": request_id,
+            },
+        )
+
+    @classmethod
+    def add_members(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
+        member_id_type = kwargs["member_id_type"]
+        member_ids = list(dict.fromkeys(kwargs.get("member_ids") or []))
+        validation_error = _validate_group_members(member_id_type, member_ids)
+        if validation_error:
+            return validation_error
+        result = _execute_feishu_group_request(
+            config=config,
+            method="post",
+            url=_get_config_value(config, "im_group_members_url", FEISHU_CHAT_MEMBERS_URL).format(chat_id=kwargs["chat_id"]),
+            params={"member_id_type": member_id_type},
+            payload={"id_list": member_ids},
+            success_payload=lambda data, request_id: {
+                "invalid_member_ids": list((data.get("data") or {}).get("invalid_id_list") or []),
+                "external_request_id": request_id,
+            },
+        )
+        if result.success and result.payload["invalid_member_ids"]:
+            result.partial_success = True
+        return result
+
+    @classmethod
+    def send_group_message(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
+        chat_id = kwargs["chat_id"]
+        return _execute_feishu_group_request(
+            config=config,
+            method="post",
+            url=_get_config_value(config, "im_group_send_message_url", FEISHU_SEND_MESSAGE_URL),
+            params={"receive_id_type": "chat_id"},
+            payload={
+                "receive_id": chat_id,
+                "msg_type": "text",
+                "content": json.dumps({"text": kwargs["content"]}, ensure_ascii=False),
+            },
+            success_payload=lambda data, request_id: {
+                "chat_id": str(chat_id),
+                "external_request_id": request_id,
+            },
+        )
