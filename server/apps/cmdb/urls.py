@@ -1,5 +1,7 @@
+from django.urls import path
 from rest_framework import routers
 
+from apps.cmdb.open_api import views as open_views
 from apps.cmdb.views.change_record import ChangeRecordViewSet
 from apps.cmdb.views.classification import ClassificationViewSet
 from apps.cmdb.views.collect import CollectModelViewSet, OidModelViewSet
@@ -38,4 +40,46 @@ router.register(r"open_api/k8s_setup", K8sSetupOpenViewSet, basename="k8s_setup_
 router.register(r"api/custom_reporting/tasks", CustomReportingTaskViewSet, basename="custom_reporting_tasks")
 router.register(r"api/custom_reporting/ingest", CustomReportingIngestViewSet, basename="custom_reporting_ingest")
 
-urlpatterns = router.urls
+open_api_patterns = [
+    path("api/open/classifications", open_views.OpenClassificationListView.as_view()),
+    path("api/open/models", open_views.OpenModelListView.as_view()),
+    path("api/open/models/<str:model_id>", open_views.OpenModelDetailView.as_view()),
+    path(
+        "api/open/models/<str:model_id>/attributes",
+        open_views.OpenModelAttrsView.as_view(),
+    ),
+    path(
+        "api/open/models/<str:model_id>/associations",
+        open_views.OpenModelAssociationsView.as_view(),
+    ),
+    path(
+        "api/open/models/<str:model_id>/instances",
+        open_views.OpenInstanceCollectionView.as_view(),
+    ),
+    path(
+        "api/open/models/<str:model_id>/instances/batch_create",
+        open_views.OpenBatchCreateView.as_view(),
+    ),
+    path(
+        "api/open/models/<str:model_id>/instances/batch_update",
+        open_views.OpenBatchUpdateView.as_view(),
+    ),
+    path(
+        "api/open/models/<str:model_id>/instances/batch_delete",
+        open_views.OpenBatchDeleteView.as_view(),
+    ),
+    path(
+        "api/open/models/<str:model_id>/instances/<int:inst_id>",
+        open_views.OpenInstanceDetailView.as_view(),
+    ),
+    path(
+        "api/open/models/<str:model_id>/instances/<int:inst_id>/associations",
+        open_views.OpenInstanceAssociationsView.as_view(),
+    ),
+    path(
+        "api/open/models/<str:model_id>/instances/<int:inst_id>/associations/<int:association_id>",
+        open_views.OpenInstanceAssociationDetailView.as_view(),
+    ),
+]
+
+urlpatterns = open_api_patterns + router.urls
