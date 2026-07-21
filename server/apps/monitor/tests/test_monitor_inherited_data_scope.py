@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from apps.monitor.models import MonitorAlert, MonitorAlertMetricSnapshot, MonitorEvent, MonitorEventRawData, PolicyInstanceBaseline
-from apps.monitor.models.monitor_object import MonitorInstance, MonitorObject
+from apps.monitor.models.monitor_object import MonitorInstance, MonitorInstanceOrganization, MonitorObject
 from apps.monitor.models.monitor_policy import MonitorPolicy, PolicyOrganization
 from apps.monitor.nats import monitor as monitor_nats
 
@@ -27,6 +27,13 @@ def _policy(name, organizations):
     )
     PolicyOrganization.objects.bulk_create([PolicyOrganization(policy=policy, organization=organization) for organization in organizations])
     return policy
+
+
+def _patch_nats_scope(mocker, organization_ids):
+    return mocker.patch(
+        "apps.monitor.nats.monitor.SystemMgmt.get_authorized_groups_scoped",
+        return_value={"result": True, "data": list(organization_ids)},
+    )
 
 
 @pytest.fixture
@@ -96,6 +103,30 @@ def test_foreign_alert_update_is_hidden_and_has_zero_side_effect(scoped_superuse
     alert.refresh_from_db()
     assert alert.status == "new"
     assert alert.operation_logs == []
+
+
+def test_alert_update_rejects_policy_reassignment_before_notification(scoped_superuser, mocker):
+    current_policy = _policy("update-current-policy", [1])
+    sibling_policy = _policy("update-sibling-policy", [2])
+    alert = MonitorAlert.objects.create(
+        policy_id=current_policy.id,
+        monitor_instance_id="update-current-instance",
+        status="new",
+    )
+    notifier = mocker.patch("apps.monitor.views.monitor_alert.AlertLifecycleNotifier")
+
+    response = scoped_superuser.patch(
+        f"{BASE}/api/monitor_alert/{alert.id}/",
+        {"policy_id": sibling_policy.id, "status": "closed"},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    alert.refresh_from_db()
+    assert alert.policy_id == current_policy.id
+    assert alert.status == "new"
+    assert alert.operation_logs == []
+    notifier.return_value.notify_alerts.assert_not_called()
 
 
 def test_snapshot_policy_mismatch_is_hidden_before_s3_read(scoped_superuser, mocker):
@@ -220,6 +251,7 @@ def test_nats_statistics_superuser_inherits_policy_current_team(mocker):
         "apps.monitor.nats.monitor.get_permissions_rules",
         return_value={"data": {"all": {"team": [1]}}, "team": [1]},
     )
+    _patch_nats_scope(mocker, [1])
 
     response = monitor_nats.get_monitor_statistics(
         user_info={
@@ -247,7 +279,90 @@ def test_nats_statistics_missing_actor_scope_fails_closed():
     assert response["data"] == {}
 
 
+def test_nats_statistics_rejects_forged_sibling_current_team(mocker):
+    _policy("nats-authorized-policy", [1])
+    sibling_policy = _policy("nats-forged-sibling-policy", [2])
+    sibling_instance = MonitorInstance.objects.create(
+        id="nats-forged-sibling-instance",
+        name="nats-forged-sibling-instance",
+        monitor_object=sibling_policy.monitor_object,
+        is_active=True,
+    )
+    MonitorInstanceOrganization.objects.create(
+        monitor_instance=sibling_instance,
+        organization=2,
+    )
+    MonitorAlert.objects.create(
+        policy_id=sibling_policy.id,
+        monitor_instance_id=sibling_instance.id,
+        status="new",
+    )
+    authorized_scope = mocker.patch(
+        "apps.rpc.system_mgmt.SystemMgmt.get_authorized_groups_scoped",
+        side_effect=lambda actor_context, include_children=False: {
+            "result": True,
+            "data": [1] if actor_context["current_team"] == 1 else [],
+        },
+    )
+    mocker.patch(
+        "apps.monitor.nats.monitor.get_permissions_rules",
+        return_value={"data": {"all": {"team": [2]}}, "team": [2]},
+    )
+
+    response = monitor_nats.get_monitor_statistics(
+        user_info={
+            "user": SimpleNamespace(username="team-a-user", domain="domain.com"),
+            "team": 2,
+            "is_superuser": False,
+            "include_children": False,
+        }
+    )
+
+    assert response["result"] is False
+    assert response["data"] == {}
+    authorized_scope.assert_called_once()
+
+
+def test_nats_statistics_keeps_authorized_regular_user_scope(mocker):
+    policy = _policy("nats-authorized-regular-policy", [1])
+    instance = MonitorInstance.objects.create(
+        id="nats-authorized-regular-instance",
+        name="nats-authorized-regular-instance",
+        monitor_object=policy.monitor_object,
+        is_active=True,
+    )
+    MonitorInstanceOrganization.objects.create(
+        monitor_instance=instance,
+        organization=1,
+    )
+    MonitorAlert.objects.create(
+        policy_id=policy.id,
+        monitor_instance_id=instance.id,
+        status="new",
+    )
+    _patch_nats_scope(mocker, [1])
+    mocker.patch(
+        "apps.monitor.nats.monitor.get_permissions_rules",
+        return_value={"data": {"all": {"team": [1]}}, "team": [2]},
+    )
+
+    response = monitor_nats.get_monitor_statistics(
+        user_info={
+            "user": SimpleNamespace(username="team-a-user", domain="domain.com"),
+            "team": 1,
+            "is_superuser": False,
+            "include_children": False,
+        }
+    )
+
+    assert response["result"] is True
+    assert response["data"]["policy_total"] == 1
+    assert response["data"]["monitor_instance_total"] == 1
+    assert response["data"]["alert_history"] == 1
+
+
 def _patch_nats_alert_permissions(mocker):
+    _patch_nats_scope(mocker, [1])
     mocker.patch(
         "apps.monitor.nats.monitor.get_permission_rules",
         return_value={"team": [1], "instance": []},
@@ -266,6 +381,98 @@ def _patch_nats_alert_permissions(mocker):
         "is_superuser": True,
         "include_children": False,
     }
+
+
+def _patch_forged_nats_alert_permissions(mocker):
+    authorized_scope = _patch_nats_scope(mocker, [])
+    instance_permissions = mocker.patch(
+        "apps.monitor.nats.monitor.get_permission_rules",
+        return_value={"team": [2], "instance": []},
+    )
+    mocker.patch(
+        "apps.monitor.nats.monitor.get_permissions_rules",
+        return_value={"data": {"all": {"team": [2]}}, "team": [2]},
+    )
+    mocker.patch(
+        "apps.monitor.nats.monitor.permission_filter",
+        side_effect=lambda model, permission, **kwargs: model.objects.all(),
+    )
+    return (
+        authorized_scope,
+        instance_permissions,
+        {
+            "user": SimpleNamespace(username="team-a-user", domain="domain.com"),
+            "team": 2,
+            "is_superuser": False,
+            "include_children": False,
+        },
+    )
+
+
+def test_nats_alert_segments_rejects_forged_sibling_current_team(mocker):
+    from datetime import datetime, timezone
+
+    sibling_policy = _policy("segment-forged-sibling-policy", [2])
+    sibling_instance = MonitorInstance.objects.create(
+        id="segment-forged-sibling-instance",
+        name="segment-forged-sibling-instance",
+        monitor_object=sibling_policy.monitor_object,
+        is_active=True,
+    )
+    MonitorInstanceOrganization.objects.create(
+        monitor_instance=sibling_instance,
+        organization=2,
+    )
+    MonitorAlert.objects.create(
+        policy_id=sibling_policy.id,
+        monitor_instance_id=sibling_instance.id,
+        start_event_time=datetime(2026, 1, 1, 12, tzinfo=timezone.utc),
+    )
+    authorized_scope, instance_permissions, user_info = _patch_forged_nats_alert_permissions(mocker)
+
+    response = monitor_nats.query_monitor_alert_segments(
+        {
+            "monitor_obj_id": sibling_policy.monitor_object_id,
+            "start": "2026-01-01 00:00:00",
+            "end": "2026-01-02 00:00:00",
+        },
+        user_info=user_info,
+    )
+
+    assert response["result"] is False
+    assert response["data"] == {}
+    authorized_scope.assert_called_once()
+    instance_permissions.assert_not_called()
+
+
+def test_nats_latest_alerts_rejects_forged_sibling_current_team(mocker):
+    sibling_policy = _policy("latest-forged-sibling-policy", [2])
+    sibling_instance = MonitorInstance.objects.create(
+        id="latest-forged-sibling-instance",
+        name="latest-forged-sibling-instance",
+        monitor_object=sibling_policy.monitor_object,
+        is_active=True,
+    )
+    MonitorInstanceOrganization.objects.create(
+        monitor_instance=sibling_instance,
+        organization=2,
+    )
+    MonitorAlert.objects.create(
+        policy_id=sibling_policy.id,
+        monitor_instance_id=sibling_instance.id,
+        status="new",
+    )
+    authorized_scope, instance_permissions, user_info = _patch_forged_nats_alert_permissions(mocker)
+
+    response = monitor_nats.query_latest_active_alerts(
+        {"monitor_obj_id": sibling_policy.monitor_object_id},
+        user_info=user_info,
+    )
+
+    assert response["result"] is False
+    assert response["data"] == {}
+    authorized_scope.assert_called_once()
+    instance_permissions.assert_not_called()
 
 
 def test_nats_alert_segments_also_inherit_policy_root(mocker):

@@ -14,7 +14,7 @@ from apps.core.utils.web_utils import WebUtils
 from apps.monitor.constants.permission import PermissionConstants
 from apps.monitor.filters.monitor_alert import MonitorAlertFilter
 from apps.monitor.models import MonitorAlert, MonitorAlertMetricSnapshot, MonitorEvent, MonitorEventRawData, MonitorPolicy, PolicyInstanceBaseline
-from apps.monitor.serializers.monitor_alert import MonitorAlertSerializer
+from apps.monitor.serializers.monitor_alert import MonitorAlertSerializer, MonitorAlertUpdateSerializer
 from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
 from apps.monitor.services.alert_lifecycle_notify import AlertLifecycleNotifier
 from apps.monitor.services.chart_unit import convert_snapshots_copy, resolve_chart_unit
@@ -127,6 +127,11 @@ class MonitorAlertViewSet(
     serializer_class = MonitorAlertSerializer
     filterset_class = MonitorAlertFilter
     pagination_class = CustomPageNumberPagination
+
+    def get_serializer_class(self):
+        if self.action in ("update", "partial_update"):
+            return MonitorAlertUpdateSerializer
+        return super().get_serializer_class()
 
     def get_queryset(self):
         """所有入口均从受限策略根派生告警 queryset。"""

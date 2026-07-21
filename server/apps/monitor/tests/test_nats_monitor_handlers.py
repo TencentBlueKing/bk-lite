@@ -16,6 +16,18 @@ from apps.monitor.nats import monitor as nm
 pytestmark = pytest.mark.django_db
 
 
+@pytest.fixture(autouse=True)
+def authorized_current_team_scope(mocker):
+    """既有 handler 规格默认提供一个经 Task1 RPC 认证的当前组织。"""
+    return mocker.patch(
+        "apps.monitor.nats.monitor.SystemMgmt.get_authorized_groups_scoped",
+        side_effect=lambda actor_context, include_children=False: {
+            "result": True,
+            "data": [actor_context["current_team"]],
+        },
+    )
+
+
 class TestMonitorObjectsHandler:
     def test_returns_all_objects(self):
         MonitorObject.objects.create(name="NMObj1", level="base")
