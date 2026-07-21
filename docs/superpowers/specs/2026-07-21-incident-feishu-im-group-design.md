@@ -148,6 +148,7 @@ class IMGroupProvider(Protocol):
 | `external_chat_id` | 飞书 `chat_id`，创建成功后立即落库 |
 | `external_owner_id` | 建群负责人外部 ID 快照 |
 | `status` | 群绑定状态，见状态机 |
+| `active_slot` | 有效绑定固定为 `1`，已解绑历史为 `NULL`，用于跨数据库唯一约束 |
 | `current_stage` | `queued/creating_chat/adding_members/sending_summary/completed`，用于展示服务端确认的异步阶段 |
 | `continuous_sync_enabled` | 用户配置的持续同步开关 |
 | `resume_after_reopen` | Incident 关闭前是否应在重开后恢复 |
@@ -158,7 +159,7 @@ class IMGroupProvider(Protocol):
 | `created_by`、时间字段 | 创建和变更审计 |
 | `unlinked_at/by` | 解绑记录 |
 
-数据库使用条件唯一约束保证一个 Incident 至多一个未解绑绑定。渠道删除前，服务层应阻止删除仍被有效绑定引用的渠道；历史绑定允许保留快照并将外键置空。
+数据库以普通唯一约束 `(incident, active_slot)` 保证一个 Incident 至多一个有效绑定：非 `unlinked` 绑定固定写入 `active_slot=1`，解绑历史写入 `active_slot=NULL`。该方案不依赖条件唯一索引，适用于 PostgreSQL、MySQL 和 SQLite；服务层的批量 `QuerySet.update()` 必须同步更新 `status` 与 `active_slot`。渠道删除前，服务层应阻止删除仍被有效绑定引用的渠道；历史绑定允许保留快照并将外键置空。
 
 #### `IncidentIMMember`
 

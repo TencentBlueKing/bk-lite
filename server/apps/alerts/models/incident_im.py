@@ -1,7 +1,6 @@
 import uuid
 
 from django.db import models
-from django.db.models import Q
 
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
@@ -45,6 +44,7 @@ class IncidentIMGroup(MaintainerInfo, TimeInfo):
     external_chat_id = models.CharField(max_length=255, blank=True, default="", db_index=True)
     external_owner_id = models.CharField(max_length=255, blank=True, default="")
     status = models.CharField(max_length=32, choices=Status.choices, default=Status.PENDING_CREATE, db_index=True)
+    active_slot = models.PositiveSmallIntegerField(null=True, default=1, editable=False)
     current_stage = models.CharField(max_length=32, choices=Stage.choices, default=Stage.QUEUED)
     continuous_sync_enabled = models.BooleanField(default=True)
     resume_after_reopen = models.BooleanField(default=False)
@@ -59,11 +59,16 @@ class IncidentIMGroup(MaintainerInfo, TimeInfo):
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=["incident"],
-                condition=~Q(status="unlinked"),
+                fields=["incident", "active_slot"],
                 name="unique_active_incident_im_group",
             )
         ]
+
+    def save(self, *args, **kwargs):
+        self.active_slot = None if self.status == self.Status.UNLINKED else 1
+        if kwargs.get("update_fields") is not None:
+            kwargs["update_fields"] = set(kwargs["update_fields"]) | {"active_slot"}
+        return super().save(*args, **kwargs)
 
 
 class IncidentIMMember(TimeInfo):

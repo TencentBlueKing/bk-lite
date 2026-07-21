@@ -445,6 +445,7 @@ class IncidentIMGroup(MaintainerInfo, TimeInfo):
     external_chat_id = models.CharField(max_length=255, blank=True, default="", db_index=True)
     external_owner_id = models.CharField(max_length=255, blank=True, default="")
     status = models.CharField(max_length=32, choices=Status.choices, default=Status.PENDING_CREATE, db_index=True)
+    active_slot = models.PositiveSmallIntegerField(null=True, default=1, editable=False)
     current_stage = models.CharField(max_length=32, choices=Stage.choices, default=Stage.QUEUED)
     continuous_sync_enabled = models.BooleanField(default=True)
     resume_after_reopen = models.BooleanField(default=False)
@@ -457,7 +458,7 @@ class IncidentIMGroup(MaintainerInfo, TimeInfo):
     unlinked_by = models.CharField(max_length=32, blank=True, default="")
 ```
 
-`IncidentIMMember` 定义角色、映射和同步枚举，唯一约束 `(group, username)`；为 `(group, sync_status)` 和 `(group, mapping_status)` 建索引。群模型增加条件唯一约束：`fields=["incident"]`、`condition=~Q(status="unlinked")`。文件显式导入 `uuid`，保证后续 `group.id.hex` 可用于飞书幂等键。
+`IncidentIMMember` 定义角色、映射和同步枚举，唯一约束 `(group, username)`；为 `(group, sync_status)` 和 `(group, mapping_status)` 建索引。群模型以普通唯一约束 `fields=["incident", "active_slot"]` 跨数据库保证单一有效绑定：非 `unlinked` 绑定的 `active_slot=1`，解绑历史的 `active_slot=NULL`，因此允许多个历史解绑记录；模型 `save()` 按 `status` 派生槽位，后续服务如使用 `QuerySet.update()` 必须同时更新 `active_slot`。文件显式导入 `uuid`，保证后续 `group.id.hex` 可用于飞书幂等键。
 
 - [ ] **Step 4: 生成并检查迁移**
 
@@ -962,7 +963,7 @@ cd server && MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KE
 
 - [ ] **Step 3: 实现操作和审计**
 
-`set_continuous_sync` 开启后立即对账，关闭只改变配置；`pause` 仅允许 active/active_partial；`resume` 仅允许 manual pause，并立即对账；`retry` 对 degraded 先调用 get_group，对正常/部分成功重新解析待处理成员；`unlink` 拒绝 pending/creating、非 completed stage 或存在 adding 成员，返回 `IM_GROUP_BUSY`，严格比对群名后置 unlinked。Outbox handler 遇到 unlinked 必须无外部调用直接成功，因此不删除、不伪造已投递状态，也不调用任何飞书删除 API。
+`set_continuous_sync` 开启后立即对账，关闭只改变配置；`pause` 仅允许 active/active_partial；`resume` 仅允许 manual pause，并立即对账；`retry` 对 degraded 先调用 get_group，对正常/部分成功重新解析待处理成员；`unlink` 拒绝 pending/creating、非 completed stage 或存在 adding 成员，返回 `IM_GROUP_BUSY`，严格比对群名后必须在同一事务写入 `status=unlinked` 和 `active_slot=NULL`。新建有效绑定默认 `active_slot=1`。Outbox handler 遇到 unlinked 必须无外部调用直接成功，因此不删除、不伪造已投递状态，也不调用任何飞书删除 API。
 
 每个动作调用 `record_operator_log`，`target_type=LogTargetType.INCIDENT`，overview 分别为创建、创建结果、持续同步设置、暂停、恢复、重试、补拉结果、解绑。成员结果审计只写成功/失败数量，不写外部 ID 列表。
 

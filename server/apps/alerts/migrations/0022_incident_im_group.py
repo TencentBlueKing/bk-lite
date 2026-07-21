@@ -49,6 +49,7 @@ class Migration(migrations.Migration):
                         max_length=32,
                     ),
                 ),
+                ("active_slot", models.PositiveSmallIntegerField(default=1, editable=False, null=True)),
                 (
                     "current_stage",
                     models.CharField(
@@ -102,8 +103,7 @@ class Migration(migrations.Migration):
             options={
                 "constraints": [
                     models.UniqueConstraint(
-                        condition=models.Q(("status", "unlinked"), _negated=True),
-                        fields=("incident",),
+                        fields=("incident", "active_slot"),
                         name="unique_active_incident_im_group",
                     )
                 ],

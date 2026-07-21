@@ -52,7 +52,8 @@ def make_group(incident, channel, status):
 
 @pytest.mark.django_db
 def test_incident_has_only_one_non_unlinked_im_group(incident, channel):
-    make_group(incident, channel, status=IncidentIMGroup.Status.ACTIVE)
+    current = make_group(incident, channel, status=IncidentIMGroup.Status.ACTIVE)
+    assert current.active_slot == 1
     with pytest.raises(IntegrityError):
         with transaction.atomic():
             make_group(incident, channel, status=IncidentIMGroup.Status.PENDING_CREATE)
@@ -60,9 +61,33 @@ def test_incident_has_only_one_non_unlinked_im_group(incident, channel):
 
 @pytest.mark.django_db
 def test_unlinked_history_allows_new_binding(incident, channel):
-    make_group(incident, channel, status=IncidentIMGroup.Status.UNLINKED)
+    first = make_group(incident, channel, status=IncidentIMGroup.Status.UNLINKED)
+    second = make_group(incident, channel, status=IncidentIMGroup.Status.UNLINKED)
     current = make_group(incident, channel, status=IncidentIMGroup.Status.PENDING_CREATE)
+    assert first.active_slot is None
+    assert second.active_slot is None
     assert current.status == IncidentIMGroup.Status.PENDING_CREATE
+    assert current.active_slot == 1
+
+
+@pytest.mark.django_db
+def test_status_save_derives_active_slot(incident, channel):
+    group = make_group(incident, channel, status=IncidentIMGroup.Status.ACTIVE)
+    group.status = IncidentIMGroup.Status.UNLINKED
+    group.save()
+
+    group.refresh_from_db()
+    assert group.active_slot is None
+
+
+def test_group_unique_constraint_uses_cross_database_active_slot():
+    constraint = next(
+        item
+        for item in IncidentIMGroup._meta.constraints
+        if item.name == "unique_active_incident_im_group"
+    )
+    assert constraint.fields == ("incident", "active_slot")
+    assert constraint.condition is None
 
 
 @pytest.mark.django_db
