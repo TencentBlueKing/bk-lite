@@ -14,12 +14,14 @@
       "type": "input",
       "required": true,
       "description": "指定当前程序的版本详情",
+      "guide_short": "Kafka Broker 协议版本，默认 2.0.0；不同版本在 idempotent / transactional 协议上有差异，需与 broker 实际版本对齐。",
       "widget_props": {
         "placeholder": "2.0.0"
       },
       "transform_on_edit": {
         "origin_path": "child.env_config.KAFKA_VERSION__{{config_id}}"
-      }
+      },
+      "label_en": "Version"
     },
     {
       "name": "ENV_SASL_ENABLED",
@@ -28,6 +30,7 @@
       "required": false,
       "default_value": false,
       "description": "是否启用 SASL 认证（用户名和密码）",
+      "guide_short": "是否启用 SASL 认证。开启后下发 sasl.enabled；关闭时空串。Kafka SASL 默认走 PLAIN。",
       "transform_on_create": {
         "mapping": {
           "true": "--sasl.enabled",
@@ -53,7 +56,8 @@
             "false": ""
           }
         }
-      }
+      },
+      "label_en": "Enable Authentication"
     },
     {
       "name": "ENV_SASL_USERNAME",
@@ -61,8 +65,10 @@
       "type": "input",
       "required": true,
       "description": "用于访问接口的用户名",
+      "guide_short": "SASL 用户名。启用认证时必填。Kafka 7.0+ 推荐 SCRAM-SHA-256/512；需在 broker 端 bin/kafka-configs.sh 创建。",
       "widget_props": {
-        "placeholder": "用户名"
+        "placeholder": "用户名",
+        "placeholder_en": "Username"
       },
       "dependency": {
         "field": "ENV_SASL_ENABLED",
@@ -70,7 +76,9 @@
       },
       "transform_on_edit": {
         "origin_path": "child.env_config.SASL_USERNAME__{{config_id}}"
-      }
+      },
+      "label_en": "Username",
+      "description_en": "Username for accessing the interface"
     },
     {
       "name": "ENV_SASL_PASSWORD",
@@ -78,8 +86,10 @@
       "type": "password",
       "required": true,
       "description": "对应的登录密码",
+      "guide_short": "SASL 密码。含 # @ 等特殊字符务必通过 password 字段下发，不要拼到 SASL_USERNAME 或其他 ENV。",
       "widget_props": {
-        "placeholder": "密码"
+        "placeholder": "密码",
+        "placeholder_en": "Password"
       },
       "dependency": {
         "field": "ENV_SASL_ENABLED",
@@ -87,7 +97,9 @@
       },
       "transform_on_edit": {
         "origin_path": "child.env_config.SASL_PASSWORD__{{config_id}}"
-      }
+      },
+      "label_en": "Password",
+      "description_en": "Corresponding login password"
     },
     {
       "name": "ENV_SASL_MECHANISM",
@@ -95,12 +107,14 @@
       "type": "input",
       "required": false,
       "description": "用于处理和响应通过发布端口接收的请求，包括请求的解析、处理和返回结果的完整流程",
+      "guide_short": "SASL 机制：plain / sha256 / sha512 / gssapi；不填走 PLAIN。AKS/Strimzi 部署需 KafkaUser 的 authentication.type 与之匹配。",
       "widget_props": {
         "placeholder": "plain"
       },
       "transform_on_edit": {
         "origin_path": "child.env_config.SASL_MECHANISM__{{config_id}}"
-      }
+      },
+      "label_en": "Operation Mode"
     },
     {
       "name": "ENV_LISTEN_PORT",
@@ -109,14 +123,17 @@
       "required": true,
       "visible_in": "edit",
       "description": "指定程序运行时应监听的端口号，用于接受外部请求和连接",
+      "guide_short": "kafka_exporter 本地暴露 /metrics 的端口，默认 9308；多实例需分配不同端口；与 Kafka Broker 端口 9092 不是同一个。",
       "widget_props": {
         "min": 1,
         "precision": 0,
-        "placeholder": "监听端口"
+        "placeholder": "监听端口",
+        "placeholder_en": "Listen Port"
       },
       "transform_on_edit": {
         "origin_path": "child.env_config.LISTEN_PORT__{{config_id}}"
-      }
+      },
+      "label_en": "Listen Port"
     },
     {
       "name": "ENV_KAFKA_SERVER",
@@ -125,12 +142,14 @@
       "required": true,
       "visible_in": "edit",
       "description": "监控对象的服务器地址",
+      "guide_short": "Kafka Broker 的 host:port，如 kafka:9092；broker 必须能被访问到 advertised.listeners 设的地址，否则 exporter 报 no advertised brokers。",
       "widget_props": {
         "placeholder": "kafka:9092"
       },
       "transform_on_edit": {
         "origin_path": "child.env_config.KAFKA_SERVER__{{config_id}}"
-      }
+      },
+      "label_en": "Server Address"
     },
     {
       "name": "ENV_TOPIC_FILTER",
@@ -139,12 +158,14 @@
       "required": false,
       "default_value": ".*",
       "description": "按正则包含要采集的 Topic",
+      "guide_short": "Topic 包含正则，默认 .*；regex 不匹配将不出维度。topic 数量大时用前缀如 ^prod_ 减少开销。",
       "widget_props": {
         "placeholder": ".*"
       },
       "transform_on_edit": {
         "origin_path": "child.env_config.TOPIC_FILTER__{{config_id}}"
-      }
+      },
+      "label_en": "Topic Include"
     },
     {
       "name": "ENV_TOPIC_EXCLUDE",
@@ -153,12 +174,14 @@
       "required": false,
       "default_value": "^$",
       "description": "按正则排除不需要采集的 Topic",
+      "guide_short": "Topic 排除正则，默认 ^$（不排除）；例如 ^_internal 排除系统内部 topic。",
       "widget_props": {
         "placeholder": "^$"
       },
       "transform_on_edit": {
         "origin_path": "child.env_config.TOPIC_EXCLUDE__{{config_id}}"
-      }
+      },
+      "label_en": "Topic Exclude"
     },
     {
       "name": "ENV_GROUP_FILTER",
@@ -167,12 +190,14 @@
       "required": false,
       "default_value": ".*",
       "description": "按正则包含要采集的消费组",
+      "guide_short": "消费组包含正则，默认 .*；按需用 ^prod_ 等前缀收敛。账号需 Describe Group 权限。",
       "widget_props": {
         "placeholder": ".*"
       },
       "transform_on_edit": {
         "origin_path": "child.env_config.GROUP_FILTER__{{config_id}}"
-      }
+      },
+      "label_en": "Consumer Group Include"
     },
     {
       "name": "ENV_GROUP_EXCLUDE",
@@ -181,12 +206,14 @@
       "required": false,
       "default_value": "^$",
       "description": "按正则排除不需要采集的消费组",
+      "guide_short": "消费组排除正则，默认 ^$；例如 ^test- 排除测试组。",
       "widget_props": {
         "placeholder": "^$"
       },
       "transform_on_edit": {
         "origin_path": "child.env_config.GROUP_EXCLUDE__{{config_id}}"
-      }
+      },
+      "label_en": "Consumer Group Exclude"
     },
     {
       "name": "interval",
@@ -195,11 +222,13 @@
       "required": true,
       "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
+      "guide_short": "Telegraf inputs.prometheus 抓取周期，单位秒，默认 60；不要小于 10 防止 Describe Group 高频请求影响 broker。",
       "widget_props": {
         "min": 1,
         "precision": 0,
         "placeholder": "间隔",
-        "addonAfter": "s"
+        "addonAfter": "s",
+        "placeholder_en": "Interval"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.interval",
@@ -209,7 +238,9 @@
         "to_api": {
           "suffix": "s"
         }
-      }
+      },
+      "label_en": "Interval",
+      "description_en": "Collection time interval (unit: seconds)"
     }
   ],
   "table_columns": [
@@ -219,9 +250,11 @@
       "type": "select",
       "required": true,
       "widget_props": {
-        "placeholder": "请选择节点"
+        "placeholder": "请选择节点",
+        "placeholder_en": "Please select node"
       },
-      "enable_row_filter": false
+      "enable_row_filter": false,
+      "label_en": "Node"
     },
     {
       "name": "ENV_LISTEN_PORT",
@@ -231,8 +264,10 @@
       "widget_props": {
         "min": 1,
         "precision": 0,
-        "placeholder": "监听端口"
-      }
+        "placeholder": "监听端口",
+        "placeholder_en": "Listen Port"
+      },
+      "label_en": "Listen Port"
     },
     {
       "name": "ENV_KAFKA_SERVER",
@@ -248,7 +283,8 @@
           "ENV_KAFKA_SERVER"
         ],
         "target_field": "instance_name"
-      }
+      },
+      "label_en": "Server Address"
     },
     {
       "name": "instance_name",
@@ -257,8 +293,10 @@
       "required": true,
       "widget_props": {
         "placeholder": "实例名称",
-        "disabled": false
-      }
+        "disabled": false,
+        "placeholder_en": "Instance Name"
+      },
+      "label_en": "Instance Name"
     },
     {
       "name": "group_ids",
@@ -266,8 +304,10 @@
       "type": "group_select",
       "required": false,
       "widget_props": {
-        "placeholder": "请选择组"
-      }
+        "placeholder": "请选择组",
+        "placeholder_en": "Please select group"
+      },
+      "label_en": "Group"
     }
   ]
 }

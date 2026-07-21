@@ -16,12 +16,14 @@
       "visible_in": "edit",
       "editable": false,
       "description": "监控的目标网址链接，以检测其可用性和性能",
+      "guide_short": "Nginx stub_status 端点 URL，常见 http://<host>/stub_status 或 /nginx_status；Nginx 必须编译 --with-http_stub_status_module。",
       "widget_props": {
         "placeholder": "http://example.com/stub_status"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.urls[0]"
-      }
+      },
+      "label_en": "URL"
     },
     {
       "name": "interval",
@@ -30,11 +32,13 @@
       "required": true,
       "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
+      "guide_short": "Telegraf inputs.nginx 采集周期，单位秒，默认 60；过短会高频抓 stub_status。",
       "widget_props": {
         "min": 1,
         "precision": 0,
         "placeholder": "间隔",
-        "addonAfter": "s"
+        "addonAfter": "s",
+        "placeholder_en": "Interval"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.interval",
@@ -44,7 +48,9 @@
         "to_api": {
           "suffix": "s"
         }
-      }
+      },
+      "label_en": "Interval",
+      "description_en": "Collection time interval (unit: seconds)"
     }
   ],
   "table_columns": [
@@ -54,9 +60,11 @@
       "type": "select",
       "required": true,
       "widget_props": {
-        "placeholder": "请选择节点"
+        "placeholder": "请选择节点",
+        "placeholder_en": "Please select node"
       },
-      "enable_row_filter": false
+      "enable_row_filter": false,
+      "label_en": "Node"
     },
     {
       "name": "url",
@@ -80,7 +88,8 @@
           "url"
         ],
         "target_field": "instance_name"
-      }
+      },
+      "label_en": "URL"
     },
     {
       "name": "instance_name",
@@ -89,8 +98,10 @@
       "required": true,
       "widget_props": {
         "placeholder": "实例名称",
-        "disabled": false
-      }
+        "disabled": false,
+        "placeholder_en": "Instance Name"
+      },
+      "label_en": "Instance Name"
     },
     {
       "name": "group_ids",
@@ -98,8 +109,10 @@
       "type": "group_select",
       "required": false,
       "widget_props": {
-        "placeholder": "请选择组"
-      }
+        "placeholder": "请选择组",
+        "placeholder_en": "Please select group"
+      },
+      "label_en": "Group"
     }
   ]
 }

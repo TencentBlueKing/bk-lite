@@ -424,20 +424,105 @@ class WorkFlowConversationHistory(models.Model):
         ]
 
 
+class BotWebChatSession(models.Model):
+    """Bot Web 对话会话元数据。
+
+    承载会话级元数据与会话可见性授权：
+    - session_id: 与 WorkFlowConversationHistory.session_id 一致的 UUID 字符串
+    - participants: 干系人 user_id 列表；web 端授权依据
+    - source: 会话来源（nats / web_chat / mobile）
+
+    当 NATS 触发节点 expose_as_web_chat=true 时，NATS 路径会创建该行；
+    web_chat / mobile 入口暂未启用该模型（保留扩展位）。
+    """
+
+    SOURCE_NATS = "nats"
+    SOURCE_WEB_CHAT = "web_chat"
+    SOURCE_MOBILE = "mobile"
+
+    SOURCE_CHOICES = [
+        (SOURCE_NATS, "NATS"),
+        (SOURCE_WEB_CHAT, "Web Chat"),
+        (SOURCE_MOBILE, "Mobile"),
+    ]
+
+    session_id = models.CharField(max_length=100, primary_key=True, verbose_name="会话ID")
+    bot_id = models.IntegerField(verbose_name="机器人ID", db_index=True)
+    node_id = models.CharField(max_length=100, verbose_name="节点ID", db_index=True)
+    source = models.CharField(
+        max_length=20,
+        verbose_name="会话来源",
+        choices=SOURCE_CHOICES,
+        default=SOURCE_WEB_CHAT,
+        db_index=True,
+    )
+    participants = models.JSONField(default=list, blank=True, verbose_name="干系人列表")
+    title = models.CharField(max_length=255, blank=True, default="", verbose_name="会话标题")
+    is_active = models.BooleanField(default=True, verbose_name="是否活跃")
+    created_by = models.CharField(max_length=100, blank=True, default="", verbose_name="创建者")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        verbose_name = "Bot Web 对话会话"
+        verbose_name_plural = "Bot Web 对话会话"
+        db_table = "bot_mgmt_botwebchatsession"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["bot_id", "-created_at"]),
+            models.Index(fields=["bot_id", "node_id", "-created_at"]),
+            models.Index(fields=["source", "-created_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.session_id} ({self.source})"
+
+    def is_participant(self, user) -> bool:
+        """判断 user 是否为本会话的干系人。
+
+        接受字符串 user_id（'alice' 或 'alice@domain'）或类 dict 的 user 对象
+        （提供 username / domain 字段）。匹配规则：participants 中任意元素与
+        user 的 username、或 username@domain 两者之一相等即视为干系人。
+        """
+        if not self.participants:
+            return False
+        if isinstance(user, str):
+            candidates = {user, user.split("@", 1)[0]}
+        elif isinstance(user, dict):
+            username = user.get("username") or ""
+            domain = user.get("domain") or ""
+            if not username:
+                return False
+            candidates = {username}
+            if domain:
+                candidates.add(f"{username}@{domain}")
+        else:
+            username = getattr(user, "username", None)
+            domain = getattr(user, "domain", None)
+            if not username:
+                return False
+            candidates = {username}
+            if domain:
+                candidates.add(f"{username}@{domain}")
+        return any(str(p) in candidates for p in self.participants)
+
+
 class ChatApplication(models.Model):
     """
     聊天应用模型
 
     根据 BotWorkFlow 中的入口节点类型自动生成应用配置
-    支持的应用类型：mobile（移动端应用）、web_chat（Web对话应用）
+    支持的应用类型：mobile（移动端应用）、web_chat（Web对话应用）、nats（NATS 触发）
     """
 
     APP_TYPE_MOBILE = "mobile"
     APP_TYPE_WEB_CHAT = "web_chat"
+    APP_TYPE_NATS = "nats"
 
     APP_TYPE_CHOICES = [
         (APP_TYPE_MOBILE, "移动端应用"),
         (APP_TYPE_WEB_CHAT, "Web对话应用"),
+        (APP_TYPE_NATS, "NATS 触发"),
     ]
 
     bot = models.ForeignKey(Bot, on_delete=models.CASCADE, verbose_name="机器人", related_name="chat_applications")
@@ -461,7 +546,7 @@ class ChatApplication(models.Model):
         verbose_name = "聊天应用"
         verbose_name_plural = "聊天应用"
         db_table = "bot_mgmt_chatapplication"
-        unique_together = [["bot", "node_id"]]  # 每个Bot的每个节点只能创建一个应用
+        unique_together = [["bot", "node_id", "app_type"]]
         ordering = ["id"]
         indexes = [
             models.Index(fields=["bot", "app_type"]),
@@ -499,7 +584,7 @@ class ChatApplication(models.Model):
             return 0, 0, 0
 
         nodes = flow_json.get("nodes", [])
-        target_node_types = [cls.APP_TYPE_MOBILE, cls.APP_TYPE_WEB_CHAT]
+        target_node_types = [cls.APP_TYPE_MOBILE, cls.APP_TYPE_WEB_CHAT, cls.APP_TYPE_NATS]
 
         # 查找所有目标节点
         target_nodes = [node for node in nodes if node.get("type") in target_node_types]
@@ -538,7 +623,7 @@ class ChatApplication(models.Model):
                 "node_config": node_config,
             }
 
-            app, created = cls.objects.update_or_create(bot=bot, node_id=node_id, defaults=defaults)
+            app, created = cls.objects.update_or_create(bot=bot, node_id=node_id, app_type=node_type, defaults=defaults)
 
             if created:
                 created_count += 1
@@ -546,6 +631,31 @@ class ChatApplication(models.Model):
             else:
                 updated_count += 1
                 logger.info(f"更新聊天应用: {app.app_name} (节点: {node_id}, 类型: {node_type})")
+
+            # NATS 节点 expose_as_web_chat=true 时：额外发布一条 web_chat 应用，
+            # 复用同一 node_id，app_name 加 [NATS] 前缀以与同名 web_chat 节点区分
+            if node_type == cls.APP_TYPE_NATS and bool(node_config.get("expose_as_web_chat")):
+                base_name = app_params.get("app_name") or f"NATS {node_id}"
+                web_defaults = {
+                    "app_type": cls.APP_TYPE_WEB_CHAT,
+                    "app_name": f"[NATS] {base_name}",
+                    "app_description": app_params.get("app_description", ""),
+                    "app_tags": [],
+                    "app_icon": "",
+                    "node_config": node_config,
+                }
+                web_app, web_created = cls.objects.update_or_create(
+                    bot=bot,
+                    node_id=node_id,
+                    app_type=cls.APP_TYPE_WEB_CHAT,
+                    defaults=web_defaults,
+                )
+                if web_created:
+                    created_count += 1
+                    logger.info(f"创建 NATS 暴露 web_chat 应用: {web_app.app_name} (节点: {node_id})")
+                else:
+                    updated_count += 1
+                    logger.info(f"更新 NATS 暴露 web_chat 应用: {web_app.app_name} (节点: {node_id})")
 
         # 删除不再存在的节点对应的应用
         deleted_count, _ = cls.objects.filter(bot=bot).exclude(node_id__in=processed_node_ids).delete()
@@ -590,6 +700,16 @@ class ChatApplication(models.Model):
                 "app_name": app_name,
                 "app_description": node_config.get("appDescription", ""),
                 "app_tags": [],  # web_chat 不使用
+                "app_icon": node_config.get("appIcon", ""),
+            }
+
+        elif node_type == ChatApplication.APP_TYPE_NATS:
+            # nats 入口：expose_as_web_chat=true 时同样需要 icon/name/description 用于发布的 web_chat 应用
+            app_name = node_config.get("appName") or ""
+            return {
+                "app_name": app_name,
+                "app_description": node_config.get("appDescription", ""),
+                "app_tags": [],
                 "app_icon": node_config.get("appIcon", ""),
             }
 

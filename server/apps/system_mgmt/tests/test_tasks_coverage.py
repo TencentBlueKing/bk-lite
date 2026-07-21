@@ -66,6 +66,26 @@ def test_sync_by_login_module_disabled():
     assert result == {"result": False, "message": "Login module not found or not enabled."}
 
 
+def test_sync_by_login_module_returns_rpc_failure_without_syncing():
+    lm = LoginModule.objects.create(
+        name="ldap-failed",
+        source_type="ldap",
+        enabled=True,
+        other_config={"namespace": "ns1"},
+    )
+    rpc_result = {"result": False, "message": "upstream unavailable"}
+    fake_client = MagicMock()
+    fake_client.request.return_value = rpc_result
+
+    with patch("apps.system_mgmt.tasks.RpcClient", return_value=fake_client), patch(
+        "apps.system_mgmt.tasks.sync_user_and_groups"
+    ) as sync_user_and_groups:
+        result = tasks.sync_user_and_group_by_login_module(lm.id)
+
+    assert result == rpc_result
+    sync_user_and_groups.assert_not_called()
+
+
 def test_sync_by_login_module_calls_rpc_and_syncs():
     lm = LoginModule.objects.create(
         name="ldap2",

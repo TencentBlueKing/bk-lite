@@ -1,10 +1,33 @@
 # -- coding: utf-8 --
 """IPAM 与 CMDB 自动对账。规格 §5。"""
 from datetime import datetime
+
+from django.conf import settings
+
 from apps.cmdb.constants.constants import INSTANCE
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.utils.ipam_cidr import parse_subnet, ip_in_subnet
 from apps.core.logger import cmdb_logger as logger
+
+
+class IPAMReconcileLimitExceeded(RuntimeError):
+    pass
+
+
+def _load_bounded_reference(model_id: str, reference_name: str, limit: int | None = None) -> list:
+    configured_limit = limit or getattr(settings, "IPAM_RECONCILE_REFERENCE_LIMIT", 200000)
+    safe_limit = max(1, min(int(configured_limit), 1000000))
+    with GraphClient() as ag:
+        rows, _ = ag.query_entity(
+            INSTANCE,
+            [{"field": "model_id", "type": "str=", "value": model_id}],
+            page={"skip": 0, "limit": safe_limit + 1},
+            include_count=False,
+        )
+    rows = rows or []
+    if len(rows) > safe_limit:
+        raise IPAMReconcileLimitExceeded(f"{reference_name} exceeds configured limit {safe_limit}")
+    return rows
 
 
 # ---------------------------------------------------------------------------
@@ -50,27 +73,55 @@ def _load_sources() -> list:
     return list(IPAMReconcileSource.objects.filter(enabled=True).values("model_id", "ip_attr_id"))
 
 
-def _load_subnets() -> list:
+def _load_subnets(limit: int | None = None) -> list:
+    return _load_bounded_reference("subnet", "subnets", limit=limit)
+
+
+def _load_ci_with_ip(model_id: str, ip_attr_id: str, batch_size: int | None = None):
+    """按递增图节点 ID 游标分批读取来源 CI，避免 offset 漂移与无界结果集。"""
+    size = max(1, min(int(batch_size or getattr(settings, "IPAM_RECONCILE_BATCH_SIZE", 500)), 5000))
+    cursor = None
     with GraphClient() as ag:
-        rows, _ = ag.query_entity(INSTANCE, [{"field": "model_id", "type": "str=", "value": "subnet"}])
-    return rows or []
+        while True:
+            params = [{"field": "model_id", "type": "str=", "value": model_id}]
+            if cursor is not None:
+                params.append({"field": "id", "type": "id>", "value": cursor})
+            try:
+                rows, _ = ag.query_entity(
+                    INSTANCE,
+                    params,
+                    page={"skip": 0, "limit": size},
+                    include_count=False,
+                )
+            except Exception as exc:
+                logger.error(
+                    "[IPAM] 来源 CI 分批读取失败 model_id=%s cursor=%s error_type=%s",
+                    model_id,
+                    cursor,
+                    exc.__class__.__name__,
+                )
+                raise
+            if not rows:
+                break
+            next_cursor = int(rows[-1]["_id"])
+            if cursor is not None and next_cursor <= cursor:
+                raise RuntimeError(f"IPAM 来源 CI 游标未推进: model_id={model_id}, cursor={cursor}")
+            for row in rows:
+                ip = row.get(ip_attr_id)
+                if ip:
+                    yield {
+                        "_id": row["_id"],
+                        "model_id": model_id,
+                        "ip_addr": ip,
+                        "inst_name": row.get("inst_name"),
+                    }
+            cursor = next_cursor
+            if len(rows) < size:
+                break
 
 
-def _load_ci_with_ip(model_id: str, ip_attr_id: str) -> list:
-    with GraphClient() as ag:
-        rows, _ = ag.query_entity(INSTANCE, [{"field": "model_id", "type": "str=", "value": model_id}])
-    out = []
-    for r in rows or []:
-        ip = r.get(ip_attr_id)
-        if ip:
-            out.append({"_id": r["_id"], "model_id": model_id, "ip_addr": ip, "inst_name": r.get("inst_name")})
-    return out
-
-
-def _load_existing_ips() -> list:
-    with GraphClient() as ag:
-        rows, _ = ag.query_entity(INSTANCE, [{"field": "model_id", "type": "str=", "value": "ip"}])
-    return rows or []
+def _load_existing_ips(limit: int | None = None) -> list:
+    return _load_bounded_reference("ip", "existing_ips", limit=limit)
 
 
 def _upsert_ip_instance(existing_id=None, subnet_id=None, ip_addr=None, ip_status=None,
@@ -177,12 +228,18 @@ def run_reconciliation() -> dict:
 
     # 归集每个 (subnet, ip) 的占用者列表
     occupants: dict = {}
+    occupant_limit = max(
+        1,
+        min(int(getattr(settings, "IPAM_RECONCILE_OCCUPANT_LIMIT", 200000)), 1000000),
+    )
     for src in sources:
         for ci in _load_ci_with_ip(src["model_id"], src["ip_attr_id"]):
             sn = match_subnet_for_ip(ci["ip_addr"], subnets)
             if not sn:
                 continue
             key = (str(sn["_id"]), ci["ip_addr"])
+            if key not in occupants and len(occupants) >= occupant_limit:
+                raise IPAMReconcileLimitExceeded(f"occupants exceeds configured limit {occupant_limit}")
             occupants.setdefault(key, {"subnet": sn, "ips": []})["ips"].append(
                 f'{ci["model_id"]}:{ci["_id"]}'
             )

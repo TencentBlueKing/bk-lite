@@ -43,6 +43,7 @@ INSTANCE_HISTORY_DEFAULT_SCENARIOS = [DEVICE_LIFECYCLE, RELATION_CHANGE, ORDINAR
 
 
 class ChangeRecord(models.Model):
+    operation_event_id = models.UUIDField(null=True, blank=True, unique=True)
     inst_id = models.BigIntegerField(db_index=True, verbose_name="实例ID")
     model_id = models.CharField(max_length=100, verbose_name="模型ID")
     label = models.CharField(max_length=50, verbose_name="标签ID")

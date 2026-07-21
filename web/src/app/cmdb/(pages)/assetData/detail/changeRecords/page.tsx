@@ -812,7 +812,7 @@ const ChangeRecords: React.FC = () => {
                             </table>
                           </div>
                         </div>
-                      )}
+                    )}
 
                     {relationInfo && (
                       <div className={styles.section}>

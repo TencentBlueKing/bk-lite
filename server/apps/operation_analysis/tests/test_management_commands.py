@@ -3,11 +3,14 @@
 对照 spec/prd/运营分析·管理：内置命名空间/数据源/默认组织的初始化。
 """
 
+import importlib
+
 import pytest
 from django.core.management import call_command
 
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, DataSourceTag, NameSpace
 from apps.operation_analysis.models.models import Directory
+from apps.operation_analysis.services.canvas.registry import CANVAS_TYPE_REGISTRY
 
 # --------------------------------------------------------------------------
 # init_default_namespace
@@ -123,6 +126,162 @@ def test_init_source_api_data_creates_room3d_datasource(settings):
 
 
 @pytest.mark.django_db
+def test_init_source_api_data_creates_cloud_cost_distribution_contract(settings):
+    settings.NATS_SERVERS = "nats://admin:secret@127.0.0.1:4222"
+    call_command("init_default_namespace")
+    call_command("init_source_api_data")
+
+    source = DataSourceAPIModel.objects.get(
+        rest_api="cmdb/get_cloud_resource_cost_distribution"
+    )
+    params = {item["name"]: item for item in source.params}
+    fields = {item["key"]: item for item in source.field_schema}
+
+    assert source.chart_type == ["topN"]
+    assert params["group_by"] == {
+        "name": "group_by",
+        "type": "string",
+        "value": "instance_type",
+        "alias_name": "排行主体",
+        "filterType": "params",
+    }
+    assert "options" not in params["group_by"]
+    assert fields["key"]["value_type"] == "string"
+    assert fields["total_cost"]["value_type"] == "number"
+    assert fields["instance_count"]["value_type"] == "number"
+    assert fields["pct"]["value_type"] == "number"
+
+
+class _MigrationTarget:
+    def __init__(self, params, field_schema):
+        self.params = params
+        self.field_schema = field_schema
+        self.save_calls = []
+
+    def save(self, *, update_fields):
+        self.save_calls.append(tuple(update_fields))
+
+
+class _MigrationQuerySet:
+    def __init__(self, target):
+        self.target = target
+
+    def first(self):
+        return self.target
+
+
+class _MigrationManager:
+    def __init__(self, target, expected_rest_api):
+        self.target = target
+        self.expected_rest_api = expected_rest_api
+
+    def filter(self, **kwargs):
+        assert kwargs == {"rest_api": self.expected_rest_api}
+        return _MigrationQuerySet(self.target)
+
+
+class _MigrationApps:
+    def __init__(self, target, expected_rest_api):
+        self.model = type(
+            "FakeDataSourceAPIModel",
+            (),
+            {"objects": _MigrationManager(target, expected_rest_api)},
+        )
+
+    def get_model(self, app_label, model_name):
+        assert (app_label, model_name) == (
+            "operation_analysis",
+            "DataSourceAPIModel",
+        )
+        return self.model
+
+
+def _distribution_migration():
+    return importlib.import_module(
+        "apps.operation_analysis.migrations.0018_set_cloud_cost_distribution_field_schema"
+    )
+
+
+def test_cloud_cost_distribution_migration_updates_existing_group_by_and_is_idempotent():
+    migration = _distribution_migration()
+    target = _MigrationTarget(
+        params=[
+            {
+                "name": "department",
+                "type": "string",
+                "value": "研发部",
+                "filterType": "filter",
+            },
+            {
+                "name": "group_by",
+                "type": "number",
+                "value": "legacy",
+                "alias_name": "旧排行字段",
+                "filterType": "params",
+                "options": ["instance_type", "department", "user"],
+                "legacy_note": "保留",
+            },
+        ],
+        field_schema=[],
+    )
+    apps = _MigrationApps(target, migration._TARGET_REST_API)
+
+    migration._set_distribution_field_schema(apps, schema_editor=None)
+
+    assert target.params == [
+        {
+            "name": "department",
+            "type": "string",
+            "value": "研发部",
+            "filterType": "filter",
+        },
+        {
+            "name": "group_by",
+            "type": "string",
+            "value": "instance_type",
+            "alias_name": "排行主体",
+            "filterType": "params",
+            "legacy_note": "保留",
+        },
+    ]
+    assert target.field_schema == migration._DISTRIBUTION_FIELD_SCHEMA
+    assert target.save_calls == [("params", "field_schema", "updated_at")]
+
+    migration._set_distribution_field_schema(apps, schema_editor=None)
+
+    assert target.save_calls == [("params", "field_schema", "updated_at")]
+
+
+def test_cloud_cost_distribution_migration_appends_missing_group_by_and_preserves_other_params():
+    migration = _distribution_migration()
+    existing_param = {
+        "name": "billing_period",
+        "type": "timeRange",
+        "value": "",
+        "alias_name": "计费日期",
+        "filterType": "filter",
+        "options": ["不应被迁移删除"],
+    }
+    target = _MigrationTarget(params=[existing_param], field_schema=None)
+    apps = _MigrationApps(target, migration._TARGET_REST_API)
+
+    migration._set_distribution_field_schema(apps, schema_editor=None)
+
+    assert target.params == [
+        existing_param,
+        {
+            "name": "group_by",
+            "alias_name": "排行主体",
+            "type": "string",
+            "value": "instance_type",
+            "filterType": "params",
+        },
+    ]
+    assert target.field_schema == migration._DISTRIBUTION_FIELD_SCHEMA
+    assert target.save_calls == [("params", "field_schema", "updated_at")]
+
+
+@pytest.mark.django_db
 def test_init_source_api_data_without_namespace_aborts():
     # 无默认命名空间 → 标签会创建，但数据源初始化提前返回
     call_command("init_source_api_data")
@@ -197,6 +356,27 @@ def test_init_default_groups_fills_empty_groups():
     skip.refresh_from_db()
     assert obj.groups  # 已补充默认组织
     assert skip.groups == [5]  # 非空保持不变
+
+
+@pytest.mark.django_db
+def test_init_default_groups_covers_all_registered_canvas_models():
+    from apps.system_mgmt.models.user import Group
+
+    root_default, _ = Group.objects.get_or_create(name="Default", parent_id=0)
+    records = []
+
+    for object_type, meta in CANVAS_TYPE_REGISTRY.items():
+        empty = meta.model.objects.create(name=f"无组织-{object_type}", groups=[], created_by="system")
+        existing = meta.model.objects.create(name=f"已分组-{object_type}", groups=[99], created_by="system")
+        records.append((empty, existing))
+
+    call_command("init_default_groups")
+
+    for empty, existing in records:
+        empty.refresh_from_db()
+        existing.refresh_from_db()
+        assert empty.groups == [root_default.id]
+        assert existing.groups == [99]
 
 
 @pytest.mark.django_db

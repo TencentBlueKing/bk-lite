@@ -62,6 +62,18 @@ class IncidentModelViewSet(AuthViewSet):
             self.get_queryset_by_permission(request, Alert.objects.all(), permission_key=PERMISSION_ALERT).values_list(
                 "id", flat=True))
 
+    def _validate_alert_access(self, alert_ids):
+        unauthorized_alert_ids = set(alert_ids) - self._get_allowed_alert_ids()
+        if not unauthorized_alert_ids:
+            return None
+        return Response(
+            {
+                "detail": "告警ID列表中包含您没有权限访问的告警。",
+                "unauthorized_alert_ids": sorted(unauthorized_alert_ids),
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
     def _get_permission_filtered_queryset(self, request):
         queryset = self.filter_queryset(self.get_queryset())
         return self.get_queryset_by_permission(request, queryset)
@@ -202,14 +214,9 @@ class IncidentModelViewSet(AuthViewSet):
         if error_response is not None:
             return error_response
 
-        allowed_alert_ids = self._get_allowed_alert_ids()
-        unauthorized_alert_ids = set(alert_ids) - allowed_alert_ids
-        if unauthorized_alert_ids:
-            alert_titles = Alert.objects.filter(id__in=unauthorized_alert_ids).values_list("title", flat=True)
-            return Response(
-                {"detail": "告警ID列表中包含您没有权限访问的告警。包含：{}".format(list(alert_titles))},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        access_error = self._validate_alert_access(alert_ids)
+        if access_error is not None:
+            return access_error
 
         data["alert"] = alert_ids
         if not data.get("operator"):
@@ -252,12 +259,9 @@ class IncidentModelViewSet(AuthViewSet):
         if error_response is not None:
             return error_response
         if requested_alert_ids is not None:
-            unauthorized_alert_ids = set(requested_alert_ids) - self._get_allowed_alert_ids()
-            alert_titles = Alert.objects.filter(id__in=unauthorized_alert_ids).values_list("title", flat=True)
-            return Response(
-                {"detail": "告警ID列表中包含您没有权限访问的告警。包含：{}".format(list(alert_titles))},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            access_error = self._validate_alert_access(requested_alert_ids)
+            if access_error is not None:
+                return access_error
         if "operator" in request.data:
             request.data["operator"] = normalize_usernames(request.data.get("operator"))
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
@@ -370,14 +374,9 @@ class IncidentModelViewSet(AuthViewSet):
         if error_response is not None:
             return error_response
 
-        allowed_alert_ids = self._get_allowed_alert_ids()
-        unauthorized_alert_ids = set(alert_ids) - allowed_alert_ids
-        alert_titles = Alert.objects.filter(id__in=unauthorized_alert_ids).values_list("title", flat=True)
-        if unauthorized_alert_ids:
-            return Response(
-                {"detail": "告警ID列表中包含您没有权限访问的告警。包含：{}".format(list(alert_titles))},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        access_error = self._validate_alert_access(alert_ids)
+        if access_error is not None:
+            return access_error
         already_in_incident = set(instance.alert.values_list("id", flat=True))
         new_alert_ids = set(alert_ids) - already_in_incident
         if new_alert_ids:
@@ -407,14 +406,9 @@ class IncidentModelViewSet(AuthViewSet):
         if error_response is not None:
             return error_response
 
-        allowed_alert_ids = self._get_allowed_alert_ids()
-        unauthorized_alert_ids = set(alert_ids) - allowed_alert_ids
-        alert_titles = Alert.objects.filter(id__in=unauthorized_alert_ids).values_list("title", flat=True)
-        if unauthorized_alert_ids:
-            return Response(
-                {"detail": "告警ID列表中包含您没有权限访问的告警。包含：{}".format(list(alert_titles))},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        access_error = self._validate_alert_access(alert_ids)
+        if access_error is not None:
+            return access_error
 
         current_alert_ids = set(instance.alert.values_list("id", flat=True))
         to_remove = set(alert_ids) & current_alert_ids

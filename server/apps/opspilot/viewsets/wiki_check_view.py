@@ -2,27 +2,46 @@ from django.http import JsonResponse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from rest_framework.decorators import action
+from rest_framework.exceptions import MethodNotAllowed
 
 from apps.core.utils.viewset_utils import AuthViewSet
-from apps.opspilot.models import CheckItem
+from apps.opspilot.models import CheckItem, WikiDecisionRule
 from apps.opspilot.serializers.wiki_serializers import CheckItemSerializer
-from apps.opspilot.services.wiki.check_service import accept_candidate, merge_duplicate_check, reject_candidate, resolve_check
+from apps.opspilot.services.wiki.check_service import close_incomplete_open_decision, decide_check
+from apps.opspilot.services.wiki.decision_service import revoke_rule as revoke_decision_rule
+from apps.opspilot.viewsets.wiki_team_scope import WikiTeamScopeMixin
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
+_SEMANTIC_CHECK_TYPES = frozenset(("cannot_merge", "material_update", "duplicate", "conflict"))
 
-class WikiCheckItemViewSet(AuthViewSet):
-    """检查与审核:列出风险/检查事项,接受/拒绝候选版本。"""
 
-    queryset = CheckItem.objects.all().order_by("-id")
+class WikiCheckItemViewSet(WikiTeamScopeMixin, AuthViewSet):
+    """只暴露需要人工介入的语义决策，并统一执行团队隔离。"""
+
+    queryset = CheckItem.objects.filter(check_type__in=_SEMANTIC_CHECK_TYPES).order_by("-id")
     serializer_class = CheckItemSerializer
+
+    @staticmethod
+    def _semantic_action_error():
+        return JsonResponse(
+            {"result": False, "message": "通用审批接口已停用，请使用 decide 接口"},
+            status=410,
+        )
+
     ordering = ("-id",)
+
+    def create(self, request, *args, **kwargs):
+        raise MethodNotAllowed("POST", detail="检查项只能由系统决策流程创建")
+
     http_method_names = ["get", "post", "head", "options"]
 
     def list(self, request, *args, **kwargs):
-        queryset = self.get_queryset()
+        queryset = self.get_queryset().prefetch_related("decision_rules")
         kb_id = request.GET.get("knowledge_base")
         if kb_id:
             queryset = queryset.filter(knowledge_base_id=kb_id)
+        for check in queryset.filter(status="open").iterator(chunk_size=100):
+            close_incomplete_open_decision(check)
         status_filter = request.GET.get("status")
         if status_filter:
             queryset = queryset.filter(status=status_filter)
@@ -30,6 +49,14 @@ class WikiCheckItemViewSet(AuthViewSet):
         if check_type:
             queryset = queryset.filter(check_type=check_type)
         assignee = request.GET.get("assignee")
+        decision_only = request.GET.get("decision_only")
+        if decision_only in ("1", "true", "yes"):
+            queryset = queryset.filter(check_type__in=("cannot_merge", "material_update", "duplicate", "conflict"))
+        decision_view = request.GET.get("view")
+        if decision_view == "pending":
+            queryset = queryset.filter(status="open")
+        elif decision_view == "processed":
+            queryset = queryset.filter(status__in=("resolved", "dismissed", "auto_resolved"))
         if assignee:
             if assignee == "__unassigned__":
                 queryset = queryset.filter(assignee="")
@@ -53,155 +80,45 @@ class WikiCheckItemViewSet(AuthViewSet):
         return JsonResponse({"result": True, "data": {"count": total, "items": self.get_serializer(page_items, many=True).data}})
 
     def retrieve(self, request, *args, **kwargs):
-        return JsonResponse({"result": True, "data": self.get_serializer(self.get_object()).data})
-
-    def _parse_ids(self, request):
-        ids = request.data.get("ids")
-        if not isinstance(ids, list) or not ids:
-            return None, JsonResponse({"result": False, "message": "ids 不能为空"}, status=400)
-
-        parsed_ids = []
-        seen = set()
-        for raw_id in ids:
-            try:
-                check_id = int(raw_id)
-            except (TypeError, ValueError):
-                return None, JsonResponse({"result": False, "message": "ids 必须为整数列表"}, status=400)
-            if check_id not in seen:
-                parsed_ids.append(check_id)
-                seen.add(check_id)
-        return parsed_ids, None
-
-    def _open_checks_by_id(self, ids):
-        return {check.id: check for check in self.get_queryset().filter(id__in=ids, status="open").select_related("candidate_version")}
-
-    def _accept_open_check(self, check, operator):
-        if check.candidate_version_id:
-            accept_candidate(check, operator=operator)
-            return
-        if check.check_type == "duplicate":
-            merge_duplicate_check(check, operator=operator)
-            return
-        resolve_check(check, operator=operator)
+        check = self.get_object()
+        if close_incomplete_open_decision(check):
+            check.refresh_from_db()
+        return JsonResponse({"result": True, "data": self.get_serializer(check).data})
 
     @action(methods=["POST"], detail=True)
     def accept(self, request, pk=None):
-        """接受检查项:候选版本采纳,重复项合并,普通检查确认处理。"""
-        check = self.get_object()
-        try:
-            self._accept_open_check(check, operator=getattr(request.user, "username", ""))
-        except ValueError as exc:
-            return JsonResponse({"result": False, "message": str(exc)}, status=400)
-        check.refresh_from_db()
-        log_operation(request, "execute", "opspilot", f"接受检查项(检查#{check.id})")
-        return JsonResponse({"result": True, "data": self.get_serializer(check).data})
+        """兼容旧客户端：通用接受入口已停用。"""
+        return self._semantic_action_error()
 
     @action(methods=["POST"], detail=True)
     def reject(self, request, pk=None):
-        """拒绝候选版本:丢弃候选,当前有效版本不变。"""
-        check = self.get_object()
-        reject_candidate(check, operator=getattr(request.user, "username", ""))
-        log_operation(request, "execute", "opspilot", f"拒绝候选版本(检查#{check.id})")
-        return JsonResponse({"result": True, "data": self.get_serializer(check).data})
+        """兼容旧客户端：通用拒绝入口已停用。"""
+        return self._semantic_action_error()
 
     @action(methods=["POST"], detail=True)
     def merge(self, request, pk=None):
-        """合并重复/同义页面:仅允许 duplicate 检查项。"""
-        check = self.get_object()
-        try:
-            merge_duplicate_check(check, operator=getattr(request.user, "username", ""))
-        except ValueError as exc:
-            return JsonResponse({"result": False, "message": str(exc)}, status=400)
-        check.refresh_from_db()
-        log_operation(request, "execute", "opspilot", f"合并重复知识页(检查#{check.id})")
-        return JsonResponse({"result": True, "data": self.get_serializer(check).data})
+        """兼容旧客户端：旧合并入口已停用。"""
+        return self._semantic_action_error()
 
     @action(methods=["POST"], detail=True)
     def resolve(self, request, pk=None):
-        """标记扫描/洞察类检查项已处理,并记录处理结果。"""
-        check = self.get_object()
-        try:
-            resolve_check(
-                check,
-                operator=getattr(request.user, "username", ""),
-                note=(request.data.get("note") or "").strip(),
-            )
-        except ValueError as exc:
-            return JsonResponse({"result": False, "message": str(exc)}, status=400)
-        check.refresh_from_db()
-        log_operation(request, "execute", "opspilot", f"标记检查项已处理(检查#{check.id})")
-        return JsonResponse({"result": True, "data": self.get_serializer(check).data})
+        """兼容旧客户端：通用处理入口已停用。"""
+        return self._semantic_action_error()
 
     @action(methods=["POST"], detail=False)
     def batch_accept(self, request):
-        """批量接受检查项:候选采纳、重复合并、普通检查确认处理。"""
-        ids, error = self._parse_ids(request)
-        if error:
-            return error
-
-        checks_by_id = self._open_checks_by_id(ids)
-        operator = getattr(request.user, "username", "")
-        accepted = 0
-        skipped_ids = []
-        for check_id in ids:
-            check = checks_by_id.get(check_id)
-            if not check:
-                skipped_ids.append(check_id)
-                continue
-            try:
-                self._accept_open_check(check, operator=operator)
-            except ValueError:
-                skipped_ids.append(check_id)
-                continue
-            accepted += 1
-
-        log_operation(request, "execute", "opspilot", f"批量接受检查项({accepted}项)")
-        return JsonResponse({"result": True, "data": {"accepted": accepted, "skipped": len(skipped_ids), "skipped_ids": skipped_ids}})
+        """兼容旧客户端：批量接受入口已停用。"""
+        return self._semantic_action_error()
 
     @action(methods=["POST"], detail=False)
     def batch_reject(self, request):
-        """批量拒绝/忽略检查项:仅关闭选中的 open 检查项。"""
-        ids, error = self._parse_ids(request)
-        if error:
-            return error
-
-        checks_by_id = self._open_checks_by_id(ids)
-        operator = getattr(request.user, "username", "")
-        rejected = 0
-        skipped_ids = []
-        for check_id in ids:
-            check = checks_by_id.get(check_id)
-            if not check:
-                skipped_ids.append(check_id)
-                continue
-            reject_candidate(check, operator=operator)
-            rejected += 1
-
-        log_operation(request, "execute", "opspilot", f"批量拒绝/忽略检查项({rejected}项)")
-        return JsonResponse({"result": True, "data": {"rejected": rejected, "skipped": len(skipped_ids), "skipped_ids": skipped_ids}})
+        """兼容旧客户端：批量拒绝入口已停用。"""
+        return self._semantic_action_error()
 
     @action(methods=["POST"], detail=False)
     def batch_resolve(self, request):
-        """批量标记扫描/洞察类检查项已处理:候选/非 open/不存在的检查项会被跳过。"""
-        ids, error = self._parse_ids(request)
-        if error:
-            return error
-
-        checks_by_id = self._open_checks_by_id(ids)
-        operator = getattr(request.user, "username", "")
-        note = (request.data.get("note") or "").strip()
-        resolved = 0
-        skipped_ids = []
-        for check_id in ids:
-            check = checks_by_id.get(check_id)
-            if not check or check.candidate_version_id:
-                skipped_ids.append(check_id)
-                continue
-            resolve_check(check, operator=operator, note=note)
-            resolved += 1
-
-        log_operation(request, "execute", "opspilot", f"批量标记检查项已处理({resolved}项)")
-        return JsonResponse({"result": True, "data": {"resolved": resolved, "skipped": len(skipped_ids), "skipped_ids": skipped_ids}})
+        """兼容旧客户端：批量处理入口已停用。"""
+        return self._semantic_action_error()
 
     @staticmethod
     def _parse_assignee_due(request):
@@ -244,3 +161,132 @@ class WikiCheckItemViewSet(AuthViewSet):
             f"分配检查项(检查#{check.id}): {', '.join(f'{k}={v!r}' for k, v in fields.items())}",
         )
         return JsonResponse({"result": True, "data": self.get_serializer(check).data})
+
+    @action(methods=["POST"], detail=True, url_path="decide")
+    def decide(self, request, pk=None):
+        """执行知识冲突或页面身份的语义化决策。"""
+        check = self.get_object()
+        action_value = (request.data.get("action") or "").strip()
+        if not action_value:
+            return JsonResponse(
+                {"result": False, "message": "action 不能为空"},
+                status=400,
+            )
+        body = request.data.get("body") or ""
+        material = None
+        material_id = request.data.get("material_id")
+        if material_id not in (None, ""):
+            if type(material_id) is not int or material_id <= 0:
+                return JsonResponse(
+                    {"result": False, "message": "material_id 必须为正整数"},
+                    status=400,
+                )
+            from apps.opspilot.models import Material
+
+            material = Material.objects.filter(
+                id=material_id,
+                knowledge_base=check.knowledge_base,
+            ).first()
+            if not material:
+                return JsonResponse(
+                    {
+                        "result": False,
+                        "message": f"material_id={material_id} 不存在或不属于同一知识库",
+                    },
+                    status=400,
+                )
+        try:
+            rule = decide_check(
+                check,
+                action=action_value,
+                operator=getattr(request.user, "username", ""),
+                body=body,
+                material=material,
+            )
+        except ValueError as exc:
+            return JsonResponse({"result": False, "message": str(exc)}, status=400)
+        check.refresh_from_db()
+        if check.status == "auto_resolved":
+            log_operation(
+                request,
+                "execute",
+                "opspilot",
+                f"自动关闭已失效 Wiki 决策(检查#{check.id})",
+            )
+            return JsonResponse(
+                {
+                    "result": False,
+                    "message": "审批上下文已失效，系统已自动关闭该待决策项",
+                    "data": {"check": self.get_serializer(check).data},
+                },
+                status=409,
+            )
+        log_operation(
+            request,
+            "execute",
+            "opspilot",
+            f"决策检查项(检查#{check.id}): action={action_value}, 规则={getattr(rule, 'id', None)}",
+        )
+        return JsonResponse(
+            {
+                "result": True,
+                "data": {
+                    "check": self.get_serializer(check).data,
+                    "rule_id": getattr(rule, "id", None),
+                },
+            }
+        )
+
+    @action(methods=["POST"], detail=True, url_path="revoke_rule")
+    def revoke_rule(self, request, pk=None):
+        """撤销当前处理记录关联的规则，不回滚已生效知识。"""
+        check = self.get_object()
+        raw_rule_id = request.data.get("rule_id")
+        rules = WikiDecisionRule.objects.filter(knowledge_base=check.knowledge_base).order_by("-id")
+        if raw_rule_id not in (None, ""):
+            try:
+                rule_id = int(raw_rule_id)
+            except (TypeError, ValueError):
+                return JsonResponse(
+                    {"result": False, "message": "rule_id 必须为整数"},
+                    status=400,
+                )
+            rule = rules.filter(id=rule_id).first()
+        else:
+            rule = rules.filter(source_check=check).first()
+            if rule is None and check.decision_key:
+                rule = rules.filter(decision_key=check.decision_key).first()
+        if rule is None:
+            return JsonResponse(
+                {"result": False, "message": "未找到该处理记录关联的决策规则"},
+                status=400,
+            )
+        if rule.source_check_id != check.id and (not check.decision_key or rule.decision_key != check.decision_key):
+            return JsonResponse(
+                {"result": False, "message": "规则不属于该处理记录"},
+                status=400,
+            )
+        revoke_decision_rule(
+            rule,
+            reason=(request.data.get("reason") or "").strip(),
+            operator=getattr(request.user, "username", ""),
+        )
+        check.refresh_from_db()
+        log_operation(
+            request,
+            "execute",
+            "opspilot",
+            f"撤销 Wiki 决策规则(规则#{rule.id}, 检查#{check.id})",
+        )
+        return JsonResponse(
+            {
+                "result": True,
+                "data": {
+                    "check": self.get_serializer(check).data,
+                    "rule_id": rule.id,
+                },
+            }
+        )
+
+
+WikiCheckViewSet = WikiCheckItemViewSet

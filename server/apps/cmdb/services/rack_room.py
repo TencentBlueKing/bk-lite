@@ -317,3 +317,27 @@ def get_room_layout(server_room_id, permission_map=None, user=None) -> dict:
                 }
             )
     return build_room_layout(racks)
+
+
+# 业务上限：单次拉取最多返回 N 条机房记录。机房数业务上不会超过该值，
+# 不分页（避免前端分页复杂度）；如未来业务量超限再调整。
+_ROOM_LIST_PAGE_SIZE = 1000
+
+
+def list_server_rooms(permission_map: dict | None = None, user_info=None) -> list:
+    """列出当前用户可见的 server_room，返回 CMDB 原始字段。
+
+    作为运维分析参数动态选项源。返回字段保持 CMDB 原样
+    （_id, inst_name, model_id, organization, ...），不做 _id→id 等重命名。
+
+    复用 ``InstanceManage.instance_list`` 的现成权限过滤逻辑。
+    """
+    inst_list, _count = InstanceManage.instance_list(
+        model_id="server_room",
+        params=[],
+        page=1,
+        page_size=_ROOM_LIST_PAGE_SIZE,
+        order="inst_name",
+        permission_map=permission_map or {},
+    )
+    return inst_list or []

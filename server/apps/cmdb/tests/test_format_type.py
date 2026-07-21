@@ -56,6 +56,12 @@ def test_format_list_any():
     assert ft.format_list_any({"field": "tags", "value": []}) == "false"
 
 
+def test_format_list_none():
+    assert ft.format_list_none({"field": "tags", "value": ["a", "b"]}) == "(NOT ('a' IN n.tags) AND NOT ('b' IN n.tags))"
+    collector = ft.ParameterCollector()
+    assert ft.format_list_none_params({"field": "tags", "value": ["a"]}, collector).startswith("NONE(")
+
+
 def test_format_id_eq_in():
     assert ft.format_id_eq({"value": 115}) == "ID(n) = 115"
     assert ft.format_id_in({"value": [115, 116]}) == "ID(n) IN [115, 116]"
@@ -71,7 +77,7 @@ def test_compile_tag_exact_match_query():
 
 def test_format_type_map_complete():
     expected = {"bool", "time", "str=", "str<>", "str*", "str[]", "user[]",
-                "int=", "int>", "int<", "int<>", "int[]", "id=", "id[]", "list[]", "list_any[]"}
+                "int=", "int>", "int<", "int<>", "int[]", "id=", "id[]", "list[]", "list_any[]", "list_none[]"}
     assert expected <= set(ft.FORMAT_TYPE.keys())
 
 

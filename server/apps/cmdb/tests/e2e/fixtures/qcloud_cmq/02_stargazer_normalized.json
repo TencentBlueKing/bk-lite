@@ -1,0 +1,27 @@
+{
+  "success": true,
+  "result": {
+    "qcloud_cmq": [
+      {
+        "model_id": "qcloud_cmq",
+        "task_id": 33017,
+        "account_id": "acct-qcloud-prod-001",
+        "captured_at": "2026-07-14T10:30:00+08:00",
+        "collected_by": "stargazer/inputs/qcloud/qcloud_cmq.py@1.2.0",
+        "request_id": "QC-CMQ-00001111-2222-3333-4444-555566667777",
+        "total_count": 1,
+        "resource_name": "cmq-prod-01",
+        "resource_id": "topic-abc123def456",
+        "tag": "prod|queue",
+        "region": "ap-shanghai",
+        "status": "RUNNING",
+        "max_delay_s": "3600",
+        "polling_wait_s": "30",
+        "visibility_timeout_s": "30",
+        "max_message_b": "1048576",
+        "qps": "5000",
+        "create_time": "2024-03-05 15:00:00"
+      }
+    ]
+  }
+}

@@ -13,6 +13,7 @@ import jsonschema
 import pytest
 
 from apps.cmdb.collection.collect_plugin.network import CollectNetworkMetrics
+from apps.cmdb.tests.e2e import pipeline
 
 
 NETWORK_SYSTEM_METRIC = "network_system_info_gauge"
@@ -396,3 +397,108 @@ def test_network_topology_disabled_keeps_existing_inventory_behavior(monkeypatch
             "model_asst_id": "interface_belong_switch",
         }
     ]
+
+
+# ============================================================================
+# Task 2.5: network A 端 + B 端对齐全覆盖测试
+# ============================================================================
+
+
+def test_network_a_b_alignment(load_fixture, load_schema, monkeypatch):
+    """network A 端 + B 端对齐全覆盖测试。
+
+    network 走 minimal path:验证 A 端 metric.__name__ / instance_id / business labels +
+    B 端通过 03 fixture 走 CollectNetworkMetrics 实例字段校验。
+    """
+    from apps.cmdb.tests.e2e.utils.model_reflection import get_model_field_def
+
+    raw = load_fixture("network/01_stargazer_raw.json")
+    expected = load_fixture("network/04_expected_cmdb_result.json")
+
+    # A 端:01 → 02 → 03
+    p2 = pipeline.step1_stargazer_normalize_generic([raw], model_id="network")
+    p3 = pipeline.step2_push_to_vm(p2, task_id=77777)
+
+    main_metric = "network_info_gauge"
+    found_main = False
+    for result_item in p3["data"]["result"]:
+        metric_name = result_item["metric"]["__name__"]
+        if metric_name == main_metric:
+            found_main = True
+            assert result_item["metric"]["instance_id"] == "cmdb_77777"
+            # 业务 label 集合 ⊇ model 必填字段
+            model_fields = get_model_field_def("network")
+            required = {f.name for f in model_fields.values() if f.is_required}
+            labels = set(result_item["metric"].keys())
+            exclude = {"__name__", "instance_id", "collect_status", "inst_name",
+                       "model_id", "id", "create_time", "update_time", "assos"}
+            missing = required - labels - exclude
+            assert not missing, f"A 端 03 metric 缺 model 必填字段: {missing}"
+    assert found_main, f"主 metric {main_metric} 在 03 fixture 中不存在"
+
+    # B 端:03 → 04
+    from apps.cmdb.collection.collect_plugin.network import CollectNetworkMetrics
+    vm_resp = load_fixture("network/03_vm_metrics_response.json")
+
+    # Mock VM 走 sql filter
+    def fake_query(self, sql, timeout=60):
+        requested = {part.split("{")[0].strip() for part in sql.split(" or ")}
+        filtered = [item for item in vm_resp["data"]["result"] if item["metric"]["__name__"] in requested]
+        return {**vm_resp, "data": {**vm_resp["data"], "result": filtered}}
+    monkeypatch.setattr("apps.cmdb.collection.query_vm.Collection.query", fake_query)
+
+    # OID map for Cisco
+    oid_map = {
+        "1.3.6.1.4.1.9.1.1208": {
+            "oid": "1.3.6.1.4.1.9.1.1208",
+            "model": "Cisco Catalyst 3850",
+            "brand": "Cisco",
+            "device_type": "switch",
+            "built_in": True,
+        }
+    }
+    monkeypatch.setattr(CollectNetworkMetrics, "get_oid_map", staticmethod(lambda: oid_map))
+
+    from types import SimpleNamespace
+    fake_task = SimpleNamespace(
+        id=77777,
+        is_network_topo=False,
+        instances=[],
+        topology_contract={"has_network_topo": False, "topology_protocols": [],
+                          "topology_fallback_strategy": "prefer_neighbors_then_fdb_then_arp",
+                          "min_confidence": 0.0},
+        topology_snapshot={},
+    )
+    monkeypatch.setattr(CollectNetworkMetrics, "get_collect_inst", lambda self: fake_task)
+    monkeypatch.setattr(CollectNetworkMetrics, "model_id", property(lambda self: "network"))
+    monkeypatch.setattr(CollectNetworkMetrics, "save_topology_snapshot", lambda self, snapshot: None)
+
+    runner = CollectNetworkMetrics(
+        inst_name="snmp-task-01", inst_id=77777, task_id=77777,
+    )
+    runner.run()
+
+    # 设备类型由 sysobjectid 推导出 "switch" → result["switch"]
+    assert "switch" in runner.result
+    devices = runner.result["switch"]
+    assert len(devices) >= 1
+
+    inst = devices[0]
+    # B 端:实例字段 ⊆ model 字段定义
+    model_fields = get_model_field_def("network")
+    system_fields = {
+        "inst_name", "model_id", "id", "create_time", "update_time",
+        "_placeholder_reason", "license_status", "assos",
+    }
+    model_field_names = set(model_fields.keys()) - system_fields
+    inst_fields = set(inst.keys())
+    missing = model_field_names - inst_fields
+    assert not missing, f"B 端 04 实例缺 model 字段: {missing}"
+
+    # B 端:必填字段非空(model_id 由 runner 后续在 result['switch'] key 体现,不在实例 dict 内)
+    for field_name in {"inst_name", "ip_addr"}:
+        value = inst.get(field_name)
+        assert value, f"必填字段 {field_name!r} 为空: {value}"
+
+    # B 端:inst_name 格式 {ip}-{device_type}
+    assert inst["inst_name"].endswith("-switch"), f"inst_name 应以 -switch 结尾: {inst['inst_name']}"

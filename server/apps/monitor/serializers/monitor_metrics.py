@@ -47,6 +47,7 @@ class MetricGroupSerializer(serializers.ModelSerializer):
 class MetricSerializer(serializers.ModelSerializer):
     # 这里定义 is_pre 但不给默认值，防止用户传递该字段
     is_pre = serializers.BooleanField(read_only=True)
+    monitor_plugin_name = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Metric
@@ -68,6 +69,9 @@ class MetricSerializer(serializers.ModelSerializer):
             getattr(monitor_object, "instance_id_keys", []),
         )
         return data
+
+    def get_monitor_plugin_name(self, instance):
+        return instance.monitor_plugin.name if instance.monitor_plugin else ""
 
     def validate(self, attrs):
         attrs = super().validate(attrs)

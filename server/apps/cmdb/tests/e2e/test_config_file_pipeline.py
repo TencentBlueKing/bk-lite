@@ -65,9 +65,8 @@ def test_unknown_task_id_raises():
 # ============================================================================
 
 
-@pytest.mark.django_db
 def test_nats_handler_returns_standard_envelope(monkeypatch, load_fixture):
-    """nats handler 收到 payload 后返回 {result, changed, task_updated} 信封。"""
+    """nats handler 收到 payload 后返回传输 ack + 业务处理状态信封。"""
     from apps.cmdb.nats import nats as cmdb_nats
 
     # 拦掉真正的 process_collect_result，集中验证 handler 信封格式
@@ -78,7 +77,39 @@ def test_nats_handler_returns_standard_envelope(monkeypatch, load_fixture):
 
     payload = load_fixture("config_file/02_nats_payload.json")
     result = cmdb_nats.receive_config_file_result(payload)
-    assert result == {"result": True, "changed": True, "task_updated": True}
+    assert result == {
+        "result": True,
+        "processed": True,
+        "error": "",
+        "changed": True,
+        "task_updated": True,
+    }
+
+
+def test_nats_handler_marks_business_failure_when_service_returns_error(monkeypatch, load_fixture):
+    """服务层已错误闭环时，handler 仍 ack 传输但不能表示业务成功。"""
+    from apps.cmdb.nats import nats as cmdb_nats
+
+    monkeypatch.setattr(
+        "apps.cmdb.nats.nats.ConfigFileService.process_collect_result",
+        lambda data: {
+            "version_obj": None,
+            "changed": False,
+            "task_updated": True,
+            "error": "配置文件采集回调缺少目标实例标识",
+        },
+    )
+
+    payload = load_fixture("config_file/02_nats_payload.json")
+    result = cmdb_nats.receive_config_file_result(payload)
+
+    assert result == {
+        "result": True,
+        "processed": False,
+        "error": "配置文件采集回调缺少目标实例标识",
+        "changed": False,
+        "task_updated": True,
+    }
 
 
 # ============================================================================
@@ -94,3 +125,38 @@ def test_drift_detection_invalid_status(load_schema):
     schema = load_schema("config_file/02_nats_payload.schema.json")
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate(bad, schema)
+
+
+# ============================================================================
+# Task 2.6: config_file 真实化覆盖(NATS 路径)
+# ============================================================================
+
+
+def test_config_file_a_b_alignment(load_fixture, load_schema):
+    """config_file A/B 端对齐走 NATS 路径占位校验。
+
+    真实采集路径是 Stargazer 通过 NATS publish 'receive_config_file_result',
+    不走 VM pipeline,因此 A 端 metric / B 端 pipeline.run_full_pipeline_generic
+    均不适用。本测试只验证:
+      - 01 fixture 存在(placeholder)
+      - 04 schema 反映 ConfigFileVersion 实例结构
+      - 02 NATS payload schema 仍合规
+    """
+    from apps.cmdb.tests.e2e.utils.model_reflection import get_model_field_def
+
+    raw = load_fixture("config_file/01_stargazer_raw.json")
+    assert raw["_placeholder_reason"] is not None
+
+    nats_payload = load_fixture("config_file/02_nats_payload.json")
+    nats_schema = load_schema("config_file/02_nats_payload.schema.json")
+    jsonschema.validate(nats_payload, nats_schema)
+
+    # 04 schema 反映 ConfigFileVersion 实例结构
+    model_fields = get_model_field_def("config_file")
+    assert "file_path" in model_fields
+    assert "status" in model_fields
+    assert "file_size" in model_fields
+    assert model_fields["file_size"].field_type == "int"
+    # status 字段是 choice 枚举
+    assert model_fields["status"].choice is not None
+    assert "success" in model_fields["status"].choice

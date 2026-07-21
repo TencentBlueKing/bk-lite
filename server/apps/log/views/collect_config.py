@@ -37,6 +37,19 @@ def should_hide_collect_type_entry(result: dict) -> bool:
     return result.get("collector") == "Packetbeat" and result.get("name") == "http"
 
 
+def parse_collect_config_content(config_obj, raw_content: str):
+    if config_obj.file_type != "yaml":
+        return toml.loads(raw_content)
+
+    if config_obj.is_child:
+        collect_type = config_obj.collect_instance.collect_type
+        if collect_type.collector == "Packetbeat" and collect_type.name == "flows":
+            # Packetbeat 的父配置已声明 packetbeat.protocols，子配置按该节点追加协议列表，
+            # 同时还会追加顶层 packetbeat.flows；读取编辑表单时需补回父级上下文。
+            raw_content = f"packetbeat.protocols:\n{raw_content}"
+    return yaml.safe_load(raw_content)
+
+
 class CollectTypeViewSet(ModelViewSet):
     queryset = CollectType.objects.all()
     serializer_class = CollectTypeSerializer
@@ -597,7 +610,11 @@ class CollectConfigViewSet(ViewSet):
 
     @action(methods=["post"], detail=False, url_path="get_config_content")
     def get_config_content(self, request):
-        config_objs = list(CollectConfig.objects.filter(id__in=request.data["ids"]).select_related("collect_instance"))
+        config_objs = list(
+            CollectConfig.objects.filter(id__in=request.data["ids"]).select_related(
+                "collect_instance__collect_type"
+            )
+        )
         if not config_objs:
             return WebUtils.response_error("配置不存在!")
         error_response = self._authorize_config_instances(request, config_objs, required_permission="View")
@@ -613,10 +630,7 @@ class CollectConfigViewSet(ViewSet):
                 configs = NodeMgmt().get_configs_by_ids([config_obj.id])
             config = configs[0]
 
-            if config_obj.file_type == "yaml":
-                config["content"] = yaml.safe_load(config[content_key])
-            else:
-                config["content"] = toml.loads(config[content_key])
+            config["content"] = parse_collect_config_content(config_obj, config[content_key])
 
             if config_obj.is_child:
                 result["child"] = config

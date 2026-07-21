@@ -89,7 +89,9 @@ def test_ad_login_auth_fails_when_search_returns_multiple_users(mock_search_sing
     )
 
     assert result.success is False
-    assert result.errors[0].code == "provider.auth_failed"
+    # 多匹配也是配置/数据问题，走 provider.invalid_config + 消息含原始 error
+    assert result.errors[0].code == "provider.invalid_config"
+    assert "multiple" in result.errors[0].message
 
 
 @patch("apps.system_mgmt.providers.adapters.ad.search_single_user")
@@ -282,3 +284,54 @@ def test_resolve_ldap_server_target_supports_ip_only_input():
 def test_resolve_ldap_server_target_keeps_backward_compatible_url_parsing():
     assert resolve_ldap_server_target("ldap://10.10.248.33:1389", use_ssl=False) == ("10.10.248.33", 1389)
     assert resolve_ldap_server_target("10.10.248.33:2389", use_ssl=False) == ("10.10.248.33", 2389)
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        {},                                       # 完全缺省
+        {"base_dn": ""},                          # 空字符串
+        {"base_dn": None},                        # None
+        {"base_dn": "   "},                       # 仅空白
+        {"connection_url": "x"},                  # 缺 base_dn 但有其它字段
+    ],
+)
+def test_build_connection_config_raises_when_base_dn_missing(config):
+    with pytest.raises(ValueError, match=r"base_dn"):
+        build_connection_config(config)
+
+
+def test_build_connection_config_does_not_silently_default_missing_base_dn_to_empty():
+    """回归锁：之前实现 ``str(raw.get('base_dn') or '')`` 在缺省时静默返回 base_dn='',
+    空串传到 ldap3 search_base='' 会搜不到任何 user，触发迷惑的 'AD user not found'。
+    新实现必须在缺省 / None / 空串 / 空白时立即抛 ValueError，不允许静默降级。
+    """
+    from dataclasses import asdict
+
+    # 验证：缺省 / None / 空串 三种「曾经的静默路径」现在都抛 ValueError
+    for silent_config in [{}, {"base_dn": None}, {"base_dn": ""}]:
+        with pytest.raises(ValueError):
+            build_connection_config(silent_config)
+
+    # 验证：非空 base_dn 不抛，且 LDAPConnectionConfig.base_dn 等于传入值（不被改写）
+    config = build_connection_config({"base_dn": "DC=corp,DC=com", "connection_url": "x"})
+    assert asdict(config)["base_dn"] == "DC=corp,DC=com"
+    # 验证：纯空白也被识别为空（strip 后等于空）
+    with pytest.raises(ValueError):
+        build_connection_config({"base_dn": "   "})
+
+
+def test_ad_authenticate_returns_invalid_config_when_base_dn_missing():
+    """base_dn 缺失时 authenticate 不应返回迷惑的 'AD user not found'，
+    而应明确返回 provider.invalid_config + 含 base_dn 的消息。"""
+    result = ADLoginAuthAdapter.authenticate(
+        config={},   # 完全没填 base_dn
+        provider_key="ad",
+        capability_key="login_auth",
+        username="alice",
+        password="secret",
+    )
+
+    assert result.success is False
+    assert result.errors[0].code == "provider.invalid_config"
+    assert "base_dn" in result.errors[0].message.lower()

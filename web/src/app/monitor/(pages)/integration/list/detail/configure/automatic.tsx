@@ -26,6 +26,8 @@ import { usePluginFromJson } from '@/app/monitor/hooks/integration/usePluginFrom
 import { useConfigRenderer } from '@/app/monitor/hooks/integration/useConfigRenderer';
 import BatchEditModal from './batchEditModal';
 import ExcelImportModal from './excelImportModal';
+import PluginGuidePanel from './pluginGuidePanel';
+import GuideEntryButton from './guideEntryButton';
 import {
   buildCollectDetectFingerprint as buildCollectDetectFingerprintValue,
   CollectDetectMode,
@@ -62,7 +64,12 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const groupId = [currentGroup?.current?.id || ''];
   const pluginId = searchParams.get('plugin_id') || '';
   const objectId = searchParams.get('id') || '';
-  const pluginDisplayName = searchParams.get('plugin_display_name') || '';
+  // URL 常见参数：name / plugin_name；兼容历史 plugin_display_name。
+  const pluginDisplayName =
+    searchParams.get('plugin_display_name') ||
+    searchParams.get('name') ||
+    searchParams.get('plugin_name') ||
+    '';
   const [dataSource, setDataSource] = useState<IntegrationMonitoredObject[]>(
     []
   );
@@ -819,130 +826,140 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const showEmpty =
     !configLoading && (!currentConfig || !currentConfig.table_columns);
 
+  const configSection = showEmpty ? (
+    <div
+      className="flex items-center justify-center"
+      style={{ minHeight: '400px' }}
+    >
+      <Empty description={t('monitor.integrations.noConfigData')} />
+    </div>
+  ) : (
+    <Form
+      form={form}
+      name="basic"
+      layout="vertical"
+      onValuesChange={clearCollectDetectState}
+    >
+      <div className="flex items-center justify-between mb-[10px]">
+        <b className="text-[14px] ml-[-10px]">
+          {t('monitor.integrations.configuration')}
+        </b>
+        <GuideEntryButton />
+      </div>
+      {formItems}
+      <b className="text-[14px] flex mb-[10px] ml-[-10px]">
+        {t('monitor.integrations.basicInformation')}
+      </b>
+      <div className="flex items-center justify-between mb-[10px]">
+        <span className="text-[14px]">
+          {t('monitor.integrations.MonitoredObject')}
+          <span
+            className="text-[#ff4d4f] align-middle text-[14px] ml-[4px]"
+            style={{ fontFamily: 'SimSun, sans-serif' }}
+          >
+            *
+          </span>
+        </span>
+        <div className="flex gap-[8px]">
+          <Button
+            icon={<UploadOutlined />}
+            type="primary"
+            onClick={handleImport}
+          >
+            {t('common.import')}
+          </Button>
+          <Dropdown
+            menu={{
+              items: batchMenuItems,
+              onClick: handleBatchMenuClick
+            }}
+            disabled={!selectedRowKeys.length}
+          >
+            <Button>
+              {t('monitor.integrations.batchOperation')}
+              <DownOutlined className="ml-[4px]" />
+            </Button>
+          </Dropdown>
+        </div>
+      </div>
+      <Form.Item
+        name="nodes"
+        rules={[
+          {
+            required: true,
+            validator: async () => {
+              if (!dataSource.length) {
+                return Promise.reject(new Error(t('common.required')));
+              }
+              // 校验值得唯一性
+              if (currentConfig?.table_columns) {
+                const uniqueFields = currentConfig.table_columns.filter(
+                  (col: any) => col.is_only === true
+                );
+                for (const field of uniqueFields) {
+                  const fieldName = field.name;
+                  const fieldLabel = field.label;
+                  const valueSet = new Set<string>();
+                  for (const row of dataSource) {
+                    const value = row[fieldName];
+                    // 跳过空值
+                    if (
+                      value === null ||
+                      value === undefined ||
+                      value === ''
+                    ) {
+                      continue;
+                    }
+                    const valueStr = String(value);
+                    if (valueSet.has(valueStr)) {
+                      const errorMsg = t(
+                        'monitor.integrations.duplicateFieldError'
+                      )
+                        .replace('{{field}}', fieldLabel)
+                        .replace('{{value}}', valueStr);
+                      return Promise.reject(new Error(errorMsg));
+                    }
+                    valueSet.add(valueStr);
+                  }
+                }
+              }
+              return Promise.resolve();
+            }
+          }
+        ]}
+      >
+        <CustomTable
+          scroll={{ x: 'calc(100vw - 320px)' }}
+          dataSource={dataSource}
+          columns={columns}
+          rowKey="key"
+          pagination={false}
+          rowSelection={rowSelection}
+        />
+      </Form.Item>
+      <Form.Item>
+        <Permission requiredPermissions={['Add']}>
+          <Button
+            type="primary"
+            loading={confirmLoading}
+            onClick={handleSave}
+          >
+            {t('common.confirm')}
+          </Button>
+        </Permission>
+      </Form.Item>
+    </Form>
+  );
+
   return (
     <Spin spinning={configLoading || nodesLoading}>
       <div className="px-[10px]">
-        {showEmpty ? (
-          <div
-            className="flex items-center justify-center"
-            style={{ minHeight: '400px' }}
-          >
-            <Empty description={t('monitor.integrations.noConfigData')} />
-          </div>
-        ) : (
-          <Form
-            form={form}
-            name="basic"
-            layout="vertical"
-            onValuesChange={clearCollectDetectState}
-          >
-            <b className="text-[14px] flex mb-[10px] ml-[-10px]">
-              {t('monitor.integrations.configuration')}
-            </b>
-            {formItems}
-            <b className="text-[14px] flex mb-[10px] ml-[-10px]">
-              {t('monitor.integrations.basicInformation')}
-            </b>
-            <div className="flex items-center justify-between mb-[10px]">
-              <span className="text-[14px]">
-                {t('monitor.integrations.MonitoredObject')}
-                <span
-                  className="text-[#ff4d4f] align-middle text-[14px] ml-[4px]"
-                  style={{ fontFamily: 'SimSun, sans-serif' }}
-                >
-                  *
-                </span>
-              </span>
-              <div className="flex gap-[8px]">
-                <Button
-                  icon={<UploadOutlined />}
-                  type="primary"
-                  onClick={handleImport}
-                >
-                  {t('common.import')}
-                </Button>
-                <Dropdown
-                  menu={{
-                    items: batchMenuItems,
-                    onClick: handleBatchMenuClick
-                  }}
-                  disabled={!selectedRowKeys.length}
-                >
-                  <Button>
-                    {t('monitor.integrations.batchOperation')}
-                    <DownOutlined className="ml-[4px]" />
-                  </Button>
-                </Dropdown>
-              </div>
-            </div>
-            <Form.Item
-              name="nodes"
-              rules={[
-                {
-                  required: true,
-                  validator: async () => {
-                    if (!dataSource.length) {
-                      return Promise.reject(new Error(t('common.required')));
-                    }
-                    // 校验值得唯一性
-                    if (currentConfig?.table_columns) {
-                      const uniqueFields = currentConfig.table_columns.filter(
-                        (col: any) => col.is_only === true
-                      );
-                      for (const field of uniqueFields) {
-                        const fieldName = field.name;
-                        const fieldLabel = field.label;
-                        const valueSet = new Set<string>();
-                        for (const row of dataSource) {
-                          const value = row[fieldName];
-                          // 跳过空值
-                          if (
-                            value === null ||
-                            value === undefined ||
-                            value === ''
-                          ) {
-                            continue;
-                          }
-                          const valueStr = String(value);
-                          if (valueSet.has(valueStr)) {
-                            const errorMsg = t(
-                              'monitor.integrations.duplicateFieldError'
-                            )
-                              .replace('{{field}}', fieldLabel)
-                              .replace('{{value}}', valueStr);
-                            return Promise.reject(new Error(errorMsg));
-                          }
-                          valueSet.add(valueStr);
-                        }
-                      }
-                    }
-                    return Promise.resolve();
-                  }
-                }
-              ]}
-            >
-              <CustomTable
-                scroll={{ x: 'calc(100vw - 320px)' }}
-                dataSource={dataSource}
-                columns={columns}
-                rowKey="key"
-                pagination={false}
-                rowSelection={rowSelection}
-              />
-            </Form.Item>
-            <Form.Item>
-              <Permission requiredPermissions={['Add']}>
-                <Button
-                  type="primary"
-                  loading={confirmLoading}
-                  onClick={handleSave}
-                >
-                  {t('common.confirm')}
-                </Button>
-              </Permission>
-            </Form.Item>
-          </Form>
-        )}
+        <PluginGuidePanel
+          pluginId={pluginId}
+          pluginName={pluginDisplayName}
+        >
+          {configSection}
+        </PluginGuidePanel>
       </div>
       <BatchEditModal
         ref={batchEditModalRef}

@@ -53,6 +53,16 @@ class TestScanLogPolicyTask:
         assert result["success"] is True
         assert result["message"] == "策略未启用"
 
+    def test_invalid_period_returns_observable_failure(self, mocker):
+        policy = _make_policy(period={"type": "min", "value": 0})
+        scan = mocker.patch("apps.log.tasks.policy.LogPolicyScan")
+
+        result = scan_log_policy_task(policy.id)
+
+        assert result["success"] is False
+        assert "策略周期配置无效" in result["message"]
+        scan.assert_not_called()
+
     def test_first_run_sets_last_run_time_and_runs(self, mocker):
         policy = _make_policy(last_run_time=None)
         run = mocker.patch("apps.log.tasks.policy.LogPolicyScan")

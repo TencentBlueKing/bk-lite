@@ -147,7 +147,7 @@ def _fetch_tenant_access_token(config: dict, force_refresh: bool = False):
     with _FEISHU_TENANT_TOKEN_CACHE_LOCK:
         cache_entry = _FEISHU_TENANT_TOKEN_CACHE.get(cache_key)
         if cache_entry and not force_refresh and not _is_token_expiring(cache_entry, current_time):
-            logger.info(f"Using cached Feishu access token for app_id={_mask_app_id(app_id)}")
+            logger.debug(f"Using cached Feishu access token for app_id={_mask_app_id(app_id)}")
             return cache_entry["token"], None
 
         if cache_entry and (force_refresh or _is_token_expiring(cache_entry, current_time)):
@@ -171,14 +171,10 @@ def _fetch_tenant_access_token(config: dict, force_refresh: bool = False):
             return None, CapabilityExecutionResult.failed_result("Feishu access token request failed", code="provider.request_failed", retryable=True)
 
         request_id = response.headers.get("X-Tt-Logid", "")
-        logged_data = dict(data or {})
-        if "tenant_access_token" in logged_data:
-            logged_data["tenant_access_token"] = "***"
-        if "app_access_token" in logged_data:
-            logged_data["app_access_token"] = "***"
-        logger.info(
+        logger.debug(
             f"Feishu access token response: url={token_url}, status={response.status_code}, "
-            f"request_id={request_id}, app_id={_mask_app_id(app_id)}, data={logged_data}"
+            f"request_id={request_id}, app_id={_mask_app_id(app_id)}, code={data.get('code')}, "
+            f"expire={data.get('expire') or data.get('expires_in')}"
         )
 
         if response.status_code != 200 or data.get("code") not in (0, None):
@@ -227,9 +223,12 @@ def _feishu_get_paginated(url: str, token: str, *, params: dict | None = None, c
             return None, CapabilityExecutionResult.failed_result("Feishu contact request failed", code="provider.request_failed", retryable=True)
 
         last_request_id = response.headers.get("X-Tt-Logid", "")
-        logger.info(
+        page_data = data.get("data") or {}
+        page_items = page_data.get("items") or page_data.get("user_list") or []
+        logger.debug(
             f"Feishu contact response: url={url}, status={response.status_code}, "
-            f"request_id={last_request_id}, params={merged_params}, data={data}"
+            f"request_id={last_request_id}, params={merged_params}, code={data.get('code')}, "
+            f"items_count={len(page_items)}, has_more={page_data.get('has_more', False)}"
         )
         if response.status_code != 200 or data.get("code") not in (0, None):
             if config and not retried_with_refreshed_token and _should_retry_with_refreshed_token(response.status_code, data):
@@ -251,8 +250,7 @@ def _feishu_get_paginated(url: str, token: str, *, params: dict | None = None, c
                 external_request_id=last_request_id,
             )
 
-        page_data = data.get("data") or {}
-        items.extend(page_data.get("items") or page_data.get("user_list") or [])
+        items.extend(page_items)
         if not page_data.get("has_more"):
             return {"items": items, "request_id": last_request_id}, None
         page_token = page_data.get("page_token") or ""

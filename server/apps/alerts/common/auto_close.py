@@ -14,7 +14,6 @@ from apps.alerts.constants import (
 )
 from apps.alerts.models import Alert, AlarmStrategy, OperatorLog
 from apps.alerts.utils.operator_log import record_operator_logs_bulk
-from apps.alerts.utils.util import split_list
 from apps.core.logger import alert_logger as logger
 
 
@@ -235,9 +234,9 @@ class AlertAutoClose:
         logger.info("[AlertAutoClose] 开始检查 %s 个活跃告警，其中 %s 个告警有有效的自动关闭策略", total_alerts, valid_alert_count)
 
         # 分批处理，避免一次性处理太多告警导致内存或性能问题
-        batch_alerts = split_list(valid_alerts, count=200)
+        from apps.alerts.utils.queryset import iter_queryset_in_pk_batches
 
-        for alert_list in batch_alerts:
+        for alert_list in iter_queryset_in_pk_batches(valid_alerts, batch_size=200):
             for alert in alert_list:
                 try:
                     strategy = self.rule_id_to_strategy[alert.rule_id]

@@ -20,6 +20,7 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.cmdb.constants.constants import CollectPluginTypes, CollectRunStatusType
 from apps.cmdb.models.collect_model import CollectModels, OidMapping
+from apps.cmdb.models.node_mgmt_sync import NodeMgmtSyncConfig
 from apps.cmdb.views.collect import CollectModelViewSet, OidModelViewSet
 
 
@@ -58,6 +59,24 @@ def _bypass_permission(monkeypatch):
     monkeypatch.setattr("apps.cmdb.views.collect.get_permission_rules", lambda *a, **k: {})
     monkeypatch.setattr("apps.core.utils.serializers.get_permission_rules", lambda *a, **k: {})
     monkeypatch.setattr("apps.core.utils.permission_utils.get_permission_rules", lambda *a, **k: {})
+    monkeypatch.setattr(
+        CollectModelViewSet,
+        "get_queryset_by_permission",
+        lambda self, request, queryset, permission_key=None: queryset,
+    )
+
+
+def _system_collect_task():
+    return CollectModels.objects.create(
+        name="节点管理系统采集",
+        task_type=CollectPluginTypes.HOST,
+        model_id="host",
+        cycle_value_type="cycle",
+        team=[1],
+        is_system=True,
+        is_visible=False,
+        system_code="node_mgmt_region_1",
+    )
 
 
 # --------------------------------------------------------------------------
@@ -92,6 +111,47 @@ def test_apply_visibility_filter_excludes_hidden():
     qs = CollectModelViewSet.apply_visibility_filter(CollectModels.objects.all())
     names = sorted(qs.values_list("name", flat=True))
     assert names == ["vis"]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("method", "action", "data"),
+    [
+        ("get", "retrieve", None),
+        ("put", "update", {}),
+        ("delete", "destroy", None),
+        ("post", "exec_task", {}),
+    ],
+)
+def test_regular_detail_actions_cannot_access_node_mgmt_system_task(
+    superuser, monkeypatch, mocker, method, action, data
+):
+    _bypass_permission(monkeypatch)
+    task = _system_collect_task()
+    submit = mocker.patch("apps.cmdb.views.collect.CollectModelService.exec_task")
+
+    request = _req(method, superuser, data=data, current_team="1")
+    response = CollectModelViewSet.as_view({method: action})(request, pk=task.id)
+
+    assert response.status_code == 404
+    assert CollectModels.objects.filter(pk=task.pk).exists()
+    submit.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_disabled_auto_collect_cannot_be_bypassed_through_regular_exec_endpoint(
+    superuser, monkeypatch, mocker
+):
+    _bypass_permission(monkeypatch)
+    NodeMgmtSyncConfig.objects.create(auto_collect_enabled=False)
+    task = _system_collect_task()
+    submit = mocker.patch("apps.cmdb.views.collect.CollectModelService.exec_task")
+
+    request = _req("post", superuser, data={}, current_team="1")
+    response = CollectModelViewSet.as_view({"post": "exec_task"})(request, pk=task.id)
+
+    assert response.status_code == 404
+    submit.assert_not_called()
 
 
 # --------------------------------------------------------------------------
@@ -138,14 +198,19 @@ def test_nodes_invalid_page(superuser):
 @pytest.mark.django_db
 def test_nodes_success(superuser, monkeypatch):
     request = _req("get", superuser, query={"page": "1", "page_size": "10"}, current_team="1")
-    monkeypatch.setattr(
-        "apps.cmdb.views.collect.NodeMgmt.node_list",
-        lambda self, query_data: {"count": 1, "nodes": [{"id": "n1"}]},
-    )
+    captured_query = {}
+
+    def fake_node_list(self, query_data):
+        captured_query.update(query_data)
+        return {"count": 1, "nodes": [{"id": "n1"}]}
+
+    monkeypatch.setattr("apps.cmdb.views.collect.NodeMgmt.node_list", fake_node_list)
     resp = CollectModelViewSet.as_view({"get": "nodes"})(request)
     body = _body(resp)
     assert body["result"] is True
     assert body["data"]["count"] == 1
+    assert captured_query["is_container"] is True
+    assert "node_type" not in captured_query
 
 
 # --------------------------------------------------------------------------

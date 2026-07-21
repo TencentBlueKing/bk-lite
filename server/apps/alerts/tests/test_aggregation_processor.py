@@ -381,6 +381,7 @@ def test_get_events_for_strategy_excludes_shielded(source):
 @pytest.mark.django_db
 def test_trigger_missing_alert_schedules_auto_assignment(source):
     from unittest import mock
+    from apps.alerts.models import AlertOutbox
 
     strategy = _missing_strategy()
     proc = AggregationProcessor()
@@ -388,13 +389,13 @@ def test_trigger_missing_alert_schedules_auto_assignment(source):
     with mock.patch(
         "apps.alerts.aggregation.processor.aggregation_processor.transaction.on_commit",
         side_effect=lambda fn: fn(),
-    ), mock.patch.object(AggregationProcessor, "_schedule_auto_assignment") as scheduled:
-        proc._trigger_missing_alert(strategy, strategy.params, timezone.now(), None)
+    ):
+        alert = proc._trigger_missing_alert(strategy, strategy.params, timezone.now(), None)
 
-    scheduled.assert_called_once()
-    alert_ids = scheduled.call_args.args[0]
-    assert isinstance(alert_ids, list) and len(alert_ids) == 1
-    assert alert_ids[0].startswith("ALERT-")
+    assert alert.alert_id.startswith("ALERT-")
+    records = {record.kind: record for record in AlertOutbox.objects.all()}
+    assert records["auto_assignment"].payload == {"alert_ids": [alert.alert_id]}
+    assert records["action"].payload == {"alert_id": alert.alert_id, "event_name": "created"}
 
 
 # --------------------------------------------------------------------------

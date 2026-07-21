@@ -1,7 +1,7 @@
 /** 「节点压力排行」TopN 节点数量;单一常量同时驱动 topk / bottomk 查询与展示。 */
 export const ES_TOP_N = 8;
 
-type GuideItem = { label: string; detail: string };
+interface GuideItem { label: string; detail: string }
 
 export interface EsTopNodeQuery {
   /** 用作 React key 与 state 键 */

@@ -1,6 +1,7 @@
 import json
 from unittest.mock import patch
 
+import uuid
 import pytest
 from django.db import IntegrityError
 
@@ -47,6 +48,7 @@ def channel(ready_im_instance):
 @pytest.fixture
 def user(db):
     return User.objects.create(
+        user_id=str(uuid.uuid4()),
         username="tester",
         display_name="Tester",
         email="tester@example.com",

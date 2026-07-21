@@ -15,15 +15,18 @@
       "required": true,
       "editable": false,
       "description": "用于连接 MySQL 数据库的用户名",
+      "guide_short": "建议使用专用只读监控账号，至少具备 PROCESS 与 REPLICATION CLIENT 权限，以及 performance_schema / information_schema 的 SELECT 权限。",
       "widget_props": {
-        "placeholder": "用户名"
+        "placeholder": "用户名",
+        "placeholder_en": "Username"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.servers[0]",
         "to_form": {
           "regex": "^([^:]+):"
         }
-      }
+      },
+      "label_en": "Username"
     },
     {
       "name": "ENV_PASSWORD",
@@ -32,12 +35,15 @@
       "required": true,
       "editable": false,
       "description": "用于连接 MySQL 数据库的密码",
+      "guide_short": "填写与用户名对应的登录密码，注意不要带入首尾空格或换行；MySQL 8.0 默认 caching_sha2_password，请确认采集端驱动兼容。",
       "widget_props": {
-        "placeholder": "密码"
+        "placeholder": "密码",
+        "placeholder_en": "Password"
       },
       "transform_on_edit": {
         "origin_path": "child.env_config.PASSWORD__{{config_id}}"
-      }
+      },
+      "label_en": "Password"
     },
     {
       "name": "host",
@@ -47,6 +53,7 @@
       "visible_in": "edit",
       "editable": false,
       "description": "与设备进行通信的主机",
+      "guide_short": "填写 MySQL 实例的 IP 或域名，例如 10.0.0.10；保存前可在采集节点用 mysql -h <host> -u <user> -p 验证连通。",
       "widget_props": {
         "placeholder": "主机地址"
       },
@@ -55,7 +62,8 @@
         "to_form": {
           "regex": "@tcp\\(([^:]+):"
         }
-      }
+      },
+      "label_en": "Host"
     },
     {
       "name": "port",
@@ -65,17 +73,20 @@
       "visible_in": "edit",
       "editable": false,
       "description": "与设备进行通信的端口",
+      "guide_short": "MySQL 服务监听端口，默认 3306；若修改过 my.cnf 的 port，请填写实际端口；本端口与任何 exporter 端口无关。",
       "widget_props": {
         "min": 1,
         "precision": 0,
-        "placeholder": "端口"
+        "placeholder": "端口",
+        "placeholder_en": "Port"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.servers[0]",
         "to_form": {
           "regex": "@tcp\\([^:]+:(\\d+)\\)"
         }
-      }
+      },
+      "label_en": "Port"
     },
     {
       "name": "interval",
@@ -84,11 +95,13 @@
       "required": true,
       "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
+      "guide_short": "默认 60 秒；过低会增加 MySQL 实例压力，过高会延误告警；建议不少于 30 秒。",
       "widget_props": {
         "min": 1,
         "precision": 0,
         "placeholder": "间隔",
-        "addonAfter": "s"
+        "addonAfter": "s",
+        "placeholder_en": "Interval"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.interval",
@@ -98,7 +111,9 @@
         "to_api": {
           "suffix": "s"
         }
-      }
+      },
+      "label_en": "Interval",
+      "description_en": "Collection time interval (unit: seconds)"
     }
   ],
   "table_columns": [
@@ -108,9 +123,11 @@
       "type": "select",
       "required": true,
       "widget_props": {
-        "placeholder": "请选择节点"
+        "placeholder": "请选择节点",
+        "placeholder_en": "Please select node"
       },
-      "enable_row_filter": false
+      "enable_row_filter": false,
+      "label_en": "Node"
     },
     {
       "name": "host",
@@ -128,7 +145,8 @@
         ],
         "target_field": "instance_name",
         "separator": ":"
-      }
+      },
+      "label_en": "Host"
     },
     {
       "name": "port",
@@ -138,7 +156,8 @@
       "widget_props": {
         "min": 1,
         "precision": 0,
-        "placeholder": "端口"
+        "placeholder": "端口",
+        "placeholder_en": "Port"
       },
       "change_handler": {
         "type": "combine",
@@ -148,7 +167,8 @@
         ],
         "target_field": "instance_name",
         "separator": ":"
-      }
+      },
+      "label_en": "Port"
     },
     {
       "name": "instance_name",
@@ -157,8 +177,10 @@
       "required": true,
       "widget_props": {
         "placeholder": "实例名称",
-        "disabled": false
-      }
+        "disabled": false,
+        "placeholder_en": "Instance Name"
+      },
+      "label_en": "Instance Name"
     },
     {
       "name": "group_ids",
@@ -166,8 +188,10 @@
       "type": "group_select",
       "required": false,
       "widget_props": {
-        "placeholder": "请选择组"
-      }
+        "placeholder": "请选择组",
+        "placeholder_en": "Please select group"
+      },
+      "label_en": "Group"
     }
   ]
 }

@@ -2,7 +2,6 @@
 
 import React, { useEffect, useMemo, useRef } from 'react';
 import { Alert, Form, Input, Spin } from 'antd';
-import { useLocale } from '@/context/locale';
 import { useUserInfoContext } from '@/context/userInfo';
 import { useTranslation } from '@/utils/i18n';
 import BaseTaskForm, { BaseTaskRef } from './baseTask';
@@ -62,7 +61,6 @@ const ConfigFileTask: React.FC<ConfigFileTaskFormProps> = ({
   editId,
 }) => {
   const { t } = useTranslation();
-  const localeContext = useLocale();
   const { selectedGroup } = useUserInfoContext();
   const baseRef = useRef<BaseTaskRef>(null as any);
   const copyTaskData = useAssetManageStore((state) => state.copyTaskData);
@@ -165,8 +163,7 @@ const ConfigFileTask: React.FC<ConfigFileTaskFormProps> = ({
     <Spin spinning={loading}>
       <Form
         form={form}
-        layout="horizontal"
-        labelCol={{ span: localeContext.locale === 'en' ? 6 : 5 }}
+        layout="vertical"
         onFinish={onFinish}
         initialValues={initialFormValues}
       >

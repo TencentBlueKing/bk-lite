@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Button, Card, Empty, Input, Space, Spin, Switch, Tabs, message } from 'antd';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Badge, Button, Card, Empty, Input, Space, Spin, Switch, Tabs, message } from 'antd';
 import CustomTable from '@/components/custom-table';
 import { useNodeMgmtSyncApi } from '@/app/cmdb/api';
 import { useTranslation } from '@/utils/i18n';
@@ -13,6 +13,16 @@ import type {
   NodeMgmtSyncDisplayPayload,
   TaskData,
 } from '@/app/cmdb/types/autoDiscovery';
+import {
+  NODE_MGMT_SYNC_STATUS_BADGE,
+  createNodeMgmtSyncRequestGuard,
+  getNodeMgmtSyncDisplayEmptyStateKey,
+  getNodeMgmtSyncEmptyStateKey,
+  getNodeMgmtSyncReasonTextKey,
+  getNodeMgmtSyncStatusTextKey,
+  normalizeNodeMgmtSyncStatus,
+} from './nodeMgmtSyncViewModel';
+import type { NodeMgmtSyncGuardToken } from './nodeMgmtSyncViewModel';
 
 interface NodeMgmtSyncDetailProps {
   open: boolean;
@@ -34,63 +44,108 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
   const api = useNodeMgmtSyncApi();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [task, setTask] = useState<NodeMgmtSyncTask | null>(null);
   const [displayPayload, setDisplayPayload] = useState<NodeMgmtSyncDisplayPayload | null>(null);
   const [activeTab, setActiveTab] = useState('add');
   const [searchText, setSearchText] = useState('');
   const [pendingSearchText, setPendingSearchText] = useState('');
+  const requestGuard = useRef(createNodeMgmtSyncRequestGuard()).current;
+  const savingRef = useRef(false);
 
-  const fetchData = async () => {
+  const fetchData = async (showFeedback = false, mutationToken?: NodeMgmtSyncGuardToken) => {
+    const requestToken = requestGuard.beginRequest();
+    if (!requestGuard.isRequestCurrent(requestToken)) {
+      return false;
+    }
     try {
       setLoading(true);
+      setLoadFailed(false);
       const [taskRes, displayRes] = await Promise.all([
         api.getNodeMgmtSyncTask(),
         api.getNodeMgmtSyncDisplay(),
       ]);
-      setTask(taskRes as NodeMgmtSyncTask);
-      setDisplayPayload(displayRes as NodeMgmtSyncDisplayPayload);
+      if (!requestGuard.isRequestCurrent(requestToken)
+        || (mutationToken && !requestGuard.isMutationCurrent(mutationToken))) {
+        return false;
+      }
+      setTask(taskRes);
+      setDisplayPayload(displayRes);
+      if (showFeedback) {
+        message.success(t('Collection.nodeMgmtSync.refreshSuccess'));
+      }
+      return true;
     } catch (error) {
+      if (!requestGuard.isRequestCurrent(requestToken)
+        || (mutationToken && !requestGuard.isMutationCurrent(mutationToken))) {
+        return false;
+      }
       console.error('Failed to fetch node management sync data:', error);
+      setLoadFailed(true);
       message.error(t('Collection.nodeMgmtSync.loadFailed'));
+      return false;
     } finally {
-      setLoading(false);
+      if (requestGuard.isRequestCurrent(requestToken)
+        && (!mutationToken || requestGuard.isMutationCurrent(mutationToken))) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
     if (!open) {
+      requestGuard.close();
+      savingRef.current = false;
+      setSaving(false);
       return;
     }
+    requestGuard.open();
     void fetchData();
+    return () => requestGuard.close();
   }, [open]);
 
   const handleConfigChange = async (patch: Partial<NodeMgmtSyncTask>) => {
-    if (!task) {
+    if (!task || savingRef.current) {
       return;
     }
-    const effectivePatch = { ...patch };
-    if (patch.auto_sync_enabled === false) {
-      effectivePatch.auto_collect_enabled = false;
-    }
-    const nextTask = { ...task, ...effectivePatch };
+    savingRef.current = true;
+    const mutationToken = requestGuard.beginMutation();
+    setLoading(false);
+    const nextTask = { ...task, ...patch };
     setTask(nextTask);
     try {
       setSaving(true);
-      const response = await api.updateNodeMgmtSyncTask(nextTask);
-      setTask(response as NodeMgmtSyncTask);
-      const display = await api.getNodeMgmtSyncDisplay();
-      setDisplayPayload(display as NodeMgmtSyncDisplayPayload);
-      message.success(t('successfulSetted'));
+      const response = await api.updateNodeMgmtSyncTask(patch);
+      if (!requestGuard.isMutationCurrent(mutationToken)) {
+        return;
+      }
+      setTask(response);
+      await fetchData(false, mutationToken);
+      if (requestGuard.isMutationCurrent(mutationToken)) {
+        message.success(t('successfulSetted'));
+      }
     } catch (error) {
+      if (!requestGuard.isMutationCurrent(mutationToken)) {
+        return;
+      }
       console.error('Failed to update node management sync config:', error);
       message.error(t('Collection.nodeMgmtSync.saveFailed'));
       setTask(task);
     } finally {
-      setSaving(false);
+      if (requestGuard.isMutationCurrent(mutationToken)) {
+        savingRef.current = false;
+        setSaving(false);
+      }
     }
   };
 
   const syncRun: NodeMgmtSyncRun | null = displayPayload?.run || null;
+  const normalizedRunStatus = normalizeNodeMgmtSyncStatus(syncRun?.status);
+  const runStatus = normalizedRunStatus.status;
+  const reasonCode = syncRun?.reason_code
+    || task?.health?.reason_code
+    || task?.reconcile_error_code
+    || '';
   const detail = displayPayload?.detail;
   const displayMessage: CollectTaskMessage = displayPayload?.message || syncRun?.message || {
     all: 0,
@@ -108,6 +163,41 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
     association_success: 0,
   };
   const todoItems = detail?.todo || [];
+  const healthAlert = useMemo(() => {
+    if (loadFailed) {
+      return { type: 'error' as const, textKey: 'Collection.nodeMgmtSync.empty.queryFailed' };
+    }
+    if (task?.health?.schedule_status === 'degraded' || task?.health?.node_config_status === 'degraded') {
+      return { type: 'error' as const, textKey: getNodeMgmtSyncReasonTextKey(reasonCode) };
+    }
+    if (task?.health?.node_config_status === 'waiting_sync' || runStatus === 'waiting_sync') {
+      return { type: 'warning' as const, textKey: 'Collection.nodeMgmtSync.status.waitingSync' };
+    }
+    if (task?.health?.schedule_status === 'reconciling' || task?.health?.node_config_status === 'reconciling') {
+      return { type: 'info' as const, textKey: 'Collection.nodeMgmtSync.health.reconciling' };
+    }
+    if (normalizedRunStatus.isUnknown) {
+      return { type: 'error' as const, textKey: 'Collection.nodeMgmtSync.status.unknown' };
+    }
+    if (runStatus && ['blocked', 'failed', 'timeout'].includes(runStatus)) {
+      return { type: 'error' as const, textKey: getNodeMgmtSyncReasonTextKey(reasonCode) };
+    }
+    if (runStatus === 'submitted') {
+      return { type: 'info' as const, textKey: 'Collection.nodeMgmtSync.status.submitted' };
+    }
+    if (runStatus === 'partial_success') {
+      return { type: 'warning' as const, textKey: 'Collection.nodeMgmtSync.status.partialSuccess' };
+    }
+    return null;
+  }, [loadFailed, normalizedRunStatus.isUnknown, reasonCode, runStatus, task]);
+  const emptyStateKey = displayPayload
+    ? getNodeMgmtSyncDisplayEmptyStateKey(displayPayload, loadFailed)
+    : getNodeMgmtSyncEmptyStateKey({
+      status: runStatus,
+      reasonCode,
+      total: displayMessage.all || 0,
+      loadFailed,
+    });
   useEffect(() => {
     const tabOrder = ['add', 'update', 'delete', 'relation', 'raw_data'] as const;
     const firstWithData = tabOrder.find((key) => (detail?.[key]?.count || 0) > 0);
@@ -231,6 +321,7 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
                 <span>{t('Collection.nodeMgmtSync.autoSync')}</span>
                 <Switch
                   checked={task?.auto_sync_enabled}
+                  disabled={saving}
                   loading={saving}
                   onChange={(checked) => void handleConfigChange({ auto_sync_enabled: checked })}
                 />
@@ -239,14 +330,34 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
                 <span>{t('Collection.nodeMgmtSync.autoCollect')}</span>
                 <Switch
                   checked={task?.auto_collect_enabled}
-                  disabled={!task?.auto_sync_enabled}
+                  disabled={saving}
                   loading={saving}
                   onChange={(checked) => void handleConfigChange({ auto_collect_enabled: checked })}
                 />
               </Space>
-              <Button onClick={() => void fetchData()}>{t('common.refresh')}</Button>
+              <Button disabled={saving} loading={loading} onClick={() => void fetchData(true)}>
+                {t('common.refresh')}
+              </Button>
             </Space>
           </div>
+
+          {healthAlert ? (
+            <Alert
+              type={healthAlert.type}
+              message={t(healthAlert.textKey)}
+              showIcon
+            />
+          ) : null}
+
+          {runStatus ? (
+            <div className="text-sm text-[var(--color-text-2)]">
+              {t('Collection.nodeMgmtSync.runStatus')}：
+              <Badge
+                status={NODE_MGMT_SYNC_STATUS_BADGE[runStatus]}
+                text={t(getNodeMgmtSyncStatusTextKey(runStatus, normalizedRunStatus.isUnknown))}
+              />
+            </div>
+          ) : null}
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
             <StatisticCard
@@ -284,7 +395,7 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
           {todoItems.length ? (
             <Alert
               type="info"
-              message={todoItems.map((item) => item.message).join('；')}
+              message={t('Collection.nodeMgmtSync.todoNotice', undefined, { count: String(todoItems.length) })}
               showIcon
             />
           ) : null}
@@ -302,9 +413,9 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
 
           <Tabs activeKey={activeTab} onChange={setActiveTab} items={tabItems} />
 
-          {activeTab === 'raw_data' && !filteredRows.length ? (
+          {!filteredRows.length ? (
             <div className="py-10">
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('Collection.taskDetail.noRawData')} />
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t(emptyStateKey)} />
             </div>
           ) : (
             <CustomTable

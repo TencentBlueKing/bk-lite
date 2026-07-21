@@ -1,4 +1,6 @@
 # -- coding: utf-8 --
+import uuid
+
 from django.db import models
 
 from apps.core.models.time_info import TimeInfo
@@ -16,6 +18,36 @@ class IPAMReconcileSource(TimeInfo):
         db_table = "cmdb_ipam_reconcile_source"
         unique_together = ("model_id", "ip_attr_id")
         verbose_name = "IPAM对账来源"
+
+
+class IPAMReconcileRunStatus(models.TextChoices):
+    PENDING = "pending", "等待执行"
+    RUNNING = "running", "执行中"
+    SUCCESS = "success", "成功"
+    ERROR = "error", "失败"
+
+
+class IPAMReconcileRun(TimeInfo):
+    """IPAM 全量对账的持久化执行记录与数据库所有权凭证。"""
+
+    run_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    active_scope = models.CharField(max_length=32, default="global", null=True, unique=True, editable=False)
+    trigger = models.CharField(max_length=32)
+    status = models.CharField(
+        max_length=16,
+        choices=IPAMReconcileRunStatus.choices,
+        default=IPAMReconcileRunStatus.PENDING,
+    )
+    owner_token = models.CharField(max_length=64, blank=True, default="")
+    lease_expires_at = models.DateTimeField(null=True, blank=True)
+    stats = models.JSONField(default=dict, blank=True)
+    last_error = models.TextField(blank=True, default="")
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "cmdb_ipam_reconcile_run"
+        indexes = [models.Index(fields=["status", "lease_expires_at"], name="cmdb_ipam_run_lease_idx")]
 
 
 # 默认对账来源：哪些 CI 模型的哪个属性承载 IP。由数据迁移预置（不再用单独的 management 命令）。

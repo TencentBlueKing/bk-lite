@@ -1,3 +1,4 @@
+import uuid
 from urllib.parse import urlencode
 
 from django.contrib.auth.hashers import make_password
@@ -79,10 +80,17 @@ def login_with_binding(binding_id: int, auth_code: str = "", *, username: str = 
         .first()
     )
     if not binding:
+        logger.warning(f"login_with_binding: binding not found, binding_id={binding_id}")
         return {"result": False, "message": "Login auth binding not found"}
 
     instance = binding.integration_instance
     if not instance.enabled or instance.capability_status.get("login_auth") != "ready":
+        logger.warning(
+            f"login_with_binding: binding not ready, "
+            f"binding_id={binding_id}, provider_key={instance.provider_key}, "
+            f"instance_enabled={instance.enabled}, "
+            f"capability_status={dict(instance.capability_status or {})}"
+        )
         return {"result": False, "message": "Login auth binding is not ready"}
 
     runtime_service = RuntimeApplicationService()
@@ -97,15 +105,36 @@ def login_with_binding(binding_id: int, auth_code: str = "", *, username: str = 
         password=password,
     )
     if not result.success:
+        # 外部 API 失败（AD/Feishu/WeChat 拒绝或网络错误），记 ERROR 触发运维告警。
+        # 含 provider_key + binding_id + error code + summary + 错误列表，便于区分平台 vs 外部。
+        error_codes = [e.code for e in (result.errors or [])]
+        logger.error(
+            f"login_with_binding: external authenticate failed, "
+            f"binding_id={binding_id}, provider_key={instance.provider_key}, "
+            f"username={username!r}, summary={result.summary!r}, "
+            f"codes={error_codes}, request_id={result.request_id}"
+        )
         return {"result": False, "message": result.summary, "data": result.to_dict()}
 
     adapter_login_result = result.payload.get("login_result") or {}
     if adapter_login_result:
+        logger.info(
+            f"login_with_binding succeeded via adapter-supplied login_result, "
+            f"binding_id={binding_id}, provider_key={instance.provider_key}"
+        )
         return {"result": True, "data": adapter_login_result}
 
     external_user = result.payload.get("external_user") or {}
     user = _resolve_platform_user(binding, external_user)
     if not user:
+        # 外部认证成功但本地无匹配：通常是 binding.platform_field / external_field 配置错，
+        # 或 sync 任务未跑、用户没建。WARNING 提示运维检查，不告警。
+        logger.warning(
+            f"login_with_binding: no matching platform user, "
+            f"binding_id={binding_id}, provider_key={instance.provider_key}, "
+            f"platform_field={binding.platform_field}, "
+            f"external_user={dict(external_user)}"
+        )
         return {"result": False, "message": "No matching platform user found"}
 
     user.last_login = timezone.now()
@@ -115,6 +144,11 @@ def login_with_binding(binding_id: int, auth_code: str = "", *, username: str = 
         # `domain` is a deprecated compatibility field. New login-auth users are
         # intentionally kept in the legacy default domain until the column is removed.
         token_result["data"]["domain"] = "domain.com"
+        logger.info(
+            f"login_with_binding succeeded, "
+            f"binding_id={binding_id}, provider_key={instance.provider_key}, "
+            f"username={user.username}, platform_user_id={user.id}"
+        )
     return token_result
 
 
@@ -155,6 +189,7 @@ def _resolve_platform_user(binding: LoginAuthBinding, external_user: dict):
     email = external_user.get("email", "") if platform_field != "email" else external_value
     phone = external_user.get("mobile", "") if platform_field != "phone" else external_value
     user = User.objects.create(
+        user_id=str(uuid.uuid4()),
         username=username,
         display_name=display_name,
         email=email,

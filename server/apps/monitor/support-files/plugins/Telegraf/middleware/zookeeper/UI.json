@@ -16,12 +16,14 @@
       "visible_in": "edit",
       "editable": false,
       "description": "监控对象的服务器地址",
+      "guide_short": "ZooKeeper 客户端地址，格式 host:port，默认 2181；采集节点需要能直连 TCP（telnet/nc mntr 验证）。",
       "widget_props": {
         "placeholder": "127.0.0.1:2181"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.servers[0]"
-      }
+      },
+      "label_en": "Server Address"
     },
     {
       "name": "timeout",
@@ -30,11 +32,13 @@
       "required": true,
       "default_value": 10,
       "description": "从设备请求数据的超时时间，超过配置时间（例如 10 秒）的请求将被视为失败",
+      "guide_short": "单次 mntr 命令的最大等待秒数，默认 10；集群繁忙时建议调到 30 避免误判失败；最小 1 秒。",
       "widget_props": {
         "min": 1,
         "precision": 0,
         "placeholder": "超时时间",
-        "addonAfter": "s"
+        "addonAfter": "s",
+        "placeholder_en": "Timeout"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.timeout",
@@ -44,7 +48,8 @@
         "to_api": {
           "suffix": "s"
         }
-      }
+      },
+      "label_en": "Timeout"
     },
     {
       "name": "interval",
@@ -53,11 +58,13 @@
       "required": true,
       "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
+      "guide_short": "Telegraf inputs.zookeeper 采集周期，单位秒，默认 60；与超时时间配合使用。",
       "widget_props": {
         "min": 1,
         "precision": 0,
         "placeholder": "间隔",
-        "addonAfter": "s"
+        "addonAfter": "s",
+        "placeholder_en": "Interval"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.interval",
@@ -67,7 +74,9 @@
         "to_api": {
           "suffix": "s"
         }
-      }
+      },
+      "label_en": "Interval",
+      "description_en": "Collection time interval (unit: seconds)"
     }
   ],
   "table_columns": [
@@ -77,9 +86,11 @@
       "type": "select",
       "required": true,
       "widget_props": {
-        "placeholder": "请选择节点"
+        "placeholder": "请选择节点",
+        "placeholder_en": "Please select node"
       },
-      "enable_row_filter": false
+      "enable_row_filter": false,
+      "label_en": "Node"
     },
     {
       "name": "url",
@@ -95,7 +106,8 @@
           "url"
         ],
         "target_field": "instance_name"
-      }
+      },
+      "label_en": "Server Address"
     },
     {
       "name": "instance_name",
@@ -104,8 +116,10 @@
       "required": true,
       "widget_props": {
         "placeholder": "实例名称",
-        "disabled": false
-      }
+        "disabled": false,
+        "placeholder_en": "Instance Name"
+      },
+      "label_en": "Instance Name"
     },
     {
       "name": "group_ids",
@@ -113,8 +127,10 @@
       "type": "group_select",
       "required": false,
       "widget_props": {
-        "placeholder": "请选择组"
-      }
+        "placeholder": "请选择组",
+        "placeholder_en": "Please select group"
+      },
+      "label_en": "Group"
     }
   ]
 }

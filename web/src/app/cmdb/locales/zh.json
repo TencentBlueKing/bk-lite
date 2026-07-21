@@ -22,7 +22,9 @@
         "filterNameRequired": "请输入收藏名称",
         "noFiltersToSave": "没有可收藏的筛选条件",
         "saveFailed": "保存失败",
-        "deleteFailed": "删除失败"
+        "deleteFailed": "删除失败",
+        "cancel": "取消",
+        "confirm": "确认"
     },
     "deleteTitle": "您确定要删除这个项目吗？",
     "disassociationTitle": "您确定要取消关联吗？",
@@ -711,6 +713,55 @@
             "searchPlaceholder": "搜索实例名/IP/云区域",
             "loadFailed": "加载节点管理同步数据失败",
             "saveFailed": "保存节点管理同步配置失败",
+            "refreshSuccess": "节点管理同步状态已刷新",
+            "runStatus": "最近运行状态",
+            "todoNotice": "本次运行有 {count} 项需要关注，请根据状态和稳定错误码排查。",
+            "health": {
+                "reconciling": "节点管理同步配置正在对账，请稍候刷新。"
+            },
+            "status": {
+                "waitingSync": "等待首次同步完成后开始采集",
+                "running": "正在执行节点管理同步",
+                "submitted": "已提交到区域采集任务，等待执行结果",
+                "success": "执行成功",
+                "partialSuccess": "部分成功，请关注失败区域",
+                "blocked": "执行被阻塞",
+                "failed": "执行失败",
+                "timeout": "执行超时",
+                "unknown": "运行状态未知，请稍后刷新或根据错误码排查"
+            },
+            "empty": {
+                "noNodes": "节点管理返回 0 个节点",
+                "queryFailed": "节点管理查询失败",
+                "noAccessPoint": "区域没有可用接入点",
+                "partialFailure": "部分区域执行失败，暂无可展示数据",
+                "noData": "暂无节点管理同步数据"
+            },
+            "reason": {
+                "syncRequired": "采集正在等待当前配置版本的首次同步完成。",
+                "runAlreadyActive": "已有节点管理同步或采集任务正在执行。",
+                "runTimeout": "节点管理同步任务执行超时，请等待系统恢复后重试。",
+                "runFailed": "节点管理同步任务执行失败，请稍后重试。",
+                "nodeQueryFailed": "节点管理查询失败，请检查节点管理服务状态。",
+                "nodeQueryTimeout": "节点管理查询超时，请稍后重试。",
+                "nodePageLimitExceeded": "节点数量超过本次同步安全上限，请缩小范围后重试。",
+                "nodeSourceEmpty": "节点管理当前返回 0 个节点，本次同步未标记成功。",
+                "noValidNodes": "节点管理返回的节点均缺少有效云区域，本次同步未标记成功。",
+                "invalidRegionCode": "节点所属云区域无效，无法提交采集。",
+                "noAccessPoint": "区域没有可用接入点，无法提交采集。",
+                "collectAlreadyRunning": "该区域已有采集任务正在执行。",
+                "collectSubmissionBlocked": "区域采集任务暂时无法提交。",
+                "collectSubmitFailed": "区域采集任务提交失败，请稍后重试。",
+                "collectChildFailed": "部分区域采集任务执行失败。",
+                "collectExecutionMissing": "区域采集任务未返回有效执行标识。",
+                "collectExecutionSuperseded": "区域采集任务已被更新的执行轮次替代。",
+                "collectTaskMissing": "区域采集任务不存在，系统将尝试恢复。",
+                "reconcileFailed": "自动调度对账失败，系统将尝试恢复。",
+                "nodeConfigFailed": "节点采集配置对账失败，系统将尝试恢复。",
+                "nodeConfigDeleteFailed": "旧节点采集配置删除失败，系统将重试。",
+                "nodeConfigPushFailed": "新节点采集配置下发失败，系统将重试。",
+                "unknown": "节点管理同步暂时异常，请根据错误码排查或稍后重试。"
+            },
             "table": {
                 "objectType": "对象类型",
                 "instanceName": "实例名",
@@ -844,7 +895,9 @@
                 "failed": "失败"
             },
             "noTaskSelected": "请选择任务查看详情"
-        }
+        },
+        "password": "密码",
+        "sslVerify": "SSL 校验"
     },
     "OidLibrary": {
         "title": "SOID库",

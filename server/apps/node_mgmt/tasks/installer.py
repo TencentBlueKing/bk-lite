@@ -517,17 +517,15 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
             ],
         )
 
-        password = None
-        if has_password:
-            password = aes_obj.decode(node_obj.password)
-
-        private_key = None
-        if has_private_key:
-            private_key = aes_obj.decode(node_obj.private_key)
-
-        passphrase = None
-        if node_obj.passphrase:
-            passphrase = aes_obj.decode(node_obj.passphrase)
+        try:
+            password = aes_obj.decode(node_obj.password) if has_password else None
+            private_key = aes_obj.decode(node_obj.private_key) if has_private_key else None
+            passphrase = aes_obj.decode(node_obj.passphrase) if node_obj.passphrase else None
+        except Exception as e:
+            _handle_step_exception(node_obj, "Credential decryption failed", e)
+            _save_node_result(node_obj, "error", "Credential decryption failed")
+            _dispatch_or_finalize_controller_task(task_obj.id)
+            continue
 
         try:
             resolved_package = package_obj
@@ -594,8 +592,6 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
                 cpu_architecture=resolved_arch,
             )
 
-            if resolved_package.os == NodeConstants.LINUX_OS:
-                install_command = f'sh -lc "{install_command}"'
             exec_result = None
             if resolved_package.os == NodeConstants.LINUX_OS:
                 execution_id = uuid.uuid4().hex

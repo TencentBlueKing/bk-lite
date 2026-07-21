@@ -87,6 +87,29 @@ class TestOperationAnalysisRpc:
         assert call.kwargs["server"] == "srv"
         assert call.kwargs["k"] == "v"
 
+    def test_run_将nats认证参数从业务载荷中分离(self):
+        rpc = OperationAnalysisRpc(namespace="ana_ns", server="nats://host:4222")
+        with mock.patch("apps.rpc.base.nats_client") as m:
+            m.request_v2.side_effect = _coro({"data": 1})
+            rpc.run("method", _nats_user="alice", _nats_password="secret", query="value")
+
+        call = m.request_v2.call_args
+        assert call.kwargs["_nats_user"] == "alice"
+        assert call.kwargs["_nats_password"] == "secret"
+        assert call.kwargs["query"] == "value"
+
+    def test_run_保留业务载荷中的user与password字段(self):
+        rpc = OperationAnalysisRpc(namespace="ana_ns", server="nats://host:4222")
+        with mock.patch("apps.rpc.base.nats_client") as m:
+            m.request_v2.side_effect = _coro({"data": 1})
+            rpc.run("method", user="business-user", password="business-password")
+
+        call = m.request_v2.call_args
+        assert call.kwargs["user"] == "business-user"
+        assert call.kwargs["password"] == "business-password"
+        assert call.kwargs["_nats_user"] is None
+        assert call.kwargs["_nats_password"] is None
+
 
 class TestBaseOperationAnaRpc:
     def test_构造时传入server与namespace(self):

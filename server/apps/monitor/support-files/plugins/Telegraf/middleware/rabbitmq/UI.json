@@ -16,12 +16,14 @@
       "visible_in": "edit",
       "editable": false,
       "description": "监控的目标网址链接，以检测其可用性和性能",
+      "guide_short": "RabbitMQ Management API 根地址（默认 15672），与 AMQP 5672 端口不同；需先 rabbitmq-plugins enable rabbitmq_management。",
       "widget_props": {
         "placeholder": "http://example.com:8000"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.url"
-      }
+      },
+      "label_en": "URL"
     },
     {
       "name": "username",
@@ -30,12 +32,16 @@
       "required": true,
       "editable": false,
       "description": "用于访问接口的用户名",
+      "guide_short": "Management 账号，建议 rabbitmqctl set_user_tags <username> monitoring 授予只读标签；guest 默认仅本地登录，远程采集请新建账号。",
       "widget_props": {
-        "placeholder": "用户名"
+        "placeholder": "用户名",
+        "placeholder_en": "Username"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.username"
-      }
+      },
+      "label_en": "Username",
+      "description_en": "Username for accessing the interface"
     },
     {
       "name": "ENV_PASSWORD",
@@ -44,12 +50,16 @@
       "required": true,
       "editable": false,
       "description": "对应的登录密码",
+      "guide_short": "Management 密码，通过 Authorization 头发送，含 @ : / # 等特殊字符无需转义；不要带入首尾空格。",
       "widget_props": {
-        "placeholder": "密码"
+        "placeholder": "密码",
+        "placeholder_en": "Password"
       },
       "transform_on_edit": {
         "origin_path": "child.env_config.PASSWORD__{{config_id}}"
-      }
+      },
+      "label_en": "Password",
+      "description_en": "Corresponding login password"
     },
     {
       "name": "interval",
@@ -58,11 +68,13 @@
       "required": true,
       "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
+      "guide_short": "Telegraf inputs.rabbitmq 采集周期，单位秒，默认 60；建议 ≥30 避免反复调用 Management API。",
       "widget_props": {
         "min": 1,
         "precision": 0,
         "placeholder": "间隔",
-        "addonAfter": "s"
+        "addonAfter": "s",
+        "placeholder_en": "Interval"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.interval",
@@ -72,7 +84,9 @@
         "to_api": {
           "suffix": "s"
         }
-      }
+      },
+      "label_en": "Interval",
+      "description_en": "Collection time interval (unit: seconds)"
     }
   ],
   "table_columns": [
@@ -82,9 +96,11 @@
       "type": "select",
       "required": true,
       "widget_props": {
-        "placeholder": "请选择节点"
+        "placeholder": "请选择节点",
+        "placeholder_en": "Please select node"
       },
-      "enable_row_filter": false
+      "enable_row_filter": false,
+      "label_en": "Node"
     },
     {
       "name": "url",
@@ -108,7 +124,8 @@
           "url"
         ],
         "target_field": "instance_name"
-      }
+      },
+      "label_en": "URL"
     },
     {
       "name": "instance_name",
@@ -117,8 +134,10 @@
       "required": true,
       "widget_props": {
         "placeholder": "实例名称",
-        "disabled": false
-      }
+        "disabled": false,
+        "placeholder_en": "Instance Name"
+      },
+      "label_en": "Instance Name"
     },
     {
       "name": "group_ids",
@@ -126,8 +145,10 @@
       "type": "group_select",
       "required": false,
       "widget_props": {
-        "placeholder": "请选择组"
-      }
+        "placeholder": "请选择组",
+        "placeholder_en": "Please select group"
+      },
+      "label_en": "Group"
     }
   ]
 }

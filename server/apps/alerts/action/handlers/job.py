@@ -4,7 +4,7 @@ from apps.rpc.job_mgmt import JobMgmt
 from apps.alerts.action.handlers.base import ActionHandler
 from apps.alerts.action.payload import build_match_payload, resolve_field
 from apps.alerts.action.resolver import resolve_params
-from apps.alerts.action.target_resolver import resolve_node_target
+from apps.alerts.action.target_resolver import resolve_effective_team, resolve_node_target
 from apps.alerts.action.exceptions import ConfigError
 
 logger = logging.getLogger(__name__)
@@ -16,7 +16,8 @@ class JobActionHandler(ActionHandler):
     def execute(self, rule, alert, execution):
         cfg = rule.action_config or {}
         try:
-            script = JobMgmt().get_script(cfg.get("script_id"))
+            effective_team = resolve_effective_team(alert.team, rule.team)
+            script = JobMgmt().get_script(cfg.get("script_id"), team=effective_team)
             if not script:
                 return self._config_error(execution, "作业不存在")
 
@@ -30,7 +31,7 @@ class JobActionHandler(ActionHandler):
                 if not fixed_ip:
                     # ConfigError 会被下方 except ConfigError 捕获并写 status=config_error
                     raise ConfigError("target_binding.mode='fixed' 时必须填写 ip")
-                target = resolve_node_target(fixed_ip, rule.team)
+                target = resolve_node_target(fixed_ip, effective_team)
                 resolved_source_ip = fixed_ip
             else:
                 # mode 缺失或显式 from_alert：维持旧行为。
@@ -39,7 +40,7 @@ class JobActionHandler(ActionHandler):
                 host_field = (binding.get("host_field") or "ip_addr").strip()
                 lookup_key = host_field if "." in host_field else f"labels.{host_field}"
                 host_value = resolve_field(payload, lookup_key)
-                target = resolve_node_target(host_value, rule.team)
+                target = resolve_node_target(host_value, effective_team)
                 resolved_source_ip = str(host_value) if host_value else ""
 
             # 记录本次执行实际命中的主机 IP，便于前端"动作记录"展示与排错。
@@ -59,7 +60,7 @@ class JobActionHandler(ActionHandler):
                 "script_content": script["content"],
                 "params": params,
                 "timeout": cfg.get("timeout") or script.get("timeout", 600),
-                "team": list(rule.team or []),
+                "team": effective_team,
                 "callback_url": self._callback_url(),
             }
             resp = JobMgmt().job_script_execute(data) or {}

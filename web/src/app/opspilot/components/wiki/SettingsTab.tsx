@@ -326,15 +326,27 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     <div>
       <div className="mb-4 flex items-start justify-between gap-4">
         <p className="mb-0 mt-0 text-[13px] leading-6 text-[var(--color-text-3)]">{t(HELP_KEY.purpose)}</p>
-        {!purposeEditing && (
+        {purposeEditing ? (
+          // 编辑态:右上角直接是保存/取消按钮组,避免底部"通用保存"重复。
+          <div className="flex shrink-0 items-center gap-2">
+            <Button size="small" onClick={handleCancelPurposeEdit}>
+              {t('common.cancel')}
+            </Button>
+            <Button type="primary" size="small" loading={saving} onClick={handleSave}>
+              {t('common.save')}
+            </Button>
+          </div>
+        ) : (
           <Tooltip title={t('common.edit')}>
             <Button
-              type="text"
+              type="default"
               size="small"
               icon={<EditOutlined />}
               aria-label={t('common.edit')}
               onClick={() => setPurposeEditing(true)}
-            />
+            >
+              {t('common.edit')}
+            </Button>
           </Tooltip>
         )}
       </div>
@@ -456,11 +468,8 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
             },
           ]}
         />
-        {active !== 'danger' && (active !== 'purpose' || purposeEditing) && (
+        {active !== 'danger' && !(active === 'purpose' && purposeEditing) && (
           <div className="flex items-center gap-2 pt-2">
-            {active === 'purpose' && purposeEditing && (
-              <Button onClick={handleCancelPurposeEdit}>{t('common.cancel')}</Button>
-            )}
             <Button type="primary" loading={saving} onClick={handleSave}>
               {t('common.save')}
             </Button>

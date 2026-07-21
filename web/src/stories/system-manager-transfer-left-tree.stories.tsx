@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/nextjs';
+import type { DataNode as TreeDataNode } from 'antd/lib/tree';
 import TransferLeftTree from '@/app/system-manager/components/user/TransferLeftTree';
 import {
   groupTreeData,
@@ -48,5 +49,17 @@ export const RoleMode: Story = {
     leftExpandedKeys: ['app-monitor', 'app-cmdb'],
     mode: 'role',
     enableSubGroupSelect: false,
+  },
+};
+
+export const RoleModeDisplayNameMissing: Story = {
+  // 应用层节点没有 display_name 时，应 fallback 到原 title（即 client_id）
+  args: {
+    ...RoleMode.args,
+    treeData: roleTreeData.map<TreeDataNode>((node) =>
+      'display_name' in node
+        ? { key: node.key, title: node.title, children: node.children }
+        : node,
+    ),
   },
 };

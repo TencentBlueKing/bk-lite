@@ -1,0 +1,7 @@
+{
+  "_placeholder_reason": "config_file 走 NATS 路径无 01 raw(Stargazer 端 config_file 采集走 NATS publish 'receive_config_file_result',不经过 stargazer 标准化 step1)",
+  "model_id": "config_file",
+  "task_id": 88888,
+  "captured_at": "2026-07-13T10:30:00+08:00",
+  "collected_by": "stargazer/inputs/config_file/config_file.sh@1.2.0"
+}

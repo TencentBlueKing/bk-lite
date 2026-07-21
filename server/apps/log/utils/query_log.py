@@ -1,16 +1,19 @@
-import json
 import asyncio
-import queue
+import json
 import re
-from decimal import Decimal, InvalidOperation
-import requests
-import requests.adapters
+import threading
 import time
+from concurrent.futures import TimeoutError as FutureTimeoutError
+from decimal import Decimal, InvalidOperation
 from json import JSONDecodeError
 from typing import AsyncIterator
+
+import requests
+import requests.adapters
 from requests.auth import HTTPBasicAuth
-from apps.log.constants.victoriametrics import VictoriaLogsConstants
+
 from apps.core.logger import log_logger as logger
+from apps.log.constants.victoriametrics import VictoriaLogsConstants
 
 
 class VictoriaMetricsAPI:
@@ -324,35 +327,55 @@ class VictoriaMetricsAPI:
             )
 
             # 异步生成器，逐行处理数据
-            # 使用 Queue + 线程池将阻塞的 iter_lines() 卸载到 executor，
-            # 避免同步 I/O 阻塞 ASGI 事件循环。
+            # 使用 asyncio.Queue 在线程与事件循环间传递数据：消费端可以
+            # 真正挂起等待，生产端仍保留有界背压。
             _SENTINEL = object()
-            line_queue: queue.Queue = queue.Queue(maxsize=256)
+            line_queue: asyncio.Queue = asyncio.Queue(maxsize=256)
+            stop_event = threading.Event()
             line_count = 0
             first_data_received = False
             start_time = time.time()
+
+            def _put_unless_stopped(item) -> bool:
+                """从生产线程向异步队列写入，并在消费端关闭时解除背压等待。"""
+                if stop_event.is_set():
+                    return False
+
+                put_future = asyncio.run_coroutine_threadsafe(line_queue.put(item), loop)
+                while True:
+                    try:
+                        put_future.result(timeout=0.1)
+                        return True
+                    except FutureTimeoutError:
+                        if stop_event.is_set():
+                            put_future.cancel()
+                            return False
 
             def _iter_lines_in_thread():
                 """在独立线程中消费流式响应，结果放入 Queue 供异步生成器读取。"""
                 try:
                     for line in response.iter_lines(chunk_size=8192, decode_unicode=True):
-                        line_queue.put(line)
+                        if not _put_unless_stopped(line):
+                            break
                 except Exception as exc:
-                    line_queue.put(exc)
+                    if not stop_event.is_set():
+                        _put_unless_stopped(exc)
                 finally:
-                    line_queue.put(_SENTINEL)
+                    if not stop_event.is_set():
+                        _put_unless_stopped(_SENTINEL)
 
             try:
-                # 将阻塞的 iter_lines 迭代移至线程池
-                iter_future = loop.run_in_executor(None, _iter_lines_in_thread)
+                # 流式读取使用独立 daemon 线程，避免异常上游长时间占用
+                # ASGI 共享的默认 ThreadPoolExecutor。
+                iter_thread = threading.Thread(
+                    target=_iter_lines_in_thread,
+                    name="victorialogs-tail-reader",
+                    daemon=True,
+                )
+                iter_thread.start()
 
                 while True:
-                    # 以非阻塞方式从队列取行，没有数据时让出事件循环
-                    try:
-                        item = line_queue.get_nowait()
-                    except queue.Empty:
-                        await asyncio.sleep(0)
-                        continue
+                    item = await line_queue.get()
 
                     if item is _SENTINEL:
                         break
@@ -394,14 +417,19 @@ class VictoriaMetricsAPI:
                             )
                             continue
 
-                # 等待线程完成，传播线程侧未捕获的异常
-                await iter_future
-
             finally:
-                # 确保响应对象被正确关闭
+                stop_event.set()
                 if response:
                     response.close()
                     logger.debug("VictoriaLogs响应连接已关闭")
+
+                # 不在事件循环中阻塞 join；response.close() 会中断正在等待的
+                # iter_lines，而满队列上的 put 最多 0.1 秒后观察到 stop_event。
+                join_deadline = loop.time() + 1.0
+                while iter_thread.is_alive() and loop.time() < join_deadline:
+                    await asyncio.sleep(0.01)
+                if iter_thread.is_alive():
+                    logger.warning("VictoriaLogs tail 读取线程未在关闭期限内退出")
 
         except requests.exceptions.ConnectTimeout:
             logger.error("异步VictoriaLogs连接超时", extra={"host": self.host, "timeout": "10秒"})

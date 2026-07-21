@@ -67,6 +67,22 @@ class SystemMgmt(object):
         )
         return return_data
 
+    def get_user_group_tree(self, username, sync_source_id=None):
+        """
+        按 (username, sync_source_id) 唯一定位用户，返回其组织树。
+        返回结构与 login_info.group_tree 形态一致。
+
+        :param username: 用户名
+        :param sync_source_id: UserSyncSource 主键(int)；None 或空串表示本地用户(User.sync_source IS NULL)
+        :return: {"result": bool, "data": {"user_id", "username", "domain", "group_list", "group_tree"} | "message": str}
+        """
+        return_data = self.client.run(
+            "get_user_group_tree",
+            username=username,
+            sync_source_id=sync_source_id,
+        )
+        return return_data
+
     def get_client(self, client_id, username="", domain="domain.com"):
         return_data = self.client.run("get_client", client_id=client_id, username=username, domain=domain)
         return return_data
@@ -183,8 +199,7 @@ class SystemMgmt(object):
         """
         return self.client.run("save_error_log", username=username, app=app, module=module, error_message=error_message, domain=domain)
 
-    def save_operation_log(self, username, source_ip, app, action_type, summary="", domain="domain.com",
-                           target_type="", target_id="", detail=None):
+    def save_operation_log(self, username, source_ip, app, action_type, summary="", domain="domain.com", target_type="", target_id="", detail=None):
         """
         保存操作日志
         :param username: 用户名
@@ -198,8 +213,16 @@ class SystemMgmt(object):
         :param detail: 操作详情 JSON（可选，默认空字典）
         """
         return self.client.run(
-            "save_operation_log", username=username, source_ip=source_ip, app=app, action_type=action_type,
-            summary=summary, domain=domain, target_type=target_type, target_id=target_id, detail=detail,
+            "save_operation_log",
+            username=username,
+            source_ip=source_ip,
+            app=app,
+            action_type=action_type,
+            summary=summary,
+            domain=domain,
+            target_type=target_type,
+            target_id=target_id,
+            detail=detail,
         )
 
     def search_channel_list(self, channel_type, teams, include_children):

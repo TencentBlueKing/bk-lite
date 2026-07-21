@@ -51,4 +51,9 @@ if _db_engine == "dameng":
 
 from django.core.asgi import get_asgi_application  # noqa: E402
 
+from apps.core.utils.loader import preload_language_cache  # noqa: E402
+
 application = get_asgi_application()
+
+# 每个 uvicorn worker 启动时完成监控插件翻译预热，避免首个监控请求同步扫描插件目录。
+preload_language_cache(apps=["monitor"])

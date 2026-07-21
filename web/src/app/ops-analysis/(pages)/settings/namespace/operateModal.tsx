@@ -124,8 +124,7 @@ const OperateModal: React.FC<NamespaceOperateModalProps> = ({
     >
       <Form
         form={form}
-        labelCol={{ span: 4 }}
-        layout="horizontal"
+        layout="vertical"
         onFinish={onFinish}
       >
         <Form.Item

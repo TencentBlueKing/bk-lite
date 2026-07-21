@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CMDB qcloud_bucket instance",
+  "description": "Task 3.2 真实化版本:qcloud_bucket CMDB 实例契约",
+  "type": "object",
+  "required": [
+    "inst_name",
+    "resource_name",
+    "resource_id"
+  ],
+  "properties": {
+    "inst_name": {
+      "type": "string"
+    },
+    "resource_name": {
+      "type": "string"
+    },
+    "resource_id": {
+      "type": "string"
+    },
+    "region": {
+      "type": "string"
+    },
+    "assos": {
+      "type": [
+        "array",
+        "object"
+      ]
+    }
+  }
+}

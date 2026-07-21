@@ -9,6 +9,7 @@ import { InstallerArtifactMetadata, InstallerManifest } from '@/app/node-manager
 
 interface SharedProps {
   loading: boolean;
+  copying: boolean;
   downloadLoading: boolean;
   installerSession: string;
   installerMetadata: InstallerArtifactMetadata | null;
@@ -105,8 +106,9 @@ function DownloadInfo({
 function SessionEditor({
   installerSession,
   loading,
+  copying,
   onCopy,
-}: Pick<SharedProps, 'installerSession' | 'loading' | 'onCopy'>) {
+}: Pick<SharedProps, 'installerSession' | 'loading' | 'copying' | 'onCopy'>) {
   const { t } = useTranslation();
 
   return (
@@ -115,7 +117,14 @@ function SessionEditor({
         <span className="text-[14px] text-[var(--color-text-2)]">
           {t('node-manager.cloudregion.node.installerSession')}
         </span>
-        <Button type="link" className="p-0" size="small" onClick={onCopy}>
+        <Button
+          type="link"
+          className="p-0"
+          size="small"
+          loading={copying}
+          disabled={loading || !installerSession.trim()}
+          onClick={onCopy}
+        >
           {t('common.copy')}
         </Button>
       </div>
@@ -135,6 +144,7 @@ function SessionEditor({
 
 export function WindowsOperationGuidanceSection({
   loading,
+  copying,
   downloadLoading,
   installerSession,
   installerMetadata,
@@ -185,7 +195,7 @@ export function WindowsOperationGuidanceSection({
           <div className="text-[12px] text-[var(--color-text-3)] mb-[12px]">
             {t('node-manager.cloudregion.node.runPackageDesc')}
           </div>
-          <SessionEditor installerSession={installerSession} loading={loading} onCopy={onCopy} />
+          <SessionEditor installerSession={installerSession} loading={loading} copying={copying} onCopy={onCopy} />
         </div>
       </div>
     </>
@@ -194,6 +204,7 @@ export function WindowsOperationGuidanceSection({
 
 export function LinuxOperationGuidanceSection({
   loading,
+  copying,
   downloadLoading,
   installerSession,
   installerMetadata,
@@ -243,7 +254,7 @@ export function LinuxOperationGuidanceSection({
           <div className="text-[12px] text-[var(--color-text-3)] mb-[12px]">
             {t('node-manager.cloudregion.node.commandCopiedDesc')}
           </div>
-          <SessionEditor installerSession={installerSession} loading={loading} onCopy={onCopy} />
+          <SessionEditor installerSession={installerSession} loading={loading} copying={copying} onCopy={onCopy} />
         </div>
       </div>
     </>

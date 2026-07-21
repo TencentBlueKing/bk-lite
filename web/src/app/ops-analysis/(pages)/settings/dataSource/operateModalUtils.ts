@@ -5,6 +5,7 @@ import {
   ParamItem,
   ResponseFieldDefinition,
 } from "@/app/ops-analysis/types/dataSource";
+import { validateDateRangeValue } from "@/app/ops-analysis/utils/dateRange";
 
 export const SOURCE_TYPE_NATS: DataSourceSourceType = "nats";
 export const SOURCE_TYPE_MYSQL: DataSourceSourceType = "mysql";
@@ -62,6 +63,8 @@ export const validateParams = (currentParams: ParamItem[]) => {
   const duplicateNames: string[] = [];
   const emptyNames: string[] = [];
   const emptyAliases: string[] = [];
+  const invalidDateRangeIds: string[] = [];
+  let hasInvalidDateRange = false;
 
   currentParams.forEach((param) => {
     if (param.name && param.name.trim()) {
@@ -72,6 +75,11 @@ export const validateParams = (currentParams: ParamItem[]) => {
 
     if ((!param.alias_name || !param.alias_name.trim()) && param.id) {
       emptyAliases.push(param.id);
+    }
+
+    if (param.type === "dateRange" && !validateDateRangeValue(param.value).valid) {
+      hasInvalidDateRange = true;
+      if (param.id) invalidDateRangeIds.push(param.id);
     }
   });
 
@@ -85,7 +93,7 @@ export const validateParams = (currentParams: ParamItem[]) => {
     (param) => param.name && param.name.trim(),
   );
   const hasEmptyFixedValue = validParams.some((param) => {
-    if (param.filterType !== "fixed") return false;
+    if (param.filterType !== "fixed" || param.type === "dateRange") return false;
     const value = param.value;
     return value === "" || value === null || value === undefined;
   });
@@ -94,11 +102,13 @@ export const validateParams = (currentParams: ParamItem[]) => {
     duplicateNames,
     emptyNames,
     emptyAliases,
+    invalidDateRangeIds,
     hasEmptyFixedValue,
     isValid:
       duplicateNames.length === 0 &&
       emptyNames.length === 0 &&
       emptyAliases.length === 0 &&
+      !hasInvalidDateRange &&
       !hasEmptyFixedValue,
   };
 };

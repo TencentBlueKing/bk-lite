@@ -16,12 +16,14 @@
       "visible_in": "edit",
       "editable": false,
       "description": "InfluxDB v1 debug 接口地址，通常为 http://host:8086/debug/vars",
+      "guide_short": "填写完整 URL 且以 /debug/vars 结尾，例如 http://10.0.0.10:8086/debug/vars；保存前可在采集节点用 curl 验证连通性。",
       "widget_props": {
         "placeholder": "http://localhost:8086/debug/vars"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.urls[0]"
-      }
+      },
+      "label_en": "Server Address"
     },
     {
       "name": "username",
@@ -30,12 +32,15 @@
       "required": false,
       "editable": false,
       "description": "如接口启用 Basic Auth 可填写用户名",
+      "guide_short": "仅当 /debug/vars 接口启用 Basic Auth 时填写；未启用请留空，建议用只读账号。",
       "widget_props": {
-        "placeholder": "用户名"
+        "placeholder": "用户名",
+        "placeholder_en": "Username"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.username"
-      }
+      },
+      "label_en": "Username"
     },
     {
       "name": "ENV_PASSWORD",
@@ -44,12 +49,15 @@
       "required": false,
       "editable": false,
       "description": "如接口启用 Basic Auth 可填写密码",
+      "guide_short": "与用户名对应，仅在启用 Basic Auth 时填写；注意不要带入首尾空格。",
       "widget_props": {
-        "placeholder": "密码"
+        "placeholder": "密码",
+        "placeholder_en": "Password"
       },
       "transform_on_edit": {
         "origin_path": "child.env_config.PASSWORD__{{config_id}}"
-      }
+      },
+      "label_en": "Password"
     },
     {
       "name": "interval",
@@ -58,11 +66,13 @@
       "required": true,
       "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
+      "guide_short": "默认 60 秒；过低会增加 InfluxDB 压力，过高会延误告警。",
       "widget_props": {
         "min": 1,
         "precision": 0,
         "placeholder": "间隔",
-        "addonAfter": "s"
+        "addonAfter": "s",
+        "placeholder_en": "Interval"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.interval",
@@ -72,7 +82,9 @@
         "to_api": {
           "suffix": "s"
         }
-      }
+      },
+      "label_en": "Interval",
+      "description_en": "Collection time interval (unit: seconds)"
     },
     {
       "name": "timeout",
@@ -81,11 +93,13 @@
       "required": true,
       "default_value": 30,
       "description": "单次请求 `debug/vars` 接口的超时时间（单位：秒）",
+      "guide_short": "默认 30 秒；建议小于采集间隔，接口响应慢时可适当调大。",
       "widget_props": {
         "min": 1,
         "precision": 0,
         "placeholder": "超时时间",
-        "addonAfter": "s"
+        "addonAfter": "s",
+        "placeholder_en": "Timeout"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.timeout",
@@ -95,7 +109,8 @@
         "to_api": {
           "suffix": "s"
         }
-      }
+      },
+      "label_en": "Timeout"
     },
     {
       "name": "tls_ca",
@@ -104,12 +119,14 @@
       "required": false,
       "editable": false,
       "description": "HTTPS 场景下使用的 CA 证书路径",
+      "guide_short": "仅 HTTPS 场景需要，填写采集节点上可读的 CA 证书绝对路径，例如 /etc/ssl/ca.pem。",
       "widget_props": {
         "placeholder": "/etc/ssl/ca.pem"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.tls_ca"
-      }
+      },
+      "label_en": "CA Certificate Path"
     },
     {
       "name": "tls_cert",
@@ -118,12 +135,14 @@
       "required": false,
       "editable": false,
       "description": "HTTPS 双向认证时使用的客户端证书路径",
+      "guide_short": "仅 HTTPS 双向认证需要，填写采集节点上的客户端证书绝对路径，需与密钥配套。",
       "widget_props": {
         "placeholder": "/etc/ssl/client.pem"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.tls_cert"
-      }
+      },
+      "label_en": "Client Certificate Path"
     },
     {
       "name": "tls_key",
@@ -132,12 +151,14 @@
       "required": false,
       "editable": false,
       "description": "HTTPS 双向认证时使用的客户端密钥路径",
+      "guide_short": "仅 HTTPS 双向认证需要，填写与客户端证书配套的密钥绝对路径。",
       "widget_props": {
         "placeholder": "/etc/ssl/client-key.pem"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.tls_key"
-      }
+      },
+      "label_en": "Client Key Path"
     },
     {
       "name": "insecure_skip_verify",
@@ -146,10 +167,12 @@
       "required": false,
       "default_value": false,
       "description": "HTTPS 场景下是否跳过服务端证书校验",
+      "guide_short": "开启后跳过服务端证书校验，仅建议在自签证书的测试环境临时使用，生产环境请关闭。",
       "widget_props": {},
       "transform_on_edit": {
         "origin_path": "child.content.config.insecure_skip_verify"
-      }
+      },
+      "label_en": "Skip Certificate Verification"
     }
   ],
   "table_columns": [
@@ -159,9 +182,11 @@
       "type": "select",
       "required": true,
       "widget_props": {
-        "placeholder": "请选择节点"
+        "placeholder": "请选择节点",
+        "placeholder_en": "Please select node"
       },
-      "enable_row_filter": false
+      "enable_row_filter": false,
+      "label_en": "Node"
     },
     {
       "name": "server",
@@ -186,7 +211,8 @@
         ],
         "target_field": "instance_name",
         "regex": "^(?:https?://)?([^/]+)"
-      }
+      },
+      "label_en": "Server Address"
     },
     {
       "name": "instance_name",
@@ -195,8 +221,10 @@
       "required": true,
       "widget_props": {
         "placeholder": "实例名称",
-        "disabled": false
-      }
+        "disabled": false,
+        "placeholder_en": "Instance Name"
+      },
+      "label_en": "Instance Name"
     },
     {
       "name": "group_ids",
@@ -204,8 +232,10 @@
       "type": "group_select",
       "required": false,
       "widget_props": {
-        "placeholder": "请选择组"
-      }
+        "placeholder": "请选择组",
+        "placeholder_en": "Please select group"
+      },
+      "label_en": "Group"
     }
   ]
 }

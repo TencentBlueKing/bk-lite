@@ -643,6 +643,20 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                 </div>
               ));
             })()}
+            {Array.isArray(userChoiceRequests) && userChoiceRequests.length > 0 && (
+              <div className="mt-2">
+                {[...userChoiceRequests]
+                  .sort((a, b) => (a.received_at || 0) - (b.received_at || 0))
+                  .map(req => (
+                    <UserChoiceCard
+                      key={req.choice_id}
+                      request={req}
+                      token={token || ''}
+                      onSubmit={handleUserChoiceSubmit}
+                    />
+                  ))}
+              </div>
+            )}
             {visibleReportFileDownloads.length > 0 && (
               <div className="mt-2">
                 {visibleReportFileDownloads.map(dl => (
@@ -1077,7 +1091,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
               </div>
               <div
                 dangerouslySetInnerHTML={{ __html: guideData.renderedHtml }}
-                className={`${styles.markdownBody} flex-1 p-3 bg-[var(--color-bg)] rounded-lg`}
+                className={`${styles.markdownBody} ${styles.guideText} flex-1 p-3 bg-[var(--color-bg)] rounded-lg`}
               />
             </div>
           )}

@@ -154,7 +154,7 @@ function transformRoleTreeData(
             onClick={(event) => event.stopPropagation()}
             disabled={disabled || loading}
           />
-          <span>{typeof node.title === 'function' ? node.title(node) : node.title}</span>
+          <span>{(node as TreeDataNode & { display_name?: string }).display_name || (typeof node.title === 'function' ? node.title(node) : node.title)}</span>
         </div>
       ),
       children: node.children

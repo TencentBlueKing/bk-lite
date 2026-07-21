@@ -260,11 +260,13 @@ def test_precheck_result_includes_doc_key():
     供 import_submit / import_precheck 直接取用，避免第二次 YAML 解析。
     若把 _doc 从返回值去掉，本测试失败。
     """
-    from apps.operation_analysis.services.import_export.precheck_service import PrecheckService
-    from apps.operation_analysis.schemas.import_export_schema import YAMLDocument
     import yaml
 
-    yaml_content = "meta:\n  schema_version: '1.0.0'\n"
+    from apps.operation_analysis.constants.import_export import YAML_SCHEMA_VERSION
+    from apps.operation_analysis.schemas.import_export_schema import YAMLDocument
+    from apps.operation_analysis.services.import_export.precheck_service import PrecheckService
+
+    yaml_content = f"meta:\n  schema_version: '{YAML_SCHEMA_VERSION}'\n"
     data = yaml.safe_load(yaml_content)
     doc = YAMLDocument(**data)
 
