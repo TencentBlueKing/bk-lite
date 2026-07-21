@@ -166,9 +166,10 @@ from . import generic  # noqa: E402, F401
 def strip_phantom_tool_calls(text: str) -> str:
     """把 LLM 幻觉的 XML 风格工具调用从 text 里抹掉,返回新字符串。
 
-    支持两种 phantom call 格式:
+    支持三种 phantom call 格式:
     - <tool_call>call:name{args}<tool_call>
     - <|tool_call|>call:name{args}<|tool_call|>
+    - <|tool_call>call:name{args}<|tool_call>
 
     不影响:
     - 真实工具调用(走 TOOL_CALL_START 事件通道,本来就不在 text 里)
@@ -180,7 +181,24 @@ def strip_phantom_tool_calls(text: str) -> str:
         return text
     text = _strip_paired_tag(text, "<tool_call>", "</tool_call>")
     text = _strip_paired_tag(text, "<|tool_call|>", "<|tool_call|>")
+    text = _strip_paired_tag(text, "<|tool_call>", "<|tool_call>")
     return text
+
+
+def find_unclosed_phantom_tool_call_start(text: str) -> Optional[int]:
+    """返回尚未闭合的 phantom call 起点；全部闭合时返回 None。"""
+    pending_starts: list[int] = []
+
+    last_open = text.rfind("<tool_call>")
+    last_close = text.rfind("</tool_call>")
+    if last_open > last_close:
+        pending_starts.append(last_open)
+
+    for tag in ("<|tool_call|>", "<|tool_call>"):
+        if text.count(tag) % 2:
+            pending_starts.append(text.rfind(tag))
+
+    return min(pending_starts) if pending_starts else None
 
 
 def _strip_paired_tag(text: str, open_tag: str, close_tag: str) -> str:
