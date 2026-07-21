@@ -8,9 +8,18 @@ const API_PROXY_PREFIX = '/api/proxy';
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '') || '';
 const TARGET_SERVER = `${API_BASE_URL}${API_PROXY_PREFIX}`;
 
+function normalizeApiEndpoint(endpoint: string): string {
+  const value = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const suffixIndex = value.search(/[?#]/);
+  const pathname = suffixIndex === -1 ? value : value.slice(0, suffixIndex);
+  const suffix = suffixIndex === -1 ? '' : value.slice(suffixIndex);
+  const normalizedPath = pathname.endsWith('/') ? pathname : `${pathname}/`;
+
+  return `${normalizedPath}${suffix}`;
+}
+
 function buildTargetUrl(endpoint: string): string {
-  const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-  return `${TARGET_SERVER}${normalizedEndpoint}`;
+  return `${TARGET_SERVER}${normalizeApiEndpoint(endpoint)}`;
 }
 
 /**
