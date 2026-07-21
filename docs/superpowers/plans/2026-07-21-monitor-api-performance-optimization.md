@@ -81,3 +81,9 @@
 - [x] **Step 2: Inspect diff** — 运行 `git diff --check` 和限定路径的 `git diff --stat`，确认无无关格式化。
 - [x] **Step 3: Update design status** — 将上游已采用的语言方案和剩余三项实施结果回写设计文档，避免继续实施已过时的聚合 JSON 方案。
 - [x] **Step 4: Commit** — 提交计划/设计状态更新，并报告未执行的全量门禁（如有）。
+
+## 实际验证范围
+
+- [x] 语言加载、ASGI 预热、指标断点检测、监控对象视图四个相关测试文件。
+- [x] 变更行覆盖率、Django system check、迁移检查、变更行格式检查、Flake8 E/W/C90、`git diff --check`。
+- [ ] `cd server && make test`：本地测试配置的既有问题会在收集阶段产生未安装应用模型错误（projectmem #0100），本次未将其标记为通过。

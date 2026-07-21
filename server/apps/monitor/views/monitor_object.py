@@ -21,6 +21,8 @@ from apps.monitor.utils.instance_id_keys import resolve_monitor_object_instance_
 from config.drf.pagination import CustomPageNumberPagination
 from apps.core.utils.team_utils import get_current_team
 
+MAX_CANDIDATE_TEAM_ID = 2_147_483_647
+
 
 def _normalize_candidate_values(values):
     if not isinstance(values, (list, tuple, set)):
@@ -42,10 +44,14 @@ def _normalize_candidate_values(values):
 def _normalize_candidate_team_ids(values):
     normalized = set()
     for value in _normalize_candidate_values(values):
-        try:
-            normalized.add(int(value))
-        except (TypeError, ValueError):
+        if type(value) is int:
+            team_id = value
+        elif isinstance(value, str) and value.isascii() and value.isdigit() and not value.startswith("0"):
+            team_id = int(value)
+        else:
             continue
+        if 0 < team_id <= MAX_CANDIDATE_TEAM_ID:
+            normalized.add(team_id)
     return normalized
 
 

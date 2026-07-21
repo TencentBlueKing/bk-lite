@@ -18,6 +18,16 @@ BASE = "/api/v1/monitor"
 
 
 class TestMonitorObjectList:
+    @pytest.mark.parametrize(
+        "value",
+        [True, False, 1.0, float("inf"), 0, -1, "01", "0", "-1", "１", 2_147_483_648],
+    )
+    def test_candidate_team_ids_reject_noncanonical_values(self, value):
+        assert monitor_object_view._normalize_candidate_team_ids([value]) == set()
+
+    def test_candidate_team_ids_accept_canonical_positive_values(self):
+        assert monitor_object_view._normalize_candidate_team_ids([1, "2", {"id": 3}, 2_147_483_647]) == {1, 2, 3, 2_147_483_647}
+
     def test_list_adds_display_and_children_count(self, api_client):
         parent = MonitorObject.objects.create(name="OVParent", display_name="父对象", level="base")
         MonitorObject.objects.create(name="OVChild", level="derivative", parent=parent)
@@ -187,6 +197,69 @@ class TestMonitorObjectList:
         rows = {row["name"]: row for row in response.json()["data"]}
         assert rows[monitor_object.name]["instance_count"] == 0
         assert all(call.args[1] != instance.id for call in permission_spy.call_args_list)
+
+    def test_instance_count_candidates_match_full_scan_reference(self):
+        object_team = MonitorObject.objects.create(name="OVDiffObjectTeam", level="base")
+        object_fallback = MonitorObject.objects.create(name="OVDiffFallback", level="base")
+        object_admin = MonitorObject.objects.create(name="OVDiffAdmin", level="base")
+
+        fixtures = (
+            ("ov-diff-team", object_team, 10),
+            ("ov-diff-explicit", object_team, 99),
+            ("ov-diff-denied", object_team, 98),
+            ("ov-diff-fallback", object_fallback, 20),
+            ("ov-diff-admin", object_admin, 30),
+            ("ov-diff-unrelated", object_admin, 97),
+        )
+        instance_ids = []
+        for instance_id, monitor_object, organization in fixtures:
+            instance = MonitorInstance.objects.create(
+                id=instance_id,
+                name=instance_id,
+                monitor_object=monitor_object,
+            )
+            MonitorInstanceOrganization.objects.create(
+                monitor_instance=instance,
+                organization=organization,
+            )
+            instance_ids.append(instance_id)
+
+        permissions = {
+            "all": {"team": [30, None, "not-a-team", {"unexpected": 1}]},
+            str(object_team.id): {
+                "team": [10, None, "not-a-team"],
+                "instance": [{"id": "ov-diff-explicit", "permission": ["View"]}, {"unexpected": 1}],
+            },
+            "malformed": ["not-a-rule"],
+        }
+        cur_team = [20, None, "not-a-team"]
+
+        def count_by_object(queryset):
+            counts = {}
+            for instance in queryset:
+                teams = {item.organization for item in instance.monitorinstanceorganization_set.all()}
+                if monitor_object_view.check_instance_permission(
+                    instance.monitor_object_id,
+                    instance.id,
+                    teams,
+                    permissions,
+                    cur_team,
+                ):
+                    counts[instance.monitor_object_id] = counts.get(instance.monitor_object_id, 0) + 1
+            return counts
+
+        full_scan = MonitorInstance.objects.filter(id__in=instance_ids).prefetch_related("monitorinstanceorganization_set")
+        candidates = monitor_object_view._build_instance_count_queryset(permissions, cur_team).filter(id__in=instance_ids)
+
+        assert (
+            count_by_object(candidates)
+            == count_by_object(full_scan)
+            == {
+                object_team.id: 2,
+                object_fallback.id: 1,
+                object_admin.id: 1,
+            }
+        )
 
 
 class TestMonitorObjectCreate:
