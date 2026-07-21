@@ -37,6 +37,29 @@ ReportRenderer = Callable[[Any, Dict[str, Any]], Optional[Dict[str, Any]]]
 RENDERER_REGISTRY: Dict[str, ReportRenderer] = {}
 
 
+def _merge_scope(results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """合并任意领域的 scope；不同值转为数组，缺失维度视为未限定。"""
+    scopes = [r.get("scope") if isinstance(r.get("scope"), dict) else {} for r in results]
+    if not scopes:
+        return {}
+
+    shared_keys = set(scopes[0])
+    for scope in scopes[1:]:
+        shared_keys.intersection_update(scope)
+
+    merged_scope: Dict[str, Any] = {}
+    for key in scopes[0]:
+        if key not in shared_keys:
+            continue
+        values = []
+        for scope in scopes:
+            value = scope[key]
+            if value not in values:
+                values.append(value)
+        merged_scope[key] = values[0] if len(values) == 1 else values
+    return merged_scope
+
+
 def register_renderer(capability: str, renderer: ReportRenderer) -> None:
     """注册一个 capability 对应的渲染器(同 capability 后写覆盖前写)。"""
     RENDERER_REGISTRY[capability] = renderer
@@ -138,6 +161,7 @@ def merge_analysis_results(results: List[Dict[str, Any]]) -> Dict[str, Any]:
     elif len(cluster_names) > 1:
         merged.pop("cluster_name", None)
         merged["cluster_names"] = sorted(cluster_names)
+    merged["scope"] = _merge_scope(valid)
     return merged
 
 
