@@ -6,6 +6,14 @@ class LogGroupQueryBuilder:
     """日志分组查询构建器 - 专门处理日志分组与查询的组合逻辑"""
 
     DENY_ALL_QUERY = '(__bk_lite_log_scope__:"deny-1") AND (__bk_lite_log_scope__:"deny-2")'
+    VALID_RULE_MODES = frozenset({"AND", "OR"})
+
+    @classmethod
+    def validate_rule_mode(cls, rule_json):
+        mode = rule_json.get("mode", "AND")
+        if not isinstance(mode, str) or mode.upper() not in cls.VALID_RULE_MODES:
+            raise ValueError(f"Unsupported mode: {mode}")
+        return mode.upper()
 
     @staticmethod
     def json_to_logsql_expression(rule_json):
@@ -43,7 +51,7 @@ class LogGroupQueryBuilder:
         if not rule_json:
             return ""
 
-        mode = rule_json.get("mode", "AND").upper()
+        mode = LogGroupQueryBuilder.validate_rule_mode(rule_json)
         connector = " AND " if mode == "AND" else " OR "
 
         expressions = []

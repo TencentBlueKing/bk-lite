@@ -2,6 +2,7 @@ import uuid
 from rest_framework import serializers
 from apps.log.models.log_group import LogGroup, LogGroupOrganization, SearchCondition
 from apps.log.services.access_scope import LogAccessScopeService
+from apps.log.utils.log_group import LogGroupQueryBuilder
 
 
 class LogGroupSerializer(serializers.ModelSerializer):
@@ -68,6 +69,17 @@ class LogGroupSerializer(serializers.ModelSerializer):
                 LogAccessScopeService.validate_organizations(request, value)
             except ValueError as exc:
                 raise serializers.ValidationError(str(exc))
+
+        return value
+
+    def validate_rule(self, value):
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("日志分组规则必须是字典格式")
+
+        try:
+            LogGroupQueryBuilder.validate_rule_mode(value)
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc))
 
         return value
 

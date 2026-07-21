@@ -46,6 +46,19 @@ def test_json_to_logsql_or_mode():
     assert LogGroupQueryBuilder.json_to_logsql_expression(rule) == "(a:x* OR b:*y)"
 
 
+def test_json_to_logsql_unknown_mode_raises():
+    rule = {
+        "mode": "ADN",
+        "conditions": [
+            {"field": "a", "op": "==", "value": "x"},
+            {"field": "b", "op": "==", "value": "y"},
+        ],
+    }
+
+    with pytest.raises(ValueError, match="Unsupported mode"):
+        LogGroupQueryBuilder.json_to_logsql_expression(rule)
+
+
 def test_json_to_logsql_contains_escapes_regex():
     rule = {"conditions": [{"field": "msg", "op": "contains", "value": "a.b"}]}
     out = LogGroupQueryBuilder.json_to_logsql_expression(rule)
@@ -114,6 +127,24 @@ def test_build_query_invalid_rule_marks_status_and_denies():
     # rule 触发 json_to_logsql 抛错（不支持的 op）-> invalid_rule -> 无有效条件 -> DENY_ALL
     g = _group("g1", rule={"conditions": [{"field": "f", "op": "??", "value": "v"}]})
     out, info = LogGroupQueryBuilder.build_query_with_groups("host:web", ["g1"], resolved_groups=[g])
+    assert out == LogGroupQueryBuilder.DENY_ALL_QUERY
+    assert info[0]["status"] == "invalid_rule"
+
+
+def test_build_query_unknown_mode_marks_status_and_denies():
+    g = _group(
+        "g1",
+        rule={
+            "mode": "ADN",
+            "conditions": [
+                {"field": "a", "op": "==", "value": "x"},
+                {"field": "b", "op": "==", "value": "y"},
+            ],
+        },
+    )
+
+    out, info = LogGroupQueryBuilder.build_query_with_groups("host:web", ["g1"], resolved_groups=[g])
+
     assert out == LogGroupQueryBuilder.DENY_ALL_QUERY
     assert info[0]["status"] == "invalid_rule"
 
