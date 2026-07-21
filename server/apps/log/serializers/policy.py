@@ -103,7 +103,11 @@ class AlertSerializer(serializers.ModelSerializer):
 
     def get_organizations(self, obj):
         """通过外键关系获取策略的组织列表"""
-        return [org.organization for org in obj.policy.policyorganization_set.all()]
+        organizations = [org.organization for org in obj.policy.policyorganization_set.all()]
+        visible_organizations = self.context.get("data_team_ids")
+        if visible_organizations is None:
+            return organizations
+        return [organization for organization in organizations if organization in visible_organizations]
 
     def get_collect_type_name(self, obj):
         if not obj.collect_type:

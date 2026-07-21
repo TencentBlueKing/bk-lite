@@ -13,16 +13,13 @@ from apps.core.utils.permission_utils import (
     check_instance_permission,
     filter_instances_with_permissions,
     get_instance_permissions,
-    get_permission_rules,
     get_permissions_rules,
-    permission_filter,
 )
-from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.web_utils import WebUtils
 from apps.log.constants.alert_policy import AlertConstants
 from apps.log.constants.permission import PermissionConstants
 from apps.log.filters.policy import AlertFilter, EventFilter, EventRawDataFilter, PolicyFilter
-from apps.log.models.policy import Alert, Event, EventRawData, Policy, PolicyOrganization
+from apps.log.models.policy import Alert, AlertSnapshot, Event, EventRawData, Policy, PolicyOrganization
 from apps.log.serializers.policy import AlertSerializer, EventRawDataSerializer, EventSerializer, PolicySerializer
 from apps.log.services.access_scope import LogAccessScopeService
 from config.drf.pagination import CustomPageNumberPagination
@@ -37,53 +34,79 @@ def _to_positive_int(val, default: int, min_val: int = 1, max_val: int = 10000) 
     return max(min_val, min(v, max_val))
 
 
-def get_accessible_log_policy_ids(request, collect_type_id=None):
-    cache_key = "_log_accessible_policy_ids_cache"
-    cached_policy_ids = getattr(request, cache_key, None)
-    if cached_policy_ids is None:
-        cached_policy_ids = {}
-        setattr(request, cache_key, cached_policy_ids)
+def get_accessible_log_policy_queryset(request, collect_type_id=None, require_operate=False):
+    """返回对象权限与 authenticated current_team 范围的策略交集。"""
+    cache_key = "_log_accessible_policy_scope_cache"
+    cache = getattr(request, cache_key, None)
+    if cache is None:
+        cache = {}
+        setattr(request, cache_key, cache)
 
     normalized_collect_type_id = None if collect_type_id in (None, "", "all") else str(collect_type_id)
-    if normalized_collect_type_id in cached_policy_ids:
-        return cached_policy_ids[normalized_collect_type_id]
+    cache_field = (normalized_collect_type_id, bool(require_operate))
+    if cache_field in cache:
+        return Policy.objects.filter(id__in=cache[cache_field])
 
-    current_team = get_current_team(request)
-    if not current_team:
-        cached_policy_ids[normalized_collect_type_id] = []
-        return []
+    try:
+        scope = LogAccessScopeService.get_data_scope(request)
+    except ValueError:
+        cache[cache_field] = []
+        return Policy.objects.none()
 
-    include_children = request.COOKIES.get("include_children", "0") == "1"
-    permissions_result = get_permissions_rules(
-        request.user,
-        current_team,
-        "log",
-        PermissionConstants.POLICY_MODULE,
-        include_children=include_children,
+    queryset = (
+        Policy.objects.filter(policyorganization__organization__in=list(scope.data_team_ids))
+        .select_related("collect_type")
+        .prefetch_related("policyorganization_set")
+        .distinct()
     )
-    if not isinstance(permissions_result, dict):
-        permissions_result = {}
-
-    policy_permissions = permissions_result.get("data", {})
-    current_teams = permissions_result.get("team", [])
-    if not policy_permissions:
-        cached_policy_ids[normalized_collect_type_id] = []
-        return []
-
-    queryset = Policy.objects.select_related("collect_type").prefetch_related("policyorganization_set")
     if normalized_collect_type_id == "global":
         queryset = queryset.filter(collect_type_id__isnull=True)
     elif normalized_collect_type_id is not None:
         queryset = queryset.filter(collect_type_id=normalized_collect_type_id)
 
-    accessible_policy_ids = []
-    for policy_obj in queryset:
-        teams = {org.organization for org in policy_obj.policyorganization_set.all()}
-        if check_instance_permission(policy_obj.collect_type_id, policy_obj.id, teams, policy_permissions, current_teams):
-            accessible_policy_ids.append(policy_obj.id)
+    if scope.is_superuser:
+        accessible_policy_ids = list(queryset.values_list("id", flat=True))
+    else:
+        permissions_result = get_permissions_rules(
+            request.user,
+            scope.current_team,
+            "log",
+            PermissionConstants.POLICY_MODULE,
+            include_children=scope.include_children,
+        )
+        if not isinstance(permissions_result, dict):
+            permissions_result = {}
+        policy_permissions = permissions_result.get("data", {})
+        if not isinstance(policy_permissions, dict) or not policy_permissions:
+            accessible_policy_ids = []
+        else:
+            accessible_policy_ids = []
+            for policy_obj in queryset:
+                visible_teams = {
+                    relation.organization for relation in policy_obj.policyorganization_set.all() if relation.organization in scope.data_team_ids
+                }
+                permissions = get_instance_permissions(
+                    policy_obj.collect_type_id,
+                    policy_obj.id,
+                    visible_teams,
+                    policy_permissions,
+                    scope.data_team_ids,
+                )
+                if permissions and (not require_operate or "Operate" in permissions):
+                    accessible_policy_ids.append(policy_obj.id)
 
-    cached_policy_ids[normalized_collect_type_id] = accessible_policy_ids
-    return accessible_policy_ids
+    cache[cache_field] = accessible_policy_ids
+    return Policy.objects.filter(id__in=accessible_policy_ids)
+
+
+def get_accessible_log_policy_ids(request, collect_type_id=None, require_operate=False):
+    return list(
+        get_accessible_log_policy_queryset(
+            request,
+            collect_type_id=collect_type_id,
+            require_operate=require_operate,
+        ).values_list("id", flat=True)
+    )
 
 
 class PolicyViewSet(viewsets.ModelViewSet):
@@ -523,48 +546,27 @@ class AlertViewSet(viewsets.ModelViewSet):
         return get_accessible_log_policy_ids(request)
 
     def _authorize_alert_operate(self, request, alert):
-        policy = alert.policy
-        if not policy:
-            return WebUtils.response_403("Alert has no associated policy")
-
-        include_children = request.COOKIES.get("include_children", "0") == "1"
-        permissions_result = get_permissions_rules(
-            request.user,
-            get_current_team(request),
-            "log",
-            PermissionConstants.POLICY_MODULE,
-            include_children=include_children,
-        )
-        if not isinstance(permissions_result, dict):
-            permissions_result = {}
-        permission_data = permissions_result.get("data", {})
-        current_teams = PolicyViewSet._normalize_orgs(permissions_result.get("team", []))
-
-        policy_orgs = {rel.organization for rel in policy.policyorganization_set.all()}
-        permissions = get_instance_permissions(
-            policy.collect_type_id,
-            policy.id,
-            policy_orgs,
-            permission_data,
-            current_teams,
-        )
-        if self.OPERATE_PERMISSION not in permissions:
+        if not get_accessible_log_policy_queryset(request, require_operate=True).filter(id=alert.policy_id).exists():
             return WebUtils.response_403("User does not have permission to operate this alert")
         return None
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        try:
+            context["data_team_ids"] = LogAccessScopeService.get_data_scope(self.request).data_team_ids
+        except ValueError:
+            context["data_team_ids"] = frozenset()
+        return context
 
     def get_queryset(self):
         request = getattr(self, "request", None)
         if request is None:
             return Alert.objects.none()
 
-        policy_ids = self._get_all_accessible_policy_ids(request)
-        if not policy_ids:
-            return Alert.objects.none()
-
         return (
             Alert.objects.select_related("policy", "collect_type")
             .prefetch_related("policy__policyorganization_set")
-            .filter(policy_id__in=policy_ids)
+            .filter(policy_id__in=get_accessible_log_policy_queryset(request).values("id"))
             .order_by("-created_at")
         )
 
@@ -578,34 +580,7 @@ class AlertViewSet(viewsets.ModelViewSet):
         """
         collect_type_id = request.query_params.get("collect_type", None)
 
-        if collect_type_id:
-            # 查询特定采集类型的告警
-            include_children = request.COOKIES.get("include_children", "0") == "1"
-            permission = get_permission_rules(
-                request.user,
-                get_current_team(request),
-                "log",
-                f"{PermissionConstants.POLICY_MODULE}.{collect_type_id}",
-                include_children=include_children,
-            )
-
-            # 应用权限过滤
-            policy_qs = permission_filter(
-                Policy,
-                permission,
-                team_key="policyorganization__organization__in",
-                id_key="id__in",
-            )
-            policy_qs = policy_qs.filter(
-                collect_type_id=collect_type_id,
-                policyorganization__organization=get_current_team(request),
-            ).distinct()
-
-            # 获取有权限的policy_ids
-            policy_ids = list(policy_qs.values_list("id", flat=True))
-        else:
-            # 查询所有有权限的采集类型的告警（使用优化后的统一方法）
-            policy_ids = self._get_all_accessible_policy_ids(request)
+        policy_ids = get_accessible_log_policy_ids(request, collect_type_id=collect_type_id)
 
         if not policy_ids:
             return WebUtils.response_success({"count": 0, "items": []})
@@ -725,45 +700,17 @@ class AlertViewSet(viewsets.ModelViewSet):
         """
         collect_type_id = request.query_params.get("collect_type", None)
 
-        if collect_type_id:
-            # 统计特定采集类型的告警
-            include_children = request.COOKIES.get("include_children", "0") == "1"
-            permission = get_permission_rules(
-                request.user,
-                get_current_team(request),
-                "log",
-                f"{PermissionConstants.POLICY_MODULE}.{collect_type_id}",
-                include_children=include_children,
+        policy_ids = get_accessible_log_policy_ids(request, collect_type_id=collect_type_id)
+        if not policy_ids:
+            return WebUtils.response_success(
+                {
+                    "total": 0,
+                    "status": request.query_params.get("status", AlertConstants.STATUS_NEW),
+                    "time_range": {"start": None, "end": None},
+                    "step_minutes": _to_positive_int(request.query_params.get("step"), 60, min_val=1, max_val=1440),
+                    "time_series": [],
+                }
             )
-
-            # 先过滤出有权限的Policy
-            policy_qs = permission_filter(
-                Policy,
-                permission,
-                team_key="policyorganization__organization__in",
-                id_key="id__in",
-            )
-            policy_qs = policy_qs.filter(
-                collect_type_id=collect_type_id,
-                policyorganization__organization=get_current_team(request),
-            ).distinct()
-
-            # 获取有权限的policy_ids
-            policy_ids = list(policy_qs.values_list("id", flat=True))
-        else:
-            # 统计所有有权限的采集类型的告警（使用优化后的统一方法）
-            policy_ids = self._get_all_accessible_policy_ids(request)
-
-            if not policy_ids:
-                return WebUtils.response_success(
-                    {
-                        "total": 0,
-                        "status": request.query_params.get("status", AlertConstants.STATUS_NEW),
-                        "time_range": {"start": None, "end": None},
-                        "step_minutes": _to_positive_int(request.query_params.get("step"), 60, min_val=1, max_val=1440),
-                        "time_series": [],
-                    }
-                )
 
         # 基于policy权限过滤告警（与list接口保持一致）
         queryset = self.filter_queryset(self.get_queryset())
@@ -886,7 +833,6 @@ class AlertViewSet(viewsets.ModelViewSet):
             }
         """
         from apps.core.logger import logger
-        from apps.log.models.policy import AlertSnapshot
 
         try:
             alert_obj = self.get_queryset().get(id=alert_id)
@@ -897,9 +843,8 @@ class AlertViewSet(viewsets.ModelViewSet):
             return WebUtils.response_error("权限校验失败", status_code=403)
 
         # 3. 查询该告警的快照记录
-        try:
-            snapshot_obj = AlertSnapshot.objects.get(alert_id=alert_obj.id)
-        except AlertSnapshot.DoesNotExist:
+        snapshot_obj = AlertSnapshot.objects.filter(alert_id=alert_obj.id).first()
+        if snapshot_obj is None:
             # 快照不存在，返回空快照列表
             return WebUtils.response_success(
                 {
@@ -916,6 +861,8 @@ class AlertViewSet(viewsets.ModelViewSet):
                     "snapshots": [],
                 }
             )
+        if snapshot_obj.policy_id != alert_obj.policy_id:
+            return WebUtils.response_error("告警快照归属不一致", status_code=404)
 
         # 4. 从 S3 加载快照数据（S3JSONField 自动处理）
         try:
@@ -965,11 +912,14 @@ class EventViewSet(viewsets.ReadOnlyModelViewSet):
         if request is None:
             return Event.objects.none()
 
-        policy_ids = get_accessible_log_policy_ids(request)
-        if not policy_ids:
-            return Event.objects.none()
-
-        return Event.objects.select_related("policy", "alert").filter(policy_id__in=policy_ids).order_by("-event_time")
+        return (
+            Event.objects.select_related("policy", "alert")
+            .filter(
+                policy_id__in=get_accessible_log_policy_queryset(request).values("id"),
+                policy_id=models.F("alert__policy_id"),
+            )
+            .order_by("-event_time")
+        )
 
 
 class EventRawDataViewSet(viewsets.ReadOnlyModelViewSet):
@@ -983,11 +933,14 @@ class EventRawDataViewSet(viewsets.ReadOnlyModelViewSet):
         if request is None:
             return EventRawData.objects.none()
 
-        policy_ids = get_accessible_log_policy_ids(request)
-        if not policy_ids:
-            return EventRawData.objects.none()
-
-        return EventRawData.objects.select_related("event").filter(event__policy_id__in=policy_ids).order_by("-event__event_time", "-id")
+        return (
+            EventRawData.objects.select_related("event", "event__alert", "event__policy")
+            .filter(
+                event__policy_id__in=get_accessible_log_policy_queryset(request).values("id"),
+                event__policy_id=models.F("event__alert__policy_id"),
+            )
+            .order_by("-event__event_time", "-id")
+        )
 
     @action(methods=["get"], detail=False, url_path="by_event_id")
     def rawdata_list_by_event_id(self, request):

@@ -263,14 +263,64 @@ def _build_log_alert_segment(alert: Alert) -> dict:
 
 
 def _get_log_policy_ids(collect_type_id: str, user_info: dict):
-    user = user_info.get("user")
-    current_team = user_info.get("team")
-    include_children = user_info.get("include_children", False)
-    if not user or not current_team:
+    if not isinstance(user_info, dict):
         return [], {"result": False, "data": [], "message": "缺少用户或组织信息"}
 
+    user = user_info.get("user")
+    username = user if isinstance(user, str) else getattr(user, "username", None)
+    domain = user_info.get("domain")
+    current_team = user_info.get("team")
+    include_children = user_info.get("include_children", False)
+    if (
+        not isinstance(username, str)
+        or not username.strip()
+        or not isinstance(domain, str)
+        or not domain.strip()
+        or type(include_children) is not bool
+    ):
+        return [], {"result": False, "data": [], "message": "缺少用户或组织信息"}
+
+    try:
+        current_team = next(iter(_normalize_organization_ids([current_team])))
+    except BaseAppException:
+        return [], {"result": False, "data": [], "message": "用户或组织权限校验失败"}
+
+    actor_context = {
+        "username": username,
+        "domain": domain,
+        "current_team": current_team,
+    }
+    try:
+        scope_result = SystemMgmt().get_authorized_groups_scoped(
+            actor_context,
+            include_children=include_children,
+        )
+    except Exception:
+        return [], {"result": False, "data": [], "message": "用户或组织权限校验失败"}
+    if not isinstance(scope_result, dict) or not scope_result.get("result") or not isinstance(scope_result.get("data"), list):
+        return [], {"result": False, "data": [], "message": "用户或组织权限校验失败"}
+    try:
+        scope_ids = _normalize_organization_ids(scope_result["data"])
+    except BaseAppException:
+        return [], {"result": False, "data": [], "message": "用户或组织权限校验失败"}
+    if current_team not in scope_ids:
+        return [], {"result": False, "data": [], "message": "用户或组织权限校验失败"}
+
+    policies = (
+        Policy.objects.filter(
+            collect_type_id=collect_type_id,
+            policyorganization__organization__in=list(scope_ids),
+        )
+        .select_related("collect_type")
+        .prefetch_related("policyorganization_set")
+        .distinct()
+    )
+    if scope_result.get("is_superuser") is True:
+        return list(policies.values_list("id", flat=True)), None
+
+    user_obj = SimpleNamespace(username=username, domain=domain)
     permissions_result = get_permissions_rules(
-        user,
+        user_obj,
         current_team,
         "log",
         PermissionConstants.POLICY_MODULE,
@@ -280,20 +330,18 @@ def _get_log_policy_ids(collect_type_id: str, user_info: dict):
         permissions_result = {}
 
     policy_permissions = permissions_result.get("data", {})
-    current_teams = permissions_result.get("team", [])
-    if not policy_permissions:
+    if not isinstance(policy_permissions, dict) or not policy_permissions:
         return [], None
 
     policy_ids = []
-    policies = Policy.objects.select_related("collect_type").prefetch_related("policyorganization_set").filter(collect_type_id=collect_type_id)
     for policy_obj in policies:
-        teams = {org.organization for org in policy_obj.policyorganization_set.all()}
+        teams = {org.organization for org in policy_obj.policyorganization_set.all() if org.organization in scope_ids}
         if check_instance_permission(
             collect_type_id,
             policy_obj.id,
             teams,
             policy_permissions,
-            current_teams,
+            scope_ids,
         ):
             policy_ids.append(policy_obj.id)
 
