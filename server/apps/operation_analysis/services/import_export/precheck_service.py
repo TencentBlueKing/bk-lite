@@ -30,7 +30,13 @@ from apps.operation_analysis.constants.import_export import (
 )
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, NameSpace
 from apps.operation_analysis.models.models import Architecture, Dashboard, NetworkTopology, Report, Screen, Topology
-from apps.operation_analysis.schemas.import_export_schema import ImportExportValidationError, YAMLDocument, count_objects, detect_db_id_references
+from apps.operation_analysis.schemas.import_export_schema import (
+    ImportExportValidationError,
+    YAMLDocument,
+    count_objects,
+    detect_db_id_references,
+    validate_date_range_params,
+)
 
 
 class PrecheckService:
@@ -457,6 +463,17 @@ class PrecheckService:
         all_errors.extend(schema_errors)
         if all_errors:
             return cls._build_precheck_result(False, None, conflicts, all_warnings, all_errors)
+
+        for violation in validate_date_range_params(doc):
+            all_errors.append(
+                {
+                    "code": ImportExportErrorCode.YAML_SCHEMA_INVALID,
+                    "message": f"dateRange parameter validation failed at {violation['path']}: {violation['message']}",
+                    "details": violation,
+                }
+            )
+        if all_errors:
+            return cls._build_precheck_result(False, doc, conflicts, all_warnings, all_errors)
 
         # Step 4: 对象数量检查
         all_errors.extend(cls.check_object_counts_consistency(doc))
