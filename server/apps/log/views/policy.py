@@ -3,39 +3,29 @@ from datetime import datetime, timedelta, timezone
 
 from django.db import models, transaction
 from django.db.models import Count
-
-from django_celery_beat.models import PeriodicTask, CrontabSchedule
+from django_celery_beat.models import CrontabSchedule, PeriodicTask
 from rest_framework import viewsets
 from rest_framework.decorators import action
-from django.db import models
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.utils.current_team_scope import _normalize_organization_ids, validate_assignable_organizations
 from apps.core.utils.permission_utils import (
-    get_permission_rules,
-    get_permissions_rules,
-    permission_filter,
     check_instance_permission,
     filter_instances_with_permissions,
     get_instance_permissions,
+    get_permission_rules,
+    get_permissions_rules,
+    permission_filter,
 )
-from apps.core.utils.web_utils import WebUtils
-from apps.log.constants.permission import PermissionConstants
-from apps.log.constants.alert_policy import AlertConstants
-from apps.log.filters.policy import (
-    PolicyFilter,
-    AlertFilter,
-    EventFilter,
-    EventRawDataFilter,
-)
-from apps.log.models.policy import Policy, PolicyOrganization, Alert, Event, EventRawData
-from apps.log.serializers.policy import (
-    PolicySerializer,
-    AlertSerializer,
-    EventSerializer,
-    EventRawDataSerializer,
-)
-from config.drf.pagination import CustomPageNumberPagination
 from apps.core.utils.team_utils import get_current_team
+from apps.core.utils.web_utils import WebUtils
+from apps.log.constants.alert_policy import AlertConstants
+from apps.log.constants.permission import PermissionConstants
+from apps.log.filters.policy import AlertFilter, EventFilter, EventRawDataFilter, PolicyFilter
+from apps.log.models.policy import Alert, Event, EventRawData, Policy, PolicyOrganization
+from apps.log.serializers.policy import AlertSerializer, EventRawDataSerializer, EventSerializer, PolicySerializer
+from apps.log.services.access_scope import LogAccessScopeService
+from config.drf.pagination import CustomPageNumberPagination
 
 
 def _to_positive_int(val, default: int, min_val: int = 1, max_val: int = 10000) -> int:
@@ -125,42 +115,47 @@ class PolicyViewSet(viewsets.ModelViewSet):
         if not isinstance(values, list):
             return None, WebUtils.response_error(error_message="organizations must be a list")
 
-        normalized = []
-        seen = set()
-        for value in values:
-            if isinstance(value, bool):
-                return None, WebUtils.response_error(error_message="organizations entries must be integers")
-
-            try:
-                org_id = int(value)
-            except (TypeError, ValueError):
-                return None, WebUtils.response_error(error_message="organizations entries must be integers")
-
-            if org_id not in seen:
-                normalized.append(org_id)
-                seen.add(org_id)
-
-        if required and not normalized:
+        if required and not values:
             return None, WebUtils.response_error("organizations is required")
+        if not values:
+            return [], None
+
+        try:
+            normalized = sorted(_normalize_organization_ids(values))
+        except BaseAppException:
+            return None, WebUtils.response_error(error_message="organizations entries must be canonical positive integers")
 
         return normalized, None
+
+    def _get_data_scope(self, request):
+        return LogAccessScopeService.get_data_scope(request)
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["data_team_ids"] = self._get_data_scope(self.request).data_team_ids
+        return context
 
     def _refresh_response_data(self, response, instance):
         response.data = self.get_serializer(instance).data
         return response
 
     def _get_permission_context(self, request):
-        include_children = request.COOKIES.get("include_children", "0") == "1"
+        scope = self._get_data_scope(request)
+        if scope.is_superuser:
+            return {"all": {"team": list(scope.data_team_ids)}}, list(scope.data_team_ids)
         permissions_result = get_permissions_rules(
             request.user,
-            get_current_team(request),
+            scope.current_team,
             "log",
             PermissionConstants.POLICY_MODULE,
-            include_children=include_children,
+            include_children=scope.include_children,
         )
         if not isinstance(permissions_result, dict):
             permissions_result = {}
-        return permissions_result.get("data", {}), self._normalize_orgs(permissions_result.get("team", []))
+        permission_data = permissions_result.get("data", {})
+        if not isinstance(permission_data, dict):
+            permission_data = {}
+        return permission_data, list(scope.data_team_ids)
 
     @staticmethod
     def _policy_orgs(instance):
@@ -198,15 +193,10 @@ class PolicyViewSet(viewsets.ModelViewSet):
         return None
 
     def _authorize_target_organizations(self, request, organizations, collect_type_id=None):
-        target_orgs = self._normalize_orgs(organizations)
-        if not target_orgs:
-            return None
-
-        permission_data, current_teams = self._get_permission_context(request)
-        allowed_orgs = self._allowed_organization_scope(permission_data, current_teams, collect_type_id)
-        if not target_orgs.issubset(allowed_orgs):
+        try:
+            validate_assignable_organizations(request, organizations)
+        except BaseAppException:
             return WebUtils.response_403("User does not have permission to assign policies to these organizations")
-
         return None
 
     def get_queryset(self):
@@ -230,36 +220,28 @@ class PolicyViewSet(viewsets.ModelViewSet):
             cached_ids, cached_map = cache[cache_field]
             return Policy.objects.filter(id__in=cached_ids), cached_map
 
-        include_children = request.COOKIES.get("include_children", "0") == "1"
-        permissions_result = get_permissions_rules(
-            request.user,
-            get_current_team(request),
-            "log",
-            PermissionConstants.POLICY_MODULE,
-            include_children=include_children,
-        )
-        if not isinstance(permissions_result, dict):
-            permissions_result = {}
-
-        policy_permissions = permissions_result.get("data", {})
-        current_teams = permissions_result.get("team", [])
+        scope = self._get_data_scope(request)
+        policy_permissions, current_teams = self._get_permission_context(request)
         only_global = collect_type_id == "global"
 
         # Apply DB-layer collect_type filtering before Python-loop to reduce rows loaded
-        base_qs = Policy.objects.select_related("collect_type").prefetch_related("policyorganization_set")
+        base_qs = (
+            Policy.objects.filter(policyorganization__organization__in=list(scope.data_team_ids))
+            .select_related("collect_type")
+            .prefetch_related("policyorganization_set")
+            .distinct()
+        )
         if only_global:
             base_qs = base_qs.filter(collect_type_id__isnull=True)
         elif normalized_collect_type_id is not None:
             # 原逻辑：指定 collect_type_id 时同时保留 collect_type_id 为 NULL 的全局策略
-            base_qs = base_qs.filter(
-                models.Q(collect_type_id=normalized_collect_type_id) | models.Q(collect_type_id__isnull=True)
-            )
+            base_qs = base_qs.filter(models.Q(collect_type_id=normalized_collect_type_id) | models.Q(collect_type_id__isnull=True))
 
         accessible_instances = []
         accessible_policy_ids = []
         for policy_obj in base_qs:
             teams = {org.organization for org in policy_obj.policyorganization_set.all()}
-            has_permission = check_instance_permission(
+            has_permission = scope.is_superuser or check_instance_permission(
                 policy_obj.collect_type_id,
                 policy_obj.id,
                 teams,
@@ -363,10 +345,10 @@ class PolicyViewSet(viewsets.ModelViewSet):
                 return error_response
 
         effective_collect_type_id = request.data.get("collect_type", instance.collect_type_id)
-        effective_organizations = organizations if organizations is not None else list(self._policy_orgs(instance))
-        error_response = self._authorize_target_organizations(request, effective_organizations, effective_collect_type_id)
-        if error_response:
-            return error_response
+        if organizations is not None:
+            error_response = self._authorize_target_organizations(request, organizations, effective_collect_type_id)
+            if error_response:
+                return error_response
 
         response = super().update(request, *args, **kwargs)
         policy_id = kwargs["pk"]
@@ -407,10 +389,10 @@ class PolicyViewSet(viewsets.ModelViewSet):
                 return error_response
 
         effective_collect_type_id = request.data.get("collect_type", instance.collect_type_id)
-        effective_organizations = organizations if organizations is not None else list(self._policy_orgs(instance))
-        error_response = self._authorize_target_organizations(request, effective_organizations, effective_collect_type_id)
-        if error_response:
-            return error_response
+        if organizations is not None:
+            error_response = self._authorize_target_organizations(request, organizations, effective_collect_type_id)
+            if error_response:
+                return error_response
 
         response = super().partial_update(request, *args, **kwargs)
         policy_id = kwargs["pk"]
@@ -847,11 +829,7 @@ class AlertViewSet(viewsets.ModelViewSet):
 
         # DB 侧聚合：按 (created_at, level) 分组计数
         # 结果行数 = N_distinct_timestamps × N_levels（远小于原始告警行数）
-        aggregated = list(
-            queryset.values("created_at", "level")
-            .annotate(cnt=Count("id"))
-            .order_by("created_at")
-        )
+        aggregated = list(queryset.values("created_at", "level").annotate(cnt=Count("id")).order_by("created_at"))
 
         interval_results = []
         agg_idx = 0
@@ -905,8 +883,8 @@ class AlertViewSet(viewsets.ModelViewSet):
                 ]
             }
         """
-        from apps.log.models.policy import AlertSnapshot
         from apps.core.logger import logger
+        from apps.log.models.policy import AlertSnapshot
 
         try:
             alert_obj = self.get_queryset().get(id=alert_id)

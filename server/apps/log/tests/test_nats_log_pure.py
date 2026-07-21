@@ -1,12 +1,10 @@
-import pydantic.root_model  # noqa
-
 from datetime import datetime
 from types import SimpleNamespace
 
+import pydantic.root_model  # noqa
 import pytest
 
 from apps.log.nats import log as nats_log
-
 
 # ----------------------- _normalize_positive_int -----------------------
 
@@ -133,11 +131,6 @@ def test_apply_log_group_scope_no_user_info_denies():
     assert nats_log._apply_log_group_scope("q", None) == LogGroupQueryBuilder.DENY_ALL_QUERY
 
 
-def test_apply_log_group_scope_superuser_returns_original(mocker):
-    mocker.patch.object(nats_log, "_resolve_log_group_scope", return_value=None)
-    assert nats_log._apply_log_group_scope("q", {"user": "u"}) == "q"
-
-
 def test_apply_log_group_scope_no_groups_denies(mocker):
     from apps.log.utils.log_group import LogGroupQueryBuilder
 
@@ -148,9 +141,7 @@ def test_apply_log_group_scope_no_groups_denies(mocker):
 def test_apply_log_group_scope_builds_scoped_query(mocker):
     groups = [SimpleNamespace(id="g1", name="g1", rule=None)]
     mocker.patch.object(nats_log, "_resolve_log_group_scope", return_value=groups)
-    build = mocker.patch.object(
-        nats_log.LogGroupQueryBuilder, "build_query_with_groups", return_value=("SCOPED", [])
-    )
+    build = mocker.patch.object(nats_log.LogGroupQueryBuilder, "build_query_with_groups", return_value=("SCOPED", []))
     out = nats_log._apply_log_group_scope("q", {"user": "u"})
     assert out == "SCOPED"
     build.assert_called_once_with("q", ["g1"], resolved_groups=groups)
@@ -159,44 +150,116 @@ def test_apply_log_group_scope_builds_scoped_query(mocker):
 # ----------------------- _resolve_log_group_scope -----------------------
 
 
-def test_resolve_log_group_scope_returns_none_without_user_info():
-    assert nats_log._resolve_log_group_scope(None) is None
+def test_resolve_log_group_scope_returns_empty_without_user_info():
+    assert nats_log._resolve_log_group_scope(None) == []
 
 
-def test_resolve_log_group_scope_returns_none_without_username():
-    assert nats_log._resolve_log_group_scope({"team": "t"}) is None
-    assert nats_log._resolve_log_group_scope({"user": "u"}) is None  # 缺 team
+def test_resolve_log_group_scope_returns_empty_without_username():
+    assert nats_log._resolve_log_group_scope({"team": "1"}) == []
+    assert nats_log._resolve_log_group_scope({"user": "u"}) == []  # 缺 team
 
 
-def test_resolve_log_group_scope_superuser_returns_none():
-    assert nats_log._resolve_log_group_scope({"user": "u", "team": "t", "is_superuser": True}) is None
+def test_resolve_log_group_scope_superuser_is_current_team_scoped(mocker):
+    groups = [SimpleNamespace(id="g1", name="g1", rule=None)]
+    mocker.patch(
+        "apps.rpc.system_mgmt.SystemMgmt.get_authorized_groups_scoped",
+        return_value={"result": True, "data": [1]},
+    )
+    qs = mocker.MagicMock()
+    qs.filter.return_value = qs
+    qs.distinct.return_value = qs
+    qs.only.return_value = groups
+    mocker.patch.object(nats_log.LogGroup.objects, "filter", return_value=qs)
+
+    assert (
+        nats_log._resolve_log_group_scope(
+            {
+                "user": "u",
+                "domain": "domain.com",
+                "team": 1,
+                "include_children": False,
+                "is_superuser": True,
+            }
+        )
+        == groups
+    )
+    qs.filter.assert_not_called()
 
 
 def test_resolve_log_group_scope_filters_accessible_groups(mocker):
     groups = [SimpleNamespace(id="g1", name="g1", rule=None)]
+    mocker.patch(
+        "apps.rpc.system_mgmt.SystemMgmt.get_authorized_groups_scoped",
+        return_value={"result": True, "data": [1]},
+    )
     mocker.patch.object(nats_log, "get_permission_rules", return_value={"some": "rule"})
     qs = mocker.MagicMock()
+    qs.filter.return_value = qs
     qs.distinct.return_value = qs
     qs.only.return_value = groups
     mocker.patch.object(nats_log, "permission_filter", return_value=qs)
-    out = nats_log._resolve_log_group_scope({"user": "u", "team": "t"})
+    out = nats_log._resolve_log_group_scope(
+        {
+            "user": "u",
+            "domain": "domain.com",
+            "team": 1,
+            "include_children": False,
+            "is_superuser": False,
+        }
+    )
     assert out == groups
 
 
 def test_resolve_log_group_scope_non_dict_permission_defaults_empty(mocker):
+    mocker.patch(
+        "apps.rpc.system_mgmt.SystemMgmt.get_authorized_groups_scoped",
+        return_value={"result": True, "data": [1]},
+    )
     mocker.patch.object(nats_log, "get_permission_rules", return_value="not-a-dict")
     captured = {}
 
     def fake_filter(model, permission, **kwargs):
         captured["permission"] = permission
         qs = mocker.MagicMock()
+        qs.filter.return_value = qs
         qs.distinct.return_value = qs
         qs.only.return_value = []
         return qs
 
     mocker.patch.object(nats_log, "permission_filter", side_effect=fake_filter)
-    nats_log._resolve_log_group_scope({"user": "u", "team": "t"})
+    nats_log._resolve_log_group_scope(
+        {
+            "user": "u",
+            "domain": "domain.com",
+            "team": 1,
+            "include_children": False,
+            "is_superuser": False,
+        }
+    )
     assert captured["permission"] == {}
+
+
+def test_resolve_log_group_scope_rejects_forged_current_team_before_permission(mocker):
+    scope_rpc = mocker.patch(
+        "apps.rpc.system_mgmt.SystemMgmt.get_authorized_groups_scoped",
+        return_value={"result": True, "data": []},
+    )
+    permission_rpc = mocker.patch.object(nats_log, "get_permission_rules")
+
+    assert (
+        nats_log._resolve_log_group_scope(
+            {
+                "user": "u",
+                "domain": "domain.com",
+                "team": 2,
+                "include_children": False,
+                "is_superuser": False,
+            }
+        )
+        == []
+    )
+    scope_rpc.assert_called_once()
+    permission_rpc.assert_not_called()
 
 
 # ----------------------- log_search nats endpoint -----------------------
@@ -262,9 +325,7 @@ def test_query_log_alert_segments_missing_field():
 
 
 def test_query_log_alert_segments_bad_time_format():
-    out = nats_log.query_log_alert_segments(
-        {"collect_type_id": "ct", "start": "bad", "end": "2024-01-02 00:00:00"}
-    )
+    out = nats_log.query_log_alert_segments({"collect_type_id": "ct", "start": "bad", "end": "2024-01-02 00:00:00"})
     assert out["result"] is False
 
 

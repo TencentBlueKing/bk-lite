@@ -4,33 +4,29 @@ from django.db.models import Q
 from rest_framework.decorators import action
 from rest_framework.viewsets import ModelViewSet, ViewSet
 
+from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.utils.current_team_scope import scope_permission_queryset, validate_assignable_organizations
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.permission_utils import (
-    get_permissions_rules,
     check_instance_permission,
-    get_instance_permissions,
     get_instance_permission_map,
+    get_instance_permissions,
     get_permission_rules,
-    permission_filter,
+    get_permissions_rules,
 )
+from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.web_utils import WebUtils
 from apps.log.constants.collect_type import DISPLAY_CATEGORY_ORDER
 from apps.log.constants.language import LanguageConstants
 from apps.log.constants.permission import PermissionConstants
-from apps.log.models import (
-    CollectConfig,
-    CollectInstance,
-    CollectInstanceOrganization,
-    CollectType,
-)
+from apps.log.filters.collect_config import CollectTypeFilter
+from apps.log.models import CollectConfig, CollectInstance, CollectInstanceOrganization, CollectType
 from apps.log.models.policy import Policy
 from apps.log.serializers.collect_config import CollectTypeSerializer
-from apps.log.filters.collect_config import CollectTypeFilter
-from apps.log.services.collect_type import CollectTypeService
 from apps.log.services.access_scope import LogAccessScopeService
+from apps.log.services.collect_type import CollectTypeService
 from apps.log.services.search import SearchService
 from apps.rpc.node_mgmt import NodeMgmt
-from apps.core.utils.team_utils import get_current_team
 
 
 def should_hide_collect_type_entry(result: dict) -> bool:
@@ -63,10 +59,7 @@ class CollectTypeViewSet(ModelViewSet):
 
     @classmethod
     def _build_instance_scope_query(cls, instance_ids):
-        expressions = [
-            f'instance_id:"{cls._escape_logsql_value(instance_id)}"'
-            for instance_id in instance_ids
-        ]
+        expressions = [f'instance_id:"{cls._escape_logsql_value(instance_id)}"' for instance_id in instance_ids]
         if not expressions:
             return ""
         if len(expressions) == 1:
@@ -86,16 +79,11 @@ class CollectTypeViewSet(ModelViewSet):
 
     @staticmethod
     def _is_log_group_create_scope(request):
-        return (
-            request.query_params.get("scope")
-            == CollectTypeViewSet.LOG_GROUP_CREATE_SCOPE
-        )
+        return request.query_params.get("scope") == CollectTypeViewSet.LOG_GROUP_CREATE_SCOPE
 
     def _get_log_group_create_attrs(self, request, query, start_time, end_time):
         try:
-            organization_ids = LogAccessScopeService.get_manageable_organization_ids(
-                request
-            )
+            organization_ids = LogAccessScopeService.get_manageable_organization_ids(request)
         except ValueError as exc:
             return WebUtils.response_error(error_message=str(exc), status_code=403)
 
@@ -103,9 +91,7 @@ class CollectTypeViewSet(ModelViewSet):
             return WebUtils.response_error(error_message="当前用户无权限创建日志分组", status_code=403)
 
         instance_ids = list(
-            CollectInstanceOrganization.objects.filter(
-                organization__in=list(organization_ids)
-            )
+            CollectInstanceOrganization.objects.filter(organization__in=list(organization_ids))
             .order_by("collect_instance_id")
             .values_list("collect_instance_id", flat=True)
             .distinct()
@@ -114,9 +100,7 @@ class CollectTypeViewSet(ModelViewSet):
         if not final_query:
             return WebUtils.response_success([])
 
-        data = SearchService.all_field_names(
-            final_query, start_time, end_time, [], resolved_groups=[]
-        )
+        data = SearchService.all_field_names(final_query, start_time, end_time, [], resolved_groups=[])
         return WebUtils.response_success(data)
 
     @action(methods=["get"], detail=False, url_path="display_category_enum")
@@ -311,17 +295,22 @@ class CollectInstanceViewSet(ViewSet):
         return page, page_size
 
     def _get_permission_context(self, request):
-        include_children = request.COOKIES.get("include_children", "0") == "1"
+        scope = LogAccessScopeService.get_data_scope(request)
+        if scope.is_superuser:
+            return {"all": {"team": list(scope.data_team_ids)}}, list(scope.data_team_ids)
         permission_result = get_permissions_rules(
             request.user,
-            get_current_team(request),
+            scope.current_team,
             "log",
             PermissionConstants.INSTANCE_MODULE,
-            include_children=include_children,
+            include_children=scope.include_children,
         )
         if not isinstance(permission_result, dict):
             permission_result = {}
-        return permission_result.get("data", {}), self._normalize_orgs(permission_result.get("team", []))
+        permission_data = permission_result.get("data", {})
+        if not isinstance(permission_data, dict):
+            permission_data = {}
+        return permission_data, list(scope.data_team_ids)
 
     @staticmethod
     def _instance_orgs(instance):
@@ -366,6 +355,10 @@ class CollectInstanceViewSet(ViewSet):
 
         permission_data, current_teams = self._get_permission_context(request)
         for instance_id in normalized_ids:
+            if not self._instance_orgs(instance_map[instance_id]).intersection(current_teams):
+                return None, WebUtils.response_403("User does not have permission to operate this instance")
+            if getattr(request.user, "is_superuser", False):
+                continue
             permissions = self._permissions_for_instance(instance_map[instance_id], permission_data, current_teams)
             if required_permission not in permissions:
                 return None, WebUtils.response_403("User does not have permission to operate this instance")
@@ -373,24 +366,28 @@ class CollectInstanceViewSet(ViewSet):
         return instances, None
 
     def _authorize_target_organizations(self, request, organizations, collect_type_id=None):
-        target_orgs = self._normalize_orgs(organizations)
-        if not target_orgs:
-            return None
-        permission_data, current_teams = self._get_permission_context(request)
-        allowed_orgs = self._allowed_organization_scope(permission_data, current_teams, collect_type_id)
-        if not target_orgs.issubset(allowed_orgs):
+        try:
+            validate_assignable_organizations(request, organizations)
+        except BaseAppException:
             return WebUtils.response_403("User does not have permission to assign instances to these organizations")
         return None
 
     def _extract_batch_instance_organizations(self, request_data):
-        organizations = set()
+        organizations = []
         for instance in request_data.get("instances", []):
-            organizations |= self._normalize_orgs(instance.get("group_ids", []))
-        return list(organizations)
+            group_ids = instance.get("group_ids", [])
+            if isinstance(group_ids, list):
+                organizations.extend(group_ids)
+            else:
+                organizations.append(group_ids)
+        return organizations
 
     def _build_all_collect_type_scope(self, permission_data, current_teams):
         admin_team_ids = self._normalize_orgs(permission_data.get("all", {}).get("team", []))
         if admin_team_ids:
+            admin_team_ids &= self._normalize_orgs(current_teams)
+            if not admin_team_ids:
+                return CollectInstance.objects.none(), True
             return (
                 CollectInstance.objects.filter(collectinstanceorganization__organization__in=list(admin_team_ids)).distinct(),
                 True,
@@ -438,7 +435,11 @@ class CollectInstanceViewSet(ViewSet):
         if not has_scope:
             return CollectInstance.objects.none(), False
 
-        return CollectInstance.objects.filter(scope_query).distinct(), False
+        scope_query &= Q(collectinstanceorganization__organization__in=list(current_team_ids))
+        return (
+            CollectInstance.objects.filter(scope_query).distinct(),
+            False,
+        )
 
     def _apply_all_type_permissions(self, data, permission_data, current_teams, is_admin_scope):
         if is_admin_scope:
@@ -472,23 +473,24 @@ class CollectInstanceViewSet(ViewSet):
         except ValueError as exc:
             return WebUtils.response_error(error_message=str(exc))
 
-        # 获取当前用户选择的组织（必填）
-        current_team = get_current_team(request)
-
         if collect_type_id:
             # 单采集类型查询 - 使用与监控模块完全一致的权限检查方式
-            include_children = request.COOKIES.get("include_children", "0") == "1"
-            permission = get_permission_rules(
-                request.user,
-                current_team,
-                "log",
-                f"{PermissionConstants.INSTANCE_MODULE}.{collect_type_id}",
-                include_children=include_children,
+            scope = LogAccessScopeService.get_data_scope(request)
+            permission = (
+                {"team": list(scope.data_team_ids), "instance": []}
+                if scope.is_superuser
+                else get_permission_rules(
+                    request.user,
+                    scope.current_team,
+                    "log",
+                    f"{PermissionConstants.INSTANCE_MODULE}.{collect_type_id}",
+                    include_children=scope.include_children,
+                )
             )
-            # 应用权限过滤（与监控模块保持一致）
-            qs = permission_filter(
+            qs = scope_permission_queryset(
                 CollectInstance,
                 permission,
+                scope,
                 team_key="collectinstanceorganization__organization__in",
                 id_key="id__in",
             )
@@ -566,17 +568,20 @@ class CollectInstanceViewSet(ViewSet):
         instances, error_response = self._authorize_instances(request, [instance_id])
         if error_response:
             return error_response
-        error_response = self._authorize_target_organizations(
-            request,
-            request.data.get("organizations", []),
-            instances[0].collect_type_id,
-        )
-        if error_response:
-            return error_response
+        organizations = None
+        if "organizations" in request.data:
+            organizations = request.data.get("organizations")
+            error_response = self._authorize_target_organizations(
+                request,
+                organizations,
+                instances[0].collect_type_id,
+            )
+            if error_response:
+                return error_response
         CollectTypeService.update_instance(
             instance_id,
             request.data.get("name"),
-            request.data.get("organizations", []),
+            organizations,
         )
         return WebUtils.response_success()
 
@@ -610,11 +615,7 @@ class CollectConfigViewSet(ViewSet):
 
     @action(methods=["post"], detail=False, url_path="get_config_content")
     def get_config_content(self, request):
-        config_objs = list(
-            CollectConfig.objects.filter(id__in=request.data["ids"]).select_related(
-                "collect_instance__collect_type"
-            )
-        )
+        config_objs = list(CollectConfig.objects.filter(id__in=request.data["ids"]).select_related("collect_instance__collect_type"))
         if not config_objs:
             return WebUtils.response_error("配置不存在!")
         error_response = self._authorize_config_instances(request, config_objs, required_permission="View")
