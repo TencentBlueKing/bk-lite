@@ -24,11 +24,13 @@ class FakeRedis:
         strings=None,
         type_overrides=None,
         watch_error=False,
+        direct_zcard_error=False,
     ):
         self.queue = dict(queue or {})
         self.strings = dict(strings or {})
         self.type_overrides = dict(type_overrides or {})
         self.watch_error = watch_error
+        self.direct_zcard_error = direct_zcard_error
         self.scan_patterns = []
         self.keys_calls = 0
         self.write_calls = []
@@ -72,6 +74,8 @@ class FakeRedis:
 
     def zcard(self, key):
         assert _as_bytes(key) == b"arq:queue"
+        if self.direct_zcard_error:
+            raise ConnectionError("standalone zcard failed")
         return len(self.queue)
 
     def dump(self, key):
@@ -127,7 +131,10 @@ class FakePipeline:
         if self.redis_client.watch_error:
             raise WatchError("changed")
         self.redis_client._commit(self.commands)
-        return [1] * len(self.commands)
+        return [
+            len(self.redis_client.queue) if command == "zcard" else 1
+            for command, _args in self.commands
+        ]
 
     def zrem(self, key, *job_ids):
         self.commands.append(("zrem", (_as_bytes(key), *job_ids)))
@@ -135,6 +142,10 @@ class FakePipeline:
 
     def delete(self, *keys):
         self.commands.append(("delete", tuple(_as_bytes(key) for key in keys)))
+        return self
+
+    def zcard(self, key):
+        self.commands.append(("zcard", (_as_bytes(key),)))
         return self
 
     def type(self, key):
@@ -387,3 +398,13 @@ def test_apply_deletes_only_selected_job_keys_and_markers():
     assert b"arq:result:queued-blocker" in redis_client.strings
     assert b"host_remote:callback:1" in redis_client.strings
     assert b"credential:state:1" in redis_client.strings
+
+
+def test_apply_reads_remaining_count_inside_the_cleanup_transaction():
+    redis_client, plan = _selected_plan_fixture()
+    redis_client.direct_zcard_error = True
+
+    result = apply_cleanup_plan(redis_client, plan)
+
+    assert result.remaining_queue_jobs == 0
+    assert redis_client.committed_writes[-1][0] == "zcard"

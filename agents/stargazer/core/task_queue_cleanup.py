@@ -350,7 +350,8 @@ def apply_cleanup_plan(redis_client, plan: CleanupPlan) -> CleanupResult:
             pipe.zrem(QUEUE_KEY, *plan.selected_job_ids)
             if plan.target_keys:
                 pipe.delete(*plan.target_keys)
-            pipe.execute()
+            pipe.zcard(QUEUE_KEY)
+            transaction_results = pipe.execute()
     except WatchError as exc:
         raise CleanupDriftError("cleanup target state changed") from exc
     except CleanupDriftError:
@@ -361,5 +362,5 @@ def apply_cleanup_plan(redis_client, plan: CleanupPlan) -> CleanupResult:
     return CleanupResult(
         deleted_job_count=len(plan.selected_job_ids),
         deleted_marker_count=len(plan.marker_items),
-        remaining_queue_jobs=int(redis_client.zcard(QUEUE_KEY)),
+        remaining_queue_jobs=int(transaction_results[-1]),
     )
