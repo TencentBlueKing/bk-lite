@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import math
 import os
@@ -277,7 +278,7 @@ def _backup_payload(redis_client, plan: CleanupPlan, *, redis_db: int) -> dict:
             "type": _type_name(redis_client, key).decode(errors="replace"),
         }
 
-    return {
+    payload = {
         "format_version": 1,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "redis_db": int(redis_db),
@@ -299,6 +300,20 @@ def _backup_payload(redis_client, plan: CleanupPlan, *, redis_db: int) -> dict:
         },
         "keys": key_payload,
     }
+    payload["content_sha256"] = _payload_digest(payload)
+    return payload
+
+
+def _payload_digest(payload: dict) -> str:
+    digest_payload = dict(payload)
+    digest_payload.pop("content_sha256", None)
+    serialized = json.dumps(
+        digest_payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+    return hashlib.sha256(serialized).hexdigest()
 
 
 def create_cleanup_backup(
@@ -386,18 +401,65 @@ def backup_and_apply_cleanup(
 
 def _load_restore_payload(
     backup_path: Path, *, redis_db: int
-) -> tuple[dict[bytes, tuple[int, bytes]], dict[bytes, float]]:
+) -> tuple[
+    dict[bytes, tuple[int, bytes]], dict[bytes, float], dict[bytes, bytes],
+]:
     try:
         payload = json.loads(backup_path.read_text(encoding="utf-8"))
+        expected_fields = {
+            "content_sha256",
+            "created_at",
+            "format_version",
+            "include_in_progress",
+            "keys",
+            "marker_items",
+            "mode",
+            "protected_job_ids",
+            "queue_scores",
+            "redis_db",
+            "selected_job_ids",
+        }
+        if set(payload) != expected_fields:
+            raise ValueError("backup schema does not match")
         if payload.get("format_version") != 1:
             raise ValueError("unsupported backup format")
+        if not secrets.compare_digest(
+            str(payload["content_sha256"]), _payload_digest(payload)
+        ):
+            raise ValueError("backup digest does not match")
         if int(payload["redis_db"]) != int(redis_db):
             raise ValueError("backup Redis DB does not match")
+        if payload["mode"] not in {"blocking", "all_pending"}:
+            raise ValueError("backup mode is invalid")
+        if not isinstance(payload["include_in_progress"], bool):
+            raise ValueError("backup mode flags are invalid")
 
+        selected_job_values = payload["selected_job_ids"]
+        if not isinstance(selected_job_values, list):
+            raise ValueError("selected jobs are invalid")
         selected_job_ids = {
-            str(job_id).encode() for job_id in payload["selected_job_ids"]
+            str(job_id).encode() for job_id in selected_job_values
         }
+        if (
+            not selected_job_ids
+            or len(selected_job_ids) != len(selected_job_values)
+            or b"" in selected_job_ids
+        ):
+            raise ValueError("selected jobs are invalid")
+
+        protected_values = payload["protected_job_ids"]
+        if not isinstance(protected_values, list):
+            raise ValueError("protected jobs are invalid")
+        protected_job_ids = {
+            str(job_id).encode() for job_id in protected_values
+        }
+        if protected_job_ids & selected_job_ids:
+            raise ValueError("selected and protected jobs overlap")
+
+        if not isinstance(payload["marker_items"], dict):
+            raise ValueError("markers are invalid")
         marker_keys = set()
+        marker_job_ids = set()
         for raw_key, raw_job_id in payload["marker_items"].items():
             key = str(raw_key).encode()
             job_id = str(raw_job_id).encode()
@@ -408,6 +470,7 @@ def _load_restore_payload(
             if not valid_prefix or job_id not in selected_job_ids:
                 raise ValueError("backup contains an invalid marker")
             marker_keys.add(key)
+            marker_job_ids.add(job_id)
         allowed_keys = set(marker_keys)
         for job_id in selected_job_ids:
             allowed_keys.update(
@@ -419,10 +482,33 @@ def _load_restore_payload(
             )
 
         restore_keys: dict[bytes, tuple[int, bytes]] = {}
+        key_job_ids = set()
+        if not isinstance(payload["keys"], dict):
+            raise ValueError("backup keys are invalid")
         for raw_key, key_payload in payload["keys"].items():
             key = str(raw_key).encode()
             if key not in allowed_keys:
                 raise ValueError("backup contains an unexpected key")
+            if not isinstance(key_payload, dict) or set(key_payload) != {
+                "dump",
+                "pttl",
+                "type",
+            }:
+                raise ValueError("backup key schema is invalid")
+            if key_payload["type"] != "string":
+                raise ValueError("backup key type is invalid")
+            for prefix in (JOB_PREFIX, RETRY_PREFIX, IN_PROGRESS_PREFIX):
+                if key.startswith(prefix):
+                    job_id = key.removeprefix(prefix)
+                    if job_id not in selected_job_ids:
+                        raise ValueError("backup key job is invalid")
+                    if (
+                        prefix == IN_PROGRESS_PREFIX
+                        and not payload["include_in_progress"]
+                    ):
+                        raise ValueError("unexpected in-progress key")
+                    key_job_ids.add(job_id)
+                    break
             pttl = int(key_payload["pttl"])
             if pttl < -1:
                 raise ValueError("backup contains an invalid TTL")
@@ -431,28 +517,62 @@ def _load_restore_payload(
             restore_keys[key] = (ttl, dumped)
 
         queue_scores: dict[bytes, float] = {}
+        if not isinstance(payload["queue_scores"], dict):
+            raise ValueError("queue scores are invalid")
         for raw_job_id, raw_score in payload["queue_scores"].items():
             job_id = str(raw_job_id).encode()
             score = float(raw_score)
             if job_id not in selected_job_ids or not math.isfinite(score):
                 raise ValueError("backup contains an invalid queue member")
             queue_scores[job_id] = score
+        if not marker_keys <= set(restore_keys):
+            raise ValueError("backup is missing marker data")
+        artifact_job_ids = marker_job_ids | key_job_ids | set(queue_scores)
+        if artifact_job_ids != selected_job_ids:
+            raise ValueError("backup selected jobs do not match artifacts")
+        if not restore_keys and not queue_scores:
+            raise ValueError("backup contains no restorable data")
     except Exception as exc:
         raise CleanupRestoreError("invalid task queue backup") from exc
 
-    return restore_keys, queue_scores
+    marker_items = {
+        str(key).encode(): str(job_id).encode()
+        for key, job_id in payload["marker_items"].items()
+    }
+    return restore_keys, queue_scores, marker_items
 
 
 def restore_cleanup_backup(
     redis_client, *, backup_path: Path, redis_db: int,
 ) -> RestoreResult:
     """Restore one cleanup backup without overwriting current Redis state."""
-    restore_keys, queue_scores = _load_restore_payload(
+    restore_keys, queue_scores, marker_items = _load_restore_payload(
         backup_path, redis_db=redis_db
     )
-    watch_keys = tuple(sorted({QUEUE_KEY, *restore_keys}))
+    token = secrets.token_hex(12).encode()
+    temporary_keys = {
+        key: b"stargazer:task-queue-restore:tmp:"
+        + token
+        + b":"
+        + str(index).encode()
+        for index, key in enumerate(sorted(restore_keys))
+    }
+    watch_keys = tuple(
+        sorted({QUEUE_KEY, *restore_keys, *temporary_keys.values()})
+    )
 
     try:
+        for key, (ttl, dumped) in sorted(restore_keys.items()):
+            temporary_key = temporary_keys[key]
+            redis_client.restore(temporary_key, ttl, dumped, replace=False)
+            if _type_name(redis_client, temporary_key) != b"string":
+                raise CleanupRestoreError("backup key type is invalid")
+            if (
+                key in marker_items
+                and redis_client.get(temporary_key) != marker_items[key]
+            ):
+                raise CleanupRestoreError("backup marker value is invalid")
+
         with redis_client.pipeline() as pipe:
             pipe.watch(*watch_keys)
             queue_type = _type_name(pipe, QUEUE_KEY)
@@ -465,19 +585,33 @@ def restore_cleanup_backup(
                 for job_id in queue_scores
             ):
                 raise CleanupRestoreError("queue member already exists")
+            if any(
+                not pipe.exists(temporary_key)
+                for temporary_key in temporary_keys.values()
+            ):
+                raise CleanupRestoreError("validated restore data expired")
 
             pipe.multi()
-            for key, (ttl, dumped) in sorted(restore_keys.items()):
-                pipe.restore(key, ttl, dumped, replace=False)
+            for key, temporary_key in sorted(temporary_keys.items()):
+                pipe.renamenx(temporary_key, key)
             if queue_scores:
                 pipe.zadd(QUEUE_KEY, queue_scores)
-            pipe.execute()
+            transaction_results = pipe.execute()
+            rename_results = transaction_results[: len(temporary_keys)]
+            if not all(rename_results):
+                raise CleanupRestoreError("restore publish was incomplete")
     except WatchError as exc:
         raise CleanupRestoreError("restore target state changed") from exc
     except CleanupRestoreError:
         raise
     except Exception as exc:
         raise CleanupRestoreError("task queue restore failed") from exc
+    finally:
+        if temporary_keys:
+            try:
+                redis_client.delete(*temporary_keys.values())
+            except Exception:
+                pass
 
     return RestoreResult(
         restored_key_count=len(restore_keys),

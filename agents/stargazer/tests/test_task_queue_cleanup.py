@@ -1,3 +1,4 @@
+import base64
 import fnmatch
 import json
 import os
@@ -10,6 +11,7 @@ from core.task_queue_cleanup import (
     CleanupDriftError,
     CleanupRestoreError,
     CleanupStateError,
+    _payload_digest,
     apply_cleanup_plan,
     backup_and_apply_cleanup,
     build_cleanup_plan,
@@ -93,6 +95,25 @@ class FakeRedis:
     def pttl(self, key):
         return self.ttls.get(_as_bytes(key), -2)
 
+    def restore(self, key, ttl, dumped, *, replace=False):
+        key = _as_bytes(key)
+        if key in self.strings and not replace:
+            raise RuntimeError("target exists")
+        normalized_dump = _as_bytes(dumped)
+        if not normalized_dump.startswith(b"redis-dump:"):
+            raise RuntimeError("invalid dump")
+        self.strings[key] = normalized_dump.removeprefix(b"redis-dump:")
+        self.ttls[key] = -1 if ttl == 0 else ttl
+
+    def delete(self, *keys):
+        deleted = 0
+        for key in keys:
+            normalized_key = _as_bytes(key)
+            deleted += int(normalized_key in self.strings)
+            self.strings.pop(normalized_key, None)
+            self.ttls.pop(normalized_key, None)
+        return deleted
+
     def pipeline(self):
         return FakePipeline(self)
 
@@ -121,6 +142,10 @@ class FakeRedis:
             elif command == "zadd":
                 _key, mapping = args
                 self.queue.update(mapping)
+            elif command == "renamenx":
+                source, destination = args
+                self.strings[destination] = self.strings.pop(source)
+                self.ttls[destination] = self.ttls.pop(source)
 
 
 class FakePipeline:
@@ -170,6 +195,12 @@ class FakePipeline:
 
     def zadd(self, key, mapping):
         self.commands.append(("zadd", (_as_bytes(key), mapping)))
+        return self
+
+    def renamenx(self, source, destination):
+        self.commands.append(
+            ("renamenx", (_as_bytes(source), _as_bytes(destination)))
+        )
         return self
 
     def zcard(self, key):
@@ -521,3 +552,48 @@ def test_restore_rejects_wrong_database_and_unexpected_keys(tmp_path):
         restore_cleanup_backup(
             redis_client, backup_path=backup_path, redis_db=1
         )
+
+
+def test_restore_rejects_payload_that_expands_its_own_job_allowlist(tmp_path):
+    redis_client, plan = _selected_plan_fixture()
+    backup_path, _result = backup_and_apply_cleanup(
+        redis_client, plan, backup_dir=tmp_path / "backups", redis_db=1,
+    )
+    payload = json.loads(backup_path.read_text(encoding="utf-8"))
+    payload["selected_job_ids"].append("injected-job")
+    payload["keys"]["arq:job:injected-job"] = next(
+        iter(payload["keys"].values())
+    )
+    backup_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(CleanupRestoreError, match="invalid task queue backup"):
+        restore_cleanup_backup(
+            redis_client, backup_path=backup_path, redis_db=1
+        )
+
+    assert b"arq:job:injected-job" not in redis_client.strings
+
+
+def test_damaged_dump_does_not_partially_restore_target_keys(tmp_path):
+    redis_client, plan = _selected_plan_fixture()
+    backup_path, _result = backup_and_apply_cleanup(
+        redis_client, plan, backup_dir=tmp_path / "backups", redis_db=1,
+    )
+    payload = json.loads(backup_path.read_text(encoding="utf-8"))
+    marker_key = "task:running:task-1"
+    payload["keys"][marker_key]["dump"] = base64.b64encode(
+        b"invalid-dump"
+    ).decode()
+    payload["content_sha256"] = _payload_digest(payload)
+    backup_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(CleanupRestoreError):
+        restore_cleanup_backup(
+            redis_client, backup_path=backup_path, redis_db=1
+        )
+
+    assert not any(key in redis_client.strings for key in plan.target_keys)
+    assert not any(
+        key.startswith(b"stargazer:task-queue-restore:tmp:")
+        for key in redis_client.strings
+    )

@@ -326,7 +326,7 @@ docker exec <stargazer-container> \
   --apply
 ```
 
-恢复入口会校验备份格式和 Redis DB，并在同一个 `WATCH/MULTI/EXEC` 中恢复 Redis DUMP、TTL 和队列 score；只要任一目标 key 或队列成员已经存在，就会拒绝覆盖并安全退出。恢复成功并确认队列状态后，再启动 Worker 和恢复任务下发。
+恢复入口会校验备份格式、SHA-256 内容摘要和 Redis DB。每个 DUMP 会先恢复到随机临时 key，校验 Redis 类型及 marker 值；全部通过后，才在 `WATCH/MULTI/EXEC` 中用 `RENAMENX` 发布目标 key 并恢复队列 score。只要 DUMP 损坏、语义不一致、任一目标 key 或队列成员已经存在，就会清理临时 key、拒绝覆盖并安全退出。SHA-256 用于发现文件损坏，不替代文件来源认证；备份必须保持 `0600` 并仅从可信容器复制。恢复成功并确认队列状态后，再启动 Worker 和恢复任务下发。
 
 清理后重新启动 Worker 并恢复任务下发，提交一个任务确认返回 `status=queued`，同时检查 Worker 日志出现 `Task received:`。CLI 的稳定退出码为：`0` 成功/无目标、`2` 参数非法、`3` Redis 读取失败、`4` 备份失败、`5` 状态漂移、`6` transaction 失败、`7` 恢复失败。
 
