@@ -150,7 +150,7 @@ def get_login_auth_callback_uri(request=None, redirect_origin: str | None = None
         and validate_redirect_origin(request, redirect_origin)
     ):
         result = f"{redirect_origin.rstrip('/')}{LOGIN_AUTH_CALLBACK_PATH}"
-        logger.warning(
+        logger.debug(
             "[BK-Lite login-auth v2] path=redirect_origin redirect_origin=%r result=%r "
             "HTTP_ORIGIN=%r X-Fwd-Host=%r X-Fwd-Proto=%r HTTP_HOST=%r",
             redirect_origin,
@@ -163,7 +163,7 @@ def get_login_auth_callback_uri(request=None, redirect_origin: str | None = None
         return result
     if request is not None:
         result = request.build_absolute_uri(LOGIN_AUTH_CALLBACK_PATH)
-        logger.warning(
+        logger.debug(
             "[BK-Lite login-auth v2] path=build_absolute_uri redirect_origin=%r result=%r "
             "HTTP_ORIGIN=%r X-Fwd-Host=%r X-Fwd-Proto=%r HTTP_HOST=%r",
             redirect_origin,

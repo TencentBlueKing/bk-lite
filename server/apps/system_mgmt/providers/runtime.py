@@ -145,6 +145,8 @@ class RuntimeApplicationService:
         runtime_config = instance.get_runtime_config()
         capability_results: dict[str, dict[str, Any]] = {}
         capability_status: dict[str, str] = {}
+        failure_details: list[dict[str, Any]] = []
+        failure_codes: list[str] = []
         all_success = True
         capabilities = manifest.capabilities
         if capability_key:
@@ -165,20 +167,33 @@ class RuntimeApplicationService:
             all_success = all_success and result.success
             if not result.success:
                 error_codes = [error.code for error in (result.errors or [])]
-                error_messages = [
-                    {"code": e.code, "message": e.message, "field": e.field}
+                failure_codes.extend(error_codes)
+                error_details = [
+                    {
+                        "code": e.code,
+                        "field": e.field,
+                        "external_code": e.external_code,
+                        "external_request_id": e.external_request_id,
+                    }
                     for e in (result.errors or [])
                 ]
-                # 区分平台 bug vs 外部 API 失败，便于运维一眼定位根因
-                tag = _classify_test_connection_failure_tag(error_codes)
-                logger.warning(
-                    f"[{tag}] Integration instance test connection failed for capability "
-                    f"'{capability.key}' of provider '{manifest.key}', "
-                    f"instance_id={getattr(instance, 'id', None)}, "
-                    f"instance_name={getattr(instance, 'name', None)!r}, "
-                    f"request_id={result.request_id}, summary={result.summary!r}, "
-                    f"codes={error_codes}, errors={error_messages}"
+                failure_details.append(
+                    {
+                        "capability_key": capability.key,
+                        "request_id": result.request_id,
+                        "codes": error_codes,
+                        "errors": error_details,
+                    }
                 )
+
+        if failure_details:
+            tag = _classify_test_connection_failure_tag(failure_codes)
+            logger.warning(
+                f"[{tag}] Integration instance test connection failed, "
+                f"instance_id={getattr(instance, 'id', None)}, "
+                f"instance_name={getattr(instance, 'name', None)!r}, "
+                f"provider_key={manifest.key}, failures={failure_details}"
+            )
 
         summary = f"Provider '{manifest.key}' connection test succeeded" if all_success else f"Provider '{manifest.key}' connection test failed"
         logger.info(
