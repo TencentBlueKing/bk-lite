@@ -2476,9 +2476,14 @@ class ToolsNodes(BasicNode):
         """
         import os
         import shutil
+        import sys
 
         host_path = os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin")
         bins: list[str] = []
+        runtime_bins = [
+            os.path.dirname(sys.executable),
+            os.path.dirname(os.path.realpath(sys.executable)),
+        ]
 
         for cmd in ToolsNodes._SANDBOX_PATH_PROBES:
             try:
@@ -2492,43 +2497,11 @@ class ToolsNodes(BasicNode):
                 bins.append(bin_dir)
 
         # 合并 host PATH + 探测 bins,用 dict.fromkeys 保序去重(host PATH 本身可能有重复段)
-        merged_list = host_path.split(":") + bins
+        # 当前服务的 venv 必须优先于父进程 PATH。否则从精简环境启动时会命中
+        # /usr/bin/python3，并与服务 venv 的依赖形成跨 Python 版本混用。
+        merged_list = runtime_bins + host_path.split(":") + bins
         merged_unique = list(dict.fromkeys(p for p in merged_list if p))
         return ":".join(merged_unique)
-
-    @staticmethod
-    def _venv_site_packages() -> str:
-        """返回当前 Python venv 的 site-packages 路径,用于 sandbox 的 PYTHONPATH。
-
-        host Python 装了 deps(reportlab 等),但 sandbox 用 subprocess 跑 system Python 时
-        看不到 venv 的 site-packages → ModuleNotFoundError。
-        把 venv site-packages 加进 PYTHONPATH 解决。
-        """
-        import os
-        import site
-        import sys
-
-        paths: list[str] = []
-
-        # 1) 当前 sys.executable 推出来的 site-packages(精准匹配 venv)
-        exe = os.path.realpath(sys.executable)
-        ver = f"python{sys.version_info.major}.{sys.version_info.minor}"
-        candidate = os.path.join(os.path.dirname(exe), "..", "lib", ver, "site-packages")
-        candidate = os.path.realpath(candidate)
-        if os.path.isdir(candidate):
-            paths.append(candidate)
-
-        # 2) site.getsitepackages()(覆盖 system Python 之外的场景)
-        for p in site.getsitepackages():
-            if os.path.isdir(p):
-                paths.append(p)
-
-        # 3) user site-packages(~/.local/lib/...)
-        user_site = site.getusersitepackages()
-        if user_site and os.path.isdir(user_site):
-            paths.append(user_site)
-
-        return ":".join(paths) if paths else ""
 
     @staticmethod
     def _sandbox_env(sandbox_dir: str) -> dict:
@@ -2553,10 +2526,6 @@ class ToolsNodes(BasicNode):
             "LC_ALL": os.environ.get("LC_ALL", os.environ.get("LANG", "C.UTF-8")),
             "TMPDIR": sandbox_dir,  # 临时文件落在沙箱内,用完即弃
             "HOME": sandbox_dir,    # 用户配置也隔离(PATH 透传但 HOME 不透)
-            # host venv 的 site-packages 加进 PYTHONPATH,确保 sandbox 调
-            # `python3 xxx.py` 用 system Python 也能看到 venv 装的包
-            # (否则 LLM 调 `python3 -c "import reportlab"` 会 ModuleNotFoundError)。
-            "PYTHONPATH": ToolsNodes._venv_site_packages(),
             # kubectl 默认读 ~/.kube/config,但 sandbox 把 HOME 隔离到 sandbox_dir,
             # 找不到 kubeconfig。显式传 KUBECONFIG(host 环境变量,LLM 调 kubectl 才能连 k8s)。
             "KUBECONFIG": os.environ.get("KUBECONFIG", os.path.expanduser("~/.kube/config")),
