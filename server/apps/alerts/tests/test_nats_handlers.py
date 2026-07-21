@@ -197,6 +197,49 @@ def test_authorized_queryset_uses_alert_permission_rules(monkeypatch):
 
 
 @pytest.mark.django_db
+def test_authorized_queryset_instance_only_does_not_grant_current_team(monkeypatch):
+    current_team_alert = Alert.objects.create(
+        alert_id="A-current-team",
+        level="0",
+        title="current team alert",
+        content="c",
+        fingerprint="fp-current",
+        team=[1],
+    )
+    instance_alert = Alert.objects.create(
+        alert_id="A-instance",
+        level="0",
+        title="instance grant",
+        content="c",
+        fingerprint="fp-instance",
+        team=[2],
+    )
+
+    monkeypatch.setattr(
+        N,
+        "get_permission_rules",
+        lambda *args, **kwargs: {
+            "team": [],
+            "instance": [{"id": instance_alert.id, "permission": ["View"]}],
+        },
+    )
+
+    queryset, error = N._get_authorized_alert_queryset(
+        {
+            "team": 1,
+            "user": "alice",
+            "domain": "tenant.example",
+            "is_superuser": False,
+            "permission": {"alarm": ["Alarms-View"]},
+        }
+    )
+
+    assert error is None
+    assert set(queryset.values_list("id", flat=True)) == {instance_alert.id}
+    assert current_team_alert.id not in queryset.values_list("id", flat=True)
+
+
+@pytest.mark.django_db
 def test_authorized_queryset_requires_permission_identity_for_non_superuser():
     qs, err = N._get_authorized_alert_queryset(
         {
@@ -743,6 +786,109 @@ def test_receive_alert_events_success():
     assert result["result"] is True
     assert result["data"]["processed_events"] == 1
     assert Event.objects.filter(title="事件A").exists()
+
+
+@pytest.mark.django_db
+def test_receive_alert_events_reports_partial_ingestion(monkeypatch):
+    from apps.alerts.models.alert_source import AlertSource
+
+    AlertSource.objects.create(
+        name="nats部分接入",
+        source_id="nats-partial",
+        source_type="nats",
+        secret="x",
+        is_active=True,
+        is_effective=True,
+    )
+
+    class FakeAdapter:
+        def __init__(self, **kwargs):
+            pass
+
+        def main(self):
+            return {"received": 2, "accepted": 1, "skipped": 1, "errored": 0}
+
+    monkeypatch.setattr(
+        N.AlertSourceAdapterFactory,
+        "get_adapter",
+        staticmethod(lambda source: FakeAdapter),
+    )
+
+    result = N.receive_alert_events(
+        source_id="nats-partial", events=[{"title": "ok"}, {}], pusher="lite-monitor"
+    )
+
+    assert result["result"] is False
+    assert result["data"]["processed_events"] == 1
+    assert result["data"]["ingestion"]["skipped"] == 1
+
+
+@pytest.mark.django_db
+def test_receive_alert_events_marks_lite_log_as_trusted_internal(mocker):
+    from apps.alerts.models.alert_source import AlertSource
+
+    source = AlertSource.objects.create(
+        name="日志中心 NATS 源",
+        source_id="nats",
+        source_type="nats",
+        secret="source-secret",
+        team_secrets={"3": "team-secret"},
+        is_active=True,
+        is_effective=True,
+        config={},
+    )
+    adapter = mocker.Mock()
+    adapter.main.return_value = {"received": 1, "accepted": 1, "skipped": 0, "errored": 0}
+    adapter_class = mocker.Mock(return_value=adapter)
+    mocker.patch.object(N.AlertSourceAdapterFactory, "get_adapter", return_value=adapter_class)
+
+    result = N.receive_alert_events(
+        source_id="nats",
+        pusher="lite-log",
+        events=[{"title": "日志错误", "organizations": [3]}],
+    )
+
+    assert result["result"] is True
+    adapter_class.assert_called_once_with(
+        alert_source=source,
+        secret="",
+        events=[{"title": "日志错误", "organizations": [3], "push_source_id": "lite-log"}],
+        trusted_internal=True,
+    )
+    adapter.main.assert_called_once_with()
+
+
+@pytest.mark.django_db
+def test_receive_alert_events_does_not_log_event_payload_or_secret(mocker):
+    from apps.alerts.models.alert_source import AlertSource
+
+    AlertSource.objects.create(
+        name="日志中心 NATS 源",
+        source_id="nats",
+        source_type="nats",
+        secret="source-secret",
+        team_secrets={"3": "team-secret"},
+        is_active=True,
+        is_effective=True,
+        config={},
+    )
+    adapter = mocker.Mock()
+    adapter_class = mocker.Mock(return_value=adapter)
+    mocker.patch.object(N.AlertSourceAdapterFactory, "get_adapter", return_value=adapter_class)
+    info = mocker.patch.object(N.logger, "info")
+
+    N.receive_alert_events(
+        source_id="nats",
+        pusher="lite-log",
+        events=[{"title": "sensitive-log-content", "organizations": [3], "secret": "event-secret"}],
+    )
+
+    logged = " ".join(str(call) for call in info.call_args_list)
+    assert "sensitive-log-content" not in logged
+    assert "event-secret" not in logged
+    assert "source_id=%s" in logged
+    assert "pusher=%s" in logged
+    assert "event_count=%s" in logged
 
 
 # --------------------------------------------------------------------------

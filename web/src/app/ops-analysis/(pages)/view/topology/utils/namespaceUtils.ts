@@ -1,11 +1,14 @@
 import type { Graph, Node } from '@antv/x6';
 import type { DatasourceItem, ParamItem } from '@/app/ops-analysis/types/dataSource';
+import type { DateRangeValue } from '@/app/ops-analysis/types/dateRange';
 import type { LayoutItem, UnifiedFilterDefinition, FilterValue } from '@/app/ops-analysis/types/dashBoard';
 import type { ViewConfigFormValues } from '@/app/ops-analysis/types/topology';
 import {
+  type BindableParamType,
   getFilterDefinitionId,
   getBindableFilterParams,
 } from '@/app/ops-analysis/utils/widgetDataTransform';
+import { validateDateRangeValue } from '@/app/ops-analysis/utils/dateRange';
 import {
   buildRelativeTimeRangeFilterValue,
 } from '@/app/ops-analysis/utils/filterValue';
@@ -117,7 +120,7 @@ export const buildFiltersFromNodes = (
 
   const discoveredParams = new Map<
     string,
-    ParamItem & { type: 'string' | 'timeRange' }
+    ParamItem & { type: BindableParamType }
   >();
 
   const nodes = graphInstance.getNodes();
@@ -167,6 +170,13 @@ export const buildFiltersFromNodes = (
       }
     }
 
+    if (param.type === 'dateRange') {
+      defaultValue = validateDateRangeValue(defaultValue).valid
+        && defaultValue !== null
+        ? { ...(defaultValue as DateRangeValue) }
+        : null;
+    }
+
     return {
       id,
       key: param.name,
@@ -204,6 +214,7 @@ export const buildValueConfig = (
   }
   if (values.chartType === 'single') {
     valueConfig.compare = !!values.compare;
+    valueConfig.compareMode = values.compareMode || 'percent';
     valueConfig.selectedFields = values.selectedFields;
     valueConfig.thresholdColors = values.thresholdColors;
     if (values.unit !== undefined) valueConfig.unit = values.unit;

@@ -97,7 +97,7 @@ class TestPluginList:
             with CaptureQueriesContext(connection) as queries:
                 response = api_client.get(path)
             assert response.status_code == 200
-            assert len(queries) == 2
+            assert len(queries) == 3
             responses.append(response.json()["data"])
 
         assert responses[0] == responses[1]
@@ -107,7 +107,7 @@ class TestPluginList:
             response = api_client.get(f"{BASE}/api/monitor_plugin/?monitor_object_id={parent.id}&name=PVPerfPlugin")
 
         assert response.status_code == 200
-        assert len(queries) == 2
+        assert len(queries) == 3
         assert {row["name"] for row in response.json()["data"]} == set(expected_names)
 
     @pytest.mark.parametrize(

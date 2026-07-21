@@ -85,12 +85,9 @@ def test_end_to_end_aggregation_level_assignment(sys_user, source):
 
     聚合产生的真实告警 level 即 level_id；按级别分派应匹配并分派。
     """
-    from unittest import mock
-
     from django.utils import timezone
 
     from apps.alerts.aggregation.processor.aggregation_processor import AggregationProcessor
-    from apps.alerts.common.assignment import execute_auto_assignment_for_alerts
     from apps.alerts.constants.constants import EventAction, LevelType
     from apps.alerts.models.alert_operator import AlarmStrategy
     from apps.alerts.models.models import Event, Level
@@ -126,12 +123,13 @@ def test_end_to_end_aggregation_level_assignment(sys_user, source):
         params={"window_size": 60, "group_by": ["service"]},
     )
 
-    # 把聚合内部的自动分派派发点改为同步执行
-    with mock.patch(
-        "apps.alerts.aggregation.processor.aggregation_processor.current_app.send_task",
-        side_effect=lambda name, args=None, **kw: execute_auto_assignment_for_alerts(args[0]),
-    ):
-        AggregationProcessor().process_aggregation()
+    AggregationProcessor().process_aggregation()
+
+    from apps.alerts.models import AlertOutbox
+    from apps.alerts.service.outbox import deliver_outbox_record
+
+    assignment_record = AlertOutbox.objects.get(kind="auto_assignment")
+    deliver_outbox_record(assignment_record.pk)
 
     alert = Alert.objects.first()
     assert alert is not None

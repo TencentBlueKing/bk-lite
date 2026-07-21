@@ -15,6 +15,7 @@
       "required": false,
       "editable": false,
       "description": "用于访问接口的用户名",
+      "guide_short": "仅 Redis 6+ 启用 ACL 时填写；未启用 ACL 时可留空。账号至少具备执行 INFO 命令的权限。",
       "widget_props": {
         "placeholder": "用户名",
         "placeholder_en": "Username"
@@ -32,6 +33,7 @@
       "required": false,
       "editable": false,
       "description": "对应的登录密码",
+      "guide_short": "对应 Redis 设置的 requirepass 密码；未启用认证时保持为空，注意不要带入首尾空格。",
       "widget_props": {
         "placeholder": "密码",
         "placeholder_en": "Password"
@@ -50,6 +52,7 @@
       "visible_in": "edit",
       "editable": false,
       "description": "与设备进行通信的主机",
+      "guide_short": "填写 Redis 服务所在的主机 IP 或域名，例如 10.0.0.10；保存前可用 redis-cli -h <host> -p <port> PING 验证可达。",
       "widget_props": {
         "placeholder": "主机地址"
       },
@@ -69,6 +72,7 @@
       "visible_in": "edit",
       "editable": false,
       "description": "与设备进行通信的端口",
+      "guide_short": "Redis 服务端口，默认 6379；范围 1-65535，请与目标实例实际监听端口保持一致。",
       "widget_props": {
         "min": 1,
         "precision": 0,
@@ -90,6 +94,7 @@
       "required": true,
       "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
+      "guide_short": "默认 60 秒；过低会增加 Redis 实例压力，过高会延误告警。",
       "widget_props": {
         "min": 1,
         "precision": 0,

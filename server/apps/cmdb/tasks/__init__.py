@@ -9,9 +9,12 @@ from apps.cmdb.tasks.celery_tasks import (
     send_subscription_notifications,
     sync_cmdb_display_fields_task,
     sync_collect_task,
+    trigger_first_collection,
     sync_periodic_update_task_status,
     sync_public_enum_library_snapshots_task,
     sync_node_mgmt_hosts,
     full_sync_auto_association_rule_task,
-    collect_node_mgmt_hosts
+    collect_node_mgmt_hosts,
+    consume_change_record_mirror_outbox,
+    recover_change_record_mirror_outbox_task,
 )

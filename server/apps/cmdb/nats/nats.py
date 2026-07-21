@@ -1,7 +1,11 @@
 import datetime
+import re
+from datetime import date, datetime as _datetime, timezone as _timezone
+import os
 from functools import reduce
 from operator import or_
 from types import SimpleNamespace
+from typing import Optional
 from zoneinfo import ZoneInfo
 
 from django.db.models import Count, Q
@@ -48,6 +52,12 @@ from apps.system_mgmt.models.role import Role
 from apps.system_mgmt.utils.group_utils import GroupUtils
 
 
+_CHANGE_TREND_MAX_SPAN_SECONDS = {
+    "hour": int(os.getenv("CMDB_CHANGE_TREND_MAX_SPAN_HOUR", str(90 * 24 * 3600))),
+    "day": int(os.getenv("CMDB_CHANGE_TREND_MAX_SPAN_DAY", str(730 * 24 * 3600))),
+    "week": int(os.getenv("CMDB_CHANGE_TREND_MAX_SPAN_WEEK", str(730 * 24 * 3600))),
+    "month": int(os.getenv("CMDB_CHANGE_TREND_MAX_SPAN_MONTH", str(730 * 24 * 3600))),
+}
 def _normalize_to_list(value):
     if value in (None, ""):
         return []
@@ -160,7 +170,7 @@ def _get_collect_task_queryset(user_info):
     if not team_queries:
         return CollectModels.objects.none()
 
-    return CollectModels.objects.filter(reduce(or_, team_queries)).distinct()
+    return CollectModels.objects.filter(is_system=False).filter(reduce(or_, team_queries)).distinct()
 
 
 def _build_authoritative_maps(instances, attrs):
@@ -282,7 +292,10 @@ def get_cmdb_module_data(module, child_module, page, page_size, group_id, user_i
         # 计算分页
         start = (page - 1) * page_size
         end = page * page_size
-        instances = CollectModels.objects.filter(task_type=child_module).values("id", "name", "model_id")[start:end]
+        instances = CollectModels.objects.filter(
+            task_type=child_module,
+            is_system=False,
+        ).values("id", "name", "model_id")[start:end]
         count = instances.count()
         queryset = [{"id": str(i["id"]), "name": f"{i['model_id']}_{i['name']}"} for i in instances]
     elif module == PERMISSION_INSTANCES:
@@ -383,29 +396,96 @@ def search_instances(params):
 @nats_client.register
 def search_instances_batch(params):
     """批量查询实例。params={"model_id":..,"ids":[..],"inst_names":[..]} -> {key: instance}"""
-    return InstanceManage.search_inst_batch(
+    allowed_org_ids = set(_normalize_allowed_org_ids_for_scope(params.get("organization_ids")))
+    if not allowed_org_ids:
+        return {}
+    result = InstanceManage.search_inst_batch(
         model_id=params["model_id"],
         ids=params.get("ids"),
         inst_names=params.get("inst_names"),
     )
+    filtered = {}
+    for key, instance in result.items():
+        instance_org_ids = set()
+        for org_id in (instance.get("organization") or []):
+            try:
+                instance_org_ids.add(int(org_id))
+            except (TypeError, ValueError):
+                continue
+        if allowed_org_ids & instance_org_ids:
+            filtered[key] = instance
+    return filtered
 
 
-def _resolve_allowed_org_ids(params, data):
+def _normalize_allowed_org_ids_for_scope(raw_allowed):
+    allowed_org_ids = _normalize_to_list(raw_allowed)
+    normalized = []
+    for org_id in allowed_org_ids:
+        try:
+            normalized.append(int(org_id))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("allowed_org_ids must be an integer array") from exc
+    return normalized
+
+
+def _resolve_user_info_allowed_org_ids(user_info):
+    user_info = user_info or {}
+    if "allowed_org_ids" in user_info:
+        return _normalize_allowed_org_ids_for_scope(user_info.get("allowed_org_ids"))
+
+    team = user_info.get("team")
+    user = user_info.get("user")
+    domain = user_info.get("domain")
+    include_children = user_info.get("include_children", False)
+    if not user or team is None:
+        return None
+
+    user_obj = _normalize_permission_user(user, domain=domain)
+    user_filters = {"username": user_obj.username}
+    if getattr(user_obj, "domain", None):
+        user_filters["domain"] = user_obj.domain
+    real_user = User.objects.filter(**user_filters).first()
+    if not real_user:
+        return None
+
+    return _get_authorized_team_ids(real_user, int(team), include_children=include_children)
+
+
+def _resolve_allowed_org_ids(params):
     """解析实例写操作的 organization 范围上下文。
 
     HTTP 路径下该范围由 view 从请求 cookie（current_team/include_children）+ 用户组织树推导。
-    NATS 为可信的机器对机器调用、无用户范围概念：
-    - 调用方显式传 allowed_org_ids 时按其限制；
-    - 否则默认放行 payload 自带的 organization（即不做范围限制），
-      避免实例数据携带 organization 时触发“缺少 organization 范围上下文”。
+    NATS 写入口必须显式携带授权上下文，不能从 payload organization 反推权限范围。
     """
-    allowed = params.get("allowed_org_ids")
-    if allowed is not None:
-        return allowed
+    if "allowed_org_ids" in params:
+        return _normalize_allowed_org_ids_for_scope(params.get("allowed_org_ids"))
+
+    for scope_key in ("service_scope", "scope"):
+        scope = params.get(scope_key)
+        if isinstance(scope, dict) and "allowed_org_ids" in scope:
+            return _normalize_allowed_org_ids_for_scope(scope.get("allowed_org_ids"))
+
+    allowed_from_user = _resolve_user_info_allowed_org_ids(params.get("user_info"))
+    if allowed_from_user is not None:
+        return allowed_from_user
+
+    raise ValueError("authorization scope is required for CMDB NATS writes")
+
+
+def _build_scope_user_groups(allowed_org_ids):
+    return [{"id": org_id} for org_id in allowed_org_ids]
+
+
+def _ensure_organization_in_scope(data, allowed_org_ids):
     org_value = (data or {}).get("organization")
-    if isinstance(org_value, list):
-        return org_value
-    return None
+    target_org_ids = _normalize_to_list(org_value)
+    if not target_org_ids:
+        return
+
+    target_org_ids = _normalize_allowed_org_ids_for_scope(target_org_ids)
+    invalid_org_ids = sorted(set(target_org_ids) - set(allowed_org_ids))
+    if invalid_org_ids:
+        raise ValueError(f"organization {invalid_org_ids} 不在授权范围内")
 
 
 @nats_client.register
@@ -419,13 +499,15 @@ def update_instance(params):
         "inst_name": "host-01",    # 配合 model_id 定位实例时必填
         "update_attr": {...},      # 待更新的属性键值
         "operator": "admin",       # 操作人，用于变更记录
-        "allowed_org_ids": [1, 2]  # 可选；限制 organization 范围，缺省不限制
+        "allowed_org_ids": [1, 2]  # 必填授权上下文之一；限制 organization 范围
     }
     -> 更新后的实例数据
     """
     update_attr = params.get("update_attr") or {}
     if not update_attr:
         raise ValueError("update_attr is required")
+    allowed_org_ids = _resolve_allowed_org_ids(params)
+    _ensure_organization_in_scope(update_attr, allowed_org_ids)
 
     inst_id = params.get("inst_id") or params.get("_id")
     if not inst_id:
@@ -439,13 +521,13 @@ def update_instance(params):
         inst_id = instances[0]["_id"]
 
     return InstanceManage.instance_update(
-        user_groups=[],
+        user_groups=_build_scope_user_groups(allowed_org_ids),
         roles=[],
         inst_id=int(inst_id),
         update_attr=update_attr,
         operator=params.get("operator", ""),
-        allowed_org_ids=_resolve_allowed_org_ids(params, update_attr),
-        skip_permission_check=True,
+        allowed_org_ids=allowed_org_ids,
+        skip_permission_check=False,
     )
 
 
@@ -458,7 +540,7 @@ def create_instance(params):
         "model_id": "host",        # 模型ID，必填
         "instance_info": {...},    # 实例属性键值，必填
         "operator": "admin",       # 操作人，用于变更记录
-        "allowed_org_ids": [1, 2]  # 可选；限制 organization 范围，缺省不限制
+        "allowed_org_ids": [1, 2]  # 必填授权上下文之一；限制 organization 范围
     }
     -> 创建后的实例数据
     """
@@ -469,12 +551,14 @@ def create_instance(params):
     instance_info = params.get("instance_info") or {}
     if not instance_info:
         raise ValueError("instance_info is required")
+    allowed_org_ids = _resolve_allowed_org_ids(params)
+    _ensure_organization_in_scope(instance_info, allowed_org_ids)
 
     return InstanceManage.instance_create(
         model_id=model_id,
         instance_info=instance_info,
         operator=params.get("operator", ""),
-        allowed_org_ids=_resolve_allowed_org_ids(params, instance_info),
+        allowed_org_ids=allowed_org_ids,
     )
 
 
@@ -488,10 +572,12 @@ def delete_instance(params):
         "inst_id": 1,              # 单个实例ID（兼容 _id）
         "model_id": "host",        # 配合 inst_name 定位单个实例时必填
         "inst_name": "host-01",    # 配合 model_id 定位单个实例时必填
-        "operator": "admin"        # 操作人，用于变更记录
+        "operator": "admin",       # 操作人，用于变更记录
+        "allowed_org_ids": [1, 2]  # 必填授权上下文之一；限制 organization 范围
     }
     -> {"result": True, "deleted": [<inst_ids>]}
     """
+    allowed_org_ids = _resolve_allowed_org_ids(params)
     inst_ids = _normalize_to_list(params.get("inst_ids"))
 
     if not inst_ids:
@@ -510,7 +596,7 @@ def delete_instance(params):
 
     inst_ids = [int(i) for i in inst_ids]
     InstanceManage.instance_batch_delete(
-        user_groups=[],
+        user_groups=_build_scope_user_groups(allowed_org_ids),
         roles=[],
         inst_ids=inst_ids,
         operator=params.get("operator", ""),
@@ -700,8 +786,12 @@ def receive_config_file_result(data: dict):
     logger.info(
         "==[ConfigFileCollect] 处理配置文件采集结果完成",
     )
+    error_lines = str(result.get("error") or "").splitlines()
+    error = (error_lines[0] if error_lines else "")[:500]
     return {
         "result": True,
+        "processed": not bool(error),
+        "error": error,
         "changed": bool(result.get("changed", False)),
         "task_updated": bool(result.get("task_updated", False)),
     }
@@ -1113,6 +1203,19 @@ def _generate_time_periods(start_dt, end_dt, group_by, target_tz):
 
 
 @nats_client.register
+def get_room_list(user_info=None, **kwargs):
+    """获取运营分析参数动态选项源用的机房列表。
+
+    返回 CMDB 原始 server_room 字段（_id, inst_name, model_id, organization, ...），
+    不做 _id→id / inst_name→name 等重命名。复用 ``InstanceManage.instance_list``
+    的现成权限过滤自动按当前用户可见范围过滤。
+    """
+    permission_map = _build_nats_permission_map(user_info) or {}
+    items = rack_room.list_server_rooms(permission_map=permission_map, user_info=user_info)
+    return {"items": items}
+
+
+@nats_client.register
 def get_change_trend(time=None, group_by="day", model_id=None, user_info=None, **kwargs):
     """
     获取 CMDB 变更趋势数据
@@ -1137,12 +1240,40 @@ def get_change_trend(time=None, group_by="day", model_id=None, user_info=None, *
     if not time or len(time) != 2:
         return {"result": False, "data": {}, "message": "time parameter is required as [start_time, end_time]"}
 
+    if group_by not in _CHANGE_TREND_MAX_SPAN_SECONDS:
+        return {
+            "result": False,
+            "data": {},
+            "message": "group_by must be one of: hour, day, week, month",
+        }
+
     target_tz = _resolve_target_timezone((user_info or {}).get("timezone") or kwargs.pop("timezone", None))
     start_time, end_time = time
     aware_start = _parse_client_datetime(start_time, target_tz)
     aware_end = _parse_client_datetime(end_time, target_tz)
     local_start = aware_start.astimezone(target_tz)
     local_end = aware_end.astimezone(target_tz)
+
+    if aware_start >= aware_end:
+        return {"result": False, "data": {}, "message": "start_time must be earlier than end_time"}
+
+    span_seconds = (aware_end - aware_start).total_seconds()
+    max_span = _CHANGE_TREND_MAX_SPAN_SECONDS[group_by]
+    if span_seconds > max_span:
+        logger.warning(
+            "get_change_trend range %.0f seconds exceeds %s limit %d seconds",
+            span_seconds,
+            group_by,
+            max_span,
+        )
+        return {
+            "result": False,
+            "data": {},
+            "message": (
+                f"Time range exceeds the maximum limit for {group_by} grouping "
+                f"({max_span} seconds). Use a shorter range or coarser grouping."
+            ),
+        }
 
     trunc_func, _ = _get_trunc_func_and_format(group_by)
     all_periods = _generate_time_periods(local_start, local_end, group_by, target_tz)
@@ -1379,3 +1510,144 @@ def model_inst_count(*args, **kwargs):
     """
     result = InstanceManage.model_inst_count(permissions_map={}, creator="")
     return {"result": True, "message": "", "data": result}
+
+
+
+# === 云资源成本分析 Report Responder ===
+# 前端数据源通过 rest_api "cmdb/get_cloud_resource_cost_*" 路由到这里。
+# 入参约定:user_info(由 GetNatsData 注入) + 过滤项 kwargs。
+# 过滤项 department 映射到 bill 维度 user_department;billing_period 为 [start, end] 字符串列表。
+#
+# 注意:本段使用 stdlib 的 `date` / `_datetime` / `_timezone`(与模块顶部 Django
+# `timezone` 工具区分),以及 `Optional`(typing)。调用 apps.cmdb.services.cloud_cost
+# 下的业务聚合服务,数据走 CMDB 动态模型 resource_bill / transaction_log。
+
+# Python date.max = 9999-12-31。超过该值 fromisoformat 会抛 OverflowError,在此统一收口。
+_MAX_DATE = date(9999, 12, 31)
+
+
+def _to_date(value) -> Optional[date]:
+    """把单个原始值解析为 UTC 日历日。
+
+    支持的输入(均为字符串):
+      - ``"YYYY-MM-DD"``  纯 date
+      - ``"YYYY-MM-DDTHH:mm:ss[.ffffff]"``  naive ISO datetime
+      - ``"YYYY-MM-DDTHH:mm:ss[.ffffff]Z"``  UTC ISO datetime
+      - ``"YYYY-MM-DDTHH:mm:ss[.ffffff]±HH:MM"``  带偏移 ISO datetime
+
+    时区策略:**naive 输入视为 UTC;带时区输入先 astimezone(UTC) 再取 .date()**。
+    这一约定对齐 ``transaction_log.billing_date`` 的存储层语义(纯 ``YYYY-MM-DD``,无时区)。
+
+    非字符串、数字时间戳、无法解析的字符串、超过 ``date.max`` 的日期均返回 ``None``。
+    """
+    if not isinstance(value, str) or not value:
+        return None
+
+    # 1. 纯 date 路径:date.fromisoformat 拒绝任何时间部分。
+    try:
+        d = date.fromisoformat(value)
+        return d if d <= _MAX_DATE else None
+    except ValueError:
+        pass
+
+    # 2. ISO datetime 路径。把 'Z' 标准化为 '+00:00'(datetime.fromisoformat 在 3.11+ 才接受 Z,
+    # 显式替换兼容 3.10 及以下)。
+    candidate = value[:-1] + "+00:00" if value.endswith("Z") else value
+    try:
+        dt = _datetime.fromisoformat(candidate)
+    except ValueError:
+        return None
+
+    if dt.tzinfo is None:
+        # naive 视为 UTC,与纯 date 路径保持同一日历语义。
+        dt = dt.replace(tzinfo=_timezone.utc)
+    else:
+        dt = dt.astimezone(_timezone.utc)
+
+    d = dt.date()
+    return d if d <= _MAX_DATE else None
+
+
+def _parse_billing_period(raw) -> Optional[tuple]:
+    """[start, end] → (date, date)(UTC 日历日)。
+
+    - 接受纯 date / naive ISO datetime / Z 后缀 / 带偏移量 4 种输入形态。
+    - ``start > end`` 时自动 swap,允许前端 RangePicker 反向选区。
+    - 数组长度不对、元素不是字符串、字符串无法解析时返回 ``None`` 并 ``logger.warning``。
+    - 数字时间戳(秒级/毫秒级)**不支持** → ``None``(避免歧义)。
+
+    时区策略:naive 当 UTC,带时区转 UTC → 与 ``transaction_log.billing_date``
+    存储层语义对齐。详见 ``_to_date`` docstring。
+    """
+    if not raw or not isinstance(raw, (list, tuple)) or len(raw) != 2:
+        return None
+
+    start = _to_date(raw[0])
+    end = _to_date(raw[1])
+    if start is None or end is None:
+        logger.warning(
+            "billing_period 解析失败 raw=%r;要求每端为 'YYYY-MM-DD' 或 ISO datetime(naive 当 UTC)",
+            raw,
+        )
+        return None
+
+    if start > end:
+        start, end = end, start
+    return start, end
+
+
+def _jsonable(value):
+    """Decimal → str,便于 JSON 序列化。"""
+    return str(value) if hasattr(value, "quantize") else value
+
+
+@nats_client.register
+def get_cloud_resource_cost_summary(user_info=None, **kwargs):
+    """云资源成本 KPI 汇总卡。kwargs: department / applying_user / inst_type / billing_period。"""
+    from apps.cmdb.services.cloud_cost.service import CloudCostService
+
+    data = CloudCostService.summary(
+        user_info or {},
+        inst_type=kwargs.get("inst_type"),
+        user_department=kwargs.get("department"),
+        applying_user=kwargs.get("applying_user"),
+        billing_period=_parse_billing_period(kwargs.get("billing_period")),
+    )
+    data = {k: _jsonable(v) for k, v in data.items()}
+    return {"result": True, "data": data, "message": ""}
+
+
+@nats_client.register
+def get_cloud_resource_cost_distribution(user_info=None, **kwargs):
+    """云资源费用分布。kwargs: department / applying_user / inst_type / billing_period / group_by。"""
+    from apps.cmdb.services.cloud_cost.service import CloudCostService
+
+    data = CloudCostService.distribution(
+        user_info or {},
+        inst_type=kwargs.get("inst_type"),
+        user_department=kwargs.get("department"),
+        applying_user=kwargs.get("applying_user"),
+        billing_period=_parse_billing_period(kwargs.get("billing_period")),
+        group_by=kwargs.get("group_by", "instance_type"),
+    )
+    return {"result": True, "data": data, "message": ""}
+
+
+@nats_client.register
+def get_cloud_resource_cost_bill_detail(user_info=None, **kwargs):
+    """云资源账单明细。kwargs: department / applying_user / inst_type / billing_period / page / page_size / sort_by / order。"""
+    from apps.cmdb.services.cloud_cost.service import CloudCostService
+
+    data = CloudCostService.instance_list(
+        user_info or {},
+        inst_type=kwargs.get("inst_type"),
+        user_department=kwargs.get("department"),
+        applying_user=kwargs.get("applying_user"),
+        billing_period=_parse_billing_period(kwargs.get("billing_period")),
+        page=int(kwargs.get("page", 1)),
+        page_size=int(kwargs.get("page_size", 20)),
+        sort_by=kwargs.get("sort_by", "total_cost_incurred"),
+        order=kwargs.get("order", "desc"),
+    )
+    data["items"] = [{k: _jsonable(v) for k, v in item.items()} for item in data["items"]]
+    return {"result": True, "data": data, "message": ""}

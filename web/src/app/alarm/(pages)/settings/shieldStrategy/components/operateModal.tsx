@@ -110,8 +110,7 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
     >
       <Form
         form={form}
-        layout="horizontal"
-        labelCol={{ span: 4 }}
+        layout="vertical"
         onFinish={onFinish}
       >
         <Form.Item
@@ -145,7 +144,6 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
             name="match_rules"
             validateTrigger={[]}
             style={{
-              marginLeft: '110px',
               marginTop: '-10px',
               marginBottom: '26px',
             }}

@@ -615,7 +615,11 @@ def monitor_metrics(monitor_obj_id: str, *args, **kwargs):
         return {"result": False, "data": [], "message": "监控对象不存在"}
 
     # 查询监控对象关联的指标
-    metrics = Metric.objects.filter(monitor_object=monitor_obj).order_by("metric_group__sort_order", "sort_order")
+    metrics = (
+        Metric.objects.filter(monitor_object=monitor_obj)
+        .select_related("monitor_plugin")
+        .order_by("metric_group__sort_order", "sort_order")
+    )
 
     serializer = MetricSerializer(metrics, many=True)
     results = serializer.data

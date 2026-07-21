@@ -102,17 +102,10 @@ def _sample_payload(external_id="ext-1", title="订单失败"):
 
 @pytest.mark.django_db
 def test_pipeline_creates_instant_alert(levels, source, instant_strategy):
+    from apps.alerts.models import AlertOutbox
+
     adapter = RestFulAdapter(alert_source=source, secret="x", events=_sample_payload())
-    with mock.patch(
-        "apps.alerts.aggregation.processor.instant_dispatcher.current_app"
-    ) as mock_app:
-        adapter.main()
-        # 触发异步分派
-        assert mock_app.send_task.called
-        call = mock_app.send_task.call_args_list[0]
-        assert call.args[0].endswith("async_auto_assignment_for_alerts")
-        alert_ids = call.args[1][0] if len(call.args) > 1 else call.kwargs.get("args", [[]])[0]
-        assert len(alert_ids) == 1
+    adapter.main()
 
     assert Event.objects.count() == 1
     alerts = Alert.objects.all()
@@ -123,6 +116,9 @@ def test_pipeline_creates_instant_alert(levels, source, instant_strategy):
     assert a.level == "1"  # 继承事件级别
     assert a.status == AlertStatus.UNASSIGNED
     assert a.team == [1, 2]
+    records = {record.kind: record for record in AlertOutbox.objects.all()}
+    assert records["auto_assignment"].payload == {"alert_ids": [a.alert_id]}
+    assert records["action"].payload == {"alert_id": a.alert_id, "event_name": "created"}
     # 模板渲染
     assert "order-service" in a.title
     assert "订单中心" in a.content

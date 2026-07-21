@@ -157,16 +157,12 @@ def test_send_reminder_notification_enqueues_celery(monkeypatch):
     )
 
     calls = {"delay": []}
-
-    class FakeSyncNotify:
-        @staticmethod
-        def delay(params):
-            calls["delay"].append(params)
-
-    # tasks.sync_notify 在函数内导入
     import apps.alerts.tasks as tasks_mod
-
-    monkeypatch.setattr(tasks_mod, "sync_notify", FakeSyncNotify, raising=False)
+    monkeypatch.setattr(
+        tasks_mod.deliver_alert_outbox,
+        "delay",
+        lambda record_id: calls["delay"].append(record_id),
+    )
 
     # django_db 测试处于事务中，_send_reminder_notification 走 on_commit 路径，
     # 用 captureOnCommitCallbacks 触发回调以验证 celery 投递契约。
@@ -177,7 +173,8 @@ def test_send_reminder_notification_enqueues_celery(monkeypatch):
     assert result is True
     assert len(callbacks) == 1
     assert len(calls["delay"]) == 1
-    params = calls["delay"][0]
+    from apps.alerts.models import AlertOutbox
+    params = AlertOutbox.objects.get().payload["params"]
     assert params[0]["channel_type"] == "email"
     assert params[0]["object_id"] == alert.alert_id
     assert params[0]["notify_action_object"] == "alert"
@@ -204,9 +201,9 @@ def test_send_reminder_notification_channel_str_json_parsed(monkeypatch):
     calls = {"delay": []}
     import apps.alerts.tasks as tasks_mod
     monkeypatch.setattr(
-        tasks_mod, "sync_notify",
-        type("S", (), {"delay": staticmethod(lambda p: calls["delay"].append(p))}),
-        raising=False,
+        tasks_mod.deliver_alert_outbox,
+        "delay",
+        lambda record_id: calls["delay"].append(record_id),
     )
 
     from django.test import TestCase
@@ -214,7 +211,8 @@ def test_send_reminder_notification_channel_str_json_parsed(monkeypatch):
     with TestCase.captureOnCommitCallbacks(execute=True):
         result = RS._send_reminder_notification(assignment=assignment, alert=alert)
     assert result is True
-    assert calls["delay"][0][0]["channel_type"] == "sms"
+    from apps.alerts.models import AlertOutbox
+    assert AlertOutbox.objects.get().payload["params"][0]["channel_type"] == "sms"
 
 
 @pytest.mark.django_db

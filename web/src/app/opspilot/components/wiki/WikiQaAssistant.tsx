@@ -54,7 +54,7 @@ const WikiQaAssistant: React.FC<{ kbId: number }> = ({ kbId }) => {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [savingMode, setSavingMode] = useState<'direct' | 'candidate' | null>(null);
+  const [saving, setSaving] = useState(false);
   const [saveTarget, setSaveTarget] = useState<Msg | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const conversationIdRef = useRef(createConversationId(kbId));
@@ -96,10 +96,10 @@ const WikiQaAssistant: React.FC<{ kbId: number }> = ({ kbId }) => {
     });
   };
 
-  const handleSaveAnswer = async (asCandidate = false) => {
+  const handleSaveAnswer = async () => {
     if (!saveTarget) return;
     const values = await form.validateFields();
-    setSavingMode(asCandidate ? 'candidate' : 'direct');
+    setSaving(true);
     try {
       await saveAnswerPage({
         knowledge_base: kbId,
@@ -108,15 +108,14 @@ const WikiQaAssistant: React.FC<{ kbId: number }> = ({ kbId }) => {
         body: values.body,
         tags: values.tags || [],
         source_conversation_id: conversationIdRef.current,
-        as_candidate: asCandidate,
       });
       setMessages((items) => items.map((item) => (item.id === saveTarget.id ? { ...item, saved: true } : item)));
       setSaveTarget(null);
-      message.success(t(asCandidate ? 'wiki.saveAnswerCandidateDone' : 'wiki.saveAnswerDone'));
+      message.success(t('wiki.saveAnswerDone'));
     } catch {
       message.error(t('wiki.saveAnswerFailed'));
     } finally {
-      setSavingMode(null);
+      setSaving(false);
     }
   };
 
@@ -247,24 +246,10 @@ const WikiQaAssistant: React.FC<{ kbId: number }> = ({ kbId }) => {
         open={!!saveTarget}
         onCancel={() => setSaveTarget(null)}
         footer={[
-          <Button key="cancel" onClick={() => setSaveTarget(null)} disabled={!!savingMode}>
+          <Button key="cancel" onClick={() => setSaveTarget(null)} disabled={saving}>
             {t('wiki.cancel')}
           </Button>,
-          <Button
-            key="candidate"
-            onClick={() => handleSaveAnswer(true)}
-            loading={savingMode === 'candidate'}
-            disabled={!!savingMode && savingMode !== 'candidate'}
-          >
-            {t('wiki.saveAnswerAsCandidate')}
-          </Button>,
-          <Button
-            key="direct"
-            type="primary"
-            onClick={() => handleSaveAnswer(false)}
-            loading={savingMode === 'direct'}
-            disabled={!!savingMode && savingMode !== 'direct'}
-          >
+          <Button key="direct" type="primary" onClick={handleSaveAnswer} loading={saving} disabled={saving}>
             {t('wiki.saveAnswerToWiki')}
           </Button>,
         ]}

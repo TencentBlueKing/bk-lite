@@ -25,7 +25,7 @@ export default function LoginAuthValidationPanel({
   const isModalMode = mode === "modal";
   const containerClassName = isModalMode
     ? "inline-flex flex-wrap items-start justify-center gap-x-8"
-    : "inline-flex flex-wrap items-start justify-between gap-x-9";
+    : "inline-flex flex-wrap items-start justify-center gap-x-6";
 
   return (
     <div className="space-y-3">
@@ -34,10 +34,10 @@ export default function LoginAuthValidationPanel({
           {bindings.map((binding) => {
             const isActive = binding.id === selectedBindingId;
             const isDisabled = isSelectionLocked;
-            const pageItemClassName = `flex h-[48px] w-[48px] shrink-0 items-center justify-center rounded-[14px] border-[1.5px] border-white/90 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.32)] backdrop-blur-[16px] transition-colors ${
+            const pageItemClassName = `flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors duration-150 ${
               isActive
-                ? "bg-[linear-gradient(180deg,rgba(255,255,255,0.24)_0%,rgba(82,139,255,0.12)_100%)]"
-                : "bg-[linear-gradient(180deg,rgba(255,255,255,0.16)_0%,rgba(255,255,255,0.07)_100%)]"
+                ? "border border-[#b6d1ff] bg-[#e7f0ff]"
+                : "bg-transparent hover:bg-[#eef3fb]"
             }`;
             const modalItemClassName = `flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[12px] border bg-[#F4F7FB] transition-colors ${
               isActive
@@ -48,7 +48,7 @@ export default function LoginAuthValidationPanel({
             const iconClassName = isActive ? "text-[#246BFD]" : "text-[#34507F]";
             const fallbackIconClassName = isActive ? "text-[#246BFD]" : "text-[#6C81A3]";
             const itemStyle = isModalMode && isActive ? { boxShadow: "inset 0 0 0 1px #6EA8FF" } : undefined;
-            const iconSizeClassName = isModalMode ? "h-[18px]! w-[18px]!" : "h-[22px]! w-[22px]!";
+            const iconSizeClassName = isModalMode ? "h-[18px]! w-[18px]!" : "h-5! w-5!";
             const fallbackIconSizeClassName = isModalMode ? "text-[15px]" : "text-[17px]";
             return (
               <Tooltip
@@ -64,7 +64,7 @@ export default function LoginAuthValidationPanel({
                   disabled={isDisabled}
                   aria-pressed={isActive}
                   aria-label={binding.name}
-                  className={`flex shrink-0 items-center justify-center transition-colors ${
+                  className={`flex min-h-10 min-w-10 shrink-0 items-center justify-center rounded-md transition-colors ${
                     isActive
                       ? ""
                       : isDisabled

@@ -6,9 +6,17 @@ import { Button, DatePicker, Empty, Input, Select, Switch } from "antd";
 import { MinusCircleOutlined, PlusCircleOutlined } from "@ant-design/icons";
 import CustomTable from "@/components/custom-table";
 import TimeSelector from "@/components/time-selector";
+import DateRangeSelector from "@/app/ops-analysis/components/dateRangeSelector";
 import { useTranslation } from "@/utils/i18n";
 import { formatOpsRequestTime } from "@/app/ops-analysis/utils/dateTime";
-import { ParamItem } from "@/app/ops-analysis/types/dataSource";
+import type {
+  DataSourceParamFilterType,
+  ParamItem,
+} from "@/app/ops-analysis/types/dataSource";
+import {
+  DEFAULT_DATE_RANGE_VALUE,
+  type DateRangeValue,
+} from "@/app/ops-analysis/types/dateRange";
 import { createDefaultParam, validateParams } from "./operateModalUtils";
 
 export interface ParamTableRef {
@@ -82,11 +90,13 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
     const [duplicateNames, setDuplicateNames] = React.useState<string[]>([]);
     const [emptyNames, setEmptyNames] = React.useState<string[]>([]);
     const [emptyAliases, setEmptyAliases] = React.useState<string[]>([]);
+    const [invalidDateRangeIds, setInvalidDateRangeIds] = React.useState<string[]>([]);
 
     const clearValidation = () => {
       setDuplicateNames([]);
       setEmptyNames([]);
       setEmptyAliases([]);
+      setInvalidDateRangeIds([]);
     };
 
     const paramTypeOptions = [
@@ -95,9 +105,13 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
       { label: t("dataSource.paramTypes.boolean"), value: "boolean" },
       { label: t("dataSource.paramTypes.date"), value: "date" },
       { label: t("dataSource.paramTypes.timeRange"), value: "timeRange" },
+      { label: t("dataSource.paramTypes.dateRange"), value: "dateRange" },
     ];
 
-    const filterTypeOptions = [
+    const filterTypeOptions: Array<{
+      label: string;
+      value: DataSourceParamFilterType;
+    }> = [
       { label: t("dataSource.filterTypes.filter"), value: "filter" },
       { label: t("dataSource.filterTypes.fixed"), value: "fixed" },
       { label: t("dataSource.filterTypes.params"), value: "params" },
@@ -108,6 +122,7 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
       setDuplicateNames(result.duplicateNames);
       setEmptyNames(result.emptyNames);
       setEmptyAliases(result.emptyAliases);
+      setInvalidDateRangeIds(result.invalidDateRangeIds);
       return result.isValid;
     };
 
@@ -175,6 +190,8 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
             newValue = "";
           } else if (val === "timeRange") {
             newValue = 10080;
+          } else if (val === "dateRange") {
+            newValue = { ...DEFAULT_DATE_RANGE_VALUE };
           } else {
             newValue = "";
           }
@@ -189,7 +206,10 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
       );
     };
 
-    const handleFilterTypeChange = (val: string, id: string) => {
+    const handleFilterTypeChange = (
+      val: DataSourceParamFilterType,
+      id: string,
+    ) => {
       onChange(
         params.map((item) =>
           item.id === id ? { ...item, filterType: val } : item,
@@ -248,7 +268,7 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
             onBlur={(e) => handleParamNameBlur(e.target.value, record.id!)}
             status={
               duplicateNames.includes(record.name) ||
-              emptyNames.includes(record.id!)
+                emptyNames.includes(record.id!)
                 ? "error"
                 : undefined
             }
@@ -340,6 +360,18 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
               />
             );
           }
+          if (type === "dateRange") {
+            return (
+              <DateRangeSelector
+                value={text as DateRangeValue | null}
+                className="w-full"
+                onChange={(val) =>
+                  handleDefaultChange(val, record.id!, "dateRange")
+                }
+                status={invalidDateRangeIds.includes(record.id!) ? "error" : undefined}
+              />
+            );
+          }
           if (type === "boolean") {
             return (
               <Switch
@@ -417,7 +449,7 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
     ];
 
     return (
-      <div style={{ margin: "0 0 0 42px" }}>
+      <div style={{ margin: 0 }}>
         <div
           style={{
             marginBottom: "8px",

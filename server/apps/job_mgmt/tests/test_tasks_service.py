@@ -127,10 +127,10 @@ class TestDispatchExecutionJob:
     def test_script_dispatch_sets_celery_id(self):
         ex = self._exec(JobType.SCRIPT)
         with patch("apps.job_mgmt.tasks.current_app") as app:
-            app.send_task.return_value = MagicMock(id="celery-1")
             assert tasks._dispatch_execution_job(JobType.SCRIPT, ex.id) is True
+            persisted_task_id = app.send_task.call_args.kwargs["task_id"]
         ex.refresh_from_db()
-        assert ex.celery_task_id == "celery-1"
+        assert ex.celery_task_id == persisted_task_id
 
     def test_unknown_job_type_returns_false(self):
         ex = self._exec(JobType.SCRIPT)
@@ -141,6 +141,8 @@ class TestDispatchExecutionJob:
         with patch("apps.job_mgmt.tasks.current_app") as app:
             app.send_task.side_effect = ConnectionError("broker down")
             assert tasks._dispatch_execution_job(JobType.PLAYBOOK, ex.id) is False
+        ex.refresh_from_db()
+        assert ex.celery_task_id
 
 
 class TestCleanupExpiredFiles:

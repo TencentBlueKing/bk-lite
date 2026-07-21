@@ -1,18 +1,24 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Input, Button, ConfigProvider, Select, Radio } from 'antd';
+import { Input, Button, ConfigProvider } from 'antd';
 import { SearchOutlined, ReloadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import TimeSelector from '@/components/time-selector';
+import DateRangeSelector from '@/app/ops-analysis/components/dateRangeSelector';
 import GroupTreeSelect from '@/components/group-tree-select';
 import { normalizeUnifiedFilterInputMode } from '@/app/ops-analysis/utils/widgetDataTransform';
+import { ParamInputControl } from '@/app/ops-analysis/components/paramInputControl';
+import { normalizeInputConfig } from '@/app/ops-analysis/utils/paramInputConfigUtils';
 import type {
   UnifiedFilterDefinition,
   FilterValue,
   TimeRangeValue,
 } from '@/app/ops-analysis/types/dashBoard';
+import type { InputControlConfig } from '@/app/ops-analysis/types/dataSource';
+import type { DateRangeValue } from '@/app/ops-analysis/types/dateRange';
 import { useTranslation } from '@/utils/i18n';
+import { buildResetFilterValues } from '@/app/ops-analysis/utils/unifiedFilterState';
 
 interface UnifiedFilterBarProps {
   definitions: UnifiedFilterDefinition[];
@@ -125,10 +131,7 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
   };
 
   const handleReset = () => {
-    const emptyValues: Record<string, FilterValue> = {};
-    enabledDefinitions.forEach((def) => {
-      emptyValues[def.id] = def.defaultValue ?? null;
-    });
+    const emptyValues = buildResetFilterValues(enabledDefinitions);
     setLocalValues(emptyValues);
 
     if (onReset) {
@@ -137,6 +140,41 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
     }
 
     (onSearch || onChange)?.(emptyValues);
+  };
+
+  const getFilterInputConfig = (
+    definition: UnifiedFilterDefinition,
+  ): InputControlConfig | undefined => {
+    const normalized = normalizeInputConfig(definition);
+    const inputMode = normalizeUnifiedFilterInputMode(definition.inputMode);
+    if (normalized) {
+      if (inputMode === 'select' || inputMode === 'radio') {
+        if (normalized.control === 'input') {
+          return {
+            control: inputMode,
+            optionsSource: {
+              type: 'static',
+              staticItems: [],
+            },
+          };
+        }
+        if (normalized.control === inputMode) {
+          return normalized;
+        }
+        return { ...normalized, control: inputMode };
+      }
+      return normalized;
+    }
+    if (inputMode === 'select' || inputMode === 'radio') {
+      return {
+        control: inputMode,
+        optionsSource: {
+          type: 'static',
+          staticItems: [],
+        },
+      };
+    }
+    return undefined;
   };
 
   const renderFilterControl = (definition: UnifiedFilterDefinition) => {
@@ -157,38 +195,18 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
           />
         );
       }
+      case 'dateRange':
+        return (
+          <DateRangeSelector
+            value={value as DateRangeValue | null | undefined}
+            onChange={(nextValue) =>
+              handleLocalValueChange(definition.id, nextValue)
+            }
+          />
+        );
 
       case 'string':
       default:
-        if (normalizeUnifiedFilterInputMode(definition.inputMode) === 'select') {
-          return (
-            <Select
-              value={(typeof value === 'string' || typeof value === 'number') ? value : undefined}
-              onChange={(val) =>
-                handleLocalValueChange(definition.id, val ?? null)
-              }
-              placeholder={definition.name}
-              allowClear
-              style={{ minWidth: 160 }}
-              options={definition.options}
-            />
-          );
-        }
-
-        if (normalizeUnifiedFilterInputMode(definition.inputMode) === 'radio') {
-          return (
-            <Radio.Group
-              value={(typeof value === 'string' || typeof value === 'number') ? value : undefined}
-              onChange={(e) =>
-                handleLocalValueChange(definition.id, e.target.value ?? null)
-              }
-              options={definition.options}
-              optionType="button"
-              buttonStyle="outline"
-            />
-          );
-        }
-
         if (normalizeUnifiedFilterInputMode(definition.inputMode) === 'organization') {
           return (
             <GroupTreeSelect
@@ -203,11 +221,25 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
           );
         }
 
-        return (
+        const fallbackInput = (
           <Input
             value={(typeof value === 'string' || typeof value === 'number') ? String(value) : ''}
             onChange={(e) =>
               handleLocalValueChange(definition.id, e.target.value)
+            }
+            placeholder={definition.name}
+            allowClear
+            style={{ minWidth: 160 }}
+          />
+        );
+
+        return (
+          <ParamInputControl
+            inputConfig={getFilterInputConfig(definition)}
+            fallback={fallbackInput}
+            value={(typeof value === 'string' || typeof value === 'number') ? value : undefined}
+            onChange={(nextValue) =>
+              handleLocalValueChange(definition.id, nextValue ?? null)
             }
             placeholder={definition.name}
             allowClear

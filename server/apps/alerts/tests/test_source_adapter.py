@@ -55,20 +55,14 @@ def test_alerts_ready_does_not_register_source_adapters(monkeypatch):
     import apps.alerts
     from apps.alerts.apps import AlertsConfig
 
-    called = False
-
-    def mark_called():
-        nonlocal called
-        called = True
-
-    monkeypatch.setattr("apps.alerts.apps.adapters", mark_called)
+    registered_before = dict(AlertSourceAdapterFactory._adapters)
     monkeypatch.setattr("apps.alerts.apps._register_instant_cache_signals", lambda: None)
     monkeypatch.setitem(sys.modules, "apps.alerts.nats", types.ModuleType("apps.alerts.nats"))
     monkeypatch.setitem(sys.modules, "apps.alerts.nats.nats", types.ModuleType("apps.alerts.nats.nats"))
 
     AlertsConfig("alerts", apps.alerts).ready()
 
-    assert called is False
+    assert AlertSourceAdapterFactory._adapters == registered_before
 
 
 def test_factory_register_and_get():

@@ -11,13 +11,12 @@
 - schedule_delayed_sync_if_needed（阈值/类型/非法值分支，mock transaction.on_commit）。
 仅 mock 真实外部边界：NodeMgmt RPC、Stargazer RPC、transaction.on_commit。
 """
-import pydantic.root_model  # noqa
-
 import types
 
+import pydantic.root_model  # noqa
 import pytest
 
-from apps.cmdb.constants.constants import CollectPluginTypes
+from apps.cmdb.constants.constants import CollectPluginTypes, CollectRunStatusType
 from apps.cmdb.services.collect_service import CollectModelService
 from apps.core.exceptions.base_app_exception import BaseAppException
 
@@ -30,6 +29,96 @@ def fake_instance(**kw):
     for k, v in kw.items():
         setattr(obj, k, v)
     return obj
+
+
+def collect_payload(**overrides):
+    payload = {
+        "name": "task1",
+        "task_type": CollectPluginTypes.HOST,
+        "driver_type": "snmp",
+        "model_id": "host",
+        "timeout": 60,
+        "input_method": 0,
+        "team": [1],
+        "scan_cycle": {"value_type": "cycle", "value": "5"},
+        "access_point": [{"id": "node-1", "cloud": 1, "cloud_name": "default"}],
+        "credential": {"username": "root"},
+    }
+    payload.update(overrides)
+    return payload
+
+
+def collect_instance(**overrides):
+    base = {
+        "id": 1,
+        "name": "task1",
+        "task_type": CollectPluginTypes.HOST,
+        "driver_type": "snmp",
+        "model_id": "host",
+        "timeout": 60,
+        "input_method": 0,
+        "team": [1],
+        "scan_cycle": "*/5 * * * *",
+        "cycle_value_type": "cycle",
+        "cycle_value": "5",
+        "is_interval": True,
+        "is_k8s": False,
+        "credential": {},
+        "decrypt_credentials": {"username": "root"},
+        "params": {},
+        "instances": [],
+        "access_point": [{"id": "node-1", "cloud": 1, "cloud_name": "default"}],
+        "delete": lambda: None,
+    }
+    base.update(overrides)
+    return fake_instance(**base)
+
+
+class FakeSerializer:
+    def __init__(self, instance):
+        self.instance = instance
+
+    def is_valid(self, raise_exception=False):
+        return True
+
+
+class FakeCollectView:
+    def __init__(self, instance):
+        self.instance = instance
+        self.delete_rules = lambda *args, **kwargs: None
+
+    def get_serializer(self, *args, **kwargs):
+        if args and args[0] is self.instance:
+            return FakeSerializer(self.instance)
+        return FakeSerializer(self.instance)
+
+    def perform_create(self, serializer):
+        serializer.instance = self.instance
+
+    def perform_update(self, serializer):
+        serializer.instance = self.instance
+
+    def get_object(self):
+        return self.instance
+
+
+def fake_request(data):
+    return fake_instance(data=data, user=fake_instance(username="tester"), COOKIES={})
+
+
+class FakeAtomic:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+
+def patch_transaction_callbacks(mocker):
+    callbacks = []
+    mocker.patch("apps.cmdb.services.collect_service.transaction.atomic", return_value=FakeAtomic())
+    mocker.patch("apps.cmdb.services.collect_service.transaction.on_commit", side_effect=callbacks.append)
+    return callbacks
 
 
 class TestPrimitives:
@@ -252,9 +341,7 @@ class TestFormatUpdateCredential:
         assert data["credential"] == {}
 
     def test_仅改regions_用旧凭据(self):
-        inst = fake_instance(
-            is_k8s=False, decrypt_credentials={"user": "admin", "pwd": "x"}
-        )
+        inst = fake_instance(is_k8s=False, decrypt_credentials={"user": "admin", "pwd": "x"})
         data = {"credential": {"regions": ["cn-north"]}}
         CollectModelService.format_update_credential(inst, data)
         assert data["credential"]["user"] == "admin"
@@ -274,9 +361,7 @@ class TestFormatUpdateCredential:
         assert data["credential"] == {"token": "t"}
 
     def test_dict合并旧新(self):
-        inst = fake_instance(
-            is_k8s=False, decrypt_credentials={"user": "old", "pwd": "p"}
-        )
+        inst = fake_instance(is_k8s=False, decrypt_credentials={"user": "old", "pwd": "p"})
         data = {"credential": {"user": "new"}}
         CollectModelService.format_update_credential(inst, data)
         assert data["credential"] == {"user": "new", "pwd": "p"}
@@ -284,9 +369,7 @@ class TestFormatUpdateCredential:
     def test_list池合并保留旧项字段(self):
         inst = fake_instance(
             is_k8s=False,
-            decrypt_credentials=[
-                {"credential_id": "c1", "user": "u1", "pwd": "secret"}
-            ],
+            decrypt_credentials=[{"credential_id": "c1", "user": "u1", "pwd": "secret"}],
         )
         data = {"credential": [{"credential_id": "c1", "user": "u1-new"}]}
         CollectModelService.format_update_credential(inst, data)
@@ -303,15 +386,9 @@ class TestFormatUpdateCredential:
 
 class TestScheduleAndMisc:
     def test_is_schedule_config_changed(self):
-        old = fake_instance(
-            is_interval=True, cycle_value_type="cycle", cycle_value="5", scan_cycle="a"
-        )
-        same = fake_instance(
-            is_interval=True, cycle_value_type="cycle", cycle_value="5", scan_cycle="a"
-        )
-        diff = fake_instance(
-            is_interval=True, cycle_value_type="cycle", cycle_value="20", scan_cycle="a"
-        )
+        old = fake_instance(is_interval=True, cycle_value_type="cycle", cycle_value="5", scan_cycle="a")
+        same = fake_instance(is_interval=True, cycle_value_type="cycle", cycle_value="5", scan_cycle="a")
+        diff = fake_instance(is_interval=True, cycle_value_type="cycle", cycle_value="20", scan_cycle="a")
         assert CollectModelService.is_schedule_config_changed(old, same) is False
         assert CollectModelService.is_schedule_config_changed(old, diff) is True
 
@@ -320,16 +397,12 @@ class TestScheduleAndMisc:
         assert CollectModelService._normalize_cloud_regions("aws", regions) is regions
 
     def test_normalize_cloud_regions_qcloud补字段(self):
-        out = CollectModelService._normalize_cloud_regions(
-            "qcloud", [{"Region": "ap-1", "RegionName": "广州"}]
-        )
+        out = CollectModelService._normalize_cloud_regions("qcloud", [{"Region": "ap-1", "RegionName": "广州"}])
         assert out[0]["resource_name"] == "广州"
         assert out[0]["resource_id"] == "ap-1"
 
     def test_schedule_delayed_sync_非interval跳过(self, mocker):
-        on_commit = mocker.patch(
-            "apps.cmdb.services.collect_service.transaction.on_commit"
-        )
+        on_commit = mocker.patch("apps.cmdb.services.collect_service.transaction.on_commit")
         CollectModelService.schedule_delayed_sync_if_needed(
             fake_instance(cycle_value_type="cycle", cycle_value="20", id=1),
             is_interval=False,
@@ -337,9 +410,7 @@ class TestScheduleAndMisc:
         on_commit.assert_not_called()
 
     def test_schedule_delayed_sync_非cycle类型跳过(self, mocker):
-        on_commit = mocker.patch(
-            "apps.cmdb.services.collect_service.transaction.on_commit"
-        )
+        on_commit = mocker.patch("apps.cmdb.services.collect_service.transaction.on_commit")
         CollectModelService.schedule_delayed_sync_if_needed(
             fake_instance(cycle_value_type="timing", cycle_value="20", id=1),
             is_interval=True,
@@ -347,9 +418,7 @@ class TestScheduleAndMisc:
         on_commit.assert_not_called()
 
     def test_schedule_delayed_sync_非法值跳过(self, mocker):
-        on_commit = mocker.patch(
-            "apps.cmdb.services.collect_service.transaction.on_commit"
-        )
+        on_commit = mocker.patch("apps.cmdb.services.collect_service.transaction.on_commit")
         CollectModelService.schedule_delayed_sync_if_needed(
             fake_instance(cycle_value_type="cycle", cycle_value="abc", id=1),
             is_interval=True,
@@ -357,9 +426,7 @@ class TestScheduleAndMisc:
         on_commit.assert_not_called()
 
     def test_schedule_delayed_sync_低于阈值跳过(self, mocker):
-        on_commit = mocker.patch(
-            "apps.cmdb.services.collect_service.transaction.on_commit"
-        )
+        on_commit = mocker.patch("apps.cmdb.services.collect_service.transaction.on_commit")
         CollectModelService.schedule_delayed_sync_if_needed(
             fake_instance(cycle_value_type="cycle", cycle_value="5", id=1),
             is_interval=True,
@@ -367,14 +434,80 @@ class TestScheduleAndMisc:
         on_commit.assert_not_called()
 
     def test_schedule_delayed_sync_达阈值注册on_commit(self, mocker):
-        on_commit = mocker.patch(
-            "apps.cmdb.services.collect_service.transaction.on_commit"
-        )
+        on_commit = mocker.patch("apps.cmdb.services.collect_service.transaction.on_commit")
         CollectModelService.schedule_delayed_sync_if_needed(
             fake_instance(cycle_value_type="cycle", cycle_value="20", id=1),
             is_interval=True,
         )
         on_commit.assert_called_once()
+
+
+def test_exec_task_passes_execution_token_to_sync_collect_task(settings, mocker):
+    settings.DEBUG = True
+    called = {}
+
+    class FakeTask:
+        id = 7
+        name = "manual"
+        model_id = "host"
+        exec_status = CollectRunStatusType.SUCCESS
+        exec_time = None
+        format_data = {"old": True}
+        collect_data = {"old": True}
+        collect_digest = {"message": "old"}
+        task_id = ""
+
+        def save(self):
+            called["saved_status"] = self.exec_status
+            called["saved_task_id"] = self.task_id
+
+    task = FakeTask()
+    mocker.patch.object(CollectModelService, "repair_host_cloud_snapshot")
+    mocker.patch(
+        "apps.cmdb.services.collect_service.sync_collect_task",
+        side_effect=lambda task_id, execution_id=None, config_id=None, config_version=None: called.update(
+            {"sync_task_id": task_id, "sync_execution_id": execution_id}
+        ),
+    )
+    mocker.patch("apps.cmdb.services.collect_service.create_change_record")
+
+    CollectModelService.exec_task(task, operator="tester")
+
+    assert called["saved_status"] == CollectRunStatusType.RUNNING
+    assert called["saved_task_id"]
+    assert called["sync_task_id"] == task.id
+    assert called["sync_execution_id"] == called["saved_task_id"]
+
+
+def test_exec_task_defers_celery_publish_until_transaction_commit(settings, mocker):
+    settings.DEBUG = False
+    task = fake_instance(
+        id=7,
+        name="manual",
+        model_id="host",
+        exec_status=CollectRunStatusType.SUCCESS,
+        exec_time=None,
+        format_data={},
+        collect_data={},
+        collect_digest={},
+        task_id="",
+        save=mocker.Mock(),
+    )
+    mocker.patch.object(CollectModelService, "repair_host_cloud_snapshot")
+    delay = mocker.patch("apps.cmdb.services.collect_service.sync_collect_task.delay")
+    mocker.patch("apps.cmdb.services.collect_service.create_change_record")
+    callbacks = []
+    mocker.patch(
+        "apps.cmdb.services.collect_service.transaction.on_commit",
+        side_effect=callbacks.append,
+    )
+
+    CollectModelService.exec_task(task, operator="tester")
+
+    delay.assert_not_called()
+    assert len(callbacks) == 1
+    callbacks[0]()
+    delay.assert_called_once_with(task.id, task.task_id, None, None)
 
 
 class TestListRegions:
@@ -384,12 +517,8 @@ class TestListRegions:
             "success": True,
             "regions": {"success": True, "result": [{"Region": "ap-1"}]},
         }
-        mocker.patch(
-            "apps.cmdb.services.collect_service.Stargazer", return_value=sg
-        )
-        out = CollectModelService.list_regions(
-            {"model_id": "qcloud"}, "tencent"
-        )
+        mocker.patch("apps.cmdb.services.collect_service.Stargazer", return_value=sg)
+        out = CollectModelService.list_regions({"model_id": "qcloud"}, "tencent")
         assert out["success"] is True
         assert out["result"][0]["resource_id"] == "ap-1"
 
@@ -399,9 +528,7 @@ class TestListRegions:
             "success": False,
             "regions": {"success": False, "result": [], "message": "鉴权失败"},
         }
-        mocker.patch(
-            "apps.cmdb.services.collect_service.Stargazer", return_value=sg
-        )
+        mocker.patch("apps.cmdb.services.collect_service.Stargazer", return_value=sg)
         out = CollectModelService.list_regions({"model_id": "aws"}, "aws")
         assert out["success"] is False
         assert out["message"] == "鉴权失败"
@@ -470,3 +597,103 @@ class TestListRegions:
         }
         with pytest.raises(BaseAppException, match="周期任务最小执行间隔为1分钟"):
             CollectModelService.format_params(data)
+
+
+class TestCollectCrudSideEffects:
+    def test_create_事务内后续失败不提前同步外部副作用(self, mocker):
+        patch_transaction_callbacks(mocker)
+        instance = collect_instance()
+        view = FakeCollectView(instance)
+        request = fake_request(collect_payload())
+        mocker.patch.object(CollectModelService, "enrich_host_cloud_snapshot_payload", return_value=False)
+        create_task = mocker.patch("apps.cmdb.services.collect_service.CeleryUtils.create_or_update_periodic_task")
+        push_node_params = mocker.patch.object(CollectModelService, "push_butch_node_params")
+        mocker.patch("apps.cmdb.services.collect_service.create_change_record", side_effect=RuntimeError("db failed"))
+
+        with pytest.raises(RuntimeError, match="db failed"):
+            CollectModelService.create(request, view)
+
+        create_task.assert_not_called()
+        push_node_params.assert_not_called()
+
+    def test_create_事务提交后才同步外部副作用(self, mocker):
+        callbacks = patch_transaction_callbacks(mocker)
+        instance = collect_instance()
+        view = FakeCollectView(instance)
+        request = fake_request(collect_payload())
+        mocker.patch.object(CollectModelService, "enrich_host_cloud_snapshot_payload", return_value=False)
+        mocker.patch("apps.cmdb.services.collect_service.create_change_record")
+        create_task = mocker.patch("apps.cmdb.services.collect_service.CeleryUtils.create_or_update_periodic_task")
+        push_node_params = mocker.patch.object(CollectModelService, "push_butch_node_params")
+
+        assert CollectModelService.create(request, view) == instance.id
+
+        assert len(callbacks) == 1
+        create_task.assert_not_called()
+        push_node_params.assert_not_called()
+        callbacks[0]()
+        create_task.assert_called_once()
+        push_node_params.assert_called_once_with(instance)
+
+    def test_update_事务内后续失败不提前同步外部副作用(self, mocker):
+        patch_transaction_callbacks(mocker)
+        instance = collect_instance()
+        view = FakeCollectView(instance)
+        request = fake_request(collect_payload())
+        mocker.patch.object(CollectModelService, "has_permission")
+        mocker.patch.object(CollectModelService, "enrich_host_cloud_snapshot_payload", return_value=False)
+        mocker.patch("apps.cmdb.services.collect_service.CollectHitStateService.clear_by_credential_ids", return_value=0)
+        create_task = mocker.patch("apps.cmdb.services.collect_service.CeleryUtils.create_or_update_periodic_task")
+        delete_task = mocker.patch("apps.cmdb.services.collect_service.CeleryUtils.delete_periodic_task")
+        delete_node_params = mocker.patch.object(CollectModelService, "delete_butch_node_params")
+        push_node_params = mocker.patch.object(CollectModelService, "push_butch_node_params")
+        mocker.patch("apps.cmdb.services.collect_service.create_change_record", side_effect=RuntimeError("db failed"))
+
+        with pytest.raises(RuntimeError, match="db failed"):
+            CollectModelService.update(request, view)
+
+        create_task.assert_not_called()
+        delete_task.assert_not_called()
+        delete_node_params.assert_not_called()
+        push_node_params.assert_not_called()
+
+    def test_update_事务提交后才同步外部副作用(self, mocker):
+        callbacks = patch_transaction_callbacks(mocker)
+        instance = collect_instance()
+        view = FakeCollectView(instance)
+        request = fake_request(collect_payload())
+        mocker.patch.object(CollectModelService, "has_permission")
+        mocker.patch.object(CollectModelService, "enrich_host_cloud_snapshot_payload", return_value=False)
+        mocker.patch("apps.cmdb.services.collect_service.CollectHitStateService.clear_by_credential_ids", return_value=0)
+        mocker.patch("apps.cmdb.services.collect_service.create_change_record")
+        create_task = mocker.patch("apps.cmdb.services.collect_service.CeleryUtils.create_or_update_periodic_task")
+        delete_node_params = mocker.patch.object(CollectModelService, "delete_butch_node_params")
+        push_node_params = mocker.patch.object(CollectModelService, "push_butch_node_params")
+
+        assert CollectModelService.update(request, view) == instance.id
+
+        assert len(callbacks) == 1
+        create_task.assert_not_called()
+        delete_node_params.assert_not_called()
+        push_node_params.assert_not_called()
+        callbacks[0]()
+        create_task.assert_called_once()
+        delete_node_params.assert_called_once()
+        push_node_params.assert_called_once_with(instance)
+
+    def test_destroy_外部清理失败时保留数据库删除入口可重试(self, mocker):
+        patch_transaction_callbacks(mocker)
+        delete_calls = []
+        instance = collect_instance(delete=lambda: delete_calls.append("deleted"))
+        view = FakeCollectView(instance)
+        request = fake_request({})
+        mocker.patch.object(CollectModelService, "has_permission")
+        mocker.patch(
+            "apps.cmdb.services.collect_service.CeleryUtils.delete_periodic_task",
+            side_effect=RuntimeError("beat failed"),
+        )
+
+        with pytest.raises(BaseAppException, match="删除采集任务失败"):
+            CollectModelService.destroy(request, view)
+
+        assert delete_calls == []

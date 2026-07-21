@@ -27,7 +27,21 @@ def test_overview_aggregates_counts_and_contribution():
     b = _page(kb, "B", "human")
     Material.objects.create(knowledge_base=kb, name="m", material_type="text", status="done")
     PageRelation.objects.create(from_page=a, to_page=b, relation_type="reference", weight=1.0)
-    CheckItem.objects.create(knowledge_base=kb, check_type="orphan", status="open", related={"pages": [a.id]})
+    CheckItem.objects.create(
+        knowledge_base=kb,
+        check_type="orphan",
+        status="auto_resolved",
+        related={
+            "pages": [a.id],
+            "resolution": {"action": "automatic_maintenance", "operator": "system"},
+        },
+    )
+    CheckItem.objects.create(
+        knowledge_base=kb,
+        check_type="cannot_merge",
+        status="open",
+        related={"pages": [b.id]},
+    )
 
     ov = get_overview(kb)
     assert ov["counts"]["pages"] == 2
@@ -36,7 +50,8 @@ def test_overview_aggregates_counts_and_contribution():
     assert ov["counts"]["open_checks"] == 1
     assert ov["contribution"] == {"ai": 1, "human": 1}
     assert ov["material_status"] == {"done": 1}
-    assert ov["checks_by_type"] == {"orphan": 1}
+    assert ov["checks_by_type"] == {"cannot_merge": 1}
+    assert ov["health"]["open_checks"] == 1
     assert ov["health"]["clusters"] == 1  # A-B 同一社区
 
 

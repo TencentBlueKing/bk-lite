@@ -62,11 +62,21 @@ class MonitorPluginSerializer(serializers.ModelSerializer):
         return value
 
     def get_parent_monitor_object(self, obj):
-        """获取 MonitorObject 默认排序下的第一个父监控对象 ID。"""
-        return next(
-            (monitor_object.id for monitor_object in obj.monitor_object.all() if monitor_object.parent_id is None),
-            None,
-        )
+        """
+        获取唯一的父监控对象ID(过滤掉子对象)。
+
+        优先读 to_attr='parent_objects' 的 Prefetch 缓存(list view 路径,无 N+1);
+        缺省时回退到 .filter(parent__isnull=True)(单对象 retrieve / update 等路径,
+        此时 view 不会传 Prefetch)。
+        """
+        cached = getattr(obj, "parent_objects", None)
+        if cached is not None:
+            return cached[0].id if cached else None
+
+        parent_objects = obj.monitor_object.filter(parent__isnull=True)
+        if parent_objects.exists():
+            return parent_objects.first().id
+        return None
 
     @staticmethod
     def build_default_status_query(plugin):

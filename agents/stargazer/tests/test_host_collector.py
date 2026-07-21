@@ -321,12 +321,17 @@ class TestBuildScript:
         assert "cpu_user_2" in script
         assert "used_delta" in script
 
-    def test_linux_disk_script_filters_container_overlay_mounts(self):
-        script = build_script("linux", ["disk"])
+    def test_monitor_linux_disk_script_leaves_filesystem_filtering_to_collector(self):
+        script = build_script("linux", ["disk"], monitor_type="host")
 
-        assert "overlay:*" in script
-        assert "/var/lib/docker/overlay2/*/merged" in script
-        assert "/data/lib/docker/overlay2/*/merged" in script
+        assert "df -PT -B1" in script
+        assert " -x " not in script
+        assert "overlay:*" not in script
+        assert "/var/lib/docker/overlay2/" not in script
+        assert "/data/lib/docker/overlay2/" not in script
+        assert "/run/containerd/" not in script
+        assert '\\"path\\":\\"$mount_json\\"' in script
+        assert '\\"fstype\\":\\"$fstype_json\\"' in script
 
     def test_linux_header_script_provides_json_escape_helper(self):
         script = build_script("linux", ["disk"])
@@ -349,10 +354,10 @@ class TestBuildScript:
         fake_df = bin_dir / "df"
         fake_df.write_text(
             """#!/bin/sh
-if [ "$1" = "-P" ] && [ "$2" = "-B1" ]; then
+if [ "$1" = "-PT" ] && [ "$2" = "-B1" ]; then
   cat <<'DATA'
-Filesystem 1B-blocks Used Available Capacity Mounted on
-/dev/sda1 100 50 50 50% /
+Filesystem Type 1B-blocks Used Available Capacity Mounted on
+/dev/sda1 ext4 100 50 50 50% /
 DATA
   exit 0
 fi
@@ -371,7 +376,7 @@ exit 1
         env = {**os.environ, "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}"}
 
         result = subprocess.run(
-            ["bash", "-c", build_script("linux", ["disk"])],
+            ["bash", "-c", build_script("linux", ["disk"], monitor_type="host")],
             check=True,
             env=env,
             capture_output=True,
@@ -380,6 +385,24 @@ exit 1
 
         payload = json.loads(result.stdout)
         assert payload["disk"][0]["inodes_used_percent"] == 0
+        assert payload["disk"][0]["path"] == "/"
+        assert payload["disk"][0]["fstype"] == "ext4"
+
+    def test_monitor_disk_metadata_is_isolated_from_generic_host_script(self):
+        generic_script = build_script("linux", ["disk"])
+        monitor_script = build_script("linux", ["disk"], monitor_type="host")
+
+        assert "df -P -B1" in generic_script
+        assert "df -PT -B1" not in generic_script
+        assert "df -PT -B1" in monitor_script
+        assert '\\"fstype\\":\\"$fstype_json\\"' in monitor_script
+
+    def test_windows_monitor_disk_metadata_is_isolated_from_generic_host_script(self):
+        generic_script = build_script("windows", ["disk"])
+        monitor_script = build_script("windows", ["disk"], monitor_type="host")
+
+        assert "fstype = $d.FileSystem" not in generic_script
+        assert "fstype = $d.FileSystem" in monitor_script
 
     def test_linux_net_script_filters_virtual_interfaces(self):
         script = build_script("linux", ["net"])
@@ -498,6 +521,28 @@ class TestParseMetricsToPrometheus:
         assert 'mount="/"' in result
         assert 'mount="/data"' in result
         assert "host_disk_used_percent" in result
+
+    def test_disk_metrics_filter_by_fstype_and_keep_path_labels(self):
+        data = {
+            "disk": [
+                {"mount": "/", "path": "/", "fstype": "ext4", "total_bytes": 100, "used_bytes": 50, "used_percent": 50},
+                {"mount": "/media/usb", "path": "/media/usb", "fstype": "vfat", "total_bytes": 100, "used_bytes": 50, "used_percent": 50},
+                {"mount": "/data", "path": "/data", "fstype": "xfs", "total_bytes": 100, "used_bytes": 50, "used_percent": 50},
+            ]
+        }
+
+        result = parse_metrics_to_prometheus(
+            data,
+            "inst1",
+            "linux",
+            disk_include_fstypes=" ext4, vfat ",
+            disk_exclude_fstypes="vfat",
+        )
+
+        assert 'path="/"' in result
+        assert 'fstype="ext4"' in result
+        assert "/media/usb" not in result
+        assert "/data" not in result
 
     def test_disk_metrics_escape_prometheus_label_values(self):
         data = {
@@ -2388,3 +2433,42 @@ class TestWorkerRunningFlag:
 
         assert result["status"] == "success"
         handler.assert_awaited_once_with({}, {}, "task-worker-2")
+
+
+def test_config_file_callback_payload_preserves_execution_id():
+    from plugins.inputs.config_file.config_file_info import ConfigFileInfo
+
+    plugin = ConfigFileInfo.__new__(ConfigFileInfo)
+    plugin.params = {
+        "collect_task_id": 10,
+        "execution_id": "execution-current",
+        "host": "10.0.0.1",
+        "target_model_id": "host",
+        "config_file_path": "/etc/app.conf",
+    }
+
+    payload = plugin._build_callback_payload(
+        {
+            "status": "file_not_found",
+            "error_type": "file_not_found",
+            "error": "文件不存在",
+        }
+    )
+
+    assert payload["execution_id"] == "execution-current"
+
+
+def test_plugin_failure_result_preserves_execution_id():
+    from tasks.handlers.plugin_handler import _build_credential_execution_result
+
+    result = _build_credential_execution_result(
+        {
+            "collect_task_id": 10,
+            "execution_id": "execution-current",
+            "host": "10.0.0.1",
+        },
+        None,
+        RuntimeError("boom"),
+    )
+
+    assert result["execution_id"] == "execution-current"

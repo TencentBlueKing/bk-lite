@@ -288,6 +288,20 @@ def test_get_directory_modules_data_dashboard(authenticated_user):
 
 
 @pytest.mark.django_db
+def test_get_directory_modules_data_preloads_directories(authenticated_user, django_assert_num_queries):
+    first_directory = Directory.objects.create(name="目录一", groups=[1], created_by="testuser")
+    second_directory = Directory.objects.create(name="目录二", groups=[1], created_by="testuser")
+    Dashboard.objects.create(name="盘一", groups=[1], directory=first_directory, created_by="testuser")
+    Dashboard.objects.create(name="盘二", groups=[1], directory=second_directory, created_by="testuser")
+
+    with django_assert_num_queries(2):
+        result = DictDirectoryService.get_directory_modules_data("dashboard", page=1, page_size=10, group_id=1)
+
+    assert result["count"] == 2
+    assert {item["name"] for item in result["items"]} == {"【目录一】盘一", "【目录二】盘二"}
+
+
+@pytest.mark.django_db
 def test_get_directory_modules_data_unknown_module_returns_empty():
     result = DictDirectoryService.get_directory_modules_data("unknown", page=1, page_size=10, group_id=1)
     assert result == {"count": 0, "items": []}
@@ -346,9 +360,11 @@ def test_tree_node_builder_topology_and_architecture_nodes(authenticated_user):
 def test_canvas_registry_contains_all_first_class_canvas_types():
     from apps.operation_analysis.services.canvas.registry import CANVAS_TYPE_REGISTRY
 
-    assert set(CANVAS_TYPE_REGISTRY.keys()) == {"dashboard", "topology", "architecture", "screen", "report"}
+    assert set(CANVAS_TYPE_REGISTRY.keys()) == {"dashboard", "topology", "architecture", "screen", "report", "networkTopology"}
     assert CANVAS_TYPE_REGISTRY["screen"].permission_key == "directory.screen"
     assert CANVAS_TYPE_REGISTRY["report"].section_name == "reports"
+    assert CANVAS_TYPE_REGISTRY["networkTopology"].model.__name__ == "NetworkTopology"
+    assert CANVAS_TYPE_REGISTRY["networkTopology"].section_name == "network_topologies"
 
 
 def test_all_canvas_serializers_share_canvas_object_base():

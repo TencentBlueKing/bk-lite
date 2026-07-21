@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
 import { CaretDownFilled, GlobalOutlined } from '@ant-design/icons';
+import { Dropdown } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useLocale } from '@/context/locale';
 
@@ -34,107 +34,37 @@ const SUPPORTED_LANGUAGES: ReadonlyArray<LanguageOption> = [
  *      dropdown 仍 absolute(不参与文档流、不挤下方)。
  *
  * 行为契约:
- *   - 不引入 fetch / useSession / try-catch。
+ *   - 不引入 fetch / useSession / try-catch / async 副作用。
  *   - 仅作为 useLocale().setLocale 的触发器;副作用收敛到
  *     LocaleProvider.changeLocale。
  *   - Dropdown 项过滤当前 locale,只展示另一语言。
  *   - aria-label 走 signin.languageToggle.label(i18n 键)。
+ *   - 后端 User.locale 持久化由个人设置 console_mgmt/update_user_base_info,
+ *     登录页 toggle 只改前端 localStorage,登录后由后端按 user.locale 渲染。
+ *     (曾尝试 syncBackendLocale→editUser/update_user,但该接口受
+ *     user_group-Edit User 限制,会越权 / 清空 profile,故撤销。)
  */
-import { useSession } from 'next-auth/react';
-import { useUserApi } from '@/app/system-manager/api/user';
 export default function SigninLanguageToggle() {
   const { t } = useTranslation();
   const { locale, setLocale } = useLocale();
-  const [open, setOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const { data: session } = useSession();
-  const { editUser } = useUserApi();
-
-  // 同步后端 User.locale(已登录用户改完后端才能返回对应语言的 monitor i18n)
-  const syncBackendLocale = async (langKey: string) => {
-    if (!session?.user?.id) return;
-    try {
-      await editUser({ id: session.user.id, locale: langKey });
-    } catch {
-      // 后端同步失败不影响前端切换(本地化已生效,只是后端 monitor i18n 仍按旧 locale)
-    }
-  };
-
-  // 点击外部关闭
-  useEffect(() => {
-    if (!open) {
-      return undefined;
-    }
-    const handler = (event: MouseEvent) => {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(event.target as Node)
-      ) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => {
-      document.removeEventListener('mousedown', handler);
-    };
-  }, [open]);
-
   const current: LanguageOption =
     SUPPORTED_LANGUAGES.find((lang) => lang.key === locale) ??
     SUPPORTED_LANGUAGES[0];
 
-  // 关闭:独立圆角胶囊,色调低调。
-  // 打开:与下方 dropdown 接合成"完整一张卡"。
-  const triggerClassName = [
-    'flex w-full items-center gap-2 px-3 py-2 text-sm',
-    'text-(--color-text-1) backdrop-blur-[16px] transition-colors',
-    open
-      ? 'rounded-t-lg border-[1.5px] border-b-0 border-white/90 bg-[linear-gradient(180deg,rgba(255,255,255,0.16)_0%,rgba(255,255,255,0.07)_100%)] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.32)]'
-      : 'rounded-lg border-[1.5px] border-white/90 bg-[linear-gradient(180deg,rgba(255,255,255,0.16)_0%,rgba(255,255,255,0.07)_100%)] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.32)] hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.24)_0%,rgba(82,139,255,0.12)_100%)]',
-  ].join(' ');
-
   return (
-    <div ref={containerRef} className="relative inline-block text-left">
+    <Dropdown menu={{ items: SUPPORTED_LANGUAGES.filter((lang) => lang.key !== locale).map((lang) => ({ key: lang.key, label: lang.nativeLabel, onClick: () => setLocale(lang.key) })) }} trigger={['click']}>
       <button
         type="button"
         aria-label={t('signin.languageToggle.label')}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-        className={triggerClassName}
+        className="flex items-center gap-2 rounded-md border border-(--color-border) bg-(--color-bg) px-3 py-2 text-sm text-(--color-text-1) hover:bg-(--color-fill-1)"
       >
         <GlobalOutlined aria-hidden />
         <span>{current.nativeLabel}</span>
         <CaretDownFilled
           aria-hidden
-          className={`text-[10px] text-(--color-text-2) transition-transform ${open ? 'rotate-180' : ''}`}
+          className="text-[10px] text-(--color-text-2)"
         />
       </button>
-      {open && (
-        <ul
-          role="menu"
-          className="absolute right-0 top-full z-10 min-w-full overflow-hidden rounded-b-lg border-[1.5px] border-t-0 border-white/90 bg-[linear-gradient(180deg,rgba(255,255,255,0.16)_0%,rgba(255,255,255,0.07)_100%)] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.32)] backdrop-blur-[16px]"
-        >
-          {SUPPORTED_LANGUAGES.filter((lang) => lang.key !== locale).map(
-            (lang) => (
-              <li key={lang.key}>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setLocale(lang.key);
-                    syncBackendLocale(lang.key);
-                    setOpen(false);
-                  }}
-                  className="flex w-full items-center px-3 py-2 text-left text-sm text-(--color-text-1) hover:bg-white/10"
-                >
-                  {lang.nativeLabel}
-                </button>
-              </li>
-            ),
-          )}
-        </ul>
-      )}
-    </div>
+    </Dropdown>
   );
 }

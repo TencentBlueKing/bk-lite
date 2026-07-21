@@ -31,6 +31,7 @@ import {
 import DataSourceParamsConfig from '@/app/ops-analysis/components/paramsConfig';
 import { SingleValueSettingsSection } from '@/app/ops-analysis/components/singleValueSettingsSection';
 import { FilterBindingPanel } from '@/app/ops-analysis/components/unifiedFilter';
+import { ParamInputConfigEditor } from '@/app/ops-analysis/components/paramInputConfigEditor';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import {
   getFilterDefinitionId,
@@ -38,8 +39,15 @@ import {
   buildDefaultFilterBindings,
 } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { canEnableCompare } from '@/app/ops-analysis/utils/compareQuery';
+import {
+  clearComponentParamSwitch,
+  findComponentSwitchParams,
+  reconcileComponentParamValue,
+} from '@/app/ops-analysis/utils/componentParamSwitch';
 import type {
   DatasourceItem,
+  InputControlConfig,
+  InputOption,
   ParamItem,
   ResponseFieldDefinition,
 } from '@/app/ops-analysis/types/dataSource';
@@ -110,8 +118,11 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   const [filterBindings, setFilterBindings] = useState<FilterBindings>({});
   const [actions, setActions] = useState<DashboardActionConfig[]>([]);
   const [dataSourceSelectorVisible, setDataSourceSelectorVisible] = useState(false);
+  const [editingInputConfigParam, setEditingInputConfigParam] = useState<ParamItem | null>(null);
+  const [widgetParamOverrides, setWidgetParamOverrides] = useState<ParamItem[]>([]);
   const { getSourceDataByApiId } = useDataSourceApi();
   const configRequestIdRef = useRef(0);
+  const resolvedParamOptionsRef = useRef(new Map<string, InputOption[]>());
 
   const {
     selectedDataSource,
@@ -250,6 +261,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   const handleDataSourceChangeFromSelector = useCallback(
     async (item: DatasourceItem) => {
       const requestId = nextConfigRequestId();
+      resolvedParamOptionsRef.current.clear();
       setDataSourceSelectorVisible(false);
 
       if (isSceneWidgetSelection(item)) {
@@ -257,6 +269,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         setSelectedDataSource(undefined);
         setFilterBindings({});
         setActions([]);
+        setWidgetParamOverrides([]);
         tableConfig.resetTableConfig();
         singleValueConfig.resetSingleValueConfig();
 
@@ -283,6 +296,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           gaugeMax: 100,
           gaugeShape: 'semicircle',
           compare: false,
+          compareMode: 'percent',
           tableConfig: undefined,
           actions: [],
         });
@@ -293,6 +307,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       setChartType('');
       setFilterBindings({});
       setActions([]);
+      setWidgetParamOverrides([]);
       tableConfig.resetTableConfig();
       singleValueConfig.resetSingleValueConfig();
 
@@ -331,6 +346,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         gaugeMax: 100,
         gaugeShape: 'semicircle',
         compare: false,
+        compareMode: 'percent',
       });
 
       // 重建 filter bindings
@@ -463,7 +479,12 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   const handleChartTypeChange = async (e: any) => {
     const newChartType = e.target.value;
     setChartType(newChartType);
-    form.setFieldsValue({ chartType: newChartType });
+    form.setFieldValue('chartType', newChartType);
+    if (newChartType !== 'topN') {
+      setWidgetParamOverrides((previous) =>
+        previous.map(clearComponentParamSwitch),
+      );
+    }
     await tableConfig.handleChartTypeChange(newChartType);
   };
 
@@ -471,6 +492,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     widgetItem: ViewConfigItem,
     requestId: number,
   ): Promise<void> => {
+    resolvedParamOptionsRef.current.clear();
     if (!isCurrentConfigRequest(requestId)) {
       return;
     }
@@ -539,6 +561,11 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
 
     if (targetDataSource) {
       setSelectedDataSource(targetDataSource);
+      // 从 widget 已有的 dataSourceParams 恢复组件级 inputConfig 覆盖。
+      const widgetOverrides = (valueConfig?.dataSourceParams || [])
+        .filter((p) => p.inputConfig !== undefined)
+        .map((p) => ({ ...p, options: undefined }));
+      setWidgetParamOverrides(widgetOverrides);
       formValues.params = formValues.params || {};
 
       if (!formValues.chartType && targetDataSource.chart_type?.length) {
@@ -667,7 +694,6 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     if (valueConfig?.topNValueField !== undefined) {
       formValues.topNValueField = valueConfig.topNValueField;
     }
-
     if (valueConfig?.unit !== undefined) {
       formValues.unit = valueConfig.unit;
     }
@@ -697,6 +723,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         config: { chartType: 'single', dataSourceParams: targetDataSource?.params },
         dataSource: targetDataSource,
       });
+      formValues.compareMode = valueConfig.compareMode || 'percent';
     }
 
     singleValueConfig.setThresholdColors(initThresholdColors(valueConfig?.thresholdColors));
@@ -711,10 +738,81 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     setFilterBindings({});
     setActions([]);
     setDataSourceSelectorVisible(false);
+    setEditingInputConfigParam(null);
+    setWidgetParamOverrides([]);
     networkTopologyConfig.resetInstanceOptions();
     tableConfig.resetTableConfig();
     singleValueConfig.resetSingleValueConfig();
   };
+
+  const handleEditInputConfig = (param: ParamItem) => {
+    const override = widgetParamOverrides.find((o) => o.name === param.name);
+    setEditingInputConfigParam(override ?? param);
+  };
+
+  const reconcileParamWithOptions = useCallback(
+    (paramName: string, options: InputOption[]) => {
+      if (options.length === 0) return;
+      resolvedParamOptionsRef.current.set(paramName, options);
+      const currentParams = form.getFieldValue('params') || {};
+      const nextValue = reconcileComponentParamValue(currentParams[paramName], options);
+      if (nextValue !== currentParams[paramName]) {
+        form.setFieldValue(['params', paramName], nextValue);
+      }
+    },
+    [form],
+  );
+
+  const handleInputConfigConfirm = (
+    newConfig: InputControlConfig,
+    resolvedOptions?: InputOption[],
+  ) => {
+    if (!editingInputConfigParam) return;
+    const editingParamName = editingInputConfigParam.name;
+    setWidgetParamOverrides((prev) => {
+      const existing = prev.find((o) => o.name === editingInputConfigParam.name);
+      const baseParam = {
+        ...editingInputConfigParam,
+        options: undefined,
+      };
+      if (existing) {
+        return prev.map((o) =>
+          o.name === editingInputConfigParam.name
+            ? { ...baseParam, inputConfig: newConfig }
+            : o,
+        );
+      }
+      return [...prev, { ...baseParam, inputConfig: newConfig }];
+    });
+    if (resolvedOptions?.length) {
+      reconcileParamWithOptions(editingParamName, resolvedOptions);
+    } else {
+      resolvedParamOptionsRef.current.delete(editingParamName);
+    }
+    setEditingInputConfigParam(null);
+  };
+
+  // 把组件级 inputConfig 覆盖合并到 selectedDataSource，供参数表渲染。
+  const effectiveDataSource = useMemo(() => {
+    if (!selectedDataSource) return undefined;
+    if (widgetParamOverrides.length === 0) return selectedDataSource;
+    return {
+      ...selectedDataSource,
+      params: selectedDataSource.params.map((p) => {
+        const override = widgetParamOverrides.find((o) => o.name === p.name);
+        return override?.inputConfig !== undefined
+          ? { ...p, inputConfig: override.inputConfig }
+          : p;
+      }),
+    };
+  }, [selectedDataSource, widgetParamOverrides]);
+
+  const componentSwitchOwner = useMemo(() => {
+    const owner = findComponentSwitchParams(effectiveDataSource?.params)[0];
+    return owner
+      ? { name: owner.name, label: owner.alias_name || owner.name }
+      : undefined;
+  }, [effectiveDataSource]);
 
   const handleFormValuesChange = (changedValues: Record<string, any>) => {
     if (!isTableLikeChartType) {
@@ -761,10 +859,31 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         selectedDataSource?.params?.length
       ) {
         const formParams = values.params || form.getFieldValue('params') || {};
-        values.dataSourceParams = processFormParamsForSubmit(
-          formParams,
+        const reconciledFormParams = { ...formParams };
+        effectiveDataSource?.params.forEach((param) => {
+          const options = resolvedParamOptionsRef.current.get(param.name);
+          if (!options?.length) return;
+          reconciledFormParams[param.name] = reconcileComponentParamValue(
+            reconciledFormParams[param.name],
+            options,
+          );
+        });
+        if (Object.keys(reconciledFormParams).some(
+          (name) => reconciledFormParams[name] !== formParams[name],
+        )) {
+          form.setFieldValue('params', reconciledFormParams);
+        }
+        const processed = processFormParamsForSubmit(
+          reconciledFormParams,
           selectedDataSource.params,
         );
+        // 合并组件级 inputConfig 覆盖
+        values.dataSourceParams = processed.map((param) => {
+          const override = widgetParamOverrides.find((o) => o.name === param.name);
+          return override?.inputConfig !== undefined
+            ? { ...param, inputConfig: override.inputConfig }
+            : param;
+        });
         delete values.params;
       }
 
@@ -795,6 +914,10 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           tableConfig.setDisplayColumnsError(
             t('dashboard.atLeastOneVisibleColumn') || '请至少保留一列可见',
           );
+          return;
+        }
+        if (submitResult.error === 'multipleComponentSwitchParams') {
+          message.error(t('dashboard.multipleComponentSwitchParams'));
           return;
         }
       }
@@ -829,7 +952,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     >
       <Form
         form={form}
-        labelCol={{ span: 4 }}
+        layout="vertical"
         onValuesChange={handleFormValuesChange}
       >
         <div className="mb-6">
@@ -1005,8 +1128,12 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
               {t('dashboard.queryParams')}
             </div>
             <DataSourceParamsConfig
-              selectedDataSource={selectedDataSource}
+              selectedDataSource={effectiveDataSource}
               includeFilterTypes={['params', 'fixed']}
+              onEditInputConfig={handleEditInputConfig}
+              onParamOptionsResolved={(param, options) =>
+                reconcileParamWithOptions(param.name, options)
+              }
             />
           </div>
         )}
@@ -1142,6 +1269,17 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         onCancel={() => setDataSourceSelectorVisible(false)}
         onOpenConfig={handleDataSourceChangeFromSelector}
         surface={surface}
+      />
+      <ParamInputConfigEditor
+        key={editingInputConfigParam?.name ?? 'closed'}
+        open={editingInputConfigParam !== null}
+        value={editingInputConfigParam?.inputConfig}
+        onConfirm={handleInputConfigConfirm}
+        onCancel={() => setEditingInputConfigParam(null)}
+        excludeSourceIds={selectedDataSource ? [selectedDataSource.id] : []}
+        componentSwitchEnabled={chartType === 'topN'}
+        componentSwitchOwner={componentSwitchOwner}
+        editingParamName={editingInputConfigParam?.name}
       />
     </Drawer>
   );

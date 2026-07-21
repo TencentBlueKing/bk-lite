@@ -1,5 +1,7 @@
 """作业执行 Celery 任务入口"""
 
+from uuid import uuid4
+
 from asgiref.sync import async_to_sync
 from celery import current_app, shared_task
 from django.db import transaction
@@ -270,23 +272,42 @@ _JOB_TYPE_TO_TASK_NAME = {
 
 
 def _dispatch_execution_job(job_type: str, execution_id: int) -> bool:
-    """通过 Celery 派发执行任务并回填 ``celery_task_id``。
+    """持久化 Celery task id 后派发执行任务。
 
-    Returns ``False`` 当作业类型未知或 broker 派发失败（broker 不可用、连接超时等）；
-    调用方应据此把执行记录置为 FAILED，避免留下 PENDING 孤立记录。
+    Returns ``False`` 当作业类型未知、执行记录不可写或 broker 派发失败；调用方应据此把
+    执行记录置为 FAILED，避免留下 PENDING 孤立记录。
     """
     task_name = _JOB_TYPE_TO_TASK_NAME.get(job_type)
     if not task_name:
         return False
 
+    celery_task_id = uuid4().hex
     try:
-        result = current_app.send_task(task_name, args=[execution_id])
+        updated = JobExecution.objects.filter(id=execution_id).update(celery_task_id=celery_task_id)
     except Exception as e:
-        logger.exception(f"[_dispatch_execution_job] Celery 派发失败: execution_id={execution_id}, job_type={job_type}, error={e}")
+        logger.exception(
+            f"[_dispatch_execution_job] Celery 任务ID持久化失败: "
+            f"execution_id={execution_id}, job_type={job_type}, error={e}"
+        )
+        return False
+    if not updated:
+        logger.error(f"[_dispatch_execution_job] 执行记录不存在: execution_id={execution_id}, job_type={job_type}")
         return False
 
-    if result:
-        JobExecution.objects.filter(id=execution_id).update(celery_task_id=result.id)
+    try:
+        current_app.send_task(task_name, args=[execution_id], task_id=celery_task_id)
+    except Exception as e:
+        logger.exception(f"[_dispatch_execution_job] Celery 派发失败: execution_id={execution_id}, job_type={job_type}, error={e}")
+        try:
+            # 发布异常不代表 broker 一定未接收。保留已持久化的 ID，并尽力撤销可能已入队的任务。
+            current_app.control.revoke(celery_task_id)
+        except Exception as revoke_error:
+            logger.exception(
+                f"[_dispatch_execution_job] Celery 任务撤销失败: "
+                f"execution_id={execution_id}, task_id={celery_task_id}, error={revoke_error}"
+            )
+        return False
+
     return True
 
 
