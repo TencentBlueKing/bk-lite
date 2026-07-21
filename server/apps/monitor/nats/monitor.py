@@ -483,7 +483,7 @@ def _normalize_permission_user(user, domain=None):
     return user
 
 
-def _get_global_monitor_instance_permissions(user_info: dict):
+def _get_global_monitor_instance_permissions(user_info: dict, scope_ids):
     user = _normalize_permission_user(
         user_info.get("user"),
         domain=user_info.get("domain"),
@@ -502,25 +502,34 @@ def _get_global_monitor_instance_permissions(user_info: dict):
         include_children=include_children,
     )
     if not isinstance(permission_result, dict):
-        return {}, [], None
+        return {}, list(scope_ids), None
     permission_data = permission_result.get("data", {})
-    current_teams = permission_result.get("team", [])
     if not isinstance(permission_data, dict):
         permission_data = {}
-    if not isinstance(current_teams, list):
-        current_teams = []
-    return permission_data, current_teams, None
+    return permission_data, list(scope_ids), None
 
 
-def _get_authorized_monitor_instances(user_info: dict, monitor_obj_id: Optional[str] = None):
-    instance_permissions, cur_team, error = _get_global_monitor_instance_permissions(user_info)
+def _get_authorized_monitor_instances(
+    user_info: dict,
+    scope_ids,
+    monitor_obj_id: Optional[str] = None,
+):
+    instance_permissions, cur_team, error = _get_global_monitor_instance_permissions(
+        user_info,
+        scope_ids,
+    )
     if error:
         return {}, error
 
     instance_queryset = (
-        MonitorInstance.objects.filter(is_deleted=False, is_active=True)
+        MonitorInstance.objects.filter(
+            is_deleted=False,
+            is_active=True,
+            monitorinstanceorganization__organization__in=list(scope_ids),
+        )
         .select_related("monitor_object")
         .prefetch_related("monitorinstanceorganization_set")
+        .distinct()
     )
     if monitor_obj_id:
         instance_queryset = instance_queryset.filter(monitor_object_id=monitor_obj_id)
@@ -540,13 +549,18 @@ def _get_authorized_monitor_instances(user_info: dict, monitor_obj_id: Optional[
     return authorized_instances, None
 
 
-def _get_authorized_instance_queryset(permission):
-    return permission_filter(
+def _get_authorized_instance_queryset(permission, scope_ids=None):
+    queryset = permission_filter(
         MonitorInstance,
         permission,
         team_key="monitorinstanceorganization__organization__in",
         id_key="id__in",
     )
+    if scope_ids is not None:
+        queryset = queryset.filter(
+            monitorinstanceorganization__organization__in=list(scope_ids)
+        ).distinct()
+    return queryset
 
 
 def _get_instance_permission_map(permission) -> dict:
@@ -973,7 +987,7 @@ def query_monitor_alert_segments(query_data: dict, *args, **kwargs):
     except ValueError as exc:
         return {"result": False, "data": [], "message": str(exc)}
 
-    *_, scope_error = _get_nats_actor_scope(user_info)
+    _, _, _, scope_ids, scope_error = _get_nats_actor_scope(user_info)
     if scope_error:
         return scope_error
 
@@ -981,10 +995,11 @@ def query_monitor_alert_segments(query_data: dict, *args, **kwargs):
     if error:
         return error
 
-    authorized_qs = _get_authorized_instance_queryset(permission).filter(
-        monitor_object_id=monitor_obj_id,
-        is_deleted=False,
-        is_active=True,
+    authorized_qs = _get_authorized_instance_queryset(
+        permission,
+        scope_ids,
+    ).filter(
+        monitor_object_id=monitor_obj_id, is_deleted=False, is_active=True
     )
     authorized_instance_ids = set(authorized_qs.values_list("id", flat=True))
     if not authorized_instance_ids:
@@ -1067,7 +1082,7 @@ def query_latest_active_alerts(query_data: Optional[dict] = None, *args, **kwarg
     except ValueError as exc:
         return {"result": False, "data": [], "message": str(exc)}
 
-    *_, scope_error = _get_nats_actor_scope(user_info)
+    _, _, _, scope_ids, scope_error = _get_nats_actor_scope(user_info)
     if scope_error:
         return scope_error
 
@@ -1082,7 +1097,7 @@ def query_latest_active_alerts(query_data: Optional[dict] = None, *args, **kwarg
         if error:
             return error
         authorized_qs = (
-            _get_authorized_instance_queryset(permission)
+            _get_authorized_instance_queryset(permission, scope_ids)
             .filter(
                 monitor_object_id=monitor_obj_id,
                 is_deleted=False,
@@ -1092,7 +1107,10 @@ def query_latest_active_alerts(query_data: Optional[dict] = None, *args, **kwarg
         )
         authorized_instances = {str(instance.id): instance for instance in authorized_qs}
     else:
-        authorized_instances, error = _get_authorized_monitor_instances(user_info)
+        authorized_instances, error = _get_authorized_monitor_instances(
+            user_info,
+            scope_ids,
+        )
         if error:
             return error
 

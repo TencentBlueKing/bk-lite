@@ -67,3 +67,13 @@
 
 - `monitor/nats/monitor.py` 是历史大模块；本任务以差异覆盖率 88%、91 项聚焦测试和 330 项权限业务回归约束新增路径。
 - 本轮按已确认边界不重构后台自发任务身份，也不处理当前完全未接数据权限的平台公共目录。
+
+## 终审补充：实例候选强制交集 actor scope
+
+- RED：Task 1 RPC 已认证 `scope_ids=[A]`，但实例权限响应伪造 `team=[B, Guest]` 时，segments 返回 A/B/Guest 三条，latest 带对象返回三条，latest 无对象返回 B/Guest 两条；预期均仅返回 A。
+- 修复：两个告警查询保留 `_get_nats_actor_scope()` 返回的 `scope_ids` 并显式向下透传。单对象实例 queryset 在旧对象权限过滤后再与实例组织关联取交集；全局实例候选先做同一 DB 交集，Python `check_instance_permission` 的 `cur_team` 仅使用 `scope_ids`，不再读取 `get_permissions_rules.team` 作为数据范围。
+- 正向兼容：既有合法 A 实例 fixture 补齐真实组织关联；合法 A、超管 A、无授权实例空结果、策略归属根和分页行为保持不变。
+- GREEN：三条 poisoning 专项 `3 passed`；既有正向 fixture 回归 `4 passed`；监控告警/NATS 直接相关四文件 `71 passed`，coverage 复跑同样 `71 passed`。
+- 差异覆盖率：本轮 14 个生产差异可执行行仅 1 行未覆盖，`diff-cover` 为 **92.9%**，高于 75% 门禁。
+- 扩大矩阵：计划集合为原 330 项加新增 3 项。执行至 `78 passed` 后，既有 `test_refresh_collect_configs_continues_when_single_base_config_update_fails` 未 mock Celery，真实 `delay()` 阻塞于 Redis `read_response`；主动中止，未出现业务断言失败，且不把该环境阻塞记为 333 项通过。
+- 静态与迁移：`py_compile`、flake8 7.1.1、isort 5.10.1、`git diff --check`、原生 SQL 扫描、`makemigrations --check --dry-run` 全部通过。Black 23.1 对新增继承权限测试通过；`test_nats_monitor_handlers.py` 在 HEAD 基线和当前版本均需整文件重排，按最小 diff 未机械格式化。

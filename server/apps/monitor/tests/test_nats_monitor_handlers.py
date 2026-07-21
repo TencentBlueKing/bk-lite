@@ -337,8 +337,12 @@ class TestQueryMonitorAlertSegments:
 
         from apps.monitor.models import MonitorAlert
         obj = MonitorObject.objects.create(name="QMASObj2", level="base")
-        MonitorInstance.objects.create(
+        instance = MonitorInstance.objects.create(
             id="('h1',)", name="h1", monitor_object=obj, is_active=True, is_deleted=False,
+        )
+        MonitorInstanceOrganization.objects.create(
+            monitor_instance=instance,
+            organization=1,
         )
         policy = MonitorPolicy.objects.create(
             monitor_object=obj,
@@ -374,8 +378,12 @@ class TestQueryMonitorAlertSegments:
         from apps.monitor.models import MonitorAlert
 
         obj = MonitorObject.objects.create(name="QMASObj3", level="base")
-        MonitorInstance.objects.create(
+        instance = MonitorInstance.objects.create(
             id="('h1',)", name="h1", monitor_object=obj, is_active=True, is_deleted=False,
+        )
+        MonitorInstanceOrganization.objects.create(
+            monitor_instance=instance,
+            organization=1,
         )
         policies = []
         for idx, hour in enumerate([12, 11, 10], start=1):

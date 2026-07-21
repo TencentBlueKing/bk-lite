@@ -409,6 +409,111 @@ def _patch_forged_nats_alert_permissions(mocker):
     )
 
 
+def _create_poisoned_nats_alert_scope(mocker, prefix):
+    from datetime import datetime, timezone
+
+    policy = _policy(f"{prefix}-policy", [1])
+    instances = {}
+    alerts = {}
+    for organization, suffix in ((1, "current"), (2, "sibling"), (3, "guest")):
+        instance = MonitorInstance.objects.create(
+            id=f"{prefix}-{suffix}-instance",
+            name=f"{prefix}-{suffix}-instance",
+            monitor_object=policy.monitor_object,
+            is_active=True,
+        )
+        MonitorInstanceOrganization.objects.create(
+            monitor_instance=instance,
+            organization=organization,
+        )
+        alert = MonitorAlert.objects.create(
+            policy_id=policy.id,
+            monitor_instance_id=instance.id,
+            status="new",
+            start_event_time=datetime(2026, 1, 1, 12, tzinfo=timezone.utc),
+        )
+        instances[suffix] = instance
+        alerts[suffix] = alert
+
+    _patch_nats_scope(mocker, [1])
+    mocker.patch(
+        "apps.monitor.nats.monitor.get_permission_rules",
+        return_value={
+            "team": [2, 3],
+            "instance": [
+                {
+                    "id": instances["current"].id,
+                    "permission": ["View"],
+                }
+            ],
+        },
+    )
+
+    def permission_rules(*args, **kwargs):
+        permission_module = args[3]
+        if permission_module == "instance":
+            return {"data": {}, "team": [2, 3]}
+        return {"data": {"all": {"team": [1]}}, "team": [2, 3]}
+
+    mocker.patch(
+        "apps.monitor.nats.monitor.get_permissions_rules",
+        side_effect=permission_rules,
+    )
+    user_info = {
+        "user": SimpleNamespace(username="team-a-user", domain="domain.com"),
+        "team": 1,
+        "is_superuser": False,
+        "include_children": False,
+    }
+    return policy, alerts, user_info
+
+
+def test_nats_alert_segments_intersects_instance_candidates_with_actor_scope(mocker):
+    policy, alerts, user_info = _create_poisoned_nats_alert_scope(mocker, "segment-poisoned")
+
+    response = monitor_nats.query_monitor_alert_segments(
+        {
+            "monitor_obj_id": policy.monitor_object_id,
+            "start": "2026-01-01 00:00:00",
+            "end": "2026-01-02 00:00:00",
+        },
+        user_info=user_info,
+    )
+
+    assert response["result"] is True
+    assert response["data"]["count"] == 1
+    assert [item["id"] for item in response["data"]["items"]] == [alerts["current"].id]
+
+
+def test_nats_latest_alerts_with_object_intersects_instance_candidates_with_actor_scope(mocker):
+    policy, alerts, user_info = _create_poisoned_nats_alert_scope(
+        mocker,
+        "latest-object-poisoned",
+    )
+
+    response = monitor_nats.query_latest_active_alerts(
+        {"monitor_obj_id": policy.monitor_object_id},
+        user_info=user_info,
+    )
+
+    assert response["result"] is True
+    assert response["data"]["count"] == 1
+    assert [item["id"] for item in response["data"]["items"]] == [alerts["current"].id]
+
+
+def test_nats_latest_alerts_without_object_uses_actor_scope_as_python_current_team(mocker):
+    _, alerts, user_info = _create_poisoned_nats_alert_scope(
+        mocker,
+        "latest-global-poisoned",
+    )
+
+    response = monitor_nats.query_latest_active_alerts({}, user_info=user_info)
+
+    assert response["result"] is True
+    assert response["data"]["count"] == 1
+    assert [item["id"] for item in response["data"]["items"]] == [alerts["current"].id]
+
+
 def test_nats_alert_segments_rejects_forged_sibling_current_team(mocker):
     from datetime import datetime, timezone
 
@@ -486,6 +591,10 @@ def test_nats_alert_segments_also_inherit_policy_root(mocker):
         monitor_object=current_policy.monitor_object,
         is_active=True,
     )
+    MonitorInstanceOrganization.objects.create(
+        monitor_instance=instance,
+        organization=1,
+    )
     event_time = datetime(2026, 1, 1, 12, tzinfo=timezone.utc)
     current_alert = MonitorAlert.objects.create(
         policy_id=current_policy.id,
@@ -521,6 +630,10 @@ def test_nats_latest_alerts_also_inherit_policy_root(mocker):
         name="latest-instance",
         monitor_object=current_policy.monitor_object,
         is_active=True,
+    )
+    MonitorInstanceOrganization.objects.create(
+        monitor_instance=instance,
+        organization=1,
     )
     current_alert = MonitorAlert.objects.create(
         policy_id=current_policy.id,
