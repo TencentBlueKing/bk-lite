@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "catalog_version": "2026.07.22",
+  "allowed_device_types": ["switch", "router", "firewall", "loadbalance"],
+  "brand_aliases": {
+    "华为": "Huawei",
+    "HuaWei": "Huawei",
+    "Hewlett-Packard": "HPE",
+    "PaloAlto": "Palo Alto Networks"
+  },
+  "sources": {
+    "legacy-catalog-v1": {
+      "vendor": "Multiple",
+      "url": "",
+      "document": "BK-Lite legacy systemoid.json",
+      "version": "pre-2026",
+      "verified_at": "2026-07-22",
+      "official": false,
+      "scope": "legacy-catalog"
+    }
+  }
+}
