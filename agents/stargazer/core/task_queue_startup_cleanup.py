@@ -1,17 +1,22 @@
 """启动时安全清理 Redis 中已失去对应 ARQ job 的任务标记。"""
 
 import asyncio
+import json
 import math
 import os
 import uuid
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Literal, Mapping
 
+from redis.exceptions import ResponseError
+
 
 LOCK_KEY = b"stargazer:maintenance:startup-orphan-cleanup"
 QUEUE_KEY = b"arq:queue"
 MARKER_PATTERNS = (b"task:running:*", b"task:dedupe:*")
 IN_PROGRESS_PREFIX = b"arq:in-progress:"
+RUNNING_MARKER_PREFIX = b"task:running:"
+HOST_REMOTE_CALLBACK_CONTEXT_PREFIX = b"host_remote:callback_context:"
 
 _DELETE_CONFIRMED_ORPHAN_LUA = """
 local marker_value = redis.call('GET', KEYS[1])
@@ -23,6 +28,23 @@ if redis.call('ZSCORE', KEYS[2], ARGV[1]) then
 end
 if redis.call('EXISTS', KEYS[3]) ~= 0 then
     return 0
+end
+if KEYS[4] ~= '' then
+    local callback_value = redis.call('GET', KEYS[4])
+    if callback_value then
+        local decoded_ok, callback_context = pcall(cjson.decode, callback_value)
+        if not decoded_ok or type(callback_context) ~= 'table' then
+            return 0
+        end
+        local status = callback_context['status']
+        local callback_received_at = callback_context['callback_received_at']
+        if type(status) == 'table'
+            and status['execution'] == 'waiting_callback'
+            and (callback_received_at == nil or callback_received_at == cjson.null)
+        then
+            return 0
+        end
+    end
 end
 return redis.call('DEL', KEYS[1])
 """
@@ -127,83 +149,116 @@ async def cleanup_startup_orphan_markers(
     if not config.enabled:
         return _result(status="skipped", reason="disabled")
 
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + config.timeout_seconds
     token = uuid.uuid4().hex.encode()
-    lock_acquired = await redis.set(
-        LOCK_KEY, token, nx=True, ex=config.lock_ttl_seconds
-    )
-    if not lock_acquired:
-        return _result(status="skipped", reason="lock_not_acquired")
-
     scanned = candidates_count = deleted = preserved = errors = 0
     truncated = False
-    candidates: list[tuple[bytes, bytes]] = []
+    candidates: list[tuple[bytes, bytes, bytes]] = []
+    lock_acquired = False
+    timed_out = False
+    early_result: StartupCleanupResult | None = None
     try:
         try:
-            async with asyncio.timeout(config.timeout_seconds):
-                for pattern in MARKER_PATTERNS:
-                    async for raw_marker_key in redis.scan_iter(
-                        match=pattern, count=500
-                    ):
-                        if scanned >= config.max_markers:
-                            truncated = True
+            async with asyncio.timeout_at(deadline):
+                lock_acquired = await redis.set(
+                    LOCK_KEY, token, nx=True, ex=config.lock_ttl_seconds
+                )
+                if not lock_acquired:
+                    early_result = _result(
+                        status="skipped", reason="lock_not_acquired"
+                    )
+                else:
+                    for pattern in MARKER_PATTERNS:
+                        async for raw_marker_key in redis.scan_iter(
+                            match=pattern, count=500
+                        ):
+                            if scanned >= config.max_markers:
+                                truncated = True
+                                break
+                            scanned += 1
+                            marker_key = _as_bytes(raw_marker_key)
+                            callback_context_key = _callback_context_key(marker_key)
+                            try:
+                                marker_value = await redis.get(marker_key)
+                                job_id = _marker_job_id(marker_value)
+                                if job_id is None:
+                                    errors += 1
+                                    preserved += 1
+                                elif await redis.zscore(QUEUE_KEY, job_id) is not None:
+                                    preserved += 1
+                                elif await redis.exists(IN_PROGRESS_PREFIX + job_id):
+                                    preserved += 1
+                                elif (
+                                    callback_context_key
+                                    and await _is_waiting_callback(
+                                        redis, callback_context_key
+                                    )
+                                ):
+                                    preserved += 1
+                                else:
+                                    candidates.append(
+                                        (marker_key, job_id, callback_context_key)
+                                    )
+                            except ResponseError:
+                                errors += 1
+                                preserved += 1
+                            if scanned >= config.max_markers:
+                                truncated = True
+                                break
+                        if truncated:
                             break
-                        scanned += 1
-                        marker_key = _as_bytes(raw_marker_key)
-                        marker_value = await redis.get(marker_key)
-                        job_id = _marker_job_id(marker_value)
-                        if job_id is None:
+
+                    candidates_count = len(candidates)
+                    if candidates:
+                        await sleep(config.confirm_delay_seconds)
+                    for marker_key, job_id, callback_context_key in candidates:
+                        try:
+                            did_delete = await redis.eval(
+                                _DELETE_CONFIRMED_ORPHAN_LUA,
+                                4,
+                                marker_key,
+                                QUEUE_KEY,
+                                IN_PROGRESS_PREFIX + job_id,
+                                callback_context_key,
+                                job_id,
+                            )
+                        except ResponseError:
                             errors += 1
                             preserved += 1
-                        elif await redis.zscore(QUEUE_KEY, job_id) is not None:
-                            preserved += 1
-                        elif await redis.exists(IN_PROGRESS_PREFIX + job_id):
-                            preserved += 1
+                            continue
+                        if did_delete:
+                            deleted += 1
                         else:
-                            candidates.append((marker_key, job_id))
-                        if scanned >= config.max_markers:
-                            truncated = True
-                            break
-                    if truncated:
-                        break
-
-                candidates_count = len(candidates)
-                if candidates:
-                    await sleep(config.confirm_delay_seconds)
-                for marker_key, job_id in candidates:
-                    try:
-                        did_delete = await redis.eval(
-                            _DELETE_CONFIRMED_ORPHAN_LUA,
-                            3,
-                            marker_key,
-                            QUEUE_KEY,
-                            IN_PROGRESS_PREFIX + job_id,
-                            job_id,
-                        )
-                    except Exception:
-                        errors += 1
-                        preserved += 1
-                        continue
-                    if did_delete:
-                        deleted += 1
-                    else:
-                        preserved += 1
+                            preserved += 1
         except TimeoutError:
-            return _result(
-                status="warning",
-                reason="timeout",
-                scanned=scanned,
-                candidates=candidates_count,
-                deleted=deleted,
-                preserved=preserved,
-                errors=errors,
-                truncated=truncated,
-            )
+            timed_out = True
     finally:
         try:
-            await redis.eval(_RELEASE_LOCK_LUA, 1, LOCK_KEY, token)
+            remaining = deadline - loop.time()
+            if lock_acquired and remaining > 0:
+                async with asyncio.timeout(remaining):
+                    await redis.eval(_RELEASE_LOCK_LUA, 1, LOCK_KEY, token)
+            elif lock_acquired:
+                timed_out = True
+        except TimeoutError:
+            timed_out = True
         except Exception:
             pass
 
+    if timed_out or loop.time() >= deadline:
+        return _result(
+            status="warning",
+            reason="timeout",
+            scanned=scanned,
+            candidates=candidates_count,
+            deleted=deleted,
+            preserved=preserved,
+            errors=errors,
+            truncated=truncated,
+        )
+    if early_result is not None:
+        return early_result
     if truncated:
         return _result(
             status="warning",
@@ -298,6 +353,27 @@ def _marker_job_id(marker_value: object) -> bytes | None:
     if isinstance(marker_value, str):
         return marker_value.encode() if marker_value else None
     return None
+
+
+async def _is_waiting_callback(redis, callback_context_key: bytes) -> bool:
+    callback_value = await redis.get(callback_context_key)
+    if not callback_value:
+        return False
+    if isinstance(callback_value, bytes):
+        callback_value = callback_value.decode()
+    callback_context = json.loads(callback_value)
+    status = callback_context.get("status") or {}
+    return (
+        status.get("execution") == "waiting_callback"
+        and callback_context.get("callback_received_at") is None
+    )
+
+
+def _callback_context_key(marker_key: bytes) -> bytes:
+    if not marker_key.startswith(RUNNING_MARKER_PREFIX):
+        return b""
+    task_id = marker_key.removeprefix(RUNNING_MARKER_PREFIX)
+    return HOST_REMOTE_CALLBACK_CONTEXT_PREFIX + task_id if task_id else b""
 
 
 def _as_bytes(value: bytes | str) -> bytes:

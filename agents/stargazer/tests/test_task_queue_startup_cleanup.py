@@ -1,7 +1,9 @@
 import asyncio
 import fnmatch
+import json
 
 import pytest
+from redis.exceptions import ResponseError
 
 from core.task_queue_startup_cleanup import (
     LOCK_KEY,
@@ -13,12 +15,23 @@ from core.task_queue_startup_cleanup import (
 
 class FakeRedis:
     def __init__(
-        self, *, strings=None, queue=None, lock_acquired=True, eval_errors=None
+        self,
+        *,
+        strings=None,
+        queue=None,
+        lock_acquired=True,
+        eval_errors=None,
+        get_errors=None,
+        set_wait=None,
+        release_wait=None,
     ):
         self.strings = dict(strings or {})
         self.queue = dict(queue or {})
         self.lock_acquired = lock_acquired
         self.eval_errors = set(eval_errors or ())
+        self.get_errors = dict(get_errors or {})
+        self.set_wait = set_wait
+        self.release_wait = release_wait
         self.scan_calls = []
         self.write_commands = []
         self.business_writes = []
@@ -27,13 +40,19 @@ class FakeRedis:
         key = _as_bytes(key)
         value = _as_bytes(value)
         self.write_commands.append(("SET", key, value, nx, ex))
+        if self.set_wait is not None:
+            await self.set_wait.wait()
         if nx and (not self.lock_acquired or key in self.strings):
             return False
         self.strings[key] = value
         return True
 
     async def get(self, key):
-        return self.strings.get(_as_bytes(key))
+        key = _as_bytes(key)
+        error = self.get_errors.get(key)
+        if error is not None:
+            raise error
+        return self.strings.get(key)
 
     async def exists(self, key):
         key = _as_bytes(key)
@@ -52,12 +71,14 @@ class FakeRedis:
                 yield key
 
     async def eval(self, script, numkeys, *args):
-        assert numkeys in {1, 3}
+        assert numkeys in {1, 3, 4}
         key = _as_bytes(args[0])
         if key in self.eval_errors:
-            raise RuntimeError("marker eval failed")
+            raise ResponseError("WRONGTYPE marker eval failed")
 
         if numkeys == 1:
+            if self.release_wait is not None:
+                await self.release_wait.wait()
             token = _as_bytes(args[1])
             if self.strings.get(key) == token:
                 self.strings.pop(key)
@@ -65,11 +86,14 @@ class FakeRedis:
                 return 1
             return 0
 
-        queue_key, in_progress_key, expected_job_id = (
-            _as_bytes(args[1]),
-            _as_bytes(args[2]),
-            _as_bytes(args[3]),
-        )
+        queue_key, in_progress_key = _as_bytes(args[1]), _as_bytes(args[2])
+        if numkeys == 4:
+            callback_context_key = _as_bytes(args[3])
+            expected_job_id = _as_bytes(args[4])
+            if _is_waiting_callback_context(self.strings.get(callback_context_key)):
+                return 0
+        else:
+            expected_job_id = _as_bytes(args[3])
         assert queue_key == b"arq:queue"
         if (
             self.strings.get(key) != expected_job_id
@@ -81,6 +105,25 @@ class FakeRedis:
         self.write_commands.append(("DEL", key))
         self.business_writes.append(("DEL", key))
         return 1
+
+
+def _is_waiting_callback_context(value):
+    if not value:
+        return False
+    context = json.loads(_as_bytes(value))
+    return (
+        (context.get("status") or {}).get("execution") == "waiting_callback"
+        and context.get("callback_received_at") is None
+    )
+
+
+def _callback_context(task_id):
+    return json.dumps(
+        {
+            "status": {"execution": "waiting_callback"},
+            "callback_received_at": None,
+        }
+    ).encode()
 
 
 def _as_bytes(value):
@@ -187,8 +230,10 @@ async def test_second_phase_preserves_replaced_marker_value(fake_redis):
 
 
 @pytest.mark.asyncio
-async def test_non_string_marker_is_preserved_and_reported_as_error(fake_redis):
-    fake_redis.strings[b"task:running:invalid"] = 123
+async def test_wrongtype_marker_is_preserved_and_reported_as_error(fake_redis):
+    marker_key = b"task:running:invalid"
+    fake_redis.strings[marker_key] = b"not-readable"
+    fake_redis.get_errors[marker_key] = ResponseError("WRONGTYPE Operation")
 
     result = await cleanup_startup_orphan_markers(
         fake_redis, StartupCleanupConfig(confirm_delay_seconds=0)
@@ -198,7 +243,7 @@ async def test_non_string_marker_is_preserved_and_reported_as_error(fake_redis):
     assert result.reason == "marker_errors"
     assert result.errors == 1
     assert result.preserved == 1
-    assert b"task:running:invalid" in fake_redis.strings
+    assert marker_key in fake_redis.strings
 
 
 @pytest.mark.asyncio
@@ -314,3 +359,149 @@ async def test_cleanup_releases_lock_only_when_its_token_still_matches(fake_redi
     )
 
     assert fake_redis.strings[LOCK_KEY] == b"another-owner"
+
+
+@pytest.mark.asyncio
+async def test_cleanup_preserves_running_marker_waiting_for_host_remote_callback(
+    fake_redis,
+):
+    fake_redis.strings.update(
+        {
+            b"task:running:host-task": b"job-1",
+            b"host_remote:callback_context:host-task": _callback_context(
+                "host-task"
+            ),
+        }
+    )
+
+    result = await cleanup_startup_orphan_markers(
+        fake_redis, StartupCleanupConfig(confirm_delay_seconds=0)
+    )
+
+    assert result.deleted == 0
+    assert result.preserved == 1
+    assert b"task:running:host-task" in fake_redis.strings
+
+
+@pytest.mark.asyncio
+async def test_second_phase_preserves_running_marker_when_callback_appears(
+    fake_redis,
+):
+    fake_redis.strings[b"task:running:host-task"] = b"job-1"
+
+    async def create_callback_during_delay(_seconds):
+        fake_redis.strings[
+            b"host_remote:callback_context:host-task"
+        ] = _callback_context("host-task")
+
+    result = await cleanup_startup_orphan_markers(
+        fake_redis,
+        StartupCleanupConfig(confirm_delay_seconds=1),
+        sleep=create_callback_during_delay,
+    )
+
+    assert result.deleted == 0
+    assert result.preserved == 1
+    assert b"task:running:host-task" in fake_redis.strings
+
+
+@pytest.mark.asyncio
+async def test_second_phase_preserves_marker_when_job_becomes_in_progress(
+    fake_redis,
+):
+    fake_redis.strings[b"task:running:task-1"] = b"job-1"
+
+    async def begin_processing_during_delay(_seconds):
+        fake_redis.strings[b"arq:in-progress:job-1"] = b"1"
+
+    result = await cleanup_startup_orphan_markers(
+        fake_redis,
+        StartupCleanupConfig(confirm_delay_seconds=1),
+        sleep=begin_processing_during_delay,
+    )
+
+    assert result.deleted == 0
+    assert result.preserved == 1
+    assert b"task:running:task-1" in fake_redis.strings
+
+
+@pytest.mark.asyncio
+async def test_cleanup_times_out_while_lock_acquisition_is_actually_blocked():
+    redis = FakeRedis(set_wait=asyncio.Event())
+
+    result = await asyncio.wait_for(
+        cleanup_startup_orphan_markers(
+            redis,
+            StartupCleanupConfig(
+                confirm_delay_seconds=0, timeout_seconds=0.01, lock_ttl_seconds=1
+            ),
+        ),
+        timeout=0.2,
+    )
+
+    assert result.status == "warning"
+    assert result.reason == "timeout"
+
+
+@pytest.mark.asyncio
+async def test_cleanup_times_out_when_lock_release_is_actually_blocked():
+    redis = FakeRedis(release_wait=asyncio.Event())
+
+    result = await asyncio.wait_for(
+        cleanup_startup_orphan_markers(
+            redis,
+            StartupCleanupConfig(
+                confirm_delay_seconds=0, timeout_seconds=0.01, lock_ttl_seconds=1
+            ),
+        ),
+        timeout=0.2,
+    )
+
+    assert result.status == "warning"
+    assert result.reason == "timeout"
+
+
+@pytest.mark.asyncio
+async def test_lock_release_failure_does_not_block_cleanup_result():
+    redis = FakeRedis(eval_errors={LOCK_KEY})
+
+    result = await cleanup_startup_orphan_markers(
+        redis, StartupCleanupConfig(confirm_delay_seconds=0)
+    )
+
+    assert result.status == "success"
+    assert result.reason is None
+
+
+@pytest.mark.asyncio
+async def test_wrongtype_marker_does_not_stop_other_safe_marker_cleanup(fake_redis):
+    broken_key = b"task:dedupe:broken"
+    fake_redis.strings.update(
+        {
+            broken_key: b"wrongtype",
+            b"task:running:orphan": b"job-2",
+        }
+    )
+    fake_redis.get_errors[broken_key] = ResponseError("WRONGTYPE Operation")
+
+    result = await cleanup_startup_orphan_markers(
+        fake_redis, StartupCleanupConfig(confirm_delay_seconds=0)
+    )
+
+    assert result.status == "warning"
+    assert result.reason == "marker_errors"
+    assert result.errors == 1
+    assert broken_key in fake_redis.strings
+    assert b"task:running:orphan" not in fake_redis.strings
+
+
+@pytest.mark.asyncio
+async def test_redis_connection_error_is_not_misclassified_as_marker_error(fake_redis):
+    marker_key = b"task:running:unavailable"
+    fake_redis.strings[marker_key] = b"job-1"
+    fake_redis.get_errors[marker_key] = ConnectionError("redis unavailable")
+
+    with pytest.raises(ConnectionError, match="redis unavailable"):
+        await cleanup_startup_orphan_markers(
+            fake_redis, StartupCleanupConfig(confirm_delay_seconds=0)
+        )
