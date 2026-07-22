@@ -220,10 +220,13 @@ def deliver_add_members(group_id) -> None:
 
 
 def deliver_summary(group_id) -> None:
-    group = _get_group(group_id)
-    if group is None or group.status == IncidentIMGroup.Status.UNLINKED:
-        return
-    if not group.external_chat_id:
+    with transaction.atomic():
+        group = _lock_group(group_id)
+        if group is None or _is_group_delivery_paused(group):
+            return
+        missing_chat_id = not group.external_chat_id
+
+    if missing_chat_id:
         _finish_create_failure(
             group_id,
             _SyntheticFailure("IM_CHAT_ID_MISSING", "协作群尚未取得外部 chat_id"),
@@ -240,38 +243,41 @@ def deliver_summary(group_id) -> None:
     if _raise_if_retryable(result):
         return
     error_code, error_message = _result_error(result)
-    if not result.success and error_code == "provider.group_not_found":
-        _mark_degraded(group_id, error_code, error_message)
-        return
 
     with transaction.atomic():
         locked = _lock_group(group_id)
         if locked is None or locked.status == IncidentIMGroup.Status.UNLINKED:
             return
-        desired_usernames = get_desired_usernames(locked.incident)
-        has_member_gaps = (
-            locked.members.filter(username__in=desired_usernames)
-            .exclude(sync_status=IncidentIMMember.SyncStatus.JOINED)
-            .exists()
-        )
+        delivery_paused = _is_group_delivery_paused(locked)
+        has_member_gaps = False
+        if not delivery_paused:
+            desired_usernames = get_desired_usernames(locked.incident)
+            has_member_gaps = (
+                locked.members.filter(username__in=desired_usernames)
+                .exclude(sync_status=IncidentIMMember.SyncStatus.JOINED)
+                .exists()
+            )
         locked.current_stage = IncidentIMGroup.Stage.COMPLETED
-        locked.status = (
-            IncidentIMGroup.Status.ACTIVE
-            if result.success and not has_member_gaps
-            else IncidentIMGroup.Status.ACTIVE_PARTIAL
-        )
         locked.last_error_code = "" if result.success else error_code
         locked.last_error_message = "" if result.success else error_message
         locked.last_sync_at = timezone.now()
-        locked.save(
-            update_fields=[
-                "current_stage",
-                "status",
-                "last_error_code",
-                "last_error_message",
-                "last_sync_at",
-            ]
-        )
+        update_fields = [
+            "current_stage",
+            "last_error_code",
+            "last_error_message",
+            "last_sync_at",
+        ]
+        if not delivery_paused:
+            if not result.success and error_code == "provider.group_not_found":
+                locked.status = IncidentIMGroup.Status.DEGRADED
+            else:
+                locked.status = (
+                    IncidentIMGroup.Status.ACTIVE
+                    if result.success and not has_member_gaps
+                    else IncidentIMGroup.Status.ACTIVE_PARTIAL
+                )
+            update_fields.append("status")
+        locked.save(update_fields=update_fields)
 
 
 def handle_delivery_exhausted(kind: str, payload: dict, error: str) -> None:
@@ -283,21 +289,17 @@ def handle_delivery_exhausted(kind: str, payload: dict, error: str) -> None:
         if group is None or group.status == IncidentIMGroup.Status.UNLINKED:
             return
         group.current_stage = IncidentIMGroup.Stage.COMPLETED
-        group.status = (
-            IncidentIMGroup.Status.ACTIVE_PARTIAL
-            if group.external_chat_id
-            else IncidentIMGroup.Status.CREATE_FAILED
-        )
         group.last_error_code = "IM_DELIVERY_EXHAUSTED"
         group.last_error_message = str(error or "投递重试已耗尽")[:500]
-        group.save(
-            update_fields=[
-                "current_stage",
-                "status",
-                "last_error_code",
-                "last_error_message",
-            ]
-        )
+        update_fields = ["current_stage", "last_error_code", "last_error_message"]
+        if not _is_group_delivery_paused(group):
+            group.status = (
+                IncidentIMGroup.Status.ACTIVE_PARTIAL
+                if group.external_chat_id
+                else IncidentIMGroup.Status.CREATE_FAILED
+            )
+            update_fields.append("status")
+        group.save(update_fields=update_fields)
 
 
 def _enqueue_add_members(group_id) -> None:

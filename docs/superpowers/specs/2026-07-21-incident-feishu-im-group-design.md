@@ -332,6 +332,8 @@ Outbox 投递器需要为 Incident IM 事件提供“重试耗尽”收口：尚
 - 开关关闭时仍更新页面上的待映射/待同步状态，但不自动调用飞书；负责人点击“重试拉人”时先完整校验群和 Incident 可投递状态，再只提升当前期望成员中的 mapped failed。
 - Incident 关闭时，非手工暂停的 `pending_create/creating/active/active_partial` 统一写入 `paused + incident_closed`；`create_failed/degraded` 等权威终态保持不变。关闭和重开操作均幂等。
 - 建群 Outbox 外呼前和成功响应落库前都在群锁内复核 Incident 与暂停状态，外部调用不持有数据库锁。外呼前已关闭时不调用 Provider，Outbox 可按幂等空操作完成；外呼在途时关闭则允许本次响应落库 `chat_id` 与首批成员事实，但保持 `paused + incident_closed`，且不继续入队增员或摘要。
+- 已排队的摘要同样在外呼前与响应落库前使用统一暂停判定复核 `unlinked/manual/incident_closed/Incident active`。调用前已暂停时不外呼；调用在途发生暂停时允许消息完成并记录 `last_sync_at` 与脱敏错误事实，但不得覆盖 `status/pause_reason/resume_after_reopen`。
+- Outbox 重试耗尽回调必须 fail-safe：解绑历史不再改写；手工暂停或 Incident 关闭暂停仅更新必要阶段和脱敏耗尽错误，保持权威暂停字段。只有可投递群才能收敛为 `create_failed/active_partial`，Outbox 自身始终以 `failed` 为权威投递终态。
 - Incident 重开时，无 `external_chat_id` 的关闭暂停群恢复为 `pending_create` 并可靠入队 create；已有 `external_chat_id` 的群按当前期望成员缺口恢复为 `active/active_partial`，并继续完成首次成员对账，即使持续同步开关关闭也不丢失建群流程。
 - 手工暂停不会因 Incident 重开而自动恢复。
 

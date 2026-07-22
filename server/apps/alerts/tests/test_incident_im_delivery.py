@@ -626,6 +626,123 @@ def test_retryable_summary_result_raises_for_outbox_retry(group):
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize(
+    "pause_reason",
+    [
+        IncidentIMGroup.PauseReason.MANUAL,
+        IncidentIMGroup.PauseReason.INCIDENT_CLOSED,
+    ],
+)
+def test_queued_summary_paused_before_delivery_finishes_without_provider(group, pause_reason):
+    group.external_chat_id = "oc_1"
+    group.status = IncidentIMGroup.Status.PAUSED
+    group.pause_reason = pause_reason
+    group.resume_after_reopen = True
+    group.save(
+        update_fields=[
+            "external_chat_id",
+            "status",
+            "pause_reason",
+            "resume_after_reopen",
+        ]
+    )
+    if pause_reason == IncidentIMGroup.PauseReason.INCIDENT_CLOSED:
+        group.incident.status = IncidentStatus.CLOSED
+        group.incident.save(update_fields=["status"])
+    outbox = AlertOutbox.objects.create(
+        kind="incident_im_group.send_summary",
+        payload={"group_id": str(group.id)},
+        idempotency_key=f"summary-paused-{pause_reason}-{uuid.uuid4().hex}",
+    )
+
+    with mock.patch(
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute"
+    ) as execute:
+        assert deliver_outbox_record(outbox.id) is True
+
+    execute.assert_not_called()
+    group.refresh_from_db()
+    outbox.refresh_from_db()
+    assert group.status == IncidentIMGroup.Status.PAUSED
+    assert group.pause_reason == pause_reason
+    assert group.resume_after_reopen is True
+    assert outbox.status == AlertOutbox.Status.DELIVERED
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize(
+    "pause_reason",
+    [
+        IncidentIMGroup.PauseReason.MANUAL,
+        IncidentIMGroup.PauseReason.INCIDENT_CLOSED,
+    ],
+)
+def test_summary_ack_after_pause_preserves_authoritative_pause(
+    group, pause_reason
+):
+    if connections["default"].vendor != "sqlite":
+        pytest.skip("当前 Barrier 合同使用 SQLite 独立连接验证")
+    group.external_chat_id = "oc_1"
+    group.current_stage = IncidentIMGroup.Stage.SENDING_SUMMARY
+    group.save(update_fields=["external_chat_id", "current_stage"])
+    outbox = AlertOutbox.objects.create(
+        kind="incident_im_group.send_summary",
+        payload={"group_id": str(group.id)},
+        idempotency_key=f"summary-inflight-pause-{pause_reason}-{uuid.uuid4().hex}",
+    )
+    barrier = Barrier(2)
+
+    def provider_ack_after_pause(*args, **kwargs):
+        barrier.wait(timeout=10)
+        barrier.wait(timeout=10)
+        return CapabilityExecutionResult.success_result("sent")
+
+    def deliver_from_independent_connection():
+        close_old_connections()
+        try:
+            return deliver_outbox_record(outbox.id)
+        finally:
+            connections.close_all()
+
+    with mock.patch(
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
+        side_effect=provider_ack_after_pause,
+    ) as execute:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(deliver_from_independent_connection)
+            try:
+                barrier.wait(timeout=10)
+                if pause_reason == IncidentIMGroup.PauseReason.INCIDENT_CLOSED:
+                    group.incident.status = IncidentStatus.CLOSED
+                    group.incident.save(update_fields=["status"])
+                    pause_group_for_closed_incident(group.incident_id)
+                    expected_resume = True
+                else:
+                    IncidentIMGroup.objects.filter(pk=group.id).update(
+                        status=IncidentIMGroup.Status.PAUSED,
+                        pause_reason=IncidentIMGroup.PauseReason.MANUAL,
+                        resume_after_reopen=False,
+                    )
+                    expected_resume = False
+                barrier.wait(timeout=10)
+                assert future.result(timeout=20) is True
+            finally:
+                barrier.abort()
+                if not future.done():
+                    future.cancel()
+
+    assert execute.call_count == 1
+    group.refresh_from_db()
+    outbox.refresh_from_db()
+    assert group.status == IncidentIMGroup.Status.PAUSED
+    assert group.pause_reason == pause_reason
+    assert group.resume_after_reopen is expected_resume
+    assert group.current_stage == IncidentIMGroup.Stage.COMPLETED
+    assert group.last_sync_at is not None
+    assert outbox.status == AlertOutbox.Status.DELIVERED
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize("gap_status", ["waiting", "pending", "adding", "failed"])
 def test_summary_keeps_group_partial_for_every_non_joined_member_state(group, gap_status):
     from apps.alerts.service.incident_im.delivery import deliver_summary
@@ -696,12 +813,22 @@ def test_summary_reuses_stable_provider_uuid_after_external_ack_before_local_con
     group.external_chat_id = "oc_1"
     group.save(update_fields=["external_chat_id"])
     result = CapabilityExecutionResult.success_result("sent")
+    real_lock_group = delivery._lock_group
+    lock_count = 0
+
+    def crash_on_confirmation(group_id):
+        nonlocal lock_count
+        lock_count += 1
+        if lock_count == 2:
+            raise RuntimeError("crash before local confirmation")
+        return real_lock_group(group_id)
+
     with mock.patch(
         "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
         return_value=result,
     ) as execute, mock.patch(
         "apps.alerts.service.incident_im.delivery._lock_group",
-        side_effect=RuntimeError("crash before local confirmation"),
+        side_effect=crash_on_confirmation,
     ):
         with pytest.raises(RuntimeError, match="crash before local confirmation"):
             delivery.deliver_summary(group.id)
@@ -735,3 +862,107 @@ def test_delivery_exhausted_moves_group_out_of_creating_state(group):
     )
     group.refresh_from_db()
     assert group.status == "active_partial"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("kind", "pause_reason", "external_chat_id"),
+    [
+        ("incident_im_group.create", IncidentIMGroup.PauseReason.MANUAL, ""),
+        ("incident_im_group.create", IncidentIMGroup.PauseReason.INCIDENT_CLOSED, ""),
+        ("incident_im_group.add_members", IncidentIMGroup.PauseReason.MANUAL, "oc_1"),
+        (
+            "incident_im_group.add_members",
+            IncidentIMGroup.PauseReason.INCIDENT_CLOSED,
+            "oc_1",
+        ),
+        ("incident_im_group.send_summary", IncidentIMGroup.PauseReason.MANUAL, "oc_1"),
+        (
+            "incident_im_group.send_summary",
+            IncidentIMGroup.PauseReason.INCIDENT_CLOSED,
+            "oc_1",
+        ),
+    ],
+)
+def test_delivery_exhausted_preserves_pause_and_outbox_failed_state(
+    group, kind, pause_reason, external_chat_id
+):
+    from apps.alerts.service.incident_im.delivery import handle_delivery_exhausted
+
+    group.external_chat_id = external_chat_id
+    group.status = IncidentIMGroup.Status.PAUSED
+    group.pause_reason = pause_reason
+    group.resume_after_reopen = True
+    group.save(
+        update_fields=[
+            "external_chat_id",
+            "status",
+            "pause_reason",
+            "resume_after_reopen",
+        ]
+    )
+    if pause_reason == IncidentIMGroup.PauseReason.INCIDENT_CLOSED:
+        group.incident.status = IncidentStatus.CLOSED
+        group.incident.save(update_fields=["status"])
+    outbox = AlertOutbox.objects.create(
+        kind=kind,
+        payload={"group_id": str(group.id)},
+        idempotency_key=f"exhausted-paused-{uuid.uuid4().hex}",
+        max_attempts=1,
+    )
+
+    with mock.patch(
+        "apps.alerts.service.outbox._deliver_payload",
+        side_effect=RuntimeError("provider timeout"),
+    ):
+        with pytest.raises(RuntimeError, match="provider timeout"):
+            deliver_outbox_record(outbox.id)
+
+    handle_delivery_exhausted(kind, outbox.payload, "provider timeout")
+    group.refresh_from_db()
+    outbox.refresh_from_db()
+    assert outbox.status == AlertOutbox.Status.FAILED
+    assert group.status == IncidentIMGroup.Status.PAUSED
+    assert group.pause_reason == pause_reason
+    assert group.resume_after_reopen is True
+    assert group.current_stage == IncidentIMGroup.Stage.COMPLETED
+    assert group.last_error_code == "IM_DELIVERY_EXHAUSTED"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("kind", "external_chat_id"),
+    [
+        ("incident_im_group.create", ""),
+        ("incident_im_group.add_members", "oc_1"),
+        ("incident_im_group.send_summary", "oc_1"),
+    ],
+)
+def test_delivery_exhausted_is_noop_for_unlinked_history(group, kind, external_chat_id):
+    from apps.alerts.service.incident_im.delivery import handle_delivery_exhausted
+
+    group.external_chat_id = external_chat_id
+    group.status = IncidentIMGroup.Status.UNLINKED
+    group.active_slot = None
+    group.current_stage = IncidentIMGroup.Stage.COMPLETED
+    group.last_error_code = "IM_UNLINKED"
+    group.last_error_message = "已解除绑定"
+    group.save(
+        update_fields=[
+            "external_chat_id",
+            "status",
+            "active_slot",
+            "current_stage",
+            "last_error_code",
+            "last_error_message",
+        ]
+    )
+
+    handle_delivery_exhausted(kind, {"group_id": str(group.id)}, "provider timeout")
+
+    group.refresh_from_db()
+    assert group.status == IncidentIMGroup.Status.UNLINKED
+    assert group.active_slot is None
+    assert group.current_stage == IncidentIMGroup.Stage.COMPLETED
+    assert group.last_error_code == "IM_UNLINKED"
+    assert group.last_error_message == "已解除绑定"
