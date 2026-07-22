@@ -12,12 +12,11 @@ from apps.cmdb.services import oid_catalog as oid_catalog_service
 from apps.cmdb.services.oid_catalog import (
     SYSTEMOID_METADATA_PATH,
     SYSTEMOID_PATH,
-    OidCatalogError,
     OidCatalogEntry,
+    OidCatalogError,
     load_oid_catalog,
     sync_oid_catalog,
 )
-
 
 DOMESTIC_REQUIRED_FAMILIES = {
     "Huawei": {"switch", "router", "firewall"},
@@ -63,28 +62,12 @@ INTERNATIONAL_VERIFIED_OIDS = {
     "1.3.6.1.4.1.9.1.1935": ("Cisco", "ISR 4431", "router"),
     "1.3.6.1.4.1.9.1.3075": ("Cisco", "ASR 9903", "router"),
     "1.3.6.1.4.1.9.1.3053": ("Cisco", "Firepower 3110", "firewall"),
-    "1.3.6.1.4.1.30065.1.3011.7050.2966.4.32.3282": (
-        "Arista",
-        "DCS-7050DX4-32S",
-        "switch",
-    ),
-    "1.3.6.1.4.1.30065.1.2546.720.2974.48.3282": (
-        "Arista",
-        "CCS-720DP-48S",
-        "switch",
-    ),
+    "1.3.6.1.4.1.30065.1.3011.7050.2966.4.32.3282": ("Arista", "DCS-7050DX4-32S", "switch",),
+    "1.3.6.1.4.1.30065.1.2546.720.2974.48.3282": ("Arista", "CCS-720DP-48S", "switch",),
     "1.3.6.1.4.1.30065.1.3011.7304": ("Arista", "DCS-7304", "switch"),
     "1.3.6.1.4.1.12356.101.1.1000": ("Fortinet", "FortiGate 100F", "firewall"),
-    "1.3.6.1.4.1.25461.2.3.54": (
-        "Palo Alto Networks",
-        "PA-440",
-        "firewall",
-    ),
-    "1.3.6.1.4.1.25461.2.3.29": (
-        "Palo Alto Networks",
-        "VM-Series",
-        "firewall",
-    ),
+    "1.3.6.1.4.1.25461.2.3.54": ("Palo Alto Networks", "PA-440", "firewall",),
+    "1.3.6.1.4.1.25461.2.3.29": ("Palo Alto Networks", "VM-Series", "firewall",),
     "1.3.6.1.4.1.12276.1.3.1.1": ("F5", "BIG-IP rSeries R5x00", "loadbalance"),
 }
 
@@ -135,27 +118,14 @@ def _entry(oid="1.3.6.1.4.1.2011.2.23.968"):
     }
 
 
-def _catalog_entry(
-    oid, *, model="S5735", brand="Huawei", device_type="switch"
-):
-    return OidCatalogEntry(
-        oid=oid,
-        model=model,
-        brand=brand,
-        device_type=device_type,
-        source_id="test-source",
-        verification="verified",
-    )
+def _catalog_entry(oid, *, model="S5735", brand="Huawei", device_type="switch"):
+    return OidCatalogEntry(oid=oid, model=model, brand=brand, device_type=device_type, source_id="test-source", verification="verified",)
 
 
 @pytest.mark.django_db
 def test_sync_adds_missing_entry_when_builtin_rows_already_exist():
     OidMapping.objects.create(
-        oid="1.3.6.1.4.1.9.1.1208",
-        model="old",
-        brand="Cisco",
-        device_type="switch",
-        built_in=True,
+        oid="1.3.6.1.4.1.9.1.1208", model="old", brand="Cisco", device_type="switch", built_in=True,
     )
     new_oid = "1.3.6.1.4.1.2011.2.23.968"
 
@@ -167,44 +137,19 @@ def test_sync_adds_missing_entry_when_builtin_rows_already_exist():
 
 @pytest.mark.django_db
 def test_sync_updates_builtin_in_place_but_preserves_custom_override():
-    builtin = OidMapping.objects.create(
-        oid="1.3.6.1.4.1.9.1.1",
-        model="old",
-        brand="old",
-        device_type="router",
-        built_in=True,
-    )
-    custom = OidMapping.objects.create(
-        oid="1.3.6.1.4.1.9.1.2",
-        model="custom",
-        brand="custom",
-        device_type="router",
-        built_in=False,
-    )
+    builtin = OidMapping.objects.create(oid="1.3.6.1.4.1.9.1.1", model="old", brand="old", device_type="router", built_in=True,)
+    custom = OidMapping.objects.create(oid="1.3.6.1.4.1.9.1.2", model="custom", brand="custom", device_type="router", built_in=False,)
     entries = {
-        builtin.oid: _catalog_entry(
-            builtin.oid, model="new", brand="Cisco", device_type="switch"
-        ),
-        custom.oid: _catalog_entry(
-            custom.oid, model="catalog", brand="Cisco", device_type="switch"
-        ),
+        builtin.oid: _catalog_entry(builtin.oid, model="new", brand="Cisco", device_type="switch"),
+        custom.oid: _catalog_entry(custom.oid, model="catalog", brand="Cisco", device_type="switch"),
     }
 
     result = sync_oid_catalog(entries)
 
     builtin.refresh_from_db()
     custom.refresh_from_db()
-    assert (builtin.model, builtin.brand, builtin.device_type, builtin.id) == (
-        "new",
-        "Cisco",
-        "switch",
-        builtin.id,
-    )
-    assert (custom.model, custom.brand, custom.device_type) == (
-        "custom",
-        "custom",
-        "router",
-    )
+    assert (builtin.model, builtin.brand, builtin.device_type, builtin.id) == ("new", "Cisco", "switch", builtin.id,)
+    assert (custom.model, custom.brand, custom.device_type) == ("custom", "custom", "router",)
     assert result.custom_override_oids == (custom.oid,)
 
 
@@ -212,13 +157,7 @@ def test_sync_updates_builtin_in_place_but_preserves_custom_override():
 def test_sync_dry_run_reports_changes_without_writing_database():
     existing_oid = "1.3.6.1.4.1.9.1.1"
     missing_oid = "1.3.6.1.4.1.2011.2.23.968"
-    existing = OidMapping.objects.create(
-        oid=existing_oid,
-        model="old",
-        brand="old",
-        device_type="router",
-        built_in=True,
-    )
+    existing = OidMapping.objects.create(oid=existing_oid, model="old", brand="old", device_type="router", built_in=True,)
     entries = {
         existing_oid: _catalog_entry(existing_oid, model="new"),
         missing_oid: _catalog_entry(missing_oid),
@@ -228,12 +167,48 @@ def test_sync_dry_run_reports_changes_without_writing_database():
 
     existing.refresh_from_db()
     assert (result.created, result.updated) == (1, 1)
-    assert (existing.model, existing.brand, existing.device_type) == (
-        "old",
-        "old",
-        "router",
-    )
+    assert (existing.model, existing.brand, existing.device_type) == ("old", "old", "router",)
     assert not OidMapping.objects.filter(oid=missing_oid).exists()
+
+
+@pytest.mark.django_db
+def test_sync_result_exposes_complete_create_and_update_diffs_in_numeric_order():
+    update_oids = ("1.3.6.1.4.1.9.1.2", "1.3.6.1.4.1.9.1.11")
+    create_oids = ("1.3.6.1.4.1.9.1.3", "1.3.6.1.4.1.9.1.10")
+    for oid in reversed(update_oids):
+        OidMapping.objects.create(
+            oid=oid, model=f"old-{oid.rsplit('.', 1)[-1]}", brand="old-brand", device_type="router", built_in=True,
+        )
+
+    result = sync_oid_catalog(
+        {
+            oid: _catalog_entry(
+                oid,
+                model=f"new-{oid.rsplit('.', 1)[-1]}",
+                brand="Fortinet" if oid in update_oids else "Cisco",
+                device_type="firewall" if oid in update_oids else "switch",
+            )
+            for oid in reversed((*update_oids, *create_oids))
+        },
+        dry_run=True,
+    )
+
+    assert [entry.oid for entry in result.created_entries] == list(create_oids)
+    assert [entry.oid for entry in result.updated_entries] == list(update_oids)
+    assert result.created_entries[0] == (
+        oid_catalog_service.OidSyncCreate(oid="1.3.6.1.4.1.9.1.3", model="new-3", brand="Cisco", device_type="switch",)
+    )
+    assert result.updated_entries[0] == (
+        oid_catalog_service.OidSyncUpdate(
+            oid="1.3.6.1.4.1.9.1.2",
+            old_model="old-2",
+            new_model="new-2",
+            old_brand="old-brand",
+            new_brand="Fortinet",
+            old_device_type="router",
+            new_device_type="firewall",
+        )
+    )
 
 
 @pytest.mark.django_db
@@ -242,18 +217,10 @@ def test_sync_is_idempotent_and_counts_non_custom_entries_as_unchanged():
     custom_oid = "1.3.6.1.4.1.9.1.2"
     missing_oid = "1.3.6.1.4.1.2011.2.23.968"
     OidMapping.objects.create(
-        oid=unchanged_oid,
-        model="S5735",
-        brand="Huawei",
-        device_type="switch",
-        built_in=True,
+        oid=unchanged_oid, model="S5735", brand="Huawei", device_type="switch", built_in=True,
     )
     OidMapping.objects.create(
-        oid=custom_oid,
-        model="custom",
-        brand="custom",
-        device_type="router",
-        built_in=False,
+        oid=custom_oid, model="custom", brand="custom", device_type="router", built_in=False,
     )
     entries = {
         unchanged_oid: _catalog_entry(unchanged_oid),
@@ -272,13 +239,7 @@ def test_sync_is_idempotent_and_counts_non_custom_entries_as_unchanged():
 @pytest.mark.django_db
 def test_sync_does_not_refresh_unchanged_builtin_updated_at():
     oid = "1.3.6.1.4.1.9.1.1"
-    row = OidMapping.objects.create(
-        oid=oid,
-        model="S5735",
-        brand="Huawei",
-        device_type="switch",
-        built_in=True,
-    )
+    row = OidMapping.objects.create(oid=oid, model="S5735", brand="Huawei", device_type="switch", built_in=True,)
     original_updated_at = timezone.now().replace(year=2020)
     OidMapping.objects.filter(pk=row.pk).update(updated_at=original_updated_at)
 
@@ -294,11 +255,7 @@ def test_sync_reports_but_preserves_stale_builtin_rows():
     stale_oid = "1.3.6.1.4.1.9.1.1"
     current_oid = "1.3.6.1.4.1.9.1.2"
     OidMapping.objects.create(
-        oid=stale_oid,
-        model="legacy",
-        brand="Cisco",
-        device_type="switch",
-        built_in=True,
+        oid=stale_oid, model="legacy", brand="Cisco", device_type="switch", built_in=True,
     )
 
     result = sync_oid_catalog({current_oid: _catalog_entry(current_oid)})
@@ -311,28 +268,15 @@ def test_sync_reports_but_preserves_stale_builtin_rows():
 def test_sync_rolls_back_creates_when_bulk_update_fails(monkeypatch):
     existing_oid = "1.3.6.1.4.1.9.1.1"
     missing_oid = "1.3.6.1.4.1.2011.2.23.968"
-    existing = OidMapping.objects.create(
-        oid=existing_oid,
-        model="old",
-        brand="old",
-        device_type="router",
-        built_in=True,
-    )
+    existing = OidMapping.objects.create(oid=existing_oid, model="old", brand="old", device_type="router", built_in=True,)
 
     def fail_bulk_update(*args, **kwargs):
         raise RuntimeError("bulk update failed")
 
-    monkeypatch.setattr(
-        OidMapping._default_manager, "bulk_update", fail_bulk_update
-    )
+    monkeypatch.setattr(OidMapping._default_manager, "bulk_update", fail_bulk_update)
 
     with pytest.raises(RuntimeError, match="bulk update failed"):
-        sync_oid_catalog(
-            {
-                existing_oid: _catalog_entry(existing_oid, model="new"),
-                missing_oid: _catalog_entry(missing_oid),
-            }
-        )
+        sync_oid_catalog({existing_oid: _catalog_entry(existing_oid, model="new"), missing_oid: _catalog_entry(missing_oid)})
 
     existing.refresh_from_db()
     assert existing.model == "old"
@@ -340,9 +284,7 @@ def test_sync_rolls_back_creates_when_bulk_update_fails(monkeypatch):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_sync_retries_whole_transaction_and_preserves_concurrent_custom_winner(
-    monkeypatch,
-):
+def test_sync_retries_whole_transaction_and_preserves_concurrent_custom_winner(monkeypatch,):
     catalog_oid = "1.3.6.1.4.1.9.1.1"
     rolled_back_oid = "1.3.6.1.4.1.9.1.2"
     original_sync = oid_catalog_service._sync_oid_catalog
@@ -352,19 +294,11 @@ def test_sync_retries_whole_transaction_and_preserves_concurrent_custom_winner(
         attempts.append(write)
         if len(attempts) == 1:
             OidMapping.objects.create(
-                oid=rolled_back_oid,
-                model="must rollback",
-                brand="test",
-                device_type="router",
-                built_in=True,
+                oid=rolled_back_oid, model="must rollback", brand="test", device_type="router", built_in=True,
             )
             raise IntegrityError("simulated unique OID race")
         OidMapping.objects.create(
-            oid=catalog_oid,
-            model="custom",
-            brand="custom",
-            device_type="router",
-            built_in=False,
+            oid=catalog_oid, model="custom", brand="custom", device_type="router", built_in=False,
         )
         return original_sync(entries, write=write)
 
@@ -374,17 +308,8 @@ def test_sync_retries_whole_transaction_and_preserves_concurrent_custom_winner(
 
     winner = OidMapping.objects.get(oid=catalog_oid)
     assert attempts == [True, True]
-    assert (winner.model, winner.brand, winner.device_type, winner.built_in) == (
-        "custom",
-        "custom",
-        "router",
-        False,
-    )
-    assert (result.created, result.updated, result.custom_override_oids) == (
-        0,
-        0,
-        (catalog_oid,),
-    )
+    assert (winner.model, winner.brand, winner.device_type, winner.built_in) == ("custom", "custom", "router", False,)
+    assert (result.created, result.updated, result.custom_override_oids) == (0, 0, (catalog_oid,),)
     assert not OidMapping.objects.filter(oid=rolled_back_oid).exists()
 
 
@@ -411,40 +336,24 @@ def test_sync_result_oids_use_numeric_segment_sorting():
     stale_oids = ["1.3.6.1.4.1.2011.10", "1.3.6.1.4.1.2011.2"]
     for oid in custom_oids:
         OidMapping.objects.create(
-            oid=oid,
-            model="custom",
-            brand="custom",
-            device_type="router",
-            built_in=False,
+            oid=oid, model="custom", brand="custom", device_type="router", built_in=False,
         )
     for oid in stale_oids:
         OidMapping.objects.create(
-            oid=oid,
-            model="legacy",
-            brand="legacy",
-            device_type="router",
-            built_in=True,
+            oid=oid, model="legacy", brand="legacy", device_type="router", built_in=True,
         )
 
-    result = sync_oid_catalog(
-        {oid: _catalog_entry(oid) for oid in reversed(custom_oids)}
-    )
+    result = sync_oid_catalog({oid: _catalog_entry(oid) for oid in reversed(custom_oids)})
 
     assert result.custom_override_oids == tuple(reversed(custom_oids))
     assert result.stale_builtin_oids == tuple(reversed(stale_oids))
 
 
 @pytest.mark.django_db(transaction=True)
-def test_sync_write_locks_existing_rows_inside_atomic_but_dry_run_does_not(
-    monkeypatch,
-):
+def test_sync_write_locks_existing_rows_inside_atomic_but_dry_run_does_not(monkeypatch,):
     oid = "1.3.6.1.4.1.9.1.1"
     OidMapping.objects.create(
-        oid=oid,
-        model="S5735",
-        brand="Huawei",
-        device_type="switch",
-        built_in=True,
+        oid=oid, model="S5735", brand="Huawei", device_type="switch", built_in=True,
     )
     original_select_for_update = QuerySet.select_for_update
     lock_calls = []
@@ -467,44 +376,14 @@ def test_sync_write_locks_existing_rows_inside_atomic_but_dry_run_does_not(
     "entries",
     [
         {},
-        {
-            "1.3.6.1.4.1.9.1.1": replace(
-                _catalog_entry("1.3.6.1.4.1.9.1.1"),
-                oid="1.3.6.1.4.1.9.1.2",
-            )
-        },
+        {"1.3.6.1.4.1.9.1.1": replace(_catalog_entry("1.3.6.1.4.1.9.1.1"), oid="1.3.6.1.4.1.9.1.2",)},
         {"not-an-oid": _catalog_entry("not-an-oid")},
-        {
-            "1.3.6.1.4.1.9.1.1": replace(
-                _catalog_entry("1.3.6.1.4.1.9.1.1"),
-                device_type=["switch"],
-            )
-        },
-        {
-            ".".join(["1"] * 33): _catalog_entry(".".join(["1"] * 33))
-        },
-        {
-            "1.3.6.1.4.1.9.1.1": replace(
-                _catalog_entry("1.3.6.1.4.1.9.1.1"),
-                model="m" * 129,
-            )
-        },
-        {
-            "1.3.6.1.4.1.9.1.1": replace(
-                _catalog_entry("1.3.6.1.4.1.9.1.1"),
-                brand="b" * 65,
-            )
-        },
+        {"1.3.6.1.4.1.9.1.1": replace(_catalog_entry("1.3.6.1.4.1.9.1.1"), device_type=["switch"],)},
+        {".".join(["1"] * 33): _catalog_entry(".".join(["1"] * 33))},
+        {"1.3.6.1.4.1.9.1.1": replace(_catalog_entry("1.3.6.1.4.1.9.1.1"), model="m" * 129,)},
+        {"1.3.6.1.4.1.9.1.1": replace(_catalog_entry("1.3.6.1.4.1.9.1.1"), brand="b" * 65,)},
     ],
-    ids=[
-        "empty",
-        "key-mismatch",
-        "malformed-oid",
-        "non-string-device-type",
-        "oid-too-long",
-        "model-too-long",
-        "brand-too-long",
-    ],
+    ids=["empty", "key-mismatch", "malformed-oid", "non-string-device-type", "oid-too-long", "model-too-long", "brand-too-long",],
 )
 def test_sync_rejects_invalid_entries_before_reading_database(monkeypatch, entries):
     def fail_database_read(*args, **kwargs):
@@ -532,11 +411,7 @@ def test_load_oid_catalog_returns_normalized_entry(tmp_path):
 
 @pytest.mark.parametrize(
     ("key", "stored_oid"),
-    [
-        (".1.3.6.1.4.1.2011.1", ".1.3.6.1.4.1.2011.1"),
-        ("1.3.6.1.4.1.2011.1 ", "1.3.6.1.4.1.2011.1 "),
-        ("1.3.6.1.4.1.2011.1", "1.3.6.1.4.1.2011.2"),
-    ],
+    [(".1.3.6.1.4.1.2011.1", ".1.3.6.1.4.1.2011.1"), ("1.3.6.1.4.1.2011.1 ", "1.3.6.1.4.1.2011.1 "), ("1.3.6.1.4.1.2011.1", "1.3.6.1.4.1.2011.2"),],
 )
 def test_load_oid_catalog_rejects_noncanonical_oid(tmp_path, key, stored_oid):
     catalog = tmp_path / "systemoid.json"
@@ -555,28 +430,13 @@ def test_load_oid_catalog_rejects_noncanonical_oid(tmp_path, key, stored_oid):
         (lambda entry, oid: entry.update(model=oid), lambda metadata: None),
         (lambda entry, oid: entry.update(FirstTypeId="AP"), lambda metadata: None),
         (lambda entry, oid: entry.update(brand="华为"), lambda metadata: None),
-        (
-            lambda entry, oid: entry.update(source_id="missing-source"),
-            lambda metadata: None,
-        ),
-        (
-            lambda entry, oid: None,
-            lambda metadata: metadata["sources"]["huawei-product-mib"].update(
-                official=False
-            ),
-        ),
-        (
-            lambda entry, oid: None,
-            lambda metadata: metadata["sources"]["huawei-product-mib"].update(
-                scope="legacy-catalog"
-            ),
-        ),
+        (lambda entry, oid: entry.update(source_id="missing-source"), lambda metadata: None,),
+        (lambda entry, oid: None, lambda metadata: metadata["sources"]["huawei-product-mib"].update(official=False),),
+        (lambda entry, oid: None, lambda metadata: metadata["sources"]["huawei-product-mib"].update(scope="legacy-catalog"),),
         (lambda entry, oid: None, lambda metadata: metadata.update(schema_version=2)),
     ],
 )
-def test_load_oid_catalog_rejects_invalid_catalog_boundaries(
-    tmp_path, update_catalog, update_metadata
-):
+def test_load_oid_catalog_rejects_invalid_catalog_boundaries(tmp_path, update_catalog, update_metadata):
     catalog = tmp_path / "systemoid.json"
     metadata = tmp_path / "systemoid.meta.json"
     oid = "1.3.6.1.4.1.2011.2.23.968"
@@ -599,16 +459,9 @@ def test_load_oid_catalog_rejects_invalid_catalog_boundaries(
         ["switch", ["router"], "firewall", "loadbalance"],
         ["switch", {"router": "router"}, "firewall", "loadbalance"],
     ],
-    ids=[
-        "rejects-extra-device-type",
-        "rejects-missing-device-type",
-        "rejects-array-device-type",
-        "rejects-object-device-type",
-    ],
+    ids=["rejects-extra-device-type", "rejects-missing-device-type", "rejects-array-device-type", "rejects-object-device-type",],
 )
-def test_load_oid_catalog_requires_exact_allowed_device_types(
-    tmp_path, allowed_device_types
-):
+def test_load_oid_catalog_requires_exact_allowed_device_types(tmp_path, allowed_device_types):
     catalog = tmp_path / "systemoid.json"
     metadata = tmp_path / "systemoid.meta.json"
     oid = "1.3.6.1.4.1.2011.2.23.968"
@@ -638,12 +491,8 @@ def test_load_oid_catalog_rejects_duplicate_source_id_json_key(tmp_path):
     metadata = tmp_path / "systemoid.meta.json"
     oid = "1.3.6.1.4.1.2011.2.23.968"
     metadata_data = _metadata()
-    source = json.dumps(
-        metadata_data["sources"]["huawei-product-mib"], ensure_ascii=False
-    )
-    metadata_without_sources = {
-        key: value for key, value in metadata_data.items() if key != "sources"
-    }
+    source = json.dumps(metadata_data["sources"]["huawei-product-mib"], ensure_ascii=False)
+    metadata_without_sources = {key: value for key, value in metadata_data.items() if key != "sources"}
     metadata.write_text(
         json.dumps(metadata_without_sources, ensure_ascii=False)[:-1]
         + f', "sources": {{"huawei-product-mib": {source}, '
@@ -677,16 +526,8 @@ def test_load_oid_catalog_rejects_legacy_source_missing_audit_fields(tmp_path):
 
 @pytest.mark.parametrize(
     ("field", "value"),
-    [
-        ("schema_version", True),
-        ("catalog_version", 20260722),
-        ("catalog_version", "   "),
-    ],
-    ids=[
-        "rejects-boolean-schema-version",
-        "rejects-number-catalog-version",
-        "rejects-blank-catalog-version",
-    ],
+    [("schema_version", True), ("catalog_version", 20260722), ("catalog_version", "   "),],
+    ids=["rejects-boolean-schema-version", "rejects-number-catalog-version", "rejects-blank-catalog-version",],
 )
 def test_load_oid_catalog_rejects_malformed_metadata_versions(tmp_path, field, value):
     catalog = tmp_path / "systemoid.json"
@@ -719,33 +560,16 @@ def test_production_catalog_is_valid_and_preserves_exact_legacy_oid_set():
     raw = json.loads(SYSTEMOID_PATH.read_text(encoding="utf-8"))
 
     entries = load_oid_catalog(SYSTEMOID_PATH, SYSTEMOID_METADATA_PATH)
-    legacy_raw = {
-        oid: entry
-        for oid, entry in raw.items()
-        if entry["verification"] == "legacy-compatible"
-    }
-    ordered_oids = sorted(
-        legacy_raw, key=lambda oid: tuple(int(part) for part in oid.split("."))
-    )
-    oid_sequence_digest = hashlib.sha256(
-        "\n".join(ordered_oids).encode("ascii")
-    ).hexdigest()
+    legacy_raw = {oid: entry for oid, entry in raw.items() if entry["verification"] == "legacy-compatible"}
+    ordered_oids = sorted(legacy_raw, key=lambda oid: tuple(int(part) for part in oid.split(".")))
+    oid_sequence_digest = hashlib.sha256("\n".join(ordered_oids).encode("ascii")).hexdigest()
     legacy_content_digest = hashlib.sha256(
-        json.dumps(
-            legacy_raw,
-            ensure_ascii=False,
-            sort_keys=True,
-            separators=(",", ":"),
-        ).encode("utf-8")
+        json.dumps(legacy_raw, ensure_ascii=False, sort_keys=True, separators=(",", ":"),).encode("utf-8")
     ).hexdigest()
 
     assert len(legacy_raw) == 1966, "Task 2 的 1,966 个历史 SOID 不得删改"
-    assert oid_sequence_digest == "0b3de86672a357d2e64fe192f66325af8dce1bbcdd9e419072ec7570976864e3", (
-        "历史 SOID 数值排序序列已变化（ASCII 编码、LF 分隔、无末尾换行）"
-    )
-    assert legacy_content_digest == (
-        "0223b25cc4ed03c0f90c98e22983f70946d4d6d47bf4924dc483a07c6a5d3659"
-    ), "Task 2 历史 SOID 的字段语义已变化"
+    assert oid_sequence_digest == "0b3de86672a357d2e64fe192f66325af8dce1bbcdd9e419072ec7570976864e3", "历史 SOID 数值排序序列已变化（ASCII 编码、LF 分隔、无末尾换行）"
+    assert legacy_content_digest == ("0223b25cc4ed03c0f90c98e22983f70946d4d6d47bf4924dc483a07c6a5d3659"), "Task 2 历史 SOID 的字段语义已变化"
     assert len(entries) == len(raw)
     assert len(raw) > 1966, "国内厂商 verified 条目必须在历史目录之外新增"
     assert "1.3.6.1.4.1.9.1.1208" in entries
@@ -760,18 +584,12 @@ def test_domestic_catalog_covers_or_declares_required_families():
     for entry in entries.values():
         if entry.verification == "verified":
             actual.setdefault(entry.brand, set()).add(entry.device_type)
-    gaps = {
-        brand: set(device_types)
-        for brand, device_types in metadata.get("coverage_gaps", {}).items()
-    }
+    gaps = {brand: set(device_types) for brand, device_types in metadata.get("coverage_gaps", {}).items()}
 
     for brand, device_types in DOMESTIC_REQUIRED_FAMILIES.items():
         verified_types = actual.get(brand, set())
         gap_types = gaps.get(brand, set())
-        assert verified_types.isdisjoint(gap_types), (
-            f"{brand} 已 verified 类型仍被声明为缺口: "
-            f"{sorted(verified_types & gap_types)}"
-        )
+        assert verified_types.isdisjoint(gap_types), f"{brand} 已 verified 类型仍被声明为缺口: " f"{sorted(verified_types & gap_types)}"
         missing = device_types - verified_types - gap_types
         assert not missing, f"{brand} 缺少 verified 数据或显式缺口: {sorted(missing)}"
 
@@ -798,20 +616,14 @@ def test_domestic_verified_entries_use_exact_official_product_identity_sources()
     verified_oids = {
         oid
         for oid, entry in entries.items()
-        if entry.verification == "verified"
-        and entry.brand in DOMESTIC_REQUIRED_FAMILIES
-        and entry.source_id in DOMESTIC_TASK_SOURCE_IDS
+        if entry.verification == "verified" and entry.brand in DOMESTIC_REQUIRED_FAMILIES and entry.source_id in DOMESTIC_TASK_SOURCE_IDS
     }
 
     assert verified_oids == set(DOMESTIC_VERIFIED_OIDS)
 
     for oid, (brand, model, device_type) in DOMESTIC_VERIFIED_OIDS.items():
         entry = entries[oid]
-        assert (entry.brand, entry.model, entry.device_type) == (
-            brand,
-            model,
-            device_type,
-        )
+        assert (entry.brand, entry.model, entry.device_type) == (brand, model, device_type,)
         assert entry.verification == "verified"
 
 
@@ -822,18 +634,12 @@ def test_international_catalog_covers_or_declares_required_families():
     for entry in entries.values():
         if entry.verification == "verified":
             actual.setdefault(entry.brand, set()).add(entry.device_type)
-    gaps = {
-        brand: set(device_types)
-        for brand, device_types in metadata.get("coverage_gaps", {}).items()
-    }
+    gaps = {brand: set(device_types) for brand, device_types in metadata.get("coverage_gaps", {}).items()}
 
     for brand, device_types in INTERNATIONAL_REQUIRED_FAMILIES.items():
         verified_types = actual.get(brand, set())
         gap_types = gaps.get(brand, set())
-        assert verified_types.isdisjoint(gap_types), (
-            f"{brand} 已 verified 类型仍被声明为缺口: "
-            f"{sorted(verified_types & gap_types)}"
-        )
+        assert verified_types.isdisjoint(gap_types), f"{brand} 已 verified 类型仍被声明为缺口: " f"{sorted(verified_types & gap_types)}"
         missing = device_types - verified_types - gap_types
         assert not missing, f"{brand} 缺少 verified 数据或显式缺口: {sorted(missing)}"
 
@@ -860,20 +666,14 @@ def test_international_verified_entries_use_exact_official_product_identity_sour
     verified_oids = {
         oid
         for oid, entry in entries.items()
-        if entry.verification == "verified"
-        and entry.brand in INTERNATIONAL_REQUIRED_FAMILIES
-        and entry.source_id in INTERNATIONAL_TASK_SOURCE_IDS
+        if entry.verification == "verified" and entry.brand in INTERNATIONAL_REQUIRED_FAMILIES and entry.source_id in INTERNATIONAL_TASK_SOURCE_IDS
     }
 
     assert verified_oids == set(INTERNATIONAL_VERIFIED_OIDS)
 
     for oid, (brand, model, device_type) in INTERNATIONAL_VERIFIED_OIDS.items():
         entry = entries[oid]
-        assert (entry.brand, entry.model, entry.device_type) == (
-            brand,
-            model,
-            device_type,
-        )
+        assert (entry.brand, entry.model, entry.device_type) == (brand, model, device_type,)
         assert entry.source_id in INTERNATIONAL_TASK_SOURCE_IDS
         assert entry.verification == "verified"
 
@@ -896,16 +696,7 @@ def test_all_verified_entries_use_auditable_official_product_identity_sources():
 
 
 @pytest.mark.parametrize(
-    "brand_alias",
-    [
-        "华为",
-        "HuaWei",
-        "Hewlett-Packard",
-        "Netscreen",
-        "Force10",
-        "NortelAlteon",
-        "Venus",
-    ],
+    "brand_alias", ["华为", "HuaWei", "Hewlett-Packard", "Netscreen", "Force10", "NortelAlteon", "Venus",],
 )
 def test_production_catalog_contains_no_noncanonical_brand_aliases(brand_alias):
     raw = json.loads(SYSTEMOID_PATH.read_text(encoding="utf-8"))
@@ -918,13 +709,9 @@ def test_production_catalog_locks_legacy_entry_shapes():
     metadata = json.loads(SYSTEMOID_METADATA_PATH.read_text(encoding="utf-8"))
 
     assert all(oid == entry["OID"] for oid, entry in raw.items())
+    assert all(entry["verification"] != "verified" or entry["model"] != oid for oid, entry in raw.items())
     assert all(
-        entry["verification"] != "verified" or entry["model"] != oid
-        for oid, entry in raw.items()
-    )
-    assert all(
-        entry["verification"] == "legacy-compatible"
-        or metadata["sources"][entry["source_id"]]["scope"] == "product-identity"
+        entry["verification"] == "legacy-compatible" or metadata["sources"][entry["source_id"]]["scope"] == "product-identity"
         for oid, entry in raw.items()
         if oid.endswith(".0")
     )

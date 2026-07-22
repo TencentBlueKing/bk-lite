@@ -7,12 +7,7 @@ from django.core.management.base import CommandError
 
 import apps.cmdb.management.commands.init_oid as init_oid_command
 from apps.cmdb.models import OidMapping
-from apps.cmdb.services.oid_catalog import (
-    OidCatalogError,
-    OidSyncResult,
-    load_oid_catalog,
-)
-
+from apps.cmdb.services.oid_catalog import OidCatalogEntry, OidCatalogError, OidSyncCreate, OidSyncResult, OidSyncUpdate, load_oid_catalog
 
 pytestmark = pytest.mark.django_db
 
@@ -24,13 +19,7 @@ def _run(*args):
 
 
 def _create_mapping(oid, *, built_in=True, model="legacy"):
-    return OidMapping.objects.create(
-        oid=oid,
-        model=model,
-        brand="Legacy",
-        device_type="switch",
-        built_in=built_in,
-    )
+    return OidMapping.objects.create(oid=oid, model=model, brand="Legacy", device_type="switch", built_in=built_in,)
 
 
 def test_default_command_syncs_catalog_into_nonempty_database():
@@ -43,13 +32,65 @@ def test_default_command_syncs_catalog_into_nonempty_database():
     assert OidMapping.objects.filter(oid="1.3.6.1.4.1.99999.1").exists()
 
 
-def test_dry_run_reports_without_writes():
-    before = OidMapping.objects.count()
+def test_default_command_outputs_exact_five_category_summary_only(monkeypatch):
+    result = OidSyncResult(
+        created=1,
+        updated=1,
+        unchanged=4,
+        custom_override_oids=("1.3.6.1.4.1.9.1.20",),
+        stale_builtin_oids=("1.3.6.1.4.1.9.1.30",),
+        created_entries=(OidSyncCreate(oid="1.3.6.1.4.1.9.1.10", model="new-switch", brand="Cisco", device_type="switch",),),
+        updated_entries=(
+            OidSyncUpdate(
+                oid="1.3.6.1.4.1.9.1.2",
+                old_model="old-model",
+                new_model="new-model",
+                old_brand="Legacy",
+                new_brand="Cisco",
+                old_device_type="switch",
+                new_device_type="router",
+            ),
+        ),
+    )
+    monkeypatch.setattr(init_oid_command, "load_oid_catalog", lambda: {})
+    monkeypatch.setattr(init_oid_command, "sync_oid_catalog", lambda entries, dry_run: result)
+
+    output = _run()
+
+    assert output == ("SOID同步完成: 新增=1, 更新=1, 未变化=4, 用户覆盖=1, 目录外遗留=1\n")
+
+
+def test_dry_run_reports_complete_diffs_without_writes(monkeypatch):
+    update_oid = "1.3.6.1.4.1.9.1.2"
+    create_oid = "1.3.6.1.4.1.9.1.10"
+    custom_oid = "1.3.6.1.4.1.9.1.20"
+    stale_oid = "1.3.6.1.4.1.9.1.30"
+    _create_mapping(update_oid, model="old-model")
+    _create_mapping(custom_oid, built_in=False, model="custom-model")
+    _create_mapping(stale_oid, model="stale-model")
+    entries = {
+        oid: OidCatalogEntry(oid=oid, model=model, brand=brand, device_type=device_type, source_id="test-source", verification="verified",)
+        for oid, model, brand, device_type in (
+            (update_oid, "new-model", "Cisco", "router"),
+            (create_oid, "new-switch", "Cisco", "switch"),
+            (custom_oid, "catalog-model", "Cisco", "firewall"),
+        )
+    }
+    before = list(OidMapping.objects.order_by("oid").values_list("pk", "oid", "model", "brand", "device_type", "built_in"))
+    monkeypatch.setattr(init_oid_command, "load_oid_catalog", lambda: entries)
 
     output = _run("--dry-run")
 
-    assert OidMapping.objects.count() == before
-    assert "DRY-RUN" in output
+    assert list(OidMapping.objects.order_by("oid").values_list("pk", "oid", "model", "brand", "device_type", "built_in")) == before
+    assert output == (
+        "DRY-RUN SOID同步完成: 新增=1, 更新=1, 未变化=0, 用户覆盖=1, "
+        "目录外遗留=1\n"
+        f"新增 OID {create_oid}: brand=Cisco, model=new-switch, device_type=switch\n"
+        f"更新 OID {update_oid}: brand=Legacy -> Cisco, model=old-model -> new-model, "
+        "device_type=switch -> router\n"
+        f"用户覆盖 OID {custom_oid}\n"
+        f"目录外遗留 OID {stale_oid}\n"
+    )
 
 
 def test_force_never_deletes_stale_builtin():
@@ -63,10 +104,7 @@ def test_force_never_deletes_stale_builtin():
 
 def test_catalog_error_is_exposed_as_stable_command_error(monkeypatch):
     monkeypatch.setattr(
-        init_oid_command,
-        "load_oid_catalog",
-        lambda: (_ for _ in ()).throw(OidCatalogError("OID_CATALOG_INVALID")),
-        raising=False,
+        init_oid_command, "load_oid_catalog", lambda: (_ for _ in ()).throw(OidCatalogError("OID_CATALOG_INVALID")), raising=False,
     )
 
     with pytest.raises(CommandError, match="OID_CATALOG_INVALID"):
