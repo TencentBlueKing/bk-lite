@@ -41,9 +41,6 @@ if [ -f ".android-env.sh" ]; then
   source .android-env.sh
 fi
 
-export BK_MOBILE_TARGET="tauri"
-unset NEXT_PUBLIC_BASE_PATH
-
 # 2. 初始化 Android 项目（如果不存在）
 if [ ! -d "src-tauri/gen/android" ]; then
   echo ""

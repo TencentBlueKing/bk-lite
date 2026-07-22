@@ -4,50 +4,9 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import nextEnv from '@next/env';
 
+import { resolveBuildSettings } from './mobile-build-config.mjs';
+
 const { loadEnvConfig } = nextEnv;
-
-export function normalizeBasePath(value) {
-  if (!value) return '';
-  const normalized = String(value).replace(/^\/|\/$/g, '');
-  return normalized ? `/${normalized}` : '';
-}
-
-export function resolveBuildSettings({ target = '', env = process.env } = {}) {
-  const buildTarget = target || env.BK_MOBILE_TARGET || '';
-  const isH5 = buildTarget === 'h5';
-  const isTauri = buildTarget === 'tauri';
-  const inheritedBasePath = isTauri ? '' : env.NEXT_PUBLIC_BASE_PATH || '';
-  const basePath = normalizeBasePath(inheritedBasePath || (isH5 ? '/mobile/h5' : ''));
-  const resolvedEnv = { ...env };
-
-  if (buildTarget) {
-    resolvedEnv.BK_MOBILE_TARGET = buildTarget;
-  } else {
-    delete resolvedEnv.BK_MOBILE_TARGET;
-  }
-
-  if (basePath) {
-    resolvedEnv.NEXT_PUBLIC_BASE_PATH = basePath;
-  } else {
-    delete resolvedEnv.NEXT_PUBLIC_BASE_PATH;
-  }
-
-  if (isH5) {
-    resolvedEnv.NEXT_PUBLIC_API_URL = '';
-  }
-
-  if (isTauri && !resolvedEnv.NEXT_PUBLIC_API_URL) {
-    throw new Error(
-      'Tauri 构建需要配置 NEXT_PUBLIC_API_URL 为 Web/Nginx 网关地址，例如 https://bklite.example.com'
-    );
-  }
-
-  return {
-    basePath,
-    target: buildTarget,
-    env: resolvedEnv,
-  };
-}
 
 function parseArgs(argv) {
   const args = { target: '' };

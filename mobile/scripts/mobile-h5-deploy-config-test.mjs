@@ -67,7 +67,11 @@ test('H5 image verification performs a real Docker build and Nginx config test',
   assert.match(imageTestScript, /'--no-cache'/);
   assert.match(imageTestScript, /'nginx',\s*'-t'/);
   assert.match(imageTestScript, /'--network-alias',\s*'bklite-server'/);
+  assert.match(imageTestScript, /'--network-alias',\s*'bklite-web'/);
   assert.match(imageTestScript, /api\/proxy\/core\/api\/echo/);
+  assert.match(imageTestScript, /api\/auth\/session/);
+  assert.match(imageTestScript, /next-auth\.session-token=test-session/);
+  assert.match(imageTestScript, /Set-Cookie/);
   assert.match(imageTestScript, /forwardedProto: 'https'/);
 });
 
@@ -93,6 +97,7 @@ test('Dockerfile.h5 builds the H5 export and serves it with Nginx', async () => 
 
 test('nginx.h5.conf serves exported routes and proxies API requests', async () => {
   const nginxConfig = await readProjectFile('nginx.h5.conf');
+  const nextConfig = await readProjectFile('next.config.ts');
 
   assert.match(
     nginxConfig,
@@ -125,6 +130,20 @@ test('nginx.h5.conf serves exported routes and proxies API requests', async () =
   assert.match(nginxConfig, /proxy_set_header X-Forwarded-Proto \$proxy_x_forwarded_proto/);
   assert.match(nginxConfig, /proxy_read_timeout 300s/);
   assert.match(nginxConfig, /proxy_send_timeout 300s/);
+  assert.match(nginxConfig, /location \/api\/auth\//);
+  assert.match(
+    nginxConfig,
+    /proxy_pass http:\/\/bklite-web:3000\/api\/auth\//,
+  );
+  assert.match(nginxConfig, /proxy_set_header Cookie \$http_cookie/);
+  assert.match(
+    nextConfig,
+    /source: '\/api\/auth\/:path\*'[\s\S]*destination: `\$\{devAuthProxyTarget\}\/api\/auth\/:path\*`/,
+  );
+  assert.match(
+    nextConfig,
+    /process\.env\.BK_SERVER_DEV_URL \?\? DEFAULT_DEV_SERVER_URL/,
+  );
 });
 
 test('.dockerignore excludes local and generated build artifacts', async () => {
