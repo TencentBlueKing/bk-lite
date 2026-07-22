@@ -38,8 +38,10 @@ if KEYS[4] ~= '' then
         end
         local status = callback_context['status']
         local callback_received_at = callback_context['callback_received_at']
-        if type(status) == 'table'
-            and status['execution'] == 'waiting_callback'
+        if type(status) ~= 'table' or type(status['execution']) ~= 'string' then
+            return 0
+        end
+        if status['execution'] == 'waiting_callback'
             and (callback_received_at == nil or callback_received_at == cjson.null)
         then
             return 0
@@ -59,6 +61,10 @@ return 0
 
 class StartupCleanupConfigError(ValueError):
     """启动清理配置无法保证安全删除时抛出。"""
+
+
+class CallbackContextError(ValueError):
+    """损坏 callback context 时，禁止删除对应 marker。"""
 
 
 @dataclass(frozen=True)
@@ -200,7 +206,7 @@ async def cleanup_startup_orphan_markers(
                                     candidates.append(
                                         (marker_key, job_id, callback_context_key)
                                     )
-                            except ResponseError:
+                            except (ResponseError, CallbackContextError):
                                 errors += 1
                                 preserved += 1
                             if scanned >= config.max_markers:
@@ -359,12 +365,23 @@ async def _is_waiting_callback(redis, callback_context_key: bytes) -> bool:
     callback_value = await redis.get(callback_context_key)
     if not callback_value:
         return False
-    if isinstance(callback_value, bytes):
-        callback_value = callback_value.decode()
-    callback_context = json.loads(callback_value)
-    status = callback_context.get("status") or {}
+    try:
+        if isinstance(callback_value, bytes):
+            callback_value = callback_value.decode()
+        callback_context = json.loads(callback_value)
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise CallbackContextError(
+            "callback context 不是有效 JSON"
+        ) from error
+    if not isinstance(callback_context, dict):
+        raise CallbackContextError("callback context 必须是对象")
+    status = callback_context.get("status")
+    if not isinstance(status, dict) or not isinstance(
+        status.get("execution"), str
+    ):
+        raise CallbackContextError("callback context status 非法")
     return (
-        status.get("execution") == "waiting_callback"
+        status["execution"] == "waiting_callback"
         and callback_context.get("callback_received_at") is None
     )
 

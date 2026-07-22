@@ -67,6 +67,20 @@ def test_docker_context_and_runbook_expose_task_queue_cleanup_cli() -> None:
     assert "FLUSHDB" in readme
 
 
+def test_runbook_documents_startup_orphan_cleanup_toggle() -> None:
+    readme = README_PATH.read_text(encoding="utf-8")
+
+    assert "TASK_QUEUE_STARTUP_ORPHAN_CLEANUP_ENABLED=false" in readme
+    assert "只删除明确孤儿" in readme
+    assert "不影响 Sanic 启动" in readme
+    assert "确认等待 5 秒" in readme
+    assert "最大 10000" in readme
+    assert "总预算 30 秒" in readme
+    assert "分布式锁" in readme
+    assert "status=warning" in readme
+    assert "脱敏" in readme
+
+
 def test_locked_sync_rejects_stale_lockfile_offline(tmp_path: Path) -> None:
     uv_environment = {
         **os.environ,

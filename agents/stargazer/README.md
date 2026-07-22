@@ -330,6 +330,41 @@ docker exec <stargazer-container> \
 
 清理后重新启动 Worker 并恢复任务下发，提交一个任务确认返回 `status=queued`，同时检查 Worker 日志出现 `Task received:`。CLI 的稳定退出码为：`0` 成功/无目标、`2` 参数非法、`3` Redis 读取失败、`4` 备份失败、`5` 状态漂移、`6` transaction 失败、`7` 恢复失败。
 
+### 启动时孤儿 marker 自动清理
+
+Stargazer 默认开启启动时自动清理。Sanic 可用后会在后台执行，不影响 Sanic 启动；自动任务失败也不会阻止服务继续运行。多副本通过共享 Redis
+分布式锁选主，同一轮只有一个副本会实际扫描和删除。
+
+自动模式只删除明确孤儿的 `task:running:*` 和 `task:dedupe:*` marker：它会
+先扫描、确认等待 5 秒，再以 Lua 原子复核 marker 值、ARQ queue、
+in-progress 和 Host Remote callback 状态。它不删除任何 pending job、
+`arq:queue`、in-progress、job、result 或 retry 数据，也不能用于清理堵塞的
+pending 队列。
+
+默认资源边界为最大 10000 个 marker、总预算 30 秒；锁 TTL 为 60 秒。紧急
+关闭自动模式可设置：
+
+```bash
+TASK_QUEUE_STARTUP_ORPHAN_CLEANUP_ENABLED=false
+```
+
+可按部署环境设置以下变量；所有值必须是安全的有限值，否则自动清理会
+fail-open 并保留现有任务数据：
+
+```text
+TASK_QUEUE_STARTUP_ORPHAN_CLEANUP_ENABLED=true
+TASK_QUEUE_STARTUP_ORPHAN_CONFIRM_DELAY_SECONDS=5
+TASK_QUEUE_STARTUP_ORPHAN_MAX_MARKERS=10000
+TASK_QUEUE_STARTUP_ORPHAN_TIMEOUT_SECONDS=30
+TASK_QUEUE_STARTUP_ORPHAN_LOCK_TTL_SECONDS=60
+```
+
+日志会记录结构化 `status`、原因和计数，但会脱敏处理异常文本且不记录
+marker 值或任务载荷。`status=warning` 只表示自动恢复未完成（例如超时、
+扫描上限或单 marker Redis 错误），服务仍继续运行。遇到复杂堵塞或需要
+处理 pending 队列时，保留并先执行上面的人工 CLI dry-run；确认范围后再按
+CLI 的显式安全开关处理，不能把自动清理当作队列清空工具。
+
 ---
 
 ## 🎯 去重逻辑

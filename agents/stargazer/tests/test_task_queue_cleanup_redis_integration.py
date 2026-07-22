@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import json
 import secrets
@@ -7,6 +8,7 @@ import time
 from pathlib import Path
 
 import pytest
+import pytest_asyncio
 from core.task_queue_cleanup import (
     CleanupRestoreError,
     _payload_digest,
@@ -14,12 +16,19 @@ from core.task_queue_cleanup import (
     build_cleanup_plan,
     restore_cleanup_backup,
 )
+from core.task_queue_startup_cleanup import (
+    LOCK_KEY,
+    _RELEASE_LOCK_LUA,
+    StartupCleanupConfig,
+    cleanup_startup_orphan_markers,
+)
 from redis import Redis
+from redis.asyncio import Redis as AsyncRedis
 from redis.exceptions import ConnectionError as RedisConnectionError
 
 
 @pytest.fixture
-def real_redis(tmp_path):
+def redis_server_socket(tmp_path):
     redis_server = shutil.which("redis-server")
     if redis_server is None:
         pytest.skip("redis-server is not installed")
@@ -44,26 +53,264 @@ def real_redis(tmp_path):
             str(tmp_path),
         ],
         stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
     )
-    client = Redis(
+    probe = Redis(
         unix_socket_path=str(socket_path), db=15, decode_responses=False,
     )
     try:
         for _attempt in range(100):
             try:
-                if client.ping():
+                if probe.ping():
                     break
             except (RedisConnectionError, OSError):
                 time.sleep(0.01)
         else:
-            pytest.fail("temporary redis-server did not start")
-        yield client
+            diagnostics = (
+                process.stderr.read() if process.poll() is not None else ""
+            )
+            pytest.fail(
+                "temporary redis-server did not start: "
+                f"{diagnostics}"
+            )
+        yield socket_path
     finally:
-        client.close()
-        process.terminate()
+        probe.close()
+        if process.poll() is None:
+            process.terminate()
         process.wait(timeout=5)
         socket_path.unlink(missing_ok=True)
+
+
+@pytest.fixture
+def real_redis(redis_server_socket):
+    client = Redis(
+        unix_socket_path=str(redis_server_socket),
+        db=15,
+        decode_responses=False,
+    )
+    client.flushdb()
+    try:
+        yield client
+    finally:
+        client.flushdb()
+        client.close()
+
+
+@pytest_asyncio.fixture
+async def real_async_redis(redis_server_socket):
+    client = AsyncRedis(
+        unix_socket_path=str(redis_server_socket),
+        db=15,
+        decode_responses=False,
+    )
+    await client.flushdb()
+    try:
+        yield client
+    finally:
+        await client.flushdb()
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_real_redis_second_phase_preserves_reactivated_job(
+    real_async_redis,
+):
+    await real_async_redis.set(b"task:dedupe:key", b"job-1", ex=600)
+
+    async def reactivate(_seconds):
+        await real_async_redis.zadd(b"arq:queue", {b"job-1": 1000.0})
+
+    result = await cleanup_startup_orphan_markers(
+        real_async_redis,
+        StartupCleanupConfig(confirm_delay_seconds=5),
+        sleep=reactivate,
+    )
+
+    assert result.deleted == 0
+    assert await real_async_redis.get(b"task:dedupe:key") == b"job-1"
+
+
+@pytest.mark.asyncio
+async def test_real_redis_two_replicas_only_one_runs_cleanup(real_async_redis):
+    await real_async_redis.set(b"task:dedupe:orphan", b"job-1", ex=600)
+    entered_confirmation = asyncio.Event()
+    release_confirmation = asyncio.Event()
+
+    async def wait_for_confirmation(_seconds):
+        entered_confirmation.set()
+        await release_confirmation.wait()
+
+    first = asyncio.create_task(
+        cleanup_startup_orphan_markers(
+            real_async_redis,
+            StartupCleanupConfig(confirm_delay_seconds=5),
+            sleep=wait_for_confirmation,
+        )
+    )
+    await asyncio.wait_for(entered_confirmation.wait(), timeout=1)
+    second = await cleanup_startup_orphan_markers(
+        real_async_redis,
+        StartupCleanupConfig(confirm_delay_seconds=0),
+    )
+    release_confirmation.set()
+    first_result = await first
+
+    assert first_result.deleted == 1
+    assert second.status == "skipped"
+    assert second.reason == "lock_not_acquired"
+
+
+@pytest.mark.asyncio
+async def test_real_redis_second_phase_preserves_replaced_marker_value(
+    real_async_redis,
+):
+    marker_key = b"task:running:task-1"
+    await real_async_redis.set(marker_key, b"job-1", ex=600)
+
+    async def replace_marker(_seconds):
+        await real_async_redis.set(marker_key, b"job-2", ex=600)
+
+    result = await cleanup_startup_orphan_markers(
+        real_async_redis,
+        StartupCleanupConfig(confirm_delay_seconds=5),
+        sleep=replace_marker,
+    )
+
+    assert result.deleted == 0
+    assert await real_async_redis.get(marker_key) == b"job-2"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("activation", ["queue", "in_progress", "callback"])
+async def test_real_redis_second_phase_preserves_marker_that_becomes_active(
+    real_async_redis, activation,
+):
+    marker_key = b"task:running:task-1"
+    await real_async_redis.set(marker_key, b"job-1", ex=600)
+
+    async def activate(_seconds):
+        if activation == "queue":
+            await real_async_redis.zadd(b"arq:queue", {b"job-1": 1000.0})
+        elif activation == "in_progress":
+            await real_async_redis.set(b"arq:in-progress:job-1", b"1")
+        else:
+            await real_async_redis.set(
+                b"host_remote:callback_context:task-1",
+                json.dumps(
+                    {
+                        "status": {"execution": "waiting_callback"},
+                        "callback_received_at": None,
+                    }
+                ).encode(),
+            )
+
+    result = await cleanup_startup_orphan_markers(
+        real_async_redis,
+        StartupCleanupConfig(confirm_delay_seconds=5),
+        sleep=activate,
+    )
+
+    assert result.deleted == 0
+    assert await real_async_redis.get(marker_key) == b"job-1"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("bad_callback_context", [b"{", b"[]"])
+async def test_real_redis_lua_preserves_marker_when_callback_becomes_invalid(
+    real_async_redis, bad_callback_context,
+):
+    marker_key = b"task:running:task-1"
+    await real_async_redis.set(marker_key, b"job-1", ex=600)
+
+    async def corrupt_callback_context(_seconds):
+        await real_async_redis.set(
+            b"host_remote:callback_context:task-1", bad_callback_context,
+        )
+
+    result = await cleanup_startup_orphan_markers(
+        real_async_redis,
+        StartupCleanupConfig(confirm_delay_seconds=5),
+        sleep=corrupt_callback_context,
+    )
+
+    assert result.deleted == 0
+    assert await real_async_redis.get(marker_key) == b"job-1"
+
+
+@pytest.mark.asyncio
+async def test_real_redis_lua_only_deletes_confirmed_marker(real_async_redis):
+    marker_key = b"task:running:orphan"
+    await real_async_redis.set(marker_key, b"job-1", ex=600)
+    await real_async_redis.set(b"arq:job:job-1", b"serialized-job", ex=600)
+    await real_async_redis.set(b"arq:result:job-1", b"result", ex=600)
+
+    result = await cleanup_startup_orphan_markers(
+        real_async_redis, StartupCleanupConfig(confirm_delay_seconds=0)
+    )
+
+    assert result.deleted == 1
+    assert await real_async_redis.get(marker_key) is None
+    assert await real_async_redis.get(b"arq:job:job-1") == b"serialized-job"
+    assert await real_async_redis.get(b"arq:result:job-1") == b"result"
+
+
+@pytest.mark.asyncio
+async def test_real_redis_non_owner_token_cannot_release_cleanup_lock(
+    real_async_redis,
+):
+    owner_token = b"owner"
+    await real_async_redis.set(LOCK_KEY, owner_token, ex=60)
+
+    released = await real_async_redis.eval(
+        _RELEASE_LOCK_LUA, 1, LOCK_KEY, b"other-owner"
+    )
+
+    assert released == 0
+    assert await real_async_redis.get(LOCK_KEY) == owner_token
+
+
+@pytest.mark.asyncio
+async def test_real_redis_wrongtype_marker_preserves_it_and_continues(
+    real_async_redis,
+):
+    broken_marker = b"task:running:broken"
+    safe_marker = b"task:dedupe:orphan"
+    await real_async_redis.rpush(broken_marker, b"not-a-string")
+    await real_async_redis.set(safe_marker, b"job-1", ex=600)
+
+    result = await cleanup_startup_orphan_markers(
+        real_async_redis, StartupCleanupConfig(confirm_delay_seconds=0)
+    )
+
+    assert result.reason == "marker_errors"
+    assert result.errors == 1
+    assert await real_async_redis.type(broken_marker) == b"list"
+    assert await real_async_redis.get(safe_marker) is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("bad_callback_context", [b"{", b"[]"])
+async def test_real_redis_bad_callback_context_preserves_only_that_marker(
+    real_async_redis, bad_callback_context,
+):
+    protected_marker = b"task:running:bad-context"
+    safe_marker = b"task:dedupe:orphan"
+    await real_async_redis.set(protected_marker, b"job-1", ex=600)
+    await real_async_redis.set(
+        b"host_remote:callback_context:bad-context", bad_callback_context,
+    )
+    await real_async_redis.set(safe_marker, b"job-2", ex=600)
+
+    result = await cleanup_startup_orphan_markers(
+        real_async_redis, StartupCleanupConfig(confirm_delay_seconds=0)
+    )
+
+    assert result.reason == "marker_errors"
+    assert result.errors == 1
+    assert await real_async_redis.get(protected_marker) == b"job-1"
+    assert await real_async_redis.get(safe_marker) is None
 
 
 def test_real_redis_cleanup_backup_and_restore_round_trip(

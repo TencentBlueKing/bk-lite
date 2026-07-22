@@ -389,6 +389,32 @@ async def test_cleanup_preserves_running_marker_waiting_for_host_remote_callback
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("bad_callback_context", [b"{", b"[]"])
+async def test_bad_callback_context_preserves_only_its_running_marker(
+    fake_redis, bad_callback_context,
+):
+    protected_marker = b"task:running:bad-context"
+    safe_marker = b"task:dedupe:orphan"
+    fake_redis.strings.update(
+        {
+            protected_marker: b"job-1",
+            b"host_remote:callback_context:bad-context": bad_callback_context,
+            safe_marker: b"job-2",
+        }
+    )
+
+    result = await cleanup_startup_orphan_markers(
+        fake_redis, StartupCleanupConfig(confirm_delay_seconds=0)
+    )
+
+    assert result.status == "warning"
+    assert result.reason == "marker_errors"
+    assert result.errors == 1
+    assert protected_marker in fake_redis.strings
+    assert safe_marker not in fake_redis.strings
+
+
+@pytest.mark.asyncio
 async def test_second_phase_preserves_running_marker_when_callback_appears(
     fake_redis,
 ):
