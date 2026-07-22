@@ -9,6 +9,16 @@ SYSTEMOID_PATH = SUPPORT_FILES / "systemoid.json"
 SYSTEMOID_METADATA_PATH = SUPPORT_FILES / "systemoid.meta.json"
 OID_PATTERN = re.compile(r"^(?:0|[1-9][0-9]*)(?:\.(?:0|[1-9][0-9]*))+$")
 VERIFICATION_STATES = {"verified", "legacy-compatible"}
+ALLOWED_DEVICE_TYPES = {"switch", "router", "firewall", "loadbalance"}
+REQUIRED_SOURCE_FIELDS = {
+    "vendor",
+    "url",
+    "document",
+    "version",
+    "verified_at",
+    "official",
+    "scope",
+}
 
 
 class OidCatalogError(ValueError):
@@ -34,9 +44,20 @@ class OidSyncResult:
     stale_builtin_oids: tuple[str, ...]
 
 
+def _reject_duplicate_keys(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise OidCatalogError(f"OID_CATALOG_INVALID: duplicate JSON key {key!r}")
+        result[key] = value
+    return result
+
+
 def _read_json(path: Path):
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        return json.loads(
+            path.read_text(encoding="utf-8"), object_pairs_hook=_reject_duplicate_keys
+        )
     except (OSError, json.JSONDecodeError) as exc:
         raise OidCatalogError(f"OID_CATALOG_INVALID: {path.name}") from exc
 
@@ -50,7 +71,7 @@ def load_oid_catalog(
     if not isinstance(metadata, dict):
         raise OidCatalogError("OID_CATALOG_INVALID: metadata")
 
-    allowed_types = set(metadata.get("allowed_device_types", []))
+    allowed_types = metadata.get("allowed_device_types")
     aliases = metadata.get("brand_aliases", {})
     sources = metadata.get("sources", {})
     entries: dict[str, OidCatalogEntry] = {}
@@ -61,6 +82,15 @@ def load_oid_catalog(
         raise OidCatalogError("OID_CATALOG_INVALID: catalog must be a non-empty object")
     if not isinstance(aliases, dict) or not isinstance(sources, dict):
         raise OidCatalogError("OID_CATALOG_INVALID: metadata structure")
+    if (
+        not isinstance(allowed_types, list)
+        or len(allowed_types) != len(ALLOWED_DEVICE_TYPES)
+        or set(allowed_types) != ALLOWED_DEVICE_TYPES
+    ):
+        raise OidCatalogError("OID_CATALOG_INVALID: allowed device types")
+    for source_id, source in sources.items():
+        if not isinstance(source, dict) or not REQUIRED_SOURCE_FIELDS.issubset(source):
+            raise OidCatalogError(f"OID_CATALOG_INVALID: source audit fields {source_id}")
 
     for key, raw in raw_catalog.items():
         oid = raw.get("OID") if isinstance(raw, dict) else None
@@ -84,7 +114,7 @@ def load_oid_catalog(
             raise OidCatalogError(f"OID_CATALOG_INVALID: required fields for {oid}")
 
         device_type = raw["FirstTypeId"].lower()
-        if device_type not in allowed_types:
+        if device_type not in ALLOWED_DEVICE_TYPES:
             raise OidCatalogError(f"OID_CATALOG_INVALID: device type for {oid}")
         if raw["brand"] in aliases:
             raise OidCatalogError(f"OID_CATALOG_INVALID: noncanonical brand for {oid}")
@@ -95,19 +125,8 @@ def load_oid_catalog(
             raise OidCatalogError(f"OID_CATALOG_INVALID: source for {oid}")
         if verification == "verified":
             source = sources[source_id]
-            required_source = {
-                "vendor",
-                "url",
-                "document",
-                "version",
-                "verified_at",
-                "official",
-                "scope",
-            }
             if (
-                not isinstance(source, dict)
-                or not required_source.issubset(source)
-                or source["official"] is not True
+                source["official"] is not True
                 or source["scope"] != "product-identity"
             ):
                 raise OidCatalogError(f"OID_CATALOG_INVALID: verified source for {oid}")

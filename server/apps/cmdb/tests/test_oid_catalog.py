@@ -116,3 +116,80 @@ def test_load_oid_catalog_rejects_invalid_catalog_boundaries(
 
     with pytest.raises(OidCatalogError, match="OID_CATALOG_INVALID"):
         load_oid_catalog(catalog, metadata)
+
+
+@pytest.mark.parametrize(
+    "allowed_device_types",
+    [
+        ["switch", "router", "firewall", "loadbalance", "ap"],
+        ["switch", "firewall", "loadbalance"],
+    ],
+    ids=["rejects-extra-device-type", "rejects-missing-device-type"],
+)
+def test_load_oid_catalog_requires_exact_allowed_device_types(
+    tmp_path, allowed_device_types
+):
+    catalog = tmp_path / "systemoid.json"
+    metadata = tmp_path / "systemoid.meta.json"
+    oid = "1.3.6.1.4.1.2011.2.23.968"
+    metadata_data = _metadata()
+    metadata_data["allowed_device_types"] = allowed_device_types
+    _write_json(catalog, {oid: _entry(oid)})
+    _write_json(metadata, metadata_data)
+
+    with pytest.raises(OidCatalogError, match="OID_CATALOG_INVALID"):
+        load_oid_catalog(catalog, metadata)
+
+
+def test_load_oid_catalog_rejects_duplicate_oid_json_key(tmp_path):
+    catalog = tmp_path / "systemoid.json"
+    metadata = tmp_path / "systemoid.meta.json"
+    oid = "1.3.6.1.4.1.2011.2.23.968"
+    entry = json.dumps(_entry(oid), ensure_ascii=False)
+    catalog.write_text(f'{{"{oid}": {entry}, "{oid}": {entry}}}', encoding="utf-8")
+    _write_json(metadata, _metadata())
+
+    with pytest.raises(OidCatalogError, match="OID_CATALOG_INVALID"):
+        load_oid_catalog(catalog, metadata)
+
+
+def test_load_oid_catalog_rejects_duplicate_source_id_json_key(tmp_path):
+    catalog = tmp_path / "systemoid.json"
+    metadata = tmp_path / "systemoid.meta.json"
+    oid = "1.3.6.1.4.1.2011.2.23.968"
+    metadata_data = _metadata()
+    source = json.dumps(
+        metadata_data["sources"]["huawei-product-mib"], ensure_ascii=False
+    )
+    metadata_without_sources = {
+        key: value for key, value in metadata_data.items() if key != "sources"
+    }
+    metadata.write_text(
+        json.dumps(metadata_without_sources, ensure_ascii=False)[:-1]
+        + f', "sources": {{"huawei-product-mib": {source}, '
+        + f'"huawei-product-mib": {source}}}}}',
+        encoding="utf-8",
+    )
+    _write_json(catalog, {oid: _entry(oid)})
+
+    with pytest.raises(OidCatalogError, match="OID_CATALOG_INVALID"):
+        load_oid_catalog(catalog, metadata)
+
+
+def test_load_oid_catalog_rejects_legacy_source_missing_audit_fields(tmp_path):
+    catalog = tmp_path / "systemoid.json"
+    metadata = tmp_path / "systemoid.meta.json"
+    oid = "1.3.6.1.4.1.2011.2.23.968"
+    entry = _entry(oid)
+    entry.update(source_id="legacy-catalog-v1", verification="legacy-compatible")
+    metadata_data = _metadata()
+    metadata_data["sources"]["legacy-catalog-v1"] = {
+        "vendor": "Multiple",
+        "official": False,
+        "scope": "legacy-catalog",
+    }
+    _write_json(catalog, {oid: entry})
+    _write_json(metadata, metadata_data)
+
+    with pytest.raises(OidCatalogError, match="OID_CATALOG_INVALID"):
+        load_oid_catalog(catalog, metadata)
