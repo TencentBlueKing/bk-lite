@@ -2,7 +2,6 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { Form, Input, Select, Button, Radio } from 'antd';
-import { InfoCircleOutlined } from '@ant-design/icons';
 import { useSearchParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
@@ -10,6 +9,9 @@ import useIntegrationApi from '@/app/log/api/integration';
 import GroupTreeSelector from '@/components/group-tree-select';
 import Icon from '@/components/icon';
 import { K8sCommandData } from './k8sConfiguration';
+import IntegrationStepCallout, {
+  createLogK8sStepCalloutPreset,
+} from '@/components/integration-step-callout';
 
 interface AccessConfigProps {
   onNext: (data?: K8sCommandData) => void;
@@ -161,37 +163,7 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
 
   return (
     <div className="p-0">
-      <div>
-        <div className="flex items-center mb-3">
-          <InfoCircleOutlined className="text-yellow-600 text-lg mr-2" />
-          <h3 className="text-base font-semibold">
-            {t('log.integration.k8s.prerequisites')}
-          </h3>
-        </div>
-        <div className="mb-8 bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-md dark:bg-yellow-500/10 dark:border-yellow-500">
-          <p className="text-sm text-[var(--color-text-3)] mb-3">
-            {t('log.integration.k8s.prerequisitesDesc')}
-          </p>
-          <ul className="space-y-2 text-sm text-[var(--color-text-3)]">
-            <li className="flex items-start">
-              <span className="mr-2">•</span>
-              <span>{t('log.integration.k8s.k8sVersionRequirement')}</span>
-            </li>
-            <li className="flex items-start">
-              <span className="mr-2">•</span>
-              <span>{t('log.integration.k8s.resourceRequirement')}</span>
-            </li>
-            <li className="flex items-start">
-              <span className="mr-2">•</span>
-              <span>{t('log.integration.k8s.permissionRequirement')}</span>
-            </li>
-            <li className="flex items-start">
-              <span className="mr-2">•</span>
-              <span>{t('log.integration.k8s.presetHint')}</span>
-            </li>
-          </ul>
-        </div>
-      </div>
+      <IntegrationStepCallout {...createLogK8sStepCalloutPreset(t)} />
 
       <Form
         form={form}

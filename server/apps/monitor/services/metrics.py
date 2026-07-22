@@ -75,7 +75,7 @@ class Metrics:
                     "reason": "max_points_exceeded",
                 }
             elif collection_interval > 0:
-                detection_resp = vm_api.query_range(query, start, end, f"{collection_interval}s")
+                detection_resp = resp if step_seconds == collection_interval else vm_api.query_range(query, start, end, f"{collection_interval}s")
                 gaps = Metrics.detect_gap_intervals(
                     detection_resp.get("data", {}).get("result", []),
                     collection_interval,

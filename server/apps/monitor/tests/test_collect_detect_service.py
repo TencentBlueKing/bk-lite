@@ -513,6 +513,10 @@ def test_collect_detect_viewset_retrieve_returns_task_result(monkeypatch):
     request = RequestFactory().get(f"/monitor/api/collect_detect/{task.id}/")
     request.user = type("User", (), {"username": "admin", "domain": "default", "is_superuser": True, "group_list": []})()
     request.COOKIES["current_team"] = "3"
+    monkeypatch.setattr(
+        "apps.core.utils.current_team_scope.SystemMgmt.get_authorized_groups_scoped",
+        lambda *args, **kwargs: {"result": True, "data": [3]},
+    )
     monkeypatch.setattr("apps.monitor.views.collect_detect.WebUtils.response_success", staticmethod(lambda data=None: data))
 
     response = CollectDetectViewSet().retrieve(request, pk=task.id)
@@ -542,6 +546,10 @@ def test_collect_detect_viewset_retrieve_hides_other_user_task(monkeypatch):
     request = RequestFactory().get(f"/monitor/api/collect_detect/{task.id}/")
     request.user = type("User", (), {"username": "admin", "domain": "default", "is_superuser": False, "group_list": []})()
     request.COOKIES["current_team"] = "3"
+    monkeypatch.setattr(
+        "apps.core.utils.current_team_scope.SystemMgmt.get_authorized_groups_scoped",
+        lambda *args, **kwargs: {"result": True, "data": [3]},
+    )
     monkeypatch.setattr(
         "apps.monitor.views.collect_detect.WebUtils.response_error",
         staticmethod(lambda message, status_code=400: {"message": message, "status_code": status_code}),

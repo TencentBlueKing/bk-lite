@@ -33,6 +33,7 @@
 - [x] 4.5 在 `server/apps/opspilot/tests/wiki/test_rebuild.py` 增加失败测试：整体重建同 Schema 命中历史决策不创建审批，Schema 变化重新决策，重建确定性维护不创建 `schema_changed` 审批。
 - [x] 4.6 修改 `server/apps/opspilot/services/wiki/rebuild_service.py`，替换无候选上下文的 `ensure_check` 分支，使用统一冲突处理器并记录真实资料/正文快照。
 - [x] 4.7 增加异步任务回归测试，验证 `wiki_build_material_task`、`wiki_rebuild_kb_task` 和 BuildRecord retry 与同步入口得到相同回放结果。
+- [x] 4.8 补齐 AI 资料事实冲突检测：Stage2 返回经当前知识库校验的 `existing_page_id`，新旧正文仅在明确矛盾时进入现有知识冲突审批，标题漂移回归用例覆盖报销 A/B 场景。
 
 ## 5. 页面身份合并与生命周期
 

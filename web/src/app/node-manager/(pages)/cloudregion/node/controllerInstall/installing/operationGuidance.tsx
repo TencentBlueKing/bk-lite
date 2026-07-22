@@ -2,7 +2,7 @@
 
 import { useState, forwardRef, useImperativeHandle } from 'react';
 import { Alert, message } from 'antd';
-import OperateDrawer from '@/app/node-manager/components/operate-drawer';
+import OperateDrawer from '@/components/operate-drawer';
 import { ModalRef } from '@/app/node-manager/types';
 import {
   InstallerArtifactMetadata,

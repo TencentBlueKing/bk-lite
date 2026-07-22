@@ -1,4 +1,4 @@
-from django.db.models import Count
+from django.db.models import Count, Q
 from rest_framework import viewsets
 from rest_framework.decorators import action
 
@@ -21,6 +21,65 @@ from apps.monitor.utils.instance_id_keys import resolve_monitor_object_instance_
 from config.drf.pagination import CustomPageNumberPagination
 from apps.core.utils.team_utils import get_current_team
 
+MAX_CANDIDATE_TEAM_ID = 2_147_483_647
+MAX_CANDIDATE_TEAM_ID_TEXT = str(MAX_CANDIDATE_TEAM_ID)
+
+
+def _normalize_candidate_values(values):
+    if not isinstance(values, (list, tuple, set)):
+        return set()
+
+    normalized = set()
+    for value in values:
+        if isinstance(value, dict):
+            value = value.get("id")
+        if value is None:
+            continue
+        try:
+            normalized.add(value)
+        except TypeError:
+            continue
+    return normalized
+
+
+def _normalize_candidate_team_ids(values):
+    normalized = set()
+    for value in _normalize_candidate_values(values):
+        if type(value) is int:
+            team_id = value
+        elif isinstance(value, str) and value.isascii() and value.isdigit() and not value.startswith("0"):
+            if len(value) > len(MAX_CANDIDATE_TEAM_ID_TEXT) or (len(value) == len(MAX_CANDIDATE_TEAM_ID_TEXT) and value > MAX_CANDIDATE_TEAM_ID_TEXT):
+                continue
+            team_id = int(value)
+        else:
+            continue
+        if 0 < team_id <= MAX_CANDIDATE_TEAM_ID:
+            normalized.add(team_id)
+    return normalized
+
+
+def _build_instance_count_queryset(instance_permissions, cur_team):
+    candidate_teams = _normalize_candidate_team_ids(cur_team)
+    candidate_instance_ids = set()
+
+    if isinstance(instance_permissions, dict):
+        for permission in instance_permissions.values():
+            if not isinstance(permission, dict):
+                continue
+            candidate_teams.update(_normalize_candidate_team_ids(permission.get("team", [])))
+            candidate_instance_ids.update(_normalize_candidate_values(permission.get("instance", [])))
+
+    queryset = MonitorInstance.objects.filter(is_deleted=False).prefetch_related("monitorinstanceorganization_set")
+    if not candidate_teams and not candidate_instance_ids:
+        return queryset.none()
+
+    candidate_filter = Q()
+    if candidate_teams:
+        candidate_filter |= Q(monitorinstanceorganization__organization__in=candidate_teams)
+    if candidate_instance_ids:
+        candidate_filter |= Q(id__in=candidate_instance_ids)
+    return queryset.filter(candidate_filter).distinct()
+
 
 class MonitorObjectViewSet(viewsets.ModelViewSet):
     queryset = MonitorObject.objects.all()
@@ -30,7 +89,7 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         """默认返回所有对象（父+子），传 parent_only=true 时只返回父对象"""
-        queryset = super().get_queryset()
+        queryset = super().get_queryset().select_related("type")
         if "parent" in self.request.query_params:
             return queryset
         if self.request.query_params.get("parent_only") in ["true", "True"]:
@@ -109,7 +168,7 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
                 inst_res.get("team", []),
             )
 
-            inst_objs = MonitorInstance.objects.filter(is_deleted=False).prefetch_related("monitorinstanceorganization_set")
+            inst_objs = _build_instance_count_queryset(instance_permissions, cur_team)
             inst_map = {}
             for inst_obj in inst_objs:
                 monitor_object_id = inst_obj.monitor_object_id

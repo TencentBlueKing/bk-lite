@@ -177,6 +177,52 @@ def test_get_metrics_range_adds_gap_metadata_when_detection_enabled(monkeypatch)
     ]
 
 
+def test_get_metrics_range_reuses_response_when_step_matches_collection_interval(monkeypatch):
+    calls = []
+
+    class StubVictoriaMetricsAPI:
+        def query_range(self, query, start, end, step):
+            calls.append((query, start, end, step))
+            return {
+                "status": "success",
+                "data": {
+                    "result": [
+                        {
+                            "metric": {"instance_id": "host-1"},
+                            "values": [[0, "1"], [60, "1"], [120, "1"], [480, "1"]],
+                        }
+                    ]
+                },
+            }
+
+    monkeypatch.setattr("apps.monitor.services.metrics.VictoriaMetricsAPI", StubVictoriaMetricsAPI)
+
+    response = Metrics.get_metrics_range(
+        "cpu_usage",
+        0,
+        600000,
+        "60s",
+        detect_gaps=True,
+        collection_interval_seconds=60,
+    )
+
+    assert calls == [("cpu_usage", 0.0, 600.0, "60s")]
+    assert response["data"]["gap_detection"] == {"status": "ok", "limited": False}
+    assert response["data"]["gaps"] == [
+        {
+            "start": 180.0,
+            "end": 420.0,
+            "duration": 300.0,
+            "series": [
+                {
+                    "metric": {"instance_id": "host-1"},
+                    "missing_points": 5,
+                }
+            ],
+        }
+    ]
+
+
 def test_get_metrics_range_limits_gap_detection_when_query_would_be_too_large(monkeypatch):
     calls = []
 

@@ -1,7 +1,7 @@
-from rest_framework import viewsets
-from rest_framework.decorators import action
 from django.db import ProgrammingError
 from django.db.models import Prefetch
+from rest_framework import viewsets
+from rest_framework.decorators import action
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.exceptions.base_app_exception import BaseAppException

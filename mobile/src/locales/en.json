@@ -171,7 +171,9 @@
         "twoFactorAuth": "Two-Factor Authentication",
         "twoFactorHint": "Please complete two-factor authentication on the desktop site",
         "backToLogin": "Back to Login",
-        "systemError": "System error"
+        "systemError": "System error",
+        "serviceUnavailable": "The sign-in service is temporarily unavailable. Try again later.",
+        "logoutIncomplete": "You signed out locally, but the server session may still be active"
     },
     "zoneinfo": {
       "PacificHonolulu": "Pacific/Honolulu (UTC-10)",

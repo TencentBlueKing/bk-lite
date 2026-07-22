@@ -1,0 +1,109 @@
+.customTooltip {
+    margin-top: 10px;
+    pointer-events: auto;
+    max-height: 300px;
+    max-width: 390px;
+    overflow-y: auto;
+    font-size: 14px;
+    background: var(--color-bg-1);
+    border: 1px solid var(--color-border-1);
+    padding: 10px;
+    border-radius: 5px;
+}
+
+.chart {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    position: relative;
+    background: var(--color-bg-1);
+}
+
+.chart :global(.recharts-tooltip-wrapper) {
+    z-index: 9;
+}
+
+.noData {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background:
+        linear-gradient(180deg, rgba(245, 248, 253, 0.96) 0%, rgba(255, 255, 255, 0.98) 100%),
+        repeating-linear-gradient(
+            -45deg,
+            rgba(47, 107, 255, 0.03) 0,
+            rgba(47, 107, 255, 0.03) 10px,
+            transparent 10px,
+            transparent 20px
+        );
+}
+
+.noDataState,
+.noDataCompact {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: #6b7f98;
+}
+
+.noDataState {
+    padding: 16px 20px;
+    gap: 6px;
+}
+
+.noDataCompact {
+    padding: 0 12px;
+}
+
+.noDataTitle {
+    color: #4a617e;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.4;
+}
+
+.noDataDesc {
+    color: #8a9bb0;
+    font-size: 11px;
+    line-height: 1.4;
+}
+
+.filterArea {
+    flex-shrink: 0;
+    // 兼容ie浏览器 (不支持clamp)
+    width: 150px;
+    width: clamp(120px, 20%, 200px);
+    margin-left: 10px;
+    background: var(--color-bg-1);
+
+    ul {
+        overflow-y: auto;
+        height: calc(100% - 40px);
+
+        li {
+            padding: 0 4px;
+            display: flex;
+            align-items: center;
+            height: 30px;
+
+            &:nth-child(2n) {
+                background: var(--color-fill-1);
+            }
+
+            .dimeLabel {
+                flex: 1;
+            }
+        }
+    }
+}
+
+.tableArea {
+    width: 360px;
+    height: 100%;
+    margin-left: 10px;
+}

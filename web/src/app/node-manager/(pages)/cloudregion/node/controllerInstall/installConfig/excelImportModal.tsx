@@ -8,7 +8,7 @@ import React, {
 import { Button, Upload, message } from 'antd';
 import type { UploadProps } from 'antd';
 import { useTranslation } from '@/utils/i18n';
-import OperateModal from '@/app/monitor/components/operate-drawer';
+import OperateModal from '@/components/operate-drawer';
 import { CloudUploadOutlined, DownloadOutlined } from '@ant-design/icons';
 import ExcelJS from 'exceljs';
 import { useUserInfoContext } from '@/context/userInfo';
