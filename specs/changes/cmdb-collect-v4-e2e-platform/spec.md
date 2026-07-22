@@ -76,7 +76,7 @@ v3 已完成代码侧(57/57 catalog + 160 pytest),但 fixture 落盘与 CMDB 端
 - [ ] `server/apps/cmdb/tests/e2e/conftest.py` 的 `load_runner_plugin_for_model_id()` 工厂就绪并被使用
 - [ ] 跨对象公共契约 schema 验证 27 个 fixture(主分支 + worktree)全部命中
 - [ ] 文档 `docs/cmdb-e2e-author-guide.md` 完成,包含"加一个新对象 e2e 只需 5 步"的模板
-- [ ] pytest 增量覆盖率 ≥ 75%(QUALITY_SCORE.md 红线)
+- [ ] pytest 增量覆盖率 ≥ 75%(docs/governance/quality.md 红线)
 - [ ] 在 v3 路线图文档追加 v4 章节 + 链接
 
 ## 不在范围内(明确排除)

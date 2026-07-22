@@ -1,6 +1,6 @@
-# SECURITY.md
+# 安全红线
 
-> BK-Lite 安全基线与威胁约定。原则见 [core-beliefs §6](docs/design-docs/core-beliefs.md);本文是可执行的「红线 + 检查清单」。
+> BK-Lite 安全基线与威胁约定。原则见 [core-beliefs §6](../design-docs/core-beliefs.md)；本文是可执行的「红线 + 检查清单」。
 
 ## 1. 密钥与配置(强制红线)
 
@@ -12,9 +12,9 @@
 ## 2. 认证与会话
 
 - 自定义用户模型 `base.User`,多后端(Session / API Secret / 标准)。
-- Web → 后端经 `/api/proxy/core/api/login/`,统一由 `_set_auth_cookie_on_response()` 设置 `bklite_token` cookie(登录入口必须复用此辅助函数,见 [CLAUDE.md](CLAUDE.md) 学习项)。
+- Web → 后端经 `/api/proxy/core/api/login/`，统一由现行认证辅助函数设置 `bklite_token` cookie；具体函数名以当前代码为准。
 - `bk_lite_login` 是内部函数,**不暴露为 URL 路由**。
-- 认证源 / SSO 经 NATS 接入,接口规范见 [docs/readme.md](docs/readme.md)。
+- 认证源 / SSO 经 NATS 接入，接口规范见 [docs/readme.md](../readme.md)。
 
 ## 3. 编码红线
 
@@ -40,5 +40,3 @@
 
 - 代码层疑似漏洞:走安全审计循环 + `fp-check` 验证后立项修复。
 - 配置/部署层:经部署环境处置,不在仓库内 hotfix 密钥。
-
-> TODO: 补充依赖供应链审计节奏(确认位置:`server/pyproject.toml`、`web/package.json`、`supply-chain-risk-auditor` skill)。

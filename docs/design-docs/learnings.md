@@ -8,7 +8,7 @@
 - **`bk_lite_login` 是内部函数**:它不是视图,只被 `login()` 视图内部调用(当 `domain != "domain.com"`)。**不应暴露为 URL 路由**。
 - **登录流程**:Web 前端调用 `/api/proxy/core/api/login/` → 后端 `login()` 视图 → 按 domain 调用 `SystemMgmt.login()` 或 `bk_lite_login()` → 统一设置 cookie。
 
-> 相关安全约定见 [SECURITY.md §2](../../SECURITY.md)。
+> 相关安全约定见 [安全红线 §2](../governance/security.md)。
 
 ---
 

@@ -1,7 +1,7 @@
 # 后端编码规范 / 高频陷阱清单
 
 > 后端开发的预防性规范:写代码时照此避坑。每条给 **✅ 正确姿势** 与 **❌ 反模式**。
-> 与 [QUALITY_SCORE](../QUALITY_SCORE.md)(判定)、`server/docs/testing-guide.md`(测试)、[SECURITY](../SECURITY.md) / [RELIABILITY](../RELIABILITY.md)(安全/可靠)配套。
+> 与 [质量门禁](governance/quality.md)、`server/docs/testing-guide.md`、[安全红线](governance/security.md)和[可靠性红线](governance/reliability.md)配套。
 > 用法:改 `server/` 或 `agents/` 代码前,对照与你改动相关的小节。
 
 ## 1. 鉴权与多租户(最高频 —— 务必先看)
@@ -51,7 +51,7 @@
 
 - ✅ **密钥不明文返回 / 不进日志**;解密失败跳过或告警,绝不回退返回密文。
 - ✅ **下发链路校验 TLS / host key**,禁 `skip-tls` / `AutoAddPolicy` / `StrictHostKeyChecking=no`。
-- ✅ **下发不伤宿主**:资源边界、幂等可回滚、不可逆操作预检 —— 见 [RELIABILITY §2.5](../RELIABILITY.md)。
+- ✅ **下发不伤宿主**:资源边界、幂等可回滚、不可逆操作预检 —— 见 [可靠性红线 §2.5](governance/reliability.md)。
 
 ## 7. 数据库可移植与图库
 
@@ -89,4 +89,4 @@
 - [ ] 安全边界变更已盘点存量契约,有迁移与回滚方案
 - [ ] 异步状态有 fencing/幂等,持久化与外部副作用可补偿重试
 - [ ] 敏感数据在存储、异常、日志、指标、备份和回滚链路均不泄露
-- [ ] 新增行为有测试,关键路径覆盖失败/并发/回滚/兼容场景,覆盖率达标(见 [QUALITY_SCORE §4](../QUALITY_SCORE.md))
+- [ ] 新增行为有测试,关键路径覆盖失败/并发/回滚/兼容场景,覆盖率达标(见 [质量门禁 §4](governance/quality.md))

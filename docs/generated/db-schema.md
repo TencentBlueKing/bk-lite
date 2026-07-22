@@ -37,7 +37,7 @@ uv run python manage.py graph_models -a -o ../docs/generated/db-schema.png
 | `core` / `rpc` | `server/apps/{core,rpc}/` | 基础设施 / 跨服务 |
 
 > 注:`cmdb` 的图数据存 FalkorDB,关系型 schema 不覆盖其图模型;图查询禁用 Neo4j 语法。
-> 多数据库说明见 [ARCHITECTURE §3.4](../../ARCHITECTURE.md);`DB_ENGINE` 影响导出的 SQL 方言。
+> 多数据库说明见 [系统架构](../engineering/architecture.md)；`DB_ENGINE` 影响导出的 SQL 方言。
 
 ## Schema
 

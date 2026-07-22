@@ -1,6 +1,6 @@
-# RELIABILITY.md
+# 可靠性红线
 
-> 可靠性与韧性约定:故障模式、回滚、Runbook 入口。运行细节见 [AGENTS.md](AGENTS.md)。
+> 可靠性与韧性约定：故障模式、回滚与 Runbook 入口。运行细节见 [operations.md](../operations.md)。
 
 ## 1. 依赖拓扑(谁挂了影响谁)
 
@@ -15,12 +15,12 @@
 
 ## 2. 关键韧性设计:告警生命周期闭环
 
-`alerts` 的通知采用**三层闭环**(见近期提交 `d97feca85`):
+`alerts` 的通知采用**三层闭环**：
 1. 重试(应用层)
 2. DB 追踪(状态可查、可补偿)
 3. Celery 补偿(漏发兜底)
 
-> 改动 `alerts` 通知链时,三层缺一不可;`destroy()` 中的 `AlertLifecycleNotifier.notify_alerts` 调用属于闭环一环,不可随手删(曾回归,见 `3c44d1243`)。
+> 改动 `alerts` 通知链时，必须从当前代码与测试确认重试、状态追踪和补偿仍然闭合，不以历史函数名判断。
 
 ## 2.5 下发安全:插件/作业不得伤害目标主机(红线)
 
@@ -30,10 +30,10 @@
 - **资源边界**:下发/执行有 CPU/内存/磁盘/超时上界,杜绝打满目标机或无上界拉取(参见技术债中多处「无上界 OOM/DoS」)。
 - **幂等可回滚**:重复下发不产生副作用;安装/变更失败可回退,不留半成品。
 - **不可逆操作显式确认**:删除、覆盖、重启目标服务等高危动作,先 **dry-run / 预检**,再受控执行。
-- **凭据与传输**:下发链路校验 TLS/host key(勿 `skip-tls` / `AutoAddPolicy`);凭据不落明文(参见 [SECURITY.md](SECURITY.md))。
+- **凭据与传输**:下发链路校验 TLS/host key(勿 `skip-tls` / `AutoAddPolicy`);凭据不落明文(参见 [安全红线](security.md))。
 - **必有测试**:下发路径的资源边界、失败回滚、越权拒绝必须有自动化测试(单测/集成),不可只手验。
 
-> 改动任何「下发/执行到目标机」的代码,本节即红线;测试要求见 [QUALITY_SCORE.md §4](QUALITY_SCORE.md)。
+> 改动任何「下发/执行到目标机」的代码，本节即红线；测试要求见 [质量门禁 §4](quality.md)。
 
 ## 2.6 启动安全:非关键初始化不得阻断服务(红线)
 
@@ -75,7 +75,7 @@
 | 前端产物 | `pnpm clean && pnpm install && pnpm build` 或回退镜像 tag |
 | npm 包(webchat) | 按 npm 版本策略撤回/升补 |
 
-## 4. Runbook(完整版在 AGENTS.md §Runbook)
+## 4. Runbook
 
 高频项摘录:
 - `make dev` 启动失败 → 核对 `.env` 的 DB/NATS/Redis。
@@ -92,5 +92,3 @@
 - [ ] 触及告警/通知?三层闭环完整
 - [ ] 触及插件/作业下发?资源有边界、失败可回滚、不可逆操作有预检,且有测试(见 §2.5)
 - [ ] 触及数据库查询?走 ORM,无原生 SQL(跨 `DB_ENGINE` 方言)
-
-> TODO: 补充各服务的健康检查端点与超时/重试默认值清单(确认位置:`*/support-files/release/`、`server/config/components/`)。

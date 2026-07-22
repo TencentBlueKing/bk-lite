@@ -37,7 +37,7 @@ Status: cancelled
 - 完成后不自动 push(由用户本人提交)
 - 中文 commit message
 - TDD:每步"写失败测试 → 跑测试失败 → 实现 → 跑测试通过 → commit"
-- 覆盖率 ≥75%(沿用 QUALITY_SCORE.md 红线)
+- 覆盖率 ≥75%(沿用 docs/governance/quality.md 红线)
 
 ---
 

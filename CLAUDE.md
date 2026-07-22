@@ -1,70 +1,61 @@
 # BK-Lite Agent Guide
 
-> 本文件是仓库级 Agent 协作的单一入口；`AGENTS.md` 软链接到本文件。
+> 本文件是仓库级 Agent 协作的唯一入口；`AGENTS.md` 软链接到本文件。只保留跨模块、长期稳定且会影响执行的规则。
 
-## 开工先读
+## 先读什么
 
-- 共享术语：`CONTEXT.md`
-- 系统边界：`ARCHITECTURE.md`
-- 长期能力契约：`specs/capabilities/<capability>.md`
-- 跨会话变更：`specs/changes/<feature>/spec.md`
-- 难以回滚的决定：`docs/adr/`
-- 开发与运行命令：`docs/operations.md`
-- 后端规范：`docs/backend-coding-guide.md`
-- Web UI：`DESIGN.md`、`FRONTEND.md`、`web/DESIGN.md`、`web/COMPONENT_GOVERNANCE.md`
-- 安全、可靠性、质量：`SECURITY.md`、`RELIABILITY.md`、`QUALITY_SCORE.md`
-- Agent 工作流：`docs/agents/workflow.md`
+| 任务 | 事实源 |
+|---|---|
+| 术语与共享语言 | `CONTEXT.md` |
+| 产品定位与默认取舍 | `PRODUCT.md` |
+| UI 总入口 | `DESIGN.md` |
+| 系统与模块边界 | `docs/engineering/architecture.md` |
+| 开发、部署与日常命令 | `docs/operations.md` |
+| 后端工程规则 | `docs/backend-coding-guide.md` |
+| 前端工程规则 | `docs/engineering/frontend.md` |
+| 安全、可靠性、质量 | `docs/governance/{security,reliability,quality}.md` |
+| 长期能力契约 | `specs/capabilities/<capability>.md` |
+| 跨会话变更 | `specs/changes/<feature>/spec.md` |
+| 难以回滚的决定 | `docs/adr/` |
 
-## 项目结构
+只读当前任务需要的事实源。不要把整套文档当作固定开工清单。
 
-- `server/`：Python 3.12、Django 4.2、Uvicorn、Celery。
-- `web/`：Next.js 16、React 19、TypeScript、Ant Design。
-- `mobile/`：Next.js 15、Tauri 2、TypeScript。
-- `webchat/`：npm monorepo。
-- `agents/stargazer/`：Python 3.12、Sanic。
-- `algorithms/`：Python 算法服务，`uv` 管理。
-- `deploy/`：Docker/Kubernetes 部署资产。
+## 执行路由
 
-## 日常工作流
-
-目标清晰的小改直接执行：
+清晰小改直接走：
 
 ```text
 核对当前事实 -> 实现 -> 聚焦验证 -> commit/push
 ```
 
-不强制 Grill，也不创建 change spec。复杂或根因不明的缺陷显式使用 `$diagnosing-bugs`。
+- 根因不明、反复出现或性能退化：`$diagnosing-bugs`。
+- 新功能或缺陷修复需要测试接缝：`$tdd`。
+- 需求存在多条合理分支、跨域或难以回滚：用户显式调用 `$grill-with-docs`。
+- 单会话实现：`$implement`；跨会话先 `$to-spec`，确有阻塞边再 `$to-tickets`。
+- 完成前按变更范围运行新鲜验证；需要双轴复核时调用 `$code-review`。
 
-存在多条合理分支、跨产品/数据边界、破坏性迁移或难以回滚时，由用户显式进入：
+完整工作流见 `docs/agents/workflow.md`，Skill 清单见 `docs/agents/skills.md`。
 
-```text
-$grill-with-docs
-  ├─ 单会话 -> $implement
-  └─ 跨会话 -> $to-spec -> 必要时 $to-tickets
-```
+## 就近规则
 
-- Grill 一次只问一个真正需要用户裁定的问题；仓库可查事实由 Agent 自行核对。
-- `$to-spec` 只整理已收敛结论，写入一份 `specs/changes/<feature>/spec.md`。
-- `$to-tickets` 只在工作超出一个上下文窗口或存在真实阻塞边时使用。
-- `$implement` 在合适接缝使用 `$tdd`，完成后 `$code-review`，再以新鲜验证证据收口。
-- 没有 proposal/design/delta/tasks/sync/archive 仪式；完成的 change 原地更新状态。
+- 改 `server/`：先读 `docs/backend-coding-guide.md`；涉及鉴权、下发、启动或回滚，再读对应 governance 文档。
+- 改 `web/` 页面、组件、样式或 Storybook：先读 `docs/engineering/frontend.md`、`web/DESIGN.md` 与 `web/COMPONENT_GOVERNANCE.md`。
+- Web 组件先搜索 Ant Design、`web/src/components`、目标 app 的 `components` 与 Storybook；能复用不新建。单 app 组件留在 app 内，至少两个 app 实际使用后才提升 shared。
+- 改算法、Stargazer、Mobile 或 WebChat：以目标目录的 README、Makefile/package scripts 和测试为准，不把其他模块约定外推过去。
 
-完整路由见 `docs/agents/workflow.md`，Skills 清单见 `docs/agents/skills.md`。
+## 全局红线
 
-## Web UI / 组件红线
+- 只改任务相关文件，保留无关脏状态；不全仓格式化。
+- 回答、注释、提交、PR 和文档优先使用中文。
+- Secrets 只通过部署环境注入；`.env`、keystore、token 不入库、不进日志。
+- 数据库统一使用 Django ORM，禁止 raw SQL、`.raw()`、`RawSQL`、`cursor.execute`。
+- 非关键、可重建的外部资源初始化不得阻断服务启动。
+- 向目标主机下发必须有 dry-run、资源边界、幂等性、回滚路径和测试。
+- 不保留旧入口的兼容影子；无法确认时写 `TODO:` 并标明确认位置与关键词。
 
-修改 `web/` 页面、组件、样式或 Storybook 前：
+## 最小门禁
 
-1. 先读 `web/DESIGN.md` 与 `web/COMPONENT_GOVERNANCE.md`。
-2. 搜索 Ant Design、`web/src/components`、目标 app 的 `components` 和 Storybook。
-3. 已有组件能承载时复用；仅样式差异优先增加稳定 variant。
-4. 单 app 专用组件放 `web/src/app/<app>/components`。
-5. 只有两个及以上真实 app 接入后，才提升到 `web/src/components`；shared 变化同步 Storybook。
-6. 交付时说明复用项；新建时说明现有组件为何不适用及其归属。
-
-## 质量门禁
-
-| 改动范围 | 提交前命令 |
+| 改动范围 | 命令 |
 |---|---|
 | `server/` | `cd server && make test` |
 | `web/` | `cd web && pnpm lint && pnpm type-check` |
@@ -73,24 +64,12 @@ $grill-with-docs
 | `agents/stargazer/` | `cd agents/stargazer && make lint` |
 | `algorithms/<svc>/` | `cd algorithms/<svc> && uv run pytest` |
 
-只运行与改动相关的最小门禁；不得借机全仓格式化。
+门禁不可运行或存在与本次改动无关的基线失败时，保留原始证据并明确说明，不把失败伪装成通过。
 
-## 工程红线
+## 文档防腐
 
-- 仅修改需求相关文件，保留无关脏状态。
-- 新功能和缺陷修复遵循 TDD；测试行为而非实现，改动代码覆盖率不低于 75%。
-- Secrets 只通过部署环境注入；`.env`、keystore、token 不入库、不进日志。
-- 数据库统一使用 Django ORM，禁止 raw SQL、`.raw()`、`RawSQL`、`cursor.execute`。
-- 非关键、可重建的外部资源初始化不得阻断服务启动。
-- 主机下发必须有 dry-run、资源边界、幂等性、回滚路径和对应测试。
-- 不建立向后兼容影子入口；旧入口与当前事实冲突时直接迁到真实入口。
-- 无法确认时写 `TODO:`，并标明确认位置和关键词。
-- 回答、注释、提交、PR、文档优先使用中文。
-
-## 规格与知识边界
-
-- `CONTEXT.md` 只维护共享术语，不复制业务规则。
-- `specs/capabilities/` 是长期业务、验收、架构和运行约束的事实源。
-- `specs/changes/` 只保存跨会话的变更意图、实现决定、测试接缝和必要 tickets。
-- `docs/adr/` 只记录难以回滚且存在真实取舍的决定。
-- 具体表名、函数签名、组件树和测试断言由代码承担，不写入长期 capability。
+- 根目录只放稳定入口：`AGENTS.md`/`CLAUDE.md`、`CONTEXT.md`、`PRODUCT.md`、`DESIGN.md` 和 README。
+- 专题工程规则放 `docs/engineering/`，强制性红线放 `docs/governance/`，一次性报告和变更总结放 `docs/archive/`。
+- 同一规则只允许一个权威位置；其他文档只链接，不复制。
+- 业务事实写 capability，临时实现取舍写 change spec，长期且难回滚的取舍写 ADR；具体符号和测试断言由代码承担。
+- 移动、删除或替换权威文档时，同一提交修正所有引用。

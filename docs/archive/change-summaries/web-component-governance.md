@@ -1,4 +1,4 @@
-# Web Component Governance Worktree — Change Summary
+# Web Component Governance — Historical Change Summary
 
 **Worktree**: `.worktrees/web-component-governance`
 **Branch**: `codex/web-component-governance-merged`
@@ -43,7 +43,7 @@
 | Component prop type contracts | ~10 |
 | `package.json` + `pnpm-lock.yaml` | 2 |
 | `COMPONENT_GOVERNANCE.md` (governance record) | 1 |
-| `CHANGELOG-WEB-COMPONENT-GOVERNANCE.md` (this file) | 1 |
+| 本历史总结 | 1 |
 | Other documentation | ~5 |
 | **Total modified files** | **~186** |
 

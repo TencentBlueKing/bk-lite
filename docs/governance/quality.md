@@ -1,4 +1,4 @@
-# QUALITY_SCORE.md
+# 质量门禁
 
 > 「什么算合格」的客观标尺。提交前对照本表;红线项不达标 = 不可合并。
 
@@ -13,7 +13,7 @@
 | `webchat/` | `cd webchat && npm run build && npm run test` |
 | `algorithms/<svc>` | `cd algorithms/<svc> && uv run pytest` |
 
-> **覆盖率门槛**:改动代码覆盖率 **≥75%**(`pytest --cov`)。可在 `server/pytest.ini` 加 `--cov-fail-under=75` 强制,但须先确认存量达标,避免存量不足拖红全部提交(TODO:确认现状后落地)。
+> **覆盖率门槛**:改动代码覆盖率 **≥75%**(`pytest --cov`)。是否设置全仓 `--cov-fail-under` 以当前测试基线和 CI 配置为准，不在本文预设未落地门禁。
 
 ## 2. 自动门禁(已落地,别绕过)
 
@@ -23,7 +23,7 @@
 
 ## 3. 代码质量红线(硬性)
 
-> 后端高频陷阱(鉴权/查询/事务/输入/序列化)的「正确姿势」见 [docs/backend-coding-guide.md](docs/backend-coding-guide.md)。
+> 后端高频陷阱(鉴权/查询/事务/输入/序列化)的「正确姿势」见 [backend-coding-guide.md](../backend-coding-guide.md)。
 
 - [ ] TypeScript:接口用 `interface`,**禁用 `any`**,不可信输入用 `unknown`
 - [ ] Python:black + isort + flake8 全过,行宽 ≤150
@@ -31,7 +31,7 @@
 - [ ] **日志无敏感信息**
 - [ ] FalkorDB 语法(CMDB),**无 Neo4j 语法**
 - [ ] **禁用原生 SQL**:走 Django ORM,无 raw SQL / `.raw()` / `RawSQL` / `cursor.execute`(跨 `DB_ENGINE` 方言)
-- [ ] **启动不被非关键初始化阻断**:非关键、可重建资源失败须告警并可恢复,不得让 `startup.sh` / `batch_init` / entrypoint 退出;见 [RELIABILITY §2.6](RELIABILITY.md#26-启动安全非关键初始化不得阻断服务红线)
+- [ ] **启动不被非关键初始化阻断**:非关键、可重建资源失败须告警并可恢复,不得让 `startup.sh` / `batch_init` / entrypoint 退出;见 [可靠性红线 §2.6](reliability.md#26-启动安全非关键初始化不得阻断服务红线)
 - [ ] **下发不伤宿主**:插件/作业下发不致目标主机崩溃、死机、数据丢失;不可逆操作有边界与确认
 - [ ] 新增依赖**附理由**
 - [ ] 只改必要文件,**无顺手重构 / 全仓格式化**
@@ -58,4 +58,4 @@
 | 范围 | 夹带无关改动 | 最小 diff |
 | 验证 | 「应该没问题」 | 有命令/输出证据 |
 
-5 项全 1 才算「完成」。详见 [core-beliefs §7 改完必验](docs/design-docs/core-beliefs.md)。
+5 项全 1 才算「完成」。详见 [core-beliefs §7 改完必验](../design-docs/core-beliefs.md)。

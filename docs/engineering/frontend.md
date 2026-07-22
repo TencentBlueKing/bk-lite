@@ -1,6 +1,6 @@
-# FRONTEND.md
+# 前端工程规则
 
-> 前端(web / mobile / webchat)工程约定。**视觉 token 的唯一真相源是 [web/DESIGN.md](web/DESIGN.md)** —— 本文是工程层规范,不重复颜色值。
+> 前端(web / mobile / webchat)工程约定。视觉 token 的唯一真相源是 [Web Design](../../web/DESIGN.md)；本文不复制具体颜色值。
 
 ## 1. 技术栈
 
@@ -19,9 +19,9 @@
 
 ## 3. 视觉与组件(引用 web/DESIGN.md)
 
-- 颜色、圆角、间距、排版、组件样式**必须**取自 `web/DESIGN.md` 的 token(如 primary `#155AEF`、圆角 `sm/md/lg`、间距 `xs~xl`),禁止在组件里硬编码。
-- 卡片/按钮/链接等基础组件遵循 `web/DESIGN.md` 的 `components` 定义。
-- 产品侧 UI 规范(交互、布局语义)见 [specs/capabilities/legacy-design-ui.md](specs/capabilities/legacy-design-ui.md)。
+- 颜色、圆角、间距、排版、组件样式必须取自 `web/DESIGN.md` 的现行 token，禁止复制本文中的历史示例值。
+- 卡片、按钮、链接等基础组件遵循 `web/DESIGN.md` 与 `web/COMPONENT_GOVERNANCE.md`。
+- 产品侧 UI 规范见 [`legacy-design-ui`](../../specs/capabilities/legacy-design-ui.md)。
 
 ## 4. 提交前门禁
 
@@ -61,4 +61,4 @@ cd webchat && npm run build && npm run test  # webchat
 
 ---
 
-> 完整 dev/build/release 流程见 [AGENTS.md](AGENTS.md);质量评分见 [QUALITY_SCORE.md](QUALITY_SCORE.md)。
+> 完整工作流见 [Agent Guide](../../AGENTS.md)；质量红线见 [质量门禁](../governance/quality.md)。

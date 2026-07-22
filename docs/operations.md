@@ -126,4 +126,4 @@ cd algorithms/<svc> && make install && make serving  # BentoML :3000；uv run py
 9. `stargazer` 无任务消费 → Redis/NATS 与 Server/Worker 一致,先起 Worker。
 10. K8s 采集器无数据 → 检查 `secret.env` 的 `CLUSTER_NAME/NATS_*` 与 `ca.crt`。
 
-> 质量门禁与代码红线见 [QUALITY_SCORE.md](../QUALITY_SCORE.md);回滚与韧性见 [RELIABILITY.md](../RELIABILITY.md)。
+> 质量门禁与代码红线见 [质量门禁](governance/quality.md)；回滚与韧性见 [可靠性红线](governance/reliability.md)。
