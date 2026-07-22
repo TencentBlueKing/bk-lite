@@ -6,7 +6,6 @@ from apps.monitor.utils.plugin_controller import Controller
 
 
 DEFAULT_OUTPUT_LIMIT = 8192
-TELEGRAF_BIN = "/opt/fusion-collectors/bin/telegraf"
 _OUTPUT_BLOCK_PATTERN = re.compile(r"(?ms)^\s*\[\[outputs\.[^\]]+\]\].*?(?=^\s*\[\[|\Z)")
 _SECRET_ASSIGNMENT_PATTERN = re.compile(
     r"(?i)\b(password|passwd|token|secret|private_key|passphrase)\s*=\s*([^\s,;]+)"
@@ -81,19 +80,6 @@ def build_telegraf_detect_execution(
         return command, "powershell"
 
     raise ValueError(f"不支持的节点操作系统: {operating_system}")
-
-
-def build_write_config_and_telegraf_command(config_path: str, config_content: str) -> str:
-    quoted_path = shlex.quote(config_path)
-    quoted_telegraf = shlex.quote(TELEGRAF_BIN)
-    return (
-        "set -e\n"
-        f"trap 'rm -f {quoted_path}' EXIT\n"
-        f"cat > {quoted_path} <<'BK_LITE_TELEGRAF_PREFLIGHT_EOF'\n"
-        f"{config_content}\n"
-        "BK_LITE_TELEGRAF_PREFLIGHT_EOF\n"
-        f"{quoted_telegraf} --once --config {quoted_path}"
-    )
 
 
 def sanitize_execution_result(raw_result, sensitive_values=None, output_limit=DEFAULT_OUTPUT_LIMIT) -> dict:

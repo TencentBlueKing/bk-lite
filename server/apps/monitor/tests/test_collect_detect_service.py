@@ -10,6 +10,69 @@ from apps.monitor.services.collect_detect_runtime import (
     render_preflight_telegraf_config,
     sanitize_execution_result,
 )
+from apps.node_mgmt.models import CloudRegion, Collector, Node
+
+
+def create_collect_detect_node(
+    *,
+    node_id: str,
+    operating_system: str,
+    executable_path: str,
+    create_collector: bool = True,
+):
+    cloud_region, _ = CloudRegion.objects.get_or_create(id=1, defaults={"name": "collect-detect-test"})
+    node = Node.objects.create(
+        id=node_id,
+        name=node_id,
+        ip="127.0.0.1",
+        operating_system=operating_system,
+        cpu_architecture="x86_64",
+        collector_configuration_directory=(
+            r"C:\fusion-collectors\etc\telegraf.d"
+            if operating_system == "windows"
+            else "/etc/telegraf/telegraf.d"
+        ),
+        cloud_region=cloud_region,
+    )
+    if create_collector:
+        Collector.objects.create(
+            id=f"telegraf-{operating_system}-collect-detect",
+            name="Telegraf",
+            service_type="exec",
+            node_operating_system=operating_system,
+            cpu_architecture="x86_64",
+            executable_path=executable_path,
+            execute_parameters="--config %s",
+        )
+    return node
+
+
+def create_collect_detect_case(*, node_id: str, collect_type: str = "cpu"):
+    plugin = MonitorPlugin.objects.create(
+        name=f"{collect_type}-{node_id}",
+        collector="Telegraf",
+        collect_type=collect_type,
+        support_collect_detect=True,
+    )
+    MonitorPluginConfigTemplate.objects.create(
+        plugin=plugin,
+        type=collect_type,
+        config_type=collect_type,
+        file_type="toml",
+        content=f"[[inputs.{collect_type}]]\n",
+    )
+    return CollectDetectTask.objects.create(
+        status="pending",
+        phase="validate",
+        monitor_plugin_id=plugin.id,
+        monitor_object_id=1,
+        collector="Telegraf",
+        collect_type=collect_type,
+        node_id=node_id,
+        request_fingerprint=f"fp-{node_id}",
+        created_by="admin",
+        organization=3,
+    )
 
 
 @pytest.mark.django_db
@@ -285,6 +348,11 @@ def test_create_collect_detect_task_stores_sanitized_snapshot_and_dispatches(mon
 
 @pytest.mark.django_db
 def test_run_collect_detect_task_executes_telegraf_once(monkeypatch):
+    create_collect_detect_node(
+        node_id="node-1",
+        operating_system="linux",
+        executable_path="/opt/fusion-collectors/bin/telegraf",
+    )
     plugin = MonitorPlugin.objects.create(
         name="MySQL",
         collector="Telegraf",
@@ -347,6 +415,11 @@ def test_run_collect_detect_task_executes_telegraf_once(monkeypatch):
 
 @pytest.mark.django_db
 def test_run_collect_detect_task_derives_sensitive_instance_env(monkeypatch):
+    create_collect_detect_node(
+        node_id="node-1",
+        operating_system="linux",
+        executable_path="/opt/fusion-collectors/bin/telegraf",
+    )
     plugin = MonitorPlugin.objects.create(
         name="MySQL",
         collector="Telegraf",
@@ -402,6 +475,11 @@ def test_run_collect_detect_task_derives_sensitive_instance_env(monkeypatch):
 
 @pytest.mark.django_db
 def test_run_collect_detect_task_renders_selected_config_templates(monkeypatch):
+    create_collect_detect_node(
+        node_id="node-1",
+        operating_system="linux",
+        executable_path="/opt/fusion-collectors/bin/telegraf",
+    )
     plugin = MonitorPlugin.objects.create(
         name="Host",
         collector="Telegraf",
@@ -460,6 +538,95 @@ def test_run_collect_detect_task_renders_selected_config_templates(monkeypatch):
     assert "[[inputs.cpu]]" in executed["command"]
     assert "[[inputs.mem]]" in executed["command"]
     assert executed["command"].count("[[outputs.file]]") == 1
+
+
+@pytest.mark.django_db
+def test_run_collect_detect_task_uses_windows_collector_and_powershell(monkeypatch):
+    create_collect_detect_node(
+        node_id="node-win",
+        operating_system="windows",
+        executable_path=r"C:\fusion-collectors\bin\telegraf.exe",
+    )
+    task = create_collect_detect_case(node_id="node-win")
+    executed = {}
+
+    class FakeExecutor:
+        def __init__(self, node_id):
+            executed["node_id"] = node_id
+
+        def execute_local(self, command, timeout=60, shell=None, env=None):
+            executed.update(command=command, shell=shell, env=env)
+            return {"success": True, "result": "win_cpu value=1", "error": ""}
+
+    monkeypatch.setattr("apps.monitor.services.collect_detect.Executor", FakeExecutor)
+    result = CollectDetectService.run_task(task.id, {"instance": {}, "env": {}, "timeout": 30})
+
+    assert result["success"] is True
+    assert executed["node_id"] == "node-win"
+    assert executed["shell"] == "powershell"
+    assert r"C:\fusion-collectors\bin\telegraf.exe" in executed["command"]
+    assert "/opt/fusion-collectors/bin/telegraf" not in executed["command"]
+
+
+@pytest.mark.django_db
+def test_run_collect_detect_task_fails_when_windows_collector_is_missing(monkeypatch):
+    create_collect_detect_node(
+        node_id="node-win-missing",
+        operating_system="windows",
+        executable_path=r"C:\fusion-collectors\bin\telegraf.exe",
+        create_collector=False,
+    )
+    task = create_collect_detect_case(node_id="node-win-missing")
+    executor_called = False
+
+    class FakeExecutor:
+        def __init__(self, node_id):
+            nonlocal executor_called
+            executor_called = True
+
+    monkeypatch.setattr("apps.monitor.services.collect_detect.Executor", FakeExecutor)
+    result = CollectDetectService.run_task(task.id, {"instance": {}, "env": {}})
+
+    assert result["success"] is False
+    assert "未找到适用的 Telegraf 采集器" in result["stderr"]
+    assert executor_called is False
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("node_id", "operating_system", "expected_error"),
+    [
+        ("node-missing", None, "采集节点不存在"),
+        ("node-unsupported", "darwin", "不支持的节点操作系统: darwin"),
+    ],
+)
+def test_run_collect_detect_task_rejects_missing_or_unsupported_node(
+    monkeypatch,
+    node_id,
+    operating_system,
+    expected_error,
+):
+    if operating_system:
+        create_collect_detect_node(
+            node_id=node_id,
+            operating_system=operating_system,
+            executable_path="/opt/telegraf",
+            create_collector=False,
+        )
+    task = create_collect_detect_case(node_id=node_id)
+    executor_called = False
+
+    class FakeExecutor:
+        def __init__(self, executor_node_id):
+            nonlocal executor_called
+            executor_called = True
+
+    monkeypatch.setattr("apps.monitor.services.collect_detect.Executor", FakeExecutor)
+    result = CollectDetectService.run_task(task.id, {"instance": {}, "env": {}})
+
+    assert result["success"] is False
+    assert expected_error in result["stderr"]
+    assert executor_called is False
 
 
 @pytest.mark.django_db
