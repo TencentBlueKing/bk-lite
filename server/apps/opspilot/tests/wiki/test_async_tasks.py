@@ -22,11 +22,12 @@ def test_build_task_creates_build_record():
 
     kb = _kb()
     mat = _material(kb)
-    # 无 llm_model -> 生成 0 页,但构建记录应成功落库
+    # 无 llm_model -> 生成 0 页,按 2576af62a 行为标 partial(非 success),
+    # build 记录仍成功落库,可追溯"模型未配"问题。
     rid = wiki_build_material_task.apply(args=[mat.id]).get()
     assert rid is not None
     rec = BuildRecord.objects.get(id=rid)
-    assert rec.trigger == "material" and rec.status == "success"
+    assert rec.trigger == "material" and rec.status == "partial"
 
 
 @pytest.mark.django_db
