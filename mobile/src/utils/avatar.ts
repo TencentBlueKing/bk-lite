@@ -21,11 +21,3 @@ export const getAvatar = (id: number | string): string => {
     const numId = typeof id === 'string' ? parseInt(id, 10) || 0 : id;
     return avatarList[Math.abs(numId) % avatarList.length];
 };
-
-/**
- * 获取头像列表
- * @returns 所有头像路径数组
- */
-export const getAvatarList = (): string[] => {
-    return [...avatarList];
-};

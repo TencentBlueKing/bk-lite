@@ -78,6 +78,12 @@
   - `/fix` / `/修复`: 缺陷修复流程。先系统化调试确认根因,经确认后 TDD 复现与最小修复,最后真实验证并收口。
   - `/feature` / `/功能`: 功能开发流程。先澄清与设计,必要时走 OpenSpec,多步骤实现先写计划,实现阶段 TDD,最后跑对应模块门禁。
   - 工具入口按会话类型同步维护:`.agents/skills/source-command-*`、`.claude/commands/`、`.claude/skills/`、`.opencode/command/`、`.opencode/skills/`、`.github/prompts/`。
+- **Web UI / 组件任务（强制前置）**:修改 `web/` 下页面、组件、样式或 Storybook 前,必须先阅读 `web/DESIGN.md` 与 `web/COMPONENT_GOVERNANCE.md`,并按以下顺序执行:
+  1. 搜索 Ant Design、`web/src/components`、当前 `web/src/app/<app>/components` 和 Storybook,禁止凭记忆新建组件。
+  2. 已有组件能承载时必须复用;仅样式差异优先增加稳定 variant,不得复制源码或创建平行实现。
+  3. 确实不适用且只有一个 app 使用时,在 `web/src/app/<app>/components` 创建 app-local 组件。
+  4. 只有两个及以上真实 app 已接入同一抽象后,才可提升到 `web/src/components`;shared 组件变化必须同步 Storybook。
+  5. 交付时说明复用了哪个组件;若新建,说明现有组件不适用的理由与组件归属。
 - **Agent 工具自检**:会话需要 OpenSpec / projectmem / CodeGraph 时,先确认 `openspec`、`pjm`、`codegraph` 可用;缺失则由 Agent 运行 `scripts/agent-tooling-bootstrap` 补齐并记录结果。MCP 启动统一走 `scripts/projectmem-mcp`、`scripts/codegraph-mcp`,禁止在仓库配置里写个人机器绝对路径。
 - **最小 diff**:仅改需求相关文件与代码块。
 - **避免格式化污染**:只格式化触及文件,不全仓格式化。

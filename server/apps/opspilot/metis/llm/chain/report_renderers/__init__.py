@@ -37,6 +37,29 @@ ReportRenderer = Callable[[Any, Dict[str, Any]], Optional[Dict[str, Any]]]
 RENDERER_REGISTRY: Dict[str, ReportRenderer] = {}
 
 
+def _merge_scope(results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """合并任意领域的 scope；不同值转为数组，缺失维度视为未限定。"""
+    scopes = [r.get("scope") if isinstance(r.get("scope"), dict) else {} for r in results]
+    if not scopes:
+        return {}
+
+    shared_keys = set(scopes[0])
+    for scope in scopes[1:]:
+        shared_keys.intersection_update(scope)
+
+    merged_scope: Dict[str, Any] = {}
+    for key in scopes[0]:
+        if key not in shared_keys:
+            continue
+        values = []
+        for scope in scopes:
+            value = scope[key]
+            if value not in values:
+                values.append(value)
+        merged_scope[key] = values[0] if len(values) == 1 else values
+    return merged_scope
+
+
 def register_renderer(capability: str, renderer: ReportRenderer) -> None:
     """注册一个 capability 对应的渲染器(同 capability 后写覆盖前写)。"""
     RENDERER_REGISTRY[capability] = renderer
@@ -138,6 +161,7 @@ def merge_analysis_results(results: List[Dict[str, Any]]) -> Dict[str, Any]:
     elif len(cluster_names) > 1:
         merged.pop("cluster_name", None)
         merged["cluster_names"] = sorted(cluster_names)
+    merged["scope"] = _merge_scope(valid)
     return merged
 
 
@@ -166,9 +190,10 @@ from . import generic  # noqa: E402, F401
 def strip_phantom_tool_calls(text: str) -> str:
     """把 LLM 幻觉的 XML 风格工具调用从 text 里抹掉,返回新字符串。
 
-    支持两种 phantom call 格式:
+    支持三种 phantom call 格式:
     - <tool_call>call:name{args}<tool_call>
     - <|tool_call|>call:name{args}<|tool_call|>
+    - <|tool_call>call:name{args}<|tool_call>
 
     不影响:
     - 真实工具调用(走 TOOL_CALL_START 事件通道,本来就不在 text 里)
@@ -180,7 +205,24 @@ def strip_phantom_tool_calls(text: str) -> str:
         return text
     text = _strip_paired_tag(text, "<tool_call>", "</tool_call>")
     text = _strip_paired_tag(text, "<|tool_call|>", "<|tool_call|>")
+    text = _strip_paired_tag(text, "<|tool_call>", "<|tool_call>")
     return text
+
+
+def find_unclosed_phantom_tool_call_start(text: str) -> Optional[int]:
+    """返回尚未闭合的 phantom call 起点；全部闭合时返回 None。"""
+    pending_starts: list[int] = []
+
+    last_open = text.rfind("<tool_call>")
+    last_close = text.rfind("</tool_call>")
+    if last_open > last_close:
+        pending_starts.append(last_open)
+
+    for tag in ("<|tool_call|>", "<|tool_call>"):
+        if text.count(tag) % 2:
+            pending_starts.append(text.rfind(tag))
+
+    return min(pending_starts) if pending_starts else None
 
 
 def _strip_paired_tag(text: str, open_tag: str, close_tag: str) -> str:

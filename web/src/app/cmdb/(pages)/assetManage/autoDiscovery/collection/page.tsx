@@ -5,7 +5,7 @@ import React, { useState } from 'react';
 import { useTranslation } from '@/utils/i18n';
 import FullCollection from './full/page';
 import ProfessionalCollection from './profess/page';
-import Introduction from '@/app/cmdb/components/introduction';
+import Introduction from '@/components/introduction';
 
 const CollectionPage: React.FC = () => {
   const [activeTab] = useState('professional');

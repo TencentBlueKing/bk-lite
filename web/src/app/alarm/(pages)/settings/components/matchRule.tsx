@@ -244,7 +244,7 @@ const RulesMatch: React.FC<MatchRuleProps> = ({
                           </Select>
                         ) : (
                           <Input
-                            value={i.value}
+                            value={Array.isArray(i.value) ? undefined : i.value}
                             placeholder={t('common.inputTip')}
                             onChange={(e) => {
                               const updatedPolicyList = [...policyList];

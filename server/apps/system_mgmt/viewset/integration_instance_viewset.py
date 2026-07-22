@@ -203,8 +203,8 @@ class IntegrationInstanceViewSet(MaintainerViewSet):
 
         log_operation(request, "execute", "system-manager", f"测试集成实例连接: {obj.name}")
         if not result.success:
-            # 详细失败信息已由 runtime.py warning 记录；viewset 层只记请求 context
-            logger.warning(
+            # Runtime 负责唯一的失败告警；此处仅保留状态落库后的调试上下文。
+            logger.debug(
                 f"IntegrationInstanceViewSet.test_connection: failed, "
                 f"instance_id={obj.id}, provider_key={obj.provider_key}, "
                 f"capability_key={capability_key or '(all)'}, "

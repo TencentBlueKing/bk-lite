@@ -7,6 +7,7 @@ import json
 
 import pytest
 
+from apps.cmdb.graph.falkordb import FalkorDBClient
 from apps.cmdb.services import unique_rule as ur
 from apps.cmdb.services.unique_rule import ModelUniqueRule
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -153,6 +154,34 @@ def test_collect_conflicts_excludes_instance():
     # 排除自身 → 无冲突
     conflicts = ur.collect_unique_rule_conflicts(rules, items, exist_items, {"name": {}}, exclude_instance_ids={1})
     assert conflicts == []
+
+
+@pytest.mark.parametrize("value", [None, "", 0, False])
+def test_instance_single_unique_precheck_matches_legacy_falsy_skip(value):
+    item = {"serial": value}
+    existing = [{"_id": 1, "serial": value}]
+    check_attr_map = {
+        "is_only": {"serial": "序列号"},
+        "unique_rules": [],
+        "attrs_by_id": {"serial": {"attr_id": "serial", "attr_name": "序列号"}},
+    }
+
+    FalkorDBClient.check_unique_attr(item, check_attr_map["is_only"], existing)
+    assert ur.collect_instance_unique_conflicts(check_attr_map, [item], existing) == []
+
+
+def test_instance_single_unique_precheck_matches_legacy_whitespace_conflict():
+    item = {"serial": "   "}
+    existing = [{"_id": 1, "serial": "   "}]
+    check_attr_map = {
+        "is_only": {"serial": "序列号"},
+        "unique_rules": [],
+        "attrs_by_id": {"serial": {"attr_id": "serial", "attr_name": "序列号"}},
+    }
+
+    with pytest.raises(BaseAppException):
+        FalkorDBClient.check_unique_attr(item, check_attr_map["is_only"], existing)
+    assert len(ur.collect_instance_unique_conflicts(check_attr_map, [item], existing)) == 1
 
 
 def test_raise_unique_rule_conflict_raises():

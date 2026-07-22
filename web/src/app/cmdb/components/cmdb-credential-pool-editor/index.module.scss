@@ -1,0 +1,381 @@
+.credentialPoolEditor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.credentialPoolHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 12px 4px;
+}
+
+.credentialPoolTitle {
+  align-items: center;
+  color: var(--color-text-1);
+  display: inline-flex;
+  font-size: 16px;
+  font-weight: 600;
+  gap: 6px;
+  line-height: 24px;
+}
+
+.credentialPoolHelpIcon {
+  color: #9aa4b2;
+  cursor: help;
+  font-size: 13px;
+}
+
+.credentialPoolCount {
+  color: #50617a;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  line-height: 22px;
+}
+
+.credentialPoolCount::after {
+  color: #98a4b5;
+  content: ' 已配置';
+  font-size: 12px;
+  font-weight: 400;
+  margin-left: 4px;
+}
+
+.credentialHeaderAddButton {
+  background: #eef5ff !important;
+  border-color: #2f6df6 !important;
+  border-radius: 6px !important;
+  color: #155bd4 !important;
+  font-weight: 500;
+  height: 30px !important;
+  padding-inline: 14px !important;
+  width: 116px;
+
+  &:hover {
+    background: #e2edff !important;
+    border-color: #155bd4 !important;
+    color: #0f4bb4 !important;
+  }
+
+  &:disabled {
+    background: #f4f7fb !important;
+    border-color: #d8e0ec !important;
+    color: #9aa7ba !important;
+  }
+}
+
+.credentialPoolList {
+  list-style: none;
+  padding: 0 0 0 12px;
+  margin: 0;
+}
+
+.credentialStaticItem {
+  display: flex;
+  width: 100%;
+}
+
+.credentialOrderNumber {
+  align-items: center;
+  background: #f7f9fc;
+  border: 1px solid #e7ecf3;
+  border-radius: 6px;
+  color: #66758c;
+  display: inline-flex;
+  flex: 0 0 22px;
+  font-size: 12px;
+  font-weight: 600;
+  height: 22px;
+  justify-content: center;
+  line-height: 22px;
+  margin-right: 7px;
+  margin-top: 12px;
+  width: 22px;
+}
+
+.credentialDragHandle {
+  align-items: center;
+  color: #8f9daf;
+  cursor: grab !important;
+  display: inline-flex;
+  font-size: 12px;
+  height: 18px;
+  justify-content: center;
+  left: 39px;
+  line-height: 1;
+  opacity: 0.9;
+  position: absolute;
+  top: 13px;
+  transition: opacity 0.18s ease;
+  width: 12px;
+  z-index: 1;
+}
+
+.credentialDragHandle:hover {
+  color: #7d8ba0;
+  cursor: grab !important;
+  opacity: 1;
+}
+
+.credentialCard {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid rgba(204, 214, 226, 0.72);
+  border-radius: 8px;
+  padding: 0 12px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.035);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.credentialCardExpanded {
+  border-color: rgba(178, 194, 215, 0.86);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.055);
+}
+
+.credentialCardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+}
+
+.credentialCardSummary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.credentialTitleBlock {
+  flex: 0 0 64px;
+  min-width: 0;
+  padding-left: 12px;
+}
+
+.credentialTitle {
+  color: var(--color-text-1);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.credentialMetaList {
+  align-items: center;
+  color: #5f6b7c;
+  display: flex;
+  flex: 1;
+  gap: 12px;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.credentialMetaItem {
+  align-items: center;
+  color: var(--color-text-2);
+  display: inline-flex;
+  flex: 0 1 auto;
+  gap: 4px;
+  line-height: 20px;
+  min-width: 0;
+  max-width: 34%;
+}
+
+.credentialMetaLabel {
+  color: #8a94a5;
+  font-size: 12px;
+  line-height: 20px;
+  white-space: nowrap;
+}
+
+.credentialMetaLabel::after {
+  content: ':';
+}
+
+.credentialMetaValue {
+  color: #445266;
+  font-size: 12px;
+  line-height: 20px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.credentialMetaEmpty {
+  .credentialMetaValue {
+    color: #aab2bf;
+  }
+}
+
+.credentialMetaToggle {
+  color: #9aa4b2 !important;
+  height: 20px !important;
+  padding-inline: 2px !important;
+  width: 20px !important;
+}
+
+.credentialActions {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex-shrink: 0;
+  margin-left: 6px;
+
+  :global(.ant-btn) {
+    width: 26px;
+  }
+}
+
+.credentialExpandButton {
+  color: #4f668a !important;
+}
+
+.credentialCardBody {
+  padding: 4px 0 12px 16px;
+}
+
+.credentialFieldGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.credentialFieldRow {
+  display: grid;
+  grid-template-columns: 80px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.credentialFieldLabel {
+  align-items: center;
+  color: var(--color-text-2);
+  display: inline-flex;
+  gap: 4px;
+  justify-content: flex-end;
+  text-align: right;
+}
+
+.credentialRequiredMark {
+  color: #ff4d4f;
+  font-family: SimSun, sans-serif;
+  line-height: 1;
+}
+
+.credentialFieldControl {
+  min-width: 0;
+
+  :global(.ant-input),
+  :global(.ant-input-number),
+  :global(.ant-input-affix-wrapper),
+  :global(.ant-select-selector) {
+    height: 30px !important;
+    min-height: 30px !important;
+  }
+
+  :global(.ant-input-affix-wrapper) {
+    align-items: center;
+    padding-block: 0 !important;
+
+    :global(input.ant-input) {
+      height: auto !important;
+      min-height: 0 !important;
+    }
+  }
+}
+
+.credentialInlineControl {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+
+  :global(.ant-select) {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+}
+
+.credentialRefreshButton {
+  color: #4f668a !important;
+  flex: 0 0 28px;
+  height: 30px !important;
+  width: 28px !important;
+}
+
+.credentialPoolFooter {
+  display: flex;
+  align-items: center;
+}
+
+.credentialAddButton {
+  height: 32px !important;
+  min-width: 0;
+  width: 156px;
+  border-style: dashed !important;
+  border-color: #d6dde8 !important;
+  color: #65748a !important;
+  background: #fbfdff !important;
+  border-radius: 6px !important;
+}
+
+.credentialAddButton:hover {
+  border-color: #9db7da !important;
+  color: #315f9f !important;
+  background: #f7fbff !important;
+}
+
+@media (max-width: 560px) {
+  .credentialPoolHeader {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .credentialHeaderAddButton {
+    width: 100%;
+  }
+
+  .credentialCardHeader {
+    align-items: flex-start;
+    padding: 10px 0;
+  }
+
+  .credentialCardSummary {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .credentialTitleBlock {
+    flex-basis: auto;
+  }
+
+  .credentialMetaList {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .credentialMetaItem {
+    max-width: 100%;
+  }
+
+  .credentialActions {
+    padding-top: 2px;
+  }
+
+  .credentialPoolFooter {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .credentialAddButton {
+    width: 100%;
+  }
+}
