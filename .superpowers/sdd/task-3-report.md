@@ -13,6 +13,13 @@
   Lua 对同类不完整结构也拒绝删除。
 - README 增加自动启动清理的默认开启、5 秒二阶段确认、10000/30 秒边界、
   Redis 分布式锁、fail-open、环境变量、脱敏日志和人工 CLI 边界说明。
+- 审查修复：以 Host Remote 实际写入的 `waiting_callback`、
+  `execution_finished`、`callback_timeout` 为唯一 execution 白名单；未知、
+  非字符串和结构损坏均按单 marker `marker_errors` 保留。Lua 用独立 `-1`
+  结果码表示二检损坏，Python 仅将 `eval == 1` 视为删除成功。
+- fixture 在启动失败时记录最后连接异常、socket 和进程状态；客户端初始
+  `FLUSHDB` 失败仍关闭，停止时 `communicate(timeout=5)`，超时后 kill 并
+  有界 wait，最外层 finally 删除 socket。
 
 ## TDD 证据
 
@@ -24,10 +31,14 @@
   损坏 callback context 同样分别复现 `JSONDecodeError` / `AttributeError`；
   最小修复后先复跑为 `14 passed in 2.28s`，补充 Lua 确认窗口损坏 context
   回归后最终复跑为 `16 passed in 2.50s`。
+- 审查 RED：首检未知 execution 会得到 `success`；Lua 二检坏 context 的
+  `-1` 被 Python truthiness 误记为删除。分别以 7 项状态矩阵和 `-1` fake
+  Redis 合同复现，最小修复后定向 `8 passed`，最终真实 Redis `31 passed in
+  3.45s`。
 
 ## 验证
 
-- 相关非 Redis 回归：`149 passed`。
+- 相关非 Redis 回归：`157 passed`。
 - 依赖合同（排除 sandbox 内缺少 `uv` 的离线同步用例）：`6 passed, 1 deselected`。
 - `py_compile` 和 `git diff --check` 通过。
 - 当前 sandbox 不能连接临时 Unix socket：`redis-server v6.2.4` 可执行但每个
@@ -43,8 +54,9 @@
 
 ## 环境顾虑
 
-- 当前 sandbox 的 `PATH` 与 `.venv` 均没有 `black`、`isort`、`flake8`；对应
-  原始静态门禁无法执行，未将其误报为通过。
+- task worktree 不含 `server/.venv`；主仓受控虚拟环境的 Black/isort 已对
+  触及文件通过。flake8 仍报 8 个提交前已存在的 E501（Lua 字符串及既有
+  启动生命周期测试行）；本次新增行已收敛，不将该基线失败误报为通过。
 - `test_locked_sync_rejects_stale_lockfile_offline` 在本 sandbox 因子进程找不到
   `uv` 而失败，不是业务断言失败；需在具有 `uv` 的 sandbox 外环境复跑。
 

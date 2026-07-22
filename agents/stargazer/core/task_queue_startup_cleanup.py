@@ -10,13 +10,16 @@ from typing import Awaitable, Callable, Literal, Mapping
 
 from redis.exceptions import ResponseError
 
-
 LOCK_KEY = b"stargazer:maintenance:startup-orphan-cleanup"
 QUEUE_KEY = b"arq:queue"
 MARKER_PATTERNS = (b"task:running:*", b"task:dedupe:*")
 IN_PROGRESS_PREFIX = b"arq:in-progress:"
 RUNNING_MARKER_PREFIX = b"task:running:"
 HOST_REMOTE_CALLBACK_CONTEXT_PREFIX = b"host_remote:callback_context:"
+_VALID_CALLBACK_EXECUTIONS = frozenset(
+    {"waiting_callback", "execution_finished", "callback_timeout"}
+)
+_INVALID_CALLBACK_CONTEXT_RESULT = -1
 
 _DELETE_CONFIRMED_ORPHAN_LUA = """
 local marker_value = redis.call('GET', KEYS[1])
@@ -34,15 +37,20 @@ if KEYS[4] ~= '' then
     if callback_value then
         local decoded_ok, callback_context = pcall(cjson.decode, callback_value)
         if not decoded_ok or type(callback_context) ~= 'table' then
-            return 0
+            return -1
         end
         local status = callback_context['status']
-        local callback_received_at = callback_context['callback_received_at']
         if type(status) ~= 'table' or type(status['execution']) ~= 'string' then
-            return 0
+            return -1
         end
-        if status['execution'] == 'waiting_callback'
-            and (callback_received_at == nil or callback_received_at == cjson.null)
+        local execution = status['execution']
+        if execution ~= 'waiting_callback'
+            and execution ~= 'execution_finished'
+            and execution ~= 'callback_timeout'
+        then
+            return -1
+        end
+        if execution == 'waiting_callback'
         then
             return 0
         end
@@ -80,7 +88,9 @@ class StartupCleanupConfig:
             raise StartupCleanupConfigError("开关必须是布尔值")
         if not _is_finite_number(self.confirm_delay_seconds):
             raise StartupCleanupConfigError("确认延迟必须是有限数字")
-        if not isinstance(self.max_markers, int) or isinstance(self.max_markers, bool):
+        if not isinstance(self.max_markers, int) or isinstance(
+            self.max_markers, bool
+        ):
             raise StartupCleanupConfigError("扫描上限必须是整数")
         if not _is_finite_number(self.timeout_seconds):
             raise StartupCleanupConfigError("总超时必须是有限数字")
@@ -184,16 +194,23 @@ async def cleanup_startup_orphan_markers(
                                 break
                             scanned += 1
                             marker_key = _as_bytes(raw_marker_key)
-                            callback_context_key = _callback_context_key(marker_key)
+                            callback_context_key = _callback_context_key(
+                                marker_key
+                            )
                             try:
                                 marker_value = await redis.get(marker_key)
                                 job_id = _marker_job_id(marker_value)
                                 if job_id is None:
                                     errors += 1
                                     preserved += 1
-                                elif await redis.zscore(QUEUE_KEY, job_id) is not None:
+                                elif (
+                                    await redis.zscore(QUEUE_KEY, job_id)
+                                    is not None
+                                ):
                                     preserved += 1
-                                elif await redis.exists(IN_PROGRESS_PREFIX + job_id):
+                                elif await redis.exists(
+                                    IN_PROGRESS_PREFIX + job_id
+                                ):
                                     preserved += 1
                                 elif (
                                     callback_context_key
@@ -204,7 +221,11 @@ async def cleanup_startup_orphan_markers(
                                     preserved += 1
                                 else:
                                     candidates.append(
-                                        (marker_key, job_id, callback_context_key)
+                                        (
+                                            marker_key,
+                                            job_id,
+                                            callback_context_key,
+                                        )
                                     )
                             except (ResponseError, CallbackContextError):
                                 errors += 1
@@ -233,10 +254,12 @@ async def cleanup_startup_orphan_markers(
                             errors += 1
                             preserved += 1
                             continue
-                        if did_delete:
+                        if did_delete == 1:
                             deleted += 1
                         else:
                             preserved += 1
+                            if did_delete == _INVALID_CALLBACK_CONTEXT_RESULT:
+                                errors += 1
         except TimeoutError:
             timed_out = True
     finally:
@@ -370,20 +393,17 @@ async def _is_waiting_callback(redis, callback_context_key: bytes) -> bool:
             callback_value = callback_value.decode()
         callback_context = json.loads(callback_value)
     except (UnicodeDecodeError, json.JSONDecodeError) as error:
-        raise CallbackContextError(
-            "callback context 不是有效 JSON"
-        ) from error
+        raise CallbackContextError("callback context 不是有效 JSON") from error
     if not isinstance(callback_context, dict):
         raise CallbackContextError("callback context 必须是对象")
     status = callback_context.get("status")
-    if not isinstance(status, dict) or not isinstance(
-        status.get("execution"), str
+    execution = status.get("execution") if isinstance(status, dict) else None
+    if (
+        not isinstance(execution, str)
+        or execution not in _VALID_CALLBACK_EXECUTIONS
     ):
         raise CallbackContextError("callback context status 非法")
-    return (
-        status["execution"] == "waiting_callback"
-        and callback_context.get("callback_received_at") is None
-    )
+    return execution == "waiting_callback"
 
 
 def _callback_context_key(marker_key: bytes) -> bytes:

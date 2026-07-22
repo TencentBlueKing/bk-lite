@@ -3,11 +3,8 @@ import fnmatch
 import json
 from unittest.mock import AsyncMock
 
-import pytest
-from redis.exceptions import ResponseError
-from sanic import Sanic
-
 import core.task_queue as task_queue_module
+import pytest
 from core.task_queue import TaskQueue
 from core.task_queue_startup_cleanup import (
     LOCK_KEY,
@@ -16,6 +13,8 @@ from core.task_queue_startup_cleanup import (
     StartupCleanupResult,
     cleanup_startup_orphan_markers,
 )
+from redis.exceptions import ResponseError
+from sanic import Sanic
 
 
 class FakeRedis:
@@ -26,6 +25,7 @@ class FakeRedis:
         queue=None,
         lock_acquired=True,
         eval_errors=None,
+        eval_results=None,
         get_errors=None,
         set_wait=None,
         release_wait=None,
@@ -34,6 +34,7 @@ class FakeRedis:
         self.queue = dict(queue or {})
         self.lock_acquired = lock_acquired
         self.eval_errors = set(eval_errors or ())
+        self.eval_results = dict(eval_results or {})
         self.get_errors = dict(get_errors or {})
         self.set_wait = set_wait
         self.release_wait = release_wait
@@ -91,11 +92,16 @@ class FakeRedis:
                 return 1
             return 0
 
+        if key in self.eval_results:
+            return self.eval_results[key]
+
         queue_key, in_progress_key = _as_bytes(args[1]), _as_bytes(args[2])
         if numkeys == 4:
             callback_context_key = _as_bytes(args[3])
             expected_job_id = _as_bytes(args[4])
-            if _is_waiting_callback_context(self.strings.get(callback_context_key)):
+            if _is_waiting_callback_context(
+                self.strings.get(callback_context_key)
+            ):
                 return 0
         else:
             expected_job_id = _as_bytes(args[3])
@@ -116,10 +122,9 @@ def _is_waiting_callback_context(value):
     if not value:
         return False
     context = json.loads(_as_bytes(value))
-    return (
-        (context.get("status") or {}).get("execution") == "waiting_callback"
-        and context.get("callback_received_at") is None
-    )
+    return (context.get("status") or {}).get(
+        "execution"
+    ) == "waiting_callback" and context.get("callback_received_at") is None
 
 
 def _callback_context(task_id):
@@ -199,7 +204,9 @@ async def test_cleanup_deletes_only_confirmed_orphan_markers(fake_redis):
 
 
 @pytest.mark.asyncio
-async def test_second_phase_preserves_marker_when_job_becomes_active(fake_redis):
+async def test_second_phase_preserves_marker_when_job_becomes_active(
+    fake_redis,
+):
     fake_redis.strings[b"task:dedupe:key"] = b"job-1"
 
     async def activate_during_delay(_seconds):
@@ -328,7 +335,9 @@ async def test_cleanup_reports_timeout_and_releases_its_lock(fake_redis):
 
 
 @pytest.mark.asyncio
-async def test_cleanup_keeps_other_markers_when_single_marker_lua_errors(fake_redis):
+async def test_cleanup_keeps_other_markers_when_single_marker_lua_errors(
+    fake_redis,
+):
     broken_marker = b"task:dedupe:broken"
     fake_redis.strings.update(
         {
@@ -351,7 +360,9 @@ async def test_cleanup_keeps_other_markers_when_single_marker_lua_errors(fake_re
 
 
 @pytest.mark.asyncio
-async def test_cleanup_releases_lock_only_when_its_token_still_matches(fake_redis):
+async def test_cleanup_releases_lock_only_when_its_token_still_matches(
+    fake_redis,
+):
     fake_redis.strings[b"task:running:orphan"] = b"job-1"
 
     async def replace_lock_during_delay(_seconds):
@@ -391,7 +402,8 @@ async def test_cleanup_preserves_running_marker_waiting_for_host_remote_callback
 @pytest.mark.asyncio
 @pytest.mark.parametrize("bad_callback_context", [b"{", b"[]"])
 async def test_bad_callback_context_preserves_only_its_running_marker(
-    fake_redis, bad_callback_context,
+    fake_redis,
+    bad_callback_context,
 ):
     protected_marker = b"task:running:bad-context"
     safe_marker = b"task:dedupe:orphan"
@@ -412,6 +424,66 @@ async def test_bad_callback_context_preserves_only_its_running_marker(
     assert result.errors == 1
     assert protected_marker in fake_redis.strings
     assert safe_marker not in fake_redis.strings
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "bad_callback_context",
+    [
+        b'{"status":{"execution":"unknown"}}',
+        b'{"status":{"execution":1}}',
+        b'{"status":[]}',
+        b'{"status":{}}',
+        b"[]",
+        b"null",
+        b"\xff",
+    ],
+)
+async def test_invalid_callback_execution_preserves_only_its_running_marker(
+    fake_redis,
+    bad_callback_context,
+):
+    protected_marker = b"task:running:bad-execution"
+    callback_context_key = b"host_remote:callback_context:bad-execution"
+    safe_marker = b"task:dedupe:orphan"
+    fake_redis.strings.update(
+        {
+            protected_marker: b"job-1",
+            callback_context_key: bad_callback_context,
+            safe_marker: b"job-2",
+        }
+    )
+
+    result = await cleanup_startup_orphan_markers(
+        fake_redis, StartupCleanupConfig(confirm_delay_seconds=0)
+    )
+
+    assert result.status == "warning"
+    assert result.reason == "marker_errors"
+    assert result.errors == 1
+    assert protected_marker in fake_redis.strings
+    assert safe_marker not in fake_redis.strings
+
+
+@pytest.mark.asyncio
+async def test_invalid_lua_callback_result_is_preserved_and_reported():
+    protected_marker = b"task:running:bad-confirmation"
+    safe_marker = b"task:dedupe:orphan"
+    redis = FakeRedis(
+        strings={protected_marker: b"job-1", safe_marker: b"job-2"},
+        eval_results={protected_marker: -1},
+    )
+
+    result = await cleanup_startup_orphan_markers(
+        redis, StartupCleanupConfig(confirm_delay_seconds=0)
+    )
+
+    assert result.status == "warning"
+    assert result.reason == "marker_errors"
+    assert result.errors == 1
+    assert result.deleted == 1
+    assert protected_marker in redis.strings
+    assert safe_marker not in redis.strings
 
 
 @pytest.mark.asyncio
@@ -464,7 +536,9 @@ async def test_cleanup_times_out_while_lock_acquisition_is_actually_blocked():
         cleanup_startup_orphan_markers(
             redis,
             StartupCleanupConfig(
-                confirm_delay_seconds=0, timeout_seconds=0.01, lock_ttl_seconds=1
+                confirm_delay_seconds=0,
+                timeout_seconds=0.01,
+                lock_ttl_seconds=1,
             ),
         ),
         timeout=0.2,
@@ -482,7 +556,9 @@ async def test_cleanup_times_out_when_lock_release_is_actually_blocked():
         cleanup_startup_orphan_markers(
             redis,
             StartupCleanupConfig(
-                confirm_delay_seconds=0, timeout_seconds=0.01, lock_ttl_seconds=1
+                confirm_delay_seconds=0,
+                timeout_seconds=0.01,
+                lock_ttl_seconds=1,
             ),
         ),
         timeout=0.2,
@@ -505,7 +581,9 @@ async def test_lock_release_failure_does_not_block_cleanup_result():
 
 
 @pytest.mark.asyncio
-async def test_wrongtype_marker_does_not_stop_other_safe_marker_cleanup(fake_redis):
+async def test_wrongtype_marker_does_not_stop_other_safe_marker_cleanup(
+    fake_redis,
+):
     broken_key = b"task:dedupe:broken"
     fake_redis.strings.update(
         {
@@ -527,7 +605,9 @@ async def test_wrongtype_marker_does_not_stop_other_safe_marker_cleanup(fake_red
 
 
 @pytest.mark.asyncio
-async def test_redis_connection_error_is_not_misclassified_as_marker_error(fake_redis):
+async def test_redis_connection_error_is_not_misclassified_as_marker_error(
+    fake_redis,
+):
     marker_key = b"task:running:unavailable"
     fake_redis.strings[marker_key] = b"job-1"
     fake_redis.get_errors[marker_key] = ConnectionError("redis unavailable")
@@ -574,7 +654,9 @@ async def test_start_listener_schedules_without_waiting(monkeypatch):
         task_queue_module, "cleanup_startup_orphan_markers", cleanup
     )
 
-    await _listener(app, "after_server_start", "start_orphan_cleanup")(app, None)
+    await _listener(app, "after_server_start", "start_orphan_cleanup")(
+        app, None
+    )
 
     assert queue._startup_cleanup_task is not None
     assert not queue._startup_cleanup_task.done()
@@ -590,7 +672,9 @@ async def test_start_listener_does_not_create_task_when_cleanup_is_disabled(
     app = Sanic("StartupCleanupDisabled")
     queue = TaskQueue(app)
 
-    await _listener(app, "after_server_start", "start_orphan_cleanup")(app, None)
+    await _listener(app, "after_server_start", "start_orphan_cleanup")(
+        app, None
+    )
 
     assert queue._startup_cleanup_task is None
 
@@ -611,7 +695,9 @@ async def test_start_listener_invalid_config_is_fail_open_and_redacted(
         staticmethod(invalid_config),
     )
 
-    await _listener(app, "after_server_start", "start_orphan_cleanup")(app, None)
+    await _listener(app, "after_server_start", "start_orphan_cleanup")(
+        app, None
+    )
 
     assert queue._startup_cleanup_task is None
     assert "event=task_queue_startup_cleanup status=warning" in caplog.text
@@ -622,7 +708,9 @@ async def test_start_listener_invalid_config_is_fail_open_and_redacted(
 
 
 @pytest.mark.asyncio
-async def test_startup_cleanup_background_error_is_redacted(monkeypatch, caplog):
+async def test_startup_cleanup_background_error_is_redacted(
+    monkeypatch, caplog
+):
     app = Sanic("StartupCleanupRedactedFailure")
     queue = TaskQueue(app)
 
@@ -633,7 +721,9 @@ async def test_startup_cleanup_background_error_is_redacted(monkeypatch, caplog)
         task_queue_module, "cleanup_startup_orphan_markers", cleanup
     )
 
-    await _listener(app, "after_server_start", "start_orphan_cleanup")(app, None)
+    await _listener(app, "after_server_start", "start_orphan_cleanup")(
+        app, None
+    )
     await queue._startup_cleanup_task
 
     assert "event=task_queue_startup_cleanup status=warning" in caplog.text
@@ -667,11 +757,15 @@ async def test_startup_cleanup_success_log_contains_only_safe_result_counts(
         task_queue_module, "cleanup_startup_orphan_markers", cleanup
     )
 
-    await _listener(app, "after_server_start", "start_orphan_cleanup")(app, None)
+    await _listener(app, "after_server_start", "start_orphan_cleanup")(
+        app, None
+    )
     await queue._startup_cleanup_task
 
     assert "event=task_queue_startup_cleanup status=success" in caplog.text
-    assert "scanned=3 candidates=2 deleted=1 preserved=1 errors=0" in caplog.text
+    assert (
+        "scanned=3 candidates=2 deleted=1 preserved=1 errors=0" in caplog.text
+    )
 
 
 @pytest.mark.asyncio
@@ -691,7 +785,9 @@ async def test_stop_listener_cancels_and_awaits_startup_cleanup_before_closing_p
     monkeypatch.setattr(
         task_queue_module, "cleanup_startup_orphan_markers", cleanup
     )
-    await _listener(app, "after_server_start", "start_orphan_cleanup")(app, None)
+    await _listener(app, "after_server_start", "start_orphan_cleanup")(
+        app, None
+    )
     await started.wait()
     cleanup_task = queue._startup_cleanup_task
 
@@ -702,7 +798,9 @@ async def test_stop_listener_cancels_and_awaits_startup_cleanup_before_closing_p
 
 
 @pytest.mark.asyncio
-async def test_start_listener_returns_within_bound_while_cleanup_is_blocked(monkeypatch):
+async def test_start_listener_returns_within_bound_while_cleanup_is_blocked(
+    monkeypatch,
+):
     blocker = asyncio.Event()
     app = Sanic("StartupCleanupBoundedListener")
     queue = TaskQueue(app)
@@ -716,7 +814,9 @@ async def test_start_listener_returns_within_bound_while_cleanup_is_blocked(monk
     )
 
     await asyncio.wait_for(
-        _listener(app, "after_server_start", "start_orphan_cleanup")(app, None),
+        _listener(app, "after_server_start", "start_orphan_cleanup")(
+            app, None
+        ),
         timeout=0.05,
     )
 
@@ -745,9 +845,13 @@ async def test_start_listener_remains_fail_open_when_its_logger_raises(
             ),
         )
     else:
-        monkeypatch.setenv("TASK_QUEUE_STARTUP_ORPHAN_CLEANUP_ENABLED", "false")
+        monkeypatch.setenv(
+            "TASK_QUEUE_STARTUP_ORPHAN_CLEANUP_ENABLED", "false"
+        )
 
-    await _listener(app, "after_server_start", "start_orphan_cleanup")(app, None)
+    await _listener(app, "after_server_start", "start_orphan_cleanup")(
+        app, None
+    )
 
     assert queue._startup_cleanup_task is None
 
@@ -757,13 +861,17 @@ async def test_start_listener_remains_fail_open_when_its_logger_raises(
     "result",
     [
         StartupCleanupResult("success", None, 1, 0, 0, 1, 0, False),
-        StartupCleanupResult("skipped", "lock_not_acquired", 0, 0, 0, 0, 0, False),
+        StartupCleanupResult(
+            "skipped", "lock_not_acquired", 0, 0, 0, 0, 0, False
+        ),
         StartupCleanupResult("warning", "timeout", 1, 1, 0, 1, 0, False),
         StartupCleanupResult("warning", "marker_errors", 1, 1, 0, 1, 1, False),
     ],
     ids=["success", "locked", "timeout", "warning"],
 )
-async def test_background_result_logging_failure_is_consumed(monkeypatch, result):
+async def test_background_result_logging_failure_is_consumed(
+    monkeypatch, result
+):
     app = Sanic(f"StartupCleanupLoggerResult{result.status}{result.reason}")
     queue = TaskQueue(app)
 
@@ -779,7 +887,9 @@ async def test_background_result_logging_failure_is_consumed(monkeypatch, result
     monkeypatch.setattr(task_queue_module.logger, "warning", fail_log)
     monkeypatch.setattr(task_queue_module.logger, "info", fail_log)
 
-    await _listener(app, "after_server_start", "start_orphan_cleanup")(app, None)
+    await _listener(app, "after_server_start", "start_orphan_cleanup")(
+        app, None
+    )
     await queue._startup_cleanup_task
     assert queue._startup_cleanup_task.done()
     assert queue._startup_cleanup_task.exception() is None
@@ -801,7 +911,9 @@ async def test_background_exception_logging_failure_is_consumed(monkeypatch):
     )
     monkeypatch.setattr(task_queue_module.logger, "warning", fail_log)
 
-    await _listener(app, "after_server_start", "start_orphan_cleanup")(app, None)
+    await _listener(app, "after_server_start", "start_orphan_cleanup")(
+        app, None
+    )
     await queue._startup_cleanup_task
     assert queue._startup_cleanup_task.done()
     assert queue._startup_cleanup_task.exception() is None
@@ -865,7 +977,9 @@ async def test_background_result_logs_only_its_safe_legal_mapping(
     monkeypatch.setattr(task_queue_module.logger, "info", record("info"))
     monkeypatch.setattr(task_queue_module.logger, "warning", record("warning"))
 
-    await _listener(app, "after_server_start", "start_orphan_cleanup")(app, None)
+    await _listener(app, "after_server_start", "start_orphan_cleanup")(
+        app, None
+    )
     await queue._startup_cleanup_task
 
     assert records == [(expected_level, expected_message)]
@@ -899,7 +1013,9 @@ async def test_illegal_result_status_reason_pair_is_downgraded(monkeypatch):
     monkeypatch.setattr(task_queue_module.logger, "info", record("info"))
     monkeypatch.setattr(task_queue_module.logger, "warning", record("warning"))
 
-    await _listener(app, "after_server_start", "start_orphan_cleanup")(app, None)
+    await _listener(app, "after_server_start", "start_orphan_cleanup")(
+        app, None
+    )
     await queue._startup_cleanup_task
 
     assert records == [
@@ -913,7 +1029,9 @@ async def test_illegal_result_status_reason_pair_is_downgraded(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_background_exception_log_excludes_sensitive_exception_text(monkeypatch):
+async def test_background_exception_log_excludes_sensitive_exception_text(
+    monkeypatch,
+):
     app = Sanic("StartupCleanupExceptionLogRedaction")
     queue = TaskQueue(app)
     records = []
@@ -932,7 +1050,9 @@ async def test_background_exception_log_excludes_sensitive_exception_text(monkey
     )
     monkeypatch.setattr(task_queue_module.logger, "warning", record)
 
-    await _listener(app, "after_server_start", "start_orphan_cleanup")(app, None)
+    await _listener(app, "after_server_start", "start_orphan_cleanup")(
+        app, None
+    )
     await queue._startup_cleanup_task
 
     assert records == [
@@ -942,7 +1062,9 @@ async def test_background_exception_log_excludes_sensitive_exception_text(monkey
 
 
 @pytest.mark.asyncio
-async def test_stop_closes_pool_after_cleanup_even_when_logger_raises(monkeypatch):
+async def test_stop_closes_pool_after_cleanup_even_when_logger_raises(
+    monkeypatch,
+):
     events = []
     cleanup_started = asyncio.Event()
     blocker = asyncio.Event()
@@ -969,7 +1091,9 @@ async def test_stop_closes_pool_after_cleanup_even_when_logger_raises(monkeypatc
     )
     monkeypatch.setattr(task_queue_module.logger, "warning", fail_log)
     monkeypatch.setattr(task_queue_module.logger, "info", fail_log)
-    await _listener(app, "after_server_start", "start_orphan_cleanup")(app, None)
+    await _listener(app, "after_server_start", "start_orphan_cleanup")(
+        app, None
+    )
     await cleanup_started.wait()
 
     await _listener(app, "after_server_stop", "stop_task_queue")(app, None)
@@ -1004,7 +1128,9 @@ async def test_stop_reraises_external_cancellation_after_cleanup(monkeypatch):
     monkeypatch.setattr(
         task_queue_module, "cleanup_startup_orphan_markers", cleanup
     )
-    await _listener(app, "after_server_start", "start_orphan_cleanup")(app, None)
+    await _listener(app, "after_server_start", "start_orphan_cleanup")(
+        app, None
+    )
     await cleanup_started.wait()
 
     stop_task = asyncio.create_task(
@@ -1039,7 +1165,9 @@ async def test_repeated_start_listener_keeps_running_cleanup_task(monkeypatch):
     monkeypatch.setattr(
         task_queue_module, "cleanup_startup_orphan_markers", cleanup
     )
-    start_listener = _listener(app, "after_server_start", "start_orphan_cleanup")
+    start_listener = _listener(
+        app, "after_server_start", "start_orphan_cleanup"
+    )
 
     await start_listener(app, None)
     await started.wait()
@@ -1067,7 +1195,9 @@ async def test_completed_cleanup_task_is_consumed_before_restart(monkeypatch):
     monkeypatch.setattr(
         task_queue_module, "cleanup_startup_orphan_markers", cleanup
     )
-    start_listener = _listener(app, "after_server_start", "start_orphan_cleanup")
+    start_listener = _listener(
+        app, "after_server_start", "start_orphan_cleanup"
+    )
 
     await start_listener(app, None)
     first_task = queue._startup_cleanup_task
@@ -1102,7 +1232,9 @@ async def test_unknown_cleanup_result_fields_are_downgraded_to_safe_values(
         task_queue_module, "cleanup_startup_orphan_markers", cleanup
     )
 
-    await _listener(app, "after_server_start", "start_orphan_cleanup")(app, None)
+    await _listener(app, "after_server_start", "start_orphan_cleanup")(
+        app, None
+    )
     await queue._startup_cleanup_task
 
     assert "status=warning reason=unknown_result" in caplog.text
