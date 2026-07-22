@@ -21,10 +21,11 @@ import {
   SavedQueryDrawerProps
 } from '@/app/monitor/types/search';
 import CustomTable from '@/components/custom-table';
+import { generateSearchId } from './searchQueryLogic';
 
 const transformToFrontendFormat = (groups: QueryGroupData[]): QueryGroup[] => {
   return groups.map((group) => ({
-    id: crypto.randomUUID(),
+    id: generateSearchId(),
     name: group.name,
     object: group.object,
     plugin: group.plugin ?? null,

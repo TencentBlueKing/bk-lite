@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 
 import {
   buildSearchQueryParams,
+  generateSearchId,
   getMetricsMapKey,
   resolveInitialPlugin,
   resolveMetricSelection,
@@ -47,6 +48,20 @@ const hostInstance = {
 
 assert.equal(getMetricsMapKey(8, 6), '8_6');
 assert.equal(getMetricsMapKey('8', null), '8');
+
+assert.equal(
+  generateSearchId({ randomUUID: () => 'native-random-uuid' }),
+  'native-random-uuid'
+);
+assert.equal(
+  generateSearchId({
+    getRandomValues: (values) => {
+      values.fill(0);
+      return values;
+    },
+  }),
+  '00000000-0000-4000-8000-000000000000'
+);
 
 assert.equal(resolveInitialPlugin([{ id: 6, name: 'Host' }]), 6);
 assert.equal(
