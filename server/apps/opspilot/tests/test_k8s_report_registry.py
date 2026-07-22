@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 from typing import Any, Dict
+from unittest.mock import patch
 
 import pytest
 
@@ -17,6 +18,7 @@ from apps.opspilot.metis.llm.chain.k8s_report_tools import (
     render_config_analysis_report,
     render_repair_diff_report,
 )
+from apps.opspilot.metis.llm.chain.report_renderers import dispatch_tool_result_report
 
 
 pytestmark = pytest.mark.unit
@@ -32,6 +34,86 @@ def test_registry_unknown_capability_returns_none():
     """未注册的 capability 名查不到任何渲染器,调用方应跳过。"""
     assert RENDERER_REGISTRY.get("nonexistent_capability") is None
     assert RENDERER_REGISTRY.get("config_analysis_reports") is None  # 注意复数
+
+
+def test_dispatch_tool_result_report_emits_immediately_for_enabled_capability():
+    parsed = {
+        "cluster_name": "Kubernetes - 1",
+        "total": 60,
+        "problematic": 60,
+        "issues_detail": [
+            {"severity": "high", "issue": "未配置存活探针", "count": 59, "workloads": ["api (prod)"]}
+        ],
+    }
+    config = {
+        "configurable": {
+            "execution_id": "exec-1",
+            "enabled_report_capabilities": ["config_analysis_report"],
+            "report_package_context": {"name": "kubernetes-specialist"},
+        }
+    }
+
+    with patch("langchain_core.callbacks.dispatch_custom_event") as dispatch:
+        capability = dispatch_tool_result_report(
+            "analyze_deployment_configurations",
+            parsed,
+            config,
+        )
+
+    assert capability == "config_analysis_report"
+    dispatch.assert_called_once()
+    event_name, payload = dispatch.call_args.args[:2]
+    assert event_name == "config_analysis_report"
+    assert payload["report_id"] == "config_analysis_report_exec-1"
+
+
+def test_dispatch_tool_result_report_skips_identical_resume_event():
+    """用户选择恢复后工具可能被模型重调；相同报告不得再次刷新界面。"""
+    parsed = {
+        "cluster_name": "Kubernetes - 2",
+        "total": 60,
+        "problematic": 60,
+        "issues_detail": [
+            {"severity": "high", "issue": "未配置存活探针", "count": 59, "workloads": ["api (prod)"]}
+        ],
+    }
+    config = {
+        "configurable": {
+            "execution_id": "exec-resume-dedup",
+            "enabled_report_capabilities": ["config_analysis_report"],
+            "report_package_context": {"name": "kubernetes-specialist"},
+        }
+    }
+
+    with patch("langchain_core.callbacks.dispatch_custom_event") as dispatch:
+        first = dispatch_tool_result_report("analyze_deployment_configurations", parsed, config)
+        duplicate = dispatch_tool_result_report("analyze_deployment_configurations", parsed, config)
+
+    assert first == "config_analysis_report"
+    assert duplicate == "config_analysis_report"
+    dispatch.assert_called_once()
+
+
+def test_dispatch_tool_result_report_allows_changed_payload_in_same_execution():
+    config = {
+        "configurable": {
+            "execution_id": "exec-progress-update",
+            "enabled_report_capabilities": ["config_analysis_report"],
+        }
+    }
+    first = {
+        "cluster_name": "database-analysis",
+        "total": 2,
+        "problematic": 1,
+        "issues_detail": [{"severity": "high", "issue": "连接池不足", "count": 1, "workloads": ["db-a"]}],
+    }
+    updated = {**first, "total": 3, "problematic": 2}
+
+    with patch("langchain_core.callbacks.dispatch_custom_event") as dispatch:
+        dispatch_tool_result_report("analyze_deployment_configurations", first, config)
+        dispatch_tool_result_report("analyze_deployment_configurations", updated, config)
+
+    assert dispatch.call_count == 2
 
 
 def test_render_config_analysis_report_returns_payload_for_valid_parsed():
