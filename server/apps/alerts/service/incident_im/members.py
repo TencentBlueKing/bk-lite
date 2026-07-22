@@ -66,6 +66,16 @@ def reconcile_member_snapshots(group, incident) -> list[ResolvedIncidentMember]:
             )
             continue
 
+        tracked_fields = (
+            "role",
+            "external_id",
+            "external_id_type",
+            "mapping_status",
+            "sync_status",
+            "last_error_code",
+            "last_error_message",
+        )
+        previous_values = tuple(getattr(member, field) for field in tracked_fields)
         member.role = resolved.role
         member.external_id = resolved.external_id
         member.external_id_type = resolved.external_id_type
@@ -77,6 +87,9 @@ def reconcile_member_snapshots(group, incident) -> list[ResolvedIncidentMember]:
             and resolved.mapping_status == IncidentIMMember.MappingStatus.MAPPED
         ):
             member.sync_status = IncidentIMMember.SyncStatus.PENDING
+        current_values = tuple(getattr(member, field) for field in tracked_fields)
+        if current_values == previous_values:
+            continue
         member.updated_at = now
         updates.append(member)
 

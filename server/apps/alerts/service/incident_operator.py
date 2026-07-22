@@ -138,6 +138,10 @@ class IncidentOperator:
             incident.updated_by = self.user
             incident.save()
 
+            from apps.alerts.service.incident_im.reconcile import pause_group_for_closed_incident
+
+            pause_group_for_closed_incident(incident.id)
+
             log_data = {
                 "action": LogAction.MODIFY,
                 "target_type": LogTargetType.INCIDENT,
@@ -178,6 +182,10 @@ class IncidentOperator:
             incident.updated_at = timezone.now()
             incident.updated_by = self.user
             incident.save()
+
+            from apps.alerts.service.incident_im.reconcile import resume_group_for_reopened_incident
+
+            resume_group_for_reopened_incident(incident.id)
 
             log_data = {
                 "action": LogAction.MODIFY,

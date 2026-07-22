@@ -15,6 +15,7 @@ from apps.alerts.tasks.tasks import (
     deliver_alert_outbox,
     dispatch_pending_alert_outbox,
     event_aggregation_alert,
+    reconcile_waiting_incident_im_groups,
     sync_no_dispatch_alert_notice_task,
     sync_notify,
     sync_shield,

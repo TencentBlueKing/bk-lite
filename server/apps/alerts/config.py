@@ -29,4 +29,8 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.alerts.tasks.tasks.dispatch_pending_alert_outbox",
         "schedule": crontab(minute="*"),
     },
+    "reconcile_waiting_incident_im_groups": {
+        "task": "apps.alerts.tasks.tasks.reconcile_waiting_incident_im_groups",
+        "schedule": crontab(minute="*"),
+    },
 }

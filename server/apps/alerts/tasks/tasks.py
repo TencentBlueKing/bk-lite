@@ -20,6 +20,7 @@ from apps.core.logger import alert_logger as logger
 
 AUTO_ASSIGNMENT_CHUNK_SIZE = 200
 OUTBOX_DISPATCH_BATCH_SIZE = 200
+INCIDENT_IM_RECONCILE_BATCH_SIZE = 200
 
 # D1：聚合 beat 单例锁。串行化聚合运行，防止并发聚合对同一 fingerprint 重复建警
 # （create_or_update_alert 的 select_for_update 对"建新"路径无效、Alert.fingerprint 无唯一约束）。
@@ -66,6 +67,36 @@ def dispatch_pending_alert_outbox():
         except Exception:
             logger.exception("alert outbox reschedule failed: outbox_id=%s", record_id)
     return {"scheduled": len(ids)}
+
+
+@shared_task
+def reconcile_waiting_incident_im_groups():
+    from apps.alerts.models import IncidentIMGroup
+    from apps.alerts.service.incident_im.reconcile import (
+        reconcile_incident_im_group_by_group_id,
+    )
+
+    group_ids = list(
+        IncidentIMGroup.objects.filter(
+            continuous_sync_enabled=True,
+            pause_reason="",
+            active_slot=1,
+            status__in=(
+                IncidentIMGroup.Status.ACTIVE,
+                IncidentIMGroup.Status.ACTIVE_PARTIAL,
+            ),
+        )
+        .order_by("last_sync_at", "pk")
+        .values_list("pk", flat=True)[:INCIDENT_IM_RECONCILE_BATCH_SIZE]
+    )
+    failed = 0
+    for group_id in group_ids:
+        try:
+            reconcile_incident_im_group_by_group_id(group_id)
+        except Exception:
+            failed += 1
+            logger.exception("incident im reconcile failed: group_id=%s", group_id)
+    return {"scheduled": len(group_ids), "failed": failed}
 
 
 @shared_task

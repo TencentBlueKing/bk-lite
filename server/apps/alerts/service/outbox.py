@@ -39,16 +39,24 @@ def _deliver_payload(kind: str, payload: dict) -> None:
             deliver_create_group,
             deliver_summary,
         )
+        from apps.alerts.service.incident_im.reconcile import (
+            OUTBOX_RECONCILE,
+            reconcile_incident_im_group,
+        )
 
         handlers = {
             OUTBOX_CREATE: deliver_create_group,
             OUTBOX_ADD_MEMBERS: deliver_add_members,
             OUTBOX_SEND_SUMMARY: deliver_summary,
+            OUTBOX_RECONCILE: reconcile_incident_im_group,
         }
         handler = handlers.get(kind)
         if handler is None:
             raise ValueError(f"unsupported alert outbox kind: {kind}")
-        handler(payload["group_id"])
+        if kind == OUTBOX_RECONCILE:
+            handler(payload["incident_id"])
+        else:
+            handler(payload["group_id"])
         return
     if kind == "notification":
         from apps.alerts.tasks import sync_notify

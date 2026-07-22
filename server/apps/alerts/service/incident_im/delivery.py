@@ -1,6 +1,7 @@
 from django.db import transaction
 from django.utils import timezone
 
+from apps.alerts.constants.constants import IncidentStatus
 from apps.alerts.models import IncidentIMGroup, IncidentIMMember
 from apps.alerts.service.outbox import enqueue_outbox
 from apps.system_mgmt.services.im_group_service import IMGroupRuntimeService
@@ -98,7 +99,7 @@ def deliver_create_group(group_id) -> None:
 
 def deliver_add_members(group_id) -> None:
     group = _get_group(group_id)
-    if group is None or group.status == IncidentIMGroup.Status.UNLINKED:
+    if group is None or _is_group_delivery_paused(group):
         return
     if not group.external_chat_id:
         _finish_create_failure(
@@ -109,7 +110,7 @@ def deliver_add_members(group_id) -> None:
 
     with transaction.atomic():
         locked = _lock_group(group_id)
-        if locked is None or locked.status == IncidentIMGroup.Status.UNLINKED:
+        if locked is None or _is_group_delivery_paused(locked):
             return
         locked.current_stage = IncidentIMGroup.Stage.ADDING_MEMBERS
         locked.save(update_fields=["current_stage"])
@@ -272,6 +273,14 @@ def _lock_group(group_id):
     return IncidentIMGroup.objects.select_for_update().select_related(
         "channel", "channel__integration_instance", "incident"
     ).filter(pk=group_id).first()
+
+
+def _is_group_delivery_paused(group):
+    return (
+        group.status in (IncidentIMGroup.Status.PAUSED, IncidentIMGroup.Status.UNLINKED)
+        or bool(group.pause_reason)
+        or group.incident.status not in IncidentStatus.ACTIVATE_STATUS
+    )
 
 
 def _initial_member_ids(group, members) -> list[str]:
