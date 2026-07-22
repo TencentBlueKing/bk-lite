@@ -13,6 +13,7 @@ from apps.alerts.views import (
     LevelModelViewSet,
     IncidentModelViewSet,
     IncidentUpdateViewSet,
+    IncidentIMGroupViewSet,
     SystemSettingModelViewSet,
     SystemLogModelViewSet,
     AlertAssignmentModelViewSet,
@@ -55,6 +56,18 @@ router.register(r"api/action_rule", ActionRuleViewSet, basename="action_rule")
 router.register(r"api/action_execution", ActionExecutionViewSet, basename="action_execution")
 
 urlpatterns = [
+    path(
+        "api/incident/<int:incident_pk>/im-group/",
+        IncidentIMGroupViewSet.as_view({"get": "list", "post": "create", "patch": "partial_update"}),
+    ),
+    path(
+        "api/incident/<int:incident_pk>/im-group/options/",
+        IncidentIMGroupViewSet.as_view({"get": "options"}),
+    ),
+    path(
+        "api/incident/<int:incident_pk>/im-group/members/",
+        IncidentIMGroupViewSet.as_view({"get": "members"}),
+    ),
     path("api/test/", request_test),
     path("api/receiver_data/", receiver_data),
     path("api/source/<str:source_id>/webhook/", receiver_source_data),
