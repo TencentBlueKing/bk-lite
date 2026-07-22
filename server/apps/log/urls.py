@@ -1,14 +1,15 @@
 from rest_framework import routers
 
-from apps.log.views.node import NodeViewSet
-from apps.log.views.search import LogSearchViewSet, SearchConditionViewSet
-from apps.log.views.log_group import LogGroupViewSet
-from apps.log.views.policy import PolicyViewSet, AlertViewSet, EventViewSet, EventRawDataViewSet
-
-from apps.log.views.collect_config import CollectTypeViewSet, CollectInstanceViewSet, CollectConfigViewSet
+from apps.log.views.collect_config import CollectConfigViewSet, CollectInstanceViewSet, CollectTypeViewSet
+from apps.log.views.extractor import LogExtractorViewSet
 from apps.log.views.k8s_collect import K8sCollectViewSet
+from apps.log.views.log_group import LogGroupViewSet
+from apps.log.views.node import NodeViewSet
 from apps.log.views.open_api_k8s import K8sOpenAPIViewSet
+from apps.log.views.policy import AlertViewSet, EventRawDataViewSet, EventViewSet, PolicyViewSet
+from apps.log.views.search import LogSearchViewSet, SearchConditionViewSet
 from apps.log.views.system_mgmt import SystemMgmtView
+from apps.log.views.system_vector import SystemVectorConfigViewSet
 
 router = routers.DefaultRouter()
 
@@ -28,5 +29,7 @@ router.register(r"event", EventViewSet, basename="event")
 router.register(r"event_raw_data", EventRawDataViewSet, basename="event_raw_data")
 router.register(r"system_mgmt", SystemMgmtView, basename="log_system_mgmt")
 router.register(r"open_api/k8s", K8sOpenAPIViewSet, basename="log_k8s_open_api")
+router.register(r"open_api/system_vector", SystemVectorConfigViewSet, basename="log-system-vector")
+router.register(r"log_extractors", LogExtractorViewSet, basename="log-extractor")
 
 urlpatterns = router.urls

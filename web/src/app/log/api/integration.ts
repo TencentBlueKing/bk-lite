@@ -7,6 +7,13 @@ import {
 import { GroupInfo } from '@/app/log/types/integration';
 import { cloneDeep } from 'lodash';
 import { AxiosRequestConfig } from 'axios';
+import {
+  ExtractorPublicationStatus,
+  LogExtractorDraft,
+  LogExtractorListResponse,
+  LogExtractorPreviewResult,
+  LogExtractorRule
+} from '@/app/log/types/extractor';
 interface NodeConfigParam {
   configs?: any;
   collect_type?: string;
@@ -218,6 +225,85 @@ const useIntegrationApi = () => {
     return await del(`/log/log_group/${id}/`);
   };
 
+  const getLogExtractors = async (collectInstance: string) => {
+    return await get<LogExtractorListResponse>('/log/log_extractors/', {
+      params: { collect_instance: collectInstance }
+    });
+  };
+
+  const createLogExtractor = async (data: LogExtractorDraft) => {
+    return await post<{
+      resource: LogExtractorRule;
+      publication: ExtractorPublicationStatus;
+      generation: number;
+    }>('/log/log_extractors/', data);
+  };
+
+  const updateLogExtractor = async (
+    id: number,
+    data: LogExtractorDraft
+  ) => {
+    return await put<{
+      resource: LogExtractorRule;
+      publication: ExtractorPublicationStatus;
+      generation: number;
+    }>(`/log/log_extractors/${id}/`, data);
+  };
+
+  const deleteLogExtractor = async (id: number) => {
+    return await del<{
+      generation: number;
+      publication: ExtractorPublicationStatus;
+    }>(`/log/log_extractors/${id}/`);
+  };
+
+  const reorderLogExtractors = async (
+    collectInstance: string,
+    ids: number[]
+  ) => {
+    return await post<{
+      generation: number;
+      publication: ExtractorPublicationStatus;
+    }>(
+      '/log/log_extractors/reorder/',
+      { collect_instance: collectInstance, ids }
+    );
+  };
+
+  const previewLogExtractor = async (data: {
+    collect_instance: string;
+    event: Record<string, unknown>;
+    draft: LogExtractorDraft;
+    rule_id?: number;
+  }) => {
+    return await post<LogExtractorPreviewResult>(
+      '/log/log_extractors/preview/',
+      data
+    );
+  };
+
+  const getLogExtractorSamples = async (collectInstance: string) => {
+    return await get<unknown>('/log/log_extractors/samples/', {
+      params: { collect_instance: collectInstance }
+    });
+  };
+
+  const getLogExtractorPublicationStatus = async (
+    collectInstance: string
+  ) => {
+    return await get<ExtractorPublicationStatus>(
+      '/log/log_extractors/publication_status/',
+      { params: { collect_instance: collectInstance } }
+    );
+  };
+
+  const retryLogExtractorPublication = async (collectInstance: string) => {
+    return await post<{
+      generation: number;
+      publication: ExtractorPublicationStatus;
+    }>('/log/log_extractors/retry/', { collect_instance: collectInstance });
+  };
+
   return {
     getCollectTypes,
     getDisplayCategoryEnum,
@@ -242,7 +328,16 @@ const useIntegrationApi = () => {
     updateDefaultLogStreams,
     getCollectTypesById,
     getFields,
-    getFieldValues
+    getFieldValues,
+    getLogExtractors,
+    createLogExtractor,
+    updateLogExtractor,
+    deleteLogExtractor,
+    reorderLogExtractors,
+    previewLogExtractor,
+    getLogExtractorSamples,
+    getLogExtractorPublicationStatus,
+    retryLogExtractorPublication
   };
 };
 
