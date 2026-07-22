@@ -68,8 +68,24 @@ def _deliver_payload(kind: str, payload: dict) -> None:
     raise ValueError(f"unsupported alert outbox kind: {kind}")
 
 
+def _notify_incident_delivery_exhausted(record_id, kind, payload, error):
+    if not kind.startswith("incident_im_group."):
+        return
+    try:
+        from apps.alerts.service.incident_im.delivery import handle_delivery_exhausted
+
+        handle_delivery_exhausted(kind, payload, error)
+    except Exception:
+        logger.exception(
+            "incident im outbox exhausted hook failed: outbox_id=%s kind=%s",
+            record_id,
+            kind,
+        )
+
+
 def deliver_outbox_record(record_id: int) -> bool:
     now = timezone.now()
+    lease_exhausted = False
     with transaction.atomic():
         record = AlertOutbox.objects.select_for_update().filter(pk=record_id).first()
         if not record or record.status == AlertOutbox.Status.DELIVERED:
@@ -81,14 +97,31 @@ def deliver_outbox_record(record_id: int) -> bool:
             return False
         if record.status == AlertOutbox.Status.FAILED and record.attempts >= record.max_attempts:
             return False
-        record.status = AlertOutbox.Status.DELIVERING
-        record.attempts += 1
-        record.last_error = ""
-        record.save(update_fields=["status", "attempts", "last_error", "updated_at"])
         kind = record.kind
         payload = record.payload
-        claim_generation = record.attempts
-        max_attempts = record.max_attempts
+        if (
+            record.status == AlertOutbox.Status.DELIVERING
+            and record.attempts >= record.max_attempts
+        ):
+            error = "delivery lease expired after retries exhausted"
+            record.status = AlertOutbox.Status.FAILED
+            record.next_retry_at = None
+            record.last_error = error
+            record.save(
+                update_fields=["status", "next_retry_at", "last_error", "updated_at"]
+            )
+            lease_exhausted = True
+        else:
+            record.status = AlertOutbox.Status.DELIVERING
+            record.attempts += 1
+            record.last_error = ""
+            record.save(update_fields=["status", "attempts", "last_error", "updated_at"])
+            claim_generation = record.attempts
+            max_attempts = record.max_attempts
+
+    if lease_exhausted:
+        _notify_incident_delivery_exhausted(record_id, kind, payload, error)
+        return False
 
     try:
         _deliver_payload(kind, payload)
@@ -112,17 +145,8 @@ def deliver_outbox_record(record_id: int) -> bool:
         if not finalized:
             return False
         exhausted = next_status == AlertOutbox.Status.FAILED
-        if exhausted and kind.startswith("incident_im_group."):
-            try:
-                from apps.alerts.service.incident_im.delivery import handle_delivery_exhausted
-
-                handle_delivery_exhausted(kind, payload, str(exc))
-            except Exception:
-                logger.exception(
-                    "incident im outbox exhausted hook failed: outbox_id=%s kind=%s",
-                    record_id,
-                    kind,
-                )
+        if exhausted:
+            _notify_incident_delivery_exhausted(record_id, kind, payload, str(exc))
         raise
 
     delivered_at = timezone.now()
