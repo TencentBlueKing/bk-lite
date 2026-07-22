@@ -284,6 +284,10 @@ def test_http_options_returns_metadata_without_operator_or_preview_logic(api_cli
 def test_sqlite_independent_connections_translate_busy_loser_after_active_winner(
     operator, incident, channel, operator_mapping, monkeypatch
 ):
+    database_vendor = connections["default"].vendor
+    if database_vendor != "sqlite":
+        pytest.skip(f"SQLite 锁竞争合同不适用于 {database_vendor}")
+
     from apps.alerts.service.incident_im import groups
 
     barrier = Barrier(2)
