@@ -2,6 +2,7 @@
 import {signIn} from "next-auth/react";
 import type { SignInResponse } from "next-auth/react";
 import {useState} from "react";
+import { Alert } from "antd";
 import PasswordResetForm from "./PasswordResetForm";
 import OtpVerificationForm from "./OtpVerificationForm";
 import BuiltinSigninContent from "./login-auth/BuiltinSigninContent";
@@ -17,13 +18,14 @@ import {
   resolveSigninSurface,
   shouldShowBindingsSelector,
 } from "./login-auth/orderedBindingState";
-import {useTheme} from '@/context/theme';
 import {usePortalBranding} from "@/hooks/usePortalBranding";
 import {useTranslation} from "@/utils/i18n";
 import {saveAuthToken} from "@/utils/crossDomainAuth";
 import {
   AUTH_POPUP_SUCCESS_MESSAGE,
   buildThirdLoginCallbackUrl,
+  buildLegacyThirdLoginCallbackUrl,
+  getLegacyThirdLoginCode,
   resolveThirdLoginFlag
 } from "@/utils/authRedirect";
 import type { LoginAuthLoginResult } from "./login-auth/types";
@@ -55,6 +57,8 @@ interface LoginResponse {
   locale?: string;
   timezone?: string;
   redirect_url?: string;
+  legacy_external_callback_url?: string;
+  legacy_third_login_code?: string;
   password_expiry_reminder?: string;
   // OTP two-phase authentication fields
   require_otp?: boolean;
@@ -75,6 +79,7 @@ export default function SigninClient({
   const error = searchParams?.error || "";
   const third_login = searchParams?.third_login;
   const thirdLogin = searchParams?.thirdLogin;
+  const thirdLoginCode = getLegacyThirdLoginCode(callbackUrl);
   const popup = searchParams?.popup;
   const thirdLoginFlag = resolveThirdLoginFlag(thirdLogin, third_login);
   const isPopupWindowMode = popup === 'true' || popup === '1';
@@ -86,11 +91,8 @@ export default function SigninClient({
   const [authStep, setAuthStep] = useState<AuthStep>('login');
   const [loginData, setLoginData] = useState<LoginResponse>({});
   const [qrCodeUrl, setQrCodeUrl] = useState<string>("");
-  const { themeName } = useTheme();
   const { logoUrl } = usePortalBranding();
   const { t } = useTranslation();
-  const isModalMode = mode === 'modal';
-  const isDarkTheme = themeName === 'dark';
 
   const finishAuthentication = (targetUrl: string) => {
     if (onAuthenticated) {
@@ -130,6 +132,8 @@ export default function SigninClient({
       challenge_id: otpLoginResult.challenge_id,
       qr_code: otpLoginResult.qr_code,
       redirect_url: otpLoginResult.redirect_url,
+      legacy_external_callback_url: otpLoginResult.legacy_external_callback_url,
+      legacy_third_login_code: otpLoginResult.legacy_third_login_code,
     });
     setQrCodeUrl(otpLoginResult.qr_code || "");
     setAuthStep('otp-verification');
@@ -151,6 +155,7 @@ export default function SigninClient({
   const loginAuthValidation = useLoginAuthValidation({
     enabled: authStep === 'login',
     callbackUrl: callbackUrl || '/',
+    legacyThirdLoginCode: thirdLoginCode,
     messages: loginAuthValidationMessages,
     onOtpRequired: applyOtpLoginResult,
     onSessionSync: async (loginResult) => {
@@ -166,6 +171,8 @@ export default function SigninClient({
         enable_otp: loginResult.enable_otp,
         password_expiry_reminder: loginResult.password_expiry_reminder,
         redirect_url: loginResult.redirect_url,
+        legacy_external_callback_url: loginResult.legacy_external_callback_url,
+        legacy_third_login_code: loginResult.legacy_third_login_code,
       });
 
       if (!success) {
@@ -311,11 +318,18 @@ export default function SigninClient({
           sessionStorage.setItem('password_expiry_reminder', userData.password_expiry_reminder);
         }
 
-        const targetUrl = buildThirdLoginCallbackUrl(
-          userData.redirect_url || callbackUrl || "/",
-          userData.token,
-          thirdLoginFlag,
-        );
+        const legacyThirdLoginCode = userData.legacy_third_login_code || thirdLoginCode;
+        const targetUrl = legacyThirdLoginCode
+          ? buildLegacyThirdLoginCallbackUrl(
+            userData.legacy_external_callback_url || userData.redirect_url || callbackUrl,
+            userData.token,
+            legacyThirdLoginCode,
+          )
+          : buildThirdLoginCallbackUrl(
+            userData.redirect_url || callbackUrl || "/",
+            userData.token,
+            thirdLoginFlag,
+          );
 
         finishAuthentication(targetUrl);
         return true;
@@ -450,6 +464,7 @@ export default function SigninClient({
 
   const bindingsSelector = showBindingsSelector ? (
     <LoginAuthValidationPanel
+      mode={mode}
       bindings={loginAuthValidation.bindings}
       selectedBindingId={loginAuthValidation.selectedBindingId}
       isSelectionLocked={isValidationSelectionLocked}
@@ -462,22 +477,16 @@ export default function SigninClient({
   // the modal shell above is rendered by auth.tsx.
   const sharedContent = (
     <div>
-      {error && (
-        <div className={`mb-6 rounded border text-red-700 ${isModalMode ? 'px-3 py-2.5 text-[12px]' : 'border-l-4 border-red-500 bg-red-50 p-4'}`} style={isModalMode ? { borderColor: isDarkTheme ? 'rgba(239, 68, 68, 0.35)' : '#F5D4D4', background: isDarkTheme ? 'rgba(127, 29, 29, 0.18)' : '#FFF7F7' } : undefined}>
-          <p className="font-medium">{signinErrors[error.toLowerCase()] ? t(signinErrors[error.toLowerCase()]) : (signinErrors.default ? t(signinErrors.default) : error)}</p>
-        </div>
-      )}
-
-      {formError && (
-        <div className={`mb-6 rounded border text-red-700 ${isModalMode ? 'px-3 py-2.5 text-[12px]' : 'border-l-4 border-red-500 bg-red-50 p-4'}`} style={isModalMode ? { borderColor: isDarkTheme ? 'rgba(239, 68, 68, 0.35)' : '#F5D4D4', background: isDarkTheme ? 'rgba(127, 29, 29, 0.18)' : '#FFF7F7' } : undefined}>
-          <p className="font-medium">{formError}</p>
-        </div>
-      )}
-
-      {validationInlineError && (
-        <div className={`mb-6 rounded border text-red-700 ${isModalMode ? 'px-3 py-2.5 text-[12px]' : 'border-l-4 border-red-500 bg-red-50 p-4'}`} style={isModalMode ? { borderColor: isDarkTheme ? 'rgba(239, 68, 68, 0.35)' : '#F5D4D4', background: isDarkTheme ? 'rgba(127, 29, 29, 0.18)' : '#FFF7F7' } : undefined}>
-          <p className="font-medium">{validationInlineError}</p>
-        </div>
+      {(error || formError || validationInlineError) && (
+        <Alert
+          className="mb-6"
+          message={error
+            ? (signinErrors[error.toLowerCase()] ? t(signinErrors[error.toLowerCase()]) : (signinErrors.default ? t(signinErrors.default) : error))
+            : formError || validationInlineError}
+          role="alert"
+          showIcon
+          type="error"
+        />
       )}
 
       {authStep === 'login' && (
@@ -504,34 +513,28 @@ export default function SigninClient({
   }
 
   return (
-    <div className="flex w-[calc(100%+2rem)] h-screen -m-4">
-      <div
-        className="w-3/5 hidden md:block bg-linear-to-br from-blue-500 to-indigo-700"
-        style={{
-          backgroundImage: "url('/system-login-bg.jpg')",
-          backgroundSize: "cover",
-          backgroundPosition: "center"
-        }}
-      >
-      </div>
-
-      <div className="w-full h-full md:w-2/5 flex items-center justify-center p-8 bg-(--bg-color-1) overflow-y-auto">
-        <div className="w-full h-full flex items-center justify-center">
-          <div className="w-full max-w-md">
-            <div className="mb-4 flex justify-end">
-              <SigninLanguageToggle />
-            </div>
-            <div className="mb-10 text-center">
-              <div className="mb-6 flex justify-center">
-                <img src={logoUrl} alt="Logo" className="h-14 w-auto object-contain" />
-              </div>
-              <h2 className="text-3xl font-bold text-(--color-text-1)">{t('signin.pageTitle.login')}</h2>
-              <p className="mt-2 text-(--color-text-3)">{t('signin.pageDescription.login')}</p>
-            </div>
-            {sharedContent}
-          </div>
+    <div className="grid min-h-screen w-[calc(100%+2rem)] -m-4 overflow-y-auto bg-[#f5f7fb] lg:grid-cols-[minmax(0,1fr)_clamp(420px,26vw,460px)]">
+      <aside
+        aria-hidden="true"
+        className="hidden min-h-screen bg-cover bg-center bg-no-repeat lg:block"
+        style={{ backgroundImage: "url('/system-login-bg.jpg')" }}
+      />
+      <main className="relative flex min-h-screen items-center justify-center bg-[radial-gradient(ellipse_at_center,rgba(224,235,255,0.38)_0%,rgba(245,247,251,0)_68%)] px-5 py-8 sm:px-8 lg:shadow-[-10px_0_24px_rgba(31,55,87,0.08)] lg:px-7 xl:px-7">
+        <div className="absolute right-5 top-5 sm:right-8 sm:top-8 lg:right-7 lg:top-10 xl:right-7">
+          <SigninLanguageToggle />
         </div>
-      </div>
+        <div className="w-full max-w-[360px] lg:-translate-y-7">
+          <div className="mb-4 text-center">
+            <div className="mb-1 flex justify-center">
+              <div className="flex items-center justify-center">
+                <img src={logoUrl} alt={t('common.portalName', 'BK-Lite')} className="h-14 w-auto object-contain" />
+              </div>
+            </div>
+            <h2 className="text-2xl font-semibold text-(--color-text-1)">{t('signin.pageTitle.login')}</h2>
+          </div>
+          {sharedContent}
+        </div>
+      </main>
     </div>
   );
 }

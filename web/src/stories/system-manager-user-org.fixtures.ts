@@ -32,10 +32,11 @@ export const groupTreeData: ExtendedGroupTreeDataNode[] = [
   },
 ];
 
-export const roleTreeData: TreeDataNode[] = [
+export const roleTreeData: (TreeDataNode & { display_name?: string })[] = [
   {
     key: 'app-monitor',
-    title: 'Monitor',
+    title: 'monitor',
+    display_name: 'Monitor',
     children: [
       { key: 'monitor.view', title: 'View Dashboard' },
       { key: 'monitor.edit', title: 'Edit Dashboard' },
@@ -43,7 +44,8 @@ export const roleTreeData: TreeDataNode[] = [
   },
   {
     key: 'app-cmdb',
-    title: 'CMDB',
+    title: 'cmdb',
+    display_name: 'CMDB',
     children: [
       { key: 'cmdb.view', title: 'View Topology' },
       { key: 'cmdb.edit', title: 'Edit Model' },

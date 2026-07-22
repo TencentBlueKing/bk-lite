@@ -16,6 +16,7 @@
       "visible_in": "edit",
       "editable": false,
       "description": "监控的目标网址链接，以检测其可用性和性能",
+      "guide_short": "Apache mod_status 的可机读 URL，必须以 ?auto 结尾，例如 http://10.0.0.5/server-status?auto；返回 Key: Value 文本。",
       "widget_props": {
         "placeholder": "http://localhost/server-status?auto"
       },
@@ -31,6 +32,7 @@
       "required": true,
       "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
+      "guide_short": "Telegraf inputs.apache 采集周期，单位秒，默认 60；过短会反复抓 mod_status。",
       "widget_props": {
         "min": 1,
         "precision": 0,

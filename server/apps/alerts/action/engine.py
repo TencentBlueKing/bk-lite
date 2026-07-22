@@ -28,12 +28,14 @@ class ActionEngine:
 
     @staticmethod
     def dispatch_async(alert_id: str, event_name: str):
-        """入队异步任务；任何入队异常都吞掉，绝不阻塞告警主流程。"""
-        try:
-            from apps.alerts.tasks.action_tasks import process_alert_actions
-            process_alert_actions.delay(alert_id, event_name)
-        except Exception:
-            logger.exception("[ActionEngine] 入队失败 alert=%s event=%s", alert_id, event_name)
+        """持久化动作投递意图；broker 故障时由 outbox 扫描器补投。"""
+        from apps.alerts.service.outbox import enqueue_outbox
+
+        return enqueue_outbox(
+            "action",
+            {"alert_id": alert_id, "event_name": event_name},
+            f"action:{alert_id}:{event_name}",
+        )
 
     def _dispatch(self, rule, alert, event_name):
         key = f"{rule.id}:{alert.alert_id}:{event_name}"

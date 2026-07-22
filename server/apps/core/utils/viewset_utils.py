@@ -1,3 +1,4 @@
+from django.db import connection
 from django.db.models import Q
 from django.http import JsonResponse
 from rest_framework import viewsets
@@ -10,6 +11,53 @@ from apps.core.utils.permission_utils import delete_instance_rules, get_permissi
 from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.user_group import normalize_user_group_ids
 from apps.system_mgmt.models import Group
+
+
+def build_json_membership_query(queryset, field_name, expected_values):
+    """构造跨数据库 JSON 数组成员查询。
+
+    支持 JSON contains 的数据库走原生查询；SQLite 等不支持 contains 的
+    后端只物化主键和目标字段，再返回等价的主键条件。
+    """
+    normalized_values = []
+    for value in expected_values or []:
+        if value in (None, ""):
+            continue
+        normalized_values.append(value)
+        try:
+            normalized_values.append(int(value))
+        except (TypeError, ValueError):
+            pass
+        normalized_values.append(str(value))
+    normalized_values = list(dict.fromkeys(normalized_values))
+    if not normalized_values:
+        return Q(pk__in=[])
+
+    if connection.features.supports_json_field_contains:
+        query = Q()
+        for value in normalized_values:
+            query |= Q(**{f"{field_name}__contains": [value]})
+        return query
+
+    expected_set = set(normalized_values)
+    matched_ids = []
+    # values_list 会清除 select_related 的字段装载要求，避免 only() 将关联
+    # 外键延迟后与调用方已有的 select_related 冲突。
+    for item_id, field_value in queryset.order_by().values_list("pk", field_name):
+        current_values = field_value or []
+        if not isinstance(current_values, (list, tuple, set)):
+            current_values = [current_values]
+        comparable_values = set()
+        for value in current_values:
+            comparable_values.add(value)
+            comparable_values.add(str(value))
+            try:
+                comparable_values.add(int(value))
+            except (TypeError, ValueError):
+                pass
+        if expected_set.intersection(comparable_values):
+            matched_ids.append(item_id)
+    return Q(pk__in=matched_ids)
 
 
 class GenericViewSetFun(object):
@@ -126,8 +174,7 @@ class GenericViewSetFun(object):
             team = permission_data.get("team", [])
             if instance_ids:
                 query |= Q(id__in=instance_ids)
-            for i in team:
-                query |= Q(**{f"{org_field}__contains": int(i)})
+            query |= build_json_membership_query(queryset, org_field, team)
             if not instance_ids and not team:
                 return queryset.filter(id=0)
         return queryset.filter(query)
@@ -153,15 +200,13 @@ class GenericViewSetFun(object):
 
                 if team_ids:
                     # 查询组织 ID 在子组列表中
-                    query = Q()
-                    for team_id in team_ids:
-                        query |= Q(**{f"{org_field}__contains": team_id})
+                    query = build_json_membership_query(queryset, org_field, team_ids)
                 else:
                     # 没有找到子组，使用当前组
-                    query = Q(**{f"{org_field}__contains": current_team})
+                    query = build_json_membership_query(queryset, org_field, [current_team])
             else:
                 # 不包含子组，team包含当前组
-                query = Q(**{f"{org_field}__contains": current_team})
+                query = build_json_membership_query(queryset, org_field, [current_team])
         else:
             query = Q()
         return current_team, include_children, org_field, query

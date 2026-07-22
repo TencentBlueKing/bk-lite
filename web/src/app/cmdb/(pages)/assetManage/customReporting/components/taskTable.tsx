@@ -302,7 +302,7 @@ export default function TaskTable({
         value ? dayjs(value).format('YYYY-MM-DD HH:mm:ss') : '--',
     },
     {
-      title: t('action'),
+      title: t('common.actions'),
       key: 'action',
       width: 320,
       fixed: 'right',
@@ -331,13 +331,15 @@ export default function TaskTable({
   ];
 
   return (
-    <div className="flex-1 min-h-0 rounded border border-[var(--color-border)] bg-[var(--color-bg)] p-[16px]">
-      <div className="mb-[16px] grid grid-cols-3 gap-[12px]">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded border border-[var(--color-border)] bg-[var(--color-bg)] p-[16px]">
+      <div className="mb-[16px] grid shrink-0 grid-cols-3 gap-[12px]">
         <div className="rounded border border-[var(--color-border)] p-[16px]">
           <div className="text-[13px] text-[var(--color-text-3)]">
             {t('CustomReporting.statTotal')}
           </div>
-          <div className="mt-[4px] text-[24px] font-[600]">{stats.total}</div>
+          <div className="mt-[4px] text-[24px] font-[600]">
+            {stats.total}
+          </div>
         </div>
         <div className="rounded border border-[var(--color-border)] p-[16px]">
           <div className="text-[13px] text-[var(--color-text-3)]">
@@ -356,9 +358,11 @@ export default function TaskTable({
           </div>
         </div>
       </div>
-      <div className="mb-[12px] flex items-center justify-between gap-[12px]">
+      <div className="mb-[12px] flex shrink-0 items-center justify-between gap-[12px]">
         <Space>
-          <div className="text-[14px] font-[600]">{t('CustomReporting.taskList')}</div>
+          <div className="text-[14px] font-[600]">
+            {t('CustomReporting.taskList')}
+          </div>
           <Input.Search
             allowClear
             className="w-[240px]"
@@ -371,13 +375,15 @@ export default function TaskTable({
           />
         </Space>
         <Space>
-          <Button onClick={() => void loadTasks()}>{t('common.refresh')}</Button>
+          <Button onClick={() => void loadTasks()}>
+            {t('common.refresh')}
+          </Button>
           <Button type="primary" onClick={onCreate}>
             {t('CustomReporting.createTask')}
           </Button>
         </Space>
       </div>
-      <div className="h-[calc(100%-48px)]">
+      <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
         <CustomTable<CustomReportingTask>
           rowKey="id"
           loading={loading}
@@ -394,7 +400,7 @@ export default function TaskTable({
                 pageSize,
               }),
           }}
-          scroll={{ x: 1560, y: 'calc(100vh - 330px)' }}
+          scroll={{ x: 1560 }}
         />
       </div>
     </div>

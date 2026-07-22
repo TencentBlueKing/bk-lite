@@ -47,6 +47,20 @@ export default function LoginAuthBindingContent({
   const { t } = useTranslation();
   const isModalMode = mode === "modal";
   const helperMessage = t('signin.loginAuth.bindingContent.helperMessage');
+  const pageBindingCardClassName =
+    "rounded-md border border-(--color-border) bg-(--color-bg) px-[14px] py-[12px]";
+  const modalBindingCardClassName = pageBindingCardClassName;
+  const bindingCardClassName = isModalMode ? modalBindingCardClassName : pageBindingCardClassName;
+  const pageHelperCardClassName =
+    "mt-3 rounded-md bg-(--color-fill-1) px-3 py-[10px] text-[12px] leading-[1.6] text-(--color-text-2)";
+  const modalHelperCardClassName = pageHelperCardClassName;
+  const helperCardClassName = isModalMode ? modalHelperCardClassName : pageHelperCardClassName;
+  const pageBindingIconClassName =
+    "flex h-[40px] w-[40px] shrink-0 items-center justify-center rounded-md bg-(--color-primary-bg-active)";
+  const modalBindingIconClassName = pageBindingIconClassName;
+  const bindingIconClassName = isModalMode ? modalBindingIconClassName : pageBindingIconClassName;
+  const bindingIconSizeClassName = isModalMode ? "h-5! w-5!" : "h-6! w-6!";
+  const bindingFallbackIconClassName = isModalMode ? "text-[18px]" : "text-[20px]";
 
   if (bindingLoadState === "loading-bindings") {
     return (
@@ -88,13 +102,13 @@ export default function LoginAuthBindingContent({
   if (viewState === "starting" || viewState === "waiting" || viewState === "syncing-session") {
     return (
       <div className="px-1 py-1">
-        <div className="rounded-[8px] border border-[#DBE5F2] bg-[linear-gradient(180deg,#FBFCFE_0%,#F4F8FC_100%)] px-[14px] py-[12px]">
+        <div className={bindingCardClassName}>
           <div className="flex items-center gap-[10px]">
-            <div className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[8px] bg-[#E8F0FF]">
+            <div className={bindingIconClassName}>
               {selectedBinding.icon ? (
-                <Icon type={selectedBinding.icon} className="h-5! w-5! text-[#246BFD]" />
+                <Icon type={selectedBinding.icon} className={`${bindingIconSizeClassName} text-[#246BFD]`} />
               ) : (
-                <div className="text-[18px] leading-none text-[#246BFD]">#</div>
+                <div className={`${bindingFallbackIconClassName} leading-none text-[#246BFD]`}>#</div>
               )}
             </div>
             <div className="min-w-0">
@@ -115,7 +129,7 @@ export default function LoginAuthBindingContent({
           <LoadingOutlined className={viewState === "syncing-session" ? "" : "animate-spin"} />
           <span>{t('signin.loginAuth.bindingContent.waiting')}</span>
         </button>
-        <p className="mt-3 rounded-[8px] border border-[#D7E0EA] bg-[#F8FAFC] px-3 py-[10px] text-[12px] leading-[1.6] text-[#708094]">
+        <p className={helperCardClassName}>
           {helperMessage}
         </p>
       </div>
@@ -124,13 +138,13 @@ export default function LoginAuthBindingContent({
 
   return (
     <div className="px-1 py-1">
-      <div className="rounded-[8px] border border-[#DBE5F2] bg-[linear-gradient(180deg,#FBFCFE_0%,#F4F8FC_100%)] px-[14px] py-[12px]">
+      <div className={bindingCardClassName}>
         <div className="flex items-center gap-[10px]">
-          <div className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[8px] bg-[#E8F0FF]">
+          <div className={bindingIconClassName}>
             {selectedBinding.icon ? (
-              <Icon type={selectedBinding.icon} className="h-5! w-5! text-[#246BFD]" />
+              <Icon type={selectedBinding.icon} className={`${bindingIconSizeClassName} text-[#246BFD]`} />
             ) : (
-              <div className="text-[18px] leading-none text-[#246BFD]">#</div>
+              <div className={`${bindingFallbackIconClassName} leading-none text-[#246BFD]`}>#</div>
             )}
           </div>
           <div className="min-w-0">
@@ -150,7 +164,7 @@ export default function LoginAuthBindingContent({
       >
         {t('signin.loginAuth.bindingContent.continueSignIn')}
       </button>
-      <p className="mt-3 rounded-[8px] border border-[#D7E0EA] bg-[#F8FAFC] px-3 py-[10px] text-[12px] leading-[1.6] text-[#708094]">
+      <p className={helperCardClassName}>
         {helperMessage}
       </p>
     </div>

@@ -386,7 +386,8 @@ def test_network_topology_disabled_keeps_existing_inventory_behavior(monkeypatch
     interface = _find_interface(runner.result, "10.0.0.1-switch-edge-uplink")
     assert sql_calls == [
         "network_system_info_gauge{instance_id='cmdb_7001'} or "
-        "network_interfaces_info_gauge{instance_id='cmdb_7001'}"
+        "network_interfaces_info_gauge{instance_id='cmdb_7001'} or "
+        "network_info_gauge{instance_id='cmdb_7001'}"
     ]
     assert interface["assos"] == [
         {

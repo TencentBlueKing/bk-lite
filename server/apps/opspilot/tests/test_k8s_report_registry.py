@@ -231,6 +231,55 @@ def test_merge_analysis_results_handles_different_clusters():
     assert merged["total"] == 8
 
 
+def test_merge_analysis_results_does_not_claim_last_namespace_for_multi_namespace_scan():
+    """分 namespace 聚合后不能把整份报告错误标成最后一个 namespace。"""
+    from apps.opspilot.metis.llm.chain.k8s_report_tools import (
+        build_config_analysis_report_payload,
+        merge_analysis_results,
+    )
+
+    production = {
+        "cluster_name": "Kubernetes - 2",
+        "scope": {"namespace": "production"},
+        "total": 5,
+        "problematic": 5,
+        "healthy": 0,
+        "issues_detail": [],
+    }
+    testing = {
+        "cluster_name": "Kubernetes - 2",
+        "scope": {"namespace": "testing"},
+        "total": 3,
+        "problematic": 3,
+        "healthy": 0,
+        "issues_detail": [],
+    }
+
+    merged = merge_analysis_results([production, testing])
+
+    assert merged["total"] == 8
+    assert merged["scope"] == {"namespace": ["production", "testing"]}
+    rendered_scope = build_config_analysis_report_payload(merged)["scope"]
+    assert rendered_scope["namespace"] == ["production", "testing"]
+
+
+def test_merge_analysis_results_aggregates_arbitrary_scope_dimensions():
+    """通用合并框架不能写死 Kubernetes 字段，数据库等领域应直接复用。"""
+    from apps.opspilot.metis.llm.chain.k8s_report_tools import merge_analysis_results
+
+    merged = merge_analysis_results(
+        [
+            {"scope": {"database": "orders", "schema": "public"}, "total": 2},
+            {"scope": {"database": "billing", "schema": "public"}, "total": 3},
+        ]
+    )
+
+    assert merged["scope"] == {
+        "database": ["orders", "billing"],
+        "schema": "public",
+    }
+
+
 def test_merge_analysis_results_single_passthrough():
     """只有一份结果时,原样返回(不要无谓深拷贝或重组)。"""
     from apps.opspilot.metis.llm.chain.k8s_report_tools import merge_analysis_results

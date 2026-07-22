@@ -203,6 +203,15 @@ class TestRestartPattern:
             "min_restarts": 3, "config": {}}))
         assert out["total_problematic_containers"] == 0
 
+    def test_string_threshold_is_coerced(self, apis):
+        core, _ = apis
+        cs = _restart_cstatus(restarts=3, last_term=_term(exit_code=1))
+        core.list_pod_for_all_namespaces.return_value = _items([_pod(cstatuses=[cs])])
+        core.list_namespaced_event.return_value = _items([])
+        out = json.loads(t.analyze_pod_restart_pattern.invoke({
+            "min_restarts": "3", "config": {}}))
+        assert out["analysis"][0]["restart_count"] == 3
+
     def test_namespace_scoped_and_sorted(self, apis):
         core, _ = apis
         cs_low = _restart_cstatus(name="low", restarts=3,

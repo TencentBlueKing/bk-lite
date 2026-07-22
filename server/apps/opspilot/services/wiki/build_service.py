@@ -9,9 +9,11 @@ import json
 import logging
 import os
 
+from django.db import transaction
+
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
-from apps.opspilot.models import BuildRecord, KnowledgePage, LLMModel, PageEvidence, PageVersion
+from apps.opspilot.models import BuildRecord, KnowledgePage, LLMModel, PageEvidence, PageVersion, WikiKnowledgeBase
 from apps.opspilot.services.wiki.cascade_service import cascade
 from apps.opspilot.services.wiki.check_service import create_candidate
 from apps.opspilot.services.wiki.material_service import load_parsed_markdown
@@ -24,6 +26,7 @@ logger = logging.getLogger("opspilot")
 
 _split_text_for_llm = split_text_for_llm
 _WIKI_LLM_TIMEOUT_SECONDS = 300.0
+_CURRENT_MATERIAL_VERSION = object()
 _EVIDENCE_SNIPPET_CHARS = 500
 _SOURCE_CHUNK_PREVIEW_CHARS = 240
 
@@ -331,18 +334,28 @@ def _source_locator_for_page(material, source_text, page_data, chunks=None):
     return json.dumps(locator, ensure_ascii=False)
 
 
-def _ensure_evidence(page, material, locator=""):
-    evidence, created = PageEvidence.objects.get_or_create(
-        page=page,
-        material=material,
-        defaults={"material_version": material.current_version, "locator": locator or ""},
+def _ensure_evidence(page, material, locator="", material_version=_CURRENT_MATERIAL_VERSION):
+    if material_version is _CURRENT_MATERIAL_VERSION:
+        material_version = getattr(material, "current_version", None)
+    material_version_id = getattr(material_version, "id", None)
+    evidence = (
+        PageEvidence.objects.filter(
+            page=page,
+            material=material,
+            material_version_id=material_version_id,
+        )
+        .order_by("id")
+        .first()
     )
-    if created:
+    if evidence is None:
+        PageEvidence.objects.create(
+            page=page,
+            material=material,
+            material_version=material_version,
+            locator=locator or "",
+        )
         return True
     update_fields = []
-    if material.current_version_id and evidence.material_version_id != material.current_version_id:
-        evidence.material_version = material.current_version
-        update_fields.append("material_version")
     if locator and evidence.locator != locator:
         evidence.locator = locator
         update_fields.append("locator")
@@ -444,17 +457,137 @@ def _merge_ai_page(page, material, build, page_data, operator="", update_method=
     return "unchanged"
 
 
-def _create_review_candidate(page, material, build, page_data, operator=""):
-    create_candidate(
-        page,
-        body=page_data.get("body", "") or "",
-        reason="构建资料命中同名人工知识,需人工确认后合并",
-        check_type="cannot_merge",
-        build_record=build,
-        created_by=operator,
-        related={"pages": [page.id], "materials": [material.id]},
+def _incoming_material_snapshot(material, material_version=_CURRENT_MATERIAL_VERSION):
+    if material_version is _CURRENT_MATERIAL_VERSION:
+        material_version = getattr(material, "current_version", None)
+    return {
+        "material_id": getattr(material, "id", None),
+        "material_version_id": getattr(material_version, "id", None),
+        "content_hash": (getattr(material_version, "content_hash", "") or getattr(material, "content_hash", "") or ""),
+    }
+
+
+def resolve_knowledge_conflict(
+    page,
+    material,
+    build,
+    candidate_body,
+    *,
+    operator="",
+    check_type="cannot_merge",
+    reason="知识结论发生变化，需人工选择当前知识或新知识",
+    related=None,
+    locator="",
+):
+    """在短事务内以最新页面状态执行 unchanged / replayed / pending 三态编排。"""
+    from apps.opspilot.services.wiki.decision_service import (
+        build_participants_from_page_evidence,
+        compute_schema_fingerprint,
+        replay_decision,
+        subject_key_for_page,
     )
-    return "pending_review"
+
+    incoming_material_version = getattr(material, "current_version", None)
+    incoming_snapshot = _incoming_material_snapshot(
+        material,
+        material_version=incoming_material_version,
+    )
+    with transaction.atomic():
+        locked_kb = WikiKnowledgeBase.objects.select_for_update().get(pk=page.knowledge_base_id)
+        locked_page = KnowledgePage.objects.select_for_update().get(
+            pk=page.pk,
+            knowledge_base=locked_kb,
+        )
+        locked_page.knowledge_base = locked_kb
+        if locked_page.current_version_id:
+            locked_page.current_version = PageVersion.objects.select_for_update().get(pk=locked_page.current_version_id)
+        participants = build_participants_from_page_evidence(
+            locked_page,
+            incoming_snapshot=incoming_snapshot,
+        )
+        schema_fingerprint = compute_schema_fingerprint(locked_page.knowledge_base)
+        subject_key = subject_key_for_page(
+            page_type=locked_page.page_type or "concept",
+            canonical_title=_canonical_title(locked_page.knowledge_base, locked_page.title),
+        )
+        result, rule = replay_decision(
+            knowledge_base=locked_page.knowledge_base,
+            decision_type="knowledge_conflict",
+            subject_key=subject_key,
+            schema_fingerprint=schema_fingerprint,
+            participants=participants,
+            page=locked_page,
+            candidate_body=candidate_body,
+        )
+        if result == "replayed":
+            return (
+                "unchanged",
+                {
+                    "decision_reused": True,
+                    "rule_id": rule.id,
+                    "action": rule.action,
+                },
+            )
+        if result == "unchanged":
+            _ensure_evidence(
+                locked_page,
+                material,
+                locator=locator,
+                material_version=incoming_material_version,
+            )
+            return "unchanged", {}
+
+        check = create_candidate(
+            locked_page,
+            body=candidate_body,
+            reason=reason,
+            check_type=check_type,
+            build_record=build,
+            created_by=operator,
+            related=related or {"pages": [locked_page.id], "materials": [material.id]},
+            incoming_material=material,
+            incoming_material_version=incoming_material_version,
+        )
+        return "pending_review", {"check_id": check.id}
+
+
+def _create_review_candidate(page, material, build, page_data, operator="", locator=""):
+    return resolve_knowledge_conflict(
+        page,
+        material,
+        build,
+        page_data.get("body", "") or "",
+        operator=operator,
+        check_type="cannot_merge",
+        reason="构建资料产生了不同知识结论，需人工选择",
+        related={"pages": [page.id], "materials": [material.id]},
+        locator=locator,
+    )
+
+
+def _maintenance_errors(maintenance):
+    errors = []
+    if maintenance.get("error"):
+        errors.append(maintenance["error"])
+    for stage in (maintenance.get("stages") or {}).values():
+        if isinstance(stage, dict) and stage.get("error"):
+            errors.append(stage["error"])
+    return list(dict.fromkeys(errors))
+
+
+def _run_build_cascade(knowledge_base, affected_page_ids):
+    try:
+        return cascade(knowledge_base, affected_page_ids, "build")
+    except Exception as exc:
+        logger.exception("wiki 构建级联维护异常 kb=%s", knowledge_base.id)
+        error = str(exc)
+        return {
+            "status": "partial",
+            "event": "build",
+            "affected_page_ids": list(affected_page_ids),
+            "stages": {"cascade": {"status": "failed", "error": error}},
+            "error": error,
+        }
 
 
 def build_from_material(material, llm_model_id=None, operator="", trigger="material"):
@@ -498,13 +631,17 @@ def build_from_material(material, llm_model_id=None, operator="", trigger="mater
                 page = _create_ai_page(kb, material, build, pd, locator=locator)
                 existing_by_title[key] = page
                 action = "new"
+                decision_trace = {}
             elif page.contribution == "ai":
                 action = _merge_ai_page(page, material, build, pd, operator=operator, locator=locator)
+                decision_trace = {}
             else:
-                action = _create_review_candidate(page, material, build, pd, operator=operator)
+                action, decision_trace = _create_review_candidate(page, material, build, pd, operator=operator, locator=locator)
 
             counts[action] += 1
-            source_trace["page_actions"].append(_page_action_trace(page, action, locator))
+            page_trace = _page_action_trace(page, action, locator)
+            page_trace.update(decision_trace)
+            source_trace["page_actions"].append(page_trace)
             if action in ("new", "updated"):
                 affected.append(page.id)
                 cascade_ids.append(page.id)
@@ -524,7 +661,7 @@ def build_from_material(material, llm_model_id=None, operator="", trigger="mater
             )
             cascade_ids = list(dict.fromkeys([*cascade_ids, *enriched_ids]))
             # 新页面与同库其他页面建立关系并增量维护索引。
-            maintenance = cascade(kb, cascade_ids, "build")
+            maintenance = _run_build_cascade(kb, cascade_ids)
         build.counts = counts
         build.affected_pages = affected
         build.inputs = {
@@ -532,10 +669,23 @@ def build_from_material(material, llm_model_id=None, operator="", trigger="mater
             "source_trace": source_trace,
         }
         build.maintenance = maintenance
+        build.errors = _maintenance_errors(maintenance)
         build.stage = "done"
-        build.status = "success"
+        build.status = "partial" if maintenance.get("status") in {"partial", "failed"} else "success"
         build.progress = 100
-        build.save(update_fields=["counts", "affected_pages", "inputs", "maintenance", "stage", "status", "progress", "updated_at"])
+        build.save(
+            update_fields=[
+                "counts",
+                "affected_pages",
+                "inputs",
+                "maintenance",
+                "errors",
+                "stage",
+                "status",
+                "progress",
+                "updated_at",
+            ]
+        )
         material.status = "built"
         material.save(update_fields=["status", "updated_at"])
         return build

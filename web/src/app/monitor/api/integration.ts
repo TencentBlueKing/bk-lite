@@ -9,6 +9,7 @@ import {
   FlowDetectParams,
   FlowGuideParams,
   FlowIntegrationApi,
+  PluginGuideDoc,
   SnmpCollectTemplateDoc,
 } from '@/app/monitor/types/integration';
 import { AxiosRequestConfig } from 'axios';
@@ -132,6 +133,9 @@ const useIntegrationApi = () => {
         return await get(`/monitor/api/monitor_plugin/${id}/access_guide/`, {
           params,
         });
+      },
+      getPluginGuide: async (id: React.Key): Promise<PluginGuideDoc> => {
+        return await get(`/monitor/api/monitor_plugin/${id}/guide/`);
       },
       createCustomTemplate: async (data: Record<string, any>) => {
         return await post(`/monitor/api/monitor_plugin/`, data);

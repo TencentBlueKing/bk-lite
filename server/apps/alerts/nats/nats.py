@@ -22,11 +22,13 @@ from apps.alerts.constants.constants import PERMISSION_ALERT, AlertsSourceTypes,
 from apps.alerts.models.alert_operator import NotifyResult
 from apps.alerts.models.alert_source import AlertSource
 from apps.alerts.models.models import Alert, Event, Incident, Level
+from apps.alerts.utils.permission_scope import apply_team_scope_with_group_ids
 from apps.core.logger import alert_logger as logger
 from apps.core.utils.permission_utils import get_permission_rules
 from apps.core.utils.viewset_utils import GenericViewSetFun
 
 ALERT_LEVEL_DISPLAY_MAP = dict(EventLevel.CHOICES)
+TRUSTED_INTERNAL_PUSHERS = {"lite-monitor", "lite-log"}
 
 # 各粒度允许的最大时间跨度（秒）；可通过环境变量调整（保守默认值）
 _MAX_SPAN_SECONDS = {
@@ -91,12 +93,8 @@ def _get_authorized_alert_queryset(user_info: dict):
         if child_group_ids:
             team_ids = child_group_ids
 
-    team_query = Q()
-    for team_id in team_ids:
-        team_query |= Q(team__contains=team_id)
-
     if user_info.get("is_superuser"):
-        return Alert.objects.filter(team_query), None
+        return apply_team_scope_with_group_ids(Alert.objects.all(), team_ids), None
 
     permission_user = _build_permission_user(user_info)
     if not permission_user:
@@ -115,17 +113,21 @@ def _get_authorized_alert_queryset(user_info: dict):
     if not instance_ids and not permission_team_ids:
         return Alert.objects.none(), None
 
-    query = team_query
-    if instance_ids:
-        query |= Q(id__in=instance_ids)
-
+    normalized_permission_team_ids = []
     for team_id in permission_team_ids:
         try:
-            query |= Q(team__contains=int(team_id))
+            normalized_permission_team_ids.append(int(team_id))
         except (TypeError, ValueError):
             logger.warning("Invalid alert permission team id: %s", team_id)
 
-    return Alert.objects.filter(query), None
+    authorized_queryset = apply_team_scope_with_group_ids(
+        Alert.objects.all(), normalized_permission_team_ids
+    )
+    if instance_ids:
+        authorized_queryset = Alert.objects.filter(
+            Q(id__in=authorized_queryset.values("id")) | Q(id__in=instance_ids)
+        )
+    return authorized_queryset.distinct(), None
 
 
 def _get_authorized_alert_notify_queryset(user_info: dict):
@@ -631,7 +633,7 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
         kwargs: 包含以下字段
             - source_id: 告警源ID（可选 默认nats）
             - events: 事件列表（必填）
-            - pusher: 推送者标识，如系统名称或服务名（必填）如 lite-monitor
+            - pusher: 推送者标识，如系统名称或服务名（必填）如 lite-monitor、lite-log
 
     Returns:
         {
@@ -677,7 +679,12 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
               }
             }
     """
-    logger.info("[AlertEvent] === receive_alert_events via NATS ===, kwargs=%s", kwargs)
+    logger.info(
+        "[AlertEvent] receive_alert_events source_id=%s pusher=%s event_count=%s",
+        kwargs.get("source_id", ""),
+        kwargs.get("pusher"),
+        len(kwargs.get("events") or []),
+    )
 
     try:
         # 提取参数
@@ -722,9 +729,9 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
             normalized_event.setdefault("push_source_id", pusher)
             normalized_events.append(normalized_event)
 
-        # 内部约定：NATS 生效源（event_source 已校验）+ lite-monitor 推送方，双重判断为可信内部推送。
+        # 内部约定：NATS 生效源（event_source 已校验）+ 明确允许的内部推送方，双重判断为可信内部推送。
         # 此时采信每个 event 自带的 organizations 作为归属组织，无需走组织级 secret。
-        trusted_internal = pusher == "lite-monitor"
+        trusted_internal = pusher in TRUSTED_INTERNAL_PUSHERS
 
         # 创建适配器（内部调用无需密钥验证）
         adapter_class = AlertSourceAdapterFactory.get_adapter(event_source)
@@ -735,19 +742,30 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
         logger.info("[AlertEvent] 开始处理 %s 条事件 source_id=%s pusher=%s", len(events), source_id, pusher)
 
         # 处理告警事件
-        adapter.main()
+        ingestion = adapter.main() or {
+            "received": len(events),
+            "accepted": len(events),
+            "skipped": 0,
+            "errored": 0,
+        }
 
         logger.info("[AlertEvent] 成功处理 %s 条事件 pusher=%s source_id=%s", len(events), pusher, source_id)
 
+        fully_accepted = ingestion.get("skipped", 0) == 0 and ingestion.get("errored", 0) == 0
         return {
-            "result": True,
+            "result": fully_accepted,
             "data": {
-                "processed_events": len(events),
+                "processed_events": ingestion.get("accepted", 0),
+                "ingestion": ingestion,
                 "source_id": source_id,
                 "pusher": pusher,
                 "timestamp": timezone.now().strftime("%Y-%m-%d %H:%M:%S"),
             },
-            "message": "Events received and processed successfully.",
+            "message": (
+                "Events received and processed successfully."
+                if fully_accepted
+                else "Alert events were only partially accepted."
+            ),
         }
 
     except Exception as e:
@@ -957,7 +975,9 @@ def get_alert_level_distribution(status_filter=None, **kwargs):
     if status_filter == "active":
         queryset = queryset.filter(status__in=AlertStatus.ACTIVATE_STATUS)
 
-    level_counts = queryset.values("level").annotate(count=Count("id"))
+    # Alert.Meta.ordering 包含 updated_at；聚合前必须清除默认排序，否则部分
+    # 数据库会把排序列加入 GROUP BY，导致同一等级被拆成多条。
+    level_counts = queryset.order_by().values("level").annotate(count=Count("id"))
 
     result_data = []
     for item in level_counts:

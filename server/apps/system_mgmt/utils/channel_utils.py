@@ -96,6 +96,43 @@ def send_email(channel_obj: Channel, title, content, user_list, attachments=None
     return send_email_to_user(channel_config, content, receivers, title, attachments)
 
 
+def send_personalized_email_messages(channel_obj: Channel, messages: list[dict], timeout: int = 30) -> dict:
+    """复用 SMTP 连接发送多封不同正文的邮件，仅供内部批任务调用。"""
+    channel_config = dict(channel_obj.config or {})
+    channel_obj.decrypt_field("smtp_pwd", channel_config)
+    server = None
+    results = {}
+    try:
+        if channel_config.get("smtp_usessl", False):
+            server = smtplib.SMTP_SSL(channel_config["smtp_server"], channel_config["port"], timeout=timeout)
+        else:
+            server = smtplib.SMTP(channel_config["smtp_server"], channel_config["port"], timeout=timeout)
+        if channel_config.get("smtp_usetls", False):
+            server.starttls()
+        server.login(channel_config["smtp_user"], channel_config["smtp_pwd"])
+        for item in messages:
+            msg = MIMEMultipart()
+            msg["From"] = channel_config["mail_sender"]
+            msg["To"] = item["receiver"]
+            msg["Subject"] = item["title"]
+            msg.attach(MIMEText(item["content"], "html", "utf-8"))
+            try:
+                server.send_message(msg)
+                results[item["key"]] = {"result": True}
+            except (smtplib.SMTPAuthenticationError, smtplib.SMTPConnectError, smtplib.SMTPServerDisconnected):
+                # 连接级错误由批任务租约恢复，不将未尝试用户误记为终态失败。
+                raise
+            except smtplib.SMTPException as exc:
+                results[item["key"]] = {"result": False, "message": str(exc)}
+        return results
+    finally:
+        if server is not None:
+            try:
+                server.quit()
+            except Exception:
+                pass
+
+
 def send_email_to_user(channel_config, content, receivers, title, attachments=None):
     """
     发送邮件给用户

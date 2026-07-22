@@ -56,7 +56,7 @@ class DiskModule(WmiModule):
     name = "disk"
 
     def collect(self, client):
-        rows = client.query("SELECT DeviceID, Size, FreeSpace FROM Win32_LogicalDisk WHERE DriveType=3")
+        rows = client.query("SELECT DeviceID, FileSystem, Size, FreeSpace FROM Win32_LogicalDisk WHERE DriveType=3")
         disks = []
         for row in rows:
             total = int(row.get("Size") or 0)
@@ -65,6 +65,8 @@ class DiskModule(WmiModule):
             disks.append(
                 {
                     "device": str(row.get("DeviceID") or ""),
+                    "path": str(row.get("DeviceID") or ""),
+                    "fstype": str(row.get("FileSystem") or ""),
                     "total_bytes": total,
                     "free_bytes": free,
                     "used_bytes": used,

@@ -416,9 +416,103 @@
             "type": "string",
             "value": "",
             "alias_name": "机房ID",
-            "filterType": "params"
+            "filterType": "params",
+            "inputConfig": {
+                "control": "select",
+                "optionsSource": {
+                    "type": "dynamic",
+                    "sourceRef": {
+                        "type": "rest_api",
+                        "value": "cmdb/get_room_list"
+                    },
+                    "valueField": "_id",
+                    "labelField": "inst_name"
+                }
+            }
         }
     ],
+    "field_schema": []
+},
+{
+    "name": "云资源成本汇总",
+    "desc": "云资源成本分析 KPI 汇总卡(总费用/实例数/日均/同环比)",
+    "rest_api": "cmdb/get_cloud_resource_cost_summary",
+    "tag": [
+      "cmdb"
+    ],
+    "chart_type": [
+      "single"
+    ],
+    "params": [
+      {"name": "department", "type": "string", "value": "", "alias_name": "使用部门", "filterType": "filter"},
+      {"name": "applying_user", "type": "string", "value": "", "alias_name": "申请人", "filterType": "filter"},
+      {"name": "inst_type", "type": "string", "value": "", "alias_name": "对象类型", "filterType": "filter"},
+      {"name": "billing_period", "type": "dateRange", "value": "", "alias_name": "计费日期", "filterType": "filter"}
+    ],
+    "field_schema": []
+},
+{
+    "name": "云资源费用分布",
+    "desc": "云资源费用按对象类型/使用部门/申请人分布",
+    "rest_api": "cmdb/get_cloud_resource_cost_distribution",
+    "tag": [
+      "cmdb"
+    ],
+    "chart_type": [
+      "topN"
+    ],
+    "params": [
+      {"name": "department", "type": "string", "value": "", "alias_name": "使用部门", "filterType": "filter"},
+      {"name": "applying_user", "type": "string", "value": "", "alias_name": "申请人", "filterType": "filter"},
+      {"name": "inst_type", "type": "string", "value": "", "alias_name": "对象类型", "filterType": "filter"},
+      {"name": "billing_period", "type": "dateRange", "value": "", "alias_name": "计费日期", "filterType": "filter"},
+      {"name": "group_by", "type": "string", "value": "instance_type", "alias_name": "排行主体", "filterType": "params"}
+    ],
+    "field_schema": [
+        {"key": "key", "title": "分组值", "value_type": "string", "description": "group_by 对应字段的取值(对象类型/部门/申请人)"},
+        {"key": "total_cost", "title": "费用合计(元)", "value_type": "number", "description": "该分组窗口内 total_cost SUM"},
+        {"key": "instance_count", "title": "实例数", "value_type": "number", "description": "该分组下按 object_id 去重的实例数"},
+        {"key": "pct", "title": "占比(%)", "value_type": "number", "description": "该分组 total_cost 占全局的百分比"}
+    ]
+},
+{
+    "name": "云资源账单明细",
+    "desc": "云资源账单明细表(已发生总费用/单价 元/天,分页)",
+    "rest_api": "cmdb/get_cloud_resource_cost_bill_detail",
+    "tag": [
+        "cmdb"
+    ],
+    "chart_type": [
+        "table"
+    ],
+    "params": [
+        {"name": "department", "type": "string", "value": "", "alias_name": "使用部门", "filterType": "filter"},
+        {"name": "applying_user", "type": "string", "value": "", "alias_name": "申请人", "filterType": "filter"},
+        {"name": "inst_type", "type": "string", "value": "", "alias_name": "对象类型", "filterType": "filter"},
+        {"name": "billing_period", "type": "dateRange", "value": "", "alias_name": "计费日期", "filterType": "filter"},
+        {"name": "page", "type": "number", "value": 1, "alias_name": "页码", "filterType": "params"},
+        {"name": "page_size", "type": "number", "value": 20, "alias_name": "每页数量", "filterType": "params"}
+    ],
+    "field_schema": [
+        {"key": "instance_name", "title": "实例名称", "value_type": "string", "description": "bill 上的 inst_name"},
+        {"key": "object_type", "title": "对象类型", "value_type": "string", "description": "database / cache / compute 等"},
+        {"key": "object_name", "title": "对象名称", "value_type": "string", "description": "业务侧资源名"},
+        {"key": "department", "title": "使用部门", "value_type": "string", "description": "bill.user_department"},
+        {"key": "user", "title": "申请人", "value_type": "string", "description": "bill.applicant"},
+        {"key": "object_id", "title": "资源实例 ID", "value_type": "string", "description": "资源实例 id"},
+        {"key": "total_cost_incurred", "title": "已发生费用(元)", "value_type": "string", "description": "窗口内 log.total_cost SUM"},
+        {"key": "unit_price", "title": "单价(元/天)", "value_type": "string", "description": "total_cost_incurred / 窗口天数"}
+    ]
+},
+{
+    "name": "CMDB 机房列表",
+    "desc": "返回 CMDB 中所有 server_room 列表（按当前用户权限过滤），保留原始字段 _id/inst_name 等。供运维分析参数动态选项源使用；本身不直接出图。",
+    "rest_api": "cmdb/get_room_list",
+    "tag": [
+        "cmdb"
+    ],
+    "chart_type": [],
+    "params": [],
     "field_schema": []
 }
 ]

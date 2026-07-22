@@ -1,3 +1,5 @@
+import type { DateRangeValue } from '@/app/ops-analysis/types/dateRange';
+
 export type ChartType =
   | 'line'
   | 'bar'
@@ -82,14 +84,61 @@ export interface OperateModalProps {
   onSuccess?: () => void;
 }
 
+export type DataSourceParamFilterType =
+  | 'filter'
+  | 'fixed'
+  | 'params';
+export interface InputOption {
+  label: string;
+  value: string | number;
+}
+
+export interface RestApiSourceRef {
+  type: 'rest_api';
+  value: string;
+}
+
+export type SourceRef = RestApiSourceRef;
+
+export interface StaticOptionsSource {
+  type: 'static';
+  staticItems: InputOption[];
+}
+
+export interface DynamicOptionsSource {
+  type: 'dynamic';
+  sourceId?: number;
+  sourceRef?: SourceRef;
+  valueField: string;
+  labelField: string;
+}
+
+export type InputControlConfig =
+  | {
+    control: 'input';
+  }
+  | {
+    control: 'select' | 'radio';
+    optionsSource: StaticOptionsSource | DynamicOptionsSource;
+    componentSwitch?: boolean;
+  };
+
 export interface ParamItem {
   id?: string;
   name: string;
-  value: string | number | boolean | [number, number] | null;
+  value: string | number | boolean | [number, number] | DateRangeValue | null;
   alias_name: string;
   type?: string;
-  filterType?: string;
+  filterType?: DataSourceParamFilterType;
   desc?: string;
   required?: boolean;
+  /**
+   * 旧字段：手动下拉选项，只读兼容历史数据；
+   * 新配置写入 inputConfig。
+   */
   options?: Array<{ label: string; value: string | number }>;
+  /**
+   * 新字段：参数输入控件配置（文本输入 / 静态选项 / 动态数据源）。
+   */
+  inputConfig?: InputControlConfig;
 }

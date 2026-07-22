@@ -17,7 +17,8 @@ def superuser_client(authenticated_user):
 
 @pytest.mark.django_db
 def test_list_executions_filtered_by_alert(superuser_client):
-    alert = Alert.objects.create(alert_id="A1", fingerprint="f", title="t", content="c", level="1")
+    superuser_client.cookies["current_team"] = "1"
+    alert = Alert.objects.create(alert_id="A1", fingerprint="f", title="t", content="c", level="1", team=[1])
     rule = ActionRule.objects.create(name="r", team=[1])
     ActionExecution.objects.create(rule=rule, alert=alert, trigger_event="created",
                                    trigger_type="auto", idempotency_key="k1", status="success")
@@ -33,3 +34,24 @@ def test_list_executions_filtered_by_alert(superuser_client):
     else:
         count = len(data) if isinstance(data, list) else 0
     assert count >= 1
+
+
+@pytest.mark.django_db
+def test_execution_list_is_scoped_by_alert_team(superuser_client):
+    rule = ActionRule.objects.create(name="r", team=[1, 2])
+    alert_1 = Alert.objects.create(
+        alert_id="A-team-1", fingerprint="f1", title="t1", content="c", level="1", team=[1]
+    )
+    alert_2 = Alert.objects.create(
+        alert_id="A-team-2", fingerprint="f2", title="t2", content="c", level="1", team=[2]
+    )
+    ActionExecution.objects.create(rule=rule, alert=alert_1, trigger_event="manual", idempotency_key="k-team-1")
+    ActionExecution.objects.create(rule=rule, alert=alert_2, trigger_event="manual", idempotency_key="k-team-2")
+    superuser_client.cookies["current_team"] = "1"
+
+    response = superuser_client.get("/api/v1/alerts/api/action_execution/")
+
+    assert response.status_code == 200
+    data = response.json().get("data", response.json())
+    items = data.get("items", data) if isinstance(data, dict) else data
+    assert {item["alert"] for item in items} == {alert_1.id}

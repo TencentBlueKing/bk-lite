@@ -367,7 +367,7 @@ def test_build_from_material_extracts_facts_from_entire_long_markdown(monkeypatc
         if "知识抽取助手" in prompt:
             return "尾部组件事实" if tail_marker in prompt else "头部事实"
         if "企业知识库构建助手" in prompt and "尾部组件事实" in prompt:
-            return '{"pages":[{"page_type":"entity","title":"TAIL_COMPONENT_NEEDS_PAGE",' '"tags":["tail"],"body":"尾部组件正文"}]}'
+            return '{"pages":[{"page_type":"entity","title":"TAIL_COMPONENT_NEEDS_PAGE","tags":["tail"],"body":"尾部组件正文"}]}'
         return '{"pages":[]}'
 
     monkeypatch.setattr(build_service, "load_parsed_markdown", lambda m: long_markdown)
@@ -509,3 +509,292 @@ class TestBuildViews:
                 "status": "active",
             },
         ]
+
+
+def _decision_material(kb, name, content_hash):
+    from apps.opspilot.models import Material, MaterialVersion
+
+    material = Material.objects.create(
+        knowledge_base=kb,
+        name=name,
+        material_type="text",
+        text_content=f"source-{name}",
+        content_hash=content_hash,
+    )
+    version = MaterialVersion.objects.create(material=material, content_hash=content_hash)
+    material.current_version = version
+    material.save(update_fields=["current_version", "updated_at"])
+    return material, version
+
+
+def _decision_page(kb, material, material_version, body="knowledge-a"):
+    from apps.opspilot.models import KnowledgePage, PageEvidence, PageVersion
+
+    page = KnowledgePage.objects.create(
+        knowledge_base=kb,
+        page_type="concept",
+        title="共享知识",
+        contribution="human",
+    )
+    version = PageVersion.objects.create(
+        page=page,
+        no=1,
+        body=body,
+        change_type="human_edit",
+        is_current=True,
+    )
+    page.current_version = version
+    page.save(update_fields=["current_version", "updated_at"])
+    PageEvidence.objects.create(
+        page=page,
+        material=material,
+        material_version=material_version,
+    )
+    return page
+
+
+def _mock_decision_build_pages(monkeypatch, build_service, bodies):
+    monkeypatch.setattr(build_service, "_llm_extract_facts", lambda text, llm_model_id: text)
+    monkeypatch.setattr(
+        build_service,
+        "_llm_generate_pages",
+        lambda kb, source_text, llm_model_id: [
+            {
+                "page_type": "concept",
+                "title": "共享知识",
+                "tags": [],
+                "body": bodies[source_text],
+            }
+        ],
+    )
+
+
+@pytest.mark.django_db
+def test_build_replays_approved_full_source_set_when_incoming_role_reverses(monkeypatch):
+    from apps.opspilot.models import CheckItem, PageVersion, WikiKnowledgeBase
+    from apps.opspilot.services.wiki import build_service
+    from apps.opspilot.services.wiki.check_service import decide_check
+
+    kb = WikiKnowledgeBase.objects.create(name="kb-decision-build", team=[1], schema_md="# schema")
+    material_a, version_a = _decision_material(kb, "A", "hash-a")
+    material_b, version_b = _decision_material(kb, "B", "hash-b")
+    page = _decision_page(kb, material_a, version_a)
+    _mock_decision_build_pages(
+        monkeypatch,
+        build_service,
+        {"source-A": "knowledge-a", "source-B": "knowledge-b"},
+    )
+
+    first = build_service.build_from_material(material_b, llm_model_id=1, operator="admin")
+    check = CheckItem.objects.get(knowledge_base=kb, check_type="cannot_merge", status="open")
+
+    assert first.counts["pending_review"] == 1
+    assert {(item["material_id"], item["content_hash"]) for item in check.decision_context["participants"]} == {
+        (material_a.id, version_a.content_hash),
+        (material_b.id, version_b.content_hash),
+    }
+    assert check.decision_context["incoming"] == {
+        "material_id": material_b.id,
+        "material_version_id": version_b.id,
+        "content_hash": version_b.content_hash,
+    }
+
+    rule = decide_check(check, "use_new", operator="admin")
+    version_count = PageVersion.objects.filter(page=page).count()
+    second = build_service.build_from_material(material_a, llm_model_id=1, operator="admin")
+
+    assert second.counts == {"new": 0, "updated": 0, "unchanged": 1, "pending_review": 0}
+    assert not CheckItem.objects.filter(knowledge_base=kb, status="open").exists()
+    assert PageVersion.objects.filter(page=page).count() == version_count
+    action = second.inputs["source_trace"]["page_actions"][0]
+    assert action["decision_reused"] is True
+    assert action["rule_id"] == rule.id
+    assert action["action"] == "use_new"
+
+
+@pytest.mark.django_db
+def test_build_same_candidate_body_is_unchanged_without_candidate(monkeypatch):
+    from apps.opspilot.models import CheckItem, PageEvidence, PageVersion, WikiKnowledgeBase
+    from apps.opspilot.services.wiki import build_service
+
+    kb = WikiKnowledgeBase.objects.create(name="kb-build-same-body", team=[1], schema_md="# schema")
+    material_a, version_a = _decision_material(kb, "A", "hash-a")
+    material_b, version_b = _decision_material(kb, "B", "hash-b")
+    page = _decision_page(kb, material_a, version_a, body="same body")
+    _mock_decision_build_pages(
+        monkeypatch,
+        build_service,
+        {"source-A": "same body", "source-B": "same body"},
+    )
+
+    build = build_service.build_from_material(material_b, llm_model_id=1)
+
+    assert build.counts == {"new": 0, "updated": 0, "unchanged": 1, "pending_review": 0}
+    assert not CheckItem.objects.filter(knowledge_base=kb).exists()
+    assert PageVersion.objects.filter(page=page).count() == 1
+    evidence = PageEvidence.objects.get(page=page, material=material_b)
+    assert evidence.material_version_id == version_b.id
+    locator = json.loads(evidence.locator)
+    assert locator["material_version_id"] == version_b.id
+    assert locator["kind"] == "material_chunk"
+
+    repeated = build_service.build_from_material(material_b, llm_model_id=1)
+
+    evidence.refresh_from_db()
+    assert repeated.counts["unchanged"] == 1
+    assert PageEvidence.objects.filter(page=page, material=material_b).count() == 1
+    assert evidence.material_version_id == version_b.id
+    assert json.loads(evidence.locator) == locator
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("signature_change", ["content_hash", "source_set", "schema"])
+def test_build_changed_decision_signature_requires_new_decision(monkeypatch, signature_change):
+    from apps.opspilot.models import CheckItem, PageEvidence, WikiKnowledgeBase
+    from apps.opspilot.services.wiki import build_service
+    from apps.opspilot.services.wiki.check_service import decide_check
+
+    kb = WikiKnowledgeBase.objects.create(
+        name=f"kb-build-signature-{signature_change}",
+        team=[1],
+        schema_md="# schema",
+    )
+    material_a, version_a = _decision_material(kb, "A", "hash-a")
+    material_b, _version_b = _decision_material(kb, "B", "hash-b")
+    page = _decision_page(kb, material_a, version_a)
+    _mock_decision_build_pages(
+        monkeypatch,
+        build_service,
+        {"source-A": "knowledge-a-changed", "source-B": "knowledge-b"},
+    )
+
+    build_service.build_from_material(material_b, llm_model_id=1)
+    first_check = CheckItem.objects.get(knowledge_base=kb, status="open")
+    decide_check(first_check, "use_new", operator="admin")
+
+    if signature_change == "content_hash":
+        from apps.opspilot.models import MaterialVersion
+
+        new_version = MaterialVersion.objects.create(material=material_a, content_hash="hash-a-v2")
+        material_a.current_version = new_version
+        material_a.content_hash = new_version.content_hash
+        material_a.save(update_fields=["current_version", "content_hash", "updated_at"])
+    elif signature_change == "source_set":
+        material_c, version_c = _decision_material(kb, "C", "hash-c")
+        PageEvidence.objects.create(
+            page=page,
+            material=material_c,
+            material_version=version_c,
+        )
+    else:
+        kb.schema_md = "# changed schema"
+        kb.save(update_fields=["schema_md", "updated_at"])
+
+    build = build_service.build_from_material(material_a, llm_model_id=1)
+
+    assert build.counts["pending_review"] == 1
+    assert CheckItem.objects.filter(knowledge_base=kb, status="open").count() == 1
+
+
+@pytest.mark.django_db
+def test_build_alias_subject_replays_canonical_rule(monkeypatch):
+    from apps.opspilot.models import CheckItem, WikiKnowledgeBase
+    from apps.opspilot.services.wiki import build_service
+    from apps.opspilot.services.wiki.check_service import decide_check
+
+    canonical = "配置平台"
+    kb = WikiKnowledgeBase.objects.create(name="kb-build-alias-replay", team=[1], schema_md="# schema")
+    material_a, version_a = _decision_material(kb, "A", "hash-a")
+    material_b, _version_b = _decision_material(kb, "B", "hash-b")
+    page = _decision_page(kb, material_a, version_a)
+    page.title = "CMDB"
+    page.save(update_fields=["title", "updated_at"])
+    monkeypatch.setattr(build_service, "_llm_extract_facts", lambda text, llm_model_id: text)
+    monkeypatch.setattr(
+        build_service,
+        "_llm_generate_pages",
+        lambda kb, source_text, llm_model_id: [
+            {
+                "page_type": "concept",
+                "title": canonical,
+                "tags": [],
+                "body": "candidate body",
+            }
+        ],
+    )
+
+    first = build_service.build_from_material(material_b, llm_model_id=1)
+    check = CheckItem.objects.get(knowledge_base=kb, status="open")
+
+    assert first.counts["pending_review"] == 1
+    assert check.decision_context["subject_key"] == f"page::concept::{canonical}"
+    rule = decide_check(check, "keep_current", operator="admin")
+
+    second = build_service.build_from_material(material_b, llm_model_id=1)
+
+    assert second.counts["pending_review"] == 0
+    assert second.counts["unchanged"] == 1
+    assert not CheckItem.objects.filter(knowledge_base=kb, status="open").exists()
+    trace = second.inputs["source_trace"]["page_actions"][0]
+    assert trace["decision_reused"] is True
+    assert trace["rule_id"] == rule.id
+
+
+@pytest.mark.django_db
+def test_build_stale_page_instance_does_not_replay_after_manual_edit(monkeypatch):
+    from apps.opspilot.models import CheckItem, KnowledgePage, PageVersion, WikiKnowledgeBase
+    from apps.opspilot.services.wiki import build_service
+    from apps.opspilot.services.wiki.check_service import decide_check
+
+    kb = WikiKnowledgeBase.objects.create(name="kb-build-stale-page", team=[1], schema_md="# schema")
+    material_a, version_a = _decision_material(kb, "A", "hash-a")
+    material_b, _version_b = _decision_material(kb, "B", "hash-b")
+    page = _decision_page(kb, material_a, version_a, body="approved current")
+    _mock_decision_build_pages(
+        monkeypatch,
+        build_service,
+        {"source-A": "approved current", "source-B": "candidate body"},
+    )
+
+    build_service.build_from_material(material_b, llm_model_id=1)
+    first_check = CheckItem.objects.get(knowledge_base=kb, status="open")
+    rule = decide_check(first_check, "keep_current", operator="admin")
+    original_resolve = build_service.resolve_knowledge_conflict
+    edited = {}
+
+    def edit_before_resolve(stale_page, *args, **kwargs):
+        if not edited:
+            stale_current_id = stale_page.current_version_id
+            stale_page.page_versions.filter(is_current=True).update(is_current=False)
+            latest = stale_page.page_versions.order_by("-no").first()
+            manual_version = PageVersion.objects.create(
+                page_id=stale_page.id,
+                no=latest.no + 1,
+                body="manual edit after approval",
+                change_type="human_edit",
+                is_current=True,
+            )
+            KnowledgePage.objects.filter(pk=stale_page.id).update(current_version=manual_version)
+            edited.update(
+                {
+                    "manual_version_id": manual_version.id,
+                    "stale_current_id": stale_current_id,
+                }
+            )
+        return original_resolve(stale_page, *args, **kwargs)
+
+    monkeypatch.setattr(build_service, "resolve_knowledge_conflict", edit_before_resolve)
+
+    second = build_service.build_from_material(material_b, llm_model_id=1)
+
+    new_check = CheckItem.objects.get(knowledge_base=kb, status="open")
+    page.refresh_from_db()
+    rule.refresh_from_db()
+    assert edited["stale_current_id"] != edited["manual_version_id"]
+    assert page.current_version_id == edited["manual_version_id"]
+    assert page.current_version.body == "manual edit after approval"
+    assert second.counts["pending_review"] == 1
+    assert second.counts["unchanged"] == 0
+    assert new_check.decision_context["locked_current_version_id"] == edited["manual_version_id"]
+    assert not second.inputs["source_trace"]["page_actions"][0].get("decision_reused")
+    assert rule.replay_count == 0

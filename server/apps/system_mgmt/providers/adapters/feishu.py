@@ -1,8 +1,9 @@
 import json
 import time
 from threading import Lock
+from urllib.parse import urlencode, urlsplit
+
 import requests
-from urllib.parse import urlencode
 
 from apps.core.logger import logger
 
@@ -40,6 +41,20 @@ def _mask_app_id(app_id: str) -> str:
     return f"{app_id[:3]}***{app_id[-3:]}"
 
 
+def _sanitize_url_for_log(url: str) -> str:
+    try:
+        parsed = urlsplit(str(url or ""))
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            return "<invalid-url>"
+        hostname = parsed.hostname or ""
+        if ":" in hostname:
+            hostname = f"[{hostname}]"
+        port = f":{parsed.port}" if parsed.port else ""
+        return f"{parsed.scheme}://{hostname}{port}"
+    except ValueError:
+        return "<invalid-url>"
+
+
 def _get_feishu_token_cache_key(config: dict) -> tuple[str, str]:
     app_id = (config or {}).get("app_id", "")
     token_url = _get_config_value(config, "tenant_access_token_url", FEISHU_TOKEN_URL)
@@ -63,18 +78,13 @@ def _request_tenant_access_token(config: dict, capability_key: str):
     app_id = (config or {}).get("app_id", "")
     app_secret = (config or {}).get("app_secret", "")
     if not app_id or not app_secret:
-        missing_field = "app_id" if not app_id else "app_secret"
-        logger.warning(
-            f"Feishu connection test cannot start for capability '{capability_key}': "
-            f"missing required field '{missing_field}', app_id={_mask_app_id(app_id)}"
-        )
         return CapabilityExecutionResult.failed_result(
             "Feishu app_id or app_secret is missing",
             code="provider.invalid_config",
             field="app_id" if not app_id else "app_secret",
         )
 
-    logger.info(f"Testing Feishu connection for capability '{capability_key}', app_id={_mask_app_id(app_id)}")
+    logger.debug(f"Testing Feishu connection for capability '{capability_key}', app_id={_mask_app_id(app_id)}")
     token_url = _get_config_value(config, "tenant_access_token_url", FEISHU_TOKEN_URL)
     try:
         response = requests.post(
@@ -83,15 +93,16 @@ def _request_tenant_access_token(config: dict, capability_key: str):
             timeout=FEISHU_TIMEOUT,
         )
     except requests.Timeout:
-        logger.warning(f"Feishu connection test timed out for capability '{capability_key}'")
+        logger.debug(f"Feishu connection test timed out for capability '{capability_key}'")
         return CapabilityExecutionResult.failed_result(
             "Feishu connection test timed out",
             code="provider.timeout",
             retryable=True,
         )
     except requests.RequestException as error:
-        logger.exception(
-            f"Feishu connection test request failed for capability '{capability_key}': {error}"
+        logger.debug(
+            f"Feishu connection test request failed for capability '{capability_key}': "
+            f"error_type={type(error).__name__}"
         )
         return CapabilityExecutionResult.failed_result(
             "Feishu connection request failed",
@@ -103,7 +114,7 @@ def _request_tenant_access_token(config: dict, capability_key: str):
     try:
         data = response.json()
     except ValueError:
-        logger.exception(
+        logger.debug(
             f"Feishu connection test returned invalid JSON for capability '{capability_key}', "
             f"status={response.status_code}, request_id={request_id}"
         )
@@ -115,7 +126,7 @@ def _request_tenant_access_token(config: dict, capability_key: str):
         )
 
     if response.status_code != 200 or data.get("code") not in (0, None):
-        logger.warning(
+        logger.debug(
             f"Feishu connection test failed for capability '{capability_key}': "
             f"status={response.status_code}, code={data.get('code')}, request_id={request_id}"
         )
@@ -143,21 +154,22 @@ def _fetch_tenant_access_token(config: dict, force_refresh: bool = False):
         )
 
     cache_key = _get_feishu_token_cache_key(config)
+    token_url = _get_config_value(config, "tenant_access_token_url", FEISHU_TOKEN_URL)
+    safe_token_url = _sanitize_url_for_log(token_url)
     current_time = time.time()
     with _FEISHU_TENANT_TOKEN_CACHE_LOCK:
         cache_entry = _FEISHU_TENANT_TOKEN_CACHE.get(cache_key)
         if cache_entry and not force_refresh and not _is_token_expiring(cache_entry, current_time):
-            logger.info(f"Using cached Feishu access token for app_id={_mask_app_id(app_id)}")
+            logger.debug(f"Using cached Feishu access token for app_id={_mask_app_id(app_id)}")
             return cache_entry["token"], None
 
         if cache_entry and (force_refresh or _is_token_expiring(cache_entry, current_time)):
-            logger.info(
+            logger.debug(
                 f"Refreshing Feishu access token for app_id={_mask_app_id(app_id)}, "
-                f"reason={'forced' if force_refresh else 'expiring_soon'}"
+                f"reason={'forced' if force_refresh else 'expiring_soon'}, endpoint={safe_token_url}"
             )
 
         try:
-            token_url = _get_config_value(config, "tenant_access_token_url", FEISHU_TOKEN_URL)
             response = requests.post(
                 token_url,
                 json={"app_id": app_id, "app_secret": app_secret},
@@ -167,18 +179,17 @@ def _fetch_tenant_access_token(config: dict, force_refresh: bool = False):
         except requests.Timeout:
             return None, CapabilityExecutionResult.failed_result("Feishu access token request timed out", code="provider.timeout", retryable=True)
         except (requests.RequestException, ValueError) as error:
-            logger.error(f"Feishu access token request failed: {error}")
+            logger.debug(
+                f"Feishu access token request failed: endpoint={safe_token_url}, "
+                f"error_type={type(error).__name__}"
+            )
             return None, CapabilityExecutionResult.failed_result("Feishu access token request failed", code="provider.request_failed", retryable=True)
 
         request_id = response.headers.get("X-Tt-Logid", "")
-        logged_data = dict(data or {})
-        if "tenant_access_token" in logged_data:
-            logged_data["tenant_access_token"] = "***"
-        if "app_access_token" in logged_data:
-            logged_data["app_access_token"] = "***"
-        logger.info(
-            f"Feishu access token response: url={token_url}, status={response.status_code}, "
-            f"request_id={request_id}, app_id={_mask_app_id(app_id)}, data={logged_data}"
+        logger.debug(
+            f"Feishu access token response: endpoint={safe_token_url}, status={response.status_code}, "
+            f"request_id={request_id}, app_id={_mask_app_id(app_id)}, code={data.get('code')}, "
+            f"expire={data.get('expire') or data.get('expires_in')}"
         )
 
         if response.status_code != 200 or data.get("code") not in (0, None):
@@ -223,19 +234,25 @@ def _feishu_get_paginated(url: str, token: str, *, params: dict | None = None, c
         except requests.Timeout:
             return None, CapabilityExecutionResult.failed_result("Feishu contact request timed out", code="provider.timeout", retryable=True)
         except (requests.RequestException, ValueError) as error:
-            logger.error(f"Feishu contact request failed: {error}")
+            logger.debug(
+                f"Feishu contact request failed: endpoint={_sanitize_url_for_log(url)}, "
+                f"error_type={type(error).__name__}"
+            )
             return None, CapabilityExecutionResult.failed_result("Feishu contact request failed", code="provider.request_failed", retryable=True)
 
         last_request_id = response.headers.get("X-Tt-Logid", "")
-        logger.info(
-            f"Feishu contact response: url={url}, status={response.status_code}, "
-            f"request_id={last_request_id}, params={merged_params}, data={data}"
+        page_data = data.get("data") or {}
+        page_items = page_data.get("items") or page_data.get("user_list") or []
+        logger.debug(
+            f"Feishu contact response: endpoint={_sanitize_url_for_log(url)}, status={response.status_code}, "
+            f"request_id={last_request_id}, page_token_present={bool(page_token)}, code={data.get('code')}, "
+            f"items_count={len(page_items)}, has_more={page_data.get('has_more', False)}"
         )
         if response.status_code != 200 or data.get("code") not in (0, None):
             if config and not retried_with_refreshed_token and _should_retry_with_refreshed_token(response.status_code, data):
-                logger.warning(
+                logger.debug(
                     f"Feishu contact request auth failed, refreshing token and retrying once: "
-                    f"url={url}, request_id={last_request_id}"
+                    f"endpoint={_sanitize_url_for_log(url)}, request_id={last_request_id}"
                 )
                 refreshed_token, token_error = _fetch_tenant_access_token(config, force_refresh=True)
                 if token_error:
@@ -251,8 +268,7 @@ def _feishu_get_paginated(url: str, token: str, *, params: dict | None = None, c
                 external_request_id=last_request_id,
             )
 
-        page_data = data.get("data") or {}
-        items.extend(page_data.get("items") or page_data.get("user_list") or [])
+        items.extend(page_items)
         if not page_data.get("has_more"):
             return {"items": items, "request_id": last_request_id}, None
         page_token = page_data.get("page_token") or ""
@@ -312,7 +328,10 @@ class FeishuLoginAuthAdapter(BaseLoginAuthAdapter):
         except requests.Timeout:
             return CapabilityExecutionResult.failed_result("Feishu login request timed out", code="provider.timeout", retryable=True)
         except requests.RequestException as error:
-            logger.error(f"Feishu login request failed: {error}")
+            logger.debug(
+                f"Feishu login request failed: endpoint={_sanitize_url_for_log(access_token_url)}, "
+                f"error_type={type(error).__name__}"
+            )
             return CapabilityExecutionResult.failed_result("Feishu login request failed", code="provider.request_failed", retryable=True)
 
         try:
@@ -342,7 +361,10 @@ class FeishuLoginAuthAdapter(BaseLoginAuthAdapter):
         except requests.Timeout:
             return CapabilityExecutionResult.failed_result("Feishu user info request timed out", code="provider.timeout", retryable=True)
         except (requests.RequestException, ValueError) as error:
-            logger.error(f"Feishu user info request failed: {error}")
+            logger.debug(
+                f"Feishu user info request failed: endpoint={_sanitize_url_for_log(user_info_url)}, "
+                f"error_type={type(error).__name__}"
+            )
             return CapabilityExecutionResult.failed_result("Feishu user info request failed", code="provider.request_failed", retryable=True)
 
         if user_response.status_code != 200 or user_data.get("code") not in (0, None):

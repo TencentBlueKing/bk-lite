@@ -3,6 +3,9 @@
 仅 mock S3 下载与 InstallTokenService.generate_install_token 边界。
 断言真实 DB 副作用与命令字符串结构。
 """
+import os
+import shlex
+import subprocess
 import pytest
 from unittest.mock import AsyncMock, patch
 
@@ -407,6 +410,66 @@ _SESSION_CFG = {
 }
 
 
+def _write_executable(path, content):
+    path.write_text(content, encoding="utf-8")
+    path.chmod(0o755)
+
+
+def _prepare_bootstrap_shell_test(tmp_path, shell_name, curl_exit_code=0, uid=0):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    bootstrap_temp = tmp_path / "bootstrap.sh"
+    runner_log = tmp_path / "runner.log"
+    bootstrap_log = tmp_path / "bootstrap.log"
+    sudo_log = tmp_path / "sudo.log"
+
+    _write_executable(bin_dir / "id", f"#!/bin/sh\nprintf '{uid}\\n'\n")
+    _write_executable(
+        bin_dir / "mktemp",
+        '#!/bin/sh\n: > "$BOOTSTRAP_TEMP"\nprintf \'%s\\n\' "$BOOTSTRAP_TEMP"\n',
+    )
+    _write_executable(bin_dir / "rm", '#!/bin/sh\nexec /bin/rm "$@"\n')
+    _write_executable(
+        bin_dir / "sudo",
+        '#!/bin/sh\nprintf "%s\\n" "$*" >> "$SUDO_LOG"\nif [ "$1" = "-n" ]; then shift; fi\nexec "$@"\n',
+    )
+    if curl_exit_code:
+        curl_script = f"#!/bin/sh\nexit {curl_exit_code}\n"
+    else:
+        curl_script = """#!/bin/sh
+output=''
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "-o" ]; then
+    output="$2"
+    shift 2
+  else
+    shift
+  fi
+done
+printf '%s\n' '#!/bin/sh' 'printf "%s" "${SELECTED_SHELL:-bash}" > "$RUNNER_LOG"' 'printf ran > "$BOOTSTRAP_LOG"' > "$output"
+"""
+    _write_executable(bin_dir / "curl", curl_script)
+    if shell_name == "bash":
+        (bin_dir / shell_name).symlink_to("/bin/bash")
+    else:
+        _write_executable(
+            bin_dir / shell_name,
+            '#!/bin/sh\nSELECTED_SHELL=sh exec /bin/sh "$@"\n',
+        )
+
+    env = os.environ.copy()
+    env.update(
+        {
+            "PATH": str(bin_dir),
+            "BOOTSTRAP_TEMP": str(bootstrap_temp),
+            "RUNNER_LOG": str(runner_log),
+            "BOOTSTRAP_LOG": str(bootstrap_log),
+            "SUDO_LOG": str(sudo_log),
+        }
+    )
+    return env, bootstrap_temp, runner_log, bootstrap_log
+
+
 @pytest.mark.django_db
 def test_get_linux_bootstrap_command_manual_mode():
     with patch(
@@ -414,7 +477,15 @@ def test_get_linux_bootstrap_command_manual_mode():
         return_value=_SESSION_CFG,
     ):
         cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="manual")
-    assert "sudo bash" in cmd
+    assert "sh -lc" not in cmd
+    assert "bash -lc" not in cmd
+    assert "command -v sh" in cmd
+    assert "command -v bash" in cmd
+    assert "curl -fsSLk" in cmd
+    assert '-o "$bootstrap_file"' in cmd
+    assert "| bash" not in cmd
+    assert "| sh" not in cmd
+    assert 'sudo "$bootstrap_shell" "$bootstrap_file"' in cmd
     assert "linux_bootstrap?token=tok" in cmd
 
 
@@ -425,8 +496,171 @@ def test_get_linux_bootstrap_command_auto_mode():
         return_value=_SESSION_CFG,
     ):
         cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="auto")
-    assert "sudo -n bash" in cmd
+    assert "sh -lc" not in cmd
+    assert "bash -lc" not in cmd
+    assert "command -v sh" in cmd
+    assert "command -v bash" in cmd
+    assert "curl -fsSLk" in cmd
+    assert "| bash" not in cmd
+    assert "| sh" not in cmd
+    assert 'sudo -n "$bootstrap_shell" "$bootstrap_file"' in cmd
+    assert 'sudo -n "$bootstrap_shell" -c true' in cmd
+    assert "sudo -n true" not in cmd
     assert "passwordless sudo" in cmd
+
+
+@pytest.mark.django_db
+def test_get_linux_bootstrap_command_shell_quotes_bootstrap_url():
+    session_cfg = {
+        "installer": {"filename": "installer.bin"},
+        "install_dir": "/opt/fusion",
+        "server_url": "https://srv.local/path with space/it's/api/v1/node_mgmt/open_api/node",
+    }
+    with patch(
+        "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
+        return_value=session_cfg,
+    ):
+        cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="auto")
+
+    expected_url = "https://srv.local/path with space/it's/api/v1/node_mgmt/open_api/installer/linux_bootstrap?token=tok"
+    assert shlex.quote(expected_url) in cmd
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("shell_name", ["sh", "bash"])
+def test_get_linux_bootstrap_command_runs_with_only_one_supported_shell(tmp_path, shell_name):
+    env, bootstrap_temp, runner_log, bootstrap_log = _prepare_bootstrap_shell_test(tmp_path, shell_name)
+    with patch(
+        "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
+        return_value=_SESSION_CFG,
+    ):
+        cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="auto")
+
+    result = subprocess.run(["/bin/sh", "-c", cmd], env=env, text=True, capture_output=True, check=False)
+
+    assert result.returncode == 0, result.stderr
+    assert runner_log.read_text(encoding="utf-8") == shell_name
+    assert bootstrap_log.read_text(encoding="utf-8") == "ran"
+    assert not bootstrap_temp.exists()
+    assert not (tmp_path / "sudo.log").exists()
+
+
+@pytest.mark.django_db
+def test_get_linux_bootstrap_command_prefers_sh_when_sh_and_bash_are_available(tmp_path):
+    env, _, runner_log, _ = _prepare_bootstrap_shell_test(tmp_path, "sh")
+    (tmp_path / "bin" / "bash").symlink_to("/bin/bash")
+    with patch(
+        "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
+        return_value=_SESSION_CFG,
+    ):
+        cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="auto")
+
+    result = subprocess.run(["/bin/sh", "-c", cmd], env=env, text=True, capture_output=True, check=False)
+
+    assert result.returncode == 0, result.stderr
+    assert runner_log.read_text(encoding="utf-8") == "sh"
+
+
+@pytest.mark.django_db
+def test_get_linux_bootstrap_command_auto_mode_uses_non_interactive_sudo_for_non_root(tmp_path):
+    env, _, _, bootstrap_log = _prepare_bootstrap_shell_test(tmp_path, "sh", uid=1000)
+    with patch(
+        "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
+        return_value=_SESSION_CFG,
+    ):
+        cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="auto")
+
+    result = subprocess.run(["/bin/sh", "-c", cmd], env=env, text=True, capture_output=True, check=False)
+    sudo_calls = (tmp_path / "sudo.log").read_text(encoding="utf-8").splitlines()
+
+    assert result.returncode == 0, result.stderr
+    assert bootstrap_log.read_text(encoding="utf-8") == "ran"
+    assert sudo_calls[0].endswith(" -c true")
+    assert all(call.startswith("-n ") for call in sudo_calls)
+
+
+@pytest.mark.django_db
+def test_get_linux_bootstrap_command_manual_mode_uses_interactive_sudo_for_non_root(tmp_path):
+    env, _, _, bootstrap_log = _prepare_bootstrap_shell_test(tmp_path, "sh", uid=1000)
+    with patch(
+        "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
+        return_value=_SESSION_CFG,
+    ):
+        cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="manual")
+
+    result = subprocess.run(["/bin/sh", "-c", cmd], env=env, text=True, capture_output=True, check=False)
+    sudo_calls = (tmp_path / "sudo.log").read_text(encoding="utf-8").splitlines()
+
+    assert result.returncode == 0, result.stderr
+    assert bootstrap_log.read_text(encoding="utf-8") == "ran"
+    assert len(sudo_calls) == 1
+    assert not sudo_calls[0].startswith("-n ")
+
+
+@pytest.mark.django_db
+def test_get_linux_bootstrap_command_preserves_download_failure_and_cleans_temp_file(tmp_path):
+    env, bootstrap_temp, runner_log, bootstrap_log = _prepare_bootstrap_shell_test(
+        tmp_path,
+        "sh",
+        curl_exit_code=22,
+    )
+    with patch(
+        "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
+        return_value=_SESSION_CFG,
+    ):
+        cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="auto")
+
+    result = subprocess.run(["/bin/sh", "-c", cmd], env=env, text=True, capture_output=True, check=False)
+
+    assert result.returncode == 1
+    assert not runner_log.exists()
+    assert not bootstrap_log.exists()
+    assert not bootstrap_temp.exists()
+
+
+@pytest.mark.django_db
+def test_get_linux_bootstrap_command_preserves_installer_failure_and_cleans_temp_file(tmp_path):
+    env, bootstrap_temp, _, bootstrap_log = _prepare_bootstrap_shell_test(tmp_path, "sh")
+    curl_path = tmp_path / "bin" / "curl"
+    _write_executable(
+        curl_path,
+        """#!/bin/sh
+output=''
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "-o" ]; then output="$2"; shift 2; else shift; fi
+done
+printf '%s\n' '#!/bin/sh' 'printf ran > "$BOOTSTRAP_LOG"' 'exit 7' > "$output"
+""",
+    )
+    with patch(
+        "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
+        return_value=_SESSION_CFG,
+    ):
+        cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="auto")
+
+    result = subprocess.run(["/bin/sh", "-c", cmd], env=env, text=True, capture_output=True, check=False)
+
+    assert result.returncode == 7
+    assert bootstrap_log.read_text(encoding="utf-8") == "ran"
+    assert not bootstrap_temp.exists()
+
+
+@pytest.mark.django_db
+def test_get_linux_bootstrap_command_reports_missing_supported_shell(tmp_path):
+    empty_path = tmp_path / "bin"
+    empty_path.mkdir()
+    env = os.environ.copy()
+    env["PATH"] = str(empty_path)
+    with patch(
+        "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
+        return_value=_SESSION_CFG,
+    ):
+        cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="auto")
+
+    result = subprocess.run(["/bin/sh", "-c", cmd], env=env, text=True, capture_output=True, check=False)
+
+    assert result.returncode == 1
+    assert "controller installation requires sh or bash" in result.stderr
 
 
 # --------------------------------------------------------------------------- #

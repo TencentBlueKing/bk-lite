@@ -29,7 +29,7 @@ RUN if [ -n "$NEXUS_PYTHON_REPOSITY" ]; then \
     fi
 
 
-ADD . .
+COPY . .
 
 # 设置脚本可执行权限
 RUN chmod +x ./support-files/release/startup.sh && \

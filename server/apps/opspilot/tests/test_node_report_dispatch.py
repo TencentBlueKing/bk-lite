@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 from typing import Any, Dict
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -151,6 +151,141 @@ def test_dispatch_isolates_two_capabilities():
     assert mock_dispatch.call_args.args[0] == "config_analysis_report"
 
 
+def test_deepagent_exposes_repair_workflow_tools_only_with_both_capabilities():
+    node = _make_node(skill_capabilities=["config_analysis_report", "repair_diff_report"])
+    node.all_tools = []
+    node.tools = []
+
+    with patch.object(node, "_build_knowledge_retrieve_tool", return_value=None):
+        tools = node._collect_deepagent_tools(object())
+
+    names = {tool.name for tool in tools}
+    assert {"request_user_choice", "generate_repair_report", "report_config_diff"} <= names
+
+
+@pytest.mark.parametrize("capability", ["config_analysis_report", "repair_diff_report"])
+def test_deepagent_does_not_expose_repair_workflow_tools_for_single_capability(capability):
+    node = _make_node(skill_capabilities=[capability])
+    node.all_tools = []
+    node.tools = []
+
+    with patch.object(node, "_build_knowledge_retrieve_tool", return_value=None):
+        tools = node._collect_deepagent_tools(object())
+
+    names = {tool.name for tool in tools}
+    assert names.isdisjoint({"request_user_choice", "generate_repair_report", "report_config_diff"})
+
+
+@pytest.mark.asyncio
+async def test_pending_analysis_deterministically_runs_choice_then_repair_report():
+    from langchain_core.messages import ToolMessage
+
+    node = _make_node(skill_capabilities=["config_analysis_report", "repair_diff_report"])
+    choice_tool = MagicMock()
+    choice_tool.ainvoke = AsyncMock(return_value="用户回答: 按问题类别聚合。请继续执行。")
+    choice_tool._request_choice_func = MagicMock()
+    repair_tool = MagicMock()
+    repair_tool.ainvoke = AsyncMock(return_value="已生成修复对比报告")
+    deployments = [{"name": "api", "namespace": "default", "issues": ["未配置资源限制"]}]
+    messages = [
+        ToolMessage(
+            name="analyze_deployment_configurations",
+            tool_call_id="analysis-1",
+            content=(
+                '{"cluster_name":"Kubernetes - 1","problematic":1,'
+                '"issues_detail":[{"severity":"high","issue":"未配置资源限制","count":1,"workloads":["api"]}],'
+                '"_deployments_full":[{"name":"api","namespace":"default","issues":["未配置资源限制"]}]}'
+            ),
+        )
+    ]
+
+    with (
+        patch.object(node, "_build_choice_tool", return_value=choice_tool),
+        patch.object(node, "_build_bulk_repair_tool", return_value=repair_tool) as build_repair,
+    ):
+        handled = await node._run_pending_k8s_repair_workflow(messages, {"configurable": {"execution_id": "exec-1"}})
+
+    assert handled is True
+    choice_tool.ainvoke.assert_awaited_once()
+    assert choice_tool._request_choice_func._node_id == "skill_test"
+    build_repair.assert_called_once_with({"deployments": deployments, "cluster_name": "Kubernetes - 1"})
+    repair_args = repair_tool.ainvoke.await_args.args[0]
+    assert repair_args["group_by"] == "category"
+    assert repair_args["items"] == []
+
+
+@pytest.mark.asyncio
+async def test_pending_analysis_uses_full_details_from_runnable_config_cache():
+    from langchain_core.messages import ToolMessage
+
+    node = _make_node(skill_capabilities=["config_analysis_report", "repair_diff_report"])
+    choice_tool = MagicMock()
+    choice_tool.ainvoke = AsyncMock(return_value="全部一次性展示")
+    choice_tool._request_choice_func = MagicMock()
+    repair_tool = MagicMock()
+    repair_tool.ainvoke = AsyncMock(return_value="已生成修复对比报告")
+    deployments = [{"name": "api", "namespace": "default", "issues": ["未配置资源限制"]}]
+    messages = [
+        ToolMessage(
+            name="analyze_deployment_configurations",
+            tool_call_id="analysis-large",
+            content=(
+                '{"cluster_name":"Kubernetes - 1","problematic":1,'
+                '"issues_detail":[{"severity":"high","issue":"未配置资源限制",'
+                '"count":1,"workloads":["api"]}]}'
+            ),
+        )
+    ]
+    config = {"configurable": {"execution_id": "exec-large"}}
+
+    with (
+        patch(
+            "apps.opspilot.metis.llm.tools.kubernetes.analysis._take_cached_k8s_analysis_details",
+            return_value=deployments,
+        ),
+        patch.object(node, "_build_choice_tool", return_value=choice_tool),
+        patch.object(node, "_build_bulk_repair_tool", return_value=repair_tool) as build_repair,
+    ):
+        handled = await node._run_pending_k8s_repair_workflow(messages, config)
+
+    assert handled is True
+    build_repair.assert_called_once_with({"deployments": deployments, "cluster_name": "Kubernetes - 1"})
+
+
+@pytest.mark.asyncio
+async def test_pending_analysis_does_not_run_workflow_for_single_capability():
+    node = _make_node(skill_capabilities=["config_analysis_report"])
+
+    handled = await node._run_pending_k8s_repair_workflow([], {"configurable": {}})
+
+    assert handled is False
+
+
+@pytest.mark.asyncio
+async def test_choice_custom_events_use_explicit_runnable_config():
+    node = _make_node(skill_capabilities=["config_analysis_report", "repair_diff_report"])
+    choice_tool = node._build_choice_tool()
+    choice_func = choice_tool._request_choice_func
+    choice_func._configurable = {}
+    choice_func._execution_id = "exec-1"
+    choice_func._node_id = "repair-flow"
+    runnable_config = {"configurable": {"execution_id": "exec-1"}}
+
+    with (
+        patch("apps.opspilot.metis.llm.chain.node.wait_for_choice", new=AsyncMock(return_value={"selected": ["按问题类别聚合"], "source": "user"})),
+        patch("apps.opspilot.metis.llm.chain.node.dispatch_custom_event") as dispatch,
+    ):
+        await choice_func(
+            question="请选择修复展示方式",
+            question_type="single_select",
+            options=["按问题类别聚合", "按工作负载聚合"],
+            config=runnable_config,
+        )
+
+    assert dispatch.call_count == 2
+    assert all(call.kwargs["config"] is runnable_config for call in dispatch.call_args_list)
+
+
 def test_post_process_tool_results_dispatches_mapped_tool():
     """ToolMessage.name 命中 TOOL_RESULT_TO_CAPABILITY 时,自动 dispatch 对应 capability。"""
     from langchain_core.messages import ToolMessage
@@ -286,19 +421,10 @@ def test_post_process_tool_results_coalesces_multiple_calls_into_one_card():
     assert len(high_section["issues"]) == 7
 
 
-def test_post_process_tool_results_passes_skill_id_to_repair_diff_report():
-    """S1 回归测试:联动 emit 的 repair_diff_report 必须带 caller 传入的 skill_id。
-
-    之前 node.py:960-966 的 try/except 静默吞了 graph_request NameError,
-    导致 _skill_id 永远为 None,前端"查看实际 deployment"按钮拿不到 skill_id
-    而 404。修法:用已经在栈上的 skill_id 形参,不要绕道 graph_request。
-    本测试锁住 caller 传 skill_id → emit 的 repair_diff_report payload 带 skill_id,
-    防止 S1 再次回退。
-    """
+def test_post_process_tool_results_waits_for_user_choice_before_repair_diff():
+    """双 capability 也必须先让用户选择，分析后不得自动发修复对比。"""
     from langchain_core.messages import ToolMessage
 
-    # 必须同时声明 config_analysis_report + repair_diff_report,才会触发联动 emit
-    # (node.py:954 if self._has_report_capability("repair_diff_report") and accumulated.get("config_analysis_report"))
     node = _make_node(
         skill_capabilities=["config_analysis_report", "repair_diff_report"],
     )
@@ -314,24 +440,8 @@ def test_post_process_tool_results_passes_skill_id_to_repair_diff_report():
     )
 
     with patch("langchain_core.callbacks.dispatch_custom_event") as mock_dispatch:
-        # 关键:把 skill_id 传进去,模拟 deep_wrapper_node:2799 的 caller 行为
         node._post_process_tool_results([tool_message], skill_id=42)
 
-    # 3 次 emit:config_analysis_report + repair_diff_report + report_file_download
-    # (前两个由 _emit_report_event 触发,report_file_download 由 docx 自动生成)
-    # 这里关键断言是 repair_diff_report 那次带 skill_id
-    assert mock_dispatch.call_count == 3, (
-        f"Expected 3 emits (analysis + repair_diff + file_download), got {mock_dispatch.call_count}"
-    )
-
-    # 第一次:config_analysis_report(由 _emit_report_event 触发,不带 skill_id 字段,
-    # 那是 config_analysis_report payload schema 自身决定的,不是 bug)
-    first_event, _ = mock_dispatch.call_args_list[0].args
-    assert first_event == "config_analysis_report"
-
-    # 第二次:repair_diff_report 联动 emit,带 skill_id(关键回归断言)
-    second_event, second_payload = mock_dispatch.call_args_list[1].args
-    assert second_event == "repair_diff_report"
-    assert second_payload.get("skill_id") == 42, (
-        f"repair_diff_report payload 应带 skill_id=42,实际 {second_payload.get('skill_id')!r}"
-    )
+    assert mock_dispatch.call_count == 1
+    event_name, _ = mock_dispatch.call_args.args
+    assert event_name == "config_analysis_report"

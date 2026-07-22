@@ -83,7 +83,7 @@ export default function PasswordResetForm({
     <div>
       <div className="text-center mb-6">
         <h3 className="text-xl font-semibold text-[var(--color-text-1)]">{t('signin.passwordReset.title')}</h3>
-        <p className="text-gray-500 mt-2">{t('signin.passwordReset.description')}</p>
+        <p className="mt-2 text-(--color-text-2)">{t('signin.passwordReset.description')}</p>
       </div>
       
       <form onSubmit={handlePasswordReset} className="flex flex-col space-y-6 w-full">

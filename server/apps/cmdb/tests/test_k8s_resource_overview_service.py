@@ -59,6 +59,80 @@ def k8s_graph(monkeypatch):
         "apps.cmdb.services.k8s_resource_overview.InstanceManage.instance_association_instance_list",
         lambda model_id, inst_id: associations.get((model_id, int(inst_id)), []),
     )
+    reverse_maps = {
+        ("k8s_node", "k8s_pod"): {40: [30], 41: [32]},
+        ("k8s_pod", "k8s_namespace"): {30: [10], 31: [10], 32: [10]},
+        ("k8s_pod", "k8s_workload"): {30: [20], 31: [20], 32: []},
+    }
+
+    def association_map(model_id, inst_ids, related_model=None):
+        special = reverse_maps.get((model_id, related_model))
+        if special is not None:
+            return {int(inst_id): special.get(int(inst_id), []) for inst_id in inst_ids}
+        return {
+            int(inst_id): sorted(
+                {
+                    int(item["_id"])
+                    for group in associations.get((model_id, int(inst_id)), [])
+                    for item in group.get("inst_list", [])
+                    if item.get("model_id") == related_model
+                    or (
+                        item.get("model_id") is None
+                        and related_model in {group.get("src_model_id"), group.get("dst_model_id")}
+                    )
+                }
+            )
+            for inst_id in inst_ids
+        }
+
+    monkeypatch.setattr(
+        "apps.cmdb.services.k8s_resource_overview.InstanceManage.instance_association_map", association_map
+    )
+
+    def test_name(row):
+        return str(row.get("name") or row.get("inst_name") or "")
+
+    def test_workload_type(row):
+        value = row.get("workload_type")
+        if isinstance(value, list):
+            value = value[0] if value else ""
+        return str(value or "").casefold()
+
+    def filter_rows(inst_ids, filters=None, permission_map=None):
+        rows = [instances[int(inst_id)] for inst_id in inst_ids if int(inst_id) in instances]
+        if permission_map and "visible_ids" in permission_map:
+            visible_ids = {int(item) for item in permission_map["visible_ids"]}
+            rows = [row for row in rows if int(row["_id"]) in visible_ids]
+        for query_filter in filters or []:
+            if query_filter["type"] == "str*":
+                rows = [row for row in rows if query_filter["value"].casefold() in test_name(row).casefold()]
+            elif query_filter["type"] == "list_any[]":
+                rows = [row for row in rows if test_workload_type(row) in query_filter["value"]]
+            elif query_filter["type"] == "list_none[]":
+                rows = [row for row in rows if test_workload_type(row) not in query_filter["value"]]
+        return rows
+
+    def query_page(
+        inst_ids, page=1, page_size=50, order="inst_name", filters=None, permission_map=None, **kwargs
+    ):
+        rows = filter_rows(inst_ids, filters=filters, permission_map=permission_map)
+        reverse = str(order).startswith("-")
+        order_key = str(order).removeprefix("-")
+        rows.sort(key=lambda item: str(item.get(order_key) or item.get("name") or ""), reverse=reverse)
+        count = len(rows)
+        start = (int(page) - 1) * int(page_size)
+        return rows[start: start + int(page_size)], count
+
+    monkeypatch.setattr(
+        "apps.cmdb.services.k8s_resource_overview.InstanceManage.query_entity_page_by_ids",
+        query_page,
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.services.k8s_resource_overview.InstanceManage.count_entity_by_ids",
+        lambda inst_ids, permission_map=None, filters=None, **kwargs: len(
+            filter_rows(inst_ids, filters=filters, permission_map=permission_map)
+        ),
+    )
     monkeypatch.setattr(
         "apps.cmdb.services.k8s_resource_overview.InstanceManage._has_topology_view_permission",
         lambda instance, permission_map, user=None: (
@@ -134,6 +208,28 @@ def test_visibility_uses_each_model_permission_and_prunes_hidden_parents(k8s_gra
     }
     assert "backup" not in {node["name"] for node in result["topology"]["nodes"]}
     assert "node-b" not in {node["name"] for node in result["topology"]["nodes"]}
+
+
+@pytest.mark.unit
+def test_resource_list_prunes_children_of_hidden_namespace_without_legacy_snapshot(
+    k8s_graph, monkeypatch
+):
+    k8s_graph[21]["workload_type"] = "deployment"
+    permission_maps = {
+        "k8s_namespace": {"visible_ids": [10]},
+        "k8s_workload": {"visible_ids": [20, 21, 22]},
+    }
+    monkeypatch.setattr(
+        "apps.cmdb.services.k8s_resource_overview.InstanceManage.instance_association_instance_list",
+        lambda *args, **kwargs: pytest.fail("权限分页不得回退到逐实例快照"),
+    )
+
+    result = K8sResourceOverviewService.list_resources(
+        1, "deployment", permission_maps=permission_maps
+    )
+
+    assert [item["name"] for item in result["items"]] == ["api"]
+    assert result["count"] == 1
 
 
 @pytest.mark.unit
@@ -236,6 +332,38 @@ def test_base_layers_use_stable_limits_and_parent_complete_workloads(monkeypatch
         "apps.cmdb.services.k8s_resource_overview.InstanceManage.instance_association_instance_list",
         association,
     )
+    all_instances = {int(item["_id"]): item for item in [cluster, *namespaces, *nodes]}
+    all_instances.update({int(item["_id"]): item for rows in workloads.values() for item in rows})
+
+    def association_map(model_id, inst_ids, related_model=None):
+        result = {}
+        for inst_id in inst_ids:
+            result[int(inst_id)] = sorted(
+                {
+                    int(item["_id"])
+                    for group in association(model_id, int(inst_id))
+                    for item in group.get("inst_list", [])
+                    if item.get("model_id") == related_model
+                }
+            )
+        return result
+
+    def query_page(inst_ids, page=1, page_size=50, order="inst_name", **kwargs):
+        rows = [all_instances[int(inst_id)] for inst_id in inst_ids if int(inst_id) in all_instances]
+        rows.sort(key=lambda item: str(item.get(order) or item.get("name") or ""))
+        start = (int(page) - 1) * int(page_size)
+        return rows[start: start + int(page_size)], len(rows)
+
+    monkeypatch.setattr(
+        "apps.cmdb.services.k8s_resource_overview.InstanceManage.instance_association_map", association_map
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.services.k8s_resource_overview.InstanceManage.query_entity_page_by_ids", query_page
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.services.k8s_resource_overview.InstanceManage.count_entity_by_ids",
+        lambda inst_ids, **kwargs: len(inst_ids),
+    )
 
     result = K8sResourceOverviewService.get_overview(1)
 
@@ -246,3 +374,116 @@ def test_base_layers_use_stable_limits_and_parent_complete_workloads(monkeypatch
     parent_by_workload = {edge["target"]: edge["source"] for edge in result["topology"]["edges"] if edge["kind"] == "namespace-workload"}
     assert parent_by_workload
     assert all(parent_id in visible_ids for parent_id in parent_by_workload.values())
+
+
+@pytest.mark.unit
+def test_overview_uses_batched_relations_and_never_loads_pod_entities(monkeypatch):
+    """默认概览的查询预算必须与 Namespace/Workload 数量无关，且不能读取 Pod 实体。"""
+    instances = {
+        1: {"_id": 1, "model_id": "k8s_cluster", "inst_name": "prod"},
+        10: {"_id": 10, "model_id": "k8s_namespace", "name": "default"},
+        11: {"_id": 11, "model_id": "k8s_namespace", "name": "ops"},
+        20: {"_id": 20, "model_id": "k8s_workload", "name": "api", "workload_type": "deployment"},
+        21: {"_id": 21, "model_id": "k8s_workload", "name": "backup", "workload_type": "job"},
+        40: {"_id": 40, "model_id": "k8s_node", "name": "node-a"},
+    }
+    relation_calls = []
+    entity_queries = []
+
+    def association_map(model_id, inst_ids, related_model=None):
+        relation_calls.append((model_id, tuple(inst_ids), related_model))
+        maps = {
+            ("k8s_cluster", "k8s_namespace"): {1: [10, 11]},
+            ("k8s_cluster", "k8s_node"): {1: [40]},
+            ("k8s_namespace", "k8s_workload"): {10: [20], 11: [21]},
+            ("k8s_workload", "k8s_pod"): {20: [30, 31], 21: [32]},
+            ("k8s_namespace", "k8s_pod"): {10: [], 11: []},
+        }
+        return maps[(model_id, related_model)]
+
+    def query_page(ids, page=1, page_size=50, order="inst_name", **kwargs):
+        entity_queries.append(tuple(ids))
+        rows = [instances[item_id] for item_id in ids if item_id in instances]
+        rows.sort(key=lambda item: str(item.get(order) or item.get("name") or ""))
+        start = (page - 1) * page_size
+        return rows[start: start + page_size], len(rows)
+
+    monkeypatch.setattr(
+        "apps.cmdb.services.k8s_resource_overview.InstanceManage.query_entity_by_id",
+        lambda inst_id: instances.get(int(inst_id)),
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.services.k8s_resource_overview.InstanceManage.instance_association_map",
+        association_map,
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.services.k8s_resource_overview.InstanceManage.query_entity_page_by_ids",
+        query_page,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.services.k8s_resource_overview.InstanceManage.count_entity_by_ids",
+        lambda ids, **kwargs: len(ids),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.services.k8s_resource_overview.InstanceManage.instance_association_instance_list",
+        lambda *args, **kwargs: pytest.fail("概览不得逐实例查询关联"),
+    )
+
+    result = K8sResourceOverviewService.get_overview(1)
+
+    assert result["summary"]["pod_count"] == 3
+    assert len(relation_calls) == 5
+    assert all(not ({30, 31, 32} & set(ids)) for ids in entity_queries)
+
+
+@pytest.mark.unit
+def test_workload_pod_page_batches_node_relations_for_current_page(monkeypatch):
+    instances = {
+        1: {"_id": 1, "model_id": "k8s_cluster", "name": "prod"},
+        20: {"_id": 20, "model_id": "k8s_workload", "name": "api"},
+        30: {"_id": 30, "model_id": "k8s_pod", "name": "api-1", "node": "node-a"},
+        31: {"_id": 31, "model_id": "k8s_pod", "name": "api-2", "node": "node-b"},
+        41: {"_id": 41, "model_id": "k8s_node", "name": "node-b"},
+    }
+    page_queries = []
+    relation_calls = []
+
+    def association_map(model_id, inst_ids, related_model=None):
+        relation_calls.append((model_id, tuple(inst_ids), related_model))
+        maps = {
+            ("k8s_cluster", "k8s_namespace"): {1: [10]},
+            ("k8s_namespace", "k8s_workload"): {10: [20]},
+            ("k8s_workload", "k8s_pod"): {20: [30, 31]},
+            ("k8s_pod", "k8s_node"): {31: [41]},
+        }
+        return maps[(model_id, related_model)]
+
+    def query_page(ids, page=1, page_size=50, order="inst_name", **kwargs):
+        page_queries.append(tuple(ids))
+        rows = [instances[item_id] for item_id in ids if item_id in instances]
+        start = (page - 1) * page_size
+        return rows[start: start + page_size], len(ids)
+
+    monkeypatch.setattr(
+        "apps.cmdb.services.k8s_resource_overview.InstanceManage.query_entity_by_id",
+        lambda inst_id: instances.get(int(inst_id)),
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.services.k8s_resource_overview.InstanceManage.instance_association_map", association_map
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.services.k8s_resource_overview.InstanceManage.query_entity_page_by_ids", query_page
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.services.k8s_resource_overview.InstanceManage.instance_association_instance_list",
+        lambda *args, **kwargs: pytest.fail("Pod 页不得逐实例查询关联"),
+    )
+
+    result = K8sResourceOverviewService.get_workload_pods(1, 20, page=2, page_size=1)
+
+    assert result["count"] == 2
+    assert any(edge["source"] == "31" and edge["target"] == "41" for edge in result["edges"])
+    assert relation_calls[-1] == ("k8s_pod", (31,), "k8s_node")
+    assert page_queries[0] == (30, 31)

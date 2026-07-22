@@ -1,5 +1,9 @@
 import { TopologyNodeData } from './topology';
-import type { ParamItem, DatasourceItem } from './dataSource';
+import type {
+  ParamItem,
+  DatasourceItem,
+  InputControlConfig,
+} from './dataSource';
 import type { ValueMapping } from '@/app/ops-analysis/utils/valueMapping';
 import type { Dayjs } from 'dayjs';
 import type { OpsChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
@@ -8,6 +12,7 @@ import type {
   SceneWidgetType,
 } from './sceneWidget';
 import type { OpsAnalysisWidgetSurface } from '@/app/ops-analysis/utils/chartTypeSurface';
+import type { DateRangeValue } from './dateRange';
 
 export type FilterType = 'selector' | 'fixed';
 
@@ -93,6 +98,7 @@ export interface ValueConfig {
   chartThemeMode?: OpsChartThemeMode;
   dataSource?: string | number;
   compare?: boolean;
+  compareMode?: 'percent' | 'value';
   params?: Record<string, string | number | boolean | [number, number] | null>;
   dataSourceParams?: ParamItem[];
   tableConfig?: TableConfig;
@@ -239,7 +245,7 @@ export interface TimeRangeValue {
 }
 
 /** 筛选值类型 */
-export type FilterValue = string | number | TimeRangeValue | null;
+export type FilterValue = string | number | TimeRangeValue | DateRangeValue | null;
 
 /** 筛选选项（用于下拉选择） */
 export interface FilterOption {
@@ -252,12 +258,17 @@ export interface UnifiedFilterDefinition {
   id: string;
   key: string; // 参数 key（如 "time_range", "env", "namespace"）
   name: string; // 显示名称（用户可编辑）
-  type: 'timeRange' | 'string'; // 参数类型，用于绑定匹配
+  type: 'timeRange' | 'dateRange' | 'string'; // 参数类型，用于绑定匹配
   defaultValue?: FilterValue; // 默认值
   order: number; // 显示顺序
   enabled: boolean; // 是否启用
   inputMode?: 'input' | 'select' | 'radio' | 'organization'; // 输入方式（仅 string 类型有效）
-  options?: FilterOption[]; // 选项（仅 inputMode 为 select/radio 时有效）
+  /**
+   * 旧字段：手动下拉选项（仅 inputMode 为 select/radio 时有效）。
+   * 读取时由 normalizeInputConfig 自动按 static 模式处理。
+   */
+  options?: FilterOption[];
+  inputConfig?: InputControlConfig;
 }
 
 /** Dashboard.filters 运行时结构（hook 内部使用） */
@@ -277,7 +288,7 @@ export interface FilterBindings {
 /** 扫描结果结构（用于配置弹窗） */
 export interface ScannedFilterParam {
   key: string;
-  type: 'string' | 'timeRange';
+  type: 'string' | 'timeRange' | 'dateRange';
   componentCount: number;
   sampleAlias: string;
   sampleDefaultValue: FilterValue;

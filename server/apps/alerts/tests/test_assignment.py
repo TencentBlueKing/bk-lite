@@ -77,6 +77,40 @@ def test_auto_assignment_filter_match(sys_user):
 
 
 @pytest.mark.django_db
+def test_auto_assignment_level_eq_list_matches_any_selected_level(sys_user):
+    _make_alert("A1", level="0")
+    _make_alert("A2", level="1")
+    _make_alert("A3", level="2")
+    _make_assignment(
+        match_type="filter",
+        match_rules=[[{"key": "level", "operator": "eq", "value": ["0", "1"]}]],
+    )
+
+    AlertAssignmentOperator(["A1", "A2", "A3"]).execute_auto_assignment()
+
+    assert Alert.objects.get(alert_id="A1").status == AlertStatus.PENDING
+    assert Alert.objects.get(alert_id="A2").status == AlertStatus.PENDING
+    assert Alert.objects.get(alert_id="A3").status == AlertStatus.UNASSIGNED
+
+
+@pytest.mark.django_db
+def test_auto_assignment_level_ne_list_excludes_all_selected_levels(sys_user):
+    _make_alert("A1", level="0")
+    _make_alert("A2", level="1")
+    _make_alert("A3", level="2")
+    _make_assignment(
+        match_type="filter",
+        match_rules=[[{"key": "level", "operator": "ne", "value": ["0", "1"]}]],
+    )
+
+    AlertAssignmentOperator(["A1", "A2", "A3"]).execute_auto_assignment()
+
+    assert Alert.objects.get(alert_id="A1").status == AlertStatus.UNASSIGNED
+    assert Alert.objects.get(alert_id="A2").status == AlertStatus.UNASSIGNED
+    assert Alert.objects.get(alert_id="A3").status == AlertStatus.PENDING
+
+
+@pytest.mark.django_db
 def test_auto_assignment_no_personnel(sys_user):
     _make_alert("A1")
     _make_assignment(match_type="all", personnel=[])

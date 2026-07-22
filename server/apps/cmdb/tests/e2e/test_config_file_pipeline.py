@@ -65,9 +65,8 @@ def test_unknown_task_id_raises():
 # ============================================================================
 
 
-@pytest.mark.django_db
 def test_nats_handler_returns_standard_envelope(monkeypatch, load_fixture):
-    """nats handler 收到 payload 后返回 {result, changed, task_updated} 信封。"""
+    """nats handler 收到 payload 后返回传输 ack + 业务处理状态信封。"""
     from apps.cmdb.nats import nats as cmdb_nats
 
     # 拦掉真正的 process_collect_result，集中验证 handler 信封格式
@@ -78,7 +77,39 @@ def test_nats_handler_returns_standard_envelope(monkeypatch, load_fixture):
 
     payload = load_fixture("config_file/02_nats_payload.json")
     result = cmdb_nats.receive_config_file_result(payload)
-    assert result == {"result": True, "changed": True, "task_updated": True}
+    assert result == {
+        "result": True,
+        "processed": True,
+        "error": "",
+        "changed": True,
+        "task_updated": True,
+    }
+
+
+def test_nats_handler_marks_business_failure_when_service_returns_error(monkeypatch, load_fixture):
+    """服务层已错误闭环时，handler 仍 ack 传输但不能表示业务成功。"""
+    from apps.cmdb.nats import nats as cmdb_nats
+
+    monkeypatch.setattr(
+        "apps.cmdb.nats.nats.ConfigFileService.process_collect_result",
+        lambda data: {
+            "version_obj": None,
+            "changed": False,
+            "task_updated": True,
+            "error": "配置文件采集回调缺少目标实例标识",
+        },
+    )
+
+    payload = load_fixture("config_file/02_nats_payload.json")
+    result = cmdb_nats.receive_config_file_result(payload)
+
+    assert result == {
+        "result": True,
+        "processed": False,
+        "error": "配置文件采集回调缺少目标实例标识",
+        "changed": False,
+        "task_updated": True,
+    }
 
 
 # ============================================================================
