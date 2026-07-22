@@ -13,6 +13,7 @@ from core.task_queue_startup_cleanup import (
     StartupCleanupResult,
     cleanup_startup_orphan_markers,
 )
+from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import ResponseError
 from sanic import Sanic
 
@@ -569,15 +570,15 @@ async def test_cleanup_times_out_when_lock_release_is_actually_blocked():
 
 
 @pytest.mark.asyncio
-async def test_lock_release_failure_does_not_block_cleanup_result():
+async def test_lock_release_failure_returns_redis_warning():
     redis = FakeRedis(eval_errors={LOCK_KEY})
 
     result = await cleanup_startup_orphan_markers(
         redis, StartupCleanupConfig(confirm_delay_seconds=0)
     )
 
-    assert result.status == "success"
-    assert result.reason is None
+    assert result.status == "warning"
+    assert result.reason == "redis_error"
 
 
 @pytest.mark.asyncio
@@ -732,6 +733,31 @@ async def test_startup_cleanup_background_error_is_redacted(
     assert "job-123" not in caplog.text
     assert "password" not in caplog.text
     assert "redis://" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_startup_cleanup_redis_error_uses_redis_reason(
+    monkeypatch, caplog
+):
+    app = Sanic("StartupCleanupRedisFailure")
+    queue = TaskQueue(app)
+
+    async def cleanup(*_args, **_kwargs):
+        raise RedisConnectionError("redis://:password@redis/0 unavailable")
+
+    monkeypatch.setattr(
+        task_queue_module, "cleanup_startup_orphan_markers", cleanup
+    )
+
+    await _listener(app, "after_server_start", "start_orphan_cleanup")(
+        app, None
+    )
+    await queue._startup_cleanup_task
+
+    assert "event=task_queue_startup_cleanup status=warning" in caplog.text
+    assert "reason=redis_error" in caplog.text
+    assert "cleanup_failed" not in caplog.text
+    assert "password" not in caplog.text
 
 
 @pytest.mark.asyncio
@@ -948,6 +974,15 @@ async def test_background_exception_logging_failure_is_consumed(monkeypatch):
         ),
         (
             StartupCleanupResult(
+                "warning", "redis_error", 1, 1, 0, 1, 1, False
+            ),
+            "warning",
+            "event=task_queue_startup_cleanup status=warning "
+            "reason=redis_error scanned=1 candidates=1 deleted=0 "
+            "preserved=1 errors=1 truncated=False",
+        ),
+        (
+            StartupCleanupResult(
                 "warning", "marker_errors", 1, 1, 0, 1, 1, False
             ),
             "warning",
@@ -956,7 +991,7 @@ async def test_background_exception_logging_failure_is_consumed(monkeypatch):
             "preserved=1 errors=1 truncated=False",
         ),
     ],
-    ids=["success", "locked", "timeout", "marker_errors"],
+    ids=["success", "locked", "timeout", "redis_error", "marker_errors"],
 )
 async def test_background_result_logs_only_its_safe_legal_mapping(
     monkeypatch, result, expected_level, expected_message

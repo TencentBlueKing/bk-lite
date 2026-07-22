@@ -5,32 +5,34 @@
 """
 异步任务队列模块 - 使用统一的 Redis 配置
 """
-import os
+import asyncio
+import hashlib
 import json
+import os
 import time
 import traceback
-import hashlib
-import asyncio
 import uuid
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
+
 from arq import create_pool
-from arq.connections import RedisSettings, ArqRedis
+from arq.connections import ArqRedis, RedisSettings
 from arq.jobs import Job
-from sanic import Sanic
-from sanic.log import logger
 from core.redis_config import REDIS_CONFIG, print_redis_config
 from core.task_queue_startup_cleanup import (
     StartupCleanupConfig,
     StartupCleanupConfigError,
     cleanup_startup_orphan_markers,
 )
-
+from redis.exceptions import RedisError
+from sanic import Sanic
+from sanic.log import logger
 
 _STARTUP_CLEANUP_LOG_LEVELS = {
     ("success", None): "info",
     ("skipped", "disabled"): "info",
     ("skipped", "lock_not_acquired"): "info",
     ("warning", "timeout"): "warning",
+    ("warning", "redis_error"): "warning",
     ("warning", "limit_reached"): "warning",
     ("warning", "marker_errors"): "warning",
 }
@@ -45,14 +47,20 @@ def _safe_task_queue_log(level: str, message: str, *args) -> None:
 
 
 def _safe_cleanup_count(value: object) -> int:
-    return value if isinstance(value, int) and not isinstance(value, bool) else 0
+    return (
+        value if isinstance(value, int) and not isinstance(value, bool) else 0
+    )
 
 
 async def _is_host_remote_callback_pending(task_id: str) -> bool:
     try:
         import core.host_remote_callback as host_remote_callback
 
-        callback_context = await host_remote_callback.load_host_remote_callback_context(task_id)
+        callback_context = (
+            await host_remote_callback.load_host_remote_callback_context(
+                task_id
+            )
+        )
         if not callback_context:
             return False
 
@@ -63,7 +71,8 @@ async def _is_host_remote_callback_pending(task_id: str) -> bool:
         )
     except Exception as err:
         logger.warning(
-            f"[Task Queue] Failed to inspect host remote callback context for task {task_id}: {err}",
+            "[Task Queue] Failed to inspect host remote callback context "
+            f"for task {task_id}: {err}",
             exc_info=True,
         )
         return False
@@ -74,12 +83,12 @@ def _resolve_running_flag_ttl(params: Dict[str, Any]) -> int:
     if (params or {}).get("monitor_type") != "host":
         return base_ttl
 
-    callback_deadline = int(
-        os.getenv("HOST_REMOTE_CALLBACK_DEADLINE_SECONDS", "1200")
-    ) + 60
-    submit_accept_timeout = int(
-        os.getenv("HOST_REMOTE_SUBMIT_ACCEPT_TIMEOUT_SECONDS", "300")
-    ) + 60
+    callback_deadline = (
+        int(os.getenv("HOST_REMOTE_CALLBACK_DEADLINE_SECONDS", "1200")) + 60
+    )
+    submit_accept_timeout = (
+        int(os.getenv("HOST_REMOTE_SUBMIT_ACCEPT_TIMEOUT_SECONDS", "300")) + 60
+    )
     return max(base_ttl, callback_deadline, submit_accept_timeout)
 
 
@@ -106,10 +115,14 @@ def generate_dedupe_key(params: Dict[str, Any]) -> str:
     if config_file_path:
         key_params["config_file_path"] = config_file_path
 
-    key_params = {key: value for key, value in key_params.items() if value is not None}
+    key_params = {
+        key: value for key, value in key_params.items() if value is not None
+    }
     param_str = json.dumps(key_params, sort_keys=True)
     param_hash = hashlib.md5(param_str.encode()).hexdigest()
-    task_type = params.get("monitor_type") or params.get("plugin_name", "unknown")
+    task_type = params.get("monitor_type") or params.get(
+        "plugin_name", "unknown"
+    )
     return f"collect_{task_type}_{param_hash}"
 
 
@@ -137,12 +150,14 @@ class TaskQueue:
     def _register_lifecycle(self):
         """注册 Sanic 生命周期事件"""
 
-        @self.app.listener('before_server_start')
+        @self.app.listener("before_server_start")
         async def start_task_queue(app, loop):
             await self.connect()
             app.ctx.task_queue = self
             # 启动健康检查
-            self._health_check_task = asyncio.create_task(self._health_check_loop())
+            self._health_check_task = asyncio.create_task(
+                self._health_check_loop()
+            )
             logger.info("Task queue initialized with health check")
 
         @self.app.listener("after_server_start")
@@ -164,14 +179,14 @@ class TaskQueue:
                 _safe_task_queue_log(
                     "warning",
                     "event=task_queue_startup_cleanup status=warning "
-                    "reason=invalid_config"
+                    "reason=invalid_config",
                 )
                 return
             if not config.enabled:
                 _safe_task_queue_log(
                     "info",
                     "event=task_queue_startup_cleanup status=skipped "
-                    "reason=disabled"
+                    "reason=disabled",
                 )
                 return
             self._startup_cleanup_task = asyncio.create_task(
@@ -179,7 +194,7 @@ class TaskQueue:
                 name="stargazer-startup-orphan-cleanup",
             )
 
-        @self.app.listener('after_server_stop')
+        @self.app.listener("after_server_stop")
         async def stop_task_queue(app, loop):
             cancellation_requested = False
             startup_cleanup_task = self._startup_cleanup_task
@@ -240,7 +255,9 @@ class TaskQueue:
             )
         return cancellation_requested
 
-    def _consume_completed_startup_cleanup_task(self, task: asyncio.Task) -> None:
+    def _consume_completed_startup_cleanup_task(
+        self, task: asyncio.Task
+    ) -> None:
         try:
             task.result()
         except asyncio.CancelledError:
@@ -260,10 +277,16 @@ class TaskQueue:
         except asyncio.CancelledError:
             raise
         except Exception as error:
+            reason = (
+                "redis_error"
+                if isinstance(error, RedisError)
+                else "cleanup_failed"
+            )
             _safe_task_queue_log(
                 "warning",
                 "event=task_queue_startup_cleanup status=warning "
-                "reason=cleanup_failed exception_type=%s",
+                "reason=%s exception_type=%s",
+                reason,
                 type(error).__name__,
             )
             return
@@ -328,7 +351,9 @@ class TaskQueue:
             try:
                 await self.pool.close()
                 self._is_healthy = False
-                _safe_task_queue_log("info", "Redis connection closed gracefully")
+                _safe_task_queue_log(
+                    "info", "Redis connection closed gracefully"
+                )
             except Exception:
                 _safe_task_queue_log("error", "Error closing Redis connection")
             finally:
@@ -375,9 +400,7 @@ class TaskQueue:
         return bool(in_queue or in_progress)
 
     async def enqueue_collect_task(
-            self,
-            params: Dict[str, Any],
-            task_id: Optional[str] = None
+        self, params: Dict[str, Any], task_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         将采集任务加入队列
@@ -388,7 +411,9 @@ class TaskQueue:
         """
         # 健康检查
         if not self._is_healthy:
-            logger.warning("Redis connection unhealthy, attempting to reconnect...")
+            logger.warning(
+                "Redis connection unhealthy, attempting to reconnect..."
+            )
             try:
                 await self.connect()
             except Exception as e:
@@ -418,26 +443,34 @@ class TaskQueue:
                 if await self._is_job_active(existing_job_id):
                     self.metrics["tasks_skipped"] += 1
                     remaining_ttl = await self.pool.ttl(dedupe_redis_key)
+                    instance_id = params.get("tags", {}).get("instance_id")
                     logger.warning(
-                        "event=task_enqueue status=skipped reason=dedupe_job_active "
-                        f"task_id={task_id} job_id={existing_job_id} dedupe_key={dedupe_key} "
-                        f"ttl={remaining_ttl}s monitor_type={params.get('monitor_type')} "
-                        f"model_id={params.get('model_id')} plugin_name={params.get('plugin_name')} "
-                        f"host={params.get('host')} instance_id={params.get('tags', {}).get('instance_id')}"
+                        "event=task_enqueue status=skipped "
+                        "reason=dedupe_job_active "
+                        f"task_id={task_id} job_id={existing_job_id} "
+                        f"dedupe_key={dedupe_key} ttl={remaining_ttl}s "
+                        f"monitor_type={params.get('monitor_type')} "
+                        f"model_id={params.get('model_id')} "
+                        f"plugin_name={params.get('plugin_name')} "
+                        f"host={params.get('host')} "
+                        f"instance_id={instance_id}"
                     )
                     return {
                         "task_id": task_id,
                         "job_id": existing_job_id,
                         "status": "skipped",
-                        "reason": "Task already queued or running for dedupe key",
+                        "reason": (
+                            "Task already queued or running for dedupe key"
+                        ),
                         "dedupe_key": dedupe_key,
                         "dedupe_ttl": remaining_ttl,
-                        "timestamp": int(time.time() * 1000)
+                        "timestamp": int(time.time() * 1000),
                     }
 
                 logger.warning(
                     "event=task_dedupe_stale action=clear "
-                    f"task_id={task_id} job_id={existing_job_id} dedupe_key={dedupe_key}"
+                    f"task_id={task_id} job_id={existing_job_id} "
+                    f"dedupe_key={dedupe_key}"
                 )
                 await self.pool.delete(dedupe_redis_key)
 
@@ -448,17 +481,26 @@ class TaskQueue:
             # 检查任务是否正在运行
             is_running = await self.pool.get(running_key)
             if is_running:
-                existing_job_id = is_running.decode() if isinstance(is_running, (bytes, bytearray)) else str(is_running)
+                existing_job_id = (
+                    is_running.decode()
+                    if isinstance(is_running, (bytes, bytearray))
+                    else str(is_running)
+                )
 
                 if await self._is_job_active(existing_job_id):
                     self.metrics["tasks_skipped"] += 1
                     remaining_ttl = await self.pool.ttl(running_key)
+                    instance_id = params.get("tags", {}).get("instance_id")
                     logger.warning(
-                        "event=task_enqueue status=skipped reason=running_job_active "
-                        f"task_id={task_id} job_id={existing_job_id} dedupe_key={dedupe_key} "
-                        f"ttl={remaining_ttl}s monitor_type={params.get('monitor_type')} "
-                        f"model_id={params.get('model_id')} plugin_name={params.get('plugin_name')} "
-                        f"host={params.get('host')} instance_id={params.get('tags', {}).get('instance_id')}"
+                        "event=task_enqueue status=skipped "
+                        "reason=running_job_active "
+                        f"task_id={task_id} job_id={existing_job_id} "
+                        f"dedupe_key={dedupe_key} ttl={remaining_ttl}s "
+                        f"monitor_type={params.get('monitor_type')} "
+                        f"model_id={params.get('model_id')} "
+                        f"plugin_name={params.get('plugin_name')} "
+                        f"host={params.get('host')} "
+                        f"instance_id={instance_id}"
                     )
                     return {
                         "task_id": task_id,
@@ -466,16 +508,19 @@ class TaskQueue:
                         "status": "skipped",
                         "reason": "Task already running or queued",
                         "dedupe_ttl": remaining_ttl,
-                        "timestamp": int(time.time() * 1000)
+                        "timestamp": int(time.time() * 1000),
                     }
 
                 if (params or {}).get("monitor_type") == "host":
-                    callback_pending = await _is_host_remote_callback_pending(task_id)
+                    callback_pending = await _is_host_remote_callback_pending(
+                        task_id
+                    )
                     if callback_pending:
                         self.metrics["tasks_skipped"] += 1
                         remaining_ttl = await self.pool.ttl(running_key)
                         logger.warning(
-                            f"Task {task_id} is still waiting for host remote callback, skipping enqueue "
+                            f"Task {task_id} is still waiting for host remote "
+                            "callback, skipping enqueue "
                             f"(job_id={existing_job_id}, ttl={remaining_ttl}s)"
                         )
                         return {
@@ -484,47 +529,65 @@ class TaskQueue:
                             "status": "skipped",
                             "reason": "Host remote callback still pending",
                             "dedupe_ttl": remaining_ttl,
-                            "timestamp": int(time.time() * 1000)
+                            "timestamp": int(time.time() * 1000),
                         }
 
                 logger.warning(
-                    f"Detected stale running marker for task {task_id}, clearing and re-enqueueing"
+                    f"Detected stale running marker for task {task_id}, "
+                    "clearing and re-enqueueing"
                 )
                 await self.pool.delete(running_key)
 
             # 将任务加入队列
             logger.info(
                 "event=task_enqueue_start function=collect_task "
-                f"task_id={task_id} dedupe_key={dedupe_key} params_keys={list(params.keys())}"
+                f"task_id={task_id} dedupe_key={dedupe_key} "
+                f"params_keys={list(params.keys())}"
             )
 
             # ⚠️ 关键：不使用 _job_id，让 ARQ 自动生成唯一的 job_id
             job = await self.pool.enqueue_job(
-                'collect_task',  # 函数名（字符串）
+                "collect_task",  # 函数名（字符串）
                 params=params,  # kwargs 传递
                 task_id=task_id,  # kwargs 传递（业务 ID）
             )
 
-            logger.info(f"[Task Queue] enqueue_job returned: {job}, type: {type(job)}")
+            logger.info(
+                f"[Task Queue] enqueue_job returned: {job}, type: {type(job)}"
+            )
 
             if not job:
-                logger.error(f"[Task Queue] ❌ enqueue_job returned None for task {task_id}")
-                logger.error(f"[Task Queue] This means Worker is NOT running or NOT registered!")
+                logger.error(
+                    "[Task Queue] ❌ enqueue_job returned None for task "
+                    f"{task_id}"
+                )
+                logger.error(
+                    "[Task Queue] This means Worker is NOT running or NOT "
+                    "registered!"
+                )
                 print_redis_config()
-                raise RuntimeError(f"Failed to enqueue job {task_id}, enqueue_job returned None")
+                raise RuntimeError(
+                    f"Failed to enqueue job {task_id}, enqueue_job returned "
+                    "None"
+                )
 
             # ✅ 标记任务为运行中（设置 TTL，防止任务失败后永久锁定）
             # TTL 设置为 job_timeout + 60 秒的缓冲时间；host remote 任务需覆盖 callback 等待窗口
             ttl = _resolve_running_flag_ttl(params)
             await self.pool.set(running_key, job.job_id, ex=ttl)
-            await self.pool.set(dedupe_redis_key, job.job_id, ex=_resolve_dedupe_ttl())
+            await self.pool.set(
+                dedupe_redis_key, job.job_id, ex=_resolve_dedupe_ttl()
+            )
 
             self.metrics["tasks_enqueued"] += 1
             logger.info(
                 "event=task_enqueue status=queued "
-                f"task_id={task_id} job_id={job.job_id} dedupe_key={dedupe_key} "
-                f"monitor_type={params.get('monitor_type')} model_id={params.get('model_id')} "
-                f"plugin_name={params.get('plugin_name')} host={params.get('host')} "
+                f"task_id={task_id} job_id={job.job_id} "
+                f"dedupe_key={dedupe_key} "
+                f"monitor_type={params.get('monitor_type')} "
+                f"model_id={params.get('model_id')} "
+                f"plugin_name={params.get('plugin_name')} "
+                f"host={params.get('host')} "
                 f"instance_id={params.get('tags', {}).get('instance_id')}"
             )
 
@@ -533,7 +596,7 @@ class TaskQueue:
                 "job_id": job.job_id,
                 "status": "queued",
                 "dedupe_key": dedupe_key,
-                "enqueued_at": int(time.time() * 1000)
+                "enqueued_at": int(time.time() * 1000),
             }
         except Exception as e:
             self.metrics["tasks_failed"] += 1
@@ -542,12 +605,14 @@ class TaskQueue:
             raise
 
     async def enqueue_host_remote_processing_task(
-            self,
-            task_id: str,
-            params: Optional[Dict[str, Any]] = None,
+        self,
+        task_id: str,
+        params: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         if not self._is_healthy:
-            logger.warning("Redis connection unhealthy, attempting to reconnect...")
+            logger.warning(
+                "Redis connection unhealthy, attempting to reconnect..."
+            )
             try:
                 await self.connect()
             except Exception as e:
@@ -559,14 +624,19 @@ class TaskQueue:
 
         processing_task_id = str(task_id).strip()
         if not processing_task_id:
-            raise ValueError("task_id is required for host remote processing task")
+            raise ValueError(
+                "task_id is required for host remote processing task"
+            )
 
-        processing_job_id = f"process_host_remote_callback:{processing_task_id}"
+        processing_job_id = (
+            f"process_host_remote_callback:{processing_task_id}"
+        )
         logger.info(
-            f"[Task Queue] Enqueuing host remote processing task: {processing_task_id}"
+            "[Task Queue] Enqueuing host remote processing task: "
+            f"{processing_task_id}"
         )
         job = await self.pool.enqueue_job(
-            'process_host_remote_callback_task',
+            "process_host_remote_callback_task",
             params=params or {},
             task_id=processing_task_id,
             _job_id=processing_job_id,
@@ -583,7 +653,8 @@ class TaskQueue:
                 }
 
             raise RuntimeError(
-                f"Failed to enqueue host remote processing task {processing_task_id}"
+                "Failed to enqueue host remote processing task "
+                f"{processing_task_id}"
             )
 
         self.metrics["tasks_enqueued"] += 1
@@ -601,7 +672,10 @@ class TaskQueue:
         """
         running_key = f"task:running:{task_id}"
         await self.pool.delete(running_key)
-        logger.info(f"[Task Queue] Task {task_id} marked as completed, can be re-queued now")
+        logger.info(
+            f"[Task Queue] Task {task_id} marked as completed, can be "
+            "re-queued now"
+        )
 
     async def get_job_status(self, job_id: str) -> Optional[Dict[str, Any]]:
         """获取任务状态（保留用于其他用途）"""
@@ -614,7 +688,9 @@ class TaskQueue:
                 return {
                     "job_id": job.job_id,
                     "status": await job.status(),
-                    "enqueued_time": job.enqueue_time.isoformat() if job.enqueue_time else None,
+                    "enqueued_time": job.enqueue_time.isoformat()
+                    if job.enqueue_time
+                    else None,
                 }
             return None
         except Exception as e:
@@ -624,10 +700,7 @@ class TaskQueue:
     async def get_queue_stats(self) -> Dict[str, Any]:
         """获取队列统计信息"""
         if not self.pool:
-            return {
-                "healthy": False,
-                "error": "Redis not connected"
-            }
+            return {"healthy": False, "error": "Redis not connected"}
 
         try:
             queued_count = await self.pool.zcard("arq:queue")
@@ -637,14 +710,11 @@ class TaskQueue:
                 "queued_jobs": queued_count,
                 "metrics": self.metrics.copy(),
                 "redis_info": REDIS_CONFIG.copy(),
-                "timestamp": int(time.time() * 1000)
+                "timestamp": int(time.time() * 1000),
             }
         except Exception as e:
             logger.error(f"Failed to get queue stats: {e}")
-            return {
-                "healthy": False,
-                "error": str(e)
-            }
+            return {"healthy": False, "error": str(e)}
 
 
 # 全局任务队列实例
@@ -661,5 +731,7 @@ def initialize_task_queue(app: Sanic) -> TaskQueue:
 def get_task_queue() -> TaskQueue:
     """获取任务队列实例"""
     if _task_queue_instance is None:
-        raise RuntimeError("Task queue not initialized. Call initialize_task_queue() first.")
+        raise RuntimeError(
+            "Task queue not initialized. Call initialize_task_queue() first."
+        )
     return _task_queue_instance

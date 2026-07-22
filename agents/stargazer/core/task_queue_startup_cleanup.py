@@ -8,7 +8,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Literal, Mapping
 
-from redis.exceptions import ResponseError
+from redis.exceptions import RedisError, ResponseError
 
 LOCK_KEY = b"stargazer:maintenance:startup-orphan-cleanup"
 QUEUE_KEY = b"arq:queue"
@@ -175,6 +175,7 @@ async def cleanup_startup_orphan_markers(
     truncated = False
     candidates: list[tuple[bytes, bytes, bytes]] = []
     lock_acquired = False
+    redis_error = False
     timed_out = False
     early_result: StartupCleanupResult | None = None
     try:
@@ -275,9 +276,22 @@ async def cleanup_startup_orphan_markers(
                 timed_out = True
         except TimeoutError:
             timed_out = True
+        except RedisError:
+            redis_error = True
         except Exception:
             pass
 
+    if redis_error:
+        return _result(
+            status="warning",
+            reason="redis_error",
+            scanned=scanned,
+            candidates=candidates_count,
+            deleted=deleted,
+            preserved=preserved,
+            errors=errors,
+            truncated=truncated,
+        )
     if timed_out or loop.time() >= deadline:
         return _result(
             status="warning",
