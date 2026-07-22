@@ -73,6 +73,7 @@
   `server/.venv` 实际格式化并通过 Black、isort、flake8（均退出 0）。
 - 正式 `make lint` 仍是既有环境基线失败：`pre-commit run --all-files` 后报
   `make: pre-commit: No such file or directory`，本次未扩大范围安装依赖。
+- 最终在 sandbox 外复跑真实 Redis 集成与运行手册合同：`31 passed in 3.59s`。
 
 ### 覆盖率
 
