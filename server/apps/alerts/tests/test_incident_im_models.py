@@ -90,6 +90,12 @@ def test_group_unique_constraint_uses_cross_database_active_slot():
     assert constraint.condition is None
 
 
+def test_group_has_independent_nullable_reconcile_attempt_cursor():
+    field = IncidentIMGroup._meta.get_field("last_reconcile_attempt_at")
+    assert field.null is True
+    assert field.blank is True
+
+
 @pytest.mark.django_db
 def test_member_identity_is_snapshot_not_mapping_foreign_key(group):
     field_names = {field.name for field in IncidentIMMember._meta.fields}

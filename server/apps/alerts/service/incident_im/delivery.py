@@ -3,6 +3,7 @@ from django.utils import timezone
 
 from apps.alerts.constants.constants import IncidentStatus
 from apps.alerts.models import IncidentIMGroup, IncidentIMMember
+from apps.alerts.service.incident_im.members import get_desired_usernames
 from apps.alerts.service.outbox import enqueue_outbox
 from apps.system_mgmt.services.im_group_service import IMGroupRuntimeService
 
@@ -123,9 +124,11 @@ def deliver_add_members(group_id) -> None:
             if locked is None or _is_group_delivery_paused(locked):
                 return
             group = locked
+            desired_usernames = get_desired_usernames(locked.incident)
         batch = list(
             IncidentIMMember.objects.filter(
                 group_id=group_id,
+                username__in=desired_usernames,
                 mapping_status=IncidentIMMember.MappingStatus.MAPPED,
                 sync_status=IncidentIMMember.SyncStatus.PENDING,
             )

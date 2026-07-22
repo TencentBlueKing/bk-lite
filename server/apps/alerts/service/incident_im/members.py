@@ -141,6 +141,10 @@ def get_pending_members(group):
     return group.members.filter(sync_status=IncidentIMMember.SyncStatus.PENDING).order_by("id")
 
 
+def get_desired_usernames(incident) -> set[str]:
+    return set(_collect_desired_roles(incident))
+
+
 def _collect_desired_roles(incident) -> dict[str, str]:
     roles = {}
     for username in incident.operator or []:

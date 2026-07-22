@@ -53,6 +53,7 @@ class IncidentIMGroup(MaintainerInfo, TimeInfo):
     last_error_code = models.CharField(max_length=128, blank=True, default="")
     last_error_message = models.CharField(max_length=500, blank=True, default="")
     last_sync_at = models.DateTimeField(null=True, blank=True)
+    last_reconcile_attempt_at = models.DateTimeField(null=True, blank=True)
     unlinked_at = models.DateTimeField(null=True, blank=True)
     unlinked_by = models.CharField(max_length=32, blank=True, default="")
 

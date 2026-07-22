@@ -86,20 +86,26 @@ def reconcile_waiting_incident_im_groups():
                 IncidentIMGroup.Status.ACTIVE_PARTIAL,
             ),
         )
-        .order_by(F("last_sync_at").asc(nulls_first=True), "pk")
+        .order_by(F("last_reconcile_attempt_at").asc(nulls_first=True), "pk")
         .values_list("pk", flat=True)[:INCIDENT_IM_RECONCILE_BATCH_SIZE]
     )
     failed = 0
     for group_id in group_ids:
+        group_failed = False
         try:
             reconcile_incident_im_group_by_group_id(group_id)
         except Exception:
-            failed += 1
+            group_failed = True
             logger.exception("incident im reconcile failed: group_id=%s", group_id)
-        finally:
+        try:
             IncidentIMGroup.objects.filter(pk=group_id, active_slot=1).update(
-                last_sync_at=timezone.now()
+                last_reconcile_attempt_at=timezone.now()
             )
+        except Exception:
+            group_failed = True
+            logger.exception("incident im reconcile cursor update failed: group_id=%s", group_id)
+        if group_failed:
+            failed += 1
     return {"scheduled": len(group_ids), "failed": failed}
 
 

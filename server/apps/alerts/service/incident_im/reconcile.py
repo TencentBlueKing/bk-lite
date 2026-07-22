@@ -23,9 +23,14 @@ def reconcile_incident_im_group(incident_id, force_delivery=False):
         if group is None:
             return None
 
-        reconcile_member_snapshots(group, group.incident)
+        if force_delivery and not _can_deliver(group, force_delivery=True):
+            return group
+
+        resolved_members = reconcile_member_snapshots(group, group.incident)
+        desired_usernames = {member.username for member in resolved_members}
         if force_delivery:
             group.members.filter(
+                username__in=desired_usernames,
                 mapping_status=IncidentIMMember.MappingStatus.MAPPED,
                 sync_status=IncidentIMMember.SyncStatus.FAILED,
             ).exclude(external_id="").update(
@@ -36,7 +41,9 @@ def reconcile_incident_im_group(incident_id, force_delivery=False):
             )
         if (
             group.status == IncidentIMGroup.Status.ACTIVE
-            and group.members.exclude(sync_status=IncidentIMMember.SyncStatus.JOINED).exists()
+            and group.members.filter(username__in=desired_usernames)
+            .exclude(sync_status=IncidentIMMember.SyncStatus.JOINED)
+            .exists()
         ):
             group.status = IncidentIMGroup.Status.ACTIVE_PARTIAL
             group.save(update_fields=["status"])
@@ -45,6 +52,7 @@ def reconcile_incident_im_group(incident_id, force_delivery=False):
 
         pending = list(
             group.members.filter(
+                username__in=desired_usernames,
                 mapping_status=IncidentIMMember.MappingStatus.MAPPED,
                 sync_status=IncidentIMMember.SyncStatus.PENDING,
             )

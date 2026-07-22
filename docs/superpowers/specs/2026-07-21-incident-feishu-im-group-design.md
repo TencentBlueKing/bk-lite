@@ -156,6 +156,7 @@ class IMGroupProvider(Protocol):
 | `idempotency_key` | 稳定创建键，长度满足飞书限制 |
 | `last_error_code/message` | 脱敏、截断后的最近错误 |
 | `last_sync_at` | 最近一次同步完成时间 |
+| `last_reconcile_attempt_at` | 周期对账最近尝试时间，仅作公平扫描游标；失败不得覆盖 `last_sync_at` |
 | `created_by`、时间字段 | 创建和变更审计 |
 | `unlinked_at/by` | 解绑记录 |
 
@@ -324,10 +325,11 @@ Outbox 投递器需要为 Incident IM 事件提供“重试耗尽”收口：尚
 ### 7.6 持续同步
 
 - Incident 的 `operator` 或 `collaborators` 更新提交后，事务 `on_commit` 触发该 Incident 的成员对账。
-- 对账只计算“当前期望成员 - 已成功入群成员”，不生成移除动作。
+- 对账只计算“当前期望成员 - 已成功入群成员”，不生成移除动作；从 Incident 移除的已入群历史成员保留，但尚未入群的历史 pending/failed 不再邀请。
 - 开关开启且群为可同步状态时，新成员立即进入映射解析和增员 Outbox。
-- 为避免 `system_mgmt` 反向依赖 Alerts，由 Alerts 周期任务扫描持续同步群中的 `unmapped/conflict/failed` 成员并重新解析；映射补齐后自动补拉。
-- 开关关闭时仍更新页面上的待映射/待同步状态，但不自动调用飞书；负责人点击“重试拉人”后执行一次对账。
+- 为避免 `system_mgmt` 反向依赖 Alerts，由 Alerts 周期任务重新解析持续同步群的当前期望成员；映射补齐后自动补拉，failed 仅在外部身份变化或负责人显式重试时恢复。
+- 周期任务按独立的 nullable `last_reconcile_attempt_at` NULL-first 公平扫描，成功或失败都推进尝试游标；用户可见的 `last_sync_at` 只表示真实同步完成。
+- 开关关闭时仍更新页面上的待映射/待同步状态，但不自动调用飞书；负责人点击“重试拉人”时先完整校验群和 Incident 可投递状态，再只提升当前期望成员中的 mapped failed。
 - Incident 关闭时写入 `paused + incident_closed`，保存 `resume_after_reopen`；重新打开后仅当该值为真时恢复并立即对账。
 - 手工暂停不会因 Incident 重开而自动恢复。
 

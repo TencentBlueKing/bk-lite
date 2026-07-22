@@ -195,11 +195,51 @@ def test_add_members_marks_only_invalid_ids_failed(group, pending_members):
 
 
 @pytest.mark.django_db
+def test_old_add_members_outbox_skips_pending_member_removed_from_incident(group):
+    from apps.alerts.service.incident_im.delivery import deliver_add_members
+
+    group.status = IncidentIMGroup.Status.ACTIVE
+    group.external_chat_id = "oc_1"
+    group.save(update_fields=["status", "external_chat_id"])
+    current = IncidentIMMember.objects.create(
+        group=group,
+        username="alice",
+        role=IncidentIMMember.Role.OPERATOR,
+        external_id="ou_alice",
+        external_id_type="open_id",
+        mapping_status=IncidentIMMember.MappingStatus.MAPPED,
+        sync_status=IncidentIMMember.SyncStatus.PENDING,
+    )
+    removed = IncidentIMMember.objects.create(
+        group=group,
+        username="former",
+        role=IncidentIMMember.Role.COLLABORATOR,
+        external_id="ou_former",
+        external_id_type="open_id",
+        mapping_status=IncidentIMMember.MappingStatus.MAPPED,
+        sync_status=IncidentIMMember.SyncStatus.PENDING,
+    )
+    success = CapabilityExecutionResult.success_result("added", payload={"invalid_member_ids": []})
+
+    with mock.patch(
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
+        return_value=success,
+    ) as execute, mock.patch("apps.alerts.service.incident_im.delivery.enqueue_outbox"):
+        deliver_add_members(group.id)
+
+    assert execute.call_args.kwargs["member_ids"] == [current.external_id]
+    removed.refresh_from_db()
+    assert removed.sync_status == IncidentIMMember.SyncStatus.PENDING
+
+
+@pytest.mark.django_db
 def test_add_members_commits_successful_batch_before_next_batch_retry(group):
     from apps.alerts.service.incident_im.delivery import IncidentIMRetryableError, deliver_add_members
 
     group.external_chat_id = "oc_1"
     group.save(update_fields=["external_chat_id"])
+    group.incident.collaborators = [f"user-{index}" for index in range(51)]
+    group.incident.save(update_fields=["collaborators"])
     IncidentIMMember.objects.bulk_create(
         [
             IncidentIMMember(
@@ -235,6 +275,8 @@ def test_add_members_stops_before_second_batch_and_summary_when_paused_during_fi
 
     group.external_chat_id = "oc_1"
     group.save(update_fields=["external_chat_id"])
+    group.incident.collaborators = [f"user-{index}" for index in range(51)]
+    group.incident.save(update_fields=["collaborators"])
     IncidentIMMember.objects.bulk_create(
         [
             IncidentIMMember(
@@ -268,6 +310,48 @@ def test_add_members_stops_before_second_batch_and_summary_when_paused_during_fi
     assert group.members.filter(sync_status=IncidentIMMember.SyncStatus.JOINED).count() == 50
     assert group.members.filter(sync_status=IncidentIMMember.SyncStatus.PENDING).count() == 1
     enqueue.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_add_members_reloads_current_expected_members_before_each_batch(group):
+    from apps.alerts.service.incident_im.delivery import deliver_add_members
+
+    usernames = [f"user-{index}" for index in range(51)]
+    group.status = IncidentIMGroup.Status.ACTIVE
+    group.external_chat_id = "oc_1"
+    group.save(update_fields=["status", "external_chat_id"])
+    group.incident.collaborators = usernames
+    group.incident.save(update_fields=["collaborators"])
+    IncidentIMMember.objects.bulk_create(
+        [
+            IncidentIMMember(
+                group=group,
+                username=username,
+                role=IncidentIMMember.Role.COLLABORATOR,
+                external_id=f"ou_{index}",
+                external_id_type="open_id",
+                mapping_status=IncidentIMMember.MappingStatus.MAPPED,
+                sync_status=IncidentIMMember.SyncStatus.PENDING,
+            )
+            for index, username in enumerate(usernames)
+        ]
+    )
+    success = CapabilityExecutionResult.success_result("added", payload={"invalid_member_ids": []})
+
+    def remove_last_member_during_first_call(*_args, **_kwargs):
+        group.incident.collaborators = usernames[:50]
+        group.incident.save(update_fields=["collaborators"])
+        return success
+
+    with mock.patch(
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
+        side_effect=remove_last_member_during_first_call,
+    ) as execute, mock.patch("apps.alerts.service.incident_im.delivery.enqueue_outbox"):
+        deliver_add_members(group.id)
+
+    assert execute.call_count == 1
+    removed = group.members.get(username=usernames[-1])
+    assert removed.sync_status == IncidentIMMember.SyncStatus.PENDING
 
 
 @pytest.mark.django_db

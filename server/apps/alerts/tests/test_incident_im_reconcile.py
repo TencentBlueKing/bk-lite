@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 import pytest
+from django.db.models import QuerySet
 
 from apps.alerts.constants.constants import IncidentStatus
 from apps.alerts.models import AlertOutbox, Incident, IncidentIMGroup, IncidentIMMember
@@ -196,6 +197,8 @@ def test_real_invalid_delivery_is_not_retried_by_periodic_reconcile(group, chann
 
 @pytest.mark.django_db
 def test_new_pending_member_delivery_does_not_retry_old_failed_member(group):
+    group.incident.collaborators = ["pending"]
+    group.incident.save(update_fields=["collaborators"])
     failed = IncidentIMMember.objects.create(
         group=group,
         username="failed",
@@ -296,10 +299,92 @@ def test_force_delivery_never_bypasses_pause_or_closed(group, channel, pause_rea
     group.incident.collaborators = ["bob"]
     group.incident.save(update_fields=["status", "collaborators"])
     _map_user(channel, "bob")
+    member = IncidentIMMember.objects.create(
+        group=group,
+        username="bob",
+        role=IncidentIMMember.Role.COLLABORATOR,
+        external_id="ou_bob",
+        external_id_type="open_id",
+        mapping_status=IncidentIMMember.MappingStatus.MAPPED,
+        sync_status=IncidentIMMember.SyncStatus.FAILED,
+        last_error_code="IM_MEMBER_INVALID",
+        last_error_message="外部用户标识无效",
+    )
+    previous_updated_at = member.updated_at
 
     reconcile_incident_im_group(group.incident_id, force_delivery=True)
 
     assert not AlertOutbox.objects.filter(kind="incident_im_group.add_members").exists()
+    member.refresh_from_db()
+    assert member.sync_status == IncidentIMMember.SyncStatus.FAILED
+    assert member.last_error_code == "IM_MEMBER_INVALID"
+    assert member.last_error_message == "外部用户标识无效"
+    assert member.updated_at == previous_updated_at
+
+
+@pytest.mark.django_db
+def test_reconcile_does_not_enqueue_removed_unjoined_members(group):
+    pending = IncidentIMMember.objects.create(
+        group=group,
+        username="former-pending",
+        role=IncidentIMMember.Role.COLLABORATOR,
+        external_id="ou_former_pending",
+        external_id_type="open_id",
+        mapping_status=IncidentIMMember.MappingStatus.MAPPED,
+        sync_status=IncidentIMMember.SyncStatus.PENDING,
+    )
+    failed = IncidentIMMember.objects.create(
+        group=group,
+        username="former-failed",
+        role=IncidentIMMember.Role.COLLABORATOR,
+        external_id="ou_former_failed",
+        external_id_type="open_id",
+        mapping_status=IncidentIMMember.MappingStatus.MAPPED,
+        sync_status=IncidentIMMember.SyncStatus.FAILED,
+    )
+
+    reconcile_incident_im_group(group.incident_id)
+
+    pending.refresh_from_db()
+    failed.refresh_from_db()
+    assert pending.sync_status == IncidentIMMember.SyncStatus.PENDING
+    assert failed.sync_status == IncidentIMMember.SyncStatus.FAILED
+    assert not AlertOutbox.objects.filter(kind="incident_im_group.add_members").exists()
+
+
+@pytest.mark.django_db
+def test_force_delivery_only_promotes_current_expected_failed_members(group, channel):
+    _map_user(channel, "bob")
+    group.incident.collaborators = ["bob"]
+    group.incident.save(update_fields=["collaborators"])
+    current = IncidentIMMember.objects.create(
+        group=group,
+        username="bob",
+        role=IncidentIMMember.Role.COLLABORATOR,
+        external_id="ou_bob",
+        external_id_type="open_id",
+        mapping_status=IncidentIMMember.MappingStatus.MAPPED,
+        sync_status=IncidentIMMember.SyncStatus.FAILED,
+        last_error_code="IM_MEMBER_INVALID",
+    )
+    removed = IncidentIMMember.objects.create(
+        group=group,
+        username="former",
+        role=IncidentIMMember.Role.COLLABORATOR,
+        external_id="ou_former",
+        external_id_type="open_id",
+        mapping_status=IncidentIMMember.MappingStatus.MAPPED,
+        sync_status=IncidentIMMember.SyncStatus.FAILED,
+        last_error_code="IM_MEMBER_INVALID",
+    )
+
+    reconcile_incident_im_group(group.incident_id, force_delivery=True)
+
+    current.refresh_from_db()
+    removed.refresh_from_db()
+    assert current.sync_status == IncidentIMMember.SyncStatus.PENDING
+    assert removed.sync_status == IncidentIMMember.SyncStatus.FAILED
+    assert removed.last_error_code == "IM_MEMBER_INVALID"
 
 
 @pytest.mark.django_db
@@ -420,11 +505,64 @@ def test_periodic_scan_is_fair_across_201_groups_and_isolates_failure(monkeypatc
     )
 
     first = reconcile_waiting_incident_im_groups()
+    failed_group = groups[0]
+    failed_group.refresh_from_db()
     second = reconcile_waiting_incident_im_groups()
 
     assert first == {"scheduled": 200, "failed": 1}
+    assert failed_group.last_reconcile_attempt_at is not None
+    assert failed_group.last_sync_at is None
     assert second["scheduled"] == 200
     assert {item.id for item in groups}.issubset(set(called))
+
+
+@pytest.mark.django_db
+def test_periodic_scan_isolates_reconcile_cursor_update_failure(monkeypatch, channel):
+    groups = [
+        IncidentIMGroup.objects.create(
+            incident=Incident.objects.create(
+                incident_id=f"INC-cursor-{index}-{uuid.uuid4().hex}",
+                level="warning",
+                title=f"cursor-{index}",
+                status=IncidentStatus.PROCESSING,
+            ),
+            channel=channel,
+            provider_key="feishu",
+            channel_name_snapshot=channel.name,
+            member_id_type="open_id",
+            group_name=f"cursor-{index}",
+            external_chat_id=f"oc_cursor_{index}",
+            status=IncidentIMGroup.Status.ACTIVE,
+            continuous_sync_enabled=True,
+            idempotency_key=f"bklite-{uuid.uuid4().hex}",
+        )
+        for index in range(2)
+    ]
+    called = []
+    real_update = QuerySet.update
+    cursor_update_attempts = 0
+
+    def fail_first_cursor_update(queryset, **kwargs):
+        nonlocal cursor_update_attempts
+        if queryset.model is IncidentIMGroup and (
+            "last_sync_at" in kwargs or "last_reconcile_attempt_at" in kwargs
+        ):
+            cursor_update_attempts += 1
+            if cursor_update_attempts == 1:
+                raise RuntimeError("cursor update failed")
+        return real_update(queryset, **kwargs)
+
+    monkeypatch.setattr(
+        "apps.alerts.service.incident_im.reconcile.reconcile_incident_im_group_by_group_id",
+        lambda group_id: called.append(group_id),
+    )
+    monkeypatch.setattr(QuerySet, "update", fail_first_cursor_update)
+
+    result = reconcile_waiting_incident_im_groups()
+
+    assert result == {"scheduled": 2, "failed": 1}
+    assert set(called) == {group.id for group in groups}
+    assert cursor_update_attempts == 2
 
 
 @pytest.mark.django_db
