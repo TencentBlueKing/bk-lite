@@ -27,6 +27,26 @@ def _schedule_delivery(record_id: int) -> None:
 
 
 def _deliver_payload(kind: str, payload: dict) -> None:
+    if kind.startswith("incident_im_group."):
+        from apps.alerts.service.incident_im.delivery import (
+            OUTBOX_ADD_MEMBERS,
+            OUTBOX_CREATE,
+            OUTBOX_SEND_SUMMARY,
+            deliver_add_members,
+            deliver_create_group,
+            deliver_summary,
+        )
+
+        handlers = {
+            OUTBOX_CREATE: deliver_create_group,
+            OUTBOX_ADD_MEMBERS: deliver_add_members,
+            OUTBOX_SEND_SUMMARY: deliver_summary,
+        }
+        handler = handlers.get(kind)
+        if handler is None:
+            raise ValueError(f"unsupported alert outbox kind: {kind}")
+        handler(payload["group_id"])
+        return
     if kind == "notification":
         from apps.alerts.tasks import sync_notify
 
@@ -68,6 +88,7 @@ def deliver_outbox_record(record_id: int) -> bool:
     try:
         _deliver_payload(kind, payload)
     except Exception as exc:
+        exhausted = False
         with transaction.atomic():
             record = AlertOutbox.objects.select_for_update().get(pk=record_id)
             record.status = (
@@ -81,6 +102,18 @@ def deliver_outbox_record(record_id: int) -> bool:
             record.save(
                 update_fields=["status", "next_retry_at", "last_error", "updated_at"]
             )
+            exhausted = record.status == AlertOutbox.Status.FAILED
+        if exhausted and kind.startswith("incident_im_group."):
+            try:
+                from apps.alerts.service.incident_im.delivery import handle_delivery_exhausted
+
+                handle_delivery_exhausted(kind, payload, str(exc))
+            except Exception:
+                logger.exception(
+                    "incident im outbox exhausted hook failed: outbox_id=%s kind=%s",
+                    record_id,
+                    kind,
+                )
         raise
 
     with transaction.atomic():
