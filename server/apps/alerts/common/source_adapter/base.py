@@ -219,6 +219,10 @@ class AlertSourceAdapter(ABC):
                     continue
                 data["team"] = self._resolve_event_team(add_event)
                 data.setdefault("enrichment", {})
+                # 2026-07-17: 在 enrich_batch 之前给 event 字典塞 source_id（= AlertSource.id），
+                # 让 EnrichmentRule.match_rules 中下发的 key=source_id, value=String(source.id) 能匹配。
+                # 同时 Event.source_id = alert_source.id 也会被 bulk_create 写入（Event 的 source FK 自动字段）。
+                data["source_id"] = self.alert_source.id
                 event_dicts.append((data, add_event))
             except Exception as e:
                 errored += 1

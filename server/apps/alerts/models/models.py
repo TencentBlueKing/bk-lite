@@ -162,6 +162,15 @@ class Alert(models.Model):
         help_text="告警操作",
     )
     operator = JSONField(default=list, blank=True, help_text="告警处理人")
+    source = models.ForeignKey(
+        AlertSource,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        db_index=True,
+        related_name="alerts",
+        help_text="告警源（FK；2026-07-17 新增，与 Event.source 对齐，支持按 source.id 过滤分派/屏蔽/富化）",
+    )
     source_name = models.CharField(max_length=100, null=True, blank=True, help_text="告警源名称")
     # 核心指纹字段（用于聚合）
     fingerprint = models.CharField(max_length=32, db_index=True, help_text="告警指纹")  # group_by_field:group_by_value

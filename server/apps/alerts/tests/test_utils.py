@@ -253,6 +253,109 @@ def test_rule_matcher_valid_operators_build_q():
 
 
 # --------------------------------------------------------------------------
+# RuleMatcher fallback (2026-07-17 增强)
+# 验证:正/反向操作符下 fallback 字段的组合语义（OR vs AND）
+# --------------------------------------------------------------------------
+
+@pytest.mark.django_db
+def test_rule_matcher_fallback_eq_uses_or_semantics():
+    """正向操作符(eq):主字段 OR alt 字段,任一命中即视为命中。
+
+    兜住历史脏数据:value 是 name 字符串也能匹配上 source_id 字段查询。
+    """
+    from apps.alerts.models.models import Level
+
+    crit = Level.objects.create(level_id=0, level_name="Critical", level_display_name="严重", level_type="alert")
+    warn = Level.objects.create(level_id=1, level_name="Warning", level_display_name="警告", level_type="alert")
+
+    # 主字段 level_name + alt 字段 level_display_name
+    # value="Critical" 只在 level_name 命中,level_display_name 是"严重"
+    matcher = RuleMatcher(
+        {"name": "level_name"},
+        alt_field_mapping={"name": ["level_display_name"]},
+    )
+    # eq:主 OR alt → 不应命中（value "Critical" 既不匹配 level_name="Warning" 也不匹配 level_display_name）
+    ids = matcher.filter_queryset(
+        Level.objects.filter(id=warn.id),
+        [[{"key": "name", "operator": "eq", "value": "Critical"}]],
+    )
+    assert ids == []
+    # 直接用 crit 测
+    ids2 = matcher.filter_queryset(
+        Level.objects.all(),
+        [[{"key": "name", "operator": "eq", "value": "Critical"}]],
+    )
+    assert crit.id in ids2, "主字段命中应返回 crit"
+
+
+@pytest.mark.django_db
+def test_rule_matcher_fallback_ne_uses_and_semantics():
+    """反向操作符(ne):主字段 AND alt 字段,都不命中才视为不命中(才被排除)。
+
+    关键:避免反向操作下"主字段排除 + alt 保留"被错误地解释为"保留",
+    那样 ne 操作会被 fallback 削弱成"几乎不排除任何东西"。
+    """
+    from apps.alerts.models.models import Level
+
+    Level.objects.create(level_id=0, level_name="Critical", level_display_name="严重", level_type="alert")
+    Level.objects.create(level_id=1, level_name="Warning", level_display_name="警告", level_type="alert")
+
+    # 主字段 level_name + alt 字段 level_display_name
+    # value="Critical"
+    matcher = RuleMatcher(
+        {"name": "level_name"},
+        alt_field_mapping={"name": ["level_display_name"]},
+    )
+    # ne "Critical": 应只排除 name=Critical 的行,不排除 level_display_name=严重的行
+    # 但 alt 也是 level_display_name="严重",且"严重" != "Critical" → alt 视为"未排除"
+    # 反向操作下:主 AND alt → ~Q(name="Critical") & ~Q(level_display_name="Critical")
+    #           = 排除 name="Critical" + 排除 level_display_name="Critical"
+    # Warning 行的 name="Warning", level_display_name="警告",都不等于"Critical" → 都保留
+    # Critical 行的 name="Critical", level_display_name="严重" → name 排除,display_name 保留 → 反向 AND = 排除
+    ids = matcher.filter_queryset(
+        Level.objects.all(),
+        [[{"key": "name", "operator": "ne", "value": "Critical"}]],
+    )
+    assert len(ids) == 1, f"反向 ne 应只保留 Warning（name 排除 Critical 即可），实际 ids={ids}"
+    # 验证保留的是 Warning
+    warn = Level.objects.get(level_name="Warning")
+    assert warn.id in ids
+
+
+def test_rule_matcher_fallback_no_alt_returns_primary_only():
+    """未注册 fallback 字段时,行为与之前一致(只查主字段)。"""
+    matcher = RuleMatcher({"name": "level_name"})
+    q = matcher.build_single_rule_q({"key": "name", "operator": "eq", "value": "a"})
+    assert q is not None
+
+
+@pytest.mark.django_db
+def test_rule_matcher_fallback_alt_legitimate_field_does_not_disturb_primary():
+    """alt 字段合法但与 value 不匹配时,主字段匹配结果不受影响。
+
+    验证 fallback 不会引入"假阳性"——主字段和 alt 字段各自独立判断,主命中即视为命中。
+    """
+    from apps.alerts.models.models import Level
+
+    Level.objects.create(level_id=0, level_name="Critical", level_display_name="严重", level_type="alert")
+    Level.objects.create(level_id=1, level_name="Warning", level_display_name="警告", level_type="alert")
+
+    # 主字段 name(level_name)=Critical 命中,alt 字段 level_display_name 不会等于 "Critical"
+    matcher = RuleMatcher(
+        {"name": "level_name"},
+        alt_field_mapping={"name": ["level_display_name"]},
+    )
+    ids = matcher.filter_queryset(
+        Level.objects.all(),
+        [[{"key": "name", "operator": "eq", "value": "Critical"}]],
+    )
+    # Critical 行：主字段命中 → 命中
+    # Warning 行：主字段不命中 + alt 字段不命中 → 不命中
+    assert len(ids) == 1
+    assert Level.objects.get(level_name="Critical").id in ids
+
+
+# --------------------------------------------------------------------------
 # TimeRangeChecker
 # --------------------------------------------------------------------------
 

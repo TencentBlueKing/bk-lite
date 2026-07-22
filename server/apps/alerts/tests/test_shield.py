@@ -19,6 +19,12 @@ def source(db):
     return AlertSource.objects.create(name="源1", source_id="s1", source_type="restful", secret="x")
 
 
+@pytest.fixture
+def source2(db):
+    """第二个源，用于验证 source_id 过滤不会误命中其他源。"""
+    return AlertSource.objects.create(name="源2", source_id="s2", source_type="restful", secret="x")
+
+
 def _make_event(source, event_id="E1", title="t", status=EventStatus.RECEIVED, **over):
     defaults = dict(
         source=source, raw_data={}, title=title, level="0",
@@ -57,6 +63,31 @@ def test_shield_filter_match_by_title(source):
     # 仅标题含 CPU 的事件被屏蔽
     assert Event.objects.get(event_id="E1").status == EventStatus.SHIELD
     assert Event.objects.get(event_id="E2").status == EventStatus.RECEIVED
+
+
+@pytest.mark.django_db
+def test_shield_filter_match_by_source_id(source, source2):
+    """前端 matchRule.tsx 选「告警源（按 ID）」时下发 key=source_id, value=String(source.id)。
+
+    EventShieldOperator.FIELD_MAPPING 当前把 source_id 映射到 source__source_id（业务 ID 字符串），
+    但前端发的是主键数字字符串（如 "1"），导致匹配永远 0 命中 → 屏蔽失效。
+    修复后应能按主键 ID 过滤，命中指定源、排除其他源。
+    """
+    _make_event(source, "E1")
+    _make_event(source2, "E2")
+    AlertShield.objects.create(
+        name="按源屏蔽",
+        match_type="filter",
+        match_rules=[[{"key": "source_id", "operator": "eq", "value": str(source.id)}]],
+        suppression_time={},
+    )
+
+    execute_shield_check_for_events(["E1", "E2"])
+    # 仅 source.id 对应的事件被屏蔽
+    assert Event.objects.get(event_id="E1").status == EventStatus.SHIELD, \
+        f"源1 (id={source.id}) 的事件应被按 source_id 过滤命中并屏蔽"
+    assert Event.objects.get(event_id="E2").status == EventStatus.RECEIVED, \
+        "源2 的事件不应被源1 的屏蔽策略误命中"
 
 
 @pytest.mark.django_db
