@@ -27,11 +27,7 @@ def create_collect_detect_node(
         ip="127.0.0.1",
         operating_system=operating_system,
         cpu_architecture="x86_64",
-        collector_configuration_directory=(
-            r"C:\fusion-collectors\etc\telegraf.d"
-            if operating_system == "windows"
-            else "/etc/telegraf/telegraf.d"
-        ),
+        collector_configuration_directory=(r"C:\fusion-collectors\etc\telegraf.d" if operating_system == "windows" else "/etc/telegraf/telegraf.d"),
         cloud_region=cloud_region,
     )
     if create_collector:
