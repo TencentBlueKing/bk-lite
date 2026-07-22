@@ -9,6 +9,7 @@ import { formatMetricValue } from '../utils/format';
 import { MetricUnit } from '../types';
 import { normalizeGapIntervals } from '@/app/monitor/utils/gapIntervals';
 import { CHART_COLORS } from '@/app/monitor/constants';
+import { roundChartValueToDisplayPrecision } from './chart-display-precision';
 
 export interface EChartsLineChartProps {
   data: ChartData[];
@@ -103,6 +104,9 @@ const EChartsLineChart: React.FC<EChartsLineChartProps> = ({
 
     const yAxisUnit = seriesStyles[0]?.unit || unit || '';
     const needsBinaryScale = yAxisUnit in BINARY_SCALE_CONFIG;
+    const displayValues = data.flatMap((point) => areaKeys.map((key) => point[key] as number | null));
+    const allSeriesValuesAreZero = displayValues.some((value) => value != null)
+      && displayValues.every((value) => value == null || roundChartValueToDisplayPrecision(value) === 0);
 
     let scaleDivisor = 1;
     let scaleDisplayUnit = yAxisUnit;
@@ -151,7 +155,8 @@ const EChartsLineChart: React.FC<EChartsLineChartProps> = ({
         data: data.map((d) => {
           const v = d[key] as number | null;
           if (v == null) return [d.time, null];
-          return [d.time, scaleDivisor > 1 ? v / scaleDivisor : v];
+          const scaledValue = scaleDivisor > 1 ? v / scaleDivisor : v;
+          return [d.time, roundChartValueToDisplayPrecision(scaledValue)];
         }),
         smooth: false,
         symbol: 'none',
@@ -202,8 +207,10 @@ const EChartsLineChart: React.FC<EChartsLineChartProps> = ({
       },
       yAxis: {
         type: 'value' as const,
+        min: allSeriesValuesAreZero ? 0 : undefined,
+        max: allSeriesValuesAreZero ? 1 : undefined,
         axisLabel: {
-          formatter: (val: number) => formatAxisNumber(val),
+          formatter: (val: number) => allSeriesValuesAreZero && val !== 0 ? '' : formatAxisNumber(val),
           fontSize: 11,
           color: '#8c8c8c'
         },
