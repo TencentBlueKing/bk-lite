@@ -19,7 +19,7 @@
 - Storybook story contract alignment for 8 family stories
 - Component prop type contracts aligned for 10+ components
 - `MonitorPolicyViewSet.destroy` 5-step fix (preserved from in-flight WIP)
-- Completed projectmem decision #0075 (31/31 monitor dashboard object shells cleaned)
+- Completed 仓库事实源 decision #0075 (31/31 monitor dashboard object shells cleaned)
 
 ### Phase 2: Cross-Family Audit (Round 16-18)
 - 1 missing story: `opspilot-entity-card` added to `opspilot-family`
@@ -30,7 +30,7 @@
 - 24 shared directories barrel re-export completed
 - 96 app files import paths migrated from subpath to barrel
 - 1 latent runtime bug fixed: `createOperationColumnKey` in `ops-analysis-widgets/runtime.ts`
-- 6 `-shared` directories corrected (round 32: types/constants, not runtime wrappers, projectmem "保持 app-local" decision does not apply)
+- 6 `-shared` directories corrected (round 32: types/constants, not runtime wrappers, 仓库事实源 "保持 app-local" decision does not apply)
 - 1 layout barrel created (`layout/index.ts` re-exports `sub-layout` + `side-menu`)
 
 ## Files Modified by Category
@@ -99,7 +99,7 @@ These were required to fix 6 out-of-scope tsc errors from missing imports in in-
 
 | # | Issue | Resolution |
 |---|-------|------------|
-| 1 | `tcp/index.ts` (monitor shared widget index shell) leaked | Round 4: removed per projectmem #0075 |
+| 1 | `tcp/index.ts` (monitor shared widget index shell) leaked | Round 4: removed per 仓库事实源 #0075 |
 | 2 | 7 monitor dashboard stories referenced `objects/*` (deleted) | Round 3: migrated to `objects/*/dashboard` |
 | 3 | `dashboard-instance-card` 3 stories used non-existent `title`/`actionSlot` props | Round 6: aligned with real contract |
 | 4 | `cmdb-family` had 7 `custom-reporting-*` demo duplications | Round 18: removed, source-of-truth = `custom-reporting-family` |

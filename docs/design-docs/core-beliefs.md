@@ -29,7 +29,7 @@
 发现旧入口与现状冲突时,直接更新到当前真实入口,不保留「以防万一」的兼容分支。历史在 git 里,不在 if-else 里。
 
 ## 5. 单一真相源(Single Source of Truth)
-- 规格 = `openspec/`(specs + changes),**不**在别处复制需求。
+- 长期规格 = `specs/capabilities/`，跨会话变更 = `specs/changes/`，**不**在别处复制需求。
 - 设计 token = `web/DESIGN.md`,前端实现不得硬编码颜色/圆角。
 - 运行手册 = `AGENTS.md`。
 - 顶层 `*.md`(本目录及根目录)只做**原则 + 指针**,绝不复制实体内容,避免文档漂移。

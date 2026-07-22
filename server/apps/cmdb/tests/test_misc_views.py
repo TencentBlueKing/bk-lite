@@ -1,6 +1,6 @@
 """CMDB 杂项视图覆盖测试：分类/展示字段/变更记录/用户个人配置 + 权限 Mixin。
 
-对照 spec/prd/CMDB·模型管理与操作日志：分类增删改查、实例展示字段设置、
+对照 specs/capabilities/legacy-prd-cmdb-模型管理.md与操作日志：分类增删改查、实例展示字段设置、
 变更记录枚举与列表、用户个人配置 CRUD，以及 CmdbPermissionMixin 的对象级权限判定。
 """
 

@@ -1,6 +1,6 @@
 """告警中心工具函数覆盖测试：util / rule_matcher / time_range_checker。
 
-对照 spec/prd/告警中心·配置：分派/屏蔽规则的匹配与生效时间范围判断。
+对照 specs/capabilities/legacy-prd-告警中心-配置.md：分派/屏蔽规则的匹配与生效时间范围判断。
 """
 
 import datetime

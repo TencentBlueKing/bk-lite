@@ -28,7 +28,7 @@
 |------|----------|----------|
 | `review_only` | 读代码、跑只读命令、输出 review 结论 | 修改代码、写测试、修复、提交 |
 | `discuss_prompt` | 讨论/修改提示词、文档模板 | 修改业务代码、跑业务测试、进入修复流程 |
-| `fix_confirmed` | 按已确认问题做 systematic-debugging + TDD 修复 | 未确认根因前改实现、顺手修无关历史失败 |
+| `fix_confirmed` | 按已确认问题做 $diagnosing-bugs + TDD 修复 | 未确认根因前改实现、顺手修无关历史失败 |
 
 ### 强制纠偏规则
 
@@ -59,8 +59,8 @@ review 对象与背景：
 若未指定对象，默认 review 当前分支相对 master 的 diff。
 
 执行要求：
-1. 必须先遵守 AGENTS.md / projectmem：调用 get_instructions、get_summary、get_project_map；涉及具体文件时 precheck_file。
-2. 使用 requesting-code-review 视角，分两轮过：
+1. 必须先遵守 AGENTS.md，读取 `CONTEXT.md`、相关 capability/change spec 与目标代码。
+2. 使用 `$code-review` 视角，分两轮过：
    - 第一轮【正确性】：bug、边界条件、空值/异常处理、并发与事务、安全(注入/越权/敏感信息)、与原有逻辑兼容。
    - 第二轮【质量】：重复代码可否复用、是否能更简化、有无明显低效、命名与抽象层次是否得当。
 3. 每条问题给出：文件:行号 + 为什么是问题 + 具体怎么改。
@@ -87,7 +87,7 @@ Codex delegation 参数：
 <粘贴已确认的 review 结论，保留文件:行号、严重度、期望行为。>
 
 请这样走：
-1. 先用 systematic-debugging。没完成根因调查，不准改任何代码。
+1. 先用 $diagnosing-bugs。没完成根因调查，不准改任何代码。
    - 先确认能否稳定复现、读全报错；
    - 多组件系统要在每个组件边界看数据流，先定位哪一层断了；
    - 给出一个有证据支撑的单一根因假设，不列一堆可能修法。
@@ -136,7 +136,7 @@ Codex delegation 参数：
 
 ```text
 review_only
-  -> 加载 AGENTS/projectmem
+  -> 加载 AGENTS/仓库事实源
   -> 确认 worktree/branch/scope
   -> 两轮 review(正确性 + 质量)
   -> 反驳验证
@@ -144,9 +144,8 @@ review_only
   -> 等用户确认
 
 fix_confirmed
-  -> 加载 AGENTS/projectmem
-  -> precheck_file
-  -> systematic-debugging 根因调查
+  -> 加载 AGENTS/仓库事实源
+  -> $diagnosing-bugs 根因调查
   -> 根因确认点：停下来等用户确认
   -> TDD 失败测试
   -> 最小修复
@@ -284,6 +283,6 @@ uv run pytest apps/<app>/tests/<所有 touched test files>.py -q --no-cov
 ## 十二、与仓库工具的衔接
 
 - AGENTS.md / CLAUDE.md：任何 review/fix 都必须遵守仓库入口规则。
-- projectmem：会话开始调用 get_instructions、get_summary、get_project_map；修改文件前 precheck_file；发现/尝试/修复按 log_issue / record_attempt / record_fix 记录。
-- CodeGraph：有 `.codegraph/` 时 review 阶段优先 `codegraph_explore`；无索引时说明并改用 `rg`。
-- 测试命令：`cd server && uv run pytest apps/<app>/tests/<file>.py -q --no-cov`；特殊环境按 projectmem/仓库 runbook 记录执行。
+- 仓库事实源：共享术语读 `CONTEXT.md`，长期约束读 `specs/capabilities/`，跨会话变更读 `specs/changes/`。
+- 调用链：使用 `rg`、源码和测试证据还原，不依赖仓库专用索引服务。
+- 测试命令：`cd server && uv run pytest apps/<app>/tests/<file>.py -q --no-cov`；特殊环境按仓库 runbook 记录执行。

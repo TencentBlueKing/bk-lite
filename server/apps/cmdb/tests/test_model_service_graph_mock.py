@@ -1,6 +1,6 @@
 """CMDB ModelManage 图查询后处理覆盖测试（mock GraphClient）。
 
-对照 spec/prd/CMDB·模型管理：模型查询结果做名称国际化、属性默认值归一等后处理。
+对照 specs/capabilities/legacy-prd-cmdb-模型管理.md：模型查询结果做名称国际化、属性默认值归一等后处理。
 """
 
 import json

@@ -1,7 +1,7 @@
 # 告警通知可观测性产品决策记忆
 
 - 最近更新：2026-07-10
-- 当前规格：`docs/superpowers/specs/2026-07-10-alert-notification-tooltip-design.md`
+- 当前规格：`specs/changes/legacy-2026-07-10-alert-notification-tooltip/spec.md`
 
 ## 产品定位
 

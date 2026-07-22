@@ -262,7 +262,7 @@ def test_build_post_tool_directives_prevents_duplicate_summary_for_healthy_scan(
     )
 
 
-@pytest.mark.xfail(reason="master baseline 预存失败(origin/master HEAD bdd619de44 同样 fail),与本 PR 无关;openspec/streamline-wiki-knowledge-decisions 等待上游修")
+@pytest.mark.xfail(reason="master baseline 预存失败(origin/master HEAD bdd619de44 同样 fail),与本 PR 无关;streamline-wiki-knowledge-decisions 等待上游修")
 def test_build_summary_diff_from_analysis_emits_one_item_per_issue():
     from apps.opspilot.metis.llm.chain.report_renderers.k8s import (
         build_summary_diff_from_analysis,
@@ -294,7 +294,7 @@ def test_build_summary_diff_from_analysis_emits_one_item_per_issue():
     assert "livenessProbe" in item0["fix_description"]
 
 
-@pytest.mark.xfail(reason="master baseline 预存失败(origin/master HEAD bdd619de44 同样 fail),与本 PR 无关;openspec/streamline-wiki-knowledge-decisions 等待上游修")
+@pytest.mark.xfail(reason="master baseline 预存失败(origin/master HEAD bdd619de44 同样 fail),与本 PR 无关;streamline-wiki-knowledge-decisions 等待上游修")
 def test_build_summary_diff_yaml_covers_known_issue_types():
     """每种 issue 类型都应能产出非空 before/after YAML(不依赖真实集群)。"""
     from apps.opspilot.metis.llm.chain.report_renderers.k8s import _config_analysis_yaml_diff

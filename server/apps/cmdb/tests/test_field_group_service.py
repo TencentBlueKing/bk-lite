@@ -1,6 +1,6 @@
 """CMDB 字段分组服务覆盖测试（ORM + patch search_model_info）。
 
-对照 spec/prd/CMDB·模型管理：字段分组增删改查、排序与移动。
+对照 specs/capabilities/legacy-prd-cmdb-模型管理.md：字段分组增删改查、排序与移动。
 """
 
 import json

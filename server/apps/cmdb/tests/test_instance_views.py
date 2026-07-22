@@ -1,6 +1,6 @@
 """CMDB 实例视图覆盖测试（patch InstanceManage + 权限 mixin）。
 
-对照 spec/prd/CMDB·资产：实例查询/详情/增删改、批量操作、关联关系的接口层逻辑，
+对照 specs/capabilities/legacy-prd-cmdb-资产.md：实例查询/详情/增删改、批量操作、关联关系的接口层逻辑，
 包含纯函数 _normalize_query_list/_parse_positive_int/add_instance_permission。
 """
 

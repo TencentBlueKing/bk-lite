@@ -24,7 +24,7 @@
 
 - 设计 token:[web/DESIGN.md](../../web/DESIGN.md)
 - 测试指南:`server/docs/testing-guide.md`
-- 设计系统 / UI:[spec/design_ui.md](../../spec/design_ui.md)
+- 设计系统 / UI:[specs/capabilities/legacy-design-ui.md](../.specs/capabilities/legacy-design-ui.md)
 
 > 加新参考时优先放官方的「面向 LLM」精简版;无则裁剪官方文档为纯文本。体积大的不入库,留 URL + 摘要即可。
 > TODO: 实际拉取并裁剪上表 llms.txt(需联网,按需逐个添加)。

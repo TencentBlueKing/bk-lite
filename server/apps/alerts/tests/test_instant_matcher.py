@@ -1,6 +1,6 @@
 """即时告警内存匹配器测试。
 
-对照 spec/tech_plan/告警中心/20260531.告警中心-相关性规则新增即时告警类型.md §6.3。
+对照 specs/changes/legacy-tech-plan-告警中心-20260531-告警中心-相关性规则新增即时告警类型/spec.md §6.3。
 关键不变量：InstantMatcher.match_in_memory 与 StrategyMatcher 的 Q 表达式语义完全一致。
 """
 

@@ -1,6 +1,6 @@
 """CMDB 唯一性规则 BDD（中文 Gherkin）。
 
-对照 spec/prd/CMDB·模型管理·唯一规则：
+对照 specs/capabilities/legacy-prd-cmdb-模型管理.md·唯一规则：
 - collect_unique_rule_conflicts：批量数据与既有实例的联合字段唯一性检查；
 - 编辑场景排除自身；
 - 批次内重复检测；

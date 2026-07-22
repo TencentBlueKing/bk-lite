@@ -1,6 +1,6 @@
 """CMDB Django 模型方法覆盖测试。
 
-对照 spec/prd/CMDB·资产/自动发现：采集任务凭据加解密、类型标志、字段分组/枚举库/订阅规则模型。
+对照 specs/capabilities/legacy-prd-cmdb-资产.md/自动发现：采集任务凭据加解密、类型标志、字段分组/枚举库/订阅规则模型。
 """
 
 import pytest

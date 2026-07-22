@@ -23,7 +23,7 @@
     "实施完成后回填 ibmmq.json(类似 dameng.json 的 schema)"
   ],
   "references": [
-    "docs/superpowers/plans/2026-07-06-cmdb-collect-v3-roadmap.md §3.4 G2.2",
-    "docs/superpowers/plans/2026-07-07-cmdb-collect-v3-phase2-plan.md §3.2"
+    "specs/changes/legacy-2026-07-06-cmdb-collect-v3-roadmap/spec.md §3.4 G2.2",
+    "specs/changes/legacy-2026-07-07-cmdb-collect-v3-phase2/spec.md §3.2"
   ]
 }

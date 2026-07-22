@@ -1,6 +1,6 @@
 """CMDB Neo4j 客户端覆盖测试（fake session，不连真实服务）。
 
-对照 spec/prd/CMDB·搜索/资产：Neo4j 驱动的 CQL 构建、属性格式化、结果转换、校验逻辑。
+对照 specs/capabilities/legacy-prd-cmdb-搜索.md：Neo4j 驱动的 CQL 构建、属性格式化、结果转换、校验逻辑。
 """
 
 import pytest

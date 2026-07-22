@@ -1,6 +1,6 @@
 """CMDB 显示字段转换器覆盖测试。
 
-对照 spec/prd/CMDB·资产：organization/user/enum/tag/table 字段值转为可检索显示名。
+对照 specs/capabilities/legacy-prd-cmdb-资产.md：organization/user/enum/tag/table 字段值转为可检索显示名。
 """
 
 import pytest

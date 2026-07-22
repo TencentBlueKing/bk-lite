@@ -9,7 +9,7 @@
 # 提取 qmgr_name / port / version / install_path 等字段。
 #
 # 参考:
-# - docs/superpowers/plans/2026-07-06-cmdb-collect-v3-roadmap.md §3.4 G2.2
-# - docs/superpowers/plans/2026-07-07-cmdb-collect-v3-phase2-plan.md §3.2
+# - specs/changes/legacy-2026-07-06-cmdb-collect-v3-roadmap/spec.md §3.4 G2.2
+# - specs/changes/legacy-2026-07-07-cmdb-collect-v3-phase2/spec.md §3.2
 # -----------------------------------------------------------------------------
 echo '{"inst_name":"placeholder-ibmmq","bk_obj_id":"ibmmq","ip_addr":"127.0.0.1","port":"0","version":"placeholder","install_path":"","java_path":"","java_version":"","xms":"","xmx":""}'

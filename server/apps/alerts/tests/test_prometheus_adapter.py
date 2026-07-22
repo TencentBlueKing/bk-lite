@@ -1,6 +1,6 @@
 """Prometheus 告警源适配器覆盖测试。
 
-对照 spec/prd/告警中心·集成：Prometheus Alertmanager webhook 负载归一化为标准事件。
+对照 specs/capabilities/legacy-prd-告警中心-集成.md：Prometheus Alertmanager webhook 负载归一化为标准事件。
 """
 
 import pytest

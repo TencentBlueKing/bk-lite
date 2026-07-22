@@ -1,7 +1,7 @@
 # 节点管理同步产品决策记忆
 
 - 最近更新：2026-07-16
-- 当前规格：`docs/superpowers/specs/2026-07-16-node-management-sync-reconciliation-design.md`
+- 当前规格：`specs/changes/legacy-2026-07-16-node-management-sync-reconciliation/spec.md`
 
 ## 产品定位
 

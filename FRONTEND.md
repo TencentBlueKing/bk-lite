@@ -21,7 +21,7 @@
 
 - 颜色、圆角、间距、排版、组件样式**必须**取自 `web/DESIGN.md` 的 token(如 primary `#155AEF`、圆角 `sm/md/lg`、间距 `xs~xl`),禁止在组件里硬编码。
 - 卡片/按钮/链接等基础组件遵循 `web/DESIGN.md` 的 `components` 定义。
-- 产品侧 UI 规范(交互、布局语义)见 [spec/design_ui.md](spec/design_ui.md)。
+- 产品侧 UI 规范(交互、布局语义)见 [specs/capabilities/legacy-design-ui.md](specs/capabilities/legacy-design-ui.md)。
 
 ## 4. 提交前门禁
 

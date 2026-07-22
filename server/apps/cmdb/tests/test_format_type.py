@@ -1,6 +1,6 @@
 """CMDB 查询条件格式化覆盖测试。
 
-对照 spec/prd/CMDB·搜索：查询参数按类型(str/int/list/id/time/bool)编译为 Cypher 条件片段。
+对照 specs/capabilities/legacy-prd-cmdb-搜索.md：查询参数按类型(str/int/list/id/time/bool)编译为 Cypher 条件片段。
 """
 
 import pytest

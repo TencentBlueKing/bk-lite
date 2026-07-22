@@ -1,6 +1,6 @@
 """CMDB UniqueRule 增删改 + 候选字段 + 重排序覆盖测试。
 
-对照 spec/prd/CMDB·模型管理：唯一规则的创建/修改/删除完整路径、候选字段选择性判定、
+对照 specs/capabilities/legacy-prd-cmdb-模型管理.md：唯一规则的创建/修改/删除完整路径、候选字段选择性判定、
 build_unique_rules_from_attr_rows 入口校验。
 """
 

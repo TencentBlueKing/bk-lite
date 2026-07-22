@@ -1,154 +1,96 @@
-# CLAUDE.md
+# BK-Lite Agent Guide
 
-> BK-Lite 工程 Agent 执行手册 —— **本仓库 Agent 协作的单一真相源**。任何 AI 编码 Agent 都读本文;`AGENTS.md` 通过软链接引用本文,确保各工具开发过程一致。
-> 基于仓库事实、面向可执行流程。本文是「入口 + 红线」,明细在下方导航的子文档里。
+> 本文件是仓库级 Agent 协作的单一入口；`AGENTS.md` 软链接到本文件。
 
-## 文档导航（先读这里）
+## 开工先读
 
-| 我要… | 去 |
-|-------|----|
-| 完整命令 / 工作流 / Runbook | [docs/operations.md](docs/operations.md) |
-| 后端编码规范 / 高频陷阱 | [docs/backend-coding-guide.md](docs/backend-coding-guide.md) |
-| 系统结构 / 模块边界 | [ARCHITECTURE.md](ARCHITECTURE.md) |
-| 「为什么这样设计」 / 工程信条 | [docs/design-docs/core-beliefs.md](docs/design-docs/core-beliefs.md) |
-| 历史设计决策 / 学习项 | [docs/design-docs/learnings.md](docs/design-docs/learnings.md) |
-| 设计 / 视觉 / 前端 | [DESIGN.md](DESIGN.md) · [FRONTEND.md](FRONTEND.md) · [web/DESIGN.md](web/DESIGN.md) |
-| 安全红线 | [SECURITY.md](SECURITY.md) |
-| 可靠性 / 回滚 | [RELIABILITY.md](RELIABILITY.md) |
-| 「什么算合格」 | [QUALITY_SCORE.md](QUALITY_SCORE.md) |
-| 产品取舍 | [PRODUCT_SENSE.md](PRODUCT_SENSE.md) |
-| 计划 / 规格 | [PLANS.md](PLANS.md) · [openspec/](openspec/) |
-| DB schema(生成式) | [docs/generated/db-schema.md](docs/generated/db-schema.md) |
-| 外部参考资料 | [docs/references/README.md](docs/references/README.md) |
+- 共享术语：`CONTEXT.md`
+- 系统边界：`ARCHITECTURE.md`
+- 长期能力契约：`specs/capabilities/<capability>.md`
+- 跨会话变更：`specs/changes/<feature>/spec.md`
+- 难以回滚的决定：`docs/adr/`
+- 开发与运行命令：`docs/operations.md`
+- 后端规范：`docs/backend-coding-guide.md`
+- Web UI：`DESIGN.md`、`FRONTEND.md`、`web/DESIGN.md`、`web/COMPONENT_GOVERNANCE.md`
+- 安全、可靠性、质量：`SECURITY.md`、`RELIABILITY.md`、`QUALITY_SCORE.md`
+- Agent 工作流：`docs/agents/workflow.md`
 
-## 概览
+## 项目结构
 
-### 技术栈（证据化）
-- 后端 `server/`：Python 3.12 + Django 4.2 + Uvicorn + Celery（`server/pyproject.toml`、`server/Makefile`）
-- Web `web/`：Next.js 16 + React 19 + TS + Ant Design（`web/package.json`）
-- Mobile `mobile/`：Next.js 15 + Tauri 2 + TS（`mobile/package.json`）
-- WebChat `webchat/`：npm monorepo(core/ui/demo)
-- Stargazer `agents/stargazer/`：Python 3.12 + Sanic
-- Algorithms `algorithms/`：Python 多算法服务(BentoML，`uv` 管理)
+- `server/`：Python 3.12、Django 4.2、Uvicorn、Celery。
+- `web/`：Next.js 16、React 19、TypeScript、Ant Design。
+- `mobile/`：Next.js 15、Tauri 2、TypeScript。
+- `webchat/`：npm monorepo。
+- `agents/stargazer/`：Python 3.12、Sanic。
+- `algorithms/`：Python 算法服务，`uv` 管理。
+- `deploy/`：Docker/Kubernetes 部署资产。
 
-> 结构与模块边界详见 [ARCHITECTURE.md](ARCHITECTURE.md)。
+## 日常工作流
 
-### 仓库目录（默认优先级）
-`server/`(主后端) · `web/`(主控制台) · `mobile/` · `webchat/` · `agents/stargazer/`(采集代理) · `algorithms/`(算法集) · `deploy/`(K8s 模板)
+目标清晰的小改直接执行：
 
-### 默认工作目录与选择规则
-- 默认在仓库根执行只读命令；进目标模块目录再执行开发命令,避免跨模块污染。
-- 只改与任务相关文件,禁止顺手改动和全仓格式化。
+```text
+核对当前事实 -> 实现 -> 聚焦验证 -> commit/push
+```
 
-## 快速开始（精简；完整命令见 [docs/operations.md](docs/operations.md)）
+不强制 Grill，也不创建 change spec。复杂或根因不明的缺陷显式使用 `$diagnosing-bugs`。
 
-| 模块 | dev | test |
-|------|-----|------|
-| Server | `cd server && make install && make migrate && make dev`（:8011） | `make test` |
-| Web | `cd web && pnpm install && pnpm dev`（:3000） | `pnpm lint && pnpm type-check` |
-| Mobile | `cd mobile && pnpm dev`（:3001）/ `pnpm dev:tauri` | `pnpm lint && pnpm type-check` |
-| WebChat | `cd webchat && npm install && npm run dev` | `npm run test` |
-| Stargazer | `cd agents/stargazer && make install && make run`（:8083） | `make lint` |
-| Algorithms | `cd algorithms/<svc> && make install && make serving`（:3000） | `uv run pytest` |
+存在多条合理分支、跨产品/数据边界、破坏性迁移或难以回滚时，由用户显式进入：
 
-## 环境与配置（要点）
+```text
+$grill-with-docs
+  ├─ 单会话 -> $implement
+  └─ 跨会话 -> $to-spec -> 必要时 $to-tickets
+```
 
-- 版本:Python `3.12`;Node Web=`24`(`web/.nvmrc`),WebChat≥18。
-- 依赖:`uv`(Python)/`pnpm`(web、mobile,`only-allow` 强制)/`npm`(webchat)。
-- Agent 基础工具:团队成员或 Agent 新环境若缺 `openspec` / `pjm` / `codegraph`,先在仓库根执行 `scripts/agent-tooling-bootstrap`;只检查用 `scripts/agent-tooling-bootstrap --check`。不要假设本机已全局安装。
-- Secrets(强制):仅用 `*.example`/`*.template` 样例;`.env`/keystore 不入库;凭据经部署环境注入,不写代码和日志。
-- 完整 env 变量与模板清单见 [docs/operations.md §4](docs/operations.md) 与 [SECURITY.md](SECURITY.md)。
+- Grill 一次只问一个真正需要用户裁定的问题；仓库可查事实由 Agent 自行核对。
+- `$to-spec` 只整理已收敛结论，写入一份 `specs/changes/<feature>/spec.md`。
+- `$to-tickets` 只在工作超出一个上下文窗口或存在真实阻塞边时使用。
+- `$implement` 在合适接缝使用 `$tdd`，完成后 `$code-review`，再以新鲜验证证据收口。
+- 没有 proposal/design/delta/tasks/sync/archive 仪式；完成的 change 原地更新状态。
 
-## 质量门禁（按改动模块,提交前必跑）
+完整路由见 `docs/agents/workflow.md`，Skills 清单见 `docs/agents/skills.md`。
 
-| 改动落在 | 命令 |
-|----------|------|
+## Web UI / 组件红线
+
+修改 `web/` 页面、组件、样式或 Storybook 前：
+
+1. 先读 `web/DESIGN.md` 与 `web/COMPONENT_GOVERNANCE.md`。
+2. 搜索 Ant Design、`web/src/components`、目标 app 的 `components` 和 Storybook。
+3. 已有组件能承载时复用；仅样式差异优先增加稳定 variant。
+4. 单 app 专用组件放 `web/src/app/<app>/components`。
+5. 只有两个及以上真实 app 接入后，才提升到 `web/src/components`；shared 变化同步 Storybook。
+6. 交付时说明复用项；新建时说明现有组件为何不适用及其归属。
+
+## 质量门禁
+
+| 改动范围 | 提交前命令 |
+|---|---|
 | `server/` | `cd server && make test` |
-| `web/` `mobile/` | `pnpm lint && pnpm type-check` |
-| `agents/stargazer/` | `make lint` |
-| `webchat/` | `npm run build && npm run test` |
-| `algorithms/<svc>` | `uv run pytest` |
+| `web/` | `cd web && pnpm lint && pnpm type-check` |
+| `mobile/` | `cd mobile && pnpm lint && pnpm type-check` |
+| `webchat/` | `cd webchat && npm run build && npm run test` |
+| `agents/stargazer/` | `cd agents/stargazer && make lint` |
+| `algorithms/<svc>/` | `cd algorithms/<svc> && uv run pytest` |
 
-自动门禁:`.husky/pre-commit`(web/mobile)、`server/.pre-commit-config.yaml`(black/isort/flake8/check_migrate/check_requirements)。
-> 红线清单与评分见 [QUALITY_SCORE.md](QUALITY_SCORE.md)。
+只运行与改动相关的最小门禁；不得借机全仓格式化。
 
-## Agent 执行规则（红线）
+## 工程红线
 
-- **项目快捷工作流**:
-  - `/fix` / `/修复`: 缺陷修复流程。先系统化调试确认根因,经确认后 TDD 复现与最小修复,最后真实验证并收口。
-  - `/feature` / `/功能`: 功能开发流程。先澄清与设计,必要时走 OpenSpec,多步骤实现先写计划,实现阶段 TDD,最后跑对应模块门禁。
-  - 工具入口按会话类型同步维护:`.agents/skills/source-command-*`、`.claude/commands/`、`.claude/skills/`、`.opencode/command/`、`.opencode/skills/`、`.github/prompts/`。
-- **Web UI / 组件任务（强制前置）**:修改 `web/` 下页面、组件、样式或 Storybook 前,必须先阅读 `web/DESIGN.md` 与 `web/COMPONENT_GOVERNANCE.md`,并按以下顺序执行:
-  1. 搜索 Ant Design、`web/src/components`、当前 `web/src/app/<app>/components` 和 Storybook,禁止凭记忆新建组件。
-  2. 已有组件能承载时必须复用;仅样式差异优先增加稳定 variant,不得复制源码或创建平行实现。
-  3. 确实不适用且只有一个 app 使用时,在 `web/src/app/<app>/components` 创建 app-local 组件。
-  4. 只有两个及以上真实 app 已接入同一抽象后,才可提升到 `web/src/components`;shared 组件变化必须同步 Storybook。
-  5. 交付时说明复用了哪个组件;若新建,说明现有组件不适用的理由与组件归属。
-- **Agent 工具自检**:会话需要 OpenSpec / projectmem / CodeGraph 时,先确认 `openspec`、`pjm`、`codegraph` 可用;缺失则由 Agent 运行 `scripts/agent-tooling-bootstrap` 补齐并记录结果。MCP 启动统一走 `scripts/projectmem-mcp`、`scripts/codegraph-mcp`,禁止在仓库配置里写个人机器绝对路径。
-- **最小 diff**:仅改需求相关文件与代码块。
-- **避免格式化污染**:只格式化触及文件,不全仓格式化。
-- **变更后必验**:至少跑对应模块最小门禁。
-- **先读再写**:先提证据再下结论,不凭经验补步骤。
-- **不做向后兼容影子设计**:旧入口与现状冲突时直接更新到当前真实入口。
-- **TODO 策略**:无法确认的写 `TODO:` 并附「确认位置(路径+关键词)」。
-- **中文优先**:回答、注释、commit、PR、文档一律中文。
-- **测试红线**:新功能/bugfix **先写测试**(TDD 红-绿-重构);改动代码**覆盖率 ≥75%**;测行为不测实现,**不写凑数/无效测试**。见 [QUALITY_SCORE](QUALITY_SCORE.md)、`server/docs/testing-guide.md`。
-- **启动红线**:禁止把**非关键、可重建**的外部资源声明、同步或探测接入会阻断服务启动的必经路径。修改 `startup.sh`、`batch_init`、容器 entrypoint 或启动钩子时,必须先做关键性分级;非关键失败须告警并可重试/补偿,不得退出进程,且必须覆盖存量升级、重复执行、异名资源冲突与依赖不可用场景。见 [RELIABILITY §2.6](RELIABILITY.md#26-启动安全非关键初始化不得阻断服务红线)。
-- **下发红线**:向目标主机下发插件/作业,**绝不能致其崩溃、死机或数据丢失**;高危/不可逆操作须 dry-run + 资源边界 + 幂等/可回滚,并有对应测试。见 [RELIABILITY](RELIABILITY.md)。
-- **禁用原生 SQL**:统一走 Django ORM,**禁止** raw SQL / `.raw()` / `RawSQL` / `cursor.execute`(`DB_ENGINE` 多方言,原生 SQL 跨库易碎)。
+- 仅修改需求相关文件，保留无关脏状态。
+- 新功能和缺陷修复遵循 TDD；测试行为而非实现，改动代码覆盖率不低于 75%。
+- Secrets 只通过部署环境注入；`.env`、keystore、token 不入库、不进日志。
+- 数据库统一使用 Django ORM，禁止 raw SQL、`.raw()`、`RawSQL`、`cursor.execute`。
+- 非关键、可重建的外部资源初始化不得阻断服务启动。
+- 主机下发必须有 dry-run、资源边界、幂等性、回滚路径和对应测试。
+- 不建立向后兼容影子入口；旧入口与当前事实冲突时直接迁到真实入口。
+- 无法确认时写 `TODO:`，并标明确认位置和关键词。
+- 回答、注释、提交、PR、文档优先使用中文。
 
-> 完整信条与「为什么」见 [docs/design-docs/core-beliefs.md](docs/design-docs/core-beliefs.md)。
+## 规格与知识边界
 
-<!-- CODEGRAPH_START -->
-## CodeGraph
-
-本仓库已项目级接入 CodeGraph。需要理解或定位代码结构时,在 `rg`/`find` 或逐文件读取之前优先使用 CodeGraph:
-
-- **MCP 工具**: 可用时使用 `codegraph_explore`,一次获取相关符号源码、调用路径和动态分发关系。
-- **Shell 兜底**: `codegraph explore "<符号名或问题>"`。
-
-仅当仓库根存在 `.codegraph/` 时使用 CodeGraph;索引目录由 `codegraph init` 生成,数据库为本地文件,不提交。
-<!-- CODEGRAPH_END -->
-
-## TODO（待确认项）
-
-由各团队按内部约定追踪;新发现的待确认项写明「确认位置(路径+关键词)」,不散落在本文。
-
-<!-- >>> projectmem bridge >>> -->
-## projectmem (MANDATORY)
-
-This project uses projectmem for persistent memory + workflow rules.
-
-SESSION START — call these three MCP tools, in this order, BEFORE
-answering ANY question about this project:
-
-  1. `get_instructions()` — loads the project's mandatory workflow
-     rules. Without this you will not know how to log work
-     correctly, when to use `add_note` vs `add_decision`, or how
-     the event log is structured.
-  2. `get_summary()` — loads project content. Do NOT answer from
-     conversation history or by re-reading package.json / README /
-     source files.
-  3. `get_project_map()` — loads structural layout when relevant.
-
-BEFORE modifying ANY file:
-  - Call `precheck_file(path)` — check failure history first.
-
-DURING work — use MCP write tools, NEVER edit `.projectmem/`
-files directly via filesystem write:
-  - On a bug discovery → `log_issue(summary, location)`.
-  - After each fix attempt → `record_attempt(summary, outcome)`.
-  - After confirmation → `record_fix(summary)`.
-  - On a design choice → `add_decision(summary)`.
-  - On a gotcha / setup detail → `add_note(summary)`.
-
-Editing `.projectmem/summary.md` or `.projectmem/events.jsonl`
-directly bypasses event logging and breaks audit replay. The
-summary file regenerates from `events.jsonl` automatically — write
-via the MCP tools and the summary will follow. `PROJECT_MAP.md`
-may be edited only when intentionally updating structural project
-memory.
-
-Do not re-scan source files when MCP tools can give you the same
-answer in ~500 tokens instead of ~5000. This is not optional.
-<!-- <<< projectmem bridge <<< -->
+- `CONTEXT.md` 只维护共享术语，不复制业务规则。
+- `specs/capabilities/` 是长期业务、验收、架构和运行约束的事实源。
+- `specs/changes/` 只保存跨会话的变更意图、实现决定、测试接缝和必要 tickets。
+- `docs/adr/` 只记录难以回滚且存在真实取舍的决定。
+- 具体表名、函数签名、组件树和测试断言由代码承担，不写入长期 capability。

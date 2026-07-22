@@ -1,6 +1,6 @@
 """告警中心 NATS RPC 统计处理器与辅助函数覆盖测试。
 
-对照 spec/prd/告警中心：运营统计（趋势/分布/TOP）按组织与权限范围聚合。
+对照 specs/capabilities/legacy-prd-告警中心-告警.md：运营统计（趋势/分布/TOP）按组织与权限范围聚合。
 """
 
 import datetime

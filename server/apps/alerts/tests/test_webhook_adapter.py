@@ -1,6 +1,6 @@
 """Webhook 告警源适配器覆盖测试。
 
-对照 spec/prd/告警中心·集成：Webhook 源接收推送请求并转换为事件。
+对照 specs/capabilities/legacy-prd-告警中心-集成.md：Webhook 源接收推送请求并转换为事件。
 """
 
 import json

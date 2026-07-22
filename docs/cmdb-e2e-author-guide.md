@@ -196,10 +196,10 @@ DB_ENGINE=sqlite INSTALL_APPS=cmdb,system_mgmt,core \
 
 ## 5. 参考
 
-- v4 OpenSpec change:`openspec/changes/cmdb-collect-v4-e2e-platform/`
+- v4 change：`specs/changes/cmdb-collect-v4-e2e-platform/spec.md`
 - 已有 4 个对象的范本(2026-07-10 commit):`test_influxdb_pipeline.py` / `test_mysql_pipeline.py` / `test_nginx_pipeline.py` / `test_redis_pipeline.py`
-- v3 路线图 + Phase 1-5 执行报告:`docs/superpowers/plans/2026-07-0[6-8]-cmdb-collect-v3-*.md`
-- 调研报告(本 change 立项依据):`docs/superpowers/plans/2026-07-10-cmdb-collect-next-step-discussion.md`
+- v3 路线图 + Phase 1-5 执行报告：`specs/changes/legacy-2026-07-06-cmdb-collect-v3-roadmap/spec.md` 及相邻 Phase change specs
+- 调研报告(本 change 立项依据):`specs/changes/legacy-2026-07-10-cmdb-collect-next-step-discussion/spec.md`
 
 ---
 
@@ -406,9 +406,9 @@ cd server
 
 # 7. v2 章节:参考(2026-07-13)
 
-- v5 阶段 spec:`docs/superpowers/specs/2026-07-13-cmdb-collect-full-e2e-alignment-design.md`
-- v5 阶段 plan:`docs/superpowers/plans/2026-07-13-cmdb-collect-full-e2e-alignment.md`
-- v5 阶段 follow-up 文档:`docs/superpowers/plans/2026-07-14-cmdb-collect-full-e2e-follow-up.md`
-- v5 阶段 merge audit:`docs/superpowers/plans/2026-07-14-cmdb-collect-merge-audit.md`
-- v5 阶段 PR description:`docs/superpowers/plans/2026-07-14-cmdb-collect-full-e2e-alignment-pr-description.md`
-- 9 个 hwcloud 子对象 follow-up spec:`docs/superpowers/specs/2026-07-13-cmdb-collect-hwcloud-subobjects-design.md`
+- v5 阶段 spec:`specs/changes/legacy-2026-07-13-cmdb-collect-full-e2e-alignment/spec.md`
+- v5 阶段 plan:`specs/changes/legacy-2026-07-13-cmdb-collect-full-e2e-alignment/spec.md`
+- v5 阶段 follow-up 文档:`specs/changes/legacy-2026-07-14-cmdb-collect-full-e2e-follow-up/spec.md`
+- v5 阶段 merge audit:`specs/changes/legacy-2026-07-14-cmdb-collect-merge-audit/spec.md`
+- v5 阶段 PR description:`specs/changes/legacy-2026-07-14-cmdb-collect-full-e2e-alignment-pr-description/spec.md`
+- 旧规格的逐文件目标以 `docs/agents/spec-migration-map.md` 为准。

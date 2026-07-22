@@ -1,6 +1,6 @@
 """CMDB ModelManage 自动关联规则导入辅助 + replace 覆盖测试。
 
-对照 spec/prd/CMDB·模型管理：模型配置导入中自动关联规则 sheet 解析、
+对照 specs/capabilities/legacy-prd-cmdb-模型管理.md：模型配置导入中自动关联规则 sheet 解析、
 _build_model_asst_id / _parse_auto_relation_rule_set_cell 等辅助、
 replace_model_auto_relation_rule_set 全量替换。
 """

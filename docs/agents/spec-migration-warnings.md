@@ -1,0 +1,45 @@
+# Spec migration warnings
+
+这些问题来自旧规格基线；迁移只保证内容不丢失，不把旧校验失败伪装成已确认事实。
+
+- `openspec/changes/add-mssql-tool` 缺少 tasks.md，状态标记为 draft。
+- `openspec/changes/db-xinchuang-adapter` 缺少 tasks.md，状态标记为 draft。
+- `openspec/changes/job-management` 缺少 tasks.md，状态标记为 draft。
+- `specs/capabilities/context-management.md` 包含 TBD，需结合实现核实。
+- `specs/capabilities/job-shell-interpreter.md` 包含 TBD，需结合实现核实。
+- `specs/capabilities/memory-config-ui.md` 包含 TBD，需结合实现核实。
+- `specs/capabilities/memory-engine-api.md` 包含 TBD，需结合实现核实。
+- `specs/capabilities/memory-engine-custom.md` 包含 TBD，需结合实现核实。
+- `specs/capabilities/memory-engine-local.md` 包含 TBD，需结合实现核实。
+- `specs/capabilities/memory-engine-mem0.md` 包含 TBD，需结合实现核实。
+- `specs/capabilities/memory-engine-registry.md` 包含 TBD，需结合实现核实。
+- `specs/capabilities/memory-engine-zep.md` 包含 TBD，需结合实现核实。
+- `specs/capabilities/memory-space.md` 包含 TBD，需结合实现核实。
+- `specs/capabilities/memory-workflow-nodes.md` 包含 TBD，需结合实现核实。
+- `specs/capabilities/ops-safety.md` 包含 TBD，需结合实现核实。
+- `specs/capabilities/provider-model-config-api.md` 包含 TBD，需结合实现核实。
+- `specs/capabilities/react-loop-control.md` 包含 TBD，需结合实现核实。
+- `specs/capabilities/sub-agent-orchestration.md` 包含 TBD，需结合实现核实。
+- `specs/capabilities/workflow-attachment-automation.md` 包含 TBD，需结合实现核实。
+- 非标准 artifact 已保留：`.openspec/archive/script-library-org-required-20260527/proposal.md`。
+- 非标准 artifact 已保留：`.openspec/archive/script-library-org-required-20260527/tasks.md`。
+- 非标准 artifact 已保留：`openspec/changes/add-cmdb-k8s-resource-overview/verification.md`。
+- 非标准 artifact 已保留：`openspec/changes/add-ops-analysis-param-options-source/README.md`。
+- 非标准 artifact 已保留：`openspec/changes/archive/2026-04-17-license-mgmt/requirements.md`。
+- 非标准 artifact 已保留：`openspec/changes/archive/2026-04-17-license-mgmt/solution_plan.md`。
+- 非标准 artifact 已保留：`openspec/changes/archive/2026-04-17-license-mgmt/tech_plan.md`。
+- 非标准 artifact 已保留：`openspec/changes/archive/2026-05-11-provider-model-team-filter/exploration.md`。
+- 非标准 artifact 已保留：`openspec/changes/archive/2026-05-12-remove-owner-logic/README.md`。
+- 非标准 artifact 已保留：`openspec/changes/archive/2026-05-19-fix-role-menus-cache-invalidation/README.md`。
+- 非标准 artifact 已保留：`openspec/changes/archive/2026-05-26-deepseek-v4-thinking-mode-fix/specs/README.md`。
+- 非标准 artifact 已保留：`openspec/changes/archive/2026-06-05-anthropic-protocol-support/README.md`。
+- 非标准 artifact 已保留：`openspec/changes/cmdb-collect-v4-e2e-platform/README.md`。
+- 非标准 artifact 已保留：`openspec/changes/db-xinchuang-adapter/specs/dameng.md`。
+- 非标准 artifact 已保留：`openspec/changes/db-xinchuang-adapter/specs/gaussdb.md`。
+- 非标准 artifact 已保留：`openspec/changes/db-xinchuang-adapter/specs/goldendb.md`。
+- 非标准 artifact 已保留：`openspec/changes/db-xinchuang-adapter/specs/oceanbase.md`。
+- 非标准 artifact 已保留：`openspec/changes/fix-channel-message-dedup-and-async/README.md`。
+- 非标准 artifact 已保留：`openspec/changes/fix-log-viewsets-permission/README.md`。
+- 非标准 artifact 已保留：`openspec/changes/fix-system-settings-permission/README.md`。
+- 非标准 artifact 已保留：`openspec/changes/streamline-wiki-knowledge-decisions/PROGRESS.md`。
+- 非标准 artifact 已保留：`openspec/changes/streamline-wiki-knowledge-decisions/README.md`。

@@ -1,7 +1,7 @@
 # 补丁管理产品决策记忆
 
 - 最近更新：2026-06-25
-- 当前规格：`docs/superpowers/specs/2026-06-17-patch-management-design.md`
+- 当前规格：`specs/changes/legacy-2026-06-17-patch-management/spec.md`
 
 ## 产品定位
 
@@ -130,6 +130,6 @@
 
 ## 决策来源
 
-- 规格：`docs/superpowers/specs/2026-06-17-patch-management-design.md`
+- 规格：`specs/changes/legacy-2026-06-17-patch-management/spec.md`
 - 阿里云云安全中心官方文档：漏洞管理、扫描、修复和失败排查。
 - 讨论日期：2026-06-17 至 2026-06-25。

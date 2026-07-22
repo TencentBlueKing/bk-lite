@@ -1,7 +1,7 @@
 # current_team 数据权限产品决策记忆
 
 - 最近更新：2026-07-20
-- 当前规格：`docs/superpowers/specs/2026-07-20-node-monitor-log-current-team-permission-design.md`
+- 当前规格：`specs/changes/legacy-2026-07-20-node-monitor-log-current-team-permission/spec.md`
 
 ## 产品定位
 

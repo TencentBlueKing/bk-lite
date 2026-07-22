@@ -1,6 +1,6 @@
 """告警源适配器覆盖测试。
 
-对照 spec/prd/告警中心·集成：外部事件经适配器字段映射、指纹生成、批量入库。
+对照 specs/capabilities/legacy-prd-告警中心-集成.md：外部事件经适配器字段映射、指纹生成、批量入库。
 """
 
 import datetime

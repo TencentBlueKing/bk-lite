@@ -1,6 +1,6 @@
 """CMDB 公共枚举库视图覆盖测试（patch service 模块函数）。
 
-对照 spec/prd/CMDB·模型管理：公共枚举库的增删改查、引用查询、错误码映射(404/409/400)。
+对照 specs/capabilities/legacy-prd-cmdb-模型管理.md：公共枚举库的增删改查、引用查询、错误码映射(404/409/400)。
 """
 
 import json

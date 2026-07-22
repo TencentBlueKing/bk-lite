@@ -21,7 +21,6 @@
     "或 SAP 客户中心申请 16.x 试用 license"
   ],
   "references": [
-    "docs/superpowers/plans/2026-07-06-cmdb-collect-v3-roadmap.md §3.4 G2.3(archived 22 套对象说明)",
-    "docs/superpowers/sdd/task-4-brief.md §Task 4.11"
+    "specs/changes/legacy-2026-07-06-cmdb-collect-v3-roadmap/spec.md §3.4 G2.3(archived 22 套对象说明)"
   ]
 }

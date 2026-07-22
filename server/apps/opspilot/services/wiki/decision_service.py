@@ -1,6 +1,6 @@
 """Wiki 决策服务(phase 2):稳定签名 + 规则 upsert/查询/撤销/回放。
 
-设计来源:openspec streamline-wiki-knowledge-decisions
+设计来源：`specs/changes/streamline-wiki-knowledge-decisions/spec.md`
 - 主签名 = SHA-256(policy_version + kb_id + decision_type + subject_key +
   schema_fingerprint + sorted_unique((material_id, content_hash)))
 - 参与者去重 + 排序 → 签名与顺序/重复无关
@@ -174,7 +174,7 @@ def create_rule_if_eligible(
 
 
 def find_active_rule(knowledge_base, decision_type: str, decision_key: str):
-    """查 active 规则,revoked 视为不存在(openspec 2.4 行为)。"""
+    """查 active 规则，revoked 视为不存在（change spec 2.4 行为）。"""
     from apps.opspilot.models import WikiDecisionRule
 
     return WikiDecisionRule.objects.filter(

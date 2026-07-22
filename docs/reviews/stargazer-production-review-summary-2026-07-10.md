@@ -4,7 +4,7 @@
 
 - 审查对象：`agents/stargazer`
 - 审查协议：`docs/reviews/backend-production-review-protocol.md`
-- 处理方式：每个缺陷单独开 Codex 任务修复；本文件仅汇总可提交的审查结论，`.projectmem/issues/` 保留为本地过程记录，不纳入业务提交。
+- 处理方式：每个缺陷单独开 Codex 任务修复；本文件仅汇总可提交的审查结论，`.仓库事实源/issues/` 保留为本地过程记录，不纳入业务提交。
 
 ## Findings 与修复提交
 
@@ -46,4 +46,4 @@ uv run pytest \
 
 - 业务修复：只提交 7 个修复提交对应的代码与测试。
 - 审查记录：只提交本汇总文件。
-- 本地过程记录：不要提交 `.projectmem/summary.md`、`.projectmem/events.jsonl`、`.projectmem/issues/`、`.projectmem/.current_issue`、`.projectmem/watch.*`。
+- 本地过程记录：不要提交 `.仓库事实源/summary.md`、`.仓库事实源/events.jsonl`、`.仓库事实源/issues/`、`.仓库事实源/.current_issue`、`.仓库事实源/watch.*`。

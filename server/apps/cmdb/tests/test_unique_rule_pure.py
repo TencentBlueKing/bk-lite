@@ -1,6 +1,6 @@
 """CMDB 模型唯一规则纯逻辑覆盖测试（不触图数据库）。
 
-对照 spec/prd/CMDB·模型管理：唯一规则解析/序列化/重排、批次与现存实例冲突检测。
+对照 specs/capabilities/legacy-prd-cmdb-模型管理.md：唯一规则解析/序列化/重排、批次与现存实例冲突检测。
 """
 
 import json

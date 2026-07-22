@@ -1,6 +1,6 @@
 """运营分析 BDD：GroupPermissionMixin 团队权限与 queryset 过滤（中文 Gherkin）。
 
-对照 spec/prd/运营分析：数据源/画布按组织分组隔离，当前团队 cookie 与 user 维度共同决定可见范围。
+对照 specs/capabilities/legacy-prd-运营分析-运营分析.md：数据源/画布按组织分组隔离，当前团队 cookie 与 user 维度共同决定可见范围。
 """
 
 from pathlib import Path

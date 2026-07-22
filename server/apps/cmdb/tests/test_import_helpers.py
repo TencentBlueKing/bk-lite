@@ -1,6 +1,6 @@
 """CMDB Import 工具纯逻辑覆盖测试（绕开 __init__ 中的 GraphClient 调用）。
 
-对照 spec/prd/CMDB·实例导入：Excel 字段类型转换、表格/标签/枚举/组织/用户字段解析、
+对照 specs/capabilities/legacy-prd-cmdb-资产.md·实例导入：Excel 字段类型转换、表格/标签/枚举/组织/用户字段解析、
 用户显示名解析、字段映射构建、行处理校验错误聚合。
 """
 

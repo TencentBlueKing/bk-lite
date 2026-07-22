@@ -1,7 +1,7 @@
 # 监控告警阈值单位产品决策记忆
 
 - 最近更新：2026-07-14
-- 当前规格：`docs/superpowers/specs/2026-07-13-monitor-threshold-unit-decoupling-design.md`
+- 当前规格：`specs/changes/legacy-2026-07-13-monitor-threshold-unit-decoupling/spec.md`
 
 ## 产品定位
 
@@ -42,6 +42,6 @@
 ## 决策来源
 
 - 用户确认采用“结果单位与阈值单位双字段 + 严格换算”的推荐方案，并要求设计及实现。
-- `docs/superpowers/specs/2026-07-08-monitor-formula-result-unit-design.md`
-- `docs/superpowers/specs/2026-07-13-monitor-threshold-unit-decoupling-design.md`
-- `docs/superpowers/specs/2026-07-14-monitor-chart-threshold-unit-design.md`
+- `specs/changes/legacy-2026-07-08-monitor-formula-result-unit/spec.md`
+- `specs/changes/legacy-2026-07-13-monitor-threshold-unit-decoupling/spec.md`
+- `specs/changes/legacy-2026-07-14-monitor-chart-threshold-unit/spec.md`

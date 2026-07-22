@@ -11,7 +11,7 @@
 |------|------|
 | 前端视觉/组件 token | [web/DESIGN.md](../../web/DESIGN.md) |
 | 算法服务设计原则 | [algorithms/DESIGN_GUIDE.md](../../algorithms/DESIGN_GUIDE.md) |
-| UI 设计规范(产品侧) | [spec/design_ui.md](../../spec/design_ui.md) |
+| UI 设计规范(产品侧) | [specs/capabilities/legacy-design-ui.md](../.specs/capabilities/legacy-design-ui.md) |
 | 单点登录(SSO/NATS)接入 | [docs/readme.md](../readme.md) |
 
 ## 技术评审归档
@@ -30,4 +30,4 @@
 ## 影响
 ```
 
-> 规格(spec)与执行计划不放这里 —— 那是 [openspec/](../../openspec/) 与 [PLANS.md](../../PLANS.md) 的职责。本目录只放「设计意图与决策」。
+> 长期规格与跨会话变更不放这里 —— 它们分别属于 [`specs/capabilities/`](../../specs/capabilities/) 与 [`specs/changes/`](../../specs/changes/)。本目录只放设计意图；难以回滚的决定统一写入 [`docs/adr/`](../adr/)。

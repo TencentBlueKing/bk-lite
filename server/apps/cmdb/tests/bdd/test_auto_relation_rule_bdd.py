@@ -1,6 +1,6 @@
 """CMDB 自动关联规则 BDD（中文 Gherkin）。
 
-对照 spec/prd/CMDB·模型关联·自动关联规则：
+对照 specs/capabilities/legacy-prd-cmdb-模型管理.md·自动关联规则：
 - 校验 match_pairs 非空、字段存在、字段类型一致、匹配规则合法。
 """
 

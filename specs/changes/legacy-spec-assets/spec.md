@@ -1,0 +1,118 @@
+# Legacy specification assets
+
+Status: done
+
+## Purpose
+
+保留旧规格中的 HTML 原型、脚本和 JSON 资产。它们是历史证据，不是当前 capability contract。
+
+## Assets
+
+- `docs/archive/legacy-spec-assets/.gitkeep`
+- `docs/archive/legacy-spec-assets/prototype/opspilot/_category_.json`
+- `docs/archive/legacy-spec-assets/prototype/opspilot/_shared/unified-header.js`
+- `docs/archive/legacy-spec-assets/prototype/opspilot/工作台/工作台.html`
+- `docs/archive/legacy-spec-assets/prototype/opspilot/工作台/工作台详情.html`
+- `docs/archive/legacy-spec-assets/prototype/opspilot/工具/工具.html`
+- `docs/archive/legacy-spec-assets/prototype/opspilot/智能体/智能体.html`
+- `docs/archive/legacy-spec-assets/prototype/opspilot/智能体/智能体详情.html`
+- `docs/archive/legacy-spec-assets/prototype/opspilot/模型/供应商详情.html`
+- `docs/archive/legacy-spec-assets/prototype/opspilot/模型/模型.html`
+- `docs/archive/legacy-spec-assets/prototype/opspilot/知识库/知识库.html`
+- `docs/archive/legacy-spec-assets/prototype/opspilot/知识库/知识库来源创建.html`
+- `docs/archive/legacy-spec-assets/prototype/opspilot/知识库/知识库详情.html`
+- `docs/archive/legacy-spec-assets/prototype/opspilot/记忆/记忆.html`
+- `docs/archive/legacy-spec-assets/prototype/opspilot/记忆/记忆详情.html`
+- `docs/archive/legacy-spec-assets/prototype/作业管理/Playbook库.html`
+- `docs/archive/legacy-spec-assets/prototype/作业管理/作业记录.html`
+- `docs/archive/legacy-spec-assets/prototype/作业管理/作业详情-Playbook.html`
+- `docs/archive/legacy-spec-assets/prototype/作业管理/作业详情-文件分发.html`
+- `docs/archive/legacy-spec-assets/prototype/作业管理/作业详情.html`
+- `docs/archive/legacy-spec-assets/prototype/作业管理/定时任务-新建.html`
+- `docs/archive/legacy-spec-assets/prototype/作业管理/定时任务.html`
+- `docs/archive/legacy-spec-assets/prototype/作业管理/快速执行.html`
+- `docs/archive/legacy-spec-assets/prototype/作业管理/文件分发.html`
+- `docs/archive/legacy-spec-assets/prototype/作业管理/目标管理.html`
+- `docs/archive/legacy-spec-assets/prototype/作业管理/脚本库.html`
+- `docs/archive/legacy-spec-assets/prototype/作业管理/首页.html`
+- `docs/archive/legacy-spec-assets/prototype/作业管理/高危命令配置.html`
+- `docs/archive/legacy-spec-assets/prototype/作业管理/高危路径.html`
+- `docs/archive/legacy-spec-assets/prototype/日志系统/事件/创建策略.html`
+- `docs/archive/legacy-spec-assets/prototype/日志系统/事件/策略.html`
+- `docs/archive/legacy-spec-assets/prototype/日志系统/事件/策略类型/关键字告警.html`
+- `docs/archive/legacy-spec-assets/prototype/日志系统/事件/策略类型/聚合规则告警.html`
+- `docs/archive/legacy-spec-assets/prototype/日志系统/集成/集成-场景化.html`
+- `docs/archive/legacy-spec-assets/prototype/日志系统/集成/集成页面/Apache (Filebeat).html`
+- `docs/archive/legacy-spec-assets/prototype/日志系统/集成/集成页面/Docker 容器日志 (Vector).html`
+- `docs/archive/legacy-spec-assets/prototype/日志系统/集成/集成页面/Elasticsearch (Filebeat).html`
+- `docs/archive/legacy-spec-assets/prototype/日志系统/集成/集成页面/HTTP 流量分析 (Packetbeat).html`
+- `docs/archive/legacy-spec-assets/prototype/日志系统/集成/集成页面/Kafka (Filebeat).html`
+- `docs/archive/legacy-spec-assets/prototype/日志系统/集成/集成页面/Linux 文件变更监控 (Auditbeat).html`
+- `docs/archive/legacy-spec-assets/prototype/日志系统/集成/集成页面/MongoDB (Filebeat).html`
+- `docs/archive/legacy-spec-assets/prototype/日志系统/集成/集成页面/MySQL (Filebeat).html`
+- `docs/archive/legacy-spec-assets/prototype/日志系统/集成/集成页面/Nginx (Filebeat).html`
+- `docs/archive/legacy-spec-assets/prototype/日志系统/集成/集成页面/PostgreSQL (Filebeat).html`
+- `docs/archive/legacy-spec-assets/prototype/日志系统/集成/集成页面/RabbitMQ (Filebeat).html`
+- `docs/archive/legacy-spec-assets/prototype/日志系统/集成/集成页面/Redis (Filebeat).html`
+- `docs/archive/legacy-spec-assets/prototype/日志系统/集成/集成页面/SNMP Trap (Vector).html`
+- `docs/archive/legacy-spec-assets/prototype/日志系统/集成/集成页面/Syslog 接收 (Vector).html`
+- `docs/archive/legacy-spec-assets/prototype/日志系统/集成/集成页面/Windows 事件日志 (Winlogbeat).html`
+- `docs/archive/legacy-spec-assets/prototype/日志系统/集成/集成页面/日志文件 (Vector).html`
+- `docs/archive/legacy-spec-assets/prototype/日志系统/集成/集成页面/网络流 (Packetbeat).html`
+- `docs/archive/legacy-spec-assets/prototype/监控系统/事件/告警.html`
+- `docs/archive/legacy-spec-assets/prototype/监控系统/事件/模版.html`
+- `docs/archive/legacy-spec-assets/prototype/监控系统/搜索/搜索.html`
+- `docs/archive/legacy-spec-assets/prototype/监控系统/视图/视图.html`
+- `docs/archive/legacy-spec-assets/prototype/监控系统/集成/分组.html`
+- `docs/archive/legacy-spec-assets/prototype/监控系统/集成/对象.html`
+- `docs/archive/legacy-spec-assets/prototype/监控系统/集成/模版/MySQL.html`
+- `docs/archive/legacy-spec-assets/prototype/监控系统/集成/模版/自定义API模版.html`
+- `docs/archive/legacy-spec-assets/prototype/监控系统/集成/模版/自定义PULL模版.html`
+- `docs/archive/legacy-spec-assets/prototype/监控系统/集成/模版/自定义SNMP模版.html`
+- `docs/archive/legacy-spec-assets/prototype/监控系统/集成/资产.html`
+- `docs/archive/legacy-spec-assets/prototype/监控系统/集成/集成.html`
+- `docs/archive/legacy-spec-assets/prototype/系统管理/安全管理/敏感信息.html`
+- `docs/archive/legacy-spec-assets/prototype/系统管理/平台设置/API密钥.html`
+- `docs/archive/legacy-spec-assets/prototype/系统管理/平台设置/审计日志.html`
+- `docs/archive/legacy-spec-assets/prototype/系统管理/平台设置/许可管理.html`
+- `docs/archive/legacy-spec-assets/prototype/系统管理/平台设置/错误日志.html`
+- `docs/archive/legacy-spec-assets/prototype/系统管理/平台设置/门户设置.html`
+- `docs/archive/legacy-spec-assets/prototype/系统管理/用户管理/安全策略.html`
+- `docs/archive/legacy-spec-assets/prototype/系统管理/用户管理/敏感信息.html`
+- `docs/archive/legacy-spec-assets/prototype/系统管理/用户管理/用户同步.html`
+- `docs/archive/legacy-spec-assets/prototype/系统管理/用户管理/登录认证.html`
+- `docs/archive/legacy-spec-assets/prototype/系统管理/用户管理/登录页.html`
+- `docs/archive/legacy-spec-assets/prototype/系统管理/用户管理/组织架构.html`
+- `docs/archive/legacy-spec-assets/prototype/系统管理/用户管理/超级管理员.html`
+- `docs/archive/legacy-spec-assets/prototype/系统管理/通知渠道/IM应用通知/IM应用通知.html`
+- `docs/archive/legacy-spec-assets/prototype/系统管理/通知渠道/通知渠道.html`
+- `docs/archive/legacy-spec-assets/prototype/系统管理/集成中心/企业微信.html`
+- `docs/archive/legacy-spec-assets/prototype/系统管理/集成中心/集成中心.html`
+- `docs/archive/legacy-spec-assets/prototype/系统管理/集成中心/集成详情/企业微信.html`
+- `docs/archive/legacy-spec-assets/prototype/节点管理/云区域/安装控制器-安装配置.html`
+- `docs/archive/legacy-spec-assets/prototype/节点管理/云区域/安装控制器-手动安装中.html`
+- `docs/archive/legacy-spec-assets/prototype/节点管理/云区域/安装控制器-手动安装中（win）.html`
+- `docs/archive/legacy-spec-assets/prototype/节点管理/云区域/安装控制器-远程安装中.html`
+- `docs/archive/legacy-spec-assets/prototype/节点管理/云区域/环境（已部署）.html`
+- `docs/archive/legacy-spec-assets/prototype/节点管理/云区域/环境（待部署）.html`
+- `docs/archive/legacy-spec-assets/prototype/节点管理/云区域/节点.html`
+- `docs/archive/legacy-spec-assets/prototype/节点管理/云区域/首页.html`
+- `docs/archive/legacy-spec-assets/prototype/节点管理/控制器/首页.html`
+- `docs/archive/legacy-spec-assets/prototype/节点管理/组件库/首页.html`
+- `docs/archive/legacy-spec-assets/requirements/作业管理/20260226/Playbook库.html`
+- `docs/archive/legacy-spec-assets/requirements/作业管理/20260226/作业记录.html`
+- `docs/archive/legacy-spec-assets/requirements/作业管理/20260226/作业详情-Playbook.html`
+- `docs/archive/legacy-spec-assets/requirements/作业管理/20260226/作业详情-文件分发.html`
+- `docs/archive/legacy-spec-assets/requirements/作业管理/20260226/作业详情.html`
+- `docs/archive/legacy-spec-assets/requirements/作业管理/20260226/定时任务-新建.html`
+- `docs/archive/legacy-spec-assets/requirements/作业管理/20260226/定时任务.html`
+- `docs/archive/legacy-spec-assets/requirements/作业管理/20260226/快速执行.html`
+- `docs/archive/legacy-spec-assets/requirements/作业管理/20260226/文件分发.html`
+- `docs/archive/legacy-spec-assets/requirements/作业管理/20260226/目标管理.html`
+- `docs/archive/legacy-spec-assets/requirements/作业管理/20260226/脚本库.html`
+- `docs/archive/legacy-spec-assets/requirements/作业管理/20260226/首页.html`
+- `docs/archive/legacy-spec-assets/requirements/作业管理/20260226/高危命令配置.html`
+- `docs/archive/legacy-spec-assets/requirements/作业管理/20260226/高危路径.html`
+- `docs/archive/legacy-spec-assets/requirements/运营分析/20260707.运营分析-网络拓扑大屏HTML演示.html`
+- `docs/archive/legacy-spec-assets/requirements/运营分析/20260707.运营分析-资源费用分析报表HTML演示.html`
+- `docs/archive/legacy-spec-assets/requirements/运营分析/20260707.运营分析-资源费用分析数据模型HTML演示.html`

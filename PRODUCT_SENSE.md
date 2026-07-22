@@ -1,6 +1,6 @@
 # PRODUCT_SENSE.md
 
-> 做产品决策时的「默认价值观」。当需求模糊、取舍冲突时,按本文判断;细化需求见 [openspec/](openspec/) 与 [spec/](spec/)。
+> 做产品决策时的「默认价值观」。当需求模糊、取舍冲突时按本文判断；长期能力读取 [`specs/capabilities/`](specs/capabilities/)，跨会话变更读取 [`specs/changes/`](specs/changes/)。
 
 ## 1. 产品定位
 
@@ -33,6 +33,6 @@ BK-Lite = **AI-first 的轻量运维平台**。两个关键词决定取舍:
 
 ## 5. 决策留痕
 
-成形的产品决策进 [openspec/](openspec/)(规格)或 [docs/design-docs/](docs/design-docs/)(设计意图 / ADR),不停留在聊天记录。
+长期产品事实进入 [`specs/capabilities/`](specs/capabilities/)，跨会话实现取舍进入 [`specs/changes/`](specs/changes/)，难以回滚的决定进入 [`docs/adr/`](docs/adr/)，不停留在聊天记录。
 
-> TODO: 补充各模块的核心用户旅程(确认位置:`spec/` 下各功能模块的 PDR / 需求文档)。
+> TODO: 结合迁移警告补充各模块核心用户旅程（确认位置：`docs/agents/spec-migration-warnings.md`）。

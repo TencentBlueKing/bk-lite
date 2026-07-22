@@ -1,6 +1,6 @@
 """告警中心模型方法覆盖测试。
 
-对照 spec/prd/告警中心：事件接入幂等键、告警时间格式化、级别展示。
+对照 specs/capabilities/legacy-prd-告警中心-告警.md：事件接入幂等键、告警时间格式化、级别展示。
 """
 
 import pytest

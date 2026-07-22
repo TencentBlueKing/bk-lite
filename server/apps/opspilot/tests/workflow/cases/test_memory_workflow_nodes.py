@@ -1,7 +1,7 @@
 """
 Tests for Memory Workflow Nodes (MemoryRead and MemoryWrite).
 
-Based on OpenSpec: openspec/changes/add-memory-workflow-nodes/specs/memory-workflow-nodes/spec.md
+Based on change spec: specs/changes/2026-06-05-add-memory-workflow-nodes/spec.md
 
 Scenarios covered:
 - MemoryRead: passthrough, personal scope (creator/non-creator), team scope, no config, empty memory

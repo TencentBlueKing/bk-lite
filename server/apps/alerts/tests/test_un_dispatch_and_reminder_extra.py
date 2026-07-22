@@ -1,6 +1,6 @@
 """未分派通知拼装 + 提醒服务深层分支 补充覆盖。
 
-对照 spec/prd/告警中心：未分派告警按系统配置渠道生成通知参数；提醒服务推进/停用逻辑。
+对照 specs/capabilities/legacy-prd-告警中心-告警.md：未分派告警按系统配置渠道生成通知参数；提醒服务推进/停用逻辑。
 """
 
 import pydantic.root_model  # noqa
