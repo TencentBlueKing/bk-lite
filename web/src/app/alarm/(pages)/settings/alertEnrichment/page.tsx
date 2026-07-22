@@ -4,7 +4,7 @@ import React, { useMemo } from 'react';
 import OperateModal from './components/operateModal';
 import CustomTable from '@/components/custom-table';
 import PermissionWrapper from '@/components/permission';
-import Introduction from '@/app/alarm/components/introduction';
+import Introduction from '@/components/introduction';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { EnrichmentRuleListItem } from '@/app/alarm/types/settings';
 import { useSettingApi } from '@/app/alarm/api/settings';

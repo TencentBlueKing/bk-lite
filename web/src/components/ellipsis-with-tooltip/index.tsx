@@ -2,7 +2,7 @@ import React, { useRef, useEffect, useState } from 'react';
 import { Tooltip } from 'antd';
 
 interface EllipsisWithTooltipProps {
-  text: string | null;
+  text: React.ReactNode;
   className?: string;
 }
 

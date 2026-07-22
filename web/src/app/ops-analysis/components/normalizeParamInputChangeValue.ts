@@ -19,10 +19,13 @@ export const normalizeParamInputChangeValue = (
     }
   }
 
+  if (valueOrEvent === null) {
+    return null;
+  }
+
   if (
     typeof valueOrEvent === 'string' ||
-    typeof valueOrEvent === 'number' ||
-    valueOrEvent === null
+    typeof valueOrEvent === 'number'
   ) {
     return valueOrEvent;
   }

@@ -64,3 +64,10 @@ export const inheritedRoleSourceMap = {
 export const organizationRoleSourceMap = {
   'cmdb.view': 'Frontend Team',
 };
+
+export const roleTransferSelectedKeys: React.Key[] = ['role-1', 'role-2'];
+
+export const roleTransferFilteredRightData: { key: string; title: string }[] = [
+  { key: 'role-1', title: 'Role One' },
+  { key: 'role-2', title: 'Role Two' },
+];

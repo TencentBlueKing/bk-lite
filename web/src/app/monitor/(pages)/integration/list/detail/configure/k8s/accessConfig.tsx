@@ -2,7 +2,6 @@
 import React, { useState, useEffect } from 'react';
 import useApiClient from '@/utils/request';
 import { Form, Input, Select, InputNumber, Button, Radio } from 'antd';
-import { InfoCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { useSearchParams } from 'next/navigation';
 import Icon from '@/components/icon';
@@ -11,6 +10,9 @@ import useIntegrationApi from '@/app/monitor/api/integration';
 import useMonitorApi from '@/app/monitor/api';
 import { v4 as uuidv4 } from 'uuid';
 import { AccessConfigProps } from '@/app/monitor/types/integration';
+import IntegrationStepCallout, {
+  createMonitorK8sStepCalloutPreset,
+} from '@/components/integration-step-callout';
 
 const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
   const { t } = useTranslation();
@@ -130,33 +132,7 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
 
   return (
     <div className="p-0">
-      <div>
-        <div className="flex items-center mb-3">
-          <InfoCircleOutlined className="text-yellow-600 text-lg mr-2" />
-          <h3 className="text-base font-semibold">
-            {t('monitor.integrations.k8s.prerequisites')}
-          </h3>
-        </div>
-        <div className="mb-8 bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-md">
-          <p className="text-sm text-gray-500 mb-3">
-            {t('monitor.integrations.k8s.prerequisitesDesc')}
-          </p>
-          <ul className="space-y-2 text-sm text-gray-500">
-            <li className="flex items-start">
-              <span className="mr-2">•</span>
-              <span>{t('monitor.integrations.k8s.k8sVersionRequirement')}</span>
-            </li>
-            <li className="flex items-start">
-              <span className="mr-2">•</span>
-              <span>{t('monitor.integrations.k8s.resourceRequirement')}</span>
-            </li>
-            <li className="flex items-start">
-              <span className="mr-2">•</span>
-              <span>{t('monitor.integrations.k8s.permissionRequirement')}</span>
-            </li>
-          </ul>
-        </div>
-      </div>
+      <IntegrationStepCallout {...createMonitorK8sStepCalloutPreset(t)} />
 
       <Form
         form={form}

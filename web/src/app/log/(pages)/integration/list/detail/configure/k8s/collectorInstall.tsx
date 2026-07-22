@@ -5,7 +5,7 @@ import { Alert, Button, message } from 'antd';
 import { SearchOutlined, ToolOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import useIntegrationApi from '@/app/log/api/integration';
-import CodeEditor from '@/app/monitor/components/codeEditor';
+import CodeEditor from '@/components/code-editor';
 import Icon from '@/components/icon';
 import CommonIssuesDrawer from './commonIssuesDrawer';
 import { K8sCommandData } from './k8sConfiguration';
