@@ -1,10 +1,10 @@
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from threading import Barrier
-from unittest.mock import patch
+from threading import Barrier, local
+from unittest.mock import Mock, patch
 
 import pytest
-from django.db import IntegrityError, close_old_connections, connections
+from django.db import IntegrityError, OperationalError, close_old_connections, connections
 
 from apps.alerts.models import AlertOutbox, Incident, IncidentIMGroup, IncidentIMMember
 from apps.alerts.constants.constants import IncidentStatus
@@ -291,10 +291,13 @@ def test_sqlite_independent_connections_translate_busy_loser_after_active_winner
     from apps.alerts.service.incident_im import groups
 
     barrier = Barrier(2)
+    worker_state = local()
     original_resolve = groups.resolve_incident_members
 
     def synchronized_resolve(*args, **kwargs):
-        barrier.wait(timeout=10)
+        if not getattr(worker_state, "synchronized", False):
+            worker_state.synchronized = True
+            barrier.wait(timeout=10)
         return original_resolve(*args, **kwargs)
 
     monkeypatch.setattr(groups, "resolve_incident_members", synchronized_resolve)
@@ -311,18 +314,89 @@ def test_sqlite_independent_connections_translate_busy_loser_after_active_winner
                 owner_username="operator",
                 continuous_sync_enabled=True,
             )
-            return ("created", str(group.id))
+            return ("created", str(group.id), "")
         except Exception as exc:
-            return (type(exc).__name__, getattr(exc, "code", ""))
+            return (type(exc).__name__, getattr(exc, "code", ""), str(exc))
         finally:
             connections.close_all()
 
     with ThreadPoolExecutor(max_workers=2) as executor:
         outcomes = [future.result(timeout=20) for future in [executor.submit(create_from_independent_connection) for _ in range(2)]]
 
-    assert sorted(outcome[0] for outcome in outcomes) == ["IncidentIMError", "created"]
+    assert sorted(outcome[0] for outcome in outcomes) == ["IncidentIMError", "created"], outcomes
     assert {outcome[1] for outcome in outcomes if outcome[0] == "IncidentIMError"} == {"IM_GROUP_ACTIVE_EXISTS"}
     assert IncidentIMGroup.objects.filter(incident=incident, active_slot=1).count() == 1
+
+
+@pytest.mark.django_db
+def test_sqlite_lock_retries_entire_create_transaction_after_no_winner(monkeypatch):
+    from apps.alerts.service.incident_im import groups
+
+    created_group = Mock()
+    lock_error = OperationalError("database is locked")
+    monkeypatch.setattr(groups.IncidentIMGroupService, "_is_sqlite_lock_error", lambda exc: True)
+    monkeypatch.setattr(groups.IncidentIMGroupService, "_has_active_group", lambda incident_id: False)
+
+    with patch.object(
+        groups.IncidentIMGroupService, "_create_once", side_effect=[lock_error, created_group]
+    ) as create_once, patch("apps.alerts.service.incident_im.groups.sleep") as sleep_mock:
+        result = groups.IncidentIMGroupService.create(
+            incident_id=1,
+            actor=Mock(),
+            channel_id=1,
+            group_name="重试测试群",
+            owner_username="operator",
+            continuous_sync_enabled=True,
+        )
+
+    assert result is created_group
+    assert create_once.call_count == 2
+    sleep_mock.assert_called_once_with(groups.IncidentIMGroupService.SQLITE_LOCK_RETRY_DELAYS[0])
+
+
+@pytest.mark.django_db
+def test_sqlite_lock_reraises_last_error_after_retry_budget_exhausted(monkeypatch):
+    from apps.alerts.service.incident_im import groups
+
+    lock_errors = [OperationalError("database is locked") for _ in range(len(groups.IncidentIMGroupService.SQLITE_LOCK_RETRY_DELAYS) + 1)]
+    monkeypatch.setattr(groups.IncidentIMGroupService, "_is_sqlite_lock_error", lambda exc: True)
+    monkeypatch.setattr(groups.IncidentIMGroupService, "_has_active_group", lambda incident_id: False)
+
+    with patch.object(groups.IncidentIMGroupService, "_create_once", side_effect=lock_errors) as create_once:
+        with pytest.raises(OperationalError) as raised:
+            groups.IncidentIMGroupService.create(
+                incident_id=1,
+                actor=Mock(),
+                channel_id=1,
+                group_name="重试耗尽测试群",
+                owner_username="operator",
+                continuous_sync_enabled=True,
+            )
+
+    assert raised.value is lock_errors[-1]
+    assert create_once.call_count == len(lock_errors)
+
+
+@pytest.mark.django_db
+def test_non_sqlite_lock_operational_error_is_reraised_without_retry(monkeypatch):
+    from apps.alerts.service.incident_im import groups
+
+    lock_error = OperationalError("database is locked")
+    monkeypatch.setattr(groups.connection, "vendor", "postgresql")
+
+    with patch.object(groups.IncidentIMGroupService, "_create_once", side_effect=lock_error) as create_once:
+        with pytest.raises(OperationalError) as raised:
+            groups.IncidentIMGroupService.create(
+                incident_id=1,
+                actor=Mock(),
+                channel_id=1,
+                group_name="非 SQLite 测试群",
+                owner_username="operator",
+                continuous_sync_enabled=True,
+            )
+
+    assert raised.value is lock_error
+    assert create_once.call_count == 1
 
 
 @pytest.mark.django_db

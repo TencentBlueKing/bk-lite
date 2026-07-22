@@ -12,83 +12,99 @@ from apps.system_mgmt.services.im_group_service import IMGroupChannelError, IMGr
 
 
 class IncidentIMGroupService:
-    SQLITE_WINNER_RECHECK_DELAYS = (0, 0.01, 0.02, 0.04, 0.08, 0.16)
+    SQLITE_LOCK_RETRY_DELAYS = (0.01, 0.02, 0.04, 0.08, 0.16)
 
     @classmethod
     def create(cls, *, incident_id, actor, channel_id, group_name, owner_username, continuous_sync_enabled):
-        try:
+        for retry_index in range(len(cls.SQLITE_LOCK_RETRY_DELAYS) + 1):
+            try:
+                return cls._create_once(
+                    incident_id=incident_id,
+                    actor=actor,
+                    channel_id=channel_id,
+                    group_name=group_name,
+                    owner_username=owner_username,
+                    continuous_sync_enabled=continuous_sync_enabled,
+                )
+            except IntegrityError as exc:
+                if cls._has_active_group(incident_id):
+                    raise IncidentIMError("IM_GROUP_ACTIVE_EXISTS", "Incident 已存在未解绑的协作群", 409) from exc
+                raise
+            except OperationalError as exc:
+                if not cls._is_sqlite_lock_error(exc):
+                    raise
+                if cls._has_active_group_after_sqlite_lock(incident_id):
+                    raise IncidentIMError("IM_GROUP_ACTIVE_EXISTS", "Incident 已存在未解绑的协作群", 409) from exc
+                if retry_index == len(cls.SQLITE_LOCK_RETRY_DELAYS):
+                    raise
+                sleep(cls.SQLITE_LOCK_RETRY_DELAYS[retry_index])
+
+    @classmethod
+    def _create_once(cls, *, incident_id, actor, channel_id, group_name, owner_username, continuous_sync_enabled):
+        with transaction.atomic():
+            incident = Incident.objects.select_for_update().filter(pk=incident_id).first()
+            if incident is None:
+                raise IncidentIMError("IM_INCIDENT_NOT_FOUND", "Incident 不存在", 404)
+            cls.require_operator(incident, actor)
+            if incident.status not in IncidentStatus.ACTIVATE_STATUS:
+                raise IncidentIMError("IM_INCIDENT_NOT_ACTIVE", "Incident 已关闭或已处理，无法创建协作群", 409)
+            if IncidentIMGroup.objects.filter(incident=incident, active_slot=1).exists():
+                raise IncidentIMError("IM_GROUP_ACTIVE_EXISTS", "Incident 已存在未解绑的协作群", 409)
+
+            channel = cls.require_ready_channel(actor, channel_id)
+            member_id_type = str(channel.external_receive_field or "").strip()
+            members = resolve_incident_members(incident, channel, member_id_type=member_id_type)
+            mapped_operators = {
+                member.username: member
+                for member in members
+                if member.role == IncidentIMMember.Role.OPERATOR
+                and member.mapping_status == IncidentIMMember.MappingStatus.MAPPED
+            }
+            if not mapped_operators:
+                raise IncidentIMError("IM_NO_MAPPED_OPERATOR", "至少需要一名已映射的负责人")
+            owner = mapped_operators.get(owner_username)
+            if owner is None:
+                raise IncidentIMError("IM_OWNER_NOT_MAPPED", "所选群主必须是已映射的负责人")
+
             with transaction.atomic():
-                incident = Incident.objects.select_for_update().filter(pk=incident_id).first()
-                if incident is None:
-                    raise IncidentIMError("IM_INCIDENT_NOT_FOUND", "Incident 不存在", 404)
-                cls.require_operator(incident, actor)
-                if incident.status not in IncidentStatus.ACTIVATE_STATUS:
-                    raise IncidentIMError("IM_INCIDENT_NOT_ACTIVE", "Incident 已关闭或已处理，无法创建协作群", 409)
-                if IncidentIMGroup.objects.filter(incident=incident, active_slot=1).exists():
-                    raise IncidentIMError("IM_GROUP_ACTIVE_EXISTS", "Incident 已存在未解绑的协作群", 409)
-
-                channel = cls.require_ready_channel(actor, channel_id)
-                member_id_type = str(channel.external_receive_field or "").strip()
-                members = resolve_incident_members(incident, channel, member_id_type=member_id_type)
-                mapped_operators = {
-                    member.username: member
-                    for member in members
-                    if member.role == IncidentIMMember.Role.OPERATOR
-                    and member.mapping_status == IncidentIMMember.MappingStatus.MAPPED
-                }
-                if not mapped_operators:
-                    raise IncidentIMError("IM_NO_MAPPED_OPERATOR", "至少需要一名已映射的负责人")
-                owner = mapped_operators.get(owner_username)
-                if owner is None:
-                    raise IncidentIMError("IM_OWNER_NOT_MAPPED", "所选群主必须是已映射的负责人")
-
-                with transaction.atomic():
-                    group_id = uuid.uuid4()
-                    group = IncidentIMGroup.objects.create(
-                        id=group_id,
-                        incident=incident,
-                        channel=channel,
-                        provider_key=channel.integration_instance.provider_key,
-                        channel_name_snapshot=channel.name,
-                        member_id_type=member_id_type,
-                        group_name=group_name,
-                        external_owner_id=owner.external_id,
-                        continuous_sync_enabled=continuous_sync_enabled,
-                        idempotency_key=f"bklite-{group_id.hex}",
-                    )
-                    IncidentIMMember.objects.bulk_create(
-                        [
-                            IncidentIMMember(
-                                group=group,
-                                username=member.username,
-                                role=member.role,
-                                external_id=member.external_id,
-                                external_id_type=member.external_id_type,
-                                mapping_status=member.mapping_status,
-                                sync_status=(
-                                    IncidentIMMember.SyncStatus.PENDING
-                                    if member.mapping_status == IncidentIMMember.MappingStatus.MAPPED
-                                    else IncidentIMMember.SyncStatus.WAITING
-                                ),
-                                last_error_code=member.error_code,
-                                last_error_message=member.error_message,
-                            )
-                            for member in members
-                        ]
-                    )
-                    enqueue_outbox(
-                        "incident_im_group.create",
-                        {"group_id": str(group.id)},
-                        f"incident-im-group:{group.id}:create",
-                    )
-        except IntegrityError as exc:
-            if cls._has_active_group(incident_id):
-                raise IncidentIMError("IM_GROUP_ACTIVE_EXISTS", "Incident 已存在未解绑的协作群", 409) from exc
-            raise
-        except OperationalError as exc:
-            if cls._is_sqlite_lock_error(exc) and cls._has_active_group_after_sqlite_lock(incident_id):
-                raise IncidentIMError("IM_GROUP_ACTIVE_EXISTS", "Incident 已存在未解绑的协作群", 409) from exc
-            raise
+                group_id = uuid.uuid4()
+                group = IncidentIMGroup.objects.create(
+                    id=group_id,
+                    incident=incident,
+                    channel=channel,
+                    provider_key=channel.integration_instance.provider_key,
+                    channel_name_snapshot=channel.name,
+                    member_id_type=member_id_type,
+                    group_name=group_name,
+                    external_owner_id=owner.external_id,
+                    continuous_sync_enabled=continuous_sync_enabled,
+                    idempotency_key=f"bklite-{group_id.hex}",
+                )
+                IncidentIMMember.objects.bulk_create(
+                    [
+                        IncidentIMMember(
+                            group=group,
+                            username=member.username,
+                            role=member.role,
+                            external_id=member.external_id,
+                            external_id_type=member.external_id_type,
+                            mapping_status=member.mapping_status,
+                            sync_status=(
+                                IncidentIMMember.SyncStatus.PENDING
+                                if member.mapping_status == IncidentIMMember.MappingStatus.MAPPED
+                                else IncidentIMMember.SyncStatus.WAITING
+                            ),
+                            last_error_code=member.error_code,
+                            last_error_message=member.error_message,
+                        )
+                        for member in members
+                    ]
+                )
+                enqueue_outbox(
+                    "incident_im_group.create",
+                    {"group_id": str(group.id)},
+                    f"incident-im-group:{group.id}:create",
+                )
         return group
 
     @staticmethod
@@ -97,16 +113,12 @@ class IncidentIMGroupService:
 
     @classmethod
     def _has_active_group_after_sqlite_lock(cls, incident_id):
-        for delay in cls.SQLITE_WINNER_RECHECK_DELAYS:
-            if delay:
-                sleep(delay)
-            try:
-                if cls._has_active_group(incident_id):
-                    return True
-            except OperationalError as exc:
-                if not cls._is_sqlite_lock_error(exc):
-                    raise
-        return False
+        try:
+            return cls._has_active_group(incident_id)
+        except OperationalError as exc:
+            if cls._is_sqlite_lock_error(exc):
+                return False
+            raise
 
     @staticmethod
     def _is_sqlite_lock_error(exc):
