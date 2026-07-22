@@ -38,6 +38,51 @@
       "verified_at": "2026-07-22",
       "official": true,
       "scope": "product-identity"
+    },
+    "cisco-products-mib-20250613": {
+      "vendor": "Cisco",
+      "url": "https://github.com/cisco/cisco-mibs/blob/main/v2/CISCO-PRODUCTS-MIB.my",
+      "document": "CISCO-PRODUCTS-MIB",
+      "version": "2025-06-13 revision",
+      "verified_at": "2026-07-22",
+      "official": true,
+      "scope": "product-identity"
+    },
+    "arista-products-mib-20260303": {
+      "vendor": "Arista",
+      "url": "https://www.arista.com/assets/data/docs/MIBS/ARISTA-PRODUCTS-MIB.txt",
+      "document": "ARISTA-PRODUCTS-MIB",
+      "version": "2026-03-03 revision",
+      "verified_at": "2026-07-22",
+      "official": true,
+      "scope": "product-identity"
+    },
+    "fortinet-fortigate-model-mibs-7-4-0": {
+      "vendor": "Fortinet",
+      "url": "https://docs.fortinet.com/document/fortigate/7.4.0/fortigate-mib-information-overview/792229/fortigate-model-mibs",
+      "document": "FortiGate model MIBs",
+      "version": "FortiOS 7.4.0",
+      "verified_at": "2026-07-22",
+      "official": true,
+      "scope": "product-identity"
+    },
+    "paloalto-pan-products-mib-pan-os-12-1": {
+      "vendor": "Palo Alto Networks",
+      "url": "https://docs.paloaltonetworks.com/content/dam/techdocs/en_US/zip/snmp-mib/pan-12-1-snmp-mib-modules.zip",
+      "document": "PAN-PRODUCT-MIB.my",
+      "version": "PAN-OS 12.1 MIB package (2025-01-22)",
+      "verified_at": "2026-07-22",
+      "official": true,
+      "scope": "product-identity"
+    },
+    "f5os-rseries-system-settings-1-2-0": {
+      "vendor": "F5",
+      "url": "https://techdocs.f5.com/en-us/f5os-a-1-2-0/f5-rseries-systems-administration-configuration/title-system-settings.html",
+      "document": "F5 rSeries Systems Administration and Configuration - System Settings",
+      "version": "F5OS-A 1.2.0",
+      "verified_at": "2026-07-22",
+      "official": true,
+      "scope": "product-identity"
     }
   },
   "coverage_gaps": {
@@ -49,7 +94,12 @@
     "Hillstone": ["firewall"],
     "DPtech": ["firewall"],
     "Topsec": ["firewall"],
-    "Venustech": ["firewall"]
+    "Venustech": ["firewall"],
+    "Juniper": ["switch", "router", "firewall"],
+    "HPE": ["switch"],
+    "Aruba": ["switch"],
+    "Extreme": ["switch"],
+    "Nokia": ["router"]
   },
   "coverage_gap_details": {
     "Huawei": {
@@ -107,6 +157,39 @@
       "device_types": ["firewall"],
       "reason": "官方产品入口可确认天清汉马 USG 产品，但未提供可匿名复核的产品身份 OID 或产品 MIB。",
       "url": "https://www.venustech.com.cn/",
+      "verified_at": "2026-07-22"
+    },
+    "Juniper": {
+      "device_types": ["switch", "router", "firewall"],
+      "reason": "官方 SNMP 文档确认 JUNIPER-CHASSIS-DEFINES-MIB 的 jnxProductName 是 sysObjectID 来源，但匿名公开正文未同时给出 EX/QFX、MX/PTX 与 SRX 具体型号的完整数字产品身份 OID；现有历史条目保持 legacy-compatible。",
+      "url": "https://www.juniper.net/documentation/us/en/software/junos/network-mgmt/topics/topic-map/junos-os-snmp-faqs.html",
+      "related_urls": [
+        "https://www.juniper.net/documentation/us/en/software/junos/network-mgmt/topics/topic-map/snmp-mibs-supported-by-junos-os-and-junos-os-evolved.html"
+      ],
+      "verified_at": "2026-07-22"
+    },
+    "HPE": {
+      "device_types": ["switch"],
+      "reason": "HPE Networking 支持门户的产品 MIB 下载需要产品选择或认证，匿名公开正文未提供可复核的完整交换机产品身份 OID。",
+      "url": "https://networkingsupport.hpe.com/",
+      "verified_at": "2026-07-22"
+    },
+    "Aruba": {
+      "device_types": ["switch"],
+      "reason": "Aruba Service Portal 可提供 AOS-CX/AOS-S MIB，但匿名公开入口未暴露具体交换机型号与完整 sysObjectID 的产品身份定义。",
+      "url": "https://networkingsupport.hpe.com/",
+      "verified_at": "2026-07-22"
+    },
+    "Extreme": {
+      "device_types": ["switch"],
+      "reason": "Extreme 官方支持入口需要登录或产品上下文才能取得产品 MIB，匿名公开正文未提供具体交换机型号的完整产品身份 OID。",
+      "url": "https://extreme-networks.my.site.com/ExtrSupportHome",
+      "verified_at": "2026-07-22"
+    },
+    "Nokia": {
+      "device_types": ["router"],
+      "reason": "Nokia 官方文档入口可确认 SR OS 产品与 SNMP 文档，但匿名公开正文未给出可逐条复核的 SR 系列具体型号完整 sysObjectID。",
+      "url": "https://documentation.nokia.com/",
       "verified_at": "2026-07-22"
     }
   }

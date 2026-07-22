@@ -21679,5 +21679,137 @@
     "brand": "Ruijie",
     "source_id": "ruijie-rg-wall-vpn-snmp",
     "verification": "verified"
+  },
+  "1.3.6.1.4.1.9.1.3086": {
+    "OID": "1.3.6.1.4.1.9.1.3086",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "CiscoSwitch",
+    "SecondTypeName": "Cisco交换机",
+    "model": "C9300X-48HXN",
+    "brand": "Cisco",
+    "source_id": "cisco-products-mib-20250613",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.9.1.3091": {
+    "OID": "1.3.6.1.4.1.9.1.3091",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "CiscoSwitch",
+    "SecondTypeName": "Cisco交换机",
+    "model": "Nexus 9348D-GX2A",
+    "brand": "Cisco",
+    "source_id": "cisco-products-mib-20250613",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.9.1.1935": {
+    "OID": "1.3.6.1.4.1.9.1.1935",
+    "FirstTypeId": "Router",
+    "FirstTypeName": "路由器",
+    "SecondTypeId": "CiscoRouter",
+    "SecondTypeName": "Cisco路由器",
+    "model": "ISR 4431",
+    "brand": "Cisco",
+    "source_id": "cisco-products-mib-20250613",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.9.1.3075": {
+    "OID": "1.3.6.1.4.1.9.1.3075",
+    "FirstTypeId": "Router",
+    "FirstTypeName": "路由器",
+    "SecondTypeId": "CiscoRouter",
+    "SecondTypeName": "Cisco路由器",
+    "model": "ASR 9903",
+    "brand": "Cisco",
+    "source_id": "cisco-products-mib-20250613",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.9.1.3053": {
+    "OID": "1.3.6.1.4.1.9.1.3053",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "CiscoFirewall",
+    "SecondTypeName": "Cisco防火墙",
+    "model": "Firepower 3110",
+    "brand": "Cisco",
+    "source_id": "cisco-products-mib-20250613",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.30065.1.3011.7050.2966.4.32.3282": {
+    "OID": "1.3.6.1.4.1.30065.1.3011.7050.2966.4.32.3282",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "AristaSwitch",
+    "SecondTypeName": "Arista交换机",
+    "model": "DCS-7050DX4-32S",
+    "brand": "Arista",
+    "source_id": "arista-products-mib-20260303",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.30065.1.2546.720.2974.48.3282": {
+    "OID": "1.3.6.1.4.1.30065.1.2546.720.2974.48.3282",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "AristaSwitch",
+    "SecondTypeName": "Arista交换机",
+    "model": "CCS-720DP-48S",
+    "brand": "Arista",
+    "source_id": "arista-products-mib-20260303",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.30065.1.3011.7304": {
+    "OID": "1.3.6.1.4.1.30065.1.3011.7304",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "AristaSwitch",
+    "SecondTypeName": "Arista交换机",
+    "model": "DCS-7304",
+    "brand": "Arista",
+    "source_id": "arista-products-mib-20260303",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.12356.101.1.1000": {
+    "OID": "1.3.6.1.4.1.12356.101.1.1000",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "FortinetFirewall",
+    "SecondTypeName": "Fortinet防火墙",
+    "model": "FortiGate 100F",
+    "brand": "Fortinet",
+    "source_id": "fortinet-fortigate-model-mibs-7-4-0",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.25461.2.3.54": {
+    "OID": "1.3.6.1.4.1.25461.2.3.54",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "PaloAltoNetworksFirewall",
+    "SecondTypeName": "Palo Alto Networks防火墙",
+    "model": "PA-440",
+    "brand": "Palo Alto Networks",
+    "source_id": "paloalto-pan-products-mib-pan-os-12-1",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.25461.2.3.29": {
+    "OID": "1.3.6.1.4.1.25461.2.3.29",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "PaloAltoNetworksFirewall",
+    "SecondTypeName": "Palo Alto Networks防火墙",
+    "model": "VM-Series",
+    "brand": "Palo Alto Networks",
+    "source_id": "paloalto-pan-products-mib-pan-os-12-1",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.12276.1.3.1.1": {
+    "OID": "1.3.6.1.4.1.12276.1.3.1.1",
+    "FirstTypeId": "loadbalance",
+    "FirstTypeName": "负载均衡设备",
+    "SecondTypeId": "F5loadbalancer",
+    "SecondTypeName": "F5负载均衡",
+    "model": "BIG-IP rSeries R5x00",
+    "brand": "F5",
+    "source_id": "f5os-rseries-system-settings-1-2-0",
+    "verification": "verified"
   }
 }

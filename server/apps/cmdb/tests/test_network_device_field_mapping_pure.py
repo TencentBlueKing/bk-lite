@@ -30,6 +30,64 @@ DOMESTIC_REPRESENTATIVE_OIDS = {
     "1.3.6.1.4.1.4881.250.160": ("Ruijie", "RG-WALL 160E", "Firewall"),
 }
 
+# 国际厂商官方产品身份来源可逐条复核的代表 OID。
+INTERNATIONAL_REPRESENTATIVE_OIDS = {
+    "1.3.6.1.4.1.9.1.3086": (
+        "Cisco",
+        "C9300X-48HXN",
+        "Switch",
+        "cisco-products-mib-20250613",
+    ),
+    "1.3.6.1.4.1.9.1.3091": (
+        "Cisco",
+        "Nexus 9348D-GX2A",
+        "Switch",
+        "cisco-products-mib-20250613",
+    ),
+    "1.3.6.1.4.1.9.1.1935": (
+        "Cisco",
+        "ISR 4431",
+        "Router",
+        "cisco-products-mib-20250613",
+    ),
+    "1.3.6.1.4.1.9.1.3075": (
+        "Cisco",
+        "ASR 9903",
+        "Router",
+        "cisco-products-mib-20250613",
+    ),
+    "1.3.6.1.4.1.9.1.3053": (
+        "Cisco",
+        "Firepower 3110",
+        "Firewall",
+        "cisco-products-mib-20250613",
+    ),
+    "1.3.6.1.4.1.30065.1.3011.7050.2966.4.32.3282": (
+        "Arista",
+        "DCS-7050DX4-32S",
+        "Switch",
+        "arista-products-mib-20260303",
+    ),
+    "1.3.6.1.4.1.12356.101.1.1000": (
+        "Fortinet",
+        "FortiGate 100F",
+        "Firewall",
+        "fortinet-fortigate-model-mibs-7-4-0",
+    ),
+    "1.3.6.1.4.1.25461.2.3.54": (
+        "Palo Alto Networks",
+        "PA-440",
+        "Firewall",
+        "paloalto-pan-products-mib-pan-os-12-1",
+    ),
+    "1.3.6.1.4.1.12276.1.3.1.1": (
+        "F5",
+        "BIG-IP rSeries R5x00",
+        "loadbalance",
+        "f5os-rseries-system-settings-1-2-0",
+    ),
+}
+
 
 def test_systemoid_contains_confirmed_network_oids():
     with open(SYSTEMOID, encoding="utf-8") as fp:
@@ -54,6 +112,26 @@ def test_domestic_representative_oids_are_exactly_verified():
         assert entry["brand"] == brand
         assert entry["model"] == model
         assert entry["FirstTypeId"] == first_type_id
+        assert entry["verification"] == "verified"
+
+
+def test_international_representative_oids_are_exactly_verified():
+    with open(SYSTEMOID, encoding="utf-8") as fp:
+        oid_map = json.load(fp)
+
+    for oid, (
+        brand,
+        model,
+        first_type_id,
+        source_id,
+    ) in INTERNATIONAL_REPRESENTATIVE_OIDS.items():
+        assert oid in oid_map, f"特征库缺少国际代表 OID {oid}"
+        entry = oid_map[oid]
+        assert entry["OID"] == oid
+        assert entry["brand"] == brand
+        assert entry["model"] == model
+        assert entry["FirstTypeId"] == first_type_id
+        assert entry["source_id"] == source_id
         assert entry["verification"] == "verified"
 
 

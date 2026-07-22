@@ -36,6 +36,58 @@ DOMESTIC_TASK_SOURCE_IDS = {
     "ruijie-rg-wall-vpn-snmp",
 }
 
+INTERNATIONAL_REQUIRED_FAMILIES = {
+    "Cisco": {"switch", "router", "firewall"},
+    "Juniper": {"switch", "router", "firewall"},
+    "HPE": {"switch"},
+    "Aruba": {"switch"},
+    "Arista": {"switch"},
+    "Fortinet": {"firewall"},
+    "Palo Alto Networks": {"firewall"},
+    "F5": {"loadbalance"},
+    "Extreme": {"switch"},
+    "Nokia": {"router"},
+}
+
+INTERNATIONAL_VERIFIED_OIDS = {
+    "1.3.6.1.4.1.9.1.3086": ("Cisco", "C9300X-48HXN", "switch"),
+    "1.3.6.1.4.1.9.1.3091": ("Cisco", "Nexus 9348D-GX2A", "switch"),
+    "1.3.6.1.4.1.9.1.1935": ("Cisco", "ISR 4431", "router"),
+    "1.3.6.1.4.1.9.1.3075": ("Cisco", "ASR 9903", "router"),
+    "1.3.6.1.4.1.9.1.3053": ("Cisco", "Firepower 3110", "firewall"),
+    "1.3.6.1.4.1.30065.1.3011.7050.2966.4.32.3282": (
+        "Arista",
+        "DCS-7050DX4-32S",
+        "switch",
+    ),
+    "1.3.6.1.4.1.30065.1.2546.720.2974.48.3282": (
+        "Arista",
+        "CCS-720DP-48S",
+        "switch",
+    ),
+    "1.3.6.1.4.1.30065.1.3011.7304": ("Arista", "DCS-7304", "switch"),
+    "1.3.6.1.4.1.12356.101.1.1000": ("Fortinet", "FortiGate 100F", "firewall"),
+    "1.3.6.1.4.1.25461.2.3.54": (
+        "Palo Alto Networks",
+        "PA-440",
+        "firewall",
+    ),
+    "1.3.6.1.4.1.25461.2.3.29": (
+        "Palo Alto Networks",
+        "VM-Series",
+        "firewall",
+    ),
+    "1.3.6.1.4.1.12276.1.3.1.1": ("F5", "BIG-IP rSeries R5x00", "loadbalance"),
+}
+
+INTERNATIONAL_TASK_SOURCE_IDS = {
+    "cisco-products-mib-20250613",
+    "arista-products-mib-20260303",
+    "fortinet-fortigate-model-mibs-7-4-0",
+    "paloalto-pan-products-mib-pan-os-12-1",
+    "f5os-rseries-system-settings-1-2-0",
+}
+
 
 def _write_json(path, value):
     path.write_text(json.dumps(value, ensure_ascii=False), encoding="utf-8")
@@ -371,6 +423,69 @@ def test_domestic_verified_entries_use_exact_official_product_identity_sources()
             model,
             device_type,
         )
+        assert entry.verification == "verified"
+
+
+def test_international_catalog_covers_or_declares_required_families():
+    entries = load_oid_catalog(SYSTEMOID_PATH, SYSTEMOID_METADATA_PATH)
+    metadata = json.loads(SYSTEMOID_METADATA_PATH.read_text(encoding="utf-8"))
+    actual = {}
+    for entry in entries.values():
+        if entry.verification == "verified":
+            actual.setdefault(entry.brand, set()).add(entry.device_type)
+    gaps = {
+        brand: set(device_types)
+        for brand, device_types in metadata.get("coverage_gaps", {}).items()
+    }
+
+    for brand, device_types in INTERNATIONAL_REQUIRED_FAMILIES.items():
+        verified_types = actual.get(brand, set())
+        gap_types = gaps.get(brand, set())
+        assert verified_types.isdisjoint(gap_types), (
+            f"{brand} 已 verified 类型仍被声明为缺口: "
+            f"{sorted(verified_types & gap_types)}"
+        )
+        missing = device_types - verified_types - gap_types
+        assert not missing, f"{brand} 缺少 verified 数据或显式缺口: {sorted(missing)}"
+
+
+def test_international_coverage_gaps_have_matching_official_audit_details():
+    metadata = json.loads(SYSTEMOID_METADATA_PATH.read_text(encoding="utf-8"))
+    gaps = metadata.get("coverage_gaps", {})
+    details = metadata.get("coverage_gap_details", {})
+
+    for brand in INTERNATIONAL_REQUIRED_FAMILIES:
+        if brand not in gaps:
+            continue
+        detail = details[brand]
+        assert gaps[brand]
+        assert set(detail["device_types"]) == set(gaps[brand])
+        assert detail["reason"].strip()
+        assert detail["url"].startswith("https://")
+        assert "checked_at" not in detail
+        assert detail["verified_at"] == "2026-07-22"
+
+
+def test_international_verified_entries_use_exact_official_product_identity_sources():
+    entries = load_oid_catalog(SYSTEMOID_PATH, SYSTEMOID_METADATA_PATH)
+    verified_oids = {
+        oid
+        for oid, entry in entries.items()
+        if entry.verification == "verified"
+        and entry.brand in INTERNATIONAL_REQUIRED_FAMILIES
+        and entry.source_id in INTERNATIONAL_TASK_SOURCE_IDS
+    }
+
+    assert verified_oids == set(INTERNATIONAL_VERIFIED_OIDS)
+
+    for oid, (brand, model, device_type) in INTERNATIONAL_VERIFIED_OIDS.items():
+        entry = entries[oid]
+        assert (entry.brand, entry.model, entry.device_type) == (
+            brand,
+            model,
+            device_type,
+        )
+        assert entry.source_id in INTERNATIONAL_TASK_SOURCE_IDS
         assert entry.verification == "verified"
 
 
