@@ -63,3 +63,45 @@
 ## 提交
 
 本报告与实现一并提交；最终提交 hash 以本任务完成时的 Git 记录为准。
+
+## 最终审查收口
+
+- 锁释放 Redis 异常不再静默成功：核心返回 `warning/redis_error`；后台核心
+  抛出 `RedisError` 同样记录脱敏 `reason=redis_error`，非 Redis 异常仍为
+  `cleanup_failed`。RED 为 3 项失败，GREEN 为 7 项通过。
+- 批准计划的五个 Python 文件已在 `agents/stargazer` cwd 用主仓
+  `server/.venv` 实际格式化并通过 Black、isort、flake8（均退出 0）。
+- 正式 `make lint` 仍是既有环境基线失败：`pre-commit run --all-files` 后报
+  `make: pre-commit: No such file or directory`，本次未扩大范围安装依赖。
+
+### 覆盖率
+
+```bash
+PYTHONPATH=/Users/windyzhao/Documents/Canway/weops_X/cmdb/bk-lite/server/.venv/lib/python3.12/site-packages \
+COVERAGE_FILE=/tmp/stargazer-task3-coverage \
+./.venv/bin/python -m coverage run \
+  --source=core.task_queue_startup_cleanup,core.task_queue \
+  -m pytest tests/test_task_queue_startup_cleanup.py \
+  tests/test_task_queue_cleanup.py tests/test_task_queue_cleanup_cli.py \
+  tests/test_collect_multicred.py \
+  tests/test_host_collector.py::TestWorkerRunningFlag \
+  tests/test_host_collector.py::TestHostRemoteRuntime -q
+```
+
+该命令及后续 `coverage report -m` 的结果为：启动清理核心
+`core/task_queue_startup_cleanup.py` 90%，满足 75% 门槛；生命周期相关的
+历史大模块 `core/task_queue.py` 57%，其未覆盖部分主要是 enqueue、状态查询
+和 host remote processing 的既有路径。上述 159 项相关回归仍覆盖本次启动
+生命周期、结果映射和 Redis 异常改动；两文件合计 70%，不将其误报为整体 75%。
+
+以任务基线 `b727334ef` 的零上下文 diff 为准，使用 `coverage json` 的
+`executed_lines ∪ missing_lines` 仅统计新增的可执行行，差异行覆盖率为
+`290/338 (85.80%)`：`core/task_queue.py` 为 `97/124 (78.23%)`，
+`core/task_queue_startup_cleanup.py` 为 `193/214 (90.19%)`。未覆盖的新增
+可执行行如下，均为未触发的防御或异常分支；不影响该任务已覆盖的 Redis
+错误与启动清理主流程：
+
+- `core/task_queue.py`: 59、158、211、241-242、248-249、263-266、357-358、
+  414、484、493、515、560、564、569、613、627、631、675、703、717、734。
+- `core/task_queue_startup_cleanup.py`: 91、93、97、99、103、109、111、169、
+  197-198、208-209、276、281-282、376、391-392、399-401。
