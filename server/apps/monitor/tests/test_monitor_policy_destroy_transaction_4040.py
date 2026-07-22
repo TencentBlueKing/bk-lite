@@ -45,7 +45,7 @@ BASE = "/api/v1/monitor"
 
 
 @pytest.fixture
-def superuser_client(db):
+def superuser_client(db, mocker):
     """Create a superuser-authenticated APIClient to bypass permission rules."""
     from rest_framework.test import APIClient
 
@@ -61,6 +61,10 @@ def superuser_client(db):
     )
     user.is_superuser = True
     user.save(update_fields=["is_superuser"])
+    mocker.patch(
+        "apps.core.utils.current_team_scope.SystemMgmt.get_authorized_groups_scoped",
+        return_value={"result": True, "data": [1]},
+    )
     client = APIClient()
     client.force_authenticate(user=user)
     client.cookies["current_team"] = "1"
@@ -165,9 +169,10 @@ class TestDestroySuccessPath:
     def test_destroy_policy_with_no_alerts_and_no_baseline(
         self, superuser_client, stub_notifier, stub_baseline_service
     ):
-        """无告警 / 无 baseline / 无 PeriodicTask / 无 PolicyOrganization 的 destroy 仍能成功,
+        """无告警 / 无 baseline / 无 PeriodicTask 的 destroy 仍能成功,
         notifier 不应被调用(无 alert 需要 push)"""
         policy = _make_policy(name="p_4040_empty")
+        PolicyOrganization.objects.create(policy=policy, organization=1)
         resp = superuser_client.delete(f"{BASE}/api/monitor_policy/{policy.id}/")
         assert resp.status_code == 200
         assert resp.json().get("result") is True
@@ -286,6 +291,7 @@ class TestDestroyNoAlertsNoNatsPush:
         self, superuser_client, stub_notifier, stub_baseline_service
     ):
         policy = _make_policy(name="p_4040_noalert")
+        PolicyOrganization.objects.create(policy=policy, organization=1)
         # alert 已经是 closed(不属于要被 close 的范围)
         MonitorAlert.objects.create(
             policy_id=policy.id,

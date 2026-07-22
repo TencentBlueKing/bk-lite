@@ -7,17 +7,26 @@ from types import SimpleNamespace
 
 import pytest
 
-from apps.monitor.models.monitor_object import (
-    MonitorObject,
-    MonitorObjectType,
-    MonitorInstance,
-)
 from apps.monitor.models.monitor_metrics import Metric, MetricGroup
-from apps.monitor.models.monitor_policy import MonitorPolicy
+from apps.monitor.models.monitor_object import MonitorInstance, MonitorInstanceOrganization, MonitorObject, MonitorObjectType
+from apps.monitor.models.monitor_policy import MonitorPolicy, PolicyOrganization
 from apps.monitor.models.plugin import MonitorPlugin
 from apps.monitor.nats import monitor as nm
 
 pytestmark = pytest.mark.django_db
+
+
+@pytest.fixture(autouse=True)
+def authorized_current_team_scope(mocker):
+    """既有 handler 规格默认提供一个经 Task1 RPC 认证的当前组织。"""
+    return mocker.patch(
+        "apps.monitor.nats.monitor.SystemMgmt.get_authorized_groups_scoped",
+        side_effect=lambda actor_context, include_children=False: {
+            "result": True,
+            "data": [actor_context["current_team"]],
+            "is_superuser": False,
+        },
+    )
 
 
 class TestMonitorObjectsHandler:
@@ -327,16 +336,34 @@ class TestQueryMonitorAlertSegments:
 
     def test_returns_alert_segments(self, mocker):
         from datetime import datetime, timezone
+
         from apps.monitor.models import MonitorAlert
         obj = MonitorObject.objects.create(name="QMASObj2", level="base")
-        MonitorInstance.objects.create(
+        instance = MonitorInstance.objects.create(
             id="('h1',)", name="h1", monitor_object=obj, is_active=True, is_deleted=False,
         )
+        MonitorInstanceOrganization.objects.create(
+            monitor_instance=instance,
+            organization=1,
+        )
+        policy = MonitorPolicy.objects.create(
+            monitor_object=obj,
+            name="segment-policy",
+            algorithm="max",
+            query_condition={},
+            source={},
+            group_by=[],
+        )
+        PolicyOrganization.objects.create(policy=policy, organization=1)
         MonitorAlert.objects.create(
-            policy_id=1, monitor_instance_id="('h1',)", status="new", level="critical",
+            policy_id=policy.id, monitor_instance_id="('h1',)", status="new", level="critical",
             start_event_time=datetime(2026, 1, 1, 12, tzinfo=timezone.utc),
         )
         mocker.patch("apps.monitor.nats.monitor.get_permission_rules", return_value={"team": [1]})
+        mocker.patch(
+            "apps.monitor.nats.monitor.get_permissions_rules",
+            return_value={"data": {"all": {"team": [1]}}, "team": [1]},
+        )
         mocker.patch(
             "apps.monitor.nats.monitor.permission_filter",
             side_effect=lambda model, perm, **kw: model.objects.all(),
@@ -349,21 +376,41 @@ class TestQueryMonitorAlertSegments:
 
     def test_paginates_before_building_segments(self, mocker):
         from datetime import datetime, timezone
+
         from apps.monitor.models import MonitorAlert
 
         obj = MonitorObject.objects.create(name="QMASObj3", level="base")
-        MonitorInstance.objects.create(
+        instance = MonitorInstance.objects.create(
             id="('h1',)", name="h1", monitor_object=obj, is_active=True, is_deleted=False,
         )
+        MonitorInstanceOrganization.objects.create(
+            monitor_instance=instance,
+            organization=1,
+        )
+        policies = []
         for idx, hour in enumerate([12, 11, 10], start=1):
+            policy = MonitorPolicy.objects.create(
+                monitor_object=obj,
+                name=f"paged-segment-policy-{idx}",
+                algorithm="max",
+                query_condition={},
+                source={},
+                group_by=[],
+            )
+            PolicyOrganization.objects.create(policy=policy, organization=1)
+            policies.append(policy)
             MonitorAlert.objects.create(
-                policy_id=idx,
+                policy_id=policy.id,
                 monitor_instance_id="('h1',)",
                 status="new",
                 level="critical",
                 start_event_time=datetime(2026, 1, 1, hour, tzinfo=timezone.utc),
             )
         mocker.patch("apps.monitor.nats.monitor.get_permission_rules", return_value={"team": [1]})
+        mocker.patch(
+            "apps.monitor.nats.monitor.get_permissions_rules",
+            return_value={"data": {"all": {"team": [1]}}, "team": [1]},
+        )
         mocker.patch(
             "apps.monitor.nats.monitor.permission_filter",
             side_effect=lambda model, perm, **kw: model.objects.all(),
@@ -386,7 +433,7 @@ class TestQueryMonitorAlertSegments:
         assert out["data"]["page"] == 2
         assert out["data"]["page_size"] == 1
         assert len(out["data"]["items"]) == 1
-        assert out["data"]["items"][0]["policy_id"] == 2
+        assert out["data"]["items"][0]["policy_id"] == policies[1].id
         assert build_segment.call_count == 1
 
 
@@ -406,39 +453,71 @@ class TestBuildMonitorAlertSegment:
         assert seg["id"] == 1 and seg["level"] == "critical"
 
 
-class TestScopeCountQueryset:
-    def test_superuser_returns_all(self):
-        obj = MonitorObject.objects.create(name="ScopeObj", level="base")
-        MonitorInstance.objects.create(id="('s1',)", name="s1", monitor_object=obj)
-        qs = nm._scope_count_queryset(
-            MonitorInstance.objects.all(), is_superuser=True, team=None,
-            org_field="monitorinstanceorganization__organization",
+class TestNatsPermissionContext:
+    @pytest.mark.parametrize("team", [None, True, 1.0, "01", 0, -1])
+    def test_invalid_current_team_fails_closed(self, team):
+        _, _, _, error = nm._get_nats_permission_context(
+            {
+                "user": SimpleNamespace(username="u", domain="domain.com"),
+                "team": team,
+            },
+            "policy",
         )
-        assert qs.count() == 1
 
-    def test_non_superuser_no_team_empty(self):
-        obj = MonitorObject.objects.create(name="ScopeObj2", level="base")
-        MonitorInstance.objects.create(id="('s2',)", name="s2", monitor_object=obj)
-        qs = nm._scope_count_queryset(
-            MonitorInstance.objects.all(), is_superuser=False, team=None,
-            org_field="monitorinstanceorganization__organization",
+        assert error["result"] is False
+        assert error["data"] == {}
+
+    def test_string_actor_uses_explicit_domain(self, mocker):
+        get_permissions = mocker.patch(
+            "apps.monitor.nats.monitor.get_permissions_rules",
+            return_value={"data": {}, "team": [1]},
         )
-        assert qs.count() == 0
+
+        _, scope_ids, _, error = nm._get_nats_permission_context(
+            {
+                "user": "tenant-user",
+                "domain": "tenant.example",
+                "team": 1,
+                "include_children": False,
+            },
+            "policy",
+        )
+
+        assert error is None
+        assert scope_ids == frozenset({1})
+        actor = get_permissions.call_args.args[0]
+        assert actor.username == "tenant-user"
+        assert actor.domain == "tenant.example"
 
 
 class TestGetMonitorStatistics:
-    def test_superuser_full_counts(self):
+    def test_superuser_counts_stay_in_current_team(self, mocker):
         obj = MonitorObject.objects.create(name="StatObj", level="base", is_visible=True)
         MonitorObjectType.objects.create(id="stattype", name="t")
-        MonitorInstance.objects.create(id="('i1',)", name="i1", monitor_object=obj, is_active=True)
-        MonitorInstance.objects.create(id="('i2',)", name="i2", monitor_object=obj, is_active=False)
+        active = MonitorInstance.objects.create(id="('i1',)", name="i1", monitor_object=obj, is_active=True)
+        inactive = MonitorInstance.objects.create(id="('i2',)", name="i2", monitor_object=obj, is_active=False)
+        MonitorInstanceOrganization.objects.create(monitor_instance=active, organization=1)
+        MonitorInstanceOrganization.objects.create(monitor_instance=inactive, organization=1)
         MonitorPlugin.objects.create(name="StatPlugin", is_pre=True)
-        MonitorPolicy.objects.create(
+        policy = MonitorPolicy.objects.create(
             monitor_object=obj, name="sp", algorithm="max",
             query_condition={}, source={}, group_by=[], enable=True,
             threshold=[{"method": ">", "value": 1, "level": "warning"}],
         )
-        out = nm.get_monitor_statistics(user_info={"is_superuser": True})
+        PolicyOrganization.objects.create(policy=policy, organization=1)
+        mocker.patch(
+            "apps.monitor.nats.monitor.get_permissions_rules",
+            return_value={"data": {"all": {"team": [1]}}, "team": [1]},
+        )
+
+        out = nm.get_monitor_statistics(
+            user_info={
+                "user": SimpleNamespace(username="admin", domain="domain.com"),
+                "team": 1,
+                "is_superuser": True,
+                "include_children": False,
+            }
+        )
         assert out["result"] is True
         data = out["data"]
         assert data["monitor_object_total"] >= 1
@@ -450,11 +529,9 @@ class TestGetMonitorStatistics:
         assert data["policy_enabled"] == 1
         assert data["policy_threshold"] == 1
 
-    def test_non_superuser_no_team_zeros_tenant_counts(self):
+    def test_missing_team_fails_closed(self):
         obj = MonitorObject.objects.create(name="StatObj2", level="base")
         MonitorInstance.objects.create(id="('z1',)", name="z1", monitor_object=obj)
         out = nm.get_monitor_statistics(user_info={"is_superuser": False, "team": None})
-        data = out["data"]
-        # 平台级目录仍计数，但租户实例归零
-        assert data["monitor_instance_total"] == 0
-        assert data["policy_total"] == 0
+        assert out["result"] is False
+        assert out["data"] == {}

@@ -1,11 +1,25 @@
 import json
 import types
 
+from apps.core.utils.current_team_scope import CurrentTeamDataScope
 from apps.monitor.models.collect_config import CollectConfig
-from apps.monitor.models.monitor_object import MonitorInstance, MonitorObject
+from apps.monitor.models.monitor_object import MonitorInstance, MonitorInstanceOrganization, MonitorObject
 from apps.monitor.models.plugin import MonitorPlugin
 from apps.monitor.utils.dimension import build_safe_instance_id
 from apps.monitor.views import monitor_instance as monitor_instance_view
+
+
+def _superuser_actor_context():
+    scope = CurrentTeamDataScope(1, frozenset({1}), False, "tester", "default", True)
+    return {
+        "is_superuser": True,
+        "current_team": 1,
+        "username": "tester",
+        "domain": "default",
+        "group_list": [],
+        "include_children": False,
+        "data_scope": scope,
+    }
 
 
 def test_remove_monitor_instance_refreshes_flow_cloud_regions(db, monkeypatch):
@@ -698,11 +712,12 @@ def test_effective_plugins_action_normalizes_clean_instance_id(db, monkeypatch):
         display_name="Host",
         instance_id_keys=["instance_id"],
     )
-    MonitorInstance.objects.create(
+    instance = MonitorInstance.objects.create(
         id="('host-a',)",
         name="Host A",
         monitor_object=monitor_object,
     )
+    MonitorInstanceOrganization.objects.create(monitor_instance=instance, organization=1)
 
     service_calls = {}
     expected = [{"id": 12, "name": "HostRemote"}]
@@ -714,18 +729,11 @@ def test_effective_plugins_action_normalizes_clean_instance_id(db, monkeypatch):
             return expected
 
     monkeypatch.setattr(monitor_instance_view, "MonitorEffectivePluginService", StubService)
-    # 仅 mock actor_context(超管,跳过组织权限),保留真实 _ensure_operate_instances 以触发存在性查询。
+    # 仅 mock actor_context，保留真实 _ensure_operate_instances 以触发存在性与 current_team 查询。
     monkeypatch.setattr(
         monitor_instance_view,
         "_build_actor_context",
-        lambda request: {
-            "is_superuser": True,
-            "current_team": 1,
-            "username": "tester",
-            "domain": "default",
-            "group_list": [],
-            "include_children": False,
-        },
+        lambda request: _superuser_actor_context(),
     )
 
     request = types.SimpleNamespace(
@@ -769,18 +777,11 @@ def test_effective_plugins_action_allows_derived_instance_without_row(db, monkey
             return expected
 
     monkeypatch.setattr(monitor_instance_view, "MonitorEffectivePluginService", StubService)
-    # 超管 + 真实 _ensure_operate_instances，触发存在性查询路径（无行不再抛异常）。
+    # 超管 + 真实 _ensure_operate_instances，触发 current_team 路径（无行不再抛异常）。
     monkeypatch.setattr(
         monitor_instance_view,
         "_build_actor_context",
-        lambda request: {
-            "is_superuser": True,
-            "current_team": 1,
-            "username": "tester",
-            "domain": "default",
-            "group_list": [],
-            "include_children": False,
-        },
+        lambda request: _superuser_actor_context(),
     )
 
     request = types.SimpleNamespace(
