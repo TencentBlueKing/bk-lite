@@ -1,3 +1,4 @@
+import hashlib
 import json
 
 import pytest
@@ -247,12 +248,21 @@ def test_load_oid_catalog_rejects_whitespace_padded_brand_alias(tmp_path, brand)
         load_oid_catalog(catalog, metadata)
 
 
-def test_production_catalog_is_valid_and_preserves_legacy_oid_set():
+def test_production_catalog_is_valid_and_preserves_exact_legacy_oid_set():
     raw = json.loads(SYSTEMOID_PATH.read_text(encoding="utf-8"))
 
     entries = load_oid_catalog(SYSTEMOID_PATH, SYSTEMOID_METADATA_PATH)
+    ordered_oids = sorted(
+        raw, key=lambda oid: tuple(int(part) for part in oid.split("."))
+    )
+    oid_sequence_digest = hashlib.sha256(
+        "\n".join(ordered_oids).encode("ascii")
+    ).hexdigest()
 
-    assert len(raw) >= 1966
+    assert len(raw) == 1966, "历史 SOID 目录必须恰有 1,966 个 OID"
+    assert oid_sequence_digest == "0b3de86672a357d2e64fe192f66325af8dce1bbcdd9e419072ec7570976864e3", (
+        "历史 SOID 数值排序序列已变化（ASCII 编码、LF 分隔、无末尾换行）"
+    )
     assert len(entries) == len(raw)
     assert "1.3.6.1.4.1.9.1.1208" in entries
     assert "1.3.6.1.4.1.2011.2.23.968" in entries
