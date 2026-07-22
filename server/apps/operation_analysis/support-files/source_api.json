@@ -561,5 +561,47 @@
     "chart_type": [],
     "params": [],
     "field_schema": []
+},
+{
+    "name": "CMDB 模型分类列表",
+    "desc": "返回当前用户可见的 CMDB 模型分类，供参数动态选项使用",
+    "rest_api": "cmdb/get_model_classification_options",
+    "tag": ["cmdb"],
+    "chart_type": [],
+    "params": [],
+    "field_schema": [
+        {"key": "classification_id", "title": "模型分类ID", "value_type": "string"},
+        {"key": "classification_name", "title": "模型分类名称", "value_type": "string"}
+    ]
+},
+{
+    "name": "分类模型实例数量",
+    "desc": "返回指定模型分类下各模型的实例数量，过滤零实例并按数量降序",
+    "rest_api": "cmdb/get_classification_model_instance_counts",
+    "tag": ["cmdb"],
+    "chart_type": ["multiValue"],
+    "params": [
+        {
+            "name": "classification_id",
+            "type": "string",
+            "value": "",
+            "alias_name": "模型分类",
+            "filterType": "params",
+            "required": true,
+            "inputConfig": {
+                "control": "select",
+                "optionsSource": {
+                    "type": "dynamic",
+                    "sourceRef": {"type": "rest_api", "value": "cmdb/get_model_classification_options"},
+                    "valueField": "classification_id",
+                    "labelField": "classification_name"
+                }
+            }
+        }
+    ],
+    "field_schema": [
+        {"key": "label", "title": "模型名称", "value_type": "string"},
+        {"key": "value", "title": "实例数量", "value_type": "number"}
+    ]
 }
 ]

@@ -269,6 +269,7 @@
     "updateDataSourceSuccess": "更新数据源成功",
     "required": "必填",
     "singleValue": "单值",
+    "multiValue": "指标列表",
     "operationFailed": "操作失败",
     "table": "表格",
     "topN": "排行榜",
@@ -328,6 +329,7 @@
       "widgetFrameBare": "无框",
       "widgets": {
         "single": "单值卡",
+        "multiValue": "指标列表",
         "gauge": "仪表盘",
         "line": "折线图",
         "bar": "柱状图",
@@ -338,6 +340,7 @@
       },
       "widgetDescriptions": {
         "single": "展示核心 KPI、告警总数、在线率等关键数值",
+        "multiValue": "按行展示多个指标名称及其数值",
         "gauge": "展示健康度、利用率、达成率等单指标状态",
         "line": "展示总体趋势和关键时间序列",
         "bar": "展示分类统计和对比分析",

@@ -51,6 +51,7 @@ import WidgetErrorState from "@/app/ops-analysis/components/widgetErrorState";
 import { useWidgetHeaderRuntimeSlot } from "@/app/ops-analysis/components/widgetHeaderRuntimeSlot";
 import ComponentParamSwitchControl from "@/app/ops-analysis/components/componentParamSwitchControl";
 import { getDateRangeTimezone } from "@/app/ops-analysis/utils/dateRange";
+import { validateMultiValueData } from "@/app/ops-analysis/utils/multiValueData";
 
 const validateTopNData = (
   data: unknown,
@@ -604,6 +605,9 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
           return validateGaugeData(data, config);
         case "eventTable":
           return validateEventTableData(data);
+        case "multiValue":
+          const result = validateMultiValueData(data, errorMessage);
+          return { isValid: result.isValid, message: result.errorMessage };
         case "table":
           return { isValid: true };
         default:
