@@ -304,12 +304,23 @@ def test_install_controller_nodes_limits_legacy_rows_to_task_owner_or_superuser(
     denied = InstallerService.install_controller_nodes(
         task.id,
         authorized_nodes=Node.objects.filter(id=node.id),
-        request_user=type("User", (), {"username": "other", "is_superuser": False})(),
+        request_user=type(
+            "User", (), {"username": "other", "domain": "domain.com", "is_superuser": False}
+        )(),
+    )
+    same_username_other_domain = InstallerService.install_controller_nodes(
+        task.id,
+        authorized_nodes=Node.objects.filter(id=node.id),
+        request_user=type(
+            "User", (), {"username": "owner", "domain": "other.com", "is_superuser": False}
+        )(),
     )
     owner = InstallerService.install_controller_nodes(
         task.id,
         authorized_nodes=Node.objects.filter(id=node.id),
-        request_user=type("User", (), {"username": "owner", "is_superuser": False})(),
+        request_user=type(
+            "User", (), {"username": "owner", "domain": "domain.com", "is_superuser": False}
+        )(),
     )
     superuser = InstallerService.install_controller_nodes(
         task.id,
@@ -318,6 +329,7 @@ def test_install_controller_nodes_limits_legacy_rows_to_task_owner_or_superuser(
     )
 
     assert denied == []
+    assert same_username_other_domain == []
     assert [item["ip"] for item in owner] == [node.ip]
     assert [item["ip"] for item in superuser] == [node.ip]
 

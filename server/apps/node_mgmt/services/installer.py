@@ -262,18 +262,28 @@ class InstallerService:
         return task_obj.id
 
     @staticmethod
-    def install_controller_nodes(task_id, authorized_nodes=None, request_user=None):
-        """获取控制器安装节点信息"""
+    def get_authorized_controller_task_node_queryset(task_id, authorized_nodes=None, request_user=None):
         task_nodes = ControllerTaskNode.objects.filter(task_id=task_id).select_related("task").order_by("id")
         if authorized_nodes is not None and not getattr(request_user, "is_superuser", False):
             authorized_node_ids = list(authorized_nodes.values_list("id", flat=True))
             username = getattr(request_user, "username", "") if request_user is not None else ""
+            domain = getattr(request_user, "domain", "") if request_user is not None else ""
             legacy_owner_filter = Q(pk__in=[])
-            if username:
-                legacy_owner_filter = Q(node_id="") & Q(task__created_by=username)
+            if username and domain:
+                legacy_owner_filter = Q(node_id="") & Q(task__created_by=username, task__domain=domain)
             task_nodes = task_nodes.filter(
                 (~Q(node_id="") & Q(node_id__in=authorized_node_ids)) | legacy_owner_filter
             )
+        return task_nodes
+
+    @staticmethod
+    def install_controller_nodes(task_id, authorized_nodes=None, request_user=None):
+        """获取控制器安装节点信息"""
+        task_nodes = InstallerService.get_authorized_controller_task_node_queryset(
+            task_id,
+            authorized_nodes=authorized_nodes,
+            request_user=request_user,
+        )
 
         result = []
         for task_node in task_nodes:
