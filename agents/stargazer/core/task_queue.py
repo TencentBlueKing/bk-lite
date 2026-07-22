@@ -19,6 +19,11 @@ from arq.jobs import Job
 from sanic import Sanic
 from sanic.log import logger
 from core.redis_config import REDIS_CONFIG, print_redis_config
+from core.task_queue_startup_cleanup import (
+    StartupCleanupConfig,
+    StartupCleanupConfigError,
+    cleanup_startup_orphan_markers,
+)
 
 
 async def _is_host_remote_callback_pending(task_id: str) -> bool:
@@ -93,6 +98,7 @@ class TaskQueue:
         self.app = app
         self.pool: Optional[ArqRedis] = None
         self._health_check_task: Optional[asyncio.Task] = None
+        self._startup_cleanup_task: Optional[asyncio.Task] = None
         self._is_healthy = False
 
         # 监控指标
@@ -117,8 +123,43 @@ class TaskQueue:
             self._health_check_task = asyncio.create_task(self._health_check_loop())
             logger.info("Task queue initialized with health check")
 
+        @self.app.listener("after_server_start")
+        async def start_orphan_cleanup(app, loop):
+            try:
+                config = StartupCleanupConfig.from_env()
+            except StartupCleanupConfigError:
+                logger.warning(
+                    "event=task_queue_startup_cleanup status=warning "
+                    "reason=invalid_config"
+                )
+                return
+            if not config.enabled:
+                logger.info(
+                    "event=task_queue_startup_cleanup status=skipped "
+                    "reason=disabled"
+                )
+                return
+            self._startup_cleanup_task = asyncio.create_task(
+                self._run_startup_cleanup(config),
+                name="stargazer-startup-orphan-cleanup",
+            )
+
         @self.app.listener('after_server_stop')
         async def stop_task_queue(app, loop):
+            if self._startup_cleanup_task:
+                self._startup_cleanup_task.cancel()
+                try:
+                    await self._startup_cleanup_task
+                except asyncio.CancelledError:
+                    pass
+                except Exception as error:
+                    logger.warning(
+                        "event=task_queue_startup_cleanup status=warning "
+                        "reason=stop_failed exception_type=%s",
+                        type(error).__name__,
+                    )
+                finally:
+                    self._startup_cleanup_task = None
             # 停止健康检查
             if self._health_check_task:
                 self._health_check_task.cancel()
@@ -128,6 +169,36 @@ class TaskQueue:
                     pass
             await self.close()
             logger.info("Task queue closed")
+
+    async def _run_startup_cleanup(self, config: StartupCleanupConfig) -> None:
+        """执行启动孤儿标记清理；任何失败都不能影响 Sanic 启动。"""
+        try:
+            result = await cleanup_startup_orphan_markers(self.pool, config)
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            logger.warning(
+                "event=task_queue_startup_cleanup status=warning "
+                "reason=cleanup_failed exception_type=%s",
+                type(error).__name__,
+            )
+            return
+
+        log = logger.warning if result.status == "warning" else logger.info
+        reason = f" reason={result.reason}" if result.reason else ""
+        log(
+            "event=task_queue_startup_cleanup status=%s%s "
+            "scanned=%d candidates=%d deleted=%d preserved=%d errors=%d "
+            "truncated=%s",
+            result.status,
+            reason,
+            result.scanned,
+            result.candidates,
+            result.deleted,
+            result.preserved,
+            result.errors,
+            result.truncated,
+        )
 
     async def connect(self):
         """连接到Redis - 使用统一配置"""

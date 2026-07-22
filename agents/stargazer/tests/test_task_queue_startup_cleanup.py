@@ -1,14 +1,19 @@
 import asyncio
 import fnmatch
 import json
+from unittest.mock import AsyncMock
 
 import pytest
 from redis.exceptions import ResponseError
+from sanic import Sanic
 
+import core.task_queue as task_queue_module
+from core.task_queue import TaskQueue
 from core.task_queue_startup_cleanup import (
     LOCK_KEY,
     StartupCleanupConfig,
     StartupCleanupConfigError,
+    StartupCleanupResult,
     cleanup_startup_orphan_markers,
 )
 
@@ -505,3 +510,166 @@ async def test_redis_connection_error_is_not_misclassified_as_marker_error(fake_
         await cleanup_startup_orphan_markers(
             fake_redis, StartupCleanupConfig(confirm_delay_seconds=0)
         )
+
+
+def _listener(app, event, name):
+    return next(
+        item.listener
+        for item in app._future_listeners
+        if item.event == event and item.listener.__name__ == name
+    )
+
+
+def test_task_queue_registers_non_blocking_startup_cleanup_listener():
+    app = Sanic("StartupCleanupLifecycle")
+    queue = TaskQueue(app)
+
+    listeners = {
+        (listener.event, listener.listener.__name__)
+        for listener in app._future_listeners
+    }
+
+    assert ("after_server_start", "start_orphan_cleanup") in listeners
+    assert ("after_server_stop", "stop_task_queue") in listeners
+    assert queue._startup_cleanup_task is None
+
+
+@pytest.mark.asyncio
+async def test_start_listener_schedules_without_waiting(monkeypatch):
+    blocker = asyncio.Event()
+    app = Sanic("StartupCleanupNonBlocking")
+    queue = TaskQueue(app)
+    queue.pool = AsyncMock()
+
+    async def cleanup(*_args, **_kwargs):
+        await blocker.wait()
+
+    monkeypatch.setattr(
+        task_queue_module, "cleanup_startup_orphan_markers", cleanup
+    )
+
+    await _listener(app, "after_server_start", "start_orphan_cleanup")(app, None)
+
+    assert queue._startup_cleanup_task is not None
+    assert not queue._startup_cleanup_task.done()
+
+    await _listener(app, "after_server_stop", "stop_task_queue")(app, None)
+
+
+@pytest.mark.asyncio
+async def test_start_listener_does_not_create_task_when_cleanup_is_disabled(
+    monkeypatch,
+):
+    monkeypatch.setenv("TASK_QUEUE_STARTUP_ORPHAN_CLEANUP_ENABLED", "false")
+    app = Sanic("StartupCleanupDisabled")
+    queue = TaskQueue(app)
+
+    await _listener(app, "after_server_start", "start_orphan_cleanup")(app, None)
+
+    assert queue._startup_cleanup_task is None
+
+
+@pytest.mark.asyncio
+async def test_start_listener_invalid_config_is_fail_open_and_redacted(
+    monkeypatch, caplog
+):
+    app = Sanic("StartupCleanupInvalidConfig")
+    queue = TaskQueue(app)
+
+    def invalid_config():
+        raise StartupCleanupConfigError("job-123 redis://:password@redis/0")
+
+    monkeypatch.setattr(
+        task_queue_module.StartupCleanupConfig,
+        "from_env",
+        staticmethod(invalid_config),
+    )
+
+    await _listener(app, "after_server_start", "start_orphan_cleanup")(app, None)
+
+    assert queue._startup_cleanup_task is None
+    assert "event=task_queue_startup_cleanup status=warning" in caplog.text
+    assert "reason=invalid_config" in caplog.text
+    assert "job-123" not in caplog.text
+    assert "password" not in caplog.text
+    assert "redis://" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_startup_cleanup_background_error_is_redacted(monkeypatch, caplog):
+    app = Sanic("StartupCleanupRedactedFailure")
+    queue = TaskQueue(app)
+
+    async def cleanup(*_args, **_kwargs):
+        raise RuntimeError("job-123 redis://:password@redis/0")
+
+    monkeypatch.setattr(
+        task_queue_module, "cleanup_startup_orphan_markers", cleanup
+    )
+
+    await _listener(app, "after_server_start", "start_orphan_cleanup")(app, None)
+    await queue._startup_cleanup_task
+
+    assert "event=task_queue_startup_cleanup status=warning" in caplog.text
+    assert "reason=cleanup_failed" in caplog.text
+    assert "exception_type=RuntimeError" in caplog.text
+    assert "job-123" not in caplog.text
+    assert "password" not in caplog.text
+    assert "redis://" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_startup_cleanup_success_log_contains_only_safe_result_counts(
+    monkeypatch, caplog
+):
+    app = Sanic("StartupCleanupSafeSuccessLog")
+    queue = TaskQueue(app)
+
+    async def cleanup(*_args, **_kwargs):
+        return StartupCleanupResult(
+            status="success",
+            reason=None,
+            scanned=3,
+            candidates=2,
+            deleted=1,
+            preserved=1,
+            errors=0,
+            truncated=False,
+        )
+
+    monkeypatch.setattr(
+        task_queue_module, "cleanup_startup_orphan_markers", cleanup
+    )
+
+    await _listener(app, "after_server_start", "start_orphan_cleanup")(app, None)
+    await queue._startup_cleanup_task
+
+    assert "event=task_queue_startup_cleanup status=success" in caplog.text
+    assert "scanned=3 candidates=2 deleted=1 preserved=1 errors=0" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_stop_listener_cancels_and_awaits_startup_cleanup_before_closing_pool(
+    monkeypatch,
+):
+    started = asyncio.Event()
+    blocker = asyncio.Event()
+    app = Sanic("StartupCleanupStop")
+    queue = TaskQueue(app)
+    queue.pool = AsyncMock()
+
+    async def cleanup(*_args, **_kwargs):
+        started.set()
+        await blocker.wait()
+
+    monkeypatch.setattr(
+        task_queue_module, "cleanup_startup_orphan_markers", cleanup
+    )
+    await _listener(app, "after_server_start", "start_orphan_cleanup")(app, None)
+    await started.wait()
+    cleanup_task = queue._startup_cleanup_task
+
+    await _listener(app, "after_server_stop", "stop_task_queue")(app, None)
+
+    assert cleanup_task.cancelled()
+    assert queue.pool is None
