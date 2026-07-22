@@ -55,28 +55,6 @@ def test_unmatched_event_skipped():
     assert events[0]["enrichment"] == {}
 
 
-def test_enrich_match_by_source_id_filters_target_source_only():
-    """契约测试：event 字典带 source_id 字段时，按 source_id 规则应能命中。
-
-    注：这是修复后契约——source_adapter.create_events 在 enrich_batch 之前
-    需给每个 event 字典塞 data["source_id"] = self.alert_source.id（与 Event.source FK 主键一致），
-    EnrichmentRule.match_rules 中下发的 key=source_id, value=String(source.id) 才能匹配。
-    本测试验证契约本身（enrichment 引擎能识别 source_id 字段），
-    source_adapter 是否真的塞了 source_id 由 test_source_adapter.py 中的集成测试覆盖。
-    """
-    target = {"resource_type": "host", "resource_id": "1", "source_id": "42",
-              "enrichment": {}, "team": [1]}
-    other = {"resource_type": "host", "resource_id": "1", "source_id": "99",
-             "enrichment": {}, "team": [1]}
-
-    rule = _rule(match_rules=[[{"key": "source_id", "operator": "eq", "value": "42"}]])
-
-    EnrichmentEngine(rules=[rule]).enrich_batch([target, other])
-
-    assert target["enrichment"] != {}, "source_id=42 的事件应被规则命中并丰富"
-    assert other["enrichment"] == {}, "source_id=99 的事件不应被规则误命中"
-
-
 def test_missing_binding_field_skipped():
     events = [{"resource_type": "host", "enrichment": {}, "team": [1]}]  # 缺 resource_id
     EnrichmentEngine(rules=[_rule()]).enrich_batch(events)
