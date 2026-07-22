@@ -95,6 +95,8 @@
     "DPtech": ["firewall"],
     "Topsec": ["firewall"],
     "Venustech": ["firewall"],
+    "NSFOCUS": ["firewall"],
+    "Qi-Anxin": ["firewall"],
     "Juniper": ["switch", "router", "firewall"],
     "HPE": ["switch"],
     "Aruba": ["switch"],
@@ -157,6 +159,18 @@
       "device_types": ["firewall"],
       "reason": "官方产品入口可确认天清汉马 USG 产品，但未提供可匿名复核的产品身份 OID 或产品 MIB。",
       "url": "https://www.venustech.com.cn/",
+      "verified_at": "2026-07-22"
+    },
+    "NSFOCUS": {
+      "device_types": ["firewall"],
+      "reason": "官方产品支持入口提供软件升级和售后支持，但匿名公开内容未提供可复核的防火墙产品级 sysObjectID 或产品 MIB；不依据企业号或第三方 OID 列表猜测型号。",
+      "url": "https://www.nsfocus.com.cn/html/6/62/",
+      "verified_at": "2026-07-22"
+    },
+    "Qi-Anxin": {
+      "device_types": ["firewall"],
+      "reason": "官方产品文档入口可按产品检索支持资料，但匿名公开内容未提供可复核的防火墙产品级 sysObjectID 或产品 MIB；不依据企业号或第三方 OID 列表猜测型号。",
+      "url": "https://www.qianxin.com/support/product",
       "verified_at": "2026-07-22"
     },
     "Juniper": {

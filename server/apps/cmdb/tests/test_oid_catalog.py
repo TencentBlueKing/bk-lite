@@ -28,6 +28,8 @@ DOMESTIC_REQUIRED_FAMILIES = {
     "DPtech": {"firewall"},
     "Topsec": {"firewall"},
     "Venustech": {"firewall"},
+    "NSFOCUS": {"firewall"},
+    "Qi-Anxin": {"firewall"},
 }
 
 DOMESTIC_VERIFIED_OIDS = {
@@ -90,6 +92,8 @@ def _metadata():
         "catalog_version": "2026.07.22",
         "allowed_device_types": ["switch", "router", "firewall", "loadbalance"],
         "brand_aliases": {"华为": "Huawei"},
+        "coverage_gaps": {},
+        "coverage_gap_details": {},
         "sources": {
             "huawei-product-mib": {
                 "vendor": "Huawei",
@@ -518,6 +522,140 @@ def test_load_oid_catalog_rejects_legacy_source_missing_audit_fields(tmp_path):
         "scope": "legacy-catalog",
     }
     _write_json(catalog, {oid: entry})
+    _write_json(metadata, metadata_data)
+
+    with pytest.raises(OidCatalogError, match="OID_CATALOG_INVALID"):
+        load_oid_catalog(catalog, metadata)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("vendor", ""),
+        ("document", []),
+        ("version", None),
+        ("verified_at", "   "),
+        ("verified_at", "2026-02-30"),
+        ("verified_at", "22-07-2026"),
+        ("scope", 1),
+        ("official", 1),
+        ("url", []),
+        ("url", ""),
+        ("url", "ftp://vendor.example/mib"),
+    ],
+    ids=[
+        "blank-vendor",
+        "non-string-document",
+        "non-string-version",
+        "blank-verified-at",
+        "invalid-calendar-date",
+        "non-iso-date",
+        "non-string-scope",
+        "non-boolean-official",
+        "non-string-url",
+        "blank-verified-url",
+        "non-http-verified-url",
+    ],
+)
+def test_load_oid_catalog_rejects_malformed_source_audit_values(tmp_path, field, value):
+    catalog = tmp_path / "systemoid.json"
+    metadata = tmp_path / "systemoid.meta.json"
+    oid = "1.3.6.1.4.1.2011.2.23.968"
+    metadata_data = _metadata()
+    metadata_data["sources"]["huawei-product-mib"][field] = value
+    _write_json(catalog, {oid: _entry(oid)})
+    _write_json(metadata, metadata_data)
+
+    with pytest.raises(OidCatalogError, match="OID_CATALOG_INVALID"):
+        load_oid_catalog(catalog, metadata)
+
+
+def test_load_oid_catalog_allows_empty_url_for_audited_legacy_source(tmp_path):
+    catalog = tmp_path / "systemoid.json"
+    metadata = tmp_path / "systemoid.meta.json"
+    oid = "1.3.6.1.4.1.2011.2.23.968"
+    entry = _entry(oid)
+    entry.update(source_id="legacy-catalog-v1", verification="legacy-compatible")
+    metadata_data = _metadata()
+    metadata_data["sources"]["legacy-catalog-v1"] = {
+        "vendor": "Multiple",
+        "url": "",
+        "document": "BK-Lite legacy systemoid.json",
+        "version": "pre-2026",
+        "verified_at": "2026-07-22",
+        "official": False,
+        "scope": "legacy-catalog",
+    }
+    _write_json(catalog, {oid: entry})
+    _write_json(metadata, metadata_data)
+
+    assert load_oid_catalog(catalog, metadata)[oid].verification == "legacy-compatible"
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "both-missing",
+        "gaps-missing",
+        "details-missing",
+        "gaps-not-object",
+        "details-not-object",
+        "missing-detail",
+        "orphan-detail",
+        "invalid-device-type",
+        "mismatched-device-types",
+        "blank-reason",
+        "non-http-url",
+        "blank-verified-at",
+        "invalid-verified-at",
+        "malformed-related-urls",
+    ],
+)
+def test_load_oid_catalog_rejects_malformed_coverage_gap_metadata(tmp_path, case):
+    catalog = tmp_path / "systemoid.json"
+    metadata = tmp_path / "systemoid.meta.json"
+    oid = "1.3.6.1.4.1.2011.2.23.968"
+    metadata_data = _metadata()
+    metadata_data["coverage_gaps"] = {"Huawei": ["switch"]}
+    metadata_data["coverage_gap_details"] = {
+        "Huawei": {
+            "device_types": ["switch"],
+            "reason": "官方入口未提供产品级 sysObjectID。",
+            "url": "https://support.huawei.example/",
+            "verified_at": "2026-07-22",
+        }
+    }
+    if case == "both-missing":
+        metadata_data.pop("coverage_gaps")
+        metadata_data.pop("coverage_gap_details")
+    elif case == "gaps-missing":
+        metadata_data.pop("coverage_gaps")
+    elif case == "details-missing":
+        metadata_data.pop("coverage_gap_details")
+    elif case == "gaps-not-object":
+        metadata_data["coverage_gaps"] = []
+    elif case == "details-not-object":
+        metadata_data["coverage_gap_details"] = []
+    elif case == "missing-detail":
+        metadata_data["coverage_gap_details"] = {}
+    elif case == "orphan-detail":
+        metadata_data["coverage_gaps"] = {}
+    elif case == "invalid-device-type":
+        metadata_data["coverage_gaps"]["Huawei"] = ["ap"]
+        metadata_data["coverage_gap_details"]["Huawei"]["device_types"] = ["ap"]
+    elif case == "mismatched-device-types":
+        metadata_data["coverage_gap_details"]["Huawei"]["device_types"] = ["router"]
+    elif case == "blank-reason":
+        metadata_data["coverage_gap_details"]["Huawei"]["reason"] = " "
+    elif case == "non-http-url":
+        metadata_data["coverage_gap_details"]["Huawei"]["url"] = "support portal"
+    elif case == "blank-verified-at":
+        metadata_data["coverage_gap_details"]["Huawei"]["verified_at"] = ""
+    elif case == "invalid-verified-at":
+        metadata_data["coverage_gap_details"]["Huawei"]["verified_at"] = "2026-02-30"
+    else:
+        metadata_data["coverage_gap_details"]["Huawei"]["related_urls"] = [1]
+    _write_json(catalog, {oid: _entry(oid)})
     _write_json(metadata, metadata_data)
 
     with pytest.raises(OidCatalogError, match="OID_CATALOG_INVALID"):

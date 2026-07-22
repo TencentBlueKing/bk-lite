@@ -1,6 +1,7 @@
 import json
 import re
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import Mapping
 
@@ -74,6 +75,13 @@ class OidSyncResult:
     updated_entries: tuple[OidSyncUpdate, ...]
 
 
+def _is_iso_date(value: str) -> bool:
+    try:
+        return value == date.fromisoformat(value).isoformat()
+    except (TypeError, ValueError):
+        return False
+
+
 def _reject_duplicate_keys(pairs):
     result = {}
     for key, value in pairs:
@@ -88,6 +96,43 @@ def _read_json(path: Path):
         return json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_reject_duplicate_keys)
     except (OSError, json.JSONDecodeError) as exc:
         raise OidCatalogError(f"OID_CATALOG_INVALID: {path.name}") from exc
+
+
+def _validate_coverage_gaps(metadata: dict) -> None:
+    if "coverage_gaps" not in metadata or "coverage_gap_details" not in metadata:
+        raise OidCatalogError("OID_CATALOG_INVALID: coverage gaps")
+    gaps = metadata["coverage_gaps"]
+    details = metadata["coverage_gap_details"]
+    if not isinstance(gaps, dict) or not isinstance(details, dict) or set(gaps) != set(details):
+        raise OidCatalogError("OID_CATALOG_INVALID: coverage gaps")
+
+    for brand, device_types in gaps.items():
+        detail = details[brand]
+        if (
+            not isinstance(brand, str)
+            or not brand.strip()
+            or not isinstance(device_types, list)
+            or not device_types
+            or any(not isinstance(item, str) or item not in ALLOWED_DEVICE_TYPES for item in device_types)
+            or len(device_types) != len(set(device_types))
+            or not isinstance(detail, dict)
+        ):
+            raise OidCatalogError(f"OID_CATALOG_INVALID: coverage gap {brand!r}")
+
+        detail_types = detail.get("device_types")
+        audit_fields = (detail.get("reason"), detail.get("verified_at"))
+        url = detail.get("url")
+        related_urls = detail.get("related_urls", [])
+        if (
+            detail_types != device_types
+            or any(not isinstance(value, str) or not value.strip() for value in audit_fields)
+            or not _is_iso_date(detail.get("verified_at"))
+            or not isinstance(url, str)
+            or not url.startswith(("http://", "https://"))
+            or not isinstance(related_urls, list)
+            or any(not isinstance(item, str) or not item.startswith(("http://", "https://")) for item in related_urls)
+        ):
+            raise OidCatalogError(f"OID_CATALOG_INVALID: coverage gap detail {brand!r}")
 
 
 def load_oid_catalog(catalog_path: Path = SYSTEMOID_PATH, metadata_path: Path = SYSTEMOID_METADATA_PATH,) -> dict[str, OidCatalogEntry]:
@@ -116,9 +161,18 @@ def load_oid_catalog(catalog_path: Path = SYSTEMOID_PATH, metadata_path: Path = 
         or set(allowed_types) != ALLOWED_DEVICE_TYPES
     ):
         raise OidCatalogError("OID_CATALOG_INVALID: allowed device types")
+    _validate_coverage_gaps(metadata)
     for source_id, source in sources.items():
         if not isinstance(source, dict) or not REQUIRED_SOURCE_FIELDS.issubset(source):
             raise OidCatalogError(f"OID_CATALOG_INVALID: source audit fields {source_id}")
+        required_text_fields = ("vendor", "document", "version", "verified_at", "scope")
+        if (
+            any(not isinstance(source[field], str) or not source[field].strip() for field in required_text_fields)
+            or type(source["official"]) is not bool
+            or not isinstance(source["url"], str)
+            or not _is_iso_date(source["verified_at"])
+        ):
+            raise OidCatalogError(f"OID_CATALOG_INVALID: source audit values {source_id}")
 
     for key, raw in raw_catalog.items():
         oid = raw.get("OID") if isinstance(raw, dict) else None
@@ -151,7 +205,7 @@ def load_oid_catalog(catalog_path: Path = SYSTEMOID_PATH, metadata_path: Path = 
             raise OidCatalogError(f"OID_CATALOG_INVALID: source for {oid}")
         if verification == "verified":
             source = sources[source_id]
-            if source["official"] is not True or source["scope"] != "product-identity":
+            if source["official"] is not True or source["scope"] != "product-identity" or not source["url"].startswith(("http://", "https://")):
                 raise OidCatalogError(f"OID_CATALOG_INVALID: verified source for {oid}")
             if raw["model"].strip() == oid:
                 raise OidCatalogError(f"OID_CATALOG_INVALID: verified model for {oid}")
