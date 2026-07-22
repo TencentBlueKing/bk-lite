@@ -145,6 +145,14 @@ def get_desired_usernames(incident) -> set[str]:
     return set(_collect_desired_roles(incident))
 
 
+def get_desired_operator_usernames(incident) -> set[str]:
+    return {
+        username
+        for username, role in _collect_desired_roles(incident).items()
+        if role == IncidentIMMember.Role.OPERATOR
+    }
+
+
 def _collect_desired_roles(incident) -> dict[str, str]:
     roles = {}
     for username in incident.operator or []:

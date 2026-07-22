@@ -5,7 +5,7 @@ from django.utils import timezone
 
 from apps.alerts.constants.constants import IncidentStatus
 from apps.alerts.models import AlertOutbox, IncidentIMGroup, IncidentIMMember
-from apps.alerts.service.incident_im.members import reconcile_member_snapshots
+from apps.alerts.service.incident_im.members import get_desired_usernames, reconcile_member_snapshots
 from apps.alerts.service.outbox import enqueue_outbox
 
 
@@ -117,7 +117,12 @@ def resume_group_for_reopened_incident(incident_id):
             return group
 
         should_resume = group.resume_after_reopen
-        has_member_gap = group.members.exclude(sync_status=IncidentIMMember.SyncStatus.JOINED).exists()
+        desired_usernames = get_desired_usernames(group.incident)
+        has_member_gap = (
+            group.members.filter(username__in=desired_usernames)
+            .exclude(sync_status=IncidentIMMember.SyncStatus.JOINED)
+            .exists()
+        )
         group.status = (
             IncidentIMGroup.Status.ACTIVE_PARTIAL
             if has_member_gap

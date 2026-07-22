@@ -3,7 +3,10 @@ from django.utils import timezone
 
 from apps.alerts.constants.constants import IncidentStatus
 from apps.alerts.models import IncidentIMGroup, IncidentIMMember
-from apps.alerts.service.incident_im.members import get_desired_usernames
+from apps.alerts.service.incident_im.members import (
+    get_desired_operator_usernames,
+    get_desired_usernames,
+)
 from apps.alerts.service.outbox import enqueue_outbox
 from apps.system_mgmt.services.im_group_service import IMGroupRuntimeService
 
@@ -28,6 +31,34 @@ def deliver_create_group(group_id) -> None:
             should_create = False
         else:
             should_create = True
+            desired_usernames = get_desired_usernames(group.incident)
+            members = list(
+                group.members.filter(
+                    username__in=desired_usernames,
+                    mapping_status=IncidentIMMember.MappingStatus.MAPPED,
+                    sync_status=IncidentIMMember.SyncStatus.PENDING,
+                ).order_by("id")
+            )
+            current_operator_usernames = get_desired_operator_usernames(group.incident)
+            owner_is_current = any(
+                member.username in current_operator_usernames
+                and member.external_id == group.external_owner_id
+                for member in members
+            )
+            if not owner_is_current:
+                group.status = IncidentIMGroup.Status.CREATE_FAILED
+                group.current_stage = IncidentIMGroup.Stage.COMPLETED
+                group.last_error_code = "IM_OWNER_NOT_CURRENT_OPERATOR"
+                group.last_error_message = "建群负责人已不再是当前 Incident 负责人"
+                group.save(
+                    update_fields=[
+                        "status",
+                        "current_stage",
+                        "last_error_code",
+                        "last_error_message",
+                    ]
+                )
+                return
             group.status = IncidentIMGroup.Status.CREATING
             group.current_stage = IncidentIMGroup.Stage.CREATING_CHAT
             group.save(update_fields=["status", "current_stage"])
@@ -36,13 +67,6 @@ def deliver_create_group(group_id) -> None:
         _enqueue_add_members(group_id)
         return
 
-    members = list(
-        IncidentIMMember.objects.filter(
-            group_id=group_id,
-            mapping_status=IncidentIMMember.MappingStatus.MAPPED,
-            sync_status__in=[IncidentIMMember.SyncStatus.PENDING, IncidentIMMember.SyncStatus.FAILED],
-        ).order_by("id")
-    )
     member_ids = _initial_member_ids(group, members)
     result = IMGroupRuntimeService.execute(
         group.channel,
@@ -214,9 +238,12 @@ def deliver_summary(group_id) -> None:
         locked = _lock_group(group_id)
         if locked is None or locked.status == IncidentIMGroup.Status.UNLINKED:
             return
-        has_member_gaps = locked.members.exclude(
-            sync_status=IncidentIMMember.SyncStatus.JOINED
-        ).exists()
+        desired_usernames = get_desired_usernames(locked.incident)
+        has_member_gaps = (
+            locked.members.filter(username__in=desired_usernames)
+            .exclude(sync_status=IncidentIMMember.SyncStatus.JOINED)
+            .exists()
+        )
         locked.current_stage = IncidentIMGroup.Stage.COMPLETED
         locked.status = (
             IncidentIMGroup.Status.ACTIVE

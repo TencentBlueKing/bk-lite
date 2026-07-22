@@ -453,6 +453,8 @@ def test_reopen_restores_partial_when_member_gap_exists_and_enqueues(group):
     group.pause_reason = IncidentIMGroup.PauseReason.INCIDENT_CLOSED
     group.resume_after_reopen = True
     group.save(update_fields=["status", "pause_reason", "resume_after_reopen"])
+    group.incident.collaborators = ["bob"]
+    group.incident.save(update_fields=["collaborators"])
     IncidentIMMember.objects.create(
         group=group,
         username="bob",
@@ -468,6 +470,37 @@ def test_reopen_restores_partial_when_member_gap_exists_and_enqueues(group):
     group.refresh_from_db()
     assert group.status == IncidentIMGroup.Status.ACTIVE_PARTIAL
     assert AlertOutbox.objects.filter(kind="incident_im_group.reconcile").exists()
+
+
+@pytest.mark.django_db
+def test_reopen_ignores_removed_unjoined_history_when_restoring_active(group):
+    group.status = IncidentIMGroup.Status.PAUSED
+    group.pause_reason = IncidentIMGroup.PauseReason.INCIDENT_CLOSED
+    group.resume_after_reopen = False
+    group.save(update_fields=["status", "pause_reason", "resume_after_reopen"])
+    IncidentIMMember.objects.create(
+        group=group,
+        username="alice",
+        role=IncidentIMMember.Role.OPERATOR,
+        external_id="ou_alice",
+        external_id_type="open_id",
+        mapping_status=IncidentIMMember.MappingStatus.MAPPED,
+        sync_status=IncidentIMMember.SyncStatus.JOINED,
+    )
+    IncidentIMMember.objects.create(
+        group=group,
+        username="former",
+        role=IncidentIMMember.Role.COLLABORATOR,
+        external_id="ou_former",
+        external_id_type="open_id",
+        mapping_status=IncidentIMMember.MappingStatus.MAPPED,
+        sync_status=IncidentIMMember.SyncStatus.PENDING,
+    )
+
+    resume_group_for_reopened_incident(group.incident_id)
+
+    group.refresh_from_db()
+    assert group.status == IncidentIMGroup.Status.ACTIVE
 
 
 @pytest.mark.django_db

@@ -3,7 +3,8 @@ from unittest import mock
 
 import pytest
 
-from apps.alerts.models import Incident, IncidentIMGroup, IncidentIMMember
+from apps.alerts.models import AlertOutbox, Incident, IncidentIMGroup, IncidentIMMember
+from apps.alerts.service.outbox import deliver_outbox_record
 from apps.system_mgmt.models import IMNotificationChannel, IntegrationInstance
 from apps.system_mgmt.providers.runtime import CapabilityExecutionResult
 
@@ -103,6 +104,8 @@ def test_create_retry_with_existing_chat_id_never_calls_create(group):
 def test_create_sends_owner_first_and_at_most_fifty_members(group):
     from apps.alerts.service.incident_im.delivery import deliver_create_group
 
+    group.incident.collaborators = [f"user-{index}" for index in range(60)]
+    group.incident.save(update_fields=["collaborators"])
     IncidentIMMember.objects.bulk_create(
         [
             IncidentIMMember(
@@ -119,7 +122,7 @@ def test_create_sends_owner_first_and_at_most_fifty_members(group):
     )
     IncidentIMMember.objects.create(
         group=group,
-        username="owner",
+        username="alice",
         role=IncidentIMMember.Role.OPERATOR,
         external_id="ou_alice",
         external_id_type="open_id",
@@ -137,6 +140,51 @@ def test_create_sends_owner_first_and_at_most_fifty_members(group):
     assert kwargs["operation"] == "create_group"
     assert kwargs["member_ids"][0] == "ou_alice"
     assert len(kwargs["member_ids"]) == 50
+
+
+@pytest.mark.django_db
+def test_create_group_skips_member_removed_after_outbox_was_queued(group, pending_members):
+    from apps.alerts.service.incident_im.delivery import deliver_create_group
+
+    group.incident.collaborators = []
+    group.incident.save(update_fields=["collaborators"])
+    result = CapabilityExecutionResult.success_result("created", payload={"chat_id": "oc_1"})
+    with mock.patch(
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
+        return_value=result,
+    ) as execute, mock.patch("apps.alerts.service.incident_im.delivery.enqueue_outbox"):
+        deliver_create_group(group.id)
+
+    assert execute.call_args.kwargs["member_ids"] == [pending_members[0].external_id]
+    pending_members[1].refresh_from_db()
+    assert pending_members[1].sync_status == IncidentIMMember.SyncStatus.PENDING
+
+
+@pytest.mark.django_db
+def test_create_group_fails_closed_when_snapshotted_owner_is_no_longer_current_operator(
+    group, pending_members
+):
+    group.incident.operator = ["bob"]
+    group.incident.collaborators = []
+    group.incident.save(update_fields=["operator", "collaborators"])
+    outbox = AlertOutbox.objects.create(
+        kind="incident_im_group.create",
+        payload={"group_id": str(group.id)},
+        idempotency_key=f"create-owner-mismatch-{uuid.uuid4().hex}",
+    )
+    with mock.patch(
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute"
+    ) as execute:
+        assert deliver_outbox_record(outbox.id) is True
+
+    execute.assert_not_called()
+    group.refresh_from_db()
+    outbox.refresh_from_db()
+    assert group.status == IncidentIMGroup.Status.CREATE_FAILED
+    assert group.current_stage == IncidentIMGroup.Stage.COMPLETED
+    assert group.last_error_code == "IM_OWNER_NOT_CURRENT_OPERATOR"
+    assert group.last_error_message == "建群负责人已不再是当前 Incident 负责人"
+    assert outbox.status == AlertOutbox.Status.DELIVERED
 
 
 @pytest.mark.django_db
@@ -448,6 +496,8 @@ def test_summary_keeps_group_partial_for_every_non_joined_member_state(group, ga
 
     group.external_chat_id = "oc_1"
     group.save(update_fields=["external_chat_id"])
+    group.incident.collaborators = [f"gap-{gap_status}"]
+    group.incident.save(update_fields=["collaborators"])
     IncidentIMMember.objects.create(
         group=group,
         username=f"gap-{gap_status}",
@@ -466,6 +516,41 @@ def test_summary_keeps_group_partial_for_every_non_joined_member_state(group, ga
 
     group.refresh_from_db()
     assert group.status == "active_partial"
+
+
+@pytest.mark.django_db
+def test_summary_ignores_removed_unjoined_history_when_computing_active_status(group):
+    from apps.alerts.service.incident_im.delivery import deliver_summary
+
+    group.external_chat_id = "oc_1"
+    group.save(update_fields=["external_chat_id"])
+    IncidentIMMember.objects.create(
+        group=group,
+        username="alice",
+        role=IncidentIMMember.Role.OPERATOR,
+        mapping_status=IncidentIMMember.MappingStatus.MAPPED,
+        external_id="ou_alice",
+        external_id_type="open_id",
+        sync_status=IncidentIMMember.SyncStatus.JOINED,
+    )
+    IncidentIMMember.objects.create(
+        group=group,
+        username="former",
+        role=IncidentIMMember.Role.COLLABORATOR,
+        mapping_status=IncidentIMMember.MappingStatus.MAPPED,
+        external_id="ou_former",
+        external_id_type="open_id",
+        sync_status=IncidentIMMember.SyncStatus.FAILED,
+    )
+    result = CapabilityExecutionResult.success_result("sent")
+    with mock.patch(
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
+        return_value=result,
+    ):
+        deliver_summary(group.id)
+
+    group.refresh_from_db()
+    assert group.status == IncidentIMGroup.Status.ACTIVE
 
 
 @pytest.mark.django_db
