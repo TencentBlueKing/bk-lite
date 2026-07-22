@@ -31,6 +31,11 @@ DOMESTIC_VERIFIED_OIDS = {
     "1.3.6.1.4.1.4881.250.1601": ("Ruijie", "RG-WALL 1600S", "firewall"),
 }
 
+DOMESTIC_TASK_SOURCE_IDS = {
+    "h3c-msr-router-rfc1213-r6749",
+    "ruijie-rg-wall-vpn-snmp",
+}
+
 
 def _write_json(path, value):
     path.write_text(json.dumps(value, ensure_ascii=False), encoding="utf-8")
@@ -320,7 +325,13 @@ def test_domestic_catalog_covers_or_declares_required_families():
     }
 
     for brand, device_types in DOMESTIC_REQUIRED_FAMILIES.items():
-        missing = device_types - actual.get(brand, set()) - gaps.get(brand, set())
+        verified_types = actual.get(brand, set())
+        gap_types = gaps.get(brand, set())
+        assert verified_types.isdisjoint(gap_types), (
+            f"{brand} 已 verified 类型仍被声明为缺口: "
+            f"{sorted(verified_types & gap_types)}"
+        )
+        missing = device_types - verified_types - gap_types
         assert not missing, f"{brand} 缺少 verified 数据或显式缺口: {sorted(missing)}"
 
 
@@ -337,28 +348,41 @@ def test_domestic_coverage_gaps_have_matching_official_audit_details():
         assert set(detail["device_types"]) == set(device_types)
         assert detail["reason"].strip()
         assert detail["url"].startswith("https://")
-        assert detail["checked_at"] == "2026-07-22"
+        assert "checked_at" not in detail
+        assert detail["verified_at"] == "2026-07-22"
 
 
 def test_domestic_verified_entries_use_exact_official_product_identity_sources():
     entries = load_oid_catalog(SYSTEMOID_PATH, SYSTEMOID_METADATA_PATH)
-    metadata = json.loads(SYSTEMOID_METADATA_PATH.read_text(encoding="utf-8"))
     verified_oids = {
-        oid for oid, entry in entries.items() if entry.verification == "verified"
+        oid
+        for oid, entry in entries.items()
+        if entry.verification == "verified"
+        and entry.brand in DOMESTIC_REQUIRED_FAMILIES
+        and entry.source_id in DOMESTIC_TASK_SOURCE_IDS
     }
 
     assert verified_oids == set(DOMESTIC_VERIFIED_OIDS)
 
     for oid, (brand, model, device_type) in DOMESTIC_VERIFIED_OIDS.items():
         entry = entries[oid]
-        source = metadata["sources"][entry.source_id]
         assert (entry.brand, entry.model, entry.device_type) == (
             brand,
             model,
             device_type,
         )
         assert entry.verification == "verified"
-        assert source["vendor"] == brand
+
+
+def test_all_verified_entries_use_auditable_official_product_identity_sources():
+    entries = load_oid_catalog(SYSTEMOID_PATH, SYSTEMOID_METADATA_PATH)
+    metadata = json.loads(SYSTEMOID_METADATA_PATH.read_text(encoding="utf-8"))
+
+    for entry in entries.values():
+        if entry.verification != "verified":
+            continue
+        source = metadata["sources"][entry.source_id]
+        assert source["vendor"] == entry.brand
         assert source["official"] is True
         assert source["scope"] == "product-identity"
         assert source["url"].startswith("https://")
