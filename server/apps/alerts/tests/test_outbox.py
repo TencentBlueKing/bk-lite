@@ -1,10 +1,13 @@
+from datetime import timedelta
 from unittest import mock
 
 import pytest
 from django.db import transaction
+from django.utils import timezone
 
 from apps.alerts.models import AlertOutbox
 from apps.alerts.service.outbox import _deliver_payload, deliver_outbox_record, enqueue_outbox
+from apps.alerts.tasks.tasks import dispatch_pending_alert_outbox
 
 
 @pytest.mark.django_db(transaction=True)
@@ -181,3 +184,96 @@ def test_exhausted_hook_failure_never_requeues_failed_outbox():
     record.refresh_from_db()
     assert record.status == AlertOutbox.Status.FAILED
     assert record.attempts == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_dispatcher_recovers_only_expired_delivering_lease_after_hard_crash():
+    record = AlertOutbox.objects.create(
+        kind="notification",
+        payload={"params": []},
+        idempotency_key="hard-crash-lease",
+        status=AlertOutbox.Status.DELIVERING,
+        attempts=1,
+    )
+
+    with mock.patch("apps.alerts.tasks.tasks.deliver_alert_outbox.delay") as delay:
+        assert dispatch_pending_alert_outbox() == {"scheduled": 0}
+    delay.assert_not_called()
+
+    AlertOutbox.objects.filter(pk=record.pk).update(
+        updated_at=timezone.now() - timedelta(minutes=6)
+    )
+    with mock.patch("apps.alerts.tasks.tasks.deliver_alert_outbox.delay") as delay:
+        assert dispatch_pending_alert_outbox() == {"scheduled": 1}
+    delay.assert_called_once_with(record.pk)
+
+    with mock.patch("apps.alerts.service.outbox._deliver_payload"):
+        assert deliver_outbox_record(record.pk) is True
+    record.refresh_from_db()
+    assert record.status == AlertOutbox.Status.DELIVERED
+    assert record.attempts == 2
+
+
+@pytest.mark.django_db(transaction=True)
+def test_expired_old_worker_failure_cannot_overwrite_new_worker_delivered_state():
+    record = AlertOutbox.objects.create(
+        kind="incident_im_group.create",
+        payload={"group_id": "1"},
+        idempotency_key="fencing-delivered",
+        max_attempts=3,
+    )
+
+    def old_worker_interleaving(_kind, _payload):
+        AlertOutbox.objects.filter(pk=record.pk).update(
+            updated_at=timezone.now() - timedelta(minutes=6)
+        )
+        with mock.patch("apps.alerts.service.outbox._deliver_payload"):
+            assert deliver_outbox_record(record.pk) is True
+        raise RuntimeError("old worker failed after new worker delivered")
+
+    with mock.patch(
+        "apps.alerts.service.outbox._deliver_payload",
+        side_effect=old_worker_interleaving,
+    ), mock.patch(
+        "apps.alerts.service.incident_im.delivery.handle_delivery_exhausted"
+    ) as exhausted:
+        assert deliver_outbox_record(record.pk) is False
+
+    exhausted.assert_not_called()
+    record.refresh_from_db()
+    assert record.status == AlertOutbox.Status.DELIVERED
+    assert record.attempts == 2
+
+
+@pytest.mark.django_db(transaction=True)
+def test_expired_old_worker_success_cannot_overwrite_new_worker_failed_state_or_repeat_hook():
+    record = AlertOutbox.objects.create(
+        kind="incident_im_group.create",
+        payload={"group_id": "1"},
+        idempotency_key="fencing-failed",
+        max_attempts=2,
+    )
+
+    def old_worker_interleaving(_kind, _payload):
+        AlertOutbox.objects.filter(pk=record.pk).update(
+            updated_at=timezone.now() - timedelta(minutes=6)
+        )
+        with mock.patch(
+            "apps.alerts.service.outbox._deliver_payload",
+            side_effect=RuntimeError("new worker exhausted"),
+        ):
+            with pytest.raises(RuntimeError, match="new worker exhausted"):
+                deliver_outbox_record(record.pk)
+
+    with mock.patch(
+        "apps.alerts.service.outbox._deliver_payload",
+        side_effect=old_worker_interleaving,
+    ), mock.patch(
+        "apps.alerts.service.incident_im.delivery.handle_delivery_exhausted"
+    ) as exhausted:
+        assert deliver_outbox_record(record.pk) is False
+
+    exhausted.assert_called_once()
+    record.refresh_from_db()
+    assert record.status == AlertOutbox.Status.FAILED
+    assert record.attempts == 2

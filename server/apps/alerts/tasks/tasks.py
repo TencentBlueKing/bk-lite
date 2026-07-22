@@ -43,12 +43,19 @@ def deliver_alert_outbox(record_id):
 @shared_task
 def dispatch_pending_alert_outbox():
     from apps.alerts.models.outbox import AlertOutbox
+    from apps.alerts.service.outbox import OUTBOX_LEASE_TIMEOUT
 
     now = timezone.now()
     ids = list(
         AlertOutbox.objects.filter(
-            Q(status=AlertOutbox.Status.PENDING),
-            Q(next_retry_at__isnull=True) | Q(next_retry_at__lte=now),
+            (
+                Q(status=AlertOutbox.Status.PENDING)
+                & (Q(next_retry_at__isnull=True) | Q(next_retry_at__lte=now))
+            )
+            | Q(
+                status=AlertOutbox.Status.DELIVERING,
+                updated_at__lte=now - OUTBOX_LEASE_TIMEOUT,
+            )
         )
         .order_by("pk")
         .values_list("pk", flat=True)[:OUTBOX_DISPATCH_BATCH_SIZE]

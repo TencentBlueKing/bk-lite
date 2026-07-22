@@ -53,7 +53,11 @@ def test_create_group_sends_fixed_member_id_type_and_uuid():
         )
 
     assert result.success is True
-    assert result.payload == {"chat_id": "oc_1", "external_request_id": "req-1"}
+    assert result.payload == {
+        "chat_id": "oc_1",
+        "invalid_member_ids": [],
+        "external_request_id": "req-1",
+    }
     request = post.call_args
     assert request.kwargs["params"] == {"user_id_type": "open_id"}
     assert request.kwargs["json"] == {
@@ -66,6 +70,32 @@ def test_create_group_sends_fixed_member_id_type_and_uuid():
         "uuid": "bklite-0123456789",
     }
     assert request.kwargs["headers"]["Authorization"] == "Bearer tenant-token"
+
+
+def test_create_group_returns_invalid_ids_using_same_normalized_payload_as_add_members():
+    with mock.patch(
+        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        return_value=("tenant-token", None),
+    ), mock.patch(
+        "apps.system_mgmt.providers.adapters.feishu.requests.post",
+        return_value=FakeResponse(
+            {"code": 0, "data": {"chat_id": "oc_1", "invalid_id_list": ["ou_bad"]}}
+        ),
+    ):
+        result = FeishuIMGroupAdapter.create_group(
+            config={},
+            provider_key="feishu",
+            capability_key="im_group",
+            group_name="Incident",
+            owner_id="ou_owner",
+            member_ids=["ou_owner", "ou_bad"],
+            member_id_type="open_id",
+            idempotency_key="bklite-create-invalid",
+        )
+
+    assert result.success is True
+    assert result.partial_success is True
+    assert result.payload["invalid_member_ids"] == ["ou_bad"]
 
 
 def test_add_members_returns_invalid_ids_without_losing_successes():
@@ -124,6 +154,7 @@ def test_send_group_message_uses_chat_id_receiver_type():
             capability_key="im_group",
             chat_id="oc_1",
             content="处理已开始",
+            idempotency_key="bklite-summary-0123456789",
         )
 
     assert result.success is True
@@ -133,6 +164,7 @@ def test_send_group_message_uses_chat_id_receiver_type():
         "receive_id": "oc_1",
         "msg_type": "text",
         "content": '{"text": "处理已开始"}',
+        "uuid": "bklite-summary-0123456789",
     }
 
 

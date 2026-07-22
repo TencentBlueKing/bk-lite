@@ -782,7 +782,7 @@ class FeishuIMGroupAdapter(BaseIMGroupAdapter):
         validation_error = _validate_group_members(member_id_type, member_ids)
         if validation_error:
             return validation_error
-        return _execute_feishu_group_request(
+        result = _execute_feishu_group_request(
             config=config,
             method="post",
             url=_get_config_value(config, "im_group_create_chat_url", FEISHU_CREATE_CHAT_URL),
@@ -798,10 +798,16 @@ class FeishuIMGroupAdapter(BaseIMGroupAdapter):
             },
             success_payload=lambda data, request_id: {
                 "chat_id": str((data.get("data") or {}).get("chat_id") or ""),
+                "invalid_member_ids": list(
+                    (data.get("data") or {}).get("invalid_id_list") or []
+                ),
                 "external_request_id": request_id,
             },
             member_count=len(member_ids),
         )
+        if result.success and result.payload["invalid_member_ids"]:
+            result.partial_success = True
+        return result
 
     @classmethod
     def get_group(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
@@ -854,6 +860,7 @@ class FeishuIMGroupAdapter(BaseIMGroupAdapter):
                 "receive_id": chat_id,
                 "msg_type": "text",
                 "content": json.dumps({"text": kwargs["content"]}, ensure_ascii=False),
+                "uuid": kwargs["idempotency_key"],
             },
             success_payload=lambda data, request_id: {
                 "chat_id": str(chat_id),

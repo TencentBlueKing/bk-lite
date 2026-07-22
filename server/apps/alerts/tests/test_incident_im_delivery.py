@@ -140,6 +140,33 @@ def test_create_sends_owner_first_and_at_most_fifty_members(group):
 
 
 @pytest.mark.django_db
+def test_create_marks_only_provider_invalid_initial_member_failed(group, pending_members):
+    from apps.alerts.service.incident_im.delivery import deliver_create_group
+
+    result = CapabilityExecutionResult(
+        success=True,
+        partial_success=True,
+        summary="created with invalid members",
+        payload={
+            "chat_id": "oc_1",
+            "invalid_member_ids": [pending_members[1].external_id],
+        },
+    )
+    with mock.patch(
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
+        return_value=result,
+    ), mock.patch("apps.alerts.service.incident_im.delivery.enqueue_outbox"):
+        deliver_create_group(group.id)
+
+    pending_members[0].refresh_from_db()
+    pending_members[1].refresh_from_db()
+    assert pending_members[0].sync_status == "joined"
+    assert pending_members[1].sync_status == "failed"
+    assert pending_members[1].last_error_code == "IM_MEMBER_INVALID"
+    assert pending_members[1].last_error_message == "外部用户标识无效"
+
+
+@pytest.mark.django_db
 def test_add_members_marks_only_invalid_ids_failed(group, pending_members):
     from apps.alerts.service.incident_im.delivery import deliver_add_members
 
@@ -161,7 +188,10 @@ def test_add_members_marks_only_invalid_ids_failed(group, pending_members):
     states = dict(group.members.values_list("username", "sync_status"))
     assert states == {pending_members[0].username: "joined", pending_members[1].username: "failed"}
     pending_members[0].refresh_from_db()
+    pending_members[1].refresh_from_db()
     assert pending_members[0].updated_at > previous_updated_at
+    assert pending_members[1].last_error_code == "IM_MEMBER_INVALID"
+    assert pending_members[1].last_error_message == "外部用户标识无效"
 
 
 @pytest.mark.django_db
@@ -220,6 +250,34 @@ def test_group_not_found_marks_degraded_without_recreating(group, pending_member
 
 
 @pytest.mark.django_db
+def test_add_members_rechecks_unlinked_state_under_lock_before_external_call(group, pending_members):
+    from apps.alerts.service.incident_im import delivery
+
+    group.external_chat_id = "oc_1"
+    group.save(update_fields=["external_chat_id"])
+    real_lock_group = delivery._lock_group
+
+    def unlink_before_lock(group_id):
+        IncidentIMGroup.objects.filter(pk=group_id).update(
+            status=IncidentIMGroup.Status.UNLINKED,
+            active_slot=None,
+        )
+        return real_lock_group(group_id)
+
+    with mock.patch(
+        "apps.alerts.service.incident_im.delivery._lock_group",
+        side_effect=unlink_before_lock,
+    ), mock.patch(
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute"
+    ) as execute:
+        delivery.deliver_add_members(group.id)
+
+    execute.assert_not_called()
+    group.refresh_from_db()
+    assert group.status == "unlinked"
+
+
+@pytest.mark.django_db
 def test_summary_failure_is_terminal_and_completes_as_partial(group):
     from apps.alerts.service.incident_im.delivery import deliver_summary
 
@@ -256,6 +314,61 @@ def test_retryable_summary_result_raises_for_outbox_retry(group):
     ):
         with pytest.raises(IncidentIMRetryableError, match="rate limited"):
             deliver_summary(group.id)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("gap_status", ["waiting", "pending", "adding", "failed"])
+def test_summary_keeps_group_partial_for_every_non_joined_member_state(group, gap_status):
+    from apps.alerts.service.incident_im.delivery import deliver_summary
+
+    group.external_chat_id = "oc_1"
+    group.save(update_fields=["external_chat_id"])
+    IncidentIMMember.objects.create(
+        group=group,
+        username=f"gap-{gap_status}",
+        role=IncidentIMMember.Role.COLLABORATOR,
+        mapping_status=IncidentIMMember.MappingStatus.MAPPED,
+        external_id="ou_gap",
+        external_id_type="open_id",
+        sync_status=gap_status,
+    )
+    result = CapabilityExecutionResult.success_result("sent")
+    with mock.patch(
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
+        return_value=result,
+    ):
+        deliver_summary(group.id)
+
+    group.refresh_from_db()
+    assert group.status == "active_partial"
+
+
+@pytest.mark.django_db
+def test_summary_reuses_stable_provider_uuid_after_external_ack_before_local_confirmation_crash(group):
+    from apps.alerts.service.incident_im import delivery
+
+    group.external_chat_id = "oc_1"
+    group.save(update_fields=["external_chat_id"])
+    result = CapabilityExecutionResult.success_result("sent")
+    with mock.patch(
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
+        return_value=result,
+    ) as execute, mock.patch(
+        "apps.alerts.service.incident_im.delivery._lock_group",
+        side_effect=RuntimeError("crash before local confirmation"),
+    ):
+        with pytest.raises(RuntimeError, match="crash before local confirmation"):
+            delivery.deliver_summary(group.id)
+
+    with mock.patch(
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
+        return_value=result,
+    ) as retry_execute:
+        delivery.deliver_summary(group.id)
+
+    first_key = execute.call_args.kwargs["idempotency_key"]
+    retry_key = retry_execute.call_args.kwargs["idempotency_key"]
+    assert first_key == retry_key == f"bklite-summary-{group.id.hex}"
 
 
 @pytest.mark.django_db

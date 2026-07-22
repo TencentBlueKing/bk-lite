@@ -109,8 +109,11 @@ def deliver_add_members(group_id) -> None:
 
     with transaction.atomic():
         locked = _lock_group(group_id)
+        if locked is None or locked.status == IncidentIMGroup.Status.UNLINKED:
+            return
         locked.current_stage = IncidentIMGroup.Stage.ADDING_MEMBERS
         locked.save(update_fields=["current_stage"])
+        group = locked
 
     processed_member_ids: set[int] = set()
     while True:
@@ -144,6 +147,9 @@ def deliver_add_members(group_id) -> None:
         invalid_ids = set((result.payload or {}).get("invalid_member_ids") or [])
         if not result.success:
             invalid_ids = set(member_ids)
+        elif invalid_ids:
+            error_code = "IM_MEMBER_INVALID"
+            error_message = "外部用户标识无效"
         with transaction.atomic():
             locked = _lock_group(group_id)
             if locked is None or locked.status == IncidentIMGroup.Status.UNLINKED:
@@ -186,6 +192,7 @@ def deliver_summary(group_id) -> None:
         operation="send_group_message",
         chat_id=group.external_chat_id,
         content=_build_incident_summary(group),
+        idempotency_key=f"bklite-summary-{group.id.hex}",
     )
     if _raise_if_retryable(result):
         return
@@ -198,8 +205,8 @@ def deliver_summary(group_id) -> None:
         locked = _lock_group(group_id)
         if locked is None or locked.status == IncidentIMGroup.Status.UNLINKED:
             return
-        has_member_gaps = locked.members.filter(
-            sync_status__in=[IncidentIMMember.SyncStatus.WAITING, IncidentIMMember.SyncStatus.FAILED]
+        has_member_gaps = locked.members.exclude(
+            sync_status=IncidentIMMember.SyncStatus.JOINED
         ).exists()
         locked.current_stage = IncidentIMGroup.Stage.COMPLETED
         locked.status = (
