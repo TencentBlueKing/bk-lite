@@ -26,6 +26,29 @@ from core.task_queue_startup_cleanup import (
 )
 
 
+_STARTUP_CLEANUP_STATUSES = {"success", "skipped", "warning"}
+_STARTUP_CLEANUP_REASONS = {
+    None,
+    "disabled",
+    "lock_not_acquired",
+    "timeout",
+    "limit_reached",
+    "marker_errors",
+}
+
+
+def _safe_task_queue_log(level: str, message: str, *args) -> None:
+    """日志基础设施故障不能影响队列生命周期。"""
+    try:
+        getattr(logger, level)(message, *args)
+    except Exception:
+        pass
+
+
+def _safe_cleanup_count(value: object) -> int:
+    return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
 async def _is_host_remote_callback_pending(task_id: str) -> bool:
     try:
         import core.host_remote_callback as host_remote_callback
@@ -125,16 +148,29 @@ class TaskQueue:
 
         @self.app.listener("after_server_start")
         async def start_orphan_cleanup(app, loop):
+            existing_task = self._startup_cleanup_task
+            if existing_task:
+                if not existing_task.done():
+                    _safe_task_queue_log(
+                        "info",
+                        "event=task_queue_startup_cleanup status=skipped "
+                        "reason=already_scheduled",
+                    )
+                    return
+                self._consume_completed_startup_cleanup_task(existing_task)
+                self._startup_cleanup_task = None
             try:
                 config = StartupCleanupConfig.from_env()
             except StartupCleanupConfigError:
-                logger.warning(
+                _safe_task_queue_log(
+                    "warning",
                     "event=task_queue_startup_cleanup status=warning "
                     "reason=invalid_config"
                 )
                 return
             if not config.enabled:
-                logger.info(
+                _safe_task_queue_log(
+                    "info",
                     "event=task_queue_startup_cleanup status=skipped "
                     "reason=disabled"
                 )
@@ -146,29 +182,77 @@ class TaskQueue:
 
         @self.app.listener('after_server_stop')
         async def stop_task_queue(app, loop):
-            if self._startup_cleanup_task:
-                self._startup_cleanup_task.cancel()
-                try:
-                    await self._startup_cleanup_task
-                except asyncio.CancelledError:
-                    pass
-                except Exception as error:
-                    logger.warning(
-                        "event=task_queue_startup_cleanup status=warning "
-                        "reason=stop_failed exception_type=%s",
-                        type(error).__name__,
-                    )
-                finally:
-                    self._startup_cleanup_task = None
+            cancellation_requested = False
+            startup_cleanup_task = self._startup_cleanup_task
+            if startup_cleanup_task:
+                startup_cleanup_task.cancel()
+                cancellation_requested |= await self._await_shutdown_task(
+                    startup_cleanup_task,
+                    reason="stop_failed",
+                )
+                self._startup_cleanup_task = None
             # 停止健康检查
             if self._health_check_task:
                 self._health_check_task.cancel()
-                try:
-                    await self._health_check_task
-                except asyncio.CancelledError:
-                    pass
-            await self.close()
-            logger.info("Task queue closed")
+                cancellation_requested |= await self._await_shutdown_task(
+                    self._health_check_task,
+                    reason="health_check_stop_failed",
+                )
+            close_task = asyncio.create_task(self.close())
+            cancellation_requested |= await self._await_shutdown_task(
+                close_task,
+                reason="close_failed",
+            )
+            _safe_task_queue_log("info", "Task queue closed")
+            current_task = asyncio.current_task()
+            if cancellation_requested or (
+                current_task is not None and current_task.cancelling() > 0
+            ):
+                raise asyncio.CancelledError
+
+    async def _await_shutdown_task(
+        self, task: asyncio.Task, *, reason: str
+    ) -> bool:
+        """等待停服子任务；保留外部取消，仍完成必要的资源收束。"""
+        cancellation_requested = False
+        current_task = asyncio.current_task()
+        while not task.done():
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                if current_task is not None and current_task.cancelling() > 0:
+                    cancellation_requested = True
+                if task.done():
+                    break
+            except Exception:
+                break
+
+        try:
+            task.result()
+        except asyncio.CancelledError:
+            pass
+        except Exception as error:
+            _safe_task_queue_log(
+                "warning",
+                "event=task_queue_startup_cleanup status=warning "
+                "reason=%s exception_type=%s",
+                reason,
+                type(error).__name__,
+            )
+        return cancellation_requested
+
+    def _consume_completed_startup_cleanup_task(self, task: asyncio.Task) -> None:
+        try:
+            task.result()
+        except asyncio.CancelledError:
+            pass
+        except Exception as error:
+            _safe_task_queue_log(
+                "warning",
+                "event=task_queue_startup_cleanup status=warning "
+                "reason=completed_task_failed exception_type=%s",
+                type(error).__name__,
+            )
 
     async def _run_startup_cleanup(self, config: StartupCleanupConfig) -> None:
         """执行启动孤儿标记清理；任何失败都不能影响 Sanic 启动。"""
@@ -177,27 +261,41 @@ class TaskQueue:
         except asyncio.CancelledError:
             raise
         except Exception as error:
-            logger.warning(
+            _safe_task_queue_log(
+                "warning",
                 "event=task_queue_startup_cleanup status=warning "
                 "reason=cleanup_failed exception_type=%s",
                 type(error).__name__,
             )
             return
 
-        log = logger.warning if result.status == "warning" else logger.info
-        reason = f" reason={result.reason}" if result.reason else ""
-        log(
+        status = result.status
+        reason = result.reason
+        if not (
+            isinstance(status, str)
+            and status in _STARTUP_CLEANUP_STATUSES
+            and (
+                reason is None
+                or isinstance(reason, str)
+                and reason in _STARTUP_CLEANUP_REASONS
+            )
+        ):
+            status = "warning"
+            reason = "unknown_result"
+        safe_reason = f" reason={reason}" if reason else ""
+        _safe_task_queue_log(
+            "warning" if status == "warning" else "info",
             "event=task_queue_startup_cleanup status=%s%s "
             "scanned=%d candidates=%d deleted=%d preserved=%d errors=%d "
             "truncated=%s",
-            result.status,
-            reason,
-            result.scanned,
-            result.candidates,
-            result.deleted,
-            result.preserved,
-            result.errors,
-            result.truncated,
+            status,
+            safe_reason,
+            _safe_cleanup_count(result.scanned),
+            _safe_cleanup_count(result.candidates),
+            _safe_cleanup_count(result.deleted),
+            _safe_cleanup_count(result.preserved),
+            _safe_cleanup_count(result.errors),
+            result.truncated is True,
         )
 
     async def connect(self):
@@ -231,9 +329,9 @@ class TaskQueue:
             try:
                 await self.pool.close()
                 self._is_healthy = False
-                logger.info("Redis connection closed gracefully")
-            except Exception as e:
-                logger.error(f"Error closing Redis connection: {e}")
+                _safe_task_queue_log("info", "Redis connection closed gracefully")
+            except Exception:
+                _safe_task_queue_log("error", "Error closing Redis connection")
             finally:
                 self.pool = None
 

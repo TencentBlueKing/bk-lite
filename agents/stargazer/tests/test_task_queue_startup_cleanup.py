@@ -673,3 +673,273 @@ async def test_stop_listener_cancels_and_awaits_startup_cleanup_before_closing_p
 
     assert cleanup_task.cancelled()
     assert queue.pool is None
+
+
+@pytest.mark.asyncio
+async def test_start_listener_returns_within_bound_while_cleanup_is_blocked(monkeypatch):
+    blocker = asyncio.Event()
+    app = Sanic("StartupCleanupBoundedListener")
+    queue = TaskQueue(app)
+    queue.pool = AsyncMock()
+
+    async def cleanup(*_args, **_kwargs):
+        await blocker.wait()
+
+    monkeypatch.setattr(
+        task_queue_module, "cleanup_startup_orphan_markers", cleanup
+    )
+
+    await asyncio.wait_for(
+        _listener(app, "after_server_start", "start_orphan_cleanup")(app, None),
+        timeout=0.05,
+    )
+
+    await _listener(app, "after_server_stop", "stop_task_queue")(app, None)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["invalid_config", "disabled"])
+async def test_start_listener_remains_fail_open_when_its_logger_raises(
+    monkeypatch, mode
+):
+    app = Sanic(f"StartupCleanupLoggerStart{mode}")
+    queue = TaskQueue(app)
+
+    def fail_log(*_args, **_kwargs):
+        raise RuntimeError("logger unavailable")
+
+    monkeypatch.setattr(task_queue_module.logger, "warning", fail_log)
+    monkeypatch.setattr(task_queue_module.logger, "info", fail_log)
+    if mode == "invalid_config":
+        monkeypatch.setattr(
+            task_queue_module.StartupCleanupConfig,
+            "from_env",
+            staticmethod(
+                lambda: (_ for _ in ()).throw(StartupCleanupConfigError())
+            ),
+        )
+    else:
+        monkeypatch.setenv("TASK_QUEUE_STARTUP_ORPHAN_CLEANUP_ENABLED", "false")
+
+    await _listener(app, "after_server_start", "start_orphan_cleanup")(app, None)
+
+    assert queue._startup_cleanup_task is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "result",
+    [
+        StartupCleanupResult("success", None, 1, 0, 0, 1, 0, False),
+        StartupCleanupResult("skipped", "lock_not_acquired", 0, 0, 0, 0, 0, False),
+        StartupCleanupResult("warning", "timeout", 1, 1, 0, 1, 0, False),
+        StartupCleanupResult("warning", "marker_errors", 1, 1, 0, 1, 1, False),
+    ],
+    ids=["success", "locked", "timeout", "warning"],
+)
+async def test_background_result_logging_failure_is_consumed(monkeypatch, result):
+    app = Sanic(f"StartupCleanupLoggerResult{result.status}{result.reason}")
+    queue = TaskQueue(app)
+
+    async def cleanup(*_args, **_kwargs):
+        return result
+
+    def fail_log(*_args, **_kwargs):
+        raise RuntimeError("logger unavailable")
+
+    monkeypatch.setattr(
+        task_queue_module, "cleanup_startup_orphan_markers", cleanup
+    )
+    monkeypatch.setattr(task_queue_module.logger, "warning", fail_log)
+    monkeypatch.setattr(task_queue_module.logger, "info", fail_log)
+
+    await _listener(app, "after_server_start", "start_orphan_cleanup")(app, None)
+    await queue._startup_cleanup_task
+
+
+@pytest.mark.asyncio
+async def test_background_exception_logging_failure_is_consumed(monkeypatch):
+    app = Sanic("StartupCleanupLoggerException")
+    queue = TaskQueue(app)
+
+    async def cleanup(*_args, **_kwargs):
+        raise RuntimeError("cleanup unavailable")
+
+    def fail_log(*_args, **_kwargs):
+        raise RuntimeError("logger unavailable")
+
+    monkeypatch.setattr(
+        task_queue_module, "cleanup_startup_orphan_markers", cleanup
+    )
+    monkeypatch.setattr(task_queue_module.logger, "warning", fail_log)
+
+    await _listener(app, "after_server_start", "start_orphan_cleanup")(app, None)
+    await queue._startup_cleanup_task
+
+
+@pytest.mark.asyncio
+async def test_stop_closes_pool_after_cleanup_even_when_logger_raises(monkeypatch):
+    events = []
+    cleanup_started = asyncio.Event()
+    blocker = asyncio.Event()
+    app = Sanic("StartupCleanupLoggerStop")
+    queue = TaskQueue(app)
+
+    class Pool:
+        async def close(self):
+            events.append("pool_closed")
+
+    async def cleanup(*_args, **_kwargs):
+        cleanup_started.set()
+        try:
+            await blocker.wait()
+        finally:
+            events.append("cleanup_finished")
+
+    def fail_log(*_args, **_kwargs):
+        raise RuntimeError("logger unavailable")
+
+    queue.pool = Pool()
+    monkeypatch.setattr(
+        task_queue_module, "cleanup_startup_orphan_markers", cleanup
+    )
+    monkeypatch.setattr(task_queue_module.logger, "warning", fail_log)
+    monkeypatch.setattr(task_queue_module.logger, "info", fail_log)
+    await _listener(app, "after_server_start", "start_orphan_cleanup")(app, None)
+    await cleanup_started.wait()
+
+    await _listener(app, "after_server_stop", "stop_task_queue")(app, None)
+
+    assert events == ["cleanup_finished", "pool_closed"]
+    assert queue.pool is None
+
+
+@pytest.mark.asyncio
+async def test_stop_reraises_external_cancellation_after_cleanup(monkeypatch):
+    events = []
+    cleanup_started = asyncio.Event()
+    close_started = asyncio.Event()
+    allow_close = asyncio.Event()
+    app = Sanic("StartupCleanupExternalCancellation")
+    queue = TaskQueue(app)
+
+    class Pool:
+        async def close(self):
+            close_started.set()
+            await allow_close.wait()
+            events.append("pool_closed")
+
+    async def cleanup(*_args, **_kwargs):
+        cleanup_started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            events.append("cleanup_finished")
+
+    queue.pool = Pool()
+    monkeypatch.setattr(
+        task_queue_module, "cleanup_startup_orphan_markers", cleanup
+    )
+    await _listener(app, "after_server_start", "start_orphan_cleanup")(app, None)
+    await cleanup_started.wait()
+
+    stop_task = asyncio.create_task(
+        _listener(app, "after_server_stop", "stop_task_queue")(app, None)
+    )
+    await close_started.wait()
+    stop_task.cancel()
+    allow_close.set()
+
+    with pytest.raises(asyncio.CancelledError):
+        await stop_task
+
+    assert events == ["cleanup_finished", "pool_closed"]
+    assert queue.pool is None
+
+
+@pytest.mark.asyncio
+async def test_repeated_start_listener_keeps_running_cleanup_task(monkeypatch):
+    started = asyncio.Event()
+    blocker = asyncio.Event()
+    app = Sanic("StartupCleanupRepeatedStart")
+    queue = TaskQueue(app)
+    queue.pool = AsyncMock()
+    calls = 0
+
+    async def cleanup(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        started.set()
+        await blocker.wait()
+
+    monkeypatch.setattr(
+        task_queue_module, "cleanup_startup_orphan_markers", cleanup
+    )
+    start_listener = _listener(app, "after_server_start", "start_orphan_cleanup")
+
+    await start_listener(app, None)
+    await started.wait()
+    first_task = queue._startup_cleanup_task
+    await start_listener(app, None)
+
+    assert calls == 1
+    assert queue._startup_cleanup_task is first_task
+
+    await _listener(app, "after_server_stop", "stop_task_queue")(app, None)
+    assert first_task.cancelled()
+
+
+@pytest.mark.asyncio
+async def test_completed_cleanup_task_is_consumed_before_restart(monkeypatch):
+    app = Sanic("StartupCleanupCompletedRestart")
+    queue = TaskQueue(app)
+    calls = 0
+
+    async def cleanup(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        return StartupCleanupResult("success", None, 0, 0, 0, 0, 0, False)
+
+    monkeypatch.setattr(
+        task_queue_module, "cleanup_startup_orphan_markers", cleanup
+    )
+    start_listener = _listener(app, "after_server_start", "start_orphan_cleanup")
+
+    await start_listener(app, None)
+    first_task = queue._startup_cleanup_task
+    await first_task
+    await start_listener(app, None)
+    await queue._startup_cleanup_task
+
+    assert calls == 2
+    assert queue._startup_cleanup_task is not first_task
+
+
+@pytest.mark.asyncio
+async def test_unknown_cleanup_result_fields_are_downgraded_to_safe_values(
+    monkeypatch, caplog
+):
+    app = Sanic("StartupCleanupUnknownResult")
+    queue = TaskQueue(app)
+
+    async def cleanup(*_args, **_kwargs):
+        return StartupCleanupResult(
+            status=["unexpected"],
+            reason="task:running:secret-job",
+            scanned=0,
+            candidates=0,
+            deleted=0,
+            preserved=0,
+            errors=0,
+            truncated=False,
+        )
+
+    monkeypatch.setattr(
+        task_queue_module, "cleanup_startup_orphan_markers", cleanup
+    )
+
+    await _listener(app, "after_server_start", "start_orphan_cleanup")(app, None)
+    await queue._startup_cleanup_task
+
+    assert "status=warning reason=unknown_result" in caplog.text
+    assert "task:running:secret-job" not in caplog.text
