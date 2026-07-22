@@ -155,3 +155,12 @@ def test_network_doc_describes_actual_unknown_oid_fallback():
 
     assert "未知 SOID 会保留原始 OID" in document
     assert "品牌和型号标记为 `未知`，设备类型按 `switch` 兼容处理" in document
+
+
+def test_network_doc_keeps_custom_overrides_out_of_unchanged_count():
+    with open(NETWORK_DOC, encoding="utf-8") as fp:
+        document = fp.read()
+
+    assert "除用户覆盖外的已同步内置项均计入未变化" in document
+    assert "自定义项仍计入用户覆盖" in document
+    assert "已有目录项均计入未变化" not in document
