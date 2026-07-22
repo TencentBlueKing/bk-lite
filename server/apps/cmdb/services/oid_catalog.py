@@ -76,7 +76,14 @@ def load_oid_catalog(
     sources = metadata.get("sources", {})
     entries: dict[str, OidCatalogEntry] = {}
 
-    if metadata.get("schema_version") != 1 or not metadata.get("catalog_version"):
+    schema_version = metadata.get("schema_version")
+    catalog_version = metadata.get("catalog_version")
+    if (
+        type(schema_version) is not int
+        or schema_version != 1
+        or not isinstance(catalog_version, str)
+        or not catalog_version.strip()
+    ):
         raise OidCatalogError("OID_CATALOG_INVALID: metadata version")
     if not isinstance(raw_catalog, dict) or not raw_catalog:
         raise OidCatalogError("OID_CATALOG_INVALID: catalog must be a non-empty object")
@@ -115,9 +122,10 @@ def load_oid_catalog(
             raise OidCatalogError(f"OID_CATALOG_INVALID: required fields for {oid}")
 
         device_type = raw["FirstTypeId"].lower()
+        brand = raw["brand"].strip()
         if device_type not in ALLOWED_DEVICE_TYPES:
             raise OidCatalogError(f"OID_CATALOG_INVALID: device type for {oid}")
-        if raw["brand"] in aliases:
+        if brand in aliases:
             raise OidCatalogError(f"OID_CATALOG_INVALID: noncanonical brand for {oid}")
 
         source_id = raw["source_id"]
@@ -137,7 +145,7 @@ def load_oid_catalog(
         entries[oid] = OidCatalogEntry(
             oid=oid,
             model=raw["model"].strip(),
-            brand=raw["brand"].strip(),
+            brand=brand,
             device_type=device_type,
             source_id=source_id,
             verification=verification,

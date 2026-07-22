@@ -200,3 +200,43 @@ def test_load_oid_catalog_rejects_legacy_source_missing_audit_fields(tmp_path):
 
     with pytest.raises(OidCatalogError, match="OID_CATALOG_INVALID"):
         load_oid_catalog(catalog, metadata)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("schema_version", True),
+        ("catalog_version", 20260722),
+        ("catalog_version", "   "),
+    ],
+    ids=[
+        "rejects-boolean-schema-version",
+        "rejects-number-catalog-version",
+        "rejects-blank-catalog-version",
+    ],
+)
+def test_load_oid_catalog_rejects_malformed_metadata_versions(tmp_path, field, value):
+    catalog = tmp_path / "systemoid.json"
+    metadata = tmp_path / "systemoid.meta.json"
+    oid = "1.3.6.1.4.1.2011.2.23.968"
+    metadata_data = _metadata()
+    metadata_data[field] = value
+    _write_json(catalog, {oid: _entry(oid)})
+    _write_json(metadata, metadata_data)
+
+    with pytest.raises(OidCatalogError, match="OID_CATALOG_INVALID"):
+        load_oid_catalog(catalog, metadata)
+
+
+@pytest.mark.parametrize("brand", ["华为 ", " 华为"])
+def test_load_oid_catalog_rejects_whitespace_padded_brand_alias(tmp_path, brand):
+    catalog = tmp_path / "systemoid.json"
+    metadata = tmp_path / "systemoid.meta.json"
+    oid = "1.3.6.1.4.1.2011.2.23.968"
+    entry = _entry(oid)
+    entry["brand"] = brand
+    _write_json(catalog, {oid: entry})
+    _write_json(metadata, _metadata())
+
+    with pytest.raises(OidCatalogError, match="OID_CATALOG_INVALID"):
+        load_oid_catalog(catalog, metadata)
