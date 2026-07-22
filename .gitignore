@@ -51,6 +51,7 @@ code-reviews/
 .sisyphus/*
 automation/
 .worktrees/
+/.claire/
 /server/.skill/
 .agents/
 .projectmem/

@@ -344,7 +344,7 @@ def get_query_source():
 
 ## 7. 测试策略
 
-对齐仓库红线 `server/docs/testing-guide.md` 与 `docs/governance/quality.md`:TDD 红-绿-重构,覆盖率 ≥ 75%。
+对齐仓库红线 `server/docs/testing-guide.md` 与 `specs/capabilities/engineering-quality.md`:TDD 红-绿-重构,覆盖率 ≥ 75%。
 
 ### 7.1 单元测试
 

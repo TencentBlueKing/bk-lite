@@ -9,11 +9,11 @@
 | 术语与共享语言 | `CONTEXT.md` |
 | 产品定位与默认取舍 | `PRODUCT.md` |
 | UI 总入口 | `DESIGN.md` |
-| 系统与模块边界 | `docs/engineering/architecture.md` |
-| 开发、部署与日常命令 | `docs/operations.md` |
-| 后端工程规则 | `docs/backend-coding-guide.md` |
-| 前端工程规则 | `docs/engineering/frontend.md` |
-| 安全、可靠性、质量 | `docs/governance/{security,reliability,quality}.md` |
+| 系统与模块边界 | `specs/capabilities/engineering-architecture.md` |
+| 开发、部署与日常命令 | `DEVELOP.md` |
+| 后端工程规则 | `specs/capabilities/backend-engineering.md` |
+| 前端工程规则 | `specs/capabilities/frontend-engineering.md` |
+| 安全、可靠性、质量 | `specs/capabilities/{platform-security,platform-reliability,engineering-quality}.md` |
 | 长期能力契约 | `specs/capabilities/<capability>.md` |
 | 跨会话变更 | `specs/changes/<feature>/spec.md` |
 | 难以回滚的决定 | `docs/adr/` |
@@ -38,8 +38,8 @@
 
 ## 就近规则
 
-- 改 `server/`：先读 `docs/backend-coding-guide.md`；涉及鉴权、下发、启动或回滚，再读对应 governance 文档。
-- 改 `web/` 页面、组件、样式或 Storybook：先读 `docs/engineering/frontend.md`、`web/DESIGN.md` 与 `web/COMPONENT_GOVERNANCE.md`。
+- 改 `server/`：先读 `specs/capabilities/backend-engineering.md`；涉及鉴权、下发、启动或回滚，再读对应 capability。
+- 改 `web/` 页面、组件、样式或 Storybook：先读 `specs/capabilities/frontend-engineering.md`、`web/DESIGN.md` 与 `web/COMPONENT_GOVERNANCE.md`。
 - Web 组件先搜索 Ant Design、`web/src/components`、目标 app 的 `components` 与 Storybook；能复用不新建。单 app 组件留在 app 内，至少两个 app 实际使用后才提升 shared。
 - 改算法、Stargazer、Mobile 或 WebChat：以目标目录的 README、Makefile/package scripts 和测试为准，不把其他模块约定外推过去。
 
@@ -68,8 +68,9 @@
 
 ## 文档防腐
 
-- 根目录只放稳定入口：`AGENTS.md`/`CLAUDE.md`、`CONTEXT.md`、`PRODUCT.md`、`DESIGN.md` 和 README。
-- 专题工程规则放 `docs/engineering/`，强制性红线放 `docs/governance/`，一次性报告和变更总结放 `docs/archive/`。
+- 根目录只放稳定入口：`AGENTS.md`/`CLAUDE.md`、`CONTEXT.md`、`PRODUCT.md`、`DESIGN.md`、`DEVELOP.md` 和 README。
+- 工程规则、产品事实与跨会话变更统一放 `specs/`；`docs/` 只保留 Grill 的 `agents/` 与 `adr/`。
+- 一次性评审报告和变更总结不留在活跃文档树；有效结论回写 capability/change spec，其余由 Git 历史保留。
 - 同一规则只允许一个权威位置；其他文档只链接，不复制。
 - 业务事实写 capability，临时实现取舍写 change spec，长期且难回滚的取舍写 ADR；具体符号和测试断言由代码承担。
 - 移动、删除或替换权威文档时，同一提交修正所有引用。
