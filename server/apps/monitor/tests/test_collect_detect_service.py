@@ -6,7 +6,7 @@ from apps.monitor.serializers.plugin import MonitorPluginSerializer
 from apps.monitor.services.collect_detect import CollectDetectService
 from apps.monitor.services.plugin import MonitorPluginService
 from apps.monitor.services.collect_detect_runtime import (
-    build_telegraf_once_command,
+    build_telegraf_detect_execution,
     render_preflight_telegraf_config,
     sanitize_execution_result,
 )
@@ -154,11 +154,48 @@ def test_render_preflight_telegraf_config_replaces_real_outputs():
     assert 'files = ["stdout"]' in rendered
 
 
-def test_build_telegraf_once_command_uses_temp_config_and_cleanup():
-    command = build_telegraf_once_command("/tmp/bklite-detect.toml")
+def test_build_telegraf_detect_execution_keeps_linux_behavior():
+    command, shell = build_telegraf_detect_execution(
+        operating_system="linux",
+        executable_path="/opt/fusion-collectors/bin/telegraf",
+        config_file_name="bklite-detect.toml",
+        config_content="[[inputs.cpu]]\n",
+    )
 
+    assert shell == "sh"
     assert "/opt/fusion-collectors/bin/telegraf --once --config /tmp/bklite-detect.toml" in command
     assert "rm -f /tmp/bklite-detect.toml" in command
+
+
+def test_build_telegraf_detect_execution_uses_powershell_on_windows():
+    command, shell = build_telegraf_detect_execution(
+        operating_system="windows",
+        executable_path=r"C:\fusion-collectors\bin\telegraf.exe",
+        config_file_name="bklite-detect.toml",
+        config_content="[[inputs.win_perf_counters]]\n",
+    )
+
+    assert shell == "powershell"
+    assert "$env:TEMP" in command
+    assert r"C:\fusion-collectors\bin\telegraf.exe" in command
+    assert "--once --config $configPath" in command
+    assert "FromBase64String" in command
+    assert "WriteAllBytes" in command
+    assert "finally" in command
+    assert "Remove-Item" in command
+    assert "/tmp" not in command
+    assert "trap" not in command
+    assert "rm -f" not in command
+
+
+def test_build_telegraf_detect_execution_rejects_unknown_operating_system():
+    with pytest.raises(ValueError, match="不支持的节点操作系统: darwin"):
+        build_telegraf_detect_execution(
+            operating_system="darwin",
+            executable_path="/opt/telegraf",
+            config_file_name="bklite-detect.toml",
+            config_content="[[inputs.cpu]]\n",
+        )
 
 
 def test_sanitize_execution_result_redacts_and_truncates_output():

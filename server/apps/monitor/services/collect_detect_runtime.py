@@ -1,3 +1,4 @@
+import base64
 import re
 import shlex
 
@@ -36,14 +37,50 @@ def disable_real_outputs(config_content: str) -> str:
     return f"{without_outputs}{stdout_output}"
 
 
-def build_telegraf_once_command(config_path: str) -> str:
-    quoted_path = shlex.quote(config_path)
-    quoted_telegraf = shlex.quote(TELEGRAF_BIN)
-    return (
-        "set -e\n"
-        f"trap 'rm -f {quoted_path}' EXIT\n"
-        f"{quoted_telegraf} --once --config {quoted_path}"
-    )
+def _quote_powershell_literal(value: str) -> str:
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+def build_telegraf_detect_execution(
+    operating_system: str,
+    executable_path: str,
+    config_file_name: str,
+    config_content: str,
+) -> tuple[str, str]:
+    if operating_system == "linux":
+        config_path = f"/tmp/{config_file_name}"
+        quoted_path = shlex.quote(config_path)
+        quoted_telegraf = shlex.quote(executable_path)
+        command = (
+            "set -e\n"
+            f"trap 'rm -f {quoted_path}' EXIT\n"
+            f"cat > {quoted_path} <<'BK_LITE_TELEGRAF_PREFLIGHT_EOF'\n"
+            f"{config_content}\n"
+            "BK_LITE_TELEGRAF_PREFLIGHT_EOF\n"
+            f"{quoted_telegraf} --once --config {quoted_path}"
+        )
+        return command, "sh"
+
+    if operating_system == "windows":
+        encoded_content = base64.b64encode(config_content.encode("utf-8")).decode("ascii")
+        quoted_name = _quote_powershell_literal(config_file_name)
+        quoted_telegraf = _quote_powershell_literal(executable_path)
+        command = (
+            "$ErrorActionPreference = 'Stop'\n"
+            f"$configPath = Join-Path $env:TEMP {quoted_name}\n"
+            "$telegrafExitCode = 1\n"
+            "try {\n"
+            f"  [IO.File]::WriteAllBytes($configPath, [Convert]::FromBase64String('{encoded_content}'))\n"
+            f"  & {quoted_telegraf} --once --config $configPath\n"
+            "  $telegrafExitCode = $LASTEXITCODE\n"
+            "} finally {\n"
+            "  Remove-Item -LiteralPath $configPath -Force -ErrorAction SilentlyContinue\n"
+            "}\n"
+            "exit $telegrafExitCode"
+        )
+        return command, "powershell"
+
+    raise ValueError(f"不支持的节点操作系统: {operating_system}")
 
 
 def build_write_config_and_telegraf_command(config_path: str, config_content: str) -> str:
