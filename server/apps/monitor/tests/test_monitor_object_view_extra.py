@@ -6,6 +6,7 @@ import pytest
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 
+from apps.core.utils.current_team_scope import CurrentTeamDataScope
 from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, MonitorObjectOrganizationRule
 from apps.monitor.models.monitor_object import MonitorObject, MonitorObjectType
 from apps.monitor.serializers.monitor_object import MonitorObjectSerializer
@@ -15,6 +16,19 @@ from apps.monitor.views.monitor_object import MonitorObjectViewSet
 pytestmark = pytest.mark.django_db
 
 BASE = "/api/v1/monitor"
+
+
+def _superuser_actor_context():
+    scope = CurrentTeamDataScope(1, frozenset({1}), False, "u", "domain.com", True)
+    return {
+        "is_superuser": True,
+        "current_team": 1,
+        "username": "u",
+        "domain": "domain.com",
+        "include_children": False,
+        "group_list": [],
+        "data_scope": scope,
+    }
 
 
 class TestMonitorObjectList:
@@ -345,18 +359,127 @@ class TestMonitorObjectTypeList:
 
 
 class TestOrganizationRuleView:
+    def test_create_with_empty_organizations_has_no_rule_side_effect(self, api_client, mocker):
+        api_client.cookies["current_team"] = "1"
+        obj = MonitorObject.objects.create(name="ORVEmptyCreateObj", level="base")
+        mocker.patch(
+            "apps.core.utils.current_team_scope.SystemMgmt.get_authorized_groups_scoped",
+            return_value={"result": True, "data": [1]},
+        )
+        mocker.patch(
+            "apps.core.utils.current_team_scope.SystemMgmt.get_assignable_groups",
+            return_value={"result": True, "data": [1]},
+        )
+
+        resp = api_client.post(
+            f"{BASE}/api/organization_rule/",
+            {
+                "monitor_object": obj.id,
+                "name": "empty-org-rule",
+                "organizations": [],
+                "rule": {},
+            },
+            format="json",
+        )
+
+        assert resp.status_code == 500
+        assert not MonitorObjectOrganizationRule.objects.filter(name="empty-org-rule").exists()
+
+    def test_partial_update_shared_rule_without_organizations_keeps_existing_assignment(self, api_client, mocker):
+        api_client.cookies["current_team"] = "1"
+        obj = MonitorObject.objects.create(name="ORVSharedPatchObj", level="base")
+        rule = MonitorObjectOrganizationRule.objects.create(
+            monitor_object=obj,
+            name="shared-rule",
+            organizations=[1, 2],
+            rule={},
+        )
+        mocker.patch(
+            "apps.core.utils.current_team_scope.SystemMgmt.get_authorized_groups_scoped",
+            return_value={"result": True, "data": [1]},
+        )
+        assignable = mocker.patch(
+            "apps.core.utils.current_team_scope.SystemMgmt.get_assignable_groups",
+            return_value={"result": True, "data": [1]},
+        )
+
+        resp = api_client.patch(
+            f"{BASE}/api/organization_rule/{rule.id}/",
+            {"name": "renamed-shared-rule"},
+            format="json",
+        )
+
+        assert resp.status_code == 200, resp.content
+        rule.refresh_from_db()
+        assert rule.name == "renamed-shared-rule"
+        assert rule.organizations == [1, 2]
+        assignable.assert_not_called()
+
+    def test_partial_update_shared_rule_allows_assignable_sibling(self, api_client, mocker):
+        api_client.cookies["current_team"] = "1"
+        obj = MonitorObject.objects.create(name="ORVSharedAssignObj", level="base")
+        rule = MonitorObjectOrganizationRule.objects.create(
+            monitor_object=obj,
+            name="shared-rule",
+            organizations=[1, 2],
+            rule={},
+        )
+        mocker.patch(
+            "apps.core.utils.current_team_scope.SystemMgmt.get_authorized_groups_scoped",
+            return_value={"result": True, "data": [1]},
+        )
+        mocker.patch(
+            "apps.core.utils.current_team_scope.SystemMgmt.get_assignable_groups",
+            return_value={"result": True, "data": [1, 2]},
+        )
+
+        resp = api_client.patch(
+            f"{BASE}/api/organization_rule/{rule.id}/",
+            {"organizations": [2]},
+            format="json",
+        )
+
+        assert resp.status_code == 200, resp.content
+        rule.refresh_from_db()
+        assert rule.organizations == [2]
+
+    def test_partial_update_shared_rule_rejects_explicit_empty_organizations(self, api_client, mocker):
+        api_client.cookies["current_team"] = "1"
+        obj = MonitorObject.objects.create(name="ORVSharedEmptyPatchObj", level="base")
+        rule = MonitorObjectOrganizationRule.objects.create(
+            monitor_object=obj,
+            name="shared-rule",
+            organizations=[1, 2],
+            rule={},
+        )
+        mocker.patch(
+            "apps.core.utils.current_team_scope.SystemMgmt.get_authorized_groups_scoped",
+            return_value={"result": True, "data": [1]},
+        )
+        mocker.patch(
+            "apps.core.utils.current_team_scope.SystemMgmt.get_assignable_groups",
+            return_value={"result": True, "data": [1, 2]},
+        )
+
+        resp = api_client.patch(
+            f"{BASE}/api/organization_rule/{rule.id}/",
+            {"organizations": []},
+            format="json",
+        )
+
+        assert resp.status_code == 500
+        rule.refresh_from_db()
+        assert rule.organizations == [1, 2]
+
     def test_destroy_calls_service(self, api_client, mocker):
         api_client.cookies["current_team"] = "1"
         obj = MonitorObject.objects.create(name="ORVObj", level="base")
         rule = MonitorObjectOrganizationRule.objects.create(
             monitor_object=obj, name="r", organizations=[1], rule={},
         )
-        # 超级用户路径绕过授权过滤
         mocker.patch(
             "apps.monitor.views.organization_rule._build_actor_context",
-            return_value={"is_superuser": True, "current_team": 1,
-                          "username": "u", "domain": "domain.com",
-                          "include_children": False, "group_list": []},
+            return_value=_superuser_actor_context(),
         )
         spy = mocker.patch(
             "apps.monitor.views.organization_rule.OrganizationRule.del_organization_rule"
@@ -368,18 +491,31 @@ class TestOrganizationRuleView:
 
     def test_normalize_rule_organizations(self):
         from apps.monitor.views.organization_rule import _normalize_rule_organizations
-        assert _normalize_rule_organizations([1, "2", None, ""]) == {1, 2}
 
-    def test_normalize_rule_organizations_invalid(self):
+        assert _normalize_rule_organizations([1, "2"]) == {1, 2}
+
+    @pytest.mark.parametrize(
+        "organizations",
+        [
+            [True],
+            [1.5],
+            ["01"],
+            [1, "2", True],
+            [1, None],
+            [],
+        ],
+    )
+    def test_normalize_rule_organizations_rejects_noncanonical_or_empty_snapshot(self, organizations):
         from apps.core.exceptions.base_app_exception import BaseAppException
         from apps.monitor.views.organization_rule import _normalize_rule_organizations
+
         with pytest.raises(BaseAppException):
-            _normalize_rule_organizations(["abc"])
+            _normalize_rule_organizations(organizations)
 
     def test_validate_rule_binding_mismatch(self):
         from apps.core.exceptions.base_app_exception import BaseAppException
-        from apps.monitor.views.organization_rule import _validate_rule_binding
         from apps.monitor.models import MonitorInstance
+        from apps.monitor.views.organization_rule import _validate_rule_binding
         obj = MonitorObject.objects.create(name="VRBObj", level="base")
         other = MonitorObject.objects.create(name="VRBOther", level="base")
         MonitorInstance.objects.create(id="('h1',)", name="h1", monitor_object=obj)
@@ -387,8 +523,8 @@ class TestOrganizationRuleView:
             _validate_rule_binding(other.id, "('h1',)")
 
     def test_validate_rule_binding_ok(self):
-        from apps.monitor.views.organization_rule import _validate_rule_binding
         from apps.monitor.models import MonitorInstance
+        from apps.monitor.views.organization_rule import _validate_rule_binding
         obj = MonitorObject.objects.create(name="VRBObj2", level="base")
         MonitorInstance.objects.create(id="('h2',)", name="h2", monitor_object=obj)
         # 匹配 → 不抛错
@@ -396,8 +532,8 @@ class TestOrganizationRuleView:
 
     def test_validate_rule_binding_derivative_object_with_parent_instance(self):
         """子对象(derivative)规则引用父实例应视为合法:对应 create_default_rule 自动建规则的设计"""
-        from apps.monitor.views.organization_rule import _validate_rule_binding
         from apps.monitor.models import MonitorInstance
+        from apps.monitor.views.organization_rule import _validate_rule_binding
         parent = MonitorObject.objects.create(name="VRBParent", level="base")
         child = MonitorObject.objects.create(name="VRBChild", level="derivative", parent=parent)
         MonitorInstance.objects.create(id="('p1',)", name="p1", monitor_object=parent)
@@ -407,8 +543,8 @@ class TestOrganizationRuleView:
     def test_validate_rule_binding_derivative_object_with_unrelated_instance(self):
         """子对象(derivative)规则引用无关实例必须仍报错,避免绕过访问范围"""
         from apps.core.exceptions.base_app_exception import BaseAppException
-        from apps.monitor.views.organization_rule import _validate_rule_binding
         from apps.monitor.models import MonitorInstance
+        from apps.monitor.views.organization_rule import _validate_rule_binding
         parent = MonitorObject.objects.create(name="VRBParentU", level="base")
         child = MonitorObject.objects.create(name="VRBChildU", level="derivative", parent=parent)
         unrelated = MonitorObject.objects.create(name="VRBUnrelated", level="base")
@@ -418,11 +554,11 @@ class TestOrganizationRuleView:
 
     def test_update_derivative_rule_with_parent_instance_succeeds(self, api_client):
         """回归: vmware 父实例自动建的子规则,编辑保存时不再被 500/校验拦截"""
-        from apps.monitor.models import MonitorObjectOrganizationRule
-        from apps.monitor.models import MonitorInstance
+        from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, MonitorObjectOrganizationRule
         parent = MonitorObject.objects.create(name="UpdDeriveParent", level="base")
         child = MonitorObject.objects.create(name="UpdDeriveChild", level="derivative", parent=parent)
-        MonitorInstance.objects.create(id="('vp1',)", name="vp1", monitor_object=parent)
+        instance = MonitorInstance.objects.create(id="('vp1',)", name="vp1", monitor_object=parent)
+        MonitorInstanceOrganization.objects.create(monitor_instance=instance, organization=1)
         rule = MonitorObjectOrganizationRule.objects.create(
             monitor_object=child,
             name="UpdDeriveChild-vp1",
@@ -434,15 +570,16 @@ class TestOrganizationRuleView:
             },
             monitor_instance_id="('vp1',)",
         )
-        # 超级用户路径绕过授权过滤
         mocker_module = pytest.importorskip("pytest_mock")
-        import pytest_mock  # noqa: F401
         from unittest.mock import patch
+
+        import pytest_mock  # noqa: F401
         with patch(
             "apps.monitor.views.organization_rule._build_actor_context",
-            return_value={"is_superuser": True, "current_team": 1,
-                          "username": "u", "domain": "domain.com",
-                          "include_children": False, "group_list": []},
+            return_value=_superuser_actor_context(),
+        ), patch(
+            "apps.core.utils.current_team_scope.SystemMgmt.get_assignable_groups",
+            return_value={"result": True, "data": [1]},
         ):
             resp = api_client.put(
                 f"{BASE}/api/organization_rule/{rule.id}/",
@@ -457,7 +594,26 @@ class TestOrganizationRuleView:
         assert resp.status_code == 200, resp.content
 
     def test_rule_is_authorized_superuser(self):
-        from apps.monitor.views.organization_rule import _rule_is_authorized
         from types import SimpleNamespace
+
+        from apps.monitor.views.organization_rule import _rule_is_authorized
         rule = SimpleNamespace(organizations=[1], monitor_instance_id="", monitor_object_id=1)
-        assert _rule_is_authorized(rule, {"is_superuser": True}) is True
+        assert _rule_is_authorized(rule, _superuser_actor_context()) is True
+
+    def test_rule_serializer_hides_sibling_organizations(self):
+        from apps.monitor.serializers.monitor_object import MonitorObjectOrganizationRuleSerializer
+
+        obj = MonitorObject.objects.create(name="ORVProjectionObj", level="base")
+        rule = MonitorObjectOrganizationRule.objects.create(
+            monitor_object=obj,
+            name="shared-rule",
+            organizations=[1, 2],
+            rule={},
+        )
+
+        data = MonitorObjectOrganizationRuleSerializer(
+            rule,
+            context={"data_team_ids": frozenset({1})},
+        ).data
+
+        assert data["organizations"] == [1]

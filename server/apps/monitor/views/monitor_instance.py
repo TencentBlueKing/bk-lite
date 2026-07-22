@@ -3,47 +3,36 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 
 from apps.core.exceptions.base_app_exception import BaseAppException, UnauthorizedException
+from apps.core.utils.current_team_scope import resolve_current_team_data_scope, scope_permission_queryset, validate_assignable_organizations
+from apps.core.utils.permission_utils import get_permission_rules
 from apps.core.utils.user_group import normalize_user_group_ids
-from apps.core.utils.permission_utils import get_permission_rules, permission_filter
 from apps.core.utils.web_utils import WebUtils
 from apps.monitor.constants.permission import PermissionConstants
-from apps.monitor.models import (
-    MonitorInstance,
-    MonitorInstanceOrganization,
-    MonitorObject,
-    CollectConfig,
-    MonitorObjectOrganizationRule,
-)
-from apps.monitor.services.monitor_instance import InstanceSearch
-from apps.monitor.services.node_mgmt import InstanceConfigService
-from apps.monitor.services.monitor_object import MonitorObjectService
-from apps.monitor.services.policy_source_cleanup import cleanup_policy_sources
-from apps.monitor.services.flow_onboarding import FlowOnboardingService
+from apps.monitor.models import CollectConfig, MonitorInstance, MonitorInstanceOrganization, MonitorObject, MonitorObjectOrganizationRule
 from apps.monitor.services.effective_plugins import MonitorEffectivePluginService
+from apps.monitor.services.flow_onboarding import FlowOnboardingService
 from apps.monitor.services.metrics import Metrics as MetricsService
+from apps.monitor.services.monitor_instance import InstanceSearch
+from apps.monitor.services.monitor_object import MonitorObjectService
+from apps.monitor.services.node_mgmt import InstanceConfigService
+from apps.monitor.services.policy_source_cleanup import cleanup_policy_sources
 from apps.monitor.utils.dimension import normalize_instance_identity
 from apps.monitor.utils.pagination import parse_page_params
 from apps.rpc.node_mgmt import NodeMgmt
-from apps.core.utils.team_utils import get_current_team
 
 
 def _build_actor_context(request):
-    current_team = get_current_team(request)
-    if current_team in (None, ""):
-        raise BaseAppException("缺少 current_team 参数")
-
-    try:
-        current_team = int(current_team)
-    except (TypeError, ValueError):
-        raise BaseAppException("current_team 参数非法")
+    scope = resolve_current_team_data_scope(request)
 
     return {
-        "username": request.user.username,
-        "domain": request.user.domain,
-        "current_team": current_team,
-        "include_children": request.COOKIES.get("include_children", "0") == "1",
-        "is_superuser": request.user.is_superuser,
+        "username": scope.username,
+        "domain": scope.domain,
+        "current_team": scope.current_team,
+        "include_children": scope.include_children,
+        "is_superuser": scope.is_superuser,
         "group_list": normalize_user_group_ids(getattr(request.user, "group_list", [])),
+        "data_scope": scope,
+        "request": request,
     }
 
 
@@ -62,32 +51,22 @@ def _normalize_id_list(values):
 
 
 def _get_authorized_scope_groups(actor_context):
-    if actor_context["is_superuser"]:
-        return None
-
     groups = set(InstanceConfigService._get_actor_scope_groups(actor_context) or [])
     if not groups:
         raise UnauthorizedException("当前组织无可用权限范围")
     return groups
 
 
-def _ensure_target_organizations(organizations, actor_context):
-    try:
-        normalized_orgs = {int(org) for org in organizations if org not in (None, "")}
-    except (TypeError, ValueError):
-        raise BaseAppException("组织参数非法")
-
-    if not normalized_orgs or actor_context["is_superuser"]:
-        return
-
-    unauthorized_orgs = normalized_orgs - _get_authorized_scope_groups(actor_context)
-    if unauthorized_orgs:
-        raise UnauthorizedException("无权限关联指定组织")
+def _ensure_target_organizations(organizations, actor_context, request=None):
+    request = request or actor_context.get("request")
+    if request is None:
+        raise BaseAppException("缺少组织分配请求上下文")
+    validate_assignable_organizations(request, organizations)
 
 
 def _ensure_instance_scope(instance_ids, actor_context):
     normalized_ids = _normalize_id_list(instance_ids)
-    if not normalized_ids or actor_context["is_superuser"]:
+    if not normalized_ids:
         return normalized_ids
 
     allowed_groups = _get_authorized_scope_groups(actor_context)
@@ -97,7 +76,7 @@ def _ensure_instance_scope(instance_ids, actor_context):
     ):
         instance_org_map.setdefault(str(instance_id), set()).add(organization)
 
-    unauthorized_ids = [instance_id for instance_id in normalized_ids if instance_org_map.get(instance_id, set()) - allowed_groups]
+    unauthorized_ids = [instance_id for instance_id in normalized_ids if not instance_org_map.get(instance_id, set()).intersection(allowed_groups)]
     if unauthorized_ids:
         raise UnauthorizedException("无权限操作跨组织监控实例")
 
@@ -125,26 +104,27 @@ def _ensure_operate_instances(request, instance_ids, actor_context=None, allow_m
     if found_ids != set(normalized_ids) and not allow_missing:
         raise BaseAppException("监控实例不存在")
 
-    if not actor_context["is_superuser"]:
-        instances_by_object = {}
-        for instance in instances:
-            instances_by_object.setdefault(instance["monitor_object_id"], set()).add(str(instance["id"]))
+    instances_by_object = {}
+    for instance in instances:
+        instances_by_object.setdefault(instance["monitor_object_id"], set()).add(str(instance["id"]))
 
-        for monitor_object_id, requested_ids in instances_by_object.items():
-            allowed_ids = {
-                str(instance_id)
-                for instance_id in InstanceConfigService._get_authorized_monitor_instances(
-                    actor_context,
-                    monitor_object_id,
-                    require_operate=True,
-                )
-                .filter(id__in=requested_ids)
-                .values_list("id", flat=True)
-            }
-            if requested_ids - allowed_ids:
-                raise UnauthorizedException("无权限操作指定监控实例")
+    for monitor_object_id, requested_ids in instances_by_object.items():
+        allowed_ids = {
+            str(instance_id)
+            for instance_id in InstanceConfigService._get_authorized_monitor_instances(
+                actor_context,
+                monitor_object_id,
+                require_operate=True,
+            )
+            .filter(id__in=requested_ids)
+            .values_list("id", flat=True)
+        }
+        if requested_ids - allowed_ids:
+            raise UnauthorizedException("无权限操作指定监控实例")
 
-    return _ensure_instance_scope(normalized_ids, actor_context)
+    if found_ids:
+        _ensure_instance_scope(found_ids, actor_context)
+    return normalized_ids
 
 
 class MonitorInstanceViewSet(viewsets.ViewSet):
@@ -156,20 +136,23 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
     @action(methods=["get"], detail=False, url_path="(?P<monitor_object_id>[^/.]+)/list")
     def monitor_instance_list(self, request, monitor_object_id):
         """非特殊对象的通用列表接口"""
-        include_children = request.COOKIES.get("include_children", "0") == "1"
-        current_team = get_current_team(request)
-
-        permission = get_permission_rules(
-            request.user,
-            current_team,
-            "monitor",
-            f"{PermissionConstants.INSTANCE_MODULE}.{monitor_object_id}",
-            include_children=include_children,
+        scope = resolve_current_team_data_scope(request)
+        permission = (
+            {"team": list(scope.data_team_ids), "instance": []}
+            if request.user.is_superuser
+            else get_permission_rules(
+                request.user,
+                scope.current_team,
+                "monitor",
+                f"{PermissionConstants.INSTANCE_MODULE}.{monitor_object_id}",
+                include_children=scope.include_children,
+            )
         )
 
-        qs = permission_filter(
+        qs = scope_permission_queryset(
             MonitorInstance,
             permission,
+            scope,
             team_key="monitorinstanceorganization__organization__in",
             id_key="id__in",
         )
@@ -192,6 +175,7 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
             qs,
             add_metrics,
             request.GET.get("monitor_plugin_id"),
+            visible_organization_ids=scope.data_team_ids,
         )
         # 如果有权限规则，则添加到数据中
         inst_permission_map = {i["id"]: i["permission"] for i in permission.get("instance", [])}
@@ -214,17 +198,22 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
         if not monitor_obj:
             raise BaseAppException("Monitor object does not exist")
 
-        include_children = request.COOKIES.get("include_children", "0") == "1"
-        permission = get_permission_rules(
-            request.user,
-            get_current_team(request),
-            "monitor",
-            f"{PermissionConstants.INSTANCE_MODULE}.{monitor_object_id}",
-            include_children=include_children,
+        scope = resolve_current_team_data_scope(request)
+        permission = (
+            {"team": list(scope.data_team_ids), "instance": []}
+            if request.user.is_superuser
+            else get_permission_rules(
+                request.user,
+                scope.current_team,
+                "monitor",
+                f"{PermissionConstants.INSTANCE_MODULE}.{monitor_object_id}",
+                include_children=scope.include_children,
+            )
         )
-        qs = permission_filter(
+        qs = scope_permission_queryset(
             MonitorInstance,
             permission,
+            scope,
             team_key="monitorinstanceorganization__organization__in",
             id_key="id__in",
         )
@@ -234,6 +223,7 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
             dict(**request.data),
             qs=qs,
             locale=request.user.locale,
+            visible_organization_ids=scope.data_team_ids,
         )
         data = search_obj.search()
         # 如果有权限规则，则添加到数据中
@@ -286,17 +276,22 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
         if monitor_obj.parent_id:
             raise BaseAppException("Only primary monitor objects support instance search")
 
-        include_children = request.COOKIES.get("include_children", "0") == "1"
-        permission = get_permission_rules(
-            request.user,
-            get_current_team(request),
-            "monitor",
-            f"{PermissionConstants.INSTANCE_MODULE}.{monitor_object_id}",
-            include_children=include_children,
+        scope = resolve_current_team_data_scope(request)
+        permission = (
+            {"team": list(scope.data_team_ids), "instance": []}
+            if request.user.is_superuser
+            else get_permission_rules(
+                request.user,
+                scope.current_team,
+                "monitor",
+                f"{PermissionConstants.INSTANCE_MODULE}.{monitor_object_id}",
+                include_children=scope.include_children,
+            )
         )
-        qs = permission_filter(
+        qs = scope_permission_queryset(
             MonitorInstance,
             permission,
+            scope,
             team_key="monitorinstanceorganization__organization__in",
             id_key="id__in",
         )
@@ -306,6 +301,7 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
             dict(**request.data),
             qs=qs,
             locale=request.user.locale,
+            visible_organization_ids=scope.data_team_ids,
         )
         data = search_obj.search_by_primary_object()
         # 如果有权限规则，则添加到数据中
@@ -395,11 +391,13 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
             [request.data.get("instance_id")],
             actor_context,
         )
-        _ensure_target_organizations(request.data.get("organizations", []), actor_context)
+        organizations = request.data.get("organizations")
+        if "organizations" in request.data:
+            _ensure_target_organizations(organizations, actor_context, request)
         MonitorObjectService.update_instance(
             request.data.get("instance_id"),
             request.data.get("name"),
-            request.data.get("organizations", []),
+            organizations,
         )
         return WebUtils.response_success()
 
@@ -413,7 +411,7 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
             actor_context,
         )
         organizations = request.data.get("organizations", [])
-        _ensure_target_organizations(organizations, actor_context)
+        _ensure_target_organizations(organizations, actor_context, request)
         MonitorObjectService.remove_instances_organizations(instance_ids, organizations)
         return WebUtils.response_success()
 
@@ -427,7 +425,7 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
             actor_context,
         )
         organizations = request.data.get("organizations", [])
-        _ensure_target_organizations(organizations, actor_context)
+        _ensure_target_organizations(organizations, actor_context, request)
         MonitorObjectService.add_instances_organizations(instance_ids, organizations)
         return WebUtils.response_success()
 
@@ -441,6 +439,6 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
             actor_context,
         )
         organizations = request.data.get("organizations", [])
-        _ensure_target_organizations(organizations, actor_context)
+        _ensure_target_organizations(organizations, actor_context, request)
         MonitorObjectService.set_instances_organizations(instance_ids, organizations)
         return WebUtils.response_success()

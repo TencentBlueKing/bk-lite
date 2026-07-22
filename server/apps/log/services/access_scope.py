@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from apps.core.utils.permission_utils import get_permission_rules, permission_filter
+from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.utils.current_team_scope import resolve_current_team_data_scope, scope_permission_queryset, validate_assignable_organizations
+from apps.core.utils.permission_utils import get_permission_rules
 from apps.log.constants.permission import PermissionConstants
 from apps.log.models.log_group import LogGroup
-from apps.core.utils.team_utils import get_current_team
 
 
 @dataclass
@@ -14,6 +15,7 @@ class LogAccessScope:
     queryset: object
     permission: dict
     resolved_group_objects: list = None
+    data_team_ids: frozenset[int] = frozenset()
 
     def __post_init__(self):
         if self.resolved_group_objects is None:
@@ -21,63 +23,56 @@ class LogAccessScope:
 
 
 class LogAccessScopeService:
-    @staticmethod
-    def _get_current_team(request):
-        current_team = get_current_team(request)
-        if current_team in (None, ""):
-            raise ValueError("当前组织信息不存在，请重新登录")
-        return current_team
-
-    @staticmethod
-    def _normalize_team_ids(values):
-        normalized = set()
-        for item in values or []:
-            if isinstance(item, dict):
-                item = item.get("id")
-            try:
-                normalized.add(int(item))
-            except (TypeError, ValueError):
-                continue
-        return normalized
+    @classmethod
+    def get_data_scope(cls, request):
+        cache_key = "_log_current_team_data_scope"
+        scope = getattr(request, cache_key, None)
+        if scope is not None:
+            return scope
+        try:
+            scope = resolve_current_team_data_scope(request)
+        except BaseAppException as exc:
+            raise ValueError(str(exc)) from exc
+        setattr(request, cache_key, scope)
+        return scope
 
     @classmethod
-    def get_group_permission(cls, request):
-        current_team = cls._get_current_team(request)
-        include_children = request.COOKIES.get("include_children", "0") == "1"
+    def get_group_permission(cls, request, scope=None):
+        scope = scope or cls.get_data_scope(request)
+        if scope.is_superuser:
+            return {"team": list(scope.data_team_ids), "instance": []}
         permission = get_permission_rules(
             request.user,
-            current_team,
+            scope.current_team,
             "log",
             PermissionConstants.LOG_GROUP_MODULE,
-            include_children=include_children,
+            include_children=scope.include_children,
         )
         return permission if isinstance(permission, dict) else {}
 
     @classmethod
     def get_accessible_group_queryset(cls, request):
-        permission = cls.get_group_permission(request)
-        queryset = permission_filter(
+        scope = cls.get_data_scope(request)
+        permission = cls.get_group_permission(request, scope)
+        queryset = scope_permission_queryset(
             LogGroup,
             permission,
+            scope,
             team_key="loggrouporganization__organization__in",
             id_key="id__in",
-        ).distinct()
+        )
         return queryset, permission
 
     @classmethod
     def get_manageable_organization_ids(cls, request):
-        _, permission = cls.get_accessible_group_queryset(request)
-        return cls._normalize_team_ids(permission.get("team", []))
+        return set(cls.get_data_scope(request).data_team_ids)
 
     @classmethod
     def validate_organizations(cls, request, organizations):
-        if organizations in (None, []):
-            return
-
-        allowed_organizations = cls.get_manageable_organization_ids(request)
-        unauthorized = sorted(set(organizations) - allowed_organizations)
-        if unauthorized:
-            raise ValueError(f"以下组织无权限绑定日志分组: {', '.join(str(org) for org in unauthorized)}")
+        try:
+            return validate_assignable_organizations(request, organizations)
+        except BaseAppException as exc:
+            raise ValueError(str(exc)) from exc
 
     @classmethod
     def resolve_scope(cls, request, log_group_ids=None):
@@ -127,4 +122,5 @@ class LogAccessScopeService:
             queryset=queryset.filter(id__in=resolved_ids),
             permission=permission,
             resolved_group_objects=resolved_groups,
+            data_team_ids=cls.get_data_scope(request).data_team_ids,
         )

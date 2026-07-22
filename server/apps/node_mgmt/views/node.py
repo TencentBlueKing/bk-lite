@@ -1,8 +1,9 @@
 from typing import Any, cast
+
+from django.db.models import Count, Q
 from rest_framework import mixins
 from rest_framework.decorators import action
 from rest_framework.viewsets import GenericViewSet
-from django.db.models import Count, Q
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.loader import LanguageLoader
@@ -12,17 +13,16 @@ from apps.node_mgmt.constants.collector import CollectorConstants
 from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.language import LanguageConstants
 from apps.node_mgmt.constants.node import NodeConstants
+from apps.node_mgmt.models.action import CollectorActionTaskNode
 from apps.node_mgmt.models.sidecar import Node, NodeOrganization
-from config.drf.pagination import CustomPageNumberPagination
 from apps.node_mgmt.serializers.node import (
-    NodeSerializer,
     BatchBindingNodeConfigurationSerializer,
     BatchOperateNodeCollectorSerializer,
+    NodeSerializer,
     TaskNodesQuerySerializer,
 )
 from apps.node_mgmt.services.node import NodeService
 from apps.node_mgmt.tasks.sidecar_config import sync_node_properties_to_sidecar
-from apps.node_mgmt.models.action import CollectorActionTaskNode, CollectorActionTask
 from apps.node_mgmt.utils.permission import (
     add_node_permissions,
     authorize_mutable_collector_configuration_ids,
@@ -31,7 +31,8 @@ from apps.node_mgmt.utils.permission import (
     get_authorized_node_queryset,
     get_node_permission,
 )
-from apps.node_mgmt.utils.task_result_schema import normalize_task_result_for_read
+from apps.node_mgmt.utils.task_result_schema import normalize_task_result_for_read, project_task_status_from_summary
+from config.drf.pagination import CustomPageNumberPagination
 
 
 class NodeFilterHandler:
@@ -469,13 +470,10 @@ class NodeViewSet(mixins.DestroyModelMixin, GenericViewSet):
             "cancelled": agg["cancelled"],
         }
 
-        task_obj = CollectorActionTask.objects.filter(id=task_id).first()
-        task_status = task_obj.status if task_obj else "waiting"
-
         return WebUtils.response_success(
             {
                 "task_id": task_id,
-                "status": task_status,
+                "status": project_task_status_from_summary(summary),
                 "summary": summary,
                 "items": data,
                 "count": total,

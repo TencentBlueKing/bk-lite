@@ -1,29 +1,27 @@
-from django.db import transaction
-from django.db import models
-from django.db.models import Q
+from django.db import models, transaction
 
 from apps.core.exceptions.base_app_exception import BaseAppException, UnauthorizedException
-from apps.core.utils.permission_utils import get_permission_rules
 from apps.core.logger import monitor_logger as logger
+from apps.core.utils.current_team_scope import CurrentTeamDataScope, scope_permission_queryset
+from apps.core.utils.permission_utils import get_permission_rules
 from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.constants.permission import PermissionConstants
 from apps.monitor.models import (
+    CollectConfig,
+    Metric,
     MonitorInstance,
     MonitorInstanceOrganization,
-    CollectConfig,
     MonitorObject,
     MonitorObjectOrganizationRule,
-    Metric,
+    MonitorPlugin,
 )
-from apps.monitor.utils.dimension import build_safe_instance_id, parse_instance_id, normalize_instance_identity
 from apps.monitor.utils.config_format import ConfigFormat
+from apps.monitor.utils.dimension import build_safe_instance_id, normalize_instance_identity, parse_instance_id
+from apps.monitor.utils.node_selector import normalize_node_selector
 from apps.monitor.utils.plugin_controller import Controller
+from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.rpc.node_mgmt import NodeMgmt
 from apps.system_mgmt.models import User
-from apps.system_mgmt.utils.group_utils import GroupUtils
-from apps.node_mgmt.constants.controller import ControllerConstants
-from apps.monitor.models import MonitorPlugin
-from apps.monitor.utils.node_selector import normalize_node_selector
 
 
 class InstanceConfigService:
@@ -48,43 +46,45 @@ class InstanceConfigService:
         return User(username=actor_context["username"], domain=actor_context["domain"])
 
     @staticmethod
+    def _get_data_scope(actor_context):
+        scope = actor_context.get("data_scope")
+        if not isinstance(scope, CurrentTeamDataScope) or not scope.data_team_ids:
+            raise UnauthorizedException("当前组织无可用权限范围")
+        return scope
+
+    @staticmethod
     def _get_actor_scope_groups(actor_context):
-        if actor_context.get("is_superuser"):
-            return None
-        return GroupUtils.get_user_authorized_child_groups(
-            actor_context.get("group_list", []),
-            actor_context["current_team"],
-            include_children=actor_context.get("include_children", False),
-        )
+        return set(InstanceConfigService._get_data_scope(actor_context).data_team_ids)
 
     @classmethod
     def _get_authorized_monitor_instances(cls, actor_context, monitor_object_id, require_operate=False):
+        scope = cls._get_data_scope(actor_context)
         if actor_context.get("is_superuser"):
-            return MonitorInstance.objects.filter(monitor_object_id=monitor_object_id)
+            permission = {"team": list(scope.data_team_ids), "instance": []}
+        else:
+            permission = get_permission_rules(
+                cls._build_actor_user(actor_context),
+                actor_context["current_team"],
+                "monitor",
+                f"{PermissionConstants.INSTANCE_MODULE}.{monitor_object_id}",
+                include_children=actor_context.get("include_children", False),
+            )
+            if require_operate:
+                permission = {
+                    **permission,
+                    "team": permission.get("team", []),
+                    "instance": [
+                        item for item in permission.get("instance", []) if isinstance(item, dict) and "Operate" in item.get("permission", [])
+                    ],
+                }
 
-        permission = get_permission_rules(
-            cls._build_actor_user(actor_context),
-            actor_context["current_team"],
-            "monitor",
-            f"{PermissionConstants.INSTANCE_MODULE}.{monitor_object_id}",
-            include_children=actor_context.get("include_children", False),
-        )
-        team_ids = permission.get("team", [])
-        instance_permissions = permission.get("instance", [])
-        allowed_instance_ids = [
-            item["id"]
-            for item in instance_permissions
-            if isinstance(item, dict) and "id" in item and (not require_operate or "Operate" in item.get("permission", []))
-        ]
-
-        queryset = MonitorInstance.objects.filter(monitor_object_id=monitor_object_id)
-        if team_ids and allowed_instance_ids:
-            return queryset.filter(Q(monitorinstanceorganization__organization__in=team_ids) | Q(id__in=allowed_instance_ids)).distinct()
-        if team_ids:
-            return queryset.filter(monitorinstanceorganization__organization__in=team_ids).distinct()
-        if allowed_instance_ids:
-            return queryset.filter(id__in=allowed_instance_ids)
-        return queryset.none()
+        return scope_permission_queryset(
+            MonitorInstance,
+            permission,
+            scope,
+            team_key="monitorinstanceorganization__organization__in",
+            id_key="id__in",
+        ).filter(monitor_object_id=monitor_object_id)
 
     @classmethod
     def _get_authorized_collect_configs(cls, ids, actor_context=None, require_operate=False):
@@ -97,9 +97,6 @@ class InstanceConfigService:
             return []
 
         if actor_context is None:
-            return config_objs
-
-        if actor_context.get("is_superuser"):
             return config_objs
 
         configs_by_object = {}
@@ -132,8 +129,6 @@ class InstanceConfigService:
             raise BaseAppException("监控实例不存在")
         if actor_context is None:
             return instance
-        if actor_context.get("is_superuser"):
-            return instance
         authorized = (
             cls._get_authorized_monitor_instances(
                 actor_context,
@@ -149,12 +144,9 @@ class InstanceConfigService:
 
     @classmethod
     def _sanitize_instances_for_onboarding(cls, instances, actor_context):
-        if actor_context.get("is_superuser"):
-            authorized_scope_groups = None
-        else:
-            authorized_scope_groups = set(cls._get_actor_scope_groups(actor_context) or [])
-            if not authorized_scope_groups:
-                raise UnauthorizedException("当前组织无可用权限范围")
+        authorized_scope_groups = set(cls._get_actor_scope_groups(actor_context) or [])
+        if not authorized_scope_groups:
+            raise UnauthorizedException("当前组织无可用权限范围")
 
         requested_node_ids = set()
         for instance in instances:
@@ -183,8 +175,7 @@ class InstanceConfigService:
                     raise UnauthorizedException(f"节点 {node_id} 无权限访问")
                 node_ids.append(node_id)
                 node_groups = set(node_info.get("organization_ids", []))
-                if authorized_scope_groups is not None:
-                    node_groups &= authorized_scope_groups
+                node_groups &= authorized_scope_groups
                 if not node_groups:
                     raise UnauthorizedException(f"节点 {node_id} 不在当前组织授权范围内")
                 group_ids.update(node_groups)
