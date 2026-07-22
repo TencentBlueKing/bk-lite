@@ -1,3 +1,5 @@
+import sqlite3
+
 from service.task_store import SENSITIVE_CREDENTIAL_KEYS, TaskStore, _sanitize_payload_for_storage
 
 
@@ -237,6 +239,97 @@ def test_create_if_absent_preserves_execution_payload_for_worker_use(tmp_path):
     execution_payload = store.get_execution_payload("execution-payload-test")
 
     assert execution_payload == payload_with_creds
+
+
+def test_update_execution_result_clears_terminal_execution_payload(tmp_path):
+    payload_with_creds = {
+        "task_id": "terminal-payload-test",
+        "host_credentials": [{"host": "10.0.0.1", "user": "root", "password": "secret"}],
+    }
+
+    for final_status in ("success", "failed"):
+        store = TaskStore(str(tmp_path / f"{final_status}.db"))
+        task_id = f"terminal-payload-{final_status}"
+        store.create_if_absent(task_id, "queued", payload_with_creds, {}, "2026-04-23T00:00:00+00:00")
+        store.claim_task(
+            task_id,
+            "worker-a",
+            "2026-04-23T00:00:10+00:00",
+            "2026-04-23T00:00:01+00:00",
+        )
+
+        updated = store.update_execution_result(
+            task_id,
+            final_status,
+            {"task_id": task_id, "success": final_status == "success"},
+            "2026-04-23T00:00:02+00:00",
+            owner_id="worker-a",
+        )
+
+        assert updated is True
+        assert store.get_execution_payload(task_id) is None
+
+
+def test_update_execution_result_keeps_payload_when_lease_owner_mismatches(tmp_path):
+    store = TaskStore(str(tmp_path / "task.db"))
+    payload_with_creds = {
+        "task_id": "lease-lost-payload-test",
+        "host_credentials": [{"host": "10.0.0.1", "user": "root", "password": "secret"}],
+    }
+    store.create_if_absent(
+        "lease-lost-payload-test",
+        "queued",
+        payload_with_creds,
+        {},
+        "2026-04-23T00:00:00+00:00",
+    )
+    store.claim_task(
+        "lease-lost-payload-test",
+        "worker-a",
+        "2026-04-23T00:00:10+00:00",
+        "2026-04-23T00:00:01+00:00",
+    )
+
+    updated = store.update_execution_result(
+        "lease-lost-payload-test",
+        "success",
+        {"task_id": "lease-lost-payload-test", "success": True},
+        "2026-04-23T00:00:02+00:00",
+        owner_id="worker-b",
+    )
+
+    assert updated is False
+    assert store.get_execution_payload("lease-lost-payload-test") == payload_with_creds
+
+
+def test_init_clears_legacy_terminal_payloads_without_touching_active_tasks(tmp_path):
+    db_path = tmp_path / "task.db"
+    store = TaskStore(str(db_path))
+    payload_with_creds = {
+        "host_credentials": [{"host": "10.0.0.1", "user": "root", "password": "secret"}],
+    }
+    stored_statuses = {
+        "status-terminal": ("success", "queued"),
+        "execution-terminal": ("running", "failed"),
+        "callback-terminal": ("callback_failed", "success"),
+        "queued": ("queued", "queued"),
+        "running": ("running", "running"),
+    }
+    for task_id_suffix, (status, execution_status) in stored_statuses.items():
+        task_id = f"legacy-{task_id_suffix}"
+        store.create_if_absent(task_id, "queued", payload_with_creds, {}, "2026-04-23T00:00:00+00:00")
+        with sqlite3.connect(db_path) as conn:
+            conn.execute(
+                "UPDATE task_state SET status = ?, execution_status = ? WHERE task_id = ?",
+                (status, execution_status, task_id),
+            )
+
+    reloaded_store = TaskStore(str(db_path))
+
+    for task_id_suffix in ("status-terminal", "execution-terminal", "callback-terminal"):
+        assert reloaded_store.get_execution_payload(f"legacy-{task_id_suffix}") is None
+    for task_id_suffix in ("queued", "running"):
+        assert reloaded_store.get_execution_payload(f"legacy-{task_id_suffix}") == payload_with_creds
 
 
 def test_sensitive_credential_keys_is_comprehensive():

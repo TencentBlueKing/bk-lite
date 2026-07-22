@@ -101,6 +101,21 @@ class TaskStore:
                 if column not in columns:
                     conn.execute(sql)
 
+            terminal_statuses = tuple(sorted(TERMINAL_TASK_STATUSES))
+            status_placeholders = ", ".join("?" for _ in terminal_statuses)
+            conn.execute(
+                f"""
+                UPDATE task_state
+                SET execution_payload_json = NULL
+                WHERE execution_payload_json IS NOT NULL
+                  AND (
+                      status IN ({status_placeholders})
+                      OR execution_status IN ({status_placeholders})
+                  )
+                """,
+                (*terminal_statuses, *terminal_statuses),
+            )
+
     def create_if_absent(
         self,
         task_id: str,
@@ -244,6 +259,7 @@ class TaskStore:
                 SET status = ?,
                     execution_status = ?,
                     result_json = ?,
+                    execution_payload_json = NULL,
                     lease_owner = NULL,
                     lease_expires_at = NULL,
                     heartbeat_at = ?,
