@@ -145,7 +145,6 @@ def reset_pwd(username, domain, password, caller_token=""):
     return {"result": True}
 
 
-@nats_client.register
 def bk_lite_user_login(username, domain):
     user = User.objects.filter(username=username, domain=domain).first()
     if not user:

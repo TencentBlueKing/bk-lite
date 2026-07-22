@@ -7,7 +7,9 @@ import types
 
 import nats_client
 import pytest
+from nats_client.registry import default_registry
 
+from apps.rpc.system_mgmt import SystemMgmt
 from apps.system_mgmt import nats_api
 from apps.system_mgmt.models import (
     App,
@@ -70,13 +72,40 @@ def test_nats_api_compat_exports_all_nats_entrypoints():
         "save_error_log",
         "save_operation_log",
     }
-    registered_entrypoints = expected_entrypoints - {"_list_opspilot_nats_channels"}
+    registered_entrypoints = expected_entrypoints - {
+        "_list_opspilot_nats_channels",
+        "bk_lite_user_login",
+    }
 
     exported_entrypoints = {name for name in expected_entrypoints if callable(getattr(nats_api, name, None))}
-    actual_registered_entrypoints = {item["name"] for item in nats_client.default_registry.registry.values()}
+    actual_registered_entrypoints = {item["name"] for item in default_registry.registry.values()}
 
     assert exported_entrypoints == expected_entrypoints
     assert registered_entrypoints <= actual_registered_entrypoints
+    assert "bk_lite_user_login" not in actual_registered_entrypoints
+
+
+def test_bk_lite_user_login_keeps_local_app_client_path(monkeypatch):
+    user = User.objects.create(
+        username="cross_domain_user",
+        password="x",
+        display_name="Cross Domain User",
+        email="cross-domain@example.com",
+        domain="corp.example.com",
+    )
+    issued = {}
+
+    def fake_get_user_login_token(actual_user, username):
+        issued.update(user=actual_user, username=username)
+        return {"result": True, "data": {"token": "local-only"}}
+
+    monkeypatch.setattr(nats_api._login, "get_user_login_token", fake_get_user_login_token)
+
+    result = SystemMgmt().bk_lite_user_login(user.username, user.domain)
+
+    assert result == {"result": True, "data": {"token": "local-only"}}
+    assert issued == {"user": user, "username": user.username}
+    assert "bk_lite_user_login" not in {item["name"] for item in default_registry.registry.values()}
 
 
 # ---------------------------------------------------------------------------
