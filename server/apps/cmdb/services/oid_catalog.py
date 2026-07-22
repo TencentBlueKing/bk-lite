@@ -85,6 +85,7 @@ def load_oid_catalog(
     if (
         not isinstance(allowed_types, list)
         or len(allowed_types) != len(ALLOWED_DEVICE_TYPES)
+        or any(not isinstance(device_type, str) for device_type in allowed_types)
         or set(allowed_types) != ALLOWED_DEVICE_TYPES
     ):
         raise OidCatalogError("OID_CATALOG_INVALID: allowed device types")

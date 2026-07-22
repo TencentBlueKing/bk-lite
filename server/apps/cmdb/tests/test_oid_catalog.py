@@ -123,8 +123,15 @@ def test_load_oid_catalog_rejects_invalid_catalog_boundaries(
     [
         ["switch", "router", "firewall", "loadbalance", "ap"],
         ["switch", "firewall", "loadbalance"],
+        ["switch", ["router"], "firewall", "loadbalance"],
+        ["switch", {"router": "router"}, "firewall", "loadbalance"],
     ],
-    ids=["rejects-extra-device-type", "rejects-missing-device-type"],
+    ids=[
+        "rejects-extra-device-type",
+        "rejects-missing-device-type",
+        "rejects-array-device-type",
+        "rejects-object-device-type",
+    ],
 )
 def test_load_oid_catalog_requires_exact_allowed_device_types(
     tmp_path, allowed_device_types
