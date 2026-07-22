@@ -8,18 +8,35 @@ use tokio::sync::oneshot;
 /// 每个活跃 SSE 流的取消发送端，keyed by stream_id
 pub struct StreamRegistry(pub Mutex<HashMap<String, oneshot::Sender<()>>>);
 
-/// 校验请求 URL 的 host 是否在环境变量 TAURI_ALLOWED_HOSTS 所配置的白名单内。
+const COMPILED_ALLOWED_HOSTS: Option<&str> = option_env!("TAURI_ALLOWED_HOSTS");
+
+fn configured_allowed_hosts() -> String {
+    std::env::var("TAURI_ALLOWED_HOSTS")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| COMPILED_ALLOWED_HOSTS.map(str::to_owned))
+        .unwrap_or_default()
+}
+
+/// 校验请求 URL 的 host 是否在指定白名单内。
 ///
 /// 白名单格式：逗号分隔的 host[:port] 列表，例如
 ///   `TAURI_ALLOWED_HOSTS=bklite.example.com,api.internal.example.com:8443`
-///
-/// 若环境变量未设置，则默认只允许 127.0.0.1 和 localhost（开发模式兜底），
-/// 并在 warn 日志中提示生产环境应显式配置。
-fn is_allowed_host(url: &str) -> bool {
+fn is_allowed_host_with_allowlist(url: &str, allowed_hosts: &str) -> bool {
     let parsed = match url::Url::parse(url) {
         Ok(u) => u,
         Err(_) => return false,
     };
+
+    let is_loopback = match parsed.host() {
+        Some(url::Host::Ipv4(address)) => address.is_loopback(),
+        Some(url::Host::Ipv6(address)) => address.is_loopback(),
+        Some(url::Host::Domain(domain)) => domain.eq_ignore_ascii_case("localhost"),
+        None => false,
+    };
+    if parsed.scheme() != "https" && !(parsed.scheme() == "http" && is_loopback) {
+        return false;
+    }
 
     let host = match parsed.host_str() {
         Some(h) => h.to_lowercase(),
@@ -33,17 +50,11 @@ fn is_allowed_host(url: &str) -> bool {
         None => host.clone(),
     };
 
-    let allowed_hosts_env = std::env::var("TAURI_ALLOWED_HOSTS").unwrap_or_default();
-
-    if allowed_hosts_env.trim().is_empty() {
-        // 未配置白名单时，仅放行本地开发地址
-        log::warn!(
-            "[Tauri-Proxy] TAURI_ALLOWED_HOSTS 未配置，生产环境请显式设置允许的后端域名。当前仅放行 127.0.0.1/::1/localhost。"
-        );
-        return host == "127.0.0.1" || host == "::1" || host == "localhost";
+    if allowed_hosts.trim().is_empty() {
+        return is_loopback;
     }
 
-    for entry in allowed_hosts_env.split(',') {
+    for entry in allowed_hosts.split(',') {
         let entry = entry.trim().to_lowercase();
         if entry.is_empty() {
             continue;
@@ -54,6 +65,23 @@ fn is_allowed_host(url: &str) -> bool {
     }
 
     false
+}
+
+fn is_allowed_host(url: &str) -> bool {
+    let allowed_hosts = configured_allowed_hosts();
+    if allowed_hosts.is_empty() {
+        log::warn!(
+            "[Tauri-Proxy] 未配置 API host 白名单，当前仅放行 127.0.0.1/::1/localhost。"
+        );
+    }
+    is_allowed_host_with_allowlist(url, &allowed_hosts)
+}
+
+fn build_http_client(user_agent: &str) -> Result<reqwest::Client, reqwest::Error> {
+    reqwest::Client::builder()
+        .user_agent(user_agent)
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
 }
 
 fn is_sensitive_header(name: &str) -> bool {
@@ -138,13 +166,10 @@ pub async fn api_proxy(request: ApiRequest) -> Result<ApiResponse, ApiError> {
     log::info!("🚀 [Tauri-API-{}] START: {} {}", request_id, request.method, request.url);
 
     // 创建 HTTP 客户端
-    let client = reqwest::Client::builder()
-        .user_agent("Tauri-API-Proxy/1.0")
-        .build()
-        .map_err(|e| ApiError {
-            message: format!("Failed to create HTTP client: {}", e),
-            status: None,
-        })?;
+    let client = build_http_client("Tauri-API-Proxy/1.0").map_err(|e| ApiError {
+        message: format!("Failed to create HTTP client: {}", e),
+        status: None,
+    })?;
 
     // 构建请求
     let mut req_builder = match request.method.to_uppercase().as_str() {
@@ -277,13 +302,10 @@ pub async fn api_stream_proxy(
     log::info!("🌊 [Tauri-Stream-{}] START: {} {}", request_id, request.method, request.url);
 
     // 创建 HTTP 客户端
-    let client = reqwest::Client::builder()
-        .user_agent("Tauri-Stream-Proxy/1.0")
-        .build()
-        .map_err(|e| ApiError {
-            message: format!("Failed to create HTTP client: {}", e),
-            status: None,
-        })?;
+    let client = build_http_client("Tauri-Stream-Proxy/1.0").map_err(|e| ApiError {
+        message: format!("Failed to create HTTP client: {}", e),
+        status: None,
+    })?;
 
     // 构建请求
     let mut req_builder = match request.method.to_uppercase().as_str() {
@@ -564,93 +586,123 @@ pub async fn cancel_stream(
 
 #[cfg(test)]
 mod tests {
-    use super::{is_allowed_host, redact_headers_for_log};
-    use std::{collections::HashMap, env};
-
-    /// 辅助：在测试中临时设置 / 清除环境变量（串行执行，避免并发干扰）
-    fn with_env<F: FnOnce()>(key: &str, val: Option<&str>, f: F) {
-        let old = env::var(key).ok();
-        match val {
-            Some(v) => env::set_var(key, v),
-            None => env::remove_var(key),
-        }
-        f();
-        match old {
-            Some(v) => env::set_var(key, v),
-            None => env::remove_var(key),
-        }
-    }
+    use super::{build_http_client, is_allowed_host_with_allowlist, redact_headers_for_log};
+    use std::{
+        collections::HashMap,
+        io::{Read, Write},
+        net::TcpListener,
+        thread,
+    };
 
     // --- 未配置白名单（默认只放行 localhost/127.0.0.1）---
 
     #[test]
     fn test_no_env_allows_localhost() {
-        with_env("TAURI_ALLOWED_HOSTS", None, || {
-            assert!(is_allowed_host("http://127.0.0.1:8011/api"));
-            assert!(is_allowed_host("http://localhost:3001/dev"));
-            assert!(is_allowed_host("http://[::1]:8011/api"));
-        });
+        assert!(is_allowed_host_with_allowlist("http://127.0.0.1:8011/api", ""));
+        assert!(is_allowed_host_with_allowlist("http://localhost:3001/dev", ""));
+        assert!(is_allowed_host_with_allowlist("http://[::1]:8011/api", ""));
     }
 
     #[test]
     fn test_no_env_blocks_external() {
-        with_env("TAURI_ALLOWED_HOSTS", None, || {
-            // 关键测试：revert 白名单校验逻辑后此断言应失败
-            assert!(!is_allowed_host("http://169.254.169.254/latest/meta-data/"));
-            assert!(!is_allowed_host("https://evil.example.com/exfil"));
-            assert!(!is_allowed_host("http://internal-svc/secret"));
-        });
+        assert!(!is_allowed_host_with_allowlist(
+            "http://169.254.169.254/latest/meta-data/",
+            "",
+        ));
+        assert!(!is_allowed_host_with_allowlist("https://evil.example.com/exfil", ""));
+        assert!(!is_allowed_host_with_allowlist("http://internal-svc/secret", ""));
     }
 
     // --- 已配置白名单 ---
 
     #[test]
     fn test_env_allows_listed_host() {
-        with_env(
-            "TAURI_ALLOWED_HOSTS",
-            Some("bklite.example.com,api.internal.corp:8443"),
-            || {
-                assert!(is_allowed_host("https://bklite.example.com/api/v1/"));
-                assert!(is_allowed_host("https://api.internal.corp:8443/stream"));
-            },
-        );
+        let allowlist = "bklite.example.com,api.internal.corp:8443";
+        assert!(is_allowed_host_with_allowlist(
+            "https://bklite.example.com/api/v1/",
+            allowlist,
+        ));
+        assert!(is_allowed_host_with_allowlist(
+            "https://api.internal.corp:8443/stream",
+            allowlist,
+        ));
     }
 
     #[test]
     fn test_env_blocks_unlisted_host() {
-        with_env(
-            "TAURI_ALLOWED_HOSTS",
-            Some("bklite.example.com"),
-            || {
-                // SSRF 靶标：不在白名单内应被拒绝
-                assert!(!is_allowed_host("http://169.254.169.254/"));
-                assert!(!is_allowed_host("https://other-domain.example.com/"));
-            },
-        );
+        assert!(!is_allowed_host_with_allowlist(
+            "http://169.254.169.254/",
+            "bklite.example.com",
+        ));
+        assert!(!is_allowed_host_with_allowlist(
+            "https://other-domain.example.com/",
+            "bklite.example.com",
+        ));
+    }
+
+    #[test]
+    fn test_external_http_is_rejected_even_when_host_is_allowlisted() {
+        assert!(!is_allowed_host_with_allowlist(
+            "http://bklite.example.com/api/v1/",
+            "bklite.example.com",
+        ));
+        assert!(is_allowed_host_with_allowlist(
+            "https://bklite.example.com/api/v1/",
+            "bklite.example.com",
+        ));
+        assert!(is_allowed_host_with_allowlist(
+            "http://127.0.0.1:8011/api/v1/",
+            "127.0.0.1:8011",
+        ));
     }
 
     #[test]
     fn test_env_host_port_distinction() {
-        // host:port 条目不应放行同 host 的其它端口
-        with_env(
-            "TAURI_ALLOWED_HOSTS",
-            Some("api.corp.com:8443"),
-            || {
-                assert!(is_allowed_host("https://api.corp.com:8443/ok"));
-                // 不同端口不在白名单
-                assert!(!is_allowed_host("https://api.corp.com:9999/bad"));
-                // 纯 host（无端口）不在白名单
-                assert!(!is_allowed_host("https://api.corp.com/bad"));
-            },
-        );
+        let allowlist = "api.corp.com:8443";
+        assert!(is_allowed_host_with_allowlist(
+            "https://api.corp.com:8443/ok",
+            allowlist,
+        ));
+        assert!(!is_allowed_host_with_allowlist(
+            "https://api.corp.com:9999/bad",
+            allowlist,
+        ));
+        assert!(!is_allowed_host_with_allowlist(
+            "https://api.corp.com/bad",
+            allowlist,
+        ));
     }
 
     #[test]
     fn test_invalid_url_rejected() {
-        with_env("TAURI_ALLOWED_HOSTS", Some("bklite.example.com"), || {
-            assert!(!is_allowed_host("not-a-url"));
-            assert!(!is_allowed_host(""));
+        assert!(!is_allowed_host_with_allowlist("not-a-url", "bklite.example.com"));
+        assert!(!is_allowed_host_with_allowlist("", "bklite.example.com"));
+    }
+
+    #[tokio::test]
+    async fn test_http_client_does_not_follow_redirects() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind redirect test server");
+        let address = listener.local_addr().expect("read redirect test address");
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept redirect test request");
+            let mut buffer = [0_u8; 1024];
+            let _ = stream.read(&mut buffer);
+            stream
+                .write_all(
+                    b"HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:1/blocked\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                )
+                .expect("write redirect response");
         });
+
+        let response = build_http_client("Tauri-Redirect-Test/1.0")
+            .expect("build test client")
+            .get(format!("http://{address}/start"))
+            .send()
+            .await
+            .expect("return first response without following redirect");
+
+        assert_eq!(response.status(), reqwest::StatusCode::FOUND);
+        server.join().expect("join redirect test server");
     }
 
     #[test]
