@@ -230,6 +230,47 @@ def test_add_members_commits_successful_batch_before_next_batch_retry(group):
 
 
 @pytest.mark.django_db
+def test_add_members_stops_before_second_batch_and_summary_when_paused_during_first_call(group):
+    from apps.alerts.service.incident_im.delivery import deliver_add_members
+
+    group.external_chat_id = "oc_1"
+    group.save(update_fields=["external_chat_id"])
+    IncidentIMMember.objects.bulk_create(
+        [
+            IncidentIMMember(
+                group=group,
+                username=f"user-{index}",
+                role=IncidentIMMember.Role.COLLABORATOR,
+                external_id=f"ou_{index}",
+                external_id_type="open_id",
+                mapping_status=IncidentIMMember.MappingStatus.MAPPED,
+                sync_status=IncidentIMMember.SyncStatus.PENDING,
+            )
+            for index in range(51)
+        ]
+    )
+    success = CapabilityExecutionResult.success_result("added", payload={"invalid_member_ids": []})
+
+    def pause_during_first_call(*_args, **_kwargs):
+        IncidentIMGroup.objects.filter(pk=group.id).update(
+            status=IncidentIMGroup.Status.PAUSED,
+            pause_reason=IncidentIMGroup.PauseReason.MANUAL,
+        )
+        return success
+
+    with mock.patch(
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
+        side_effect=pause_during_first_call,
+    ) as execute, mock.patch("apps.alerts.service.incident_im.delivery.enqueue_outbox") as enqueue:
+        deliver_add_members(group.id)
+
+    assert execute.call_count == 1
+    assert group.members.filter(sync_status=IncidentIMMember.SyncStatus.JOINED).count() == 50
+    assert group.members.filter(sync_status=IncidentIMMember.SyncStatus.PENDING).count() == 1
+    enqueue.assert_not_called()
+
+
+@pytest.mark.django_db
 def test_group_not_found_marks_degraded_without_recreating(group, pending_members):
     from apps.alerts.service.incident_im.delivery import deliver_add_members
 

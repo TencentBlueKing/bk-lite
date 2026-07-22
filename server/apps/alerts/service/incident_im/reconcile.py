@@ -1,6 +1,7 @@
 import hashlib
 
 from django.db import transaction
+from django.utils import timezone
 
 from apps.alerts.constants.constants import IncidentStatus
 from apps.alerts.models import AlertOutbox, IncidentIMGroup, IncidentIMMember
@@ -23,6 +24,16 @@ def reconcile_incident_im_group(incident_id, force_delivery=False):
             return None
 
         reconcile_member_snapshots(group, group.incident)
+        if force_delivery:
+            group.members.filter(
+                mapping_status=IncidentIMMember.MappingStatus.MAPPED,
+                sync_status=IncidentIMMember.SyncStatus.FAILED,
+            ).exclude(external_id="").update(
+                sync_status=IncidentIMMember.SyncStatus.PENDING,
+                last_error_code="",
+                last_error_message="",
+                updated_at=timezone.now(),
+            )
         if (
             group.status == IncidentIMGroup.Status.ACTIVE
             and group.members.exclude(sync_status=IncidentIMMember.SyncStatus.JOINED).exists()
@@ -35,10 +46,7 @@ def reconcile_incident_im_group(incident_id, force_delivery=False):
         pending = list(
             group.members.filter(
                 mapping_status=IncidentIMMember.MappingStatus.MAPPED,
-                sync_status__in=(
-                    IncidentIMMember.SyncStatus.PENDING,
-                    IncidentIMMember.SyncStatus.FAILED,
-                ),
+                sync_status=IncidentIMMember.SyncStatus.PENDING,
             )
             .exclude(external_id="")
             .order_by("pk")
@@ -71,7 +79,16 @@ def reconcile_incident_im_group_by_group_id(group_id, force_delivery=False):
 def pause_group_for_closed_incident(incident_id):
     with transaction.atomic():
         group = _lock_active_group_for_incident(incident_id)
-        if group is None or group.pause_reason == IncidentIMGroup.PauseReason.MANUAL:
+        if (
+            group is None
+            or group.pause_reason == IncidentIMGroup.PauseReason.MANUAL
+            or group.status
+            not in (
+                IncidentIMGroup.Status.ACTIVE,
+                IncidentIMGroup.Status.ACTIVE_PARTIAL,
+            )
+            or not group.external_chat_id
+        ):
             return group
         group.resume_after_reopen = group.continuous_sync_enabled
         group.status = IncidentIMGroup.Status.PAUSED
@@ -83,7 +100,12 @@ def pause_group_for_closed_incident(incident_id):
 def resume_group_for_reopened_incident(incident_id):
     with transaction.atomic():
         group = _lock_active_group_for_incident(incident_id)
-        if group is None or group.pause_reason != IncidentIMGroup.PauseReason.INCIDENT_CLOSED:
+        if (
+            group is None
+            or group.status != IncidentIMGroup.Status.PAUSED
+            or group.pause_reason != IncidentIMGroup.PauseReason.INCIDENT_CLOSED
+            or not group.external_chat_id
+        ):
             return group
 
         should_resume = group.resume_after_reopen

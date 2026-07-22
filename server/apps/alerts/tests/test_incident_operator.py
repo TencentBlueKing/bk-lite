@@ -182,3 +182,34 @@ def test_close_group_hook_rolls_back_with_incident_when_later_operation_fails(mo
     group.refresh_from_db()
     assert incident.status == IncidentStatus.PROCESSING
     assert group.status == IncidentIMGroup.Status.ACTIVE
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("group_status", "external_chat_id"),
+    [
+        (IncidentIMGroup.Status.PENDING_CREATE, ""),
+        (IncidentIMGroup.Status.CREATING, ""),
+        (IncidentIMGroup.Status.CREATE_FAILED, ""),
+        (IncidentIMGroup.Status.DEGRADED, "oc_degraded"),
+        (IncidentIMGroup.Status.ACTIVE, ""),
+    ],
+)
+def test_close_reopen_preserves_non_resumable_group_authoritative_state(group_status, external_chat_id):
+    incident = _make_incident(status=IncidentStatus.PROCESSING)
+    group = _make_im_group(
+        incident,
+        status=group_status,
+        external_chat_id=external_chat_id,
+    )
+    op = IncidentOperator(user="u1")
+
+    assert op.operate("close", "I1", {})["result"] is True
+    group.refresh_from_db()
+    assert group.status == group_status
+    assert group.pause_reason == ""
+
+    assert op.operate("reopen", "I1", {})["result"] is True
+    group.refresh_from_db()
+    assert group.status == group_status
+    assert group.pause_reason == ""

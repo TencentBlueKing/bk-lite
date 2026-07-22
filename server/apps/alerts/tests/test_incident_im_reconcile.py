@@ -21,6 +21,7 @@ from apps.system_mgmt.models import (
     IntegrationInstance,
     User,
 )
+from apps.system_mgmt.providers.runtime import CapabilityExecutionResult
 
 
 @pytest.fixture
@@ -161,8 +162,73 @@ def test_mapping_completion_promotes_waiting_member_and_enqueues(group, channel)
 
 
 @pytest.mark.django_db
-def test_periodic_reconcile_does_not_repeat_failed_member_until_mapping_changes(group, channel):
-    mapping = _map_user(channel, "bob")
+def test_real_invalid_delivery_is_not_retried_by_periodic_reconcile(group, channel):
+    _map_user(channel, "bob")
+    group.incident.collaborators = ["bob"]
+    group.incident.save(update_fields=["collaborators"])
+    member = IncidentIMMember.objects.create(
+        group=group,
+        username="bob",
+        role=IncidentIMMember.Role.COLLABORATOR,
+        external_id="ou_bob",
+        external_id_type="open_id",
+        mapping_status=IncidentIMMember.MappingStatus.MAPPED,
+        sync_status=IncidentIMMember.SyncStatus.PENDING,
+    )
+    invalid = CapabilityExecutionResult(
+        success=True,
+        partial_success=True,
+        summary="partial",
+        payload={"invalid_member_ids": ["ou_bob"]},
+    )
+    with mock.patch(
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
+        return_value=invalid,
+    ), mock.patch("apps.alerts.service.incident_im.delivery.enqueue_outbox"):
+        deliver_add_members(group.id)
+
+    member.refresh_from_db()
+    assert member.sync_status == IncidentIMMember.SyncStatus.FAILED
+    for _ in range(3):
+        reconcile_incident_im_group(group.incident_id)
+    assert not AlertOutbox.objects.filter(kind="incident_im_group.add_members").exists()
+
+
+@pytest.mark.django_db
+def test_new_pending_member_delivery_does_not_retry_old_failed_member(group):
+    failed = IncidentIMMember.objects.create(
+        group=group,
+        username="failed",
+        role=IncidentIMMember.Role.COLLABORATOR,
+        external_id="ou_failed",
+        external_id_type="open_id",
+        mapping_status=IncidentIMMember.MappingStatus.MAPPED,
+        sync_status=IncidentIMMember.SyncStatus.FAILED,
+    )
+    pending = IncidentIMMember.objects.create(
+        group=group,
+        username="pending",
+        role=IncidentIMMember.Role.COLLABORATOR,
+        external_id="ou_pending",
+        external_id_type="open_id",
+        mapping_status=IncidentIMMember.MappingStatus.MAPPED,
+        sync_status=IncidentIMMember.SyncStatus.PENDING,
+    )
+    success = CapabilityExecutionResult.success_result("added", payload={"invalid_member_ids": []})
+    with mock.patch(
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
+        return_value=success,
+    ) as execute, mock.patch("apps.alerts.service.incident_im.delivery.enqueue_outbox"):
+        deliver_add_members(group.id)
+
+    assert execute.call_args.kwargs["member_ids"] == [pending.external_id]
+    failed.refresh_from_db()
+    assert failed.sync_status == IncidentIMMember.SyncStatus.FAILED
+
+
+@pytest.mark.django_db
+def test_force_delivery_promotes_mapped_failed_member_and_enqueues(group, channel):
+    _map_user(channel, "bob")
     group.incident.collaborators = ["bob"]
     group.incident.save(update_fields=["collaborators"])
     member = IncidentIMMember.objects.create(
@@ -177,20 +243,12 @@ def test_periodic_reconcile_does_not_repeat_failed_member_until_mapping_changes(
         last_error_message="外部用户标识无效",
     )
 
-    reconcile_incident_im_group(group.incident_id)
-    AlertOutbox.objects.filter(kind="incident_im_group.add_members").update(
-        status=AlertOutbox.Status.DELIVERED
-    )
-    reconcile_incident_im_group(group.incident_id)
-    assert AlertOutbox.objects.filter(kind="incident_im_group.add_members").count() == 1
-
-    mapping.external_snapshot = {"open_id": "ou_bob_fixed"}
-    mapping.save(update_fields=["external_snapshot"])
-    reconcile_incident_im_group(group.incident_id)
+    reconcile_incident_im_group(group.incident_id, force_delivery=True)
 
     member.refresh_from_db()
-    assert member.external_id == "ou_bob_fixed"
-    assert AlertOutbox.objects.filter(kind="incident_im_group.add_members").count() == 2
+    assert member.sync_status == IncidentIMMember.SyncStatus.PENDING
+    assert member.last_error_code == ""
+    assert AlertOutbox.objects.filter(kind="incident_im_group.add_members").exists()
 
 
 @pytest.mark.django_db
@@ -328,7 +386,7 @@ def test_reopen_restores_partial_when_member_gap_exists_and_enqueues(group):
 
 
 @pytest.mark.django_db
-def test_periodic_scan_limits_to_200_and_isolates_each_group(monkeypatch, incident, channel):
+def test_periodic_scan_is_fair_across_201_groups_and_isolates_failure(monkeypatch, incident, channel):
     groups = [
         IncidentIMGroup.objects.create(
             incident=Incident.objects.create(
@@ -347,7 +405,7 @@ def test_periodic_scan_limits_to_200_and_isolates_each_group(monkeypatch, incide
             continuous_sync_enabled=True,
             idempotency_key=f"bklite-{uuid.uuid4().hex}",
         )
-        for index in range(202)
+        for index in range(201)
     ]
     called = []
 
@@ -361,11 +419,12 @@ def test_periodic_scan_limits_to_200_and_isolates_each_group(monkeypatch, incide
         fake_reconcile,
     )
 
-    result = reconcile_waiting_incident_im_groups()
+    first = reconcile_waiting_incident_im_groups()
+    second = reconcile_waiting_incident_im_groups()
 
-    assert result == {"scheduled": 200, "failed": 1}
-    assert len(called) == 200
-    assert set(called).issubset({item.id for item in groups})
+    assert first == {"scheduled": 200, "failed": 1}
+    assert second["scheduled"] == 200
+    assert {item.id for item in groups}.issubset(set(called))
 
 
 @pytest.mark.django_db

@@ -8,7 +8,7 @@ from typing import Iterable, List
 
 from celery import shared_task
 from django.core.cache import cache
-from django.db.models import Q
+from django.db.models import F, Q
 from django.utils import timezone
 
 from apps.alerts.common.notify.notify import Notify
@@ -86,7 +86,7 @@ def reconcile_waiting_incident_im_groups():
                 IncidentIMGroup.Status.ACTIVE_PARTIAL,
             ),
         )
-        .order_by("last_sync_at", "pk")
+        .order_by(F("last_sync_at").asc(nulls_first=True), "pk")
         .values_list("pk", flat=True)[:INCIDENT_IM_RECONCILE_BATCH_SIZE]
     )
     failed = 0
@@ -96,6 +96,10 @@ def reconcile_waiting_incident_im_groups():
         except Exception:
             failed += 1
             logger.exception("incident im reconcile failed: group_id=%s", group_id)
+        finally:
+            IncidentIMGroup.objects.filter(pk=group_id, active_slot=1).update(
+                last_sync_at=timezone.now()
+            )
     return {"scheduled": len(group_ids), "failed": failed}
 
 

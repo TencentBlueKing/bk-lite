@@ -118,11 +118,16 @@ def deliver_add_members(group_id) -> None:
 
     processed_member_ids: set[int] = set()
     while True:
+        with transaction.atomic():
+            locked = _lock_group(group_id)
+            if locked is None or _is_group_delivery_paused(locked):
+                return
+            group = locked
         batch = list(
             IncidentIMMember.objects.filter(
                 group_id=group_id,
                 mapping_status=IncidentIMMember.MappingStatus.MAPPED,
-                sync_status__in=[IncidentIMMember.SyncStatus.PENDING, IncidentIMMember.SyncStatus.FAILED],
+                sync_status=IncidentIMMember.SyncStatus.PENDING,
             )
             .exclude(pk__in=processed_member_ids)
             .exclude(external_id="")
@@ -166,7 +171,7 @@ def deliver_add_members(group_id) -> None:
 
     with transaction.atomic():
         locked = _lock_group(group_id)
-        if locked is None or locked.status == IncidentIMGroup.Status.UNLINKED:
+        if locked is None or _is_group_delivery_paused(locked):
             return
         locked.current_stage = IncidentIMGroup.Stage.SENDING_SUMMARY
         locked.save(update_fields=["current_stage"])

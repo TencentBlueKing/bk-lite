@@ -212,15 +212,19 @@ def test_reconcile_keeps_member_waiting_when_mapping_receive_type_differs_from_g
 
 
 @pytest.mark.django_db
-def test_reconcile_updates_snapshot_but_never_reverts_joined_member(group, mapping):
+def test_reconcile_joined_member_with_changed_external_identity_becomes_pending(group, mapping):
     group.incident.operator = ["alice"]
     group.incident.save(update_fields=["operator"])
     joined = IncidentIMMember.objects.create(
         group=group,
         username="alice",
         role=IncidentIMMember.Role.COLLABORATOR,
-        mapping_status=IncidentIMMember.MappingStatus.UNMAPPED,
+        external_id="ou_old",
+        external_id_type="open_id",
+        mapping_status=IncidentIMMember.MappingStatus.MAPPED,
         sync_status=IncidentIMMember.SyncStatus.JOINED,
+        last_error_code="old-error",
+        last_error_message="old-message",
     )
 
     reconcile_member_snapshots(group, group.incident)
@@ -228,7 +232,29 @@ def test_reconcile_updates_snapshot_but_never_reverts_joined_member(group, mappi
     joined.refresh_from_db()
     assert joined.role == "operator"
     assert joined.external_id == "ou_alice"
-    assert joined.sync_status == "joined"
+    assert joined.sync_status == "pending"
+    assert joined.last_error_code == ""
+    assert joined.last_error_message == ""
+
+
+@pytest.mark.django_db
+def test_reconcile_joined_member_with_unchanged_identity_stays_joined(group, mapping):
+    group.incident.operator = ["alice"]
+    group.incident.save(update_fields=["operator"])
+    joined = IncidentIMMember.objects.create(
+        group=group,
+        username="alice",
+        role=IncidentIMMember.Role.OPERATOR,
+        external_id="ou_alice",
+        external_id_type="open_id",
+        mapping_status=IncidentIMMember.MappingStatus.MAPPED,
+        sync_status=IncidentIMMember.SyncStatus.JOINED,
+    )
+
+    reconcile_member_snapshots(group, group.incident)
+
+    joined.refresh_from_db()
+    assert joined.sync_status == IncidentIMMember.SyncStatus.JOINED
 
 
 @pytest.mark.django_db

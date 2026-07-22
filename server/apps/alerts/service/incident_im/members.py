@@ -76,17 +76,42 @@ def reconcile_member_snapshots(group, incident) -> list[ResolvedIncidentMember]:
             "last_error_message",
         )
         previous_values = tuple(getattr(member, field) for field in tracked_fields)
+        identity_changed = (
+            member.external_id,
+            member.external_id_type,
+        ) != (
+            resolved.external_id,
+            resolved.external_id_type,
+        )
+        preserve_delivery_error = (
+            member.sync_status == IncidentIMMember.SyncStatus.FAILED
+            and not identity_changed
+            and resolved.mapping_status == IncidentIMMember.MappingStatus.MAPPED
+        )
         member.role = resolved.role
         member.external_id = resolved.external_id
         member.external_id_type = resolved.external_id_type
         member.mapping_status = resolved.mapping_status
-        member.last_error_code = resolved.error_code
-        member.last_error_message = resolved.error_message
+        if not preserve_delivery_error:
+            member.last_error_code = resolved.error_code
+            member.last_error_message = resolved.error_message
         if (
-            member.sync_status == IncidentIMMember.SyncStatus.WAITING
-            and resolved.mapping_status == IncidentIMMember.MappingStatus.MAPPED
+            resolved.mapping_status == IncidentIMMember.MappingStatus.MAPPED
+            and (
+                member.sync_status == IncidentIMMember.SyncStatus.WAITING
+                or (
+                    identity_changed
+                    and member.sync_status
+                    in (
+                        IncidentIMMember.SyncStatus.JOINED,
+                        IncidentIMMember.SyncStatus.FAILED,
+                    )
+                )
+            )
         ):
             member.sync_status = IncidentIMMember.SyncStatus.PENDING
+            member.last_error_code = ""
+            member.last_error_message = ""
         current_values = tuple(getattr(member, field) for field in tracked_fields)
         if current_values == previous_values:
             continue
