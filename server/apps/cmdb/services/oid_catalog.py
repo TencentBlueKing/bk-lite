@@ -213,6 +213,10 @@ def load_oid_catalog(catalog_path: Path = SYSTEMOID_PATH, metadata_path: Path = 
         entries[oid] = OidCatalogEntry(
             oid=oid, model=raw["model"].strip(), brand=brand, device_type=device_type, source_id=source_id, verification=verification,
         )
+    coverage_gaps = metadata["coverage_gaps"]
+    for entry in entries.values():
+        if entry.verification == "verified" and entry.device_type in coverage_gaps.get(entry.brand, []):
+            raise OidCatalogError(f"OID_CATALOG_INVALID: verified coverage also declared as gap for {entry.brand} {entry.device_type}")
     return entries
 
 

@@ -662,6 +662,58 @@ def test_load_oid_catalog_rejects_malformed_coverage_gap_metadata(tmp_path, case
         load_oid_catalog(catalog, metadata)
 
 
+def test_load_oid_catalog_rejects_verified_type_also_declared_as_coverage_gap(tmp_path,):
+    catalog = tmp_path / "systemoid.json"
+    metadata = tmp_path / "systemoid.meta.json"
+    oid = "1.3.6.1.4.1.2011.2.23.968"
+    metadata_data = _metadata()
+    metadata_data["coverage_gaps"] = {"Huawei": ["switch"]}
+    metadata_data["coverage_gap_details"] = {
+        "Huawei": {
+            "device_types": ["switch"],
+            "reason": "官方入口未提供其他产品级 sysObjectID。",
+            "url": "https://support.huawei.example/",
+            "verified_at": "2026-07-22",
+        }
+    }
+    _write_json(catalog, {oid: _entry(oid)})
+    _write_json(metadata, metadata_data)
+
+    with pytest.raises(OidCatalogError, match="OID_CATALOG_INVALID"):
+        load_oid_catalog(catalog, metadata)
+
+
+def test_load_oid_catalog_allows_legacy_type_declared_as_coverage_gap(tmp_path):
+    catalog = tmp_path / "systemoid.json"
+    metadata = tmp_path / "systemoid.meta.json"
+    oid = "1.3.6.1.4.1.2011.2.23.968"
+    entry = _entry(oid)
+    entry.update(source_id="legacy-catalog-v1", verification="legacy-compatible")
+    metadata_data = _metadata()
+    metadata_data["sources"]["legacy-catalog-v1"] = {
+        "vendor": "Multiple",
+        "url": "",
+        "document": "BK-Lite legacy systemoid.json",
+        "version": "pre-2026",
+        "verified_at": "2026-07-22",
+        "official": False,
+        "scope": "legacy-catalog",
+    }
+    metadata_data["coverage_gaps"] = {"Huawei": ["switch"]}
+    metadata_data["coverage_gap_details"] = {
+        "Huawei": {
+            "device_types": ["switch"],
+            "reason": "历史兼容记录没有官方产品级 sysObjectID 证据。",
+            "url": "https://support.huawei.example/",
+            "verified_at": "2026-07-22",
+        }
+    }
+    _write_json(catalog, {oid: entry})
+    _write_json(metadata, metadata_data)
+
+    assert load_oid_catalog(catalog, metadata)[oid].verification == "legacy-compatible"
+
+
 @pytest.mark.parametrize(
     ("field", "value"),
     [("schema_version", True), ("catalog_version", 20260722), ("catalog_version", "   "),],
