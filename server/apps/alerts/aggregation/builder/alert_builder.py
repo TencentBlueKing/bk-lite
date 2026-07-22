@@ -150,6 +150,7 @@ class AlertBuilder:
         if not event_list:
             return {
                 "source_name": None,
+                "source_id": None,
                 "resource_id": None,
                 "resource_name": None,
                 "resource_type": None,
@@ -158,10 +159,18 @@ class AlertBuilder:
                 "enrichment": {},
             }
 
+        # 2026-07-17: 同时返回 source FK id（与 source_name 一起），新建 Alert 时直接设上 source FK
+        source_ids = []
+        source_names = []
+        for event in event_list:
+            if event.source_id is not None:
+                source_ids.append(event.source_id)
+            if event.source is not None and event.source.name:
+                source_names.append(event.source.name)
+
         return {
-            "source_name": AlertBuilder._get_unique_scalar_value(
-                [event.source.name for event in event_list]
-            ),
+            "source_name": AlertBuilder._get_unique_scalar_value(source_names),
+            "source_id": AlertBuilder._get_unique_scalar_value(source_ids),
             "resource_id": AlertBuilder._get_unique_scalar_value(
                 [event.resource_id for event in event_list]
             ),
@@ -276,6 +285,7 @@ class AlertBuilder:
             resource_id=standard_fields["resource_id"],
             resource_name=standard_fields["resource_name"],
             resource_type=standard_fields["resource_type"],
+            source_id=standard_fields["source_id"],  # 2026-07-17: 直接设 FK，跟 Event.source 对齐
             source_name=standard_fields["source_name"],
             group_by_field=group_by_field,
             dimensions=dimensions,

@@ -27,7 +27,9 @@ class EventShieldOperator(object):
 
     # 字段映射到模型字段
     FIELD_MAPPING = {
-        "source_id": "source__source_id",
+        # 2026-07-17: source_id 改为 Event.source_id（FK 主键，数字）。
+        # 修复前是 source__source_id（业务 ID 字符串），与前端 matchRule.tsx 发的 String(source.id) 不匹配 → 永远 0 命中。
+        "source_id": "source_id",
         "level": "level",
         "level_id": "level",  # 兼容历史数据下发的 level_id
         "resource_type": "resource_type",
@@ -35,6 +37,12 @@ class EventShieldOperator(object):
         "content": "description",
         "title": "title",
         "event_id": "event_id",
+    }
+
+    # 2026-07-17: 给 source_id 注册 fallback 字段 source__source_id（业务 ID 字符串），
+    # 兜住历史脏数据（早期有人手写过 value=<业务 ID> 字符串，比如 "k8s"）。
+    ALT_FIELD_MAPPING = {
+        "source_id": ["source__source_id"],
     }
 
     def __init__(self, event_id_list: List[str], active_shields=None):
@@ -59,7 +67,7 @@ class EventShieldOperator(object):
         if not self.events:
             raise EventNotFoundError()
         # 初始化规则匹配器
-        self.rule_matcher = RuleMatcher(self.FIELD_MAPPING)
+        self.rule_matcher = RuleMatcher(self.FIELD_MAPPING, getattr(self, "ALT_FIELD_MAPPING", None))
 
     def get_event_map(self) -> Dict[int, Event]:
         """获取事件实例映射"""
