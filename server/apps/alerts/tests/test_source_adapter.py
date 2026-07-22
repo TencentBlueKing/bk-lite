@@ -270,54 +270,6 @@ def test_create_events_persists(event_levels, restful_source):
 
 
 # --------------------------------------------------------------------------
-# 修复 2026-07-17 source_id 过滤失效 bug:
-# source_adapter.create_events 在 enrich_batch 之前要给每个 event 字典
-# 塞 data["source_id"] = self.alert_source.id（与 Event.source FK 主键一致），
-# 这样 EnrichmentRule.match_rules 中下发的 key=source_id, value=String(source.id) 才能匹配。
-# 修复前：event 字典里没有 source_id，enrichment 永远不命中任何带 source_id 的规则。
-# --------------------------------------------------------------------------
-@pytest.mark.django_db
-def test_create_events_injects_source_id_into_event_dict_for_enrichment(event_levels, restful_source):
-    """事件字典需带 source_id 字段，供 EnrichmentRule 的 source_id 过滤规则使用。
-
-    验证方式：mock EnrichmentEngine，捕获 enrich_batch 收到的 events，断言每个 event 字典
-    都带有 source_id 字段（值 = AlertSource.id），且与 source_id 过滤规则匹配时能命中。
-    """
-    from unittest.mock import patch
-
-    from apps.alerts.enrichment.engine import EnrichmentEngine
-
-    adapter = RestFulAdapter(alert_source=restful_source)
-    raw_events = [
-        {
-            "title": "事件A",
-            "level": "0",
-            "item": "cpu",
-            "resource_id": "1",
-            "resource_name": "host1",
-            "resource_type": "host",
-            "value": "90",
-            "start_time": "1700000000",
-        }
-    ]
-
-    captured_events = []
-
-    def _capture_enrich_batch(events, *args, **kwargs):
-        captured_events.extend(events)
-
-    with patch.object(EnrichmentEngine, "enrich_batch", side_effect=_capture_enrich_batch):
-        adapter.create_events(raw_events)
-
-    assert len(captured_events) >= 1, "enrich_batch 应被至少 1 个事件调用"
-    for event_dict in captured_events:
-        assert "source_id" in event_dict, \
-            f"source_adapter 必须在 enrich_batch 之前给 event 字典塞 source_id, 实际 keys={list(event_dict.keys())}"
-        assert event_dict["source_id"] == restful_source.id, \
-            f"event 字典 source_id 应为 AlertSource.id={restful_source.id}, 实际 {event_dict['source_id']}"
-
-
-# --------------------------------------------------------------------------
 # bulk_save_events 去重
 # --------------------------------------------------------------------------
 

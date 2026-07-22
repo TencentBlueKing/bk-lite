@@ -68,10 +68,8 @@ class AlertAssignmentOperator:
 
     # 字段映射到模型字段
     FIELD_MAPPING = {
-        # 2026-07-17: source_id 现在映射到 Alert.source_id（FK 主键，数字），
-        # 跟前端 matchRule.tsx 选「告警源（按 ID）」时发的 String(source.id) 一致。
-        # 修复前映射到 source_name（字符串），跟前端发的数字主键不匹配 → 永远 0 命中。
-        "source_id": "source_id",
+        "source_id": "events__source_id",
+        "source_name": "source_name",
         # 前端 matchRule 组件下发的级别条件 key 是 `level`（分派弹窗用默认 ruleList），
         # value 为 level_id；Alert.level 存的也是 level_id。保留 `level_id` 兼容历史数据。
         "level": "level",
@@ -83,20 +81,13 @@ class AlertAssignmentOperator:
         "alert_id": "alert_id",
     }
 
-    # 2026-07-17: 给 source_id 注册 fallback 字段 source_name，兜住历史脏数据
-    # （早期有人手写过 value=<name> 字符串，比如 "K8s"）。
-    # 主字段 source_id 不命中时仍可命中 source_name，避免再走"查 0 行"路径。
-    ALT_FIELD_MAPPING = {
-        "source_id": ["source_name"],
-    }
-
     def __init__(self, alert_id_list: List[str]):
         self.alert_id_list = alert_id_list
         self.alerts = self.get_alert_map()
         if not self.alerts:
             raise AlertNotFoundError("No alerts found for the provided alert_id_list")
         # 初始化规则匹配器
-        self.rule_matcher = RuleMatcher(self.FIELD_MAPPING, getattr(self, "ALT_FIELD_MAPPING", None))
+        self.rule_matcher = RuleMatcher(self.FIELD_MAPPING)
 
     def get_alert_map(self) -> Dict[int, Alert]:
         """获取告警实例映射"""
@@ -262,9 +253,10 @@ class AlertAssignmentOperator:
 
         elif assignment.match_type == AlertAssignmentMatchType.FILTER:
             # 过滤匹配，使用规则匹配器
-            return self.rule_matcher.filter_queryset(
+            matched_ids = self.rule_matcher.filter_queryset(
                 time_filtered_queryset, assignment.match_rules or []
             )
+            return list(dict.fromkeys(matched_ids))
 
         return []
 
