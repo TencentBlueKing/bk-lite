@@ -260,6 +260,20 @@ class TestCollectPureFunctions:
     def test_is_config_file_collect_false_for_normal_plugin(self):
         assert not self.mod._is_config_file_collect({"plugin_name": "mysql_info"})
 
+    async def test_host_split_preserves_execution_id(self):
+        candidates = self.mod._build_collect_task_candidates(
+            {
+                "collect_task_id": "10",
+                "execution_id": "execution-current",
+                "model_id": "config_file",
+            },
+            ["10.0.0.1", "10.0.0.2"],
+            [],
+        )
+
+        assert candidates["10.0.0.1"][0]["execution_id"] == "execution-current"
+        assert candidates["10.0.0.2"][0]["execution_id"] == "execution-current"
+
     def test_parse_credentials_pool_none_returns_empty(self):
         assert self.mod._parse_credentials_pool(None, params=None) == []
 
@@ -482,6 +496,37 @@ class TestMonitorEndpointLogic:
         task_params = self.task_queue.enqueue_collect_task.call_args.args[0]
         assert task_params["monitor_type"] == "windows_wmi"
         assert task_params["metrics_modules"] == FULL_HOST_MODULES
+
+    async def test_host_metrics_passes_disk_fstype_filters_to_collector(self):
+        await self.mod.host_metrics(self._req(
+            headers={
+                "host": "10.0.0.10",
+                "username": "root",
+                "password": "pass",
+                "ansible_node_id": "node-1",
+                "disk_include_fstypes": "ext4,xfs",
+                "disk_exclude_fstypes": "vfat,exfat",
+            }
+        ))
+
+        task_params = self.task_queue.enqueue_collect_task.call_args.args[0]
+        assert task_params["disk_include_fstypes"] == "ext4,xfs"
+        assert task_params["disk_exclude_fstypes"] == "vfat,exfat"
+
+    async def test_windows_wmi_metrics_passes_disk_fstype_filters_to_collector(self):
+        await self.mod.windows_wmi_metrics(self._req(
+            headers={
+                "host": "10.0.0.20",
+                "username": "DOMAIN\\monitor",
+                "password": "pass",
+                "disk_include_fstypes": "NTFS,ReFS",
+                "disk_exclude_fstypes": "FAT32,exFAT",
+            }
+        ))
+
+        task_params = self.task_queue.enqueue_collect_task.call_args.args[0]
+        assert task_params["disk_include_fstypes"] == "NTFS,ReFS"
+        assert task_params["disk_exclude_fstypes"] == "FAT32,exFAT"
 
 
 # ---------------------------------------------------------------------------

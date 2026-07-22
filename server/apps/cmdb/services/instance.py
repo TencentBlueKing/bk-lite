@@ -8,6 +8,7 @@ from apps.cmdb.constants.constants import (
     VIEW,
 )
 from apps.cmdb.constants.field_constraints import TAG_ATTR_ID, TAG_MODE_FREE
+from apps.cmdb.display_field import DisplayFieldHandler
 from apps.cmdb.display_field.constants import (
     DISPLAY_FIELD_TYPES,
     DISPLAY_SUFFIX,
@@ -29,8 +30,9 @@ from apps.cmdb.models.change_record import (
 )
 from apps.cmdb.models.show_field import ShowField
 from apps.cmdb.permissions.instance_permission import PermissionManage
+from apps.cmdb.services.auto_relation_reconcile import schedule_instance_auto_relation_reconcile
 from apps.cmdb.services.model import ModelManage
-from apps.cmdb.services.unique_rule import build_unique_rule_context
+from apps.cmdb.services.unique_rule import build_unique_rule_context, collect_instance_unique_conflicts
 from apps.cmdb.models.change_record import ORDINARY_ATTRIBUTE_CHANGE
 from apps.cmdb.utils.change_record import batch_create_change_record, create_change_record, create_change_record_by_asso
 from apps.cmdb.utils.export import Export
@@ -46,6 +48,84 @@ from apps.cmdb.validators.field_validator import (
 )
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
+
+
+class InstanceBatchError(BaseAppException):
+    """批量实例领域错误，使用结构化属性向门面传递失败位置与原因。"""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        reason: str,
+        index: int | None = None,
+        inst_id: int | None = None,
+        field: str | None = None,
+    ):
+        self.reason = reason
+        self.index = index
+        self.inst_id = inst_id
+        self.field = field
+        data = {
+            key: value
+            for key, value in {
+                "index": index,
+                "inst_id": inst_id,
+                "field": field,
+            }.items()
+            if value is not None
+        }
+        super().__init__(message, data=data)
+
+
+def _normalize_batch_instance_ids(inst_ids: list) -> list[int]:
+    normalized_ids = []
+    seen_ids = set()
+    for inst_id in inst_ids:
+        normalized_id = int(inst_id)
+        if normalized_id in seen_ids:
+            continue
+        seen_ids.add(normalized_id)
+        normalized_ids.append(normalized_id)
+    return normalized_ids
+
+
+def _find_duplicate_or_unexpected_batch_id(
+    expected_ids: list[int],
+    returned_items: list[dict],
+) -> int | None:
+    expected_id_set = set(expected_ids)
+    seen_ids = set()
+    for item in returned_items:
+        if item.get("_id") is None:
+            continue
+        returned_id = int(item["_id"])
+        if returned_id not in expected_id_set or returned_id in seen_ids:
+            return returned_id
+        seen_ids.add(returned_id)
+    return None
+
+
+def _require_complete_batch_instances(inst_ids: list[int], instances: list[dict]) -> list[dict]:
+    instances_by_id = {
+        int(instance["_id"]): instance
+        for instance in instances
+        if instance.get("_id") is not None
+    }
+    missing_ids = [inst_id for inst_id in inst_ids if inst_id not in instances_by_id]
+    if missing_ids:
+        raise InstanceBatchError(
+            "实例不存在",
+            reason="not_found",
+            inst_id=missing_ids[0],
+        )
+    if len(instances) != len(inst_ids):
+        raise InstanceBatchError(
+            "实例查询结果不完整",
+            reason="incomplete",
+            inst_id=_find_duplicate_or_unexpected_batch_id(inst_ids, instances),
+        )
+    return [instances_by_id[inst_id] for inst_id in inst_ids]
 
 
 def _normalize_allowed_org_ids(user_groups: list | None = None, allowed_org_ids: list | None = None) -> set[int]:
@@ -111,7 +191,13 @@ def validate_instance_organization_scope(
         raise BaseAppException(f"organization {invalid_org_ids} 不在当前选择组织范围内")
 
 
-def apply_tag_validation_for_instance(instance_data: dict, attrs: list[dict], model_id: str | None = None) -> dict:
+def apply_tag_validation_for_instance(
+    instance_data: dict,
+    attrs: list[dict],
+    model_id: str | None = None,
+    *,
+    persist_options: bool = True,
+) -> dict:
     data = dict(instance_data)
     tag_attr = next(
         (attr for attr in attrs if attr.get("attr_type") == "tag" and attr.get("attr_id") == TAG_ATTR_ID),
@@ -134,42 +220,54 @@ def apply_tag_validation_for_instance(instance_data: dict, attrs: list[dict], mo
     normalized_values = [item.raw for item in validation_result.normalized_values]
     data[TAG_ATTR_ID] = normalized_values
 
-    if model_id and tag_config.mode == TAG_MODE_FREE and normalized_values:
+    if persist_options and model_id and tag_config.mode == TAG_MODE_FREE and normalized_values:
         ModelManage.merge_tag_options_from_values(model_id, normalized_values)
 
     return data
 
 
-def apply_tag_validation_for_batch(records: list[dict], attrs: list[dict], model_id: str | None = None) -> list[dict]:
+def persist_free_tag_options_for_instances(records: list[dict], attrs: list[dict], model_id: str) -> None:
     tag_attr = next(
         (attr for attr in attrs if attr.get("attr_type") == "tag" and attr.get("attr_id") == TAG_ATTR_ID),
         None,
     )
-    if not tag_attr:
-        return [dict({k: v for k, v in record.items() if k != TAG_ATTR_ID}) for record in records]
+    if not tag_attr or not model_id:
+        return
 
     tag_config: TagFieldConfig = normalize_tag_field_option(tag_attr.get("option") or {})
-    merged_values: set[str] = set()
-    normalized_records: list[dict] = []
+    if tag_config.mode != TAG_MODE_FREE:
+        return
 
-    for record in records:
-        data = dict(record)
-        if TAG_ATTR_ID not in data:
-            normalized_records.append(data)
-            continue
+    merged_values = sorted(
+        {
+            value
+            for record in records
+            for value in record.get(TAG_ATTR_ID, []) or []
+        }
+    )
+    if merged_values:
+        ModelManage.merge_tag_options_from_values(model_id, merged_values)
 
-        raw_values = normalize_tag_input_values(data.get(TAG_ATTR_ID))
-        validation_result = validate_tag_values(raw_values, tag_config)
-        if validation_result.errors:
-            raise BaseAppException("; ".join(validation_result.errors))
 
-        normalized_values = [item.raw for item in validation_result.normalized_values]
-        data[TAG_ATTR_ID] = normalized_values
-        merged_values.update(normalized_values)
-        normalized_records.append(data)
+def apply_tag_validation_for_batch(
+    records: list[dict],
+    attrs: list[dict],
+    model_id: str | None = None,
+    *,
+    persist_options: bool = True,
+) -> list[dict]:
+    normalized_records = [
+        apply_tag_validation_for_instance(
+            record,
+            attrs,
+            model_id,
+            persist_options=False,
+        )
+        for record in records
+    ]
 
-    if model_id and tag_config.mode == TAG_MODE_FREE and merged_values:
-        ModelManage.merge_tag_options_from_values(model_id, list(merged_values))
+    if persist_options and model_id:
+        persist_free_tag_options_for_instances(normalized_records, attrs, model_id)
 
     return normalized_records
 
@@ -276,6 +374,59 @@ class InstanceManage(object):
         if inst_names:
             _run({"field": "inst_name", "type": "str[]", "value": list(set(inst_names))})
         return result
+
+    @staticmethod
+    def query_entity_page_by_ids(
+        inst_ids: list[int],
+        page: int = 1,
+        page_size: int = 50,
+        order: str = "inst_name",
+        filters: list[dict] | None = None,
+        permission_map: dict | None = None,
+        creator: str = "",
+    ):
+        """按 ID 候选集在图查询层排序分页，避免先加载实体再在 Service 内切片。"""
+        normalized_ids = sorted({int(inst_id) for inst_id in inst_ids if str(inst_id).strip()})
+        if not normalized_ids:
+            return [], 0
+
+        normalized_page = max(1, int(page))
+        normalized_page_size = max(1, int(page_size))
+        normalized_order = str(order or "inst_name")
+        order_type = "ASC"
+        if normalized_order.startswith("-"):
+            normalized_order = normalized_order[1:]
+            order_type = "DESC"
+
+        with GraphClient() as ag:
+            return ag.query_entity(
+                INSTANCE,
+                [{"field": "id", "type": "id[]", "value": normalized_ids}, *(filters or [])],
+                page={"skip": (normalized_page - 1) * normalized_page_size, "limit": normalized_page_size},
+                order=normalized_order,
+                order_type=order_type,
+                format_permission_dict=InstanceManage._build_format_permission_dict(permission_map or {}, creator),
+            )
+
+    @staticmethod
+    def count_entity_by_ids(
+        inst_ids: list[int],
+        permission_map: dict | None = None,
+        creator: str = "",
+        filters: list[dict] | None = None,
+    ) -> int:
+        normalized_ids = sorted({int(inst_id) for inst_id in inst_ids if str(inst_id).strip()})
+        if not normalized_ids:
+            return 0
+        with GraphClient() as ag:
+            _rows, count = ag.query_entity(
+                INSTANCE,
+                [{"field": "id", "type": "id[]", "value": normalized_ids}, *(filters or [])],
+                page={"skip": 0, "limit": 0},
+                include_count=True,
+                format_permission_dict=InstanceManage._build_format_permission_dict(permission_map or {}, creator),
+            )
+        return int(count or 0)
 
     @staticmethod
     def _has_topology_view_permission(instance: dict | None, permission_map: dict | None, user=None) -> bool:
@@ -421,6 +572,45 @@ class InstanceManage(object):
         return check_attr_map
 
     @staticmethod
+    def _unique_candidate_param(field: str, value):
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return None
+        if isinstance(value, bool):
+            return {"field": field, "type": "str=", "value": str(value).lower()}
+        if isinstance(value, int):
+            return {"field": field, "type": "int=", "value": value}
+        if isinstance(value, (dict, list, tuple, set)):
+            return None
+        return {"field": field, "type": "str=", "value": value}
+
+    @classmethod
+    def _query_unique_rule_candidates(cls, graph, model_id: str, item: dict, check_attr_map: dict) -> list[dict]:
+        """只查询可能命中内置/联合唯一签名的实例；规则数上限使查询次数有固定上界。"""
+        candidate_queries = []
+        for field in check_attr_map.get("is_only", {}):
+            param = cls._unique_candidate_param(field, item.get(field))
+            if param:
+                candidate_queries.append([param])
+
+        for rule in check_attr_map.get("unique_rules", []):
+            params = [cls._unique_candidate_param(field, item.get(field)) for field in rule.field_ids]
+            if params and all(params):
+                candidate_queries.append(params)
+
+        candidates = {}
+        for unique_params in candidate_queries:
+            rows, _ = graph.query_entity(
+                INSTANCE,
+                [{"field": "model_id", "type": "str=", "value": model_id}, *unique_params],
+            )
+            for row in rows:
+                key = row.get("_id")
+                if key is None:
+                    key = repr(sorted(row.items()))
+                candidates[key] = row
+        return list(candidates.values())
+
+    @staticmethod
     def _apply_display_fields_to_update(attrs: list, update_attr: dict) -> None:
         from apps.cmdb.display_field import DisplayFieldConverter
 
@@ -450,7 +640,15 @@ class InstanceManage(object):
             update_attr[display_field_id] = display_value
 
     @classmethod
-    def search_inst(cls, model_id: str, inst_name: str = None, _id: int = None):
+    def search_inst(
+        cls,
+        model_id: str,
+        inst_name: str = None,
+        _id: int = None,
+        *,
+        page: int | None = None,
+        page_size: int | None = None,
+    ):
         """查询实例"""
         with GraphClient() as ag:
             params = [{"field": "model_id", "type": "str=", "value": model_id}]
@@ -458,7 +656,15 @@ class InstanceManage(object):
                 params.append({"field": "id", "type": "id=", "value": int(_id)})
             if inst_name:
                 params.append({"field": "inst_name", "type": "str=", "value": inst_name})
-            inst_list, count = ag.query_entity(INSTANCE, params)
+            query = {"label": INSTANCE, "params": params}
+            if page is not None or page_size is not None:
+                normalized_page = max(1, int(page or 1))
+                normalized_page_size = max(1, int(page_size or 50))
+                query["page"] = {
+                    "skip": (normalized_page - 1) * normalized_page_size,
+                    "limit": normalized_page_size,
+                }
+            inst_list, count = ag.query_entity(**query)
         return inst_list, count
 
     @staticmethod
@@ -544,9 +750,14 @@ class InstanceManage(object):
             allowed_org_ids: list | None = None,
             scenario: str = ORDINARY_ATTRIBUTE_CHANGE,
             record_change: bool = True,
+            operation_id: str | None = None,
+            schedule_post_actions: bool = True,
     ):
         """创建实例"""
+        instance_info = dict(instance_info)
         instance_info.update(model_id=model_id)
+        if operation_id:
+            instance_info["_cmdb_operation_id"] = operation_id
         attrs = ModelManage.search_model_attr(model_id)
         instance_info = apply_tag_validation_for_instance(instance_info, attrs, model_id)
         instance_info = apply_enum_validation_for_instance(instance_info, attrs)
@@ -566,12 +777,20 @@ class InstanceManage(object):
 
         # 为 organization/user/enum 字段生成 _display 冗余字段
         from apps.cmdb.display_field import DisplayFieldHandler
+        from apps.cmdb.services.unique_write_lock import UniqueWriteLockService
 
         instance_info = DisplayFieldHandler.build_display_fields(model_id, instance_info, attrs)
+        unique_lock_keys = UniqueWriteLockService.build_lock_keys(model_id, instance_info, check_attr_map)
 
-        with GraphClient() as ag:
-            exist_items, _ = ag.query_entity(INSTANCE, [{"field": "model_id", "type": "str=", "value": model_id}])
-            result = ag.create_entity(INSTANCE, instance_info, check_attr_map, exist_items, operator, attrs)
+        with UniqueWriteLockService.hold(unique_lock_keys):
+            with GraphClient() as ag:
+                exist_items = InstanceManage._query_unique_rule_candidates(
+                    ag, model_id, instance_info, check_attr_map
+                )
+                result = ag.create_entity(INSTANCE, instance_info, check_attr_map, exist_items, operator, attrs)
+
+        result = dict(result)
+        result.pop("_cmdb_operation_id", None)
 
         # 企业版：实例创建后把引用文件落账（pending→committed 并补 inst_id）
         get_instance_enterprise_extension().commit_instance_files(
@@ -591,10 +810,166 @@ class InstanceManage(object):
                 scenario=scenario,
             )
 
-        from apps.cmdb.services.auto_relation_reconcile import schedule_instance_auto_relation_reconcile
+        if schedule_post_actions:
+            from apps.cmdb.services.auto_relation_reconcile import schedule_instance_auto_relation_reconcile
 
-        schedule_instance_auto_relation_reconcile([result["_id"]])
+            schedule_instance_auto_relation_reconcile([result["_id"]])
         return result
+
+    @staticmethod
+    def instance_batch_create(
+            model_id: str,
+            instances: list,
+            operator: str,
+            allowed_org_ids: list | None = None,
+    ):
+        """批量创建实例，任一图写失败时回滚本批已创建节点。"""
+        attrs = ModelManage.search_model_attr(model_id)
+        check_attr_map = InstanceManage._build_unique_rule_check_attr_map(
+            model_id,
+            attrs,
+            for_update=False,
+        )
+        prepared = []
+        for index, item in enumerate(instances):
+            try:
+                instance_info = {**item, "model_id": model_id}
+                instance_info = apply_tag_validation_for_instance(
+                    instance_info,
+                    attrs,
+                    model_id,
+                    persist_options=False,
+                )
+                instance_info = apply_enum_validation_for_instance(instance_info, attrs)
+                if model_id == "subnet":
+                    from apps.cmdb.services.ipam_subnet import validate_subnet_no_overlap
+
+                    validate_subnet_no_overlap(instance_info)
+                instance_info = get_instance_enterprise_extension().normalize_file_fields(
+                    model_id,
+                    instance_info,
+                    attrs,
+                    operator=operator,
+                )
+                validate_instance_organization_scope(
+                    instance_info,
+                    allowed_org_ids=allowed_org_ids,
+                )
+                prepared.append(DisplayFieldHandler.build_display_fields(model_id, instance_info, attrs))
+            except BaseAppException as exc:
+                raise InstanceBatchError(
+                    "请求参数非法",
+                    reason="validation",
+                    index=index,
+                ) from exc
+
+        if model_id == "subnet":
+            from apps.cmdb.services.ipam_subnet import find_batch_subnet_overlap_index
+
+            conflict_index = find_batch_subnet_overlap_index(prepared)
+            if conflict_index is not None:
+                raise InstanceBatchError(
+                    "请求参数非法",
+                    reason="validation",
+                    index=conflict_index,
+                )
+
+        with GraphClient() as ag:
+            exist_items, _ = ag.query_entity(
+                INSTANCE,
+                [{"field": "model_id", "type": "str=", "value": model_id}],
+            )
+            from apps.cmdb.validators import FieldValidator
+
+            for index, instance_info in enumerate(prepared):
+                validation_errors = FieldValidator.validate_instance_data(instance_info, attrs)
+                if validation_errors:
+                    raise InstanceBatchError(
+                        "请求参数非法",
+                        reason="validation",
+                        index=index,
+                    )
+                try:
+                    ag.check_required_attr(
+                        instance_info,
+                        check_attr_map.get("is_required", {}),
+                    )
+                except BaseAppException as exc:
+                    raise InstanceBatchError(
+                        "请求参数非法",
+                        reason="validation",
+                        index=index,
+                    ) from exc
+            conflicts = collect_instance_unique_conflicts(
+                check_attr_map,
+                prepared,
+                exist_items,
+            )
+            if conflicts:
+                conflict = conflicts[0]
+                raise InstanceBatchError(
+                    "字段值违反唯一性约束",
+                    reason="unique_conflict",
+                    index=conflict.item_index,
+                    field=conflict.field_ids[0],
+                )
+            persist_free_tag_options_for_instances(prepared, attrs, model_id)
+            results = ag.batch_create_entity(
+                INSTANCE,
+                prepared,
+                check_attr_map,
+                exist_items,
+                operator,
+                attrs,
+            )
+            created = [item["data"] for item in results if item.get("success")]
+            failed = next((item for item in results if not item.get("success")), None)
+            if failed:
+                original_error = BaseAppException(failed.get("message") or "批量创建失败")
+                if created:
+                    cleanup_ids = [item["_id"] for item in created]
+                    try:
+                        ag.batch_delete_entity(INSTANCE, cleanup_ids)
+                    except Exception as cleanup_exc:
+                        logger.error(
+                            "[InstanceBatchCreate] rollback failed cleanup_ids=%s "
+                            "error_type=%s error_summary=cleanup_failed",
+                            cleanup_ids,
+                            type(cleanup_exc).__name__,
+                        )
+                raise original_error
+
+        extension = get_instance_enterprise_extension()
+        for item in created:
+            extension.commit_instance_files(
+                model_id,
+                item["_id"],
+                item,
+                attrs,
+                operator=operator,
+            )
+
+        change_records = [
+            {
+                "inst_id": item["_id"],
+                "model_id": model_id,
+                "after_data": item,
+                "model_object": OPERATOR_INSTANCE,
+                "message": (
+                    f"创建模型实例. 模型:{model_id} "
+                    f"实例:{item.get('inst_name') or item.get('ip_addr', '')}"
+                ),
+            }
+            for item in created
+        ]
+        batch_create_change_record(
+            INSTANCE,
+            CREATE_INST,
+            change_records,
+            operator=operator,
+        )
+        schedule_instance_auto_relation_reconcile([item["_id"] for item in created])
+        return created
 
     @staticmethod
     def instance_update(
@@ -607,8 +982,11 @@ class InstanceManage(object):
             scenario: str = ORDINARY_ATTRIBUTE_CHANGE,
             skip_permission_check: bool = False,
             record_change: bool = True,
+            operation_id: str | None = None,
+            schedule_post_actions: bool = True,
     ):
         """修改实例属性"""
+        update_attr = dict(update_attr)
         inst_info = InstanceManage.query_entity_by_id(inst_id)
 
         if not inst_info:
@@ -646,21 +1024,32 @@ class InstanceManage(object):
         )
 
         InstanceManage._apply_display_fields_to_update(attrs, update_attr)
+        if operation_id:
+            update_attr["_cmdb_operation_id"] = operation_id
 
-        with GraphClient() as ag:
-            exist_items, _ = ag.query_entity(
-                INSTANCE,
-                [{"field": "model_id", "type": "str=", "value": inst_info["model_id"]}],
-            )
-            exist_items = [i for i in exist_items if i["_id"] != inst_id]
-            result = ag.set_entity_properties(
-                INSTANCE,
-                [inst_id],
-                update_attr,
-                check_attr_map,
-                exist_items,
-                attrs=attrs,
-            )
+        from apps.cmdb.services.unique_write_lock import UniqueWriteLockService
+
+        validation_item = {**inst_info, **update_attr}
+        check_attr_map["validation_items"] = [validation_item]
+        unique_lock_keys = UniqueWriteLockService.build_lock_keys(
+            inst_info["model_id"], validation_item, check_attr_map
+        )
+        with UniqueWriteLockService.hold(unique_lock_keys):
+            with GraphClient() as ag:
+                exist_items = InstanceManage._query_unique_rule_candidates(
+                    ag, inst_info["model_id"], validation_item, check_attr_map
+                )
+                exist_items = [i for i in exist_items if i["_id"] != inst_id]
+                result = ag.set_entity_properties(
+                    INSTANCE,
+                    [inst_id],
+                    update_attr,
+                    check_attr_map,
+                    exist_items,
+                    attrs=attrs,
+                )
+            result[0] = dict(result[0])
+            result[0].pop("_cmdb_operation_id", None)
 
             # 企业版：实例更新后落账（引用文件 committed、移除文件 orphaned）
             get_instance_enterprise_extension().commit_instance_files(
@@ -681,9 +1070,10 @@ class InstanceManage(object):
                     scenario=scenario,
                 )
 
-            from apps.cmdb.services.auto_relation_reconcile import schedule_instance_auto_relation_reconcile
+            if schedule_post_actions:
+                from apps.cmdb.services.auto_relation_reconcile import schedule_instance_auto_relation_reconcile
 
-            schedule_instance_auto_relation_reconcile([result[0]["_id"]])
+                schedule_instance_auto_relation_reconcile([result[0]["_id"]])
 
             return result[0]
 
@@ -699,10 +1089,11 @@ class InstanceManage(object):
     ):
         """批量修改实例属性"""
 
-        inst_list = InstanceManage.query_entity_by_ids(inst_ids)
-
-        if not inst_list:
-            raise BaseAppException("实例不存在！")
+        inst_ids = _normalize_batch_instance_ids(inst_ids)
+        inst_list = _require_complete_batch_instances(
+            inst_ids,
+            InstanceManage.query_entity_by_ids(inst_ids),
+        )
 
         model_info = ModelManage.search_model_info(inst_list[0]["model_id"])
 
@@ -735,7 +1126,7 @@ class InstanceManage(object):
         InstanceManage._apply_display_fields_to_update(attrs, update_attr)
 
         with GraphClient() as ag:
-            exist_items, _ = ag.query_entity(
+            all_exist_items, _ = ag.query_entity(
                 INSTANCE,
                 [
                     {
@@ -745,7 +1136,23 @@ class InstanceManage(object):
                     }
                 ],
             )
-            exist_items = [i for i in exist_items if i["_id"] not in inst_ids]
+            merged_instances = [{**instance, **update_attr} for instance in inst_list]
+            conflicts = collect_instance_unique_conflicts(
+                check_attr_map,
+                merged_instances,
+                all_exist_items,
+                exclude_instance_ids=set(inst_ids),
+            )
+            if conflicts:
+                conflict = conflicts[0]
+                conflict_instance = merged_instances[conflict.item_index]
+                raise InstanceBatchError(
+                    "字段值违反唯一性约束",
+                    reason="unique_conflict",
+                    inst_id=conflict_instance["_id"],
+                    field=conflict.field_ids[0],
+                )
+            exist_items = [i for i in all_exist_items if i["_id"] not in inst_ids]
             result = ag.set_entity_properties(
                 INSTANCE,
                 inst_ids,
@@ -753,6 +1160,19 @@ class InstanceManage(object):
                 check_attr_map,
                 exist_items,
                 attrs=attrs,
+            )
+
+        result_ids = {int(item["_id"]) for item in result if item.get("_id") is not None}
+        missing_result_ids = [inst_id for inst_id in inst_ids if inst_id not in result_ids]
+        if missing_result_ids or len(result_ids) != len(inst_ids) or len(result) != len(inst_ids):
+            mismatch_id = missing_result_ids[0] if missing_result_ids else _find_duplicate_or_unexpected_batch_id(
+                inst_ids,
+                result,
+            )
+            raise InstanceBatchError(
+                "批量更新结果不完整",
+                reason="incomplete",
+                inst_id=mismatch_id,
             )
 
         # 企业版：实例更新后对每个实例提交文件落账（pending→committed、移除文件标 orphaned）
@@ -774,8 +1194,6 @@ class InstanceManage(object):
         ]
         batch_create_change_record(INSTANCE, UPDATE_INST, change_records, operator=operator)
 
-        from apps.cmdb.services.auto_relation_reconcile import schedule_instance_auto_relation_reconcile
-
         schedule_instance_auto_relation_reconcile([item["_id"] for item in result])
 
         return result
@@ -784,10 +1202,11 @@ class InstanceManage(object):
     @staticmethod
     def instance_batch_delete(user_groups: list, roles: list, inst_ids: list, operator: str):
         """批量删除实例"""
-        inst_list = InstanceManage.query_entity_by_ids(inst_ids)
-
-        if not inst_list:
-            raise BaseAppException("实例不存在！")
+        inst_ids = _normalize_batch_instance_ids(inst_ids)
+        inst_list = _require_complete_batch_instances(
+            inst_ids,
+            InstanceManage.query_entity_by_ids(inst_ids),
+        )
 
         model_info = ModelManage.search_model_info(inst_list[0]["model_id"])
 

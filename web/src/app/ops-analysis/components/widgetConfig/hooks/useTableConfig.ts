@@ -13,6 +13,7 @@ import {
   formatTimeRange,
   processDataSourceParams,
 } from '@/app/ops-analysis/utils/widgetDataTransform';
+import { getDateRangeTimezone } from '@/app/ops-analysis/utils/dateRange';
 import {
   DisplayColumnRow,
   buildDisplayColumnsFromSchema,
@@ -250,6 +251,10 @@ export function useTableConfig({
           filterBindings,
           filterDefinitions,
           timeRangeFormatter: formatTimeRange,
+          resolutionContext: {
+            referenceNow: Date.now(),
+            timezone: getDateRangeTimezone(),
+          },
         }),
       );
 

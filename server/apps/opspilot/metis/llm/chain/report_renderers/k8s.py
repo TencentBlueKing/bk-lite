@@ -47,16 +47,21 @@ def build_post_tool_directives(
                 parsed = None
 
             if isinstance(parsed, dict) and (parsed.get("issues_detail") or _should_emit_parsed(parsed)):
+                repair_choice_rule = ""
+                if enable_repair_diff_report:
+                    repair_choice_rule = (
+                        "如果检查结果存在问题项，必须主动调用 request_user_choice，"
+                        "通过 AG-UI 交互卡片让用户选择修复展示方式（按问题类别聚合 / 按工作负载聚合 / 全部一次性展示）。"
+                        "不要主动调用 generate_repair_report，必须等待用户完成选择后再生成修复对比。"
+                        "如果检查结果没有问题，则直接用一句话结束，不要追加修复交互。"
+                    )
                 directives.append(
                     SystemMessage(
                         content=(
                             "【配置检查输出规则】结构化配置检查报告已经通过 AG-UI 的 config_analysis_report 事件展示给用户。"
                             "不要再用 Markdown、标题、列表或表格重复输出“配置检查报告”“问题分组”“修复建议”等完整报告内容。"
                             "最终文本最多只允许一句简短说明，例如“配置检查报告已展示，请查看上方卡片”。"
-                            "如果检查结果存在问题项，必须主动调用 request_user_choice，"
-                            "通过 AG-UI 交互卡片让用户选择修复展示方式（按问题类别聚合 / 按工作负载聚合 / 全部一次性展示）。"
-                            "不要主动调用 generate_repair_report，必须等待用户完成选择后再生成修复对比。"
-                            "如果检查结果没有问题，则直接用一句话结束，不要追加修复交互。"
+                            f"{repair_choice_rule}"
                         )
                     )
                 )
@@ -515,6 +520,8 @@ def build_repair_mode_choice_args(parsed: Dict[str, Any]) -> Dict[str, Any]:
 
     if problematic_count <= 10 or len(issues) <= 2:
         options.append("全部一次性展示" if problematic_count > 1 else "直接展示单个修复对比（推荐）")
+    else:
+        options.append("全部一次性展示（内容可能较长）")
 
     # issues_detail/workloads may be summarized or truncated. For large scans,
     # keep the grouped display modes available even when the summary only lists

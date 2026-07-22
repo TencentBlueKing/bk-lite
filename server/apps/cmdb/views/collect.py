@@ -40,7 +40,9 @@ from apps.core.utils.team_utils import get_current_team
 
 
 class CollectModelViewSet(AuthViewSet):
-    queryset = CollectModels.objects.all()
+    # 节点管理同步任务由专用对账状态机维护。普通采集 API 即使拿到可枚举 ID，
+    # 也不能读取、修改、删除或绕过配置版本 fencing 手工执行这些系统任务。
+    queryset = CollectModels.objects.filter(is_system=False)
     serializer_class = CollectModelSerializer
     ordering_fields = ["updated_at"]
     ordering = ["-updated_at"]
@@ -61,7 +63,7 @@ class CollectModelViewSet(AuthViewSet):
 
     @staticmethod
     def apply_visibility_filter(queryset):
-        return queryset.filter(is_visible=True)
+        return queryset.filter(is_visible=True, is_system=False)
 
     @HasPermission("auto_collection-View")
     @action(methods=["get"], detail=False, url_path="network_config_file_supported_brands")

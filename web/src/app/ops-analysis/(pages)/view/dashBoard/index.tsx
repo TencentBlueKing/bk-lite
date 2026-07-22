@@ -964,6 +964,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                 gaugeMax: values.gaugeMax,
                 gaugeShape: values.gaugeShape,
                 compare: values.compare,
+                compareMode: values.compareMode,
                 actions: values.actions,
               },
             };

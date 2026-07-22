@@ -224,32 +224,22 @@ class AlertBuilder:
         fingerprint = aggregation_result.get("fingerprint")
         event_ids = aggregation_result.get("event_ids", [])
 
-        # 使用 select_for_update 行级锁确保并发安全
-        # 注意：必须在外层transaction.atomic()中调用（由aggregation_processor保证）
-        existing_alerts = Alert.objects.select_for_update().filter(
-            fingerprint=fingerprint,
-            status__in=AlertStatus.ACTIVATE_STATUS,
+        from apps.alerts.service.active_fingerprint import (
+            bind_active_fingerprint,
+            claim_active_fingerprint,
         )
 
-        if existing_alerts.exists():
-            # 防御性检查：如果存在多个活跃Alert（理论上不应该发生）
-            alert_count = existing_alerts.count()
-            if alert_count > 1:
-                logger.warning(
-                    "[AlertBuild] 发现 %s 个相同fingerprint的活跃Alert: %s, 使用最新的Alert",
-                    alert_count, fingerprint,
-                )
-
-            alert = existing_alerts.order_by("-updated_at").first()
+        lease, alert = claim_active_fingerprint(fingerprint)
+        if alert:
             return AlertBuilder._update_existing_alert(
                 alert, aggregation_result, event_ids, strategy
             )
-        else:
-            # 不存在活跃Alert，创建新的
-            # 此时其他进程的select_for_update已被阻塞，等待锁释放后会看到新创建的Alert
-            return AlertBuilder._create_new_alert(
-                aggregation_result, strategy, event_ids, group_by_field
-            )
+
+        alert = AlertBuilder._create_new_alert(
+            aggregation_result, strategy, event_ids, group_by_field
+        )
+        bind_active_fingerprint(lease, alert)
+        return alert
 
     @staticmethod
     def _create_new_alert(
@@ -307,9 +297,11 @@ class AlertBuilder:
             AlertBuilder._alert_event_cache[alert.pk] = set(event_ids)
 
         from django.db import transaction
-        from apps.alerts.action.engine import ActionEngine
+        from apps.alerts.service.alert_lifecycle import dispatch_alert_lifecycle
 
-        transaction.on_commit(lambda aid=alert.alert_id: ActionEngine.dispatch_async(aid, "created"))
+        transaction.on_commit(
+            lambda aid=alert.alert_id: dispatch_alert_lifecycle([aid], "created")
+        )
 
         return alert
 

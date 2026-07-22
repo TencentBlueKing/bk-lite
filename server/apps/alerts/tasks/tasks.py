@@ -2,11 +2,14 @@
 # @File: tasks.py
 # @Time: 2025/5/9 14:56
 # @Author: windyzhao
+import hashlib
 import time
 from typing import Iterable, List
 
 from celery import shared_task
 from django.core.cache import cache
+from django.db.models import Q
+from django.utils import timezone
 
 from apps.alerts.common.notify.notify import Notify
 from apps.alerts.models.sys_setting import SystemSetting
@@ -16,6 +19,7 @@ from apps.core.logger import alert_logger as logger
 
 
 AUTO_ASSIGNMENT_CHUNK_SIZE = 200
+OUTBOX_DISPATCH_BATCH_SIZE = 200
 
 # D1：聚合 beat 单例锁。串行化聚合运行，防止并发聚合对同一 fingerprint 重复建警
 # （create_or_update_alert 的 select_for_update 对"建新"路径无效、Alert.fingerprint 无唯一约束）。
@@ -27,6 +31,34 @@ AGGREGATION_LOCK_TIMEOUT = 60 * 30  # 安全超时:崩溃时锁自动过期，�
 def _chunk_alert_ids(alert_ids: List[str], chunk_size: int) -> Iterable[List[str]]:
     for i in range(0, len(alert_ids), chunk_size):
         yield alert_ids[i : i + chunk_size]
+
+
+@shared_task(autoretry_for=(Exception,), retry_backoff=True, retry_kwargs={"max_retries": 5})
+def deliver_alert_outbox(record_id):
+    from apps.alerts.service.outbox import deliver_outbox_record
+
+    return deliver_outbox_record(record_id)
+
+
+@shared_task
+def dispatch_pending_alert_outbox():
+    from apps.alerts.models.outbox import AlertOutbox
+
+    now = timezone.now()
+    ids = list(
+        AlertOutbox.objects.filter(
+            Q(status=AlertOutbox.Status.PENDING),
+            Q(next_retry_at__isnull=True) | Q(next_retry_at__lte=now),
+        )
+        .order_by("pk")
+        .values_list("pk", flat=True)[:OUTBOX_DISPATCH_BATCH_SIZE]
+    )
+    for record_id in ids:
+        try:
+            deliver_alert_outbox.delay(record_id)
+        except Exception:
+            logger.exception("alert outbox reschedule failed: outbox_id=%s", record_id)
+    return {"scheduled": len(ids)}
 
 
 @shared_task
@@ -46,6 +78,7 @@ def event_aggregation_alert():
             AggregationProcessor,
         )
 
+        aggregation_error = None
         try:
             processor = AggregationProcessor()
             processor.process_aggregation()
@@ -53,6 +86,7 @@ def event_aggregation_alert():
 
         except Exception as e:
             logger.exception("[AlertTask] 告警聚合任务执行失败: %s", e)
+            aggregation_error = e
 
         try:
             from apps.alerts.aggregation.recovery.timeout_checker import TimeoutChecker
@@ -62,6 +96,9 @@ def event_aggregation_alert():
         except Exception as e:
             logger.exception("[AlertTask] 聚合后会话超时检查失败: %s", e)
             raise
+
+        if aggregation_error is not None:
+            raise aggregation_error
     finally:
         cache.delete(AGGREGATION_LOCK_KEY)
 
@@ -171,8 +208,15 @@ def async_auto_assignment_for_alerts(alert_ids):
 
     if len(unique_alert_ids) > AUTO_ASSIGNMENT_CHUNK_SIZE:
         chunks = list(_chunk_alert_ids(unique_alert_ids, AUTO_ASSIGNMENT_CHUNK_SIZE))
+        from apps.alerts.service.outbox import enqueue_outbox
+
         for chunk in chunks:
-            async_auto_assignment_for_alerts.delay(chunk)
+            digest = hashlib.sha256("\0".join(chunk).encode("utf-8")).hexdigest()
+            enqueue_outbox(
+                "auto_assignment",
+                {"alert_ids": chunk},
+                f"auto-assignment:chunk:{digest}",
+            )
 
         logger.info(
             "[AlertTask] 自动分配任务已分片调度: unique=%s, chunk_count=%s, chunk_size=%s",
@@ -276,8 +320,8 @@ def sync_notify(params):
         notify_action_object = param.get("notify_action_object", "alert")
         logger.info(
             "[AlertTask] === 开始执行通知任务 time=%s channel=%s channel_id=%s object_id=%s "
-            "username_list=%s content=%s ===",
-            send_time, channel_type, channel_id, object_id, username_list, content,
+            "recipient_count=%s ===",
+            send_time, channel_type, channel_id, object_id, len(username_list),
         )
         try:
             notify = Notify(

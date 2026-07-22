@@ -13,6 +13,8 @@ import {
   getUserInfoFromStorage,
   clearAuthData,
 } from '@/utils/secureStorage';
+import { getLoginInfo } from '@/api/auth';
+import { clearCurrentTeamCookie, syncCurrentTeamCookie } from '@/utils/teamCookie';
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
@@ -38,6 +40,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const publicPaths = ['/login', '/register', '/forgot-password'];
   const isPublicPath = pathname && publicPaths.includes(pathname);
 
+  const loadCompleteUserInfo = async (baseUserInfo: LoginUserInfo | null) => {
+    try {
+      const response = await getLoginInfo();
+      if (response?.result && response.data) {
+        const completeUserInfo = { ...(baseUserInfo || {}), ...response.data } as LoginUserInfo;
+        await saveUserInfo(completeUserInfo);
+        syncCurrentTeamCookie(completeUserInfo);
+        return completeUserInfo;
+      }
+    } catch (error) {
+      console.warn('获取完整用户信息失败:', error);
+    }
+    syncCurrentTeamCookie(baseUserInfo);
+    return baseUserInfo;
+  };
+
   useEffect(() => {
     // 初始化认证状态
     const initializeAuth = async () => {
@@ -50,62 +68,62 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         // 从安全存储获取 token 和用户信息
         const localToken = await getToken();
         const localUserInfo = await getUserInfoFromStorage();
+        const completeUserInfo = localToken
+          ? await loadCompleteUserInfo(localUserInfo)
+          : localUserInfo;
+        if (!localToken) {
+          clearCurrentTeamCookie();
+        }
 
         setToken(localToken);
         setIsAuthenticated(!!localToken);
 
         // 恢复用户信息
-        if (localUserInfo) {
-          setUserInfo(localUserInfo);
+        if (completeUserInfo) {
+          setUserInfo(completeUserInfo);
         }
 
-        // 如果是初始化阶段，等待一小段时间确保路由稳定
-        await new Promise((resolve) => setTimeout(resolve, 100));
-
-        // 如果当前路径是公共路径，允许访问
-        if (isPublicPath) {
-          setIsInitializing(false);
-          return;
-        }
-
-        // 如果没有token且不是公共路径，跳转到登录页
-        if (!localToken && pathname && !isPublicPath) {
-          console.log('未认证用户访问受保护页面，跳转登录页:', pathname);
-          router.push('/login');
-        }
       } catch (error) {
         console.error('认证初始化错误:', error);
         setToken(null);
         setIsAuthenticated(false);
         setUserInfo(null);
-
-        if (!isPublicPath) {
-          router.push('/login');
-        }
       } finally {
         setIsInitializing(false);
       }
     };
 
     initializeAuth();
-  }, [pathname, router, isPublicPath]);
+  }, []);
+
+  useEffect(() => {
+    if (isInitializing || isPublicPath) {
+      return;
+    }
+
+    if (!isAuthenticated && pathname) {
+      console.log('未认证用户访问受保护页面，跳转登录页:', pathname);
+      router.push('/login');
+    }
+  }, [isInitializing, isAuthenticated, isPublicPath, pathname, router]);
 
   const login = async (newToken: string, newUserInfo: LoginUserInfo) => {
-    setToken(newToken);
-    setIsAuthenticated(true);
-    setUserInfo(newUserInfo);
-
     // 使用安全存储保存认证数据
     await saveToken(newToken);
     await saveUserInfo(newUserInfo);
+    const completeUserInfo = await loadCompleteUserInfo(newUserInfo);
+
+    setToken(newToken);
+    setIsAuthenticated(true);
+    setUserInfo(completeUserInfo);
 
     // 同步用户的语言设置
-    if (newUserInfo.locale) {
-      setLocale(newUserInfo.locale);
+    if (completeUserInfo?.locale) {
+      setLocale(completeUserInfo.locale);
     }
 
     // 尝试获取用户最后打开的对话页
-    let targetUrl = '/conversation'; // 默认跳转
+    let targetUrl = '/workbench';
     try {
       const LAST_CONVERSATION_KEY = 'bk_lite_last_conversation';
       const lastConversationStr = localStorage.getItem(LAST_CONVERSATION_KEY);
@@ -134,6 +152,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
     // 同步更新安全存储
     await saveUserInfo(updatedUserInfo);
+    syncCurrentTeamCookie(updatedUserInfo);
   };
 
   const logout = async () => {
@@ -141,6 +160,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     try {
       // 使用安全存储清除认证数据
       await clearAuthData();
+      clearCurrentTeamCookie();
 
       // 同时清理可能残留的 localStorage 和 sessionStorage
       if (typeof window !== 'undefined') {
@@ -168,6 +188,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         localStorage.clear();
         sessionStorage.clear();
       }
+      clearCurrentTeamCookie();
       setToken(null);
       setIsAuthenticated(false);
       setUserInfo(null);
