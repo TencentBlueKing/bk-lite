@@ -384,6 +384,32 @@ def get_alert_source_event_top(*args, **kwargs) -> Dict[str, Any]:
 
 
 @nats_client.register
+def get_alert_source_distribution(*args, **kwargs) -> Dict[str, Any]:
+    """Return the full authorized Alert distribution grouped by source_name."""
+    logger.info("[AlertNatsRPC] === get_alert_source_distribution ===, args=%s, kwargs=%s", args, kwargs)
+    user_info = kwargs.pop("user_info", {})
+    queryset, error = _get_authorized_alert_queryset(user_info)
+    if error:
+        return error
+
+    counts = {}
+    unknown_count = 0
+    for source_name in queryset.values_list("source_name", flat=True):
+        name = source_name.strip() if isinstance(source_name, str) and source_name.strip() else None
+        if name is None:
+            unknown_count += 1
+            continue
+        counts[name] = counts.get(name, 0) + 1
+
+    ordered = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    data = [{"name": name, "value": value} for name, value in ordered]
+    if unknown_count:
+        data.append({"name": "未知来源", "value": unknown_count})
+
+    return {"result": True, "data": data, "message": ""}
+
+
+@nats_client.register
 def get_alert_source_statistics(*args, **kwargs) -> Dict[str, Any]:
     """
     获取告警源统计数据

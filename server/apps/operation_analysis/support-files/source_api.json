@@ -645,5 +645,57 @@
         {"key": "label", "title": "资源分类", "value_type": "string", "description": "当前语言下的 CMDB 模型分类名称"},
         {"key": "value", "title": "实例数量", "value_type": "number", "description": "指定地区和当前权限范围内的分类实例总数"}
     ]
+},
+{
+    "name": "网络设备资源排行",
+    "desc": "查询当前权限范围内交换机、路由器、防火墙和负载均衡设备的CPU、内存及当前双向总流量排行",
+    "rest_api": "monitor/get_network_device_resource_top",
+    "tag": ["monitor"],
+    "chart_type": ["topN", "table"],
+    "params": [
+        {
+            "name": "metric_type",
+            "type": "string",
+            "value": "cpu",
+            "alias_name": "指标类型",
+            "filterType": "params",
+            "required": true,
+            "inputConfig": {
+                "control": "select",
+                "componentSwitch": true,
+                "optionsSource": {
+                    "type": "static",
+                    "staticItems": [
+                        {"label": "CPU使用率", "value": "cpu"},
+                        {"label": "内存使用率", "value": "memory"},
+                        {"label": "总流量", "value": "traffic"}
+                    ]
+                }
+            }
+        },
+        {"name": "limit", "type": "number", "value": 10, "alias_name": "返回条数", "filterType": "fixed"}
+    ],
+    "field_schema": [
+        {"key": "rank", "title": "排名", "value_type": "number"},
+        {"key": "display_name", "title": "网络设备", "value_type": "string"},
+        {"key": "value", "title": "指标值", "value_type": "number"},
+        {"key": "unit", "title": "单位", "value_type": "string"},
+        {"key": "ip", "title": "IP地址", "value_type": "string"},
+        {"key": "instance_id", "title": "实例ID", "value_type": "string"},
+        {"key": "device_type", "title": "设备类型", "value_type": "string"},
+        {"key": "sampled_at", "title": "采样时间", "value_type": "datetime"}
+    ]
+},
+{
+    "name": "告警来源分布",
+    "desc": "按告警来源名称统计当前权限范围内的全部告警，空来源归为未知来源",
+    "rest_api": "alert/get_alert_source_distribution",
+    "tag": ["alerts"],
+    "chart_type": ["pie"],
+    "params": [],
+    "field_schema": [
+        {"key": "name", "title": "告警来源", "value_type": "string"},
+        {"key": "value", "title": "告警数量", "value_type": "number"}
+    ]
 }
 ]
