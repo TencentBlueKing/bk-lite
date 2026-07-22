@@ -19,8 +19,5 @@
   "next_steps": [
     "搭建 mycat 1.6 + 2 MySQL 8.0 docker-compose",
     "实施 MyCatCollectionPlugin(9066 管理端口采集)"
-  ],
-  "references": [
-    "specs/changes/legacy-2026-07-06-cmdb-collect-v3-roadmap/spec.md §3.4 G2.3(archived 22 套对象说明)"
   ]
 }

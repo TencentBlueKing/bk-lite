@@ -17,9 +17,5 @@
   "next_steps": [
     "用户提供达梦官方 license + 在 amd64 CI runner 跑(同 mssql 模式)",
     "或用户提供 license 文件,在本地 amd64 工作站(非 Mac)单独跑 G2.3"
-  ],
-  "references": [
-    "specs/changes/legacy-2026-07-06-cmdb-collect-v3-roadmap/spec.md §3.4 G2.3",
-    "specs/changes/legacy-2026-07-07-cmdb-collect-v3-phase2/spec.md §3.3"
   ]
 }

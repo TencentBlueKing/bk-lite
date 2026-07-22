@@ -160,8 +160,3 @@ cd agents/stargazer
 3. **tomcat9 路径特殊**:ubuntu 22.04 jammy 包把 `server.xml` 放在 `/etc/tomcat9/`,不是 `/usr/share/tomcat9/conf/`。catalog 的 install_commands 里 `cp -r /etc/tomcat9/. /usr/share/tomcat9/conf/` 已处理
 4. **每个 ssh 对象独立 SSH 端口**(避免 catalog validate 端口冲突):nginx=12222, mongodb=12223, rabbitmq=12224, tomcat=12225
 5. **每个对象首次安装耗时**:ubuntu + apt install 大约 30-120 秒
-
-## 设计 / 计划文档
-
-- 当前采集路线：`specs/changes/legacy-2026-07-06-cmdb-collect-v3-roadmap/spec.md`
-- 旧 fixture/VM 设计与计划：按 `docs/agents/spec-migration-map.md` 查询迁移目标。

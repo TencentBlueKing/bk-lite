@@ -1,4 +1,4 @@
-"""安全更新 + 检查/审核（`specs/changes/streamline-wiki-knowledge-decisions/spec.md` phase 3）。
+"""安全更新 + 检查/审核。
 
 风险变更不污染当前有效版本:生成候选版本(PageVersion change_type=candidate, is_current=False)+ CheckItem。
 phase 3: 决策中心 API `decide_check` 取代通用 accept/reject,

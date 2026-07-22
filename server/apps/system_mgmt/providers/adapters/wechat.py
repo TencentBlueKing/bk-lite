@@ -148,7 +148,6 @@ class WechatLoginAuthAdapter(BaseLoginAuthAdapter):
 
         # WeChat provider 只负责 OAuth 认证并返回真实微信用户信息;
         # 账号匹配、用户创建、token 签发由通用登录认证链路负责。
-        # 详见:specs/changes/wechat-login-auth-field-mapping/spec.md
         return CapabilityExecutionResult.success_result(
             "WeChat login authenticated",
             payload={

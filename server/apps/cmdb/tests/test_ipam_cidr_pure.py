@@ -1,4 +1,4 @@
-"""IPAM CIDR/利用率纯逻辑测试。迁移背景见 specs/changes/legacy-2026-06-30-cmdb-ipam-discovery-c2/spec.md。"""
+"""IPAM CIDR/利用率纯逻辑测试。"""
 import pytest
 from apps.cmdb.utils.ipam_cidr import (
     parse_subnet, subnets_overlap, subnet_capacity, ip_in_subnet, compute_utilization,

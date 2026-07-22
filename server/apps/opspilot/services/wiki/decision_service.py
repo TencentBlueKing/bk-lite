@@ -1,6 +1,5 @@
 """Wiki 决策服务(phase 2):稳定签名 + 规则 upsert/查询/撤销/回放。
 
-设计来源：`specs/changes/streamline-wiki-knowledge-decisions/spec.md`
 - 主签名 = SHA-256(policy_version + kb_id + decision_type + subject_key +
   schema_fingerprint + sorted_unique((material_id, content_hash)))
 - 参与者去重 + 排序 → 签名与顺序/重复无关

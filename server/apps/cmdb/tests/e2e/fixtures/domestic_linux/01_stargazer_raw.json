@@ -19,8 +19,5 @@
   "next_steps": [
     "拉取 UOS 1050e/麒麟 V10 离线镜像",
     "或国产 CPU(龙芯/飞腾)工作站单独跑"
-  ],
-  "references": [
-    "specs/changes/legacy-2026-07-06-cmdb-collect-v3-roadmap/spec.md §3.4 G2.3(archived 22 套对象说明)"
   ]
 }

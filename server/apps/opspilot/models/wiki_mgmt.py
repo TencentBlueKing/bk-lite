@@ -201,7 +201,7 @@ class CheckItem(MaintainerInfo, TimeInfo):
 class WikiDecisionRule(MaintainerInfo, TimeInfo):
     """知识结果决策规则(phase 1):跨构建/重建持久化的业务结果,签名相同时自动回放。
 
-    设计要点（`specs/changes/streamline-wiki-knowledge-decisions/spec.md`）：
+    设计要点：
     - 同一 KB + decision_type + decision_key 在 active 状态下唯一(避免重复创建规则)
     - 主签名 = SHA-256(policy_version + kb_id + decision_type + subject_key +
       schema_fingerprint + sorted_unique(material_id, content_hash))

@@ -19,8 +19,5 @@
   "next_steps": [
     "用户提供 WebSphere license + 在 amd64 runner 跑",
     "或 IBM 试用 license(developer plan)"
-  ],
-  "references": [
-    "specs/changes/legacy-2026-07-06-cmdb-collect-v3-roadmap/spec.md §3.4 G2.3(archived 22 套对象说明)"
   ]
 }

@@ -9,7 +9,6 @@
  * 本接口不再参与主登录流程，保留仅作为历史参考/兼容兜底，
  * 新需求请直接使用 login-auth validation 链路。
  *
- * 相关文档：specs/changes/legacy-2026-06-18-signin-validation-cutover/spec.md
  */
 
 import {NextRequest, NextResponse} from 'next/server';

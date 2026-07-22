@@ -196,7 +196,6 @@ DB_ENGINE=sqlite INSTALL_APPS=cmdb,system_mgmt,core \
 
 ## 5. 参考
 
-- v4 change：`specs/changes/cmdb-collect-v4-e2e-platform/spec.md`
 - 已有 4 个对象的范本(2026-07-10 commit):`test_influxdb_pipeline.py` / `test_mysql_pipeline.py` / `test_nginx_pipeline.py` / `test_redis_pipeline.py`
 - 当前实现与验收事实以 `server/apps/cmdb/tests/e2e/` 下的 fixture、schema、测试和工具为准。
 

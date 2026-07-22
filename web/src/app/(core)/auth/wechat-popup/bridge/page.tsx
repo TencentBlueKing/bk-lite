@@ -9,7 +9,6 @@
  * 本回调桥接页面不再参与主微信登录流程，保留仅作为历史参考/兼容兜底，
  * 新需求请直接使用 login-auth validation 链路。
  *
- * 相关文档：specs/changes/legacy-2026-06-18-signin-validation-cutover/spec.md
  */
 
 'use client';

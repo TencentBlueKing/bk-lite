@@ -19,8 +19,5 @@
   "next_steps": [
     "在 amd64 runner 部署 OBD + OceanBase CE 3.x",
     "实施 OceanBaseCollectionPlugin"
-  ],
-  "references": [
-    "specs/changes/legacy-2026-07-06-cmdb-collect-v3-roadmap/spec.md §3.4 G2.3(archived 22 套对象说明)"
   ]
 }

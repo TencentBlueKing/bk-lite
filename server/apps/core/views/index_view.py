@@ -397,7 +397,6 @@ def wechat_login(request):
     接收微信授权 code,后端验证后签发 token。
 
     新链路走 WechatLoginAuthAdapter → _resolve_platform_user,
-    详情见 specs/changes/wechat-login-auth-field-mapping/spec.md。
     新链路稳定后移除本入口及 wechat_user_register NATS handler。
 
     Request:

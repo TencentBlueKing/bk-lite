@@ -19,8 +19,5 @@
   "next_steps": [
     "用户提供 Oracle Tuxedo license + 在 amd64 runner 跑",
     "实施 middleware/tuxedo.py 真实 plugin 字段映射"
-  ],
-  "references": [
-    "specs/changes/legacy-2026-07-06-cmdb-collect-v3-roadmap/spec.md §3.4 G2.3(archived 22 套对象说明)"
   ]
 }

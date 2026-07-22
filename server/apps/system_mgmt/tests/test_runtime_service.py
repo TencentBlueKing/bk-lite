@@ -546,7 +546,6 @@ def test_login_with_binding_creates_user_when_unmatched_action_is_create():
 def test_login_with_binding_does_not_modify_existing_user_profile():
     """登录认证不修改已有用户资料,只刷 last_login(由外层 login_with_binding 处理)。
 
-    详见 specs/changes/wechat-login-auth-field-mapping/spec.md 决策 3。
     """
     instance = IntegrationInstance.objects.create(
         name="Feishu Login",
