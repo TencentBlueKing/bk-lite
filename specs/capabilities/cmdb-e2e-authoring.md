@@ -198,8 +198,7 @@ DB_ENGINE=sqlite INSTALL_APPS=cmdb,system_mgmt,core \
 
 - v4 change：`specs/changes/cmdb-collect-v4-e2e-platform/spec.md`
 - 已有 4 个对象的范本(2026-07-10 commit):`test_influxdb_pipeline.py` / `test_mysql_pipeline.py` / `test_nginx_pipeline.py` / `test_redis_pipeline.py`
-- v3 路线图 + Phase 1-5 执行报告：`specs/changes/legacy-2026-07-06-cmdb-collect-v3-roadmap/spec.md` 及相邻 Phase change specs
-- 调研报告(本 change 立项依据):`specs/changes/legacy-2026-07-10-cmdb-collect-next-step-discussion/spec.md`
+- 当前实现与验收事实以 `server/apps/cmdb/tests/e2e/` 下的 fixture、schema、测试和工具为准。
 
 ---
 
@@ -401,14 +400,3 @@ cd server
 | Archived stub | `plugins/community/archived/<model_id>.py` | 空 metric_names / field_mappings |
 | Drift report | `utils/drift_report.py` | `python -m ...utils.drift_report` |
 | Makefile | `e2e-drift-report` target | `make e2e-drift-report` |
-
----
-
-# 7. v2 章节:参考(2026-07-13)
-
-- v5 阶段 spec:`specs/changes/legacy-2026-07-13-cmdb-collect-full-e2e-alignment/spec.md`
-- v5 阶段 plan:`specs/changes/legacy-2026-07-13-cmdb-collect-full-e2e-alignment/spec.md`
-- v5 阶段 follow-up 文档:`specs/changes/legacy-2026-07-14-cmdb-collect-full-e2e-follow-up/spec.md`
-- v5 阶段 merge audit:`specs/changes/legacy-2026-07-14-cmdb-collect-merge-audit/spec.md`
-- v5 阶段 PR description:`specs/changes/legacy-2026-07-14-cmdb-collect-full-e2e-alignment-pr-description/spec.md`
-- 旧规格迁移过程由 Git 历史保留；当前事实只以 `specs/` 为准。
