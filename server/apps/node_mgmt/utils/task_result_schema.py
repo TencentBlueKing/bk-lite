@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
-
 from apps.node_mgmt.utils.installer_schema import normalize_failure, normalize_installer_action, normalize_overall_status
-
 
 """Shared normalization helpers for generic task result envelopes."""
 
@@ -15,6 +12,19 @@ EXPECTED_INSTALLER_STEPS = [
     "write_config",
     "install",
 ]
+
+
+def project_task_status_from_summary(summary):
+    total = summary.get("total") or 0
+    if total <= 0:
+        return "waiting"
+    waiting = summary.get("waiting") or 0
+    running = summary.get("running") or 0
+    if waiting == total:
+        return "waiting"
+    if waiting or running:
+        return "running"
+    return "finished"
 
 
 def _extract_latest_failure_from_steps(steps):

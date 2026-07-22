@@ -27,3 +27,7 @@ export const authLogin = (params: {
 export const getLoginInfo = () => {
   return apiGet<any>('/core/api/login_info');
 };
+
+export const authLogout = (token: string) => {
+  return apiPost<any>('/core/api/logout/', { token });
+};

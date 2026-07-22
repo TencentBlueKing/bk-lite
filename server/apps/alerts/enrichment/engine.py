@@ -52,6 +52,22 @@ class EnrichmentEngine:
                 logger.error("[Enrichment] 规则执行失败 rule=%s", getattr(rule, "name", "?"), exc_info=True)
 
     def _apply_rule(self, rule, events: List[Dict]) -> None:
+        rule_team = {int(team_id) for team_id in (getattr(rule, "team", None) or [])}
+        events_by_scope: Dict[tuple, List[Dict]] = {}
+        for event in events:
+            event_team = {int(team_id) for team_id in (event.get("team") or [])}
+            if not event_team:
+                logger.warning("[Enrichment] 事件缺少组织上下文，跳过丰富")
+                continue
+            effective_team = event_team & rule_team if rule_team else event_team
+            if not effective_team:
+                continue
+            events_by_scope.setdefault(tuple(sorted(effective_team)), []).append(event)
+
+        for effective_team, scoped_events in events_by_scope.items():
+            self._apply_rule_for_scope(rule, scoped_events, list(effective_team))
+
+    def _apply_rule_for_scope(self, rule, events: List[Dict], effective_team: List[int]) -> None:
         namespace = rule.resolved_namespace
         provider_type = rule.provider_type
 
@@ -75,7 +91,8 @@ class EnrichmentEngine:
             all_keys = all_keys[:MAX_KEYS_PER_BATCH]
 
         # 2. 查缓存（含负结果）
-        provider_config = rule.provider_config
+        provider_config = dict(rule.provider_config or {})
+        provider_config["_authorized_team_ids"] = effective_team
         records_by_key: Dict = {}
         miss_keys = []
         for bkey in all_keys:

@@ -249,8 +249,13 @@ export function getTokenSync(): string | null {
 /**
  * 保存用户信息
  */
+export function sanitizeBrowserUserInfo(userInfo: LoginUserInfo): LoginUserInfo {
+    return { ...userInfo, token: '' };
+}
+
 export async function saveUserInfo(userInfo: LoginUserInfo): Promise<void> {
-    await secureSet(STORAGE_KEYS.USER_INFO, userInfo);
+    const value = isTauriEnvironment() ? userInfo : sanitizeBrowserUserInfo(userInfo);
+    await secureSet(STORAGE_KEYS.USER_INFO, value);
 }
 
 /**

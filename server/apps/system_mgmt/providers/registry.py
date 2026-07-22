@@ -16,10 +16,16 @@ class ProviderRegistry:
         self._providers[manifest.key] = manifest
 
     def get(self, provider_key: str) -> ProviderManifest | None:
-        return self._providers.get(provider_key)
+        from .loader import builtin_providers_read_lock
+
+        with builtin_providers_read_lock():
+            return self._providers.get(provider_key)
 
     def list(self) -> list[ProviderManifest]:
-        return list(self._providers.values())
+        from .loader import builtin_providers_read_lock
+
+        with builtin_providers_read_lock():
+            return list(self._providers.values())
 
 
 class CapabilityAdapterRegistry:
@@ -35,7 +41,10 @@ class CapabilityAdapterRegistry:
         self._adapters[adapter_key] = adapter_cls
 
     def get(self, adapter_key: str) -> type[Any] | None:
-        return self._adapters.get(adapter_key)
+        from .loader import builtin_providers_read_lock
+
+        with builtin_providers_read_lock():
+            return self._adapters.get(adapter_key)
 
 
 provider_registry = ProviderRegistry()

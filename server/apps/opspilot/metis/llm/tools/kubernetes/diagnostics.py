@@ -204,7 +204,7 @@ def get_pending_kubernetes_pods(config: RunnableConfig = None):
 
 
 @tool()
-def get_high_restart_kubernetes_pods(restart_threshold=5, config: RunnableConfig = None):
+def get_high_restart_kubernetes_pods(restart_threshold: int = 5, config: RunnableConfig = None):
     """
     发现频繁重启的不稳定Pod
 

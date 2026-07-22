@@ -3,7 +3,17 @@
  * 用于将历史会话中的 AG-UI 协议消息解析并渲染为 HTML
  */
 
-import { BrowserStepProgressData, BrowserStepsHistory, BrowserTaskReceivedData, ReportFileDownload } from '@/app/opspilot/types/global';
+import {
+  ApprovalRequest,
+  BrowserStepProgressData,
+  BrowserStepsHistory,
+  BrowserTaskReceivedData,
+  ConfigAnalysisReport,
+  ConfigDiffReport,
+  RepairCommands,
+  ReportFileDownload,
+  UserChoiceRequest,
+} from '@/app/opspilot/types/global';
 import { initToolCallTooltips, renderErrorMessage, ToolCallInfo } from './toolCallRenderer';
 
 const escapeNewlinesInStrings = (raw: string) => {
@@ -605,13 +615,13 @@ export const processHistoryMessageWithExtras = (
   browserStepsHistory?: BrowserStepsHistory | null;
   agentStepProgress?: import('@/app/opspilot/types/global').AgentStepProgressData[];
   skillViews?: import('@/app/opspilot/types/global').SkillViewItem[];
+  configDiffReports?: ConfigDiffReport[];
+  configAnalysisReports?: ConfigAnalysisReport[];
+  userChoiceRequests?: UserChoiceRequest[];
+  approvalRequests?: ApprovalRequest[];
+  repairCommands?: RepairCommands[];
   reportFileDownloads?: ReportFileDownload[];
   toolCalls?: Array<{ id: string; name: string; args: string; status: 'calling' | 'completed'; result?: string }>;
-  approvalRequests?: import('@/app/opspilot/types/global').ApprovalRequest[];
-  userChoiceRequests?: import('@/app/opspilot/types/global').UserChoiceRequest[];
-  configDiffReports?: import('@/app/opspilot/types/global').ConfigDiffReport[];
-  configAnalysisReports?: import('@/app/opspilot/types/global').ConfigAnalysisReport[];
-  repairCommands?: import('@/app/opspilot/types/global').RepairCommands[];
 } => {
   if (role !== 'bot') {
     return {

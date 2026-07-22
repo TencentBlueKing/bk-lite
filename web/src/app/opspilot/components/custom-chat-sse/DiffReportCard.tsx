@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Modal, Tag } from 'antd';
 import { FileTextOutlined, RightOutlined } from '@ant-design/icons';
 import { ConfigDiffReport, ConfigDiffItem } from '@/app/opspilot/types/global';
@@ -280,7 +280,7 @@ const DiffReportCard: React.FC<DiffReportCardProps> = ({ report }) => {
                   </div>
                   <pre className="whitespace-pre-wrap break-words rounded-md bg-white border border-gray-200 p-3 text-xs font-mono text-gray-700 max-h-80 overflow-auto">
                     {fetchedYaml.loading ? '加载中...'
-                      : fetchedYaml.error || fetchedYaml.yaml || '加载失败,请重试'}
+                    : fetchedYaml.error || fetchedYaml.yaml || '加载失败,请重试'}
                   </pre>
                 </div>
               )}

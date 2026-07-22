@@ -321,8 +321,8 @@ export class DataMapper {
       const firstNodeId = nodeIds[0];
       const matchedNode = firstNodeId
         ? context.nodeList?.find(
-            (n: any) => n?.value === firstNodeId || n?.id === firstNodeId
-          )
+          (n: any) => n?.value === firstNodeId || n?.id === firstNodeId
+        )
         : undefined;
       // 生成 instance_id（如果有模板）,使用 SHA256 哈希编码
       let instance_id = row.instance_id;

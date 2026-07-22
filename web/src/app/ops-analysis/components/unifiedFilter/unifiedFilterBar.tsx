@@ -5,6 +5,7 @@ import { Input, Button, ConfigProvider } from 'antd';
 import { SearchOutlined, ReloadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import TimeSelector from '@/components/time-selector';
+import DateRangeSelector from '@/app/ops-analysis/components/dateRangeSelector';
 import GroupTreeSelect from '@/components/group-tree-select';
 import { normalizeUnifiedFilterInputMode } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { ParamInputControl } from '@/app/ops-analysis/components/paramInputControl';
@@ -15,7 +16,9 @@ import type {
   TimeRangeValue,
 } from '@/app/ops-analysis/types/dashBoard';
 import type { InputControlConfig } from '@/app/ops-analysis/types/dataSource';
+import type { DateRangeValue } from '@/app/ops-analysis/types/dateRange';
 import { useTranslation } from '@/utils/i18n';
+import { buildResetFilterValues } from '@/app/ops-analysis/utils/unifiedFilterState';
 
 interface UnifiedFilterBarProps {
   definitions: UnifiedFilterDefinition[];
@@ -128,10 +131,7 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
   };
 
   const handleReset = () => {
-    const emptyValues: Record<string, FilterValue> = {};
-    enabledDefinitions.forEach((def) => {
-      emptyValues[def.id] = def.defaultValue ?? null;
-    });
+    const emptyValues = buildResetFilterValues(enabledDefinitions);
     setLocalValues(emptyValues);
 
     if (onReset) {
@@ -195,6 +195,15 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
           />
         );
       }
+      case 'dateRange':
+        return (
+          <DateRangeSelector
+            value={value as DateRangeValue | null | undefined}
+            onChange={(nextValue) =>
+              handleLocalValueChange(definition.id, nextValue)
+            }
+          />
+        );
 
       case 'string':
       default:

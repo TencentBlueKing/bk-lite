@@ -10,6 +10,7 @@
 from unittest.mock import patch, MagicMock
 
 import pytest
+import requests
 
 from apps.system_mgmt.providers.adapters.wechat import WechatLoginAuthAdapter
 
@@ -131,3 +132,49 @@ def test_authenticate_rejects_token_missing_openid():
 
     assert result.success is False
     assert result.errors[0].code == "provider.invalid_response"
+
+
+def test_authenticate_does_not_log_secret_or_auth_code_on_token_request_failure():
+    error = requests.RequestException(
+        "GET https://api.weixin.qq.com/token?secret=wx-test-secret&code=private-auth-code"
+    )
+
+    with patch(
+        "apps.system_mgmt.providers.adapters.wechat.requests.get",
+        side_effect=error,
+    ), patch("apps.system_mgmt.providers.adapters.wechat.logger") as logger:
+        result = WechatLoginAuthAdapter.authenticate(
+            config=WECHAT_CONFIG,
+            provider_key="wechat",
+            capability_key="login_auth",
+            auth_code="private-auth-code",
+        )
+
+    assert result.success is False
+    log_text = str(logger.method_calls)
+    assert "wx-test-secret" not in log_text
+    assert "private-auth-code" not in log_text
+    assert "RequestException" in log_text
+
+
+def test_authenticate_does_not_log_access_token_on_user_info_failure():
+    token_response = _mock_response({"access_token": "private-access-token", "openid": "oxxx"})
+    error = requests.RequestException(
+        "GET https://api.weixin.qq.com/userinfo?access_token=private-access-token"
+    )
+
+    with patch(
+        "apps.system_mgmt.providers.adapters.wechat.requests.get",
+        side_effect=[token_response, error],
+    ), patch("apps.system_mgmt.providers.adapters.wechat.logger") as logger:
+        result = WechatLoginAuthAdapter.authenticate(
+            config=WECHAT_CONFIG,
+            provider_key="wechat",
+            capability_key="login_auth",
+            auth_code="auth-code",
+        )
+
+    assert result.success is False
+    log_text = str(logger.method_calls)
+    assert "private-access-token" not in log_text
+    assert "RequestException" in log_text

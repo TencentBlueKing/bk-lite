@@ -1,3 +1,5 @@
+from django.db import transaction
+
 from apps.cmdb.constants.constants import OPERATOR_INSTANCE
 from apps.cmdb.models.change_record import (
     COLLECT_AUTOMATION_CHANGE,
@@ -28,29 +30,42 @@ _TYPE_ACTION_MAP = {
 }
 
 
+def _build_mirror_payload(*, inst_id, model_id, _type, operator, scenario,
+                          message="", model_object="", before_data=None, after_data=None):
+    return {
+        "username": operator or "system",
+        "source_ip": "127.0.0.1",
+        "app": "cmdb",
+        "action_type": _TYPE_ACTION_MAP.get(_type, "execute"),
+        "summary": message or f"{_type}: {model_object or model_id}",
+        "target_type": model_object or model_id,
+        "target_id": str(inst_id),
+        "detail": {
+            "before_data": before_data or {},
+            "after_data": after_data or {},
+            "scenario": scenario,
+            "model_object": model_object,
+            "source": "change_record",
+        },
+    }
+
+
 def _mirror_change_record(*, inst_id, model_id, _type, operator, scenario,
                           message="", model_object="", before_data=None, after_data=None):
     """将管理类变更记录经 NATS RPC 镜像进平台操作日志。失败绝不影响源写入。"""
     if scenario not in _MIRROR_SCENARIOS:
         return
     try:
-        SystemMgmt().save_operation_log(
-            username=operator or "system",
-            source_ip="127.0.0.1",
-            app="cmdb",
-            action_type=_TYPE_ACTION_MAP.get(_type, "execute"),
-            summary=message or f"{_type}: {model_object or model_id}",
-            target_type=model_object or model_id,
-            target_id=str(inst_id),
-            detail={"before_data": before_data or {}, "after_data": after_data or {},
-                    "scenario": scenario, "model_object": model_object, "source": "change_record"},
-        )
+        SystemMgmt().save_operation_log(**_build_mirror_payload(
+            inst_id=inst_id, model_id=model_id, _type=_type, operator=operator, scenario=scenario,
+            message=message, model_object=model_object, before_data=before_data, after_data=after_data,
+        ))
     except Exception as e:  # noqa: 镜像失败绝不影响源写入
         logger.warning(f"mirror change_record to operation_log failed: {e}")
 
 
 def create_change_record(inst_id, model_id, label, _type, before_data=None, after_data=None, operator="", message="",
-                         model_object="", scenario=ORDINARY_ATTRIBUTE_CHANGE):
+                         model_object="", scenario=ORDINARY_ATTRIBUTE_CHANGE, operation_event_id=None):
     """创建实例变更记录"""
     change_data = {"operator": operator, "scenario": scenario}
     if before_data:
@@ -61,9 +76,24 @@ def create_change_record(inst_id, model_id, label, _type, before_data=None, afte
         change_data["message"] = message
     if model_object:
         change_data["model_object"] = model_object
-    ChangeRecord.objects.create(inst_id=inst_id, model_id=model_id, label=label, type=_type, **change_data)
-    _mirror_change_record(inst_id=inst_id, model_id=model_id, _type=_type, operator=operator, scenario=scenario,
-                          message=message, model_object=model_object, before_data=before_data, after_data=after_data)
+    if operation_event_id:
+        _record, created = ChangeRecord.objects.get_or_create(
+            operation_event_id=operation_event_id,
+            defaults={"inst_id": inst_id, "model_id": model_id, "label": label, "type": _type, **change_data},
+        )
+    else:
+        _record = ChangeRecord.objects.create(
+            inst_id=inst_id,
+            model_id=model_id,
+            label=label,
+            type=_type,
+            **change_data,
+        )
+        created = True
+    if created:
+        _mirror_change_record(inst_id=inst_id, model_id=model_id, _type=_type, operator=operator, scenario=scenario,
+                              message=message, model_object=model_object, before_data=before_data, after_data=after_data)
+    return _record
 
 
 def batch_create_change_record(label, _type, change_records, operator="", scenario=ORDINARY_ATTRIBUTE_CHANGE):
@@ -73,11 +103,26 @@ def batch_create_change_record(label, _type, change_records, operator="", scenar
         for change_record in change_records
     ]
     ChangeRecord.objects.bulk_create(batch_change_data)
-    for rec in change_records:
-        _mirror_change_record(inst_id=rec.get("inst_id"), model_id=rec.get("model_id"), _type=_type,
-                              operator=operator, scenario=scenario, message=rec.get("message", ""),
-                              model_object=rec.get("model_object", ""),
-                              before_data=rec.get("before_data"), after_data=rec.get("after_data"))
+    if scenario in _MIRROR_SCENARIOS:
+        from apps.cmdb.services.change_record_mirror import (
+            ChangeRecordMirrorService,
+            dispatch_change_record_mirror,
+        )
+
+        payloads = [
+            _build_mirror_payload(
+                inst_id=rec.get("inst_id"), model_id=rec.get("model_id"), _type=_type,
+                operator=operator, scenario=scenario, message=rec.get("message", ""),
+                model_object=rec.get("model_object", ""), before_data=rec.get("before_data"),
+                after_data=rec.get("after_data"),
+            )
+            for rec in change_records
+        ]
+        outboxes = ChangeRecordMirrorService.enqueue_payloads(payloads)
+        for outbox in outboxes:
+            transaction.on_commit(
+                lambda event_id=outbox.event_id: dispatch_change_record_mirror(event_id)
+            )
 
 
 def create_custom_reporting_change_record(
@@ -124,11 +169,28 @@ def create_change_record_by_asso(label, _type, data, operator="", message="", sc
     ]
 
     ChangeRecord.objects.bulk_create(batch_change_data)
-    for inst_info in [data["src"], data["dst"]]:
-        if not inst_info.get("model_id"):
-            continue
-        _mirror_change_record(inst_id=inst_info["_id"], model_id=inst_info["model_id"], _type=_type,
-                              operator=operator, scenario=scenario, message=message,
-                              model_object=OPERATOR_INSTANCE,
-                              before_data=change_data.get("before_data"),
-                              after_data=change_data.get("after_data"))
+    mirror_records = [
+        {
+            "inst_id": inst_info["_id"],
+            "model_id": inst_info["model_id"],
+            "message": message,
+            "model_object": OPERATOR_INSTANCE,
+            "before_data": change_data.get("before_data"),
+            "after_data": change_data.get("after_data"),
+        }
+        for inst_info in [data["src"], data["dst"]]
+        if inst_info.get("model_id")
+    ]
+    if mirror_records:
+        from apps.cmdb.services.change_record_mirror import ChangeRecordMirrorService, dispatch_change_record_mirror
+
+        outboxes = ChangeRecordMirrorService.enqueue_payloads([
+            _build_mirror_payload(
+                inst_id=rec["inst_id"], model_id=rec["model_id"], _type=_type, operator=operator,
+                scenario=scenario, message=rec["message"], model_object=rec["model_object"],
+                before_data=rec["before_data"], after_data=rec["after_data"],
+            )
+            for rec in mirror_records
+        ])
+        for outbox in outboxes:
+            transaction.on_commit(lambda event_id=outbox.event_id: dispatch_change_record_mirror(event_id))

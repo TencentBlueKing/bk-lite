@@ -3,14 +3,22 @@ from datetime import datetime
 from types import SimpleNamespace
 from typing import Optional
 
-from django.db.models import Count, Q
+from django.db.models import Count, F, Q
 from django.utils import timezone
 from rest_framework import serializers
 
 import nats_client
+from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import nats_logger as logger
+from apps.core.utils.current_team_scope import _normalize_organization_ids
 from apps.core.utils.loader import LanguageLoader
-from apps.core.utils.permission_utils import check_instance_permission, get_permission_rules, get_permissions_rules, permission_filter
+from apps.core.utils.permission_utils import (
+    check_instance_permission,
+    get_instance_permissions,
+    get_permission_rules,
+    get_permissions_rules,
+    permission_filter,
+)
 from apps.core.utils.time_util import format_timestamp
 from apps.monitor.constants.language import LanguageConstants
 from apps.monitor.constants.permission import PermissionConstants
@@ -36,6 +44,7 @@ from apps.monitor.services.metrics import Metrics
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.instance_id_keys import resolve_monitor_object_instance_id_keys
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
+from apps.rpc.system_mgmt import SystemMgmt
 
 
 def _normalize_monitor_query_data(query_data: dict) -> dict:
@@ -160,7 +169,10 @@ def _resolve_nats_actor(user_info: Optional[dict]) -> tuple[str, str]:
     if not isinstance(user_info, dict):
         return "api", "domain.com"
 
-    user = _normalize_permission_user(user_info.get("user"))
+    user = _normalize_permission_user(
+        user_info.get("user"),
+        domain=user_info.get("domain"),
+    )
     operator = getattr(user, "username", None) or "api"
     domain = user_info.get("domain") or getattr(user, "domain", None) or "domain.com"
     return operator, domain
@@ -301,7 +313,10 @@ def _require_authenticated_actor(user_info: Optional[dict]):
     仅凭向 NATS subject 发消息、不带任何身份即可新建监控对象/告警策略的攻击面。
     校验失败时返回与读接口一致的失败结构。
     """
-    if not isinstance(user_info, dict) or not _normalize_permission_user(user_info.get("user")):
+    if not isinstance(user_info, dict) or not _normalize_permission_user(
+        user_info.get("user"),
+        domain=user_info.get("domain"),
+    ):
         return {"result": False, "data": [], "message": "缺少用户或组织信息"}
     return None
 
@@ -434,7 +449,10 @@ def _build_metric_label_query(metric_query: str, instance_ids=None, dimensions=N
 
 
 def _get_monitor_instance_permission(monitor_obj_id: str, user_info: dict):
-    user = _normalize_permission_user(user_info.get("user"))
+    user = _normalize_permission_user(
+        user_info.get("user"),
+        domain=user_info.get("domain"),
+    )
     current_team = user_info.get("team")
     include_children = user_info.get("include_children", False)
 
@@ -451,19 +469,25 @@ def _get_monitor_instance_permission(monitor_obj_id: str, user_info: dict):
     return permission, None
 
 
-def _normalize_permission_user(user):
+def _normalize_permission_user(user, domain=None):
     if hasattr(user, "username") and hasattr(user, "domain"):
         return user
     if isinstance(user, str):
         username = user.strip()
         if username:
-            return SimpleNamespace(username=username, domain="domain.com")
+            return SimpleNamespace(
+                username=username,
+                domain=domain or "domain.com",
+            )
         return user
     return user
 
 
-def _get_global_monitor_instance_permissions(user_info: dict):
-    user = _normalize_permission_user(user_info.get("user"))
+def _get_global_monitor_instance_permissions(user_info: dict, scope_ids):
+    user = _normalize_permission_user(
+        user_info.get("user"),
+        domain=user_info.get("domain"),
+    )
     current_team = user_info.get("team")
     include_children = user_info.get("include_children", False)
 
@@ -478,25 +502,34 @@ def _get_global_monitor_instance_permissions(user_info: dict):
         include_children=include_children,
     )
     if not isinstance(permission_result, dict):
-        return {}, [], None
+        return {}, list(scope_ids), None
     permission_data = permission_result.get("data", {})
-    current_teams = permission_result.get("team", [])
     if not isinstance(permission_data, dict):
         permission_data = {}
-    if not isinstance(current_teams, list):
-        current_teams = []
-    return permission_data, current_teams, None
+    return permission_data, list(scope_ids), None
 
 
-def _get_authorized_monitor_instances(user_info: dict, monitor_obj_id: Optional[str] = None):
-    instance_permissions, cur_team, error = _get_global_monitor_instance_permissions(user_info)
+def _get_authorized_monitor_instances(
+    user_info: dict,
+    scope_ids,
+    monitor_obj_id: Optional[str] = None,
+):
+    instance_permissions, cur_team, error = _get_global_monitor_instance_permissions(
+        user_info,
+        scope_ids,
+    )
     if error:
         return {}, error
 
     instance_queryset = (
-        MonitorInstance.objects.filter(is_deleted=False, is_active=True)
+        MonitorInstance.objects.filter(
+            is_deleted=False,
+            is_active=True,
+            monitorinstanceorganization__organization__in=list(scope_ids),
+        )
         .select_related("monitor_object")
         .prefetch_related("monitorinstanceorganization_set")
+        .distinct()
     )
     if monitor_obj_id:
         instance_queryset = instance_queryset.filter(monitor_object_id=monitor_obj_id)
@@ -516,13 +549,18 @@ def _get_authorized_monitor_instances(user_info: dict, monitor_obj_id: Optional[
     return authorized_instances, None
 
 
-def _get_authorized_instance_queryset(permission):
-    return permission_filter(
+def _get_authorized_instance_queryset(permission, scope_ids=None):
+    queryset = permission_filter(
         MonitorInstance,
         permission,
         team_key="monitorinstanceorganization__organization__in",
         id_key="id__in",
     )
+    if scope_ids is not None:
+        queryset = queryset.filter(
+            monitorinstanceorganization__organization__in=list(scope_ids)
+        ).distinct()
+    return queryset
 
 
 def _get_instance_permission_map(permission) -> dict:
@@ -953,14 +991,19 @@ def query_monitor_alert_segments(query_data: dict, *args, **kwargs):
     except ValueError as exc:
         return {"result": False, "data": [], "message": str(exc)}
 
+    _, _, _, scope_ids, _, scope_error = _get_nats_actor_scope(user_info)
+    if scope_error:
+        return scope_error
+
     permission, error = _get_monitor_instance_permission(monitor_obj_id, user_info)
     if error:
         return error
 
-    authorized_qs = _get_authorized_instance_queryset(permission).filter(
-        monitor_object_id=monitor_obj_id,
-        is_deleted=False,
-        is_active=True,
+    authorized_qs = _get_authorized_instance_queryset(
+        permission,
+        scope_ids,
+    ).filter(
+        monitor_object_id=monitor_obj_id, is_deleted=False, is_active=True
     )
     authorized_instance_ids = set(authorized_qs.values_list("id", flat=True))
     if not authorized_instance_ids:
@@ -976,7 +1019,16 @@ def query_monitor_alert_segments(query_data: dict, *args, **kwargs):
             return {"result": False, "data": [], "message": "没有权限访问指定的实例"}
         authorized_instance_ids = set(filtered_instance_ids)
 
-    queryset = MonitorAlert.objects.filter(monitor_instance_id__in=authorized_instance_ids)
+    accessible_policy_qs, policy_error = _get_nats_accessible_policy_queryset(
+        user_info
+    )
+    if policy_error:
+        return policy_error
+
+    queryset = MonitorAlert.objects.filter(
+        monitor_instance_id__in=authorized_instance_ids,
+        policy_id__in=accessible_policy_qs.values_list("id", flat=True),
+    )
     queryset = queryset.filter(Q(start_event_time__lte=end_dt) | Q(start_event_time__isnull=True, created_at__lte=end_dt))
     queryset = queryset.filter(Q(end_event_time__gte=start_dt) | Q(end_event_time__isnull=True, updated_at__gte=start_dt))
 
@@ -1034,6 +1086,10 @@ def query_latest_active_alerts(query_data: Optional[dict] = None, *args, **kwarg
     except ValueError as exc:
         return {"result": False, "data": [], "message": str(exc)}
 
+    _, _, _, scope_ids, _, scope_error = _get_nats_actor_scope(user_info)
+    if scope_error:
+        return scope_error
+
     if monitor_obj_id:
         try:
             MonitorObject.objects.get(id=monitor_obj_id)
@@ -1045,7 +1101,7 @@ def query_latest_active_alerts(query_data: Optional[dict] = None, *args, **kwarg
         if error:
             return error
         authorized_qs = (
-            _get_authorized_instance_queryset(permission)
+            _get_authorized_instance_queryset(permission, scope_ids)
             .filter(
                 monitor_object_id=monitor_obj_id,
                 is_deleted=False,
@@ -1055,7 +1111,10 @@ def query_latest_active_alerts(query_data: Optional[dict] = None, *args, **kwarg
         )
         authorized_instances = {str(instance.id): instance for instance in authorized_qs}
     else:
-        authorized_instances, error = _get_authorized_monitor_instances(user_info)
+        authorized_instances, error = _get_authorized_monitor_instances(
+            user_info,
+            scope_ids,
+        )
         if error:
             return error
 
@@ -1073,8 +1132,15 @@ def query_latest_active_alerts(query_data: Optional[dict] = None, *args, **kwarg
             return {"result": False, "data": [], "message": "没有权限访问指定的实例"}
         authorized_instance_ids = set(filtered_instance_ids)
 
+    accessible_policy_qs, policy_error = _get_nats_accessible_policy_queryset(
+        user_info
+    )
+    if policy_error:
+        return policy_error
+
     queryset = MonitorAlert.objects.filter(
         monitor_instance_id__in=authorized_instance_ids,
+        policy_id__in=accessible_policy_qs.values_list("id", flat=True),
         status="new",
     )
 
@@ -1140,17 +1206,152 @@ def mm_query(query: str, step="5m", *args, **kwargs):
     return _build_vm_query_failure_result(resp, "查询单个指标数据失败")
 
 
-def _scope_count_queryset(qs, *, is_superuser: bool, team, org_field: str):
-    """总览计数的统一 scope 口径：超管→全量；非超管→必须按 team 收窄。
+def _get_nats_actor_scope(user_info):
+    """经 Task1 RPC 认证 NATS 用户的 current_team 数据范围。"""
+    if not isinstance(user_info, dict):
+        return None, None, None, None, None, {"result": False, "data": {}, "message": "缺少用户或组织信息"}
 
-    非超管且无 team 视为**零授权**，返回空集（qs.none()）而非全量——
-    否则会把全平台跨组织计数泄露给一个没有任何组织归属的普通用户。
-    """
+    user = _normalize_permission_user(
+        user_info.get("user"),
+        domain=user_info.get("domain"),
+    )
+    include_children = user_info.get("include_children", False)
+    username = getattr(user, "username", None)
+    domain = getattr(user, "domain", None)
+    if (
+        not isinstance(username, str)
+        or not username.strip()
+        or not isinstance(domain, str)
+        or not domain.strip()
+        or type(include_children) is not bool
+    ):
+        return None, None, None, None, None, {"result": False, "data": {}, "message": "缺少用户或组织信息"}
+
+    try:
+        current_team = next(iter(_normalize_organization_ids([user_info.get("team")])))
+    except BaseAppException:
+        return None, None, None, None, None, {"result": False, "data": {}, "message": "current_team 参数非法"}
+
+    actor_context = {
+        "username": username,
+        "domain": domain,
+        "current_team": current_team,
+    }
+    try:
+        scope_result = SystemMgmt().get_authorized_groups_scoped(
+            actor_context,
+            include_children=include_children,
+        )
+    except Exception:
+        return None, None, None, None, None, {"result": False, "data": {}, "message": "获取 current_team 权限范围失败"}
+
+    if (
+        not isinstance(scope_result, dict)
+        or not scope_result.get("result")
+        or not isinstance(scope_result.get("data"), list)
+        or type(scope_result.get("is_superuser")) is not bool
+    ):
+        return None, None, None, None, None, {"result": False, "data": {}, "message": "获取 current_team 权限范围失败"}
+    try:
+        scope_ids = _normalize_organization_ids(scope_result["data"])
+    except BaseAppException:
+        return None, None, None, None, None, {"result": False, "data": {}, "message": "获取 current_team 权限范围失败"}
+    if current_team not in scope_ids:
+        return None, None, None, None, None, {"result": False, "data": {}, "message": "获取 current_team 权限范围失败"}
+
+    return user, current_team, include_children, scope_ids, scope_result["is_superuser"], None
+
+
+def _get_nats_permission_context(user_info, permission_module):
+    """解析用户 NATS 请求的 current_team 和对象权限，任一异常均 fail closed。"""
+    user, current_team, include_children, scope_ids, is_superuser, error = _get_nats_actor_scope(user_info)
+    if error:
+        return None, None, None, error
+
+    permissions_result = get_permissions_rules(
+        user,
+        current_team,
+        "monitor",
+        permission_module,
+        include_children=include_children,
+    )
+    if not isinstance(permissions_result, dict):
+        return None, None, None, {"result": False, "data": {}, "message": "获取对象权限失败"}
+
+    permission_data = permissions_result.get("data")
+    if not isinstance(permission_data, dict):
+        return None, None, None, {"result": False, "data": {}, "message": "获取对象权限失败"}
+    return permission_data, scope_ids, is_superuser, None
+
+
+def _get_nats_accessible_policy_queryset(user_info):
+    permissions, scope_ids, is_superuser, error = _get_nats_permission_context(
+        user_info,
+        PermissionConstants.POLICY_MODULE,
+    )
+    if error:
+        return MonitorPolicy.objects.none(), error
+
+    queryset = (
+        MonitorPolicy.objects.filter(
+            policyorganization__organization__in=list(scope_ids)
+        )
+        .prefetch_related("policyorganization_set")
+        .distinct()
+    )
     if is_superuser:
-        return qs
-    if not team:
-        return qs.none()
-    return qs.filter(**{org_field: team}).distinct()
+        return queryset, None
+
+    authorized_ids = []
+    for policy in queryset:
+        organizations = {
+            item.organization for item in policy.policyorganization_set.all()
+        }
+        if get_instance_permissions(
+            str(policy.monitor_object_id),
+            policy.id,
+            organizations,
+            permissions,
+            list(scope_ids),
+        ):
+            authorized_ids.append(policy.id)
+    return queryset.filter(id__in=authorized_ids), None
+
+
+def _get_nats_accessible_instance_queryset(user_info):
+    permissions, scope_ids, is_superuser, error = _get_nats_permission_context(
+        user_info,
+        PermissionConstants.INSTANCE_MODULE,
+    )
+    if error:
+        return MonitorInstance.objects.none(), error
+
+    queryset = (
+        MonitorInstance.objects.filter(
+            is_deleted=False,
+            monitorinstanceorganization__organization__in=list(scope_ids),
+        )
+        .prefetch_related("monitorinstanceorganization_set")
+        .distinct()
+    )
+    if is_superuser:
+        return queryset, None
+
+    authorized_ids = []
+    for instance in queryset:
+        organizations = {
+            item.organization
+            for item in instance.monitorinstanceorganization_set.all()
+        }
+        if get_instance_permissions(
+            str(instance.monitor_object_id),
+            instance.id,
+            organizations,
+            permissions,
+            list(scope_ids),
+        ):
+            authorized_ids.append(instance.id)
+    return queryset.filter(id__in=authorized_ids), None
 
 
 @nats_client.register
@@ -1161,14 +1362,18 @@ def get_monitor_statistics(user_info=None, **kwargs):
     内置仪表盘以 single 值卡片渲染（按 selectedFields 取字段）。
 
     Args:
-        user_info: { team: int, is_superuser: bool, ... } 由 operation_analysis 注入
+        user_info: { team: int, user, is_superuser: bool, ... } 由 operation_analysis 注入
 
     Returns:
         { "result": True, "data": { 各项计数 ... }, "message": "" }
     """
     user_info = user_info or {}
-    team = user_info.get("team")
-    is_superuser = bool(user_info.get("is_superuser"))
+    policy_qs, policy_error = _get_nats_accessible_policy_queryset(user_info)
+    if policy_error:
+        return policy_error
+    instance_qs, instance_error = _get_nats_accessible_instance_queryset(user_info)
+    if instance_error:
+        return instance_error
 
     # ============ 资源概览 ============
     # 监控对象/对象类型属平台级目录（各组织一致），非租户数据，不做组织收窄
@@ -1176,12 +1381,6 @@ def get_monitor_statistics(user_info=None, **kwargs):
     monitor_object_visible = MonitorObject.objects.filter(is_visible=True).count()
     monitor_object_category = MonitorObjectType.objects.count()
 
-    instance_qs = _scope_count_queryset(
-        MonitorInstance.objects.filter(is_deleted=False),
-        is_superuser=is_superuser,
-        team=team,
-        org_field="monitorinstanceorganization__organization",
-    )
     monitor_instance_total = instance_qs.count()
     monitor_instance_active = instance_qs.filter(is_active=True).count()
     monitor_instance_inactive = instance_qs.filter(is_active=False).count()
@@ -1193,22 +1392,13 @@ def get_monitor_statistics(user_info=None, **kwargs):
     plugin_custom = MonitorPlugin.objects.filter(is_pre=False).count()
     metric_total = Metric.objects.count()
     metric_group_total = MetricGroup.objects.count()
-    # 采集配置按实例归属收窄：超管→全量；非超管→跟随 instance_qs（无 team 时为空集→0）
-    collect_config_total = (
-        CollectConfig.objects.count()
-        if is_superuser
-        else CollectConfig.objects.filter(monitor_instance_id__in=instance_qs.values_list("id", flat=True)).count()
-    )
+    # 采集配置跟随受限实例权限根。
+    collect_config_total = CollectConfig.objects.filter(
+        monitor_instance_id__in=instance_qs.values_list("id", flat=True)
+    ).count()
 
     # ============ 告警概览 ============
-    # 策略按组织收窄；下游 alert/event/snapshot/baseline 均以 policy_qs 的 id 集合间接收窄，
-    # 故非超管且无 team 时 policy_qs 为空集，所有告警类计数随之归零
-    policy_qs = _scope_count_queryset(
-        MonitorPolicy.objects.all(),
-        is_superuser=is_superuser,
-        team=team,
-        org_field="policyorganization__organization",
-    )
+    # 下游 alert/event/snapshot/baseline 全部继承受限策略权限根。
     policy_total = policy_qs.count()
     policy_enabled = policy_qs.filter(enable=True).count()
     policy_disabled = policy_qs.filter(enable=False).count()
@@ -1216,7 +1406,9 @@ def get_monitor_statistics(user_info=None, **kwargs):
     policy_threshold = policy_qs.exclude(threshold=[]).count()
     policy_no_data = policy_qs.exclude(no_data_level="").count()
 
-    alert_qs = MonitorAlert.objects.filter(policy_id__in=policy_qs.values_list("id", flat=True)) if not is_superuser else MonitorAlert.objects.all()
+    alert_qs = MonitorAlert.objects.filter(
+        policy_id__in=policy_qs.values_list("id", flat=True)
+    )
     alert_history = alert_qs.count()
     alert_current = alert_qs.filter(status="new").count()
     alert_recovered = alert_qs.filter(status="recovered").count()
@@ -1225,21 +1417,20 @@ def get_monitor_statistics(user_info=None, **kwargs):
     today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
     alert_today = alert_qs.filter(created_at__gte=today_start).count()
 
-    event_qs = MonitorEvent.objects.filter(policy_id__in=policy_qs.values_list("id", flat=True)) if not is_superuser else MonitorEvent.objects.all()
+    event_qs = MonitorEvent.objects.filter(
+        policy_id__in=policy_qs.values_list("id", flat=True)
+    ).filter(Q(alert__isnull=True) | Q(alert__policy_id=F("policy_id")))
     event_total = event_qs.count()
     event_today = event_qs.filter(created_at__gte=today_start).count()
 
-    alert_snapshot_total = (
-        MonitorAlertMetricSnapshot.objects.filter(policy_id__in=policy_qs.values_list("id", flat=True)).count()
-        if not is_superuser
-        else MonitorAlertMetricSnapshot.objects.count()
-    )
+    alert_snapshot_total = MonitorAlertMetricSnapshot.objects.filter(
+        policy_id__in=policy_qs.values_list("id", flat=True),
+        alert__policy_id=F("policy_id"),
+    ).count()
 
-    no_data_baseline_total = (
-        PolicyInstanceBaseline.objects.filter(policy_id__in=policy_qs.values_list("id", flat=True)).count()
-        if not is_superuser
-        else PolicyInstanceBaseline.objects.count()
-    )
+    no_data_baseline_total = PolicyInstanceBaseline.objects.filter(
+        policy_id__in=policy_qs.values_list("id", flat=True)
+    ).count()
 
     return {
         "result": True,

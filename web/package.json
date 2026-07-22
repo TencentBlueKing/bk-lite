@@ -17,6 +17,7 @@
     "test:alarm-action-i18n": "pnpm exec tsx scripts/alarm-action-i18n-test.ts",
     "test:alarm-table-column-order": "pnpm exec tsx scripts/alarm-table-column-order-test.ts",
     "test:alarm-notification-tooltip": "pnpm exec tsx scripts/alarm-notification-tooltip-test.ts",
+    "test:alert-assignment-level-multiselect": "pnpm exec tsx scripts/alert-assignment-level-multiselect-test.ts",
     "test:flow-access-complete-navigation": "pnpm exec tsx scripts/flow-access-complete-navigation-test.ts",
     "test:flow-asset-existing-selection": "pnpm exec tsx scripts/flow-asset-existing-selection-test.ts",
     "test:installer-progress": "pnpm exec tsx scripts/installer-progress-test.ts",
@@ -57,12 +58,22 @@
     "type-check:wiki-decision": "tsc -p tsconfig.wiki-decision.json --noEmit",
     "test:ops-analysis-component-param-switch": "pnpm exec tsx scripts/ops-analysis-component-param-switch-test.ts",
     "test:ops-analysis-unified-filter-input": "pnpm exec tsx scripts/ops-analysis-unified-filter-input-test.ts",
+    "test:ops-analysis-date-range-domain": "pnpm exec tsx scripts/ops-analysis-date-range-domain-test.ts",
+    "test:ops-analysis-date-range-selector": "pnpm exec tsx scripts/ops-analysis-date-range-selector-test.ts",
+    "test:ops-analysis-date-range-data-source": "pnpm exec tsx scripts/ops-analysis-date-range-data-source-test.ts",
+    "test:ops-analysis-params-date-range": "pnpm exec tsx scripts/ops-analysis-params-date-range-test.ts",
+    "test:ops-analysis-date-range-unified-filter": "pnpm exec tsx scripts/ops-analysis-date-range-unified-filter-test.ts",
+    "test:ops-analysis-date-range-canvas-binding": "pnpm exec tsx scripts/ops-analysis-date-range-canvas-binding-test.ts",
+    "test:ops-analysis-date-range-request": "pnpm exec tsx scripts/ops-analysis-date-range-request-test.ts",
+    "test:ops-analysis-date-range-scope": "pnpm exec tsx scripts/ops-analysis-date-range-scope-test.ts",
     "type-check": "pnpm clean && pnpm prepare-enterprise && pnpm precommit && tsc -p tsconfig.lint.json --noEmit",
     "precommit": "node -r dotenv/config scripts/generate-tsconfig.js dotenv_config_path=.env.local",
     "prepare": "husky install",
     "analyze": "pnpm prepare-enterprise && cross-env ANALYZE=true next build",
     "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build"
+    "build-storybook": "storybook build",
+    "audit:component-ownership": "node scripts/component-ownership-audit.mjs",
+    "check:component-ownership": "node scripts/component-ownership-audit.mjs --check"
   },
   "dependencies": {
     "@ant-design/colors": "^8.0.1",
@@ -77,6 +88,9 @@
     "@antv/x6-plugin-selection": "^2.2.2",
     "@antv/x6-plugin-transform": "^2.1.8",
     "@antv/x6-react-shape": "^2.2.3",
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^9.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
     "@types/react-resizable": "^3.0.8",
     "@xyflow/react": "^12.8.4",
     "ace-builds": "1.44.0",
@@ -95,6 +109,7 @@
     "intl-messageformat": "^10.7.7",
     "js-cookie": "^3.0.5",
     "jspdf": "^4.2.1",
+    "jszip": "^3.10.1",
     "lodash": "^4.17.21",
     "markdown-it": "^14.2.0",
     "next": "16.0.10",
@@ -142,7 +157,8 @@
     "storybook": "^10.4.1",
     "tailwindcss": "^4.1.13",
     "tsx": "^4.21.0",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3.2.4"
   },
   "lint-staged": {
     "*.{js,jsx,ts,tsx}": "eslint --fix"

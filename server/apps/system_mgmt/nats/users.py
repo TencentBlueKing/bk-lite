@@ -1,6 +1,19 @@
 # flake8: noqa
+from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.utils.current_team_scope import _normalize_organization_ids
+
 from .common import *  # noqa: F401,F403
 from .common import _collect_ancestor_group_ids
+
+
+def _is_persisted_superuser(user_obj):
+    """仅从持久化用户角色解析超管身份。"""
+    explicit_flag = getattr(user_obj, "is_superuser", None)
+    if explicit_flag is not None:
+        return bool(explicit_flag)
+
+    role_ids = get_user_all_roles(user_obj)
+    return Role.objects.filter(id__in=role_ids, name="admin").filter(Q(app="") | Q(app="system-manager")).exists()
 
 
 @nats_client.register
@@ -35,9 +48,6 @@ def _get_actor_user_scope(actor_context, include_children=False):
     username = (actor_context or {}).get("username")
     domain = (actor_context or {}).get("domain", "domain.com")
     current_team = (actor_context or {}).get("current_team")
-    is_superuser = (actor_context or {}).get("is_superuser", False)
-    actor_group_list = (actor_context or {}).get("group_list")
-
     if not username or current_team in (None, ""):
         return None, []
 
@@ -45,9 +55,12 @@ def _get_actor_user_scope(actor_context, include_children=False):
     if not user_obj:
         return None, []
 
+    # 超管身份只能来自持久化用户，RPC 调用方声明不得提升权限。
+    is_superuser = _is_persisted_superuser(user_obj)
+
     try:
-        current_team = int(current_team)
-    except (TypeError, ValueError):
+        current_team = next(iter(_normalize_organization_ids([current_team])))
+    except BaseAppException:
         return user_obj, []
 
     if is_superuser:
@@ -55,9 +68,8 @@ def _get_actor_user_scope(actor_context, include_children=False):
             return user_obj, GroupUtils.get_group_with_descendants(current_team)
         return user_obj, [current_team]
 
-    user_group_list = actor_group_list if actor_group_list else user_obj.group_list
     authorized_groups = GroupUtils.get_user_authorized_child_groups(
-        user_group_list,
+        user_obj.group_list,
         current_team,
         include_children=include_children,
     )
@@ -106,8 +118,35 @@ def get_group_users_scoped(actor_context, group=None, include_children=False):
 @nats_client.register
 def get_authorized_groups_scoped(actor_context, include_children=False):
     """返回调用方在当前组织上下文下可访问的组织范围。"""
-    _user_obj, authorized_groups = _get_actor_user_scope(actor_context, include_children=include_children)
-    return {"result": True, "data": authorized_groups}
+    user_obj, authorized_groups = _get_actor_user_scope(actor_context, include_children=include_children)
+    return {
+        "result": True,
+        "data": authorized_groups,
+        "is_superuser": bool(user_obj and _is_persisted_superuser(user_obj)),
+    }
+
+
+@nats_client.register
+def get_assignable_groups(actor_context):
+    """返回调用方可作为组织分配目标的真实组织范围。"""
+    username = (actor_context or {}).get("username")
+    domain = (actor_context or {}).get("domain", "domain.com")
+    if not username:
+        return {"result": True, "data": []}
+
+    user_obj = User.objects.filter(username=username, domain=domain).first()
+    if not user_obj:
+        return {"result": True, "data": []}
+
+    if _is_persisted_superuser(user_obj):
+        return {"result": True, "data": list(Group.objects.values_list("id", flat=True))}
+
+    user_group_list = list(user_obj.group_list or [])
+    if not user_group_list:
+        return {"result": True, "data": []}
+
+    groups = GroupUtils.get_group_with_descendants(user_group_list)
+    return {"result": True, "data": groups}
 
 
 @nats_client.register

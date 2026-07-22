@@ -12,6 +12,7 @@ import { DEFAULT_THRESHOLD_COLORS } from '@/app/ops-analysis/constants/threshold
 import { ThresholdColorConfig } from '@/app/ops-analysis/utils/thresholdUtils';
 import { buildTreeData } from '@/app/ops-analysis/(pages)/view/topology/utils/dataTreeUtils';
 import { canEnableCompare } from '@/app/ops-analysis/utils/compareQuery';
+import { getDateRangeTimezone } from '@/app/ops-analysis/utils/dateRange';
 
 interface UseSingleValueConfigProps {
   form: FormInstance;
@@ -167,6 +168,10 @@ export function useSingleValueConfig({
       const requestParams = processDataSourceParams({
         sourceParams: selectedDataSource.params,
         userParams,
+        resolutionContext: {
+          referenceNow: Date.now(),
+          timezone: getDateRangeTimezone(),
+        },
       });
 
       if (

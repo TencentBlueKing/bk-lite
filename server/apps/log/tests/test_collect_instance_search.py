@@ -82,6 +82,7 @@ def test_search_instance_uses_current_page_node_lookup(monkeypatch):
         page=2,
         page_size=2,
         queryset=FakeQuerySet(instances),
+        visible_organization_ids={1, 2},
     )
 
     assert requested_node_ids == ["node-3", "node-4"]
@@ -123,6 +124,7 @@ def test_search_instance_with_page_size_minus_one_returns_all_items(monkeypatch)
         page=1,
         page_size=-1,
         queryset=FakeQuerySet(instances),
+        visible_organization_ids={1},
     )
 
     assert requested_node_ids == ["node-1", "node-2", "node-3"]

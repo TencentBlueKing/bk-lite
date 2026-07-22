@@ -7,10 +7,43 @@ import { clearCurrentTeamCookie } from '../utils/teamCookie';
 const API_PROXY_PREFIX = '/api/proxy';
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '') || '';
 const TARGET_SERVER = `${API_BASE_URL}${API_PROXY_PREFIX}`;
+let runtimeAuthToken: string | null | undefined = null;
+let unauthorizedHandler: (() => void | Promise<void>) | null = null;
+
+export class UnauthorizedRequestError extends Error {
+  constructor() {
+    super('Authentication required');
+    this.name = 'UnauthorizedRequestError';
+  }
+}
+
+function resolveApiAuthToken(
+  runtimeToken: string | null | undefined,
+  storedToken: string | null,
+): string | null {
+  return runtimeToken === undefined ? storedToken : runtimeToken;
+}
+
+export function setRuntimeAuthToken(token: string | null | undefined) {
+  runtimeAuthToken = token;
+}
+
+export function setUnauthorizedHandler(handler: (() => void | Promise<void>) | null) {
+  unauthorizedHandler = handler;
+}
+
+function normalizeApiEndpoint(endpoint: string): string {
+  const value = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const suffixIndex = value.search(/[?#]/);
+  const pathname = suffixIndex === -1 ? value : value.slice(0, suffixIndex);
+  const suffix = suffixIndex === -1 ? '' : value.slice(suffixIndex);
+  const normalizedPath = pathname.endsWith('/') ? pathname : `${pathname}/`;
+
+  return `${normalizedPath}${suffix}`;
+}
 
 function buildTargetUrl(endpoint: string): string {
-  const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-  return `${TARGET_SERVER}${normalizedEndpoint}`;
+  return `${TARGET_SERVER}${normalizeApiEndpoint(endpoint)}`;
 }
 
 /**
@@ -19,6 +52,11 @@ function buildTargetUrl(endpoint: string): string {
  */
 async function handle401Error() {
   console.warn('检测到 401 未授权，清空认证信息并跳转到登录页');
+
+  if (unauthorizedHandler) {
+    await unauthorizedHandler();
+    return;
+  }
 
   // 清空存储的认证信息
   await clearAuthData();
@@ -36,7 +74,7 @@ export async function apiRequest<T = any>(
 ): Promise<T> {
   const targetUrl = buildTargetUrl(endpoint);
   // 从安全存储的内存缓存获取 token（同步方法）
-  const token = getTokenSync();
+  const token = resolveApiAuthToken(runtimeAuthToken, getTokenSync());
 
   const config: RequestInit = {
     ...options,
@@ -56,7 +94,7 @@ export async function apiRequest<T = any>(
     // 检查 401 未授权错误
     if (response.status === 401) {
       await handle401Error();
-      throw new Error('未授权，请重新登录');
+      throw new UnauthorizedRequestError();
     }
 
     // 检查其他响应状态
@@ -184,7 +222,7 @@ export async function* apiStream<T = any>(
   options?: RequestInit
 ): AsyncGenerator<T, void, unknown> {
   const targetUrl = buildTargetUrl(endpoint);
-  const token = getTokenSync();
+  const token = resolveApiAuthToken(runtimeAuthToken, getTokenSync());
 
   const config: RequestInit = {
     ...options,
@@ -308,6 +346,11 @@ export async function* apiStream<T = any>(
   }
 
   const response = await tauriFetch(targetUrl, config);
+
+  if (response.status === 401) {
+    await handle401Error();
+    throw new UnauthorizedRequestError();
+  }
 
   if (!response.ok) {
     throw new Error(`API Stream Error: ${response.status}`);
