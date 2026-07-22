@@ -603,5 +603,47 @@
         {"key": "label", "title": "模型名称", "value_type": "string"},
         {"key": "value", "title": "实例数量", "value_type": "number"}
     ]
+},
+{
+    "name": "CMDB 地区列表",
+    "desc": "返回当前用户可见模型定义中所有 region 标签候选值，供运营分析参数动态选项使用",
+    "rest_api": "cmdb/get_region_options",
+    "tag": ["cmdb"],
+    "chart_type": [],
+    "params": [],
+    "field_schema": [
+        {"key": "label", "title": "地区名称", "value_type": "string", "description": "region 标签候选项的地区名称"},
+        {"key": "value", "title": "地区值", "value_type": "string", "description": "传给地区资源概览接口的 region 参数值"}
+    ]
+},
+{
+    "name": "地区资源概览",
+    "desc": "按 region 标签统计当前权限范围内各 CMDB 模型分类的实例总数",
+    "rest_api": "cmdb/get_region_resource_overview",
+    "tag": ["cmdb"],
+    "chart_type": ["multiValue"],
+    "params": [
+        {
+            "name": "region",
+            "type": "string",
+            "value": "",
+            "alias_name": "地区",
+            "filterType": "params",
+            "required": true,
+            "inputConfig": {
+                "control": "select",
+                "optionsSource": {
+                    "type": "dynamic",
+                    "sourceRef": {"type": "rest_api", "value": "cmdb/get_region_options"},
+                    "valueField": "value",
+                    "labelField": "label"
+                }
+            }
+        }
+    ],
+    "field_schema": [
+        {"key": "label", "title": "资源分类", "value_type": "string", "description": "当前语言下的 CMDB 模型分类名称"},
+        {"key": "value", "title": "实例数量", "value_type": "number", "description": "指定地区和当前权限范围内的分类实例总数"}
+    ]
 }
 ]
