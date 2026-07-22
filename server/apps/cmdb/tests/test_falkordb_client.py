@@ -37,10 +37,12 @@ class FakeGraph:
         self._result = result if result is not None else FakeResultSet([], [])
         self.last_query = None
         self.last_params = None
+        self.calls = []
 
     def query(self, cql, params=None):
         self.last_query = cql
         self.last_params = params
+        self.calls.append((cql, params))
         if callable(self._result):
             return self._result(cql, params)
         return self._result
@@ -159,6 +161,13 @@ def test_format_search_params_str_eq():
     assert "host" in params.values()
 
 
+def test_format_search_params_supports_node_id_cursor():
+    c = _client()
+    cond, params = c.format_search_params([{"field": "id", "type": "id>", "value": 12}])
+    assert "ID(n) >" in cond
+    assert 12 in params.values()
+
+
 def test_format_final_params_only_permission():
     c = _client()
     assert c.format_final_params([], permission_params="n.org = 1") == "n.org = 1"
@@ -192,6 +201,23 @@ def test_query_entity_with_search_params():
     c = _client(_entity_result(nodes))
     c.query_entity(label="instance", params=[{"field": "inst_name", "type": "str=", "value": "host1"}])
     assert "WHERE" in c._graph.last_query
+
+
+def test_query_entity_can_page_without_count_query():
+    nodes = [FakeNode(1, ["instance"], {"inst_name": "host1"})]
+    c = _client(_entity_result(nodes))
+
+    rows, count = c.query_entity(
+        label="instance",
+        params=[],
+        page={"skip": 0, "limit": 10},
+        include_count=False,
+    )
+
+    assert len(rows) == 1
+    assert count is None
+    assert len(c._graph.calls) == 1
+    assert "SKIP 0 LIMIT 10" in c._graph.calls[0][0]
 
 
 def test_query_entity_invalid_label_raises():

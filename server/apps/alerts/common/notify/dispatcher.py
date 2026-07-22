@@ -7,9 +7,8 @@
 
 不统一"渠道选择"逻辑（分派用默认渠道、提醒用 assignment 渠道、升级用层级渠道，按场景不同，是合理差异）。
 """
+import uuid
 from typing import Any, Dict, List, Optional
-
-from django.db import transaction
 
 from apps.alerts.common.notify.base import NotifyParamsFormat
 from apps.core.logger import alert_logger as logger
@@ -89,29 +88,24 @@ def build_channel_params(
     return params
 
 
-def enqueue_notifications(params: List[Dict[str, Any]]) -> bool:
-    """统一投递出口:事务内则提交后投递,否则立即。空入参 → 不投递,返回 False。"""
+def enqueue_notifications(
+    params: List[Dict[str, Any]], idempotency_key: Optional[str] = None
+) -> bool:
+    """把通知意图写入 outbox；空入参不投递。"""
     if not params:
         logger.info("[AlertNotify] enqueue_notifications: 无通知参数，跳过投递")
         return False
 
-    # 延迟导入避免循环依赖
-    from apps.alerts.tasks import sync_notify
-
     summary = [(p.get("channel_type"), p.get("channel_id")) for p in params]
+    from apps.alerts.service.outbox import enqueue_outbox
 
-    def _enqueue():
-        # 事务内时由 on_commit 触发：若未见此日志而上面已记录"将于提交后投递"，说明事务回滚了
-        logger.info("[AlertNotify] enqueue_notifications: 投递 sync_notify, 参数数=%s, 渠道=%s", len(params), summary)
-        sync_notify.delay(params)
-
-    if transaction.get_connection().in_atomic_block:
-        logger.info(
-            "[AlertNotify] enqueue_notifications: 事务进行中，将于提交后(on_commit)投递, 参数数=%s, 渠道=%s",
-            len(params), summary,
-        )
-        transaction.on_commit(_enqueue)
-    else:
-        logger.info("[AlertNotify] enqueue_notifications: 立即投递, 参数数=%s, 渠道=%s", len(params), summary)
-        _enqueue()
+    key = idempotency_key or f"notification:{uuid.uuid4().hex}"
+    record, created = enqueue_outbox("notification", {"params": params}, key)
+    logger.info(
+        "[AlertNotify] outbox recorded: outbox_id=%s created=%s params=%s channels=%s",
+        record.pk,
+        created,
+        len(params),
+        summary,
+    )
     return True

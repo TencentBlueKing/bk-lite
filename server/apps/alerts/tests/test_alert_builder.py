@@ -219,6 +219,8 @@ def test_create_or_update_alert_creates_new(alert_levels, source, strategy):
     assert alert.fingerprint == "fp-new"
     assert alert.title == "聚合告警A"
     assert alert.events.filter(event_id="E1").exists()
+    from apps.alerts.models import ActiveAlertFingerprint
+    assert ActiveAlertFingerprint.objects.get(fingerprint="fp-new").alert_id == alert.pk
 
 
 @pytest.mark.django_db

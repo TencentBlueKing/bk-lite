@@ -189,7 +189,7 @@ export interface ConfigAnalysisReportItem {
 
 export interface ConfigAnalysisReportScope {
   cluster_name?: string;
-  namespace?: string | null;
+  namespace?: string | string[] | null;
   instance_name?: string | null;
   name?: string | null;
   target_name?: string | null;

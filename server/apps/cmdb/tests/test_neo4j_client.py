@@ -64,10 +64,12 @@ class FakeSession:
         self._records = result_records if result_records is not None else []
         self.last_query = None
         self.last_params = {}
+        self.calls = []
 
     def run(self, query, *args, **kwargs):
         self.last_query = query
         self.last_params = kwargs
+        self.calls.append((query, kwargs))
         return FakeRunResult(self._records)
 
     def close(self):
@@ -165,6 +167,13 @@ def test_format_search_params_str_eq():
     assert "h" in query_params.values()
 
 
+def test_format_search_params_supports_node_id_cursor():
+    c = _client()
+    params_str, query_params = c.format_search_params([{"field": "id", "type": "id>", "value": 12}])
+    assert "ID(n) >" in params_str
+    assert 12 in query_params.values()
+
+
 def test_format_search_params_injection_value():
     """注入载荷在 query_params 中，不出现在 CQL 字符串里（核心防注入验证）。"""
     c = _client()
@@ -189,6 +198,32 @@ def test_format_final_params():
     c = _client()
     combined_str, query_params = c.format_final_params([], permission_params="n.org=1")
     assert combined_str == "n.org=1"
+
+
+def test_query_entity_can_page_without_count_query():
+    c = _client([(FakeNode(1, ["instance"], {"name": "h1"}),)])
+
+    rows, count = c.query_entity("instance", [], page={"skip": 0, "limit": 10}, include_count=False)
+
+    assert len(rows) == 1
+    assert count is None
+    assert len(c.session.calls) == 1
+    assert "SKIP 0 LIMIT 10" in c.session.calls[0][0]
+
+
+def test_query_entity_supports_cross_driver_permission_map():
+    c = _client([(FakeNode(1, ["instance"], {"inst_name": "h1", "organization": [4]}),)])
+
+    rows, _ = c.query_entity(
+        "instance",
+        [],
+        format_permission_dict={4: [{"field": "inst_name", "type": "str[]", "value": ["h1"]}]},
+    )
+
+    assert rows[0]["inst_name"] == "h1"
+    assert "organization" in c.session.last_query
+    assert "inst_name" in c.session.last_query
+    assert 4 in c.session.last_params.values() or [4] in c.session.last_params.values()
 
 
 # --------------------------------------------------------------------------

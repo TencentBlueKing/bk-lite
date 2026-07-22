@@ -10,6 +10,13 @@ class AlertAssignmentModelSerializer(serializers.ModelSerializer):
     This serializer is used to assign alerts to users or teams.
     """
 
+    def validate_match_rules(self, value):
+        for group in value or []:
+            for rule in group or []:
+                if rule.get("key") == "level" and isinstance(rule.get("value"), list) and not rule["value"]:
+                    raise serializers.ValidationError("级别至少选择一个值")
+        return value
+
     def validate_config(self, value):
         """校验升级链配置块（未启用则跳过）。"""
         from apps.alerts.service.escalation_service import EscalationService

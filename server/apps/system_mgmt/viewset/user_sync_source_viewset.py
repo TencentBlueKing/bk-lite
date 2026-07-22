@@ -9,7 +9,7 @@ from apps.core.logger import logger
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import MaintainerViewSet
 from apps.system_mgmt.providers import RuntimeApplicationService
-from apps.system_mgmt.models import IntegrationInstance, IntegrationInstanceStatusChoices, UserSyncRun, UserSyncSource
+from apps.system_mgmt.models import Group, IntegrationInstance, IntegrationInstanceStatusChoices, UserSyncRun, UserSyncSource
 from apps.system_mgmt.serializers.user_sync_source_serializer import UserSyncRunSerializer, UserSyncSourceSerializer
 from apps.system_mgmt.services.user_sync_service import (
     ALL_DEPARTMENT_SELECTION_ID,
@@ -63,6 +63,17 @@ class UserSyncSourceViewSet(MaintainerViewSet):
         result = delete_user_sync_source(obj)
         log_operation(request, "delete", "system-manager", f"删除用户同步源: {source_name}")
         return JsonResponse(result)
+
+    @action(methods=["GET"], detail=False, url_path="root_group_name_available")
+    @HasPermission("user_sync-Add")
+    def root_group_name_available(self, request, *args, **kwargs):
+        root_group_name = str(request.query_params.get("root_group_name") or "").strip()
+        if not root_group_name:
+            return Response({"available": True})
+
+        source_reserved = UserSyncSource.objects.filter(root_group_name=root_group_name, enabled=True).exists()
+        group_reserved = Group.objects.filter(parent_id=0, name=root_group_name).exists()
+        return Response({"available": not source_reserved and not group_reserved})
 
     @action(methods=["GET"], detail=False, url_path="department_options")
     @HasPermission("user_sync-View")

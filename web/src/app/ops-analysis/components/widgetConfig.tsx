@@ -296,6 +296,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           gaugeMax: 100,
           gaugeShape: 'semicircle',
           compare: false,
+          compareMode: 'percent',
           tableConfig: undefined,
           actions: [],
         });
@@ -345,6 +346,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         gaugeMax: 100,
         gaugeShape: 'semicircle',
         compare: false,
+        compareMode: 'percent',
       });
 
       // 重建 filter bindings
@@ -721,6 +723,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         config: { chartType: 'single', dataSourceParams: targetDataSource?.params },
         dataSource: targetDataSource,
       });
+      formValues.compareMode = valueConfig.compareMode || 'percent';
     }
 
     singleValueConfig.setThresholdColors(initThresholdColors(valueConfig?.thresholdColors));
