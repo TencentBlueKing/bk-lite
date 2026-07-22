@@ -21624,5 +21624,60 @@
     "brand": "浪潮思科",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
+  },
+  "1.3.6.1.4.1.25506.1.763": {
+    "OID": "1.3.6.1.4.1.25506.1.763",
+    "FirstTypeId": "Router",
+    "FirstTypeName": "路由器",
+    "SecondTypeId": "H3CRouter",
+    "SecondTypeName": "H3C路由器",
+    "model": "MSR2630",
+    "brand": "H3C",
+    "source_id": "h3c-msr-router-rfc1213-r6749",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.4881.250.160": {
+    "OID": "1.3.6.1.4.1.4881.250.160",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "RuijieFirewall",
+    "SecondTypeName": "锐捷防火墙",
+    "model": "RG-WALL 160E",
+    "brand": "Ruijie",
+    "source_id": "ruijie-rg-wall-vpn-snmp",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.4881.250.161": {
+    "OID": "1.3.6.1.4.1.4881.250.161",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "RuijieFirewall",
+    "SecondTypeName": "锐捷防火墙",
+    "model": "RG-WALL 160S",
+    "brand": "Ruijie",
+    "source_id": "ruijie-rg-wall-vpn-snmp",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.4881.250.1600": {
+    "OID": "1.3.6.1.4.1.4881.250.1600",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "RuijieFirewall",
+    "SecondTypeName": "锐捷防火墙",
+    "model": "RG-WALL 1600E",
+    "brand": "Ruijie",
+    "source_id": "ruijie-rg-wall-vpn-snmp",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.4881.250.1601": {
+    "OID": "1.3.6.1.4.1.4881.250.1601",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "RuijieFirewall",
+    "SecondTypeName": "锐捷防火墙",
+    "model": "RG-WALL 1600S",
+    "brand": "Ruijie",
+    "source_id": "ruijie-rg-wall-vpn-snmp",
+    "verification": "verified"
   }
 }

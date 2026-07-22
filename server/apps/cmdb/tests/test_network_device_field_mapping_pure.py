@@ -17,24 +17,44 @@ SUPPORT_FILES = os.path.join(os.path.dirname(__file__), "..", "support-files")
 SYSTEMOID = os.path.join(SUPPORT_FILES, "systemoid.json")
 MODEL_CONFIG = os.path.join(SUPPORT_FILES, "model_config.xlsx")
 
-# 已确认的三个网络设备 OID（来自 sysObjectID/sysDescr 比对）
+# 既有三个网络设备 OID（Task 2 历史目录，保持原语义）
 EXPECTED_OIDS = {
-    "1.3.6.1.4.1.9.1.3210": ("Cisco", "C1200-8T-D"),
-    "1.3.6.1.4.1.2011.2.23.968": ("华为", "S5735S-L8T4S-QA2"),
-    "1.3.6.1.4.1.25506.1.2609": ("H3C", "S2610V2"),
+    "1.3.6.1.4.1.9.1.3210": ("Cisco", "C1200-8T-D", "Switch"),
+    "1.3.6.1.4.1.2011.2.23.968": ("Huawei", "S5735S-L8T4S-QA2", "Switch"),
+    "1.3.6.1.4.1.25506.1.2609": ("H3C", "S2610V2", "Switch"),
+}
+
+# 国内厂商官方公开产品身份来源可逐条复核的代表 OID。
+DOMESTIC_REPRESENTATIVE_OIDS = {
+    "1.3.6.1.4.1.25506.1.763": ("H3C", "MSR2630", "Router"),
+    "1.3.6.1.4.1.4881.250.160": ("Ruijie", "RG-WALL 160E", "Firewall"),
 }
 
 
 def test_systemoid_contains_confirmed_network_oids():
     with open(SYSTEMOID, encoding="utf-8") as fp:
         oid_map = json.load(fp)
-    for oid, (brand, model) in EXPECTED_OIDS.items():
+    for oid, (brand, model, first_type_id) in EXPECTED_OIDS.items():
         assert oid in oid_map, f"特征库缺少 OID {oid}"
         entry = oid_map[oid]
         assert entry["brand"] == brand
         assert entry["model"] == model
-        # device_type 由 FirstTypeId 小写而来，须为 switch 以匹配 ip-switch 实例名
-        assert entry["FirstTypeId"].lower() == "switch"
+        assert entry["FirstTypeId"] == first_type_id
+        assert entry["verification"] == "legacy-compatible"
+
+
+def test_domestic_representative_oids_are_exactly_verified():
+    with open(SYSTEMOID, encoding="utf-8") as fp:
+        oid_map = json.load(fp)
+
+    for oid, (brand, model, first_type_id) in DOMESTIC_REPRESENTATIVE_OIDS.items():
+        assert oid in oid_map, f"特征库缺少国内代表 OID {oid}"
+        entry = oid_map[oid]
+        assert entry["OID"] == oid
+        assert entry["brand"] == brand
+        assert entry["model"] == model
+        assert entry["FirstTypeId"] == first_type_id
+        assert entry["verification"] == "verified"
 
 
 def test_device_mapping_carries_sysdescr_to_sys_desc():

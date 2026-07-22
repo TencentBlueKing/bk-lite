@@ -20,6 +20,94 @@
       "verified_at": "2026-07-22",
       "official": false,
       "scope": "legacy-catalog"
+    },
+    "h3c-msr-router-rfc1213-r6749": {
+      "vendor": "H3C",
+      "url": "https://www.h3c.com/en/d_202407/2220868_294551_0.htm",
+      "document": "H3C MSR Router Series MIB Reference - 05-RFC1213-MIB",
+      "version": "R6749-6W100 (2024-07)",
+      "verified_at": "2026-07-22",
+      "official": true,
+      "scope": "product-identity"
+    },
+    "ruijie-rg-wall-vpn-snmp": {
+      "vendor": "Ruijie",
+      "url": "https://image.ruijie.com.cn/Upload/Article/fc9f828b-ac09-483b-90f9-1a8ad5e57c62/RG-WALL%E7%B3%BB%E5%88%97VPN%E5%AE%89%E5%85%A8%E7%BD%91%E5%85%B3%E4%BA%A7%E5%93%81%E4%B8%80%E6%9C%AC%E9%80%9A/RG-WALL%E7%B3%BB%E5%88%97VPN%E5%AE%89%E5%85%A8%E7%BD%91%E5%85%B3%E4%BA%A7%E5%93%81%E4%B8%80%E6%9C%AC%E9%80%9A/e500bfde-4e54-4b55-8f9f-344f8e20b0fe.htm",
+      "document": "RG-WALL系列VPN安全网关产品一本通 - 01 SNMP配置步骤",
+      "version": "公开页未标注版本",
+      "verified_at": "2026-07-22",
+      "official": true,
+      "scope": "product-identity"
+    }
+  },
+  "coverage_gaps": {
+    "Huawei": ["switch", "router", "firewall"],
+    "H3C": ["switch", "firewall"],
+    "Ruijie": ["switch", "router"],
+    "ZTE": ["switch", "router"],
+    "Sangfor": ["firewall", "loadbalance"],
+    "Hillstone": ["firewall"],
+    "DPtech": ["firewall"],
+    "Topsec": ["firewall"],
+    "Venustech": ["firewall"]
+  },
+  "coverage_gap_details": {
+    "Huawei": {
+      "device_types": ["switch", "router", "firewall"],
+      "reason": "官方 MIB Query 可确认产品与软件版本，但匿名公开页面和查询接口未返回可复核的产品身份 OID；不以企业号前缀或历史目录推断型号。",
+      "url": "https://info.support.huawei.com/info-finder/tool/zh/enterprise/mib",
+      "checked_at": "2026-07-22"
+    },
+    "H3C": {
+      "device_types": ["switch", "firewall"],
+      "reason": "公开 MIB Companion 中交换机仅标注 sysObjectID 支持、防火墙标注实现因产品而异，未在可访问正文中给出精确产品身份 OID；路由器已有官方精确映射。",
+      "url": "https://www.h3c.com/en/home/qr/default.htm?id=213",
+      "checked_at": "2026-07-22"
+    },
+    "Ruijie": {
+      "device_types": ["switch", "router"],
+      "reason": "公开 RG-WALL 文档仅给出防火墙系列的精确 sysObjectID，未找到 RG-S 或 RG-RSR 的官方公开产品身份节点。",
+      "url": "https://image.ruijie.com.cn/Upload/Article/fc9f828b-ac09-483b-90f9-1a8ad5e57c62/RG-WALL%E7%B3%BB%E5%88%97VPN%E5%AE%89%E5%85%A8%E7%BD%91%E5%85%B3%E4%BA%A7%E5%93%81%E4%B8%80%E6%9C%AC%E9%80%9A/RG-WALL%E7%B3%BB%E5%88%97VPN%E5%AE%89%E5%85%A8%E7%BD%91%E5%85%B3%E4%BA%A7%E5%93%81%E4%B8%80%E6%9C%AC%E9%80%9A/e500bfde-4e54-4b55-8f9f-344f8e20b0fe.htm",
+      "checked_at": "2026-07-22"
+    },
+    "ZTE": {
+      "device_types": ["switch", "router"],
+      "reason": "官方支持门户未向匿名访问提供可复核的 ZXR10/ZXCTN 产品 MIB 正文，公开产品资料不含精确 sysObjectID。",
+      "url": "https://support.zte.com.cn/",
+      "checked_at": "2026-07-22"
+    },
+    "Sangfor": {
+      "device_types": ["firewall", "loadbalance"],
+      "reason": "AF 与 AD 官方文档入口可确认 SNMP OID 文档存在，但正文需认证或由前端动态加载，匿名页面未暴露产品身份 OID。",
+      "url": "https://support.sangfor.com.cn/productDocument/read?category_id=179538&product_id=13&type=1&version_id=677",
+      "related_urls": [
+        "https://support.sangfor.com.cn/productDocument/read?category_id=358575&product_id=31&version_id=1155"
+      ],
+      "checked_at": "2026-07-22"
+    },
+    "Hillstone": {
+      "device_types": ["firewall"],
+      "reason": "官方镜像与 MIB 下载入口要求登录，公开产品页和 SNMP 配置页未给出 SG/E/X/T 产品身份 OID。",
+      "url": "https://images.hillstonenet.com/index/user/login.html",
+      "checked_at": "2026-07-22"
+    },
+    "DPtech": {
+      "device_types": ["firewall"],
+      "reason": "官方产品白皮书仅说明支持 SNMP/MIB，未发布可匿名复核的 FW/IFW 产品身份 OID。",
+      "url": "https://www.dptech.com/",
+      "checked_at": "2026-07-22"
+    },
+    "Topsec": {
+      "device_types": ["firewall"],
+      "reason": "官方下一代防火墙白皮书仅说明支持 SNMPv3，正文不含产品身份 OID。",
+      "url": "https://www.topsec.com.cn/uploads/2022-01-18/0e5c988b-b02d-4a36-8460-04451ea9cdb61642487890475.pdf",
+      "checked_at": "2026-07-22"
+    },
+    "Venustech": {
+      "device_types": ["firewall"],
+      "reason": "官方产品入口可确认天清汉马 USG 产品，但未提供可匿名复核的产品身份 OID 或产品 MIB。",
+      "url": "https://www.venustech.com.cn/",
+      "checked_at": "2026-07-22"
     }
   }
 }
