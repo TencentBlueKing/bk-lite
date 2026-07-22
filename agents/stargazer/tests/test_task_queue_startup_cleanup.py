@@ -755,6 +755,8 @@ async def test_background_result_logging_failure_is_consumed(monkeypatch, result
 
     await _listener(app, "after_server_start", "start_orphan_cleanup")(app, None)
     await queue._startup_cleanup_task
+    assert queue._startup_cleanup_task.done()
+    assert queue._startup_cleanup_task.exception() is None
 
 
 @pytest.mark.asyncio
@@ -775,6 +777,142 @@ async def test_background_exception_logging_failure_is_consumed(monkeypatch):
 
     await _listener(app, "after_server_start", "start_orphan_cleanup")(app, None)
     await queue._startup_cleanup_task
+    assert queue._startup_cleanup_task.done()
+    assert queue._startup_cleanup_task.exception() is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("result", "expected_level", "expected_message"),
+    [
+        (
+            StartupCleanupResult("success", None, 1, 0, 0, 1, 0, False),
+            "info",
+            "event=task_queue_startup_cleanup status=success "
+            "scanned=1 candidates=0 deleted=0 preserved=1 errors=0 truncated=False",
+        ),
+        (
+            StartupCleanupResult(
+                "skipped", "lock_not_acquired", 0, 0, 0, 0, 0, False
+            ),
+            "info",
+            "event=task_queue_startup_cleanup status=skipped "
+            "reason=lock_not_acquired scanned=0 candidates=0 deleted=0 "
+            "preserved=0 errors=0 truncated=False",
+        ),
+        (
+            StartupCleanupResult("warning", "timeout", 1, 1, 0, 1, 0, False),
+            "warning",
+            "event=task_queue_startup_cleanup status=warning reason=timeout "
+            "scanned=1 candidates=1 deleted=0 preserved=1 errors=0 truncated=False",
+        ),
+        (
+            StartupCleanupResult(
+                "warning", "marker_errors", 1, 1, 0, 1, 1, False
+            ),
+            "warning",
+            "event=task_queue_startup_cleanup status=warning reason=marker_errors "
+            "scanned=1 candidates=1 deleted=0 preserved=1 errors=1 truncated=False",
+        ),
+    ],
+    ids=["success", "locked", "timeout", "marker_errors"],
+)
+async def test_background_result_logs_only_its_safe_legal_mapping(
+    monkeypatch, result, expected_level, expected_message
+):
+    app = Sanic(f"StartupCleanupLogMapping{expected_level}{result.reason}")
+    queue = TaskQueue(app)
+    records = []
+
+    async def cleanup(*_args, **_kwargs):
+        return result
+
+    def record(level):
+        def log(message, *args):
+            records.append((level, message % args if args else message))
+
+        return log
+
+    monkeypatch.setattr(
+        task_queue_module, "cleanup_startup_orphan_markers", cleanup
+    )
+    monkeypatch.setattr(task_queue_module.logger, "info", record("info"))
+    monkeypatch.setattr(task_queue_module.logger, "warning", record("warning"))
+
+    await _listener(app, "after_server_start", "start_orphan_cleanup")(app, None)
+    await queue._startup_cleanup_task
+
+    assert records == [(expected_level, expected_message)]
+    for secret in (
+        "job-123",
+        "task:running:secret",
+        "redis://:password@redis/0",
+        "raw exception message",
+    ):
+        assert secret not in records[0][1]
+
+
+@pytest.mark.asyncio
+async def test_illegal_result_status_reason_pair_is_downgraded(monkeypatch):
+    app = Sanic("StartupCleanupIllegalResultPair")
+    queue = TaskQueue(app)
+    records = []
+
+    async def cleanup(*_args, **_kwargs):
+        return StartupCleanupResult("success", "timeout", 0, 0, 0, 0, 0, False)
+
+    def record(level):
+        def log(message, *args):
+            records.append((level, message % args if args else message))
+
+        return log
+
+    monkeypatch.setattr(
+        task_queue_module, "cleanup_startup_orphan_markers", cleanup
+    )
+    monkeypatch.setattr(task_queue_module.logger, "info", record("info"))
+    monkeypatch.setattr(task_queue_module.logger, "warning", record("warning"))
+
+    await _listener(app, "after_server_start", "start_orphan_cleanup")(app, None)
+    await queue._startup_cleanup_task
+
+    assert records == [
+        (
+            "warning",
+            "event=task_queue_startup_cleanup status=warning "
+            "reason=unknown_result scanned=0 candidates=0 deleted=0 "
+            "preserved=0 errors=0 truncated=False",
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_background_exception_log_excludes_sensitive_exception_text(monkeypatch):
+    app = Sanic("StartupCleanupExceptionLogRedaction")
+    queue = TaskQueue(app)
+    records = []
+
+    async def cleanup(*_args, **_kwargs):
+        raise RuntimeError(
+            "job-123 task:running:secret redis://:password@redis/0 "
+            "raw exception message"
+        )
+
+    def record(message, *args):
+        records.append(message % args if args else message)
+
+    monkeypatch.setattr(
+        task_queue_module, "cleanup_startup_orphan_markers", cleanup
+    )
+    monkeypatch.setattr(task_queue_module.logger, "warning", record)
+
+    await _listener(app, "after_server_start", "start_orphan_cleanup")(app, None)
+    await queue._startup_cleanup_task
+
+    assert records == [
+        "event=task_queue_startup_cleanup status=warning "
+        "reason=cleanup_failed exception_type=RuntimeError"
+    ]
 
 
 @pytest.mark.asyncio

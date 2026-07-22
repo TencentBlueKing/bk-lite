@@ -26,14 +26,13 @@ from core.task_queue_startup_cleanup import (
 )
 
 
-_STARTUP_CLEANUP_STATUSES = {"success", "skipped", "warning"}
-_STARTUP_CLEANUP_REASONS = {
-    None,
-    "disabled",
-    "lock_not_acquired",
-    "timeout",
-    "limit_reached",
-    "marker_errors",
+_STARTUP_CLEANUP_LOG_LEVELS = {
+    ("success", None): "info",
+    ("skipped", "disabled"): "info",
+    ("skipped", "lock_not_acquired"): "info",
+    ("warning", "timeout"): "warning",
+    ("warning", "limit_reached"): "warning",
+    ("warning", "marker_errors"): "warning",
 }
 
 
@@ -269,22 +268,22 @@ class TaskQueue:
             )
             return
 
-        status = result.status
-        reason = result.reason
-        if not (
-            isinstance(status, str)
-            and status in _STARTUP_CLEANUP_STATUSES
-            and (
-                reason is None
-                or isinstance(reason, str)
-                and reason in _STARTUP_CLEANUP_REASONS
+        try:
+            log_level = _STARTUP_CLEANUP_LOG_LEVELS.get(
+                (result.status, result.reason)
             )
-        ):
+        except TypeError:
+            log_level = None
+        if log_level is None:
             status = "warning"
             reason = "unknown_result"
+            log_level = "warning"
+        else:
+            status = result.status
+            reason = result.reason
         safe_reason = f" reason={reason}" if reason else ""
         _safe_task_queue_log(
-            "warning" if status == "warning" else "info",
+            log_level,
             "event=task_queue_startup_cleanup status=%s%s "
             "scanned=%d candidates=%d deleted=%d preserved=%d errors=%d "
             "truncated=%s",
