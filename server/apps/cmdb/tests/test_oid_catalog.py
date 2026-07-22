@@ -2,7 +2,12 @@ import json
 
 import pytest
 
-from apps.cmdb.services.oid_catalog import OidCatalogError, load_oid_catalog
+from apps.cmdb.services.oid_catalog import (
+    SYSTEMOID_METADATA_PATH,
+    SYSTEMOID_PATH,
+    OidCatalogError,
+    load_oid_catalog,
+)
 
 
 def _write_json(path, value):
@@ -240,3 +245,56 @@ def test_load_oid_catalog_rejects_whitespace_padded_brand_alias(tmp_path, brand)
 
     with pytest.raises(OidCatalogError, match="OID_CATALOG_INVALID"):
         load_oid_catalog(catalog, metadata)
+
+
+def test_production_catalog_is_valid_and_preserves_legacy_oid_set():
+    raw = json.loads(SYSTEMOID_PATH.read_text(encoding="utf-8"))
+
+    entries = load_oid_catalog(SYSTEMOID_PATH, SYSTEMOID_METADATA_PATH)
+
+    assert len(raw) >= 1966
+    assert len(entries) == len(raw)
+    assert "1.3.6.1.4.1.9.1.1208" in entries
+    assert "1.3.6.1.4.1.2011.2.23.968" in entries
+    assert "1.3.6.1.4.1.25506.1.2609" in entries
+
+
+@pytest.mark.parametrize(
+    "brand_alias",
+    [
+        "华为",
+        "HuaWei",
+        "Hewlett-Packard",
+        "Netscreen",
+        "Force10",
+        "NortelAlteon",
+        "Venus",
+    ],
+)
+def test_production_catalog_contains_no_noncanonical_brand_aliases(brand_alias):
+    raw = json.loads(SYSTEMOID_PATH.read_text(encoding="utf-8"))
+
+    assert all(entry["brand"] != brand_alias for entry in raw.values())
+
+
+def test_production_catalog_locks_legacy_entry_shapes():
+    raw = json.loads(SYSTEMOID_PATH.read_text(encoding="utf-8"))
+    metadata = json.loads(SYSTEMOID_METADATA_PATH.read_text(encoding="utf-8"))
+
+    assert all(oid == entry["OID"] for oid, entry in raw.items())
+    assert all(
+        entry["verification"] != "verified" or entry["model"] != oid
+        for oid, entry in raw.items()
+    )
+    assert all(
+        entry["verification"] == "legacy-compatible"
+        or metadata["sources"][entry["source_id"]]["scope"] == "product-identity"
+        for oid, entry in raw.items()
+        if oid.endswith(".0")
+    )
+    assert {entry["FirstTypeId"].lower() for entry in raw.values()} == {
+        "switch",
+        "router",
+        "firewall",
+        "loadbalance",
+    }

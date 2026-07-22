@@ -6,7 +6,10 @@
     "华为": "Huawei",
     "HuaWei": "Huawei",
     "Hewlett-Packard": "HPE",
-    "PaloAlto": "Palo Alto Networks"
+    "Netscreen": "Juniper",
+    "Force10": "Dell",
+    "NortelAlteon": "Alteon",
+    "Venus": "Venustech"
   },
   "sources": {
     "legacy-catalog-v1": {
