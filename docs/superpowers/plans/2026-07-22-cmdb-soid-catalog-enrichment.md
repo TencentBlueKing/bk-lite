@@ -20,6 +20,7 @@
 - `--force` 保留兼容但不得删除重建；`--dry-run` 必须零写入。
 - 同步和测试完全离线，不提交厂商原始 MIB，不记录凭据、客户地址或设备原始返回。
 - 新功能严格 TDD，触及代码行为覆盖率不低于 75%，只格式化触及文件。
+- 本 worktree 的数据库测试统一使用 `DJANGO_SETTINGS_MODULE=settings DB_ENGINE=sqlite DB_NAME=:memory:`、`--nomigrations` 和 `server/.venv/bin/pytest`；默认 PostgreSQL 配置缺少 `DB_NAME`，不得用其失败冒充业务 RED。
 
 ---
 
@@ -176,7 +177,7 @@ Run:
 
 ```bash
 cd server
-MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,node_mgmt,cmdb uv run pytest -q -o addopts='' apps/cmdb/tests/test_oid_catalog.py
+DJANGO_SETTINGS_MODULE=settings DB_ENGINE=sqlite DB_NAME=:memory: MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,node_mgmt,cmdb .venv/bin/pytest -q -o addopts='' --nomigrations apps/cmdb/tests/test_oid_catalog.py
 ```
 
 Expected: FAIL during collection with `ModuleNotFoundError: No module named 'apps.cmdb.services.oid_catalog'`。
@@ -495,7 +496,7 @@ NSFOCUS 与 Qi-Anxin 不进入硬性类型矩阵。`coverage_gaps` 的值只保�
 
 ```bash
 cd server
-MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,node_mgmt,cmdb uv run pytest -q -o addopts='' apps/cmdb/tests/test_oid_catalog.py apps/cmdb/tests/test_network_device_field_mapping_pure.py
+DJANGO_SETTINGS_MODULE=settings DB_ENGINE=sqlite DB_NAME=:memory: MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,node_mgmt,cmdb .venv/bin/pytest -q -o addopts='' --nomigrations apps/cmdb/tests/test_oid_catalog.py apps/cmdb/tests/test_network_device_field_mapping_pure.py
 ```
 
 Expected: PASS；目录条数大于 Task 2 基线，每个国内必需品牌/类型均由 verified 精确 OID 或带官方入口和原因的显式缺口满足。
@@ -745,7 +746,7 @@ def _sync_oid_catalog(
 
 ```bash
 cd server
-MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,node_mgmt,cmdb uv run pytest -q -o addopts='' --cov=apps.cmdb.services.oid_catalog --cov-report=term-missing --cov-fail-under=75 apps/cmdb/tests/test_oid_catalog.py
+DJANGO_SETTINGS_MODULE=settings DB_ENGINE=sqlite DB_NAME=:memory: MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,node_mgmt,cmdb .venv/bin/pytest -q -o addopts='' --nomigrations --cov=apps.cmdb.services.oid_catalog --cov-report=term-missing --cov-fail-under=75 apps/cmdb/tests/test_oid_catalog.py
 ```
 
 Expected: PASS，`oid_catalog.py` coverage ≥ 75%。
@@ -815,7 +816,7 @@ def test_force_never_deletes_stale_builtin():
 
 ```bash
 cd server
-MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,node_mgmt,cmdb uv run pytest -q -o addopts='' apps/cmdb/tests/test_init_oid_command.py
+DJANGO_SETTINGS_MODULE=settings DB_ENGINE=sqlite DB_NAME=:memory: MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,node_mgmt,cmdb .venv/bin/pytest -q -o addopts='' --nomigrations apps/cmdb/tests/test_init_oid_command.py
 ```
 
 Expected: 至少默认同步和 `--force` 保护测试 FAIL。
@@ -876,7 +877,7 @@ class Command(BaseCommand):
 
 ```bash
 cd server
-MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,node_mgmt,cmdb uv run pytest -q -o addopts='' apps/cmdb/tests/test_init_oid_command.py apps/core/tests/test_batch_init_command.py
+DJANGO_SETTINGS_MODULE=settings DB_ENGINE=sqlite DB_NAME=:memory: MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,node_mgmt,cmdb .venv/bin/pytest -q -o addopts='' --nomigrations apps/cmdb/tests/test_init_oid_command.py apps/core/tests/test_batch_init_command.py
 ```
 
 Expected: PASS；`batch_init` 仍恰好调用一次 `init_oid`。
@@ -921,7 +922,7 @@ assert CollectNetworkMetrics.get_default_oid_map("1.3.6.1.4.1.99999.999") == {
 
 ```bash
 cd server
-MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,node_mgmt,cmdb uv run pytest -q -o addopts='' apps/cmdb/tests/test_network_device_field_mapping_pure.py apps/cmdb/tests/e2e/test_network_pipeline.py
+DJANGO_SETTINGS_MODULE=settings DB_ENGINE=sqlite DB_NAME=:memory: MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,node_mgmt,cmdb .venv/bin/pytest -q -o addopts='' --nomigrations apps/cmdb/tests/test_network_device_field_mapping_pure.py apps/cmdb/tests/e2e/test_network_pipeline.py
 ```
 
 Expected: PASS；现有网络 E2E 不因目录与同步服务变化而修改预期。
@@ -944,7 +945,7 @@ Expected: PASS；现有网络 E2E 不因目录与同步服务变化而修改预�
 
 ```bash
 cd server
-MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,node_mgmt,cmdb uv run pytest -q -o addopts='' --cov=apps.cmdb.services.oid_catalog --cov=apps.cmdb.management.commands.init_oid --cov-report=term-missing --cov-fail-under=75 apps/cmdb/tests/test_oid_catalog.py apps/cmdb/tests/test_init_oid_command.py apps/cmdb/tests/test_network_device_field_mapping_pure.py apps/cmdb/tests/e2e/test_network_pipeline.py apps/core/tests/test_batch_init_command.py
+DJANGO_SETTINGS_MODULE=settings DB_ENGINE=sqlite DB_NAME=:memory: MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,node_mgmt,cmdb .venv/bin/pytest -q -o addopts='' --nomigrations --cov=apps.cmdb.services.oid_catalog --cov=apps.cmdb.management.commands.init_oid --cov-report=term-missing --cov-fail-under=75 apps/cmdb/tests/test_oid_catalog.py apps/cmdb/tests/test_init_oid_command.py apps/cmdb/tests/test_network_device_field_mapping_pure.py apps/cmdb/tests/e2e/test_network_pipeline.py apps/core/tests/test_batch_init_command.py
 ```
 
 Expected: PASS，触及代码 coverage ≥ 75%。
@@ -956,7 +957,7 @@ cd server
 uv run black --check apps/cmdb/services/oid_catalog.py apps/cmdb/management/commands/init_oid.py apps/cmdb/tests/test_oid_catalog.py apps/cmdb/tests/test_init_oid_command.py apps/cmdb/tests/test_network_device_field_mapping_pure.py
 uv run isort --check-only apps/cmdb/services/oid_catalog.py apps/cmdb/management/commands/init_oid.py apps/cmdb/tests/test_oid_catalog.py apps/cmdb/tests/test_init_oid_command.py apps/cmdb/tests/test_network_device_field_mapping_pure.py
 uv run flake8 apps/cmdb/services/oid_catalog.py apps/cmdb/management/commands/init_oid.py apps/cmdb/tests/test_oid_catalog.py apps/cmdb/tests/test_init_oid_command.py apps/cmdb/tests/test_network_device_field_mapping_pure.py
-MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,node_mgmt,cmdb uv run python manage.py makemigrations --check --dry-run --skip-checks
+DJANGO_SETTINGS_MODULE=settings DB_ENGINE=sqlite DB_NAME=:memory: MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,node_mgmt,cmdb .venv/bin/python manage.py makemigrations --check --dry-run --skip-checks
 jq empty apps/cmdb/support-files/systemoid.json
 jq empty apps/cmdb/support-files/systemoid.meta.json
 ```
@@ -969,7 +970,7 @@ Expected: 所有命令退出码 0；`makemigrations` 输出 `No changes detected
 
 ```bash
 cd server
-MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,node_mgmt,cmdb uv run python manage.py init_oid --dry-run --skip-checks
+DJANGO_SETTINGS_MODULE=settings DB_ENGINE=sqlite DB_NAME=:memory: MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,node_mgmt,cmdb .venv/bin/python manage.py init_oid --dry-run --skip-checks
 ```
 
 Expected: 输出五类计数；再次执行输出一致；数据库 `OidMapping` 数量不变。
