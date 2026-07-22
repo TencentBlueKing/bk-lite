@@ -1,13 +1,21 @@
 import hashlib
 import json
+from dataclasses import replace
 
 import pytest
+from django.db import IntegrityError, connection
+from django.db.models import QuerySet
+from django.utils import timezone
 
+from apps.cmdb.models import OidMapping
+from apps.cmdb.services import oid_catalog as oid_catalog_service
 from apps.cmdb.services.oid_catalog import (
     SYSTEMOID_METADATA_PATH,
     SYSTEMOID_PATH,
     OidCatalogError,
+    OidCatalogEntry,
     load_oid_catalog,
+    sync_oid_catalog,
 )
 
 
@@ -125,6 +133,387 @@ def _entry(oid="1.3.6.1.4.1.2011.2.23.968"):
         "source_id": "huawei-product-mib",
         "verification": "verified",
     }
+
+
+def _catalog_entry(
+    oid, *, model="S5735", brand="Huawei", device_type="switch"
+):
+    return OidCatalogEntry(
+        oid=oid,
+        model=model,
+        brand=brand,
+        device_type=device_type,
+        source_id="test-source",
+        verification="verified",
+    )
+
+
+@pytest.mark.django_db
+def test_sync_adds_missing_entry_when_builtin_rows_already_exist():
+    OidMapping.objects.create(
+        oid="1.3.6.1.4.1.9.1.1208",
+        model="old",
+        brand="Cisco",
+        device_type="switch",
+        built_in=True,
+    )
+    new_oid = "1.3.6.1.4.1.2011.2.23.968"
+
+    result = sync_oid_catalog({new_oid: _catalog_entry(new_oid)})
+
+    assert result.created == 1
+    assert OidMapping.objects.get(oid=new_oid).built_in is True
+
+
+@pytest.mark.django_db
+def test_sync_updates_builtin_in_place_but_preserves_custom_override():
+    builtin = OidMapping.objects.create(
+        oid="1.3.6.1.4.1.9.1.1",
+        model="old",
+        brand="old",
+        device_type="router",
+        built_in=True,
+    )
+    custom = OidMapping.objects.create(
+        oid="1.3.6.1.4.1.9.1.2",
+        model="custom",
+        brand="custom",
+        device_type="router",
+        built_in=False,
+    )
+    entries = {
+        builtin.oid: _catalog_entry(
+            builtin.oid, model="new", brand="Cisco", device_type="switch"
+        ),
+        custom.oid: _catalog_entry(
+            custom.oid, model="catalog", brand="Cisco", device_type="switch"
+        ),
+    }
+
+    result = sync_oid_catalog(entries)
+
+    builtin.refresh_from_db()
+    custom.refresh_from_db()
+    assert (builtin.model, builtin.brand, builtin.device_type, builtin.id) == (
+        "new",
+        "Cisco",
+        "switch",
+        builtin.id,
+    )
+    assert (custom.model, custom.brand, custom.device_type) == (
+        "custom",
+        "custom",
+        "router",
+    )
+    assert result.custom_override_oids == (custom.oid,)
+
+
+@pytest.mark.django_db
+def test_sync_dry_run_reports_changes_without_writing_database():
+    existing_oid = "1.3.6.1.4.1.9.1.1"
+    missing_oid = "1.3.6.1.4.1.2011.2.23.968"
+    existing = OidMapping.objects.create(
+        oid=existing_oid,
+        model="old",
+        brand="old",
+        device_type="router",
+        built_in=True,
+    )
+    entries = {
+        existing_oid: _catalog_entry(existing_oid, model="new"),
+        missing_oid: _catalog_entry(missing_oid),
+    }
+
+    result = sync_oid_catalog(entries, dry_run=True)
+
+    existing.refresh_from_db()
+    assert (result.created, result.updated) == (1, 1)
+    assert (existing.model, existing.brand, existing.device_type) == (
+        "old",
+        "old",
+        "router",
+    )
+    assert not OidMapping.objects.filter(oid=missing_oid).exists()
+
+
+@pytest.mark.django_db
+def test_sync_is_idempotent_and_counts_non_custom_entries_as_unchanged():
+    unchanged_oid = "1.3.6.1.4.1.9.1.1"
+    custom_oid = "1.3.6.1.4.1.9.1.2"
+    missing_oid = "1.3.6.1.4.1.2011.2.23.968"
+    OidMapping.objects.create(
+        oid=unchanged_oid,
+        model="S5735",
+        brand="Huawei",
+        device_type="switch",
+        built_in=True,
+    )
+    OidMapping.objects.create(
+        oid=custom_oid,
+        model="custom",
+        brand="custom",
+        device_type="router",
+        built_in=False,
+    )
+    entries = {
+        unchanged_oid: _catalog_entry(unchanged_oid),
+        custom_oid: _catalog_entry(custom_oid),
+        missing_oid: _catalog_entry(missing_oid),
+    }
+
+    first = sync_oid_catalog(entries)
+    second = sync_oid_catalog(entries)
+
+    assert (first.created, first.updated, first.unchanged) == (1, 0, 1)
+    assert (second.created, second.updated, second.unchanged) == (0, 0, 2)
+    assert second.custom_override_oids == (custom_oid,)
+
+
+@pytest.mark.django_db
+def test_sync_does_not_refresh_unchanged_builtin_updated_at():
+    oid = "1.3.6.1.4.1.9.1.1"
+    row = OidMapping.objects.create(
+        oid=oid,
+        model="S5735",
+        brand="Huawei",
+        device_type="switch",
+        built_in=True,
+    )
+    original_updated_at = timezone.now().replace(year=2020)
+    OidMapping.objects.filter(pk=row.pk).update(updated_at=original_updated_at)
+
+    result = sync_oid_catalog({oid: _catalog_entry(oid)})
+
+    row.refresh_from_db()
+    assert result.unchanged == 1
+    assert row.updated_at == original_updated_at
+
+
+@pytest.mark.django_db
+def test_sync_reports_but_preserves_stale_builtin_rows():
+    stale_oid = "1.3.6.1.4.1.9.1.1"
+    current_oid = "1.3.6.1.4.1.9.1.2"
+    OidMapping.objects.create(
+        oid=stale_oid,
+        model="legacy",
+        brand="Cisco",
+        device_type="switch",
+        built_in=True,
+    )
+
+    result = sync_oid_catalog({current_oid: _catalog_entry(current_oid)})
+
+    assert result.stale_builtin_oids == (stale_oid,)
+    assert OidMapping.objects.filter(oid=stale_oid, built_in=True).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_sync_rolls_back_creates_when_bulk_update_fails(monkeypatch):
+    existing_oid = "1.3.6.1.4.1.9.1.1"
+    missing_oid = "1.3.6.1.4.1.2011.2.23.968"
+    existing = OidMapping.objects.create(
+        oid=existing_oid,
+        model="old",
+        brand="old",
+        device_type="router",
+        built_in=True,
+    )
+
+    def fail_bulk_update(*args, **kwargs):
+        raise RuntimeError("bulk update failed")
+
+    monkeypatch.setattr(
+        OidMapping._default_manager, "bulk_update", fail_bulk_update
+    )
+
+    with pytest.raises(RuntimeError, match="bulk update failed"):
+        sync_oid_catalog(
+            {
+                existing_oid: _catalog_entry(existing_oid, model="new"),
+                missing_oid: _catalog_entry(missing_oid),
+            }
+        )
+
+    existing.refresh_from_db()
+    assert existing.model == "old"
+    assert not OidMapping.objects.filter(oid=missing_oid).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_sync_retries_whole_transaction_and_preserves_concurrent_custom_winner(
+    monkeypatch,
+):
+    catalog_oid = "1.3.6.1.4.1.9.1.1"
+    rolled_back_oid = "1.3.6.1.4.1.9.1.2"
+    original_sync = oid_catalog_service._sync_oid_catalog
+    attempts = []
+
+    def race_then_sync(entries, *, write):
+        attempts.append(write)
+        if len(attempts) == 1:
+            OidMapping.objects.create(
+                oid=rolled_back_oid,
+                model="must rollback",
+                brand="test",
+                device_type="router",
+                built_in=True,
+            )
+            raise IntegrityError("simulated unique OID race")
+        OidMapping.objects.create(
+            oid=catalog_oid,
+            model="custom",
+            brand="custom",
+            device_type="router",
+            built_in=False,
+        )
+        return original_sync(entries, write=write)
+
+    monkeypatch.setattr(oid_catalog_service, "_sync_oid_catalog", race_then_sync)
+
+    result = sync_oid_catalog({catalog_oid: _catalog_entry(catalog_oid)})
+
+    winner = OidMapping.objects.get(oid=catalog_oid)
+    assert attempts == [True, True]
+    assert (winner.model, winner.brand, winner.device_type, winner.built_in) == (
+        "custom",
+        "custom",
+        "router",
+        False,
+    )
+    assert (result.created, result.updated, result.custom_override_oids) == (
+        0,
+        0,
+        (catalog_oid,),
+    )
+    assert not OidMapping.objects.filter(oid=rolled_back_oid).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_sync_unique_conflict_retry_is_bounded(monkeypatch):
+    oid = "1.3.6.1.4.1.9.1.1"
+    attempts = []
+
+    def always_conflict(entries, *, write):
+        attempts.append(write)
+        raise IntegrityError("persistent unique OID conflict")
+
+    monkeypatch.setattr(oid_catalog_service, "_sync_oid_catalog", always_conflict)
+
+    with pytest.raises(IntegrityError, match="persistent unique OID conflict"):
+        sync_oid_catalog({oid: _catalog_entry(oid)})
+
+    assert attempts == [True, True]
+
+
+@pytest.mark.django_db
+def test_sync_result_oids_use_numeric_segment_sorting():
+    custom_oids = ["1.3.6.1.4.1.9.1.10", "1.3.6.1.4.1.9.1.2"]
+    stale_oids = ["1.3.6.1.4.1.2011.10", "1.3.6.1.4.1.2011.2"]
+    for oid in custom_oids:
+        OidMapping.objects.create(
+            oid=oid,
+            model="custom",
+            brand="custom",
+            device_type="router",
+            built_in=False,
+        )
+    for oid in stale_oids:
+        OidMapping.objects.create(
+            oid=oid,
+            model="legacy",
+            brand="legacy",
+            device_type="router",
+            built_in=True,
+        )
+
+    result = sync_oid_catalog(
+        {oid: _catalog_entry(oid) for oid in reversed(custom_oids)}
+    )
+
+    assert result.custom_override_oids == tuple(reversed(custom_oids))
+    assert result.stale_builtin_oids == tuple(reversed(stale_oids))
+
+
+@pytest.mark.django_db(transaction=True)
+def test_sync_write_locks_existing_rows_inside_atomic_but_dry_run_does_not(
+    monkeypatch,
+):
+    oid = "1.3.6.1.4.1.9.1.1"
+    OidMapping.objects.create(
+        oid=oid,
+        model="S5735",
+        brand="Huawei",
+        device_type="switch",
+        built_in=True,
+    )
+    original_select_for_update = QuerySet.select_for_update
+    lock_calls = []
+
+    def record_select_for_update(queryset, *args, **kwargs):
+        lock_calls.append(connection.in_atomic_block)
+        return original_select_for_update(queryset, *args, **kwargs)
+
+    monkeypatch.setattr(QuerySet, "select_for_update", record_select_for_update)
+
+    sync_oid_catalog({oid: _catalog_entry(oid)}, dry_run=True)
+    assert lock_calls == []
+
+    sync_oid_catalog({oid: _catalog_entry(oid)})
+    assert lock_calls == [True]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "entries",
+    [
+        {},
+        {
+            "1.3.6.1.4.1.9.1.1": replace(
+                _catalog_entry("1.3.6.1.4.1.9.1.1"),
+                oid="1.3.6.1.4.1.9.1.2",
+            )
+        },
+        {"not-an-oid": _catalog_entry("not-an-oid")},
+        {
+            "1.3.6.1.4.1.9.1.1": replace(
+                _catalog_entry("1.3.6.1.4.1.9.1.1"),
+                device_type=["switch"],
+            )
+        },
+        {
+            ".".join(["1"] * 33): _catalog_entry(".".join(["1"] * 33))
+        },
+        {
+            "1.3.6.1.4.1.9.1.1": replace(
+                _catalog_entry("1.3.6.1.4.1.9.1.1"),
+                model="m" * 129,
+            )
+        },
+        {
+            "1.3.6.1.4.1.9.1.1": replace(
+                _catalog_entry("1.3.6.1.4.1.9.1.1"),
+                brand="b" * 65,
+            )
+        },
+    ],
+    ids=[
+        "empty",
+        "key-mismatch",
+        "malformed-oid",
+        "non-string-device-type",
+        "oid-too-long",
+        "model-too-long",
+        "brand-too-long",
+    ],
+)
+def test_sync_rejects_invalid_entries_before_reading_database(monkeypatch, entries):
+    def fail_database_read(*args, **kwargs):
+        raise AssertionError("invalid entries must fail before database access")
+
+    monkeypatch.setattr(OidMapping._default_manager, "all", fail_database_read)
+
+    with pytest.raises(OidCatalogError, match="OID_CATALOG_INVALID"):
+        sync_oid_catalog(entries)
 
 
 def test_load_oid_catalog_returns_normalized_entry(tmp_path):

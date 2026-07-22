@@ -2,6 +2,12 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Mapping
+
+from django.db import IntegrityError, transaction
+from django.utils import timezone
+
+from apps.cmdb.models import OidMapping
 
 
 SUPPORT_FILES = Path(__file__).resolve().parents[1] / "support-files"
@@ -19,6 +25,10 @@ REQUIRED_SOURCE_FIELDS = {
     "official",
     "scope",
 }
+_SYNC_WRITE_ATTEMPTS = 2
+_OID_MAX_LENGTH = OidMapping._meta.get_field("oid").max_length
+_MODEL_MAX_LENGTH = OidMapping._meta.get_field("model").max_length
+_BRAND_MAX_LENGTH = OidMapping._meta.get_field("brand").max_length
 
 
 class OidCatalogError(ValueError):
@@ -151,3 +161,129 @@ def load_oid_catalog(
             verification=verification,
         )
     return entries
+
+
+def sync_oid_catalog(
+    entries: Mapping[str, OidCatalogEntry],
+    *,
+    dry_run: bool = False,
+) -> OidSyncResult:
+    validated_entries = _validate_sync_entries(entries)
+    if dry_run:
+        return _sync_oid_catalog(validated_entries, write=False)
+    for attempt in range(_SYNC_WRITE_ATTEMPTS):
+        try:
+            with transaction.atomic():
+                return _sync_oid_catalog(validated_entries, write=True)
+        except IntegrityError:
+            if attempt == _SYNC_WRITE_ATTEMPTS - 1:
+                raise
+
+
+def _validate_sync_entries(
+    entries: Mapping[str, OidCatalogEntry],
+) -> dict[str, OidCatalogEntry]:
+    if not isinstance(entries, Mapping) or not entries:
+        raise OidCatalogError("OID_CATALOG_INVALID: sync entries")
+
+    validated_entries = {}
+    for oid, entry in entries.items():
+        if (
+            not isinstance(oid, str)
+            or not OID_PATTERN.fullmatch(oid)
+            or not isinstance(entry, OidCatalogEntry)
+            or entry.oid != oid
+        ):
+            raise OidCatalogError(f"OID_CATALOG_INVALID: sync entry {oid!r}")
+        text_values = (
+            entry.model,
+            entry.brand,
+            entry.device_type,
+            entry.source_id,
+            entry.verification,
+        )
+        if (
+            any(
+                not isinstance(value, str) or not value.strip()
+                for value in text_values
+            )
+            or entry.device_type not in ALLOWED_DEVICE_TYPES
+            or entry.verification not in VERIFICATION_STATES
+            or len(oid) > _OID_MAX_LENGTH
+            or len(entry.model) > _MODEL_MAX_LENGTH
+            or len(entry.brand) > _BRAND_MAX_LENGTH
+        ):
+            raise OidCatalogError(f"OID_CATALOG_INVALID: sync entry {oid!r}")
+        validated_entries[oid] = entry
+    return validated_entries
+
+
+def _sync_oid_catalog(
+    entries: Mapping[str, OidCatalogEntry],
+    *,
+    write: bool,
+) -> OidSyncResult:
+    queryset = OidMapping._default_manager.all()
+    if write:
+        queryset = queryset.select_for_update()
+    existing = {row.oid: row for row in queryset}
+    to_create = []
+    to_update = []
+    unchanged = 0
+    custom_override_oids = []
+    now = timezone.now()
+
+    for oid in sorted(entries, key=_oid_sort_key):
+        entry = entries[oid]
+        row = existing.get(oid)
+        if row is None:
+            to_create.append(
+                OidMapping(
+                    oid=oid,
+                    model=entry.model,
+                    brand=entry.brand,
+                    device_type=entry.device_type,
+                    built_in=True,
+                )
+            )
+            continue
+        if not row.built_in:
+            custom_override_oids.append(oid)
+            continue
+        values = (row.model, row.brand, row.device_type)
+        desired = (entry.model, entry.brand, entry.device_type)
+        if values == desired:
+            unchanged += 1
+            continue
+        row.model, row.brand, row.device_type = desired
+        row.updated_at = now
+        to_update.append(row)
+
+    stale_builtin_oids = tuple(
+        sorted(
+            (
+                oid
+                for oid, row in existing.items()
+                if row.built_in and oid not in entries
+            ),
+            key=_oid_sort_key,
+        )
+    )
+    if write:
+        OidMapping._default_manager.bulk_create(to_create, batch_size=500)
+        OidMapping._default_manager.bulk_update(
+            to_update,
+            ["model", "brand", "device_type", "updated_at"],
+            batch_size=500,
+        )
+    return OidSyncResult(
+        created=len(to_create),
+        updated=len(to_update),
+        unchanged=unchanged,
+        custom_override_oids=tuple(custom_override_oids),
+        stale_builtin_oids=stale_builtin_oids,
+    )
+
+
+def _oid_sort_key(oid: str) -> tuple[int, ...]:
+    return tuple(int(part) for part in oid.split("."))
