@@ -1,6 +1,6 @@
 """CMDB FalkorDB 客户端覆盖测试（fake 底层 graph，不连真实服务）。
 
-对照 spec/prd/CMDB·搜索/资产：CQL 构建、属性转义/序列化、查询结果格式化、校验逻辑。
+对照 specs/capabilities/legacy-prd-cmdb-搜索.md：CQL 构建、属性转义/序列化、查询结果格式化、校验逻辑。
 """
 
 import json

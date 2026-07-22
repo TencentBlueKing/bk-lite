@@ -16,7 +16,7 @@
 | `shell`  | `docker exec` 在服务镜像内跑 `*_default_discover.sh` | redis(镜像自带 redis-cli) |
 | `ssh`    | 启动 ubuntu:22.04 VM,apt install 服务,SSH 进 VM 跑采集脚本 | mongodb / nginx / tomcat / rabbitmq |
 
-> **背景**:shell collector (`*_default_discover.sh`) 设计为"在目标主机本地嗅探"——看 `ps` / 读 `/proc` / 用 `redis-cli` / `jps` 等 CLI 工具,但官方服务镜像(minimal userland)缺这些工具。SSH 入口通过 ubuntu:22.04 + apt install 解决。详见 `docs/superpowers/specs/2026-07-05-cmdb-collect-vm-design.md`。
+> **背景**：shell collector (`*_default_discover.sh`) 设计为“在目标主机本地嗅探”——看 `ps`、读 `/proc`、调用 `redis-cli` / `jps` 等 CLI；官方服务镜像通常缺少这些工具，SSH fixture 通过 ubuntu:22.04 安装依赖解决。历史设计的迁移目标见 `docs/agents/spec-migration-map.md`。
 
 ## 当前支持的对象
 
@@ -160,10 +160,3 @@ cd agents/stargazer
 3. **tomcat9 路径特殊**:ubuntu 22.04 jammy 包把 `server.xml` 放在 `/etc/tomcat9/`,不是 `/usr/share/tomcat9/conf/`。catalog 的 install_commands 里 `cp -r /etc/tomcat9/. /usr/share/tomcat9/conf/` 已处理
 4. **每个 ssh 对象独立 SSH 端口**(避免 catalog validate 端口冲突):nginx=12222, mongodb=12223, rabbitmq=12224, tomcat=12225
 5. **每个对象首次安装耗时**:ubuntu + apt install 大约 30-120 秒
-
-## 设计 / 计划文档
-
-- v2 spec:`docs/superpowers/specs/2026-07-05-cmdb-collect-vm-design.md`(当前)
-- v1 spec:`docs/superpowers/specs/2026-07-04-cmdb-collect-fixtures-design.md`(SUPERSEDED)
-- v2 plan:`docs/superpowers/plans/2026-07-05-cmdb-collect-vm-plan.md`
-- v1 plan:`docs/superpowers/plans/2026-07-04-cmdb-collect-fixtures-plan.md`

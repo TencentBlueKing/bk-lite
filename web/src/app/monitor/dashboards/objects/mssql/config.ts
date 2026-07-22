@@ -223,14 +223,6 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       unit: 'percent',
       query: '100 * sqlserver_volume_space_used_space_bytes{__$labels__} / clamp_min(sqlserver_volume_space_total_space_bytes{__$labels__}, 1)',
       color: '#2f6bff'
-    },
-    {
-      name: 'sqlserver_signal_wait_ratio',
-      display_name: '信号等待占比',
-      description: '信号等待时间占总等待时间的比例。',
-      unit: 'percent',
-      query: '100 * rate(sqlserver_waitstats_signal_wait_time_ms{__$labels__}[5m]) / clamp_min(rate(sqlserver_waitstats_wait_time_ms{__$labels__}[5m]), 1e-6)',
-      color: '#ff8a1f'
     }
   ],
   summaryCards: [
@@ -285,15 +277,6 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
         { label: '总空间', metric: 'sqlserver_volume_space_total_space_bytes', unit: 'bytes' },
         { label: '使用率', metric: 'sqlserver_volume_space_used_ratio', unit: 'percent' }
       ]
-    },
-    {
-      title: '信号等待占比',
-      metric: 'sqlserver_signal_wait_ratio',
-      color: '#ff8a1f',
-      icon: 'api',
-      compare: true,
-      guide: [{ label: '信号等待', detail: '信号等待占总等待的百分比,反映 CPU 调度排队;持续偏高排查 CPU 争用或并行度。' }],
-      footer: [{ label: '总等待', metric: 'sqlserver_waitstats_wait_time_ms_rate', unit: 'ms' }]
     }
   ],
   charts: [

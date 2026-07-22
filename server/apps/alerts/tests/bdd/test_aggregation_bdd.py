@@ -1,6 +1,6 @@
 """告警聚合 BDD（中文 Gherkin）。
 
-对照 spec/prd/告警中心·聚合·策略参数加载与时间规范：
+对照 specs/capabilities/legacy-prd-告警中心-配置.md·策略参数加载与时间规范：
 - _load_params 默认值；
 - _build_heartbeat_context；
 - _parse_runtime_datetime / _normalize_to_project_timezone；

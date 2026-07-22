@@ -1,6 +1,6 @@
 """运营分析管理命令的覆盖测试。
 
-对照 spec/prd/运营分析·管理：内置命名空间/数据源/默认组织的初始化。
+对照 specs/capabilities/legacy-prd-运营分析-管理.md：内置命名空间/数据源/默认组织的初始化。
 """
 
 import importlib

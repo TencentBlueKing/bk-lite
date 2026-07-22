@@ -1,7 +1,6 @@
 """Tests for system_mgmt NATS handler `get_user_group_tree`.
 
-按 docs/superpowers/specs/2026-07-14-system-mgmt-nats-user-group-tree-design.md
-的 11 条用例编写,直接走 @nats_client.register 暴露的入口 + RPC 客户端。
+覆盖 11 条用例,直接走 @nats_client.register 暴露的入口 + RPC 客户端。
 
 NOTE: handler 通过 `from .common import *` 拿到 `User` / `Group` / `GroupUtils` /
 `logger` / `_collect_ancestor_group_ids`,此处直接 import handler 函数本体。

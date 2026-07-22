@@ -7,15 +7,35 @@ NodeMgmt RPC / 权限规则为外部边界，mock。
 import pytest
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.utils.current_team_scope import CurrentTeamDataScope
 from apps.monitor.constants.permission import PermissionConstants  # noqa: F401
 from apps.monitor.models import CollectConfig, Metric
 from apps.monitor.models.monitor_metrics import MetricGroup
-from apps.monitor.models.monitor_object import MonitorObject, MonitorInstance
+from apps.monitor.models.monitor_object import MonitorInstance, MonitorInstanceOrganization, MonitorObject
 from apps.monitor.models.plugin import MonitorPlugin
 from apps.monitor.services.node_mgmt import InstanceConfigService
 
 pytestmark = pytest.mark.django_db
 SVC = InstanceConfigService
+
+
+def _actor_context(*, teams=(1,), is_superuser=True):
+    scope = CurrentTeamDataScope(
+        current_team=1,
+        data_team_ids=frozenset(teams),
+        include_children=False,
+        username="admin",
+        domain="domain.com",
+        is_superuser=is_superuser,
+    )
+    return {
+        "username": scope.username,
+        "domain": scope.domain,
+        "current_team": scope.current_team,
+        "include_children": scope.include_children,
+        "is_superuser": scope.is_superuser,
+        "data_scope": scope,
+    }
 
 
 class TestPermissionDataHelpers:
@@ -148,8 +168,9 @@ class TestEnsureInstanceAccess:
 
     def test_superuser_returns_instance(self):
         obj = MonitorObject.objects.create(name="EIAObj", level="base")
-        MonitorInstance.objects.create(id="('h1',)", name="h1", monitor_object=obj)
-        inst = SVC._ensure_instance_access("('h1',)", actor_context={"is_superuser": True})
+        instance = MonitorInstance.objects.create(id="('h1',)", name="h1", monitor_object=obj)
+        MonitorInstanceOrganization.objects.create(monitor_instance=instance, organization=1)
+        inst = SVC._ensure_instance_access("('h1',)", actor_context=_actor_context())
         assert inst.id == "('h1',)"
 
     def test_no_actor_context_returns_instance(self):
@@ -202,9 +223,17 @@ class TestCreateDefaultRule:
 
 
 class TestGetAuthorizedMonitorInstancesSuperuser:
-    def test_superuser_gets_all(self):
+    def test_superuser_stays_in_current_team(self, mocker):
         obj = MonitorObject.objects.create(name="AuthObj", level="base")
-        MonitorInstance.objects.create(id="('a1',)", name="a1", monitor_object=obj)
-        MonitorInstance.objects.create(id="('a2',)", name="a2", monitor_object=obj)
-        qs = SVC._get_authorized_monitor_instances({"is_superuser": True}, obj.id)
-        assert qs.count() == 2
+        current = MonitorInstance.objects.create(id="('a1',)", name="a1", monitor_object=obj)
+        sibling = MonitorInstance.objects.create(id="('a2',)", name="a2", monitor_object=obj)
+        MonitorInstanceOrganization.objects.create(monitor_instance=current, organization=1)
+        MonitorInstanceOrganization.objects.create(monitor_instance=sibling, organization=2)
+        mocker.patch(
+            "apps.monitor.services.node_mgmt.get_permission_rules",
+            return_value={"team": [1, 2], "instance": []},
+        )
+
+        qs = SVC._get_authorized_monitor_instances(_actor_context(), obj.id)
+
+        assert set(qs.values_list("id", flat=True)) == {current.id}

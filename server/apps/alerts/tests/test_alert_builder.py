@@ -1,6 +1,6 @@
 """告警构建器辅助方法覆盖测试。
 
-对照 spec/prd/告警中心·告警：事件聚合为告警时统一标准字段、维度、级别映射。
+对照 specs/capabilities/legacy-prd-告警中心-告警.md：事件聚合为告警时统一标准字段、维度、级别映射。
 """
 
 from types import SimpleNamespace

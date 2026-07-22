@@ -1,6 +1,6 @@
 """CMDB 配置文件版本视图覆盖测试（patch InstanceManage/ConfigFileService + 真实 DB）。
 
-对照 spec/prd/CMDB·配置文件采集：版本列表/内容/对比/文件清单/手动创建/删除的接口层
+对照 specs/capabilities/legacy-prd-cmdb-自动发现.md：版本列表/内容/对比/文件清单/手动创建/删除的接口层
 参数校验、权限校验与错误码映射。MinIO 内容读取分支不在单测范围（无对象存储）。
 """
 

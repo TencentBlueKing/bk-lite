@@ -1,6 +1,6 @@
 """CMDB 模型分类服务覆盖测试（fake_graph 桩 GraphClient）。
 
-对照 spec/prd/CMDB·模型管理：模型分类增删改查、是否被模型引用校验、多语言名称。
+对照 specs/capabilities/legacy-prd-cmdb-模型管理.md：模型分类增删改查、是否被模型引用校验、多语言名称。
 """
 
 import pytest

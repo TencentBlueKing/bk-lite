@@ -3,10 +3,14 @@ import Icon from '@/components/icon'
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip'
 
 interface TopSectionProps {
-  title: string;
-  content: string;
+  title: React.ReactNode;
+  content: React.ReactNode;
   iconType?: string;
   icon?: React.ReactNode;
+  iconSrc?: string;
+  iconAlt?: string;
+  variant?: string;
+  className?: string;
 }
 
 const TopSection: React.FC<TopSectionProps> = ({ title, content, iconType, icon }) => (

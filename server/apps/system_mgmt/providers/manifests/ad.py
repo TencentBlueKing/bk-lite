@@ -49,6 +49,7 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                                 "field_type": "string",
                                 "required": True,
                                 "placeholder": "administrator",
+                                "help_text": "建议填写 UPN（如 administrator@corp.example.com）或完整 DN（如 CN=svc_ad,OU=Service,DC=corp,DC=example,DC=com），避免依赖裸用户名的域解析。",
                                 "reset_capabilities": ["login_auth", "user_sync"],
                             },
                             {

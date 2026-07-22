@@ -1,4 +1,4 @@
-"""安全更新 + 检查/审核(P2 + openspec streamline-wiki-knowledge-decisions phase 3)。
+"""安全更新 + 检查/审核。
 
 风险变更不污染当前有效版本:生成候选版本(PageVersion change_type=candidate, is_current=False)+ CheckItem。
 phase 3: 决策中心 API `decide_check` 取代通用 accept/reject,
@@ -15,7 +15,17 @@ from itertools import combinations
 from django.db import transaction
 from django.utils import timezone
 
-from apps.opspilot.models import BuildRecord, CheckItem, KnowledgePage, PageEvidence, PageRelation, PageVersion, WikiKnowledgeBase
+from apps.opspilot.models import (
+    BuildRecord,
+    CheckItem,
+    KnowledgePage,
+    Material,
+    MaterialVersion,
+    PageEvidence,
+    PageRelation,
+    PageVersion,
+    WikiKnowledgeBase,
+)
 from apps.opspilot.services.wiki.cascade_service import cascade
 from apps.opspilot.services.wiki.decision_service import (
     POLICY_VERSION,
@@ -918,8 +928,6 @@ def decide_check(  # noqa: C901
     frozen_incoming_id = incoming_snapshot.get("material_id")
     if material is not None and frozen_incoming_id and material.id != frozen_incoming_id:
         raise ValueError("提交资料与冻结的决策上下文不一致")
-
-    from apps.opspilot.models import Material, MaterialVersion
 
     evidence_material = None
     evidence_material_version = None

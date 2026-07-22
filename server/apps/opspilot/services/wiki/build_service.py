@@ -6,11 +6,11 @@ Stage2 生成页面:依据 Purpose/Schema 从事实生成互联知识页面。
 """
 
 import json
-import logging
 import os
 
 from django.db import transaction
 
+from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
 from apps.opspilot.models import BuildRecord, KnowledgePage, LLMModel, PageEvidence, PageVersion, WikiKnowledgeBase
@@ -21,8 +21,6 @@ from apps.opspilot.services.wiki.text_utils import split_text_for_llm
 from apps.opspilot.services.wiki.title_service import canonical_title as _canonical_title
 from apps.opspilot.services.wiki.title_service import title_alias_terms_for_enrichment as _title_alias_terms_for_enrichment
 from apps.opspilot.services.wiki.wikilink_enrichment_service import enrich_pages_wikilinks
-
-logger = logging.getLogger("opspilot")
 
 _split_text_for_llm = split_text_for_llm
 _WIKI_LLM_TIMEOUT_SECONDS = 300.0
@@ -84,33 +82,76 @@ def _llm_extract_facts(text, llm_model_id):
 def _llm_generate_pages(kb, source_text, llm_model_id):
     """Stage2:依据 Purpose/Schema 从(已抽取的)要点生成页面列表。
 
-    返回 [{"page_type","title","tags","body"}, ...];无模型或解析失败时返回 []。
+    返回 page 列表(向后兼容签名);解析失败通过 errors_collector 参数旁路收集。
+    无模型或 source_text 为空时返回 []。
     """
     if not llm_model_id or not (source_text or "").strip():
         return []
     pages = []
+    errors = []
     chunks = _split_text_for_llm(source_text)
+    existing_catalog = json.dumps(
+        [
+            {"id": page.id, "title": page.title, "page_type": page.page_type}
+            for page in KnowledgePage.objects.filter(
+                knowledge_base=kb,
+                status__in=["active", "source_invalid"],
+            ).order_by("id")
+        ],
+        ensure_ascii=False,
+    )
     for idx, chunk in enumerate(chunks, start=1):
         prompt = (
             "你是企业知识库构建助手。请依据下面的 Purpose 与 Schema,从已抽取的要点生成知识页面。\n"
-            '只输出 JSON,格式为 {"pages":[{"page_type":"...","title":"...","tags":["..."],"body":"markdown"}]}。\n'
+            '只输出 JSON,格式为 {"pages":[{"page_type":"...","title":"...","tags":["..."],'
+            '"body":"markdown","existing_page_id":123或null}]}。\n'
             'page_type 必须来自 Schema 定义的类型;无可提取内容时输出 {"pages":[]}。\n'
             "生成原则:不要只输出总览页面;对资料中反复出现的产品、平台、组件、模块、能力中心、"
             "依赖项、服务、表格行中的核心对象,应优先拆成独立实体页或概念页。\n"
+            "先对照现有页面清单判断是否为同一知识主题。语义相同但标题不同也应复用现有页面标题,"
+            "并填写对应 existing_page_id;确实是新主题时 existing_page_id 填 null。\n"
             "同一对象的缩写、英文名、中文全称必须使用同一个页面标题;优先使用中文全称,"
             "例如 CMDB 与 配置平台 使用 配置平台,JOB 与 作业平台 使用 作业平台,不要分别建页。\n"
             "页面正文应使用 [[目标页面标题]] 引用相关页面,便于后续关系图谱建边。\n"
             "注意:这是同一份资料的分块处理,如果当前片段补充了已有主题,可以输出同名页面,"
             "系统会合并同名页面内容。\n\n"
-            f"# Purpose\n{kb.purpose_md}\n\n# Schema\n{kb.schema_md}\n\n# 要点片段 {idx}/{len(chunks)}\n{chunk}\n"
+            f"# Purpose\n{kb.purpose_md}\n\n# Schema\n{kb.schema_md}"
+            f"\n\n# 现有页面清单\n{existing_catalog}"
+            f"\n\n# 要点片段 {idx}/{len(chunks)}\n{chunk}\n"
         )
-        pages.extend(_parse_pages(_invoke_llm(llm_model_id, prompt)))
-    return _merge_pages(pages, kb=kb)
+        raw_result = _invoke_llm(llm_model_id, prompt)
+        parsed_pages = _parse_pages(
+            raw_result,
+            chunk_index=idx,
+            total_chunks=len(chunks),
+            errors_collector=errors,
+        )
+        logger.info(
+            "wiki_build_stage2_chunk kb_id=%s model_id=%s chunk=%s/%s output_chars=%s response_empty=%s page_count=%s",
+            kb.id,
+            llm_model_id,
+            idx,
+            len(chunks),
+            len(raw_result or ""),
+            not bool((raw_result or "").strip()),
+            len(parsed_pages),
+        )
+        pages.extend(parsed_pages)
+    merged = _merge_pages(pages, kb=kb)
+    # 把 errors 暂存到函数属性,build_from_material 读取后清空
+    _llm_generate_pages.last_errors = list(errors)
+    return merged
 
 
-def _parse_pages(content):
-    """从 LLM 输出中解析 pages 列表,容忍代码块包裹。"""
+def _parse_pages(content, chunk_index=None, total_chunks=None, errors_collector=None):
+    """从 LLM 输出中解析 pages 列表,容忍代码块包裹。
+
+    失败时:logger.warning 输出原文前 500/末 500 字符(便于日志/Celery 追溯 LLM 输出格式),
+    若传入 errors_collector,错误描述也追加到其中供 build_record.errors 写入。
+    始终返回 page 列表(向后兼容)。
+    """
     raw = (content or "").strip()
+    loc = f"chunk={chunk_index}/{total_chunks}" if chunk_index is not None else "chunk=?"
     if "```" in raw:
         # 去掉 ```json ... ``` 包裹
         raw = raw.split("```", 2)[1] if raw.count("```") >= 2 else raw
@@ -119,11 +160,18 @@ def _parse_pages(content):
     start = raw.find("{")
     end = raw.rfind("}")
     if start == -1 or end == -1:
+        err = f"_parse_pages 失败 [{loc}]: 未找到匹配的 {{...}} 区间," f" output_chars={len(raw)}"
+        logger.warning(err)
+        if errors_collector is not None:
+            errors_collector.append(err)
         return []
     try:
         data = json.loads(raw[start : end + 1])
-    except (TypeError, ValueError):
-        logger.warning("wiki 页面生成 JSON 解析失败")
+    except (TypeError, ValueError) as exc:
+        err = f"_parse_pages 失败 [{loc}]: JSON 解析异常 {type(exc).__name__}: {exc}," f" output_chars={len(raw)}"
+        logger.warning(err)
+        if errors_collector is not None:
+            errors_collector.append(err)
         return []
     pages = data.get("pages", [])
     return [p for p in pages if isinstance(p, dict) and p.get("title")]
@@ -149,16 +197,21 @@ def _merge_pages(pages, kb=None):
         tags = [tag for tag in page.get("tags", []) or [] if tag]
         body = (page.get("body") or "").strip()
         if key not in merged:
-            merged[key] = {
+            merged_page = {
                 "page_type": page.get("page_type", "concept"),
                 "title": title,
                 "tags": list(dict.fromkeys(tags)),
                 "body": body,
             }
+            if page.get("existing_page_id") is not None:
+                merged_page["existing_page_id"] = page["existing_page_id"]
+            merged[key] = merged_page
             order.append(key)
             continue
         current = merged[key]
         current["tags"] = list(dict.fromkeys([*current.get("tags", []), *tags]))
+        if current.get("existing_page_id") is None and page.get("existing_page_id") is not None:
+            current["existing_page_id"] = page["existing_page_id"]
         if body and body not in current.get("body", ""):
             current["body"] = "\n\n".join(part for part in [current.get("body", ""), body] if part)
     return [merged[key] for key in order]
@@ -189,6 +242,24 @@ def _existing_pages_by_title(kb):
         if key and key not in result:
             result[key] = page
     return result
+
+
+def _existing_page_by_id(kb, page_id):
+    try:
+        page_id = int(page_id)
+    except (TypeError, ValueError):
+        return None
+    if page_id <= 0:
+        return None
+    return (
+        KnowledgePage.objects.filter(
+            id=page_id,
+            knowledge_base=kb,
+            status__in=["active", "source_invalid"],
+        )
+        .select_related("current_version")
+        .first()
+    )
 
 
 def _source_chunks_with_offsets(text):
@@ -405,6 +476,87 @@ def _merged_body_for_material(page, material, incoming_body):
     return "\n\n".join([current_body, body])
 
 
+def _classify_page_change(page, page_data, llm_model_id):
+    """判断新旧正文是否为同一主题，以及属于无变化、补充还是事实冲突。"""
+    current_body = page.current_version.body if page.current_version_id else ""
+    incoming_body = (page_data.get("body") or "").strip()
+    if not current_body.strip() or not incoming_body:
+        logger.info(
+            "wiki_conflict_compare kb_id=%s page_id=%s model_id=%s status=skipped_empty_body",
+            page.knowledge_base_id,
+            page.id,
+            llm_model_id,
+        )
+        return None
+    if current_body.strip() == incoming_body:
+        logger.info(
+            "wiki_conflict_compare kb_id=%s page_id=%s model_id=%s status=deterministic_equal " "same_subject=true relation=unchanged",
+            page.knowledge_base_id,
+            page.id,
+            llm_model_id,
+        )
+        return {"same_subject": True, "relation": "unchanged", "reason": ""}
+
+    prompt = (
+        "你是企业知识冲突检测助手。请比较当前知识与新知识，只判断事实结论是否互相矛盾。\n"
+        "同一主题下新增不矛盾的细节属于 supplement；事实结论相同属于 unchanged；"
+        "同一条件下数值、责任人、状态、步骤或规则互斥才属于 conflict。\n"
+        '只输出 JSON：{"same_subject":true或false,"relation":"unchanged|supplement|conflict","reason":"简短原因"}。\n\n'
+        f"# 当前知识\n标题：{page.title}\n正文：\n{current_body}\n\n"
+        f"# 新知识\n标题：{page_data.get('title') or ''}\n正文：\n{incoming_body}\n"
+    )
+    raw = (_invoke_llm(llm_model_id, prompt) or "").strip()
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start == -1 or end == -1:
+        logger.warning(
+            "wiki_conflict_compare kb_id=%s page_id=%s model_id=%s status=invalid_json output_chars=%s",
+            page.knowledge_base_id,
+            page.id,
+            llm_model_id,
+            len(raw),
+        )
+        return None
+    try:
+        result = json.loads(raw[start : end + 1])
+    except (TypeError, ValueError):
+        logger.warning(
+            "wiki_conflict_compare kb_id=%s page_id=%s model_id=%s status=json_parse_failed output_chars=%s",
+            page.knowledge_base_id,
+            page.id,
+            llm_model_id,
+            len(raw),
+        )
+        return None
+    if not isinstance(result, dict) or not isinstance(result.get("same_subject"), bool):
+        logger.warning(
+            "wiki_conflict_compare kb_id=%s page_id=%s model_id=%s status=invalid_schema output_chars=%s",
+            page.knowledge_base_id,
+            page.id,
+            llm_model_id,
+            len(raw),
+        )
+        return None
+    if result.get("relation") not in {"unchanged", "supplement", "conflict"}:
+        logger.warning(
+            "wiki_conflict_compare kb_id=%s page_id=%s model_id=%s status=invalid_relation output_chars=%s",
+            page.knowledge_base_id,
+            page.id,
+            llm_model_id,
+            len(raw),
+        )
+        return None
+    return {
+        "same_subject": result["same_subject"],
+        "relation": result["relation"],
+        "reason": str(result.get("reason") or "").strip(),
+    }
+
+
+def _has_other_material_source(page, material):
+    return PageEvidence.objects.filter(page=page).exclude(material=material).exists()
+
+
 def _merge_ai_page(page, material, build, page_data, operator="", update_method="ai_merge", change_type="ai_merge", locator=""):
     title = (page_data.get("title") or "").strip()
     body = page_data.get("body", "") or ""
@@ -617,6 +769,7 @@ def build_from_material(material, llm_model_id=None, operator="", trigger="mater
         # 两步法:Stage1 抽取要点 → Stage2 依据 Schema 生成页面(抽取失败则回退原文)
         facts = _llm_extract_facts(text, llm_model_id)
         pages_data = _llm_generate_pages(kb, facts or text, llm_model_id)
+        llm_parse_errors = getattr(_llm_generate_pages, "last_errors", [])
         affected = []
         cascade_ids = []
         maintenance = {}
@@ -626,6 +779,18 @@ def build_from_material(material, llm_model_id=None, operator="", trigger="mater
             pd = _normalize_page_data_title(kb, pd)
             key = _title_key(pd.get("title"), kb)
             page = existing_by_title.get(key)
+            matched_by_candidate = False
+            comparison = None
+            if not page and pd.get("existing_page_id") is not None:
+                candidate_page = _existing_page_by_id(kb, pd.get("existing_page_id"))
+                if candidate_page:
+                    comparison = _classify_page_change(candidate_page, pd, llm_model_id)
+                    if comparison and comparison["same_subject"]:
+                        page = candidate_page
+                        matched_by_candidate = True
+                        pd = {**pd, "title": page.title}
+                        key = _title_key(page.title, kb)
+
             locator = _source_locator_for_page(material, text, pd, chunks=source_chunks)
             if not page:
                 page = _create_ai_page(kb, material, build, pd, locator=locator)
@@ -633,8 +798,23 @@ def build_from_material(material, llm_model_id=None, operator="", trigger="mater
                 action = "new"
                 decision_trace = {}
             elif page.contribution == "ai":
-                action = _merge_ai_page(page, material, build, pd, operator=operator, locator=locator)
-                decision_trace = {}
+                if comparison is None and not matched_by_candidate and _has_other_material_source(page, material):
+                    comparison = _classify_page_change(page, pd, llm_model_id)
+                if comparison and comparison["same_subject"] and comparison["relation"] == "conflict":
+                    action, decision_trace = resolve_knowledge_conflict(
+                        page,
+                        material,
+                        build,
+                        pd.get("body", "") or "",
+                        operator=operator,
+                        check_type="cannot_merge",
+                        reason=comparison["reason"] or "构建资料产生了不同知识结论，需人工选择",
+                        related={"pages": [page.id], "materials": [material.id]},
+                        locator=locator,
+                    )
+                else:
+                    action = _merge_ai_page(page, material, build, pd, operator=operator, locator=locator)
+                    decision_trace = {}
             else:
                 action, decision_trace = _create_review_candidate(page, material, build, pd, operator=operator, locator=locator)
 
@@ -669,9 +849,12 @@ def build_from_material(material, llm_model_id=None, operator="", trigger="mater
             "source_trace": source_trace,
         }
         build.maintenance = maintenance
-        build.errors = _maintenance_errors(maintenance)
+        build.errors = _maintenance_errors(maintenance) + list(llm_parse_errors or [])
         build.stage = "done"
-        build.status = "partial" if maintenance.get("status") in {"partial", "failed"} else "success"
+        # 当 LLM 阶段未能产出任何 page 时,即便 cascade 全部成功,也标记 partial
+        # 避免"看似 success 但用户查不到任何相关知识"的隐式失败
+        llm_produced_zero = not pages_data
+        build.status = "partial" if maintenance.get("status") in {"partial", "failed"} or llm_produced_zero else "success"
         build.progress = 100
         build.save(
             update_fields=[

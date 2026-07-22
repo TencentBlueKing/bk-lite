@@ -1,6 +1,6 @@
 """告警/事故过滤器覆盖测试。
 
-对照 spec/prd/告警中心：列表支持按级别/状态/告警源等多条件过滤。
+对照 specs/capabilities/legacy-prd-告警中心-告警.md：列表支持按级别/状态/告警源等多条件过滤。
 """
 
 import pytest

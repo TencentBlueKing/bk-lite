@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { useAuth } from '@/context/auth';
 import { Input, Button, SpinLoading, Mask, Toast } from 'antd-mobile';
 import { AuthStep } from '@/types/auth';
-import { getDomainList, authLogin } from '@/api/auth';
+import { getDomainList } from '@/api/auth';
 import { useTranslation } from '@/utils/i18n';
 import {
   EyeInvisibleOutline,
@@ -15,10 +15,11 @@ import {
   GlobalOutline,
   ExclamationTriangleOutline
 } from 'antd-mobile-icons';
+import { withBasePath } from '@/utils/basePath';
 
 export default function LoginPage() {
   const { t } = useTranslation();
-  const { login } = useAuth();
+  const { login, isInitializing } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [domain, setDomain] = useState('');
@@ -77,47 +78,40 @@ export default function LoginPage() {
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isInitializing) return;
     setIsLoading(true);
 
     try {
-      const responseData = await authLogin({
+      const result = await login({
         username,
         password,
         domain,
       });
 
-      if (!responseData.result) {
-        const errorMessage = responseData.message || t('auth.loginFailed');
+      if (result.status === 'invalid-credentials') {
+        const errorMessage = result.message || t('auth.loginFailed');
         Toast.show({ content: errorMessage, icon: 'fail' });
-        setUsername('');
         setPassword('');
-        setIsLoading(false);
         return;
       }
 
-      const userData = responseData.data;
-      if (userData.temporary_pwd) {
+      if (result.status === 'password-reset-required') {
         setAuthStep('reset-password');
-        setIsLoading(false);
         return;
       }
 
-      if (userData.enable_otp) {
+      if (result.status === 'otp-required') {
         setAuthStep('otp-verification');
-        setIsLoading(false);
         return;
       }
 
-      if (userData.token) {
-        await login(userData.token, userData);
-      }
-
-      if (userData.redirect_url) {
-        window.location.href = userData.redirect_url;
+      if (result.status === 'service-unavailable') {
+        Toast.show({ content: t('login.serviceUnavailable'), icon: 'fail' });
       }
     } catch (error) {
       console.error('Login error:', error);
       Toast.show({ content: t('login.systemError'), icon: 'fail' });
+    } finally {
       setIsLoading(false);
     }
   };
@@ -175,7 +169,7 @@ export default function LoginPage() {
         <div className="text-center mb-6">
           <div className="flex justify-center mb-2">
             <Image
-              src="/logo-site.png"
+              src={withBasePath('/logo-site.png')}
               alt="WeOps Logo"
               width={68}
               height={68}
@@ -240,7 +234,7 @@ export default function LoginPage() {
                     placeholder={t('login.enterUsername')}
                     value={username}
                     onChange={setUsername}
-                    disabled={isLoading}
+                    disabled={isLoading || isInitializing}
                     style={{
                       '--font-size': '16px',
                       '--color': '#111827',
@@ -268,7 +262,7 @@ export default function LoginPage() {
                     type={showPassword ? 'text' : 'password'}
                     value={password}
                     onChange={setPassword}
-                    disabled={isLoading}
+                    disabled={isLoading || isInitializing}
                     style={{
                       '--font-size': '16px',
                       '--color': '#111827',
@@ -299,11 +293,11 @@ export default function LoginPage() {
               <Button
                 type="submit"
                 loading={isLoading}
-                disabled={isLoading || !domain}
+                disabled={isLoading || isInitializing || !domain}
                 className="w-full h-11 rounded-lg shadow-sm mt-5"
                 style={{
                   backgroundColor:
-                    isLoading || !domain ? '#e5e7eb' : '#2563eb',
+                    isLoading || isInitializing || !domain ? '#e5e7eb' : '#2563eb',
                   color: '#ffffff',
                   borderRadius: '0.5rem',
                   fontSize: '16px',

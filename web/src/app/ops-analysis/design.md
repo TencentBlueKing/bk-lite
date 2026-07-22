@@ -24,7 +24,7 @@
 ## Non-Goals
 
 - 不作为每个组件的完整 props API 手册。
-- 不替代具体需求的 OpenSpec / design 文档。
+- 不替代 `specs/capabilities/` 的长期契约或 `specs/changes/` 的变更文档。
 - 不要求一次性重构现有页面。
 - 不规定所有内部 hook 的实现细节。
 - 不改变现有后端接口、导入导出结构或数据源协议。

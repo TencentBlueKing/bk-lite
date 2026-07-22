@@ -2,6 +2,8 @@ from datetime import datetime
 from types import SimpleNamespace
 
 import nats_client
+from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.utils.current_team_scope import _normalize_organization_ids
 from apps.core.utils.permission_utils import check_instance_permission, get_permission_rules, get_permissions_rules, permission_filter
 from apps.core.utils.time_util import format_time_iso
 from apps.log.constants.permission import PermissionConstants
@@ -10,6 +12,7 @@ from apps.log.models.log_group import LogGroup
 from apps.log.models.policy import Alert, Policy
 from apps.log.utils.log_group import LogGroupQueryBuilder
 from apps.log.utils.query_log import VictoriaMetricsAPI
+from apps.rpc.system_mgmt import SystemMgmt
 
 
 def _normalize_bounded_int(value, field_name: str, default, max_value: int):
@@ -23,21 +26,54 @@ def _resolve_log_group_scope(user_info):
     1. 通过 get_permission_rules 获取用户在 log_group 模块的权限规则
     2. 通过 permission_filter 过滤出可访问的 LogGroup 对象
     """
-    if not user_info:
-        return None
+    if not isinstance(user_info, dict):
+        return []
 
     username = user_info.get("user")
     domain = user_info.get("domain")
     current_team = user_info.get("team")
     include_children = user_info.get("include_children", False)
-    is_superuser = user_info.get("is_superuser", False)
 
-    if not username or not current_team:
-        return None
+    if (
+        not isinstance(username, str)
+        or not username.strip()
+        or not isinstance(domain, str)
+        or not domain.strip()
+        or type(include_children) is not bool
+    ):
+        return []
 
-    # 超级管理员不做日志分组限制
-    if is_superuser:
-        return None
+    try:
+        current_team = next(iter(_normalize_organization_ids([current_team])))
+    except BaseAppException:
+        return []
+
+    actor_context = {
+        "username": username,
+        "domain": domain,
+        "current_team": current_team,
+    }
+    try:
+        scope_result = SystemMgmt().get_authorized_groups_scoped(
+            actor_context,
+            include_children=include_children,
+        )
+    except Exception:
+        return []
+    if not isinstance(scope_result, dict) or not scope_result.get("result") or not isinstance(scope_result.get("data"), list):
+        return []
+    try:
+        scope_ids = _normalize_organization_ids(scope_result["data"])
+    except BaseAppException:
+        return []
+    if current_team not in scope_ids:
+        return []
+
+    # 超管身份必须来自 SystemMgmt 对持久化用户角色的服务端判定，
+    # caller user_info 中的同名字段仅是非可信上下文，不能用于授权。
+    if scope_result.get("is_superuser") is True:
+        queryset = LogGroup.objects.filter(loggrouporganization__organization__in=list(scope_ids)).distinct()
+        return list(queryset.only("id", "name", "rule"))
 
     # 构造与 get_permission_rules 兼容的 user 对象
     user_obj = SimpleNamespace(username=username, domain=domain)
@@ -52,12 +88,16 @@ def _resolve_log_group_scope(user_info):
     if not isinstance(permission, dict):
         permission = {}
 
-    queryset = permission_filter(
-        LogGroup,
-        permission,
-        team_key="loggrouporganization__organization__in",
-        id_key="id__in",
-    ).distinct()
+    queryset = (
+        permission_filter(
+            LogGroup,
+            permission,
+            team_key="loggrouporganization__organization__in",
+            id_key="id__in",
+        )
+        .filter(loggrouporganization__organization__in=list(scope_ids))
+        .distinct()
+    )
 
     accessible_groups = list(queryset.only("id", "name", "rule"))
     return accessible_groups
@@ -67,17 +107,13 @@ def _apply_log_group_scope(query, user_info):
     """对查询语句应用日志分组权限限制，返回改写后的 query。
 
     如果无法解析权限（缺少 user_info），返回拒绝所有结果的查询。
-    如果用户是超级管理员，返回原始 query 不做限制。
+    超级管理员同样必须使用明确的日志分组范围。
     """
     if not user_info:
         # 未提供身份信息，拒绝所有查询
         return LogGroupQueryBuilder.DENY_ALL_QUERY
 
     accessible_groups = _resolve_log_group_scope(user_info)
-
-    # 超级管理员场景：_resolve_log_group_scope 返回 None
-    if accessible_groups is None:
-        return query
 
     if not accessible_groups:
         # 无可访问分组，拒绝所有查询
@@ -101,6 +137,8 @@ def log_search(query, time_range, limit=10, *args, **kwargs):
         limit = VictoriaLogsConstants.normalize_query_limit(limit, default=10)
     except ValueError as exc:
         return {"result": False, "data": [], "message": str(exc)}
+    if query == LogGroupQueryBuilder.DENY_ALL_QUERY:
+        return {"result": True, "data": [], "message": ""}
     vm_api = VictoriaMetricsAPI()
     data = vm_api.query(query, start_time, end_time, limit)
     return {"result": True, "data": data, "message": ""}
@@ -119,6 +157,8 @@ def log_hits(query, time_range, field, fields_limit=5, step="5m", *args, **kwarg
         fields_limit = VictoriaLogsConstants.normalize_hits_fields_limit(fields_limit, default=5)
     except ValueError as exc:
         return {"result": False, "data": [], "message": str(exc)}
+    if query == LogGroupQueryBuilder.DENY_ALL_QUERY:
+        return {"result": True, "data": [], "message": ""}
     vm_api = VictoriaMetricsAPI()
     resp = vm_api.hits(query, start_time, end_time, field, fields_limit, step)
     data = []
@@ -223,14 +263,64 @@ def _build_log_alert_segment(alert: Alert) -> dict:
 
 
 def _get_log_policy_ids(collect_type_id: str, user_info: dict):
-    user = user_info.get("user")
-    current_team = user_info.get("team")
-    include_children = user_info.get("include_children", False)
-    if not user or not current_team:
+    if not isinstance(user_info, dict):
         return [], {"result": False, "data": [], "message": "缺少用户或组织信息"}
 
+    user = user_info.get("user")
+    username = user if isinstance(user, str) else getattr(user, "username", None)
+    domain = user_info.get("domain")
+    current_team = user_info.get("team")
+    include_children = user_info.get("include_children", False)
+    if (
+        not isinstance(username, str)
+        or not username.strip()
+        or not isinstance(domain, str)
+        or not domain.strip()
+        or type(include_children) is not bool
+    ):
+        return [], {"result": False, "data": [], "message": "缺少用户或组织信息"}
+
+    try:
+        current_team = next(iter(_normalize_organization_ids([current_team])))
+    except BaseAppException:
+        return [], {"result": False, "data": [], "message": "用户或组织权限校验失败"}
+
+    actor_context = {
+        "username": username,
+        "domain": domain,
+        "current_team": current_team,
+    }
+    try:
+        scope_result = SystemMgmt().get_authorized_groups_scoped(
+            actor_context,
+            include_children=include_children,
+        )
+    except Exception:
+        return [], {"result": False, "data": [], "message": "用户或组织权限校验失败"}
+    if not isinstance(scope_result, dict) or not scope_result.get("result") or not isinstance(scope_result.get("data"), list):
+        return [], {"result": False, "data": [], "message": "用户或组织权限校验失败"}
+    try:
+        scope_ids = _normalize_organization_ids(scope_result["data"])
+    except BaseAppException:
+        return [], {"result": False, "data": [], "message": "用户或组织权限校验失败"}
+    if current_team not in scope_ids:
+        return [], {"result": False, "data": [], "message": "用户或组织权限校验失败"}
+
+    policies = (
+        Policy.objects.filter(
+            collect_type_id=collect_type_id,
+            policyorganization__organization__in=list(scope_ids),
+        )
+        .select_related("collect_type")
+        .prefetch_related("policyorganization_set")
+        .distinct()
+    )
+    if scope_result.get("is_superuser") is True:
+        return list(policies.values_list("id", flat=True)), None
+
+    user_obj = SimpleNamespace(username=username, domain=domain)
     permissions_result = get_permissions_rules(
-        user,
+        user_obj,
         current_team,
         "log",
         PermissionConstants.POLICY_MODULE,
@@ -240,20 +330,18 @@ def _get_log_policy_ids(collect_type_id: str, user_info: dict):
         permissions_result = {}
 
     policy_permissions = permissions_result.get("data", {})
-    current_teams = permissions_result.get("team", [])
-    if not policy_permissions:
+    if not isinstance(policy_permissions, dict) or not policy_permissions:
         return [], None
 
     policy_ids = []
-    policies = Policy.objects.select_related("collect_type").prefetch_related("policyorganization_set").filter(collect_type_id=collect_type_id)
     for policy_obj in policies:
-        teams = {org.organization for org in policy_obj.policyorganization_set.all()}
+        teams = {org.organization for org in policy_obj.policyorganization_set.all() if org.organization in scope_ids}
         if check_instance_permission(
             collect_type_id,
             policy_obj.id,
             teams,
             policy_permissions,
-            current_teams,
+            scope_ids,
         ):
             policy_ids.append(policy_obj.id)
 

@@ -1,6 +1,6 @@
 """CMDB InstanceManage 纯逻辑/拓扑过滤/计数覆盖测试。
 
-对照 spec/prd/CMDB·资产：组织范围校验、tag/enum 字段校验、权限过滤字典、校验属性映射、
+对照 specs/capabilities/legacy-prd-cmdb-资产.md：组织范围校验、tag/enum 字段校验、权限过滤字典、校验属性映射、
 拓扑节点裁剪与权限可见性、结果信息格式化、实例权限过滤参数、分组计数。
 """
 

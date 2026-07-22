@@ -1,6 +1,6 @@
 """事件屏蔽覆盖测试。
 
-对照 spec/prd/告警中心·配置：屏蔽策略在生效时间内匹配事件并置为屏蔽状态。
+对照 specs/capabilities/legacy-prd-告警中心-配置.md：屏蔽策略在生效时间内匹配事件并置为屏蔽状态。
 """
 
 import pytest

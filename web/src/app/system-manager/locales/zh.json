@@ -239,6 +239,7 @@
       },
       "userSyncPage": {
         "rootGroupNameLabel": "根组织名称",
+        "rootGroupNameConflict": "根组织名称已被其他用户同步源使用，请更换后重试",
         "integrationSystem": "集成系统",
         "integrationSystemPlaceholder": "请选择集成系统",
         "basicConfig": "基础配置",
@@ -261,6 +262,21 @@
         "syncNow": "立即同步",
         "records": "同步记录",
         "deleteConfirm": "确定要删除此同步源吗？",
+        "passwordInit": {
+          "sectionTitle": "本地密码初始化",
+          "modeNone": "不设置密码",
+          "modeUniform": "设置统一密码",
+          "modeRandom": "设置随机密码",
+          "modeNoneHint": "同步用户仅允许通过外部身份源登录,本地无密码",
+          "modeUniformHint": "所有同步用户共用同一初始密码",
+          "modeRandomHint": "为每个同步用户生成独立随机密码",
+          "uniformPasswordLabel": "统一初始密码",
+          "uniformPasswordPlaceholder": "请输入符合系统安全策略的密码",
+          "uniformPasswordKeepHint": "已配置统一密码；留空并保存将保持原密码不变。",
+          "emailChannelLabel": "邮件通知通道",
+          "emailChannelPlaceholder": "请选择邮件通道",
+          "uniformWarning": "提示:统一密码模式下,所有同步用户共用同一密码。若邮件列表泄露,所有账号将面临风险。"
+        },
         "syncStarted": "同步已启动",
         "syncFailed": "启动同步失败",
         "runStatus": {
@@ -282,7 +298,14 @@
           "partialWithUsers": "部分成功：{{external}}；已同步 {{users}} 个用户、{{groups}} 个组织，{{conflicts}} 个冲突（冲突用户：{{usernames}}）",
           "failed": "同步失败：{{external}}；{{reason}}",
           "failedConflict": "同步失败：{{external}}；已同步 {{users}} 个用户、{{groups}} 个组织，{{conflicts}} 个冲突用户（冲突用户：{{usernames}}）",
-          "externalCounts": "外部用户共 {{users}} 人，外部组织共 {{groups}} 个"
+          "externalCounts": "外部用户共 {{users}} 人，外部组织共 {{groups}} 个",
+          "result": "同步结果：{{external}}；{{summary}}",
+          "withEmailStatus": "{{summary}}；{{email}}",
+          "usernameListSeparator": "、",
+          "emailSending": "初始密码邮件发送中（共 {{total}} 封）",
+          "emailSent": "初始密码邮件已发送 {{sent}} 封",
+          "emailPartialFailed": "初始密码邮件已发送 {{sent}} 封，发送失败 {{failed}} 封，请核查用户邮箱和邮件通道",
+          "emailFailed": "初始密码邮件发送失败 {{failed}} 封，请核查用户邮箱和邮件通道"
         },
         "basicConfigDesc": "选择系统并填写根组织",
         "pageDesc": "用户同步定义平台如何接入主身份数据。这里支持多个用户源并存，用于不同组织目录、补充目录或活动导入目录协同工作。",
@@ -322,6 +345,7 @@
         "externalFieldColumn": "外部平台用户字段",
         "externalFieldsHint": "外部系统可用字段参考：",
         "externalFieldPlaceholder": "默认留空，按需填写外部字段名",
+        "usernameMappingRequired": "请填写用户名对应的外部字段名",
         "deleteConfirmContent": "删除用户源{{sourceName}}后，会同时删除根组织和其下的所有子组织及用户。"
       }
     },

@@ -1,6 +1,6 @@
 """ImportService 导入执行覆盖测试。
 
-对照 spec/prd/运营分析：YAML 导入按 namespace→datasource→canvas 顺序，
+对照 specs/capabilities/legacy-prd-运营分析-运营分析.md：YAML 导入按 namespace→datasource→canvas 顺序，
 支持 skip/overwrite/rename 冲突策略，任一失败整体回滚。
 """
 

@@ -3,6 +3,7 @@ import {
   Button,
   Form,
   Input,
+  message,
   Select,
 } from 'antd';
 
@@ -20,8 +21,13 @@ import {
   resolveUserSyncTemplate,
 } from '@/app/system-manager/utils/userSyncUtils';
 import { formatIntegrationInstanceDisplayName } from '@/app/system-manager/utils/integrationCenter';
-import { type MappingRow, toMappingRows } from '@/app/system-manager/utils/userSyncPageUtils';
+import {
+  type MappingRow,
+  toMappingRows,
+  validateRequiredUserMapping,
+} from '@/app/system-manager/utils/userSyncPageUtils';
 import UserSyncConfigFields from '@/app/system-manager/components/user/user-sync/UserSyncConfigFields';
+import { useUserSyncApi } from '@/app/system-manager/api/user-sync';
 
 interface UserSyncOperateModalProps {
   open: boolean;
@@ -51,6 +57,8 @@ const UserSyncOperateModal: React.FC<UserSyncOperateModalProps> = ({
   const [form] = Form.useForm<UserSyncSourceCreateFormValues>();
   const [currentStep, setCurrentStep] = useState(1);
   const [mappingRows, setMappingRows] = useState<MappingRow[]>(toMappingRows({}));
+  const [mappingError, setMappingError] = useState('');
+  const { checkRootGroupNameAvailable } = useUserSyncApi();
   const watchedInstanceId = Form.useWatch('integration_instance', form);
   const selectedInstanceId = watchedInstanceId ?? form.getFieldValue('integration_instance');
   const previousInstanceIdRef = useRef<number | undefined>(undefined);
@@ -59,6 +67,7 @@ const UserSyncOperateModal: React.FC<UserSyncOperateModalProps> = ({
     if (!open) {
       setCurrentStep(1);
       setMappingRows(toMappingRows({}));
+      setMappingError('');
       form.resetFields();
       return;
     }
@@ -114,10 +123,30 @@ const UserSyncOperateModal: React.FC<UserSyncOperateModalProps> = ({
     }
   };
 
+  const validateRootGroupNameAvailable = async (_: unknown, value?: string) => {
+    const rootGroupName = value?.trim();
+    if (!rootGroupName) return Promise.resolve();
+
+    const { available } = await checkRootGroupNameAvailable(rootGroupName);
+    if (!available) {
+      throw new Error(t('system.user.userSyncPage.rootGroupNameConflict'));
+    }
+  };
+
+  const showMissingUsernameMapping = () => {
+    const mappingErrorMessage = t('system.user.userSyncPage.usernameMappingRequired');
+    setMappingError(mappingErrorMessage);
+    message.warning(mappingErrorMessage);
+  };
+
   const handleSubmit = async () => {
     try {
       await form.validateFields();
     } catch {
+      return;
+    }
+    if (!validateRequiredUserMapping(mappingRows)) {
+      showMissingUsernameMapping();
       return;
     }
     onSubmit(form.getFieldsValue(true) as UserSyncSourceCreateFormValues, mappingRows);
@@ -127,6 +156,10 @@ const UserSyncOperateModal: React.FC<UserSyncOperateModalProps> = ({
     try {
       await form.validateFields();
     } catch {
+      return;
+    }
+    if (!validateRequiredUserMapping(mappingRows)) {
+      showMissingUsernameMapping();
       return;
     }
     onPreview(form.getFieldsValue(true) as UserSyncSourceCreateFormValues, mappingRows, writeOnlyKeys);
@@ -251,7 +284,11 @@ const UserSyncOperateModal: React.FC<UserSyncOperateModalProps> = ({
               <Form.Item
                 name="root_group_name"
                 label={t('system.user.userSyncPage.rootGroupNameLabel')}
-                rules={[{ required: true, whitespace: true }]}
+                validateTrigger="onBlur"
+                rules={[
+                  { required: true, whitespace: true },
+                  { validator: validateRootGroupNameAvailable },
+                ]}
                 extra={
                   (<div className="ml-2 text-xs text-[var(--color-text-3)]">
                     {t('system.user.userSyncPage.rootGroupHelp')}
@@ -273,7 +310,11 @@ const UserSyncOperateModal: React.FC<UserSyncOperateModalProps> = ({
               resolvedTemplate={resolvedTemplate}
               mappingRows={mappingRows}
               t={t}
-              onMappingRowsChange={setMappingRows}
+              onMappingRowsChange={(nextRows) => {
+                setMappingRows(nextRows);
+                setMappingError('');
+              }}
+              mappingError={mappingError}
             />
           )}
         </Form>

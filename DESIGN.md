@@ -1,21 +1,21 @@
 # DESIGN.md
 
-> 设计的「总入口」。本文不放具体 token / 规则,只做导航 —— 各设计真相源就近维护,避免漂移(见 [core-beliefs §5](docs/design-docs/core-beliefs.md))。
+> 设计的总入口。本文只做导航；稳定原则进入 capability，跨会话设计进入 change spec，避免多份文档漂移。
 
 ## 设计真相源在哪
 
 | 你要找的 | 去这里 |
 |----------|--------|
 | 颜色 / 圆角 / 间距 / 排版 / 基础组件 token | [web/DESIGN.md](web/DESIGN.md)(唯一真相源) |
-| 前端工程约定(栈/包管理/i18n/门禁) | [FRONTEND.md](FRONTEND.md) |
-| 产品侧 UI / 交互规范 | [spec/design_ui.md](spec/design_ui.md) |
+| 前端工程约定(栈/包管理/i18n/门禁) | [前端工程规则](specs/capabilities/frontend-engineering.md) |
+| 产品侧 UI / 交互规范 | [specs/capabilities/legacy-design-ui.md](specs/capabilities/legacy-design-ui.md) |
 | 算法服务设计原则 | [algorithms/DESIGN_GUIDE.md](algorithms/DESIGN_GUIDE.md) |
-| 工程信条(为什么这样设计) | [docs/design-docs/core-beliefs.md](docs/design-docs/core-beliefs.md) |
-| 设计决策 / ADR 归档 | [docs/design-docs/index.md](docs/design-docs/index.md) |
-| 系统结构与模块边界 | [ARCHITECTURE.md](ARCHITECTURE.md) |
+| 产品与工程原则 | [PRODUCT.md](PRODUCT.md) · [能力规格](specs/capabilities/) |
+| 设计决策 / ADR 归档 | [docs/adr/](docs/adr/) |
+| 系统结构与模块边界 | [系统架构](specs/capabilities/engineering-architecture.md) |
 
 ## 改设计前的三条规矩
 
 1. **token 不硬编码**:前端任何颜色/圆角/间距取自 `web/DESIGN.md`,改设计先改 token。
-2. **决策要留痕**:非显而易见的设计选择写进 `docs/design-docs/`(必要时建 ADR)。
-3. **一致性优先**:复用既有组件与规范,新范式需在 [PRODUCT_SENSE.md](PRODUCT_SENSE.md) 取舍下成立。
+2. **决策要留痕**:跨会话设计写入 `specs/changes/<feature>/spec.md`；长期且难回滚的决定才写 ADR。
+3. **一致性优先**:复用既有组件与规范，新范式需符合 [产品原则](PRODUCT.md)。

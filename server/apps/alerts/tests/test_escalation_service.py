@@ -1,6 +1,6 @@
 """告警升级服务覆盖测试。
 
-对照 spec/requirements/告警中心/20260531.告警中心-新增告警升级策略.md
+对照 specs/capabilities/legacy-requirements-告警中心-20260531-告警中心-新增告警升级策略.md
 """
 import pytest
 from datetime import timedelta

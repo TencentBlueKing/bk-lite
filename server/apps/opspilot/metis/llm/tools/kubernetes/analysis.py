@@ -1,11 +1,35 @@
 """Kubernetes配置分析和策略检查工具"""
+from collections import OrderedDict
 import json
+from threading import Lock
 from kubernetes.client import ApiException
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from kubernetes import client
 from apps.opspilot.metis.llm.tools.kubernetes.utils import prepare_context, parse_resource_quantity, get_current_cluster_name
 from apps.core.logger import opspilot_logger as logger
+
+
+_K8S_ANALYSIS_DETAIL_CACHE = OrderedDict()
+_K8S_ANALYSIS_DETAIL_CACHE_LOCK = Lock()
+_K8S_ANALYSIS_DETAIL_CACHE_MAX_ENTRIES = 128
+
+
+def _cache_k8s_analysis_details(execution_id: str, deployments: list) -> None:
+    if not execution_id:
+        return
+    with _K8S_ANALYSIS_DETAIL_CACHE_LOCK:
+        _K8S_ANALYSIS_DETAIL_CACHE[execution_id] = deployments
+        _K8S_ANALYSIS_DETAIL_CACHE.move_to_end(execution_id)
+        while len(_K8S_ANALYSIS_DETAIL_CACHE) > _K8S_ANALYSIS_DETAIL_CACHE_MAX_ENTRIES:
+            _K8S_ANALYSIS_DETAIL_CACHE.popitem(last=False)
+
+
+def _take_cached_k8s_analysis_details(execution_id: str) -> list:
+    if not execution_id:
+        return []
+    with _K8S_ANALYSIS_DETAIL_CACHE_LOCK:
+        return _K8S_ANALYSIS_DETAIL_CACHE.pop(execution_id, [])
 
 
 @tool()
@@ -508,24 +532,30 @@ def _collect_issue_workloads(analysis_results):
 
 
 @tool()
-def analyze_deployment_configurations(namespace=None, instance_name=None, name=None, limit=50, offset=0, config: RunnableConfig = None):
+def analyze_deployment_configurations(
+    namespace=None,
+    instance_name=None,
+    name=None,
+    limit: int = 50,
+    offset: int = 0,
+    config: RunnableConfig = None,
+):
     """
     分析 Deployment 配置的合理性
 
     检查每个 Deployment 的资源配置、探针设置、副本策略等，
     评估配置是否合理并识别潜在问题。
 
-    **分页说明：**
-    - 默认每次最多返回 20 个 Deployment 的分析结果（硬上限 50）
-    - 返回结果中包含 total（总数）、returned（本次返回数）、offset（偏移量）
-    - 如果 total > returned + offset，说明还有更多，使用 offset 参数翻页
+    **批处理说明：**
+    - 安全范围内最多分析 100 个 Deployment
+    - 内部按每批最多 50 个处理并聚合为一份完整结果，不依赖模型翻页
 
     Args:
         namespace (str, optional): 要分析的命名空间，不传则扫描全部命名空间
         instance_name (str, optional): 要操作的 Kubernetes 实例名称，多集群时必传
         name (str, optional): 要分析的特定 Deployment 名称。指定后只分析该 Deployment，忽略 limit/offset
-        limit (int, optional): 每次返回的最大 Deployment 数量，默认 20，硬上限 50
-        offset (int, optional): 跳过前 N 个 Deployment，用于分页，默认 0
+        limit (int, optional): 内部批处理大小，默认 50，硬上限 50
+        offset (int, optional): 从第 N 个 Deployment 开始分析，默认 0
         config (RunnableConfig): 工具配置
 
     Returns:
@@ -592,15 +622,31 @@ def analyze_deployment_configurations(namespace=None, instance_name=None, name=N
                         "请先确认名称是否正确，必要时先调用 list_kubernetes_deployments 重新查看可用 Deployment。"
                     ),
                 })
-            paged_items = all_items
+            scan_items = all_items
         else:
-            # 分页切片
-            paged_items = all_items[offset:offset + limit]
+            remaining_items = all_items[offset:]
+            scan_items = [
+                deployment
+                for start in range(0, len(remaining_items), limit)
+                for deployment in remaining_items[start:start + limit]
+            ]
 
         cluster_name = get_current_cluster_name()
         analysis_results = []
 
-        for deployment in paged_items:
+        pdbs_by_namespace = {}
+        for namespace_name in dict.fromkeys(
+            deployment.metadata.namespace for deployment in scan_items
+        ):
+            try:
+                pdbs_by_namespace[namespace_name] = core_v1.list_namespaced_pod_disruption_budget(
+                    namespace_name
+                ).items
+            except Exception as e:
+                pdbs_by_namespace[namespace_name] = []
+                logger.warning(f"[k8s-analysis] PDB 检查跳过（PodDisruptionBudget API 不可用）: {e}")
+
+        for deployment in scan_items:
             analysis = {
                 "name": deployment.metadata.name,
                 "namespace": deployment.metadata.namespace,
@@ -678,20 +724,15 @@ def analyze_deployment_configurations(namespace=None, instance_name=None, name=N
                 analysis["recommendations"].append("考虑配置Pod反亲和性以在不同节点上分布副本")
 
             # 检查中断预算
-            try:
-                pdbs = core_v1.list_namespaced_pod_disruption_budget(
-                    deployment.metadata.namespace)
-                has_pdb = any(pdb.spec.selector
-                              and pdb.spec.selector.match_labels
-                              and all(deployment.spec.selector.match_labels.get(k) == v
-                                      for k, v in pdb.spec.selector.match_labels.items())
-                              for pdb in pdbs.items)
-                if not has_pdb:
-                    analysis["recommendations"].append(
-                        "考虑配置PodDisruptionBudget以控制自愿中断")
-            except Exception as e:
-                # PDB API 可能不可用；不再静默吞掉，至少记录原因（F097）
-                logger.warning(f"[k8s-analysis] PDB 检查跳过（PodDisruptionBudget API 不可用）: {e}")
+            pdbs = pdbs_by_namespace.get(deployment.metadata.namespace, [])
+            has_pdb = any(pdb.spec.selector
+                          and pdb.spec.selector.match_labels
+                          and all(deployment.spec.selector.match_labels.get(k) == v
+                                  for k, v in pdb.spec.selector.match_labels.items())
+                          for pdb in pdbs)
+            if not has_pdb:
+                analysis["recommendations"].append(
+                    "考虑配置PodDisruptionBudget以控制自愿中断")
 
             analysis_results.append(analysis)
 
@@ -777,13 +818,32 @@ def analyze_deployment_configurations(namespace=None, instance_name=None, name=N
             "problematic": _problematic_count,
             "offset": offset,
             "limit": limit,
-            "has_more": (offset + len(analysis_results)) < total_count,
+            "returned": len(analysis_results),
+            "has_more": False,
             "issues_detail": issues_detail,
             "_next_step_hint": next_step_hint,
             # 完整数据供缓存使用，会在进入 LLM context 前被剥离
             "_deployments_full": analysis_results,
         }
-        return json.dumps(result)
+        serialized = json.dumps(result, ensure_ascii=False)
+        configurable = (config or {}).get("configurable") if isinstance(config, dict) else None
+        execution_id = configurable.get("execution_id", "") if isinstance(configurable, dict) else ""
+        if execution_id:
+            _cache_k8s_analysis_details(execution_id, analysis_results)
+            # 完整明细只用于本轮修复报告，不应进入 LLM 工具消息。大结果会被
+            # 单消息 token 保护截断，进而破坏 JSON 并导致结构化报告丢失。
+            if len(serialized) > 12_000:
+                result.pop("_deployments_full", None)
+                result["issues_detail"] = [
+                    {
+                        **item,
+                        "workloads": list(item.get("workloads") or [])[:10],
+                        "workloads_truncated": len(item.get("workloads") or []) > 10,
+                    }
+                    for item in issues_detail
+                ]
+                serialized = json.dumps(result, ensure_ascii=False)
+        return serialized
 
     except ApiException as e:
         return json.dumps({"error": f"分析Deployment配置失败: {str(e)}"})

@@ -49,6 +49,7 @@ import { cloneDeep } from 'lodash';
 import SavedQueryDrawer from './savedQueryDrawer';
 import SaveQueryModal from './saveQueryModal';
 import {
+  generateSearchId,
   getMetricsMapKey,
   resolveInitialPlugin,
   resolveMetricSelection
@@ -57,8 +58,6 @@ import {
 const { Option } = Select;
 
 export type { QueryGroup, SearchPayload, QueryPanelRef, QueryPanelProps };
-
-const generateId = () => crypto.randomUUID();
 
 const generateGroupName = (index: number) => `查询条件 ${index + 1}`;
 
@@ -82,7 +81,7 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
     const initialMetricId = searchParams.get('metric_id');
     const [queryGroups, setQueryGroups] = useState<QueryGroup[]>([
       {
-        id: generateId(),
+        id: generateSearchId(),
         name: '查询条件 1',
         object: '',
         plugin: null,
@@ -416,7 +415,7 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
 
     const addQueryGroup = () => {
       const newGroup: QueryGroup = {
-        id: generateId(),
+        id: generateSearchId(),
         name: generateGroupName(queryGroups.length),
         object: '',
         plugin: null,
@@ -449,7 +448,7 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
       if (!group) return;
       const newGroup: QueryGroup = {
         ...cloneDeep(group),
-        id: generateId(),
+        id: generateSearchId(),
         name: generateGroupName(queryGroups.length)
       };
       setQueryGroups((prev) => [...prev, newGroup]);
@@ -573,7 +572,7 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
     const clearAll = () => {
       setQueryGroups([
         {
-          id: generateId(),
+          id: generateSearchId(),
           name: '查询条件 1',
           object: '',
           plugin: null,

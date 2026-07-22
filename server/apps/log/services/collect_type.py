@@ -7,12 +7,7 @@ from django.db import transaction
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import log_logger as logger
 from apps.log.constants.database import DatabaseConstants
-from apps.log.models import (
-    CollectInstance,
-    CollectInstanceOrganization,
-    CollectConfig,
-    CollectType,
-)
+from apps.log.models import CollectConfig, CollectInstance, CollectInstanceOrganization, CollectType
 from apps.log.utils.plugin_controller import Controller
 from apps.rpc.node_mgmt import NodeMgmt
 
@@ -230,11 +225,7 @@ class CollectTypeService:
             child_config_env = child_info.get("env_config") if child_info else None
             if child_config_env:
                 child_env = {**(child_env or {}), **child_config_env}
-            if (
-                collect_type_obj.collector == "Packetbeat"
-                and collect_type_obj.name == "flows"
-                and isinstance(child_content, dict)
-            ):
+            if collect_type_obj.collector == "Packetbeat" and collect_type_obj.name == "flows" and isinstance(child_content, dict):
                 operating_system = "linux"
                 if node_id:
                     nodes_info = NodeMgmt().get_nodes_by_ids([node_id])
@@ -264,14 +255,20 @@ class CollectTypeService:
             if name:
                 instance.name = name
                 instance.save()
-            # 更新组织信息
-            instance.collectinstanceorganization_set.all().delete()
-            if organizations:
+            if organizations is not None:
+                instance.collectinstanceorganization_set.all().delete()
                 creates = [CollectInstanceOrganization(collect_instance_id=instance_id, organization=org) for org in organizations]
                 CollectInstanceOrganization.objects.bulk_create(creates, batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE)
 
     @staticmethod
-    def search_instance_with_permission(collect_type_id, name, page, page_size, queryset):
+    def search_instance_with_permission(
+        collect_type_id,
+        name,
+        page,
+        page_size,
+        queryset,
+        visible_organization_ids,
+    ):
         """
         使用权限过滤后的查询集查询采集实例列表（参考监控模块实现）
         支持单采集类型查询和全部采集类型查询
@@ -310,7 +307,10 @@ class CollectTypeService:
 
         # 补充组织与配置信息
         org_map = defaultdict(list)
-        org_objs = CollectInstanceOrganization.objects.filter(collect_instance_id__in=instance_ids).values_list("collect_instance_id", "organization")
+        org_objs = CollectInstanceOrganization.objects.filter(
+            collect_instance_id__in=instance_ids,
+            organization__in=list(visible_organization_ids),
+        ).values_list("collect_instance_id", "organization")
         for instance_id, organization in org_objs:
             org_map[instance_id].append(organization)
 

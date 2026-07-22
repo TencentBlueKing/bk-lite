@@ -1,6 +1,6 @@
 """告警中心 permission_scope 组织范围过滤覆盖测试。
 
-对照 spec/prd/告警中心：告警/事故/事件按组织(team)隔离，支持包含子组织。
+对照 specs/capabilities/legacy-prd-告警中心-告警.md：告警/事故/事件按组织(team)隔离，支持包含子组织。
 """
 
 from types import SimpleNamespace

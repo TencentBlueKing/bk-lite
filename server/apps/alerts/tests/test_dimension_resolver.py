@@ -1,6 +1,6 @@
 """聚合维度解析器覆盖测试。
 
-对照 spec/prd/告警中心·配置：相关性规则按应用/基础设施/实例维度降级聚合。
+对照 specs/capabilities/legacy-prd-告警中心-配置.md：相关性规则按应用/基础设施/实例维度降级聚合。
 """
 
 from apps.alerts.aggregation.core.dimension_resolver import DimensionResolver, DimensionType

@@ -1,7 +1,22 @@
 from rest_framework import serializers
 
+from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.utils.current_team_scope import _normalize_organization_ids
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.services.installer import InstallerService
+
+
+class CanonicalOrganizationIdField(serializers.Field):
+    default_error_messages = {"invalid": "组织 ID 必须是规范正整数"}
+
+    def to_internal_value(self, data):
+        try:
+            return next(iter(_normalize_organization_ids([data])))
+        except BaseAppException:
+            self.fail("invalid")
+
+    def to_representation(self, value):
+        return int(value)
 
 
 class InstallNodeSerializer(serializers.Serializer):
@@ -9,7 +24,11 @@ class InstallNodeSerializer(serializers.Serializer):
     node_name = serializers.CharField(required=False, allow_blank=True, default="")
     os = serializers.CharField(required=False, allow_blank=True)
     cpu_architecture = serializers.CharField(required=False, allow_blank=True, default="")
-    organizations = serializers.ListField(child=serializers.IntegerField(), required=False, default=list)
+    organizations = serializers.ListField(
+        child=CanonicalOrganizationIdField(),
+        required=True,
+        allow_empty=False,
+    )
     port = serializers.IntegerField(required=False)
     username = serializers.CharField(required=False, allow_blank=True)
     password = serializers.CharField(required=False, allow_blank=True, default="")
@@ -66,7 +85,11 @@ class InstallCommandRequestSerializer(serializers.Serializer):
     cpu_architecture = serializers.CharField(allow_blank=False)
     package_id = serializers.IntegerField()
     cloud_region_id = serializers.IntegerField()
-    organizations = serializers.ListField(child=serializers.IntegerField(), required=False, default=list)
+    organizations = serializers.ListField(
+        child=CanonicalOrganizationIdField(),
+        required=True,
+        allow_empty=False,
+    )
     node_name = serializers.CharField(required=False, allow_blank=True, default="")
 
     def validate(self, attrs):

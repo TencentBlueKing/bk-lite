@@ -1,6 +1,6 @@
 """CMDB InstanceManage 服务层覆盖测试（mock GraphClient）。
 
-对照 spec/prd/CMDB·资产：实例列表查询、关联实例查询、批量删除、按ID查询。
+对照 specs/capabilities/legacy-prd-cmdb-资产.md：实例列表查询、关联实例查询、批量删除、按ID查询。
 """
 
 import pytest

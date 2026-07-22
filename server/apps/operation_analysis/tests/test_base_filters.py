@@ -1,6 +1,6 @@
 """GroupPermissionMixin 组织过滤的覆盖测试。
 
-对照 spec/prd/运营分析：数据源/画布按组织分组隔离。
+对照 specs/capabilities/legacy-prd-运营分析-运营分析.md：数据源/画布按组织分组隔离。
 """
 
 from types import SimpleNamespace

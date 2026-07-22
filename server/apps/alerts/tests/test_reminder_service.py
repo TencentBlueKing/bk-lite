@@ -1,6 +1,6 @@
 """告警提醒服务覆盖测试。
 
-对照 spec/prd/告警中心·告警：分派后按级别频率提醒，认领/关闭后停止提醒。
+对照 specs/capabilities/legacy-prd-告警中心-告警.md：分派后按级别频率提醒，认领/关闭后停止提醒。
 """
 
 import pytest

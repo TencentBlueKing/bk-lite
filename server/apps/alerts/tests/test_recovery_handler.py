@@ -1,6 +1,6 @@
 """告警恢复处理器与恢复检查器覆盖测试。
 
-对照 spec/prd/告警中心·告警：RECOVERY/CLOSED 事件按 external_id 关联到活跃告警；
+对照 specs/capabilities/legacy-prd-告警中心-告警.md：RECOVERY/CLOSED 事件按 external_id 关联到活跃告警；
 当告警的所有 CREATED 事件都有更晚的恢复事件时，自动置为已恢复。
 """
 

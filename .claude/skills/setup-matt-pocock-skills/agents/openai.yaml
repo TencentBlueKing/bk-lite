@@ -1,0 +1,5 @@
+interface:
+  display_name: "Setup Matt Pocock Skills"
+  short_description: "Help with Setup Matt Pocock Skills tasks"
+policy:
+  allow_implicit_invocation: false

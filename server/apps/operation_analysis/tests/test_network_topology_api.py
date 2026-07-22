@@ -134,7 +134,8 @@ def test_create_canvas_persists_groups_for_directory_tree_visibility(authenticat
 
     早期 :class:`NetworkTopologySerializer` 的 ``Meta.fields`` 没有列出
     ``groups``,DRF 会静默丢弃该字段,导致前端发来的 ``groups`` 落库为 ``[]``,
-    进而目录树隐藏新画布(spec/requirements/运营分析/网络拓扑大屏需求设计 §2.1)。
+    进而目录树隐藏新画布
+    (specs/capabilities/legacy-requirements-运营分析-20260707-运营分析-网络拓扑大屏需求设计.md §2.1)。
     """
     authenticated_user.is_superuser = True
     directory = _make_directory()  # groups=[1]

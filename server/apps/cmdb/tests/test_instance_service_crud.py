@@ -1,6 +1,6 @@
 """CMDB InstanceManage 增删改与关联覆盖测试（fake_graph + 旁路 mock）。
 
-对照 spec/prd/CMDB·资产：实例创建、单条/批量修改、批量删除、关联创建/删除/详情、
+对照 specs/capabilities/legacy-prd-cmdb-资产.md：实例创建、单条/批量修改、批量删除、关联创建/删除/详情、
 全文检索系列、check_asso_mapping。
 """
 

@@ -50,13 +50,10 @@ class TestHandleDispatch:
         names = [c[0] for c in calls]
         assert names == ["node_init"]
 
-    def test_monitor_app_initializes_plugins_and_metrics_stream(self, calls):
+    def test_monitor_app_runs_plugin_init(self, calls):
         cmd = _make_command()
         cmd.handle(apps="monitor", continue_on_error=False)
-        assert [c[0] for c in calls] == [
-            "plugin_init",
-            "ensure_monitor_metrics_stream",
-        ]
+        assert [c[0] for c in calls] == ["plugin_init"]
 
     def test_multiple_apps_dispatched_in_order(self, calls):
         cmd = _make_command()
@@ -160,24 +157,6 @@ class TestErrorHandlingPolicy:
             cmd.handle(apps="monitor,log", continue_on_error=False)
         assert "log_init" not in calls
         assert any("ERR:" in m and "monitor" in m for m in cmd.stdout.messages)
-
-    def test_metrics_stream_failure_aborts_monitor_initialization(self, monkeypatch):
-        calls = []
-
-        def fake_call_command(name, *args, **kwargs):
-            calls.append(name)
-            if name == "ensure_monitor_metrics_stream":
-                raise RuntimeError("JetStream unavailable")
-
-        monkeypatch.setattr(bi, "call_command", fake_call_command)
-        monkeypatch.setattr(bi, "preload_language_cache", lambda *a, **k: {"loaded": [], "skipped": [], "failed": []})
-        cmd = _make_command()
-
-        with pytest.raises(RuntimeError, match="JetStream unavailable"):
-            cmd.handle(apps="monitor,log", continue_on_error=False)
-
-        assert calls == ["plugin_init", "ensure_monitor_metrics_stream"]
-        assert any("ERR:" in m and "初始化 monitor 失败: JetStream unavailable" in m for m in cmd.stdout.messages)
 
     def test_continue_on_error_runs_remaining_apps_and_reports_failures(self, monkeypatch):
         calls = []

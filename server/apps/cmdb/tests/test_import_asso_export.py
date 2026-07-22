@@ -1,6 +1,6 @@
 """CMDB Import 关联数据 / format_import_asso_data / Export 字段类型分支覆盖。
 
-对照 spec/prd/CMDB·实例导入导出：Excel 关联数据处理、用户/组织/枚举/标签/表格字段导出格式化、
+对照 specs/capabilities/legacy-prd-cmdb-资产.md：Excel 关联数据处理、用户/组织/枚举/标签/表格字段导出格式化、
 inst_association 名称回填、关联校验入口。
 """
 
