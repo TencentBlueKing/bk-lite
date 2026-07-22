@@ -35,12 +35,15 @@ end
 if KEYS[4] ~= '' then
     local callback_value = redis.call('GET', KEYS[4])
     if callback_value then
-        local decoded_ok, callback_context = pcall(cjson.decode, callback_value)
+        local decoded_ok, callback_context =
+            pcall(cjson.decode, callback_value)
         if not decoded_ok or type(callback_context) ~= 'table' then
             return -1
         end
         local status = callback_context['status']
-        if type(status) ~= 'table' or type(status['execution']) ~= 'string' then
+        if type(status) ~= 'table'
+            or type(status['execution']) ~= 'string'
+        then
             return -1
         end
         local execution = status['execution']

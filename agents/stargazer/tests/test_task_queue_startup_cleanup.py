@@ -378,7 +378,7 @@ async def test_cleanup_releases_lock_only_when_its_token_still_matches(
 
 
 @pytest.mark.asyncio
-async def test_cleanup_preserves_running_marker_waiting_for_host_remote_callback(
+async def test_cleanup_keeps_waiting_host_callback_marker(
     fake_redis,
 ):
     fake_redis.strings.update(
@@ -769,7 +769,7 @@ async def test_startup_cleanup_success_log_contains_only_safe_result_counts(
 
 
 @pytest.mark.asyncio
-async def test_stop_listener_cancels_and_awaits_startup_cleanup_before_closing_pool(
+async def test_stop_listener_awaits_cleanup_before_pool_close(
     monkeypatch,
 ):
     started = asyncio.Event()
@@ -927,7 +927,8 @@ async def test_background_exception_logging_failure_is_consumed(monkeypatch):
             StartupCleanupResult("success", None, 1, 0, 0, 1, 0, False),
             "info",
             "event=task_queue_startup_cleanup status=success "
-            "scanned=1 candidates=0 deleted=0 preserved=1 errors=0 truncated=False",
+            "scanned=1 candidates=0 deleted=0 preserved=1 errors=0 "
+            "truncated=False",
         ),
         (
             StartupCleanupResult(
@@ -942,15 +943,17 @@ async def test_background_exception_logging_failure_is_consumed(monkeypatch):
             StartupCleanupResult("warning", "timeout", 1, 1, 0, 1, 0, False),
             "warning",
             "event=task_queue_startup_cleanup status=warning reason=timeout "
-            "scanned=1 candidates=1 deleted=0 preserved=1 errors=0 truncated=False",
+            "scanned=1 candidates=1 deleted=0 preserved=1 errors=0 "
+            "truncated=False",
         ),
         (
             StartupCleanupResult(
                 "warning", "marker_errors", 1, 1, 0, 1, 1, False
             ),
             "warning",
-            "event=task_queue_startup_cleanup status=warning reason=marker_errors "
-            "scanned=1 candidates=1 deleted=0 preserved=1 errors=1 truncated=False",
+            "event=task_queue_startup_cleanup status=warning "
+            "reason=marker_errors scanned=1 candidates=1 deleted=0 "
+            "preserved=1 errors=1 truncated=False",
         ),
     ],
     ids=["success", "locked", "timeout", "marker_errors"],

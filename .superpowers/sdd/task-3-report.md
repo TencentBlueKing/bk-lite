@@ -54,9 +54,9 @@
 
 ## 环境顾虑
 
-- task worktree 不含 `server/.venv`；主仓受控虚拟环境的 Black/isort 已对
-  触及文件通过。flake8 仍报 8 个提交前已存在的 E501（Lua 字符串及既有
-  启动生命周期测试行）；本次新增行已收敛，不将该基线失败误报为通过。
+- task worktree 不含 `server/.venv`，故使用主仓受控虚拟环境；Black、isort、
+  flake8 已对全部触及 Python 文件通过。此前 8 个同功能文件 E501 均已机械
+  拆行或缩短测试名收口。
 - `test_locked_sync_rejects_stale_lockfile_offline` 在本 sandbox 因子进程找不到
   `uv` 而失败，不是业务断言失败；需在具有 `uv` 的 sandbox 外环境复跑。
 
