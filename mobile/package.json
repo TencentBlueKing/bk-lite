@@ -10,6 +10,7 @@
     "lint": "eslint .",
     "type-check": "tsc --noEmit",
     "test:build-config": "node --test scripts/mobile-build-config-test.mjs",
+    "test:secure-storage": "node --test scripts/secure-storage-fail-closed-test.mjs",
     "test:h5-deploy": "node --test scripts/mobile-h5-deploy-config-test.mjs",
     "test:h5-auth": "node --test scripts/mobile-h5-auth-test.mjs",
     "test:h5-image": "node scripts/mobile-h5-image-test.mjs",
