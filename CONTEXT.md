@@ -9,7 +9,7 @@
 - **Node**：由 `server/node_mgmt` 管理、通过 Sidecar/Collector 与平台通信的受管节点。
 - **Collector**：采集基础设施、日志、指标或配置数据并通过 NATS 等通道上报的运行单元。
 - **日志采集实例**：用户配置的一条具体日志来源，以全局唯一的实例 ID 标识；它是日志权限、数据范围和提取规则归属的共同对象。_Avoid_：日志源、采集任务。
-- **日志提取器**：绑定日志采集实例、按用户指定顺序执行的一条结构化字段提取规则。_Avoid_：解析器、清洗规则、Vector 规则。
+- **日志提取器**：把日志事件中的属性提取为结构化属性的一条有序规则。_Avoid_：解析器、清洗规则、Vector 规则。
 - **Stargazer**：`agents/stargazer/` 中的云资源与外部资源采集代理。
 - **Capability contract**：`specs/capabilities/<capability>.md` 中长期有效的业务、验收、架构和运行约束。
 - **Change spec**：`specs/changes/<feature>/spec.md` 中跨会话的变更意图、实现决定和测试接缝。
