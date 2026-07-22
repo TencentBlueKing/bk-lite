@@ -27,6 +27,11 @@ def deliver_create_group(group_id) -> None:
         group = _lock_group(group_id)
         if group is None or group.status == IncidentIMGroup.Status.UNLINKED:
             return
+        if group.incident.status not in IncidentStatus.ACTIVATE_STATUS:
+            _pause_create_for_closed_incident(group)
+            return
+        if group.status == IncidentIMGroup.Status.PAUSED or group.pause_reason:
+            return
         if group.external_chat_id:
             should_create = False
         else:
@@ -93,10 +98,12 @@ def deliver_create_group(group_id) -> None:
 
     invalid_ids = set((result.payload or {}).get("invalid_member_ids") or [])
     now = timezone.now()
+    delivery_paused = False
     with transaction.atomic():
         locked = _lock_group(group_id)
         if locked is None or locked.status == IncidentIMGroup.Status.UNLINKED:
             return
+        _pause_create_for_closed_incident(locked)
         locked.external_chat_id = chat_id
         locked.current_stage = IncidentIMGroup.Stage.ADDING_MEMBERS
         locked.last_error_code = ""
@@ -117,8 +124,11 @@ def deliver_create_group(group_id) -> None:
             error_code="IM_MEMBER_INVALID",
             error_message="外部用户标识无效",
         )
+        delivery_paused = _is_group_delivery_paused(locked)
 
     # chat_id 与首批成员事实已独立提交；此处崩溃时重放绝不会再次建群。
+    if delivery_paused:
+        return
     _enqueue_add_members(group_id)
 
 
@@ -316,6 +326,24 @@ def _is_group_delivery_paused(group):
         or bool(group.pause_reason)
         or group.incident.status not in IncidentStatus.ACTIVATE_STATUS
     )
+
+
+def _pause_create_for_closed_incident(group) -> None:
+    if (
+        group.incident.status in IncidentStatus.ACTIVATE_STATUS
+        or group.pause_reason == IncidentIMGroup.PauseReason.MANUAL
+        or group.status
+        not in (
+            IncidentIMGroup.Status.PENDING_CREATE,
+            IncidentIMGroup.Status.CREATING,
+            IncidentIMGroup.Status.PAUSED,
+        )
+    ):
+        return
+    group.status = IncidentIMGroup.Status.PAUSED
+    group.pause_reason = IncidentIMGroup.PauseReason.INCIDENT_CLOSED
+    group.resume_after_reopen = True
+    group.save(update_fields=["status", "pause_reason", "resume_after_reopen"])
 
 
 def _initial_member_ids(group, members) -> list[str]:

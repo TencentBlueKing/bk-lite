@@ -188,11 +188,8 @@ def test_close_group_hook_rolls_back_with_incident_when_later_operation_fails(mo
 @pytest.mark.parametrize(
     ("group_status", "external_chat_id"),
     [
-        (IncidentIMGroup.Status.PENDING_CREATE, ""),
-        (IncidentIMGroup.Status.CREATING, ""),
         (IncidentIMGroup.Status.CREATE_FAILED, ""),
         (IncidentIMGroup.Status.DEGRADED, "oc_degraded"),
-        (IncidentIMGroup.Status.ACTIVE, ""),
     ],
 )
 def test_close_reopen_preserves_non_resumable_group_authoritative_state(group_status, external_chat_id):
@@ -213,3 +210,50 @@ def test_close_reopen_preserves_non_resumable_group_authoritative_state(group_st
     group.refresh_from_db()
     assert group.status == group_status
     assert group.pause_reason == ""
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "group_status",
+    [
+        IncidentIMGroup.Status.PENDING_CREATE,
+        IncidentIMGroup.Status.CREATING,
+        IncidentIMGroup.Status.ACTIVE,
+        IncidentIMGroup.Status.ACTIVE_PARTIAL,
+    ],
+)
+def test_close_reopen_pre_chat_group_is_idempotently_requeued_for_create(group_status):
+    from apps.alerts.service.incident_im.reconcile import (
+        pause_group_for_closed_incident,
+        resume_group_for_reopened_incident,
+    )
+
+    incident = _make_incident(status=IncidentStatus.PROCESSING)
+    group = _make_im_group(incident, status=group_status, external_chat_id="")
+    op = IncidentOperator(user="u1")
+
+    assert op.operate("close", "I1", {})["result"] is True
+    pause_group_for_closed_incident(incident.id)
+    group.refresh_from_db()
+    assert group.status == IncidentIMGroup.Status.PAUSED
+    assert group.pause_reason == IncidentIMGroup.PauseReason.INCIDENT_CLOSED
+    assert group.resume_after_reopen is True
+    pause_group_for_closed_incident(incident.id)
+    group.refresh_from_db()
+    assert group.status == IncidentIMGroup.Status.PAUSED
+    assert group.pause_reason == IncidentIMGroup.PauseReason.INCIDENT_CLOSED
+    assert group.resume_after_reopen is True
+
+    assert op.operate("reopen", "I1", {})["result"] is True
+    resume_group_for_reopened_incident(incident.id)
+    group.refresh_from_db()
+    assert group.status == IncidentIMGroup.Status.PENDING_CREATE
+    assert group.current_stage == IncidentIMGroup.Stage.QUEUED
+    assert group.pause_reason == ""
+    assert AlertOutbox.objects.filter(
+        kind="incident_im_group.create", payload={"group_id": str(group.id)}
+    ).count() == 1
+    resume_group_for_reopened_incident(incident.id)
+    assert AlertOutbox.objects.filter(
+        kind="incident_im_group.create", payload={"group_id": str(group.id)}
+    ).count() == 1

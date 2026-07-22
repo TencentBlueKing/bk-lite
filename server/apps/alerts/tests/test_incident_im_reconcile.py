@@ -504,6 +504,46 @@ def test_reopen_ignores_removed_unjoined_history_when_restoring_active(group):
 
 
 @pytest.mark.django_db
+def test_reopen_inflight_create_reconcile_continues_initial_members_when_continuous_sync_off(
+    group, channel
+):
+    _map_user(channel, "bob")
+    group.incident.collaborators = ["bob"]
+    group.incident.save(update_fields=["collaborators"])
+    IncidentIMMember.objects.create(
+        group=group,
+        username="bob",
+        role=IncidentIMMember.Role.COLLABORATOR,
+        external_id="ou_bob",
+        external_id_type="open_id",
+        mapping_status=IncidentIMMember.MappingStatus.MAPPED,
+        sync_status=IncidentIMMember.SyncStatus.PENDING,
+    )
+    group.status = IncidentIMGroup.Status.PAUSED
+    group.pause_reason = IncidentIMGroup.PauseReason.INCIDENT_CLOSED
+    group.resume_after_reopen = True
+    group.continuous_sync_enabled = False
+    group.save(
+        update_fields=[
+            "status",
+            "pause_reason",
+            "resume_after_reopen",
+            "continuous_sync_enabled",
+        ]
+    )
+
+    resume_group_for_reopened_incident(group.incident_id)
+    reconcile_outbox = AlertOutbox.objects.get(kind="incident_im_group.reconcile")
+    assert reconcile_outbox.payload == {
+        "incident_id": group.incident_id,
+        "resume_create": True,
+    }
+
+    assert deliver_outbox_record(reconcile_outbox.id) is True
+    assert AlertOutbox.objects.filter(kind="incident_im_group.add_members").exists()
+
+
+@pytest.mark.django_db
 def test_periodic_scan_is_fair_across_201_groups_and_isolates_failure(monkeypatch, incident, channel):
     groups = [
         IncidentIMGroup.objects.create(

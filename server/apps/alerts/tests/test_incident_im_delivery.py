@@ -1,9 +1,17 @@
 import uuid
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 from unittest import mock
 
 import pytest
+from django.db import close_old_connections, connections
 
+from apps.alerts.constants.constants import IncidentStatus
 from apps.alerts.models import AlertOutbox, Incident, IncidentIMGroup, IncidentIMMember
+from apps.alerts.service.incident_im.reconcile import (
+    pause_group_for_closed_incident,
+    resume_group_for_reopened_incident,
+)
 from apps.alerts.service.outbox import deliver_outbox_record
 from apps.system_mgmt.models import IMNotificationChannel, IntegrationInstance
 from apps.system_mgmt.providers.runtime import CapabilityExecutionResult
@@ -185,6 +193,134 @@ def test_create_group_fails_closed_when_snapshotted_owner_is_no_longer_current_o
     assert group.last_error_code == "IM_OWNER_NOT_CURRENT_OPERATOR"
     assert group.last_error_message == "建群负责人已不再是当前 Incident 负责人"
     assert outbox.status == AlertOutbox.Status.DELIVERED
+
+
+@pytest.mark.django_db
+def test_create_outbox_closed_before_delivery_pauses_without_provider_and_reopen_requeues_create(
+    group, pending_members
+):
+    group.incident.status = IncidentStatus.CLOSED
+    group.incident.save(update_fields=["status"])
+    pause_group_for_closed_incident(group.incident_id)
+    outbox = AlertOutbox.objects.create(
+        kind="incident_im_group.create",
+        payload={"group_id": str(group.id)},
+        idempotency_key=f"create-before-close-{uuid.uuid4().hex}",
+    )
+
+    with mock.patch(
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute"
+    ) as execute:
+        assert deliver_outbox_record(outbox.id) is True
+
+    execute.assert_not_called()
+    group.refresh_from_db()
+    outbox.refresh_from_db()
+    assert group.status == IncidentIMGroup.Status.PAUSED
+    assert group.pause_reason == IncidentIMGroup.PauseReason.INCIDENT_CLOSED
+    assert group.resume_after_reopen is True
+    assert outbox.status == AlertOutbox.Status.DELIVERED
+
+    group.incident.status = IncidentStatus.PROCESSING
+    group.incident.save(update_fields=["status", "updated_at"])
+    resume_group_for_reopened_incident(group.incident_id)
+
+    group.refresh_from_db()
+    assert group.status == IncidentIMGroup.Status.PENDING_CREATE
+    assert group.current_stage == IncidentIMGroup.Stage.QUEUED
+    assert group.pause_reason == ""
+    assert AlertOutbox.objects.filter(
+        kind="incident_im_group.create",
+        payload={"group_id": str(group.id)},
+        status=AlertOutbox.Status.PENDING,
+    ).exclude(pk=outbox.pk).count() == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_create_ack_after_close_persists_ack_but_stays_paused_and_reopen_reconciles(
+    group, pending_members
+):
+    if connections["default"].vendor != "sqlite":
+        pytest.skip("当前 Barrier 合同使用 SQLite 独立连接验证")
+    collaborators = [f"user-{index}" for index in range(50)]
+    group.incident.collaborators = collaborators
+    group.incident.save(update_fields=["collaborators"])
+    IncidentIMMember.objects.bulk_create(
+        [
+            IncidentIMMember(
+                group=group,
+                username=username,
+                role=IncidentIMMember.Role.COLLABORATOR,
+                external_id=f"ou_{username}",
+                external_id_type="open_id",
+                mapping_status=IncidentIMMember.MappingStatus.MAPPED,
+                sync_status=IncidentIMMember.SyncStatus.PENDING,
+            )
+            for username in collaborators
+        ]
+    )
+    outbox = AlertOutbox.objects.create(
+        kind="incident_im_group.create",
+        payload={"group_id": str(group.id)},
+        idempotency_key=f"create-inflight-close-{uuid.uuid4().hex}",
+    )
+    barrier = Barrier(2)
+
+    def provider_ack_after_close(*args, **kwargs):
+        barrier.wait(timeout=10)
+        barrier.wait(timeout=10)
+        return CapabilityExecutionResult.success_result(
+            "created", payload={"chat_id": "oc_race", "invalid_member_ids": []}
+        )
+
+    def deliver_from_independent_connection():
+        close_old_connections()
+        try:
+            return deliver_outbox_record(outbox.id)
+        finally:
+            connections.close_all()
+
+    with mock.patch(
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
+        side_effect=provider_ack_after_close,
+    ):
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(deliver_from_independent_connection)
+            try:
+                barrier.wait(timeout=10)
+                group.incident.status = IncidentStatus.CLOSED
+                group.incident.save(update_fields=["status"])
+                pause_group_for_closed_incident(group.incident_id)
+                barrier.wait(timeout=10)
+                assert future.result(timeout=20) is True
+            finally:
+                barrier.abort()
+                if not future.done():
+                    future.cancel()
+
+    group.refresh_from_db()
+    outbox.refresh_from_db()
+    assert group.external_chat_id == "oc_race"
+    assert group.status == IncidentIMGroup.Status.PAUSED
+    assert group.pause_reason == IncidentIMGroup.PauseReason.INCIDENT_CLOSED
+    assert group.resume_after_reopen is True
+    assert group.members.filter(sync_status=IncidentIMMember.SyncStatus.JOINED).count() == 50
+    assert group.members.filter(sync_status=IncidentIMMember.SyncStatus.PENDING).count() == 2
+    assert not AlertOutbox.objects.filter(
+        kind__in=["incident_im_group.add_members", "incident_im_group.send_summary"]
+    ).exists()
+    assert outbox.status == AlertOutbox.Status.DELIVERED
+
+    group.incident.status = IncidentStatus.PROCESSING
+    group.incident.save(update_fields=["status", "updated_at"])
+    resume_group_for_reopened_incident(group.incident_id)
+
+    group.refresh_from_db()
+    assert group.status == IncidentIMGroup.Status.ACTIVE_PARTIAL
+    assert group.pause_reason == ""
+    assert AlertOutbox.objects.filter(
+        kind="incident_im_group.reconcile", status=AlertOutbox.Status.PENDING
+    ).count() == 1
 
 
 @pytest.mark.django_db

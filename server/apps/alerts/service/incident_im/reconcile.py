@@ -10,6 +10,7 @@ from apps.alerts.service.outbox import enqueue_outbox
 
 
 OUTBOX_ADD_MEMBERS = "incident_im_group.add_members"
+OUTBOX_CREATE = "incident_im_group.create"
 OUTBOX_RECONCILE = "incident_im_group.reconcile"
 SYNCABLE_GROUP_STATUSES = (
     IncidentIMGroup.Status.ACTIVE,
@@ -17,7 +18,7 @@ SYNCABLE_GROUP_STATUSES = (
 )
 
 
-def reconcile_incident_im_group(incident_id, force_delivery=False):
+def reconcile_incident_im_group(incident_id, force_delivery=False, resume_create=False):
     with transaction.atomic():
         group = _lock_active_group_for_incident(incident_id)
         if group is None:
@@ -47,7 +48,11 @@ def reconcile_incident_im_group(incident_id, force_delivery=False):
         ):
             group.status = IncidentIMGroup.Status.ACTIVE_PARTIAL
             group.save(update_fields=["status"])
-        if not _can_deliver(group, force_delivery=force_delivery):
+        if not _can_deliver(
+            group,
+            force_delivery=force_delivery,
+            resume_create=resume_create,
+        ):
             return group
 
         pending = list(
@@ -92,13 +97,21 @@ def pause_group_for_closed_incident(incident_id):
             or group.pause_reason == IncidentIMGroup.PauseReason.MANUAL
             or group.status
             not in (
+                IncidentIMGroup.Status.PENDING_CREATE,
+                IncidentIMGroup.Status.CREATING,
                 IncidentIMGroup.Status.ACTIVE,
                 IncidentIMGroup.Status.ACTIVE_PARTIAL,
             )
-            or not group.external_chat_id
         ):
             return group
-        group.resume_after_reopen = group.continuous_sync_enabled
+        group.resume_after_reopen = (
+            group.status
+            in (
+                IncidentIMGroup.Status.PENDING_CREATE,
+                IncidentIMGroup.Status.CREATING,
+            )
+            or group.continuous_sync_enabled
+        )
         group.status = IncidentIMGroup.Status.PAUSED
         group.pause_reason = IncidentIMGroup.PauseReason.INCIDENT_CLOSED
         group.save(update_fields=["resume_after_reopen", "status", "pause_reason"])
@@ -112,11 +125,32 @@ def resume_group_for_reopened_incident(incident_id):
             group is None
             or group.status != IncidentIMGroup.Status.PAUSED
             or group.pause_reason != IncidentIMGroup.PauseReason.INCIDENT_CLOSED
-            or not group.external_chat_id
         ):
             return group
 
         should_resume = group.resume_after_reopen
+        if not group.external_chat_id:
+            group.status = IncidentIMGroup.Status.PENDING_CREATE
+            group.current_stage = IncidentIMGroup.Stage.QUEUED
+            group.pause_reason = ""
+            group.resume_after_reopen = False
+            group.save(
+                update_fields=[
+                    "status",
+                    "current_stage",
+                    "pause_reason",
+                    "resume_after_reopen",
+                ]
+            )
+            enqueue_outbox(
+                OUTBOX_CREATE,
+                {"group_id": str(group.id)},
+                "incident-im-group:"
+                f"{group.id}:create:reopen:"
+                f"{group.incident.updated_at.isoformat(timespec='microseconds')}",
+            )
+            return group
+
         desired_usernames = get_desired_usernames(group.incident)
         has_member_gap = (
             group.members.filter(username__in=desired_usernames)
@@ -132,16 +166,19 @@ def resume_group_for_reopened_incident(incident_id):
         group.resume_after_reopen = False
         group.save(update_fields=["status", "pause_reason", "resume_after_reopen"])
         if should_resume:
-            enqueue_reconcile(group.incident)
+            enqueue_reconcile(group.incident, resume_create=True)
         return group
 
 
-def enqueue_reconcile(incident):
+def enqueue_reconcile(incident, *, resume_create=False):
     updated_at = incident.updated_at.isoformat(timespec="microseconds")
+    payload = {"incident_id": incident.pk}
+    if resume_create:
+        payload["resume_create"] = True
     return enqueue_outbox(
         OUTBOX_RECONCILE,
-        {"incident_id": incident.pk},
-        f"incident-im-group:{incident.pk}:reconcile:{updated_at}",
+        payload,
+        f"incident-im-group:{incident.pk}:reconcile:{updated_at}:{int(resume_create)}",
     )
 
 
@@ -154,12 +191,12 @@ def _lock_active_group_for_incident(incident_id):
     )
 
 
-def _can_deliver(group, force_delivery):
+def _can_deliver(group, force_delivery, resume_create=False):
     return (
         group.status in SYNCABLE_GROUP_STATUSES
         and not group.pause_reason
         and group.incident.status in IncidentStatus.ACTIVATE_STATUS
-        and (group.continuous_sync_enabled or force_delivery)
+        and (group.continuous_sync_enabled or force_delivery or resume_create)
     )
 
 

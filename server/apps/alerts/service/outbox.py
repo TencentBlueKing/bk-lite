@@ -54,7 +54,10 @@ def _deliver_payload(kind: str, payload: dict) -> None:
         if handler is None:
             raise ValueError(f"unsupported alert outbox kind: {kind}")
         if kind == OUTBOX_RECONCILE:
-            handler(payload["incident_id"])
+            handler(
+                payload["incident_id"],
+                resume_create=bool(payload.get("resume_create")),
+            )
         else:
             handler(payload["group_id"])
         return
