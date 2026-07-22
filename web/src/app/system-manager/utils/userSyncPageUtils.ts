@@ -169,7 +169,7 @@ export function getUserSyncRunSummary(
         users: record.synced_user_count,
         groups: record.synced_group_count,
         conflicts: conflictCount,
-        usernames: conflictUsernames.join('、'),
+        usernames: conflictUsernames.join(t('system.user.userSyncPage.runSummary.usernameListSeparator')),
       });
     } else {
       summary = formatTemplate(t('system.user.userSyncPage.runSummary.partial'), {
@@ -191,15 +191,26 @@ export function getUserSyncRunSummary(
         users: record.synced_user_count,
         groups: record.synced_group_count,
         conflicts: conflictCount,
-        usernames: conflictUsernames.join('、'),
+        usernames: conflictUsernames.join(t('system.user.userSyncPage.runSummary.usernameListSeparator')),
       });
     } else {
-      summary = `同步结果：${externalSummary}；${record.summary}`;
+      summary = formatTemplate(t('system.user.userSyncPage.runSummary.result'), {
+        external: externalSummary,
+        summary: record.summary,
+      });
     }
   } else {
-    summary = `同步结果：${externalSummary}；${record.summary}`;
+    summary = formatTemplate(t('system.user.userSyncPage.runSummary.result'), {
+      external: externalSummary,
+      summary: record.summary,
+    });
   }
 
   const emailSummary = getEmailStatusSummary(payload.email_status, t);
-  return emailSummary ? `${summary}；${emailSummary}` : summary;
+  return emailSummary
+    ? formatTemplate(t('system.user.userSyncPage.runSummary.withEmailStatus'), {
+      summary,
+      email: emailSummary,
+    })
+    : summary;
 }

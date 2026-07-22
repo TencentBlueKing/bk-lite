@@ -24,6 +24,8 @@ import {saveAuthToken} from "@/utils/crossDomainAuth";
 import {
   AUTH_POPUP_SUCCESS_MESSAGE,
   buildThirdLoginCallbackUrl,
+  buildLegacyThirdLoginCallbackUrl,
+  getLegacyThirdLoginCode,
   resolveThirdLoginFlag
 } from "@/utils/authRedirect";
 import type { LoginAuthLoginResult } from "./login-auth/types";
@@ -55,6 +57,8 @@ interface LoginResponse {
   locale?: string;
   timezone?: string;
   redirect_url?: string;
+  legacy_external_callback_url?: string;
+  legacy_third_login_code?: string;
   password_expiry_reminder?: string;
   // OTP two-phase authentication fields
   require_otp?: boolean;
@@ -75,6 +79,7 @@ export default function SigninClient({
   const error = searchParams?.error || "";
   const third_login = searchParams?.third_login;
   const thirdLogin = searchParams?.thirdLogin;
+  const thirdLoginCode = getLegacyThirdLoginCode(callbackUrl);
   const popup = searchParams?.popup;
   const thirdLoginFlag = resolveThirdLoginFlag(thirdLogin, third_login);
   const isPopupWindowMode = popup === 'true' || popup === '1';
@@ -127,6 +132,8 @@ export default function SigninClient({
       challenge_id: otpLoginResult.challenge_id,
       qr_code: otpLoginResult.qr_code,
       redirect_url: otpLoginResult.redirect_url,
+      legacy_external_callback_url: otpLoginResult.legacy_external_callback_url,
+      legacy_third_login_code: otpLoginResult.legacy_third_login_code,
     });
     setQrCodeUrl(otpLoginResult.qr_code || "");
     setAuthStep('otp-verification');
@@ -148,6 +155,7 @@ export default function SigninClient({
   const loginAuthValidation = useLoginAuthValidation({
     enabled: authStep === 'login',
     callbackUrl: callbackUrl || '/',
+    legacyThirdLoginCode: thirdLoginCode,
     messages: loginAuthValidationMessages,
     onOtpRequired: applyOtpLoginResult,
     onSessionSync: async (loginResult) => {
@@ -163,6 +171,8 @@ export default function SigninClient({
         enable_otp: loginResult.enable_otp,
         password_expiry_reminder: loginResult.password_expiry_reminder,
         redirect_url: loginResult.redirect_url,
+        legacy_external_callback_url: loginResult.legacy_external_callback_url,
+        legacy_third_login_code: loginResult.legacy_third_login_code,
       });
 
       if (!success) {
@@ -308,11 +318,18 @@ export default function SigninClient({
           sessionStorage.setItem('password_expiry_reminder', userData.password_expiry_reminder);
         }
 
-        const targetUrl = buildThirdLoginCallbackUrl(
-          userData.redirect_url || callbackUrl || "/",
-          userData.token,
-          thirdLoginFlag,
-        );
+        const legacyThirdLoginCode = userData.legacy_third_login_code || thirdLoginCode;
+        const targetUrl = legacyThirdLoginCode
+          ? buildLegacyThirdLoginCallbackUrl(
+            userData.legacy_external_callback_url || userData.redirect_url || callbackUrl,
+            userData.token,
+            legacyThirdLoginCode,
+          )
+          : buildThirdLoginCallbackUrl(
+            userData.redirect_url || callbackUrl || "/",
+            userData.token,
+            thirdLoginFlag,
+          );
 
         finishAuthentication(targetUrl);
         return true;
