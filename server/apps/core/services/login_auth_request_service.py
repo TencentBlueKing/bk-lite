@@ -31,6 +31,8 @@ LOGIN_RESULT_ALLOWED_KEYS = {
     "challenge_id",
     "qr_code",
     "need_binding",
+    "legacy_external_callback_url",
+    "legacy_third_login_code",
 }
 
 LOGIN_AUTH_CALLBACK_PATH = "/api/v1/core/api/login_auth/callback/"
@@ -181,7 +183,14 @@ def get_login_auth_callback_uri(request=None, redirect_origin: str | None = None
     return ""
 
 
-def create_auth_request(binding_id: int, provider_key: str, callback_url: str, redirect_origin: str | None = None) -> dict:
+def create_auth_request(
+    binding_id: int,
+    provider_key: str,
+    callback_url: str,
+    redirect_origin: str | None = None,
+    legacy_external_callback_url: str | None = None,
+    legacy_third_login_code: str | None = None,
+) -> dict:
     auth_request_id = str(uuid.uuid4())
     poll_token = str(uuid.uuid4())
     created_at = timezone.now()
@@ -193,6 +202,8 @@ def create_auth_request(binding_id: int, provider_key: str, callback_url: str, r
         "provider_key": provider_key,
         "callback_url": callback_url,
         "redirect_origin": redirect_origin or "",
+        "legacy_external_callback_url": legacy_external_callback_url or "",
+        "legacy_third_login_code": legacy_third_login_code or "",
         "poll_token": poll_token,
         "status": "pending",
         "error_message": "",
