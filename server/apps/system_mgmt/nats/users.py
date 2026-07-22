@@ -1,4 +1,7 @@
 # flake8: noqa
+from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.utils.current_team_scope import _normalize_organization_ids
+
 from .common import *  # noqa: F401,F403
 
 
@@ -44,8 +47,6 @@ def _get_actor_user_scope(actor_context, include_children=False):
     username = (actor_context or {}).get("username")
     domain = (actor_context or {}).get("domain", "domain.com")
     current_team = (actor_context or {}).get("current_team")
-    actor_group_list = (actor_context or {}).get("group_list")
-
     if not username or current_team in (None, ""):
         return None, []
 
@@ -57,8 +58,8 @@ def _get_actor_user_scope(actor_context, include_children=False):
     is_superuser = _is_persisted_superuser(user_obj)
 
     try:
-        current_team = int(current_team)
-    except (TypeError, ValueError):
+        current_team = next(iter(_normalize_organization_ids([current_team])))
+    except BaseAppException:
         return user_obj, []
 
     if is_superuser:
@@ -66,9 +67,8 @@ def _get_actor_user_scope(actor_context, include_children=False):
             return user_obj, GroupUtils.get_group_with_descendants(current_team)
         return user_obj, [current_team]
 
-    user_group_list = actor_group_list if actor_group_list else user_obj.group_list
     authorized_groups = GroupUtils.get_user_authorized_child_groups(
-        user_group_list,
+        user_obj.group_list,
         current_team,
         include_children=include_children,
     )

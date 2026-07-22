@@ -813,6 +813,108 @@ def test_controller_install_allows_new_node_id_before_node_registration(monkeypa
 
 
 @pytest.mark.django_db
+def test_manual_install_status_rejects_existing_sibling_node_before_service(monkeypatch):
+    region = _region("manual-status-sibling")
+    sibling_node = _node(region, "manual-status-node-sibling", 2)
+    _patch_broad_permission(monkeypatch)
+    service_calls = []
+    monkeypatch.setattr(
+        installer_view.InstallerService,
+        "get_manual_install_status",
+        lambda node_ids: service_calls.append(node_ids) or [],
+    )
+
+    response = installer_view.InstallerViewSet.as_view({"post": "controller_manual_install_status"})(
+        _request(
+            {"node_ids": [sibling_node.id]},
+            permissions=("cloud_region_node-Edit",),
+        )
+    )
+
+    assert response.status_code == 403
+    assert service_calls == []
+
+
+@pytest.mark.django_db
+def test_manual_install_status_rejects_mixed_sibling_and_new_node_batch(monkeypatch):
+    region = _region("manual-status-mixed")
+    sibling_node = _node(region, "manual-status-mixed-sibling", 2)
+    _patch_broad_permission(monkeypatch)
+    service_calls = []
+    monkeypatch.setattr(
+        installer_view.InstallerService,
+        "get_manual_install_status",
+        lambda node_ids: service_calls.append(node_ids) or [],
+    )
+
+    response = installer_view.InstallerViewSet.as_view({"post": "controller_manual_install_status"})(
+        _request(
+            {"node_ids": [sibling_node.id, "manual-status-not-registered"]},
+            permissions=("cloud_region_node-Edit",),
+        )
+    )
+
+    assert response.status_code == 403
+    assert service_calls == []
+
+
+@pytest.mark.django_db
+def test_manual_install_status_allows_authorized_existing_and_new_node_batch(monkeypatch):
+    region = _region("manual-status-authorized")
+    current_node = _node(region, "manual-status-current", 1)
+    new_node_id = "manual-status-not-registered"
+    _patch_broad_permission(monkeypatch)
+    service_calls = []
+
+    def fake_status(node_ids):
+        service_calls.append(node_ids)
+        return [
+            {"node_id": current_node.id, "status": "installed"},
+            {"node_id": new_node_id, "status": "waiting"},
+        ]
+
+    monkeypatch.setattr(
+        installer_view.InstallerService,
+        "get_manual_install_status",
+        fake_status,
+    )
+
+    response = installer_view.InstallerViewSet.as_view({"post": "controller_manual_install_status"})(
+        _request(
+            {"node_ids": [current_node.id, new_node_id]},
+            permissions=("cloud_region_node-Edit",),
+        )
+    )
+
+    assert response.status_code == 200
+    assert service_calls == [[current_node.id, new_node_id]]
+    assert _response_data(response)[1] == {
+        "node_id": new_node_id,
+        "status": "waiting",
+    }
+
+
+@pytest.mark.parametrize("node_ids", ["node-1", [True], [1], [""], ["  "]])
+def test_manual_install_status_rejects_malformed_node_id_batch_before_service(monkeypatch, node_ids):
+    service_calls = []
+    monkeypatch.setattr(
+        installer_view.InstallerService,
+        "get_manual_install_status",
+        lambda values: service_calls.append(values) or [],
+    )
+
+    response = installer_view.InstallerViewSet.as_view({"post": "controller_manual_install_status"})(
+        _request(
+            {"node_ids": node_ids},
+            permissions=("cloud_region_node-Edit",),
+        )
+    )
+
+    assert response.status_code == 400
+    assert service_calls == []
+
+
+@pytest.mark.django_db
 def test_collector_task_summary_counts_only_current_team_nodes(monkeypatch):
     region = _region("collector-task-current-team")
     current_node = _node(region, "collector-task-current", 1)

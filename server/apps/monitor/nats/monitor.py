@@ -987,7 +987,7 @@ def query_monitor_alert_segments(query_data: dict, *args, **kwargs):
     except ValueError as exc:
         return {"result": False, "data": [], "message": str(exc)}
 
-    _, _, _, scope_ids, scope_error = _get_nats_actor_scope(user_info)
+    _, _, _, scope_ids, _, scope_error = _get_nats_actor_scope(user_info)
     if scope_error:
         return scope_error
 
@@ -1082,7 +1082,7 @@ def query_latest_active_alerts(query_data: Optional[dict] = None, *args, **kwarg
     except ValueError as exc:
         return {"result": False, "data": [], "message": str(exc)}
 
-    _, _, _, scope_ids, scope_error = _get_nats_actor_scope(user_info)
+    _, _, _, scope_ids, _, scope_error = _get_nats_actor_scope(user_info)
     if scope_error:
         return scope_error
 
@@ -1205,14 +1205,13 @@ def mm_query(query: str, step="5m", *args, **kwargs):
 def _get_nats_actor_scope(user_info):
     """经 Task1 RPC 认证 NATS 用户的 current_team 数据范围。"""
     if not isinstance(user_info, dict):
-        return None, None, None, None, {"result": False, "data": {}, "message": "缺少用户或组织信息"}
+        return None, None, None, None, None, {"result": False, "data": {}, "message": "缺少用户或组织信息"}
 
     user = _normalize_permission_user(
         user_info.get("user"),
         domain=user_info.get("domain"),
     )
     include_children = user_info.get("include_children", False)
-    is_superuser = user_info.get("is_superuser", False)
     username = getattr(user, "username", None)
     domain = getattr(user, "domain", None)
     if (
@@ -1221,20 +1220,18 @@ def _get_nats_actor_scope(user_info):
         or not isinstance(domain, str)
         or not domain.strip()
         or type(include_children) is not bool
-        or type(is_superuser) is not bool
     ):
-        return None, None, None, None, {"result": False, "data": {}, "message": "缺少用户或组织信息"}
+        return None, None, None, None, None, {"result": False, "data": {}, "message": "缺少用户或组织信息"}
 
     try:
         current_team = next(iter(_normalize_organization_ids([user_info.get("team")])))
     except BaseAppException:
-        return None, None, None, None, {"result": False, "data": {}, "message": "current_team 参数非法"}
+        return None, None, None, None, None, {"result": False, "data": {}, "message": "current_team 参数非法"}
 
     actor_context = {
         "username": username,
         "domain": domain,
         "current_team": current_team,
-        "is_superuser": is_superuser,
     }
     try:
         scope_result = SystemMgmt().get_authorized_groups_scoped(
@@ -1242,29 +1239,30 @@ def _get_nats_actor_scope(user_info):
             include_children=include_children,
         )
     except Exception:
-        return None, None, None, None, {"result": False, "data": {}, "message": "获取 current_team 权限范围失败"}
+        return None, None, None, None, None, {"result": False, "data": {}, "message": "获取 current_team 权限范围失败"}
 
     if (
         not isinstance(scope_result, dict)
         or not scope_result.get("result")
         or not isinstance(scope_result.get("data"), list)
+        or type(scope_result.get("is_superuser")) is not bool
     ):
-        return None, None, None, None, {"result": False, "data": {}, "message": "获取 current_team 权限范围失败"}
+        return None, None, None, None, None, {"result": False, "data": {}, "message": "获取 current_team 权限范围失败"}
     try:
         scope_ids = _normalize_organization_ids(scope_result["data"])
     except BaseAppException:
-        return None, None, None, None, {"result": False, "data": {}, "message": "获取 current_team 权限范围失败"}
+        return None, None, None, None, None, {"result": False, "data": {}, "message": "获取 current_team 权限范围失败"}
     if current_team not in scope_ids:
-        return None, None, None, None, {"result": False, "data": {}, "message": "获取 current_team 权限范围失败"}
+        return None, None, None, None, None, {"result": False, "data": {}, "message": "获取 current_team 权限范围失败"}
 
-    return user, current_team, include_children, scope_ids, None
+    return user, current_team, include_children, scope_ids, scope_result["is_superuser"], None
 
 
 def _get_nats_permission_context(user_info, permission_module):
     """解析用户 NATS 请求的 current_team 和对象权限，任一异常均 fail closed。"""
-    user, current_team, include_children, scope_ids, error = _get_nats_actor_scope(user_info)
+    user, current_team, include_children, scope_ids, is_superuser, error = _get_nats_actor_scope(user_info)
     if error:
-        return None, None, error
+        return None, None, None, error
 
     permissions_result = get_permissions_rules(
         user,
@@ -1274,16 +1272,16 @@ def _get_nats_permission_context(user_info, permission_module):
         include_children=include_children,
     )
     if not isinstance(permissions_result, dict):
-        return None, None, {"result": False, "data": {}, "message": "获取对象权限失败"}
+        return None, None, None, {"result": False, "data": {}, "message": "获取对象权限失败"}
 
     permission_data = permissions_result.get("data")
     if not isinstance(permission_data, dict):
-        return None, None, {"result": False, "data": {}, "message": "获取对象权限失败"}
-    return permission_data, scope_ids, None
+        return None, None, None, {"result": False, "data": {}, "message": "获取对象权限失败"}
+    return permission_data, scope_ids, is_superuser, None
 
 
 def _get_nats_accessible_policy_queryset(user_info):
-    permissions, scope_ids, error = _get_nats_permission_context(
+    permissions, scope_ids, is_superuser, error = _get_nats_permission_context(
         user_info,
         PermissionConstants.POLICY_MODULE,
     )
@@ -1297,7 +1295,7 @@ def _get_nats_accessible_policy_queryset(user_info):
         .prefetch_related("policyorganization_set")
         .distinct()
     )
-    if user_info.get("is_superuser") is True:
+    if is_superuser:
         return queryset, None
 
     authorized_ids = []
@@ -1317,7 +1315,7 @@ def _get_nats_accessible_policy_queryset(user_info):
 
 
 def _get_nats_accessible_instance_queryset(user_info):
-    permissions, scope_ids, error = _get_nats_permission_context(
+    permissions, scope_ids, is_superuser, error = _get_nats_permission_context(
         user_info,
         PermissionConstants.INSTANCE_MODULE,
     )
@@ -1332,7 +1330,7 @@ def _get_nats_accessible_instance_queryset(user_info):
         .prefetch_related("monitorinstanceorganization_set")
         .distinct()
     )
-    if user_info.get("is_superuser") is True:
+    if is_superuser:
         return queryset, None
 
     authorized_ids = []

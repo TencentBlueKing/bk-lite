@@ -24,6 +24,7 @@ def authorized_current_team_scope(mocker):
         side_effect=lambda actor_context, include_children=False: {
             "result": True,
             "data": [actor_context["current_team"]],
+            "is_superuser": False,
         },
     )
 
@@ -454,7 +455,7 @@ class TestBuildMonitorAlertSegment:
 class TestNatsPermissionContext:
     @pytest.mark.parametrize("team", [None, True, 1.0, "01", 0, -1])
     def test_invalid_current_team_fails_closed(self, team):
-        _, _, error = nm._get_nats_permission_context(
+        _, _, _, error = nm._get_nats_permission_context(
             {
                 "user": SimpleNamespace(username="u", domain="domain.com"),
                 "team": team,
@@ -471,7 +472,7 @@ class TestNatsPermissionContext:
             return_value={"data": {}, "team": [1]},
         )
 
-        _, scope_ids, error = nm._get_nats_permission_context(
+        _, scope_ids, _, error = nm._get_nats_permission_context(
             {
                 "user": "tenant-user",
                 "domain": "tenant.example",

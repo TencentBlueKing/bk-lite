@@ -29,10 +29,14 @@ def _policy(name, organizations):
     return policy
 
 
-def _patch_nats_scope(mocker, organization_ids):
+def _patch_nats_scope(mocker, organization_ids, *, is_superuser=False):
     return mocker.patch(
         "apps.monitor.nats.monitor.SystemMgmt.get_authorized_groups_scoped",
-        return_value={"result": True, "data": list(organization_ids)},
+        return_value={
+            "result": True,
+            "data": list(organization_ids),
+            "is_superuser": is_superuser,
+        },
     )
 
 
@@ -199,7 +203,7 @@ def test_raw_data_mismatch_is_hidden_before_s3_read(scoped_superuser, mocker):
     s3_read.assert_not_called()
 
 
-def test_nats_statistics_superuser_inherits_policy_current_team(mocker):
+def test_nats_statistics_uses_persisted_superuser_when_caller_claims_false(mocker):
     current_policy = _policy("nats-current-policy", [1])
     sibling_policy = _policy("nats-sibling-policy", [2])
     current_alert = MonitorAlert.objects.create(policy_id=current_policy.id)
@@ -251,13 +255,13 @@ def test_nats_statistics_superuser_inherits_policy_current_team(mocker):
         "apps.monitor.nats.monitor.get_permissions_rules",
         return_value={"data": {"all": {"team": [1]}}, "team": [1]},
     )
-    _patch_nats_scope(mocker, [1])
+    _patch_nats_scope(mocker, [1], is_superuser=True)
 
     response = monitor_nats.get_monitor_statistics(
         user_info={
             "user": SimpleNamespace(username="admin", domain="domain.com"),
             "team": 1,
-            "is_superuser": True,
+            "is_superuser": False,
             "include_children": False,
         }
     )
@@ -268,6 +272,46 @@ def test_nats_statistics_superuser_inherits_policy_current_team(mocker):
     assert response["data"]["event_total"] == 1
     assert response["data"]["alert_snapshot_total"] == 1
     assert response["data"]["no_data_baseline_total"] == 1
+
+
+def test_nats_statistics_rejects_forged_superuser_claim_for_object_permissions(mocker):
+    policy = _policy("nats-forged-superuser-policy", [1])
+    instance = MonitorInstance.objects.create(
+        id="nats-forged-superuser-instance",
+        name="nats-forged-superuser-instance",
+        monitor_object=policy.monitor_object,
+        is_active=True,
+    )
+    MonitorInstanceOrganization.objects.create(
+        monitor_instance=instance,
+        organization=1,
+    )
+    _patch_nats_scope(mocker, [1], is_superuser=False)
+    mocker.patch(
+        "apps.monitor.nats.monitor.get_permissions_rules",
+        return_value={
+            "data": {
+                str(policy.monitor_object_id): {
+                    "instance": [],
+                    "team": [],
+                }
+            },
+            "team": [1],
+        },
+    )
+
+    response = monitor_nats.get_monitor_statistics(
+        user_info={
+            "user": SimpleNamespace(username="ordinary-user", domain="domain.com"),
+            "team": 1,
+            "is_superuser": True,
+            "include_children": False,
+        }
+    )
+
+    assert response["result"] is True
+    assert response["data"]["policy_total"] == 0
+    assert response["data"]["monitor_instance_total"] == 0
 
 
 def test_nats_statistics_missing_actor_scope_fails_closed():
@@ -302,6 +346,7 @@ def test_nats_statistics_rejects_forged_sibling_current_team(mocker):
         side_effect=lambda actor_context, include_children=False: {
             "result": True,
             "data": [1] if actor_context["current_team"] == 1 else [],
+            "is_superuser": False,
         },
     )
     mocker.patch(

@@ -163,6 +163,11 @@ class InstallerViewSet(ViewSet):
     @HasPermission("cloud_region_node-Edit")
     def controller_manual_install_status(self, request):
         node_ids = request.data.get("node_ids", [])
+        if not isinstance(node_ids, list) or any(type(node_id) is not str or not node_id.strip() for node_id in node_ids):
+            return WebUtils.response_error(error_message="node_ids must be a list of non-empty strings")
+        error_response = _authorize_existing_install_nodes(request, node_ids)
+        if error_response:
+            return error_response
         data = InstallerService.get_manual_install_status(node_ids)
         return WebUtils.response_success(data)
 

@@ -6,7 +6,7 @@ from apps.system_mgmt import nats_api
 from apps.system_mgmt.nats_api import get_assignable_groups, get_authorized_groups_scoped, get_group_users_scoped
 
 
-def test_get_authorized_groups_scoped_prefers_actor_context_group_list(monkeypatch):
+def test_get_authorized_groups_scoped_ignores_forged_actor_context_group_list(monkeypatch):
     user = types.SimpleNamespace(
         username="scope-context-user",
         domain="domain.com",
@@ -32,7 +32,7 @@ def test_get_authorized_groups_scoped_prefers_actor_context_group_list(monkeypat
         captured["user_group_list"] = user_group_list
         captured["target_group_id"] = target_group_id
         captured["include_children"] = include_children
-        return [7]
+        return [target_group_id] if target_group_id in user_group_list else []
 
     monkeypatch.setattr(nats_api.GroupUtils, "get_user_authorized_child_groups", fake_get_user_authorized_child_groups)
 
@@ -46,12 +46,45 @@ def test_get_authorized_groups_scoped_prefers_actor_context_group_list(monkeypat
         }
     )
 
-    assert result == {"result": True, "data": [7], "is_superuser": False}
+    assert result == {"result": True, "data": [], "is_superuser": False}
     assert captured == {
-        "user_group_list": [7],
+        "user_group_list": [],
         "target_group_id": 7,
         "include_children": False,
     }
+
+
+@pytest.mark.parametrize("current_team", [True, 1.0, "01", 0, -1, "", None])
+def test_get_authorized_groups_scoped_rejects_noncanonical_current_team(monkeypatch, current_team):
+    user = types.SimpleNamespace(
+        username="strict-current-team-user",
+        domain="domain.com",
+        group_list=[1],
+        is_superuser=False,
+    )
+
+    class _UserQuerySet:
+        @staticmethod
+        def first():
+            return user
+
+    class _UserManager:
+        @staticmethod
+        def filter(**kwargs):
+            return _UserQuerySet()
+
+    monkeypatch.setattr(nats_api.User, "objects", _UserManager())
+
+    result = get_authorized_groups_scoped(
+        {
+            "username": "strict-current-team-user",
+            "domain": "domain.com",
+            "current_team": current_team,
+            "group_list": [1],
+        }
+    )
+
+    assert result == {"result": True, "data": [], "is_superuser": False}
 
 
 def test_get_authorized_groups_scoped_rejects_forged_superuser_claim(monkeypatch):
