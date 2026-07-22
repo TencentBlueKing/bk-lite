@@ -62,7 +62,7 @@ urlpatterns = [
     ),
     path(
         "api/incident/<int:incident_pk>/im-group/options/",
-        IncidentIMGroupViewSet.as_view({"get": "options"}),
+        IncidentIMGroupViewSet.as_view({"get": "group_options"}),
     ),
     path(
         "api/incident/<int:incident_pk>/im-group/members/",

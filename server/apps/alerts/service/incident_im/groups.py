@@ -1,6 +1,7 @@
 import uuid
+from time import sleep
 
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, OperationalError, connection, transaction
 
 from apps.alerts.constants.constants import IncidentStatus
 from apps.alerts.models import Incident, IncidentIMGroup, IncidentIMMember
@@ -11,34 +12,36 @@ from apps.system_mgmt.services.im_group_service import IMGroupChannelError, IMGr
 
 
 class IncidentIMGroupService:
+    SQLITE_WINNER_RECHECK_DELAYS = (0, 0.01, 0.02, 0.04, 0.08, 0.16)
+
     @classmethod
     def create(cls, *, incident_id, actor, channel_id, group_name, owner_username, continuous_sync_enabled):
-        with transaction.atomic():
-            incident = Incident.objects.select_for_update().filter(pk=incident_id).first()
-            if incident is None:
-                raise IncidentIMError("IM_INCIDENT_NOT_FOUND", "Incident 不存在", 404)
-            cls.require_operator(incident, actor)
-            if incident.status not in IncidentStatus.ACTIVATE_STATUS:
-                raise IncidentIMError("IM_INCIDENT_NOT_ACTIVE", "Incident 已关闭或已处理，无法创建协作群", 409)
-            if IncidentIMGroup.objects.filter(incident=incident, active_slot=1).exists():
-                raise IncidentIMError("IM_GROUP_ACTIVE_EXISTS", "Incident 已存在未解绑的协作群", 409)
+        try:
+            with transaction.atomic():
+                incident = Incident.objects.select_for_update().filter(pk=incident_id).first()
+                if incident is None:
+                    raise IncidentIMError("IM_INCIDENT_NOT_FOUND", "Incident 不存在", 404)
+                cls.require_operator(incident, actor)
+                if incident.status not in IncidentStatus.ACTIVATE_STATUS:
+                    raise IncidentIMError("IM_INCIDENT_NOT_ACTIVE", "Incident 已关闭或已处理，无法创建协作群", 409)
+                if IncidentIMGroup.objects.filter(incident=incident, active_slot=1).exists():
+                    raise IncidentIMError("IM_GROUP_ACTIVE_EXISTS", "Incident 已存在未解绑的协作群", 409)
 
-            channel = cls.require_ready_channel(actor, channel_id)
-            member_id_type = str(channel.external_receive_field or "").strip()
-            members = resolve_incident_members(incident, channel, member_id_type=member_id_type)
-            mapped_operators = {
-                member.username: member
-                for member in members
-                if member.role == IncidentIMMember.Role.OPERATOR
-                and member.mapping_status == IncidentIMMember.MappingStatus.MAPPED
-            }
-            if not mapped_operators:
-                raise IncidentIMError("IM_NO_MAPPED_OPERATOR", "至少需要一名已映射的负责人")
-            owner = mapped_operators.get(owner_username)
-            if owner is None:
-                raise IncidentIMError("IM_OWNER_NOT_MAPPED", "所选群主必须是已映射的负责人")
+                channel = cls.require_ready_channel(actor, channel_id)
+                member_id_type = str(channel.external_receive_field or "").strip()
+                members = resolve_incident_members(incident, channel, member_id_type=member_id_type)
+                mapped_operators = {
+                    member.username: member
+                    for member in members
+                    if member.role == IncidentIMMember.Role.OPERATOR
+                    and member.mapping_status == IncidentIMMember.MappingStatus.MAPPED
+                }
+                if not mapped_operators:
+                    raise IncidentIMError("IM_NO_MAPPED_OPERATOR", "至少需要一名已映射的负责人")
+                owner = mapped_operators.get(owner_username)
+                if owner is None:
+                    raise IncidentIMError("IM_OWNER_NOT_MAPPED", "所选群主必须是已映射的负责人")
 
-            try:
                 with transaction.atomic():
                     group_id = uuid.uuid4()
                     group = IncidentIMGroup.objects.create(
@@ -78,9 +81,39 @@ class IncidentIMGroupService:
                         {"group_id": str(group.id)},
                         f"incident-im-group:{group.id}:create",
                     )
-            except IntegrityError as exc:
+        except IntegrityError as exc:
+            if cls._has_active_group(incident_id):
                 raise IncidentIMError("IM_GROUP_ACTIVE_EXISTS", "Incident 已存在未解绑的协作群", 409) from exc
-            return group
+            raise
+        except OperationalError as exc:
+            if cls._is_sqlite_lock_error(exc) and cls._has_active_group_after_sqlite_lock(incident_id):
+                raise IncidentIMError("IM_GROUP_ACTIVE_EXISTS", "Incident 已存在未解绑的协作群", 409) from exc
+            raise
+        return group
+
+    @staticmethod
+    def _has_active_group(incident_id):
+        return IncidentIMGroup.objects.filter(incident_id=incident_id, active_slot=1).exists()
+
+    @classmethod
+    def _has_active_group_after_sqlite_lock(cls, incident_id):
+        for delay in cls.SQLITE_WINNER_RECHECK_DELAYS:
+            if delay:
+                sleep(delay)
+            try:
+                if cls._has_active_group(incident_id):
+                    return True
+            except OperationalError as exc:
+                if not cls._is_sqlite_lock_error(exc):
+                    raise
+        return False
+
+    @staticmethod
+    def _is_sqlite_lock_error(exc):
+        message = str(exc).lower()
+        return connection.vendor == "sqlite" and (
+            "database is locked" in message or "database table is locked" in message or "database is busy" in message
+        )
 
     @staticmethod
     def require_operator(incident, actor):

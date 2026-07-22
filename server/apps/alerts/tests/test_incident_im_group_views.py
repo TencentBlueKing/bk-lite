@@ -1,6 +1,10 @@
 import uuid
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
+from unittest.mock import patch
 
 import pytest
+from django.db import IntegrityError, close_old_connections, connections
 
 from apps.alerts.models import AlertOutbox, Incident, IncidentIMGroup, IncidentIMMember
 from apps.alerts.constants.constants import IncidentStatus
@@ -172,11 +176,15 @@ def test_create_snapshots_partially_mapped_members_and_enqueues_outbox(
     group = IncidentIMGroup.objects.get(incident=incident)
     assert group.status == IncidentIMGroup.Status.PENDING_CREATE
     assert group.member_id_type == "open_id"
+    assert group.active_slot == 1
+    assert group.idempotency_key == f"bklite-{group.id.hex}"
+    assert group.external_owner_id == "ou_operator"
     assert set(group.members.values_list("username", flat=True)) == {"operator", "collaborator"}
     assert group.members.get(username="operator").mapping_status == IncidentIMMember.MappingStatus.MAPPED
     assert group.members.get(username="collaborator").mapping_status == IncidentIMMember.MappingStatus.UNMAPPED
     outbox = AlertOutbox.objects.get(idempotency_key=f"incident-im-group:{group.id}:create")
     assert outbox.kind == "incident_im_group.create"
+    assert outbox.payload == {"group_id": str(group.id)}
 
 
 @pytest.mark.django_db(transaction=True)
@@ -201,6 +209,12 @@ def test_closed_incident_cannot_create_group(api_client, operator, incident, cha
     response = api_client.post(group_url(incident), create_payload(channel), format="json")
 
     assert response.status_code == 409
+    assert response.json() == {
+        "result": False,
+        "code": "IM_INCIDENT_NOT_ACTIVE",
+        "message": "Incident 已关闭或已处理，无法创建协作群",
+        "data": {"details": {}},
+    }
 
 
 @pytest.mark.django_db
@@ -251,3 +265,79 @@ def test_settings_require_operator_and_update_continuous_sync(api_client, operat
     group.refresh_from_db()
     assert group.continuous_sync_enabled is False
     assert api_client.patch(f"{group_url(incident)}{group.id}/", {"continuous_sync_enabled": True}, format="json").status_code == 404
+
+
+@pytest.mark.django_db
+def test_http_options_returns_metadata_without_operator_or_preview_logic(api_client, collaborator, incident):
+    api_client.force_authenticate(collaborator)
+
+    group_response = api_client.options(group_url(incident))
+    members_response = api_client.options(f"{group_url(incident)}members/")
+
+    assert group_response.status_code == 200
+    assert members_response.status_code == 200
+    assert "name" in group_response.json()["data"]
+    assert "name" in members_response.json()["data"]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_sqlite_independent_connections_translate_busy_loser_after_active_winner(
+    operator, incident, channel, operator_mapping, monkeypatch
+):
+    from apps.alerts.service.incident_im import groups
+
+    barrier = Barrier(2)
+    original_resolve = groups.resolve_incident_members
+
+    def synchronized_resolve(*args, **kwargs):
+        barrier.wait(timeout=10)
+        return original_resolve(*args, **kwargs)
+
+    monkeypatch.setattr(groups, "resolve_incident_members", synchronized_resolve)
+
+    def create_from_independent_connection():
+        close_old_connections()
+        try:
+            actor = AuthUser.objects.get(pk=operator.pk)
+            group = groups.IncidentIMGroupService.create(
+                incident_id=incident.id,
+                actor=actor,
+                channel_id=channel.id,
+                group_name="并发测试群",
+                owner_username="operator",
+                continuous_sync_enabled=True,
+            )
+            return ("created", str(group.id))
+        except Exception as exc:
+            return (type(exc).__name__, getattr(exc, "code", ""))
+        finally:
+            connections.close_all()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        outcomes = [future.result(timeout=20) for future in [executor.submit(create_from_independent_connection) for _ in range(2)]]
+
+    assert sorted(outcome[0] for outcome in outcomes) == ["IncidentIMError", "created"]
+    assert {outcome[1] for outcome in outcomes if outcome[0] == "IncidentIMError"} == {"IM_GROUP_ACTIVE_EXISTS"}
+    assert IncidentIMGroup.objects.filter(incident=incident, active_slot=1).count() == 1
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("failure_target", ["bulk_create", "enqueue_outbox"])
+def test_non_group_integrity_error_is_not_translated_to_active_conflict(
+    operator, incident, channel, operator_mapping, failure_target
+):
+    from apps.alerts.service.incident_im import groups
+
+    target = "apps.alerts.models.IncidentIMMember.objects.bulk_create" if failure_target == "bulk_create" else "apps.alerts.service.incident_im.groups.enqueue_outbox"
+    with patch(target, side_effect=IntegrityError("unrelated constraint")):
+        with pytest.raises(IntegrityError):
+            groups.IncidentIMGroupService.create(
+                incident_id=incident.id,
+                actor=operator,
+                channel_id=channel.id,
+                group_name="约束异常测试群",
+                owner_username="operator",
+                continuous_sync_enabled=True,
+            )
+
+    assert not IncidentIMGroup.objects.filter(incident=incident, active_slot=1).exists()

@@ -25,6 +25,7 @@ from config.drf.viewsets import ModelViewSet
 class IncidentIMGroupViewSet(ModelViewSet):
     pagination_class = CustomPageNumberPagination
     queryset = IncidentIMGroup.objects.all()
+    serializer_class = IncidentIMGroupCreateSerializer
 
     def _incident(self):
         return filter_incident_queryset_for_request(Incident.objects.all(), self.request).filter(
@@ -132,7 +133,7 @@ class IncidentIMGroupViewSet(ModelViewSet):
 
     @HasPermission("Incidents-Edit")
     @action(methods=["get"], detail=False, url_path="options")
-    def options(self, request, *args, **kwargs):
+    def group_options(self, request, *args, **kwargs):
         incident, error = self._manage_incident_or_response()
         if error is not None:
             return error
