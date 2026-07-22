@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { Modal, Tag } from 'antd';
 import { FileTextOutlined, RightOutlined } from '@ant-design/icons';
 import { ConfigDiffReport, ConfigDiffItem } from '@/app/opspilot/types/global';
+import { getDiffReportItemPresentation } from './diffReportItemPresentation';
 
 type DiffOp = 'equal' | 'add' | 'remove';
 interface DiffLine { op: DiffOp; text: string; leftNo?: number; rightNo?: number }
@@ -55,18 +56,6 @@ interface DiffReportCardProps {
   report: ConfigDiffReport;
 }
 
-const severityConfig = {
-  critical: { color: '#f5222d', label: '严重', tagColor: 'error' },
-  high: { color: '#fa541c', label: '高危', tagColor: 'volcano' },
-  medium: { color: '#fa8c16', label: '中风险', tagColor: 'warning' },
-  low: { color: '#52c41a', label: '低风险', tagColor: 'success' },
-  warning: { color: '#fa8c16', label: '警告', tagColor: 'warning' },
-  info: { color: '#1890ff', label: '提示', tagColor: 'processing' },
-} as const;
-
-// 防御:severity 字段值不在预设里就 fallback 到 info,避免 sev.tagColor 报错
-const getSeverity = (s: string | undefined) => severityConfig[s as keyof typeof severityConfig] ?? severityConfig.info;
-
 const DiffReportCard: React.FC<DiffReportCardProps> = ({ report }) => {
   const [selectedItem, setSelectedItem] = useState<ConfigDiffItem | null>(null);
   const [fetchedYaml, setFetchedYaml] = useState<{ yaml: string; loading: boolean; error: string | null }>({
@@ -108,6 +97,7 @@ const DiffReportCard: React.FC<DiffReportCardProps> = ({ report }) => {
   }, [selectedItem?.skill_id, selectedItem?.namespace, selectedItem?.workload_name, report.cluster_name]);
   const a2uiComponent = report.a2ui?.component || 'config-diff-report';
   const a2uiVersion = report.a2ui?.version || 'legacy';
+  const selectedPresentation = selectedItem ? getDiffReportItemPresentation(selectedItem) : null;
 
   return (
     <div
@@ -126,7 +116,8 @@ const DiffReportCard: React.FC<DiffReportCardProps> = ({ report }) => {
       {/* Items */}
       <div className="divide-y divide-gray-100">
         {report.items.map((item, idx) => {
-          const sev = getSeverity(item.severity);
+          const presentation = getDiffReportItemPresentation(item);
+          const isAllMode = item.workload_type.trim().toLowerCase() === 'all';
           return (
             <div
               key={idx}
@@ -134,13 +125,18 @@ const DiffReportCard: React.FC<DiffReportCardProps> = ({ report }) => {
               onClick={() => setSelectedItem(item)}
             >
               <div className="flex items-center gap-2">
-                <Tag color={sev.tagColor} className="!m-0 text-xs">{sev.label}</Tag>
+                <Tag color={presentation.badgeTone} className="!m-0 text-xs">{presentation.badgeLabel}</Tag>
                 <span className="text-sm font-medium text-gray-800 font-mono">
-                  {item.namespace}/{item.workload_name}
+                  {presentation.targetLabel}
                 </span>
-                <span className="text-xs text-gray-400 shrink-0">
-                  {item.workload_type}
-                </span>
+                {!isAllMode && (
+                  <span className="text-xs text-gray-400 shrink-0">
+                    {item.workload_type}
+                  </span>
+                )}
+                {presentation.riskLabel && (
+                  <span className="text-xs text-gray-400 shrink-0">{presentation.riskLabel}</span>
+                )}
                 <RightOutlined className="ml-auto text-gray-300 text-xs group-hover:text-blue-400 transition-colors" />
               </div>
               <div className="mt-1.5 ml-[52px] text-xs text-gray-500 leading-relaxed">
@@ -156,13 +152,13 @@ const DiffReportCard: React.FC<DiffReportCardProps> = ({ report }) => {
         open={!!selectedItem}
         onCancel={() => setSelectedItem(null)}
         title={
-          selectedItem && (
+          selectedPresentation && (
             <div className="flex items-center gap-2">
-              <Tag color={getSeverity(selectedItem.severity).tagColor}>
-                {getSeverity(selectedItem.severity).label}
-              </Tag>
-              <span className="font-medium">{selectedItem.namespace}/{selectedItem.workload_name}</span>
-              <span className="text-gray-400 text-sm font-normal">({selectedItem.workload_type})</span>
+              <Tag color={selectedPresentation.badgeTone}>{selectedPresentation.badgeLabel}</Tag>
+              <span className="font-medium">{selectedPresentation.targetLabel}</span>
+              {selectedPresentation.riskLabel && (
+                <span className="text-gray-400 text-sm font-normal">({selectedPresentation.riskLabel})</span>
+              )}
             </div>
           )
         }
