@@ -3,6 +3,7 @@ import type { NodeMgmtSyncStatus } from '@/app/cmdb/types/autoDiscovery';
 export type NodeMgmtSyncBadgeStatus = 'success' | 'processing' | 'default' | 'error' | 'warning';
 
 export const NODE_MGMT_SYNC_STATUS_BADGE: Record<NodeMgmtSyncStatus, NodeMgmtSyncBadgeStatus> = {
+  unexecuted: 'default',
   waiting_sync: 'warning',
   running: 'processing',
   submitted: 'processing',
@@ -14,6 +15,7 @@ export const NODE_MGMT_SYNC_STATUS_BADGE: Record<NodeMgmtSyncStatus, NodeMgmtSyn
 };
 
 const STATUS_TEXT_KEYS: Record<NodeMgmtSyncStatus, string> = {
+  unexecuted: 'Collection.nodeMgmtSync.status.unexecuted',
   waiting_sync: 'Collection.nodeMgmtSync.status.waitingSync',
   running: 'Collection.nodeMgmtSync.status.running',
   submitted: 'Collection.nodeMgmtSync.status.submitted',

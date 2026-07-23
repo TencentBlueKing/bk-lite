@@ -3,7 +3,8 @@ from types import SimpleNamespace
 import pytest
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from django_celery_beat.models import CrontabSchedule, PeriodicTask
+from django.utils import timezone
+from django_celery_beat.models import CrontabSchedule, PeriodicTask, PeriodicTasks
 
 from apps.cmdb.models.node_mgmt_sync import NodeMgmtSyncRegionState, NodeMgmtSyncRun
 from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncService
@@ -98,6 +99,23 @@ def test_static_beat_schedule_runs_independent_watchdog_every_five_minutes():
     schedule = CELERY_BEAT_SCHEDULE["node_mgmt_sync_recovery_watchdog"]
     assert schedule["task"] == WATCHDOG_TASK
     assert schedule["schedule"]._orig_minute == "*/5"
+
+
+@pytest.mark.parametrize("has_previous_run", [False, True])
+def test_watchdog_does_not_reload_healthy_schedule_for_new_or_existing_interval_task(
+    has_previous_run,
+):
+    call_command("reconcile_node_mgmt_sync")
+    sync_task = PeriodicTask.objects.get(
+        name=NodeMgmtSyncService.SYNC_PERIODIC_TASK_NAME,
+    )
+    if has_previous_run:
+        PeriodicTask.objects.filter(pk=sync_task.pk).update(last_run_at=timezone.now())
+    change_before_watchdog = PeriodicTasks.last_change()
+
+    watch_node_mgmt_sync_recovery()
+
+    assert PeriodicTasks.last_change() == change_before_watchdog
 
 
 def test_management_command_failure_is_stable_and_hides_exception_detail(mocker):
