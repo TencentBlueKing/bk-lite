@@ -1,4 +1,5 @@
 import type {
+  IncidentIMMemberSummary,
   IncidentIMGroupStatus,
   IncidentIMPauseReason,
 } from '@/app/alarm/types/incidents';
@@ -24,12 +25,7 @@ export interface IncidentIMGroupView {
 export interface IncidentIMGroupViewInput {
   status: IncidentIMGroupStatus;
   pause_reason: IncidentIMPauseReason;
-  member_summary: {
-    total: number;
-    joined: number;
-    waiting: number;
-    failed: number;
-  };
+  member_summary: IncidentIMMemberSummary;
 }
 
 export const deriveIMGroupView = ({
@@ -37,10 +33,7 @@ export const deriveIMGroupView = ({
   pause_reason: pauseReason,
   member_summary: memberSummary,
 }: IncidentIMGroupViewInput): IncidentIMGroupView => {
-  const syncingCount = Math.max(
-    0,
-    memberSummary.total - memberSummary.joined - memberSummary.waiting - memberSummary.failed,
-  );
+  const syncingCount = memberSummary.pending + memberSummary.adding;
   if (status === 'pending_create' || status === 'creating') {
     return { label: 'creating', primaryAction: 'details', canPollFast: true };
   }
@@ -66,11 +59,11 @@ export const deriveIMGroupView = ({
 };
 
 export const getIMGroupPollDelay = (
-  status: IncidentIMGroupStatus,
+  view: Pick<IncidentIMGroupView, 'canPollFast'>,
   elapsedMs: number,
   isPageVisible: boolean,
 ): number | null => {
-  if (!isPageVisible || (status !== 'pending_create' && status !== 'creating')) {
+  if (!isPageVisible || !view.canPollFast) {
     return null;
   }
   return elapsedMs < 30_000 ? 2_000 : 5_000;

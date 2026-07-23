@@ -109,15 +109,23 @@ export interface IncidentIMMemberSummary {
   joined: number
   waiting: number
   failed: number
+  unmapped: number
+  conflict: number
+  pending: number
+  adding: number
 }
 
 export interface IncidentIMGroup {
   id: string
+  provider: 'feishu'
   channel_id: number | null
   channel_name: string
   group_name: string
+  external_chat_id: string
+  open_chat_url: string | null
   status: IncidentIMGroupStatus
   current_stage: IncidentIMGroupStage
+  status_message: string
   continuous_sync_enabled: boolean
   pause_reason: IncidentIMPauseReason
   member_summary: IncidentIMMemberSummary
@@ -133,6 +141,7 @@ export interface IncidentIMMember {
   sync_status: IncidentIMSyncStatus
   error_code: string
   error_message: string
+  updated_at: string
 }
 
 export interface IncidentIMResolvedMember {
@@ -173,8 +182,9 @@ export interface UpdateIncidentIMGroupParams {
 }
 
 export interface IncidentIMMemberListParams {
+  filter: 'all' | 'pending' | 'joined'
   page: number
-  page_size: number
+  page_size: 10 | 20 | 50 | 100
 }
 
 export interface IncidentIMMemberList {
