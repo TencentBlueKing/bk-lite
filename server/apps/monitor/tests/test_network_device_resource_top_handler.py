@@ -9,7 +9,16 @@ def test_network_device_resource_top_handler_returns_ranked_traffic(monkeypatch)
         id="sw-1", name="Switch A", ip="10.0.0.1", interval=300,
         monitor_object=SimpleNamespace(name="Switch"),
     )
-    monkeypatch.setattr(nm, "_get_authorized_monitor_instances", lambda user_info: ({"sw-1": instance}, None))
+    monkeypatch.setattr(
+        nm,
+        "_get_nats_actor_scope",
+        lambda user_info: (None, 1, False, frozenset({1}), False, None),
+    )
+    monkeypatch.setattr(
+        nm,
+        "_get_authorized_monitor_instances",
+        lambda user_info, scope_ids: ({"sw-1": instance}, None),
+    )
 
     class FakeVM:
         def query(self, query, **kwargs):
