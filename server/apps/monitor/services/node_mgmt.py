@@ -1,4 +1,4 @@
-from django.db import models, transaction
+from django.db import IntegrityError, models, transaction
 
 from apps.core.exceptions.base_app_exception import BaseAppException, UnauthorizedException
 from apps.core.logger import monitor_logger as logger
@@ -235,10 +235,10 @@ class InstanceConfigService:
         return Metric.objects.filter(monitor_object_id=child_obj.id).first()
 
     @staticmethod
-    def _sync_existing_instance_attrs(existing_instances, deleted_ids):
-        """同步复用/恢复实例的可变属性（除主键外）
+    def _sync_existing_instance_attrs(existing_instances):
+        """同步复用实例的可变属性（除主键外）
 
-        通过页面接入链路复用或恢复的实例，都应视为手动接入实例，
+        通过页面接入链路复用的实例应视为手动接入实例，
         不再受自动发现任务生命周期管理影响，因此需要统一纠正为 auto=False。
         """
         if not existing_instances:
@@ -256,13 +256,9 @@ class InstanceConfigService:
                 )
             )
 
-        fields = ["name", "auto", "is_active"]
-        if deleted_ids:
-            fields.append("is_deleted")
-
         MonitorInstance.objects.bulk_update(
             instances_to_update,
-            fields,
+            ["name", "auto", "is_active"],
             batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE,
         )
         return len(instances_to_update)
@@ -483,7 +479,7 @@ class InstanceConfigService:
             configs: 配置列表，包含将要创建的 config_type
 
         Returns:
-            tuple: (new_instances, existing_instances, deleted_ids)
+            tuple: (new_instances, existing_instances, reclaimable_ids)
 
         Raises:
             BaseAppException: 当配置已存在时抛出异常
@@ -496,13 +492,30 @@ class InstanceConfigService:
             else:
                 instance["instance_id"] = str((instance["instance_id"],))
 
-        # 检查已存在的实例（只需要查询 is_deleted 字段）
         instance_ids = [inst["instance_id"] for inst in instances]
-        existing_instances_qs = MonitorInstance.objects.filter(id__in=instance_ids, monitor_object_id=monitor_object_id).values_list(
-            "id", "is_deleted"
-        )
+        seen_ids = set()
+        duplicate_ids = set()
+        for instance_id in instance_ids:
+            if instance_id in seen_ids:
+                duplicate_ids.add(instance_id)
+            seen_ids.add(instance_id)
+        if duplicate_ids:
+            raise BaseAppException(f"请求中存在重复的监控实例标识: {', '.join(sorted(duplicate_ids))}")
 
-        existing_map = {obj[0]: obj[1] for obj in existing_instances_qs}  # {id: is_deleted}
+        # 主键是全局唯一的，必须跨监控对象检查占用。调用方保证当前位于事务内。
+        existing_instances_qs = MonitorInstance.objects.select_for_update().filter(id__in=instance_ids).values_list(
+            "id", "is_deleted", "monitor_object_id"
+        )
+        existing_map = {row[0]: {"is_deleted": row[1], "monitor_object_id": row[2]} for row in existing_instances_qs}
+        reclaimable_ids = {instance_id for instance_id, state in existing_map.items() if state["is_deleted"]}
+
+        active_cross_object_ids = sorted(
+            instance_id
+            for instance_id, state in existing_map.items()
+            if not state["is_deleted"] and state["monitor_object_id"] != monitor_object_id
+        )
+        if active_cross_object_ids:
+            raise BaseAppException(f"监控实例标识已被占用: {', '.join(active_cross_object_ids)}")
 
         # 提取将要创建的 config_type 列表
         config_types_to_create = {config.get("type") for config in configs if config.get("type")}
@@ -526,6 +539,8 @@ class InstanceConfigService:
             # 检查冲突并抛出异常
             for inst in instances:
                 instance_id = inst["instance_id"]
+                if instance_id in reclaimable_ids:
+                    continue
                 if instance_id in config_map:
                     conflicting_types = config_map[instance_id] & config_types_to_create
                     if conflicting_types:
@@ -538,29 +553,24 @@ class InstanceConfigService:
         # 分类实例
         new_instances = []  # 完全不存在的实例
         existing_instances = []  # 已存在的实例（需要复用）
-        deleted_ids = []  # 已删除的实例（需要恢复）
+        reclaimable_id_list = []
 
         for inst in instances:
             instance_id = inst["instance_id"]
 
-            if instance_id not in existing_map:
+            if instance_id not in existing_map or instance_id in reclaimable_ids:
                 # 完全不存在，需要创建
                 new_instances.append(inst)
+                if instance_id in reclaimable_ids:
+                    reclaimable_id_list.append(instance_id)
             else:
-                # 已存在
-                if existing_map[instance_id]:  # is_deleted == True
-                    # 已删除，需要恢复
-                    deleted_ids.append(instance_id)
-                    existing_instances.append(inst)
-                else:
-                    # 活跃实例，复用它
-                    existing_instances.append(inst)
-                    logger.info(f"实例 {inst.get('instance_name', instance_id)} 已存在，将复用该实例并添加新的采集配置")
+                existing_instances.append(inst)
+                logger.info(f"实例 {inst.get('instance_name', instance_id)} 已存在，将复用该实例并添加新的采集配置")
 
-        return new_instances, existing_instances, deleted_ids
+        return new_instances, existing_instances, reclaimable_id_list
 
     @staticmethod
-    def _create_instances_in_db(new_instances, existing_instances, deleted_ids, monitor_object_id):
+    def _create_instances_in_db(new_instances, existing_instances, monitor_object_id):
         """在数据库事务中创建实例、更新已存在实例、规则和关联关系
 
         Returns:
@@ -570,8 +580,8 @@ class InstanceConfigService:
         created_rule_ids = []
 
         if existing_instances:
-            updated_count = InstanceConfigService._sync_existing_instance_attrs(existing_instances, deleted_ids)
-            logger.info(f"复用已存在实例数量: {len(existing_instances)}, 同步属性并激活: {updated_count}, 恢复已删除实例: {len(deleted_ids)}")
+            updated_count = InstanceConfigService._sync_existing_instance_attrs(existing_instances)
+            logger.info(f"复用已存在实例数量: {len(existing_instances)}, 同步属性并激活: {updated_count}")
 
             # 清除所有复用实例的历史组织关联，以当前 group_ids 为唯一真值，避免跨组织纳管漂移
             all_existing_ids = [inst["instance_id"] for inst in existing_instances]
@@ -775,37 +785,33 @@ class InstanceConfigService:
                 logger.error(f"实例识别失败: {e}")
                 raise BaseAppException(f"实例识别失败：{e}")
 
-        # ============ 阶段1: 参数预校验与数据准备 ============
-        try:
-            new_instances, existing_instances, deleted_ids = InstanceConfigService._prepare_instances_for_creation(
-                prepared_instances,
-                monitor_object_id,
-                collect_type,
-                collector,
-                data.get("configs", []),
-            )
-        except BaseAppException:
-            raise
-        except Exception as e:
-            logger.error(f"实例数据准备失败: {e}", exc_info=True)
-            raise BaseAppException(f"实例数据准备失败: {e}")
-
-        if not new_instances and not existing_instances:
-            logger.info("没有需要处理的实例")
-            return
-
-        logger.info(
-            f"需要创建 {len(new_instances)} 个新实例,需要复用 {len(existing_instances)} 个已存在实例,其中需要恢复 {len(deleted_ids)} 个已删除实例"
-        )
-
         # ============ 使用单一外层事务包裹所有操作 ============
         try:
             with transaction.atomic():
+                new_instances, existing_instances, reclaimable_ids = InstanceConfigService._prepare_instances_for_creation(
+                    prepared_instances,
+                    monitor_object_id,
+                    collect_type,
+                    collector,
+                    data.get("configs", []),
+                )
+                if not new_instances and not existing_instances:
+                    logger.info("没有需要处理的实例")
+                    return
+
+                logger.info(
+                    f"需要创建 {len(new_instances)} 个新实例,需要复用 {len(existing_instances)} 个已存在实例,"
+                    f"需要回收 {len(reclaimable_ids)} 个历史墓碑"
+                )
+                if reclaimable_ids:
+                    from apps.monitor.services.monitor_instance_removal import MonitorInstanceRemovalService
+
+                    MonitorInstanceRemovalService.remove(reclaimable_ids)
+
                 # 阶段2：数据库操作（使用外层事务）
                 created_instance_ids, created_rule_ids = InstanceConfigService._create_instances_in_db(
                     new_instances,
                     existing_instances,
-                    deleted_ids,
                     monitor_object_id,
                 )
                 logger.info(f"创建实例和规则成功,实例数: {len(created_instance_ids)}")
@@ -830,10 +836,13 @@ class InstanceConfigService:
             # 业务异常直接抛出（事务已自动回滚）
             logger.error(f"创建监控实例失败: {e}")
             raise
+        except IntegrityError as e:
+            logger.error("创建监控实例发生唯一键竞争", exc_info=True)
+            raise BaseAppException("监控实例标识已被占用，请刷新后重试") from e
         except Exception as e:
             # 系统异常包装后抛出（事务已自动回滚）
             logger.error(f"创建监控实例失败: {e}", exc_info=True)
-            raise BaseAppException(f"创建监控实例失败: {e}")
+            raise BaseAppException("创建监控实例失败，请稍后重试") from e
 
         logger.info(f"创建监控实例成功,共 {len(created_instance_ids)} 个新实例,{len(existing_instances)} 个复用实例")
 
