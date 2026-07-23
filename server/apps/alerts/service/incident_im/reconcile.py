@@ -35,6 +35,13 @@ def reconcile_incident_im_group(incident_id, force_delivery=False, resume_create
         if force_delivery and not _can_deliver(group, force_delivery=True):
             return group
 
+        if resume_create and not group.external_chat_id:
+            group.status = IncidentIMGroup.Status.PENDING_CREATE
+            group.current_stage = IncidentIMGroup.Stage.QUEUED
+            group.save(update_fields=["status", "current_stage"])
+            _enqueue_recovered_create(group)
+            return group
+
         resolved_members = reconcile_member_snapshots(group, group.incident)
         desired_usernames = {member.username for member in resolved_members}
         if force_delivery:
@@ -282,3 +289,25 @@ def _enqueue_recovered_summary(group):
         payload,
         idempotency_key,
     )
+
+
+def _enqueue_recovered_create(group):
+    payload = {"group_id": str(group.id)}
+    if AlertOutbox.objects.filter(
+        kind=OUTBOX_CREATE,
+        payload=payload,
+        status__in=(AlertOutbox.Status.PENDING, AlertOutbox.Status.DELIVERING),
+    ).exists():
+        return
+    previous_id = (
+        AlertOutbox.objects.filter(kind=OUTBOX_CREATE, payload=payload)
+        .order_by("-pk")
+        .values_list("pk", flat=True)
+        .first()
+    )
+    idempotency_key = (
+        f"incident-im-group:{group.id}:create"
+        if previous_id is None
+        else f"incident-im-group:{group.id}:create:resume:{previous_id}"
+    )
+    enqueue_outbox(OUTBOX_CREATE, payload, idempotency_key)

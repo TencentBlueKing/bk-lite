@@ -7,7 +7,7 @@ import pytest
 from django.db import close_old_connections, connections
 
 from apps.alerts.constants.constants import IncidentStatus
-from apps.alerts.models import AlertOutbox, Incident, IncidentIMGroup, IncidentIMMember
+from apps.alerts.models import AlertOutbox, Incident, IncidentIMGroup, IncidentIMMember, OperatorLog
 from apps.alerts.service.incident_im.reconcile import (
     pause_group_for_closed_incident,
     reconcile_incident_im_group,
@@ -90,6 +90,107 @@ def test_chat_id_is_saved_before_followup_events(group, pending_members):
     group.refresh_from_db()
     assert group.external_chat_id == "oc_1"
     assert set(group.members.values_list("sync_status", flat=True)) == {"joined"}
+
+
+@pytest.mark.django_db
+def test_create_result_audit_uses_counts_without_external_ids(group, pending_members):
+    from apps.alerts.service.incident_im.delivery import deliver_create_group
+
+    group.created_by = "alice"
+    group.save(update_fields=["created_by"])
+    result = CapabilityExecutionResult.success_result(
+        "created",
+        payload={"chat_id": "oc_secret", "invalid_member_ids": ["ou_bob"]},
+    )
+
+    with mock.patch(
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
+        return_value=result,
+    ):
+        deliver_create_group(group.id)
+
+    log = OperatorLog.objects.filter(
+        target_id=group.incident.incident_id,
+        overview__contains="创建飞书群结果",
+    ).latest("id")
+    assert "成功 1 人" in log.overview
+    assert "失败 1 人" in log.overview
+    assert "oc_secret" not in log.overview
+    assert "ou_bob" not in log.overview
+
+
+@pytest.mark.django_db
+def test_create_failure_is_audited_without_provider_payload(group, pending_members):
+    from apps.alerts.service.incident_im.delivery import deliver_create_group
+
+    group.created_by = "alice"
+    group.save(update_fields=["created_by"])
+    result = CapabilityExecutionResult.failed_result(
+        "provider secret response",
+        code="provider.permission_denied",
+    )
+
+    with mock.patch(
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
+        return_value=result,
+    ):
+        deliver_create_group(group.id)
+
+    group.refresh_from_db()
+    assert group.status == IncidentIMGroup.Status.CREATE_FAILED
+    log = OperatorLog.objects.filter(
+        target_id=group.incident.incident_id,
+        overview__contains="创建飞书群结果",
+    ).latest("id")
+    assert "失败" in log.overview
+    assert "provider secret response" not in log.overview
+
+
+@pytest.mark.django_db
+def test_add_members_result_audit_uses_counts_without_external_ids(group):
+    from apps.alerts.service.incident_im.delivery import deliver_add_members
+
+    group.created_by = "alice"
+    group.external_chat_id = "oc_secret"
+    group.status = IncidentIMGroup.Status.ACTIVE_PARTIAL
+    group.save(update_fields=["created_by", "external_chat_id", "status"])
+    IncidentIMMember.objects.create(
+        group=group,
+        username="alice",
+        role=IncidentIMMember.Role.OPERATOR,
+        external_id="ou_alice",
+        external_id_type="open_id",
+        mapping_status=IncidentIMMember.MappingStatus.MAPPED,
+        sync_status=IncidentIMMember.SyncStatus.PENDING,
+    )
+    IncidentIMMember.objects.create(
+        group=group,
+        username="bob",
+        role=IncidentIMMember.Role.COLLABORATOR,
+        external_id="ou_bob",
+        external_id_type="open_id",
+        mapping_status=IncidentIMMember.MappingStatus.MAPPED,
+        sync_status=IncidentIMMember.SyncStatus.PENDING,
+    )
+    result = CapabilityExecutionResult.success_result(
+        "partial",
+        payload={"invalid_member_ids": ["ou_bob"]},
+    )
+
+    with mock.patch(
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
+        return_value=result,
+    ):
+        deliver_add_members(group.id)
+
+    log = OperatorLog.objects.filter(
+        target_id=group.incident.incident_id,
+        overview__contains="补拉飞书群成员结果",
+    ).latest("id")
+    assert "成功 1 人" in log.overview
+    assert "失败 1 人" in log.overview
+    assert "oc_secret" not in log.overview
+    assert "ou_bob" not in log.overview
 
 
 @pytest.mark.django_db

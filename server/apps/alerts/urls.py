@@ -58,7 +58,9 @@ router.register(r"api/action_execution", ActionExecutionViewSet, basename="actio
 urlpatterns = [
     path(
         "api/incident/<int:incident_pk>/im-group/",
-        IncidentIMGroupViewSet.as_view({"get": "list", "post": "create", "patch": "partial_update"}),
+        IncidentIMGroupViewSet.as_view(
+            {"get": "list", "post": "create", "patch": "partial_update", "delete": "destroy"}
+        ),
     ),
     path(
         "api/incident/<int:incident_pk>/im-group/options/",
@@ -67,6 +69,18 @@ urlpatterns = [
     path(
         "api/incident/<int:incident_pk>/im-group/members/",
         IncidentIMGroupViewSet.as_view({"get": "members"}),
+    ),
+    path(
+        "api/incident/<int:incident_pk>/im-group/retry/",
+        IncidentIMGroupViewSet.as_view({"post": "retry"}),
+    ),
+    path(
+        "api/incident/<int:incident_pk>/im-group/pause/",
+        IncidentIMGroupViewSet.as_view({"post": "pause"}),
+    ),
+    path(
+        "api/incident/<int:incident_pk>/im-group/resume/",
+        IncidentIMGroupViewSet.as_view({"post": "resume"}),
     ),
     path("api/test/", request_test),
     path("api/receiver_data/", receiver_data),

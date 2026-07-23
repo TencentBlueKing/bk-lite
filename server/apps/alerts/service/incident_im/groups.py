@@ -2,12 +2,15 @@ import uuid
 from time import sleep
 
 from django.db import IntegrityError, OperationalError, connection, transaction
+from django.utils import timezone
 
-from apps.alerts.constants.constants import IncidentStatus
+from apps.alerts.constants.constants import IncidentStatus, LogAction, LogTargetType
 from apps.alerts.models import Incident, IncidentIMGroup, IncidentIMMember
 from apps.alerts.service.incident_im.errors import IncidentIMError
-from apps.alerts.service.incident_im.members import resolve_incident_members
+from apps.alerts.service.incident_im.members import get_desired_usernames, resolve_incident_members
 from apps.alerts.service.outbox import enqueue_outbox
+from apps.alerts.utils.operator_log import record_operator_log
+from apps.core.logger import alert_logger as logger
 from apps.system_mgmt.services.im_group_service import IMGroupChannelError, IMGroupRuntimeService
 
 
@@ -79,6 +82,8 @@ class IncidentIMGroupService:
                     external_owner_id=owner.external_id,
                     continuous_sync_enabled=continuous_sync_enabled,
                     idempotency_key=f"bklite-{group_id.hex}",
+                    created_by=actor.username,
+                    updated_by=actor.username,
                 )
                 IncidentIMMember.objects.bulk_create(
                     [
@@ -105,7 +110,219 @@ class IncidentIMGroupService:
                     {"group_id": str(group.id)},
                     f"incident-im-group:{group.id}:create",
                 )
+                record_group_audit(
+                    group,
+                    actor.username,
+                    f"创建飞书群请求，成员 {len(members)} 人",
+                    action=LogAction.ADD,
+                )
         return group
+
+    @classmethod
+    def set_continuous_sync(cls, *, incident_id, actor_username, enabled):
+        with transaction.atomic():
+            group = cls._lock_active_group(incident_id)
+            if group is None:
+                raise IncidentIMError("IM_GROUP_NOT_FOUND", "Incident 尚未创建协作群", 404)
+            group.continuous_sync_enabled = enabled
+            group.updated_by = actor_username
+            group.save(update_fields=["continuous_sync_enabled", "updated_by", "updated_at"])
+            record_group_audit(
+                group,
+                actor_username,
+                f"持续同步设置为{'开启' if enabled else '关闭'}",
+            )
+            return group
+
+    @classmethod
+    def pause(cls, *, incident_id, actor_username):
+        with transaction.atomic():
+            group = cls._lock_active_group(incident_id)
+            if group is None:
+                raise IncidentIMError("IM_GROUP_NOT_FOUND", "Incident 尚未创建协作群", 404)
+            if group.status not in (
+                IncidentIMGroup.Status.ACTIVE,
+                IncidentIMGroup.Status.ACTIVE_PARTIAL,
+            ):
+                raise IncidentIMError("IM_GROUP_STATE_INVALID", "当前群状态不允许暂停", 409)
+            group.status = IncidentIMGroup.Status.PAUSED
+            group.pause_reason = IncidentIMGroup.PauseReason.MANUAL
+            group.resume_after_reopen = False
+            group.updated_by = actor_username
+            group.save(
+                update_fields=[
+                    "status",
+                    "pause_reason",
+                    "resume_after_reopen",
+                    "updated_by",
+                    "updated_at",
+                ]
+            )
+            record_group_audit(group, actor_username, "暂停飞书群同步")
+            return group
+
+    @classmethod
+    def resume(cls, *, incident_id, actor_username):
+        with transaction.atomic():
+            group = cls._lock_active_group(incident_id)
+            if group is None:
+                raise IncidentIMError("IM_GROUP_NOT_FOUND", "Incident 尚未创建协作群", 404)
+            if (
+                group.status != IncidentIMGroup.Status.PAUSED
+                or group.pause_reason != IncidentIMGroup.PauseReason.MANUAL
+            ):
+                raise IncidentIMError("IM_GROUP_STATE_INVALID", "当前群状态不允许恢复", 409)
+            desired_usernames = get_desired_usernames(group.incident)
+            has_gap = (
+                group.members.filter(username__in=desired_usernames)
+                .exclude(sync_status=IncidentIMMember.SyncStatus.JOINED)
+                .exists()
+            )
+            group.status = (
+                IncidentIMGroup.Status.ACTIVE_PARTIAL
+                if has_gap or group.current_stage != IncidentIMGroup.Stage.COMPLETED
+                else IncidentIMGroup.Status.ACTIVE
+            )
+            group.pause_reason = ""
+            group.resume_after_reopen = False
+            group.updated_by = actor_username
+            group.save(
+                update_fields=[
+                    "status",
+                    "pause_reason",
+                    "resume_after_reopen",
+                    "updated_by",
+                    "updated_at",
+                ]
+            )
+            record_group_audit(group, actor_username, "恢复飞书群同步")
+            return group
+
+    @classmethod
+    def retry_degraded(cls, *, incident_id, actor_username):
+        group = (
+            IncidentIMGroup.objects.select_related("incident", "channel", "channel__integration_instance")
+            .filter(incident_id=incident_id, active_slot=1)
+            .first()
+        )
+        if group is None:
+            raise IncidentIMError("IM_GROUP_NOT_FOUND", "Incident 尚未创建协作群", 404)
+        if group.status != IncidentIMGroup.Status.DEGRADED:
+            raise IncidentIMError("IM_GROUP_STATE_INVALID", "当前群状态不需要外部漂移复核", 409)
+        if group.channel is None or not group.external_chat_id:
+            result = None
+        else:
+            result = IMGroupRuntimeService.execute(
+                group.channel,
+                operation="get_group",
+                chat_id=group.external_chat_id,
+            )
+
+        with transaction.atomic():
+            locked = cls._lock_active_group(incident_id)
+            if locked is None:
+                raise IncidentIMError("IM_GROUP_NOT_FOUND", "Incident 尚未创建协作群", 404)
+            if result is None or not result.success:
+                code, message = cls._runtime_error(result)
+                locked.status = IncidentIMGroup.Status.DEGRADED
+                locked.last_error_code = code
+                locked.last_error_message = message[:500]
+            else:
+                desired_usernames = get_desired_usernames(locked.incident)
+                has_gap = (
+                    locked.members.filter(username__in=desired_usernames)
+                    .exclude(sync_status=IncidentIMMember.SyncStatus.JOINED)
+                    .exists()
+                )
+                locked.status = (
+                    IncidentIMGroup.Status.ACTIVE_PARTIAL
+                    if has_gap
+                    else IncidentIMGroup.Status.ACTIVE
+                )
+                locked.last_error_code = ""
+                locked.last_error_message = ""
+            locked.updated_by = actor_username
+            locked.save(
+                update_fields=[
+                    "status",
+                    "last_error_code",
+                    "last_error_message",
+                    "updated_by",
+                    "updated_at",
+                ]
+            )
+            record_group_audit(locked, actor_username, "重试飞书群并检查外部群状态")
+            return locked
+
+    @classmethod
+    def prepare_create_retry(cls, *, incident_id, actor_username):
+        with transaction.atomic():
+            group = cls._lock_active_group(incident_id)
+            if group is None:
+                raise IncidentIMError("IM_GROUP_NOT_FOUND", "Incident 尚未创建协作群", 404)
+            if (
+                group.status != IncidentIMGroup.Status.CREATE_FAILED
+                or group.external_chat_id
+            ):
+                raise IncidentIMError("IM_GROUP_STATE_INVALID", "当前群状态不允许重试创建", 409)
+            group.status = IncidentIMGroup.Status.ACTIVE_PARTIAL
+            group.current_stage = IncidentIMGroup.Stage.QUEUED
+            group.last_error_code = ""
+            group.last_error_message = ""
+            group.updated_by = actor_username
+            group.save(
+                update_fields=[
+                    "status",
+                    "current_stage",
+                    "last_error_code",
+                    "last_error_message",
+                    "updated_by",
+                    "updated_at",
+                ]
+            )
+            record_group_audit(group, actor_username, "重试创建飞书群")
+            return group
+
+    @classmethod
+    def unlink(cls, *, incident_id, actor_username, group_name):
+        with transaction.atomic():
+            group = cls._lock_active_group(incident_id)
+            if group is None:
+                raise IncidentIMError("IM_GROUP_NOT_FOUND", "Incident 尚未创建协作群", 404)
+            if group.group_name != group_name:
+                raise IncidentIMError("IM_GROUP_NAME_MISMATCH", "群名称确认不匹配")
+            if (
+                group.status
+                in (
+                    IncidentIMGroup.Status.PENDING_CREATE,
+                    IncidentIMGroup.Status.CREATING,
+                )
+                or group.current_stage != IncidentIMGroup.Stage.COMPLETED
+                or group.members.filter(sync_status=IncidentIMMember.SyncStatus.ADDING).exists()
+            ):
+                raise IncidentIMError("IM_GROUP_BUSY", "协作群仍有任务执行中，暂不能解绑", 409)
+            group.status = IncidentIMGroup.Status.UNLINKED
+            group.active_slot = None
+            group.unlinked_at = timezone.now()
+            group.unlinked_by = actor_username
+            group.updated_by = actor_username
+            group.save(
+                update_fields=[
+                    "status",
+                    "active_slot",
+                    "unlinked_at",
+                    "unlinked_by",
+                    "updated_by",
+                    "updated_at",
+                ]
+            )
+            record_group_audit(
+                group,
+                actor_username,
+                "解绑飞书群，本地停止管理，外部群保留",
+                action=LogAction.DELETE,
+            )
+            return group
 
     @staticmethod
     def _has_active_group(incident_id):
@@ -128,6 +345,23 @@ class IncidentIMGroupService:
         )
 
     @staticmethod
+    def _lock_active_group(incident_id):
+        return (
+            IncidentIMGroup.objects.select_for_update()
+            .select_related("incident", "channel", "channel__integration_instance")
+            .filter(incident_id=incident_id, active_slot=1)
+            .first()
+        )
+
+    @staticmethod
+    def _runtime_error(result):
+        if result is None:
+            return "IM_CHANNEL_NOT_READY", "协作群渠道不可用"
+        if result.errors:
+            return result.errors[0].code, result.errors[0].message
+        return "IM_PROVIDER_FAILED", result.summary
+
+    @staticmethod
     def require_operator(incident, actor):
         if getattr(actor, "username", "") not in (incident.operator or []):
             raise IncidentIMError("IM_OPERATOR_REQUIRED", "只有 Incident 负责人可以管理协作群", 403)
@@ -140,3 +374,24 @@ class IncidentIMGroupService:
             if exc.code == "im_group.channel_access_denied":
                 raise IncidentIMError("IM_CHANNEL_FORBIDDEN", "无权使用该协作群渠道", 403) from exc
             raise IncidentIMError("IM_CHANNEL_NOT_READY", "协作群渠道未就绪或不可用") from exc
+
+
+def record_group_audit(group, actor_username, overview, *, action=LogAction.MODIFY):
+    try:
+        with transaction.atomic():
+            return record_operator_log(
+                action=action,
+                target_type=LogTargetType.INCIDENT,
+                operator=actor_username or "system",
+                operator_object=f"飞书协作群[{group.id}]",
+                target_id=group.incident.incident_id,
+                overview=overview,
+            )
+    except Exception as exc:  # noqa: BLE001 — 审计失败不得回滚已完成的群管理动作
+        logger.warning(
+            "record Incident IM group audit failed, group_id=%s, action=%s, error_type=%s",
+            group.id,
+            action,
+            type(exc).__name__,
+        )
+        return None

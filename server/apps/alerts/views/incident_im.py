@@ -8,13 +8,15 @@ from apps.alerts.models import Incident, IncidentIMGroup, IncidentIMMember
 from apps.alerts.serializers.incident_im import (
     IncidentIMGroupCreateSerializer,
     IncidentIMGroupSettingsSerializer,
+    IncidentIMGroupUnlinkSerializer,
     IncidentIMMemberSerializer,
     member_display_names,
     serialize_resolved_member,
 )
 from apps.alerts.service.incident_im.errors import IncidentIMError
-from apps.alerts.service.incident_im.groups import IncidentIMGroupService
+from apps.alerts.service.incident_im.groups import IncidentIMGroupService, record_group_audit
 from apps.alerts.service.incident_im.members import resolve_incident_members
+from apps.alerts.service.incident_im.reconcile import reconcile_incident_im_group
 from apps.alerts.utils.permission_scope import filter_incident_queryset_for_request
 from apps.core.decorators.api_permission import HasPermission
 from apps.system_mgmt.services.im_group_service import IMGroupRuntimeService
@@ -83,10 +85,33 @@ class IncidentIMGroupViewSet(ModelViewSet):
             },
             "permissions": {
                 "can_manage": can_manage,
-                "can_retry": False,
-                "can_pause": False,
-                "can_resume": False,
-                "can_unlink": False,
+                "can_retry": can_manage
+                and group.status
+                in (
+                    IncidentIMGroup.Status.ACTIVE,
+                    IncidentIMGroup.Status.ACTIVE_PARTIAL,
+                    IncidentIMGroup.Status.DEGRADED,
+                    IncidentIMGroup.Status.CREATE_FAILED,
+                ),
+                "can_pause": can_manage
+                and group.status
+                in (
+                    IncidentIMGroup.Status.ACTIVE,
+                    IncidentIMGroup.Status.ACTIVE_PARTIAL,
+                ),
+                "can_resume": can_manage
+                and group.status == IncidentIMGroup.Status.PAUSED
+                and group.pause_reason == IncidentIMGroup.PauseReason.MANUAL,
+                "can_unlink": can_manage
+                and group.status
+                not in (
+                    IncidentIMGroup.Status.PENDING_CREATE,
+                    IncidentIMGroup.Status.CREATING,
+                )
+                and group.current_stage == IncidentIMGroup.Stage.COMPLETED
+                and not group.members.filter(
+                    sync_status=IncidentIMMember.SyncStatus.ADDING
+                ).exists(),
             },
             "last_sync_at": group.last_sync_at,
         }
@@ -127,8 +152,103 @@ class IncidentIMGroupViewSet(ModelViewSet):
             return self._error("IM_GROUP_NOT_FOUND", "Incident 尚未创建协作群", status.HTTP_404_NOT_FOUND)
         serializer = IncidentIMGroupSettingsSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        group.continuous_sync_enabled = serializer.validated_data["continuous_sync_enabled"]
-        group.save(update_fields=["continuous_sync_enabled", "updated_at"])
+        enabled = serializer.validated_data["continuous_sync_enabled"]
+        try:
+            group = IncidentIMGroupService.set_continuous_sync(
+                incident_id=incident.id,
+                actor_username=request.user.username,
+                enabled=enabled,
+            )
+        except IncidentIMError as exc:
+            return self._incident_error(exc)
+        if enabled:
+            reconcile_incident_im_group(incident.id)
+            group.refresh_from_db()
+        return Response(self._serialize_group(group, incident))
+
+    @HasPermission("Incidents-Edit")
+    def destroy(self, request, *args, **kwargs):
+        incident, error = self._manage_incident_or_response()
+        if error is not None:
+            return error
+        serializer = IncidentIMGroupUnlinkSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            IncidentIMGroupService.unlink(
+                incident_id=incident.id,
+                actor_username=request.user.username,
+                group_name=serializer.validated_data["group_name"],
+            )
+        except IncidentIMError as exc:
+            return self._incident_error(exc)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @HasPermission("Incidents-Edit")
+    @action(methods=["post"], detail=False, url_path="pause")
+    def pause(self, request, *args, **kwargs):
+        incident, error = self._manage_incident_or_response()
+        if error is not None:
+            return error
+        try:
+            group = IncidentIMGroupService.pause(
+                incident_id=incident.id,
+                actor_username=request.user.username,
+            )
+        except IncidentIMError as exc:
+            return self._incident_error(exc)
+        return Response(self._serialize_group(group, incident))
+
+    @HasPermission("Incidents-Edit")
+    @action(methods=["post"], detail=False, url_path="resume")
+    def resume(self, request, *args, **kwargs):
+        incident, error = self._manage_incident_or_response()
+        if error is not None:
+            return error
+        try:
+            group = IncidentIMGroupService.resume(
+                incident_id=incident.id,
+                actor_username=request.user.username,
+            )
+        except IncidentIMError as exc:
+            return self._incident_error(exc)
+        reconcile_incident_im_group(incident.id, resume_create=True)
+        group.refresh_from_db()
+        return Response(self._serialize_group(group, incident))
+
+    @HasPermission("Incidents-Edit")
+    @action(methods=["post"], detail=False, url_path="retry")
+    def retry(self, request, *args, **kwargs):
+        incident, error = self._manage_incident_or_response()
+        if error is not None:
+            return error
+        group = IncidentIMGroup.objects.filter(incident=incident, active_slot=1).first()
+        if group is None:
+            return self._error("IM_GROUP_NOT_FOUND", "Incident 尚未创建协作群", status.HTTP_404_NOT_FOUND)
+        try:
+            if group.status == IncidentIMGroup.Status.DEGRADED:
+                group = IncidentIMGroupService.retry_degraded(
+                    incident_id=incident.id,
+                    actor_username=request.user.username,
+                )
+                if group.status == IncidentIMGroup.Status.ACTIVE_PARTIAL:
+                    reconcile_incident_im_group(incident.id, force_delivery=True)
+            elif group.status == IncidentIMGroup.Status.CREATE_FAILED:
+                IncidentIMGroupService.prepare_create_retry(
+                    incident_id=incident.id,
+                    actor_username=request.user.username,
+                )
+                reconcile_incident_im_group(incident.id, resume_create=True)
+            elif group.status in (
+                IncidentIMGroup.Status.ACTIVE,
+                IncidentIMGroup.Status.ACTIVE_PARTIAL,
+            ):
+                record_group_audit(group, request.user.username, "重试飞书群待处理成员")
+                reconcile_incident_im_group(incident.id, force_delivery=True)
+            else:
+                raise IncidentIMError("IM_GROUP_STATE_INVALID", "当前群状态不允许重试", 409)
+        except IncidentIMError as exc:
+            return self._incident_error(exc)
+        group.refresh_from_db()
         return Response(self._serialize_group(group, incident))
 
     @HasPermission("Incidents-Edit")

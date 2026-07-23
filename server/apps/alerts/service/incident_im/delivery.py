@@ -7,6 +7,7 @@ from apps.alerts.service.incident_im.members import (
     get_desired_operator_usernames,
     get_desired_usernames,
 )
+from apps.alerts.service.incident_im.groups import record_group_audit
 from apps.alerts.service.outbox import enqueue_outbox
 from apps.system_mgmt.services.im_group_service import IMGroupRuntimeService
 
@@ -116,13 +117,18 @@ def deliver_create_group(group_id) -> None:
                 "last_error_message",
             ]
         )
-        _save_member_result(
+        joined_count, failed_count = _save_member_result(
             locked,
             member_ids,
             invalid_ids,
             now=now,
             error_code="IM_MEMBER_INVALID",
             error_message="外部用户标识无效",
+        )
+        record_group_audit(
+            locked,
+            locked.created_by or "system",
+            f"创建飞书群结果：成功，成功 {joined_count} 人，失败 {failed_count} 人",
         )
         delivery_paused = _is_group_delivery_paused(locked)
 
@@ -197,13 +203,18 @@ def deliver_add_members(group_id) -> None:
             locked = _lock_group(group_id)
             if locked is None or locked.status == IncidentIMGroup.Status.UNLINKED:
                 return
-            _save_member_result(
+            joined_count, failed_count = _save_member_result(
                 locked,
                 member_ids,
                 invalid_ids,
                 now=timezone.now(),
                 error_code=error_code or "IM_MEMBER_ADD_FAILED",
                 error_message=error_message or "邀请成员失败",
+            )
+            record_group_audit(
+                locked,
+                locked.updated_by or locked.created_by or "system",
+                f"补拉飞书群成员结果：成功 {joined_count} 人，失败 {failed_count} 人",
             )
 
     with transaction.atomic():
@@ -300,6 +311,22 @@ def handle_delivery_exhausted(kind: str, payload: dict, error: str) -> None:
             )
             update_fields.append("status")
         group.save(update_fields=update_fields)
+        failed_count = group.members.filter(
+            sync_status__in=(
+                IncidentIMMember.SyncStatus.PENDING,
+                IncidentIMMember.SyncStatus.ADDING,
+            )
+        ).count()
+        overview = (
+            f"创建飞书群结果：失败，成功 0 人，失败 {failed_count} 人"
+            if kind == OUTBOX_CREATE
+            else f"补拉飞书群成员结果：成功 0 人，失败 {failed_count} 人"
+        )
+        record_group_audit(
+            group,
+            group.updated_by or group.created_by or "system",
+            overview,
+        )
 
 
 def _enqueue_add_members(group_id) -> None:
@@ -385,6 +412,8 @@ def _save_member_result(group, member_ids, invalid_ids, *, now, error_code, erro
                 "updated_at",
             ],
         )
+    failed_count = sum(member.sync_status == IncidentIMMember.SyncStatus.FAILED for member in members)
+    return len(members) - failed_count, failed_count
 
 
 def _raise_if_retryable(result) -> bool:
@@ -415,6 +444,14 @@ def _finish_create_failure(group_id, result) -> None:
             group.status = IncidentIMGroup.Status.CREATE_FAILED
             update_fields.append("status")
         group.save(update_fields=update_fields)
+        failed_count = group.members.filter(
+            mapping_status=IncidentIMMember.MappingStatus.MAPPED,
+        ).count()
+        record_group_audit(
+            group,
+            group.created_by or "system",
+            f"创建飞书群结果：失败，成功 0 人，失败 {failed_count} 人",
+        )
 
 
 def _mark_degraded(group_id, error_code, error_message) -> None:

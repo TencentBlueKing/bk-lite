@@ -16,7 +16,7 @@ class IncidentIMGroupSettingsSerializer(serializers.Serializer):
 
 
 class IncidentIMGroupUnlinkSerializer(serializers.Serializer):
-    group_name = serializers.CharField(max_length=255)
+    group_name = serializers.CharField(max_length=255, trim_whitespace=False)
 
 
 class IncidentIMMemberSerializer(serializers.ModelSerializer):

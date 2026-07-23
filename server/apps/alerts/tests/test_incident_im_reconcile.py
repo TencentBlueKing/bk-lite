@@ -102,6 +102,36 @@ def _incident_serializer(incident, data):
 
 
 @pytest.mark.django_db
+def test_manual_resume_create_seam_requeues_initial_create(incident, channel):
+    group = IncidentIMGroup.objects.create(
+        incident=incident,
+        channel=channel,
+        provider_key="feishu",
+        channel_name_snapshot=channel.name,
+        member_id_type="open_id",
+        group_name="[Incident] 首次创建暂停",
+        external_chat_id="",
+        status=IncidentIMGroup.Status.ACTIVE_PARTIAL,
+        current_stage=IncidentIMGroup.Stage.CREATING_CHAT,
+        continuous_sync_enabled=False,
+        idempotency_key=f"bklite-{uuid.uuid4().hex}",
+    )
+
+    reconcile_incident_im_group(
+        incident.id,
+        resume_create=True,
+    )
+
+    group.refresh_from_db()
+    assert group.status == IncidentIMGroup.Status.PENDING_CREATE
+    assert group.current_stage == IncidentIMGroup.Stage.QUEUED
+    assert AlertOutbox.objects.filter(
+        kind="incident_im_group.create",
+        payload={"group_id": str(group.id)},
+    ).count() == 1
+
+
+@pytest.mark.django_db
 def test_new_collaborator_enqueues_add_when_continuous_sync_enabled(group, channel):
     _map_user(channel, "alice")
     _map_user(channel, "bob")
