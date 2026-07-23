@@ -166,6 +166,8 @@ export interface IncidentIMOwnerCandidate {
 export interface IncidentIMGroupOptions {
   channels: IncidentIMChannelOption[]
   default_group_name: string
+  can_create: boolean
+  preferred_owner_username: string | null
   members?: IncidentIMResolvedMember[]
   owner_candidates?: IncidentIMOwnerCandidate[]
 }

@@ -114,7 +114,6 @@
             },
             "noChannels": "No Feishu channel is available. Configure one in System Management first.",
             "configureChannels": "Configure in System Management",
-            "permissionProbeFailed": "Could not verify group creation permission. Try again.",
             "continuousSync": "Continuously sync new participants",
             "addOnlyHint": "Add only: removing someone from the Incident does not remove them from the Feishu group.",
             "continuousStatus": "Continuous sync: {status}",

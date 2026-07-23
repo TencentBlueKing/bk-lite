@@ -24,6 +24,11 @@ import {
   settleMemberDrawerRequest,
   shouldInitializeCreateForm,
 } from '../src/app/alarm/(pages)/incidents/components/collaboration/imGroup/controller';
+import {
+  deriveCreateModalModel,
+  deriveMemberDrawerModel,
+  derivePanelModel,
+} from '../src/app/alarm/(pages)/incidents/components/collaboration/imGroup/viewModel';
 import type {
   CreateIncidentIMGroupParams,
   IncidentIMGroup,
@@ -36,6 +41,7 @@ import type {
 const task10Files = [
   'src/app/alarm/(pages)/incidents/components/collaboration/imGroup/controller.ts',
   'src/app/alarm/(pages)/incidents/components/collaboration/imGroup/useIncidentIMGroup.ts',
+  'src/app/alarm/(pages)/incidents/components/collaboration/imGroup/viewModel.ts',
   'src/app/alarm/(pages)/incidents/components/collaboration/imGroup/createModal.tsx',
   'src/app/alarm/(pages)/incidents/components/collaboration/imGroup/memberDrawer.tsx',
   'src/app/alarm/(pages)/incidents/components/collaboration/imGroup/confirmModals.tsx',
@@ -113,6 +119,8 @@ const groupContract = {
 const optionsContract = {
   channels: [{ id: 12, name: 'Production Feishu' }],
   default_group_name: '[INC-001] Database connection error',
+  can_create: true,
+  preferred_owner_username: 'zhangsan',
   members: [{
     username: 'lisi',
     display_name: 'Li Si',
@@ -137,6 +145,7 @@ const membersContract = {
     updated_at: '2026-07-21T14:31:00+08:00',
   }],
 } satisfies IncidentIMMemberList;
+const probeFailure = new Error('forbidden');
 
 assert.equal(groupContract.channel_id, 12);
 assert.equal(optionsContract.members[0].mapping_status, 'unmapped');
@@ -437,6 +446,113 @@ assert.equal(
   'an options response while open must not reset the user-selected channel',
 );
 
+assert.deepEqual(
+  deriveCreateModalModel({
+    selectedChannelId: 12,
+    resolvedChannelId: 12,
+    options: {
+      ...optionsContract,
+      can_create: true,
+      preferred_owner_username: 'zhangsan',
+    },
+    previewError: null,
+  }),
+  {
+    contextual: true,
+    ownerCandidates: optionsContract.owner_candidates,
+    defaultOwnerUsername: 'zhangsan',
+    showPreviewError: false,
+    canCreate: true,
+  },
+);
+assert.deepEqual(
+  deriveCreateModalModel({
+    selectedChannelId: 13,
+    resolvedChannelId: 12,
+    options: {
+      ...optionsContract,
+      can_create: true,
+      preferred_owner_username: 'not-a-candidate',
+    },
+    previewError: probeFailure,
+  }),
+  {
+    contextual: false,
+    ownerCandidates: [],
+    defaultOwnerUsername: null,
+    showPreviewError: true,
+    canCreate: false,
+  },
+);
+
+assert.deepEqual(
+  deriveMemberDrawerModel(groupContract, null),
+  {
+    phase: 'members',
+    statusLabel: 'partial',
+    continuousSyncEnabled: true,
+    lastSyncAt: groupContract.last_sync_at,
+    showMemberError: false,
+    canRetryPending: true,
+    showMappingRepair: true,
+  },
+);
+assert.deepEqual(
+  deriveMemberDrawerModel(
+    { ...groupContract, status: 'create_failed', current_stage: 'completed' },
+    probeFailure,
+  ),
+  {
+    phase: 'progress',
+    statusLabel: 'createFailed',
+    continuousSyncEnabled: true,
+    lastSyncAt: groupContract.last_sync_at,
+    showMemberError: false,
+    canRetryPending: false,
+    showMappingRepair: false,
+  },
+);
+
+assert.deepEqual(
+  derivePanelModel({
+    group: null,
+    groupLoading: false,
+    groupError: false,
+    optionsLoading: false,
+    optionsError: null,
+    options: {
+      channels: [],
+      default_group_name: 'Incident group',
+      can_create: false,
+      preferred_owner_username: null,
+    },
+  }),
+  {
+    state: 'empty',
+    canCreate: false,
+    showPermissionError: false,
+    primaryAction: null,
+    sidebarClassName: 'w-full lg:w-[220px]',
+  },
+);
+assert.deepEqual(
+  derivePanelModel({
+    group: groupContract,
+    groupLoading: false,
+    groupError: false,
+    optionsLoading: false,
+    optionsError: null,
+    options: null,
+  }),
+  {
+    state: 'group',
+    canCreate: false,
+    showPermissionError: false,
+    primaryAction: 'retry',
+    sidebarClassName: 'w-full lg:w-[220px]',
+  },
+);
+
 const requestGate = createRequestGate();
 const firstGroupRequest = requestGate.begin('group');
 const secondGroupRequest = requestGate.begin('group');
@@ -450,7 +566,6 @@ requestGate.abortAll();
 assert.equal(optionRequest.signal.aborted, true);
 assert.equal(memberRequest.signal.aborted, true);
 
-const probeFailure = new Error('forbidden');
 
 assert.deepEqual(
   settleMemberDrawerRequest(
@@ -474,10 +589,17 @@ const runControllerAsyncTests = async () => {
   const emptyPermissionProbe = await probeCreatePermission(async () => ({
     channels: [],
     default_group_name: 'Incident group',
+    can_create: false,
+    preferred_owner_username: null,
   }));
   assert.deepEqual(emptyPermissionProbe, {
-    canCreate: true,
-    options: { channels: [], default_group_name: 'Incident group' },
+    canCreate: false,
+    options: {
+      channels: [],
+      default_group_name: 'Incident group',
+      can_create: false,
+      preferred_owner_username: null,
+    },
     error: null,
   });
   assert.deepEqual(
@@ -538,19 +660,25 @@ assert.ok(
 assert.match(collaborationText, /refreshVersion=\{imGroupRefreshVersion\}/);
 assert.match(collaborationText, /removeCollaboratorWarning/);
 
-const createModalText = parseSource(task10Files[2]).getFullText();
+const createModalPath = task10Files.find(filePath => filePath.endsWith('/createModal.tsx'));
+assert.ok(createModalPath);
+const createModalText = parseSource(createModalPath).getFullText();
 for (const field of ['channel_id', 'group_name', 'owner_username', 'continuous_sync_enabled']) {
   assert.ok(createModalText.includes(field), `create modal must own ${field}`);
 }
 assert.match(createModalText, /width=\{600\}/);
 assert.match(createModalText, /calc\(100vh - 240px\)/);
 
-const memberDrawerText = parseSource(task10Files[3]).getFullText();
+const memberDrawerPath = task10Files.find(filePath => filePath.endsWith('/memberDrawer.tsx'));
+assert.ok(memberDrawerPath);
+const memberDrawerText = parseSource(memberDrawerPath).getFullText();
 assert.match(memberDrawerText, /getIncidentIMMembers/);
 assert.match(memberDrawerText, /pageSize:\s*20/);
 assert.match(memberDrawerText, /min\(720px,\s*100vw\)/);
 
-const hookText = parseSource(task10Files[1]).getFullText();
+const hookPath = task10Files.find(filePath => filePath.endsWith('/useIncidentIMGroup.ts'));
+assert.ok(hookPath);
+const hookText = parseSource(hookPath).getFullText();
 assert.match(hookText, /AbortController/);
 assert.match(hookText, /visibilitychange/);
 assert.match(hookText, /focus/);

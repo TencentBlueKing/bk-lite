@@ -49,8 +49,6 @@ export const useIncidentIMGroup = ({
   const [optionsChannelId, setOptionsChannelId] = useState<number | undefined>(undefined);
   const [optionsLoading, setOptionsLoading] = useState(false);
   const [optionsError, setOptionsError] = useState<unknown | null>(null);
-  const [canCreate, setCanCreate] = useState(false);
-  const [createPermissionChecked, setCreatePermissionChecked] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
   const [actionLoadingKey, setActionLoadingKey] = useState<IMGroupActionKey | null>(null);
   const [memberLoading, setMemberLoading] = useState(false);
@@ -229,13 +227,9 @@ export const useIncidentIMGroup = ({
   }, []);
 
   const refreshCreatePermission = useCallback(async () => {
-    setCreatePermissionChecked(false);
     const result = await probeCreatePermission(() => loadOptions());
-    if (incidentPkRef.current !== incidentPk) return result;
-    setCanCreate(result.canCreate);
-    setCreatePermissionChecked(true);
     return result;
-  }, [incidentPk, loadOptions]);
+  }, [loadOptions]);
 
   useEffect(() => {
     setGroup(null);
@@ -243,20 +237,27 @@ export const useIncidentIMGroup = ({
     setOptions(null);
     setOptionsChannelId(undefined);
     setOptionsError(null);
-    setCanCreate(false);
-    setCreatePermissionChecked(false);
     pollStartedAtRef.current = Date.now();
     void refreshGroup().catch(() => undefined);
   }, [incidentPk, refreshGroup]);
 
   useEffect(() => {
-    if (groupLoading || groupError || group !== null || createPermissionChecked) return;
+    if (
+      groupLoading
+      || groupError
+      || group !== null
+      || options !== null
+      || optionsError !== null
+      || optionsLoading
+    ) return;
     void refreshCreatePermission();
   }, [
-    createPermissionChecked,
     group,
     groupError,
     groupLoading,
+    options,
+    optionsError,
+    optionsLoading,
     refreshCreatePermission,
   ]);
 
@@ -305,8 +306,6 @@ export const useIncidentIMGroup = ({
     optionsChannelId,
     optionsLoading,
     optionsError,
-    canCreate,
-    createPermissionChecked,
     createLoading,
     actionLoadingKey,
     memberLoading,

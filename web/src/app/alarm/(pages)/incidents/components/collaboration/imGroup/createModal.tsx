@@ -12,6 +12,7 @@ import {
   isChannelOptionsCurrent,
   shouldInitializeCreateForm,
 } from './controller';
+import { deriveCreateModalModel } from './viewModel';
 
 interface CreateIMGroupModalProps {
   open: boolean;
@@ -41,26 +42,27 @@ export const CreateIMGroupModal = ({
   const channelId = Form.useWatch('channel_id', form);
   const groupName = Form.useWatch('group_name', form);
   const ownerUsername = Form.useWatch('owner_username', form);
-  const contextualOptions = channelId !== undefined
-    && optionsChannelId !== undefined
-    && isChannelOptionsCurrent(channelId, optionsChannelId)
-    ? options
-    : null;
+  const wasOpenRef = useRef(false);
+  const channelRequestRef = useRef(0);
+  const [previewError, setPreviewError] = useState<unknown | null>(null);
+  const [previewExpanded, setPreviewExpanded] = useState(false);
+  const modalModel = deriveCreateModalModel({
+    selectedChannelId: channelId,
+    resolvedChannelId: optionsChannelId,
+    options,
+    previewError: previewError || optionsError,
+  });
+  const contextualOptions = modalModel.contextual ? options : null;
   const members = contextualOptions?.members ?? [];
   const mappedCount = members.filter(member => member.mapping_status === 'mapped').length;
   const conflictCount = members.filter(member => member.mapping_status === 'conflict').length;
   const unmappedCount = members.filter(member => member.mapping_status === 'unmapped').length;
-  const canSubmit = canSubmitIMGroupCreation(
+  const canSubmit = modalModel.canCreate && canSubmitIMGroupCreation(
     contextualOptions,
     channelId,
     groupName,
     ownerUsername,
   );
-  const wasOpenRef = useRef(false);
-  const channelRequestRef = useRef(0);
-  const [previewError, setPreviewError] = useState<unknown | null>(null);
-  const [previewExpanded, setPreviewExpanded] = useState(false);
-
   useEffect(() => {
     const opening = shouldInitializeCreateForm(wasOpenRef.current, open);
     wasOpenRef.current = open;
@@ -95,11 +97,17 @@ export const CreateIMGroupModal = ({
     setPreviewError(null);
     try {
       const next = await onLoadOptions(requestedChannelId);
+      const nextModel = deriveCreateModalModel({
+        selectedChannelId: form.getFieldValue('channel_id'),
+        resolvedChannelId: requestedChannelId,
+        options: next,
+        previewError: null,
+      });
       if (
         requestGeneration === channelRequestRef.current
         && isChannelOptionsCurrent(form.getFieldValue('channel_id'), requestedChannelId)
       ) {
-        form.setFieldValue('owner_username', next.owner_candidates?.[0]?.username);
+        form.setFieldValue('owner_username', nextModel.defaultOwnerUsername ?? undefined);
       }
     } catch (error) {
       if (
@@ -171,7 +179,7 @@ export const CreateIMGroupModal = ({
               size="large"
               loading={loading}
               disabled={!channelId || loading}
-              options={contextualOptions?.owner_candidates?.map(owner => ({
+              options={modalModel.ownerCandidates.map(owner => ({
                 label: `${owner.display_name} (${owner.username})`,
                 value: owner.username,
               }))}
@@ -181,7 +189,7 @@ export const CreateIMGroupModal = ({
           <div className="mb-4" aria-live="polite">
             <div className="text-sm font-medium mb-2">{t('incidents.imGroup.memberPreview')}</div>
             <Skeleton loading={loading} active paragraph={{ rows: 2 }}>
-              {(previewError || optionsError) && (
+              {modalModel.showPreviewError && (
                 <Alert
                   className="mb-2"
                   type="error"

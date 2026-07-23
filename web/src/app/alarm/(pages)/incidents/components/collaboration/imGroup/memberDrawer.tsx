@@ -17,7 +17,7 @@ import {
   resolveMemberQueryVisibility,
   settleMemberDrawerRequest,
 } from './controller';
-import { deriveIMGroupView } from './state';
+import { deriveMemberDrawerModel } from './viewModel';
 
 interface IMGroupMemberDrawerProps {
   open: boolean;
@@ -47,7 +47,6 @@ export const IMGroupMemberDrawer = ({
   const { t } = useTranslation();
   const { convertToLocalizedTime } = useLocalizedTime();
   const pendingCount = group.member_summary.total - group.member_summary.joined;
-  const groupView = deriveIMGroupView(group);
   const [filter, setFilter] = useState<IncidentIMMemberListParams['filter']>(
     getInitialMemberFilter(pendingCount),
   );
@@ -103,7 +102,7 @@ export const IMGroupMemberDrawer = ({
   }, [open, pendingCount]);
 
   useEffect(() => {
-    if (!open || ['pending_create', 'creating'].includes(group.status)) return;
+    if (!open || ['pending_create', 'creating', 'create_failed'].includes(group.status)) return;
     void loadMembers();
   }, [
     group.last_sync_at,
@@ -147,18 +146,20 @@ export const IMGroupMemberDrawer = ({
         <Space direction="vertical" size={0}>
           <Tag>{t(`incidents.imGroup.mapping.${member.mapping_status}`)}</Tag>
           <Tag>{t(`incidents.imGroup.memberStatusValue.${member.sync_status}`)}</Tag>
-          {['unmapped', 'conflict'].includes(member.mapping_status) && (
-            <Button
-              type="link"
-              size="small"
-              href="/system-manager/channel/im-notification"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="p-0"
-            >
-              {t('incidents.imGroup.fixMapping')}
-            </Button>
-          )}
+          {drawerModel.showMappingRepair
+            && ['unmapped', 'conflict'].includes(member.mapping_status)
+            && (
+              <Button
+                type="link"
+                size="small"
+                href="/system-manager/channel/im-notification"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-0"
+              >
+                {t('incidents.imGroup.fixMapping')}
+              </Button>
+            )}
         </Space>
       ),
     },
@@ -189,7 +190,8 @@ export const IMGroupMemberDrawer = ({
   const stageIndex = Math.max(0, creationStages.indexOf(
     group.current_stage as typeof creationStages[number],
   ));
-  const isCreating = ['pending_create', 'creating', 'create_failed'].includes(group.status);
+  const drawerModel = deriveMemberDrawerModel(group, memberError);
+  const isCreating = drawerModel.phase === 'progress';
 
   return (
     <Drawer
@@ -200,7 +202,7 @@ export const IMGroupMemberDrawer = ({
       footer={
         <div className="flex justify-end gap-2">
           <Button onClick={closeDrawer}>{t('common.close')}</Button>
-          {!isCreating && group.permissions.can_retry && pendingCount > 0 && (
+          {drawerModel.canRetryPending && (
             <Button type="primary" loading={retryLoading} onClick={() => void onRetry()}>
               {t('incidents.imGroup.retry')}
             </Button>
@@ -216,10 +218,10 @@ export const IMGroupMemberDrawer = ({
           <div className="text-sm text-[var(--color-text-3)]">{group.channel_name}</div>
         </div>
         <div className="flex flex-wrap gap-2 tabular-nums" aria-live="polite">
-          <Tag>{t(`incidents.imGroup.${groupView.label}`)}</Tag>
+          <Tag>{t(`incidents.imGroup.${drawerModel.statusLabel}`)}</Tag>
           <Tag>
             {t('incidents.imGroup.continuousStatus', undefined, {
-              status: t(group.continuous_sync_enabled
+              status: t(drawerModel.continuousSyncEnabled
                 ? 'incidents.imGroup.enabled'
                 : 'incidents.imGroup.disabled'),
             })}
@@ -228,10 +230,10 @@ export const IMGroupMemberDrawer = ({
           <Tag>{t('incidents.imGroup.waitingCount', undefined, { count: String(group.member_summary.waiting) })}</Tag>
           <Tag>{t('incidents.imGroup.failedCount', undefined, { count: String(group.member_summary.failed) })}</Tag>
         </div>
-        {group.last_sync_at && (
+        {drawerModel.lastSyncAt && (
           <div className="text-sm text-[var(--color-text-3)]">
             {t('incidents.imGroup.lastSync', undefined, {
-              time: convertToLocalizedTime(group.last_sync_at),
+              time: convertToLocalizedTime(drawerModel.lastSyncAt),
             })}
           </div>
         )}
@@ -253,7 +255,7 @@ export const IMGroupMemberDrawer = ({
           />
         ) : (
           <>
-            {memberError && (
+            {drawerModel.showMemberError && (
               <Alert
                 type="error"
                 showIcon

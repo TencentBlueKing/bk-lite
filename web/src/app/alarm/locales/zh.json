@@ -114,7 +114,6 @@
             },
             "noChannels": "没有可用于建群的飞书渠道，请先前往系统管理配置。",
             "configureChannels": "前往系统管理配置",
-            "permissionProbeFailed": "无法确认当前账号的建群权限，请重试。",
             "continuousSync": "持续同步新增人员",
             "addOnlyHint": "只增不减；从 Incident 移除不会自动退出飞书群。",
             "continuousStatus": "持续同步：{status}",

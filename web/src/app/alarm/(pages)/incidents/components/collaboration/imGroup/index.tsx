@@ -31,6 +31,7 @@ import type {
 } from '@/app/alarm/types/incidents';
 import { deriveIMGroupView } from './state';
 import { runIMGroupAction } from './controller';
+import { derivePanelModel } from './viewModel';
 import { useIncidentIMGroup } from './useIncidentIMGroup';
 import { CreateIMGroupModal } from './createModal';
 import { IMGroupMemberDrawer } from './memberDrawer';
@@ -83,6 +84,14 @@ export const IncidentIMGroupPanel = ({
 
   const group = controller.group;
   const view = useMemo(() => group ? deriveIMGroupView(group) : null, [group]);
+  const panelModel = derivePanelModel({
+    group,
+    groupLoading: controller.groupLoading,
+    groupError: controller.groupError,
+    optionsLoading: controller.optionsLoading,
+    optionsError: controller.optionsError,
+    options: controller.options,
+  });
 
   const showActionError = (error: unknown) => {
     if (isSilentRequestError(error)) return;
@@ -228,7 +237,7 @@ export const IncidentIMGroupPanel = ({
     }] : []),
   ] : [];
 
-  if (controller.groupLoading && !group) {
+  if (panelModel.state === 'loading') {
     return (
       <div className="mb-4 rounded-lg border border-[var(--color-border)] p-3">
         <Skeleton active paragraph={{ rows: 3 }} title={{ width: '70%' }} />
@@ -236,7 +245,7 @@ export const IncidentIMGroupPanel = ({
     );
   }
 
-  if (controller.groupError && !group) {
+  if (panelModel.state === 'group-error') {
     return (
       <Alert
         className="mb-4"
@@ -253,13 +262,6 @@ export const IncidentIMGroupPanel = ({
   }
 
   if (!group) {
-    if (!controller.createPermissionChecked || controller.optionsLoading) {
-      return (
-        <div className="mb-4 rounded-lg border border-[var(--color-border)] p-3">
-          <Skeleton active paragraph={{ rows: 2 }} title={{ width: '70%' }} />
-        </div>
-      );
-    }
     return (
       <div className="mb-4 rounded-lg border border-[var(--color-border)] p-3">
         <div className="flex items-center justify-between gap-2 mb-2">
@@ -269,12 +271,12 @@ export const IncidentIMGroupPanel = ({
         <p className="text-xs text-[var(--color-text-3)]">
           {t('incidents.imGroup.emptyDescription')}
         </p>
-        {controller.optionsError && (
+        {panelModel.showPermissionError && (
           <Alert
             className="mb-2"
             type="error"
             showIcon
-            message={t('incidents.imGroup.permissionProbeFailed')}
+            message={t('incidents.imGroup.optionsLoadFailed')}
             action={
               <Button size="small" onClick={() => void controller.refreshCreatePermission()}>
                 {t('common.retry')}
@@ -282,7 +284,7 @@ export const IncidentIMGroupPanel = ({
             }
           />
         )}
-        {controller.canCreate && (
+        {panelModel.canCreate && (
           <PermissionWrapper requiredPermissions={['Edit']}>
             <Button
               block

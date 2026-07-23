@@ -155,7 +155,7 @@ export const probeCreatePermission = async (
 ): Promise<CreatePermissionProbe> => {
   try {
     const options = await loadOptions();
-    return { canCreate: true, options, error: null };
+    return { canCreate: options.can_create, options, error: null };
   } catch (error) {
     return { canCreate: false, options: null, error };
   }
