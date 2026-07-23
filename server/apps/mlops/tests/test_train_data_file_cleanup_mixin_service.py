@@ -57,6 +57,12 @@ def _mock_storage_delete(monkeypatch, train_data_model, *, side_effect=None):
     return delete
 
 
+def _persisted_train_data_path(train_data_model, instance):
+    return train_data_model.objects.values_list("train_data", flat=True).get(
+        pk=instance.pk
+    )
+
+
 @pytest.mark.parametrize(("dataset_model", "train_data_model"), TRAIN_DATA_MODELS)
 def test_database_save_failure_preserves_old_file(
     monkeypatch,
@@ -76,10 +82,7 @@ def test_database_save_failure_preserves_old_file(
         instance.save()
 
     delete.assert_not_called()
-    assert (
-        train_data_model.objects.values_list("train_data", flat=True).get(pk=instance.pk)
-        == "old/train-data.bin"
-    )
+    assert _persisted_train_data_path(train_data_model, instance) == "old/train-data.bin"
 
 
 def test_outer_transaction_rollback_preserves_old_file(monkeypatch):
@@ -97,9 +100,7 @@ def test_outer_transaction_rollback_preserves_old_file(monkeypatch):
 
     delete.assert_not_called()
     assert (
-        AnomalyDetectionTrainData.objects.values_list("train_data", flat=True).get(
-            pk=instance.pk
-        )
+        _persisted_train_data_path(AnomalyDetectionTrainData, instance)
         == "old/train-data.bin"
     )
 
@@ -116,9 +117,7 @@ def test_committed_replacement_deletes_old_file(monkeypatch):
 
     delete.assert_called_once_with("old/train-data.bin")
     assert (
-        AnomalyDetectionTrainData.objects.values_list("train_data", flat=True).get(
-            pk=instance.pk
-        )
+        _persisted_train_data_path(AnomalyDetectionTrainData, instance)
         == "new/train-data.bin"
     )
 
@@ -134,12 +133,7 @@ def test_committed_clear_deletes_old_file(monkeypatch):
     instance.save()
 
     delete.assert_called_once_with("old/train-data.bin")
-    assert (
-        AnomalyDetectionTrainData.objects.values_list("train_data", flat=True).get(
-            pk=instance.pk
-        )
-        == ""
-    )
+    assert _persisted_train_data_path(AnomalyDetectionTrainData, instance) == ""
 
 
 def test_unchanged_file_is_not_deleted(monkeypatch):
@@ -168,9 +162,7 @@ def test_update_fields_without_file_keeps_persisted_file(monkeypatch):
 
     delete.assert_not_called()
     assert (
-        ImageClassificationTrainData.objects.values_list("train_data", flat=True).get(
-            pk=instance.pk
-        )
+        _persisted_train_data_path(ImageClassificationTrainData, instance)
         == "old/train-data.bin"
     )
 
@@ -191,8 +183,47 @@ def test_cleanup_failure_does_not_rollback_committed_database_update(monkeypatch
 
     delete.assert_called_once_with("old/train-data.bin")
     assert (
-        AnomalyDetectionTrainData.objects.values_list("train_data", flat=True).get(
-            pk=instance.pk
-        )
+        _persisted_train_data_path(AnomalyDetectionTrainData, instance)
         == "new/train-data.bin"
     )
+
+
+def test_stale_instance_non_file_save_preserves_committed_replacement(monkeypatch):
+    instance = _create_train_data(
+        AnomalyDetectionDataset,
+        AnomalyDetectionTrainData,
+    )
+    stale_instance = AnomalyDetectionTrainData.objects.get(pk=instance.pk)
+    delete = _mock_storage_delete(monkeypatch, AnomalyDetectionTrainData)
+
+    instance.train_data = "new/train-data.bin"
+    instance.save()
+
+    stale_instance.name = "renamed by concurrent request"
+    stale_instance.save()
+
+    assert (
+        _persisted_train_data_path(AnomalyDetectionTrainData, stale_instance)
+        == "new/train-data.bin"
+    )
+    delete.assert_called_once_with("old/train-data.bin")
+
+
+def test_multiple_replacements_in_outer_transaction_keep_final_file(monkeypatch):
+    instance = _create_train_data(
+        AnomalyDetectionDataset,
+        AnomalyDetectionTrainData,
+    )
+    delete = _mock_storage_delete(monkeypatch, AnomalyDetectionTrainData)
+
+    with transaction.atomic():
+        instance.train_data = "intermediate/train-data.bin"
+        instance.save()
+        instance.train_data = "old/train-data.bin"
+        instance.save()
+
+    assert (
+        _persisted_train_data_path(AnomalyDetectionTrainData, instance)
+        == "old/train-data.bin"
+    )
+    delete.assert_called_once_with("intermediate/train-data.bin")
