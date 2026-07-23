@@ -160,9 +160,9 @@ export const IncidentIMGroupPanel = ({
     });
   };
 
-  const retry = async () => {
+  const retry = async (username?: string) => {
     await runIMGroupAction(
-      async () => { await controller.retry(); },
+      async () => { await controller.retry(username); },
       () => message.success(t('incidents.imGroup.retryAccepted')),
       showActionError,
     );

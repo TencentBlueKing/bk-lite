@@ -68,8 +68,14 @@ export const createIncidentIMGroupApi = ({
     return get<IncidentIMMemberList>(`${groupPath(incidentPk)}members/`, { params, signal });
   };
 
-  const retryIncidentIMGroup = async (incidentPk: string): Promise<IncidentIMGroup> => {
-    return post<IncidentIMGroup>(`${groupPath(incidentPk)}retry/`);
+  const retryIncidentIMGroup = async (
+    incidentPk: string,
+    username?: string,
+  ): Promise<IncidentIMGroup> => {
+    return post<IncidentIMGroup>(
+      `${groupPath(incidentPk)}retry/`,
+      username === undefined ? undefined : { username },
+    );
   };
 
   const pauseIncidentIMGroup = async (incidentPk: string): Promise<IncidentIMGroup> => {

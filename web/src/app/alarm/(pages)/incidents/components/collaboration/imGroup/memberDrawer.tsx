@@ -28,7 +28,7 @@ interface IMGroupMemberDrawerProps {
     params: IncidentIMMemberListParams,
   ) => Promise<IncidentIMMemberList | null>;
   cancelMemberRequest: () => void;
-  onRetry: () => Promise<void>;
+  onRetry: (username?: string) => Promise<void>;
   onClose: () => void;
 }
 
@@ -173,8 +173,13 @@ export const IMGroupMemberDrawer = ({
             <div className="text-xs text-[var(--color-text-3)]">{member.error_code}</div>
           )}
           {member.sync_status === 'failed' && group.permissions.can_retry && (
-            <Button type="link" size="small" className="p-0" onClick={() => void onRetry()}>
-              {t('incidents.imGroup.retryAllPending')}
+            <Button
+              type="link"
+              size="small"
+              className="p-0"
+              onClick={() => void onRetry(member.username)}
+            >
+              {t('incidents.imGroup.retryMember')}
             </Button>
           )}
         </div>

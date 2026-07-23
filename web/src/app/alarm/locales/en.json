@@ -140,6 +140,7 @@
             "noError": "None",
             "notAvailable": "Not available",
             "fixMapping": "Fix in System Management",
+            "retryMember": "Retry this member",
             "retryAllPending": "Retry all pending people",
             "roleValue": {
                 "operator": "Owner",

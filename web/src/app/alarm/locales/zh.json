@@ -140,6 +140,7 @@
             "noError": "无",
             "notAvailable": "暂无",
             "fixMapping": "前往系统管理修复",
+            "retryMember": "重试该成员",
             "retryAllPending": "重试全部待处理人员",
             "roleValue": {
                 "operator": "负责人",

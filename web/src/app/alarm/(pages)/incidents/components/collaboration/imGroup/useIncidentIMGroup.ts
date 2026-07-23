@@ -315,7 +315,8 @@ export const useIncidentIMGroup = ({
     getMembers,
     cancelMemberRequest,
     refreshCreatePermission,
-    retry: () => runGroupAction('retry', () => apiRef.current.retryIncidentIMGroup(incidentPk)),
+    retry: (username?: string) =>
+      runGroupAction('retry', () => apiRef.current.retryIncidentIMGroup(incidentPk, username)),
     pause: () => runGroupAction('pause', () => apiRef.current.pauseIncidentIMGroup(incidentPk)),
     resume: () => runGroupAction('resume', () => apiRef.current.resumeIncidentIMGroup(incidentPk)),
     updateContinuousSync: (enabled: boolean) =>

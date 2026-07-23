@@ -327,6 +327,7 @@ const runApiContractTests = async () => {
   assert.equal(await api.updateIncidentIMGroup('42', updateParams), response);
   assert.equal(await api.getIncidentIMMembers('42', memberParams, signal), response);
   assert.equal(await api.retryIncidentIMGroup('42'), response);
+  assert.equal(await api.retryIncidentIMGroup('42', 'lisi'), response);
   assert.equal(await api.pauseIncidentIMGroup('42'), response);
   assert.equal(await api.resumeIncidentIMGroup('42'), response);
   assert.equal(await api.unlinkIncidentIMGroup('42', createParams.group_name), response);
@@ -359,6 +360,12 @@ const runApiContractTests = async () => {
       verb: 'post',
       url: '/alerts/api/incident/42/im-group/retry/',
       data: undefined,
+      config: undefined,
+    },
+    {
+      verb: 'post',
+      url: '/alerts/api/incident/42/im-group/retry/',
+      data: { username: 'lisi' },
       config: undefined,
     },
     {
@@ -675,6 +682,8 @@ const memberDrawerText = parseSource(memberDrawerPath).getFullText();
 assert.match(memberDrawerText, /getIncidentIMMembers/);
 assert.match(memberDrawerText, /pageSize:\s*20/);
 assert.match(memberDrawerText, /min\(720px,\s*100vw\)/);
+assert.match(memberDrawerText, /onRetry\(member\.username\)/);
+assert.match(memberDrawerText, /onRetry\(\)/);
 
 const hookPath = task10Files.find(filePath => filePath.endsWith('/useIncidentIMGroup.ts'));
 assert.ok(hookPath);

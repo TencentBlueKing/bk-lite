@@ -17,7 +17,7 @@ from apps.alerts.serializers.incident_im import (
 from apps.alerts.service.incident_im.errors import IncidentIMError
 from apps.alerts.service.incident_im.groups import IncidentIMGroupService, record_group_audit
 from apps.alerts.service.incident_im.members import get_desired_usernames, resolve_incident_members
-from apps.alerts.service.incident_im.reconcile import reconcile_incident_im_group
+from apps.alerts.service.incident_im.reconcile import reconcile_incident_im_group, retry_incident_im_member
 from apps.alerts.utils.permission_scope import filter_incident_queryset_for_request
 from apps.core.decorators.api_permission import HasPermission
 from apps.system_mgmt.services.im_group_service import IMGroupRuntimeService
@@ -45,10 +45,7 @@ class IncidentIMGroupViewSet(ModelViewSet):
     def _read_incident_or_response(self):
         incident = self._incident()
         if incident is None:
-            return (
-                None,
-                self._error("IM_INCIDENT_NOT_FOUND", "Incident 不存在或无权限访问", status.HTTP_404_NOT_FOUND,),
-            )
+            return (None, self._error("IM_INCIDENT_NOT_FOUND", "Incident 不存在或无权限访问", status.HTTP_404_NOT_FOUND))
         return incident, None
 
     def _manage_incident_or_response(self):
@@ -107,7 +104,7 @@ class IncidentIMGroupViewSet(ModelViewSet):
             messages.append(f'{member_summary["adding"]} 人正在同步')
         if member_summary["pending"]:
             messages.append(f'{member_summary["pending"]} 人待同步')
-        other_waiting = max(0, member_summary["waiting"] - member_summary["conflict"] - member_summary["unmapped"],)
+        other_waiting = max(0, member_summary["waiting"] - member_summary["conflict"] - member_summary["unmapped"])
         if other_waiting:
             messages.append(f"{other_waiting} 人等待处理")
         if messages:
@@ -162,12 +159,12 @@ class IncidentIMGroupViewSet(ModelViewSet):
                     IncidentIMGroup.Status.DEGRADED,
                     IncidentIMGroup.Status.CREATE_FAILED,
                 ),
-                "can_pause": can_manage and group.status in (IncidentIMGroup.Status.ACTIVE, IncidentIMGroup.Status.ACTIVE_PARTIAL,),
+                "can_pause": can_manage and group.status in (IncidentIMGroup.Status.ACTIVE, IncidentIMGroup.Status.ACTIVE_PARTIAL),
                 "can_resume": can_manage
                 and group.status == IncidentIMGroup.Status.PAUSED
                 and group.pause_reason == IncidentIMGroup.PauseReason.MANUAL,
                 "can_unlink": can_manage
-                and group.status not in (IncidentIMGroup.Status.PENDING_CREATE, IncidentIMGroup.Status.CREATING,)
+                and group.status not in (IncidentIMGroup.Status.PENDING_CREATE, IncidentIMGroup.Status.CREATING)
                 and group.current_stage == IncidentIMGroup.Stage.COMPLETED
                 and not group.members.filter(sync_status=IncidentIMMember.SyncStatus.ADDING).exists(),
             },
@@ -190,7 +187,7 @@ class IncidentIMGroupViewSet(ModelViewSet):
         serializer = IncidentIMGroupCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:
-            group = IncidentIMGroupService.create(incident_id=incident.id, actor=request.user, **serializer.validated_data,)
+            group = IncidentIMGroupService.create(incident_id=incident.id, actor=request.user, **serializer.validated_data)
         except IncidentIMError as exc:
             return self._incident_error(exc)
         group.refresh_from_db()
@@ -208,7 +205,7 @@ class IncidentIMGroupViewSet(ModelViewSet):
         serializer.is_valid(raise_exception=True)
         enabled = serializer.validated_data["continuous_sync_enabled"]
         try:
-            group = IncidentIMGroupService.set_continuous_sync(incident_id=incident.id, actor_username=request.user.username, enabled=enabled,)
+            group = IncidentIMGroupService.set_continuous_sync(incident_id=incident.id, actor_username=request.user.username, enabled=enabled)
         except IncidentIMError as exc:
             return self._incident_error(exc)
         if enabled:
@@ -225,7 +222,7 @@ class IncidentIMGroupViewSet(ModelViewSet):
         serializer.is_valid(raise_exception=True)
         try:
             IncidentIMGroupService.unlink(
-                incident_id=incident.id, actor_username=request.user.username, group_name=serializer.validated_data["group_name"],
+                incident_id=incident.id, actor_username=request.user.username, group_name=serializer.validated_data["group_name"]
             )
         except IncidentIMError as exc:
             return self._incident_error(exc)
@@ -238,7 +235,7 @@ class IncidentIMGroupViewSet(ModelViewSet):
         if error is not None:
             return error
         try:
-            group = IncidentIMGroupService.pause(incident_id=incident.id, actor_username=request.user.username,)
+            group = IncidentIMGroupService.pause(incident_id=incident.id, actor_username=request.user.username)
         except IncidentIMError as exc:
             return self._incident_error(exc)
         return Response(self._serialize_group(group, incident))
@@ -250,7 +247,7 @@ class IncidentIMGroupViewSet(ModelViewSet):
         if error is not None:
             return error
         try:
-            group = IncidentIMGroupService.resume(incident_id=incident.id, actor_username=request.user.username,)
+            group = IncidentIMGroupService.resume(incident_id=incident.id, actor_username=request.user.username)
         except IncidentIMError as exc:
             return self._incident_error(exc)
         reconcile_incident_im_group(incident.id, resume_create=True)
@@ -263,19 +260,25 @@ class IncidentIMGroupViewSet(ModelViewSet):
         incident, error = self._manage_incident_or_response()
         if error is not None:
             return error
+        requested_username = request.data.get("username") if isinstance(request.data, dict) else None
+        if requested_username is not None:
+            if not isinstance(requested_username, str) or not requested_username.strip() or len(requested_username.strip()) > 150:
+                return self._error("IM_MEMBER_USERNAME_INVALID", "成员用户名格式不正确", status.HTTP_400_BAD_REQUEST)
+            requested_username = requested_username.strip()
         group = IncidentIMGroup.objects.filter(incident=incident, active_slot=1).first()
         if group is None:
             return self._error("IM_GROUP_NOT_FOUND", "Incident 尚未创建协作群", status.HTTP_404_NOT_FOUND)
         try:
-            if group.status == IncidentIMGroup.Status.DEGRADED:
-                group = IncidentIMGroupService.retry_degraded(incident_id=incident.id, actor_username=request.user.username,)
+            if requested_username is not None:
+                group = retry_incident_im_member(incident_id=incident.id, actor_username=request.user.username, username=requested_username)
+                record_group_audit(group, request.user.username, f"重试飞书群成员：{requested_username}")
+            elif group.status == IncidentIMGroup.Status.DEGRADED:
+                group = IncidentIMGroupService.retry_degraded(incident_id=incident.id, actor_username=request.user.username)
                 if group.status == IncidentIMGroup.Status.ACTIVE_PARTIAL:
                     reconcile_incident_im_group(incident.id, force_delivery=True)
             elif group.status == IncidentIMGroup.Status.CREATE_FAILED:
-                IncidentIMGroupService.prepare_create_retry(
-                    incident_id=incident.id, actor_username=request.user.username,
-                )
-            elif group.status in (IncidentIMGroup.Status.ACTIVE, IncidentIMGroup.Status.ACTIVE_PARTIAL,):
+                IncidentIMGroupService.prepare_create_retry(incident_id=incident.id, actor_username=request.user.username)
+            elif group.status in (IncidentIMGroup.Status.ACTIVE, IncidentIMGroup.Status.ACTIVE_PARTIAL):
                 record_group_audit(group, request.user.username, "重试飞书群待处理成员")
                 reconcile_incident_im_group(incident.id, force_delivery=True)
             else:
@@ -336,10 +339,10 @@ class IncidentIMGroupViewSet(ModelViewSet):
             return error
         member_filter = request.query_params.get("filter") or "all"
         if member_filter not in {"all", "pending", "joined"}:
-            return self._error("IM_MEMBER_FILTER_INVALID", "成员筛选仅支持 all、pending 或 joined",)
+            return self._error("IM_MEMBER_FILTER_INVALID", "成员筛选仅支持 all、pending 或 joined")
         page_size = request.query_params.get("page_size")
         if page_size is not None and page_size not in {"10", "20", "50", "100"}:
-            return self._error("IM_MEMBER_PAGE_SIZE_INVALID", "成员分页大小仅支持 10、20、50 或 100",)
+            return self._error("IM_MEMBER_PAGE_SIZE_INVALID", "成员分页大小仅支持 10、20、50 或 100")
         group = IncidentIMGroup.objects.filter(incident=incident, active_slot=1).first()
         queryset = IncidentIMMember.objects.none() if group is None else group.members.all()
         if member_filter == "pending":
@@ -352,7 +355,7 @@ class IncidentIMGroupViewSet(ModelViewSet):
                 When(mapping_status=IncidentIMMember.MappingStatus.CONFLICT, then=Value(1)),
                 When(mapping_status=IncidentIMMember.MappingStatus.UNMAPPED, then=Value(2)),
                 When(
-                    sync_status__in=(IncidentIMMember.SyncStatus.WAITING, IncidentIMMember.SyncStatus.PENDING, IncidentIMMember.SyncStatus.ADDING,),
+                    sync_status__in=(IncidentIMMember.SyncStatus.WAITING, IncidentIMMember.SyncStatus.PENDING, IncidentIMMember.SyncStatus.ADDING),
                     then=Value(3),
                 ),
                 When(sync_status=IncidentIMMember.SyncStatus.JOINED, then=Value(4)),
@@ -363,6 +366,6 @@ class IncidentIMGroupViewSet(ModelViewSet):
         page = self.paginate_queryset(queryset)
         if page is not None:
             return self.get_paginated_response(
-                IncidentIMMemberSerializer(page, many=True, context={"display_names": member_display_names(page)},).data
+                IncidentIMMemberSerializer(page, many=True, context={"display_names": member_display_names(page)}).data
             )
-        return Response(IncidentIMMemberSerializer(queryset, many=True, context={"display_names": member_display_names(queryset)},).data)
+        return Response(IncidentIMMemberSerializer(queryset, many=True, context={"display_names": member_display_names(queryset)}).data)
