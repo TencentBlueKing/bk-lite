@@ -20,12 +20,29 @@ class K8sLogCollectService:
     TOKEN_MAX_USAGE = 5
     REQUEST_TIMEOUT = 30
     TOKEN_CACHE_PREFIX = "log_k8s_install_token"
+    USAGE_COUNT_CACHE_SUFFIX = "usage_count"
     RUNTIME_PROFILES = {"standard", "docker", "custom"}
     PATH_UNSAFE_PATTERN = re.compile(r"[\r\n']")
 
     @classmethod
     def _build_cache_key(cls, token: str) -> str:
         return f"{cls.TOKEN_CACHE_PREFIX}:{token}"
+
+    @classmethod
+    def _consume_token_usage(cls, cache_key: str, data: dict, max_usage: int) -> int:
+        usage_cache_key = f"{cache_key}:{cls.USAGE_COUNT_CACHE_SUFFIX}"
+        cache.add(usage_cache_key, data.get("usage_count", 0), timeout=cls.TOKEN_EXPIRE_TIME)
+        try:
+            usage_count = cache.incr(usage_cache_key)
+        except ValueError as exc:
+            raise BaseAppException("Invalid or expired token") from exc
+
+        if usage_count > max_usage:
+            # 保留独立计数键作为 tombstone，防止已读到旧 payload 的并发请求重建计数。
+            cache.delete(cache_key)
+            raise BaseAppException(f"Token has exceeded maximum usage limit ({max_usage} times)")
+
+        return usage_count
 
     @classmethod
     def validate_cluster_name(cls, cluster_name: str):
@@ -144,19 +161,13 @@ class K8sLogCollectService:
         if not data:
             raise BaseAppException("Invalid or expired token")
 
-        usage_count = data.get("usage_count", 0)
         max_usage = data.get("max_usage", cls.TOKEN_MAX_USAGE)
-        if usage_count >= max_usage:
-            cache.delete(cache_key)
-            raise BaseAppException(f"Token has exceeded maximum usage limit ({max_usage} times)")
-
-        data["usage_count"] = usage_count + 1
-        cache.set(cache_key, data, timeout=cls.TOKEN_EXPIRE_TIME)
+        usage_count = cls._consume_token_usage(cache_key, data, max_usage)
         return {
             "cluster_name": data["cluster_name"],
             "cloud_region_id": data["cloud_region_id"],
             "config_type": data.get("config_type", "log"),
-            "remaining_usage": max_usage - data["usage_count"],
+            "remaining_usage": max_usage - usage_count,
         }
 
     @staticmethod

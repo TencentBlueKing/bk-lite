@@ -1,6 +1,12 @@
+from concurrent.futures import ThreadPoolExecutor
+from copy import deepcopy
+from threading import Barrier, Lock
+
 import pydantic.root_model  # noqa
 
 import pytest
+
+from django.core.cache import cache
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.log.services.k8s_collect import K8sLogCollectService as K8s
@@ -94,19 +100,104 @@ def test_build_cache_key():
 # ----------------------- generate_install_token / validate_and_get_token_data -----------------------
 
 
-def test_token_lifecycle_increments_usage(mocker):
-    store = {}
-    mocker.patch("apps.log.services.k8s_collect.cache.set", side_effect=lambda k, v, timeout=None: store.__setitem__(k, v))
-    mocker.patch("apps.log.services.k8s_collect.cache.get", side_effect=lambda k: store.get(k))
-    mocker.patch("apps.log.services.k8s_collect.cache.delete", side_effect=lambda k: store.pop(k, None))
-
+def test_token_lifecycle_increments_usage():
     token = K8s.generate_install_token("cluster-a", "cr-1")
-    assert store[K8s._build_cache_key(token)]["cluster_name"] == "cluster-a"
+    cache_key = K8s._build_cache_key(token)
+    assert cache.get(cache_key)["cluster_name"] == "cluster-a"
 
     data = K8s.validate_and_get_token_data(token)
     assert data["cluster_name"] == "cluster-a"
     assert data["cloud_region_id"] == "cr-1"
     assert data["remaining_usage"] == K8s.TOKEN_MAX_USAGE - 1
+
+
+class BarrierCache:
+    def __init__(self, readers):
+        self._barrier = Barrier(readers)
+        self._lock = Lock()
+        self._store = {}
+        self.synchronized_key = None
+
+    def get(self, key):
+        with self._lock:
+            value = deepcopy(self._store.get(key))
+        if key == self.synchronized_key:
+            self._barrier.wait(timeout=5)
+        return value
+
+    def set(self, key, value, timeout=None):
+        with self._lock:
+            self._store[key] = deepcopy(value)
+
+    def add(self, key, value, timeout=None):
+        with self._lock:
+            if key in self._store:
+                return False
+            self._store[key] = deepcopy(value)
+            return True
+
+    def incr(self, key):
+        with self._lock:
+            if key not in self._store:
+                raise ValueError
+            self._store[key] += 1
+            return self._store[key]
+
+    def delete(self, key):
+        with self._lock:
+            self._store.pop(key, None)
+
+
+def test_concurrent_validation_never_exceeds_max_usage(mocker):
+    attempts = K8s.TOKEN_MAX_USAGE * 2
+    fake_cache = BarrierCache(attempts)
+    mocker.patch("apps.log.services.k8s_collect.cache", fake_cache)
+
+    token = K8s.generate_install_token("cluster-a", "cr-1")
+    cache_key = K8s._build_cache_key(token)
+    fake_cache.synchronized_key = cache_key
+
+    def consume():
+        try:
+            return K8s.validate_and_get_token_data(token)["remaining_usage"]
+        except BaseAppException:
+            return None
+
+    with ThreadPoolExecutor(max_workers=attempts) as executor:
+        remaining_usage = list(executor.map(lambda _: consume(), range(attempts)))
+
+    assert sorted(value for value in remaining_usage if value is not None) == list(range(K8s.TOKEN_MAX_USAGE))
+    assert fake_cache.get(f"{cache_key}:usage_count") == attempts
+
+
+def test_validation_does_not_extend_token_ttl(mocker):
+    token = K8s.generate_install_token("cluster-a", "cr-1")
+
+    cache_set = mocker.patch.object(cache, "set", wraps=cache.set)
+    K8s.validate_and_get_token_data(token)
+
+    cache_set.assert_not_called()
+
+
+def test_legacy_payload_usage_count_seeds_atomic_counter():
+    token = K8s.generate_install_token("cluster-a", "cr-1")
+    cache_key = K8s._build_cache_key(token)
+    payload = cache.get(cache_key)
+    payload["usage_count"] = 2
+    cache.set(cache_key, payload, timeout=K8s.TOKEN_EXPIRE_TIME)
+
+    data = K8s.validate_and_get_token_data(token)
+
+    assert cache.get(f"{cache_key}:usage_count") == 3
+    assert data["remaining_usage"] == K8s.TOKEN_MAX_USAGE - 3
+
+
+def test_validation_fails_closed_when_atomic_counter_is_missing(mocker):
+    token = K8s.generate_install_token("cluster-a", "cr-1")
+    mocker.patch.object(cache, "incr", side_effect=ValueError)
+
+    with pytest.raises(BaseAppException, match="Invalid or expired token"):
+        K8s.validate_and_get_token_data(token)
 
 
 def test_validate_token_missing_raises():
@@ -120,16 +211,14 @@ def test_validate_token_not_found_raises(mocker):
         K8s.validate_and_get_token_data("nope")
 
 
-def test_validate_token_exceeds_max_usage_deletes_and_raises(mocker):
-    deleted = []
-    mocker.patch(
-        "apps.log.services.k8s_collect.cache.get",
-        return_value={"cluster_name": "c", "cloud_region_id": "r", "usage_count": 5, "max_usage": 5},
-    )
-    mocker.patch("apps.log.services.k8s_collect.cache.delete", side_effect=lambda k: deleted.append(k))
+def test_validate_token_exceeds_max_usage_deletes_and_raises():
+    token = K8s.generate_install_token("cluster-a", "cr-1")
+    for _ in range(K8s.TOKEN_MAX_USAGE):
+        K8s.validate_and_get_token_data(token)
+
     with pytest.raises(BaseAppException, match="maximum usage limit"):
-        K8s.validate_and_get_token_data("tok")
-    assert deleted == [K8s._build_cache_key("tok")]
+        K8s.validate_and_get_token_data(token)
+    assert cache.get(K8s._build_cache_key(token)) is None
 
 
 # ----------------------- get_cloud_region_envconfig -----------------------
