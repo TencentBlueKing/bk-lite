@@ -17,6 +17,7 @@ def test_no_rules_compile_to_complete_noop_topology():
     assert config["sources"]["server_nats"]["url"] == "${VECTOR_NATS_SERVERS}"
     assert config["sources"]["server_nats"]["decoding"] == {"codec": "json"}
     assert config["sinks"]["victoria_logs"]["framing"] == {"method": "newline_delimited"}
+    assert "_msg_field=_msg" in config["sinks"]["victoria_logs"]["uri"]
 
 
 @pytest.mark.unit

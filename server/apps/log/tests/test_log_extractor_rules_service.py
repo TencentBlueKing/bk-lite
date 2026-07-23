@@ -4,7 +4,7 @@ import pytest
 from rest_framework.exceptions import ValidationError
 
 from apps.log.models import CollectInstance, CollectInstanceOrganization, CollectType, LogExtractor, SystemVectorConfigState
-from apps.log.services.log_extractor.rules import create_rule, delete_rule, reorder_rules, update_rule
+from apps.log.services.log_extractor.rules import create_rule, delete_rule, load_samples, reorder_rules, update_rule
 from apps.log.views.collect_config import CollectInstanceViewSet
 
 
@@ -26,6 +26,30 @@ def _draft(name):
         "config": {},
         "delete_source": False,
     }
+
+
+@pytest.mark.unit
+def test_samples_restore_victoria_logs_dotted_fields_to_runtime_shape(mocker):
+    mocker.patch(
+        "apps.log.services.log_extractor.rules.SearchService.search_logs",
+        return_value=[
+            {
+                "instance_id": "packetbeat-instance",
+                "network.community_id": "1:abc",
+                "event.dataset": "flow",
+            }
+        ],
+    )
+
+    samples = load_samples(SimpleNamespace(pk="packetbeat-instance"), 10)
+
+    assert samples == [
+        {
+            "instance_id": "packetbeat-instance",
+            "network": {"community_id": "1:abc"},
+            "event": {"dataset": "flow"},
+        }
+    ]
 
 
 @pytest.mark.integration

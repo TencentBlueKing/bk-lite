@@ -20,6 +20,42 @@ def _actor_fields(user) -> dict:
     }
 
 
+def _restore_runtime_event_shape(event: dict) -> dict:
+    """把 VictoriaLogs 查询响应中的点号字段恢复成运行时嵌套 JSON。"""
+    restored = {key: value for key, value in event.items() if "." not in key}
+    for key, value in event.items():
+        if "." not in key:
+            continue
+        segments = key.split(".")
+        if not all(segments):
+            restored[key] = value
+            continue
+        current = restored
+        conflict = False
+        for segment in segments[:-1]:
+            existing = current.get(segment)
+            if existing is None:
+                existing = {}
+                current[segment] = existing
+            if not isinstance(existing, dict):
+                conflict = True
+                break
+            current = existing
+        if conflict or segments[-1] in current:
+            restored[key] = value
+        else:
+            current[segments[-1]] = value
+    return restored
+
+
+def _restore_sample_payload(payload: object) -> object:
+    if isinstance(payload, list):
+        return [_restore_runtime_event_shape(item) if isinstance(item, dict) else item for item in payload]
+    if isinstance(payload, dict) and isinstance(payload.get("data"), list):
+        return {**payload, "data": _restore_sample_payload(payload["data"])}
+    return payload
+
+
 def create_rule(instance: CollectInstance, validated_data: dict, user) -> tuple[LogExtractor, int]:
     try:
         with transaction.atomic():
@@ -117,4 +153,7 @@ def preview_rule(instance: CollectInstance, event: dict, draft: dict, before_rul
 def load_samples(instance: CollectInstance, limit) -> object:
     normalized_limit = VictoriaLogsConstants.normalize_query_limit(limit, default=10)
     escaped_id = str(instance.pk).replace("\\", "\\\\").replace('"', '\\"')
-    return SearchService.search_logs(f'instance_id:"{escaped_id}"', "", "", normalized_limit, log_groups=[], resolved_groups=[])
+    payload = SearchService.search_logs(
+        f'instance_id:"{escaped_id}"', "", "", normalized_limit, log_groups=[], resolved_groups=[]
+    )
+    return _restore_sample_payload(payload)

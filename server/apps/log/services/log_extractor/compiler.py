@@ -256,7 +256,7 @@ def compile_system_vector_config(records: Iterable[Any]) -> str:
             "victoria_logs": {
                 "type": "http",
                 "inputs": ["log_extractors"],
-                "uri": "${VECTOR_VICTORIA_LOGS_URL}/insert/jsonline?_stream_fields=streams&_msg_field=message&_time_field=timestamp",
+                "uri": "${VECTOR_VICTORIA_LOGS_URL}/insert/jsonline?_stream_fields=streams&_msg_field=_msg&_time_field=timestamp",
                 "method": "post",
                 "encoding": {"codec": "json"},
                 "framing": {"method": "newline_delimited"},
