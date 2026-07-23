@@ -1,8 +1,7 @@
 """Job Management NATS API - 用于数据权限规则"""
 
-from asgiref.sync import async_to_sync
 from celery import current_app
-from django.db import connection
+from django.db import connection, transaction
 from django.utils import timezone
 
 import nats_client
@@ -12,13 +11,12 @@ from apps.job_mgmt.constants import CallbackType, ExecutionStatus, JobType, Trig
 from apps.job_mgmt.models import DangerousPath, DangerousRule, DistributionFile, JobExecution, Playbook, ScheduledTask, Script, Target
 from apps.job_mgmt.services.callback_service import send_callback
 from apps.job_mgmt.services.celery_dispatch import dispatch_celery_task
+from apps.job_mgmt.services.completion_outbox_service import enqueue_terminal_effects
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
-from apps.job_mgmt.services.execution_stream_service import publish_done_sentinel
 from apps.job_mgmt.services.script_normalize import normalize_script_line_endings
 from apps.job_mgmt.services.script_params_service import ScriptParamsService
 from apps.job_mgmt.tasks import distribute_files_task, execute_script_task, finalize_cancelling_execution
 from apps.job_mgmt.utils.team_authz import is_team_authorized, normalize_team
-from apps.node_mgmt.utils.s3 import delete_s3_file
 from apps.rpc.sensitive import sanitize_sensitive_data, summarize_ansible_callback
 
 CANCEL_CONVERGE_BUFFER_SECONDS = 60
@@ -165,171 +163,115 @@ def job_script_detail(data: dict):
     }
 
 
-@nats_client.register
-def ansible_task_callback(data: dict):
-    """
-    Ansible 任务执行回调
+def _failure_results(execution, error_message: str, finished_at) -> list[dict]:
+    safe_error = str(sanitize_sensitive_data(error_message))
+    return [
+        {
+            "target_key": str(target.get("target_id", "")),
+            "name": target.get("name", ""),
+            "ip": target.get("ip", ""),
+            "status": ExecutionStatus.FAILED,
+            "stdout": "",
+            "stderr": safe_error,
+            "exit_code": 1,
+            "error_message": safe_error,
+            "started_at": execution.started_at.isoformat() if execution.started_at else "",
+            "finished_at": finished_at.isoformat(),
+        }
+        for target in execution.target_list or []
+    ]
 
-    由新版本 Ansible Executor 执行完成后调用，更新 JobExecution 状态和结果。
 
-    仅支持结构化的 per-host 结果数组，不再兼容旧版字符串输出。
+def _target_map(target_list: list[dict]) -> dict[str, dict]:
+    result = {}
+    for target in target_list:
+        result[str(target.get("ip", ""))] = target
+        result[str(target.get("target_id", ""))] = target
+    return result
 
-    所有异常分支都必须收敛到终态（FAILED），避免作业永久 RUNNING。
 
-    Args:
-        data: 回调数据，包含以下字段：
-            - task_id: 任务ID（对应 JobExecution.id）
-            - task_type: 任务类型（adhoc/playbook）
-            - status: 执行状态（success/failed）
-            - success: 任务级是否成功
-            - result: per-host 结果数组，每项至少包含 host/status/stdout/stderr/exit_code/error_message
-            - error: 错误信息
-            - started_at: 开始时间（ISO格式）
-            - finished_at: 结束时间（ISO格式）
+def _host_execution_result(execution, target, host_result, finished_at: str) -> dict:
+    host_key = str(host_result.get("host", ""))
+    host_status = host_result.get("status")
+    return {
+        "target_key": str(target.get("target_id", "")),
+        "name": target.get("name", host_key),
+        "ip": target.get("ip", host_key),
+        "status": ExecutionStatus.SUCCESS if host_status == "success" else ExecutionStatus.FAILED,
+        "stdout": str(sanitize_sensitive_data(str(host_result.get("stdout", "")))),
+        "stderr": str(sanitize_sensitive_data(str(host_result.get("stderr", "")))),
+        "exit_code": host_result.get("exit_code", 0),
+        "error_message": str(sanitize_sensitive_data(str(host_result.get("error_message", "")))),
+        "started_at": execution.started_at.isoformat() if execution.started_at else "",
+        "finished_at": finished_at,
+    }
 
-    Returns:
-        {"success": True/False, "message": "..."}
-    """
-    logger.info("[ansible_task_callback] %s", summarize_ansible_callback(data))
 
-    task_id = data.get("task_id")
-    if not task_id:
-        logger.warning("[ansible_task_callback] 缺少 task_id")
-        return {"success": False, "message": "缺少 task_id"}
+def _missing_execution_result(execution, target, error_output: str, finished_at: str) -> dict:
+    message = error_output or "未收到该目标执行结果"
+    return {
+        "target_key": str(target.get("target_id", "")),
+        "name": target.get("name", ""),
+        "ip": target.get("ip", ""),
+        "status": ExecutionStatus.FAILED,
+        "stdout": "",
+        "stderr": message,
+        "exit_code": 1,
+        "error_message": message,
+        "started_at": execution.started_at.isoformat() if execution.started_at else "",
+        "finished_at": finished_at,
+    }
 
-    try:
-        execution = JobExecution.objects.get(id=task_id)
-    except JobExecution.DoesNotExist:
-        logger.warning(f"[ansible_task_callback] 执行记录不存在: task_id={task_id}")
-        return {"success": False, "message": f"执行记录不存在: {task_id}"}
 
-    # 检查是否已经是终态（避免重复处理）
-    if execution.status in ExecutionStatus.TERMINAL_STATES:
-        logger.info(f"[ansible_task_callback] 任务已处于终态: task_id={task_id}, status={execution.status}")
-        return {"success": True, "message": "任务已处理"}
-
-    # CANCELLING 是非终态：真实结果仍正常落库，但最终状态收敛为 CANCELLED（修复取消后结果被丢弃）
-    was_cancelling = execution.status == ExecutionStatus.CANCELLING
-
-    # 辅助函数：将执行记录收敛到 FAILED 终态
-    def _fail_execution(error_message: str):
-        """将执行记录收敛到 FAILED 终态"""
-        safe_error_message = str(sanitize_sensitive_data(error_message))
-        target_list_for_fail = execution.target_list or []
-        execution.status = ExecutionStatus.FAILED
-        execution.finished_at = timezone.now()
-        execution.execution_results = [
-            {
-                "target_key": str(t.get("target_id", "")),
-                "name": t.get("name", ""),
-                "ip": t.get("ip", ""),
-                "status": ExecutionStatus.FAILED,
-                "stdout": "",
-                "stderr": safe_error_message,
-                "exit_code": 1,
-                "error_message": safe_error_message,
-                "started_at": execution.started_at.isoformat() if execution.started_at else "",
-                "finished_at": timezone.now().isoformat(),
-            }
-            for t in target_list_for_fail
-        ]
-        execution.success_count = 0
-        execution.failed_count = len(target_list_for_fail)
-        execution.save(
-            update_fields=[
-                "status",
-                "execution_results",
-                "finished_at",
-                "success_count",
-                "failed_count",
-                "updated_at",
-            ]
-        )
-        logger.warning("[ansible_task_callback] 任务异常收敛到 FAILED: task_id=%s, reason=%s", task_id, safe_error_message)
-        # 为各目标补发 done 哨兵，关闭前端实时流面板（避免空等到 idle 超时）
-        for t in target_list_for_fail:
-            publish_done_sentinel(execution.id, str(t.get("target_id", "")), ExecutionStatus.FAILED)
-        send_callback(execution)
-
-    # 解析新版本结构化回调数据
+def _normalize_ansible_results(execution, data: dict, finished_at) -> tuple[list[dict], str]:
     raw_result = data.get("result", [])
-    error_output = str(sanitize_sensitive_data(data.get("error", "")))
-    finished_at_str = data.get("finished_at")
-    target_list = execution.target_list or []
-    execution_results = []
-
     if not (isinstance(raw_result, list) and raw_result and all(isinstance(item, dict) for item in raw_result)):
-        _fail_execution(f"回调结果格式非法: {sanitize_sensitive_data(raw_result)}")
-        return {"success": False, "message": "非法的新版本结果格式，已收敛到 FAILED"}
+        error = f"回调结果格式非法: {sanitize_sensitive_data(raw_result)}"
+        return _failure_results(execution, error, finished_at), "非法的新版本结果格式"
 
-    target_map = {}
-    for target_info in target_list:
-        target_map[str(target_info.get("ip", ""))] = target_info
-        target_map[str(target_info.get("target_id", ""))] = target_info
-
+    target_list = execution.target_list or []
+    targets_by_key = _target_map(target_list)
     seen_target_keys = set()
+    results = []
+    callback_finished_at = data.get("finished_at") or finished_at.isoformat()
+
     for host_result in raw_result:
         host_key = str(host_result.get("host", ""))
-        target_info = target_map.get(host_key)
-        if not target_info:
-            _fail_execution(f"结果中的主机未匹配到目标: {host_key}")
-            return {"success": False, "message": f"结果中的主机未匹配到目标: {host_key}，已收敛到 FAILED"}
-
-        target_key = str(target_info.get("target_id", ""))
+        target = targets_by_key.get(host_key)
+        if not target:
+            error = f"结果中的主机未匹配到目标: {host_key}"
+            return _failure_results(execution, error, finished_at), error
+        target_key = str(target.get("target_id", ""))
         if target_key in seen_target_keys:
-            _fail_execution(f"结果中的主机重复: {host_key}")
-            return {"success": False, "message": f"结果中的主机重复: {host_key}，已收敛到 FAILED"}
+            error = f"结果中的主机重复: {host_key}"
+            return _failure_results(execution, error, finished_at), error
         seen_target_keys.add(target_key)
+        results.append(_host_execution_result(execution, target, host_result, callback_finished_at))
 
-        host_status = host_result.get("status")
-        final_status = ExecutionStatus.SUCCESS if host_status == "success" else ExecutionStatus.FAILED
-        execution_results.append(
-            {
-                "target_key": target_key,
-                "name": target_info.get("name", host_key),
-                "ip": target_info.get("ip", host_key),
-                "status": final_status,
-                "stdout": str(sanitize_sensitive_data(str(host_result.get("stdout", "")))),
-                "stderr": str(sanitize_sensitive_data(str(host_result.get("stderr", "")))),
-                "exit_code": host_result.get("exit_code", 0),
-                "error_message": str(sanitize_sensitive_data(str(host_result.get("error_message", "")))),
-                "started_at": execution.started_at.isoformat() if execution.started_at else "",
-                "finished_at": finished_at_str or timezone.now().isoformat(),
-            }
-        )
+    error_output = str(sanitize_sensitive_data(data.get("error", "")))
+    for target in target_list:
+        target_key = str(target.get("target_id", ""))
+        if target_key not in seen_target_keys:
+            results.append(_missing_execution_result(execution, target, error_output, callback_finished_at))
+    return results, ""
 
-    if len(execution_results) < len(target_list):
-        existing_keys = {item["target_key"] for item in execution_results}
-        for target_info in target_list:
-            target_key = str(target_info.get("target_id", ""))
-            if target_key in existing_keys:
-                continue
-            execution_results.append(
-                {
-                    "target_key": target_key,
-                    "name": target_info.get("name", ""),
-                    "ip": target_info.get("ip", ""),
-                    "status": ExecutionStatus.FAILED,
-                    "stdout": "",
-                    "stderr": str(error_output or "未收到该目标执行结果"),
-                    "exit_code": 1,
-                    "error_message": str(error_output or "未收到该目标执行结果"),
-                    "started_at": execution.started_at.isoformat() if execution.started_at else "",
-                    "finished_at": finished_at_str or timezone.now().isoformat(),
-                }
-            )
 
-    # 更新执行记录：取消中(CANCELLING)的任务收敛为 CANCELLED 终态，其余按真实结果写 SUCCESS/FAILED
+def _write_ansible_terminal(execution, data: dict):
+    finished_at = timezone.now()
+    results, validation_error = _normalize_ansible_results(execution, data, finished_at)
+    was_cancelling = execution.status == ExecutionStatus.CANCELLING
     if was_cancelling:
-        execution.status = ExecutionStatus.CANCELLED
+        final_status = ExecutionStatus.CANCELLED
+    elif validation_error or any(item["status"] == ExecutionStatus.FAILED for item in results):
+        final_status = ExecutionStatus.FAILED
     else:
-        execution.status = (
-            ExecutionStatus.FAILED if any(item.get("status") == ExecutionStatus.FAILED for item in execution_results) else ExecutionStatus.SUCCESS
-        )
-    execution.execution_results = execution_results
-    execution.finished_at = timezone.now()
-    execution.success_count = sum(1 for item in execution_results if item.get("status") == ExecutionStatus.SUCCESS)
-    execution.failed_count = sum(1 for item in execution_results if item.get("status") == ExecutionStatus.FAILED)
+        final_status = ExecutionStatus.SUCCESS
+
+    execution.status = final_status
+    execution.execution_results = results
+    execution.finished_at = finished_at
+    execution.success_count = sum(1 for item in results if item["status"] == ExecutionStatus.SUCCESS)
+    execution.failed_count = sum(1 for item in results if item["status"] == ExecutionStatus.FAILED)
     execution.save(
         update_fields=[
             "status",
@@ -340,26 +282,44 @@ def ansible_task_callback(data: dict):
             "updated_at",
         ]
     )
+    enqueue_terminal_effects(execution)
+    return validation_error
 
-    # 为各目标补发 done 哨兵，关闭前端实时流面板（ansible 异步回调收尾）
-    for item in execution_results:
-        publish_done_sentinel(execution.id, item.get("target_key", ""), item.get("status", ExecutionStatus.SUCCESS))
 
-    logger.info(f"[ansible_task_callback] 任务完成: task_id={task_id}, status={execution.status}")
+@nats_client.register
+def ansible_task_callback(data: dict):
+    """持久化首个 Ansible 终态回调及其可恢复副作用。"""
+    logger.info("[ansible_task_callback] %s", summarize_ansible_callback(data))
+    task_id = data.get("task_id")
+    if not task_id:
+        logger.warning("[ansible_task_callback] 缺少 task_id")
+        return {"success": False, "message": "缺少 task_id"}
 
-    # 清理 Playbook 执行中转到 NATS OS 的临时文件
-    if execution.playbook_id:
-        nats_file_key = f"job-playbooks/{task_id}/{execution.playbook.file_name}" if execution.playbook else None
-        if nats_file_key:
-            try:
-                async_to_sync(delete_s3_file)(nats_file_key)
-                logger.info(f"[ansible_task_callback] 已清理 NATS OS 中转文件: {nats_file_key}")
-            except Exception as e:
-                logger.warning(f"[ansible_task_callback] 清理 NATS OS 中转文件失败: {nats_file_key}, error={e}")
+    with transaction.atomic():
+        execution = JobExecution.objects.select_for_update().filter(id=task_id).first()
+        if execution is None:
+            logger.warning("[ansible_task_callback] 执行记录不存在: task_id=%s", task_id)
+            return {"success": False, "message": f"执行记录不存在: {task_id}"}
+        if execution.status in ExecutionStatus.TERMINAL_STATES:
+            logger.info(
+                "[ansible_task_callback] 任务已处于终态: task_id=%s, status=%s",
+                task_id,
+                execution.status,
+            )
+            return {"success": True, "message": "任务已处理"}
+        validation_error = _write_ansible_terminal(execution, data)
+        final_status = execution.status
 
-    # 回调通知（如有 callback_url）
-    send_callback(execution)
+    if validation_error:
+        logger.warning(
+            "[ansible_task_callback] 任务异常结果已写入终态: task_id=%s, status=%s, reason=%s",
+            task_id,
+            final_status,
+            validation_error,
+        )
+        return {"success": False, "message": f"{validation_error}，已收敛到 {final_status.upper()}"}
 
+    logger.info("[ansible_task_callback] 任务完成: task_id=%s, status=%s", task_id, final_status)
     return {"success": True, "message": "回调处理成功"}
 
 

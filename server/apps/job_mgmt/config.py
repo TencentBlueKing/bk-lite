@@ -30,6 +30,11 @@ DISTRIBUTION_FILE_CLEANUP_BATCH_SIZE = max(1, _int_env("JOB_DISTRIBUTION_FILE_CL
 
 
 CELERY_BEAT_SCHEDULE = {
+    # 恢复 broker 入队失败、worker 崩溃留下的终态副作用
+    "dispatch-pending-job-completion-outbox": {
+        "task": "apps.job_mgmt.tasks.dispatch_pending_job_completion_outbox",
+        "schedule": crontab(minute="*"),
+    },
     # 清理过期分发文件 - 每天 00:00 执行
     "cleanup-expired-distribution-files": {
         "task": "apps.job_mgmt.tasks.cleanup_expired_distribution_files_task",

@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from apps.job_mgmt.constants import ExecutionStatus, JobType, TargetSource
-from apps.job_mgmt.models import JobExecution
+from apps.job_mgmt.models import JobCompletionOutbox, JobExecution
 from apps.job_mgmt.nats_api import ansible_task_callback, job_task_terminate
 from apps.job_mgmt.services.execution_base_service import ExecutionTaskBaseService
 from apps.job_mgmt.services.file_distribution_runner import FileDistributionRunner
@@ -299,8 +299,7 @@ class TestFinalizeCancellingExecutionTask:
                 {"target_key": "5", "name": "h1", "ip": "1.1.1.1", "status": ExecutionStatus.SUCCESS},
             ],
         )
-        with patch("apps.job_mgmt.tasks.publish_done_sentinel") as mock_sentinel:
-            finalize_cancelling_execution(execution.id)
+        finalize_cancelling_execution(execution.id)
 
         execution.refresh_from_db()
         assert execution.status == ExecutionStatus.CANCELLED
@@ -311,21 +310,23 @@ class TestFinalizeCancellingExecutionTask:
         assert supplemented["status"] == ExecutionStatus.CANCELLED
         assert "远端结果未知" in supplemented["error_message"]
         assert execution.success_count == 1
-        # 只为补结果的目标发 done 哨兵（已有结果的目标此前已发过）
-        mock_sentinel.assert_called_once_with(execution.id, "6", ExecutionStatus.CANCELLED)
+        done_records = JobCompletionOutbox.objects.filter(
+            execution_id=execution.id,
+            kind=JobCompletionOutbox.Kind.DONE_SENTINEL,
+        )
+        assert {record.payload["target_key"] for record in done_records} == {"5", "6"}
 
     def test_already_converged_is_noop(self):
         execution = _make_execution(
             ExecutionStatus.CANCELLED,
             execution_results=[{"target_key": "5", "name": "h1", "ip": "1.1.1.1", "status": ExecutionStatus.SUCCESS}],
         )
-        with patch("apps.job_mgmt.tasks.publish_done_sentinel") as mock_sentinel:
-            finalize_cancelling_execution(execution.id)
+        finalize_cancelling_execution(execution.id)
 
         execution.refresh_from_db()
         assert execution.status == ExecutionStatus.CANCELLED
         assert len(execution.execution_results) == 1  # 不补结果
-        mock_sentinel.assert_not_called()
+        assert not JobCompletionOutbox.objects.filter(execution_id=execution.id).exists()
 
     def test_missing_execution_does_not_raise(self):
         finalize_cancelling_execution(999999)  # 不抛异常即可
@@ -357,7 +358,7 @@ class TestAnsibleCallbackWithCancelling:
         data = self._callback_data()
         data["task_id"] = execution.id
 
-        with patch("apps.job_mgmt.nats_api.send_callback") as mock_callback, patch("apps.job_mgmt.nats_api.publish_done_sentinel"):
+        with patch("apps.job_mgmt.services.completion_outbox_service._schedule_deliveries"):
             result = ansible_task_callback(data)
 
         assert result["success"] is True
@@ -367,7 +368,10 @@ class TestAnsibleCallbackWithCancelling:
         assert len(execution.execution_results) == 1
         assert execution.execution_results[0]["stdout"] == "ok"  # 真实结果保留
         assert execution.success_count == 1
-        assert mock_callback.called
+        assert JobCompletionOutbox.objects.filter(
+            execution_id=execution.id,
+            kind=JobCompletionOutbox.Kind.DONE_SENTINEL,
+        ).exists()
 
     def test_cancelled_terminal_callback_still_rejected(self):
         """已是 CANCELLED 终态时回调仍幂等拒绝（防重复处理，回归守护）"""

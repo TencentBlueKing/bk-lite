@@ -10,178 +10,82 @@ from unittest.mock import MagicMock, patch
 import pytest
 from django.utils import timezone
 
-from apps.job_mgmt.constants import ExecutionStatus
+from apps.job_mgmt.constants import ExecutionStatus, JobType, TargetSource
+from apps.job_mgmt.models import JobCompletionOutbox, JobExecution
 
 
-@pytest.mark.unit
 @pytest.mark.django_db
 class TestAnsibleCallbackFailureConvergence:
-    """测试 Ansible 回调异常收敛到 FAILED 终态 (Issue #2963)"""
+    """测试 Ansible 回调解析异常与终态 outbox 同时收敛。"""
 
-    def _create_mock_execution(self, task_id=1, status=ExecutionStatus.RUNNING):
-        """创建模拟的 JobExecution 对象"""
-        execution = MagicMock()
-        execution.id = task_id
-        execution.status = status
-        execution.target_list = [
-            {"target_id": "t1", "name": "host1", "ip": "1.2.3.4"},
-            {"target_id": "t2", "name": "host2", "ip": "5.6.7.8"},
-        ]
-        execution.started_at = timezone.now()
-        execution.playbook_id = None
-        return execution
+    def _create_execution(self, status=ExecutionStatus.RUNNING):
+        return JobExecution.objects.create(
+            name="callback-convergence",
+            job_type=JobType.SCRIPT,
+            status=status,
+            target_source=TargetSource.MANUAL,
+            target_list=[
+                {"target_id": "t1", "name": "host1", "ip": "1.2.3.4"},
+                {"target_id": "t2", "name": "host2", "ip": "5.6.7.8"},
+            ],
+            started_at=timezone.now(),
+            team=[1],
+            created_by="testuser",
+            updated_by="testuser",
+        )
 
-    def test_invalid_result_format_converges_to_failed(self):
-        """测试：结果格式非法时，execution 应收敛到 FAILED"""
+    def _run(self, execution, result):
         from apps.job_mgmt.nats_api import ansible_task_callback
 
-        mock_execution = self._create_mock_execution()
+        with patch("apps.job_mgmt.services.completion_outbox_service._schedule_deliveries"):
+            return ansible_task_callback({"task_id": execution.id, "result": result})
 
-        with patch("apps.job_mgmt.nats_api.JobExecution.objects.get", return_value=mock_execution), patch(
-            "apps.job_mgmt.nats_api.send_callback"
-        ) as mock_send_callback, patch("apps.job_mgmt.nats_api.publish_done_sentinel"):
-            # 发送非法格式的结果（不是 list）
-            result = ansible_task_callback(
-                {
-                    "task_id": 1,
-                    "result": "invalid string result",  # 应该是 list
-                }
-            )
+    @pytest.mark.parametrize(
+        ("raw_result", "expected_message"),
+        [
+            ("invalid string result", "非法的新版本结果格式"),
+            ([], "非法的新版本结果格式"),
+            ([{"host": "unknown", "status": "success"}], "主机未匹配到目标"),
+            (
+                [
+                    {"host": "1.2.3.4", "status": "success"},
+                    {"host": "1.2.3.4", "status": "success"},
+                ],
+                "主机重复",
+            ),
+        ],
+    )
+    def test_invalid_results_converge_to_failed(self, raw_result, expected_message):
+        execution = self._create_execution()
+        result = self._run(execution, raw_result)
 
-            # 验证返回失败
-            assert result["success"] is False
-            assert "已收敛到 FAILED" in result["message"]
-
-            # 验证 execution 状态被设置为 FAILED
-            assert mock_execution.status == ExecutionStatus.FAILED
-            assert mock_execution.save.called
-            assert mock_send_callback.called
-
-    def test_empty_result_converges_to_failed(self):
-        """测试：空结果时，execution 应收敛到 FAILED"""
-        from apps.job_mgmt.nats_api import ansible_task_callback
-
-        mock_execution = self._create_mock_execution()
-
-        with patch("apps.job_mgmt.nats_api.JobExecution.objects.get", return_value=mock_execution), patch(
-            "apps.job_mgmt.nats_api.send_callback"
-        ) as mock_send_callback, patch("apps.job_mgmt.nats_api.publish_done_sentinel"):
-            # 发送空结果
-            result = ansible_task_callback(
-                {
-                    "task_id": 1,
-                    "result": [],  # 空列表
-                }
-            )
-
-            # 验证返回失败
-            assert result["success"] is False
-            assert "已收敛到 FAILED" in result["message"]
-
-            # 验证 execution 状态被设置为 FAILED
-            assert mock_execution.status == ExecutionStatus.FAILED
-            assert mock_send_callback.called
-
-    def test_host_not_matched_converges_to_failed(self):
-        """测试：主机未匹配时，execution 应收敛到 FAILED"""
-        from apps.job_mgmt.nats_api import ansible_task_callback
-
-        mock_execution = self._create_mock_execution()
-
-        with patch("apps.job_mgmt.nats_api.JobExecution.objects.get", return_value=mock_execution), patch(
-            "apps.job_mgmt.nats_api.send_callback"
-        ) as mock_send_callback, patch("apps.job_mgmt.nats_api.publish_done_sentinel"):
-            # 发送不匹配的主机结果
-            result = ansible_task_callback(
-                {
-                    "task_id": 1,
-                    "result": [{"host": "unknown_host", "status": "success", "stdout": "", "stderr": ""}],
-                }
-            )
-
-            # 验证返回失败
-            assert result["success"] is False
-            assert "已收敛到 FAILED" in result["message"]
-
-            # 验证 execution 状态被设置为 FAILED
-            assert mock_execution.status == ExecutionStatus.FAILED
-            assert mock_send_callback.called
-
-    def test_duplicate_host_converges_to_failed(self):
-        """测试：主机重复时，execution 应收敛到 FAILED"""
-        from apps.job_mgmt.nats_api import ansible_task_callback
-
-        mock_execution = self._create_mock_execution()
-
-        with patch("apps.job_mgmt.nats_api.JobExecution.objects.get", return_value=mock_execution), patch(
-            "apps.job_mgmt.nats_api.send_callback"
-        ) as mock_send_callback, patch("apps.job_mgmt.nats_api.publish_done_sentinel"):
-            # 发送重复主机的结果
-            result = ansible_task_callback(
-                {
-                    "task_id": 1,
-                    "result": [
-                        {"host": "1.2.3.4", "status": "success", "stdout": "", "stderr": ""},
-                        {"host": "1.2.3.4", "status": "success", "stdout": "", "stderr": ""},  # 重复
-                    ],
-                }
-            )
-
-            # 验证返回失败
-            assert result["success"] is False
-            assert "已收敛到 FAILED" in result["message"]
-
-            # 验证 execution 状态被设置为 FAILED
-            assert mock_execution.status == ExecutionStatus.FAILED
-            assert mock_send_callback.called
+        execution.refresh_from_db()
+        assert result["success"] is False
+        assert expected_message in result["message"]
+        assert execution.status == ExecutionStatus.FAILED
+        assert JobCompletionOutbox.objects.filter(execution_id=execution.id).count() == 2
 
     def test_normal_callback_still_works(self):
-        """测试：正常回调仍然正常工作"""
-        from apps.job_mgmt.nats_api import ansible_task_callback
+        execution = self._create_execution()
+        result = self._run(
+            execution,
+            [
+                {"host": "1.2.3.4", "status": "success", "stdout": "ok", "stderr": ""},
+                {"host": "5.6.7.8", "status": "success", "stdout": "ok", "stderr": ""},
+            ],
+        )
 
-        mock_execution = self._create_mock_execution()
-
-        with patch("apps.job_mgmt.nats_api.JobExecution.objects.get", return_value=mock_execution), patch(
-            "apps.job_mgmt.nats_api.send_callback"
-        ), patch("apps.job_mgmt.nats_api.publish_done_sentinel"):
-            # 发送正常的回调结果
-            result = ansible_task_callback(
-                {
-                    "task_id": 1,
-                    "result": [
-                        {"host": "1.2.3.4", "status": "success", "stdout": "ok", "stderr": ""},
-                        {"host": "5.6.7.8", "status": "success", "stdout": "ok", "stderr": ""},
-                    ],
-                }
-            )
-
-            # 验证返回成功
-            assert result["success"] is True
-            assert result["message"] == "回调处理成功"
-
-            # 验证 execution 状态被设置为 SUCCESS
-            assert mock_execution.status == ExecutionStatus.SUCCESS
+        execution.refresh_from_db()
+        assert result == {"success": True, "message": "回调处理成功"}
+        assert execution.status == ExecutionStatus.SUCCESS
 
     def test_terminal_state_is_idempotent(self):
-        """测试：已处于终态的任务不会被重复处理"""
-        from apps.job_mgmt.nats_api import ansible_task_callback
+        execution = self._create_execution(status=ExecutionStatus.SUCCESS)
+        result = self._run(execution, "invalid")
 
-        mock_execution = self._create_mock_execution(status=ExecutionStatus.SUCCESS)
-
-        with patch("apps.job_mgmt.nats_api.JobExecution.objects.get", return_value=mock_execution):
-            result = ansible_task_callback(
-                {
-                    "task_id": 1,
-                    "result": "invalid",  # 即使数据非法也不应处理
-                }
-            )
-
-            # 验证返回成功（幂等）
-            assert result["success"] is True
-            assert "任务已处理" in result["message"]
-
-            # 验证 save 没有被调用
-            assert not mock_execution.save.called
+        assert result["success"] is True
+        assert "任务已处理" in result["message"]
+        assert not JobCompletionOutbox.objects.filter(execution_id=execution.id).exists()
 
 
 @pytest.mark.unit

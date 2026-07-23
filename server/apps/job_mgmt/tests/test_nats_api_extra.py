@@ -82,7 +82,7 @@ class TestAnsibleCallback:
 
     def test_invalid_result_format_fails(self):
         ex = _exec()
-        with patch("apps.job_mgmt.nats_api.publish_done_sentinel"), patch("apps.job_mgmt.nats_api.send_callback"):
+        with patch("apps.job_mgmt.services.completion_outbox_service._schedule_deliveries"):
             out = nats_api.ansible_task_callback({"task_id": ex.id, "result": "not-a-list"})
         assert out["success"] is False
         ex.refresh_from_db()
@@ -91,7 +91,7 @@ class TestAnsibleCallback:
     def test_happy_per_host_success(self):
         ex = _exec()
         data = {"task_id": ex.id, "result": [{"host": "1.1.1.1", "status": "success", "stdout": "ok", "exit_code": 0}]}
-        with patch("apps.job_mgmt.nats_api.publish_done_sentinel"), patch("apps.job_mgmt.nats_api.send_callback"):
+        with patch("apps.job_mgmt.services.completion_outbox_service._schedule_deliveries"):
             out = nats_api.ansible_task_callback(data)
         assert out["success"] is True
         ex.refresh_from_db()
@@ -100,7 +100,7 @@ class TestAnsibleCallback:
     def test_missing_target_filled_as_failed(self):
         ex = _exec(target_list=[{"target_id": 1, "ip": "1.1.1.1", "name": "h1"}, {"target_id": 2, "ip": "2.2.2.2", "name": "h2"}])
         data = {"task_id": ex.id, "result": [{"host": "1.1.1.1", "status": "success"}]}
-        with patch("apps.job_mgmt.nats_api.publish_done_sentinel"), patch("apps.job_mgmt.nats_api.send_callback"):
+        with patch("apps.job_mgmt.services.completion_outbox_service._schedule_deliveries"):
             out = nats_api.ansible_task_callback(data)
         assert out["success"] is True
         ex.refresh_from_db()

@@ -44,9 +44,7 @@ def test_ansible_task_callback_masks_sensitive_output_in_logs_and_results():
         ],
     }
 
-    with patch("apps.job_mgmt.nats_api.logger") as mock_logger, patch("apps.job_mgmt.nats_api.send_callback"), patch(
-        "apps.job_mgmt.nats_api.publish_done_sentinel"
-    ):
+    with patch("apps.job_mgmt.nats_api.logger") as mock_logger, patch("apps.job_mgmt.services.completion_outbox_service._schedule_deliveries"):
         result = ansible_task_callback(callback_payload)
 
     execution.refresh_from_db()

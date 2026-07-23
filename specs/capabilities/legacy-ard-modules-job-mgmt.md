@@ -11,6 +11,7 @@
 | 模型 | 文件 | 说明 |
 |------|------|------|
 | JobExecution | `models/execution.py` | 作业记录（类型/状态/目标/结果/celery_task_id/team）；另含对外/审计字段：`callback_url`、`callback_type`、`callback_subject`（支持 web/nats/both 回调通道）、`trigger_source`（manual/api/scheduled）、`playbook_version`（执行时版本快照）、`executor_user`（执行用户快照）、`overwrite_strategy` 等 |
+| JobCompletionOutbox | `models/completion_outbox.py` | Ansible 回调与取消兜底终态的副作用投递意图；按目标/通道拆分，保存稳定幂等键、尝试次数、重试时间及带 token 的投递租约 |
 | Script | `models/script.py` | 脚本模板（SHELL/PYTHON/POWERSHELL/BATCH，Jinja2） |
 | Playbook | `models/playbook.py` | Ansible playbook ZIP（存 MinIO `job-mgmt-private`） |
 | Target | `models/target.py` | 手动目标（driver=ANSIBLE/NATS_EXECUTOR，SSH/WinRM 凭据）；SSH 密钥文件经 `ssh_key_file` 存于 MinIO 桶 `job-mgmt-private`（与 Playbook 同桶），即该桶承载 Playbook ZIP 与 SSH 密钥两类文件 |
@@ -25,8 +26,8 @@ DRF 路由前缀均带 `api/` 段；结合 app 注册前缀 `api/v1/job_mgmt/`�
 - 脚本：危险命令校验 → Ansible（Windows 手动目标）或 nats-executor（sidecar）；日志发布到 JetStream。
 - playbook：上传 ZIP 到 MinIO → 提交 `apps.rpc.ansible.AnsibleExecutor` → 异步回调。
 - 文件分发：上传 NATS JetStream Object Store（前缀 `job-files/`，经 `node_mgmt.upload_file_to_s3`，非 MinIO）→ nats-executor 或 Ansible 推送。
-- 回调：`nats_api.py:ansible_task_callback` 接收结果、更新 JobExecution、清理临时文件、推送 SSE 结束哨兵；`services/callback_service.py:42,84` 负责按 `callback_type` 将完成回调分发到 web、nats 或 both 通道。
-- Celery：`execute_script_task`/`execute_playbook_task`/`distribute_files_task`/`execute_scheduled_task`；另有 `cleanup_expired_distribution_files_task`（每天 00:00 由 celery-beat 清理过期分发文件，schedule 见 `config.py`）、`do_callback_task`（带 HMAC 签名 + SSRF 二次校验、指数退避重试最多 5 次的 web 回调任务）与 `do_nats_callback_task`（NATS 回调任务，`tasks.py:313-314`）。
+- 回调：`nats_api.py:ansible_task_callback` 与 `tasks.py:finalize_cancelling_execution` 对同一 JobExecution 行加锁，终态和每个 SSE done、Playbook 临时文件清理、web/nats 完成通知的 outbox 意图在同一事务写入。对外投递语义为 at-least-once；web body 和 NATS payload 都带稳定 `delivery_id` 供接收方去重，web 签名覆盖该字段，NATS 通过 request/reply 确认注册处理器已处理。`callback_type=both` 的两个通道使用独立记录，单通道失败不阻塞另一通道。
+- Celery：`execute_script_task`/`execute_playbook_task`/`distribute_files_task`/`execute_scheduled_task`；另有 `cleanup_expired_distribution_files_task`（每天 00:00 由 celery-beat 清理过期分发文件）、`deliver_job_completion_outbox` 与每分钟执行的 `dispatch_pending_job_completion_outbox`。完成 outbox 的即时入队失败不影响已提交意图；Beat 重扫 pending、冷却到期 failed 和租约过期 delivering，失败周期会自动冷却并重启，不依赖人工复位。旧入口 `do_callback_task`/`do_nats_callback_task` 仍服务其余回调路径。
 - NATS handler：除 `ansible_task_callback` 外，`nats_api.py` 还注册了数据权限类 `get_job_mgmt_module_list`/`get_job_mgmt_module_data`，以及供第三方 App（如补丁管理）经 NATS 调用的开放接口 `job_script_execute`（脚本执行）/`job_file_distribute`（文件分发）/`job_status_batch_query`（批量状态查询）/`job_detail_query`（作业详情）/`job_target_list`（目标列表）/`job_script_detail`（脚本详情读取）/`job_task_terminate`（作业取消/终止）。
 - 依赖 `apps.rpc.{executor,ansible,node_mgmt}`。
 
@@ -40,9 +41,12 @@ DRF 路由前缀均带 `api/` 段；结合 app 注册前缀 `api/v1/job_mgmt/`�
 - `[job_mgmt#20260701-018]` 补录 `job_script_detail` 与 `job_task_terminate` NATS handler，分别用于脚本详情读取和作业取消/终止。
 - `[job_mgmt#20260701-019]` 补录 `JobExecution.callback_type` / `callback_subject`、web/nats/both 双通道分发、`do_nats_callback_task` 与 `CallbackService`。
 
+## 2026-07-28 Code-ARD 校准
+- `[job_mgmt#20260728-020]` Ansible 回调与取消兜底统一为“执行行锁 + 同事务完成 outbox”；补录稳定 `delivery_id`、web/nats 独立投递、NATS request/reply、租约 token fencing 及 Beat 自动恢复语义。
+
 ## 6. 证据来源
 - 接口：`server/apps/job_mgmt/urls.py:48-50`（路由前缀 `api/`、`api/open/*`，当前无 `callback_test/`）。
-- 数据模型：`models/execution.py:22,28,55,70,72,74-76`、`models/distribution_file.py:6-28`、`models/target.py:11,58-64`、`models/playbook.py:10`、`migrations/0009_distributionfile_expire_at.py:36-39`、`views/open_api.py:175-179`。
-- 执行机制：`tasks.py:156-178`（清理任务）、`tasks.py:198-250`（`do_callback_task`）、`tasks.py:313-314`（`do_nats_callback_task`）、`config.py:4-9`（beat schedule）、`services/callback_service.py:42,84`、`nats_api.py:20,40,78,106,107,275,365,460,497,538,624,625`（NATS handler）、`views/distribution_file.py:64-67` 与 `views/open_api.py:175-179`（文件分发上传 NATS JetStream OS `job-files/`，非 MinIO）。
+- 数据模型：`models/execution.py`、`models/completion_outbox.py`、`models/distribution_file.py`、`models/target.py`、`models/playbook.py`、`migrations/0009_distributionfile_expire_at.py`、`migrations/0014_jobcompletionoutbox.py`。
+- 执行机制：`nats_api.py:ansible_task_callback`、`tasks.py:finalize_cancelling_execution`、`tasks.py:deliver_job_completion_outbox`、`tasks.py:dispatch_pending_job_completion_outbox`、`services/completion_outbox_service.py`、`services/callback_service.py`、`config.py:CELERY_BEAT_SCHEDULE`、`views/distribution_file.py` 与 `views/open_api.py`。
 - 越权防护：`utils/team_authz.py:1-63`。
 - 其它：`server/apps/job_mgmt/{services/*}`、`apps/rpc/{executor,ansible,node_mgmt}.py`。
