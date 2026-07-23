@@ -18,10 +18,29 @@ REMOTE_HOST_METRICS_MODULES = ("cpu", "mem", "disk", "diskio", "net", "processes
 REMOTE_HOST_METRICS_MODULES_CSV = ",".join(REMOTE_HOST_METRICS_MODULES)
 REMOTE_HOST_CONFIG_TYPES = ("host", "windows_wmi")
 METRICS_MODULES_TOML_LINE_PATTERN = re.compile(r'(?m)^(\s*metrics_modules\s*=\s*)"[^"\n]*"')
+LOCAL_TEMPLATE_ASSET_PATTERN = re.compile(
+    r"(?m)^[ \t]*# @bk_include_file (?P<path>\S+)[ \t]*$"
+)
 
 
 class PluginIdentityValidationError(ValueError):
     """Raised when plugin metadata and local template identity disagree."""
+
+
+def _expand_local_template_assets(content: str, plugin_dir: Path) -> str:
+    """将插件同目录资源嵌入配置，保持下发给采集端的配置自包含。"""
+    plugin_root = plugin_dir.resolve()
+
+    def replace(match):
+        relative_path = Path(match.group("path"))
+        asset_path = (plugin_root / relative_path).resolve()
+        if relative_path.is_absolute() or not asset_path.is_relative_to(plugin_root):
+            raise ValueError(f"非法的插件资源路径: {relative_path}")
+        if not asset_path.is_file():
+            raise ValueError(f"插件资源不存在: {relative_path}")
+        return asset_path.read_text(encoding="utf-8").rstrip("\n")
+
+    return LOCAL_TEMPLATE_ASSET_PATTERN.sub(replace, content)
 
 
 def _clean_identity_value(value):
@@ -256,21 +275,29 @@ def _process_config_templates(plugin_dir, plugin_obj, db_templates):
     to_create = []
     to_update = []
     file_templates = {}
+    failed_template_keys = set()
 
     # 收集文件中的模板
     for j2_file in plugin_dir.glob("*.j2"):
         if not j2_file.is_file():
             continue
+        template_key = None
         try:
             type_name, config_type, file_type = parse_template_filename(j2_file.name)
             if not type_name or not config_type or not file_type:
                 continue
 
-            content = j2_file.read_text(encoding="utf-8")
             template_key = (type_name, config_type, file_type)
+            content = _expand_local_template_assets(
+                j2_file.read_text(encoding="utf-8"),
+                plugin_dir,
+            )
             file_templates[template_key] = content
         except Exception as e:
             logger.error(f"读取模板文件失败: {j2_file}, 错误: {e}")
+            if template_key:
+                # 单个文件失败时保留数据库中的最后可用版本，避免初始化过程产生破坏性删除。
+                failed_template_keys.add(template_key)
 
     # 对比数据库模板
     for template_key, content in file_templates.items():
@@ -293,7 +320,11 @@ def _process_config_templates(plugin_dir, plugin_obj, db_templates):
             )
 
     # 找出需要删除的模板
-    to_delete = [db_template for template_key, db_template in db_templates.items() if template_key not in file_templates]
+    to_delete = [
+        db_template
+        for template_key, db_template in db_templates.items()
+        if template_key not in file_templates and template_key not in failed_template_keys
+    ]
 
     return to_create, to_update, to_delete
 

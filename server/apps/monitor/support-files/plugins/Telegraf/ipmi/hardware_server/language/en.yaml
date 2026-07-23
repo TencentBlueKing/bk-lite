@@ -1,8 +1,7 @@
 Hardware Server IPMI:
   name: Physical Server IPMI General(Telegraf)
-  desc: SNMP monitoring template for IPMI hardware server. It reports system uptime,
-    interface speed, inbound error packets, and other key metrics. Supported models
-    — IPMI series.
+  desc: Generic IPMI monitoring for chassis, PSU, CPU, memory, disk, RAID, and fan
+    components in physical servers.
 monitor_object:
   Hardware Server: Hardware Server
 monitor_object_type:
@@ -118,8 +117,51 @@ monitor_object_metric:
         consumption of the device. This indicator helps evaluate the device's energy
         efficiency and power consumption trends. It facilitates the implementation
         of energy-saving policies and resource optimization.
+    ipmi_chassis_power_watts: {name: Chassis Power, desc: Current chassis power consumption.}
+    ipmi_chassis_temperature_celsius: {name: Chassis Temperature, desc: Chassis inlet, exhaust, or ambient temperature.}
+    ipmi_chassis_airflow_cfm: {name: Chassis Airflow, desc: Chassis airflow in CFM.}
+    ipmi_psu_status: {name: PSU Status, desc: Health of each independently identified power supply.}
+    ipmi_psu_state: {name: PSU State, desc: Normalized operating state of each power supply.}
+    ipmi_psu_raw_state_code: {name: PSU Raw State Code, desc: Original PSU state code retained for troubleshooting.}
+    ipmi_psu_temperature_celsius: {name: PSU Temperature, desc: Temperature sensors associated with each power supply.}
+    ipmi_psu_power_watts: {name: PSU Power, desc: Input or output power of each power supply.}
+    ipmi_psu_voltage_volts: {name: PSU Voltage, desc: Input or output voltage of each power supply.}
+    ipmi_psu_fan_speed_rpm: {name: PSU Fan Speed, desc: Rotational speed of each power supply fan.}
+    ipmi_cpu_status: {name: CPU Status, desc: Health of each CPU socket.}
+    ipmi_cpu_state: {name: CPU State, desc: Normalized operating state of each CPU socket.}
+    ipmi_cpu_raw_state_code: {name: CPU Raw State Code, desc: Original CPU state code retained for troubleshooting.}
+    ipmi_cpu_temperature_celsius: {name: CPU Temperature, desc: CPU package or voltage-regulator temperature.}
+    ipmi_cpu_power_watts: {name: CPU Power, desc: CPU power consumption.}
+    ipmi_cpu_voltage_volts: {name: CPU Voltage, desc: Voltage rails associated with each CPU.}
+    ipmi_cpu_utilization_percent: {name: CPU Utilization, desc: CPU utilization exposed by the BMC.}
+    ipmi_memory_status: {name: Memory Status, desc: Health of each identifiable memory module or channel.}
+    ipmi_memory_state: {name: Memory State, desc: Normalized presence state of each memory module or channel.}
+    ipmi_memory_raw_state_code: {name: Memory Raw State Code, desc: Original memory state code retained for troubleshooting.}
+    ipmi_memory_temperature_celsius: {name: Memory Temperature, desc: Temperature of each memory module or channel.}
+    ipmi_memory_power_watts: {name: Memory Power, desc: Aggregate memory power exposed by the BMC.}
+    ipmi_disk_status: {name: Disk Status, desc: Health of each disk slot.}
+    ipmi_disk_state: {name: Disk State, desc: Normalized operating state of each disk slot.}
+    ipmi_disk_raw_state_code: {name: Disk Raw State Code, desc: Original vendor disk state code retained for troubleshooting.}
+    ipmi_disk_power_watts: {name: Disk Power, desc: Front, rear, or aggregate disk power consumption.}
+    ipmi_raid_status: {name: RAID Controller Status, desc: Health of each RAID controller.}
+    ipmi_raid_state: {name: RAID Controller State, desc: Normalized operating state of each RAID controller.}
+    ipmi_raid_raw_state_code: {name: RAID Raw State Code, desc: Original RAID controller state code retained for troubleshooting.}
+    ipmi_raid_temperature_celsius: {name: RAID Controller Temperature, desc: Temperature of each RAID controller.}
+    ipmi_raid_battery_temperature_celsius: {name: RAID Battery Temperature, desc: Temperature of a RAID battery or BBU.}
+    ipmi_fan_status: {name: Fan Status, desc: Health of each individually identified fan.}
+    ipmi_fan_state: {name: Fan State, desc: Normalized presence state of each fan.}
+    ipmi_fan_raw_state_code: {name: Fan Raw State Code, desc: Original fan state code retained for troubleshooting.}
+    ipmi_fan_component_speed_rpm: {name: Component Fan Speed, desc: Normalized rotational speed of each individual fan component.}
+    ipmi_fan_power_watts: {name: Fan Power, desc: Aggregate fan power exposed by the BMC.}
 monitor_object_metric_group:
   Hardware Server:
+    Chassis: Chassis
+    PSU: PSU
+    CPU: CPU
+    Memory: Memory
+    Disk: Disk
+    RAID: RAID
+    Fan: Fan
     Power: Power
     Status: Status
     Base: Base

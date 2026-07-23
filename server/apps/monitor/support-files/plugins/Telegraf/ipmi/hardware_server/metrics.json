@@ -1,6 +1,6 @@
 {
   "plugin": "Hardware Server IPMI",
-  "plugin_desc": "The IPMI collection plugin is a tool used for gathering hardware monitoring data from the device's IPMI, supporting remote monitoring of key metrics such as power status, temperature, fan speed, and voltage.",
+  "plugin_desc": "The IPMI collection plugin gathers generic hardware component metrics from physical servers.",
   "status_query": "any({instance_type='hardware_server', collect_type='ipmi'}) by (instance_id)",
   "name": "Hardware Server",
   "icon": "mm-hardwareDevice_硬件设备",
@@ -9,18 +9,418 @@
   "default_metric": "any({instance_type='hardware_server'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
   "supplementary_indicators": ["ipmi_chassis_power_state", "ipmi_fan_speed_rpm", "ipmi_temperature_celsius"],
-  "display_fields": [{"name": "Power State", "sort_order": 0, "metrics": [{"plugin": "Hardware Server IPMI", "metric": "ipmi_chassis_power_state"}]}, {"name": "Fan Speed", "sort_order": 1, "metrics": [{"plugin": "Hardware Server IPMI", "metric": "ipmi_fan_speed_rpm"}]}, {"name": "Temperature", "sort_order": 2, "metrics": [{"plugin": "Hardware Server IPMI", "metric": "ipmi_temperature_celsius"}]}],
+  "display_fields": [
+    {"name": "Power State", "sort_order": 0, "metrics": [{"plugin": "Hardware Server IPMI", "metric": "ipmi_chassis_power_state"}]},
+    {"name": "Fan Speed", "sort_order": 1, "metrics": [{"plugin": "Hardware Server IPMI", "metric": "ipmi_fan_speed_rpm"}]},
+    {"name": "Temperature", "sort_order": 2, "metrics": [{"plugin": "Hardware Server IPMI", "metric": "ipmi_temperature_celsius"}]}
+  ],
   "metrics": [
     {
-      "metric_group": "Power",
+      "metric_group": "Chassis",
       "name": "ipmi_chassis_power_state",
-      "query": "ipmi_sensor_status{instance_type='hardware_server', name=~\"host_power\", __$labels__}",
+      "query": "ipmi_chassis_power_state{instance_type='hardware_server', __$labels__}",
       "display_name": "Power State",
       "data_type": "Enum",
-      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
-      "dimensions": [{"name": "name", "description": "name"}],
+      "unit": "[{\"name\":\"开机\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"关机\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":-1,\"color\":\"#8c8c8c\"}]",
+      "dimensions": [{"name": "component_id", "description": "component_id"}, {"name": "raw_name", "description": "raw_name"}, {"name": "profile", "description": "profile"}],
       "instance_id_keys": ["instance_id"],
-      "description": "The power state indicator is used to monitor if the device is powered on. Its value can indicate whether the power is on or off. It is mainly used for remote management and monitoring of the device's power state."
+      "description": "Current chassis power state obtained from the IPMI chassis command."
+    },
+    {
+      "metric_group": "Chassis",
+      "name": "ipmi_chassis_power_watts",
+      "query": "ipmi_chassis_power_watts{instance_type='hardware_server', __$labels__}",
+      "display_name": "Chassis Power",
+      "data_type": "Number",
+      "unit": "watts",
+      "dimensions": [{"name": "component_id", "description": "component_id"}, {"name": "raw_name", "description": "raw_name"}, {"name": "profile", "description": "profile"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Chassis power consumption reported by a generic IPMI sensor."
+    },
+    {
+      "metric_group": "Chassis",
+      "name": "ipmi_chassis_temperature_celsius",
+      "query": "ipmi_chassis_temperature_celsius{instance_type='hardware_server', __$labels__}",
+      "display_name": "Chassis Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [{"name": "component_id", "description": "component_id"}, {"name": "location", "description": "location"}, {"name": "raw_name", "description": "raw_name"}, {"name": "profile", "description": "profile"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Inlet, exhaust, or ambient chassis temperature."
+    },
+    {
+      "metric_group": "Chassis",
+      "name": "ipmi_chassis_airflow_cfm",
+      "query": "ipmi_chassis_airflow_cfm{instance_type='hardware_server', __$labels__}",
+      "display_name": "Chassis Airflow",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [{"name": "component_id", "description": "component_id"}, {"name": "raw_name", "description": "raw_name"}, {"name": "profile", "description": "profile"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Chassis airflow in cubic feet per minute."
+    },
+    {
+      "metric_group": "PSU",
+      "name": "ipmi_psu_status",
+      "query": "ipmi_psu_status{instance_type='hardware_server', __$labels__}",
+      "display_name": "PSU Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":-1,\"color\":\"#8c8c8c\"}]",
+      "dimensions": [{"name": "component_id", "description": "component_id"}, {"name": "raw_name", "description": "raw_name"}, {"name": "profile", "description": "profile"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Health of each independently identified power supply."
+    },
+    {
+      "metric_group": "PSU",
+      "name": "ipmi_psu_state",
+      "query": "ipmi_psu_state{instance_type='hardware_server', __$labels__}",
+      "display_name": "PSU State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"工作\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"停止\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":-1,\"color\":\"#8c8c8c\"}]",
+      "dimensions": [{"name": "component_id", "description": "component_id"}, {"name": "raw_name", "description": "raw_name"}, {"name": "profile", "description": "profile"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Normalized operating state of each power supply."
+    },
+    {
+      "metric_group": "PSU",
+      "name": "ipmi_psu_raw_state_code",
+      "query": "ipmi_psu_raw_state_code{instance_type='hardware_server', __$labels__}",
+      "display_name": "PSU Raw State Code",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [{"name": "component_id", "description": "component_id"}, {"name": "raw_name", "description": "raw_name"}, {"name": "profile", "description": "profile"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Unmodified PSU state code retained for troubleshooting."
+    },
+    {
+      "metric_group": "PSU",
+      "name": "ipmi_psu_temperature_celsius",
+      "query": "ipmi_psu_temperature_celsius{instance_type='hardware_server', __$labels__}",
+      "display_name": "PSU Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [{"name": "component_id", "description": "component_id"}, {"name": "sensor_id", "description": "sensor_id"}, {"name": "raw_name", "description": "raw_name"}, {"name": "profile", "description": "profile"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Temperature sensors associated with an individual power supply."
+    },
+    {
+      "metric_group": "PSU",
+      "name": "ipmi_psu_power_watts",
+      "query": "ipmi_psu_power_watts{instance_type='hardware_server', __$labels__}",
+      "display_name": "PSU Power",
+      "data_type": "Number",
+      "unit": "watts",
+      "dimensions": [{"name": "component_id", "description": "component_id"}, {"name": "direction", "description": "direction"}, {"name": "raw_name", "description": "raw_name"}, {"name": "profile", "description": "profile"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Input or output power of an individual power supply."
+    },
+    {
+      "metric_group": "PSU",
+      "name": "ipmi_psu_voltage_volts",
+      "query": "ipmi_psu_voltage_volts{instance_type='hardware_server', __$labels__}",
+      "display_name": "PSU Voltage",
+      "data_type": "Number",
+      "unit": "volts",
+      "dimensions": [{"name": "component_id", "description": "component_id"}, {"name": "direction", "description": "direction"}, {"name": "raw_name", "description": "raw_name"}, {"name": "profile", "description": "profile"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Input or output voltage of an individual power supply."
+    },
+    {
+      "metric_group": "PSU",
+      "name": "ipmi_psu_fan_speed_rpm",
+      "query": "ipmi_psu_fan_speed_rpm{instance_type='hardware_server', __$labels__}",
+      "display_name": "PSU Fan Speed",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [{"name": "component_id", "description": "component_id"}, {"name": "sensor_id", "description": "sensor_id"}, {"name": "raw_name", "description": "raw_name"}, {"name": "profile", "description": "profile"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Rotational speed of a power supply fan."
+    },
+    {
+      "metric_group": "CPU",
+      "name": "ipmi_cpu_status",
+      "query": "ipmi_cpu_status{instance_type='hardware_server', __$labels__}",
+      "display_name": "CPU Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":-1,\"color\":\"#8c8c8c\"}]",
+      "dimensions": [{"name": "component_id", "description": "component_id"}, {"name": "raw_name", "description": "raw_name"}, {"name": "profile", "description": "profile"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Health of each CPU socket exposed by IPMI."
+    },
+    {
+      "metric_group": "CPU",
+      "name": "ipmi_cpu_state",
+      "query": "ipmi_cpu_state{instance_type='hardware_server', __$labels__}",
+      "display_name": "CPU State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"启用\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"禁用\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":-1,\"color\":\"#8c8c8c\"}]",
+      "dimensions": [{"name": "component_id", "description": "component_id"}, {"name": "raw_name", "description": "raw_name"}, {"name": "profile", "description": "profile"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Normalized operating state of each CPU socket."
+    },
+    {
+      "metric_group": "CPU",
+      "name": "ipmi_cpu_raw_state_code",
+      "query": "ipmi_cpu_raw_state_code{instance_type='hardware_server', __$labels__}",
+      "display_name": "CPU Raw State Code",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [{"name": "component_id", "description": "component_id"}, {"name": "raw_name", "description": "raw_name"}, {"name": "profile", "description": "profile"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Unmodified CPU state code retained for troubleshooting."
+    },
+    {
+      "metric_group": "CPU",
+      "name": "ipmi_cpu_temperature_celsius",
+      "query": "ipmi_cpu_temperature_celsius{instance_type='hardware_server', __$labels__}",
+      "display_name": "CPU Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [{"name": "component_id", "description": "component_id"}, {"name": "sensor_id", "description": "sensor_id"}, {"name": "raw_name", "description": "raw_name"}, {"name": "profile", "description": "profile"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "CPU package or voltage-regulator temperature."
+    },
+    {
+      "metric_group": "CPU",
+      "name": "ipmi_cpu_power_watts",
+      "query": "ipmi_cpu_power_watts{instance_type='hardware_server', __$labels__}",
+      "display_name": "CPU Power",
+      "data_type": "Number",
+      "unit": "watts",
+      "dimensions": [{"name": "component_id", "description": "component_id"}, {"name": "raw_name", "description": "raw_name"}, {"name": "profile", "description": "profile"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Power consumption associated with a CPU or all CPUs."
+    },
+    {
+      "metric_group": "CPU",
+      "name": "ipmi_cpu_voltage_volts",
+      "query": "ipmi_cpu_voltage_volts{instance_type='hardware_server', __$labels__}",
+      "display_name": "CPU Voltage",
+      "data_type": "Number",
+      "unit": "volts",
+      "dimensions": [{"name": "component_id", "description": "component_id"}, {"name": "sensor_id", "description": "sensor_id"}, {"name": "raw_name", "description": "raw_name"}, {"name": "profile", "description": "profile"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Voltage sensor associated with a CPU socket."
+    },
+    {
+      "metric_group": "CPU",
+      "name": "ipmi_cpu_utilization_percent",
+      "query": "ipmi_cpu_utilization_percent{instance_type='hardware_server', __$labels__}",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [{"name": "component_id", "description": "component_id"}, {"name": "raw_name", "description": "raw_name"}, {"name": "profile", "description": "profile"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "CPU utilization when exposed by the BMC."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "ipmi_memory_status",
+      "query": "ipmi_memory_status{instance_type='hardware_server', __$labels__}",
+      "display_name": "Memory Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":-1,\"color\":\"#8c8c8c\"}]",
+      "dimensions": [{"name": "component_id", "description": "component_id"}, {"name": "slot", "description": "slot"}, {"name": "raw_name", "description": "raw_name"}, {"name": "profile", "description": "profile"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Health of each identifiable memory module."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "ipmi_memory_state",
+      "query": "ipmi_memory_state{instance_type='hardware_server', __$labels__}",
+      "display_name": "Memory State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"在位\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"缺失\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":-1,\"color\":\"#8c8c8c\"}]",
+      "dimensions": [{"name": "component_id", "description": "component_id"}, {"name": "slot", "description": "slot"}, {"name": "raw_name", "description": "raw_name"}, {"name": "profile", "description": "profile"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Normalized presence state of each memory module."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "ipmi_memory_raw_state_code",
+      "query": "ipmi_memory_raw_state_code{instance_type='hardware_server', __$labels__}",
+      "display_name": "Memory Raw State Code",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [{"name": "component_id", "description": "component_id"}, {"name": "slot", "description": "slot"}, {"name": "raw_name", "description": "raw_name"}, {"name": "profile", "description": "profile"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Unmodified memory state code retained for troubleshooting."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "ipmi_memory_temperature_celsius",
+      "query": "ipmi_memory_temperature_celsius{instance_type='hardware_server', __$labels__}",
+      "display_name": "Memory Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [{"name": "component_id", "description": "component_id"}, {"name": "slot", "description": "slot"}, {"name": "raw_name", "description": "raw_name"}, {"name": "profile", "description": "profile"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Temperature of an identifiable memory module or channel."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "ipmi_memory_power_watts",
+      "query": "ipmi_memory_power_watts{instance_type='hardware_server', __$labels__}",
+      "display_name": "Memory Power",
+      "data_type": "Number",
+      "unit": "watts",
+      "dimensions": [{"name": "component_id", "description": "component_id"}, {"name": "raw_name", "description": "raw_name"}, {"name": "profile", "description": "profile"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Aggregate memory power consumption when exposed by the BMC."
+    },
+    {
+      "metric_group": "Disk",
+      "name": "ipmi_disk_status",
+      "query": "ipmi_disk_status{instance_type='hardware_server', __$labels__}",
+      "display_name": "Disk Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":-1,\"color\":\"#8c8c8c\"}]",
+      "dimensions": [{"name": "component_id", "description": "component_id"}, {"name": "slot", "description": "slot"}, {"name": "raw_name", "description": "raw_name"}, {"name": "profile", "description": "profile"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Health of each disk slot exposed through generic IPMI SDR."
+    },
+    {
+      "metric_group": "Disk",
+      "name": "ipmi_disk_state",
+      "query": "ipmi_disk_state{instance_type='hardware_server', __$labels__}",
+      "display_name": "Disk State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"在线\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"离线\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":-1,\"color\":\"#8c8c8c\"}]",
+      "dimensions": [{"name": "component_id", "description": "component_id"}, {"name": "slot", "description": "slot"}, {"name": "raw_name", "description": "raw_name"}, {"name": "profile", "description": "profile"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Normalized operating state of each disk slot."
+    },
+    {
+      "metric_group": "Disk",
+      "name": "ipmi_disk_raw_state_code",
+      "query": "ipmi_disk_raw_state_code{instance_type='hardware_server', __$labels__}",
+      "display_name": "Disk Raw State Code",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [{"name": "component_id", "description": "component_id"}, {"name": "slot", "description": "slot"}, {"name": "raw_name", "description": "raw_name"}, {"name": "profile", "description": "profile"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Unmodified vendor state code retained for troubleshooting."
+    },
+    {
+      "metric_group": "Disk",
+      "name": "ipmi_disk_power_watts",
+      "query": "ipmi_disk_power_watts{instance_type='hardware_server', __$labels__}",
+      "display_name": "Disk Power",
+      "data_type": "Number",
+      "unit": "watts",
+      "dimensions": [{"name": "component_id", "description": "component_id"}, {"name": "location", "description": "location"}, {"name": "raw_name", "description": "raw_name"}, {"name": "profile", "description": "profile"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Front, rear, or aggregate disk power consumption exposed by the BMC."
+    },
+    {
+      "metric_group": "RAID",
+      "name": "ipmi_raid_status",
+      "query": "ipmi_raid_status{instance_type='hardware_server', __$labels__}",
+      "display_name": "RAID Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":-1,\"color\":\"#8c8c8c\"}]",
+      "dimensions": [{"name": "component_id", "description": "component_id"}, {"name": "raw_name", "description": "raw_name"}, {"name": "profile", "description": "profile"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Health of each RAID controller exposed by generic IPMI SDR."
+    },
+    {
+      "metric_group": "RAID",
+      "name": "ipmi_raid_state",
+      "query": "ipmi_raid_state{instance_type='hardware_server', __$labels__}",
+      "display_name": "RAID State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"就绪\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"不可用\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":-1,\"color\":\"#8c8c8c\"}]",
+      "dimensions": [{"name": "component_id", "description": "component_id"}, {"name": "raw_name", "description": "raw_name"}, {"name": "profile", "description": "profile"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Normalized operating state of each RAID controller."
+    },
+    {
+      "metric_group": "RAID",
+      "name": "ipmi_raid_raw_state_code",
+      "query": "ipmi_raid_raw_state_code{instance_type='hardware_server', __$labels__}",
+      "display_name": "RAID Raw State Code",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [{"name": "component_id", "description": "component_id"}, {"name": "raw_name", "description": "raw_name"}, {"name": "profile", "description": "profile"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Unmodified RAID controller state code retained for troubleshooting."
+    },
+    {
+      "metric_group": "RAID",
+      "name": "ipmi_raid_temperature_celsius",
+      "query": "ipmi_raid_temperature_celsius{instance_type='hardware_server', __$labels__}",
+      "display_name": "RAID Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [{"name": "component_id", "description": "component_id"}, {"name": "raw_name", "description": "raw_name"}, {"name": "profile", "description": "profile"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Temperature of each RAID controller."
+    },
+    {
+      "metric_group": "RAID",
+      "name": "ipmi_raid_battery_temperature_celsius",
+      "query": "ipmi_raid_battery_temperature_celsius{instance_type='hardware_server', __$labels__}",
+      "display_name": "RAID Battery Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [{"name": "component_id", "description": "component_id"}, {"name": "battery_id", "description": "battery_id"}, {"name": "raw_name", "description": "raw_name"}, {"name": "profile", "description": "profile"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Temperature of a RAID backup battery or BBU."
+    },
+    {
+      "metric_group": "Fan",
+      "name": "ipmi_fan_status",
+      "query": "ipmi_fan_status{instance_type='hardware_server', __$labels__}",
+      "display_name": "Fan Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":-1,\"color\":\"#8c8c8c\"}]",
+      "dimensions": [{"name": "component_id", "description": "component_id"}, {"name": "raw_name", "description": "raw_name"}, {"name": "profile", "description": "profile"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Health of each individually identified fan."
+    },
+    {
+      "metric_group": "Fan",
+      "name": "ipmi_fan_state",
+      "query": "ipmi_fan_state{instance_type='hardware_server', __$labels__}",
+      "display_name": "Fan State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"在位\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"缺失\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":-1,\"color\":\"#8c8c8c\"}]",
+      "dimensions": [{"name": "component_id", "description": "component_id"}, {"name": "raw_name", "description": "raw_name"}, {"name": "profile", "description": "profile"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Normalized presence state of each fan."
+    },
+    {
+      "metric_group": "Fan",
+      "name": "ipmi_fan_raw_state_code",
+      "query": "ipmi_fan_raw_state_code{instance_type='hardware_server', __$labels__}",
+      "display_name": "Fan Raw State Code",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [{"name": "component_id", "description": "component_id"}, {"name": "raw_name", "description": "raw_name"}, {"name": "profile", "description": "profile"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Unmodified fan state code retained for troubleshooting."
+    },
+    {
+      "metric_group": "Fan",
+      "name": "ipmi_fan_component_speed_rpm",
+      "query": "ipmi_fan_component_speed_rpm{instance_type='hardware_server', __$labels__}",
+      "display_name": "Component Fan Speed",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [{"name": "component_id", "description": "component_id"}, {"name": "sensor_id", "description": "sensor_id"}, {"name": "raw_name", "description": "raw_name"}, {"name": "profile", "description": "profile"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Rotational speed of each individually identified fan."
+    },
+    {
+      "metric_group": "Fan",
+      "name": "ipmi_fan_power_watts",
+      "query": "ipmi_fan_power_watts{instance_type='hardware_server', __$labels__}",
+      "display_name": "Fan Power",
+      "data_type": "Number",
+      "unit": "watts",
+      "dimensions": [{"name": "component_id", "description": "component_id"}, {"name": "raw_name", "description": "raw_name"}, {"name": "profile", "description": "profile"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Aggregate fan power consumption when exposed by the BMC."
     },
     {
       "metric_group": "Power",
@@ -31,7 +431,7 @@
       "unit": "watts",
       "dimensions": [{"name": "name", "description": "name"}],
       "instance_id_keys": ["instance_id"],
-      "description": "The power indicator is measured in watts and reflects the current power consumption of the device. This indicator helps evaluate the device's energy efficiency and power consumption trends."
+      "description": "Original unclassified IPMI power sensors retained for compatibility."
     },
     {
       "metric_group": "Power",
@@ -42,7 +442,7 @@
       "unit": "volts",
       "dimensions": [{"name": "name", "description": "name"}],
       "instance_id_keys": ["instance_id"],
-      "description": "The voltage indicator measured in volts monitors the voltage levels of different power rails within the device. Stable voltage supply is crucial for the reliability of the device."
+      "description": "Original unclassified IPMI voltage sensors retained for compatibility."
     },
     {
       "metric_group": "Environment",
@@ -53,7 +453,7 @@
       "unit": "none",
       "dimensions": [{"name": "name", "description": "name"}],
       "instance_id_keys": ["instance_id"],
-      "description": "The fan speed indicator is measured in rotations per minute and monitors the fan's operation status within the device. Efficient fan operation is key to maintaining device temperature."
+      "description": "Original IPMI fan speed sensors retained for compatibility."
     },
     {
       "metric_group": "Environment",
@@ -64,7 +464,7 @@
       "unit": "celsius",
       "dimensions": [{"name": "name", "description": "name"}],
       "instance_id_keys": ["instance_id"],
-      "description": "The temperature indicator measured in degrees Celsius monitors the internal temperature of the device. Monitoring temperature prevents heat accumulation and avoids device overheating."
+      "description": "Original unclassified IPMI temperature sensors retained for compatibility."
     }
   ]
 }
