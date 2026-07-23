@@ -1,12 +1,12 @@
 import React from 'react';
-import { Button, Dropdown } from 'antd';
 import {
   CaretDownFilled,
   CaretRightFilled,
   HolderOutlined,
-  MoreOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
+import MoreActionsDropdown from '@/components/more-actions-dropdown';
+import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
 import type { DashboardGroupLayoutItem } from '@/app/ops-analysis/types/dashBoard';
 
 interface GroupHeaderProps {
@@ -31,42 +31,12 @@ const GroupHeader: React.FC<GroupHeaderProps> = ({
   onDeleteGroup,
 }) => {
   const { t } = useTranslation();
-  const menu = {
-    items: [
-      { key: 'add-view', label: t('dashboard.addView') },
-      { key: 'rename', label: t('dashboard.editGroup') },
-      { key: 'remove', label: t('dashboard.unGroup') },
-      { key: 'delete', label: t('dashboard.deleteEntireGroup') },
-    ],
-    onClick: ({
-      key,
-      domEvent,
-    }: {
-      key: string;
-      domEvent: { stopPropagation: () => void };
-    }) => {
-      domEvent.stopPropagation();
-
-      if (key === 'add-view') {
-        onAddView();
-        return;
-      }
-
-      if (key === 'rename') {
-        onRename();
-        return;
-      }
-
-      if (key === 'remove') {
-        onRemoveGroup();
-        return;
-      }
-
-      if (key === 'delete') {
-        onDeleteGroup();
-      }
-    },
-  };
+  const menuItems: MoreActionsDropdownItem[] = [
+    { key: 'add-view', label: t('dashboard.addView'), onClick: onAddView },
+    { key: 'rename', label: t('dashboard.editGroup'), onClick: onRename },
+    { key: 'remove', label: t('dashboard.unGroup'), onClick: onRemoveGroup },
+    { key: 'delete', label: t('dashboard.deleteEntireGroup'), onClick: onDeleteGroup, danger: true },
+  ];
 
   return (
     <div
@@ -111,15 +81,11 @@ const GroupHeader: React.FC<GroupHeaderProps> = ({
       )}
 
       {isEditMode && (
-        <Dropdown menu={menu} trigger={['click']}>
-          <Button
-            type="text"
-            icon={<MoreOutlined />}
-            className="no-drag h-7 w-7 rounded-full! text-(--color-text-2)!"
-            onClick={(event) => event.stopPropagation()}
-            onMouseDown={(event) => event.stopPropagation()}
-          />
-        </Dropdown>
+        <MoreActionsDropdown
+          items={menuItems}
+          stopPropagation
+          buttonClassName="no-drag h-7 w-7 rounded-full! text-(--color-text-2)!"
+        />
       )}
     </div>
   );

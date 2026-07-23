@@ -12,6 +12,7 @@
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
     "clean": "rm -rf .next",
     "test:custom-table-height": "pnpm exec tsx scripts/custom-table-height-test.ts",
+    "test:more-actions-dropdown": "pnpm exec tsx scripts/more-actions-dropdown-test.ts",
     "test:cmdb-asset-model-tree-expansion": "pnpm exec tsx scripts/cmdb-asset-model-tree-expansion-test.ts",
     "test:alarm-detail-action-layout": "pnpm exec tsx scripts/alarm-detail-action-layout-test.ts",
     "test:alarm-action-i18n": "pnpm exec tsx scripts/alarm-action-i18n-test.ts",

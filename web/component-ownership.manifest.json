@@ -1066,6 +1066,33 @@
     "reason": "primitive allowlist: 通用弹窗操作区布局"
   },
   {
+    "component": "more-actions-dropdown",
+    "directApps": [
+      "alarm",
+      "cmdb",
+      "log",
+      "monitor",
+      "ops-analysis",
+      "opspilot",
+      "system-manager"
+    ],
+    "transitiveApps": [
+      "alarm",
+      "cmdb",
+      "log",
+      "monitor",
+      "ops-analysis",
+      "opspilot",
+      "system-manager"
+    ],
+    "stories": [
+      "more-actions-dropdown.stories.tsx"
+    ],
+    "reverseAppImports": [],
+    "classification": "shared-cross-app",
+    "reason": "consumed transitively by 7 apps"
+  },
+  {
     "component": "multi-cascade-panel",
     "directApps": [],
     "transitiveApps": [
@@ -1121,8 +1148,12 @@
   },
   {
     "component": "notifications",
-    "directApps": [],
-    "transitiveApps": [],
+    "directApps": [
+      "(core)"
+    ],
+    "transitiveApps": [
+      "(core)"
+    ],
     "stories": [
       "notifications.stories.tsx"
     ],
@@ -1439,6 +1470,7 @@
     "stories": [
       "data-display-family.stories.tsx",
       "entity-list.stories.tsx",
+      "more-actions-dropdown.stories.tsx",
       "permission.stories.tsx"
     ],
     "reverseAppImports": [],
