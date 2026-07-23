@@ -12,6 +12,7 @@ from apps.alerts.service.outbox import enqueue_outbox
 OUTBOX_ADD_MEMBERS = "incident_im_group.add_members"
 OUTBOX_CREATE = "incident_im_group.create"
 OUTBOX_RECONCILE = "incident_im_group.reconcile"
+OUTBOX_SEND_SUMMARY = "incident_im_group.send_summary"
 SYNCABLE_GROUP_STATUSES = (
     IncidentIMGroup.Status.ACTIVE,
     IncidentIMGroup.Status.ACTIVE_PARTIAL,
@@ -23,6 +24,13 @@ def reconcile_incident_im_group(incident_id, force_delivery=False, resume_create
         group = _lock_active_group_for_incident(incident_id)
         if group is None:
             return None
+
+        terminal_status = _terminal_status_from_delivery_facts(group)
+        if terminal_status is not None:
+            if group.status != terminal_status:
+                group.status = terminal_status
+                group.save(update_fields=["status"])
+            return group
 
         if force_delivery and not _can_deliver(group, force_delivery=True):
             return group
@@ -75,6 +83,8 @@ def reconcile_incident_im_group(incident_id, force_delivery=False, resume_create
                 {"group_id": str(group.id)},
                 f"incident-im-group:{group.id}:add-members:{digest}",
             )
+        elif not pending and group.current_stage == IncidentIMGroup.Stage.SENDING_SUMMARY:
+            _enqueue_replacement_summary(group)
         return group
 
 
@@ -110,6 +120,7 @@ def pause_group_for_closed_incident(incident_id):
                 IncidentIMGroup.Status.PENDING_CREATE,
                 IncidentIMGroup.Status.CREATING,
             )
+            or group.current_stage == IncidentIMGroup.Stage.SENDING_SUMMARY
             or group.continuous_sync_enabled
         )
         group.status = IncidentIMGroup.Status.PAUSED
@@ -128,7 +139,18 @@ def resume_group_for_reopened_incident(incident_id):
         ):
             return group
 
-        should_resume = group.resume_after_reopen
+        terminal_status = _terminal_status_from_delivery_facts(group, allow_paused=True)
+        if terminal_status is not None:
+            group.status = terminal_status
+            group.pause_reason = ""
+            group.resume_after_reopen = False
+            group.save(update_fields=["status", "pause_reason", "resume_after_reopen"])
+            return group
+
+        should_resume = (
+            group.resume_after_reopen
+            or group.current_stage == IncidentIMGroup.Stage.SENDING_SUMMARY
+        )
         if not group.external_chat_id:
             group.status = IncidentIMGroup.Status.PENDING_CREATE
             group.current_stage = IncidentIMGroup.Stage.QUEUED
@@ -206,3 +228,51 @@ def _has_unfinished_add_members(group_id):
         payload={"group_id": str(group_id)},
         status__in=(AlertOutbox.Status.PENDING, AlertOutbox.Status.DELIVERING),
     ).exists()
+
+
+def _terminal_status_from_delivery_facts(group, *, allow_paused=False):
+    if not allow_paused and (
+        group.status == IncidentIMGroup.Status.PAUSED
+        or group.pause_reason
+        or group.incident.status not in IncidentStatus.ACTIVATE_STATUS
+    ):
+        return None
+    if (
+        group.current_stage != IncidentIMGroup.Stage.COMPLETED
+        or not group.last_error_code
+    ):
+        return None
+    if not group.external_chat_id:
+        return IncidentIMGroup.Status.CREATE_FAILED
+    if group.last_error_code == "provider.group_not_found":
+        return IncidentIMGroup.Status.DEGRADED
+    if group.last_error_code == "IM_DELIVERY_EXHAUSTED":
+        return IncidentIMGroup.Status.ACTIVE_PARTIAL
+    return None
+
+
+def _enqueue_replacement_summary(group):
+    payload = {"group_id": str(group.id)}
+    if AlertOutbox.objects.filter(
+        kind=OUTBOX_SEND_SUMMARY,
+        payload=payload,
+        status__in=(AlertOutbox.Status.PENDING, AlertOutbox.Status.DELIVERING),
+    ).exists():
+        return
+    consumed_id = (
+        AlertOutbox.objects.filter(
+            kind=OUTBOX_SEND_SUMMARY,
+            payload=payload,
+            status=AlertOutbox.Status.DELIVERED,
+        )
+        .order_by("-pk")
+        .values_list("pk", flat=True)
+        .first()
+    )
+    if consumed_id is None:
+        return
+    enqueue_outbox(
+        OUTBOX_SEND_SUMMARY,
+        payload,
+        f"incident-im-group:{group.id}:send-summary:resume:{consumed_id}",
+    )

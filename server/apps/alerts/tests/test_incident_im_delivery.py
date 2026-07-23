@@ -10,6 +10,7 @@ from apps.alerts.constants.constants import IncidentStatus
 from apps.alerts.models import AlertOutbox, Incident, IncidentIMGroup, IncidentIMMember
 from apps.alerts.service.incident_im.reconcile import (
     pause_group_for_closed_incident,
+    reconcile_incident_im_group,
     resume_group_for_reopened_incident,
 )
 from apps.alerts.service.outbox import deliver_outbox_record
@@ -667,6 +668,213 @@ def test_queued_summary_paused_before_delivery_finishes_without_provider(group, 
     assert group.pause_reason == pause_reason
     assert group.resume_after_reopen is True
     assert outbox.status == AlertOutbox.Status.DELIVERED
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("resume_mode", ["manual", "incident_reopen"])
+def test_consumed_paused_summary_is_requeued_with_stable_provider_uuid(group, resume_mode):
+    group.external_chat_id = "oc_1"
+    group.current_stage = IncidentIMGroup.Stage.SENDING_SUMMARY
+    group.continuous_sync_enabled = False
+    group.save(
+        update_fields=[
+            "external_chat_id",
+            "current_stage",
+            "continuous_sync_enabled",
+        ]
+    )
+    if resume_mode == "incident_reopen":
+        group.incident.status = IncidentStatus.CLOSED
+        group.incident.save(update_fields=["status"])
+        pause_group_for_closed_incident(group.incident_id)
+    else:
+        IncidentIMGroup.objects.filter(pk=group.id).update(
+            status=IncidentIMGroup.Status.PAUSED,
+            pause_reason=IncidentIMGroup.PauseReason.MANUAL,
+            resume_after_reopen=False,
+        )
+    consumed = AlertOutbox.objects.create(
+        kind="incident_im_group.send_summary",
+        payload={"group_id": str(group.id)},
+        idempotency_key=f"incident-im-group:{group.id}:send-summary",
+    )
+
+    with mock.patch(
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute"
+    ) as execute:
+        assert deliver_outbox_record(consumed.id) is True
+    execute.assert_not_called()
+
+    if resume_mode == "manual":
+        IncidentIMGroup.objects.filter(pk=group.id).update(
+            status=IncidentIMGroup.Status.ACTIVE,
+            pause_reason="",
+            resume_after_reopen=False,
+        )
+        reconcile_incident_im_group(group.incident_id, resume_create=True)
+    else:
+        group.incident.status = IncidentStatus.PROCESSING
+        group.incident.save(update_fields=["status", "updated_at"])
+        resume_group_for_reopened_incident(group.incident_id)
+        reconcile_outbox = AlertOutbox.objects.get(
+            kind="incident_im_group.reconcile",
+            status=AlertOutbox.Status.PENDING,
+        )
+        assert deliver_outbox_record(reconcile_outbox.id) is True
+
+    reconcile_incident_im_group(group.incident_id, resume_create=True)
+    replacements = AlertOutbox.objects.filter(
+        kind="incident_im_group.send_summary",
+        payload={"group_id": str(group.id)},
+        status=AlertOutbox.Status.PENDING,
+    ).exclude(pk=consumed.pk)
+    assert replacements.count() == 1
+    replacement = replacements.get()
+    assert replacement.idempotency_key != consumed.idempotency_key
+
+    with mock.patch(
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
+        return_value=CapabilityExecutionResult.success_result("sent"),
+    ) as execute:
+        assert deliver_outbox_record(replacement.id) is True
+
+    assert execute.call_args.kwargs["idempotency_key"] == f"bklite-summary-{group.id.hex}"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("pause_mode", ["manual", "incident_closed"])
+def test_terminal_create_ack_preserves_pause_then_resume_converges_to_create_failed(
+    group, pending_members, pause_mode
+):
+    terminal = CapabilityExecutionResult.failed_result(
+        "permission denied",
+        code="provider.permission_denied",
+    )
+
+    def fail_after_pause(*_args, **_kwargs):
+        if pause_mode == "manual":
+            IncidentIMGroup.objects.filter(pk=group.id).update(
+                status=IncidentIMGroup.Status.PAUSED,
+                pause_reason=IncidentIMGroup.PauseReason.MANUAL,
+                resume_after_reopen=False,
+            )
+        else:
+            group.incident.status = IncidentStatus.CLOSED
+            group.incident.save(update_fields=["status"])
+            pause_group_for_closed_incident(group.incident_id)
+        return terminal
+
+    with mock.patch(
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
+        side_effect=fail_after_pause,
+    ):
+        from apps.alerts.service.incident_im.delivery import deliver_create_group
+
+        deliver_create_group(group.id)
+
+    group.refresh_from_db()
+    assert group.status == IncidentIMGroup.Status.PAUSED
+    assert group.pause_reason == (
+        IncidentIMGroup.PauseReason.MANUAL
+        if pause_mode == "manual"
+        else IncidentIMGroup.PauseReason.INCIDENT_CLOSED
+    )
+    assert group.current_stage == IncidentIMGroup.Stage.COMPLETED
+    assert group.last_error_code == "provider.permission_denied"
+
+    reconcile_incident_im_group(group.incident_id)
+    group.refresh_from_db()
+    assert group.status == IncidentIMGroup.Status.PAUSED
+
+    if pause_mode == "manual":
+        IncidentIMGroup.objects.filter(pk=group.id).update(
+            status=IncidentIMGroup.Status.ACTIVE,
+            pause_reason="",
+        )
+        reconcile_incident_im_group(group.incident_id)
+    else:
+        group.incident.status = IncidentStatus.PROCESSING
+        group.incident.save(update_fields=["status", "updated_at"])
+        resume_group_for_reopened_incident(group.incident_id)
+
+    group.refresh_from_db()
+    assert group.status == IncidentIMGroup.Status.CREATE_FAILED
+    assert group.pause_reason == ""
+    assert group.last_error_code == "provider.permission_denied"
+    assert not AlertOutbox.objects.filter(
+        kind="incident_im_group.create",
+        payload={"group_id": str(group.id)},
+        status=AlertOutbox.Status.PENDING,
+    ).exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("pause_mode", ["manual", "incident_closed"])
+def test_terminal_add_ack_preserves_pause_then_resume_converges_to_degraded(
+    group, pending_members, pause_mode
+):
+    group.external_chat_id = "oc_deleted"
+    group.save(update_fields=["external_chat_id"])
+    terminal = CapabilityExecutionResult.failed_result(
+        "group missing",
+        code="provider.group_not_found",
+    )
+
+    def fail_after_pause(*_args, **_kwargs):
+        if pause_mode == "manual":
+            IncidentIMGroup.objects.filter(pk=group.id).update(
+                status=IncidentIMGroup.Status.PAUSED,
+                pause_reason=IncidentIMGroup.PauseReason.MANUAL,
+                resume_after_reopen=False,
+            )
+        else:
+            group.incident.status = IncidentStatus.CLOSED
+            group.incident.save(update_fields=["status"])
+            pause_group_for_closed_incident(group.incident_id)
+        return terminal
+
+    with mock.patch(
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
+        side_effect=fail_after_pause,
+    ):
+        from apps.alerts.service.incident_im.delivery import deliver_add_members
+
+        deliver_add_members(group.id)
+
+    group.refresh_from_db()
+    assert group.status == IncidentIMGroup.Status.PAUSED
+    assert group.pause_reason == (
+        IncidentIMGroup.PauseReason.MANUAL
+        if pause_mode == "manual"
+        else IncidentIMGroup.PauseReason.INCIDENT_CLOSED
+    )
+    assert group.current_stage == IncidentIMGroup.Stage.COMPLETED
+    assert group.last_error_code == "provider.group_not_found"
+
+    reconcile_incident_im_group(group.incident_id)
+    group.refresh_from_db()
+    assert group.status == IncidentIMGroup.Status.PAUSED
+
+    if pause_mode == "manual":
+        IncidentIMGroup.objects.filter(pk=group.id).update(
+            status=IncidentIMGroup.Status.ACTIVE,
+            pause_reason="",
+        )
+        reconcile_incident_im_group(group.incident_id)
+    else:
+        group.incident.status = IncidentStatus.PROCESSING
+        group.incident.save(update_fields=["status", "updated_at"])
+        resume_group_for_reopened_incident(group.incident_id)
+
+    group.refresh_from_db()
+    assert group.status == IncidentIMGroup.Status.DEGRADED
+    assert group.pause_reason == ""
+    assert group.last_error_code == "provider.group_not_found"
+    assert not AlertOutbox.objects.filter(
+        kind="incident_im_group.add_members",
+        payload={"group_id": str(group.id)},
+        status=AlertOutbox.Status.PENDING,
+    ).exists()
 
 
 @pytest.mark.django_db(transaction=True)

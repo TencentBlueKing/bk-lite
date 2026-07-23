@@ -407,13 +407,14 @@ def _finish_create_failure(group_id, result) -> None:
         group = _lock_group(group_id)
         if group is None or group.status == IncidentIMGroup.Status.UNLINKED:
             return
-        group.status = IncidentIMGroup.Status.CREATE_FAILED
         group.current_stage = IncidentIMGroup.Stage.COMPLETED
         group.last_error_code = error_code
         group.last_error_message = error_message[:500]
-        group.save(
-            update_fields=["status", "current_stage", "last_error_code", "last_error_message"]
-        )
+        update_fields = ["current_stage", "last_error_code", "last_error_message"]
+        if not _is_group_delivery_paused(group):
+            group.status = IncidentIMGroup.Status.CREATE_FAILED
+            update_fields.append("status")
+        group.save(update_fields=update_fields)
 
 
 def _mark_degraded(group_id, error_code, error_message) -> None:
@@ -421,13 +422,14 @@ def _mark_degraded(group_id, error_code, error_message) -> None:
         group = _lock_group(group_id)
         if group is None or group.status == IncidentIMGroup.Status.UNLINKED:
             return
-        group.status = IncidentIMGroup.Status.DEGRADED
         group.current_stage = IncidentIMGroup.Stage.COMPLETED
         group.last_error_code = error_code
         group.last_error_message = error_message[:500]
-        group.save(
-            update_fields=["status", "current_stage", "last_error_code", "last_error_message"]
-        )
+        update_fields = ["current_stage", "last_error_code", "last_error_message"]
+        if not _is_group_delivery_paused(group):
+            group.status = IncidentIMGroup.Status.DEGRADED
+            update_fields.append("status")
+        group.save(update_fields=update_fields)
 
 
 def _build_incident_summary(group) -> str:
