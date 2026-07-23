@@ -7,13 +7,15 @@ MLflow 工具函数集合
 import os
 import tempfile
 import zipfile
-from io import BytesIO
-from typing import List, Optional, Tuple
+from typing import BinaryIO, List, Optional, Tuple
 from pathlib import Path
 
 import mlflow
 import pandas as pd
 import numpy as np
+from asgiref.sync import sync_to_async
+from django.http import StreamingHttpResponse
+from django.utils.http import content_disposition_header
 from mlflow.tracking import MlflowClient
 
 from config.components.mlflow import MLFLOW_TRACKER_URL
@@ -376,7 +378,57 @@ def resolve_model_uri(model_name: str, version: str = "latest") -> str:
         raise
 
 
-def download_model_artifact(run_id: str, artifact_path: str = "model") -> BytesIO:
+class _AsyncFileIterator:
+    """以异步迭代协议分块读取同步临时文件。"""
+
+    def __init__(self, file_stream: BinaryIO, block_size: int = 64 * 1024):
+        self.file_stream = file_stream
+        self.block_size = block_size
+        self._read = sync_to_async(file_stream.read, thread_sensitive=False)
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        chunk = await self._read(self.block_size)
+        if chunk:
+            return chunk
+        self.close()
+        raise StopAsyncIteration
+
+    async def aclose(self):
+        self.close()
+
+    def close(self):
+        self.file_stream.close()
+
+
+class _AsyncFileStreamingHttpResponse(StreamingHttpResponse):
+    """让 ASGIHandler 的 aclosing 直接关闭底层异步文件迭代器。"""
+
+    def __aiter__(self):
+        return self._iterator
+
+
+def build_model_download_response(zip_stream: BinaryIO, filename: str) -> StreamingHttpResponse:
+    """构造适配 ASGI 的异步分块模型下载响应。"""
+    initial_position = zip_stream.tell()
+    zip_stream.seek(0, os.SEEK_END)
+    content_length = zip_stream.tell() - initial_position
+    zip_stream.seek(initial_position)
+
+    response = _AsyncFileStreamingHttpResponse(
+        _AsyncFileIterator(zip_stream),
+        content_type="application/zip",
+    )
+    response["Content-Length"] = content_length
+    filename = os.path.basename(filename)
+    if disposition := content_disposition_header(True, filename):
+        response["Content-Disposition"] = disposition
+    return response
+
+
+def download_model_artifact(run_id: str, artifact_path: str = "model") -> BinaryIO:
     """
     从 MLflow 下载模型并打包为 ZIP 流
 
@@ -385,11 +437,12 @@ def download_model_artifact(run_id: str, artifact_path: str = "model") -> BytesI
         artifact_path: artifact 路径，默认 "model"
 
     Returns:
-        BytesIO: ZIP 文件流
+        BinaryIO: 位于磁盘临时文件中的 ZIP 文件流，由调用方负责关闭
 
     Raises:
         Exception: 下载或打包失败时抛出
     """
+    zip_stream: Optional[BinaryIO] = None
     try:
         client = get_mlflow_client()
 
@@ -404,9 +457,9 @@ def download_model_artifact(run_id: str, artifact_path: str = "model") -> BytesI
                 logger.error(error_msg)
                 raise FileNotFoundError(error_msg)
 
-            # 打包为 ZIP
-            zip_buffer = BytesIO()
-            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+            # 打包到磁盘临时文件，避免 ZIP 大小直接叠加到 Web 进程内存。
+            zip_stream = tempfile.TemporaryFile(mode="w+b")
+            with zipfile.ZipFile(zip_stream, "w", zipfile.ZIP_DEFLATED) as zip_file:
                 if model_dir.is_file():
                     # 单文件
                     zip_file.write(model_dir, model_dir.name)
@@ -417,13 +470,15 @@ def download_model_artifact(run_id: str, artifact_path: str = "model") -> BytesI
                             arcname = file_path.relative_to(model_dir.parent)
                             zip_file.write(file_path, arcname)
 
-            zip_buffer.seek(0)
-            zip_size = len(zip_buffer.getvalue())
+            zip_size = zip_stream.tell()
+            zip_stream.seek(0)
             logger.info(f"模型打包完成 [run_id: {run_id}, size: {zip_size} bytes]")
 
-            return zip_buffer
+            return zip_stream
 
     except Exception as e:
+        if zip_stream is not None:
+            zip_stream.close()
         logger.error(
             f"下载模型失败 [run_id: {run_id}, artifact: {artifact_path}]: {e}",
             exc_info=True,
