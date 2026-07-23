@@ -246,6 +246,7 @@
         "addSource": "Add a user source",
         "editSource": "Edit source",
         "accessConfig": "Configuration Parameters",
+        "accessConfigMenu": "Configuration",
         "syncStrategy": "Sync Strategy",
         "description": "Description",
         "enabledLabel": "Source Status",

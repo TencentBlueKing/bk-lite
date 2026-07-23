@@ -244,6 +244,7 @@
         "integrationSystemPlaceholder": "请选择集成系统",
         "basicConfig": "基础配置",
         "accessConfig": "配置参数",
+        "accessConfigMenu": "配置",
         "syncStrategy": "同步策略",
         "addSource": "添加用户源",
         "editSource": "编辑用户源",
