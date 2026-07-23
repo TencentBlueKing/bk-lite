@@ -1,7 +1,8 @@
-from django.db.models import Count
+from django.db.models import Case, Count, IntegerField, Value, When
 from django.http import JsonResponse
 from rest_framework import status
 from rest_framework.decorators import action
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
 from apps.alerts.models import Incident, IncidentIMGroup, IncidentIMMember
@@ -24,8 +25,17 @@ from config.drf.pagination import CustomPageNumberPagination
 from config.drf.viewsets import ModelViewSet
 
 
+class IncidentIMMemberPagination(CustomPageNumberPagination):
+    page_size = 20
+    max_page_size = 100
+
+    def paginate_queryset(self, queryset, request, view=None):
+        # 本接口必须始终分页；全局分页器会在省略 page_size 时返回完整列表。
+        return PageNumberPagination.paginate_queryset(self, queryset, request, view)
+
+
 class IncidentIMGroupViewSet(ModelViewSet):
-    pagination_class = CustomPageNumberPagination
+    pagination_class = IncidentIMMemberPagination
     queryset = IncidentIMGroup.objects.all()
     serializer_class = IncidentIMGroupCreateSerializer
 
@@ -62,25 +72,56 @@ class IncidentIMGroupViewSet(ModelViewSet):
     def _default_group_name(incident):
         return f"[{incident.incident_id}] {incident.title}"[:255]
 
+    @staticmethod
+    def _status_message(group, member_summary):
+        if group.status in (IncidentIMGroup.Status.PENDING_CREATE, IncidentIMGroup.Status.CREATING):
+            return "正在创建群并邀请首批成员"
+        if group.status == IncidentIMGroup.Status.PAUSED:
+            if group.pause_reason == IncidentIMGroup.PauseReason.INCIDENT_CLOSED:
+                return "Incident 已关闭，重新打开后按原配置恢复"
+            return "新增人员暂不自动入群"
+        if group.status == IncidentIMGroup.Status.CREATE_FAILED:
+            return "飞书群尚未创建"
+        if group.status == IncidentIMGroup.Status.DEGRADED:
+            return "飞书群配置异常，请重新检查"
+
+        messages = []
+        if member_summary["waiting"]:
+            messages.append(f'{member_summary["waiting"]} 人待映射')
+        if member_summary["failed"]:
+            messages.append(f'{member_summary["failed"]} 人加入失败')
+        syncing = member_summary["total"] - member_summary["joined"] - member_summary["waiting"] - member_summary["failed"]
+        if syncing:
+            messages.append(f"{syncing} 人待同步")
+        if messages:
+            return "，".join(messages)
+        return "新增人员将按当前配置同步"
+
     def _serialize_group(self, group, incident):
         summary = group.members.values("sync_status").annotate(count=Count("id"))
         counts = {item["sync_status"]: item["count"] for item in summary}
         can_manage = self.request.user.username in (incident.operator or [])
+        member_summary = {
+            "total": sum(counts.values()),
+            "joined": counts.get(IncidentIMMember.SyncStatus.JOINED, 0),
+            "waiting": counts.get(IncidentIMMember.SyncStatus.WAITING, 0),
+            "failed": counts.get(IncidentIMMember.SyncStatus.FAILED, 0),
+        }
         return {
             "id": str(group.id),
+            "provider": group.provider_key,
             "channel_id": group.channel_id,
             "channel_name": group.channel_name_snapshot,
             "group_name": group.group_name,
+            "external_chat_id": group.external_chat_id or "",
+            # 飞书 Provider 当前没有权威的群聊跳转链接来源，禁止猜测 URL。
+            "open_chat_url": None,
             "status": group.status,
             "current_stage": group.current_stage,
+            "status_message": self._status_message(group, member_summary),
             "continuous_sync_enabled": group.continuous_sync_enabled,
             "pause_reason": group.pause_reason or None,
-            "member_summary": {
-                "total": sum(counts.values()),
-                "joined": counts.get(IncidentIMMember.SyncStatus.JOINED, 0),
-                "waiting": counts.get(IncidentIMMember.SyncStatus.WAITING, 0),
-                "failed": counts.get(IncidentIMMember.SyncStatus.FAILED, 0),
-            },
+            "member_summary": member_summary,
             "permissions": {
                 "can_manage": can_manage,
                 "can_retry": can_manage
@@ -249,8 +290,32 @@ class IncidentIMGroupViewSet(ModelViewSet):
         incident, error = self._read_incident_or_response()
         if error is not None:
             return error
+        member_filter = request.query_params.get("filter") or "all"
+        if member_filter not in {"all", "pending", "joined"}:
+            return self._error("IM_MEMBER_FILTER_INVALID", "成员筛选仅支持 all、pending 或 joined",)
+        page_size = request.query_params.get("page_size")
+        if page_size is not None and page_size not in {"10", "20", "50", "100"}:
+            return self._error("IM_MEMBER_PAGE_SIZE_INVALID", "成员分页大小仅支持 10、20、50 或 100",)
         group = IncidentIMGroup.objects.filter(incident=incident, active_slot=1).first()
-        queryset = IncidentIMMember.objects.none() if group is None else group.members.order_by("id")
+        queryset = IncidentIMMember.objects.none() if group is None else group.members.all()
+        if member_filter == "pending":
+            queryset = queryset.exclude(sync_status=IncidentIMMember.SyncStatus.JOINED)
+        elif member_filter == "joined":
+            queryset = queryset.filter(sync_status=IncidentIMMember.SyncStatus.JOINED)
+        queryset = queryset.annotate(
+            _ui_order=Case(
+                When(sync_status=IncidentIMMember.SyncStatus.FAILED, then=Value(0)),
+                When(mapping_status=IncidentIMMember.MappingStatus.CONFLICT, then=Value(1)),
+                When(mapping_status=IncidentIMMember.MappingStatus.UNMAPPED, then=Value(2)),
+                When(
+                    sync_status__in=(IncidentIMMember.SyncStatus.WAITING, IncidentIMMember.SyncStatus.PENDING, IncidentIMMember.SyncStatus.ADDING,),
+                    then=Value(3),
+                ),
+                When(sync_status=IncidentIMMember.SyncStatus.JOINED, then=Value(4)),
+                default=Value(5),
+                output_field=IntegerField(),
+            )
+        ).order_by("_ui_order", "username")
         page = self.paginate_queryset(queryset)
         if page is not None:
             return self.get_paginated_response(

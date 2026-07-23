@@ -34,6 +34,7 @@ class IncidentIMMemberSerializer(serializers.ModelSerializer):
             "sync_status",
             "error_code",
             "error_message",
+            "updated_at",
         )
 
     def get_display_name(self, obj):

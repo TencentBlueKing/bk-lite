@@ -1,5 +1,6 @@
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 from threading import Barrier, local
 from unittest.mock import Mock, patch
 
@@ -125,6 +126,43 @@ def test_collaborator_can_read_group_but_cannot_load_options_or_create(api_clien
 
 
 @pytest.mark.django_db
+def test_collaborator_group_response_exposes_safe_ui_contract_without_guessing_chat_url(api_client, collaborator, incident, channel):
+    group = create_active_group(
+        incident,
+        channel,
+        status=IncidentIMGroup.Status.ACTIVE_PARTIAL,
+        last_error_code="provider.permission_denied",
+        last_error_message="raw payload app_secret=never-return-this",
+    )
+    IncidentIMMember.objects.create(
+        group=group,
+        username="operator",
+        role=IncidentIMMember.Role.OPERATOR,
+        mapping_status=IncidentIMMember.MappingStatus.MAPPED,
+        sync_status=IncidentIMMember.SyncStatus.JOINED,
+    )
+    IncidentIMMember.objects.create(
+        group=group,
+        username="collaborator",
+        role=IncidentIMMember.Role.COLLABORATOR,
+        mapping_status=IncidentIMMember.MappingStatus.UNMAPPED,
+        sync_status=IncidentIMMember.SyncStatus.WAITING,
+    )
+    api_client.force_authenticate(collaborator)
+
+    response = api_client.get(group_url(incident))
+
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert payload["provider"] == "feishu"
+    assert payload["external_chat_id"] == "oc_test"
+    assert payload["open_chat_url"] is None
+    assert payload["status_message"] == "1 人待映射"
+    assert "never-return-this" not in response.content.decode()
+    assert "app_secret" not in response.content.decode()
+
+
+@pytest.mark.django_db
 def test_superuser_not_in_operator_cannot_create_group(api_client, superuser, incident, channel):
     api_client.force_authenticate(superuser)
 
@@ -239,11 +277,114 @@ def test_collaborator_can_read_paginated_member_snapshots(api_client, collaborat
     )
     api_client.force_authenticate(collaborator)
 
-    response = api_client.get(f"{group_url(incident)}members/?page=1&page_size=1")
+    response = api_client.get(f"{group_url(incident)}members/?page=1&page_size=10")
 
     assert response.status_code == 200
     assert response.json()["data"]["count"] == 1
     assert len(response.json()["data"]["items"]) == 1
+
+
+@pytest.mark.django_db
+def test_members_default_sort_and_response_are_safe_for_read_only_users(api_client, collaborator, incident, channel):
+    group = create_active_group(incident, channel)
+    member_values = (
+        ("joined", IncidentIMMember.MappingStatus.MAPPED, IncidentIMMember.SyncStatus.JOINED),
+        ("pending", IncidentIMMember.MappingStatus.MAPPED, IncidentIMMember.SyncStatus.PENDING),
+        ("adding", IncidentIMMember.MappingStatus.MAPPED, IncidentIMMember.SyncStatus.ADDING),
+        ("unmapped", IncidentIMMember.MappingStatus.UNMAPPED, IncidentIMMember.SyncStatus.WAITING),
+        ("conflict", IncidentIMMember.MappingStatus.CONFLICT, IncidentIMMember.SyncStatus.WAITING),
+        ("failed", IncidentIMMember.MappingStatus.MAPPED, IncidentIMMember.SyncStatus.FAILED),
+    )
+    for username, mapping_status, sync_status in member_values:
+        IncidentIMMember.objects.create(
+            group=group,
+            username=username,
+            role=IncidentIMMember.Role.COLLABORATOR,
+            mapping_status=mapping_status,
+            sync_status=sync_status,
+            external_id=f"ou_secret_{username}",
+        )
+    api_client.force_authenticate(collaborator)
+
+    response = api_client.get(f"{group_url(incident)}members/?filter=all")
+
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert payload["count"] == 6
+    assert [item["username"] for item in payload["items"]] == [
+        "failed",
+        "conflict",
+        "unmapped",
+        "adding",
+        "pending",
+        "joined",
+    ]
+    assert all(datetime.fromisoformat(item["updated_at"].replace("Z", "+00:00")) for item in payload["items"])
+    assert "external_id" not in payload["items"][0]
+    assert "ou_secret" not in response.content.decode()
+
+
+@pytest.mark.django_db
+def test_members_filters_pending_and_joined_and_defaults_to_twenty(api_client, collaborator, incident, channel):
+    group = create_active_group(incident, channel)
+    for index in range(21):
+        IncidentIMMember.objects.create(
+            group=group,
+            username=f"joined-{index:02d}",
+            role=IncidentIMMember.Role.COLLABORATOR,
+            mapping_status=IncidentIMMember.MappingStatus.MAPPED,
+            sync_status=IncidentIMMember.SyncStatus.JOINED,
+        )
+    for sync_status in (
+        IncidentIMMember.SyncStatus.WAITING,
+        IncidentIMMember.SyncStatus.PENDING,
+        IncidentIMMember.SyncStatus.ADDING,
+        IncidentIMMember.SyncStatus.FAILED,
+    ):
+        IncidentIMMember.objects.create(
+            group=group,
+            username=f"pending-{sync_status}",
+            role=IncidentIMMember.Role.COLLABORATOR,
+            mapping_status=IncidentIMMember.MappingStatus.MAPPED,
+            sync_status=sync_status,
+        )
+    api_client.force_authenticate(collaborator)
+
+    default_page = api_client.get(f"{group_url(incident)}members/?filter=all")
+    pending = api_client.get(f"{group_url(incident)}members/?filter=pending&page_size=10")
+    joined = api_client.get(f"{group_url(incident)}members/?filter=joined&page_size=50")
+
+    assert default_page.status_code == 200
+    assert default_page.json()["data"]["count"] == 25
+    assert len(default_page.json()["data"]["items"]) == 20
+    assert {item["sync_status"] for item in pending.json()["data"]["items"]} == {
+        IncidentIMMember.SyncStatus.WAITING,
+        IncidentIMMember.SyncStatus.PENDING,
+        IncidentIMMember.SyncStatus.ADDING,
+        IncidentIMMember.SyncStatus.FAILED,
+    }
+    assert joined.json()["data"]["count"] == 21
+    assert {item["sync_status"] for item in joined.json()["data"]["items"]} == {IncidentIMMember.SyncStatus.JOINED}
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("query", "error_code"),
+    (
+        ("filter=unknown", "IM_MEMBER_FILTER_INVALID"),
+        ("page_size=1", "IM_MEMBER_PAGE_SIZE_INVALID"),
+        ("page_size=0", "IM_MEMBER_PAGE_SIZE_INVALID"),
+        ("page_size=101", "IM_MEMBER_PAGE_SIZE_INVALID"),
+        ("page_size=abc", "IM_MEMBER_PAGE_SIZE_INVALID"),
+    ),
+)
+def test_members_reject_invalid_filter_and_page_size(api_client, collaborator, incident, query, error_code):
+    api_client.force_authenticate(collaborator)
+
+    response = api_client.get(f"{group_url(incident)}members/?{query}")
+
+    assert response.status_code == 400
+    assert response.json()["code"] == error_code
 
 
 @pytest.mark.django_db
