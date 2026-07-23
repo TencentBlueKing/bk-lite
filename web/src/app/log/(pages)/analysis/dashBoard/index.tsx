@@ -95,10 +95,6 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       const viewSets = selectedDashboard.view_sets || [];
       setLayout(viewSets);
       setOriginalLayout([...viewSets]);
-      if (!groups.length && !isLoading) {
-        message.error(t('log.search.searchError'));
-        return;
-      }
       setRefreshKey((prev) => prev + 1);
     }, [selectedDashboard?.id]);
 
@@ -294,6 +290,9 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         const ids = list.at()?.id ? [list.at().id] : [];
         setGroupList(list);
         setGroups(ids);
+        if (!ids.length) {
+          message.error(t('log.search.searchError'));
+        }
         setOtherConfig((prev: any) => ({
           ...prev,
           groupIds: ids
