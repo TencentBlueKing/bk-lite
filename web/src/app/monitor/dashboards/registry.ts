@@ -20,6 +20,9 @@ import WebsiteDashboard from './objects/website';
 import K8sClusterDashboard from './objects/k8s-cluster';
 import K8sNodeDashboard from './objects/k8s-node';
 import K8sPodDashboard from './objects/k8s-pod';
+import K3sClusterDashboard from './objects/k3s-cluster';
+import K3sNodeDashboard from './objects/k3s-node';
+import K3sPodDashboard from './objects/k3s-pod';
 import SwitchDashboard from './objects/switch';
 import FirewallDashboard from './objects/firewall';
 import LoadbalanceDashboard from './objects/loadbalance';
@@ -310,6 +313,30 @@ const COMMUNITY_DASHBOARDS: ProfessionalDashboardRegistryItem[] = [
     objectDisplayName: 'Pod',
     inheritedPermissionPath: '/monitor/view',
     component: K8sPodDashboard
+  },
+  {
+    key: 'k3s-cluster',
+    groupKey: 'container',
+    objectName: 'K3SCluster',
+    objectDisplayName: 'K3S 集群',
+    inheritedPermissionPath: '/monitor/view',
+    component: K3sClusterDashboard
+  },
+  {
+    key: 'k3s-node',
+    groupKey: 'container',
+    objectName: 'K3SNode',
+    objectDisplayName: 'K3S 节点',
+    inheritedPermissionPath: '/monitor/view',
+    component: K3sNodeDashboard
+  },
+  {
+    key: 'k3s-pod',
+    groupKey: 'container',
+    objectName: 'K3SPod',
+    objectDisplayName: 'K3S Pod',
+    inheritedPermissionPath: '/monitor/view',
+    component: K3sPodDashboard
   }
 ];
 

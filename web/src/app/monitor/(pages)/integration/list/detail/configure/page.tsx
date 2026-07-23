@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import configureStyle from './index.module.scss';
 import { useObjectConfigInfo } from '@/app/monitor/hooks/integration/common/getObjectConfig';
 import K8sConfiguration from './k8s/k8sConfiguration';
+import K3sConfiguration from './k3s/k3sConfiguration';
 import type { FlowProtocol } from '@/app/monitor/types/integration';
 import FlowConfiguration from './flow/flowConfiguration';
 import TemplateAccessGuide from './accessGuide/index';
@@ -22,6 +23,7 @@ const Configure: React.FC = () => {
   );
 
   const isK8s = collectType === 'k8s';
+  const isK3s = collectType === 'k3s';
   const isFlow = collectType === 'netflow' || collectType === 'sflow';
 
   return (
@@ -33,6 +35,10 @@ const Configure: React.FC = () => {
       ) : isFlow ? (
         <div className={configureStyle.configure}>
           <FlowConfiguration protocol={collectType as FlowProtocol} />
+        </div>
+      ) : isK3s ? (
+        <div className={configureStyle.configure}>
+          <K3sConfiguration />
         </div>
       ) : !isK8s ? (
         <div className={configureStyle.configure}>
