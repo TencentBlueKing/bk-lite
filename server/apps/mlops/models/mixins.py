@@ -28,6 +28,16 @@ class TrainDataFileCleanupMixin:
 
     # Subclasses can override this to use a different file field name
     _file_field_name = "train_data"
+    _loaded_file_path_missing = object()
+
+    @classmethod
+    def from_db(cls, db, field_names, values):
+        instance = super().from_db(db, field_names, values)
+        file_field_name = cls._file_field_name
+        if file_field_name in field_names:
+            file_value = getattr(instance, file_field_name)
+            instance._loaded_file_path = file_value.name if file_value else None
+        return instance
 
     def save(self, *args, **kwargs):
         """
@@ -46,9 +56,12 @@ class TrainDataFileCleanupMixin:
         update_fields = kwargs.get("update_fields")
 
         # New records and partial saves that exclude the file keep normal Model.save semantics.
-        if not self.pk or (
-            update_fields is not None and file_field_name not in update_fields
-        ):
+        if not self.pk:
+            super().save(*args, **kwargs)
+            file_value = getattr(self, file_field_name)
+            self._loaded_file_path = file_value.name if file_value else None
+            return
+        if update_fields is not None and file_field_name not in update_fields:
             super().save(*args, **kwargs)
             return
 
@@ -70,16 +83,44 @@ class TrainDataFileCleanupMixin:
 
             new_file = getattr(self, file_field_name)
             new_path = new_file.name if new_file else None
+            loaded_path = getattr(
+                self, "_loaded_file_path", self._loaded_file_path_missing
+            )
+
+            # A stale instance that did not change the file must not overwrite a
+            # replacement committed by another request.
+            if (
+                loaded_path is not self._loaded_file_path_missing
+                and new_path == loaded_path
+                and old_path != loaded_path
+            ):
+                setattr(self, file_field_name, old_file)
+                new_path = old_path
 
             super().save(*args, **kwargs)
+            self._loaded_file_path = new_path
 
             if old_path and old_path != new_path:
+                model_class = self.__class__
+                instance_pk = self.pk
+                storage = old_file.storage
 
                 def delete_old_file():
                     try:
-                        old_file.storage.delete(old_path)
+                        current_path = (
+                            model_class.objects.using(using)
+                            .values_list(file_field_name, flat=True)
+                            .filter(pk=instance_pk)
+                            .first()
+                        )
+                        if current_path == old_path:
+                            logger.info(
+                                f"Skipped deleting referenced {file_field_name} file for {model_class.__name__} {instance_pk}: {old_path}"
+                            )
+                            return
+                        storage.delete(old_path)
                         logger.info(
-                            f"Deleted old {file_field_name} file for {self.__class__.__name__} {self.pk}: "
+                            f"Deleted old {file_field_name} file for {model_class.__name__} {instance_pk}: "
                             f"old={old_path}, new={new_path or 'None'}"
                         )
                     except Exception as delete_err:
