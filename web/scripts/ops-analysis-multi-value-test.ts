@@ -29,6 +29,23 @@ for (const wrapped of [
   });
 }
 
+assert.deepEqual(
+  validateMultiValueData({
+    result: true,
+    data: [
+      { name: 'Linux', value: 100 },
+      { name: 'Windows', value: 50 },
+    ],
+  }, mismatch),
+  {
+    isValid: true,
+    items: [
+      { label: 'Linux', value: '100' },
+      { label: 'Windows', value: '50' },
+    ],
+  },
+);
+
 for (const empty of [[], { items: [] }, { data: { items: [] } }]) {
   assert.deepEqual(validateMultiValueData(empty, mismatch), {
     isValid: true,
@@ -85,6 +102,21 @@ assert.match(
   read('src/app/ops-analysis/components/widgetRegistry.ts'),
   /multiValue:\s*ComMultiValue/,
 );
+
+assert.match(
+  read('../server/apps/operation_analysis/support-files/builtin_canvases.yaml'),
+  /key: 主机操作系统分布::get_instance_group_by[\s\S]*?chart_type:\s*\r?\n\s+- pie\s*\r?\n\s+- multiValue/,
+);
+
+const sourceApiEntries = JSON.parse(
+  read('../server/apps/operation_analysis/support-files/source_api.json'),
+) as Array<{ name?: string; rest_api?: string; chart_type?: string[] }>;
+const instanceGroupBySource = sourceApiEntries.find(
+  (item) =>
+    item.name === '主机操作系统分布' &&
+    item.rest_api === 'get_instance_group_by',
+);
+assert.deepEqual(instanceGroupBySource?.chart_type, ['pie', 'multiValue']);
 
 assert.match(read('src/app/ops-analysis/types/dataSource.ts'), /\| 'multiValue'/);
 assert.match(read('src/app/ops-analysis/types/screen.ts'), /\| 'multiValue'/);

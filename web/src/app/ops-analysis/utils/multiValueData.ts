@@ -27,6 +27,9 @@ const extractMultiValueItems = (data: unknown): unknown => {
   }
 
   const nested = record.data;
+  if (Array.isArray(nested)) {
+    return nested;
+  }
   if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
     const nestedRecord = nested as Record<string, unknown>;
     if (Object.prototype.hasOwnProperty.call(nestedRecord, 'items')) {
@@ -52,13 +55,20 @@ export const validateMultiValueData = (
       entry == null ||
       typeof entry !== 'object' ||
       Array.isArray(entry) ||
-      !Object.prototype.hasOwnProperty.call(entry, 'label') ||
       !Object.prototype.hasOwnProperty.call(entry, 'value')
     ) {
       return { isValid: false, errorMessage, items: [] };
     }
     const record = entry as Record<string, unknown>;
-    const label = normalizeScalar(record.label);
+    const labelKey = Object.prototype.hasOwnProperty.call(record, 'label')
+      ? 'label'
+      : Object.prototype.hasOwnProperty.call(record, 'name')
+        ? 'name'
+        : null;
+    if (!labelKey) {
+      return { isValid: false, errorMessage, items: [] };
+    }
+    const label = normalizeScalar(record[labelKey]);
     const value = normalizeScalar(record.value);
     if (label == null || value == null) {
       return { isValid: false, errorMessage, items: [] };
