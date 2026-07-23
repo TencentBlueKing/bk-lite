@@ -5,6 +5,8 @@ from datetime import datetime, timedelta, timezone
 import math
 from typing import Any
 
+from apps.monitor.utils.dimension import parse_instance_id
+
 SUPPORTED_METRIC_TYPES = ("cpu", "memory", "traffic")
 NETWORK_DEVICE_OBJECT_NAMES = ("Switch", "Router", "Firewall", "Loadbalance")
 DEFAULT_INTERVAL_SECONDS = 300
@@ -124,7 +126,7 @@ class NetworkDeviceResourceTopService:
         if not 1 <= int(limit) <= 100:
             raise ValueError("limit 必须在 1 到 100 之间")
         meta = {
-            str(instance.id): {
+            str(parse_instance_id(instance.id)[0]): {
                 "name": getattr(instance, "name", ""),
                 "ip": getattr(instance, "ip", ""),
                 "interval": getattr(instance, "interval", DEFAULT_INTERVAL_SECONDS),
