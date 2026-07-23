@@ -83,12 +83,14 @@ export async function initSecureStorage(): Promise<void> {
         const store = await getStore();
         if (store) {
             // 从 Tauri Store 加载所有已保存的数据到内存缓存
+            const persistedValues = new Map<string, unknown>();
             for (const key of Object.values(STORAGE_KEYS)) {
                 const value = await store.get(key);
                 if (value !== null && value !== undefined) {
-                    memoryCache.set(key, value);
+                    persistedValues.set(key, value);
                 }
             }
+            persistedValues.forEach((value, key) => memoryCache.set(key, value));
             isInitialized = true;
             console.log('Secure storage initialized from Tauri Store');
         } else {

@@ -36,13 +36,17 @@ async function loadSecureStorage() {
     'STORE_FILE',
     'memoryCache',
     'storeInstance',
+    'isInitialized',
     'isTauriEnvironment',
     'clearLegacyAuthStorage',
     'getStore',
+    'initSecureStorage',
     'secureSet',
+    'secureGetSync',
     'saveToken',
+    'getTokenSync',
   ].map((name) => findDeclaration(sourceFile, name));
-  const moduleSource = `${declarations.join('\n')}\nexport { getStore, saveToken };`.replace(
+  const moduleSource = `${declarations.join('\n')}\nexport { getStore, initSecureStorage, saveToken, getTokenSync };`.replace(
     "import('@tauri-apps/plugin-store')",
     'globalThis.__loadStoreModule()',
   );
@@ -133,21 +137,72 @@ test('Tauri Store success keeps using the canonical store after legacy cleanup',
   assert.equal(values.has('auth_token'), false);
 });
 
-test('saveToken never writes localStorage when the Tauri Store cannot load', async () => {
+test('saveToken rejects and leaves no cached token when the Tauri Store cannot load', async () => {
   const { setCalls, values } = installWindow({ auth_token: 'legacy-token' }, true);
   globalThis.__loadStoreModule = async () => {
     throw new Error('store unavailable');
   };
-  const { saveToken } = await loadSecureStorage();
+  const { getTokenSync, saveToken } = await loadSecureStorage();
   const originalConsoleError = console.error;
   console.error = () => {};
 
   try {
-    await saveToken('new-token');
+    await assert.rejects(saveToken('new-token'), /store unavailable/);
   } finally {
     console.error = originalConsoleError;
   }
 
   assert.deepEqual(setCalls, []);
   assert.equal(values.has('auth_token'), false);
+  assert.equal(getTokenSync(), null);
+});
+
+test('saveToken rejects and updates the cache only after the Tauri Store is saved', async () => {
+  installWindow({}, true);
+  const store = {
+    set: async () => {},
+    save: async () => {
+      throw new Error('save failed');
+    },
+  };
+  globalThis.__loadStoreModule = async () => ({
+    load: async () => store,
+  });
+  const { getTokenSync, saveToken } = await loadSecureStorage();
+  const originalConsoleError = console.error;
+  console.error = () => {};
+
+  try {
+    await assert.rejects(saveToken('new-token'), /save failed/);
+  } finally {
+    console.error = originalConsoleError;
+  }
+
+  assert.equal(getTokenSync(), null);
+});
+
+test('initSecureStorage rejects Tauri read failures without caching partial auth state', async () => {
+  installWindow({}, true);
+  const store = {
+    get: async (key) => {
+      if (key === 'auth_token') {
+        return 'persisted-token';
+      }
+      throw new Error('read failed');
+    },
+  };
+  globalThis.__loadStoreModule = async () => ({
+    load: async () => store,
+  });
+  const { getTokenSync, initSecureStorage } = await loadSecureStorage();
+  const originalConsoleError = console.error;
+  console.error = () => {};
+
+  try {
+    await assert.rejects(initSecureStorage(), /read failed/);
+  } finally {
+    console.error = originalConsoleError;
+  }
+
+  assert.equal(getTokenSync(), null);
 });
