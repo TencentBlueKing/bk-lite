@@ -6,13 +6,13 @@
 >
 > 分支：`codex/incident-feishu-im-group`
 >
-> 被测实现提交：`6753af0e9`（包含规格边界、测试结构和 `WEB_BASE_URL` 失败关闭收口）
+> 被测实现提交：`b77a626dd`（包含规格边界、摘要地址/补发、成员级重试和测试治理收口）
 
 ## 1. 最终结论
 
 **Block**
 
-本轮取得了 Incident 前端合同测试、功能改动文件 ESLint、后端 247 项完整回归、覆盖率和迁移门禁的新鲜通过证据；但真实飞书租户 12 场景仍未完成，Web 全量 lint/type-check 也被仓库依赖与既有基线错误阻断。缺少测试租户、测试应用和凭据时，不能把真实闭环写成 Pass，也不能发布该功能。
+本轮取得了 Incident 前端合同测试、功能改动文件 ESLint、后端 262 项完整回归、覆盖率和迁移门禁的新鲜通过证据；但真实飞书租户 12 场景仍未完成，Web 全量 lint/type-check 也被仓库依赖与既有基线错误阻断。缺少测试租户、测试应用和凭据时，不能把真实闭环写成 Pass，也不能发布该功能。
 
 解除阻断至少需要：
 
@@ -42,7 +42,7 @@
 |---|---|---:|---|
 | 后端 10 文件完整门禁（沙箱） | `uv run pytest ...10 files... -q`，显式 SQLite/MinIO/SECRET_KEY/Celery 环境 | 2 | **未收集测试**。原文：`failed to open file ~/.cache/uv/sdists-v9/.git: Operation not permitted`。 |
 | 后端权限重跑 | 同上，申请既有 `uv run pytest` 受控权限 | 无进程退出码 | **Not Run**。审批系统因当前 Codex usage limit 拒绝启动，并明确禁止绕过；没有测试结果。 |
-| 后端最终候选完整门禁 | worktree `.venv/bin/pytest`，显式 SQLite/MinIO/SECRET_KEY/Celery 环境，覆盖第 7 节完整文件集 | 0 | **Pass：247 passed in 36.38s**。 |
+| 后端最终候选完整门禁 | worktree `.venv/bin/pytest`，显式 SQLite/MinIO/SECRET_KEY/Celery 环境，覆盖第 7 节完整文件集及配置/成员重试新增合同 | 0 | **Pass：262 passed in 38.18s**。 |
 | Coverage：成员解析 | `test_incident_im_members_service.py`，`--cov=...members --cov-fail-under=75` | 0 | **Pass：11 passed，95%**。 |
 | Coverage：Delivery/Outbox | `test_incident_im_delivery_*_service.py test_outbox.py`，两个核心模块，门槛 75% | 0 | **Pass：71 passed；delivery 93%、outbox 98%、合计 94%**。 |
 | `makemigrations --check --dry-run` | worktree `.venv/bin/python`，显式 SQLite、`INSTALL_APPS=system_mgmt,alerts` | 0 | **Pass：No changes detected**。 |
@@ -65,7 +65,7 @@
 - Task 9：前端 behavior/type contract 与 ESLint clean；
 - Task 10：前端 UI behavior/type contract 与 ESLint clean。
 
-最终候选已使用 worktree 现有 `.venv` 取得 247 项后端回归、两组 coverage 与迁移门禁的新鲜 Pass；上述历史数字仍仅用于解释任务过程，不替代本轮结果。
+最终候选已使用 worktree 现有 `.venv` 取得 262 项后端回归、两组 coverage 与迁移门禁的新鲜 Pass；上述历史数字仍仅用于解释任务过程，不替代本轮结果。
 
 ## 4. 十二个真实飞书场景
 
@@ -92,7 +92,7 @@
 
 - 严重度：Resolved environment issue
 - 证据：uv 读取 `~/.cache/uv/sdists-v9/.git` 返回 `Operation not permitted`；随后使用仓库 worktree 已存在、未下载依赖的 `.venv` 执行相同 pytest、coverage 和 Django migration 门禁。
-- 结果：后端 247 项、两组 coverage、迁移漂移和 SQL 生成均已通过，不再作为发布阻断。
+- 结果：后端 262 项、两组 coverage、迁移漂移和 SQL 生成均已通过，不再作为发布阻断。
 
 ### VAL-IM-002：Web 依赖状态不完整且沙箱无法下载
 
