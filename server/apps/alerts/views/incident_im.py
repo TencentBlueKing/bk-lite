@@ -1,4 +1,4 @@
-from django.db.models import Case, Count, IntegerField, Value, When
+from django.db.models import Case, Count, IntegerField, Q, Value, When
 from django.http import JsonResponse
 from rest_framework import status
 from rest_framework.decorators import action
@@ -16,7 +16,7 @@ from apps.alerts.serializers.incident_im import (
 )
 from apps.alerts.service.incident_im.errors import IncidentIMError
 from apps.alerts.service.incident_im.groups import IncidentIMGroupService, record_group_audit
-from apps.alerts.service.incident_im.members import resolve_incident_members
+from apps.alerts.service.incident_im.members import get_desired_usernames, resolve_incident_members
 from apps.alerts.service.incident_im.reconcile import reconcile_incident_im_group
 from apps.alerts.utils.permission_scope import filter_incident_queryset_for_request
 from apps.core.decorators.api_permission import HasPermission
@@ -86,26 +86,45 @@ class IncidentIMGroupViewSet(ModelViewSet):
             return "飞书群配置异常，请重新检查"
 
         messages = []
-        if member_summary["waiting"]:
-            messages.append(f'{member_summary["waiting"]} 人待映射')
+        if member_summary["conflict"]:
+            messages.append(f'{member_summary["conflict"]} 人映射冲突')
+        if member_summary["unmapped"]:
+            messages.append(f'{member_summary["unmapped"]} 人待映射')
         if member_summary["failed"]:
             messages.append(f'{member_summary["failed"]} 人加入失败')
-        syncing = member_summary["total"] - member_summary["joined"] - member_summary["waiting"] - member_summary["failed"]
-        if syncing:
-            messages.append(f"{syncing} 人待同步")
+        if member_summary["adding"]:
+            messages.append(f'{member_summary["adding"]} 人正在同步')
+        if member_summary["pending"]:
+            messages.append(f'{member_summary["pending"]} 人待同步')
+        other_waiting = max(0, member_summary["waiting"] - member_summary["conflict"] - member_summary["unmapped"],)
+        if other_waiting:
+            messages.append(f"{other_waiting} 人等待处理")
         if messages:
             return "，".join(messages)
         return "新增人员将按当前配置同步"
 
     def _serialize_group(self, group, incident):
-        summary = group.members.values("sync_status").annotate(count=Count("id"))
-        counts = {item["sync_status"]: item["count"] for item in summary}
+        desired_usernames = get_desired_usernames(incident)
+        summary = (
+            group.members.filter(Q(sync_status=IncidentIMMember.SyncStatus.JOINED) | Q(username__in=desired_usernames))
+            .values("sync_status", "mapping_status")
+            .annotate(count=Count("id"))
+        )
+        rows = list(summary)
+        sync_counts = {}
+        for item in rows:
+            sync_counts[item["sync_status"]] = sync_counts.get(item["sync_status"], 0) + item["count"]
+        non_joined_rows = [item for item in rows if item["sync_status"] != IncidentIMMember.SyncStatus.JOINED]
         can_manage = self.request.user.username in (incident.operator or [])
         member_summary = {
-            "total": sum(counts.values()),
-            "joined": counts.get(IncidentIMMember.SyncStatus.JOINED, 0),
-            "waiting": counts.get(IncidentIMMember.SyncStatus.WAITING, 0),
-            "failed": counts.get(IncidentIMMember.SyncStatus.FAILED, 0),
+            "total": sum(item["count"] for item in rows),
+            "joined": sync_counts.get(IncidentIMMember.SyncStatus.JOINED, 0),
+            "waiting": sync_counts.get(IncidentIMMember.SyncStatus.WAITING, 0),
+            "failed": sync_counts.get(IncidentIMMember.SyncStatus.FAILED, 0),
+            "unmapped": sum(item["count"] for item in non_joined_rows if item["mapping_status"] == IncidentIMMember.MappingStatus.UNMAPPED),
+            "conflict": sum(item["count"] for item in non_joined_rows if item["mapping_status"] == IncidentIMMember.MappingStatus.CONFLICT),
+            "pending": sync_counts.get(IncidentIMMember.SyncStatus.PENDING, 0),
+            "adding": sync_counts.get(IncidentIMMember.SyncStatus.ADDING, 0),
         }
         return {
             "id": str(group.id),
@@ -299,7 +318,7 @@ class IncidentIMGroupViewSet(ModelViewSet):
         group = IncidentIMGroup.objects.filter(incident=incident, active_slot=1).first()
         queryset = IncidentIMMember.objects.none() if group is None else group.members.all()
         if member_filter == "pending":
-            queryset = queryset.exclude(sync_status=IncidentIMMember.SyncStatus.JOINED)
+            queryset = queryset.filter(username__in=get_desired_usernames(incident)).exclude(sync_status=IncidentIMMember.SyncStatus.JOINED)
         elif member_filter == "joined":
             queryset = queryset.filter(sync_status=IncidentIMMember.SyncStatus.JOINED)
         queryset = queryset.annotate(

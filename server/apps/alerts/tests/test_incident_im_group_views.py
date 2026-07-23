@@ -163,6 +163,37 @@ def test_collaborator_group_response_exposes_safe_ui_contract_without_guessing_c
 
 
 @pytest.mark.django_db
+def test_group_summary_distinguishes_mapping_conflicts_from_unmapped_members(api_client, collaborator, incident, channel):
+    group = create_active_group(incident, channel, status=IncidentIMGroup.Status.ACTIVE_PARTIAL)
+    IncidentIMMember.objects.create(
+        group=group,
+        username="operator",
+        role=IncidentIMMember.Role.OPERATOR,
+        mapping_status=IncidentIMMember.MappingStatus.CONFLICT,
+        sync_status=IncidentIMMember.SyncStatus.WAITING,
+    )
+    api_client.force_authenticate(collaborator)
+
+    pure_conflict = api_client.get(group_url(incident))
+    IncidentIMMember.objects.create(
+        group=group,
+        username="collaborator",
+        role=IncidentIMMember.Role.COLLABORATOR,
+        mapping_status=IncidentIMMember.MappingStatus.UNMAPPED,
+        sync_status=IncidentIMMember.SyncStatus.WAITING,
+    )
+    mixed = api_client.get(group_url(incident))
+
+    assert pure_conflict.status_code == 200
+    assert pure_conflict.json()["data"]["member_summary"]["conflict"] == 1
+    assert pure_conflict.json()["data"]["member_summary"]["unmapped"] == 0
+    assert pure_conflict.json()["data"]["status_message"] == "1 人映射冲突"
+    assert mixed.json()["data"]["member_summary"]["conflict"] == 1
+    assert mixed.json()["data"]["member_summary"]["unmapped"] == 1
+    assert mixed.json()["data"]["status_message"] == "1 人映射冲突，1 人待映射"
+
+
+@pytest.mark.django_db
 def test_superuser_not_in_operator_cannot_create_group(api_client, superuser, incident, channel):
     api_client.force_authenticate(superuser)
 
@@ -325,6 +356,30 @@ def test_members_default_sort_and_response_are_safe_for_read_only_users(api_clie
 
 
 @pytest.mark.django_db
+def test_members_response_maps_internal_error_code_to_safe_message(api_client, collaborator, incident, channel):
+    group = create_active_group(incident, channel, status=IncidentIMGroup.Status.ACTIVE_PARTIAL)
+    IncidentIMMember.objects.create(
+        group=group,
+        username="operator",
+        role=IncidentIMMember.Role.OPERATOR,
+        mapping_status=IncidentIMMember.MappingStatus.MAPPED,
+        sync_status=IncidentIMMember.SyncStatus.FAILED,
+        last_error_code="provider.unrecognized_error",
+        last_error_message="raw payload app_secret=never-return-this",
+    )
+    api_client.force_authenticate(collaborator)
+
+    response = api_client.get(f"{group_url(incident)}members/?filter=pending")
+
+    assert response.status_code == 200
+    member = response.json()["data"]["items"][0]
+    assert member["error_code"] == "provider.unrecognized_error"
+    assert member["error_message"] == "加入失败，请重试或联系管理员"
+    assert "never-return-this" not in response.content.decode()
+    assert "app_secret" not in response.content.decode()
+
+
+@pytest.mark.django_db
 def test_members_filters_pending_and_joined_and_defaults_to_twenty(api_client, collaborator, incident, channel):
     group = create_active_group(incident, channel)
     for index in range(21):
@@ -335,19 +390,25 @@ def test_members_filters_pending_and_joined_and_defaults_to_twenty(api_client, c
             mapping_status=IncidentIMMember.MappingStatus.MAPPED,
             sync_status=IncidentIMMember.SyncStatus.JOINED,
         )
-    for sync_status in (
+    pending_statuses = (
         IncidentIMMember.SyncStatus.WAITING,
         IncidentIMMember.SyncStatus.PENDING,
         IncidentIMMember.SyncStatus.ADDING,
         IncidentIMMember.SyncStatus.FAILED,
-    ):
+    )
+    pending_usernames = []
+    for sync_status in pending_statuses:
+        username = f"pending-{sync_status}"
+        pending_usernames.append(username)
         IncidentIMMember.objects.create(
             group=group,
-            username=f"pending-{sync_status}",
+            username=username,
             role=IncidentIMMember.Role.COLLABORATOR,
             mapping_status=IncidentIMMember.MappingStatus.MAPPED,
             sync_status=sync_status,
         )
+    incident.collaborators = pending_usernames
+    incident.save(update_fields=["collaborators"])
     api_client.force_authenticate(collaborator)
 
     default_page = api_client.get(f"{group_url(incident)}members/?filter=all")
@@ -365,6 +426,46 @@ def test_members_filters_pending_and_joined_and_defaults_to_twenty(api_client, c
     }
     assert joined.json()["data"]["count"] == 21
     assert {item["sync_status"] for item in joined.json()["data"]["items"]} == {IncidentIMMember.SyncStatus.JOINED}
+
+
+@pytest.mark.django_db
+def test_group_summary_and_pending_filter_exclude_removed_non_joined_members(api_client, collaborator, incident, channel):
+    group = create_active_group(incident, channel, status=IncidentIMGroup.Status.ACTIVE_PARTIAL)
+    IncidentIMMember.objects.create(
+        group=group,
+        username="operator",
+        role=IncidentIMMember.Role.OPERATOR,
+        mapping_status=IncidentIMMember.MappingStatus.MAPPED,
+        sync_status=IncidentIMMember.SyncStatus.PENDING,
+    )
+    IncidentIMMember.objects.create(
+        group=group,
+        username="removed-pending",
+        role=IncidentIMMember.Role.COLLABORATOR,
+        mapping_status=IncidentIMMember.MappingStatus.MAPPED,
+        sync_status=IncidentIMMember.SyncStatus.PENDING,
+    )
+    IncidentIMMember.objects.create(
+        group=group,
+        username="removed-joined",
+        role=IncidentIMMember.Role.COLLABORATOR,
+        mapping_status=IncidentIMMember.MappingStatus.MAPPED,
+        sync_status=IncidentIMMember.SyncStatus.JOINED,
+    )
+    api_client.force_authenticate(collaborator)
+
+    group_response = api_client.get(group_url(incident))
+    pending = api_client.get(f"{group_url(incident)}members/?filter=pending")
+    joined = api_client.get(f"{group_url(incident)}members/?filter=joined")
+
+    assert group_response.status_code == 200
+    summary = group_response.json()["data"]["member_summary"]
+    assert summary["total"] == 2
+    assert summary["joined"] == 1
+    assert summary["pending"] == 1
+    assert group_response.json()["data"]["status_message"] == "1 人待同步"
+    assert [item["username"] for item in pending.json()["data"]["items"]] == ["operator"]
+    assert [item["username"] for item in joined.json()["data"]["items"]] == ["removed-joined"]
 
 
 @pytest.mark.django_db
