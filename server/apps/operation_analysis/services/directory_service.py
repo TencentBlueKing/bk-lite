@@ -2,6 +2,8 @@
 # @File: directory_service.py
 # @Time: 2025/11/3 16:22
 # @Author: windyzhao
+from rest_framework.exceptions import ValidationError
+
 from apps.core.utils.team_utils import get_current_team
 from apps.operation_analysis.constants.constants import PERMISSION_DATASOURCE, PERMISSION_DIRECTORY
 from apps.operation_analysis.filters.base_filters import GroupPermissionMixin
@@ -38,7 +40,10 @@ class DictDirectoryService:
         获取目录树形结构,目录和仪表盘统一作为树节点
         """
         # 验证用户组织权限，构建组织ID列表（支持 include_children）
-        current_team = int(get_current_team(request))
+        try:
+            current_team = int(get_current_team(request))
+        except (TypeError, ValueError):
+            raise ValidationError({"detail": "current_team cookie 缺失或格式错误，请重新登录或刷新页面"})
         group_ids = [current_team]
         if request.COOKIES.get("include_children", "0") == "1":
             from apps.core.utils.viewset_utils import GenericViewSetFun
