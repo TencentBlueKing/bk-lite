@@ -47,9 +47,7 @@ def deliver_create_group(group_id) -> None:
             )
             current_operator_usernames = get_desired_operator_usernames(group.incident)
             owner_is_current = any(
-                member.username in current_operator_usernames
-                and member.external_id == group.external_owner_id
-                for member in members
+                member.username in current_operator_usernames and member.external_id == group.external_owner_id for member in members
             )
             if not owner_is_current:
                 group.status = IncidentIMGroup.Status.CREATE_FAILED
@@ -57,12 +55,7 @@ def deliver_create_group(group_id) -> None:
                 group.last_error_code = "IM_OWNER_NOT_CURRENT_OPERATOR"
                 group.last_error_message = "建群负责人已不再是当前 Incident 负责人"
                 group.save(
-                    update_fields=[
-                        "status",
-                        "current_stage",
-                        "last_error_code",
-                        "last_error_message",
-                    ]
+                    update_fields=["status", "current_stage", "last_error_code", "last_error_message",]
                 )
                 return
             group.status = IncidentIMGroup.Status.CREATING
@@ -92,8 +85,7 @@ def deliver_create_group(group_id) -> None:
     chat_id = str((result.payload or {}).get("chat_id") or "").strip()
     if not chat_id:
         _finish_create_failure(
-            group_id,
-            _SyntheticFailure("provider.invalid_response", "飞书建群成功响应缺少 chat_id"),
+            group_id, _SyntheticFailure("provider.invalid_response", "飞书建群成功响应缺少 chat_id"),
         )
         return
 
@@ -110,25 +102,10 @@ def deliver_create_group(group_id) -> None:
         locked.last_error_code = ""
         locked.last_error_message = ""
         locked.save(
-            update_fields=[
-                "external_chat_id",
-                "current_stage",
-                "last_error_code",
-                "last_error_message",
-            ]
+            update_fields=["external_chat_id", "current_stage", "last_error_code", "last_error_message",]
         )
-        joined_count, failed_count = _save_member_result(
-            locked,
-            member_ids,
-            invalid_ids,
-            now=now,
-            error_code="IM_MEMBER_INVALID",
-            error_message="外部用户标识无效",
-        )
-        record_group_audit(
-            locked,
-            locked.created_by or "system",
-            f"创建飞书群结果：成功，成功 {joined_count} 人，失败 {failed_count} 人",
+        _save_member_result(
+            locked, member_ids, invalid_ids, now=now, error_code="IM_MEMBER_INVALID", error_message="外部用户标识无效",
         )
         delivery_paused = _is_group_delivery_paused(locked)
 
@@ -144,8 +121,7 @@ def deliver_add_members(group_id) -> None:
         return
     if not group.external_chat_id:
         _finish_create_failure(
-            group_id,
-            _SyntheticFailure("IM_CHAT_ID_MISSING", "协作群尚未取得外部 chat_id"),
+            group_id, _SyntheticFailure("IM_CHAT_ID_MISSING", "协作群尚未取得外部 chat_id"),
         )
         return
 
@@ -181,11 +157,7 @@ def deliver_add_members(group_id) -> None:
         processed_member_ids.update(member.pk for member in batch)
         member_ids = list(dict.fromkeys(member.external_id for member in batch))
         result = IMGroupRuntimeService.execute(
-            group.channel,
-            operation="add_members",
-            chat_id=group.external_chat_id,
-            member_ids=member_ids,
-            member_id_type=group.member_id_type,
+            group.channel, operation="add_members", chat_id=group.external_chat_id, member_ids=member_ids, member_id_type=group.member_id_type,
         )
         if _raise_if_retryable(result):
             return
@@ -212,9 +184,7 @@ def deliver_add_members(group_id) -> None:
                 error_message=error_message or "邀请成员失败",
             )
             record_group_audit(
-                locked,
-                locked.updated_by or locked.created_by or "system",
-                f"补拉飞书群成员结果：成功 {joined_count} 人，失败 {failed_count} 人",
+                locked, locked.updated_by or locked.created_by or "system", f"补拉飞书群成员结果：成功 {joined_count} 人，失败 {failed_count} 人",
             )
 
     with transaction.atomic():
@@ -224,9 +194,7 @@ def deliver_add_members(group_id) -> None:
         locked.current_stage = IncidentIMGroup.Stage.SENDING_SUMMARY
         locked.save(update_fields=["current_stage"])
     enqueue_outbox(
-        OUTBOX_SEND_SUMMARY,
-        {"group_id": str(group_id)},
-        f"incident-im-group:{group_id}:send-summary",
+        OUTBOX_SEND_SUMMARY, {"group_id": str(group_id)}, f"incident-im-group:{group_id}:send-summary",
     )
 
 
@@ -236,11 +204,11 @@ def deliver_summary(group_id) -> None:
         if group is None or _is_group_delivery_paused(group):
             return
         missing_chat_id = not group.external_chat_id
+        is_initial_summary = group.last_sync_at is None
 
     if missing_chat_id:
         _finish_create_failure(
-            group_id,
-            _SyntheticFailure("IM_CHAT_ID_MISSING", "协作群尚未取得外部 chat_id"),
+            group_id, _SyntheticFailure("IM_CHAT_ID_MISSING", "协作群尚未取得外部 chat_id"),
         )
         return
 
@@ -263,11 +231,7 @@ def deliver_summary(group_id) -> None:
         has_member_gaps = False
         if not delivery_paused:
             desired_usernames = get_desired_usernames(locked.incident)
-            has_member_gaps = (
-                locked.members.filter(username__in=desired_usernames)
-                .exclude(sync_status=IncidentIMMember.SyncStatus.JOINED)
-                .exists()
-            )
+            has_member_gaps = locked.members.filter(username__in=desired_usernames).exclude(sync_status=IncidentIMMember.SyncStatus.JOINED).exists()
         locked.current_stage = IncidentIMGroup.Stage.COMPLETED
         locked.last_error_code = "" if result.success else error_code
         locked.last_error_message = "" if result.success else error_message
@@ -282,13 +246,13 @@ def deliver_summary(group_id) -> None:
             if not result.success and error_code == "provider.group_not_found":
                 locked.status = IncidentIMGroup.Status.DEGRADED
             else:
-                locked.status = (
-                    IncidentIMGroup.Status.ACTIVE
-                    if result.success and not has_member_gaps
-                    else IncidentIMGroup.Status.ACTIVE_PARTIAL
-                )
+                locked.status = IncidentIMGroup.Status.ACTIVE if result.success and not has_member_gaps else IncidentIMGroup.Status.ACTIVE_PARTIAL
             update_fields.append("status")
         locked.save(update_fields=update_fields)
+        event = "创建飞书群最终结果" if is_initial_summary else "飞书群摘要发送结果"
+        record_group_audit(
+            locked, locked.updated_by or locked.created_by or "system", f"{event}：{'成功' if result.success else '失败'}",
+        )
 
 
 def handle_delivery_exhausted(kind: str, payload: dict, error: str) -> None:
@@ -304,49 +268,35 @@ def handle_delivery_exhausted(kind: str, payload: dict, error: str) -> None:
         group.last_error_message = str(error or "投递重试已耗尽")[:500]
         update_fields = ["current_stage", "last_error_code", "last_error_message"]
         if not _is_group_delivery_paused(group):
-            group.status = (
-                IncidentIMGroup.Status.ACTIVE_PARTIAL
-                if group.external_chat_id
-                else IncidentIMGroup.Status.CREATE_FAILED
-            )
+            group.status = IncidentIMGroup.Status.ACTIVE_PARTIAL if group.external_chat_id else IncidentIMGroup.Status.CREATE_FAILED
             update_fields.append("status")
         group.save(update_fields=update_fields)
-        failed_count = group.members.filter(
-            sync_status__in=(
-                IncidentIMMember.SyncStatus.PENDING,
-                IncidentIMMember.SyncStatus.ADDING,
-            )
-        ).count()
-        overview = (
-            f"创建飞书群结果：失败，成功 0 人，失败 {failed_count} 人"
-            if kind == OUTBOX_CREATE
-            else f"补拉飞书群成员结果：成功 0 人，失败 {failed_count} 人"
-        )
+        failed_count = group.members.filter(sync_status__in=(IncidentIMMember.SyncStatus.PENDING, IncidentIMMember.SyncStatus.ADDING,)).count()
+        if kind == OUTBOX_CREATE:
+            overview = f"创建飞书群最终结果：失败，成功 0 人，失败 {failed_count} 人"
+        elif kind == OUTBOX_ADD_MEMBERS:
+            overview = f"补拉飞书群成员结果：成功 0 人，失败 {failed_count} 人"
+        else:
+            overview = "飞书群摘要发送结果：失败"
         record_group_audit(
-            group,
-            group.updated_by or group.created_by or "system",
-            overview,
+            group, group.updated_by or group.created_by or "system", overview,
         )
 
 
 def _enqueue_add_members(group_id) -> None:
     enqueue_outbox(
-        OUTBOX_ADD_MEMBERS,
-        {"group_id": str(group_id)},
-        f"incident-im-group:{group_id}:add-members",
+        OUTBOX_ADD_MEMBERS, {"group_id": str(group_id)}, f"incident-im-group:{group_id}:add-members",
     )
 
 
 def _get_group(group_id):
-    return IncidentIMGroup.objects.select_related("channel", "channel__integration_instance", "incident").filter(
-        pk=group_id
-    ).first()
+    return IncidentIMGroup.objects.select_related("channel", "channel__integration_instance", "incident").filter(pk=group_id).first()
 
 
 def _lock_group(group_id):
-    return IncidentIMGroup.objects.select_for_update().select_related(
-        "channel", "channel__integration_instance", "incident"
-    ).filter(pk=group_id).first()
+    return (
+        IncidentIMGroup.objects.select_for_update().select_related("channel", "channel__integration_instance", "incident").filter(pk=group_id).first()
+    )
 
 
 def _is_group_delivery_paused(group):
@@ -361,12 +311,7 @@ def _pause_create_for_closed_incident(group) -> None:
     if (
         group.incident.status in IncidentStatus.ACTIVATE_STATUS
         or group.pause_reason == IncidentIMGroup.PauseReason.MANUAL
-        or group.status
-        not in (
-            IncidentIMGroup.Status.PENDING_CREATE,
-            IncidentIMGroup.Status.CREATING,
-            IncidentIMGroup.Status.PAUSED,
-        )
+        or group.status not in (IncidentIMGroup.Status.PENDING_CREATE, IncidentIMGroup.Status.CREATING, IncidentIMGroup.Status.PAUSED,)
     ):
         return
     group.status = IncidentIMGroup.Status.PAUSED
@@ -382,12 +327,7 @@ def _initial_member_ids(group, members) -> list[str]:
 
 
 def _save_member_result(group, member_ids, invalid_ids, *, now, error_code, error_message):
-    members = list(
-        group.members.select_for_update().filter(
-            external_id__in=member_ids,
-            mapping_status=IncidentIMMember.MappingStatus.MAPPED,
-        )
-    )
+    members = list(group.members.select_for_update().filter(external_id__in=member_ids, mapping_status=IncidentIMMember.MappingStatus.MAPPED,))
     for member in members:
         member.updated_at = now
         member.attempt_count += 1
@@ -402,15 +342,7 @@ def _save_member_result(group, member_ids, invalid_ids, *, now, error_code, erro
             member.joined_at = now
     if members:
         IncidentIMMember.objects.bulk_update(
-            members,
-            [
-                "sync_status",
-                "attempt_count",
-                "last_error_code",
-                "last_error_message",
-                "joined_at",
-                "updated_at",
-            ],
+            members, ["sync_status", "attempt_count", "last_error_code", "last_error_message", "joined_at", "updated_at",],
         )
     failed_count = sum(member.sync_status == IncidentIMMember.SyncStatus.FAILED for member in members)
     return len(members) - failed_count, failed_count
@@ -444,13 +376,9 @@ def _finish_create_failure(group_id, result) -> None:
             group.status = IncidentIMGroup.Status.CREATE_FAILED
             update_fields.append("status")
         group.save(update_fields=update_fields)
-        failed_count = group.members.filter(
-            mapping_status=IncidentIMMember.MappingStatus.MAPPED,
-        ).count()
+        failed_count = group.members.filter(mapping_status=IncidentIMMember.MappingStatus.MAPPED,).count()
         record_group_audit(
-            group,
-            group.created_by or "system",
-            f"创建飞书群结果：失败，成功 0 人，失败 {failed_count} 人",
+            group, group.created_by or "system", f"创建飞书群最终结果：失败，成功 0 人，失败 {failed_count} 人",
         )
 
 
@@ -471,14 +399,7 @@ def _mark_degraded(group_id, error_code, error_message) -> None:
 
 def _build_incident_summary(group) -> str:
     incident = group.incident
-    return "\n".join(
-        [
-            f"Incident：{incident.title}",
-            f"编号：{incident.incident_id}",
-            f"级别：{incident.level}",
-            "请在 BK-Lite Incident 详情中持续协作与更新进展。",
-        ]
-    )
+    return "\n".join([f"Incident：{incident.title}", f"编号：{incident.incident_id}", f"级别：{incident.level}", "请在 BK-Lite Incident 详情中持续协作与更新进展。",])
 
 
 class _SyntheticFailure:

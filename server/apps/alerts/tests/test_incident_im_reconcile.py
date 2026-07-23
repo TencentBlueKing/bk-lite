@@ -28,28 +28,15 @@ from apps.system_mgmt.providers.runtime import CapabilityExecutionResult
 @pytest.fixture
 def incident(db):
     return Incident.objects.create(
-        incident_id=f"INC-{uuid.uuid4().hex}",
-        level="warning",
-        title="持续同步测试",
-        status=IncidentStatus.PROCESSING,
-        operator=["alice"],
+        incident_id=f"INC-{uuid.uuid4().hex}", level="warning", title="持续同步测试", status=IncidentStatus.PROCESSING, operator=["alice"],
     )
 
 
 @pytest.fixture
 def channel(db):
-    instance = IntegrationInstance.objects.create(
-        name=f"feishu-{uuid.uuid4().hex}",
-        provider_key="feishu",
-        enabled=True,
-        status="ready",
-    )
+    instance = IntegrationInstance.objects.create(name=f"feishu-{uuid.uuid4().hex}", provider_key="feishu", enabled=True, status="ready",)
     return IMNotificationChannel.objects.create(
-        name=f"channel-{uuid.uuid4().hex}",
-        integration_instance=instance,
-        enabled=True,
-        status="ready",
-        external_receive_field="open_id",
+        name=f"channel-{uuid.uuid4().hex}", integration_instance=instance, enabled=True, status="ready", external_receive_field="open_id",
     )
 
 
@@ -71,12 +58,7 @@ def group(incident, channel):
 
 
 def _map_user(channel, username):
-    user = User.objects.create(
-        username=username,
-        display_name=username.title(),
-        email=f"{username}@example.com",
-        password="test-password",
-    )
+    user = User.objects.create(username=username, display_name=username.title(), email=f"{username}@example.com", password="test-password",)
     return IMNotificationUserMapping.objects.create(
         channel=channel,
         user=user,
@@ -90,15 +72,9 @@ def _map_user(channel, username):
 def _incident_serializer(incident, data):
     request = SimpleNamespace(user=SimpleNamespace(group_list=[]), COOKIES={})
     with mock.patch(
-        "apps.core.utils.serializers.get_permission_rules",
-        return_value={"team": [], "instance": []},
+        "apps.core.utils.serializers.get_permission_rules", return_value={"team": [], "instance": []},
     ):
-        return IncidentModelSerializer(
-            incident,
-            data=data,
-            partial=True,
-            context={"request": request},
-        )
+        return IncidentModelSerializer(incident, data=data, partial=True, context={"request": request},)
 
 
 @pytest.mark.django_db
@@ -118,17 +94,13 @@ def test_manual_resume_create_seam_requeues_initial_create(incident, channel):
     )
 
     reconcile_incident_im_group(
-        incident.id,
-        resume_create=True,
+        incident.id, resume_create=True,
     )
 
     group.refresh_from_db()
     assert group.status == IncidentIMGroup.Status.PENDING_CREATE
     assert group.current_stage == IncidentIMGroup.Stage.QUEUED
-    assert AlertOutbox.objects.filter(
-        kind="incident_im_group.create",
-        payload={"group_id": str(group.id)},
-    ).count() == 1
+    assert AlertOutbox.objects.filter(kind="incident_im_group.create", payload={"group_id": str(group.id)},).count() == 1
 
 
 @pytest.mark.django_db
@@ -206,16 +178,10 @@ def test_real_invalid_delivery_is_not_retried_by_periodic_reconcile(group, chann
         mapping_status=IncidentIMMember.MappingStatus.MAPPED,
         sync_status=IncidentIMMember.SyncStatus.PENDING,
     )
-    invalid = CapabilityExecutionResult(
-        success=True,
-        partial_success=True,
-        summary="partial",
-        payload={"invalid_member_ids": ["ou_bob"]},
-    )
-    with mock.patch(
-        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
-        return_value=invalid,
-    ), mock.patch("apps.alerts.service.incident_im.delivery.enqueue_outbox"):
+    invalid = CapabilityExecutionResult(success=True, partial_success=True, summary="partial", payload={"invalid_member_ids": ["ou_bob"]},)
+    with mock.patch("apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute", return_value=invalid,), mock.patch(
+        "apps.alerts.service.incident_im.delivery.enqueue_outbox"
+    ):
         deliver_add_members(group.id)
 
     member.refresh_from_db()
@@ -248,10 +214,9 @@ def test_new_pending_member_delivery_does_not_retry_old_failed_member(group):
         sync_status=IncidentIMMember.SyncStatus.PENDING,
     )
     success = CapabilityExecutionResult.success_result("added", payload={"invalid_member_ids": []})
-    with mock.patch(
-        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
-        return_value=success,
-    ) as execute, mock.patch("apps.alerts.service.incident_im.delivery.enqueue_outbox"):
+    with mock.patch("apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute", return_value=success,) as execute, mock.patch(
+        "apps.alerts.service.incident_im.delivery.enqueue_outbox"
+    ):
         deliver_add_members(group.id)
 
     assert execute.call_args.kwargs["member_ids"] == [pending.external_id]
@@ -316,10 +281,7 @@ def test_force_delivery_only_bypasses_continuous_sync_off(group, channel):
 @pytest.mark.django_db
 @pytest.mark.parametrize(
     ("pause_reason", "incident_status"),
-    [
-        (IncidentIMGroup.PauseReason.MANUAL, IncidentStatus.PROCESSING),
-        (IncidentIMGroup.PauseReason.INCIDENT_CLOSED, IncidentStatus.CLOSED),
-    ],
+    [(IncidentIMGroup.PauseReason.MANUAL, IncidentStatus.PROCESSING), (IncidentIMGroup.PauseReason.INCIDENT_CLOSED, IncidentStatus.CLOSED),],
 )
 def test_force_delivery_never_bypasses_pause_or_closed(group, channel, pause_reason, incident_status):
     group.status = IncidentIMGroup.Status.PAUSED
@@ -420,10 +382,7 @@ def test_force_delivery_only_promotes_current_expected_failed_members(group, cha
 @pytest.mark.django_db
 @pytest.mark.parametrize(
     ("pause_reason", "incident_status"),
-    [
-        (IncidentIMGroup.PauseReason.MANUAL, IncidentStatus.PROCESSING),
-        (IncidentIMGroup.PauseReason.INCIDENT_CLOSED, IncidentStatus.CLOSED),
-    ],
+    [(IncidentIMGroup.PauseReason.MANUAL, IncidentStatus.PROCESSING), (IncidentIMGroup.PauseReason.INCIDENT_CLOSED, IncidentStatus.CLOSED),],
 )
 def test_already_queued_add_delivery_stops_after_pause(group, pause_reason, incident_status):
     member = IncidentIMMember.objects.create(
@@ -441,9 +400,7 @@ def test_already_queued_add_delivery_stops_after_pause(group, pause_reason, inci
     group.incident.status = incident_status
     group.incident.save(update_fields=["status"])
 
-    with mock.patch(
-        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute"
-    ) as execute:
+    with mock.patch("apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute") as execute:
         deliver_add_members(group.id)
 
     execute.assert_not_called()
@@ -534,9 +491,7 @@ def test_reopen_ignores_removed_unjoined_history_when_restoring_active(group):
 
 
 @pytest.mark.django_db
-def test_reopen_inflight_create_reconcile_continues_initial_members_when_continuous_sync_off(
-    group, channel
-):
+def test_reopen_inflight_create_reconcile_continues_initial_members_when_continuous_sync_off(group, channel):
     _map_user(channel, "bob")
     group.incident.collaborators = ["bob"]
     group.incident.save(update_fields=["collaborators"])
@@ -554,12 +509,7 @@ def test_reopen_inflight_create_reconcile_continues_initial_members_when_continu
     group.resume_after_reopen = True
     group.continuous_sync_enabled = False
     group.save(
-        update_fields=[
-            "status",
-            "pause_reason",
-            "resume_after_reopen",
-            "continuous_sync_enabled",
-        ]
+        update_fields=["status", "pause_reason", "resume_after_reopen", "continuous_sync_enabled",]
     )
 
     resume_group_for_reopened_incident(group.incident_id)
@@ -578,10 +528,7 @@ def test_periodic_scan_is_fair_across_201_groups_and_isolates_failure(monkeypatc
     groups = [
         IncidentIMGroup.objects.create(
             incident=Incident.objects.create(
-                incident_id=f"INC-{index}-{uuid.uuid4().hex}",
-                level="warning",
-                title=f"scan-{index}",
-                status=IncidentStatus.PROCESSING,
+                incident_id=f"INC-{index}-{uuid.uuid4().hex}", level="warning", title=f"scan-{index}", status=IncidentStatus.PROCESSING,
             ),
             channel=channel,
             provider_key="feishu",
@@ -603,8 +550,7 @@ def test_periodic_scan_is_fair_across_201_groups_and_isolates_failure(monkeypatc
             raise RuntimeError("bad channel")
 
     monkeypatch.setattr(
-        "apps.alerts.service.incident_im.reconcile.reconcile_incident_im_group_by_group_id",
-        fake_reconcile,
+        "apps.alerts.service.incident_im.reconcile.reconcile_incident_im_group_by_group_id", fake_reconcile,
     )
 
     first = reconcile_waiting_incident_im_groups()
@@ -624,10 +570,7 @@ def test_periodic_scan_isolates_reconcile_cursor_update_failure(monkeypatch, cha
     groups = [
         IncidentIMGroup.objects.create(
             incident=Incident.objects.create(
-                incident_id=f"INC-cursor-{index}-{uuid.uuid4().hex}",
-                level="warning",
-                title=f"cursor-{index}",
-                status=IncidentStatus.PROCESSING,
+                incident_id=f"INC-cursor-{index}-{uuid.uuid4().hex}", level="warning", title=f"cursor-{index}", status=IncidentStatus.PROCESSING,
             ),
             channel=channel,
             provider_key="feishu",
@@ -647,17 +590,14 @@ def test_periodic_scan_isolates_reconcile_cursor_update_failure(monkeypatch, cha
 
     def fail_first_cursor_update(queryset, **kwargs):
         nonlocal cursor_update_attempts
-        if queryset.model is IncidentIMGroup and (
-            "last_sync_at" in kwargs or "last_reconcile_attempt_at" in kwargs
-        ):
+        if queryset.model is IncidentIMGroup and ("last_sync_at" in kwargs or "last_reconcile_attempt_at" in kwargs):
             cursor_update_attempts += 1
             if cursor_update_attempts == 1:
                 raise RuntimeError("cursor update failed")
         return real_update(queryset, **kwargs)
 
     monkeypatch.setattr(
-        "apps.alerts.service.incident_im.reconcile.reconcile_incident_im_group_by_group_id",
-        lambda group_id: called.append(group_id),
+        "apps.alerts.service.incident_im.reconcile.reconcile_incident_im_group_by_group_id", lambda group_id: called.append(group_id),
     )
     monkeypatch.setattr(QuerySet, "update", fail_first_cursor_update)
 
@@ -681,7 +621,7 @@ def test_reconcile_group_lock_does_not_cover_external_provider_call(group, chann
 
 
 @pytest.mark.django_db
-def test_incident_serializer_member_change_writes_reconcile_outbox_in_same_transaction(incident):
+def test_incident_serializer_member_change_writes_reconcile_outbox_in_same_transaction(incident,):
     serializer = _incident_serializer(incident, {"collaborators": ["bob"]})
     assert serializer.is_valid(), serializer.errors
 
@@ -693,7 +633,7 @@ def test_incident_serializer_member_change_writes_reconcile_outbox_in_same_trans
 
 
 @pytest.mark.django_db
-def test_incident_serializer_non_member_or_unchanged_member_update_has_no_reconcile_event(incident):
+def test_incident_serializer_non_member_or_unchanged_member_update_has_no_reconcile_event(incident,):
     title_serializer = _incident_serializer(incident, {"title": "仅更新标题"})
     assert title_serializer.is_valid(), title_serializer.errors
     title_serializer.save()
@@ -717,10 +657,9 @@ def test_incident_serializer_rolls_back_member_and_outbox_when_enqueue_fails(inc
 
     serializer = _incident_serializer(incident, {"collaborators": ["bob"]})
     assert serializer.is_valid(), serializer.errors
-    with mock.patch(
-        "apps.alerts.serializers.incident.enqueue_reconcile",
-        side_effect=enqueue_then_fail,
-    ), pytest.raises(RuntimeError, match="transaction failed"):
+    with mock.patch("apps.alerts.serializers.incident.enqueue_reconcile", side_effect=enqueue_then_fail,), pytest.raises(
+        RuntimeError, match="transaction failed"
+    ):
         serializer.save()
 
     incident.refresh_from_db()
@@ -734,9 +673,7 @@ def test_reconcile_outbox_dispatches_without_external_call(group, channel):
     group.incident.collaborators = ["bob"]
     group.incident.save(update_fields=["collaborators"])
     record = AlertOutbox.objects.create(
-        kind="incident_im_group.reconcile",
-        payload={"incident_id": group.incident_id},
-        idempotency_key=f"reconcile-{uuid.uuid4().hex}",
+        kind="incident_im_group.reconcile", payload={"incident_id": group.incident_id}, idempotency_key=f"reconcile-{uuid.uuid4().hex}",
     )
 
     with mock.patch("apps.system_mgmt.services.im_group_service.IMGroupRuntimeService.execute") as execute:

@@ -7,7 +7,13 @@ import pytest
 from django.db import close_old_connections, connections
 
 from apps.alerts.constants.constants import IncidentStatus
-from apps.alerts.models import AlertOutbox, Incident, IncidentIMGroup, IncidentIMMember, OperatorLog
+from apps.alerts.models import (
+    AlertOutbox,
+    Incident,
+    IncidentIMGroup,
+    IncidentIMMember,
+    OperatorLog,
+)
 from apps.alerts.service.incident_im.reconcile import (
     pause_group_for_closed_incident,
     reconcile_incident_im_group,
@@ -21,24 +27,10 @@ from apps.system_mgmt.providers.runtime import CapabilityExecutionResult
 @pytest.fixture
 def group(db):
     incident = Incident.objects.create(
-        incident_id=f"INC-{uuid.uuid4().hex}",
-        level="warning",
-        title="数据库连接异常",
-        operator=["alice"],
-        collaborators=["bob"],
+        incident_id=f"INC-{uuid.uuid4().hex}", level="warning", title="数据库连接异常", operator=["alice"], collaborators=["bob"],
     )
-    instance = IntegrationInstance.objects.create(
-        name=f"feishu-{uuid.uuid4().hex}",
-        provider_key="feishu",
-        enabled=True,
-        status="ready",
-    )
-    channel = IMNotificationChannel.objects.create(
-        name=f"channel-{uuid.uuid4().hex}",
-        integration_instance=instance,
-        enabled=True,
-        status="ready",
-    )
+    instance = IntegrationInstance.objects.create(name=f"feishu-{uuid.uuid4().hex}", provider_key="feishu", enabled=True, status="ready",)
+    channel = IMNotificationChannel.objects.create(name=f"channel-{uuid.uuid4().hex}", integration_instance=instance, enabled=True, status="ready",)
     return IncidentIMGroup.objects.create(
         incident=incident,
         channel=channel,
@@ -74,15 +66,9 @@ def pending_members(group):
 def test_chat_id_is_saved_before_followup_events(group, pending_members):
     from apps.alerts.service.incident_im.delivery import deliver_create_group
 
-    result = CapabilityExecutionResult.success_result(
-        "created", payload={"chat_id": "oc_1", "invalid_member_ids": []}
-    )
-    with mock.patch(
-        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
-        return_value=result,
-    ), mock.patch(
-        "apps.alerts.service.incident_im.delivery.enqueue_outbox",
-        side_effect=RuntimeError("worker crashed after ACK"),
+    result = CapabilityExecutionResult.success_result("created", payload={"chat_id": "oc_1", "invalid_member_ids": []})
+    with mock.patch("apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute", return_value=result,), mock.patch(
+        "apps.alerts.service.incident_im.delivery.enqueue_outbox", side_effect=RuntimeError("worker crashed after ACK"),
     ):
         with pytest.raises(RuntimeError, match="worker crashed"):
             deliver_create_group(group.id)
@@ -98,25 +84,14 @@ def test_create_result_audit_uses_counts_without_external_ids(group, pending_mem
 
     group.created_by = "alice"
     group.save(update_fields=["created_by"])
-    result = CapabilityExecutionResult.success_result(
-        "created",
-        payload={"chat_id": "oc_secret", "invalid_member_ids": ["ou_bob"]},
-    )
+    result = CapabilityExecutionResult.success_result("created", payload={"chat_id": "oc_secret", "invalid_member_ids": ["ou_bob"]},)
 
     with mock.patch(
-        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
-        return_value=result,
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute", return_value=result,
     ):
         deliver_create_group(group.id)
 
-    log = OperatorLog.objects.filter(
-        target_id=group.incident.incident_id,
-        overview__contains="创建飞书群结果",
-    ).latest("id")
-    assert "成功 1 人" in log.overview
-    assert "失败 1 人" in log.overview
-    assert "oc_secret" not in log.overview
-    assert "ou_bob" not in log.overview
+    assert not OperatorLog.objects.filter(target_id=group.incident.incident_id, overview__contains="创建飞书群最终结果",).exists()
 
 
 @pytest.mark.django_db
@@ -125,23 +100,16 @@ def test_create_failure_is_audited_without_provider_payload(group, pending_membe
 
     group.created_by = "alice"
     group.save(update_fields=["created_by"])
-    result = CapabilityExecutionResult.failed_result(
-        "provider secret response",
-        code="provider.permission_denied",
-    )
+    result = CapabilityExecutionResult.failed_result("provider secret response", code="provider.permission_denied",)
 
     with mock.patch(
-        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
-        return_value=result,
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute", return_value=result,
     ):
         deliver_create_group(group.id)
 
     group.refresh_from_db()
     assert group.status == IncidentIMGroup.Status.CREATE_FAILED
-    log = OperatorLog.objects.filter(
-        target_id=group.incident.incident_id,
-        overview__contains="创建飞书群结果",
-    ).latest("id")
+    log = OperatorLog.objects.filter(target_id=group.incident.incident_id, overview__contains="创建飞书群最终结果",).latest("id")
     assert "失败" in log.overview
     assert "provider secret response" not in log.overview
 
@@ -172,25 +140,67 @@ def test_add_members_result_audit_uses_counts_without_external_ids(group):
         mapping_status=IncidentIMMember.MappingStatus.MAPPED,
         sync_status=IncidentIMMember.SyncStatus.PENDING,
     )
-    result = CapabilityExecutionResult.success_result(
-        "partial",
-        payload={"invalid_member_ids": ["ou_bob"]},
-    )
+    result = CapabilityExecutionResult.success_result("partial", payload={"invalid_member_ids": ["ou_bob"]},)
 
     with mock.patch(
-        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
-        return_value=result,
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute", return_value=result,
     ):
         deliver_add_members(group.id)
 
-    log = OperatorLog.objects.filter(
-        target_id=group.incident.incident_id,
-        overview__contains="补拉飞书群成员结果",
-    ).latest("id")
+    log = OperatorLog.objects.filter(target_id=group.incident.incident_id, overview__contains="补拉飞书群成员结果",).latest("id")
     assert "成功 1 人" in log.overview
     assert "失败 1 人" in log.overview
     assert "oc_secret" not in log.overview
     assert "ou_bob" not in log.overview
+
+
+@pytest.mark.django_db
+def test_create_final_audit_waits_for_summary_and_has_structured_safe_context(group, pending_members):
+    from apps.alerts.service.incident_im.delivery import (
+        deliver_create_group,
+        deliver_summary,
+    )
+
+    group.created_by = "alice"
+    group.save(update_fields=["created_by"])
+    create_result = CapabilityExecutionResult.success_result("created", payload={"chat_id": "oc_secret", "invalid_member_ids": []},)
+    with mock.patch(
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute", return_value=create_result,
+    ):
+        deliver_create_group(group.id)
+
+    assert not OperatorLog.objects.filter(target_id=group.incident.incident_id, overview__contains="创建飞书群最终结果",).exists()
+
+    summary_result = CapabilityExecutionResult.success_result("sent")
+    with mock.patch(
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute", return_value=summary_result,
+    ):
+        deliver_summary(group.id)
+
+    log = OperatorLog.objects.get(target_id=group.incident.incident_id, overview__contains="创建飞书群最终结果",)
+    assert '"channel_name_snapshot"' in log.overview
+    assert '"binding_id"' in log.overview
+    assert '"member_result"' in log.overview
+    assert "oc_secret" not in log.overview
+    assert "ou_alice" not in log.overview
+
+
+@pytest.mark.django_db
+def test_summary_exhaustion_audit_is_not_mislabeled_as_member_delivery(group):
+    from apps.alerts.service.incident_im.delivery import handle_delivery_exhausted
+
+    group.external_chat_id = "oc_secret"
+    group.status = IncidentIMGroup.Status.ACTIVE_PARTIAL
+    group.save(update_fields=["external_chat_id", "status"])
+
+    handle_delivery_exhausted(
+        "incident_im_group.send_summary", {"group_id": str(group.id)}, "timeout",
+    )
+
+    log = OperatorLog.objects.filter(target_id=group.incident.incident_id).latest("id")
+    assert "摘要发送结果" in log.overview
+    assert "补拉飞书群成员结果" not in log.overview
+    assert "oc_secret" not in log.overview
 
 
 @pytest.mark.django_db
@@ -199,9 +209,7 @@ def test_create_retry_with_existing_chat_id_never_calls_create(group):
 
     group.external_chat_id = "oc_existing"
     group.save(update_fields=["external_chat_id"])
-    with mock.patch(
-        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute"
-    ) as execute, mock.patch(
+    with mock.patch("apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute") as execute, mock.patch(
         "apps.alerts.service.incident_im.delivery.enqueue_outbox"
     ) as enqueue:
         deliver_create_group(group.id)
@@ -240,10 +248,9 @@ def test_create_sends_owner_first_and_at_most_fifty_members(group):
         sync_status=IncidentIMMember.SyncStatus.PENDING,
     )
     result = CapabilityExecutionResult.success_result("created", payload={"chat_id": "oc_1"})
-    with mock.patch(
-        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
-        return_value=result,
-    ) as execute, mock.patch("apps.alerts.service.incident_im.delivery.enqueue_outbox"):
+    with mock.patch("apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute", return_value=result,) as execute, mock.patch(
+        "apps.alerts.service.incident_im.delivery.enqueue_outbox"
+    ):
         deliver_create_group(group.id)
 
     kwargs = execute.call_args.kwargs
@@ -259,10 +266,9 @@ def test_create_group_skips_member_removed_after_outbox_was_queued(group, pendin
     group.incident.collaborators = []
     group.incident.save(update_fields=["collaborators"])
     result = CapabilityExecutionResult.success_result("created", payload={"chat_id": "oc_1"})
-    with mock.patch(
-        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
-        return_value=result,
-    ) as execute, mock.patch("apps.alerts.service.incident_im.delivery.enqueue_outbox"):
+    with mock.patch("apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute", return_value=result,) as execute, mock.patch(
+        "apps.alerts.service.incident_im.delivery.enqueue_outbox"
+    ):
         deliver_create_group(group.id)
 
     assert execute.call_args.kwargs["member_ids"] == [pending_members[0].external_id]
@@ -271,20 +277,14 @@ def test_create_group_skips_member_removed_after_outbox_was_queued(group, pendin
 
 
 @pytest.mark.django_db
-def test_create_group_fails_closed_when_snapshotted_owner_is_no_longer_current_operator(
-    group, pending_members
-):
+def test_create_group_fails_closed_when_snapshotted_owner_is_no_longer_current_operator(group, pending_members):
     group.incident.operator = ["bob"]
     group.incident.collaborators = []
     group.incident.save(update_fields=["operator", "collaborators"])
     outbox = AlertOutbox.objects.create(
-        kind="incident_im_group.create",
-        payload={"group_id": str(group.id)},
-        idempotency_key=f"create-owner-mismatch-{uuid.uuid4().hex}",
+        kind="incident_im_group.create", payload={"group_id": str(group.id)}, idempotency_key=f"create-owner-mismatch-{uuid.uuid4().hex}",
     )
-    with mock.patch(
-        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute"
-    ) as execute:
+    with mock.patch("apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute") as execute:
         assert deliver_outbox_record(outbox.id) is True
 
     execute.assert_not_called()
@@ -298,21 +298,15 @@ def test_create_group_fails_closed_when_snapshotted_owner_is_no_longer_current_o
 
 
 @pytest.mark.django_db
-def test_create_outbox_closed_before_delivery_pauses_without_provider_and_reopen_requeues_create(
-    group, pending_members
-):
+def test_create_outbox_closed_before_delivery_pauses_without_provider_and_reopen_requeues_create(group, pending_members):
     group.incident.status = IncidentStatus.CLOSED
     group.incident.save(update_fields=["status"])
     pause_group_for_closed_incident(group.incident_id)
     outbox = AlertOutbox.objects.create(
-        kind="incident_im_group.create",
-        payload={"group_id": str(group.id)},
-        idempotency_key=f"create-before-close-{uuid.uuid4().hex}",
+        kind="incident_im_group.create", payload={"group_id": str(group.id)}, idempotency_key=f"create-before-close-{uuid.uuid4().hex}",
     )
 
-    with mock.patch(
-        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute"
-    ) as execute:
+    with mock.patch("apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute") as execute:
         assert deliver_outbox_record(outbox.id) is True
 
     execute.assert_not_called()
@@ -331,17 +325,16 @@ def test_create_outbox_closed_before_delivery_pauses_without_provider_and_reopen
     assert group.status == IncidentIMGroup.Status.PENDING_CREATE
     assert group.current_stage == IncidentIMGroup.Stage.QUEUED
     assert group.pause_reason == ""
-    assert AlertOutbox.objects.filter(
-        kind="incident_im_group.create",
-        payload={"group_id": str(group.id)},
-        status=AlertOutbox.Status.PENDING,
-    ).exclude(pk=outbox.pk).count() == 1
+    assert (
+        AlertOutbox.objects.filter(kind="incident_im_group.create", payload={"group_id": str(group.id)}, status=AlertOutbox.Status.PENDING,)
+        .exclude(pk=outbox.pk)
+        .count()
+        == 1
+    )
 
 
 @pytest.mark.django_db(transaction=True)
-def test_create_ack_after_close_persists_ack_but_stays_paused_and_reopen_reconciles(
-    group, pending_members
-):
+def test_create_ack_after_close_persists_ack_but_stays_paused_and_reopen_reconciles(group, pending_members):
     if connections["default"].vendor != "sqlite":
         pytest.skip("当前 Barrier 合同使用 SQLite 独立连接验证")
     collaborators = [f"user-{index}" for index in range(50)]
@@ -362,18 +355,14 @@ def test_create_ack_after_close_persists_ack_but_stays_paused_and_reopen_reconci
         ]
     )
     outbox = AlertOutbox.objects.create(
-        kind="incident_im_group.create",
-        payload={"group_id": str(group.id)},
-        idempotency_key=f"create-inflight-close-{uuid.uuid4().hex}",
+        kind="incident_im_group.create", payload={"group_id": str(group.id)}, idempotency_key=f"create-inflight-close-{uuid.uuid4().hex}",
     )
     barrier = Barrier(2)
 
     def provider_ack_after_close(*args, **kwargs):
         barrier.wait(timeout=10)
         barrier.wait(timeout=10)
-        return CapabilityExecutionResult.success_result(
-            "created", payload={"chat_id": "oc_race", "invalid_member_ids": []}
-        )
+        return CapabilityExecutionResult.success_result("created", payload={"chat_id": "oc_race", "invalid_member_ids": []})
 
     def deliver_from_independent_connection():
         close_old_connections()
@@ -383,8 +372,7 @@ def test_create_ack_after_close_persists_ack_but_stays_paused_and_reopen_reconci
             connections.close_all()
 
     with mock.patch(
-        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
-        side_effect=provider_ack_after_close,
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute", side_effect=provider_ack_after_close,
     ):
         with ThreadPoolExecutor(max_workers=1) as executor:
             future = executor.submit(deliver_from_independent_connection)
@@ -408,9 +396,7 @@ def test_create_ack_after_close_persists_ack_but_stays_paused_and_reopen_reconci
     assert group.resume_after_reopen is True
     assert group.members.filter(sync_status=IncidentIMMember.SyncStatus.JOINED).count() == 50
     assert group.members.filter(sync_status=IncidentIMMember.SyncStatus.PENDING).count() == 2
-    assert not AlertOutbox.objects.filter(
-        kind__in=["incident_im_group.add_members", "incident_im_group.send_summary"]
-    ).exists()
+    assert not AlertOutbox.objects.filter(kind__in=["incident_im_group.add_members", "incident_im_group.send_summary"]).exists()
     assert outbox.status == AlertOutbox.Status.DELIVERED
 
     group.incident.status = IncidentStatus.PROCESSING
@@ -420,34 +406,22 @@ def test_create_ack_after_close_persists_ack_but_stays_paused_and_reopen_reconci
     group.refresh_from_db()
     assert group.status == IncidentIMGroup.Status.ACTIVE_PARTIAL
     assert group.pause_reason == ""
-    assert AlertOutbox.objects.filter(
-        kind="incident_im_group.reconcile", status=AlertOutbox.Status.PENDING
-    ).count() == 1
+    assert AlertOutbox.objects.filter(kind="incident_im_group.reconcile", status=AlertOutbox.Status.PENDING).count() == 1
 
 
 @pytest.mark.django_db
-def test_create_ack_after_close_with_all_initial_members_requeues_summary_on_reopen(
-    group, pending_members
-):
+def test_create_ack_after_close_with_all_initial_members_requeues_summary_on_reopen(group, pending_members):
     outbox = AlertOutbox.objects.create(
-        kind="incident_im_group.create",
-        payload={"group_id": str(group.id)},
-        idempotency_key=f"create-inflight-close-all-joined-{uuid.uuid4().hex}",
+        kind="incident_im_group.create", payload={"group_id": str(group.id)}, idempotency_key=f"create-inflight-close-all-joined-{uuid.uuid4().hex}",
     )
 
     def provider_ack_after_close(*_args, **_kwargs):
         group.incident.status = IncidentStatus.CLOSED
         group.incident.save(update_fields=["status"])
         pause_group_for_closed_incident(group.incident_id)
-        return CapabilityExecutionResult.success_result(
-            "created",
-            payload={"chat_id": "oc_all_joined", "invalid_member_ids": []},
-        )
+        return CapabilityExecutionResult.success_result("created", payload={"chat_id": "oc_all_joined", "invalid_member_ids": []},)
 
-    with mock.patch(
-        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
-        side_effect=provider_ack_after_close,
-    ) as execute:
+    with mock.patch("apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute", side_effect=provider_ack_after_close,) as execute:
         assert deliver_outbox_record(outbox.id) is True
 
     assert execute.call_count == 1
@@ -456,31 +430,23 @@ def test_create_ack_after_close_with_all_initial_members_requeues_summary_on_reo
     assert group.status == IncidentIMGroup.Status.PAUSED
     assert group.pause_reason == IncidentIMGroup.PauseReason.INCIDENT_CLOSED
     assert group.current_stage == IncidentIMGroup.Stage.ADDING_MEMBERS
-    assert set(group.members.values_list("sync_status", flat=True)) == {
-        IncidentIMMember.SyncStatus.JOINED
-    }
+    assert set(group.members.values_list("sync_status", flat=True)) == {IncidentIMMember.SyncStatus.JOINED}
 
     group.incident.status = IncidentStatus.PROCESSING
     group.incident.save(update_fields=["status", "updated_at"])
     resume_group_for_reopened_incident(group.incident_id)
-    reconcile_outbox = AlertOutbox.objects.get(
-        kind="incident_im_group.reconcile",
-        status=AlertOutbox.Status.PENDING,
-    )
+    reconcile_outbox = AlertOutbox.objects.get(kind="incident_im_group.reconcile", status=AlertOutbox.Status.PENDING,)
     assert deliver_outbox_record(reconcile_outbox.id) is True
 
     reconcile_incident_im_group(group.incident_id, resume_create=True)
     resume_group_for_reopened_incident(group.incident_id)
     summaries = AlertOutbox.objects.filter(
-        kind="incident_im_group.send_summary",
-        payload={"group_id": str(group.id)},
-        status=AlertOutbox.Status.PENDING,
+        kind="incident_im_group.send_summary", payload={"group_id": str(group.id)}, status=AlertOutbox.Status.PENDING,
     )
     assert summaries.count() == 1
 
     with mock.patch(
-        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
-        return_value=CapabilityExecutionResult.success_result("sent"),
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute", return_value=CapabilityExecutionResult.success_result("sent"),
     ) as execute:
         assert deliver_outbox_record(summaries.get().id) is True
 
@@ -499,15 +465,11 @@ def test_create_marks_only_provider_invalid_initial_member_failed(group, pending
         success=True,
         partial_success=True,
         summary="created with invalid members",
-        payload={
-            "chat_id": "oc_1",
-            "invalid_member_ids": [pending_members[1].external_id],
-        },
+        payload={"chat_id": "oc_1", "invalid_member_ids": [pending_members[1].external_id]},
     )
-    with mock.patch(
-        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
-        return_value=result,
-    ), mock.patch("apps.alerts.service.incident_im.delivery.enqueue_outbox"):
+    with mock.patch("apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute", return_value=result,), mock.patch(
+        "apps.alerts.service.incident_im.delivery.enqueue_outbox"
+    ):
         deliver_create_group(group.id)
 
     pending_members[0].refresh_from_db()
@@ -526,19 +488,18 @@ def test_add_members_marks_only_invalid_ids_failed(group, pending_members):
     group.external_chat_id = "oc_1"
     group.save(update_fields=["external_chat_id"])
     result = CapabilityExecutionResult(
-        success=True,
-        partial_success=True,
-        summary="partial",
-        payload={"invalid_member_ids": [pending_members[1].external_id]},
+        success=True, partial_success=True, summary="partial", payload={"invalid_member_ids": [pending_members[1].external_id]},
     )
-    with mock.patch(
-        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
-        return_value=result,
-    ), mock.patch("apps.alerts.service.incident_im.delivery.enqueue_outbox"):
+    with mock.patch("apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute", return_value=result,), mock.patch(
+        "apps.alerts.service.incident_im.delivery.enqueue_outbox"
+    ):
         deliver_add_members(group.id)
 
     states = dict(group.members.values_list("username", "sync_status"))
-    assert states == {pending_members[0].username: "joined", pending_members[1].username: "failed"}
+    assert states == {
+        pending_members[0].username: "joined",
+        pending_members[1].username: "failed",
+    }
     pending_members[0].refresh_from_db()
     pending_members[1].refresh_from_db()
     assert pending_members[0].updated_at > previous_updated_at
@@ -573,10 +534,9 @@ def test_old_add_members_outbox_skips_pending_member_removed_from_incident(group
     )
     success = CapabilityExecutionResult.success_result("added", payload={"invalid_member_ids": []})
 
-    with mock.patch(
-        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
-        return_value=success,
-    ) as execute, mock.patch("apps.alerts.service.incident_im.delivery.enqueue_outbox"):
+    with mock.patch("apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute", return_value=success,) as execute, mock.patch(
+        "apps.alerts.service.incident_im.delivery.enqueue_outbox"
+    ):
         deliver_add_members(group.id)
 
     assert execute.call_args.kwargs["member_ids"] == [current.external_id]
@@ -586,7 +546,10 @@ def test_old_add_members_outbox_skips_pending_member_removed_from_incident(group
 
 @pytest.mark.django_db
 def test_add_members_commits_successful_batch_before_next_batch_retry(group):
-    from apps.alerts.service.incident_im.delivery import IncidentIMRetryableError, deliver_add_members
+    from apps.alerts.service.incident_im.delivery import (
+        IncidentIMRetryableError,
+        deliver_add_members,
+    )
 
     group.external_chat_id = "oc_1"
     group.save(update_fields=["external_chat_id"])
@@ -607,12 +570,9 @@ def test_add_members_commits_successful_batch_before_next_batch_retry(group):
         ]
     )
     success = CapabilityExecutionResult.success_result("added", payload={"invalid_member_ids": []})
-    limited = CapabilityExecutionResult.failed_result(
-        "rate limited", code="provider.rate_limited", retryable=True
-    )
+    limited = CapabilityExecutionResult.failed_result("rate limited", code="provider.rate_limited", retryable=True)
     with mock.patch(
-        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
-        side_effect=[success, limited],
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute", side_effect=[success, limited],
     ):
         with pytest.raises(IncidentIMRetryableError, match="rate limited"):
             deliver_add_members(group.id)
@@ -622,7 +582,7 @@ def test_add_members_commits_successful_batch_before_next_batch_retry(group):
 
 
 @pytest.mark.django_db
-def test_add_members_stops_before_second_batch_and_summary_when_paused_during_first_call(group):
+def test_add_members_stops_before_second_batch_and_summary_when_paused_during_first_call(group,):
     from apps.alerts.service.incident_im.delivery import deliver_add_members
 
     group.external_chat_id = "oc_1"
@@ -647,14 +607,12 @@ def test_add_members_stops_before_second_batch_and_summary_when_paused_during_fi
 
     def pause_during_first_call(*_args, **_kwargs):
         IncidentIMGroup.objects.filter(pk=group.id).update(
-            status=IncidentIMGroup.Status.PAUSED,
-            pause_reason=IncidentIMGroup.PauseReason.MANUAL,
+            status=IncidentIMGroup.Status.PAUSED, pause_reason=IncidentIMGroup.PauseReason.MANUAL,
         )
         return success
 
     with mock.patch(
-        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
-        side_effect=pause_during_first_call,
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute", side_effect=pause_during_first_call,
     ) as execute, mock.patch("apps.alerts.service.incident_im.delivery.enqueue_outbox") as enqueue:
         deliver_add_members(group.id)
 
@@ -696,8 +654,7 @@ def test_add_members_reloads_current_expected_members_before_each_batch(group):
         return success
 
     with mock.patch(
-        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
-        side_effect=remove_last_member_during_first_call,
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute", side_effect=remove_last_member_during_first_call,
     ) as execute, mock.patch("apps.alerts.service.incident_im.delivery.enqueue_outbox"):
         deliver_add_members(group.id)
 
@@ -712,13 +669,8 @@ def test_group_not_found_marks_degraded_without_recreating(group, pending_member
 
     group.external_chat_id = "oc_deleted"
     group.save(update_fields=["external_chat_id"])
-    missing = CapabilityExecutionResult.failed_result(
-        "group missing", code="provider.group_not_found"
-    )
-    with mock.patch(
-        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
-        return_value=missing,
-    ) as execute:
+    missing = CapabilityExecutionResult.failed_result("group missing", code="provider.group_not_found")
+    with mock.patch("apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute", return_value=missing,) as execute:
         deliver_add_members(group.id)
 
     group.refresh_from_db()
@@ -736,15 +688,11 @@ def test_add_members_rechecks_unlinked_state_under_lock_before_external_call(gro
 
     def unlink_before_lock(group_id):
         IncidentIMGroup.objects.filter(pk=group_id).update(
-            status=IncidentIMGroup.Status.UNLINKED,
-            active_slot=None,
+            status=IncidentIMGroup.Status.UNLINKED, active_slot=None,
         )
         return real_lock_group(group_id)
 
-    with mock.patch(
-        "apps.alerts.service.incident_im.delivery._lock_group",
-        side_effect=unlink_before_lock,
-    ), mock.patch(
+    with mock.patch("apps.alerts.service.incident_im.delivery._lock_group", side_effect=unlink_before_lock,), mock.patch(
         "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute"
     ) as execute:
         delivery.deliver_add_members(group.id)
@@ -761,12 +709,9 @@ def test_summary_failure_is_terminal_and_completes_as_partial(group):
     group.external_chat_id = "oc_1"
     group.current_stage = IncidentIMGroup.Stage.SENDING_SUMMARY
     group.save(update_fields=["external_chat_id", "current_stage"])
-    failed = CapabilityExecutionResult.failed_result(
-        "message rejected", code="provider.permission_denied"
-    )
+    failed = CapabilityExecutionResult.failed_result("message rejected", code="provider.permission_denied")
     with mock.patch(
-        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
-        return_value=failed,
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute", return_value=failed,
     ):
         deliver_summary(group.id)
 
@@ -778,16 +723,16 @@ def test_summary_failure_is_terminal_and_completes_as_partial(group):
 
 @pytest.mark.django_db
 def test_retryable_summary_result_raises_for_outbox_retry(group):
-    from apps.alerts.service.incident_im.delivery import IncidentIMRetryableError, deliver_summary
+    from apps.alerts.service.incident_im.delivery import (
+        IncidentIMRetryableError,
+        deliver_summary,
+    )
 
     group.external_chat_id = "oc_1"
     group.save(update_fields=["external_chat_id"])
-    limited = CapabilityExecutionResult.failed_result(
-        "rate limited", code="provider.rate_limited", retryable=True
-    )
+    limited = CapabilityExecutionResult.failed_result("rate limited", code="provider.rate_limited", retryable=True)
     with mock.patch(
-        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
-        return_value=limited,
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute", return_value=limited,
     ):
         with pytest.raises(IncidentIMRetryableError, match="rate limited"):
             deliver_summary(group.id)
@@ -795,11 +740,7 @@ def test_retryable_summary_result_raises_for_outbox_retry(group):
 
 @pytest.mark.django_db
 @pytest.mark.parametrize(
-    "pause_reason",
-    [
-        IncidentIMGroup.PauseReason.MANUAL,
-        IncidentIMGroup.PauseReason.INCIDENT_CLOSED,
-    ],
+    "pause_reason", [IncidentIMGroup.PauseReason.MANUAL, IncidentIMGroup.PauseReason.INCIDENT_CLOSED,],
 )
 def test_queued_summary_paused_before_delivery_finishes_without_provider(group, pause_reason):
     group.external_chat_id = "oc_1"
@@ -807,12 +748,7 @@ def test_queued_summary_paused_before_delivery_finishes_without_provider(group, 
     group.pause_reason = pause_reason
     group.resume_after_reopen = True
     group.save(
-        update_fields=[
-            "external_chat_id",
-            "status",
-            "pause_reason",
-            "resume_after_reopen",
-        ]
+        update_fields=["external_chat_id", "status", "pause_reason", "resume_after_reopen",]
     )
     if pause_reason == IncidentIMGroup.PauseReason.INCIDENT_CLOSED:
         group.incident.status = IncidentStatus.CLOSED
@@ -823,9 +759,7 @@ def test_queued_summary_paused_before_delivery_finishes_without_provider(group, 
         idempotency_key=f"summary-paused-{pause_reason}-{uuid.uuid4().hex}",
     )
 
-    with mock.patch(
-        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute"
-    ) as execute:
+    with mock.patch("apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute") as execute:
         assert deliver_outbox_record(outbox.id) is True
 
     execute.assert_not_called()
@@ -844,11 +778,7 @@ def test_consumed_paused_summary_is_requeued_with_stable_provider_uuid(group, re
     group.current_stage = IncidentIMGroup.Stage.SENDING_SUMMARY
     group.continuous_sync_enabled = False
     group.save(
-        update_fields=[
-            "external_chat_id",
-            "current_stage",
-            "continuous_sync_enabled",
-        ]
+        update_fields=["external_chat_id", "current_stage", "continuous_sync_enabled",]
     )
     if resume_mode == "incident_reopen":
         group.incident.status = IncidentStatus.CLOSED
@@ -856,52 +786,38 @@ def test_consumed_paused_summary_is_requeued_with_stable_provider_uuid(group, re
         pause_group_for_closed_incident(group.incident_id)
     else:
         IncidentIMGroup.objects.filter(pk=group.id).update(
-            status=IncidentIMGroup.Status.PAUSED,
-            pause_reason=IncidentIMGroup.PauseReason.MANUAL,
-            resume_after_reopen=False,
+            status=IncidentIMGroup.Status.PAUSED, pause_reason=IncidentIMGroup.PauseReason.MANUAL, resume_after_reopen=False,
         )
     consumed = AlertOutbox.objects.create(
-        kind="incident_im_group.send_summary",
-        payload={"group_id": str(group.id)},
-        idempotency_key=f"incident-im-group:{group.id}:send-summary",
+        kind="incident_im_group.send_summary", payload={"group_id": str(group.id)}, idempotency_key=f"incident-im-group:{group.id}:send-summary",
     )
 
-    with mock.patch(
-        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute"
-    ) as execute:
+    with mock.patch("apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute") as execute:
         assert deliver_outbox_record(consumed.id) is True
     execute.assert_not_called()
 
     if resume_mode == "manual":
         IncidentIMGroup.objects.filter(pk=group.id).update(
-            status=IncidentIMGroup.Status.ACTIVE,
-            pause_reason="",
-            resume_after_reopen=False,
+            status=IncidentIMGroup.Status.ACTIVE, pause_reason="", resume_after_reopen=False,
         )
         reconcile_incident_im_group(group.incident_id, resume_create=True)
     else:
         group.incident.status = IncidentStatus.PROCESSING
         group.incident.save(update_fields=["status", "updated_at"])
         resume_group_for_reopened_incident(group.incident_id)
-        reconcile_outbox = AlertOutbox.objects.get(
-            kind="incident_im_group.reconcile",
-            status=AlertOutbox.Status.PENDING,
-        )
+        reconcile_outbox = AlertOutbox.objects.get(kind="incident_im_group.reconcile", status=AlertOutbox.Status.PENDING,)
         assert deliver_outbox_record(reconcile_outbox.id) is True
 
     reconcile_incident_im_group(group.incident_id, resume_create=True)
     replacements = AlertOutbox.objects.filter(
-        kind="incident_im_group.send_summary",
-        payload={"group_id": str(group.id)},
-        status=AlertOutbox.Status.PENDING,
+        kind="incident_im_group.send_summary", payload={"group_id": str(group.id)}, status=AlertOutbox.Status.PENDING,
     ).exclude(pk=consumed.pk)
     assert replacements.count() == 1
     replacement = replacements.get()
     assert replacement.idempotency_key != consumed.idempotency_key
 
     with mock.patch(
-        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
-        return_value=CapabilityExecutionResult.success_result("sent"),
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute", return_value=CapabilityExecutionResult.success_result("sent"),
     ) as execute:
         assert deliver_outbox_record(replacement.id) is True
 
@@ -910,20 +826,13 @@ def test_consumed_paused_summary_is_requeued_with_stable_provider_uuid(group, re
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("pause_mode", ["manual", "incident_closed"])
-def test_terminal_create_ack_preserves_pause_then_resume_converges_to_create_failed(
-    group, pending_members, pause_mode
-):
-    terminal = CapabilityExecutionResult.failed_result(
-        "permission denied",
-        code="provider.permission_denied",
-    )
+def test_terminal_create_ack_preserves_pause_then_resume_converges_to_create_failed(group, pending_members, pause_mode):
+    terminal = CapabilityExecutionResult.failed_result("permission denied", code="provider.permission_denied",)
 
     def fail_after_pause(*_args, **_kwargs):
         if pause_mode == "manual":
             IncidentIMGroup.objects.filter(pk=group.id).update(
-                status=IncidentIMGroup.Status.PAUSED,
-                pause_reason=IncidentIMGroup.PauseReason.MANUAL,
-                resume_after_reopen=False,
+                status=IncidentIMGroup.Status.PAUSED, pause_reason=IncidentIMGroup.PauseReason.MANUAL, resume_after_reopen=False,
             )
         else:
             group.incident.status = IncidentStatus.CLOSED
@@ -932,8 +841,7 @@ def test_terminal_create_ack_preserves_pause_then_resume_converges_to_create_fai
         return terminal
 
     with mock.patch(
-        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
-        side_effect=fail_after_pause,
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute", side_effect=fail_after_pause,
     ):
         from apps.alerts.service.incident_im.delivery import deliver_create_group
 
@@ -941,11 +849,7 @@ def test_terminal_create_ack_preserves_pause_then_resume_converges_to_create_fai
 
     group.refresh_from_db()
     assert group.status == IncidentIMGroup.Status.PAUSED
-    assert group.pause_reason == (
-        IncidentIMGroup.PauseReason.MANUAL
-        if pause_mode == "manual"
-        else IncidentIMGroup.PauseReason.INCIDENT_CLOSED
-    )
+    assert group.pause_reason == (IncidentIMGroup.PauseReason.MANUAL if pause_mode == "manual" else IncidentIMGroup.PauseReason.INCIDENT_CLOSED)
     assert group.current_stage == IncidentIMGroup.Stage.COMPLETED
     assert group.last_error_code == "provider.permission_denied"
 
@@ -955,8 +859,7 @@ def test_terminal_create_ack_preserves_pause_then_resume_converges_to_create_fai
 
     if pause_mode == "manual":
         IncidentIMGroup.objects.filter(pk=group.id).update(
-            status=IncidentIMGroup.Status.ACTIVE,
-            pause_reason="",
+            status=IncidentIMGroup.Status.ACTIVE, pause_reason="",
         )
         reconcile_incident_im_group(group.incident_id)
     else:
@@ -969,30 +872,21 @@ def test_terminal_create_ack_preserves_pause_then_resume_converges_to_create_fai
     assert group.pause_reason == ""
     assert group.last_error_code == "provider.permission_denied"
     assert not AlertOutbox.objects.filter(
-        kind="incident_im_group.create",
-        payload={"group_id": str(group.id)},
-        status=AlertOutbox.Status.PENDING,
+        kind="incident_im_group.create", payload={"group_id": str(group.id)}, status=AlertOutbox.Status.PENDING,
     ).exists()
 
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("pause_mode", ["manual", "incident_closed"])
-def test_terminal_add_ack_preserves_pause_then_resume_converges_to_degraded(
-    group, pending_members, pause_mode
-):
+def test_terminal_add_ack_preserves_pause_then_resume_converges_to_degraded(group, pending_members, pause_mode):
     group.external_chat_id = "oc_deleted"
     group.save(update_fields=["external_chat_id"])
-    terminal = CapabilityExecutionResult.failed_result(
-        "group missing",
-        code="provider.group_not_found",
-    )
+    terminal = CapabilityExecutionResult.failed_result("group missing", code="provider.group_not_found",)
 
     def fail_after_pause(*_args, **_kwargs):
         if pause_mode == "manual":
             IncidentIMGroup.objects.filter(pk=group.id).update(
-                status=IncidentIMGroup.Status.PAUSED,
-                pause_reason=IncidentIMGroup.PauseReason.MANUAL,
-                resume_after_reopen=False,
+                status=IncidentIMGroup.Status.PAUSED, pause_reason=IncidentIMGroup.PauseReason.MANUAL, resume_after_reopen=False,
             )
         else:
             group.incident.status = IncidentStatus.CLOSED
@@ -1001,8 +895,7 @@ def test_terminal_add_ack_preserves_pause_then_resume_converges_to_degraded(
         return terminal
 
     with mock.patch(
-        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
-        side_effect=fail_after_pause,
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute", side_effect=fail_after_pause,
     ):
         from apps.alerts.service.incident_im.delivery import deliver_add_members
 
@@ -1010,11 +903,7 @@ def test_terminal_add_ack_preserves_pause_then_resume_converges_to_degraded(
 
     group.refresh_from_db()
     assert group.status == IncidentIMGroup.Status.PAUSED
-    assert group.pause_reason == (
-        IncidentIMGroup.PauseReason.MANUAL
-        if pause_mode == "manual"
-        else IncidentIMGroup.PauseReason.INCIDENT_CLOSED
-    )
+    assert group.pause_reason == (IncidentIMGroup.PauseReason.MANUAL if pause_mode == "manual" else IncidentIMGroup.PauseReason.INCIDENT_CLOSED)
     assert group.current_stage == IncidentIMGroup.Stage.COMPLETED
     assert group.last_error_code == "provider.group_not_found"
 
@@ -1024,8 +913,7 @@ def test_terminal_add_ack_preserves_pause_then_resume_converges_to_degraded(
 
     if pause_mode == "manual":
         IncidentIMGroup.objects.filter(pk=group.id).update(
-            status=IncidentIMGroup.Status.ACTIVE,
-            pause_reason="",
+            status=IncidentIMGroup.Status.ACTIVE, pause_reason="",
         )
         reconcile_incident_im_group(group.incident_id)
     else:
@@ -1038,23 +926,15 @@ def test_terminal_add_ack_preserves_pause_then_resume_converges_to_degraded(
     assert group.pause_reason == ""
     assert group.last_error_code == "provider.group_not_found"
     assert not AlertOutbox.objects.filter(
-        kind="incident_im_group.add_members",
-        payload={"group_id": str(group.id)},
-        status=AlertOutbox.Status.PENDING,
+        kind="incident_im_group.add_members", payload={"group_id": str(group.id)}, status=AlertOutbox.Status.PENDING,
     ).exists()
 
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.parametrize(
-    "pause_reason",
-    [
-        IncidentIMGroup.PauseReason.MANUAL,
-        IncidentIMGroup.PauseReason.INCIDENT_CLOSED,
-    ],
+    "pause_reason", [IncidentIMGroup.PauseReason.MANUAL, IncidentIMGroup.PauseReason.INCIDENT_CLOSED,],
 )
-def test_summary_ack_after_pause_preserves_authoritative_pause(
-    group, pause_reason
-):
+def test_summary_ack_after_pause_preserves_authoritative_pause(group, pause_reason):
     if connections["default"].vendor != "sqlite":
         pytest.skip("当前 Barrier 合同使用 SQLite 独立连接验证")
     group.external_chat_id = "oc_1"
@@ -1079,10 +959,7 @@ def test_summary_ack_after_pause_preserves_authoritative_pause(
         finally:
             connections.close_all()
 
-    with mock.patch(
-        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
-        side_effect=provider_ack_after_pause,
-    ) as execute:
+    with mock.patch("apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute", side_effect=provider_ack_after_pause,) as execute:
         with ThreadPoolExecutor(max_workers=1) as executor:
             future = executor.submit(deliver_from_independent_connection)
             try:
@@ -1094,9 +971,7 @@ def test_summary_ack_after_pause_preserves_authoritative_pause(
                     expected_resume = True
                 else:
                     IncidentIMGroup.objects.filter(pk=group.id).update(
-                        status=IncidentIMGroup.Status.PAUSED,
-                        pause_reason=IncidentIMGroup.PauseReason.MANUAL,
-                        resume_after_reopen=False,
+                        status=IncidentIMGroup.Status.PAUSED, pause_reason=IncidentIMGroup.PauseReason.MANUAL, resume_after_reopen=False,
                     )
                     expected_resume = False
                 barrier.wait(timeout=10)
@@ -1137,8 +1012,7 @@ def test_summary_keeps_group_partial_for_every_non_joined_member_state(group, ga
     )
     result = CapabilityExecutionResult.success_result("sent")
     with mock.patch(
-        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
-        return_value=result,
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute", return_value=result,
     ):
         deliver_summary(group.id)
 
@@ -1172,8 +1046,7 @@ def test_summary_ignores_removed_unjoined_history_when_computing_active_status(g
     )
     result = CapabilityExecutionResult.success_result("sent")
     with mock.patch(
-        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
-        return_value=result,
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute", return_value=result,
     ):
         deliver_summary(group.id)
 
@@ -1182,7 +1055,7 @@ def test_summary_ignores_removed_unjoined_history_when_computing_active_status(g
 
 
 @pytest.mark.django_db
-def test_summary_reuses_stable_provider_uuid_after_external_ack_before_local_confirmation_crash(group):
+def test_summary_reuses_stable_provider_uuid_after_external_ack_before_local_confirmation_crash(group,):
     from apps.alerts.service.incident_im import delivery
 
     group.external_chat_id = "oc_1"
@@ -1198,20 +1071,13 @@ def test_summary_reuses_stable_provider_uuid_after_external_ack_before_local_con
             raise RuntimeError("crash before local confirmation")
         return real_lock_group(group_id)
 
-    with mock.patch(
-        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
-        return_value=result,
-    ) as execute, mock.patch(
-        "apps.alerts.service.incident_im.delivery._lock_group",
-        side_effect=crash_on_confirmation,
+    with mock.patch("apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute", return_value=result,) as execute, mock.patch(
+        "apps.alerts.service.incident_im.delivery._lock_group", side_effect=crash_on_confirmation,
     ):
         with pytest.raises(RuntimeError, match="crash before local confirmation"):
             delivery.deliver_summary(group.id)
 
-    with mock.patch(
-        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
-        return_value=result,
-    ) as retry_execute:
+    with mock.patch("apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute", return_value=result,) as retry_execute:
         delivery.deliver_summary(group.id)
 
     first_key = execute.call_args.kwargs["idempotency_key"]
@@ -1223,18 +1089,14 @@ def test_summary_reuses_stable_provider_uuid_after_external_ack_before_local_con
 def test_delivery_exhausted_moves_group_out_of_creating_state(group):
     from apps.alerts.service.incident_im.delivery import handle_delivery_exhausted
 
-    handle_delivery_exhausted(
-        "incident_im_group.create", {"group_id": str(group.id)}, "timeout"
-    )
+    handle_delivery_exhausted("incident_im_group.create", {"group_id": str(group.id)}, "timeout")
     group.refresh_from_db()
     assert group.status == "create_failed"
 
     group.external_chat_id = "oc_1"
     group.status = IncidentIMGroup.Status.CREATING
     group.save(update_fields=["external_chat_id", "status"])
-    handle_delivery_exhausted(
-        "incident_im_group.add_members", {"group_id": str(group.id)}, "timeout"
-    )
+    handle_delivery_exhausted("incident_im_group.add_members", {"group_id": str(group.id)}, "timeout")
     group.refresh_from_db()
     assert group.status == "active_partial"
 
@@ -1246,22 +1108,12 @@ def test_delivery_exhausted_moves_group_out_of_creating_state(group):
         ("incident_im_group.create", IncidentIMGroup.PauseReason.MANUAL, ""),
         ("incident_im_group.create", IncidentIMGroup.PauseReason.INCIDENT_CLOSED, ""),
         ("incident_im_group.add_members", IncidentIMGroup.PauseReason.MANUAL, "oc_1"),
-        (
-            "incident_im_group.add_members",
-            IncidentIMGroup.PauseReason.INCIDENT_CLOSED,
-            "oc_1",
-        ),
+        ("incident_im_group.add_members", IncidentIMGroup.PauseReason.INCIDENT_CLOSED, "oc_1",),
         ("incident_im_group.send_summary", IncidentIMGroup.PauseReason.MANUAL, "oc_1"),
-        (
-            "incident_im_group.send_summary",
-            IncidentIMGroup.PauseReason.INCIDENT_CLOSED,
-            "oc_1",
-        ),
+        ("incident_im_group.send_summary", IncidentIMGroup.PauseReason.INCIDENT_CLOSED, "oc_1",),
     ],
 )
-def test_delivery_exhausted_preserves_pause_and_outbox_failed_state(
-    group, kind, pause_reason, external_chat_id
-):
+def test_delivery_exhausted_preserves_pause_and_outbox_failed_state(group, kind, pause_reason, external_chat_id):
     from apps.alerts.service.incident_im.delivery import handle_delivery_exhausted
 
     group.external_chat_id = external_chat_id
@@ -1269,26 +1121,17 @@ def test_delivery_exhausted_preserves_pause_and_outbox_failed_state(
     group.pause_reason = pause_reason
     group.resume_after_reopen = True
     group.save(
-        update_fields=[
-            "external_chat_id",
-            "status",
-            "pause_reason",
-            "resume_after_reopen",
-        ]
+        update_fields=["external_chat_id", "status", "pause_reason", "resume_after_reopen",]
     )
     if pause_reason == IncidentIMGroup.PauseReason.INCIDENT_CLOSED:
         group.incident.status = IncidentStatus.CLOSED
         group.incident.save(update_fields=["status"])
     outbox = AlertOutbox.objects.create(
-        kind=kind,
-        payload={"group_id": str(group.id)},
-        idempotency_key=f"exhausted-paused-{uuid.uuid4().hex}",
-        max_attempts=1,
+        kind=kind, payload={"group_id": str(group.id)}, idempotency_key=f"exhausted-paused-{uuid.uuid4().hex}", max_attempts=1,
     )
 
     with mock.patch(
-        "apps.alerts.service.outbox._deliver_payload",
-        side_effect=RuntimeError("provider timeout"),
+        "apps.alerts.service.outbox._deliver_payload", side_effect=RuntimeError("provider timeout"),
     ):
         with pytest.raises(RuntimeError, match="provider timeout"):
             deliver_outbox_record(outbox.id)
@@ -1307,11 +1150,7 @@ def test_delivery_exhausted_preserves_pause_and_outbox_failed_state(
 @pytest.mark.django_db
 @pytest.mark.parametrize(
     ("kind", "external_chat_id"),
-    [
-        ("incident_im_group.create", ""),
-        ("incident_im_group.add_members", "oc_1"),
-        ("incident_im_group.send_summary", "oc_1"),
-    ],
+    [("incident_im_group.create", ""), ("incident_im_group.add_members", "oc_1"), ("incident_im_group.send_summary", "oc_1"),],
 )
 def test_delivery_exhausted_is_noop_for_unlinked_history(group, kind, external_chat_id):
     from apps.alerts.service.incident_im.delivery import handle_delivery_exhausted
@@ -1323,14 +1162,7 @@ def test_delivery_exhausted_is_noop_for_unlinked_history(group, kind, external_c
     group.last_error_code = "IM_UNLINKED"
     group.last_error_message = "已解除绑定"
     group.save(
-        update_fields=[
-            "external_chat_id",
-            "status",
-            "active_slot",
-            "current_stage",
-            "last_error_code",
-            "last_error_message",
-        ]
+        update_fields=["external_chat_id", "status", "active_slot", "current_stage", "last_error_code", "last_error_message",]
     )
 
     handle_delivery_exhausted(kind, {"group_id": str(group.id)}, "provider timeout")

@@ -5,7 +5,10 @@ from django.utils import timezone
 
 from apps.alerts.constants.constants import IncidentStatus
 from apps.alerts.models import AlertOutbox, IncidentIMGroup, IncidentIMMember
-from apps.alerts.service.incident_im.members import get_desired_usernames, reconcile_member_snapshots
+from apps.alerts.service.incident_im.members import (
+    get_desired_usernames,
+    reconcile_member_snapshots,
+)
 from apps.alerts.service.outbox import enqueue_outbox
 
 
@@ -39,71 +42,46 @@ def reconcile_incident_im_group(incident_id, force_delivery=False, resume_create
             group.status = IncidentIMGroup.Status.PENDING_CREATE
             group.current_stage = IncidentIMGroup.Stage.QUEUED
             group.save(update_fields=["status", "current_stage"])
-            _enqueue_recovered_create(group)
+            enqueue_recovered_create(group)
             return group
 
         resolved_members = reconcile_member_snapshots(group, group.incident)
         desired_usernames = {member.username for member in resolved_members}
         if force_delivery:
             group.members.filter(
-                username__in=desired_usernames,
-                mapping_status=IncidentIMMember.MappingStatus.MAPPED,
-                sync_status=IncidentIMMember.SyncStatus.FAILED,
+                username__in=desired_usernames, mapping_status=IncidentIMMember.MappingStatus.MAPPED, sync_status=IncidentIMMember.SyncStatus.FAILED,
             ).exclude(external_id="").update(
-                sync_status=IncidentIMMember.SyncStatus.PENDING,
-                last_error_code="",
-                last_error_message="",
-                updated_at=timezone.now(),
+                sync_status=IncidentIMMember.SyncStatus.PENDING, last_error_code="", last_error_message="", updated_at=timezone.now(),
             )
         if (
             group.status == IncidentIMGroup.Status.ACTIVE
-            and group.members.filter(username__in=desired_usernames)
-            .exclude(sync_status=IncidentIMMember.SyncStatus.JOINED)
-            .exists()
+            and group.members.filter(username__in=desired_usernames).exclude(sync_status=IncidentIMMember.SyncStatus.JOINED).exists()
         ):
             group.status = IncidentIMGroup.Status.ACTIVE_PARTIAL
             group.save(update_fields=["status"])
-        if not _can_deliver(
-            group,
-            force_delivery=force_delivery,
-            resume_create=resume_create,
-        ):
+        if not _can_deliver(group, force_delivery=force_delivery, resume_create=resume_create,):
             return group
 
         pending = list(
             group.members.filter(
-                username__in=desired_usernames,
-                mapping_status=IncidentIMMember.MappingStatus.MAPPED,
-                sync_status=IncidentIMMember.SyncStatus.PENDING,
+                username__in=desired_usernames, mapping_status=IncidentIMMember.MappingStatus.MAPPED, sync_status=IncidentIMMember.SyncStatus.PENDING,
             )
             .exclude(external_id="")
             .order_by("pk")
         )
         if pending and not _has_unfinished_add_members(group.id):
-            signature = "\0".join(
-                f"{member.pk}:{member.updated_at.isoformat(timespec='microseconds')}"
-                for member in pending
-            )
+            signature = "\0".join(f"{member.pk}:{member.updated_at.isoformat(timespec='microseconds')}" for member in pending)
             digest = hashlib.sha256(signature.encode("utf-8")).hexdigest()
             enqueue_outbox(
-                OUTBOX_ADD_MEMBERS,
-                {"group_id": str(group.id)},
-                f"incident-im-group:{group.id}:add-members:{digest}",
+                OUTBOX_ADD_MEMBERS, {"group_id": str(group.id)}, f"incident-im-group:{group.id}:add-members:{digest}",
             )
-        elif not pending and group.current_stage in (
-            IncidentIMGroup.Stage.ADDING_MEMBERS,
-            IncidentIMGroup.Stage.SENDING_SUMMARY,
-        ):
+        elif not pending and group.current_stage in (IncidentIMGroup.Stage.ADDING_MEMBERS, IncidentIMGroup.Stage.SENDING_SUMMARY,):
             _enqueue_recovered_summary(group)
         return group
 
 
 def reconcile_incident_im_group_by_group_id(group_id, force_delivery=False):
-    incident_id = (
-        IncidentIMGroup.objects.filter(pk=group_id, active_slot=1)
-        .values_list("incident_id", flat=True)
-        .first()
-    )
+    incident_id = IncidentIMGroup.objects.filter(pk=group_id, active_slot=1).values_list("incident_id", flat=True).first()
     if incident_id is None:
         return None
     return reconcile_incident_im_group(incident_id, force_delivery=force_delivery)
@@ -125,11 +103,7 @@ def pause_group_for_closed_incident(incident_id):
         ):
             return group
         group.resume_after_reopen = (
-            group.status
-            in (
-                IncidentIMGroup.Status.PENDING_CREATE,
-                IncidentIMGroup.Status.CREATING,
-            )
+            group.status in (IncidentIMGroup.Status.PENDING_CREATE, IncidentIMGroup.Status.CREATING,)
             or group.current_stage == IncidentIMGroup.Stage.SENDING_SUMMARY
             or group.continuous_sync_enabled
         )
@@ -142,11 +116,7 @@ def pause_group_for_closed_incident(incident_id):
 def resume_group_for_reopened_incident(incident_id):
     with transaction.atomic():
         group = _lock_active_group_for_incident(incident_id)
-        if (
-            group is None
-            or group.status != IncidentIMGroup.Status.PAUSED
-            or group.pause_reason != IncidentIMGroup.PauseReason.INCIDENT_CLOSED
-        ):
+        if group is None or group.status != IncidentIMGroup.Status.PAUSED or group.pause_reason != IncidentIMGroup.PauseReason.INCIDENT_CLOSED:
             return group
 
         terminal_status = _terminal_status_from_delivery_facts(group, allow_paused=True)
@@ -157,43 +127,25 @@ def resume_group_for_reopened_incident(incident_id):
             group.save(update_fields=["status", "pause_reason", "resume_after_reopen"])
             return group
 
-        should_resume = (
-            group.resume_after_reopen
-            or group.current_stage == IncidentIMGroup.Stage.SENDING_SUMMARY
-        )
+        should_resume = group.resume_after_reopen or group.current_stage == IncidentIMGroup.Stage.SENDING_SUMMARY
         if not group.external_chat_id:
             group.status = IncidentIMGroup.Status.PENDING_CREATE
             group.current_stage = IncidentIMGroup.Stage.QUEUED
             group.pause_reason = ""
             group.resume_after_reopen = False
             group.save(
-                update_fields=[
-                    "status",
-                    "current_stage",
-                    "pause_reason",
-                    "resume_after_reopen",
-                ]
+                update_fields=["status", "current_stage", "pause_reason", "resume_after_reopen",]
             )
             enqueue_outbox(
                 OUTBOX_CREATE,
                 {"group_id": str(group.id)},
-                "incident-im-group:"
-                f"{group.id}:create:reopen:"
-                f"{group.incident.updated_at.isoformat(timespec='microseconds')}",
+                "incident-im-group:" f"{group.id}:create:reopen:" f"{group.incident.updated_at.isoformat(timespec='microseconds')}",
             )
             return group
 
         desired_usernames = get_desired_usernames(group.incident)
-        has_member_gap = (
-            group.members.filter(username__in=desired_usernames)
-            .exclude(sync_status=IncidentIMMember.SyncStatus.JOINED)
-            .exists()
-        )
-        group.status = (
-            IncidentIMGroup.Status.ACTIVE_PARTIAL
-            if has_member_gap
-            else IncidentIMGroup.Status.ACTIVE
-        )
+        has_member_gap = group.members.filter(username__in=desired_usernames).exclude(sync_status=IncidentIMMember.SyncStatus.JOINED).exists()
+        group.status = IncidentIMGroup.Status.ACTIVE_PARTIAL if has_member_gap else IncidentIMGroup.Status.ACTIVE
         group.pause_reason = ""
         group.resume_after_reopen = False
         group.save(update_fields=["status", "pause_reason", "resume_after_reopen"])
@@ -207,11 +159,7 @@ def enqueue_reconcile(incident, *, resume_create=False):
     payload = {"incident_id": incident.pk}
     if resume_create:
         payload["resume_create"] = True
-    return enqueue_outbox(
-        OUTBOX_RECONCILE,
-        payload,
-        f"incident-im-group:{incident.pk}:reconcile:{updated_at}:{int(resume_create)}",
-    )
+    return enqueue_outbox(OUTBOX_RECONCILE, payload, f"incident-im-group:{incident.pk}:reconcile:{updated_at}:{int(resume_create)}",)
 
 
 def _lock_active_group_for_incident(incident_id):
@@ -234,23 +182,16 @@ def _can_deliver(group, force_delivery, resume_create=False):
 
 def _has_unfinished_add_members(group_id):
     return AlertOutbox.objects.filter(
-        kind=OUTBOX_ADD_MEMBERS,
-        payload={"group_id": str(group_id)},
-        status__in=(AlertOutbox.Status.PENDING, AlertOutbox.Status.DELIVERING),
+        kind=OUTBOX_ADD_MEMBERS, payload={"group_id": str(group_id)}, status__in=(AlertOutbox.Status.PENDING, AlertOutbox.Status.DELIVERING),
     ).exists()
 
 
 def _terminal_status_from_delivery_facts(group, *, allow_paused=False):
     if not allow_paused and (
-        group.status == IncidentIMGroup.Status.PAUSED
-        or group.pause_reason
-        or group.incident.status not in IncidentStatus.ACTIVATE_STATUS
+        group.status == IncidentIMGroup.Status.PAUSED or group.pause_reason or group.incident.status not in IncidentStatus.ACTIVATE_STATUS
     ):
         return None
-    if (
-        group.current_stage != IncidentIMGroup.Stage.COMPLETED
-        or not group.last_error_code
-    ):
+    if group.current_stage != IncidentIMGroup.Stage.COMPLETED or not group.last_error_code:
         return None
     if not group.external_chat_id:
         return IncidentIMGroup.Status.CREATE_FAILED
@@ -264,50 +205,29 @@ def _terminal_status_from_delivery_facts(group, *, allow_paused=False):
 def _enqueue_recovered_summary(group):
     payload = {"group_id": str(group.id)}
     if AlertOutbox.objects.filter(
-        kind=OUTBOX_SEND_SUMMARY,
-        payload=payload,
-        status__in=(AlertOutbox.Status.PENDING, AlertOutbox.Status.DELIVERING),
+        kind=OUTBOX_SEND_SUMMARY, payload=payload, status__in=(AlertOutbox.Status.PENDING, AlertOutbox.Status.DELIVERING),
     ).exists():
         return
     consumed_id = (
-        AlertOutbox.objects.filter(
-            kind=OUTBOX_SEND_SUMMARY,
-            payload=payload,
-            status=AlertOutbox.Status.DELIVERED,
-        )
+        AlertOutbox.objects.filter(kind=OUTBOX_SEND_SUMMARY, payload=payload, status=AlertOutbox.Status.DELIVERED,)
         .order_by("-pk")
         .values_list("pk", flat=True)
         .first()
     )
     idempotency_key = (
-        f"incident-im-group:{group.id}:send-summary"
-        if consumed_id is None
-        else f"incident-im-group:{group.id}:send-summary:resume:{consumed_id}"
+        f"incident-im-group:{group.id}:send-summary" if consumed_id is None else f"incident-im-group:{group.id}:send-summary:resume:{consumed_id}"
     )
     enqueue_outbox(
-        OUTBOX_SEND_SUMMARY,
-        payload,
-        idempotency_key,
+        OUTBOX_SEND_SUMMARY, payload, idempotency_key,
     )
 
 
-def _enqueue_recovered_create(group):
+def enqueue_recovered_create(group):
     payload = {"group_id": str(group.id)}
     if AlertOutbox.objects.filter(
-        kind=OUTBOX_CREATE,
-        payload=payload,
-        status__in=(AlertOutbox.Status.PENDING, AlertOutbox.Status.DELIVERING),
+        kind=OUTBOX_CREATE, payload=payload, status__in=(AlertOutbox.Status.PENDING, AlertOutbox.Status.DELIVERING),
     ).exists():
         return
-    previous_id = (
-        AlertOutbox.objects.filter(kind=OUTBOX_CREATE, payload=payload)
-        .order_by("-pk")
-        .values_list("pk", flat=True)
-        .first()
-    )
-    idempotency_key = (
-        f"incident-im-group:{group.id}:create"
-        if previous_id is None
-        else f"incident-im-group:{group.id}:create:resume:{previous_id}"
-    )
+    previous_id = AlertOutbox.objects.filter(kind=OUTBOX_CREATE, payload=payload).order_by("-pk").values_list("pk", flat=True).first()
+    idempotency_key = f"incident-im-group:{group.id}:create" if previous_id is None else f"incident-im-group:{group.id}:create:resume:{previous_id}"
     enqueue_outbox(OUTBOX_CREATE, payload, idempotency_key)
