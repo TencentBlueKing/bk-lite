@@ -143,9 +143,9 @@ uv run pytest -o addopts='' --nomigrations \
   apps/system_mgmt/tests/test_im_notification_viewset.py \
   apps/alerts/tests/test_incident_im_models.py \
   apps/alerts/tests/test_incident_im_members.py \
-  apps/alerts/tests/test_incident_im_group_views.py \
-  apps/alerts/tests/test_incident_im_delivery.py \
-  apps/alerts/tests/test_incident_im_reconcile.py \
+  apps/alerts/tests/test_incident_im_group_*_views.py apps/alerts/tests/test_incident_im_group_create_service.py \
+  apps/alerts/tests/test_incident_im_delivery_*_service.py \
+  apps/alerts/tests/test_incident_im_reconcile_service.py apps/alerts/tests/test_incident_im_lifecycle_service.py \
   apps/alerts/tests/test_outbox.py \
   apps/alerts/tests/test_incident_operator.py -q
 
