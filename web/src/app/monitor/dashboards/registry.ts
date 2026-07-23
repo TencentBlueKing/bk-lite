@@ -12,6 +12,7 @@ import ConsulDashboard from './objects/consul';
 import RabbitMQDashboard from './objects/rabbitmq';
 import TomcatDashboard from './objects/tomcat';
 import ZookeeperDashboard from './objects/zookeeper';
+import KafkaDashboard from './objects/kafka';
 import PingDashboard from './objects/ping';
 import TcpDashboard from './objects/tcp';
 import PostgresqlDashboard from './objects/postgresql';
@@ -141,6 +142,14 @@ const COMMUNITY_DASHBOARDS: ProfessionalDashboardRegistryItem[] = [
     objectDisplayName: 'Zookeeper',
     inheritedPermissionPath: '/monitor/view',
     component: ZookeeperDashboard
+  },
+  {
+    key: 'kafka',
+    groupKey: 'middleware',
+    objectName: 'Kafka',
+    objectDisplayName: 'Kafka',
+    inheritedPermissionPath: '/monitor/view',
+    component: KafkaDashboard
   },
   {
     key: 'postgres',
