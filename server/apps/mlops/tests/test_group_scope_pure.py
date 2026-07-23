@@ -68,7 +68,8 @@ def test_get_allowed_team_ids_no_group_list_empty():
 # ---------- validate_requested_teams ----------
 
 def test_validate_requested_teams_normalizes():
-    assert gs.validate_requested_teams(_req(), [1, "2", 3]) == [1, 2, 3]
+    user = SimpleNamespace(is_superuser=False, group_list=[1, 2, 3])
+    assert gs.validate_requested_teams(_req(user=user), [1, "2", 3]) == [1, 2, 3]
 
 
 def test_validate_requested_teams_empty_raises():
@@ -120,6 +121,18 @@ def test_assert_team_ownership_none_team_raises():
 def test_assert_parent_team_matches_equal_ok():
     owner = SimpleNamespace(team=[1, 2])
     parent = SimpleNamespace(team=[1, 2])
+    gs.assert_parent_team_matches(owner, parent, "ds")
+
+
+def test_assert_parent_team_matches_equivalent_order_ok():
+    owner = SimpleNamespace(team=[1, 2])
+    parent = SimpleNamespace(team=[2, 1])
+    gs.assert_parent_team_matches(owner, parent, "ds")
+
+
+def test_assert_parent_team_matches_equivalent_duplicates_ok():
+    owner = SimpleNamespace(team=[1, 1, 2])
+    parent = SimpleNamespace(team=[2, 1])
     gs.assert_parent_team_matches(owner, parent, "ds")
 
 
