@@ -20,6 +20,12 @@ async def _consume_response(response):
     return total_size
 
 
+async def _consume_one_chunk_then_disconnect(response):
+    iterator = response.__aiter__()
+    await iterator.__anext__()
+    await iterator.aclose()
+
+
 def _measure_asgi_response(response):
     tracemalloc.start()
     streamed_size = asyncio.run(_consume_response(response))
@@ -85,5 +91,28 @@ def test_model_download_response_close_cleans_unconsumed_archive():
 
     response = ms.build_model_download_response(archive, "model_r1.zip")
     response.close()
+
+    assert archive.closed
+
+
+def test_model_download_response_preserves_file_response_basename():
+    archive = tempfile.TemporaryFile(mode="w+b")
+    archive.write(b"zipdata")
+    archive.seek(0)
+
+    response = ms.build_model_download_response(archive, "team/model_r1.zip")
+    try:
+        assert response["Content-Disposition"] == 'attachment; filename="model_r1.zip"'
+    finally:
+        response.close()
+
+
+def test_model_download_response_disconnect_closes_archive():
+    archive = tempfile.TemporaryFile(mode="w+b")
+    archive.write(b"x" * (128 * 1024))
+    archive.seek(0)
+
+    response = ms.build_model_download_response(archive, "model_r1.zip")
+    asyncio.run(_consume_one_chunk_then_disconnect(response))
 
     assert archive.closed

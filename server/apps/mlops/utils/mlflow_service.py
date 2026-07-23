@@ -393,10 +393,21 @@ class _AsyncFileIterator:
         chunk = await self._read(self.block_size)
         if chunk:
             return chunk
+        self.close()
         raise StopAsyncIteration
+
+    async def aclose(self):
+        self.close()
 
     def close(self):
         self.file_stream.close()
+
+
+class _AsyncFileStreamingHttpResponse(StreamingHttpResponse):
+    """让 ASGIHandler 的 aclosing 直接关闭底层异步文件迭代器。"""
+
+    def __aiter__(self):
+        return self._iterator
 
 
 def build_model_download_response(zip_stream: BinaryIO, filename: str) -> StreamingHttpResponse:
@@ -406,11 +417,12 @@ def build_model_download_response(zip_stream: BinaryIO, filename: str) -> Stream
     content_length = zip_stream.tell() - initial_position
     zip_stream.seek(initial_position)
 
-    response = StreamingHttpResponse(
+    response = _AsyncFileStreamingHttpResponse(
         _AsyncFileIterator(zip_stream),
         content_type="application/zip",
     )
     response["Content-Length"] = content_length
+    filename = os.path.basename(filename)
     if disposition := content_disposition_header(True, filename):
         response["Content-Disposition"] = disposition
     return response
