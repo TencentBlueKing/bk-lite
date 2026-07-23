@@ -71,6 +71,7 @@ export interface ConfigDiffReportValue {
     summary: string;
     before_yaml: string;
     after_yaml: string;
+    skill_id?: number;
   }>;
 }
 
