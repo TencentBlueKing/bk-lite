@@ -15,7 +15,7 @@ executors:
     type: protocol
     timeout: 600
     collector:
-      module: plugins.inputs.ip_discovery.ip_discovery_scanner
+      module: plugins.inputs.ip.ip_discovery_scanner
       class: IPDiscoveryScanner
 
 default_executor: protocol
