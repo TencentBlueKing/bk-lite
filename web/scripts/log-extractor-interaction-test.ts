@@ -90,4 +90,20 @@ assert.equal(
 assert.match(conditionListSource, /<Col xs=\{24\} md=\{5\}>/);
 assert.match(conditionListSource, /<Col xs=\{24\} md=\{3\}>/);
 
+assert.doesNotMatch(
+  drawerSource,
+  /publication\.published_generation\}\s*\/\s*\{publication\.desired_generation/,
+  '发布状态不应使用容易被误解为规则条数的斜杠版本号'
+);
+for (const key of ['publishedVersion', 'targetVersion', 'instanceRuleCount']) {
+  assert.match(drawerSource, new RegExp(`log\\.extractor\\.${key}`));
+  assert.ok(zhLocale.log.extractor[key], `中文应提供 ${key} 状态标签`);
+  assert.ok(enLocale.log.extractor[key], `英文应提供 ${key} 状态标签`);
+}
+assert.match(
+  drawerSource,
+  /log\.extractor\.instanceRuleCount'[\s\S]{0,120}rules\.length/,
+  '状态区应明确展示当前采集实例的规则数量'
+);
+
 console.log('log-extractor-interaction tests passed');

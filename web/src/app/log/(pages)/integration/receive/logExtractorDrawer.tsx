@@ -445,13 +445,21 @@ const LogExtractorDrawer = ({ instance, open, onClose }: Props) => {
             type={publication.status === 'failed' ? 'error' : 'info'}
             showIcon
             message={
-              <Space>
-                <span>{t('log.extractor.globalStatus')}</span>
-                <Tag color={publicationColor[publication.status]}>
-                  {t(`log.extractor.${publication.status}`)}
-                </Tag>
-                <span>
-                  {publication.published_generation}/{publication.desired_generation}
+              <Space size={[16, 4]} wrap>
+                <Space size={8}>
+                  <span>{t('log.extractor.globalStatus')}</span>
+                  <Tag color={publicationColor[publication.status]}>
+                    {t(`log.extractor.${publication.status}`)}
+                  </Tag>
+                </Space>
+                <span className="tabular-nums">
+                  {t('log.extractor.publishedVersion')}: <strong>{publication.published_generation}</strong>
+                </span>
+                <span className="tabular-nums">
+                  {t('log.extractor.targetVersion')}: <strong>{publication.desired_generation}</strong>
+                </span>
+                <span className="tabular-nums">
+                  {t('log.extractor.instanceRuleCount')}: <strong>{rules.length}</strong>
                 </span>
               </Space>
             }
