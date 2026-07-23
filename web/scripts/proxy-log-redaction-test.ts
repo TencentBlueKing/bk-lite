@@ -66,12 +66,22 @@ async function main() {
     /\[PROXY ERROR\] Request timeout: \$\{logTarget\}/,
     'timeout logs must use the query-free target',
   );
+  assert.match(
+    routeSource,
+    /\[PROXY ERROR\] Failed to proxy request: \$\{error\.name \|\| 'UnknownError'\} from \$\{logTarget\}/,
+    'generic fetch errors must not log an error message that can contain the full target URL',
+  );
 
   const proxyLogLines = routeSource.split('\n').filter((line) => line.includes('[PROXY'));
   assert.equal(
     proxyLogLines.some((line) => line.includes('${targetUrl}')),
     false,
     'no proxy log statement may interpolate the full forwarding URL',
+  );
+  assert.equal(
+    proxyLogLines.some((line) => line.includes('${error.message}')),
+    false,
+    'no proxy log statement may interpolate fetch error messages that can contain the full forwarding URL',
   );
 
   console.log('proxy log redaction tests passed');

@@ -130,7 +130,7 @@ async function handleProxy(req: NextRequest): Promise<NextResponse | Response> {
       );
     }
 
-    console.error(`[PROXY ERROR] Failed to proxy request: ${error.message}`);
+    console.error(`[PROXY ERROR] Failed to proxy request: ${error.name || 'UnknownError'} from ${logTarget}`);
     return NextResponse.json(
       { error: 'Proxy Failed', message: error.message },
       { status: 500 }
