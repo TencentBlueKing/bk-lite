@@ -338,15 +338,15 @@ vmagent 的 ClusterRole 权限固定为：
 
 - `container_cpu_usage_seconds_total`
 - `container_memory_working_set_bytes`
-- `container_fs_usage_bytes`
-- `container_fs_limit_bytes`
+- `container_fs_reads_total`
+- `container_fs_writes_total`
 - `container_network_receive_bytes_total`
 - `container_network_transmit_bytes_total`
 
 过滤规则：
 
 - 删除缺失 `pod` 的 root、节点汇总和非 Pod 指标。
-- CPU、内存、文件系统指标删除空 `container` 的 Pod 聚合序列。
+- CPU、内存、文件系统读写指标删除空 `container` 的 Pod 聚合序列。
 - 网络指标保留 Pod sandbox 序列，因为网络通常归属 Pod 网络命名空间；仪表盘按 Pod 聚合，避免依赖业务容器名。
 - 保留 `namespace`、`pod`、`container`、`node`、`instance_id`、`instance_type` 等查询所需标签，禁止高基数的容器 ID 或镜像 digest 进入最终业务维度，除非有已批准的查询场景。
 
@@ -354,13 +354,25 @@ vmagent 的 ClusterRole 权限固定为：
 
 K3S 清单部署独立 kube-state-metrics，资源名、ServiceAccount、Service、Role 和绑定均使用 K3S 前缀。vmagent 只抓取 K3S 自有 Service，不通过标签选择器误抓取其他命名空间中的 kube-state-metrics。
 
-保留实例发现和首期仪表盘需要的指标：
+保留实例发现、K3S 插件指标和首期专业仪表盘共同需要的 17 个指标族：
 
+- `kube_daemonset_status_desired_number_scheduled`
+- `kube_daemonset_status_number_available`
+- `kube_daemonset_status_number_unavailable`
+- `kube_deployment_spec_replicas`
+- `kube_deployment_status_replicas_available`
+- `kube_deployment_status_replicas_unavailable`
 - `kube_node_info`
+- `kube_node_status_allocatable`
 - `kube_node_status_condition`
+- `kube_pod_container_resource_limits`
+- `kube_pod_container_resource_requests`
+- `kube_pod_container_status_restarts_total`
+- `kube_pod_container_status_waiting_reason`
 - `kube_pod_info`
 - `kube_pod_status_phase`
-- 现有 K3SCluster/K3SNode/K3SPod 指标描述中实际引用的其他 KSM 指标
+- `kube_statefulset_replicas`
+- `kube_statefulset_status_replicas_ready`
 
 插件指标描述、vmagent allowlist 和仪表盘查询必须由一致性测试保证同步，不能靠人工记忆维护三份列表。
 
