@@ -33,6 +33,7 @@ import Permission from '@/components/permission';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import type { TableProps, MenuProps } from 'antd';
 import TreeSelector from '@/app/log/components/tree-selector';
+import LogExtractorDrawer from './logExtractorDrawer';
 const { confirm } = Modal;
 
 type TableRowSelection<T extends object = object> =
@@ -75,6 +76,11 @@ const Asset = () => {
   const [collectTypeMap, setCollectTypeMap] = useState<Record<number, string>>(
     {}
   );
+  const [extractorInstance, setExtractorInstance] = useState<{
+    id: string;
+    name: string;
+    canOperate: boolean;
+  } | null>(null);
 
   const handleAssetMenuClick: MenuProps['onClick'] = (e) => {
     openInstanceModal(
@@ -133,7 +139,7 @@ const Asset = () => {
       title: t('common.action'),
       key: 'action',
       dataIndex: 'action',
-      width: 240,
+      width: 340,
       fixed: 'right',
       render: (_, record) => (
         <>
@@ -162,6 +168,21 @@ const Asset = () => {
             onClick={() => viewLog(record)}
           >
             {t('log.integration.viewLogs')}
+          </Button>
+          <Button
+            className="ml-[10px]"
+            type="link"
+            onClick={() =>
+              setExtractorInstance({
+                id: String(record.id),
+                name: String(record.name || record.id),
+                canOperate:
+                  Array.isArray(record.permission) &&
+                  record.permission.includes('Operate')
+              })
+            }
+          >
+            {t('log.extractor.title')}
           </Button>
           <Permission requiredPermissions={['Delete']}>
             <Popconfirm
@@ -521,6 +542,11 @@ const Asset = () => {
           ref={instanceRef}
           organizationList={organizationList}
           onSuccess={() => getAssetInsts()}
+        />
+        <LogExtractorDrawer
+          instance={extractorInstance}
+          open={Boolean(extractorInstance)}
+          onClose={() => setExtractorInstance(null)}
         />
       </div>
     </div>

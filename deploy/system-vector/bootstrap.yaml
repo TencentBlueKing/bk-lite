@@ -1,0 +1,8 @@
+provider:
+  type: http
+  url: ${SYSTEM_VECTOR_CONFIG_URL}
+  poll_interval_secs: 30
+  config_format: yaml
+  request:
+    headers:
+      Authorization: Bearer ${SYSTEM_VECTOR_CONFIG_TOKEN}
