@@ -347,13 +347,12 @@ class AlertSourceAdapter(ABC):
     def _resolve_event_team(self, alert: Dict[str, Any]) -> List:
         """归属组织取值：可信内部推送且 event 自带 organizations 时采信之，否则走 secret 解析结果。
 
-        安全约束：可信内部推送路径下，event 中携带的 organizations 必须是本告警源已注册组织
-        （team_secrets.keys()）的子集，超出范围的组织 ID 将被过滤并告警，防止 NATS 内任意
-        节点通过伪造 pusher 字符串实现跨组织写污染。
+        监控中心、日志中心等 NATS 内部白名单来源由上游负责确定组织归属，不要求告警源
+        预先维护 team_secrets；外部告警源仍沿用组织级 secret 解析结果。
         """
         if self.trusted_internal and "organizations" in alert:
             try:
-                requested = normalize_team_ids(alert.get("organizations"))
+                return normalize_team_ids(alert.get("organizations"))
             except ValueError:
                 logger.warning(
                     "[AlertSource] 可信内部推送携带非法 organizations，已置空：source_id=%s organizations=%s",
@@ -361,24 +360,6 @@ class AlertSourceAdapter(ABC):
                     alert.get("organizations"),
                 )
                 return []
-
-            # 仅允许告警源已注册（team_secrets 中存在）的组织，过滤越权组织 ID。
-            # 注意：当 team_secrets 为空时，白名单也为空，所有 organizations 均被拒绝（返回 []），
-            # 防止未完成注册的告警源被利用绕过跨组织写污染防护。
-            authorized_team_ids = {
-                str(tid) for tid in (self.alert_source.team_secrets or {}).keys()
-            }
-            allowed = [tid for tid in requested if str(tid) in authorized_team_ids]
-            blocked = [tid for tid in requested if str(tid) not in authorized_team_ids]
-            if blocked:
-                logger.warning(
-                    "[AlertSource] 可信内部推送携带未授权 organizations，已过滤："
-                    "source_id=%s blocked=%s allowed=%s",
-                    self.alert_source.source_id,
-                    blocked,
-                    allowed,
-                )
-            return allowed
         return self.resolved_team
 
     def add_base_fields(self, event: Event, alert: Dict[str, Any]):

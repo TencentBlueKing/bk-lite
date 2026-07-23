@@ -213,6 +213,54 @@ def test_process_aggregation_smart_denoise_creates_alert(source):
 
 
 @pytest.mark.django_db
+def test_process_aggregation_reports_alert_creation_failure(source, mocker):
+    """告警组创建失败必须让本轮聚合失败，不能继续上报“聚合成功”。"""
+    from apps.alerts.constants.constants import LevelType
+    from apps.alerts.models.models import Level
+
+    for lid in (0, 1, 2):
+        Level.objects.create(
+            level_id=lid,
+            level_name=f"L{lid}",
+            level_display_name=f"等级{lid}",
+            level_type=LevelType.ALERT,
+        )
+
+    Event.objects.create(
+        source=source,
+        raw_data={},
+        title="CPU高",
+        level="1",
+        start_time=timezone.now(),
+        event_id="E-create-fails",
+        action=EventAction.CREATED,
+        service="svc-a",
+        resource_name="host1",
+        item="cpu",
+        external_id="ext-create-fails",
+    )
+    strategy = AlarmStrategy.objects.create(
+        name="创建失败降噪",
+        strategy_type="smart_denoise",
+        is_active=True,
+        team=[1],
+        dispatch_team=[1],
+        match_rules=[[{"key": "title", "operator": "eq", "value": "CPU高"}]],
+        params={"window_size": 60, "group_by": ["service"]},
+    )
+    mocker.patch(
+        "apps.alerts.aggregation.builder.alert_builder.AlertBuilder.create_or_update_alert",
+        side_effect=RuntimeError("alert write failed"),
+    )
+
+    with pytest.raises(RuntimeError, match="1 个告警组创建失败"):
+        AggregationProcessor().process_aggregation()
+
+    strategy.refresh_from_db()
+    assert strategy.last_execute_time is None
+
+
+@pytest.mark.django_db
 def test_process_aggregation_smart_denoise_updates_last_execute_time_without_events():
     strategy = AlarmStrategy.objects.create(
         name="无事件降噪",
