@@ -720,6 +720,7 @@
                 "reconciling": "节点管理同步配置正在对账，请稍候刷新。"
             },
             "status": {
+                "unexecuted": "尚未执行采集",
                 "waitingSync": "等待首次同步完成后开始采集",
                 "running": "正在执行节点管理同步",
                 "submitted": "已提交到区域采集任务，等待执行结果",

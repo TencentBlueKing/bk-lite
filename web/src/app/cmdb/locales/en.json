@@ -720,6 +720,7 @@
                 "reconciling": "Node Management sync configuration is reconciling. Refresh again shortly."
             },
             "status": {
+                "unexecuted": "Collection has not run yet",
                 "waitingSync": "Collection will start after the first sync completes",
                 "running": "Node Management sync is running",
                 "submitted": "Submitted to regional collection tasks; waiting for results",

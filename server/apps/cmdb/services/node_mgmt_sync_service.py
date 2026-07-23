@@ -1708,13 +1708,24 @@ class NodeMgmtSyncService:
         task = cls.get_task()
         if task.auto_collect_enabled:
             collect_payload = cls._build_collect_display_payload(cls.DISPLAY_SOURCE_COLLECT)
-            if collect_payload and cls._has_display_data(collect_payload.get("detail")):
+            collect_has_data = bool(collect_payload and cls._has_display_data(collect_payload.get("detail")))
+            collect_status = (collect_payload.get("run") or {}).get("status") if collect_payload else None
+            if collect_has_data and collect_status != "unexecuted":
                 payload = collect_payload
                 payload["task"] = cls.serialize_task(task)
                 return payload
             latest_collect_run = cls.get_latest_run(NodeMgmtSyncRun.RUN_TYPE_COLLECT, task=task)
             if latest_collect_run and (latest_collect_run.detail_json or latest_collect_run.summary_json):
                 payload = cls._display_payload_from_sync_run(latest_collect_run, cls.DISPLAY_SOURCE_COLLECT)
+                payload["task"] = cls.serialize_task(task)
+                return payload
+            latest_sync_run = cls.get_latest_run(NodeMgmtSyncRun.RUN_TYPE_SYNC, task=task)
+            if latest_sync_run:
+                payload = cls._display_payload_from_sync_run(latest_sync_run, cls.DISPLAY_SOURCE_SYNC_FALLBACK)
+                payload["task"] = cls.serialize_task(task)
+                return payload
+            if collect_has_data:
+                payload = collect_payload
                 payload["task"] = cls.serialize_task(task)
                 return payload
             payload = cls._build_empty_display_payload(cls.DISPLAY_SOURCE_COLLECT)

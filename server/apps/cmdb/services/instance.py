@@ -727,8 +727,10 @@ class InstanceManage(object):
         format_permission_dict = InstanceManage._build_format_permission_dict(permission_map, creator)
 
         _page = dict(skip=(page - 1) * page_size, limit=page_size)
+        order_type = "ASC"
         if order and order.startswith("-"):
-            order = f"{order.replace('-', '')} DESC"
+            order = order[1:]
+            order_type = "DESC"
 
         with GraphClient() as ag:
             query = dict(
@@ -736,6 +738,7 @@ class InstanceManage(object):
                 params=params,
                 page=_page,
                 order=order,
+                order_type=order_type,
                 format_permission_dict=format_permission_dict,
                 case_sensitive=case_sensitive,
             )

@@ -77,7 +77,36 @@ for instance in data["items"]:
 - 必须同时检查 HTTP 状态和响应体中的 `result`。
 - 调用一定要设置超时。
 
-### 2.2 创建实例
+### 2.2 临时跳过 SSL 证书校验
+
+如果测试环境使用自签名证书或证书链尚未配置完整，`requests` 可能抛出
+`SSLCertVerificationError`。仅在排查测试环境时，可以临时关闭证书校验：
+
+```python
+import os
+
+import requests
+import urllib3
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+response = requests.get(
+    "https://bk-lite.example.com/api/v1/cmdb/api/open/classifications",
+    headers={
+        "Api-Authorization": os.environ["CMDB_API_SECRET"],
+        "Accept": "application/json",
+    },
+    timeout=10,
+    verify=False,
+)
+response.raise_for_status()
+print(response.json())
+```
+
+`verify=False` 会跳过服务端身份校验，存在中间人攻击风险，不能用于生产环境。
+生产环境应补全服务端证书链，或使用 `verify="/path/to/ca.pem"` 指定可信 CA。
+
+### 2.3 创建实例
 
 ```python
 import os
