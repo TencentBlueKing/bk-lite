@@ -24,7 +24,7 @@ def _healthy_result():
     return SimpleNamespace(schedule_status="healthy", node_config_status="healthy", error_code="",)
 
 
-def test_management_command_recovers_and_reconciles_node_configs(mocker):
+def test_management_command_recovers_and_reconciles_schedules_without_remote_delivery(mocker):
     config = NodeMgmtSyncService.get_task()
     mocker.patch(f"{COMMAND}.NodeMgmtSyncService.get_task", return_value=config)
     recover = mocker.patch(f"{COMMAND}.NodeMgmtSyncService.recover_stale_runs")
@@ -35,7 +35,40 @@ def test_management_command_recovers_and_reconciles_node_configs(mocker):
 
     recover.assert_called_once_with()
     refresh.assert_called_once_with()
-    reconcile.assert_called_once_with(config, reconcile_node_configs=True)
+    # 启动阶段 NATS 响应方未就绪，命令不得发起节点配置远端交付
+    reconcile.assert_called_once_with(config)
+
+
+def test_management_command_does_not_fail_startup_on_stale_degraded_node_config(mocker):
+    config = NodeMgmtSyncService.get_task()
+    mocker.patch(f"{COMMAND}.NodeMgmtSyncService.get_task", return_value=config)
+    mocker.patch(f"{COMMAND}.NodeMgmtSyncService.recover_stale_runs")
+    mocker.patch(f"{COMMAND}.NodeMgmtSyncService.refresh_submitted_collect_runs")
+    mocker.patch(
+        f"{COMMAND}.NodeMgmtSyncReconciler.reconcile",
+        return_value=SimpleNamespace(
+            schedule_status="healthy",
+            node_config_status="degraded",
+            error_code="NODE_CONFIG_RECONCILE_FAILED",
+        ),
+    )
+
+    # 上一轮运行遗留的 degraded 交付状态由周期恢复任务收敛，不应阻断启动
+    call_command("reconcile_node_mgmt_sync")
+
+
+def test_management_command_still_fails_on_unhealthy_schedule(mocker):
+    config = NodeMgmtSyncService.get_task()
+    mocker.patch(f"{COMMAND}.NodeMgmtSyncService.get_task", return_value=config)
+    mocker.patch(f"{COMMAND}.NodeMgmtSyncService.recover_stale_runs")
+    mocker.patch(f"{COMMAND}.NodeMgmtSyncService.refresh_submitted_collect_runs")
+    mocker.patch(
+        f"{COMMAND}.NodeMgmtSyncReconciler.reconcile",
+        return_value=SimpleNamespace(schedule_status="degraded", node_config_status="unknown", error_code="RECONCILE_FAILED",),
+    )
+
+    with pytest.raises(CommandError, match="RECONCILE_FAILED"):
+        call_command("reconcile_node_mgmt_sync")
 
 
 def test_management_command_creates_fixed_recovery_schedule_independent_of_switches():
