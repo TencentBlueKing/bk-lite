@@ -31,6 +31,13 @@ _COLLECT_TERMINAL_STATUSES = (
     CollectRunStatusType.PARTIAL_SUCCESS,
 )
 
+PUBLIC_ENUM_SNAPSHOT_MAX_RETRIES = max(
+    0, int(os.getenv("CMDB_PUBLIC_ENUM_SNAPSHOT_MAX_RETRIES", "3"))
+)
+PUBLIC_ENUM_SNAPSHOT_RETRY_BASE_SECONDS = max(
+    1, int(os.getenv("CMDB_PUBLIC_ENUM_SNAPSHOT_RETRY_BASE_SECONDS", "10"))
+)
+
 
 def _is_unhelpful_error_message(message: str) -> bool:
     text = str(message or "").strip()
@@ -608,12 +615,42 @@ def execute_collect_tool_debug_task(debug_id: str, payload: dict, service_name: 
         return result
 
 
-@shared_task
-def sync_public_enum_library_snapshots_task(library_id: str, trigger: str, operator: str | None = None) -> dict:
+@shared_task(bind=True, max_retries=PUBLIC_ENUM_SNAPSHOT_MAX_RETRIES)
+def sync_public_enum_library_snapshots_task(
+    self, library_id: str, trigger: str, operator: str | None = None
+) -> dict:
     from apps.cmdb.services.public_enum_library import sync_library_snapshots
 
     logger.info(f"[SyncPublicEnumSnapshots] task started library_id={library_id}, trigger={trigger}, operator={operator}")
-    return sync_library_snapshots(library_id, trigger, operator)
+    result = sync_library_snapshots(library_id, trigger, operator)
+    failed_count = int(result.get("failed_count") or 0)
+    if not failed_count:
+        return result
+
+    retry_number = int(self.request.retries)
+    error = RuntimeError(
+        f"公共枚举快照同步存在失败项: library_id={library_id}, failed_count={failed_count}"
+    )
+    if retry_number >= self.max_retries:
+        logger.error(
+            "[SyncPublicEnumSnapshots] retries exhausted library_id=%s, "
+            "failed_count=%s, attempts=%s",
+            library_id,
+            failed_count,
+            retry_number + 1,
+        )
+        raise error
+
+    countdown = PUBLIC_ENUM_SNAPSHOT_RETRY_BASE_SECONDS * (2**retry_number)
+    logger.warning(
+        "[SyncPublicEnumSnapshots] retry partial failure library_id=%s, "
+        "failed_count=%s, attempt=%s, countdown=%s",
+        library_id,
+        failed_count,
+        retry_number + 1,
+        countdown,
+    )
+    raise self.retry(exc=error, countdown=countdown)
 
 
 @shared_task

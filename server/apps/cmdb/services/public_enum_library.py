@@ -293,7 +293,7 @@ def sync_library_snapshots(library_id: str, trigger: str, operator: str | None =
     )
 
     return {
-        "result": True,
+        "result": not failed_items,
         "library_id": library_id,
         "affected_models": len(affected_models),
         "affected_attrs": affected_attrs,
