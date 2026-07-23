@@ -1,4 +1,5 @@
-from urllib.parse import urlencode
+import ipaddress
+from urllib.parse import urlencode, urlsplit
 
 from django.conf import settings
 from django.db import transaction
@@ -20,7 +21,10 @@ class IncidentIMRetryableError(RuntimeError):
 
 
 class IncidentIMConfigurationError(RuntimeError):
-    pass
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
+        self.safe_message = message
 
 
 def deliver_create_group(group_id) -> None:
@@ -214,8 +218,8 @@ def deliver_summary(group_id) -> None:
 
     try:
         content = _build_incident_summary(group)
-    except IncidentIMConfigurationError:
-        result = _SyntheticFailure("IM_WEB_BASE_URL_MISSING", "未配置可从飞书访问的 BK-Lite Web 地址")
+    except IncidentIMConfigurationError as exc:
+        result = _SyntheticFailure(exc.code, exc.safe_message)
     else:
         result = IMGroupRuntimeService.execute(
             group.channel,
@@ -248,7 +252,11 @@ def deliver_summary(group_id) -> None:
             "last_sync_at",
         ]
         if not delivery_paused:
-            if not result.success and error_code in {"provider.group_not_found", "IM_WEB_BASE_URL_MISSING"}:
+            if not result.success and error_code in {
+                "provider.group_not_found",
+                "IM_WEB_BASE_URL_MISSING",
+                "IM_WEB_BASE_URL_INVALID",
+            }:
                 locked.status = IncidentIMGroup.Status.DEGRADED
             else:
                 locked.status = IncidentIMGroup.Status.ACTIVE if result.success and not has_member_gaps else IncidentIMGroup.Status.ACTIVE_PARTIAL
@@ -410,9 +418,7 @@ def _build_incident_summary(group) -> str:
     operator_names = "、".join(str(operator) for operator in operators if operator)
     query = urlencode({"id": incident.pk, "incident_id": incident.incident_id})
     path = f"/alarm/incidents/detail?{query}"
-    base_url = (getattr(settings, "WEB_BASE_URL", "") or "").rstrip("/")
-    if not base_url:
-        raise IncidentIMConfigurationError("WEB_BASE_URL is required for Incident IM summaries")
+    base_url = _public_web_base_url()
     detail_url = f"{base_url}{path}"
     return "\n".join(
         [
@@ -426,6 +432,35 @@ def _build_incident_summary(group) -> str:
             f"详情：{detail_url}",
         ]
     )
+
+
+def _public_web_base_url() -> str:
+    base_url = (getattr(settings, "WEB_BASE_URL", "") or "").strip().rstrip("/")
+    if not base_url:
+        raise IncidentIMConfigurationError(
+            "IM_WEB_BASE_URL_MISSING", "WEB_BASE_URL 未配置或不可从飞书访问",
+        )
+    try:
+        parsed = urlsplit(base_url)
+        hostname = parsed.hostname
+        parsed.port
+    except ValueError as exc:
+        raise IncidentIMConfigurationError("IM_WEB_BASE_URL_INVALID", "WEB_BASE_URL 必须配置为可从飞书访问的 HTTP(S) 绝对地址",) from exc
+    is_valid = parsed.scheme in {"http", "https"} and bool(hostname) and not parsed.username and not parsed.password
+    if is_valid:
+        normalized_hostname = hostname.rstrip(".").lower()
+        is_valid = normalized_hostname != "localhost" and not normalized_hostname.endswith(".localhost")
+        try:
+            ip_address = ipaddress.ip_address(normalized_hostname)
+        except ValueError:
+            pass
+        else:
+            is_valid = is_valid and ip_address.is_global
+    if not is_valid:
+        raise IncidentIMConfigurationError(
+            "IM_WEB_BASE_URL_INVALID", "WEB_BASE_URL 必须配置为可从飞书访问的 HTTP(S) 绝对地址",
+        )
+    return base_url
 
 
 class _SyntheticFailure:

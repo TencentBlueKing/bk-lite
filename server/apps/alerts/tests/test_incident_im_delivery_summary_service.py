@@ -34,6 +34,40 @@ def test_summary_without_public_web_url_fails_closed_without_provider(group, set
     assert group.last_error_code == "IM_WEB_BASE_URL_MISSING"
 
 
+@pytest.mark.parametrize(
+    "web_base_url",
+    [
+        "/bk-lite",
+        "bk-lite.example.com",
+        "ftp://bk-lite.example.com",
+        "http://localhost",
+        "https://localhost:8443",
+        "http://127.0.0.1:8000",
+        "https://[::1]",
+        "http://10.0.0.1",
+        "https://192.168.1.10",
+        "http://0.0.0.0:8000",
+    ],
+)
+def test_summary_rejects_non_public_absolute_web_url_without_provider(group, settings, web_base_url):
+    from apps.alerts.service.incident_im.delivery import deliver_summary
+
+    settings.WEB_BASE_URL = web_base_url
+    group.external_chat_id = "oc_1"
+    group.current_stage = IncidentIMGroup.Stage.SENDING_SUMMARY
+    group.save(update_fields=["external_chat_id", "current_stage"])
+
+    with mock.patch("apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute") as execute:
+        deliver_summary(group.id)
+
+    group.refresh_from_db()
+    execute.assert_not_called()
+    assert group.current_stage == IncidentIMGroup.Stage.COMPLETED
+    assert group.status == IncidentIMGroup.Status.DEGRADED
+    assert group.last_error_code == "IM_WEB_BASE_URL_INVALID"
+    assert group.last_error_message == "WEB_BASE_URL 必须配置为可从飞书访问的 HTTP(S) 绝对地址"
+
+
 @pytest.mark.django_db
 def test_summary_failure_is_terminal_and_completes_as_partial(group):
     from apps.alerts.service.incident_im.delivery import deliver_summary

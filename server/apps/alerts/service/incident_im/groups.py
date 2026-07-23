@@ -181,6 +181,8 @@ class IncidentIMGroupService:
 
     @classmethod
     def retry_degraded(cls, *, incident_id, actor_username):
+        from apps.alerts.service.incident_im.reconcile import _enqueue_recovered_summary
+
         with transaction.atomic():
             incident, group = cls._lock_incident_and_active_group(incident_id)
             if group is None:
@@ -193,6 +195,7 @@ class IncidentIMGroupService:
             original_group_id = group.id
             original_active_slot = group.active_slot
             original_status = group.status
+            original_error_code = group.last_error_code
             channel = group.channel
             external_chat_id = group.external_chat_id
 
@@ -216,6 +219,7 @@ class IncidentIMGroupService:
             )
             if locked is None or locked.active_slot != original_active_slot or locked.status != original_status:
                 raise IncidentIMError("IM_GROUP_STATE_INVALID", "协作群绑定已变化，请刷新后重试", 409)
+            retry_summary = False
             if result is None or not result.success:
                 code, message = cls._runtime_error(result)
                 locked.status = IncidentIMGroup.Status.DEGRADED
@@ -224,13 +228,21 @@ class IncidentIMGroupService:
             else:
                 desired_usernames = get_desired_usernames(locked.incident)
                 has_gap = locked.members.filter(username__in=desired_usernames).exclude(sync_status=IncidentIMMember.SyncStatus.JOINED).exists()
-                locked.status = IncidentIMGroup.Status.ACTIVE_PARTIAL if has_gap else IncidentIMGroup.Status.ACTIVE
+                retry_summary = original_error_code in {
+                    "IM_WEB_BASE_URL_MISSING",
+                    "IM_WEB_BASE_URL_INVALID",
+                }
+                locked.status = IncidentIMGroup.Status.ACTIVE_PARTIAL if has_gap or retry_summary else IncidentIMGroup.Status.ACTIVE
+                if retry_summary:
+                    locked.current_stage = IncidentIMGroup.Stage.SENDING_SUMMARY
                 locked.last_error_code = ""
                 locked.last_error_message = ""
             locked.updated_by = actor_username
             locked.save(
-                update_fields=["status", "last_error_code", "last_error_message", "updated_by", "updated_at",]
+                update_fields=["status", "current_stage", "last_error_code", "last_error_message", "updated_by", "updated_at",]
             )
+            if result is not None and result.success and retry_summary:
+                _enqueue_recovered_summary(locked)
             record_group_audit(locked, actor_username, "重试飞书群并检查外部群状态")
             return locked
 

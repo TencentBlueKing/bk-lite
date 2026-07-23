@@ -723,7 +723,7 @@ flowchart TD
 
 Provider 将平台响应归一化为：成功结果、无效成员列表、可重试错误、终态配置错误和外部对象不存在。Alerts 不解析飞书原始响应格式。
 
-服务端必须显式配置可从飞书客户端访问的绝对 `WEB_BASE_URL`。未配置时不得发送带相对地址或 localhost 的摘要消息；摘要阶段以 `IM_WEB_BASE_URL_MISSING` 失败关闭，群绑定进入 `degraded` 并提示管理员修复配置后重试。
+服务端必须显式配置可从飞书客户端访问的 `http/https` 绝对 `WEB_BASE_URL`。相对地址、非 HTTP(S) 协议、localhost、回环/私网/未指定 IP 均视为无效，不得发送摘要消息；缺失时以 `IM_WEB_BASE_URL_MISSING`、无效时以 `IM_WEB_BASE_URL_INVALID` 失败关闭，群绑定进入 `degraded`。管理员修复配置后通过现有重试入口先复核外部群，再以稳定幂等键重新投递摘要，不得重新建群。
 
 ## 10. 安全、可靠性与可观测性
 
