@@ -62,7 +62,11 @@ class TaskStore:
         self._ensure_schema()
 
     def _connect(self):
-        return sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path)
+        # SQLite 默认只删除单元格引用，旧凭据仍可能残留在数据库空闲页中。
+        # 每条连接都启用物理擦除，覆盖终态更新和启动时的存量清理。
+        conn.execute("PRAGMA secure_delete = ON")
+        return conn
 
     def _ensure_schema(self):
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)

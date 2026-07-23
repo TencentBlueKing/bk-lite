@@ -270,6 +270,40 @@ def test_update_execution_result_clears_terminal_execution_payload(tmp_path):
         assert store.get_execution_payload(task_id) is None
 
 
+def test_update_execution_result_erases_terminal_credentials_from_database_pages(tmp_path):
+    db_path = tmp_path / "task.db"
+    secret = "terminal-credential-physical-erase-9f7d2b4c-" + "x" * 128
+    store = TaskStore(str(db_path))
+    store.create_if_absent(
+        "terminal-physical-erase",
+        "queued",
+        {
+            "task_id": "terminal-physical-erase",
+            "host_credentials": [{"host": "10.0.0.1", "user": "root", "password": secret}],
+        },
+        {},
+        "2026-04-23T00:00:00+00:00",
+    )
+    store.claim_task(
+        "terminal-physical-erase",
+        "worker-a",
+        "2026-04-23T00:00:10+00:00",
+        "2026-04-23T00:00:01+00:00",
+    )
+    assert secret.encode() in db_path.read_bytes()
+
+    updated = store.update_execution_result(
+        "terminal-physical-erase",
+        "success",
+        {"task_id": "terminal-physical-erase", "success": True},
+        "2026-04-23T00:00:02+00:00",
+        owner_id="worker-a",
+    )
+
+    assert updated is True
+    assert secret.encode() not in db_path.read_bytes()
+
+
 def test_update_execution_result_keeps_payload_when_lease_owner_mismatches(tmp_path):
     store = TaskStore(str(tmp_path / "task.db"))
     payload_with_creds = {
