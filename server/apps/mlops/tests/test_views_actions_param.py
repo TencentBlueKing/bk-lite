@@ -595,17 +595,24 @@ def test_download_model_run_not_found(monkeypatch, superuser, suffix, prefix, mo
 def test_download_model_success(monkeypatch, superuser, suffix, prefix, model_module, basename):
     tj = _make_train_job(model_module, basename)
     mod = _view_module(suffix)
+    archive = BytesIO(b"zipdata")
     _patch_mlflow(
         monkeypatch, suffix,
         get_experiment_by_name=lambda name: types.SimpleNamespace(experiment_id="1"),
         get_experiment_runs=lambda eid, **kw: _runs_frame([{"run_id": "r1"}]),
-        download_model_artifact=lambda run_id, artifact_path=None: BytesIO(b"zipdata"),
+        download_model_artifact=lambda run_id, artifact_path=None: archive,
     )
     view = getattr(mod, f"{basename}TrainJobViewSet").as_view({"get": "download_model"})
     request = factory.get(f"/{suffix}_train_jobs/x/runs/r1/download_model/")
     resp = _call(view, request, superuser, pk=tj.id, run_id="r1")
     assert resp.status_code == status.HTTP_200_OK
     assert resp["Content-Type"] == "application/zip"
+    assert resp["Content-Length"] == "7"
+    assert ".zip" in resp["Content-Disposition"]
+    assert resp.streaming
+    assert b"".join(resp.streaming_content) == b"zipdata"
+    resp.close()
+    assert archive.closed
 
 
 # =========================================================================

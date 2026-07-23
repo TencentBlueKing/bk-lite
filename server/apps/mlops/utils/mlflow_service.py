@@ -7,8 +7,7 @@ MLflow 工具函数集合
 import os
 import tempfile
 import zipfile
-from io import BytesIO
-from typing import List, Optional, Tuple
+from typing import BinaryIO, List, Optional, Tuple
 from pathlib import Path
 
 import mlflow
@@ -376,7 +375,7 @@ def resolve_model_uri(model_name: str, version: str = "latest") -> str:
         raise
 
 
-def download_model_artifact(run_id: str, artifact_path: str = "model") -> BytesIO:
+def download_model_artifact(run_id: str, artifact_path: str = "model") -> BinaryIO:
     """
     从 MLflow 下载模型并打包为 ZIP 流
 
@@ -385,11 +384,12 @@ def download_model_artifact(run_id: str, artifact_path: str = "model") -> BytesI
         artifact_path: artifact 路径，默认 "model"
 
     Returns:
-        BytesIO: ZIP 文件流
+        BinaryIO: 位于磁盘临时文件中的 ZIP 文件流，由调用方负责关闭
 
     Raises:
         Exception: 下载或打包失败时抛出
     """
+    zip_stream: Optional[BinaryIO] = None
     try:
         client = get_mlflow_client()
 
@@ -404,9 +404,9 @@ def download_model_artifact(run_id: str, artifact_path: str = "model") -> BytesI
                 logger.error(error_msg)
                 raise FileNotFoundError(error_msg)
 
-            # 打包为 ZIP
-            zip_buffer = BytesIO()
-            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+            # 打包到磁盘临时文件，避免 ZIP 大小直接叠加到 Web 进程内存。
+            zip_stream = tempfile.TemporaryFile(mode="w+b")
+            with zipfile.ZipFile(zip_stream, "w", zipfile.ZIP_DEFLATED) as zip_file:
                 if model_dir.is_file():
                     # 单文件
                     zip_file.write(model_dir, model_dir.name)
@@ -417,13 +417,15 @@ def download_model_artifact(run_id: str, artifact_path: str = "model") -> BytesI
                             arcname = file_path.relative_to(model_dir.parent)
                             zip_file.write(file_path, arcname)
 
-            zip_buffer.seek(0)
-            zip_size = len(zip_buffer.getvalue())
+            zip_size = zip_stream.tell()
+            zip_stream.seek(0)
             logger.info(f"模型打包完成 [run_id: {run_id}, size: {zip_size} bytes]")
 
-            return zip_buffer
+            return zip_stream
 
     except Exception as e:
+        if zip_stream is not None:
+            zip_stream.close()
         logger.error(
             f"下载模型失败 [run_id: {run_id}, artifact: {artifact_path}]: {e}",
             exc_info=True,
