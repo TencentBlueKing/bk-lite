@@ -290,7 +290,75 @@
           "status": "Status",
           "syncedUsers": "Synced Users",
           "syncedGroups": "Synced Groups",
-          "summary": "Summary"
+          "summary": "Summary",
+          "actions": "Actions",
+          "viewProgress": "View Progress"
+        },
+        "progressDrawer": {
+          "title": "Sync Record",
+          "runResult": {
+            "running": "Syncing",
+            "success": "Sync completed",
+            "failed": "Sync failed",
+            "partial": "Sync partially completed"
+          },
+          "refresh": "Refresh",
+          "fetchError": "Failed to load sync progress",
+          "failureReason": "Failure Reason",
+          "elapsed": "Elapsed {{duration}}",
+          "phaseCompletedAt": "Completed {{time}}",
+          "phaseFailedAt": "Failed {{time}}",
+          "processed": "Processed {{current}} / {{total}}",
+          "syncedUsers": "{{count}} users",
+          "syncedGroups": "{{count}} groups",
+          "empty": "No sync progress available"
+        },
+        "phase": {
+          "fetchDirectory": "Fetch Directory",
+          "syncGroups": "Sync Groups",
+          "syncUsers": "Sync Users",
+          "reconcile": "Clean Inactive Objects",
+          "finalize": "Initial Password Notification"
+        },
+        "phaseStatus": {
+          "wait": "Waiting",
+          "process": "In Progress",
+          "finish": "Completed",
+          "error": "Failed",
+          "skipped": "Skipped"
+        },
+        "phaseCounter": {
+          "syncUsersNew": "Created {{n}} users",
+          "syncUsersUpdated": "Updated {{n}} users",
+          "syncUsersConflict": "Found {{n}} conflicting users",
+          "reconcileDisabled": "Disabled {{n}}",
+          "reconcileDeleted": "Deleted {{n}} groups",
+          "syncGroupsSynced": "Synced {{n}} groups",
+          "syncGroupsCreated": "Created {{n}} groups",
+          "syncGroupsUpdated": "Updated {{n}} groups"
+        },
+        "phaseResult": {
+          "fetchDirectory": "Retrieved {{users}} users · {{groups}} groups",
+          "syncGroupsUnchanged": "Verified {{groups}} groups; no changes found",
+          "syncUsersUnchanged": "Verified {{users}} users; no changes found",
+          "reconcileChanged": "Disabled {{users}} users · Removed {{groups}} groups",
+          "reconcileUnchanged": "No users or groups require cleanup",
+          "emailQueued": "Emails queued; {{total}} pending",
+          "emailSending": "Sending emails; {{sent}} / {{total}} sent",
+          "emailCompleted": "Emails completed; {{sent}} sent",
+          "emailFailed": "{{failed}} email deliveries failed",
+          "emailSkipped": "Initial password notification was not triggered",
+          "emailSkippedNoNewUsers": "No users were created; no initial password notification is needed"
+        },
+        "phaseError": {
+          "syncFailed": "Sync failed. Please try again later or contact an administrator.",
+          "providerFetchFailed": "Directory retrieval failed. Check the sync source configuration and connection.",
+          "dataConflict": "The sync data conflicts with an existing user or group.",
+          "databaseUnavailable": "The database is temporarily unavailable. Please try again later.",
+          "requestTimeout": "The sync request timed out. Please try again later.",
+          "externalServiceUnavailable": "The external service connection failed. Check the network and integration instance.",
+          "invalidSyncData": "The sync data validation failed. Check the sync source configuration.",
+          "emailEnqueueFailed": "The initial password email task could not be queued. Please try again later."
         },
         "runSummary": {
           "success": "Sync succeeded: {{external}}; synced {{users}} users, {{groups}} groups",

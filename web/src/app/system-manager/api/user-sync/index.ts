@@ -64,6 +64,14 @@ export const useUserSyncApi = () => {
     return await get('/system_mgmt/user_sync_source/records/', { params });
   }
 
+  /**
+   * 按 run_id 拉取单条同步运行详情,供 UserSyncRunProgressDrawer 使用。
+   * 后端返回语言无关 error_code，前端按当前语言显示；接口包含完整运行 payload。
+   */
+  async function getRunById(runId: number): Promise<UserSyncRun> {
+    return await get(`/system_mgmt/user_sync_source/runs/${runId}/`);
+  }
+
   async function previewSyncSource(payload: Record<string, unknown>): Promise<PreviewResult> {
     return await post('/system_mgmt/user_sync_source/preview/', payload);
   }
@@ -79,6 +87,7 @@ export const useUserSyncApi = () => {
     syncNow,
     getRecords,
     getPagedRecords,
+    getRunById,
     previewSyncSource,
   };
 };
