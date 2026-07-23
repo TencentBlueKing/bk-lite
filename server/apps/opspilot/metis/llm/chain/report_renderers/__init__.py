@@ -20,8 +20,12 @@ node.py / 测试文件 import 路径不变。
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 import uuid
+from collections import OrderedDict
+from threading import Lock
 from typing import Any, Callable, Dict, List, Optional
 
 
@@ -76,11 +80,66 @@ def get_renderer(capability: str) -> Optional[ReportRenderer]:
 # 命中 TOOL_RESULT_TO_CAPABILITY 就调对应 capability 的 renderer 把它转成报告。
 # ---------------------------------------------------------------------------
 TOOL_RESULT_TO_CAPABILITY: Dict[str, str] = {}
+_DISPATCHED_REPORT_FINGERPRINTS: OrderedDict[str, str] = OrderedDict()
+_DISPATCHED_REPORT_FINGERPRINTS_LOCK = Lock()
+_DISPATCHED_REPORT_FINGERPRINTS_MAX_ENTRIES = 512
 
 
 def register_tool_result_capability(tool_name: str, capability: str) -> None:
     """声明某工具的返回结果由哪个 capability 的 renderer 接管。"""
     TOOL_RESULT_TO_CAPABILITY[tool_name] = capability
+
+
+def dispatch_tool_result_report(
+    tool_name: str,
+    parsed: Any,
+    config: Optional[Dict[str, Any]],
+) -> Optional[str]:
+    """在工具完成时立即派发已启用的结构化报告。
+
+    该入口只依赖通用的 tool→capability 映射和 renderer registry，
+    新增数据库等报告时不需要在 DeepAgent 包装节点里增加领域分支。
+    """
+    configurable = (config or {}).get("configurable", {})
+    capability = TOOL_RESULT_TO_CAPABILITY.get(tool_name)
+    enabled = set(configurable.get("enabled_report_capabilities") or [])
+    if not capability or capability not in enabled:
+        return None
+
+    renderer = get_renderer(capability)
+    if renderer is None:
+        return None
+    package = configurable.get("report_package_context")
+    payload = renderer(parsed, package if isinstance(package, dict) else {})
+    if not payload:
+        return None
+
+    execution_id = str(configurable.get("execution_id") or "").strip()
+    if execution_id:
+        payload["report_id"] = f"{capability}_{execution_id}"
+
+        # HITL 选择会恢复 DeepAgent；模型可能再次调用同一分析工具。报告 ID
+        # 相同且内容未变化时不应再次派发，否则前端会把已有卡片刷新一遍。
+        # 内容变化仍允许更新，适用于同一执行内逐步补全报告的领域。
+        fingerprint = hashlib.sha256(
+            json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
+        ).hexdigest()
+        report_id = payload["report_id"]
+        with _DISPATCHED_REPORT_FINGERPRINTS_LOCK:
+            previous = _DISPATCHED_REPORT_FINGERPRINTS.get(report_id)
+            if previous == fingerprint:
+                return capability
+
+    from langchain_core.callbacks import dispatch_custom_event
+
+    dispatch_custom_event(capability, payload, config=config)
+    if execution_id:
+        with _DISPATCHED_REPORT_FINGERPRINTS_LOCK:
+            _DISPATCHED_REPORT_FINGERPRINTS[report_id] = fingerprint
+            _DISPATCHED_REPORT_FINGERPRINTS.move_to_end(report_id)
+            while len(_DISPATCHED_REPORT_FINGERPRINTS) > _DISPATCHED_REPORT_FINGERPRINTS_MAX_ENTRIES:
+                _DISPATCHED_REPORT_FINGERPRINTS.popitem(last=False)
+    return capability
 
 
 # ---------------------------------------------------------------------------
