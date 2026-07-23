@@ -26,6 +26,7 @@ import type {
   IncidentUpdateReply,
 } from '@/app/alarm/types/incidents';
 import type { UserItem } from '@/app/alarm/types/types';
+import IncidentIMGroupPanel from './imGroup';
 
 /** Avatar background colors, cycled by first char of username */
 const AVATAR_COLORS = [
@@ -76,6 +77,7 @@ const CollaborationTab: React.FC<CollaborationTabProps> = ({
 
   const [inviteUsers, setInviteUsers] = useState<string[]>([]);
   const [inviteLoading, setInviteLoading] = useState(false);
+  const [imGroupRefreshVersion, setImGroupRefreshVersion] = useState(0);
 
   const [filterType, setFilterType] = useState<string | undefined>(undefined);
   const [searchKeyword, setSearchKeyword] = useState('');
@@ -209,6 +211,7 @@ const CollaborationTab: React.FC<CollaborationTabProps> = ({
       setInviteVisible(false);
       setInviteUsers([]);
       onRefresh();
+      setImGroupRefreshVersion(value => value + 1);
     } catch {
       message.error(t('common.saveFailed'));
     } finally {
@@ -216,15 +219,25 @@ const CollaborationTab: React.FC<CollaborationTabProps> = ({
     }
   };
 
-  const handleRemoveCollaborator = async (username: string) => {
-    try {
-      const newCollaborators = collaborators.filter((u: string) => u !== username);
-      await modifyIncidentDetail(incidentPk, { collaborators: newCollaborators });
-      message.success(t('common.saveSuccess'));
-      onRefresh();
-    } catch {
-      message.error(t('common.saveFailed'));
-    }
+  const handleRemoveCollaborator = (username: string) => {
+    Modal.confirm({
+      title: t('incidents.removeCollaborator'),
+      content: t('incidents.imGroup.removeCollaboratorWarning'),
+      okText: t('common.confirm'),
+      cancelText: t('common.cancel'),
+      centered: true,
+      onOk: async () => {
+        try {
+          const newCollaborators = collaborators.filter((u: string) => u !== username);
+          await modifyIncidentDetail(incidentPk, { collaborators: newCollaborators });
+          message.success(t('common.saveSuccess'));
+          onRefresh();
+          setImGroupRefreshVersion(value => value + 1);
+        } catch {
+          message.error(t('common.saveFailed'));
+        }
+      },
+    });
   };
 
   const toggleRepliesExpanded = (updateId: number) => {
@@ -519,6 +532,11 @@ const CollaborationTab: React.FC<CollaborationTabProps> = ({
 
       {/* Right: Collaborator panel */}
       <div className="w-[220px] shrink-0 border-l border-gray-200 pl-4">
+        <IncidentIMGroupPanel
+          incidentPk={incidentPk}
+          incidentDetail={incidentDetail}
+          refreshVersion={imGroupRefreshVersion}
+        />
         <div className="flex justify-between items-center mb-4">
           <h4 className="text-sm font-semibold m-0">{t('incidents.collaborators')}</h4>
           <PermissionWrapper requiredPermissions={['Edit']}>

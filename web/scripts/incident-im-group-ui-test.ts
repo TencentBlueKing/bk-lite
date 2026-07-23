@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import path from 'node:path';
 import ts from 'typescript';
 
@@ -10,6 +11,13 @@ import {
   createIncidentIMGroupApi,
   type IncidentIMGroupHttpClient,
 } from '../src/app/alarm/api/incidentIMGroup';
+import {
+  canSubmitIMGroupCreation,
+  createPollScheduler,
+  getInitialMemberFilter,
+  ownsIMGroupResponse,
+  resolveMemberQueryVisibility,
+} from '../src/app/alarm/(pages)/incidents/components/collaboration/imGroup/controller';
 import type {
   CreateIncidentIMGroupParams,
   IncidentIMGroup,
@@ -19,12 +27,23 @@ import type {
   UpdateIncidentIMGroupParams,
 } from '../src/app/alarm/types/incidents';
 
+const task10Files = [
+  'src/app/alarm/(pages)/incidents/components/collaboration/imGroup/controller.ts',
+  'src/app/alarm/(pages)/incidents/components/collaboration/imGroup/useIncidentIMGroup.ts',
+  'src/app/alarm/(pages)/incidents/components/collaboration/imGroup/createModal.tsx',
+  'src/app/alarm/(pages)/incidents/components/collaboration/imGroup/memberDrawer.tsx',
+  'src/app/alarm/(pages)/incidents/components/collaboration/imGroup/confirmModals.tsx',
+  'src/app/alarm/(pages)/incidents/components/collaboration/imGroup/index.tsx',
+] as const;
+
 const typeCheckedFiles = [
   'src/app/alarm/types/incidents.ts',
   'src/app/alarm/api/incidentIMGroup.ts',
   'src/app/alarm/api/incidents.ts',
   'src/app/alarm/(pages)/incidents/components/collaboration/imGroup/state.ts',
+  'src/app/alarm/(pages)/incidents/components/collaboration/index.tsx',
   'scripts/incident-im-group-ui-test.ts',
+  ...task10Files,
 ].map(filePath => path.resolve(filePath));
 const tsconfig = ts.readConfigFile('tsconfig.json', ts.sys.readFile);
 if (tsconfig.error) {
@@ -347,3 +366,148 @@ const runApiContractTests = async () => {
 };
 
 void runApiContractTests();
+
+const scheduled = new Map<number, () => void>();
+const cleared: number[] = [];
+let nextTimerId = 0;
+const scheduler = createPollScheduler({
+  setTimer: callback => {
+    nextTimerId += 1;
+    scheduled.set(nextTimerId, callback);
+    return nextTimerId;
+  },
+  clearTimer: timerId => {
+    cleared.push(timerId);
+    scheduled.delete(timerId);
+  },
+});
+scheduler.schedule(() => undefined, 2_000);
+scheduler.schedule(() => undefined, 5_000);
+assert.deepEqual(cleared, [1], 'a second schedule must replace the prior timer');
+assert.equal(scheduled.size, 1, 'only one IM group poll timer may remain');
+scheduler.stop();
+assert.deepEqual(cleared, [1, 2]);
+assert.equal(scheduled.size, 0);
+
+assert.equal(ownsIMGroupResponse('42', '42', 'g1', 'g1'), true);
+assert.equal(ownsIMGroupResponse('43', '42', 'g1', 'g1'), false);
+assert.equal(ownsIMGroupResponse('42', '42', 'g2', 'g1'), false);
+assert.equal(getInitialMemberFilter(2), 'pending');
+assert.equal(getInitialMemberFilter(0), 'all');
+assert.deepEqual(
+  resolveMemberQueryVisibility(
+    false,
+    true,
+    { filter: 'joined', page: 4, pageSize: 50 },
+    2,
+  ),
+  { filter: 'pending', page: 1, pageSize: 20 },
+);
+assert.deepEqual(
+  resolveMemberQueryVisibility(
+    true,
+    true,
+    { filter: 'joined', page: 4, pageSize: 50 },
+    3,
+  ),
+  { filter: 'joined', page: 4, pageSize: 50 },
+  'an open drawer must preserve its filter and page while group summaries refresh',
+);
+assert.equal(canSubmitIMGroupCreation(optionsContract, 12, 'Incident room', 'zhangsan'), true);
+assert.equal(canSubmitIMGroupCreation(optionsContract, 12, 'Incident room', undefined), false);
+
+for (const filePath of task10Files) {
+  assert.equal(fs.existsSync(filePath), true, `missing Task 10 file: ${filePath}`);
+}
+
+const parseSource = (filePath: string) =>
+  ts.createSourceFile(
+    filePath,
+    fs.readFileSync(filePath, 'utf8'),
+    ts.ScriptTarget.Latest,
+    true,
+    filePath.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+  );
+
+const collaborationSource = parseSource(
+  'src/app/alarm/(pages)/incidents/components/collaboration/index.tsx',
+);
+const collaborationText = collaborationSource.getFullText();
+const panelPosition = collaborationText.indexOf('<IncidentIMGroupPanel');
+const collaboratorsHeadingPosition = collaborationText.indexOf("t('incidents.collaborators')");
+assert.ok(panelPosition >= 0, 'collaboration sidebar must render IncidentIMGroupPanel');
+assert.ok(
+  panelPosition < collaboratorsHeadingPosition,
+  'IncidentIMGroupPanel must be rendered before the collaborators heading',
+);
+assert.match(collaborationText, /refreshVersion=\{imGroupRefreshVersion\}/);
+assert.match(collaborationText, /removeCollaboratorWarning/);
+
+const createModalText = parseSource(task10Files[2]).getFullText();
+for (const field of ['channel_id', 'group_name', 'owner_username', 'continuous_sync_enabled']) {
+  assert.ok(createModalText.includes(field), `create modal must own ${field}`);
+}
+assert.match(createModalText, /width=\{600\}/);
+assert.match(createModalText, /calc\(100vh - 240px\)/);
+
+const memberDrawerText = parseSource(task10Files[3]).getFullText();
+assert.match(memberDrawerText, /getIncidentIMMembers/);
+assert.match(memberDrawerText, /pageSize:\s*20/);
+assert.match(memberDrawerText, /min\(720px,\s*100vw\)/);
+
+const hookText = parseSource(task10Files[1]).getFullText();
+assert.match(hookText, /AbortController/);
+assert.match(hookText, /visibilitychange/);
+assert.match(hookText, /focus/);
+assert.match(hookText, /refreshVersion/);
+
+const zh = JSON.parse(fs.readFileSync('src/app/alarm/locales/zh.json', 'utf8')) as unknown;
+const en = JSON.parse(fs.readFileSync('src/app/alarm/locales/en.json', 'utf8')) as unknown;
+const getNested = (root: unknown, keyPath: string): unknown =>
+  keyPath.split('.').reduce<unknown>((value, key) => {
+    if (typeof value !== 'object' || value === null || !(key in value)) return undefined;
+    return (value as Record<string, unknown>)[key];
+  }, root);
+const localeKeys = [
+  'incidents.imGroup.title',
+  'incidents.imGroup.create',
+  'incidents.imGroup.creating',
+  'incidents.imGroup.active',
+  'incidents.imGroup.partial',
+  'incidents.imGroup.paused',
+  'incidents.imGroup.incidentClosed',
+  'incidents.imGroup.createFailed',
+  'incidents.imGroup.degraded',
+  'incidents.imGroup.viewDetails',
+  'incidents.imGroup.retry',
+  'incidents.imGroup.unlinkConfirm',
+  'incidents.imGroup.removeCollaboratorWarning',
+] as const;
+for (const key of localeKeys) {
+  assert.equal(typeof getNested(zh, key), 'string', `missing zh.${key}`);
+  assert.equal(typeof getNested(en, key), 'string', `missing en.${key}`);
+}
+
+const collectLeafKeys = (value: unknown, prefix = ''): string[] => {
+  if (typeof value !== 'object' || value === null) return [prefix];
+  return Object.entries(value as Record<string, unknown>)
+    .flatMap(([key, child]) => collectLeafKeys(child, prefix ? `${prefix}.${key}` : key))
+    .sort();
+};
+assert.deepEqual(
+  collectLeafKeys(getNested(zh, 'incidents.imGroup')),
+  collectLeafKeys(getNested(en, 'incidents.imGroup')),
+  'Chinese and English IM group locale keys must stay aligned',
+);
+
+for (const filePath of task10Files) {
+  const source = parseSource(filePath);
+  assert.doesNotMatch(source.getFullText(), /#[0-9a-f]{3,8}\b/i, `${filePath} contains a hard-coded color`);
+  const anyNodes: ts.Node[] = [];
+  const visit = (node: ts.Node) => {
+    if (node.kind === ts.SyntaxKind.AnyKeyword) anyNodes.push(node);
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  assert.equal(anyNodes.length, 0, `${filePath} must not add explicit any types`);
+}
