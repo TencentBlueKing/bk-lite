@@ -3,7 +3,7 @@
 import React, { useState, forwardRef, useImperativeHandle } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button, Tabs } from 'antd';
-import OperateDrawer from '@/app/monitor/components/operate-drawer';
+import OperateDrawer from '@/components/operate-drawer';
 import { ModalRef, TabItem, ChartProps, ObjectItem } from '@/app/monitor/types';
 import { ViewModalProps } from '@/app/monitor/types/view';
 import { useTranslation } from '@/utils/i18n';

@@ -7,7 +7,7 @@ interface CustomModalProps
   title?: React.ReactNode;
   footer?: React.ReactNode;
   headerExtra?: React.ReactNode;
-  subTitle?: string;
+  subTitle?: React.ReactNode;
   centered?: boolean;
   customHeaderClass?: string;
 }

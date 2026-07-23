@@ -171,7 +171,9 @@
         "twoFactorAuth": "双因素认证",
         "twoFactorHint": "请在桌面端完成双因素认证",
         "backToLogin": "返回登录",
-        "systemError": "系统错误"
+        "systemError": "系统错误",
+        "serviceUnavailable": "登录服务暂时不可用，请稍后重试",
+        "logoutIncomplete": "本地已退出，但服务端会话可能未完全注销"
     },
     "zoneinfo": {
       "PacificHonolulu": "太平洋/檀香山 (UTC-10)",

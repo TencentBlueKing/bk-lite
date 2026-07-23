@@ -111,6 +111,14 @@ def _is_safe_relative_callback_url(callback_url: str) -> bool:
     return not parsed.scheme and not parsed.netloc
 
 
+def _is_safe_legacy_external_callback_url(callback_url: str) -> bool:
+    try:
+        parsed = urlparse(callback_url)
+    except (TypeError, ValueError):
+        return False
+    return parsed.scheme in ("http", "https") and bool(parsed.netloc)
+
+
 def _build_login_auth_result_redirect(
     request,
     status_key: str,
@@ -389,7 +397,6 @@ def wechat_login(request):
     接收微信授权 code,后端验证后签发 token。
 
     新链路走 WechatLoginAuthAdapter → _resolve_platform_user,
-    详情见 openspec/changes/wechat-login-auth-field-mapping/design.md。
     新链路稳定后移除本入口及 wechat_user_register NATS handler。
 
     Request:
@@ -914,10 +921,18 @@ def start_login_auth(request):
         data = _parse_request_data(request)
         callback_url = (data.get("callback_url") or "/").strip() or "/"
         redirect_origin = (data.get("redirect_origin") or "").strip() or None
+        legacy_external_callback_url = (data.get("legacy_external_callback_url") or "").strip() or None
+        legacy_third_login_code = (data.get("legacy_third_login_code") or "").strip() or None
         binding_id = data.get("binding_id")
 
         if not _is_safe_relative_callback_url(callback_url):
             return JsonResponse({"result": False, "message": "callback_url must be an in-site relative path"}, status=400)
+        if legacy_external_callback_url and not legacy_third_login_code:
+            return JsonResponse(
+                {"result": False, "message": "legacy_external_callback_url requires third_login_code"}, status=400
+            )
+        if legacy_external_callback_url and not _is_safe_legacy_external_callback_url(legacy_external_callback_url):
+            return JsonResponse({"result": False, "message": "legacy_external_callback_url must be an absolute HTTP(S) URL"}, status=400)
         if redirect_origin and not validate_redirect_origin(request, redirect_origin):
             redirect_origin = None
 
@@ -935,6 +950,8 @@ def start_login_auth(request):
             provider_key=binding.integration_instance.provider_key,
             callback_url=callback_url,
             redirect_origin=redirect_origin,
+            legacy_external_callback_url=legacy_external_callback_url,
+            legacy_third_login_code=legacy_third_login_code,
         )
         state = build_auth_request_state(
             auth_request_id=auth_request["auth_request_id"],
@@ -1079,6 +1096,9 @@ def login_auth_callback(request):
 
     login_result = result.get("data", {}) or {}
     login_result.setdefault("redirect_url", state_payload["callback_url"])
+    if auth_request.get("legacy_external_callback_url") and auth_request.get("legacy_third_login_code"):
+        login_result["legacy_external_callback_url"] = auth_request["legacy_external_callback_url"]
+        login_result["legacy_third_login_code"] = auth_request["legacy_third_login_code"]
     update_auth_request_status(
         auth_request_id,
         status="success",

@@ -8,6 +8,7 @@ interface RefreshIconButtonProps {
   onClick: () => void;
   className?: string;
   title?: string;
+  variant?: 'text' | 'outlined' | 'borderless';
 }
 
 const RefreshIconButton: React.FC<RefreshIconButtonProps> = ({

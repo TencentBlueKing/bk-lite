@@ -1,6 +1,6 @@
 """运营分析目录树 BDD（中文 Gherkin）。
 
-对照 spec/prd/运营分析·目录：
+对照 specs/capabilities/legacy-prd-运营分析-运营分析.md：
 - 层级 ≤ 3；
 - (name, parent) 联合唯一；
 - build_in_key 唯一；

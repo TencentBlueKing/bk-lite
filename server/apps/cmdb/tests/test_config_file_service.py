@@ -1,6 +1,6 @@
 """CMDB 配置文件服务覆盖测试（纯逻辑 helper + DB 读取 + 回调早返分支）。
 
-对照 spec/prd/CMDB·配置文件采集：diff 生成、对象键、版本号归一、内容解码/截断、
+对照 specs/capabilities/legacy-prd-cmdb-自动发现.md：diff 生成、对象键、版本号归一、内容解码/截断、
 实例解析、任务状态汇总、文件清单。MinIO 写入路径(save_content)不在单测范围。
 """
 

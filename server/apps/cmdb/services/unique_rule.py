@@ -78,6 +78,7 @@ class UniqueRuleConflict:
     exist_instance_ids: list[int]
     exist_instance_names: list[str]
     message: str
+    item_index: int | None = None
 
 
 @dataclass(slots=True)
@@ -150,9 +151,18 @@ def _is_empty_unique_rule_value(value: Any) -> bool:
     return False
 
 
-def _build_rule_signature(item: dict[str, Any], field_ids: list[str]) -> tuple[str, ...] | None:
+def _build_rule_signature(
+    item: dict[str, Any],
+    field_ids: list[str],
+    *,
+    skip_falsy_values: bool = False,
+) -> tuple[str, ...] | None:
     values = [item.get(field_id) for field_id in field_ids]
-    if any(_is_empty_unique_rule_value(value) for value in values):
+    if skip_falsy_values:
+        has_skipped_value = any(not value for value in values)
+    else:
+        has_skipped_value = any(_is_empty_unique_rule_value(value) for value in values)
+    if has_skipped_value:
         return None
     return tuple(_normalize_compare_value(item.get(field_id)) for field_id in field_ids)
 
@@ -176,6 +186,7 @@ def _build_conflict(
     item: dict[str, Any],
     matched_items: list[dict[str, Any]],
     conflict_prefix: str = "与现有实例冲突",
+    item_index: int | None = None,
 ) -> UniqueRuleConflict:
     field_names = [_get_attr_name(attrs_by_id, field_id) for field_id in rule.field_ids]
     field_values = {field_id: item.get(field_id) for field_id in rule.field_ids}
@@ -196,6 +207,7 @@ def _build_conflict(
         exist_instance_ids=exist_instance_ids,
         exist_instance_names=exist_instance_names,
         message=message,
+        item_index=item_index,
     )
 
 
@@ -205,6 +217,8 @@ def collect_unique_rule_conflicts(
     exist_items: list[dict[str, Any]],
     attrs_by_id: dict[str, dict[str, Any]],
     exclude_instance_ids: set[int] | None = None,
+    *,
+    skip_falsy_values: bool = False,
 ) -> list[UniqueRuleConflict]:
     conflicts: list[UniqueRuleConflict] = []
     excluded_ids = exclude_instance_ids or set()
@@ -213,19 +227,35 @@ def collect_unique_rule_conflicts(
     for rule in rules:
         exist_map: dict[tuple[str, ...], list[dict[str, Any]]] = {}
         for exist_item in filtered_exist_items:
-            signature = _build_rule_signature(exist_item, rule.field_ids)
+            signature = _build_rule_signature(
+                exist_item,
+                rule.field_ids,
+                skip_falsy_values=skip_falsy_values,
+            )
             if signature is None:
                 continue
             exist_map.setdefault(signature, []).append(exist_item)
 
         batch_map: dict[tuple[str, ...], list[dict[str, Any]]] = {}
-        for item in items:
-            signature = _build_rule_signature(item, rule.field_ids)
+        for item_index, item in enumerate(items):
+            signature = _build_rule_signature(
+                item,
+                rule.field_ids,
+                skip_falsy_values=skip_falsy_values,
+            )
             if signature is None:
                 continue
             matched_exist_items = exist_map.get(signature, [])
             if matched_exist_items:
-                conflicts.append(_build_conflict(rule, attrs_by_id, item, matched_exist_items))
+                conflicts.append(
+                    _build_conflict(
+                        rule,
+                        attrs_by_id,
+                        item,
+                        matched_exist_items,
+                        item_index=item_index,
+                    )
+                )
                 continue
 
             matched_batch_items = batch_map.get(signature, [])
@@ -237,6 +267,7 @@ def collect_unique_rule_conflicts(
                         item,
                         matched_batch_items,
                         conflict_prefix="与本批次数据冲突",
+                        item_index=item_index,
                     )
                 )
                 continue
@@ -248,6 +279,46 @@ def collect_unique_rule_conflicts(
             batch_items.append(item)
 
     return conflicts
+
+
+def collect_instance_unique_conflicts(
+    check_attr_map: dict[str, Any],
+    items: list[dict[str, Any]],
+    exist_items: list[dict[str, Any]],
+    exclude_instance_ids: set[int] | None = None,
+) -> list[UniqueRuleConflict]:
+    """复用统一比较器检查实例单字段唯一约束及模型组合唯一规则。"""
+    attrs_by_id = dict(check_attr_map.get("attrs_by_id") or {})
+    single_field_rules = []
+    for order, (field_id, field_name) in enumerate(
+        sorted((check_attr_map.get("is_only") or {}).items()),
+        start=1,
+    ):
+        attrs_by_id.setdefault(field_id, {"attr_id": field_id, "attr_name": field_name})
+        single_field_rules.append(
+            ModelUniqueRule(
+                rule_id=f"field:{field_id}",
+                order=order,
+                field_ids=[field_id],
+            )
+        )
+
+    single_field_conflicts = collect_unique_rule_conflicts(
+        rules=single_field_rules,
+        items=items,
+        exist_items=exist_items,
+        attrs_by_id=attrs_by_id,
+        exclude_instance_ids=exclude_instance_ids,
+        skip_falsy_values=True,
+    )
+    composite_conflicts = collect_unique_rule_conflicts(
+        rules=parse_unique_rules(check_attr_map.get("unique_rules") or []),
+        items=items,
+        exist_items=exist_items,
+        attrs_by_id=attrs_by_id,
+        exclude_instance_ids=exclude_instance_ids,
+    )
+    return single_field_conflicts + composite_conflicts
 
 
 def raise_unique_rule_conflict_if_needed(

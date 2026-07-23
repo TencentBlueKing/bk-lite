@@ -19,9 +19,5 @@
   "next_steps": [
     "用户提供 Apusic license + 在 amd64 runner 跑(类似 dameng)",
     "或商业版用户提供 license 文件,本地 amd64 工作站单独跑"
-  ],
-  "references": [
-    "docs/superpowers/plans/2026-07-06-cmdb-collect-v3-roadmap.md §3.4 G2.3(archived 22 套对象说明)",
-    "docs/superpowers/sdd/task-4-brief.md §Task 4.1"
   ]
 }

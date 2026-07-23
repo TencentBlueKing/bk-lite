@@ -21,9 +21,5 @@
     "在 agents/stargazer/enterprise/plugins/inputs/ibmmq/ 下新建 ibmmq_default_discover.sh(扫 dspmq 输出 + runmqlsr 进程)",
     "catalog Spec install_commands 替换为 download + mqlicense.sh -accept + rpm -ivh",
     "实施完成后回填 ibmmq.json(类似 dameng.json 的 schema)"
-  ],
-  "references": [
-    "docs/superpowers/plans/2026-07-06-cmdb-collect-v3-roadmap.md §3.4 G2.2",
-    "docs/superpowers/plans/2026-07-07-cmdb-collect-v3-phase2-plan.md §3.2"
   ]
 }

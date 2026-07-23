@@ -9,7 +9,7 @@ description: Use when proposing or reviewing BK-Lite operations-product modules,
 
 Design a usable operational closed loop for real customer environments. Do not confuse an MVP with a demo, and do not import every mature-product feature into the MVP.
 
-**REQUIRED SUB-SKILL:** Use `superpowers:brainstorming` before changing a design or writing a new specification.
+**REQUIRED SUB-SKILL:** Use `$grill-with-docs` when the design contains unresolved consequential choices. Use `$to-spec` only after the conversation is aligned and the user explicitly asks for a durable change spec.
 
 ## Workflow
 

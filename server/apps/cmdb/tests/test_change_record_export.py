@@ -1,6 +1,6 @@
 """CMDB 变更记录与导出工具覆盖测试。
 
-对照 spec/prd/CMDB·操作日志/资产：实例属性/关联变更记录落库，标签值导出序列化。
+对照 specs/capabilities/legacy-prd-cmdb-操作日志.md：实例属性/关联变更记录落库，标签值导出序列化。
 """
 
 import pytest

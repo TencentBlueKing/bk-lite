@@ -1,6 +1,6 @@
 """CMDB 序列化器校验覆盖测试（采集工具/字段分组）。
 
-对照 spec/prd/CMDB·自动发现/模型管理：采集协议凭据校验、字段分组增改批量校验。
+对照 specs/capabilities/legacy-prd-cmdb-自动发现.md：采集协议凭据校验、字段分组增改批量校验。
 """
 
 import pytest

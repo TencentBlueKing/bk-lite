@@ -8,7 +8,7 @@ import React, {
   useMemo,
 } from 'react';
 import { Button, Input, Tabs, Tree } from 'antd';
-import OperateModal from '@/app/monitor/components/operate-drawer';
+import OperateModal from '@/components/operate-drawer';
 import { useTranslation } from '@/utils/i18n';
 import useMonitorApi from '@/app/monitor/api';
 import { convertGroupTreeToTreeSelectData } from '@/utils';

@@ -68,7 +68,8 @@ class AlertAssignmentOperator:
 
     # 字段映射到模型字段
     FIELD_MAPPING = {
-        "source_id": "source_name",
+        "source_id": "events__source_id",
+        "source_name": "source_name",
         # 前端 matchRule 组件下发的级别条件 key 是 `level`（分派弹窗用默认 ruleList），
         # value 为 level_id；Alert.level 存的也是 level_id。保留 `level_id` 兼容历史数据。
         "level": "level",
@@ -252,9 +253,10 @@ class AlertAssignmentOperator:
 
         elif assignment.match_type == AlertAssignmentMatchType.FILTER:
             # 过滤匹配，使用规则匹配器
-            return self.rule_matcher.filter_queryset(
+            matched_ids = self.rule_matcher.filter_queryset(
                 time_filtered_queryset, assignment.match_rules or []
             )
+            return list(dict.fromkeys(matched_ids))
 
         return []
 
@@ -434,9 +436,9 @@ def not_assignment_alert_notify(alert_ids):
     alert_instances = list(
         Alert.objects.filter(alert_id__in=alert_ids, status=AlertStatus.UNASSIGNED)
     )
-    from apps.alerts.tasks import sync_notify
-
     params = UnDispatchService.notify_un_dispatched_alert_params_format(
         alerts=alert_instances
     )
-    sync_notify.delay(params)
+    from apps.alerts.common.notify.dispatcher import enqueue_notifications
+
+    enqueue_notifications(params)

@@ -1,6 +1,6 @@
 """CMDB 凭据加解密与图客户端驱动选择覆盖测试。
 
-对照 spec/prd/CMDB：采集凭据 Fernet 加解密；图数据库驱动按环境变量切换(FalkorDB/Neo4j)。
+对照 specs/capabilities/legacy-prd-cmdb-资产.md：采集凭据 Fernet 加解密；图数据库驱动按环境变量切换(FalkorDB/Neo4j)。
 """
 
 import pytest

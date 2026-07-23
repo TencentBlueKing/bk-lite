@@ -1,6 +1,6 @@
 """CMDB NATS 处理器纯辅助函数覆盖测试。
 
-对照 spec/prd/CMDB·资产/运营分析取数：资产实例展示格式化、变更趋势时间分桶。
+对照 specs/capabilities/legacy-prd-cmdb-资产.md：资产实例展示格式化、变更趋势时间分桶。
 """
 
 import datetime

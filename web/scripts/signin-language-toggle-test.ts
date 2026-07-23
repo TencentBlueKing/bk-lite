@@ -1,7 +1,7 @@
 /**
  * 登录页双语切换器回归测试。
  *
- * 背景:OpenSpec change `add-signin-language-toggle` 在登录页 page mode
+ * 登录页 page mode
  * 标题区右上角新增 <SigninLanguageToggle/>。本测试锁定组件契约与
  * 接入点,防止后续重构把行为再次陷回:
  *   - 引入 fetch / useSession / try-catch(违反"切语言不分发请求"边界)

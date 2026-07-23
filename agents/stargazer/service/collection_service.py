@@ -149,6 +149,7 @@ class CollectionService:
                     else (
                         {
                             "collect_task_id": self.params.get("collect_task_id"),
+                            "execution_id": self.params.get("execution_id"),
                             "instance_id": self._get_callback_instance_id(),
                             "instance_name": self._get_callback_instance_name(),
                             "model_id": self._get_callback_model_id(),
@@ -165,6 +166,7 @@ class CollectionService:
                         if self._is_config_file_callback()
                         else {
                             "collect_task_id": self.params.get("collect_task_id"),
+                            "execution_id": self.params.get("execution_id"),
                             "instance_id": self.params.get("instance_id") or self.host or "",
                             "model_id": self.params.get("target_model_id") or self.params.get("model_id"),
                             "file_path": self.params.get("config_file_path", ""),

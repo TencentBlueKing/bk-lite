@@ -187,7 +187,7 @@ def _get_collect_task_queryset(user_info):
     if not team_queries:
         return CollectModels.objects.none()
 
-    return CollectModels.objects.filter(reduce(or_, team_queries)).distinct()
+    return CollectModels.objects.filter(is_system=False).filter(reduce(or_, team_queries)).distinct()
 
 
 def _build_authoritative_maps(instances, attrs):
@@ -309,7 +309,10 @@ def get_cmdb_module_data(module, child_module, page, page_size, group_id, user_i
         # 计算分页
         start = (page - 1) * page_size
         end = page * page_size
-        instances = CollectModels.objects.filter(task_type=child_module).values("id", "name", "model_id")[start:end]
+        instances = CollectModels.objects.filter(
+            task_type=child_module,
+            is_system=False,
+        ).values("id", "name", "model_id")[start:end]
         count = instances.count()
         queryset = [{"id": str(i["id"]), "name": f"{i['model_id']}_{i['name']}"} for i in instances]
     elif module == PERMISSION_INSTANCES:
@@ -410,29 +413,96 @@ def search_instances(params):
 @nats_client.register
 def search_instances_batch(params):
     """批量查询实例。params={"model_id":..,"ids":[..],"inst_names":[..]} -> {key: instance}"""
-    return InstanceManage.search_inst_batch(
+    allowed_org_ids = set(_normalize_allowed_org_ids_for_scope(params.get("organization_ids")))
+    if not allowed_org_ids:
+        return {}
+    result = InstanceManage.search_inst_batch(
         model_id=params["model_id"],
         ids=params.get("ids"),
         inst_names=params.get("inst_names"),
     )
+    filtered = {}
+    for key, instance in result.items():
+        instance_org_ids = set()
+        for org_id in (instance.get("organization") or []):
+            try:
+                instance_org_ids.add(int(org_id))
+            except (TypeError, ValueError):
+                continue
+        if allowed_org_ids & instance_org_ids:
+            filtered[key] = instance
+    return filtered
 
 
-def _resolve_allowed_org_ids(params, data):
+def _normalize_allowed_org_ids_for_scope(raw_allowed):
+    allowed_org_ids = _normalize_to_list(raw_allowed)
+    normalized = []
+    for org_id in allowed_org_ids:
+        try:
+            normalized.append(int(org_id))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("allowed_org_ids must be an integer array") from exc
+    return normalized
+
+
+def _resolve_user_info_allowed_org_ids(user_info):
+    user_info = user_info or {}
+    if "allowed_org_ids" in user_info:
+        return _normalize_allowed_org_ids_for_scope(user_info.get("allowed_org_ids"))
+
+    team = user_info.get("team")
+    user = user_info.get("user")
+    domain = user_info.get("domain")
+    include_children = user_info.get("include_children", False)
+    if not user or team is None:
+        return None
+
+    user_obj = _normalize_permission_user(user, domain=domain)
+    user_filters = {"username": user_obj.username}
+    if getattr(user_obj, "domain", None):
+        user_filters["domain"] = user_obj.domain
+    real_user = User.objects.filter(**user_filters).first()
+    if not real_user:
+        return None
+
+    return _get_authorized_team_ids(real_user, int(team), include_children=include_children)
+
+
+def _resolve_allowed_org_ids(params):
     """解析实例写操作的 organization 范围上下文。
 
     HTTP 路径下该范围由 view 从请求 cookie（current_team/include_children）+ 用户组织树推导。
-    NATS 为可信的机器对机器调用、无用户范围概念：
-    - 调用方显式传 allowed_org_ids 时按其限制；
-    - 否则默认放行 payload 自带的 organization（即不做范围限制），
-      避免实例数据携带 organization 时触发“缺少 organization 范围上下文”。
+    NATS 写入口必须显式携带授权上下文，不能从 payload organization 反推权限范围。
     """
-    allowed = params.get("allowed_org_ids")
-    if allowed is not None:
-        return allowed
+    if "allowed_org_ids" in params:
+        return _normalize_allowed_org_ids_for_scope(params.get("allowed_org_ids"))
+
+    for scope_key in ("service_scope", "scope"):
+        scope = params.get(scope_key)
+        if isinstance(scope, dict) and "allowed_org_ids" in scope:
+            return _normalize_allowed_org_ids_for_scope(scope.get("allowed_org_ids"))
+
+    allowed_from_user = _resolve_user_info_allowed_org_ids(params.get("user_info"))
+    if allowed_from_user is not None:
+        return allowed_from_user
+
+    raise ValueError("authorization scope is required for CMDB NATS writes")
+
+
+def _build_scope_user_groups(allowed_org_ids):
+    return [{"id": org_id} for org_id in allowed_org_ids]
+
+
+def _ensure_organization_in_scope(data, allowed_org_ids):
     org_value = (data or {}).get("organization")
-    if isinstance(org_value, list):
-        return org_value
-    return None
+    target_org_ids = _normalize_to_list(org_value)
+    if not target_org_ids:
+        return
+
+    target_org_ids = _normalize_allowed_org_ids_for_scope(target_org_ids)
+    invalid_org_ids = sorted(set(target_org_ids) - set(allowed_org_ids))
+    if invalid_org_ids:
+        raise ValueError(f"organization {invalid_org_ids} 不在授权范围内")
 
 
 @nats_client.register
@@ -446,13 +516,15 @@ def update_instance(params):
         "inst_name": "host-01",    # 配合 model_id 定位实例时必填
         "update_attr": {...},      # 待更新的属性键值
         "operator": "admin",       # 操作人，用于变更记录
-        "allowed_org_ids": [1, 2]  # 可选；限制 organization 范围，缺省不限制
+        "allowed_org_ids": [1, 2]  # 必填授权上下文之一；限制 organization 范围
     }
     -> 更新后的实例数据
     """
     update_attr = params.get("update_attr") or {}
     if not update_attr:
         raise ValueError("update_attr is required")
+    allowed_org_ids = _resolve_allowed_org_ids(params)
+    _ensure_organization_in_scope(update_attr, allowed_org_ids)
 
     inst_id = params.get("inst_id") or params.get("_id")
     if not inst_id:
@@ -466,13 +538,13 @@ def update_instance(params):
         inst_id = instances[0]["_id"]
 
     return InstanceManage.instance_update(
-        user_groups=[],
+        user_groups=_build_scope_user_groups(allowed_org_ids),
         roles=[],
         inst_id=int(inst_id),
         update_attr=update_attr,
         operator=params.get("operator", ""),
-        allowed_org_ids=_resolve_allowed_org_ids(params, update_attr),
-        skip_permission_check=True,
+        allowed_org_ids=allowed_org_ids,
+        skip_permission_check=False,
     )
 
 
@@ -485,7 +557,7 @@ def create_instance(params):
         "model_id": "host",        # 模型ID，必填
         "instance_info": {...},    # 实例属性键值，必填
         "operator": "admin",       # 操作人，用于变更记录
-        "allowed_org_ids": [1, 2]  # 可选；限制 organization 范围，缺省不限制
+        "allowed_org_ids": [1, 2]  # 必填授权上下文之一；限制 organization 范围
     }
     -> 创建后的实例数据
     """
@@ -496,12 +568,14 @@ def create_instance(params):
     instance_info = params.get("instance_info") or {}
     if not instance_info:
         raise ValueError("instance_info is required")
+    allowed_org_ids = _resolve_allowed_org_ids(params)
+    _ensure_organization_in_scope(instance_info, allowed_org_ids)
 
     return InstanceManage.instance_create(
         model_id=model_id,
         instance_info=instance_info,
         operator=params.get("operator", ""),
-        allowed_org_ids=_resolve_allowed_org_ids(params, instance_info),
+        allowed_org_ids=allowed_org_ids,
     )
 
 
@@ -515,10 +589,12 @@ def delete_instance(params):
         "inst_id": 1,              # 单个实例ID（兼容 _id）
         "model_id": "host",        # 配合 inst_name 定位单个实例时必填
         "inst_name": "host-01",    # 配合 model_id 定位单个实例时必填
-        "operator": "admin"        # 操作人，用于变更记录
+        "operator": "admin",       # 操作人，用于变更记录
+        "allowed_org_ids": [1, 2]  # 必填授权上下文之一；限制 organization 范围
     }
     -> {"result": True, "deleted": [<inst_ids>]}
     """
+    allowed_org_ids = _resolve_allowed_org_ids(params)
     inst_ids = _normalize_to_list(params.get("inst_ids"))
 
     if not inst_ids:
@@ -537,7 +613,7 @@ def delete_instance(params):
 
     inst_ids = [int(i) for i in inst_ids]
     InstanceManage.instance_batch_delete(
-        user_groups=[],
+        user_groups=_build_scope_user_groups(allowed_org_ids),
         roles=[],
         inst_ids=inst_ids,
         operator=params.get("operator", ""),
@@ -727,8 +803,12 @@ def receive_config_file_result(data: dict):
     logger.info(
         "==[ConfigFileCollect] 处理配置文件采集结果完成",
     )
+    error_lines = str(result.get("error") or "").splitlines()
+    error = (error_lines[0] if error_lines else "")[:500]
     return {
         "result": True,
+        "processed": not bool(error),
+        "error": error,
         "changed": bool(result.get("changed", False)),
         "task_updated": bool(result.get("task_updated", False)),
     }

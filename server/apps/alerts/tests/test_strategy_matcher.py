@@ -1,6 +1,6 @@
 """聚合策略事件匹配器覆盖测试。
 
-对照 spec/prd/告警中心·配置：相关性规则通过 match_rules(外层OR/内层AND) 过滤事件。
+对照 specs/capabilities/legacy-prd-告警中心-配置.md：相关性规则通过 match_rules(外层OR/内层AND) 过滤事件。
 """
 
 import pytest

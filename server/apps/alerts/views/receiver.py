@@ -67,8 +67,33 @@ def _receive_events(request, path_source_id=None, expected_source_type=None):
         if not adapter.authenticate():
             return JsonResponse({"status": "error", "message": "Invalid secret."}, status=403)
 
-        adapter.main()
-        return JsonResponse({"status": "success", "time": timezone.now().strftime("%Y-%m-%d %H:%M:%S"), "message": "Data received successfully."})
+        ingestion = adapter.main() or {
+            "received": len(events),
+            "accepted": len(events),
+            "skipped": 0,
+            "errored": 0,
+        }
+        has_rejected = ingestion.get("skipped", 0) > 0 or ingestion.get("errored", 0) > 0
+        if has_rejected:
+            response_status = "partial" if ingestion.get("accepted", 0) > 0 else "error"
+            http_status = 207 if response_status == "partial" else 422
+            return JsonResponse(
+                {
+                    "status": response_status,
+                    "time": timezone.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "message": "Events were only partially accepted." if response_status == "partial" else "No events were accepted.",
+                    "ingestion": ingestion,
+                },
+                status=http_status,
+            )
+        return JsonResponse(
+            {
+                "status": "success",
+                "time": timezone.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "message": "Data received successfully.",
+                "ingestion": ingestion,
+            }
+        )
     except AuthenticationSourceError:
         return JsonResponse({"status": "error", "message": "Invalid secret."}, status=403)
     except ValueError as e:

@@ -1,6 +1,6 @@
 """ExportService 与 view_sets 归一/改写工具的覆盖测试。
 
-对照 spec/prd/运营分析：导出按业务键收敛依赖、敏感字段脱敏、稳定排序。
+对照 specs/capabilities/legacy-prd-运营分析-运营分析.md：导出按业务键收敛依赖、敏感字段脱敏、稳定排序。
 """
 
 import pytest

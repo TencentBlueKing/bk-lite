@@ -1,6 +1,6 @@
 """CMDB 公共枚举库服务覆盖测试（DB + fake_graph 桩 query_entity/set_entity_properties）。
 
-对照 spec/prd/CMDB·模型管理：公共选项库 CRUD、选项校验、引用扫描、快照同步。
+对照 specs/capabilities/legacy-prd-cmdb-模型管理.md：公共选项库 CRUD、选项校验、引用扫描、快照同步。
 """
 
 import json

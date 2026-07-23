@@ -59,6 +59,7 @@ from apps.opspilot.metis.llm.chain.k8s_report_tools import (  # noqa: E402,F401
     build_post_tool_directives,
     build_repair_mode_choice_args,
     downgrade_config_analysis_next_step_hint,
+    find_completed_k8s_analysis_choice,
     find_pending_k8s_analysis_choice,
     get_renderer,
     should_emit_config_analysis_report,
@@ -828,7 +829,13 @@ class ToolsNodes(BasicNode):
     def _enable_repair_diff_report(self) -> bool:
         return self._has_report_capability("repair_diff_report")
 
-    def _emit_report_event(self, capability: str, parsed: Any, event_dispatcher=None) -> Optional[str]:
+    def _emit_report_event(
+        self,
+        capability: str,
+        parsed: Any,
+        event_dispatcher=None,
+        config: RunnableConfig = None,
+    ) -> Optional[str]:
         """通过 registry 渲染 + dispatch 一个 report 类 AG-UI 事件。
 
         流程:
@@ -877,10 +884,33 @@ class ToolsNodes(BasicNode):
         else:
             try:
                 from langchain_core.callbacks import dispatch_custom_event
-                dispatch_custom_event(capability, payload)
+                dispatch_custom_event(capability, payload, config=config)
             except Exception as e:
                 logger.warning(f"dispatch {capability} failed: {e}")
                 return None
+        return payload.get("report_id")
+
+    async def _aemit_report_event(
+        self,
+        capability: str,
+        parsed: Any,
+        config: RunnableConfig,
+    ) -> Optional[str]:
+        """在异步 Runnable 工具内部派发报告事件，保留父 run 上下文。"""
+        if not self._has_report_capability(capability):
+            return None
+        renderer = get_renderer(capability)
+        if renderer is None:
+            return None
+        ec = getattr(self, "_extra_config", None)
+        matched = list(getattr(ec, "matched_skill_packages", None) or []) if ec else []
+        payload = renderer(parsed, matched[0] if matched else {})
+        if not payload:
+            return None
+
+        from langchain_core.callbacks import adispatch_custom_event
+
+        await adispatch_custom_event(capability, payload, config=config)
         return payload.get("report_id")
 
     def _post_process_tool_results(
@@ -935,6 +965,8 @@ class ToolsNodes(BasicNode):
             except (json.JSONDecodeError, TypeError, IndexError) as e:
                 logger.debug(f"skip {tool_name} post-process (parse failed): {e}")
                 continue
+            if isinstance(parsed, dict) and parsed.get("_report_emitted_capability") == capability:
+                continue
             accumulated.setdefault(capability, []).append(parsed)
 
         # 每个 capability 合并后 emit 一次(而不是 N 张卡片)
@@ -944,106 +976,8 @@ class ToolsNodes(BasicNode):
             merged = merge_analysis_results(parsed_list) if len(parsed_list) > 1 else parsed_list[0]
             self._emit_report_event(capability, merged, event_dispatcher=event_dispatcher)
 
-        # 联动 emit:analysis 出完之后,如果 repair_diff_report 能力也启了,自动出 summary diff
-        # 卡片(不依赖 LLM 调 generate_repair_report)。这样在 Gemma/Gemini 这些
-        # 不严格服从 system prompt "必须调 user_choice → repair_report" 的模型上,
-        # 用户也能直接看到修复建议清单。关掉就在 capabilities 里删 repair_diff_report。
-        if self._has_report_capability("repair_diff_report") and accumulated.get("config_analysis_report"):
-            from apps.opspilot.metis.llm.chain.report_renderers.k8s import (
-                build_summary_diff_from_analysis,
-            )
-            analysis_merged = accumulated["config_analysis_report"]
-            # skill_id 由 caller(_post_process_tool_results 形参)透传,caller 在
-            # deep_wrapper_node:2799 已用 getattr(graph_request, "skill_id", None) 解析;
-            # 拿不到就 None,k8s renderer 自己兜底不依赖 skill_id。
-            if len(analysis_merged) == 1:
-                summary_payload = build_summary_diff_from_analysis(analysis_merged[0], skill_id=skill_id)
-            else:
-                summary_payload = build_summary_diff_from_analysis(
-                    merge_analysis_results(analysis_merged), skill_id=skill_id,
-                )
-            if summary_payload:
-                if event_dispatcher is not None:
-                    try:
-                        import asyncio as _asyncio
-                        coro = event_dispatcher("repair_diff_report", summary_payload)
-                        try:
-                            _asyncio.get_running_loop()
-                        except RuntimeError:
-                            _asyncio.run(coro)
-                        else:
-                            _asyncio.ensure_future(coro)
-                    except Exception as e:
-                        logger.warning(f"auto-dispatch summary diff (async) failed: {e}")
-                else:
-                    try:
-                        from langchain_core.callbacks import dispatch_custom_event
-                        dispatch_custom_event("repair_diff_report", summary_payload)
-                    except Exception as e:
-                        logger.warning(f"auto-dispatch summary diff failed: {e}")
-
-                # 顺手出 report_file_download(.docx 文件下载),前端 ReportDownloadCard
-                # 自动渲染。docx 用 summary diff items 转 raw_items 喂现有 report_generator。
-                # 完全同步执行,小集群下 < 1s,大集群可能稍长但加 try/except 兜底。
-                try:
-                    from datetime import datetime
-                    from apps.opspilot.metis.llm.tools.kubernetes.report_generator import (
-                        generate_k8s_report_docx,
-                    )
-                    from apps.opspilot.services.generated_file_delivery_service import (
-                        build_generated_file_download_event,
-                    )
-
-                    raw_items = [
-                        {
-                            "namespace": str(item.get("namespace") or "all"),
-                            "target_name": str(item.get("workload_name") or "unknown"),
-                            "target_type": str(item.get("workload_type") or "Deployment"),
-                            "severity": str(item.get("severity") or "info"),
-                            "summary": str(item.get("summary") or ""),
-                            "category": "summary_diff",
-                        }
-                        for item in summary_payload.get("items", [])
-                    ]
-                    report_data = {
-                        "cluster_name": summary_payload.get("cluster_name") or "Kubernetes",
-                        "raw_items": raw_items,
-                    }
-                    docx_bytes = generate_k8s_report_docx(report_data)
-                    if docx_bytes:
-                        cluster = report_data["cluster_name"]
-                        filename = (
-                            f"K8S配置检查报告_{cluster}_"
-                            f"{datetime.now().strftime('%Y%m%d')}.docx"
-                        )
-                        download_event = build_generated_file_download_event(
-                            filename=filename,
-                            content_bytes=docx_bytes,
-                            mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        )
-                        if event_dispatcher is not None:
-                            try:
-                                import asyncio as _asyncio_dl
-                                coro = event_dispatcher("report_file_download", download_event)
-                                try:
-                                    _asyncio_dl.get_running_loop()
-                                except RuntimeError:
-                                    _asyncio_dl.run(coro)
-                                else:
-                                    _asyncio_dl.ensure_future(coro)
-                            except Exception as e:
-                                logger.warning(f"auto-dispatch docx report (async) failed: {e}")
-                        else:
-                            try:
-                                from langchain_core.callbacks import dispatch_custom_event
-                                dispatch_custom_event("report_file_download", download_event)
-                            except Exception as e:
-                                logger.warning(f"auto-dispatch docx report failed: {e}")
-                except Exception as e:
-                    logger.warning(f"auto-dispatch docx report failed: {e}")
-
     def _filter_basic_k8s_analysis_loop_calls(self, tool_calls: list, analysis_cache: dict) -> tuple[list, bool]:
-        if self._enable_config_analysis_report() or self._enable_repair_diff_report():
+        if self._enable_config_analysis_report() and self._enable_repair_diff_report():
             return tool_calls, False
         if not analysis_cache.get("deployments"):
             return tool_calls, False
@@ -1102,8 +1036,12 @@ class ToolsNodes(BasicNode):
     @staticmethod
     def _normalize_repair_group_by(group_by: str) -> str:
         value = str(group_by or "").strip().lower()
-        if value in {"category", "target", "all"}:
+        if value in {"category", "target", "scope", "severity", "all"}:
             return value
+        if value == "namespace" or "空间" in value or "namespace" in value or "schema" in value:
+            return "scope"
+        if "等级" in value or "severity" in value or "高危" in value or "风险" in value:
+            return "severity"
         if "工作负载" in value or "目标" in value or "target" in value:
             return "target"
         if "类别" in value or "问题" in value or "category" in value:
@@ -1277,6 +1215,7 @@ class ToolsNodes(BasicNode):
             question: str,
             question_type: str,
             options: Optional[List[str]] = None,
+            config: RunnableConfig = None,
         ) -> str:
             from apps.opspilot.metis.llm.tools.common.user_choice_guard import validate_user_choice_options
             from apps.opspilot.metis.llm.tools.kubernetes.user_choice_guard import build_kubernetes_cluster_choice_guard
@@ -1341,7 +1280,7 @@ class ToolsNodes(BasicNode):
             }
 
             try:
-                dispatch_custom_event("user_choice_request", choice_request_data)
+                dispatch_custom_event("user_choice_request", choice_request_data, config=config)
             except Exception:
                 pass
 
@@ -1372,6 +1311,7 @@ class ToolsNodes(BasicNode):
                         "selected": selected,
                         "source": source,
                     },
+                    config=config,
                 )
             except Exception:
                 pass
@@ -1508,16 +1448,28 @@ class ToolsNodes(BasicNode):
             expected_target_count: int = PydanticField(default=0, description="预期的修复目标数量（即分析报告中有问题的目标总数）。用于校验是否遗漏，必须填写真实数量。")
             group_by: str = PydanticField(
                 default="target",
-                description=("报告组织方式：\n" "- 'target': 按修复目标聚合（同一目标的多个问题合并为一条）\n" "- 'category': 按问题类别聚合（同一类别的多个目标合并为一条）\n" "- 'all': 全部合并为一条"),
+                description=(
+                    "报告组织方式：\n"
+                    "- 'scope': 按所属空间聚合\n"
+                    "- 'severity': 按风险等级聚合\n"
+                    "- 'all': 全部合并为一条\n"
+                    "兼容旧值：'target' 按目标聚合，'category' 按问题类别聚合"
+                ),
             )
 
         async def _generate_repair_report(
-            title: str, context_name: str, items: List[dict], group_by: str = "target", expected_target_count: int = 0, target_names: List[str] = None
+            title: str,
+            context_name: str,
+            items: List[dict],
+            group_by: str = "target",
+            expected_target_count: int = 0,
+            target_names: List[str] = None,
+            config: RunnableConfig = None,
         ) -> str:
             import uuid
             from itertools import groupby as _groupby
 
-            from langchain_core.callbacks import dispatch_custom_event
+            from langchain_core.callbacks import adispatch_custom_event
 
             group_by = self._normalize_repair_group_by(group_by)
 
@@ -1879,6 +1831,75 @@ class ToolsNodes(BasicNode):
                         }
                     )
 
+            elif group_by == "scope":
+                from apps.opspilot.metis.llm.chain.repair_report_identity import (
+                    count_distinct_repair_targets,
+                )
+
+                raw_items.sort(key=lambda x: (x.get("namespace", ""), x.get("target_name", "")))
+                for namespace, group in _groupby(raw_items, key=lambda x: x.get("namespace", "")):
+                    group_list = list(group)
+                    before_parts = []
+                    after_parts = []
+                    categories = set()
+                    worst_severity = "info"
+                    for it in group_list:
+                        label = f"# {it.get('target_name', '')} ({it.get('target_type', '')})".rstrip(" ()")
+                        summary_text = it.get("summary", "")
+                        before_val = it.get("before", "").strip()
+                        after_val = it.get("after", "").strip()
+                        before_parts.append(f"{label}\n{before_val or _before_snippet_for_issue(summary_text)}")
+                        after_parts.append(f"{label}\n{after_val or _after_snippet_for_issue(summary_text)}")
+                        categories.add(it.get("category", "") or summary_text)
+                        if _severity_order.get(it.get("severity"), 9) < _severity_order.get(worst_severity, 9):
+                            worst_severity = it.get("severity", "info")
+                    target_count = count_distinct_repair_targets(group_list)
+                    display_namespace = namespace or "未指定空间"
+                    diff_items.append(
+                        {
+                            "workload_name": f"{display_namespace}（{target_count} 个目标）",
+                            "workload_type": "Scope",
+                            "namespace": namespace or "-",
+                            "severity": worst_severity,
+                            "summary": f"共 {len(group_list)} 项修复：{' | '.join(sorted(categories))}",
+                            "before_yaml": "\n\n".join(before_parts),
+                            "after_yaml": "\n\n".join(after_parts),
+                        }
+                    )
+
+            elif group_by == "severity":
+                from apps.opspilot.metis.llm.chain.repair_report_identity import (
+                    count_distinct_repair_targets,
+                )
+
+                severity_labels = {"critical": "严重", "high": "高危", "warning": "中危", "info": "低危"}
+                raw_items.sort(key=lambda x: (_severity_order.get(x.get("severity"), 9), x.get("namespace", ""), x.get("target_name", "")))
+                for severity, group in _groupby(raw_items, key=lambda x: x.get("severity", "info")):
+                    group_list = list(group)
+                    before_parts = []
+                    after_parts = []
+                    categories = set()
+                    for it in group_list:
+                        label = f"# {it.get('namespace', '')}/{it.get('target_name', '')}".replace("#/", "# ")
+                        summary_text = it.get("summary", "")
+                        before_val = it.get("before", "").strip()
+                        after_val = it.get("after", "").strip()
+                        before_parts.append(f"{label}\n{before_val or _before_snippet_for_issue(summary_text)}")
+                        after_parts.append(f"{label}\n{after_val or _after_snippet_for_issue(summary_text)}")
+                        categories.add(it.get("category", "") or summary_text)
+                    target_count = count_distinct_repair_targets(group_list)
+                    diff_items.append(
+                        {
+                            "workload_name": f"{severity_labels.get(severity, severity)}（{target_count} 个目标）",
+                            "workload_type": "Severity",
+                            "namespace": "-",
+                            "severity": severity,
+                            "summary": f"共 {len(group_list)} 项修复：{' | '.join(sorted(categories))}",
+                            "before_yaml": "\n\n".join(before_parts),
+                            "after_yaml": "\n\n".join(after_parts),
+                        }
+                    )
+
             elif group_by == "category":
                 raw_items.sort(key=lambda x: (_severity_order.get(x.get("severity"), 9), x.get("category", "")))
                 for key, group in _groupby(raw_items, key=lambda x: (x.get("category", ""), x.get("severity", "info"))):
@@ -1935,10 +1956,14 @@ class ToolsNodes(BasicNode):
                     categories.add(it.get("category", "") or summary_text)
                     if _severity_order.get(it.get("severity"), 9) < _severity_order.get(worst_severity, 9):
                         worst_severity = it.get("severity", "info")
-                unique_targets = {it.get("target_name", "") for it in raw_items}
+                from apps.opspilot.metis.llm.chain.repair_report_identity import (
+                    count_distinct_repair_targets,
+                )
+
+                target_count = count_distinct_repair_targets(raw_items)
                 diff_items.append(
                     {
-                        "workload_name": f"全部（{len(unique_targets)} 个目标）",
+                        "workload_name": f"全部（{target_count} 个目标）",
                         "workload_type": "All",
                         "namespace": "-",
                         "severity": worst_severity,
@@ -1947,10 +1972,6 @@ class ToolsNodes(BasicNode):
                         "after_yaml": "\n\n".join(after_parts),
                     }
                 )
-
-            # 走 registry:事件名 = capability 名 = repair_diff_report。
-            # 这里直接传 items 列表,渲染器认两种 shape(list / dict-with-items)。
-            self._emit_report_event("repair_diff_report", diff_items)
 
             def _get_patch_json_for_issue(issue: str) -> str:
                 """根据 issue 类型返回紧凑的 patch JSON（多行格式，便于阅读）"""
@@ -2063,12 +2084,13 @@ class ToolsNodes(BasicNode):
             # dispatch 修复命令事件（直接渲染到前端，不经过 LLM 输出）
             if commands_text:
                 try:
-                    dispatch_custom_event(
+                    await adispatch_custom_event(
                         "repair_commands",
                         {
                             "commands_id": str(uuid.uuid4())[:8],
                             "commands_markdown": commands_text,
                         },
+                        config=config,
                     )
                 except Exception as e:
                     logger.warning(f"dispatch repair_commands failed: {e}")
@@ -2082,19 +2104,17 @@ class ToolsNodes(BasicNode):
                     "cluster_name": context_name,
                     "raw_items": raw_items,
                 }
-                docx_bytes = await asyncio.wait_for(
-                    asyncio.to_thread(generate_k8s_report_docx, report_data_for_docx),
-                    timeout=5,
-                )
+                # DOCX 是双 capability 修复闭环的正式产物，不能因机器负载或
+                # 报告条目较多超过固定 5 秒就静默丢弃。生成过程不依赖外部
+                # 服务，放在线程中等待完成即可，且不会阻塞事件循环。
+                docx_bytes = await asyncio.to_thread(generate_k8s_report_docx, report_data_for_docx)
                 filename = f"K8S配置检查报告_{context_name}_{datetime.now().strftime('%Y%m%d')}.docx"
                 download_event = build_generated_file_download_event(
                     filename=filename,
                     content_bytes=docx_bytes,
                     mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 )
-                dispatch_custom_event("report_file_download", download_event)
-            except asyncio.TimeoutError:
-                logger.warning("generate docx report skipped: timeout")
+                await adispatch_custom_event("report_file_download", download_event, config=config)
             except Exception as e:
                 logger.warning(f"generate docx report failed: {e}")
 
@@ -2104,7 +2124,15 @@ class ToolsNodes(BasicNode):
             else:
                 result_parts.append("\n\n修复建议已在对比报告中展示。")
 
-            return "".join(result_parts)
+            return json.dumps(
+                {
+                    "message": "".join(result_parts),
+                    "title": title,
+                    "cluster_name": context_name,
+                    "items": diff_items,
+                },
+                ensure_ascii=False,
+            )
 
         bulk_repair_tool = StructuredTool.from_function(
             coroutine=_generate_repair_report,
@@ -2163,7 +2191,69 @@ class ToolsNodes(BasicNode):
         kb_tool = self._build_knowledge_retrieve_tool(graph_request)
         if kb_tool is not None:
             tools.append(kb_tool)
+
+        # 配置分析后的选择与修复报告属于后端确定性状态机，不向模型暴露。
+        # 双 capability 门禁、动态选项和报告派发统一由
+        # _run_pending_k8s_repair_workflow 执行，避免模型改写选项或打乱顺序。
         return tools
+
+    async def _run_pending_k8s_repair_workflow(self, messages: list, config: RunnableConfig) -> bool:
+        """模型漏调选择工具时，确定性完成“选择 → 修复对比”闭环。"""
+        if not (self._enable_config_analysis_report() and self._enable_repair_diff_report()):
+            return False
+
+        completed_choice = find_completed_k8s_analysis_choice(messages)
+        analysis = completed_choice[0] if completed_choice else find_pending_k8s_analysis_choice(messages)
+        if not analysis:
+            return False
+
+        choice_tool = self._build_choice_tool()
+        configurable = (config or {}).get("configurable", {})
+        choice_func = getattr(choice_tool, "_request_choice_func", None)
+        if choice_func is not None:
+            choice_func._configurable = configurable
+            choice_func._execution_id = configurable.get("execution_id", "")
+            choice_func._node_id = configurable.get("node_id") or "skill_test"
+
+        if completed_choice:
+            choice_result = completed_choice[1]
+        else:
+            choice_result = await choice_tool.ainvoke(build_repair_mode_choice_args(analysis), config=config)
+        group_by = self._normalize_repair_group_by(str(choice_result or ""))
+
+        from apps.opspilot.metis.llm.tools.kubernetes.analysis import (
+            _take_cached_k8s_analysis_details,
+        )
+
+        configurable = (config or {}).get("configurable", {})
+        deployments = (
+            analysis.get("_deployments_full")
+            or _take_cached_k8s_analysis_details(configurable.get("execution_id", ""))
+            or []
+        )
+        analysis_cache = {
+            "deployments": deployments if isinstance(deployments, list) else [],
+            "cluster_name": analysis.get("cluster_name") or "Kubernetes",
+        }
+        repair_tool = self._build_bulk_repair_tool(analysis_cache)
+        repair_result = await repair_tool.ainvoke(
+            {
+                "title": "K8S 配置修复对比",
+                "context_name": analysis_cache["cluster_name"],
+                "items": [],
+                "target_names": [],
+                "expected_target_count": int(analysis.get("problematic") or 0),
+                "group_by": group_by,
+            },
+            config=config,
+        )
+        try:
+            parsed_repair = json.loads(repair_result) if isinstance(repair_result, str) else repair_result
+        except (json.JSONDecodeError, TypeError):
+            parsed_repair = None
+        if isinstance(parsed_repair, dict) and parsed_repair.get("items"):
+            await self._aemit_report_event("repair_diff_report", parsed_repair, config=config)
+        return True
 
     def _build_knowledge_retrieve_tool(self, graph_request):
         """构建 agent 可调用的 knowledge_retrieve 工具（双模式中的“工具模式”）。
@@ -2476,9 +2566,14 @@ class ToolsNodes(BasicNode):
         """
         import os
         import shutil
+        import sys
 
         host_path = os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin")
         bins: list[str] = []
+        runtime_bins = [
+            os.path.dirname(sys.executable),
+            os.path.dirname(os.path.realpath(sys.executable)),
+        ]
 
         for cmd in ToolsNodes._SANDBOX_PATH_PROBES:
             try:
@@ -2492,43 +2587,11 @@ class ToolsNodes(BasicNode):
                 bins.append(bin_dir)
 
         # 合并 host PATH + 探测 bins,用 dict.fromkeys 保序去重(host PATH 本身可能有重复段)
-        merged_list = host_path.split(":") + bins
+        # 当前服务的 venv 必须优先于父进程 PATH。否则从精简环境启动时会命中
+        # /usr/bin/python3，并与服务 venv 的依赖形成跨 Python 版本混用。
+        merged_list = runtime_bins + host_path.split(":") + bins
         merged_unique = list(dict.fromkeys(p for p in merged_list if p))
         return ":".join(merged_unique)
-
-    @staticmethod
-    def _venv_site_packages() -> str:
-        """返回当前 Python venv 的 site-packages 路径,用于 sandbox 的 PYTHONPATH。
-
-        host Python 装了 deps(reportlab 等),但 sandbox 用 subprocess 跑 system Python 时
-        看不到 venv 的 site-packages → ModuleNotFoundError。
-        把 venv site-packages 加进 PYTHONPATH 解决。
-        """
-        import os
-        import site
-        import sys
-
-        paths: list[str] = []
-
-        # 1) 当前 sys.executable 推出来的 site-packages(精准匹配 venv)
-        exe = os.path.realpath(sys.executable)
-        ver = f"python{sys.version_info.major}.{sys.version_info.minor}"
-        candidate = os.path.join(os.path.dirname(exe), "..", "lib", ver, "site-packages")
-        candidate = os.path.realpath(candidate)
-        if os.path.isdir(candidate):
-            paths.append(candidate)
-
-        # 2) site.getsitepackages()(覆盖 system Python 之外的场景)
-        for p in site.getsitepackages():
-            if os.path.isdir(p):
-                paths.append(p)
-
-        # 3) user site-packages(~/.local/lib/...)
-        user_site = site.getusersitepackages()
-        if user_site and os.path.isdir(user_site):
-            paths.append(user_site)
-
-        return ":".join(paths) if paths else ""
 
     @staticmethod
     def _sandbox_env(sandbox_dir: str) -> dict:
@@ -2553,10 +2616,6 @@ class ToolsNodes(BasicNode):
             "LC_ALL": os.environ.get("LC_ALL", os.environ.get("LANG", "C.UTF-8")),
             "TMPDIR": sandbox_dir,  # 临时文件落在沙箱内,用完即弃
             "HOME": sandbox_dir,    # 用户配置也隔离(PATH 透传但 HOME 不透)
-            # host venv 的 site-packages 加进 PYTHONPATH,确保 sandbox 调
-            # `python3 xxx.py` 用 system Python 也能看到 venv 装的包
-            # (否则 LLM 调 `python3 -c "import reportlab"` 会 ModuleNotFoundError)。
-            "PYTHONPATH": ToolsNodes._venv_site_packages(),
             # kubectl 默认读 ~/.kube/config,但 sandbox 把 HOME 隔离到 sandbox_dir,
             # 找不到 kubeconfig。显式传 KUBECONFIG(host 环境变量,LLM 调 kubectl 才能连 k8s)。
             "KUBECONFIG": os.environ.get("KUBECONFIG", os.path.expanduser("~/.kube/config")),
@@ -2687,7 +2746,17 @@ class ToolsNodes(BasicNode):
             deep_agent = create_deep_agent(**agent_kwargs)
 
             # DeepAgent 返回 CompiledStateGraph；提高递归限制以容纳复杂任务
-            deep_config = {**config, "recursion_limit": 100}
+            ec = getattr(self, "_extra_config", None)
+            matched_packages = list(getattr(ec, "matched_skill_packages", None) or []) if ec else []
+            deep_config = {
+                **config,
+                "recursion_limit": 100,
+                "configurable": {
+                    **config.get("configurable", {}),
+                    "enabled_report_capabilities": sorted(self._enabled_report_capabilities()),
+                    "report_package_context": matched_packages[0] if matched_packages else {},
+                },
+            }
 
             try:
                 result = await deep_agent.ainvoke({"messages": state["messages"]}, config=deep_config)
@@ -2756,6 +2825,9 @@ class ToolsNodes(BasicNode):
                     skill_id=getattr(graph_request, "skill_id", None),
                     event_dispatcher=_emit_via_async_config,
                 )
+                # 报告后处理只看本轮新增消息，避免重复派发；修复状态机必须看
+                # 完整历史，因为 HITL 恢复时分析结果和用户选择常分属不同轮次。
+                await self._run_pending_k8s_repair_workflow(final_messages, config)
             except Exception:
                 # PPR 失败时 re-raise,让上层 langgraph 走正常 ERROR 处理路径
                 raise

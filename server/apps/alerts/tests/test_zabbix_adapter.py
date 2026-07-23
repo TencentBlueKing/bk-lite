@@ -1,6 +1,6 @@
 """Zabbix 告警源适配器覆盖测试。
 
-对照 spec/prd/告警中心·集成：Zabbix webhook（含 ProblemId）归一化为标准事件，含恢复语义。
+对照 specs/capabilities/legacy-prd-告警中心-集成.md：Zabbix webhook（含 ProblemId）归一化为标准事件，含恢复语义。
 """
 
 import pytest

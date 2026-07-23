@@ -1,6 +1,6 @@
 """事故与告警视图集覆盖测试。
 
-对照 spec/prd/告警中心·事故/告警：事故由告警聚合而来，支持增删改查与权限范围控制。
+对照 specs/capabilities/legacy-prd-告警中心-事故.md：事故由告警聚合而来，支持增删改查与权限范围控制。
 """
 
 import json
@@ -393,3 +393,47 @@ def test_incident_update(superuser):
     assert response.status_code == status.HTTP_200_OK
     incident.refresh_from_db()
     assert incident.title == "新标题"
+
+
+@pytest.mark.django_db
+def test_incident_update_can_replace_alerts_when_all_are_authorized(superuser):
+    incident = Incident.objects.create(
+        incident_id="I-update-alerts", level="0", title="事故", fingerprint="fp", team=[1]
+    )
+    alert = _make_alert("A-update", team=[1])
+    request = _request(
+        "patch",
+        f"/incident/{incident.id}/",
+        superuser,
+        data={"alert": [alert.id]},
+        team="1",
+    )
+
+    response = IncidentModelViewSet.as_view({"patch": "partial_update"})(
+        request, pk=str(incident.id)
+    )
+    _render(response)
+
+    assert response.status_code == status.HTTP_200_OK
+    assert incident.alert.filter(id=alert.id).exists()
+
+
+@pytest.mark.django_db
+def test_incident_create_unauthorized_alert_does_not_leak_title(superuser, monkeypatch):
+    alert = _make_alert("A-secret", team=[2])
+    alert.title = "跨团队敏感标题"
+    alert.save(update_fields=["title"])
+    monkeypatch.setattr(IncidentModelViewSet, "_get_allowed_alert_ids", lambda self: set())
+    request = _request(
+        "post",
+        "/incident/",
+        superuser,
+        data={"level": "0", "title": "事故", "team": [1], "alert": [alert.id]},
+        team="1",
+    )
+
+    response = IncidentModelViewSet.as_view({"post": "create"})(request)
+    payload = _render(response)
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "跨团队敏感标题" not in str(payload)

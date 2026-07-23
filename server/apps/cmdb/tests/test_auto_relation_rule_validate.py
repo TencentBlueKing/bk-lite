@@ -1,6 +1,6 @@
 """CMDB 自动关联规则 validate/build_response 覆盖测试。
 
-对照 spec/prd/CMDB·模型关联：自动关联规则字段类型一致性、不支持类型校验、
+对照 specs/capabilities/legacy-prd-cmdb-模型管理.md：自动关联规则字段类型一致性、不支持类型校验、
 匹配规则字符串约束、rule_id 重复校验、规则响应构建。
 """
 

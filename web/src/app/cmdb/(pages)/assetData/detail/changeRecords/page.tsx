@@ -22,7 +22,6 @@ import {
 import styles from './index.module.scss';
 import {
   AttrFieldType,
-  UserItem,
 } from '@/app/cmdb/types/assetManage';
 
 const { RangePicker } = DatePicker;
@@ -103,7 +102,6 @@ const ChangeRecords: React.FC = () => {
   const modelApi = useModelApi();
   const instanceApi = useInstanceApi();
   const commonContext = useCommon();
-  const userList: UserItem[] = commonContext?.userList || [];
   const modelList = commonContext?.modelList || [];
 
   const searchParams = useSearchParams();

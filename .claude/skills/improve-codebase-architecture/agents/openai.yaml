@@ -1,0 +1,5 @@
+interface:
+  display_name: "Improve Codebase Architecture"
+  short_description: "Help with Improve Codebase Architecture tasks"
+policy:
+  allow_implicit_invocation: false

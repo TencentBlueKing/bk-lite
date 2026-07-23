@@ -1,6 +1,6 @@
 """告警中心工具函数覆盖测试：util / rule_matcher / time_range_checker。
 
-对照 spec/prd/告警中心·配置：分派/屏蔽规则的匹配与生效时间范围判断。
+对照 specs/capabilities/legacy-prd-告警中心-配置.md：分派/屏蔽规则的匹配与生效时间范围判断。
 """
 
 import datetime
@@ -11,7 +11,6 @@ from django.utils import timezone
 from apps.alerts.utils import util
 from apps.alerts.utils.rule_matcher import RuleMatcher, filter_by_rules
 from apps.alerts.utils.time_range_checker import TimeRangeChecker, check_time_range
-
 
 # --------------------------------------------------------------------------
 # util.py 纯函数
@@ -163,6 +162,49 @@ def test_rule_matcher_eq():
     rules = [[{"key": "name", "operator": "eq", "value": "Critical"}]]
     ids = filter_by_rules(Level.objects.all(), rules, mapping)
     assert len(ids) == 1
+
+
+@pytest.mark.django_db
+def test_rule_matcher_eq_list_matches_any_selected_value():
+    from apps.alerts.models.models import Level
+
+    critical = Level.objects.create(level_id=0, level_name="Critical", level_display_name="致命", level_type="alert")
+    error = Level.objects.create(level_id=1, level_name="Error", level_display_name="错误", level_type="alert")
+    warning = Level.objects.create(level_id=2, level_name="Warning", level_display_name="预警", level_type="alert")
+    matcher = RuleMatcher({"level": "level_id"})
+
+    ids = matcher.filter_queryset(
+        Level.objects.all(),
+        [[{"key": "level", "operator": "eq", "value": ["0", "1"]}]],
+    )
+
+    assert set(ids) == {critical.id, error.id}
+    assert warning.id not in ids
+
+
+@pytest.mark.django_db
+def test_rule_matcher_ne_list_excludes_every_selected_value():
+    from apps.alerts.models.models import Level
+
+    critical = Level.objects.create(level_id=0, level_name="Critical", level_display_name="致命", level_type="alert")
+    error = Level.objects.create(level_id=1, level_name="Error", level_display_name="错误", level_type="alert")
+    warning = Level.objects.create(level_id=2, level_name="Warning", level_display_name="预警", level_type="alert")
+    matcher = RuleMatcher({"level": "level_id"})
+
+    ids = matcher.filter_queryset(
+        Level.objects.all(),
+        [[{"key": "level", "operator": "ne", "value": ["0", "1"]}]],
+    )
+
+    assert ids == [warning.id]
+    assert critical.id not in ids
+    assert error.id not in ids
+
+
+def test_rule_matcher_empty_list_is_invalid():
+    matcher = RuleMatcher({"level": "level"})
+    assert matcher.build_single_rule_q({"key": "level", "operator": "eq", "value": []}) is None
+    assert matcher.build_single_rule_q({"key": "level", "operator": "ne", "value": []}) is None
 
 
 @pytest.mark.django_db

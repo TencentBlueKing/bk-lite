@@ -1,6 +1,6 @@
 """CMDB 实例视图覆盖测试（patch InstanceManage + 权限 mixin）。
 
-对照 spec/prd/CMDB·资产：实例查询/详情/增删改、批量操作、关联关系的接口层逻辑，
+对照 specs/capabilities/legacy-prd-cmdb-资产.md：实例查询/详情/增删改、批量操作、关联关系的接口层逻辑，
 包含纯函数 _normalize_query_list/_parse_positive_int/add_instance_permission。
 """
 
@@ -287,15 +287,45 @@ def test_retrieve_denied_when_name_permission_only_exists_in_other_org(superuser
 
 @pytest.mark.django_db
 def test_create_ok(superuser, monkeypatch):
+    calls = []
+
+    def _create(model_id, info, username, **kwargs):
+        calls.append(kwargs)
+        return {"_id": 9, "model_id": model_id, "inst_name": info["inst_name"]}
+
     monkeypatch.setattr(
         f"{VIEWS}.InstanceManage.instance_create",
-        lambda model_id, info, username, allowed_org_ids=None: {"_id": 9, "model_id": model_id},
+        _create,
     )
     request = _req("post", superuser, data={"model_id": "host", "instance_info": {"inst_name": "h"}})
+    request.META["HTTP_IDEMPOTENCY_KEY"] = "create-host-1"
     response = _call({"post": "create"}, request)
     body = _body(response)
     assert response.status_code == status.HTTP_200_OK
     assert body["data"]["_id"] == 9
+    assert calls[0]["record_change"] is False
+    assert calls[0]["schedule_post_actions"] is False
+    assert calls[0]["operation_id"]
+
+
+@pytest.mark.django_db
+def test_create_same_idempotency_key_returns_original_result_without_graph_replay(superuser, monkeypatch):
+    calls = []
+
+    def _create(model_id, info, username, **kwargs):
+        calls.append(info)
+        return {"_id": 9, "model_id": model_id, "inst_name": info["inst_name"]}
+
+    monkeypatch.setattr(f"{VIEWS}.InstanceManage.instance_create", _create)
+
+    responses = []
+    for _ in range(2):
+        request = _req("post", superuser, data={"model_id": "host", "instance_info": {"inst_name": "h"}})
+        request.META["HTTP_IDEMPOTENCY_KEY"] = "create-host-1"
+        responses.append(_call({"post": "create"}, request))
+
+    assert [_body(response)["data"]["_id"] for response in responses] == [9, 9]
+    assert len(calls) == 1
 
 
 # --------------------------------------------------------------------------
@@ -363,19 +393,45 @@ def test_partial_update_not_found(superuser, monkeypatch):
 
 @pytest.mark.django_db
 def test_partial_update_ok(superuser, monkeypatch):
+    calls = []
     monkeypatch.setattr(
         f"{VIEWS}.InstanceManage.query_entity_by_id",
         lambda pk: {"_id": 5, "model_id": "host", "inst_name": "h", "organization": [1]},
     )
     monkeypatch.setattr(
         f"{VIEWS}.InstanceManage.instance_update",
-        lambda *a, **k: {"_id": 5, "inst_name": "h2"},
+        lambda *a, **k: calls.append(k) or {"_id": 5, "model_id": "host", "inst_name": "h2"},
     )
     request = _req("patch", superuser, data={"inst_name": "h2"})
+    request.META["HTTP_IDEMPOTENCY_KEY"] = "update-host-5"
     response = _call({"patch": "partial_update"}, request, pk=5)
     body = _body(response)
     assert response.status_code == status.HTTP_200_OK
     assert body["data"]["inst_name"] == "h2"
+    assert calls[0]["record_change"] is False
+    assert calls[0]["schedule_post_actions"] is False
+    assert calls[0]["operation_id"]
+
+
+@pytest.mark.django_db
+def test_partial_update_same_idempotency_key_does_not_replay_graph_write(superuser, monkeypatch):
+    monkeypatch.setattr(
+        f"{VIEWS}.InstanceManage.query_entity_by_id",
+        lambda pk: {"_id": 5, "model_id": "host", "inst_name": "h", "organization": [1]},
+    )
+    calls = []
+    monkeypatch.setattr(
+        f"{VIEWS}.InstanceManage.instance_update",
+        lambda *a, **k: calls.append(k) or {"_id": 5, "model_id": "host", "inst_name": "h2"},
+    )
+
+    for _ in range(2):
+        request = _req("patch", superuser, data={"inst_name": "h2"})
+        request.META["HTTP_IDEMPOTENCY_KEY"] = "update-host-5"
+        response = _call({"patch": "partial_update"}, request, pk=5)
+        assert _body(response)["data"]["inst_name"] == "h2"
+
+    assert len(calls) == 1
 
 
 # --------------------------------------------------------------------------

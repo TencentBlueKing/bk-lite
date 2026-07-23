@@ -1,4 +1,5 @@
 from dataclasses import replace
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -136,6 +137,49 @@ def test_ad_login_auth_invalid_credentials_are_treated_as_auth_failure_without_e
     assert result.success is False
     assert result.errors[0].code == "provider.auth_failed"
     mock_logger.exception.assert_not_called()
+    mock_logger.warning.assert_not_called()
+
+
+@patch("apps.system_mgmt.providers.adapters.ad.logger")
+@patch("apps.system_mgmt.providers.adapters.ad.search_single_user")
+def test_ad_authenticate_logs_unexpected_failure_without_raw_exception(mock_search_single_user, mock_logger):
+    mock_search_single_user.side_effect = RuntimeError(
+        "ldap://private.example?bind_password=private-secret"
+    )
+
+    result = ADLoginAuthAdapter.authenticate(
+        config=_base_config(),
+        provider_key="ad",
+        capability_key="login_auth",
+        username="alice",
+        password="secret",
+    )
+
+    assert result.success is False
+    mock_logger.exception.assert_not_called()
+    assert "private-secret" not in str(mock_logger.method_calls)
+    assert "RuntimeError" in str(mock_logger.debug.call_args_list)
+
+
+@patch("apps.system_mgmt.providers.adapters.ad.logger")
+@patch("apps.system_mgmt.providers.adapters.ad.search_entries")
+def test_ad_user_sync_logs_failure_without_raw_exception(mock_search_entries, mock_logger):
+    mock_search_entries.side_effect = RuntimeError(
+        "ldap://private.example?bind_password=private-secret"
+    )
+    source = SimpleNamespace(business_config={"root_dn": "DC=corp,DC=example,DC=com"})
+
+    result = ADUserSyncAdapter.sync_users(
+        config=_base_config(),
+        provider_key="ad",
+        capability_key="user_sync",
+        source=source,
+    )
+
+    assert result.success is False
+    mock_logger.exception.assert_not_called()
+    assert "private-secret" not in str(mock_logger.method_calls)
+    assert "RuntimeError" in str(mock_logger.debug.call_args_list)
 
 
 @patch("apps.system_mgmt.providers.adapters.ad.search_entries")
@@ -234,6 +278,27 @@ def test_ad_connection_tests_use_root_dse_probe(mock_probe_root_dse):
     assert login_result.success is True
     assert sync_result.success is True
     assert mock_probe_root_dse.call_count == 2
+
+
+@patch("apps.system_mgmt.providers.adapters.ad.logger")
+@patch("apps.system_mgmt.providers.adapters.ad.probe_root_dse")
+def test_ad_connection_test_returns_failure_without_adapter_error_log(mock_probe_root_dse, mock_logger):
+    mock_probe_root_dse.side_effect = RuntimeError("connection refused")
+
+    login_result = ADLoginAuthAdapter.test_connection(
+        config=_base_config(),
+        provider_key="ad",
+        capability_key="login_auth",
+    )
+    sync_result = ADUserSyncAdapter.test_connection(
+        config=_base_config(),
+        provider_key="ad",
+        capability_key="user_sync",
+    )
+
+    assert login_result.success is False
+    assert sync_result.success is False
+    mock_logger.exception.assert_not_called()
 
 
 @patch("apps.system_mgmt.providers.adapters.ad.probe_root_dse")

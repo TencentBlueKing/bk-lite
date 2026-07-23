@@ -1,6 +1,6 @@
 """告警构建器辅助方法覆盖测试。
 
-对照 spec/prd/告警中心·告警：事件聚合为告警时统一标准字段、维度、级别映射。
+对照 specs/capabilities/legacy-prd-告警中心-告警.md：事件聚合为告警时统一标准字段、维度、级别映射。
 """
 
 from types import SimpleNamespace
@@ -219,6 +219,8 @@ def test_create_or_update_alert_creates_new(alert_levels, source, strategy):
     assert alert.fingerprint == "fp-new"
     assert alert.title == "聚合告警A"
     assert alert.events.filter(event_id="E1").exists()
+    from apps.alerts.models import ActiveAlertFingerprint
+    assert ActiveAlertFingerprint.objects.get(fingerprint="fp-new").alert_id == alert.pk
 
 
 @pytest.mark.django_db
