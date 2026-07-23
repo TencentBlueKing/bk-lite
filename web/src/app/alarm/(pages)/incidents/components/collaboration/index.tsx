@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Spin, Empty, Tag, Button, Avatar, Tooltip, message, Modal, Drawer, Select, Input, Checkbox, Dropdown } from 'antd';
+import { Spin, Empty, Tag, Button, Avatar, Tooltip, message, Modal, Drawer, Select, Input, Checkbox } from 'antd';
 import {
   PlusOutlined,
   StarOutlined,
@@ -13,13 +13,14 @@ import {
   MessageOutlined,
   DownOutlined,
   UpOutlined,
-  MoreOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { useIncidentsApi } from '@/app/alarm/api/incidents';
 import { useCommon } from '@/app/alarm/context/common';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import PermissionWrapper from '@/components/permission';
+import MoreActionsDropdown from '@/components/more-actions-dropdown';
+import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
 import type {
   IncidentTableDataItem,
   IncidentUpdateItem,
@@ -309,7 +310,7 @@ const CollaborationTab: React.FC<CollaborationTabProps> = ({
     const isExpanded = expandedReplies.has(item.id);
     const isReplying = replyingTo === item.id;
 
-    const moreMenuItems = [
+    const moreMenuItems: MoreActionsDropdownItem[] = [
       {
         key: 'delete',
         label: t('common.delete'),
@@ -396,9 +397,7 @@ const CollaborationTab: React.FC<CollaborationTabProps> = ({
               </Button>
             </PermissionWrapper>
             <PermissionWrapper requiredPermissions={['Edit']}>
-              <Dropdown menu={{ items: moreMenuItems }} trigger={['click']} placement="bottomRight">
-                <Button type="text" size="small" className="px-1" aria-label={t('common.more')} icon={<MoreOutlined aria-hidden="true" style={{ fontSize: 14 }} />} />
-              </Dropdown>
+              <MoreActionsDropdown items={moreMenuItems} placement="bottomRight" />
             </PermissionWrapper>
           </div>
         </div>
