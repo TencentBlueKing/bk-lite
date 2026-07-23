@@ -130,6 +130,7 @@
       "moveDown": "下移",
       "dragToReorder": "拖拽调序",
       "pathPlaceholder": "例如 message 或 http.status",
+      "pathSyntaxHint": "带引号的方括号表示属性名包含点或其他特殊字符，不是数组下标。",
       "invalidMapping": "映射必须是目标路径均为字符串的 JSON 对象",
       "delimiter": "分隔符",
       "index": "元素下标",

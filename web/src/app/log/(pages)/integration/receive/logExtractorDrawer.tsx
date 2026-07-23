@@ -6,6 +6,7 @@ import {
   AutoComplete,
   Button,
   Checkbox,
+  Col,
   Drawer,
   Empty,
   Form,
@@ -13,6 +14,7 @@ import {
   InputNumber,
   Modal,
   Popconfirm,
+  Row,
   Select,
   Space,
   Table,
@@ -592,6 +594,7 @@ const LogExtractorDrawer = ({ instance, open, onClose }: Props) => {
             <Form.Item
               name="source_field"
               label={t('log.extractor.sourceField')}
+              extra={t('log.extractor.pathSyntaxHint')}
               rules={[{ required: true }]}
             >
               <AutoComplete options={fieldOptions} placeholder={t('log.extractor.pathPlaceholder')} />
@@ -622,37 +625,45 @@ const LogExtractorDrawer = ({ instance, open, onClose }: Props) => {
             </Form.Item>
             <Form.List name="conditions">
               {(fields, { add, remove: removeCondition }) => (
-                <Space direction="vertical" className="w-full">
+                <div className="w-full">
                   {fields.map(({ key, name }) => (
-                    <Space key={key} align="start" className="w-full">
-                      <Form.Item
-                        name={[name, 'field']}
-                        rules={[{ required: true }]}
-                      >
-                        <AutoComplete
-                          className="w-[230px]"
-                          options={fieldOptions}
-                          placeholder={t('log.extractor.conditionField')}
-                        />
-                      </Form.Item>
-                      <Form.Item name={[name, 'op']} rules={[{ required: true }]}>
-                        <Select
-                          className="w-[140px]"
-                          options={OPERATORS.map((value) => ({ value, label: value }))}
-                        />
-                      </Form.Item>
-                      <Form.Item name={[name, 'value']}>
-                        <Input placeholder={t('log.extractor.conditionValue')} />
-                      </Form.Item>
-                      <Button danger type="text" onClick={() => removeCondition(name)}>
-                        {t('common.delete')}
-                      </Button>
-                    </Space>
+                    <Row gutter={8} align="top" key={key}>
+                      <Col xs={24} md={8}>
+                        <Form.Item
+                          name={[name, 'field']}
+                          rules={[{ required: true }]}
+                        >
+                          <AutoComplete
+                            className="w-full"
+                            options={fieldOptions}
+                            placeholder={t('log.extractor.conditionField')}
+                          />
+                        </Form.Item>
+                      </Col>
+                      <Col xs={24} md={5}>
+                        <Form.Item name={[name, 'op']} rules={[{ required: true }]}>
+                          <Select
+                            className="w-full"
+                            options={OPERATORS.map((value) => ({ value, label: value }))}
+                          />
+                        </Form.Item>
+                      </Col>
+                      <Col xs={24} md={8}>
+                        <Form.Item name={[name, 'value']}>
+                          <Input placeholder={t('log.extractor.conditionValue')} />
+                        </Form.Item>
+                      </Col>
+                      <Col xs={24} md={3}>
+                        <Button danger type="text" onClick={() => removeCondition(name)}>
+                          {t('common.delete')}
+                        </Button>
+                      </Col>
+                    </Row>
                   ))}
                   <Button type="dashed" onClick={() => add({ op: '==' })}>
                     {t('log.extractor.addCondition')}
                   </Button>
-                </Space>
+                </div>
               )}
             </Form.List>
           </Form.Item>

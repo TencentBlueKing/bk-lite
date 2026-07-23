@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   flattenExtractorPaths,
   moveExtractorItem,
@@ -49,5 +50,44 @@ assert.equal(
   false,
   '无操作权限时不应显示新建入口'
 );
+
+const drawerSource = readFileSync(
+  new URL(
+    '../src/app/log/(pages)/integration/receive/logExtractorDrawer.tsx',
+    import.meta.url
+  ),
+  'utf8'
+);
+const zhLocale = JSON.parse(
+  readFileSync(new URL('../src/app/log/locales/zh.json', import.meta.url), 'utf8')
+) as { log: { extractor: Record<string, string> } };
+const enLocale = JSON.parse(
+  readFileSync(new URL('../src/app/log/locales/en.json', import.meta.url), 'utf8')
+) as { log: { extractor: Record<string, string> } };
+
+assert.match(
+  drawerSource,
+  /name="source_field"[\s\S]{0,240}extra=\{t\('log\.extractor\.pathSyntaxHint'\)\}/,
+  '源属性应解释带引号方括号的规范路径语法'
+);
+assert.ok(zhLocale.log.extractor.pathSyntaxHint, '中文应提供属性路径语法说明');
+assert.ok(enLocale.log.extractor.pathSyntaxHint, '英文应提供属性路径语法说明');
+
+const conditionListSource = drawerSource.match(
+  /<Form\.List name="conditions">([\s\S]*?)<\/Form\.List>/
+)?.[1];
+assert.ok(conditionListSource, '应能定位条件列表');
+assert.match(
+  conditionListSource,
+  /<Row[^>]*gutter=\{8\}[^>]*align="top"[^>]*>/,
+  '条件行应使用稳定栅格而不是可收缩的 Space 布局'
+);
+assert.equal(
+  (conditionListSource.match(/<Col xs=\{24\} md=\{8\}>/g) || []).length,
+  2,
+  '条件属性与比较值在桌面宽度下都应获得稳定列宽'
+);
+assert.match(conditionListSource, /<Col xs=\{24\} md=\{5\}>/);
+assert.match(conditionListSource, /<Col xs=\{24\} md=\{3\}>/);
 
 console.log('log-extractor-interaction tests passed');

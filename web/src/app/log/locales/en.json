@@ -130,6 +130,7 @@
       "moveDown": "Move down",
       "dragToReorder": "Drag to reorder",
       "pathPlaceholder": "For example message or http.status",
+      "pathSyntaxHint": "Quoted brackets mean the attribute name contains dots or other special characters; they are not array indexes.",
       "invalidMapping": "Mapping must be a JSON object with string target paths",
       "delimiter": "Delimiter",
       "index": "Element index",
