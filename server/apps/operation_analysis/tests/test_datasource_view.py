@@ -429,9 +429,10 @@ def test_datasource_tag_read_blocked_without_permission(authenticated_user, acti
 
 
 @pytest.mark.django_db
-def test_datasource_tag_list_allowed_with_permission(authenticated_user):
-    """拥有 data_source-View 权限的用户仍可读取标签列表。"""
-    datasource_view.DataSourceTag.objects.create(
+@pytest.mark.parametrize("action", ["list", "retrieve"])
+def test_datasource_tag_read_allowed_with_permission(authenticated_user, action):
+    """拥有 data_source-View 权限的用户仍可读取标签列表和详情。"""
+    tag = datasource_view.DataSourceTag.objects.create(
         tag_id="cmdb",
         name="CMDB",
         created_by="system",
@@ -443,8 +444,9 @@ def test_datasource_tag_list_allowed_with_permission(authenticated_user):
     factory = APIRequestFactory()
     request = factory.get("/operation_analysis/api/tag/")
     force_authenticate(request, user=authenticated_user)
-    view = datasource_view.DataSourceTagModelViewSet.as_view({"get": "list"})
+    view = datasource_view.DataSourceTagModelViewSet.as_view({"get": action})
 
-    response = view(request)
+    kwargs = {"pk": str(tag.pk)} if action == "retrieve" else {}
+    response = view(request, **kwargs)
 
     assert response.status_code == status.HTTP_200_OK
