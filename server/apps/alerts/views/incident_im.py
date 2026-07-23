@@ -61,6 +61,17 @@ class IncidentIMGroupViewSet(ModelViewSet):
             return None, self._incident_error(exc)
         return incident, None
 
+    def _can_manage_incident(self, incident):
+        user = self.request.user
+        if user.username not in (incident.operator or []):
+            return False
+        if getattr(user, "is_superuser", False):
+            return True
+        permissions = getattr(user, "permission", set())
+        if isinstance(permissions, dict):
+            permissions = permissions.get("alarm", set())
+        return isinstance(permissions, set) and "Incidents-Edit" in permissions
+
     @staticmethod
     def _error(code, message, http_status=status.HTTP_400_BAD_REQUEST, details=None):
         return JsonResponse({"result": False, "code": code, "message": message, "data": {"details": details or {}}}, status=http_status)
@@ -274,17 +285,26 @@ class IncidentIMGroupViewSet(ModelViewSet):
         group.refresh_from_db()
         return Response(self._serialize_group(group, incident))
 
-    @HasPermission("Incidents-Edit")
+    @HasPermission("Incidents-View")
     @action(methods=["get"], detail=False, url_path="options")
     def group_options(self, request, *args, **kwargs):
-        incident, error = self._manage_incident_or_response()
+        incident, error = self._read_incident_or_response()
         if error is not None:
             return error
-        channels = IMGroupRuntimeService.list_ready_channels(request.user)
+        can_create = self._can_manage_incident(incident)
         payload = {
-            "channels": [{"id": channel.id, "name": channel.name} for channel in channels],
+            "can_create": can_create,
+            "channels": [],
             "default_group_name": self._default_group_name(incident),
+            "members": [],
+            "owner_candidates": [],
+            "preferred_owner_username": None,
         }
+        if not can_create:
+            return Response(payload)
+
+        channels = IMGroupRuntimeService.list_ready_channels(request.user)
+        payload["channels"] = [{"id": channel.id, "name": channel.name} for channel in channels]
         channel_id = request.query_params.get("channel_id")
         if channel_id in (None, ""):
             return Response(payload)
@@ -301,6 +321,11 @@ class IncidentIMGroupViewSet(ModelViewSet):
             for member in members
             if member.role == IncidentIMMember.Role.OPERATOR and member.mapping_status == IncidentIMMember.MappingStatus.MAPPED
         ]
+        candidate_usernames = [candidate["username"] for candidate in payload["owner_candidates"]]
+        if request.user.username in candidate_usernames:
+            payload["preferred_owner_username"] = request.user.username
+        elif candidate_usernames:
+            payload["preferred_owner_username"] = candidate_usernames[0]
         return Response(payload)
 
     @HasPermission("Incidents-View")

@@ -14,6 +14,7 @@ from apps.alerts.service.incident_im.groups import IncidentIMGroupService
 from apps.base.models import User as AuthUser
 from apps.system_mgmt.models import IMNotificationChannel, IMNotificationUserMapping, IntegrationInstance
 from apps.system_mgmt.models import User as IMUser
+from apps.system_mgmt.services.im_group_service import IMGroupRuntimeService
 
 
 @pytest.fixture(autouse=True)
@@ -121,8 +122,35 @@ def test_collaborator_can_read_group_but_cannot_load_options_or_create(api_clien
     api_client.force_authenticate(collaborator)
 
     assert api_client.get(group_url(incident)).status_code == 200
-    assert api_client.get(f"{group_url(incident)}options/").status_code == 403
+    options = api_client.get(f"{group_url(incident)}options/")
+    assert options.status_code == 200
+    assert options.json()["data"]["can_create"] is False
+    assert options.json()["data"]["channels"] == []
     assert api_client.post(group_url(incident), create_payload(channel), format="json").status_code == 403
+
+
+@pytest.mark.django_db
+def test_options_read_only_operator_with_channel_id_returns_empty_safe_payload_without_sensitive_lookup(api_client, operator, incident, channel):
+    operator.permission = {"alarm": {"Incidents-View"}}
+    api_client.force_authenticate(operator)
+
+    with patch.object(IMGroupRuntimeService, "list_ready_channels") as list_channels, patch.object(
+        IncidentIMGroupService, "require_ready_channel"
+    ) as require_channel, patch("apps.alerts.views.incident_im.resolve_incident_members") as resolve_members:
+        response = api_client.get(f"{group_url(incident)}options/?channel_id={channel.id}")
+
+    assert response.status_code == 200
+    assert response.json()["data"] == {
+        "can_create": False,
+        "channels": [],
+        "default_group_name": f"[{incident.incident_id}] {incident.title}",
+        "members": [],
+        "owner_candidates": [],
+        "preferred_owner_username": None,
+    }
+    list_channels.assert_not_called()
+    require_channel.assert_not_called()
+    resolve_members.assert_not_called()
 
 
 @pytest.mark.django_db
@@ -213,6 +241,57 @@ def test_options_rejects_cross_team_channel(api_client, operator, incident, chan
 
     assert response.status_code == 403
     assert response.json()["code"] == "IM_CHANNEL_FORBIDDEN"
+
+
+@pytest.mark.django_db
+def test_options_prefers_current_operator_when_mapped_even_if_not_first_candidate(api_client, operator, incident, channel, operator_mapping):
+    backup = IMUser.objects.create(username="backup", display_name="Backup", email="backup@example.com", password="test-pass",)
+    IMNotificationUserMapping.objects.create(
+        channel=channel,
+        user=backup,
+        external_identity_key="open_id",
+        external_identity_value="backup",
+        external_receive_key="open_id",
+        external_snapshot={"open_id": "ou_backup"},
+    )
+    incident.operator = ["backup", "operator"]
+    incident.save(update_fields=["operator"])
+    api_client.force_authenticate(operator)
+
+    response = api_client.get(f"{group_url(incident)}options/?channel_id={channel.id}")
+
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert payload["can_create"] is True
+    assert [candidate["username"] for candidate in payload["owner_candidates"]] == [
+        "backup",
+        "operator",
+    ]
+    assert payload["preferred_owner_username"] == "operator"
+
+
+@pytest.mark.django_db
+def test_options_falls_back_to_first_mapped_owner_candidate_or_null(api_client, operator, incident, channel):
+    backup = IMUser.objects.create(username="backup", display_name="Backup", email="backup@example.com", password="test-pass",)
+    mapping = IMNotificationUserMapping.objects.create(
+        channel=channel,
+        user=backup,
+        external_identity_key="open_id",
+        external_identity_value="backup",
+        external_receive_key="open_id",
+        external_snapshot={"open_id": "ou_backup"},
+    )
+    incident.operator = ["operator", "backup"]
+    incident.save(update_fields=["operator"])
+    api_client.force_authenticate(operator)
+
+    fallback = api_client.get(f"{group_url(incident)}options/?channel_id={channel.id}")
+    mapping.delete()
+    no_candidate = api_client.get(f"{group_url(incident)}options/?channel_id={channel.id}")
+
+    assert fallback.status_code == 200
+    assert fallback.json()["data"]["preferred_owner_username"] == "backup"
+    assert no_candidate.json()["data"]["preferred_owner_username"] is None
 
 
 @pytest.mark.django_db
