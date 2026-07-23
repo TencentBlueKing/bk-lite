@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 #
 # Fusion Collector Sidecar 安装脚本
 # 用途: 安装和配置 Fusion Collector Sidecar 服务
@@ -35,7 +35,7 @@ check_args() {
 }
 
 load_server_api_token() {
-    token_arg=$1
+    local token_arg="$1"
 
     if [ -n "${BK_LITE_SERVER_API_TOKEN_FILE:-}" ]; then
         if [ ! -r "$BK_LITE_SERVER_API_TOKEN_FILE" ]; then
@@ -54,7 +54,7 @@ load_server_api_token() {
 install_service() {
     echo "开始安装 Fusion Collector Sidecar 服务..."
 
-    service_source=""
+    local service_source=""
 
     if [ -f "./bk-sidecar.service" ]; then
         service_source="./bk-sidecar.service"

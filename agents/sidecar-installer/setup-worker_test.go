@@ -149,7 +149,7 @@ cat "$BK_LITE_SERVER_API_TOKEN_FILE" > token-value.txt
 	if _, err := os.Stat(tokenFilePath); !os.IsNotExist(err) {
 		t.Fatalf("expected token file to be cleaned up, stat error: %v", err)
 	}
-	mode := strings.TrimSpace(readTestFile(t, filepath.Join(installDir, "token-file-mode.txt")))
+	mode := readTestFile(t, filepath.Join(installDir, "token-file-mode.txt"))
 	if mode != "600" {
 		t.Fatalf("expected token file mode 600, got %q", mode)
 	}
