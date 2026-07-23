@@ -17,7 +17,6 @@ def _get_default_organization_id():
 def init_stream():
     valid_relations = LogGroupOrganization.objects.filter(log_group_id="default", organization__gt=0)
     if valid_relations.exists():
-        LogGroupOrganization.objects.filter(log_group_id="default", organization__lte=0).delete()
         return
 
     organization = _get_default_organization_id()
