@@ -84,6 +84,7 @@ def test_legacy_zero_relation_is_repaired(mocker):
 
 def test_existing_valid_relation_is_preserved_without_rpc(mocker):
     LogGroup.objects.create(id="default", name="Default", created_by="system", updated_by="admin")
+    LogGroupOrganization.objects.create(log_group_id="default", organization=0)
     LogGroupOrganization.objects.create(log_group_id="default", organization=9)
     system_mgmt = _mock_default_group_rpc(mocker, side_effect=RuntimeError("must not call"))
 
@@ -91,5 +92,7 @@ def test_existing_valid_relation_is_preserved_without_rpc(mocker):
 
     system_mgmt.assert_not_called()
     assert list(
-        LogGroupOrganization.objects.filter(log_group_id="default").values_list("organization", flat=True)
-    ) == [9]
+        LogGroupOrganization.objects.filter(log_group_id="default")
+        .order_by("organization")
+        .values_list("organization", flat=True)
+    ) == [0, 9]
