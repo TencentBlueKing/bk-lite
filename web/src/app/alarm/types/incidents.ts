@@ -74,3 +74,110 @@ export interface DiagnosisItem {
   author: string
   created_at: string
 }
+
+export type IncidentIMGroupStatus =
+  | 'pending_create'
+  | 'creating'
+  | 'active'
+  | 'active_partial'
+  | 'paused'
+  | 'degraded'
+  | 'create_failed'
+
+export type IncidentIMGroupStage =
+  | 'queued'
+  | 'creating_chat'
+  | 'adding_members'
+  | 'sending_summary'
+  | 'completed'
+
+export type IncidentIMPauseReason = 'manual' | 'incident_closed' | null
+export type IncidentIMMemberRole = 'operator' | 'collaborator'
+export type IncidentIMMappingStatus = 'mapped' | 'unmapped' | 'conflict'
+export type IncidentIMSyncStatus = 'waiting' | 'pending' | 'adding' | 'joined' | 'failed'
+
+export interface IncidentIMPermissions {
+  can_manage: boolean
+  can_retry: boolean
+  can_pause: boolean
+  can_resume: boolean
+  can_unlink: boolean
+}
+
+export interface IncidentIMMemberSummary {
+  total: number
+  joined: number
+  waiting: number
+  failed: number
+}
+
+export interface IncidentIMGroup {
+  id: string
+  channel_id: number | null
+  channel_name: string
+  group_name: string
+  status: IncidentIMGroupStatus
+  current_stage: IncidentIMGroupStage
+  continuous_sync_enabled: boolean
+  pause_reason: IncidentIMPauseReason
+  member_summary: IncidentIMMemberSummary
+  permissions: IncidentIMPermissions
+  last_sync_at: string | null
+}
+
+export interface IncidentIMMember {
+  username: string
+  display_name: string
+  role: IncidentIMMemberRole
+  mapping_status: IncidentIMMappingStatus
+  sync_status: IncidentIMSyncStatus
+  error_code: string
+  error_message: string
+}
+
+export interface IncidentIMResolvedMember {
+  username: string
+  display_name: string
+  role: IncidentIMMemberRole
+  mapping_status: IncidentIMMappingStatus
+  error_code: string
+  error_message: string
+}
+
+export interface IncidentIMChannelOption {
+  id: number
+  name: string
+}
+
+export interface IncidentIMOwnerCandidate {
+  username: string
+  display_name: string
+}
+
+export interface IncidentIMGroupOptions {
+  channels: IncidentIMChannelOption[]
+  default_group_name: string
+  members?: IncidentIMResolvedMember[]
+  owner_candidates?: IncidentIMOwnerCandidate[]
+}
+
+export interface CreateIncidentIMGroupParams {
+  channel_id: number
+  group_name: string
+  owner_username: string
+  continuous_sync_enabled: boolean
+}
+
+export interface UpdateIncidentIMGroupParams {
+  continuous_sync_enabled: boolean
+}
+
+export interface IncidentIMMemberListParams {
+  page: number
+  page_size: number
+}
+
+export interface IncidentIMMemberList {
+  count: number
+  items: IncidentIMMember[]
+}

@@ -1,4 +1,12 @@
 import useApiClient from '@/utils/request';
+import type {
+  CreateIncidentIMGroupParams,
+  IncidentIMGroup,
+  IncidentIMGroupOptions,
+  IncidentIMMemberList,
+  IncidentIMMemberListParams,
+  UpdateIncidentIMGroupParams,
+} from '@/app/alarm/types/incidents';
 
 export const useIncidentsApi = () => {
   const { get, post, patch, del } = useApiClient();
@@ -59,6 +67,58 @@ export const useIncidentsApi = () => {
     });
   };
 
+  const getIncidentIMGroup = async (incidentPk: string): Promise<IncidentIMGroup | null> => {
+    return get<IncidentIMGroup | null>(`/alerts/api/incident/${incidentPk}/im-group/`);
+  };
+
+  const getIncidentIMGroupOptions = async (
+    incidentPk: string,
+    channelId?: number,
+  ): Promise<IncidentIMGroupOptions> => {
+    return get<IncidentIMGroupOptions>(`/alerts/api/incident/${incidentPk}/im-group/options/`, {
+      params: channelId === undefined ? undefined : { channel_id: channelId },
+    });
+  };
+
+  const createIncidentIMGroup = async (
+    incidentPk: string,
+    data: CreateIncidentIMGroupParams,
+  ): Promise<IncidentIMGroup> => {
+    return post<IncidentIMGroup>(`/alerts/api/incident/${incidentPk}/im-group/`, data);
+  };
+
+  const updateIncidentIMGroup = async (
+    incidentPk: string,
+    data: UpdateIncidentIMGroupParams,
+  ): Promise<IncidentIMGroup> => {
+    return patch<IncidentIMGroup>(`/alerts/api/incident/${incidentPk}/im-group/`, data);
+  };
+
+  const getIncidentIMMembers = async (
+    incidentPk: string,
+    params: IncidentIMMemberListParams,
+  ): Promise<IncidentIMMemberList> => {
+    return get<IncidentIMMemberList>(`/alerts/api/incident/${incidentPk}/im-group/members/`, { params });
+  };
+
+  const retryIncidentIMGroup = async (incidentPk: string): Promise<IncidentIMGroup> => {
+    return post<IncidentIMGroup>(`/alerts/api/incident/${incidentPk}/im-group/retry/`);
+  };
+
+  const pauseIncidentIMGroup = async (incidentPk: string): Promise<IncidentIMGroup> => {
+    return post<IncidentIMGroup>(`/alerts/api/incident/${incidentPk}/im-group/pause/`);
+  };
+
+  const resumeIncidentIMGroup = async (incidentPk: string): Promise<IncidentIMGroup> => {
+    return post<IncidentIMGroup>(`/alerts/api/incident/${incidentPk}/im-group/resume/`);
+  };
+
+  const unlinkIncidentIMGroup = async (incidentPk: string, groupName: string): Promise<void> => {
+    return del<void>(`/alerts/api/incident/${incidentPk}/im-group/`, {
+      data: { group_name: groupName },
+    });
+  };
+
   return {
     getIncidentList,
     getIncidentDetail,
@@ -73,5 +133,14 @@ export const useIncidentsApi = () => {
     getDiagnosis,
     addAlertsToIncident,
     removeAlertsFromIncident,
+    getIncidentIMGroup,
+    getIncidentIMGroupOptions,
+    createIncidentIMGroup,
+    updateIncidentIMGroup,
+    getIncidentIMMembers,
+    retryIncidentIMGroup,
+    pauseIncidentIMGroup,
+    resumeIncidentIMGroup,
+    unlinkIncidentIMGroup,
   };
 };
