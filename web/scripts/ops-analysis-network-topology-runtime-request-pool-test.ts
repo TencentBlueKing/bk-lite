@@ -33,6 +33,24 @@ assert.deepEqual(
 );
 
 const main = async () => {
+  assert.deepEqual(
+    await runRuntimeTasks([]),
+    [],
+    'an empty canvas should complete without starting workers',
+  );
+
+  let singleTaskCalls = 0;
+  const singleTaskResults = await runRuntimeTasks([
+    async () => {
+      singleTaskCalls += 1;
+      return 'single-result';
+    },
+  ]);
+  assert.equal(singleTaskCalls, 1, 'a one-item canvas should start exactly one task');
+  assert.deepEqual(singleTaskResults, [
+    { status: 'fulfilled', value: 'single-result' },
+  ]);
+
   let activeRequests = 0;
   let peakRequests = 0;
   let startedRequests = 0;
@@ -73,10 +91,20 @@ const main = async () => {
   assert.equal(staleStartedRequests, 2, 'generation changes should discard queued stale requests');
   assert.equal(staleResults.length, 2, 'settled results should include only tasks that actually started');
 
-  const baselineSerializedNodes = nodeCount * linkCount;
-  const optimizedSerializedNodes = 2 * linkCount;
-  assert.equal(baselineSerializedNodes, 15_000);
-  assert.equal(optimizedSerializedNodes, 300);
+  const links = Array.from({ length: linkCount }, (_, index) => ({
+    source_node_id: `node-${index % nodeCount}`,
+    target_node_id: `node-${(index + 1) % nodeCount}`,
+  }));
+  const baselineSerializedNodes = nodeCount * links.length;
+  const optimizedSerializedNodes = links.reduce(
+    (total, link) => total + selectLinkEndpointNodes(nodeIndex, link).length,
+    0,
+  );
+  assert.equal(
+    optimizedSerializedNodes,
+    300,
+    'endpoint selection should serialize two nodes per valid link',
+  );
 
   console.log(
     JSON.stringify({
