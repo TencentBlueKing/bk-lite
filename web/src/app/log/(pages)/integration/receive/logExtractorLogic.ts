@@ -66,3 +66,8 @@ export const reorderExtractorItem = <T,>(
   next.splice(to, 0, item);
   return next;
 };
+
+export const shouldShowExtractorHeaderAdd = (
+  canOperate: boolean | undefined,
+  ruleCount: number
+) => Boolean(canOperate) && ruleCount > 0;

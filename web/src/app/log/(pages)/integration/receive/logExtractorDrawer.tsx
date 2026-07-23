@@ -41,7 +41,8 @@ import {
   flattenExtractorPaths,
   moveExtractorItem,
   normalizeExtractorSamples,
-  reorderExtractorItem
+  reorderExtractorItem,
+  shouldShowExtractorHeaderAdd
 } from './logExtractorLogic';
 
 interface Props {
@@ -423,7 +424,7 @@ const LogExtractorDrawer = ({ instance, open, onClose }: Props) => {
                 {t('log.extractor.retry')}
               </Button>
             )}
-            {instance?.canOperate && (
+            {shouldShowExtractorHeaderAdd(instance?.canOperate, rules.length) && (
               <Button
                 type="primary"
                 icon={<PlusOutlined />}
@@ -474,7 +475,12 @@ const LogExtractorDrawer = ({ instance, open, onClose }: Props) => {
             emptyText: (
               <Empty description={t('log.extractor.empty')}>
                 {instance?.canOperate && (
-                  <Button type="primary" icon={<PlusOutlined />} onClick={() => openEditor()}>
+                  <Button
+                    type="primary"
+                    icon={<PlusOutlined />}
+                    disabled={actionLoading}
+                    onClick={() => openEditor()}
+                  >
                     {t('log.extractor.add')}
                   </Button>
                 )}

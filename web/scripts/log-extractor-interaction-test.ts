@@ -3,7 +3,8 @@ import {
   flattenExtractorPaths,
   moveExtractorItem,
   normalizeExtractorSamples,
-  reorderExtractorItem
+  reorderExtractorItem,
+  shouldShowExtractorHeaderAdd
 } from '../src/app/log/(pages)/integration/receive/logExtractorLogic';
 
 assert.deepEqual(
@@ -32,5 +33,21 @@ assert.deepEqual(
   '拖拽必须产生完整的新顺序'
 );
 assert.equal(reorderExtractorItem([1, 2, 3], 1, 1), null, '原地拖拽不提交');
+
+assert.equal(
+  shouldShowExtractorHeaderAdd(true, 0),
+  false,
+  '空状态应只保留表格内的新建入口'
+);
+assert.equal(
+  shouldShowExtractorHeaderAdd(true, 1),
+  true,
+  '已有规则时应在抽屉头部显示新建入口'
+);
+assert.equal(
+  shouldShowExtractorHeaderAdd(false, 1),
+  false,
+  '无操作权限时不应显示新建入口'
+);
 
 console.log('log-extractor-interaction tests passed');
