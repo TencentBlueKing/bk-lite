@@ -9,19 +9,10 @@ from apps.alerts.constants.constants import IncidentStatus
 from apps.alerts.models import AlertOutbox, Incident, IncidentIMGroup, IncidentIMMember
 from apps.alerts.serializers.incident import IncidentModelSerializer
 from apps.alerts.service.incident_im.delivery import deliver_add_members
-from apps.alerts.service.incident_im.reconcile import (
-    pause_group_for_closed_incident,
-    reconcile_incident_im_group,
-    resume_group_for_reopened_incident,
-)
+from apps.alerts.service.incident_im.reconcile import pause_group_for_closed_incident, reconcile_incident_im_group, resume_group_for_reopened_incident
 from apps.alerts.service.outbox import deliver_outbox_record
 from apps.alerts.tasks.tasks import reconcile_waiting_incident_im_groups
-from apps.system_mgmt.models import (
-    IMNotificationChannel,
-    IMNotificationUserMapping,
-    IntegrationInstance,
-    User,
-)
+from apps.system_mgmt.models import IMNotificationChannel, IMNotificationUserMapping, IntegrationInstance, User
 from apps.system_mgmt.providers.runtime import CapabilityExecutionResult
 
 

@@ -5,12 +5,8 @@ from django.utils import timezone
 
 from apps.alerts.constants.constants import IncidentStatus
 from apps.alerts.models import AlertOutbox, IncidentIMGroup, IncidentIMMember
-from apps.alerts.service.incident_im.members import (
-    get_desired_usernames,
-    reconcile_member_snapshots,
-)
+from apps.alerts.service.incident_im.members import get_desired_usernames, reconcile_member_snapshots
 from apps.alerts.service.outbox import enqueue_outbox
-
 
 OUTBOX_ADD_MEMBERS = "incident_im_group.add_members"
 OUTBOX_CREATE = "incident_im_group.create"

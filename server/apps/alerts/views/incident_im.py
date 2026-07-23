@@ -14,10 +14,7 @@ from apps.alerts.serializers.incident_im import (
     serialize_resolved_member,
 )
 from apps.alerts.service.incident_im.errors import IncidentIMError
-from apps.alerts.service.incident_im.groups import (
-    IncidentIMGroupService,
-    record_group_audit,
-)
+from apps.alerts.service.incident_im.groups import IncidentIMGroupService, record_group_audit
 from apps.alerts.service.incident_im.members import resolve_incident_members
 from apps.alerts.service.incident_im.reconcile import reconcile_incident_im_group
 from apps.alerts.utils.permission_scope import filter_incident_queryset_for_request

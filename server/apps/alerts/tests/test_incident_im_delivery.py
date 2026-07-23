@@ -7,18 +7,8 @@ import pytest
 from django.db import close_old_connections, connections
 
 from apps.alerts.constants.constants import IncidentStatus
-from apps.alerts.models import (
-    AlertOutbox,
-    Incident,
-    IncidentIMGroup,
-    IncidentIMMember,
-    OperatorLog,
-)
-from apps.alerts.service.incident_im.reconcile import (
-    pause_group_for_closed_incident,
-    reconcile_incident_im_group,
-    resume_group_for_reopened_incident,
-)
+from apps.alerts.models import AlertOutbox, Incident, IncidentIMGroup, IncidentIMMember, OperatorLog
+from apps.alerts.service.incident_im.reconcile import pause_group_for_closed_incident, reconcile_incident_im_group, resume_group_for_reopened_incident
 from apps.alerts.service.outbox import deliver_outbox_record
 from apps.system_mgmt.models import IMNotificationChannel, IntegrationInstance
 from apps.system_mgmt.providers.runtime import CapabilityExecutionResult
@@ -156,10 +146,7 @@ def test_add_members_result_audit_uses_counts_without_external_ids(group):
 
 @pytest.mark.django_db
 def test_create_final_audit_waits_for_summary_and_has_structured_safe_context(group, pending_members):
-    from apps.alerts.service.incident_im.delivery import (
-        deliver_create_group,
-        deliver_summary,
-    )
+    from apps.alerts.service.incident_im.delivery import deliver_create_group, deliver_summary
 
     group.created_by = "alice"
     group.save(update_fields=["created_by"])
@@ -546,10 +533,7 @@ def test_old_add_members_outbox_skips_pending_member_removed_from_incident(group
 
 @pytest.mark.django_db
 def test_add_members_commits_successful_batch_before_next_batch_retry(group):
-    from apps.alerts.service.incident_im.delivery import (
-        IncidentIMRetryableError,
-        deliver_add_members,
-    )
+    from apps.alerts.service.incident_im.delivery import IncidentIMRetryableError, deliver_add_members
 
     group.external_chat_id = "oc_1"
     group.save(update_fields=["external_chat_id"])
@@ -723,10 +707,7 @@ def test_summary_failure_is_terminal_and_completes_as_partial(group):
 
 @pytest.mark.django_db
 def test_retryable_summary_result_raises_for_outbox_retry(group):
-    from apps.alerts.service.incident_im.delivery import (
-        IncidentIMRetryableError,
-        deliver_summary,
-    )
+    from apps.alerts.service.incident_im.delivery import IncidentIMRetryableError, deliver_summary
 
     group.external_chat_id = "oc_1"
     group.save(update_fields=["external_chat_id"])

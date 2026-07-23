@@ -4,31 +4,15 @@ from threading import Barrier, local
 from unittest.mock import Mock, patch
 
 import pytest
-from django.db import (
-    IntegrityError,
-    OperationalError,
-    close_old_connections,
-    connections,
-    transaction,
-)
+from django.db import IntegrityError, OperationalError, close_old_connections, connections, transaction
 
-from apps.alerts.models import (
-    AlertOutbox,
-    Incident,
-    IncidentIMGroup,
-    IncidentIMMember,
-    OperatorLog,
-)
 from apps.alerts.constants.constants import IncidentStatus
+from apps.alerts.models import AlertOutbox, Incident, IncidentIMGroup, IncidentIMMember, OperatorLog
 from apps.alerts.service.incident_im.errors import IncidentIMError
 from apps.alerts.service.incident_im.groups import IncidentIMGroupService
 from apps.base.models import User as AuthUser
-from apps.system_mgmt.models import (
-    IMNotificationChannel,
-    IMNotificationUserMapping,
-    IntegrationInstance,
-    User as IMUser,
-)
+from apps.system_mgmt.models import IMNotificationChannel, IMNotificationUserMapping, IntegrationInstance
+from apps.system_mgmt.models import User as IMUser
 
 
 @pytest.fixture(autouse=True)
@@ -519,6 +503,41 @@ def test_degraded_retry_does_not_reactivate_group_when_incident_closes(operator,
     assert error.value.code == "IM_INCIDENT_NOT_ACTIVE"
     group.refresh_from_db()
     assert group.status == IncidentIMGroup.Status.DEGRADED
+
+
+@pytest.mark.django_db
+def test_degraded_retry_rechecks_operator_before_provider_call_after_view_check(api_client, operator, incident, channel):
+    create_active_group(incident, channel, status=IncidentIMGroup.Status.DEGRADED)
+    api_client.force_authenticate(operator)
+    original_require_operator = IncidentIMGroupService.require_operator
+
+    def revoke_after_view_check(incident_obj, user):
+        original_require_operator(incident_obj, user)
+        Incident.objects.filter(pk=incident_obj.pk).update(operator=["replacement-operator"])
+
+    with patch.object(IncidentIMGroupService, "require_operator", side_effect=revoke_after_view_check):
+        with patch("apps.alerts.service.incident_im.groups.IMGroupRuntimeService.execute") as execute:
+            response = api_client.post(f"{group_url(incident)}retry/")
+
+    assert response.status_code == 403
+    assert response.json()["code"] == "IM_OPERATOR_REQUIRED"
+    execute.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_degraded_retry_direct_service_rejects_non_operator_before_provider_call(operator, incident, channel):
+    create_active_group(incident, channel, status=IncidentIMGroup.Status.DEGRADED)
+    incident.operator = ["replacement-operator"]
+    incident.save(update_fields=["operator"])
+
+    with patch("apps.alerts.service.incident_im.groups.IMGroupRuntimeService.execute") as execute:
+        with pytest.raises(IncidentIMError) as error:
+            IncidentIMGroupService.retry_degraded(
+                incident_id=incident.id, actor_username=operator.username,
+            )
+
+    assert error.value.code == "IM_OPERATOR_REQUIRED"
+    execute.assert_not_called()
 
 
 @pytest.mark.django_db

@@ -1,5 +1,5 @@
-import uuid
 import json
+import uuid
 from time import sleep
 
 from django.db import IntegrityError, OperationalError, connection, transaction
@@ -9,17 +9,11 @@ from django.utils import timezone
 from apps.alerts.constants.constants import IncidentStatus, LogAction, LogTargetType
 from apps.alerts.models import Incident, IncidentIMGroup, IncidentIMMember
 from apps.alerts.service.incident_im.errors import IncidentIMError
-from apps.alerts.service.incident_im.members import (
-    get_desired_usernames,
-    resolve_incident_members,
-)
+from apps.alerts.service.incident_im.members import get_desired_usernames, resolve_incident_members
 from apps.alerts.service.outbox import enqueue_outbox
 from apps.alerts.utils.operator_log import record_operator_log_deferred_mirror
 from apps.core.logger import alert_logger as logger
-from apps.system_mgmt.services.im_group_service import (
-    IMGroupChannelError,
-    IMGroupRuntimeService,
-)
+from apps.system_mgmt.services.im_group_service import IMGroupChannelError, IMGroupRuntimeService
 
 
 class IncidentIMGroupService:
@@ -187,20 +181,25 @@ class IncidentIMGroupService:
 
     @classmethod
     def retry_degraded(cls, *, incident_id, actor_username):
-        group = (
-            IncidentIMGroup.objects.select_related("incident", "channel", "channel__integration_instance")
-            .filter(incident_id=incident_id, active_slot=1)
-            .first()
-        )
-        if group is None:
-            raise IncidentIMError("IM_GROUP_NOT_FOUND", "Incident 尚未创建协作群", 404)
-        if group.status != IncidentIMGroup.Status.DEGRADED:
-            raise IncidentIMError("IM_GROUP_STATE_INVALID", "当前群状态不需要外部漂移复核", 409)
-        original_group_id = group.id
-        if group.channel is None or not group.external_chat_id:
+        with transaction.atomic():
+            incident, group = cls._lock_incident_and_active_group(incident_id)
+            if group is None:
+                raise IncidentIMError("IM_GROUP_NOT_FOUND", "Incident 尚未创建协作群", 404)
+            cls.require_operator_username(incident, actor_username)
+            if incident.status not in IncidentStatus.ACTIVATE_STATUS:
+                raise IncidentIMError("IM_INCIDENT_NOT_ACTIVE", "Incident 已关闭，无法重试协作群", 409)
+            if group.status != IncidentIMGroup.Status.DEGRADED:
+                raise IncidentIMError("IM_GROUP_STATE_INVALID", "当前群状态不需要外部漂移复核", 409)
+            original_group_id = group.id
+            original_active_slot = group.active_slot
+            original_status = group.status
+            channel = group.channel
+            external_chat_id = group.external_chat_id
+
+        if channel is None or not external_chat_id:
             result = None
         else:
-            result = IMGroupRuntimeService.execute(group.channel, operation="get_group", chat_id=group.external_chat_id,)
+            result = IMGroupRuntimeService.execute(channel, operation="get_group", chat_id=external_chat_id,)
 
         with transaction.atomic():
             incident = Incident.objects.select_for_update().filter(pk=incident_id).first()
@@ -215,7 +214,7 @@ class IncidentIMGroupService:
                 .filter(pk=original_group_id, incident=incident)
                 .first()
             )
-            if locked is None or locked.active_slot != 1 or locked.status != IncidentIMGroup.Status.DEGRADED:
+            if locked is None or locked.active_slot != original_active_slot or locked.status != original_status:
                 raise IncidentIMError("IM_GROUP_STATE_INVALID", "协作群绑定已变化，请刷新后重试", 409)
             if result is None or not result.success:
                 code, message = cls._runtime_error(result)

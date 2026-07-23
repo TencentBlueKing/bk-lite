@@ -3,14 +3,10 @@ from django.utils import timezone
 
 from apps.alerts.constants.constants import IncidentStatus
 from apps.alerts.models import IncidentIMGroup, IncidentIMMember
-from apps.alerts.service.incident_im.members import (
-    get_desired_operator_usernames,
-    get_desired_usernames,
-)
 from apps.alerts.service.incident_im.groups import record_group_audit
+from apps.alerts.service.incident_im.members import get_desired_operator_usernames, get_desired_usernames
 from apps.alerts.service.outbox import enqueue_outbox
 from apps.system_mgmt.services.im_group_service import IMGroupRuntimeService
-
 
 OUTBOX_CREATE = "incident_im_group.create"
 OUTBOX_ADD_MEMBERS = "incident_im_group.add_members"

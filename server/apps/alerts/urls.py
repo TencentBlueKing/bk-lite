@@ -6,31 +6,25 @@ from django.urls import path
 from rest_framework import routers
 
 from apps.alerts.views import (
-    AlertSourceModelViewSet,
+    AlarmStrategyModelViewSet,
+    AlertAssignmentModelViewSet,
     AlertModelViewSet,
+    AlertShieldModelViewSet,
+    AlertSourceModelViewSet,
+    EnrichmentRuleModelViewSet,
     EventModelViewSet,
-    K8sOpenAPIViewSet,
-    LevelModelViewSet,
+    IncidentIMGroupViewSet,
     IncidentModelViewSet,
     IncidentUpdateViewSet,
-    IncidentIMGroupViewSet,
-    SystemSettingModelViewSet,
+    K8sOpenAPIViewSet,
+    LevelModelViewSet,
     SystemLogModelViewSet,
-    AlertAssignmentModelViewSet,
-    AlertShieldModelViewSet,
-    AlarmStrategyModelViewSet,
-    EnrichmentRuleModelViewSet,
+    SystemSettingModelViewSet,
     receiver_data,
     receiver_source_data,
     request_test,
 )
-from apps.alerts.views.action import (
-    ActionCallbackView,
-    ActionExecutionViewSet,
-    ActionJobScriptDetailView,
-    ActionJobScriptListView,
-    ActionRuleViewSet,
-)
+from apps.alerts.views.action import ActionCallbackView, ActionExecutionViewSet, ActionJobScriptDetailView, ActionJobScriptListView, ActionRuleViewSet
 
 router = routers.DefaultRouter()
 router.register(r"api/alert_source", AlertSourceModelViewSet, basename="alert_source")
