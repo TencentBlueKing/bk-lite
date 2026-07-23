@@ -61,7 +61,7 @@ def scan_log_policy_task(policy_id):
 
             backfill_count = int(gap_seconds // period_seconds)
 
-            if backfill_count <= 1:
+            if backfill_count == 0:
                 window_end_time = safe_time
                 window_start = int(window_end_time.timestamp()) - period_seconds
                 if overlap_seconds > 0:
