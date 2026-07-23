@@ -325,6 +325,72 @@ def test_create_ack_after_close_persists_ack_but_stays_paused_and_reopen_reconci
 
 
 @pytest.mark.django_db
+def test_create_ack_after_close_with_all_initial_members_requeues_summary_on_reopen(
+    group, pending_members
+):
+    outbox = AlertOutbox.objects.create(
+        kind="incident_im_group.create",
+        payload={"group_id": str(group.id)},
+        idempotency_key=f"create-inflight-close-all-joined-{uuid.uuid4().hex}",
+    )
+
+    def provider_ack_after_close(*_args, **_kwargs):
+        group.incident.status = IncidentStatus.CLOSED
+        group.incident.save(update_fields=["status"])
+        pause_group_for_closed_incident(group.incident_id)
+        return CapabilityExecutionResult.success_result(
+            "created",
+            payload={"chat_id": "oc_all_joined", "invalid_member_ids": []},
+        )
+
+    with mock.patch(
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
+        side_effect=provider_ack_after_close,
+    ) as execute:
+        assert deliver_outbox_record(outbox.id) is True
+
+    assert execute.call_count == 1
+    group.refresh_from_db()
+    assert group.external_chat_id == "oc_all_joined"
+    assert group.status == IncidentIMGroup.Status.PAUSED
+    assert group.pause_reason == IncidentIMGroup.PauseReason.INCIDENT_CLOSED
+    assert group.current_stage == IncidentIMGroup.Stage.ADDING_MEMBERS
+    assert set(group.members.values_list("sync_status", flat=True)) == {
+        IncidentIMMember.SyncStatus.JOINED
+    }
+
+    group.incident.status = IncidentStatus.PROCESSING
+    group.incident.save(update_fields=["status", "updated_at"])
+    resume_group_for_reopened_incident(group.incident_id)
+    reconcile_outbox = AlertOutbox.objects.get(
+        kind="incident_im_group.reconcile",
+        status=AlertOutbox.Status.PENDING,
+    )
+    assert deliver_outbox_record(reconcile_outbox.id) is True
+
+    reconcile_incident_im_group(group.incident_id, resume_create=True)
+    resume_group_for_reopened_incident(group.incident_id)
+    summaries = AlertOutbox.objects.filter(
+        kind="incident_im_group.send_summary",
+        payload={"group_id": str(group.id)},
+        status=AlertOutbox.Status.PENDING,
+    )
+    assert summaries.count() == 1
+
+    with mock.patch(
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
+        return_value=CapabilityExecutionResult.success_result("sent"),
+    ) as execute:
+        assert deliver_outbox_record(summaries.get().id) is True
+
+    assert execute.call_args.kwargs["idempotency_key"] == f"bklite-summary-{group.id.hex}"
+    group.refresh_from_db()
+    assert group.status == IncidentIMGroup.Status.ACTIVE
+    assert group.current_stage == IncidentIMGroup.Stage.COMPLETED
+    assert group.last_sync_at is not None
+
+
+@pytest.mark.django_db
 def test_create_marks_only_provider_invalid_initial_member_failed(group, pending_members):
     from apps.alerts.service.incident_im.delivery import deliver_create_group
 

@@ -83,8 +83,11 @@ def reconcile_incident_im_group(incident_id, force_delivery=False, resume_create
                 {"group_id": str(group.id)},
                 f"incident-im-group:{group.id}:add-members:{digest}",
             )
-        elif not pending and group.current_stage == IncidentIMGroup.Stage.SENDING_SUMMARY:
-            _enqueue_replacement_summary(group)
+        elif not pending and group.current_stage in (
+            IncidentIMGroup.Stage.ADDING_MEMBERS,
+            IncidentIMGroup.Stage.SENDING_SUMMARY,
+        ):
+            _enqueue_recovered_summary(group)
         return group
 
 
@@ -251,7 +254,7 @@ def _terminal_status_from_delivery_facts(group, *, allow_paused=False):
     return None
 
 
-def _enqueue_replacement_summary(group):
+def _enqueue_recovered_summary(group):
     payload = {"group_id": str(group.id)}
     if AlertOutbox.objects.filter(
         kind=OUTBOX_SEND_SUMMARY,
@@ -269,10 +272,13 @@ def _enqueue_replacement_summary(group):
         .values_list("pk", flat=True)
         .first()
     )
-    if consumed_id is None:
-        return
+    idempotency_key = (
+        f"incident-im-group:{group.id}:send-summary"
+        if consumed_id is None
+        else f"incident-im-group:{group.id}:send-summary:resume:{consumed_id}"
+    )
     enqueue_outbox(
         OUTBOX_SEND_SUMMARY,
         payload,
-        f"incident-im-group:{group.id}:send-summary:resume:{consumed_id}",
+        idempotency_key,
     )
