@@ -5,7 +5,8 @@ import {
   moveExtractorItem,
   normalizeExtractorSamples,
   reorderExtractorItem,
-  shouldShowExtractorHeaderAdd
+  shouldShowExtractorHeaderAdd,
+  shouldShowExtractorPublicationAlert
 } from '../src/app/log/(pages)/integration/receive/logExtractorLogic';
 
 assert.deepEqual(
@@ -51,6 +52,19 @@ assert.equal(
   '无操作权限时不应显示新建入口'
 );
 
+assert.equal(
+  shouldShowExtractorPublicationAlert('published'),
+  false,
+  '发布成功时不应持续占用列表空间'
+);
+for (const status of ['pending', 'generating', 'failed'] as const) {
+  assert.equal(
+    shouldShowExtractorPublicationAlert(status),
+    true,
+    `${status} 状态应保留可见反馈`
+  );
+}
+
 const drawerSource = readFileSync(
   new URL(
     '../src/app/log/(pages)/integration/receive/logExtractorDrawer.tsx',
@@ -95,15 +109,48 @@ assert.doesNotMatch(
   /publication\.published_generation\}\s*\/\s*\{publication\.desired_generation/,
   '发布状态不应使用容易被误解为规则条数的斜杠版本号'
 );
-for (const key of ['publishedVersion', 'targetVersion', 'instanceRuleCount']) {
+for (const key of [
+  'publicationDetails',
+  'publishedVersion',
+  'targetVersion',
+  'rulesTitle'
+]) {
   assert.match(drawerSource, new RegExp(`log\\.extractor\\.${key}`));
   assert.ok(zhLocale.log.extractor[key], `中文应提供 ${key} 状态标签`);
   assert.ok(enLocale.log.extractor[key], `英文应提供 ${key} 状态标签`);
 }
+for (const key of [
+  'pendingTitle',
+  'generatingTitle',
+  'failedTitle',
+  'pendingHint',
+  'generatingHint',
+  'failedHint'
+]) {
+  assert.ok(zhLocale.log.extractor[key], `中文应提供 ${key} 状态文案`);
+  assert.ok(enLocale.log.extractor[key], `英文应提供 ${key} 状态文案`);
+}
+assert.match(drawerSource, /log\.extractor\.\$\{publication\.status\}Title/);
+assert.match(drawerSource, /log\.extractor\.\$\{publication\.status\}Hint/);
 assert.match(
   drawerSource,
-  /log\.extractor\.instanceRuleCount'[\s\S]{0,120}rules\.length/,
-  '状态区应明确展示当前采集实例的规则数量'
+  /<Popover[\s\S]{0,180}trigger=\{\['hover', 'focus', 'click'\]\}/,
+  '状态详情应支持悬停、键盘焦点和点击访问'
+);
+assert.match(
+  drawerSource,
+  /shouldShowExtractorPublicationAlert\(publication\.status\)/,
+  '发布成功时应隐藏常驻提示，异常和过程状态继续展示'
+);
+assert.match(
+  drawerSource,
+  /log\.extractor\.rulesTitle'[\s\S]{0,180}\(\{rules\.length\}\)/,
+  '当前实例规则数应归入列表标题'
+);
+assert.match(
+  drawerSource,
+  /action=\{[\s\S]{0,320}publication\.status === 'failed'[\s\S]{0,320}void retry\(\)/,
+  '发布失败提示应直接提供重试入口'
 );
 
 console.log('log-extractor-interaction tests passed');

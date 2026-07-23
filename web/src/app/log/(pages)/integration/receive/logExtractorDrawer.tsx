@@ -14,6 +14,7 @@ import {
   InputNumber,
   Modal,
   Popconfirm,
+  Popover,
   Row,
   Select,
   Space,
@@ -44,7 +45,8 @@ import {
   moveExtractorItem,
   normalizeExtractorSamples,
   reorderExtractorItem,
-  shouldShowExtractorHeaderAdd
+  shouldShowExtractorHeaderAdd,
+  shouldShowExtractorPublicationAlert
 } from './logExtractorLogic';
 
 interface Props {
@@ -421,10 +423,57 @@ const LogExtractorDrawer = ({ instance, open, onClose }: Props) => {
         onClose={onClose}
         extra={
           <Space>
-            {publication?.status === 'failed' && instance?.canOperate && (
-              <Button loading={actionLoading} onClick={() => void retry()}>
-                {t('log.extractor.retry')}
-              </Button>
+            {publication && (
+              <Popover
+                title={t('log.extractor.publicationDetails')}
+                trigger={['hover', 'focus', 'click']}
+                content={
+                  <Space
+                    direction="vertical"
+                    size={4}
+                    className="max-w-[360px]"
+                  >
+                    <Space size={8}>
+                      <span>{t('log.extractor.globalStatus')}</span>
+                      <Tag
+                        className="m-0"
+                        color={publicationColor[publication.status]}
+                      >
+                        {t(`log.extractor.${publication.status}`)}
+                      </Tag>
+                    </Space>
+                    <span className="tabular-nums">
+                      {t('log.extractor.publishedVersion')}:{' '}
+                      <strong>{publication.published_generation}</strong>
+                    </span>
+                    <span className="tabular-nums">
+                      {t('log.extractor.targetVersion')}:{' '}
+                      <strong>{publication.desired_generation}</strong>
+                    </span>
+                    {publication.last_published_at && (
+                      <span>
+                        {t('log.extractor.lastPublishedAt')}:{' '}
+                        {publication.last_published_at}
+                      </span>
+                    )}
+                    <Typography.Text type="secondary">
+                      {`${t('log.extractor.publishedHint')} ${t('log.extractor.affectedHint')}`}
+                    </Typography.Text>
+                  </Space>
+                }
+              >
+                <Button
+                  type="text"
+                  aria-label={`${t('log.extractor.globalStatus')}: ${t(`log.extractor.${publication.status}`)}`}
+                >
+                  <Tag
+                    className="m-0"
+                    color={publicationColor[publication.status]}
+                  >
+                    {t(`log.extractor.${publication.status}`)}
+                  </Tag>
+                </Button>
+              </Popover>
             )}
             {shouldShowExtractorHeaderAdd(instance?.canOperate, rules.length) && (
               <Button
@@ -439,43 +488,38 @@ const LogExtractorDrawer = ({ instance, open, onClose }: Props) => {
           </Space>
         }
       >
-        {publication && (
+        {publication &&
+          shouldShowExtractorPublicationAlert(publication.status) && (
           <Alert
             className="mb-[16px]"
             type={publication.status === 'failed' ? 'error' : 'info'}
             showIcon
-            message={
-              <Space size={[16, 4]} wrap>
-                <Space size={8}>
-                  <span>{t('log.extractor.globalStatus')}</span>
-                  <Tag color={publicationColor[publication.status]}>
-                    {t(`log.extractor.${publication.status}`)}
-                  </Tag>
-                </Space>
-                <span className="tabular-nums">
-                  {t('log.extractor.publishedVersion')}: <strong>{publication.published_generation}</strong>
-                </span>
-                <span className="tabular-nums">
-                  {t('log.extractor.targetVersion')}: <strong>{publication.desired_generation}</strong>
-                </span>
-                <span className="tabular-nums">
-                  {t('log.extractor.instanceRuleCount')}: <strong>{rules.length}</strong>
-                </span>
-              </Space>
-            }
+            message={t(`log.extractor.${publication.status}Title`)}
             description={
               <Space direction="vertical" size={0}>
-                <span>{`${t('log.extractor.publishedHint')} ${t('log.extractor.affectedHint')}`}</span>
-                {publication.last_published_at && (
-                  <span>
-                    {t('log.extractor.lastPublishedAt')}: {publication.last_published_at}
-                  </span>
-                )}
+                <span>{t(`log.extractor.${publication.status}Hint`)}</span>
                 {publication.last_error && <span>{publication.last_error}</span>}
               </Space>
             }
+            action={
+              publication.status === 'failed' && instance?.canOperate ? (
+                <Button
+                  size="small"
+                  loading={actionLoading}
+                  onClick={() => void retry()}
+                >
+                  {t('log.extractor.retry')}
+                </Button>
+              ) : undefined
+            }
           />
         )}
+        <div className="mb-[8px] flex items-center gap-[4px]">
+          <Typography.Text strong>{t('log.extractor.rulesTitle')}</Typography.Text>
+          <Typography.Text type="secondary" className="tabular-nums">
+            ({rules.length})
+          </Typography.Text>
+        </div>
         <Table<LogExtractorRule>
           rowKey="id"
           loading={loading}

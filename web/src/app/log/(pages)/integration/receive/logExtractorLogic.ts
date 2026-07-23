@@ -71,3 +71,7 @@ export const shouldShowExtractorHeaderAdd = (
   canOperate: boolean | undefined,
   ruleCount: number
 ) => Boolean(canOperate) && ruleCount > 0;
+
+export const shouldShowExtractorPublicationAlert = (
+  status: 'pending' | 'generating' | 'published' | 'failed'
+) => status !== 'published';
