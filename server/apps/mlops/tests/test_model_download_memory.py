@@ -1,12 +1,31 @@
 """模型归档的大输入内存边界回归测试。"""
 
+import asyncio
 import random
+import tempfile
 import tracemalloc
 from types import SimpleNamespace
 
 import pydantic.root_model  # noqa
+import pytest
+from django.http import FileResponse
 
 from apps.mlops.utils import mlflow_service as ms
+
+
+async def _consume_response(response):
+    total_size = 0
+    async for chunk in response:
+        total_size += len(chunk)
+    return total_size
+
+
+def _measure_asgi_response(response):
+    tracemalloc.start()
+    streamed_size = asyncio.run(_consume_response(response))
+    _, peak_bytes = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+    return streamed_size, peak_bytes
 
 
 def test_download_model_artifact_keeps_large_zip_off_heap(tmp_path, mocker):
@@ -26,3 +45,45 @@ def test_download_model_artifact_keeps_large_zip_off_heap(tmp_path, mocker):
         assert peak_bytes < input_size, f"4 MiB 输入的 Python 堆峰值为 {peak_bytes} bytes"
     finally:
         archive.close()
+
+
+def test_model_download_response_keeps_asgi_stream_off_heap():
+    input_size = 4 * 1024 * 1024
+    payload = random.Random(4244).randbytes(input_size)
+
+    baseline_archive = tempfile.TemporaryFile(mode="w+b")
+    baseline_archive.write(payload)
+    baseline_archive.seek(0)
+    baseline_response = FileResponse(baseline_archive, content_type="application/zip")
+    with pytest.warns(Warning, match="consume synchronous"):
+        baseline_size, baseline_peak_bytes = _measure_asgi_response(baseline_response)
+    baseline_response.close()
+
+    archive = tempfile.TemporaryFile(mode="w+b")
+    archive.write(payload)
+    archive.seek(0)
+
+    response = ms.build_model_download_response(archive, "model_r1.zip")
+    streamed_size, peak_bytes = _measure_asgi_response(response)
+
+    try:
+        assert response.is_async
+        assert baseline_size == input_size
+        assert streamed_size == input_size
+        assert baseline_peak_bytes >= input_size
+        assert peak_bytes < input_size, f"4 MiB ASGI 响应的 Python 堆峰值为 {peak_bytes} bytes"
+    finally:
+        response.close()
+
+    assert archive.closed
+
+
+def test_model_download_response_close_cleans_unconsumed_archive():
+    archive = tempfile.TemporaryFile(mode="w+b")
+    archive.write(b"zipdata")
+    archive.seek(0)
+
+    response = ms.build_model_download_response(archive, "model_r1.zip")
+    response.close()
+
+    assert archive.closed

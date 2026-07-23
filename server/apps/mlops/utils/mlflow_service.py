@@ -13,6 +13,9 @@ from pathlib import Path
 import mlflow
 import pandas as pd
 import numpy as np
+from asgiref.sync import sync_to_async
+from django.http import StreamingHttpResponse
+from django.utils.http import content_disposition_header
 from mlflow.tracking import MlflowClient
 
 from config.components.mlflow import MLFLOW_TRACKER_URL
@@ -373,6 +376,44 @@ def resolve_model_uri(model_name: str, version: str = "latest") -> str:
             exc_info=True,
         )
         raise
+
+
+class _AsyncFileIterator:
+    """以异步迭代协议分块读取同步临时文件。"""
+
+    def __init__(self, file_stream: BinaryIO, block_size: int = 64 * 1024):
+        self.file_stream = file_stream
+        self.block_size = block_size
+        self._read = sync_to_async(file_stream.read, thread_sensitive=False)
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        chunk = await self._read(self.block_size)
+        if chunk:
+            return chunk
+        raise StopAsyncIteration
+
+    def close(self):
+        self.file_stream.close()
+
+
+def build_model_download_response(zip_stream: BinaryIO, filename: str) -> StreamingHttpResponse:
+    """构造适配 ASGI 的异步分块模型下载响应。"""
+    initial_position = zip_stream.tell()
+    zip_stream.seek(0, os.SEEK_END)
+    content_length = zip_stream.tell() - initial_position
+    zip_stream.seek(initial_position)
+
+    response = StreamingHttpResponse(
+        _AsyncFileIterator(zip_stream),
+        content_type="application/zip",
+    )
+    response["Content-Length"] = content_length
+    if disposition := content_disposition_header(True, filename):
+        response["Content-Disposition"] = disposition
+    return response
 
 
 def download_model_artifact(run_id: str, artifact_path: str = "model") -> BinaryIO:

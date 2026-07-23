@@ -7,6 +7,7 @@ external boundaries: ``mlflow_service`` (MLflow tracking server),
 ``WebhookClient`` (webhookd / docker), ``requests`` (predict HTTP call) and the
 config helpers (env vars).
 """
+import asyncio
 import importlib
 import types
 from io import BytesIO
@@ -25,6 +26,10 @@ from apps.mlops.utils.webhook_client import WebhookError
 pytestmark = [pytest.mark.django_db, pytest.mark.integration]
 
 factory = APIRequestFactory()
+
+
+async def _consume_streaming_response(response):
+    return b"".join([chunk async for chunk in response])
 
 
 # Each tuple: (module suffix, MLflow prefix, model module, class basename)
@@ -610,7 +615,8 @@ def test_download_model_success(monkeypatch, superuser, suffix, prefix, model_mo
     assert resp["Content-Length"] == "7"
     assert ".zip" in resp["Content-Disposition"]
     assert resp.streaming
-    assert b"".join(resp.streaming_content) == b"zipdata"
+    assert resp.is_async
+    assert asyncio.run(_consume_streaming_response(resp)) == b"zipdata"
     resp.close()
     assert archive.closed
 

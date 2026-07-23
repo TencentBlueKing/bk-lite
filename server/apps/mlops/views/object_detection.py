@@ -540,12 +540,7 @@ class ObjectDetectionTrainJobViewSet(TeamModelViewSet):
             filename = f"model_{run_id}.zip"
 
             # 返回文件响应
-            response = FileResponse(
-                zip_stream,
-                content_type="application/zip",
-                as_attachment=True,
-                filename=filename,
-            )
+            response = mlflow_service.build_model_download_response(zip_stream, filename)
 
             logger.info(f"模型下载成功: run_id={run_id}, size={response['Content-Length']} bytes")
             return response
