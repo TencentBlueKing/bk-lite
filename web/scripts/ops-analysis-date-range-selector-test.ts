@@ -33,6 +33,8 @@ assert.match(source, /customOpen\s*\?\s*customDraft\s*:\s*toDateRangePickerValue
 assert.match(source, /customOpen\s*\|\|\s*effectiveValue\?\.rangeType === 'custom'\s*\?/);
 assert.match(source, /CalendarOutlined/);
 assert.match(source, /zIndex:\s*customOpen\s*\|\|\s*effectiveValue\?\.rangeType === 'custom'/);
+assert.match(source, /suffixIcon=\{null\}/);
+assert.match(source, /right-8/);
 assert.doesNotMatch(source, /TimeSelector|toISOString|valueOf\(\)|unix\(/);
 
 console.log('ops analysis date range selector tests passed');

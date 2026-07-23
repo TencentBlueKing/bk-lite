@@ -558,6 +558,34 @@ def test_get_alert_source_event_top(user_info):
 
 
 @pytest.mark.django_db
+def test_get_alert_source_distribution_returns_full_distribution_and_unknown():
+    for index in range(12):
+        alert = Alert.objects.create(
+            alert_id=f"DIST-{index}",
+            level="0",
+            title="t",
+            content="c",
+            fingerprint=f"dist-{index}",
+            source_name="zabbix" if index < 3 else (None if index == 11 else f"source-{index}"),
+            team=[1],
+        )
+    result = N.get_alert_source_distribution(user_info={"team": 1, "is_superuser": True})
+
+    assert result["result"] is True
+    assert result["data"] == [
+        {"name": "zabbix", "value": 3},
+        *[{"name": f"source-{index}", "value": 1} for index in range(3, 11)],
+        {"name": "未知来源", "value": 1},
+    ]
+
+
+@pytest.mark.django_db
+def test_get_alert_source_distribution_requires_alert_permission():
+    result = N.get_alert_source_distribution(user_info={"team": 1, "permission": {}})
+    assert result["result"] is False
+
+
+@pytest.mark.django_db
 def test_get_alert_source_statistics(user_info):
     from apps.alerts.models.alert_source import AlertSource
     from apps.alerts.models.models import Event

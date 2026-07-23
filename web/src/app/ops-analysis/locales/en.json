@@ -269,6 +269,7 @@
     "updateDataSourceSuccess": "Data source updated successfully",
     "required": "Required",
     "singleValue": "Single Value",
+    "multiValue": "Metric List",
     "operationFailed": "Operation failed",
     "table": "Table",
     "topN": "Top N",
@@ -328,6 +329,7 @@
       "widgetFrameBare": "Bare",
       "widgets": {
         "single": "KPI Card",
+        "multiValue": "Metric List",
         "gauge": "Gauge",
         "line": "Line Chart",
         "bar": "Bar Chart",
@@ -338,6 +340,7 @@
       },
       "widgetDescriptions": {
         "single": "Show key KPIs, alert totals, availability, and summary values",
+        "multiValue": "Show multiple metric names and values in rows",
         "gauge": "Show health, utilization, and target status",
         "line": "Show overall trends and time series",
         "bar": "Show category statistics and comparisons",

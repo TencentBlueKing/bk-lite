@@ -48,6 +48,7 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
     bar: t('dataSource.barChart'),
     pie: t('dataSource.pieChart'),
     single: t('dataSource.singleValue'),
+    multiValue: t('dataSource.multiValue'),
     gauge: t('dataSource.gauge'),
     table: t('dataSource.table'),
     eventTable: t('dataSource.eventTable'),
