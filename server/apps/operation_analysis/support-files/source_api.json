@@ -177,6 +177,53 @@
      ]
 },
 {
+    "name": "主机资源使用率Top10",
+    "desc": "查询当前组织权限范围内主机的CPU、内存、磁盘使用率排行榜",
+    "rest_api": "monitor/get_host_resource_top",
+    "tag": [
+      "monitor"
+    ],
+    "chart_type": [
+      "topN",
+      "table"
+    ],
+    "params": [
+      {
+        "name": "metric_type",
+        "type": "string",
+        "value": "cpu",
+        "alias_name": "指标类型",
+        "filterType": "params",
+        "required": true,
+        "inputConfig": {
+          "control": "select",
+          "componentSwitch": true,
+          "optionsSource": {
+            "type": "static",
+            "staticItems": [
+              {"label": "CPU使用率", "value": "cpu"},
+              {"label": "内存使用率", "value": "memory"},
+              {"label": "磁盘使用率", "value": "disk"}
+            ]
+          }
+        }
+      }
+    ],
+    "field_schema": [
+      {"key": "rank", "title": "排名", "value_type": "number"},
+      {"key": "display_name", "title": "主机", "value_type": "string"},
+      {"key": "usage_percent", "title": "使用率(%)", "value_type": "number"},
+      {"key": "instance_id", "title": "实例ID", "value_type": "string"},
+      {"key": "host_name", "title": "主机名", "value_type": "string"},
+      {"key": "ip", "title": "IP地址", "value_type": "string"},
+      {"key": "metric_type", "title": "指标类型", "value_type": "string"},
+      {"key": "mount", "title": "挂载点", "value_type": "string"},
+      {"key": "path", "title": "路径", "value_type": "string"},
+      {"key": "fstype", "title": "文件系统类型", "value_type": "string"},
+      {"key": "sampled_at", "title": "采样时间", "value_type": "datetime"}
+    ]
+},
+{
     "name": "监控活跃告警",
     "desc": "查询当前用户可访问范围内最新活跃告警信息，可选按监控对象收窄",
     "rest_api": "monitor/query_latest_active_alerts",
@@ -514,5 +561,141 @@
     "chart_type": [],
     "params": [],
     "field_schema": []
+},
+{
+    "name": "CMDB 模型分类列表",
+    "desc": "返回当前用户可见的 CMDB 模型分类，供参数动态选项使用",
+    "rest_api": "cmdb/get_model_classification_options",
+    "tag": ["cmdb"],
+    "chart_type": [],
+    "params": [],
+    "field_schema": [
+        {"key": "classification_id", "title": "模型分类ID", "value_type": "string"},
+        {"key": "classification_name", "title": "模型分类名称", "value_type": "string"}
+    ]
+},
+{
+    "name": "分类模型实例数量",
+    "desc": "返回指定模型分类下各模型的实例数量，过滤零实例并按数量降序",
+    "rest_api": "cmdb/get_classification_model_instance_counts",
+    "tag": ["cmdb"],
+    "chart_type": ["multiValue"],
+    "params": [
+        {
+            "name": "classification_id",
+            "type": "string",
+            "value": "",
+            "alias_name": "模型分类",
+            "filterType": "params",
+            "required": true,
+            "inputConfig": {
+                "control": "select",
+                "optionsSource": {
+                    "type": "dynamic",
+                    "sourceRef": {"type": "rest_api", "value": "cmdb/get_model_classification_options"},
+                    "valueField": "classification_id",
+                    "labelField": "classification_name"
+                }
+            }
+        }
+    ],
+    "field_schema": [
+        {"key": "label", "title": "模型名称", "value_type": "string"},
+        {"key": "value", "title": "实例数量", "value_type": "number"}
+    ]
+},
+{
+    "name": "CMDB 地区列表",
+    "desc": "返回当前用户可见模型定义中所有 region 标签候选值，供运营分析参数动态选项使用",
+    "rest_api": "cmdb/get_region_options",
+    "tag": ["cmdb"],
+    "chart_type": [],
+    "params": [],
+    "field_schema": [
+        {"key": "label", "title": "地区名称", "value_type": "string", "description": "region 标签候选项的地区名称"},
+        {"key": "value", "title": "地区值", "value_type": "string", "description": "传给地区资源概览接口的 region 参数值"}
+    ]
+},
+{
+    "name": "地区资源概览",
+    "desc": "按 region 标签统计当前权限范围内各 CMDB 模型分类的实例总数",
+    "rest_api": "cmdb/get_region_resource_overview",
+    "tag": ["cmdb"],
+    "chart_type": ["multiValue"],
+    "params": [
+        {
+            "name": "region",
+            "type": "string",
+            "value": "",
+            "alias_name": "地区",
+            "filterType": "params",
+            "required": true,
+            "inputConfig": {
+                "control": "select",
+                "optionsSource": {
+                    "type": "dynamic",
+                    "sourceRef": {"type": "rest_api", "value": "cmdb/get_region_options"},
+                    "valueField": "value",
+                    "labelField": "label"
+                }
+            }
+        }
+    ],
+    "field_schema": [
+        {"key": "label", "title": "资源分类", "value_type": "string", "description": "当前语言下的 CMDB 模型分类名称"},
+        {"key": "value", "title": "实例数量", "value_type": "number", "description": "指定地区和当前权限范围内的分类实例总数"}
+    ]
+},
+{
+    "name": "网络设备资源排行",
+    "desc": "查询当前权限范围内交换机、路由器、防火墙和负载均衡设备的CPU、内存及当前双向总流量排行",
+    "rest_api": "monitor/get_network_device_resource_top",
+    "tag": ["monitor"],
+    "chart_type": ["topN", "table"],
+    "params": [
+        {
+            "name": "metric_type",
+            "type": "string",
+            "value": "cpu",
+            "alias_name": "指标类型",
+            "filterType": "params",
+            "required": true,
+            "inputConfig": {
+                "control": "select",
+                "componentSwitch": true,
+                "optionsSource": {
+                    "type": "static",
+                    "staticItems": [
+                        {"label": "CPU使用率", "value": "cpu"},
+                        {"label": "内存使用率", "value": "memory"},
+                        {"label": "总流量", "value": "traffic"}
+                    ]
+                }
+            }
+        },
+        {"name": "limit", "type": "number", "value": 10, "alias_name": "返回条数", "filterType": "fixed"}
+    ],
+    "field_schema": [
+        {"key": "rank", "title": "排名", "value_type": "number"},
+        {"key": "display_name", "title": "网络设备", "value_type": "string"},
+        {"key": "value", "title": "指标值", "value_type": "number"},
+        {"key": "unit", "title": "单位", "value_type": "string"},
+        {"key": "ip", "title": "IP地址", "value_type": "string"},
+        {"key": "instance_id", "title": "实例ID", "value_type": "string"},
+        {"key": "device_type", "title": "设备类型", "value_type": "string"},
+        {"key": "sampled_at", "title": "采样时间", "value_type": "datetime"}
+    ]
+},
+{
+    "name": "告警来源分布",
+    "desc": "按告警来源名称统计当前权限范围内的全部告警，空来源归为未知来源",
+    "rest_api": "alert/get_alert_source_distribution",
+    "tag": ["alerts"],
+    "chart_type": ["pie"],
+    "params": [],
+    "field_schema": [
+        {"key": "name", "title": "告警来源", "value_type": "string"},
+        {"key": "value", "title": "告警数量", "value_type": "number"}
+    ]
 }
 ]
