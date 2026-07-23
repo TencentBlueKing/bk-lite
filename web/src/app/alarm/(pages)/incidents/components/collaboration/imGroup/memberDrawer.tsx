@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Drawer, Empty, Segmented, Space, Steps, Table, Tag, Tooltip } from 'antd';
+import { Alert } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
@@ -11,7 +12,12 @@ import type {
   IncidentIMMemberList,
   IncidentIMMemberListParams,
 } from '@/app/alarm/types/incidents';
-import { getInitialMemberFilter, resolveMemberQueryVisibility } from './controller';
+import {
+  getInitialMemberFilter,
+  resolveMemberQueryVisibility,
+  settleMemberDrawerRequest,
+} from './controller';
+import { deriveIMGroupView } from './state';
 
 interface IMGroupMemberDrawerProps {
   open: boolean;
@@ -41,20 +47,40 @@ export const IMGroupMemberDrawer = ({
   const { t } = useTranslation();
   const { convertToLocalizedTime } = useLocalizedTime();
   const pendingCount = group.member_summary.total - group.member_summary.joined;
+  const groupView = deriveIMGroupView(group);
   const [filter, setFilter] = useState<IncidentIMMemberListParams['filter']>(
     getInitialMemberFilter(pendingCount),
   );
   const [pagination, setPagination] = useState({ page: 1, pageSize: 20 });
   const [members, setMembers] = useState<IncidentIMMemberList>({ count: 0, items: [] });
+  const [memberError, setMemberError] = useState<unknown | null>(null);
   const wasOpenRef = useRef(false);
 
   const loadMembers = useCallback(async () => {
-    const value = await getIncidentIMMembers({
-      filter,
-      page: pagination.page,
-      page_size: pagination.pageSize as 10 | 20 | 50 | 100,
-    });
-    if (value) setMembers(value);
+    setMembers({ count: 0, items: [] });
+    setMemberError(null);
+    try {
+      const value = await getIncidentIMMembers({
+        filter,
+        page: pagination.page,
+        page_size: pagination.pageSize as 10 | 20 | 50 | 100,
+      });
+      if (value) {
+        const next = settleMemberDrawerRequest(
+          { data: { count: 0, items: [] }, error: null },
+          { data: value },
+        );
+        setMembers(next.data);
+        setMemberError(next.error);
+      }
+    } catch (error) {
+      const next = settleMemberDrawerRequest(
+        { data: { count: 0, items: [] }, error: null },
+        { error },
+      );
+      setMembers(next.data);
+      setMemberError(next.error);
+    }
   }, [filter, getIncidentIMMembers, pagination]);
 
   useEffect(() => {
@@ -118,9 +144,22 @@ export const IMGroupMemberDrawer = ({
       title: t('incidents.imGroup.memberStatus'),
       key: 'status',
       render: (_, member) => (
-        <Tag>
-          {t(`incidents.imGroup.memberStatusValue.${member.sync_status}`)}
-        </Tag>
+        <Space direction="vertical" size={0}>
+          <Tag>{t(`incidents.imGroup.mapping.${member.mapping_status}`)}</Tag>
+          <Tag>{t(`incidents.imGroup.memberStatusValue.${member.sync_status}`)}</Tag>
+          {['unmapped', 'conflict'].includes(member.mapping_status) && (
+            <Button
+              type="link"
+              size="small"
+              href="/system-manager/channel/im-notification"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="p-0"
+            >
+              {t('incidents.imGroup.fixMapping')}
+            </Button>
+          )}
+        </Space>
       ),
     },
     {
@@ -131,6 +170,11 @@ export const IMGroupMemberDrawer = ({
           {member.error_message || t('incidents.imGroup.noError')}
           {member.error_code && (
             <div className="text-xs text-[var(--color-text-3)]">{member.error_code}</div>
+          )}
+          {member.sync_status === 'failed' && group.permissions.can_retry && (
+            <Button type="link" size="small" className="p-0" onClick={() => void onRetry()}>
+              {t('incidents.imGroup.retryAllPending')}
+            </Button>
           )}
         </div>
       ),
@@ -145,7 +189,7 @@ export const IMGroupMemberDrawer = ({
   const stageIndex = Math.max(0, creationStages.indexOf(
     group.current_stage as typeof creationStages[number],
   ));
-  const isCreating = ['pending_create', 'creating'].includes(group.status);
+  const isCreating = ['pending_create', 'creating', 'create_failed'].includes(group.status);
 
   return (
     <Drawer
@@ -172,10 +216,32 @@ export const IMGroupMemberDrawer = ({
           <div className="text-sm text-[var(--color-text-3)]">{group.channel_name}</div>
         </div>
         <div className="flex flex-wrap gap-2 tabular-nums" aria-live="polite">
+          <Tag>{t(`incidents.imGroup.${groupView.label}`)}</Tag>
+          <Tag>
+            {t('incidents.imGroup.continuousStatus', undefined, {
+              status: t(group.continuous_sync_enabled
+                ? 'incidents.imGroup.enabled'
+                : 'incidents.imGroup.disabled'),
+            })}
+          </Tag>
           <Tag>{t('incidents.imGroup.joinedCount', undefined, { count: String(group.member_summary.joined) })}</Tag>
           <Tag>{t('incidents.imGroup.waitingCount', undefined, { count: String(group.member_summary.waiting) })}</Tag>
           <Tag>{t('incidents.imGroup.failedCount', undefined, { count: String(group.member_summary.failed) })}</Tag>
         </div>
+        {group.last_sync_at && (
+          <div className="text-sm text-[var(--color-text-3)]">
+            {t('incidents.imGroup.lastSync', undefined, {
+              time: convertToLocalizedTime(group.last_sync_at),
+            })}
+          </div>
+        )}
+        {group.status_message && (
+          <Alert
+            type={group.status === 'create_failed' ? 'error' : 'info'}
+            showIcon
+            message={group.status_message}
+          />
+        )}
         {isCreating ? (
           <Steps
             direction="vertical"
@@ -187,6 +253,18 @@ export const IMGroupMemberDrawer = ({
           />
         ) : (
           <>
+            {memberError && (
+              <Alert
+                type="error"
+                showIcon
+                message={t('incidents.imGroup.membersLoadFailed')}
+                action={
+                  <Button size="small" onClick={() => void loadMembers()}>
+                    {t('common.retry')}
+                  </Button>
+                }
+              />
+            )}
             <Segmented
               value={filter}
               onChange={value => {

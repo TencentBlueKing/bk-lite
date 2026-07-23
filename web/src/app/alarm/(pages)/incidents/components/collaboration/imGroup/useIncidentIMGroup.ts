@@ -9,7 +9,12 @@ import type {
   IncidentIMMemberList,
   IncidentIMMemberListParams,
 } from '@/app/alarm/types/incidents';
-import { createPollScheduler, ownsIMGroupResponse } from './controller';
+import {
+  createPollScheduler,
+  createRequestGate,
+  ownsIMGroupResponse,
+  probeCreatePermission,
+} from './controller';
 import { deriveIMGroupView, getIMGroupPollDelay } from './state';
 
 export type IMGroupActionKey =
@@ -41,14 +46,16 @@ export const useIncidentIMGroup = ({
   const [groupLoading, setGroupLoading] = useState(true);
   const [groupError, setGroupError] = useState(false);
   const [options, setOptions] = useState<IncidentIMGroupOptions | null>(null);
+  const [optionsChannelId, setOptionsChannelId] = useState<number | undefined>(undefined);
   const [optionsLoading, setOptionsLoading] = useState(false);
+  const [optionsError, setOptionsError] = useState<unknown | null>(null);
+  const [canCreate, setCanCreate] = useState(false);
+  const [createPermissionChecked, setCreatePermissionChecked] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
   const [actionLoadingKey, setActionLoadingKey] = useState<IMGroupActionKey | null>(null);
   const [memberLoading, setMemberLoading] = useState(false);
 
-  const groupAbortRef = useRef<AbortController | null>(null);
-  const optionsAbortRef = useRef<AbortController | null>(null);
-  const memberAbortRef = useRef<AbortController | null>(null);
+  const requestGateRef = useRef(createRequestGate());
   const pollStartedAtRef = useRef(Date.now());
   const schedulerRef = useRef(createPollScheduler({
     setTimer: (callback, delay) => window.setTimeout(callback, delay),
@@ -59,10 +66,10 @@ export const useIncidentIMGroup = ({
     value: IncidentIMGroup | null,
     requestedIncidentPk: string,
     requestedGroupId: string | null,
-    controller: AbortController,
+    signal: AbortSignal,
   ) => {
     if (
-      controller.signal.aborted
+      signal.aborted
       || !ownsIMGroupResponse(
         incidentPkRef.current,
         requestedIncidentPk,
@@ -78,23 +85,27 @@ export const useIncidentIMGroup = ({
 
   const refreshGroup = useCallback(async (silent = false) => {
     if (!incidentPk) return null;
-    groupAbortRef.current?.abort();
-    const controller = new AbortController();
-    groupAbortRef.current = controller;
+    const request = requestGateRef.current.begin('group');
     const requestedIncidentPk = incidentPk;
     const requestedGroupId = groupRef.current?.id ?? null;
-    if (!silent) setGroupLoading(true);
+    setGroupLoading(!silent);
     try {
-      const value = await apiRef.current.getIncidentIMGroup(requestedIncidentPk);
-      acceptGroup(value, requestedIncidentPk, requestedGroupId, controller);
+      const value = await apiRef.current.getIncidentIMGroup(requestedIncidentPk, request.signal);
+      acceptGroup(value, requestedIncidentPk, requestedGroupId, request.signal);
       return value;
     } catch (error) {
-      if (!controller.signal.aborted && incidentPkRef.current === requestedIncidentPk) {
+      if (
+        requestGateRef.current.isCurrent(request)
+        && incidentPkRef.current === requestedIncidentPk
+      ) {
         setGroupError(true);
       }
       throw error;
     } finally {
-      if (!controller.signal.aborted && incidentPkRef.current === requestedIncidentPk) {
+      if (
+        requestGateRef.current.finish(request)
+        && incidentPkRef.current === requestedIncidentPk
+      ) {
         setGroupLoading(false);
       }
     }
@@ -102,16 +113,31 @@ export const useIncidentIMGroup = ({
 
   const loadOptions = useCallback(async (channelId?: number) => {
     const requestedIncidentPk = incidentPk;
-    optionsAbortRef.current?.abort();
-    const controller = new AbortController();
-    optionsAbortRef.current = controller;
+    const request = requestGateRef.current.begin('options');
     setOptionsLoading(true);
+    setOptionsError(null);
     try {
-      const value = await apiRef.current.getIncidentIMGroupOptions(requestedIncidentPk, channelId);
-      if (!controller.signal.aborted && incidentPkRef.current === requestedIncidentPk) setOptions(value);
+      const value = await apiRef.current.getIncidentIMGroupOptions(
+        requestedIncidentPk,
+        channelId,
+        request.signal,
+      );
+      if (
+        requestGateRef.current.isCurrent(request)
+        && incidentPkRef.current === requestedIncidentPk
+      ) {
+        setOptions(value);
+        setOptionsChannelId(channelId);
+      }
       return value;
+    } catch (error) {
+      if (requestGateRef.current.isCurrent(request)) setOptionsError(error);
+      throw error;
     } finally {
-      if (!controller.signal.aborted && incidentPkRef.current === requestedIncidentPk) {
+      if (
+        requestGateRef.current.finish(request)
+        && incidentPkRef.current === requestedIncidentPk
+      ) {
         setOptionsLoading(false);
       }
     }
@@ -152,8 +178,8 @@ export const useIncidentIMGroup = ({
     pollStartedAtRef.current = Date.now();
     try {
       const value = await apiRef.current.createIncidentIMGroup(incidentPk, params);
-      const controller = new AbortController();
-      acceptGroup(value, incidentPk, null, controller);
+      const signal = new AbortController().signal;
+      acceptGroup(value, incidentPk, null, signal);
       return value;
     } catch (error) {
       // A timeout can happen after the idempotent request was accepted. Refresh first.
@@ -169,16 +195,18 @@ export const useIncidentIMGroup = ({
   }, [acceptGroup, incidentPk, refreshGroup]);
 
   const getMembers = useCallback(async (params: IncidentIMMemberListParams) => {
-    memberAbortRef.current?.abort();
-    const controller = new AbortController();
-    memberAbortRef.current = controller;
+    const request = requestGateRef.current.begin('members');
     const requestedIncidentPk = incidentPk;
     const requestedGroupId = groupRef.current?.id ?? null;
     setMemberLoading(true);
     try {
-      const value = await apiRef.current.getIncidentIMMembers(requestedIncidentPk, params);
+      const value = await apiRef.current.getIncidentIMMembers(
+        requestedIncidentPk,
+        params,
+        request.signal,
+      );
       if (
-        controller.signal.aborted
+        !requestGateRef.current.isCurrent(request)
         || !ownsIMGroupResponse(
           incidentPkRef.current,
           requestedIncidentPk,
@@ -187,23 +215,50 @@ export const useIncidentIMGroup = ({
         )
       ) return null;
       return value as IncidentIMMemberList;
+    } catch (error) {
+      if (!requestGateRef.current.isCurrent(request) || request.signal.aborted) return null;
+      throw error;
     } finally {
-      if (!controller.signal.aborted) setMemberLoading(false);
+      if (requestGateRef.current.finish(request)) setMemberLoading(false);
     }
   }, [incidentPk]);
 
   const cancelMemberRequest = useCallback(() => {
-    memberAbortRef.current?.abort();
+    requestGateRef.current.abort('members');
     setMemberLoading(false);
   }, []);
+
+  const refreshCreatePermission = useCallback(async () => {
+    setCreatePermissionChecked(false);
+    const result = await probeCreatePermission(() => loadOptions());
+    if (incidentPkRef.current !== incidentPk) return result;
+    setCanCreate(result.canCreate);
+    setCreatePermissionChecked(true);
+    return result;
+  }, [incidentPk, loadOptions]);
 
   useEffect(() => {
     setGroup(null);
     groupRef.current = null;
     setOptions(null);
+    setOptionsChannelId(undefined);
+    setOptionsError(null);
+    setCanCreate(false);
+    setCreatePermissionChecked(false);
     pollStartedAtRef.current = Date.now();
     void refreshGroup().catch(() => undefined);
   }, [incidentPk, refreshGroup]);
+
+  useEffect(() => {
+    if (groupLoading || groupError || group !== null || createPermissionChecked) return;
+    void refreshCreatePermission();
+  }, [
+    createPermissionChecked,
+    group,
+    groupError,
+    groupLoading,
+    refreshCreatePermission,
+  ]);
 
   useEffect(() => {
     if (refreshVersion <= 0) return;
@@ -239,9 +294,7 @@ export const useIncidentIMGroup = ({
 
   useEffect(() => () => {
     schedulerRef.current.stop();
-    groupAbortRef.current?.abort();
-    optionsAbortRef.current?.abort();
-    memberAbortRef.current?.abort();
+    requestGateRef.current.abortAll();
   }, []);
 
   return {
@@ -249,7 +302,11 @@ export const useIncidentIMGroup = ({
     groupLoading,
     groupError,
     options,
+    optionsChannelId,
     optionsLoading,
+    optionsError,
+    canCreate,
+    createPermissionChecked,
     createLoading,
     actionLoadingKey,
     memberLoading,
@@ -258,6 +315,7 @@ export const useIncidentIMGroup = ({
     createGroup,
     getMembers,
     cancelMemberRequest,
+    refreshCreatePermission,
     retry: () => runGroupAction('retry', () => apiRef.current.retryIncidentIMGroup(incidentPk)),
     pause: () => runGroupAction('pause', () => apiRef.current.pauseIncidentIMGroup(incidentPk)),
     resume: () => runGroupAction('resume', () => apiRef.current.resumeIncidentIMGroup(incidentPk)),

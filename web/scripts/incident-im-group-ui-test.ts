@@ -14,9 +14,15 @@ import {
 import {
   canSubmitIMGroupCreation,
   createPollScheduler,
+  createRequestGate,
   getInitialMemberFilter,
+  isChannelOptionsCurrent,
   ownsIMGroupResponse,
+  probeCreatePermission,
   resolveMemberQueryVisibility,
+  runIMGroupAction,
+  settleMemberDrawerRequest,
+  shouldInitializeCreateForm,
 } from '../src/app/alarm/(pages)/incidents/components/collaboration/imGroup/controller';
 import type {
   CreateIncidentIMGroupParams,
@@ -305,22 +311,23 @@ const memberParams: IncidentIMMemberListParams = {
 
 const runApiContractTests = async () => {
   const api = createIncidentIMGroupApi(fakeClient);
-  assert.equal(await api.getIncidentIMGroup('42'), response);
-  assert.equal(await api.getIncidentIMGroupOptions('42', 12), response);
+  const signal = new AbortController().signal;
+  assert.equal(await api.getIncidentIMGroup('42', signal), response);
+  assert.equal(await api.getIncidentIMGroupOptions('42', 12, signal), response);
   assert.equal(await api.createIncidentIMGroup('42', createParams), response);
   assert.equal(await api.updateIncidentIMGroup('42', updateParams), response);
-  assert.equal(await api.getIncidentIMMembers('42', memberParams), response);
+  assert.equal(await api.getIncidentIMMembers('42', memberParams, signal), response);
   assert.equal(await api.retryIncidentIMGroup('42'), response);
   assert.equal(await api.pauseIncidentIMGroup('42'), response);
   assert.equal(await api.resumeIncidentIMGroup('42'), response);
   assert.equal(await api.unlinkIncidentIMGroup('42', createParams.group_name), response);
 
   assert.deepEqual(calls, [
-    { verb: 'get', url: '/alerts/api/incident/42/im-group/', config: undefined },
+    { verb: 'get', url: '/alerts/api/incident/42/im-group/', config: { signal } },
     {
       verb: 'get',
       url: '/alerts/api/incident/42/im-group/options/',
-      config: { params: { channel_id: 12 } },
+      config: { params: { channel_id: 12 }, signal },
     },
     {
       verb: 'post',
@@ -337,7 +344,7 @@ const runApiContractTests = async () => {
     {
       verb: 'get',
       url: '/alerts/api/incident/42/im-group/members/',
-      config: { params: memberParams },
+      config: { params: memberParams, signal },
     },
     {
       verb: 'post',
@@ -390,6 +397,12 @@ assert.deepEqual(cleared, [1, 2]);
 assert.equal(scheduled.size, 0);
 
 assert.equal(ownsIMGroupResponse('42', '42', 'g1', 'g1'), true);
+assert.equal(ownsIMGroupResponse('42', '42', null, null), true);
+assert.equal(
+  ownsIMGroupResponse('42', '42', 'new-group', null),
+  false,
+  'an old no-group response must not overwrite a group created while it was in flight',
+);
 assert.equal(ownsIMGroupResponse('43', '42', 'g1', 'g1'), false);
 assert.equal(ownsIMGroupResponse('42', '42', 'g2', 'g1'), false);
 assert.equal(getInitialMemberFilter(2), 'pending');
@@ -415,6 +428,88 @@ assert.deepEqual(
 );
 assert.equal(canSubmitIMGroupCreation(optionsContract, 12, 'Incident room', 'zhangsan'), true);
 assert.equal(canSubmitIMGroupCreation(optionsContract, 12, 'Incident room', undefined), false);
+assert.equal(isChannelOptionsCurrent(12, 12), true);
+assert.equal(isChannelOptionsCurrent(13, 12), false);
+assert.equal(shouldInitializeCreateForm(false, true), true);
+assert.equal(
+  shouldInitializeCreateForm(true, true),
+  false,
+  'an options response while open must not reset the user-selected channel',
+);
+
+const requestGate = createRequestGate();
+const firstGroupRequest = requestGate.begin('group');
+const secondGroupRequest = requestGate.begin('group');
+assert.equal(firstGroupRequest.signal.aborted, true, 'new group request must abort the prior request');
+assert.equal(requestGate.finish(firstGroupRequest), false, 'old requests cannot clear current loading');
+assert.equal(requestGate.isCurrent(secondGroupRequest), true);
+assert.equal(requestGate.finish(secondGroupRequest), true);
+const optionRequest = requestGate.begin('options');
+const memberRequest = requestGate.begin('members');
+requestGate.abortAll();
+assert.equal(optionRequest.signal.aborted, true);
+assert.equal(memberRequest.signal.aborted, true);
+
+const probeFailure = new Error('forbidden');
+
+assert.deepEqual(
+  settleMemberDrawerRequest(
+    { data: membersContract, error: null },
+    { error: new Error('member request failed') },
+  ),
+  {
+    data: { count: 0, items: [] },
+    error: new Error('member request failed'),
+  },
+);
+assert.deepEqual(
+  settleMemberDrawerRequest(
+    { data: { count: 0, items: [] }, error: probeFailure },
+    { data: membersContract },
+  ),
+  { data: membersContract, error: null },
+);
+
+const runControllerAsyncTests = async () => {
+  const emptyPermissionProbe = await probeCreatePermission(async () => ({
+    channels: [],
+    default_group_name: 'Incident group',
+  }));
+  assert.deepEqual(emptyPermissionProbe, {
+    canCreate: true,
+    options: { channels: [], default_group_name: 'Incident group' },
+    error: null,
+  });
+  assert.deepEqual(
+    await probeCreatePermission(async () => { throw probeFailure; }),
+    { canCreate: false, options: null, error: probeFailure },
+  );
+
+  let actionSucceeded = 0;
+  let actionFailed: unknown = null;
+  assert.equal(
+    await runIMGroupAction(
+      async () => undefined,
+      () => { actionSucceeded += 1; },
+      error => { actionFailed = error; },
+    ),
+    true,
+  );
+  assert.equal(actionSucceeded, 1);
+  assert.equal(actionFailed, null);
+  const actionError = new Error('action failed');
+  assert.equal(
+    await runIMGroupAction(
+      async () => { throw actionError; },
+      () => { actionSucceeded += 1; },
+      error => { actionFailed = error; },
+    ),
+    false,
+  );
+  assert.equal(actionSucceeded, 1);
+  assert.equal(actionFailed, actionError);
+};
+void runControllerAsyncTests();
 
 for (const filePath of task10Files) {
   assert.equal(fs.existsSync(filePath), true, `missing Task 10 file: ${filePath}`);

@@ -104,12 +104,17 @@
             "previewSummary": "已映射 {mapped} · 待映射 {unmapped} · 冲突 {conflict}",
             "partialMappingWarning": "未映射或冲突成员不会阻塞建群，账号修复后可重新同步。",
             "moreMembers": "另有 {count} 人",
+            "expandPreview": "展开其余 {count} 人",
+            "collapsePreview": "收起成员",
+            "previewLoadFailed": "当前渠道的成员映射预检失败，请重试。",
             "mapping": {
                 "mapped": "可加入",
                 "unmapped": "待映射",
                 "conflict": "映射冲突"
             },
             "noChannels": "没有可用于建群的飞书渠道，请先前往系统管理配置。",
+            "configureChannels": "前往系统管理配置",
+            "permissionProbeFailed": "无法确认当前账号的建群权限，请重试。",
             "continuousSync": "持续同步新增人员",
             "addOnlyHint": "只增不减；从 Incident 移除不会自动退出飞书群。",
             "continuousStatus": "持续同步：{status}",
@@ -127,6 +132,7 @@
             "pendingFilter": "待处理",
             "joinedFilter": "已入群",
             "memberTotal": "共 {count} 人",
+            "membersLoadFailed": "成员列表加载失败，请重试。",
             "member": "成员",
             "role": "Incident 角色",
             "memberStatus": "入群状态",
@@ -134,6 +140,8 @@
             "updatedAt": "更新时间",
             "noError": "无",
             "notAvailable": "暂无",
+            "fixMapping": "前往系统管理修复",
+            "retryAllPending": "重试全部待处理人员",
             "roleValue": {
                 "operator": "负责人",
                 "collaborator": "协作者"

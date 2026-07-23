@@ -23,13 +23,14 @@ import {
 } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
-import { useUserInfoContext } from '@/context/userInfo';
 import PermissionWrapper from '@/components/permission';
+import { isSilentRequestError } from '@/utils/request';
 import type {
   CreateIncidentIMGroupParams,
   IncidentTableDataItem,
 } from '@/app/alarm/types/incidents';
 import { deriveIMGroupView } from './state';
+import { runIMGroupAction } from './controller';
 import { useIncidentIMGroup } from './useIncidentIMGroup';
 import { CreateIMGroupModal } from './createModal';
 import { IMGroupMemberDrawer } from './memberDrawer';
@@ -67,12 +68,10 @@ const viewTagColor = {
 
 export const IncidentIMGroupPanel = ({
   incidentPk,
-  incidentDetail,
   refreshVersion,
 }: IncidentIMGroupPanelProps) => {
   const { t } = useTranslation();
   const { convertToLocalizedTime } = useLocalizedTime();
-  const { username } = useUserInfoContext();
   const controller = useIncidentIMGroup({ incidentPk, refreshVersion });
   const [createOpen, setCreateOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -83,15 +82,21 @@ export const IncidentIMGroupPanel = ({
   const [unlinkConfirmation, setUnlinkConfirmation] = useState('');
 
   const group = controller.group;
-  const canOfferCreate = Boolean(username && incidentDetail?.operator?.includes(username));
   const view = useMemo(() => group ? deriveIMGroupView(group) : null, [group]);
+
+  const showActionError = (error: unknown) => {
+    if (isSilentRequestError(error)) return;
+    message.error(error instanceof Error && error.message
+      ? error.message
+      : t('common.saveFailed'));
+  };
 
   const openCreate = async () => {
     try {
       await controller.loadOptions();
       setCreateOpen(true);
     } catch {
-      message.error(t('incidents.imGroup.optionsLoadFailed'));
+      // The request layer renders the server-safe error; keep the existing card/modal state.
     }
   };
 
@@ -100,8 +105,8 @@ export const IncidentIMGroupPanel = ({
       await controller.createGroup(params);
       setCreateOpen(false);
       message.success(t('incidents.imGroup.createAccepted'));
-    } catch {
-      message.error(t('incidents.imGroup.createFailedMessage'));
+    } catch (error) {
+      showActionError(error);
     }
   };
 
@@ -137,18 +142,21 @@ export const IncidentIMGroupPanel = ({
       cancelText: t('common.cancel'),
       centered: true,
       onOk: async () => {
-        await action();
+        await runIMGroupAction(
+          async () => { await action(); },
+          () => undefined,
+          showActionError,
+        );
       },
     });
   };
 
   const retry = async () => {
-    try {
-      await controller.retry();
-      message.success(t('incidents.imGroup.retryAccepted'));
-    } catch {
-      message.error(t('common.saveFailed'));
-    }
+    await runIMGroupAction(
+      async () => { await controller.retry(); },
+      () => message.success(t('incidents.imGroup.retryAccepted')),
+      showActionError,
+    );
   };
 
   const primaryAction = () => {
@@ -245,6 +253,13 @@ export const IncidentIMGroupPanel = ({
   }
 
   if (!group) {
+    if (!controller.createPermissionChecked || controller.optionsLoading) {
+      return (
+        <div className="mb-4 rounded-lg border border-[var(--color-border)] p-3">
+          <Skeleton active paragraph={{ rows: 2 }} title={{ width: '70%' }} />
+        </div>
+      );
+    }
     return (
       <div className="mb-4 rounded-lg border border-[var(--color-border)] p-3">
         <div className="flex items-center justify-between gap-2 mb-2">
@@ -254,7 +269,20 @@ export const IncidentIMGroupPanel = ({
         <p className="text-xs text-[var(--color-text-3)]">
           {t('incidents.imGroup.emptyDescription')}
         </p>
-        {canOfferCreate && (
+        {controller.optionsError && (
+          <Alert
+            className="mb-2"
+            type="error"
+            showIcon
+            message={t('incidents.imGroup.permissionProbeFailed')}
+            action={
+              <Button size="small" onClick={() => void controller.refreshCreatePermission()}>
+                {t('common.retry')}
+              </Button>
+            }
+          />
+        )}
+        {controller.canCreate && (
           <PermissionWrapper requiredPermissions={['Edit']}>
             <Button
               block
@@ -271,6 +299,8 @@ export const IncidentIMGroupPanel = ({
         <CreateIMGroupModal
           open={createOpen}
           options={controller.options}
+          optionsChannelId={controller.optionsChannelId}
+          optionsError={controller.optionsError}
           loading={controller.optionsLoading}
           submitting={controller.createLoading}
           onLoadOptions={controller.loadOptions}
@@ -333,6 +363,7 @@ export const IncidentIMGroupPanel = ({
           <div>{t(`incidents.imGroup.description.${view?.label ?? 'active'}`, undefined, {
             count: String(pendingCount),
           })}</div>
+          {group.status_message && <div className="break-words">{group.status_message}</div>}
           {view?.syncingCount && (
             <div>{t('incidents.imGroup.syncing', undefined, {
               count: String(view.syncingCount),
@@ -401,8 +432,11 @@ export const IncidentIMGroupPanel = ({
         loading={controller.actionLoadingKey === 'pause'}
         onCancel={() => setPauseOpen(false)}
         onConfirm={async () => {
-          await controller.pause();
-          setPauseOpen(false);
+          await runIMGroupAction(
+            async () => { await controller.pause(); },
+            () => setPauseOpen(false),
+            showActionError,
+          );
         }}
       />
       <ContinuousSyncModal
@@ -412,8 +446,11 @@ export const IncidentIMGroupPanel = ({
         onChange={setSettingsEnabled}
         onCancel={() => setSettingsOpen(false)}
         onConfirm={async () => {
-          await controller.updateContinuousSync(settingsEnabled);
-          setSettingsOpen(false);
+          await runIMGroupAction(
+            async () => { await controller.updateContinuousSync(settingsEnabled); },
+            () => setSettingsOpen(false),
+            showActionError,
+          );
         }}
       />
       <UnlinkIMGroupModal
@@ -424,10 +461,15 @@ export const IncidentIMGroupPanel = ({
         onConfirmationChange={setUnlinkConfirmation}
         onCancel={() => setUnlinkOpen(false)}
         onConfirm={async () => {
-          await controller.unlink(group.group_name);
-          setUnlinkOpen(false);
-          setDrawerOpen(false);
-          message.success(t('incidents.imGroup.unlinkSuccess'));
+          await runIMGroupAction(
+            async () => { await controller.unlink(group.group_name); },
+            () => {
+              setUnlinkOpen(false);
+              setDrawerOpen(false);
+              message.success(t('incidents.imGroup.unlinkSuccess'));
+            },
+            showActionError,
+          );
         }}
       />
     </>

@@ -104,12 +104,17 @@
             "previewSummary": "Mapped {mapped} · Unmapped {unmapped} · Conflicts {conflict}",
             "partialMappingWarning": "Unmapped or conflicting users do not block creation and can be synced after their accounts are fixed.",
             "moreMembers": "{count} more people",
+            "expandPreview": "Show {count} more people",
+            "collapsePreview": "Collapse members",
+            "previewLoadFailed": "Could not preview member mappings for this channel. Try again.",
             "mapping": {
                 "mapped": "Ready",
                 "unmapped": "Unmapped",
                 "conflict": "Conflict"
             },
             "noChannels": "No Feishu channel is available. Configure one in System Management first.",
+            "configureChannels": "Configure in System Management",
+            "permissionProbeFailed": "Could not verify group creation permission. Try again.",
             "continuousSync": "Continuously sync new participants",
             "addOnlyHint": "Add only: removing someone from the Incident does not remove them from the Feishu group.",
             "continuousStatus": "Continuous sync: {status}",
@@ -127,6 +132,7 @@
             "pendingFilter": "Pending",
             "joinedFilter": "Joined",
             "memberTotal": "{count} people",
+            "membersLoadFailed": "Could not load the member list. Try again.",
             "member": "Member",
             "role": "Incident role",
             "memberStatus": "Group status",
@@ -134,6 +140,8 @@
             "updatedAt": "Updated",
             "noError": "None",
             "notAvailable": "Not available",
+            "fixMapping": "Fix in System Management",
+            "retryAllPending": "Retry all pending people",
             "roleValue": {
                 "operator": "Owner",
                 "collaborator": "Collaborator"

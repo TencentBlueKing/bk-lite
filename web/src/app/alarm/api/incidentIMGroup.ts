@@ -10,6 +10,7 @@ import type {
 export interface IncidentIMGroupRequestConfig {
   params?: object;
   data?: unknown;
+  signal?: AbortSignal;
 }
 
 export interface IncidentIMGroupHttpClient {
@@ -27,16 +28,21 @@ export const createIncidentIMGroupApi = ({
 }: IncidentIMGroupHttpClient) => {
   const groupPath = (incidentPk: string) => `/alerts/api/incident/${incidentPk}/im-group/`;
 
-  const getIncidentIMGroup = async (incidentPk: string): Promise<IncidentIMGroup | null> => {
-    return get<IncidentIMGroup | null>(groupPath(incidentPk));
+  const getIncidentIMGroup = async (
+    incidentPk: string,
+    signal?: AbortSignal,
+  ): Promise<IncidentIMGroup | null> => {
+    return get<IncidentIMGroup | null>(groupPath(incidentPk), { signal });
   };
 
   const getIncidentIMGroupOptions = async (
     incidentPk: string,
     channelId?: number,
+    signal?: AbortSignal,
   ): Promise<IncidentIMGroupOptions> => {
     return get<IncidentIMGroupOptions>(`${groupPath(incidentPk)}options/`, {
       params: channelId === undefined ? undefined : { channel_id: channelId },
+      signal,
     });
   };
 
@@ -57,8 +63,9 @@ export const createIncidentIMGroupApi = ({
   const getIncidentIMMembers = async (
     incidentPk: string,
     params: IncidentIMMemberListParams,
+    signal?: AbortSignal,
   ): Promise<IncidentIMMemberList> => {
-    return get<IncidentIMMemberList>(`${groupPath(incidentPk)}members/`, { params });
+    return get<IncidentIMMemberList>(`${groupPath(incidentPk)}members/`, { params, signal });
   };
 
   const retryIncidentIMGroup = async (incidentPk: string): Promise<IncidentIMGroup> => {

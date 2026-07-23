@@ -477,9 +477,9 @@ const CollaborationTab: React.FC<CollaborationTabProps> = ({
   /* ── Main render ────────────────────────────────── */
 
   return (
-    <div className="flex gap-0 h-full">
+    <div className="flex flex-col gap-0 h-full lg:flex-row">
       {/* Left: Updates list */}
-      <div className="flex-1 min-w-0 overflow-auto pr-4">
+      <div className="flex-1 min-w-0 overflow-auto lg:pr-4">
         <Spin spinning={loading}>
           {/* Header */}
           <div className="flex justify-between items-center mb-3">
@@ -531,7 +531,7 @@ const CollaborationTab: React.FC<CollaborationTabProps> = ({
       </div>
 
       {/* Right: Collaborator panel */}
-      <div className="w-[220px] shrink-0 border-l border-gray-200 pl-4">
+      <div className="w-full min-w-0 shrink-0 border-t border-gray-200 pt-4 lg:w-[220px] lg:border-l lg:border-t-0 lg:pl-4 lg:pt-0">
         <IncidentIMGroupPanel
           incidentPk={incidentPk}
           incidentDetail={incidentDetail}
