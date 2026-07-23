@@ -3,21 +3,15 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from apps.system_mgmt.models import IMNotificationChannel, IntegrationInstance, User
-from apps.system_mgmt.services.im_channel_access import (
-    can_access_im_channel,
-    filter_accessible_im_channels,
-)
+from apps.system_mgmt.services.im_channel_access import can_access_im_channel, filter_accessible_im_channels
 from apps.system_mgmt.services.im_group_service import IMGroupChannelError, IMGroupRuntimeService
+
+pytestmark = [pytest.mark.integration, pytest.mark.django_db]
 
 
 @pytest.fixture
 def user(db):
-    return User.objects.create(
-        username="im-group-user",
-        display_name="IM Group User",
-        email="im-group-user@example.com",
-        domain="domain.com",
-    )
+    return User.objects.create(username="im-group-user", display_name="IM Group User", email="im-group-user@example.com", domain="domain.com",)
 
 
 @pytest.fixture
@@ -87,10 +81,7 @@ def test_common_access_rules_cover_regular_unassigned_cross_team_and_superusers(
     [
         (lambda channel: setattr(channel, "enabled", False), "im_group.channel_unavailable"),
         (lambda channel: setattr(channel, "status", "needs_resync"), "im_group.channel_not_ready"),
-        (
-            lambda channel: setattr(channel.integration_instance, "provider_key", "wechat"),
-            "im_group.provider_unsupported",
-        ),
+        (lambda channel: setattr(channel.integration_instance, "provider_key", "wechat"), "im_group.provider_unsupported",),
         (lambda channel: setattr(channel.integration_instance, "enabled", False), "im_group.instance_not_ready"),
         (lambda channel: setattr(channel.integration_instance, "status", "verification_failed"), "im_group.instance_not_ready"),
         (lambda channel: setattr(channel.integration_instance, "capability_status", {"im_notification": "ready"}), "im_group.capability_not_ready"),
