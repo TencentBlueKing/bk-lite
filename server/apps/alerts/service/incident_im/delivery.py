@@ -1,3 +1,6 @@
+from urllib.parse import urlencode
+
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
@@ -395,7 +398,26 @@ def _mark_degraded(group_id, error_code, error_message) -> None:
 
 def _build_incident_summary(group) -> str:
     incident = group.incident
-    return "\n".join([f"Incident：{incident.title}", f"编号：{incident.incident_id}", f"级别：{incident.level}", "请在 BK-Lite Incident 详情中持续协作与更新进展。",])
+    operators = incident.operator or []
+    if not isinstance(operators, (list, tuple)):
+        operators = [operators]
+    operator_names = "、".join(str(operator) for operator in operators if operator)
+    query = urlencode({"id": incident.pk, "incident_id": incident.incident_id})
+    path = f"/alarm/incidents/detail?{query}"
+    base_url = (getattr(settings, "WEB_BASE_URL", "") or "").rstrip("/")
+    detail_url = f"{base_url}{path}" if base_url else path
+    return "\n".join(
+        [
+            "Incident 协作群已建立",
+            "",
+            f"编号：{incident.incident_id}",
+            f"标题：{incident.title}",
+            f"级别：{incident.level}",
+            f"状态：{incident.status}",
+            f"负责人：{operator_names or '无'}",
+            f"详情：{detail_url}",
+        ]
+    )
 
 
 class _SyntheticFailure:

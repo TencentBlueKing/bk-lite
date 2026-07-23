@@ -26,6 +26,13 @@ from apps.system_mgmt.utils.operation_log_utils import log_operation
 from config.drf.pagination import CustomPageNumberPagination
 
 
+def _channel_has_active_incident_group(channel):
+    incident_im_groups = getattr(channel, "incident_im_groups", None)
+    if incident_im_groups is None:
+        return False
+    return incident_im_groups.filter(active_slot=1).exists()
+
+
 class IMNotificationChannelViewSet(MaintainerViewSet):
     queryset = (
         IMNotificationChannel.objects.select_related("integration_instance")
@@ -142,6 +149,16 @@ class IMNotificationChannelViewSet(MaintainerViewSet):
         is_valid, error_response = self._validate_channel_permission(request, obj)
         if not is_valid:
             return error_response
+
+        if _channel_has_active_incident_group(obj):
+            return JsonResponse(
+                {
+                    "result": False,
+                    "code": "IM_CHANNEL_IN_USE",
+                    "message": "该 IM 通知渠道仍被有效的 Incident 协作群使用，无法删除",
+                },
+                status=409,
+            )
 
         channel_name = obj.name
         obj.delete_sync_periodic_task()

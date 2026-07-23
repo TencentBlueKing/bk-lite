@@ -1,3 +1,5 @@
+import uuid
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -322,6 +324,81 @@ def test_destroy_channel_deletes_periodic_task(api_client, authenticated_user, c
 
     assert response.status_code == 200
     mock_delete.assert_called_once_with()
+
+
+@pytest.mark.django_db
+def test_destroy_channel_rejects_active_incident_group_without_deleting_anything(api_client, authenticated_user, channel):
+    from apps.alerts.models import Incident, IncidentIMGroup
+
+    authenticated_user.is_superuser = True
+    authenticated_user.permission = {"system-manager": {"channel_list-Delete"}}
+    authenticated_user.save(update_fields=["is_superuser"])
+    incident = Incident.objects.create(
+        incident_id=f"INC-{uuid.uuid4().hex}",
+        level="warning",
+        title="数据库连接异常",
+    )
+    IncidentIMGroup.objects.create(
+        incident=incident,
+        channel=channel,
+        channel_name_snapshot=channel.name,
+        member_id_type="open_id",
+        group_name="[Incident] 数据库连接异常",
+        idempotency_key=f"bklite-{uuid.uuid4().hex}",
+    )
+
+    with patch(
+        "apps.system_mgmt.viewset.im_notification_channel_viewset.IMNotificationChannel.delete_sync_periodic_task"
+    ) as mock_delete:
+        response = api_client.delete(f"/api/v1/system_mgmt/im_notification_channel/{channel.id}/")
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "IM_CHANNEL_IN_USE"
+    assert IMNotificationChannel.objects.filter(id=channel.id).exists()
+    mock_delete.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_destroy_channel_allows_unlinked_incident_group_and_preserves_history(api_client, authenticated_user, channel):
+    from apps.alerts.models import Incident, IncidentIMGroup
+
+    authenticated_user.is_superuser = True
+    authenticated_user.permission = {"system-manager": {"channel_list-Delete"}}
+    authenticated_user.save(update_fields=["is_superuser"])
+    incident = Incident.objects.create(
+        incident_id=f"INC-{uuid.uuid4().hex}",
+        level="warning",
+        title="数据库连接异常",
+    )
+    group = IncidentIMGroup.objects.create(
+        incident=incident,
+        channel=channel,
+        channel_name_snapshot=channel.name,
+        member_id_type="open_id",
+        group_name="[Incident] 数据库连接异常",
+        idempotency_key=f"bklite-{uuid.uuid4().hex}",
+        status=IncidentIMGroup.Status.UNLINKED,
+    )
+
+    with patch(
+        "apps.system_mgmt.viewset.im_notification_channel_viewset.IMNotificationChannel.delete_sync_periodic_task"
+    ) as mock_delete:
+        response = api_client.delete(f"/api/v1/system_mgmt/im_notification_channel/{channel.id}/")
+
+    assert response.status_code == 200
+    assert not IMNotificationChannel.objects.filter(id=channel.id).exists()
+    group.refresh_from_db()
+    assert group.active_slot is None
+    assert group.channel_id is None
+    mock_delete.assert_called_once_with()
+
+
+def test_channel_in_use_check_is_safe_without_alerts_reverse_relation():
+    from apps.system_mgmt.viewset.im_notification_channel_viewset import (
+        _channel_has_active_incident_group,
+    )
+
+    assert _channel_has_active_incident_group(SimpleNamespace()) is False
 
 
 @pytest.mark.django_db

@@ -212,7 +212,7 @@ stateDiagram-v2
 
 | 方法与路径 | 用途 | 权限 |
 |---|---|---|
-| `GET /api/v1/alerts/incidents/{id}/im-group/options/` | 可用飞书渠道、默认群名、成员映射预览 | Incident 负责人 |
+| `GET /api/v1/alerts/incidents/{id}/im-group/options/` | 安全探测建群权限；负责人可继续获取飞书渠道、默认群名和成员映射预览 | 可查看 Incident |
 | `GET /api/v1/alerts/incidents/{id}/im-group/` | 当前绑定、状态和成员汇总 | 可查看 Incident |
 | `GET /api/v1/alerts/incidents/{id}/im-group/members/` | 分页成员映射与入群明细 | 可查看 Incident |
 | `POST /api/v1/alerts/incidents/{id}/im-group/` | 创建绑定并异步建群，返回 `202` | Incident 负责人 |
@@ -235,7 +235,24 @@ stateDiagram-v2
 
 创建接口在事务内完成权限与状态校验、绑定/成员快照创建和 Outbox 入队，返回绑定状态而不等待飞书。
 
-`options` 响应至少包含渠道就绪状态、固定的成员 ID 类型、负责人候选和成员映射预览；群状态响应作为前端唯一合同，例如：
+`options` 是方案 A 未建群空状态的服务端权限合同。可查看 Incident 的用户调用时均返回 `200`；只有同时属于 `operator` 且具备 `Incidents-Edit` 权限的用户得到 `can_create=true`。非负责人或缺少 Edit 权限时返回 `can_create=false`，并且 `channels`、`members`、`owner_candidates` 必须为空，`preferred_owner_username` 必须为 `null`，不得泄露渠道和账号映射。创建和所有管理 API 仍严格返回 `403`。
+
+`options` 响应至少包含 `can_create`、渠道就绪状态、负责人候选、优选负责人（`preferred_owner_username`）和成员映射预览，例如：
+
+```json
+{
+  "can_create": true,
+  "channels": [{"id": 12, "name": "生产环境飞书应用"}],
+  "default_group_name": "[INC-20260721-001] 数据库连接异常",
+  "members": [],
+  "owner_candidates": [
+    {"username": "zhangsan", "display_name": "张三"}
+  ],
+  "preferred_owner_username": "zhangsan"
+}
+```
+
+群状态响应作为前端唯一合同，例如：
 
 ```json
 {
@@ -287,7 +304,7 @@ stateDiagram-v2
 - `IM_MEMBER_MAPPING_CONFLICT`：成员身份冲突。
 - `FEISHU_PERMISSION_DENIED`、`FEISHU_RATE_LIMITED`、`FEISHU_GROUP_NOT_FOUND`：可行动的平台错误。
 
-HTTP 语义：校验错误 `400`，权限错误 `403`，当前状态冲突 `409`，异步受理 `202`。平台原始响应、凭据和 token 不返回前端。
+HTTP 语义：`options` 权限探测对可查看 Incident 的用户返回 `200`，并以 `can_create` 表达建群资格；创建和管理接口的权限错误仍为 `403`。其他校验错误为 `400`，当前状态冲突为 `409`，异步受理为 `202`。平台原始响应、凭据和 token 不返回前端。
 
 建群任务处于 `pending_create/creating` 时不接受解绑，返回 `409 IM_GROUP_CREATING`。原因是外部建群请求可能已发出但结果尚未落库，此时取消会产生无法判断归属的外部群；任务收敛为成功、部分成功或创建失败后才允许解绑。
 
@@ -412,7 +429,7 @@ flowchart LR
 - 群状态使用局部 `Skeleton`，不能让整个协作页进入全屏 loading。
 - 状态接口失败时保留处置动态和协作者功能，群区域显示“飞书群状态加载失败”和“重新加载”。
 - 负责人看见可执行操作；协作人及其他只读用户仅看状态、成员详情和打开群聊入口。
-- 无有效绑定时，负责人看见“一键拉群”；只读用户只看“尚未创建飞书协作群”，不显示空按钮占位。
+- 无有效绑定时，页面并行调用安全的 `options` 权限探测；`can_create=true` 才显示“一键拉群”，`can_create=false` 只显示“尚未创建飞书协作群”，不显示空按钮占位。
 
 ### 8.3 未建群卡片
 
@@ -426,8 +443,8 @@ flowchart LR
 ```
 
 - 标题固定为“飞书协作群”，不暴露通用 Provider 术语。
-- 主按钮只对 `permissions.can_manage=true` 的用户显示。
-- 点击按钮后加载 `options`。加载成功再打开 Modal，避免先展示空表单后跳动。
+- 未建群时没有群状态权限矩阵，主按钮以 `options.can_create=true` 为唯一服务端依据；不能用本地 `operator` 数组或 `permissions.can_manage` 推断。
+- 首次安全探测成功后才渲染空状态；点击按钮时可复用该响应，并在打开 Modal 前按需刷新 `options`，避免先展示空表单后跳动。
 - 没有可用渠道时仍打开 Modal，但展示明确空状态：“没有可用于建群的飞书渠道”，并提供“前往系统管理配置”入口；不显示不可提交的空表单。
 
 ### 8.4 创建群 Modal

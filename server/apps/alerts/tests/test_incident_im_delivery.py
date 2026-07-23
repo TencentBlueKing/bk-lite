@@ -5,6 +5,7 @@ from unittest import mock
 
 import pytest
 from django.db import close_old_connections, connections
+from django.test import override_settings
 
 from apps.alerts.constants.constants import IncidentStatus
 from apps.alerts.models import AlertOutbox, Incident, IncidentIMGroup, IncidentIMMember, OperatorLog
@@ -66,6 +67,53 @@ def test_chat_id_is_saved_before_followup_events(group, pending_members):
     group.refresh_from_db()
     assert group.external_chat_id == "oc_1"
     assert set(group.members.values_list("sync_status", flat=True)) == {"joined"}
+
+
+@pytest.mark.django_db
+@override_settings(WEB_BASE_URL="https://bklite.example.com/console/")
+def test_incident_summary_contains_complete_context_and_encoded_detail_url(group):
+    from apps.alerts.service.incident_im.delivery import _build_incident_summary
+
+    group.incident.incident_id = "INC /?#中文"
+    group.incident.title = "数据库连接异常"
+    group.incident.level = "critical"
+    group.incident.status = "processing"
+    group.incident.operator = ["alice", "bob"]
+    group.incident.save(update_fields=["incident_id", "title", "level", "status", "operator"])
+
+    summary = _build_incident_summary(group)
+
+    assert summary.splitlines() == [
+        "Incident 协作群已建立",
+        "",
+        "编号：INC /?#中文",
+        "标题：数据库连接异常",
+        "级别：critical",
+        "状态：processing",
+        "负责人：alice、bob",
+        (
+            "详情：https://bklite.example.com/console/alarm/incidents/detail"
+            f"?id={group.incident.pk}&incident_id=INC+%2F%3F%23%E4%B8%AD%E6%96%87"
+        ),
+    ]
+
+
+@pytest.mark.django_db
+@override_settings(WEB_BASE_URL="")
+def test_incident_summary_uses_relative_detail_url_without_localhost(group):
+    from apps.alerts.service.incident_im.delivery import _build_incident_summary
+
+    group.incident.operator = []
+    group.incident.save(update_fields=["operator"])
+
+    summary = _build_incident_summary(group)
+
+    assert (
+        f"详情：/alarm/incidents/detail?id={group.incident.pk}"
+        f"&incident_id={group.incident.incident_id}"
+    ) in summary
+    assert "负责人：无" in summary
+    assert "localhost" not in summary
 
 
 @pytest.mark.django_db
