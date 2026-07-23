@@ -6,6 +6,11 @@ from apps.alerts.models import Incident, IncidentIMGroup, IncidentIMMember
 from apps.system_mgmt.models import IMNotificationChannel, IntegrationInstance
 
 
+@pytest.fixture(autouse=True)
+def public_web_base_url(settings):
+    settings.WEB_BASE_URL = "https://bklite.example.com"
+
+
 @pytest.fixture
 def group(db):
     incident = Incident.objects.create(

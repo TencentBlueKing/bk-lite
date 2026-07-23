@@ -6,41 +6,24 @@ from apps.alerts.models import Incident, IncidentIMGroup, IncidentIMMember
 from apps.alerts.service.incident_im.members import get_pending_members, reconcile_member_snapshots, resolve_incident_members
 from apps.system_mgmt.models import IMNotificationChannel, IMNotificationSyncRun, IMNotificationUserMapping, IntegrationInstance, User
 
+pytestmark = [pytest.mark.integration, pytest.mark.django_db]
+
 
 @pytest.fixture
 def incident(db):
-    return Incident.objects.create(
-        incident_id=f"INC-{uuid.uuid4().hex}",
-        level="warning",
-        title="Incident IM 成员测试",
-    )
+    return Incident.objects.create(incident_id=f"INC-{uuid.uuid4().hex}", level="warning", title="Incident IM 成员测试",)
 
 
 @pytest.fixture
 def channel(db):
-    instance = IntegrationInstance.objects.create(
-        name=f"feishu-{uuid.uuid4().hex}",
-        provider_key="feishu",
-        enabled=True,
-        status="ready",
-    )
-    return IMNotificationChannel.objects.create(
-        name=f"channel-{uuid.uuid4().hex}",
-        integration_instance=instance,
-        enabled=True,
-        status="ready",
-    )
+    instance = IntegrationInstance.objects.create(name=f"feishu-{uuid.uuid4().hex}", provider_key="feishu", enabled=True, status="ready",)
+    return IMNotificationChannel.objects.create(name=f"channel-{uuid.uuid4().hex}", integration_instance=instance, enabled=True, status="ready",)
 
 
 @pytest.fixture
 def users(db):
     return {
-        username: User.objects.create(
-            username=username,
-            display_name=display_name,
-            email=f"{username}@example.com",
-            password="test-password",
-        )
+        username: User.objects.create(username=username, display_name=display_name, email=f"{username}@example.com", password="test-password",)
         for username, display_name in (("alice", "Alice"), ("bob", "Bob"), ("carol", "Carol"))
     }
 
@@ -149,8 +132,7 @@ def test_resolver_marks_latest_sync_conflict_without_exposing_identity(incident,
     incident.operator = ["carol"]
     incident.save(update_fields=["operator"])
     IMNotificationSyncRun.objects.create(
-        channel=channel,
-        payload={"conflict_issues": [{"platform_user_ids": [users["carol"].id]}]},
+        channel=channel, payload={"conflict_issues": [{"platform_user_ids": [users["carol"].id]}]},
     )
 
     member = resolve_incident_members(incident, channel)[0]
@@ -260,16 +242,10 @@ def test_reconcile_joined_member_with_unchanged_identity_stays_joined(group, map
 @pytest.mark.django_db
 def test_get_pending_members_returns_only_pending_members(group):
     pending = IncidentIMMember.objects.create(
-        group=group,
-        username="pending",
-        role=IncidentIMMember.Role.OPERATOR,
-        sync_status=IncidentIMMember.SyncStatus.PENDING,
+        group=group, username="pending", role=IncidentIMMember.Role.OPERATOR, sync_status=IncidentIMMember.SyncStatus.PENDING,
     )
     IncidentIMMember.objects.create(
-        group=group,
-        username="waiting",
-        role=IncidentIMMember.Role.COLLABORATOR,
-        sync_status=IncidentIMMember.SyncStatus.WAITING,
+        group=group, username="waiting", role=IncidentIMMember.Role.COLLABORATOR, sync_status=IncidentIMMember.SyncStatus.WAITING,
     )
 
     assert list(get_pending_members(group)) == [pending]

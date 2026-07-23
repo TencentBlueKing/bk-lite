@@ -5,13 +5,10 @@ from django.utils import timezone
 
 from apps.alerts.constants.constants import IncidentStatus
 from apps.alerts.models import AlertOutbox, IncidentIMGroup, IncidentIMMember
+from apps.alerts.service.incident_im.constants import OUTBOX_ADD_MEMBERS, OUTBOX_CREATE, OUTBOX_RECONCILE, OUTBOX_SEND_SUMMARY
 from apps.alerts.service.incident_im.members import get_desired_usernames, reconcile_member_snapshots
 from apps.alerts.service.outbox import enqueue_outbox
 
-OUTBOX_ADD_MEMBERS = "incident_im_group.add_members"
-OUTBOX_CREATE = "incident_im_group.create"
-OUTBOX_RECONCILE = "incident_im_group.reconcile"
-OUTBOX_SEND_SUMMARY = "incident_im_group.send_summary"
 SYNCABLE_GROUP_STATUSES = (
     IncidentIMGroup.Status.ACTIVE,
     IncidentIMGroup.Status.ACTIVE_PARTIAL,

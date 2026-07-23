@@ -16,6 +16,24 @@ pytestmark = [pytest.mark.integration, pytest.mark.django_db]
 pytest_plugins = ["apps.alerts.tests.incident_im_delivery_fixtures"]
 
 
+def test_summary_without_public_web_url_fails_closed_without_provider(group, settings):
+    from apps.alerts.service.incident_im.delivery import deliver_summary
+
+    settings.WEB_BASE_URL = ""
+    group.external_chat_id = "oc_1"
+    group.current_stage = IncidentIMGroup.Stage.SENDING_SUMMARY
+    group.save(update_fields=["external_chat_id", "current_stage"])
+
+    with mock.patch("apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute") as execute:
+        deliver_summary(group.id)
+
+    group.refresh_from_db()
+    execute.assert_not_called()
+    assert group.current_stage == IncidentIMGroup.Stage.COMPLETED
+    assert group.status == IncidentIMGroup.Status.DEGRADED
+    assert group.last_error_code == "IM_WEB_BASE_URL_MISSING"
+
+
 @pytest.mark.django_db
 def test_summary_failure_is_terminal_and_completes_as_partial(group):
     from apps.alerts.service.incident_im.delivery import deliver_summary

@@ -6,30 +6,18 @@ from django.db import IntegrityError, transaction
 from apps.alerts.models import Incident, IncidentIMGroup, IncidentIMMember
 from apps.system_mgmt.models import IMNotificationChannel, IntegrationInstance
 
+pytestmark = [pytest.mark.integration, pytest.mark.django_db]
+
 
 @pytest.fixture
 def incident(db):
-    return Incident.objects.create(
-        incident_id=f"INC-{uuid.uuid4().hex}",
-        level="warning",
-        title="Incident IM 模型测试",
-    )
+    return Incident.objects.create(incident_id=f"INC-{uuid.uuid4().hex}", level="warning", title="Incident IM 模型测试",)
 
 
 @pytest.fixture
 def channel(db):
-    instance = IntegrationInstance.objects.create(
-        name=f"feishu-{uuid.uuid4().hex}",
-        provider_key="feishu",
-        enabled=True,
-        status="ready",
-    )
-    return IMNotificationChannel.objects.create(
-        name=f"channel-{uuid.uuid4().hex}",
-        integration_instance=instance,
-        enabled=True,
-        status="ready",
-    )
+    instance = IntegrationInstance.objects.create(name=f"feishu-{uuid.uuid4().hex}", provider_key="feishu", enabled=True, status="ready",)
+    return IMNotificationChannel.objects.create(name=f"channel-{uuid.uuid4().hex}", integration_instance=instance, enabled=True, status="ready",)
 
 
 @pytest.fixture
@@ -81,11 +69,7 @@ def test_status_save_derives_active_slot(incident, channel):
 
 
 def test_group_unique_constraint_uses_cross_database_active_slot():
-    constraint = next(
-        item
-        for item in IncidentIMGroup._meta.constraints
-        if item.name == "unique_active_incident_im_group"
-    )
+    constraint = next(item for item in IncidentIMGroup._meta.constraints if item.name == "unique_active_incident_im_group")
     assert constraint.fields == ("incident", "active_slot")
     assert constraint.condition is None
 

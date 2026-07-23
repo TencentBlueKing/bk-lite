@@ -6,19 +6,20 @@ from django.utils import timezone
 
 from apps.alerts.constants.constants import IncidentStatus
 from apps.alerts.models import IncidentIMGroup, IncidentIMMember
+from apps.alerts.service.incident_im.constants import OUTBOX_ADD_MEMBERS, OUTBOX_CREATE, OUTBOX_SEND_SUMMARY
 from apps.alerts.service.incident_im.groups import record_group_audit
 from apps.alerts.service.incident_im.members import get_desired_operator_usernames, get_desired_usernames
 from apps.alerts.service.outbox import enqueue_outbox
 from apps.system_mgmt.services.im_group_service import IMGroupRuntimeService
 
-OUTBOX_CREATE = "incident_im_group.create"
-OUTBOX_ADD_MEMBERS = "incident_im_group.add_members"
-OUTBOX_SEND_SUMMARY = "incident_im_group.send_summary"
-OUTBOX_RECONCILE = "incident_im_group.reconcile"
 MEMBER_BATCH_SIZE = 50
 
 
 class IncidentIMRetryableError(RuntimeError):
+    pass
+
+
+class IncidentIMConfigurationError(RuntimeError):
     pass
 
 
@@ -211,13 +212,18 @@ def deliver_summary(group_id) -> None:
         )
         return
 
-    result = IMGroupRuntimeService.execute(
-        group.channel,
-        operation="send_group_message",
-        chat_id=group.external_chat_id,
-        content=_build_incident_summary(group),
-        idempotency_key=f"bklite-summary-{group.id.hex}",
-    )
+    try:
+        content = _build_incident_summary(group)
+    except IncidentIMConfigurationError:
+        result = _SyntheticFailure("IM_WEB_BASE_URL_MISSING", "未配置可从飞书访问的 BK-Lite Web 地址")
+    else:
+        result = IMGroupRuntimeService.execute(
+            group.channel,
+            operation="send_group_message",
+            chat_id=group.external_chat_id,
+            content=content,
+            idempotency_key=f"bklite-summary-{group.id.hex}",
+        )
     if _raise_if_retryable(result):
         return
     error_code, error_message = _result_error(result)
@@ -242,7 +248,7 @@ def deliver_summary(group_id) -> None:
             "last_sync_at",
         ]
         if not delivery_paused:
-            if not result.success and error_code == "provider.group_not_found":
+            if not result.success and error_code in {"provider.group_not_found", "IM_WEB_BASE_URL_MISSING"}:
                 locked.status = IncidentIMGroup.Status.DEGRADED
             else:
                 locked.status = IncidentIMGroup.Status.ACTIVE if result.success and not has_member_gaps else IncidentIMGroup.Status.ACTIVE_PARTIAL
@@ -405,7 +411,9 @@ def _build_incident_summary(group) -> str:
     query = urlencode({"id": incident.pk, "incident_id": incident.incident_id})
     path = f"/alarm/incidents/detail?{query}"
     base_url = (getattr(settings, "WEB_BASE_URL", "") or "").rstrip("/")
-    detail_url = f"{base_url}{path}" if base_url else path
+    if not base_url:
+        raise IncidentIMConfigurationError("WEB_BASE_URL is required for Incident IM summaries")
+    detail_url = f"{base_url}{path}"
     return "\n".join(
         [
             "Incident 协作群已建立",

@@ -58,19 +58,15 @@ def test_incident_summary_contains_complete_context_and_encoded_detail_url(group
     ]
 
 
-@pytest.mark.django_db
-@override_settings(WEB_BASE_URL="")
-def test_incident_summary_uses_relative_detail_url_without_localhost(group):
-    from apps.alerts.service.incident_im.delivery import _build_incident_summary
+def test_incident_summary_requires_public_web_base_url(group, settings):
+    from apps.alerts.service.incident_im.delivery import IncidentIMConfigurationError, _build_incident_summary
 
+    settings.WEB_BASE_URL = ""
     group.incident.operator = []
     group.incident.save(update_fields=["operator"])
 
-    summary = _build_incident_summary(group)
-
-    assert (f"详情：/alarm/incidents/detail?id={group.incident.pk}" f"&incident_id={group.incident.incident_id}") in summary
-    assert "负责人：无" in summary
-    assert "localhost" not in summary
+    with pytest.raises(IncidentIMConfigurationError, match="WEB_BASE_URL"):
+        _build_incident_summary(group)
 
 
 @pytest.mark.django_db

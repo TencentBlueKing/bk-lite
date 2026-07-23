@@ -18,5 +18,6 @@ ALLOWED_HOSTS = ["*"]
 ASGI_APPLICATION = "asgi.application"
 
 DEBUG = os.getenv("DEBUG", "0").lower() in ["1", "true"]
+WEB_BASE_URL = os.getenv("WEB_BASE_URL", "").rstrip("/")
 STATIC_URL = "static/"
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles/")
