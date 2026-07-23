@@ -2,12 +2,12 @@
 
 import React, {useCallback, useEffect, useState} from 'react';
 import {useRouter} from 'next/navigation';
-import {Button, Dropdown, Form, Input, Menu, message, Modal, Spin} from 'antd';
-import {MoreOutlined, PlusOutlined} from '@ant-design/icons';
+import {Button, Form, Input, message, Modal, Spin} from 'antd';
+import {PlusOutlined} from '@ant-design/icons';
 import PermissionWrapper from '@/components/permission';
 import OperateModal from '@/components/operate-modal';
 import DynamicForm from '@/components/dynamic-form';
-import styles from '@/app/opspilot/styles/common.module.scss';
+import MoreActionsDropdown from '@/components/more-actions-dropdown';
 import {useTranslation} from '@/utils/i18n';
 import {MemorySpace, useMemoryApi} from '@/app/opspilot/api/memory';
 import {useUserInfoContext} from '@/context/userInfo';
@@ -111,21 +111,7 @@ const MemoryPage = () => {
     }
   };
 
-  const menu = (space: MemorySpace) => (
-    <Menu className={styles.menuContainer}>
-      <Menu.Item key="edit">
-        <PermissionWrapper requiredPermissions={['Edit']}>
-          <span className="block" onClick={() => handleEdit(space)}>{t('common.edit')}</span>
-        </PermissionWrapper>
-      </Menu.Item>
-      <Menu.Item key="delete">
-        <PermissionWrapper requiredPermissions={['Delete']}>
-          <span className="block" onClick={() => handleDelete(space)}>{t('common.delete')}</span>
-        </PermissionWrapper>
-      </Menu.Item>
-    </Menu>
-  );
-
+  
   const formFields = [
     {
       name: 'name',
@@ -212,11 +198,25 @@ const MemoryPage = () => {
                 </span>
                 
                 <div className="absolute right-2 top-2" onClick={(e) => e.stopPropagation()}>
-                  <Dropdown overlay={menu(space)} trigger={['click']} placement="bottomRight">
-                    <div className="w-6 h-6 flex items-center justify-center rounded text-white/80 hover:text-white hover:bg-black/10 transition-colors">
-                      <MoreOutlined className="text-lg" />
-                    </div>
-                  </Dropdown>
+                  <MoreActionsDropdown
+                    items={[
+                      {
+                        key: 'edit',
+                        label: t('common.edit'),
+                        permission: 'Edit',
+                        onClick: () => handleEdit(space),
+                      },
+                      {
+                        key: 'delete',
+                        label: t('common.delete'),
+                        permission: 'Delete',
+                        onClick: () => handleDelete(space),
+                      },
+                    ]}
+                    buttonClassName="w-6 h-6 flex items-center justify-center rounded text-white/80 hover:text-white hover:bg-black/10 transition-colors"
+                    iconStyle={{ fontSize: '18px' }}
+                    placement="bottomRight"
+                  />
                 </div>
               </div>
               

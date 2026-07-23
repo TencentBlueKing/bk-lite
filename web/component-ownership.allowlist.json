@@ -72,6 +72,7 @@
     { "component": "selectable-card-grid", "reason": "通用可选择卡片网格", "contractStory": "selection-family.stories.tsx" },
     { "component": "selectable-tag-filter-group", "reason": "通用标签筛选组", "contractStory": "selection-family.stories.tsx" },
     { "component": "sortable-item", "reason": "通用拖拽排序项", "contractStory": "data-entry-family.stories.tsx" },
-    { "component": "theme", "reason": "通用主题切换交互", "contractStory": "theme.stories.tsx" }
+    { "component": "theme", "reason": "通用主题切换交互", "contractStory": "theme.stories.tsx" },
+    { "component": "more-actions-dropdown", "reason": "通用 MoreOutlined 触发的行/卡片操作菜单,统一 PermissionWrapper/Dropdown/a11y 契约", "contractStory": "more-actions-dropdown.stories.tsx" }
   ]
 }

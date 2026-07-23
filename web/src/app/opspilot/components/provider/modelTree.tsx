@@ -1,10 +1,11 @@
 import React, { useMemo, useState } from 'react';
-import { Tree, Button, Dropdown, Modal, Input } from 'antd';
-import { PlusOutlined, MoreOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { Tree, Button, Modal, Input } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { DataNode } from 'antd/lib/tree';
 import { ModelTreeProps } from '@/app/opspilot/types/provider';
 import { useTranslation } from '@/utils/i18n';
 import PermissionWrapper from '@/components/permission';
+import MoreActionsDropdown from '@/components/more-actions-dropdown';
 import { ModelTreeSkeleton } from '@/app/opspilot/components/provider/skeleton';
 
 const { Search } = Input;
@@ -60,41 +61,30 @@ const ModelTree: React.FC<ModelTreeProps> = ({
             <div className="flex items-center gap-1">
               <span className="shrink-0 text-xs text-(--color-text-3)">({group.count || 0})</span>
               {!group.is_build_in ? (
-                <Dropdown
-                  trigger={['click']}
-                  menu={{
-                    items: [
-                      {
-                        key: 'edit',
-                        icon: <EditOutlined />,
-                        label: t('common.edit'),
-                        onClick: (e) => {
-                          e?.domEvent?.stopPropagation();
-                          onGroupEdit(group);
-                        }
+                <MoreActionsDropdown
+                  items={[
+                    {
+                      key: 'edit',
+                      icon: <EditOutlined />,
+                      label: t('common.edit'),
+                      onClick: () => onGroupEdit(group),
+                    },
+                    {
+                      key: 'delete',
+                      icon: <DeleteOutlined />,
+                      label: t('common.delete'),
+                      danger: true,
+                      onClick: () => {
+                        Modal.confirm({
+                          title: t('provider.group.deleteConfirm'),
+                          content: `${t('provider.group.deleteConfirmContent')} "${group.display_name || group.name}"`,
+                          onOk: () => onGroupDelete(group.id)
+                        });
                       },
-                      {
-                        key: 'delete',
-                        icon: <DeleteOutlined />,
-                        label: t('common.delete'),
-                        danger: true,
-                        onClick: (e) => {
-                          e?.domEvent?.stopPropagation();
-                          Modal.confirm({
-                            title: t('provider.group.deleteConfirm'),
-                            content: `${t('provider.group.deleteConfirmContent')} "${group.display_name || group.name}"`,
-                            onOk: () => onGroupDelete(group.id)
-                          });
-                        }
-                      }
-                    ]
-                  }}
-                >
-                  <MoreOutlined
-                    className="p-0.5 rounded opacity-0 group-hover:opacity-100 transition-all text-gray-500 hover:bg-gray-100 hover:text-gray-700"
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                </Dropdown>
+                    },
+                  ]}
+                  buttonClassName="p-0.5 rounded opacity-0 group-hover:opacity-100 transition-all text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                />
               ) : (
                 // Placeholder for built-in groups to align count display
                 <div className="h-4 w-4 shrink-0"></div>
