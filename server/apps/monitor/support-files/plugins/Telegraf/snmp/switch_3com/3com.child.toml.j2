@@ -48,8 +48,8 @@
         oid = "1.3.6.1.2.1.31.1.1.1.10"
         name = "ifHCOutOctets"
     # ---- 3Com CPU (A3COM-HUAWEI-LswDEVM-MIB hwCpuCostRatePer1Min, 近1分钟占用率%, 每板卡表, PEN 43；3com.snmprec 实测 34/99, avg by instance) ----
+    # 不设置私有表根 OID：collector 未安装厂商 MIB 时，Telegraf 无法将其识别为 table；直接 walk 数值列 OID。
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.4.1.43.45.1.6.1.1"
         name = "device_cpu"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
@@ -58,7 +58,6 @@
     # ---- 3Com 内存 (hwMemSize 总量 + hwMemFree 空闲, 字节, 每板卡表；usage = (total-free)/total) ----
     # 待现网核验：hwMemSize .43.45.1.6.1.2.1.1.2(总量) / hwMemFree .43.45.1.6.1.2.1.1.3(空闲)；snmprec total=36212352 free=21029498。
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.4.1.43.45.1.6.1.2"
         name = "device_memory"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]

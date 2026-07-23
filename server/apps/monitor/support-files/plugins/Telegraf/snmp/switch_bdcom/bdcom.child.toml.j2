@@ -62,7 +62,6 @@
     # 待现网核验：used 列 1.3.6.1.4.1.3320.9.48.1.1.1.5 / free 列 ...1.1.1.6（按 pool index 走表）。
     # 利用率共享盘按 used/(used+free) 计算。
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.4.1.3320.9.48.1.1"
         name = "device_memory"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
@@ -74,7 +73,6 @@
     # ---- BDCOM card temperature (BDCOM-SYS nmscardTemperature, °C, per-card table) ----
     # 待现网核验：列 OID 1.3.6.1.4.1.3320.3.6.10.1.13（专用温度列）。device_temperature_celsius max()。
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.4.1.3320.3.6.10.1"
         name = "device_temperature"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
