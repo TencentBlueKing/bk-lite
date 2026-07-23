@@ -50,7 +50,6 @@
 
     # NATEKS-MIB health: board temperature is reported in 1/1000 Celsius.
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.4.1.4249.2.5.6.2"
         name = "device_temperature"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
@@ -62,7 +61,6 @@
         name = "celsius"
 
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.4.1.4249.2.5.8.2"
         name = "device_psu"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]

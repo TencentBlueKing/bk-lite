@@ -80,7 +80,6 @@
     # ---- Maipu 电源状态表 (.5651.1.1.1.1.5.1.1.2, 每电源 ok(1)/failed(2)) ----
     # 待现网核验：原始码 ok=1；下方 enum 归一 1→1(正常),其余→2(异常)。
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.4.1.5651.1.1.1.1.5.1.1.2"
         name = "device_psu"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
