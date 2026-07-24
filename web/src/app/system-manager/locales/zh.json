@@ -290,7 +290,75 @@
           "status": "状态",
           "syncedUsers": "同步用户",
           "syncedGroups": "同步分组",
-          "summary": "摘要"
+          "summary": "摘要",
+          "actions": "操作",
+          "viewProgress": "查看进度"
+        },
+        "progressDrawer": {
+          "title": "同步记录",
+          "runResult": {
+            "running": "正在同步",
+            "success": "同步完成",
+            "failed": "同步失败",
+            "partial": "同步部分完成"
+          },
+          "refresh": "刷新",
+          "fetchError": "加载同步进度失败",
+          "failureReason": "失败原因",
+          "elapsed": "耗时 {{duration}}",
+          "phaseCompletedAt": "完成于 {{time}}",
+          "phaseFailedAt": "失败于 {{time}}",
+          "processed": "已处理 {{current}} / {{total}}",
+          "syncedUsers": "用户 {{count}}",
+          "syncedGroups": "组织 {{count}}",
+          "empty": "暂无同步进度"
+        },
+        "phase": {
+          "fetchDirectory": "拉取目录",
+          "syncGroups": "同步组织",
+          "syncUsers": "同步用户",
+          "reconcile": "清理失效对象",
+          "finalize": "初始密码通知"
+        },
+        "phaseStatus": {
+          "wait": "等待",
+          "process": "进行中",
+          "finish": "已完成",
+          "error": "失败",
+          "skipped": "已跳过"
+        },
+        "phaseCounter": {
+          "syncUsersNew": "已新建 {{n}} 名用户",
+          "syncUsersUpdated": "已更新 {{n}} 名用户",
+          "syncUsersConflict": "发现 {{n}} 名冲突用户",
+          "reconcileDisabled": "禁用 {{n}}",
+          "reconcileDeleted": "删除 {{n}} 组",
+          "syncGroupsSynced": "已同步 {{n}} 个组织",
+          "syncGroupsCreated": "已新建 {{n}} 个组织",
+          "syncGroupsUpdated": "已更新 {{n}} 个组织"
+        },
+        "phaseResult": {
+          "fetchDirectory": "已获取 {{users}} 名用户 · {{groups}} 个组织",
+          "syncGroupsUnchanged": "已核验 {{groups}} 个组织，未发现变更",
+          "syncUsersUnchanged": "已核验 {{users}} 名用户，未发现变更",
+          "reconcileChanged": "已禁用 {{users}} 名用户 · 已移除 {{groups}} 个组织",
+          "reconcileUnchanged": "未发现需清理的用户或组织",
+          "emailQueued": "邮件已入队，待发送 {{total}} 封",
+          "emailSending": "邮件发送中，已发送 {{sent}} / {{total}} 封",
+          "emailCompleted": "邮件已完成，成功 {{sent}} 封",
+          "emailFailed": "邮件发送失败 {{failed}} 封",
+          "emailSkipped": "本次未触发初始密码通知",
+          "emailSkippedNoNewUsers": "本次未新建用户，无需发送初始密码通知"
+        },
+        "phaseError": {
+          "syncFailed": "同步失败，请稍后重试或联系管理员",
+          "providerFetchFailed": "目录拉取失败，请检查同步源配置和连接状态",
+          "dataConflict": "同步数据存在冲突，请检查同名用户或组织",
+          "databaseUnavailable": "数据库暂时不可用，请稍后重试",
+          "requestTimeout": "同步请求超时，请稍后重试",
+          "externalServiceUnavailable": "外部服务连接失败，请检查网络或集成实例状态",
+          "invalidSyncData": "同步数据校验失败，请检查同步源配置",
+          "emailEnqueueFailed": "初始密码邮件任务入队失败，请稍后重试"
         },
         "runSummary": {
           "success": "同步成功：{{external}}；已同步 {{users}} 个用户、{{groups}} 个组织",
@@ -664,16 +732,30 @@
       },
       "networkWhitelist": {
         "title": "内网白名单",
-        "content": "添加可信内网网段（CIDR），命中的地址将被允许访问；云元数据地址不会被放行。",
+        "content": "添加可信的内网网段（CIDR）或域名，匹配的访问目标将跳过内网安全拦截。",
         "network": "网段(CIDR)",
+        "domainName": "域名",
+        "entryType": "类型",
+        "entry": "白名单条目",
+        "typeDomain": "域名",
+        "typeCidr": "网段",
         "remark": "备注",
         "enabled": "启用",
         "createdAt": "创建时间",
         "add": "新增白名单",
         "edit": "编辑白名单",
-        "deleteConfirm": "确定删除该白名单网段吗？",
+        "deleteConfirm": "确定删除该白名单条目吗？",
         "networkPlaceholder": "如 10.11.73.0/24 或 10.11.73.15",
-        "networkRequired": "请输入合法的 CIDR 或 IP",
+        "domainNamePlaceholder": "如 corp-wecom.example.com",
+        "cidrHint": "支持 CIDR 或单 IP,如 10.11.73.0/24",
+        "domainHint": "私有化部署的完整 hostname,小写",
+        "entryTypeHint": "保存后不可变更",
+        "createDescription": "选择允许访问的目标类型和匹配范围",
+        "editDescription": "可更新条目内容与状态，条目类型保持不变",
+        "optional": "选填",
+        "remarkPlaceholder": "补充用途、负责人或变更背景",
+        "networkRequired": "请输入 CIDR 或 IP",
+        "domainRequired": "请输入私有化部署域名",
         "metadataHint": "云元数据地址（169.254.169.254 等）不会被放行"
       },
       "portal": {
@@ -749,6 +831,8 @@
         "test": "测试",
         "testFailed": "测试发送失败",
         "testSuccess": "测试消息已发送，请确认是否已成功接收",
+        "notInWhitelist": "webhook 域名或 IP 不在白名单",
+        "builtinEntryProtected": "内置条目不可修改或删除",
         "name": "名称",
         "team": "组织"
       },

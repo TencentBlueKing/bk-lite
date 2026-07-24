@@ -1,16 +1,31 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { SearchBar, Avatar, List, SpinLoading } from 'antd-mobile';
-import { LeftOutline, FrownOutline, SearchOutline } from 'antd-mobile-icons';
-import { mockChatData, mockChatMessages, ChatMessageRecord, ChatItem } from '@/constants/mockData';
+import { SearchBar, Avatar, ErrorBlock, InfiniteScroll, List, SpinLoading } from 'antd-mobile';
+import { LeftOutline, FrownOutline, MessageOutline, SearchOutline } from 'antd-mobile-icons';
+import { mockChatMessages, ChatMessageRecord } from '@/constants/mockData';
 import Image from 'next/image';
 import { useTranslation } from '@/utils/i18n';
-import { getApplication } from '@/api/bot';
+import {
+    ChatApplicationItem,
+    getApplication,
+    getApplicationItems,
+    getMobileSessions,
+} from '@/api/bot';
+import { SessionItem } from '@/types/conversation';
 import { getAvatar } from '@/utils/avatar';
 import { withBasePath } from '@/utils/basePath';
 import { getAppTagColor, getAppTagLabel } from '@/constants/workbenchTags';
+import { buildConversationHref } from '@/utils/conversationRoute';
+import MobileSafeHeader from '@/components/mobile-safe-header';
+import { useMobileBack } from '@/navigation/mobile-back';
+import {
+    hasMoreSessions,
+    mergeSessionItems,
+    MOBILE_SESSION_PAGE_SIZE,
+    shouldShowSessionPagination,
+} from '@/utils/sessionPagination';
 
 type SearchType = 'ConversationList' | 'WorkbenchPage' | 'ChatHistory';
 
@@ -20,18 +35,36 @@ export default function SearchPage() {
     const searchParams = useSearchParams();
     const searchType = (searchParams?.get('type') || 'ConversationList') as SearchType;
     const botId = searchParams?.get('bot_id') || '';
+    const nodeId = searchParams?.get('node_id');
+    const fallbackHref = useMemo(() => {
+        if (searchType === 'WorkbenchPage') return '/workbench';
+        if (searchType !== 'ChatHistory' || !botId) return '/conversations';
+
+        const params = new URLSearchParams({ bot_id: botId });
+        if (nodeId) params.set('node_id', nodeId);
+        return `/workbench/detail?${params.toString()}`;
+    }, [botId, nodeId, searchType]);
+    const handleBack = useMobileBack({ fallbackHref });
 
     const [searchValue, setSearchValue] = useState('');
-    const [workbenchResults, setWorkbenchResults] = useState<any[]>([]);
+    const [workbenchResults, setWorkbenchResults] = useState<ChatApplicationItem[]>([]);
+    const [conversationSessions, setConversationSessions] = useState<SessionItem[]>([]);
     const [loading, setLoading] = useState(false);
+    const [loadFailed, setLoadFailed] = useState(false);
+    const [conversationReloadVersion, setConversationReloadVersion] = useState(0);
+    const [conversationCount, setConversationCount] = useState(0);
+    const [nextConversationPage, setNextConversationPage] = useState(1);
 
     // 用于取消请求的 AbortController
     const abortControllerRef = useRef<AbortController | null>(null);
+    const conversationAbortControllerRef = useRef<AbortController | null>(null);
+    const conversationRequestRef = useRef(false);
 
     // 搜索工作台应用
     const searchWorkbenchApps = useCallback(async (keyword: string) => {
         if (!keyword.trim()) {
             setWorkbenchResults([]);
+            setLoadFailed(false);
             return;
         }
 
@@ -45,6 +78,7 @@ export default function SearchPage() {
         abortControllerRef.current = controller;
 
         setLoading(true);
+        setLoadFailed(false);
 
         try {
             const response = await getApplication({
@@ -58,17 +92,17 @@ export default function SearchPage() {
                 return;
             }
             if (!response.result) {
-                setWorkbenchResults([]);
-                return;
+                throw new Error(response.message || 'Failed to search applications');
             }
-            setWorkbenchResults(response?.data.items || []);
-        } catch (error: any) {
+            setWorkbenchResults(getApplicationItems(response));
+        } catch (error: unknown) {
             // 忽略取消的请求错误
-            if (error?.name === 'AbortError') {
+            if (error instanceof DOMException && error.name === 'AbortError') {
                 return;
             }
             console.error('Failed to search applications:', error);
             setWorkbenchResults([]);
+            setLoadFailed(true);
         } finally {
             if (!controller.signal.aborted) {
                 setLoading(false);
@@ -92,6 +126,62 @@ export default function SearchPage() {
         };
     }, [searchValue, searchType, searchWorkbenchApps]);
 
+    const loadConversationSessions = useCallback(async ({ append = false, page = 1 } = {}) => {
+        if (conversationRequestRef.current) return;
+        const controller = new AbortController();
+        conversationAbortControllerRef.current = controller;
+        conversationRequestRef.current = true;
+        if (!append) {
+            setLoading(true);
+            setLoadFailed(false);
+        }
+        try {
+            const response = await getMobileSessions({
+                page,
+                page_size: MOBILE_SESSION_PAGE_SIZE,
+            }, { signal: controller.signal });
+            const items = response.data?.items;
+            if (!response.result || !items) {
+                throw new Error(response.message || 'Failed to load conversations');
+            }
+            setConversationSessions((currentSessions) => (
+                append ? mergeSessionItems(currentSessions, items) : items
+            ));
+            setConversationCount(response.data?.count ?? items.length);
+            setNextConversationPage(page + 1);
+        } catch (error: unknown) {
+            if (!(error instanceof DOMException && error.name === 'AbortError')) {
+                console.error('Failed to load conversations:', error);
+                if (!append) {
+                    setConversationSessions([]);
+                    setLoadFailed(true);
+                }
+            }
+        } finally {
+            conversationRequestRef.current = false;
+            if (!controller.signal.aborted && !append) {
+                setLoading(false);
+            }
+        }
+    }, []);
+
+    useEffect(() => {
+        if (searchType !== 'ConversationList') return;
+
+        void loadConversationSessions();
+        return () => conversationAbortControllerRef.current?.abort();
+    }, [conversationReloadVersion, loadConversationSessions, searchType]);
+
+    const loadMoreConversationSessions = useCallback(() => loadConversationSessions({
+        append: true,
+        page: nextConversationPage,
+    }), [loadConversationSessions, nextConversationPage]);
+    const hasMoreConversationSessions = hasMoreSessions(conversationSessions, conversationCount);
+    const showConversationPagination = shouldShowSessionPagination(
+        conversationCount,
+        conversationSessions.length,
+    );
+
     // 获取非工作台的搜索结果
     const getOtherSearchResults = useCallback(() => {
         if (!searchValue.trim()) return [];
@@ -99,10 +189,9 @@ export default function SearchPage() {
         const keyword = searchValue.trim().toLowerCase();
 
         if (searchType === 'ConversationList') {
-            // 搜索对话列表
-            return mockChatData.filter(
-                (chat) =>
-                    chat.name.toLowerCase().includes(keyword)
+            return conversationSessions.filter(
+                (session) =>
+                    (session.title || t('conversations.untitled')).toLowerCase().includes(keyword)
             );
         } else if (searchType === 'ChatHistory') {
             // 搜索聊天记录
@@ -115,24 +204,19 @@ export default function SearchPage() {
         }
 
         return [];
-    }, [searchValue, searchType, botId]);
+    }, [searchValue, searchType, botId, conversationSessions, t]);
 
     // 获取搜索结果
     const searchResults = searchType === 'WorkbenchPage' ? workbenchResults : getOtherSearchResults();
 
-    // 通用渲染函数 - 对话列表项和聊天记录项
-    const renderListItem = (item: ChatItem | ChatMessageRecord, type: 'conversation' | 'message') => {
-        const isConversation = type === 'conversation';
-        const chatItem = item as ChatItem;
-        const messageItem = item as ChatMessageRecord;
-
+    const renderChatMessageItem = (messageItem: ChatMessageRecord) => {
         return (
             <List.Item
-                key={isConversation ? chatItem.id : messageItem.messageId}
+                key={messageItem.messageId}
                 arrowIcon={false}
                 prefix={
                     <Avatar
-                        src={withBasePath(isConversation ? chatItem.avatar : messageItem.chatAvatar)}
+                        src={withBasePath(messageItem.chatAvatar)}
                         style={{ '--size': '48px' }}
                         className="ml-1 mr-1"
                     />
@@ -140,64 +224,72 @@ export default function SearchPage() {
                 description={
                     <div className="mt-1">
                         <span className="text-sm text-[var(--color-text-3)] line-clamp-1">
-                            {isConversation ? chatItem.lastMessage : messageItem.content}
+                            {messageItem.content}
                         </span>
                     </div>
                 }
                 extra={
                     <div className="flex flex-col items-end space-y-1">
                         <span className="text-xs text-[var(--color-text-4)]">
-                            {isConversation ? chatItem.time : formatMessageTime(messageItem.timestamp)}
+                            {formatMessageTime(messageItem.timestamp)}
                         </span>
-                        {isConversation && chatItem.unread && chatItem.unread > 0 && (
-                            <span className="flex items-center justify-center min-w-[18px] h-[18px] px-1.5 bg-red-500 text-white text-xs rounded-full">
-                                {chatItem.unread}
-                            </span>
-                        )}
                     </div>
                 }
-                onClick={() => {
-                    if (isConversation) {
-                        router.push(`/conversation?id=${chatItem.id}`);
-                    } else {
-                        router.push(`/conversation?id=${messageItem.chatId}`);
-                    }
-                }}
+                onClick={nodeId ? () => router.push(buildConversationHref({
+                    botId: messageItem.chatId,
+                    nodeId,
+                })) : undefined}
             >
                 <div className="flex items-center justify-between">
                     <span className="text-base font-medium text-[var(--color-text-1)]">
-                        {isConversation ? chatItem.name : messageItem.chatName}
+                        {messageItem.chatName}
                     </span>
-                    {isConversation && chatItem.website && (
-                        <span className="text-xs text-[var(--color-text-4)] ml-2">
-                            {chatItem.website}
-                        </span>
-                    )}
                 </div>
             </List.Item>
         );
     };
 
-    // 渲染对话列表项
-    const renderConversationItem = (chat: any) => renderListItem(chat, 'conversation');
+    const renderConversationItem = (session: SessionItem) => (
+        <List.Item
+            key={session.session_id}
+            arrowIcon={false}
+            prefix={
+                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--color-fill-2)] text-[var(--color-text-2)]">
+                    <MessageOutline fontSize={24} aria-hidden="true" />
+                </span>
+            }
+            description={t('conversations.sessionHint')}
+            onClick={() => router.push(buildConversationHref({
+                botId: session.bot_id,
+                sessionId: session.session_id,
+                nodeId: session.node_id,
+            }))}
+        >
+            <span className="line-clamp-1 text-base font-medium text-[var(--color-text-1)]">
+                {session.title || t('conversations.untitled')}
+            </span>
+        </List.Item>
+    );
 
     // 渲染工作台列表项
-    const renderWorkbenchItem = (item: any) => (
-        <div
+    const renderWorkbenchItem = (item: ChatApplicationItem) => (
+        <button
+            type="button"
             key={item.id}
-            className="bg-[var(--color-bg)] mx-3 mt-3 rounded-lg shadow-sm border border-[var(--color-border)] p-4 active:bg-[var(--color-bg-hover)] cursor-pointer relative overflow-hidden"
+            className="block w-[calc(100%_-_1.5rem)] bg-[var(--color-bg)] mx-3 mt-3 rounded-lg shadow-sm border border-[var(--color-border)] p-4 text-left active:bg-[var(--color-bg-hover)] cursor-pointer relative overflow-hidden"
             onClick={() => {
-                router.push(`/workbench/detail?bot_id=${item.bot}`);
+                router.push(buildConversationHref({ botId: item.bot, nodeId: item.node_id }));
             }}
         >
             {/* 右上角状态 - 默认在线 */}
-            <div
+            <span
+                aria-hidden="true"
                 className="absolute top-0 right-0 w-6 h-6"
                 style={{
                     clipPath: 'polygon(100% 0, 100% 100%, 0 0)',
-                    backgroundColor: '#52C41A',
+                    backgroundColor: 'var(--color-success)',
                 }}
-            ></div>
+            />
 
             <div className="flex items-start space-x-3">
                 {/* 缩略图 */}
@@ -249,7 +341,7 @@ export default function SearchPage() {
                     )}
                 </div>
             </div>
-        </div>
+        </button>
     );
 
     // 格式化时间戳
@@ -285,10 +377,6 @@ export default function SearchPage() {
         return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
     };
 
-    // 渲染聊天记录项
-    const renderChatMessageItem = (message: ChatMessageRecord) => renderListItem(message, 'message');
-
-
     // 获取占位符文本
     const getPlaceholder = () => {
         switch (searchType) {
@@ -306,29 +394,29 @@ export default function SearchPage() {
     return (
         <div className="flex flex-col h-full bg-[var(--color-background-body)]">
             {/* 顶部搜索栏 */}
-            <div className="bg-[var(--color-bg)] border-b border-[var(--color-border)]">
-                <div className="flex items-center px-2 py-2 space-x-2">
-                    <button
-                        onClick={() => router.back()}
-                        className="flex items-center justify-center w-8 h-8"
-                    >
-                        <LeftOutline fontSize={24} className="text-[var(--color-text-1)]" />
-                    </button>
-                    <div className="flex-1">
-                        <SearchBar
-                            placeholder={getPlaceholder()}
-                            value={searchValue}
-                            onChange={setSearchValue}
-                            onClear={() => setSearchValue('')}
-                            style={{
-                                '--border-radius': '18px',
-                                '--background': 'var(--color-fill-2)',
-                                '--height': '36px',
-                            }}
-                        />
-                    </div>
+            <MobileSafeHeader contentClassName="flex items-center gap-2 px-2 py-1.5">
+                <button
+                    type="button"
+                    aria-label={t('common.back')}
+                    onClick={handleBack}
+                    className="flex min-h-11 min-w-11 items-center justify-center rounded-lg active:bg-[var(--color-fill-2)]"
+                >
+                    <LeftOutline fontSize={24} className="text-[var(--color-text-1)]" aria-hidden="true" />
+                </button>
+                <div className="min-w-0 flex-1">
+                    <SearchBar
+                        placeholder={getPlaceholder()}
+                        value={searchValue}
+                        onChange={setSearchValue}
+                        onClear={() => setSearchValue('')}
+                        style={{
+                            '--border-radius': '18px',
+                            '--background': 'var(--color-fill-2)',
+                            '--height': '36px',
+                        }}
+                    />
                 </div>
-            </div>
+            </MobileSafeHeader>
 
             {/* 搜索结果 */}
             <div className="flex-1 overflow-y-auto">
@@ -338,10 +426,32 @@ export default function SearchPage() {
                         <SearchOutline className='text-7xl mb-4' />
                         <p className="text-sm">{t('search.searchHint')}</p>
                     </div>
-                ) : loading && searchType === 'WorkbenchPage' ? (
+                ) : loading && (searchType === 'WorkbenchPage' || searchType === 'ConversationList') ? (
                     // 加载状态
                     <div className="h-full flex flex-col items-center justify-center">
                         <SpinLoading color="primary" />
+                    </div>
+                ) : loadFailed && (searchType === 'WorkbenchPage' || searchType === 'ConversationList') ? (
+                    <div className="flex h-full flex-col items-center justify-center px-6 text-center">
+                        <ErrorBlock
+                            status="disconnected"
+                            title={t('search.loadFailed')}
+                            description={t('search.loadFailedDescription')}
+                        >
+                            <button
+                                type="button"
+                                className="min-h-11 rounded-lg px-4 text-[var(--color-primary)] active:bg-[var(--color-fill-2)]"
+                                onClick={() => {
+                                    if (searchType === 'WorkbenchPage') {
+                                        void searchWorkbenchApps(searchValue);
+                                    } else {
+                                        setConversationReloadVersion((version) => version + 1);
+                                    }
+                                }}
+                            >
+                                {t('common.retry')}
+                            </button>
+                        </ErrorBlock>
                     </div>
                 ) : searchResults.length === 0 ? (
                     // 空状态 - 无搜索结果
@@ -349,6 +459,12 @@ export default function SearchPage() {
                         <FrownOutline className='text-7xl mb-4' />
                         <p className="text-sm">{t('search.noResults')}</p>
                         <p className="text-xs mt-1">{t('search.tryOtherKeywords')}</p>
+                        {searchType === 'ConversationList' && showConversationPagination && (
+                            <InfiniteScroll
+                                loadMore={loadMoreConversationSessions}
+                                hasMore={hasMoreConversationSessions}
+                            />
+                        )}
                     </div>
                 ) : (
                     // 渲染搜索结果
@@ -365,7 +481,13 @@ export default function SearchPage() {
                                         `,
                                     }}
                                 />
-                                {searchResults.map((item) => renderConversationItem(item))}
+                                {searchResults.map((item) => renderConversationItem(item as SessionItem))}
+                                {showConversationPagination && (
+                                    <InfiniteScroll
+                                        loadMore={loadMoreConversationSessions}
+                                        hasMore={hasMoreConversationSessions}
+                                    />
+                                )}
                             </List>
                         ) : searchType === 'ChatHistory' ? (
                             <List>
@@ -382,7 +504,7 @@ export default function SearchPage() {
                                 {searchResults.map((item) => renderChatMessageItem(item as ChatMessageRecord))}
                             </List>
                         ) : (
-                            searchResults.map((item) => renderWorkbenchItem(item))
+                            searchResults.map((item) => renderWorkbenchItem(item as ChatApplicationItem))
                         )}
                     </div>
                 )}
