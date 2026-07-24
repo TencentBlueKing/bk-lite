@@ -6,6 +6,7 @@ K8S:
 monitor_object:
   Cluster: Cluster
   Pod: Pod
+  Node: Node
 monitor_object_type:
   K8S: K8S
 monitor_object_metric_group:
@@ -18,6 +19,10 @@ monitor_object_metric_group:
     Memory: Memory
     Disk: Disk
     Network: Network
+  Node:
+    Status: Status
+    CPU: CPU
+    Memory: Memory
 monitor_object_metric:
   Cluster:
     cluster_pod_count:
@@ -57,3 +62,37 @@ monitor_object_metric:
     pod_network_out_rate:
       name: Network Outbound Traffic
       desc: Outbound network traffic rate sent by the Pod.
+  Node:
+    node_status_condition:
+      name: Node Status
+      desc: Current operational condition of the node.
+    node_cpu_utilization:
+      name: CPU Utilization
+      desc: Percentage of available CPU resources used by the node.
+    node_cpu_iowait_rate:
+      name: CPU I/O Wait
+      desc: Percentage of CPU time spent waiting for I/O operations.
+    node_cpu_system_rate:
+      name: CPU System Usage
+      desc: Percentage of CPU resources consumed by kernel processes.
+    node_cpu_user_rate:
+      name: CPU User Usage
+      desc: Percentage of CPU resources consumed by user processes.
+    node_memory_utilization:
+      name: Memory Utilization
+      desc: Percentage of memory used by applications on the node.
+    node_memory_available:
+      name: Available Memory
+      desc: Memory available to applications without material performance degradation.
+    node_memory_swap_free:
+      name: Free Swap Space
+      desc: Free swap space available on the node.
+    node_memory_cached:
+      name: Cached Memory
+      desc: Memory used for file caching that can be reclaimed when needed.
+    node_memory_shared:
+      name: Shared Memory
+      desc: Memory shared among multiple processes.
+    node_memory_buffered:
+      name: Buffered Memory
+      desc: Memory used to buffer block-device I/O operations.

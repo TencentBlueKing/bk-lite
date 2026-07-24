@@ -4,6 +4,7 @@ K8S:
 monitor_object:
   Cluster: 集群
   Pod: Pod
+  Node: 节点
 monitor_object_type:
   K8S: K8S
 monitor_object_metric_group:
@@ -16,6 +17,10 @@ monitor_object_metric_group:
     Memory: 内存
     Disk: 磁盘
     Network: 网络
+  Node:
+    Status: 状态
+    CPU: CPU
+    Memory: 内存
 monitor_object_metric:
   Cluster:
     cluster_pod_count:
@@ -55,3 +60,37 @@ monitor_object_metric:
     pod_network_out_rate:
       name: 网络出流量
       desc: Pod 发送的出向网络流量速率。
+  Node:
+    node_status_condition:
+      name: 节点状态
+      desc: 节点当前的运行状态。
+    node_cpu_utilization:
+      name: CPU 使用率
+      desc: 节点已使用 CPU 资源占可用 CPU 资源的百分比。
+    node_cpu_iowait_rate:
+      name: CPU I/O 等待率
+      desc: CPU 用于等待 I/O 操作的时间百分比。
+    node_cpu_system_rate:
+      name: CPU 系统使用率
+      desc: 内核进程消耗的 CPU 资源百分比。
+    node_cpu_user_rate:
+      name: CPU 用户使用率
+      desc: 用户进程消耗的 CPU 资源百分比。
+    node_memory_utilization:
+      name: 内存使用率
+      desc: 节点应用程序已使用内存的百分比。
+    node_memory_available:
+      name: 可用内存
+      desc: 不会明显影响性能时可供应用程序使用的内存。
+    node_memory_swap_free:
+      name: 可用交换空间
+      desc: 节点上可用的空闲交换空间。
+    node_memory_cached:
+      name: 缓存内存
+      desc: 用于文件缓存且可按需回收的内存。
+    node_memory_shared:
+      name: 共享内存
+      desc: 由多个进程共享的内存。
+    node_memory_buffered:
+      name: 缓冲内存
+      desc: 用于缓冲块设备 I/O 操作的内存。
