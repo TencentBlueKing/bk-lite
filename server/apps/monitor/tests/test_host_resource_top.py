@@ -132,3 +132,24 @@ def test_service_queries_authorized_instances_and_returns_latest_cpu_rows():
     assert "host_cpu_usage_percent" in vm.queries[0][0]
     assert "host_cpu_usage_percent_gauge" in vm.queries[0][0]
     assert vm.queries[0][1]["lookback_delta"] == "600s"
+
+
+def test_service_matches_tuple_storage_id_with_raw_metric_instance_id():
+    class FakeVictoriaMetrics:
+        def query(self, query, **kwargs):
+            return {
+                "status": "success",
+                "data": {
+                    "result": [
+                        {"metric": {"instance_id": "host-1"}, "value": [NOW.timestamp(), "42"]},
+                    ]
+                },
+            }
+
+    rows = HostResourceTopService(vm_api=FakeVictoriaMetrics(), now=NOW).run(
+        "cpu",
+        [SimpleNamespace(id="('host-1',)", name="web-1", ip="10.0.0.1", interval=300)],
+    )
+
+    assert rows[0]["instance_id"] == "host-1"
+    assert rows[0]["usage_percent"] == 42.0

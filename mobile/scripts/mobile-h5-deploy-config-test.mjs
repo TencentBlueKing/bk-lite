@@ -42,6 +42,18 @@ test('API endpoints are normalized before reaching the H5 Nginx proxy', async ()
     normalizeApiEndpoint('/opspilot/bot_mgmt/chat_application?page=1'),
     '/opspilot/bot_mgmt/chat_application/?page=1',
   );
+  assert.equal(
+    normalizeApiEndpoint('/core/api/get_domain_list/', { trailingSlash: false }),
+    '/core/api/get_domain_list',
+  );
+  assert.equal(
+    normalizeApiEndpoint('/core/api/login/?next=/conversation'),
+    '/core/api/login/?next=/conversation',
+  );
+  assert.equal(
+    normalizeApiEndpoint('/core/api/login/?next=/conversation', { trailingSlash: false }),
+    '/core/api/login?next=/conversation',
+  );
 });
 
 test('API endpoint normalization stays inside the request module', async () => {
@@ -103,6 +115,7 @@ test('nginx.h5.conf serves exported routes and proxies API requests', async () =
     nginxConfig,
     /location = \/healthz\s*{[\s\S]*?default_type text\/plain;/,
   );
+  assert.match(nginxConfig, /location = \/\s*{[\s\S]*?return 302 \/mobile\/h5\//);
   assert.doesNotMatch(nginxConfig, /add_header Content-Type/);
   assert.match(nginxConfig, /location \^~ \/mobile\/h5\//);
   assert.match(nginxConfig, /absolute_redirect off;/);

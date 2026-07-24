@@ -10,6 +10,7 @@ from apps.core.utils.user_group import normalize_user_group_ids
 from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.rpc.cmdb import CMDB
 from apps.rpc.job_mgmt import JobMgmt
+from apps.rpc.patch_mgmt import PatchMgmt
 from apps.rpc.log import Log
 from apps.rpc.mlops import MLOps
 from apps.rpc.monitor import Monitor
@@ -286,6 +287,7 @@ class GroupDataRuleViewSet(LanguageViewSet):
             "cmdb": CMDB,
             "ops-analysis": OperationAnalysisRPC,
             "job": JobMgmt,
+            "patch": PatchMgmt,
         }
         app = params.pop("app")
         if app not in client_map.keys():

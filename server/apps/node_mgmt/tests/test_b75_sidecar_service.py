@@ -7,6 +7,7 @@ import pytest
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models import Collector, Node
 from apps.node_mgmt.models.cloud_region import CloudRegion
@@ -194,6 +195,78 @@ def test_get_collectors_returns_304_when_etag_matches(node):
         cache_mock.get.return_value = "cached-etag"
         resp = Sidecar.get_collectors(req)
     assert resp.status_code == 304
+
+
+@pytest.mark.django_db
+def test_update_node_client_304_refreshes_reported_node_metadata(node):
+    node.cpu_architecture = ""
+    node.install_method = ControllerConstants.AUTO
+    node.node_type = ControllerConstants.NODE_TYPE_HOST
+    node.save(update_fields=["cpu_architecture", "install_method", "node_type", "updated_at"])
+
+    request = SimpleNamespace(
+        headers={"If-None-Match": '"cached-etag"'},
+        META={},
+        data={
+            "node_name": node.name,
+            "node_details": {
+                "ip": node.ip,
+                "operating_system": "Linux",
+                "cpu_architecture": "amd64",
+                "status": {"status": 0},
+                "tags": [
+                    "zone:1",
+                    "group:1",
+                    "install_method:manual",
+                    "node_type:container",
+                ],
+            },
+        },
+    )
+
+    with (
+        patch("apps.node_mgmt.services.sidecar.cache") as cache_mock,
+        patch.object(Sidecar, "trigger_converge_tasks_if_needed"),
+    ):
+        cache_mock.get.return_value = "cached-etag"
+        response = Sidecar.update_node_client(request, node.id)
+
+    node.refresh_from_db()
+    assert response.status_code == 304
+    assert node.cpu_architecture == NodeConstants.X86_64_ARCH
+    assert node.install_method == ControllerConstants.AUTO
+    assert node.node_type == ControllerConstants.NODE_TYPE_HOST
+
+
+@pytest.mark.django_db
+def test_update_node_client_304_does_not_guess_missing_container_architecture(node):
+    node.cpu_architecture = ""
+    node.save(update_fields=["cpu_architecture", "updated_at"])
+
+    request = SimpleNamespace(
+        headers={"If-None-Match": '"cached-etag"'},
+        META={},
+        data={
+            "node_name": node.name,
+            "node_details": {
+                "ip": node.ip,
+                "operating_system": "Linux",
+                "status": {"status": 0},
+                "tags": ["node_type:container"],
+            },
+        },
+    )
+
+    with (
+        patch("apps.node_mgmt.services.sidecar.cache") as cache_mock,
+        patch.object(Sidecar, "trigger_converge_tasks_if_needed"),
+    ):
+        cache_mock.get.return_value = "cached-etag"
+        response = Sidecar.update_node_client(request, node.id)
+
+    node.refresh_from_db()
+    assert response.status_code == 304
+    assert node.cpu_architecture == ""
 
 
 # --------------------------------------------------------------------------- #

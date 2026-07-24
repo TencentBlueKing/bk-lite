@@ -50,7 +50,7 @@ async function getStore() {
         return storeInstance;
     } catch (error) {
         console.error('Failed to load Tauri store:', error);
-        return null;
+        throw error;
     }
 }
 
@@ -94,7 +94,7 @@ export async function initSecureStorage(): Promise<void> {
         }
     } catch (error) {
         console.error('Failed to initialize secure storage:', error);
-        isInitialized = true; // 标记为已初始化，避免重复尝试
+        throw error;
     }
 }
 
@@ -102,9 +102,6 @@ export async function initSecureStorage(): Promise<void> {
  * 安全存储数据
  */
 export async function secureSet<T>(key: string, value: T): Promise<void> {
-    // 更新内存缓存
-    memoryCache.set(key, value);
-
     try {
         const store = await getStore();
         if (store) {
@@ -118,8 +115,11 @@ export async function secureSet<T>(key: string, value: T): Promise<void> {
                 console.log(`Secure storage: saved ${key} to localStorage (fallback)`);
             }
         }
+        // 只有持久化成功后才更新内存，避免产生虚假的已保存状态。
+        memoryCache.set(key, value);
     } catch (error) {
         console.error(`Failed to save ${key} to secure storage:`, error);
+        throw error;
     }
 }
 
@@ -175,9 +175,6 @@ export function secureGetSync<T>(key: string): T | null {
  * 安全删除数据
  */
 export async function secureRemove(key: string): Promise<void> {
-    // 从内存缓存删除
-    memoryCache.delete(key);
-
     try {
         const store = await getStore();
         if (store) {
@@ -193,6 +190,10 @@ export async function secureRemove(key: string): Promise<void> {
         }
     } catch (error) {
         console.error(`Failed to remove ${key} from secure storage:`, error);
+        throw error;
+    } finally {
+        // 无论持久化层是否可用，当前进程都不得继续复用旧凭据。
+        memoryCache.delete(key);
     }
 }
 
@@ -200,9 +201,6 @@ export async function secureRemove(key: string): Promise<void> {
  * 清除所有安全存储数据
  */
 export async function secureClear(): Promise<void> {
-    // 清空内存缓存
-    memoryCache.clear();
-
     try {
         const store = await getStore();
         if (store) {
@@ -220,6 +218,9 @@ export async function secureClear(): Promise<void> {
         }
     } catch (error) {
         console.error('Failed to clear secure storage:', error);
+        throw error;
+    } finally {
+        memoryCache.clear();
     }
 }
 
@@ -276,9 +277,18 @@ export function getUserInfoSync(): LoginUserInfo | null {
  * 清除认证数据（登出时调用）
  */
 export async function clearAuthData(): Promise<void> {
-    await secureRemove(STORAGE_KEYS.TOKEN);
-    await secureRemove(STORAGE_KEYS.USER_INFO);
-    await secureRemove(STORAGE_KEYS.REFRESH_TOKEN);
+    const failures: unknown[] = [];
+    for (const key of Object.values(STORAGE_KEYS)) {
+        try {
+            // Tauri Store 是单实例，顺序删除避免并发 save 互相覆盖。
+            await secureRemove(key);
+        } catch (error) {
+            failures.push(error);
+        }
+    }
+    if (failures.length > 0) {
+        throw new AggregateError(failures, 'Failed to clear authentication storage');
+    }
 }
 
 /**

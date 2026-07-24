@@ -1,6 +1,5 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import { Form, Input, Button, Toast, Picker, SpinLoading } from 'antd-mobile';
 import { LeftOutline } from 'antd-mobile-icons';
 import { useTranslation } from '@/utils/i18n';
@@ -8,6 +7,8 @@ import { useAuth } from '@/context/auth';
 import { useLocale } from '@/context/locale';
 import { timezoneOptions, languageOptions } from '@/constants/userPicker';
 import { getUserInfo, updateUserInfo } from '@/api/user';
+import MobileSafeHeader from '@/components/mobile-safe-header';
+import { useMobileBack } from '@/navigation/mobile-back';
 
 
 
@@ -15,7 +16,7 @@ export default function AccountDetailsPage() {
     const { t } = useTranslation();
     const { updateUserInfo: updateStoredUserInfo } = useAuth();
     const { setLocale } = useLocale();
-    const router = useRouter();
+    const handleBack = useMobileBack({ fallbackHref: '/profile' });
     const [form] = Form.useForm();
     const [loading, setLoading] = useState(false);
     const [originalData, setOriginalData] = useState<Record<string, any>>({});
@@ -110,8 +111,13 @@ export default function AccountDetailsPage() {
 
     return (
         <div className="flex flex-col h-full bg-[var(--color-background-body)]">
-            <div className="flex items-center justify-center px-4 py-3 bg-[var(--color-bg)]">
-                <button onClick={() => router.back()} className="absolute left-4">
+            <MobileSafeHeader contentClassName="relative flex items-center justify-center px-14">
+                <button
+                    type="button"
+                    aria-label={t('common.back')}
+                    onClick={handleBack}
+                    className="absolute left-2 flex min-h-11 min-w-11 items-center justify-center rounded-lg active:bg-[var(--color-fill-2)]"
+                >
                     <LeftOutline fontSize={24} className="text-[var(--color-text-1)]" />
                 </button>
                 <h1 className="text-lg font-medium text-[var(--color-text-1)]">
@@ -129,7 +135,7 @@ export default function AccountDetailsPage() {
                         {t('common.save')}
                     </Button>
                 </span>
-            </div>
+            </MobileSafeHeader>
             {loading ? (
                 <div className="flex-1 flex items-center justify-center">
                     <SpinLoading color="primary" style={{ '--size': '32px' }} />

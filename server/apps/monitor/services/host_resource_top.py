@@ -9,6 +9,8 @@ from datetime import datetime, timedelta, timezone
 import math
 from typing import Any
 
+from apps.monitor.utils.dimension import parse_instance_id
+
 
 SUPPORTED_METRIC_TYPES = ("cpu", "memory", "disk")
 DEFAULT_INTERVAL_SECONDS = 300
@@ -220,7 +222,7 @@ class HostResourceTopService:
     def run(self, metric_type: str, authorized_instances: list[Any]) -> list[dict[str, Any]]:
         normalized_type = validate_metric_type(metric_type)
         host_meta = {
-            str(instance.id): {
+            str(parse_instance_id(instance.id)[0]): {
                 "host_name": getattr(instance, "name", "") or "",
                 "ip": getattr(instance, "ip", "") or "",
                 "interval": getattr(instance, "interval", DEFAULT_INTERVAL_SECONDS),

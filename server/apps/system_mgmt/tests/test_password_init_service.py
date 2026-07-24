@@ -14,18 +14,8 @@ from unittest.mock import patch
 import pytest
 from django.contrib.auth.hashers import check_password, make_password
 
-from apps.system_mgmt.models import (
-    Group,
-    IntegrationInstance,
-    User,
-    UserSyncRun,
-    UserSyncSource,
-)
-from apps.system_mgmt.services.password_init_service import (
-    PASSWORD_INIT_SENTINEL,
-    PASSWORD_INIT_SENTINEL_MARK,
-    init_password_for_user,
-)
+from apps.system_mgmt.models import Group, IntegrationInstance, User, UserSyncRun, UserSyncSource
+from apps.system_mgmt.services.password_init_service import PASSWORD_INIT_SENTINEL, PASSWORD_INIT_SENTINEL_MARK, init_password_for_user
 from apps.system_mgmt.utils.password_vault import encrypt_for_vault
 
 
@@ -110,7 +100,7 @@ def test_mode_uniform_success(source, run, group):
     with patch(
         "django.db.transaction.on_commit",
         side_effect=lambda fn, *args, **kwargs: fn(*args, **kwargs),
-    ) as _on_commit, patch(
+    ), patch(
         "apps.system_mgmt.services.password_init_service.send_initial_password_email_batch.delay"
     ) as delay:
         result = init_password_for_user(user, "uniform", cfg, run)
@@ -223,6 +213,29 @@ def test_mode_random_writes_vault(source, run, group):
     email_status = run.payload.get("email_status", {})
     assert email_status.get("total") == 1
     assert email_status.get("completed") is False
+
+
+@pytest.mark.django_db
+def test_enqueue_failure_is_persisted_for_sync_finalize(source, run, group):
+    """任务代理拒绝时不得把邮件标记为已入队。"""
+    user = _make_user(source, group, username="enqueue-failure")
+    with patch(
+        "django.db.transaction.on_commit",
+        side_effect=lambda fn, *args, **kwargs: fn(*args, **kwargs),
+    ), patch(
+        "apps.system_mgmt.services.password_init_service.send_initial_password_email_batch.delay",
+        side_effect=RuntimeError("amqp://sync-user:broker-secret@broker.example/vhost unavailable"),
+    ):
+        result = init_password_for_user(user, "random", {"email_channel_id": 7}, run)
+
+    run.refresh_from_db()
+    assert result["status"] == "ok"
+    assert run.payload["email_dispatch"]["enqueue_status"] == "failed"
+    assert run.payload["email_dispatch"]["enqueue_error_code"] == "email_enqueue_failed"
+    assert "enqueue_error" not in run.payload["email_dispatch"]
+    assert "broker-secret" not in str(run.payload)
+    assert run.payload["email_enqueue_status"] == "failed"
+    assert run.payload["email_enqueue_error_code"] == "email_enqueue_failed"
 
 
 @pytest.mark.django_db

@@ -326,6 +326,15 @@ def _get_chat_app_action(action_name, user, params=None):
     return view(request)
 
 
+def _create_mobile_application(bot, node_id, name=None):
+    return ChatApplication.objects.create(
+        bot=bot,
+        node_id=node_id,
+        app_type=ChatApplication.APP_TYPE_MOBILE,
+        app_name=name or node_id,
+    )
+
+
 def _post_chat_app_action(action_name, user, body):
     from rest_framework.test import APIRequestFactory, force_authenticate
 
@@ -379,6 +388,310 @@ def test_web_chat_sessions_hides_non_participant_nats_session(bot):
     resp = _get_chat_app_action("web_chat_sessions", charlie, {"bot_id": bot.id, "node_id": "nats_entry"})
     assert resp.status_code == 200
     assert all(it.get("session_id") != "nats-sess-2" for it in resp.data)
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.integration
+def test_web_chat_sessions_preserve_created_order_and_append_nats(bot):
+    """Web 保持按会话创建时间排序，NATS 会话仍追加在标准历史之后。"""
+    user = _make_user("web-order-user", is_superuser=True)
+    common_fields = {
+        "bot_id": bot.id,
+        "node_id": "web-entry",
+        "user_id": "web-order-user@domain.com",
+        "conversation_role": "user",
+        "entry_type": "web_chat",
+    }
+    WorkFlowConversationHistory.objects.create(
+        **common_fields,
+        conversation_content="先创建的会话",
+        conversation_time="2026-01-01T00:00:00Z",
+        session_id="web-session-old",
+    )
+    WorkFlowConversationHistory.objects.create(
+        **common_fields,
+        conversation_content="后来的活跃消息",
+        conversation_time="2026-01-04T00:00:00Z",
+        session_id="web-session-old",
+    )
+    WorkFlowConversationHistory.objects.create(
+        **common_fields,
+        conversation_content="后创建的会话",
+        conversation_time="2026-01-02T00:00:00Z",
+        session_id="web-session-new",
+    )
+    BotWebChatSession.objects.create(
+        session_id="nats-web-order-session",
+        bot_id=bot.id,
+        node_id="web-entry",
+        source="nats",
+        participants=["web-order-user"],
+        title="NATS Web 会话",
+    )
+
+    resp = _get_chat_app_action(
+        "web_chat_sessions",
+        user,
+        {"bot_id": bot.id, "node_id": "web-entry"},
+    )
+
+    assert resp.status_code == 200
+    assert [item["session_id"] for item in resp.data] == [
+        "web-session-new",
+        "web-session-old",
+        "nats-web-order-session",
+    ]
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.integration
+def test_web_chat_sessions_cannot_switch_to_mobile_entry_type(bot):
+    """旧 Web action 固定读取 Web 会话，Mobile 使用独立分页 action。"""
+    user = _make_user("web-only-user", is_superuser=True)
+    common_fields = {
+        "bot_id": bot.id,
+        "node_id": "shared-entry",
+        "user_id": "web-only-user@domain.com",
+        "conversation_role": "user",
+        "conversation_time": "2026-01-01T00:00:00Z",
+    }
+    WorkFlowConversationHistory.objects.create(
+        **common_fields,
+        entry_type="web_chat",
+        conversation_content="Web 会话",
+        session_id="web-only-session",
+    )
+    WorkFlowConversationHistory.objects.create(
+        **common_fields,
+        entry_type="mobile",
+        conversation_content="Mobile 会话",
+        session_id="mobile-hidden-session",
+    )
+
+    resp = _get_chat_app_action(
+        "web_chat_sessions",
+        user,
+        {"entry_type": "mobile", "bot_id": bot.id, "node_id": "shared-entry"},
+    )
+
+    assert resp.status_code == 200
+    assert [item["session_id"] for item in resp.data] == ["web-only-session"]
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.integration
+def test_mobile_sessions_filter_by_bot_without_requiring_node_id(bot):
+    """移动端按 bot 查询时应覆盖该应用的不同入口节点，并排除其他 bot。"""
+    other_bot = Bot.objects.create(
+        name="other-bot",
+        team=[1],
+        online=True,
+        created_by="tester",
+        domain="test.com",
+    )
+    user = _make_user("mobile-user", is_superuser=True)
+    _create_mobile_application(bot, "mobile-a")
+    _create_mobile_application(bot, "mobile-b")
+    _create_mobile_application(other_bot, "mobile-c")
+    common_fields = {
+        "user_id": "mobile-user@domain.com",
+        "conversation_role": "user",
+        "entry_type": "mobile",
+    }
+    WorkFlowConversationHistory.objects.create(
+        **common_fields,
+        bot_id=bot.id,
+        node_id="mobile-a",
+        conversation_content="会话 A",
+        conversation_time="2026-01-01T00:00:00Z",
+        session_id="mobile-session-a",
+    )
+    WorkFlowConversationHistory.objects.create(
+        **common_fields,
+        bot_id=bot.id,
+        node_id="mobile-b",
+        conversation_content="会话 B",
+        conversation_time="2026-01-02T00:00:00Z",
+        session_id="mobile-session-b",
+    )
+    WorkFlowConversationHistory.objects.create(
+        **common_fields,
+        bot_id=bot.id,
+        node_id="mobile-a",
+        conversation_content="会话 A 的最近消息",
+        conversation_time="2026-01-04T00:00:00Z",
+        session_id="mobile-session-a",
+    )
+    WorkFlowConversationHistory.objects.create(
+        **common_fields,
+        bot_id=other_bot.id,
+        node_id="mobile-c",
+        conversation_content="其他应用会话",
+        conversation_time="2026-01-03T00:00:00Z",
+        session_id="other-mobile-session",
+    )
+    BotWebChatSession.objects.create(
+        session_id="nats-web-session",
+        bot_id=bot.id,
+        node_id="nats-entry",
+        source="nats",
+        participants=["mobile-user"],
+        title="仅属于 Web 暴露的 NATS 会话",
+    )
+
+    resp = _get_chat_app_action(
+        "mobile_sessions",
+        user,
+        {"bot_id": bot.id, "page": 1, "page_size": 20},
+    )
+
+    assert resp.status_code == 200
+    assert resp.data["count"] == 2
+    assert [(item["session_id"], item["node_id"]) for item in resp.data["items"]] == [
+        ("mobile-session-a", "mobile-a"),
+        ("mobile-session-b", "mobile-b"),
+    ]
+    assert all(item["updated_at"] for item in resp.data["items"])
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.integration
+def test_mobile_sessions_apply_node_filter_when_explicitly_provided(bot):
+    """传入 node_id 时只返回该应用入口节点的会话。"""
+    user = _make_user("node-filter-user", is_superuser=True)
+    _create_mobile_application(bot, "mobile-a")
+    _create_mobile_application(bot, "mobile-b")
+    for node_id, session_id in (("mobile-a", "node-session-a"), ("mobile-b", "node-session-b")):
+        WorkFlowConversationHistory.objects.create(
+            bot_id=bot.id,
+            node_id=node_id,
+            user_id="node-filter-user@domain.com",
+            conversation_role="user",
+            conversation_content=session_id,
+            conversation_time="2026-01-01T00:00:00Z",
+            entry_type="mobile",
+            session_id=session_id,
+        )
+
+    resp = _get_chat_app_action(
+        "mobile_sessions",
+        user,
+        {"bot_id": bot.id, "node_id": "mobile-a", "page": 1, "page_size": 20},
+    )
+
+    assert resp.status_code == 200
+    assert resp.data["count"] == 1
+    assert [item["session_id"] for item in resp.data["items"]] == ["node-session-a"]
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.integration
+def test_mobile_sessions_include_real_application_identity(bot):
+    """移动端全局会话列表应返回入口应用的真实名称和标签。"""
+    user = _make_user("mobile-app-user", is_superuser=True)
+    application = ChatApplication.objects.create(
+        bot=bot,
+        node_id="mobile-history-entry",
+        app_type=ChatApplication.APP_TYPE_MOBILE,
+        app_name="Linux 性能监控",
+        app_tags=["routine_ops", "performance_analysis"],
+    )
+    WorkFlowConversationHistory.objects.create(
+        bot_id=bot.id,
+        node_id="mobile-history-entry",
+        user_id="mobile-app-user@domain.com",
+        conversation_role="user",
+        conversation_content="帮我查看 CPU 负载",
+        conversation_time="2026-01-01T00:00:00Z",
+        entry_type="mobile",
+        session_id="mobile-app-session",
+    )
+
+    resp = _get_chat_app_action("mobile_sessions", user, {"page": 1, "page_size": 20})
+
+    assert resp.status_code == 200
+    item = next(item for item in resp.data["items"] if item["session_id"] == "mobile-app-session")
+    assert item["app_id"] == application.id
+    assert item["app_name"] == "Linux 性能监控"
+    assert item["app_tags"] == ["routine_ops", "performance_analysis"]
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.integration
+def test_mobile_sessions_only_include_applications_visible_in_current_team(bot):
+    """Mobile 会话跟随当前团队的应用权限边界。"""
+    other_team_bot = Bot.objects.create(
+        name="other-team-bot",
+        team=[2],
+        online=True,
+        created_by="tester",
+        domain="test.com",
+    )
+    _create_mobile_application(bot, "visible-mobile-entry")
+    _create_mobile_application(other_team_bot, "hidden-mobile-entry")
+    user = _make_user("team-scoped-mobile-user", group_ids=[1])
+    common_fields = {
+        "user_id": "team-scoped-mobile-user@domain.com",
+        "conversation_role": "user",
+        "conversation_time": "2026-01-01T00:00:00Z",
+        "entry_type": "mobile",
+    }
+    WorkFlowConversationHistory.objects.create(
+        **common_fields,
+        bot_id=bot.id,
+        node_id="visible-mobile-entry",
+        conversation_content="当前团队会话",
+        session_id="visible-team-session",
+    )
+    WorkFlowConversationHistory.objects.create(
+        **common_fields,
+        bot_id=other_team_bot.id,
+        node_id="hidden-mobile-entry",
+        conversation_content="其他团队会话",
+        session_id="hidden-team-session",
+    )
+
+    resp = _get_chat_app_action("mobile_sessions", user, {"page": 1, "page_size": 20})
+
+    assert resp.status_code == 200
+    assert resp.data["count"] == 1
+    assert [item["session_id"] for item in resp.data["items"]] == ["visible-team-session"]
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.integration
+def test_mobile_global_sessions_are_paginated_with_bounded_page_size(bot):
+    """Mobile 全局历史分页返回，单页大小不超过硬上限。"""
+    user = _make_user("mobile-full-history-user", is_superuser=True)
+    _create_mobile_application(bot, "mobile-full-history-entry")
+    WorkFlowConversationHistory.objects.bulk_create(
+        [
+            WorkFlowConversationHistory(
+                bot_id=bot.id,
+                node_id="mobile-full-history-entry",
+                user_id="mobile-full-history-user@domain.com",
+                conversation_role="user",
+                conversation_content=f"会话 {index}",
+                conversation_time=f"2026-01-01T00:{index // 60:02d}:{index % 60:02d}Z",
+                entry_type="mobile",
+                session_id=f"mobile-full-history-{index}",
+            )
+            for index in range(101)
+        ]
+    )
+
+    first_page = _get_chat_app_action("mobile_sessions", user, {"page": 1, "page_size": 1000})
+    second_page = _get_chat_app_action("mobile_sessions", user, {"page": 2, "page_size": 100})
+
+    assert first_page.status_code == 200
+    assert second_page.status_code == 200
+    assert first_page.data["count"] == 101
+    assert second_page.data["count"] == 101
+    assert len(first_page.data["items"]) == 100
+    assert len(second_page.data["items"]) == 1
+    assert {item["session_id"] for item in first_page.data["items"] + second_page.data["items"]} == {
+        f"mobile-full-history-{index}" for index in range(101)
+    }
 
 
 @pytest.mark.django_db(transaction=True)
@@ -519,8 +832,8 @@ def test_filter_sessions_by_user_uses_list_contains(bot):
     早期版本用 participants__contains="admin"（str）导致查询不返回结果。
     本测试确保 admin 用户能从其拥有的 participants 中看到 session。
     """
-    from apps.opspilot.viewsets.chat_application_view import _filter_sessions_by_user
     from apps.base.models import User
+    from apps.opspilot.viewsets.chat_application_view import _filter_sessions_by_user
 
     BotWebChatSession.objects.create(
         session_id="nats-filter-test",
@@ -531,8 +844,12 @@ def test_filter_sessions_by_user_uses_list_contains(bot):
     )
 
     admin_user = User.objects.create_user(
-        username="admin", password="x", domain="domain.com", locale="en",
-        group_list=[{"id": 1}], roles=["admin"],
+        username="admin",
+        password="x",
+        domain="domain.com",
+        locale="en",
+        group_list=[{"id": 1}],
+        roles=["admin"],
     )
     admin_user.is_superuser = True
     admin_user.save()
@@ -544,8 +861,12 @@ def test_filter_sessions_by_user_uses_list_contains(bot):
 
     # 同样验证 alice@domain.com 命中
     alice_user = User.objects.create_user(
-        username="alice", password="x", domain="domain.com", locale="en",
-        group_list=[{"id": 1}], roles=["admin"],
+        username="alice",
+        password="x",
+        domain="domain.com",
+        locale="en",
+        group_list=[{"id": 1}],
+        roles=["admin"],
     )
     alice_user.is_superuser = True
     alice_user.save()
@@ -555,6 +876,7 @@ def test_filter_sessions_by_user_uses_list_contains(bot):
 
 def _build_mock_request(user):
     """构造一个带 user 属性的最小 request 替身供 _filter_sessions_by_user 测试用。"""
+
     class _R:
         pass
 
@@ -901,9 +1223,9 @@ def test_chat_app_skill_guide_empty(bot):
 @pytest.mark.django_db(transaction=True)
 def test_chat_app_skill_guide_returns_empty_when_no_llm_node(bot):
     """skill_guide：bot 有 workflow 但无 LLM 节点时返回 guide=''。"""
-    from apps.opspilot.models.bot_mgmt import BotWorkFlow
     from rest_framework.test import APIRequestFactory, force_authenticate
 
+    from apps.opspilot.models.bot_mgmt import BotWorkFlow
     from apps.opspilot.viewsets.chat_application_view import ChatApplicationViewSet
 
     BotWorkFlow.objects.create(
@@ -1455,9 +1777,8 @@ def test_views_token_consumption_queryset_returns_qs(db):
 
 def test_views_annotate_token_fields():
     """_annotate_token_fields 给 queryset 加注解（response_detail JSON 字段）。"""
-    from apps.opspilot.views import _annotate_token_fields
-
     from apps.opspilot.models.model_provider_mgmt import SkillRequestLog
+    from apps.opspilot.views import _annotate_token_fields
 
     qs = SkillRequestLog.objects.none()
     annotated = _annotate_token_fields(qs)
@@ -1495,8 +1816,12 @@ def test_execute_chat_flow_nats_session_participant_passes_through(bot):
     from apps.base.models import User
 
     alice = User.objects.create_user(
-        username="alice", password="x", domain="domain.com", locale="en",
-        group_list=[{"id": 1}], roles=["admin"],
+        username="alice",
+        password="x",
+        domain="domain.com",
+        locale="en",
+        group_list=[{"id": 1}],
+        roles=["admin"],
     )
     alice.is_superuser = True
     alice.save()
@@ -1528,8 +1853,12 @@ def test_execute_chat_flow_nats_session_empty_message_skips_check(bot):
     from apps.base.models import User
 
     user = User.objects.create_user(
-        username="alice", password="x", domain="domain.com", locale="en",
-        group_list=[{"id": 1}], roles=["admin"],
+        username="alice",
+        password="x",
+        domain="domain.com",
+        locale="en",
+        group_list=[{"id": 1}],
+        roles=["admin"],
     )
     user.is_superuser = True
     user.save()
@@ -1666,8 +1995,12 @@ def _make_minimal_user(username):
     from apps.base.models import User
 
     user = User.objects.create_user(
-        username=username, password="x", domain="domain.com", locale="en",
-        group_list=[{"id": 1}], roles=["admin"],
+        username=username,
+        password="x",
+        domain="domain.com",
+        locale="en",
+        group_list=[{"id": 1}],
+        roles=["admin"],
     )
     user.is_superuser = True
     user.save()
@@ -1728,10 +2061,10 @@ def test_views_admin_endpoints_authenticated(bot):
     factory = RequestFactory()
 
     from apps.opspilot.views import (
-        get_total_token_consumption,
-        get_token_consumption_overview,
-        get_conversations_line_data,
         get_active_users_line_data,
+        get_conversations_line_data,
+        get_token_consumption_overview,
+        get_total_token_consumption,
     )
 
     for view in (

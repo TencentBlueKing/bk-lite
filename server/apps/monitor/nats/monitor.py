@@ -1219,7 +1219,11 @@ def get_host_resource_top(metric_type: str, *args, **kwargs):
     except ValueError as exc:
         return {"result": False, "data": [], "message": str(exc)}
 
-    authorized_instances, error = _get_authorized_monitor_instances(kwargs.get("user_info") or {})
+    user_info = kwargs.get("user_info") or {}
+    _, _, _, scope_ids, _, error = _get_nats_actor_scope(user_info)
+    if error:
+        return error
+    authorized_instances, error = _get_authorized_monitor_instances(user_info, scope_ids)
     if error:
         return error
     if not authorized_instances:
@@ -1250,7 +1254,11 @@ def get_network_device_resource_top(metric_type: str, *args, **kwargs):
     except (TypeError, ValueError):
         return {"result": False, "data": [], "message": "limit 必须是 1-100 的整数"}
 
-    authorized_instances, error = _get_authorized_monitor_instances(kwargs.get("user_info") or {})
+    user_info = kwargs.get("user_info") or {}
+    _, _, _, scope_ids, _, error = _get_nats_actor_scope(user_info)
+    if error:
+        return error
+    authorized_instances, error = _get_authorized_monitor_instances(user_info, scope_ids)
     if error:
         return error
     if not authorized_instances:
@@ -1264,7 +1272,7 @@ def get_network_device_resource_top(metric_type: str, *args, **kwargs):
         )
     except Exception:
         logger.exception("network device resource top query failed metric_type=%s", metric_type)
-        return {"result": False, "data": [], "message": "缁戠粶璁惧璧勬簮鎸囨爣鏌ヨ澶辫触"}
+        return {"result": False, "data": [], "message": "网络设备资源指标查询失败"}
     return {"result": True, "data": rows, "message": ""}
 
 

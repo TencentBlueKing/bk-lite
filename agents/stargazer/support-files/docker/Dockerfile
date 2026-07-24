@@ -21,17 +21,6 @@ RUN if [ -n "$NEXUS_PYTHON_REPOSITY" ]; then \
     pip3 config set global.trusted-host "$(echo $NEXUS_PYTHON_REPOSITY | sed -E 's|^https?://([^/:]+).*|\1|')"; \
     fi
 
-RUN pip3 install uv==0.8.16
-
-RUN if [ -n "$NEXUS_PYTHON_REPOSITY" ]; then \
-    uv sync --locked --all-groups --all-extras \
-        --default-index "$NEXUS_PYTHON_REPOSITY" \
-        --allow-insecure-host "$(echo $NEXUS_PYTHON_REPOSITY | sed -E 's|^https?://([^/:]+).*|\1|')"; \
-    else \
-    uv sync --locked --all-groups --all-extras; \
-    fi
-
-ENV PATH="/app/.venv/bin:$PATH"
-
-RUN apt-get reinstall -y supervisor
+RUN pip3 install -e ".[dev,aliyun,qcloud,huawei,vmware,openstack,qingyun,snmp]"
+RUN apt-get reinstall -y supervisor 
 CMD ["supervisord", "-n"]

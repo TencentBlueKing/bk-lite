@@ -58,7 +58,11 @@ if [ -f "$CUSTOM_MAIN" ]; then
   echo "✅ MainActivity 已更新"
 fi
 
-# 4. 构建 APK
+# 4. 固化软键盘 resize 模式（gen 目录会被重新生成）
+node scripts/patch-android-manifest.mjs
+echo "✅ Android 软键盘模式已更新"
+
+# 5. 构建 APK
 if [ "$BUILD_AAB" == "true" ]; then
   # 构建 AAB
   pnpm tauri android build --aab
@@ -85,7 +89,7 @@ else
   echo "📦 APK 位置: src-tauri/gen/android/app/build/outputs/apk/"
 fi
 
-# 5. 自动安装（如果指定了 --install 参数）
+# 6. 自动安装（如果指定了 --install 参数）
 if [ "$AUTO_INSTALL" == "true" ] && [ "$BUILD_AAB" != "true" ]; then
   echo ""
   echo "📲 开始安装到设备..."

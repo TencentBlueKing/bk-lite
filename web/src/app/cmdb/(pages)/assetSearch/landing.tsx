@@ -5,7 +5,6 @@ import {
   AppstoreOutlined,
   ArrowRightOutlined,
   ClearOutlined,
-  MoreOutlined,
   ReloadOutlined,
   SearchOutlined,
   StarFilled,
@@ -15,7 +14,6 @@ import {
   Button,
   Card,
   Checkbox,
-  Dropdown,
   Empty,
   Input,
   List,
@@ -26,7 +24,6 @@ import {
   Tooltip,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import type { MenuProps } from 'antd';
 
 import { useTranslation } from '@/utils/i18n';
 import {
@@ -35,6 +32,8 @@ import {
 } from '@/app/cmdb/utils/assetSearchDisplay';
 import type { RecentChangeFilter } from '@/app/cmdb/utils/assetSearchLandingData';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
+import MoreActionsDropdown from '@/components/more-actions-dropdown';
+import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
 import assetSearchStyle from './index.module.scss';
 
 export interface QuickTagItem {
@@ -172,26 +171,18 @@ const AssetSearchLanding: React.FC<AssetSearchLandingProps> = ({
     { label: t('AssetSearch.changeFilters.highRisk'), value: 'highRisk' },
   ];
 
-  const getFollowedAssetMenu = (item: FollowedAssetViewItem): MenuProps => ({
-    items: [
-      {
-        key: 'detail',
-        label: t('AssetSearch.viewDetail'),
-      },
-      {
-        key: 'toggleFollow',
-        label: item.followed === false ? t('AssetSearch.follow') : t('AssetSearch.unfollow'),
-      },
-    ],
-    onClick: ({ key, domEvent }) => {
-      domEvent.stopPropagation();
-      if (key === 'detail') {
-        onOpenAsset(item);
-        return;
-      }
-      onToggleFollow(item);
+  const getFollowedAssetItems = (item: FollowedAssetViewItem): MoreActionsDropdownItem[] => [
+    {
+      key: 'detail',
+      label: t('AssetSearch.viewDetail'),
+      onClick: () => onOpenAsset(item),
     },
-  });
+    {
+      key: 'toggleFollow',
+      label: item.followed === false ? t('AssetSearch.follow') : t('AssetSearch.unfollow'),
+      onClick: () => onToggleFollow(item),
+    },
+  ];
 
   React.useEffect(() => {
     if (recentChangeListRef.current) {
@@ -452,18 +443,11 @@ const AssetSearchLanding: React.FC<AssetSearchLandingProps> = ({
                       }}
                     />
                   </Tooltip>,
-                  <Dropdown
+                  <MoreActionsDropdown
                     key="more"
-                    trigger={['click']}
-                    menu={getFollowedAssetMenu(item)}
-                  >
-                    <Button
-                      type="text"
-                      size="small"
-                      icon={<MoreOutlined />}
-                      onClick={(event) => event.stopPropagation()}
-                    />
-                  </Dropdown>,
+                    items={getFollowedAssetItems(item)}
+                    stopPropagation
+                  />,
                 ]}
                 onClick={() => onOpenAsset(item)}
               >

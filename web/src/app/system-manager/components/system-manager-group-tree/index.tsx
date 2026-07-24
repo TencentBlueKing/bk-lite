@@ -1,10 +1,11 @@
 import React from 'react';
-import { Input, Button, Tree, Dropdown, Menu, Skeleton } from 'antd';
-import { PlusOutlined, MoreOutlined } from '@ant-design/icons';
+import { Input, Button, Tree, Skeleton } from 'antd';
+import { PlusOutlined } from '@ant-design/icons';
 import type { DataNode as TreeDataNode } from 'antd/lib/tree';
 import PermissionWrapper from '@/components/permission';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import Icon from '@/components/icon';
+import MoreActionsDropdown from '@/components/more-actions-dropdown';
 
 interface ExtendedTreeDataNode extends TreeDataNode {
   hasAuth?: boolean;
@@ -109,26 +110,16 @@ const GroupTree: React.FC<GroupTreeProps> = ({
     ];
 
     return (
-      <Dropdown
-        overlay={
-          <Menu
-            onClick={({ key, domEvent }) => {
-              domEvent.stopPropagation();
-              onGroupAction(key, groupKey);
-            }}
-            items={menuItems}
-          />
-        }
-        trigger={['click']}
-      >
-        <MoreOutlined
-          className="cursor-pointer"
-          onClick={(e) => {
-            e.stopPropagation();
-            e.preventDefault();
-          }}
-        />
-      </Dropdown>
+      <MoreActionsDropdown
+        items={menuItems.map((item) => ({
+          key: String(item.key),
+          label: item.label,
+          disabled: 'disabled' in item ? item.disabled : undefined,
+          onClick: () => onGroupAction(String(item.key), groupKey),
+        }))}
+        buttonClassName="cursor-pointer"
+        stopPropagation
+      />
     );
   };
 
