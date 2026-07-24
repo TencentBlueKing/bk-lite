@@ -14,6 +14,10 @@ from apps.base.models import User, UserAPISecret
 from apps.core.constants import VERIFY_TOKEN_USER_NOT_FOUND_CODE, VERIFY_TOKEN_USER_NOT_FOUND_MESSAGE
 from apps.core.logger import logger
 from apps.core.utils.custom_error import DoesNotExist
+from apps.core.utils.permission_cache import (
+    API_TOKEN_PERMISSION_CACHE_PREFIX,
+    register_api_token_permission_cache_key,
+)
 from apps.rpc.system_mgmt import SystemMgmt
 from apps.system_mgmt.models import Group, Menu, Role
 from apps.system_mgmt.models import User as SystemUser
@@ -61,7 +65,7 @@ class APISecretAuthBackend(ModelBackend):
 
     # 缓存配置：默认 600s，可通过 API_TOKEN_PERMISSION_CACHE_TTL 环境变量覆盖
     PERMISSION_CACHE_TTL = int(os.getenv("API_TOKEN_PERMISSION_CACHE_TTL", "600"))
-    PERMISSION_CACHE_KEY_PREFIX = "api_token_permissions"
+    PERMISSION_CACHE_KEY_PREFIX = API_TOKEN_PERMISSION_CACHE_PREFIX
 
     def authenticate(self, request=None, username=None, password=None, api_token=None, **kwargs) -> Optional[User]:
         """使用API token进行用户认证"""
@@ -143,7 +147,13 @@ class APISecretAuthBackend(ModelBackend):
             user.is_superuser = is_superuser
             user.role_ids = list(all_role_ids)
 
-            # 缓存结果
+            # 先登记再写入快照：登记失败时必须 fail-closed，避免留下无法精确失效的权限缓存。
+            register_api_token_permission_cache_key(
+                user.username,
+                user.domain,
+                cache_key,
+                self.PERMISSION_CACHE_TTL,
+            )
             cache.set(
                 cache_key,
                 {

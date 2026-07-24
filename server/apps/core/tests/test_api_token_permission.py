@@ -14,9 +14,11 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, call, patch
 
 import pytest
+from django.core.cache.backends.locmem import LocMemCache
 
 from apps.core.backends import APISecretAuthBackend, _collect_ancestor_group_ids
 from apps.core.decorators.api_permission import HasPermission, HasRole
+from apps.core.utils import permission_cache
 from apps.core.utils.web_utils import WebUtils
 
 
@@ -395,7 +397,9 @@ class TestPopulateUserPermissions:
         backend = APISecretAuthBackend()
         user = MockUser(username="newuser", domain="test.com", group_list=[1])
 
-        with patch("apps.core.backends.cache") as mock_cache:
+        with patch("apps.core.backends.cache") as mock_cache, patch(
+            "apps.core.backends.register_api_token_permission_cache_key"
+        ) as mock_register_cache_key:
             mock_cache.get.return_value = None  # 缓存未命中
 
             with patch.object(backend, "_get_user_all_roles", return_value=set()):
@@ -412,6 +416,68 @@ class TestPopulateUserPermissions:
             call_args = mock_cache.set.call_args
             assert "roles" in call_args[0][1]
             assert "permission" in call_args[0][1]
+            mock_register_cache_key.assert_called_once_with(
+                "newuser",
+                "test.com",
+                backend._get_permission_cache_key("newuser", "test.com", 1),
+                backend.PERMISSION_CACHE_TTL,
+            )
+
+    def test_cache_index_registration_failure_does_not_leave_snapshot(self):
+        """索引登记失败时不得先写入无法失效的权限快照。"""
+        backend = APISecretAuthBackend()
+        user = MockUser(username="newuser", domain="test.com", group_list=[1])
+
+        with patch("apps.core.backends.cache") as mock_cache, patch(
+            "apps.core.backends.register_api_token_permission_cache_key", side_effect=RuntimeError("index unavailable")
+        ):
+            mock_cache.get.return_value = None
+            with patch.object(backend, "_get_user_all_roles", return_value=set()), patch(
+                "apps.core.backends.Role"
+            ) as mock_role:
+                mock_role.objects.filter.return_value.__iter__.return_value = iter([])
+                mock_role.objects.filter.return_value.values_list.return_value = []
+                backend._populate_user_permissions(user, 1)
+
+        mock_cache.set.assert_not_called()
+        assert user.permission == {}
+        assert user.is_superuser is False
+
+    def test_revocation_prevents_next_api_auth_from_reusing_snapshot(self):
+        """撤权统一清理后，下一次 API 鉴权必须重新计算而不能复用旧权限。"""
+        backend = APISecretAuthBackend()
+        user = MockUser(username="revoked", domain="test.com", group_list=[1])
+        cache_backend = LocMemCache("api-token-revocation", {})
+        cache_key = backend._get_permission_cache_key("revoked", "test.com", 1)
+        cache_backend.set(
+            cache_key,
+            {
+                "roles": ["admin"],
+                "permission": {"cmdb": ["secret-View"]},
+                "is_superuser": True,
+                "role_ids": [1],
+            },
+            backend.PERMISSION_CACHE_TTL,
+        )
+
+        with patch("apps.core.backends.cache", cache_backend), patch.object(permission_cache, "cache", cache_backend):
+            permission_cache.register_api_token_permission_cache_key(
+                "revoked", "test.com", cache_key, backend.PERMISSION_CACHE_TTL
+            )
+            backend._populate_user_permissions(user, 1)
+            assert user.is_superuser is True
+
+            permission_cache.clear_user_permission_cache("revoked", "test.com")
+            with patch.object(backend, "_get_user_all_roles", return_value=set()), patch(
+                "apps.core.backends.Role"
+            ) as mock_role:
+                mock_role.objects.filter.return_value.__iter__.return_value = iter([])
+                mock_role.objects.filter.return_value.values_list.return_value = []
+                backend._populate_user_permissions(user, 1)
+
+        assert user.is_superuser is False
+        assert user.permission == {}
+        assert user.role_ids == []
 
     def test_exception_handling(self):
         """测试异常处理 - 设置空权限"""

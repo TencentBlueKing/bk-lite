@@ -34,6 +34,10 @@ PERM_CACHE_PREFIX = "perm_rules:"
 USER_PERM_KEYS_PREFIX = "user_perm_keys:"
 # verify_token 结果缓存键前缀
 TOKEN_INFO_PREFIX = "token_info:"
+# API Secret 认证后的角色/菜单权限快照
+API_TOKEN_PERMISSION_CACHE_PREFIX = "api_token_permissions"
+# 不支持 delete_pattern 的缓存后端使用的 API 权限键索引
+API_TOKEN_PERMISSION_KEYS_PREFIX = "api_token_permission_keys:"
 
 
 def _get_token_info_key(username: str, domain: str) -> str:
@@ -98,6 +102,50 @@ def _get_cache_key(
 def _get_user_keys_index(username: str, domain: str) -> str:
     """获取用户缓存键索引的 key（旧版兜底，非 Redis 后端使用）"""
     return f"{USER_PERM_KEYS_PREFIX}{username}:{domain}"
+
+
+def _get_api_token_permission_prefix(username: str, domain: str) -> str:
+    """返回指定用户全部 API Token 权限快照的键前缀。"""
+    return f"{API_TOKEN_PERMISSION_CACHE_PREFIX}:{username}:{domain}:"
+
+
+def _get_api_token_keys_index(username: str, domain: str) -> str:
+    """返回非 pattern 缓存后端使用的 API Token 权限键索引。"""
+    return f"{API_TOKEN_PERMISSION_KEYS_PREFIX}{username}:{domain}"
+
+
+def register_api_token_permission_cache_key(
+    username: str,
+    domain: str,
+    cache_key: str,
+    ttl: int,
+) -> None:
+    """登记 API Token 权限快照键，供精确失效与 pattern 失败降级。"""
+    index_key = _get_api_token_keys_index(username, domain)
+    cached_keys = cache.get(index_key) or set()
+    cached_keys.add(cache_key)
+    cache.set(index_key, cached_keys, ttl + 60)
+
+
+def clear_api_token_permission_cache(username: str, domain: str) -> None:
+    """清除指定用户在所有团队下的 API Token 权限快照。"""
+    if hasattr(cache, "delete_pattern"):
+        try:
+            cache.delete_pattern(f"{_get_api_token_permission_prefix(username, domain)}*")
+            cache.delete(_get_api_token_keys_index(username, domain))
+            return
+        except Exception as e:
+            logger.warning(
+                "Failed to clear API token permission cache by pattern for %s, falling back to index: %s",
+                username,
+                e,
+            )
+
+    index_key = _get_api_token_keys_index(username, domain)
+    cached_keys = cache.get(index_key)
+    if cached_keys:
+        cache.delete_many(list(cached_keys))
+    cache.delete(index_key)
 
 
 def get_cached_permission_rules(
@@ -196,6 +244,7 @@ def clear_user_permission_cache(username: str, domain: str = "domain.com") -> No
         # 降级路径：旧版键索引（非 Redis 后端）
         _clear_user_cache_by_index(username, domain)
 
+    clear_api_token_permission_cache(username, domain)
     clear_token_info_cache(username, domain)
 
 
@@ -239,6 +288,8 @@ def clear_all_permission_cache() -> None:
             # 清除所有权限缓存（含新格式 perm_rules:{user_prefix}:* 和旧版索引键）
             cache.delete_pattern(f"{PERM_CACHE_PREFIX}*")
             cache.delete_pattern(f"{USER_PERM_KEYS_PREFIX}*")
+            cache.delete_pattern(f"{API_TOKEN_PERMISSION_CACHE_PREFIX}:*")
+            cache.delete_pattern(f"{API_TOKEN_PERMISSION_KEYS_PREFIX}*")
             logger.info("All permission rules cache cleared")
         else:
             logger.warning("Cannot clear all permission cache: cache backend does not support pattern delete")

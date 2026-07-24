@@ -73,6 +73,10 @@ class TestKeyDerivation:
     def test_user_keys_index_format(self):
         assert pc._get_user_keys_index("u", "d") == "user_perm_keys:u:d"
 
+    def test_api_token_permission_key_formats(self):
+        assert pc._get_api_token_permission_prefix("u", "d") == "api_token_permissions:u:d:"
+        assert pc._get_api_token_keys_index("u", "d") == "api_token_permission_keys:u:d"
+
 
 # ---------------------------------------------------------------------------
 # token_info 缓存
@@ -140,6 +144,19 @@ class TestClearUsersPermissionCache:
         # 不含 username 的条目不应触发异常
         pc.clear_users_permission_cache([{"domain": "x"}])
 
+    def test_clear_user_removes_registered_api_token_permission_snapshots(self):
+        key_team_1 = "api_token_permissions:u:domain.com:1"
+        key_team_2 = "api_token_permissions:u:domain.com:2"
+        cache.set(key_team_1, {"roles": [1]}, 600)
+        cache.set(key_team_2, {"roles": [2]}, 600)
+        pc.register_api_token_permission_cache_key("u", "domain.com", key_team_1, 600)
+        pc.register_api_token_permission_cache_key("u", "domain.com", key_team_2, 600)
+
+        pc.clear_user_permission_cache("u", "domain.com")
+
+        assert cache.get(key_team_1) is None
+        assert cache.get(key_team_2) is None
+
 
 # ---------------------------------------------------------------------------
 # 支持 delete_pattern 的后端分支
@@ -156,6 +173,15 @@ class TestPatternBackendBranches:
         cache_key = pc._get_cache_key("u", "domain.com", 1, "cmdb", "view")
         assert fake.store[cache_key] == {"team": [1]}
 
+    def test_api_token_snapshot_keeps_fallback_index_on_pattern_backend(self, mocker):
+        fake = _PatternCache()
+        mocker.patch.object(pc, "cache", fake)
+        cache_key = "api_token_permissions:u:domain.com:1"
+
+        pc.register_api_token_permission_cache_key("u", "domain.com", cache_key, 600)
+
+        assert fake.store[pc._get_api_token_keys_index("u", "domain.com")] == {cache_key}
+
     def test_clear_user_uses_delete_pattern(self, mocker):
         fake = _PatternCache()
         mocker.patch.object(pc, "cache", fake)
@@ -165,6 +191,19 @@ class TestPatternBackendBranches:
         assert pc.get_cached_permission_rules("u", "domain.com", 1, "cmdb", "view") is None
         assert pc.get_cached_permission_rules("u", "domain.com", 2, "cmdb", "edit") is None
 
+    def test_clear_user_pattern_removes_api_token_permission_snapshots(self, mocker):
+        fake = _PatternCache()
+        mocker.patch.object(pc, "cache", fake)
+        fake.store["api_token_permissions:u:domain.com:1"] = {"roles": [1]}
+        fake.store["api_token_permissions:u:domain.com:2"] = {"roles": [2]}
+        fake.store["api_token_permissions:other:domain.com:1"] = {"roles": [3]}
+
+        pc.clear_user_permission_cache("u", "domain.com")
+
+        assert "api_token_permissions:u:domain.com:1" not in fake.store
+        assert "api_token_permissions:u:domain.com:2" not in fake.store
+        assert "api_token_permissions:other:domain.com:1" in fake.store
+
     def test_clear_user_pattern_failure_falls_back_to_index(self, mocker):
         fake = _PatternCache()
         mocker.patch.object(pc, "cache", fake)
@@ -173,6 +212,10 @@ class TestPatternBackendBranches:
         cache_key = pc._get_cache_key("u", "domain.com", 1, "cmdb", "view")
         fake.store[cache_key] = {"team": [1]}
         fake.store[index_key] = {cache_key}
+        api_cache_key = "api_token_permissions:u:domain.com:1"
+        api_index_key = pc._get_api_token_keys_index("u", "domain.com")
+        fake.store[api_cache_key] = {"roles": [1]}
+        fake.store[api_index_key] = {api_cache_key}
 
         def boom(_pattern):
             raise RuntimeError("redis down")
@@ -182,12 +225,15 @@ class TestPatternBackendBranches:
         fake.delete_many = lambda keys: [fake.store.pop(k, None) for k in keys]
         pc.clear_user_permission_cache("u", "domain.com")
         assert cache_key not in fake.store
+        assert api_cache_key not in fake.store
 
     def test_clear_all_uses_delete_pattern(self, mocker):
         fake = _PatternCache()
         mocker.patch.object(pc, "cache", fake)
         fake.store[f"{pc.PERM_CACHE_PREFIX}abc:hash"] = {"team": []}
         fake.store[f"{pc.USER_PERM_KEYS_PREFIX}u:d"] = {"x"}
+        fake.store[f"{pc.API_TOKEN_PERMISSION_CACHE_PREFIX}:u:d:1"] = {"roles": [1]}
+        fake.store[f"{pc.API_TOKEN_PERMISSION_KEYS_PREFIX}u:d"] = {"api_token_permissions:u:d:1"}
         pc.clear_all_permission_cache()
         assert fake.store == {}
 
