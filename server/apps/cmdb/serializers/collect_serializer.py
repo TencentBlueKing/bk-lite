@@ -23,6 +23,7 @@ from apps.cmdb.services.network_config_file_policy import (
     validate_commands,
     validate_network_config_instance,
 )
+from apps.cmdb.services.pc_collect_policy import validate_pc_collect_task
 from apps.cmdb.utils.config_file_path import validate_absolute_path
 from apps.core.utils.serializers import UsernameSerializer, AuthSerializer
 
@@ -121,6 +122,23 @@ class CollectModelSerializer(AuthSerializer):
     def validate(self, attrs):
         task_type = self._get_attr_or_instance_value(attrs, "task_type")
         model_id = self._get_attr_or_instance_value(attrs, "model_id")
+
+        if model_id == "pc":
+            params = self._get_effective_params(attrs)
+            instance_params = (
+                dict(getattr(self.instance, "params", None) or {}) if self.instance is not None else {}
+            )
+            try:
+                attrs["params"] = validate_pc_collect_task(
+                    params,
+                    credential=self._get_attr_or_instance_value(attrs, "credential"),
+                    timeout=self._get_attr_or_instance_value(attrs, "timeout"),
+                    instance_params=instance_params,
+                )
+            except ValueError as err:
+                raise serializers.ValidationError({"params": str(err)}) from err
+            attrs["driver_type"] = CollectDriverTypes.JOB
+            return attrs
 
         if task_type != CollectPluginTypes.CONFIG_FILE:
             params = self._get_effective_params(attrs)
