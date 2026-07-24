@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.utils import timezone
 
 from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.models import MonitorPlugin, MonitorPluginUITemplate
@@ -78,6 +79,16 @@ class MonitorPluginService:
     @staticmethod
     def import_monitor_plugin(data: dict):
         """Import monitor plugin"""
+        mark_objects_builtin = bool(data.pop("_mark_objects_builtin", False))
+        if data.get("is_compound_object"):
+            for object_info in data.get("objects", []):
+                object_info.pop("is_builtin", None)
+                if mark_objects_builtin:
+                    object_info["is_builtin"] = True
+        else:
+            data.pop("is_builtin", None)
+            if mark_objects_builtin:
+                data["is_builtin"] = True
         plugin_name = data.get("plugin", "")
         monitor_object_names = MonitorPluginService._extract_monitor_object_names(data)
 
@@ -149,8 +160,12 @@ class MonitorPluginService:
             monitor_obj.default_metric = data.get("default_metric", monitor_obj.default_metric)
             monitor_obj.instance_id_keys = data.get("instance_id_keys", monitor_obj.instance_id_keys)
             monitor_obj.supplementary_indicators = list(set(supplementary_indicators))
+            if data.get("is_builtin"):
+                monitor_obj.is_builtin = True
             monitor_obj.save()
         else:
+            if data.get("cleanup_policy") == MonitorObject.CLEANUP_POLICY_TIMEOUT:
+                data["cleanup_policy_effective_at"] = timezone.now()
             monitor_obj = MonitorObject.objects.create(**data)
 
         # seed 展示列配置：仅当未被用户自定义

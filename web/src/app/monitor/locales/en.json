@@ -861,7 +861,12 @@
       "fieldKeyPlaceholder": "Enter dimension key",
       "selectField": "Select Field",
       "selectMetricFirst": "Select a metric first",
-      "display": "Display"
+      "display": "Display",
+      "cleanupPolicy": "Cleanup Policy",
+      "noCleanup": "No cleanup",
+      "timeoutCleanup": "Timeout cleanup",
+      "timeoutDays": "Timeout (days)",
+      "cleanupPolicyHint": "Automatically delete auto-discovered assets after {days} days without data"
     },
     "selectObject": "Select Object",
     "aggregation": "Aggregation",

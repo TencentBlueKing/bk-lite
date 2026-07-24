@@ -861,7 +861,12 @@
       "fieldKeyPlaceholder": "请输入维度 key",
       "selectField": "选择字段",
       "selectMetricFirst": "请先选择指标",
-      "display": "展示"
+      "display": "展示",
+      "cleanupPolicy": "清理策略",
+      "noCleanup": "不清理",
+      "timeoutCleanup": "超时清理",
+      "timeoutDays": "超时天数",
+      "cleanupPolicyHint": "超过 {days} 天无数据上报则自动删除资产，仅作用于自动发现资产"
     },
     "selectObject": "选择对象",
     "aggregation": "汇聚方法",

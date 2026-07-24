@@ -29,7 +29,9 @@ export interface MonitorObjectItem {
   level?: string; // 'base' | 'derivative'
   parent?: number | null; // 父对象ID
   is_visible: boolean;
-  is_builtin?: boolean; // 是否内置对象（内置对象不可编辑删除）
+  is_builtin?: boolean; // 是否内置对象（仅清理策略可编辑）
+  cleanup_policy?: 'no_cleanup' | 'timeout';
+  cleanup_timeout_days?: number;
   order: number;
   description?: string;
   children?: ChildObject[];
@@ -55,6 +57,9 @@ export interface ObjectFormData {
   type_id: string;
   description?: string;
   children?: ChildObject[];
+  is_builtin?: boolean;
+  cleanup_policy?: 'no_cleanup' | 'timeout';
+  cleanup_timeout_days?: number;
 }
 
 // API 请求参数
