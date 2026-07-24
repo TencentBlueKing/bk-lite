@@ -283,8 +283,19 @@ def sync_library_snapshots(library_id: str, trigger: str, operator: str | None =
                     )
                     affected_models.add(model_id)
                 except Exception as e:
-                    logger.error(f"[SyncPublicEnumSnapshots] failed to update model={model_id}, error={e}")
-                    failed_items.append({"model_id": model_id, "error": str(e)})
+                    logger.exception(
+                        "[SyncPublicEnumSnapshots] failed to update model=%s, error_type=%s, error=%s",
+                        model_id,
+                        type(e).__name__,
+                        e,
+                    )
+                    failed_items.append(
+                        {
+                            "model_id": model_id,
+                            "error_type": type(e).__name__,
+                            "error": str(e),
+                        }
+                    )
 
     logger.info(
         f"[SyncPublicEnumSnapshots] completed library_id={library_id}, "
@@ -293,7 +304,7 @@ def sync_library_snapshots(library_id: str, trigger: str, operator: str | None =
     )
 
     return {
-        "result": True,
+        "result": not failed_items,
         "library_id": library_id,
         "affected_models": len(affected_models),
         "affected_attrs": affected_attrs,
