@@ -1,12 +1,43 @@
 import type { LoginUserInfo } from '@/types/user';
 
-function getGroupId(group: NonNullable<LoginUserInfo['group_list']>[number]): string | null {
+type GroupLike = NonNullable<LoginUserInfo['group_list']>[number] & {
+  children?: GroupLike[];
+};
+
+function getGroupId(group: GroupLike): string | null {
   const teamId = typeof group === 'object' ? group?.id : group;
   return teamId ? String(teamId) : null;
 }
 
-function getFirstGroupId(userInfo: LoginUserInfo | null): string | null {
-  const firstGroup = userInfo?.group_list?.[0];
+function getGroupName(group: GroupLike): string {
+  return typeof group === 'object' ? String(group?.name || '') : '';
+}
+
+function flattenSelectableGroups(groups: LoginUserInfo['group_list']): GroupLike[] {
+  const flatGroups: GroupLike[] = [];
+
+  const walk = (items: GroupLike[] = []) => {
+    items.forEach((item) => {
+      flatGroups.push(item);
+      if (typeof item === 'object' && Array.isArray(item.children)) {
+        walk(item.children);
+      }
+    });
+  };
+
+  walk(groups as GroupLike[] | undefined);
+  return flatGroups;
+}
+
+export function resolveDefaultCurrentTeamId(userInfo: LoginUserInfo | null): string | null {
+  // Keep this aligned with Web's group_list selection: group_tree/subGroups are
+  // only for display, while backend team permission is checked against group_list.
+  const groups = flattenSelectableGroups(userInfo?.group_list);
+  const canUseGuestGroup = userInfo?.is_superuser;
+  const firstGroup = canUseGuestGroup
+    ? groups[0]
+    : (groups.find((group) => getGroupName(group) !== 'OpsPilotGuest') ?? groups[0]);
+
   return firstGroup === undefined ? null : getGroupId(firstGroup);
 }
 
@@ -24,7 +55,7 @@ export function getCurrentTeamCookie(): string | null {
 }
 
 function isKnownGroupId(userInfo: LoginUserInfo | null, teamId: string): boolean {
-  return userInfo?.group_list?.some((group) => getGroupId(group) === teamId) ?? false;
+  return flattenSelectableGroups(userInfo?.group_list).some((group) => getGroupId(group) === teamId);
 }
 
 export function syncCurrentTeamCookie(userInfo: LoginUserInfo | null): void {
@@ -37,7 +68,7 @@ export function syncCurrentTeamCookie(userInfo: LoginUserInfo | null): void {
     return;
   }
 
-  const teamId = getFirstGroupId(userInfo);
+  const teamId = resolveDefaultCurrentTeamId(userInfo);
   if (!teamId) {
     clearCurrentTeamCookie();
     return;

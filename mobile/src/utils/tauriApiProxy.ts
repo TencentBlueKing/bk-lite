@@ -3,7 +3,8 @@
  * 使用 Tauri 命令来处理 HTTP 请求，避免 CORS 问题
  */
 
-import { getCurrentTeamCookie } from './teamCookie';
+import { getUserInfoSync } from './secureStorage';
+import { getCurrentTeamCookie, resolveDefaultCurrentTeamId } from './teamCookie';
 
 export interface ApiRequest {
   url: string;
@@ -21,6 +22,11 @@ export interface ApiResponse {
 export interface ApiError {
   message: string;
   status?: number;
+}
+
+export interface CurrentTeamResolution {
+  value: string | null;
+  source: 'cookie' | 'stored-login-info' | 'missing';
 }
 
 export interface StreamChunk {
@@ -102,14 +108,25 @@ export function getTauriProxyInfo(response: Response): {
   };
 }
 
+export function resolveCurrentTeamForNativeProxy(): CurrentTeamResolution {
+  const cookieTeam = getCurrentTeamCookie();
+  const storageTeam = cookieTeam ? null : resolveDefaultCurrentTeamId(getUserInfoSync());
+  const currentTeam = cookieTeam ?? storageTeam;
+
+  return {
+    value: currentTeam,
+    source: currentTeam ? (cookieTeam ? 'cookie' : 'stored-login-info') : 'missing',
+  };
+}
+
 function appendCurrentTeamCookie(headers: Record<string, string>) {
-  const currentTeam = getCurrentTeamCookie();
-  if (!currentTeam) {
+  const currentTeam = resolveCurrentTeamForNativeProxy();
+  if (!currentTeam.value) {
     return;
   }
 
   const cookieHeaderKey = Object.keys(headers).find((key) => key.toLowerCase() === 'cookie');
-  const currentTeamCookie = `current_team=${encodeURIComponent(currentTeam)}`;
+  const currentTeamCookie = `current_team=${encodeURIComponent(currentTeam.value)}`;
 
   if (cookieHeaderKey) {
     const existingCookie = headers[cookieHeaderKey];
@@ -223,6 +240,20 @@ export async function* tauriApiStream(
   let isStreamEnded = false;
   let streamError: Error | null = null;
   let resolveNext: ((value: IteratorResult<string>) => void) | null = null;
+  const signal = options.signal;
+  const handleAbort = () => {
+    isStreamEnded = true;
+    if (resolveNext) {
+      resolveNext({ value: undefined, done: true });
+      resolveNext = null;
+    }
+  };
+
+  if (signal?.aborted) {
+    handleAbort();
+  } else {
+    signal?.addEventListener('abort', handleAbort, { once: true });
+  }
 
   // 监听流数据块事件
   const unlistenChunk = await listen<StreamChunk>('stream-chunk', (event) => {
@@ -297,6 +328,7 @@ export async function* tauriApiStream(
     }
 
   } finally {
+    signal?.removeEventListener('abort', handleAbort);
     // 清理事件监听器
     unlistenChunk();
     unlistenEnd();

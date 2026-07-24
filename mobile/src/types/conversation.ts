@@ -16,10 +16,17 @@ export interface ChatMessage {
   content: string;
   timestamp: number;
 }
-export interface sessionsItem {
+export interface SessionItem {
   bot_id: number;
+  node_id?: string;
   session_id: string;
   title: string;
+  app_id?: number | null;
+  app_name?: string;
+  app_tags?: string[];
+  source?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 export interface ChatInfo {
   id: string;

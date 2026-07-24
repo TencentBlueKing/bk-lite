@@ -38,10 +38,28 @@
         "file": "文件",
         "allApps": "全部应用"
     },
+    "refresh": {
+        "pulling": "下拉刷新",
+        "canRelease": "释放立即刷新",
+        "refreshing": "正在刷新...",
+        "complete": "刷新完成",
+        "failed": "刷新失败，请重试"
+    },
     "navigation": {
         "conversations": "对话",
+        "apps": "智能应用",
         "workbench": "工作台",
-        "profile": "我的"
+        "profile": "我的",
+        "primaryNavigation": "主导航"
+    },
+    "conversations": {
+        "loadFailed": "无法加载对话",
+        "loadFailedDescription": "请检查网络后重试",
+        "emptyTitle": "还没有对话",
+        "emptyDescription": "从全部应用中选择一个应用发起对话",
+        "exploreApps": "查看全部应用",
+        "untitled": "未命名对话",
+        "sessionHint": "点击继续对话"
     },
     "chat": {
         "searchPlaceholder": "搜索对话",
@@ -57,6 +75,7 @@
         "executionFailed": "执行失败",
         "executionSuccess": "执行成功",
         "aiProcessing": "AI 正在处理中，请稍候...",
+        "thinkingProcess": "思考过程",
         "addLimit": "不支持同时添加图片和文件",
         "fileSizeLimitExceeded": "部分文件超过 10MB 限制，已跳过",
         "uploading": "正在上传，请稍候...",
@@ -68,6 +87,17 @@
         "welcomeMessage": "您好，请问有什么可以帮助您的吗？",
         "fileCountLimit": "最多只能添加9个文件",
         "noConversations": "暂无对话记录",
+        "currentApp": "当前应用",
+        "conversationHistory": "对话历史",
+        "openConversationHistory": "打开对话历史",
+        "closeConversationHistory": "关闭对话历史",
+        "newConversation": "新建对话",
+        "conversationActions": "对话操作",
+        "deleteConversation": "删除对话",
+        "deleteConversationConfirm": "删除后将无法恢复这条对话记录，确定继续吗？",
+        "deleteConversationSuccess": "对话已删除",
+        "deleteConversationFailed": "删除失败，请重试",
+        "deleteRunningConversation": "对话正在执行，暂时无法删除",
         "loadFailedDescription": "无法加载应用信息，请检查网络连接或尝试其他操作",
         "viewOtherConversations": "查看其他对话",
         "backToAppList": "返回应用列表"
@@ -113,7 +143,9 @@
         "searchChatHistory": "查找聊天记录",
         "receiveNotification": "接收通知",
         "continueConversation": "继续对话",
-        "startConversation": "快速发起对话"
+        "startConversation": "快速发起对话",
+        "loadFailed": "无法加载应用",
+        "loadFailedDescription": "请检查网络后重试"
     },
     "search": {
         "searchConversation": "搜索对话",
@@ -123,7 +155,9 @@
         "searchHint": "请输入关键词进行搜索",
         "noResults": "未找到相关结果",
         "tryOtherKeywords": "试试其他关键词",
-        "yesterday": "昨天"
+        "yesterday": "昨天",
+        "loadFailed": "搜索加载失败",
+        "loadFailedDescription": "请检查网络后重试"
     },
     "account": {
         "title": "账号与安全",
