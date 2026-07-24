@@ -775,7 +775,14 @@
     "groupNamePlaceholder": "Enter group name",
     "exportPdf": "Export PDF",
     "exportPdfSuccess": "Export success",
-    "exportPdfFailed": "Export failed"
+    "exportPdfFailed": "Export failed",
+    "share": "Share",
+    "shareLinkCopied": "Share link copied. The link is permanent and cannot be revoked individually—forward with care",
+    "shareCopyFailed": "Copy failed. Please copy the link manually",
+    "shareCreateFailed": "Failed to create share link",
+    "shareInvalid": "This share link is invalid or no longer available",
+    "shareOpening": "Opening shared dashboard",
+    "shareLoading": "Loading shared dashboard"
   },
   "opsAnalysisSidebar": {
     "addArch": "Add Architecture",

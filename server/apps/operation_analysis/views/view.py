@@ -27,6 +27,10 @@ from apps.operation_analysis.serializers.directory_serializers import (
     TopologyModelSerializer,
 )
 from apps.operation_analysis.services.directory_service import DictDirectoryService
+from apps.operation_analysis.services.share_service import (
+    SharePermissionDenied,
+    create_or_get_share,
+)
 from config.drf.pagination import CustomPageNumberPagination
 
 
@@ -227,6 +231,32 @@ class DashboardModelViewSet(BuiltinVisibleMixin, AuthViewSet):
         name = instance.name
         response = super(DashboardModelViewSet, self).destroy(request, *args, **kwargs)
         log_ops_analysis_success(request, response, "delete", f"删除仪表盘: {name}")
+        return response
+
+    @HasPermission("view-View")
+    @action(detail=True, methods=["post"], url_path="share")
+    def share(self, request, *args, **kwargs):
+        from rest_framework.exceptions import PermissionDenied
+
+        dashboard = self.get_object()
+        try:
+            result = create_or_get_share(
+                dashboard=dashboard,
+                sharer=request.user,
+                tenant_domain=dashboard.domain,
+                space_id=self._parse_current_team_cookie(request),
+            )
+        except SharePermissionDenied as exc:
+            raise PermissionDenied("无权分享该仪表盘") from exc
+        response = Response(
+            {
+                "id": result.link.id,
+                "url": f"/ops-analysis/share/{result.token}",
+                "status": result.link.status,
+                "sharer_username": result.link.sharer_username,
+            }
+        )
+        log_ops_analysis_success(request, response, "create", f"获取仪表盘分享链接: {dashboard.name}")
         return response
 
 

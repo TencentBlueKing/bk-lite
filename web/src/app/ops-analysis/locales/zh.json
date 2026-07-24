@@ -775,7 +775,14 @@
     "groupNamePlaceholder": "请输入分组名称",
     "exportPdf": "导出 PDF",
     "exportPdfSuccess": "导出成功",
-    "exportPdfFailed": "导出失败"
+    "exportPdfFailed": "导出失败",
+    "share": "分享",
+    "shareLinkCopied": "分享链接已复制。链接永久有效，无法单独撤销，请谨慎转发",
+    "shareCopyFailed": "复制失败，请手动复制",
+    "shareCreateFailed": "创建分享链接失败",
+    "shareInvalid": "分享链接无效或已失效",
+    "shareOpening": "正在打开分享仪表盘",
+    "shareLoading": "正在加载分享仪表盘"
   },
   "opsAnalysisSidebar": {
     "addArch": "添加架构图",
