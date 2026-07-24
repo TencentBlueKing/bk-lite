@@ -1,10 +1,4 @@
 import type { SimpleDashboardConfig } from '../common/simple-dashboard-core';
-import type { MetricEnumMap } from '../../shared/types';
-
-const JMX_SCRAPE_ERROR_ENUM: MetricEnumMap = {
-  0: { label: '采集正常', color: '#27c274' },
-  1: { label: '采集报错', color: '#ff4d4f' }
-};
 
 export const JVM_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   routeKey: 'jvm',
@@ -31,15 +25,12 @@ export const JVM_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     { name: 'bufferCapacity', display_name: 'NIO 缓冲容量', description: 'Java NIO 缓冲池总容量。', unit: 'bytes', query: 'sum(jvm_bufferpool_totalcapacity_value{__$labels__}) by (instance_id)', color: '#597ef7' },
     { name: 'physicalFree', display_name: '宿主可用内存', description: 'JVM 所在宿主机当前可用物理内存。', unit: 'bytes', query: 'jvm_os_memory_physical_free_value{__$labels__}', color: '#27c274' },
     { name: 'physicalTotal', display_name: '宿主总内存', description: 'JVM 所在宿主机物理内存总量。', unit: 'bytes', query: 'jvm_os_memory_physical_total_value{__$labels__}', color: '#9aa9bf' },
-    { name: 'swapFree', display_name: '可用交换空间', description: 'JVM 所在宿主机当前可用交换空间。', unit: 'bytes', query: 'jvm_os_memory_swap_free_value{__$labels__}', color: '#13c2c2' },
-    { name: 'scrapeDuration', display_name: '采集耗时', description: '最近一次 JMX 采集耗时。', unit: 's', query: 'jmx_scrape_duration_seconds_gauge{__$labels__}', color: '#597ef7' },
-    { name: 'scrapeError', display_name: '采集状态', description: 'JMX 采集状态，0 为正常、1 为报错。', unit: 'none', query: 'jmx_scrape_error_gauge{__$labels__}', color: '#ff4d4f' }
+    { name: 'swapFree', display_name: '可用交换空间', description: 'JVM 所在宿主机当前可用交换空间。', unit: 'bytes', query: 'jvm_os_memory_swap_free_value{__$labels__}', color: '#13c2c2' }
   ],
   summaryCards: [
     { title: '堆使用率', metric: 'heapUsageRatio', color: '#2f6bff', icon: 'memory', compare: true, compareFavorableDirection: 'down', guide: [{ label: '堆容量风险', detail: '持续逼近 100% 时，优先排查内存泄漏、堆配置和 GC 压力。' }], footer: [{ label: '已用', metric: 'heapUsed', unit: 'bytes' }, { label: '已提交', metric: 'heapCommitted', unit: 'bytes' }, { label: '上限', metric: 'heapMax', unit: 'bytes' }] },
     { title: 'GC 时间占比', metric: 'gcTimeRatio', color: '#ff4d4f', icon: 'clock', compare: true, compareFavorableDirection: 'down', guide: [{ label: 'GC 开销', detail: '最近五分钟内 GC 实际占用的时间比例；升高表示应用有效执行时间被回收挤占。' }], footer: [{ label: 'GC 频率', metric: 'gcCountRate', unit: 'cps' }] },
-    { title: '当前线程数', metric: 'threads', color: '#ff8a1f', icon: 'node', compare: true, compareFavorableDirection: 'down', guide: [{ label: '线程异常', detail: '持续高于历史水平时，结合守护线程和峰值线程判断请求堆积或线程泄漏。' }], footer: [{ label: '守护线程', metric: 'daemonThreads', unit: 'counts' }, { label: '历史峰值', metric: 'peakThreads', unit: 'counts' }] },
-    { title: 'JMX 采集状态', metric: 'scrapeError', color: '#27c274', icon: 'health', enumMap: JMX_SCRAPE_ERROR_ENUM, guide: [{ label: '数据可信度', detail: '采集报错时，当前页其余指标可能过期或缺失，应先恢复 JMX 连通性。' }], footer: [{ label: '采集耗时', metric: 'scrapeDuration', unit: 's' }] }
+    { title: '当前线程数', metric: 'threads', color: '#ff8a1f', icon: 'node', compare: true, compareFavorableDirection: 'down', guide: [{ label: '线程异常', detail: '持续高于历史水平时，结合守护线程和峰值线程判断请求堆积或线程泄漏。' }], footer: [{ label: '守护线程', metric: 'daemonThreads', unit: 'counts' }, { label: '历史峰值', metric: 'peakThreads', unit: 'counts' }] }
   ],
   charts: [
     { title: '堆容量趋势', subtitle: '已用、已提交与最大堆内存', metric: 'heapUsed', guide: [{ label: '堆容量', detail: '已用内存接近已提交或最大堆内存时，GC 压力与 OOM 风险上升；虚线为最大堆上限。' }], series: [{ metric: 'heapUsed', label: '已用', color: '#2f6bff', unit: 'bytes' }, { metric: 'heapCommitted', label: '已提交', color: '#13c2c2', unit: 'bytes' }, { metric: 'heapMax', label: '最大堆', color: '#9aa9bf', unit: 'bytes', style: 'limit' }] },
