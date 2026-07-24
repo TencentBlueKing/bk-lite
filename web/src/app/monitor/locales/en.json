@@ -358,6 +358,7 @@
       "disk_ratio": "Disk Usage Ratio"
     },
     "integrations": {
+      "hostMonitoringAlreadyConfigured": "Host monitoring already configured",
       "publishAddressDes": "The main website for system monitoring, used to detect its availability and performance status.",
       "dataSource": "Data Source",
       "ipDes": "The IP address of the target host being monitored is used to identify the source of data collection.",

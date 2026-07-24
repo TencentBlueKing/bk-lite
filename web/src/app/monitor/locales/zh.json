@@ -358,6 +358,7 @@
       "disk_ratio": "磁盘使用率"
     },
     "integrations": {
+      "hostMonitoringAlreadyConfigured": "已接入主机监控",
       "publishAddressDes": "系统监控的主要网址，用于检测其可用性和性能状态",
       "dataSource": "数据源",
       "ipDes": "监控的目标主机的 IP 地址，用于标识数据收集的来源。",
