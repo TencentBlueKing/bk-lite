@@ -1,11 +1,23 @@
 """Kubernetes故障诊断和监控工具"""
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from kubernetes.client import ApiException
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from kubernetes import client
 from apps.opspilot.metis.llm.tools.kubernetes.utils import prepare_context, format_bytes, parse_resource_quantity
+
+
+_EVENT_TIME_MIN = datetime.min.replace(tzinfo=timezone.utc)
+
+
+def _event_sort_time(event):
+    timestamp = getattr(event, "last_timestamp", None)
+    if timestamp is None:
+        return _EVENT_TIME_MIN
+    if timestamp.tzinfo is None or timestamp.utcoffset() is None:
+        return timestamp.replace(tzinfo=timezone.utc)
+    return timestamp.astimezone(timezone.utc)
 
 
 @tool()
@@ -757,7 +769,7 @@ def diagnose_kubernetes_pod_issues(namespace, pod_name, config: RunnableConfig =
                 diagnosis["volumes"].append(volume_info)
 
         # 最近的事件
-        for event in sorted(events.items, key=lambda e: e.last_timestamp if e.last_timestamp else datetime.min, reverse=True)[:10]:
+        for event in sorted(events.items, key=_event_sort_time, reverse=True)[:10]:
             diagnosis["recent_events"].append({
                 "type": event.type,
                 "reason": event.reason,
