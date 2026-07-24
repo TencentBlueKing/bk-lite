@@ -258,6 +258,9 @@ monitor_object_metric:
         power module operating temperature; abnormally high values may indicate blocked
         airflow, failing fans or excessive ambient heat, which can trigger thermal
         protection or hardware damage if left unaddressed.
+    device_psu_state_backup:
+      name: PSU Backup State
+      desc: Operational state of the device backup power supply unit, normalized to normal or abnormal.
 monitor_object_metric_group:
   Switch:
     Base: Base
@@ -278,3 +281,4 @@ monitor_object_metric_group:
     Application Port: Application Port
     Endpoint: Endpoint
     Conversation: Conversation
+    Power: Power
