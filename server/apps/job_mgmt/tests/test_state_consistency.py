@@ -18,6 +18,13 @@ from apps.job_mgmt.constants import ExecutionStatus
 class TestAnsibleCallbackFailureConvergence:
     """测试 Ansible 回调异常收敛到 FAILED 终态 (Issue #2963)"""
 
+    @pytest.fixture(autouse=True)
+    def _mock_terminal_transition(self):
+        """本组仅验证解析收敛；CAS 竞争行为由独立回归文件覆盖。"""
+        with patch("apps.job_mgmt.nats_api._claim_callback_terminal_state", return_value=True) as claim:
+            self.claim_terminal_state = claim
+            yield
+
     def _create_mock_execution(self, task_id=1, status=ExecutionStatus.RUNNING):
         """创建模拟的 JobExecution 对象"""
         execution = MagicMock()
@@ -54,7 +61,8 @@ class TestAnsibleCallbackFailureConvergence:
 
             # 验证 execution 状态被设置为 FAILED
             assert mock_execution.status == ExecutionStatus.FAILED
-            assert mock_execution.save.called
+            self.claim_terminal_state.assert_called_once()
+            assert not mock_execution.save.called
             assert mock_send_callback.called
 
     def test_empty_result_converges_to_failed(self):

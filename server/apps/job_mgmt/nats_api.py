@@ -3,6 +3,7 @@
 from asgiref.sync import async_to_sync
 from celery import current_app
 from django.db import connection
+from django.db.models import Case, CharField, Value, When
 from django.utils import timezone
 
 import nats_client
@@ -22,6 +23,27 @@ from apps.node_mgmt.utils.s3 import delete_s3_file
 from apps.rpc.sensitive import sanitize_sensitive_data, summarize_ansible_callback
 
 CANCEL_CONVERGE_BUFFER_SECONDS = 60
+CALLBACK_ACTIVE_STATES = (ExecutionStatus.PENDING, ExecutionStatus.RUNNING, ExecutionStatus.CANCELLING)
+
+
+def _claim_callback_terminal_state(execution, final_status: str, update_values: dict) -> bool:
+    """以条件更新争夺回调终态；仅获胜者可以继续发送完成通知。"""
+    status_value = Case(
+        When(status=ExecutionStatus.CANCELLING, then=Value(ExecutionStatus.CANCELLED)),
+        default=Value(final_status),
+        output_field=CharField(),
+    )
+
+    updated = JobExecution.objects.filter(id=execution.id, status__in=CALLBACK_ACTIVE_STATES).update(
+        status=status_value,
+        **update_values,
+    )
+    if not updated:
+        logger.info("[ansible_task_callback] 终态已由其他回调写入: task_id=%s", execution.id)
+        return False
+
+    execution.refresh_from_db()
+    return True
 
 
 def _validate_callback_config(callback_type: str, callback_url: str, callback_subject: str, tag: str):
@@ -211,9 +233,9 @@ def ansible_task_callback(data: dict):
     # CANCELLING 是非终态：真实结果仍正常落库，但最终状态收敛为 CANCELLED（修复取消后结果被丢弃）
     was_cancelling = execution.status == ExecutionStatus.CANCELLING
 
-    # 辅助函数：将执行记录收敛到 FAILED 终态
-    def _fail_execution(error_message: str):
-        """将执行记录收敛到 FAILED 终态"""
+    # 辅助函数：写入异常结果并原子收敛终态
+    def _fail_execution(error_message: str) -> bool:
+        """写入异常结果；若已在取消中则保留 CANCELLED 收敛语义。"""
         safe_error_message = str(sanitize_sensitive_data(error_message))
         target_list_for_fail = execution.target_list or []
         execution.status = ExecutionStatus.FAILED
@@ -235,21 +257,29 @@ def ansible_task_callback(data: dict):
         ]
         execution.success_count = 0
         execution.failed_count = len(target_list_for_fail)
-        execution.save(
-            update_fields=[
-                "status",
-                "execution_results",
-                "finished_at",
-                "success_count",
-                "failed_count",
-                "updated_at",
-            ]
+        if not _claim_callback_terminal_state(
+            execution,
+            ExecutionStatus.FAILED,
+            {
+                "execution_results": execution.execution_results,
+                "finished_at": execution.finished_at,
+                "success_count": execution.success_count,
+                "failed_count": execution.failed_count,
+                "updated_at": timezone.now(),
+            },
+        ):
+            return False
+        logger.warning(
+            "[ansible_task_callback] 任务异常结果已写入终态: task_id=%s, status=%s, reason=%s",
+            task_id,
+            execution.status,
+            safe_error_message,
         )
-        logger.warning("[ansible_task_callback] 任务异常收敛到 FAILED: task_id=%s, reason=%s", task_id, safe_error_message)
         # 为各目标补发 done 哨兵，关闭前端实时流面板（避免空等到 idle 超时）
         for t in target_list_for_fail:
             publish_done_sentinel(execution.id, str(t.get("target_id", "")), ExecutionStatus.FAILED)
         send_callback(execution)
+        return True
 
     # 解析新版本结构化回调数据
     raw_result = data.get("result", [])
@@ -259,8 +289,9 @@ def ansible_task_callback(data: dict):
     execution_results = []
 
     if not (isinstance(raw_result, list) and raw_result and all(isinstance(item, dict) for item in raw_result)):
-        _fail_execution(f"回调结果格式非法: {sanitize_sensitive_data(raw_result)}")
-        return {"success": False, "message": "非法的新版本结果格式，已收敛到 FAILED"}
+        if not _fail_execution(f"回调结果格式非法: {sanitize_sensitive_data(raw_result)}"):
+            return {"success": True, "message": "任务已处理"}
+        return {"success": False, "message": f"非法的新版本结果格式，已收敛到 {execution.status.upper()}"}
 
     target_map = {}
     for target_info in target_list:
@@ -272,13 +303,15 @@ def ansible_task_callback(data: dict):
         host_key = str(host_result.get("host", ""))
         target_info = target_map.get(host_key)
         if not target_info:
-            _fail_execution(f"结果中的主机未匹配到目标: {host_key}")
-            return {"success": False, "message": f"结果中的主机未匹配到目标: {host_key}，已收敛到 FAILED"}
+            if not _fail_execution(f"结果中的主机未匹配到目标: {host_key}"):
+                return {"success": True, "message": "任务已处理"}
+            return {"success": False, "message": f"结果中的主机未匹配到目标: {host_key}，已收敛到 {execution.status.upper()}"}
 
         target_key = str(target_info.get("target_id", ""))
         if target_key in seen_target_keys:
-            _fail_execution(f"结果中的主机重复: {host_key}")
-            return {"success": False, "message": f"结果中的主机重复: {host_key}，已收敛到 FAILED"}
+            if not _fail_execution(f"结果中的主机重复: {host_key}"):
+                return {"success": True, "message": "任务已处理"}
+            return {"success": False, "message": f"结果中的主机重复: {host_key}，已收敛到 {execution.status.upper()}"}
         seen_target_keys.add(target_key)
 
         host_status = host_result.get("status")
@@ -330,16 +363,18 @@ def ansible_task_callback(data: dict):
     execution.finished_at = timezone.now()
     execution.success_count = sum(1 for item in execution_results if item.get("status") == ExecutionStatus.SUCCESS)
     execution.failed_count = sum(1 for item in execution_results if item.get("status") == ExecutionStatus.FAILED)
-    execution.save(
-        update_fields=[
-            "status",
-            "execution_results",
-            "finished_at",
-            "success_count",
-            "failed_count",
-            "updated_at",
-        ]
-    )
+    if not _claim_callback_terminal_state(
+        execution,
+        execution.status,
+        {
+            "execution_results": execution.execution_results,
+            "finished_at": execution.finished_at,
+            "success_count": execution.success_count,
+            "failed_count": execution.failed_count,
+            "updated_at": timezone.now(),
+        },
+    ):
+        return {"success": True, "message": "任务已处理"}
 
     # 为各目标补发 done 哨兵，关闭前端实时流面板（ansible 异步回调收尾）
     for item in execution_results:
