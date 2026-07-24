@@ -173,14 +173,98 @@ test('主页面壳层在 iOS 安全区内固定占满且不产生根滚动', asy
   assert.match(shell, /padding-left:\s*var\(--safe-area-inset-left\)/);
 });
 
-test('页面保留用户缩放能力且不注册全局缩放拦截', async () => {
+test('原生 App 禁用页面缩放，H5 保留缩放且只在 Tauri 拦截缩放手势', async () => {
   const layout = await readProjectFile('src/app/layout.tsx');
   const providers = await readProjectFile('src/app/app-providers.tsx');
+  const viewportZoom = await readProjectFile('src/utils/viewportZoom.ts');
+  const rustEntry = await readProjectFile('src-tauri/src/lib.rs');
+  const compiled = ts.transpileModule(viewportZoom, {
+    compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  const viewportZoomModule = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`);
 
-  assert.doesNotMatch(layout, /maximumScale/);
-  assert.doesNotMatch(layout, /userScalable/);
+  assert.match(layout, /BK_MOBILE_BUILD_TARGET === 'tauri'/);
+  assert.match(layout, /maximumScale:\s*1/);
+  assert.match(layout, /userScalable:\s*false/);
+  assert.match(providers, /useEffect\(\(\) => applyNativeViewportZoomPolicy\(\), \[\]\)/);
+  assert.match(viewportZoom, /'__TAURI_INTERNALS__' in window/);
+  assert.match(viewportZoom, /maximum-scale=1/);
+  assert.match(viewportZoom, /user-scalable=no/);
   assert.doesNotMatch(providers, /preventZoom|preventDoubleTapZoom|preventGestureZoom/);
   assert.doesNotMatch(providers, /document\.addEventListener\((?:'|")(?:touchstart|touchend|gesturestart)/);
+  assert.match(viewportZoom, /document\.addEventListener\('touchstart', preventPinchZoom/);
+  assert.match(viewportZoom, /document\.addEventListener\('touchend', preventDoubleTapZoom/);
+  assert.match(viewportZoom, /document\.addEventListener\('gesturestart', preventGestureZoom/);
+  assert.match(rustEntry, /pinchGestureRecognizer/);
+  assert.match(rustEntry, /setEnabled:\s*false/);
+  assert.match(rustEntry, /setMinimumZoomScale:\s*1\.0/);
+  assert.match(rustEntry, /setMaximumZoomScale:\s*1\.0/);
+  assert.match(rustEntry, /PageLoadEvent::Finished/);
+  assert.match(rustEntry, /apply_native_page_zoom_policy\(&main_webview\)/);
+
+  const originalContent = 'width=device-width, initial-scale=1, viewport-fit=cover';
+  let viewportContent = originalContent;
+  let viewportQueryCount = 0;
+  const listeners = new Map();
+  const removedListeners = new Map();
+  const viewportElement = {
+    getAttribute: (name) => (name === 'content' ? viewportContent : null),
+    setAttribute: (name, value) => {
+      if (name === 'content') viewportContent = value;
+    },
+  };
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+
+  try {
+    globalThis.window = {};
+    globalThis.document = {
+      querySelector: () => {
+        viewportQueryCount += 1;
+        return viewportElement;
+      },
+      addEventListener: (type, handler) => listeners.set(type, handler),
+      removeEventListener: (type, handler) => removedListeners.set(type, handler),
+    };
+    viewportZoomModule.applyNativeViewportZoomPolicy()();
+    assert.equal(viewportQueryCount, 0);
+    assert.equal(viewportContent, originalContent);
+    assert.equal(listeners.size, 0);
+
+    globalThis.window = { __TAURI_INTERNALS__: {} };
+    const restoreViewport = viewportZoomModule.applyNativeViewportZoomPolicy();
+    assert.equal(viewportQueryCount, 1);
+    assert.match(viewportContent, /maximum-scale=1/);
+    assert.match(viewportContent, /user-scalable=no/);
+
+    let pinchPrevented = false;
+    listeners.get('touchstart')({
+      touches: [{}, {}],
+      preventDefault: () => { pinchPrevented = true; },
+    });
+    assert.equal(pinchPrevented, true);
+
+    let doubleTapPreventCount = 0;
+    const doubleTapEvent = { preventDefault: () => { doubleTapPreventCount += 1; } };
+    listeners.get('touchend')(doubleTapEvent);
+    listeners.get('touchend')(doubleTapEvent);
+    assert.equal(doubleTapPreventCount, 1);
+
+    let gesturePrevented = false;
+    listeners.get('gesturestart')({ preventDefault: () => { gesturePrevented = true; } });
+    assert.equal(gesturePrevented, true);
+
+    restoreViewport();
+    assert.equal(viewportContent, originalContent);
+    assert.equal(removedListeners.get('touchstart'), listeners.get('touchstart'));
+    assert.equal(removedListeners.get('touchend'), listeners.get('touchend'));
+    assert.equal(removedListeners.get('gesturestart'), listeners.get('gesturestart'));
+  } finally {
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
 });
 
 test('主页面头部与底栏背景连续覆盖 iOS 安全区', async () => {
