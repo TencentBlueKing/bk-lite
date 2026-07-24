@@ -28,13 +28,8 @@ def invalidate_dashboard_shares_before_delete(sender, instance, **kwargs):
 def invalidate_dashboard_shares_before_move(sender, instance, **kwargs):
     if not instance.pk:
         return
-    previous = Dashboard.objects.filter(pk=instance.pk).values("directory_id", "groups", "domain").first()
+    previous = Dashboard.objects.filter(pk=instance.pk).values("groups", "domain").first()
     if previous is None:
         return
-    if (
-        previous["directory_id"] != instance.directory_id
-        or previous["groups"] != instance.groups
-        or previous["domain"] != instance.domain
-    ):
+    if previous["groups"] != instance.groups or previous["domain"] != instance.domain:
         _invalidate_dashboard_links(instance.pk)
-

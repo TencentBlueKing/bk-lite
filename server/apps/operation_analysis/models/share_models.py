@@ -7,8 +7,6 @@ from django.utils import timezone
 class DashboardShareLink(models.Model):
     class Status(models.TextChoices):
         ACTIVE = "active", "有效"
-        EXPIRED = "expired", "已过期"
-        REVOKED = "revoked", "已撤销"
         SHARER_PERMISSION_LOST = "sharer_permission_lost", "分享者失权"
         DASHBOARD_INVALID = "dashboard_invalid", "画布失效"
 
@@ -25,9 +23,6 @@ class DashboardShareLink(models.Model):
     sharer_username = models.CharField(max_length=100)
     sharer_domain = models.CharField(max_length=100)
     public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
-    token_version = models.PositiveIntegerField(default=1)
-    authorization_version = models.PositiveBigIntegerField(default=1)
-    expires_at = models.DateTimeField(null=True, blank=True)
     status = models.CharField(max_length=32, choices=Status.choices, default=Status.ACTIVE)
     invalidated_at = models.DateTimeField(null=True, blank=True)
     invalidated_by = models.CharField(max_length=201, blank=True, default="")
@@ -45,12 +40,11 @@ class DashboardShareLink(models.Model):
             )
         ]
         indexes = [
-            models.Index(fields=["status", "expires_at"], name="op_share_status_exp_idx"),
+            models.Index(fields=["status"], name="op_share_status_idx"),
         ]
 
-    def is_usable(self, now=None):
-        now = now or timezone.now()
-        return self.status == self.Status.ACTIVE and (self.expires_at is None or self.expires_at > now)
+    def is_usable(self):
+        return self.status == self.Status.ACTIVE
 
     def mark_invalid(self, reason, actor=""):
         if self.status != self.Status.ACTIVE:
@@ -76,14 +70,14 @@ class DashboardShareSession(models.Model):
     visitor_username = models.CharField(max_length=100)
     visitor_domain = models.CharField(max_length=100)
     expires_at = models.DateTimeField()
-    revoked_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    refreshed_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = "operation_analysis_dashboard_share_session"
-        indexes = [
-            models.Index(
+        constraints = [
+            models.UniqueConstraint(
                 fields=["share_link", "visitor_username", "visitor_domain"],
-                name="op_share_session_visitor_idx",
+                name="uniq_share_session_by_visitor",
             )
         ]

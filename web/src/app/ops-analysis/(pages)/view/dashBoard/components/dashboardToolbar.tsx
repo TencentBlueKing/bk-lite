@@ -34,6 +34,7 @@ interface DashboardToolbarProps {
   onCancelEdit: () => void;
   onSave: () => void;
   shareMode?: boolean;
+  shareLoading?: boolean;
   onOpenShare?: () => void;
 }
 
@@ -54,6 +55,7 @@ const DashboardToolbar: React.FC<DashboardToolbarProps> = ({
   onCancelEdit,
   onSave,
   shareMode = false,
+  shareLoading = false,
   onOpenShare,
 }) => {
   const { t } = useTranslation();
@@ -92,8 +94,15 @@ const DashboardToolbar: React.FC<DashboardToolbarProps> = ({
         )}
 
         {!shareMode && !isEditMode && onOpenShare && (
-          <Tooltip title="分享">
-            <Button type="text" icon={<ShareAltOutlined />} onClick={onOpenShare} className="rounded-full!" />
+          <Tooltip title={t('dashboard.share')}>
+            <Button
+              type="text"
+              icon={<ShareAltOutlined />}
+              loading={shareLoading}
+              disabled={shareLoading}
+              onClick={onOpenShare}
+              className="rounded-full!"
+            />
           </Tooltip>
         )}
 

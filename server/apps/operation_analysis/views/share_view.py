@@ -130,13 +130,11 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
                     "name": item.name,
                     "desc": item.desc or "",
                     "source_type": item.source_type,
-                    "rest_api": item.rest_api,
                     "params": item.params or [],
                     "chart_type": item.chart_type or [],
                     "field_schema": item.field_schema or [],
                     "namespaces": list(item.namespaces.values_list("id", flat=True)),
                     "namespace_options": list(item.namespaces.values("id", "name")),
-                    "tag": list(item.tag.values_list("id", flat=True)),
                     "groups": [principal.space_id],
                 }
                 for item in data_sources

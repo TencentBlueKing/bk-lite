@@ -6,7 +6,6 @@ from rest_framework.test import APIClient
 
 from apps.operation_analysis.models.models import Dashboard, Directory
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, NameSpace
-from apps.operation_analysis.models.share_models import DashboardShareLink
 from apps.system_mgmt.models.menu import Menu
 from apps.system_mgmt.models.role import Role
 from apps.system_mgmt.models.user import User
@@ -72,28 +71,25 @@ def visitor(db):
 
 
 @pytest.mark.django_db
-def test_create_and_revoke_share_api(settings, dashboard, sharer, monkeypatch):
-    settings.DASHBOARD_SHARE_SIGNING_KEY = "test-key"
-    monkeypatch.setattr("apps.operation_analysis.services.share_service.can_view_dashboard", lambda **_: True)
+def test_share_api_is_idempotent_and_post_only(settings, dashboard, sharer, monkeypatch):
+    settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.share_service.can_view_dashboard",
+        lambda **_: True,
+    )
     client = APIClient()
     client.force_authenticate(sharer)
     client.cookies["current_team"] = "1"
+    path = f"/api/v1/operation_analysis/api/dashboard/{dashboard.id}/share/"
 
-    created = client.post(
-        f"/api/v1/operation_analysis/api/dashboard/{dashboard.id}/share/",
-        {"permanent": True},
-        format="json",
-    )
+    first = client.post(path, {}, format="json")
+    second = client.post(path, {}, format="json")
 
-    assert created.status_code == 200
-    assert created.data["url"].startswith("/ops-analysis/share/")
-    link_id = created.data["id"]
-
-    revoked = client.delete(
-        f"/api/v1/operation_analysis/api/dashboard/{dashboard.id}/share/{link_id}/",
-    )
-    assert revoked.status_code == 200
-    assert DashboardShareLink.objects.get(pk=link_id).status == DashboardShareLink.Status.REVOKED
+    assert first.status_code == second.status_code == 200
+    assert first.data["url"] == second.data["url"]
+    assert set(first.data) == {"id", "url", "status", "sharer_username"}
+    assert client.get(path).status_code == 405
+    assert client.delete(f"{path}{first.data['id']}/").status_code == 404
 
 
 @pytest.mark.django_db
@@ -105,7 +101,7 @@ def test_cross_tenant_visitor_can_exchange_and_read_dashboard(settings, dashboar
     sharer_client.cookies["current_team"] = "1"
     created = sharer_client.post(
         f"/api/v1/operation_analysis/api/dashboard/{dashboard.id}/share/",
-        {"permanent": True},
+        {},
         format="json",
     )
     token = created.data["url"].rsplit("/", 1)[-1]
@@ -146,7 +142,7 @@ def test_share_query_rejects_datasource_not_declared_by_dashboard(
     sharer_client.cookies["current_team"] = "1"
     created = sharer_client.post(
         f"/api/v1/operation_analysis/api/dashboard/{dashboard.id}/share/",
-        {"permanent": True},
+        {},
         format="json",
     )
     token = created.data["url"].rsplit("/", 1)[-1]
@@ -190,7 +186,7 @@ def test_share_datasource_metadata_is_scoped_and_secret_free(
     sharer_client.cookies["current_team"] = "1"
     created = sharer_client.post(
         f"/api/v1/operation_analysis/api/dashboard/{dashboard.id}/share/",
-        {"permanent": True},
+        {},
         format="json",
     )
     visitor_client = APIClient()
@@ -210,6 +206,8 @@ def test_share_datasource_metadata_is_scoped_and_secret_free(
     assert response.data[0]["id"] == datasource.id
     assert "connection_config" not in response.data[0]
     assert "query_config" not in response.data[0]
+    assert "rest_api" not in response.data[0]
+    assert "tag" not in response.data[0]
 
 
 @pytest.mark.django_db
@@ -265,7 +263,7 @@ def test_share_query_uses_sharer_runtime_authorization_context(
     sharer_client.cookies["current_team"] = "1"
     created = sharer_client.post(
         f"/api/v1/operation_analysis/api/dashboard/{dashboard.id}/share/",
-        {"permanent": True},
+        {},
         format="json",
     )
     visitor_client = APIClient()

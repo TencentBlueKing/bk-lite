@@ -27,13 +27,9 @@ from apps.operation_analysis.serializers.directory_serializers import (
     TopologyModelSerializer,
 )
 from apps.operation_analysis.services.directory_service import DictDirectoryService
-from apps.operation_analysis.models.share_models import DashboardShareLink
-from apps.operation_analysis.serializers.share_serializers import ShareCreateSerializer
 from apps.operation_analysis.services.share_service import (
-    ShareDurationInvalid,
     SharePermissionDenied,
-    create_or_update_share,
-    revoke_share,
+    create_or_get_share,
 )
 from config.drf.pagination import CustomPageNumberPagination
 
@@ -238,73 +234,30 @@ class DashboardModelViewSet(BuiltinVisibleMixin, AuthViewSet):
         return response
 
     @HasPermission("view-View")
-    @action(detail=True, methods=["get", "post"], url_path="share")
+    @action(detail=True, methods=["post"], url_path="share")
     def share(self, request, *args, **kwargs):
-        dashboard = self.get_object()
-        if request.method == "GET":
-            links = DashboardShareLink.objects.filter(dashboard_instance_id=dashboard.id)
-            if not getattr(request.user, "is_superuser", False):
-                links = links.filter(
-                    sharer_username=request.user.username,
-                    sharer_domain=request.user.domain,
-                )
-            links = links.order_by("-created_at")
-            return Response([self._serialize_share_link(link) for link in links])
+        from rest_framework.exceptions import PermissionDenied
 
-        serializer = ShareCreateSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        dashboard = self.get_object()
         try:
-            result = create_or_update_share(
+            result = create_or_get_share(
                 dashboard=dashboard,
                 sharer=request.user,
                 tenant_domain=dashboard.domain,
                 space_id=self._parse_current_team_cookie(request),
-                **serializer.validated_data,
             )
-        except ShareDurationInvalid as exc:
-            raise ValidationError(str(exc)) from exc
-        except SharePermissionDenied:
-            from rest_framework.exceptions import PermissionDenied
-
-            raise PermissionDenied("无权分享该仪表盘")
-        log_ops_analysis_success(request, Response(status=200), "create", f"创建仪表盘分享链接: {dashboard.name}")
-        return Response(self._serialize_share_link(result.link, token=result.token))
-
-    @HasPermission("view-View")
-    @action(detail=True, methods=["delete"], url_path=r"share/(?P<share_id>\d+)")
-    def revoke_share_link(self, request, share_id=None, *args, **kwargs):
-        dashboard = self.get_object()
-        links = DashboardShareLink.objects.filter(
-            pk=share_id,
-            dashboard_instance_id=dashboard.id,
-            status=DashboardShareLink.Status.ACTIVE,
+        except SharePermissionDenied as exc:
+            raise PermissionDenied("无权分享该仪表盘") from exc
+        response = Response(
+            {
+                "id": result.link.id,
+                "url": f"/ops-analysis/share/{result.token}",
+                "status": result.link.status,
+                "sharer_username": result.link.sharer_username,
+            }
         )
-        if not getattr(request.user, "is_superuser", False):
-            links = links.filter(
-                sharer_username=request.user.username,
-                sharer_domain=request.user.domain,
-            )
-        link = links.first()
-        if link is None:
-            from rest_framework.exceptions import NotFound
-
-            raise NotFound("分享链接不存在")
-        revoke_share(link=link, actor=f"{request.user.username}@{request.user.domain}")
-        log_ops_analysis_success(request, Response(status=204), "delete", f"撤销仪表盘分享链接: {dashboard.name}")
-        return Response(status=204)
-
-    @staticmethod
-    def _serialize_share_link(link, token=None):
-        data = {
-            "id": link.id,
-            "permanent": link.expires_at is None,
-            "expires_at": link.expires_at,
-            "status": link.status,
-            "sharer_username": link.sharer_username,
-        }
-        if token:
-            data["url"] = f"/ops-analysis/share/{token}"
-        return data
+        log_ops_analysis_success(request, response, "create", f"获取仪表盘分享链接: {dashboard.name}")
+        return response
 
 
 class TopologyModelViewSet(BuiltinVisibleMixin, AuthViewSet):

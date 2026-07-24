@@ -1,25 +1,14 @@
 import { useCallback } from 'react';
 import useApiClient from '@/utils/request';
+import type { DashboardShareLinkDto } from '@/app/ops-analysis/types/dashboardShare';
 
 export const useDashboardShareApi = () => {
-  const { get, post, del } = useApiClient();
+  const { get, post } = useApiClient();
 
-  const createOrUpdateShare = useCallback(
-    (dashboardId: string | number, data: { permanent: boolean; duration_seconds?: number }) =>
-      post(`/operation_analysis/api/dashboard/${dashboardId}/share/`, data),
+  const createShare = useCallback(
+    (dashboardId: string | number): Promise<DashboardShareLinkDto> =>
+      post(`/operation_analysis/api/dashboard/${dashboardId}/share/`, {}),
     [post],
-  );
-
-  const listShares = useCallback(
-    (dashboardId: string | number) =>
-      get(`/operation_analysis/api/dashboard/${dashboardId}/share/`),
-    [get],
-  );
-
-  const revokeShare = useCallback(
-    (dashboardId: string | number, shareId: number) =>
-      del(`/operation_analysis/api/dashboard/${dashboardId}/share/${shareId}/`),
-    [del],
   );
 
   const exchangeShare = useCallback(
@@ -50,9 +39,7 @@ export const useDashboardShareApi = () => {
   );
 
   return {
-    createOrUpdateShare,
-    listShares,
-    revokeShare,
+    createShare,
     exchangeShare,
     getSharedDashboard,
     querySharedDataSource,

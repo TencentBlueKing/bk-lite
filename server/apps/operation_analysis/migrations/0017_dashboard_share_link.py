@@ -19,16 +19,11 @@ class Migration(migrations.Migration):
                 ("sharer_username", models.CharField(max_length=100)),
                 ("sharer_domain", models.CharField(max_length=100)),
                 ("public_id", models.UUIDField(default=uuid.uuid4, editable=False, unique=True)),
-                ("token_version", models.PositiveIntegerField(default=1)),
-                ("authorization_version", models.PositiveBigIntegerField(default=1)),
-                ("expires_at", models.DateTimeField(blank=True, null=True)),
                 (
                     "status",
                     models.CharField(
                         choices=[
                             ("active", "有效"),
-                            ("expired", "已过期"),
-                            ("revoked", "已撤销"),
                             ("sharer_permission_lost", "分享者失权"),
                             ("dashboard_invalid", "画布失效"),
                         ],
@@ -61,8 +56,8 @@ class Migration(migrations.Migration):
                 ("visitor_username", models.CharField(max_length=100)),
                 ("visitor_domain", models.CharField(max_length=100)),
                 ("expires_at", models.DateTimeField()),
-                ("revoked_at", models.DateTimeField(blank=True, null=True)),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("refreshed_at", models.DateTimeField(auto_now=True)),
                 (
                     "share_link",
                     models.ForeignKey(
@@ -84,13 +79,13 @@ class Migration(migrations.Migration):
         ),
         migrations.AddIndex(
             model_name="dashboardsharelink",
-            index=models.Index(fields=["status", "expires_at"], name="op_share_status_exp_idx"),
+            index=models.Index(fields=["status"], name="op_share_status_idx"),
         ),
-        migrations.AddIndex(
+        migrations.AddConstraint(
             model_name="dashboardsharesession",
-            index=models.Index(
-                fields=["share_link", "visitor_username", "visitor_domain"],
-                name="op_share_session_visitor_idx",
+            constraint=models.UniqueConstraint(
+                fields=("share_link", "visitor_username", "visitor_domain"),
+                name="uniq_share_session_by_visitor",
             ),
         ),
     ]

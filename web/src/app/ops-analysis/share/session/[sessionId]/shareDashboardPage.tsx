@@ -7,12 +7,14 @@ import Dashboard from '@/app/ops-analysis/(pages)/view/dashBoard';
 import { useDashboardShareApi } from '@/app/ops-analysis/api/dashboardShare';
 import { ShareDataSourceProvider } from '@/app/ops-analysis/context/shareDataSource';
 import { OpsAnalysisProvider } from '@/app/ops-analysis/context/common';
+import { useTranslation } from '@/utils/i18n';
 import type { DirItem } from '@/app/ops-analysis/types';
 import type { SharedDashboardDto } from '@/app/ops-analysis/types/dashboardShare';
 
 export default function ShareDashboardPage() {
   const params = useParams<{ sessionId: string }>();
   const router = useRouter();
+  const { t } = useTranslation();
   const api = useDashboardShareApi();
   const [dashboard, setDashboard] = useState<SharedDashboardDto | null>(null);
   const [invalid, setInvalid] = useState(false);
@@ -54,21 +56,18 @@ export default function ShareDashboardPage() {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--color-bg-1)] p-8">
         <div className="w-full max-w-[400px] text-center">
-          <h2 className="mb-2 text-base font-medium text-[var(--color-text-1)]">
-            分享链接无效或已失效
+          <h2 className="mb-6 text-base font-medium text-[var(--color-text-1)]">
+            {t('dashboard.shareInvalid')}
           </h2>
-          <p className="mb-6 text-sm leading-relaxed text-[var(--color-text-3)]">
-            链接可能已被撤销、过期,或你没有访问权限。
-          </p>
           <Button type="primary" onClick={() => router.push('/')}>
-            返回首页
+            {t('common.backToHome')}
           </Button>
         </div>
       </div>
     );
   }
   if (!dashboard || !selectedDashboard) {
-    return <Spin fullscreen tip="正在加载分享仪表盘" />;
+    return <Spin fullscreen tip={t('dashboard.shareLoading')} />;
   }
 
   return (

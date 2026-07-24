@@ -1,5 +1,9 @@
 # 运营分析画布永久分享链接差异实施计划
 
+> **Status:** Tasks 1–4 implemented in working tree (2026-07-24). Frontend entry follows grill consensus (toolbar one-click copy; no ShareDialog), which supersedes Plan Task 4 dialog steps. Task 5 browser acceptance is still manual.
+>
+> **Verification:** `uv run pytest apps/operation_analysis/tests/test_share_{models,token,service,api}.py -q --no-cov` → 25 passed; `pnpm test:ops-analysis-dashboard-share` → passed; `makemigrations --check --dry-run` → No changes detected.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 在保留现有分享登录、Token 兑换、账号隔离、只读画布和受限数据查询能力的前提下，删除链接过期与主动撤销功能，并把现有短会话调整为固定 8 小时、按访问者复用。

@@ -1,9 +1,7 @@
 export interface DashboardShareLinkDto {
   id: number;
-  url?: string;
-  permanent: boolean;
-  expires_at: string | null;
-  status: 'active' | 'expired' | 'revoked' | 'sharer_permission_lost' | 'dashboard_invalid';
+  url: string;
+  status: 'active' | 'sharer_permission_lost' | 'dashboard_invalid';
   sharer_username: string;
 }
 
@@ -16,4 +14,3 @@ export interface SharedDashboardDto {
   view_sets: unknown;
   is_build_in: boolean;
 }
-

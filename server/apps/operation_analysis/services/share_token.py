@@ -10,7 +10,8 @@ class InvalidShareToken(ValueError):
     pass
 
 
-_PAYLOAD_SIZE = 20
+PROTOCOL_VERSION = b"\x01"
+_PAYLOAD_SIZE = 17
 _SIGNATURE_SIZE = 32
 
 
@@ -21,13 +22,7 @@ def _signing_key():
     return value.encode("utf-8")
 
 
-def build_share_token(public_id, token_version):
-    payload = public_id.bytes + int(token_version).to_bytes(4, "big")
-    signature = hmac.digest(_signing_key(), payload, "sha256")
-    return base64.urlsafe_b64encode(payload + signature).rstrip(b"=").decode("ascii")
-
-
-def parse_share_token(token):
+def _decode_base64url(token):
     if not isinstance(token, str) or not token:
         raise InvalidShareToken
     try:
@@ -38,10 +33,23 @@ def parse_share_token(token):
     canonical_token = base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
     if not hmac.compare_digest(token, canonical_token):
         raise InvalidShareToken
+    return raw
+
+
+def build_share_token(public_id):
+    payload = PROTOCOL_VERSION + public_id.bytes
+    signature = hmac.digest(_signing_key(), payload, "sha256")
+    return base64.urlsafe_b64encode(payload + signature).rstrip(b"=").decode("ascii")
+
+
+def parse_share_token(token):
+    raw = _decode_base64url(token)
     if len(raw) != _PAYLOAD_SIZE + _SIGNATURE_SIZE:
         raise InvalidShareToken
     payload, supplied_signature = raw[:_PAYLOAD_SIZE], raw[_PAYLOAD_SIZE:]
+    if payload[:1] != PROTOCOL_VERSION:
+        raise InvalidShareToken
     expected_signature = hmac.digest(_signing_key(), payload, "sha256")
     if not hmac.compare_digest(supplied_signature, expected_signature):
         raise InvalidShareToken
-    return uuid.UUID(bytes=payload[:16]), int.from_bytes(payload[16:], "big")
+    return uuid.UUID(bytes=payload[1:])
