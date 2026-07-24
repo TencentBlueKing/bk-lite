@@ -1,8 +1,15 @@
 monitor_object_type:
+  OS: 操作系统
+  Web: 拨测
+  Database: 数据库
+  Middleware: 中间件
+  Network Device: 网络设备
+  Hardware Device: 硬件设备
   Container Management: 容器管理
   K8S: K8S
   VMWare: VMware
   Tencent Cloud: 腾讯云
+  Other: 其他
 
 flow_onboarding_ui:
   accessAsset: 接入资产
