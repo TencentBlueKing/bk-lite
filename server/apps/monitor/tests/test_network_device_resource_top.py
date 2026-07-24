@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 from apps.monitor.services.network_device_resource_top import (
     NetworkCandidate,
+    NetworkDeviceResourceTopService,
     build_ranked_rows,
     normalize_candidates,
     validate_metric_type,
@@ -48,10 +49,13 @@ def test_memory_fallback_is_supported_by_service():
                 "device_memory_used": "80",
                 "device_memory_total": "100",
             }
-            return {"status": "success", "data": {"result": [{
-                "metric": {"instance_id": "sw-1"},
-                "value": [datetime(2026, 7, 22, 12, tzinfo=timezone.utc).timestamp(), values.get(metric, "0")],
-            }]}}
+            result = []
+            if metric in values:
+                result.append({
+                    "metric": {"instance_id": "sw-1"},
+                    "value": [datetime(2026, 7, 22, 12, tzinfo=timezone.utc).timestamp(), values[metric]],
+                })
+            return {"status": "success", "data": {"result": result}}
 
     instance = type("Instance", (), {
         "id": "sw-1", "name": "Switch A", "ip": None, "interval": 300,
@@ -61,3 +65,43 @@ def test_memory_fallback_is_supported_by_service():
         vm_api=FakeVM(), now=datetime(2026, 7, 22, 12, tzinfo=timezone.utc)
     ).run("memory", [instance])
     assert rows[0]["value"] == 80.0
+
+
+def test_service_matches_tuple_storage_id_with_raw_metric_instance_id():
+    now = datetime(2026, 7, 22, 12, tzinfo=timezone.utc)
+
+    class FakeVM:
+        def query(self, query, **kwargs):
+            metric = query.split('"')[1]
+            value = "55" if metric == "device_cpu_usage" else "0"
+            return {
+                "status": "success",
+                "data": {
+                    "result": [
+                        {
+                            "metric": {"instance_id": "switch-1"},
+                            "value": [now.timestamp(), value],
+                        }
+                    ]
+                },
+            }
+
+    instance = type(
+        "Instance",
+        (),
+        {
+            "id": "('switch-1',)",
+            "name": "Switch A",
+            "ip": "10.0.0.2",
+            "interval": 300,
+            "monitor_object": type("Object", (), {"name": "Switch"})(),
+        },
+    )()
+
+    rows = NetworkDeviceResourceTopService(vm_api=FakeVM(), now=now).run(
+        "cpu",
+        [instance],
+    )
+
+    assert rows[0]["instance_id"] == "switch-1"
+    assert rows[0]["value"] == 55.0

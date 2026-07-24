@@ -121,7 +121,13 @@ def test_model_detail_missing_returns_stable_404(
 @patch("apps.cmdb.open_api.views.CMDBOpenAPIContext.from_request")
 @patch("apps.cmdb.open_api.services.get_default_group_id", return_value=[1])
 @patch("apps.cmdb.open_api.services.CmdbRulesFormatUtil.has_object_permission", return_value=True)
-@patch("apps.cmdb.open_api.services.ModelManage.search_model_attr", return_value=[{"attr_id": "ip"}])
+@patch(
+    "apps.cmdb.open_api.services.ModelManage.search_model_attr",
+    return_value=[
+        {"attr_id": "ip_addr", "is_required": True},
+        {"attr_id": "comment", "is_required": False},
+    ],
+)
 @patch(
     "apps.cmdb.open_api.services.ModelManage.search_model_info",
     return_value={"model_id": "host", "group": [7]},
@@ -134,7 +140,10 @@ def test_model_attributes_are_returned_after_model_visibility_check(
     response = _api_request(api_client, "/api/v1/cmdb/api/open/models/host/attributes")
 
     assert response.status_code == 200
-    assert response.json()["data"] == [{"attr_id": "ip"}]
+    assert response.json()["data"] == [
+        {"attr_id": "ip_addr", "is_required": True, "required": True},
+        {"attr_id": "comment", "is_required": False, "required": False},
+    ]
     mock_attrs.assert_called_once_with("host")
 
 

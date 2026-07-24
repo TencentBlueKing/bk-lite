@@ -301,6 +301,14 @@ class DataSourceTagModelViewSet(viewsets.ReadOnlyModelViewSet):
     filterset_class = DataSourceTagModelFilter
     pagination_class = CustomPageNumberPagination
 
+    @HasPermission("data_source-View")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    @HasPermission("data_source-View")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
 
 class NameSpaceModelViewSet(ModelViewSet):
     """
