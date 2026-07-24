@@ -12,11 +12,12 @@ from apps.core.utils.web_utils import WebUtils
 from apps.monitor.constants.language import LanguageConstants
 from apps.monitor.constants.permission import PermissionConstants
 from apps.monitor.filters.monitor_object import MonitorObjectFilter
-from apps.monitor.models import MonitorInstance, MonitorPolicy
+from apps.monitor.models import MonitorInstance, MonitorPolicy, MonitorViewColumnPreference
 from apps.monitor.models.monitor_object import MonitorObject, MonitorObjectType
 from apps.monitor.serializers.monitor_object import MonitorObjectSerializer, MonitorObjectTypeSerializer
+from apps.monitor.serializers.view_column_preference import MonitorViewColumnPreferenceSerializer
 from apps.monitor.services.monitor_object import MonitorObjectService
-from apps.monitor.utils.display_fields import validate_display_fields
+from apps.monitor.utils.display_fields import build_display_column_key, validate_display_fields
 from apps.monitor.utils.instance_id_keys import resolve_monitor_object_instance_id_keys
 from config.drf.pagination import CustomPageNumberPagination
 from apps.core.utils.team_utils import get_current_team
@@ -106,17 +107,21 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
         """
         if not display_fields:
             return display_fields
-        if customized:
-            return [{**col} for col in display_fields]
         translated = []
         for col in display_fields:
             metrics = col.get("metrics") or []
             metric_name = metrics[0].get("metric") if metrics else None
             new_name = col.get("name")
-            if metric_name:
+            if metric_name and not customized:
                 key = f"{LanguageConstants.MONITOR_OBJECT_METRIC}.{object_name}.{metric_name}.name"
                 new_name = lan.get(key) or new_name
-            translated.append({**col, "name": new_name})
+            translated.append(
+                {
+                    **col,
+                    "name": new_name,
+                    "column_key": build_display_column_key(col),
+                }
+            )
         return translated
 
     def list(self, request, *args, **kwargs):
@@ -251,6 +256,32 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
         obj.display_fields_customized = True
         obj.save(update_fields=["display_fields", "display_fields_customized"])
         return WebUtils.response_success(normalized)
+
+    @action(methods=["get", "put"], detail=True, url_path="view_column_preference")
+    def view_column_preference(self, request, pk=None):
+        """读取或保存当前用户在当前监控对象下的列表列配置。"""
+        monitor_object = self.get_object()
+        if request.method == "GET":
+            preference = MonitorViewColumnPreference.objects.filter(
+                user=request.user,
+                monitor_object=monitor_object,
+            ).first()
+            data = {"field_keys": preference.field_keys} if preference else None
+            return WebUtils.response_success(data)
+
+        serializer = MonitorViewColumnPreferenceSerializer(data=request.data)
+        if not serializer.is_valid():
+            return WebUtils.response_error(
+                response_data=serializer.errors,
+                error_message="列配置格式无效",
+            )
+        field_keys = serializer.validated_data["field_keys"]
+        MonitorViewColumnPreference.objects.update_or_create(
+            user=request.user,
+            monitor_object=monitor_object,
+            defaults={"field_keys": field_keys},
+        )
+        return WebUtils.response_success({"field_keys": field_keys})
 
     def create(self, request, *args, **kwargs):
         """创建监控对象，支持同时创建子对象"""

@@ -1,5 +1,5 @@
 import React, { useState, forwardRef, useImperativeHandle } from 'react';
-import { Checkbox, Button } from 'antd';
+import { Checkbox, Button, Input } from 'antd';
 import OperateModal from '@/components/operate-modal';
 import { useTranslation } from '@/utils/i18n';
 import type { CheckboxProps } from 'antd';
@@ -14,10 +14,12 @@ interface DragItem {
 }
 
 interface FieldModalProps {
-  onConfirm: (fieldKeys: string[]) => void;
+  onConfirm: (fieldKeys: string[]) => void | Promise<void>;
   choosableFields: ColumnItem[];
   displayFieldKeys: string[];
   groupFields?: GroupFieldItem[];
+  searchable?: boolean;
+  width?: number;
 }
 
 export interface FieldModalRef {
@@ -25,7 +27,17 @@ export interface FieldModalRef {
 }
 
 const FieldSettingModal = forwardRef<FieldModalRef, FieldModalProps>(
-  ({ onConfirm, choosableFields, displayFieldKeys, groupFields }, ref) => {
+  (
+    {
+      onConfirm,
+      choosableFields,
+      displayFieldKeys,
+      groupFields,
+      searchable = false,
+      width = 600,
+    },
+    ref
+  ) => {
     const { t } = useTranslation();
     const [title, setTitle] = useState<string>('');
     const [visible, setVisible] = useState<boolean>(false);
@@ -35,6 +47,8 @@ const FieldSettingModal = forwardRef<FieldModalRef, FieldModalProps>(
     const [dragFields, setDragFields] = useState<ColumnItem[]>([]);
     const [dragItem, setDragItem] = useState<DragItem | null>(null);
     const [dragOverItem, setDragOverItem] = useState<DragItem | null>(null);
+    const [searchText, setSearchText] = useState('');
+    const [submitting, setSubmitting] = useState(false);
     const checkAll = choosableFields.length === checkedFields.length;
     const indeterminate =
       checkedFields.length > 0 && checkedFields.length < choosableFields.length;
@@ -42,7 +56,13 @@ const FieldSettingModal = forwardRef<FieldModalRef, FieldModalProps>(
     useImperativeHandle(ref, () => ({
       showModal: () => {
         setTitle(t('cutomTable.fieldSetting'));
-        handleCheckboxChange(displayFieldKeys);
+        setCheckedFields(displayFieldKeys);
+        setDragFields(
+          displayFieldKeys
+            .map((key) => choosableFields.find((field) => field.key === key))
+            .filter((field): field is ColumnItem => Boolean(field))
+        );
+        setSearchText('');
         setVisible(true);
       },
     }));
@@ -56,13 +76,15 @@ const FieldSettingModal = forwardRef<FieldModalRef, FieldModalProps>(
 
     const handleCheckboxChange = (checkedValues: string[]) => {
       setCheckedFields(checkedValues);
-      const fields: ColumnItem[] = [];
-      checkedValues.forEach((key) => {
-        const target = choosableFields.find((field) => field.key === key);
-        if (target) {
-          fields.push(target);
-        }
-      });
+      const checkedSet = new Set(checkedValues);
+      const retainedFields = dragFields.filter((field) => checkedSet.has(field.key));
+      const retainedKeys = new Set(retainedFields.map((field) => field.key));
+      const fields = [
+        ...retainedFields,
+        ...choosableFields.filter(
+          (field) => checkedSet.has(field.key) && !retainedKeys.has(field.key)
+        ),
+      ];
       setDragFields(fields);
     };
 
@@ -80,11 +102,19 @@ const FieldSettingModal = forwardRef<FieldModalRef, FieldModalProps>(
 
     const handleClear = () => {
       setCheckedFields([]);
+      setDragFields([]);
     };
 
-    const handleSubmit = () => {
-      onConfirm(dragFields.map((item) => item.key));
-      handleCancel();
+    const handleSubmit = async () => {
+      setSubmitting(true);
+      try {
+        await onConfirm(dragFields.map((item) => item.key));
+        handleCancel();
+      } catch {
+        // 请求层负责展示错误；保留弹窗和用户尚未保存的排序。
+      } finally {
+        setSubmitting(false);
+      }
     };
 
     const handleCancel = () => {
@@ -114,7 +144,13 @@ const FieldSettingModal = forwardRef<FieldModalRef, FieldModalProps>(
     };
 
     const renderCheckBox = (fields: ColumnItem[]) => {
-      return fields.map((field) => (
+      const keyword = searchText.trim().toLocaleLowerCase();
+      return fields
+        .filter(
+          (field) =>
+            !keyword || String(field.title).toLocaleLowerCase().includes(keyword)
+        )
+        .map((field) => (
         <Checkbox
           className="w-[166px] mb-[10px]"
           key={field.key}
@@ -127,19 +163,20 @@ const FieldSettingModal = forwardRef<FieldModalRef, FieldModalProps>(
             {field.title}
           </span>
         </Checkbox>
-      ));
+        ));
     };
 
     return (
       <OperateModal
         visible={visible}
         title={title}
-        width={600}
+        width={width}
         onCancel={handleCancel}
         footer={
           <div>
             <Button
               disabled={!checkedFields.length}
+              loading={submitting}
               className="mr-[10px]"
               type="primary"
               onClick={handleSubmit}
@@ -154,6 +191,15 @@ const FieldSettingModal = forwardRef<FieldModalRef, FieldModalProps>(
           <div
             className={`${fieldSettingModalStyle.leftSide} w-2/3 p-4 border-r`}
           >
+            {searchable && (
+              <Input
+                allowClear
+                className="mb-[12px]"
+                value={searchText}
+                placeholder={t('common.searchPlaceHolder')}
+                onChange={(event) => setSearchText(event.target.value)}
+              />
+            )}
             <div>
               <Checkbox
                 className="mb-[10px]"
@@ -203,8 +249,8 @@ const FieldSettingModal = forwardRef<FieldModalRef, FieldModalProps>(
                 .filter((field) => checkedFields.includes(field.key))
                 .map((field, index) => (
                   <div
-                    className={`p-2 bg-white shadow-sm ${fieldSettingModalStyle.fieldItem}`}
-                    key={index}
+                    className={`p-2 bg-[var(--color-bg)] shadow-sm ${fieldSettingModalStyle.fieldItem}`}
+                    key={field.key}
                     draggable
                     onDragStart={() =>
                       handleDragStart({

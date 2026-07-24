@@ -38,6 +38,7 @@
     "test:monitor-alert-detail-snapshot": "pnpm exec tsx scripts/monitor-alert-detail-snapshot-test.ts",
     "test:monitor-strategy-detail-logic": "pnpm exec tsx scripts/monitor-strategy-detail-logic-test.ts",
     "test:monitor-table-change-handler": "pnpm exec tsx scripts/monitor-table-change-handler-test.ts",
+    "test:monitor-view-column-preference": "pnpm exec tsx scripts/monitor-view-column-preference-test.ts",
     "test:k8s-cluster-filter": "pnpm exec tsx scripts/k8s-cluster-filter-test.ts",
     "test:monitor-gap-interval": "pnpm exec tsx scripts/monitor-gap-interval-test.ts",
     "test:monitor-promql-label-query": "pnpm exec tsx scripts/monitor-promql-label-query-test.ts",

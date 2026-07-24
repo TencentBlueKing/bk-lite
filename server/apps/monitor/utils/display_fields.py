@@ -1,7 +1,33 @@
+import hashlib
+import json
+
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.monitor.models.monitor_metrics import Metric
 
 DISPLAY_FIELD_TYPES = {"metric", "field"}
+
+
+def build_display_column_key(display_field):
+    """用字段类型和有序绑定生成不受标题、语言及默认顺序影响的列标识。"""
+    column_type = display_field.get("type") or "metric"
+    identity = {
+        "type": column_type,
+        "metrics": [
+            {
+                "plugin": binding.get("plugin") or "",
+                "metric": binding.get("metric") or "",
+                **(
+                    {"field": binding.get("field") or ""}
+                    if column_type == "field"
+                    else {}
+                ),
+            }
+            for binding in display_field.get("metrics") or []
+        ],
+    }
+    raw = json.dumps(identity, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+    return f"{column_type}:{digest}"
 
 
 def validate_display_fields(monitor_object, display_fields):
