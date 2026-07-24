@@ -1,0 +1,1 @@
+import React from 'react'; import { ObjectDashboardPage } from '../common/object-dashboard-page'; import { HARDWARE_SERVER_DASHBOARD_CONFIG } from './config'; import styles from './index.module.scss'; export default function HardwareServerDashboard() { return React.createElement(ObjectDashboardPage, { config: HARDWARE_SERVER_DASHBOARD_CONFIG, styles }); }

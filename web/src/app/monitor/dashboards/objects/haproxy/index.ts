@@ -1,0 +1,1 @@
+import React from 'react'; import { ObjectDashboardPage } from '../common/object-dashboard-page'; import { HAPROXY_DASHBOARD_CONFIG } from './config'; import styles from './index.module.scss'; export default function HaproxyDashboard() { return React.createElement(ObjectDashboardPage, { config: HAPROXY_DASHBOARD_CONFIG, styles }); }

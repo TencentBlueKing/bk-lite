@@ -34,6 +34,13 @@ import AccessDashboard from './objects/access';
 import NetworkServiceDashboard from './objects/network_service';
 import ConsoleServerDashboard from './objects/console_server';
 import VoiceGatewayDashboard from './objects/voice_gateway';
+import OracleDashboard from './objects/oracle';
+import JvmDashboard from './objects/jvm';
+import HaproxyDashboard from './objects/haproxy';
+import InfluxdbDashboard from './objects/influxdb';
+import EtcdDashboard from './objects/etcd';
+import MinioDashboard from './objects/minio';
+import HardwareServerDashboard from './objects/hardware-server';
 import { ENTERPRISE_PROFESSIONAL_DASHBOARDS } from './objects/(enterprise)-registry';
 import { normalizeDashboardKey } from './shared/utils';
 
@@ -47,6 +54,13 @@ export const PROFESSIONAL_DASHBOARD_GROUPS = {
 } as const;
 
 const COMMUNITY_DASHBOARDS: ProfessionalDashboardRegistryItem[] = [
+  { key: 'oracle', groupKey: 'database', objectName: 'Oracle', objectDisplayName: 'Oracle', inheritedPermissionPath: '/monitor/view', component: OracleDashboard },
+  { key: 'influxdb', groupKey: 'database', objectName: 'InfluxDB', objectDisplayName: 'InfluxDB', inheritedPermissionPath: '/monitor/view', component: InfluxdbDashboard },
+  { key: 'jvm', groupKey: 'middleware', objectName: 'JVM', objectDisplayName: 'JVM', inheritedPermissionPath: '/monitor/view', component: JvmDashboard },
+  { key: 'haproxy', groupKey: 'middleware', objectName: 'Haproxy', objectDisplayName: 'HAProxy', inheritedPermissionPath: '/monitor/view', component: HaproxyDashboard },
+  { key: 'etcd', groupKey: 'middleware', objectName: 'Etcd', objectDisplayName: 'Etcd', inheritedPermissionPath: '/monitor/view', component: EtcdDashboard },
+  { key: 'minio', groupKey: 'middleware', objectName: 'Minio', objectDisplayName: 'MinIO', inheritedPermissionPath: '/monitor/view', component: MinioDashboard },
+  { key: 'hardware-server', aliases: ['hardware_server'], groupKey: 'hardware', objectName: 'Hardware Server', objectDisplayName: '硬件服务器', inheritedPermissionPath: '/monitor/view', component: HardwareServerDashboard },
   {
     key: 'mysql',
     groupKey: 'database',
