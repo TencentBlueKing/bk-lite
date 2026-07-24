@@ -25,6 +25,11 @@ import usePatchManagerApi from '@/app/patch-manager/api';
 import useApiClient from '@/utils/request';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 
+import {
+  createExecutionListPolling,
+  type ExecutionListQuery,
+} from './execution-list-polling';
+
 interface TaskRow {
   key: string;
   id: number;
@@ -161,6 +166,7 @@ export default function RiskExecutionPage() {
   const [loading, setLoading] = useState(false);
   const [selectedTasks, setSelectedTasks] = useState<React.Key[]>([]);
   const [taskSearch, setTaskSearch] = useState('');
+  const [appliedTaskSearch, setAppliedTaskSearch] = useState('');
   const [taskType, setTaskType] = useState<string>();
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -174,6 +180,19 @@ export default function RiskExecutionPage() {
   const [cancelSubmitting, setCancelSubmitting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const listRequestSeq = useRef(0);
+  const listPollingRef = useRef<ReturnType<typeof createExecutionListPolling>>();
+  const listQueryRef = useRef<ExecutionListQuery>({
+    page: pagination.current,
+    pageSize: pagination.pageSize,
+    search: appliedTaskSearch,
+    taskType: taskType as ExecutionListQuery['taskType'],
+  });
+  listQueryRef.current = {
+    page: pagination.current,
+    pageSize: pagination.pageSize,
+    search: appliedTaskSearch,
+    taskType: taskType as ExecutionListQuery['taskType'],
+  };
   const detailRequestSeq = useRef(0);
   const selectedRequestSeq = useRef(0);
   const selectedAbortRef = useRef<AbortController | null>(null);
@@ -200,41 +219,44 @@ export default function RiskExecutionPage() {
   ), [formatDateTime]);
 
   const loadTasks = useCallback(async (
-    page = pagination.current,
-    pageSize = pagination.pageSize,
-    search = taskSearch,
-    type = taskType,
+    query: ExecutionListQuery,
     silent = false,
   ) => {
     const seq = ++listRequestSeq.current;
     if (!silent) setLoading(true);
     try {
       const response = await apiRef.current.getGovernanceTaskList({
-        page,
-        page_size: pageSize,
-        search: search || undefined,
-        task_type: type as 'install' | 'reboot' | undefined,
+        page: query.page,
+        page_size: query.pageSize,
+        search: query.search || undefined,
+        task_type: query.taskType,
       });
       if (seq !== listRequestSeq.current) return;
       const rows = mapTaskRows(response.items || []);
       setTasks(rows);
-      setPagination({ current: page, pageSize, total: response.count || 0 });
+      setPagination({
+        current: query.page,
+        pageSize: query.pageSize,
+        total: response.count || 0,
+      });
     } finally {
       if (!silent && seq === listRequestSeq.current) setLoading(false);
     }
-  }, [mapTaskRows, pagination.current, pagination.pageSize, taskSearch, taskType]);
+  }, [mapTaskRows]);
 
   useEffect(() => {
-    if (!isLoading) loadTasks(1, pagination.pageSize);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoading]);
-
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      if (!document.hidden) loadTasks(undefined, undefined, undefined, undefined, true);
-    }, 2000);
-    return () => window.clearInterval(timer);
-  }, [loadTasks]);
+    if (isLoading) return undefined;
+    const polling = createExecutionListPolling((query, silent) => {
+      if (silent && document.hidden) return;
+      return loadTasks(query, silent);
+    });
+    listPollingRef.current = polling;
+    polling.restart(listQueryRef.current);
+    return () => {
+      polling.stop();
+      if (listPollingRef.current === polling) listPollingRef.current = undefined;
+    };
+  }, [isLoading, loadTasks]);
 
   const loadTaskDetail = useCallback(async (taskId: number, silent = false) => {
     const seq = ++detailRequestSeq.current;
@@ -317,7 +339,12 @@ export default function RiskExecutionPage() {
       message.success(result?.detail || '取消请求已处理');
       setCancelTask(undefined);
       setCancelReason('');
-      await loadTasks();
+      await loadTasks({
+        page: pagination.current,
+        pageSize: pagination.pageSize,
+        search: appliedTaskSearch,
+        taskType: taskType as ExecutionListQuery['taskType'],
+      });
     } finally {
       setCancelSubmitting(false);
     }
@@ -342,7 +369,7 @@ export default function RiskExecutionPage() {
         const response = await api.getGovernanceTaskList({
           page: 1,
           page_size: 10000,
-          search: taskSearch || undefined,
+          search: appliedTaskSearch || undefined,
           task_type: taskType as 'install' | 'reboot' | undefined,
         });
         rows = mapTaskRows(response.items || []);
@@ -379,8 +406,26 @@ export default function RiskExecutionPage() {
   return <div style={{ background: 'var(--color-bg-1, #fff)', border: '1px solid var(--color-border-1, #e8e8e8)', borderRadius: 10, padding: 16, flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 14 }}>
       <Space>
-        <Input.Search placeholder="任务名称" value={taskSearch} onChange={(event) => setTaskSearch(event.target.value)} onSearch={(value) => loadTasks(1, pagination.pageSize, value)} style={{ width: 220 }} />
-        <Select allowClear placeholder="任务类型" value={taskType} style={{ width: 130 }} options={[{ label: '治理', value: 'install' }, { label: '重启', value: 'reboot' }]} onChange={(value) => { setTaskType(value); loadTasks(1, pagination.pageSize, taskSearch, value); }} />
+        <Input.Search placeholder="任务名称" value={taskSearch} onChange={(event) => setTaskSearch(event.target.value)} onSearch={(value) => {
+          setAppliedTaskSearch(value);
+          setPagination((current) => ({ ...current, current: 1 }));
+          listPollingRef.current?.restart({
+            page: 1,
+            pageSize: pagination.pageSize,
+            search: value,
+            taskType: taskType as ExecutionListQuery['taskType'],
+          });
+        }} style={{ width: 220 }} />
+        <Select allowClear placeholder="任务类型" value={taskType} style={{ width: 130 }} options={[{ label: '治理', value: 'install' }, { label: '重启', value: 'reboot' }]} onChange={(value) => {
+          setTaskType(value);
+          setPagination((current) => ({ ...current, current: 1 }));
+          listPollingRef.current?.restart({
+            page: 1,
+            pageSize: pagination.pageSize,
+            search: appliedTaskSearch,
+            taskType: value,
+          });
+        }} />
       </Space>
       <Space>
         <Button loading={exporting} icon={<ExportOutlined />} onClick={() => handleExport(false)}>导出全部</Button>
@@ -402,7 +447,19 @@ export default function RiskExecutionPage() {
           total: pagination.total,
           showSizeChanger: true,
           showTotal: (total) => `共 ${total} 条`,
-          onChange: (page, pageSize) => loadTasks(page, pageSize),
+          onChange: (page, pageSize) => {
+            setPagination((current) => ({
+              ...current,
+              current: page,
+              pageSize,
+            }));
+            listPollingRef.current?.restart({
+              page,
+              pageSize,
+              search: appliedTaskSearch,
+              taskType: taskType as ExecutionListQuery['taskType'],
+            });
+          },
         }}
       />
     </div>
