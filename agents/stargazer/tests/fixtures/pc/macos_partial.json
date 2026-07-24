@@ -1,0 +1,40 @@
+{
+  "snapshot_status": "partial",
+  "snapshot_id": "b2c3d4e5-6f70-489a-9bcd-ef0123456789",
+  "pc": [
+    {
+      "inst_name": "MAC-00001111-2222-3333-4444-555566667778",
+      "host_name": "OPS-MINI-01",
+      "ip_addr": "192.168.1.99",
+      "os_type": "macos",
+      "os_name": "macOS",
+      "os_version": "13.6",
+      "os_build": "22G120",
+      "architecture": "x86_64",
+      "hardware_uuid": "00001111-2222-3333-4444-555566667778",
+      "serial_number": "C07YW0AAJHD5",
+      "device_model": "Macmini9,1",
+      "logged_in_user": "ops",
+      "snapshot_id": "b2c3d4e5-6f70-489a-9bcd-ef0123456789",
+      "software_snapshot_status": "partial"
+    }
+  ],
+  "software": [
+    {
+      "inst_name": "SW-2B3C4D5E6F708192A3B4C5D6E7F80112",
+      "pc_inst_name": "MAC-00001111-2222-3333-4444-555566667778",
+      "snapshot_id": "b2c3d4e5-6f70-489a-9bcd-ef0123456789",
+      "software_key": "com.apple.safari",
+      "name": "Safari",
+      "version": "17.5",
+      "publisher": "Apple Inc.",
+      "product_id": "com.apple.Safari",
+      "install_location": "/Applications/Safari.app",
+      "install_date": "",
+      "architecture": "universal",
+      "source": "macos_application"
+    }
+  ],
+  "software_expected_count": 3,
+  "software_error_count": 2
+}
