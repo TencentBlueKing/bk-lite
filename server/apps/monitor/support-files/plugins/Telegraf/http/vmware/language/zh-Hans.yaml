@@ -4,6 +4,7 @@ VMWare:
 monitor_object:
   vCenter: vCenter
   ESXI: ESXi 主机
+  DataStorage: 数据存储
 monitor_object_type:
   VMWare: VMware
 monitor_object_metric_group:
@@ -14,6 +15,8 @@ monitor_object_metric_group:
     Memory: 内存
     Disk: 磁盘
     Network: 网络
+  DataStorage:
+    DataStorage: 数据存储
 monitor_object_metric:
   vCenter:
     vmware_esxi_count:
@@ -53,3 +56,13 @@ monitor_object_metric:
     net_bytesTx_average_gauge:
       name: 网络发送吞吐量
       desc: 每秒发送的网络数据量。
+  DataStorage:
+    disk_used_average_gauge:
+      name: 磁盘使用率
+      desc: 数据存储已使用的磁盘空间百分比。
+    disk_free_average_gauge:
+      name: 可用磁盘空间
+      desc: 数据存储中尚未使用的磁盘空间。
+    store_accessible_gauge:
+      name: 数据存储可访问性
+      desc: 数据存储是否可访问。

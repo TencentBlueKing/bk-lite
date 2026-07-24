@@ -5,6 +5,7 @@ VMWare:
 monitor_object:
   vCenter: vCenter
   ESXI: ESXi Host
+  DataStorage: Datastore
 monitor_object_type:
   VMWare: VMware
 monitor_object_metric_group:
@@ -15,6 +16,8 @@ monitor_object_metric_group:
     Memory: Memory
     Disk: Disk
     Network: Network
+  DataStorage:
+    DataStorage: Datastore
 monitor_object_metric:
   vCenter:
     vmware_esxi_count:
@@ -54,3 +57,13 @@ monitor_object_metric:
     net_bytesTx_average_gauge:
       name: Network Transmit Throughput
       desc: Amount of network data sent per second.
+  DataStorage:
+    disk_used_average_gauge:
+      name: Disk Usage
+      desc: Percentage of datastore disk space in use.
+    disk_free_average_gauge:
+      name: Free Disk Space
+      desc: Unused datastore disk space.
+    store_accessible_gauge:
+      name: Datastore Accessibility
+      desc: Whether the datastore is accessible.
