@@ -138,9 +138,13 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
         for result in results:
             _type_key = f"{LanguageConstants.MONITOR_OBJECT_TYPE}.{result['type']}"
             _name_key = f"{LanguageConstants.MONITOR_OBJECT}.{result['name']}"
-            # display_type 优先级：国际化 > 类型ID(英文 slug)
+            # display_type 优先级：国际化 > 类型名称 > 类型ID(英文 slug)
             i18n_type = lan.get(_type_key)
-            result["display_type"] = i18n_type or result["type"]
+            result["display_type"] = (
+                i18n_type
+                or (result.get("type_info") or {}).get("name")
+                or result["type"]
+            )
             # display_name 优先级：国际化 > 模型字段 display_name > name(英文 slug)
             i18n_name = lan.get(_name_key)
             result["display_name"] = i18n_name or result.get("display_name") or result["name"]
