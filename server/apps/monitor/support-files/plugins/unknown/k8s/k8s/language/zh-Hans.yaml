@@ -1,3 +1,151 @@
 K8S:
   name: K8s
   desc: 利用K8s主动上报监控数据的能力，收集Kubernetes集群的状态和健康，包括节点、容器和pod的性能指标。
+monitor_object:
+  Cluster: 集群
+  Pod: Pod
+  Node: 节点
+monitor_object_type:
+  K8S: K8S
+monitor_object_metric_group:
+  Cluster:
+    Counts: 数量
+    Utilization: 使用率
+  Pod:
+    Status: 状态
+    CPU: CPU
+    Memory: 内存
+    Disk: 磁盘
+    Network: 网络
+  Node:
+    Status: 状态
+    CPU: CPU
+    Memory: 内存
+    Disk: 磁盘
+    Disk IO: 磁盘 I/O
+    Network: 网络
+    Load: 负载
+monitor_object_metric:
+  Cluster:
+    cluster_pod_count:
+      name: Pod 数量
+      desc: Kubernetes 集群中的 Pod 总数量。
+    cluster_node_count:
+      name: 节点数量
+      desc: Kubernetes 集群中的节点总数量。
+    cluster_memory_utilization:
+      name: 内存使用率
+      desc: Kubernetes 集群全部节点的已用内存百分比。
+    cluster_disk_utilization:
+      name: 磁盘使用率
+      desc: Kubernetes 集群的整体磁盘使用率。
+  Pod:
+    pod_status_phase:
+      name: Pod 阶段
+      desc: Pod 当前的生命周期阶段。
+    pod_container_restarts_total:
+      name: 容器重启次数
+      desc: Pod 内各容器自启动以来的重启总次数。
+    pod_cpu_utilization:
+      name: CPU 使用率
+      desc: Pod 实际 CPU 使用量占配置 CPU 上限的百分比。
+    pod_memory_utilization:
+      name: 内存使用率
+      desc: Pod 当前内存工作集占配置内存上限的百分比。
+    pod_io_writes_rate:
+      name: 磁盘写入操作数
+      desc: Pod 每秒产生的磁盘写入操作数量。
+    pod_io_reads_rate:
+      name: 磁盘读取操作数
+      desc: Pod 每秒产生的磁盘读取操作数量。
+    pod_network_in_rate:
+      name: 网络入流量
+      desc: Pod 接收的入向网络流量速率。
+    pod_network_out_rate:
+      name: 网络出流量
+      desc: Pod 发送的出向网络流量速率。
+  Node:
+    node_status_condition:
+      name: 节点状态
+      desc: 节点当前的运行状态。
+    node_cpu_utilization:
+      name: CPU 使用率
+      desc: 节点已使用 CPU 资源占可用 CPU 资源的百分比。
+    node_cpu_iowait_rate:
+      name: CPU I/O 等待率
+      desc: CPU 用于等待 I/O 操作的时间百分比。
+    node_cpu_system_rate:
+      name: CPU 系统使用率
+      desc: 内核进程消耗的 CPU 资源百分比。
+    node_cpu_user_rate:
+      name: CPU 用户使用率
+      desc: 用户进程消耗的 CPU 资源百分比。
+    node_memory_utilization:
+      name: 内存使用率
+      desc: 节点应用程序已使用内存的百分比。
+    node_memory_available:
+      name: 可用内存
+      desc: 不会明显影响性能时可供应用程序使用的内存。
+    node_memory_swap_free:
+      name: 可用交换空间
+      desc: 节点上可用的空闲交换空间。
+    node_memory_cached:
+      name: 缓存内存
+      desc: 用于文件缓存且可按需回收的内存。
+    node_memory_shared:
+      name: 共享内存
+      desc: 由多个进程共享的内存。
+    node_memory_buffered:
+      name: 缓冲内存
+      desc: 用于缓冲块设备 I/O 操作的内存。
+    node_disk_usage_rate:
+      name: 磁盘使用率
+      desc: 已使用的磁盘空间百分比。
+    node_disk_free:
+      name: 可用磁盘空间
+      desc: 磁盘或文件系统上可用的空闲空间。
+    node_disk_inodes_used_percent:
+      name: Inode 使用率
+      desc: 文件系统中已使用 inode 的百分比。
+    node_diskio_io_util:
+      name: 磁盘 I/O 使用率
+      desc: 磁盘设备忙于处理 I/O 操作的时间占比。
+    node_diskio_writes_rate:
+      name: 磁盘写入操作数
+      desc: 每秒完成的磁盘写入操作数量。
+    node_diskio_write_bytes_rate:
+      name: 磁盘写入吞吐量
+      desc: 单位时间内写入磁盘的数据量。
+    node_disk_write_latency:
+      name: 磁盘写入时延
+      desc: 磁盘写入操作的平均时延。
+    node_diskio_reads_rate:
+      name: 磁盘读取操作数
+      desc: 每秒完成的磁盘读取操作数量。
+    node_diskio_read_bytes_rate:
+      name: 磁盘读取吞吐量
+      desc: 单位时间内从磁盘读取的数据量。
+    node_disk_read_latency:
+      name: 磁盘读取时延
+      desc: 磁盘读取操作的平均时延。
+    node_net_packets_recv_rate:
+      name: 网络接收数据包数
+      desc: 网络接口单位时间内接收的数据包数量。
+    node_net_packets_sent_rate:
+      name: 网络发送数据包数
+      desc: 网络接口单位时间内发送的数据包数量。
+    node_net_bytes_recv_rate:
+      name: 网络接收吞吐量
+      desc: 网络接口单位时间内接收的数据量。
+    node_net_bytes_sent_rate:
+      name: 网络发送吞吐量
+      desc: 网络接口单位时间内发送的数据量。
+    node_cpu_load1:
+      name: 1 分钟平均负载
+      desc: 最近 1 分钟内的系统平均负载。
+    node_cpu_load5:
+      name: 5 分钟平均负载
+      desc: 最近 5 分钟内的系统平均负载。
+    node_cpu_load15:
+      name: 15 分钟平均负载
+      desc: 最近 15 分钟内的系统平均负载。

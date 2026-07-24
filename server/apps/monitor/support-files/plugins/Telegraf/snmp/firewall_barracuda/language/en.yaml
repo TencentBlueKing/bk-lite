@@ -320,6 +320,18 @@ monitor_object_metric:
       name: Top Conversation Flow Traffic Rate
       desc: Conversation traffic ranked by source, destination, protocol, and destination
         port, used to locate dominant communication pairs.
+    barracuda_cpu_temperature_celsius:
+      name: Barracuda CPU Temperature
+      desc: CPU temperature of the Barracuda firewall in degrees Celsius.
+    barracuda_system_temperature_celsius:
+      name: Barracuda System Temperature
+      desc: System temperature of the Barracuda firewall in degrees Celsius.
+    barracuda_firmware_storage_usage:
+      name: Firmware Storage Usage
+      desc: Firmware storage utilization of the Barracuda firewall.
+    barracuda_log_storage_usage:
+      name: Log Storage Usage
+      desc: Log storage utilization of the Barracuda firewall.
 monitor_object_metric_group:
   Firewall:
     Packet: Packet
@@ -339,3 +351,4 @@ monitor_object_metric_group:
     Application Port: Application Port
     Endpoint: Endpoint
     Conversation: Conversation
+    Storage: Storage
