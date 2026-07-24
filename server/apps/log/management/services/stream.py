@@ -6,8 +6,12 @@ from apps.rpc.system_mgmt import SystemMgmt
 
 
 def _get_default_organization_id():
-    res = SystemMgmt(is_local_client=True).get_group_id("Default")
-    organization = res.get("data") if isinstance(res, dict) and res.get("result") is True else None
+    group_lookup_response = SystemMgmt(is_local_client=True).get_group_id("Default")
+    organization = (
+        group_lookup_response.get("data")
+        if isinstance(group_lookup_response, dict) and group_lookup_response.get("result") is True
+        else None
+    )
 
     if isinstance(organization, bool) or not isinstance(organization, int) or organization <= 0:
         raise ValueError("无法获取有效的默认组织 ID")

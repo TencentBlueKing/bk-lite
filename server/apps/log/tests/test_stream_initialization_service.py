@@ -1,4 +1,5 @@
 import pytest
+from django.core.management import call_command
 
 from apps.log.management.services.stream import init_stream
 from apps.log.models import LogGroup, LogGroupOrganization
@@ -22,6 +23,18 @@ def test_group_lookup_failure_is_observable_without_persisting_default_group(moc
     assert not LogGroup.objects.filter(id="default").exists()
     logger.exception.assert_called_once()
     assert "RuntimeError: group lookup unavailable" in logger.exception.call_args.args[0]
+
+
+def test_log_init_command_continues_after_group_lookup_failure(mocker):
+    _mock_default_group_lookup(mocker, side_effect=RuntimeError("group lookup unavailable"))
+    stream_logger = mocker.patch("apps.log.management.services.stream.logger")
+    command_logger = mocker.patch("apps.log.management.commands.log_init.logger")
+    mocker.patch("apps.log.management.commands.log_init.migrate_collect_type")
+
+    call_command("log_init")
+
+    stream_logger.exception.assert_called_once()
+    command_logger.info.assert_any_call("默认数据流初始化完成！")
 
 
 def test_retry_after_group_lookup_failure_creates_complete_default_group(mocker):
