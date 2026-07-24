@@ -23,6 +23,8 @@ monitor_object_metric_group:
     Status: Status
     CPU: CPU
     Memory: Memory
+    Disk: Disk
+    Disk IO: Disk I/O
 monitor_object_metric:
   Cluster:
     cluster_pod_count:
@@ -96,3 +98,33 @@ monitor_object_metric:
     node_memory_buffered:
       name: Buffered Memory
       desc: Memory used to buffer block-device I/O operations.
+    node_disk_usage_rate:
+      name: Disk Usage
+      desc: Percentage of disk space in use.
+    node_disk_free:
+      name: Free Disk Space
+      desc: Free space available on the disk or filesystem.
+    node_disk_inodes_used_percent:
+      name: Inode Usage
+      desc: Percentage of filesystem inodes in use.
+    node_diskio_io_util:
+      name: Disk I/O Utilization
+      desc: Proportion of time the disk device is busy processing I/O.
+    node_diskio_writes_rate:
+      name: Disk Write Operations
+      desc: Number of disk write operations completed per second.
+    node_diskio_write_bytes_rate:
+      name: Disk Write Throughput
+      desc: Amount of data written to disk per unit time.
+    node_disk_write_latency:
+      name: Disk Write Latency
+      desc: Average latency of disk write operations.
+    node_diskio_reads_rate:
+      name: Disk Read Operations
+      desc: Number of disk read operations completed per second.
+    node_diskio_read_bytes_rate:
+      name: Disk Read Throughput
+      desc: Amount of data read from disk per unit time.
+    node_disk_read_latency:
+      name: Disk Read Latency
+      desc: Average latency of disk read operations.

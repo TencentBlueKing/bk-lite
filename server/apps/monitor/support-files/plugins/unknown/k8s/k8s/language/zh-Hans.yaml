@@ -21,6 +21,8 @@ monitor_object_metric_group:
     Status: 状态
     CPU: CPU
     Memory: 内存
+    Disk: 磁盘
+    Disk IO: 磁盘 I/O
 monitor_object_metric:
   Cluster:
     cluster_pod_count:
@@ -94,3 +96,33 @@ monitor_object_metric:
     node_memory_buffered:
       name: 缓冲内存
       desc: 用于缓冲块设备 I/O 操作的内存。
+    node_disk_usage_rate:
+      name: 磁盘使用率
+      desc: 已使用的磁盘空间百分比。
+    node_disk_free:
+      name: 可用磁盘空间
+      desc: 磁盘或文件系统上可用的空闲空间。
+    node_disk_inodes_used_percent:
+      name: Inode 使用率
+      desc: 文件系统中已使用 inode 的百分比。
+    node_diskio_io_util:
+      name: 磁盘 I/O 使用率
+      desc: 磁盘设备忙于处理 I/O 操作的时间占比。
+    node_diskio_writes_rate:
+      name: 磁盘写入操作数
+      desc: 每秒完成的磁盘写入操作数量。
+    node_diskio_write_bytes_rate:
+      name: 磁盘写入吞吐量
+      desc: 单位时间内写入磁盘的数据量。
+    node_disk_write_latency:
+      name: 磁盘写入时延
+      desc: 磁盘写入操作的平均时延。
+    node_diskio_reads_rate:
+      name: 磁盘读取操作数
+      desc: 每秒完成的磁盘读取操作数量。
+    node_diskio_read_bytes_rate:
+      name: 磁盘读取吞吐量
+      desc: 单位时间内从磁盘读取的数据量。
+    node_disk_read_latency:
+      name: 磁盘读取时延
+      desc: 磁盘读取操作的平均时延。
