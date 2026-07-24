@@ -50,6 +50,8 @@ const Alert: React.FC = () => {
   const { convertToLocalizedTime } = useLocalizedTime();
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const tableRequestIdRef = useRef(0);
+  const chartRequestIdRef = useRef(0);
   const beginTime: number = dayjs().subtract(10080, 'minute').valueOf();
   const lastTime: number = dayjs().valueOf();
   const [searchCondition, setSearchCondition] =
@@ -168,6 +170,7 @@ const Alert: React.FC = () => {
     pagination.current,
     pagination.pageSize,
     myAlarms,
+    searchCondition,
   ]);
 
   useEffect(() => {
@@ -195,6 +198,8 @@ const Alert: React.FC = () => {
     filters.state,
     filters.level,
     filters.alarm_source,
+    myAlarms,
+    searchCondition,
   ]);
 
   const changeTab = useCallback((val: string) => {
@@ -235,6 +240,7 @@ const Alert: React.FC = () => {
   }, []);
 
   const getAlarmTableData = async (type: string, condition?: any) => {
+    const requestId = ++tableRequestIdRef.current;
     const params: any = getParams(condition);
     try {
       setTableLoading(type !== 'timer');
@@ -243,13 +249,16 @@ const Alert: React.FC = () => {
         params.created_at_before = '';
       }
       const data = await getAlarmList(params);
+      if (requestId !== tableRequestIdRef.current) return;
       setTableData(data.items);
       setPagination((pre) => ({
         ...pre,
         total: data.count,
       }));
     } finally {
-      setTableLoading(false);
+      if (requestId === tableRequestIdRef.current) {
+        setTableLoading(false);
+      }
     }
   };
 
@@ -271,10 +280,12 @@ const Alert: React.FC = () => {
       return;
     }
     lastChartParamsRef.current = key;
+    const requestId = ++chartRequestIdRef.current;
 
     try {
       setChartLoading(type !== 'timer');
       const data = await getAlarmList(chartParams);
+      if (requestId !== chartRequestIdRef.current) return;
       setChartData(
         processDataForStackedBarChart(
           (data || []).filter((item: AlarmTableDataItem) => !!item.level),
@@ -283,7 +294,9 @@ const Alert: React.FC = () => {
         ) as any
       );
     } finally {
-      setChartLoading(false);
+      if (requestId === chartRequestIdRef.current) {
+        setChartLoading(false);
+      }
     }
   };
 
