@@ -1,7 +1,12 @@
+from copy import deepcopy
+
 from django.db import models
 from django.utils.functional import cached_property
 
 from apps.core.mixinx import EncryptMixin, PeriodicTaskUtils
+
+
+BK_LOGIN_APP_TOKEN_MASK = "******"
 
 
 class LoginModule(models.Model, EncryptMixin, PeriodicTaskUtils):
@@ -21,13 +26,33 @@ class LoginModule(models.Model, EncryptMixin, PeriodicTaskUtils):
         self.decrypt_field("app_secret", config)
         self.encrypt_field("app_secret", config)
         self.app_secret = config["app_secret"]
+
+        if self.source_type == "bk_login":
+            other_config = deepcopy(self.other_config or {})
+            self._encrypt_app_token(other_config)
+            self.other_config = other_config
         super().save(*args, **kwargs)
+
+    @classmethod
+    def _encrypt_app_token(cls, config):
+        cls.decrypt_field("app_token", config)
+        plaintext = config.get("app_token")
+        cls.encrypt_field("app_token", config)
+        if plaintext and config.get("app_token") == plaintext:
+            raise ValueError("Failed to encrypt bk_login app_token")
 
     @cached_property
     def decrypted_app_secret(self):
         config = {"app_secret": self.app_secret}
         self.decrypt_field("app_secret", config)
         return config["app_secret"]
+
+    @property
+    def decrypted_other_config(self):
+        config = deepcopy(self.other_config or {})
+        if self.source_type == "bk_login":
+            self.decrypt_field("app_token", config)
+        return config
 
     def create_sync_periodic_task(self):
         sync_time = self.other_config.get("sync_time", "00:00")
