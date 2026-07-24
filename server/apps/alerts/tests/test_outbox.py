@@ -1,7 +1,9 @@
+from datetime import timedelta
 from unittest import mock
 
 import pytest
 from django.db import transaction
+from django.utils import timezone
 
 from apps.alerts.models import AlertOutbox
 from apps.alerts.service.outbox import deliver_outbox_record, enqueue_outbox
@@ -69,3 +71,44 @@ def test_delivery_failure_is_retryable_then_marks_delivered():
     record.refresh_from_db()
     assert record.status == AlertOutbox.Status.DELIVERED
     assert record.delivered_at is not None
+
+
+@pytest.mark.django_db
+def test_dispatch_beat_reschedules_stale_delivering_outbox():
+    """投递兜底节拍必须捞起卡死的 DELIVERING 行。
+
+    worker 在投递中途崩溃/重启时行停留 DELIVERING;deliver_outbox_record 允许
+    重投超过去重窗口的 DELIVERING 行,但 dispatch_pending_alert_outbox 此前只扫
+    PENDING,导致这类行永久失联。
+    """
+    from apps.alerts.tasks.tasks import dispatch_pending_alert_outbox
+
+    stale_time = timezone.now() - timedelta(minutes=10)
+
+    pending = AlertOutbox.objects.create(
+        kind="notification", payload={"params": []}, idempotency_key="k-pending"
+    )
+    stale_delivering = AlertOutbox.objects.create(
+        kind="notification", payload={"params": []}, idempotency_key="k-stale-delivering",
+        status=AlertOutbox.Status.DELIVERING, attempts=1,
+    )
+    # updated_at 为 auto_now,需用 update 回拨时间去重窗口之外
+    AlertOutbox.objects.filter(pk=stale_delivering.pk).update(updated_at=stale_time)
+
+    fresh_delivering = AlertOutbox.objects.create(
+        kind="notification", payload={"params": []}, idempotency_key="k-fresh-delivering",
+        status=AlertOutbox.Status.DELIVERING, attempts=1,
+    )
+    delivered = AlertOutbox.objects.create(
+        kind="notification", payload={"params": []}, idempotency_key="k-delivered",
+        status=AlertOutbox.Status.DELIVERED,
+    )
+
+    with mock.patch("apps.alerts.tasks.tasks.deliver_alert_outbox.delay") as delay:
+        dispatch_pending_alert_outbox()
+
+    scheduled = {call.args[0] for call in delay.call_args_list}
+    assert pending.pk in scheduled
+    assert stale_delivering.pk in scheduled
+    assert fresh_delivering.pk not in scheduled  # 仍在去重窗口内,交给原投递流程
+    assert delivered.pk not in scheduled

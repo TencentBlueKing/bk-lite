@@ -4,6 +4,7 @@
 # @Author: windyzhao
 import hashlib
 import time
+from datetime import timedelta
 from typing import Iterable, List
 
 from celery import shared_task
@@ -20,6 +21,9 @@ from apps.core.logger import alert_logger as logger
 
 AUTO_ASSIGNMENT_CHUNK_SIZE = 200
 OUTBOX_DISPATCH_BATCH_SIZE = 200
+# DELIVERING 去重窗口(与 deliver_outbox_record 一致):超过该窗口仍未推进的行
+# 视为投递中断(worker 崩溃/重启),由兜底节拍重新调度,避免永久失联。
+OUTBOX_DELIVERING_STALE_MINUTES = 5
 
 # D1：聚合 beat 单例锁。串行化聚合运行，防止并发聚合对同一 fingerprint 重复建警
 # （create_or_update_alert 的 select_for_update 对"建新"路径无效、Alert.fingerprint 无唯一约束）。
@@ -45,9 +49,14 @@ def dispatch_pending_alert_outbox():
     from apps.alerts.models.outbox import AlertOutbox
 
     now = timezone.now()
+    stale_delivering_before = now - timedelta(minutes=OUTBOX_DELIVERING_STALE_MINUTES)
     ids = list(
         AlertOutbox.objects.filter(
-            Q(status=AlertOutbox.Status.PENDING),
+            Q(status=AlertOutbox.Status.PENDING)
+            | Q(
+                status=AlertOutbox.Status.DELIVERING,
+                updated_at__lte=stale_delivering_before,
+            ),
             Q(next_retry_at__isnull=True) | Q(next_retry_at__lte=now),
         )
         .order_by("pk")
