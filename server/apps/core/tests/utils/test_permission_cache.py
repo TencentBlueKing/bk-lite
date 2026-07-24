@@ -5,6 +5,8 @@ import pydantic.root_model  # noqa
 对支持 delete_pattern 的后端分支，用具备 delete_pattern 的 fake cache 注入到模块的 cache 引用。
 断言真实缓存副作用（get/set/delete 后的可见性）与键派生的确定性。
 """
+import hashlib
+
 import pytest
 from django.core.cache import cache
 from django.test import override_settings
@@ -67,6 +69,16 @@ class TestKeyDerivation:
         assert k1.startswith(prefix)
         assert k1 != k2
 
+    def test_cache_key_separates_query_scopes(self):
+        app_key = pc._get_cache_key("alice", "domain.com", 1, "log", "policy", query_scope="app")
+        module_key = pc._get_cache_key("alice", "domain.com", 1, "log", "policy", query_scope="module")
+        assert app_key != module_key
+
+    def test_default_scope_preserves_legacy_cache_key(self):
+        prefix = pc._get_user_perm_prefix("alice", "domain.com")
+        legacy_hash = hashlib.md5("1:log:policy:False".encode()).hexdigest()
+        assert pc._get_cache_key("alice", "domain.com", 1, "log", "policy") == f"{prefix}{legacy_hash}"
+
     def test_token_info_key_format(self):
         assert pc._get_token_info_key("u", "d") == "token_info:u:d"
 
@@ -101,6 +113,26 @@ class TestPermissionRulesCache:
         data = {"team": [1], "instance": []}
         pc.set_cached_permission_rules("u", "domain.com", 1, "cmdb", "view", data)
         assert pc.get_cached_permission_rules("u", "domain.com", 1, "cmdb", "view") == data
+
+    def test_query_scopes_do_not_share_cached_payloads(self):
+        app_data = {"team": [1], "instance": []}
+        module_data = {"result": True, "data": {"1": app_data}, "team": [1]}
+        pc.set_cached_permission_rules("u", "domain.com", 1, "log", "policy", app_data)
+        pc.set_cached_permission_rules(
+            "u",
+            "domain.com",
+            1,
+            "log",
+            "policy",
+            module_data,
+            query_scope="module",
+        )
+
+        assert pc.get_cached_permission_rules("u", "domain.com", 1, "log", "policy") == app_data
+        assert (
+            pc.get_cached_permission_rules("u", "domain.com", 1, "log", "policy", query_scope="module")
+            == module_data
+        )
 
     def test_set_maintains_key_index_on_non_pattern_backend(self):
         pc.set_cached_permission_rules("u", "domain.com", 1, "cmdb", "view", {"team": []})

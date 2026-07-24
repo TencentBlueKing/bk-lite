@@ -69,6 +69,7 @@ def _get_cache_key(
     app_name: str,
     permission_key: str,
     include_children: bool = False,
+    query_scope: str = "app",
 ) -> str:
     """
     生成权限规则缓存键
@@ -84,6 +85,7 @@ def _get_cache_key(
         app_name: 应用名称
         permission_key: 权限键
         include_children: 是否包含子组
+        query_scope: 查询结果范围（app 为单模块规则，module 为模块下全部规则）
 
     Returns:
         缓存键字符串
@@ -91,6 +93,9 @@ def _get_cache_key(
     user_prefix = _get_user_perm_prefix(username, domain)
     # 剩余维度继续 MD5 哈希，避免键过长
     key_data = f"{current_team}:{app_name}:{permission_key}:{include_children}"
+    # 默认范围沿用历史键，避免滚动发布时让全部既有权限缓存同时冷启动。
+    if query_scope != "app":
+        key_data = f"{key_data}:{query_scope}"
     key_hash = hashlib.md5(key_data.encode()).hexdigest()
     return f"{user_prefix}{key_hash}"
 
@@ -107,6 +112,7 @@ def get_cached_permission_rules(
     app_name: str,
     permission_key: str,
     include_children: bool = False,
+    query_scope: str = "app",
 ) -> Optional[Dict]:
     """
     获取缓存的权限规则
@@ -118,11 +124,20 @@ def get_cached_permission_rules(
         app_name: 应用名称
         permission_key: 权限键
         include_children: 是否包含子组
+        query_scope: 查询结果范围
 
     Returns:
         缓存的权限规则，未命中返回 None
     """
-    cache_key = _get_cache_key(username, domain, current_team, app_name, permission_key, include_children)
+    cache_key = _get_cache_key(
+        username,
+        domain,
+        current_team,
+        app_name,
+        permission_key,
+        include_children,
+        query_scope,
+    )
     cached = cache.get(cache_key)
     if cached is not None:
         logger.debug(f"Permission rules cache hit: {username}@{app_name}/{permission_key}")
@@ -137,6 +152,7 @@ def set_cached_permission_rules(
     permission_key: str,
     permission_data: Dict,
     include_children: bool = False,
+    query_scope: str = "app",
 ) -> None:
     """
     缓存权限规则
@@ -149,8 +165,17 @@ def set_cached_permission_rules(
         permission_key: 权限键
         permission_data: 权限数据
         include_children: 是否包含子组
+        query_scope: 查询结果范围
     """
-    cache_key = _get_cache_key(username, domain, current_team, app_name, permission_key, include_children)
+    cache_key = _get_cache_key(
+        username,
+        domain,
+        current_team,
+        app_name,
+        permission_key,
+        include_children,
+        query_scope,
+    )
     cache.set(cache_key, permission_data, PERMISSION_CACHE_TTL)
 
     # 支持 delete_pattern 的后端（如 django-redis）：cache_key 已内嵌用户前缀，
