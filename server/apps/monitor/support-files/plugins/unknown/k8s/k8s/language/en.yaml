@@ -25,6 +25,8 @@ monitor_object_metric_group:
     Memory: Memory
     Disk: Disk
     Disk IO: Disk I/O
+    Network: Network
+    Load: Load
 monitor_object_metric:
   Cluster:
     cluster_pod_count:
@@ -128,3 +130,24 @@ monitor_object_metric:
     node_disk_read_latency:
       name: Disk Read Latency
       desc: Average latency of disk read operations.
+    node_net_packets_recv_rate:
+      name: Network Receive Packets
+      desc: Number of packets received per unit time on the network interface.
+    node_net_packets_sent_rate:
+      name: Network Transmit Packets
+      desc: Number of packets sent per unit time on the network interface.
+    node_net_bytes_recv_rate:
+      name: Network Receive Throughput
+      desc: Amount of data received per unit time on the network interface.
+    node_net_bytes_sent_rate:
+      name: Network Transmit Throughput
+      desc: Amount of data sent per unit time on the network interface.
+    node_cpu_load1:
+      name: 1-Minute Load Average
+      desc: Average system load over the last minute.
+    node_cpu_load5:
+      name: 5-Minute Load Average
+      desc: Average system load over the last five minutes.
+    node_cpu_load15:
+      name: 15-Minute Load Average
+      desc: Average system load over the last fifteen minutes.

@@ -23,6 +23,8 @@ monitor_object_metric_group:
     Memory: 内存
     Disk: 磁盘
     Disk IO: 磁盘 I/O
+    Network: 网络
+    Load: 负载
 monitor_object_metric:
   Cluster:
     cluster_pod_count:
@@ -126,3 +128,24 @@ monitor_object_metric:
     node_disk_read_latency:
       name: 磁盘读取时延
       desc: 磁盘读取操作的平均时延。
+    node_net_packets_recv_rate:
+      name: 网络接收数据包数
+      desc: 网络接口单位时间内接收的数据包数量。
+    node_net_packets_sent_rate:
+      name: 网络发送数据包数
+      desc: 网络接口单位时间内发送的数据包数量。
+    node_net_bytes_recv_rate:
+      name: 网络接收吞吐量
+      desc: 网络接口单位时间内接收的数据量。
+    node_net_bytes_sent_rate:
+      name: 网络发送吞吐量
+      desc: 网络接口单位时间内发送的数据量。
+    node_cpu_load1:
+      name: 1 分钟平均负载
+      desc: 最近 1 分钟内的系统平均负载。
+    node_cpu_load5:
+      name: 5 分钟平均负载
+      desc: 最近 5 分钟内的系统平均负载。
+    node_cpu_load15:
+      name: 15 分钟平均负载
+      desc: 最近 15 分钟内的系统平均负载。
