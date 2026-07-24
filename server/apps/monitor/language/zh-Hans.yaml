@@ -1,3 +1,9 @@
+monitor_object_type:
+  Container Management: 容器管理
+  K8S: K8S
+  VMWare: VMware
+  Tencent Cloud: 腾讯云
+
 flow_onboarding_ui:
   accessAsset: 接入资产
   accessGuide: 接入指引
