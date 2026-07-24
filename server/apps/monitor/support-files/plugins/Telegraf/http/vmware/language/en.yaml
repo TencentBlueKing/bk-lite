@@ -4,11 +4,17 @@ VMWare:
   name: VMWare
 monitor_object:
   vCenter: vCenter
+  ESXI: ESXi Host
 monitor_object_type:
   VMWare: VMware
 monitor_object_metric_group:
   vCenter:
     Quantity: Quantity
+  ESXI:
+    CPU: CPU
+    Memory: Memory
+    Disk: Disk
+    Network: Network
 monitor_object_metric:
   vCenter:
     vmware_esxi_count:
@@ -20,3 +26,31 @@ monitor_object_metric:
     vmware_vm_count:
       name: Virtual Machine Count
       desc: Number of virtual machines in the VMware environment.
+  ESXI:
+    cpu_usage_average_gauge:
+      name: CPU Usage
+      desc: CPU utilization of the ESXi host.
+    mem_usage_average_gauge:
+      name: Memory Usage
+      desc: Memory utilization of the ESXi host.
+    mem_consumed_average_gauge:
+      name: Memory Consumed
+      desc: Active memory consumed by the ESXi host.
+    disk_read_average_gauge:
+      name: Disk Read Throughput
+      desc: Amount of data read from disk per second.
+    disk_write_average_gauge:
+      name: Disk Write Throughput
+      desc: Amount of data written to disk per second.
+    disk_numberRead_summation_gauge_rate:
+      name: Disk Read Operations
+      desc: Number of disk read operations completed per second.
+    disk_numberWrite_summation_gauge_rate:
+      name: Disk Write Operations
+      desc: Number of disk write operations completed per second.
+    net_bytesRx_average_gauge:
+      name: Network Receive Throughput
+      desc: Amount of network data received per second.
+    net_bytesTx_average_gauge:
+      name: Network Transmit Throughput
+      desc: Amount of network data sent per second.

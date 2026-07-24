@@ -3,11 +3,17 @@ VMWare:
   name: VMWare
 monitor_object:
   vCenter: vCenter
+  ESXI: ESXi 主机
 monitor_object_type:
   VMWare: VMware
 monitor_object_metric_group:
   vCenter:
     Quantity: 数量
+  ESXI:
+    CPU: CPU
+    Memory: 内存
+    Disk: 磁盘
+    Network: 网络
 monitor_object_metric:
   vCenter:
     vmware_esxi_count:
@@ -19,3 +25,31 @@ monitor_object_metric:
     vmware_vm_count:
       name: 虚拟机数量
       desc: VMware 环境中的虚拟机数量。
+  ESXI:
+    cpu_usage_average_gauge:
+      name: CPU 使用率
+      desc: ESXi 主机的 CPU 使用率。
+    mem_usage_average_gauge:
+      name: 内存使用率
+      desc: ESXi 主机的内存使用率。
+    mem_consumed_average_gauge:
+      name: 已用内存
+      desc: ESXi 主机实际消耗的活动内存。
+    disk_read_average_gauge:
+      name: 磁盘读取吞吐量
+      desc: 每秒从磁盘读取的数据量。
+    disk_write_average_gauge:
+      name: 磁盘写入吞吐量
+      desc: 每秒写入磁盘的数据量。
+    disk_numberRead_summation_gauge_rate:
+      name: 磁盘读取操作数
+      desc: 每秒完成的磁盘读取操作数量。
+    disk_numberWrite_summation_gauge_rate:
+      name: 磁盘写入操作数
+      desc: 每秒完成的磁盘写入操作数量。
+    net_bytesRx_average_gauge:
+      name: 网络接收吞吐量
+      desc: 每秒接收的网络数据量。
+    net_bytesTx_average_gauge:
+      name: 网络发送吞吐量
+      desc: 每秒发送的网络数据量。
