@@ -1,3 +1,5 @@
+import re
+
 from ldap3.core.exceptions import LDAPBindError
 
 from apps.core.logger import logger
@@ -24,6 +26,46 @@ AD_LOGIN_ATTRIBUTES = [
 ]
 
 
+def _get_ldap_result_code(error: Exception) -> str:
+    """Extract an LDAP result code without exposing the raw server response."""
+    match = re.search(r"(?:ldap\s+)?result\s+(\d+)|-\s*(\d+)\s*-", str(error), re.IGNORECASE)
+    if match is None:
+        return ""
+    return match.group(1) or match.group(2) or ""
+
+
+def _build_ad_connection_failure(error: Exception) -> CapabilityExecutionResult:
+    if isinstance(error, LDAPBindError):
+        return CapabilityExecutionResult.failed_result(
+            "AD connection credentials were rejected",
+            code="provider.auth_failed",
+            detail="LDAP bind rejected the configured credentials",
+            external_code=_get_ldap_result_code(error),
+        )
+
+    return CapabilityExecutionResult.failed_result(
+        "AD connection test failed",
+        code="provider.request_failed",
+        detail="LDAP connection request failed",
+    )
+
+
+class ADBaseConnectionAdapter:
+    @classmethod
+    def test_connection(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
+        try:
+            connection_config = build_connection_config(config, require_base_dn=False)
+            if not all([connection_config.connection_url, connection_config.bind_dn, connection_config.bind_password]):
+                return CapabilityExecutionResult.failed_result(
+                    "AD connection configuration is incomplete",
+                    code="provider.invalid_config",
+                )
+            probe_root_dse(connection_config)
+        except Exception as error:
+            return _build_ad_connection_failure(error)
+        return CapabilityExecutionResult.success_result("AD base connection is ready")
+
+
 class ADLoginAuthAdapter(BaseLoginAuthAdapter):
     capability_key = "login_auth"
 
@@ -44,11 +86,8 @@ class ADLoginAuthAdapter(BaseLoginAuthAdapter):
                 )
 
             probe_root_dse(connection_config)
-        except Exception:
-            return CapabilityExecutionResult.failed_result(
-                "AD login connection test failed",
-                code="provider.request_failed",
-            )
+        except Exception as error:
+            return _build_ad_connection_failure(error)
 
         return CapabilityExecutionResult.success_result("AD login capability is ready")
 
@@ -155,11 +194,8 @@ class ADUserSyncAdapter(BaseUserSyncAdapter):
                 )
 
             probe_root_dse(connection_config)
-        except Exception:
-            return CapabilityExecutionResult.failed_result(
-                "AD user sync connection test failed",
-                code="provider.request_failed",
-            )
+        except Exception as error:
+            return _build_ad_connection_failure(error)
 
         return CapabilityExecutionResult.success_result("AD user sync capability is ready")
 

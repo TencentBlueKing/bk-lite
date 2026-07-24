@@ -302,6 +302,23 @@ def test_ad_connection_test_returns_failure_without_adapter_error_log(mock_probe
 
 
 @patch("apps.system_mgmt.providers.adapters.ad.probe_root_dse")
+def test_ad_connection_test_exposes_sanitized_ldap_bind_diagnostics(mock_probe_root_dse):
+    mock_probe_root_dse.side_effect = LDAPBindError("LDAP result 49: invalidCredentials")
+
+    result = ADLoginAuthAdapter.test_connection(
+        config=_base_config(),
+        provider_key="ad",
+        capability_key="login_auth",
+    )
+
+    assert result.success is False
+    assert result.errors[0].code == "provider.auth_failed"
+    assert result.errors[0].field == ""
+    assert result.errors[0].external_code == "49"
+    assert result.errors[0].detail == "LDAP bind rejected the configured credentials"
+
+
+@patch("apps.system_mgmt.providers.adapters.ad.probe_root_dse")
 @patch("apps.system_mgmt.providers.adapters.ad.build_connection_config")
 def test_ad_user_sync_test_connection_succeeds_without_base_dn(
     mock_build_connection_config,
