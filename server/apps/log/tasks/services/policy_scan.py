@@ -113,6 +113,31 @@ class LogPolicyScan:
         digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
         return f"policy_{self.policy.id}_{digest}"
 
+    def _build_aggregate_source_id(self, result, group_by):
+        """构建有长度边界且无分隔符歧义的聚合告警身份。"""
+        group_key = self._build_group_key(result, group_by)
+        legacy_source_id = f"policy_{self.policy.id}_{group_key}"
+        legacy_safe = all(
+            isinstance(field, str)
+            and field
+            and not any(separator in field for separator in (",", "="))
+            and field in result
+            and isinstance(result[field], str)
+            and result[field] not in {"null", "unknown"}
+            and not any(separator in result[field] for separator in (",", "="))
+            for field in group_by
+        )
+        if legacy_safe and len(legacy_source_id) <= Alert._meta.get_field("source_id").max_length:
+            return legacy_source_id
+
+        identity = [
+            {"field": field, "present": field in result, "value": result.get(field)}
+            for field in sorted(group_by)
+        ]
+        canonical = json.dumps(identity, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        return f"policy_{self.policy.id}_agg_{digest}"
+
     def _get_keyword_match_count(self, query, start_timestamp, end_timestamp):
         """获取关键字告警真实命中数量"""
         count_query = f"{query} | stats count() as total_count"
@@ -293,9 +318,8 @@ class LogPolicyScan:
                 if self._check_rule_conditions(aggregate_data, rule):
                     # 渲染告警名称模板
                     rendered_alert_name = self._render_alert_name(result, group_by)
-                    # 构建分组标识和source_id
-                    group_key = self._build_group_key(result, group_by)
-                    source_id = f"policy_{self.policy.id}_{group_key}"
+                    # 构建有长度边界且无分隔符歧义的 source_id
+                    source_id = self._build_aggregate_source_id(result, group_by)
 
                     events.append(
                         {

@@ -270,6 +270,57 @@ class TestBuildGroupKey:
         assert _scan()._build_group_key({}, ["host"]) == "host=unknown"
 
 
+class TestBuildAggregateSourceId:
+    def test_short_unambiguous_group_preserves_legacy_source_id(self):
+        scan = _scan(id=9)
+
+        assert scan._build_aggregate_source_id({"host": "h1"}, ["host"]) == "policy_9_host=h1"
+
+    def test_long_group_uses_bounded_hash(self):
+        source_id = _scan(id=9)._build_aggregate_source_id({"host": "x" * 200}, ["host"])
+
+        assert source_id.startswith("policy_9_agg_")
+        assert len(source_id) <= 100
+
+    def test_legacy_collision_groups_get_distinct_source_ids(self):
+        scan = _scan(id=9)
+        first = {"a": "x, b=y", "b": "z"}
+        second = {"a": "x", "b": "y, b=z"}
+
+        assert scan._build_group_key(first, ["a", "b"]) == scan._build_group_key(second, ["a", "b"])
+        assert scan._build_aggregate_source_id(first, ["a", "b"]) != scan._build_aggregate_source_id(
+            second, ["a", "b"]
+        )
+
+    def test_hashed_identity_is_independent_of_group_field_order(self):
+        scan = _scan(id=9)
+        result = {"a": "x,y", "b": "z"}
+
+        assert scan._build_aggregate_source_id(result, ["a", "b"]) == scan._build_aggregate_source_id(
+            result, ["b", "a"]
+        )
+
+    def test_aggregate_detection_uses_bounded_source_id(self, monkeypatch):
+        scan = _scan(
+            id=9,
+            alert_type="aggregate",
+            alert_condition={
+                "query": "*",
+                "group_by": ["host"],
+                "rule": {
+                    "mode": "and",
+                    "conditions": [{"func": "count", "field": "_msg", "op": ">", "value": 2}],
+                },
+            },
+        )
+        monkeypatch.setattr(scan.vlogs_api, "query", lambda **_kwargs: [{"host": "x" * 200, "count__msg": "9"}])
+
+        events = scan.aggregate_alert_detection()
+
+        assert events[0]["source_id"].startswith("policy_9_agg_")
+        assert len(events[0]["source_id"]) <= 100
+
+
 class TestCheckRuleConditions:
     def test_no_conditions_false(self):
         assert _scan()._check_rule_conditions({}, {"conditions": []}) is False
