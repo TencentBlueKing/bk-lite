@@ -330,6 +330,36 @@ class TestMonitorObjectUpdate:
         child = MonitorObject.objects.get(name="UpdChild")
         assert child.parent_id == parent.id
 
+    def test_builtin_object_can_only_update_cleanup_policy(self, api_client):
+        obj = MonitorObject.objects.create(
+            name="BuiltinCleanup", level="base", is_builtin=True, display_name="内置对象"
+        )
+        instance = MonitorInstance.objects.create(
+            id="builtin-auto", monitor_object=obj, auto=True, missing_duration_seconds=3600
+        )
+
+        resp = api_client.patch(
+            f"{BASE}/api/monitor_object/{obj.id}/",
+            {"cleanup_policy": "timeout", "cleanup_timeout_days": 3},
+            format="json",
+        )
+
+        assert resp.status_code == 200, resp.content
+        obj.refresh_from_db()
+        instance.refresh_from_db()
+        assert obj.cleanup_policy == MonitorObject.CLEANUP_POLICY_TIMEOUT
+        assert obj.cleanup_timeout_days == 3
+        assert instance.missing_duration_seconds == 0
+
+        rejected = api_client.patch(
+            f"{BASE}/api/monitor_object/{obj.id}/",
+            {"display_name": "被篡改"},
+            format="json",
+        )
+        assert rejected.status_code != 200
+        obj.refresh_from_db()
+        assert obj.display_name == "内置对象"
+
 
 class TestMonitorObjectActions:
     def test_order(self, api_client, mocker):
@@ -361,6 +391,18 @@ class TestMonitorObjectActions:
         )
         body = resp.json()
         assert body.get("result") is False or resp.status_code != 200
+
+    def test_builtin_visibility_is_read_only(self, api_client):
+        obj = MonitorObject.objects.create(
+            name="BuiltinVisibility", level="base", is_builtin=True, is_visible=True
+        )
+        resp = api_client.post(
+            f"{BASE}/api/monitor_object/{obj.id}/visibility/",
+            {"is_visible": False}, format="json",
+        )
+        assert resp.status_code != 200
+        obj.refresh_from_db()
+        assert obj.is_visible is True
 
 
 class TestMonitorObjectTypeList:

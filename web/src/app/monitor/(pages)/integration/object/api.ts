@@ -158,6 +158,8 @@ const useObjectApi = () => {
       level: 'base',
       is_visible: true
     };
+    postData.cleanup_policy = data.cleanup_policy || 'no_cleanup';
+    postData.cleanup_timeout_days = data.cleanup_timeout_days || 1;
 
     // 如果有子对象，一并传给后端
     if (data.children && data.children.length > 0) {
@@ -181,6 +183,10 @@ const useObjectApi = () => {
     if (data.type_id !== undefined) patchData.type = data.type_id;
     if (data.description !== undefined)
       patchData.description = data.description;
+    if (data.cleanup_policy !== undefined)
+      patchData.cleanup_policy = data.cleanup_policy;
+    if (data.cleanup_timeout_days !== undefined)
+      patchData.cleanup_timeout_days = data.cleanup_timeout_days;
 
     // 传递子对象（更新名称或新增）
     if (data.children !== undefined) {

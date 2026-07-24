@@ -177,7 +177,9 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
     @action(methods=["post"], detail=False, url_path="import")
     @HasPermission("integration_configure-Add")
     def import_monitor_object(self, request):
-        MonitorPluginService.import_monitor_plugin(request.data)
+        data = request.data.copy()
+        data.pop("_mark_objects_builtin", None)
+        MonitorPluginService.import_monitor_plugin(data)
         return WebUtils.response_success()
 
     @action(methods=["get"], detail=False, url_path="export/(?P<pk>[^/.]+)")

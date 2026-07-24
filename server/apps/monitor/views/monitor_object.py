@@ -1,3 +1,4 @@
+from django.db import transaction
 from django.db.models import Count, Q
 from rest_framework import viewsets
 from rest_framework.decorators import action
@@ -17,6 +18,8 @@ from apps.monitor.models.monitor_object import MonitorObject, MonitorObjectType
 from apps.monitor.serializers.monitor_object import MonitorObjectSerializer, MonitorObjectTypeSerializer
 from apps.monitor.serializers.view_column_preference import MonitorViewColumnPreferenceSerializer
 from apps.monitor.services.monitor_object import MonitorObjectService
+from apps.monitor.services.monitor_object_cleanup import MonitorObjectCleanupPolicyService
+from apps.core.exceptions.base_app_exception import ValidationAppException
 from apps.monitor.utils.display_fields import build_display_column_key, validate_display_fields
 from apps.monitor.utils.instance_id_keys import resolve_monitor_object_instance_id_keys
 from config.drf.pagination import CustomPageNumberPagination
@@ -148,8 +151,6 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
             # display_name 优先级：国际化 > 模型字段 display_name > name(英文 slug)
             i18n_name = lan.get(_name_key)
             result["display_name"] = i18n_name or result.get("display_name") or result["name"]
-            # 添加是否内置标识：有国际化配置 或 没有 display_name 字段 表示内置
-            result["is_builtin"] = bool(i18n_name) or not result.get("display_name")
             # 添加子对象数量
             result["children_count"] = children_count_map.get(result["id"], 0)
             # 展示列名国际化：默认列跟随语言，自定义列保留用户输入。
@@ -241,6 +242,8 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
     def visibility(self, request, pk=None):
         """切换对象可见性"""
         obj = self.get_object()
+        if obj.is_builtin:
+            raise ValidationAppException("内置监控对象只能修改清理策略")
         is_visible = request.data.get("is_visible")
         if is_visible is None:
             return WebUtils.response_error("is_visible is required")
@@ -252,6 +255,8 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
     def display_fields(self, request, pk=None):
         """保存对象的视图列表展示列配置（用户自定义后 re-seed 不再覆盖）"""
         obj = self.get_object()
+        if obj.is_builtin:
+            raise ValidationAppException("内置监控对象只能修改清理策略")
         try:
             normalized = validate_display_fields(obj, request.data.get("display_fields", []))
         except Exception as e:
@@ -307,6 +312,12 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         parent_obj = serializer.save()
+        if "cleanup_policy" in data or "cleanup_timeout_days" in data:
+            parent_obj = MonitorObjectCleanupPolicyService.configure(
+                parent_obj,
+                policy=parent_obj.cleanup_policy,
+                timeout_days=parent_obj.cleanup_timeout_days,
+            )
 
         # 批量创建子对象
         if children:
@@ -342,6 +353,24 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
         instance = self.get_object()
         data = request.data.copy()
         children = data.pop("children", None)
+        cleanup_keys = {"cleanup_policy", "cleanup_timeout_days"}
+        requested_cleanup = cleanup_keys & set(data.keys())
+
+        if instance.is_builtin:
+            disallowed_keys = set(data.keys()) - cleanup_keys
+            if children is not None or disallowed_keys:
+                raise ValidationAppException("内置监控对象只能修改清理策略")
+            policy = data.get("cleanup_policy", instance.cleanup_policy)
+            timeout_days = data.get("cleanup_timeout_days", instance.cleanup_timeout_days)
+            instance = MonitorObjectCleanupPolicyService.configure(
+                instance,
+                policy=policy,
+                timeout_days=timeout_days,
+            )
+            return WebUtils.response_success(self.get_serializer(instance).data)
+
+        cleanup_policy = data.pop("cleanup_policy", instance.cleanup_policy)
+        cleanup_timeout_days = data.pop("cleanup_timeout_days", instance.cleanup_timeout_days)
 
         # 父对象自动补充 instance_id_keys
         data["instance_id_keys"] = resolve_monitor_object_instance_id_keys(
@@ -354,10 +383,17 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
         if not instance.default_metric and "default_metric" not in data:
             data["default_metric"] = f"any({{instance_type='{instance.name}'}}) by (instance_id)"
 
-        # 更新父对象
-        serializer = self.get_serializer(instance, data=data, partial=partial)
-        serializer.is_valid(raise_exception=True)
-        self.perform_update(serializer)
+        # 更新父对象；清理策略通过专用服务写入并重置累计周期。
+        with transaction.atomic():
+            serializer = self.get_serializer(instance, data=data, partial=partial or not data)
+            serializer.is_valid(raise_exception=True)
+            self.perform_update(serializer)
+            if requested_cleanup:
+                instance = MonitorObjectCleanupPolicyService.configure(
+                    instance,
+                    policy=cleanup_policy,
+                    timeout_days=cleanup_timeout_days,
+                )
 
         # 处理子对象
         if children is not None:
@@ -401,7 +437,7 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
             if new_children:
                 MonitorObject.objects.bulk_create(new_children)
 
-        return WebUtils.response_success(serializer.data)
+        return WebUtils.response_success(self.get_serializer(instance).data)
 
 
 class MonitorObjectTypeViewSet(viewsets.ModelViewSet):
