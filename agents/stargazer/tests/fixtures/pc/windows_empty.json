@@ -1,0 +1,25 @@
+{
+  "snapshot_status": "complete",
+  "snapshot_id": "7b2e1a40-1111-4b22-9c33-44099c3f8305",
+  "pc": [
+    {
+      "inst_name": "WIN-4C4C4544-0038-5910-8058-C4C04F433633",
+      "host_name": "LAB-PC-02",
+      "ip_addr": "192.168.1.57",
+      "os_type": "windows",
+      "os_name": "Microsoft Windows 10 Pro",
+      "os_version": "10.0.19045",
+      "os_build": "19045",
+      "architecture": "x64",
+      "hardware_uuid": "4C4C4544-0038-5910-8058-C4C04F433633",
+      "serial_number": "SN-DEF456",
+      "device_model": "ThinkCentre M720q",
+      "logged_in_user": "LAB\\bob",
+      "snapshot_id": "7b2e1a40-1111-4b22-9c33-44099c3f8305",
+      "software_snapshot_status": "complete"
+    }
+  ],
+  "software": [],
+  "software_expected_count": 0,
+  "software_error_count": 0
+}
