@@ -26,10 +26,17 @@ export interface UserApiSecretCreateResponse {
 export interface NetworkWhiteListItem {
   id: number;
   network: string;
+  domain_name: string;
+  is_build_in: boolean;
   remark: string;
   enabled: boolean;
   created_at: string;
   created_by?: string;
+}
+
+export interface NetworkWhiteListPage {
+  count: number;
+  items: NetworkWhiteListItem[];
 }
 
 export const useSettingsApi = () => {
@@ -84,19 +91,19 @@ export const useSettingsApi = () => {
     return post('/base/user_api_secret/');
   }, [post]);
 
-  const fetchNetworkWhiteList = useCallback(async (): Promise<NetworkWhiteListItem[]> => {
-    return get('/system_mgmt/network_white_list/');
+  const fetchNetworkWhiteList = useCallback(async (page: number, pageSize: number): Promise<NetworkWhiteListPage> => {
+    return get('/system_mgmt/network_white_list/', { params: { page, page_size: pageSize } });
   }, [get]);
 
   const createNetworkWhiteList = useCallback(
-    async (data: { network: string; remark?: string; enabled?: boolean }): Promise<NetworkWhiteListItem> => {
+    async (data: { network?: string; domain_name?: string; remark?: string; enabled?: boolean }): Promise<NetworkWhiteListItem> => {
       return post('/system_mgmt/network_white_list/', data);
     },
     [post]
   );
 
   const updateNetworkWhiteList = useCallback(
-    async (id: number, data: { network?: string; remark?: string; enabled?: boolean }): Promise<NetworkWhiteListItem> => {
+    async (id: number, data: { network?: string; domain_name?: string; remark?: string; enabled?: boolean }): Promise<NetworkWhiteListItem> => {
       return patch(`/system_mgmt/network_white_list/${id}/`, data);
     },
     [patch]

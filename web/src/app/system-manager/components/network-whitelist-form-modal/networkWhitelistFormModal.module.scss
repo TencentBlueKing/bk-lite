@@ -1,0 +1,132 @@
+.modal {
+  :global(.ant-modal-content) {
+    border: 1px solid var(--color-border-1);
+    border-radius: 14px;
+    box-shadow: 0 18px 48px rgb(16 24 40 / 18%);
+  }
+
+  :global(.ant-modal-header) {
+    margin-bottom: 16px;
+  }
+
+  :global(.ant-modal-footer) {
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid var(--color-border-1);
+  }
+}
+
+.titleBlock {
+  padding-right: 28px;
+}
+
+.titleText,
+.titleDescription {
+  display: block;
+}
+
+.titleText {
+  color: var(--color-text-1);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 22px;
+}
+
+.titleDescription {
+  margin-top: 2px;
+  color: var(--color-text-3);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 18px;
+}
+
+.form {
+  :global(.ant-form-item) {
+    margin-bottom: 16px;
+  }
+
+  :global(.ant-form-item-label) {
+    padding-bottom: 7px;
+  }
+
+  :global(.ant-form-item-extra) {
+    min-height: auto;
+    margin-top: 6px;
+    color: var(--color-text-3);
+    font-size: 12px;
+    line-height: 18px;
+  }
+}
+
+.typeSection {
+  margin-bottom: 16px;
+}
+
+.typeLabel,
+.typeHint {
+  display: block;
+}
+
+.typeLabel {
+  margin-bottom: 7px;
+}
+
+.typeHint {
+  margin-top: 6px;
+  color: var(--color-text-3);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.typeSelector {
+  width: fit-content;
+  padding: 2px;
+  background: transparent;
+  border: 1px solid var(--color-border-1);
+  border-radius: 8px;
+
+  :global(.ant-segmented-group) {
+    gap: 2px;
+  }
+
+  :global(.ant-segmented-item) {
+    min-width: 76px;
+    color: var(--color-text-2);
+    border-radius: 6px;
+  }
+
+  :global(.ant-segmented-item-selected) {
+    color: var(--color-primary);
+    background: var(--color-primary-bg-active);
+    box-shadow: none;
+  }
+
+  :global(.ant-segmented-thumb) {
+    background: var(--color-primary-bg-active);
+    border-radius: 6px;
+    box-shadow: none;
+  }
+}
+
+.typeOption {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  justify-content: center;
+}
+
+.inputIcon {
+  color: var(--color-text-3);
+}
+
+.remarkLabel {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+
+  :global(.ant-tag) {
+    margin-inline-end: 0;
+    color: var(--color-text-3);
+    font-size: 11px;
+  }
+}
