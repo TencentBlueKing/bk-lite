@@ -1,3 +1,25 @@
 K8S:
   name: K8s
   desc: 利用K8s主动上报监控数据的能力，收集Kubernetes集群的状态和健康，包括节点、容器和pod的性能指标。
+monitor_object:
+  Cluster: 集群
+monitor_object_type:
+  K8S: K8S
+monitor_object_metric_group:
+  Cluster:
+    Counts: 数量
+    Utilization: 使用率
+monitor_object_metric:
+  Cluster:
+    cluster_pod_count:
+      name: Pod 数量
+      desc: Kubernetes 集群中的 Pod 总数量。
+    cluster_node_count:
+      name: 节点数量
+      desc: Kubernetes 集群中的节点总数量。
+    cluster_memory_utilization:
+      name: 内存使用率
+      desc: Kubernetes 集群全部节点的已用内存百分比。
+    cluster_disk_utilization:
+      name: 磁盘使用率
+      desc: Kubernetes 集群的整体磁盘使用率。

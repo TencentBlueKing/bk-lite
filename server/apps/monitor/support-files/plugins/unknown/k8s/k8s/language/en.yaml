@@ -3,3 +3,25 @@ K8S:
   desc: Leveraging Kubernetes' active monitoring data reporting capability, collect
     the status and health of the Kubernetes cluster, including performance metrics
     for nodes, containers, and pods.
+monitor_object:
+  Cluster: Cluster
+monitor_object_type:
+  K8S: K8S
+monitor_object_metric_group:
+  Cluster:
+    Counts: Counts
+    Utilization: Utilization
+monitor_object_metric:
+  Cluster:
+    cluster_pod_count:
+      name: Pod Count
+      desc: Total number of Pods in the Kubernetes cluster.
+    cluster_node_count:
+      name: Node Count
+      desc: Total number of nodes in the Kubernetes cluster.
+    cluster_memory_utilization:
+      name: Memory Utilization
+      desc: Percentage of used memory across all nodes in the Kubernetes cluster.
+    cluster_disk_utilization:
+      name: Disk Utilization
+      desc: Overall disk utilization of the Kubernetes cluster.
