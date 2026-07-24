@@ -2,23 +2,23 @@
 
 > 计划日期：2026-07-21
 >
-> 实际执行日期：2026-07-23
+> 实际执行日期：2026-07-23（2026-07-24 由 Claude Code 在本机复跑自动化门禁，见 §3.2）
 >
 > 分支：`codex/incident-feishu-im-group`
 >
-> 被测实现提交：`b77a626dd`（包含规格边界、摘要地址/补发、成员级重试和测试治理收口）
+> 被测实现提交：`7608ed326`（代码同 `b77a626dd`，顶部仅文档提交）
 
 ## 1. 最终结论
 
 **Block**
 
-本轮取得了 Incident 前端合同测试、功能改动文件 ESLint、后端 262 项完整回归、覆盖率和迁移门禁的新鲜通过证据；但真实飞书租户 12 场景仍未完成，Web 全量 lint/type-check 也被仓库依赖与既有基线错误阻断。缺少测试租户、测试应用和凭据时，不能把真实闭环写成 Pass，也不能发布该功能。
+2026-07-23 与 2026-07-24 两轮取得了后端 262 项完整回归、覆盖率、迁移门禁、Incident 前端合同测试和功能改动文件 ESLint 的新鲜通过证据；2026-07-24 已在本机解除 Web 依赖阻断（`pnpm install --frozen-lockfile` 成功，证明此前失败是沙箱网络限制而非 lock 问题）。但真实飞书租户 12 场景仍未执行，且仓库 Web 全量 lint/type-check 存在与本需求无关的既有基线失败（按维护者决定只记录豁免、不改无关文件，见 §3.2 与 VAL-IM-003）。缺少测试租户、测试应用和凭据时，不能把真实闭环写成 Pass，也不能发布该功能。
 
-解除阻断至少需要：
+解除阻断需要：
 
-1. 恢复与 `web/pnpm-lock.yaml` 一致的 Node 24 依赖，重跑 `pnpm lint`、`pnpm type-check`；
-2. 用户提供专用飞书测试租户/应用，或由用户按 Runbook 在其控制的测试环境输入凭据并执行 12 场景；
-3. 提交脱敏后的 BK-Lite 页面、飞书实际结果、BK-Lite request ID、飞书 request ID 和清理记录。
+1. 用户提供专用飞书测试租户/应用，或由用户按 Runbook 在其控制的测试环境输入凭据并执行 12 场景；
+2. 提交脱敏后的 BK-Lite 页面、飞书实际结果、BK-Lite request ID、飞书 request ID 和清理记录；
+3. Web 全量门禁转绿需仓库维护者修复既有基线（缺失依赖声明等），不属于本需求范围。
 
 ## 2. 环境摘要
 
@@ -67,6 +67,27 @@
 
 最终候选已使用 worktree 现有 `.venv` 取得 262 项后端回归、两组 coverage 与迁移门禁的新鲜 Pass；上述历史数字仍仅用于解释任务过程，不替代本轮结果。
 
+### 3.2 复跑：2026-07-24（Claude Code，本机非沙箱）
+
+本轮在本机（同一 worktree、HEAD `7608ed326`、Node v24.15.0、pnpm 11.5.2）新鲜重跑全部自动化门禁，目的：解除 VAL-IM-002 的依赖阻断假设并复核上轮结论。
+
+| 门禁 | 命令摘要 | 退出码 | 结果 |
+|---|---|---:|---|
+| 后端完整回归 | worktree `.venv/bin/pytest`，同 §7 环境与文件集（含配置/成员重试合同） | 0 | **Pass：262 passed in 37.21s**。 |
+| Coverage：成员解析 | `members/models` 测试 + `--cov=service/incident_im` | 0 | **Pass：members.py 98%**。 |
+| Coverage：Delivery | delivery/outbox 测试 + 同上 | 0 | **Pass：delivery.py 93%**（与上轮 93%/94% 一致）。 |
+| `makemigrations --check --dry-run` | 同 §7 环境 | 0 | **Pass：No changes detected**。 |
+| `sqlmigrate alerts 0022/0023` | 同 §7 环境 | 0 | **Pass**，SQL 正常生成。 |
+| Web 依赖安装 | `CI=true pnpm install --frozen-lockfile` | 0 | **Pass**：lock 一致可装；VAL-IM-002 解除，证明上轮失败是沙箱 `EPERM` 而非依赖问题。 |
+| Incident UI 合同 | `node_modules/.bin/tsx scripts/incident-im-group-ui-test.ts`（本 worktree 自己的依赖，非借用主 checkout） | 0 | **Pass**：94 条断言全过（脚本以断言失败即非零退出，无输出为通过）。 |
+| Focused ESLint | 本功能 10 个 TS/TSX 源文件 + API/types/入口 | 0 | **Pass：0 errors**。 |
+| Web 全量 ESLint | `eslint . --ext .js,.jsx,.ts,.tsx` | 1 | **Baseline Fail：47 errors、3 warnings**，与上轮完全一致；分布：`src/stories` 31、cmdb/monitor/ops-analysis/opspilot 各若干，**无一在本功能文件**。 |
+| 全量 tsc | `tsc -p tsconfig.lint.json --noEmit` | 2 | **Baseline Fail**，本功能文件零错误；基线错误详见 VAL-IM-003。 |
+
+复跑副产物：pytest 生成的 `server/:memory:` 临时文件已移至 `/tmp`，工作区保持干净。
+
+**结论变化**：VAL-IM-002（Web 依赖阻断）Resolved；发布阻断仅剩 VAL-IM-004（真实飞书 12 场景）。VAL-IM-003 维持 Baseline 豁免。
+
 ## 4. 十二个真实飞书场景
 
 本轮没有专用飞书测试租户、测试应用、2 名已映射 operator、1 名已映射 collaborator、1 名未映射 collaborator，也没有由用户在系统管理 UI 输入的凭据。因此下表全部为 **Not Run**，没有伪造 request ID、chat ID、截图或清理结果。
@@ -96,17 +117,19 @@
 
 ### VAL-IM-002：Web 依赖状态不完整且沙箱无法下载
 
-- 严重度：Blocker（完整 Web 门禁证据缺失）
-- 证据：pnpm 非 TTY 依赖重建中止；CI 重试访问 `registry.npmmirror.com` 返回 `EPERM`。
-- 影响：计划形式的 `pnpm lint`/`pnpm type-check` 无法在本 worktree 正常启动。
-- 解除：按 lockfile 预装依赖，并确保 Node 24 与 pnpm 使用一致。
+- 严重度：Resolved（2026-07-24）
+- 证据：2026-07-24 本机 `CI=true pnpm install --frozen-lockfile` 退出码 0，lock 一致；证实 2026-07-23 的 `EPERM` 是 Codex 沙箱网络限制，非仓库依赖问题。
+- 备注：pnpm 对 `pnpm exec` 的依赖状态检查会把 ignored-builds 提示视为失败，本机执行 tsx 时直接使用 `node_modules/.bin/tsx`，语义等价。
 
 ### VAL-IM-003：仓库 Web 全量 lint/type-check 基线失败
 
-- 严重度：Baseline
-- 证据：全量 ESLint 47 errors/3 warnings；直接 tsc 返回 5 类错误，包括缺失 `react-activation` 和 React 18/19 类型冲突。
-- 影响：全量 Web 门禁不能为 Pass；focused Incident 合同和 lint 独立通过。
-- 处理：由仓库维护者确认并修复基线，或提供已批准的基线豁免清单；本任务未修改无关文件。
+- 严重度：Baseline（维护者已决定：只记录豁免，不在本需求内修复无关文件）
+- 证据（2026-07-24 复核）：全量 ESLint 47 errors/3 warnings，分布 `src/stories`（31）、cmdb、monitor、ops-analysis、opspilot，无一落在本功能 16 个改动文件；全量 tsc 错误全部为基线：
+  - `react-activation`、`@dnd-kit/core`、`@dnd-kit/sortable`、`@dnd-kit/utilities`、`vitest` 被源码 import 但**未在 `web/package.json` 声明**（`pnpm install --frozen-lockfile` 后仍缺失，坐实为仓库基线缺陷而非安装问题），涉及 `incidents/page.tsx`、`layout.tsx`、`correlationRules/operateModal.tsx`、`alarm/context/common.tsx`、`sectionMarkdown.test.ts`；
+  - `settings/matchRule.tsx` 的 `MatchRuleValue` 与 `ValueType` 不兼容；
+  - `src/context/locale.tsx` 的 React 18/19 `ReactNode` 类型冲突。
+- 影响：全量 Web 门禁不能为 Pass；本功能 focused 合同、ESLint、tsc 诊断均独立通过。
+- 处理：由仓库维护者另行修复基线（补依赖声明/类型收敛）；本任务未修改无关文件。
 
 ### VAL-IM-004：真实飞书闭环未执行
 
@@ -125,6 +148,8 @@
 | Incident/binding/member/Outbox | 否 | 无需清理 |
 | 临时 Web 依赖链接 | 是 | 已移除；主 checkout `node_modules` 与 lock 未修改 |
 | pnpm 未完成重建目录 | 是 | 已恢复为 worktree 的忽略目录，不进入 Git |
+| pytest `server/:memory:` 临时文件（2026-07-24） | 是 | 已移至 `/tmp`，不进入 Git |
+| worktree `web/node_modules`（2026-07-24 按 lock 安装） | 是 | Git 忽略目录，不进入提交 |
 
 本轮没有残留外部测试对象。由于真实场景未执行，“无需清理”不等于真实租户清理已验证。
 
