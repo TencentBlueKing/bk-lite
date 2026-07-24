@@ -265,6 +265,50 @@ def async_auto_assignment_for_alerts(alert_ids):
         }
 
 
+UNASSIGNED_RETRY_BATCH = 200  # 与 AUTO_ASSIGNMENT_CHUNK_SIZE 对齐
+
+
+@shared_task
+def beat_retry_unassigned_assignment():
+    """兜底:扫描仍为 UNASSIGNED 的告警,重新入 auto_assignment outbox。
+
+    覆盖"告警变 UNASSIGNED 后没有新事件流入,主链路再无机会触发分派"的场景
+    (首次分派 0 命中/投递丢失/部署偏斜等)。idempotency_key 防重;会话告警
+    由 TimeoutChecker 链路负责,这里整段排除。
+    """
+    from apps.alerts.constants.constants import AlertStatus
+    from apps.alerts.models.models import Alert
+
+    candidate_ids = list(
+        Alert.objects.filter(
+            status=AlertStatus.UNASSIGNED,
+        )
+        .exclude(is_session_alert=True)
+        .order_by("created_at")
+        .values_list("alert_id", flat=True)[:UNASSIGNED_RETRY_BATCH]
+    )
+
+    if not candidate_ids:
+        logger.info("[AlertTask] UNASSIGNED 兜底: 无候选告警")
+        return {"retried": 0}
+
+    digest = hashlib.sha256("\0".join(sorted(candidate_ids)).encode("utf-8")).hexdigest()
+    from apps.alerts.service.outbox import enqueue_outbox
+
+    enqueue_outbox(
+        "auto_assignment",
+        {"alert_ids": candidate_ids},
+        f"auto-assignment:retry-unassigned:{digest}",
+    )
+
+    logger.info(
+        "[AlertTask] UNASSIGNED 兜底: 入 outbox %s 条 (digest=%s...)",
+        len(candidate_ids),
+        digest[:8],
+    )
+    return {"retried": len(candidate_ids)}
+
+
 @shared_task(
     autoretry_for=(Exception,),
     retry_backoff=True,

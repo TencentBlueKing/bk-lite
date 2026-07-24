@@ -447,6 +447,151 @@ def test_trigger_missing_alert_schedules_auto_assignment(source):
 
 
 # --------------------------------------------------------------------------
+# UNASSIGNED 重试缺口:存量未分派告警收到新事件必须重进分派链
+# --------------------------------------------------------------------------
+
+
+def _setup_levels():
+    from apps.alerts.constants.constants import LevelType
+    from apps.alerts.models.models import Level
+
+    for lid in (0, 1, 2):
+        Level.objects.create(
+            level_id=lid,
+            level_name=f"L{lid}",
+            level_display_name=f"等级{lid}",
+            level_type=LevelType.ALERT,
+        )
+
+
+def _denoise_strategy(**param_over):
+    params = {"window_size": 60, "group_by": ["service"]}
+    params.update(param_over)
+    return AlarmStrategy.objects.create(
+        name="重试缺口降噪",
+        strategy_type="smart_denoise",
+        is_active=True,
+        team=[1],
+        dispatch_team=[1],
+        match_rules=[[{"key": "title", "operator": "eq", "value": "CPU高"}]],
+        params=params,
+    )
+
+
+def _cpu_event(source, event_id):
+    return Event.objects.create(
+        source=source, raw_data={}, title="CPU高", level="1", start_time=timezone.now(),
+        event_id=event_id, action=EventAction.CREATED, service="svc-a",
+        resource_name="host1", item="cpu", external_id=f"ext-{event_id}",
+    )
+
+
+@pytest.mark.django_db
+def test_existing_unassigned_alert_retried_on_new_event(source):
+    """已有 UNASSIGNED 告警收到同指纹新事件时,必须重新进入自动分派链路。
+
+    死亡序列(2026-07-23 生产事故):首次分派失败/0 命中后告警停留 UNASSIGNED,
+    后续事件只更新 last_event_time,is_new_alert=False 导致永远不再触发分派。
+    """
+    from apps.alerts.models import AlertOutbox
+    from apps.alerts.models.models import Alert
+
+    _setup_levels()
+    _denoise_strategy()
+
+    # 第一轮:建出告警并进分派链(模拟首次分派 0 命中,告警停留 UNASSIGNED)
+    _cpu_event(source, "E-r1")
+    AggregationProcessor().process_aggregation()
+    alert = Alert.objects.get()
+    assert alert.status == "unassigned"
+
+    # 清掉首轮的 outbox,隔离第二轮观察
+    AlertOutbox.objects.all().delete()
+
+    # 第二轮:同指纹新事件到达
+    _cpu_event(source, "E-r2")
+    AggregationProcessor().process_aggregation()
+
+    alert.refresh_from_db()
+    assert alert.status == "unassigned"
+    assignment_rows = [
+        r for r in AlertOutbox.objects.filter(kind="auto_assignment")
+        if alert.alert_id in (r.payload.get("alert_ids") or [])
+    ]
+    assert assignment_rows, "存量 UNASSIGNED 告警收到新事件后未重新触发自动分派"
+
+
+@pytest.mark.django_db
+def test_pending_alert_not_retriggered_on_new_event(source):
+    """已分派(PENDING)的告警收到新事件时,不应重复进入分派链路。"""
+    from apps.alerts.constants.constants import AlertStatus
+    from apps.alerts.models import AlertOutbox
+    from apps.alerts.models.models import Alert
+
+    _setup_levels()
+    _denoise_strategy()
+
+    _cpu_event(source, "E-p1")
+    AggregationProcessor().process_aggregation()
+    alert = Alert.objects.get()
+    Alert.objects.filter(pk=alert.pk).update(status=AlertStatus.PENDING)
+    AlertOutbox.objects.all().delete()
+
+    _cpu_event(source, "E-p2")
+    AggregationProcessor().process_aggregation()
+
+    assert not AlertOutbox.objects.filter(kind="auto_assignment").exists()
+
+
+@pytest.mark.django_db
+def test_observing_session_alert_not_retriggered_on_new_event(source):
+    """会话观察期(OBSERVING)告警仍由超时确认链路负责,新事件不得触发分派。"""
+    from apps.alerts.models import AlertOutbox
+    from apps.alerts.models.models import Alert
+
+    _setup_levels()
+    _denoise_strategy(time_out=True, session_timeout=30)
+
+    _cpu_event(source, "E-s1")
+    AggregationProcessor().process_aggregation()
+    alert = Alert.objects.get()
+    assert alert.is_session_alert and alert.session_status == "observing"
+    AlertOutbox.objects.all().delete()
+
+    _cpu_event(source, "E-s2")
+    AggregationProcessor().process_aggregation()
+
+    alert.refresh_from_db()
+    assert alert.session_status == "observing"
+    assert not AlertOutbox.objects.filter(kind="auto_assignment").exists()
+
+
+@pytest.mark.django_db
+def test_auto_assignment_dispatch_failure_does_not_fail_aggregation(source, mocker):
+    """分派调度异常不得让整轮聚合失败。
+
+    _schedule_auto_assignment 依赖 outbox/celery 等外部资源,其失败不应阻断聚合:
+    告警照常建/更新、last_execute_time 正常推进(避免下轮重扫整个窗口),
+    故障由 ERROR 日志暴露,重试由后续轮次/兜底任务负责。
+    """
+    from apps.alerts.models.models import Alert
+
+    _setup_levels()
+    strategy = _denoise_strategy()
+    _cpu_event(source, "E-dispatch-fails")
+    mocker.patch(
+        "apps.alerts.aggregation.processor.aggregation_processor.AggregationProcessor._schedule_auto_assignment",
+        side_effect=RuntimeError("outbox down"),
+    )
+
+    AggregationProcessor().process_aggregation()
+
+    strategy.refresh_from_db()
+    assert Alert.objects.exists()
+    assert strategy.last_execute_time is not None
+
+
+# --------------------------------------------------------------------------
 # Issue #3675: logger.debug 热路径中 events.count() 不受日志级别保护
 # --------------------------------------------------------------------------
 
