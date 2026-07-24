@@ -1,9 +1,11 @@
 'use client';
 
-import React, { useRef, useEffect } from 'react';
-import { Button, Empty, Input, InputNumber, Tag } from 'antd';
+import React, { useState, useRef, useEffect, useImperativeHandle, forwardRef } from 'react';
+import { Button, Empty, Input, InputNumber, Tag, message } from 'antd';
 import { DeleteOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
+import { ToolVariable } from '@/app/opspilot/types/tool';
+import { useSkillApi } from '@/app/opspilot/api/skill';
 
 export type OracleTestStatus = 'untested' | 'success' | 'failed';
 
@@ -19,93 +21,145 @@ export interface OracleInstanceFormValue {
   testStatus: OracleTestStatus;
 }
 
-interface OracleToolEditorProps {
-  instances: OracleInstanceFormValue[];
-  selectedInstanceId: string | null;
-  testing: boolean;
-  onSelect: (id: string) => void;
-  onAdd: () => void;
-  onDelete: (id: string) => void;
-  onChange: <K extends keyof OracleInstanceFormValue>(id: string, field: K, value: OracleInstanceFormValue[K]) => void;
-  onTest: () => void;
-}
+const INSTANCES_KEY = 'oracle_instances';
+const DEFAULT_INSTANCE_ID_KEY = 'oracle_default_instance_id';
+const AUTO_NAME_PREFIX = 'Oracle - ';
 
-const statusColorMap: Record<OracleTestStatus, string> = {
-  untested: 'default',
-  success: 'blue',
-  failed: 'red',
+const createId = () => `oracle-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+const getDefaultInstance = (name: string): OracleInstanceFormValue => ({
+  id: createId(), name, host: '', port: 1521, service_name: '', user: '', password: '', nls_lang: '', testStatus: 'untested',
+});
+
+const getNextName = (instances: OracleInstanceFormValue[]) => {
+  const max = instances.reduce((m, inst) => { const match = inst.name.match(/^Oracle - (\d+)$/); return match ? Math.max(m, Number(match[1])) : m; }, 0);
+  return `${AUTO_NAME_PREFIX}${max + 1}`;
 };
 
-const OracleToolEditor: React.FC<OracleToolEditorProps> = ({
-  instances,
-  selectedInstanceId,
-  testing,
-  onSelect,
-  onAdd,
-  onDelete,
-  onChange,
-  onTest,
-}) => {
+const parseInt10 = (value: unknown, defaultValue: number) => {
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') { const n = parseInt(value, 10); return isNaN(n) ? defaultValue : n; }
+  return defaultValue;
+};
+
+const parseInstancesValue = (value: unknown): Record<string, unknown>[] => {
+  if (Array.isArray(value)) return value as Record<string, unknown>[];
+  if (typeof value === 'string' && value.trim()) { try { const p = JSON.parse(value); return Array.isArray(p) ? p : []; } catch { return []; } }
+  return [];
+};
+
+export const parseOracleToolConfig = (kwargs: ToolVariable[] = []): OracleInstanceFormValue[] => {
+  const map = new Map(kwargs.filter((k) => k.key).map((k) => [k.key, k.value]));
+  const parsed = parseInstancesValue(map.get(INSTANCES_KEY));
+  if (parsed.length > 0) {
+    return parsed.map((item, i) => ({
+      id: String(item.id || `oracle-${i + 1}`), name: String(item.name || `${AUTO_NAME_PREFIX}${i + 1}`),
+      host: String(item.host || ''), port: parseInt10(item.port, 1521), service_name: String(item.service_name || ''),
+      user: String(item.user || ''), password: String(item.password || ''), nls_lang: String(item.nls_lang || ''), testStatus: 'untested',
+    }));
+  }
+  const hasLegacy = ['host', 'port', 'service_name', 'user', 'password'].some((k) => map.has(k));
+  if (hasLegacy) {
+    return [{ id: 'oracle-1', name: 'Oracle - 1', host: String(map.get('host') || ''), port: parseInt10(map.get('port'), 1521),
+      service_name: String(map.get('service_name') || ''), user: String(map.get('user') || ''),
+      password: String(map.get('password') || ''), nls_lang: String(map.get('nls_lang') || ''), testStatus: 'untested' }];
+  }
+  return [getDefaultInstance('Oracle - 1')];
+};
+
+const serializeOracleToolConfig = (instances: OracleInstanceFormValue[]): ToolVariable[] => {
+  const normalized = instances.map((inst) => { const c = { ...inst } as Partial<OracleInstanceFormValue>; delete c.testStatus; return c; });
+  return [{ key: INSTANCES_KEY, value: JSON.stringify(normalized) }, { key: DEFAULT_INSTANCE_ID_KEY, value: normalized[0]?.id || '' }];
+};
+
+export interface OracleToolEditorHandle { save: () => boolean; }
+
+const statusColorMap: Record<OracleTestStatus, string> = { untested: 'default', success: 'blue', failed: 'red' };
+
+interface OracleToolEditorProps {
+  initialKwargs: ToolVariable[];
+  onSave: (kwargs: ToolVariable[]) => void;
+}
+
+const OracleToolEditor = forwardRef<OracleToolEditorHandle, OracleToolEditorProps>(({ initialKwargs, onSave }, ref) => {
   const { t } = useTranslation();
-  const selectedInstance = instances.find((instance) => instance.id === selectedInstanceId) || null;
+  const { testOracleConnection } = useSkillApi();
+  const [instances, setInstances] = useState<OracleInstanceFormValue[]>(() => parseOracleToolConfig(initialKwargs));
+  const [selectedId, setSelectedId] = useState<string | null>(() => parseOracleToolConfig(initialKwargs)[0]?.id ?? null);
+  const [testing, setTesting] = useState(false);
+  const selectedInstance = instances.find((inst) => inst.id === selectedId) ?? null;
 
   const listRef = useRef<HTMLDivElement>(null);
   const prevLengthRef = useRef(instances.length);
-
   useEffect(() => {
-    if (instances.length > prevLengthRef.current && listRef.current) {
-      listRef.current.scrollTop = listRef.current.scrollHeight;
-    }
+    if (instances.length > prevLengthRef.current && listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
     prevLengthRef.current = instances.length;
   }, [instances.length]);
 
-  const renderStatus = (status: OracleTestStatus) => {
-    return <Tag color={statusColorMap[status]}>{t(`tool.oracle.status.${status}`)}</Tag>;
+  useImperativeHandle(ref, () => ({
+    save: () => {
+      const trimmedNames = instances.map((inst) => inst.name.trim()).filter(Boolean);
+      if (instances.length === 0) { message.error(t('tool.oracle.noInstances')); return false; }
+      if (trimmedNames.length !== instances.length) { message.error(t('tool.oracle.instanceNameRequired')); return false; }
+      if (new Set(trimmedNames).size !== trimmedNames.length) { message.error(t('tool.oracle.duplicateInstanceName')); return false; }
+      if (instances.some((inst) => !inst.host.trim())) { message.error(t('tool.oracle.hostRequired')); return false; }
+      const trimmed = instances.map((inst) => ({ ...inst, name: inst.name.trim(), host: inst.host.trim() }));
+      onSave(serializeOracleToolConfig(trimmed));
+      return true;
+    },
+  }));
+
+  const handleAdd = () => { const next = getDefaultInstance(getNextName(instances)); setInstances((p) => [...p, next]); setSelectedId(next.id); };
+  const handleDelete = (id: string) => {
+    setInstances((p) => { const n = p.filter((inst) => inst.id !== id); if (selectedId === id) setSelectedId(n[0]?.id ?? null); return n; });
   };
+  const handleChange = <K extends keyof OracleInstanceFormValue>(id: string, field: K, value: OracleInstanceFormValue[K]) => {
+    setInstances((p) => p.map((inst) => (inst.id === id ? { ...inst, [field]: value, testStatus: 'untested' } : inst)));
+  };
+  const handleTest = async () => {
+    if (!selectedInstance) return;
+    setTesting(true);
+    try {
+      const payload = { ...selectedInstance } as Partial<OracleInstanceFormValue>; delete payload.testStatus;
+      await testOracleConnection(payload as Omit<OracleInstanceFormValue, 'testStatus'>);
+      message.success(t('tool.oracle.status.success'));
+      setInstances((p) => p.map((inst) => (inst.id === selectedInstance.id ? { ...inst, testStatus: 'success' } : inst)));
+    } catch {
+      setInstances((p) => p.map((inst) => (inst.id === selectedInstance.id ? { ...inst, testStatus: 'failed' } : inst)));
+    } finally { setTesting(false); }
+  };
+
+  const renderStatus = (status: OracleTestStatus) => <Tag color={statusColorMap[status]}>{t(`tool.oracle.status.${status}`)}</Tag>;
 
   return (
     <div className="flex gap-4 min-h-[480px]">
       <div className="w-[260px] rounded border border-[var(--color-border)] p-3 flex flex-col">
         <div className="mb-3 flex items-center justify-between">
           <span className="font-medium">{t('tool.oracle.instances')}</span>
-          <Button type="primary" ghost size="small" onClick={onAdd}>
-            + {t('common.add')}
-          </Button>
+          <Button type="primary" ghost size="small" onClick={handleAdd}>+ {t('common.add')}</Button>
         </div>
         <div className="flex-1 overflow-y-auto space-y-2" ref={listRef}>
           {instances.length === 0 ? (
             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('tool.oracle.noInstances')} />
-          ) : (
-            instances.map((instance) => {
-              const isActive = instance.id === selectedInstanceId;
-              return (
-                <button
-                  key={instance.id}
-                  type="button"
-                  className={`w-full rounded border p-3 text-left transition ${
-                    isActive ? 'border-[var(--color-primary)] bg-[var(--color-primary-bg)]' : 'border-[var(--color-border)] bg-[var(--color-bg-1)]'
-                  }`}
-                  onClick={() => onSelect(instance.id)}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate font-medium">{instance.name || t('tool.oracle.unnamedInstance')}</div>
-                      <div className="mt-1 truncate text-xs text-[var(--color-text-3)]">
-                        {instance.host ? `${instance.host}:${instance.port}` : t('tool.oracle.addressNotConfigured')}
-                      </div>
+          ) : instances.map((instance) => {
+            const isActive = instance.id === selectedId;
+            return (
+              <button key={instance.id} type="button"
+                className={`w-full rounded border p-3 text-left transition ${isActive ? 'border-[var(--color-primary)] bg-[var(--color-primary-bg)]' : 'border-[var(--color-border)] bg-[var(--color-bg-1)]'}`}
+                onClick={() => setSelectedId(instance.id)}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-medium">{instance.name || t('tool.oracle.unnamedInstance')}</div>
+                    <div className="mt-1 truncate text-xs text-[var(--color-text-3)]">
+                      {instance.host ? `${instance.host}:${instance.port}` : t('tool.oracle.addressNotConfigured')}
                     </div>
-                    <DeleteOutlined
-                      className="mt-1 text-[var(--color-text-3)] hover:text-[var(--color-error)]"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onDelete(instance.id);
-                      }}
-                    />
                   </div>
-                </button>
-              );
-            })
-          )}
+                  <DeleteOutlined className="mt-1 text-[var(--color-text-3)] hover:text-[var(--color-error)]"
+                    onClick={(e) => { e.stopPropagation(); handleDelete(instance.id); }} />
+                </div>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -113,84 +167,43 @@ const OracleToolEditor: React.FC<OracleToolEditorProps> = ({
         {selectedInstance ? (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <div className="text-lg font-medium">
-                {t('tool.oracle.configTitle').replace('{name}', selectedInstance.name || t('tool.oracle.unnamedInstance'))}
-              </div>
+              <div className="text-lg font-medium">{t('tool.oracle.configTitle').replace('{name}', selectedInstance.name || t('tool.oracle.unnamedInstance'))}</div>
               {renderStatus(selectedInstance.testStatus)}
             </div>
-
             <div>
               <div className="mb-1 text-sm text-[var(--color-text-2)]">{t('tool.oracle.instanceName')}</div>
-              <Input
-                value={selectedInstance.name}
-                onChange={(event) => onChange(selectedInstance.id, 'name', event.target.value)}
-                placeholder={t('tool.oracle.instanceNamePlaceholder')}
-              />
+              <Input value={selectedInstance.name} onChange={(e) => handleChange(selectedInstance.id, 'name', e.target.value)} placeholder={t('tool.oracle.instanceNamePlaceholder')} />
             </div>
-
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <div className="mb-1 text-sm text-[var(--color-text-2)]">{t('tool.oracle.host')}</div>
-                <Input
-                  value={selectedInstance.host}
-                  onChange={(event) => onChange(selectedInstance.id, 'host', event.target.value)}
-                  placeholder={t('tool.oracle.hostPlaceholder')}
-                />
+                <Input value={selectedInstance.host} onChange={(e) => handleChange(selectedInstance.id, 'host', e.target.value)} placeholder={t('tool.oracle.hostPlaceholder')} />
               </div>
               <div>
                 <div className="mb-1 text-sm text-[var(--color-text-2)]">{t('tool.oracle.port')}</div>
-                <InputNumber
-                  style={{ width: '100%' }}
-                  value={selectedInstance.port}
-                  min={1}
-                  max={65535}
-                  onChange={(value) => onChange(selectedInstance.id, 'port', value ?? 1521)}
-                  placeholder="1521"
-                />
+                <InputNumber style={{ width: '100%' }} value={selectedInstance.port} min={1} max={65535} onChange={(v) => handleChange(selectedInstance.id, 'port', v ?? 1521)} placeholder="1521" />
               </div>
             </div>
-
             <div>
               <div className="mb-1 text-sm text-[var(--color-text-2)]">{t('tool.oracle.serviceName')}</div>
-              <Input
-                value={selectedInstance.service_name}
-                onChange={(event) => onChange(selectedInstance.id, 'service_name', event.target.value)}
-                placeholder={t('tool.oracle.serviceNamePlaceholder')}
-              />
+              <Input value={selectedInstance.service_name} onChange={(e) => handleChange(selectedInstance.id, 'service_name', e.target.value)} placeholder={t('tool.oracle.serviceNamePlaceholder')} />
             </div>
-
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <div className="mb-1 text-sm text-[var(--color-text-2)]">{t('tool.oracle.user')}</div>
-                <Input
-                  value={selectedInstance.user}
-                  onChange={(event) => onChange(selectedInstance.id, 'user', event.target.value)}
-                  placeholder={t('tool.oracle.userPlaceholder')}
-                />
+                <Input value={selectedInstance.user} onChange={(e) => handleChange(selectedInstance.id, 'user', e.target.value)} placeholder={t('tool.oracle.userPlaceholder')} />
               </div>
               <div>
                 <div className="mb-1 text-sm text-[var(--color-text-2)]">{t('tool.oracle.password')}</div>
-                <Input.Password
-                  value={selectedInstance.password}
-                  onChange={(event) => onChange(selectedInstance.id, 'password', event.target.value)}
-                  placeholder={t('tool.oracle.passwordPlaceholder')}
-                />
+                <Input.Password value={selectedInstance.password} onChange={(e) => handleChange(selectedInstance.id, 'password', e.target.value)} placeholder={t('tool.oracle.passwordPlaceholder')} />
               </div>
             </div>
-
             <div>
               <div className="mb-1 text-sm text-[var(--color-text-2)]">{t('tool.oracle.nlsLang')}</div>
-              <Input
-                value={selectedInstance.nls_lang}
-                onChange={(event) => onChange(selectedInstance.id, 'nls_lang', event.target.value)}
-                placeholder="AMERICAN_AMERICA.AL32UTF8"
-              />
+              <Input value={selectedInstance.nls_lang} onChange={(e) => handleChange(selectedInstance.id, 'nls_lang', e.target.value)} placeholder="AMERICAN_AMERICA.AL32UTF8" />
             </div>
-
             <div className="flex justify-end">
-              <Button loading={testing} onClick={onTest}>
-                {t('tool.oracle.testConnection')}
-              </Button>
+              <Button loading={testing} onClick={handleTest}>{t('tool.oracle.testConnection')}</Button>
             </div>
           </div>
         ) : (
@@ -201,6 +214,7 @@ const OracleToolEditor: React.FC<OracleToolEditorProps> = ({
       </div>
     </div>
   );
-};
+});
 
+OracleToolEditor.displayName = 'OracleToolEditor';
 export default OracleToolEditor;
