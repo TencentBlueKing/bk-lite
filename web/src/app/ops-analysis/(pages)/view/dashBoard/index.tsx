@@ -66,9 +66,13 @@ import {
   removeDashboardGroupHeader,
   sanitizeCollapsedGroups,
 } from '@/app/ops-analysis/utils/dashboardGroups';
+import ShareDialog from './components/shareDialog';
 
 interface DashboardProps {
   selectedDashboard?: DirItem | null;
+  shareMode?: boolean;
+  shareSessionId?: string;
+  getDashboardDetailOverride?: (id: string | number) => Promise<any>;
 }
 
 export interface DashboardRef {
@@ -76,7 +80,7 @@ export interface DashboardRef {
 }
 
 const Dashboard = forwardRef<DashboardRef, DashboardProps>(
-  ({ selectedDashboard }, ref) => {
+  ({ selectedDashboard, shareMode = false, getDashboardDetailOverride }, ref) => {
     const { t } = useTranslation();
     const { data: session } = useSession();
     const themeName = resolveOpsChartThemeName();
@@ -132,19 +136,20 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     const [filterSearchVersion, setFilterSearchVersion] = useState(0);
     const [namespaceSearchVersion, setNamespaceSearchVersion] = useState(0);
     const exportRef = useRef<HTMLDivElement>(null);
-    const getDashboardDetailRef = useRef(getDashboardDetail);
+    const getDashboardDetailRef = useRef(getDashboardDetailOverride ?? getDashboardDetail);
     const collapsedGroupsHydratedKeyRef = useRef<string | null>(null);
     const skipCollapsedGroupsPersistRef = useRef(false);
     const [collapsedGroupsLayoutReadyId, setCollapsedGroupsLayoutReadyId] =
       useState<number | string | null>(null);
     const [exporting, setExporting] = useState(false);
+    const [shareDialogOpen, setShareDialogOpen] = useState(false);
     const resumeEditModeAfterFullscreenRef = useRef(false);
     const { isFullscreen, enterFullscreen, exitFullscreen } =
       useAppViewFullscreen();
 
     useEffect(() => {
-      getDashboardDetailRef.current = getDashboardDetail;
-    }, [getDashboardDetail]);
+      getDashboardDetailRef.current = getDashboardDetailOverride ?? getDashboardDetail;
+    }, [getDashboardDetail, getDashboardDetailOverride]);
 
     const {
       definitions,
@@ -1077,8 +1082,18 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         onToggleEditMode={toggleEditMode}
         onCancelEdit={handleCancelEdit}
         onSave={handleSave}
+        shareMode={shareMode}
+        onOpenShare={() => setShareDialogOpen(true)}
       />
     );
+
+    const shareDialog = !shareMode && selectedDashboard?.data_id ? (
+      <ShareDialog
+        dashboardId={selectedDashboard.data_id}
+        open={shareDialogOpen}
+        onClose={() => setShareDialogOpen(false)}
+      />
+    ) : null;
 
     const dashboardFilterBar = (definitions.length > 0 ||
       namespaceSelectorElement) && (
@@ -1213,6 +1228,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
             maxLength={50}
           />
         </Modal>
+        {shareDialog}
       </div>
     );
   },

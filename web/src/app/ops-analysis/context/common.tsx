@@ -14,6 +14,7 @@ import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import { useNamespaceApi } from '@/app/ops-analysis/api/namespace';
 import { useUserInfoContext } from '@/context/userInfo';
 import { addAuthToDataSources } from '@/app/ops-analysis/utils/permissionChecker';
+import { useSharedDataSourceQuery } from '@/app/ops-analysis/context/shareDataSource';
 import type {
   NamespaceItem,
 } from '@/app/ops-analysis/types/namespace';
@@ -36,6 +37,7 @@ const OpsAnalysisContext = createContext<OpsAnalysisContextType | undefined>(
 );
 
 export const OpsAnalysisProvider = ({ children }: { children: ReactNode }) => {
+  const sharedAccess = useSharedDataSourceQuery();
   const [rawNamespaces, setRawNamespaces] = useState<NamespaceItem[]>([]);
   const [namespacesLoading, setNamespacesLoading] = useState(false);
   const [rawDataSources, setRawDataSources] = useState<DatasourceItem[]>([]);
@@ -83,8 +85,10 @@ export const OpsAnalysisProvider = ({ children }: { children: ReactNode }) => {
 
   const applyDataSourceAuth = useCallback(
     (list: DatasourceItem[]) =>
-      addAuthToDataSources(list || [], selectedGroup?.id),
-    [selectedGroup?.id],
+      sharedAccess
+        ? (list || []).map((item) => ({ ...item, hasAuth: true }))
+        : addAuthToDataSources(list || [], selectedGroup?.id),
+    [selectedGroup?.id, sharedAccess],
   );
 
   const mergeDataSources = useCallback((incoming: DatasourceItem[]) => {
@@ -175,6 +179,23 @@ export const OpsAnalysisProvider = ({ children }: { children: ReactNode }) => {
       return [];
     }
 
+    if (sharedAccess) {
+      const namespaceMap = new Map<number, NamespaceItem>();
+      rawDataSourcesRef.current.forEach((dataSource) => {
+        (dataSource.namespace_options || []).forEach((namespace) => {
+          if (normalizedIds.includes(namespace.id)) {
+            namespaceMap.set(namespace.id, namespace as NamespaceItem);
+          }
+        });
+      });
+      const sharedNamespaces = normalizedIds
+        .map((id) => namespaceMap.get(id))
+        .filter((item): item is NamespaceItem => Boolean(item));
+      canvasNamespaceKeyRef.current = normalizedKey;
+      setRawNamespaces(sharedNamespaces);
+      return sharedNamespaces;
+    }
+
     const currentNamespaces = rawNamespacesRef.current;
     const currentIds = currentNamespaces.map((item) => item.id);
     const currentKey = buildStableIdsKey(currentIds);
@@ -205,7 +226,7 @@ export const OpsAnalysisProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       finishNamespaceRequest();
     }
-  }, [buildStableIdsKey, finishNamespaceRequest, getNamespaceList, normalizeIds]);
+  }, [buildStableIdsKey, finishNamespaceRequest, getNamespaceList, normalizeIds, sharedAccess]);
 
   const refreshNamespaces = useCallback(async () => {
     if (namespacesRequestingRef.current) {
@@ -274,6 +295,7 @@ export const OpsAnalysisProvider = ({ children }: { children: ReactNode }) => {
     canvasDataSourceRequestIdRef.current = requestId;
 
     if (normalizedIds.length === 0) {
+      rawDataSourcesRef.current = [];
       setRawDataSources([]);
       return [];
     }
@@ -287,6 +309,7 @@ export const OpsAnalysisProvider = ({ children }: { children: ReactNode }) => {
       const scopedDataSources = normalizedIds
         .map((id) => currentMap.get(id))
         .filter((item): item is DatasourceItem => Boolean(item));
+      rawDataSourcesRef.current = scopedDataSources;
       setRawDataSources(scopedDataSources);
       return applyDataSourceAuth(scopedDataSources);
     }
@@ -303,6 +326,7 @@ export const OpsAnalysisProvider = ({ children }: { children: ReactNode }) => {
         .map((id) => nextMap.get(id))
         .filter((item): item is DatasourceItem => Boolean(item));
       if (canvasDataSourceRequestIdRef.current === requestId) {
+        rawDataSourcesRef.current = scopedDataSources;
         setRawDataSources(scopedDataSources);
       }
       return applyDataSourceAuth(scopedDataSources);

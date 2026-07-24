@@ -6,6 +6,8 @@ if BASE_DIR.name == "config":
     BASE_DIR = BASE_DIR.parent
 SECRET_KEY = os.getenv("SECRET_KEY", "")
 APP_CODE = os.getenv("APP_CODE", "bk-lite")
+DASHBOARD_SHARE_SIGNING_KEY = os.getenv("DASHBOARD_SHARE_SIGNING_KEY", "")
+DASHBOARD_SHARE_SESSION_AGE = int(os.getenv("DASHBOARD_SHARE_SESSION_AGE", "1800"))
 
 SESSION_COOKIE_AGE = 60 * 60 * 24 * 7 * 2
 SESSION_COOKIE_NAME = f"{APP_CODE}_sessionid"

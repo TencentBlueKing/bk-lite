@@ -58,6 +58,7 @@
     "type-check:wiki-decision": "tsc -p tsconfig.wiki-decision.json --noEmit",
     "test:ops-analysis-component-param-switch": "pnpm exec tsx scripts/ops-analysis-component-param-switch-test.ts",
     "test:ops-analysis-unified-filter-input": "pnpm exec tsx scripts/ops-analysis-unified-filter-input-test.ts",
+    "test:ops-analysis-dashboard-share": "pnpm exec tsx scripts/ops-analysis-dashboard-share-test.ts",
     "type-check": "pnpm clean && pnpm prepare-enterprise && pnpm precommit && tsc -p tsconfig.lint.json --noEmit",
     "precommit": "node -r dotenv/config scripts/generate-tsconfig.js dotenv_config_path=.env.local",
     "prepare": "husky install",
