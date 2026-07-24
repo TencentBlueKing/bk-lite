@@ -11,6 +11,23 @@ RULE_URL = "/api/v1/job_mgmt/api/dangerous_rule/"
 PATH_URL = "/api/v1/job_mgmt/api/dangerous_path/"
 
 
+@pytest.mark.parametrize(
+    ("url", "permission"),
+    [
+        (f"{RULE_URL}enabled_rules/", "dangerous_command-View"),
+        (f"{PATH_URL}enabled_paths/", "dangerous_path-View"),
+    ],
+)
+def test_enabled_dangerous_items_require_view_permission(api_client, authenticated_user, url, permission):
+    api_client.cookies["current_team"] = "1"
+
+    authenticated_user.permission = {"job": set()}
+    assert api_client.get(url).status_code == 403
+
+    authenticated_user.permission = {"job": {permission}}
+    assert api_client.get(url).status_code == 200
+
+
 class TestDangerousRuleViewSet:
     def test_create_returns_201_and_persists(self, su_client):
         resp = su_client.post(
