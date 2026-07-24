@@ -31,12 +31,28 @@ _COLLECT_TERMINAL_STATUSES = (
     CollectRunStatusType.PARTIAL_SUCCESS,
 )
 
-PUBLIC_ENUM_SNAPSHOT_MAX_RETRIES = max(
-    0, int(os.getenv("CMDB_PUBLIC_ENUM_SNAPSHOT_MAX_RETRIES", "3"))
+
+def _read_bounded_int_env(name: str, default: int, minimum: int, maximum: int) -> int:
+    raw_value = os.getenv(name)
+    try:
+        value = default if raw_value is None else int(raw_value)
+    except (TypeError, ValueError):
+        logger.warning("%s must be an integer; using default=%s", name, default)
+        return default
+
+    bounded_value = min(max(value, minimum), maximum)
+    if bounded_value != value:
+        logger.warning("%s is outside [%s, %s]; using %s", name, minimum, maximum, bounded_value)
+    return bounded_value
+
+
+PUBLIC_ENUM_SNAPSHOT_MAX_RETRIES = _read_bounded_int_env(
+    "CMDB_PUBLIC_ENUM_SNAPSHOT_MAX_RETRIES", 3, 0, 10
 )
-PUBLIC_ENUM_SNAPSHOT_RETRY_BASE_SECONDS = max(
-    1, int(os.getenv("CMDB_PUBLIC_ENUM_SNAPSHOT_RETRY_BASE_SECONDS", "10"))
+PUBLIC_ENUM_SNAPSHOT_RETRY_BASE_SECONDS = _read_bounded_int_env(
+    "CMDB_PUBLIC_ENUM_SNAPSHOT_RETRY_BASE_SECONDS", 10, 1, 3600
 )
+PUBLIC_ENUM_SNAPSHOT_RETRY_MAX_SECONDS = 3600
 
 
 def _is_unhelpful_error_message(message: str) -> bool:
@@ -628,20 +644,27 @@ def sync_public_enum_library_snapshots_task(
         return result
 
     retry_number = int(self.request.retries)
+    failure_summary = "; ".join(
+        f"model_id={item.get('model_id')}, error_type={item.get('error_type', 'UnknownError')}, error={item.get('error', '')}"
+        for item in result.get("failed_items", [])
+    )
     error = RuntimeError(
-        f"公共枚举快照同步存在失败项: library_id={library_id}, failed_count={failed_count}"
+        f"公共枚举快照同步存在失败项: library_id={library_id}, failed_count={failed_count}, failures=[{failure_summary}]"
     )
     if retry_number >= self.max_retries:
         logger.error(
-            "[SyncPublicEnumSnapshots] retries exhausted library_id=%s, "
-            "failed_count=%s, attempts=%s",
+            "[SyncPublicEnumSnapshots] retries exhausted library_id=%s, failed_count=%s, attempts=%s, failures=%s",
             library_id,
             failed_count,
             retry_number + 1,
+            failure_summary,
         )
         raise error
 
-    countdown = PUBLIC_ENUM_SNAPSHOT_RETRY_BASE_SECONDS * (2**retry_number)
+    countdown = min(
+        PUBLIC_ENUM_SNAPSHOT_RETRY_MAX_SECONDS,
+        PUBLIC_ENUM_SNAPSHOT_RETRY_BASE_SECONDS * (2**retry_number),
+    )
     logger.warning(
         "[SyncPublicEnumSnapshots] retry partial failure library_id=%s, "
         "failed_count=%s, attempt=%s, countdown=%s",
