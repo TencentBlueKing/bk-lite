@@ -492,12 +492,32 @@ export const useConfigRenderer = () => {
                 style={{ flex: 1 }}
                 status={errorMsg ? 'error' : ''}
                 showSearch
-                optionFilterProp="children"
+                optionFilterProp="label"
                 {...componentProps}
               >
                 {filteredOptions.map((option: any) => (
-                  <Select.Option key={option.value} value={option.value}>
-                    {option.label}
+                  <Select.Option
+                    key={option.value}
+                    value={option.value}
+                    label={option.label}
+                    disabled={option.disabled}
+                  >
+                    <Tooltip
+                      title={
+                        option.disabledReason
+                          ? `${option.label} · ${option.disabledReason}`
+                          : option.label
+                      }
+                    >
+                      <span className="flex w-full min-w-0 items-center justify-between gap-2">
+                        <span className="min-w-0 truncate">{option.label}</span>
+                        {option.disabledReason && (
+                          <span className="shrink-0 text-[12px] text-[var(--color-text-3)]">
+                            {option.disabledReason}
+                          </span>
+                        )}
+                      </span>
+                    </Tooltip>
                   </Select.Option>
                 ))}
               </Select>
