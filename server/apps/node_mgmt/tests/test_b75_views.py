@@ -12,6 +12,10 @@ from apps.node_mgmt.models.cloud_region import CloudRegion, SidecarEnv
 BASE = "/api/v1/node_mgmt"
 
 
+def _grant_node_permissions(user, *permissions):
+    user.permission = {"node": set(permissions)}
+
+
 # --------------------------------------------------------------------------- #
 # Controller list
 # --------------------------------------------------------------------------- #
@@ -121,9 +125,10 @@ def test_package_create_missing_params_returns_error(api_client):
 
 
 @pytest.mark.django_db
-def test_package_create_success_uploads(api_client):
+def test_package_create_success_uploads(api_client, authenticated_user):
     from django.core.files.uploadedfile import SimpleUploadedFile
 
+    _grant_node_permissions(authenticated_user, "controller_packet-AddPacket")
     file = SimpleUploadedFile("fusion-collectors-1.0.0.tar.gz", b"content")
     with patch("apps.node_mgmt.views.package.PackageService.upload_file") as upload:
         resp = api_client.post(
@@ -143,7 +148,52 @@ def test_package_create_success_uploads(api_client):
 
 
 @pytest.mark.django_db
-def test_package_destroy_deletes_file_and_record(api_client):
+def test_package_create_rejects_user_without_package_permission(api_client):
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    file = SimpleUploadedFile("fusion-collectors-1.0.0.tar.gz", b"content")
+    with patch("apps.node_mgmt.views.package.PackageService.upload_file") as upload:
+        resp = api_client.post(
+            f"{BASE}/api/package/",
+            {
+                "file": file,
+                "type": "controller",
+                "os": "linux",
+                "object": "fusion-collectors",
+                "cpu_architecture": "x86_64",
+            },
+            format="multipart",
+        )
+    assert resp.status_code == 403
+    upload.assert_not_called()
+    assert not PackageVersion.objects.filter(object="fusion-collectors", version="1.0.0").exists()
+
+
+@pytest.mark.django_db
+def test_package_create_rejects_permission_for_other_package_type(api_client, authenticated_user):
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    _grant_node_permissions(authenticated_user, "collector_packet-AddPacket")
+    file = SimpleUploadedFile("fusion-collectors-1.0.0.tar.gz", b"content")
+    with patch("apps.node_mgmt.views.package.PackageService.upload_file") as upload:
+        resp = api_client.post(
+            f"{BASE}/api/package/",
+            {
+                "file": file,
+                "type": "controller",
+                "os": "linux",
+                "object": "fusion-collectors",
+                "cpu_architecture": "x86_64",
+            },
+            format="multipart",
+        )
+    assert resp.status_code == 403
+    upload.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_package_destroy_deletes_file_and_record(api_client, authenticated_user):
+    _grant_node_permissions(authenticated_user, "collector_packet-Delete")
     pkg = PackageVersion.objects.create(
         type="collector", os="linux", cpu_architecture="x86_64",
         object="telegraf", version="2.0.0", name="telegraf.tar.gz",
@@ -153,6 +203,20 @@ def test_package_destroy_deletes_file_and_record(api_client):
     delete.assert_called_once()
     assert resp.status_code in (200, 204)
     assert not PackageVersion.objects.filter(id=pkg.id).exists()
+
+
+@pytest.mark.django_db
+def test_package_destroy_rejects_user_without_matching_permission(api_client, authenticated_user):
+    _grant_node_permissions(authenticated_user, "controller_packet-Delete")
+    pkg = PackageVersion.objects.create(
+        type="collector", os="linux", cpu_architecture="x86_64",
+        object="telegraf", version="2.0.0", name="telegraf.tar.gz",
+    )
+    with patch("apps.node_mgmt.views.package.PackageService.delete_file") as delete:
+        resp = api_client.delete(f"{BASE}/api/package/{pkg.id}/")
+    delete.assert_not_called()
+    assert resp.status_code == 403
+    assert PackageVersion.objects.filter(id=pkg.id).exists()
 
 
 @pytest.mark.django_db
