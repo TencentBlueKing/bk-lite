@@ -33,15 +33,31 @@ export function isTauriEnvironment(): boolean {
 }
 
 /**
+ * 清理旧版本在 Tauri Store 不可用时写入 localStorage 的认证数据。
+ * H5/开发环境仍保留显式的 localStorage 存储行为。
+ */
+function clearLegacyAuthStorage(): void {
+    if (typeof window === 'undefined') {
+        return;
+    }
+
+    for (const key of Object.values(STORAGE_KEYS)) {
+        window.localStorage.removeItem(key);
+    }
+}
+
+/**
  * 获取 Store 实例
  */
 async function getStore() {
-    if (storeInstance) {
-        return storeInstance;
-    }
-
     if (!isTauriEnvironment()) {
         return null;
+    }
+
+    clearLegacyAuthStorage();
+
+    if (storeInstance) {
+        return storeInstance;
     }
 
     try {
@@ -67,12 +83,14 @@ export async function initSecureStorage(): Promise<void> {
         const store = await getStore();
         if (store) {
             // 从 Tauri Store 加载所有已保存的数据到内存缓存
+            const persistedValues = new Map<string, unknown>();
             for (const key of Object.values(STORAGE_KEYS)) {
                 const value = await store.get(key);
                 if (value !== null && value !== undefined) {
-                    memoryCache.set(key, value);
+                    persistedValues.set(key, value);
                 }
             }
+            persistedValues.forEach((value, key) => memoryCache.set(key, value));
             isInitialized = true;
             console.log('Secure storage initialized from Tauri Store');
         } else {
