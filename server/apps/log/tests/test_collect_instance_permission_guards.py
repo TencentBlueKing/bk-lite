@@ -99,6 +99,7 @@ def test_remove_collect_instance_requires_operate_permission(monkeypatch):
     node_mgmt.assert_not_called()
 
 
+@pytest.mark.django_db
 def test_remove_collect_instance_allows_authorized_org_scope(monkeypatch):
     instance = make_instance()
     config_qs = FakeQuerySet([])
@@ -124,6 +125,7 @@ def test_remove_collect_instance_allows_authorized_org_scope(monkeypatch):
     assert getattr(instance_delete_qs, "deleted", False)
 
 
+@pytest.mark.django_db
 def test_remove_collect_instance_allows_instance_level_operate_permission(monkeypatch):
     instance = make_instance()
     config_qs = FakeQuerySet([])
@@ -226,6 +228,7 @@ def test_get_config_content_allows_instance_level_view_permission(monkeypatch):
     node_mgmt.return_value.get_configs_by_ids.assert_called_once_with([config.id])
 
 
+@pytest.mark.django_db
 def test_remove_collect_instance_allows_merged_duplicate_instance_permissions(monkeypatch):
     instance = make_instance()
     config_qs = FakeQuerySet([])

@@ -320,6 +320,26 @@ class Sidecar:
         return ""
 
     @staticmethod
+    def _cached_heartbeat_updates(node_id: str, node_details: dict) -> tuple[dict, str]:
+        """Build the bounded metadata update allowed on an ETag cache hit."""
+        request_data = dict(node_details)
+        missing_fields = [field for field in ("ip", "operating_system") if not request_data.get(field)]
+        if missing_fields:
+            existing_node = Node.objects.filter(id=node_id).values(*missing_fields).first() or {}
+            for field in missing_fields:
+                request_data[field] = existing_node.get(field, "")
+
+        updates = {
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "status": node_details.get("status", {}),
+        }
+        cpu_architecture = Sidecar._fallback_cpu_architecture(node_id, request_data)
+        if cpu_architecture:
+            updates["cpu_architecture"] = cpu_architecture
+
+        return updates, request_data.get("ip", "")
+
+    @staticmethod
     def _default_collector_priority(collector_cpu_architecture: str, node_cpu_architecture: str) -> int:
         collector_arch = normalize_cpu_architecture(collector_cpu_architecture)
         node_arch = normalize_cpu_architecture(node_cpu_architecture)
@@ -380,17 +400,10 @@ class Sidecar:
 
         # 如果缓存的ETag存在且与客户端的相同，则返回304 Not Modified
         if cached_etag and cached_etag == if_none_match:
-            # 更新时间, 更新状态
-            node_status = request.data.get("node_details", {}).get("status", {})
-            Node.objects.filter(id=node_id).update(
-                updated_at=datetime.now(timezone.utc).isoformat(),
-                status=node_status,
-            )
-
-            node_ip = request.data.get("node_details", {}).get("ip", "")
-            if not node_ip:
-                node_ip = Node.objects.filter(id=node_id).values_list("ip", flat=True).first()
-            Sidecar.trigger_converge_tasks_if_needed(node_id, node_ip, node_status)
+            node_details = request.data.get("node_details", {})
+            updates, node_ip = Sidecar._cached_heartbeat_updates(node_id, node_details)
+            Node.objects.filter(id=node_id).update(**updates)
+            Sidecar.trigger_converge_tasks_if_needed(node_id, node_ip, updates["status"])
 
             response = HttpResponse(status=304)
             response["ETag"] = cached_etag

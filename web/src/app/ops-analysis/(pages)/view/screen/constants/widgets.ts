@@ -17,6 +17,13 @@ export const SCREEN_WIDGET_DEFINITIONS: ScreenWidgetDefinition[] = [
     defaultHeight: 150,
   },
   {
+    chartType: 'multiValue',
+    titleKey: 'opsAnalysis.screen.widgets.multiValue',
+    descriptionKey: 'opsAnalysis.screen.widgetDescriptions.multiValue',
+    defaultWidth: 360,
+    defaultHeight: 260,
+  },
+  {
     chartType: 'gauge',
     titleKey: 'opsAnalysis.screen.widgets.gauge',
     descriptionKey: 'opsAnalysis.screen.widgetDescriptions.gauge',

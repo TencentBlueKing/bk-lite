@@ -2258,6 +2258,7 @@ datasources:
   - CMDB
   chart_type:
   - pie
+  - multiValue
   field_schema: []
   namespace_keys:
   - 默认命名空间

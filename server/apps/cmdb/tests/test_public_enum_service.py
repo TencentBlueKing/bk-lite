@@ -3,6 +3,7 @@
 对照 specs/capabilities/legacy-prd-cmdb-模型管理.md：公共选项库 CRUD、选项校验、引用扫描、快照同步。
 """
 
+import importlib
 import json
 
 import pytest
@@ -243,3 +244,227 @@ def test_sync_library_snapshots_ok(patch_parse, fake_graph):
     assert result["result"] is True
     assert result["affected_attrs"] == 1
     assert any(c[0] == "set_entity_properties" for c in fg.calls)
+
+
+@pytest.mark.django_db
+def test_sync_library_snapshots_reports_partial_graph_failure(patch_parse, fake_graph, mocker):
+    _make(options=[{"id": "2", "name": "停止"}])
+    models = [
+        {
+            "model_id": model_id,
+            "_id": model_db_id,
+            "attrs": json.dumps(
+                [
+                    {
+                        "attr_id": "status",
+                        "attr_type": "enum",
+                        "enum_rule_type": "public_library",
+                        "public_library_id": "lib_1",
+                        "option": [],
+                    }
+                ]
+            ),
+        }
+        for model_id, model_db_id in (("host", 1), ("service", 2))
+    ]
+
+    def _set_entity_properties(_label, ids, *_args):
+        if ids == [2]:
+            raise RuntimeError("graph unavailable")
+        return {}
+
+    log_exception = mocker.patch.object(svc.logger, "exception")
+    fake_graph(
+        MODULE,
+        query_entity=(models, 2),
+        set_entity_properties=_set_entity_properties,
+    )
+
+    result = svc.sync_library_snapshots("lib_1", "update", "admin")
+
+    assert result["result"] is False
+    assert result["affected_models"] == 1
+    assert result["failed_count"] == 1
+    assert result["failed_items"] == [
+        {
+            "model_id": "service",
+            "error_type": "RuntimeError",
+            "error": "graph unavailable",
+        }
+    ]
+    log_exception.assert_called_once()
+
+
+@pytest.mark.django_db
+def test_sync_library_snapshots_repeated_run_is_idempotent_and_converges(patch_parse, fake_graph):
+    options = [{"id": "2", "name": "停止"}]
+    _make(options=options)
+    models = [
+        {
+            "model_id": model_id,
+            "_id": model_db_id,
+            "attrs": json.dumps(
+                [
+                    {
+                        "attr_id": "status",
+                        "attr_type": "enum",
+                        "enum_rule_type": "public_library",
+                        "public_library_id": "lib_1",
+                        "option": [],
+                    }
+                ]
+            ),
+        }
+        for model_id, model_db_id in (("host", 1), ("service", 2))
+    ]
+    writes = {}
+    service_attempts = 0
+
+    def _set_entity_properties(_label, ids, properties, *_args):
+        nonlocal service_attempts
+        model_db_id = ids[0]
+        if model_db_id == 2:
+            service_attempts += 1
+            if service_attempts == 1:
+                raise RuntimeError("transient graph error")
+        writes.setdefault(model_db_id, []).append(properties["attrs"])
+        return {}
+
+    fake_graph(MODULE, query_entity=(models, 2), set_entity_properties=_set_entity_properties)
+
+    first_result = svc.sync_library_snapshots("lib_1", "update", "admin")
+    second_result = svc.sync_library_snapshots("lib_1", "update", "admin")
+
+    assert first_result["result"] is False
+    assert second_result["result"] is True
+    assert len(writes[1]) == 2
+    assert writes[1][0] == writes[1][1]
+    assert all(
+        json.loads(model_writes[-1])[0]["option"] == options
+        for model_writes in writes.values()
+    )
+
+
+def test_snapshot_retry_settings_invalid_values_do_not_break_task_import(monkeypatch):
+    from apps.cmdb.tasks import celery_tasks
+
+    with monkeypatch.context() as env:
+        env.setenv("CMDB_PUBLIC_ENUM_SNAPSHOT_MAX_RETRIES", "invalid")
+        env.setenv("CMDB_PUBLIC_ENUM_SNAPSHOT_RETRY_BASE_SECONDS", "invalid")
+        reloaded_tasks = importlib.reload(celery_tasks)
+        assert reloaded_tasks.PUBLIC_ENUM_SNAPSHOT_MAX_RETRIES == 3
+        assert reloaded_tasks.PUBLIC_ENUM_SNAPSHOT_RETRY_BASE_SECONDS == 10
+
+    importlib.reload(celery_tasks)
+
+
+def test_snapshot_retry_settings_are_bounded(monkeypatch):
+    from apps.cmdb.tasks import celery_tasks
+
+    monkeypatch.setenv("SNAPSHOT_RETRY_TEST", "999999")
+    assert celery_tasks._read_bounded_int_env("SNAPSHOT_RETRY_TEST", 3, 0, 10) == 10
+    monkeypatch.setenv("SNAPSHOT_RETRY_TEST", "-1")
+    assert celery_tasks._read_bounded_int_env("SNAPSHOT_RETRY_TEST", 10, 1, 3600) == 1
+
+
+def test_snapshot_task_retries_partial_graph_failure(mocker):
+    from celery.canvas import Signature
+    from celery.exceptions import Retry
+
+    from apps.cmdb.tasks import celery_tasks
+
+    mocker.patch(
+        f"{MODULE}.sync_library_snapshots",
+        return_value={
+            "result": False,
+            "library_id": "lib_1",
+            "failed_count": 1,
+            "failed_items": [
+                {
+                    "model_id": "service",
+                    "error_type": "RuntimeError",
+                    "error": "graph unavailable",
+                }
+            ],
+        },
+    )
+    apply_async = mocker.patch.object(Signature, "apply_async", autospec=True)
+    task = celery_tasks.sync_public_enum_library_snapshots_task
+    task.push_request(
+        args=("lib_1", "update", "admin"),
+        kwargs={},
+        id="public-enum-snapshot-retry-1",
+        retries=0,
+        called_directly=False,
+        is_eager=False,
+    )
+    try:
+        with pytest.raises(Retry) as retry_error:
+            task.run("lib_1", "update", "admin")
+    finally:
+        task.pop_request()
+
+    scheduled_signature = apply_async.call_args.args[0]
+    expected_countdown = celery_tasks.PUBLIC_ENUM_SNAPSHOT_RETRY_BASE_SECONDS
+    assert retry_error.value.when == expected_countdown
+    assert scheduled_signature.options["countdown"] == expected_countdown
+    assert scheduled_signature.options["retries"] == 1
+    assert task.max_retries == celery_tasks.PUBLIC_ENUM_SNAPSHOT_MAX_RETRIES
+
+
+def test_snapshot_task_raises_after_partial_failure_retries_exhausted(mocker):
+    from apps.cmdb.tasks import celery_tasks
+
+    mocker.patch(
+        f"{MODULE}.sync_library_snapshots",
+        return_value={
+            "result": False,
+            "library_id": "lib_1",
+            "failed_count": 1,
+            "failed_items": [
+                {
+                    "model_id": "service",
+                    "error_type": "RuntimeError",
+                    "error": "graph unavailable",
+                }
+            ],
+        },
+    )
+    task = celery_tasks.sync_public_enum_library_snapshots_task
+    task.push_request(
+        args=("lib_1", "update", "admin"),
+        kwargs={},
+        id="public-enum-snapshot-retry-exhausted",
+        retries=task.max_retries,
+        called_directly=False,
+        is_eager=False,
+    )
+    try:
+        with pytest.raises(RuntimeError, match=r"RuntimeError.*graph unavailable"):
+            task.run("lib_1", "update", "admin")
+    finally:
+        task.pop_request()
+
+
+def test_snapshot_task_preserves_success_result(mocker):
+    from apps.cmdb.tasks import celery_tasks
+
+    expected = {
+        "result": True,
+        "library_id": "lib_1",
+        "affected_models": 2,
+        "affected_attrs": 2,
+        "failed_count": 0,
+        "failed_items": [],
+    }
+    mocker.patch(f"{MODULE}.sync_library_snapshots", return_value=expected)
+    retry = mocker.patch.object(
+        celery_tasks.sync_public_enum_library_snapshots_task, "retry"
+    )
+
+    result = celery_tasks.sync_public_enum_library_snapshots_task.run(
+        "lib_1", "update", "admin"
+    )
+
+    assert result == expected
+    retry.assert_not_called()

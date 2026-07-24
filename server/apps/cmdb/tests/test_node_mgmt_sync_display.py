@@ -148,6 +148,39 @@ def test_collect_display_falls_back_to_latest_persisted_run_then_empty_state():
     assert empty["detail"]["raw_data"]["count"] == 0
 
 
+def test_unexecuted_collect_task_falls_back_to_latest_successful_sync():
+    config = _config()
+    sync_run = NodeMgmtSyncRun.objects.create(
+        task=config,
+        run_type=NodeMgmtSyncRun.RUN_TYPE_SYNC,
+        status=NodeMgmtSyncRun.STATUS_SUCCESS,
+        summary_json={"all": 1, "update": 1, "update_success": 1},
+        detail_json={
+            "update": {
+                "data": [{"id": "host-1", "inst_name": "host-1", "ip_addr": "10.0.0.1"}],
+                "count": 1,
+            },
+            "raw_data": {
+                "data": [{"id": "host-1", "inst_name": "host-1", "ip_addr": "10.0.0.1"}],
+                "count": 1,
+            },
+        },
+    )
+    _collect_task(
+        1,
+        instances=[{"id": "host-1", "name": "host-1", "ip": "10.0.0.1"}],
+        exec_status=CollectRunStatusType.NOT_START,
+    )
+
+    payload = NodeMgmtSyncService.get_display_payload()
+
+    assert payload["display_source"] == NodeMgmtSyncService.DISPLAY_SOURCE_SYNC_FALLBACK
+    assert payload["run"]["id"] == sync_run.pk
+    assert payload["run"]["status"] == NodeMgmtSyncRun.STATUS_SUCCESS
+    assert payload["message"]["update"] == 1
+    assert payload["detail"]["update"]["count"] == 1
+
+
 def test_disabled_collect_uses_latest_sync_result_without_reenabling_switch():
     config = _config(auto_collect_enabled=False)
     sync_run = NodeMgmtSyncRun.objects.create(

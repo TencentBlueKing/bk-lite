@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, DatePicker, Dropdown, Input, Select, Tooltip, message } from 'antd';
-import { MoreOutlined, SearchOutlined } from '@ant-design/icons';
+import { Button, DatePicker, Input, Select, Tooltip, message } from 'antd';
+import { SearchOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import type { ColumnsType } from 'antd/es/table';
 import type {
@@ -21,6 +21,8 @@ import {
 import { formatOpsRequestTime } from '@/app/ops-analysis/components/ops-analysis-widgets/date-time';
 import CustomTable from '@/components/custom-table';
 import { useTranslation } from '@/utils/i18n';
+import MoreActionsDropdown from '@/components/more-actions-dropdown';
+import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
 import {
   parseTableLikeData,
   resolveTableLikeColumns,
@@ -147,26 +149,14 @@ const OpsAnalysisTable: React.FC<OpsAnalysisTableProps> = ({
             </Button>
           ))}
           {dropdownActions.length > 0 && (
-            <Dropdown
-              trigger={['click']}
-              menu={{
-                items: dropdownActions.map((action, index) => ({
-                  key: String(index),
-                  label: action.text,
-                })),
-                onClick: ({ key }) => {
-                  const action = dropdownActions[Number(key)];
-                  if (action) {
-                    handleActionClick(action, record);
-                  }
-                },
-              }}
-            >
-              <Button type="link" size="small" className="p-0">
-                {t('common.more')}
-                <MoreOutlined />
-              </Button>
-            </Dropdown>
+            <MoreActionsDropdown
+              items={dropdownActions.map<MoreActionsDropdownItem>((action, index) => ({
+                key: String(index),
+                label: action.text,
+                onClick: () => handleActionClick(action, record),
+              }))}
+              buttonType="link"
+            />
           )}
         </div>
       );

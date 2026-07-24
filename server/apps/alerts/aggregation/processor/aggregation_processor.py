@@ -178,6 +178,7 @@ class AggregationProcessor:
 
         except Exception as e:  # noqa
             logger.exception("[AlertAggregation] 策略 %s 处理失败", strategy.name)
+            raise
 
     def _process_missing_detection_strategy(self, strategy: AlarmStrategy, now: datetime) -> None:
         logger.info(
@@ -552,7 +553,7 @@ class AggregationProcessor:
 
         except Exception as e:
             logger.error("[AlertAggregation] 策略 %s: 维度 %s 聚合失败: %s", strategy.name, dimensions, e, exc_info=True)
-            return False
+            raise
 
     def _create_or_update_alerts(
         self,
@@ -620,6 +621,11 @@ class AggregationProcessor:
         # 异步执行新创建告警的自动分配（不阻塞聚合流程）
         if new_alert_ids:
             self._schedule_auto_assignment(new_alert_ids)
+
+        if fail_count:
+            raise RuntimeError(
+                f"策略 {strategy.name} 有 {fail_count} 个告警组创建失败"
+            )
 
         return success_count
 

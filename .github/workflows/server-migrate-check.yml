@@ -1,0 +1,76 @@
+name: Server Migrate Check
+
+on:
+  pull_request:
+    paths:
+      - 'server/apps/**/migrations/**'
+      - 'server/apps/**/models/**'
+      - 'server/apps/**/models.py'
+      - 'server/config/**'
+      - 'server/pyproject.toml'
+      - 'server/settings.py'
+  push:
+    branches: [master]
+    paths:
+      - 'server/apps/**/migrations/**'
+      - 'server/apps/**/models/**'
+      - 'server/apps/**/models.py'
+      - 'server/config/**'
+      - 'server/pyproject.toml'
+      - 'server/settings.py'
+  workflow_dispatch:
+
+jobs:
+  migrate-check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: migrate-check
+          POSTGRES_DB: migrate_check
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DB_ENGINE: postgresql
+      DB_NAME: migrate_check
+      DB_USER: postgres
+      DB_PASSWORD: migrate-check
+      DB_HOST: 127.0.0.1
+      DB_PORT: "5432"
+      SECRET_KEY: github-actions-migrate-check
+      ENABLE_CELERY: "true"
+      MINIO_ENDPOINT: 127.0.0.1:9000
+      MINIO_ACCESS_KEY: migrate-check
+      MINIO_SECRET_KEY: migrate-check
+      MINIO_USE_HTTPS: "false"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: server/pyproject.toml
+
+      - name: Install dependencies
+        run: pip install -e ".[cmdb,dev,mlops,opspilot]"
+
+      - name: Run migrate against empty PostgreSQL
+        run: python manage.py migrate --no-input
+
+      - name: Check for missing migrations
+        run: python manage.py makemigrations --check --dry-run

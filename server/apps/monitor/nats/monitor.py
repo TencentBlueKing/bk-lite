@@ -41,6 +41,11 @@ from apps.monitor.serializers.monitor_object import MonitorObjectSerializer, Mon
 from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
 from apps.monitor.serializers.plugin import MonitorPluginSerializer
 from apps.monitor.services.metrics import Metrics
+from apps.monitor.services.host_resource_top import HostResourceTopService, validate_metric_type
+from apps.monitor.services.network_device_resource_top import (
+    NetworkDeviceResourceTopService,
+    validate_metric_type as validate_network_metric_type,
+)
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.instance_id_keys import resolve_monitor_object_instance_id_keys
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
@@ -1204,6 +1209,71 @@ def mm_query(query: str, step="5m", *args, **kwargs):
             data.append({"name": values[0], "value": values[-1]})
         return {"result": True, "data": data, "message": ""}
     return _build_vm_query_failure_result(resp, "查询单个指标数据失败")
+
+
+@nats_client.register
+def get_host_resource_top(metric_type: str, *args, **kwargs):
+    """Return the latest authorized host CPU, memory, or disk Top10."""
+    try:
+        metric_type = validate_metric_type(metric_type)
+    except ValueError as exc:
+        return {"result": False, "data": [], "message": str(exc)}
+
+    user_info = kwargs.get("user_info") or {}
+    _, _, _, scope_ids, _, error = _get_nats_actor_scope(user_info)
+    if error:
+        return error
+    authorized_instances, error = _get_authorized_monitor_instances(user_info, scope_ids)
+    if error:
+        return error
+    if not authorized_instances:
+        return {"result": True, "data": [], "message": ""}
+
+    try:
+        rows = HostResourceTopService(vm_api=VictoriaMetricsAPI()).run(
+            metric_type,
+            list(authorized_instances.values()),
+        )
+    except Exception:
+        logger.exception("host resource top query failed metric_type=%s", metric_type)
+        return {"result": False, "data": [], "message": "主机资源指标查询失败"}
+    return {"result": True, "data": rows, "message": ""}
+
+
+@nats_client.register
+def get_network_device_resource_top(metric_type: str, *args, **kwargs):
+    """Return the latest authorized network-device CPU, memory, or traffic Top10."""
+    try:
+        metric_type = validate_network_metric_type(metric_type)
+    except ValueError as exc:
+        return {"result": False, "data": [], "message": str(exc)}
+    try:
+        limit = int(kwargs.get("limit", 10))
+        if not 1 <= limit <= 100:
+            raise ValueError
+    except (TypeError, ValueError):
+        return {"result": False, "data": [], "message": "limit 必须是 1-100 的整数"}
+
+    user_info = kwargs.get("user_info") or {}
+    _, _, _, scope_ids, _, error = _get_nats_actor_scope(user_info)
+    if error:
+        return error
+    authorized_instances, error = _get_authorized_monitor_instances(user_info, scope_ids)
+    if error:
+        return error
+    if not authorized_instances:
+        return {"result": True, "data": [], "message": ""}
+
+    try:
+        rows = NetworkDeviceResourceTopService(vm_api=VictoriaMetricsAPI()).run(
+            metric_type,
+            list(authorized_instances.values()),
+            limit=limit,
+        )
+    except Exception:
+        logger.exception("network device resource top query failed metric_type=%s", metric_type)
+        return {"result": False, "data": [], "message": "网络设备资源指标查询失败"}
+    return {"result": True, "data": rows, "message": ""}
 
 
 def _get_nats_actor_scope(user_info):

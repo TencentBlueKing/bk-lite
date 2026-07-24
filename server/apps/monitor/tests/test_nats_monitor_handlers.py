@@ -4,6 +4,7 @@
 """
 
 from types import SimpleNamespace
+import time
 
 import pytest
 
@@ -125,6 +126,37 @@ class TestMmQuery:
         out = nm.mm_query("up")
         assert out["result"] is False
         assert "boom" in out["message"]
+
+
+class TestHostResourceTop:
+    def test_returns_ranked_rows_for_metric_type(self, mocker):
+        instance = SimpleNamespace(id="host-1", name="host-1", ip="10.0.0.1", interval=300)
+        mocker.patch(
+            "apps.monitor.nats.monitor._get_nats_actor_scope",
+            return_value=(None, 1, False, frozenset({1}), False, None),
+        )
+        mocker.patch(
+            "apps.monitor.nats.monitor._get_authorized_monitor_instances",
+            return_value=({"host-1": instance}, None),
+        )
+        vm = mocker.patch("apps.monitor.nats.monitor.VictoriaMetricsAPI")
+        vm.return_value.query.return_value = {
+            "status": "success",
+            "data": {"result": [{"metric": {"instance_id": "host-1"}, "value": [time.time(), "42"]}]},
+        }
+
+        out = nm.get_host_resource_top("cpu", user_info={"user": "u", "team": 1})
+
+        assert out["result"] is True
+        assert out["data"][0]["usage_percent"] == 42.0
+
+    def test_rejects_invalid_metric_type_without_query(self, mocker):
+        vm = mocker.patch("apps.monitor.nats.monitor.VictoriaMetricsAPI")
+
+        out = nm.get_host_resource_top("network", user_info={"user": "u", "team": 1})
+
+        assert out["result"] is False
+        vm.assert_not_called()
 
 
 class TestMmQueryRange:

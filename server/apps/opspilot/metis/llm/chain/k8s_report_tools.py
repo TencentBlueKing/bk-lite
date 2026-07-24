@@ -41,6 +41,7 @@ from .report_renderers.k8s import (  # noqa: F401
     build_post_tool_directives,
     build_repair_mode_choice_args,
     downgrade_config_analysis_next_step_hint,
+    find_completed_k8s_analysis_choice,
     find_pending_k8s_analysis_choice,
     should_emit_config_analysis_report,
 )

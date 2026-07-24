@@ -2,6 +2,8 @@ from datetime import datetime
 from types import SimpleNamespace
 
 import nats_client
+from django.db.models import Q
+
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.current_team_scope import _normalize_organization_ids
 from apps.core.utils.permission_utils import check_instance_permission, get_permission_rules, get_permissions_rules, permission_filter
@@ -385,7 +387,10 @@ def query_log_alert_segments(query_data: dict, *args, **kwargs):
         }
 
     queryset = Alert.objects.filter(collect_type_id=collect_type_id, policy_id__in=policy_ids)
-    queryset = queryset.filter(start_event_time__lte=end_dt, created_at__gte=start_dt)
+    queryset = queryset.filter(
+        Q(end_event_time__isnull=True) | Q(end_event_time__gte=start_dt),
+        start_event_time__lte=end_dt,
+    )
 
     if source_ids:
         queryset = queryset.filter(source_id__in=source_ids)

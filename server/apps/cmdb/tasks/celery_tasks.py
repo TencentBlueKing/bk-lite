@@ -32,6 +32,29 @@ _COLLECT_TERMINAL_STATUSES = (
 )
 
 
+def _read_bounded_int_env(name: str, default: int, minimum: int, maximum: int) -> int:
+    raw_value = os.getenv(name)
+    try:
+        value = default if raw_value is None else int(raw_value)
+    except (TypeError, ValueError):
+        logger.warning("%s must be an integer; using default=%s", name, default)
+        return default
+
+    bounded_value = min(max(value, minimum), maximum)
+    if bounded_value != value:
+        logger.warning("%s is outside [%s, %s]; using %s", name, minimum, maximum, bounded_value)
+    return bounded_value
+
+
+PUBLIC_ENUM_SNAPSHOT_MAX_RETRIES = _read_bounded_int_env(
+    "CMDB_PUBLIC_ENUM_SNAPSHOT_MAX_RETRIES", 3, 0, 10
+)
+PUBLIC_ENUM_SNAPSHOT_RETRY_BASE_SECONDS = _read_bounded_int_env(
+    "CMDB_PUBLIC_ENUM_SNAPSHOT_RETRY_BASE_SECONDS", 10, 1, 3600
+)
+PUBLIC_ENUM_SNAPSHOT_RETRY_MAX_SECONDS = 3600
+
+
 def _is_unhelpful_error_message(message: str) -> bool:
     text = str(message or "").strip()
     return text in {"0", "1", "None", "null", "False", "True"}
@@ -608,12 +631,49 @@ def execute_collect_tool_debug_task(debug_id: str, payload: dict, service_name: 
         return result
 
 
-@shared_task
-def sync_public_enum_library_snapshots_task(library_id: str, trigger: str, operator: str | None = None) -> dict:
+@shared_task(bind=True, max_retries=PUBLIC_ENUM_SNAPSHOT_MAX_RETRIES)
+def sync_public_enum_library_snapshots_task(
+    self, library_id: str, trigger: str, operator: str | None = None
+) -> dict:
     from apps.cmdb.services.public_enum_library import sync_library_snapshots
 
     logger.info(f"[SyncPublicEnumSnapshots] task started library_id={library_id}, trigger={trigger}, operator={operator}")
-    return sync_library_snapshots(library_id, trigger, operator)
+    result = sync_library_snapshots(library_id, trigger, operator)
+    failed_count = int(result.get("failed_count") or 0)
+    if not failed_count:
+        return result
+
+    retry_number = int(self.request.retries)
+    failure_summary = "; ".join(
+        f"model_id={item.get('model_id')}, error_type={item.get('error_type', 'UnknownError')}, error={item.get('error', '')}"
+        for item in result.get("failed_items", [])
+    )
+    error = RuntimeError(
+        f"公共枚举快照同步存在失败项: library_id={library_id}, failed_count={failed_count}, failures=[{failure_summary}]"
+    )
+    if retry_number >= self.max_retries:
+        logger.error(
+            "[SyncPublicEnumSnapshots] retries exhausted library_id=%s, failed_count=%s, attempts=%s, failures=%s",
+            library_id,
+            failed_count,
+            retry_number + 1,
+            failure_summary,
+        )
+        raise error
+
+    countdown = min(
+        PUBLIC_ENUM_SNAPSHOT_RETRY_MAX_SECONDS,
+        PUBLIC_ENUM_SNAPSHOT_RETRY_BASE_SECONDS * (2**retry_number),
+    )
+    logger.warning(
+        "[SyncPublicEnumSnapshots] retry partial failure library_id=%s, "
+        "failed_count=%s, attempt=%s, countdown=%s",
+        library_id,
+        failed_count,
+        retry_number + 1,
+        countdown,
+    )
+    raise self.retry(exc=error, countdown=countdown)
 
 
 @shared_task

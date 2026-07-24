@@ -472,7 +472,11 @@ def check_kubernetes_endpoints(namespace=None, config: RunnableConfig = None):
         return json.dumps({"error": f"检查Endpoints失败: {str(e)}"})
 
 
-def build_config_analysis_next_step_hint(problematic_count: int, target_name: str | None = None) -> str:
+def build_config_analysis_next_step_hint(
+    problematic_count: int,
+    target_name: str | None = None,
+    structured_report_emitted: bool = False,
+) -> str:
     if problematic_count <= 0:
         hint_parts = ["分析完成，本次扫描未发现明显配置问题。"]
         if target_name:
@@ -492,12 +496,18 @@ def build_config_analysis_next_step_hint(problematic_count: int, target_name: st
         hint_parts.append(
             f"当前结果已经覆盖用户指定的工作负载 {target_name}。"
         )
+    if structured_report_emitted:
+        hint_parts.append(
+            "结构化配置检查报告已通过界面卡片展示。"
+            "不要重复输出 Markdown 表格或报告正文。"
+            "不要调用 request_user_choice，也不要调用 generate_repair_report。"
+            "后端会自动展示可用的修复展示方式，并在用户选择后生成修复对比。"
+        )
+        return "".join(hint_parts)
     hint_parts.append(
         "本轮先输出一次完整检查结果。"
-        "输出完整检查报告后，调用 request_user_choice 让用户选择修复展示方式。"
-        "选项需要结合本次问题类别数量、受影响工作负载数量和风险集中度动态生成，"
-        "不要机械固定为同一组三个选项。"
-        "等用户选择后，再调用 generate_repair_report。"
+        "不要调用 request_user_choice，也不要调用 generate_repair_report。"
+        "后端会根据报告中实际存在的聚合维度展示修复展示方式，并在用户选择后生成修复对比。"
     )
     return "".join(hint_parts)
 
@@ -843,6 +853,27 @@ def analyze_deployment_configurations(
                     for item in issues_detail
                 ]
                 serialized = json.dumps(result, ensure_ascii=False)
+        try:
+            from apps.opspilot.metis.llm.chain.report_renderers import (
+                dispatch_tool_result_report,
+            )
+
+            emitted_capability = dispatch_tool_result_report(
+                "analyze_deployment_configurations",
+                result,
+                config,
+            )
+        except Exception as report_error:
+            logger.warning("[k8s-analysis] 结构化报告即时派发失败: %s", report_error)
+            emitted_capability = None
+        if emitted_capability:
+            result["_report_emitted_capability"] = emitted_capability
+            result["_next_step_hint"] = build_config_analysis_next_step_hint(
+                problematic_count=_problematic_count,
+                target_name=name,
+                structured_report_emitted=True,
+            )
+            serialized = json.dumps(result, ensure_ascii=False)
         return serialized
 
     except ApiException as e:

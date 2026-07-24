@@ -1069,8 +1069,8 @@ assert.match(
 );
 assert.match(
   topologyIndexSource,
-  /api\s*\.\s*getLinkRuntime\(\s*String\(canvasId\),\s*\{\s*link:\s*nextLink,\s*nodes:\s*prev\.nodes\s*\}/,
-  'committing link interfaces should request local link runtime with the current unsaved node list',
+  /api\s*\.\s*getLinkRuntime\(\s*String\(canvasId\),\s*\{\s*link:\s*nextLink,\s*nodes:\s*selectLinkEndpointNodes\(indexRuntimeNodes\(prev\.nodes\),\s*nextLink\),?\s*\}/,
+  'committing link interfaces should send only endpoint nodes from the current unsaved node list',
 );
 assert.doesNotMatch(
   topologyIndexSource,
@@ -1131,6 +1131,21 @@ assert.match(
   topologyIndexSource,
   /runtimeConfig\.links[\s\S]*api\.getLinkRuntime/,
   'configured links should load independently after the canvas config is available',
+);
+assert.match(
+  topologyIndexSource,
+  /\.map\(\(node\) => async \(\) =>[\s\S]*\.map\(\(link\) => async \(\) =>/,
+  'configured runtime requests should stay lazy until the bounded pool starts each task',
+);
+assert.match(
+  topologyIndexSource,
+  /runRuntimeTasks\(\[\.\.\.nodeTasks, \.\.\.linkTasks\], \{ isActive: isCurrent \}\)/,
+  'configured runtime requests should use the bounded pool and stop queued stale generations',
+);
+assert.match(
+  topologyIndexSource,
+  /nodes:\s*selectLinkEndpointNodes\(runtimeNodeIndex, link\)/,
+  'configured link refreshes should send only endpoint nodes from the prebuilt index',
 );
 
 console.log('ops-analysis-network-topology-test passed');

@@ -17,6 +17,39 @@ async function loadTypeScriptModule(path) {
   return import(moduleUrl);
 }
 
+function createCookieDocument(initialCookie = '') {
+  const cookies = new Map();
+  initialCookie.split(';').forEach((item) => {
+    const trimmed = item.trim();
+    if (!trimmed) return;
+    const separatorIndex = trimmed.indexOf('=');
+    if (separatorIndex === -1) return;
+    cookies.set(trimmed.slice(0, separatorIndex), trimmed.slice(separatorIndex + 1));
+  });
+
+  return Object.defineProperty({}, 'cookie', {
+    get() {
+      return Array.from(cookies.entries())
+        .map(([key, value]) => `${key}=${value}`)
+        .join('; ');
+    },
+    set(value) {
+      const [cookiePair] = String(value).split(';');
+      const separatorIndex = cookiePair.indexOf('=');
+      if (separatorIndex === -1) return;
+
+      const key = cookiePair.slice(0, separatorIndex);
+      const cookieValue = cookiePair.slice(separatorIndex + 1);
+      if (/max-age=0/i.test(String(value))) {
+        cookies.delete(key);
+        return;
+      }
+
+      cookies.set(key, cookieValue);
+    },
+  });
+}
+
 test('H5 login creates a credentials session and returns only the runtime token', async () => {
   const { loginWithH5Session } = await loadTypeScriptModule('src/auth/h5Auth.ts');
   const calls = [];
@@ -144,6 +177,25 @@ test('AuthContext clears rejected H5 sessions after restore and fresh login vali
   assert.equal(rejectedSessionCleanupCalls.length, 2);
 });
 
+test('登出与 401 重置同时清理会话持久缓存、内存消息和运行中流', async () => {
+  const source = await readFile(new URL('src/context/auth.tsx', projectRoot), 'utf8');
+
+  assert.match(source, /clearConversationSessionCache\(\)/);
+  assert.match(source, /conversationManager\.clearAll\(\)/);
+  assert.match(source, /finally\s*\{[\s\S]*clearConversationSessionCache\(\)[\s\S]*conversationManager\.clearAll\(\)/);
+});
+
+test('Tauri 认证存储失败不降级到 localStorage 也不伪造内存成功状态', async () => {
+  const source = await readFile(new URL('src/utils/secureStorage.ts', projectRoot), 'utf8');
+  const getStoreCatch = source.match(/async function getStore\(\)[\s\S]*?\n\}/)?.[0] || '';
+  const secureSet = source.match(/export async function secureSet[\s\S]*?\n\}/)?.[0] || '';
+
+  assert.match(getStoreCatch, /catch \(error\)[\s\S]*throw error/);
+  assert.ok(secureSet.indexOf('await store.save()') < secureSet.indexOf('memoryCache.set(key, value)'));
+  assert.match(source, /for \(const key of Object\.values\(STORAGE_KEYS\)\)/);
+  assert.match(source, /failures\.push\(error\)/);
+});
+
 test('Tauri request never falls back to browser fetch after the Rust proxy rejects it', async () => {
   const source = await readFile(new URL('src/utils/tauriFetch.ts', projectRoot), 'utf8');
   const testableSource = source.replace(
@@ -222,7 +274,123 @@ test('login UI and AuthContext block submissions until session initialization fi
   assert.match(pageSource, /const \{ login, isInitializing \} = useAuth\(\)/);
   assert.match(pageSource, /if \(isInitializing\) return/);
   assert.match(pageSource, /disabled=\{isLoading \|\| isInitializing/);
-  assert.match(contextSource, /if \(isInitializing\) return \{ status: 'service-unavailable' \}/);
+  assert.match(contextSource, /if \(isInitializing\) \{/);
+  assert.match(contextSource, /status: 'service-unavailable'/);
+});
+
+test('Tauri fresh login validates login_info with the newly issued runtime token before persisting it', async () => {
+  const source = await readFile(new URL('src/context/auth.tsx', projectRoot), 'utf8');
+  const setRuntimeTokenIndex = source.indexOf('setRuntimeAuthToken(nextToken);');
+  const getLoginInfoIndex = source.indexOf('const response = await getLoginInfo();');
+  const saveTokenIndex = source.indexOf('await saveToken(nextToken);');
+  const restoreStoredTokenIndex = source.indexOf('setRuntimeAuthToken(persistToken ? undefined : nextToken);');
+
+  assert.ok(setRuntimeTokenIndex > -1, 'fresh runtime token must be set before validation');
+  assert.ok(getLoginInfoIndex > -1, 'login_info validation must be present');
+  assert.ok(saveTokenIndex > -1, 'persistent token save must be present');
+  assert.ok(restoreStoredTokenIndex > -1, 'runtime token mode must be restored after persistence');
+  assert.ok(setRuntimeTokenIndex < getLoginInfoIndex);
+  assert.ok(getLoginInfoIndex < saveTokenIndex);
+  assert.ok(saveTokenIndex < restoreStoredTokenIndex);
+});
+
+test('mobile current_team cookie selection matches the Web flattened group default', async () => {
+  const { getCurrentTeamCookie, syncCurrentTeamCookie } = await loadTypeScriptModule('src/utils/teamCookie.ts');
+  const originalDocument = globalThis.document;
+  globalThis.document = createCookieDocument();
+
+  try {
+    syncCurrentTeamCookie({
+      username: 'alice',
+      is_superuser: false,
+      group_list: [
+        {
+          id: 1,
+          name: 'OpsPilotGuest',
+          children: [{ id: 2, name: '运营组' }],
+        },
+      ],
+    });
+
+    assert.equal(getCurrentTeamCookie(), '2');
+  } finally {
+    globalThis.document = originalDocument;
+  }
+});
+
+test('mobile current_team cookie keeps an existing known Web-selectable group id', async () => {
+  const { getCurrentTeamCookie, syncCurrentTeamCookie } = await loadTypeScriptModule('src/utils/teamCookie.ts');
+  const originalDocument = globalThis.document;
+  globalThis.document = createCookieDocument('current_team=3');
+
+  try {
+    syncCurrentTeamCookie({
+      username: 'alice',
+      is_superuser: false,
+      group_list: [{ id: 1, name: 'OpsPilotGuest', children: [{ id: 3, name: '平台组' }] }],
+    });
+
+    assert.equal(getCurrentTeamCookie(), '3');
+  } finally {
+    globalThis.document = originalDocument;
+  }
+});
+
+test('mobile current_team cookie does not select group_tree-only subGroups for backend permissions', async () => {
+  const { getCurrentTeamCookie, resolveDefaultCurrentTeamId, syncCurrentTeamCookie } = await loadTypeScriptModule('src/utils/teamCookie.ts');
+  const originalDocument = globalThis.document;
+  globalThis.document = createCookieDocument('current_team=3');
+
+  const userInfo = {
+    username: 'alice',
+    is_superuser: false,
+    group_list: [
+      { id: 1, name: 'OpsPilotGuest', subGroups: [{ id: 3, name: '平台组' }] },
+      { id: 2, name: '运维组' },
+    ],
+  };
+
+  try {
+    assert.equal(resolveDefaultCurrentTeamId(userInfo), '2');
+    syncCurrentTeamCookie(userInfo);
+
+    assert.equal(getCurrentTeamCookie(), '2');
+  } finally {
+    globalThis.document = originalDocument;
+  }
+});
+
+test('mobile current_team cookie can default to OpsPilotGuest for superusers like Web', async () => {
+  const { getCurrentTeamCookie, resolveDefaultCurrentTeamId, syncCurrentTeamCookie } = await loadTypeScriptModule('src/utils/teamCookie.ts');
+  const originalDocument = globalThis.document;
+  globalThis.document = createCookieDocument();
+
+  try {
+    syncCurrentTeamCookie({
+      username: 'admin',
+      is_superuser: true,
+      group_list: [{ id: 1, name: 'OpsPilotGuest' }, { id: 2, name: '运营组' }],
+    });
+
+    assert.equal(getCurrentTeamCookie(), '1');
+    assert.equal(resolveDefaultCurrentTeamId({
+      username: 'admin',
+      is_superuser: true,
+      group_list: [{ id: 1, name: 'OpsPilotGuest' }, { id: 2, name: '运营组' }],
+    }), '1');
+  } finally {
+    globalThis.document = originalDocument;
+  }
+});
+
+test('Tauri native proxy bridges current_team from stored login_info only when the document cookie is missing', async () => {
+  const source = await readFile(new URL('src/utils/tauriApiProxy.ts', projectRoot), 'utf8');
+
+  assert.match(source, /getCurrentTeamCookie\(\)/);
+  assert.match(source, /resolveDefaultCurrentTeamId\(getUserInfoSync\(\)\)/);
+  assert.match(source, /export function resolveCurrentTeamForNativeProxy\(\)/);
+  assert.match(source, /source: currentTeam \? \(cookieTeam \? 'cookie' : 'stored-login-info'\) : 'missing'/);
+  assert.equal(source.includes('const currentTeam = resolveDefaultCurrentTeamId(getUserInfoSync()) ??'), false);
 });
 
 test('H5 runtime token selection never falls back to stored JWT after initialization', async () => {

@@ -431,18 +431,13 @@ def test_event_team_external_source_ignores_organizations(event_levels, restful_
 
 
 # --------------------------------------------------------------------------
-# Issue #3386：可信内部推送跨组织写污染防护
+# 可信内部推送组织归属豁免
 # --------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
-def test_trusted_internal_blocks_unauthorized_org(event_levels, db):
-    """可信内部推送：event 携带未注册组织 ID → 被过滤，不写入目标组织。
-
-    此测试验证 issue #3386 修复：NATS 内伪造 pusher='lite-monitor' 无法将告警写入
-    告警源未注册的组织，越权 org ID 在 _resolve_event_team 中被拦截。
-    若将修复代码 revert（删除 authorized_team_ids 过滤逻辑），本测试将失败。
-    """
+def test_trusted_internal_accepts_event_organizations_without_source_registration(event_levels, db):
+    """可信内部推送的组织由 event 决定，不受告警源 team_secrets 限制。"""
     source = AlertSource.objects.create(
         name="nats源",
         source_id="nats-monitor",
@@ -456,15 +451,13 @@ def test_trusted_internal_blocks_unauthorized_org(event_levels, db):
         level="0", title="t", item="cpu",
         resource_id="1", resource_name="host1", resource_type="host",
     )
-    # event 携带 [3, 99]，其中 99 未注册 → 应被过滤，只保留 3
     adapter.add_base_fields(event, {"source_id": "nats-monitor", "organizations": [3, 99]})
-    assert 99 not in event.team, "未注册组织 99 不应出现在 event.team 中（跨组织写污染防护失效）"
-    assert 3 in event.team, "已注册组织 3 应保留"
+    assert event.team == [3, 99]
 
 
 @pytest.mark.django_db
-def test_trusted_internal_all_unauthorized_orgs_blocked(event_levels, db):
-    """可信内部推送：event 所有 organizations 均未注册 → 返回空列表，不写任何组织。"""
+def test_trusted_internal_accepts_all_event_organizations(event_levels, db):
+    """可信内部推送不要求 event organizations 已在告警源登记。"""
     source = AlertSource.objects.create(
         name="nats源2",
         source_id="nats-monitor-2",
@@ -479,7 +472,7 @@ def test_trusted_internal_all_unauthorized_orgs_blocked(event_levels, db):
         resource_id="1", resource_name="host1", resource_type="host",
     )
     adapter.add_base_fields(event, {"source_id": "nats-monitor-2", "organizations": [99, 100]})
-    assert event.team == [], "所有 org 均未注册时应返回空，不写任何组织"
+    assert event.team == [99, 100]
 
 
 @pytest.mark.django_db
@@ -503,12 +496,8 @@ def test_trusted_internal_authorized_orgs_pass_through(event_levels, db):
 
 
 @pytest.mark.django_db
-def test_trusted_internal_empty_team_secrets_blocks_all(event_levels, db):
-    """可信内部推送：告警源 team_secrets 为空时，任何 organizations 均被拒绝，防止注册前绕过。
-
-    此测试验证白名单为空时不退化为"全部放行"——防止告警源尚未完成组织注册时
-    被利用绕过跨组织写污染防护。
-    """
+def test_trusted_internal_empty_team_secrets_accepts_event_organizations(event_levels, db):
+    """可信内部推送：告警源 team_secrets 为空时仍采信 event organizations。"""
     source = AlertSource.objects.create(
         name="未注册nats源",
         source_id="nats-no-secrets",
@@ -523,7 +512,7 @@ def test_trusted_internal_empty_team_secrets_blocks_all(event_levels, db):
         resource_id="1", resource_name="host1", resource_type="host",
     )
     adapter.add_base_fields(event, {"source_id": "nats-no-secrets", "organizations": [3, 5]})
-    assert event.team == [], "team_secrets 为空时任何 org 均应被拦截，不退化为全放行"
+    assert event.team == [3, 5]
 
 
 def test_rich_event_disabled_noop(event_levels, restful_source):

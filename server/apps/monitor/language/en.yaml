@@ -1,3 +1,16 @@
+monitor_object_type:
+  OS: Operating System
+  Web: Probe
+  Database: Database
+  Middleware: Middleware
+  Network Device: Network Device
+  Hardware Device: Hardware Device
+  Container Management: Container Management
+  K8S: K8S
+  VMWare: VMware
+  Tencent Cloud: Tencent Cloud
+  Other: Other
+
 flow_onboarding_ui:
   accessAsset: Access Asset
   accessGuide: Access Guide

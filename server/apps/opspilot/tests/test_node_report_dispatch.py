@@ -151,7 +151,7 @@ def test_dispatch_isolates_two_capabilities():
     assert mock_dispatch.call_args.args[0] == "config_analysis_report"
 
 
-def test_deepagent_exposes_repair_workflow_tools_only_with_both_capabilities():
+def test_deepagent_does_not_expose_internal_repair_workflow_tools():
     node = _make_node(skill_capabilities=["config_analysis_report", "repair_diff_report"])
     node.all_tools = []
     node.tools = []
@@ -160,7 +160,7 @@ def test_deepagent_exposes_repair_workflow_tools_only_with_both_capabilities():
         tools = node._collect_deepagent_tools(object())
 
     names = {tool.name for tool in tools}
-    assert {"request_user_choice", "generate_repair_report", "report_config_diff"} <= names
+    assert names.isdisjoint({"request_user_choice", "generate_repair_report", "report_config_diff"})
 
 
 @pytest.mark.parametrize("capability", ["config_analysis_report", "repair_diff_report"])
@@ -253,6 +253,341 @@ async def test_pending_analysis_uses_full_details_from_runnable_config_cache():
 
 
 @pytest.mark.asyncio
+async def test_completed_choice_deterministically_continues_to_repair_report():
+    """模型在用户完成选择后停住时，后端必须继续生成修复报告，且不能再次提问。"""
+    from langchain_core.messages import AIMessage, ToolMessage
+
+    node = _make_node(skill_capabilities=["config_analysis_report", "repair_diff_report"])
+    choice_tool = MagicMock()
+    choice_tool.ainvoke = AsyncMock(side_effect=AssertionError("已完成选择，不应再次提问"))
+    choice_tool._request_choice_func = MagicMock()
+    repair_tool = MagicMock()
+    repair_tool.ainvoke = AsyncMock(return_value="已生成修复对比报告")
+    messages = [
+        ToolMessage(
+            name="analyze_deployment_configurations",
+            tool_call_id="analysis-before-choice",
+            content=(
+                '{"cluster_name":"Kubernetes - 2","problematic":60,'
+                '"issues_detail":[{"severity":"high","issue":"未配置存活探针",'
+                '"count":59,"workloads":["api (prod)"]}],'
+                '"_deployments_full":[{"name":"api","namespace":"prod",'
+                '"issues":["未配置存活探针"]}]}'
+            ),
+        ),
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "request_user_choice",
+                    "args": {"question": "请选择修复展示方式"},
+                    "id": "choice-call",
+                    "type": "tool_call",
+                }
+            ],
+        ),
+        ToolMessage(
+            name="request_user_choice",
+            tool_call_id="choice-call",
+            content="用户回答: 按工作负载聚合。请根据用户的回答继续执行下一步操作，不要停止。",
+        ),
+    ]
+
+    with (
+        patch.object(node, "_build_choice_tool", return_value=choice_tool),
+        patch.object(node, "_build_bulk_repair_tool", return_value=repair_tool),
+    ):
+        handled = await node._run_pending_k8s_repair_workflow(
+            messages,
+            {"configurable": {"execution_id": "exec-choice-complete"}},
+        )
+
+    assert handled is True
+    choice_tool.ainvoke.assert_not_awaited()
+    repair_tool.ainvoke.assert_awaited_once()
+    assert repair_tool.ainvoke.await_args.args[0]["group_by"] == "target"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("choice", "expected_type", "expected_target_labels"),
+    [
+        ("全部一次性展示", "All", {"全部（60 个目标）"}),
+        ("按空间聚合", "Scope", {"production（30 个目标）", "staging（30 个目标）"}),
+        ("按风险等级聚合", "Severity", {"高危（60 个目标）"}),
+    ],
+)
+async def test_sixty_object_choice_emits_one_repair_diff_event_from_full_cache(
+    choice,
+    expected_type,
+    expected_target_labels,
+):
+    """60 对象选择完成后必须从完整缓存生成且只推送一张修复对比卡。"""
+    from langchain_core.messages import AIMessage, ToolMessage
+    from langchain_core.runnables import RunnableLambda
+
+    from apps.opspilot.metis.llm.tools.kubernetes.analysis import _cache_k8s_analysis_details
+
+    execution_id = f"exec-sixty-repair-event-{expected_type.lower()}"
+    deployments = [
+        {
+            "name": f"scan-fixture-{index:03d}",
+            "namespace": "production" if index % 2 else "staging",
+            "issues": [f"未设置资源限制-{issue_index}" for issue_index in range(5)],
+            "config_analysis": {},
+        }
+        for index in range(60)
+    ]
+    _cache_k8s_analysis_details(execution_id, deployments)
+    node = _make_node(skill_capabilities=["config_analysis_report", "repair_diff_report"])
+    messages = [
+        ToolMessage(
+            name="analyze_deployment_configurations",
+            tool_call_id="analysis-sixty",
+            content=(
+                '{"cluster_name":"Kubernetes - 2","problematic":60,'
+                '"issues_detail":[{"severity":"high","issue":"未设置资源限制",'
+                '"count":60,"workloads":["scan-fixture-001 (production)"]}]}'
+            ),
+        ),
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "request_user_choice",
+                    "args": {"question": "请选择修复展示方式"},
+                    "id": "choice-sixty",
+                    "type": "tool_call",
+                }
+            ],
+        ),
+        ToolMessage(
+            name="request_user_choice",
+            tool_call_id="choice-sixty",
+            content=f"用户回答: {choice}。请根据用户的回答继续执行下一步操作，不要停止。",
+        ),
+    ]
+
+    async def _pipeline(_, config):
+        return await node._run_pending_k8s_repair_workflow(messages, config)
+
+    report_events = []
+    download_events = []
+    async for event in RunnableLambda(_pipeline).astream_events(
+        {},
+        config={"configurable": {"execution_id": execution_id}},
+        version="v2",
+    ):
+        if event.get("event") == "on_custom_event" and event.get("name") == "repair_diff_report":
+            report_events.append(event["data"])
+        if event.get("event") == "on_custom_event" and event.get("name") == "report_file_download":
+            download_events.append(event["data"])
+
+    assert len(report_events) == 1
+    assert len(download_events) == 1
+    assert download_events[0]["filename"].endswith(".docx")
+    assert download_events[0]["content_base64"]
+    assert {item["workload_type"] for item in report_events[0]["items"]} == {expected_type}
+    assert {item["workload_name"] for item in report_events[0]["items"]} == expected_target_labels
+
+
+@pytest.mark.asyncio
+async def test_slow_docx_generation_still_emits_download_for_severity_choice():
+    """下载报告是双 capability 闭环必达结果，不能因固定 5 秒阈值静默丢失。"""
+    import time
+
+    from langchain_core.messages import AIMessage, ToolMessage
+    from langchain_core.runnables import RunnableLambda
+
+    from apps.opspilot.metis.llm.tools.kubernetes.analysis import _cache_k8s_analysis_details
+
+    execution_id = "exec-slow-severity-download"
+    _cache_k8s_analysis_details(
+        execution_id,
+        [{"name": "api", "namespace": "production", "issues": ["未设置资源限制"]}],
+    )
+    node = _make_node(skill_capabilities=["config_analysis_report", "repair_diff_report"])
+    messages = [
+        ToolMessage(
+            name="analyze_deployment_configurations",
+            tool_call_id="analysis-slow-download",
+            content=(
+                '{"cluster_name":"Kubernetes - 2","problematic":1,'
+                '"issues_detail":[{"severity":"high","issue":"未设置资源限制",'
+                '"count":1,"workloads":["api (production)"]}]}'
+            ),
+        ),
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "request_user_choice",
+                    "args": {"question": "请选择修复展示方式"},
+                    "id": "choice-slow-download",
+                    "type": "tool_call",
+                }
+            ],
+        ),
+        ToolMessage(
+            name="request_user_choice",
+            tool_call_id="choice-slow-download",
+            content="用户回答: 按风险等级聚合。请继续。",
+        ),
+    ]
+
+    def _slow_generate_docx(_):
+        time.sleep(5.1)
+        return b"docx"
+
+    async def _pipeline(_, config):
+        return await node._run_pending_k8s_repair_workflow(messages, config)
+
+    event_names = []
+    with patch(
+        "apps.opspilot.metis.llm.tools.kubernetes.report_generator.generate_k8s_report_docx",
+        side_effect=_slow_generate_docx,
+    ):
+        async for event in RunnableLambda(_pipeline).astream_events(
+            {},
+            config={"configurable": {"execution_id": execution_id}},
+            version="v2",
+        ):
+            if event.get("event") == "on_custom_event":
+                event_names.append(event.get("name"))
+
+    assert "repair_diff_report" in event_names
+    assert "report_file_download" in event_names
+
+
+@pytest.mark.asyncio
+async def test_deep_wrapper_checks_pending_repair_against_full_message_history():
+    """HITL 恢复后分析在旧消息、选择在新消息时，状态机仍必须看到完整历史。"""
+    from types import SimpleNamespace
+
+    from langchain_core.messages import AIMessage, ToolMessage
+
+    node = _make_node(skill_capabilities=["config_analysis_report", "repair_diff_report"])
+    graph_builder = MagicMock()
+    analysis = ToolMessage(
+        name="analyze_deployment_configurations",
+        tool_call_id="analysis-before-resume",
+        content='{"problematic":60,"issues_detail":[{"severity":"high","issue":"缺探针","count":60}]}',
+    )
+    choice = ToolMessage(
+        name="request_user_choice",
+        tool_call_id="choice-after-resume",
+        content="用户回答: 全部一次性展示。请继续。",
+    )
+    final_answer = AIMessage(content="已处理用户选择")
+    final_messages = [analysis, choice, final_answer]
+    deep_agent = MagicMock()
+    deep_agent.ainvoke = AsyncMock(return_value={"messages": final_messages})
+    node._run_pending_k8s_repair_workflow = AsyncMock(return_value=True)
+    node._post_process_tool_results = MagicMock()
+    node.get_llm_client = MagicMock(return_value=object())
+    node._collect_deepagent_tools = MagicMock(return_value=[])
+    node._build_skill_backend_and_sources = MagicMock(return_value=(None, [], None))
+    node._build_interrupt_on = MagicMock(return_value=None)
+    graph_request = SimpleNamespace(system_message_prompt="", skill_id=1)
+
+    with (
+        patch("apps.opspilot.metis.llm.chain.node.TemplateLoader.render_template", return_value="system"),
+        patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", return_value=deep_agent),
+    ):
+        await node.build_deepagent_nodes(graph_builder)
+        wrapper = graph_builder.add_node.call_args.args[1]
+        await wrapper(
+            {"messages": [analysis, choice]},
+            {"configurable": {"graph_request": graph_request, "execution_id": "resume-full-history"}},
+        )
+
+    workflow_messages = node._run_pending_k8s_repair_workflow.await_args.args[0]
+    assert workflow_messages == final_messages
+
+
+@pytest.mark.asyncio
+async def test_deep_wrapper_emits_config_choice_and_repair_events_in_order():
+    """覆盖线上完整顺序：附加检查工具不能吞掉分析后的选择与修复报告。"""
+    from types import SimpleNamespace
+
+    from langchain_core.messages import AIMessage, ToolMessage
+    from langchain_core.runnables import RunnableLambda
+
+    from apps.opspilot.metis.llm.tools.kubernetes.analysis import _cache_k8s_analysis_details
+
+    execution_id = "exec-full-k8s-report-flow"
+    deployments = [
+        {
+            "name": f"scan-fixture-{index:03d}",
+            "namespace": "production" if index % 2 else "staging",
+            "issues": ["未设置资源限制"],
+            "config_analysis": {},
+        }
+        for index in range(60)
+    ]
+    _cache_k8s_analysis_details(execution_id, deployments)
+    node = _make_node(skill_capabilities=["config_analysis_report", "repair_diff_report"])
+    graph_builder = MagicMock()
+    analysis = ToolMessage(
+        name="analyze_deployment_configurations",
+        tool_call_id="analysis-full-flow",
+        content=(
+            '{"cluster_name":"Kubernetes - 2","total":60,"problematic":60,"healthy":0,'
+            '"issues_detail":[{"severity":"high","issue":"未设置资源限制",'
+            '"count":60,"workloads":["scan-fixture-001 (production)"]}]}'
+        ),
+    )
+    final_messages = [
+        analysis,
+        ToolMessage(name="check_kubernetes_statefulsets", tool_call_id="statefulsets", content="[]"),
+        ToolMessage(name="check_kubernetes_daemonsets", tool_call_id="daemonsets", content="[]"),
+        AIMessage(content="已通过结构化卡片展示详细报告。"),
+    ]
+    deep_agent = MagicMock()
+    deep_agent.ainvoke = AsyncMock(return_value={"messages": final_messages})
+    node.get_llm_client = MagicMock(return_value=object())
+    node._collect_deepagent_tools = MagicMock(return_value=[])
+    node._build_skill_backend_and_sources = MagicMock(return_value=(None, [], None))
+    node._build_interrupt_on = MagicMock(return_value=None)
+    graph_request = SimpleNamespace(system_message_prompt="", skill_id=1)
+
+    with (
+        patch("apps.opspilot.metis.llm.chain.node.TemplateLoader.render_template", return_value="system"),
+        patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", return_value=deep_agent),
+        patch(
+            "apps.opspilot.metis.llm.chain.node.wait_for_choice",
+            new=AsyncMock(return_value={"selected": ["全部一次性展示"], "source": "user"}),
+        ),
+    ):
+        await node.build_deepagent_nodes(graph_builder)
+        wrapper = graph_builder.add_node.call_args.args[1]
+
+        async def _run_wrapper(_, config):
+            return await wrapper({"messages": []}, config)
+
+        event_names = []
+        async for event in RunnableLambda(_run_wrapper).astream_events(
+            {},
+            config={
+                "configurable": {
+                    "graph_request": graph_request,
+                    "execution_id": execution_id,
+                }
+            },
+            version="v2",
+        ):
+            if event.get("event") == "on_custom_event":
+                event_names.append(event.get("name"))
+
+    assert event_names.count("config_analysis_report") == 1
+    assert event_names.count("user_choice_request") == 1
+    assert event_names.count("user_choice_result") == 1
+    assert event_names.count("repair_diff_report") == 1
+    assert event_names.index("config_analysis_report") < event_names.index("user_choice_request")
+    assert event_names.index("user_choice_result") < event_names.index("repair_diff_report")
+
+
+@pytest.mark.asyncio
 async def test_pending_analysis_does_not_run_workflow_for_single_capability():
     node = _make_node(skill_capabilities=["config_analysis_report"])
 
@@ -286,6 +621,42 @@ async def test_choice_custom_events_use_explicit_runnable_config():
     assert all(call.kwargs["config"] is runnable_config for call in dispatch.call_args_list)
 
 
+@pytest.mark.asyncio
+async def test_choice_custom_events_are_visible_in_real_async_event_stream():
+    """确定性修复状态机在异步节点中提问时，前端必须收到选择请求事件。"""
+    from langchain_core.runnables import RunnableLambda
+
+    node = _make_node(skill_capabilities=["config_analysis_report", "repair_diff_report"])
+    choice_tool = node._build_choice_tool()
+    choice_func = choice_tool._request_choice_func
+    choice_func._configurable = {}
+    choice_func._execution_id = "exec-choice-stream"
+    choice_func._node_id = "repair-flow"
+
+    async def _invoke_choice(_, config):
+        return await choice_func(
+            question="请选择修复展示方式",
+            question_type="single_select",
+            options=["全部一次性展示", "按空间聚合", "按风险等级聚合"],
+            config=config,
+        )
+
+    event_names = []
+    with patch(
+        "apps.opspilot.metis.llm.chain.node.wait_for_choice",
+        new=AsyncMock(return_value={"selected": ["全部一次性展示"], "source": "user"}),
+    ):
+        async for event in RunnableLambda(_invoke_choice).astream_events(
+            {},
+            config={"configurable": {"execution_id": "exec-choice-stream"}},
+            version="v2",
+        ):
+            if event.get("event") == "on_custom_event":
+                event_names.append(event.get("name"))
+
+    assert event_names == ["user_choice_request", "user_choice_result"]
+
+
 def test_post_process_tool_results_dispatches_mapped_tool():
     """ToolMessage.name 命中 TOOL_RESULT_TO_CAPABILITY 时,自动 dispatch 对应 capability。"""
     from langchain_core.messages import ToolMessage
@@ -314,6 +685,26 @@ def test_post_process_tool_results_dispatches_mapped_tool():
     event_name, payload = mock_dispatch.call_args.args
     assert event_name == "config_analysis_report"
     assert payload["title"].startswith("配置检查报告")
+
+
+def test_post_process_tool_results_does_not_emit_immediate_report_twice():
+    from langchain_core.messages import ToolMessage
+
+    node = _make_node(skill_capabilities=["config_analysis_report"])
+    tool_message = ToolMessage(
+        name="analyze_deployment_configurations",
+        content=(
+            '{"cluster_name":"Kubernetes - 1","total":60,"problematic":60,'
+            '"issues_detail":[{"severity":"high","issue":"缺探针","count":59,"workloads":[]}],'
+            '"_report_emitted_capability":"config_analysis_report"}'
+        ),
+        tool_call_id="call-immediate",
+    )
+
+    with patch("langchain_core.callbacks.dispatch_custom_event") as dispatch:
+        node._post_process_tool_results([tool_message])
+
+    dispatch.assert_not_called()
 
 
 def test_post_process_tool_results_skips_unmapped_tool():

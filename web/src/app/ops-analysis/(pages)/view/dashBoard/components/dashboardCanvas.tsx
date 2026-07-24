@@ -6,8 +6,8 @@ import React, {
   useState,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { Button, Dropdown, Empty, Menu, Spin } from 'antd';
-import { MoreOutlined, PlusOutlined } from '@ant-design/icons';
+import { Button, Empty, Spin } from 'antd';
+import { PlusOutlined } from '@ant-design/icons';
 import type {
   GridItemHTMLElement,
   GridStack as GridStackInstance,
@@ -23,6 +23,7 @@ import type {
 } from '@/app/ops-analysis/types/dashBoard';
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import PermissionWrapper from '@/components/permission';
+import MoreActionsDropdown from '@/components/more-actions-dropdown';
 import {
   buildDashboardGridStackLayout,
   buildDashboardGridStackStructureKey,
@@ -479,16 +480,10 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
       const isTableWidget =
         item.valueConfig?.chartType === 'table' ||
         item.valueConfig?.chartType === 'eventTable';
-      const menu = (
-        <Menu>
-          <Menu.Item key="edit" onClick={() => onEditWidget(item.i)}>
-            {t('common.edit')}
-          </Menu.Item>
-          <Menu.Item key="delete" onClick={() => onDeleteWidget(item.i)}>
-            {t('common.delete')}
-          </Menu.Item>
-        </Menu>
-      );
+      const menuItems = [
+        { key: 'edit', label: t('common.edit'), onClick: () => onEditWidget(item.i) },
+        { key: 'delete', label: t('common.delete'), danger: true, onClick: () => onDeleteWidget(item.i) },
+      ];
 
       return (
         <WidgetHeaderRuntimeSlotProvider>
@@ -516,18 +511,11 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
                   className="no-drag ml-auto max-w-[70%] shrink-0 overflow-x-auto"
                 />
                 {isEditMode && (
-                  <Dropdown overlay={menu} trigger={['click']}>
-                    <button
-                      type="button"
-                      aria-label={t('common.more')}
-                      className="no-drag text-(--color-text-2) hover:text-(--color-text-1) transition-colors cursor-pointer"
-                    >
-                      <MoreOutlined
-                        aria-hidden="true"
-                        style={{ fontSize: '18px' }}
-                      />
-                    </button>
-                  </Dropdown>
+                  <MoreActionsDropdown
+                    items={menuItems}
+                    buttonClassName="no-drag text-(--color-text-2) hover:text-(--color-text-1) transition-colors cursor-pointer"
+                    iconStyle={{ fontSize: '18px' }}
+                  />
                 )}
               </div>
               <div

@@ -19,6 +19,7 @@ const normalizedStatuses = {
   blocked: 'blocked',
   failed: 'failed',
   timeout: 'timeout',
+  unexecuted: 'unexecuted',
   error: 'failed',
   writing: 'running',
   force_stop: 'blocked',
@@ -31,7 +32,7 @@ for (const [raw, expected] of Object.entries(normalizedStatuses)) {
   assert.ok(result.status && NODE_MGMT_SYNC_STATUS_BADGE[result.status]);
 }
 
-for (const raw of ['unknown', 'future_backend_status', 'unexecuted', 42]) {
+for (const raw of ['unknown', 'future_backend_status', 42]) {
   const result = normalizeNodeMgmtSyncStatus(raw);
   assert.equal(result.status, 'blocked');
   assert.equal(result.isUnknown, true);
@@ -130,6 +131,7 @@ const testRequestGuard = async () => {
   for (const locale of ['zh', 'en']) {
     const messages = JSON.parse(fs.readFileSync(`src/app/cmdb/locales/${locale}.json`, 'utf8'));
     const nodeMgmtSync = messages.Collection.nodeMgmtSync;
+    assert.ok(nodeMgmtSync.status?.unexecuted, `${locale}: 缺少尚未执行状态文案`);
     assert.ok(nodeMgmtSync.status?.unknown, `${locale}: 缺少未知状态 fallback`);
     assert.ok(nodeMgmtSync.empty?.partialFailure, `${locale}: 缺少部分失败空态`);
     assert.ok(nodeMgmtSync.reason?.unknown, `${locale}: 缺少未知错误码脱敏 fallback`);

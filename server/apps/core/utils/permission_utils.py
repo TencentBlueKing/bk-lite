@@ -58,6 +58,7 @@ def set_rules_module_params(app_name, permission_key):
         "mlops": "mlops",
         "operation_analysis": "ops-analysis",
         "job_mgmt": "job",
+        "patch_mgmt": "patch",
     }
     client = SystemMgmt(is_local_client=True)
     app_name = app_name_map.get(app_name, app_name)
@@ -77,6 +78,7 @@ def get_permissions_rules(user, current_team, app_name, permission_key, include_
         "mlops": "mlops",
         "operation_analysis": "ops-analysis",
         "job_mgmt": "job",
+        "patch_mgmt": "patch",
     }
     app_name = app_name_map.get(app_name, app_name)
     module = permission_key

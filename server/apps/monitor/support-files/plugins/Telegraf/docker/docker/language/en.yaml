@@ -2,3 +2,71 @@ Docker:
   name: Docker(Telegraf)
   desc: Through the Telegraf collector, regularly collect Docker container status,
     resource utilization (CPU, memory, network, I/O), and performance metrics.
+monitor_object:
+  Docker: Docker
+  Docker Container: Docker Container
+monitor_object_type:
+  Container Management: Container Management
+monitor_object_metric_group:
+  Docker:
+    Docker Count: Docker Count
+  Docker Container:
+    Status: Status
+    CPU: CPU
+    Memory: Memory
+    Block I/O: Block I/O
+    Network: Network
+monitor_object_metric:
+  Docker:
+    docker_n_containers_running:
+      name: Running Container Count
+      desc: Number of running containers on the Docker host.
+    docker_n_containers:
+      name: Total Container Count
+      desc: Total number of containers on the Docker host.
+    docker_n_containers_stopped:
+      name: Stopped Container Count
+      desc: Number of stopped containers on the Docker host.
+  Docker Container:
+    docker_container_status:
+      name: Container Status
+      desc: Current container state, such as running, stopped, or paused.
+    docker_container_status_restart_count:
+      name: Container Restart Count
+      desc: Number of times the container has restarted since its last start.
+    docker_container_cpu_usage_percent:
+      name: CPU Usage
+      desc: Percentage of available CPU resources used by the container.
+    docker_container_mem_usage_percent:
+      name: Memory Usage
+      desc: Percentage of the configured memory limit used by the container.
+    docker_container_mem_usage:
+      name: Memory Used
+      desc: Physical memory currently consumed by the container.
+    docker_container_blkio_io_service_bytes_recursive_total_rate:
+      name: Block I/O Throughput
+      desc: Total bytes transferred per second by all container block I/O operations.
+    docker_container_blkio_io_service_bytes_recursive_read_rate:
+      name: Block I/O Read Throughput
+      desc: Bytes read per second from block devices by the container.
+    docker_container_blkio_io_service_bytes_recursive_write_rate:
+      name: Block I/O Write Throughput
+      desc: Bytes written per second to block devices by the container.
+    docker_container_net_rx_bytes_rate:
+      name: Network Receive Throughput
+      desc: Bytes received per second by the container network interfaces.
+    docker_container_net_tx_bytes_rate:
+      name: Network Transmit Throughput
+      desc: Bytes sent per second by the container network interfaces.
+    docker_container_net_rx_errors_rate:
+      name: Network Receive Errors
+      desc: Packet receive errors per second for the container.
+    docker_container_net_tx_errors_rate:
+      name: Network Transmit Errors
+      desc: Packet send errors per second for the container.
+    docker_container_net_rx_packets_rate:
+      name: Network Receive Packets
+      desc: Packets received per second by the container.
+    docker_container_net_tx_packets_rate:
+      name: Network Transmit Packets
+      desc: Packets sent per second by the container.

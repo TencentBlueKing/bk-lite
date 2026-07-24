@@ -161,6 +161,9 @@ monitor_object_metric:
     device_psu_temperature_celsius:
       name: 电源温度
       desc: 采集 IP Infusion (OcNOS) 设备机箱级 PSU 1 温度传感器读数（IPI-CMM-CHASSIS-MIB cmmSysPSTemperature1），单位摄氏度。用于监测电源模块工作温度，过高温度可能提示散热不良、风扇故障或环境过热，存在触发热保护或硬件损坏风险。
+    device_psu_state_backup:
+      name: 备用电源状态
+      desc: 设备备用电源模块的运行状态，统一归一为正常或异常。
 monitor_object_metric_group:
   Switch:
     Base: 基础
@@ -181,3 +184,4 @@ monitor_object_metric_group:
     Application Port: 应用端口
     Endpoint: 端点
     Conversation: 会话
+    Power: 电源

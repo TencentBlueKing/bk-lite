@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 import pydantic.root_model  # noqa
 import pytest
+from django.db.models import Q
 
 from apps.log.nats import log as nats_log
 
@@ -501,3 +502,30 @@ def test_query_log_alert_segments_propagates_policy_error(mocker):
         }
     )
     assert out == err
+
+
+def test_query_log_alert_segments_filters_by_overlapping_event_time(mocker):
+    mocker.patch.object(nats_log, "_get_log_policy_ids", return_value=(["policy-1"], None))
+    queryset = mocker.MagicMock()
+    filtered_queryset = queryset.filter.return_value
+    mocker.patch.object(nats_log.Alert.objects, "filter", return_value=queryset)
+    mocker.patch.object(
+        nats_log,
+        "_build_paginated_alert_segments",
+        return_value={"count": 0, "page": 1, "page_size": 100, "items": []},
+    )
+
+    out = nats_log.query_log_alert_segments(
+        {
+            "collect_type_id": "ct",
+            "start": "2024-01-01 01:00:00",
+            "end": "2024-01-01 02:00:00",
+        }
+    )
+
+    assert out["result"] is True
+    queryset.filter.assert_called_once_with(
+        Q(end_event_time__isnull=True) | Q(end_event_time__gte=datetime(2024, 1, 1, 1, 0, 0)),
+        start_event_time__lte=datetime(2024, 1, 1, 2, 0, 0),
+    )
+    nats_log._build_paginated_alert_segments.assert_called_once_with(filtered_queryset, 1, 100)

@@ -554,19 +554,15 @@ class ImageClassificationTrainJobViewSet(TeamModelViewSet):
             logger.info(f"开始下载模型: run_id={run_id}")
 
             # 下载模型并打包为 ZIP
-            zip_buffer = mlflow_service.download_model_artifact(run_id=run_id, artifact_path="model")
+            zip_stream = mlflow_service.download_model_artifact(run_id=run_id, artifact_path="model")
 
             # 构造文件名
             filename = f"model_{run_id}.zip"
 
             # 返回文件响应
-            from django.http import HttpResponse
+            response = mlflow_service.build_model_download_response(zip_stream, filename)
 
-            response = HttpResponse(zip_buffer.getvalue(), content_type="application/zip")
-            response["Content-Disposition"] = f'attachment; filename="{filename}"'
-            response["Content-Length"] = len(zip_buffer.getvalue())
-
-            logger.info(f"模型下载成功: run_id={run_id}, size={len(zip_buffer.getvalue())} bytes")
+            logger.info(f"模型下载成功: run_id={run_id}, size={response['Content-Length']} bytes")
             return response
 
         except Exception as e:

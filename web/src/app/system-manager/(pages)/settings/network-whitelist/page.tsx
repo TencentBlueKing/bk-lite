@@ -1,12 +1,18 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { Button, Table, Space, Popconfirm, message, Spin, Modal, Form, Input, Switch } from 'antd';
+import { Button, Space, Popconfirm, message, Form } from 'antd';
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
+import CustomTable from '@/components/custom-table';
 import TopSection from '@/components/top-section';
 import PermissionWrapper from '@/components/permission';
 import { NetworkWhiteListItem, useSettingsApi } from '@/app/system-manager/api/settings';
 import { useTranslation } from '@/utils/i18n';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
+import NetworkWhitelistFormModal, {
+  type NetworkWhitelistEntryType,
+} from '@/app/system-manager/components/network-whitelist-form-modal';
+
+const DEFAULT_PAGE_SIZE = 10;
 
 const NetworkWhitelistPage: React.FC = () => {
   const { t } = useTranslation();
@@ -14,16 +20,20 @@ const NetworkWhitelistPage: React.FC = () => {
   const { convertToLocalizedTime } = useLocalizedTime();
   const [dataSource, setDataSource] = useState<NetworkWhiteListItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [pagination, setPagination] = useState({ current: 1, pageSize: DEFAULT_PAGE_SIZE, total: 0 });
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<NetworkWhiteListItem | null>(null);
   const [saving, setSaving] = useState(false);
+  // 'cidr' | 'domain' — 表单当前展示哪种条目类型,创建时可改,编辑时锁定
+  const [entryType, setEntryType] = useState<NetworkWhitelistEntryType>('cidr');
   const [form] = Form.useForm();
 
-  const fetchData = async () => {
+  const fetchData = async (page = pagination.current, pageSize = pagination.pageSize) => {
     setLoading(true);
     try {
-      const data = await fetchNetworkWhiteList();
-      setDataSource(Array.isArray(data) ? data : []);
+      const response = await fetchNetworkWhiteList(page, pageSize);
+      setDataSource((response.items || []).filter((item) => !item.is_build_in));
+      setPagination({ current: page, pageSize, total: response.count || 0 });
     } catch {
       message.error(t('common.fetchFailed'));
     } finally {
@@ -32,11 +42,12 @@ const NetworkWhitelistPage: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchData();
+    void fetchData(1, DEFAULT_PAGE_SIZE);
   }, []);
 
   const openCreate = () => {
     setEditing(null);
+    setEntryType('cidr');
     form.resetFields();
     form.setFieldsValue({ enabled: true });
     setModalOpen(true);
@@ -44,22 +55,41 @@ const NetworkWhitelistPage: React.FC = () => {
 
   const openEdit = (record: NetworkWhiteListItem) => {
     setEditing(record);
-    form.setFieldsValue({ network: record.network, remark: record.remark, enabled: record.enabled });
+    setEntryType(record.domain_name ? 'domain' : 'cidr');
+    form.setFieldsValue({
+      network: record.network,
+      domain_name: record.domain_name,
+      remark: record.remark,
+      enabled: record.enabled,
+    });
     setModalOpen(true);
   };
 
   const handleSave = async () => {
     const values = await form.validateFields();
+    // entryType 控制的字段如果切换过模式,另一个已被清空,所以只发当前模式的字段
+    const payload =
+      entryType === 'domain'
+        ? {
+          domain_name: values.domain_name,
+          remark: values.remark,
+          enabled: values.enabled,
+        }
+        : {
+          network: values.network,
+          remark: values.remark,
+          enabled: values.enabled,
+        };
     setSaving(true);
     try {
       if (editing) {
-        await updateNetworkWhiteList(editing.id, values);
+        await updateNetworkWhiteList(editing.id, payload);
       } else {
-        await createNetworkWhiteList(values);
+        await createNetworkWhiteList(payload);
       }
       message.success(t('common.updateSuccess'));
       setModalOpen(false);
-      fetchData();
+      await fetchData(editing ? pagination.current : 1, pagination.pageSize);
     } catch (error) {
       message.error(error instanceof Error ? error.message : t('common.saveFailed'));
     } finally {
@@ -70,7 +100,8 @@ const NetworkWhitelistPage: React.FC = () => {
   const handleDelete = async (id: number) => {
     try {
       await deleteNetworkWhiteList(id);
-      setDataSource((prev) => prev.filter((item) => item.id !== id));
+      const targetPage = dataSource.length === 1 && pagination.current > 1 ? pagination.current - 1 : pagination.current;
+      await fetchData(targetPage, pagination.pageSize);
       message.success(t('common.delSuccess'));
     } catch {
       message.error(t('common.delFailed'));
@@ -78,7 +109,21 @@ const NetworkWhitelistPage: React.FC = () => {
   };
 
   const columns = [
-    { title: t('system.settings.networkWhitelist.network'), dataIndex: 'network', key: 'network', width: 220 },
+    {
+      title: t('system.settings.networkWhitelist.entryType'),
+      dataIndex: 'entry_type',
+      key: 'entry_type',
+      width: 100,
+      render: (_: unknown, record: NetworkWhiteListItem) =>
+        record.domain_name ? t('system.settings.networkWhitelist.typeDomain') : t('system.settings.networkWhitelist.typeCidr'),
+    },
+    {
+      title: t('system.settings.networkWhitelist.entry'),
+      dataIndex: 'entry',
+      key: 'entry',
+      width: 260,
+      render: (_: unknown, record: NetworkWhiteListItem) => record.domain_name || record.network || '-',
+    },
     { title: t('system.settings.networkWhitelist.remark'), dataIndex: 'remark', key: 'remark', ellipsis: true },
     {
       title: t('system.settings.networkWhitelist.enabled'),
@@ -98,7 +143,7 @@ const NetworkWhitelistPage: React.FC = () => {
       title: '',
       key: 'action',
       width: 100,
-      render: (_: unknown, record: NetworkWhiteListItem) => (
+      render: (_: unknown, record: NetworkWhiteListItem) => record.is_build_in ? null : (
         <Space size={0}>
           <PermissionWrapper requiredPermissions={['Edit']}>
             <Button type="text" icon={<EditOutlined />} onClick={() => openEdit(record)} />
@@ -119,57 +164,58 @@ const NetworkWhitelistPage: React.FC = () => {
   ];
 
   return (
-    <div>
-      <div className="mb-4">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      <div className="mb-4 shrink-0">
         <TopSection
           title={t('system.settings.networkWhitelist.title')}
           content={t('system.settings.networkWhitelist.content')}
         />
       </div>
-      <section className="rounded-md bg-(--color-bg) p-4" style={{ height: 'calc(100vh - 235px)' }}>
-        {loading ? (
-          <div style={{ textAlign: 'center', padding: '20px' }}>
-            <Spin />
-          </div>
-        ) : (
-          <>
-            <div className="flex justify-end mb-4">
-              <PermissionWrapper requiredPermissions={['Add']}>
-                <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-                  {t('system.settings.networkWhitelist.add')}
-                </Button>
-              </PermissionWrapper>
-            </div>
-            <Table dataSource={dataSource} columns={columns} pagination={false} rowKey="id" />
-          </>
-        )}
+      <section className="flex min-h-0 flex-1 flex-col rounded-md bg-(--color-bg) p-4">
+        <div className="mb-4 flex shrink-0 justify-end">
+          <PermissionWrapper requiredPermissions={['Add']}>
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+              {t('system.settings.networkWhitelist.add')}
+            </Button>
+          </PermissionWrapper>
+        </div>
+        <div className="min-h-0 flex-1">
+          <CustomTable<NetworkWhiteListItem>
+            dataSource={dataSource}
+            columns={columns}
+            loading={loading}
+            pagination={{
+              current: pagination.current,
+              pageSize: pagination.pageSize,
+              total: pagination.total,
+              showSizeChanger: true,
+              onChange: (page, pageSize) => {
+                const targetPage = pageSize === pagination.pageSize ? page : 1;
+                void fetchData(targetPage, pageSize);
+              },
+            }}
+            rowKey="id"
+          />
+        </div>
       </section>
 
-      <Modal
-        title={editing ? t('system.settings.networkWhitelist.edit') : t('system.settings.networkWhitelist.add')}
+      <NetworkWhitelistFormModal
         open={modalOpen}
-        onOk={handleSave}
-        confirmLoading={saving}
+        editing={!!editing}
+        entryType={entryType}
+        form={form}
+        saving={saving}
+        onEntryTypeChange={(next) => {
+          setEntryType(next);
+          if (next === 'domain') {
+            form.setFieldValue('network', '');
+          } else {
+            form.setFieldValue('domain_name', '');
+          }
+        }}
+        onSubmit={handleSave}
         onCancel={() => setModalOpen(false)}
-        destroyOnHidden
-      >
-        <Form form={form} layout="vertical">
-          <Form.Item
-            name="network"
-            label={t('system.settings.networkWhitelist.network')}
-            rules={[{ required: true, message: t('system.settings.networkWhitelist.networkRequired') }]}
-            extra={t('system.settings.networkWhitelist.metadataHint')}
-          >
-            <Input placeholder={t('system.settings.networkWhitelist.networkPlaceholder')} />
-          </Form.Item>
-          <Form.Item name="remark" label={t('system.settings.networkWhitelist.remark')}>
-            <Input.TextArea rows={2} />
-          </Form.Item>
-          <Form.Item name="enabled" label={t('system.settings.networkWhitelist.enabled')} valuePropName="checked">
-            <Switch />
-          </Form.Item>
-        </Form>
-      </Modal>
+      />
     </div>
   );
 };
