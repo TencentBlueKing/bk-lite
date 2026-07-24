@@ -2,3 +2,21 @@ VMWare:
   desc: Through the Telegraf collector, utilize Stargazer's capability to regularly
     gather key metrics from VMware vCenter, ESXi, virtual machines, and datastores.
   name: VMWare
+monitor_object:
+  vCenter: vCenter
+monitor_object_type:
+  VMWare: VMware
+monitor_object_metric_group:
+  vCenter:
+    Quantity: Quantity
+monitor_object_metric:
+  vCenter:
+    vmware_esxi_count:
+      name: ESXi Host Count
+      desc: Number of ESXi hosts in the VMware environment.
+    vmware_datastore_count:
+      name: Datastore Count
+      desc: Number of datastores in the VMware environment.
+    vmware_vm_count:
+      name: Virtual Machine Count
+      desc: Number of virtual machines in the VMware environment.

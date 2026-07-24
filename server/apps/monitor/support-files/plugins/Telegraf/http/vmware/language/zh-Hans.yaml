@@ -1,3 +1,21 @@
 VMWare:
   desc: 通过Telegraf采集器利用Stargazer能力定期收集VMware中vCenter、ESXi、虚拟机、数据存储的关键指标。
   name: VMWare
+monitor_object:
+  vCenter: vCenter
+monitor_object_type:
+  VMWare: VMware
+monitor_object_metric_group:
+  vCenter:
+    Quantity: 数量
+monitor_object_metric:
+  vCenter:
+    vmware_esxi_count:
+      name: ESXi 主机数量
+      desc: VMware 环境中的 ESXi 主机数量。
+    vmware_datastore_count:
+      name: 数据存储数量
+      desc: VMware 环境中的数据存储数量。
+    vmware_vm_count:
+      name: 虚拟机数量
+      desc: VMware 环境中的虚拟机数量。
