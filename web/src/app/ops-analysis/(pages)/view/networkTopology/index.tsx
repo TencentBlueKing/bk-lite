@@ -33,6 +33,11 @@ import NetworkEdgeDrawer from './components/networkEdgeDrawer';
 import MonitorSourcePickerModal from './components/modals/monitorSourcePickerModal';
 import ConfirmDeleteModal from './components/modals/confirmDeleteModal';
 import {
+  indexRuntimeNodes,
+  runRuntimeTasks,
+  selectLinkEndpointNodes,
+} from './runtimeRequestPool';
+import {
   buildLinkDetailPortRows,
   buildLinkInterfaceMetricRows,
   buildNodeDetailMetricRows,
@@ -238,10 +243,11 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
 
         const generation = ++runtimeLoadGenerationRef.current;
         const isCurrent = () => runtimeLoadGenerationRef.current === generation;
+        const runtimeNodeIndex = indexRuntimeNodes(runtimeConfig.nodes);
 
         const nodeTasks = runtimeConfig.nodes
           .filter((node) => node.metrics.length > 0)
-          .map(async (node) => {
+          .map((node) => async () => {
             const metrics = node.metrics;
             const metricRequests = metrics.map((metric) => {
               const requestId = buildMetricRuntimeRequestId(node.id, metric);
@@ -325,11 +331,11 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
 
         const linkTasks = runtimeConfig.links
           .filter((link) => !link.is_draft && link.port_pairs.length > 0)
-          .map(async (link) => {
+          .map((link) => async () => {
             try {
               const res = await api.getLinkRuntime(runtimeCanvasId, {
                 link,
-                nodes: runtimeConfig.nodes,
+                nodes: selectLinkEndpointNodes(runtimeNodeIndex, link),
               });
               if (!isCurrent()) return;
               if (res?.link) {
@@ -350,7 +356,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
             }
           });
 
-        const task = Promise.allSettled([...nodeTasks, ...linkTasks])
+        const task = runRuntimeTasks([...nodeTasks, ...linkTasks], { isActive: isCurrent })
           .then(() => undefined)
           .finally(() => {
             if (runtimeRefreshPromiseRef.current?.promise === task) {
@@ -1012,7 +1018,10 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
           return;
         }
         void api
-          .getLinkRuntime(String(canvasId), { link: nextLink, nodes: prev.nodes })
+          .getLinkRuntime(String(canvasId), {
+            link: nextLink,
+            nodes: selectLinkEndpointNodes(indexRuntimeNodes(prev.nodes), nextLink),
+          })
           .then((res) => {
             if (res?.link) {
               setRuntimeLinkOverrides((prevOverrides) => ({

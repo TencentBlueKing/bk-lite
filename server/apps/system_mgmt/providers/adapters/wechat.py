@@ -122,6 +122,9 @@ class WechatLoginAuthAdapter(BaseLoginAuthAdapter):
                 },
                 timeout=WECHAT_TIMEOUT,
             )
+            # 微信 userinfo 实际返回 UTF-8 JSON，但响应头可能误标为 text/plain，
+            # 需在解析前覆盖 requests 推断出的 ISO-8859-1 编码，避免昵称乱码。
+            user_response.encoding = "utf-8"
             user_data = user_response.json()
         except requests.Timeout:
             return CapabilityExecutionResult.failed_result("WeChat user info request timed out", code="provider.timeout", retryable=True)

@@ -6,7 +6,6 @@ MLflow 客户端 / mlflow 模块为真实外部边界，统一打桩；其余命
 """
 import pydantic.root_model  # noqa
 
-from io import BytesIO
 from types import SimpleNamespace
 import zipfile
 
@@ -278,14 +277,16 @@ def test_download_model_artifact_zips_directory(tmp_path, mocker):
     client = SimpleNamespace(download_artifacts=lambda run_id, artifact_path, dst_path: str(model_dir))
     mocker.patch("apps.mlops.utils.mlflow_service.get_mlflow_client", return_value=client)
 
-    buffer = ms.download_model_artifact("r1", "model")
-
-    assert isinstance(buffer, BytesIO)
-    with zipfile.ZipFile(buffer) as zf:
-        names = set(zf.namelist())
-    # 相对父目录归档，含目录前缀
-    assert "model/model.pkl" in names
-    assert "model/MLmodel" in names
+    archive = ms.download_model_artifact("r1", "model")
+    try:
+        assert archive.fileno() >= 0
+        with zipfile.ZipFile(archive) as zf:
+            names = set(zf.namelist())
+        # 相对父目录归档，含目录前缀
+        assert "model/model.pkl" in names
+        assert "model/MLmodel" in names
+    finally:
+        archive.close()
 
 
 def test_download_model_artifact_zips_single_file(tmp_path, mocker):
@@ -295,12 +296,14 @@ def test_download_model_artifact_zips_single_file(tmp_path, mocker):
     client = SimpleNamespace(download_artifacts=lambda run_id, artifact_path, dst_path: str(single))
     mocker.patch("apps.mlops.utils.mlflow_service.get_mlflow_client", return_value=client)
 
-    buffer = ms.download_model_artifact("r1", "model.pkl")
-
-    with zipfile.ZipFile(buffer) as zf:
-        names = zf.namelist()
-    # 单文件场景：仅以文件名归档
-    assert names == ["model.pkl"]
+    archive = ms.download_model_artifact("r1", "model.pkl")
+    try:
+        with zipfile.ZipFile(archive) as zf:
+            names = zf.namelist()
+        # 单文件场景：仅以文件名归档
+        assert names == ["model.pkl"]
+    finally:
+        archive.close()
 
 
 def test_download_model_artifact_missing_path_raises(mocker):

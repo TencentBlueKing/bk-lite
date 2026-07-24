@@ -610,12 +610,7 @@ class LogClusteringTrainJobViewSet(TeamModelViewSet):
             filename = f"mlflow_model_{safe_run_name}_{run_id[:8]}.zip"
 
             # 返回文件响应
-            response = FileResponse(
-                zip_buffer,
-                content_type="application/zip",
-                as_attachment=True,
-                filename=filename,
-            )
+            response = mlflow_service.build_model_download_response(zip_buffer, filename)
 
             logger.info(f"模型下载完成 [run_id: {run_id}, filename: {filename}]")
             return response

@@ -28,6 +28,26 @@ def _mock_response(json_data, status_code=200):
     return response
 
 
+def test_authenticate_decodes_utf8_nickname_from_text_plain_userinfo_response():
+    """微信 userinfo 错标为 text/plain 时，昵称仍按 UTF-8 解析。"""
+    token_response = _mock_response({"access_token": "AT", "openid": "oxxx"})
+    userinfo_response = requests.Response()
+    userinfo_response.status_code = 200
+    userinfo_response.headers["Content-Type"] = "text/plain"
+    userinfo_response.encoding = requests.utils.get_encoding_from_headers(userinfo_response.headers)
+    userinfo_response._content = (
+        b'{"openid":"oxxx","nickname":"\xe5\xbc\xa0\xe4\xb8\x89\xf0\x9f\x98\x80"}'
+    )
+
+    with patch("apps.system_mgmt.providers.adapters.wechat.requests.get", side_effect=[token_response, userinfo_response]):
+        result = WechatLoginAuthAdapter.authenticate(
+            config=WECHAT_CONFIG, provider_key="wechat", capability_key="login_auth", auth_code="auth-code"
+        )
+
+    assert result.success is True
+    assert result.payload["external_user"]["nickname"] == "张三😀"
+
+
 def test_authenticate_returns_external_user_with_real_field_names():
     """token + userinfo 成功 → payload.external_user 用 openid/unionid/nickname/headimgurl。"""
     token_response = _mock_response({"access_token": "AT", "openid": "oxxx", "unionid": "uxxx"})

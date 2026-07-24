@@ -1,7 +1,7 @@
 # -- coding: utf-8 --
 """子网 -> 扫描目标地址：排除网络号/广播/网关。规格 §13.1。"""
 import pytest
-from plugins.inputs.ip_discovery.scan_targets import derive_targets
+from plugins.inputs.ip.scan_targets import derive_targets
 
 pytestmark = pytest.mark.unit
 

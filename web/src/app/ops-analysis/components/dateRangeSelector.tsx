@@ -147,6 +147,7 @@ const DateRangeSelector: React.FC<DateRangeSelectorProps> = ({
           }}
           open={customOpen}
           format="YYYY-MM-DD"
+          suffixIcon={null}
           allowClear={allowClear}
           disabled={disabled}
           status={effectiveStatus}
@@ -154,7 +155,7 @@ const DateRangeSelector: React.FC<DateRangeSelectorProps> = ({
           className={`w-[350px] ${className ?? ''}`}
         />
         <CalendarOutlined
-          className="absolute right-2 top-1/2 z-2 -translate-y-1/2 cursor-pointer text-(--color-text-4)"
+          className="absolute right-8 top-1/2 z-2 -translate-y-1/2 cursor-pointer text-(--color-text-4)"
           onClick={handleIconClick}
         />
       </div>

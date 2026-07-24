@@ -5,6 +5,7 @@ export type ChartType =
   | 'bar'
   | 'pie'
   | 'single'
+  | 'multiValue'
   | 'table'
   | 'eventTable'
   | 'topN'

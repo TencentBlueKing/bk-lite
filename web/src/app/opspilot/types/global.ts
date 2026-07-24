@@ -174,6 +174,7 @@ export interface ConfigDiffReport {
   report_id: string;
   title: string;
   cluster_name: string;
+  skill_id?: number;
   a2ui?: A2UIReportContract;
   items: ConfigDiffItem[];
   received_at: number;

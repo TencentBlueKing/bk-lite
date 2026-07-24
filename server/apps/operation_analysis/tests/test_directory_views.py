@@ -24,7 +24,8 @@ def _request(method, path, user, data=None, team="1", include_children="0"):
         request = fn(path)
     else:
         request = fn(path, data=data, format="json")
-    request.COOKIES["current_team"] = team
+    if team is not None:
+        request.COOKIES["current_team"] = team
     request.COOKIES["include_children"] = include_children
     force_authenticate(request, user=user)
     return request
@@ -270,6 +271,19 @@ def test_tree_endpoint_builds_nested_structure(authenticated_user):
     assert root_node["type"] == "directory"
     child_node = next(c for c in root_node["children"] if c["data_id"] == child.id)
     assert any(g["type"] == "dashboard" for g in child_node["children"])
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("team", [None, "not-a-number"])
+def test_tree_endpoint_rejects_missing_or_invalid_current_team(authenticated_user, team):
+    user = _superuser(authenticated_user)
+    request = _request("get", "/directory/tree/", user, team=team)
+
+    response = view_module.DirectoryModelViewSet.as_view({"get": "tree"})(request)
+    payload = _render(response)
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "current_team cookie 缺失或格式错误" in payload["message"]
 
 
 # --------------------------------------------------------------------------

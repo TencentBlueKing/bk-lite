@@ -1,0 +1,487 @@
+{
+  "plugin": "K3S",
+  "plugin_desc": "The K3S monitoring plugin is used to monitor the status and health of K3S clusters, including the performance metrics of nodes, containers, and pods.",
+  "status_query": "any({instance_type='k3s'}) by (instance_id)",
+  "is_compound_object": true,
+  "objects": [
+    {
+      "name": "K3SCluster",
+      "icon": "mm-k8s_K8S",
+      "type": "K3S",
+      "level": "base",
+      "description": "",
+      "default_metric": "any({instance_type='k3s'}) by (instance_id)",
+      "instance_id_keys": ["instance_id"],
+      "supplementary_indicators": ["cluster_pod_count", "cluster_node_count", "cluster_memory_utilization", "cluster_disk_utilization"],
+      "display_fields": [{"name": "Pod Count", "sort_order": 0, "metrics": [{"plugin": "K3S", "metric": "cluster_pod_count"}]}, {"name": "Node Count", "sort_order": 1, "metrics": [{"plugin": "K3S", "metric": "cluster_node_count"}]}, {"name": "Memory Utilization", "sort_order": 2, "metrics": [{"plugin": "K3S", "metric": "cluster_memory_utilization"}]}, {"name": "Disk Utilization", "sort_order": 3, "metrics": [{"plugin": "K3S", "metric": "cluster_disk_utilization"}]}],
+      "metrics": [
+        {
+          "metric_group": "Counts",
+          "name": "cluster_pod_count",
+          "display_name": "Pod Count",
+          "instance_id_keys": ["instance_id"],
+          "data_type": "Number",
+          "unit": "counts",
+          "dimensions": [],
+          "description": "Count the total number of Pods in the Kubernetes cluster. This metric is calculated based on kube_pod_info and returns the number of Pods under the current filter conditions (such as cluster or namespace), including Pods across all namespaces.",
+          "query": "round(count(prometheus_remote_write_kube_pod_info{instance_type=\"k3s\",__$labels__}) by (instance_id))"
+        },
+        {
+          "metric_group": "Counts",
+          "name": "cluster_node_count",
+          "display_name": "Node Count",
+          "instance_id_keys": ["instance_id"],
+          "data_type": "Number",
+          "unit": "counts",
+          "dimensions": [],
+          "description": "Count the total number of nodes in the Kubernetes cluster. This metric reflects the number of registered nodes in the cluster and helps assess cluster scale and infrastructure capacity.",
+          "query": "round(count(prometheus_remote_write_kube_node_info{instance_type=\"k3s\",__$labels__})by (instance_id))"
+        },
+        {
+          "metric_group": "Utilization",
+          "name": "cluster_memory_utilization",
+          "display_name": "Memory Utilization",
+          "instance_id_keys": ["instance_id"],
+          "data_type": "Number",
+          "unit": "percent",
+          "dimensions": [],
+          "description": "Represents the ratio of used memory to total memory across all nodes in the Kubernetes cluster, expressed as a percentage. This metric is used to evaluate overall memory utilization and resource pressure of the cluster.",
+          "query": "100 *\nsum by (instance_id) (mem_used{instance_type=\"k3s\", __$labels__})\n/\nsum by (instance_id) (mem_total{instance_type=\"k3s\", __$labels__})"
+        },
+        {
+          "metric_group": "Utilization",
+          "name": "cluster_disk_utilization",
+          "display_name": "Disk Utilization",
+          "instance_id_keys": ["instance_id"],
+          "data_type": "Number",
+          "unit": "percent",
+          "dimensions": [],
+          "description": "Represents the overall disk utilization of the Kubernetes cluster.",
+          "query": "100 *\nsum by (instance_id) (\n  any(disk_used{\n    instance_type=\"k3s\",__$labels__\n  }) by (instance_id, device)\n)\n/\nsum by (instance_id) (\n  any(disk_total{\n    instance_type=\"k3s\",__$labels__\n  }) by (instance_id, device)\n)"
+        }
+      ]
+    },
+    {
+      "name": "K3SPod",
+      "icon": "mm-pod_Pod",
+      "type": "K3S",
+      "level": "derivative",
+      "description": "",
+      "default_metric": "prometheus_remote_write_kube_pod_info{instance_type=\"k3s\"}",
+      "instance_id_keys": ["instance_id", "pod"],
+      "supplementary_indicators": ["pod_status_phase", "pod_cpu_utilization", "pod_memory_utilization"],
+      "display_fields": [{"name": "Pod Status", "sort_order": 0, "metrics": [{"plugin": "K3S", "metric": "pod_status_phase"}]}, {"name": "CPU Utilization", "sort_order": 1, "metrics": [{"plugin": "K3S", "metric": "pod_cpu_utilization"}]}, {"name": "Memory Utilization", "sort_order": 2, "metrics": [{"plugin": "K3S", "metric": "pod_memory_utilization"}]}],
+      "metrics": [
+        {
+          "metric_group": "Status",
+          "name": "pod_status_phase",
+          "display_name": "Pod Status",
+          "instance_id_keys": ["instance_id", "pod"],
+          "data_type": "Enum",
+          "unit": "[{\"name\":\"未运行\",\"id\":0,\"color\":\"#faad14\"},{\"name\":\"运行中\",\"id\":1,\"color\":\"#1ac44a\"}]",
+          "dimensions": [],
+          "description": "Indicates the current lifecycle phase of a Pod. This metric is used to quickly assess Pod health.",
+          "query": "prometheus_remote_write_kube_pod_status_phase{instance_type=\"k3s\",__$labels__}"
+        },
+        {
+          "metric_group": "Status",
+          "name": "pod_container_restarts_total",
+          "display_name": "Container Restart Count",
+          "instance_id_keys": ["instance_id", "pod"],
+          "data_type": "Number",
+          "unit": "counts",
+          "dimensions": [{"name": "container", "description": "容器名"}],
+          "description": "Represents the total number of restarts for containers within a Pod since startup. This metric is commonly used to diagnose container crashes or instability issues.",
+          "query": "prometheus_remote_write_kube_pod_container_status_restarts_total{instance_type=\"k3s\",__$labels__}"
+        },
+        {
+          "metric_group": "CPU",
+          "name": "pod_cpu_utilization",
+          "display_name": "CPU Utilization",
+          "instance_id_keys": ["instance_id", "pod"],
+          "data_type": "Number",
+          "unit": "percent",
+          "dimensions": [],
+          "description": "Represents the ratio of actual CPU usage to the configured CPU resource limit for a Pod, expressed as a percentage. Used to evaluate CPU consumption and identify potential resource bottlenecks.",
+          "query": "100 * (\n  sum(irate(prometheus_remote_write_container_cpu_usage_seconds_total{instance_type=\"k3s\",__$labels__}[5m])) by (instance_id,pod)\n  /\n  on(instance_id,pod)\n  sum(prometheus_remote_write_kube_pod_container_resource_limits{instance_type=\"k3s\", resource=\"cpu\",__$labels__}) by (instance_id,pod)\n)"
+        },
+        {
+          "metric_group": "Memory",
+          "name": "pod_memory_utilization",
+          "display_name": "Memory Utilization",
+          "instance_id_keys": ["instance_id", "pod"],
+          "data_type": "Number",
+          "unit": "percent",
+          "dimensions": [],
+          "description": "Represents the ratio of the current memory working set to the configured memory resource limit for a Pod, expressed as a percentage. Used to monitor memory usage pressure.",
+          "query": "100 * (\n  sum(prometheus_remote_write_container_memory_working_set_bytes{instance_type=\"k3s\",__$labels__}) by (instance_id,pod)\n  /\n  on(instance_id,pod)\n  sum(prometheus_remote_write_kube_pod_container_resource_limits{instance_type=\"k3s\", resource=\"memory\",__$labels__}) by (instance_id,pod)\n)"
+        },
+        {
+          "metric_group": "Disk",
+          "name": "pod_io_writes_rate",
+          "display_name": "Disk Write IOPS",
+          "instance_id_keys": ["instance_id", "pod"],
+          "data_type": "Number",
+          "unit": "counts",
+          "dimensions": [{"name": "device", "description": "磁盘设备"}],
+          "description": "Represents the number of disk write operations per second (IOPS) generated by a Pod. Can be viewed by device dimension to analyze disk write load.",
+          "query": "sum by (instance_id,pod,device) (\n  rate(prometheus_remote_write_container_fs_writes_total{\n    instance_type=\"k3s\",__$labels__\n  }[5m])\n)"
+        },
+        {
+          "metric_group": "Disk",
+          "name": "pod_io_reads_rate",
+          "display_name": "Disk Read IOPS",
+          "instance_id_keys": ["instance_id", "pod"],
+          "data_type": "Number",
+          "unit": "counts",
+          "dimensions": [{"name": "device", "description": "磁盘设备"}],
+          "description": "Represents the number of disk read operations per second (IOPS) generated by a Pod. Used to evaluate disk read performance and load.",
+          "query": "sum by (instance_id,pod,device) (\n  rate(prometheus_remote_write_container_fs_reads_total{\n    instance_type=\"k3s\",__$labels__\n  }[5m])\n)"
+        },
+        {
+          "metric_group": "Network",
+          "name": "pod_network_in_rate",
+          "display_name": "Network Inbound Throughput",
+          "instance_id_keys": ["instance_id", "pod"],
+          "data_type": "Number",
+          "unit": "byteps",
+          "dimensions": [],
+          "description": "Represents the rate of inbound network traffic received by a Pod. Used to monitor incoming network throughput.",
+          "query": "sum by (instance_id,pod) (\n  rate(prometheus_remote_write_container_network_receive_bytes_total{\n    instance_type=\"k3s\",__$labels__\n  }[5m])\n)"
+        },
+        {
+          "metric_group": "Network",
+          "name": "pod_network_out_rate",
+          "display_name": "Network Outbound Throughput",
+          "instance_id_keys": ["instance_id", "pod"],
+          "data_type": "Number",
+          "unit": "byteps",
+          "dimensions": [],
+          "description": "Represents the rate of outbound network traffic sent by a Pod. Used to monitor outgoing network throughput.",
+          "query": "sum by (instance_id,pod) (\n  rate(prometheus_remote_write_container_network_transmit_bytes_total{\n    instance_type=\"k3s\",__$labels__\n  }[5m])\n)"
+        }
+      ]
+    },
+    {
+      "name": "K3SNode",
+      "icon": "mm-node_Node",
+      "type": "K3S",
+      "level": "derivative",
+      "description": "",
+      "default_metric": "prometheus_remote_write_kube_node_info{instance_type=\"k3s\"}",
+      "instance_id_keys": ["instance_id", "node"],
+      "supplementary_indicators": ["node_status_condition", "node_cpu_utilization", "node_memory_utilization", "node_disk_usage_rate"],
+      "display_fields": [{"name": "Node Status", "sort_order": 0, "metrics": [{"plugin": "K3S", "metric": "node_status_condition"}]}, {"name": "CPU Utilization", "sort_order": 1, "metrics": [{"plugin": "K3S", "metric": "node_cpu_utilization"}]}, {"name": "Memory Usage", "sort_order": 2, "metrics": [{"plugin": "K3S", "metric": "node_memory_utilization"}]}, {"name": "Disk Usage", "sort_order": 3, "metrics": [{"plugin": "K3S", "metric": "node_disk_usage_rate"}]}],
+      "metrics": [
+        {
+          "metric_group": "Status",
+          "name": "node_status_condition",
+          "display_name": "Node Status",
+          "instance_id_keys": ["instance_id", "node"],
+          "data_type": "Enum",
+          "unit": "[{\"name\":\"未就绪\",\"id\":0,\"color\":\"#faad14\"},{\"name\":\"就绪\",\"id\":1,\"color\":\"#1ac44a\"}]",
+          "dimensions": [],
+          "description": "Node Status indicates the current operational state of the node, such as \"Running\" or \"Stopped.\" It helps administrators monitor and manage nodes within the Kubernetes cluster",
+          "query": "prometheus_remote_write_kube_node_status_condition{instance_type=\"k3s\",condition=\"Ready\",status=\"true\",__$labels__}"
+        },
+        {
+          "metric_group": "CPU",
+          "name": "node_cpu_utilization",
+          "display_name": "CPU Utilization",
+          "instance_id_keys": ["instance_id", "node"],
+          "data_type": "Number",
+          "unit": "percent",
+          "dimensions": [],
+          "description": "CPU Utilization indicates the current usage level of the node's CPU relative to its total available CPU resources. Monitoring this metric helps identify CPU bottlenecks and optimize resource allocation",
+          "query": "100 - avg by (instance_id, node) (cpu_usage_idle{instance_type=\"k3s\", cpu=\"cpu-total\", __$labels__})"
+        },
+        {
+          "metric_group": "CPU",
+          "name": "node_cpu_iowait_rate",
+          "display_name": "Percentage of Time Waiting for IO",
+          "instance_id_keys": ["instance_id", "node"],
+          "data_type": "Number",
+          "unit": "percent",
+          "dimensions": [],
+          "description": "Displays the percentage of CPU time spent waiting for IO operations, indicating the impact of disk or network performance on the system. Reducing wait time helps improve system performance. This metric is very useful for analyzing system bottlenecks",
+          "query": "cpu_usage_iowait{instance_type=\"k3s\",cpu=\"cpu-total\", __$labels__}"
+        },
+        {
+          "metric_group": "CPU",
+          "name": "node_cpu_system_rate",
+          "display_name": "System Usage Rate",
+          "instance_id_keys": ["instance_id", "node"],
+          "data_type": "Number",
+          "unit": "percent",
+          "dimensions": [],
+          "description": "Displays the system usage rate, showing the CPU resources consumed by kernel processes. Analyzing this value helps optimize system kernel performance and stability",
+          "query": "cpu_usage_system{instance_type=\"k3s\",cpu=\"cpu-total\", __$labels__}"
+        },
+        {
+          "metric_group": "CPU",
+          "name": "node_cpu_user_rate",
+          "display_name": "User Usage Rate",
+          "instance_id_keys": ["instance_id", "node"],
+          "data_type": "Number",
+          "unit": "percent",
+          "dimensions": [],
+          "description": "Displays the percentage of CPU resources used by user processes, helping understand the performance of applications and services. This metric is helpful in understanding the CPU consumption of specific applications",
+          "query": "cpu_usage_user{instance_type=\"k3s\",cpu=\"cpu-total\", __$labels__}"
+        },
+        {
+          "metric_group": "Memory",
+          "name": "node_memory_utilization",
+          "display_name": "Memory Usage",
+          "instance_id_keys": ["instance_id", "node"],
+          "data_type": "Number",
+          "unit": "percent",
+          "dimensions": [],
+          "description": "Application Memory Utilization Rate is the ratio of memory used by the application to its configured memory limits. By monitoring this metric, users can determine if adjustments to memory limits are needed",
+          "query": "mem_used_percent{instance_type=\"k3s\", __$labels__}"
+        },
+        {
+          "metric_group": "Memory",
+          "name": "node_memory_available",
+          "display_name": "Available Memory",
+          "instance_id_keys": ["instance_id", "node"],
+          "data_type": "Number",
+          "unit": "bytes",
+          "dimensions": [],
+          "description": "Represents the amount of memory available for applications without causing significant performance degradation.",
+          "query": "mem_available{instance_type=\"k3s\", __$labels__}"
+        },
+        {
+          "metric_group": "Memory",
+          "name": "node_memory_swap_free",
+          "display_name": "Swap Free Memory",
+          "instance_id_keys": ["instance_id", "node"],
+          "data_type": "Number",
+          "unit": "bytes",
+          "dimensions": [],
+          "description": "Represents the amount of free swap space available, used to monitor buffering capacity under memory pressure.",
+          "query": "mem_swap_free{instance_type=\"k3s\", __$labels__}"
+        },
+        {
+          "metric_group": "Memory",
+          "name": "node_memory_cached",
+          "display_name": "Cached Memory",
+          "instance_id_keys": ["instance_id", "node"],
+          "data_type": "Number",
+          "unit": "bytes",
+          "dimensions": [],
+          "description": "Represents the amount of memory used for file caching, which can be reclaimed when necessary.",
+          "query": "mem_cached{instance_type=\"k3s\", __$labels__}"
+        },
+        {
+          "metric_group": "Memory",
+          "name": "node_memory_shared",
+          "display_name": "Shared Memory",
+          "instance_id_keys": ["instance_id", "node"],
+          "data_type": "Number",
+          "unit": "bytes",
+          "dimensions": [],
+          "description": "Represents the amount of memory shared among multiple processes.",
+          "query": "mem_shared{instance_type=\"k3s\", __$labels__}"
+        },
+        {
+          "metric_group": "Memory",
+          "name": "node_memory_buffered",
+          "display_name": "Buffered Memory",
+          "instance_id_keys": ["instance_id", "node"],
+          "data_type": "Number",
+          "unit": "bytes",
+          "dimensions": [],
+          "description": "Represents the amount of memory used for buffering block device I/O operations.",
+          "query": "mem_buffered{instance_type=\"k3s\", __$labels__}"
+        },
+        {
+          "metric_group": "Disk",
+          "name": "node_disk_usage_rate",
+          "display_name": "Disk Usage",
+          "instance_id_keys": ["instance_id", "node"],
+          "data_type": "Number",
+          "unit": "percent",
+          "dimensions": [{"name": "device", "description": "磁盘设备"}],
+          "description": "Displays the percentage of disk space used, helping understand the utilization of disk resources. This metric is important for preventing disk overflow",
+          "query": "max by (instance_id, node, device) (disk_used_percent{instance_type=\"k3s\", __$labels__})"
+        },
+        {
+          "metric_group": "Disk",
+          "name": "node_disk_free",
+          "display_name": "Disk Free",
+          "instance_id_keys": ["instance_id", "node"],
+          "data_type": "Number",
+          "unit": "bytes",
+          "dimensions": [{"name": "device", "description": "磁盘设备"}],
+          "description": "Represents the currently available free space of a disk or filesystem, used to monitor capacity risks.",
+          "query": "max by (instance_id, node, device) (disk_free{instance_type=\"k3s\", __$labels__})"
+        },
+        {
+          "metric_group": "Disk",
+          "name": "node_disk_inodes_used_percent",
+          "display_name": "Inode Usage",
+          "instance_id_keys": ["instance_id", "node"],
+          "data_type": "Number",
+          "unit": "percent",
+          "dimensions": [{"name": "device", "description": "磁盘设备"}],
+          "description": "Represents the percentage of inode usage in a filesystem, helping prevent failures caused by inode exhaustion.",
+          "query": "max by (instance_id, node, device) (disk_inodes_used_percent{instance_type=\"k3s\", __$labels__})"
+        },
+        {
+          "metric_group": "Disk IO",
+          "name": "node_diskio_io_util",
+          "display_name": "Disk I/O Usage",
+          "instance_id_keys": ["instance_id", "node"],
+          "data_type": "Number",
+          "unit": "percent",
+          "dimensions": [{"name": "name", "description": "设备名"}],
+          "description": "Indicates the proportion of time a disk device is busy handling I/O operations. Sustained high values usually suggest disk I/O saturation.",
+          "query": "diskio_io_util{instance_type=\"k3s\", __$labels__}"
+        },
+        {
+          "metric_group": "Disk IO",
+          "name": "node_diskio_writes_rate",
+          "display_name": "Disk Write IOPS",
+          "instance_id_keys": ["instance_id", "node"],
+          "data_type": "Number",
+          "unit": "counts",
+          "dimensions": [{"name": "name", "description": "设备名"}],
+          "description": "Represents the number of disk write operations completed per second, measuring write I/O intensity and concurrency.",
+          "query": "rate(diskio_writes{instance_type=\"k3s\", __$labels__}[5m])"
+        },
+        {
+          "metric_group": "Disk IO",
+          "name": "node_diskio_write_bytes_rate",
+          "display_name": "Disk Write Rate",
+          "instance_id_keys": ["instance_id", "node"],
+          "data_type": "Number",
+          "unit": "byteps",
+          "dimensions": [{"name": "name", "description": "设备名"}],
+          "description": "Indicates the amount of data written to disk per unit time, used to evaluate disk write throughput.",
+          "query": "rate(diskio_write_bytes{instance_type=\"k3s\", __$labels__}[5m])"
+        },
+        {
+          "metric_group": "Disk IO",
+          "name": "node_disk_write_latency",
+          "display_name": "Disk Write Latency",
+          "instance_id_keys": ["instance_id", "node"],
+          "data_type": "Number",
+          "unit": "ms",
+          "dimensions": [{"name": "name", "description": "设备名"}],
+          "description": "Represents the average latency of disk write operations, used to analyze disk write performance and responsiveness.",
+          "query": "rate(diskio_write_time{instance_type=\"k3s\", __$labels__}[5m]) / clamp_min(rate(diskio_writes{instance_type=\"k3s\", __$labels__}[5m]), 1e-9)"
+        },
+        {
+          "metric_group": "Disk IO",
+          "name": "node_diskio_reads_rate",
+          "display_name": "Disk Read IOPS",
+          "instance_id_keys": ["instance_id", "node"],
+          "data_type": "Number",
+          "unit": "counts",
+          "dimensions": [{"name": "name", "description": "设备名"}],
+          "description": "Represents the number of disk read operations completed per second, measuring read I/O concurrency and intensity.",
+          "query": "rate(diskio_reads{instance_type=\"k3s\", __$labels__}[5m])"
+        },
+        {
+          "metric_group": "Disk IO",
+          "name": "node_diskio_read_bytes_rate",
+          "display_name": "Disk Read Rate",
+          "instance_id_keys": ["instance_id", "node"],
+          "data_type": "Number",
+          "unit": "byteps",
+          "dimensions": [{"name": "name", "description": "设备名"}],
+          "description": "Indicates the amount of data read from disk per unit time, used to evaluate disk read throughput.",
+          "query": "rate(diskio_read_bytes{instance_type=\"k3s\", __$labels__}[5m])"
+        },
+        {
+          "metric_group": "Disk IO",
+          "name": "node_disk_read_latency",
+          "display_name": "Disk Read Latency",
+          "instance_id_keys": ["instance_id", "node"],
+          "data_type": "Number",
+          "unit": "ms",
+          "dimensions": [{"name": "name", "description": "设备名"}],
+          "description": "Represents the average latency of disk read operations, used to analyze disk read performance and access delay.",
+          "query": "rate(diskio_read_time{instance_type=\"k3s\", __$labels__}[5m]) / clamp_min(rate(diskio_reads{instance_type=\"k3s\", __$labels__}[5m]), 1e-9)"
+        },
+        {
+          "metric_group": "Network",
+          "name": "node_net_packets_recv_rate",
+          "display_name": "Network Receive Packet Rate",
+          "instance_id_keys": ["instance_id", "node"],
+          "data_type": "Number",
+          "unit": "cps",
+          "dimensions": [{"name": "interface", "description": "网络接口"}],
+          "description": "Represents the number of packets received per unit time on a network interface, reflecting packet-level traffic.",
+          "query": "rate(net_packets_recv{instance_type=\"k3s\", __$labels__}[5m])"
+        },
+        {
+          "metric_group": "Network",
+          "name": "node_net_packets_sent_rate",
+          "display_name": "Network Send Packet Rate",
+          "instance_id_keys": ["instance_id", "node"],
+          "data_type": "Number",
+          "unit": "cps",
+          "dimensions": [{"name": "interface", "description": "网络接口"}],
+          "description": "Represents the number of packets sent per unit time on a network interface.",
+          "query": "rate(net_packets_sent{instance_type=\"k3s\", __$labels__}[5m])"
+        },
+        {
+          "metric_group": "Network",
+          "name": "node_net_bytes_recv_rate",
+          "display_name": "Network Receive Throughput Rate",
+          "instance_id_keys": ["instance_id", "node"],
+          "data_type": "Number",
+          "unit": "byteps",
+          "dimensions": [{"name": "interface", "description": "网络接口"}],
+          "description": "Represents the amount of data received per unit time on a network interface, used to evaluate inbound bandwidth utilization.",
+          "query": "rate(net_bytes_recv{instance_type=\"k3s\", __$labels__}[5m])"
+        },
+        {
+          "metric_group": "Network",
+          "name": "node_net_bytes_sent_rate",
+          "display_name": "Network Send Throughput Rate",
+          "instance_id_keys": ["instance_id", "node"],
+          "data_type": "Number",
+          "unit": "byteps",
+          "dimensions": [{"name": "interface", "description": "网络接口"}],
+          "description": "Represents the amount of data sent per unit time on a network interface, used to evaluate outbound bandwidth utilization.",
+          "query": "rate(net_bytes_sent{instance_type=\"k3s\", __$labels__}[5m])"
+        },
+        {
+          "metric_group": "Load",
+          "name": "node_cpu_load1",
+          "display_name": "1 Minute Average Load",
+          "instance_id_keys": ["instance_id", "node"],
+          "data_type": "Number",
+          "unit": "counts",
+          "dimensions": [],
+          "description": "1 Minute Average Load indicates the average load on the system over the last minute. This metric helps provide a real-time understanding of the system's load level",
+          "query": "system_load1{instance_type=\"k3s\", __$labels__}"
+        },
+        {
+          "metric_group": "Load",
+          "name": "node_cpu_load5",
+          "display_name": "5 Minute Average Load",
+          "instance_id_keys": ["instance_id", "node"],
+          "data_type": "Number",
+          "unit": "counts",
+          "dimensions": [],
+          "description": "5 Minute Average Load indicates the average load on the system over the last 5 minutes. This metric helps identify load trends and their impact on system performance",
+          "query": "system_load5{instance_type=\"k3s\", __$labels__}"
+        },
+        {
+          "metric_group": "Load",
+          "name": "node_cpu_load15",
+          "display_name": "15 Minute Average Load",
+          "instance_id_keys": ["instance_id", "node"],
+          "data_type": "Number",
+          "unit": "counts",
+          "dimensions": [],
+          "description": "15 Minute Average Load indicates the average load on the system over the last 15 minutes. Monitoring this metric helps administrators understand the long-term load state of the system",
+          "query": "system_load15{instance_type=\"k3s\", __$labels__}"
+        }
+      ]
+    }
+  ]
+}

@@ -9,6 +9,7 @@ export const getChartTypeList = (): ChartTypeItem[] => {
     { label: 'dataSource.barChart', value: 'bar' },
     { label: 'dataSource.pieChart', value: 'pie' },
     { label: 'dataSource.singleValue', value: 'single' },
+    { label: 'dataSource.multiValue', value: 'multiValue' },
     { label: 'dataSource.gauge', value: 'gauge' },
     { label: 'dataSource.table', value: 'table' },
     { label: 'dataSource.eventTable', value: 'eventTable' },

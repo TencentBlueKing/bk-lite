@@ -1,12 +1,18 @@
 import json
 import types
 
+import pytest
+
+from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.current_team_scope import CurrentTeamDataScope
 from apps.monitor.models.collect_config import CollectConfig
 from apps.monitor.models.monitor_object import MonitorInstance, MonitorInstanceOrganization, MonitorObject
 from apps.monitor.models.plugin import MonitorPlugin
 from apps.monitor.utils.dimension import build_safe_instance_id
 from apps.monitor.views import monitor_instance as monitor_instance_view
+
+
+NODE_MGMT_PATH = "apps.monitor.services.monitor_instance_removal.NodeMgmt"
 
 
 def _superuser_actor_context():
@@ -35,11 +41,13 @@ def test_remove_monitor_instance_refreshes_flow_cloud_regions(db, monkeypatch):
     refresh_calls = []
 
     monkeypatch.setattr(monitor_instance_view, "_build_actor_context", lambda request: {"current_team": 1})
-    monkeypatch.setattr(monitor_instance_view, "_ensure_operate_instances", lambda request, instance_ids, actor_context=None: instance_ids)
-    monkeypatch.setattr(monitor_instance_view, "cleanup_policy_sources", lambda instance_ids: None)
     monkeypatch.setattr(
         monitor_instance_view,
-        "NodeMgmt",
+        "_ensure_operate_instances",
+        lambda request, instance_ids, actor_context=None, allow_missing=False: instance_ids,
+    )
+    monkeypatch.setattr(
+        NODE_MGMT_PATH,
         lambda: types.SimpleNamespace(delete_child_configs=lambda ids: None, delete_configs=lambda ids: None),
     )
     monkeypatch.setattr(
@@ -55,8 +63,7 @@ def test_remove_monitor_instance_refreshes_flow_cloud_regions(db, monkeypatch):
 
     monitor_instance_view.MonitorInstanceViewSet().remove_monitor_instance(request)
 
-    instance.refresh_from_db()
-    assert instance.is_deleted is True
+    assert not MonitorInstance.objects.filter(id=instance.id).exists()
     assert refresh_calls == [(3,)]
 
 
@@ -73,10 +80,13 @@ def test_remove_monitor_instance_registers_refresh_before_cleanup(db, monkeypatc
     refresh_calls = []
 
     monkeypatch.setattr(monitor_instance_view, "_build_actor_context", lambda request: {"current_team": 1})
-    monkeypatch.setattr(monitor_instance_view, "_ensure_operate_instances", lambda request, instance_ids, actor_context=None: instance_ids)
     monkeypatch.setattr(
         monitor_instance_view,
-        "NodeMgmt",
+        "_ensure_operate_instances",
+        lambda request, instance_ids, actor_context=None, allow_missing=False: instance_ids,
+    )
+    monkeypatch.setattr(
+        NODE_MGMT_PATH,
         lambda: types.SimpleNamespace(delete_child_configs=lambda ids: None, delete_configs=lambda ids: None),
     )
     monkeypatch.setattr(
@@ -84,8 +94,7 @@ def test_remove_monitor_instance_registers_refresh_before_cleanup(db, monkeypatc
         lambda *region_ids: refresh_calls.append(region_ids),
     )
     monkeypatch.setattr(
-        monitor_instance_view,
-        "cleanup_policy_sources",
+        "apps.monitor.services.monitor_instance_removal.cleanup_policy_sources",
         lambda instance_ids: (_ for _ in ()).throw(RuntimeError("cleanup failed")),
     )
 
@@ -95,15 +104,13 @@ def test_remove_monitor_instance_registers_refresh_before_cleanup(db, monkeypatc
         user=types.SimpleNamespace(username="tester", domain="default", is_superuser=True, group_list=[]),
     )
 
-    try:
+    with pytest.raises(BaseAppException) as exc_info:
         monitor_instance_view.MonitorInstanceViewSet().remove_monitor_instance(request)
-        assert False, "expected cleanup failure"
-    except RuntimeError as error:
-        assert str(error) == "cleanup failed"
 
     instance.refresh_from_db()
-    assert instance.is_deleted is True
-    assert refresh_calls == [(5,)]
+    assert instance.is_deleted is False
+    assert "删除监控实例失败" in str(exc_info.value)
+    assert refresh_calls == []
 
 
 def test_remove_monitor_instance_always_cleans_configs(db, monkeypatch):
@@ -134,11 +141,13 @@ def test_remove_monitor_instance_always_cleans_configs(db, monkeypatch):
     cleanup_calls = {"child": None, "base": None}
 
     monkeypatch.setattr(monitor_instance_view, "_build_actor_context", lambda request: {"current_team": 1})
-    monkeypatch.setattr(monitor_instance_view, "_ensure_operate_instances", lambda request, instance_ids, actor_context=None: instance_ids)
-    monkeypatch.setattr(monitor_instance_view, "cleanup_policy_sources", lambda instance_ids: None)
     monkeypatch.setattr(
         monitor_instance_view,
-        "NodeMgmt",
+        "_ensure_operate_instances",
+        lambda request, instance_ids, actor_context=None, allow_missing=False: instance_ids,
+    )
+    monkeypatch.setattr(
+        NODE_MGMT_PATH,
         lambda: types.SimpleNamespace(
             delete_child_configs=lambda ids: cleanup_calls.__setitem__("child", ids),
             delete_configs=lambda ids: cleanup_calls.__setitem__("base", ids),
@@ -153,8 +162,7 @@ def test_remove_monitor_instance_always_cleans_configs(db, monkeypatch):
 
     monitor_instance_view.MonitorInstanceViewSet().remove_monitor_instance(request)
 
-    instance.refresh_from_db()
-    assert instance.is_deleted is True
+    assert not MonitorInstance.objects.filter(id=instance.id).exists()
     assert cleanup_calls == {"child": [child_config.id], "base": [base_config.id]}
     assert CollectConfig.objects.filter(monitor_instance_id=instance.id).count() == 0
 

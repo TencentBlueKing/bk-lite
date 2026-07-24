@@ -31,6 +31,13 @@ def consolidate_node_mgmt_sync_state(apps, schema_editor):
         run.save(update_fields=update_fields)
 
 
+def settle_pending_constraint_events(_apps, schema_editor):
+    if schema_editor.connection.vendor == "postgresql":
+        # PostgreSQL 的外键默认延迟到事务提交时检查；先结算删除配置产生的
+        # trigger events，后续才能在同一原子迁移中安全修改配置表约束。
+        schema_editor.connection.check_constraints()
+
+
 class Migration(migrations.Migration):
     dependencies = [("cmdb", "0038_change_record_mirror_outbox")]
 
@@ -74,6 +81,7 @@ class Migration(migrations.Migration):
         migrations.AddField(model_name="nodemgmtsyncrun", name="heartbeat_at", field=models.DateTimeField(blank=True, null=True),),
         migrations.AddField(model_name="nodemgmtsyncrun", name="deadline_at", field=models.DateTimeField(blank=True, null=True),),
         migrations.RunPython(consolidate_node_mgmt_sync_state, migrations.RunPython.noop),
+        migrations.RunPython(settle_pending_constraint_events, migrations.RunPython.noop),
         migrations.AlterField(
             model_name="nodemgmtsyncconfig",
             name="singleton_key",

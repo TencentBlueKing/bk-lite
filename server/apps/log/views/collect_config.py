@@ -1,5 +1,6 @@
 import toml
 import yaml
+from django.db import transaction
 from django.db.models import Q
 from rest_framework.decorators import action
 from rest_framework.viewsets import ModelViewSet, ViewSet
@@ -19,11 +20,12 @@ from apps.log.constants.collect_type import DISPLAY_CATEGORY_ORDER
 from apps.log.constants.language import LanguageConstants
 from apps.log.constants.permission import PermissionConstants
 from apps.log.filters.collect_config import CollectTypeFilter
-from apps.log.models import CollectConfig, CollectInstance, CollectInstanceOrganization, CollectType
+from apps.log.models import CollectConfig, CollectInstance, CollectInstanceOrganization, CollectType, LogExtractor
 from apps.log.models.policy import Policy
 from apps.log.serializers.collect_config import CollectTypeSerializer
 from apps.log.services.access_scope import LogAccessScopeService
 from apps.log.services.collect_type import CollectTypeService
+from apps.log.services.log_extractor.publication import mark_dirty
 from apps.log.services.search import SearchService
 from apps.rpc.node_mgmt import NodeMgmt
 
@@ -588,9 +590,15 @@ class CollectInstanceViewSet(ViewSet):
         # 删除配置
         if configs:
             NodeMgmt().delete_configs(configs)
-        # 删除配置对象
-        config_objs.delete()
-        CollectInstance.objects.filter(id__in=instance_ids).delete()
+        # 删除配置与实例；若实例存在提取器，级联删除与一次全局发布标脏必须处于同一事务。
+        with transaction.atomic():
+            # 与规则创建使用相同实例行锁，避免“检查后并发创建”留下已发布但未标脏的规则。
+            list(CollectInstance.objects.select_for_update().filter(id__in=instance_ids).order_by("id").values_list("id", flat=True))
+            has_extractors = LogExtractor.objects.filter(collect_instance_id__in=instance_ids).exists()
+            config_objs.delete()
+            CollectInstance.objects.filter(id__in=instance_ids).delete()
+            if has_extractors:
+                mark_dirty()
         return WebUtils.response_success()
 
     @action(methods=["post"], detail=False, url_path="instance_update")

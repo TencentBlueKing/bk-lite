@@ -7,14 +7,12 @@ import {
   Tag,
   message,
   Empty,
-  Dropdown,
-  Menu,
   Modal
 } from 'antd';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
 import useIntegrationApi from '@/app/monitor/api/integration';
-import { EllipsisOutlined, PlusOutlined } from '@ant-design/icons';
+import { PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { getIconByObjectName, getPluginBrandIcon } from '@/app/monitor/utils/common';
 import { useRouter } from 'next/navigation';
@@ -31,6 +29,8 @@ import { useAuth } from '@/context/auth';
 import TreeSelector from '@/app/monitor/components/treeSelector';
 import { useSearchParams } from 'next/navigation';
 import Permission from '@/components/permission';
+import MoreActionsDropdown from '@/components/more-actions-dropdown';
+import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
 import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
 import { isDerivativeObject } from '@/app/monitor/utils/monitorObject';
 import { cloneDeep } from 'lodash';
@@ -322,23 +322,19 @@ const Integration = () => {
     setExportDisabled(false); // Enable the export button
   };
 
-  const renderTemplateActionMenu = (app: ObjectItem) => (
-    <Menu onClick={(e) => e.domEvent.stopPropagation()}>
-      <Menu.Item className="!p-0" onClick={() => openCreateTemplateModal(app)}>
-        <Button type="text" className="w-full !justify-start">
-          {t('common.edit')}
-        </Button>
-      </Menu.Item>
-      <Menu.Item
-        className="!p-0"
-        onClick={() => handleDeleteTemplateConfirm(app.id as number)}
-      >
-        <Button type="text" className="w-full !justify-start">
-          {t('common.delete')}
-        </Button>
-      </Menu.Item>
-    </Menu>
-  );
+  const buildTemplateActionItems = (app: ObjectItem): MoreActionsDropdownItem[] => [
+    {
+      key: 'edit',
+      label: t('common.edit'),
+      onClick: () => openCreateTemplateModal(app),
+    },
+    {
+      key: 'delete',
+      label: t('common.delete'),
+      danger: true,
+      onClick: () => handleDeleteTemplateConfirm(app.id as number),
+    },
+  ];
 
   return (
     <div className="w-full flex overflow-hidden">
@@ -464,13 +460,11 @@ const Integration = () => {
                           className="absolute top-[12px] right-[12px]"
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <Dropdown
-                            popupRender={() => renderTemplateActionMenu(app)}
+                          <MoreActionsDropdown
+                            items={buildTemplateActionItems(app)}
                             placement="bottomRight"
-                            trigger={['click']}
-                          >
-                            <Button type="text" icon={<EllipsisOutlined />} />
-                          </Dropdown>
+                            stopPropagation
+                          />
                         </div>
                       )}
                       <div className="w-full h-[32px] flex justify-center items-end">

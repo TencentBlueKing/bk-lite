@@ -34,6 +34,13 @@ def test_query_omits_empty_step_and_time():
     assert g.call_args.kwargs["params"] == {"query": "cpu"}
 
 
+def test_query_includes_lookback_delta_when_supplied():
+    api = VictoriaMetricsAPI()
+    with patch("apps.monitor.utils.victoriametrics_api.requests.get", return_value=_resp({})) as g:
+        api.query("cpu", lookback_delta="600s")
+    assert g.call_args.kwargs["params"] == {"query": "cpu", "step": "5m", "lookback_delta": "600s"}
+
+
 def test_query_range_builds_params():
     api = VictoriaMetricsAPI()
     with patch("apps.monitor.utils.victoriametrics_api.requests.get", return_value=_resp({"r": []})) as g:
