@@ -269,6 +269,31 @@ export interface K8sCommandData {
   interval?: number;
 }
 
+export type K3sSignalStatus = 'success' | 'pending' | 'error';
+
+export interface K3sVerificationSignal {
+  status: K3sSignalStatus;
+  metric: string;
+}
+
+export interface K3sVerificationResult {
+  status: 'success' | 'partial' | 'pending' | 'error';
+  signals: {
+    cluster: K3sVerificationSignal;
+    container: K3sVerificationSignal;
+    node: K3sVerificationSignal;
+  };
+}
+
+export interface K3sCommandData {
+  install_command: string;
+  uninstall_command: string;
+  expires_in: number;
+  monitor_object_id: number;
+  instance_id: string;
+  cloud_region_id: number;
+}
+
 export interface AccessConfigProps {
   onNext: (data?: any) => void;
   commandData?: K8sCommandData;

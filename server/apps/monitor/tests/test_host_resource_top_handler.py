@@ -8,8 +8,13 @@ def test_host_resource_top_handler_returns_data(monkeypatch):
     instance = SimpleNamespace(id="host-1", name="host-1", ip="10.0.0.1", interval=300)
     monkeypatch.setattr(
         nm,
+        "_get_nats_actor_scope",
+        lambda user_info: (None, 1, False, frozenset({1}), False, None),
+    )
+    monkeypatch.setattr(
+        nm,
         "_get_authorized_monitor_instances",
-        lambda user_info: ({"host-1": instance}, None),
+        lambda user_info, scope_ids: ({"host-1": instance}, None),
     )
 
     class FakeVM:

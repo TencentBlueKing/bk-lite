@@ -1,0 +1,44 @@
+@use '../common/simple-dashboard.module.scss';
+
+.sectionLabel {
+  margin: 2px 2px 4px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #eceff4;
+  color: #8c95a8;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.dashboardSection + .sectionLabel {
+  margin-top: 8px;
+}
+
+:global(html.dark) .sectionLabel {
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+.riskPanel {
+  margin-top: 0;
+}
+
+.riskTableWrap {
+  overflow-x: auto;
+
+  :global(.ant-table) {
+    min-width: 720px;
+  }
+}
+
+.riskLag {
+  color: #ff4d4f;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+@media (max-width: 768px) {
+  .chartWrap {
+    height: 150px;
+  }
+}

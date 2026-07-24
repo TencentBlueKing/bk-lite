@@ -1,0 +1,5 @@
+K3S:
+  name: K3S
+  desc: Leveraging K3S' active monitoring data reporting capability, collect
+    the status and health of the K3S cluster, including performance metrics
+    for nodes, containers, and pods.

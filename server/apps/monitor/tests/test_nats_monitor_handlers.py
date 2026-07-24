@@ -4,6 +4,7 @@
 """
 
 from types import SimpleNamespace
+import time
 
 import pytest
 
@@ -131,13 +132,17 @@ class TestHostResourceTop:
     def test_returns_ranked_rows_for_metric_type(self, mocker):
         instance = SimpleNamespace(id="host-1", name="host-1", ip="10.0.0.1", interval=300)
         mocker.patch(
+            "apps.monitor.nats.monitor._get_nats_actor_scope",
+            return_value=(None, 1, False, frozenset({1}), False, None),
+        )
+        mocker.patch(
             "apps.monitor.nats.monitor._get_authorized_monitor_instances",
             return_value=({"host-1": instance}, None),
         )
         vm = mocker.patch("apps.monitor.nats.monitor.VictoriaMetricsAPI")
         vm.return_value.query.return_value = {
             "status": "success",
-            "data": {"result": [{"metric": {"instance_id": "host-1"}, "value": [1700000000, "42"]}]},
+            "data": {"result": [{"metric": {"instance_id": "host-1"}, "value": [time.time(), "42"]}]},
         }
 
         out = nm.get_host_resource_top("cpu", user_info={"user": "u", "team": 1})

@@ -5,6 +5,8 @@ import { Modal, Tag } from 'antd';
 import { FileTextOutlined, RightOutlined } from '@ant-design/icons';
 import { ConfigDiffReport, ConfigDiffItem } from '@/app/opspilot/types/global';
 import { getDiffReportItemPresentation } from './diffReportItemPresentation';
+import useApiClient, { isSilentRequestError } from '@/utils/request';
+import { buildLiveYamlRequest } from './liveYamlRequest';
 
 type DiffOp = 'equal' | 'add' | 'remove';
 interface DiffLine { op: DiffOp; text: string; leftNo?: number; rightNo?: number }
@@ -57,6 +59,7 @@ interface DiffReportCardProps {
 }
 
 const DiffReportCard: React.FC<DiffReportCardProps> = ({ report }) => {
+  const { post } = useApiClient();
   const [selectedItem, setSelectedItem] = useState<ConfigDiffItem | null>(null);
   const [fetchedYaml, setFetchedYaml] = useState<{ yaml: string; loading: boolean; error: string | null }>({
     yaml: '',
@@ -66,35 +69,36 @@ const DiffReportCard: React.FC<DiffReportCardProps> = ({ report }) => {
 
   // modal 一开就自动 fetch,没 skill_id 就跳过
   useEffect(() => {
-    if (!selectedItem?.skill_id) return;
+    if (!selectedItem) return;
+    const liveYamlRequest = buildLiveYamlRequest(report, selectedItem);
+    if (!liveYamlRequest) return;
+    if (liveYamlRequest.kind === 'unavailable') {
+      setFetchedYaml({ yaml: '', loading: false, error: liveYamlRequest.message });
+      return;
+    }
+
+    let cancelled = false;
     setFetchedYaml({ yaml: '', loading: true, error: null });
     (async () => {
       try {
-        const token = localStorage.getItem('access_token') ||
-          document.cookie.split('; ').find(c => c.startsWith('access_token='))?.split('=')[1] || '';
-        const apiBase = (window as any).__NEXT_DATA__?.props?.pageProps?.apiBase
-          || window.location.origin;
-        const res = await fetch(`${apiBase}/api/proxy/opspilot/model_provider_mgmt/llm/fetch_k8s_deployment_yaml/`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({
-            namespace: selectedItem.namespace === 'all' ? '' : selectedItem.namespace,
-            name: selectedItem.workload_name.split(' ')[0],
-            cluster_name: report.cluster_name,
-            skill_id: selectedItem.skill_id,
-          }),
-        });
-        const json = await res.json();
-        if (json.result && json.data?.yaml) {
-          setFetchedYaml({ yaml: json.data.yaml, loading: false, error: null });
-        } else {
-          setFetchedYaml({ yaml: '', loading: false, error: json.message || 'fetch failed' });
+        const data = await post<{ yaml: string }>(liveYamlRequest.endpoint, liveYamlRequest.payload);
+        if (!cancelled) {
+          setFetchedYaml({ yaml: data.yaml, loading: false, error: null });
         }
-      } catch (e: any) {
-        setFetchedYaml({ yaml: '', loading: false, error: e?.message || 'network error' });
+      } catch (error: unknown) {
+        if (!cancelled) {
+          const errorMessage = isSilentRequestError(error)
+            ? null
+            : error instanceof Error ? error.message : 'network error';
+          setFetchedYaml({ yaml: '', loading: false, error: errorMessage });
+        }
       }
     })();
-  }, [selectedItem?.skill_id, selectedItem?.namespace, selectedItem?.workload_name, report.cluster_name]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [post, report, selectedItem]);
   const a2uiComponent = report.a2ui?.component || 'config-diff-report';
   const a2uiVersion = report.a2ui?.version || 'legacy';
   const selectedPresentation = selectedItem ? getDiffReportItemPresentation(selectedItem) : null;
@@ -267,7 +271,7 @@ const DiffReportCard: React.FC<DiffReportCardProps> = ({ report }) => {
                 </div>
               )}
               {/* 真实 deployment YAML — modal 一开就自动 fetch,不再多点 */}
-              {selectedItem.skill_id && (
+              {(report.skill_id || selectedItem.skill_id) && (
                 <div className="px-4 py-3 border-t border-gray-200 bg-gray-50">
                   <div className="mb-1.5 flex items-center gap-2">
                     <span className="inline-flex h-6 items-center rounded-md bg-gray-100 px-2 text-xs font-medium text-gray-700 border border-gray-200">
@@ -275,8 +279,9 @@ const DiffReportCard: React.FC<DiffReportCardProps> = ({ report }) => {
                     </span>
                   </div>
                   <pre className="whitespace-pre-wrap break-words rounded-md bg-white border border-gray-200 p-3 text-xs font-mono text-gray-700 max-h-80 overflow-auto">
-                    {fetchedYaml.loading ? '加载中...'
-                    : fetchedYaml.error || fetchedYaml.yaml || '加载失败,请重试'}
+                    {fetchedYaml.loading
+                      ? '加载中...'
+                      : fetchedYaml.error || fetchedYaml.yaml || '加载失败,请重试'}
                   </pre>
                 </div>
               )}

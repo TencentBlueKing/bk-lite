@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { MenuItem } from '@/types/index';
 import { useLocale } from '@/context/locale';
+import { createLatestRequestGuard } from '@/context/latestRequestGuard';
 import { normalizeLocale } from '@/utils/userPreferences';
 
 interface MenusContextType {
@@ -13,10 +14,12 @@ const MenusContext = createContext<MenusContextType>({ configMenus: [], loading:
 export const MenusProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState<boolean>(false);
   const [configMenus, setConfigMenus] = useState<MenuItem[]>([]);
+  const [requestGuard] = useState(createLatestRequestGuard);
   const { locale } = useLocale();
 
   useEffect(() => {
     const fetchMenus = async () => {
+      const requestId = requestGuard.begin();
       const nextLocale = normalizeLocale(locale);
       setLoading(true);
       try {
@@ -25,16 +28,17 @@ export const MenusProvider = ({ children }: { children: ReactNode }) => {
           throw new Error('Failed to fetch menus');
         }
         const menus = await response.json();
-        setConfigMenus(menus);
+        requestGuard.commitIfCurrent(requestId, () => setConfigMenus(menus));
       } catch (error) {
         console.error('Failed to fetch menus:', error);
       } finally {
-        setLoading(false);
+        requestGuard.commitIfCurrent(requestId, () => setLoading(false));
       }
     };
 
     fetchMenus();
-  }, [locale]);
+    return () => requestGuard.invalidate();
+  }, [locale, requestGuard]);
 
   return (
     <MenusContext.Provider value={{configMenus, loading}}>

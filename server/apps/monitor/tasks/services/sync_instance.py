@@ -9,6 +9,7 @@ from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 class SyncInstance:
     def __init__(self):
         self.monitor_map = self.get_monitor_map()
+        self.failed_monitor_object_ids = set()
 
     def get_monitor_map(self):
         monitor_objs = MonitorObject.objects.all()
@@ -27,7 +28,17 @@ class SyncInstance:
     def get_instance_map_by_metrics(self):
         """通过查询指标获取实例信息"""
         instances_map = {}
-        monitor_objs = MonitorObject.objects.all().values(*MonitorObjConstants.OBJ_KEYS)
+        monitor_objs = MonitorObject.objects.all().values(
+            *MonitorObjConstants.OBJ_KEYS,
+            "level",
+            "parent_id",
+            "parent__instance_id_keys",
+        )
+        active_parent_instances = set(
+            MonitorInstance.objects.filter(is_deleted=False, is_active=True).values_list(
+                "monitor_object_id", "id"
+            )
+        )
 
         for monitor_info in monitor_objs:
             if monitor_info["name"] not in self.monitor_map:
@@ -35,12 +46,32 @@ class SyncInstance:
             query = monitor_info["default_metric"]
             if not query:
                 continue
-            metrics = VictoriaMetricsAPI().query(query, step="10m")
+            try:
+                metrics = VictoriaMetricsAPI().query(query, step="10m")
+            except Exception:
+                monitor_object_id = self.monitor_map[monitor_info["name"]]
+                self.failed_monitor_object_ids.add(monitor_object_id)
+                logger.exception(
+                    "监控-实例发现查询失败，跳过本对象且保留其现有实例: "
+                    f"{monitor_info['name']}"
+                )
+                continue
 
             # 记录当前监控对象发现的实例数量
             current_monitor_instance_count = 0
 
             for metric_info in metrics.get("data", {}).get("result", []):
+                metric_labels = metric_info.get("metric", {})
+                if monitor_info["level"] == "derivative":
+                    parent_keys = monitor_info["parent__instance_id_keys"] or []
+                    parent_values = tuple(metric_labels.get(key) for key in parent_keys)
+                    parent_identity = (monitor_info["parent_id"], str(parent_values))
+                    if (
+                        not parent_keys
+                        or any(value in (None, "") for value in parent_values)
+                        or parent_identity not in active_parent_instances
+                    ):
+                        continue
                 instance_id = tuple([metric_info["metric"].get(i) for i in monitor_info["instance_id_keys"]])
                 instance_name = "__".join([str(i) for i in instance_id])
                 if not instance_id:
@@ -84,7 +115,11 @@ class SyncInstance:
         all_existing_ids = set(MonitorInstance.objects.values_list("id", flat=True))
 
         # 只查询自动发现的实例（auto=True），用于后续的恢复和删除逻辑
-        all_instances_qs = MonitorInstance.objects.filter(auto=True).values("id", "is_deleted")
+        all_instances_qs = (
+            MonitorInstance.objects.filter(auto=True)
+            .exclude(monitor_object_id__in=self.failed_monitor_object_ids)
+            .values("id", "is_deleted")
+        )
         table_all = {i["id"] for i in all_instances_qs}
         table_deleted = {i["id"] for i in all_instances_qs if i["is_deleted"]}
         table_alive = table_all - table_deleted
