@@ -55,6 +55,24 @@ class TestMonitorObjectList:
         assert rows["OVParent"]["display_name"] == "父对象"
         assert "is_builtin" in rows["OVParent"]
 
+    def test_list_uses_custom_type_name_as_display_type(self, api_client):
+        custom_type = MonitorObjectType.objects.create(
+            id="7ef18d88-3f62-4e2d-946d-7da0238f98a8",
+            name="测试分类",
+        )
+        MonitorObject.objects.create(
+            name="OVCustomType",
+            display_name="测试对象",
+            level="base",
+            type=custom_type,
+        )
+
+        resp = api_client.get(f"{BASE}/api/monitor_object/")
+
+        assert resp.status_code == 200
+        rows = {r["name"]: r for r in resp.json()["data"]}
+        assert rows["OVCustomType"]["display_type"] == "测试分类"
+
     def test_parent_only_filter(self, api_client):
         parent = MonitorObject.objects.create(name="OVP2", level="base")
         MonitorObject.objects.create(name="OVC2", level="derivative", parent=parent)
