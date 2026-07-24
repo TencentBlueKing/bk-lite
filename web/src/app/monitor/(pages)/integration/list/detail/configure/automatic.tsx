@@ -24,6 +24,7 @@ import Permission from '@/components/permission';
 import { cloneDeep } from 'lodash';
 import { usePluginFromJson } from '@/app/monitor/hooks/integration/usePluginFromJson';
 import { useConfigRenderer } from '@/app/monitor/hooks/integration/useConfigRenderer';
+import { toMonitorNodeOption } from '@/app/monitor/hooks/integration/nodeOptions';
 import BatchEditModal from './batchEditModal';
 import ExcelImportModal from './excelImportModal';
 import PluginGuidePanel from './pluginGuidePanel';
@@ -709,11 +710,12 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         page_size: -1,
         is_active: true
       });
-      const formattedNodes = (data.nodes || []).map((node: any) => ({
-        ...node,
-        label: `${node.name} (${node.ip})`,
-        value: node.id
-      }));
+      const formattedNodes = (data.nodes || []).map((node: any) =>
+        toMonitorNodeOption(
+          node,
+          t('monitor.integrations.hostMonitoringAlreadyConfigured')
+        )
+      );
       setNodeList(formattedNodes);
     } finally {
       setNodesLoading(false);

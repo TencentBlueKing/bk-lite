@@ -1,8 +1,9 @@
 'use client';
 
 import React from 'react';
-import { Form, Input, Modal, Segmented, Switch, Tag, Typography, type FormInstance } from 'antd';
+import { Form, Input, Radio, Switch, Tag, Typography, type FormInstance } from 'antd';
 import { ApartmentOutlined, GlobalOutlined } from '@ant-design/icons';
+import OperateFormModal from '@/components/operate-form-modal';
 import { useTranslation } from '@/utils/i18n';
 import styles from './networkWhitelistFormModal.module.scss';
 
@@ -42,11 +43,9 @@ const NetworkWhitelistFormModal: React.FC<NetworkWhitelistFormModalProps> = ({
   const isDomain = entryType === 'domain';
 
   return (
-    <Modal
+    <OperateFormModal
       open={open}
-      width={560}
-      centered
-      className={styles.modal}
+      width={520}
       title={
         <div className={styles.titleBlock}>
           <span className={styles.titleText}>
@@ -59,10 +58,12 @@ const NetworkWhitelistFormModal: React.FC<NetworkWhitelistFormModalProps> = ({
           </Text>
         </div>
       }
-      okText={t('common.confirm')}
+      confirmText={t('common.confirm')}
       cancelText={t('common.cancel')}
       confirmLoading={saving}
-      onOk={onSubmit}
+      cancelDisabled={saving}
+      primaryFirst={false}
+      onConfirm={onSubmit}
       onCancel={onCancel}
       destroyOnHidden
     >
@@ -72,32 +73,24 @@ const NetworkWhitelistFormModal: React.FC<NetworkWhitelistFormModalProps> = ({
             <Text strong className={styles.typeLabel}>
               {t('system.settings.networkWhitelist.entryType')}
             </Text>
-            <Segmented<NetworkWhitelistEntryType>
-              size="small"
+            <Radio.Group
               className={styles.typeSelector}
               value={entryType}
-              options={[
-                {
-                  value: 'cidr',
-                  label: (
-                    <span className={styles.typeOption}>
-                      <ApartmentOutlined />
-                      {t('system.settings.networkWhitelist.typeCidr')}
-                    </span>
-                  ),
-                },
-                {
-                  value: 'domain',
-                  label: (
-                    <span className={styles.typeOption}>
-                      <GlobalOutlined />
-                      {t('system.settings.networkWhitelist.typeDomain')}
-                    </span>
-                  ),
-                },
-              ]}
-              onChange={onEntryTypeChange}
-            />
+              onChange={(event) => onEntryTypeChange(event.target.value as NetworkWhitelistEntryType)}
+            >
+              <Radio value="cidr">
+                <span className={styles.typeOption}>
+                  <ApartmentOutlined />
+                  {t('system.settings.networkWhitelist.typeCidr')}
+                </span>
+              </Radio>
+              <Radio value="domain">
+                <span className={styles.typeOption}>
+                  <GlobalOutlined />
+                  {t('system.settings.networkWhitelist.typeDomain')}
+                </span>
+              </Radio>
+            </Radio.Group>
             <Text type="secondary" className={styles.typeHint}>
               {t('system.settings.networkWhitelist.entryTypeHint')}
             </Text>
@@ -112,7 +105,6 @@ const NetworkWhitelistFormModal: React.FC<NetworkWhitelistFormModalProps> = ({
             rules={[{ required: true, message: t('system.settings.networkWhitelist.domainRequired') }]}
           >
             <Input
-              size="large"
               prefix={<GlobalOutlined className={styles.inputIcon} />}
               placeholder={t('system.settings.networkWhitelist.domainNamePlaceholder')}
             />
@@ -125,7 +117,6 @@ const NetworkWhitelistFormModal: React.FC<NetworkWhitelistFormModalProps> = ({
             rules={[{ required: true, message: t('system.settings.networkWhitelist.networkRequired') }]}
           >
             <Input
-              size="large"
               prefix={<ApartmentOutlined className={styles.inputIcon} />}
               placeholder={t('system.settings.networkWhitelist.networkPlaceholder')}
             />
@@ -141,18 +132,19 @@ const NetworkWhitelistFormModal: React.FC<NetworkWhitelistFormModalProps> = ({
             </span>
           }
         >
-          <Input.TextArea rows={2} placeholder={t('system.settings.networkWhitelist.remarkPlaceholder')} />
+          <Input.TextArea rows={3} placeholder={t('system.settings.networkWhitelist.remarkPlaceholder')} />
         </Form.Item>
 
         <Form.Item
           name="enabled"
           label={t('system.settings.networkWhitelist.enabled')}
           valuePropName="checked"
+          className={styles.enabledField}
         >
-          <Switch aria-label={t('system.settings.networkWhitelist.enabled')} />
+          <Switch size="small" aria-label={t('system.settings.networkWhitelist.enabled')} />
         </Form.Item>
       </Form>
-    </Modal>
+    </OperateFormModal>
   );
 };
 

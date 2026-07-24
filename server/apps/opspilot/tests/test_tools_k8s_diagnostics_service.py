@@ -287,6 +287,49 @@ class TestDiagnosePod:
         assert vol_types == {"v1": "pvc", "v2": "hostpath"}
         assert out["recent_events"][0]["reason"] == "BackOff"
 
+    def test_recent_events_sort_handles_aware_and_missing_timestamps(self, core):
+        older = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        newer = datetime(2024, 1, 2, tzinfo=timezone.utc)
+        core.read_namespaced_pod.return_value = _pod(name="px")
+        core.list_namespaced_event.return_value = _items([
+            SimpleNamespace(
+                type="Normal",
+                reason="NoTimestamp",
+                message="missing",
+                count=1,
+                last_timestamp=None,
+            ),
+            SimpleNamespace(
+                type="Warning",
+                reason="Older",
+                message="old",
+                count=1,
+                last_timestamp=older,
+            ),
+            SimpleNamespace(
+                type="Warning",
+                reason="Newer",
+                message="new",
+                count=1,
+                last_timestamp=newer,
+            ),
+        ])
+
+        out = json.loads(d.diagnose_kubernetes_pod_issues.invoke(
+            {"namespace": "default", "pod_name": "px", "config": {}}
+        ))
+
+        assert [event["reason"] for event in out["recent_events"]] == [
+            "Newer",
+            "Older",
+            "NoTimestamp",
+        ]
+        assert [event["last_timestamp"] for event in out["recent_events"]] == [
+            newer.isoformat(),
+            older.isoformat(),
+            None,
+        ]
+
     def test_pod_not_found_404(self, core):
         core.read_namespaced_pod.side_effect = ApiException(status=404)
         out = json.loads(d.diagnose_kubernetes_pod_issues.invoke(

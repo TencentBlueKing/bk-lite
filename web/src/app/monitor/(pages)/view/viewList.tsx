@@ -1,6 +1,6 @@
 'use client';
 import React, { useEffect, useState, useRef, useMemo } from 'react';
-import { Input, Button, Progress, Select, Tag } from 'antd';
+import { Input, Button, Progress, Select, Tag, message } from 'antd';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
 import useViewApi from '@/app/monitor/api/view';
@@ -34,6 +34,7 @@ import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
 import { getProfessionalDashboardUrl } from '@/app/monitor/dashboards/registry';
 import { getDerivativeObjectNames } from '@/app/monitor/utils/monitorObject';
 import { cloneDeep } from 'lodash';
+import { resolveViewColumns } from './viewColumnPreference';
 const { Option } = Select;
 
 // 视图列表的展示列类型（来自对象的 display_fields 配置）
@@ -63,7 +64,12 @@ const ViewList: React.FC<ViewListProps> = ({
   const { isLoading } = useApiClient();
   const { getMonitorMetrics, getInstanceList, getEffectivePlugins } =
     useMonitorApi();
-  const { getInstanceSearch, getInstanceQueryParams } = useViewApi();
+  const {
+    getInstanceSearch,
+    getInstanceQueryParams,
+    getViewColumnPreference,
+    saveViewColumnPreference
+  } = useViewApi();
   const { t } = useTranslation();
   const router = useRouter();
   const { convertToLocalizedTime } = useLocalizedTime();
@@ -136,6 +142,9 @@ const ViewList: React.FC<ViewListProps> = ({
     }
   ];
   const [tableColumn, setTableColumn] = useState<ColumnItem[]>(columns);
+  const [columnPreference, setColumnPreference] = useState<string[] | null>(
+    null
+  );
   const [metrics, setMetrics] = useState<MetricItem[]>([]);
   const [node, setNode] = useState<string | null>(null);
   const [colony, setColony] = useState<string | null>(null);
@@ -165,9 +174,14 @@ const ViewList: React.FC<ViewListProps> = ({
     return derivativeNames.includes(currentObjectName as string) || showTab;
   }, [objects, objectId, showTab]);
 
+  const resolvedColumns = useMemo(
+    () => resolveViewColumns(tableColumn, columnPreference),
+    [tableColumn, columnPreference]
+  );
+
   // 动态处理进度条列宽度：有数据时固定300，无数据时自适应
   const displayColumns = useMemo(() => {
-    return tableColumn.map((col: ColumnItem) => {
+    return resolvedColumns.columns.map((col: ColumnItem) => {
       if (col.type === 'progress') {
         return {
           ...col,
@@ -176,13 +190,39 @@ const ViewList: React.FC<ViewListProps> = ({
       }
       return col;
     });
-  }, [tableColumn, tableData.length]);
+  }, [resolvedColumns.columns, tableData.length]);
+
+  const fieldGroups = useMemo(() => {
+    const metricKeys = new Set(
+      (objects.find((item) => item.id === objectId)?.display_fields || []).map(
+        (field) => field.column_key
+      )
+    );
+    const choosableFields = tableColumn.filter((column) => column.key !== 'action');
+    return {
+      choosableFields,
+      groups: [
+        {
+          title: t('monitor.events.basicInformation'),
+          key: 'baseInfo',
+          child: choosableFields.filter((column) => !metricKeys.has(column.key))
+        },
+        {
+          title: t('monitor.events.metricInformation'),
+          key: 'metricInfo',
+          child: choosableFields.filter((column) => metricKeys.has(column.key))
+        }
+      ].filter((group) => group.child.length > 0)
+    };
+  }, [objectId, objects, tableColumn, t]);
 
   useEffect(() => {
     if (isLoading) return;
     if (objectId && objects?.length) {
       currentObjectIdRef.current = objectId;
       cancelAllRequests();
+      setColumnPreference(null);
+      setTableColumn(columns);
       setTableData([]);
       setPagination((prev: Pagination) => ({
         ...prev,
@@ -272,13 +312,15 @@ const ViewList: React.FC<ViewListProps> = ({
       const res = await Promise.all([
         getMetrics,
         showMultipleConditions &&
-          getInstanceQueryParams(objName as string, objParams, config)
+          getInstanceQueryParams(objName as string, objParams, config),
+        getViewColumnPreference(objectId, config).catch(() => null)
       ]);
       // 检查是否是最新的请求
       if (currentRequestId !== columnRequestIdRef.current) {
         return;
       }
       const k8sQuery = res[1];
+      setColumnPreference(res[2]?.field_keys || null);
       let queryForm: any[] = [];
       if (k8sQuery?.cluster) {
         queryForm = k8sQuery?.cluster || [];
@@ -354,7 +396,7 @@ const ViewList: React.FC<ViewListProps> = ({
         const _columns = displayCols.map((col: DisplayCol, colIndex: number) => {
           const primaryMeta = resolveDisplayMetric(allMetrics, col.metrics?.[0] || {});
           const colType = getDisplayFieldType(primaryMeta);
-          const dataKey = `df_${colIndex}`;
+          const dataKey = col.column_key || `df_${colIndex}`;
 
           const baseSorter = (a: any, b: any) => {
             const va = resolveCell(a, col).value;
@@ -593,6 +635,15 @@ const ViewList: React.FC<ViewListProps> = ({
     getAssetInsts(objectId);
   };
 
+  const handleSelectFields = async (fieldKeys: string[]) => {
+    const targetObjectId = objectId;
+    await saveViewColumnPreference(targetObjectId, fieldKeys);
+    if (currentObjectIdRef.current === targetObjectId) {
+      setColumnPreference(fieldKeys);
+      message.success(t('common.saveSuccess'));
+    }
+  };
+
   const clearText = () => {
     setSearchText('');
     getAssetInsts(objectId, 'clear');
@@ -712,25 +763,14 @@ const ViewList: React.FC<ViewListProps> = ({
         loading={tableLoading}
         rowKey="instance_id"
         fieldSetting={{
-          showSetting: false,
-          displayFieldKeys: [
-            'elasticsearch_process_cpu_percent',
-            'instance_name'
-          ],
-          choosableFields: tableColumn.slice(0, tableColumn.length - 1),
-          groupFields: [
-            {
-              title: t('monitor.events.basicInformation'),
-              key: 'baseInfo',
-              child: columns.slice(0, 2)
-            },
-            {
-              title: t('monitor.events.metricInformation'),
-              key: 'metricInfo',
-              child: tableColumn.slice(2, tableColumn.length - 1)
-            }
-          ]
+          showSetting: true,
+          displayFieldKeys: resolvedColumns.fieldKeys,
+          choosableFields: fieldGroups.choosableFields,
+          groupFields: fieldGroups.groups,
+          searchable: true,
+          modalWidth: 900
         }}
+        onSelectFields={handleSelectFields}
         onChange={handleTableChange}
       ></CustomTable>
       <ViewModal

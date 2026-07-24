@@ -56,6 +56,15 @@ class NodeMgmt(object):
         return_data = self.client.run("node_list", query_data)
         return return_data
 
+    def get_nodes_with_child_config(self, node_ids, collector, collect_type):
+        """查询关联了指定采集器子配置的节点 ID。"""
+        return self.client.run(
+            "get_nodes_with_child_config",
+            node_ids,
+            collector,
+            collect_type,
+        )
+
     def get_node_names_by_ids(self, node_ids):
         """
         :param node_ids: 节点ID列表

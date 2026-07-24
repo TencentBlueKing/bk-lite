@@ -15,6 +15,7 @@ from apps.monitor.models import (
     MonitorObjectOrganizationRule,
     MonitorPlugin,
 )
+from apps.monitor.services.host_deployment import HostDeploymentStatus
 from apps.monitor.utils.config_format import ConfigFormat
 from apps.monitor.utils.dimension import build_safe_instance_id, normalize_instance_identity, parse_instance_id
 from apps.monitor.utils.node_selector import normalize_node_selector
@@ -771,6 +772,25 @@ class InstanceConfigService:
         # 对需要统一实例身份的对象应用 identity adapter，统一 storage/logical/raw 三层 ID
         monitor_object = MonitorObject.objects.filter(id=monitor_object_id).only("id", "name").first()
         monitor_object_name = monitor_object.name if monitor_object else ""
+        is_host_monitoring_onboarding = HostDeploymentStatus.applies_to(
+            monitor_object_name,
+            collector,
+            collect_type,
+        )
+        if is_host_monitoring_onboarding:
+            requested_node_ids = list(
+                dict.fromkeys(
+                    str(node_id)
+                    for instance in sanitized_instances
+                    for node_id in instance.get("node_ids", [])
+                    if node_id not in (None, "")
+                )
+            )
+            configured_node_ids = HostDeploymentStatus().get_configured_node_ids(requested_node_ids)
+            if configured_node_ids:
+                raise BaseAppException(
+                    f"以下节点已接入主机监控，请刷新节点列表: {', '.join(sorted(configured_node_ids))}"
+                )
         prepared_instances = sanitized_instances
         if InstanceConfigService._should_use_host_identity_adapter(monitor_object_name):
             try:
@@ -795,6 +815,14 @@ class InstanceConfigService:
                     collector,
                     data.get("configs", []),
                 )
+                if is_host_monitoring_onboarding and existing_instances:
+                    existing_instance_ids = [instance["instance_id"] for instance in existing_instances]
+                    if CollectConfig.objects.filter(
+                        monitor_instance_id__in=existing_instance_ids,
+                        collector=HostDeploymentStatus.COLLECTOR,
+                        collect_type=HostDeploymentStatus.COLLECT_TYPE,
+                    ).exists():
+                        raise BaseAppException("监控实例已存在主机监控配置，无法重复接入")
                 if not new_instances and not existing_instances:
                     logger.info("没有需要处理的实例")
                     return
