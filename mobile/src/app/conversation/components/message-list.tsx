@@ -4,14 +4,14 @@ import { type GetProp } from 'antd';
 import { Message } from '@/types/conversation';
 import { formatMessageTime, shouldShowTime } from '../utils/timeUtils';
 import { actionItems } from '../utils/constants';
-import { ToolCallItem } from './custom-components/ToolCallItem';
-import { ApplicationForm } from './custom-components/ApplicationForm';
-import { InformationCard } from './custom-components/InformationCard';
-import { SelectionButtons } from './custom-components/SelectionButtons';
+import { ToolCallItem } from './custom-components/tool-call-item';
+import { ApplicationForm } from './custom-components/application-form';
+import { InformationCard } from './custom-components/information-card';
+import { SelectionButtons } from './custom-components/selection-buttons';
 import { useTranslation } from '@/utils/i18n';
+import { DownOutline } from 'antd-mobile-icons';
 interface MessageListProps {
     messages: Message[];
-    router: any;
     thinkingExpanded: Record<string, boolean>;
     setThinkingExpanded: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
     thinkingTypingText: Record<string, string>;
@@ -41,7 +41,7 @@ const getRoles: GetProp<typeof Bubble.List, 'roles'> = ({
         styles: {
             content: {
                 backgroundColor: '#1677ff',
-                color: '#ffffff',
+                color: 'var(--color-text-on-primary)',
             },
         },
     },
@@ -221,10 +221,10 @@ export const MessageList: React.FC<MessageListProps> = ({
                                             transform: thinkingExpanded[msg.id] ? 'rotate(0deg)' : 'rotate(-90deg)'
                                         }}
                                     >
-                                        ▼
+                                        <DownOutline />
                                     </span>
                                     <span className="text-sm text-[var(--color-text-1)] font-medium">
-                                        思考过程
+                                        {t('chat.thinkingProcess')}
                                     </span>
                                 </div>
                                 {thinkingExpanded[msg.id] && (

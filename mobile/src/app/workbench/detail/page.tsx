@@ -1,24 +1,38 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Switch, List, ImageViewer, SpinLoading } from 'antd-mobile';
 import { LeftOutline } from 'antd-mobile-icons';
 import Image from 'next/image';
 import { useTranslation } from '@/utils/i18n';
-import { getApplication } from '@/api/bot';
+import { ChatApplicationItem, getApplication, getApplicationItems } from '@/api/bot';
 import { getAvatar } from '@/utils/avatar';
+import MobileTabShell from '@/components/mobile-tab-shell';
+import { buildConversationHref, selectConversationApplication } from '@/utils/conversationRoute';
+import MobileSafeHeader from '@/components/mobile-safe-header';
+import { useMobileBack } from '@/navigation/mobile-back';
 
 export default function AppDetailPage() {
     const { t } = useTranslation();
     const router = useRouter();
     const searchParams = useSearchParams();
     const botId = searchParams?.get('bot_id') || '';
+    const requestedNodeId = searchParams?.get('node_id');
 
-    const [botData, setBotData] = useState<any>(null);
+    const [botData, setBotData] = useState<ChatApplicationItem | null>(null);
     const [loading, setLoading] = useState(true);
     const [receiveNotification, setReceiveNotification] = useState(true);
     const [avatarVisible, setAvatarVisible] = useState(false);
+    const dismissAvatar = useCallback(() => {
+        if (!avatarVisible) return false;
+        setAvatarVisible(false);
+        return true;
+    }, [avatarVisible]);
+    const handleBack = useMobileBack({
+        fallbackHref: '/workbench',
+        onBeforeBack: dismissAvatar,
+    });
 
     useEffect(() => {
         if (!botId) {
@@ -30,7 +44,10 @@ export default function AppDetailPage() {
             try {
                 const response = await getApplication({ bot: Number(botId) });
                 if (response?.result && response?.data) {
-                    setBotData(response.data[0]);
+                    setBotData(selectConversationApplication(
+                        getApplicationItems(response),
+                        requestedNodeId,
+                    ) || null);
                 }
             } catch (error) {
                 console.error('获取应用详情失败:', error);
@@ -40,27 +57,32 @@ export default function AppDetailPage() {
         };
 
         fetchDetail();
-    }, [botId]);
+    }, [botId, requestedNodeId]);
 
     if (loading) {
         return (
-            <div className="flex flex-col items-center justify-center h-screen bg-[var(--color-background-body)]">
-                <SpinLoading color="primary" />
-            </div>
+            <MobileTabShell activeTab="apps">
+                <div className="flex flex-col items-center justify-center h-full bg-[var(--color-background-body)]">
+                    <SpinLoading color="primary" />
+                </div>
+            </MobileTabShell>
         );
     }
 
     if (!botData) {
         return (
-            <div className="flex flex-col items-center justify-center h-screen bg-[var(--color-background-body)]">
-                <div className="text-[var(--color-text-3)] text-lg">{t('workbench.appNotExist')}</div>
-                <button
-                    onClick={() => router.back()}
-                    className="mt-4 px-6 py-2 bg-blue-500 text-white rounded-lg"
-                >
-                    {t('common.back')}
-                </button>
-            </div>
+            <MobileTabShell activeTab="apps">
+                <div className="flex flex-col items-center justify-center h-full bg-[var(--color-background-body)]">
+                    <div className="text-[var(--color-text-3)] text-lg">{t('workbench.appNotExist')}</div>
+                    <button
+                        type="button"
+                        onClick={handleBack}
+                        className="min-h-11 mt-4 px-6 bg-[var(--color-primary)] text-[var(--color-text-on-primary)] rounded-lg"
+                    >
+                        {t('common.back')}
+                    </button>
+                </div>
+            </MobileTabShell>
         );
     }
 
@@ -69,16 +91,20 @@ export default function AppDetailPage() {
     };
 
     return (
-        <div className="flex flex-col h-screen bg-[var(--color-background-body)]">
+        <MobileTabShell activeTab="apps">
+        <div className="flex flex-col h-full bg-[var(--color-background-body)]">
             {/* 顶部导航栏 */}
-            <div className="bg-[var(--color-bg)]">
-                <div className="flex items-center justify-center relative px-4 py-3">
-                    <button onClick={() => router.back()} className="absolute left-4">
-                        <LeftOutline fontSize={24} className="text-[var(--color-text-1)]" />
-                    </button>
-                    <h1 className="text-lg font-medium text-[var(--color-text-1)]">{t('workbench.appIntroduction')}</h1>
-                </div>
-            </div>
+            <MobileSafeHeader contentClassName="relative flex items-center justify-center px-14">
+                <button
+                    type="button"
+                    aria-label={t('common.back')}
+                    onClick={handleBack}
+                    className="absolute left-2 flex min-h-11 min-w-11 items-center justify-center rounded-lg active:bg-[var(--color-fill-2)]"
+                >
+                    <LeftOutline fontSize={24} className="text-[var(--color-text-1)]" aria-hidden="true" />
+                </button>
+                <h1 className="text-lg font-medium text-[var(--color-text-1)]">{t('workbench.appIntroduction')}</h1>
+            </MobileSafeHeader>
 
             {/* 内容区域 */}
             <div className="flex-1 overflow-auto">
@@ -134,7 +160,12 @@ export default function AppDetailPage() {
                             <List>
                                 <List.Item prefix={<span className="iconfont icon-duihualishi text-2xl"></span>}
                                     onClick={() => {
-                                        router.push(`/search?type=ChatHistory&id=${botData.id}`);
+                                        const params = new URLSearchParams({
+                                            type: 'ChatHistory',
+                                            bot_id: String(botData.bot),
+                                            node_id: botData.node_id,
+                                        });
+                                        router.push(`/search?${params.toString()}`);
                                     }}>
                                     {t('workbench.searchChatHistory')}
                                 </List.Item>
@@ -160,7 +191,10 @@ export default function AppDetailPage() {
                         <List>
                             <List.Item prefix={<span className="iconfont icon-liaotianduihua-xianxing text-2xl"></span>}
                                 onClick={() => {
-                                    router.push(`/conversation?bot_id=${botData.bot}`);
+                                    router.push(buildConversationHref({
+                                        botId: botData.bot,
+                                        nodeId: botData.node_id,
+                                    }));
                                 }}>
                                 {botData.lastMessage ? t('workbench.continueConversation') : t('workbench.startConversation')}
                             </List.Item>
@@ -169,5 +203,6 @@ export default function AppDetailPage() {
                 </div>
             </div>
         </div>
+        </MobileTabShell>
     );
 }

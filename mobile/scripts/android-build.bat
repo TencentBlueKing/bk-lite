@@ -57,7 +57,12 @@ if exist "%CUSTOM_MAIN%" (
   echo ✅ MainActivity 已更新
 )
 
-REM 4. 复制自定义 Android 图标
+REM 4. 固化软键盘 resize 模式（gen 目录会被重新生成）
+node scripts\patch-android-manifest.mjs
+if errorlevel 1 exit /b 1
+echo ✅ Android 软键盘模式已更新
+
+REM 5. 复制自定义 Android 图标
 set "CUSTOM_ICONS=src-tauri\icons\android\res"
 set "TARGET_RES=src-tauri\gen\android\app\src\main\res"
 
@@ -70,7 +75,7 @@ if exist "%CUSTOM_ICONS%" (
   )
 )
 
-REM 5. 构建 APK
+REM 6. 构建 APK
 if "%BUILD_AAB%"=="true" (
   call pnpm tauri android build --aab
 ) else if "%BUILD_TYPE%"=="release" (
@@ -97,7 +102,7 @@ if "%BUILD_AAB%"=="true" (
   echo 📦 APK 位置: src-tauri\gen\android\app\build\outputs\apk\
 )
 
-REM 6. 自动安装（如果指定了 --install 参数）
+REM 7. 自动安装（如果指定了 --install 参数）
 if "%AUTO_INSTALL%"=="true" (
   if not "%BUILD_AAB%"=="true" (
     echo.

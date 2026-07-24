@@ -1,0 +1,88 @@
+.root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--color-bg);
+  isolation: isolate;
+}
+
+.drawer {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  z-index: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--color-bg);
+  transition: transform 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  will-change: transform;
+}
+
+.stage {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--color-background-body);
+  transition:
+    transform 260ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    border-radius 260ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 260ms ease;
+  will-change: transform;
+}
+
+.drawerDragging,
+.stageDragging,
+.stageDragging .scrim {
+  transition: none;
+}
+
+.stageContent {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  padding: 0;
+  cursor: pointer;
+  background: var(--color-navigation-drawer-scrim);
+  border: 0;
+  transition: opacity 260ms ease;
+  touch-action: pan-y;
+}
+
+.scrim[aria-hidden='true'] {
+  pointer-events: none;
+}
+
+.scrim:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -4px;
+}
+
+.edgeGesture {
+  position: absolute;
+  inset-block-start: calc(var(--safe-area-inset-top) + var(--mobile-header-height));
+  inset-block-end: 0;
+  inset-inline-start: 0;
+  z-index: 3;
+  touch-action: pan-y;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drawer,
+  .stage,
+  .scrim {
+    transition-duration: 1ms;
+  }
+}

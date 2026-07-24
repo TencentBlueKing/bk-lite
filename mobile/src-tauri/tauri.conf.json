@@ -1,6 +1,6 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "bklite-mobile",
+  "productName": "BK-Lite",
   "version": "0.1.0",
   "identifier": "org.bklite.mobile",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "bklite-mobile",
+        "title": "BK-Lite",
         "width": 800,
         "height": 600,
         "resizable": true,
