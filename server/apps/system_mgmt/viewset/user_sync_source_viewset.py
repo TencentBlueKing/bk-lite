@@ -185,6 +185,32 @@ class UserSyncSourceViewSet(MaintainerViewSet):
         serializer = UserSyncRunSerializer(source.runs.all()[:20], many=True)
         return Response(serializer.data)
 
+    @action(methods=["GET"], detail=False, url_path=r"runs/(?P<run_id>\d+)")
+    @HasPermission("user_sync-View")
+    def run_detail(self, request, run_id=None, *args, **kwargs):
+        """按 run_id 取单条同步运行详情(供 UserSyncRunProgressDrawer 使用)。
+
+        - 不存在返回 404
+        - 源不可见返回 403
+        - 正常返回 UserSyncRunSerializer 完整数据(含 payload 全部阶段/错误/计数器)
+        """
+        run = UserSyncRun.objects.select_related("source").filter(id=run_id).first()
+        if not run:
+            return JsonResponse({"result": False, "message": "Run not found"}, status=404)
+
+        source = run.source
+        if source is None:
+            return JsonResponse({"result": False, "message": "Source not found"}, status=404)
+
+        # 沿用 records 端点的源可见性判定
+        visible_sources = self.get_queryset_by_permission(
+            request, UserSyncSource.objects.filter(id=source.id)
+        )
+        if not visible_sources.exists():
+            return JsonResponse({"result": False, "message": "Permission denied"}, status=403)
+
+        return Response(UserSyncRunSerializer(run).data)
+
     @action(methods=["POST"], detail=False)
     @HasPermission("user_sync-View")
     def preview(self, request, *args, **kwargs):
