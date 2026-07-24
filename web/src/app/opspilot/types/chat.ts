@@ -61,6 +61,7 @@ export interface ConfigDiffReportValue {
   report_id: string;
   title: string;
   cluster_name: string;
+  skill_id?: number;
   a2ui?: A2UIReportContract;
   items: Array<{
     workload_name: string;
@@ -70,6 +71,7 @@ export interface ConfigDiffReportValue {
     summary: string;
     before_yaml: string;
     after_yaml: string;
+    skill_id?: number;
   }>;
 }
 

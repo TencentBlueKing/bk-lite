@@ -1,9 +1,11 @@
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from apps.monitor.management.services import plugin_migrate
+from apps.monitor.models import MonitorPlugin
 
 
 def _write_plugin(tmp_path, relative_dir, metrics_extra=None, ui_data=None, template_text=None):
@@ -52,6 +54,68 @@ def test_import_uses_explicit_identity_before_path_fallback(tmp_path, monkeypatc
     assert error_count == 0
     assert imported[0]["collector"] == "Telegraf"
     assert imported[0]["collect_type"] == "snmp_a10"
+
+
+def test_expand_local_template_assets_embeds_sibling_file(tmp_path):
+    plugin_dir = tmp_path / "plugin"
+    plugin_dir.mkdir()
+    (plugin_dir / "normalizer.star").write_text("def apply(metric):\n    return metric\n", encoding="utf-8")
+    template = "source = '''\n# @bk_include_file normalizer.star\n'''"
+
+    expanded = plugin_migrate._expand_local_template_assets(template, plugin_dir)
+
+    assert "# @bk_include_file" not in expanded
+    assert "def apply(metric):" in expanded
+
+
+def test_expand_local_template_assets_rejects_parent_path(tmp_path):
+    with pytest.raises(ValueError, match="非法的插件资源路径"):
+        plugin_migrate._expand_local_template_assets(
+            "# @bk_include_file ../normalizer.star",
+            tmp_path,
+        )
+
+
+def test_process_config_templates_embeds_local_assets(tmp_path):
+    plugin_dir = tmp_path / "plugin"
+    plugin_dir.mkdir()
+    (plugin_dir / "normalizer.star").write_text("def apply(metric):\n    return metric\n", encoding="utf-8")
+    (plugin_dir / "vendor.child.toml.j2").write_text(
+        "source = '''\n# @bk_include_file normalizer.star\n'''",
+        encoding="utf-8",
+    )
+
+    created, updated, deleted = plugin_migrate._process_config_templates(
+        plugin_dir,
+        MonitorPlugin(name="test-plugin"),
+        {},
+    )
+
+    assert len(created) == 1
+    assert "def apply(metric):" in created[0].content
+    assert updated == []
+    assert deleted == []
+
+
+def test_process_config_templates_preserves_existing_template_when_asset_is_missing(tmp_path):
+    plugin_dir = tmp_path / "plugin"
+    plugin_dir.mkdir()
+    (plugin_dir / "vendor.child.toml.j2").write_text(
+        "source = '''\n# @bk_include_file missing.star\n'''",
+        encoding="utf-8",
+    )
+    existing = SimpleNamespace(id=123, content="previous-good-template")
+
+    created, updated, deleted = plugin_migrate._process_config_templates(
+        plugin_dir,
+        MonitorPlugin(name="test-plugin"),
+        {("vendor", "child", "toml"): existing},
+    )
+
+    assert created == []
+    assert updated == []
+    assert deleted == []
+    assert existing.content == "previous-good-template"
 
 
 def test_import_uses_path_fallback_when_identity_fields_are_absent(tmp_path, monkeypatch):

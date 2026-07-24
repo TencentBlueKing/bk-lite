@@ -3,6 +3,7 @@ import type { UnifiedFilterDefinition, ValueConfig } from './dashBoard';
 
 export type ScreenWidgetChartType =
   | 'single'
+  | 'multiValue'
   | 'gauge'
   | 'line'
   | 'bar'

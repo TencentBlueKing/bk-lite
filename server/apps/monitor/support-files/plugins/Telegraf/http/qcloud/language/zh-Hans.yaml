@@ -1,3 +1,58 @@
 Tencent Cloud:
   name: 腾讯云
   desc: 实时采集腾讯云各类监控指标数据，涵盖计算资源、网络性能、存储使用等维度，助力用户深入了解资源状态，精准定位异常，高效完成运维管理与成本优化。
+monitor_object:
+  TCP: TCP
+  CVM: 云服务器
+monitor_object_type:
+  Tencent Cloud: 腾讯云
+monitor_object_metric_group:
+  TCP:
+    Base: 基础
+  CVM:
+    CPU: CPU
+    Memory: 内存
+    Disk: 磁盘
+    Network: 网络
+monitor_object_metric:
+  TCP:
+    ConnectStatus:
+      name: 连接状态
+      desc: 反映云 API 可用性、账户凭据有效性和数据采集链路的整体健康状态。
+  CVM:
+    CPUUsage_gauge:
+      name: CPU 使用率
+      desc: 云服务器运行时的实时 CPU 占用百分比。
+    MemUsed_gauge:
+      name: 已用内存
+      desc: 用户实际使用的内存，不包含缓冲区和系统缓存占用的内存。
+    MemUsage_gauge:
+      name: 内存使用率
+      desc: 用户实际使用内存占总内存的比例，不包含缓冲区和系统缓存。
+    CvmDiskUsage_gauge:
+      name: 磁盘使用率
+      desc: 所有磁盘已用容量占总容量的百分比。
+    LanOuttraffic_gauge:
+      name: 内网出流量
+      desc: 内网网卡的平均出向流量速率。
+    LanIntraffic_gauge:
+      name: 内网入流量
+      desc: 内网网卡的平均入向流量速率。
+    LanOutpkg_gauge:
+      name: 内网出包速率
+      desc: 内网网卡的平均出向数据包速率。
+    LanInpkg_gauge:
+      name: 内网入包速率
+      desc: 内网网卡的平均入向数据包速率。
+    WanOuttraffic_gauge:
+      name: 公网出流量
+      desc: 公网网卡的平均出向流量速率。
+    WanIntraffic_gauge:
+      name: 公网入流量
+      desc: 公网网卡的平均入向流量速率。
+    WanOutpkg_gauge:
+      name: 公网出包速率
+      desc: 公网网卡的平均出向数据包速率。
+    WanInpkg_gauge:
+      name: 公网入包速率
+      desc: 公网网卡的平均入向数据包速率。

@@ -100,16 +100,15 @@ class TestGetDefaultGroupMetric:
 
 class TestSyncExistingInstanceAttrs:
     def test_empty_returns_zero(self):
-        assert SVC._sync_existing_instance_attrs([], deleted_ids=None) == 0
+        assert SVC._sync_existing_instance_attrs([]) == 0
 
     def test_updates_to_manual_and_active(self):
         obj = MonitorObject.objects.create(name="SyncAttrObj", level="base")
         MonitorInstance.objects.create(
-            id="('h1',)", name="old", monitor_object=obj, auto=True, is_deleted=True, is_active=False,
+            id="('h1',)", name="old", monitor_object=obj, auto=True, is_active=False,
         )
         count = SVC._sync_existing_instance_attrs(
             [{"instance_id": "('h1',)", "instance_name": "new"}],
-            deleted_ids={"('h1',)"},
         )
         assert count == 1
         inst = MonitorInstance.objects.get(id="('h1',)")

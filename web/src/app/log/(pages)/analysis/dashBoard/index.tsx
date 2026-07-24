@@ -9,11 +9,12 @@ import React, {
 } from 'react';
 import TimeSelector from '@/components/time-selector';
 import GridLayout, { WidthProvider } from 'react-grid-layout';
-import { Button, Dropdown, Menu, Modal, Spin, Select, message } from 'antd';
+import { Button, Modal, Spin, Select, message } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { LayoutItem, DirItem } from '@/app/log/types/analysis';
-import { SearchOutlined, SaveOutlined, MoreOutlined } from '@ant-design/icons';
+import { SearchOutlined, SaveOutlined } from '@ant-design/icons';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
+import MoreActionsDropdown from '@/components/more-actions-dropdown';
 import WidgetWrapper from './components/widgetWrapper';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
@@ -94,10 +95,6 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       const viewSets = selectedDashboard.view_sets || [];
       setLayout(viewSets);
       setOriginalLayout([...viewSets]);
-      if (!groups.length && !isLoading) {
-        message.error(t('log.search.searchError'));
-        return;
-      }
       setRefreshKey((prev) => prev + 1);
     }, [selectedDashboard?.id]);
 
@@ -293,6 +290,9 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         const ids = list.at()?.id ? [list.at().id] : [];
         setGroupList(list);
         setGroups(ids);
+        if (!ids.length) {
+          message.error(t('log.search.searchError'));
+        }
         setOtherConfig((prev: any) => ({
           ...prev,
           groupIds: ids
@@ -642,17 +642,6 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                   isResizable={editable}
                 >
                   {(layout as LayoutItem[]).map((item) => {
-                    const menu = (
-                      <Menu>
-                        <Menu.Item
-                          key="delete"
-                          onClick={() => handleDelete(item.i)}
-                        >
-                          {t('common.delete')}
-                        </Menu.Item>
-                      </Menu>
-                    );
-
                     return (
                       <div
                         key={item.i}
@@ -678,13 +667,17 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                                 title={t('log.integration.viewLogs')}
                               />
                               {editable && (
-                                <Dropdown overlay={menu} trigger={['click']}>
-                                  <button className="no-drag text-[var(--color-text-2)] hover:text-[var(--color-text-1)] transition-colors">
-                                    <MoreOutlined
-                                      style={{ fontSize: '20px' }}
-                                    />
-                                  </button>
-                                </Dropdown>
+                                <MoreActionsDropdown
+                                  items={[
+                                    {
+                                      key: 'delete',
+                                      label: t('common.delete'),
+                                      onClick: () => handleDelete(item.i),
+                                    },
+                                  ]}
+                                  buttonClassName="no-drag text-[var(--color-text-2)] hover:text-[var(--color-text-1)] transition-colors"
+                                  iconStyle={{ fontSize: '20px' }}
+                                />
                               )}
                             </div>
                           </div>

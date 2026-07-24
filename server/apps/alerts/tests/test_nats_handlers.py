@@ -558,6 +558,34 @@ def test_get_alert_source_event_top(user_info):
 
 
 @pytest.mark.django_db
+def test_get_alert_source_distribution_returns_full_distribution_and_unknown():
+    for index in range(12):
+        alert = Alert.objects.create(
+            alert_id=f"DIST-{index}",
+            level="0",
+            title="t",
+            content="c",
+            fingerprint=f"dist-{index}",
+            source_name="zabbix" if index < 3 else (None if index == 11 else f"source-{index}"),
+            team=[1],
+        )
+    result = N.get_alert_source_distribution(user_info={"team": 1, "is_superuser": True})
+
+    assert result["result"] is True
+    assert result["data"] == [
+        {"name": "zabbix", "value": 3},
+        *[{"name": f"source-{index}", "value": 1} for index in range(3, 11)],
+        {"name": "未知来源", "value": 1},
+    ]
+
+
+@pytest.mark.django_db
+def test_get_alert_source_distribution_requires_alert_permission():
+    result = N.get_alert_source_distribution(user_info={"team": 1, "permission": {}})
+    assert result["result"] is False
+
+
+@pytest.mark.django_db
 def test_get_alert_source_statistics(user_info):
     from apps.alerts.models.alert_source import AlertSource
     from apps.alerts.models.models import Event
@@ -786,6 +814,51 @@ def test_receive_alert_events_success():
     assert result["result"] is True
     assert result["data"]["processed_events"] == 1
     assert Event.objects.filter(title="事件A").exists()
+
+
+@pytest.mark.parametrize("pusher", ["lite-monitor", "lite-log"])
+@pytest.mark.django_db
+def test_receive_alert_events_allows_whitelisted_internal_organizations_without_source_registration(pusher):
+    """内部白名单来源直推不依赖 NATS 告警源预先登记组织。"""
+    from apps.alerts.constants.constants import LevelType
+    from apps.alerts.models.alert_source import AlertSource
+    from apps.alerts.models.models import Event
+
+    for lid in (0, 1, 2, 3):
+        Level.objects.create(
+            level_id=lid,
+            level_name=f"L{lid}",
+            level_display_name=f"等级{lid}",
+            level_type=LevelType.EVENT,
+        )
+    AlertSource.objects.create(
+        name="监控中心 NATS 源",
+        source_id="nats",
+        source_type="nats",
+        secret="x",
+        team_secrets={},
+        is_active=True,
+        is_effective=True,
+        config={"event_fields_mapping": {"title": "title", "level": "level", "item": "item", "start_time": "start_time"}},
+    )
+    events = [
+        {
+            "title": "CPU 超阈值",
+            "level": "0",
+            "item": "cpu",
+            "start_time": "1700000000",
+            "organizations": [3],
+        }
+    ]
+
+    result = N.receive_alert_events(
+        source_id="nats",
+        events=events,
+        pusher=pusher,
+    )
+
+    assert result["result"] is True
+    assert Event.objects.get(title="CPU 超阈值").team == [3]
 
 
 @pytest.mark.django_db

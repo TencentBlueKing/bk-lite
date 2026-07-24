@@ -3,7 +3,8 @@ from types import SimpleNamespace
 import pytest
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from django_celery_beat.models import CrontabSchedule, PeriodicTask
+from django.utils import timezone
+from django_celery_beat.models import CrontabSchedule, PeriodicTask, PeriodicTasks
 
 from apps.cmdb.models.node_mgmt_sync import NodeMgmtSyncRegionState, NodeMgmtSyncRun
 from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncService
@@ -24,7 +25,7 @@ def _healthy_result():
     return SimpleNamespace(schedule_status="healthy", node_config_status="healthy", error_code="",)
 
 
-def test_management_command_recovers_and_reconciles_node_configs(mocker):
+def test_management_command_recovers_and_reconciles_schedules_without_remote_delivery(mocker):
     config = NodeMgmtSyncService.get_task()
     mocker.patch(f"{COMMAND}.NodeMgmtSyncService.get_task", return_value=config)
     recover = mocker.patch(f"{COMMAND}.NodeMgmtSyncService.recover_stale_runs")
@@ -35,7 +36,40 @@ def test_management_command_recovers_and_reconciles_node_configs(mocker):
 
     recover.assert_called_once_with()
     refresh.assert_called_once_with()
-    reconcile.assert_called_once_with(config, reconcile_node_configs=True)
+    # 启动阶段 NATS 响应方未就绪，命令不得发起节点配置远端交付
+    reconcile.assert_called_once_with(config)
+
+
+def test_management_command_does_not_fail_startup_on_stale_degraded_node_config(mocker):
+    config = NodeMgmtSyncService.get_task()
+    mocker.patch(f"{COMMAND}.NodeMgmtSyncService.get_task", return_value=config)
+    mocker.patch(f"{COMMAND}.NodeMgmtSyncService.recover_stale_runs")
+    mocker.patch(f"{COMMAND}.NodeMgmtSyncService.refresh_submitted_collect_runs")
+    mocker.patch(
+        f"{COMMAND}.NodeMgmtSyncReconciler.reconcile",
+        return_value=SimpleNamespace(
+            schedule_status="healthy",
+            node_config_status="degraded",
+            error_code="NODE_CONFIG_RECONCILE_FAILED",
+        ),
+    )
+
+    # 上一轮运行遗留的 degraded 交付状态由周期恢复任务收敛，不应阻断启动
+    call_command("reconcile_node_mgmt_sync")
+
+
+def test_management_command_still_fails_on_unhealthy_schedule(mocker):
+    config = NodeMgmtSyncService.get_task()
+    mocker.patch(f"{COMMAND}.NodeMgmtSyncService.get_task", return_value=config)
+    mocker.patch(f"{COMMAND}.NodeMgmtSyncService.recover_stale_runs")
+    mocker.patch(f"{COMMAND}.NodeMgmtSyncService.refresh_submitted_collect_runs")
+    mocker.patch(
+        f"{COMMAND}.NodeMgmtSyncReconciler.reconcile",
+        return_value=SimpleNamespace(schedule_status="degraded", node_config_status="unknown", error_code="RECONCILE_FAILED",),
+    )
+
+    with pytest.raises(CommandError, match="RECONCILE_FAILED"):
+        call_command("reconcile_node_mgmt_sync")
 
 
 def test_management_command_creates_fixed_recovery_schedule_independent_of_switches():
@@ -98,6 +132,23 @@ def test_static_beat_schedule_runs_independent_watchdog_every_five_minutes():
     schedule = CELERY_BEAT_SCHEDULE["node_mgmt_sync_recovery_watchdog"]
     assert schedule["task"] == WATCHDOG_TASK
     assert schedule["schedule"]._orig_minute == "*/5"
+
+
+@pytest.mark.parametrize("has_previous_run", [False, True])
+def test_watchdog_does_not_reload_healthy_schedule_for_new_or_existing_interval_task(
+    has_previous_run,
+):
+    call_command("reconcile_node_mgmt_sync")
+    sync_task = PeriodicTask.objects.get(
+        name=NodeMgmtSyncService.SYNC_PERIODIC_TASK_NAME,
+    )
+    if has_previous_run:
+        PeriodicTask.objects.filter(pk=sync_task.pk).update(last_run_at=timezone.now())
+    change_before_watchdog = PeriodicTasks.last_change()
+
+    watch_node_mgmt_sync_recovery()
+
+    assert PeriodicTasks.last_change() == change_before_watchdog
 
 
 def test_management_command_failure_is_stable_and_hides_exception_detail(mocker):

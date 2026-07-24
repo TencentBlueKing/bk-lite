@@ -258,6 +258,12 @@ monitor_object_metric:
         power module operating temperature; abnormally high values may indicate blocked
         airflow, failing fans or excessive ambient heat, which can trigger thermal
         protection or hardware damage if left unaddressed.
+    device_fan_ac_state:
+      name: Fan AC Power State
+      desc: AC power state of the device fan, normalized to normal or abnormal.
+    device_psu_ac_dc_state:
+      name: PSU AC/DC State
+      desc: AC/DC power state of the device power supply unit, normalized to normal or abnormal.
 monitor_object_metric_group:
   Switch:
     Base: Base
@@ -278,3 +284,5 @@ monitor_object_metric_group:
     Application Port: Application Port
     Endpoint: Endpoint
     Conversation: Conversation
+    Fan: Fan
+    Power: Power

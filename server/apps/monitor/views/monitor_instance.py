@@ -1,4 +1,3 @@
-from django.db import transaction
 from rest_framework import viewsets
 from rest_framework.decorators import action
 
@@ -8,17 +7,15 @@ from apps.core.utils.permission_utils import get_permission_rules
 from apps.core.utils.user_group import normalize_user_group_ids
 from apps.core.utils.web_utils import WebUtils
 from apps.monitor.constants.permission import PermissionConstants
-from apps.monitor.models import CollectConfig, MonitorInstance, MonitorInstanceOrganization, MonitorObject, MonitorObjectOrganizationRule
+from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, MonitorObject
 from apps.monitor.services.effective_plugins import MonitorEffectivePluginService
-from apps.monitor.services.flow_onboarding import FlowOnboardingService
 from apps.monitor.services.metrics import Metrics as MetricsService
 from apps.monitor.services.monitor_instance import InstanceSearch
+from apps.monitor.services.monitor_instance_removal import MonitorInstanceRemovalService
 from apps.monitor.services.monitor_object import MonitorObjectService
 from apps.monitor.services.node_mgmt import InstanceConfigService
-from apps.monitor.services.policy_source_cleanup import cleanup_policy_sources
 from apps.monitor.utils.dimension import normalize_instance_identity
 from apps.monitor.utils.pagination import parse_page_params
-from apps.rpc.node_mgmt import NodeMgmt
 
 
 def _build_actor_context(request):
@@ -347,39 +344,9 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
             request,
             request.data.get("instance_ids", []),
             actor_context,
+            allow_missing=True,
         )
-        with transaction.atomic():
-            refresh_region_ids = list(
-                dict.fromkeys(
-                    MonitorInstance.objects.select_for_update()
-                    .filter(
-                        id__in=instance_ids,
-                        cloud_region_id__isnull=False,
-                        monitor_object__name__in=FlowOnboardingService.SUPPORTED_MONITOR_OBJECT_NAMES,
-                    )
-                    .exclude(enabled_protocols=[])
-                    .values_list("cloud_region_id", flat=True)
-                )
-            )
-            MonitorInstance.objects.filter(id__in=instance_ids).update(is_deleted=True)
-            config_objs = CollectConfig.objects.filter(monitor_instance_id__in=instance_ids)
-            child_configs, configs = [], []
-            for config in config_objs:
-                if config.is_child:
-                    child_configs.append(config.id)
-                else:
-                    configs.append(config.id)
-            # 删除子配置
-            NodeMgmt().delete_child_configs(child_configs)
-            # 删除配置
-            NodeMgmt().delete_configs(configs)
-            # 删除配置对象
-            config_objs.delete()
-
-            MonitorObjectOrganizationRule.objects.filter(monitor_instance_id__in=instance_ids).delete()
-            FlowOnboardingService._schedule_region_refresh(*refresh_region_ids)
-
-        cleanup_policy_sources(instance_ids)
+        MonitorInstanceRemovalService.remove(instance_ids)
 
         return WebUtils.response_success()
 

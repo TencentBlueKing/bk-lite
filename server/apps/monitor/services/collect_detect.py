@@ -6,11 +6,14 @@ from django.utils import timezone
 
 from apps.monitor.models import CollectDetectTask, MonitorPlugin, MonitorPluginConfigTemplate
 from apps.monitor.services.collect_detect_runtime import (
-    build_write_config_and_telegraf_command,
+    build_telegraf_detect_execution,
     disable_real_outputs,
     render_telegraf_config_template,
     sanitize_execution_result,
 )
+from apps.node_mgmt.constants.node import NodeConstants
+from apps.node_mgmt.models import Node
+from apps.node_mgmt.services.package import PackageService
 from apps.rpc.executor import Executor
 
 
@@ -92,15 +95,21 @@ class CollectDetectService:
             config_content = disable_real_outputs(
                 "\n\n".join(render_telegraf_config_template(template.content, config_context) for template in templates)
             )
-            config_path = f"/tmp/bklite-telegraf-detect-{task.id}-{uuid.uuid4().hex}.toml"
-            command = build_write_config_and_telegraf_command(config_path, config_content)
+            operating_system, executable_path = cls._resolve_telegraf_runtime(task.node_id)
+            config_file_name = f"bklite-telegraf-detect-{task.id}-{uuid.uuid4().hex}.toml"
+            command, shell = build_telegraf_detect_execution(
+                operating_system=operating_system,
+                executable_path=executable_path,
+                config_file_name=config_file_name,
+                config_content=config_content,
+            )
 
             task.phase = "execute_once"
             task.save(update_fields=["phase", "updated_at"])
             raw_result = Executor(task.node_id).execute_local(
                 command,
                 timeout=int(runtime_payload.get("timeout") or 60),
-                shell="sh",
+                shell=shell,
                 env=env,
             )
             result = sanitize_execution_result(raw_result, sensitive_values=list(env.values()))
@@ -122,6 +131,23 @@ class CollectDetectService:
             task.finished_at = timezone.now()
             task.save(update_fields=["status", "result", "error_message", "finished_at", "updated_at"])
             return task.result
+
+    @staticmethod
+    def _resolve_telegraf_runtime(node_id):
+        node = Node.objects.filter(id=node_id).first()
+        if not node:
+            raise ValueError("采集节点不存在")
+        if node.operating_system not in {NodeConstants.LINUX_OS, NodeConstants.WINDOWS_OS}:
+            raise ValueError(f"不支持的节点操作系统: {node.operating_system}")
+
+        collector = PackageService.resolve_collector_by_architecture(
+            node.operating_system,
+            "Telegraf",
+            node.cpu_architecture,
+        )
+        if not collector:
+            raise ValueError("未找到适用的 Telegraf 采集器")
+        return node.operating_system, collector.executable_path
 
     @staticmethod
     def _get_supported_plugin(plugin_id):

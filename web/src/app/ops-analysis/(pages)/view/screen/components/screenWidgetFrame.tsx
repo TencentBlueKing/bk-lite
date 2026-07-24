@@ -1,13 +1,13 @@
 'use client';
 
 import React from 'react';
-import { Dropdown, type MenuProps } from 'antd';
 import {
   DeleteOutlined,
-  MoreOutlined,
   SettingOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
+import MoreActionsDropdown from '@/components/more-actions-dropdown';
+import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
 import type { ScreenWidgetItem } from '@/app/ops-analysis/types/screen';
 import { normalizeScreenWidgetAppearance } from '../utils/layout';
 
@@ -65,25 +65,19 @@ const ScreenWidgetFrame: React.FC<ScreenWidgetFrameProps> = ({
   const { t } = useTranslation();
   const frame = normalizeScreenWidgetAppearance(item.valueConfig?.appearance).frame;
   const isBare = frame === 'bare';
-  const menuItems: MenuProps['items'] = [
+  const menuItems: MoreActionsDropdownItem[] = [
     {
       key: 'configure',
       icon: <SettingOutlined />,
       label: t('opsAnalysis.screen.editWidget'),
-      onClick: ({ domEvent }) => {
-        domEvent.stopPropagation();
-        onConfigure?.();
-      },
+      onClick: () => onConfigure?.(),
     },
     {
       key: 'delete',
       danger: true,
       icon: <DeleteOutlined />,
       label: t('opsAnalysis.screen.deleteWidget'),
-      onClick: ({ domEvent }) => {
-        domEvent.stopPropagation();
-        onDelete?.();
-      },
+      onClick: () => onDelete?.(),
     },
   ];
 
@@ -128,23 +122,13 @@ const ScreenWidgetFrame: React.FC<ScreenWidgetFrameProps> = ({
       )}
       {editMode && (
         <div className="screen-widget-frame__actions">
-          <Dropdown
-            menu={{ items: menuItems }}
+          <MoreActionsDropdown
+            items={menuItems}
+            ariaLabel={t('common.more')}
+            stopPropagation
             overlayClassName="screen-widget-frame-actions-menu"
-            trigger={['click']}
-          >
-            <button
-              type="button"
-              className="screen-widget-frame__action"
-              aria-label="更多操作"
-              title="更多操作"
-              onClick={(event) => {
-                event.stopPropagation();
-              }}
-            >
-              <MoreOutlined aria-hidden="true" />
-            </button>
-          </Dropdown>
+            buttonClassName="screen-widget-frame__action"
+          />
         </div>
       )}
       <div className="screen-widget-frame__body">{children}</div>

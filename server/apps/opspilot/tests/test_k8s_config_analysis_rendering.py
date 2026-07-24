@@ -158,7 +158,7 @@ def test_build_post_tool_directives_prevents_duplicate_config_summary_and_report
     )
 
 
-def test_build_post_tool_directives_requests_repair_mode_choice_after_problem_report():
+def test_build_post_tool_directives_reserves_repair_workflow_for_backend():
     directives = build_post_tool_directives(
         [
             ToolMessage(
@@ -170,9 +170,9 @@ def test_build_post_tool_directives_requests_repair_mode_choice_after_problem_re
     )
 
     assert any(
-        "通过 AG-UI 交互卡片让用户选择修复展示方式" in message.content
-        and "必须主动调用 request_user_choice" in message.content
-        and "不要主动调用 generate_repair_report" in message.content
+        "后端会根据报告可用维度自动展示修复方式选择" in message.content
+        and "不要调用 request_user_choice" in message.content
+        and "任何修复报告生成工具" in message.content
         and "输出完整配置检查报告后" not in message.content
         for message in directives
         if isinstance(message, SystemMessage)
@@ -377,6 +377,17 @@ def test_downgrade_config_analysis_next_step_hint_removes_repair_workflow():
     assert "不要调用 generate_repair_report" in downgraded["_next_step_hint"]
 
 
+def test_next_step_hint_does_not_repeat_markdown_after_structured_report_emitted():
+    hint = build_config_analysis_next_step_hint(
+        problematic_count=60,
+        structured_report_emitted=True,
+    )
+
+    assert "结构化配置检查报告已通过界面卡片展示" in hint
+    assert "不要重复输出 Markdown" in hint
+    assert "本轮先输出一次完整检查结果" not in hint
+
+
 def test_basic_k8s_analysis_filters_loop_prone_followup_tools():
     node = ToolsNodes()
     node._skill_package_capabilities = set()
@@ -558,7 +569,7 @@ def test_build_user_choice_a2ui_contract_uses_same_component_protocol():
     }
 
 
-def test_build_repair_mode_choice_args_omits_low_value_grouping_for_single_issue():
+def test_build_repair_mode_choice_args_uses_available_user_controlled_modes():
     choice_args = build_repair_mode_choice_args(
         {
             "problematic": 1,
@@ -578,7 +589,7 @@ def test_build_repair_mode_choice_args_omits_low_value_grouping_for_single_issue
     assert choice_args["options"] == ["直接展示单个修复对比（推荐）"]
 
 
-def test_build_repair_mode_choice_args_recommends_category_for_broad_multi_issue_scan():
+def test_build_repair_mode_choice_args_preserves_adaptive_large_scan_recommendations():
     choice_args = build_repair_mode_choice_args(
         {
             "problematic": 40,
@@ -605,17 +616,53 @@ def test_build_repair_mode_choice_args_recommends_category_for_broad_multi_issue
         }
     )
 
-    assert choice_args["options"][0] == "按问题类别聚合（推荐：多类问题覆盖面广）"
-    assert "按工作负载聚合" in choice_args["options"]
+    assert choice_args["options"][0] == "按风险等级聚合（推荐：高风险问题优先）"
+    assert "按空间聚合" in choice_args["options"]
     assert "全部一次性展示（内容可能较长）" in choice_args["options"]
+
+
+def test_build_repair_mode_choice_args_omits_unavailable_scope_dimension():
+    choice_args = build_repair_mode_choice_args(
+        {
+            "problematic": 2,
+            "issues_detail": [
+                {
+                    "severity": "high",
+                    "issue": "索引缺失",
+                    "count": 2,
+                    "workloads": ["orders", "payments"],
+                }
+            ],
+        }
+    )
+
+    assert choice_args["options"] == ["全部一次性展示"]
+
+
+def test_build_repair_mode_choice_args_recommends_scope_for_small_multi_scope_scan():
+    choice_args = build_repair_mode_choice_args(
+        {
+            "problematic": 4,
+            "issues_detail": [
+                {
+                    "severity": "high",
+                    "issue": "未配置资源限制",
+                    "count": 4,
+                    "workloads": ["api (production)", "worker (staging)"],
+                }
+            ],
+        }
+    )
+
+    assert choice_args["options"] == ["按空间聚合（推荐：涉及多个空间）", "全部一次性展示"]
 
 
 def test_normalize_repair_group_by_accepts_recommended_choice_label():
     node = ToolsNodes()
 
-    assert node._normalize_repair_group_by("按问题类别聚合（推荐：多类问题覆盖面广）") == "category"
-    assert node._normalize_repair_group_by("按工作负载聚合（推荐：目标数量较少）") == "target"
-    assert node._normalize_repair_group_by("直接展示单个修复对比（推荐）") == "all"
+    assert node._normalize_repair_group_by("全部一次性展示") == "all"
+    assert node._normalize_repair_group_by("按空间聚合") == "scope"
+    assert node._normalize_repair_group_by("按风险等级聚合") == "severity"
 
 
 def test_should_emit_config_analysis_report_for_summary_only_result():

@@ -39,6 +39,9 @@ monitor_object_metric:
     device_psu_state:
       name: 电源状态
       desc: 传输设备各电源模块的运行状态。非正常状态表示电源离线、无输入、过温、硬件故障或告警，需及时排查。
+    device_fan_fan1_state:
+      name: 风扇 1 状态
+      desc: 设备风扇 1 的运行状态，统一归一为正常或异常。
 monitor_object_metric_group:
   Transmission:
     Base: 基础
@@ -47,3 +50,4 @@ monitor_object_metric_group:
     Memory: 内存
     Temperature: 温度
     Hardware Status: 硬件状态
+    Fan: 风扇

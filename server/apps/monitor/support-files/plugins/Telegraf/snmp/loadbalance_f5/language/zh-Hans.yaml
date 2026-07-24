@@ -146,6 +146,9 @@ monitor_object_metric:
     device_flow_top_conversation_bytes_rate:
       name: Top 会话 Flow 流量速率
       desc: 按源地址、目的地址、协议和目的端口聚合的会话流量排行，用于定位主要通信关系。
+    loadbalance_current_connections:
+      name: 当前连接数
+      desc: 当前通过负载均衡器的活跃连接数。
 monitor_object_metric_group:
   Loadbalance:
     Packet Loss: 数据包丢失
@@ -165,3 +168,4 @@ monitor_object_metric_group:
     Application Port: 应用端口
     Endpoint: 端点
     Conversation: 会话
+    Connection: 连接

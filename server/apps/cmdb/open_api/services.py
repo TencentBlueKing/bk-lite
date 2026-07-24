@@ -51,6 +51,12 @@ def serialize_instance(instance):
     return {aliases.get(key, key): value for key, value in instance.items() if key not in hidden}
 
 
+def serialize_model_attr(attr):
+    result = dict(attr)
+    result["required"] = bool(attr.get("is_required", False))
+    return result
+
+
 class CMDBOpenAPIService:
     def __init__(self, context):
         self.context = context
@@ -98,7 +104,7 @@ class CMDBOpenAPIService:
 
     def get_model_attrs(self, model_id):
         self.get_model(model_id)
-        return ModelManage.search_model_attr(model_id)
+        return [serialize_model_attr(attr) for attr in ModelManage.search_model_attr(model_id)]
 
     def get_model_associations(self, model_id):
         self.get_model(model_id)

@@ -1,3 +1,112 @@
 VMWare:
   desc: 通过Telegraf采集器利用Stargazer能力定期收集VMware中vCenter、ESXi、虚拟机、数据存储的关键指标。
   name: VMWare
+monitor_object:
+  vCenter: vCenter
+  ESXI: ESXi 主机
+  DataStorage: 数据存储
+  VM: 虚拟机
+monitor_object_type:
+  VMWare: VMware
+monitor_object_metric_group:
+  vCenter:
+    Quantity: 数量
+  ESXI:
+    CPU: CPU
+    Memory: 内存
+    Disk: 磁盘
+    Network: 网络
+  DataStorage:
+    DataStorage: 数据存储
+  VM:
+    CPU: CPU
+    Memory: 内存
+    Disk: 磁盘
+    Network: 网络
+    Power: 电源
+monitor_object_metric:
+  vCenter:
+    vmware_esxi_count:
+      name: ESXi 主机数量
+      desc: VMware 环境中的 ESXi 主机数量。
+    vmware_datastore_count:
+      name: 数据存储数量
+      desc: VMware 环境中的数据存储数量。
+    vmware_vm_count:
+      name: 虚拟机数量
+      desc: VMware 环境中的虚拟机数量。
+  ESXI:
+    cpu_usage_average_gauge:
+      name: CPU 使用率
+      desc: ESXi 主机的 CPU 使用率。
+    mem_usage_average_gauge:
+      name: 内存使用率
+      desc: ESXi 主机的内存使用率。
+    mem_consumed_average_gauge:
+      name: 已用内存
+      desc: ESXi 主机实际消耗的活动内存。
+    disk_read_average_gauge:
+      name: 磁盘读取吞吐量
+      desc: 每秒从磁盘读取的数据量。
+    disk_write_average_gauge:
+      name: 磁盘写入吞吐量
+      desc: 每秒写入磁盘的数据量。
+    disk_numberRead_summation_gauge_rate:
+      name: 磁盘读取操作数
+      desc: 每秒完成的磁盘读取操作数量。
+    disk_numberWrite_summation_gauge_rate:
+      name: 磁盘写入操作数
+      desc: 每秒完成的磁盘写入操作数量。
+    net_bytesRx_average_gauge:
+      name: 网络接收吞吐量
+      desc: 每秒接收的网络数据量。
+    net_bytesTx_average_gauge:
+      name: 网络发送吞吐量
+      desc: 每秒发送的网络数据量。
+  DataStorage:
+    disk_used_average_gauge:
+      name: 磁盘使用率
+      desc: 数据存储已使用的磁盘空间百分比。
+    disk_free_average_gauge:
+      name: 可用磁盘空间
+      desc: 数据存储中尚未使用的磁盘空间。
+    store_accessible_gauge:
+      name: 数据存储可访问性
+      desc: 数据存储是否可访问。
+  VM:
+    cpu_usage_average_gauge:
+      name: CPU 使用率
+      desc: 虚拟机的 CPU 使用率。
+    mem_usage_average_gauge:
+      name: 内存使用率
+      desc: 虚拟机的内存使用率。
+    mem_consumed_average_gauge:
+      name: 已用内存
+      desc: 虚拟机实际消耗的活动内存。
+    disk_io_usage_gauge:
+      name: 磁盘 I/O 使用率
+      desc: 虚拟机磁盘 I/O 的使用率。
+    disk_read_average_gauge:
+      name: 磁盘读取吞吐量
+      desc: 虚拟机的平均磁盘读取吞吐量。
+    disk_used_average_gauge:
+      name: 磁盘使用率
+      desc: 虚拟机已使用的磁盘空间百分比。
+    disk_numberRead_summation_gauge_rate:
+      name: 磁盘读取操作数
+      desc: 每秒完成的磁盘读取操作数量。
+    disk_numberWrite_summation_gauge_rate:
+      name: 磁盘写入操作数
+      desc: 每秒完成的磁盘写入操作数量。
+    disk_write_average_gauge:
+      name: 磁盘写入吞吐量
+      desc: 虚拟机的平均磁盘写入吞吐量。
+    net_bytesRx_average_gauge:
+      name: 网络接收吞吐量
+      desc: 虚拟机每秒接收的网络数据量。
+    net_bytesTx_average_gauge:
+      name: 网络发送吞吐量
+      desc: 虚拟机每秒发送的网络数据量。
+    power_state_gauge:
+      name: 电源状态
+      desc: 虚拟机当前的电源状态。

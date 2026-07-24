@@ -129,7 +129,7 @@ def assert_parent_team_matches(team_owned_obj, parent_obj, field_name):
     """Raise ``ValidationError`` when a root-owned object does not match its parent's team."""
     owner_team = getattr(team_owned_obj, "team", None) or []
     parent_team = getattr(parent_obj, "team", None) or []
-    if owner_team != parent_team:
+    if set(owner_team) != set(parent_team):
         raise serializers.ValidationError({field_name: "关联资源与当前对象的组归属不一致"})
 
 

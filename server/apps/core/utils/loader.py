@@ -133,6 +133,29 @@ class LanguageLoader:
                         if plugin_name in sub:
                             plugin_desc = sub.pop(plugin_name)
                             sub.setdefault("monitor_object_plugin", {})[plugin_name] = plugin_desc
+                        # 部分历史模板的 language 文件只维护指标 name，而完整双语说明
+                        # 已随 metrics.json 以 metric_{locale}_{name,desc} 字段发布。
+                        # 只在 language 条目缺失时补全，既兼容旧格式，也不覆盖人工审校的
+                        # language/*.yaml 内容。
+                        object_name = plugin_data.get("name")
+                        if not object_name:
+                            collected = self._deep_merge(collected, sub)
+                            continue
+                        metric_translations = sub.setdefault("monitor_object_metric", {}).setdefault(object_name, {})
+                        locale_prefix = "metric_en" if lang == "en" else "metric_zh"
+                        for metric in plugin_data.get("metrics", []):
+                            metric_name = metric.get("name")
+                            if not metric_name:
+                                continue
+                            localized_name = metric.get(f"{locale_prefix}_name")
+                            localized_desc = metric.get(f"{locale_prefix}_desc")
+                            if not localized_name and not localized_desc:
+                                continue
+                            entry = metric_translations.setdefault(metric_name, {})
+                            if localized_name:
+                                entry.setdefault("name", localized_name)
+                            if localized_desc:
+                                entry.setdefault("desc", localized_desc)
                         collected = self._deep_merge(collected, sub)
                     except Exception as e:
                         logger.error(f"Failed to load {lang_file}: {e}")

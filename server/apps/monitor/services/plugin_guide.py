@@ -86,8 +86,11 @@ class PluginGuideService:
 
         candidates = [
             (f"guide/{preferred_locale}.md", plugin_dir / "guide" / f"{preferred_locale}.md"),
-            ("README.md", plugin_dir / "README.md"),
         ]
+        # README 的语言无法可靠判定。中文环境可继续以 README 作为历史兼容回退；
+        # 英文环境宁可隐藏没有英文 guide 的入口，也不能把中文 README 伪装成英文指引。
+        if preferred_locale == "zh-Hans":
+            candidates.append(("README.md", plugin_dir / "README.md"))
         for source, path in candidates:
             if not path.is_file():
                 continue

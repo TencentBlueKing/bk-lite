@@ -1,0 +1,348 @@
+<mxfile host="Electron" modified="2026-07-24T12:00:00.000Z" agent="Codex" version="24.7.17" type="device" compressed="false">
+  <diagram id="service-topology" name="项目服务依赖拓扑">
+    <mxGraphModel dx="1920" dy="1180" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1920" pageHeight="1180" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="bg" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#F8FAFC;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="0" y="0" width="1920" height="1180" as="geometry"/>
+        </mxCell>
+        <mxCell id="title" value="BK-Lite 项目服务与依赖拓扑" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=28;fontStyle=1;fontColor=#0F172A;" vertex="1" parent="1">
+          <mxGeometry x="60" y="28" width="700" height="42" as="geometry"/>
+        </mxCell>
+        <mxCell id="subtitle" value="实线表示主要运行依赖；虚线表示按功能启用或部署控制。Server 启动脚本不会启动外围服务。" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=14;fontColor=#475569;" vertex="1" parent="1">
+          <mxGeometry x="60" y="72" width="900" height="28" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="client-zone" value="客户端层 · 独立部署" style="swimlane;html=1;rounded=1;startSize=42;horizontal=1;fillColor=#EFF6FF;swimlaneFillColor=#FFFFFF;strokeColor=#93C5FD;fontColor=#1E3A8A;fontSize=16;fontStyle=1;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="60" y="130" width="310" height="470" as="geometry"/>
+        </mxCell>
+        <mxCell id="web" value="&lt;b&gt;Web 控制台&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#64748B&quot;&gt;Next.js · :3000&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#60A5FA;strokeWidth=2;fontColor=#0F172A;fontSize=15;arcSize=16;shadow=1;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="90" y="205" width="250" height="82" as="geometry"/>
+        </mxCell>
+        <mxCell id="mobile" value="&lt;b&gt;Mobile H5&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#64748B&quot;&gt;Nginx 静态站点 · :80&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#60A5FA;strokeWidth=2;fontColor=#0F172A;fontSize=15;arcSize=16;shadow=1;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="90" y="330" width="250" height="82" as="geometry"/>
+        </mxCell>
+        <mxCell id="webchat" value="&lt;b&gt;WebChat&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#64748B&quot;&gt;嵌入式对话组件&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#60A5FA;strokeWidth=2;fontColor=#0F172A;fontSize=15;arcSize=16;shadow=1;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="90" y="455" width="250" height="82" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="server-zone" value="核心平台 · Server 容器" style="swimlane;html=1;rounded=1;startSize=42;horizontal=1;fillColor=#ECFDF5;swimlaneFillColor=#FFFFFF;strokeColor=#6EE7B7;fontColor=#065F46;fontSize=16;fontStyle=1;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="455" y="130" width="700" height="470" as="geometry"/>
+        </mxCell>
+        <mxCell id="startup-strip" value="&lt;b&gt;ENTRYPOINT&lt;/b&gt;　startup.sh → migrate / cache / static → batch_init → supervisord" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#34D399;fontColor=#064E3B;fontSize=14;arcSize=12;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="490" y="190" width="630" height="56" as="geometry"/>
+        </mxCell>
+        <mxCell id="api" value="&lt;b&gt;Django API&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#64748B&quot;&gt;Uvicorn :8000 · 8 workers&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#10B981;strokeWidth=2;fontColor=#0F172A;fontSize=16;arcSize=16;shadow=1;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="500" y="285" width="270" height="92" as="geometry"/>
+        </mxCell>
+        <mxCell id="celery" value="&lt;b&gt;Celery Worker&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#64748B&quot;&gt;线程池 · 默认并发 4&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#10B981;strokeWidth=2;fontColor=#0F172A;fontSize=16;arcSize=16;shadow=1;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="810" y="285" width="270" height="92" as="geometry"/>
+        </mxCell>
+        <mxCell id="beat" value="&lt;b&gt;Celery Beat&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#64748B&quot;&gt;DB Scheduler&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#10B981;strokeWidth=2;fontColor=#0F172A;fontSize=14;arcSize=16;shadow=1;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="500" y="425" width="175" height="88" as="geometry"/>
+        </mxCell>
+        <mxCell id="nats-listener" value="&lt;b&gt;nats_listener&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#64748B&quot;&gt;4 个 RPC responder&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF7ED;strokeColor=#F59E0B;strokeWidth=2;fontColor=#0F172A;fontSize=14;arcSize=16;shadow=1;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="695" y="425" width="190" height="88" as="geometry"/>
+        </mxCell>
+        <mxCell id="snmp" value="&lt;b&gt;SNMP Bridge&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#64748B&quot;&gt;vector → Alerts&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF7ED;strokeColor=#F59E0B;strokeWidth=2;fontColor=#0F172A;fontSize=14;arcSize=16;shadow=1;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="905" y="425" width="175" height="88" as="geometry"/>
+        </mxCell>
+        <mxCell id="server-note" value="&lt;b&gt;运行依赖&lt;/b&gt;　API → DB / Cache / 功能存储　·　Celery / Beat → DB + Redis　·　Listener / SNMP → NATS&lt;br&gt;&lt;font color=&quot;#64748B&quot;&gt;priority=10 同组无确定先后；SNMP Bridge priority=11&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F1F5F9;strokeColor=#CBD5E1;fontColor=#475569;fontSize=12;arcSize=10;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="500" y="528" width="580" height="56" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="agent-zone" value="采集与执行层 · 独立容器" style="swimlane;html=1;rounded=1;startSize=42;horizontal=1;fillColor=#F5F3FF;swimlaneFillColor=#FFFFFF;strokeColor=#C4B5FD;fontColor=#5B21B6;fontSize=16;fontStyle=1;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1240" y="130" width="620" height="470" as="geometry"/>
+        </mxCell>
+        <mxCell id="stargazer" value="&lt;b&gt;Stargazer&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#64748B&quot;&gt;Sanic API + 4 Workers&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#8B5CF6;strokeWidth=2;fontColor=#0F172A;fontSize=14;arcSize=16;shadow=1;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="1275" y="200" width="250" height="82" as="geometry"/>
+        </mxCell>
+        <mxCell id="nats-executor" value="&lt;b&gt;nats-executor&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#64748B&quot;&gt;脚本 / 文件执行&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#8B5CF6;strokeWidth=2;fontColor=#0F172A;fontSize=14;arcSize=16;shadow=1;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="1570" y="200" width="250" height="82" as="geometry"/>
+        </mxCell>
+        <mxCell id="ansible-executor" value="&lt;b&gt;ansible-executor&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#64748B&quot;&gt;Playbook 执行&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#8B5CF6;strokeWidth=2;fontColor=#0F172A;fontSize=14;arcSize=16;shadow=1;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="1275" y="320" width="250" height="82" as="geometry"/>
+        </mxCell>
+        <mxCell id="fusion" value="&lt;b&gt;fusion-collector&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#64748B&quot;&gt;Sidecar / Telegraf&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#8B5CF6;strokeWidth=2;fontColor=#0F172A;fontSize=14;arcSize=16;shadow=1;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="1570" y="320" width="250" height="82" as="geometry"/>
+        </mxCell>
+        <mxCell id="k8s-collector" value="&lt;b&gt;K8s Collector&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#64748B&quot;&gt;Telegraf / Vector&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#8B5CF6;strokeWidth=2;fontColor=#0F172A;fontSize=14;arcSize=16;shadow=1;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="1275" y="440" width="250" height="82" as="geometry"/>
+        </mxCell>
+        <mxCell id="algorithms" value="&lt;b&gt;Algorithms&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#64748B&quot;&gt;6 个 BentoML 服务&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#8B5CF6;strokeWidth=2;fontColor=#0F172A;fontSize=14;arcSize=16;shadow=1;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="1570" y="440" width="250" height="82" as="geometry"/>
+        </mxCell>
+        <mxCell id="client-summary" value="统一通过 HTTP / Stream 访问 Django API" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EFF6FF;strokeColor=#93C5FD;fontColor=#1E3A8A;fontSize=12;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="90" y="552" width="250" height="32" as="geometry"/>
+        </mxCell>
+        <mxCell id="agent-summary" value="&lt;b&gt;通道汇总&lt;/b&gt;　Stargazer → Redis / NATS　·　Executors ↔ NATS&lt;br&gt;Collectors → HTTP / NATS　·　Algorithms → API / MinIO / MLflow" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F3FF;strokeColor=#C4B5FD;fontColor=#5B21B6;fontSize=12;arcSize=10;spacing=6;" vertex="1" parent="1">
+          <mxGeometry x="1275" y="540" width="545" height="46" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="infra-zone" value="基础设施层 · 必须独立部署或由部署系统提供" style="swimlane;html=1;rounded=1;startSize=42;horizontal=1;fillColor=#FFF7ED;swimlaneFillColor=#FFFFFF;strokeColor=#FDBA74;fontColor=#9A3412;fontSize=16;fontStyle=1;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="60" y="700" width="1800" height="310" as="geometry"/>
+        </mxCell>
+        <mxCell id="db" value="&lt;b&gt;业务数据库&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#64748B&quot;&gt;PostgreSQL / 兼容库&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;fillColor=#DBEAFE;strokeColor=#3B82F6;strokeWidth=2;fontColor=#0F172A;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="95" y="790" width="180" height="105" as="geometry"/>
+        </mxCell>
+        <mxCell id="redis" value="&lt;b&gt;Redis&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#64748B&quot;&gt;Celery / Cache / Stargazer&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;fillColor=#FEE2E2;strokeColor=#EF4444;strokeWidth=2;fontColor=#0F172A;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="310" y="790" width="180" height="105" as="geometry"/>
+        </mxCell>
+        <mxCell id="nats" value="&lt;b&gt;NATS Broker&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#64748B&quot;&gt;消息总线 / JetStream&lt;/font&gt;" style="shape=hexagon;perimeter=hexagonPerimeter2;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#FFEDD5;strokeColor=#F97316;strokeWidth=2;fontColor=#0F172A;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="525" y="790" width="180" height="105" as="geometry"/>
+        </mxCell>
+        <mxCell id="minio" value="&lt;b&gt;MinIO&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#64748B&quot;&gt;对象与模型文件&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;fillColor=#FCE7F3;strokeColor=#EC4899;strokeWidth=2;fontColor=#0F172A;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="740" y="790" width="180" height="105" as="geometry"/>
+        </mxCell>
+        <mxCell id="falkor" value="&lt;b&gt;FalkorDB&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#64748B&quot;&gt;CMDB 图数据&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;fillColor=#EDE9FE;strokeColor=#8B5CF6;strokeWidth=2;fontColor=#0F172A;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="955" y="790" width="180" height="105" as="geometry"/>
+        </mxCell>
+        <mxCell id="vm" value="&lt;b&gt;VictoriaMetrics&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#64748B&quot;&gt;指标查询&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;fillColor=#D1FAE5;strokeColor=#10B981;strokeWidth=2;fontColor=#0F172A;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="1170" y="790" width="180" height="105" as="geometry"/>
+        </mxCell>
+        <mxCell id="vl" value="&lt;b&gt;VictoriaLogs&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#64748B&quot;&gt;日志查询&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;fillColor=#D1FAE5;strokeColor=#10B981;strokeWidth=2;fontColor=#0F172A;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="1385" y="790" width="180" height="105" as="geometry"/>
+        </mxCell>
+        <mxCell id="mlflow" value="&lt;b&gt;MLflow&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#64748B&quot;&gt;训练实验追踪&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;fillColor=#E0E7FF;strokeColor=#6366F1;strokeWidth=2;fontColor=#0F172A;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="1600" y="790" width="180" height="105" as="geometry"/>
+        </mxCell>
+        <mxCell id="infra-note" value="重要：NATS Broker 可连接 ≠ Server 的 nats_listener 已启动；RPC responder 属于 Server supervisord 运行期。" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF2F2;strokeColor=#FCA5A5;fontColor=#991B1B;fontSize=13;fontStyle=1;arcSize=10;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="490" y="930" width="940" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="infra-bus" value="外部基础设施依赖总线（各容器只连接所需依赖）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF7ED;strokeColor=#FB923C;strokeWidth=2;fontColor=#9A3412;fontSize=12;fontStyle=1;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="95" y="748" width="1685" height="28" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="webhookd" value="&lt;b&gt;webhookd&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#64748B&quot;&gt;云区域 Compose 启停控制&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF7ED;strokeColor=#F59E0B;strokeWidth=2;fontColor=#0F172A;fontSize=13;arcSize=16;shadow=1;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="1570" y="620" width="250" height="62" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="legend-http" value="HTTP / API" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=12;fontColor=#2563EB;" vertex="1" parent="1">
+          <mxGeometry x="1280" y="55" width="95" height="24" as="geometry"/>
+        </mxCell>
+        <mxCell id="legend-nats" value="NATS / RPC" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=12;fontColor=#D97706;" vertex="1" parent="1">
+          <mxGeometry x="1410" y="55" width="95" height="24" as="geometry"/>
+        </mxCell>
+        <mxCell id="legend-runtime" value="运行 / 数据依赖" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=12;fontColor=#059669;" vertex="1" parent="1">
+          <mxGeometry x="1540" y="55" width="120" height="24" as="geometry"/>
+        </mxCell>
+        <mxCell id="legend-optional" value="可选 / 控制" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=12;fontColor=#64748B;" vertex="1" parent="1">
+          <mxGeometry x="1700" y="55" width="110" height="24" as="geometry"/>
+        </mxCell>
+        <mxCell id="legend-http-line" value="" style="endArrow=block;html=1;rounded=1;strokeColor=#2563EB;strokeWidth=2;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="1250" y="67" as="sourcePoint"/><mxPoint x="1275" y="67" as="targetPoint"/></mxGeometry>
+        </mxCell>
+        <mxCell id="legend-nats-line" value="" style="endArrow=block;html=1;rounded=1;strokeColor=#D97706;strokeWidth=2;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="1380" y="67" as="sourcePoint"/><mxPoint x="1405" y="67" as="targetPoint"/></mxGeometry>
+        </mxCell>
+        <mxCell id="legend-runtime-line" value="" style="endArrow=block;html=1;rounded=1;strokeColor=#059669;strokeWidth=2;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="1510" y="67" as="sourcePoint"/><mxPoint x="1535" y="67" as="targetPoint"/></mxGeometry>
+        </mxCell>
+        <mxCell id="legend-optional-line" value="" style="endArrow=block;html=1;rounded=1;strokeColor=#64748B;strokeWidth=2;dashed=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="1670" y="67" as="sourcePoint"/><mxPoint x="1695" y="67" as="targetPoint"/></mxGeometry>
+        </mxCell>
+
+        <mxCell id="e-client-api" value="HTTP / Stream" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#2563EB;strokeWidth=2;endArrow=block;endFill=1;fontColor=#2563EB;fontSize=11;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="client-summary" target="api"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e-server-infra" value="运行依赖" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#059669;strokeWidth=2;endArrow=block;endFill=1;fontColor=#047857;fontSize=11;exitX=0.5;exitY=1;entryX=0.4;entryY=0;" edge="1" parent="1" source="server-note" target="infra-bus"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e-agent-infra" value="采集 / 执行依赖" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#7C3AED;strokeWidth=2;endArrow=block;endFill=1;fontColor=#6D28D9;fontSize=11;exitX=0.5;exitY=1;entryX=0.82;entryY=0;" edge="1" parent="1" source="agent-summary" target="infra-bus"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e-webhook-agent" value="部署控制" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#64748B;strokeWidth=1.5;dashed=1;endArrow=block;endFill=1;fontColor=#64748B;fontSize=11;exitX=0.5;exitY=0;entryX=0.85;entryY=1;" edge="1" parent="1" source="webhookd" target="agent-summary"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e-bus-db" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#94A3B8;strokeWidth=1.5;endArrow=block;endFill=1;exitX=0.06;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="infra-bus" target="db"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e-bus-redis" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#94A3B8;strokeWidth=1.5;endArrow=block;endFill=1;exitX=0.18;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="infra-bus" target="redis"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e-bus-nats" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#D97706;strokeWidth=2;endArrow=block;endFill=1;exitX=0.31;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="infra-bus" target="nats"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e-bus-minio" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#94A3B8;strokeWidth=1.5;endArrow=block;endFill=1;exitX=0.43;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="infra-bus" target="minio"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e-bus-falkor" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#94A3B8;strokeWidth=1.5;endArrow=block;endFill=1;exitX=0.56;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="infra-bus" target="falkor"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e-bus-vm" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#94A3B8;strokeWidth=1.5;endArrow=block;endFill=1;exitX=0.69;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="infra-bus" target="vm"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e-bus-vl" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#94A3B8;strokeWidth=1.5;endArrow=block;endFill=1;exitX=0.82;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="infra-bus" target="vl"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e-bus-mlflow" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#94A3B8;strokeWidth=1.5;endArrow=block;endFill=1;exitX=0.94;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="infra-bus" target="mlflow"><mxGeometry relative="1" as="geometry"/></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+
+  <diagram id="server-startup" name="Server启动顺序与禁区">
+    <mxGraphModel dx="2200" dy="1300" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2200" pageHeight="1300" math="0" shadow="0">
+      <root>
+        <mxCell id="s0"/>
+        <mxCell id="s1" parent="s0"/>
+        <mxCell id="s-bg" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#F8FAFC;strokeColor=none;" vertex="1" parent="s1">
+          <mxGeometry x="0" y="0" width="2200" height="1300" as="geometry"/>
+        </mxCell>
+        <mxCell id="s-title" value="Server 生产容器启动顺序、初始化边界与禁止依赖" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=28;fontStyle=1;fontColor=#0F172A;" vertex="1" parent="s1">
+          <mxGeometry x="60" y="30" width="1000" height="44" as="geometry"/>
+        </mxCell>
+        <mxCell id="s-subtitle" value="事实源：server/support-files/release/startup.sh、batch_init.py 与 Supervisor 配置" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=14;fontColor=#475569;" vertex="1" parent="s1">
+          <mxGeometry x="60" y="76" width="900" height="26" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="s-entry" value="&lt;b&gt;Docker ENTRYPOINT&lt;/b&gt;&lt;br&gt;startup.sh" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DBEAFE;strokeColor=#3B82F6;strokeWidth=2;fontColor=#0F172A;fontSize=15;arcSize=16;shadow=1;" vertex="1" parent="s1">
+          <mxGeometry x="60" y="145" width="190" height="78" as="geometry"/>
+        </mxCell>
+        <mxCell id="s-migrate" value="&lt;b&gt;1 · migrate&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#64748B&quot;&gt;失败被 || true 忽略&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;strokeWidth=2;fontColor=#0F172A;fontSize=14;arcSize=16;shadow=1;" vertex="1" parent="s1">
+          <mxGeometry x="300" y="145" width="200" height="78" as="geometry"/>
+        </mxCell>
+        <mxCell id="s-cache" value="&lt;b&gt;2 · createcachetable&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#64748B&quot;&gt;脚本继续执行&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;strokeWidth=2;fontColor=#0F172A;fontSize=14;arcSize=16;shadow=1;" vertex="1" parent="s1">
+          <mxGeometry x="550" y="145" width="220" height="78" as="geometry"/>
+        </mxCell>
+        <mxCell id="s-static" value="&lt;b&gt;3 · collectstatic&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#64748B&quot;&gt;脚本继续执行&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;strokeWidth=2;fontColor=#0F172A;fontSize=14;arcSize=16;shadow=1;" vertex="1" parent="s1">
+          <mxGeometry x="820" y="145" width="210" height="78" as="geometry"/>
+        </mxCell>
+        <mxCell id="s-batch" value="&lt;b&gt;4 · batch_init&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#991B1B&quot;&gt;生产启动硬门禁&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF2F2;strokeColor=#EF4444;strokeWidth=3;fontColor=#0F172A;fontSize=15;arcSize=16;shadow=1;" vertex="1" parent="s1">
+          <mxGeometry x="1080" y="135" width="240" height="98" as="geometry"/>
+        </mxCell>
+        <mxCell id="s-cleanup" value="&lt;b&gt;5 · 条件清理&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#64748B&quot;&gt;无 opspilot 时删除 consumer.conf&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;strokeWidth=2;fontColor=#0F172A;fontSize=14;arcSize=16;shadow=1;" vertex="1" parent="s1">
+          <mxGeometry x="1370" y="145" width="260" height="78" as="geometry"/>
+        </mxCell>
+        <mxCell id="s-env" value="&lt;b&gt;6 · 进程数&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#64748B&quot;&gt;APP=8 · Celery=4 · NATS=4&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;strokeWidth=2;fontColor=#0F172A;fontSize=14;arcSize=16;shadow=1;" vertex="1" parent="s1">
+          <mxGeometry x="1680" y="145" width="230" height="78" as="geometry"/>
+        </mxCell>
+        <mxCell id="s-supervisor" value="&lt;b&gt;7 · supervisord -n&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#065F46&quot;&gt;运行期从这里开始&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#10B981;strokeWidth=3;fontColor=#0F172A;fontSize=15;arcSize=16;shadow=1;" vertex="1" parent="s1">
+          <mxGeometry x="1960" y="135" width="190" height="98" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="s-edge-1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#475569;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="s1" source="s-entry" target="s-migrate"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="s-edge-2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#475569;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="s1" source="s-migrate" target="s-cache"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="s-edge-3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#475569;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="s1" source="s-cache" target="s-static"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="s-edge-4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#475569;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="s1" source="s-static" target="s-batch"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="s-edge-5" value="成功" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#059669;strokeWidth=2;endArrow=block;endFill=1;fontColor=#047857;fontSize=11;" edge="1" parent="s1" source="s-batch" target="s-cleanup"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="s-edge-6" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#475569;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="s1" source="s-cleanup" target="s-env"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="s-edge-7" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#059669;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="s1" source="s-env" target="s-supervisor"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <mxCell id="s-init-zone" value="batch_init · 按卡片编号顺序执行（INSTALL_APPS 可裁剪）" style="swimlane;html=1;rounded=1;startSize=42;horizontal=1;fillColor=#FFF1F2;swimlaneFillColor=#FFFFFF;strokeColor=#FDA4AF;fontColor=#9F1239;fontSize=16;fontStyle=1;arcSize=12;" vertex="1" parent="s1">
+          <mxGeometry x="60" y="315" width="1530" height="625" as="geometry"/>
+        </mxCell>
+        <mxCell id="s-lang" value="&lt;b&gt;预处理 · 语言缓存&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#64748B&quot;&gt;异常仅 warning&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8FAFC;strokeColor=#CBD5E1;fontColor=#0F172A;fontSize=13;arcSize=12;" vertex="1" parent="s1">
+          <mxGeometry x="100" y="385" width="210" height="68" as="geometry"/>
+        </mxCell>
+        <mxCell id="s-system" value="&lt;b&gt;① system_mgmt&lt;/b&gt;&lt;br&gt;菜单清理 · realm · 登录设置&lt;br&gt;管理员 · 自定义菜单 · 分组清理&lt;br&gt;&lt;font color=&quot;#64748B&quot;&gt;依赖：DB，可能清理 Redis 缓存&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EFF6FF;strokeColor=#60A5FA;strokeWidth=2;fontColor=#0F172A;fontSize=13;arcSize=14;spacing=10;" vertex="1" parent="s1">
+          <mxGeometry x="360" y="375" width="330" height="105" as="geometry"/>
+        </mxCell>
+        <mxCell id="s-cmdb" value="&lt;b&gt;② cmdb&lt;/b&gt;&lt;br&gt;模型 · OID · 采集任务修复 · 字段分组&lt;br&gt;展示字段 · scalar→list · 字段约束&lt;br&gt;&lt;b&gt;reconcile_node_mgmt_sync&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#991B1B&quot;&gt;依赖：DB + FalkorDB；当前含运行期 NATS RPC&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF2F2;strokeColor=#EF4444;strokeWidth=3;fontColor=#0F172A;fontSize=13;arcSize=14;spacing=10;" vertex="1" parent="s1">
+          <mxGeometry x="740" y="360" width="390" height="135" as="geometry"/>
+        </mxCell>
+        <mxCell id="s-monitor" value="&lt;b&gt;③ monitor&lt;/b&gt;&lt;br&gt;plugin_init&lt;br&gt;&lt;font color=&quot;#64748B&quot;&gt;DB + 本地插件定义&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F3FF;strokeColor=#A78BFA;strokeWidth=2;fontColor=#0F172A;fontSize=13;arcSize=14;" vertex="1" parent="s1">
+          <mxGeometry x="1180" y="375" width="180" height="105" as="geometry"/>
+        </mxCell>
+        <mxCell id="s-node" value="&lt;b&gt;④ node_mgmt&lt;/b&gt;&lt;br&gt;cloud / controller / collector init&lt;br&gt;&lt;font color=&quot;#64748B&quot;&gt;DB + 本地定义 + 环境变量&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F3FF;strokeColor=#A78BFA;strokeWidth=2;fontColor=#0F172A;fontSize=13;arcSize=14;" vertex="1" parent="s1">
+          <mxGeometry x="1395" y="375" width="160" height="105" as="geometry"/>
+        </mxCell>
+        <mxCell id="s-alerts" value="&lt;b&gt;⑤ alerts&lt;/b&gt;&lt;br&gt;来源 · 级别 · 系统设置 · 内置规则&lt;br&gt;告警维度与默认团队回填&lt;br&gt;&lt;font color=&quot;#64748B&quot;&gt;依赖：DB&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ECFDF5;strokeColor=#34D399;strokeWidth=2;fontColor=#0F172A;fontSize=13;arcSize=14;" vertex="1" parent="s1">
+          <mxGeometry x="100" y="570" width="300" height="115" as="geometry"/>
+        </mxCell>
+        <mxCell id="s-oa" value="&lt;b&gt;⑥ operation_analysis&lt;/b&gt;&lt;br&gt;默认 namespace · groups · source API&lt;br&gt;内置画布&lt;br&gt;&lt;font color=&quot;#64748B&quot;&gt;DB；读取 NATS 配置但不建立连接&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ECFDF5;strokeColor=#34D399;strokeWidth=2;fontColor=#0F172A;fontSize=13;arcSize=14;" vertex="1" parent="s1">
+          <mxGeometry x="450" y="570" width="310" height="115" as="geometry"/>
+        </mxCell>
+        <mxCell id="s-opspilot" value="&lt;b&gt;⑦ opspilot&lt;/b&gt;&lt;br&gt;LLM 模板 · tools.yml · chatflow&lt;br&gt;&lt;font color=&quot;#64748B&quot;&gt;依赖：DB + 本地定义&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ECFDF5;strokeColor=#34D399;strokeWidth=2;fontColor=#0F172A;fontSize=13;arcSize=14;" vertex="1" parent="s1">
+          <mxGeometry x="810" y="570" width="260" height="115" as="geometry"/>
+        </mxCell>
+        <mxCell id="s-log" value="&lt;b&gt;⑧ log&lt;/b&gt;&lt;br&gt;采集插件 + 默认 LogGroup&lt;br&gt;&lt;font color=&quot;#64748B&quot;&gt;DB + 本地定义&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ECFDF5;strokeColor=#34D399;strokeWidth=2;fontColor=#0F172A;fontSize=13;arcSize=14;" vertex="1" parent="s1">
+          <mxGeometry x="1120" y="570" width="210" height="115" as="geometry"/>
+        </mxCell>
+        <mxCell id="s-mlops" value="&lt;b&gt;⑨ mlops&lt;/b&gt;&lt;br&gt;内置算法配置&lt;br&gt;&lt;font color=&quot;#64748B&quot;&gt;DB + 本地 JSON&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ECFDF5;strokeColor=#34D399;strokeWidth=2;fontColor=#0F172A;fontSize=13;arcSize=14;" vertex="1" parent="s1">
+          <mxGeometry x="1380" y="570" width="175" height="115" as="geometry"/>
+        </mxCell>
+        <mxCell id="s-console" value="console_mgmt：仅显式选择时进入；当前无初始化命令" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8FAFC;strokeColor=#CBD5E1;dashed=1;fontColor=#64748B;fontSize=12;arcSize=10;" vertex="1" parent="s1">
+          <mxGeometry x="100" y="750" width="390" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="s-gate-note" value="startup.sh 未传 --continue-on-error。任一初始化命令的未捕获异常 → batch_init 非零 → startup.sh exit 1 → 所有 Supervisor 进程都不会启动。" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF2F2;strokeColor=#FCA5A5;fontColor=#991B1B;fontSize=14;fontStyle=1;arcSize=12;spacing=12;" vertex="1" parent="s1">
+          <mxGeometry x="100" y="835" width="1455" height="68" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="s-batch-init-link" value="进入初始化" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#64748B;strokeWidth=2;endArrow=block;endFill=1;fontColor=#475569;fontSize=11;exitX=0.5;exitY=1;entryX=0;entryY=0.5;" edge="1" parent="s1" source="s-batch" target="s-lang">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1200" y="275"/>
+              <mxPoint x="35" y="275"/>
+              <mxPoint x="35" y="419"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="s-runtime-zone" value="Supervisor 运行期 · batch_init 成功后才存在" style="swimlane;html=1;rounded=1;startSize=42;horizontal=1;fillColor=#ECFDF5;swimlaneFillColor=#FFFFFF;strokeColor=#6EE7B7;fontColor=#065F46;fontSize=16;fontStyle=1;arcSize=12;" vertex="1" parent="s1">
+          <mxGeometry x="1640" y="315" width="510" height="625" as="geometry"/>
+        </mxCell>
+        <mxCell id="s-runtime-entry" value="一次拉起 · 同优先级并发" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#6EE7B7;fontColor=#047857;fontSize=12;fontStyle=1;arcSize=12;" vertex="1" parent="s1">
+          <mxGeometry x="1810" y="342" width="180" height="30" as="geometry"/>
+        </mxCell>
+        <mxCell id="s-api" value="&lt;b&gt;Django API&lt;/b&gt;&lt;br&gt;priority=10" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#10B981;strokeWidth=2;fontColor=#0F172A;fontSize=14;arcSize=14;shadow=1;" vertex="1" parent="s1">
+          <mxGeometry x="1680" y="390" width="190" height="72" as="geometry"/>
+        </mxCell>
+        <mxCell id="s-celery" value="&lt;b&gt;Celery Worker&lt;/b&gt;&lt;br&gt;priority=10" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#10B981;strokeWidth=2;fontColor=#0F172A;fontSize=14;arcSize=14;shadow=1;" vertex="1" parent="s1">
+          <mxGeometry x="1910" y="390" width="190" height="72" as="geometry"/>
+        </mxCell>
+        <mxCell id="s-beat" value="&lt;b&gt;Celery Beat&lt;/b&gt;&lt;br&gt;priority=10" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#10B981;strokeWidth=2;fontColor=#0F172A;fontSize=14;arcSize=14;shadow=1;" vertex="1" parent="s1">
+          <mxGeometry x="1680" y="505" width="190" height="72" as="geometry"/>
+        </mxCell>
+        <mxCell id="s-listener" value="&lt;b&gt;nats_listener&lt;/b&gt;&lt;br&gt;priority=10 · 4 processes" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF7ED;strokeColor=#F59E0B;strokeWidth=2;fontColor=#0F172A;fontSize=14;arcSize=14;shadow=1;" vertex="1" parent="s1">
+          <mxGeometry x="1910" y="505" width="190" height="72" as="geometry"/>
+        </mxCell>
+        <mxCell id="s-snmp" value="&lt;b&gt;SNMP Trap Bridge&lt;/b&gt;&lt;br&gt;priority=11" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF7ED;strokeColor=#F59E0B;strokeWidth=2;fontColor=#0F172A;fontSize=14;arcSize=14;shadow=1;" vertex="1" parent="s1">
+          <mxGeometry x="1680" y="620" width="420" height="72" as="geometry"/>
+        </mxCell>
+        <mxCell id="s-priority-note" value="同为 priority=10 不代表 API、Worker、Beat、listener 之间存在就绪顺序。" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F1F5F9;strokeColor=#CBD5E1;fontColor=#475569;fontSize=12;arcSize=10;spacing=8;" vertex="1" parent="s1">
+          <mxGeometry x="1680" y="735" width="420" height="58" as="geometry"/>
+        </mxCell>
+        <mxCell id="s-super-runtime" value="启动运行期" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#059669;strokeWidth=2;endArrow=block;endFill=1;fontColor=#047857;fontSize=11;exitX=0.5;exitY=1;entryX=1;entryY=0.5;" edge="1" parent="s1" source="s-supervisor" target="s-runtime-entry">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="2055" y="285"/>
+              <mxPoint x="2130" y="285"/>
+              <mxPoint x="2130" y="357"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="s-deps-zone" value="启动期与运行期依赖" style="swimlane;html=1;rounded=1;startSize=42;horizontal=1;fillColor=#FFF7ED;swimlaneFillColor=#FFFFFF;strokeColor=#FDBA74;fontColor=#9A3412;fontSize=16;fontStyle=1;arcSize=12;" vertex="1" parent="s1">
+          <mxGeometry x="60" y="990" width="2090" height="245" as="geometry"/>
+        </mxCell>
+        <mxCell id="s-db" value="&lt;b&gt;数据库&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#475569&quot;&gt;migrate + 各模块初始化&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;fillColor=#DBEAFE;strokeColor=#3B82F6;strokeWidth=2;fontColor=#0F172A;fontSize=13;" vertex="1" parent="s1">
+          <mxGeometry x="120" y="1065" width="185" height="95" as="geometry"/>
+        </mxCell>
+        <mxCell id="s-redis" value="&lt;b&gt;Redis&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#475569&quot;&gt;system_mgmt 可选缓存清理&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;fillColor=#FEE2E2;strokeColor=#EF4444;strokeWidth=2;fontColor=#0F172A;fontSize=13;" vertex="1" parent="s1">
+          <mxGeometry x="405" y="1065" width="185" height="95" as="geometry"/>
+        </mxCell>
+        <mxCell id="s-falkor" value="&lt;b&gt;FalkorDB&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#475569&quot;&gt;CMDB 模型与字段&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;fillColor=#EDE9FE;strokeColor=#8B5CF6;strokeWidth=2;fontColor=#0F172A;fontSize=13;" vertex="1" parent="s1">
+          <mxGeometry x="690" y="1065" width="185" height="95" as="geometry"/>
+        </mxCell>
+        <mxCell id="s-nats" value="&lt;b&gt;NATS Broker&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#991B1B&quot;&gt;CMDB RPC 需要 nats_listener 响应&lt;/font&gt;" style="shape=hexagon;perimeter=hexagonPerimeter2;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#FFEDD5;strokeColor=#F97316;strokeWidth=2;fontColor=#0F172A;fontSize=13;" vertex="1" parent="s1">
+          <mxGeometry x="990" y="1065" width="200" height="95" as="geometry"/>
+        </mxCell>
+        <mxCell id="s-stop" value="&lt;b&gt;启动失败 / 重启循环&lt;/b&gt;&lt;br&gt;Supervisor 不会执行" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF2F2;strokeColor=#EF4444;strokeWidth=3;fontColor=#991B1B;fontSize=14;arcSize=14;" vertex="1" parent="s1">
+          <mxGeometry x="1320" y="1065" width="250" height="95" as="geometry"/>
+        </mxCell>
+        <mxCell id="s-rule" value="&lt;b&gt;Agent 禁区&lt;/b&gt;&lt;br&gt;batch_init 不得调用依赖 API、Celery、Beat、nats_listener 或 SNMP Bridge 的 HTTP / RPC / Task。非关键对账、同步和外部资源声明必须移到运行期，并提供重试与补偿。" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ECFDF5;strokeColor=#10B981;strokeWidth=2;fontColor=#065F46;fontSize=14;arcSize=14;spacing=12;" vertex="1" parent="s1">
+          <mxGeometry x="1640" y="1045" width="460" height="135" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="s-risk-nats" value="NodeMgmt RPC" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#DC2626;strokeWidth=3;dashed=1;endArrow=block;endFill=1;fontColor=#B91C1C;fontSize=12;fontStyle=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="s1" source="s-cmdb" target="s-nats">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="935" y="520"/>
+              <mxPoint x="1580" y="520"/>
+              <mxPoint x="1580" y="1040"/>
+              <mxPoint x="1090" y="1040"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s-listener-batch-loop" value="但 nats_listener 仅在 batch_init 成功后启动" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#DC2626;strokeWidth=3;dashed=1;endArrow=block;endFill=1;fontColor=#B91C1C;fontSize=12;fontStyle=1;exitX=1;exitY=0.5;entryX=0.5;entryY=0;" edge="1" parent="s1" source="s-listener" target="s-batch">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="2180" y="541"/>
+              <mxPoint x="2180" y="120"/>
+              <mxPoint x="1200" y="120"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s-batch-stop" value="失败 → exit 1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#DC2626;strokeWidth=3;endArrow=block;endFill=1;fontColor=#B91C1C;fontSize=12;fontStyle=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="s1" source="s-batch" target="s-stop">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1200" y="295"/>
+              <mxPoint x="1580" y="295"/>
+              <mxPoint x="1580" y="970"/>
+              <mxPoint x="1445" y="970"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

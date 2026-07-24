@@ -43,6 +43,10 @@ from apps.cmdb.services.config_file_service import ConfigFileService
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.model import ModelManage
 from apps.cmdb.services.rack_room import format_rack_location_label, parse_rack_location
+from apps.cmdb.services.region_resource_overview import (
+    build_region_resource_items,
+    extract_region_options,
+)
 from apps.cmdb.utils.base import get_default_group_id
 from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
 from apps.core.logger import cmdb_logger as logger
@@ -154,6 +158,19 @@ def _build_nats_model_permission_map(user_info):
         }
 
     return permission_map
+
+
+def _resolve_nats_cmdb_language(user_info=None):
+    user_info = user_info or {}
+    user = user_info.get("user")
+    raw_language = (
+        user_info.get("locale")
+        or user_info.get("language")
+        or getattr(user, "locale", None)
+        or user_info.get("LANGUAGE_CODE")
+        or "zh-CN"
+    )
+    return "en" if str(raw_language).lower().startswith("en") else "zh"
 
 
 def _get_collect_task_queryset(user_info):
@@ -1378,6 +1395,116 @@ def get_instance_group_by(model_id=None, field=None, user_info=None, **kwargs):
     result_data.sort(key=lambda x: x["value"], reverse=True)
 
     return {"result": True, "data": result_data, "message": ""}
+
+
+@nats_client.register
+def get_model_classification_options(user_info=None, **kwargs):
+    """获取当前用户有权查看的可见模型分类，供数据源参数选项使用。"""
+    language = _resolve_nats_cmdb_language(user_info)
+    model_permissions = _build_nats_model_permission_map(user_info)
+    if model_permissions is None:
+        return {"items": []}
+
+    models = ModelManage.search_model(
+        language=language,
+        permissions_map=model_permissions,
+    )
+    allowed_classification_ids = {
+        model.get("classification_id")
+        for model in models
+        if model.get("classification_id")
+    }
+    classifications = ClassificationManage.search_model_classification(language=language)
+    return {
+        "items": [
+            {
+                "classification_id": item["classification_id"],
+                "classification_name": item["classification_name"],
+            }
+            for item in classifications
+            if item.get("classification_id") in allowed_classification_ids
+        ]
+    }
+
+
+@nats_client.register
+def get_classification_model_instance_counts(
+    classification_id=None,
+    user_info=None,
+    **kwargs,
+):
+    """按模型分类返回当前用户可见且实例数大于零的模型统计。"""
+    classification_id = str(classification_id or "").strip()
+    if not classification_id:
+        return {"items": []}
+
+    language = _resolve_nats_cmdb_language(user_info)
+    visible_classification_ids = {
+        item.get("classification_id")
+        for item in ClassificationManage.search_model_classification(language=language)
+    }
+    if classification_id not in visible_classification_ids:
+        return {"items": []}
+
+    model_permissions = _build_nats_model_permission_map(user_info)
+    instance_permissions = _build_nats_permission_map(user_info)
+    if model_permissions is None or instance_permissions is None:
+        return {"items": []}
+
+    models = ModelManage.search_model(
+        language=language,
+        permissions_map=model_permissions,
+        classification_ids=[classification_id],
+    )
+    counts = InstanceManage.model_inst_count(permissions_map=instance_permissions)
+    items = [
+        {
+            "label": model.get("model_name", ""),
+            "value": counts.get(model.get("model_id"), 0),
+        }
+        for model in models
+    ]
+    items = [item for item in items if item["value"] > 0]
+    items.sort(key=lambda item: (-item["value"], item["label"]))
+    return {"items": items}
+
+
+@nats_client.register
+def get_region_options(user_info=None, **kwargs):
+    """Return region tag candidates visible to the current user."""
+    language = _resolve_nats_cmdb_language(user_info)
+    model_permissions = _build_nats_model_permission_map(user_info)
+    if model_permissions is None:
+        return {"items": []}
+    models = ModelManage.search_model(language=language, permissions_map=model_permissions)
+    classifications = ClassificationManage.search_model_classification(language=language)
+    visible_ids = {item.get("classification_id") for item in classifications if item.get("classification_id")}
+    return {"items": extract_region_options(models, visible_ids)}
+
+
+@nats_client.register
+def get_region_resource_overview(region=None, user_info=None, **kwargs):
+    """Return classification instance totals for one region value."""
+    region = str(region or "").strip()
+    if not region:
+        return {"items": []}
+    language = _resolve_nats_cmdb_language(user_info)
+    model_permissions = _build_nats_model_permission_map(user_info)
+    instance_permissions = _build_nats_permission_map(user_info)
+    if model_permissions is None or instance_permissions is None:
+        return {"items": []}
+    models = ModelManage.search_model(language=language, permissions_map=model_permissions)
+    classifications = ClassificationManage.search_model_classification(language=language)
+    visible_ids = {item.get("classification_id") for item in classifications if item.get("classification_id")}
+    allowed_regions = extract_region_options(models, visible_ids)
+    if region not in {item["value"] for item in allowed_regions}:
+        return {"items": []}
+    counts = InstanceManage.group_inst_count(
+        group_by_attr="model_id",
+        permissions_map=instance_permissions,
+        params=[{"field": "tag", "type": "list[]", "value": [f"region:{region}"]}],
+    )
+    return {"items": build_region_resource_items(models, classifications, counts)}
 
 
 @nats_client.register

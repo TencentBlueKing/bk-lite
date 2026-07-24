@@ -47,6 +47,9 @@ import { useMssqlConfig } from './objects/database/mssql';
 import { useClusterConfig } from './objects/k8s/cluster';
 import { useNodeConfig } from './objects/k8s/node';
 import { usePodConfig } from './objects/k8s/pod';
+import { useClusterConfig as useK3sClusterConfig } from './objects/k3s/cluster';
+import { useNodeConfig as useK3sNodeConfig } from './objects/k3s/node';
+import { usePodConfig as useK3sPodConfig } from './objects/k3s/pod';
 import { useDockerContainerConfig } from './objects/containerManagement/dockerContainer';
 import { useDb2Config } from './objects/database/db2';
 import { useGreenPlumConfig } from './objects/database/greenPlum';
@@ -115,6 +118,9 @@ export const useMonitorConfig = () => {
   const clusterConfig = useClusterConfig();
   const podConfig = usePodConfig();
   const nodeConfig = useNodeConfig();
+  const k3sClusterConfig = useK3sClusterConfig();
+  const k3sPodConfig = useK3sPodConfig();
+  const k3sNodeConfig = useK3sNodeConfig();
   const dockerContainerConfig = useDockerContainerConfig();
   const db2Config = useDb2Config();
   const greenPlumConfig = useGreenPlumConfig();
@@ -169,6 +175,9 @@ export const useMonitorConfig = () => {
       Cluster: clusterConfig,
       Pod: podConfig,
       Node: nodeConfig,
+      K3SCluster: k3sClusterConfig,
+      K3SPod: k3sPodConfig,
+      K3SNode: k3sNodeConfig,
       'Docker Container': dockerContainerConfig,
       CVM: cvmConfig,
       DataStorage: dataStorageConfig,

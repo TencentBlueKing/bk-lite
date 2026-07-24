@@ -191,6 +191,7 @@ export interface StatisticCardConfig {
 }
 
 export type NodeMgmtSyncStatus =
+  | 'unexecuted'
   | 'waiting_sync'
   | 'running'
   | 'submitted'

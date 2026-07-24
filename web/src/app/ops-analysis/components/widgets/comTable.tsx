@@ -4,12 +4,14 @@ import React, {
   useMemo,
   useCallback,
 } from 'react';
-import { Button, Dropdown, Input, Select, DatePicker, Tooltip, message } from 'antd';
-import { MoreOutlined, SearchOutlined } from '@ant-design/icons';
+import { Button, Input, Select, DatePicker, Tooltip, message } from 'antd';
+import { SearchOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { useTranslation } from '@/utils/i18n';
 import CustomTable from '@/components/custom-table';
+import MoreActionsDropdown from '@/components/more-actions-dropdown';
+import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
 import { formatOpsRequestTime } from '@/app/ops-analysis/utils/dateTime';
 import { getOpsChartThemeByMode } from '@/app/ops-analysis/utils/chartTheme';
 import {
@@ -182,26 +184,14 @@ const ComTable: React.FC<ComTableProps> = ({
             </Button>
           ))}
           {dropdownActions.length > 0 && (
-            <Dropdown
-              trigger={['click']}
-              menu={{
-                items: dropdownActions.map((action, index) => ({
-                  key: String(index),
-                  label: action.text,
-                })),
-                onClick: ({ key }) => {
-                  const action = dropdownActions[Number(key)];
-                  if (action) {
-                    handleActionClick(action, record);
-                  }
-                },
-              }}
-            >
-              <Button type="link" size="small" className="p-0">
-                {t('common.more')}
-                <MoreOutlined />
-              </Button>
-            </Dropdown>
+            <MoreActionsDropdown
+              items={dropdownActions.map<MoreActionsDropdownItem>((action, index) => ({
+                key: String(index),
+                label: action.text,
+                onClick: () => handleActionClick(action, record),
+              }))}
+              buttonType="link"
+            />
           )}
         </div>
       );
