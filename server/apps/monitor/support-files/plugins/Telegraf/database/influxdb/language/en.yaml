@@ -1,6 +1,6 @@
 InfluxDB:
   name: InfluxDB
-  desc: InfluxDB
+  desc: Collects key metrics from the InfluxDB v1 /debug/vars endpoint through Telegraf, covering series cardinality, HTTP service quality, write failures, query load, and runtime memory.
 monitor_object:
   InfluxDB: InfluxDB
 monitor_object_type:
