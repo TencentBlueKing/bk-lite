@@ -5,6 +5,7 @@ import { useTranslation } from '@/utils/i18n';
 
 interface PermissionWrapperProps {
   requiredPermissions: string[];
+  permissionPath?: string;
   instPermissions?: string[];
   fallback?: React.ReactNode;
   tooltip?: string;
@@ -13,6 +14,7 @@ interface PermissionWrapperProps {
 
 const PermissionWrapper: React.FC<React.PropsWithChildren<PermissionWrapperProps>> = ({
   requiredPermissions,
+  permissionPath,
   instPermissions,
   fallback = null,
   tooltip,
@@ -20,7 +22,7 @@ const PermissionWrapper: React.FC<React.PropsWithChildren<PermissionWrapperProps
   children
 }) => {
   const { t } = useTranslation();
-  const { hasPermission } = usePermissions();
+  const { hasPermission } = usePermissions(permissionPath);
   const instancePermissions = instPermissions || ['Operate'];
 
   if (hasPermission(requiredPermissions) && instancePermissions.includes('Operate')) {
@@ -45,6 +47,7 @@ const PermissionWrapper: React.FC<React.PropsWithChildren<PermissionWrapperProps
 export default React.memo(PermissionWrapper, (prevProps, nextProps) => {
   return (
     prevProps.requiredPermissions === nextProps.requiredPermissions &&
+    prevProps.permissionPath === nextProps.permissionPath &&
     prevProps.fallback === nextProps.fallback &&
     prevProps.tooltip === nextProps.tooltip &&
     prevProps.className === nextProps.className

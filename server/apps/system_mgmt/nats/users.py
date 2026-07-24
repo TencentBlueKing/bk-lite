@@ -179,7 +179,7 @@ def search_users(query_params):
 def init_user_default_attributes(user_id, group_name, default_group_id):
     try:
         role_ids = list(
-            Role.objects.filter(name="guest", app__in=["opspilot", "cmdb", "monitor", "alarm", "log", "node", "mlops", "job"]).values_list(
+            Role.objects.filter(name="guest", app__in=["opspilot", "cmdb", "monitor", "alarm", "log", "node", "mlops", "job", "patch"]).values_list(
                 "id", flat=True
             )
         )
