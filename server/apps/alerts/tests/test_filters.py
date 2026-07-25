@@ -5,6 +5,7 @@
 
 import pytest
 
+from apps.alerts.constants.constants import AlertStatus
 from apps.alerts.filters.alert import AlertModelFilter
 from apps.alerts.filters.incident import IncidentModelFilter
 from apps.alerts.models.models import Alert, Incident
@@ -30,6 +31,30 @@ def test_alert_filter_status_multi():
 
 
 @pytest.mark.django_db
+def test_alert_filter_empty_status_includes_auto_recovery():
+    Alert.objects.create(
+        alert_id="A1",
+        level="0",
+        title="t",
+        content="c",
+        fingerprint="fp-active",
+        status=AlertStatus.PENDING,
+    )
+    Alert.objects.create(
+        alert_id="A2",
+        level="0",
+        title="t",
+        content="c",
+        fingerprint="fp-recovered",
+        status=AlertStatus.AUTO_RECOVERY,
+    )
+
+    result = AlertModelFilter(data={"status": ""}, queryset=Alert.objects.all()).qs
+
+    assert set(result.values_list("alert_id", flat=True)) == {"A1", "A2"}
+
+
+@pytest.mark.django_db
 def test_alert_filter_source_name():
     Alert.objects.create(alert_id="A1", level="0", title="t", content="c", fingerprint="fp", source_name="prometheus")
     Alert.objects.create(alert_id="A2", level="0", title="t", content="c", fingerprint="fp", source_name="zabbix")
@@ -39,8 +64,6 @@ def test_alert_filter_source_name():
 
 @pytest.mark.django_db
 def test_alert_filter_activate_excludes_closed():
-    from apps.alerts.constants.constants import AlertStatus
-
     Alert.objects.create(alert_id="A1", level="0", title="t", content="c", fingerprint="fp", status="pending")
     closed_status = list(AlertStatus.CLOSED_STATUS)[0]
     Alert.objects.create(alert_id="A2", level="0", title="t", content="c", fingerprint="fp", status=closed_status)

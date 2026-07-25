@@ -20,7 +20,8 @@ export const POD_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: 'Pod 状态',
       description: 'Pod 当前生命周期阶段(0 未运行 / 1 运行中),用于快速判断 Pod 健康。',
       unit: 'none',
-      query: 'prometheus_remote_write_kube_pod_status_phase{instance_type="k3s",__$labels__}',
+      query:
+        'prometheus_remote_write_kube_pod_status_phase{instance_type="k3s",phase="Running",__$labels__}',
       color: '#27c274'
     },
     {

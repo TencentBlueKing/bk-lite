@@ -24,6 +24,8 @@ _MONITOR_TEMPLATE_ALLOWED_FILTERS = (
     "replace",
 )
 _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
+    "ENV_BEARER_TOKEN",
+    "ENV_PASSWORD",
     "agents",
     "auth_password",
     "auth_protocol",
