@@ -426,6 +426,7 @@
       "libraryPath": "Driver Library Path",
       "note": "The monitoring data of K8s only supports active reporting, and is not supported to be accessed here for the time being.",
       "editMetric": "Edit Metric",
+      "viewMetric": "View Metric Configuration",
       "installationMethod": "Installation Method",
       "seviceName": "Service Name",
       "seviceNameDes": "The service name to be monitored should be consistent with the actual running service.",

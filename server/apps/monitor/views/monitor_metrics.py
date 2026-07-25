@@ -1,6 +1,7 @@
 from rest_framework import viewsets
 from rest_framework.decorators import action
 
+from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.web_utils import WebUtils
 from apps.monitor.constants.database import DatabaseConstants
@@ -45,6 +46,23 @@ class MetricGroupViewSet(viewsets.ModelViewSet):
     filterset_class = MetricGroupFilter
     pagination_class = CustomPageNumberPagination
 
+    @staticmethod
+    def _ensure_modifiable(metric_group):
+        if getattr(metric_group, "is_pre", False):
+            raise BaseAppException("内置指标分组为只读，禁止修改或删除")
+
+    def update(self, request, *args, **kwargs):
+        self._ensure_modifiable(self.get_object())
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        self._ensure_modifiable(self.get_object())
+        return super().partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        self._ensure_modifiable(self.get_object())
+        return super().destroy(request, *args, **kwargs)
+
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
         serializer = self.get_serializer(queryset, many=True)
@@ -73,6 +91,9 @@ class MetricGroupViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["post"])
     def set_order(self, request, *args, **kwargs):
+        target_ids = [item["id"] for item in request.data]
+        if MetricGroup.objects.filter(id__in=target_ids, is_pre=True).exists():
+            raise BaseAppException("内置指标分组为只读，禁止调整顺序")
         updates = [
             MetricGroup(
                 id=item["id"],
@@ -89,6 +110,23 @@ class MetricViewSet(viewsets.ModelViewSet):
     serializer_class = MetricSerializer
     filterset_class = MetricFilter
     pagination_class = CustomPageNumberPagination
+
+    @staticmethod
+    def _ensure_modifiable(metric):
+        if getattr(metric, "is_pre", False):
+            raise BaseAppException("内置指标为只读，禁止修改或删除")
+
+    def update(self, request, *args, **kwargs):
+        self._ensure_modifiable(self.get_object())
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        self._ensure_modifiable(self.get_object())
+        return super().partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        self._ensure_modifiable(self.get_object())
+        return super().destroy(request, *args, **kwargs)
 
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
@@ -119,6 +157,9 @@ class MetricViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["post"])
     def set_order(self, request, *args, **kwargs):
+        target_ids = [item["id"] for item in request.data]
+        if Metric.objects.filter(id__in=target_ids, is_pre=True).exists():
+            raise BaseAppException("内置指标为只读，禁止调整顺序")
         updates = [
             Metric(
                 id=item["id"],
