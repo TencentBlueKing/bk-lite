@@ -144,3 +144,22 @@ def test_plugin_identity_matches_manifest_identity():
     }
     assert 'instance_type = "k3s"' in manifest
     assert 'instance_type = "k8s"' not in manifest
+
+
+def test_pod_status_queries_only_select_running_phase():
+    plugin = json.loads(PLUGIN.read_text(encoding="utf-8"))
+    pod_object = next(item for item in plugin["objects"] if item["name"] == "K3SPod")
+    pod_status_metric = next(
+        metric
+        for metric in pod_object["metrics"]
+        if metric["name"] == "pod_status_phase"
+    )
+    dashboard = (
+        DASHBOARDS / "k3s-pod/config.ts"
+    ).read_text(encoding="utf-8")
+
+    assert 'phase="Running"' in pod_status_metric["query"]
+    assert (
+        'prometheus_remote_write_kube_pod_status_phase'
+        '{instance_type="k3s",phase="Running",__$labels__}'
+    ) in dashboard

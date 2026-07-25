@@ -81,7 +81,7 @@
           "unit": "[{\"name\":\"未运行\",\"id\":0,\"color\":\"#faad14\"},{\"name\":\"运行中\",\"id\":1,\"color\":\"#1ac44a\"}]",
           "dimensions": [],
           "description": "Indicates the current lifecycle phase of a Pod. This metric is used to quickly assess Pod health.",
-          "query": "prometheus_remote_write_kube_pod_status_phase{instance_type=\"k3s\",__$labels__}"
+          "query": "prometheus_remote_write_kube_pod_status_phase{instance_type=\"k3s\",phase=\"Running\",__$labels__}"
         },
         {
           "metric_group": "Status",
