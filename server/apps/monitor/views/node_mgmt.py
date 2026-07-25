@@ -1,3 +1,4 @@
+from nats.errors import Error as NatsError
 from rest_framework.decorators import action
 from rest_framework.viewsets import ViewSet
 
@@ -75,16 +76,26 @@ class NodeMgmtView(ViewSet):
         )
         if is_host_monitoring_plugin:
             nodes = data.get("nodes", [])
-            configured_node_ids = HostDeploymentStatus().get_configured_node_ids(
-                [node.get("id") for node in nodes]
-            )
-            data["nodes"] = [
-                {
-                    **node,
-                    "deployment_state": "configured" if str(node.get("id")) in configured_node_ids else "available",
-                }
-                for node in nodes
-            ]
+            try:
+                configured_node_ids = HostDeploymentStatus().get_configured_node_ids(
+                    [node.get("id") for node in nodes]
+                )
+            except (NatsError, TimeoutError) as error:
+                logger.warning(
+                    "主机监控接入状态查询失败，节点列表将以不可选状态返回: %s",
+                    error,
+                )
+                data["nodes"] = [{**node, "deployment_state": "unknown"} for node in nodes]
+            else:
+                data["nodes"] = [
+                    {
+                        **node,
+                        "deployment_state": (
+                            "configured" if str(node.get("id")) in configured_node_ids else "available"
+                        ),
+                    }
+                    for node in nodes
+                ]
         return WebUtils.response_success(data)
 
     @action(methods=["post"], detail=False, url_path="batch_setting_node_child_config")

@@ -11,7 +11,8 @@ const configured = toMonitorNodeOption(
     ip: '10.0.0.1',
     deployment_state: 'configured'
   },
-  '已接入'
+  '已接入',
+  '状态查询失败'
 );
 
 assert.deepEqual(configured, {
@@ -32,11 +33,26 @@ const available = toMonitorNodeOption(
     ip: '10.0.0.2',
     deployment_state: 'available'
   },
-  '已接入'
+  '已接入',
+  '状态查询失败'
 );
 
 assert.equal(available.disabled, false);
 assert.equal(available.disabledReason, undefined);
+
+const unknown = toMonitorNodeOption(
+  {
+    id: 'node-3',
+    name: '状态未知节点',
+    ip: '10.0.0.3',
+    deployment_state: 'unknown'
+  },
+  '已接入',
+  '状态查询失败'
+);
+
+assert.equal(unknown.disabled, true);
+assert.equal(unknown.disabledReason, '状态查询失败');
 
 const rendererSource = readFileSync(
   resolve(process.cwd(), 'src/app/monitor/hooks/integration/useConfigRenderer.tsx'),
@@ -54,6 +70,10 @@ for (const localeFile of ['zh.json', 'en.json']) {
   );
   assert.equal(
     typeof locale.monitor.integrations.hostMonitoringAlreadyConfigured,
+    'string'
+  );
+  assert.equal(
+    typeof locale.monitor.integrations.hostMonitoringStatusUnavailable,
     'string'
   );
 }

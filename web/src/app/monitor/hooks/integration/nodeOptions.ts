@@ -1,13 +1,19 @@
 export const toMonitorNodeOption = (
   node: Record<string, any>,
-  configuredReason: string
+  configuredReason: string,
+  unknownReason: string
 ) => {
-  const disabled = node.deployment_state === 'configured';
+  const disabledReason =
+    node.deployment_state === 'configured'
+      ? configuredReason
+      : node.deployment_state === 'unknown'
+        ? unknownReason
+        : undefined;
   return {
     ...node,
     label: `${node.name} (${node.ip})`,
     value: node.id,
-    disabled,
-    disabledReason: disabled ? configuredReason : undefined
+    disabled: Boolean(disabledReason),
+    disabledReason
   };
 };
