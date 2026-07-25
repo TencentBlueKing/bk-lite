@@ -713,7 +713,8 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       const formattedNodes = (data.nodes || []).map((node: any) =>
         toMonitorNodeOption(
           node,
-          t('monitor.integrations.hostMonitoringAlreadyConfigured')
+          t('monitor.integrations.hostMonitoringAlreadyConfigured'),
+          t('monitor.integrations.hostMonitoringStatusUnavailable')
         )
       );
       setNodeList(formattedNodes);

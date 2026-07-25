@@ -359,6 +359,7 @@
     },
     "integrations": {
       "hostMonitoringAlreadyConfigured": "已接入主机监控",
+      "hostMonitoringStatusUnavailable": "接入状态查询失败，请稍后重试",
       "publishAddressDes": "系统监控的主要网址，用于检测其可用性和性能状态",
       "dataSource": "数据源",
       "ipDes": "监控的目标主机的 IP 地址，用于标识数据收集的来源。",
@@ -426,6 +427,7 @@
       "libraryPath": "驱动程序的lib目录",
       "note": "K8s的监控数据仅支持主动上报，暂不支持在此处接入。",
       "editMetric": "编辑指标",
+      "viewMetric": "查看指标配置",
       "installationMethod": "安装方法",
       "seviceName": "服务名称",
       "seviceNameDes": "要监控的服务名称，确保其与实际运行的服务一致。",
