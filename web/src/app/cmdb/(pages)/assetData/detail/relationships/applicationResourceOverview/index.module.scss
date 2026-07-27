@@ -1,0 +1,344 @@
+.overview {
+  width: 100%;
+  padding-top: 6px;
+}
+
+.viewSwitch {
+  align-self: flex-start;
+}
+
+.topologyStack {
+  width: 100%;
+}
+
+.canvasCard {
+  overflow: hidden;
+  border-color: var(--color-border-3);
+  border-radius: 8px;
+  background: var(--color-bg);
+}
+
+.canvasCard :global(.ant-card-body) {
+  padding: 0 !important;
+}
+
+.canvasShell {
+  position: relative;
+  display: flex;
+  height: calc(100vh - 224px);
+  overflow: hidden;
+  background: var(--color-bg);
+}
+
+.graphPane {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--color-bg);
+  transition:
+    flex-basis 220ms ease,
+    width 220ms ease;
+}
+
+.graphEmpty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  background: var(--color-fill-1);
+}
+
+.layerBands {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 132px;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.layerBand {
+  position: absolute;
+  right: 0;
+  left: 0;
+  border-bottom: 1px dashed
+    color-mix(in srgb, var(--color-border-3) 70%, transparent);
+  background: transparent;
+}
+
+.layerBand:nth-child(even) {
+  background: color-mix(in srgb, var(--color-fill-1) 38%, var(--color-bg));
+}
+
+.layerBand:last-child {
+  border-bottom: 0;
+}
+
+.graphCanvas {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 132px;
+  z-index: 1;
+}
+
+.layerLabels {
+  position: absolute;
+  z-index: 8;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 132px;
+  border-right: 1px solid
+    color-mix(in srgb, var(--color-border-2) 58%, transparent);
+  background: var(--color-bg);
+  pointer-events: none;
+}
+
+.layerLabel {
+  position: absolute;
+  left: 0;
+  display: flex;
+  align-items: center;
+  width: 112px;
+  height: 32px;
+  margin-left: 12px;
+  padding: 0 8px 0 15px;
+  border: 0;
+  border-radius: 0;
+  color: var(--color-text-2);
+  background: color-mix(in srgb, var(--color-primary) 3%, var(--color-bg));
+  box-shadow: none;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+  transform: translateY(-50%);
+}
+
+.layerLabel::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 3px;
+  height: 18px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--color-primary) 55%, var(--color-bg));
+  content: '';
+  transform: translateY(-50%);
+}
+
+.toolbarActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toolbarActions :global(.ant-btn) {
+  height: 34px;
+  border-color: var(--color-border-3);
+  border-radius: 6px;
+  color: var(--color-text-2);
+  background: var(--color-bg);
+  box-shadow: 0 4px 12px var(--color-portal-card-shadow);
+}
+
+.toolbarActions :global(.ant-btn:hover) {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: var(--color-bg);
+}
+
+.relationCount {
+  display: inline-grid;
+  min-width: 20px;
+  height: 18px;
+  margin-left: 2px;
+  padding: 0 5px;
+  place-items: center;
+  border-radius: 9px;
+  color: var(--color-text-3);
+  background: var(--color-fill-2);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 18px;
+}
+
+.relationsPanel {
+  position: relative;
+  z-index: 24;
+  flex: none;
+  width: 0;
+  min-width: 0;
+  overflow: hidden;
+  visibility: hidden;
+  background: var(--color-bg);
+  border-left: 0 solid var(--color-border-2);
+  transition:
+    width 220ms ease,
+    border-left-width 220ms ease,
+    visibility 0s linear 220ms;
+}
+
+.relationsPanelOpen {
+  width: min(380px, 38%);
+  visibility: visible;
+  border-left-width: 1px;
+  box-shadow: -6px 0 14px
+    color-mix(in srgb, var(--color-portal-card-shadow) 55%, transparent);
+  transition:
+    width 220ms ease,
+    border-left-width 220ms ease,
+    visibility 0s;
+}
+
+.relationsPanelInner {
+  display: flex;
+  flex-direction: column;
+  width: 380px;
+  max-width: 100%;
+  height: 100%;
+}
+
+.relationsHeader {
+  position: relative;
+  display: flex;
+  flex: 0 0 40px;
+  align-items: center;
+  padding: 0 32px 0 10px;
+  border-bottom: 1px solid var(--color-border-2);
+}
+
+.relationsTitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--color-text-1);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 21px;
+}
+
+.relationsTitle :global(.anticon) {
+  color: var(--color-text-3);
+}
+
+.relationsClose {
+  position: absolute;
+  top: 3px;
+  right: 0;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  color: var(--color-text-3);
+}
+
+.relationsTable {
+  min-height: 0;
+  flex: 1;
+}
+
+.relationsTable :global(.ant-table) {
+  color: var(--color-text-2);
+  font-size: 12px;
+}
+
+.relationsTable :global(.ant-table-thead > tr > th) {
+  height: 30px;
+  padding: 4px 8px;
+  color: var(--color-text-2);
+  background: var(--color-fill-1);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.relationsTable :global(.ant-table-tbody > tr > td) {
+  height: 34px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.relationsTable :global(.ant-table-thead > tr > th:first-child),
+.relationsTable :global(.ant-table-tbody > tr > td:first-child) {
+  padding-left: 12px;
+}
+
+.relationsTable :global(.ant-table-tbody > tr:hover > td) {
+  background: var(--color-bg-hover);
+}
+
+.relationCell {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.contextMenu {
+  position: absolute;
+  z-index: 40;
+  min-width: 164px;
+  padding: 6px;
+  border: 1px solid var(--color-border-3);
+  border-radius: 8px;
+  background: var(--color-bg);
+  box-shadow: 0 4px 12px var(--color-portal-card-shadow);
+}
+
+.contextMenuTitle {
+  overflow: hidden;
+  margin-bottom: 6px;
+  padding: 4px 6px 8px;
+  border-bottom: 1px solid var(--color-border-2);
+  color: var(--color-text-2);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.contextMenuActions {
+  width: 100%;
+}
+
+.contextMenuActions :global(.ant-btn) {
+  justify-content: flex-start;
+  height: 32px;
+  border: 0;
+  box-shadow: none;
+}
+
+.contextMenuActions :global(.ant-btn:hover) {
+  color: var(--color-primary);
+  background: var(--color-bg-active);
+}
+
+.resourceStack {
+  width: 100%;
+}
+
+.resourceCell {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 1280px) {
+  .relationsPanelOpen {
+    width: min(340px, 42%);
+  }
+
+  .relationsPanelInner {
+    width: 340px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .graphPane,
+  .relationsPanel,
+  .relationsPanelOpen {
+    transition: none;
+  }
+}

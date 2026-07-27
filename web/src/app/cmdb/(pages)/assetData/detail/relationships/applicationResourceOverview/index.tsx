@@ -12,8 +12,12 @@ import {
   Spin,
   Table,
 } from 'antd';
-import { DownloadOutlined, ReloadOutlined } from '@ant-design/icons';
-import type { Graph } from '@antv/x6';
+import {
+  DownloadOutlined,
+  DoubleRightOutlined,
+  ShareAltOutlined,
+} from '@ant-design/icons';
+import type { Edge, Graph, Node } from '@antv/x6';
 
 import { useInstanceApi } from '@/app/cmdb/api/instance';
 import {
@@ -23,6 +27,7 @@ import {
   type NetworkTopologyNode as VisualNode,
   type NetworkTopologyNodeStatus,
 } from '@/app/cmdb/components/networkTopology';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useTranslation } from '@/utils/i18n';
 import type {
   ApplicationResourceLink,
@@ -30,6 +35,7 @@ import type {
   ApplicationResourceNode,
   ApplicationResourceTopologyData,
 } from '@/app/cmdb/types/applicationResourceOverview';
+import styles from './index.module.scss';
 
 interface Props {
   modelId: string;
@@ -62,53 +68,229 @@ const GROUP_LABELS: Record<string, string> = {
   other: 'ApplicationResourceOverview.groupOther',
 };
 
+const LAYER_START_Y = 88;
+const LAYER_GAP = 168;
+
 const LAYER_META = {
   root: {
-    title: '系统层',
-    subtitle: 'System',
-    y: 88,
+    titleKey: 'ApplicationResourceOverview.layerSystem',
+    y: LAYER_START_Y,
   },
   service: {
-    title: '服务层',
-    subtitle: 'Service',
-    y: 236,
+    titleKey: 'ApplicationResourceOverview.layerServiceTier',
+    y: LAYER_START_Y + LAYER_GAP,
   },
   host: {
-    title: '主机层',
-    subtitle: 'Host',
-    y: 386,
+    titleKey: 'ApplicationResourceOverview.layerHost',
+    y: LAYER_START_Y + LAYER_GAP * 2,
   },
   appService: {
-    title: '应用服务层',
-    subtitle: 'Application Service',
-    y: 556,
+    titleKey: 'ApplicationResourceOverview.layerAppService',
+    y: LAYER_START_Y + LAYER_GAP * 3,
   },
   infrastructure: {
-    title: '基础设施层',
-    subtitle: 'Infrastructure',
-    y: 752,
+    titleKey: 'ApplicationResourceOverview.layerInfrastructure',
+    y: LAYER_START_Y + LAYER_GAP * 4,
   },
 } as const;
 
 type LayerKey = keyof typeof LAYER_META;
 
 const COMPACT_NODE = {
-  width: 40,
-  height: 40,
-  iconSize: 30,
-  labelWidth: 120,
+  width: 248,
+  height: 68,
+  iconColumnWidth: 50,
+  iconSize: 34,
+  labelX: 62,
+  labelWidth: 170,
 } as const;
 
+const buildRelationshipLabel = (text: string, position = 0.5) => ({
+  position,
+  markup: [
+    { tagName: 'rect', selector: 'bg' },
+    { tagName: 'text', selector: 'txt' },
+  ],
+  attrs: {
+    txt: {
+      text,
+      fill: 'var(--color-text-3)',
+      fontSize: 10,
+      fontWeight: 500,
+      textAnchor: 'middle',
+      textVerticalAnchor: 'middle',
+    },
+    bg: {
+      ref: 'txt',
+      refWidth: '140%',
+      refHeight: '155%',
+      refX: '-20%',
+      refY: '-27%',
+      fill: 'var(--color-bg)',
+      fillOpacity: 0.94,
+      stroke: 'var(--color-border-2)',
+      strokeWidth: 1,
+      rx: 4,
+      ry: 4,
+    },
+  },
+});
+
+const resolveEdgeCellId = (terminal: unknown) => {
+  if (typeof terminal === 'string' || typeof terminal === 'number') {
+    return String(terminal);
+  }
+  if (!terminal || typeof terminal !== 'object' || !('cell' in terminal)) return '';
+  const cell = (terminal as { cell?: unknown }).cell;
+  return cell == null ? '' : String(cell);
+};
+
+const resolveRelationshipText = (labels: unknown) => {
+  if (!Array.isArray(labels)) return '';
+  const firstLabel = labels[0];
+  if (!firstLabel || typeof firstLabel !== 'object' || !('attrs' in firstLabel)) return '';
+  const attrs = (firstLabel as { attrs?: unknown }).attrs;
+  if (!attrs || typeof attrs !== 'object' || !('txt' in attrs)) return '';
+  const txt = (attrs as { txt?: unknown }).txt;
+  if (!txt || typeof txt !== 'object' || !('text' in txt)) return '';
+  return String((txt as { text?: unknown }).text || '').trim();
+};
+
+const resolveGraphNodeCenter = (node: ReturnType<typeof buildNetworkTopologyX6GraphData>['nodes'][number]) => ({
+  x: Number(node.x) + Number(node.width) / 2,
+  y: Number(node.y) + Number(node.height) / 2,
+});
+
+const resolveGraphLayerIndex = (node: ReturnType<typeof buildNetworkTopologyX6GraphData>['nodes'][number]) => {
+  const centerY = resolveGraphNodeCenter(node).y;
+  return (Object.keys(LAYER_META) as LayerKey[]).reduce((nearestIndex, key, index, keys) => {
+    const nearestDistance = Math.abs(centerY - LAYER_META[keys[nearestIndex]].y);
+    return Math.abs(centerY - LAYER_META[key].y) < nearestDistance ? index : nearestIndex;
+  }, 0);
+};
+
+const buildCrossLayerVertices = (
+  sourceCenter: { x: number; y: number },
+  targetCenter: { x: number; y: number },
+  nodes: ReturnType<typeof buildNetworkTopologyX6GraphData>['nodes']
+) => {
+  const nodeHalfWidth = COMPACT_NODE.width / 2;
+  const clearance = 12;
+  const intervals = nodes
+    .map(resolveGraphNodeCenter)
+    .filter((center) => center.y > sourceCenter.y && center.y < targetCenter.y)
+    .map((center) => ({
+      start: center.x - nodeHalfWidth - clearance,
+      end: center.x + nodeHalfWidth + clearance,
+    }))
+    .sort((a, b) => a.start - b.start);
+
+  const mergedIntervals = intervals.reduce<Array<{ start: number; end: number }>>((merged, interval) => {
+    const previous = merged[merged.length - 1];
+    if (!previous || interval.start > previous.end) {
+      merged.push({ ...interval });
+    } else {
+      previous.end = Math.max(previous.end, interval.end);
+    }
+    return merged;
+  }, []);
+
+  const corridorCandidates: number[] = [];
+  mergedIntervals.forEach((interval, index) => {
+    const next = mergedIntervals[index + 1];
+    if (next && next.start - interval.end >= 24) {
+      corridorCandidates.push((interval.end + next.start) / 2);
+    }
+  });
+  if (mergedIntervals.length) {
+    corridorCandidates.push(mergedIntervals[0].start - 32);
+    corridorCandidates.push(mergedIntervals[mergedIntervals.length - 1].end + 32);
+  } else {
+    corridorCandidates.push((sourceCenter.x + targetCenter.x) / 2);
+  }
+
+  const corridorX = corridorCandidates.reduce((best, candidate) => {
+    const score = Math.abs(candidate - sourceCenter.x) + Math.abs(candidate - targetCenter.x);
+    const bestScore = Math.abs(best - sourceCenter.x) + Math.abs(best - targetCenter.x);
+    return score < bestScore ? candidate : best;
+  }, corridorCandidates[0]);
+  const sourceY = sourceCenter.y + COMPACT_NODE.height / 2;
+  const targetY = targetCenter.y - COMPACT_NODE.height / 2;
+  const turnOffset = Math.min(24, Math.max(12, (targetY - sourceY) / 5));
+
+  return [
+    { x: sourceCenter.x, y: sourceY + turnOffset },
+    { x: corridorX, y: sourceY + turnOffset },
+    { x: corridorX, y: targetY - turnOffset },
+    { x: targetCenter.x, y: targetY - turnOffset },
+  ];
+};
+
 function getLayerTitle(key: LayerKey, t: (id: string, defaultMessage?: string, values?: Record<string, string | number>) => string) {
-  return key === 'root' ? '系统层' : t(LAYER_META[key].title);
+  return t(LAYER_META[key].titleKey);
 }
 
 function buildCompactGraphData(graphData: ReturnType<typeof buildNetworkTopologyX6GraphData>) {
+  const nodeMap = new Map(graphData.nodes.map((node) => [String(node.id), node]));
+  const edgeGroups = new Map<string, {
+    edge: (typeof graphData.edges)[number];
+    visualSourceCell: string;
+    visualTargetCell: string;
+    visualSourceNode: (typeof graphData.nodes)[number];
+    visualTargetNode: (typeof graphData.nodes)[number];
+    hasForwardEdge: boolean;
+    hasReverseEdge: boolean;
+    forwardRelationships: Set<string>;
+    reverseRelationships: Set<string>;
+  }>();
+
+  graphData.edges.forEach((edge) => {
+    const sourceCell = resolveEdgeCellId(edge.source);
+    const targetCell = resolveEdgeCellId(edge.target);
+    const sourceNode = nodeMap.get(sourceCell);
+    const targetNode = nodeMap.get(targetCell);
+    if (!sourceNode || !targetNode || sourceCell === targetCell) return;
+
+    const sourceCenter = resolveGraphNodeCenter(sourceNode);
+    const targetCenter = resolveGraphNodeCenter(targetNode);
+    const sourceComesFirst = sourceCenter.y < targetCenter.y
+      || (sourceCenter.y === targetCenter.y && sourceCenter.x <= targetCenter.x);
+    const visualSourceCell = sourceComesFirst ? sourceCell : targetCell;
+    const visualTargetCell = sourceComesFirst ? targetCell : sourceCell;
+    const pairKey = `${visualSourceCell}__${visualTargetCell}`;
+    const relationship = resolveRelationshipText(edge.labels);
+    const group = edgeGroups.get(pairKey) || {
+      edge,
+      visualSourceCell,
+      visualTargetCell,
+      visualSourceNode: sourceComesFirst ? sourceNode : targetNode,
+      visualTargetNode: sourceComesFirst ? targetNode : sourceNode,
+      hasForwardEdge: false,
+      hasReverseEdge: false,
+      forwardRelationships: new Set<string>(),
+      reverseRelationships: new Set<string>(),
+    };
+
+    if (sourceCell === visualSourceCell) {
+      group.hasForwardEdge = true;
+      if (relationship) {
+        group.forwardRelationships.add(relationship);
+      }
+    } else {
+      group.hasReverseEdge = true;
+      if (relationship) {
+        group.reverseRelationships.add(relationship);
+      }
+    }
+    edgeGroups.set(pairKey, group);
+  });
+
   return {
     nodes: graphData.nodes.map((node) => {
       const centerX = node.x + node.width / 2;
       const centerY = node.y + node.height / 2;
-      const iconX = (COMPACT_NODE.width - COMPACT_NODE.iconSize) / 2;
+      const selected = Number(node.attrs?.body?.strokeWidth || 1) > 1;
+      const iconX = (COMPACT_NODE.iconColumnWidth - COMPACT_NODE.iconSize) / 2;
       const iconY = (COMPACT_NODE.height - COMPACT_NODE.iconSize) / 2;
 
       return {
@@ -129,29 +311,48 @@ function buildCompactGraphData(graphData: ReturnType<typeof buildNetworkTopology
           },
           body: {
             ...(node.attrs?.body || {}),
-            fill: 'rgba(255, 255, 255, 0.001)',
-            stroke: 'transparent',
-            filter: 'none',
+            rx: 6,
+            ry: 6,
+            fill: 'var(--color-bg)',
+            fillOpacity: 1,
+            opacity: 1,
+            stroke: selected ? 'var(--color-primary)' : 'var(--color-border-3)',
+            strokeWidth: selected ? 1.5 : 1,
+            filter: 'drop-shadow(0 2px 4px var(--color-portal-card-shadow))',
             cursor: 'pointer',
             pointerEvents: 'all',
           },
           iconColumn: {
             ...(node.attrs?.iconColumn || {}),
-            fill: 'transparent',
+            x: 1,
+            y: 1,
+            width: COMPACT_NODE.iconColumnWidth - 1,
+            height: COMPACT_NODE.height - 2,
+            rx: 5,
+            ry: 5,
+            fill: selected
+              ? 'color-mix(in srgb, var(--color-primary) 8%, var(--color-bg))'
+              : 'color-mix(in srgb, var(--color-fill-1) 55%, var(--color-bg))',
+            fillOpacity: 1,
             stroke: 'transparent',
-            width: 0,
-            height: 0,
           },
           divider: {
             ...(node.attrs?.divider || {}),
-            opacity: 0,
+            x1: COMPACT_NODE.iconColumnWidth,
+            y1: 10,
+            x2: COMPACT_NODE.iconColumnWidth,
+            y2: COMPACT_NODE.height - 10,
+            stroke: 'var(--color-border-2)',
+            strokeWidth: 1,
+            opacity: 1,
           },
           iconPlate: {
             ...(node.attrs?.iconPlate || {}),
-            fill: 'transparent',
-            stroke: 'transparent',
             width: 0,
             height: 0,
+            fill: 'transparent',
+            stroke: 'transparent',
+            strokeWidth: 0,
           },
           img: {
             ...(node.attrs?.img || {}),
@@ -162,9 +363,9 @@ function buildCompactGraphData(graphData: ReturnType<typeof buildNetworkTopology
           },
           statusDot: {
             ...(node.attrs?.statusDot || {}),
-            cx: COMPACT_NODE.width - 7,
-            cy: 7,
-            r: 2,
+            cx: COMPACT_NODE.width - 14,
+            cy: 13,
+            r: 3,
           },
           alertBadge: {
             ...(node.attrs?.alertBadge || {}),
@@ -182,51 +383,100 @@ function buildCompactGraphData(graphData: ReturnType<typeof buildNetworkTopology
             ...(node.attrs?.lbl || {}),
             refX: null,
             refY: null,
-            x: COMPACT_NODE.width / 2,
-            y: COMPACT_NODE.height + 1,
-            textAnchor: 'middle',
-            textVerticalAnchor: 'top',
-            fontSize: 10,
-            fontWeight: 500,
+            x: COMPACT_NODE.labelX,
+            y: 27,
+            textAnchor: 'start',
+            textVerticalAnchor: 'middle',
+            fill: 'var(--color-text-1)',
+            fontSize: 14,
+            fontWeight: 600,
             textWrap: {
               width: COMPACT_NODE.labelWidth,
-              height: 20,
+              height: 22,
               ellipsis: true,
             },
           },
           subLbl: {
             ...(node.attrs?.subLbl || {}),
-            text: '',
-            opacity: 0,
+            refX: null,
+            refY: null,
+            x: COMPACT_NODE.labelX,
+            y: 47,
+            textAnchor: 'start',
+            textVerticalAnchor: 'middle',
+            fill: 'var(--color-text-3)',
+            fontSize: 12,
+            fontWeight: 400,
+            opacity: 1,
+            textWrap: {
+              width: COMPACT_NODE.labelWidth,
+              height: 18,
+              ellipsis: true,
+            },
           },
         },
       };
     }),
-    edges: graphData.edges.map((edge) => {
-      const sourceCell = typeof edge.source === 'string' ? edge.source : (edge.source as any)?.cell;
-      const targetCell = typeof edge.target === 'string' ? edge.target : (edge.target as any)?.cell;
+    edges: Array.from(edgeGroups.values()).map((group) => {
+      const sourceCenter = resolveGraphNodeCenter(group.visualSourceNode);
+      const targetCenter = resolveGraphNodeCenter(group.visualTargetNode);
+      const vertical = sourceCenter.y !== targetCenter.y;
+      const sourceLayerIndex = resolveGraphLayerIndex(group.visualSourceNode);
+      const targetLayerIndex = resolveGraphLayerIndex(group.visualTargetNode);
+      const crossesLayer = Math.abs(targetLayerIndex - sourceLayerIndex) > 1;
+      const forwardRelationships = Array.from(group.forwardRelationships);
+      const reverseRelationships = Array.from(group.reverseRelationships);
+      const hasForward = group.hasForwardEdge;
+      const hasReverse = group.hasReverseEdge;
+      const marker = {
+        name: 'block',
+        width: 6,
+        height: 6,
+      };
+      const relationshipLines = [
+        ...(forwardRelationships.length
+          ? [`${forwardRelationships.join(' / ')} ${vertical ? '↓' : '→'}`]
+          : []),
+        ...(reverseRelationships.length
+          ? [`${reverseRelationships.join(' / ')} ${vertical ? '↑' : '←'}`]
+          : []),
+      ];
+      const sourcePoint = vertical
+        ? { x: sourceCenter.x, y: sourceCenter.y + COMPACT_NODE.height / 2 }
+        : { x: sourceCenter.x + COMPACT_NODE.width / 2, y: sourceCenter.y };
+      const targetPoint = vertical
+        ? { x: targetCenter.x, y: targetCenter.y - COMPACT_NODE.height / 2 }
+        : { x: targetCenter.x - COMPACT_NODE.width / 2, y: targetCenter.y };
       return {
-        ...edge,
-        source: {
-          cell: sourceCell,
-          anchor: { name: 'center', args: { dx: COMPACT_NODE.width / 2, dy: COMPACT_NODE.height / 2 } },
-          connectionPoint: { name: 'boundary' },
-        },
-        target: {
-          cell: targetCell,
-          anchor: { name: 'center', args: { dx: COMPACT_NODE.width / 2, dy: COMPACT_NODE.height / 2 } },
-          connectionPoint: { name: 'boundary' },
-        },
+        ...group.edge,
+        source: sourcePoint,
+        target: targetPoint,
+        ...(crossesLayer
+          ? {
+            vertices: buildCrossLayerVertices(sourceCenter, targetCenter, graphData.nodes),
+            connector: { name: 'rounded', args: { radius: 10 } },
+          }
+          : { vertices: undefined, connector: { name: 'normal' } }),
         attrs: {
-          ...edge.attrs,
+          ...group.edge.attrs,
           line: {
-            ...(edge.attrs?.line || {}),
-            stroke: 'rgba(159, 184, 213, 0.58)',
-            strokeWidth: 0.95,
+            ...(group.edge.attrs?.line || {}),
+            stroke: 'color-mix(in srgb, var(--color-text-3) 65%, var(--color-border-3))',
+            strokeOpacity: 0.78,
+            strokeWidth: 1.35,
+            sourceMarker: hasReverse ? marker : null,
+            targetMarker: hasForward ? marker : null,
             filter: 'none',
+            cursor: 'pointer',
           },
         },
-        labels: [],
+        data: {
+          sourceNodeId: group.visualSourceCell,
+          targetNodeId: group.visualTargetCell,
+        },
+        labels: relationshipLines.length
+          ? [buildRelationshipLabel(relationshipLines.join('\n'))]
+          : [],
       };
     }),
   };
@@ -290,9 +540,9 @@ function buildLayeredGraphData(params: {
   const layerSpacing: Record<LayerKey, number> = {
     root: 0,
     service: 320,
-    host: 260,
-    appService: 220,
-    infrastructure: 220,
+    host: 300,
+    appService: 300,
+    infrastructure: 300,
   };
 
   const resolveLaneX = (layer: LayerKey, index: number) => {
@@ -372,6 +622,60 @@ function mergeTopology(
   };
 }
 
+const LOCAL_REVIEW_INSTANCE_ID = '303';
+
+function withLocalRelationshipScenarios(
+  data: ApplicationResourceTopologyData,
+  instanceId: string
+): ApplicationResourceTopologyData {
+  if (process.env.NODE_ENV !== 'development' || instanceId !== LOCAL_REVIEW_INSTANCE_ID) {
+    return data;
+  }
+
+  const rootNode = resolveRootNode(data);
+  if (rootNode.model_id !== 'system') return data;
+  const serviceNode = data.nodes.find(
+    (node) => node.id !== rootNode.id && node.category === 'application'
+  );
+  const hostNode = data.nodes.find((node) => node.model_id === 'host');
+  if (!serviceNode) return data;
+
+  const scenarioLinks: ApplicationResourceLink[] = [
+    {
+      id: `local-multi-${rootNode.id}-${serviceNode.id}`,
+      source: rootNode.id,
+      target: serviceNode.id,
+      asst_id: 'depends_on',
+      model_asst_id: 'is_depended_on_by',
+    },
+    {
+      id: `local-reverse-${serviceNode.id}-${rootNode.id}`,
+      source: serviceNode.id,
+      target: rootNode.id,
+      asst_id: 'reports_to',
+      model_asst_id: 'receives_report_from',
+    },
+    ...(hostNode
+      ? [{
+        id: `local-cross-layer-${rootNode.id}-${hostNode.id}`,
+        source: rootNode.id,
+        target: hostNode.id,
+        asst_id: 'observes',
+        model_asst_id: 'is_observed_by',
+      }]
+      : []),
+  ];
+  const existingIds = new Set(data.links.map((link) => link.id));
+
+  return {
+    ...data,
+    links: [
+      ...data.links,
+      ...scenarioLinks.filter((link) => !existingIds.has(link.id)),
+    ],
+  };
+}
+
 export default function ApplicationResourceOverview({ modelId, instId }: Props) {
   const { t } = useTranslation();
   const {
@@ -390,10 +694,12 @@ export default function ApplicationResourceOverview({ modelId, instId }: Props) 
     y: 0,
     nodeId: '',
   });
-  const graphRef = useRef<Graph | null>(null);
+  const [relationsOpen, setRelationsOpen] = useState(false);
   const topologyCardRef = useRef<HTMLDivElement | null>(null);
+  const relationsButtonRef = useRef<HTMLAnchorElement | HTMLButtonElement | null>(null);
+  const graphViewportFrameRef = useRef<number | null>(null);
   const [graphInstance, setGraphInstance] = useState<Graph | null>(null);
-  const [graphViewportTransform, setGraphViewportTransform] = useState('matrix(1,0,0,1,0,0)');
+  const [graphViewport, setGraphViewport] = useState({ scaleY: 1, translateY: 0 });
   const initialDepth = modelId === 'system' ? 2 : 1;
 
   useEffect(() => {
@@ -422,16 +728,17 @@ export default function ApplicationResourceOverview({ modelId, instId }: Props) 
       setLoading(true);
       try {
         const topologyRes = await getApplicationResourceTopology(selectedTarget.model_id, selectedTarget.id, initialDepth);
+        const topologyData = withLocalRelationshipScenarios(topologyRes, selectedTarget.id);
         const resourceRes = await getApplicationResourceInstances(
           selectedTarget.model_id,
           selectedTarget.id,
-          (topologyRes?.nodes || []).map((node: ApplicationResourceNode) => node.id)
+          (topologyData?.nodes || []).map((node: ApplicationResourceNode) => node.id)
         );
         if (cancelled) return;
         setSelectedTarget((current) =>
-          current ? { ...current, name: topologyRes?.center?.name || current.name } : current
+          current ? { ...current, name: topologyData?.center?.name || current.name } : current
         );
-        setTopology(topologyRes);
+        setTopology(topologyData);
         setResources(resourceRes);
       } finally {
         if (!cancelled) setLoading(false);
@@ -477,10 +784,20 @@ export default function ApplicationResourceOverview({ modelId, instId }: Props) 
     if (!graph) return undefined;
 
     const syncViewport = () => {
-      const matrix = graph.matrix();
-      setGraphViewportTransform(
-        `matrix(${matrix.a}, ${matrix.b}, ${matrix.c}, ${matrix.d}, ${matrix.e}, ${matrix.f})`
-      );
+      if (graphViewportFrameRef.current !== null) return;
+      graphViewportFrameRef.current = window.requestAnimationFrame(() => {
+        graphViewportFrameRef.current = null;
+        const matrix = graph.matrix();
+        setGraphViewport((current) => {
+          if (
+            Math.abs(current.scaleY - matrix.d) < 0.001
+            && Math.abs(current.translateY - matrix.f) < 0.1
+          ) {
+            return current;
+          }
+          return { scaleY: matrix.d, translateY: matrix.f };
+        });
+      });
     };
 
     syncViewport();
@@ -488,10 +805,89 @@ export default function ApplicationResourceOverview({ modelId, instId }: Props) 
     graph.on('translate', syncViewport);
 
     return () => {
+      if (graphViewportFrameRef.current !== null) {
+        window.cancelAnimationFrame(graphViewportFrameRef.current);
+        graphViewportFrameRef.current = null;
+      }
       graph.off('scale', syncViewport);
       graph.off('translate', syncViewport);
     };
   }, [graphInstance]);
+
+  useEffect(() => {
+    const graph = graphInstance;
+    if (!graph) return undefined;
+
+    const hoveredNodeIds = new Set<string>();
+    const hoveredEdgeIds = new Set<string>();
+    const nodeAttrs = new Map(graphData.nodes.map((node) => [String(node.id), node.attrs]));
+    const edgeAttrs = new Map(graphData.edges.map((edge) => [String(edge.id), edge.attrs]));
+
+    const applyHoverState = () => {
+      graph.getNodes().forEach((node) => {
+        const active = hoveredNodeIds.has(String(node.id));
+        const original = nodeAttrs.get(String(node.id));
+        node.attr({
+          body: {
+            stroke: active ? 'var(--color-primary)' : original?.body?.stroke,
+            strokeWidth: active ? 1.8 : original?.body?.strokeWidth,
+            filter: active
+              ? 'drop-shadow(0 4px 8px var(--color-portal-card-shadow))'
+              : original?.body?.filter,
+          },
+          iconColumn: {
+            fill: active
+              ? 'color-mix(in srgb, var(--color-primary) 10%, var(--color-bg))'
+              : original?.iconColumn?.fill,
+          },
+        });
+      });
+
+      graph.getEdges().forEach((edge) => {
+        const data = edge.getData() as { sourceNodeId?: string; targetNodeId?: string } | undefined;
+        const active = hoveredEdgeIds.has(String(edge.id))
+          || hoveredNodeIds.has(String(data?.sourceNodeId || ''))
+          || hoveredNodeIds.has(String(data?.targetNodeId || ''));
+        const original = edgeAttrs.get(String(edge.id));
+        edge.attr({
+          line: {
+            stroke: active ? 'var(--color-primary)' : original?.line?.stroke,
+            strokeOpacity: active ? 0.95 : original?.line?.strokeOpacity,
+            strokeWidth: active ? 2 : original?.line?.strokeWidth,
+          },
+        });
+      });
+    };
+
+    const handleNodeEnter = ({ node }: { node: Node }) => {
+      hoveredNodeIds.add(String(node.id));
+      applyHoverState();
+    };
+    const handleNodeLeave = ({ node }: { node: Node }) => {
+      hoveredNodeIds.delete(String(node.id));
+      applyHoverState();
+    };
+    const handleEdgeEnter = ({ edge }: { edge: Edge }) => {
+      hoveredEdgeIds.add(String(edge.id));
+      applyHoverState();
+    };
+    const handleEdgeLeave = ({ edge }: { edge: Edge }) => {
+      hoveredEdgeIds.delete(String(edge.id));
+      applyHoverState();
+    };
+
+    graph.on('node:mouseenter', handleNodeEnter);
+    graph.on('node:mouseleave', handleNodeLeave);
+    graph.on('edge:mouseenter', handleEdgeEnter);
+    graph.on('edge:mouseleave', handleEdgeLeave);
+
+    return () => {
+      graph.off('node:mouseenter', handleNodeEnter);
+      graph.off('node:mouseleave', handleNodeLeave);
+      graph.off('edge:mouseenter', handleEdgeEnter);
+      graph.off('edge:mouseleave', handleEdgeLeave);
+    };
+  }, [graphData, graphInstance]);
 
   const handleReset = async () => {
     if (!selectedTarget) return;
@@ -499,11 +895,12 @@ export default function ApplicationResourceOverview({ modelId, instId }: Props) 
     setLoading(true);
     try {
       const res = await getApplicationResourceTopology(selectedTarget.model_id, selectedTarget.id, initialDepth);
-      setTopology(res);
+      const topologyData = withLocalRelationshipScenarios(res, selectedTarget.id);
+      setTopology(topologyData);
       const resourceRes = await getApplicationResourceInstances(
         selectedTarget.model_id,
         selectedTarget.id,
-        (res?.nodes || []).map((node: ApplicationResourceNode) => node.id)
+        (topologyData?.nodes || []).map((node: ApplicationResourceNode) => node.id)
       );
       setResources(resourceRes);
     } finally {
@@ -533,6 +930,35 @@ export default function ApplicationResourceOverview({ modelId, instId }: Props) 
     setNodeContextMenu((current) => ({ ...current, visible: false }));
   };
 
+  const linkColumns = useMemo(() => [
+    {
+      title: t('ApplicationResourceOverview.linkSource'),
+      dataIndex: 'source',
+      width: '39%',
+      render: (value: string) => {
+        const text = topologyNodeMap.get(value)?.name || value;
+        return <EllipsisWithTooltip text={text} className={styles.relationCell} />;
+      },
+    },
+    {
+      title: t('ApplicationResourceOverview.linkType'),
+      dataIndex: 'asst_id',
+      width: '22%',
+      render: (value: string) => (
+        <EllipsisWithTooltip text={value || '--'} className={styles.relationCell} />
+      ),
+    },
+    {
+      title: t('ApplicationResourceOverview.linkTarget'),
+      dataIndex: 'target',
+      width: '39%',
+      render: (value: string) => {
+        const text = topologyNodeMap.get(value)?.name || value;
+        return <EllipsisWithTooltip text={text} className={styles.relationCell} />;
+      },
+    },
+  ], [t, topologyNodeMap]);
+
   if (loading && !selectedTarget) {
     return <Spin spinning />;
   }
@@ -543,14 +969,14 @@ export default function ApplicationResourceOverview({ modelId, instId }: Props) 
 
   return (
     <Spin spinning={loading}>
-      <Space direction="vertical" style={{ width: '100%', paddingTop: 6 }} size={16}>
+      <Space direction="vertical" className={styles.overview} size={16}>
         <Radio.Group
+          className={styles.viewSwitch}
           value={viewMode}
           onChange={(event) => setViewMode(event.target.value)}
           size="small"
           optionType="button"
           buttonStyle="solid"
-          style={{ alignSelf: 'flex-start' }}
           options={[
             { label: t('ApplicationResourceOverview.topologyTab'), value: 'topology' },
             { label: t('ApplicationResourceOverview.resourcesTab'), value: 'resources' },
@@ -558,230 +984,218 @@ export default function ApplicationResourceOverview({ modelId, instId }: Props) 
         />
 
         {viewMode === 'topology' && (
-          <Space direction="vertical" style={{ width: '100%' }} size={16}>
+          <Space direction="vertical" className={styles.topologyStack} size={16}>
             {topology?.truncated && (
               <Alert type="warning" showIcon message={t('ApplicationResourceOverview.truncated')} />
             )}
 
             <Card
               size="small"
-              bodyStyle={{ padding: 12 }}
+              className={styles.canvasCard}
+              styles={{ body: { padding: 0 } }}
             >
-              {!topology?.nodes?.length ? (
-                <Empty description={t('ApplicationResourceOverview.emptyLinks')} />
-              ) : (
+              <div className={styles.canvasShell}>
                 <div
                   ref={topologyCardRef}
-                  style={{
-                    position: 'relative',
-                    height: 900,
-                    border: '1px solid var(--color-border)',
-                    borderRadius: 10,
-                    overflow: 'hidden',
-                  }}
+                  className={styles.graphPane}
                 >
-                  <div
-                    style={{
-                      position: 'absolute',
-                      inset: 0,
-                      zIndex: 6,
-                      pointerEvents: 'none',
-                      transformOrigin: '0 0',
-                      transform: graphViewportTransform,
-                    }}
-                  >
-                    {Object.entries(LAYER_META).map(([key, meta]) => (
-                      <div
-                        key={key}
-                        style={{
-                          position: 'absolute',
-                          left: 0,
-                          right: 0,
-                          top: meta.y - (key === 'root' ? 32 : 68),
-                          height: key === 'root' ? 64 : 136,
-                          borderTop: '1px dashed rgba(191, 204, 220, 0.95)',
-                          background:
-                            key === 'root'
-                              ? 'linear-gradient(90deg, rgba(21,90,239,0.028) 0%, rgba(21,90,239,0.004) 14%, rgba(255,255,255,0) 35%)'
-                              : key === 'service'
-                                ? 'linear-gradient(90deg, rgba(21,90,239,0.04) 0%, rgba(21,90,239,0.008) 14%, rgba(255,255,255,0) 35%)'
-                                : key === 'host'
-                                  ? 'linear-gradient(90deg, rgba(21,90,239,0.03) 0%, rgba(21,90,239,0.006) 14%, rgba(255,255,255,0) 35%)'
-                                  : key === 'appService'
-                                    ? 'linear-gradient(90deg, rgba(21,90,239,0.026) 0%, rgba(21,90,239,0.005) 14%, rgba(255,255,255,0) 35%)'
-                                    : 'linear-gradient(90deg, rgba(21,90,239,0.022) 0%, rgba(21,90,239,0.004) 14%, rgba(255,255,255,0) 35%)',
-                        }}
-                      />
-                    ))}
-                    <div
-                      style={{
-                        position: 'absolute',
-                        left: 18,
-                        top: 0,
-                        width: 94,
-                      }}
-                    >
-                      {(Object.keys(LAYER_META) as LayerKey[]).map((key) => (
-                        <div
-                          key={key}
-                          style={{
-                            position: 'absolute',
-                            top: LAYER_META[key].y,
-                            left: 0,
-                            transform: 'translateY(-50%)',
-                            padding: '8px 10px 6px',
-                            background: 'rgba(255, 255, 255, 0.72)',
-                            borderLeft: '3px solid #94baf7',
-                            boxShadow: '0 2px 10px rgba(64, 96, 138, 0.06)',
+                  {!topology?.nodes?.length ? (
+                    <div className={styles.graphEmpty}>
+                      <Empty description={t('ApplicationResourceOverview.emptyLinks')} />
+                    </div>
+                  ) : (
+                    <>
+                      <div className={styles.layerBands}>
+                        {(Object.keys(LAYER_META) as LayerKey[]).map((key, index, keys) => {
+                          const center = graphViewport.translateY
+                            + LAYER_META[key].y * graphViewport.scaleY;
+                          const previousCenter = index > 0
+                            ? graphViewport.translateY
+                              + LAYER_META[keys[index - 1]].y * graphViewport.scaleY
+                            : 0;
+                          const nextCenter = index < keys.length - 1
+                            ? graphViewport.translateY
+                              + LAYER_META[keys[index + 1]].y * graphViewport.scaleY
+                            : 0;
+                          const top = index === 0 ? 0 : (previousCenter + center) / 2;
+                          const isLast = index === keys.length - 1;
+                          return (
+                            <div
+                              key={key}
+                              className={styles.layerBand}
+                              style={isLast
+                                ? { top, bottom: 0 }
+                                : { top, height: (center + nextCenter) / 2 - top }}
+                            />
+                          );
+                        })}
+                      </div>
+                      <div className={styles.graphCanvas}>
+                        <NetworkTopologyX6Canvas
+                          data={graphData}
+                          centerId={topology.center.id}
+                          nodeMovable={false}
+                          minimap={{ width: 160, height: 96 }}
+                          fitViewKey={`app-topology-${graphData.nodes.length}-${graphData.edges.length}`}
+                          fitViewOptions={{ padding: 48, maxScale: 1 }}
+                          onGraphReady={setGraphInstance}
+                          onNodeClick={closeNodeContextMenu}
+                          onNodeContextMenu={(nodeId, event) => {
+                            const node = topologyNodeMap.get(nodeId);
+                            if (!node) return;
+                            const containerRect = topologyCardRef.current?.getBoundingClientRect();
+                            const relativeX = containerRect ? event.clientX - containerRect.left : event.clientX;
+                            const relativeY = containerRect ? event.clientY - containerRect.top : event.clientY;
+                            setNodeContextMenu({
+                              visible: true,
+                              x: Math.max(12, Math.min(relativeX, (containerRect?.width || 0) - 176)),
+                              y: Math.max(12, Math.min(relativeY, (containerRect?.height || 0) - 164)),
+                              nodeId,
+                            });
                           }}
-                        >
+                          onBlankClick={closeNodeContextMenu}
+                          onBlankContextMenu={closeNodeContextMenu}
+                          toolbar={{
+                            align: 'split',
+                            labels: {
+                              zoomOut: t('Model.networkTopoZoomOut'),
+                              zoomIn: t('Model.networkTopoZoomIn'),
+                              fitView: t('Model.networkTopoFitView'),
+                              exportImage: t('Model.exportImage'),
+                              refresh: t('ApplicationResourceOverview.refresh'),
+                            },
+                            prefix: (
+                              <div className={styles.toolbarActions}>
+                                {!relationsOpen && (
+                                  <Button
+                                    ref={relationsButtonRef}
+                                    size="small"
+                                    icon={<ShareAltOutlined />}
+                                    aria-expanded={false}
+                                    aria-controls="application-topology-relations"
+                                    disabled={!topology.links.length}
+                                    onClick={() => {
+                                      closeNodeContextMenu();
+                                      setRelationsOpen(true);
+                                    }}
+                                  >
+                                    {t('ApplicationResourceOverview.linksTitle')}
+                                    <span className={styles.relationCount}>{topology.links.length}</span>
+                                  </Button>
+                                )}
+                              </div>
+                            ),
+                            onRefresh: handleReset,
+                            refreshLoading: loading,
+                          }}
+                        />
+                      </div>
+                      <div className={styles.layerLabels}>
+                        {(Object.keys(LAYER_META) as LayerKey[]).map((key) => (
                           <div
+                            key={key}
+                            className={styles.layerLabel}
                             style={{
-                              fontSize: 12,
-                              fontWeight: 600,
-                              lineHeight: 1.3,
-                              color: '#47648a',
-                              marginBottom: 2,
+                              top: graphViewport.translateY
+                                + LAYER_META[key].y * graphViewport.scaleY,
                             }}
                           >
-                            {getLayerTitle(key, t)}
+                            <span>{getLayerTitle(key, t)}</span>
                           </div>
-                        </div>
-                      ))}
-                  </div>
-                  </div>
-                  <NetworkTopologyX6Canvas
-                    data={graphData}
-                    centerId={topology.center.id}
-                    graphRef={graphRef}
-                    nodeMovable={false}
-                    fitViewKey={`app-topology-${graphData.nodes.length}-${graphData.edges.length}`}
-                    onGraphReady={setGraphInstance}
-                    onNodeClick={() => {
-                      closeNodeContextMenu();
-                    }}
-                    onNodeContextMenu={(nodeId, event) => {
-                      const node = topologyNodeMap.get(nodeId);
-                      if (!node) return;
-                      const containerRect = topologyCardRef.current?.getBoundingClientRect();
-                      const relativeX = containerRect ? event.clientX - containerRect.left : event.clientX;
-                      const relativeY = containerRect ? event.clientY - containerRect.top : event.clientY;
-                      setNodeContextMenu({
-                        visible: true,
-                        x: Math.max(12, Math.min(relativeX, (containerRect?.width || 0) - 176)),
-                        y: Math.max(12, Math.min(relativeY, (containerRect?.height || 0) - 164)),
-                        nodeId,
-                      });
-                    }}
-                    onBlankClick={closeNodeContextMenu}
-                    onBlankContextMenu={closeNodeContextMenu}
-                    toolbar={{
-                      align: 'split',
-                      labels: {
-                        zoomOut: t('Model.networkTopoZoomOut'),
-                        zoomIn: t('Model.networkTopoZoomIn'),
-                        fitView: t('Model.networkTopoFitView'),
-                        exportImage: t('Model.exportImage'),
-                        refresh: t('ApplicationResourceOverview.reset'),
-                      },
-                      prefix: (
-                        <Space wrap>
-                          <Button size="small" icon={<ReloadOutlined />} onClick={handleReset}>
-                            {t('ApplicationResourceOverview.reset')}
-                          </Button>
-                        </Space>
-                      ),
-                      onRefresh: handleReset,
-                      refreshLoading: loading,
-                    }}
-                  />
+                        ))}
+                      </div>
+                    </>
+                  )}
+
                   {nodeContextMenu.visible && topologyNodeMap.get(nodeContextMenu.nodeId) && (
                     <div
-                      style={{
-                        position: 'absolute',
-                        left: nodeContextMenu.x,
-                        top: nodeContextMenu.y,
-                        zIndex: 40,
-                        minWidth: 156,
-                        padding: 8,
-                        borderRadius: 10,
-                        border: '1px solid rgba(214, 226, 240, 0.95)',
-                        background: 'rgba(255, 255, 255, 0.98)',
-                        boxShadow: '0 14px 30px rgba(31, 54, 88, 0.16)',
-                        backdropFilter: 'blur(8px)',
-                      }}
+                      className={styles.contextMenu}
+                      style={{ left: nodeContextMenu.x, top: nodeContextMenu.y }}
                     >
-                      <div
-                        style={{
-                          marginBottom: 8,
-                          paddingBottom: 8,
-                          borderBottom: '1px solid rgba(228, 235, 244, 0.95)',
-                          fontSize: 12,
-                          fontWeight: 600,
-                          color: '#4b6486',
-                        }}
-                      >
+                      <div className={styles.contextMenuTitle}>
                         {topologyNodeMap.get(nodeContextMenu.nodeId)?.name}
                       </div>
-                      <Space direction="vertical" size={6} style={{ width: '100%' }}>
-                        <Button
-                          block
-                          size="small"
-                          onClick={() => handleExpandNode(topologyNodeMap.get(nodeContextMenu.nodeId) as ApplicationResourceNode, 1)}
-                        >
-                          向下展开 1 层
-                        </Button>
-                        <Button
-                          block
-                          size="small"
-                          onClick={() => handleExpandNode(topologyNodeMap.get(nodeContextMenu.nodeId) as ApplicationResourceNode, 2)}
-                        >
-                          向下展开 2 层
-                        </Button>
-                        <Button
-                          block
-                          size="small"
-                          onClick={() => handleExpandNode(topologyNodeMap.get(nodeContextMenu.nodeId) as ApplicationResourceNode, 3)}
-                        >
-                          向下展开 3 层
-                        </Button>
+                      <Space
+                        direction="vertical"
+                        size={2}
+                        className={styles.contextMenuActions}
+                      >
+                        {[1, 2, 3].map((depth) => (
+                          <Button
+                            key={depth}
+                            block
+                            size="small"
+                            onClick={() => handleExpandNode(
+                              topologyNodeMap.get(nodeContextMenu.nodeId) as ApplicationResourceNode,
+                              depth
+                            )}
+                          >
+                            {t(
+                              depth === 1
+                                ? 'ApplicationResourceOverview.expandOne'
+                                : depth === 2
+                                  ? 'ApplicationResourceOverview.expandTwo'
+                                  : 'ApplicationResourceOverview.expandThree'
+                            )}
+                          </Button>
+                        ))}
                       </Space>
                     </div>
                   )}
                 </div>
-              )}
-            </Card>
 
-            <Card size="small" title={t('ApplicationResourceOverview.linksTitle')}>
-              {!topology?.links?.length ? (
-                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('ApplicationResourceOverview.emptyLinks')} />
-              ) : (
-                <Table
-                  rowKey="id"
-                  size="small"
-                  pagination={false}
-                  dataSource={topology.links}
-                  columns={[
-                    {
-                      title: t('ApplicationResourceOverview.linkSource'),
-                      dataIndex: 'source',
-                      render: (value: string) => topologyNodeMap.get(value)?.name || value,
-                    },
-                    { title: t('ApplicationResourceOverview.linkType'), dataIndex: 'asst_id' },
-                    {
-                      title: t('ApplicationResourceOverview.linkTarget'),
-                      dataIndex: 'target',
-                      render: (value: string) => topologyNodeMap.get(value)?.name || value,
-                    },
-                  ]}
-                />
-              )}
+                <aside
+                  id="application-topology-relations"
+                  aria-label={t('ApplicationResourceOverview.linksTitle')}
+                  aria-hidden={!relationsOpen}
+                  className={`${styles.relationsPanel} ${relationsOpen ? styles.relationsPanelOpen : ''}`}
+                >
+                  <div className={styles.relationsPanelInner}>
+                    <div className={styles.relationsHeader}>
+                      <div className={styles.relationsTitle}>
+                        <ShareAltOutlined aria-hidden="true" />
+                        <span>{t('ApplicationResourceOverview.linksTitle')}</span>
+                        <span className={styles.relationCount}>{topology?.links?.length || 0}</span>
+                      </div>
+                      <Button
+                        type="text"
+                        className={styles.relationsClose}
+                        aria-label={t('common.close')}
+                        icon={<DoubleRightOutlined />}
+                        tabIndex={relationsOpen ? 0 : -1}
+                        onClick={() => {
+                          setRelationsOpen(false);
+                          window.requestAnimationFrame(() => relationsButtonRef.current?.focus());
+                        }}
+                      />
+                    </div>
+                    <div className={styles.relationsTable}>
+                      {!topology?.links?.length ? (
+                        <Empty
+                          image={Empty.PRESENTED_IMAGE_SIMPLE}
+                          description={t('ApplicationResourceOverview.emptyLinks')}
+                        />
+                      ) : (
+                        <Table
+                          rowKey="id"
+                          size="small"
+                          pagination={false}
+                          tableLayout="fixed"
+                          scroll={{ y: 'calc(100vh - 308px)' }}
+                          dataSource={topology.links}
+                          columns={linkColumns}
+                        />
+                      )}
+                    </div>
+                  </div>
+                </aside>
+              </div>
             </Card>
           </Space>
         )}
 
         {viewMode === 'resources' && (
-          <Space direction="vertical" style={{ width: '100%' }} size={16}>
+          <Space direction="vertical" className={styles.resourceStack} size={16}>
             <Flex justify="end">
               <Button
                 icon={<DownloadOutlined />}
