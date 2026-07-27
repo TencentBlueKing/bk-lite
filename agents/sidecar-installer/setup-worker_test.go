@@ -707,6 +707,26 @@ func TestClassifyInstallErrorMarksRetainedBackupForManualRecovery(t *testing.T) 
 	}
 }
 
+func TestWindowsInstallFenceRejectsOlderOrDuplicateRemoteExecution(t *testing.T) {
+	installDir := filepath.Join(t.TempDir(), "fusion-collectors")
+	first := &Config{RemoteTaskNodeID: 31, RemoteAttempt: 2, RemoteExecutionID: "first"}
+	if err := claimWindowsInstallFence(first, installDir); err != nil {
+		t.Fatalf("claim first fence: %v", err)
+	}
+	newer := &Config{RemoteTaskNodeID: 32, RemoteAttempt: 1, RemoteExecutionID: "newer"}
+	if err := claimWindowsInstallFence(newer, installDir); err != nil {
+		t.Fatalf("claim newer fence: %v", err)
+	}
+	for _, stale := range []*Config{
+		{RemoteTaskNodeID: 31, RemoteAttempt: 3, RemoteExecutionID: "older-node"},
+		{RemoteTaskNodeID: 32, RemoteAttempt: 1, RemoteExecutionID: "duplicate"},
+	} {
+		if err := claimWindowsInstallFence(stale, installDir); err == nil {
+			t.Fatalf("expected stale fence rejection for %#v", stale)
+		}
+	}
+}
+
 func TestEmitEventWithOptionsPreservesLegacyAndNewFields(t *testing.T) {
 	output := captureStdout(t, func() {
 		emitEventWithOptions("download_package", "failed", "Download failed", nil, 0, 0, "Download failed: get object failed: nats: object not found", &EventOptions{

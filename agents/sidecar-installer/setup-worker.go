@@ -43,6 +43,9 @@ type Config struct {
 	OS                  string        `json:"os"`
 	InstallDir          string        `json:"install_dir"`
 	SkipTLSVerification bool          `json:"-"`
+	RemoteTaskNodeID    int64         `json:"-"`
+	RemoteAttempt       int           `json:"-"`
+	RemoteExecutionID   string        `json:"-"`
 	Package             PackageConfig `json:"package"`
 	Storage             StorageConfig `json:"storage"`
 }
@@ -190,14 +193,16 @@ func (reporter *InstallerEventReporter) publish(line string) {
 var installerEventReporter, _ = NewInstallerEventReporter(os.Stdout, "", "")
 
 var (
-	configURL       = flag.String("url", "", "Configuration URL")
-	configURLFile   = flag.String("url-file", "", "Read the configuration URL from a file")
-	installDir      = flag.String("install-dir", "", "Installation directory")
-	skipTLS         = flag.Bool("skip-tls", false, "Skip TLS certificate verification")
-	requireHTTPS    = flag.Bool("require-https", false, "Require HTTPS for configuration and server URLs")
-	fetchOnly       = flag.Bool("fetch-only", false, "Only fetch and display config")
-	progressSubject = flag.String("progress-subject", "", "NATS subject for live installation events")
-	executionID     = flag.String("execution-id", "", "Installation execution ID")
+	configURL        = flag.String("url", "", "Configuration URL")
+	configURLFile    = flag.String("url-file", "", "Read the configuration URL from a file")
+	installDir       = flag.String("install-dir", "", "Installation directory")
+	skipTLS          = flag.Bool("skip-tls", false, "Skip TLS certificate verification")
+	requireHTTPS     = flag.Bool("require-https", false, "Require HTTPS for configuration and server URLs")
+	fetchOnly        = flag.Bool("fetch-only", false, "Only fetch and display config")
+	progressSubject  = flag.String("progress-subject", "", "NATS subject for live installation events")
+	executionID      = flag.String("execution-id", "", "Installation execution ID")
+	taskNodeID       = flag.Int64("task-node-id", 0, "Controller task node ID used for remote execution fencing")
+	executionAttempt = flag.Int("attempt", 0, "Controller task attempt used for remote execution fencing")
 )
 
 func main() {
@@ -298,6 +303,9 @@ func run(client *http.Client) {
 	}
 	emitEvent("fetch_session", "success", "Installer session fetched", intPtr(100), 0, 0, "")
 	cfg.SkipTLSVerification = *skipTLS
+	cfg.RemoteTaskNodeID = *taskNodeID
+	cfg.RemoteAttempt = *executionAttempt
+	cfg.RemoteExecutionID = *executionID
 	log("      Node: %s", cfg.NodeID)
 
 	if *installDir != "" {
@@ -1248,6 +1256,54 @@ func recoverInterruptedWindowsInstallation(
 	return fmt.Errorf("recovered previous Windows installation after an interrupted activation; retry installation")
 }
 
+type windowsInstallFence struct {
+	TaskNodeID  int64  `json:"task_node_id"`
+	Attempt     int    `json:"attempt"`
+	ExecutionID string `json:"execution_id"`
+}
+
+func claimWindowsInstallFence(cfg *Config, installDir string) error {
+	if cfg.RemoteTaskNodeID == 0 && cfg.RemoteAttempt == 0 && cfg.RemoteExecutionID == "" {
+		return nil
+	}
+	if cfg.RemoteTaskNodeID <= 0 || cfg.RemoteAttempt <= 0 || cfg.RemoteExecutionID == "" {
+		return fmt.Errorf("incomplete Windows remote installation fence")
+	}
+	current := windowsInstallFence{
+		TaskNodeID:  cfg.RemoteTaskNodeID,
+		Attempt:     cfg.RemoteAttempt,
+		ExecutionID: cfg.RemoteExecutionID,
+	}
+	fencePath := installDir + ".bklite-install.fence"
+	content, err := os.ReadFile(fencePath)
+	if err == nil {
+		var existing windowsInstallFence
+		if unmarshalErr := json.Unmarshal(content, &existing); unmarshalErr != nil {
+			return fmt.Errorf("read Windows installation fence: %w", unmarshalErr)
+		}
+		if current.TaskNodeID < existing.TaskNodeID ||
+			(current.TaskNodeID == existing.TaskNodeID && current.Attempt <= existing.Attempt) {
+			return fmt.Errorf(
+				"stale Windows remote installation rejected: task node %d attempt %d is not newer than %d attempt %d",
+				current.TaskNodeID,
+				current.Attempt,
+				existing.TaskNodeID,
+				existing.Attempt,
+			)
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("read Windows installation fence: %w", err)
+	}
+	encoded, err := json.Marshal(current)
+	if err != nil {
+		return fmt.Errorf("encode Windows installation fence: %w", err)
+	}
+	if err := os.WriteFile(fencePath, append(encoded, '\n'), 0600); err != nil {
+		return fmt.Errorf("write Windows installation fence: %w", err)
+	}
+	return nil
+}
+
 func installWindowsPackage(cfg *Config, zipPath string, controller windowsServiceController) error {
 	installDir := filepath.Clean(cfg.InstallDir)
 	stagingDir := installDir + ".bklite-staging"
@@ -1260,6 +1316,9 @@ func installWindowsPackage(cfg *Config, zipPath string, controller windowsServic
 		return fmt.Errorf("acquire Windows installation lock: %w", err)
 	}
 	defer releaseInstallLock()
+	if err := claimWindowsInstallFence(cfg, installDir); err != nil {
+		return err
+	}
 	if _, err := os.Stat(backupDir); err == nil {
 		committedMarker := filepath.Join(backupDir, windowsActivationCommittedMarker)
 		pendingMarker := filepath.Join(backupDir, windowsActivationPendingMarker)

@@ -90,6 +90,9 @@ class InstallerService:
         node_name,
         install_mode=MANUAL_INSTALL_MODE,
         cpu_architecture: str = "",
+        task_node_id: int | None = None,
+        execution_id: str = "",
+        execution_attempt: int | None = None,
     ):
         """
         获取安装命令（生成包含临时 token 的 curl 命令）
@@ -129,6 +132,9 @@ class InstallerService:
             node_name=node_name,
             cpu_architecture=normalized_arch,
             install_mode=install_mode,
+            task_node_id=task_node_id,
+            execution_id=execution_id,
+            execution_attempt=execution_attempt,
         )
 
         # 根据操作系统生成不同的安装命令

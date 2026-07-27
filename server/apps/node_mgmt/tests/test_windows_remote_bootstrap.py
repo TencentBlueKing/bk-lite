@@ -2,6 +2,7 @@ from queue import Queue
 
 import pytest
 import yaml
+from django.core.cache import cache
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.crypto.aes_crypto import AESCryptor
@@ -11,6 +12,7 @@ from apps.node_mgmt.management.commands.installer_init import Command as Install
 from apps.node_mgmt.models import ControllerTask, ControllerTaskNode, Node, PackageVersion
 from apps.node_mgmt.models.cloud_region import CloudRegion
 from apps.node_mgmt.serializers.installer import InstallNodeSerializer
+from apps.node_mgmt.services.install_token import InstallTokenService
 from apps.node_mgmt.services.windows_remote_bootstrap import (
     AnsibleExecutorResolver,
     WindowsBootstrapTarget,
@@ -109,9 +111,13 @@ def test_windows_remote_bootstrap_stages_and_runs_native_worker():
         "{{ bklite_session_file }}",
         "--require-https",
     ]
-    assert commands[7]["ansible.windows.win_command"]["argv"][-4:] == [
+    assert commands[7]["ansible.windows.win_command"]["argv"][-8:] == [
         "--execution-id",
         "{{ bklite_execution_id }}",
+        "--task-node-id",
+        "{{ bklite_task_node_id }}",
+        "--attempt",
+        "{{ bklite_execution_attempt }}",
         "--progress-subject",
         "{{ bklite_progress_subject }}",
     ]
@@ -393,6 +399,7 @@ def test_install_task_routes_windows_through_winrm_bootstrap(monkeypatch):
     )
     calls = []
     subscriptions = []
+    command_calls = []
 
     class FakeBootstrapService:
         def run(self, **kwargs):
@@ -406,11 +413,11 @@ def test_install_task_routes_windows_through_winrm_bootstrap(monkeypatch):
         return Queue(), lambda: None
 
     monkeypatch.setattr(installer_tasks, "subscribe_lines_sync", fake_subscribe)
-    monkeypatch.setattr(
-        installer_tasks.InstallerService,
-        "get_install_command",
-        lambda *args, **kwargs: "https://server.example/session/secret",
-    )
+    def fake_install_command(*args, **kwargs):
+        command_calls.append(kwargs)
+        return "https://server.example/session/secret"
+
+    monkeypatch.setattr(installer_tasks.InstallerService, "get_install_command", fake_install_command)
     monkeypatch.setattr(installer_tasks, "_dispatch_or_finalize_controller_task", lambda task_id: None)
     monkeypatch.setattr(
         installer_tasks,
@@ -426,6 +433,9 @@ def test_install_task_routes_windows_through_winrm_bootstrap(monkeypatch):
     assert calls[0]["session_url"].endswith("/secret")
     assert calls[0]["progress_subject"] == subscriptions[0]
     assert subscriptions[0] == f"installer.progress.{calls[0]['execution_id']}"
+    assert command_calls[0]["task_node_id"] == task_node.id
+    assert command_calls[0]["execution_id"] == calls[0]["execution_id"]
+    assert command_calls[0]["execution_attempt"] == 1
     assert calls[0]["target"] == WindowsBootstrapTarget(
         host="10.0.0.8",
         port=5986,
@@ -444,6 +454,55 @@ def test_install_task_routes_windows_through_winrm_bootstrap(monkeypatch):
     )
     task_node.refresh_from_db()
     assert len(task_node.result["steps"]) == step_count
+
+
+@pytest.mark.django_db
+def test_windows_remote_session_token_rejects_revoked_execution_claim(settings):
+    settings.CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "windows-remote-session-fence-test",
+        }
+    }
+    cache.clear()
+    region = CloudRegion.objects.create(name="session-fence-region")
+    task = ControllerTask.objects.create(cloud_region=region, type="install", status="running")
+    execution_id = "0123456789abcdef0123456789abcdef"
+    task_node = ControllerTaskNode.objects.create(
+        task=task,
+        ip="10.0.0.8",
+        node_name="windows-session-fence",
+        os=NodeConstants.WINDOWS_OS,
+        organizations=[1],
+        port=5986,
+        status="running",
+        result={
+            "installer_execution_id": execution_id,
+            "execution_attempt": 1,
+            "execution_phase": "bootstrap_running",
+        },
+    )
+    token = InstallTokenService.generate_install_token(
+        node_id="install-node-id",
+        ip=task_node.ip,
+        user="tester",
+        os=NodeConstants.WINDOWS_OS,
+        package_id="1",
+        cloud_region_id=str(region.id),
+        organizations=[1],
+        node_name=task_node.node_name,
+        install_mode="auto",
+        task_node_id=task_node.id,
+        execution_id=execution_id,
+        execution_attempt=1,
+    )
+
+    assert InstallTokenService.validate_and_get_token_data(token)["execution_id"] == execution_id
+
+    task_node.result = {"execution_attempt": 2, "execution_phase": "bootstrap_running"}
+    task_node.save(update_fields=["result"])
+    with pytest.raises(BaseAppException, match="no longer active"):
+        InstallTokenService.validate_and_get_token_data(token)
 
 
 @pytest.mark.django_db
@@ -654,6 +713,40 @@ def test_controller_dispatch_failure_releases_node_and_does_not_start_without_ti
     assert task_node.password == ""
     assert task_node.result["overall_status"] == "error"
     assert task_node.result["steps"][-1]["action"] == "dispatch"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_controller_dispatch_failure_converges_large_batch_without_recursion(monkeypatch):
+    region = CloudRegion.objects.create(name="dispatch-large-failure-region")
+    task = ControllerTask.objects.create(cloud_region=region, type="install", status="waiting")
+    for index in range(1100):
+        ControllerTaskNode.objects.create(
+            task=task,
+            ip=f"10.20.{index // 250}.{index % 250 + 1}",
+            node_name=f"windows-dispatch-failure-{index}",
+            os=NodeConstants.WINDOWS_OS,
+            organizations=[1],
+            port=5986,
+            password="encrypted-password",
+            status="waiting",
+            result={"execution_attempt": 1},
+        )
+    timeout_calls = []
+    monkeypatch.setattr(installer_tasks.install_controller_for_node, "delay", lambda *args: pytest.fail("must not run"))
+
+    def fail_timeout(*args, **kwargs):
+        timeout_calls.append((args, kwargs))
+        raise RuntimeError("broker unavailable")
+
+    monkeypatch.setattr(installer_tasks.timeout_controller_install_task, "apply_async", fail_timeout)
+
+    installer_tasks._dispatch_or_finalize_controller_task(task.id)
+
+    task.refresh_from_db()
+    nodes = ControllerTaskNode.objects.filter(task=task)
+    assert len(timeout_calls) == 1
+    assert task.status == "finished"
+    assert nodes.filter(status="error", password="").count() == 1100
 
 
 @pytest.mark.django_db
