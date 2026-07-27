@@ -16,6 +16,7 @@
       "visible_in": "edit",
       "editable": false,
       "description": "监控的目标网址链接，以检测其可用性和性能。",
+      "guide_short": "拨测目标地址（不含 query）；IPv6 需用方括号，如 https://[2001:db8::1]/。Query 请在「请求参数」中填写。",
       "widget_props": {
         "placeholder": "https://example.com"
       },
@@ -31,6 +32,7 @@
       "required": true,
       "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
+      "guide_short": "Telegraf inputs.http_response 采集周期，单位秒，默认 60；过短会高频访问目标站点，建议 ≥30。",
       "widget_props": {
         "min": 1,
         "precision": 0,
@@ -52,16 +54,159 @@
     },
     {
       "name": "insecure_skip_verify",
+      "advanced": true,
+      "section": "tls",
       "label": "跳过证书校验",
       "type": "switch",
       "required": false,
       "default_value": false,
-      "description": "HTTPS 场景下是否跳过服务端证书校验",
+      "guide_short": "仅 HTTPS 自签或证书链不完整时开启；生产环境建议关闭，避免中间人风险被掩盖。",
       "widget_props": {},
       "transform_on_edit": {
         "origin_path": "child.content.config.insecure_skip_verify"
       },
       "label_en": "Skip Certificate Verification"
+    },
+    {
+      "name": "request_method",
+      "label": "请求方式",
+      "type": "select",
+      "required": true,
+      "default_value": "GET",
+      "transform_on_edit": {"origin_path": "child.content.config.method", "to_api": {}},
+      "options": [{"label":"GET","value":"GET"},{"label":"HEAD","value":"HEAD"},{"label":"POST","value":"POST"}],
+      "description": "仅支持不会修改目标资源的 GET、HEAD 与 POST 拨测。",
+      "guide_short": "仅支持 GET、HEAD、POST。POST 才允许填写请求体；HEAD 只取响应头，适合探活且流量更小。",
+      "label_en": "Request Method"
+    },
+    {
+      "name": "request_body",
+      "advanced": true,
+      "section": "request",
+      "label": "请求体",
+      "type": "textarea",
+      "required": false,
+      "dependency": {"field":"request_method","value":"POST"},
+      "guide_short": "仅 POST 可用。填写原始文本（JSON/XML/表单等），并通过 Content-Type 请求头声明格式，例如 application/json。",
+      "transform_on_edit": {"origin_path": "child.content.config.body", "to_api": {}},
+      "label_en": "Request Body"
+    },
+    {
+      "name": "request_params",
+      "advanced": true,
+      "section": "request",
+      "label": "请求参数",
+      "type": "key_value_list",
+      "required": false,
+      "guide_short": "URL 本身不要带 query。参数按填写顺序 URL 编码后追加；同名参数可重复。空行会自动忽略。",
+      "label_en": "Query Parameters"
+    },
+    {
+      "name": "request_headers",
+      "advanced": true,
+      "section": "request",
+      "label": "请求头",
+      "type": "key_value_list",
+      "required": false,
+      "guide_short": "仅填非敏感头，如 Content-Type、Accept。不要手写 Authorization；Basic/Bearer 请用下方认证配置，凭据走环境变量下发。",
+      "transform_on_edit": {"origin_path": "child.content.config.headers", "to_form": {"type": "key_value_list"}, "to_api": {"type": "key_value_map"}},
+      "label_en": "Request Headers"
+    },
+    {
+      "name": "auth_type",
+      "advanced": true,
+      "section": "auth",
+      "label": "认证方式",
+      "type": "select",
+      "required": true,
+      "default_value": "none",
+      "options": [{"label":"无认证","value":"none"},{"label":"Basic Auth","value":"basic"},{"label":"Bearer Token","value":"bearer"}],
+      "guide_short": "无认证 / Basic Auth / Bearer Token。凭据写入 env_config，不会进入 Telegraf 配置正文。",
+      "label_en": "Authentication"
+    },
+    {
+      "name": "username",
+      "advanced": true,
+      "section": "auth",
+      "label": "用户名",
+      "type": "input",
+      "required": false,
+      "dependency": {"field":"auth_type","value":"basic"},
+      "guide_short": "Basic Auth 用户名；选择 Basic Auth 时必填。",
+      "transform_on_edit": {"origin_path": "child.content.config.username", "to_api": {}},
+      "label_en": "Username"
+    },
+    {
+      "name": "ENV_PASSWORD",
+      "advanced": true,
+      "section": "auth",
+      "label": "密码",
+      "type": "password",
+      "required": false,
+      "dependency": {"field":"auth_type","value":"basic"},
+      "encrypted": true,
+      "guide_short": "Basic Auth 密码；含特殊字符无需转义。通过环境变量注入，不要写进请求头。",
+      "transform_on_edit": {"origin_path": "child.env_config.PASSWORD__{{config_id}}", "to_api": {}},
+      "label_en": "Password"
+    },
+    {
+      "name": "ENV_BEARER_TOKEN",
+      "advanced": true,
+      "section": "auth",
+      "label": "Bearer Token",
+      "type": "password",
+      "required": false,
+      "dependency": {"field":"auth_type","value":"bearer"},
+      "encrypted": true,
+      "guide_short": "Bearer Token 明文值（无需再加 Bearer 前缀）；通过环境变量注入 Authorization 头。",
+      "transform_on_edit": {"origin_path": "child.env_config.BEARER_TOKEN__{{config_id}}", "to_api": {}},
+      "label_en": "Bearer Token"
+    },
+    {
+      "name": "response_status_code",
+      "advanced": true,
+      "section": "response",
+      "label": "期望状态码",
+      "type": "inputNumber",
+      "required": false,
+      "widget_props": {"min":100,"max":599},
+      "guide_short": "期望 HTTP 状态码（100–599）。留空则不校验状态码；不匹配时拨测结果为「响应状态码不匹配」。",
+      "transform_on_edit": {"origin_path": "child.content.config.response_status_code", "to_api": {}},
+      "label_en": "Expected Status Code"
+    },
+    {
+      "name": "response_string_match",
+      "advanced": true,
+      "section": "response",
+      "label": "期望响应内容",
+      "type": "input",
+      "required": false,
+      "guide_short": "响应正文需包含的字符串（非正则）。留空则不校验内容；不匹配时拨测结果为「响应内容不匹配」。",
+      "transform_on_edit": {"origin_path": "child.content.config.response_string_match", "to_api": {}},
+      "label_en": "Expected Response Content"
+    },
+    {
+      "name": "response_timeout",
+      "advanced": true,
+      "section": "response",
+      "label": "请求超时",
+      "type": "inputNumber",
+      "required": false,
+      "widget_props": {"min":1,"max":600,"addonAfter":"s"},
+      "guide_short": "单次拨测超时秒数（1–600）。留空默认 5 秒（Telegraf http_response 默认值）；超时记为「超时」失败。",
+      "transform_on_edit": {"origin_path": "child.content.config.response_timeout", "to_form": {"regex": "^(\\d+)s$"}, "to_api": {"suffix": "s"}},
+      "label_en": "Response Timeout"
+    },
+    {
+      "name": "follow_redirects",
+      "advanced": true,
+      "section": "response",
+      "label": "跟随重定向",
+      "type": "switch",
+      "required": false,
+      "guide_short": "是否跟随 3xx 重定向。关闭时以首跳响应判断状态码与内容；开启时对最终落地页做判断。",
+      "transform_on_edit": {"origin_path": "child.content.config.follow_redirects", "to_api": {}},
+      "label_en": "Follow Redirects"
     }
   ],
   "table_columns": [

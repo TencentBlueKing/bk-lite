@@ -206,11 +206,12 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         acc[key] = record[key];
         return acc;
       }, {} as Record<string, any>);
-    return {
+    const instance: Record<string, any> = {
       ...formValues,
       ...rowValues,
       instance_type: configsInfo?.instance_type
     };
+    return instance;
   };
 
   const buildCollectDetectFingerprint = (record: IntegrationMonitoredObject) =>
@@ -275,6 +276,16 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
             </div>
           </div>
           <div className="mt-[12px] space-y-[10px]">
+            {result.request_url && (
+              <div className="overflow-hidden rounded-[6px] border border-[var(--color-border)]">
+                <div className="border-b border-[var(--color-border)] bg-[var(--color-fill-1)] px-[12px] py-[8px] text-[12px] text-[var(--color-text-2)]">
+                  {t('monitor.integrations.collectDetectRequestUrl')}
+                </div>
+                <div className="break-all bg-[var(--color-bg)] px-[12px] py-[10px] font-mono text-[12px] leading-[18px] text-[var(--color-text-1)]">
+                  {String(result.request_url)}
+                </div>
+              </div>
+            )}
             {outputBlocks.length ? (
               outputBlocks.map((item) => (
                 <div

@@ -12,6 +12,7 @@ from apps.core.utils.safe_template import (
 from apps.core.logger import monitor_logger as logger
 from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.models import CollectConfig, MonitorPlugin, MonitorPluginConfigTemplate
+from apps.monitor.services.website_config import normalize_website_request_config
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.rpc.node_mgmt import NodeMgmt
 
@@ -64,7 +65,14 @@ _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
     "priv_password",
     "priv_protocol",
     "protocol",
+    "request_body",
+    "request_headers",
+    "request_method",
+    "request_url",
     "response_timeout",
+    "response_status_code",
+    "response_string_match",
+    "follow_redirects",
     "sec_level",
     "sec_name",
     "send",
@@ -263,6 +271,8 @@ class Controller:
                         **config,
                         **instance_copy,
                     }
+                    if collect_type == "web":
+                        _config = normalize_website_request_config(_config)
                     configs.append(_config)
 
         return configs
