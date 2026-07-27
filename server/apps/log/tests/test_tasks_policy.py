@@ -73,7 +73,7 @@ class TestScanLogPolicyTask:
         assert policy.last_run_time is not None
 
     def test_single_window_run(self, mocker):
-        # last_run_time 接近 now → backfill_count <= 1 单周期分支
+        # last_run_time 接近 now → backfill_count == 0 单周期分支
         recent = datetime.now(timezone.utc) - timedelta(seconds=120)
         policy = _make_policy(last_run_time=recent)
         run = mocker.patch("apps.log.tasks.policy.LogPolicyScan")
@@ -83,6 +83,28 @@ class TestScanLogPolicyTask:
         run.assert_called_once()
         _, kwargs = run.call_args
         assert "window_start" in kwargs and "window_end" in kwargs
+
+    def test_one_and_half_period_delay_keeps_window_continuous(self, mocker):
+        period_seconds = 5 * 60
+        last_run_time = datetime(2026, 7, 24, tzinfo=timezone.utc)
+        safe_time = last_run_time + timedelta(seconds=period_seconds * 1.5)
+        current_time = safe_time + timedelta(seconds=AlertConstants.INGEST_DELAY_SECONDS)
+        policy = _make_policy(last_run_time=last_run_time)
+        mocker.patch("apps.log.tasks.policy.datetime").now.return_value = current_time
+        scan = mocker.patch("apps.log.tasks.policy.LogPolicyScan")
+
+        result = scan_log_policy_task(policy.id)
+
+        assert result["success"] is True
+        scan.assert_called_once_with(
+            mocker.ANY,
+            scan_time=last_run_time + timedelta(seconds=period_seconds),
+            window_start=int(last_run_time.timestamp()),
+            window_end=int(last_run_time.timestamp()) + period_seconds,
+        )
+        scan.return_value.run.assert_called_once_with()
+        policy.refresh_from_db()
+        assert policy.last_run_time == last_run_time + timedelta(seconds=period_seconds)
 
     def test_backfill_multiple_windows(self, mocker):
         # last_run_time 远早于 now → 多周期补偿
