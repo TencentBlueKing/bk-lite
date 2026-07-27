@@ -346,6 +346,7 @@ class WindowsRemoteBootstrapService:
         execution_id: str = "",
         progress_subject: str = "",
         event_callback=None,
+        ownership_validator=None,
     ) -> str:
         if target.scheme != "https" or target.port != 5986 or target.transport != "ntlm" or target.validate_certificate is not True:
             raise BaseAppException("Windows remote installation requires HTTPS, NTLM, port 5986, and server certificate validation")
@@ -377,6 +378,8 @@ class WindowsRemoteBootstrapService:
                 timeout=timeout,
             )
             self._wait_for_task(executor, self._accepted_task_id(accepted, stage_task_id), timeout)
+            if ownership_validator is not None and not ownership_validator():
+                raise BaseAppException("Windows remote installation was cancelled before execution")
 
             run_task_id = f"controller-bootstrap-run-{task_node_id}-{attempt}"
             accepted = executor.playbook(

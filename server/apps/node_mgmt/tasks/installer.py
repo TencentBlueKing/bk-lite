@@ -454,6 +454,33 @@ def _finalize_non_connectivity_running_steps(node_obj, message="Installer bootst
     return True
 
 
+def _fail_controller_node_dispatch(task_node_id: int, attempt: int, error: Exception) -> int | None:
+    """Fail a claimed node when its Celery messages cannot be published."""
+    with transaction.atomic():
+        locked_node = ControllerTaskNode.objects.select_for_update().filter(id=task_node_id).first()
+        if locked_node is None:
+            return None
+        if (
+            locked_node.status != InstallerConstants.STEP_STATUS_RUNNING
+            or _get_execution_phase(locked_node) != InstallerConstants.EXECUTION_PHASE_BOOTSTRAP_RUNNING
+            or _get_execution_attempt(locked_node) != attempt
+        ):
+            return None
+        locked_node.password = ""
+        locked_node.private_key = ""
+        locked_node.passphrase = ""
+        locked_node.save(update_fields=["password", "private_key", "passphrase"])
+        _add_step(
+            locked_node,
+            "dispatch",
+            "error",
+            "Failed to dispatch controller installation",
+            details={"error_type": "dispatch", "error": str(error)},
+        )
+        _save_node_result(locked_node, "error", "Controller installation dispatch failed")
+        return locked_node.task_id
+
+
 def _dispatch_or_finalize_controller_task(task_id: int):
     dispatch_items = []
     should_refresh_controller_versions = False
@@ -499,11 +526,32 @@ def _dispatch_or_finalize_controller_task(task_id: int):
         if dispatch_items:
             def dispatch_claimed_nodes(items=tuple(dispatch_items), current_task_id=task_id):
                 for task_node_id, attempt in items:
-                    install_controller_for_node.delay(task_node_id, attempt)
-                    timeout_controller_install_task.apply_async(
-                        args=[current_task_id, attempt, [task_node_id]],
-                        countdown=CONTROLLER_INSTALL_TASK_TIMEOUT_SECONDS,
-                    )
+                    try:
+                        timeout_controller_install_task.apply_async(
+                            args=[current_task_id, attempt, [task_node_id]],
+                            countdown=CONTROLLER_INSTALL_TASK_TIMEOUT_SECONDS,
+                        )
+                    except Exception as exc:
+                        logger.exception(
+                            "Failed to dispatch controller timeout: task_node_id=%s attempt=%s",
+                            task_node_id,
+                            attempt,
+                        )
+                        failed_task_id = _fail_controller_node_dispatch(task_node_id, attempt, exc)
+                        if failed_task_id:
+                            _dispatch_or_finalize_controller_task(failed_task_id)
+                        continue
+                    try:
+                        install_controller_for_node.delay(task_node_id, attempt)
+                    except Exception as exc:
+                        logger.exception(
+                            "Failed to dispatch controller installer: task_node_id=%s attempt=%s",
+                            task_node_id,
+                            attempt,
+                        )
+                        failed_task_id = _fail_controller_node_dispatch(task_node_id, attempt, exc)
+                        if failed_task_id:
+                            _dispatch_or_finalize_controller_task(failed_task_id)
 
             transaction.on_commit(
                 dispatch_claimed_nodes
@@ -841,6 +889,12 @@ def install_controller_on_nodes(
                         execution_id=execution_id,
                         progress_subject=progress_subject,
                         event_callback=event_handler,
+                        ownership_validator=lambda: _refresh_installer_execution(
+                            node_obj.id,
+                            execution_id,
+                            execution_attempt,
+                        )
+                        is not None,
                     )
                 finally:
                     stop_event.set()

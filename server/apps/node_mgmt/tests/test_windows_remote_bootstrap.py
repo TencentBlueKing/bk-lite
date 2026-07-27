@@ -136,6 +136,34 @@ def test_windows_remote_bootstrap_stages_and_runs_native_worker():
     assert output.startswith("BKINSTALL_EVENT ")
 
 
+def test_windows_remote_bootstrap_rechecks_ownership_after_staging():
+    executor = FakeExecutor("executor-node")
+    service = WindowsRemoteBootstrapService(executor_factory=lambda _: executor, resolver=FakeResolver)
+
+    with pytest.raises(BaseAppException, match="cancelled before execution"):
+        service.run(
+            cloud_region_id=7,
+            task_node_id=31,
+            attempt=2,
+            cpu_architecture="x86_64",
+            session_url="https://server.example/api/installer/session/secret",
+            target=WindowsBootstrapTarget(
+                host="10.0.0.8",
+                port=5986,
+                user="Administrator",
+                password="credential",
+            ),
+            timeout=60,
+            execution_id="cancelled-execution",
+            ownership_validator=lambda: False,
+        )
+
+    assert len(executor.playbook_calls) == 2
+    stage, cleanup = executor.playbook_calls
+    assert stage["task_id"] == "controller-bootstrap-stage-31-2"
+    assert cleanup["task_id"] == "controller-bootstrap-cleanup-31-2"
+
+
 def test_windows_remote_bootstrap_rejects_failed_ansible_task():
     executor = FakeExecutor("executor-node")
     executor.query_results = [
@@ -593,6 +621,39 @@ def test_each_dispatched_controller_node_gets_its_own_timeout(monkeypatch):
     assert len(dispatched) == 4
     assert len(timeouts) == 4
     assert timeouts[-1][1]["args"] == [task.id, 1, [nodes[3].id]]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_controller_dispatch_failure_releases_node_and_does_not_start_without_timeout(monkeypatch):
+    region = CloudRegion.objects.create(name="dispatch-failure-region")
+    task = ControllerTask.objects.create(cloud_region=region, type="install", status="waiting")
+    task_node = ControllerTaskNode.objects.create(
+        task=task,
+        ip="10.0.2.1",
+        node_name="windows-dispatch-failure",
+        os=NodeConstants.WINDOWS_OS,
+        organizations=[1],
+        port=5986,
+        password="encrypted-password",
+        status="waiting",
+        result={"execution_attempt": 1},
+    )
+    installer_calls = []
+    monkeypatch.setattr(installer_tasks.install_controller_for_node, "delay", lambda *args: installer_calls.append(args))
+    monkeypatch.setattr(
+        installer_tasks.timeout_controller_install_task,
+        "apply_async",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("broker unavailable")),
+    )
+
+    installer_tasks._dispatch_or_finalize_controller_task(task.id)
+
+    task_node.refresh_from_db()
+    assert installer_calls == []
+    assert task_node.status == "error"
+    assert task_node.password == ""
+    assert task_node.result["overall_status"] == "error"
+    assert task_node.result["steps"][-1]["action"] == "dispatch"
 
 
 @pytest.mark.django_db
