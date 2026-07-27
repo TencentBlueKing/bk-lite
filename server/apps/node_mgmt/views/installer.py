@@ -19,11 +19,9 @@ from apps.node_mgmt.serializers.installer import (
 from apps.node_mgmt.serializers.node import TaskNodesQuerySerializer
 from apps.node_mgmt.services.installer import InstallerService
 from apps.node_mgmt.tasks.installer import (
-    CONTROLLER_INSTALL_TASK_TIMEOUT_SECONDS,
     install_collector,
     install_controller,
     retry_controller,
-    timeout_controller_install_task,
     uninstall_controller,
 )
 from apps.node_mgmt.utils.permission import authorize_node_ids, get_authorized_node_queryset
@@ -82,10 +80,6 @@ class InstallerViewSet(ViewSet):
             getattr(request.user, "domain", "domain.com"),
         )
         install_controller.delay(task_id)
-        timeout_controller_install_task.apply_async(
-            args=[task_id, 1],
-            countdown=CONTROLLER_INSTALL_TASK_TIMEOUT_SECONDS,
-        )
         return WebUtils.response_success(dict(task_id=task_id))
 
     @action(detail=False, methods=["post"], url_path="controller/uninstall")

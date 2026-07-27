@@ -360,7 +360,8 @@ def test_install_task_routes_windows_through_winrm_bootstrap(monkeypatch):
         winrm_scheme="https",
         winrm_transport="ntlm",
         winrm_cert_validation=True,
-        status="waiting",
+        status="running",
+        result={"execution_phase": "bootstrap_running", "execution_attempt": 1},
     )
     calls = []
     subscriptions = []
@@ -550,6 +551,48 @@ def test_controller_timeout_fences_stuck_windows_bootstrap(monkeypatch):
     assert task_node.status == "running"
     assert task_node.result["execution_attempt"] == 3
     assert task_node.result["installer_execution_id"] == "retry-execution"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_each_dispatched_controller_node_gets_its_own_timeout(monkeypatch):
+    region = CloudRegion.objects.create(name="per-node-timeout-region")
+    task = ControllerTask.objects.create(cloud_region=region, type="install", status="waiting")
+    nodes = [
+        ControllerTaskNode.objects.create(
+            task=task,
+            ip=f"10.0.1.{index}",
+            node_name=f"windows-{index}",
+            os=NodeConstants.WINDOWS_OS,
+            organizations=[1],
+            port=5986,
+            status="waiting",
+            result={"execution_attempt": 1},
+        )
+        for index in range(1, 5)
+    ]
+    dispatched = []
+    timeouts = []
+    monkeypatch.setattr(installer_tasks.install_controller_for_node, "delay", lambda *args: dispatched.append(args))
+    monkeypatch.setattr(
+        installer_tasks.timeout_controller_install_task,
+        "apply_async",
+        lambda *args, **kwargs: timeouts.append((args, kwargs)),
+    )
+
+    installer_tasks._dispatch_or_finalize_controller_task(task.id)
+    assert len(dispatched) == 3
+    assert len(timeouts) == 3
+    assert {call[1]["args"][2][0] for call in timeouts} == {node.id for node in nodes[:3]}
+
+    first = nodes[0]
+    first.status = "error"
+    first.result = {"execution_phase": "finished", "execution_attempt": 1}
+    first.save(update_fields=["status", "result"])
+    installer_tasks._dispatch_or_finalize_controller_task(task.id)
+
+    assert len(dispatched) == 4
+    assert len(timeouts) == 4
+    assert timeouts[-1][1]["args"] == [task.id, 1, [nodes[3].id]]
 
 
 @pytest.mark.django_db

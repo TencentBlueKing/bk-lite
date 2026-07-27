@@ -163,6 +163,20 @@ def _claim_installer_execution(node_id: int, execution_id: str, attempt: int) ->
         return locked_node.result or {}
 
 
+def _refresh_installer_execution(node_id: int, execution_id: str, attempt: int) -> dict | None:
+    """Revalidate the claim immediately before starting work on the target host."""
+    with transaction.atomic():
+        locked_node = ControllerTaskNode.objects.select_for_update().get(id=node_id)
+        result = locked_node.result or {}
+        if (
+            locked_node.status != InstallerConstants.STEP_STATUS_RUNNING
+            or result.get(InstallerConstants.INSTALLER_EXECUTION_ID_KEY) != execution_id
+            or _get_execution_attempt(locked_node) != attempt
+        ):
+            return None
+        return result
+
+
 def _finish_installer_execution(node_id: int, output_text: str, execution_id: str, attempt: int) -> dict | None:
     """Persist terminal events and release the claim without a fencing gap."""
     with transaction.atomic():
@@ -483,8 +497,16 @@ def _dispatch_or_finalize_controller_task(task_id: int):
         task_obj.save(update_fields=["status"])
 
         if dispatch_items:
+            def dispatch_claimed_nodes(items=tuple(dispatch_items), current_task_id=task_id):
+                for task_node_id, attempt in items:
+                    install_controller_for_node.delay(task_node_id, attempt)
+                    timeout_controller_install_task.apply_async(
+                        args=[current_task_id, attempt, [task_node_id]],
+                        countdown=CONTROLLER_INSTALL_TASK_TIMEOUT_SECONDS,
+                    )
+
             transaction.on_commit(
-                lambda items=dispatch_items: [install_controller_for_node.delay(task_node_id, attempt) for task_node_id, attempt in items]
+                dispatch_claimed_nodes
             )
 
     if should_refresh_controller_versions:
@@ -764,6 +786,15 @@ def install_controller_on_nodes(
                         )
                         continue
                     node_obj.result = claimed_result
+                active_result = _refresh_installer_execution(node_obj.id, execution_id, execution_attempt)
+                if active_result is None:
+                    logger.info(
+                        "Skip cancelled Windows bootstrap before remote execution: task_node_id=%s attempt=%s",
+                        node_obj.id,
+                        execution_attempt,
+                    )
+                    continue
+                node_obj.result = active_result
 
                 def event_handler(
                     output,
@@ -1127,7 +1158,6 @@ def retry_controller(task_id, task_node_ids, password=None, private_key=None, pa
     if update_data:
         retry_nodes.update(**update_data)
 
-    retry_attempts = []
     for retry_node in retry_nodes:
         next_attempt = _get_execution_attempt(retry_node) + 1
         retry_node.status = InstallerConstants.STEP_STATUS_WAITING
@@ -1135,16 +1165,8 @@ def retry_controller(task_id, task_node_ids, password=None, private_key=None, pa
             InstallerConstants.EXECUTION_ATTEMPT_KEY: next_attempt,
         }
         retry_node.save(update_fields=["status", "result"])
-        retry_attempts.append((retry_node.id, next_attempt))
 
     _dispatch_or_finalize_controller_task(task_id)
-
-    # Schedule a fresh timeout fallback for the retried attempt
-    for task_node_id, expected_attempt in retry_attempts:
-        timeout_controller_install_task.apply_async(
-            args=[task_id, expected_attempt, [task_node_id]],
-            countdown=CONTROLLER_INSTALL_TASK_TIMEOUT_SECONDS,
-        )
 
 
 @shared_task

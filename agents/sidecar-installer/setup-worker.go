@@ -1188,14 +1188,12 @@ func restorePreviousWindowsInstallation(
 }
 
 func cleanupActivatedWindowsBackup(backupDir string) {
-	if err := os.RemoveAll(backupDir); err == nil {
+	retainedDir := fmt.Sprintf("%s-retained-%d", backupDir, time.Now().UnixNano())
+	if err := os.Rename(backupDir, retainedDir); err != nil {
+		log("WARN: new service is running, but old installation backup could not be moved out of the recovery path: %v", err)
 		return
-	} else {
-		retainedDir := fmt.Sprintf("%s-retained-%d", backupDir, time.Now().UnixNano())
-		if renameErr := os.Rename(backupDir, retainedDir); renameErr != nil {
-			log("WARN: new service is running, but old installation backup cleanup failed: %v; rename failed: %v", err, renameErr)
-			return
-		}
+	}
+	if err := os.RemoveAll(retainedDir); err != nil {
 		log("WARN: new service is running; old installation backup was retained at %s after cleanup failed: %v", retainedDir, err)
 	}
 }
