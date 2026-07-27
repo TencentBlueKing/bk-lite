@@ -21,7 +21,7 @@ import styles from './index.module.scss';
 const TOP_CHART_TITLES = ['资源使用趋势', '系统负载趋势'];
 const LOWER_CHART_TITLES = ['网络吞吐趋势', '磁盘吞吐趋势', '进程状态趋势'];
 const RING_TITLES = ['CPU 时间分布', '内存占用分布', '进程状态分布'];
-const BAR_TITLES = ['主机压力信号'];
+const BAR_TITLES = ['I/O 与进程异常'];
 
 export default function HostDashboardPage() {
   const dashboard = useSimpleDashboardData(HOST_DASHBOARD_CONFIG);
@@ -126,7 +126,7 @@ export default function HostDashboardPage() {
 
           <div className={styles.sectionLabel}>吞吐与进程</div>
           <FlexiblePanelSection styles={styles}>
-            {/* 主机压力信号条 span6 + 网络吞吐 span6 = 12 —— 信号条不再独占整行 */}
+            {/* I/O 与进程异常 span6 + 网络吞吐 span6 = 12 */}
             {pressureBar ? (
               <HorizontalBarPanel
                 key={pressureBar.panel.title}

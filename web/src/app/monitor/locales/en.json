@@ -390,7 +390,7 @@
       "collectorRefsDes": "Assign a clear name to the monitoring metric configuration",
       "addGroup": "Add Group",
       "metricGroup": "Group",
-      "endpointDes": "The network address of the host where the monitored Docker container is located is used to accurately locate and collect performance data.",
+      "endpointDes": "Docker daemon endpoint, for example unix:///var/run/docker.sock or tcp://host:2375, used to locate the collection target.",
       "unavailable": "Unavailable",
       "dbTimeout": "Waiting Time",
       "intervalDes": "The time interval for collecting monitoring data (unit: seconds).",
