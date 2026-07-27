@@ -1,4 +1,5 @@
 import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
+import { withDashboardReturnContext } from '@/app/monitor/dashboards/shared/utils';
 
 type DashboardUrlResolver = (
   objectName?: string | null,
@@ -56,7 +57,12 @@ export const buildAssetViewUrl = ({
     instance_id_values: toParamValue(row.instance_id_values),
     instance_id_keys: resolveInstanceIdKeys(monitorItem?.instance_id_keys)
   });
-  const queryString = params.toString();
+  const dashboardParams = withDashboardReturnContext(params, {
+    objectId: toParamValue(objectId),
+    objectName: toParamValue(monitorItem?.display_name || monitorItem?.name),
+    source: 'integration'
+  });
+  const queryString = dashboardParams.toString();
   const professionalDashboardUrl =
     resolveProfessionalDashboardUrl?.(
       monitorItem?.name,

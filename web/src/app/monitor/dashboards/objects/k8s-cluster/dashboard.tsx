@@ -445,7 +445,6 @@ export default function K8sClusterDashboardPage() {
     params.set('instance_name', opt?.label || value);
     router.push(`?${params.toString()}`);
   };
-  const goBack = () => router.back();
   const onRefresh = () => {
     if (displayMode === 'dashboard') {
       loadAll();
@@ -468,7 +467,6 @@ export default function K8sClusterDashboardPage() {
             onTimeChange={onTimeChange}
             onFrequenceChange={setFrequence}
             onRefresh={onRefresh}
-            onBack={goBack}
             showTimeSelector={false}
             styles={styles}
           />
