@@ -26,6 +26,18 @@ COOKIE_CURRENT_TEAM = "current_team"
 CLIENT_ID_ENV_KEY = "CLIENT_ID"
 
 
+def _normalize_group_ids(group_ids) -> Set[int]:
+    normalized: Set[int] = set()
+    for group_id in group_ids or []:
+        if isinstance(group_id, dict):
+            group_id = group_id.get("id")
+        if type(group_id) is int and group_id > 0:
+            normalized.add(group_id)
+        elif type(group_id) is str and re.fullmatch(r"[1-9][0-9]*", group_id):
+            normalized.add(int(group_id))
+    return normalized
+
+
 def _collect_ancestor_group_ids(seed_ids: List) -> Set[int]:
     """
     从 seed_ids 出发，沿 parent_id 链向上收集所有祖先组 ID（含自身）。
@@ -82,7 +94,9 @@ class APISecretAuthBackend(ModelBackend):
                     user_secret.domain,
                 )
                 return None
-            user.group_list = [user_secret.team]
+            user.group_list = []
+            user._api_secret_team_scope = True
+            user._api_secret_team = user_secret.team
 
             # 填充用户权限信息
             self._populate_user_permissions(user, user_secret.team)
@@ -119,13 +133,15 @@ class APISecretAuthBackend(ModelBackend):
             permission_version = get_user_permission_version(user.username, user.domain)
             cache_key = self._get_permission_cache_key(user.username, user.domain, team, permission_version)
             cached = cache.get(cache_key)
-            if cached:
+            cache_snapshot_complete = not getattr(user, "_api_secret_team_scope", False) or "group_list" in (cached or {})
+            if cached and cache_snapshot_complete:
                 if get_user_permission_version(user.username, user.domain) != permission_version:
                     raise RuntimeError("Permission version changed while reading API token snapshot")
                 user.roles = cached.get("roles", [])
                 user.permission = {k: set(v) for k, v in cached.get("permission", {}).items()}
                 user.is_superuser = cached.get("is_superuser", False)
                 user.role_ids = cached.get("role_ids", [])
+                user.group_list = cached.get("group_list", user.group_list)
                 return
 
             # 获取用户所有角色
@@ -178,6 +194,7 @@ class APISecretAuthBackend(ModelBackend):
                     "permission": {k: list(v) for k, v in permission.items()},
                     "is_superuser": is_superuser,
                     "role_ids": list(all_role_ids),
+                    "group_list": user.group_list,
                 },
                 self.PERMISSION_CACHE_TTL,
             )
@@ -191,6 +208,8 @@ class APISecretAuthBackend(ModelBackend):
             user.permission = {}
             user.is_superuser = False
             user.role_ids = []
+            if getattr(user, "_api_secret_team_scope", False):
+                user.group_list = []
 
     def _get_user_all_roles(self, user: User) -> Set[int]:
         """
@@ -210,6 +229,11 @@ class APISecretAuthBackend(ModelBackend):
 
         group_role_ids: Set[int] = set()
         user_groups = user.group_list or []
+        if getattr(user, "_api_secret_team_scope", False):
+            system_group_ids = _normalize_group_ids(sys_user.group_list if sys_user else [])
+            requested_group_ids = _normalize_group_ids([getattr(user, "_api_secret_team", None)])
+            user_groups = list(requested_group_ids & system_group_ids)
+            user.group_list = user_groups
 
         if user_groups:
             # 两步有界查询，避免全表 prefetch（修复 thundering herd）：

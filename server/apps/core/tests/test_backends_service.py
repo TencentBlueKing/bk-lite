@@ -70,7 +70,7 @@ class TestAPISecretAuthBackend:
 
         user = APISecretAuthBackend().authenticate(api_token="sec123")
         assert user is not None
-        assert user.group_list == [5]
+        assert user.group_list == []
         assert user.is_superuser is True  # admin 角色
         assert "admin" in user.roles
 
@@ -91,10 +91,18 @@ class TestAPISecretAuthBackend:
         secret = UserAPISecret.objects.create(username="cuser", domain="domain.com", api_secret="csec", team=2)
         backend = APISecretAuthBackend()
         # 直接 mock 缓存边界返回命中值，验证命中分支不再查 DB 角色
+        system_user_filter = mocker.patch.object(be.SystemUser.objects, "filter")
+        system_user_filter.return_value.exists.return_value = True
         mocker.patch.object(
             be.cache,
             "get",
-            return_value={"roles": ["r1"], "permission": {"app": ["m1"]}, "is_superuser": True, "role_ids": [9]},
+            return_value={
+                "roles": ["r1"],
+                "permission": {"app": ["m1"]},
+                "is_superuser": True,
+                "role_ids": [9],
+                "group_list": [2],
+            },
         )
 
         user = backend.authenticate(api_token="csec")
@@ -102,7 +110,9 @@ class TestAPISecretAuthBackend:
         assert user.is_superuser is True
         assert user.permission == {"app": {"m1"}}
         assert user.role_ids == [9]
+        assert user.group_list == [2]
         assert secret.team == 2
+        system_user_filter.return_value.first.assert_not_called()
 
     def test_next_auth_after_revocation_ignores_other_worker_snapshot(self, mocker):
         BaseUser.objects.create(username="revoked-user", domain="domain.com")
@@ -196,13 +206,28 @@ class TestAPISecretAuthBackend:
         child = Group.objects.create(name="C", parent_id=parent.id, allow_inherit_roles=True)
         child.roles.add(child_role)
         UserAPISecret.objects.create(username="guser", domain="domain.com", api_secret="gsec", team=child.id)
-        SysUser.objects.create(username="guser", domain="domain.com", role_list=[], email="g@x.com")
+        sys_user = SysUser.objects.create(
+            username="guser",
+            domain="domain.com",
+            group_list=[child.id],
+            role_list=[],
+            email="g@x.com",
+        )
 
         backend = APISecretAuthBackend()
         user = backend.authenticate(api_token="gsec")
         # 角色名包含子组与父组(因父允许继承)的角色
         assert "child_role" in user.roles
         assert "parent_role" in user.roles
+
+        with transaction.atomic():
+            SysUser.objects.filter(pk=sys_user.pk).update(group_list=[])
+            permission_cache.clear_user_permission_cache(sys_user.username, sys_user.domain)
+
+        user = backend.authenticate(api_token="gsec")
+        assert user.group_list == []
+        assert "child_role" not in user.roles
+        assert "parent_role" not in user.roles
 
 
 class TestAuthBackendVerifyToken:

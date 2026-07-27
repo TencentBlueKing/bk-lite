@@ -533,6 +533,29 @@ class TestPopulateUserPermissions:
         assert user.is_superuser is False
         assert user.role_ids == []
 
+    def test_version_change_clears_api_secret_team_scope(self):
+        """权限代际在快照计算期间变化时，组织范围也必须 fail closed。"""
+        backend = APISecretAuthBackend()
+        user = MockUser(username="racing-team", domain="domain.com", group_list=[7])
+        user._api_secret_team_scope = True
+
+        with (
+            patch("apps.core.backends.get_user_permission_version", side_effect=[1, 2]),
+            patch("apps.core.backends.cache") as mock_cache,
+            patch.object(backend, "_get_user_all_roles", return_value=set()),
+            patch("apps.core.backends.Role") as mock_role,
+        ):
+            mock_cache.get.return_value = None
+            mock_role.objects.filter.return_value.__iter__.return_value = iter([])
+            mock_role.objects.filter.return_value.values_list.return_value = []
+            backend._populate_user_permissions(user, 7)
+
+        assert user.group_list == []
+        assert user.roles == []
+        assert user.permission == {}
+        assert user.is_superuser is False
+        assert user.role_ids == []
+
 
 # ============================================================================
 # HasRole 装饰器测试

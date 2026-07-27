@@ -10,10 +10,11 @@
 
 键结构（当前）：
   perm_rules:{user_prefix}:{key_hash}
-其中 user_prefix = MD5(username:domain)[:8]，用于支持 delete_pattern 按用户清除。
+其中 user_prefix 为 username/domain 的无碰撞 Base64URL 编码，用于支持 delete_pattern 按用户清除。
 """
 
-import hashlib
+import base64
+import json
 import os
 from typing import Any, Dict, List, Optional
 
@@ -148,10 +149,11 @@ def _get_user_perm_prefix(username: str, domain: str) -> str:
     """
     生成该用户的权限缓存键前缀（用于 delete_pattern 按用户原子清除）。
 
-    使用 MD5 前 8 位保持键的简短，同时确保不同用户/domain 的前缀互不冲突。
+    使用 JSON 元组的 Base64URL 编码，避免分隔符歧义及哈希碰撞。
     """
-    user_hash = hashlib.md5(f"{username}:{domain}".encode()).hexdigest()[:8]
-    return f"{PERM_CACHE_PREFIX}{user_hash}:"
+    identity = json.dumps([username, domain], ensure_ascii=False, separators=(",", ":")).encode()
+    encoded_identity = base64.urlsafe_b64encode(identity).decode().rstrip("=")
+    return f"{PERM_CACHE_PREFIX}{encoded_identity}:"
 
 
 def _get_cache_key(
@@ -184,10 +186,13 @@ def _get_cache_key(
     if permission_version is None:
         permission_version = get_user_permission_version(username, domain)
     user_prefix = _get_user_perm_prefix(username, domain)
-    # 剩余维度继续 MD5 哈希，避免键过长
-    key_data = f"v{permission_version}:{current_team}:{app_name}:{permission_key}:{include_children}"
-    key_hash = hashlib.md5(key_data.encode()).hexdigest()
-    return f"{user_prefix}{key_hash}"
+    key_data = json.dumps(
+        [permission_version, current_team, app_name, permission_key, include_children],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode()
+    encoded_dimensions = base64.urlsafe_b64encode(key_data).decode().rstrip("=")
+    return f"{user_prefix}{encoded_dimensions}"
 
 
 def _get_user_keys_index(username: str, domain: str) -> str:

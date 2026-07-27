@@ -6,6 +6,9 @@ import pydantic.root_model  # noqa
 对支持 delete_pattern 的后端分支，用具备 delete_pattern 的 fake cache 注入到模块的 cache 引用。
 断言真实缓存副作用（get/set/delete 后的可见性）与键派生的确定性。
 """
+import base64
+import json
+
 import pytest
 from django.core.cache import cache
 from django.test import override_settings
@@ -66,6 +69,9 @@ class TestKeyDerivation:
         assert p1 == p2
         assert p1 != p3
         assert p1.startswith(pc.PERM_CACHE_PREFIX)
+        encoded_identity = p1.removeprefix(pc.PERM_CACHE_PREFIX).removesuffix(":")
+        padding = "=" * (-len(encoded_identity) % 4)
+        assert json.loads(base64.urlsafe_b64decode(encoded_identity + padding)) == ["alice", "domain.com"]
 
     def test_cache_key_embeds_user_prefix_and_varies_by_dimensions(self):
         prefix = pc._get_user_perm_prefix("alice", "domain.com")
@@ -73,6 +79,9 @@ class TestKeyDerivation:
         k2 = pc._get_cache_key("alice", "domain.com", 2, "cmdb", "view")
         assert k1.startswith(prefix)
         assert k1 != k2
+        encoded_dimensions = k1.removeprefix(prefix)
+        padding = "=" * (-len(encoded_dimensions) % 4)
+        assert json.loads(base64.urlsafe_b64decode(encoded_dimensions + padding)) == [0, 1, "cmdb", "view", False]
 
     def test_token_info_key_format(self):
         assert pc._get_token_info_key("u", "d") == "token_info:u:d:v0"

@@ -301,11 +301,12 @@ def set_opspilot_guest_group_default_rule(default_group, user):
     cmdb_rule = GroupDataRule.objects.get(name="游客数据权限", app="cmdb", group_id=default_group.id)
     log_rule = GroupDataRule.objects.get(name="log内置规则", app="log", group_id=default_group.id)
     node_rule = GroupDataRule.objects.get(name="节点管理内置数据权限", app="node", group_id=default_group.id)
-    UserRule.objects.get_or_create(username=user.username, group_rule_id=cmdb_rule.id)
-    UserRule.objects.get_or_create(username=user.username, group_rule_id=default_rule.id)
-    UserRule.objects.get_or_create(username=user.username, group_rule_id=monitor_rule.id)
-    UserRule.objects.get_or_create(username=user.username, group_rule_id=log_rule.id)
-    UserRule.objects.get_or_create(username=user.username, group_rule_id=node_rule.id)
+    identity = {"username": user.username, "domain": user.domain}
+    UserRule.objects.get_or_create(**identity, group_rule_id=cmdb_rule.id)
+    UserRule.objects.get_or_create(**identity, group_rule_id=default_rule.id)
+    UserRule.objects.get_or_create(**identity, group_rule_id=monitor_rule.id)
+    UserRule.objects.get_or_create(**identity, group_rule_id=log_rule.id)
+    UserRule.objects.get_or_create(**identity, group_rule_id=node_rule.id)
 
 
 @nats_client.register

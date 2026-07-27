@@ -2,6 +2,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+from django.db import transaction
 from rest_framework.test import APIClient, APIRequestFactory, force_authenticate
 
 from apps.core.utils.permission_cache import clear_user_permission_cache, get_user_permission_version
@@ -10,6 +11,59 @@ from apps.system_mgmt.nats.permissions import delete_rules
 from apps.system_mgmt.viewset.login_module_viewset import LoginModuleViewSet
 
 pytestmark = pytest.mark.django_db
+
+
+def _create_opspilot_guest_rules(group):
+    return [
+        GroupDataRule.objects.create(name=name, app=app, group_id=group.id, group_name=group.name)
+        for name, app in [
+            ("OpsPilot内置规则", "opspilot"),
+            ("OpsPilotGuest数据权限", "monitor"),
+            ("游客数据权限", "cmdb"),
+            ("log内置规则", "log"),
+            ("节点管理内置数据权限", "node"),
+        ]
+    ]
+
+
+def test_wechat_rule_initialization_runs_inside_registration_transaction(monkeypatch):
+    from apps.system_mgmt.nats import wechat
+
+    group = Group.objects.create(name="OpsPilotGuest", parent_id=0)
+    observed = []
+    monkeypatch.setattr(
+        wechat,
+        "set_opspilot_guest_group_default_rule",
+        lambda default_group, user: observed.append(transaction.get_connection().in_atomic_block),
+    )
+    monkeypatch.setattr(wechat, "_build_jwt_payload", lambda user_id: {})
+    monkeypatch.setattr(wechat.jwt, "encode", lambda **kwargs: "token")
+
+    result = wechat.wechat_user_register("wechat-user", "WeChat user")
+
+    assert result["result"] is True
+    assert observed == [True]
+    assert User.objects.get(username="wechat-user").group_list == [group.id]
+
+
+def test_opspilot_guest_rules_keep_user_domain():
+    from apps.system_mgmt.nats.users import set_opspilot_guest_group_default_rule
+
+    group = Group.objects.create(name="OpsPilotGuest", parent_id=0)
+    rules = _create_opspilot_guest_rules(group)
+    user = User.objects.create(
+        username="cross-domain-guest",
+        domain="corp.example",
+        display_name="Cross domain guest",
+        email="guest@example.com",
+        password="",
+    )
+
+    set_opspilot_guest_group_default_rule(group, user)
+
+    assert set(
+        UserRule.objects.filter(username=user.username).values_list("domain", "group_rule_id"),
+    ) == {(user.domain, rule.id) for rule in rules}
 
 
 def test_login_module_destroy_advances_deleted_domain_and_group_user_versions():
