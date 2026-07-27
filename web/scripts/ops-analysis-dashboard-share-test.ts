@@ -17,6 +17,10 @@ const tokenPage = fs.readFileSync(
   'src/app/ops-analysis/share/[token]/page.tsx',
   'utf8',
 );
+const continuePage = fs.readFileSync(
+  'src/app/ops-analysis/share/continue/page.tsx',
+  'utf8',
+);
 const sessionPage = fs.readFileSync(
   'src/app/ops-analysis/share/session/[sessionId]/shareDashboardPage.tsx',
   'utf8',
@@ -29,6 +33,18 @@ const opsAnalysisContext = fs.readFileSync(
   'src/app/ops-analysis/context/common.tsx',
   'utf8',
 );
+const shareModeContext = fs.readFileSync(
+  'src/app/ops-analysis/context/shareMode.tsx',
+  'utf8',
+);
+const comTable = fs.readFileSync(
+  'src/app/ops-analysis/components/widgets/comTable.tsx',
+  'utf8',
+);
+const networkTopo = fs.readFileSync(
+  'src/app/ops-analysis/components/widgets/networkStatusTopology/index.tsx',
+  'utf8',
+);
 const rootLayout = fs.readFileSync('src/app/layout.tsx', 'utf8');
 
 assert.match(toolbar, /shareMode\?: boolean/);
@@ -37,22 +53,81 @@ assert.match(toolbar, /onOpenShare\?: \(\) => void/);
 assert.match(toolbar, /!shareMode &&/);
 assert.match(toolbar, /loading=\{shareLoading\}/);
 assert.match(dashboard, /shareSessionId\?: string/);
-assert.match(dashboard, /createShare/);
-assert.match(dashboard, /t\(['"]dashboard\.shareLinkCopied['"]\)/);
-assert.match(dashboard, /t\(['"]dashboard\.shareCopyFailed['"]\)/);
-assert.match(dashboard, /t\(['"]dashboard\.shareCreateFailed['"]\)/);
-assert.match(toolbar, /t\(['"]dashboard\.share['"]\)/);
+assert.match(dashboard, /useCanvasShareAction\(['"]dashboard['"]\)/);
+assert.match(dashboard, /openShare/);
 assert.doesNotMatch(dashboard, /ShareDialog|shareDialog/);
 assert.match(apiSource, /const createShare = useCallback/);
+assert.match(apiSource, /prepareShareToken/);
+assert.match(apiSource, /credentials:\s*['"]include['"]/);
 assert.doesNotMatch(apiSource, /listShares|revokeShare|duration_seconds|permanent/);
-assert.match(tokenPage, /router\.replace\(`\/ops-analysis\/share\/session\/\$\{result\.session_id\}`\)/);
+assert.match(toolbar, /t\(['"]dashboard\.share['"]\)/);
+
+const shareAction = fs.readFileSync(
+  'src/app/ops-analysis/hooks/useCanvasShareAction.tsx',
+  'utf8',
+);
+assert.match(shareAction, /createShare\(resourceType, resourceId\)/);
+assert.match(shareAction, /t\(['"]dashboard\.shareLinkCopied['"]\)/);
+assert.match(shareAction, /t\(['"]dashboard\.shareCopyFailed['"]\)/);
+assert.match(shareAction, /t\(['"]dashboard\.shareCreateFailed['"]\)/);
+assert.match(shareAction, /Exclude<CanvasShareResourceType,\s*['"]report['"]>/);
+
+const screenToolbar = fs.readFileSync(
+  'src/app/ops-analysis/(pages)/view/screen/components/screenToolbar.tsx',
+  'utf8',
+);
+const screenPage = fs.readFileSync(
+  'src/app/ops-analysis/(pages)/view/screen/index.tsx',
+  'utf8',
+);
+const topologyToolbar = fs.readFileSync(
+  'src/app/ops-analysis/(pages)/view/topology/components/toolbar.tsx',
+  'utf8',
+);
+const topologyPage = fs.readFileSync(
+  'src/app/ops-analysis/(pages)/view/topology/index.tsx',
+  'utf8',
+);
+const architectureToolbar = fs.readFileSync(
+  'src/app/ops-analysis/(pages)/view/architecture/components/toolbar.tsx',
+  'utf8',
+);
+const architecturePage = fs.readFileSync(
+  'src/app/ops-analysis/(pages)/view/architecture/index.tsx',
+  'utf8',
+);
+const reportPage = fs.readFileSync(
+  'src/app/ops-analysis/(pages)/view/report/index.tsx',
+  'utf8',
+);
+
+assert.match(screenToolbar, /onOpenShare/);
+assert.match(screenToolbar, /!shareMode && !editMode && onOpenShare/);
+assert.match(screenPage, /useCanvasShareAction\(['"]screen['"]\)/);
+assert.match(topologyToolbar, /onOpenShare/);
+assert.match(topologyToolbar, /!shareMode && !isEditMode && onOpenShare/);
+assert.match(topologyPage, /useCanvasShareAction\(['"]topology['"]\)/);
+assert.match(architectureToolbar, /onOpenShare/);
+assert.match(architectureToolbar, /!shareMode && !isEditMode && onOpenShare/);
+assert.match(architecturePage, /useCanvasShareAction\(['"]architecture['"]\)/);
+assert.doesNotMatch(reportPage, /useCanvasShareAction|onOpenShare|ShareAltOutlined/);
+
+assert.match(tokenPage, /prepareShareToken/);
+assert.match(tokenPage, /share\/continue\?state=/);
+assert.doesNotMatch(tokenPage, /callbackUrl: window\.location\.href/);
+assert.match(continuePage, /exchangeShare\(\{ state \}\)/);
+assert.match(sessionPage, /ShareModeProvider/);
+assert.match(sessionPage, /ShareDataSourceProvider/);
+assert.match(shareModeContext, /useShareMode/);
+assert.match(comTable, /useShareMode/);
+assert.match(comTable, /shareNavigationDisabled/);
+assert.match(networkTopo, /useShareMode/);
 assert.match(tokenPage, /t\(['"]dashboard\.shareInvalid['"]\)/);
 assert.match(tokenPage, /t\(['"]dashboard\.shareOpening['"]\)/);
 assert.match(sessionPage, /t\(['"]dashboard\.shareInvalid['"]\)/);
 assert.match(sessionPage, /t\(['"]dashboard\.shareLoading['"]\)/);
 assert.doesNotMatch(tokenPage, /已被撤销|过期/);
 assert.doesNotMatch(sessionPage, /已被撤销|过期/);
-assert.match(sessionPage, /ShareDataSourceProvider/);
 assert.match(
   sessionPage,
   /className=["']h-full w-full overflow-hidden["']/,
@@ -89,6 +164,12 @@ assert.match(
   rootLayout,
   /isDashboardShareRoute[\s\S]*h-screen overflow-hidden/,
   'share routes must bound the root layout to the viewport',
+);
+const sessionExpiry = fs.readFileSync('src/utils/sessionExpiry.ts', 'utf8');
+assert.match(
+  sessionExpiry,
+  /dashboard_share\/prepare\//,
+  'prepare without bearer must not trigger session-expired modal',
 );
 assert.equal(
   fs.existsSync('src/app/ops-analysis/(pages)/view/dashBoard/components/shareDialog.tsx'),

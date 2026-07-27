@@ -56,4 +56,5 @@ export interface ScreenViewSets {
 
 export interface ScreenProps {
   selectedScreen?: DirItem | null;
+  shareMode?: boolean;
 }

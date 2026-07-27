@@ -31,6 +31,7 @@ import type {
   TableFilterFieldConfig,
   DashboardActionConfig,
 } from '@/app/ops-analysis/types/dashBoard';
+import { useShareMode } from '@/app/ops-analysis/context/shareMode';
 import {
   buildDashboardActionUrl,
   resolveDashboardActionParams,
@@ -64,6 +65,7 @@ const ComTable: React.FC<ComTableProps> = ({
   onQueryChange,
 }) => {
   const { t } = useTranslation();
+  const shareMode = useShareMode();
   const [filters, setFilters] = useState<Record<string, any>>({});
   const [keywordDrafts, setKeywordDrafts] = useState<Record<string, string>>(
     {},
@@ -153,6 +155,10 @@ const ComTable: React.FC<ComTableProps> = ({
 
   const handleActionClick = useCallback(
     (action: DashboardActionConfig, record: TableDataItem) => {
+      if (shareMode) {
+        message.warning(t('dashboard.shareNavigationDisabled'));
+        return;
+      }
       const params = resolveDashboardActionParams(action.params, record);
       const url = buildDashboardActionUrl(action.url, params);
       if (!url) {
@@ -167,12 +173,12 @@ const ComTable: React.FC<ComTableProps> = ({
 
       window.location.href = url;
     },
-    [t],
+    [shareMode, t],
   );
 
   const renderActionButtons = useCallback(
     (actions: DashboardActionConfig[], record: TableDataItem) => {
-      if (actions.length === 0) {
+      if (shareMode || actions.length === 0) {
         return '-';
       }
 
@@ -205,7 +211,7 @@ const ComTable: React.FC<ComTableProps> = ({
         </div>
       );
     },
-    [handleActionClick, t],
+    [handleActionClick, shareMode, t],
   );
 
   const antColumns = useMemo((): ColumnsType<TableDataItem> => {

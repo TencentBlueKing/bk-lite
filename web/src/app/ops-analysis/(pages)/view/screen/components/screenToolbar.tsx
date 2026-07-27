@@ -9,6 +9,7 @@ import {
   PlusOutlined,
   ReloadOutlined,
   SettingOutlined,
+  ShareAltOutlined,
 } from '@ant-design/icons';
 import PermissionWrapper from '@/components/permission';
 import { useTranslation } from '@/utils/i18n';
@@ -17,6 +18,9 @@ import type { DirItem } from '@/app/ops-analysis/types';
 interface ScreenToolbarProps {
   selectedScreen?: DirItem | null;
   editMode: boolean;
+  shareMode?: boolean;
+  shareLoading?: boolean;
+  onOpenShare?: () => void;
   onOpenSettings: () => void;
   onOpenFilterConfig: () => void;
   onOpenWidgetSelector: () => void;
@@ -31,6 +35,9 @@ interface ScreenToolbarProps {
 const ScreenToolbar: React.FC<ScreenToolbarProps> = ({
   selectedScreen,
   editMode,
+  shareMode = false,
+  shareLoading = false,
+  onOpenShare,
   onOpenSettings,
   onOpenFilterConfig,
   onOpenWidgetSelector,
@@ -65,7 +72,20 @@ const ScreenToolbar: React.FC<ScreenToolbarProps> = ({
           onClick={onPreview}
         />
       </Tooltip>
-      {editMode && (
+      {!shareMode && !editMode && onOpenShare && (
+        <Tooltip title={t('dashboard.share')}>
+          <Button
+            type="text"
+            icon={<ShareAltOutlined />}
+            loading={shareLoading}
+            disabled={shareLoading}
+            aria-label={t('dashboard.share')}
+            className={iconButtonClassName}
+            onClick={onOpenShare}
+          />
+        </Tooltip>
+      )}
+      {!shareMode && editMode && (
         <>
           <Tooltip title={t('opsAnalysis.screen.canvasSettings')}>
             <Button
@@ -94,34 +114,36 @@ const ScreenToolbar: React.FC<ScreenToolbarProps> = ({
           </Button>
         </>
       )}
-      <PermissionWrapper requiredPermissions={['EditChart']}>
-        {!editMode ? (
-          <Tooltip title={t('common.edit')}>
-            <Button
-              type="text"
-              icon={<EditOutlined />}
-              aria-label={t('common.edit')}
-              disabled={!selectedScreen?.data_id || selectedScreen?.is_build_in}
-              className={iconButtonClassName}
-              onClick={onEdit}
-            />
-          </Tooltip>
-        ) : (
-          <div className="ml-2 flex items-center gap-2">
-            <Button className="rounded-full!" onClick={onCancel}>
-              {t('common.cancel')}
-            </Button>
-            <Button
-              type="primary"
-              loading={saving}
-              className="rounded-full!"
-              onClick={onSave}
-            >
-              {t('common.save')}
-            </Button>
-          </div>
-        )}
-      </PermissionWrapper>
+      {!shareMode && (
+        <PermissionWrapper requiredPermissions={['EditChart']}>
+          {!editMode ? (
+            <Tooltip title={t('common.edit')}>
+              <Button
+                type="text"
+                icon={<EditOutlined />}
+                aria-label={t('common.edit')}
+                disabled={!selectedScreen?.data_id || selectedScreen?.is_build_in}
+                className={iconButtonClassName}
+                onClick={onEdit}
+              />
+            </Tooltip>
+          ) : (
+            <div className="ml-2 flex items-center gap-2">
+              <Button className="rounded-full!" onClick={onCancel}>
+                {t('common.cancel')}
+              </Button>
+              <Button
+                type="primary"
+                loading={saving}
+                className="rounded-full!"
+                onClick={onSave}
+              >
+                {t('common.save')}
+              </Button>
+            </div>
+          )}
+        </PermissionWrapper>
+      )}
     </Space>
   );
 };

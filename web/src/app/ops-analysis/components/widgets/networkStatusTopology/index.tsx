@@ -14,6 +14,7 @@ import type {
   NetworkTopologyNode,
 } from '@/app/cmdb/components/networkTopology';
 import { useTranslation } from '@/utils/i18n';
+import { useShareMode } from '@/app/ops-analysis/context/shareMode';
 import { useNetworkStatusTopologyApi } from '@/app/ops-analysis/api/networkStatusTopology';
 import type {
   NetworkStatusTopologyLink,
@@ -96,6 +97,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
   onReady,
 }) => {
   const { t } = useTranslation();
+  const shareMode = useShareMode();
   const { getNetworkStatusTopology } = useNetworkStatusTopologyApi();
   const [data, setData] = useState<NetworkStatusTopologyResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -286,6 +288,19 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
     (node: NetworkTopologyNode, closeMenu: () => void) => {
       const originalNode = originalNodeMap.get(node.id);
       if (!originalNode) return null;
+      if (shareMode) {
+        return (
+          <div className={styles.contextMenu}>
+            <button
+              type="button"
+              className={`${styles.contextMenuItem} ${styles.disabledMenuItem}`}
+              disabled
+            >
+              {t('dashboard.shareNavigationDisabled')}
+            </button>
+          </div>
+        );
+      }
       const alertCount = Number(originalNode.alert_count || 0);
       const openInstanceDetail = () => {
         closeMenu();
@@ -321,7 +336,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
         </div>
       );
     },
-    [originalNodeMap, t],
+    [originalNodeMap, shareMode, t],
   );
 
   const hoverCanvasNode = canvasNodes.find((node) => node.id === hoverNodeId);

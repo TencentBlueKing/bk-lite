@@ -11,6 +11,7 @@ import {
 import { message, Select } from "antd";
 import { useTranslation } from "@/utils/i18n";
 import { useScreenApi } from "@/app/ops-analysis/api/screen";
+import { useCanvasShareAction } from "@/app/ops-analysis/hooks/useCanvasShareAction";
 import {
   UnifiedFilterBar,
   UnifiedFilterConfigModal,
@@ -76,9 +77,10 @@ interface ScreenQuerySnapshot {
   appliedNamespaceId?: number;
 }
 
-const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen }, ref) => {
+const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode = false }, ref) => {
   const { t } = useTranslation();
   const { getScreenDetail, saveScreen } = useScreenApi();
+  const { shareLoading, openShare } = useCanvasShareAction('screen');
   const { namespaceList } = useOpsAnalysis();
   const dataSourceManager = useDataSourceManager();
   const { dataSources, loadCanvasDataSources } = dataSourceManager;
@@ -570,6 +572,15 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen }, ref) => {
           <ScreenToolbar
             selectedScreen={selectedScreen}
             editMode={editMode}
+            shareMode={shareMode}
+            shareLoading={shareLoading}
+            onOpenShare={
+              !shareMode && selectedScreen?.data_id
+                ? () => {
+                    void openShare(selectedScreen.data_id);
+                  }
+                : undefined
+            }
             saving={saving}
             onRefresh={handleRefresh}
             onOpenSettings={() => setSettingsOpen(true)}

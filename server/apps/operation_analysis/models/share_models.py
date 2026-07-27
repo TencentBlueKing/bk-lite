@@ -5,11 +5,25 @@ from django.utils import timezone
 
 
 class DashboardShareLink(models.Model):
+    class ResourceType(models.TextChoices):
+        DASHBOARD = "dashboard", "仪表盘"
+        TOPOLOGY = "topology", "拓扑图"
+        ARCHITECTURE = "architecture", "架构图"
+        SCREEN = "screen", "大屏"
+        REPORT = "report", "报表"
+        NETWORK_TOPOLOGY = "networkTopology", "网络拓扑"
+
     class Status(models.TextChoices):
         ACTIVE = "active", "有效"
         SHARER_PERMISSION_LOST = "sharer_permission_lost", "分享者失权"
         DASHBOARD_INVALID = "dashboard_invalid", "画布失效"
 
+    resource_type = models.CharField(
+        max_length=32,
+        choices=ResourceType.choices,
+        default=ResourceType.DASHBOARD,
+        db_index=True,
+    )
     dashboard = models.ForeignKey(
         "operation_analysis.Dashboard",
         null=True,
@@ -34,9 +48,9 @@ class DashboardShareLink(models.Model):
         db_table = "operation_analysis_dashboard_share_link"
         constraints = [
             models.UniqueConstraint(
-                fields=["dashboard_instance_id", "sharer_username", "sharer_domain"],
+                fields=["resource_type", "dashboard_instance_id", "sharer_username", "sharer_domain"],
                 condition=models.Q(status="active"),
-                name="uniq_active_dashboard_share_by_sharer",
+                name="uniq_active_canvas_share_by_sharer",
             )
         ]
         indexes = [

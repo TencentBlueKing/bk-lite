@@ -13,10 +13,11 @@ import ViewConfig from '@/app/ops-analysis/components/widgetConfig';
 import DashboardCanvas from './components/dashboardCanvas';
 import DashboardToolbar from './components/dashboardToolbar';
 import ViewWorkspace from '../components/viewWorkspace';
-import { Input, Modal, message, notification, Select, Typography } from 'antd';
+import { Input, Modal, message, Select } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useOpsAnalysis } from '@/app/ops-analysis/context/common';
 import { useCanvasResources } from '@/app/ops-analysis/hooks/useCanvasResources';
+import { useCanvasShareAction } from '@/app/ops-analysis/hooks/useCanvasShareAction';
 import {
   DashboardLayoutItem,
   DashboardWidgetLayoutItem,
@@ -31,7 +32,6 @@ import { DirItem } from '@/app/ops-analysis/types';
 import { useDataSourceManager } from '@/app/ops-analysis/hooks/useDataSource';
 import { useUnifiedFilter } from '@/app/ops-analysis/hooks/useUnifiedFilter';
 import { useDashBoardApi } from '@/app/ops-analysis/api/dashBoard';
-import { useDashboardShareApi } from '@/app/ops-analysis/api/dashboardShare';
 import {
   UnifiedFilterBar,
   UnifiedFilterConfigModal,
@@ -141,9 +141,8 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     const skipCollapsedGroupsPersistRef = useRef(false);
     const [collapsedGroupsLayoutReadyId, setCollapsedGroupsLayoutReadyId] =
       useState<number | string | null>(null);
-    const { createShare } = useDashboardShareApi();
+    const { shareLoading, openShare } = useCanvasShareAction('dashboard');
     const [exporting, setExporting] = useState(false);
-    const [shareLoading, setShareLoading] = useState(false);
     const resumeEditModeAfterFullscreenRef = useRef(false);
     const { isFullscreen, enterFullscreen, exitFullscreen } =
       useAppViewFullscreen();
@@ -1066,32 +1065,8 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       });
     };
 
-    const handleShare = async () => {
-      if (!selectedDashboard?.data_id || shareLoading) return;
-      setShareLoading(true);
-      try {
-        const link = await createShare(selectedDashboard.data_id);
-        const shareUrl = `${window.location.origin}${link.url}`;
-        try {
-          await navigator.clipboard.writeText(shareUrl);
-          message.success(t('dashboard.shareLinkCopied'));
-        } catch {
-          notification.warning({
-            message: t('dashboard.shareCopyFailed'),
-            description: (
-              <Typography.Text copyable={{ text: shareUrl }} className="break-all">
-                {shareUrl}
-              </Typography.Text>
-            ),
-            duration: 10,
-            placement: 'topRight',
-          });
-        }
-      } catch {
-        message.error(t('dashboard.shareCreateFailed'));
-      } finally {
-        setShareLoading(false);
-      }
+    const handleShare = () => {
+      void openShare(selectedDashboard?.data_id);
     };
 
     const dashboardToolbar = (
