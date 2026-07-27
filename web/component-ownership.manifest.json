@@ -872,7 +872,6 @@
       "system-manager-role-transfer-family.stories.tsx",
       "system-manager-user-org-family.stories.tsx",
       "system-manager-user-profile-family.stories.tsx",
-      "theme.stories.tsx",
       "time-selector.stories.tsx",
       "toolbar-family.stories.tsx",
       "top-section.stories.tsx"
@@ -2002,17 +2001,6 @@
     "reverseAppImports": [],
     "classification": "shared-primitive",
     "reason": "primitive allowlist: 通用胶囊标签组展示"
-  },
-  {
-    "component": "theme",
-    "directApps": [],
-    "transitiveApps": [],
-    "stories": [
-      "theme.stories.tsx"
-    ],
-    "reverseAppImports": [],
-    "classification": "shared-primitive",
-    "reason": "primitive allowlist: 通用主题切换交互"
   },
   {
     "component": "time-selector",

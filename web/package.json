@@ -12,6 +12,8 @@
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
     "clean": "rm -rf .next",
     "test:custom-table-height": "pnpm exec tsx scripts/custom-table-height-test.ts",
+    "test:theme-module": "pnpm exec tsx scripts/theme-module-test.tsx",
+    "type-check:theme": "tsc -p tsconfig.theme.json --noEmit",
     "test:patch-manager-metadata-only": "pnpm exec tsx scripts/patch-manager-metadata-only-test.ts",
     "test:patch-manager-cancellation": "pnpm exec tsx scripts/patch-manager-cancellation-test.ts",
     "test:patch-manager-on-demand-reboot": "pnpm exec tsx scripts/patch-manager-on-demand-reboot-test.ts",

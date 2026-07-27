@@ -1,26 +1,16 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import Icon from '@/components/icon';
-import { useTheme } from '@/context/theme';
+import { useThemeMode } from '@/theme';
 import { useTranslation } from '@/utils/i18n';
 
 const ThemeSwitcher = () => {
   const { t } = useTranslation();
-  const { setTheme } = useTheme();
-  const [isDarkMode, setIsDarkMode] = useState(false);
-
-  useEffect(() => {
-    const savedTheme = localStorage.getItem('theme');
-    setIsDarkMode(savedTheme === 'dark');
-  }, []);
+  const { mode, toggleMode } = useThemeMode();
+  const isDarkMode = mode === 'dark';
 
   const handleToggle = () => {
-    const nextIsDark = !isDarkMode;
-    const nextTheme = nextIsDark ? 'dark' : 'light';
-    setIsDarkMode(nextIsDark);
-    setTheme(nextIsDark);
-    localStorage.setItem('theme', nextTheme);
+    toggleMode();
   };
 
   return (
