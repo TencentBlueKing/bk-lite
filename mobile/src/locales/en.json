@@ -38,10 +38,28 @@
         "file": "File",
         "allApps": "All Apps"
     },
+    "refresh": {
+        "pulling": "Pull down to refresh",
+        "canRelease": "Release to refresh",
+        "refreshing": "Refreshing...",
+        "complete": "Refresh complete",
+        "failed": "Unable to refresh. Try again"
+    },
     "navigation": {
         "conversations": "Chat",
+        "apps": "AI Apps",
         "workbench": "Workbench",
-        "profile": "Me"
+        "profile": "Me",
+        "primaryNavigation": "Primary navigation"
+    },
+    "conversations": {
+        "loadFailed": "Unable to load chats",
+        "loadFailedDescription": "Check your connection and try again",
+        "emptyTitle": "No chats yet",
+        "emptyDescription": "Choose an app from All Apps to start a chat",
+        "exploreApps": "View All Apps",
+        "untitled": "Untitled chat",
+        "sessionHint": "Tap to continue"
     },
     "chat": {
         "searchPlaceholder": "Search chats",
@@ -57,6 +75,7 @@
         "executionFailed": "Execution failed",
         "executionSuccess": "Execution succeeded",
         "aiProcessing": "AI is processing, please wait...",
+        "thinkingProcess": "Thinking process",
         "addLimit": "Cannot add images and files at the same time",
         "fileSizeLimitExceeded": "Some files exceed the 10MB limit and have been skipped",
         "uploading": "Uploading, please wait...",
@@ -68,6 +87,17 @@
         "welcomeMessage": "Hello, how can I assist you today?",
         "fileCountLimit": "You can add up to 9 files",
         "noConversations": "No conversations yet",
+        "currentApp": "Current app",
+        "conversationHistory": "Conversation history",
+        "openConversationHistory": "Open conversation history",
+        "closeConversationHistory": "Close conversation history",
+        "newConversation": "New conversation",
+        "conversationActions": "Conversation actions",
+        "deleteConversation": "Delete conversation",
+        "deleteConversationConfirm": "This conversation cannot be recovered after deletion. Continue?",
+        "deleteConversationSuccess": "Conversation deleted",
+        "deleteConversationFailed": "Unable to delete the conversation. Try again",
+        "deleteRunningConversation": "This conversation is still running and cannot be deleted yet",
         "loadFailedDescription": "Unable to load app information. Please check your network connection or try other options",
         "viewOtherConversations": "View Other Conversations",
         "backToAppList": "Back to App List"
@@ -113,7 +143,9 @@
         "searchChatHistory": "Search Chat History",
         "receiveNotification": "Receive Notifications",
         "continueConversation": "Continue Conversation",
-        "startConversation": "Start Conversation"
+        "startConversation": "Start Conversation",
+        "loadFailed": "Unable to load apps",
+        "loadFailedDescription": "Check your connection and try again"
     },
     "search": {
         "searchConversation": "Search conversations",
@@ -123,7 +155,9 @@
         "searchHint": "Please enter keyword to search",
         "noResults": "No results found",
         "tryOtherKeywords": "Try other keywords",
-        "yesterday": "Yesterday"
+        "yesterday": "Yesterday",
+        "loadFailed": "Unable to load search results",
+        "loadFailedDescription": "Check your connection and try again"
     },
     "account": {
         "title": "Accounts & Security",

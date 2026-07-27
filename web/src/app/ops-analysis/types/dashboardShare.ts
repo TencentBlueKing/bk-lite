@@ -1,0 +1,16 @@
+export interface DashboardShareLinkDto {
+  id: number;
+  url: string;
+  status: 'active' | 'sharer_permission_lost' | 'dashboard_invalid';
+  sharer_username: string;
+}
+
+export interface SharedDashboardDto {
+  id: number;
+  name: string;
+  desc?: string | null;
+  filters?: unknown;
+  other?: Record<string, unknown>;
+  view_sets: unknown;
+  is_build_in: boolean;
+}

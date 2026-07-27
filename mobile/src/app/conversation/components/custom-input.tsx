@@ -4,7 +4,7 @@ import { Sender } from '@ant-design/x';
 import { AddOutline, ExclamationCircleFill } from 'antd-mobile-icons';
 import { RobotOutlined, BarChartOutlined, RadarChartOutlined, BookOutlined, FileOutlined, FileExcelFilled, FileMarkdownFilled, FilePdfFilled, FilePptFilled, FileTextFilled, FileUnknownFilled, FileWordFilled, FileZipFilled } from '@ant-design/icons';
 import { useTheme } from '@/context/theme';
-import { VoiceRecorder } from './VoiceRecorder';
+import { VoiceRecorder } from './voice-recorder';
 import { useTranslation } from '@/utils/i18n';
 
 const MOCK_TOOLS = [
@@ -452,7 +452,7 @@ export const CustomInput: React.FC<CustomInputProps> = ({
     };
 
     return (
-        <div className="rounded-2xl pt-4 mr-2 relative bg-[var(--color-bg)]">
+        <div className="pt-2 mr-2 relative bg-transparent">
             {/* 隐藏的文件输入元素 - 移动端优化 */}
             {/* 相机输入：capture 属性在移动端会直接打开相机 */}
             <input
@@ -551,7 +551,7 @@ export const CustomInput: React.FC<CustomInputProps> = ({
                                                     e.stopPropagation();
                                                     retryConversion(file, index);
                                                 }}
-                                                className="text-white text-xs bg-black bg-opacity-50 px-2 py-1 rounded"
+                                                className="text-[var(--color-text-inverse)] text-xs bg-black bg-opacity-50 px-2 py-1 rounded"
                                             >
                                                 {t('common.retry')}
                                             </button>
@@ -625,16 +625,13 @@ export const CustomInput: React.FC<CustomInputProps> = ({
             )}
 
             {/* 工具列表 */}
-            <div className="mb-3 mx-2 overflow-x-auto scrollbar-hide">
-                <div className="flex gap-3">
+            <div className="mb-2 mx-1 overflow-x-auto scrollbar-hide">
+                <div className="flex gap-2">
                     {MOCK_TOOLS.map((tool) => (
                         <button
                             key={tool.id}
                             onClick={() => handleToolClick(tool.id)}
-                            className={'px-3 py-1 gap-1 flex items-center justify-center rounded-full border border-gray-300 '}
-                            style={{
-                                flexShrink: 0,
-                            }}
+                            className="flex flex-shrink-0 items-center justify-center gap-1 rounded-full border border-[var(--color-border-3)] bg-transparent px-3 py-1 active:bg-[var(--color-fill-2)]"
                         >
                             {tool.icon}
                             <span className="text-xs text-[var(--color-text-2)]">{tool.name}</span>
@@ -651,8 +648,10 @@ export const CustomInput: React.FC<CustomInputProps> = ({
                 </div>
             )}
 
-            <div className="bg-[var(--color-bg)] rounded-2xl sender-container relative"
-                style={{ boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)' }}>
+            <div
+                className="ios-focus-stable sender-container relative rounded-2xl border border-[var(--color-border-2)] bg-[var(--color-bg)]"
+                style={{ boxShadow: 'var(--shadow-composer)' }}
+            >
                 {isRecording && (
                     <div className="voice-record-overlay rounded-2xl">
                         <div className="wave-container rounded-2xl">

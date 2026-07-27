@@ -22,6 +22,10 @@ REST_FRAMEWORK = {
         "rest_framework.parsers.FormParser",
         "rest_framework.parsers.MultiPartParser",
     ],
+    "DEFAULT_THROTTLE_RATES": {
+        "dashboard_share_exchange": "30/minute",
+        "dashboard_share_access": "300/minute",
+    },
 }
 
 AUTH_TOKEN_HEADER_NAME = "HTTP_AUTHORIZATION"

@@ -55,7 +55,8 @@ export interface DatasourceItem {
   domain: string;
   updated_by_domain: string;
   name: string;
-  rest_api: string;
+  /** 分享元数据可不返回内部执行路径 */
+  rest_api?: string;
   desc: string;
   params: ParamItem[];
   chart_type: ChartType[];
@@ -64,7 +65,7 @@ export interface DatasourceItem {
     id: number;
     name: string;
   }>;
-  tag: number[];
+  tag?: number[];
   groups?: number[];
   hasAuth?: boolean;
   field_schema?: ResponseFieldDefinition[];

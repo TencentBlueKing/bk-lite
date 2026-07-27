@@ -3,16 +3,17 @@
 对外接口: init_password_for_user(user, mode, business_config, run) -> dict
 """
 import secrets
-from typing import Any
 
 from django.contrib.auth.hashers import make_password
 from django.db import transaction
 
 from apps.core.logger import system_mgmt_logger as logger
+from apps.system_mgmt.models import UserSyncRun
 from apps.system_mgmt.utils.password_validator import PasswordValidator
 from apps.system_mgmt.utils.password_vault import decrypt_from_vault, encrypt_for_vault
 
 PASSWORD_INIT_SENTINEL = "UNSET_PASSWORD"
+EMAIL_ENQUEUE_ERROR_CODE = "email_enqueue_failed"
 # sentinel 完整标记:写进 user.password 字段(非 hash 格式)。
 # Django check_password 会先调 is_password_usable 判断是否合法 hash,
 # 非合法 hash 直接返回 False → 用户本地永远登录不上。
@@ -34,13 +35,49 @@ def _enqueue_email(run) -> None:
     """
     payload = dict(run.payload or {})
     dispatch = dict(payload.get("email_dispatch", {}))
-    if dispatch.get("enqueued"):
+    if dispatch.get("enqueue_status") in ("pending", "enqueued"):
         return
-    dispatch["enqueued"] = True
+    dispatch["enqueue_status"] = "pending"
+    dispatch.pop("enqueue_error", None)
+    payload.pop("email_enqueue_error", None)
     payload["email_dispatch"] = dispatch
     run.payload = payload
     run.save(update_fields=["payload"])
-    transaction.on_commit(lambda: send_initial_password_email_batch.delay(run.id))
+    transaction.on_commit(lambda: _publish_password_email_batch(run.id))
+
+
+def _publish_password_email_batch(run_id: int) -> None:
+    """在事务提交后投递任务，并持久化投递结果供同步收尾阶段判断。"""
+    try:
+        send_initial_password_email_batch.delay(run_id)
+    except Exception:
+        logger.exception("Initial password email task enqueue failed: run_id=%s", run_id)
+        status = "failed"
+        # payload 会经同步详情接口返回，不能持久化 broker URL、凭据等原始异常信息。
+        error_code = EMAIL_ENQUEUE_ERROR_CODE
+    else:
+        status = "enqueued"
+        error_code = None
+
+    with transaction.atomic():
+        run = UserSyncRun.objects.select_for_update().get(pk=run_id)
+        payload = dict(run.payload or {})
+        dispatch = dict(payload.get("email_dispatch", {}))
+        dispatch["enqueue_status"] = status
+        dispatch.pop("enqueue_error", None)
+        if error_code:
+            dispatch["enqueue_error_code"] = error_code
+        else:
+            dispatch.pop("enqueue_error_code", None)
+        payload["email_dispatch"] = dispatch
+        payload["email_enqueue_status"] = status
+        payload.pop("email_enqueue_error", None)
+        if error_code:
+            payload["email_enqueue_error_code"] = error_code
+        else:
+            payload.pop("email_enqueue_error_code", None)
+        run.payload = payload
+        run.save(update_fields=["payload"])
 
 
 def _validate_uniform_password(password: str) -> tuple[bool, str]:

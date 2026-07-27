@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { Table, TableProps, Pagination } from 'antd';
+import { Button, Table, TableProps, Pagination } from 'antd';
 import { SettingFilled, HolderOutlined } from '@ant-design/icons';
 import customTableStyle from './index.module.scss';
 import FieldSettingModal from './fieldSettingModal';
@@ -20,8 +20,10 @@ interface CustomTableProps<T>
     displayFieldKeys: string[];
     choosableFields: ColumnItem[];
     groupFields?: GroupFieldItem[];
+    searchable?: boolean;
+    modalWidth?: number;
   };
-  onSelectFields?: (fields: string[]) => void;
+  onSelectFields?: (fields: string[]) => void | Promise<void>;
   rowDraggable?: boolean;
   autoScrollX?: boolean;
   onRowDragStart?: (index: number) => void;
@@ -44,7 +46,7 @@ const CustomTable = <T extends object>({
     displayFieldKeys: [],
     choosableFields: [],
   },
-  onSelectFields = () => [],
+  onSelectFields = () => undefined,
   loading,
   scroll,
   pagination,
@@ -361,10 +363,14 @@ const CustomTable = <T extends object>({
         />
       </div>)}
       {fieldSetting.showSetting ? (
-        <SettingFilled
+        <Button
+          type="text"
+          aria-label={t('cutomTable.fieldSetting')}
+          title={t('cutomTable.fieldSetting')}
           style={{ top: size === 'small' ? 12 : size === 'middle' ? 16 : 20 }}
           className={customTableStyle.setting}
           onClick={showFieldSetting}
+          icon={<SettingFilled aria-hidden="true" />}
         />
       ) : null}
       <FieldSettingModal
@@ -372,6 +378,8 @@ const CustomTable = <T extends object>({
         choosableFields={fieldSetting.choosableFields || []}
         displayFieldKeys={fieldSetting.displayFieldKeys}
         groupFields={fieldSetting.groupFields}
+        searchable={fieldSetting.searchable}
+        width={fieldSetting.modalWidth}
         onConfirm={onSelectFields}
       />
     </div>

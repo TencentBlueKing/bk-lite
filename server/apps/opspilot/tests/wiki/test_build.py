@@ -516,7 +516,9 @@ def test_build_no_model_yields_zero_pages():
     kb = WikiKnowledgeBase.objects.create(name="kb", team=[1])
     material = Material.objects.create(knowledge_base=kb, name="m", material_type="text", ai_summary="x")
     record = build_service.build_from_material(material, llm_model_id=None)
-    assert record.status == "success"
+    # 无 llm_model_id → Stage2 零产出,按 2576af62a 行为应标 partial(而非 success),
+    # 让前端 BuildRecord 列表能区分"构建有问题 / 模型未配"和真正的成功。
+    assert record.status == "partial"
     assert record.counts["new"] == 0
     assert KnowledgePage.objects.filter(knowledge_base=kb).count() == 0
 

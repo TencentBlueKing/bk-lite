@@ -32,18 +32,26 @@ export function setUnauthorizedHandler(handler: (() => void | Promise<void>) | n
   unauthorizedHandler = handler;
 }
 
-function normalizeApiEndpoint(endpoint: string): string {
+function normalizeApiEndpoint(
+  endpoint: string,
+  options: { trailingSlash?: boolean } = {},
+): string {
+  const trailingSlash = options.trailingSlash ?? true;
   const value = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
   const suffixIndex = value.search(/[?#]/);
   const pathname = suffixIndex === -1 ? value : value.slice(0, suffixIndex);
   const suffix = suffixIndex === -1 ? '' : value.slice(suffixIndex);
-  const normalizedPath = pathname.endsWith('/') ? pathname : `${pathname}/`;
+  const normalizedPath = trailingSlash
+    ? (pathname.endsWith('/') ? pathname : `${pathname}/`)
+    : (pathname === '/' ? pathname : pathname.replace(/\/+$/, ''));
 
   return `${normalizedPath}${suffix}`;
 }
 
 function buildTargetUrl(endpoint: string): string {
-  return `${TARGET_SERVER}${normalizeApiEndpoint(endpoint)}`;
+  return `${TARGET_SERVER}${normalizeApiEndpoint(endpoint, {
+    trailingSlash: !isTauriApp(),
+  })}`;
 }
 
 /**
@@ -334,12 +342,19 @@ export async function* apiStream<T = any>(
         }
       }
 
+      if (config.signal?.aborted) {
+        return;
+      }
+
       if (!hasReceivedValidEvent) {
         throw new Error('未收到有效的 AI 响应');
       }
 
       return;
     } catch (error) {
+      if (config.signal?.aborted || (error instanceof Error && error.name === 'AbortError')) {
+        return;
+      }
       console.error('[API Stream] Tauri streaming error:', error);
       throw error;
     }

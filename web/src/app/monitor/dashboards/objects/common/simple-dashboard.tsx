@@ -69,7 +69,6 @@ export default function SimpleDashboard({ config }: { config: SimpleDashboardCon
     onTimeChange,
     onRefresh,
     onXRangeChange,
-    onBack,
     onInstanceChange
   } = useSimpleDashboardData(config);
 
@@ -85,7 +84,6 @@ export default function SimpleDashboard({ config }: { config: SimpleDashboardCon
             onTimeChange={onTimeChange}
             onFrequenceChange={setFrequence}
             onRefresh={onRefresh}
-            onBack={onBack}
             showTimeSelector={false}
             styles={styles}
           />

@@ -2,39 +2,135 @@
 Webhook URL Validation Security Tests
 
 Tests for is_valid_webhook_url() function that validates webhook URLs
-against a domain whitelist to prevent SSRF attacks.
+against the NetworkWhiteList-backed domain/CIDR whitelist to prevent
+SSRF attacks.
 
 Security Requirements:
-1. Only allow official webhook domains (企业微信, 飞书, 钉钉)
-2. Block all other domains including internal/private IPs
-3. Prevent URL parsing bypass attacks (backslash, userinfo, encoding)
+1. Only allow webhook URLs whose hostname or resolved IP matches the
+   whitelist (official IM domains are seeded by data migration with
+   `is_build_in=True`; private deployments are added by admins).
+2. Block all other domains including internal/private IPs not in the
+   whitelist.
+3. Prevent URL parsing bypass attacks (backslash, userinfo, encoding).
+
+Test seam:
+- `is_valid_webhook_url()` reads the whitelist through
+  `get_network_whitelist_cidrs` / `get_network_whitelist_domains`.
+  Tests monkey-patch these helpers on the channel_utils module so they
+  run without a database round-trip.
 """
 
-from apps.system_mgmt.utils.channel_utils import WEBHOOK_ALLOWED_DOMAINS, is_valid_webhook_url
+from unittest import mock
+
+import pytest
+
+from apps.system_mgmt.utils.channel_utils import is_valid_webhook_url, send_by_custom_webhook
+
+# 官方域名 fixture — 模拟 data migration 初始化后的 NetworkWhiteList.domain 集合
+BUILTIN_DOMAINS = {
+    "qyapi.weixin.qq.com",
+    "open.feishu.cn",
+    "open.larksuite.com",
+    "oapi.dingtalk.com",
+}
 
 
-class TestWebhookAllowedDomains:
-    """Test that the whitelist contains expected official domains"""
+@pytest.fixture
+def empty_whitelist():
+    """空白名单:DNS 解析失败时直接拒绝。"""
+    with (
+        mock.patch(
+            "apps.system_mgmt.utils.channel_utils.get_network_whitelist_cidrs",
+            return_value=[],
+        ),
+        mock.patch(
+            "apps.system_mgmt.utils.channel_utils.get_network_whitelist_domains",
+            return_value=[],
+        ),
+    ):
+        yield
 
-    def test_wechat_domain_in_whitelist(self):
-        """企业微信域名在白名单中"""
-        assert "qyapi.weixin.qq.com" in WEBHOOK_ALLOWED_DOMAINS
 
-    def test_feishu_domain_in_whitelist(self):
-        """飞书域名在白名单中"""
-        assert "open.feishu.cn" in WEBHOOK_ALLOWED_DOMAINS
+@pytest.fixture(autouse=True)
+def builtin_whitelist():
+    """默认白名单:4 个 is_build_in=True 条目,无 CIDR。
+    autouse 使所有测试默认有官方域名集;具体测试可再用 mock.patch 覆盖。
+    """
+    with (
+        mock.patch(
+            "apps.system_mgmt.utils.channel_utils.get_network_whitelist_cidrs",
+            return_value=[],
+        ),
+        mock.patch(
+            "apps.system_mgmt.utils.channel_utils.get_network_whitelist_domains",
+            return_value=list(BUILTIN_DOMAINS),
+        ),
+    ):
+        yield
 
-    def test_lark_domain_in_whitelist(self):
-        """Lark (国际版飞书) 域名在白名单中"""
-        assert "open.larksuite.com" in WEBHOOK_ALLOWED_DOMAINS
 
-    def test_dingtalk_domain_in_whitelist(self):
-        """钉钉域名在白名单中"""
-        assert "oapi.dingtalk.com" in WEBHOOK_ALLOWED_DOMAINS
+class TestWebhookBuiltinDomains:
+    """Test that the four official IM domains (seeded by migration) are accepted"""
 
-    def test_whitelist_size(self):
-        """白名单只包含预期的4个域名"""
-        assert len(WEBHOOK_ALLOWED_DOMAINS) == 4
+    def test_wechat_domain_accepted(self):
+        """企业微信域名通过"""
+        with (
+            mock.patch(
+                "apps.system_mgmt.utils.channel_utils.get_network_whitelist_cidrs",
+                return_value=[],
+            ),
+            mock.patch(
+                "apps.system_mgmt.utils.channel_utils.get_network_whitelist_domains",
+                return_value=list(BUILTIN_DOMAINS),
+            ),
+        ):
+            assert is_valid_webhook_url("https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx") is True
+
+    def test_feishu_domain_accepted(self):
+        """飞书域名通过"""
+        with (
+            mock.patch(
+                "apps.system_mgmt.utils.channel_utils.get_network_whitelist_cidrs",
+                return_value=[],
+            ),
+            mock.patch(
+                "apps.system_mgmt.utils.channel_utils.get_network_whitelist_domains",
+                return_value=list(BUILTIN_DOMAINS),
+            ),
+        ):
+            assert is_valid_webhook_url("https://open.feishu.cn/open-apis/bot/v2/hook/xxx") is True
+
+    def test_lark_domain_accepted(self):
+        """Lark (国际版飞书) 域名通过"""
+        with (
+            mock.patch(
+                "apps.system_mgmt.utils.channel_utils.get_network_whitelist_cidrs",
+                return_value=[],
+            ),
+            mock.patch(
+                "apps.system_mgmt.utils.channel_utils.get_network_whitelist_domains",
+                return_value=list(BUILTIN_DOMAINS),
+            ),
+        ):
+            assert is_valid_webhook_url("https://open.larksuite.com/open-apis/bot/v2/hook/xxx") is True
+
+    def test_dingtalk_domain_accepted(self):
+        """钉钉域名通过"""
+        with (
+            mock.patch(
+                "apps.system_mgmt.utils.channel_utils.get_network_whitelist_cidrs",
+                return_value=[],
+            ),
+            mock.patch(
+                "apps.system_mgmt.utils.channel_utils.get_network_whitelist_domains",
+                return_value=list(BUILTIN_DOMAINS),
+            ),
+        ):
+            assert is_valid_webhook_url("https://oapi.dingtalk.com/robot/send?access_token=xxx") is True
+
+    def test_builtin_whitelist_size(self):
+        """官方域名集包含预期的 4 个域名"""
+        assert len(BUILTIN_DOMAINS) == 4
 
 
 class TestWebhookValidURLs:
@@ -315,3 +411,245 @@ class TestWebhookEdgeCases:
         """查询参数中有特殊字符"""
         url = 'https://qyapi.weixin.qq.com/webhook?key=value&special=<>&"'
         assert is_valid_webhook_url(url) is True
+
+
+class TestWebhookNetworkWhitelistCIDRMatch:
+    """Test hostname 解析后 IP 命中 CIDR 白名单的判定"""
+
+    def test_resolved_ip_in_whitelisted_cidr_accepted(self):
+        """hostname 解析到白名单 CIDR 内的 IP → 通过"""
+        with (
+            mock.patch(
+                "apps.system_mgmt.utils.channel_utils.get_network_whitelist_cidrs",
+                return_value=["10.11.73.0/24"],
+            ),
+            mock.patch(
+                "apps.system_mgmt.utils.channel_utils.get_network_whitelist_domains",
+                return_value=[],
+            ),
+            mock.patch(
+                "apps.system_mgmt.utils.channel_utils.socket.getaddrinfo",
+                return_value=[(2, 1, 6, "", ("10.11.73.15", 0))],
+            ),
+        ):
+            assert is_valid_webhook_url("https://internal.example.com/webhook") is True
+
+    def test_resolved_ip_outside_cidr_rejected(self):
+        """hostname 解析到不在任何白名单 CIDR 内的 IP → 拒绝"""
+        with (
+            mock.patch(
+                "apps.system_mgmt.utils.channel_utils.get_network_whitelist_cidrs",
+                return_value=["10.11.73.0/24"],
+            ),
+            mock.patch(
+                "apps.system_mgmt.utils.channel_utils.get_network_whitelist_domains",
+                return_value=[],
+            ),
+            mock.patch(
+                "apps.system_mgmt.utils.channel_utils.socket.getaddrinfo",
+                return_value=[(2, 1, 6, "", ("10.99.0.1", 0))],
+            ),
+        ):
+            assert is_valid_webhook_url("https://internal.example.com/webhook") is False
+
+    def test_mixed_ips_all_must_be_whitelisted(self):
+        """解析返回多个 IP,任一不在白名单 CIDR 内 → 拒绝"""
+        with (
+            mock.patch(
+                "apps.system_mgmt.utils.channel_utils.get_network_whitelist_cidrs",
+                return_value=["10.11.73.0/24"],
+            ),
+            mock.patch(
+                "apps.system_mgmt.utils.channel_utils.get_network_whitelist_domains",
+                return_value=[],
+            ),
+            mock.patch(
+                "apps.system_mgmt.utils.channel_utils.socket.getaddrinfo",
+                return_value=[
+                    (2, 1, 6, "", ("10.11.73.15", 0)),  # 在白名单内
+                    (2, 1, 6, "", ("169.254.169.254", 0)),  # 不在白名单内
+                ],
+            ),
+        ):
+            assert is_valid_webhook_url("https://internal.example.com/webhook") is False
+
+    def test_dns_resolution_failure_rejected(self):
+        """DNS 解析失败 → 拒绝"""
+        import socket
+
+        with (
+            mock.patch(
+                "apps.system_mgmt.utils.channel_utils.get_network_whitelist_cidrs",
+                return_value=["10.11.73.0/24"],
+            ),
+            mock.patch(
+                "apps.system_mgmt.utils.channel_utils.get_network_whitelist_domains",
+                return_value=[],
+            ),
+            mock.patch(
+                "apps.system_mgmt.utils.channel_utils.socket.getaddrinfo",
+                side_effect=socket.gaierror("no such host"),
+            ),
+        ):
+            assert is_valid_webhook_url("https://nx.example.com/webhook") is False
+
+    def test_cidr_match_skips_when_domain_match_succeeds(self):
+        """domain 已命中时不再做 DNS 解析"""
+        with (
+            mock.patch(
+                "apps.system_mgmt.utils.channel_utils.get_network_whitelist_cidrs",
+                return_value=[],
+            ),
+            mock.patch(
+                "apps.system_mgmt.utils.channel_utils.get_network_whitelist_domains",
+                return_value=["qyapi.weixin.qq.com"],
+            ),
+            mock.patch(
+                "apps.system_mgmt.utils.channel_utils.socket.getaddrinfo",
+            ) as getaddrinfo_mock,
+        ):
+            assert is_valid_webhook_url("https://qyapi.weixin.qq.com/webhook") is True
+            getaddrinfo_mock.assert_not_called()
+
+
+class TestWebhookNetworkWhitelistDomainMatch:
+    """Test 私有化域名等值匹配的判定"""
+
+    def test_custom_domain_accepted(self):
+        """管理员加的私有化域名等值匹配 → 通过(不做 DNS 解析)"""
+        with (
+            mock.patch(
+                "apps.system_mgmt.utils.channel_utils.get_network_whitelist_cidrs",
+                return_value=[],
+            ),
+            mock.patch(
+                "apps.system_mgmt.utils.channel_utils.get_network_whitelist_domains",
+                return_value=["corp-wecom.example.com"],
+            ),
+            mock.patch(
+                "apps.system_mgmt.utils.channel_utils.socket.getaddrinfo",
+            ) as getaddrinfo_mock,
+        ):
+            assert is_valid_webhook_url("https://corp-wecom.example.com/webhook") is True
+            getaddrinfo_mock.assert_not_called()
+
+    def test_uppercase_custom_domain_accepted(self):
+        """大写私有化域名 → hostname 小写后命中, 通过"""
+        with (
+            mock.patch(
+                "apps.system_mgmt.utils.channel_utils.get_network_whitelist_cidrs",
+                return_value=[],
+            ),
+            mock.patch(
+                "apps.system_mgmt.utils.channel_utils.get_network_whitelist_domains",
+                return_value=["corp-wecom.example.com"],
+            ),
+        ):
+            assert is_valid_webhook_url("https://CORP-WECOM.EXAMPLE.COM/webhook") is True
+
+    def test_subdomain_of_custom_domain_rejected(self):
+        """自定义域名的子域名不命中(精确匹配,不做通配)"""
+        with (
+            mock.patch(
+                "apps.system_mgmt.utils.channel_utils.get_network_whitelist_cidrs",
+                return_value=[],
+            ),
+            mock.patch(
+                "apps.system_mgmt.utils.channel_utils.get_network_whitelist_domains",
+                return_value=["corp-wecom.example.com"],
+            ),
+            mock.patch(
+                "apps.system_mgmt.utils.channel_utils.socket.getaddrinfo",
+                side_effect=Exception("should not be called"),
+            ),
+        ):
+            assert is_valid_webhook_url("https://api.corp-wecom.example.com/webhook") is False
+
+    def test_custom_domain_dns_resolution_fallback(self):
+        """domain 不命中时回退到 CIDR + DNS 解析"""
+        with (
+            mock.patch(
+                "apps.system_mgmt.utils.channel_utils.get_network_whitelist_cidrs",
+                return_value=["10.11.73.0/24"],
+            ),
+            mock.patch(
+                "apps.system_mgmt.utils.channel_utils.get_network_whitelist_domains",
+                return_value=["other.example.com"],
+            ),
+            mock.patch(
+                "apps.system_mgmt.utils.channel_utils.socket.getaddrinfo",
+                return_value=[(2, 1, 6, "", ("10.11.73.99", 0))],
+            ),
+        ):
+            assert is_valid_webhook_url("https://internal.example.com/webhook") is True
+
+
+class TestWebhookBuiltinDomainsProtection:
+    """Test is_build_in=True 条目在 viewset 层不可改不可删"""
+
+    def test_builtin_row_cannot_be_deleted_via_viewset(self, rf):
+        """is_build_in=True 行 DELETE → 403"""
+        from apps.system_mgmt.models import NetworkWhiteList
+        from apps.system_mgmt.viewset.network_white_list_viewset import NetworkWhiteListViewSet
+
+        builtin = NetworkWhiteList(network="", domain_name="qyapi.weixin.qq.com", is_build_in=True, enabled=True)
+        with mock.patch.object(NetworkWhiteListViewSet, "get_object", return_value=builtin):
+            view = NetworkWhiteListViewSet.as_view({"delete": "destroy"})
+            request = rf.delete("/api/system_mgmt/network_white_list/1/")
+            request.user = mock.Mock()
+            response = view(request, pk=1)
+        assert response.status_code == 403
+
+    def test_builtin_row_cannot_be_updated_via_viewset(self, rf):
+        """is_build_in=True 行 PUT/PATCH → 403"""
+        from apps.system_mgmt.models import NetworkWhiteList
+        from apps.system_mgmt.viewset.network_white_list_viewset import NetworkWhiteListViewSet
+
+        builtin = NetworkWhiteList(network="", domain_name="qyapi.weixin.qq.com", is_build_in=True, enabled=True)
+        with mock.patch.object(NetworkWhiteListViewSet, "get_object", return_value=builtin):
+            view = NetworkWhiteListViewSet.as_view({"put": "update"})
+            request = rf.put("/api/system_mgmt/network_white_list/1/", {"domain_name": "evil.com"}, format="json")
+            request.user = mock.Mock()
+            response = view(request, pk=1)
+        assert response.status_code == 403
+
+
+class TestCustomWebhookValidation:
+    def test_rejects_unwhitelisted_url_before_request(self):
+        channel_obj = mock.Mock()
+        channel_obj.config = {
+            "webhook_url": "https://internal.example.com/hook",
+            "body_template": '{"content": "{{content}}"}',
+            "headers": "{}",
+            "request_method": "POST",
+        }
+
+        with (
+            mock.patch("apps.system_mgmt.utils.channel_utils.is_valid_webhook_url", return_value=False) as validator,
+            mock.patch("apps.system_mgmt.utils.channel_utils.requests.request") as request,
+        ):
+            result = send_by_custom_webhook(channel_obj, "hello", [])
+
+        assert result == {"result": False, "message": "webhook domain or IP not in whitelist"}
+        validator.assert_called_once_with("https://internal.example.com/hook")
+        request.assert_not_called()
+
+    def test_disables_redirects_for_allowed_url(self):
+        channel_obj = mock.Mock()
+        channel_obj.config = {
+            "webhook_url": "https://internal.example.com/hook",
+            "body_template": '{"content": "{{content}}"}',
+            "headers": "{}",
+            "request_method": "POST",
+        }
+        response = mock.Mock()
+        response.json.return_value = {"ok": True}
+
+        with (
+            mock.patch("apps.system_mgmt.utils.channel_utils.is_valid_webhook_url", return_value=True),
+            mock.patch("apps.system_mgmt.utils.channel_utils.requests.request", return_value=response) as request,
+        ):
+            result = send_by_custom_webhook(channel_obj, "hello", [])
+
+        assert result == {"ok": True}
+        assert request.call_args.kwargs["allow_redirects"] is False

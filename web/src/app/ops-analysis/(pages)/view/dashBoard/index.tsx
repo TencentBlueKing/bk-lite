@@ -13,7 +13,7 @@ import ViewConfig from '@/app/ops-analysis/components/widgetConfig';
 import DashboardCanvas from './components/dashboardCanvas';
 import DashboardToolbar from './components/dashboardToolbar';
 import ViewWorkspace from '../components/viewWorkspace';
-import { Input, Modal, message, Select } from 'antd';
+import { Input, Modal, message, notification, Select, Typography } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useOpsAnalysis } from '@/app/ops-analysis/context/common';
 import { useCanvasResources } from '@/app/ops-analysis/hooks/useCanvasResources';
@@ -31,6 +31,7 @@ import { DirItem } from '@/app/ops-analysis/types';
 import { useDataSourceManager } from '@/app/ops-analysis/hooks/useDataSource';
 import { useUnifiedFilter } from '@/app/ops-analysis/hooks/useUnifiedFilter';
 import { useDashBoardApi } from '@/app/ops-analysis/api/dashBoard';
+import { useDashboardShareApi } from '@/app/ops-analysis/api/dashboardShare';
 import {
   UnifiedFilterBar,
   UnifiedFilterConfigModal,
@@ -69,6 +70,9 @@ import {
 
 interface DashboardProps {
   selectedDashboard?: DirItem | null;
+  shareMode?: boolean;
+  shareSessionId?: string;
+  getDashboardDetailOverride?: (id: string | number) => Promise<any>;
 }
 
 export interface DashboardRef {
@@ -76,7 +80,7 @@ export interface DashboardRef {
 }
 
 const Dashboard = forwardRef<DashboardRef, DashboardProps>(
-  ({ selectedDashboard }, ref) => {
+  ({ selectedDashboard, shareMode = false, getDashboardDetailOverride }, ref) => {
     const { t } = useTranslation();
     const { data: session } = useSession();
     const themeName = resolveOpsChartThemeName();
@@ -132,19 +136,21 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     const [filterSearchVersion, setFilterSearchVersion] = useState(0);
     const [namespaceSearchVersion, setNamespaceSearchVersion] = useState(0);
     const exportRef = useRef<HTMLDivElement>(null);
-    const getDashboardDetailRef = useRef(getDashboardDetail);
+    const getDashboardDetailRef = useRef(getDashboardDetailOverride ?? getDashboardDetail);
     const collapsedGroupsHydratedKeyRef = useRef<string | null>(null);
     const skipCollapsedGroupsPersistRef = useRef(false);
     const [collapsedGroupsLayoutReadyId, setCollapsedGroupsLayoutReadyId] =
       useState<number | string | null>(null);
+    const { createShare } = useDashboardShareApi();
     const [exporting, setExporting] = useState(false);
+    const [shareLoading, setShareLoading] = useState(false);
     const resumeEditModeAfterFullscreenRef = useRef(false);
     const { isFullscreen, enterFullscreen, exitFullscreen } =
       useAppViewFullscreen();
 
     useEffect(() => {
-      getDashboardDetailRef.current = getDashboardDetail;
-    }, [getDashboardDetail]);
+      getDashboardDetailRef.current = getDashboardDetailOverride ?? getDashboardDetail;
+    }, [getDashboardDetail, getDashboardDetailOverride]);
 
     const {
       definitions,
@@ -1060,6 +1066,34 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       });
     };
 
+    const handleShare = async () => {
+      if (!selectedDashboard?.data_id || shareLoading) return;
+      setShareLoading(true);
+      try {
+        const link = await createShare(selectedDashboard.data_id);
+        const shareUrl = `${window.location.origin}${link.url}`;
+        try {
+          await navigator.clipboard.writeText(shareUrl);
+          message.success(t('dashboard.shareLinkCopied'));
+        } catch {
+          notification.warning({
+            message: t('dashboard.shareCopyFailed'),
+            description: (
+              <Typography.Text copyable={{ text: shareUrl }} className="break-all">
+                {shareUrl}
+              </Typography.Text>
+            ),
+            duration: 10,
+            placement: 'topRight',
+          });
+        }
+      } catch {
+        message.error(t('dashboard.shareCreateFailed'));
+      } finally {
+        setShareLoading(false);
+      }
+    };
+
     const dashboardToolbar = (
       <DashboardToolbar
         selectedDashboard={selectedDashboard}
@@ -1077,6 +1111,9 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         onToggleEditMode={toggleEditMode}
         onCancelEdit={handleCancelEdit}
         onSave={handleSave}
+        shareMode={shareMode}
+        shareLoading={shareLoading}
+        onOpenShare={!shareMode && selectedDashboard?.data_id ? handleShare : undefined}
       />
     );
 

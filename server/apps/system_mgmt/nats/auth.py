@@ -3,6 +3,55 @@ from .common import *  # noqa: F401,F403
 from .common import _collect_ancestor_group_ids, _verify_token
 
 
+def build_user_authorization_context(user):
+    """Build the current authorization context without relying on a login token cache."""
+    all_role_ids = get_user_all_roles(user)
+    role_list = Role.objects.filter(id__in=all_role_ids)
+    role_names = [f"{role.app}--{role.name}" if role.app else role.name for role in role_list]
+    is_superuser = "admin" in role_names or "system-manager--admin" in role_names
+
+    if is_superuser:
+        queryset = list(Group.objects.prefetch_related("roles").all().order_by("id"))
+        groups = [{"id": group.id, "name": group.name, "parent_id": group.parent_id} for group in queryset]
+    else:
+        visible_ids = _collect_ancestor_group_ids(user.group_list)
+        queryset = list(
+            Group.objects.prefetch_related("roles").filter(id__in=visible_ids).order_by("id")
+        )
+        direct_group_ids = set(user.group_list)
+        groups = [
+            {"id": group.id, "name": group.name, "parent_id": group.parent_id}
+            for group in queryset
+            if group.id in direct_group_ids
+        ]
+
+    group_tree = GroupUtils.build_group_tree(queryset, is_superuser, [group["id"] for group in groups])
+    permissions = {}
+    if not is_superuser:
+        menu_ids = {
+            menu_id
+            for menu_list in role_list.values_list("menu_list", flat=True)
+            for menu_id in menu_list
+        }
+        for app, name in Menu.objects.filter(id__in=menu_ids).values_list("app", "name"):
+            permissions.setdefault(app, []).append(name)
+
+    return {
+        "username": user.username,
+        "display_name": user.display_name,
+        "domain": user.domain,
+        "email": user.email,
+        "is_superuser": is_superuser,
+        "group_list": groups,
+        "group_tree": group_tree,
+        "roles": role_names,
+        "role_ids": all_role_ids,
+        "locale": user.locale,
+        "permission": permissions,
+        "timezone": user.timezone,
+    }
+
+
 @nats_client.register
 def get_pilot_permission_by_token(token, bot_id, group_list):
     try:
@@ -56,65 +105,7 @@ def verify_token(token):
     if cached is not None:
         return cached
 
-    # 获取用户所有角色（个人角色 + 组角色）
-    all_role_ids = get_user_all_roles(user)
-
-    role_list = Role.objects.filter(id__in=all_role_ids)
-    role_names = [f"{role.app}--{role.name}" if role.app else role.name for role in role_list]
-
-    is_superuser = "admin" in role_names or "system-manager--admin" in role_names
-
-    if is_superuser:
-        # 超管需要完整组树：单次全量查询（含角色关联）
-        queryset = list(Group.objects.prefetch_related("roles").all().order_by("id"))
-        groups = [{"id": g.id, "name": g.name, "parent_id": g.parent_id} for g in queryset]
-    else:
-        # 非超管：仅加载用户直属组及其祖先（供树路径展示），消除全表扫描
-        visible_ids = _collect_ancestor_group_ids(user.group_list)
-        queryset = list(
-            Group.objects.prefetch_related("roles").filter(id__in=visible_ids).order_by("id")
-        )
-        groups = [
-            {"id": g.id, "name": g.name, "parent_id": g.parent_id}
-            for g in queryset
-            if g.id in set(user.group_list)
-        ]
-
-    # 构建嵌套组结构（queryset 已按范围过滤，避免全表扫描）
-    groups_data = GroupUtils.build_group_tree(queryset, is_superuser, [i["id"] for i in groups])
-
-    menus = cache.get(f"menus-user:{user.id}")
-
-    if not menus:
-        menus = {}
-        if not is_superuser:
-            menu_list = role_list.values_list("menu_list", flat=True)
-            menu_ids = []
-            for i in menu_list:
-                menu_ids.extend(i)
-            menu_data = Menu.objects.filter(id__in=list(set(menu_ids))).values_list("app", "name")
-            for app, name in menu_data:
-                menus.setdefault(app, []).append(name)
-
-        cache.set(f"menus-user:{user.id}", menus, 60)
-
-    result = {
-        "result": True,
-        "data": {
-            "username": user.username,
-            "display_name": user.display_name,
-            "domain": user.domain,
-            "email": user.email,
-            "is_superuser": is_superuser,
-            "group_list": groups,
-            "group_tree": groups_data,
-            "roles": role_names,
-            "role_ids": all_role_ids,
-            "locale": user.locale,
-            "permission": menus,
-            "timezone": user.timezone,
-        },
-    }
+    result = {"result": True, "data": build_user_authorization_context(user)}
     set_cached_token_info(user.username, user.domain, result)
     return result
 

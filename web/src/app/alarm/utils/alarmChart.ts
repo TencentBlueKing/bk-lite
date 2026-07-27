@@ -1,6 +1,32 @@
 import dayjs from 'dayjs';
-import { AlarmTableDataItem } from '@/app/alarm/types/alarms';
-import { LevelItem } from '@/app/alarm/types/index';
+import type { AlarmTableDataItem } from '@/app/alarm/types/alarms';
+import type { LevelItem } from '@/app/alarm/types/index';
+
+type IntervalUnit = 'second' | 'minute' | 'hour' | 'day';
+type ChartBucket = { time: string } & Record<string, string | number>;
+
+const UNIT_MILLISECONDS: Record<IntervalUnit, number> = {
+  second: 1000,
+  minute: 60 * 1000,
+  hour: 60 * 60 * 1000,
+  day: 24 * 60 * 60 * 1000,
+};
+
+const formatBucketTime = (
+  time: dayjs.Dayjs,
+  intervalUnit: IntervalUnit,
+  convertToLocalizedTime: (iso: string) => string
+) => {
+  const localTime = convertToLocalizedTime(time.toISOString());
+  if (intervalUnit === 'day') return dayjs(localTime).format('YYYY-MM-DD');
+  if (intervalUnit === 'hour') {
+    return dayjs(localTime).format('YYYY-MM-DD HH:00');
+  }
+  if (intervalUnit === 'minute') {
+    return dayjs(localTime).format('YYYY-MM-DD HH:mm');
+  }
+  return dayjs(localTime).format('YYYY-MM-DD HH:mm:ss');
+};
 
 /**
  * 将告警数据按动态时间区间（秒/分钟/小时/天）分桶，生成适合堆叠柱状图的格式
@@ -17,8 +43,11 @@ export function processDataForStackedBarChart(
 ) {
   if (!data?.length) return [];
 
-  // 1. 找最早和最晚时间
-  const timestamps = data.map((it) => dayjs(it.created_at));
+  // 表格的时间筛选和排序均以 created_at 为准，图表也使用同一时间口径。
+  const validData = data.filter((item) => dayjs(item.created_at).isValid());
+  if (!validData.length) return [];
+
+  const timestamps = validData.map((item) => dayjs(item.created_at));
   const minTime = timestamps.reduce(
     (min, cur) => (cur.isBefore(min) ? cur : min),
     timestamps[0]
@@ -28,87 +57,61 @@ export function processDataForStackedBarChart(
     timestamps[0]
   );
 
-  // 2. 计算差值：秒/分/小时/天
-  const totalSeconds = maxTime.diff(minTime, 'second');
-  const totalMinutes = maxTime.diff(minTime, 'minute');
-  const totalHours = maxTime.diff(minTime, 'hour');
-  const totalDays = maxTime.diff(minTime, 'day');
+  const segmentTarget = Math.max(1, desiredSegments);
+  const totalMilliseconds = maxTime.valueOf() - minTime.valueOf();
+  const rawIntervalMilliseconds = Math.max(
+    UNIT_MILLISECONDS.second,
+    totalMilliseconds / segmentTarget
+  );
+  const intervalUnit: IntervalUnit =
+    rawIntervalMilliseconds < UNIT_MILLISECONDS.minute
+      ? 'second'
+      : rawIntervalMilliseconds < UNIT_MILLISECONDS.hour
+        ? 'minute'
+        : rawIntervalMilliseconds < UNIT_MILLISECONDS.day
+          ? 'hour'
+          : 'day';
+  const intervalCount = Math.max(
+    1,
+    Math.ceil(rawIntervalMilliseconds / UNIT_MILLISECONDS[intervalUnit])
+  );
+  const totalUnits = maxTime.diff(minTime, intervalUnit, true);
+  const segmentsCount = Math.floor(totalUnits / intervalCount) + 1;
+  const buckets: ChartBucket[] = Array.from(
+    { length: segmentsCount },
+    (_, index) => {
+      const bucketTime = minTime.add(index * intervalCount, intervalUnit);
+      const time = formatBucketTime(
+        bucketTime,
+        intervalUnit,
+        convertToLocalizedTime
+      );
+      return {
+        time,
+        ...levelList.reduce(
+          (acc, level) => {
+            acc[level.level_display_name] = 0;
+            return acc;
+          },
+          {} as Record<string, number>
+        ),
+      };
+    }
+  );
 
-  // 3. 根据 desiredSegments 选择最合适单位
-  let intervalUnit: 'second' | 'minute' | 'hour' | 'day';
-  let intervalCount: number;
-  if (totalSeconds <= desiredSegments) {
-    intervalUnit = 'second';
-    intervalCount = 1;
-  } else if (totalMinutes <= desiredSegments) {
-    intervalUnit = 'minute';
-    intervalCount = Math.ceil(totalMinutes / desiredSegments);
-  } else if (totalHours <= desiredSegments) {
-    intervalUnit = 'hour';
-    intervalCount = Math.ceil(totalHours / desiredSegments);
-  } else {
-    intervalUnit = 'day';
-    intervalCount = Math.ceil(totalDays / desiredSegments);
-  }
-
-  // 4. 构造均匀时间刻度分段，并初始化所有分段数据为 0
-  // 4.1 计算总分段数
-  const totalUnits =
-    intervalUnit === 'second'
-      ? totalSeconds
-      : intervalUnit === 'minute'
-        ? totalMinutes
-        : intervalUnit === 'hour'
-          ? totalHours
-          : totalDays;
-  const segmentsCount = Math.ceil(totalUnits / intervalCount);
-  const grouped: Record<string, any> = {};
-  for (let i = 0; i <= segmentsCount; i++) {
-    const bucketTime = minTime.add(i * intervalCount, intervalUnit);
-    const localTime = convertToLocalizedTime(bucketTime.toISOString());
-    const fmt =
-      intervalUnit === 'day'
-        ? dayjs(localTime).format('YYYY-MM-DD')
-        : intervalUnit === 'hour'
-          ? dayjs(localTime).format('YYYY-MM-DD HH:00')
-          : intervalUnit === 'minute'
-            ? dayjs(localTime).format('YYYY-MM-DD HH:mm')
-            : dayjs(localTime).format('YYYY-MM-DD HH:mm:ss');
-    grouped[fmt] = {
-      time: fmt,
-      ...levelList.reduce(
-        (acc, lvl) => {
-          acc[lvl.level_display_name] = 0;
-          return acc;
-        },
-        {} as Record<string, number>
-      ),
-    };
-  }
-
-  // 5. 遍历数据，累加到对应分段
-  data.forEach((item) => {
+  validData.forEach((item) => {
     const bucketIndex = Math.floor(
-      dayjs(item.first_event_time).diff(minTime, intervalUnit) / intervalCount
+      dayjs(item.created_at).diff(minTime, intervalUnit, true) / intervalCount
     );
-    const bucketStart = minTime.add(bucketIndex * intervalCount, intervalUnit);
-    const localBucket = convertToLocalizedTime(bucketStart.toISOString());
-    const bucketKey =
-      intervalUnit === 'day'
-        ? dayjs(localBucket).format('YYYY-MM-DD')
-        : intervalUnit === 'hour'
-          ? dayjs(localBucket).format('YYYY-MM-DD HH:00')
-          : intervalUnit === 'minute'
-            ? dayjs(localBucket).format('YYYY-MM-DD HH:mm')
-            : dayjs(localBucket).format('YYYY-MM-DD HH:mm:ss');
-    const lvl = levelList.find((l) => l.level_id === Number(item.level));
-    if (lvl && grouped[bucketKey]) {
-      grouped[bucketKey][lvl.level_display_name] += 1;
+    const level = levelList.find(
+      (itemLevel) => itemLevel.level_id === Number(item.level)
+    );
+    const bucket = buckets[bucketIndex];
+    if (level && bucket) {
+      bucket[level.level_display_name] =
+        Number(bucket[level.level_display_name] || 0) + 1;
     }
   });
 
-  // 6. 排序并返回数组
-  return Object.values(grouped).sort(
-    (a: any, b: any) => dayjs(a.time).valueOf() - dayjs(b.time).valueOf()
-  );
+  return buckets;
 }

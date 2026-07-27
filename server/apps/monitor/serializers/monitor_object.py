@@ -21,6 +21,11 @@ class MonitorObjectSerializer(serializers.ModelSerializer):
     class Meta:
         model = MonitorObject
         fields = "__all__"
+        read_only_fields = [
+            "is_builtin",
+            "cleanup_policy_effective_at",
+            "last_discovery_success_at",
+        ]
 
     def _resolve_instance_id_keys(self, attrs):
         level = attrs.get("level", getattr(self.instance, "level", "base"))
@@ -34,6 +39,11 @@ class MonitorObjectSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
+        if "cleanup_policy" in attrs or "cleanup_timeout_days" in attrs:
+            level = attrs.get("level", getattr(self.instance, "level", "base"))
+            parent = attrs.get("parent", getattr(self.instance, "parent", None))
+            if level != "base" or parent is not None:
+                raise serializers.ValidationError({"cleanup_policy": "清理策略只能配置在一级监控对象"})
         attrs["instance_id_keys"] = self._resolve_instance_id_keys(attrs)
         return attrs
 

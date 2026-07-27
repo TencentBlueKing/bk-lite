@@ -14,7 +14,7 @@ from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.models import Collector, Node
 from apps.node_mgmt.models.action import CollectorActionTask, CollectorActionTaskNode
 from apps.node_mgmt.models.cloud_region import CloudRegion
-from apps.node_mgmt.models.sidecar import Action, CollectorConfiguration, NodeOrganization
+from apps.node_mgmt.models.sidecar import Action, ChildConfig, CollectorConfiguration, NodeOrganization
 from apps.node_mgmt.services.node import NodeService
 
 
@@ -107,6 +107,59 @@ def test_get_node_list_filters_by_name_ip_os(setup):
     )
     assert result["count"] == 1
     assert result["nodes"][0]["name"] == "alpha"
+
+
+@pytest.mark.django_db
+def test_get_nodes_with_child_config_returns_only_matching_assignments(setup):
+    region, collector, node = setup
+    other_node = Node.objects.create(
+        id="node-svc-2",
+        name="beta",
+        ip="10.1.1.2",
+        operating_system="linux",
+        collector_configuration_directory="/etc",
+        cloud_region=region,
+    )
+    host_config = CollectorConfiguration.objects.create(
+        name="cfg-host",
+        collector=collector,
+        cloud_region=region,
+    )
+    host_config.nodes.add(node)
+    ChildConfig.objects.create(
+        id="child-host-cpu",
+        collect_type="host",
+        config_type="cpu",
+        content="[[inputs.cpu]]",
+        collector_config=host_config,
+    )
+    ChildConfig.objects.create(
+        id="child-host-mem",
+        collect_type="host",
+        config_type="mem",
+        content="[[inputs.mem]]",
+        collector_config=host_config,
+    )
+
+    configured_node_ids = NodeService.get_nodes_with_child_config(
+        [node.id, other_node.id],
+        collector="Telegraf",
+        collect_type="host",
+    )
+
+    assert configured_node_ids == [node.id]
+
+
+@pytest.mark.django_db
+def test_get_nodes_with_child_config_rejects_oversized_batches():
+    node_ids = [f"node-{index}" for index in range(NodeService.NODE_LIST_PAGE_SIZE_MAX + 1)]
+
+    with pytest.raises(BaseAppException, match="单次最多查询"):
+        NodeService.get_nodes_with_child_config(
+            node_ids,
+            collector="Telegraf",
+            collect_type="host",
+        )
 
 
 @pytest.mark.django_db

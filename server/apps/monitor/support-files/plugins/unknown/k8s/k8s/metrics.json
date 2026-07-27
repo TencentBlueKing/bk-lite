@@ -9,6 +9,8 @@
       "icon": "mm-k8s_K8S",
       "type": "K8S",
       "level": "base",
+      "cleanup_policy": "timeout",
+      "cleanup_timeout_days": 1,
       "description": "",
       "default_metric": "any({instance_type='k8s'}) by (instance_id)",
       "instance_id_keys": ["instance_id"],

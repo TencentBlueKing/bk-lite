@@ -28,13 +28,30 @@ fn is_allowed_host_with_allowlist(url: &str, allowed_hosts: &str) -> bool {
         Err(_) => return false,
     };
 
-    let is_loopback = match parsed.host() {
-        Some(url::Host::Ipv4(address)) => address.is_loopback(),
-        Some(url::Host::Ipv6(address)) => address.is_loopback(),
-        Some(url::Host::Domain(domain)) => domain.eq_ignore_ascii_case("localhost"),
-        None => false,
+    let (is_loopback, is_local_network_ip) = match parsed.host() {
+        Some(url::Host::Ipv4(address)) => (
+            address.is_loopback(),
+            address.is_private() || address.is_link_local(),
+        ),
+        Some(url::Host::Ipv6(address)) => (
+            address.is_loopback(),
+            address.is_unique_local() || address.is_unicast_link_local(),
+        ),
+        Some(url::Host::Domain(domain)) => (domain.eq_ignore_ascii_case("localhost"), false),
+        None => return false,
     };
-    if parsed.scheme() != "https" && !(parsed.scheme() == "http" && is_loopback) {
+
+    let scheme_allowed_without_explicit_allowlist = parsed.scheme() == "https"
+        || (parsed.scheme() == "http" && is_loopback);
+    let scheme_allowed_with_explicit_allowlist = parsed.scheme() == "https"
+        || (parsed.scheme() == "http" && (is_loopback || is_local_network_ip));
+
+    let explicit_allowlist_configured = !allowed_hosts.trim().is_empty();
+    if explicit_allowlist_configured {
+        if !scheme_allowed_with_explicit_allowlist {
+            return false;
+        }
+    } else if !scheme_allowed_without_explicit_allowlist {
         return false;
     }
 
@@ -50,7 +67,7 @@ fn is_allowed_host_with_allowlist(url: &str, allowed_hosts: &str) -> bool {
         None => host.clone(),
     };
 
-    if allowed_hosts.trim().is_empty() {
+    if !explicit_allowlist_configured {
         return is_loopback;
     }
 
@@ -641,7 +658,7 @@ mod tests {
     }
 
     #[test]
-    fn test_external_http_is_rejected_even_when_host_is_allowlisted() {
+    fn test_public_http_is_rejected_even_when_host_is_allowlisted() {
         assert!(!is_allowed_host_with_allowlist(
             "http://bklite.example.com/api/v1/",
             "bklite.example.com",
@@ -653,6 +670,22 @@ mod tests {
         assert!(is_allowed_host_with_allowlist(
             "http://127.0.0.1:8011/api/v1/",
             "127.0.0.1:8011",
+        ));
+    }
+
+    #[test]
+    fn test_env_allows_explicit_local_network_http_hosts() {
+        assert!(is_allowed_host_with_allowlist(
+            "http://192.168.1.10:3001/api/proxy/core/api/get_domain_list",
+            "192.168.1.10:3001",
+        ));
+        assert!(is_allowed_host_with_allowlist(
+            "http://169.254.10.20:3001/api/proxy/core/api/get_domain_list",
+            "169.254.10.20:3001",
+        ));
+        assert!(!is_allowed_host_with_allowlist(
+            "http://169.254.169.254/latest/meta-data/",
+            "192.168.1.10:3001",
         ));
     }
 

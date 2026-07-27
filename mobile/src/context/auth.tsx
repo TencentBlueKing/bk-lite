@@ -40,6 +40,8 @@ import {
 import { clearCurrentTeamCookie, syncCurrentTeamCookie } from '@/utils/teamCookie';
 import { isTauriApp } from '@/utils/tauriFetch';
 import { useTranslation } from '@/utils/i18n';
+import { clearConversationSessionCache } from '@/utils/conversationCache';
+import { conversationManager } from '@/context/conversation';
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
@@ -93,12 +95,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const isPublicPath = Boolean(pathname && publicPaths.includes(pathname));
 
   const resetLocalState = useCallback(async () => {
-    await clearAuthData();
-    clearCurrentTeamCookie();
-    setRuntimeAuthToken(isTauriApp() ? undefined : null);
-    setToken(null);
-    setIsAuthenticated(false);
-    setUserInfo(null);
+    let storageCleared = true;
+    try {
+      await clearAuthData();
+    } catch (error) {
+      storageCleared = false;
+      console.error('Failed to clear persisted authentication data:', error);
+    } finally {
+      clearConversationSessionCache();
+      conversationManager.clearAll();
+      clearCurrentTeamCookie();
+      setRuntimeAuthToken(isTauriApp() ? undefined : null);
+      setToken(null);
+      setIsAuthenticated(false);
+      setUserInfo(null);
+    }
+    return storageCleared;
   }, []);
 
   const establishAuthenticatedState = useCallback(async (
@@ -106,13 +118,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     baseUserInfo: LoginUserInfo | null,
     persistToken: boolean,
   ) => {
-    setRuntimeAuthToken(persistToken ? undefined : nextToken);
+    // The freshly issued token must be used to validate the session before it
+    // has been persisted into secure storage.
+    setRuntimeAuthToken(nextToken);
     const response = await getLoginInfo();
     if (!response?.result || !response.data) {
       throw new RejectedSessionError();
     }
 
-    const completeUserInfo = normalizeUserInfo(nextToken, response.data, baseUserInfo);
+    const completeUserInfo = normalizeUserInfo(
+      nextToken,
+      response.data,
+      baseUserInfo,
+    );
     if (persistToken) {
       await saveToken(nextToken);
     }
@@ -122,6 +140,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setToken(nextToken);
     setIsAuthenticated(true);
     setUserInfo(completeUserInfo);
+    setRuntimeAuthToken(persistToken ? undefined : nextToken);
     if (completeUserInfo.locale) {
       setLocale(completeUserInfo.locale);
     }
@@ -130,22 +149,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [setLocale]);
 
   const navigateAfterLogin = useCallback(() => {
-    let targetUrl = '/workbench';
-    try {
-      const lastConversationStr = localStorage.getItem('bk_lite_last_conversation');
-      if (lastConversationStr) {
-        const lastConversation = JSON.parse(lastConversationStr);
-        if (lastConversation.botId) {
-          targetUrl = `/conversation?bot_id=${lastConversation.botId}`;
-          if (lastConversation.sessionId) {
-            targetUrl += `&session_id=${lastConversation.sessionId}`;
-          }
-        }
-      }
-    } catch (error) {
-      console.warn('get last conversation failed:', error);
-    }
-    router.replace(targetUrl);
+    router.replace('/workbench');
   }, [router]);
 
   const clearH5Session = useCallback(async () => {
@@ -228,7 +232,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           await resetLocalState();
         } else {
           console.error('认证初始化错误:', error);
-          if (active) setInitializationError(true);
+          if (active) {
+            setInitializationError(true);
+          }
         }
       } finally {
         if (active) setIsInitializing(false);
@@ -249,7 +255,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [initializationError, isAuthenticated, isInitializing, isPublicPath, pathname, router]);
 
   const login = async (credentials: AuthLoginCredentials): Promise<AuthLoginResult> => {
-    if (isInitializing) return { status: 'service-unavailable' };
+    if (isInitializing) {
+      return {
+        status: 'service-unavailable',
+      };
+    }
 
     setIsLoading(true);
     try {
@@ -298,8 +308,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('Login error:', error);
       if (error instanceof RejectedSessionError) {
         await clearRejectedSession();
+      } else {
+        await resetLocalState();
       }
-      return { status: 'service-unavailable' };
+      return {
+        status: 'service-unavailable',
+      };
     } finally {
       setIsLoading(false);
     }
@@ -329,7 +343,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('退出登录过程中发生错误:', error);
       Toast.show({ content: t('login.logoutIncomplete'), icon: 'fail' });
     } finally {
-      await resetLocalState();
+      const storageCleared = await resetLocalState();
+      if (!storageCleared) {
+        Toast.show({ content: t('login.logoutIncomplete'), icon: 'fail' });
+      }
       setIsLoading(false);
       router.replace('/login');
     }
@@ -341,7 +358,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         <p className="text-sm text-[var(--color-text-secondary)]">
           {t('login.serviceUnavailable')}
         </p>
-        <Button color="primary" onClick={() => setInitializationAttempt((value) => value + 1)}>
+        <Button
+          color="primary"
+          onClick={() => setInitializationAttempt((value) => value + 1)}
+        >
           {t('common.retry')}
         </Button>
       </div>

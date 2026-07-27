@@ -358,6 +358,8 @@
       "disk_ratio": "Disk Usage Ratio"
     },
     "integrations": {
+      "hostMonitoringAlreadyConfigured": "Host monitoring already configured",
+      "hostMonitoringStatusUnavailable": "Unable to verify monitoring status. Try again later",
       "publishAddressDes": "The main website for system monitoring, used to detect its availability and performance status.",
       "dataSource": "Data Source",
       "ipDes": "The IP address of the target host being monitored is used to identify the source of data collection.",
@@ -425,6 +427,7 @@
       "libraryPath": "Driver Library Path",
       "note": "The monitoring data of K8s only supports active reporting, and is not supported to be accessed here for the time being.",
       "editMetric": "Edit Metric",
+      "viewMetric": "View Metric Configuration",
       "installationMethod": "Installation Method",
       "seviceName": "Service Name",
       "seviceNameDes": "The service name to be monitored should be consistent with the actual running service.",
@@ -860,7 +863,12 @@
       "fieldKeyPlaceholder": "Enter dimension key",
       "selectField": "Select Field",
       "selectMetricFirst": "Select a metric first",
-      "display": "Display"
+      "display": "Display",
+      "cleanupPolicy": "Cleanup Policy",
+      "noCleanup": "No cleanup",
+      "timeoutCleanup": "Timeout cleanup",
+      "timeoutDays": "Timeout (days)",
+      "cleanupPolicyHint": "Automatically delete auto-discovered assets after {days} days without data"
     },
     "selectObject": "Select Object",
     "aggregation": "Aggregation",

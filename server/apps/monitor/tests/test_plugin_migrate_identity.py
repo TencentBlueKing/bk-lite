@@ -237,7 +237,7 @@ def test_migrate_plugin_is_idempotent_with_explicit_identity(tmp_path, monkeypat
     plugin_migrate.migrate_plugin()
     plugin_migrate.migrate_plugin()
 
-    from apps.monitor.models import MonitorPlugin, MonitorPluginConfigTemplate, MonitorPluginUITemplate
+    from apps.monitor.models import MonitorObject, MonitorPlugin, MonitorPluginConfigTemplate, MonitorPluginUITemplate
     from apps.monitor.models.monitor_metrics import Metric, MetricGroup
 
     plugin = MonitorPlugin.objects.get(name="Vendor Explicit SNMP")
@@ -249,3 +249,4 @@ def test_migrate_plugin_is_idempotent_with_explicit_identity(tmp_path, monkeypat
     assert MonitorPluginUITemplate.objects.filter(plugin=plugin).count() == 1
     assert MetricGroup.objects.filter(monitor_plugin=plugin, name="Availability").count() == 1
     assert Metric.objects.filter(monitor_plugin=plugin, name="vendor_status").count() == 1
+    assert MonitorObject.objects.get(name="Switch").is_builtin is True

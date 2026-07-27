@@ -374,7 +374,7 @@ const Asset = () => {
       row,
       resolveProfessionalDashboardUrl: getProfessionalDashboardUrl
     });
-    window.open(url, '_blank', 'noopener,noreferrer');
+    router.push(url);
   };
 
   const handleTableChange = (pagination: any) => {
