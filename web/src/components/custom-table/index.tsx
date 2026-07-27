@@ -367,7 +367,7 @@ const CustomTable = <T extends object>({
           type="text"
           aria-label={t('cutomTable.fieldSetting')}
           title={t('cutomTable.fieldSetting')}
-          style={{ top: size === 'small' ? 12 : size === 'middle' ? 16 : 20 }}
+          style={{ top: size === 'small' ? 19 : size === 'middle' ? 23 : 27 }}
           className={customTableStyle.setting}
           onClick={showFieldSetting}
           icon={<SettingFilled aria-hidden="true" />}

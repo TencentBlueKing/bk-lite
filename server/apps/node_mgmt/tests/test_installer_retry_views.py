@@ -30,8 +30,8 @@ class _FakeTaskNodeQuerySet:
         return iter(self.task_nodes)
 
 
-def _task_node(task_node_id, node_id=""):
-    return SimpleNamespace(id=task_node_id, node_id=node_id)
+def _task_node(task_node_id, node_id="", result=None):
+    return SimpleNamespace(id=task_node_id, node_id=node_id, result=result or {})
 
 
 def _prepare_client(api_client, authenticated_user, monkeypatch):
@@ -131,6 +131,40 @@ def test_controller_retry_dispatches_when_all_task_nodes_are_authorized(
         "private_key": "replacement-key",
         "passphrase": None,
     }
+
+
+def test_controller_retry_rejects_manual_recovery_after_authorization(
+    api_client,
+    authenticated_user,
+    monkeypatch,
+):
+    _prepare_client(api_client, authenticated_user, monkeypatch)
+    monkeypatch.setattr(
+        "apps.node_mgmt.views.installer.get_authorized_node_queryset",
+        lambda request: object(),
+    )
+    monkeypatch.setattr(
+        InstallerService,
+        "get_authorized_controller_task_node_queryset",
+        lambda *args, **kwargs: _FakeTaskNodeQuerySet(
+            [_task_node(101, result={"failure": {"type": "manual_recovery_required"}})]
+        ),
+    )
+    retry_called = {"value": False}
+    monkeypatch.setattr(
+        "apps.node_mgmt.views.installer.retry_controller.delay",
+        lambda *args, **kwargs: retry_called.__setitem__("value", True),
+    )
+
+    response = api_client.post(
+        URL,
+        {"task_id": 39, "task_node_ids": [101], "password": "replacement"},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert response.json()["message"] == "Manual recovery is required before this node can be retried"
+    assert retry_called["value"] is False
 
 
 def test_controller_retry_requires_operate_permission_for_bound_nodes(

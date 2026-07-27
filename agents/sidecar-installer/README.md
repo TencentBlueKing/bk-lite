@@ -1,8 +1,12 @@
 # Sidecar Installer Build & Release Runbook
 
+Windows 远程安装的流水线改造、环境初始化、验收与回滚要求见
+[`docs/operations/windows-controller-remote-install-release.md`](../../docs/operations/windows-controller-remote-install-release.md)。
+
 ## Artifacts
 
 - Windows installer filename: `bklite-controller-installer.exe`
+- Windows remote bootstrap filename: `bklite-controller-bootstrap.exe`
 - Linux installer filename: `bklite-controller-installer`
 
 Default object storage layout:
@@ -12,6 +16,7 @@ Default object storage layout:
 Examples:
 
 - `installer/windows/x86_64/bklite-controller-installer.exe`
+- `installer/windows/x86_64/bklite-controller-bootstrap.exe`
 - `installer/linux/x86_64/bklite-controller-installer`
 - `installer/linux/arm64/bklite-controller-installer`
 
@@ -47,13 +52,18 @@ Outputs:
 - Release-ready Linux x86_64 binary: `dist/linux/x86_64/bklite-controller-installer`
 - Release-ready Linux ARM64 binary: `dist/linux/arm64/bklite-controller-installer`
 - Release-ready Windows x86_64 installer: `dist/windows/x86_64/bklite-controller-installer.exe`
+- Release-ready Windows x86_64 remote bootstrap: `dist/windows/x86_64/bklite-controller-bootstrap.exe`
 
 Notes:
 
 - `setup-worker.exe` is an internal Windows build artifact produced before NSIS packaging.
 - The final distributable for Windows users is only `bklite-controller-installer.exe`.
 - `bklite-controller-installer.exe` already embeds `setup-worker.exe`, extracts it during installation, uses it to perform the actual install steps, and then cleans it up.
-- For release/upload, do not distribute `setup-worker.exe` separately.
+- For remote installation, publish the same native worker under the stable release name `bklite-controller-bootstrap.exe`; do not publish the internal `setup-worker.exe` name.
+- The remote bootstrap verifies TLS, revalidates the active Server lease immediately before and after stopping the service, checks its non-extendable local deadline, rejects stale attempts with an atomically persisted target-side fence, limits package download/expansion, stages files before stopping the existing service, and restores the previous installation if the new service cannot start.
+- Remote progress is published best-effort to `installer.progress.<execution_id>` and always remains in stdout for terminal replay. The installer NATS user needs publish access to `installer.progress.>`; failure to publish does not fail installation.
+- The GUI extracts and runs the shared worker from the NSIS plugin directory, passes its one-time session through a temporary URL file, and never persists or prints that session URL. Its explicit legacy `--skip-tls` behavior is also written into the installed sidecar configuration; remote bootstrap remains strict TLS.
+- Windows remote installation requires Windows 10 / Windows Server 2016, PowerShell 5.1 or newer, and an HTTPS WinRM listener using NTLM with a trusted certificate.
 
 ## Upload
 
@@ -61,6 +71,7 @@ From `server/`:
 
 ```bash
 python manage.py installer_init --os windows --cpu_architecture x86_64 --file_path /path/to/dist/windows/x86_64/bklite-controller-installer.exe
+python manage.py installer_init --os windows --cpu_architecture x86_64 --variant bootstrap --file_path /path/to/dist/windows/x86_64/bklite-controller-bootstrap.exe
 python manage.py installer_init --os linux --cpu_architecture x86_64 --file_path /path/to/dist/linux/x86_64/bklite-controller-installer
 python manage.py installer_init --os linux --cpu_architecture arm64 --file_path /path/to/dist/linux/arm64/bklite-controller-installer
 ```
@@ -71,8 +82,9 @@ Upload behavior:
 
 1. Uploads only to the latest path
 2. Windows upload target: `installer/windows/x86_64/bklite-controller-installer.exe`
-3. Linux x86_64 upload target: `installer/linux/x86_64/bklite-controller-installer`
-4. Linux ARM64 upload target: `installer/linux/arm64/bklite-controller-installer`
+3. Windows remote bootstrap target: `installer/windows/x86_64/bklite-controller-bootstrap.exe`
+4. Linux x86_64 upload target: `installer/linux/x86_64/bklite-controller-installer`
+5. Linux ARM64 upload target: `installer/linux/arm64/bklite-controller-installer`
 
 ## Controller / Collector package upload
 
@@ -148,6 +160,7 @@ Execute the following in order when releasing Linux ARM64 controller support:
    ```
    Confirm these files exist:
    - `dist/windows/x86_64/bklite-controller-installer.exe`
+   - `dist/windows/x86_64/bklite-controller-bootstrap.exe`
    - `dist/linux/x86_64/bklite-controller-installer`
    - `dist/linux/arm64/bklite-controller-installer`
 
@@ -160,6 +173,7 @@ Execute the following in order when releasing Linux ARM64 controller support:
    ```bash
    cd server
    python manage.py installer_init --os windows --cpu_architecture x86_64 --file_path /path/to/dist/windows/x86_64/bklite-controller-installer.exe
+   python manage.py installer_init --os windows --cpu_architecture x86_64 --variant bootstrap --file_path /path/to/dist/windows/x86_64/bklite-controller-bootstrap.exe
    python manage.py installer_init --os linux --cpu_architecture x86_64 --file_path /path/to/dist/linux/x86_64/bklite-controller-installer
    python manage.py installer_init --os linux --cpu_architecture arm64 --file_path /path/to/dist/linux/arm64/bklite-controller-installer
    ```
