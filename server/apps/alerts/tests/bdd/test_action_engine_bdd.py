@@ -57,6 +57,7 @@ def superuser_client(db):
     user.save()
     client = APIClient()
     client.force_authenticate(user=user)
+    client.cookies["current_team"] = "1"
     return client
 
 

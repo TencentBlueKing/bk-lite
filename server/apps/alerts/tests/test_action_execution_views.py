@@ -12,12 +12,12 @@ def superuser_client(authenticated_user):
     authenticated_user.save()
     client = APIClient()
     client.force_authenticate(user=authenticated_user)
+    client.cookies["current_team"] = "1"
     return client
 
 
 @pytest.mark.django_db
 def test_list_executions_filtered_by_alert(superuser_client):
-    superuser_client.cookies["current_team"] = "1"
     alert = Alert.objects.create(alert_id="A1", fingerprint="f", title="t", content="c", level="1", team=[1])
     rule = ActionRule.objects.create(name="r", team=[1])
     ActionExecution.objects.create(rule=rule, alert=alert, trigger_event="created",
