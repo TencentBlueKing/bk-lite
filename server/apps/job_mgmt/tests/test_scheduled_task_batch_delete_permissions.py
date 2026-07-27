@@ -39,7 +39,7 @@ def test_batch_delete_only_deletes_authorized_team_tasks(api_client, authenticat
 
     rules = {"team": [1], "instance": []}
     with (
-        patch("apps.core.utils.viewset_utils.get_permission_rules", return_value=rules),
+        patch("apps.core.utils.viewset_utils.get_permission_rules", return_value=rules) as get_permission_rules,
         patch(VIEW_SVC + ".delete_periodic_task") as delete_periodic_task,
     ):
         response = api_client.post(URL, {"ids": [own_task.id, foreign_task.id]}, format="json")
@@ -49,6 +49,7 @@ def test_batch_delete_only_deletes_authorized_team_tasks(api_client, authenticat
     assert not ScheduledTask.objects.filter(id=own_task.id).exists()
     assert ScheduledTask.objects.filter(id=foreign_task.id).exists()
     delete_periodic_task.assert_called_once_with(own_task.id)
+    get_permission_rules.assert_called_once()
 
 
 def test_batch_delete_foreign_team_id_is_noop(api_client, authenticated_user):
@@ -119,6 +120,89 @@ def test_batch_delete_foreign_team_operate_instance_rule_is_noop(api_client, aut
     delete_periodic_task.assert_not_called()
 
 
+def test_batch_delete_does_not_cross_current_team_for_multi_team_user(api_client, authenticated_user):
+    other_team_task = _make_task("other-membership", [2])
+    authenticated_user.group_list = [{"id": 1}, {"id": 2}]
+    _grant_delete_permission(api_client, authenticated_user)
+
+    rules = {"team": [1], "instance": []}
+    with (
+        patch("apps.core.utils.viewset_utils.get_permission_rules", return_value=rules),
+        patch(VIEW_SVC + ".delete_periodic_task") as delete_periodic_task,
+    ):
+        response = api_client.post(URL, {"ids": [other_team_task.id]}, format="json")
+
+    assert response.status_code == 200
+    assert response.data["deleted_count"] == 0
+    assert ScheduledTask.objects.filter(id=other_team_task.id).exists()
+    delete_periodic_task.assert_not_called()
+
+
+def test_batch_delete_child_team_rule_does_not_grant_sibling_team(api_client, authenticated_user):
+    sibling_task = _make_task("sibling", [3])
+    authenticated_user.group_list = [{"id": 1}, {"id": 2}, {"id": 3}]
+    authenticated_user.group_tree = [
+        {
+            "id": 1,
+            "subGroups": [
+                {"id": 2, "subGroups": []},
+                {"id": 3, "subGroups": []},
+            ],
+        }
+    ]
+    _grant_delete_permission(api_client, authenticated_user)
+    api_client.cookies["include_children"] = "1"
+
+    rules = {"team": [2], "instance": []}
+    with (
+        patch("apps.core.utils.viewset_utils.get_permission_rules", return_value=rules),
+        patch(VIEW_SVC + ".delete_periodic_task") as delete_periodic_task,
+    ):
+        response = api_client.post(URL, {"ids": [sibling_task.id]}, format="json")
+
+    assert response.status_code == 200
+    assert response.data["deleted_count"] == 0
+    assert ScheduledTask.objects.filter(id=sibling_task.id).exists()
+    delete_periodic_task.assert_not_called()
+
+
+def test_batch_delete_parent_team_rule_allows_child_when_including_children(api_client, authenticated_user):
+    child_task = _make_task("child", [2])
+    authenticated_user.group_list = [{"id": 1}, {"id": 2}]
+    authenticated_user.group_tree = [{"id": 1, "subGroups": [{"id": 2, "subGroups": []}]}]
+    _grant_delete_permission(api_client, authenticated_user)
+    api_client.cookies["include_children"] = "1"
+
+    rules = {"team": [1], "instance": []}
+    with (
+        patch("apps.core.utils.viewset_utils.get_permission_rules", return_value=rules),
+        patch(VIEW_SVC + ".delete_periodic_task") as delete_periodic_task,
+    ):
+        response = api_client.post(URL, {"ids": [child_task.id]}, format="json")
+
+    assert response.status_code == 200
+    assert response.data["deleted_count"] == 1
+    assert not ScheduledTask.objects.filter(id=child_task.id).exists()
+    delete_periodic_task.assert_called_once_with(child_task.id)
+
+
+def test_batch_delete_global_task_is_superuser_only(api_client, authenticated_user):
+    global_task = _make_task("global", [])
+    _grant_delete_permission(api_client, authenticated_user)
+
+    rules = {"team": [1], "instance": [{"id": global_task.id, "permission": ["Operate"]}]}
+    with (
+        patch("apps.core.utils.viewset_utils.get_permission_rules", return_value=rules),
+        patch(VIEW_SVC + ".delete_periodic_task") as delete_periodic_task,
+    ):
+        response = api_client.post(URL, {"ids": [global_task.id]}, format="json")
+
+    assert response.status_code == 200
+    assert response.data["deleted_count"] == 0
+    assert ScheduledTask.objects.filter(id=global_task.id).exists()
+    delete_periodic_task.assert_not_called()
+
+
 def test_destroy_foreign_team_task_is_denied(api_client, authenticated_user):
     foreign_task = _make_task("foreign-single", [2])
     _grant_delete_permission(api_client, authenticated_user)
@@ -133,6 +217,24 @@ def test_destroy_foreign_team_task_is_denied(api_client, authenticated_user):
     assert response.json()["result"] is False
     assert ScheduledTask.objects.filter(id=foreign_task.id).exists()
     get_permission_rules.assert_not_called()
+    delete_periodic_task.assert_not_called()
+
+
+def test_destroy_does_not_cross_current_team_for_multi_team_user(api_client, authenticated_user):
+    other_team_task = _make_task("other-membership-single", [2])
+    authenticated_user.group_list = [{"id": 1}, {"id": 2}]
+    _grant_delete_permission(api_client, authenticated_user)
+
+    rules = {"team": [1], "instance": []}
+    with (
+        patch("apps.core.utils.viewset_utils.get_permission_rules", return_value=rules),
+        patch(VIEW_SVC + ".delete_periodic_task") as delete_periodic_task,
+    ):
+        response = api_client.delete(f"/api/v1/job_mgmt/api/scheduled_task/{other_team_task.id}/")
+
+    assert response.status_code == 200
+    assert response.json()["result"] is False
+    assert ScheduledTask.objects.filter(id=other_team_task.id).exists()
     delete_periodic_task.assert_not_called()
 
 
