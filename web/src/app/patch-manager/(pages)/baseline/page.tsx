@@ -287,27 +287,22 @@ export default function BaselineManagementPage() {
             </Popconfirm></PermissionWrapper>;
         const assessEl = (
           <PermissionWrapper requiredPermissions={['Edit']}>
-            <Button
-              type="link"
-              size="small"
+            <Popconfirm
+              title="立即评估基线"
+              description={`将评估“${r.name}”当前绑定的 ${r.bound_host_count || 0} 台主机，是否继续？`}
+              okText="确认评估"
+              cancelText="取消"
               disabled={!r.can_assess}
-              onClick={() => {
-                if (!r.can_assess) return;
-                Modal.confirm({
-                  title: '立即评估基线',
-                  content: `将评估“${r.name}”当前绑定的 ${r.bound_host_count || 0} 台主机，是否继续？`,
-                  okText: '确认评估',
-                  cancelText: '取消',
-                  async onOk() {
-                    const result = await api.assessBaseline(r.id);
-                    message.success(`评估任务已创建，共 ${result.host_count || 0} 台主机`);
-                    await loadData();
-                  },
-                });
+              onConfirm={async () => {
+                const result = await api.assessBaseline(r.id);
+                message.success(`评估任务已创建，共 ${result.host_count || 0} 台主机`);
+                await loadData();
               }}
             >
-              立即评估
-            </Button>
+              <Button type="link" size="small" disabled={!r.can_assess}>
+                立即评估
+              </Button>
+            </Popconfirm>
           </PermissionWrapper>
         );
         return (
