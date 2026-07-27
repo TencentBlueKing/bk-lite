@@ -3,12 +3,17 @@
 调用真实 management 命令（call_command），断言真实 DB 副作用；
 只在涉及外部缓存时 mock permission_cache。
 """
+
 from io import StringIO
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock, call, patch
 
 import pytest
-from django.core.management import call_command
+from django.core.cache.backends.locmem import LocMemCache
+from django.core.cache.backends.redis import RedisCache
+from django.core.management import CommandError, call_command
 
+from apps.core.utils.permission_cache import get_user_permission_version
 from apps.system_mgmt.models import App, CustomMenuGroup, Group, LoginModule, Menu, Role, SystemSettings, User
 from apps.system_mgmt.services.role_manage import RoleManage
 
@@ -34,9 +39,7 @@ def test_create_user_basic():
 
 def test_create_user_superuser_assigns_admin_role():
     out = StringIO()
-    call_command(
-        "create_user", "boss", "pw", "--email", "boss@x.com", "--display_name", "Boss", "--is_superuser", stdout=out
-    )
+    call_command("create_user", "boss", "pw", "--email", "boss@x.com", "--display_name", "Boss", "--is_superuser", stdout=out)
     user = User.objects.get(username="boss")
     assert user.email == "boss@x.com"
     assert user.display_name == "Boss"
@@ -127,6 +130,150 @@ def test_init_custom_menu_creates_groups_for_builtin_apps():
 
 
 # ---------------------------------------------------------------------------
+# init_realm_resource / create_guest_role 权限代际
+# ---------------------------------------------------------------------------
+def test_init_realm_resource_advances_permission_version():
+    user = User.objects.create(
+        username="realm-version",
+        password="x",
+        display_name="Realm version",
+        email="realm-version@example.com",
+    )
+    initial_version = get_user_permission_version(user.username, user.domain)
+
+    with (
+        patch(
+            "apps.system_mgmt.management.commands.init_realm_resource.get_install_apps",
+            return_value=set(),
+        ),
+        patch(
+            "apps.system_mgmt.management.commands.init_realm_resource.os.walk",
+            return_value=[],
+        ),
+        patch(
+            "apps.system_mgmt.management.commands.init_realm_resource._permission_signature",
+            side_effect=[("before",), ("after",)],
+        ),
+    ):
+        call_command("init_realm_resource")
+
+    assert get_user_permission_version(user.username, user.domain) > initial_version
+
+
+def test_init_realm_resource_noop_keeps_permission_version():
+    user = User.objects.create(
+        username="realm-version-noop",
+        password="x",
+        display_name="Realm version noop",
+        email="realm-version-noop@example.com",
+    )
+    initial_version = get_user_permission_version(user.username, user.domain)
+
+    with (
+        patch(
+            "apps.system_mgmt.management.commands.init_realm_resource.get_install_apps",
+            return_value=set(),
+        ),
+        patch(
+            "apps.system_mgmt.management.commands.init_realm_resource.os.walk",
+            return_value=[],
+        ),
+    ):
+        call_command("init_realm_resource")
+
+    assert get_user_permission_version(user.username, user.domain) == initial_version
+
+
+def test_create_guest_role_advances_permission_version():
+    from apps.system_mgmt.nats.users import create_guest_role
+
+    user = User.objects.create(
+        username="guest-role-version",
+        password="x",
+        display_name="Guest role version",
+        email="guest-role-version@example.com",
+    )
+    initial_version = get_user_permission_version(user.username, user.domain)
+
+    result = create_guest_role()
+
+    assert result["result"] is True
+    assert get_user_permission_version(user.username, user.domain) > initial_version
+    second_version = get_user_permission_version(user.username, user.domain)
+    create_guest_role()
+    assert get_user_permission_version(user.username, user.domain) == second_version
+
+
+def test_prepare_permission_cache_rollback_requires_confirmation(mocker):
+    clear_namespaces = mocker.patch(
+        "apps.system_mgmt.management.commands.prepare_permission_cache_rollback._clear_permission_namespaces",
+    )
+
+    with pytest.raises(CommandError, match="必须先排空"):
+        call_command("prepare_permission_cache_rollback")
+
+    clear_namespaces.assert_not_called()
+
+
+def test_prepare_permission_cache_rollback_only_clears_permission_namespaces(mocker):
+    clear_namespaces = mocker.patch(
+        "apps.system_mgmt.management.commands.prepare_permission_cache_rollback._clear_permission_namespaces",
+        return_value=7,
+    )
+
+    out = StringIO()
+    call_command("prepare_permission_cache_rollback", confirm=True, stdout=out)
+
+    clear_namespaces.assert_called_once()
+    assert "删除 7 个键" in out.getvalue()
+
+
+def test_prepare_permission_cache_rollback_fails_closed_when_pattern_delete_fails(mocker):
+    mocker.patch(
+        "apps.system_mgmt.management.commands.prepare_permission_cache_rollback._clear_permission_namespaces",
+        side_effect=RuntimeError("redis unavailable"),
+    )
+
+    with pytest.raises(CommandError, match="禁止启动旧版本"):
+        call_command("prepare_permission_cache_rollback", confirm=True)
+
+
+def test_prepare_permission_cache_rollback_uses_django_redis_scan_contract():
+    from apps.system_mgmt.management.commands.prepare_permission_cache_rollback import (
+        ROLLBACK_PERMISSION_CACHE_PATTERNS,
+        _clear_permission_namespaces,
+    )
+
+    backend = RedisCache("redis://127.0.0.1:6379/1", {"OPTIONS": {}})
+    client = MagicMock()
+    client.scan_iter.side_effect = [
+        iter([b":1:perm_rules:a", b":1:perm_rules:b"]),
+        iter([]),
+        iter([b":1:token_info:a"]),
+        iter([]),
+        iter([]),
+    ]
+    client.delete.side_effect = [2, 1]
+    backend.__dict__["_cache"] = SimpleNamespace(get_client=lambda key, write: client)
+
+    deleted = _clear_permission_namespaces(backend)
+
+    assert deleted == 3
+    assert client.scan_iter.call_args_list == [call(match=backend.make_key(pattern), count=1000) for pattern in ROLLBACK_PERMISSION_CACHE_PATTERNS]
+    assert client.delete.call_args_list == [
+        call(b":1:perm_rules:a", b":1:perm_rules:b"),
+        call(b":1:token_info:a"),
+    ]
+    client.flushdb.assert_not_called()
+
+
+def test_prepare_permission_cache_rollback_noops_for_drained_locmem():
+    from apps.system_mgmt.management.commands.prepare_permission_cache_rollback import _clear_permission_namespaces
+
+    assert _clear_permission_namespaces(LocMemCache("rollback-test", {})) == 0
+
+
+# ---------------------------------------------------------------------------
 # init_bk_login_settings 命令
 # ---------------------------------------------------------------------------
 def test_init_bk_login_settings_creates_bk_module():
@@ -198,9 +345,7 @@ def test_sql_execute_returns_dict_rows(monkeypatch):
 
     # SQLExecute 走独立连接，看不到当前测试事务里未提交的数据，
     # 因此查询 migration 已提交的 systemsettings 表，验证返回 dict 行结构。
-    rows = SQLExecute.execute_sql(
-        "SELECT key, value FROM system_mgmt_systemsettings LIMIT 1", []
-    )
+    rows = SQLExecute.execute_sql("SELECT key, value FROM system_mgmt_systemsettings LIMIT 1", [])
     assert isinstance(rows, list)
     if rows:
         assert "key" in rows[0] and "value" in rows[0]

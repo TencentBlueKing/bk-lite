@@ -20,7 +20,13 @@ import nats_client
 from apps.core.constants import VERIFY_TOKEN_USER_NOT_FOUND_CODE, VERIFY_TOKEN_USER_NOT_FOUND_MESSAGE
 from apps.core.logger import system_mgmt_logger as logger
 from apps.core.utils.loader import LanguageLoader
-from apps.core.utils.permission_cache import clear_token_info_cache, clear_users_permission_cache, get_cached_token_info, set_cached_token_info
+from apps.core.utils.permission_cache import (
+    clear_token_info_cache,
+    clear_users_permission_cache,
+    get_cached_token_info,
+    get_user_permission_version,
+    set_cached_token_info,
+)
 from apps.system_mgmt.guest_menus import CMDB_MENUS, MONITOR_MENUS, OPSPILOT_GUEST_MENUS
 from apps.system_mgmt.models import (
     App,

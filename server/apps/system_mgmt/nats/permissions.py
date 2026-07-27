@@ -243,43 +243,43 @@ def delete_rules(group_ids, instance_id, app, module, child_module):
 
         updated_count = 0
         affected_rule_ids = []
-        for rule_obj in rules_queryset:
-            rules_data = rule_obj.rules
+        with transaction.atomic():
+            for rule_obj in rules_queryset:
+                rules_data = rule_obj.rules
 
-            # 如果没有对应的模块，跳过
-            if module not in rules_data:
-                continue
-
-            # 获取目标数据结构
-            if child_module:
-                # 二级模块，如 provider.llm_model
-                if child_module not in rules_data[module]:
+                # 如果没有对应的模块，跳过
+                if module not in rules_data:
                     continue
-                target_list = rules_data[module][child_module]
-            else:
-                # 一级模块，如 skill、bot
-                target_list = rules_data[module]
 
-            # 删除指定 ID 的权限项
-            original_length = len(target_list)
-            if child_module:
-                rules_data[module][child_module] = [item for item in target_list if str(item.get("id")) != str(instance_id)]
-            else:
-                rules_data[module] = [item for item in target_list if str(item.get("id")) != str(instance_id)]
+                # 获取目标数据结构
+                if child_module:
+                    # 二级模块，如 provider.llm_model
+                    if child_module not in rules_data[module]:
+                        continue
+                    target_list = rules_data[module][child_module]
+                else:
+                    # 一级模块，如 skill、bot
+                    target_list = rules_data[module]
 
-            # 如果有删除操作，更新数据库
-            new_length = len(rules_data[module][child_module] if child_module else rules_data[module])
-            if new_length < original_length:
-                rule_obj.rules = rules_data
-                rule_obj.save()
-                updated_count += 1
-                affected_rule_ids.append(rule_obj.id)
+                # 删除指定 ID 的权限项
+                original_length = len(target_list)
+                if child_module:
+                    rules_data[module][child_module] = [item for item in target_list if str(item.get("id")) != str(instance_id)]
+                else:
+                    rules_data[module] = [item for item in target_list if str(item.get("id")) != str(instance_id)]
 
-        # 清除受影响用户的权限缓存
-        if affected_rule_ids:
-            affected_users = list(UserRule.objects.filter(group_rule_id__in=affected_rule_ids).values("username", "domain"))
-            if affected_users:
-                clear_users_permission_cache(affected_users)
+                # 如果有删除操作，更新数据库
+                new_length = len(rules_data[module][child_module] if child_module else rules_data[module])
+                if new_length < original_length:
+                    rule_obj.rules = rules_data
+                    rule_obj.save()
+                    updated_count += 1
+                    affected_rule_ids.append(rule_obj.id)
+
+            if affected_rule_ids:
+                affected_users = list(UserRule.objects.filter(group_rule_id__in=affected_rule_ids).values("username", "domain"))
+                if affected_users:
+                    clear_users_permission_cache(affected_users)
 
         return {
             "result": True,
