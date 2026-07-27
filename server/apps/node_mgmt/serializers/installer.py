@@ -35,6 +35,26 @@ class InstallNodeSerializer(serializers.Serializer):
     private_key = serializers.CharField(required=False, allow_blank=True, default="")
     passphrase = serializers.CharField(required=False, allow_blank=True, default="")
     node_id = serializers.CharField(required=False, allow_blank=True)
+    winrm_scheme = serializers.ChoiceField(choices=("http", "https"), required=False, default="https")
+    winrm_transport = serializers.ChoiceField(
+        choices=("basic", "ntlm", "kerberos", "credssp"),
+        required=False,
+        default="ntlm",
+    )
+    winrm_cert_validation = serializers.BooleanField(required=False, default=True)
+
+    def validate(self, attrs):
+        if attrs.get("os") == NodeConstants.WINDOWS_OS:
+            if not attrs.get("password"):
+                raise serializers.ValidationError({"password": "Windows remote installation requires a password"})
+            if (
+                attrs.get("port") != 5986
+                or attrs.get("winrm_scheme") != "https"
+                or attrs.get("winrm_transport") != "ntlm"
+                or attrs.get("winrm_cert_validation") is not True
+            ):
+                raise serializers.ValidationError("Windows remote installation currently requires HTTPS, NTLM, and server certificate validation")
+        return attrs
 
 
 class ControllerInstallRequestSerializer(serializers.Serializer):

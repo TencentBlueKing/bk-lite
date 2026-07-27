@@ -22,7 +22,6 @@ from apps.node_mgmt.models import (
     NodeCollectorInstallStatus,
 )
 from apps.node_mgmt.models import ControllerTaskNode
-from apps.node_mgmt.services.package import PackageService
 
 from apps.node_mgmt.utils.installer import (
     exec_command_to_remote,
@@ -34,6 +33,10 @@ from apps.node_mgmt.utils.installer import (
 )
 from apps.node_mgmt.services.installer import InstallerService
 from apps.node_mgmt.services.package import PackageService
+from apps.node_mgmt.services.windows_remote_bootstrap import (
+    WindowsBootstrapTarget,
+    WindowsRemoteBootstrapService,
+)
 from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
 from apps.node_mgmt.utils.step_tracker import (
     advance_step,
@@ -494,17 +497,23 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
         has_password = bool(node_obj.password)
         has_private_key = bool(node_obj.private_key)
 
-        if not has_password and not has_private_key:
+        is_windows = getattr(node_obj, "os", "") == NodeConstants.WINDOWS_OS
+        if (is_windows and not has_password) or (not is_windows and not has_password and not has_private_key):
+            credential_message = (
+                "Windows remote installation requires a password."
+                if is_windows
+                else "Password or private key is required."
+            )
             _add_step(
                 node_obj,
                 "credential_check",
                 "error",
-                "No authentication method provided. Password or private key is required.",
+                f"No authentication method provided. {credential_message}",
             )
             _save_node_result(node_obj, "error", "Credential validation failed")
             continue
 
-        auth_method = "private key" if has_private_key else "password"
+        auth_method = "WinRM password" if is_windows else ("private key" if has_private_key else "password")
         _add_steps(
             node_obj,
             [
@@ -628,15 +637,22 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
                     subscribe_thread.join(timeout=2)
                     consume_thread.join(timeout=2)
             else:
-                exec_result = exec_command_to_remote(
-                    task_obj.work_node,
-                    node_obj.ip,
-                    node_obj.username,
-                    password,
-                    install_command,
-                    node_obj.port,
-                    private_key=private_key,
-                    passphrase=passphrase,
+                exec_result = WindowsRemoteBootstrapService().run(
+                    cloud_region_id=task_obj.cloud_region_id,
+                    task_node_id=node_obj.id,
+                    attempt=_get_execution_attempt(node_obj),
+                    cpu_architecture=resolved_arch,
+                    session_url=install_command,
+                    target=WindowsBootstrapTarget(
+                        host=node_obj.ip,
+                        port=node_obj.port,
+                        user=node_obj.username,
+                        password=password,
+                        scheme=node_obj.winrm_scheme,
+                        transport=node_obj.winrm_transport,
+                        validate_certificate=node_obj.winrm_cert_validation,
+                    ),
+                    timeout=InstallerConstants.COMMAND_EXECUTE_TIMEOUT,
                 )
             installer_output = ""
             if isinstance(exec_result, dict):

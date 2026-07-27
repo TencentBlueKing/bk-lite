@@ -1,4 +1,11 @@
+import pytest
+
 from service.task_store import SENSITIVE_CREDENTIAL_KEYS, TaskStore, _sanitize_payload_for_storage
+
+
+@pytest.fixture(autouse=True)
+def payload_encryption_key(monkeypatch):
+    monkeypatch.setenv("ANSIBLE_PAYLOAD_ENCRYPTION_KEY", "unit-test-payload-encryption-key")
 
 
 def test_claim_task_blocks_active_lease(tmp_path):
@@ -171,6 +178,23 @@ def test_sanitize_payload_removes_top_level_sensitive_fields():
     assert sanitized["module"] == "ping"
 
 
+def test_sanitize_payload_redacts_sensitive_extra_vars():
+    payload = {
+        "task_id": "extra-vars-test",
+        "extra_vars": {
+            "bklite_session_url": "https://server.example/session/secret",
+            "api_token": "token-value",
+            "target_path": "C:/Windows/Temp/bootstrap.exe",
+        },
+    }
+
+    sanitized = _sanitize_payload_for_storage(payload)
+
+    assert sanitized["extra_vars"]["bklite_session_url"] == "***"
+    assert sanitized["extra_vars"]["api_token"] == "***"
+    assert sanitized["extra_vars"]["target_path"] == "C:/Windows/Temp/bootstrap.exe"
+
+
 def test_sanitize_payload_handles_empty_payload():
     """Verify empty/None payloads are handled gracefully."""
     assert _sanitize_payload_for_storage({}) == {}
@@ -237,6 +261,17 @@ def test_create_if_absent_preserves_execution_payload_for_worker_use(tmp_path):
     execution_payload = store.get_execution_payload("execution-payload-test")
 
     assert execution_payload == payload_with_creds
+    assert b"ansible_password=secret" not in (tmp_path / "task.db").read_bytes()
+    assert b"BEGIN RSA PRIVATE KEY" not in (tmp_path / "task.db").read_bytes()
+
+    store.update_execution_result(
+        "execution-payload-test",
+        "success",
+        {"success": True},
+        "2026-04-23T00:01:00+00:00",
+    )
+
+    assert store.get_execution_payload("execution-payload-test") is None
 
 
 def test_sensitive_credential_keys_is_comprehensive():

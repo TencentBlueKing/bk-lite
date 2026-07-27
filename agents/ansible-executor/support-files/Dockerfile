@@ -17,15 +17,16 @@ RUN apt-get update && \
 WORKDIR /opt
 
 COPY pyproject.toml /opt/pyproject.toml
+COPY collections/requirements.yml /opt/collections-requirements.yml
 COPY main.py /opt/main.py
 COPY support-files/startup.sh /opt/startup.sh
 COPY support-files/service.conf /etc/supervisor/conf.d/service.conf
 
 RUN python3 -m venv /opt/venv && \
     /opt/venv/bin/pip install --no-cache-dir --upgrade pip && \
-    /opt/venv/bin/pip install --no-cache-dir nats-py==2.10.0 pyyaml==6.0.2 python-dotenv==1.0.0 pywinrm[credssp]==0.5.0 && \
+    /opt/venv/bin/pip install --no-cache-dir ansible-core==2.18.6 cryptography==46.0.5 nats-py==2.10.0 pyyaml==6.0.2 python-dotenv==1.0.0 pywinrm==0.5.0 && \
     mkdir -p /opt/collections && \
-    /opt/venv/bin/ansible-galaxy collection install ansible.windows -p /opt/collections
+    /opt/venv/bin/ansible-galaxy collection install -r /opt/collections-requirements.yml -p /opt/collections
 
 RUN chmod +x /opt/startup.sh
 

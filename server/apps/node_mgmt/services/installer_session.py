@@ -13,6 +13,18 @@ from config.components.nats import NATS_NAMESPACE
 
 class InstallerSessionService:
     @staticmethod
+    def windows_bootstrap_artifact(cpu_architecture: str = "") -> dict:
+        normalized_arch = normalize_cpu_architecture(cpu_architecture) or NodeConstants.X86_64_ARCH
+        return {
+            "filename": InstallerConstants.WINDOWS_BOOTSTRAP_FILENAME,
+            "object_key": InstallerConstants.build_latest_bootstrap_path(
+                NodeConstants.WINDOWS_OS,
+                normalized_arch,
+            ),
+            "architecture": normalized_arch,
+        }
+
+    @staticmethod
     def installer_artifact(os_name: str, cpu_architecture: str = "") -> dict:
         normalized_arch = normalize_cpu_architecture(cpu_architecture) or "generic"
         if os_name == NodeConstants.WINDOWS_OS:

@@ -1,7 +1,12 @@
+import base64
+import hashlib
 import json
+import os
 import sqlite3
 from pathlib import Path
 from typing import Any
+
+from cryptography.fernet import Fernet, InvalidToken
 
 TERMINAL_TASK_STATUSES = {"success", "failed", "callback_failed"}
 
@@ -16,6 +21,19 @@ SENSITIVE_CREDENTIAL_KEYS = {
     "ansible_become_password",
     "inventory_content",
 }
+
+SENSITIVE_EXTRA_VAR_MARKERS = (
+    "password",
+    "passphrase",
+    "private_key",
+    "secret",
+    "session_url",
+    "token",
+)
+
+
+def _sanitize_extra_vars(extra_vars: dict[str, Any]) -> dict[str, Any]:
+    return {key: "***" if any(marker in str(key).lower() for marker in SENSITIVE_EXTRA_VAR_MARKERS) else value for key, value in extra_vars.items()}
 
 
 def _sanitize_payload_for_storage(payload: dict[str, Any]) -> dict[str, Any]:
@@ -53,19 +71,44 @@ def _sanitize_payload_for_storage(payload: dict[str, Any]) -> dict[str, Any]:
     for key in SENSITIVE_CREDENTIAL_KEYS:
         sanitized.pop(key, None)
 
+    if isinstance(sanitized.get("extra_vars"), dict):
+        sanitized["extra_vars"] = _sanitize_extra_vars(sanitized["extra_vars"])
+
     return sanitized
 
 
 class TaskStore:
-    def __init__(self, db_path: str):
+    EXECUTION_PAYLOAD_PREFIX = "fernet:v1:"
+
+    def __init__(self, db_path: str, encryption_secret: str | None = None):
         self.db_path = db_path
+        secret = encryption_secret or os.getenv("ANSIBLE_PAYLOAD_ENCRYPTION_KEY", "")
+        if not secret:
+            raise ValueError("ANSIBLE_PAYLOAD_ENCRYPTION_KEY is required to protect task execution payloads")
+        key = base64.urlsafe_b64encode(hashlib.sha256(secret.encode("utf-8")).digest())
+        self._payload_cipher = Fernet(key)
         self._ensure_schema()
+
+    def _encrypt_execution_payload(self, payload: dict[str, Any]) -> str:
+        plaintext = json.dumps(payload or {}, ensure_ascii=False).encode("utf-8")
+        return self.EXECUTION_PAYLOAD_PREFIX + self._payload_cipher.encrypt(plaintext).decode("ascii")
+
+    def _decrypt_execution_payload(self, value: str) -> dict[str, Any]:
+        if not value.startswith(self.EXECUTION_PAYLOAD_PREFIX):
+            return json.loads(value)
+        encrypted = value.removeprefix(self.EXECUTION_PAYLOAD_PREFIX).encode("ascii")
+        try:
+            plaintext = self._payload_cipher.decrypt(encrypted)
+        except InvalidToken as exc:
+            raise ValueError("task execution payload cannot be decrypted with the configured key") from exc
+        return json.loads(plaintext.decode("utf-8"))
 
     def _connect(self):
         return sqlite3.connect(self.db_path)
 
     def _ensure_schema(self):
-        Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
+        db_parent = Path(self.db_path).parent
+        db_parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as conn:
             conn.execute(
                 """
@@ -100,6 +143,7 @@ class TaskStore:
             for column, sql in migrations.items():
                 if column not in columns:
                     conn.execute(sql)
+        os.chmod(self.db_path, 0o600)
 
     def create_if_absent(
         self,
@@ -138,7 +182,7 @@ class TaskStore:
                     task_id,
                     status,
                     json.dumps(_sanitize_payload_for_storage(payload), ensure_ascii=False),
-                    json.dumps(payload or {}, ensure_ascii=False),
+                    self._encrypt_execution_payload(payload or {}),
                     json.dumps(callback or {}, ensure_ascii=False),
                     json.dumps({}, ensure_ascii=False),
                     status,
@@ -244,6 +288,7 @@ class TaskStore:
                 SET status = ?,
                     execution_status = ?,
                     result_json = ?,
+                    execution_payload_json = NULL,
                     lease_owner = NULL,
                     lease_expires_at = NULL,
                     heartbeat_at = ?,
@@ -359,4 +404,10 @@ class TaskStore:
             row = cursor.fetchone()
             if not row or not row[0]:
                 return None
-            return json.loads(row[0])
+            payload = self._decrypt_execution_payload(row[0])
+            if not row[0].startswith(self.EXECUTION_PAYLOAD_PREFIX):
+                conn.execute(
+                    "UPDATE task_state SET execution_payload_json = ? WHERE task_id = ?",
+                    (self._encrypt_execution_payload(payload), task_id),
+                )
+            return payload

@@ -3,6 +3,7 @@
 ## Artifacts
 
 - Windows installer filename: `bklite-controller-installer.exe`
+- Windows remote bootstrap filename: `bklite-controller-bootstrap.exe`
 - Linux installer filename: `bklite-controller-installer`
 
 Default object storage layout:
@@ -12,6 +13,7 @@ Default object storage layout:
 Examples:
 
 - `installer/windows/x86_64/bklite-controller-installer.exe`
+- `installer/windows/x86_64/bklite-controller-bootstrap.exe`
 - `installer/linux/x86_64/bklite-controller-installer`
 - `installer/linux/arm64/bklite-controller-installer`
 
@@ -47,13 +49,16 @@ Outputs:
 - Release-ready Linux x86_64 binary: `dist/linux/x86_64/bklite-controller-installer`
 - Release-ready Linux ARM64 binary: `dist/linux/arm64/bklite-controller-installer`
 - Release-ready Windows x86_64 installer: `dist/windows/x86_64/bklite-controller-installer.exe`
+- Release-ready Windows x86_64 remote bootstrap: `dist/windows/x86_64/bklite-controller-bootstrap.exe`
 
 Notes:
 
 - `setup-worker.exe` is an internal Windows build artifact produced before NSIS packaging.
 - The final distributable for Windows users is only `bklite-controller-installer.exe`.
 - `bklite-controller-installer.exe` already embeds `setup-worker.exe`, extracts it during installation, uses it to perform the actual install steps, and then cleans it up.
-- For release/upload, do not distribute `setup-worker.exe` separately.
+- For remote installation, publish the same native worker under the stable release name `bklite-controller-bootstrap.exe`; do not publish the internal `setup-worker.exe` name.
+- The remote bootstrap verifies TLS, limits package download/expansion, stages files before stopping the existing service, and restores the previous installation if the new service cannot start.
+- Windows remote installation requires Windows 10 / Windows Server 2016, PowerShell 5.1 or newer, and an HTTPS WinRM listener using NTLM with a trusted certificate.
 
 ## Upload
 
@@ -61,6 +66,7 @@ From `server/`:
 
 ```bash
 python manage.py installer_init --os windows --cpu_architecture x86_64 --file_path /path/to/dist/windows/x86_64/bklite-controller-installer.exe
+python manage.py installer_init --os windows --cpu_architecture x86_64 --variant bootstrap --file_path /path/to/dist/windows/x86_64/bklite-controller-bootstrap.exe
 python manage.py installer_init --os linux --cpu_architecture x86_64 --file_path /path/to/dist/linux/x86_64/bklite-controller-installer
 python manage.py installer_init --os linux --cpu_architecture arm64 --file_path /path/to/dist/linux/arm64/bklite-controller-installer
 ```
@@ -71,8 +77,9 @@ Upload behavior:
 
 1. Uploads only to the latest path
 2. Windows upload target: `installer/windows/x86_64/bklite-controller-installer.exe`
-3. Linux x86_64 upload target: `installer/linux/x86_64/bklite-controller-installer`
-4. Linux ARM64 upload target: `installer/linux/arm64/bklite-controller-installer`
+3. Windows remote bootstrap target: `installer/windows/x86_64/bklite-controller-bootstrap.exe`
+4. Linux x86_64 upload target: `installer/linux/x86_64/bklite-controller-installer`
+5. Linux ARM64 upload target: `installer/linux/arm64/bklite-controller-installer`
 
 ## Controller / Collector package upload
 
@@ -148,6 +155,7 @@ Execute the following in order when releasing Linux ARM64 controller support:
    ```
    Confirm these files exist:
    - `dist/windows/x86_64/bklite-controller-installer.exe`
+   - `dist/windows/x86_64/bklite-controller-bootstrap.exe`
    - `dist/linux/x86_64/bklite-controller-installer`
    - `dist/linux/arm64/bklite-controller-installer`
 
@@ -160,6 +168,7 @@ Execute the following in order when releasing Linux ARM64 controller support:
    ```bash
    cd server
    python manage.py installer_init --os windows --cpu_architecture x86_64 --file_path /path/to/dist/windows/x86_64/bklite-controller-installer.exe
+   python manage.py installer_init --os windows --cpu_architecture x86_64 --variant bootstrap --file_path /path/to/dist/windows/x86_64/bklite-controller-bootstrap.exe
    python manage.py installer_init --os linux --cpu_architecture x86_64 --file_path /path/to/dist/linux/x86_64/bklite-controller-installer
    python manage.py installer_init --os linux --cpu_architecture arm64 --file_path /path/to/dist/linux/arm64/bklite-controller-installer
    ```

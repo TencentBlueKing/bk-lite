@@ -4,10 +4,10 @@ import { useMemo } from 'react';
 /**
  * 控制器安装表格配置 Hook
  */
-export const useTableConfig = (installMethod: string) => {
+export const useTableConfig = (installMethod: string, os: string) => {
   const { t } = useTranslation();
 
-  const remoteColumns = [
+  const identityColumns = [
     {
       name: 'ip',
       label: t('node-manager.cloudregion.node.ipAdrress'),
@@ -45,6 +45,10 @@ export const useTableConfig = (installMethod: string) => {
         placeholder: t('common.selectTip'),
       },
     },
+  ];
+
+  const linuxRemoteColumns = [
+    ...identityColumns,
     {
       name: 'port',
       label: t('node-manager.cloudregion.node.loginPort'),
@@ -100,6 +104,76 @@ export const useTableConfig = (installMethod: string) => {
     },
   ];
 
+  const windowsRemoteColumns = [
+    ...identityColumns,
+    {
+      name: 'port',
+      label: t('node-manager.cloudregion.node.loginPort'),
+      type: 'inputNumber',
+      required: true,
+      default_value: 5986,
+      widget_props: {
+        min: 1,
+        precision: 0,
+        placeholder: t('common.inputTip'),
+      },
+    },
+    {
+      name: 'username',
+      label: t('node-manager.cloudregion.node.loginAccount'),
+      type: 'input',
+      required: true,
+      default_value: 'Administrator',
+      widget_props: {
+        placeholder: t('common.inputTip'),
+      },
+    },
+    {
+      name: 'winrm_scheme',
+      label: t('node-manager.cloudregion.node.winrmScheme'),
+      type: 'select',
+      required: true,
+      default_value: 'https',
+      widget_props: {
+        disabled: true,
+        options: [{ label: 'HTTPS', value: 'https' }],
+      },
+    },
+    {
+      name: 'winrm_transport',
+      label: t('node-manager.cloudregion.node.winrmTransport'),
+      type: 'select',
+      required: true,
+      default_value: 'ntlm',
+      widget_props: {
+        disabled: true,
+        options: [{ label: 'NTLM', value: 'ntlm' }],
+      },
+    },
+    {
+      name: 'winrm_cert_validation',
+      label: t('node-manager.cloudregion.node.winrmCertValidation'),
+      type: 'select',
+      required: true,
+      default_value: true,
+      widget_props: {
+        disabled: true,
+        options: [{ label: t('common.yes'), value: true }],
+      },
+    },
+    {
+      name: 'password',
+      label: t('node-manager.cloudregion.node.windowsLoginPassword'),
+      excel_label: t('node-manager.cloudregion.node.excelLoginPassword'),
+      type: 'password',
+      required: true,
+      widget_props: {
+        placeholder: t('common.inputTip'),
+      },
+      encrypted: true,
+    },
+  ];
+
   const manualColumns = [
     {
       name: 'ip',
@@ -141,6 +215,9 @@ export const useTableConfig = (installMethod: string) => {
   ];
 
   return useMemo(() => {
-    return installMethod === 'remoteInstall' ? remoteColumns : manualColumns;
-  }, [installMethod, t]);
+    if (installMethod !== 'remoteInstall') {
+      return manualColumns;
+    }
+    return os === 'windows' ? windowsRemoteColumns : linuxRemoteColumns;
+  }, [installMethod, os, t]);
 };

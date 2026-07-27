@@ -1,7 +1,8 @@
-.PHONY: all build icons worker linux-worker linux-worker-arm64 linux-worker-amd64 release-artifacts nsis clean check-deps install-deps
+.PHONY: all build icons worker windows-bootstrap linux-worker linux-worker-arm64 linux-worker-amd64 release-artifacts nsis clean check-deps install-deps
 
 WORKER = setup-worker.exe
 INSTALLER = bklite-controller-installer.exe
+WINDOWS_BOOTSTRAP = bklite-controller-bootstrap.exe
 LINUX_INSTALLER = bklite-controller-installer
 DIST_DIR = dist
 VENV_DIR = .venv
@@ -87,6 +88,10 @@ worker:
 	GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o $(WORKER) setup-worker.go
 	@ls -lh $(WORKER)
 
+windows-bootstrap: worker
+	@cp $(WORKER) $(WINDOWS_BOOTSTRAP)
+	@ls -lh $(WINDOWS_BOOTSTRAP)
+
 linux-worker:
 	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o $(LINUX_INSTALLER) setup-worker.go
 	@ls -lh $(LINUX_INSTALLER)
@@ -101,10 +106,12 @@ linux-worker-arm64:
 	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o $(DIST_DIR)/linux/arm64/$(LINUX_INSTALLER) setup-worker.go
 	@ls -lh $(DIST_DIR)/linux/arm64/$(LINUX_INSTALLER)
 
-release-artifacts: worker linux-worker-amd64 linux-worker-arm64 nsis
+release-artifacts: worker linux-worker-amd64 linux-worker-arm64 nsis windows-bootstrap
 	@mkdir -p $(DIST_DIR)/windows/x86_64
 	@cp $(INSTALLER) $(DIST_DIR)/windows/x86_64/$(INSTALLER)
+	@cp $(WINDOWS_BOOTSTRAP) $(DIST_DIR)/windows/x86_64/$(WINDOWS_BOOTSTRAP)
 	@ls -lh $(DIST_DIR)/windows/x86_64/$(INSTALLER)
+	@ls -lh $(DIST_DIR)/windows/x86_64/$(WINDOWS_BOOTSTRAP)
 
 nsis:
 	makensis -V2 setup.nsi
@@ -123,4 +130,4 @@ check-deps:
 	"$$PYTHON_BIN" -c "from PIL import Image" 2>/dev/null || (echo "Pillow not installed. Run 'make install-deps' first."; exit 1)
 
 clean:
-	rm -f $(WORKER) $(INSTALLER) $(LINUX_INSTALLER) installer.ico header.bmp wizard.bmp
+	rm -f $(WORKER) $(INSTALLER) $(WINDOWS_BOOTSTRAP) $(LINUX_INSTALLER) installer.ico header.bmp wizard.bmp

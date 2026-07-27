@@ -24,6 +24,12 @@ import (
 // 默认值 5s 在弱网或大包场景下容易触发 "read pipe: i/o timeout"（Issue #2985）。
 const objectStoreMaxWait = 60 * time.Second
 
+var (
+	controllerPackageMaxDownloadBytes int64 = 4 * 1024 * 1024 * 1024
+	controllerPackageMaxExpandedBytes int64 = 8 * 1024 * 1024 * 1024
+	controllerPackageMaxFiles               = 100000
+)
+
 type Config struct {
 	ServerURL  string        `json:"server_url"`
 	APIToken   string        `json:"api_token"`
@@ -91,18 +97,21 @@ type EventOptions struct {
 }
 
 var (
-	configURL  = flag.String("url", "", "Configuration URL")
-	installDir = flag.String("install-dir", "", "Installation directory")
-	skipTLS    = flag.Bool("skip-tls", true, "Skip TLS certificate verification")
-	fetchOnly  = flag.Bool("fetch-only", false, "Only fetch and display config")
+	configURL     = flag.String("url", "", "Configuration URL")
+	configURLFile = flag.String("url-file", "", "Read the configuration URL from a file")
+	installDir    = flag.String("install-dir", "", "Installation directory")
+	skipTLS       = flag.Bool("skip-tls", false, "Skip TLS certificate verification")
+	fetchOnly     = flag.Bool("fetch-only", false, "Only fetch and display config")
 )
 
 func main() {
 	flag.Parse()
 
-	if *configURL == "" {
-		fatal("--url is required")
+	resolvedConfigURL, err := resolveConfigURL(*configURL, *configURLFile)
+	if err != nil {
+		fatal("%v", err)
 	}
+	*configURL = resolvedConfigURL
 
 	client := newHTTPClient(*skipTLS)
 
@@ -116,6 +125,29 @@ func main() {
 	}
 
 	run(client)
+}
+
+func resolveConfigURL(directURL, urlFile string) (string, error) {
+	directURL = strings.TrimSpace(directURL)
+	urlFile = strings.TrimSpace(urlFile)
+	if directURL != "" && urlFile != "" {
+		return "", fmt.Errorf("--url and --url-file cannot be used together")
+	}
+	if directURL != "" {
+		return directURL, nil
+	}
+	if urlFile == "" {
+		return "", fmt.Errorf("--url or --url-file is required")
+	}
+	content, err := os.ReadFile(urlFile)
+	if err != nil {
+		return "", fmt.Errorf("read configuration URL file: %w", err)
+	}
+	resolved := strings.TrimSpace(string(content))
+	if resolved == "" {
+		return "", fmt.Errorf("configuration URL file is empty")
+	}
+	return resolved, nil
 }
 
 func run(client *http.Client) {
@@ -167,6 +199,22 @@ func run(client *http.Client) {
 			fatalStepWithOptions("download_package", "Download failed: %v", err, downloadOptions)
 		}
 		emitEventWithOptions("download_package", "success", "Controller package downloaded", intPtr(100), 0, 0, "", downloadEventOptions(cfg))
+		if !isLinux(cfg.OS) {
+			log("[4/6] Staging and validating files...")
+			emitEventWithOptions("extract_package", "running", "Staging controller package", intPtr(0), 0, 0, "", &EventOptions{InstallDir: cfg.InstallDir, PackageName: firstNonEmpty(cfg.Package.Name, cfg.Storage.FileName), CPUArchitecture: cfg.Package.CPUArchitecture})
+			installErr := installWindowsPackage(cfg, zipPath, &scWindowsServiceController{})
+			_ = os.Remove(zipPath)
+			if installErr != nil {
+				fatalStepWithOptions("run_package_installer", "Transactional Windows installation failed: %v", installErr, eventOptionsForExecError(installErr, &EventOptions{InstallDir: cfg.InstallDir, CPUArchitecture: cfg.Package.CPUArchitecture}))
+			}
+			emitEventWithOptions("extract_package", "success", "Controller package staged and activated", intPtr(100), 0, 0, "", &EventOptions{InstallDir: cfg.InstallDir, PackageName: firstNonEmpty(cfg.Package.Name, cfg.Storage.FileName), CPUArchitecture: cfg.Package.CPUArchitecture})
+			emitEvent("configure_runtime", "success", "Installer runtime configured", intPtr(100), 0, 0, "")
+			emitEventWithOptions("run_package_installer", "success", "Package installer finished", intPtr(100), 0, 0, "", &EventOptions{InstallDir: cfg.InstallDir, CPUArchitecture: cfg.Package.CPUArchitecture})
+			log("")
+			log("Installation complete!")
+			emitEvent("complete", "success", "Installation complete", intPtr(100), 0, 0, "")
+			return
+		}
 
 		log("[4/6] Extracting files...")
 		emitEventWithOptions("extract_package", "running", "Extracting controller package", intPtr(0), 0, 0, "", &EventOptions{InstallDir: cfg.InstallDir, PackageName: firstNonEmpty(cfg.Package.Name, cfg.Storage.FileName), CPUArchitecture: cfg.Package.CPUArchitecture})
@@ -576,6 +624,9 @@ func downloadFromStorage(storage *StorageConfig) (string, error) {
 	if meta != nil {
 		totalSize = int64(meta.Size)
 	}
+	if totalSize > controllerPackageMaxDownloadBytes {
+		return "", fmt.Errorf("controller package exceeds download size limit: %d > %d", totalSize, controllerPackageMaxDownloadBytes)
+	}
 
 	tmp := filepath.Join(os.TempDir(), fmt.Sprintf("sidecar-%d.zip", time.Now().UnixNano()))
 	f, err := os.Create(tmp)
@@ -584,14 +635,19 @@ func downloadFromStorage(storage *StorageConfig) (string, error) {
 	}
 	defer f.Close()
 
+	limitedObject := io.LimitReader(obj, controllerPackageMaxDownloadBytes+1)
+	var downloaded int64
 	if totalSize > 0 {
 		pw := &progressWriter{total: totalSize, desc: "Downloading", step: "download_package"}
-		_, err = io.Copy(f, io.TeeReader(obj, pw))
+		downloaded, err = io.Copy(f, io.TeeReader(limitedObject, pw))
 		if err == nil && pw.lastPct < 100 {
 			emitEvent("download_package", "running", "Downloading", intPtr(100), totalSize, totalSize, "")
 		}
 	} else {
-		_, err = io.Copy(f, obj)
+		downloaded, err = io.Copy(f, limitedObject)
+	}
+	if downloaded > controllerPackageMaxDownloadBytes {
+		err = fmt.Errorf("controller package exceeds download size limit: %d", controllerPackageMaxDownloadBytes)
 	}
 	if err != nil {
 		os.Remove(tmp)
@@ -655,6 +711,9 @@ func download(client *http.Client, url string) (string, error) {
 	if resp.StatusCode != 200 {
 		return "", fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
+	if resp.ContentLength > controllerPackageMaxDownloadBytes {
+		return "", fmt.Errorf("controller package exceeds download size limit: %d > %d", resp.ContentLength, controllerPackageMaxDownloadBytes)
+	}
 
 	tmp := filepath.Join(os.TempDir(), fmt.Sprintf("sidecar-%d.zip", time.Now().UnixNano()))
 	f, err := os.Create(tmp)
@@ -662,16 +721,21 @@ func download(client *http.Client, url string) (string, error) {
 		return "", err
 	}
 
+	limitedBody := io.LimitReader(resp.Body, controllerPackageMaxDownloadBytes+1)
+	var downloaded int64
 	if resp.ContentLength > 0 {
 		log("      Downloading... 0%%")
 		pw := &progressWriter{total: resp.ContentLength, desc: "Downloading", step: "download_package"}
-		_, err = io.Copy(f, io.TeeReader(resp.Body, pw))
+		downloaded, err = io.Copy(f, io.TeeReader(limitedBody, pw))
 		if pw.lastPct < 100 {
 			log("      Downloading... 100%%")
 			emitEvent("download_package", "running", "Downloading", intPtr(100), resp.ContentLength, resp.ContentLength, "")
 		}
 	} else {
-		_, err = io.Copy(f, resp.Body)
+		downloaded, err = io.Copy(f, limitedBody)
+	}
+	if downloaded > controllerPackageMaxDownloadBytes {
+		err = fmt.Errorf("controller package exceeds download size limit: %d", controllerPackageMaxDownloadBytes)
 	}
 	f.Close()
 
@@ -692,9 +756,17 @@ func extract(zipPath, dest string) (int, error) {
 	stripPrefix := detectCommonPrefix(r.File)
 
 	totalFiles := 0
+	var expandedSize int64
 	for _, f := range r.File {
 		if !f.FileInfo().IsDir() {
 			totalFiles++
+			if totalFiles > controllerPackageMaxFiles {
+				return 0, fmt.Errorf("controller package contains too many files: %d > %d", totalFiles, controllerPackageMaxFiles)
+			}
+			if f.UncompressedSize64 > uint64(controllerPackageMaxExpandedBytes-expandedSize) {
+				return 0, fmt.Errorf("controller package expanded size exceeds limit: %d bytes", controllerPackageMaxExpandedBytes)
+			}
+			expandedSize += int64(f.UncompressedSize64)
 		}
 	}
 
@@ -794,6 +866,10 @@ func detectCommonPrefix(files []*zip.File) string {
 }
 
 func writeConfig(cfg *Config) error {
+	return writeConfigTo(cfg, cfg.InstallDir)
+}
+
+func writeConfigTo(cfg *Config, outputDir string) error {
 	escapePath := func(p string) string {
 		return strings.ReplaceAll(p, `\`, `\\`)
 	}
@@ -804,7 +880,7 @@ server_api_token: "%s"
 node_id: "%s"
 node_name: "%s"
 update_interval: 10
-tls_skip_verify: true
+tls_skip_verify: false
 send_status: true
 cache_path: "%s\\cache"
 log_path: "%s\\logs"
@@ -823,7 +899,188 @@ collector_binaries_accesslist:
 		installDir, installDir,
 	)
 
-	return os.WriteFile(filepath.Join(cfg.InstallDir, "sidecar.yml"), []byte(content), 0644)
+	return os.WriteFile(filepath.Join(outputDir, "sidecar.yml"), []byte(content), 0600)
+}
+
+type windowsServiceController interface {
+	StopAndDelete() (bool, error)
+	Register(installDir string) error
+}
+
+type scWindowsServiceController struct{}
+
+func (controller *scWindowsServiceController) StopAndDelete() (bool, error) {
+	queryOutput, queryErr := exec.Command("sc.exe", "query", "sidecar").CombinedOutput()
+	if queryErr != nil {
+		if strings.Contains(string(queryOutput), "1060") || strings.Contains(strings.ToLower(string(queryOutput)), "does not exist") {
+			return false, nil
+		}
+		return false, fmt.Errorf("sc query failed: %s", strings.TrimSpace(string(queryOutput)))
+	}
+	_ = exec.Command("sc.exe", "stop", "sidecar").Run()
+	for attempt := 0; attempt < 10; attempt++ {
+		output, _ := exec.Command("sc.exe", "query", "sidecar").CombinedOutput()
+		if strings.Contains(string(output), "STOPPED") {
+			break
+		}
+		time.Sleep(time.Second)
+	}
+	deleteOutput, deleteErr := exec.Command("sc.exe", "delete", "sidecar").CombinedOutput()
+	if deleteErr != nil {
+		return true, fmt.Errorf("sc delete failed: %s", strings.TrimSpace(string(deleteOutput)))
+	}
+	return true, nil
+}
+
+func (controller *scWindowsServiceController) Register(installDir string) error {
+	return registerService(installDir)
+}
+
+var windowsRuntimeDirectories = []string{"cache", "logs", "generated"}
+
+func moveWindowsRuntimeData(backupDir, installDir string) ([]string, error) {
+	moved := []string{}
+	for _, name := range windowsRuntimeDirectories {
+		source := filepath.Join(backupDir, name)
+		if _, err := os.Stat(source); os.IsNotExist(err) {
+			continue
+		} else if err != nil {
+			return moved, err
+		}
+		target := filepath.Join(installDir, name)
+		if err := os.RemoveAll(target); err != nil {
+			return moved, err
+		}
+		if err := os.Rename(source, target); err != nil {
+			return moved, err
+		}
+		moved = append(moved, name)
+	}
+	return moved, nil
+}
+
+func restoreWindowsRuntimeData(installDir, backupDir string, moved []string) error {
+	for index := len(moved) - 1; index >= 0; index-- {
+		name := moved[index]
+		source := filepath.Join(installDir, name)
+		target := filepath.Join(backupDir, name)
+		if err := os.RemoveAll(target); err != nil {
+			return err
+		}
+		if err := os.Rename(source, target); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func restorePreviousWindowsInstallation(
+	controller windowsServiceController,
+	installDir string,
+	backupDir string,
+	installExisted bool,
+	serviceExisted bool,
+	movedRuntimeDirectories []string,
+) error {
+	if installExisted {
+		if err := restoreWindowsRuntimeData(installDir, backupDir, movedRuntimeDirectories); err != nil {
+			return fmt.Errorf("restore runtime data: %w", err)
+		}
+	}
+	if err := os.RemoveAll(installDir); err != nil {
+		return fmt.Errorf("remove failed installation: %w", err)
+	}
+	if installExisted {
+		if err := os.Rename(backupDir, installDir); err != nil {
+			return fmt.Errorf("restore previous installation: %w", err)
+		}
+	}
+	if serviceExisted && installExisted {
+		if err := controller.Register(installDir); err != nil {
+			return fmt.Errorf("restore previous service: %w", err)
+		}
+	}
+	return nil
+}
+
+func installWindowsPackage(cfg *Config, zipPath string, controller windowsServiceController) error {
+	installDir := filepath.Clean(cfg.InstallDir)
+	stagingDir := installDir + ".bklite-staging"
+	backupDir := installDir + ".bklite-backup"
+	if installDir == "." || installDir == string(os.PathSeparator) {
+		return fmt.Errorf("unsafe Windows installation directory: %s", installDir)
+	}
+	if _, err := os.Stat(backupDir); err == nil {
+		return fmt.Errorf("previous Windows installation backup requires recovery: %s", backupDir)
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if err := os.RemoveAll(stagingDir); err != nil {
+		return fmt.Errorf("clean staging directory: %w", err)
+	}
+	defer os.RemoveAll(stagingDir)
+	if err := prepareDirs(stagingDir); err != nil {
+		return fmt.Errorf("prepare staging directory: %w", err)
+	}
+	if _, err := extract(zipPath, stagingDir); err != nil {
+		return fmt.Errorf("extract package to staging directory: %w", err)
+	}
+	if err := writeConfigTo(cfg, stagingDir); err != nil {
+		return fmt.Errorf("write staged configuration: %w", err)
+	}
+	if _, err := os.Stat(filepath.Join(stagingDir, "collector-sidecar.exe")); err != nil {
+		return fmt.Errorf("staged collector-sidecar.exe validation failed: %w", err)
+	}
+
+	serviceExisted, err := controller.StopAndDelete()
+	if err != nil {
+		return fmt.Errorf("stop existing sidecar service: %w", err)
+	}
+	installExisted := false
+	if _, err := os.Stat(installDir); err == nil {
+		installExisted = true
+		if err := os.Rename(installDir, backupDir); err != nil {
+			return fmt.Errorf("backup existing installation: %w", err)
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if err := os.Rename(stagingDir, installDir); err != nil {
+		activationErr := err
+		if restoreErr := restorePreviousWindowsInstallation(controller, installDir, backupDir, installExisted, serviceExisted, nil); restoreErr != nil {
+			return fmt.Errorf("activate staged installation: %v; rollback: %w", activationErr, restoreErr)
+		}
+		return fmt.Errorf("activate staged installation: %w", activationErr)
+	}
+	movedRuntimeDirectories := []string{}
+	if installExisted {
+		movedRuntimeDirectories, err = moveWindowsRuntimeData(backupDir, installDir)
+		if err != nil {
+			preserveErr := err
+			if restoreErr := restorePreviousWindowsInstallation(controller, installDir, backupDir, installExisted, serviceExisted, movedRuntimeDirectories); restoreErr != nil {
+				return fmt.Errorf("preserve Windows runtime data: %v; rollback: %w", preserveErr, restoreErr)
+			}
+			return fmt.Errorf("preserve Windows runtime data: %w", preserveErr)
+		}
+	}
+
+	if err := controller.Register(installDir); err != nil {
+		activationErr := err
+		if _, removeServiceErr := controller.StopAndDelete(); removeServiceErr != nil {
+			return fmt.Errorf("activate new service: %v; remove failed service before rollback: %w", activationErr, removeServiceErr)
+		}
+		if restoreErr := restorePreviousWindowsInstallation(controller, installDir, backupDir, installExisted, serviceExisted, movedRuntimeDirectories); restoreErr != nil {
+			return fmt.Errorf("activate new service: %v; rollback: %w", activationErr, restoreErr)
+		}
+		return fmt.Errorf("activate new service: %w", activationErr)
+	}
+
+	if installExisted {
+		if err := os.RemoveAll(backupDir); err != nil {
+			return fmt.Errorf("remove installation backup: %w", err)
+		}
+	}
+	return nil
 }
 
 func registerService(installDir string) error {
@@ -840,11 +1097,6 @@ func registerService(installDir string) error {
 	}
 
 	binPath := fmt.Sprintf(`"%s" -c "%s"`, exePath, cfgPath)
-
-	exec.Command("sc.exe", "stop", "sidecar").Run()
-	time.Sleep(time.Second)
-	exec.Command("sc.exe", "delete", "sidecar").Run()
-	time.Sleep(time.Second)
 
 	out, err := exec.Command("sc.exe", "create", "sidecar",
 		"binPath=", binPath,

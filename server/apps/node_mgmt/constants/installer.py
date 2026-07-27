@@ -5,6 +5,10 @@ def _installer_filename(target_os: str) -> str:
     return "bklite-controller-installer.exe" if target_os == "windows" else "bklite-controller-installer"
 
 
+def _bootstrap_filename(target_os: str) -> str:
+    return "bklite-controller-bootstrap.exe" if target_os == "windows" else _installer_filename(target_os)
+
+
 def _installer_alias_path(target_os: str, architecture: str = "generic") -> str:
     return f"installer/{target_os}/{architecture}/{_installer_filename(target_os)}"
 
@@ -95,6 +99,7 @@ class InstallerConstants:
     DEFAULT_INSTALLER_VERSION = os.getenv("INSTALLER_DEFAULT_VERSION", "latest")
 
     WINDOWS_INSTALLER_FILENAME = _installer_filename("windows")
+    WINDOWS_BOOTSTRAP_FILENAME = _bootstrap_filename("windows")
     LINUX_INSTALLER_FILENAME = _installer_filename("linux")
 
     WINDOWS_INSTALL_DEFAULT_DIR = r"C:\fusion-collectors"
@@ -110,6 +115,10 @@ class InstallerConstants:
     def build_latest_alias_path(cls, target_os: str, architecture: str = "generic") -> str:
         filename = cls.WINDOWS_INSTALLER_FILENAME if target_os == "windows" else cls.LINUX_INSTALLER_FILENAME
         return f"installer/{target_os}/{architecture}/{filename}"
+
+    @classmethod
+    def build_latest_bootstrap_path(cls, target_os: str, architecture: str = "generic") -> str:
+        return f"installer/{target_os}/{architecture}/{_bootstrap_filename(target_os)}"
 
     WINDOWS_INSTALLER_S3_PATH = _installer_alias_path("windows")
     LINUX_INSTALLER_S3_PATH = _installer_alias_path("linux")
