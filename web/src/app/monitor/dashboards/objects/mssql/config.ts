@@ -202,10 +202,10 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     },
     {
       name: 'sqlserver_user_connections_rate',
-      display_name: '用户连接变化',
-      description: '用户连接数变化速率。',
-      unit: 'cps',
-      query: 'rate(sqlserver_performance_value{counter=~"User Connections", __$labels__}[5m])',
+      display_name: '用户连接数',
+      description: '当前连接到 SQL Server 实例的用户数量。',
+      unit: 'counts',
+      query: 'sqlserver_performance_value{counter="User Connections", __$labels__}',
       color: '#597ef7'
     },
     {
@@ -213,7 +213,7 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '锁等待速率',
       description: '锁等待发生速率。',
       unit: 'cps',
-      query: 'rate(sqlserver_performance_value{counter=~"Lock Waits/sec", __$labels__}[5m])',
+      query: 'rate(sqlserver_performance_value{counter="Lock Waits/sec", __$labels__}[5m])',
       color: '#ff8a1f'
     },
     {
@@ -347,7 +347,7 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       color: '#27c274',
       icon: 'thunder',
       guide: [{ label: '批量请求', detail: '每秒处理的 SQL 批量请求数(次/秒),无固定阈值,按业务基线看突增突降。' }],
-      footer: [{ label: '锁等待', metric: 'sqlserver_lock_wait_time_rate', unit: 'cps' }]
+      footer: [{ label: '当前连接', metric: 'sqlserver_user_connections_rate', unit: 'counts' }]
     },
     {
       title: '缓存命中率',

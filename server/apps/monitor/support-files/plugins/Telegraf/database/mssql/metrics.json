@@ -292,18 +292,18 @@
       "unit": "counts",
       "dimensions": [],
       "description": "Number of users currently connected to the SQL Server instance, reflecting concurrent load and connection pool usage. Too many connections may lead to resource contention.",
-      "query": "rate(sqlserver_performance_value{counter=~\"User Connections\", __$labels__}[5m])"
+      "query": "sqlserver_performance_value{counter=\"User Connections\", __$labels__}"
     },
     {
       "metric_group": "Performance",
       "name": "sqlserver_lock_wait_time_rate",
-      "display_name": "Lock Wait Time",
+      "display_name": "Lock Waits Rate",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "ms",
+      "unit": "counts",
       "dimensions": [{"name": "instance", "description": "锁资源类型"}],
-      "description": "Rate of lock wait time, reflecting concurrency contention. High values may indicate blocking or lock contention issues that require transaction design optimization.",
-      "query": "rate(sqlserver_performance_value{counter=~\"Lock Waits/sec\", __$labels__}[5m])"
+      "description": "Rate of lock waits, reflecting concurrency contention. High values may indicate blocking or lock contention that requires transaction design optimization.",
+      "query": "rate(sqlserver_performance_value{counter=\"Lock Waits/sec\", __$labels__}[5m])"
     },
     {
       "metric_group": "Performance",

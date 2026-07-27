@@ -108,8 +108,8 @@ monitor_object_metric:
         concurrent load and connection pool usage. Too many connections may lead to
         resource contention.
     sqlserver_lock_wait_time_rate:
-      name: Lock Wait Time
-      desc: Rate of lock wait time, reflecting concurrency contention. High values
+      name: Lock Waits Rate
+      desc: Rate of lock waits, reflecting concurrency contention. High values
         may indicate blocking or lock contention issues that require transaction design
         optimization.
     sqlserver_requests_cpu_time_ms_rate:

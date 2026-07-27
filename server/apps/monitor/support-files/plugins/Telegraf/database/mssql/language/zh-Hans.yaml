@@ -83,8 +83,8 @@ monitor_object_metric:
       name: 用户连接数
       desc: 当前连接到SQL Server实例的用户数量，反映数据库的并发负载和连接池使用情况。连接数过多可能导致资源争用。
     sqlserver_lock_wait_time_rate:
-      name: 锁等待时间
-      desc: 锁等待时间的速率，反映数据库的并发争用情况。高值可能表明存在阻塞或锁竞争问题，需要优化事务设计。
+      name: 锁等待速率
+      desc: 锁等待发生速率，反映数据库的并发争用情况。高值可能表明存在阻塞或锁竞争问题，需要优化事务设计。
     sqlserver_requests_cpu_time_ms_rate:
       name: 请求CPU时间速率
       desc: 请求消耗CPU时间的速率，用于识别高CPU消耗的查询和语句，帮助进行性能优化和资源分配决策。
