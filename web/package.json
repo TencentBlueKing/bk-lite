@@ -70,6 +70,7 @@
     "audit:component-ownership": "node scripts/component-ownership-audit.mjs",
     "check:component-ownership": "node scripts/component-ownership-audit.mjs --check",
     "test:cmdb-pc-discovery-form": "pnpm exec tsx scripts/cmdb-pc-discovery-form-test.ts",
+    "test:cmdb-node-mgmt-sync-detail": "pnpm exec tsx scripts/cmdb-node-mgmt-sync-health-test.ts",
     "test:cmdb-winsphere-credential": "pnpm exec tsx scripts/cmdb-winsphere-credential-test.ts"
   },
   "dependencies": {

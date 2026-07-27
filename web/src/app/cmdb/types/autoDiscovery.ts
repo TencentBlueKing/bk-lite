@@ -35,6 +35,12 @@ export interface CollectTaskMessage {
   association_success: number;
   message?: string;
   last_time?: string;
+  raw_total?: number;
+  raw_host?: number;
+  raw_process?: number;
+  raw_dropped?: number;
+  raw_retained?: number;
+  raw_truncated?: boolean;
 }
 
 export interface CredentialPoolItem {
@@ -136,6 +142,9 @@ export interface BaseTaskFormProps {
 export interface TaskData {
   data: any[];
   count: number;
+  total_count?: number;
+  retained_count?: number;
+  truncated?: boolean;
 }
 
 export interface TopologyLinkRow {
@@ -234,7 +243,12 @@ export type NodeMgmtSyncSummary = CollectTaskMessage;
 
 export interface NodeMgmtSyncItem {
   id?: string | number;
+  _row_key?: string;
+  model_id?: string;
   inst_name?: string;
+  name?: string;
+  pid?: string | number;
+  ip?: string;
   ip_addr?: string;
   cloud_name?: string;
   organization?: Array<number | string>;
@@ -273,8 +287,19 @@ export interface NodeMgmtSyncDisplayPayload {
   task: NodeMgmtSyncTask;
   display_source: string;
   display_schema: string;
+  can_view_raw_detail?: boolean;
   message: CollectTaskMessage;
   summary: NodeMgmtSyncSummary;
   detail: NodeMgmtSyncDetailData;
   run: NodeMgmtSyncRun;
+}
+
+export interface NodeMgmtSyncRowsPage {
+  total_count: number;
+  retained_count: number;
+  matched_retained_count: number;
+  truncated: boolean;
+  page: number;
+  page_size: number;
+  data: NodeMgmtSyncItem[];
 }

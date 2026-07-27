@@ -731,10 +731,13 @@
             "conflictNotice": "There are {count} anchor conflicts from non-Node Management sources. The system did not take them over automatically.",
             "searchPlaceholder": "Search by instance/IP/cloud region",
             "loadFailed": "Failed to load node management sync data",
+            "retry": "Retry",
+            "tableTotal": "{total} items",
             "saveFailed": "Failed to save node management sync config",
             "refreshSuccess": "Node Management sync status refreshed",
             "runStatus": "Latest Run Status",
             "todoNotice": "This run has {count} item(s) requiring attention. Use the status and stable error code for troubleshooting.",
+            "rawSummary": "Raw metrics: {total} total ({host} host, {process} process, {dropped} dropped); {retained} currently retained.",
             "health": {
                 "reconciling": "Node Management sync configuration is reconciling. Refresh again shortly."
             },
@@ -785,6 +788,7 @@
             "table": {
                 "objectType": "Object Type",
                 "instanceName": "Instance Name",
+                "pid": "PID",
                 "status": "Write Status",
                 "errorReason": "Failure Reason"
             }

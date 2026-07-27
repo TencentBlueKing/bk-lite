@@ -72,6 +72,7 @@ def recover_node_mgmt_sync() -> dict[str, Any]:
     recovered_runs = NodeMgmtSyncService.recover_stale_runs()
     refreshed_collect_runs = NodeMgmtSyncService.refresh_submitted_collect_runs()
     config = NodeMgmtSyncService.get_task()
+    NodeMgmtSyncService.recover_snapshot_cleanup(config.pk)
     region_states = NodeMgmtSyncRegionState.objects.filter(config=config).filter(
         Q(scope_key__startswith="node-config:") | Q(scope_key__startswith="config:")
     )

@@ -731,10 +731,13 @@
             "conflictNotice": "存在 {count} 条同锚点但非节点管理来源的冲突数据，系统未自动接管。",
             "searchPlaceholder": "搜索实例名/IP/云区域",
             "loadFailed": "加载节点管理同步数据失败",
+            "retry": "重试",
+            "tableTotal": "共 {total} 条",
             "saveFailed": "保存节点管理同步配置失败",
             "refreshSuccess": "节点管理同步状态已刷新",
             "runStatus": "最近运行状态",
             "todoNotice": "本次运行有 {count} 项需要关注，请根据状态和稳定错误码排查。",
+            "rawSummary": "原始指标：共 {total} 条（主机 {host}、进程 {process}、丢弃 {dropped}），当前保留 {retained} 条。",
             "health": {
                 "reconciling": "节点管理同步配置正在对账，请稍候刷新。"
             },
@@ -785,6 +788,7 @@
             "table": {
                 "objectType": "对象类型",
                 "instanceName": "实例名",
+                "pid": "PID",
                 "status": "录入状态",
                 "errorReason": "失败原因"
             }
