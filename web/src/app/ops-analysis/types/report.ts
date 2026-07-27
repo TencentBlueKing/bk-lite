@@ -15,4 +15,5 @@ export interface ReportViewSets {
 
 export interface ReportProps {
   selectedReport?: DirItem | null;
+  shareMode?: boolean;
 }

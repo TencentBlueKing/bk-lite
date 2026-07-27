@@ -1,4 +1,6 @@
 error:
+  network_whitelist_required: The target IP is not in the allowlist. Add it in System Management > Network Allowlist.
+  go_to_network_whitelist: Open Network Allowlist
   detail_not_supported: Detail view is not supported
   update_not_supported: Update is not supported
   not_authorized: Not Authorized

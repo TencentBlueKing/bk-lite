@@ -8,8 +8,17 @@ UI.json 的 form_fields/table_columns 中每条带 label 字段(中文)。
 """
 from __future__ import annotations
 
+import json
 from copy import deepcopy
-from typing import Any
+from pathlib import Path
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from apps.monitor.models import MonitorPlugin
+
+
+# 磁盘 UI.json 相对 DB 模板可热更新的展示字段（无需等 plugin_init）。
+_FILE_OVERLAY_FIELD_KEYS = ("guide_short", "section")
 
 
 _EN_LOCALES = {"en", "en-us", "en-gb"}
@@ -218,6 +227,82 @@ def _localize_node(node: Any, locale: str) -> Any:
         for item in node:
             _localize_node(item, locale)
     return node
+
+
+def enrich_ui_template_from_plugin_files(content: dict | None, plugin: MonitorPlugin | None) -> dict | None:
+    """用插件目录 UI.json 覆盖 DB 模板中的悬浮提示等展示字段。
+
+    内置插件以 support-files 下的 UI.json 为展示文案真相源；仅同步 guide_short /
+    section 等不影响已下发配置语义的字段，避免每次改提示都强制跑 plugin_init。
+    """
+    if not content or not plugin:
+        return content
+
+    from apps.monitor.services.plugin_guide import PluginGuideService
+
+    plugin_dir = PluginGuideService.resolve_plugin_dir(plugin)
+    if plugin_dir is None:
+        return content
+
+    ui_file = Path(plugin_dir) / "UI.json"
+    if not ui_file.is_file():
+        return content
+
+    try:
+        file_ui = json.loads(ui_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, TypeError):
+        return content
+
+    file_fields = {
+        str(field.get("name")): field
+        for field in (file_ui.get("form_fields") or [])
+        if isinstance(field, dict) and field.get("name")
+    }
+    if not file_fields:
+        return content
+
+    enriched = deepcopy(content)
+    form_fields = enriched.get("form_fields")
+    if not isinstance(form_fields, list):
+        return enriched
+
+    for field in form_fields:
+        if not isinstance(field, dict):
+            continue
+        source = file_fields.get(str(field.get("name") or ""))
+        if not source:
+            continue
+        for key in _FILE_OVERLAY_FIELD_KEYS:
+            value = source.get(key)
+            if value in (None, ""):
+                continue
+            field[key] = value
+    return enriched
+
+
+def resolve_support_collect_detect(plugin: MonitorPlugin | None, fallback: bool = False) -> bool:
+    """Prefer metrics.json support_collect_detect when present on disk."""
+    if plugin is None:
+        return fallback
+
+    from apps.monitor.services.plugin_guide import PluginGuideService
+
+    plugin_dir = PluginGuideService.resolve_plugin_dir(plugin)
+    if plugin_dir is None:
+        return fallback
+
+    metrics_file = Path(plugin_dir) / "metrics.json"
+    if not metrics_file.is_file():
+        return fallback
+
+    try:
+        metrics = json.loads(metrics_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, TypeError):
+        return fallback
+
+    if isinstance(metrics, dict) and "support_collect_detect" in metrics:
+        return bool(metrics.get("support_collect_detect"))
+    return fallback
 
 
 def localize_ui_template(content: dict, locale: str) -> dict:

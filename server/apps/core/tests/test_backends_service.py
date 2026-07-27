@@ -1,17 +1,15 @@
 import pydantic.root_model  # noqa
-
 import pytest
 from django.core.cache import cache
+from django.core.cache.backends.locmem import LocMemCache
+from django.db import transaction
 
 from apps.base.models import User as BaseUser
 from apps.base.models import UserAPISecret
 from apps.core import backends as be
-from apps.core.backends import (
-    APISecretAuthBackend,
-    AuthBackend,
-    _collect_ancestor_group_ids,
-)
+from apps.core.backends import APISecretAuthBackend, AuthBackend, _collect_ancestor_group_ids
 from apps.core.constants import VERIFY_TOKEN_USER_NOT_FOUND_CODE, VERIFY_TOKEN_USER_NOT_FOUND_MESSAGE
+from apps.core.utils import permission_cache
 from apps.core.utils.custom_error import DoesNotExist
 from apps.system_mgmt.models import Group, Menu, Role
 from apps.system_mgmt.models import User as SysUser
@@ -52,6 +50,17 @@ class TestAPISecretAuthBackend:
     def test_unknown_token_returns_none(self):
         assert APISecretAuthBackend().authenticate(api_token="nope") is None
 
+    def test_token_for_missing_system_user_is_rejected(self):
+        BaseUser.objects.create(username="deleted-user", domain="domain.com")
+        UserAPISecret.objects.create(
+            username="deleted-user",
+            domain="domain.com",
+            api_secret="deleted-secret",
+            team=1,
+        )
+
+        assert APISecretAuthBackend().authenticate(api_token="deleted-secret") is None
+
     def test_valid_token_populates_permissions(self):
         BaseUser.objects.create(username="apiuser", domain="domain.com")
         UserAPISecret.objects.create(username="apiuser", domain="domain.com", api_secret="sec123", team=5)
@@ -61,7 +70,7 @@ class TestAPISecretAuthBackend:
 
         user = APISecretAuthBackend().authenticate(api_token="sec123")
         assert user is not None
-        assert user.group_list == [5]
+        assert user.group_list == []
         assert user.is_superuser is True  # admin 角色
         assert "admin" in user.roles
 
@@ -78,13 +87,22 @@ class TestAPISecretAuthBackend:
 
     def test_permission_cache_hit(self, mocker):
         BaseUser.objects.create(username="cuser", domain="domain.com")
+        SysUser.objects.create(username="cuser", domain="domain.com", email="c@x.com")
         secret = UserAPISecret.objects.create(username="cuser", domain="domain.com", api_secret="csec", team=2)
         backend = APISecretAuthBackend()
         # 直接 mock 缓存边界返回命中值，验证命中分支不再查 DB 角色
+        system_user_filter = mocker.patch.object(be.SystemUser.objects, "filter")
+        system_user_filter.return_value.exists.return_value = True
         mocker.patch.object(
             be.cache,
             "get",
-            return_value={"roles": ["r1"], "permission": {"app": ["m1"]}, "is_superuser": True, "role_ids": [9]},
+            return_value={
+                "roles": ["r1"],
+                "permission": {"app": ["m1"]},
+                "is_superuser": True,
+                "role_ids": [9],
+                "group_list": [2],
+            },
         )
 
         user = backend.authenticate(api_token="csec")
@@ -92,7 +110,91 @@ class TestAPISecretAuthBackend:
         assert user.is_superuser is True
         assert user.permission == {"app": {"m1"}}
         assert user.role_ids == [9]
+        assert user.group_list == [2]
         assert secret.team == 2
+        system_user_filter.return_value.first.assert_not_called()
+
+    def test_next_auth_after_revocation_ignores_other_worker_snapshot(self, mocker):
+        BaseUser.objects.create(username="revoked-user", domain="domain.com")
+        UserAPISecret.objects.create(
+            username="revoked-user",
+            domain="domain.com",
+            api_secret="revoked-secret",
+            team=2,
+        )
+        admin_role = Role.objects.create(name="admin", app="")
+        sys_user = SysUser.objects.create(
+            username="revoked-user",
+            domain="domain.com",
+            role_list=[admin_role.id],
+            email="revoked@example.com",
+        )
+        backend = APISecretAuthBackend()
+        worker_a_cache = LocMemCache("api-secret-worker-a", {})
+        worker_b_cache = LocMemCache("api-secret-worker-b", {})
+        mocker.patch.object(be, "cache", worker_a_cache)
+
+        first_auth = backend.authenticate(api_token="revoked-secret")
+        old_cache_key = backend._get_permission_cache_key("revoked-user", "domain.com", 2)
+        assert first_auth.is_superuser is True
+        assert worker_a_cache.get(old_cache_key)["is_superuser"] is True
+
+        mocker.patch.object(permission_cache, "cache", worker_b_cache)
+        with transaction.atomic():
+            SysUser.objects.filter(pk=sys_user.pk).update(role_list=[])
+            permission_cache.clear_user_permission_cache("revoked-user", "domain.com")
+
+        second_auth = backend.authenticate(api_token="revoked-secret")
+        assert worker_a_cache.get(old_cache_key)["is_superuser"] is True
+        assert second_auth is not None
+        assert second_auth.is_superuser is False
+        assert second_auth.roles == []
+
+    def test_permission_version_survives_user_delete_and_recreate(self):
+        user = SysUser.objects.create(
+            username="recreated-user",
+            domain="domain.com",
+            email="recreated@example.com",
+        )
+        first_version = permission_cache.get_user_permission_version(user.username, user.domain)
+
+        with transaction.atomic():
+            user.delete()
+            permission_cache.clear_user_permission_cache("recreated-user", "domain.com")
+        deleted_version = permission_cache.get_user_permission_version("recreated-user", "domain.com")
+
+        recreated = SysUser.objects.create(
+            username="recreated-user",
+            domain="domain.com",
+            email="recreated-again@example.com",
+        )
+        recreated_version = permission_cache.get_user_permission_version(
+            recreated.username,
+            recreated.domain,
+        )
+
+        assert deleted_version > first_version
+        assert recreated_version > deleted_version
+
+    def test_stale_user_instance_cannot_move_permission_version_backwards(self):
+        user = SysUser.objects.create(
+            username="concurrent-save-user",
+            domain="domain.com",
+            email="concurrent@example.com",
+        )
+        first_copy = SysUser.objects.get(pk=user.pk)
+        second_copy = SysUser.objects.get(pk=user.pk)
+        initial_version = permission_cache.get_user_permission_version(user.username, user.domain)
+
+        first_copy.display_name = "first"
+        first_copy.save()
+        first_version = permission_cache.get_user_permission_version(user.username, user.domain)
+        second_copy.display_name = "second"
+        second_copy.save()
+        second_version = permission_cache.get_user_permission_version(user.username, user.domain)
+
+        assert first_version > initial_version
+        assert second_version > first_version
 
     def test_group_role_inheritance(self):
         BaseUser.objects.create(username="guser", domain="domain.com")
@@ -104,13 +206,28 @@ class TestAPISecretAuthBackend:
         child = Group.objects.create(name="C", parent_id=parent.id, allow_inherit_roles=True)
         child.roles.add(child_role)
         UserAPISecret.objects.create(username="guser", domain="domain.com", api_secret="gsec", team=child.id)
-        SysUser.objects.create(username="guser", domain="domain.com", role_list=[], email="g@x.com")
+        sys_user = SysUser.objects.create(
+            username="guser",
+            domain="domain.com",
+            group_list=[child.id],
+            role_list=[],
+            email="g@x.com",
+        )
 
         backend = APISecretAuthBackend()
         user = backend.authenticate(api_token="gsec")
         # 角色名包含子组与父组(因父允许继承)的角色
         assert "child_role" in user.roles
         assert "parent_role" in user.roles
+
+        with transaction.atomic():
+            SysUser.objects.filter(pk=sys_user.pk).update(group_list=[])
+            permission_cache.clear_user_permission_cache(sys_user.username, sys_user.domain)
+
+        user = backend.authenticate(api_token="gsec")
+        assert user.group_list == []
+        assert "child_role" not in user.roles
+        assert "parent_role" not in user.roles
 
 
 class TestAuthBackendVerifyToken:

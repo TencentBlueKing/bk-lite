@@ -7,7 +7,7 @@
   :global(.ant-input),
   :global(.ant-picker) {
     color: var(--ops-screen-table-text) !important;
-    background: rgba(5, 18, 38, 0.72) !important;
+    background: var(--ops-screen-table-control-bg) !important;
     border-color: var(--ops-screen-table-border) !important;
     box-shadow: none !important;
   }
@@ -63,7 +63,7 @@
   :global(.ant-pagination-item),
   :global(.ant-pagination-prev .ant-pagination-item-link),
   :global(.ant-pagination-next .ant-pagination-item-link) {
-    background: rgba(8, 27, 56, 0.82);
+    background: var(--ops-screen-table-control-bg);
     border-color: var(--ops-screen-table-border);
   }
 
@@ -74,7 +74,7 @@
   }
 
   :global(.ant-pagination-item-active) {
-    background: rgba(29, 113, 255, 0.22);
+    background: var(--ops-screen-table-row-hover-bg);
     border-color: var(--ops-screen-table-accent);
   }
 
@@ -84,7 +84,7 @@
 
   :global(.ant-pagination-options .ant-select-selector) {
     color: var(--ops-screen-table-text) !important;
-    background: rgba(8, 27, 56, 0.82) !important;
+    background: var(--ops-screen-table-control-bg) !important;
     border-color: var(--ops-screen-table-border) !important;
   }
 }
@@ -105,12 +105,12 @@
     font-size: var(--ops-screen-table-header-font-size, 12px);
     font-weight: 600;
     line-height: var(--ops-screen-table-line-height, 18px);
-    background: rgba(10, 39, 78, 0.86) !important;
+    background: var(--ops-screen-table-subtle-bg) !important;
     border-bottom: 1px solid var(--ops-screen-table-border);
   }
 
   :global(.ant-table-thead > tr > th::before) {
-    background: rgba(90, 202, 255, 0.18) !important;
+    background: var(--ops-screen-table-border) !important;
   }
 
   :global(.ant-table-tbody > tr > td) {
@@ -118,17 +118,17 @@
     color: var(--ops-screen-table-text);
     font-size: var(--ops-screen-table-body-font-size, 12px);
     line-height: var(--ops-screen-table-line-height, 18px);
-    background: rgba(3, 13, 30, 0.36);
-    border-bottom: 1px solid rgba(54, 151, 215, 0.18);
+    background: var(--ops-screen-table-row-bg);
+    border-bottom: 1px solid var(--ops-screen-table-border);
   }
 
   :global(.ant-table-tbody > tr:nth-child(even) > td) {
-    background: rgba(9, 28, 55, 0.36);
+    background: var(--ops-screen-table-row-alt-bg);
   }
 
   :global(.ant-table-tbody > tr.ant-table-row:hover > td),
   :global(.ant-table-tbody > tr > td.ant-table-cell-row-hover) {
-    background: rgba(30, 120, 206, 0.28) !important;
+    background: var(--ops-screen-table-row-hover-bg) !important;
   }
 
   :global(.ant-table-placeholder),
@@ -146,7 +146,9 @@
 
   :global(.ant-table-body),
   :global(.ant-table-content) {
-    scrollbar-color: rgba(82, 197, 255, 0.45) rgba(4, 16, 36, 0.7);
+    scrollbar-color:
+      var(--screen-table-scrollbar-thumb, var(--ops-screen-table-scrollbar-thumb))
+      var(--screen-table-scrollbar-track, var(--ops-screen-table-scrollbar-track));
   }
 
   :global(.ant-table-body::-webkit-scrollbar),
@@ -157,12 +159,12 @@
 
   :global(.ant-table-body::-webkit-scrollbar-thumb),
   :global(.ant-table-content::-webkit-scrollbar-thumb) {
-    background: rgba(82, 197, 255, 0.42);
+    background: var(--screen-table-scrollbar-thumb, var(--ops-screen-table-scrollbar-thumb));
     border-radius: 999px;
   }
 
   :global(.ant-table-body::-webkit-scrollbar-track),
   :global(.ant-table-content::-webkit-scrollbar-track) {
-    background: rgba(4, 16, 36, 0.7);
+    background: var(--screen-table-scrollbar-track, var(--ops-screen-table-scrollbar-track));
   }
 }

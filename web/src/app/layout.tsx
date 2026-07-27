@@ -8,14 +8,14 @@ import { AntdRegistry } from '@ant-design/nextjs-registry';
 import { SessionProvider, useSession } from 'next-auth/react';
 import { LocaleProvider } from '@/context/locale';
 import { useTranslation } from '@/utils/i18n';
-import { ThemeProvider } from '@/context/theme';
+import { ThemeBootstrap, ThemeProvider } from '@/theme';
 import { MenusProvider, useMenus } from '@/context/menus';
 import { UserInfoProvider } from '@/context/userInfo';
 import { ClientProvider } from '@/context/client';
 import { PermissionsProvider, usePermissions } from '@/context/permissions';
 import AuthProvider from '@/context/auth';
 import TopMenu from '@/app/(core)/components/top-menu';
-import { ConfigProvider, Watermark, message } from 'antd';
+import { Watermark, message } from 'antd';
 import Spin from '@/components/spin';
 import { portalBrandingDefaults, usePortalBranding } from '@/hooks/usePortalBranding';
 import { getProfessionalDashboardPermissionPath } from '@/app/monitor/dashboards/registry';
@@ -232,38 +232,35 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
+        <ThemeBootstrap />
         <title>BlueKing Lite</title>
         <link rel="icon" href="/logo-site.png" type="image/png" data-portal-favicon="true" />
         <Script src="/iconfont.js" strategy="afterInteractive"/>
-        {/* cache bust: prepare-enterprise.mjs 重写该文件但 next dev 模式 HMR 不重发 script,
-            浏览器可能缓存旧版(空数组)→ 22 卡片全显示 VTrak 占位。
-            ?v=Date.now() 强制浏览器每次重拉,避免陈旧 brand 数据 */}
-        <Script src={`/__enterprise-brands.js?v=${Date.now()}`} strategy="afterInteractive" />
+        {/* 企业品牌映射必须在 hydration 前加载；src 保持稳定，避免 SSR/客户端生成不同地址。 */}
+        <Script src="/__enterprise-brands.js" strategy="beforeInteractive" />
       </head>
       <body>
         {/* 全局 Context Provider 配置 */}
         <SessionProvider refetchInterval={30 * 60}>
-          <ConfigProvider>
-            <LocaleProvider>
-              <ThemeProvider>
-                <AuthProvider>
-                  <PortalBrandingHead />
-                  <UserInfoProvider>
-                    <ClientProvider>
-                      <MenusProvider>
-                        <PermissionsProvider>
-                          {/* 渲染布局 */}
-                          <LayoutWithProviders>{children}</LayoutWithProviders>
-                        </PermissionsProvider>
-                      </MenusProvider>
-                    </ClientProvider>
-                  </UserInfoProvider>
-                </AuthProvider>
-              </ThemeProvider>
-            </LocaleProvider>
-          </ConfigProvider>
+          <LocaleProvider>
+            <ThemeProvider>
+              <AuthProvider>
+                <PortalBrandingHead />
+                <UserInfoProvider>
+                  <ClientProvider>
+                    <MenusProvider>
+                      <PermissionsProvider>
+                        {/* 渲染布局 */}
+                        <LayoutWithProviders>{children}</LayoutWithProviders>
+                      </PermissionsProvider>
+                    </MenusProvider>
+                  </ClientProvider>
+                </UserInfoProvider>
+              </AuthProvider>
+            </ThemeProvider>
+          </LocaleProvider>
         </SessionProvider>
       </body>
     </html>

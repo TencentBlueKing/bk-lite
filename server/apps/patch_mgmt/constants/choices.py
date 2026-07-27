@@ -103,6 +103,17 @@ class PackageManagerType:
         (DNF, "dnf"),
     )
 
+    SOURCE_TYPE_ALIASES = {
+        PatchSourceType.APT_REPO: APT,
+        PatchSourceType.YUM_REPO: YUM,
+        PatchSourceType.DNF_REPO: DNF,
+    }
+
+    @classmethod
+    def normalize(cls, value):
+        """将补丁源类型兼容值归一为包管理器类型。"""
+        return cls.SOURCE_TYPE_ALIASES.get(value, value)
+
 
 class ConnectivityStatus:
     """连通性状态"""

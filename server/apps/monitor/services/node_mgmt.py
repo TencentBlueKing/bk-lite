@@ -16,6 +16,7 @@ from apps.monitor.models import (
     MonitorPlugin,
 )
 from apps.monitor.services.host_deployment import HostDeploymentStatus
+from apps.monitor.services.website_config import validate_rendered_website_config
 from apps.monitor.utils.config_format import ConfigFormat
 from apps.monitor.utils.dimension import build_safe_instance_id, normalize_instance_identity, parse_instance_id
 from apps.monitor.utils.node_selector import normalize_node_selector
@@ -907,5 +908,10 @@ class InstanceConfigService:
             if not config_obj:
                 return
             env_config = child_info.get("env_config")
+            if config_obj.collect_type == "web":
+                try:
+                    validate_rendered_website_config(child_info.get("content") or {}, env_config)
+                except ValueError as exc:
+                    raise BaseAppException(str(exc)) from exc
             content = ConfigFormat.json_to_toml(child_info["content"]) if child_info else None
             NodeMgmt().update_child_config_content(child_info["id"], content, env_config)

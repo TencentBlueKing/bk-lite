@@ -11,6 +11,7 @@ from apps.monitor.services.collect_detect_runtime import (
     render_telegraf_config_template,
     sanitize_execution_result,
 )
+from apps.monitor.services.website_config import normalize_website_request_config
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models import Node
 from apps.node_mgmt.services.package import PackageService
@@ -38,6 +39,8 @@ class CollectDetectService:
     def create_task(cls, payload: dict, user, organization: int):
         plugin = cls._get_supported_plugin(payload.get("monitor_plugin_id"))
         instance = payload.get("instance") or {}
+        if plugin.collect_type == "web":
+            instance = normalize_website_request_config(instance)
         env = payload.get("env") or {}
         runtime_payload = {
             "instance": instance,
@@ -113,6 +116,8 @@ class CollectDetectService:
                 env=env,
             )
             result = sanitize_execution_result(raw_result, sensitive_values=list(env.values()))
+            if plugin.collect_type == "web" and instance.get("request_url"):
+                result["request_url"] = instance["request_url"]
             task.result = result
             task.status = "success" if result["success"] else "failed"
             task.phase = "parse_output"
@@ -151,10 +156,12 @@ class CollectDetectService:
 
     @staticmethod
     def _get_supported_plugin(plugin_id):
+        from apps.monitor.services.ui_template_locale import resolve_support_collect_detect
+
         plugin = MonitorPlugin.objects.filter(id=plugin_id).first()
         if not plugin:
             raise ValueError("监控插件不存在")
-        if not plugin.support_collect_detect:
+        if not resolve_support_collect_detect(plugin, fallback=plugin.support_collect_detect):
             raise ValueError("当前插件不支持采集检测")
         if plugin.collector != "Telegraf" or plugin.template_type != "builtin":
             raise ValueError("当前插件不支持采集检测")
@@ -215,7 +222,10 @@ class CollectDetectService:
         for key, value in (instance or {}).items():
             if value in (None, "") or not cls._is_sensitive_key(key):
                 continue
-            env[f"{str(key).upper()}__{config_id}"] = str(value)
+            env_key = str(key).upper()
+            if env_key.startswith("ENV_"):
+                env_key = env_key[4:]
+            env[f"{env_key}__{config_id}"] = str(value)
         env.update(explicit_env or {})
         return env
 

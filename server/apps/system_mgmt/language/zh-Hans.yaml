@@ -1,4 +1,6 @@
 error:
+  network_whitelist_required: 目标 IP 不在白名单内，请前往系统管理的白名单管理中添加。
+  go_to_network_whitelist: 前往白名单管理
   detail_not_supported: 不支持详情查询
   update_not_supported: 不支持修改
   not_authorized: 未授权

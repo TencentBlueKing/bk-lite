@@ -1,8 +1,15 @@
 import { useState, useCallback, useMemo } from 'react';
+import { Collapse } from 'antd';
 import { useConfigRenderer } from './useConfigRenderer';
 import { DataMapper } from './useDataMapper';
+import {
+  buildWebsiteRequestUrl,
+  splitWebsiteRequestUrl,
+  validateWebsiteRequestHeaders
+} from './http-request-config';
 import useIntegrationApi from '@/app/monitor/api/integration';
 import useApiClient from '@/utils/request';
+import { useTranslation } from '@/utils/i18n';
 
 /**
  * 兜底：把 formFields 中非必填且用户未填的字段补成空串。
@@ -30,6 +37,7 @@ export const fillOptionalFormFields = (
 
 export const usePluginFromJson = () => {
   const { isLoading } = useApiClient();
+  const { t } = useTranslation();
   const [config, setConfig] = useState<any>(null);
   const [currentPluginId, setCurrentPluginId] = useState<
     string | number | null
@@ -152,6 +160,80 @@ export const usePluginFromJson = () => {
       };
 
       const formFields = getFieldsForMode(config.form_fields || [], extra.mode);
+      const advancedFields = formFields?.filter((field: any) => field.advanced) || [];
+      const basicFields = formFields?.filter((field: any) => !field.advanced) || [];
+      const ADVANCED_SECTION_ORDER = ['request', 'auth', 'response', 'tls'];
+
+      const renderAdvancedFieldGroups = (fields: any[]) => {
+        const hasSections = fields.some((field) => field.section);
+        if (!hasSections) {
+          return fields.map((fieldConfig: any) => renderFormField(fieldConfig, extra.mode));
+        }
+
+        const sectionMap = new Map<string, any[]>();
+        fields.forEach((field) => {
+          const section = field.section || 'other';
+          if (!sectionMap.has(section)) sectionMap.set(section, []);
+          sectionMap.get(section)!.push(field);
+        });
+
+        const orderedSections = [
+          ...ADVANCED_SECTION_ORDER.filter((section) => sectionMap.has(section)),
+          ...Array.from(sectionMap.keys()).filter(
+            (section) => !ADVANCED_SECTION_ORDER.includes(section)
+          ),
+        ];
+
+        return (
+          <div className="space-y-5">
+            {orderedSections.map((section) => (
+              <section key={section} className="space-y-3">
+                <div className="border-b border-[var(--color-border-1)] pb-2">
+                  <h4 className="m-0 text-[13px] font-medium leading-5 text-[var(--color-text-1)]">
+                    {t(`monitor.integrations.advancedSections.${section}`)}
+                  </h4>
+                </div>
+                <div className="space-y-1">
+                  {(sectionMap.get(section) || []).map((fieldConfig: any) =>
+                    renderFormField(fieldConfig, extra.mode)
+                  )}
+                </div>
+              </section>
+            ))}
+          </div>
+        );
+      };
+
+      const formItems = (
+        <>
+          {basicFields.map((fieldConfig: any) =>
+            renderFormField(fieldConfig, extra.mode)
+          )}
+          {advancedFields.length > 0 && (
+            <Collapse
+              bordered={false}
+              ghost
+              className="mb-4 max-w-[720px] bg-transparent [&_.ant-collapse-header]:!items-center [&_.ant-collapse-header]:!px-0 [&_.ant-collapse-expand-icon]:!me-2 [&_.ant-collapse-content-box]:!px-0 [&_.ant-collapse-content-box]:!pb-1 [&_.ant-collapse-content-box]:!pt-3"
+              expandIconPosition="start"
+              items={[{
+                key: 'advanced-options',
+                label: (
+                  <div>
+                    <div className="text-[13px] font-medium leading-5 text-[var(--color-text-1)]">
+                      {t('monitor.integrations.advancedConfiguration')}
+                    </div>
+                    <div className="mt-0.5 text-[12px] font-normal leading-[18px] text-[var(--color-text-3)]">
+                      {t('monitor.integrations.advancedConfigurationHint')}
+                    </div>
+                  </div>
+                ),
+                forceRender: true,
+                children: renderAdvancedFieldGroups(advancedFields),
+              }]}
+            />
+          )}
+        </>
+      );
 
       if (extra.mode === 'auto') {
         return {
@@ -160,13 +242,7 @@ export const usePluginFromJson = () => {
           collector: config.collector,
           instance_type: config.instance_type,
           object_name: config.object_name,
-          formItems: (
-            <>
-              {formFields?.map((fieldConfig: any) =>
-                renderFormField(fieldConfig, extra.mode)
-              )}
-            </>
-          ),
+          formItems,
           columns:
             config.table_columns?.map((columnConfig: any) =>
               renderTableColumn(
@@ -217,13 +293,7 @@ export const usePluginFromJson = () => {
           collector: config.collector,
           instance_type: config.instance_type,
           object_name: config.object_name,
-          formItems: (
-            <>
-              {formFields?.map((fieldConfig: any) =>
-                renderFormField(fieldConfig, extra.mode)
-              )}
-            </>
-          ),
+          formItems,
           getDefaultForm: (apiData: any) => {
             const formValues: any = {};
             formFields?.forEach((field: any) => {
@@ -237,6 +307,25 @@ export const usePluginFromJson = () => {
                 );
               }
             });
+            if (config.instance_type === 'web') {
+              const requestUrl = apiData?.child?.content?.config?.urls?.[0];
+              if (requestUrl) {
+                const { baseUrl, entries } = splitWebsiteRequestUrl(requestUrl);
+                formValues.monitor_url = baseUrl;
+                formValues.request_params = entries;
+              }
+              const childConfig = apiData?.child?.content?.config || {};
+              const authorization = childConfig.headers?.Authorization || childConfig.headers?.authorization;
+              formValues.request_method = childConfig.method || 'GET';
+              formValues.request_headers = Object.entries(childConfig.headers || {})
+                .filter(([key]) => key.toLowerCase() !== 'authorization')
+                .map(([key, value]) => ({ key, value: String(value ?? '') }));
+              formValues.auth_type = authorization
+                ? 'bearer'
+                : childConfig.username
+                  ? 'basic'
+                  : 'none';
+            }
             return formValues;
           },
           getParams: (formData: any, configForm: any) => {
@@ -262,7 +351,7 @@ export const usePluginFromJson = () => {
             }
             // 把非必填字段未填的补成空串,避免后端 Jinja2 模板 {{ 字段名 }} 抛
             // UndefinedError；后端 child.toml.j2 用 {% if 字段 %}{% endif %} 跳过空串
-            const filledFormData = fillOptionalFormFields(formData, formFields);
+            const filledFormData = { ...formData };
             formFields?.forEach((field: any) => {
               const { name, transform_on_edit, editable } = field;
               const formValue = filledFormData[name];
@@ -337,6 +426,80 @@ export const usePluginFromJson = () => {
                 }
               );
             }
+            if (config.instance_type === 'web') {
+              const childConfig = result.child.content.config;
+              const childEnvConfig = result.child.env_config || {};
+              result.child.env_config = childEnvConfig;
+              const childConfigId = String(result.child.id || '').toUpperCase();
+              const passwordEnvKey = `PASSWORD__${childConfigId}`;
+              const bearerEnvKey = `BEARER_TOKEN__${childConfigId}`;
+              const setOptionalConfig = (key: string, value: any) => {
+                if (value === undefined) return;
+                if (value === null || value === '') {
+                  delete childConfig[key];
+                  return;
+                }
+                childConfig[key] = value;
+              };
+              result.child.content.config.urls = [
+                buildWebsiteRequestUrl(
+                  String(filledFormData.monitor_url || ''),
+                  filledFormData.request_params || []
+                )
+              ];
+              result.child.content.config.headers = Object.fromEntries(
+                validateWebsiteRequestHeaders(filledFormData.request_headers || []).map(
+                  ({ key, value }) => [key, value]
+                )
+              );
+              childConfig.method = filledFormData.request_method || 'GET';
+              if (childConfig.method !== 'POST') {
+                delete childConfig.body;
+              } else {
+                setOptionalConfig('body', filledFormData.request_body);
+              }
+              setOptionalConfig('response_status_code', filledFormData.response_status_code);
+              setOptionalConfig('response_string_match', filledFormData.response_string_match);
+              setOptionalConfig(
+                'response_timeout',
+                filledFormData.response_timeout === undefined
+                  ? undefined
+                  : filledFormData.response_timeout === null || filledFormData.response_timeout === ''
+                    ? ''
+                    : `${filledFormData.response_timeout}s`
+              );
+              if (filledFormData.follow_redirects === undefined || filledFormData.follow_redirects === '') {
+                delete childConfig.follow_redirects;
+              } else {
+                childConfig.follow_redirects = filledFormData.follow_redirects;
+              }
+              if (filledFormData.auth_type === 'basic') {
+                delete result.child.content.config.bearer_token;
+                delete result.child.content.config.headers.Authorization;
+                delete result.child.content.config.headers.authorization;
+                delete childEnvConfig[bearerEnvKey];
+                result.child.content.config.password = `\${${passwordEnvKey}}`;
+                if (filledFormData.ENV_PASSWORD !== undefined) {
+                  childEnvConfig[passwordEnvKey] = filledFormData.ENV_PASSWORD;
+                }
+              } else if (filledFormData.auth_type === 'bearer') {
+                delete result.child.content.config.username;
+                delete result.child.content.config.password;
+                result.child.content.config.headers.Authorization = `Bearer \${${bearerEnvKey}}`;
+                delete childEnvConfig[passwordEnvKey];
+                if (filledFormData.ENV_BEARER_TOKEN !== undefined) {
+                  childEnvConfig[bearerEnvKey] = filledFormData.ENV_BEARER_TOKEN;
+                }
+              } else {
+                delete result.child.content.config.username;
+                delete result.child.content.config.password;
+                delete result.child.content.config.bearer_token;
+                delete result.child.content.config.headers.Authorization;
+                delete result.child.content.config.headers.authorization;
+                delete childEnvConfig[passwordEnvKey];
+                delete childEnvConfig[bearerEnvKey];
+              }
+            }
             // 如果有 base，统一同步 child.env_config 到 base.env_config
             if (result.base && result.child?.env_config) {
               Object.entries(result.child.env_config).forEach(
@@ -366,7 +529,7 @@ export const usePluginFromJson = () => {
         getDefaultForm: () => ({})
       };
     },
-    [config, currentPluginId, renderFormField, renderTableColumn]
+    [config, currentPluginId, renderFormField, renderTableColumn, t]
   );
 
   return useMemo(

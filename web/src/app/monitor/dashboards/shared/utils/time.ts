@@ -22,3 +22,20 @@ export const buildPreviousPeriodTimeValues = (timeValues: TimeValuesProps): Time
   const duration = endTime - startTime;
   return { timeRange: [startTime - duration, endTime - duration], originValue: 0 };
 };
+
+/** 将毫秒时长转为 PromQL range 字面量（如 15m / 1h / 2d）。 */
+export const toPromqlWindow = (durationMs: number, fallback = '15m'): string => {
+  if (!Number.isFinite(durationMs) || durationMs <= 0) return fallback;
+  const seconds = Math.max(1, Math.round(durationMs / 1000));
+  if (seconds % 86400 === 0) return `${seconds / 86400}d`;
+  if (seconds % 3600 === 0) return `${seconds / 3600}h`;
+  if (seconds % 60 === 0) return `${seconds / 60}m`;
+  return `${seconds}s`;
+};
+
+/** 从仪表盘时间选择器解析出当前查询窗对应的 PromQL range。 */
+export const resolvePromqlWindow = (timeValues: TimeValuesProps, fallback = '15m'): string => {
+  const [startTime, endTime] = getRecentTimeRange(timeValues);
+  if (!Number.isFinite(startTime) || !Number.isFinite(endTime)) return fallback;
+  return toPromqlWindow(Number(endTime) - Number(startTime), fallback);
+};

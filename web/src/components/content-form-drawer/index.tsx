@@ -3,7 +3,7 @@ import ContentDrawer from '@/components/content-drawer';
 import {
   type FormFeedbackFooterProps,
   renderFormFeedbackFooter,
-} from '@/components/_internal/form-feedback-footer';
+} from '@/components/form-feedback-footer';
 
 type ContentDrawerProps = React.ComponentProps<typeof ContentDrawer>;
 

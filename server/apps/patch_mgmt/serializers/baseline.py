@@ -70,6 +70,9 @@ class BaselineRequirementSerializer(serializers.ModelSerializer):
         return self._get_detail(obj, "pkg_version")
 
     def get_patch_version(self, obj):
+        if obj.patch.os_type == "windows":
+            products = self._get_detail(obj, "product_list")
+            return ", ".join(products) if products else ""
         detail = self._get_detail(obj, "os_version_range")
         if not detail:
             detail = self._get_detail(obj, "distro_name")
