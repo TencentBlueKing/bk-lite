@@ -321,8 +321,8 @@ export default function BaselineManagementPage() {
     { title: '要求', width: 120, render: (_: unknown, r: any) => r.patch_kb_number || r.patch_pkg_name || '' },
     { title: '严重级别', dataIndex: 'patch_severity', width: 90, render: (v: string) => <SeverityTag severity={v} /> },
     { title: '描述', dataIndex: 'patch_title', ellipsis: true },
-    { title: '适用版本', dataIndex: 'patch_version', width: 100 },
-    { title: '架构', dataIndex: 'patch_arch', width: 80 },
+    { title: '适用版本', dataIndex: 'patch_version', width: 100, render: (v: string) => v || '--' },
+    { title: '架构', dataIndex: 'patch_arch', width: 80, render: (v: string) => v || '--' },
     {
       title: '操作',
       width: 60,
@@ -635,8 +635,8 @@ export default function BaselineManagementPage() {
             { title: draftOs === 'win' ? 'KB 号' : '包名', width: 120, render: (_: unknown, r: any) => r.windows_detail?.kb_number || r.linux_detail?.pkg_name || '' },
             { title: '严重级别', dataIndex: 'severity', width: 90, render: (v: string) => <SeverityTag severity={v} /> },
             { title: '描述', dataIndex: 'title', ellipsis: true },
-            { title: '适用版本', width: 100, render: (_: unknown, r: any) => r.windows_detail?.product_list?.join('、') || r.linux_detail?.os_version_range || r.linux_detail?.distro_name || '-' },
-            { title: '架构', width: 80, render: (_: unknown, r: any) => r.windows_detail?.architectures?.join('、') || r.linux_detail?.architectures?.join('、') || '-' },
+            { title: '适用版本', width: 100, render: (_: unknown, r: any) => r.windows_detail?.product_list?.join('、') || r.linux_detail?.os_version_range || r.linux_detail?.distro_name || '--' },
+            { title: '架构', width: 80, render: (_: unknown, r: any) => r.windows_detail?.architectures?.join('、') || r.linux_detail?.architectures?.join('、') || '--' },
           ]}
           selectedKeys={pickerSelected}
           onChange={setPickerSelected}
