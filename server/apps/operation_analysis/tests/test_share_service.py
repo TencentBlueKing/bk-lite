@@ -60,7 +60,7 @@ def dashboard(db):
 def test_create_or_get_share_is_idempotent(settings, dashboard, sharer, monkeypatch):
     settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
     monkeypatch.setattr(
-        "apps.operation_analysis.services.share_service.can_view_dashboard",
+        "apps.operation_analysis.services.share_service.can_view_canvas",
         lambda **_: True,
     )
     first = create_or_get_share(
@@ -95,7 +95,7 @@ def test_exchange_reuses_unexpired_session_and_resets_eight_hours(
     settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
     settings.DASHBOARD_SHARE_SESSION_AGE = 28800
     monkeypatch.setattr(
-        "apps.operation_analysis.services.share_service.can_view_dashboard",
+        "apps.operation_analysis.services.share_service.can_view_canvas",
         lambda **_: True,
     )
     result = create_or_get_share(
@@ -122,7 +122,7 @@ def test_exchange_replaces_expired_session(settings, dashboard, sharer, visitor,
     settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
     settings.DASHBOARD_SHARE_SESSION_AGE = 28800
     monkeypatch.setattr(
-        "apps.operation_analysis.services.share_service.can_view_dashboard",
+        "apps.operation_analysis.services.share_service.can_view_canvas",
         lambda **_: True,
     )
     result = create_or_get_share(
@@ -142,7 +142,7 @@ def test_exchange_replaces_expired_session(settings, dashboard, sharer, visitor,
 def test_resolve_session_does_not_extend_expiry(settings, dashboard, sharer, visitor, monkeypatch):
     settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
     monkeypatch.setattr(
-        "apps.operation_analysis.services.share_service.can_view_dashboard",
+        "apps.operation_analysis.services.share_service.can_view_canvas",
         lambda **_: True,
     )
     result = create_or_get_share(
@@ -164,7 +164,7 @@ def test_resolve_session_does_not_extend_expiry(settings, dashboard, sharer, vis
 def test_share_sessions_cannot_be_used_across_visitors(settings, dashboard, sharer, visitor, monkeypatch):
     settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
     monkeypatch.setattr(
-        "apps.operation_analysis.services.share_service.can_view_dashboard",
+        "apps.operation_analysis.services.share_service.can_view_canvas",
         lambda **_: True,
     )
     result = create_or_get_share(
@@ -193,7 +193,7 @@ def test_share_sessions_cannot_be_used_across_visitors(settings, dashboard, shar
 def test_permission_loss_becomes_permanent_only_when_observed(settings, dashboard, sharer, monkeypatch):
     settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
     monkeypatch.setattr(
-        "apps.operation_analysis.services.share_service.can_view_dashboard",
+        "apps.operation_analysis.services.share_service.can_view_canvas",
         lambda **_: True,
     )
     result = create_or_get_share(
@@ -204,14 +204,14 @@ def test_permission_loss_becomes_permanent_only_when_observed(settings, dashboar
     )
 
     monkeypatch.setattr(
-        "apps.operation_analysis.services.share_service.can_view_dashboard",
+        "apps.operation_analysis.services.share_service.can_view_canvas",
         lambda **_: False,
     )
     with pytest.raises(ShareLinkInvalid):
         resolve_link(result.link)
 
     monkeypatch.setattr(
-        "apps.operation_analysis.services.share_service.can_view_dashboard",
+        "apps.operation_analysis.services.share_service.can_view_canvas",
         lambda **_: True,
     )
     result.link.refresh_from_db()
@@ -224,7 +224,7 @@ def test_permission_loss_becomes_permanent_only_when_observed(settings, dashboar
 def test_share_session_is_bound_to_visitor(settings, dashboard, sharer, visitor, monkeypatch):
     settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
     monkeypatch.setattr(
-        "apps.operation_analysis.services.share_service.can_view_dashboard",
+        "apps.operation_analysis.services.share_service.can_view_canvas",
         lambda **_: True,
     )
     result = create_or_get_share(
@@ -250,7 +250,7 @@ def test_share_session_is_bound_to_visitor(settings, dashboard, sharer, visitor,
 def test_dashboard_delete_permanently_invalidates_link(settings, dashboard, sharer, monkeypatch):
     settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
     monkeypatch.setattr(
-        "apps.operation_analysis.services.share_service.can_view_dashboard",
+        "apps.operation_analysis.services.share_service.can_view_canvas",
         lambda **_: True,
     )
     result = create_or_get_share(
@@ -271,7 +271,7 @@ def test_dashboard_delete_permanently_invalidates_link(settings, dashboard, shar
 def test_dashboard_move_permanently_invalidates_link(settings, dashboard, sharer, monkeypatch):
     settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
     monkeypatch.setattr(
-        "apps.operation_analysis.services.share_service.can_view_dashboard",
+        "apps.operation_analysis.services.share_service.can_view_canvas",
         lambda **_: True,
     )
     result = create_or_get_share(
@@ -292,7 +292,7 @@ def test_dashboard_move_permanently_invalidates_link(settings, dashboard, sharer
 def test_same_space_directory_move_does_not_invalidate_link(settings, dashboard, sharer, monkeypatch):
     settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
     monkeypatch.setattr(
-        "apps.operation_analysis.services.share_service.can_view_dashboard",
+        "apps.operation_analysis.services.share_service.can_view_canvas",
         lambda **_: True,
     )
     result = create_or_get_share(
@@ -318,7 +318,7 @@ def test_same_space_directory_move_does_not_invalidate_link(settings, dashboard,
 def test_routine_permission_cache_clear_does_not_invalidate_link(settings, dashboard, sharer, monkeypatch):
     settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
     monkeypatch.setattr(
-        "apps.operation_analysis.services.share_service.can_view_dashboard",
+        "apps.operation_analysis.services.share_service.can_view_canvas",
         lambda **_: True,
     )
     result = create_or_get_share(
@@ -340,7 +340,7 @@ def test_actual_permission_loss_permanently_invalidates_link_and_session(
 ):
     settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
     monkeypatch.setattr(
-        "apps.operation_analysis.services.share_service.can_view_dashboard",
+        "apps.operation_analysis.services.share_service.can_view_canvas",
         lambda **_: True,
     )
     result = create_or_get_share(
@@ -352,7 +352,7 @@ def test_actual_permission_loss_permanently_invalidates_link_and_session(
     session = exchange_share(token=result.token, visitor=visitor)
 
     monkeypatch.setattr(
-        "apps.operation_analysis.services.share_service.can_view_dashboard",
+        "apps.operation_analysis.services.share_service.can_view_canvas",
         lambda **_: False,
     )
 
@@ -369,7 +369,7 @@ def test_new_share_after_permanent_invalidation_uses_new_token(
 ):
     settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
     monkeypatch.setattr(
-        "apps.operation_analysis.services.share_service.can_view_dashboard",
+        "apps.operation_analysis.services.share_service.can_view_canvas",
         lambda **_: True,
     )
     first = create_or_get_share(
@@ -399,7 +399,7 @@ def test_disabled_visitor_cannot_exchange_or_resolve_session(
 ):
     settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
     monkeypatch.setattr(
-        "apps.operation_analysis.services.share_service.can_view_dashboard",
+        "apps.operation_analysis.services.share_service.can_view_canvas",
         lambda **_: True,
     )
     result = create_or_get_share(
@@ -428,7 +428,7 @@ def test_space_mismatch_marks_dashboard_invalid_not_permission_lost(
 ):
     settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
     monkeypatch.setattr(
-        "apps.operation_analysis.services.share_service.can_view_dashboard",
+        "apps.operation_analysis.services.share_service.can_view_canvas",
         lambda **_: True,
     )
     result = create_or_get_share(
@@ -467,7 +467,7 @@ def test_non_member_cannot_create_share(settings, dashboard, sharer, monkeypatch
 def test_share_query_rejects_undeclared_params(settings, dashboard, sharer, visitor, monkeypatch):
     settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
     monkeypatch.setattr(
-        "apps.operation_analysis.services.share_service.can_view_dashboard",
+        "apps.operation_analysis.services.share_service.can_view_canvas",
         lambda **_: True,
     )
     dashboard.view_sets = [
@@ -851,7 +851,7 @@ def test_prepare_state_roundtrip_exchanges_without_raw_token(
 ):
     settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
     monkeypatch.setattr(
-        "apps.operation_analysis.services.share_service.can_view_dashboard",
+        "apps.operation_analysis.services.share_service.can_view_canvas",
         lambda **_: True,
     )
     store = {}
@@ -888,7 +888,7 @@ def test_exchange_state_requires_matching_prepare_nonce(
 ):
     settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
     monkeypatch.setattr(
-        "apps.operation_analysis.services.share_service.can_view_dashboard",
+        "apps.operation_analysis.services.share_service.can_view_canvas",
         lambda **_: True,
     )
     store = {}
@@ -926,7 +926,7 @@ def test_rate_limit_failure_does_not_consume_prepare_state(
 ):
     settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
     monkeypatch.setattr(
-        "apps.operation_analysis.services.share_service.can_view_dashboard",
+        "apps.operation_analysis.services.share_service.can_view_canvas",
         lambda **_: True,
     )
     store = {}
@@ -975,7 +975,7 @@ def test_visitor_link_rate_limit_is_isolated_per_visitor(
 ):
     settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
     monkeypatch.setattr(
-        "apps.operation_analysis.services.share_service.can_view_dashboard",
+        "apps.operation_analysis.services.share_service.can_view_canvas",
         lambda **_: True,
     )
     counters = {}

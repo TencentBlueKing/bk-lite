@@ -16,12 +16,16 @@ import {
   UndoOutlined,
   RedoOutlined,
   SettingOutlined,
+  ShareAltOutlined,
 } from '@ant-design/icons';
 
 const TopologyToolbar: React.FC<ToolbarProps> = ({
   isSelectMode,
   isEditMode = false,
   isFullscreen = false,
+  shareMode = false,
+  shareLoading = false,
+  onOpenShare,
   selectedTopology,
   onZoomIn,
   onZoomOut,
@@ -91,7 +95,7 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
           </Tooltip>
         </div>
 
-        {isEditMode && (
+        {!shareMode && isEditMode && (
           <div className="ml-0.5 flex items-center gap-0.5">
             <Tooltip title={t('topology.undo')}>
               <Button
@@ -165,36 +169,52 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
           />
         )}
 
-        <div>
-          <PermissionWrapper requiredPermissions={['EditChart']}>
-            {isEditMode ? (
-              <div className="flex items-center gap-2 ml-2">
-                {onCancel && (
-                  <Button onClick={onCancel} className="rounded-full!">
-                    {t('common.cancel')}
+        {!shareMode && !isEditMode && onOpenShare && (
+          <Tooltip title={t('dashboard.share')}>
+            <Button
+              type="text"
+              icon={<ShareAltOutlined style={{ fontSize: 16 }} />}
+              loading={shareLoading}
+              disabled={shareLoading}
+              aria-label={t('dashboard.share')}
+              onClick={onOpenShare}
+              className={iconButtonClassName}
+            />
+          </Tooltip>
+        )}
+
+        {!shareMode && (
+          <div>
+            <PermissionWrapper requiredPermissions={['EditChart']}>
+              {isEditMode ? (
+                <div className="flex items-center gap-2 ml-2">
+                  {onCancel && (
+                    <Button onClick={onCancel} className="rounded-full!">
+                      {t('common.cancel')}
+                    </Button>
+                  )}
+                  <Button
+                    type="primary"
+                    onClick={onSave}
+                    className="rounded-full!"
+                  >
+                    {t('common.save')}
                   </Button>
-                )}
-                <Button
-                  type="primary"
-                  onClick={onSave}
-                  className="rounded-full!"
-                >
-                  {t('common.save')}
-                </Button>
-              </div>
-            ) : (
-              <Tooltip title={t('common.edit')}>
-                <Button
-                  type="text"
-                  icon={<EditOutlined style={{ fontSize: 16 }} />}
-                  onClick={onEdit}
-                  disabled={selectedTopology?.is_build_in}
-                  className="rounded-full!"
-                />
-              </Tooltip>
-            )}
-          </PermissionWrapper>
-        </div>
+                </div>
+              ) : (
+                <Tooltip title={t('common.edit')}>
+                  <Button
+                    type="text"
+                    icon={<EditOutlined style={{ fontSize: 16 }} />}
+                    onClick={onEdit}
+                    disabled={selectedTopology?.is_build_in}
+                    className="rounded-full!"
+                  />
+                </Tooltip>
+              )}
+            </PermissionWrapper>
+          </div>
+        )}
     </div>
   );
 };

@@ -785,8 +785,8 @@
     "shareCopyFailed": "Copy failed. Please copy the link manually",
     "shareCreateFailed": "Failed to create share link",
     "shareInvalid": "This share link is invalid or no longer available",
-    "shareOpening": "Opening shared dashboard",
-    "shareLoading": "Loading shared dashboard",
+    "shareOpening": "Opening shared canvas",
+    "shareLoading": "Loading shared canvas",
     "shareNavigationDisabled": "Navigation to other resources is disabled in share mode"
   },
   "opsAnalysisSidebar": {

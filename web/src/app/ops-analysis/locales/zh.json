@@ -785,8 +785,8 @@
     "shareCopyFailed": "复制失败，请手动复制",
     "shareCreateFailed": "创建分享链接失败",
     "shareInvalid": "分享链接无效或已失效",
-    "shareOpening": "正在打开分享仪表盘",
-    "shareLoading": "正在加载分享仪表盘",
+    "shareOpening": "正在打开分享画布",
+    "shareLoading": "正在加载分享画布",
     "shareNavigationDisabled": "分享模式下不可跳转到其他资源"
   },
   "opsAnalysisSidebar": {

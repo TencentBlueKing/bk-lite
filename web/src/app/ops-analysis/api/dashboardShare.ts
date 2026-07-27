@@ -1,6 +1,11 @@
 import { useCallback } from 'react';
 import useApiClient from '@/utils/request';
-import type { DashboardShareLinkDto } from '@/app/ops-analysis/types/dashboardShare';
+import { CANVAS_TYPE_REGISTRY } from '@/app/ops-analysis/constants/canvasTypes';
+import type {
+  CanvasShareLinkDto,
+  CanvasShareResourceType,
+  SharedCanvasDto,
+} from '@/app/ops-analysis/types/dashboardShare';
 
 /** 未登录也可调用：不走 Bearer 拦截器，避免永久 token 进入登录 callbackUrl 前无法 prepare。 */
 export async function prepareShareToken(token: string): Promise<{ state: string }> {
@@ -10,7 +15,6 @@ export async function prepareShareToken(token: string): Promise<{ state: string 
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token }),
-      // 携带/写入 prepare nonce Cookie，供登录后 exchange 绑定发起方
       credentials: 'include',
     },
   );
@@ -21,12 +25,17 @@ export async function prepareShareToken(token: string): Promise<{ state: string 
   return (payload?.data ?? payload) as { state: string };
 }
 
-export const useDashboardShareApi = () => {
+export const useCanvasShareApi = () => {
   const { get, post } = useApiClient();
 
   const createShare = useCallback(
-    (dashboardId: string | number): Promise<DashboardShareLinkDto> =>
-      post(`/operation_analysis/api/dashboard/${dashboardId}/share/`, {}),
+    (
+      resourceType: Exclude<CanvasShareResourceType, 'report'>,
+      resourceId: string | number,
+    ): Promise<CanvasShareLinkDto> => {
+      const endpoint = CANVAS_TYPE_REGISTRY[resourceType].endpoint.replace(/\/$/, '');
+      return post(`${endpoint}/${resourceId}/share/`, {});
+    },
     [post],
   );
 
@@ -36,8 +45,8 @@ export const useDashboardShareApi = () => {
     [post],
   );
 
-  const getSharedDashboard = useCallback(
-    (sessionId: string) =>
+  const getSharedCanvas = useCallback(
+    (sessionId: string): Promise<SharedCanvasDto> =>
       get(`/operation_analysis/api/dashboard_share/session/${sessionId}/`),
     [get],
   );
@@ -60,8 +69,20 @@ export const useDashboardShareApi = () => {
   return {
     createShare,
     exchangeShare,
-    getSharedDashboard,
+    getSharedCanvas,
     querySharedDataSource,
     getSharedDataSources,
+  };
+};
+
+/** @deprecated Prefer useCanvasShareApi */
+export const useDashboardShareApi = () => {
+  const api = useCanvasShareApi();
+  return {
+    createShare: (dashboardId: string | number) => api.createShare('dashboard', dashboardId),
+    exchangeShare: api.exchangeShare,
+    getSharedDashboard: api.getSharedCanvas,
+    querySharedDataSource: api.querySharedDataSource,
+    getSharedDataSources: api.getSharedDataSources,
   };
 };

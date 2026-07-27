@@ -93,7 +93,7 @@ def test_prepare_is_login_exempt_for_auth_middleware():
 def test_anonymous_prepare_returns_state_without_bearer(settings, dashboard, sharer, monkeypatch):
     settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
     monkeypatch.setattr(
-        "apps.operation_analysis.services.share_service.can_view_dashboard",
+        "apps.operation_analysis.services.share_service.can_view_canvas",
         lambda **_: True,
     )
     sharer_client = APIClient()
@@ -122,7 +122,7 @@ def test_anonymous_prepare_returns_state_without_bearer(settings, dashboard, sha
 def test_prepare_then_exchange_with_nonce_cookie(settings, dashboard, sharer, visitor, monkeypatch):
     settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
     monkeypatch.setattr(
-        "apps.operation_analysis.services.share_service.can_view_dashboard",
+        "apps.operation_analysis.services.share_service.can_view_canvas",
         lambda **_: True,
     )
     # 全局测试用 DummyCache，这里换成可读写内存缓存，否则 prepare state 无法跨请求
@@ -191,7 +191,7 @@ def test_prepare_then_exchange_with_nonce_cookie(settings, dashboard, sharer, vi
 def test_share_api_is_idempotent_and_post_only(settings, dashboard, sharer, monkeypatch):
     settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
     monkeypatch.setattr(
-        "apps.operation_analysis.services.share_service.can_view_dashboard",
+        "apps.operation_analysis.services.share_service.can_view_canvas",
         lambda **_: True,
     )
     client = APIClient()
@@ -204,7 +204,7 @@ def test_share_api_is_idempotent_and_post_only(settings, dashboard, sharer, monk
 
     assert first.status_code == second.status_code == 200
     assert first.data["url"] == second.data["url"]
-    assert set(first.data) == {"id", "url", "status", "sharer_username"}
+    assert set(first.data) == {"id", "url", "status", "sharer_username", "resource_type"}
     assert client.get(path).status_code == 405
     assert client.delete(f"{path}{first.data['id']}/").status_code == 404
 
@@ -212,7 +212,7 @@ def test_share_api_is_idempotent_and_post_only(settings, dashboard, sharer, monk
 @pytest.mark.django_db
 def test_cross_tenant_visitor_can_exchange_and_read_dashboard(settings, dashboard, sharer, visitor, monkeypatch):
     settings.DASHBOARD_SHARE_SIGNING_KEY = "test-key"
-    monkeypatch.setattr("apps.operation_analysis.services.share_service.can_view_dashboard", lambda **_: True)
+    monkeypatch.setattr("apps.operation_analysis.services.share_service.can_view_canvas", lambda **_: True)
     sharer_client = APIClient()
     sharer_client.force_authenticate(sharer)
     sharer_client.cookies["current_team"] = "1"
@@ -246,7 +246,7 @@ def test_share_query_rejects_datasource_not_declared_by_dashboard(
     settings, dashboard, sharer, visitor, monkeypatch
 ):
     settings.DASHBOARD_SHARE_SIGNING_KEY = "test-key"
-    monkeypatch.setattr("apps.operation_analysis.services.share_service.can_view_dashboard", lambda **_: True)
+    monkeypatch.setattr("apps.operation_analysis.services.share_service.can_view_canvas", lambda **_: True)
     datasource = DataSourceAPIModel.objects.create(
         name=f"unrelated-{uuid.uuid4()}",
         rest_api="monitor/test",
@@ -286,7 +286,7 @@ def test_share_datasource_metadata_is_scoped_and_secret_free(
     settings, dashboard, sharer, visitor, monkeypatch
 ):
     settings.DASHBOARD_SHARE_SIGNING_KEY = "test-key"
-    monkeypatch.setattr("apps.operation_analysis.services.share_service.can_view_dashboard", lambda **_: True)
+    monkeypatch.setattr("apps.operation_analysis.services.share_service.can_view_canvas", lambda **_: True)
     datasource = DataSourceAPIModel.objects.create(
         name=f"shared-{uuid.uuid4()}",
         rest_api="monitor/test",
@@ -332,7 +332,7 @@ def test_share_query_uses_sharer_runtime_authorization_context(
     settings, dashboard, sharer, visitor, monkeypatch
 ):
     settings.DASHBOARD_SHARE_SIGNING_KEY = "test-key"
-    monkeypatch.setattr("apps.operation_analysis.services.share_service.can_view_dashboard", lambda **_: True)
+    monkeypatch.setattr("apps.operation_analysis.services.share_service.can_view_canvas", lambda **_: True)
     namespace = NameSpace.objects.create(
         name=f"shared-query-{uuid.uuid4()}",
         account="test",

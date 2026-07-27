@@ -15,6 +15,7 @@ from apps.operation_analysis.serializers.share_serializers import (
 )
 from apps.operation_analysis.services.share_audit import log_share_access
 from apps.operation_analysis.services.share_service import (
+    SHARE_DATASOURCE_RESOURCE_TYPES,
     SHARE_PREPARE_COOKIE,
     SHARE_PREPARE_TTL,
     ShareLinkInvalid,
@@ -38,18 +39,35 @@ from apps.system_mgmt.nats.auth import build_user_authorization_context
 INVALID_SHARE_RESPONSE = {"detail": "分享链接无效或已失效"}
 
 
-def _dashboard_data_source_ids(value):
+def _canvas_data_source_ids(value):
     found = set()
     if isinstance(value, dict):
         source_id = value.get("dataSource")
         if isinstance(source_id, int) or (isinstance(source_id, str) and source_id.isdigit()):
             found.add(int(source_id))
         for child in value.values():
-            found.update(_dashboard_data_source_ids(child))
+            found.update(_canvas_data_source_ids(child))
     elif isinstance(value, list):
         for child in value:
-            found.update(_dashboard_data_source_ids(child))
+            found.update(_canvas_data_source_ids(child))
     return found
+
+
+def _serialize_shared_resource(principal):
+    resource = principal.resource
+    payload = {
+        "resource_type": principal.resource_type,
+        "id": resource.id,
+        "name": resource.name,
+        "desc": getattr(resource, "desc", "") or "",
+        "view_sets": getattr(resource, "view_sets", None),
+        "is_build_in": bool(getattr(resource, "is_build_in", False)),
+    }
+    if hasattr(resource, "filters"):
+        payload["filters"] = resource.filters
+    if hasattr(resource, "other"):
+        payload["other"] = resource.other
+    return payload
 
 
 def _delegated_sharer_user(user):
@@ -179,19 +197,8 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
             log_share_access(request, action="open", result="reject", reason="invalid")
             return Response(INVALID_SHARE_RESPONSE, status=status.HTTP_404_NOT_FOUND)
 
-        dashboard = principal.dashboard
         log_share_access(request, action="open", principal=principal, visitor=request.user, result="ok")
-        return Response(
-            {
-                "id": dashboard.id,
-                "name": dashboard.name,
-                "desc": dashboard.desc,
-                "filters": dashboard.filters,
-                "other": dashboard.other,
-                "view_sets": dashboard.view_sets,
-                "is_build_in": dashboard.is_build_in,
-            }
-        )
+        return Response(_serialize_shared_resource(principal))
 
     @action(
         detail=False,
@@ -208,7 +215,18 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
             log_share_access(request, action="query", result="reject", reason="invalid")
             return Response(INVALID_SHARE_RESPONSE, status=status.HTTP_404_NOT_FOUND)
 
-        if int(data_source_id) not in _dashboard_data_source_ids(principal.dashboard.view_sets):
+        if principal.resource_type not in SHARE_DATASOURCE_RESOURCE_TYPES:
+            log_share_access(
+                request,
+                action="query",
+                principal=principal,
+                visitor=request.user,
+                result="reject",
+                reason="resource_type_not_queryable",
+            )
+            return Response({"detail": "当前画布不支持数据源查询"}, status=status.HTTP_403_FORBIDDEN)
+
+        if int(data_source_id) not in _canvas_data_source_ids(getattr(principal.resource, "view_sets", None)):
             log_share_access(
                 request,
                 action="query",
@@ -221,7 +239,7 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
 
         try:
             safe_params = filter_share_query_params(
-                dashboard=principal.dashboard,
+                dashboard=principal.resource,
                 data_source_id=int(data_source_id),
                 request_data=dict(request.data),
             )
@@ -265,7 +283,10 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
             log_share_access(request, action="data_sources", result="reject", reason="invalid")
             return Response(INVALID_SHARE_RESPONSE, status=status.HTTP_404_NOT_FOUND)
 
-        allowed_ids = _dashboard_data_source_ids(principal.dashboard.view_sets)
+        if principal.resource_type not in SHARE_DATASOURCE_RESOURCE_TYPES:
+            return Response([])
+
+        allowed_ids = _canvas_data_source_ids(getattr(principal.resource, "view_sets", None))
         data_sources = [
             item
             for item in DataSourceAPIModel.objects.filter(id__in=allowed_ids).prefetch_related("namespaces", "tag")

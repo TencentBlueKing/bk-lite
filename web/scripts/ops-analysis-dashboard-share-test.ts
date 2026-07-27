@@ -53,16 +53,65 @@ assert.match(toolbar, /onOpenShare\?: \(\) => void/);
 assert.match(toolbar, /!shareMode &&/);
 assert.match(toolbar, /loading=\{shareLoading\}/);
 assert.match(dashboard, /shareSessionId\?: string/);
-assert.match(dashboard, /createShare/);
-assert.match(dashboard, /t\(['"]dashboard\.shareLinkCopied['"]\)/);
-assert.match(dashboard, /t\(['"]dashboard\.shareCopyFailed['"]\)/);
-assert.match(dashboard, /t\(['"]dashboard\.shareCreateFailed['"]\)/);
-assert.match(toolbar, /t\(['"]dashboard\.share['"]\)/);
+assert.match(dashboard, /useCanvasShareAction\(['"]dashboard['"]\)/);
+assert.match(dashboard, /openShare/);
 assert.doesNotMatch(dashboard, /ShareDialog|shareDialog/);
 assert.match(apiSource, /const createShare = useCallback/);
 assert.match(apiSource, /prepareShareToken/);
 assert.match(apiSource, /credentials:\s*['"]include['"]/);
 assert.doesNotMatch(apiSource, /listShares|revokeShare|duration_seconds|permanent/);
+assert.match(toolbar, /t\(['"]dashboard\.share['"]\)/);
+
+const shareAction = fs.readFileSync(
+  'src/app/ops-analysis/hooks/useCanvasShareAction.tsx',
+  'utf8',
+);
+assert.match(shareAction, /createShare\(resourceType, resourceId\)/);
+assert.match(shareAction, /t\(['"]dashboard\.shareLinkCopied['"]\)/);
+assert.match(shareAction, /t\(['"]dashboard\.shareCopyFailed['"]\)/);
+assert.match(shareAction, /t\(['"]dashboard\.shareCreateFailed['"]\)/);
+assert.match(shareAction, /Exclude<CanvasShareResourceType,\s*['"]report['"]>/);
+
+const screenToolbar = fs.readFileSync(
+  'src/app/ops-analysis/(pages)/view/screen/components/screenToolbar.tsx',
+  'utf8',
+);
+const screenPage = fs.readFileSync(
+  'src/app/ops-analysis/(pages)/view/screen/index.tsx',
+  'utf8',
+);
+const topologyToolbar = fs.readFileSync(
+  'src/app/ops-analysis/(pages)/view/topology/components/toolbar.tsx',
+  'utf8',
+);
+const topologyPage = fs.readFileSync(
+  'src/app/ops-analysis/(pages)/view/topology/index.tsx',
+  'utf8',
+);
+const architectureToolbar = fs.readFileSync(
+  'src/app/ops-analysis/(pages)/view/architecture/components/toolbar.tsx',
+  'utf8',
+);
+const architecturePage = fs.readFileSync(
+  'src/app/ops-analysis/(pages)/view/architecture/index.tsx',
+  'utf8',
+);
+const reportPage = fs.readFileSync(
+  'src/app/ops-analysis/(pages)/view/report/index.tsx',
+  'utf8',
+);
+
+assert.match(screenToolbar, /onOpenShare/);
+assert.match(screenToolbar, /!shareMode && !editMode && onOpenShare/);
+assert.match(screenPage, /useCanvasShareAction\(['"]screen['"]\)/);
+assert.match(topologyToolbar, /onOpenShare/);
+assert.match(topologyToolbar, /!shareMode && !isEditMode && onOpenShare/);
+assert.match(topologyPage, /useCanvasShareAction\(['"]topology['"]\)/);
+assert.match(architectureToolbar, /onOpenShare/);
+assert.match(architectureToolbar, /!shareMode && !isEditMode && onOpenShare/);
+assert.match(architecturePage, /useCanvasShareAction\(['"]architecture['"]\)/);
+assert.doesNotMatch(reportPage, /useCanvasShareAction|onOpenShare|ShareAltOutlined/);
+
 assert.match(tokenPage, /prepareShareToken/);
 assert.match(tokenPage, /share\/continue\?state=/);
 assert.doesNotMatch(tokenPage, /callbackUrl: window\.location\.href/);

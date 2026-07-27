@@ -10,6 +10,7 @@ from django.utils import timezone
 from apps.core.utils.permission_utils import get_permission_rules
 from apps.core.utils.user_group import normalize_user_group_ids
 from apps.operation_analysis.models.share_models import DashboardShareLink, DashboardShareSession
+from apps.operation_analysis.services.canvas.registry import CANVAS_TYPE_REGISTRY
 from apps.operation_analysis.services.share_token import InvalidShareToken, build_share_token, parse_share_token
 from apps.system_mgmt.models.user import User
 
@@ -19,6 +20,21 @@ SHARE_PREPARE_COOKIE = "bk_dashboard_share_prep"
 SHARE_VISITOR_LINK_RATE_PREFIX = "dashboard_share_visitor_link_rate:"
 SHARE_VISITOR_LINK_RATE_LIMIT = 300
 SHARE_VISITOR_LINK_RATE_WINDOW = 60
+
+SHARE_DATASOURCE_RESOURCE_TYPES = frozenset(
+    {
+        DashboardShareLink.ResourceType.DASHBOARD,
+        DashboardShareLink.ResourceType.SCREEN,
+        DashboardShareLink.ResourceType.TOPOLOGY,
+    }
+)
+
+SHARE_DETAIL_ONLY_RESOURCE_TYPES = frozenset(
+    {
+        DashboardShareLink.ResourceType.ARCHITECTURE,
+        DashboardShareLink.ResourceType.REPORT,
+    }
+)
 
 
 class ShareLinkInvalid(Exception):
@@ -48,14 +64,23 @@ class ShareLinkResult:
 @dataclass(frozen=True)
 class SharePrincipal:
     user: User
-    dashboard: object
+    resource: object
+    resource_type: str
     tenant_domain: str
     space_id: int
     link: DashboardShareLink
 
+    @property
+    def dashboard(self):
+        """Backward-compatible alias for dashboard-only call sites."""
+        return self.resource
 
-def can_view_dashboard(*, user, dashboard, space_id):
+
+def can_view_canvas(*, user, resource, resource_type, space_id):
     """与 AuthViewSet 详情一致：先校验空间成员，再校验实例/团队规则。"""
+    if resource_type not in CANVAS_TYPE_REGISTRY:
+        return False
+    meta = CANVAS_TYPE_REGISTRY[resource_type]
     if getattr(user, "disabled", False):
         return False
     if getattr(user, "is_superuser", False):
@@ -64,17 +89,16 @@ def can_view_dashboard(*, user, dashboard, space_id):
     user_group_ids = set(normalize_user_group_ids(getattr(user, "group_list", [])))
     if space_id not in user_group_ids:
         return False
-    if space_id not in (dashboard.groups or []):
+    if space_id not in (resource.groups or []):
         return False
-    # 内置画布：成员即可查看（对齐 BuiltinVisibleMixin）
-    if getattr(dashboard, "is_build_in", False):
+    if getattr(resource, "is_build_in", False):
         return True
 
     permission_data = get_permission_rules(
         user,
         space_id,
         "ops-analysis",
-        "directory.dashboard",
+        meta.permission_key,
         False,
     )
     instance_ids = {
@@ -83,7 +107,16 @@ def can_view_dashboard(*, user, dashboard, space_id):
         if "id" in item and "View" in (item.get("permission") or [])
     }
     team_ids = {int(item) for item in permission_data.get("team", [])}
-    return dashboard.id in instance_ids or space_id in team_ids
+    return resource.id in instance_ids or space_id in team_ids
+
+
+def can_view_dashboard(*, user, dashboard, space_id):
+    return can_view_canvas(
+        user=user,
+        resource=dashboard,
+        resource_type=DashboardShareLink.ResourceType.DASHBOARD,
+        space_id=space_id,
+    )
 
 
 def _assert_visitor_usable(visitor):
@@ -156,14 +189,29 @@ def enforce_share_visitor_link_rate_limit(*, link_id: int, visitor):
         raise ShareRateLimited
 
 
+def _load_resource(resource_type, resource_instance_id):
+    meta = CANVAS_TYPE_REGISTRY.get(resource_type)
+    if meta is None:
+        return None
+    return meta.model.objects.filter(pk=resource_instance_id).first()
+
+
 @transaction.atomic
-def create_or_get_share(*, dashboard, sharer, tenant_domain, space_id):
-    if not can_view_dashboard(user=sharer, dashboard=dashboard, space_id=space_id):
+def create_or_get_share(*, resource_type=None, resource=None, dashboard=None, sharer, tenant_domain, space_id):
+    if resource is None and dashboard is not None:
+        resource = dashboard
+        resource_type = DashboardShareLink.ResourceType.DASHBOARD
+    if resource_type is None or resource is None:
+        raise SharePermissionDenied
+    if resource_type not in CANVAS_TYPE_REGISTRY:
+        raise SharePermissionDenied
+    if not can_view_canvas(user=sharer, resource=resource, resource_type=resource_type, space_id=space_id):
         raise SharePermissionDenied
     link = (
         DashboardShareLink.objects.select_for_update()
         .filter(
-            dashboard_instance_id=dashboard.pk,
+            resource_type=resource_type,
+            dashboard_instance_id=resource.pk,
             sharer_username=sharer.username,
             sharer_domain=sharer.domain,
             status=DashboardShareLink.Status.ACTIVE,
@@ -171,21 +219,25 @@ def create_or_get_share(*, dashboard, sharer, tenant_domain, space_id):
         .first()
     )
     if link is None:
+        create_kwargs = {
+            "resource_type": resource_type,
+            "dashboard_instance_id": resource.pk,
+            "tenant_domain": tenant_domain,
+            "space_id": space_id,
+            "sharer_username": sharer.username,
+            "sharer_domain": sharer.domain,
+        }
+        if resource_type == DashboardShareLink.ResourceType.DASHBOARD:
+            create_kwargs["dashboard"] = resource
         try:
             with transaction.atomic():
-                link = DashboardShareLink.objects.create(
-                    dashboard=dashboard,
-                    dashboard_instance_id=dashboard.pk,
-                    tenant_domain=tenant_domain,
-                    space_id=space_id,
-                    sharer_username=sharer.username,
-                    sharer_domain=sharer.domain,
-                )
+                link = DashboardShareLink.objects.create(**create_kwargs)
         except IntegrityError:
             link = (
                 DashboardShareLink.objects.select_for_update()
                 .filter(
-                    dashboard_instance_id=dashboard.pk,
+                    resource_type=resource_type,
+                    dashboard_instance_id=resource.pk,
                     sharer_username=sharer.username,
                     sharer_domain=sharer.domain,
                     status=DashboardShareLink.Status.ACTIVE,
@@ -198,7 +250,7 @@ def create_or_get_share(*, dashboard, sharer, tenant_domain, space_id):
 def _resolve_link_from_token(token):
     try:
         public_id = parse_share_token(token)
-        link = DashboardShareLink.objects.select_related("dashboard").get(public_id=public_id)
+        link = DashboardShareLink.objects.get(public_id=public_id)
     except (InvalidShareToken, DashboardShareLink.DoesNotExist) as exc:
         raise ShareLinkInvalid from exc
     if not link.is_usable():
@@ -209,15 +261,16 @@ def _resolve_link_from_token(token):
 def resolve_link(link):
     if not link.is_usable():
         raise ShareLinkInvalid("inactive")
-    if link.dashboard is None:
+
+    resource = _load_resource(link.resource_type, link.dashboard_instance_id)
+    if resource is None:
         link.mark_invalid(DashboardShareLink.Status.DASHBOARD_INVALID, actor="system")
         raise ShareLinkInvalid("dashboard_invalid")
 
-    dashboard = link.dashboard
     if (
-        dashboard.pk != link.dashboard_instance_id
-        or dashboard.domain != link.tenant_domain
-        or link.space_id not in (dashboard.groups or [])
+        resource.pk != link.dashboard_instance_id
+        or resource.domain != link.tenant_domain
+        or link.space_id not in (resource.groups or [])
     ):
         link.mark_invalid(DashboardShareLink.Status.DASHBOARD_INVALID, actor="system")
         raise ShareLinkInvalid("dashboard_invalid")
@@ -227,12 +280,18 @@ def resolve_link(link):
     except User.DoesNotExist as exc:
         link.mark_invalid(DashboardShareLink.Status.SHARER_PERMISSION_LOST, actor="system")
         raise ShareLinkInvalid("sharer_permission_lost") from exc
-    if not can_view_dashboard(user=sharer, dashboard=dashboard, space_id=link.space_id):
+    if not can_view_canvas(
+        user=sharer,
+        resource=resource,
+        resource_type=link.resource_type,
+        space_id=link.space_id,
+    ):
         link.mark_invalid(DashboardShareLink.Status.SHARER_PERMISSION_LOST, actor="system")
         raise ShareLinkInvalid("sharer_permission_lost")
     return SharePrincipal(
         user=sharer,
-        dashboard=dashboard,
+        resource=resource,
+        resource_type=link.resource_type,
         tenant_domain=link.tenant_domain,
         space_id=link.space_id,
         link=link,
@@ -310,7 +369,7 @@ def exchange_share(*, token=None, state=None, visitor, prepare_nonce=None):
 def resolve_session(*, session_id, visitor):
     _assert_visitor_usable(visitor)
     try:
-        session = DashboardShareSession.objects.select_related("share_link__dashboard").get(session_id=session_id)
+        session = DashboardShareSession.objects.select_related("share_link").get(session_id=session_id)
     except (DashboardShareSession.DoesNotExist, ValueError) as exc:
         raise ShareLinkInvalid from exc
     if (
@@ -425,7 +484,9 @@ def allowed_share_query_keys(*, dashboard, data_source_id: int) -> set[str]:
     """
     allowed = {"page", "page_size", "namespace_id"}
     filter_defs = {
-        item.get("id"): item for item in _normalize_filter_definitions(dashboard.filters) if item.get("id")
+        item.get("id"): item
+        for item in _normalize_filter_definitions(getattr(dashboard, "filters", None))
+        if item.get("id")
     }
     matched_widget = False
     allow_query_list = False

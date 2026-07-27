@@ -22,7 +22,8 @@ def log_share_access(
     link_id = ""
     space_id = ""
     tenant = ""
-    dashboard_id = ""
+    resource_type = ""
+    resource_id = ""
 
     if principal is not None:
         sharer_name = getattr(principal.user, "username", "") or ""
@@ -30,21 +31,27 @@ def log_share_access(
         link_id = str(getattr(principal.link, "id", "") or "")
         space_id = str(getattr(principal, "space_id", "") or "")
         tenant = getattr(principal, "tenant_domain", "") or ""
-        dashboard_id = str(getattr(getattr(principal, "dashboard", None), "id", "") or "")
+        resource_type = getattr(principal, "resource_type", "") or ""
+        resource_id = str(getattr(getattr(principal, "resource", None), "id", "") or "")
+        if not resource_id:
+            resource_id = str(getattr(principal.link, "dashboard_instance_id", "") or "")
     elif link is not None:
         sharer_name = getattr(link, "sharer_username", "") or ""
         sharer_domain = getattr(link, "sharer_domain", "") or ""
         link_id = str(getattr(link, "id", "") or "")
         space_id = str(getattr(link, "space_id", "") or "")
         tenant = getattr(link, "tenant_domain", "") or ""
-        dashboard_id = str(getattr(link, "dashboard_instance_id", "") or "")
+        resource_type = getattr(link, "resource_type", "") or ""
+        resource_id = str(getattr(link, "dashboard_instance_id", "") or "")
 
-    if dashboard is not None and not dashboard_id:
-        dashboard_id = str(getattr(dashboard, "id", "") or "")
+    if dashboard is not None and not resource_id:
+        resource_id = str(getattr(dashboard, "id", "") or "")
+        if not resource_type:
+            resource_type = "dashboard"
 
     summary = (
         f"dashboard_share action={action} result={result}"
-        f" link_id={link_id} dashboard_id={dashboard_id}"
+        f" link_id={link_id} resource_type={resource_type} resource_id={resource_id}"
         f" space_id={space_id} tenant={tenant}"
         f" sharer={sharer_name}@{sharer_domain}"
         f" visitor={visitor_name}@{visitor_domain}"
