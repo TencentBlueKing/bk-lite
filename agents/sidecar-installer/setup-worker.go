@@ -1224,6 +1224,7 @@ func recoverInterruptedWindowsInstallation(
 	controller windowsServiceController,
 	installDir string,
 	backupDir string,
+	cfg *Config,
 ) error {
 	backupInfo, err := os.Stat(backupDir)
 	if err != nil {
@@ -1238,6 +1239,20 @@ func recoverInterruptedWindowsInstallation(
 	serviceExisted, err := controller.Stop()
 	if err != nil {
 		return fmt.Errorf("stop service before interrupted installation recovery: %w", err)
+	}
+	if cfg.RemoteLeaseValidator != nil {
+		leaseErr := cfg.RemoteLeaseValidator()
+		if leaseErr == nil {
+			leaseErr = validateRemoteExecutionDeadline(cfg)
+		}
+		if leaseErr != nil {
+			if serviceExisted {
+				if restartErr := controller.Start(installDir, true); restartErr != nil {
+					return fmt.Errorf("%v; restart service after recovery lease expiry: %w", leaseErr, restartErr)
+				}
+			}
+			return leaseErr
+		}
 	}
 	movedRuntimeDirectories := []string{}
 	for _, name := range windowsRuntimeDirectories {
@@ -1372,6 +1387,11 @@ func installWindowsPackage(cfg *Config, zipPath string, controller windowsServic
 	if err := claimWindowsInstallFence(cfg, installDir); err != nil {
 		return err
 	}
+	if cfg.RemoteLeaseValidator != nil {
+		if err := cfg.RemoteLeaseValidator(); err != nil {
+			return err
+		}
+	}
 	if _, err := os.Stat(backupDir); err == nil {
 		committedMarker := filepath.Join(backupDir, windowsActivationCommittedMarker)
 		pendingMarker := filepath.Join(backupDir, windowsActivationPendingMarker)
@@ -1385,7 +1405,7 @@ func installWindowsPackage(cfg *Config, zipPath string, controller windowsServic
 		} else if !os.IsNotExist(markerErr) {
 			return markerErr
 		} else if _, markerErr := os.Stat(pendingMarker); markerErr == nil {
-			return recoverInterruptedWindowsInstallation(controller, installDir, backupDir)
+			return recoverInterruptedWindowsInstallation(controller, installDir, backupDir, cfg)
 		} else if !os.IsNotExist(markerErr) {
 			return markerErr
 		} else {

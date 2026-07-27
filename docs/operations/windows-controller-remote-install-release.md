@@ -217,4 +217,4 @@ bootstrap 只接受 `installer.progress.<32 位小写十六进制 execution_id>`
 单台 Windows 主机安装失败时，bootstrap 会在新服务无法注册时恢复旧安装目录和旧服务。若 Windows 服务管理器连续拒绝停止失败的新服务，任务会以 `manual_recovery_required` 失败并保留 `.bklite-backup`；此状态不可直接自动重试，应先保留现场、人工停止服务并核对旧备份完整性，再恢复或重试。强行替换仍被进程占用的目录不属于安全回滚。
 新服务已成功启动但旧备份清理失败时，安装仍按成功处理，并尝试将旧备份改名为 `.bklite-backup-retained-<时间戳>`；运维可在确认新服务稳定后清理该保留目录。
 安装目录旁的空文件 `C:\fusion-collectors.bklite-install.lock` 是跨进程安装锁载体，文件存在不表示任务仍在运行；是否占用由操作系统文件锁决定，不要在安装执行期间手工删除。
-`C:\fusion-collectors.bklite-install.fence` 以临时文件落盘并原子替换，保存最近一次远程安装的任务节点与 attempt。bootstrap 在停止服务前和停止成功后都会通过 HTTPS 向 Server 重新校验当前租约，第二次校验失败会重启原服务且不切换目录；fence 与本地截止时间是附加防线。该文件不是临时文件，正常运维和重试时不得删除。仅在确认 Server 数据库已回退且当前没有安装任务后，才可按人工恢复流程一并核对。
+`C:\fusion-collectors.bklite-install.fence` 以临时文件落盘并原子替换，保存最近一次远程安装的任务节点与 attempt。bootstrap 在任何备份清理/恢复前，以及正常激活或中断恢复的停止服务前后，都会通过 HTTPS 向 Server 重新校验当前租约；停止后的校验失败会重启操作前服务且不切换目录。fence 与本地截止时间是附加防线。该文件不是临时文件，正常运维和重试时不得删除。仅在确认 Server 数据库已回退且当前没有安装任务后，才可按人工恢复流程一并核对。

@@ -255,6 +255,58 @@ func TestInstallWindowsPackageRecoversRetainedBackupOnRetry(t *testing.T) {
 	}
 }
 
+func TestInterruptedRecoveryRevalidatesLeaseAfterStoppingService(t *testing.T) {
+	installDir := filepath.Join(t.TempDir(), "fusion-collectors")
+	backupDir := installDir + ".bklite-backup"
+	if err := os.MkdirAll(installDir, 0755); err != nil {
+		t.Fatalf("create current install: %v", err)
+	}
+	if err := os.MkdirAll(backupDir, 0755); err != nil {
+		t.Fatalf("create backup install: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(installDir, "collector-sidecar.exe"), []byte("current"), 0644); err != nil {
+		t.Fatalf("write current binary: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(backupDir, "collector-sidecar.exe"), []byte("previous"), 0644); err != nil {
+		t.Fatalf("write previous binary: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(backupDir, windowsActivationPendingMarker), []byte("pending\n"), 0600); err != nil {
+		t.Fatalf("write pending marker: %v", err)
+	}
+	zipPath := writeControllerZip(t, map[string]string{"collector-sidecar.exe": "unused"})
+	controller := &fakeWindowsServiceController{serviceExisted: true}
+	validationCalls := 0
+	cfg := &Config{
+		InstallDir:       installDir,
+		OS:               "windows",
+		RemoteTaskNodeID: 32, RemoteAttempt: 1, RemoteExecutionID: "recovery-lease",
+		RemoteDeadlineUnix: time.Now().Add(time.Hour).Unix(),
+		RemoteLeaseValidator: func() error {
+			validationCalls++
+			if validationCalls == 2 {
+				return fmt.Errorf("server recovery lease revoked")
+			}
+			return nil
+		},
+	}
+
+	err := installWindowsPackage(cfg, zipPath, controller)
+
+	if err == nil || !strings.Contains(err.Error(), "server recovery lease revoked") {
+		t.Fatalf("expected recovery lease rejection, got %v", err)
+	}
+	if validationCalls != 2 || controller.stopCalls != 1 || len(controller.startCalls) != 1 {
+		t.Fatalf("expected recovery lease checks and service restart: validations=%d controller=%#v", validationCalls, controller)
+	}
+	current, readErr := os.ReadFile(filepath.Join(installDir, "collector-sidecar.exe"))
+	if readErr != nil || string(current) != "current" {
+		t.Fatalf("recovery modified current install after revocation: %q, %v", current, readErr)
+	}
+	if _, statErr := os.Stat(backupDir); statErr != nil {
+		t.Fatalf("recovery backup was removed after revocation: %v", statErr)
+	}
+}
+
 func TestInstallWindowsPackageRejectsInvalidRecoveryBackupBeforeStoppingService(t *testing.T) {
 	installDir := filepath.Join(t.TempDir(), "fusion-collectors")
 	if err := os.MkdirAll(installDir+".bklite-backup", 0755); err != nil {
@@ -360,7 +412,7 @@ func TestInstallWindowsPackageRevalidatesServerLeaseAfterStoppingService(t *test
 		RemoteDeadlineUnix: time.Now().Add(time.Hour).Unix(),
 		RemoteLeaseValidator: func() error {
 			validationCalls++
-			if validationCalls == 2 {
+			if validationCalls == 3 {
 				return fmt.Errorf("server lease revoked")
 			}
 			return nil
@@ -372,7 +424,7 @@ func TestInstallWindowsPackageRevalidatesServerLeaseAfterStoppingService(t *test
 	if err == nil || !strings.Contains(err.Error(), "server lease revoked") {
 		t.Fatalf("expected revoked lease failure, got %v", err)
 	}
-	if validationCalls != 2 || controller.stopCalls != 1 || len(controller.startCalls) != 1 {
+	if validationCalls != 3 || controller.stopCalls != 1 || len(controller.startCalls) != 1 {
 		t.Fatalf("expected pre/post-stop validation and service restart: validations=%d controller=%#v", validationCalls, controller)
 	}
 	content, readErr := os.ReadFile(oldBinary)
