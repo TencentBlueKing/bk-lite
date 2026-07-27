@@ -634,9 +634,11 @@ class CollectModelService(object):
     @staticmethod
     def _check_pc_authority_before_destroy(instance):
         """仍拥有 PC 的权威任务禁止删除；仅 pending 的任务由 SET_NULL 自动取消待移交。"""
+        if getattr(instance, "model_id", None) != "pc":
+            return
         from apps.cmdb.models.pc_discovery import PCDiscoveryAuthority
 
-        owned = PCDiscoveryAuthority.objects.filter(authoritative_task=instance).values_list("pc_inst_name", flat=True)
+        owned = PCDiscoveryAuthority.objects.filter(authoritative_task_id=instance.id).values_list("pc_inst_name", flat=True)
         if owned.exists():
             pcs = ", ".join(list(owned)[:5])
             raise BaseAppException(f"该任务仍是 PC 的权威采集任务（{pcs}），请先移交 PC 权威来源")
