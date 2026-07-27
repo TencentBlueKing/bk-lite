@@ -81,6 +81,110 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       color: '#27c274'
     },
     {
+      name: 'sqlserver_checkpoint_pages_rate',
+      display_name: '检查点写页速率',
+      description: '检查点进程将脏页刷写到磁盘的速率。',
+      unit: 'cps',
+      query: 'rate(sqlserver_performance_value{counter="Checkpoint pages/sec", __$labels__}[5m])',
+      color: '#2f6bff'
+    },
+    {
+      name: 'sqlserver_lazy_writes_rate',
+      display_name: '惰性写入速率',
+      description: '惰性写入器为腾出缓冲池空间而刷写页面的速率。',
+      unit: 'cps',
+      query: 'rate(sqlserver_performance_value{counter="Lazy writes/sec", __$labels__}[5m])',
+      color: '#8a5cff'
+    },
+    {
+      name: 'sqlserver_memory_grants_pending',
+      display_name: '等待内存授予的请求数',
+      description: '当前等待执行内存授予的查询数量。',
+      unit: 'counts',
+      query: 'sqlserver_performance_value{counter="Memory Grants Pending", __$labels__}',
+      color: '#ff8a1f'
+    },
+    {
+      name: 'sqlserver_memory_grants_outstanding',
+      display_name: '已授予内存的请求数',
+      description: '当前已获得查询工作区内存但尚未完成的请求数。',
+      unit: 'counts',
+      query: 'sqlserver_performance_value{counter="Memory Grants Outstanding", __$labels__}',
+      color: '#2f6bff'
+    },
+    {
+      name: 'sqlserver_memory_target_server_memory_kb',
+      display_name: '目标 Server Memory',
+      description: 'SQL Server 目标内存大小。',
+      unit: 'kibibytes',
+      query: 'sqlserver_performance_value{counter="Target Server Memory (KB)", __$labels__}',
+      color: '#9aa9bf'
+    },
+    {
+      name: 'sqlserver_memory_total_server_memory_kb',
+      display_name: '当前 Server Memory',
+      description: 'SQL Server 当前已提交的内存大小。',
+      unit: 'kibibytes',
+      query: 'sqlserver_performance_value{counter="Total Server Memory (KB)", __$labels__}',
+      color: '#8a5cff'
+    },
+    {
+      name: 'sqlserver_tempdb_free_space_kb',
+      display_name: 'TempDB 可用空间',
+      description: 'TempDB 当前可用空间。',
+      unit: 'kibibytes',
+      query: 'sqlserver_performance_value{counter="Free Space in tempdb (KB)", __$labels__}',
+      color: '#27c274'
+    },
+    {
+      name: 'sqlserver_tempdb_version_store_size_kb',
+      display_name: 'TempDB 版本存储大小',
+      description: 'TempDB 当前版本存储大小。',
+      unit: 'kibibytes',
+      query: 'sqlserver_performance_value{counter="Version Store Size (KB)", __$labels__}',
+      color: '#faad14'
+    },
+    {
+      name: 'sqlserver_log_flushes_rate',
+      display_name: '事务日志刷写速率',
+      description: '事务日志刷写速率。',
+      unit: 'cps',
+      query: 'rate(sqlserver_performance_value{counter="Log Flushes/sec", __$labels__}[5m])',
+      color: '#13c2c2'
+    },
+    {
+      name: 'sqlserver_processes_blocked',
+      display_name: '阻塞进程数',
+      description: '当前被阻塞的 SQL Server 进程数量。',
+      unit: 'counts',
+      query: 'sqlserver_performance_value{counter="Processes blocked", __$labels__}',
+      color: '#ff4d4f'
+    },
+    {
+      name: 'sqlserver_deadlocks_rate',
+      display_name: '死锁速率',
+      description: 'SQL Server 死锁发生速率。',
+      unit: 'cps',
+      query: 'rate(sqlserver_performance_value{counter="Number of Deadlocks/sec", __$labels__}[5m])',
+      color: '#ff4d4f'
+    },
+    {
+      name: 'sqlserver_sql_compilations_rate',
+      display_name: 'SQL 编译速率',
+      description: 'SQL 语句编译速率。',
+      unit: 'cps',
+      query: 'rate(sqlserver_performance_value{counter="SQL Compilations/sec", __$labels__}[5m])',
+      color: '#13c2c2'
+    },
+    {
+      name: 'sqlserver_sql_recompilations_rate',
+      display_name: 'SQL 重编译速率',
+      description: 'SQL 语句重编译速率。',
+      unit: 'cps',
+      query: 'rate(sqlserver_performance_value{counter="SQL Re-Compilations/sec", __$labels__}[5m])',
+      color: '#faad14'
+    },
+    {
       name: 'sqlserver_page_life_expectancy',
       display_name: '页面生命周期',
       description: '数据页在缓冲池中平均停留时间。',
@@ -98,10 +202,10 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     },
     {
       name: 'sqlserver_user_connections_rate',
-      display_name: '用户连接变化',
-      description: '用户连接数变化速率。',
-      unit: 'cps',
-      query: 'rate(sqlserver_performance_value{counter=~"User Connections", __$labels__}[5m])',
+      display_name: '用户连接数',
+      description: '当前连接到 SQL Server 实例的用户数量。',
+      unit: 'counts',
+      query: 'sqlserver_performance_value{counter="User Connections", __$labels__}',
       color: '#597ef7'
     },
     {
@@ -109,7 +213,7 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '锁等待速率',
       description: '锁等待发生速率。',
       unit: 'cps',
-      query: 'rate(sqlserver_performance_value{counter=~"Lock Waits/sec", __$labels__}[5m])',
+      query: 'rate(sqlserver_performance_value{counter="Lock Waits/sec", __$labels__}[5m])',
       color: '#ff8a1f'
     },
     {
@@ -243,7 +347,7 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       color: '#27c274',
       icon: 'thunder',
       guide: [{ label: '批量请求', detail: '每秒处理的 SQL 批量请求数(次/秒),无固定阈值,按业务基线看突增突降。' }],
-      footer: [{ label: '锁等待', metric: 'sqlserver_lock_wait_time_rate', unit: 'cps' }]
+      footer: [{ label: '当前连接', metric: 'sqlserver_user_connections_rate', unit: 'counts' }]
     },
     {
       title: '缓存命中率',
@@ -253,7 +357,10 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       compare: true,
       compareFavorableDirection: 'up',
       guide: [{ label: '缓存命中率', detail: '缓冲池满足数据页读取的比例，低值说明内存或缓存压力偏高。' }],
-      footer: [{ label: '页面生命周期', metric: 'sqlserver_page_life_expectancy', unit: 's' }]
+      footer: [
+        { label: '页面生命周期', metric: 'sqlserver_page_life_expectancy', unit: 's' },
+        { label: '内存授予等待', metric: 'sqlserver_memory_grants_pending', unit: 'counts' }
+      ]
     },
     {
       title: '读延迟',
@@ -345,6 +452,83 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
         { metric: 'sqlserver_waitstats_wait_time_ms_rate', label: '总等待', color: '#8a5cff', unit: 'ms' },
         { metric: 'sqlserver_waitstats_signal_wait_time_ms_rate', label: '信号等待', color: '#ff8a1f', unit: 'ms' },
         { metric: 'sqlserver_waitstats_resource_wait_ms', label: '资源等待', color: '#faad14', unit: 'ms' }
+      ]
+    },
+    {
+      title: '缓冲池写回压力',
+      subtitle: '检查点与惰性写入',
+      metric: 'sqlserver_checkpoint_pages_rate',
+      guide: [
+        { label: '检查点写页', detail: '检查点进程将脏页写入磁盘的速率；应结合写延迟观察。' },
+        { label: '惰性写入', detail: '惰性写入器为缓冲池腾出空间的速率；持续升高且页生命周期下降时表示内存压力。' }
+      ],
+      series: [
+        { metric: 'sqlserver_checkpoint_pages_rate', label: '检查点写页', color: '#2f6bff', unit: 'cps' },
+        { metric: 'sqlserver_lazy_writes_rate', label: '惰性写入', color: '#8a5cff', unit: 'cps' }
+      ]
+    },
+    {
+      title: '并发与内存压力',
+      subtitle: '阻塞进程与内存授予等待',
+      metric: 'sqlserver_processes_blocked',
+      guide: [
+        { label: '阻塞进程', detail: '当前被锁或资源争用阻塞的进程数。' },
+        { label: '内存授予等待', detail: '等待查询工作区内存的请求数，持续非零应排查大排序、哈希和并发。' }
+      ],
+      series: [
+        { metric: 'sqlserver_processes_blocked', label: '阻塞进程', color: '#ff4d4f', unit: 'counts' },
+        { metric: 'sqlserver_memory_grants_pending', label: '内存授予等待', color: '#ff8a1f', unit: 'counts' },
+        { metric: 'sqlserver_memory_grants_outstanding', label: '已授予内存', color: '#2f6bff', unit: 'counts' }
+      ]
+    },
+    {
+      title: 'Server Memory',
+      subtitle: '当前内存与目标内存',
+      metric: 'sqlserver_memory_total_server_memory_kb',
+      guide: [
+        { label: '当前内存', detail: 'SQL Server 当前已提交的内存大小。' },
+        { label: '目标内存', detail: 'SQL Server 配置的目标内存大小；长期差距需结合内存授予等待排查。' }
+      ],
+      series: [
+        { metric: 'sqlserver_memory_total_server_memory_kb', label: '当前内存', color: '#8a5cff', unit: 'kibibytes' },
+        { metric: 'sqlserver_memory_target_server_memory_kb', label: '目标内存', color: '#9aa9bf', unit: 'kibibytes' }
+      ]
+    },
+    {
+      title: 'TempDB 健康度',
+      subtitle: '可用空间与版本存储',
+      metric: 'sqlserver_tempdb_free_space_kb',
+      guide: [
+        { label: '可用空间', detail: 'TempDB 当前剩余空间，过低会影响排序、哈希与临时对象。' },
+        { label: '版本存储', detail: '长事务或快照读会推动版本存储增长。' }
+      ],
+      series: [
+        { metric: 'sqlserver_tempdb_free_space_kb', label: '可用空间', color: '#27c274', unit: 'kibibytes' },
+        { metric: 'sqlserver_tempdb_version_store_size_kb', label: '版本存储', color: '#faad14', unit: 'kibibytes' }
+      ]
+    },
+    {
+      title: '事务日志刷写',
+      subtitle: '事务日志 I/O 负载',
+      metric: 'sqlserver_log_flushes_rate',
+      guide: [{ label: '日志刷写', detail: '事务日志刷写速率；应结合数据库写延迟判断日志 I/O 压力。' }],
+      series: [
+        { metric: 'sqlserver_log_flushes_rate', label: '日志刷写', color: '#13c2c2', unit: 'cps' }
+      ]
+    },
+    {
+      title: '计划缓存与死锁',
+      subtitle: '编译、重编译与死锁',
+      metric: 'sqlserver_sql_compilations_rate',
+      guide: [
+        { label: 'SQL 编译', detail: 'SQL 语句编译速率，需结合批量请求速率判断计划缓存效率。' },
+        { label: 'SQL 重编译', detail: 'SQL 语句重编译速率，相对编译速率持续偏高会增加 CPU 成本。' },
+        { label: '死锁', detail: '死锁发生速率，持续非零应检查事务访问顺序和隔离级别。' }
+      ],
+      series: [
+        { metric: 'sqlserver_sql_compilations_rate', label: 'SQL 编译', color: '#13c2c2', unit: 'cps' },
+        { metric: 'sqlserver_sql_recompilations_rate', label: 'SQL 重编译', color: '#faad14', unit: 'cps' },
+        { metric: 'sqlserver_deadlocks_rate', label: '死锁', color: '#ff4d4f', unit: 'cps' }
       ]
     },
     {
