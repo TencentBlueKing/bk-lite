@@ -1311,22 +1311,28 @@ func installWindowsPackage(cfg *Config, zipPath string, controller windowsServic
 	installExisted := false
 	if _, err := os.Stat(installDir); err == nil {
 		installExisted = true
+		pendingMarker := filepath.Join(installDir, windowsActivationPendingMarker)
+		if err := os.WriteFile(pendingMarker, []byte("pending\n"), 0600); err != nil {
+			markerErr := err
+			if serviceExisted {
+				if restartErr := controller.Start(installDir, true); restartErr != nil {
+					return fmt.Errorf("write activation marker: %v; restart previous service: %w", markerErr, restartErr)
+				}
+			}
+			return fmt.Errorf("write activation marker: %w", markerErr)
+		}
 		if err := os.Rename(installDir, backupDir); err != nil {
 			backupErr := err
+			removeMarkerErr := os.Remove(pendingMarker)
 			if serviceExisted {
 				if restartErr := controller.Start(installDir, true); restartErr != nil {
 					return fmt.Errorf("backup existing installation: %v; restart previous service: %w", backupErr, restartErr)
 				}
 			}
-			return fmt.Errorf("backup existing installation: %w", backupErr)
-		}
-		pendingMarker := filepath.Join(backupDir, windowsActivationPendingMarker)
-		if err := os.WriteFile(pendingMarker, []byte("pending\n"), 0600); err != nil {
-			markerErr := err
-			if restoreErr := restorePreviousWindowsInstallation(controller, installDir, backupDir, true, serviceExisted, nil); restoreErr != nil {
-				return fmt.Errorf("write activation marker: %v; rollback: %w", markerErr, restoreErr)
+			if removeMarkerErr != nil && !os.IsNotExist(removeMarkerErr) {
+				return fmt.Errorf("backup existing installation: %v; remove activation marker: %w", backupErr, removeMarkerErr)
 			}
-			return fmt.Errorf("write activation marker: %w", markerErr)
+			return fmt.Errorf("backup existing installation: %w", backupErr)
 		}
 	} else if !os.IsNotExist(err) {
 		return err
