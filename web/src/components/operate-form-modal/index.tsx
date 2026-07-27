@@ -3,7 +3,7 @@ import OperateModal from '@/components/operate-modal';
 import {
   type FormFeedbackFooterProps,
   renderFormFeedbackFooter,
-} from '@/components/_internal/form-feedback-footer';
+} from '@/components/form-feedback-footer';
 
 type OperateModalProps = React.ComponentProps<typeof OperateModal>;
 
