@@ -341,6 +341,46 @@ func TestInstallWindowsPackageRestartsExistingServiceWhenStopFails(t *testing.T)
 	}
 }
 
+func TestInstallWindowsPackageRevalidatesServerLeaseAfterStoppingService(t *testing.T) {
+	installDir := filepath.Join(t.TempDir(), "fusion-collectors")
+	if err := os.MkdirAll(installDir, 0755); err != nil {
+		t.Fatalf("create install dir: %v", err)
+	}
+	oldBinary := filepath.Join(installDir, "collector-sidecar.exe")
+	if err := os.WriteFile(oldBinary, []byte("old-binary"), 0644); err != nil {
+		t.Fatalf("write old binary: %v", err)
+	}
+	zipPath := writeControllerZip(t, map[string]string{"collector-sidecar.exe": "new-binary"})
+	controller := &fakeWindowsServiceController{serviceExisted: true}
+	validationCalls := 0
+	cfg := &Config{
+		InstallDir:       installDir,
+		OS:               "windows",
+		RemoteTaskNodeID: 31, RemoteAttempt: 1, RemoteExecutionID: "lease-test",
+		RemoteDeadlineUnix: time.Now().Add(time.Hour).Unix(),
+		RemoteLeaseValidator: func() error {
+			validationCalls++
+			if validationCalls == 2 {
+				return fmt.Errorf("server lease revoked")
+			}
+			return nil
+		},
+	}
+
+	err := installWindowsPackage(cfg, zipPath, controller)
+
+	if err == nil || !strings.Contains(err.Error(), "server lease revoked") {
+		t.Fatalf("expected revoked lease failure, got %v", err)
+	}
+	if validationCalls != 2 || controller.stopCalls != 1 || len(controller.startCalls) != 1 {
+		t.Fatalf("expected pre/post-stop validation and service restart: validations=%d controller=%#v", validationCalls, controller)
+	}
+	content, readErr := os.ReadFile(oldBinary)
+	if readErr != nil || string(content) != "old-binary" {
+		t.Fatalf("old installation changed after lease revocation: %q, %v", content, readErr)
+	}
+}
+
 func TestRestorePreviousWindowsInstallationRestoresDirectoryAndService(t *testing.T) {
 	installDir := filepath.Join(t.TempDir(), "fusion-collectors")
 	backupDir := installDir + ".bklite-backup"

@@ -34,21 +34,22 @@ var (
 const windowsServiceTransitionAttempts = 30
 
 type Config struct {
-	ServerURL           string        `json:"server_url"`
-	APIToken            string        `json:"api_token"`
-	NodeID              string        `json:"node_id"`
-	NodeName            string        `json:"node_name"`
-	ZoneID              string        `json:"zone_id"`
-	GroupID             string        `json:"group_id"`
-	OS                  string        `json:"os"`
-	InstallDir          string        `json:"install_dir"`
-	SkipTLSVerification bool          `json:"-"`
-	RemoteTaskNodeID    int64         `json:"-"`
-	RemoteAttempt       int           `json:"-"`
-	RemoteExecutionID   string        `json:"-"`
-	RemoteDeadlineUnix  int64         `json:"-"`
-	Package             PackageConfig `json:"package"`
-	Storage             StorageConfig `json:"storage"`
+	ServerURL            string        `json:"server_url"`
+	APIToken             string        `json:"api_token"`
+	NodeID               string        `json:"node_id"`
+	NodeName             string        `json:"node_name"`
+	ZoneID               string        `json:"zone_id"`
+	GroupID              string        `json:"group_id"`
+	OS                   string        `json:"os"`
+	InstallDir           string        `json:"install_dir"`
+	SkipTLSVerification  bool          `json:"-"`
+	RemoteTaskNodeID     int64         `json:"-"`
+	RemoteAttempt        int           `json:"-"`
+	RemoteExecutionID    string        `json:"-"`
+	RemoteDeadlineUnix   int64         `json:"-"`
+	RemoteLeaseValidator func() error  `json:"-"`
+	Package              PackageConfig `json:"package"`
+	Storage              StorageConfig `json:"storage"`
 }
 
 type PackageConfig struct {
@@ -309,6 +310,14 @@ func run(client *http.Client) {
 	cfg.RemoteAttempt = *executionAttempt
 	cfg.RemoteExecutionID = *executionID
 	cfg.RemoteDeadlineUnix = *executionDeadline
+	if cfg.RemoteExecutionID != "" {
+		cfg.RemoteLeaseValidator = func() error {
+			if _, err := fetchConfig(client, *configURL); err != nil {
+				return fmt.Errorf("validate active Windows remote installation lease: %w", err)
+			}
+			return nil
+		}
+	}
 	log("      Node: %s", cfg.NodeID)
 
 	if *installDir != "" {
@@ -1404,6 +1413,11 @@ func installWindowsPackage(cfg *Config, zipPath string, controller windowsServic
 	if err := validateRemoteExecutionDeadline(cfg); err != nil {
 		return err
 	}
+	if cfg.RemoteLeaseValidator != nil {
+		if err := cfg.RemoteLeaseValidator(); err != nil {
+			return err
+		}
+	}
 
 	serviceExisted, err := controller.Stop()
 	if err != nil {
@@ -1413,6 +1427,20 @@ func installWindowsPackage(cfg *Config, zipPath string, controller windowsServic
 			}
 		}
 		return fmt.Errorf("stop existing sidecar service: %w", err)
+	}
+	if cfg.RemoteLeaseValidator != nil {
+		leaseErr := cfg.RemoteLeaseValidator()
+		if leaseErr == nil {
+			leaseErr = validateRemoteExecutionDeadline(cfg)
+		}
+		if leaseErr != nil {
+			if serviceExisted {
+				if restartErr := controller.Start(installDir, true); restartErr != nil {
+					return fmt.Errorf("%v; restart existing service after lease expiry: %w", leaseErr, restartErr)
+				}
+			}
+			return leaseErr
+		}
 	}
 	installExisted := false
 	if _, err := os.Stat(installDir); err == nil {
