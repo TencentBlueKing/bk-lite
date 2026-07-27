@@ -11,6 +11,8 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
+from django.db import transaction
+
 from apps.core.logger import cmdb_logger as logger
 
 PC_METRIC_NAME = "pc_info"
@@ -116,6 +118,86 @@ def parse_pc_vm_rows(rows):
         if existing is None or snapshot.collected_at > existing.collected_at:
             snapshots_by_pc[inst_name] = snapshot
     return list(snapshots_by_pc.values())
+
+
+@dataclass(frozen=True)
+class PCAuthorityDecision:
+    """authorize() 的结论：mode 决定本任务对该 PC 的写/删权限。"""
+
+    mode: str  # owner / conflict / pending_handover / stale
+    allow_delete: bool
+    error_code: str = ""
+    authority: object = None
+
+
+class PCAuthorityService:
+    """PC 权威采集任务状态机（设计 §11）。
+
+    - 首个识别 inst_name 的任务绑定为权威任务（唯一约束解决并发首绑）；
+    - 其他任务命中返回 conflict(SOURCE_TASK_CONFLICT)，不读写；
+    - 待移交任务可写新增/更新但 allow_delete=False，
+      只有完整快照落地后 complete_handover 才切换权威并清空 pending；
+    - 旧于或等于最近已应用时间的快照按幂等忽略（stale）。
+    所有写路径都在 transaction.atomic + select_for_update 内完成。
+    """
+
+    @staticmethod
+    def authorize(task, pc_inst_name, snapshot_id, collected_at):
+        from apps.cmdb.models.pc_discovery import PCDiscoveryAuthority
+
+        with transaction.atomic():
+            authority, created = PCDiscoveryAuthority.objects.select_for_update().get_or_create(
+                pc_inst_name=pc_inst_name,
+                defaults={"authoritative_task": task},
+            )
+            if created:
+                return PCAuthorityDecision(mode="owner", allow_delete=True, authority=authority)
+            if authority.authoritative_task_id == task.id:
+                if authority.last_snapshot_time is not None and collected_at <= authority.last_snapshot_time:
+                    return PCAuthorityDecision(mode="stale", allow_delete=False, authority=authority)
+                return PCAuthorityDecision(mode="owner", allow_delete=True, authority=authority)
+            if authority.pending_task_id == task.id:
+                return PCAuthorityDecision(mode="pending_handover", allow_delete=False, authority=authority)
+            return PCAuthorityDecision(
+                mode="conflict",
+                allow_delete=False,
+                error_code="SOURCE_TASK_CONFLICT",
+                authority=authority,
+            )
+
+    @staticmethod
+    def request_handover(pc_inst_name, new_task):
+        """管理员授权新任务接管；authority 不存在时抛 DoesNotExist。"""
+        from apps.cmdb.models.pc_discovery import PCDiscoveryAuthority
+
+        with transaction.atomic():
+            authority = PCDiscoveryAuthority.objects.select_for_update().get(pc_inst_name=pc_inst_name)
+            if authority.authoritative_task_id != new_task.id:
+                authority.pending_task = new_task
+                authority.save(update_fields=["pending_task", "updated_at"])
+            return authority
+
+    @staticmethod
+    def complete_handover(authority, task, snapshot_status):
+        """完整快照落地后切换权威；部分快照或非待移交任务一律不切换。"""
+        if snapshot_status != "complete":
+            return False
+        with transaction.atomic():
+            locked = type(authority).objects.select_for_update().get(pk=authority.pk)
+            if locked.pending_task_id != task.id:
+                return False
+            locked.authoritative_task = task
+            locked.pending_task = None
+            locked.save(update_fields=["authoritative_task", "pending_task", "updated_at"])
+        authority.refresh_from_db()
+        return True
+
+    @staticmethod
+    def mark_applied(authority, snapshot_id, collected_at):
+        """快照完整应用后记录最近应用水位，供 stale 判定。"""
+        authority.last_snapshot_id = snapshot_id
+        authority.last_snapshot_time = collected_at
+        authority.save(update_fields=["last_snapshot_id", "last_snapshot_time", "updated_at"])
 
 
 def apply_pc_snapshots(task, snapshots):
