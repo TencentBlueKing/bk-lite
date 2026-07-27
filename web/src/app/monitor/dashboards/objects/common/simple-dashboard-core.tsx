@@ -816,7 +816,6 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
     setTimeDefaultValue((prev) => ({ ...prev, rangePickerVaule: arr, selectValue: 0 }));
     setTimeValues({ timeRange: [start, end], originValue: 0 });
   };
-  const goBack = () => router.push('/monitor/view');
   const onInstanceChange = (value: string) => {
     const target = instanceOptions.find((item) => item.value === value);
     const params = new URLSearchParams(searchParams.toString());
@@ -876,7 +875,6 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
     onTimeChange,
     onRefresh,
     onXRangeChange,
-    onBack: goBack,
     onInstanceChange,
     onClusterFilterChange
   };
