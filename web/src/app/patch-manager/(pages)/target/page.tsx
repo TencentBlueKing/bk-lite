@@ -959,6 +959,8 @@ export default function TargetPage() {
           )}
           {connectivityResult && (
             <Alert
+              key={connectivityResult.checkedAt}
+              closable
               showIcon
               type={connectivityResult.status === 'connected' ? 'success' : 'error'}
               message={connectivityResult.status === 'connected' ? '连通性测试通过' : '连通性测试失败'}
