@@ -356,7 +356,6 @@ export const useNodeExecution = (t: any, initialExecutionId?: string | null) => 
     try {
       const url = getExecuteWorkflowSSEUrl(botId, nodeId);
       const headers: Record<string, string> = {
-        Accept: 'text/event-stream',
         'Content-Type': 'application/json',
       };
 

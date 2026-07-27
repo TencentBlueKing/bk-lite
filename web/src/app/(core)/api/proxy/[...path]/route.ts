@@ -1,5 +1,5 @@
 import {NextRequest, NextResponse} from 'next/server';
-import {DEFAULT_TIMEOUT_MS, getInitialProxyTimeoutMs} from './timeout';
+import {consumeProxyTimeoutMs, DEFAULT_TIMEOUT_MS, scheduleProxyAbort} from '@/utils/proxyTimeout';
 
 import {buildProxyTargets} from './proxyTarget';
 
@@ -79,11 +79,8 @@ async function handleProxy(req: NextRequest): Promise<NextResponse | Response> {
 
   // 创建 AbortController 用于超时控制
   const controller = new AbortController();
-  // fetch 返回前无法从响应 Content-Type 判断 SSE，因此由请求 Accept 显式选择首包超时。
-  let timeoutId = setTimeout(
-    () => controller.abort(),
-    getInitialProxyTimeoutMs(req.headers.get('accept'))
-  );
+  // fetch 返回前无法从响应 Content-Type 判断 SSE，因此由请求契约选择并消费内部首包超时。
+  let timeoutId = scheduleProxyAbort(controller, consumeProxyTimeoutMs(headers));
 
   // 直接转发 body，而不对其进行解析
   const fetchOptions: RequestInit & { duplex?: string } = {
@@ -111,7 +108,7 @@ async function handleProxy(req: NextRequest): Promise<NextResponse | Response> {
 
     // 非 SSE 响应，使用默认超时
     clearTimeout(timeoutId);
-    timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+    timeoutId = scheduleProxyAbort(controller, DEFAULT_TIMEOUT_MS);
 
     return new NextResponse(proxyResponse.body, {
       status: proxyResponse.status,

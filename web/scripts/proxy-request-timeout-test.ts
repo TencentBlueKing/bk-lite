@@ -2,19 +2,50 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import {
+  consumeProxyTimeoutMs,
   DEFAULT_TIMEOUT_MS,
   getInitialProxyTimeoutMs,
+  getProxyTimeoutHeaderValue,
+  PROXY_TIMEOUT_HEADER,
+  scheduleProxyAbort,
   SSE_TIMEOUT_MS,
-} from '../src/app/(core)/api/proxy/[...path]/timeout.ts';
+} from '../src/utils/proxyTimeout.ts';
 
 assert.equal(getInitialProxyTimeoutMs(null), DEFAULT_TIMEOUT_MS);
 assert.equal(getInitialProxyTimeoutMs('*/*'), DEFAULT_TIMEOUT_MS);
 assert.equal(getInitialProxyTimeoutMs('application/json'), DEFAULT_TIMEOUT_MS);
 assert.equal(getInitialProxyTimeoutMs('text/event-stream'), SSE_TIMEOUT_MS);
+assert.equal(getInitialProxyTimeoutMs('text/event-stream; q=0'), DEFAULT_TIMEOUT_MS);
 assert.equal(
   getInitialProxyTimeoutMs('application/json, Text/Event-Stream; q=0.9'),
   SSE_TIMEOUT_MS
 );
+assert.equal(getInitialProxyTimeoutMs('application/json', '120000'), 120_000);
+assert.equal(getInitialProxyTimeoutMs('application/json', '600000'), SSE_TIMEOUT_MS);
+assert.equal(getInitialProxyTimeoutMs('application/json', 'invalid'), DEFAULT_TIMEOUT_MS);
+
+assert.equal(getProxyTimeoutHeaderValue(undefined), null);
+assert.equal(getProxyTimeoutHeaderValue(DEFAULT_TIMEOUT_MS), null);
+assert.equal(getProxyTimeoutHeaderValue(120_000), '120000');
+assert.equal(getProxyTimeoutHeaderValue(0), String(SSE_TIMEOUT_MS));
+assert.equal(getProxyTimeoutHeaderValue(600_000), String(SSE_TIMEOUT_MS));
+
+const ordinaryHeaders = new Headers({
+  Accept: 'application/json',
+  [PROXY_TIMEOUT_HEADER]: '120000',
+});
+assert.equal(consumeProxyTimeoutMs(ordinaryHeaders), 120_000);
+assert.equal(ordinaryHeaders.has(PROXY_TIMEOUT_HEADER), false);
+
+const sseHeaders = new Headers({
+  Accept: 'text/event-stream',
+  [PROXY_TIMEOUT_HEADER]: '120000',
+});
+assert.equal(consumeProxyTimeoutMs(sseHeaders), SSE_TIMEOUT_MS);
+assert.equal(sseHeaders.has(PROXY_TIMEOUT_HEADER), false);
+
+const abortController = new AbortController();
+scheduleProxyAbort(abortController, 1);
 
 const routeSource = readFileSync(
   new URL('../src/app/(core)/api/proxy/[...path]/route.ts', import.meta.url),
@@ -22,8 +53,19 @@ const routeSource = readFileSync(
 );
 assert.match(
   routeSource,
-  /getInitialProxyTimeoutMs\(req\.headers\.get\('accept'\)\)/,
-  'the proxy must select its timeout before fetch from the request Accept header'
+  /consumeProxyTimeoutMs\(headers\)/,
+  'the proxy must consume its timeout contract before fetch'
+);
+
+const requestSource = readFileSync(
+  new URL('../src/utils/request.ts', import.meta.url),
+  'utf8'
+);
+assert.match(requestSource, /timeout: 60000/, 'ordinary API requests must use the 60 second default');
+assert.match(
+  requestSource,
+  /getProxyTimeoutHeaderValue\(config\.timeout\)/,
+  'explicit client timeouts must be mapped to the proxy compatibility header'
 );
 
 function readSource(file: string): string {
@@ -53,12 +95,7 @@ const sseRequestSections = [
     readSource('../src/app/opspilot/components/custom-chat-sse/hooks/useSSEStream.ts'),
     'const handleSSEStream = useCallback(',
     'if (!response.ok'
-  ),
-  sourceSection(
-    readSource('../src/app/opspilot/components/chatflow/hooks/useNodeExecution.ts'),
-    'const handleSSEExecution = useCallback(',
-    "const executionId = response.headers.get('X-Execution-ID')"
-  ),
+  )
 ];
 
 for (const section of sseRequestSections) {
@@ -68,6 +105,17 @@ for (const section of sseRequestSections) {
 const nodeExecutionSource = readSource(
   '../src/app/opspilot/components/chatflow/hooks/useNodeExecution.ts'
 );
+const testExecutionRequestSection = sourceSection(
+  nodeExecutionSource,
+  'const handleSSEExecution = useCallback(',
+  "const executionId = response.headers.get('X-Execution-ID')"
+);
+assert.doesNotMatch(
+  testExecutionRequestSection,
+  /Accept: 'text\/event-stream'/,
+  'the asynchronous test request returns JSON and must keep the default timeout'
+);
+
 const interruptRequestSection = sourceSection(
   nodeExecutionSource,
   'const interruptExecution = useCallback(',
@@ -79,4 +127,7 @@ assert.doesNotMatch(
   'the non-streaming interrupt request must keep the default timeout'
 );
 
-console.log('proxy request timeout tests passed');
+setTimeout(() => {
+  assert.equal(abortController.signal.aborted, true);
+  console.log('proxy request timeout tests passed');
+}, 10);
