@@ -505,8 +505,13 @@ def test_existing_unassigned_alert_retried_on_new_event(source):
     alert = Alert.objects.get()
     assert alert.status == "unassigned"
 
-    # 清掉首轮的 outbox,隔离第二轮观察
-    AlertOutbox.objects.all().delete()
+    # 首轮分派 0 命中后，原 outbox 已 DELIVERED；生产环境不会删除该记录。
+    from apps.alerts.service.outbox import deliver_outbox_record
+
+    first_assignment = AlertOutbox.objects.get(kind="auto_assignment")
+    assert deliver_outbox_record(first_assignment.pk) is True
+    first_assignment.refresh_from_db()
+    assert first_assignment.status == AlertOutbox.Status.DELIVERED
 
     # 第二轮:同指纹新事件到达
     _cpu_event(source, "E-r2")
@@ -514,11 +519,12 @@ def test_existing_unassigned_alert_retried_on_new_event(source):
 
     alert.refresh_from_db()
     assert alert.status == "unassigned"
-    assignment_rows = [
-        r for r in AlertOutbox.objects.filter(kind="auto_assignment")
-        if alert.alert_id in (r.payload.get("alert_ids") or [])
-    ]
-    assert assignment_rows, "存量 UNASSIGNED 告警收到新事件后未重新触发自动分派"
+    assignment_rows = list(AlertOutbox.objects.filter(kind="auto_assignment"))
+    assert len(assignment_rows) == 2, "存量 UNASSIGNED 告警收到新事件后未创建新的分派尝试"
+    assert all(
+        alert.alert_id in (record.payload.get("alert_ids") or [])
+        for record in assignment_rows
+    )
 
 
 @pytest.mark.django_db

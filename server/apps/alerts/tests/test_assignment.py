@@ -3,11 +3,12 @@
 对照 specs/capabilities/legacy-prd-告警中心-配置.md：分派策略在生效时间内匹配未分派告警并分派给指定人员。
 """
 
+import logging
+
 import pytest
 
 from apps.alerts.common.assignment import AlertAssignmentOperator, execute_auto_assignment_for_alerts
 from apps.alerts.constants.constants import AlertStatus
-from apps.alerts.error import AlertNotFoundError
 from apps.alerts.models.alert_operator import AlertAssignment
 from apps.alerts.models.models import Alert
 
@@ -39,9 +40,17 @@ def _make_assignment(name="分派", match_type="all", **over):
 
 
 @pytest.mark.django_db
-def test_assignment_operator_no_alerts_raises():
-    with pytest.raises(AlertNotFoundError):
-        AlertAssignmentOperator(["nonexistent"])
+def test_assignment_operator_no_alerts_is_terminal_warning(caplog):
+    """全部 alert_id 查无此行属终态（历史残留 outbox 记录）：WARNING + 零值结果，不 raise。"""
+    caplog.set_level(logging.DEBUG, logger="alert")
+    operator = AlertAssignmentOperator(["nonexistent"])
+    assert operator.alerts == {}
+    assert "nonexistent" in caplog.text
+    assert not [r for r in caplog.records if r.levelno >= logging.ERROR]
+
+    result = operator.execute_auto_assignment()
+    assert result["total_alerts"] == 0
+    assert result["assigned_alerts"] == 0
 
 
 @pytest.mark.django_db
@@ -119,6 +128,21 @@ def test_auto_assignment_no_personnel(sys_user):
     # 无人员配置 → 分派失败
     assert result["assigned_alerts"] == 0
     assert Alert.objects.get(alert_id="A1").status == AlertStatus.UNASSIGNED
+
+
+@pytest.mark.django_db
+def test_auto_assignment_rejected_operation_is_not_counted_as_success(sys_user):
+    """操作层明确拒绝分派时，统计不得伪报成功。"""
+    alert = _make_alert("A1")
+    _make_assignment(match_type="all", personnel=["missing-user"])
+
+    result = AlertAssignmentOperator([alert.alert_id]).execute_auto_assignment()
+
+    alert.refresh_from_db()
+    assert result["assigned_alerts"] == 0
+    assert result["failed_alerts"] == 1
+    assert alert.status == AlertStatus.UNASSIGNED
+    assert alert.operator == []
 
 
 @pytest.mark.django_db

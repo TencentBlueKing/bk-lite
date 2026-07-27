@@ -1,3 +1,4 @@
+import hashlib
 import logging
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional, cast
@@ -35,6 +36,8 @@ from apps.alerts.serializers.strategy import ALLOWED_DIMENSIONS, DIMENSION_NAME_
 
 
 class AggregationProcessor:
+    # TODO(timezone): 心跳 cron 时区硬编码 Asia/Shanghai，对非 +8 部署（海外客户）或用户以其他时区
+    # 配置心跳 cron 时，deadline 会整体偏移。需要可配置化设计，需产品确认时区契约后单独立项。
     HEARTBEAT_CRON_SOURCE_TIMEZONE = ZoneInfo("Asia/Shanghai")
 
     def __init__(self):
@@ -729,5 +732,18 @@ class AggregationProcessor:
         """
         from apps.alerts.service.alert_lifecycle import dispatch_alert_lifecycle
 
+        alert_versions = Alert.objects.filter(alert_id__in=alert_ids).values_list(
+            "alert_id", "last_event_time"
+        )
+        dedupe_key = "\0".join(
+            f"{alert_id}:{last_event_time.isoformat() if last_event_time else ''}"
+            for alert_id, last_event_time in sorted(alert_versions)
+        )
+        attempt_key = hashlib.sha256(dedupe_key.encode("utf-8")).hexdigest()
         logger.info("[AlertAggregation] 持久化自动分配意图，告警数量: %s", len(alert_ids))
-        dispatch_alert_lifecycle(alert_ids, "created", auto_assign=True)
+        dispatch_alert_lifecycle(
+            alert_ids,
+            "created",
+            auto_assign=True,
+            auto_assign_dedupe_key=f"aggregation:{attempt_key}",
+        )

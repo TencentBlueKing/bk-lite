@@ -7,7 +7,6 @@ from typing import List, Dict, Any, Optional
 from django.utils import timezone
 from django.db import transaction
 
-from apps.alerts.error import AlertNotFoundError
 from apps.alerts.models.operator_log import OperatorLog
 from apps.alerts.models.models import Alert
 from apps.alerts.models.alert_operator import AlertAssignment
@@ -84,8 +83,20 @@ class AlertAssignmentOperator:
     def __init__(self, alert_id_list: List[str]):
         self.alert_id_list = alert_id_list
         self.alerts = self.get_alert_map()
-        if not self.alerts:
-            raise AlertNotFoundError("No alerts found for the provided alert_id_list")
+        # 投递时查无此行是终态而非故障：全部入队路径都在 Alert 提交后才调度，
+        # 查不到只能说明行已被删除（如历史残留 outbox 记录被 beat 重投）。
+        # 记 WARNING 保留可见性并继续，不再 raise（raise 只会被任务层裸 catch
+        # 翻译成 ERROR 噪音，且 outbox 照样标 DELIVERED）。
+        missing_ids = set(self.alert_id_list) - {
+            alert.alert_id for alert in self.alerts.values()
+        }
+        if missing_ids:
+            logger.warning(
+                "[AlertAssign] 部分告警已不存在，跳过其自动分派: missing=%s, requested=%s, found=%s",
+                sorted(missing_ids),
+                len(self.alert_id_list),
+                len(self.alerts),
+            )
         # 初始化规则匹配器
         self.rule_matcher = RuleMatcher(self.FIELD_MAPPING)
 
@@ -172,7 +183,7 @@ class AlertAssignmentOperator:
 
             except Exception as e:
                 logger.error("[AlertAssign] 处理分派失败 assignment_id=%s: %s", assignment.id, e, exc_info=True)
-                continue
+                raise
 
         logger.info("[AlertAssign] 分派处理完成: %s", results)
         return results
@@ -335,6 +346,17 @@ class AlertAssignmentOperator:
                                 "assignment_id": assignment.id,
                             },
                         )
+                        if not result.get("result"):
+                            results.append(
+                                {
+                                    "alert_id": alert.alert_id,
+                                    "alert_pk": alert.id,
+                                    "success": False,
+                                    "message": result.get("message") or "assignment rejected",
+                                    "assignment_id": assignment.id,
+                                }
+                            )
+                            continue
                         logger.debug(
                             "[AlertAssign] 告警 %s 成功分派给 %s, result=%s",
                             alert.alert_id, personnel, result,
@@ -358,30 +380,11 @@ class AlertAssignmentOperator:
                         logger.exception(
                             "[AlertAssign] 执行分派失败 alert_id=%s", alert.alert_id
                         )
-                        results.append(
-                            {
-                                "alert_id": alert.alert_id,
-                                "alert_pk": alert.id,
-                                "success": False,
-                                "message": str(e),
-                                "assignment_id": assignment.id,
-                            }
-                        )
+                        raise
 
         except Exception as e:
             logger.error("[AlertAssign] 批量分派失败: %s", e, exc_info=True)
-            # 如果批量操作失败，为所有告警添加失败记录
-            for alert_id in alert_ids:
-                alert = self.alerts.get(alert_id)
-                results.append(
-                    {
-                        "alert_id": alert.alert_id if alert else alert_id,
-                        "alert_pk": alert_id,
-                        "success": False,
-                        "message": str(e),
-                        "assignment_id": assignment.id,
-                    }
-                )
+            raise
 
         return results
 
