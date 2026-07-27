@@ -16,6 +16,7 @@ import {
   Spin,
   Steps,
   Tag,
+  theme,
   Typography,
 } from 'antd';
 import {
@@ -66,6 +67,7 @@ type DeploymentView = 'container' | 'k8s';
 
 const EnvironmentPage = () => {
   const { t } = useTranslation();
+  const { token } = theme.useToken();
   const [messageApi, messageContextHolder] = message.useMessage();
   const [modal, modalContextHolder] = Modal.useModal();
   const { isLoading } = useApiClient();
@@ -174,7 +176,7 @@ const EnvironmentPage = () => {
   const confirmActivation = () => {
     modal.confirm({
       title: t('node-manager.cloudregion.environment.activateTitle'),
-      icon: <ExclamationCircleFilled className="text-[var(--color-warning)]" />,
+      icon: <ExclamationCircleFilled style={{ color: token.colorWarning }} />,
       content: t('node-manager.cloudregion.environment.activateDescription'),
       okText: t('node-manager.cloudregion.environment.activateConfirm'),
       cancelText: t('common.cancel'),
@@ -225,6 +227,9 @@ const EnvironmentPage = () => {
         label: t('node-manager.cloudregion.environment.notDeployed'),
         color: 'default' as const,
         icon: <InfoCircleOutlined />,
+        accent: 'var(--color-border-3)',
+        surface: 'var(--color-fill-1)',
+        titleColor: 'var(--color-text-2)',
       };
     }
     if (service.health_status === 'normal') {
@@ -232,12 +237,20 @@ const EnvironmentPage = () => {
         label: t('node-manager.cloudregion.environment.normal'),
         color: 'success' as const,
         icon: <CheckCircleOutlined />,
+        accent: 'var(--color-success)',
+        surface:
+          'color-mix(in srgb, var(--color-success) 5%, var(--color-bg))',
+        titleColor: 'var(--color-success)',
       };
     }
     return {
       label: t('node-manager.cloudregion.environment.abnormal'),
       color: 'error' as const,
       icon: <CloseCircleOutlined />,
+      accent: 'var(--color-fail)',
+      surface:
+        'color-mix(in srgb, var(--color-fail) 5%, var(--color-bg))',
+      titleColor: 'var(--color-fail)',
     };
   };
 
@@ -276,7 +289,12 @@ const EnvironmentPage = () => {
     ) : null;
 
   const renderDefaultMaintenance = () => (
-    <Card title={t('node-manager.cloudregion.environment.maintenanceMethod')}>
+    <Card
+      title={t('node-manager.cloudregion.environment.maintenanceMethod')}
+      className="border-[var(--color-border)]"
+      style={{ background: 'var(--color-fill-1)' }}
+      styles={{ body: { padding: 20 } }}
+    >
       <Alert
         type={detail?.health_state === 'abnormal' ? 'warning' : 'info'}
         showIcon
@@ -301,7 +319,12 @@ const EnvironmentPage = () => {
   );
 
   const renderK8sDeployment = () => (
-    <Card title={t('node-manager.cloudregion.environment.k8sDeploy')}>
+    <Card
+      title={t('node-manager.cloudregion.environment.k8sDeploy')}
+      className="border-[var(--color-border)]"
+      style={{ background: 'var(--color-fill-1)' }}
+      styles={{ body: { padding: 20 } }}
+    >
       <Alert
         type="info"
         showIcon
@@ -323,7 +346,12 @@ const EnvironmentPage = () => {
   );
 
   const renderFirstDeployment = () => (
-    <Card title={t('node-manager.cloudregion.environment.firstDeployTitle')}>
+    <Card
+      title={t('node-manager.cloudregion.environment.firstDeployTitle')}
+      className="border-[var(--color-border)]"
+      style={{ background: 'var(--color-fill-1)' }}
+      styles={{ body: { padding: 20 } }}
+    >
       <Steps
         className="mb-6"
         current={script ? 1 : 0}
@@ -356,16 +384,14 @@ const EnvironmentPage = () => {
           />
         </Form.Item>
         <PermissionWrapper requiredPermissions={['Edit']}>
-          <PermissionWrapper requiredPermissions={['DeployCommand']}>
-            <Button
-              type="primary"
-              icon={<RocketOutlined />}
-              loading={generating}
-              onClick={() => void generateScript({ firstDeploy: true })}
-            >
-              {t('node-manager.cloudregion.environment.generateScript')}
-            </Button>
-          </PermissionWrapper>
+          <Button
+            type="primary"
+            icon={<RocketOutlined />}
+            loading={generating}
+            onClick={() => void generateScript({ firstDeploy: true })}
+          >
+            {t('node-manager.cloudregion.environment.generateScript')}
+          </Button>
         </PermissionWrapper>
       </Form>
       {renderScript()}
@@ -377,6 +403,9 @@ const EnvironmentPage = () => {
     return (
       <Card
         title={t('node-manager.cloudregion.environment.deploySummary')}
+        className="border-[var(--color-border)]"
+        style={{ background: 'var(--color-fill-1)' }}
+        styles={{ body: { padding: 20 } }}
         extra={
           !pendingAddress && (
             <Space size={8}>
@@ -387,7 +416,7 @@ const EnvironmentPage = () => {
                   {t('node-manager.cloudregion.environment.changeProxy')}
                 </Button>
               </PermissionWrapper>
-              <PermissionWrapper requiredPermissions={['DeployCommand']}>
+              <PermissionWrapper requiredPermissions={['Edit']}>
                 <Button
                   icon={<ToolOutlined />}
                   loading={generating}
@@ -447,7 +476,7 @@ const EnvironmentPage = () => {
             )}
             action={
               <Space wrap size={8}>
-                <PermissionWrapper requiredPermissions={['DeployCommand']}>
+                <PermissionWrapper requiredPermissions={['Edit']}>
                   <Button loading={generating} onClick={() => void generateScript()}>
                     {t('node-manager.cloudregion.environment.generatePendingScript')}
                   </Button>
@@ -480,7 +509,7 @@ const EnvironmentPage = () => {
       {messageContextHolder}
       {modalContextHolder}
       <div className="h-full w-full min-w-0">
-        <section className="mb-8" aria-labelledby="environment-status-title">
+        <section className="mb-6" aria-labelledby="environment-status-title">
           <div className="mb-4 flex items-center justify-between">
             <h3 id="environment-status-title" className="m-0 text-base font-semibold">
               {t('node-manager.cloudregion.environment.envStatus')}
@@ -515,17 +544,44 @@ const EnvironmentPage = () => {
               <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
                 {detail.services.map((service) => {
                   const status = serviceStatus(service);
+                  const isStargazer = service.name === 'stargazer';
+                  const serviceIconColor = isStargazer
+                    ? token.colorWarning
+                    : 'var(--color-primary)';
                   return (
-                    <Card key={service.id} size="small" className="border-[var(--color-border)]">
+                    <Card
+                      key={service.id}
+                      size="small"
+                      className="overflow-hidden border-[var(--color-border)]"
+                      style={{
+                        borderTop: `3px solid ${status.accent}`,
+                        background: status.surface,
+                      }}
+                      styles={{ body: { padding: '18px 20px' } }}
+                    >
                       <div className="flex min-h-12 items-center justify-between gap-4">
                         <Space size={12}>
-                          {service.name === 'stargazer' ? (
-                            <StarOutlined className="text-xl text-[var(--color-warning)]" />
-                          ) : (
-                            <RocketOutlined className="text-xl text-[var(--color-primary)]" />
-                          )}
+                          <span
+                            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-xl"
+                            style={{
+                              color: serviceIconColor,
+                              background: `color-mix(in srgb, ${serviceIconColor} 12%, transparent)`,
+                            }}
+                          >
+                            {isStargazer ? (
+                              <StarOutlined />
+                            ) : (
+                              <RocketOutlined />
+                            )}
+                          </span>
                           <div>
-                            <Typography.Text strong>{service.name}</Typography.Text>
+                            <Typography.Text
+                              strong
+                              className="text-base"
+                              style={{ color: status.titleColor }}
+                            >
+                              {service.name}
+                            </Typography.Text>
                             {service.message && service.health_status === 'abnormal' && (
                               <div className="mt-1 max-w-[560px] text-xs text-[var(--color-text-3)]">
                                 {service.message}
@@ -548,27 +604,28 @@ const EnvironmentPage = () => {
         </section>
 
         <section aria-labelledby="environment-deployment-title">
-          <h3
-            id="environment-deployment-title"
-            className="mb-4 text-base font-semibold"
-          >
-            {t('node-manager.cloudregion.environment.envDeploy')}
-          </h3>
-          <Segmented
-            className="mb-4"
-            value={deploymentView}
-            options={[
-              {
-                label: t('node-manager.cloudregion.environment.containerDeploy'),
-                value: 'container',
-              },
-              {
-                label: t('node-manager.cloudregion.environment.k8sDeploy'),
-                value: 'k8s',
-              },
-            ]}
-            onChange={(value) => setDeploymentView(value as DeploymentView)}
-          />
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <h3
+              id="environment-deployment-title"
+              className="m-0 text-base font-semibold"
+            >
+              {t('node-manager.cloudregion.environment.envDeploy')}
+            </h3>
+            <Segmented
+              value={deploymentView}
+              options={[
+                {
+                  label: t('node-manager.cloudregion.environment.containerDeploy'),
+                  value: 'container',
+                },
+                {
+                  label: t('node-manager.cloudregion.environment.k8sDeploy'),
+                  value: 'k8s',
+                },
+              ]}
+              onChange={(value) => setDeploymentView(value as DeploymentView)}
+            />
+          </div>
 
           {deploymentView === 'k8s'
             ? renderK8sDeployment()

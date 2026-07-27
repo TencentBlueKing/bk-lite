@@ -195,6 +195,36 @@ def test_create_payload_cannot_set_pending_proxy_state():
     assert "pending_proxy_address_created_at" not in serializer.validated_data
 
 
+@pytest.mark.django_db
+def test_environment_editor_can_generate_deploy_script():
+    region = CloudRegion.objects.create(name="permission-region")
+    request = APIRequestFactory().post(
+        "/node_mgmt/api/cloud_region/deploy_command/",
+        {"cloud_region_id": region.id},
+        format="json",
+    )
+    force_authenticate(
+        request,
+        user=SimpleNamespace(
+            is_superuser=False,
+            is_authenticated=True,
+            locale="zh-Hans",
+            permission={"node": {"cloud_region_environment-Edit"}},
+        ),
+    )
+    view = CloudRegionViewSet.as_view({"post": "deploy_command"})
+
+    with patch.object(
+        RegionService,
+        "get_deploy_script",
+        return_value="#!/bin/sh\necho ready",
+    ) as get_deploy_script:
+        response = view(request)
+
+    assert response.status_code == 200
+    get_deploy_script.assert_called_once_with({"cloud_region_id": region.id})
+
+
 @pytest.mark.parametrize(
     ("proxy_address", "normalized"),
     [

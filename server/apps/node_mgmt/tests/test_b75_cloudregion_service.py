@@ -399,6 +399,41 @@ def test_get_deploy_script_success_calls_webhook_and_returns_script():
 
 
 @pytest.mark.django_db
+def test_get_deploy_script_prefers_runtime_webhook_url():
+    region = CloudRegion.objects.create(
+        name="cr-deploy-runtime-webhook",
+        proxy_address="6.6.6.7",
+    )
+    _build_complete_env(region.id)
+
+    def fake_getenv(key, default=None):
+        return {
+            "WEBHOOK_SERVER_URL": "http://127.0.0.1:18080",
+            "NATS_ADMIN_USERNAME": "u",
+            "NATS_ADMIN_PASSWORD": "p",
+        }.get(key, default)
+
+    response = MagicMock()
+    response.status_code = 200
+    response.json.return_value = {"install_script": "echo hello"}
+
+    with patch(
+        "apps.node_mgmt.services.cloudregion.os.getenv",
+        side_effect=fake_getenv,
+    ), patch(
+        "apps.node_mgmt.services.cloudregion.requests.post",
+        return_value=response,
+    ) as post_mock, patch(
+        "apps.node_mgmt.services.cloudregion.generate_node_token",
+        return_value="tok",
+    ):
+        RegionService.get_deploy_script({"cloud_region_id": region.id})
+
+    called_url = post_mock.call_args.args[0]
+    assert called_url == "http://127.0.0.1:18080/infra/proxy"
+
+
+@pytest.mark.django_db
 def test_get_deploy_script_rejects_default_cloud_region():
     region, _ = CloudRegion.objects.update_or_create(
         id=CloudRegionConstants.DEFAULT_CLOUD_REGION_ID,

@@ -113,7 +113,12 @@ class RegionService:
                 pending_proxy_address=cloud_region.pending_proxy_address,
             )
 
-        webhook_url = env_vars.get("WEBHOOK_SERVER_URL") or os.getenv("WEBHOOK_SERVER_URL")
+        # webhookd is a platform-side dependency. Prefer the server runtime
+        # address because cloud-region variables may contain a Docker-internal
+        # hostname that is only valid for agents in that region.
+        webhook_url = os.getenv("WEBHOOK_SERVER_URL") or env_vars.get(
+            "WEBHOOK_SERVER_URL"
+        )
         if not webhook_url:
             logger.error(f"Missing WEBHOOK_SERVER_URL for cloud region {cloud_region_id}")
             raise BaseAppException("Webhook configuration missing")

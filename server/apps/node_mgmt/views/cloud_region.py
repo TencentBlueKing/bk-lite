@@ -24,6 +24,14 @@ from apps.node_mgmt.services.cloudregion import RegionService
 from apps.core.utils.web_utils import WebUtils
 
 
+CLOUD_REGION_EDIT_PERMISSIONS = (
+    "cloud_region-Edit,cloud_region_list-Edit,cloud_region_environment-Edit"
+)
+CLOUD_REGION_ENVIRONMENT_EDIT_PERMISSIONS = (
+    "cloud_region-Edit,cloud_region_environment-Edit"
+)
+
+
 class CloudRegionViewSet(
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
@@ -71,7 +79,7 @@ class CloudRegionViewSet(
 
         return Response(result)
 
-    @HasPermission("cloud_region-Edit")
+    @HasPermission(CLOUD_REGION_EDIT_PERMISSIONS)
     @transaction.atomic
     def update(self, request, *args, **kwargs):
         self.serializer_class = CloudRegionUpdateSerializer
@@ -98,12 +106,12 @@ class CloudRegionViewSet(
 
         return response
 
-    @HasPermission("cloud_region-Edit")
+    @HasPermission(CLOUD_REGION_EDIT_PERMISSIONS)
     def partial_update(self, request, *args, **kwargs):
         kwargs["partial"] = True
         return self.update(request, *args, **kwargs)
 
-    @HasPermission("cloud_region-Edit")
+    @HasPermission(CLOUD_REGION_ENVIRONMENT_EDIT_PERMISSIONS)
     @action(methods=["post"], detail=True, url_path="stage_proxy_address")
     def stage_proxy_address(self, request, *args, **kwargs):
         serializer = CloudRegionProxyAddressSerializer(data=request.data)
@@ -114,7 +122,7 @@ class CloudRegionViewSet(
         )
         return Response(CloudRegionSerializer(cloud_region).data)
 
-    @HasPermission("cloud_region-Edit")
+    @HasPermission(CLOUD_REGION_ENVIRONMENT_EDIT_PERMISSIONS)
     @action(methods=["post"], detail=True, url_path="activate_proxy_address")
     def activate_proxy_address(self, request, *args, **kwargs):
         serializer = CloudRegionProxyActivationSerializer(data=request.data)
@@ -125,7 +133,7 @@ class CloudRegionViewSet(
         )
         return Response(CloudRegionSerializer(cloud_region).data)
 
-    @HasPermission("cloud_region-Edit")
+    @HasPermission(CLOUD_REGION_ENVIRONMENT_EDIT_PERMISSIONS)
     @action(methods=["post"], detail=True, url_path="cancel_proxy_address")
     def cancel_proxy_address(self, request, *args, **kwargs):
         cloud_region = RegionService.cancel_pending_proxy_address(int(kwargs["pk"]))
@@ -171,7 +179,9 @@ class CloudRegionViewSet(
     #     deployed_cloud_services.delay(request.data)
     #     return WebUtils.response_success()
 
-    @HasPermission("cloud_region-DeployCommand")
+    @HasPermission(
+        "cloud_region-DeployCommand,cloud_region_environment-Edit"
+    )
     @action(methods=["post"], detail=False, url_path="deploy_command")
     def deploy_command(self, request, *args, **kwargs):
         """
