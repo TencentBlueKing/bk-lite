@@ -21,6 +21,7 @@ import type {
   NetworkStatusTopologyResponse,
 } from '@/app/ops-analysis/types/sceneWidget';
 import type { ValueConfig } from '@/app/ops-analysis/types/dashBoard';
+import { isScreenChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
 import {
   buildAlertListUrl,
   buildFaultPath,
@@ -326,12 +327,12 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
   const hoverCanvasNode = canvasNodes.find((node) => node.id === hoverNodeId);
   const contextCanvasNode = canvasNodes.find((node) => node.id === contextNodeId);
   const isMissingConfig = !topoConfig?.modelId || !topoConfig?.instId;
-  const usesScreenDark = config?.chartThemeMode === 'screen-dark';
+  const usesScreenTheme = isScreenChartThemeMode(config?.chartThemeMode);
 
   return (
     <div
       ref={canvasRef}
-      className={`${styles.canvas} ${usesScreenDark ? styles.screenCanvas : ''}`}
+      className={`${styles.canvas} ${usesScreenTheme ? styles.screenCanvas : ''}`}
     >
       {data?.truncated && (
         <div className={styles.truncated}>{t('dashboard.networkTopoTruncated')}</div>
