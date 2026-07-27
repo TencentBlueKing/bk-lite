@@ -34,6 +34,45 @@ monitor_object_metric:
     sqlserver_performance_value_rate:
       name: 批处理请求速率
       desc: SQL Server批处理请求的速率，衡量数据库整体吞吐量和负载压力。高请求率表示数据库处理大量查询。
+    sqlserver_checkpoint_pages_rate:
+      name: 检查点写页速率
+      desc: 检查点进程将脏页刷写到磁盘的速率，反映写回压力；应结合写入延迟和惰性写入速率判断。
+    sqlserver_lazy_writes_rate:
+      name: 惰性写入速率
+      desc: 惰性写入器为腾出缓冲池空间而刷写页面的速率。持续升高且页生命周期较低时，通常表示内存压力。
+    sqlserver_memory_grants_pending:
+      name: 等待内存授予的请求数
+      desc: 当前等待执行内存授予的查询数量。持续非零表示查询工作区内存不足，应结合并发和大排序或哈希操作排查。
+    sqlserver_processes_blocked:
+      name: 阻塞进程数
+      desc: 当前被阻塞的 SQL Server 进程数量。持续存在时应检查阻塞会话、事务范围和锁竞争。
+    sqlserver_deadlocks_rate:
+      name: 死锁速率
+      desc: SQL Server 死锁发生速率。持续非零时应检查事务访问顺序、隔离级别和索引设计。
+    sqlserver_sql_compilations_rate:
+      name: SQL 编译速率
+      desc: SQL 语句编译速率。结合批处理请求速率和重编译速率，可评估计划缓存效率。
+    sqlserver_sql_recompilations_rate:
+      name: SQL 重编译速率
+      desc: SQL 语句重编译速率。相对编译速率持续偏高会增加 CPU 消耗，并可能反映计划不稳定或频繁架构变更。
+    sqlserver_memory_grants_outstanding:
+      name: 已授予内存的请求数
+      desc: 当前已获得查询工作区内存但尚未完成的请求数。应结合等待内存授予的请求数，区分活跃负载与内存压力。
+    sqlserver_memory_target_server_memory_kb:
+      name: 目标 Server Memory
+      desc: SQL Server 目标内存大小。结合当前总 Server Memory 判断缓冲池是否达到配置目标。
+    sqlserver_memory_total_server_memory_kb:
+      name: 当前 Server Memory
+      desc: SQL Server 当前已提交的内存大小。长期低于目标内存可能表示内存压力或负载刚发生变化。
+    sqlserver_tempdb_free_space_kb:
+      name: TempDB 可用空间
+      desc: TempDB 当前可用空间。空间不足会影响排序、哈希、行版本和临时对象等工作负载。
+    sqlserver_tempdb_version_store_size_kb:
+      name: TempDB 版本存储大小
+      desc: TempDB 当前版本存储大小。持续增长可能表示长时间运行的快照隔离或读已提交快照事务。
+    sqlserver_log_flushes_rate:
+      name: 事务日志刷写速率
+      desc: 事务日志刷写速率。结合数据库写入延迟，可识别写密集负载和日志 I/O 压力。
     sqlserver_page_life_expectancy:
       name: 页生命周期期望
       desc: 数据页在缓冲池中的平均停留时间，反映内存压力。值过低表明内存不足，可能导致频繁的物理IO，影响性能。
