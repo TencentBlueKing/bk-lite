@@ -35,38 +35,38 @@ monitor_object_metric:
       name: Container Restart Count
       desc: Number of times the container has restarted since its last start.
     docker_container_cpu_usage_percent:
-      name: CPU Usage
+      name: Container CPU Usage
       desc: Percentage of available CPU resources used by the container.
     docker_container_mem_usage_percent:
-      name: Memory Usage
+      name: Container Memory Usage
       desc: Percentage of the configured memory limit used by the container.
     docker_container_mem_usage:
-      name: Memory Used
+      name: Container Memory Used
       desc: Physical memory currently consumed by the container.
     docker_container_blkio_io_service_bytes_recursive_total_rate:
-      name: Block I/O Throughput
+      name: Block I/O Total Rate
       desc: Total bytes transferred per second by all container block I/O operations.
     docker_container_blkio_io_service_bytes_recursive_read_rate:
-      name: Block I/O Read Throughput
+      name: Block Device Read Rate
       desc: Bytes read per second from block devices by the container.
     docker_container_blkio_io_service_bytes_recursive_write_rate:
-      name: Block I/O Write Throughput
+      name: Block Device Write Rate
       desc: Bytes written per second to block devices by the container.
     docker_container_net_rx_bytes_rate:
-      name: Network Receive Throughput
+      name: Network Receive Rate
       desc: Bytes received per second by the container network interfaces.
     docker_container_net_tx_bytes_rate:
-      name: Network Transmit Throughput
+      name: Network Transmit Rate
       desc: Bytes sent per second by the container network interfaces.
     docker_container_net_rx_errors_rate:
-      name: Network Receive Errors
+      name: Network Receive Error Rate
       desc: Packet receive errors per second for the container.
     docker_container_net_tx_errors_rate:
-      name: Network Transmit Errors
+      name: Network Transmit Error Rate
       desc: Packet send errors per second for the container.
     docker_container_net_rx_packets_rate:
-      name: Network Receive Packets
+      name: Network Receive Packet Rate
       desc: Packets received per second by the container.
     docker_container_net_tx_packets_rate:
-      name: Network Transmit Packets
+      name: Network Transmit Packet Rate
       desc: Packets sent per second by the container.

@@ -264,7 +264,7 @@ class InstallerService:
 
     @staticmethod
     def get_authorized_controller_task_nodes(task_id, authorized_nodes=None, scope=None):
-        task_nodes = ControllerTaskNode.objects.filter(task_id=task_id).order_by("id")
+        task_nodes = ControllerTaskNode.objects.filter(task_id=task_id).select_related("task").order_by("id")
         if authorized_nodes is None:
             return list(task_nodes)
 
@@ -280,13 +280,47 @@ class InstallerService:
         return sorted([*linked_nodes, *legacy_nodes], key=lambda item: item.id)
 
     @staticmethod
-    def install_controller_nodes(task_id, authorized_nodes=None, scope=None):
-        """获取控制器安装节点信息"""
-        task_nodes = InstallerService.get_authorized_controller_task_nodes(
+    def get_authorized_controller_task_node_queryset(
+        task_id,
+        authorized_nodes=None,
+        scope=None,
+        request_user=None,
+    ):
+        """返回可重试的任务节点，同时满足数据范围与历史任务归属。"""
+        scoped_task_nodes = InstallerService.get_authorized_controller_task_nodes(
             task_id,
             authorized_nodes=authorized_nodes,
             scope=scope,
         )
+        scoped_ids = [task_node.id for task_node in scoped_task_nodes]
+        task_nodes = ControllerTaskNode.objects.filter(id__in=scoped_ids).select_related("task").order_by("id")
+        if getattr(request_user, "is_superuser", False):
+            return task_nodes
+
+        username = getattr(request_user, "username", "") if request_user is not None else ""
+        domain = getattr(request_user, "domain", "") if request_user is not None else ""
+        legacy_owner_filter = Q(pk__in=[])
+        legacy_node_filter = Q(node_id="") | Q(node_id__isnull=True)
+        if username and domain:
+            legacy_owner_filter = legacy_node_filter & Q(task__created_by=username, task__domain=domain)
+        return task_nodes.filter(~legacy_node_filter | legacy_owner_filter)
+
+    @staticmethod
+    def install_controller_nodes(task_id, authorized_nodes=None, scope=None):
+        """获取控制器安装节点信息"""
+        if scope is None or not all(hasattr(scope, field) for field in ("username", "domain", "is_superuser")):
+            task_nodes = InstallerService.get_authorized_controller_task_nodes(
+                task_id,
+                authorized_nodes=authorized_nodes,
+                scope=scope,
+            )
+        else:
+            task_nodes = InstallerService.get_authorized_controller_task_node_queryset(
+                task_id,
+                authorized_nodes=authorized_nodes,
+                scope=scope,
+                request_user=scope,
+            )
 
         result = []
         for task_node in task_nodes:
