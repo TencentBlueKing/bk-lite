@@ -401,6 +401,12 @@ def _materialize_extra_vars(workspace: Path, extra_vars: dict[str, Any]) -> str 
     return str(extra_vars_file)
 
 
+def _write_restricted_text(path: Path, content: str) -> None:
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, stat.S_IRUSR | stat.S_IWUSR)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as file_obj:
+        file_obj.write(content)
+
+
 def _quote_inventory_value(value: Any) -> str:
     text = str(value)
     escaped = text.replace("\\", "\\\\").replace('"', '\\"')
@@ -743,7 +749,7 @@ def prepare_adhoc_execution(payload: AdhocRequest) -> tuple[list[str], Path]:
             parts.append(payload.inventory_content.rstrip("\n"))
         if payload.host_credentials:
             parts.append(_build_host_credentials_inventory(workspace, payload.host_credentials).rstrip("\n"))
-        inventory_file.write_text("\n".join([p for p in parts if p]) + "\n", encoding="utf-8")
+        _write_restricted_text(inventory_file, "\n".join([p for p in parts if p]) + "\n")
         inventory_value = str(inventory_file)
 
     extra_vars_file = _materialize_extra_vars(workspace, extra_vars)
@@ -864,7 +870,7 @@ async def prepare_playbook_execution(
         if payload.host_credentials:
             logger.info("[prepare_playbook] 构建 host_credentials inventory: %d 个主机", len(payload.host_credentials))
             parts.append(_build_host_credentials_inventory(workspace, payload.host_credentials).rstrip("\n"))
-        inventory_file.write_text("\n".join([p for p in parts if p]) + "\n", encoding="utf-8")
+        _write_restricted_text(inventory_file, "\n".join([p for p in parts if p]) + "\n")
         inventory_value = str(inventory_file)
         logger.info("[prepare_playbook] inventory 已写入: %s", inventory_file)
 

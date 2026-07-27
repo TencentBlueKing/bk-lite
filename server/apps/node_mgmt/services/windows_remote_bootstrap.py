@@ -2,6 +2,7 @@ import json
 import re
 import time
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
 import yaml
 
@@ -185,12 +186,43 @@ class WindowsRemoteBootstrapService:
                                 "no_log": True,
                             },
                             {
+                                "name": "Grant installer account access to protected session",
+                                "ansible.windows.win_acl": {
+                                    "path": "{{ bklite_session_file }}",
+                                    "user": "{{ bklite_session_user }}",
+                                    "rights": "FullControl",
+                                    "type": "allow",
+                                    "state": "present",
+                                },
+                                "no_log": True,
+                            },
+                            {
+                                "name": "Grant SYSTEM access to protected session",
+                                "ansible.windows.win_acl": {
+                                    "path": "{{ bklite_session_file }}",
+                                    "user": "SYSTEM",
+                                    "rights": "FullControl",
+                                    "type": "allow",
+                                    "state": "present",
+                                },
+                                "no_log": True,
+                            },
+                            {
+                                "name": "Remove inherited access from protected session",
+                                "ansible.windows.win_acl_inheritance": {
+                                    "path": "{{ bklite_session_file }}",
+                                    "state": "absent",
+                                },
+                                "no_log": True,
+                            },
+                            {
                                 "name": "Run BK-Lite controller bootstrap",
                                 "ansible.windows.win_command": {
                                     "argv": [
                                         "{{ bklite_bootstrap_path }}",
                                         "--url-file",
                                         "{{ bklite_session_file }}",
+                                        "--require-https",
                                         "--install-dir",
                                         r"C:\fusion-collectors",
                                         "--execution-id",
@@ -211,10 +243,22 @@ class WindowsRemoteBootstrapService:
                                 "name": "Remove protected installer session",
                                 "ansible.windows.win_file": {"path": "{{ bklite_session_file }}", "state": "absent"},
                                 "no_log": True,
+                                "register": "bklite_session_cleanup",
+                                "ignore_errors": True,
                             },
                             {
                                 "name": "Remove BK-Lite bootstrap",
                                 "ansible.windows.win_file": {"path": "{{ bklite_bootstrap_path }}", "state": "absent"},
+                                "register": "bklite_bootstrap_cleanup",
+                                "ignore_errors": True,
+                            },
+                            {
+                                "name": "Verify BK-Lite temporary files were removed",
+                                "ansible.builtin.fail": {"msg": "BK-Lite temporary file cleanup failed"},
+                                "when": (
+                                    "bklite_session_cleanup is failed or "
+                                    "bklite_bootstrap_cleanup is failed"
+                                ),
                             },
                         ],
                     }
@@ -234,10 +278,19 @@ class WindowsRemoteBootstrapService:
                         "name": "Remove protected installer session",
                         "ansible.windows.win_file": {"path": session_file, "state": "absent"},
                         "no_log": True,
+                        "register": "bklite_session_cleanup",
+                        "ignore_errors": True,
                     },
                     {
                         "name": "Remove BK-Lite bootstrap",
                         "ansible.windows.win_file": {"path": remote_path, "state": "absent"},
+                        "register": "bklite_bootstrap_cleanup",
+                        "ignore_errors": True,
+                    },
+                    {
+                        "name": "Verify BK-Lite temporary files were removed",
+                        "ansible.builtin.fail": {"msg": "BK-Lite temporary file cleanup failed"},
+                        "when": "bklite_session_cleanup is failed or bklite_bootstrap_cleanup is failed",
                     },
                 ],
             }
@@ -280,6 +333,9 @@ class WindowsRemoteBootstrapService:
     ) -> str:
         if target.scheme != "https" or target.port != 5986 or target.transport != "ntlm" or target.validate_certificate is not True:
             raise BaseAppException("Windows remote installation requires HTTPS, NTLM, port 5986, and server certificate validation")
+        parsed_session_url = urlparse(session_url)
+        if parsed_session_url.scheme.lower() != "https" or not parsed_session_url.hostname:
+            raise BaseAppException("Windows remote installation requires an HTTPS installer session URL")
         executor_id = self.resolver.resolve(cloud_region_id)
         executor = self.executor_factory(executor_id)
         credentials = self._host_credentials(target)
@@ -311,6 +367,7 @@ class WindowsRemoteBootstrapService:
                 extra_vars={
                     "bklite_session_url": session_url,
                     "bklite_session_file": session_file,
+                    "bklite_session_user": target.user,
                     "bklite_bootstrap_path": remote_path,
                     "bklite_execution_id": execution_id,
                     "bklite_progress_subject": progress_subject,
@@ -350,10 +407,9 @@ class WindowsRemoteBootstrapService:
                     timeout,
                 )
             except Exception:
-                if primary_error is None:
-                    raise
                 logger.exception(
-                    "Windows bootstrap cleanup failed after primary error: task_node_id=%s attempt=%s",
+                    "Windows bootstrap fallback cleanup failed: task_node_id=%s attempt=%s primary_failed=%s",
                     task_node_id,
                     attempt,
+                    primary_error is not None,
                 )

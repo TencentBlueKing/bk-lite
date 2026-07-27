@@ -15,6 +15,7 @@ Windows 远程安装采用“Ansible Executor 负责 WinRM 编排，原生 Go bo
 3. Ansible Executor 从 Server NATS Object Store 获取 Windows x86_64 bootstrap，并通过 WinRM 复制到目标主机临时目录。
 4. Executor 把安装会话 URL 写入临时文件，以 `argv` 调用 bootstrap 的 `--url-file` 参数，不把会话放入命令行。
 5. Go bootstrap 使用自身 HTTP/TLS 与 NATS 客户端获取配置和控制器包，在 staging 目录完成有界解压和校验后切换安装目录并注册服务。
+   同一安装目录使用操作系统文件锁串行化，Ansible 超时后的迟到进程与重试任务不会并发切换目录。
 6. 新服务启动失败时恢复原目录和原服务；成功切换保留 `cache`、`logs`、`generated` 运行数据。
 7. bootstrap 将与 stdout 相同的结构化事件实时发布到 `installer.progress.<execution_id>`；Server 消费实时事件，并对 Ansible 终态 stdout 回放按事件内容去重。
 8. Ansible `always` 与 Server 侧兜底清理共同删除临时会话文件和 bootstrap；最终成功仍以 Sidecar 回连为准。
@@ -25,7 +26,8 @@ Windows 远程安装采用“Ansible Executor 负责 WinRM 编排，原生 Go bo
 
 - 第一版只支持 Windows x86_64，与现有 Windows Controller 包能力一致。
 - 第一版固定使用 HTTPS/5986、NTLM，并校验服务端证书；HTTP、Basic、Kerberos、CredSSP 和关闭证书校验暂不开放。
-- 自签名证书必须通过目标系统信任链或受控 CA 配置解决，不提供跳过校验开关。
+- 自签名 WinRM 证书必须通过 Ansible Executor 的受控 CA 信任配置解决，不提供跳过校验开关。
+- Windows 远程安装会话和会话返回的 Server URL 必须为 HTTPS；bootstrap 拒绝 HTTP 和 HTTPS 降级重定向。
 - Windows 远程安装只接受密码凭据，不接受 SSH 私钥。
 - 密码继续使用现有 AES 字段暂存，并在单节点任务结束后清空。
 - 安装会话 URL 通过权限受限的 Ansible vars 文件传递，不进入 Executor 进程参数；相关任务启用 `no_log`，任务结束后删除远端会话文件。
@@ -70,7 +72,7 @@ Windows 远程安装采用“Ansible Executor 负责 WinRM 编排，原生 Go bo
 - 执行结束后目标临时目录不存在会话 URL 文件和本次 bootstrap 文件。
 - 新包校验失败不得停止旧服务；新服务启动失败必须恢复旧目录和旧服务。
 - 下载和解压超过资源边界时快速失败，不修改现有安装。
-- Linux 远程安装与 Windows 手动 GUI 安装行为保持不变。
+- Linux 远程安装入口、认证和执行链路与 Windows 手动 GUI 安装行为保持不变；共享安装引擎统一执行下载和解压资源边界。
 
 ## Out Of Scope
 

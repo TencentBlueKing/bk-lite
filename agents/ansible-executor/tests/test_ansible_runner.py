@@ -6,6 +6,7 @@ import pytest
 from core.config import ServiceConfig
 from service import ansible_runner
 from service.ansible_runner import (
+    AdhocRequest,
     PlaybookRequest,
     _build_host_credentials_inventory,
     _quote_inventory_value,
@@ -14,6 +15,7 @@ from service.ansible_runner import (
     _safe_workspace_path,
     parse_ansible_output_per_host,
     parse_playbook_recap,
+    prepare_adhoc_execution,
     prepare_playbook_execution,
     run_command,
 )
@@ -328,3 +330,31 @@ def test_host_credentials_inventory_password_with_hash_survives_shlex_parsing(tm
     assert "ansible_password=CW@roger1117!@#" in tokens
     # 行内 '#' 之后的连接参数不能被注释吃掉
     assert "ansible_connection=ssh" in tokens
+
+
+def test_prepare_adhoc_execution_restricts_credential_inventory_permissions(tmp_path, monkeypatch):
+    monkeypatch.setattr(ansible_runner, "BASE_TASK_DIR", tmp_path / "work")
+    _, workspace = prepare_adhoc_execution(
+        AdhocRequest(
+            host_credentials=[{"host": "10.0.0.8", "user": "Administrator", "password": "secret"}],
+            module="ping",
+            task_id="restricted-adhoc-inventory",
+        )
+    )
+
+    assert (workspace / "inventory.ini").stat().st_mode & 0o777 == 0o600
+
+
+@pytest.mark.asyncio
+async def test_prepare_playbook_execution_restricts_credential_inventory_permissions(tmp_path, monkeypatch):
+    monkeypatch.setattr(ansible_runner, "BASE_TASK_DIR", tmp_path / "work")
+    config = ServiceConfig(nats_servers=["nats://127.0.0.1:4222"], nats_instance_id="default")
+    request = PlaybookRequest(
+        playbook_content="- hosts: all\n  gather_facts: false\n  tasks: []\n",
+        host_credentials=[{"host": "10.0.0.8", "user": "Administrator", "password": "secret"}],
+        task_id="restricted-playbook-inventory",
+    )
+
+    _, workspace, _ = await prepare_playbook_execution(config, request)
+
+    assert (workspace / "inventory.ini").stat().st_mode & 0o777 == 0o600

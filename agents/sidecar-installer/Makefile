@@ -85,7 +85,7 @@ icons:
 	"$$PYTHON_BIN" gen_icon.py
 
 worker:
-	GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o $(WORKER) setup-worker.go
+	GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o $(WORKER) .
 	@ls -lh $(WORKER)
 
 windows-bootstrap: worker
@@ -93,17 +93,17 @@ windows-bootstrap: worker
 	@ls -lh $(WINDOWS_BOOTSTRAP)
 
 linux-worker:
-	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o $(LINUX_INSTALLER) setup-worker.go
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o $(LINUX_INSTALLER) .
 	@ls -lh $(LINUX_INSTALLER)
 
 linux-worker-amd64:
 	@mkdir -p $(DIST_DIR)/linux/x86_64
-	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o $(DIST_DIR)/linux/x86_64/$(LINUX_INSTALLER) setup-worker.go
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o $(DIST_DIR)/linux/x86_64/$(LINUX_INSTALLER) .
 	@ls -lh $(DIST_DIR)/linux/x86_64/$(LINUX_INSTALLER)
 
 linux-worker-arm64:
 	@mkdir -p $(DIST_DIR)/linux/arm64
-	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o $(DIST_DIR)/linux/arm64/$(LINUX_INSTALLER) setup-worker.go
+	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o $(DIST_DIR)/linux/arm64/$(LINUX_INSTALLER) .
 	@ls -lh $(DIST_DIR)/linux/arm64/$(LINUX_INSTALLER)
 
 release-artifacts: worker linux-worker-amd64 linux-worker-arm64 nsis windows-bootstrap

@@ -135,23 +135,43 @@ def _apply_installer_events_to_node(node_obj, output_text: str):
     return applied
 
 
-def _apply_installer_events_with_lock(node_obj, output_text: str, event_lock):
-    with event_lock:
-        return _apply_installer_events_to_node(node_obj, output_text)
+def _apply_installer_events_for_execution(node_id: int, output_text: str, execution_id: str, attempt: int):
+    with transaction.atomic():
+        locked_node = ControllerTaskNode.objects.select_for_update().get(id=node_id)
+        result = locked_node.result or {}
+        if (
+            result.get(InstallerConstants.INSTALLER_EXECUTION_ID_KEY) != execution_id
+            or _get_execution_attempt(locked_node) != attempt
+        ):
+            return False
+        return _apply_installer_events_to_node(locked_node, output_text)
 
 
-def _consume_installer_stream(node_obj, result_queue, stop_event, event_lock=None):
+def _close_installer_execution(node_id: int, execution_id: str, attempt: int) -> dict:
+    with transaction.atomic():
+        locked_node = ControllerTaskNode.objects.select_for_update().get(id=node_id)
+        result = locked_node.result or {}
+        if (
+            result.get(InstallerConstants.INSTALLER_EXECUTION_ID_KEY) == execution_id
+            and _get_execution_attempt(locked_node) == attempt
+        ):
+            result.pop(InstallerConstants.INSTALLER_EXECUTION_ID_KEY, None)
+            locked_node.result = result
+            locked_node.save(update_fields=["result"])
+        return locked_node.result or {}
+
+
+def _consume_installer_stream(node_obj, result_queue, stop_event, event_handler=None):
     while not stop_event.is_set() or not result_queue.empty():
         try:
             payload = result_queue.get(timeout=0.2)
         except queue.Empty:
             continue
         line = payload.get("line", "")
-        if event_lock is None:
+        if event_handler is None:
             _apply_installer_events_to_node(node_obj, line)
         else:
-            with event_lock:
-                _apply_installer_events_to_node(node_obj, line)
+            event_handler(line)
 
 
 def _add_steps(node_obj, step_items):
@@ -663,9 +683,26 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
                     consume_thread.join(timeout=2)
             else:
                 execution_id = uuid.uuid4().hex
+                execution_attempt = _get_execution_attempt(node_obj)
                 progress_subject = f"installer.progress.{execution_id}"
                 stop_event = threading.Event()
-                event_lock = threading.Lock()
+                result = node_obj.result or {}
+                result[InstallerConstants.INSTALLER_EXECUTION_ID_KEY] = execution_id
+                node_obj.result = result
+                node_obj.save(update_fields=["result"])
+
+                def event_handler(
+                    output,
+                    node_id=node_obj.id,
+                    current_execution_id=execution_id,
+                    current_attempt=execution_attempt,
+                ):
+                    return _apply_installer_events_for_execution(
+                        node_id,
+                        output,
+                        current_execution_id,
+                        current_attempt,
+                    )
                 result_queue, subscribe_runner = subscribe_lines_sync(
                     progress_subject,
                     timeout=InstallerConstants.COMMAND_EXECUTE_TIMEOUT,
@@ -674,7 +711,7 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
                 subscribe_thread = threading.Thread(target=subscribe_runner, daemon=True)
                 consume_thread = threading.Thread(
                     target=_consume_installer_stream,
-                    args=(node_obj, result_queue, stop_event, event_lock),
+                    args=(node_obj, result_queue, stop_event, event_handler),
                     daemon=True,
                 )
                 subscribe_thread.start()
@@ -683,7 +720,7 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
                     exec_result = WindowsRemoteBootstrapService().run(
                         cloud_region_id=task_obj.cloud_region_id,
                         task_node_id=node_obj.id,
-                        attempt=_get_execution_attempt(node_obj),
+                        attempt=execution_attempt,
                         cpu_architecture=resolved_arch,
                         session_url=install_command,
                         target=WindowsBootstrapTarget(
@@ -698,12 +735,13 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
                         timeout=InstallerConstants.COMMAND_EXECUTE_TIMEOUT,
                         execution_id=execution_id,
                         progress_subject=progress_subject,
-                        event_callback=lambda output: _apply_installer_events_with_lock(node_obj, output, event_lock),
+                        event_callback=event_handler,
                     )
                 finally:
                     stop_event.set()
                     subscribe_thread.join(timeout=2)
                     consume_thread.join(timeout=2)
+                    node_obj.result = _close_installer_execution(node_obj.id, execution_id, execution_attempt)
             installer_output = ""
             if isinstance(exec_result, dict):
                 installer_output = exec_result.get("result") or exec_result.get("output") or ""

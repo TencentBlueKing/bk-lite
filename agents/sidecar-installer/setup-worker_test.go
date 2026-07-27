@@ -36,6 +36,7 @@ func (publisher *recordingProgressPublisher) FlushTimeout(_ time.Duration) error
 type fakeWindowsServiceController struct {
 	serviceExisted bool
 	startErrors    []error
+	stopErrors     []error
 	startCalls     []string
 	stopCalls      int
 	removeCalls    int
@@ -71,6 +72,11 @@ func (fake *preservingWindowsServiceController) Remove() error {
 
 func (fake *fakeWindowsServiceController) Stop() (bool, error) {
 	fake.stopCalls++
+	if len(fake.stopErrors) > 0 {
+		err := fake.stopErrors[0]
+		fake.stopErrors = fake.stopErrors[1:]
+		return fake.serviceExisted, err
+	}
 	return fake.serviceExisted, nil
 }
 
@@ -199,8 +205,38 @@ func TestInstallWindowsPackageRestoresExistingInstallationWhenNewServiceFails(t 
 	if len(controller.startCalls) != 2 {
 		t.Fatalf("expected new and rollback service starts, got %#v", controller.startCalls)
 	}
-	if controller.stopCalls != 1 || controller.removeCalls != 0 {
+	if controller.stopCalls != 2 || controller.removeCalls != 0 {
 		t.Fatalf("existing service registration must be retained: stop=%d remove=%d", controller.stopCalls, controller.removeCalls)
+	}
+}
+
+func TestInstallWindowsPackageRestartsExistingServiceWhenStopFails(t *testing.T) {
+	installDir := filepath.Join(t.TempDir(), "fusion-collectors")
+	if err := os.MkdirAll(installDir, 0755); err != nil {
+		t.Fatalf("create install dir: %v", err)
+	}
+	oldBinary := filepath.Join(installDir, "collector-sidecar.exe")
+	if err := os.WriteFile(oldBinary, []byte("old-binary"), 0644); err != nil {
+		t.Fatalf("write old binary: %v", err)
+	}
+	zipPath := writeControllerZip(t, map[string]string{"collector-sidecar.exe": "new-binary"})
+	controller := &fakeWindowsServiceController{
+		serviceExisted: true,
+		stopErrors:     []error{fmt.Errorf("stop timed out")},
+	}
+	cfg := &Config{InstallDir: installDir, OS: "windows"}
+
+	err := installWindowsPackage(cfg, zipPath, controller)
+
+	if err == nil || !strings.Contains(err.Error(), "stop timed out") {
+		t.Fatalf("expected stop failure, got %v", err)
+	}
+	if len(controller.startCalls) != 1 || controller.startCalls[0] != installDir {
+		t.Fatalf("old service must be restarted after stop failure: %#v", controller.startCalls)
+	}
+	content, readErr := os.ReadFile(oldBinary)
+	if readErr != nil || string(content) != "old-binary" {
+		t.Fatalf("old installation changed after stop failure: %q, %v", content, readErr)
 	}
 }
 
@@ -386,6 +422,27 @@ func TestInstallWindowsPackageRejectsOversizedExpansionBeforeStoppingService(t *
 	}
 }
 
+func TestInstallWindowsPackageRejectsConcurrentInstallationBeforeStoppingService(t *testing.T) {
+	installDir := filepath.Join(t.TempDir(), "fusion-collectors")
+	releaseLock, err := acquireInstallLock(installDir)
+	if err != nil {
+		t.Fatalf("acquire first install lock: %v", err)
+	}
+	defer releaseLock()
+	zipPath := writeControllerZip(t, map[string]string{"collector-sidecar.exe": "new-binary"})
+	controller := &fakeWindowsServiceController{serviceExisted: true}
+	cfg := &Config{InstallDir: installDir, OS: "windows"}
+
+	err = installWindowsPackage(cfg, zipPath, controller)
+
+	if err == nil || !strings.Contains(err.Error(), "another installation is already running") {
+		t.Fatalf("expected concurrent installation rejection, got %v", err)
+	}
+	if controller.stopCalls != 0 {
+		t.Fatalf("concurrent attempt must fail before stopping service")
+	}
+}
+
 func TestPrepareInstallDirectoriesDoesNotModifyExistingWindowsInstallation(t *testing.T) {
 	installDir := filepath.Join(t.TempDir(), "fusion-collectors")
 	if err := os.MkdirAll(installDir, 0755); err != nil {
@@ -431,6 +488,17 @@ func TestResolveConfigURLRejectsMissingInputs(t *testing.T) {
 func TestResolveConfigURLRejectsAmbiguousInputs(t *testing.T) {
 	if _, err := resolveConfigURL("https://bk.example/session", "session-url"); err == nil {
 		t.Fatal("expected direct URL and URL file together to fail")
+	}
+}
+
+func TestValidateHTTPSURLRejectsHTTPAndRelativeURLs(t *testing.T) {
+	for _, candidate := range []string{"http://bk.example/session", "/session", ""} {
+		if err := validateHTTPSURL(candidate); err == nil {
+			t.Fatalf("expected insecure URL to fail: %q", candidate)
+		}
+	}
+	if err := validateHTTPSURL("https://bk.example/session"); err != nil {
+		t.Fatalf("expected HTTPS URL to pass: %v", err)
 	}
 }
 

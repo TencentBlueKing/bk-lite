@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -29,6 +30,8 @@ var (
 	controllerPackageMaxExpandedBytes int64 = 8 * 1024 * 1024 * 1024
 	controllerPackageMaxFiles               = 100000
 )
+
+const windowsServiceTransitionAttempts = 30
 
 type Config struct {
 	ServerURL           string        `json:"server_url"`
@@ -191,6 +194,7 @@ var (
 	configURLFile   = flag.String("url-file", "", "Read the configuration URL from a file")
 	installDir      = flag.String("install-dir", "", "Installation directory")
 	skipTLS         = flag.Bool("skip-tls", false, "Skip TLS certificate verification")
+	requireHTTPS    = flag.Bool("require-https", false, "Require HTTPS for configuration and server URLs")
 	fetchOnly       = flag.Bool("fetch-only", false, "Only fetch and display config")
 	progressSubject = flag.String("progress-subject", "", "NATS subject for live installation events")
 	executionID     = flag.String("execution-id", "", "Installation execution ID")
@@ -209,8 +213,18 @@ func main() {
 		fatal("%v", err)
 	}
 	*configURL = resolvedConfigURL
+	if *requireHTTPS {
+		if err := validateHTTPSURL(*configURL); err != nil {
+			fatal("Invalid configuration URL: %v", err)
+		}
+	}
 
 	client := newHTTPClient(*skipTLS)
+	if *requireHTTPS {
+		client.CheckRedirect = func(request *http.Request, _ []*http.Request) error {
+			return validateHTTPSURL(request.URL.String())
+		}
+	}
 
 	if *fetchOnly {
 		cfg, err := fetchConfig(client, *configURL)
@@ -247,6 +261,17 @@ func resolveConfigURL(directURL, urlFile string) (string, error) {
 	return resolved, nil
 }
 
+func validateHTTPSURL(rawURL string) error {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return err
+	}
+	if !strings.EqualFold(parsed.Scheme, "https") || parsed.Host == "" {
+		return fmt.Errorf("HTTPS URL is required")
+	}
+	return nil
+}
+
 func run(client *http.Client) {
 	log("Collector Sidecar Setup")
 	log("=======================")
@@ -256,6 +281,11 @@ func run(client *http.Client) {
 	cfg, err := fetchConfig(client, *configURL)
 	if err != nil {
 		fatalStep("fetch_session", "Fetch failed: %v", err)
+	}
+	if *requireHTTPS {
+		if err := validateHTTPSURL(cfg.ServerURL); err != nil {
+			fatalStep("fetch_session", "Invalid server URL: %v", err)
+		}
 	}
 	if *progressSubject != "" {
 		progressConnection, progressErr := connectNATS(&cfg.Storage)
@@ -1028,7 +1058,11 @@ collector_binaries_accesslist:
 		installDir, installDir,
 	)
 
-	return os.WriteFile(filepath.Join(outputDir, "sidecar.yml"), []byte(content), 0600)
+	configPath := filepath.Join(outputDir, "sidecar.yml")
+	if err := os.WriteFile(configPath, []byte(content), 0600); err != nil {
+		return err
+	}
+	return restrictSensitiveFile(configPath)
 }
 
 type windowsServiceController interface {
@@ -1048,14 +1082,14 @@ func (controller *scWindowsServiceController) Stop() (bool, error) {
 		return false, fmt.Errorf("sc query failed: %s", strings.TrimSpace(string(queryOutput)))
 	}
 	_ = exec.Command("sc.exe", "stop", "sidecar").Run()
-	for attempt := 0; attempt < 10; attempt++ {
+	for attempt := 0; attempt < windowsServiceTransitionAttempts; attempt++ {
 		output, _ := exec.Command("sc.exe", "query", "sidecar").CombinedOutput()
 		if strings.Contains(string(output), "STOPPED") {
 			return true, nil
 		}
 		time.Sleep(time.Second)
 	}
-	return true, fmt.Errorf("sidecar service did not stop within 10 seconds")
+	return true, fmt.Errorf("sidecar service did not stop within %d seconds", windowsServiceTransitionAttempts)
 }
 
 func (controller *scWindowsServiceController) Start(installDir string, serviceExisted bool) error {
@@ -1143,6 +1177,19 @@ func restorePreviousWindowsInstallation(
 	return nil
 }
 
+func cleanupActivatedWindowsBackup(backupDir string) {
+	if err := os.RemoveAll(backupDir); err == nil {
+		return
+	} else {
+		retainedDir := fmt.Sprintf("%s-retained-%d", backupDir, time.Now().UnixNano())
+		if renameErr := os.Rename(backupDir, retainedDir); renameErr != nil {
+			log("WARN: new service is running, but old installation backup cleanup failed: %v; rename failed: %v", err, renameErr)
+			return
+		}
+		log("WARN: new service is running; old installation backup was retained at %s after cleanup failed: %v", retainedDir, err)
+	}
+}
+
 func installWindowsPackage(cfg *Config, zipPath string, controller windowsServiceController) error {
 	installDir := filepath.Clean(cfg.InstallDir)
 	stagingDir := installDir + ".bklite-staging"
@@ -1150,6 +1197,11 @@ func installWindowsPackage(cfg *Config, zipPath string, controller windowsServic
 	if installDir == "." || installDir == string(os.PathSeparator) {
 		return fmt.Errorf("unsafe Windows installation directory: %s", installDir)
 	}
+	releaseInstallLock, err := acquireInstallLock(installDir)
+	if err != nil {
+		return fmt.Errorf("acquire Windows installation lock: %w", err)
+	}
+	defer releaseInstallLock()
 	if _, err := os.Stat(backupDir); err == nil {
 		return fmt.Errorf("previous Windows installation backup requires recovery: %s", backupDir)
 	} else if !os.IsNotExist(err) {
@@ -1174,6 +1226,11 @@ func installWindowsPackage(cfg *Config, zipPath string, controller windowsServic
 
 	serviceExisted, err := controller.Stop()
 	if err != nil {
+		if serviceExisted {
+			if restartErr := controller.Start(installDir, true); restartErr != nil {
+				return fmt.Errorf("stop existing sidecar service: %v; restore service after stop failure: %w", err, restartErr)
+			}
+		}
 		return fmt.Errorf("stop existing sidecar service: %w", err)
 	}
 	installExisted := false
@@ -1212,6 +1269,9 @@ func installWindowsPackage(cfg *Config, zipPath string, controller windowsServic
 
 	if err := controller.Start(installDir, serviceExisted); err != nil {
 		activationErr := err
+		if _, stopErr := controller.Stop(); stopErr != nil {
+			return fmt.Errorf("activate new service: %v; stop failed service before rollback: %w", activationErr, stopErr)
+		}
 		if !serviceExisted {
 			if removeServiceErr := controller.Remove(); removeServiceErr != nil {
 				return fmt.Errorf("activate new service: %v; remove failed service before rollback: %w", activationErr, removeServiceErr)
@@ -1224,9 +1284,7 @@ func installWindowsPackage(cfg *Config, zipPath string, controller windowsServic
 	}
 
 	if installExisted {
-		if err := os.RemoveAll(backupDir); err != nil {
-			return fmt.Errorf("remove installation backup: %w", err)
-		}
+		cleanupActivatedWindowsBackup(backupDir)
 	}
 	return nil
 }
@@ -1269,7 +1327,7 @@ func startWindowsService(installDir string) error {
 		return serviceStartError(string(out), exePath, cfgPath, logPath)
 	}
 
-	for i := 0; i < 10; i++ {
+	for i := 0; i < windowsServiceTransitionAttempts; i++ {
 		time.Sleep(time.Second)
 		out, _ := exec.Command("sc.exe", "query", "sidecar").Output()
 		if strings.Contains(string(out), "RUNNING") {

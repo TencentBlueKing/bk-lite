@@ -23,7 +23,7 @@
 3. Server 发布时执行 NodeMgmt 数据库迁移。
 4. 安装器专用 NATS 用户允许读取安装包对象，并允许发布 `installer.progress.>`；Server 用户保持对该 subject 的订阅权限。
 
-建议顺序：构建全部产物和镜像 → 上传 bootstrap → 执行数据库迁移 → 发布 Server/Web/Ansible Executor → 执行验收。
+建议顺序：构建全部产物和镜像 → 上传 bootstrap → 先滚动发布并验证各云区域 Ansible Executor → 执行数据库迁移 → 发布 Server/Web → 执行验收。新版 Executor 与 bootstrap 先上线可兼容旧 Server；反向顺序会在滚动窗口内触发模块或参数不匹配。
 
 bootstrap 初始化和 Ansible Executor 可用性都是运行期依赖，不应放进 Server 容器启动阶段等待或重试；初始化失败时应终止发布流水线并保留原始错误。
 
@@ -146,6 +146,7 @@ python manage.py migrate --no-input
 - 已配置 HTTPS WinRM listener，端口固定为 5986。
 - 使用 NTLM 认证。
 - WinRM 服务端证书可被 Ansible Executor 所在环境信任。
+- 云区域 `NODE_SERVER_URL` 必须使用受信任证书的 `https://` 地址；Windows 远程 bootstrap 会拒绝 HTTP、HTTPS 降级重定向以及会话返回的非 HTTPS Server URL。
 - 防火墙和网络策略允许云区域 Ansible Executor 访问目标主机 TCP/5986。
 - 使用具备安装 Windows 服务和写入 `C:\fusion-collectors` 权限的管理员账号。
 
@@ -208,3 +209,5 @@ bootstrap 只接受 `installer.progress.<32 位小写十六进制 execution_id>`
 4. 已上传但未被旧版本引用的 bootstrap 对象可以保留，不影响 Linux 安装或 Windows 手动安装。
 
 单台 Windows 主机安装失败时，bootstrap 会在新服务无法注册时恢复旧安装目录和旧服务；若发现 `.bklite-backup` 目录，表示自动恢复需要人工确认，继续重试前应先保留现场并核对服务状态。
+新服务已成功启动但旧备份清理失败时，安装仍按成功处理，并尝试将旧备份改名为 `.bklite-backup-retained-<时间戳>`；运维可在确认新服务稳定后清理该保留目录。
+安装目录旁的空文件 `C:\fusion-collectors.bklite-install.lock` 是跨进程安装锁载体，文件存在不表示任务仍在运行；是否占用由操作系统文件锁决定，不要在安装执行期间手工删除。

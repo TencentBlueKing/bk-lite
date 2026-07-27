@@ -99,19 +99,34 @@ def test_windows_remote_bootstrap_stages_and_runs_native_worker():
     assert commands[0]["name"] == "Verify supported Windows and PowerShell version"
     assert "PowerShell 5.1" in commands[0]["ansible.builtin.raw"]
     assert commands[1]["no_log"] is True
-    assert commands[2]["ansible.windows.win_command"]["argv"][1] == "--url-file"
-    assert commands[2]["ansible.windows.win_command"]["argv"][-4:] == [
+    assert commands[2]["ansible.windows.win_acl"]["rights"] == "FullControl"
+    assert commands[3]["ansible.windows.win_acl"]["user"] == "SYSTEM"
+    assert commands[4]["ansible.windows.win_acl_inheritance"]["state"] == "absent"
+    assert commands[5]["ansible.windows.win_command"]["argv"][1:4] == [
+        "--url-file",
+        "{{ bklite_session_file }}",
+        "--require-https",
+    ]
+    assert commands[5]["ansible.windows.win_command"]["argv"][-4:] == [
         "--execution-id",
         "{{ bklite_execution_id }}",
         "--progress-subject",
         "{{ bklite_progress_subject }}",
     ]
-    assert len(block["always"]) == 2
+    assert len(block["always"]) == 3
+    assert all(task.get("ignore_errors") is True for task in block["always"][:2])
+    assert block["always"][2]["ansible.builtin.fail"]["msg"] == "BK-Lite temporary file cleanup failed"
     assert execution["extra_vars"]["bklite_session_url"].endswith("/secret")
+    assert execution["extra_vars"]["bklite_session_user"] == "Administrator"
     assert execution["extra_vars"]["bklite_execution_id"] == "0123456789abcdef0123456789abcdef"
     cleanup_playbook = yaml.safe_load(cleanup["playbook_content"])
     cleanup_tasks = cleanup_playbook[0]["tasks"]
-    assert {task["ansible.windows.win_file"]["path"] for task in cleanup_tasks} == {
+    cleanup_paths = {
+        task["ansible.windows.win_file"]["path"]
+        for task in cleanup_tasks
+        if "ansible.windows.win_file" in task
+    }
+    assert cleanup_paths == {
         "C:/Windows/Temp/bklite-controller-bootstrap-31-2.exe",
         "C:/Windows/Temp/bklite-controller-session-31-2.url",
     }
@@ -139,6 +154,24 @@ def test_windows_remote_bootstrap_rejects_failed_ansible_task():
 
     assert len(executor.playbook_calls) == 2
     assert executor.playbook_calls[-1]["task_id"] == "controller-bootstrap-cleanup-31-1"
+
+
+def test_windows_remote_bootstrap_fallback_cleanup_cannot_mask_success():
+    executor = FakeExecutor("executor-node")
+    executor.query_results[-1] = {"status": "failed", "error": "temporary cleanup connection failure"}
+    service = WindowsRemoteBootstrapService(executor_factory=lambda _: executor, resolver=FakeResolver)
+
+    output = service.run(
+        cloud_region_id=7,
+        task_node_id=31,
+        attempt=1,
+        cpu_architecture="x86_64",
+        session_url="https://server.example/session",
+        target=WindowsBootstrapTarget("10.0.0.8", 5986, "Administrator", "credential"),
+        timeout=60,
+    )
+
+    assert output.startswith("BKINSTALL_EVENT ")
 
 
 def test_windows_remote_bootstrap_replays_terminal_failure_events_before_raising():
@@ -227,6 +260,25 @@ def test_windows_remote_bootstrap_rejects_unsafe_persisted_winrm_profile():
                 "credential",
                 scheme="http",
             ),
+            timeout=60,
+        )
+
+    assert executor.playbook_calls == []
+
+
+@pytest.mark.parametrize("session_url", ["http://server.example/session?token=secret", "https:relative-session"])
+def test_windows_remote_bootstrap_rejects_insecure_installer_session_url(session_url):
+    executor = FakeExecutor("executor-node")
+    service = WindowsRemoteBootstrapService(executor_factory=lambda _: executor, resolver=FakeResolver)
+
+    with pytest.raises(BaseAppException, match="HTTPS installer session URL"):
+        service.run(
+            cloud_region_id=7,
+            task_node_id=31,
+            attempt=1,
+            cpu_architecture="x86_64",
+            session_url=session_url,
+            target=WindowsBootstrapTarget("10.0.0.8", 5986, "Administrator", "credential"),
             timeout=60,
         )
 
@@ -360,6 +412,46 @@ def test_install_task_routes_windows_through_winrm_bootstrap(monkeypatch):
     )
     task_node.refresh_from_db()
     assert len(task_node.result["steps"]) == step_count
+
+
+@pytest.mark.django_db
+def test_installer_progress_rejects_stale_execution_events():
+    region = CloudRegion.objects.create(name="progress-fencing-region")
+    task = ControllerTask.objects.create(cloud_region=region, type="install", status="running")
+    task_node = ControllerTaskNode.objects.create(
+        task=task,
+        ip="10.0.0.8",
+        node_name="windows-node",
+        os=NodeConstants.WINDOWS_OS,
+        organizations=[1],
+        port=5986,
+        username="Administrator",
+        password="encrypted",
+        result={
+            "execution_attempt": 2,
+            "installer_execution_id": "current-execution",
+            "steps": [],
+        },
+    )
+    current_event = 'BKINSTALL_EVENT {"action":"download","status":"running","message":"current"}'
+    stale_event = 'BKINSTALL_EVENT {"action":"download","status":"running","message":"stale"}'
+
+    assert not installer_tasks._apply_installer_events_for_execution(
+        task_node.id, stale_event, "old-execution", 1
+    )
+    assert installer_tasks._apply_installer_events_for_execution(
+        task_node.id, current_event, "current-execution", 2
+    )
+    closed_result = installer_tasks._close_installer_execution(task_node.id, "current-execution", 2)
+    assert "installer_execution_id" not in closed_result
+    assert not installer_tasks._apply_installer_events_for_execution(
+        task_node.id, stale_event, "current-execution", 2
+    )
+
+    task_node.refresh_from_db()
+    messages = [step.get("message") for step in task_node.result.get("steps", [])]
+    assert "current" in messages
+    assert "stale" not in messages
 
 
 @pytest.mark.django_db
