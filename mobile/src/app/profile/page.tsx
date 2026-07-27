@@ -5,7 +5,8 @@ import { useAuth } from '@/context/auth';
 import { useTheme } from '@/context/theme';
 import { useTranslation } from '@/utils/i18n';
 import { List, Switch, Toast, Dialog } from 'antd-mobile';
-import { LeftOutline } from 'antd-mobile-icons';
+import MobileTabShell from '@/components/mobile-tab-shell';
+import MobilePageHeader from '@/components/mobile-page-header';
 
 export default function ProfilePage() {
   const { t } = useTranslation();
@@ -34,22 +35,15 @@ export default function ProfilePage() {
   };
 
   return (
+    <MobileTabShell activeTab="profile">
     <div className="flex flex-col h-full bg-[var(--color-background-body)]">
-      {/* 顶部导航栏 */}
-      <div className="flex items-center justify-center px-4 py-3 bg-[var(--color-bg)]">
-        <button onClick={() => router.back()} className="absolute left-4">
-          <LeftOutline fontSize={24} className="text-[var(--color-text-1)]" />
-        </button>
-        <h1 className="text-lg font-medium text-[var(--color-text-1)]">
-          {t('navigation.profile')}
-        </h1>
-      </div>
+      <MobilePageHeader title={t('navigation.profile')} />
 
       {/* 用户信息卡片 */}
       <div className="mx-4 mt-4 mb-6 p-5 bg-[var(--color-bg)] rounded-2xl shadow-sm">
         <div className="flex items-center">
           <div
-            className="flex items-center justify-center flex-shrink-0 rounded-full mr-3 text-2xl font-semibold text-white bg-[var(--color-primary)]"
+            className="flex items-center justify-center flex-shrink-0 rounded-full mr-3 text-2xl font-semibold text-[var(--color-text-on-primary)] bg-[var(--color-primary)]"
             style={{
               width: '50px',
               height: '50px',
@@ -67,7 +61,7 @@ export default function ProfilePage() {
           </div>
           {userInfo?.domain && (
             <div className="inline-flex items-center px-2 py-0.5 bg-blue-500 rounded">
-              <span className="text-white text-xs font-medium">
+              <span className="text-[var(--color-text-on-primary)] text-xs font-medium">
                 {userInfo.domain}
               </span>
             </div>
@@ -76,7 +70,7 @@ export default function ProfilePage() {
       </div>
 
       {/* 功能菜单 */}
-      <div className="flex-1">
+      <div className="flex-1 min-h-0 overflow-y-auto pb-4">
         <div className="mx-4 mb-4 bg-[var(--color-bg)] rounded-2xl shadow-sm overflow-hidden">
           <List>
             <List.Item
@@ -143,5 +137,6 @@ export default function ProfilePage() {
         </div>
       </div>
     </div>
+    </MobileTabShell>
   );
 }

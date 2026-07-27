@@ -7,3 +7,25 @@
         instance_type = "{{ instance_type }}"
         collect_type = "ipmi"
         config_type = "hardware_server"
+
+# Chassis Power 不依赖 SDR；命令失败时上报 unknown，避免影响其他 IPMI 指标。
+[[inputs.exec]]
+    commands = ["state=-1; output=$(ipmitool -I \"$IPMI_PROTOCOL\" -H \"$IPMI_HOST\" -U \"$IPMI_USER\" -E chassis power status 2>/dev/null); rc=$?; if [ \"$rc\" -eq 0 ]; then case \"$output\" in *\" is on\"*) state=1 ;; *\" is off\"*) state=0 ;; esac; fi; printf 'ipmi_chassis_power state=%si\\n' \"$state\""]
+    environment = ["IPMI_PASSWORD=${PASSWORD__{{ config_id }}}", "IPMI_HOST={{ ip }}", "IPMI_USER={{ username }}", "IPMI_PROTOCOL={{ protocol }}"]
+    timeout = "10s"
+    interval = "{{ interval }}s"
+    data_format = "influx"
+    [inputs.exec.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "ipmi"
+        config_type = "hardware_server"
+        component_id = "chassis"
+        raw_name = "chassis_power"
+        profile = "generic"
+
+[[processors.starlark]]
+    namepass = ["ipmi_sensor"]
+    source = '''
+# @bk_include_file ipmi_normalizer.star
+'''

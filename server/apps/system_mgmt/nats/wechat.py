@@ -21,7 +21,7 @@ def wechat_user_register(user_id, nick_name):
                 Q(name="normal", app__in=["opspilot", "ops-console"])
                 | Q(
                     name="guest",
-                    app__in=["opspilot", "cmdb", "monitor", "log", "alarm", "node", "mlops", "job"],
+                    app__in=["opspilot", "cmdb", "monitor", "log", "alarm", "node", "mlops", "job", "patch"],
                 )
             ).values_list("id", flat=True)
         )

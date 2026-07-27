@@ -2,7 +2,7 @@
 告警处理动作引擎 BDD — 中文 Gherkin。
 
 场景 1: 创建告警命中规则 → running 执行记录 → 回调翻转 success
-场景 2: 手动触发不受幂等限制 → 两条 manual 执行记录
+场景 2: 相同幂等键重复手动触发 → 单条 manual 执行记录
 """
 import json
 from pathlib import Path
@@ -191,10 +191,11 @@ def _given_rule_no_match(db):
     return {"alert": alert, "rule": rule}
 
 
-@when("对该告警手动触发该规则两次")
+@when("使用同一幂等键对该告警手动触发该规则两次")
 def _when_manual_trigger_twice(s2_ctx, superuser_client):
     alert = s2_ctx["alert"]
     rule = s2_ctx["rule"]
+    superuser_client.cookies["current_team"] = "1"
     with patch("apps.alerts.views.action.get_handler") as mock_get:
         mock_get.return_value.execute.return_value = None
         for _ in range(2):
@@ -202,18 +203,17 @@ def _when_manual_trigger_twice(s2_ctx, superuser_client):
                 "/api/v1/alerts/api/action_execution/manual_trigger/",
                 data={"alert_id": alert.alert_id, "rule_id": rule.id},
                 format="json",
+                HTTP_IDEMPOTENCY_KEY="bdd-manual-1",
             )
             assert resp.status_code in (200, 201), (
                 f"手动触发失败: status={resp.status_code}, body={resp.content}"
             )
 
 
-@then("应生成两条手动执行记录")
+@then("应只生成一条手动执行记录")
 def _then_two_manual_executions(s2_ctx):
     alert = s2_ctx["alert"]
     manual_execs = ActionExecution.objects.filter(alert=alert, trigger_type="manual")
     count = manual_execs.count()
-    assert count == 2, f"期望2条手动执行记录，实际有 {count} 条"
-    assert all(e.idempotency_key is None for e in manual_execs), (
-        "手动执行记录的 idempotency_key 应为 None（不受幂等限制）"
-    )
+    assert count == 1, f"期望1条手动执行记录，实际有 {count} 条"
+    assert manual_execs.get().idempotency_key

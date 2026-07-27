@@ -1016,7 +1016,7 @@ const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
       onSelectNodeRef.current(null);
       onSelectLinkRef.current(null);
     });
-    graph.on("node:move", ({ node }) => {
+    graph.on("node:moved", ({ node }) => {
       const pos = node.getPosition();
       onNodeMovedRef.current(node.id, { x: pos.x, y: pos.y });
     });

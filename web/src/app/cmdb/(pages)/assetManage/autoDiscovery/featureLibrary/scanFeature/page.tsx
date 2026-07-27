@@ -1,7 +1,7 @@
 'use client';
 
 import { useTranslation } from '@/utils/i18n';
-import Introduction from '@/app/cmdb/components/introduction';
+import Introduction from '@/components/introduction';
 
 export default function FeatureLibraryPage() {
   const { t } = useTranslation();

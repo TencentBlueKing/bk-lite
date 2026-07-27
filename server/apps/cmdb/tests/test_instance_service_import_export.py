@@ -1,6 +1,6 @@
 """CMDB InstanceManage 导入/导出/关联约束/下载模板覆盖测试。
 
-对照 spec/prd/CMDB·资产：实例导入/支持编辑导入、模板下载、实例导出、check_asso_mapping
+对照 specs/capabilities/legacy-prd-cmdb-资产.md：实例导入/支持编辑导入、模板下载、实例导出、check_asso_mapping
 四种 mapping 分支、_query_instance_map_by_ids 边界。
 """
 

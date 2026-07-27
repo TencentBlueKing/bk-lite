@@ -1,5 +1,5 @@
-from rest_framework import serializers
 from django.db import transaction
+from rest_framework import serializers
 
 from apps.monitor.models import MonitorPlugin
 from apps.monitor.services.custom_pull_plugin import CustomPullPluginService

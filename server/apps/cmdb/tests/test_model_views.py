@@ -1,6 +1,6 @@
 """CMDB 模型视图覆盖测试（patch ModelManage + 权限）。
 
-对照 spec/prd/CMDB·模型管理：模型增删改查、模型关联、自动关联规则、属性增删改查、
+对照 specs/capabilities/legacy-prd-cmdb-模型管理.md：模型增删改查、模型关联、自动关联规则、属性增删改查、
 唯一校验规则、模型复制、关联类型、导入导出配置等接口层逻辑与权限校验。
 """
 

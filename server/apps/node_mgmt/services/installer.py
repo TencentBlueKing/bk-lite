@@ -14,6 +14,7 @@ from apps.node_mgmt.services.install_token import InstallTokenService
 from apps.node_mgmt.services.installer_session import InstallerSessionService
 from apps.node_mgmt.services.package import PackageService
 from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
+from apps.node_mgmt.utils.permission import normalize_orgs
 from apps.node_mgmt.utils.s3 import download_file_by_s3
 from apps.node_mgmt.utils.task_result_schema import normalize_task_result_for_read
 
@@ -262,18 +263,30 @@ class InstallerService:
         return task_obj.id
 
     @staticmethod
-    def install_controller_nodes(task_id, authorized_nodes=None, request_user=None):
+    def get_authorized_controller_task_nodes(task_id, authorized_nodes=None, scope=None):
+        task_nodes = ControllerTaskNode.objects.filter(task_id=task_id).order_by("id")
+        if authorized_nodes is None:
+            return list(task_nodes)
+
+        authorized_ids = {str(node_id) for node_id in authorized_nodes.values_list("id", flat=True)}
+        linked_nodes = list(task_nodes.filter(node_id__in=authorized_ids))
+        if scope is None:
+            return linked_nodes
+
+        data_team_ids = set(scope.data_team_ids)
+        legacy_nodes = [
+            item for item in task_nodes.filter(Q(node_id="") | Q(node_id__isnull=True)) if normalize_orgs(item.organizations) & data_team_ids
+        ]
+        return sorted([*linked_nodes, *legacy_nodes], key=lambda item: item.id)
+
+    @staticmethod
+    def install_controller_nodes(task_id, authorized_nodes=None, scope=None):
         """获取控制器安装节点信息"""
-        task_nodes = ControllerTaskNode.objects.filter(task_id=task_id).select_related("task").order_by("id")
-        if authorized_nodes is not None and not getattr(request_user, "is_superuser", False):
-            authorized_node_ids = list(authorized_nodes.values_list("id", flat=True))
-            username = getattr(request_user, "username", "") if request_user is not None else ""
-            legacy_owner_filter = Q(pk__in=[])
-            if username:
-                legacy_owner_filter = Q(node_id="") & Q(task__created_by=username)
-            task_nodes = task_nodes.filter(
-                (~Q(node_id="") & Q(node_id__in=authorized_node_ids)) | legacy_owner_filter
-            )
+        task_nodes = InstallerService.get_authorized_controller_task_nodes(
+            task_id,
+            authorized_nodes=authorized_nodes,
+            scope=scope,
+        )
 
         result = []
         for task_node in task_nodes:

@@ -5,6 +5,7 @@ from django.db import transaction
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import monitor_logger as logger
+from apps.core.utils.current_team_scope import _normalize_organization_ids
 from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.constants.monitor_object import MonitorObjConstants
 from apps.monitor.models.monitor_metrics import Metric
@@ -88,9 +89,20 @@ class MonitorObjectService:
         return instance_map
 
     @staticmethod
-    def add_attr(items: list):
+    def _filter_visible_organizations(queryset, visible_organization_ids):
+        if visible_organization_ids is None:
+            return queryset
+        try:
+            visible_organization_ids = _normalize_organization_ids(visible_organization_ids)
+        except BaseAppException:
+            return queryset.none()
+        return queryset.filter(organization__in=visible_organization_ids)
+
+    @staticmethod
+    def add_attr(items: list, visible_organization_ids=None):
         # 状态计算, 补充组织
         org_objs = MonitorInstanceOrganization.objects.filter(monitor_instance_id__in=[i["instance_id"] for i in items])
+        org_objs = MonitorObjectService._filter_visible_organizations(org_objs, visible_organization_ids)
         org_map = {}
         for org in org_objs:
             if org.monitor_instance_id not in org_map:
@@ -98,7 +110,9 @@ class MonitorObjectService:
             org_map[org.monitor_instance_id].add(org.organization)
 
         for conf_info in items:
-            conf_info["organization"] = list(org_map.get(conf_info["instance_id"], []))
+            organizations = list(org_map.get(conf_info["instance_id"], []))
+            conf_info["organizations"] = organizations
+            conf_info["organization"] = organizations
 
             if conf_info["time"]:
                 conf_info["status"] = "normal"
@@ -114,6 +128,7 @@ class MonitorObjectService:
         qs,
         add_metrics=False,
         monitor_plugin_id=None,
+        visible_organization_ids=None,
     ):
         """获取监控对象实例"""
         qs = qs.filter(monitor_object_id=monitor_object_id, is_deleted=False)
@@ -164,6 +179,7 @@ class MonitorObjectService:
         else:
             objs = projected_qs[start:end]
         org_objs = MonitorInstanceOrganization.objects.filter(monitor_instance_id__in=[obj.id for obj in objs])
+        org_objs = MonitorObjectService._filter_visible_organizations(org_objs, visible_organization_ids)
         org_map = {}
         for org in org_objs:
             if org.monitor_instance_id not in org_map:
@@ -178,7 +194,7 @@ class MonitorObjectService:
         if add_metrics and page_size != -1:
             MonitorObjectService._fill_display_metrics(monitor_object_id, obj_metric_map, result)
 
-        MonitorObjectService.add_attr(result)
+        MonitorObjectService.add_attr(result, visible_organization_ids)
 
         return dict(count=count, results=result)
 

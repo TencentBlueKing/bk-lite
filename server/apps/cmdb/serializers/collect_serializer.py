@@ -31,7 +31,7 @@ class CollectModelSerializer(AuthSerializer):
 
     class Meta:
         model = CollectModels
-        fields = "__all__"
+        exclude = ("execution_claim_token",)
         extra_kwargs = {
             # "name": {"required": True},
             # "task_type": {"required": True},

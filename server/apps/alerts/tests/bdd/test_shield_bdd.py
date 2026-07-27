@@ -1,6 +1,6 @@
 """告警事件屏蔽 BDD（中文 Gherkin）。
 
-对照 spec/prd/告警中心·屏蔽：
+对照 specs/capabilities/legacy-prd-告警中心-配置.md：
 - match_type all / filter 双路径；
 - 过期一次性时间窗的失效；
 - 空事件列表 / 无活跃屏蔽的拒绝路径；

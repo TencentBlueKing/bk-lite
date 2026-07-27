@@ -16,12 +16,15 @@ import type {
   ScreenWidgetChartType,
   ScreenWidgetItem,
 } from "@/app/ops-analysis/types/screen";
+import type { DateRangeValue } from "@/app/ops-analysis/types/dateRange";
 import { buildRelativeTimeRangeFilterValue } from "@/app/ops-analysis/utils/filterValue";
 import {
+  type BindableParamType,
   buildDefaultFilterBindings,
   getBindableFilterParams,
   getFilterDefinitionId,
 } from "@/app/ops-analysis/utils/widgetDataTransform";
+import { validateDateRangeValue } from "@/app/ops-analysis/utils/dateRange";
 import { getScreenWidgetDefinition } from "../constants/widgets";
 
 const DEFAULT_INSERT_X = 48;
@@ -96,7 +99,7 @@ export const buildFiltersFromScreenItems = ({
 }): UnifiedFilterDefinition[] => {
   const discoveredParams = new Map<
     string,
-    ParamItem & { type: "string" | "timeRange" }
+    ParamItem & { type: BindableParamType }
   >();
 
   viewSets.items.forEach((item) => {
@@ -136,6 +139,13 @@ export const buildFiltersFromScreenItems = ({
           param.type === "timeRange" && typeof param.value === "number"
             ? buildRelativeTimeRangeFilterValue(param.value)
             : (param.value as UnifiedFilterDefinition["defaultValue"]);
+      }
+
+      if (param.type === "dateRange") {
+        defaultValue = validateDateRangeValue(defaultValue).valid
+          && defaultValue !== null
+          ? { ...(defaultValue as DateRangeValue) }
+          : null;
       }
 
       return {

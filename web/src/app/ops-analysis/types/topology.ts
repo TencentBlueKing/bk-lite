@@ -325,6 +325,7 @@ export interface ViewConfigFormValues {
   chartThemeMode?: OpsChartThemeMode;
   dataSource?: number | string;
   compare?: boolean;
+  compareMode?: 'percent' | 'value';
   dataSourceParams?: ParamItem[];
   filterBindings?: FilterBindings;
   selectedFields?: string[];
@@ -351,6 +352,7 @@ export interface NodeConfigFormValues {
   logoIcon?: string;
   logoUrl?: string;
   compare?: boolean;
+  compareMode?: 'percent' | 'value';
   selectedFields?: string[];
   chartType?: string;
   dataSource?: number | string;

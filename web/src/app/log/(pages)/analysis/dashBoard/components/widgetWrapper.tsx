@@ -3,6 +3,10 @@ import { Spin } from 'antd';
 import { BaseWidgetProps } from '@/app/log/types/analysis';
 import useSearchApi from '@/app/log/api/search';
 import useApiClient from '@/utils/request';
+import {
+  calculateLogTimeInterval,
+  getDashboardQueryLimit
+} from '../timeRangeUtils';
 import ComPie from '../widgets/comPie';
 import ComLine from '../widgets/comLine';
 import ComBar from '../widgets/comBar';
@@ -183,23 +187,6 @@ const buildContainerFilterQuery = (
       : `(${baseFilter}) AND ${containerFilter}`;
 
   return pipeline ? `${mergedFilter} ${pipeline}` : mergedFilter;
-};
-
-// 根据时间跨度计算时间间隔
-const calculateTimeInterval = (startTime: string, endTime: string): string => {
-  const start = new Date(startTime);
-  const end = new Date(endTime);
-  const diffInHours =
-    Math.abs(end.getTime() - start.getTime()) / (1000 * 60 * 60);
-
-  if (diffInHours <= 24) {
-    return '1m';
-  } else if (diffInHours <= 720) {
-    // 720小时 = 30天
-    return '1h';
-  } else {
-    return '1d';
-  }
 };
 
 const componentMap: Record<string, React.ComponentType<any>> = {
@@ -602,8 +589,9 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     const endTime = times[1] ? new Date(times[1]).toISOString() : '';
 
     let query = queryText || '*';
+    let timeInterval = '';
     if (query.includes('${_time}') && startTime && endTime) {
-      const timeInterval = calculateTimeInterval(startTime, endTime);
+      timeInterval = calculateLogTimeInterval(times[0], times[1]);
       query = query.replace(/\$\{_time\}/g, timeInterval);
     }
     query = buildInstanceFilterQuery(query, otherConfig.instanceIds);
@@ -616,9 +604,10 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       fields_limit: 5,
       log_groups: logGroups,
       query: query,
-      limit: 100
+      limit: getDashboardQueryLimit(queryText)
     };
-    params.step = Math.round((times[1] - times[0]) / 100) + 'ms';
+    params.step =
+      timeInterval || Math.round((times[1] - times[0]) / 100) + 'ms';
     return params;
   };
 

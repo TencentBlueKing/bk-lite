@@ -1,6 +1,6 @@
 """CMDB ModelManage 图驱动方法覆盖测试（fake_graph）。
 
-对照 spec/prd/CMDB·模型管理：模型创建、模型关联增删查、自动关联规则查询、
+对照 specs/capabilities/legacy-prd-cmdb-模型管理.md：模型创建、模型关联增删查、自动关联规则查询、
 模型排序、模型是否存在关联/实例校验、显示字段处理。
 """
 

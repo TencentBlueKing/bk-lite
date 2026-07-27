@@ -1,6 +1,6 @@
 """CMDB Export 工具纯逻辑覆盖测试（无 DB；Export 不传 association 时不调图库）。
 
-对照 spec/prd/CMDB·实例导出：Tag 序列化、用户显示名格式化、Excel 模板表头/枚举校验/导出
+对照 specs/capabilities/legacy-prd-cmdb-资产.md：Tag 序列化、用户显示名格式化、Excel 模板表头/枚举校验/导出
 inst_list 与模板生成。
 """
 

@@ -21,11 +21,13 @@ import UserSyncBasicModal from '@/app/system-manager/components/user/user-sync/U
 import UserSyncConfigModal from '@/app/system-manager/components/user/user-sync/UserSyncConfigModal';
 import UserSyncStrategyModal from '@/app/system-manager/components/user/user-sync/UserSyncStrategyModal';
 import UserSyncRecordsDrawer from '@/app/system-manager/components/user/user-sync/UserSyncRecordsDrawer';
+import UserSyncRunProgressDrawer from '@/app/system-manager/components/user/user-sync/UserSyncRunProgressDrawer';
 import { useIntegrationCenterApi } from '@/app/system-manager/api/integration-center';
 import type { ProviderManifest } from '@/app/system-manager/types/integration-center';
 import { useUserSyncApi } from '@/app/system-manager/api/user-sync';
 import type {
   AvailableInstance,
+  UserSyncRun,
   UserSyncSource,
   UserSyncSourceBasicFormValues,
   UserSyncSourceConfigFormValues,
@@ -71,6 +73,7 @@ const UserSyncPage: React.FC = () => {
     getAvailableInstances,
     syncNow,
     getPagedRecords,
+    getRunById,
     previewSyncSource,
   } = useUserSyncApi();
   const { getProviders } = useIntegrationCenterApi();
@@ -105,6 +108,11 @@ const UserSyncPage: React.FC = () => {
     pageSize: 10,
   });
   const [recordsSearch, setRecordsSearch] = useState('');
+
+  // 同步进度 Drawer 状态(用户从 records 表格点击行进入)
+  const [progressOpen, setProgressOpen] = useState(false);
+  const [progressRun, setProgressRun] = useState<UserSyncRun | null>(null);
+  const [progressLoading, setProgressLoading] = useState(false);
 
   const fetchSources = async () => {
     setLoading(true);
@@ -435,6 +443,38 @@ const UserSyncPage: React.FC = () => {
     fetchRecords(1, recordsPagination.pageSize, nextSearch);
   }, [fetchRecords, recordsPagination.pageSize]);
 
+  // 从 records 表格进入同步进度 Drawer:用 getRunById 拉取最新详情
+  const openRunProgress = useCallback(async (record: RecordRow) => {
+    setProgressRun(record as unknown as UserSyncRun);
+    setProgressOpen(true);
+    setProgressLoading(true);
+    try {
+      const fresh = await getRunById(record.id);
+      setProgressRun(fresh);
+    } catch (err) {
+      if (!isSilentRequestError(err)) {
+        message.error(t('system.user.userSyncPage.progressDrawer.fetchError', '加载同步进度失败'));
+      }
+    } finally {
+      setProgressLoading(false);
+    }
+  }, [getRunById, t]);
+
+  const refreshRunProgress = useCallback(async () => {
+    if (!progressRun) return;
+    setProgressLoading(true);
+    try {
+      const fresh = await getRunById(progressRun.id);
+      setProgressRun(fresh);
+    } catch (err) {
+      if (!isSilentRequestError(err)) {
+        message.error(t('system.user.userSyncPage.progressDrawer.fetchError', '加载同步进度失败'));
+      }
+    } finally {
+      setProgressLoading(false);
+    }
+  }, [getRunById, progressRun, t]);
+
   const operateSection = useMemo(() => (
     <div className="ml-2 flex flex-wrap items-center gap-2">
       <Button onClick={openRecords} disabled={sources.length === 0}>
@@ -534,7 +574,17 @@ const UserSyncPage: React.FC = () => {
         onPageChange={handleRecordsPageChange}
         onRefresh={() => fetchRecords(recordsPagination.current, recordsPagination.pageSize, recordsSearch)}
         onSearch={handleRecordsSearch}
+        onViewProgress={openRunProgress}
         onClose={() => setRecordsOpen(false)}
+      />
+
+      <UserSyncRunProgressDrawer
+        open={progressOpen}
+        run={progressRun}
+        loading={progressLoading}
+        t={t}
+        onRefresh={refreshRunProgress}
+        onClose={() => setProgressOpen(false)}
       />
     </>
   );

@@ -1,6 +1,6 @@
 """告警中心 NATS RPC 统计处理器与辅助函数覆盖测试。
 
-对照 spec/prd/告警中心：运营统计（趋势/分布/TOP）按组织与权限范围聚合。
+对照 specs/capabilities/legacy-prd-告警中心-告警.md：运营统计（趋势/分布/TOP）按组织与权限范围聚合。
 """
 
 import datetime
@@ -194,6 +194,49 @@ def test_authorized_queryset_uses_alert_permission_rules(monkeypatch):
     assert set(qs.values_list("id", flat=True)) == {team_alert.id, instance_alert.id}
     assert hidden_alert.id not in set(qs.values_list("id", flat=True))
     assert calls == [("alice", "tenant.example", 1, "alerts", "alert", True)]
+
+
+@pytest.mark.django_db
+def test_authorized_queryset_instance_only_does_not_grant_current_team(monkeypatch):
+    current_team_alert = Alert.objects.create(
+        alert_id="A-current-team",
+        level="0",
+        title="current team alert",
+        content="c",
+        fingerprint="fp-current",
+        team=[1],
+    )
+    instance_alert = Alert.objects.create(
+        alert_id="A-instance",
+        level="0",
+        title="instance grant",
+        content="c",
+        fingerprint="fp-instance",
+        team=[2],
+    )
+
+    monkeypatch.setattr(
+        N,
+        "get_permission_rules",
+        lambda *args, **kwargs: {
+            "team": [],
+            "instance": [{"id": instance_alert.id, "permission": ["View"]}],
+        },
+    )
+
+    queryset, error = N._get_authorized_alert_queryset(
+        {
+            "team": 1,
+            "user": "alice",
+            "domain": "tenant.example",
+            "is_superuser": False,
+            "permission": {"alarm": ["Alarms-View"]},
+        }
+    )
+
+    assert error is None
+    assert set(queryset.values_list("id", flat=True)) == {instance_alert.id}
+    assert current_team_alert.id not in queryset.values_list("id", flat=True)
 
 
 @pytest.mark.django_db
@@ -515,6 +558,34 @@ def test_get_alert_source_event_top(user_info):
 
 
 @pytest.mark.django_db
+def test_get_alert_source_distribution_returns_full_distribution_and_unknown():
+    for index in range(12):
+        alert = Alert.objects.create(
+            alert_id=f"DIST-{index}",
+            level="0",
+            title="t",
+            content="c",
+            fingerprint=f"dist-{index}",
+            source_name="zabbix" if index < 3 else (None if index == 11 else f"source-{index}"),
+            team=[1],
+        )
+    result = N.get_alert_source_distribution(user_info={"team": 1, "is_superuser": True})
+
+    assert result["result"] is True
+    assert result["data"] == [
+        {"name": "zabbix", "value": 3},
+        *[{"name": f"source-{index}", "value": 1} for index in range(3, 11)],
+        {"name": "未知来源", "value": 1},
+    ]
+
+
+@pytest.mark.django_db
+def test_get_alert_source_distribution_requires_alert_permission():
+    result = N.get_alert_source_distribution(user_info={"team": 1, "permission": {}})
+    assert result["result"] is False
+
+
+@pytest.mark.django_db
 def test_get_alert_source_statistics(user_info):
     from apps.alerts.models.alert_source import AlertSource
     from apps.alerts.models.models import Event
@@ -745,6 +816,86 @@ def test_receive_alert_events_success():
     assert Event.objects.filter(title="事件A").exists()
 
 
+@pytest.mark.parametrize("pusher", ["lite-monitor", "lite-log"])
+@pytest.mark.django_db
+def test_receive_alert_events_allows_whitelisted_internal_organizations_without_source_registration(pusher):
+    """内部白名单来源直推不依赖 NATS 告警源预先登记组织。"""
+    from apps.alerts.constants.constants import LevelType
+    from apps.alerts.models.alert_source import AlertSource
+    from apps.alerts.models.models import Event
+
+    for lid in (0, 1, 2, 3):
+        Level.objects.create(
+            level_id=lid,
+            level_name=f"L{lid}",
+            level_display_name=f"等级{lid}",
+            level_type=LevelType.EVENT,
+        )
+    AlertSource.objects.create(
+        name="监控中心 NATS 源",
+        source_id="nats",
+        source_type="nats",
+        secret="x",
+        team_secrets={},
+        is_active=True,
+        is_effective=True,
+        config={"event_fields_mapping": {"title": "title", "level": "level", "item": "item", "start_time": "start_time"}},
+    )
+    events = [
+        {
+            "title": "CPU 超阈值",
+            "level": "0",
+            "item": "cpu",
+            "start_time": "1700000000",
+            "organizations": [3],
+        }
+    ]
+
+    result = N.receive_alert_events(
+        source_id="nats",
+        events=events,
+        pusher=pusher,
+    )
+
+    assert result["result"] is True
+    assert Event.objects.get(title="CPU 超阈值").team == [3]
+
+
+@pytest.mark.django_db
+def test_receive_alert_events_reports_partial_ingestion(monkeypatch):
+    from apps.alerts.models.alert_source import AlertSource
+
+    AlertSource.objects.create(
+        name="nats部分接入",
+        source_id="nats-partial",
+        source_type="nats",
+        secret="x",
+        is_active=True,
+        is_effective=True,
+    )
+
+    class FakeAdapter:
+        def __init__(self, **kwargs):
+            pass
+
+        def main(self):
+            return {"received": 2, "accepted": 1, "skipped": 1, "errored": 0}
+
+    monkeypatch.setattr(
+        N.AlertSourceAdapterFactory,
+        "get_adapter",
+        staticmethod(lambda source: FakeAdapter),
+    )
+
+    result = N.receive_alert_events(
+        source_id="nats-partial", events=[{"title": "ok"}, {}], pusher="lite-monitor"
+    )
+
+    assert result["result"] is False
+    assert result["data"]["processed_events"] == 1
+    assert result["data"]["ingestion"]["skipped"] == 1
+
+
 @pytest.mark.django_db
 def test_receive_alert_events_marks_lite_log_as_trusted_internal(mocker):
     from apps.alerts.models.alert_source import AlertSource
@@ -760,6 +911,7 @@ def test_receive_alert_events_marks_lite_log_as_trusted_internal(mocker):
         config={},
     )
     adapter = mocker.Mock()
+    adapter.main.return_value = {"received": 1, "accepted": 1, "skipped": 0, "errored": 0}
     adapter_class = mocker.Mock(return_value=adapter)
     mocker.patch.object(N.AlertSourceAdapterFactory, "get_adapter", return_value=adapter_class)
 

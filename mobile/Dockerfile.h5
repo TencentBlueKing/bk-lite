@@ -1,0 +1,39 @@
+FROM node:24-alpine AS builder
+
+ARG NEXUS_NODEJS_REPOSITY
+
+WORKDIR /app
+
+ENV NODE_OPTIONS="--max-old-space-size=8192"
+ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1
+
+RUN if [ -n "$NEXUS_NODEJS_REPOSITY" ]; then \
+      npm config set registry "$NEXUS_NODEJS_REPOSITY"; \
+    fi
+
+RUN npm install -g pnpm@9.15.4
+
+RUN if [ -n "$NEXUS_NODEJS_REPOSITY" ]; then \
+      pnpm config set registry "$NEXUS_NODEJS_REPOSITY"; \
+    fi
+
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile --ignore-scripts
+
+COPY . .
+RUN pnpm run test:h5-deploy
+RUN pnpm run lint
+RUN pnpm run type-check
+RUN pnpm run build:h5
+
+FROM nginx:1.30.4-alpine AS runtime
+
+COPY nginx.h5.conf /etc/nginx/nginx.conf
+COPY --from=builder /app/out /usr/share/nginx/html/mobile/h5
+
+EXPOSE 80
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+  CMD wget -qO- http://127.0.0.1/healthz || exit 1
+
+CMD ["nginx", "-g", "daemon off;"]

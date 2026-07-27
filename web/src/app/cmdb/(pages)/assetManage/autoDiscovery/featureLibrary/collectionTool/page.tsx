@@ -6,7 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useCollectApi } from '@/app/cmdb/api';
 import { useTranslation } from '@/utils/i18n';
 import { useCollectToolApi } from '@/app/cmdb/api/collectTool';
-import Introduction from '@/app/cmdb/components/introduction';
+import Introduction from '@/components/introduction';
 import type { CollectToolPrefillResponse, Protocol } from '@/app/cmdb/types/collectTool';
 import SnmpTool from './components/snmpDebugTool';
 import IpmiTool from './components/ipmiDebugTool';

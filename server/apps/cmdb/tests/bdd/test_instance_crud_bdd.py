@@ -1,6 +1,6 @@
 """CMDB 实例增删改 BDD（中文 Gherkin）。
 
-对照 spec/prd/CMDB·资产·实例生命周期：
+对照 specs/capabilities/legacy-prd-cmdb-资产.md·实例生命周期：
 - 创建：模型属性校验 + DisplayField + 唯一性 + 越权拦截 + 落库 + 变更记录 + 自动关联补齐
 - 更新：单条 / 批量
 - 删除：批量删除 + 反向自动关联同步

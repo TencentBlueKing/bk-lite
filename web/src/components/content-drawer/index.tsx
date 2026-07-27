@@ -3,18 +3,26 @@ import { Drawer } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 
 interface ContentDrawerProps {
-  visible: boolean;
+  visible?: boolean;
+  open?: boolean;
   onClose: () => void;
-  content?: string;
-  title?: string;
+  content?: React.ReactNode;
+  title?: React.ReactNode;
   width?: number;
+  extra?: React.ReactNode;
+  styles?: { header?: React.CSSProperties; body?: React.CSSProperties };
+  footer?: React.ReactNode;
+  maskClosable?: boolean;
+  destroyOnClose?: boolean;
+  loading?: boolean;
   children?: React.ReactNode;
 }
 
-const ContentDrawer: React.FC<ContentDrawerProps> = ({ visible, onClose, content, title, width, children }) => {
+const ContentDrawer: React.FC<ContentDrawerProps> = ({ visible, open, onClose, content, title, width, extra, styles, footer, maskClosable, destroyOnClose, children }) => {
   const { t } = useTranslation();
 
-  const formatContent = (text: string) => {
+  const formatContent = (text: React.ReactNode) => {
+    if (typeof text !== 'string') return text;
     return text.split('\n').map((line, index) => (
       <React.Fragment key={index}>
         {line}
@@ -28,8 +36,13 @@ const ContentDrawer: React.FC<ContentDrawerProps> = ({ visible, onClose, content
       title={title || t('common.viewDetails')}
       placement="right"
       onClose={onClose}
-      open={visible}
+      open={open ?? visible ?? false}
       width={width || 600}
+      extra={extra}
+      styles={styles}
+      footer={footer}
+      maskClosable={maskClosable}
+      destroyOnClose={destroyOnClose}
     >
       {children ? children : (
         <div className="whitespace-pre-wrap leading-6">

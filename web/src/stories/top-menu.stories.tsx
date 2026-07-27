@@ -1,5 +1,5 @@
-import type { Meta, StoryObj } from '@storybook/react';
-import TopMenu from '@/components/top-menu';
+import type { Meta, StoryObj } from '@storybook/nextjs';
+import TopMenu from '@/app/(core)/components/top-menu';
 
 const meta: Meta<typeof TopMenu> = {
   component: TopMenu,

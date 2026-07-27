@@ -1,7 +1,9 @@
 import json
+
 from django.core.exceptions import MultipleObjectsReturned
 from django.utils import timezone
 from django_celery_beat.models import CrontabSchedule, IntervalSchedule, PeriodicTask
+
 from apps.core.logger import opspilot_logger as logger
 
 
@@ -65,7 +67,9 @@ class CeleryUtils:
             schedule_type = "crontab"
         elif interval:
             schedule_data = dict(every=interval, period="seconds")
-            schedule, created = IntervalSchedule.objects.get_or_create(**schedule_data, defaults=schedule_data)
+            schedule = IntervalSchedule.objects.filter(**schedule_data).order_by("id").first()
+            if schedule is None:
+                schedule = IntervalSchedule.objects.create(**schedule_data)
             schedule_type = "interval"
         else:
             raise ValueError("Either crontab or interval must be provided")
@@ -80,9 +84,13 @@ class CeleryUtils:
         if schedule_type == "crontab":
             defaults["crontab"] = schedule
             defaults["interval"] = None
+            defaults["solar"] = None
+            defaults["clocked"] = None
         else:
             defaults["interval"] = schedule
             defaults["crontab"] = None
+            defaults["solar"] = None
+            defaults["clocked"] = None
 
         task_obj, task_created = PeriodicTask.objects.update_or_create(name=name, defaults=defaults)
 

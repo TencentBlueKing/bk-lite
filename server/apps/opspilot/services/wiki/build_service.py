@@ -6,11 +6,11 @@ Stage2 生成页面:依据 Purpose/Schema 从事实生成互联知识页面。
 """
 
 import json
-import logging
 import os
 
 from django.db import transaction
 
+from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
 from apps.opspilot.models import BuildRecord, KnowledgePage, LLMModel, PageEvidence, PageVersion, WikiKnowledgeBase
@@ -21,8 +21,6 @@ from apps.opspilot.services.wiki.text_utils import split_text_for_llm
 from apps.opspilot.services.wiki.title_service import canonical_title as _canonical_title
 from apps.opspilot.services.wiki.title_service import title_alias_terms_for_enrichment as _title_alias_terms_for_enrichment
 from apps.opspilot.services.wiki.wikilink_enrichment_service import enrich_pages_wikilinks
-
-logger = logging.getLogger("opspilot")
 
 _split_text_for_llm = split_text_for_llm
 _WIKI_LLM_TIMEOUT_SECONDS = 300.0
@@ -84,12 +82,13 @@ def _llm_extract_facts(text, llm_model_id):
 def _llm_generate_pages(kb, source_text, llm_model_id):
     """Stage2:依据 Purpose/Schema 从(已抽取的)要点生成页面列表。
 
-    返回 [{"page_type","title","tags","body","existing_page_id"}, ...];
-    无模型或解析失败时返回 []。
+    返回 page 列表(向后兼容签名);解析失败通过 errors_collector 参数旁路收集。
+    无模型或 source_text 为空时返回 []。
     """
     if not llm_model_id or not (source_text or "").strip():
         return []
     pages = []
+    errors = []
     chunks = _split_text_for_llm(source_text)
     existing_catalog = json.dumps(
         [
@@ -121,7 +120,12 @@ def _llm_generate_pages(kb, source_text, llm_model_id):
             f"\n\n# 要点片段 {idx}/{len(chunks)}\n{chunk}\n"
         )
         raw_result = _invoke_llm(llm_model_id, prompt)
-        parsed_pages = _parse_pages(raw_result)
+        parsed_pages = _parse_pages(
+            raw_result,
+            chunk_index=idx,
+            total_chunks=len(chunks),
+            errors_collector=errors,
+        )
         logger.info(
             "wiki_build_stage2_chunk kb_id=%s model_id=%s chunk=%s/%s output_chars=%s response_empty=%s page_count=%s",
             kb.id,
@@ -133,12 +137,21 @@ def _llm_generate_pages(kb, source_text, llm_model_id):
             len(parsed_pages),
         )
         pages.extend(parsed_pages)
-    return _merge_pages(pages, kb=kb)
+    merged = _merge_pages(pages, kb=kb)
+    # 把 errors 暂存到函数属性,build_from_material 读取后清空
+    _llm_generate_pages.last_errors = list(errors)
+    return merged
 
 
-def _parse_pages(content):
-    """从 LLM 输出中解析 pages 列表,容忍代码块包裹。"""
+def _parse_pages(content, chunk_index=None, total_chunks=None, errors_collector=None):
+    """从 LLM 输出中解析 pages 列表,容忍代码块包裹。
+
+    失败时:logger.warning 输出原文前 500/末 500 字符(便于日志/Celery 追溯 LLM 输出格式),
+    若传入 errors_collector,错误描述也追加到其中供 build_record.errors 写入。
+    始终返回 page 列表(向后兼容)。
+    """
     raw = (content or "").strip()
+    loc = f"chunk={chunk_index}/{total_chunks}" if chunk_index is not None else "chunk=?"
     if "```" in raw:
         # 去掉 ```json ... ``` 包裹
         raw = raw.split("```", 2)[1] if raw.count("```") >= 2 else raw
@@ -147,11 +160,18 @@ def _parse_pages(content):
     start = raw.find("{")
     end = raw.rfind("}")
     if start == -1 or end == -1:
+        err = f"_parse_pages 失败 [{loc}]: 未找到匹配的 {{...}} 区间," f" output_chars={len(raw)}"
+        logger.warning(err)
+        if errors_collector is not None:
+            errors_collector.append(err)
         return []
     try:
         data = json.loads(raw[start : end + 1])
-    except (TypeError, ValueError):
-        logger.warning("wiki 页面生成 JSON 解析失败")
+    except (TypeError, ValueError) as exc:
+        err = f"_parse_pages 失败 [{loc}]: JSON 解析异常 {type(exc).__name__}: {exc}," f" output_chars={len(raw)}"
+        logger.warning(err)
+        if errors_collector is not None:
+            errors_collector.append(err)
         return []
     pages = data.get("pages", [])
     return [p for p in pages if isinstance(p, dict) and p.get("title")]
@@ -749,6 +769,7 @@ def build_from_material(material, llm_model_id=None, operator="", trigger="mater
         # 两步法:Stage1 抽取要点 → Stage2 依据 Schema 生成页面(抽取失败则回退原文)
         facts = _llm_extract_facts(text, llm_model_id)
         pages_data = _llm_generate_pages(kb, facts or text, llm_model_id)
+        llm_parse_errors = getattr(_llm_generate_pages, "last_errors", [])
         affected = []
         cascade_ids = []
         maintenance = {}
@@ -828,9 +849,12 @@ def build_from_material(material, llm_model_id=None, operator="", trigger="mater
             "source_trace": source_trace,
         }
         build.maintenance = maintenance
-        build.errors = _maintenance_errors(maintenance)
+        build.errors = _maintenance_errors(maintenance) + list(llm_parse_errors or [])
         build.stage = "done"
-        build.status = "partial" if maintenance.get("status") in {"partial", "failed"} else "success"
+        # 当 LLM 阶段未能产出任何 page 时,即便 cascade 全部成功,也标记 partial
+        # 避免"看似 success 但用户查不到任何相关知识"的隐式失败
+        llm_produced_zero = not pages_data
+        build.status = "partial" if maintenance.get("status") in {"partial", "failed"} or llm_produced_zero else "success"
         build.progress = 100
         build.save(
             update_fields=[

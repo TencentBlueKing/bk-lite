@@ -81,11 +81,13 @@ version = "0.1.0"
 dependencies = [
  "futures-util",
  "log",
+ "objc2",
  "reqwest",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
+ "tauri-plugin-ios-webview-insets",
  "tauri-plugin-log",
  "tauri-plugin-store",
  "tokio",
@@ -3703,6 +3705,16 @@ dependencies = [
  "tauri-utils",
  "toml 0.9.11+spec-1.1.0",
  "walkdir",
+]
+
+[[package]]
+name = "tauri-plugin-ios-webview-insets"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4d2e24b38fab352e96d412c5a97e45fc3542dc28159ab9111470a653fa8b98e4"
+dependencies = [
+ "tauri",
+ "tauri-plugin",
 ]
 
 [[package]]

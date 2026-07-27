@@ -393,7 +393,7 @@ const WikiDecisionCenter: React.FC<WikiDecisionCenterProps> = ({
   );
 
   return (
-    <main className="flex min-h-[700px] flex-col overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg)]">
+    <main className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg)] lg:h-full">
       <header className="flex min-h-[76px] flex-wrap items-center justify-between gap-4 border-b border-[var(--color-border)] px-5 py-3">
         <div>
           <div className="flex items-center gap-2">
@@ -416,7 +416,7 @@ const WikiDecisionCenter: React.FC<WikiDecisionCenterProps> = ({
       </header>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[330px_minmax(0,1fr)]">
-        <aside className="flex min-h-0 flex-col border-b border-[var(--color-border)] bg-[var(--color-fill-1)] p-3.5 lg:border-b-0 lg:border-r">
+        <aside className="flex min-h-0 flex-col overflow-hidden border-b border-[var(--color-border)] bg-[var(--color-bg)] p-3.5 lg:border-b-0 lg:border-r">
           <div className="flex items-center justify-between px-1 pb-3 pt-0.5">
             <span className="text-[13px] font-bold text-[var(--color-text-1)]">
               {view === 'pending' ? t('wiki.decisionListTitlePending') : t('wiki.decisionListTitleProcessed')}
@@ -426,58 +426,60 @@ const WikiDecisionCenter: React.FC<WikiDecisionCenterProps> = ({
             </span>
           </div>
 
-          <Spin spinning={loading} className="min-h-48">
-            <div className="space-y-2">
-              {decisionItems.map((item) => {
-                const itemModel = buildDecisionViewModel(item);
-                if (!itemModel) return null;
-                const active = item.id === activeItem?.id;
-                return (
-                  <button
-                    key={item.id}
-                    disabled={Boolean(submitting)}
-                    type="button"
-                    aria-pressed={active}
-                    onClick={() => onSelect?.(item)}
-                    className={`w-full rounded-xl border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] ${
-                      active
-                        ? 'border-[var(--color-primary)] bg-[var(--color-primary-bg-active)]'
-                        : 'border-[var(--color-border)] bg-[var(--color-bg)] hover:border-[var(--color-border-3)]'
-                    }`}
-                  >
-                    <div className="mb-2 flex items-center justify-between gap-3">
-                      <Tag bordered={false} color={view === 'processed' ? 'success' : itemModel.kind === 'knowledge_conflict' ? 'orange' : 'blue'} className="m-0 rounded-md">
-                        {view === 'processed'
-                          ? t('wiki.decisionProcessed')
-                          : itemModel.kind === 'knowledge_conflict'
-                            ? t('wiki.decisionKnowledgeConflict')
-                            : t('wiki.decisionPageIdentity')}
-                      </Tag>
-                      <span className="text-xs tabular-nums text-[var(--color-text-3)]">
-                        {formatTimestamp(item.updated_at || item.created_at)}
-                      </span>
-                    </div>
-                    <div className="truncate text-sm font-bold leading-6 text-[var(--color-text-1)]" title={itemModel.title}>
-                      {itemModel.title || '--'}
-                    </div>
-                    <p className="mb-0 mt-1 line-clamp-2 text-xs leading-5 text-[var(--color-text-3)]">
-                      {itemModel.summary || (itemModel.kind === 'knowledge_conflict'
-                        ? t('wiki.decisionKnowledgeSummaryFallback')
-                        : t('wiki.decisionIdentitySummaryFallback'))}
-                    </p>
-                  </button>
-                );
-              })}
-              {!loading && items.length === 0 && (
-                <div className="rounded-lg bg-[var(--color-bg)] py-12">
-                  <Empty
-                    image={Empty.PRESENTED_IMAGE_SIMPLE}
-                    description={view === 'pending' ? t('wiki.decisionEmptyPending') : t('wiki.decisionEmptyProcessed')}
-                  />
-                </div>
-              )}
-            </div>
-          </Spin>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <Spin spinning={loading} className="min-h-48">
+              <div className="space-y-2">
+                {decisionItems.map((item) => {
+                  const itemModel = buildDecisionViewModel(item);
+                  if (!itemModel) return null;
+                  const active = item.id === activeItem?.id;
+                  return (
+                    <button
+                      key={item.id}
+                      disabled={Boolean(submitting)}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => onSelect?.(item)}
+                      className={`w-full rounded-xl border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] ${
+                        active
+                          ? 'border-[var(--color-primary)] bg-[var(--color-primary-bg-active)]'
+                          : 'border-[var(--color-border)] bg-[var(--color-bg)] hover:border-[var(--color-border-3)]'
+                      }`}
+                    >
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <Tag bordered={false} color={view === 'processed' ? 'success' : itemModel.kind === 'knowledge_conflict' ? 'orange' : 'blue'} className="m-0 rounded-md">
+                          {view === 'processed'
+                            ? t('wiki.decisionProcessed')
+                            : itemModel.kind === 'knowledge_conflict'
+                              ? t('wiki.decisionKnowledgeConflict')
+                              : t('wiki.decisionPageIdentity')}
+                        </Tag>
+                        <span className="text-xs tabular-nums text-[var(--color-text-3)]">
+                          {formatTimestamp(item.updated_at || item.created_at)}
+                        </span>
+                      </div>
+                      <div className="truncate text-sm font-bold leading-6 text-[var(--color-text-1)]" title={itemModel.title}>
+                        {itemModel.title || '--'}
+                      </div>
+                      <p className="mb-0 mt-1 line-clamp-2 text-xs leading-5 text-[var(--color-text-3)]">
+                        {itemModel.summary || (itemModel.kind === 'knowledge_conflict'
+                          ? t('wiki.decisionKnowledgeSummaryFallback')
+                          : t('wiki.decisionIdentitySummaryFallback'))}
+                      </p>
+                    </button>
+                  );
+                })}
+                {!loading && items.length === 0 && (
+                  <div className="rounded-lg bg-[var(--color-bg)] py-12">
+                    <Empty
+                      image={Empty.PRESENTED_IMAGE_SIMPLE}
+                      description={view === 'pending' ? t('wiki.decisionEmptyPending') : t('wiki.decisionEmptyProcessed')}
+                    />
+                  </div>
+                )}
+              </div>
+            </Spin>
+          </div>
 
           {total > pageSize && onPageChange && (
             <Pagination
@@ -492,7 +494,7 @@ const WikiDecisionCenter: React.FC<WikiDecisionCenterProps> = ({
           )}
         </aside>
 
-        <section className="flex min-h-0 min-w-0 flex-col bg-[var(--color-bg)]">
+        <section className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-[var(--color-bg)]">
           {error && <Alert type="error" showIcon message={error} className="m-4 mb-0" />}
           {activeItem && model ? (
             <>

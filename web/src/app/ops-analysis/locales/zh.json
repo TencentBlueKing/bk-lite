@@ -177,11 +177,28 @@
     "tls": "TLS",
     "tlsDisabled": "未启用"
   },
+  "dateRange": {
+    "today": "今天",
+    "yesterday": "昨天",
+    "this_week": "本周",
+    "last_week": "上周",
+    "this_month": "本月",
+    "last_month": "上月",
+    "last_7_days": "最近7天",
+    "last_30_days": "最近30天",
+    "last_90_days": "最近90天",
+    "custom": "自定义",
+    "placeholder": "请选择日期范围",
+    "startDate": "开始日期",
+    "endDate": "结束日期",
+    "invalid": "日期范围无效"
+  },
   "dataSource": {
     "duplicateParamNames": "参数名重复：",
     "addParam": "添加参数",
     "paramTypes": {
       "timeRange": "时间范围",
+      "dateRange": "日期范围",
       "number": "数字",
       "boolean": "布尔",
       "date": "日期",
@@ -252,6 +269,7 @@
     "updateDataSourceSuccess": "更新数据源成功",
     "required": "必填",
     "singleValue": "单值",
+    "multiValue": "指标列表",
     "operationFailed": "操作失败",
     "table": "表格",
     "topN": "排行榜",
@@ -311,6 +329,7 @@
       "widgetFrameBare": "无框",
       "widgets": {
         "single": "单值卡",
+        "multiValue": "指标列表",
         "gauge": "仪表盘",
         "line": "折线图",
         "bar": "柱状图",
@@ -321,6 +340,7 @@
       },
       "widgetDescriptions": {
         "single": "展示核心 KPI、告警总数、在线率等关键数值",
+        "multiValue": "按行展示多个指标名称及其数值",
         "gauge": "展示健康度、利用率、达成率等单指标状态",
         "line": "展示总体趋势和关键时间序列",
         "bar": "展示分类统计和对比分析",
@@ -531,6 +551,7 @@
     "selectDashboardFirst": "请先选择一个仪表盘",
     "fetchDataFieldsFailed": "获取数据字段失败",
     "timeRange": "时间范围",
+    "dateRange": "日期范围",
     "noData": "暂无数据",
     "dataSourceAttr": "数据源属性",
     "dataSource": "数据源",
@@ -691,6 +712,9 @@
     "compareLabel": "周期对比",
     "comparePreviousPeriodTip": "开启后将自动对比上一个等长周期的数据，并显示变化百分比。",
     "comparePreviousShortLabel": "较上周期",
+    "compareMode": "对比显示",
+    "compareModePercent": "百分比",
+    "compareModeValue": "数值",
     "compareUnavailableTip": "当前数据源未配置可识别的时间范围参数，无法开启周期比较。",
     "displaySettings": "展示设置",
     "gaugeSettings": "仪表盘设置",
@@ -751,7 +775,14 @@
     "groupNamePlaceholder": "请输入分组名称",
     "exportPdf": "导出 PDF",
     "exportPdfSuccess": "导出成功",
-    "exportPdfFailed": "导出失败"
+    "exportPdfFailed": "导出失败",
+    "share": "分享",
+    "shareLinkCopied": "分享链接已复制。链接永久有效，无法单独撤销，请谨慎转发",
+    "shareCopyFailed": "复制失败，请手动复制",
+    "shareCreateFailed": "创建分享链接失败",
+    "shareInvalid": "分享链接无效或已失效",
+    "shareOpening": "正在打开分享仪表盘",
+    "shareLoading": "正在加载分享仪表盘"
   },
   "opsAnalysisSidebar": {
     "addArch": "添加架构图",

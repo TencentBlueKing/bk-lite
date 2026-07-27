@@ -32,12 +32,12 @@ class JobMgmt:
         """触发脚本执行（NATS）。data 见 apps.job_mgmt.nats_api.job_script_execute。"""
         return self.client.run("job_script_execute", data)
 
-    def get_script(self, script_id):
+    def get_script(self, script_id, team=None):
         """读取单个脚本模板完整详情（content/params/script_type/timeout）。
 
         走 job_mgmt 的 job_script_detail 接口（get_job_mgmt_module_data 只返回 {id,name}，拿不到 content/params）。
         """
-        resp = self.client.run("job_script_detail", {"id": script_id}) or {}
+        resp = self.client.run("job_script_detail", {"id": script_id, "team": list(team or [])}) or {}
         if not resp.get("result"):
             return None
         return resp.get("data")

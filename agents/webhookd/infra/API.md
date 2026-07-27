@@ -8,6 +8,32 @@
 
 ## API 列表
 
+### K3S - 渲染独立指标采集配置
+
+K3S 使用独立模板和固定资源命名，不经过 K8S 的 `type`、`runtime_profile`
+或多采集器分发逻辑。
+
+**端点**: `POST /infra/k3s`
+
+**请求体**:
+
+```json
+{
+  "cluster_name": "edge-k3s",
+  "nats_url": "tls://192.168.1.100:4222",
+  "nats_username": "admin",
+  "nats_password": "secret123",
+  "nats_ca": "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----"
+}
+```
+
+以上五个字段均必填。接口返回的 `yaml` 可直接执行
+`kubectl apply -f -`；资源固定部署在 `bk-lite-k3s-collector` 命名空间，
+卸载边界也仅限该命名空间。请求中出现 K8S 渲染专属字段（例如 `type`、
+`config_type`、`distribution`）时会被拒绝。
+
+---
+
 ### Render - 渲染 K8s 配置
 
 根据 NATS 连接信息渲染 K8s 采集器配置 YAML（包含 Collector 和 Secret）。

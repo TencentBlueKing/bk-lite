@@ -38,8 +38,8 @@ export default meta;
 
 type Story = StoryObj<typeof LineChart>;
 
-/** 多序列 —— 验证固定色板 + 细线 + 渐变填充 + 深色 hover */
-export const 多序列: Story = {
+/** MultiSeries —— 验证固定色板 + 细线 + 渐变填充 + 深色 hover */
+export const MultiSeries: Story = {
   render: () => (
     <div style={{ padding: 24, background: 'var(--color-bg-2, #f7fafc)', height: '100vh' }}>
       <div
@@ -80,7 +80,7 @@ function withDetails(): ChartData[] {
 const DATA_DETAILS = withDetails();
 
 /** 边界 · 超长/换行/特殊字符维度 —— 验证 tooltip 与维度区 */
-export const 边界_极端维度: Story = {
+export const BoundaryExtremeDimensions: Story = {
   render: () => (
     <div style={{ padding: 24, background: 'var(--color-bg-2, #f7fafc)', height: '100vh' }}>
       <div
@@ -104,8 +104,8 @@ export const 边界_极端维度: Story = {
   ),
 };
 
-/** 带阈值线 —— 验证阈值色与序列色互不干扰 */
-export const 带阈值: Story = {
+/** WithThreshold —— 验证阈值色与序列色互不干扰 */
+export const WithThreshold: Story = {
   render: () => (
     <div style={{ padding: 24, background: 'var(--color-bg-2, #f7fafc)', height: '100vh' }}>
       <div

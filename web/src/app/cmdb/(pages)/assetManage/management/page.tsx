@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/context/auth';
 import { useSession } from 'next-auth/react';
-import Introduction from '@/app/cmdb/components/introduction';
+import Introduction from '@/components/introduction';
 import { Input, Button, Modal, message, Spin, Empty, Tooltip, Dropdown, Space, Switch, Tag } from 'antd';
 import { deepClone } from '@/app/cmdb/utils/common';
 import { GroupItem, ModelItem } from '@/app/cmdb/types/assetManage';

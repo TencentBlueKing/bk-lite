@@ -5,14 +5,9 @@
 
 import pytest
 
-from apps.monitor.models import (
-    MonitorAlert,
-    MonitorAlertMetricSnapshot,
-    MonitorEvent,
-    MonitorEventRawData,
-)
+from apps.monitor.models import MonitorAlert, MonitorAlertMetricSnapshot, MonitorEvent, MonitorEventRawData
 from apps.monitor.models.monitor_object import MonitorObject
-from apps.monitor.models.monitor_policy import MonitorPolicy
+from apps.monitor.models.monitor_policy import MonitorPolicy, PolicyOrganization
 
 pytestmark = pytest.mark.django_db
 
@@ -21,14 +16,14 @@ BASE = "/api/v1/monitor"
 
 @pytest.fixture
 def grant_all(mocker):
-    # 两个 ViewSet 各自 import 了 get_permissions_rules / check_instance_permission
+    # 两个 ViewSet 共享策略权限根。
     mocker.patch(
         "apps.monitor.views.monitor_alert.get_permissions_rules",
-        return_value={"data": {"all": True}, "team": [1]},
+        return_value={"data": {"all": {"team": [1]}}, "team": [1]},
     )
     mocker.patch(
-        "apps.monitor.views.monitor_alert.check_instance_permission",
-        return_value=True,
+        "apps.core.utils.current_team_scope.SystemMgmt.get_authorized_groups_scoped",
+        return_value={"result": True, "data": [1]},
     )
 
 
@@ -55,9 +50,9 @@ def _policy(**overrides):
         "group_by": [],
     }
     values.update(overrides)
-    return MonitorPolicy.objects.create(
-        **values
-    )
+    policy = MonitorPolicy.objects.create(organizations=[1], **values)
+    PolicyOrganization.objects.create(policy=policy, organization=1)
+    return policy
 
 
 class TestGetSnapshots:

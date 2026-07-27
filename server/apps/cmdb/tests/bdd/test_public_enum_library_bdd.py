@@ -1,6 +1,6 @@
 """CMDB BDD：公共选项库（PublicEnumLibrary）业务规则（中文 Gherkin）。
 
-对照 spec/prd/CMDB·模型管理·公共选项库：
+对照 specs/capabilities/legacy-prd-cmdb-模型管理.md·公共选项库：
 - 建库/改库/删库的字段校验；
 - options 变更触发模型属性快照同步；
 - 删除前扫描所有模型的 enum 属性，发现引用则阻断删除并回传引用清单；

@@ -2433,3 +2433,42 @@ class TestWorkerRunningFlag:
 
         assert result["status"] == "success"
         handler.assert_awaited_once_with({}, {}, "task-worker-2")
+
+
+def test_config_file_callback_payload_preserves_execution_id():
+    from plugins.inputs.config_file.config_file_info import ConfigFileInfo
+
+    plugin = ConfigFileInfo.__new__(ConfigFileInfo)
+    plugin.params = {
+        "collect_task_id": 10,
+        "execution_id": "execution-current",
+        "host": "10.0.0.1",
+        "target_model_id": "host",
+        "config_file_path": "/etc/app.conf",
+    }
+
+    payload = plugin._build_callback_payload(
+        {
+            "status": "file_not_found",
+            "error_type": "file_not_found",
+            "error": "文件不存在",
+        }
+    )
+
+    assert payload["execution_id"] == "execution-current"
+
+
+def test_plugin_failure_result_preserves_execution_id():
+    from tasks.handlers.plugin_handler import _build_credential_execution_result
+
+    result = _build_credential_execution_result(
+        {
+            "collect_task_id": 10,
+            "execution_id": "execution-current",
+            "host": "10.0.0.1",
+        },
+        None,
+        RuntimeError("boom"),
+    )
+
+    assert result["execution_id"] == "execution-current"

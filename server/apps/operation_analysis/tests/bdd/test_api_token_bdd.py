@@ -1,6 +1,6 @@
 """运营分析 API Token 权限 BDD（中文 Gherkin）。
 
-对照 spec/prd/运营分析·API Token：
+对照 specs/capabilities/legacy-prd-运营分析-管理.md：
 - HasPermission 装饰器在 api_pass=True 路径下的判定；
 - 缺失权限 / 错误 app / 错误权限名 → 403；
 - is_superuser 优先放行。

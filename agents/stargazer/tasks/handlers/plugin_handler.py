@@ -147,6 +147,7 @@ async def collect_plugin_task(
             await publish_callback_to_nats(
                 {
                     "collect_task_id": params.get("collect_task_id"),
+                    "execution_id": params.get("execution_id"),
                     "instance_id": identity["instance_id"],
                     "instance_name": identity["instance_name"],
                     "model_id": identity["model_id"],
@@ -190,6 +191,7 @@ def _build_credential_execution_result(params: Dict[str, Any], metrics_data: Any
 
     return {
         "collect_task_id": params.get("collect_task_id"),
+        "execution_id": params.get("execution_id"),
         "host": host,
         "credential_id": credential_id,
         "credential_index": params.get("credential_index"),

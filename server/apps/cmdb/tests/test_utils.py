@@ -1,6 +1,6 @@
 """CMDB 工具函数覆盖测试。
 
-对照 spec/prd/CMDB：组织参数格式化、时间解析、配置文件路径校验、订阅展示工具。
+对照 specs/capabilities/legacy-prd-cmdb-资产.md：组织参数格式化、时间解析、配置文件路径校验、订阅展示工具。
 """
 
 from datetime import date, datetime, time

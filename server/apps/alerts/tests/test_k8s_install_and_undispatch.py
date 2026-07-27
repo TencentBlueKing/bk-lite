@@ -1,6 +1,6 @@
 """K8s 安装服务与未分派通知服务覆盖测试。
 
-对照 spec/prd/告警中心·集成：K8s 接入渲染参数校验；未分派告警按系统配置通知。
+对照 specs/capabilities/legacy-prd-告警中心-集成.md：K8s 接入渲染参数校验；未分派告警按系统配置通知。
 """
 
 import pytest

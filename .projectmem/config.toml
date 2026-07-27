@@ -1,3 +1,0 @@
-summary_size_limit_kb = 20
-recent_days = 30
-project_description = "AI-first lightweight operations platform built from a Django backend, Next.js consoles, distributed collectors, and algorithm services."

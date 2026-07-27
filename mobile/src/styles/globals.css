@@ -78,25 +78,37 @@ body {
   height: 0 !important;
 }
 
+/*
+ * iOS Safari/WKWebView 会在输入框聚焦时主动滚动整个页面。
+ * 聚焦首帧让真实输入控件透明，可阻止这次系统滚动；会话页随后由
+ * VisualViewport 精确控制头部、内容区和输入区的位置。
+ */
+@keyframes ios-input-focus-stable {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@supports (-webkit-touch-callout: none) {
+  .ios-focus-stable textarea:focus,
+  .ios-focus-stable input:focus,
+  .ios-focus-stable [contenteditable="true"]:focus {
+    animation: ios-input-focus-stable 0.01s;
+  }
+}
+
 /* ========== 全局 body 样式 ========== */
 
 html,
 body {
   height: 100%;
   overflow: hidden;
+  background: var(--color-background-body);
 }
 
 body {
-  background: var(--color-background-body);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
   transition: background-color 0.3s ease, color 0.3s ease;
-  /* 统一处理安全区 padding */
-  padding-top: var(--safe-area-inset-top);
-  padding-bottom: var(--safe-area-inset-bottom);
-  padding-left: var(--safe-area-inset-left);
-  padding-right: var(--safe-area-inset-right);
-  box-sizing: border-box;
 }
 
 /* ========== 媒体查询 - 系统偏好设置 ========== */

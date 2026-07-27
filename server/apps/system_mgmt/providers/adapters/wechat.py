@@ -95,7 +95,9 @@ class WechatLoginAuthAdapter(BaseLoginAuthAdapter):
         except requests.Timeout:
             return CapabilityExecutionResult.failed_result("WeChat login request timed out", code="provider.timeout", retryable=True)
         except (requests.RequestException, ValueError) as error:
-            logger.error(f"WeChat login token exchange failed: {error}")
+            logger.debug(
+                f"WeChat login token exchange failed: error_type={type(error).__name__}"
+            )
             return CapabilityExecutionResult.failed_result("WeChat login request failed", code="provider.request_failed", retryable=True)
 
         if token_response.status_code != 200 or token_data.get("errcode"):
@@ -120,11 +122,16 @@ class WechatLoginAuthAdapter(BaseLoginAuthAdapter):
                 },
                 timeout=WECHAT_TIMEOUT,
             )
+            # 微信 userinfo 实际返回 UTF-8 JSON，但响应头可能误标为 text/plain，
+            # 需在解析前覆盖 requests 推断出的 ISO-8859-1 编码，避免昵称乱码。
+            user_response.encoding = "utf-8"
             user_data = user_response.json()
         except requests.Timeout:
             return CapabilityExecutionResult.failed_result("WeChat user info request timed out", code="provider.timeout", retryable=True)
         except (requests.RequestException, ValueError) as error:
-            logger.error(f"WeChat user info request failed: {error}")
+            logger.debug(
+                f"WeChat user info request failed: error_type={type(error).__name__}"
+            )
             return CapabilityExecutionResult.failed_result("WeChat user info request failed", code="provider.request_failed", retryable=True)
 
         if user_response.status_code != 200 or user_data.get("errcode"):
@@ -144,7 +151,6 @@ class WechatLoginAuthAdapter(BaseLoginAuthAdapter):
 
         # WeChat provider 只负责 OAuth 认证并返回真实微信用户信息;
         # 账号匹配、用户创建、token 签发由通用登录认证链路负责。
-        # 详见:openspec/changes/wechat-login-auth-field-mapping/design.md
         return CapabilityExecutionResult.success_result(
             "WeChat login authenticated",
             payload={

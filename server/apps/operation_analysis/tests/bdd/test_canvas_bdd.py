@@ -1,6 +1,6 @@
 """运营分析画布 BDD（中文 Gherkin）。
 
-对照 spec/prd/运营分析·画布：
+对照 specs/capabilities/legacy-prd-运营分析-运营分析.md：
 - Dashboard CRUD + 目录归属；
 - name 唯一约束；
 - build_in_key 唯一约束；

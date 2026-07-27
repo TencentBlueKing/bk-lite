@@ -17,6 +17,7 @@ from apps.alerts.aggregation.processor.instant_dispatcher import (
     InstantStrategyCache,
     _build_fingerprint,
     _bulk_build_instant_alerts,
+    _trigger_dispatch_async,
 )
 from apps.alerts.constants import INSTANT_SYNC_THRESHOLD
 from apps.alerts.constants.constants import AlarmStrategyType, EventAction
@@ -171,11 +172,12 @@ def test_no_event_no_alert(instant_strategy):
 @pytest.mark.django_db
 def test_single_hit_creates_one_alert(source, instant_strategy):
     evt = _make_event(source)
-    with mock.patch.object(id_mod, "current_app") as mock_app:
+    with mock.patch("apps.alerts.tasks.deliver_alert_outbox.delay"):
         InstantAlertDispatcher.dispatch([[evt]])
-        # send_task 被调用一次（触发分派）
-        mock_app.send_task.assert_called_once()
-        assert mock_app.send_task.call_args.args[0].endswith("async_auto_assignment_for_alerts")
+    from apps.alerts.models import AlertOutbox
+    assert set(AlertOutbox.objects.values_list("kind", flat=True)) == {
+        "auto_assignment", "action"
+    }
     alerts = Alert.objects.all()
     assert alerts.count() == 1
     alert = alerts.first()
@@ -183,8 +185,25 @@ def test_single_hit_creates_one_alert(source, instant_strategy):
     assert alert.level == "1"
     assert alert.rule_id == str(instant_strategy.id)
     assert alert.group_by_field == "instant"
+    from apps.alerts.models import ActiveAlertFingerprint
+    assert ActiveAlertFingerprint.objects.get(fingerprint=alert.fingerprint).alert_id == alert.pk
     # M2M 关联
     assert list(alert.events.values_list("event_id", flat=True)) == [evt.event_id]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_instant_created_persists_assignment_and_action_outbox():
+    from apps.alerts.models import AlertOutbox
+
+    with mock.patch("apps.alerts.tasks.deliver_alert_outbox.delay"):
+        _trigger_dispatch_async(["ALERT-INSTANT-1"])
+
+    records = {record.kind: record for record in AlertOutbox.objects.all()}
+    assert records["auto_assignment"].payload == {"alert_ids": ["ALERT-INSTANT-1"]}
+    assert records["action"].payload == {
+        "alert_id": "ALERT-INSTANT-1",
+        "event_name": "created",
+    }
 
 
 @pytest.mark.django_db

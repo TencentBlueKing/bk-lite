@@ -1,6 +1,6 @@
 """事故序列化器 SerializerMethodField 覆盖测试。
 
-对照 spec/prd/告警中心·事故：事故展示关联告警数、来源、处理人/协作者。
+对照 specs/capabilities/legacy-prd-告警中心-事故.md：事故展示关联告警数、来源、处理人/协作者。
 """
 
 from types import SimpleNamespace

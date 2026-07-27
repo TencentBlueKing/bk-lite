@@ -70,9 +70,9 @@ const FilterBindingPanel: React.FC<FilterBindingPanelProps> = ({
   }
 
   const getTypeLabel = (type: string): string => {
-    return type === 'timeRange'
-      ? t('dashboard.timeRange')
-      : t('dashboard.string');
+    if (type === 'timeRange') return t('dashboard.timeRange');
+    if (type === 'dateRange') return t('dashboard.dateRange');
+    return t('dashboard.string');
   };
 
   return (
@@ -94,7 +94,7 @@ const FilterBindingPanel: React.FC<FilterBindingPanelProps> = ({
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-medium text-sm text-(--color-text-1)">{displayName}</span>
                 <Tag
-                  color={param.type === 'timeRange' ? 'blue' : 'green'}
+                  color={param.type === 'timeRange' ? 'blue' : param.type === 'dateRange' ? 'purple' : 'green'}
                   style={{ marginRight: 0 }}
                 >
                   {getTypeLabel(param.type)}

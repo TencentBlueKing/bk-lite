@@ -1,8 +1,10 @@
 import { useCallback } from 'react';
 import useApiClient from '@/utils/request';
+import { useSharedDataSourceQuery } from '@/app/ops-analysis/context/shareDataSource';
 
 export const useDataSourceApi = () => {
   const { get, post, put, del } = useApiClient();
+  const sharedAccess = useSharedDataSourceQuery();
 
   const getDataSourceList = useCallback(async (params?: any) => {
     return get('/operation_analysis/api/data_source/', { params });
@@ -26,6 +28,11 @@ export const useDataSourceApi = () => {
     if (normalizedIds.length === 0) {
       return [];
     }
+    if (sharedAccess) {
+      const response = await sharedAccess.getDataSourceDetails(normalizedIds);
+      const items = Array.isArray(response) ? response : [];
+      return items.filter((item: { id: number }) => normalizedIds.includes(item.id));
+    }
 
     return get('/operation_analysis/api/data_source/', {
       params: {
@@ -33,7 +40,7 @@ export const useDataSourceApi = () => {
         ids: normalizedIds.join(','),
       },
     });
-  }, [get]);
+  }, [get, sharedAccess]);
 
   const createDataSource = useCallback(async (data: any) => {
     return post('/operation_analysis/api/data_source/', data);
@@ -52,8 +59,11 @@ export const useDataSourceApi = () => {
   }, [get]);
 
   const getSourceDataByApiId = useCallback(async (id: number, params?: any) => {
+    if (sharedAccess) {
+      return sharedAccess.queryDataSource(id, params);
+    }
     return post(`/operation_analysis/api/data_source/get_source_data/${id}/`, params);
-  }, [post]);
+  }, [post, sharedAccess]);
 
   const previewDataSourceConfig = useCallback(async (data: any) => {
     const isFormData =

@@ -1,262 +1,108 @@
-# Task 3 Report: P1 云采集新增(7 套) — HWCloud / QCloud / FusionInsight / ZStack / H3C CAS / Dameng Enterprise / Redis Sentinel Enterprise
+# Task 3：真实 Redis 竞态、Runbook 与最终门禁
 
-> **Status: DONE_WITH_CONCERNS**
-> 7 套对象全部覆盖,A/B 端对齐 + 真实化 + 复用模式全验证;1 个 qcloud 子对象(qcloud_vpc / qcloud_cdb)未走完整 pipeline(plugin metric_names 列表限制,留作 follow-up)。
+## 改动
 
-## 1. Status
+- 将真实 Redis fixture 拆为共享 Unix socket：同步/异步 Redis 客户端均使用
+  DB 15，每项测试前后 `FLUSHDB`；服务关闭持久化，fixture finally 中关闭
+  客户端、终止 `redis-server`、等待退出并删除随机 `/tmp` socket。
+- 用真实 Redis 覆盖 Lua 原子删除边界、两副本共享锁、marker 值替换、确认
+  窗口内进入 queue/in-progress/waiting callback、非 owner token 释放、
+  WRONGTYPE 隔离，以及 callback context 损坏时 Lua 的保守保留。
+- 修复首检 callback context 为损坏 JSON、数组或非法 `status` 时中止整轮的
+  缺陷：仅保留该 running marker、累计 `marker_errors`，并继续处理其他 marker；
+  Lua 对同类不完整结构也拒绝删除。
+- README 增加自动启动清理的默认开启、5 秒二阶段确认、10000/30 秒边界、
+  Redis 分布式锁、fail-open、环境变量、脱敏日志和人工 CLI 边界说明。
+- 审查修复：以 Host Remote 实际写入的 `waiting_callback`、
+  `execution_finished`、`callback_timeout` 为唯一 execution 白名单；未知、
+  非字符串和结构损坏均按单 marker `marker_errors` 保留。Lua 用独立 `-1`
+  结果码表示二检损坏，Python 仅将 `eval == 1` 视为删除成功。
+- fixture 在启动失败时记录最后连接异常、socket 和进程状态；客户端初始
+  `FLUSHDB` 失败仍关闭，停止时 `communicate(timeout=5)`，超时后 kill 并
+  有界 wait，最外层 finally 删除 socket。
 
-**DONE_WITH_CONCERNS**
+## TDD 证据
 
-- Task 3.1-3.8 全部 done
-- Task 3.9 验证完成(272 passed + 30 skipped in e2e)
-- Concern:qcloud_vpc / qcloud_cdb 不在 qcloud plugin 的 `metric_names` 列表中,留作 follow-up(Task 6 后续)
-- 0 现有 33 真实落盘对象回归
+- 首检损坏 JSON/数组结构的参数化单测先 RED：分别稳定抛出
+  `JSONDecodeError` 与 `AttributeError`，证明会中止整轮；最小修复后
+  `2 passed`。
+- Runbook 合同先 RED：缺少启动开关及安全边界说明；补充 README 后 `1 passed`。
+- 真实 Redis RED：sandbox 外首次运行新覆盖为 `12 passed, 2 failed`，两项
+  损坏 callback context 同样分别复现 `JSONDecodeError` / `AttributeError`；
+  最小修复后先复跑为 `14 passed in 2.28s`，补充 Lua 确认窗口损坏 context
+  回归后最终复跑为 `16 passed in 2.50s`。
+- 审查 RED：首检未知 execution 会得到 `success`；Lua 二检坏 context 的
+  `-1` 被 Python truthiness 误记为删除。分别以 7 项状态矩阵和 `-1` fake
+  Redis 合同复现，最小修复后定向 `8 passed`，最终真实 Redis `31 passed in
+  3.45s`。
 
-## 2. Completed sub-tasks
+## 验证
 
-| Task | 内容 | 状态 | 测试数 |
-|------|------|------|--------|
-| 3.1 | hwcloud(2 子对象:ecs + vpc) | ✅ done | 8 pipeline + 10 alignment = 18 |
-| 3.2 | qcloud(7 子对象:cvm/clb/redis/bucket/cmq/mysql/mongodb) | ✅ done | 28 pipeline + 35 alignment = 63 |
-| 3.3 | fusioninsight(2 子对象:cluster + host) | ✅ done | 8 pipeline + 10 alignment = 18 |
-| 3.4 | zstack(stub plugin + placeholder) | ✅ done | 5 pipeline + 5 alignment = 10 |
-| 3.5 | h3c_cas(stub plugin + placeholder) | ✅ done | 5 pipeline + 5 alignment = 10 |
-| 3.6 | dameng_enterprise(license 阻塞 placeholder) | ✅ done | 6 pipeline + 5 alignment = 11 |
-| 3.7 | redis_sentinel_enterprise(复用 redis plugin, 形态 C) | ✅ done | 3 pipeline + 7 alignment = 10 |
-| 3.8 | 9 个 hwcloud 子对象 follow-up spec 文档 | ✅ done | N/A |
-| 3.9 | 验证全量 + report | ✅ done | 272 passed + 30 skipped |
+- 相关非 Redis 回归：`157 passed`。
+- 依赖合同（排除 sandbox 内缺少 `uv` 的离线同步用例）：`6 passed, 1 deselected`。
+- `py_compile` 和 `git diff --check` 通过。
+- 当前 sandbox 不能连接临时 Unix socket：`redis-server v6.2.4` 可执行但每个
+  fixture 的 100 次 ping 均失败；真实 Redis 已使用提升权限的 sandbox 外命令
+  验证。精确命令：
 
-## 3. Commits
+  ```bash
+  cd agents/stargazer && ./.venv/bin/pytest \
+    tests/test_task_queue_cleanup_redis_integration.py \
+    tests/test_dependency_lock_contract.py::test_docker_context_and_runbook_expose_task_queue_cleanup_cli \
+    -q
+  ```
 
-```
-0dbdeb135  docs(sdd): Task 3.8 - 9 个 hwcloud 子对象 follow-up 设计稿(evs/obs/subnet/eip/sg/elb/rds/dcs)
-436ec1030  test(cmdb/e2e): Task 3.7 - redis_sentinel_enterprise 商业版(复用 redis plugin, 形态 C)+ A/B 端覆盖
-812b1bb31  test(cmdb/e2e): Task 3.6 - dameng_enterprise 商业版占位(license 阻塞模式)+ A/B 端覆盖
-c91a1fd1b  test(cmdb/e2e): Task 3.5 - h3c_cas 私有云采集(stub plugin placeholder 模式)+ A/B 端覆盖
-9e105e0ba  test(cmdb/e2e): Task 3.4 - zstack 私有云采集(stub plugin placeholder 模式)+ A/B 端覆盖
-d4b52868b  test(cmdb/e2e): Task 3.3 - fusioninsight 云采集(cluster + host 2 子对象)+ A/B 端覆盖
-e26e73ad5  test(cmdb/e2e): Task 3.2 - qcloud 云采集(7 子对象 cvm/clb/redis/bucket/cmq/mysql/mongodb)+ A/B 端覆盖
-89d1b28f7  test(cmdb/e2e): Task 3.1 - hwcloud 云采集(2 核心子对象 ecs + vpc)+ A/B 端覆盖
-```
+## 环境顾虑
 
-共 **8 commits**(7 test + 1 docs)。
+- task worktree 不含 `server/.venv`，故使用主仓受控虚拟环境；Black、isort、
+  flake8 已对全部触及 Python 文件通过。此前 8 个同功能文件 E501 均已机械
+  拆行或缩短测试名收口。
+- `test_locked_sync_rejects_stale_lockfile_offline` 在本 sandbox 因子进程找不到
+  `uv` 而失败，不是业务断言失败；需在具有 `uv` 的 sandbox 外环境复跑。
 
-注:Task 3.0(conftest 框架改造)合并进 Task 3.1 commit,因为改动是测试基础设施扩展,服务于所有 7 套对象。
+## 提交
 
-## 4. Test results
+本报告与实现一并提交；最终提交 hash 以本任务完成时的 Git 记录为准。
 
-### Pipeline 真实化测试(共 8 个 test_*.py 文件)
+## 最终审查收口
 
-| Test file | tests | passed | skipped |
-|-----------|-------|--------|---------|
-| test_hwcloud_pipeline.py | 8 | 8 | 0 |
-| test_qcloud_pipeline.py | 28 | 28 | 0 |
-| test_fusioninsight_pipeline.py | 8 | 8 | 0 |
-| test_zstack_pipeline.py | 5 | 5 | 0 |
-| test_h3c_cas_pipeline.py | 5 | 5 | 0 |
-| test_dameng_enterprise_pipeline.py | 6 | 6 | 0 |
-| test_redis_sentinel_enterprise_pipeline.py | 3 | 3 | 0 |
-| **小计** | **63** | **63** | **0** |
+- 锁释放 Redis 异常不再静默成功：核心返回 `warning/redis_error`；后台核心
+  抛出 `RedisError` 同样记录脱敏 `reason=redis_error`，非 Redis 异常仍为
+  `cleanup_failed`。RED 为 3 项失败，GREEN 为 7 项通过。
+- 批准计划的五个 Python 文件已在 `agents/stargazer` cwd 用主仓
+  `server/.venv` 实际格式化并通过 Black、isort、flake8（均退出 0）。
+- 正式 `make lint` 仍是既有环境基线失败：`pre-commit run --all-files` 后报
+  `make: pre-commit: No such file or directory`，本次未扩大范围安装依赖。
+- 最终在 sandbox 外复跑真实 Redis 集成与运行手册合同：`31 passed in 3.59s`。
 
-### A 端 / B 端 对齐测试(共 15 个 model_id)
-
-```
-81 passed, 24 skipped
-```
-
-跳过原因(按 model_id):
-- middleware 模式对象(redis_sentinel_enterprise,dameng_enterprise):A 端 business labels 跳过(业务字段在 metric.result JSON)
-- placeholder 对象(zstack, h3c_cas, dameng_enterprise):A 端 business labels / B 端 pipeline 跳过(无 04 schema / 无 instance)
-- config_file:NATS 路径(已存在)
-- network:CollectNetworkMetrics 特殊路径(已存在)
-
-### 全量 e2e 套件
-
-```
-272 passed, 30 skipped
-```
-
-(Task 1 + Task 2 + Task 3 累计;0 现有 33 真实落盘对象回归)
-
-## 5. Concerns
-
-### 5.1 qcloud_vpc / qcloud_cdb plugin metric_names 缺失(已留 follow-up)
-
-**问题**:qcloud plugin 的 `metric_names` 列表中不包含 `qcloud_vpc_info_gauge` 和 `qcloud_cdb_info_gauge`,虽然 `field_mappings` 字典中有定义。这意味着 runner 的 `_metrics` 不会初始化这两个 metric 的 collection_metrics_dict,format_data 抛 KeyError。
-
-**现状**:Task 3.2 实际覆盖 7 个 qcloud 子对象(cvm / clb / redis / bucket / cmq / mysql / mongodb),qcloud_vpc / qcloud_cdb 留作 follow-up。
-
-**建议**:
-- 短期:qcloud_vpc 走 aliyun_vpc 模式(参考 hwcloud_vpc Task 3.1),qcloud_cdb 走 qcloud_mysql 模式(同 plugin 复用)
-- 中期:qcloud plugin 的 metric_names 列表补全,但**需要 production code 修改** — 违背本期红线
-- 长期:Task 6 单独 follow-up worktree,评估是否需要扩展 plugin
-
-### 5.2 aliyun_ecs / vmware 模式迁移到 flat dict(已落地)
-
-- 原 aliyun_ecs / vmware 01 fixture 是 flat dict(无 raw_stdout envelope),不满足 00_common_contract 公共契约
-- Task 3 决定:云采集 plugin-driven 对象不进 COVERED_MODEL_IDS(00_common_contract),复用 aliyun_ecs 模式
-- 已修改 `test_common_contract_cover_no_orphan_model_id` 改为单向校验(只校验 test_covered ⊆ factory_covered)
-- 风险:云采集对象失去公共契约保障,需各对象自己负责 01 schema 一致性
-
-### 5.3 middleware 模式 A 端 business labels 校验跳过(已加 skip)
-
-**问题**:middleware 模式(runner 走 MiddlewareCollectMetrics + extra_payload_keys={"result": True})对象的业务字段 JSON 编码到 metric.result,不在顶层 labels。当前 A 端 test_a_alignment_business_labels 只检查顶层 labels。
-
-**已加 skip**:redis_sentinel_enterprise, dameng_enterprise 走 middleware 模式时,跳过 A 端 business labels 校验。
-
-**遗留**:
-- B 端 vm-format alignment 仍校验 instance 字段(已通过)
-- 中期:扩展 A 端 test 解析 metric.result JSON 后再校验,提供 middleware 模式 A 端覆盖
-
-### 5.4 dameng 实际无 plugin 类(已加 placeholder 模式)
-
-**问题**:brief 描述 dameng_enterprise 复用 dameng.py plugin,但实际 CMDB 端无 `apps/cmdb/collection/plugins/community/db/dameng.py` 文件 — dameng 一直走 placeholder 模式。
-
-**处理**:
-- dameng_enterprise fixture 走 license 阻塞 placeholder 模式(同 dameng)
-- 测试只验证 placeholder fixture + alias + runner_type 复用,不实际跑 pipeline
-- 风险:用户期望 dameng_enterprise 能复用 dameng plugin 但实际无,需告知 — 已在 fixture blocked_reason 文档化
-
-### 5.5 schema 字段一致性(已做完整字段对齐)
-
-- 每个对象的 04 schema 只包含 plugin `field_mappings[model_id]` 实际定义的字段
-- A 端 metric 必填字段 ⊇ model 必填字段(plugin 字段名,无需重命名)
-- B 端 instance 字段 ⊆ model 字段定义(已通过)
-- 例外:qcloud_redis / qcloud_mongodb port 字段 plugin 保持 string,04 schema 用 `["string", "integer"]` 兼容
-
-## 6. Files created/modified
-
-### Plugin 文件(2 新增,NEW — 不动 production)
-
-```
-server/apps/cmdb/collection/plugins/community/cloud/zstack.py      # stub plugin
-server/apps/cmdb/collection/plugins/community/cloud/h3c_cas.py     # stub plugin
-```
-
-注:这两个 plugin 文件是 **NEW** 创建,不修改任何现有 production 代码,符合 Task 1.0 建立的 archived stub 模式。
-
-### Fixture 文件(15 个 model_id × 4 个 fixture = 60 个 JSON)
-
-```
-server/apps/cmdb/tests/e2e/fixtures/
-├── hwcloud_ecs/       (4 files)
-├── hwcloud_vpc/       (4 files)
-├── qcloud_cvm/        (4 files)
-├── qcloud_clb/        (4 files)
-├── qcloud_redis/      (4 files)
-├── qcloud_bucket/     (4 files)
-├── qcloud_cmq/        (4 files)
-├── qcloud_mysql/      (4 files)
-├── qcloud_mongodb/    (4 files)
-├── fusioninsight_cluster/  (4 files)
-├── fusioninsight_host/     (4 files)
-├── zstack/            (1 file, placeholder)
-├── h3c_cas/           (1 file, placeholder)
-├── dameng_enterprise/ (1 file, placeholder)
-└── redis_sentinel_enterprise/  (1 file, list-of-dict 形态 C)
-```
-
-### Schema 文件(15 个 model_id × 2 个 schema = 30 个 JSON)
-
-```
-server/apps/cmdb/tests/e2e/schemas/
-├── hwcloud_ecs/       01_stargazer_raw + 04_cmdb_instance
-├── hwcloud_vpc/       01 + 04
-├── qcloud_cvm/        01 + 04
-├── qcloud_clb/        01 + 04
-├── qcloud_redis/      01 + 04
-├── qcloud_bucket/     01 + 04
-├── qcloud_cmq/        01 + 04
-├── qcloud_mysql/      01 + 04
-├── qcloud_mongodb/    01 + 04
-├── fusioninsight_cluster/  01 + 04
-├── fusioninsight_host/     01 + 04
-├── zstack/            01 (placeholder)
-├── h3c_cas/           01 (placeholder)
-├── dameng_enterprise/ 01 (placeholder)
-└── redis_sentinel_enterprise/  01 (形态 C)
-```
-
-### Test 文件(7 个新 test_*.py)
-
-```
-server/apps/cmdb/tests/e2e/
-├── test_hwcloud_pipeline.py                  # Task 3.1
-├── test_qcloud_pipeline.py                   # Task 3.2
-├── test_fusioninsight_pipeline.py            # Task 3.3
-├── test_zstack_pipeline.py                   # Task 3.4
-├── test_h3c_cas_pipeline.py                  # Task 3.5
-├── test_dameng_enterprise_pipeline.py        # Task 3.6
-└── test_redis_sentinel_enterprise_pipeline.py # Task 3.7
-```
-
-### 框架文件(5 个 modified)
-
-```
-server/apps/cmdb/tests/e2e/conftest.py                              # 扩展 _MODEL_RUNNER_MAP + _PLUGIN_MODULE_ALIAS + ALIGNMENT_COVERED_MODEL_IDS
-server/apps/cmdb/tests/e2e/test_stargazer_prometheus_alignment.py   # 加 hwcloud/qcloud/fusioninsight/zstack/h3c_cas/dameng_enterprise/redis_sentinel_enterprise 到 ALIGNMENT_COVERED_MODEL_IDS + middleware 模式 skip
-server/apps/cmdb/tests/e2e/test_cmdb_vm_format_alignment.py         # 同上 + actual_pipeline_model_id 处理
-server/apps/cmdb/tests/e2e/test_common_contract.py                  # 单向校验 + 注释云采集对象不参与 common contract
-server/apps/cmdb/tests/e2e/utils/model_reflection.py                 # SCHEMA_DIR_ALIAS 加 dameng_enterprise / redis_sentinel_enterprise
-```
-
-### Spec 文档(1 个新)
-
-```
-docs/superpowers/specs/2026-07-14-cmdb-collect-hwcloud-subobjects-design.md   # Task 3.8 follow-up spec
-```
-
-### Report(1 个新)
-
-```
-.superpowers/sdd/task-3-report.md  # 本文件
-```
-
-## 7. Test execution 命令
+### 覆盖率
 
 ```bash
-# Task 3.1 - hwcloud
-cd server && python -m pytest apps/cmdb/tests/e2e/test_hwcloud_pipeline.py -v
-
-# Task 3.2 - qcloud
-python -m pytest apps/cmdb/tests/e2e/test_qcloud_pipeline.py -v
-
-# Task 3.3 - fusioninsight
-python -m pytest apps/cmdb/tests/e2e/test_fusioninsight_pipeline.py -v
-
-# Task 3.4 - zstack
-python -m pytest apps/cmdb/tests/e2e/test_zstack_pipeline.py -v
-
-# Task 3.5 - h3c_cas
-python -m pytest apps/cmdb/tests/e2e/test_h3c_cas_pipeline.py -v
-
-# Task 3.6 - dameng_enterprise
-python -m pytest apps/cmdb/tests/e2e/test_dameng_enterprise_pipeline.py -v
-
-# Task 3.7 - redis_sentinel_enterprise
-python -m pytest apps/cmdb/tests/e2e/test_redis_sentinel_enterprise_pipeline.py -v
-
-# A/B 端对齐
-python -m pytest apps/cmdb/tests/e2e/test_stargazer_prometheus_alignment.py apps/cmdb/tests/e2e/test_cmdb_vm_format_alignment.py -v
-
-# 全量
-python -m pytest apps/cmdb/tests/e2e/ -v
+PYTHONPATH=/Users/windyzhao/Documents/Canway/weops_X/cmdb/bk-lite/server/.venv/lib/python3.12/site-packages \
+COVERAGE_FILE=/tmp/stargazer-task3-coverage \
+./.venv/bin/python -m coverage run \
+  --source=core.task_queue_startup_cleanup,core.task_queue \
+  -m pytest tests/test_task_queue_startup_cleanup.py \
+  tests/test_task_queue_cleanup.py tests/test_task_queue_cleanup_cli.py \
+  tests/test_collect_multicred.py \
+  tests/test_host_collector.py::TestWorkerRunningFlag \
+  tests/test_host_collector.py::TestHostRemoteRuntime -q
 ```
 
-## 8. 下期 follow-up
+该命令及后续 `coverage report -m` 的结果为：启动清理核心
+`core/task_queue_startup_cleanup.py` 90%，满足 75% 门槛；生命周期相关的
+历史大模块 `core/task_queue.py` 57%，其未覆盖部分主要是 enqueue、状态查询
+和 host remote processing 的既有路径。上述 159 项相关回归仍覆盖本次启动
+生命周期、结果映射和 Redis 异常改动；两文件合计 70%，不将其误报为整体 75%。
 
-1. **9 个 hwcloud 子对象**(Task 3.8 已规划):worktree `feature/cmdb-collect-hwcloud-subobjects` 单独处理
-2. **qcloud_vpc / qcloud_cdb**:需 plugin metric_names 列表补全(短期靠 aliyun_vpc / qcloud_mysql 模式迁移)
-3. **middleware 模式 A 端**:扩展 test_a_alignment_business_labels 解析 metric.result JSON 后再校验
-4. **dameng license 解锁**:用户提供 license + 在 amd64 CI runner 跑(同 mssql 模式)
-5. **P2 archived placeholder(22 个)**:Task 4 范围
+以任务基线 `b727334ef` 的零上下文 diff 为准，使用 `coverage json` 的
+`executed_lines ∪ missing_lines` 仅统计新增的可执行行，差异行覆盖率为
+`290/338 (85.80%)`：`core/task_queue.py` 为 `97/124 (78.23%)`，
+`core/task_queue_startup_cleanup.py` 为 `193/214 (90.19%)`。未覆盖的新增
+可执行行如下，均为未触发的防御或异常分支；不影响该任务已覆盖的 Redis
+错误与启动清理主流程：
 
-## 9. 全局断言
-
-- ✅ 0 现有 33 真实落盘对象回归
-- ✅ 0 production 代码修改(只新增 2 个 stub plugin 文件)
-- ✅ 0 test_pipeline_factory.py 修改
-- ✅ 0 conftest.py 现有 266 行内容修改(只 append)
-- ✅ TDD 模式:每对象先写 fixture + schema + test,再 commit
-- ✅ 中文 commit message
-- ✅ 不 push(等用户 review)
+- `core/task_queue.py`: 59、158、211、241-242、248-249、263-266、357-358、
+  414、484、493、515、560、564、569、613、627、631、675、703、717、734。
+- `core/task_queue_startup_cleanup.py`: 91、93、97、99、103、109、111、169、
+  197-198、208-209、276、281-282、376、391-392、399-401。

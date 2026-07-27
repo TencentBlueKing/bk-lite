@@ -177,11 +177,28 @@
     "tls": "TLS",
     "tlsDisabled": "Disabled"
   },
+  "dateRange": {
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "this_week": "This Week",
+    "last_week": "Last Week",
+    "this_month": "This Month",
+    "last_month": "Last Month",
+    "last_7_days": "Last 7 Days",
+    "last_30_days": "Last 30 Days",
+    "last_90_days": "Last 90 Days",
+    "custom": "Custom",
+    "placeholder": "Select date range",
+    "startDate": "Start date",
+    "endDate": "End date",
+    "invalid": "Invalid date range"
+  },
   "dataSource": {
     "duplicateParamNames": "Duplicate parameter names: ",
     "addParam": "Add Parameter",
     "paramTypes": {
       "timeRange": "Time Range",
+      "dateRange": "Date Range",
       "number": "Number",
       "boolean": "Boolean",
       "date": "Date",
@@ -252,6 +269,7 @@
     "updateDataSourceSuccess": "Data source updated successfully",
     "required": "Required",
     "singleValue": "Single Value",
+    "multiValue": "Metric List",
     "operationFailed": "Operation failed",
     "table": "Table",
     "topN": "Top N",
@@ -311,6 +329,7 @@
       "widgetFrameBare": "Bare",
       "widgets": {
         "single": "KPI Card",
+        "multiValue": "Metric List",
         "gauge": "Gauge",
         "line": "Line Chart",
         "bar": "Bar Chart",
@@ -321,6 +340,7 @@
       },
       "widgetDescriptions": {
         "single": "Show key KPIs, alert totals, availability, and summary values",
+        "multiValue": "Show multiple metric names and values in rows",
         "gauge": "Show health, utilization, and target status",
         "line": "Show overall trends and time series",
         "bar": "Show category statistics and comparisons",
@@ -531,6 +551,7 @@
     "selectDashboardFirst": "Please select a dashboard first",
     "fetchDataFieldsFailed": "Failed to fetch data fields",
     "timeRange": "Time Range",
+    "dateRange": "Date Range",
     "noData": "No data available",
     "dataSourceAttr": "Data Source Attribute",
     "dataSource": "Data Source",
@@ -691,6 +712,9 @@
     "compareLabel": "Period compare",
     "comparePreviousPeriodTip": "When enabled, data from the previous period of equal duration will be compared and the percentage change displayed.",
     "comparePreviousShortLabel": "vs prev period",
+    "compareMode": "Compare display",
+    "compareModePercent": "Percentage",
+    "compareModeValue": "Value",
     "compareUnavailableTip": "This data source has no recognizable time range parameter, so period comparison cannot be enabled.",
     "displaySettings": "Display Settings",
     "gaugeSettings": "Gauge Settings",
@@ -751,7 +775,14 @@
     "groupNamePlaceholder": "Enter group name",
     "exportPdf": "Export PDF",
     "exportPdfSuccess": "Export success",
-    "exportPdfFailed": "Export failed"
+    "exportPdfFailed": "Export failed",
+    "share": "Share",
+    "shareLinkCopied": "Share link copied. The link is permanent and cannot be revoked individually—forward with care",
+    "shareCopyFailed": "Copy failed. Please copy the link manually",
+    "shareCreateFailed": "Failed to create share link",
+    "shareInvalid": "This share link is invalid or no longer available",
+    "shareOpening": "Opening shared dashboard",
+    "shareLoading": "Loading shared dashboard"
   },
   "opsAnalysisSidebar": {
     "addArch": "Add Architecture",

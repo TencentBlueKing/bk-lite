@@ -1,6 +1,6 @@
 """告警/事故/告警源序列化器与 operator_scope 覆盖测试。
 
-对照 spec/prd/告警中心：告警/事故展示持续时间、来源、处理人，处理人受组织范围约束。
+对照 specs/capabilities/legacy-prd-告警中心-告警.md：告警/事故展示持续时间、来源、处理人，处理人受组织范围约束。
 """
 
 from types import SimpleNamespace

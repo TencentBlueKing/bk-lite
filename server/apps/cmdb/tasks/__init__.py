@@ -14,5 +14,7 @@ from apps.cmdb.tasks.celery_tasks import (
     sync_public_enum_library_snapshots_task,
     sync_node_mgmt_hosts,
     full_sync_auto_association_rule_task,
-    collect_node_mgmt_hosts
+    collect_node_mgmt_hosts,
+    consume_change_record_mirror_outbox,
+    recover_change_record_mirror_outbox_task,
 )

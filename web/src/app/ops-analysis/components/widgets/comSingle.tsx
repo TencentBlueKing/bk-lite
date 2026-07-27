@@ -220,6 +220,10 @@ const ComSingle: React.FC<ComSingleProps> = ({
   const changePercent = config?.compare
     ? getChangePercent(toComparableNumber(rawValue), baselineNumericValue)
     : null;
+  const currentNumericValue = toComparableNumber(rawValue);
+  const changeValue = config?.compare && currentNumericValue !== null && baselineNumericValue !== null
+    ? currentNumericValue - baselineNumericValue
+    : null;
 
   const thresholds: ThresholdColorConfig[] =
     config?.thresholdColors ?? DEFAULT_THRESHOLD_COLORS;
@@ -390,18 +394,21 @@ const ComSingle: React.FC<ComSingleProps> = ({
   const valueMappingResult = applyValueMapping(rawValue, config?.valueMappings);
   const metricColor =
     valueMappingResult?.color || color || chartTheme.singleValueColor;
+  const compareUnitLabel =
+    valueMappingResult?.text !== undefined ? '' : displayUnit || unitText;
+  const compareAmount = config?.compareMode === 'value' ? changeValue : changePercent;
   const compareTextColor =
-    changePercent === null
+    compareAmount === null
       ? chartTheme.singleValueMetaColor
-      : changePercent > 0
+      : compareAmount > 0
         ? '#ff4d4f'
-        : changePercent < 0
+        : compareAmount < 0
           ? '#52c41a'
           : chartTheme.singleValueMetaColor;
   const compareDisplayText =
-    changePercent === null
+    compareAmount === null
       ? '--'
-      : `${changePercent > 0 ? '↑' : changePercent < 0 ? '↓' : ''}${Math.abs(changePercent).toFixed(1)}%`;
+      : `${compareAmount > 0 ? '↑' : compareAmount < 0 ? '↓' : ''}${Math.abs(compareAmount).toFixed(config?.compareMode === 'value' ? (config.decimalPlaces ?? 0) : 1)}${config?.compareMode === 'value' ? compareUnitLabel : '%'}`;
   const heightDrivenCompareSize = Math.max(
     scaleScreenMetric(12, screenRenderContext),
     Math.min(
@@ -429,8 +436,7 @@ const ComSingle: React.FC<ComSingleProps> = ({
     valueMappingResult?.text !== undefined
       ? valueMappingResult.text
       : displayMainValue;
-  const unitLabel =
-    valueMappingResult?.text !== undefined ? '' : displayUnit || unitText;
+  const unitLabel = compareUnitLabel;
   const valueGap = unitLabel
     ? Math.min(
       MAX_UNIT_GAP * widgetScale,

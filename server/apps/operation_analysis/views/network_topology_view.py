@@ -94,8 +94,8 @@ class NetworkTopologyViewSet(ModelViewSet):
         ``{"detail": ..., "data": ...}`` 形式 —— :class:`CustomRenderer`
         会用 ``detail`` 直接填到顶层的 ``message`` 字段,避免把整个
         ``data`` dict 序列化成 ``"data:{...}"`` 这种 Python repr 字符串
-        显示到 antd ``message.error`` 上(spec/requirements/运营分析/
-        网络拓扑大屏需求设计 §6.1)。
+        显示到 antd ``message.error`` 上
+        (specs/capabilities/legacy-requirements-运营分析-20260707-运营分析-网络拓扑大屏需求设计.md §6.1)。
         """
         message = str(exc) or exc.code
         body = {

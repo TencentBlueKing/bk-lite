@@ -1,4 +1,5 @@
 from django.db import models
+from django.core.validators import MaxValueValidator, MinValueValidator
 
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
@@ -19,6 +20,12 @@ class MonitorObjectType(TimeInfo, MaintainerInfo):
 
 class MonitorObject(TimeInfo, MaintainerInfo):
     LEVEL_CHOICES = [('base', 'Base'), ('derivative', 'Derivative')]
+    CLEANUP_POLICY_NO_CLEANUP = "no_cleanup"
+    CLEANUP_POLICY_TIMEOUT = "timeout"
+    CLEANUP_POLICY_CHOICES = [
+        (CLEANUP_POLICY_NO_CLEANUP, "No cleanup"),
+        (CLEANUP_POLICY_TIMEOUT, "Timeout cleanup"),
+    ]
 
     name = models.CharField(unique=True, max_length=100, verbose_name='监控对象')
     display_name = models.CharField(max_length=100, blank=True, default='', verbose_name='监控对象显示名称')
@@ -42,6 +49,20 @@ class MonitorObject(TimeInfo, MaintainerInfo):
     is_visible = models.BooleanField(default=True, verbose_name='是否可见')
     display_fields = models.JSONField(default=list, verbose_name='视图列表展示列配置')
     display_fields_customized = models.BooleanField(default=False, verbose_name='展示列是否被用户自定义')
+    is_builtin = models.BooleanField(default=False, db_index=True, verbose_name='是否为内置对象')
+    cleanup_policy = models.CharField(
+        max_length=20,
+        choices=CLEANUP_POLICY_CHOICES,
+        default=CLEANUP_POLICY_NO_CLEANUP,
+        verbose_name='自动发现资产清理策略',
+    )
+    cleanup_timeout_days = models.PositiveSmallIntegerField(
+        default=1,
+        validators=[MinValueValidator(1), MaxValueValidator(365)],
+        verbose_name='自动发现资产超时清理天数',
+    )
+    cleanup_policy_effective_at = models.DateTimeField(null=True, blank=True, verbose_name='清理策略生效时间')
+    last_discovery_success_at = models.DateTimeField(null=True, blank=True, verbose_name='最近一次自动发现查询成功时间')
 
     class Meta:
         verbose_name = '监控对象'
@@ -61,6 +82,8 @@ class MonitorInstance(TimeInfo, MaintainerInfo):
     ip = models.GenericIPAddressField(null=True, blank=True, verbose_name='接入IP')
     fallback_sampling_rate = models.IntegerField(default=1000, verbose_name='兜底采样率')
     enabled_protocols = models.JSONField(default=list, verbose_name='已启用的Flow协议')
+    last_seen_at = models.DateTimeField(null=True, blank=True, db_index=True, verbose_name='自动发现最近上报时间')
+    missing_duration_seconds = models.PositiveIntegerField(default=0, verbose_name='确认无上报累计时长')
 
     class Meta:
         verbose_name = '监控对象实例'

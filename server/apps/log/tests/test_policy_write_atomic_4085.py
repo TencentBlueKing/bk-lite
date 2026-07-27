@@ -33,6 +33,14 @@ def _allow_policy_operations(mocker, policy_id=None, teams=None):
             "team": teams or [1],
         },
     )
+    mocker.patch(
+        "apps.core.utils.current_team_scope.SystemMgmt.get_authorized_groups_scoped",
+        return_value={"result": True, "data": [1]},
+    )
+    mocker.patch(
+        "apps.core.utils.current_team_scope.SystemMgmt.get_assignable_groups",
+        return_value={"result": True, "data": [1, 2]},
+    )
 
 
 def _fail_periodic_task_create(mocker):
@@ -44,6 +52,7 @@ def _fail_periodic_task_create(mocker):
 
 def _call_policy_view(http_method, path, data, user, **kwargs):
     request = getattr(APIRequestFactory(), http_method)(path, data=data, format="json")
+    request.COOKIES["current_team"] = "1"
     force_authenticate(request, user=user)
     action = {"post": "create", "put": "update", "patch": "partial_update"}[http_method]
     view = PolicyViewSet.as_view({http_method: action})

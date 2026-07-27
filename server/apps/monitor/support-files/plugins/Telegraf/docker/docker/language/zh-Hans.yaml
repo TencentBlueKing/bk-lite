@@ -1,3 +1,71 @@
 Docker:
   name: Docker（Telegraf）
   desc: 通过Telegraf采集器定期收集Docker容器的状态、资源使用情况（CPU、内存、网络、IO）和性能指标。
+monitor_object:
+  Docker: Docker
+  Docker Container: Docker 容器
+monitor_object_type:
+  Container Management: 容器管理
+monitor_object_metric_group:
+  Docker:
+    Docker Count: Docker 容器数量
+  Docker Container:
+    Status: 状态
+    CPU: CPU
+    Memory: 内存
+    Block I/O: 块 I/O
+    Network: 网络
+monitor_object_metric:
+  Docker:
+    docker_n_containers_running:
+      name: 运行中容器数量
+      desc: Docker 主机上正在运行的容器数量。
+    docker_n_containers:
+      name: 容器总数
+      desc: Docker 主机上的容器总数量。
+    docker_n_containers_stopped:
+      name: 已停止容器数量
+      desc: Docker 主机上已停止的容器数量。
+  Docker Container:
+    docker_container_status:
+      name: 容器状态
+      desc: 容器当前的运行状态，例如运行中、已停止或已暂停。
+    docker_container_status_restart_count:
+      name: 容器重启次数
+      desc: 容器自上次启动以来发生的重启次数。
+    docker_container_cpu_usage_percent:
+      name: CPU 使用率
+      desc: 容器使用的可用 CPU 资源百分比。
+    docker_container_mem_usage_percent:
+      name: 内存使用率
+      desc: 容器已使用的配置内存上限百分比。
+    docker_container_mem_usage:
+      name: 已用内存
+      desc: 容器当前实际占用的物理内存。
+    docker_container_blkio_io_service_bytes_recursive_total_rate:
+      name: 块 I/O 吞吐量
+      desc: 容器所有块 I/O 操作每秒传输的总字节数。
+    docker_container_blkio_io_service_bytes_recursive_read_rate:
+      name: 块 I/O 读取吞吐量
+      desc: 容器从块设备每秒读取的字节数。
+    docker_container_blkio_io_service_bytes_recursive_write_rate:
+      name: 块 I/O 写入吞吐量
+      desc: 容器向块设备每秒写入的字节数。
+    docker_container_net_rx_bytes_rate:
+      name: 网络接收吞吐量
+      desc: 容器网络接口每秒接收的字节数。
+    docker_container_net_tx_bytes_rate:
+      name: 网络发送吞吐量
+      desc: 容器网络接口每秒发送的字节数。
+    docker_container_net_rx_errors_rate:
+      name: 网络接收错误数
+      desc: 容器每秒发生的接收数据包错误数。
+    docker_container_net_tx_errors_rate:
+      name: 网络发送错误数
+      desc: 容器每秒发生的发送数据包错误数。
+    docker_container_net_rx_packets_rate:
+      name: 网络接收数据包数
+      desc: 容器每秒接收的数据包数量。
+    docker_container_net_tx_packets_rate:
+      name: 网络发送数据包数
+      desc: 容器每秒发送的数据包数量。

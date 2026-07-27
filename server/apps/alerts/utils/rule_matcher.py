@@ -15,7 +15,7 @@
 """
 
 import re as regex_module
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
 from django.db.models import Q, QuerySet
 
@@ -150,10 +150,18 @@ class RuleMatcher:
             logger.warning("[AlertUtil] 未知字段键: %s", key)
             return None
 
+        if isinstance(value, list) and not value:
+            logger.warning("[AlertUtil] 规则值数组不能为空: %s", rule)
+            return None
+
         try:
             if operator == "eq":
+                if isinstance(value, list):
+                    return Q(**{f"{model_field}__in": value})
                 return Q(**{model_field: value})
             elif operator == "ne":
+                if isinstance(value, list):
+                    return ~Q(**{f"{model_field}__in": value})
                 return ~Q(**{model_field: value})
             elif operator == "contains":
                 return Q(**{f"{model_field}__icontains": value})

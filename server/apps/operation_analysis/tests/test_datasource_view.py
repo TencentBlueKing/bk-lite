@@ -399,3 +399,54 @@ def test_namespace_partial_update_allowed_with_permission(authenticated_user, mo
 
     assert update_called, "update() must be called when user has namespace-Edit permission"
     assert response.status_code != 403, "User with namespace-Edit permission must not be blocked"
+
+
+# --- Tests for issue #3393: DataSourceTagModelViewSet read permission enforcement ---
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("action", ["list", "retrieve"])
+def test_datasource_tag_read_blocked_without_permission(authenticated_user, action):
+    """标签列表和详情必须拒绝缺少 data_source-View 权限的用户。"""
+    tag = datasource_view.DataSourceTag.objects.create(
+        tag_id="security",
+        name="Security",
+        created_by="system",
+        updated_by="system",
+    )
+    authenticated_user.is_superuser = False
+    authenticated_user.permission = {"ops-analysis": set()}
+
+    factory = APIRequestFactory()
+    request = factory.get("/operation_analysis/api/tag/")
+    force_authenticate(request, user=authenticated_user)
+    view = datasource_view.DataSourceTagModelViewSet.as_view({"get": action})
+
+    kwargs = {"pk": str(tag.pk)} if action == "retrieve" else {}
+    response = view(request, **kwargs)
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("action", ["list", "retrieve"])
+def test_datasource_tag_read_allowed_with_permission(authenticated_user, action):
+    """拥有 data_source-View 权限的用户仍可读取标签列表和详情。"""
+    tag = datasource_view.DataSourceTag.objects.create(
+        tag_id="cmdb",
+        name="CMDB",
+        created_by="system",
+        updated_by="system",
+    )
+    authenticated_user.is_superuser = False
+    authenticated_user.permission = {"ops-analysis": {"data_source-View"}}
+
+    factory = APIRequestFactory()
+    request = factory.get("/operation_analysis/api/tag/")
+    force_authenticate(request, user=authenticated_user)
+    view = datasource_view.DataSourceTagModelViewSet.as_view({"get": action})
+
+    kwargs = {"pk": str(tag.pk)} if action == "retrieve" else {}
+    response = view(request, **kwargs)
+
+    assert response.status_code == status.HTTP_200_OK

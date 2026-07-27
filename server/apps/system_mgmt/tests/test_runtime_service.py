@@ -166,10 +166,71 @@ def test_runtime_application_service_logs_failed_capability_details(caplog):
 
     assert result.success is False
     assert result.payload["capability_status"] == {"login_auth": "verification_failed"}
-    assert "Integration instance test connection failed for capability 'login_auth'" in caplog.text
+    assert "Integration instance test connection failed" in caplog.text
+    assert "login_auth" in caplog.text
     assert "provider.invalid_config" in caplog.text
     assert "app_secret" in caplog.text
-    assert "request_id=" in caplog.text
+    assert "request_id" in caplog.text
+
+
+def test_runtime_application_service_aggregates_capability_failures_into_one_log(caplog):
+    class FailingAdapter:
+        @classmethod
+        def test_connection(cls, config, provider_key, capability_key, **kwargs):
+            return CapabilityExecutionResult.failed_result(
+                f"{capability_key} failed with app_secret=hidden",
+                code="provider.auth_failed",
+                external_code="401",
+                external_request_id=f"external-{capability_key}",
+            )
+
+    capabilities = [
+        SimpleNamespace(key="login_auth", adapter_key="demo.login_auth"),
+        SimpleNamespace(key="user_sync", adapter_key="demo.user_sync"),
+    ]
+    manifest = SimpleNamespace(
+        key="demo",
+        capabilities=capabilities,
+        get_capability=lambda capability_key: next(
+            item for item in capabilities if item.key == capability_key
+        ),
+    )
+    instance = SimpleNamespace(
+        id=7,
+        name="Demo",
+        provider_key="demo",
+        get_runtime_config=lambda: {},
+    )
+    service = RuntimeApplicationService()
+    service.provider_registry = FakeProviderRegistry(manifest)
+    service.adapter_registry = FakeAdapterRegistry(
+        {
+            "demo.login_auth": FailingAdapter,
+            "demo.user_sync": FailingAdapter,
+        }
+    )
+
+    with caplog.at_level("WARNING"):
+        result = service.test_connection(instance)
+
+    failure_logs = [
+        record.message
+        for record in caplog.records
+        if "Integration instance test connection failed" in record.message
+    ]
+    assert result.success is False
+    assert len(failure_logs) == 1
+    assert "login_auth" in failure_logs[0]
+    assert "user_sync" in failure_logs[0]
+    assert "external-login_auth" in failure_logs[0]
+    assert "external-user_sync" in failure_logs[0]
+    assert "app_secret=hidden" not in failure_logs[0]
+    assert result.payload["capability_results"]["login_auth"]["summary"] == (
+        "login_auth failed with app_secret=hidden"
+    )
+    assert result.payload["capability_results"]["user_sync"]["errors"][0]["message"] == (
+        "user_sync failed with app_secret=hidden"
+    )
 
 
 def test_runtime_application_service_can_execute_list_departments():
@@ -485,7 +546,6 @@ def test_login_with_binding_creates_user_when_unmatched_action_is_create():
 def test_login_with_binding_does_not_modify_existing_user_profile():
     """登录认证不修改已有用户资料,只刷 last_login(由外层 login_with_binding 处理)。
 
-    详见 openspec/changes/wechat-login-auth-field-mapping/design.md 决策 3。
     """
     instance = IntegrationInstance.objects.create(
         name="Feishu Login",

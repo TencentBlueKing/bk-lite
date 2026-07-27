@@ -3,21 +3,14 @@
 nats handler 直接可调用（@nats_client.register 返回原函数）。
 只 mock 真实外部边界（cache、send_msg、jwt token 验证等），断言真实 DB 行为与返回结构。
 """
+
 import types
 
-import nats_client
 import pytest
 
+import nats_client
 from apps.system_mgmt import nats_api
-from apps.system_mgmt.models import (
-    App,
-    Channel,
-    Group,
-    GroupDataRule,
-    Menu,
-    Role,
-    User,
-)
+from apps.system_mgmt.models import App, Channel, Group, GroupDataRule, Menu, Role, User
 from apps.system_mgmt.models.channel import ChannelChoices
 
 pytestmark = pytest.mark.django_db
@@ -105,8 +98,12 @@ def test_get_user_all_roles_personal_and_group_inherit():
     child.roles.add(role_group)
 
     user = User.objects.create(
-        username="ru", password="x", display_name="ru", email="r@x.com",
-        role_list=[role_personal.id], group_list=[child.id],
+        username="ru",
+        password="x",
+        display_name="ru",
+        email="r@x.com",
+        role_list=[role_personal.id],
+        group_list=[child.id],
     )
     roles = set(nats_api.get_user_all_roles(user))
     # 个人角色 + 子组角色 + 继承的父组角色（父 allow_inherit_roles=True）
@@ -132,8 +129,13 @@ def test_verify_token_regular_user_resolves_underscore_import(monkeypatch):
 
     parent = Group.objects.create(name="VT_Parent", parent_id=0)
     user = User.objects.create(
-        username="vt_regular", password="x", display_name="vt", email="vt@x.com",
-        domain="domain.com", role_list=[], group_list=[parent.id],
+        username="vt_regular",
+        password="x",
+        display_name="vt",
+        email="vt@x.com",
+        domain="domain.com",
+        role_list=[],
+        group_list=[parent.id],
     )
     # 避免 get_cached_token_info 命中旧数据
     clear_token_info_cache(user.username, user.domain)
@@ -190,8 +192,13 @@ def test_get_client_superuser_sees_all():
     App.objects.create(name="app1", display_name="1", url="/1")
     admin_role = Role.objects.create(name="admin", app="")
     User.objects.create(
-        username="super", password="x", display_name="s", email="s@x.com",
-        domain="domain.com", role_list=[admin_role.id], group_list=[],
+        username="super",
+        password="x",
+        display_name="s",
+        email="s@x.com",
+        domain="domain.com",
+        role_list=[admin_role.id],
+        group_list=[],
     )
     result = nats_api.get_client(username="super")
     assert result["result"] is True
@@ -289,7 +296,15 @@ def test_actor_scope_missing_username_returns_empty():
 
 def test_actor_scope_superuser():
     g = Group.objects.create(name="SG", parent_id=0)
-    User.objects.create(username="sa", password="x", display_name="sa", email="sa@x.com", domain="domain.com")
+    admin_role, _ = Role.objects.get_or_create(name="admin", app="")
+    User.objects.create(
+        username="sa",
+        password="x",
+        display_name="sa",
+        email="sa@x.com",
+        domain="domain.com",
+        role_list=[admin_role.id],
+    )
     ctx = {"username": "sa", "domain": "domain.com", "current_team": g.id, "is_superuser": True}
     user_obj, groups = nats_api._get_actor_user_scope(ctx)
     assert user_obj is not None
@@ -298,7 +313,15 @@ def test_actor_scope_superuser():
 
 def test_get_authorized_groups_scoped():
     g = Group.objects.create(name="AG", parent_id=0)
-    User.objects.create(username="au", password="x", display_name="au", email="au@x.com", domain="domain.com")
+    admin_role, _ = Role.objects.get_or_create(name="admin", app="")
+    User.objects.create(
+        username="au",
+        password="x",
+        display_name="au",
+        email="au@x.com",
+        domain="domain.com",
+        role_list=[admin_role.id],
+    )
     ctx = {"username": "au", "domain": "domain.com", "current_team": g.id, "is_superuser": True}
     result = nats_api.get_authorized_groups_scoped(ctx)
     assert result["result"] is True
@@ -339,8 +362,11 @@ def test_create_default_rule_creates_rule():
 # ---------------------------------------------------------------------------
 def test_get_channel_detail_found_and_missing():
     ch = Channel.objects.create(
-        name="mychan", channel_type=ChannelChoices.EMAIL, config={"k": "v"},
-        description="d", team=[1, 2],
+        name="mychan",
+        channel_type=ChannelChoices.EMAIL,
+        config={"k": "v"},
+        description="d",
+        team=[1, 2],
     )
     ok = nats_api.get_channel_detail(ch.id)
     assert ok["result"] is True

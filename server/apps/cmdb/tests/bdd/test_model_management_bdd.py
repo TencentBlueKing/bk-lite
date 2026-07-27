@@ -1,6 +1,6 @@
 """CMDB 模型管理 BDD（中文 Gherkin）。
 
-对照 spec/prd/CMDB·模型管理：
+对照 specs/capabilities/legacy-prd-cmdb-模型管理.md：
 - 模型分类（ClassificationManage）CRUD：创建/更新/查询时图库交互行为；
 - 模型（ModelManage）删除前的引用校验：实例存在 / 关联存在；
 - 更新模型时 model_id 是不可变字段；

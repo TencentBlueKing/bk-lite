@@ -15,7 +15,7 @@ import { InboxOutlined, FileOutlined, CloseOutlined, ExclamationCircleOutlined }
 import { useRouter } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import useJobApi from '@/app/job/api';
-import HostSelectionModal, { HostItem, TargetSourceType } from '@/app/job/components/host-selection-modal';
+import HostSelectionModal, { HostItem, TargetSourceType } from '@/app/job/components/jobHostSelectionModalRuntime';
 import { AddTargetHostButton, TargetSourceSelector } from '@/app/job/components/target-selection-controls';
 import { EnabledDangerousPaths, JobRecordFile } from '@/app/job/types';
 

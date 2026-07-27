@@ -3,22 +3,20 @@
 仅 mock S3 下载与 InstallTokenService.generate_install_token 边界。
 断言真实 DB 副作用与命令字符串结构。
 """
+
 import os
 import shlex
 import subprocess
-import pytest
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.node_mgmt.constants.node import NodeConstants
-from apps.node_mgmt.models import Collector, Node, NodeOrganization, PackageVersion
+from apps.node_mgmt.models import Node, NodeOrganization, PackageVersion
 from apps.node_mgmt.models.cloud_region import CloudRegion, SidecarEnv
-from apps.node_mgmt.models.installer import (
-    CollectorTask,
-    CollectorTaskNode,
-    ControllerTask,
-    ControllerTaskNode,
-)
+from apps.node_mgmt.models.installer import CollectorTask, CollectorTaskNode, ControllerTask, ControllerTaskNode
 from apps.node_mgmt.services.installer import InstallerService
 
 
@@ -54,8 +52,12 @@ def test_resolve_package_not_found_raises():
 @pytest.mark.django_db
 def test_resolve_package_matched_returns_obj():
     pkg = PackageVersion.objects.create(
-        type="controller", os="linux", cpu_architecture="x86_64",
-        object="Controller", version="1.0.0", name="ctl.tar.gz",
+        type="controller",
+        os="linux",
+        cpu_architecture="x86_64",
+        object="Controller",
+        version="1.0.0",
+        name="ctl.tar.gz",
     )
     resolved = InstallerService.resolve_package_by_architecture(pkg.id, "x86_64")
     assert resolved.id == pkg.id
@@ -64,8 +66,12 @@ def test_resolve_package_matched_returns_obj():
 @pytest.mark.django_db
 def test_resolve_package_legacy_x86_controller():
     pkg = PackageVersion.objects.create(
-        type="controller", os="linux", cpu_architecture="",
-        object="Controller", version="1.0.0", name="ctl.tar.gz",
+        type="controller",
+        os="linux",
+        cpu_architecture="",
+        object="Controller",
+        version="1.0.0",
+        name="ctl.tar.gz",
     )
     resolved = InstallerService.resolve_package_by_architecture(pkg.id, "x86_64")
     assert resolved.id == pkg.id
@@ -174,8 +180,12 @@ def test_uninstall_controller_creates_task_and_nodes():
 def test_install_collector_creates_task_and_nodes():
     region = CloudRegion.objects.create(name="cr-install-col")
     node = Node.objects.create(
-        id="n-col", name="n", ip="10.0.0.3", operating_system="linux",
-        collector_configuration_directory="/etc", cloud_region=region,
+        id="n-col",
+        name="n",
+        ip="10.0.0.3",
+        operating_system="linux",
+        collector_configuration_directory="/etc",
+        cloud_region=region,
     )
     task_id = InstallerService.install_collector(7, [node.id])
     task = CollectorTask.objects.get(id=task_id)
@@ -187,8 +197,12 @@ def test_install_collector_creates_task_and_nodes():
 def test_install_collector_nodes_returns_info():
     region = CloudRegion.objects.create(name="cr-col-nodes")
     node = Node.objects.create(
-        id="n-col-2", name="n", ip="10.0.0.4", operating_system="linux",
-        collector_configuration_directory="/etc", cloud_region=region,
+        id="n-col-2",
+        name="n",
+        ip="10.0.0.4",
+        operating_system="linux",
+        collector_configuration_directory="/etc",
+        cloud_region=region,
     )
     task = CollectorTask.objects.create(type="install", status="waiting", package_version_id=1)
     CollectorTaskNode.objects.create(task=task, node_id=node.id, status="waiting")
@@ -201,12 +215,17 @@ def test_install_collector_nodes_returns_info():
 @pytest.mark.django_db
 def test_install_controller_nodes_returns_info():
     region = CloudRegion.objects.create(name="cr-ctrl-nodes")
-    task = ControllerTask.objects.create(
-        cloud_region=region, type="install", status="waiting", package_version_id=1
-    )
+    task = ControllerTask.objects.create(cloud_region=region, type="install", status="waiting", package_version_id=1)
     ControllerTaskNode.objects.create(
-        task=task, ip="10.0.0.5", os="linux", port=22, username="root",
-        password="x", node_name="n", organizations=[1], status="waiting",
+        task=task,
+        ip="10.0.0.5",
+        os="linux",
+        port=22,
+        username="root",
+        password="x",
+        node_name="n",
+        organizations=[1],
+        status="waiting",
     )
     result = InstallerService.install_controller_nodes(task.id)
     assert len(result) == 1
@@ -233,9 +252,7 @@ def test_install_controller_nodes_filters_by_authorized_nodes():
         collector_configuration_directory="/etc",
         cloud_region=region,
     )
-    task = ControllerTask.objects.create(
-        cloud_region=region, type="install", status="waiting", package_version_id=1
-    )
+    task = ControllerTask.objects.create(cloud_region=region, type="install", status="waiting", package_version_id=1)
     ControllerTaskNode.objects.create(
         task=task,
         node_id=allowed_node.id,
@@ -271,7 +288,7 @@ def test_install_controller_nodes_filters_by_authorized_nodes():
 
 
 @pytest.mark.django_db
-def test_install_controller_nodes_limits_legacy_rows_to_task_owner_or_superuser():
+def test_install_controller_nodes_filters_legacy_rows_by_scope_snapshot():
     region = CloudRegion.objects.create(name="cr-ctrl-legacy")
     node = Node.objects.create(
         id="n-ctrl-legacy",
@@ -301,25 +318,19 @@ def test_install_controller_nodes_limits_legacy_rows_to_task_owner_or_superuser(
         status="waiting",
     )
 
-    denied = InstallerService.install_controller_nodes(
-        task.id,
-        authorized_nodes=Node.objects.filter(id=node.id),
-        request_user=type("User", (), {"username": "other", "is_superuser": False})(),
-    )
-    owner = InstallerService.install_controller_nodes(
-        task.id,
-        authorized_nodes=Node.objects.filter(id=node.id),
-        request_user=type("User", (), {"username": "owner", "is_superuser": False})(),
-    )
-    superuser = InstallerService.install_controller_nodes(
+    current_scope = InstallerService.install_controller_nodes(
         task.id,
         authorized_nodes=Node.objects.none(),
-        request_user=type("User", (), {"username": "admin", "is_superuser": True})(),
+        scope=SimpleNamespace(data_team_ids=frozenset({1})),
+    )
+    sibling_scope = InstallerService.install_controller_nodes(
+        task.id,
+        authorized_nodes=Node.objects.none(),
+        scope=SimpleNamespace(data_team_ids=frozenset({2})),
     )
 
-    assert denied == []
-    assert [item["ip"] for item in owner] == [node.ip]
-    assert [item["ip"] for item in superuser] == [node.ip]
+    assert [item["ip"] for item in current_scope] == [node.ip]
+    assert sibling_scope == []
 
 
 # --------------------------------------------------------------------------- #
@@ -329,8 +340,12 @@ def test_install_controller_nodes_limits_legacy_rows_to_task_owner_or_superuser(
 def test_get_manual_install_status_mixed():
     region = CloudRegion.objects.create(name="cr-manual")
     Node.objects.create(
-        id="installed-node", name="n", ip="10.0.0.6", operating_system="linux",
-        collector_configuration_directory="/etc", cloud_region=region,
+        id="installed-node",
+        name="n",
+        ip="10.0.0.6",
+        operating_system="linux",
+        collector_configuration_directory="/etc",
+        cloud_region=region,
     )
     result = InstallerService.get_manual_install_status(["installed-node", "missing-node"])
     statuses = {item["node_id"]: item["status"] for item in result}
@@ -346,8 +361,14 @@ def test_get_install_command_missing_server_url_raises():
     region = CloudRegion.objects.create(name="cr-cmd-nourl")
     with pytest.raises(BaseAppException) as exc:
         InstallerService.get_install_command(
-            user="u", ip="1.1.1.1", node_id="nid", os="linux", package_id=1,
-            cloud_region_id=region.id, organizations=[1], node_name="n",
+            user="u",
+            ip="1.1.1.1",
+            node_id="nid",
+            os="linux",
+            package_id=1,
+            cloud_region_id=region.id,
+            organizations=[1],
+            node_name="n",
             cpu_architecture="x86_64",
         )
     assert "Missing NODE_SERVER_URL" in str(exc.value)
@@ -357,16 +378,24 @@ def test_get_install_command_missing_server_url_raises():
 def test_get_install_command_windows_returns_session_url():
     region = CloudRegion.objects.create(name="cr-cmd-win")
     SidecarEnv.objects.create(
-        cloud_region=region, key=NodeConstants.SERVER_URL_KEY,
-        value="https://srv.local/", type="str",
+        cloud_region=region,
+        key=NodeConstants.SERVER_URL_KEY,
+        value="https://srv.local/",
+        type="str",
     )
     with patch(
         "apps.node_mgmt.services.installer.InstallTokenService.generate_install_token",
         return_value="tok-abc",
     ):
         cmd = InstallerService.get_install_command(
-            user="u", ip="1.1.1.1", node_id="nid", os="windows", package_id=1,
-            cloud_region_id=region.id, organizations=[1], node_name="n",
+            user="u",
+            ip="1.1.1.1",
+            node_id="nid",
+            os="windows",
+            package_id=1,
+            cloud_region_id=region.id,
+            organizations=[1],
+            node_name="n",
             cpu_architecture="x86_64",
         )
     assert cmd == "https://srv.local/api/v1/node_mgmt/open_api/installer/session?token=tok-abc"
@@ -376,24 +405,35 @@ def test_get_install_command_windows_returns_session_url():
 def test_get_install_command_linux_returns_bootstrap():
     region = CloudRegion.objects.create(name="cr-cmd-linux")
     SidecarEnv.objects.create(
-        cloud_region=region, key=NodeConstants.SERVER_URL_KEY,
-        value="https://srv.local", type="str",
+        cloud_region=region,
+        key=NodeConstants.SERVER_URL_KEY,
+        value="https://srv.local",
+        type="str",
     )
     session_cfg = {
         "installer": {"filename": "installer.bin"},
         "install_dir": "/opt/fusion",
         "server_url": "https://srv.local/api/v1/node_mgmt/open_api/node",
     }
-    with patch(
-        "apps.node_mgmt.services.installer.InstallTokenService.generate_install_token",
-        return_value="tok-xyz",
-    ), patch(
-        "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
-        return_value=session_cfg,
+    with (
+        patch(
+            "apps.node_mgmt.services.installer.InstallTokenService.generate_install_token",
+            return_value="tok-xyz",
+        ),
+        patch(
+            "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
+            return_value=session_cfg,
+        ),
     ):
         cmd = InstallerService.get_install_command(
-            user="u", ip="1.1.1.1", node_id="nid", os="linux", package_id=1,
-            cloud_region_id=region.id, organizations=[1], node_name="n",
+            user="u",
+            ip="1.1.1.1",
+            node_id="nid",
+            os="linux",
+            package_id=1,
+            cloud_region_id=region.id,
+            organizations=[1],
+            node_name="n",
             cpu_architecture="x86_64",
         )
     assert "linux_bootstrap?token=tok-xyz" in cmd

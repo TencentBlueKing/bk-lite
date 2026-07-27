@@ -1,6 +1,6 @@
 """CMDB ModelManage 纯逻辑方法覆盖测试（不触图数据库）。
 
-对照 spec/prd/CMDB·模型管理：属性默认值归一、tag/enum 字段约束校验、运行时枚举选项解析。
+对照 specs/capabilities/legacy-prd-cmdb-模型管理.md：属性默认值归一、tag/enum 字段约束校验、运行时枚举选项解析。
 """
 
 import pytest

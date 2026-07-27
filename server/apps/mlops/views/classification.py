@@ -1282,12 +1282,7 @@ class ClassificationTrainJobViewSet(TeamModelViewSet):
             filename = f"Classification_{run_name}_{run_id[:8]}.zip"
 
             # 返回文件
-            response = FileResponse(
-                zip_buffer,
-                content_type="application/zip",
-                as_attachment=True,
-                filename=filename,
-            )
+            response = mlflow_service.build_model_download_response(zip_buffer, filename)
 
             return response
 

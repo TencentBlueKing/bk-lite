@@ -14,6 +14,7 @@ import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import { useNamespaceApi } from '@/app/ops-analysis/api/namespace';
 import { useUserInfoContext } from '@/context/userInfo';
 import { addAuthToDataSources } from '@/app/ops-analysis/utils/permissionChecker';
+import { useSharedDataSourceQuery } from '@/app/ops-analysis/context/shareDataSource';
 import type {
   NamespaceItem,
 } from '@/app/ops-analysis/types/namespace';
@@ -36,6 +37,7 @@ const OpsAnalysisContext = createContext<OpsAnalysisContextType | undefined>(
 );
 
 export const OpsAnalysisProvider = ({ children }: { children: ReactNode }) => {
+  const sharedAccess = useSharedDataSourceQuery();
   const [rawNamespaces, setRawNamespaces] = useState<NamespaceItem[]>([]);
   const [namespacesLoading, setNamespacesLoading] = useState(false);
   const [rawDataSources, setRawDataSources] = useState<DatasourceItem[]>([]);
@@ -83,8 +85,10 @@ export const OpsAnalysisProvider = ({ children }: { children: ReactNode }) => {
 
   const applyDataSourceAuth = useCallback(
     (list: DatasourceItem[]) =>
-      addAuthToDataSources(list || [], selectedGroup?.id),
-    [selectedGroup?.id],
+      sharedAccess
+        ? (list || []).map((item) => ({ ...item, hasAuth: true }))
+        : addAuthToDataSources(list || [], selectedGroup?.id),
+    [selectedGroup?.id, sharedAccess],
   );
 
   const mergeDataSources = useCallback((incoming: DatasourceItem[]) => {
@@ -140,6 +144,24 @@ export const OpsAnalysisProvider = ({ children }: { children: ReactNode }) => {
       return currentNamespaces.filter((item) => normalizedIds.includes(item.id));
     }
 
+    // 分享态禁止打普通 namespace 接口；缺失项从已加载数据源元数据拼装
+    if (sharedAccess) {
+      const namespaceMap = new Map<number, NamespaceItem>();
+      currentNamespaces.forEach((item) => namespaceMap.set(item.id, item));
+      rawDataSourcesRef.current.forEach((dataSource) => {
+        (dataSource.namespace_options || []).forEach((namespace) => {
+          if (normalizedIds.includes(namespace.id)) {
+            namespaceMap.set(namespace.id, namespace as NamespaceItem);
+          }
+        });
+      });
+      const sharedNamespaces = normalizedIds
+        .map((id) => namespaceMap.get(id))
+        .filter((item): item is NamespaceItem => Boolean(item));
+      mergeNamespaces(sharedNamespaces);
+      return sharedNamespaces;
+    }
+
     try {
       namespaceRequestCountRef.current += 1;
       namespacesRequestingRef.current = true;
@@ -161,7 +183,7 @@ export const OpsAnalysisProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       finishNamespaceRequest();
     }
-  }, [finishNamespaceRequest, getNamespaceList, mergeNamespaces, normalizeIds]);
+  }, [finishNamespaceRequest, getNamespaceList, mergeNamespaces, normalizeIds, sharedAccess]);
 
   const loadCanvasNamespaces = useCallback(async (ids: Array<number | string> = []) => {
     const requestedIds = Array.isArray(ids) ? ids : [];
@@ -173,6 +195,23 @@ export const OpsAnalysisProvider = ({ children }: { children: ReactNode }) => {
       canvasNamespaceKeyRef.current = '';
       setRawNamespaces([]);
       return [];
+    }
+
+    if (sharedAccess) {
+      const namespaceMap = new Map<number, NamespaceItem>();
+      rawDataSourcesRef.current.forEach((dataSource) => {
+        (dataSource.namespace_options || []).forEach((namespace) => {
+          if (normalizedIds.includes(namespace.id)) {
+            namespaceMap.set(namespace.id, namespace as NamespaceItem);
+          }
+        });
+      });
+      const sharedNamespaces = normalizedIds
+        .map((id) => namespaceMap.get(id))
+        .filter((item): item is NamespaceItem => Boolean(item));
+      canvasNamespaceKeyRef.current = normalizedKey;
+      setRawNamespaces(sharedNamespaces);
+      return sharedNamespaces;
     }
 
     const currentNamespaces = rawNamespacesRef.current;
@@ -205,10 +244,11 @@ export const OpsAnalysisProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       finishNamespaceRequest();
     }
-  }, [buildStableIdsKey, finishNamespaceRequest, getNamespaceList, normalizeIds]);
+  }, [buildStableIdsKey, finishNamespaceRequest, getNamespaceList, normalizeIds, sharedAccess]);
 
   const refreshNamespaces = useCallback(async () => {
-    if (namespacesRequestingRef.current) {
+    // 分享态不允许枚举目标租户 namespace
+    if (sharedAccess || namespacesRequestingRef.current) {
       return;
     }
 
@@ -224,7 +264,7 @@ export const OpsAnalysisProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       finishNamespaceRequest();
     }
-  }, [finishNamespaceRequest, getNamespaceList]);
+  }, [finishNamespaceRequest, getNamespaceList, sharedAccess]);
 
   const fetchDataSources = useCallback(async (ids: Array<number | string> = []) => {
     const requestedIds = Array.isArray(ids) ? ids : [];
@@ -274,6 +314,7 @@ export const OpsAnalysisProvider = ({ children }: { children: ReactNode }) => {
     canvasDataSourceRequestIdRef.current = requestId;
 
     if (normalizedIds.length === 0) {
+      rawDataSourcesRef.current = [];
       setRawDataSources([]);
       return [];
     }
@@ -287,6 +328,7 @@ export const OpsAnalysisProvider = ({ children }: { children: ReactNode }) => {
       const scopedDataSources = normalizedIds
         .map((id) => currentMap.get(id))
         .filter((item): item is DatasourceItem => Boolean(item));
+      rawDataSourcesRef.current = scopedDataSources;
       setRawDataSources(scopedDataSources);
       return applyDataSourceAuth(scopedDataSources);
     }
@@ -303,6 +345,7 @@ export const OpsAnalysisProvider = ({ children }: { children: ReactNode }) => {
         .map((id) => nextMap.get(id))
         .filter((item): item is DatasourceItem => Boolean(item));
       if (canvasDataSourceRequestIdRef.current === requestId) {
+        rawDataSourcesRef.current = scopedDataSources;
         setRawDataSources(scopedDataSources);
       }
       return applyDataSourceAuth(scopedDataSources);

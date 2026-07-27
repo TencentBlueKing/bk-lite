@@ -293,6 +293,29 @@ def test_network_node_params_single_credential_carries_topology_contract():
     assert credential["min_confidence"] == 0.75
 
 
+def test_config_file_node_params_carries_execution_id():
+    from apps.cmdb.node_configs.ssh.config_file import ConfigFileNodeParams
+
+    instance = SimpleNamespace(
+        id=96,
+        task_id="execution-current",
+        model_id="config_file",
+        driver_type="job",
+        decrypt_credentials=[
+            {"credential_id": "cred-1", "username": "admin", "password": "secret", "port": 22},
+        ],
+        params={"config_file_path": "/etc/app.conf"},
+        timeout=60,
+        access_point=[{"id": 3}],
+        instances=[{"_id": "inst-1", "model_id": "host", "ip_addr": "10.0.0.10"}],
+        ip_range="",
+    )
+
+    credential = ConfigFileNodeParams(instance).set_credential()
+
+    assert credential["execution_id"] == "execution-current"
+
+
 def test_network_node_params_topology_protocols_header_is_agent_parseable():
     """复现并防回归：topology_protocols 下发到 header 后必须能被 agent 的 split(',') 正确解析。
     旧实现把列表 str() 成 "['lldp', 'cdp', 'fdb', 'arp']"，agent 解析为空 → 不采 LLDP/CDP/FDB。"""

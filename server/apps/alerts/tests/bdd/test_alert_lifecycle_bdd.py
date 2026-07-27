@@ -1,6 +1,6 @@
 """告警中心 BDD：AlertOperator 状态机生命周期（中文 Gherkin）。
 
-对照 spec/prd/告警中心·告警：未分派 → 待响应 → 处理中 → 关闭，
+对照 specs/capabilities/legacy-prd-告警中心-告警.md：未分派 → 待响应 → 处理中 → 关闭，
 覆盖分派/认领的权限、状态、入参校验，含两条 happy path 与多条 corner case。
 """
 

@@ -327,6 +327,7 @@ class AuthBackend(ModelBackend):
         "console_mgmt": "ops-console",
         "operation_analysis": "ops-analysis",
         "job_mgmt": "job",
+        "patch_mgmt": "patch",
     }
 
     # 匹配 /api/v1/<app_name>/ 格式的路径（锚定起始 /）

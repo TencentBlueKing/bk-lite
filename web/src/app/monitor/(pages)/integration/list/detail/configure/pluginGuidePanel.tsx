@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from '@/utils/i18n';
 import useIntegrationApi from '@/app/monitor/api/integration';
 import MarkdownRenderer from '@/components/markdown';
-import OperateDrawer from '@/app/monitor/components/operate-drawer';
+import OperateDrawer from '@/components/operate-drawer';
 import { PluginGuideDoc } from '@/app/monitor/types/integration';
 import { PluginGuideContext } from './pluginContext';
 import styles from './pluginGuidePanel.module.scss';

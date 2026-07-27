@@ -1,6 +1,10 @@
 from rest_framework import routers
 
 from apps.monitor.views.infra import InfraViewSet
+from apps.monitor.views.k3s_onboarding import (
+    K3SOnboardingOpenViewSet,
+    K3SOnboardingViewSet,
+)
 from apps.monitor.views.collect_detect import CollectDetectViewSet
 from apps.monitor.views.manual_collect import ManualCollect
 from apps.monitor.views.monitor_alert import MonitorAlertViewSet, MonitorEventViewSet
@@ -46,4 +50,14 @@ router.register(
     basename="MonitorConditionViewSet",
 )
 router.register(r"open_api/infra", InfraViewSet, basename="InfraViewSet")
+router.register(
+    r"api/k3s_onboarding",
+    K3SOnboardingViewSet,
+    basename="K3SOnboardingViewSet",
+)
+router.register(
+    r"open_api/k3s_onboarding",
+    K3SOnboardingOpenViewSet,
+    basename="K3SOnboardingOpenViewSet",
+)
 urlpatterns = router.urls

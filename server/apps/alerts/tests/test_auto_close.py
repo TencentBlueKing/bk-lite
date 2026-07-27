@@ -1,6 +1,6 @@
 """告警自动关闭覆盖测试。
 
-对照 spec/prd/告警中心·告警：超过策略 close_minutes 未更新的活跃告警自动关闭。
+对照 specs/capabilities/legacy-prd-告警中心-告警.md：超过策略 close_minutes 未更新的活跃告警自动关闭。
 """
 
 from datetime import timedelta

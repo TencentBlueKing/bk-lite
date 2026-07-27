@@ -111,6 +111,15 @@ def format_list_any(param):
     return f"({' OR '.join(conditions)})"
 
 
+def format_list_none(param):
+    field = param["field"]
+    value = param["value"]
+    if not value or not isinstance(value, list):
+        return "true"
+    conditions = [f"NOT ({repr(v)} IN n.{field})" for v in value]
+    return f"({' AND '.join(conditions)})"
+
+
 def compile_tag_exact_match_query(field: str, selected_values: list[str]) -> list[dict]:
     if not selected_values:
         return []
@@ -140,6 +149,11 @@ def format_id_eq(param):
     return f"ID(n) = {value}"
 
 
+def format_id_gt(param):
+    value = param["value"]
+    return f"ID(n) > {value}"
+
+
 def format_id_in(param):
     """id[]: {"field": "id", "type": "id[]", "value": [115,116]} -> "ID(n) IN [115,116]" """
     value = param["value"]
@@ -161,9 +175,11 @@ FORMAT_TYPE = {
     "int<>": format_int_neq,
     "int[]": format_int_in,
     "id=": format_id_eq,  # 修改为使用ID()函数
+    "id>": format_id_gt,
     "id[]": format_id_in,  # 修改为使用ID()函数
     "list[]": format_list_in,
     "list_any[]": format_list_any,
+    "list_none[]": format_list_none,
 }
 
 
@@ -337,6 +353,15 @@ def format_id_eq_params(param, collector):
     return f"ID(n) = {param_name}"
 
 
+def format_id_gt_params(param, collector):
+    """参数化版本：图节点 ID 游标。"""
+    from apps.cmdb.graph.validators import CQLValidator
+
+    value = CQLValidator.validate_id(param["value"])
+    param_name = collector.add_param(value, prefix="id_cursor")
+    return f"ID(n) > {param_name}"
+
+
 def format_id_in_params(param, collector):
     """参数化版本：id[]"""
     from apps.cmdb.graph.validators import CQLValidator
@@ -376,6 +401,15 @@ def format_list_any_params(param, collector):
     return f"ANY(x IN {param_name} WHERE x IN n.{field})"
 
 
+def format_list_none_params(param, collector):
+    from apps.cmdb.graph.validators import CQLValidator
+
+    field = CQLValidator.validate_field(param["field"])
+    value = param["value"]
+    param_name = collector.add_param(value, prefix="list")
+    return f"NONE(x IN {param_name} WHERE x IN n.{field})"
+
+
 # 参数化格式映射表
 FORMAT_TYPE_PARAMS = {
     "bool": format_bool_params,
@@ -391,7 +425,9 @@ FORMAT_TYPE_PARAMS = {
     "int<>": format_int_neq_params,
     "int[]": format_int_in_params,
     "id=": format_id_eq_params,
+    "id>": format_id_gt_params,
     "id[]": format_id_in_params,
     "list[]": format_list_in_params,
     "list_any[]": format_list_any_params,
+    "list_none[]": format_list_none_params,
 }

@@ -25,7 +25,9 @@ from apps.core.logger import logger
 class SSRFError(ValueError):
     """SSRF 校验失败异常"""
 
-    pass
+    def __init__(self, message: str, code: str = "CONNECTION_TARGET_FORBIDDEN"):
+        super().__init__(message)
+        self.code = code
 
 
 class SSRFValidator:
@@ -113,24 +115,27 @@ class SSRFValidator:
             return []
 
     @classmethod
-    def _is_blocked_ip(cls, ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> tuple[bool, str]:
+    def _is_blocked_ip(
+        cls,
+        ip: ipaddress.IPv4Address | ipaddress.IPv6Address,
+    ) -> tuple[bool, str, str | None]:
         """
         检查 IP 是否在禁止范围内。
 
         判定顺序：① 云元数据硬挡（白名单不可覆盖） → ② 白名单放行 → ③ 私网黑名单。
 
         Returns:
-            (是否禁止, 原因)
+            (是否禁止, 原因, 稳定错误码)
         """
         ip_str = str(ip)
 
         # ① 云元数据永远硬挡（白名单不可覆盖）
         if ip_str in cls.CLOUD_METADATA_HOSTS:
-            return True, f"云元数据地址 {ip_str}"
+            return True, f"云元数据地址 {ip_str}", "CONNECTION_TARGET_FORBIDDEN"
         for network in cls.CLOUD_METADATA_NETWORKS:
             try:
                 if ip in network:
-                    return True, f"云元数据地址 {ip_str}"
+                    return True, f"云元数据地址 {ip_str}", "CONNECTION_TARGET_FORBIDDEN"
             except TypeError:
                 continue
 
@@ -138,7 +143,7 @@ class SSRFValidator:
         for network in cls._get_allowed_networks():
             try:
                 if ip in network:
-                    return False, ""
+                    return False, "", None
             except TypeError:
                 continue
 
@@ -146,11 +151,11 @@ class SSRFValidator:
         for network in cls.BLOCKED_NETWORKS:
             try:
                 if ip in network:
-                    return True, f"禁止的网段 {network}"
+                    return True, f"禁止的网段 {network}", "NETWORK_WHITELIST_REQUIRED"
             except TypeError:
                 continue
 
-        return False, ""
+        return False, "", None
 
     @classmethod
     def validate(
@@ -216,10 +221,13 @@ class SSRFValidator:
             except ValueError:
                 continue
 
-            blocked, reason = cls._is_blocked_ip(ip)
+            blocked, reason, error_code = cls._is_blocked_ip(ip)
             if blocked:
                 logger.warning(f"[SSRF] 阻断请求: url={url}, ip={ip_str}, reason={reason}")
-                raise SSRFError(f"目标地址被禁止: {reason}")
+                raise SSRFError(
+                    f"目标地址被禁止: {reason}",
+                    code=error_code or "CONNECTION_TARGET_FORBIDDEN",
+                )
 
         return url
 

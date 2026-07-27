@@ -10,12 +10,8 @@ export async function tauriFetch(
   options: RequestInit = {}
 ): Promise<Response> {
   if (isTauriApp()) {
-    try {
-      return await tauriApiFetch(url, options);
-    } catch (error) {
-      console.warn('[TauriFetch] Rust proxy failed, falling back to standard fetch:', error);
-    }
+    return tauriApiFetch(url, options);
   }
 
-  return await fetch(url, options);
+  return fetch(url, options);
 }

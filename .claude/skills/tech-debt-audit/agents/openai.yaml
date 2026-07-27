@@ -1,0 +1,5 @@
+interface:
+  display_name: "Tech Debt Audit"
+  short_description: "Run an explicit whole-repo technical debt audit"
+policy:
+  allow_implicit_invocation: false

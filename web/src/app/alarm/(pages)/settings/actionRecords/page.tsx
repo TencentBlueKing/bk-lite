@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import CustomTable from '@/components/custom-table';
-import Introduction from '@/app/alarm/components/introduction';
+import Introduction from '@/components/introduction';
 import { ActionExecutionItem } from '@/app/alarm/types/settings';
 import { useSettingApi } from '@/app/alarm/api/settings';
 import { Select, Tag } from 'antd';

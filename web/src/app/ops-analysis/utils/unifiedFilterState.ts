@@ -3,6 +3,38 @@ import type {
   UnifiedFilterDefinition,
 } from '@/app/ops-analysis/types/dashBoard';
 import { normalizeTimeRangeFilterValue } from '@/app/ops-analysis/utils/filterValue';
+import { validateDateRangeValue } from '@/app/ops-analysis/utils/dateRange';
+import type { DateRangeValue } from '@/app/ops-analysis/types/dateRange';
+
+export const hasInvalidDateRangeDefinitions = (
+  definitions: UnifiedFilterDefinition[],
+): boolean => definitions.some(
+  (definition) => definition.type === 'dateRange'
+    && definition.defaultValue !== null
+    && definition.defaultValue !== undefined
+    && !validateDateRangeValue(definition.defaultValue).valid,
+);
+
+export const buildResetFilterValues = (
+  definitions: UnifiedFilterDefinition[],
+): Record<string, FilterValue> => definitions.reduce<Record<string, FilterValue>>(
+  (values, definition) => {
+    if (definition.type === 'dateRange') {
+      if (definition.defaultValue === null || definition.defaultValue === undefined) {
+        values[definition.id] = null;
+      } else if (validateDateRangeValue(definition.defaultValue).valid) {
+        values[definition.id] = {
+          ...(definition.defaultValue as DateRangeValue),
+        };
+      }
+      return values;
+    }
+
+    values[definition.id] = definition.defaultValue ?? null;
+    return values;
+  },
+  {},
+);
 
 export const normalizeStoredFilterDefinitions = (
   rawFilters: unknown,
@@ -46,6 +78,14 @@ export const syncFilterValuesWithDefinitions = (
   }, {});
 
   nextDefinitions.forEach((definition) => {
+    if (
+      definition.type === 'dateRange'
+      && Object.prototype.hasOwnProperty.call(updatedValues, definition.id)
+      && updatedValues[definition.id] === null
+    ) {
+      return;
+    }
+
     const hasValue =
       updatedValues[definition.id] !== undefined &&
       updatedValues[definition.id] !== null;
@@ -65,6 +105,15 @@ export const syncFilterValuesWithDefinitions = (
       );
       if (normalizedValue) {
         updatedValues[definition.id] = normalizedValue;
+      }
+      return;
+    }
+
+    if (definition.type === 'dateRange') {
+      if (validateDateRangeValue(definition.defaultValue).valid) {
+        updatedValues[definition.id] = {
+          ...(definition.defaultValue as DateRangeValue),
+        };
       }
       return;
     }

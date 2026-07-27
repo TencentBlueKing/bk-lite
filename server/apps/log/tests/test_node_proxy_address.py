@@ -7,6 +7,14 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 from apps.log.views.node import NodeViewSet
 
 
+@pytest.fixture(autouse=True)
+def patch_current_team_scope(mocker):
+    mocker.patch(
+        "apps.core.utils.current_team_scope.SystemMgmt.get_authorized_groups_scoped",
+        return_value={"result": True, "data": [1]},
+    )
+
+
 def _post_proxy_address(user, cloud_region_id=42):
     request = APIRequestFactory().post(
         "/api/v1/log/node_mgmt/cloud_region_proxy_address/",

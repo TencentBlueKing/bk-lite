@@ -802,3 +802,102 @@ def test_preview_rejects_invalid_platform_password_init(
     assert response.status_code == 400
     assert response.json()["result"] is False
     assert expected_error in str(response.json())
+
+
+# ---------------------------------------------------------------------------
+# Task 3.7-3.8: run_detail endpoint
+# ---------------------------------------------------------------------------
+
+
+RUN_DETAIL_URL = "/api/v1/system_mgmt/user_sync_source/runs/{run_id}/"
+
+
+@pytest.mark.django_db
+def test_run_detail_returns_full_run_payload(api_client, authenticated_user, user_sync_source):
+    """正常路径:GET /runs/{id}/ 返回 UserSyncRunSerializer 完整数据(含 payload)。"""
+    authenticated_user.is_superuser = True
+    authenticated_user.save(update_fields=["is_superuser"])
+    authenticated_user.permission = {"system-manager": {"user_sync-View"}}
+    api_client.cookies["current_team"] = "1"
+
+    run = UserSyncRun.objects.create(
+        source=user_sync_source,
+        trigger_mode="manual",
+        status="success",
+        summary="ok",
+        payload={
+            "password_init_mode": "none",
+            "phase_progress": {
+                "fetch_directory": {"current": 12, "total": 12, "status": "finish"},
+                "sync_users": {"current": 5, "total": 5, "status": "finish"},
+            },
+        },
+    )
+
+    api_client.force_login(authenticated_user)
+    response = api_client.get(RUN_DETAIL_URL.format(run_id=run.id))
+
+    assert response.status_code == 200
+    data = response.json()
+    # UserSyncRunSerializer fields=__all__ 输出包含 id / status / payload 等
+    # 部分字段可能被项目基类包装(见 BaseUser / MaintainerViewSet)
+    if "data" in data and isinstance(data["data"], dict):
+        data = data["data"]
+    assert data.get("id") == run.id
+    assert data.get("status") == "success"
+    assert data.get("source_name") == user_sync_source.name
+    payload = data.get("payload", {})
+    assert payload.get("password_init_mode") == "none"
+    assert "phase_progress" in payload
+    assert payload["phase_progress"]["fetch_directory"]["status"] == "finish"
+
+
+@pytest.mark.django_db
+def test_run_detail_returns_404_for_missing_run(api_client, authenticated_user):
+    """run_id 不存在返回 404。"""
+    authenticated_user.is_superuser = True
+    authenticated_user.save(update_fields=["is_superuser"])
+    authenticated_user.permission = {"system-manager": {"user_sync-View"}}
+    api_client.cookies["current_team"] = "1"
+
+    api_client.force_login(authenticated_user)
+    response = api_client.get(RUN_DETAIL_URL.format(run_id=99999999))
+    assert response.status_code == 404
+    assert response.json()["result"] is False
+    assert "Run not found" in response.json()["message"]
+
+
+@pytest.mark.django_db
+def test_run_detail_returns_403_for_invisible_source(api_client, ready_integration_instance):
+    """用户对 source 无 user_sync-View 权限时,返回 403 或 404(被可见性过滤)。"""
+    from apps.base.models import User as BaseUser
+    from apps.system_mgmt.models import UserSyncRun
+
+    source = UserSyncSource.objects.create(
+        name="invisible-source",
+        integration_instance=ready_integration_instance,
+        enabled=True,
+        root_group_name="Invisible",
+        business_config={"root_department_id": "0"},
+        field_mapping={"username": "user_id"},
+        schedule_config={"mode": "disabled"},
+    )
+    run = UserSyncRun.objects.create(source=source, trigger_mode="manual", status="success", summary="ok")
+
+    # 无任何权限的非超管 base 用户(与 authenticated_user 同模型)
+    no_perm_user = BaseUser.objects.create_user(
+        username="no-perm-user-run",
+        password="x",
+        domain="domain.com",
+        locale="en",
+        group_list=[],
+        roles=[],
+        is_superuser=False,
+    )
+    no_perm_user.permission = {}  # 进程内属性,middleware 用
+    api_client.cookies["current_team"] = "1"
+
+    api_client.force_login(no_perm_user)
+    response = api_client.get(RUN_DETAIL_URL.format(run_id=run.id))
+    # 403(权限不足)或 404(被 get_queryset_by_permission 过滤)都是合规行为
+    assert response.status_code in (403, 404)

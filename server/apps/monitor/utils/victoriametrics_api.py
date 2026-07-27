@@ -46,12 +46,14 @@ class VictoriaMetricsAPI:
             )
             raise
 
-    def query(self, query, step="5m", time=None):
+    def query(self, query, step="5m", time=None, lookback_delta=None):
         params = {"query": query}
         if step:
             params["step"] = step
         if time:
             params["time"] = time
+        if lookback_delta:
+            params["lookback_delta"] = lookback_delta
         return self._do_get("/api/v1/query", params)
 
     def query_range(self, query, start, end, step="5m"):

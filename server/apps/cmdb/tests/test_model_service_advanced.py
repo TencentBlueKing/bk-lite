@@ -1,6 +1,6 @@
 """CMDB ModelManage 高阶方法覆盖：copy_model / auto_relation_rule 增删改 / unique_rule 入口。
 
-对照 spec/prd/CMDB·模型管理：模型复制（属性+关系）、自动关联规则增删改、模型唯一规则入口。
+对照 specs/capabilities/legacy-prd-cmdb-模型管理.md：模型复制（属性+关系）、自动关联规则增删改、模型唯一规则入口。
 """
 
 import json

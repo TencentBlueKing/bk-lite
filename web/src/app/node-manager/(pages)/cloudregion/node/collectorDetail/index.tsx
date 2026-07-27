@@ -23,7 +23,7 @@ import {
   ExclamationCircleOutlined
 } from '@ant-design/icons';
 import Icon from '@/components/icon';
-import OperateDrawer from '@/app/node-manager/components/operate-drawer';
+import OperateDrawer from '@/components/operate-drawer';
 import { useTranslation } from '@/utils/i18n';
 import { useTelegrafMap } from '@/app/node-manager/hooks/node';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';

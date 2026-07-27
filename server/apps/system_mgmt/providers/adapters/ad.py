@@ -44,8 +44,7 @@ class ADLoginAuthAdapter(BaseLoginAuthAdapter):
                 )
 
             probe_root_dse(connection_config)
-        except Exception as error:
-            logger.exception(f"AD login connection test failed: {error}")
+        except Exception:
             return CapabilityExecutionResult.failed_result(
                 "AD login connection test failed",
                 code="provider.request_failed",
@@ -99,20 +98,19 @@ class ADLoginAuthAdapter(BaseLoginAuthAdapter):
             )
         except LDAPBindError as error:
             if "invalidcredentials" in str(error).lower():
-                logger.warning("AD authentication failed due to invalid credentials")
                 return CapabilityExecutionResult.failed_result(
                     "AD authentication failed",
                     code="provider.auth_failed",
                     field=identity_field,
                 )
-            logger.exception(f"AD authenticate bind failed: {error}")
+            logger.debug(f"AD authenticate bind failed: error_type={type(error).__name__}")
             return CapabilityExecutionResult.failed_result(
                 "AD authentication failed",
                 code="provider.auth_failed",
                 field=identity_field,
             )
         except Exception as error:
-            logger.exception(f"AD authenticate failed: {error}")
+            logger.debug(f"AD authenticate failed: error_type={type(error).__name__}")
             return CapabilityExecutionResult.failed_result(
                 "AD authentication failed",
                 code="provider.auth_failed",
@@ -157,8 +155,7 @@ class ADUserSyncAdapter(BaseUserSyncAdapter):
                 )
 
             probe_root_dse(connection_config)
-        except Exception as error:
-            logger.exception(f"AD user sync connection test failed: {error}")
+        except Exception:
             return CapabilityExecutionResult.failed_result(
                 "AD user sync connection test failed",
                 code="provider.request_failed",
@@ -223,7 +220,7 @@ class ADUserSyncAdapter(BaseUserSyncAdapter):
                 paged_size=100,
             )
         except Exception as error:
-            logger.exception(f"AD user sync failed: {error}")
+            logger.debug(f"AD user sync failed: error_type={type(error).__name__}")
             return CapabilityExecutionResult.failed_result(
                 "AD user sync request failed",
                 code="provider.request_failed",

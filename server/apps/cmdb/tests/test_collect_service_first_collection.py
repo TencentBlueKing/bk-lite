@@ -150,7 +150,7 @@ def test_governance_only_disabled_short_k8s_and_config_file_skip(mocker):
 
 
 @pytest.mark.django_db
-def test_create_schedules_first_and_delayed_sync(mocker):
+def test_create_schedules_first_and_delayed_sync(mocker, django_capture_on_commit_callbacks):
     instance = task()
     serializer = mocker.Mock(instance=instance)
     view = mocker.Mock()
@@ -177,7 +177,8 @@ def test_create_schedules_first_and_delayed_sync(mocker):
     )
     mocker.patch("apps.cmdb.services.collect_service.create_change_record")
 
-    assert CollectModelService.create(request, view) == 7
+    with django_capture_on_commit_callbacks(execute=True):
+        assert CollectModelService.create(request, view) == 7
 
     first.assert_called_once_with(instance=instance, reason="create")
     delayed.assert_called_once_with(instance=instance, is_interval=True)
@@ -194,6 +195,7 @@ def test_create_schedules_first_and_delayed_sync(mocker):
 )
 def test_update_first_or_schedule_change_schedules_delayed_sync_once(
     mocker,
+    django_capture_on_commit_callbacks,
     schedule_changed,
     first_scheduled,
 ):
@@ -246,7 +248,8 @@ def test_update_first_or_schedule_change_schedules_delayed_sync_once(
         return_value=schedule_changed,
     )
 
-    assert CollectModelService.update(request, view) == 7
+    with django_capture_on_commit_callbacks(execute=True):
+        assert CollectModelService.update(request, view) == 7
 
     assert first.call_args.kwargs["old_instance"].params == {"port": 22}
     first.assert_called_once_with(

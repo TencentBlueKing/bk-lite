@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import './operateModal.scss';
 import MatchRule from '@/app/alarm/(pages)/settings/components/matchRule';
+import { isEmptyMatchRuleValue } from '@/app/alarm/(pages)/settings/components/matchRuleValue';
 import { ruleList } from '@/app/alarm/constants/settings';
 import EffectiveTime, {
   defaultEffectiveTime,
@@ -286,7 +287,7 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
                       if (
                         !item.key ||
                         !item.operator ||
-                        (!item.value && item.value !== 0)
+                        isEmptyMatchRuleValue(item.value)
                       ) {
                         return Promise.reject(new Error(t('common.inputTip')));
                       }
@@ -303,6 +304,7 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
                 完整 ruleList，跟此处无关。 */}
             <MatchRule
               levelType="alert"
+              enableLevelMultiSelect
               ruleOptions={ruleList.filter(
                 (item) => item.name !== 'location' && item.name !== 'service'
               )}

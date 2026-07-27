@@ -1,6 +1,6 @@
 """告警序列化器方法补充覆盖测试。
 
-对照 spec/prd/告警中心·告警：告警展示处理人、通知状态、来源、事件数。
+对照 specs/capabilities/legacy-prd-告警中心-告警.md：告警展示处理人、通知状态、来源、事件数。
 """
 
 from types import SimpleNamespace

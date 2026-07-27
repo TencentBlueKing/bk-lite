@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Alert, Button, Form, message, Spin } from 'antd';
+import { Button, Form, message, Spin } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import DynamicForm from '@/components/dynamic-form';
 import OperateModal from '@/components/operate-modal'
@@ -53,7 +53,6 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
   const [loading, setLoading] = useState<boolean>(false);
   const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
   const [testLoading, setTestLoading] = useState<boolean>(false);
-  const [testError, setTestError] = useState<string>('');
   const [channelData, setChannelData] = useState<any>({ config: {} });
   const [originalSmtpPwd, setOriginalSmtpPwd] = useState<string | undefined>(undefined);
   const [originalWebhookUrl, setOriginalWebhookUrl] = useState<string | undefined>(undefined);
@@ -84,7 +83,6 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
   const fetchChannelDetail = async (id: string) => {
     setLoading(true);
     try {
-      setTestError('');
       const data = await getChannelDetail(id);
       setOriginalSmtpPwd(data.config?.smtp_pwd);
       setOriginalWebhookUrl(data.config?.webhook_url);
@@ -134,7 +132,6 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
   useEffect(() => {
     if (!visible) return;
     form.resetFields();
-    setTestError('');
     setPendingFormFill(null);
     isFillingForm.current = false;
     setOriginalSmtpPwd(undefined);
@@ -171,7 +168,6 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
   const handleOk = async () => {
     try {
       setConfirmLoading(true);
-      setTestError('');
       const values = await form.validateFields();
       const payload = buildChannelPayload(values);
 
@@ -240,22 +236,12 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
   const handleTest = async () => {
     try {
       setTestLoading(true);
-      setTestError('');
       const values = await form.validateFields();
       const payload = buildChannelPayload(values, { preserveEncryptedFields: true });
       await testChannel(payload);
       message.success(t('system.channel.settings.testSuccess'));
-    } catch (error: any) {
-      if (error?.errorFields?.length) {
-        const firstFieldErrorMessage = error.errorFields[0].errors[0];
-        setTestError(firstFieldErrorMessage || t('common.valFailed'));
-      } else {
-        const rawMessage = error?.response?.data?.message || error?.message || t('system.channel.settings.testFailed');
-        const normalizedMessage = typeof rawMessage === 'string'
-          ? rawMessage.replace(/^result:?false[,;]?message:?/i, '').trim()
-          : t('system.channel.settings.testFailed');
-        setTestError(normalizedMessage || t('system.channel.settings.testFailed'));
-      }
+    } catch {
+      // Form validation renders next to fields; request failures are shown by the global interceptor.
     } finally {
       setTestLoading(false);
     }
@@ -379,9 +365,6 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
       ]}
     >
       <Spin spinning={loading}>
-        {testError ? (
-          <Alert className="mb-4" type="error" showIcon message={testError} />
-        ) : null}
         <DynamicForm
           form={form}
           fields={formFields}

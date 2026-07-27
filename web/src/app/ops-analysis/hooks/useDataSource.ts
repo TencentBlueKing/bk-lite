@@ -1,12 +1,13 @@
 import { useState } from 'react';
-import dayjs, { Dayjs } from 'dayjs';
+import dayjs from 'dayjs';
 import { useOpsAnalysis } from '@/app/ops-analysis/context/common';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import { DatasourceItem, ParamItem } from '@/app/ops-analysis/types/dataSource';
-import { formatOpsRequestTime } from '@/app/ops-analysis/utils/dateTime';
+import {
+  type DataSourceFormParams as FormParams,
+  processDataSourceFormParamsForSubmit,
+} from '@/app/ops-analysis/utils/dataSourceFormParams';
 
-type FormParamValue = string | number | boolean | Dayjs | [number, number] | null;
-type FormParams = Record<string, FormParamValue>;
 
 export const useDataSourceManager = () => {
   const [selectedDataSource, setSelectedDataSource] = useState<DatasourceItem | undefined>();
@@ -90,34 +91,7 @@ export const useDataSourceManager = () => {
   const processFormParamsForSubmit = (
     formParams: FormParams,
     sourceParams: ParamItem[]
-  ): ParamItem[] => {
-    const processedParams: Record<string, string | number | boolean | [number, number] | null> = {};
-
-    sourceParams.forEach((param) => {
-      const value = formParams[param.name];
-
-      if (param.type === 'date' && value) {
-        // 转换 Dayjs 为字符串
-        if (dayjs.isDayjs(value)) {
-          processedParams[param.name] = formatOpsRequestTime(value);
-        } else if (typeof value === 'string' || typeof value === 'number') {
-          processedParams[param.name] = formatOpsRequestTime(value);
-        }
-      } else if (value !== undefined && value !== null) {
-        // 其他类型直接使用（已经是正确的类型）
-        if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' || Array.isArray(value)) {
-          processedParams[param.name] = value as string | number | boolean | [number, number];
-        }
-      }
-    });
-
-    return sourceParams.map((param) => ({
-      ...param,
-      value: processedParams[param.name] !== undefined
-        ? processedParams[param.name]
-        : param.value,
-    }));
-  };
+  ): ParamItem[] => processDataSourceFormParamsForSubmit(formParams, sourceParams);
   return {
     dataSources,
     dataSourcesLoading,

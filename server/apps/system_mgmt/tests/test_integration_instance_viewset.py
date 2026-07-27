@@ -474,7 +474,7 @@ class TestIntegrationInstanceViewSet:
         with patch(
             "apps.system_mgmt.viewset.integration_instance_viewset.RuntimeApplicationService.test_connection",
             return_value=result,
-        ):
+        ), patch("apps.system_mgmt.viewset.integration_instance_viewset.logger") as mock_logger:
             response = api_client.post(
                 f"/api/v1/system_mgmt/integration_instance/{draft_instance.id}/test_connection/",
                 {},
@@ -485,3 +485,5 @@ class TestIntegrationInstanceViewSet:
         draft_instance.refresh_from_db()
         assert draft_instance.status == IntegrationInstanceStatusChoices.VERIFICATION_FAILED
         assert draft_instance.capability_status == {"login_auth": IntegrationInstanceStatusChoices.VERIFICATION_FAILED}
+        mock_logger.warning.assert_not_called()
+        assert "test_connection: failed" in str(mock_logger.debug.call_args_list)

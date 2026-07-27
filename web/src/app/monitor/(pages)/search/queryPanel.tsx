@@ -48,7 +48,9 @@ import {
 import { cloneDeep } from 'lodash';
 import SavedQueryDrawer from './savedQueryDrawer';
 import SaveQueryModal from './saveQueryModal';
+import { loadSavedQueryResources } from './savedQueryLoading';
 import {
+  generateSearchId,
   getMetricsMapKey,
   resolveInitialPlugin,
   resolveMetricSelection
@@ -57,8 +59,6 @@ import {
 const { Option } = Select;
 
 export type { QueryGroup, SearchPayload, QueryPanelRef, QueryPanelProps };
-
-const generateId = () => crypto.randomUUID();
 
 const generateGroupName = (index: number) => `查询条件 ${index + 1}`;
 
@@ -82,7 +82,7 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
     const initialMetricId = searchParams.get('metric_id');
     const [queryGroups, setQueryGroups] = useState<QueryGroup[]>([
       {
-        id: generateId(),
+        id: generateSearchId(),
         name: '查询条件 1',
         object: '',
         plugin: null,
@@ -416,7 +416,7 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
 
     const addQueryGroup = () => {
       const newGroup: QueryGroup = {
-        id: generateId(),
+        id: generateSearchId(),
         name: generateGroupName(queryGroups.length),
         object: '',
         plugin: null,
@@ -449,7 +449,7 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
       if (!group) return;
       const newGroup: QueryGroup = {
         ...cloneDeep(group),
-        id: generateId(),
+        id: generateSearchId(),
         name: generateGroupName(queryGroups.length)
       };
       setQueryGroups((prev) => [...prev, newGroup]);
@@ -573,7 +573,7 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
     const clearAll = () => {
       setQueryGroups([
         {
-          id: generateId(),
+          id: generateSearchId(),
           name: '查询条件 1',
           object: '',
           plugin: null,
@@ -607,63 +607,24 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
     };
 
     const handleLoadSavedQuery = async (savedQueryGroups: QueryGroup[]) => {
-      const objectIds = [
-        ...new Set(savedQueryGroups.map((g) => g.object).filter(Boolean))
-      ];
-      const loadedPluginsMap: Record<string, PluginItem[]> = { ...pluginsMap };
-      const loadedMetricsMap: Record<string, MetricItem[]> = { ...metricsMap };
-      const loadedInstancesMap: Record<string, InstanceItem[]> = {
-        ...instancesMap
-      };
-      await Promise.all(
-        objectIds.map(async (objectId) => {
-          const key = String(objectId);
-          const plugins = pluginsMap[key] || (await getPlugins(objectId));
-          loadedPluginsMap[key] = plugins;
-          const groupsForObject = savedQueryGroups.filter(
-            (group) => group.object === objectId
-          );
-          await Promise.all(
-            groupsForObject.map(async (group) => {
-              const pluginId =
-                group.plugin ||
-                resolveInitialPlugin(plugins) ||
-                (group.legacyMetricName ? plugins[0]?.id : null);
-              if (pluginId && !group.plugin) {
-                group.plugin = pluginId;
-              }
-              const mapKey = getMetricsMapKey(objectId, pluginId);
-              const metricsPromise = loadedMetricsMap[mapKey]
-                ? Promise.resolve(loadedMetricsMap[mapKey])
-                : getMetrics(
-                  objectId,
-                  pluginId,
-                  group.id,
-                  group.legacyMetricName
-                );
-              const instancesPromise = loadedInstancesMap[mapKey]
-                ? Promise.resolve(loadedInstancesMap[mapKey])
-                : getInstList(objectId, pluginId);
-              const [metrics, instances] = await Promise.all([
-                metricsPromise,
-                instancesPromise
-              ]);
-              if (group.legacyMetricName && !group.metric) {
-                const legacyMetric = resolveMetricSelection(
-                  metrics,
-                  group.legacyMetricName
-                );
-                if (legacyMetric) {
-                  group.metric = legacyMetric.id;
-                  group.legacyMetricName = null;
-                }
-              }
-              loadedMetricsMap[mapKey] = metrics;
-              loadedInstancesMap[mapKey] = instances;
-            })
-          );
-        })
-      );
+      const loadedResources = await loadSavedQueryResources({
+        queryGroups: savedQueryGroups,
+        pluginsMap,
+        metricsMap,
+        instancesMap,
+        loadPlugins: getPlugins,
+        loadMetrics: (objectId, pluginId) => getMetrics(objectId, pluginId),
+        loadInstances: getInstList,
+        getResourceKey: getMetricsMapKey,
+        resolvePlugin: (plugins, group) =>
+          group.plugin ||
+          resolveInitialPlugin(plugins) ||
+          (group.legacyMetricName ? plugins[0]?.id : null),
+        resolveLegacyMetric: resolveMetricSelection
+      });
+      const loadedPluginsMap = loadedResources.pluginsMap;
+      const loadedMetricsMap = loadedResources.metricsMap;
+      const loadedInstancesMap = loadedResources.instancesMap;
       setPluginsMap(loadedPluginsMap);
       setQueryGroups(savedQueryGroups);
       const canSearchNow = savedQueryGroups.some(

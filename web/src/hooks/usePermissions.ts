@@ -3,7 +3,7 @@ import { usePathname } from 'next/navigation';
 import { usePermissions } from '@/context/permissions';
 import { useMemo } from 'react';
 
-const useBtnPermissions = () => {
+const useBtnPermissions = (permissionPath?: string) => {
   const { data: session, status } = useSession();
   const currentPath = usePathname();
   const { permissions } = usePermissions();
@@ -14,7 +14,8 @@ const useBtnPermissions = () => {
       return () => false;
     }
 
-    const routePermissions = currentPath ? permissions[currentPath] || [] : [];
+    const routePath = permissionPath || currentPath;
+    const routePermissions = routePath ? permissions[routePath] || [] : [];
 
     return (requiredPermissions: string[]): boolean => {
       const userPermissions = new Set<string>();
@@ -26,7 +27,7 @@ const useBtnPermissions = () => {
         userPermissions.has(permission)
       );
     };
-  }, [status, session, permissions, currentPath]);
+  }, [status, session, permissions, currentPath, permissionPath]);
 
   return { hasPermission };
 };

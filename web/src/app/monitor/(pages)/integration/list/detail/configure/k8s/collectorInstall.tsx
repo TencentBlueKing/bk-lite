@@ -4,7 +4,7 @@ import { Button, Alert, message } from 'antd';
 import { ToolOutlined, SearchOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import Icon from '@/components/icon';
-import CodeEditor from '@/app/monitor/components/codeEditor';
+import CodeEditor from '@/components/code-editor';
 import CommonIssuesDrawer from './commonIssuesDrawer';
 import useIntegrationApi from '@/app/monitor/api/integration';
 import { CollectorInstallProps } from '@/app/monitor/types/integration';

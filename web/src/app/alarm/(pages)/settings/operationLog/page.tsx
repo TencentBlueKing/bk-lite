@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import styles from './index.module.scss';
 import type { Dayjs } from 'dayjs';
 import CustomTable from '@/components/custom-table';
-import Introduction from '@/app/alarm/components/introduction';
+import Introduction from '@/components/introduction';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useSettingApi } from '@/app/alarm/api/settings';
 import { Input, Select, DatePicker, message } from 'antd';

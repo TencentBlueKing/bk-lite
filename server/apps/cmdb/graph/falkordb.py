@@ -702,6 +702,7 @@ class FalkorDBClient:
         param_type="AND",
         organization_field: str = "organization",
         case_sensitive: bool = True,
+        include_count: bool = True,
     ):
         """
         查询实体（参数化版本）
@@ -806,11 +807,12 @@ class FalkorDBClient:
 
         # 分页
         count = None
-        if page:
+        if page and include_count:
             count_str = f"MATCH (n{label_str}) {params_str} RETURN COUNT(n) AS count"
             _result = self._execute_query(count_str, params=query_params if self.ENABLE_PARAMETERIZATION else None)
             result = FormatDBResult(_result).to_list_of_lists()
             count = result[0] if result else 0
+        if page:
             sql_str += f" SKIP {page['skip']} LIMIT {page['limit']}"
 
         objs = self._execute_query(sql_str, params=query_params if self.ENABLE_PARAMETERIZATION else None)
@@ -951,7 +953,7 @@ class FalkorDBClient:
             )
 
             self.check_unique_rules(
-                [properties],
+                check_attr_map.get("validation_items") or [properties],
                 check_attr_map.get("unique_rules", []),
                 exist_items,
                 check_attr_map.get("attrs_by_id", {}),

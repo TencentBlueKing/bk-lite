@@ -378,15 +378,40 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
 
     @HasPermission("asset_info-Add")
     def create(self, request):
+        import uuid
+
+        from apps.cmdb.services.operation_service import OperationConflict, OperationService
+
         model_id = request.data.get("model_id")
+        instance_info = request.data.get("instance_info")
         allowed_org_ids = self._get_allowed_org_ids(request)
-        inst = InstanceManage.instance_create(
-            model_id,
-            request.data.get("instance_info"),
-            request.user.username,
-            allowed_org_ids=allowed_org_ids,
-        )
-        return WebUtils.response_success(inst)
+        idempotency_key = request.headers.get("Idempotency-Key") or uuid.uuid4().hex
+        try:
+            started = OperationService.start(
+                operator=request.user.username,
+                idempotency_key=idempotency_key,
+                action="instance.create",
+                target={"model_id": model_id},
+                request_payload=instance_info,
+            )
+            inst = OperationService.execute_graph(
+                started.operation,
+                graph_write=lambda operation_id: InstanceManage.instance_create(
+                    model_id,
+                    instance_info,
+                    request.user.username,
+                    allowed_org_ids=allowed_org_ids,
+                    record_change=False,
+                    operation_id=operation_id,
+                    schedule_post_actions=False,
+                ),
+                events=[("change_record", {}), ("auto_relation", {})],
+            )
+        except OperationConflict as exc:
+            return WebUtils.response_error(str(exc), status_code=status.HTTP_409_CONFLICT)
+        response = WebUtils.response_success(inst)
+        response["X-CMDB-Operation-ID"] = str(started.operation.operation_id)
+        return response
 
     @HasPermission("asset_info-Delete")
     def destroy(self, request, pk: int):
@@ -472,6 +497,10 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
 
     @HasPermission("asset_info-Edit")
     def partial_update(self, request, pk: int):
+        import uuid
+
+        from apps.cmdb.services.operation_service import OperationConflict, OperationService
+
         instance = InstanceManage.query_entity_by_id(pk)
         if not instance:
             return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
@@ -501,16 +530,39 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         if scenario not in INSTANCE_EDIT_CORRECTABLE_SCENARIOS:
             scenario = ORDINARY_ATTRIBUTE_CHANGE
 
-        inst = InstanceManage.instance_update(
-            user_groups,
-            request.user.roles,
-            int(pk),
-            update_attr,
-            request.user.username,
-            allowed_org_ids=allowed_org_ids,
-            scenario=scenario,
-        )
-        return WebUtils.response_success(inst)
+        idempotency_key = request.headers.get("Idempotency-Key") or uuid.uuid4().hex
+        try:
+            started = OperationService.start(
+                operator=request.user.username,
+                idempotency_key=idempotency_key,
+                action="instance.update",
+                target={"model_id": instance["model_id"], "instance_id": int(pk)},
+                request_payload={"update_attr": update_attr, "scenario": scenario},
+            )
+            inst = OperationService.execute_graph(
+                started.operation,
+                graph_write=lambda operation_id: InstanceManage.instance_update(
+                    user_groups,
+                    request.user.roles,
+                    int(pk),
+                    update_attr,
+                    request.user.username,
+                    allowed_org_ids=allowed_org_ids,
+                    scenario=scenario,
+                    record_change=False,
+                    operation_id=operation_id,
+                    schedule_post_actions=False,
+                ),
+                events=[
+                    ("change_record", {"before_data": instance, "scenario": scenario}),
+                    ("auto_relation", {}),
+                ],
+            )
+        except OperationConflict as exc:
+            return WebUtils.response_error(str(exc), status_code=status.HTTP_409_CONFLICT)
+        response = WebUtils.response_success(inst)
+        response["X-CMDB-Operation-ID"] = str(started.operation.operation_id)
+        return response
 
     @HasPermission("asset_info-Edit")
     @action(detail=False, methods=["post"], url_path="batch_update")
@@ -1269,10 +1321,18 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         return response
 
     @action(detail=False, methods=["get"], url_path=r"ipam_view/(?P<inst_id>.+?)")
+    @HasPermission("asset_info-View")
     def ipam_view(self, request, inst_id: str):
         """子网 IP 视图数据：容量/利用率/状态计数/落库 IP 列表。"""
         from apps.cmdb.services.ipam_view import build_ipam_view
         subnet = InstanceManage.query_entity_by_id(int(inst_id))
+        if not subnet:
+            return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
+
+        permission_error = self.require_instance_permission(request, subnet, operator=VIEW)
+        if permission_error:
+            return permission_error
+
         return WebUtils.response_success(build_ipam_view(subnet))
 
     @action(
@@ -1406,7 +1466,12 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         return WebUtils.response_success(_data)
 
     @action(detail=False, methods=["post"], url_path="ipam_reconcile")
+    @HasPermission("asset_info-Edit")
     def ipam_reconcile(self, request):
-        """立即对账（手动触发）。"""
-        from apps.cmdb.services.ipam_reconcile import run_reconciliation
-        return WebUtils.response_success(run_reconciliation())
+        """创建或复用一个异步 IPAM 对账作业。"""
+        from apps.cmdb.services.ipam_reconcile_job import IPAMReconcileJob
+
+        result = IPAMReconcileJob.enqueue(trigger="manual")
+        return WebUtils.response_success(
+            {"run_id": str(result.run.run_id), "status": result.run.status, "reused": result.reused}
+        )

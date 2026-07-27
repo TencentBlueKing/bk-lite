@@ -11,12 +11,16 @@ from django_minio_backend import MinioBackend, iso_date_prefix
 import tempfile
 import zipfile
 import json
+import shutil
 import yaml
 from pathlib import Path
 from collections import defaultdict
 
 from apps.core.logger import mlops_logger as logger
 from apps.mlops.tasks.base import mark_release_as_failed
+
+
+ZIP_COPY_CHUNK_SIZE = 64 * 1024
 
 
 def prepare_class_mappings(
@@ -297,16 +301,16 @@ def publish_dataset_release_async(release_id, train_file_id, val_file_id, test_f
                 if data_obj.train_data and data_obj.train_data.name:
                     logger.info(f"处理 {split_name} 数据: {data_obj.name}")
 
-                    # 下载 ZIP
-                    with data_obj.train_data.open("rb") as f:
-                        zip_content = f.read()
-
                     # 解压到临时目录
                     temp_extract = temp_path / f"{split_name}_extract"
                     temp_extract.mkdir()
                     temp_zip = temp_path / f"{split_name}_temp.zip"
-                    with open(temp_zip, "wb") as f:
-                        f.write(zip_content)
+                    with data_obj.train_data.open("rb") as source, open(
+                        temp_zip, "wb"
+                    ) as target:
+                        shutil.copyfileobj(
+                            source, target, length=ZIP_COPY_CHUNK_SIZE
+                        )
 
                     with zipfile.ZipFile(temp_zip, "r") as zipf:
                         zipf.extractall(temp_extract)

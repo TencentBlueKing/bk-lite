@@ -22,7 +22,7 @@ import useJobApi from '@/app/job/api';
 import { JobType, ScheduleType, ScheduledTaskFormData, Script, Playbook } from '@/app/job/types';
 import { useRouter } from 'next/navigation';
 import dayjs from 'dayjs';
-import HostSelectionModal, { HostItem, TargetSourceType } from '@/app/job/components/host-selection-modal';
+import HostSelectionModal, { HostItem, TargetSourceType } from '@/app/job/components/jobHostSelectionModalRuntime';
 import { AddTargetHostButton, TargetSourceSelector } from '@/app/job/components/target-selection-controls';
 import { useUserInfoContext } from '@/context/userInfo';
 
