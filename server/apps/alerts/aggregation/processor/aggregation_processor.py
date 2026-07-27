@@ -449,8 +449,10 @@ class AggregationProcessor:
         active_alert.save(update_fields=["status", "last_event_time", "updated_at"])
 
         from apps.alerts.service.reminder_service import ReminderService
+        from apps.alerts.service.recovery_notify import notify_alert_recovered
 
         ReminderService.stop_reminder_task(active_alert)
+        transaction.on_commit(lambda a=active_alert: notify_alert_recovered(a))
         logger.info(
             "自动恢复成功: strategy_id=%s, alert_id=%s",
             strategy.id,
