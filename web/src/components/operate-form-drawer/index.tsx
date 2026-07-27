@@ -3,7 +3,7 @@ import OperateDrawer from '@/components/operate-drawer';
 import {
   type FormFeedbackFooterProps,
   renderFormFeedbackFooter,
-} from '@/components/_internal/form-feedback-footer';
+} from '@/components/form-feedback-footer';
 
 type OperateDrawerProps = React.ComponentProps<typeof OperateDrawer>;
 
