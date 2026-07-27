@@ -31,16 +31,17 @@ var (
 )
 
 type Config struct {
-	ServerURL  string        `json:"server_url"`
-	APIToken   string        `json:"api_token"`
-	NodeID     string        `json:"node_id"`
-	NodeName   string        `json:"node_name"`
-	ZoneID     string        `json:"zone_id"`
-	GroupID    string        `json:"group_id"`
-	OS         string        `json:"os"`
-	InstallDir string        `json:"install_dir"`
-	Package    PackageConfig `json:"package"`
-	Storage    StorageConfig `json:"storage"`
+	ServerURL           string        `json:"server_url"`
+	APIToken            string        `json:"api_token"`
+	NodeID              string        `json:"node_id"`
+	NodeName            string        `json:"node_name"`
+	ZoneID              string        `json:"zone_id"`
+	GroupID             string        `json:"group_id"`
+	OS                  string        `json:"os"`
+	InstallDir          string        `json:"install_dir"`
+	SkipTLSVerification bool          `json:"-"`
+	Package             PackageConfig `json:"package"`
+	Storage             StorageConfig `json:"storage"`
 }
 
 type PackageConfig struct {
@@ -96,16 +97,112 @@ type EventOptions struct {
 	ExitCode        *int
 }
 
+type progressPublisher interface {
+	Publish(subject string, payload []byte) error
+}
+
+type progressFlusher interface {
+	FlushTimeout(timeout time.Duration) error
+}
+
+type InstallerEventReporter struct {
+	output      io.Writer
+	subject     string
+	executionID string
+	publisher   progressPublisher
+	pending     []string
+}
+
+var progressExecutionIDPattern = regexp.MustCompile(`^[0-9a-f]{32}$`)
+
+func NewInstallerEventReporter(output io.Writer, subject, executionID string) (*InstallerEventReporter, error) {
+	subject = strings.TrimSpace(subject)
+	executionID = strings.TrimSpace(executionID)
+	if output == nil {
+		return nil, fmt.Errorf("event output is required")
+	}
+	if subject == "" && executionID == "" {
+		return &InstallerEventReporter{output: output}, nil
+	}
+	if !progressExecutionIDPattern.MatchString(executionID) {
+		return nil, fmt.Errorf("execution ID must be 32 lowercase hexadecimal characters")
+	}
+	expectedSubject := "installer.progress." + executionID
+	if subject != expectedSubject {
+		return nil, fmt.Errorf("progress subject must be %s", expectedSubject)
+	}
+	return &InstallerEventReporter{output: output, subject: subject, executionID: executionID}, nil
+}
+
+func (reporter *InstallerEventReporter) Attach(publisher progressPublisher) {
+	reporter.publisher = publisher
+	if publisher == nil {
+		return
+	}
+	for _, line := range reporter.pending {
+		reporter.publish(line)
+	}
+	reporter.pending = nil
+}
+
+func (reporter *InstallerEventReporter) Emit(event InstallerEvent) {
+	if strings.TrimSpace(event.Timestamp) == "" {
+		event.Timestamp = time.Now().UTC().Format(time.RFC3339)
+	}
+	payload, err := json.Marshal(event)
+	if err != nil {
+		payload = []byte(fmt.Sprintf(`{"step":%q,"status":%q,"message":%q}`, event.Step, event.Status, event.Message))
+	}
+	line := "BKINSTALL_EVENT " + string(payload)
+	_, _ = fmt.Fprintln(reporter.output, line)
+	if reporter.subject == "" {
+		return
+	}
+	if reporter.publisher == nil {
+		if len(reporter.pending) < 128 {
+			reporter.pending = append(reporter.pending, line)
+		}
+		return
+	}
+	reporter.publish(line)
+	if event.Status == "failed" || event.Step == "complete" {
+		if flusher, ok := reporter.publisher.(progressFlusher); ok {
+			_ = flusher.FlushTimeout(time.Second)
+		}
+	}
+}
+
+func (reporter *InstallerEventReporter) publish(line string) {
+	envelope, err := json.Marshal(map[string]string{
+		"execution_id": reporter.executionID,
+		"stream":       "stdout",
+		"line":         line,
+		"timestamp":    time.Now().UTC().Format(time.RFC3339),
+	})
+	if err == nil {
+		_ = reporter.publisher.Publish(reporter.subject, envelope)
+	}
+}
+
+var installerEventReporter, _ = NewInstallerEventReporter(os.Stdout, "", "")
+
 var (
-	configURL     = flag.String("url", "", "Configuration URL")
-	configURLFile = flag.String("url-file", "", "Read the configuration URL from a file")
-	installDir    = flag.String("install-dir", "", "Installation directory")
-	skipTLS       = flag.Bool("skip-tls", false, "Skip TLS certificate verification")
-	fetchOnly     = flag.Bool("fetch-only", false, "Only fetch and display config")
+	configURL       = flag.String("url", "", "Configuration URL")
+	configURLFile   = flag.String("url-file", "", "Read the configuration URL from a file")
+	installDir      = flag.String("install-dir", "", "Installation directory")
+	skipTLS         = flag.Bool("skip-tls", false, "Skip TLS certificate verification")
+	fetchOnly       = flag.Bool("fetch-only", false, "Only fetch and display config")
+	progressSubject = flag.String("progress-subject", "", "NATS subject for live installation events")
+	executionID     = flag.String("execution-id", "", "Installation execution ID")
 )
 
 func main() {
 	flag.Parse()
+	reporter, err := NewInstallerEventReporter(os.Stdout, *progressSubject, *executionID)
+	if err != nil {
+		fatal("Invalid progress configuration: %v", err)
+	}
+	installerEventReporter = reporter
 
 	resolvedConfigURL, err := resolveConfigURL(*configURL, *configURLFile)
 	if err != nil {
@@ -160,7 +257,17 @@ func run(client *http.Client) {
 	if err != nil {
 		fatalStep("fetch_session", "Fetch failed: %v", err)
 	}
+	if *progressSubject != "" {
+		progressConnection, progressErr := connectNATS(&cfg.Storage)
+		if progressErr != nil {
+			log("WARN: live installation progress unavailable: %v", progressErr)
+		} else {
+			installerEventReporter.Attach(progressConnection)
+			defer progressConnection.Close()
+		}
+	}
 	emitEvent("fetch_session", "success", "Installer session fetched", intPtr(100), 0, 0, "")
+	cfg.SkipTLSVerification = *skipTLS
 	log("      Node: %s", cfg.NodeID)
 
 	if *installDir != "" {
@@ -182,7 +289,7 @@ func run(client *http.Client) {
 
 	log("[2/6] Preparing directories...")
 	emitEvent("prepare_directories", "running", "Preparing directories", nil, 0, 0, "")
-	if err := prepareDirs(cfg.InstallDir); err != nil {
+	if err := prepareInstallDirectories(cfg); err != nil {
 		fatalStep("prepare_directories", "Failed: %v", err)
 	}
 	emitEvent("prepare_directories", "success", "Directories prepared", intPtr(100), 0, 0, "")
@@ -297,12 +404,11 @@ func emitEventWithOptions(step, status, message string, progress *int, downloade
 		event.TargetPath = strings.TrimSpace(options.TargetPath)
 		event.ExitCode = options.ExitCode
 	}
-	payload, err := json.Marshal(event)
-	if err != nil {
-		fmt.Printf("BKINSTALL_EVENT %s\n", fmt.Sprintf(`{"step":"%s","status":"%s","message":"%s"}`, step, status, message))
-	} else {
-		fmt.Printf("BKINSTALL_EVENT %s\n", string(payload))
+	if installerEventReporter.subject == "" {
+		// Keep the historical stdout seam replaceable by tests and embedders.
+		installerEventReporter.output = os.Stdout
 	}
+	installerEventReporter.Emit(event)
 	os.Stdout.Sync()
 }
 
@@ -567,17 +673,10 @@ func printConfig(cfg *Config) {
 	}
 }
 
-func downloadFromStorage(storage *StorageConfig) (string, error) {
+func connectNATS(storage *StorageConfig) (*nats.Conn, error) {
 	if strings.TrimSpace(storage.NATSServers) == "" {
-		return "", fmt.Errorf("missing nats_servers")
+		return nil, fmt.Errorf("missing nats_servers")
 	}
-	if strings.TrimSpace(storage.Bucket) == "" {
-		return "", fmt.Errorf("missing bucket")
-	}
-	if strings.TrimSpace(storage.FileKey) == "" {
-		return "", fmt.Errorf("missing file_key")
-	}
-
 	serverURL := normalizeNATSURL(storage.NATSProtocol, storage.NATSServers)
 	options := []nats.Option{}
 	if storage.NATSUsername != "" {
@@ -590,7 +689,7 @@ func downloadFromStorage(storage *StorageConfig) (string, error) {
 		} else if strings.TrimSpace(storage.NATSTLSCA) != "" {
 			pool := x509.NewCertPool()
 			if !pool.AppendCertsFromPEM([]byte(storage.NATSTLSCA)) {
-				return "", fmt.Errorf("invalid nats_tls_ca PEM content")
+				return nil, fmt.Errorf("invalid nats_tls_ca PEM content")
 			}
 			tlsConfig.RootCAs = pool
 		}
@@ -599,7 +698,25 @@ func downloadFromStorage(storage *StorageConfig) (string, error) {
 
 	nc, err := nats.Connect(serverURL, options...)
 	if err != nil {
-		return "", fmt.Errorf("connect nats failed: %w", err)
+		return nil, fmt.Errorf("connect nats failed: %w", err)
+	}
+	return nc, nil
+}
+
+func downloadFromStorage(storage *StorageConfig) (string, error) {
+	if strings.TrimSpace(storage.NATSServers) == "" {
+		return "", fmt.Errorf("missing nats_servers")
+	}
+	if strings.TrimSpace(storage.Bucket) == "" {
+		return "", fmt.Errorf("missing bucket")
+	}
+	if strings.TrimSpace(storage.FileKey) == "" {
+		return "", fmt.Errorf("missing file_key")
+	}
+
+	nc, err := connectNATS(storage)
+	if err != nil {
+		return "", err
 	}
 	defer nc.Close()
 
@@ -667,6 +784,17 @@ func normalizeNATSURL(protocol, servers string) string {
 		proto = "nats"
 	}
 	return fmt.Sprintf("%s://%s", proto, trimmed)
+}
+
+func prepareInstallDirectories(cfg *Config) error {
+	if isLinux(cfg.OS) {
+		return prepareDirs(cfg.InstallDir)
+	}
+	installDir := filepath.Clean(cfg.InstallDir)
+	if installDir == "." || installDir == string(os.PathSeparator) {
+		return fmt.Errorf("unsafe Windows installation directory: %s", installDir)
+	}
+	return nil
 }
 
 func prepareDirs(base string) error {
@@ -880,7 +1008,7 @@ server_api_token: "%s"
 node_id: "%s"
 node_name: "%s"
 update_interval: 10
-tls_skip_verify: false
+tls_skip_verify: %t
 send_status: true
 cache_path: "%s\\cache"
 log_path: "%s\\logs"
@@ -894,6 +1022,7 @@ collector_binaries_accesslist:
 		cfg.APIToken,
 		cfg.NodeID,
 		cfg.NodeName,
+		cfg.SkipTLSVerification,
 		installDir, installDir, installDir,
 		cfg.ZoneID, cfg.GroupID, cfg.Package.CPUArchitecture,
 		installDir, installDir,
@@ -903,13 +1032,14 @@ collector_binaries_accesslist:
 }
 
 type windowsServiceController interface {
-	StopAndDelete() (bool, error)
-	Register(installDir string) error
+	Stop() (bool, error)
+	Start(installDir string, serviceExisted bool) error
+	Remove() error
 }
 
 type scWindowsServiceController struct{}
 
-func (controller *scWindowsServiceController) StopAndDelete() (bool, error) {
+func (controller *scWindowsServiceController) Stop() (bool, error) {
 	queryOutput, queryErr := exec.Command("sc.exe", "query", "sidecar").CombinedOutput()
 	if queryErr != nil {
 		if strings.Contains(string(queryOutput), "1060") || strings.Contains(strings.ToLower(string(queryOutput)), "does not exist") {
@@ -921,19 +1051,29 @@ func (controller *scWindowsServiceController) StopAndDelete() (bool, error) {
 	for attempt := 0; attempt < 10; attempt++ {
 		output, _ := exec.Command("sc.exe", "query", "sidecar").CombinedOutput()
 		if strings.Contains(string(output), "STOPPED") {
-			break
+			return true, nil
 		}
 		time.Sleep(time.Second)
 	}
-	deleteOutput, deleteErr := exec.Command("sc.exe", "delete", "sidecar").CombinedOutput()
-	if deleteErr != nil {
-		return true, fmt.Errorf("sc delete failed: %s", strings.TrimSpace(string(deleteOutput)))
-	}
-	return true, nil
+	return true, fmt.Errorf("sidecar service did not stop within 10 seconds")
 }
 
-func (controller *scWindowsServiceController) Register(installDir string) error {
-	return registerService(installDir)
+func (controller *scWindowsServiceController) Start(installDir string, serviceExisted bool) error {
+	if !serviceExisted {
+		return registerService(installDir)
+	}
+	return startWindowsService(installDir)
+}
+
+func (controller *scWindowsServiceController) Remove() error {
+	deleteOutput, deleteErr := exec.Command("sc.exe", "delete", "sidecar").CombinedOutput()
+	if deleteErr != nil {
+		if strings.Contains(string(deleteOutput), "1060") || strings.Contains(strings.ToLower(string(deleteOutput)), "does not exist") {
+			return nil
+		}
+		return fmt.Errorf("sc delete failed: %s", strings.TrimSpace(string(deleteOutput)))
+	}
+	return nil
 }
 
 var windowsRuntimeDirectories = []string{"cache", "logs", "generated"}
@@ -996,7 +1136,7 @@ func restorePreviousWindowsInstallation(
 		}
 	}
 	if serviceExisted && installExisted {
-		if err := controller.Register(installDir); err != nil {
+		if err := controller.Start(installDir, true); err != nil {
 			return fmt.Errorf("restore previous service: %w", err)
 		}
 	}
@@ -1032,7 +1172,7 @@ func installWindowsPackage(cfg *Config, zipPath string, controller windowsServic
 		return fmt.Errorf("staged collector-sidecar.exe validation failed: %w", err)
 	}
 
-	serviceExisted, err := controller.StopAndDelete()
+	serviceExisted, err := controller.Stop()
 	if err != nil {
 		return fmt.Errorf("stop existing sidecar service: %w", err)
 	}
@@ -1040,7 +1180,13 @@ func installWindowsPackage(cfg *Config, zipPath string, controller windowsServic
 	if _, err := os.Stat(installDir); err == nil {
 		installExisted = true
 		if err := os.Rename(installDir, backupDir); err != nil {
-			return fmt.Errorf("backup existing installation: %w", err)
+			backupErr := err
+			if serviceExisted {
+				if restartErr := controller.Start(installDir, true); restartErr != nil {
+					return fmt.Errorf("backup existing installation: %v; restart previous service: %w", backupErr, restartErr)
+				}
+			}
+			return fmt.Errorf("backup existing installation: %w", backupErr)
 		}
 	} else if !os.IsNotExist(err) {
 		return err
@@ -1064,10 +1210,12 @@ func installWindowsPackage(cfg *Config, zipPath string, controller windowsServic
 		}
 	}
 
-	if err := controller.Register(installDir); err != nil {
+	if err := controller.Start(installDir, serviceExisted); err != nil {
 		activationErr := err
-		if _, removeServiceErr := controller.StopAndDelete(); removeServiceErr != nil {
-			return fmt.Errorf("activate new service: %v; remove failed service before rollback: %w", activationErr, removeServiceErr)
+		if !serviceExisted {
+			if removeServiceErr := controller.Remove(); removeServiceErr != nil {
+				return fmt.Errorf("activate new service: %v; remove failed service before rollback: %w", activationErr, removeServiceErr)
+			}
 		}
 		if restoreErr := restorePreviousWindowsInstallation(controller, installDir, backupDir, installExisted, serviceExisted, movedRuntimeDirectories); restoreErr != nil {
 			return fmt.Errorf("activate new service: %v; rollback: %w", activationErr, restoreErr)
@@ -1086,7 +1234,6 @@ func installWindowsPackage(cfg *Config, zipPath string, controller windowsServic
 func registerService(installDir string) error {
 	exePath := filepath.Join(installDir, "collector-sidecar.exe")
 	cfgPath := filepath.Join(installDir, "sidecar.yml")
-	logPath := filepath.Join(installDir, "logs")
 
 	if _, err := os.Stat(exePath); os.IsNotExist(err) {
 		return fmt.Errorf("collector-sidecar.exe not found at %s", exePath)
@@ -1109,7 +1256,15 @@ func registerService(installDir string) error {
 
 	exec.Command("sc.exe", "description", "sidecar", "Collector Sidecar - Log and metric collector agent").Run()
 
-	out, err = exec.Command("sc.exe", "start", "sidecar").CombinedOutput()
+	return startWindowsService(installDir)
+}
+
+func startWindowsService(installDir string) error {
+	exePath := filepath.Join(installDir, "collector-sidecar.exe")
+	cfgPath := filepath.Join(installDir, "sidecar.yml")
+	logPath := filepath.Join(installDir, "logs")
+
+	out, err := exec.Command("sc.exe", "start", "sidecar").CombinedOutput()
 	if err != nil {
 		return serviceStartError(string(out), exePath, cfgPath, logPath)
 	}

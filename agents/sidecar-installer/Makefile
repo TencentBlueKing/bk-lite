@@ -113,7 +113,7 @@ release-artifacts: worker linux-worker-amd64 linux-worker-arm64 nsis windows-boo
 	@ls -lh $(DIST_DIR)/windows/x86_64/$(INSTALLER)
 	@ls -lh $(DIST_DIR)/windows/x86_64/$(WINDOWS_BOOTSTRAP)
 
-nsis:
+nsis: icons worker
 	makensis -V2 setup.nsi
 
 check-deps:

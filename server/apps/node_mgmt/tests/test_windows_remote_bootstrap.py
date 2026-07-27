@@ -1,3 +1,5 @@
+from queue import Queue
+
 import pytest
 import yaml
 
@@ -69,6 +71,8 @@ def test_windows_remote_bootstrap_stages_and_runs_native_worker():
             password="credential",
         ),
         timeout=60,
+        execution_id="0123456789abcdef0123456789abcdef",
+        progress_subject="installer.progress.0123456789abcdef0123456789abcdef",
     )
 
     assert executor.instance_id == "executor-node"
@@ -96,8 +100,15 @@ def test_windows_remote_bootstrap_stages_and_runs_native_worker():
     assert "PowerShell 5.1" in commands[0]["ansible.builtin.raw"]
     assert commands[1]["no_log"] is True
     assert commands[2]["ansible.windows.win_command"]["argv"][1] == "--url-file"
+    assert commands[2]["ansible.windows.win_command"]["argv"][-4:] == [
+        "--execution-id",
+        "{{ bklite_execution_id }}",
+        "--progress-subject",
+        "{{ bklite_progress_subject }}",
+    ]
     assert len(block["always"]) == 2
     assert execution["extra_vars"]["bklite_session_url"].endswith("/secret")
+    assert execution["extra_vars"]["bklite_execution_id"] == "0123456789abcdef0123456789abcdef"
     cleanup_playbook = yaml.safe_load(cleanup["playbook_content"])
     cleanup_tasks = cleanup_playbook[0]["tasks"]
     assert {task["ansible.windows.win_file"]["path"] for task in cleanup_tasks} == {
@@ -128,6 +139,73 @@ def test_windows_remote_bootstrap_rejects_failed_ansible_task():
 
     assert len(executor.playbook_calls) == 2
     assert executor.playbook_calls[-1]["task_id"] == "controller-bootstrap-cleanup-31-1"
+
+
+def test_windows_remote_bootstrap_replays_terminal_failure_events_before_raising():
+    executor = FakeExecutor("executor-node")
+    executor.query_results = [
+        {"status": "success", "result": {"result": []}},
+        {
+            "status": "failed",
+            "error": "bootstrap failed",
+            "result": {
+                "result": [
+                    {
+                        "stdout": 'BKINSTALL_EVENT {"step":"download_package","status":"failed","error":"object missing"}'
+                    }
+                ]
+            },
+        },
+        {"status": "success", "result": {"result": []}},
+    ]
+    service = WindowsRemoteBootstrapService(executor_factory=lambda _: executor, resolver=FakeResolver)
+    events = []
+
+    with pytest.raises(BaseAppException, match="bootstrap failed"):
+        service.run(
+            cloud_region_id=7,
+            task_node_id=31,
+            attempt=1,
+            cpu_architecture="x86_64",
+            session_url="https://server.example/session",
+            target=WindowsBootstrapTarget("10.0.0.8", 5986, "Administrator", "credential"),
+            timeout=60,
+            event_callback=events.append,
+        )
+
+    assert events == ['BKINSTALL_EVENT {"step":"download_package","status":"failed","error":"object missing"}']
+
+
+def test_windows_remote_bootstrap_progress_callback_cannot_mask_primary_failure():
+    executor = FakeExecutor("executor-node")
+    executor.query_results = [
+        {"status": "success", "result": {"result": []}},
+        {
+            "status": "failed",
+            "error": "bootstrap failed",
+            "result": {
+                "result": [
+                    {
+                        "stdout": 'BKINSTALL_EVENT {"step":"download_package","status":"failed","error":"object missing"}'
+                    }
+                ]
+            },
+        },
+        {"status": "success", "result": {"result": []}},
+    ]
+    service = WindowsRemoteBootstrapService(executor_factory=lambda _: executor, resolver=FakeResolver)
+
+    with pytest.raises(BaseAppException, match="bootstrap failed"):
+        service.run(
+            cloud_region_id=7,
+            task_node_id=31,
+            attempt=1,
+            cpu_architecture="x86_64",
+            session_url="https://server.example/session",
+            target=WindowsBootstrapTarget("10.0.0.8", 5986, "Administrator", "credential"),
+            timeout=60,
+            event_callback=lambda _: (_ for _ in ()).throw(RuntimeError("progress persistence failed")),
+        )
 
 
 @pytest.mark.unit
@@ -230,6 +308,7 @@ def test_install_task_routes_windows_through_winrm_bootstrap(monkeypatch):
         status="waiting",
     )
     calls = []
+    subscriptions = []
 
     class FakeBootstrapService:
         def run(self, **kwargs):
@@ -237,6 +316,12 @@ def test_install_task_routes_windows_through_winrm_bootstrap(monkeypatch):
             return 'BKINSTALL_EVENT {"action":"install","status":"success","message":"done"}'
 
     monkeypatch.setattr(installer_tasks, "WindowsRemoteBootstrapService", FakeBootstrapService)
+
+    def fake_subscribe(topic, timeout, stop_event):
+        subscriptions.append(topic)
+        return Queue(), lambda: None
+
+    monkeypatch.setattr(installer_tasks, "subscribe_lines_sync", fake_subscribe)
     monkeypatch.setattr(
         installer_tasks.InstallerService,
         "get_install_command",
@@ -255,6 +340,8 @@ def test_install_task_routes_windows_through_winrm_bootstrap(monkeypatch):
     assert len(calls) == 1
     assert calls[0]["cloud_region_id"] == region.id
     assert calls[0]["session_url"].endswith("/secret")
+    assert calls[0]["progress_subject"] == subscriptions[0]
+    assert subscriptions[0] == f"installer.progress.{calls[0]['execution_id']}"
     assert calls[0]["target"] == WindowsBootstrapTarget(
         host="10.0.0.8",
         port=5986,
@@ -266,6 +353,13 @@ def test_install_task_routes_windows_through_winrm_bootstrap(monkeypatch):
     )
     assert task_node.result["overall_status"] == "running"
     assert any(step.get("message") == "done" for step in task_node.result["steps"])
+    step_count = len(task_node.result["steps"])
+    installer_tasks._apply_installer_events_to_node(
+        task_node,
+        'BKINSTALL_EVENT {"action":"install","status":"success","message":"done"}',
+    )
+    task_node.refresh_from_db()
+    assert len(task_node.result["steps"]) == step_count
 
 
 @pytest.mark.django_db

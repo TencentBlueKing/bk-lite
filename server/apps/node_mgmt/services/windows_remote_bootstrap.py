@@ -72,7 +72,7 @@ class WindowsRemoteBootstrapService:
         ]
 
     @staticmethod
-    def _wait_for_task(executor: AnsibleExecutor, task_id: str, timeout: int) -> dict:
+    def _wait_for_task(executor: AnsibleExecutor, task_id: str, timeout: int, terminal_callback=None) -> dict:
         deadline = time.monotonic() + timeout
         while True:
             result = executor.task_query(task_id, timeout=min(timeout, 30))
@@ -80,6 +80,11 @@ class WindowsRemoteBootstrapService:
                 raise BaseAppException("Ansible task returned an invalid result")
             status = result.get("status")
             if status in {"success", "failed", "callback_failed"}:
+                if terminal_callback is not None:
+                    try:
+                        terminal_callback(result)
+                    except Exception:
+                        logger.exception("Failed to persist terminal Windows bootstrap events: task_id=%s", task_id)
                 if status != "success":
                     detail = result.get("error") or result.get("result") or status
                     raise BaseAppException(f"Ansible task failed: {detail}")
@@ -188,6 +193,10 @@ class WindowsRemoteBootstrapService:
                                         "{{ bklite_session_file }}",
                                         "--install-dir",
                                         r"C:\fusion-collectors",
+                                        "--execution-id",
+                                        "{{ bklite_execution_id }}",
+                                        "--progress-subject",
+                                        "{{ bklite_progress_subject }}",
                                     ]
                                 },
                                 "register": "bklite_bootstrap_result",
@@ -265,6 +274,9 @@ class WindowsRemoteBootstrapService:
         session_url: str,
         target: WindowsBootstrapTarget,
         timeout: int,
+        execution_id: str = "",
+        progress_subject: str = "",
+        event_callback=None,
     ) -> str:
         if target.scheme != "https" or target.port != 5986 or target.transport != "ntlm" or target.validate_certificate is not True:
             raise BaseAppException("Windows remote installation requires HTTPS, NTLM, port 5986, and server certificate validation")
@@ -300,11 +312,28 @@ class WindowsRemoteBootstrapService:
                     "bklite_session_url": session_url,
                     "bklite_session_file": session_file,
                     "bklite_bootstrap_path": remote_path,
+                    "bklite_execution_id": execution_id,
+                    "bklite_progress_subject": progress_subject,
                 },
                 task_id=run_task_id,
                 timeout=timeout,
             )
-            result = self._wait_for_task(executor, self._accepted_task_id(accepted, run_task_id), timeout)
+            def replay_terminal_events(terminal_result):
+                if event_callback is None:
+                    return
+                task_result = terminal_result.get("result") if isinstance(terminal_result, dict) else None
+                if not isinstance(task_result, dict):
+                    return
+                event_output = self._extract_installer_events(task_result)
+                if event_output:
+                    event_callback(event_output)
+
+            result = self._wait_for_task(
+                executor,
+                self._accepted_task_id(accepted, run_task_id),
+                timeout,
+                terminal_callback=replay_terminal_events,
+            )
             return self._extract_stdout(result)
         except Exception as exc:
             primary_error = exc

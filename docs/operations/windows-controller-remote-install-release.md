@@ -21,6 +21,7 @@
 1. 安装器构建任务新增 `bklite-controller-bootstrap.exe` 的归档和对象存储初始化。
 2. 重新构建并发布 Ansible Executor 镜像，使镜像包含固定版本的 WinRM 依赖。
 3. Server 发布时执行 NodeMgmt 数据库迁移。
+4. 安装器专用 NATS 用户允许读取安装包对象，并允许发布 `installer.progress.>`；Server 用户保持对该 subject 的订阅权限。
 
 建议顺序：构建全部产物和镜像 → 上传 bootstrap → 执行数据库迁移 → 发布 Server/Web/Ansible Executor → 执行验收。
 
@@ -48,6 +49,8 @@ agents/sidecar-installer/dist/windows/x86_64/bklite-controller-bootstrap.exe
 ```
 
 不要归档或发布内部中间文件 `setup-worker.exe`。建议流水线记录 bootstrap 的文件大小和 SHA-256，并确保文件非空；生成的二进制文件不提交到 Git。
+
+`make release-artifacts` 是两个 Windows 产物的原子构建入口；`nsis` 目标会显式先生成图标和原生 worker，流水线不要从历史工作区直接调用 `makensis setup.nsi`，以免把过期 worker 嵌入 GUI 安装器。
 
 当前只支持 Windows x86_64，不要生成或上传 Windows ARM64 bootstrap。
 
@@ -148,6 +151,22 @@ python manage.py migrate --no-input
 
 当前稳定支持面不包括 HTTP/5985、Basic、Kerberos、CredSSP、跳过证书校验和 Windows ARM64。流水线或环境模板不要暴露这些组合。
 
+### NATS 最小权限
+
+安装会话返回的 `NATS_INSTALLER_USERNAME/PASSWORD` 除 Object Store 下载权限外，还需要：
+
+```text
+publish: installer.progress.>
+```
+
+Server 使用的 NATS 账号需要：
+
+```text
+subscribe: installer.progress.>
+```
+
+bootstrap 只接受 `installer.progress.<32 位小写十六进制 execution_id>`，实时发布失败会自动降级为 Ansible 终态 stdout 回放，不会让安装失败；但页面将无法实时显示下载和解压过程。生产验收必须覆盖实时进度，不能只验证最终成功。
+
 ## 8. 发布验收清单
 
 发布完成后逐项确认：
@@ -157,7 +176,8 @@ python manage.py migrate --no-input
 - [ ] Ansible Executor 镜像为本次构建版本，并包含固定版本的 `ansible.windows`、`pywinrm` 和 `cryptography`。
 - [ ] 所需云区域至少有一个健康的 Ansible Executor。
 - [ ] NodeMgmt 的 `0037`、`0038`、`0039` 迁移均已应用。
-- [ ] Windows 控制器安装页面显示远程安装，账号默认值为 Administrator，并固定使用 5986、HTTPS、NTLM 和证书校验。
+- [ ] Windows 控制器安装页面显示远程安装，账号默认值为 Administrator；页面不暴露固定安全参数，并实际使用 5986、HTTPS、NTLM 和证书校验。
+- [ ] 安装执行期间，页面能在 Ansible 任务结束前持续看到下载、解压和服务切换进度，最终回放不产生重复步骤。
 - [ ] 使用测试 Windows 主机完成一次全新远程安装。
 - [ ] 对已安装主机执行一次升级，确认 `cache`、`logs`、`generated` 被保留。
 - [ ] 使用不受信任证书测试一次，确认连接被拒绝。
@@ -175,6 +195,7 @@ python manage.py migrate --no-input
 | 证书校验失败 | 服务端证书链、名称匹配和 Executor 容器 CA 信任 |
 | 提示 PowerShell 或 Windows 版本不支持 | 目标机是否满足 Windows 10/Server 2016、PowerShell 5.1+ |
 | Executor 启动时提示载荷加密密钥缺失 | 检查 `ANSIBLE_PAYLOAD_ENCRYPTION_KEY` 或 NATS 密码注入 |
+| 安装最终成功但页面中途没有实时进度 | 检查安装器 NATS 用户对 `installer.progress.>` 的 publish 权限，以及 Server 用户的 subscribe 权限 |
 | Server 报 WinRM 字段不存在 | 检查 NodeMgmt 数据库迁移是否完成 |
 
 ## 10. 回滚

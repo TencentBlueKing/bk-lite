@@ -363,6 +363,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
 
   const handleImportSuccess = (importedData: any[]) => {
     const newRows = importedData.map((row) => ({
+      ...createInfoItem(os),
       ...row,
       key: uuidv4()
     }));

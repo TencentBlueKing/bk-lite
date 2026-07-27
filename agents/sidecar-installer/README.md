@@ -61,6 +61,8 @@ Notes:
 - `bklite-controller-installer.exe` already embeds `setup-worker.exe`, extracts it during installation, uses it to perform the actual install steps, and then cleans it up.
 - For remote installation, publish the same native worker under the stable release name `bklite-controller-bootstrap.exe`; do not publish the internal `setup-worker.exe` name.
 - The remote bootstrap verifies TLS, limits package download/expansion, stages files before stopping the existing service, and restores the previous installation if the new service cannot start.
+- Remote progress is published best-effort to `installer.progress.<execution_id>` and always remains in stdout for terminal replay. The installer NATS user needs publish access to `installer.progress.>`; failure to publish does not fail installation.
+- The GUI extracts and runs the shared worker from the NSIS plugin directory, passes its one-time session through a temporary URL file, and never persists or prints that session URL. Its explicit legacy `--skip-tls` behavior is also written into the installed sidecar configuration; remote bootstrap remains strict TLS.
 - Windows remote installation requires Windows 10 / Windows Server 2016, PowerShell 5.1 or newer, and an HTTPS WinRM listener using NTLM with a trusted certificate.
 
 ## Upload

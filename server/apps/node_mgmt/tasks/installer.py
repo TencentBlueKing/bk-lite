@@ -1,8 +1,9 @@
-import logging
-import uuid
+import hashlib
 import json
+import logging
 import queue
 import threading
+import uuid
 
 from celery import shared_task
 from django.db import transaction
@@ -93,7 +94,21 @@ def _apply_installer_events_to_node(node_obj, output_text: str):
     if not events:
         return False
 
+    result = node_obj.result or {}
+    fingerprints = list(result.get("_installer_event_fingerprints") or [])
+    seen_fingerprints = set(fingerprints)
+    applied = False
     for event in events:
+        canonical_event = json.dumps(event, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        fingerprint = hashlib.sha256(canonical_event.encode("utf-8")).hexdigest()
+        if fingerprint in seen_fingerprints:
+            continue
+        seen_fingerprints.add(fingerprint)
+        fingerprints.append(fingerprint)
+        result["_installer_event_fingerprints"] = fingerprints[-256:]
+        node_obj.result = result
+        applied = True
+
         event_record = build_installer_event_record(event)
         action = event_record["action"]
         status = event_record["status"]
@@ -115,18 +130,28 @@ def _apply_installer_events_to_node(node_obj, output_text: str):
             if not _update_step_status_by_action(node_obj, action, status, message, details=details):
                 _update_step_status(node_obj, status, message, details=details)
 
-    _refresh_installer_progress(node_obj)
-    return True
+    if applied:
+        _refresh_installer_progress(node_obj)
+    return applied
 
 
-def _consume_installer_stream(node_obj, result_queue, stop_event):
+def _apply_installer_events_with_lock(node_obj, output_text: str, event_lock):
+    with event_lock:
+        return _apply_installer_events_to_node(node_obj, output_text)
+
+
+def _consume_installer_stream(node_obj, result_queue, stop_event, event_lock=None):
     while not stop_event.is_set() or not result_queue.empty():
         try:
             payload = result_queue.get(timeout=0.2)
         except queue.Empty:
             continue
         line = payload.get("line", "")
-        _apply_installer_events_to_node(node_obj, line)
+        if event_lock is None:
+            _apply_installer_events_to_node(node_obj, line)
+        else:
+            with event_lock:
+                _apply_installer_events_to_node(node_obj, line)
 
 
 def _add_steps(node_obj, step_items):
@@ -637,23 +662,48 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
                     subscribe_thread.join(timeout=2)
                     consume_thread.join(timeout=2)
             else:
-                exec_result = WindowsRemoteBootstrapService().run(
-                    cloud_region_id=task_obj.cloud_region_id,
-                    task_node_id=node_obj.id,
-                    attempt=_get_execution_attempt(node_obj),
-                    cpu_architecture=resolved_arch,
-                    session_url=install_command,
-                    target=WindowsBootstrapTarget(
-                        host=node_obj.ip,
-                        port=node_obj.port,
-                        user=node_obj.username,
-                        password=password,
-                        scheme=node_obj.winrm_scheme,
-                        transport=node_obj.winrm_transport,
-                        validate_certificate=node_obj.winrm_cert_validation,
-                    ),
+                execution_id = uuid.uuid4().hex
+                progress_subject = f"installer.progress.{execution_id}"
+                stop_event = threading.Event()
+                event_lock = threading.Lock()
+                result_queue, subscribe_runner = subscribe_lines_sync(
+                    progress_subject,
                     timeout=InstallerConstants.COMMAND_EXECUTE_TIMEOUT,
+                    stop_event=stop_event,
                 )
+                subscribe_thread = threading.Thread(target=subscribe_runner, daemon=True)
+                consume_thread = threading.Thread(
+                    target=_consume_installer_stream,
+                    args=(node_obj, result_queue, stop_event, event_lock),
+                    daemon=True,
+                )
+                subscribe_thread.start()
+                consume_thread.start()
+                try:
+                    exec_result = WindowsRemoteBootstrapService().run(
+                        cloud_region_id=task_obj.cloud_region_id,
+                        task_node_id=node_obj.id,
+                        attempt=_get_execution_attempt(node_obj),
+                        cpu_architecture=resolved_arch,
+                        session_url=install_command,
+                        target=WindowsBootstrapTarget(
+                            host=node_obj.ip,
+                            port=node_obj.port,
+                            user=node_obj.username,
+                            password=password,
+                            scheme=node_obj.winrm_scheme,
+                            transport=node_obj.winrm_transport,
+                            validate_certificate=node_obj.winrm_cert_validation,
+                        ),
+                        timeout=InstallerConstants.COMMAND_EXECUTE_TIMEOUT,
+                        execution_id=execution_id,
+                        progress_subject=progress_subject,
+                        event_callback=lambda output: _apply_installer_events_with_lock(node_obj, output, event_lock),
+                    )
+                finally:
+                    stop_event.set()
+                    subscribe_thread.join(timeout=2)
+                    consume_thread.join(timeout=2)
             installer_output = ""
             if isinstance(exec_result, dict):
                 installer_output = exec_result.get("result") or exec_result.get("output") or ""
