@@ -447,7 +447,7 @@ export const prepareEnterpriseRoutes = async () => {
 /**
  * 解析 EE 端 web/src/app/monitor/utils/common.tsx 的 `export const enterpriseBrands`
  * 数组,写 CE 端 web/public/__enterprise-brands.js。运行时由 next layout.tsx
- * 注入 <Script src="/__enterprise-brands.js" strategy="afterInteractive" />,
+ * 注入 <Script src="/__enterprise-brands.js" strategy="beforeInteractive" />,
  * 加载后 window.__ENTERPRISE_BRANDS = [...]。CE 端 utils/common.tsx 的
  * getPluginBrandIcon/getBrandLabel 拼接该数组。
  * 失败降级:文件不存在 / 解析失败 → 写空数组,getPluginBrandIcon 走纯 CE BRANDS。

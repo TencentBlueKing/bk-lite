@@ -6,6 +6,7 @@ import WithSideMenuLayout from '@/components/sub-layout';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import type { MenuItem } from '@/types';
+import { getPluginBrandIcon } from '@/app/monitor/utils/common';
 
 const IntegrationDetailLayout = ({
   children
@@ -19,6 +20,8 @@ const IntegrationDetailLayout = ({
   const desc = searchParams.get('plugin_description');
   const objId = searchParams.get('id') || '';
   const icon = searchParams.get('icon');
+  const pluginName = searchParams.get('plugin_name') || '';
+  const resolvedIcon = getPluginBrandIcon(pluginName) || icon || 'cc-default_默认';
   const templateType = searchParams.get('template_type') || '';
 
   const handleBackButtonClick = () => {
@@ -31,7 +34,7 @@ const IntegrationDetailLayout = ({
     <div className="p-4 rounded-md w-full min-h-[95px] flex items-start bg-[var(--color-bg-2)]">
       <div className="w-[72px] h-[72px] mr-[10px] min-w-[72px] rounded-lg flex items-center justify-center bg-[var(--color-fill-1)]">
         <img
-          src={`/assets/icons/${icon}.svg`}
+          src={`/assets/icons/${resolvedIcon}.svg`}
           alt="icon"
           className="w-[60px] h-[60px]"
           onError={(e) => {

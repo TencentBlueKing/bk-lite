@@ -304,7 +304,7 @@ const Integration = () => {
     }
     const row: TableDataItem = {
       id: objectInfo.id || '',
-      icon: objectInfo.icon || OBJECT_DEFAULT_ICON,
+      icon: getPluginBrandIcon(app?.name) || objectInfo.icon || OBJECT_DEFAULT_ICON,
       name: objectInfo.name || '',
       plugin_name: app?.name,
       plugin_id: app?.id,
