@@ -36,7 +36,7 @@ _EN_FALLBACKS = {
     "选择 SNMP 版本": "Select SNMP Version",
     "选择安全级别": "Select Security Level",
     "主机地址": "Host Address",
-    "Docer守护进程连接地址，默认为 unix:///var/run/docker.sock": "Docker daemon address; defaults to unix:///var/run/docker.sock",
+    "Docker守护进程连接地址，默认为 unix:///var/run/docker.sock": "Docker daemon address; defaults to unix:///var/run/docker.sock",
     "IP地址": "IP Address",
     "数据库类型": "Database Type",
     "采样窗口": "Sampling Window",
