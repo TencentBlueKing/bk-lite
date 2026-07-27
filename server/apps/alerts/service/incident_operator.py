@@ -114,7 +114,7 @@ class IncidentOperator:
                     "incident_id": incident_id,
                     "status": incident.status,
                     "operator": incident.operator,
-                    "updated_at": incident.updated_at.isoformat()
+                    "updated_at": timezone.localtime(incident.updated_at).strftime("%Y-%m-%d %H:%M:%S")
                 }
             }
 
@@ -155,7 +155,7 @@ class IncidentOperator:
                     "incident_id": incident_id,
                     "status": incident.status,
                     "operator": incident.operator,
-                    "updated_at": incident.updated_at.isoformat()
+                    "updated_at": timezone.localtime(incident.updated_at).strftime("%Y-%m-%d %H:%M:%S")
                 }
             }
 
@@ -196,7 +196,7 @@ class IncidentOperator:
                     "incident_id": incident_id,
                     "status": incident.status,
                     "operator": incident.operator,
-                    "updated_at": incident.updated_at.isoformat()
+                    "updated_at": timezone.localtime(incident.updated_at).strftime("%Y-%m-%d %H:%M:%S")
                 }
             }
 

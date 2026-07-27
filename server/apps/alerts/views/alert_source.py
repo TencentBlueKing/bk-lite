@@ -369,7 +369,7 @@ class AlertSourceModelViewSet(ModelViewSet):
     @action(methods=["get"], detail=False, url_path="daily_event_stats")
     def daily_event_stats(self, request):
         """Return today's and yesterday's total event counts across all sources."""
-        now = timezone.now()
+        now = timezone.localtime(timezone.now())
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         yesterday_start = today_start - timedelta(days=1)
 

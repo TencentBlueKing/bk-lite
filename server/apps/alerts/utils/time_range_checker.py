@@ -81,6 +81,9 @@ class TimeRangeChecker:
             return None  # 配置不完整，退安全，让 Python 层处理
 
         try:
+            # TODO(timezone): 一次性时段的 make_aware 未指定时区，解释结果取决于调用线程的激活时区。
+            # 摄入链路（NATS/celery，默认 UTC）与 web 请求线程（用户时区）下，同一规则的窗口解释不同。
+            # 需要产品确认：一次性时段配置的时区契约（统一按 UTC？按用户时区？按配置时区？）
             start_time = timezone.make_aware(
                 datetime.datetime.strptime(start_time_str, "%Y-%m-%d %H:%M:%S")
             )

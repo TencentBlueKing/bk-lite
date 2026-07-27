@@ -83,12 +83,8 @@ const OperationLog: React.FC = () => {
         operator: allParams.operator,
         action: allParams.type,
         overview: allParams.message,
-        created_at_after: allParams.dateRange?.[0]?.format(
-          'YYYY-MM-DD HH:mm:ss'
-        ),
-        created_at_before: allParams.dateRange?.[1]?.format(
-          'YYYY-MM-DD HH:mm:ss'
-        ),
+        created_at_after: allParams.dateRange?.[0]?.toISOString(),
+        created_at_before: allParams.dateRange?.[1]?.toISOString(),
       };
       const data: any = await getLogList(queryParams);
       setDataList((data.items as AlarmLogItem[]) || []);
@@ -162,6 +158,8 @@ const OperationLog: React.FC = () => {
         dataIndex: 'created_at',
         key: 'created_at',
         width: 200,
+        // TODO(timezone): 与全站 convertToLocalizedTime 约定不一致——当前原样显示后端 DRF 输出的用户时区串，
+        // 数值恰好正确，但属隐式依赖。后续统一为 convertToLocalizedTime 以消除约定分裂。
       },
       {
         title: t('OperationLog.summary'),

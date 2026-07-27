@@ -178,6 +178,28 @@ def test_alert_source_get_last_event_time_empty():
 
 
 @pytest.mark.django_db
+def test_alert_source_get_last_event_time_respects_activated_timezone():
+    """get_last_event_time 应按请求激活的用户时区输出，与 DRF DateTimeField 路径一致。"""
+    source = AlertSource.objects.create(name="源-tz", source_id="s-tz", source_type="restful", secret="x")
+    utc_dt = timezone.datetime(2026, 7, 24, 1, 44, 34, tzinfo=timezone.utc)
+    event = Event.objects.create(source=source, raw_data={}, title="e", level="0", start_time=utc_dt, event_id="E-tz")
+    # auto_now_add 无法控制，用 update 固定 received_at
+    Event.objects.filter(pk=event.pk).update(received_at=utc_dt)
+
+    shanghai = timezone.zoneinfo.ZoneInfo("Asia/Shanghai")
+    timezone.activate(shanghai)
+    try:
+        result = AlertSourceModelSerializer.get_last_event_time(source)
+    finally:
+        timezone.deactivate()
+
+    # UTC 01:44:34 在 Asia/Shanghai 下应为 09:44:34
+    assert result == "2026-07-24 09:44:34", (
+        f"get_last_event_time 应输出用户时区钟面，实际: {result}"
+    )
+
+
+@pytest.mark.django_db
 def test_alert_source_serializer_team_secrets_write_only():
     """team_secrets 必须为 write_only，GET 响应不得返回组织密钥。
 
