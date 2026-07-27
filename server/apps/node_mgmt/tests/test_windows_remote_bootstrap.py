@@ -98,17 +98,18 @@ def test_windows_remote_bootstrap_stages_and_runs_native_worker():
     commands = block["block"]
     assert commands[0]["name"] == "Verify supported Windows and PowerShell version"
     assert "PowerShell 5.1" in commands[0]["ansible.builtin.raw"]
-    assert commands[1]["ansible.windows.win_file"]["state"] == "directory"
-    assert commands[2]["ansible.windows.win_acl"]["rights"] == "FullControl"
-    assert commands[3]["ansible.windows.win_acl"]["user"] == "SYSTEM"
-    assert commands[4]["ansible.windows.win_acl_inheritance"]["state"] == "absent"
-    assert commands[5]["no_log"] is True
-    assert commands[6]["ansible.windows.win_command"]["argv"][1:4] == [
+    assert commands[1]["ansible.windows.win_file"]["state"] == "absent"
+    assert commands[2]["ansible.windows.win_file"]["state"] == "directory"
+    assert commands[3]["ansible.windows.win_acl"]["rights"] == "FullControl"
+    assert commands[4]["ansible.windows.win_acl"]["user"] == "SYSTEM"
+    assert commands[5]["ansible.windows.win_acl_inheritance"]["state"] == "absent"
+    assert commands[6]["no_log"] is True
+    assert commands[7]["ansible.windows.win_command"]["argv"][1:4] == [
         "--url-file",
         "{{ bklite_session_file }}",
         "--require-https",
     ]
-    assert commands[6]["ansible.windows.win_command"]["argv"][-4:] == [
+    assert commands[7]["ansible.windows.win_command"]["argv"][-4:] == [
         "--execution-id",
         "{{ bklite_execution_id }}",
         "--progress-subject",
@@ -130,7 +131,7 @@ def test_windows_remote_bootstrap_stages_and_runs_native_worker():
     }
     assert cleanup_paths == {
         "C:/Windows/Temp/bklite-controller-bootstrap-31-2.exe",
-        "C:/Windows/Temp/bklite-controller-session-31-2",
+        "C:/Windows/Temp/bklite-controller-session-0123456789abcdef0123456789abcdef",
     }
     assert output.startswith("BKINSTALL_EVENT ")
 
@@ -526,6 +527,29 @@ def test_controller_timeout_fences_stuck_windows_bootstrap(monkeypatch):
         "stuck-execution",
         1,
     )
+
+    task_node.status = "running"
+    task_node.result = {
+        "execution_phase": "bootstrap_running",
+        "execution_attempt": 3,
+        "installer_execution_id": "retry-execution",
+        "steps": [{"action": "run", "status": "running", "message": "Retry installer"}],
+    }
+    task_node.save(update_fields=["status", "result"])
+
+    installer_tasks.timeout_controller_install_task(task.id, expected_attempt=1)
+    assert installer_tasks._fail_installer_execution(
+        task_node.id,
+        "stuck-execution",
+        1,
+        "late failure",
+        RuntimeError("late failure"),
+    ) is None
+
+    task_node.refresh_from_db()
+    assert task_node.status == "running"
+    assert task_node.result["execution_attempt"] == 3
+    assert task_node.result["installer_execution_id"] == "retry-execution"
 
 
 @pytest.mark.django_db

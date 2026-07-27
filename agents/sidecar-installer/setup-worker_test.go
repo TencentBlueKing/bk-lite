@@ -234,6 +234,9 @@ func TestInstallWindowsPackageRecoversRetainedBackupOnRetry(t *testing.T) {
 	if _, err := os.Stat(installDir + ".bklite-backup"); err != nil {
 		t.Fatalf("previous installation backup was not retained: %v", err)
 	}
+	if _, err := os.Stat(filepath.Join(installDir+".bklite-backup", windowsActivationPendingMarker)); err != nil {
+		t.Fatalf("pending activation marker was not retained: %v", err)
+	}
 
 	retryErr := installWindowsPackage(cfg, zipPath, controller)
 	if retryErr == nil || !strings.Contains(retryErr.Error(), "recovered previous Windows installation") {
@@ -258,11 +261,49 @@ func TestInstallWindowsPackageRejectsInvalidRecoveryBackupBeforeStoppingService(
 
 	err := installWindowsPackage(&Config{InstallDir: installDir, OS: "windows"}, zipPath, controller)
 
-	if err == nil || !strings.Contains(err.Error(), "backup is invalid") {
+	if err == nil || !strings.Contains(err.Error(), "requires manual recovery") {
 		t.Fatalf("expected invalid recovery backup rejection, got %v", err)
 	}
 	if controller.stopCalls != 0 {
 		t.Fatalf("invalid recovery backup must be rejected before stopping service")
+	}
+}
+
+func TestInstallWindowsPackageDoesNotRollbackCommittedBackupResidue(t *testing.T) {
+	installDir := filepath.Join(t.TempDir(), "fusion-collectors")
+	backupDir := installDir + ".bklite-backup"
+	if err := os.MkdirAll(installDir, 0755); err != nil {
+		t.Fatalf("create healthy install dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(installDir, "collector-sidecar.exe"), []byte("healthy-new"), 0644); err != nil {
+		t.Fatalf("write healthy binary: %v", err)
+	}
+	if err := os.MkdirAll(backupDir, 0755); err != nil {
+		t.Fatalf("create committed backup: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(backupDir, "collector-sidecar.exe"), []byte("old"), 0644); err != nil {
+		t.Fatalf("write old backup binary: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(backupDir, windowsActivationCommittedMarker), []byte("committed\n"), 0600); err != nil {
+		t.Fatalf("write committed marker: %v", err)
+	}
+	invalidZip := filepath.Join(t.TempDir(), "invalid.zip")
+	if err := os.WriteFile(invalidZip, []byte("not a zip"), 0600); err != nil {
+		t.Fatalf("write invalid zip: %v", err)
+	}
+	controller := &fakeWindowsServiceController{serviceExisted: true}
+
+	err := installWindowsPackage(&Config{InstallDir: installDir, OS: "windows"}, invalidZip, controller)
+
+	if err == nil {
+		t.Fatalf("expected invalid package error")
+	}
+	content, readErr := os.ReadFile(filepath.Join(installDir, "collector-sidecar.exe"))
+	if readErr != nil || string(content) != "healthy-new" {
+		t.Fatalf("committed healthy installation was rolled back: %q, %v", content, readErr)
+	}
+	if controller.stopCalls != 0 {
+		t.Fatalf("package validation should fail before stopping healthy service")
 	}
 }
 

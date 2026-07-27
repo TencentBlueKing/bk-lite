@@ -1112,6 +1112,11 @@ func (controller *scWindowsServiceController) Remove() error {
 
 var windowsRuntimeDirectories = []string{"cache", "logs", "generated"}
 
+const (
+	windowsActivationPendingMarker   = ".bklite-activation-pending"
+	windowsActivationCommittedMarker = ".bklite-activation-committed"
+)
+
 func moveWindowsRuntimeData(backupDir, installDir string) ([]string, error) {
 	moved := []string{}
 	for _, name := range windowsRuntimeDirectories {
@@ -1165,6 +1170,11 @@ func restorePreviousWindowsInstallation(
 		return fmt.Errorf("remove failed installation: %w", err)
 	}
 	if installExisted {
+		for _, marker := range []string{windowsActivationPendingMarker, windowsActivationCommittedMarker} {
+			if err := os.Remove(filepath.Join(backupDir, marker)); err != nil && !os.IsNotExist(err) {
+				return fmt.Errorf("remove activation marker: %w", err)
+			}
+		}
 		if err := os.Rename(backupDir, installDir); err != nil {
 			return fmt.Errorf("restore previous installation: %w", err)
 		}
@@ -1251,7 +1261,24 @@ func installWindowsPackage(cfg *Config, zipPath string, controller windowsServic
 	}
 	defer releaseInstallLock()
 	if _, err := os.Stat(backupDir); err == nil {
-		return recoverInterruptedWindowsInstallation(controller, installDir, backupDir)
+		committedMarker := filepath.Join(backupDir, windowsActivationCommittedMarker)
+		pendingMarker := filepath.Join(backupDir, windowsActivationPendingMarker)
+		if _, markerErr := os.Stat(committedMarker); markerErr == nil {
+			cleanupActivatedWindowsBackup(backupDir)
+			if _, cleanupErr := os.Stat(backupDir); cleanupErr == nil {
+				return fmt.Errorf("committed Windows backup cleanup requires manual intervention: %s", backupDir)
+			} else if !os.IsNotExist(cleanupErr) {
+				return cleanupErr
+			}
+		} else if !os.IsNotExist(markerErr) {
+			return markerErr
+		} else if _, markerErr := os.Stat(pendingMarker); markerErr == nil {
+			return recoverInterruptedWindowsInstallation(controller, installDir, backupDir)
+		} else if !os.IsNotExist(markerErr) {
+			return markerErr
+		} else {
+			return fmt.Errorf("Windows installation backup has no transaction marker and requires manual recovery: %s", backupDir)
+		}
 	} else if !os.IsNotExist(err) {
 		return err
 	}
@@ -1292,6 +1319,14 @@ func installWindowsPackage(cfg *Config, zipPath string, controller windowsServic
 				}
 			}
 			return fmt.Errorf("backup existing installation: %w", backupErr)
+		}
+		pendingMarker := filepath.Join(backupDir, windowsActivationPendingMarker)
+		if err := os.WriteFile(pendingMarker, []byte("pending\n"), 0600); err != nil {
+			markerErr := err
+			if restoreErr := restorePreviousWindowsInstallation(controller, installDir, backupDir, true, serviceExisted, nil); restoreErr != nil {
+				return fmt.Errorf("write activation marker: %v; rollback: %w", markerErr, restoreErr)
+			}
+			return fmt.Errorf("write activation marker: %w", markerErr)
 		}
 	} else if !os.IsNotExist(err) {
 		return err
@@ -1337,6 +1372,18 @@ func installWindowsPackage(cfg *Config, zipPath string, controller windowsServic
 	}
 
 	if installExisted {
+		pendingMarker := filepath.Join(backupDir, windowsActivationPendingMarker)
+		committedMarker := filepath.Join(backupDir, windowsActivationCommittedMarker)
+		if err := os.Rename(pendingMarker, committedMarker); err != nil {
+			commitErr := err
+			if _, stopErr := controller.Stop(); stopErr != nil {
+				return fmt.Errorf("commit Windows activation: %v; stop new service before rollback: %w", commitErr, stopErr)
+			}
+			if restoreErr := restorePreviousWindowsInstallation(controller, installDir, backupDir, true, serviceExisted, movedRuntimeDirectories); restoreErr != nil {
+				return fmt.Errorf("commit Windows activation: %v; rollback: %w", commitErr, restoreErr)
+			}
+			return fmt.Errorf("commit Windows activation: %w", commitErr)
+		}
 		cleanupActivatedWindowsBackup(backupDir)
 	}
 	return nil

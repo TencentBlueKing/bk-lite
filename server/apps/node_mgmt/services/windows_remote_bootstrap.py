@@ -1,6 +1,7 @@
 import json
 import re
 import time
+import uuid
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
@@ -177,6 +178,14 @@ class WindowsRemoteBootstrapService:
                                 "changed_when": False,
                             },
                             {
+                                "name": "Remove any colliding installer session directory",
+                                "ansible.windows.win_file": {
+                                    "path": "{{ bklite_session_dir }}",
+                                    "state": "absent",
+                                },
+                                "no_log": True,
+                            },
+                            {
                                 "name": "Create protected installer session directory",
                                 "ansible.windows.win_file": {
                                     "path": "{{ bklite_session_dir }}",
@@ -349,7 +358,8 @@ class WindowsRemoteBootstrapService:
         artifact = InstallerSessionService.windows_bootstrap_artifact(cpu_architecture)
         remote_name = f"bklite-controller-bootstrap-{task_node_id}-{attempt}.exe"
         remote_path = f"C:/Windows/Temp/{remote_name}"
-        session_dir = f"C:/Windows/Temp/bklite-controller-session-{task_node_id}-{attempt}"
+        session_nonce = execution_id or uuid.uuid4().hex
+        session_dir = f"C:/Windows/Temp/bklite-controller-session-{session_nonce}"
         session_file = f"{session_dir}/session.url"
 
         primary_error = None

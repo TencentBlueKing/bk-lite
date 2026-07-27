@@ -83,7 +83,7 @@ class InstallerViewSet(ViewSet):
         )
         install_controller.delay(task_id)
         timeout_controller_install_task.apply_async(
-            args=[task_id],
+            args=[task_id, 1],
             countdown=CONTROLLER_INSTALL_TASK_TIMEOUT_SECONDS,
         )
         return WebUtils.response_success(dict(task_id=task_id))
