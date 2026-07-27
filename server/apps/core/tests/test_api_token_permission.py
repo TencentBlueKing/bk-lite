@@ -421,6 +421,26 @@ class TestPopulateUserPermissions:
                 backend.PERMISSION_CACHE_TTL,
             )
 
+    def test_cache_index_registration_failure_does_not_leave_snapshot(self):
+        """索引登记失败时不得先写入无法失效的权限快照。"""
+        backend = APISecretAuthBackend()
+        user = MockUser(username="newuser", domain="test.com", group_list=[1])
+
+        with patch("apps.core.backends.cache") as mock_cache, patch(
+            "apps.core.backends.register_api_token_permission_cache_key", side_effect=RuntimeError("index unavailable")
+        ):
+            mock_cache.get.return_value = None
+            with patch.object(backend, "_get_user_all_roles", return_value=set()), patch(
+                "apps.core.backends.Role"
+            ) as mock_role:
+                mock_role.objects.filter.return_value.__iter__.return_value = iter([])
+                mock_role.objects.filter.return_value.values_list.return_value = []
+                backend._populate_user_permissions(user, 1)
+
+        mock_cache.set.assert_not_called()
+        assert user.permission == {}
+        assert user.is_superuser is False
+
     def test_exception_handling(self):
         """测试异常处理 - 设置空权限"""
         backend = APISecretAuthBackend()
