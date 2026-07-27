@@ -6,12 +6,10 @@ import {
   DashboardShell,
   FlexiblePanelSection,
   KpiSection,
-  useFilteredBarPanels,
   useFilteredChartPanels,
   useFilteredRingPanels
 } from '../common/dashboard-components';
 import {
-  HorizontalBarPanel,
   RingChartPanel,
   TrendChartPanel
 } from '../../shared/widgets';
@@ -19,20 +17,20 @@ import { HOST_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
 
 const TOP_CHART_TITLES = ['资源使用趋势', '系统负载趋势'];
-const LOWER_CHART_TITLES = ['网络吞吐趋势', '磁盘吞吐趋势', '进程状态趋势'];
+const NETWORK_CHART_TITLES = ['网络吞吐趋势', '网络错误速率'];
+const DISK_PROCESS_CHART_TITLES = ['磁盘吞吐趋势', '进程异常趋势'];
 const RING_TITLES = ['CPU 时间分布', '内存占用分布', '进程状态分布'];
-const BAR_TITLES = ['主机压力信号'];
 
 export default function HostDashboardPage() {
   const dashboard = useSimpleDashboardData(HOST_DASHBOARD_CONFIG);
   const topCharts = useFilteredChartPanels(dashboard.chartPanels, TOP_CHART_TITLES);
-  const lowerCharts = useFilteredChartPanels(dashboard.chartPanels, LOWER_CHART_TITLES);
+  const networkCharts = useFilteredChartPanels(dashboard.chartPanels, NETWORK_CHART_TITLES);
+  const diskProcessCharts = useFilteredChartPanels(dashboard.chartPanels, DISK_PROCESS_CHART_TITLES);
   const rings = useFilteredRingPanels(dashboard.ringPanels, RING_TITLES);
-  const bars = useFilteredBarPanels(dashboard.barPanels, BAR_TITLES);
-  const [pressureBar] = bars;
 
   const [resourceChart, loadChart] = topCharts;
-  const [networkChart, diskChart, processChart] = lowerCharts;
+  const [networkChart, networkErrorChart] = networkCharts;
+  const [diskChart, processAnomalyChart] = diskProcessCharts;
   const [cpuRing, memoryRing, processRing] = rings;
 
   return (
@@ -46,40 +44,23 @@ export default function HostDashboardPage() {
 
           <div className={styles.sectionLabel}>性能与分布</div>
           <FlexiblePanelSection styles={styles}>
-            {resourceChart ? (
+            {[resourceChart, loadChart].map((chart) => chart ? (
               <TrendChartPanel
-                key={resourceChart.chart.title}
-                title={resourceChart.chart.title}
-                subtitle={resourceChart.chart.subtitle}
-                guide={resourceChart.chart.guide}
-                legends={resourceChart.legends}
-                data={resourceChart.data}
-                metric={resourceChart.metric}
-                unit={resourceChart.unit}
+                key={chart.chart.title}
+                title={chart.chart.title}
+                subtitle={chart.chart.subtitle}
+                guide={chart.chart.guide}
+                legends={chart.legends}
+                data={chart.data}
+                metric={chart.metric}
+                unit={chart.unit}
                 loading={dashboard.loading}
-                seriesStyles={resourceChart.seriesStyles}
+                seriesStyles={chart.seriesStyles}
                 onXRangeChange={dashboard.onXRangeChange}
                 className={`${styles.span6} ${styles.compactTrend}`}
                 styles={styles}
               />
-            ) : null}
-            {loadChart ? (
-              <TrendChartPanel
-                key={loadChart.chart.title}
-                title={loadChart.chart.title}
-                subtitle={loadChart.chart.subtitle}
-                guide={loadChart.chart.guide}
-                legends={loadChart.legends}
-                data={loadChart.data}
-                metric={loadChart.metric}
-                unit={loadChart.unit}
-                loading={dashboard.loading}
-                seriesStyles={loadChart.seriesStyles}
-                onXRangeChange={dashboard.onXRangeChange}
-                className={`${styles.span6} ${styles.compactTrend}`}
-                styles={styles}
-              />
-            ) : null}
+            ) : null)}
             {cpuRing ? (
               <RingChartPanel
                 key={cpuRing.panel.title}
@@ -124,71 +105,46 @@ export default function HostDashboardPage() {
             ) : null}
           </FlexiblePanelSection>
 
-          <div className={styles.sectionLabel}>吞吐与进程</div>
+          <div className={styles.sectionLabel}>网络观察</div>
           <FlexiblePanelSection styles={styles}>
-            {/* 主机压力信号条 span6 + 网络吞吐 span6 = 12 —— 信号条不再独占整行 */}
-            {pressureBar ? (
-              <HorizontalBarPanel
-                key={pressureBar.panel.title}
-                title={pressureBar.panel.title}
-                subtitle={pressureBar.panel.subtitle}
-                guide={pressureBar.panel.guide}
-                items={pressureBar.items}
-                className={styles.span6}
-                styles={styles}
-              />
-            ) : null}
-            {networkChart ? (
+            {[networkChart, networkErrorChart].map((chart) => chart ? (
               <TrendChartPanel
-                key={networkChart.chart.title}
-                title={networkChart.chart.title}
-                subtitle={networkChart.chart.subtitle}
-                guide={networkChart.chart.guide}
-                legends={networkChart.legends}
-                data={networkChart.data}
-                metric={networkChart.metric}
-                unit={networkChart.unit}
+                key={chart.chart.title}
+                title={chart.chart.title}
+                subtitle={chart.chart.subtitle}
+                guide={chart.chart.guide}
+                legends={chart.legends}
+                data={chart.data}
+                metric={chart.metric}
+                unit={chart.unit}
                 loading={dashboard.loading}
-                seriesStyles={networkChart.seriesStyles}
+                seriesStyles={chart.seriesStyles}
                 onXRangeChange={dashboard.onXRangeChange}
                 className={`${styles.span6} ${styles.compactTrend}`}
                 styles={styles}
               />
-            ) : null}
-            {diskChart ? (
+            ) : null)}
+          </FlexiblePanelSection>
+
+          <div className={styles.sectionLabel}>磁盘与进程</div>
+          <FlexiblePanelSection styles={styles}>
+            {[diskChart, processAnomalyChart].map((chart) => chart ? (
               <TrendChartPanel
-                key={diskChart.chart.title}
-                title={diskChart.chart.title}
-                subtitle={diskChart.chart.subtitle}
-                guide={diskChart.chart.guide}
-                legends={diskChart.legends}
-                data={diskChart.data}
-                metric={diskChart.metric}
-                unit={diskChart.unit}
+                key={chart.chart.title}
+                title={chart.chart.title}
+                subtitle={chart.chart.subtitle}
+                guide={chart.chart.guide}
+                legends={chart.legends}
+                data={chart.data}
+                metric={chart.metric}
+                unit={chart.unit}
                 loading={dashboard.loading}
-                seriesStyles={diskChart.seriesStyles}
+                seriesStyles={chart.seriesStyles}
                 onXRangeChange={dashboard.onXRangeChange}
                 className={`${styles.span6} ${styles.compactTrend}`}
                 styles={styles}
               />
-            ) : null}
-            {processChart ? (
-              <TrendChartPanel
-                key={processChart.chart.title}
-                title={processChart.chart.title}
-                subtitle={processChart.chart.subtitle}
-                guide={processChart.chart.guide}
-                legends={processChart.legends}
-                data={processChart.data}
-                metric={processChart.metric}
-                unit={processChart.unit}
-                loading={dashboard.loading}
-                seriesStyles={processChart.seriesStyles}
-                onXRangeChange={dashboard.onXRangeChange}
-                className={`${styles.span6} ${styles.compactTrend}`}
-                styles={styles}
-              />
-            ) : null}
+            ) : null)}
           </FlexiblePanelSection>
         </>
       }

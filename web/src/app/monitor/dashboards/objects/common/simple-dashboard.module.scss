@@ -1253,10 +1253,9 @@
 }
 
 .kpiGrid {
-  // 用 flex 而非 grid：换行后末行卡片会弹性撑满整行，避免落单卡片右侧留大片空白
-  //（grid 的 auto-fit + 1fr 在卡片数无法整除列数时必然产生空白轨道）。
-  display: flex;
-  flex-wrap: wrap;
+  // 固定 N 列 grid：落单卡片只占一格，不撑满整行（flex-grow 曾把末行单卡拉成全宽）。
+  display: grid;
+  grid-template-columns: repeat(var(--kpi-cols, 5), minmax(0, 1fr));
   gap: 12px;
   min-width: 0;
   align-items: stretch;
@@ -1264,13 +1263,7 @@
 }
 
 .kpiGrid > * {
-  // 不要写 height: 100%！flex 列项设 height:100% 会以内容高度排布，
-  // 抵消父容器的 align-items: stretch，导致同一行卡片高度参差。
-  // 保持 height: auto，由 stretch 把同行卡片统一拉到该行最高卡的高度。
-  // 基准宽度 = 整行的 1/N（扣除 N-1 个 gap）→ 宽屏每行恰好 N 张；
-  // 收窄到 min-width 以下时自动换行，flex-grow:1 让换行后的卡片撑满整行。
-  flex: 1 1 calc((100% - (var(--kpi-cols, 5) - 1) * 12px) / var(--kpi-cols, 5));
-  min-width: 200px;
+  min-width: 0;
 }
 
 .dashboardSection {
@@ -1323,9 +1316,6 @@
   gap: 12px;
   justify-content: start;
 }
-
-// KPI 区已改用 flex 自适应，无需再按断点切换列数：
-// 卡片随宽度自动换行，末行靠 flex-grow 撑满，不会留空白。
 
 @media (max-width: 1200px) {
   .overviewGrid {
