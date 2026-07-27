@@ -1,4 +1,5 @@
-import json
+"""数据源预览接口测试。"""
+
 from io import BytesIO
 from types import SimpleNamespace
 
@@ -7,38 +8,12 @@ import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.http import Http404
 from rest_framework import status
-from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
 from apps.operation_analysis.services.datasource_preview import PreviewResult
 from apps.operation_analysis.views import datasource_view
 
-
-def _build_preview_request(user, data=None, path="/operation_analysis/api/data_source/preview/"):
-    factory = APIRequestFactory()
-    request = factory.post(path, data=data or {}, format="json")
-    request.COOKIES["current_team"] = "1"
-    request.COOKIES["include_children"] = "0"
-    force_authenticate(request, user=user)
-    return request
-
-
-def _build_multipart_preview_request(user, data=None, path="/operation_analysis/api/data_source/preview/"):
-    factory = APIRequestFactory()
-    request = factory.post(path, data=data or {}, format="multipart")
-    request.COOKIES["current_team"] = "1"
-    request.COOKIES["include_children"] = "0"
-    force_authenticate(request, user=user)
-    return request
-
-
-def _build_source_data_request(user, data=None, path="/operation_analysis/api/data_source/get_source_data/1/"):
-    factory = APIRequestFactory()
-    request = factory.post(path, data=data or {}, format="json")
-    request.COOKIES["current_team"] = "1"
-    request.COOKIES["include_children"] = "0"
-    force_authenticate(request, user=user)
-    return request
+pytestmark = [pytest.mark.django_db, pytest.mark.integration]
 
 
 def _build_excel_upload() -> SimpleUploadedFile:
@@ -79,7 +54,6 @@ class FakePreviewExecutor:
         )
 
 
-@pytest.mark.django_db
 @pytest.mark.parametrize(
     ("permission", "expected_status"),
     [
@@ -89,6 +63,7 @@ class FakePreviewExecutor:
     ],
 )
 def test_preview_unsaved_datasource_requires_add_or_edit_permission(
+    api_client,
     authenticated_user,
     monkeypatch,
     permission,
@@ -98,22 +73,22 @@ def test_preview_unsaved_datasource_requires_add_or_edit_permission(
     authenticated_user.permission = {"ops-analysis": {permission}}
     executor = FakePreviewExecutor()
     monkeypatch.setattr(datasource_view, "get_preview_executor", lambda source_type: executor)
-    request = _build_preview_request(
-        authenticated_user,
-        data={
+    api_client.cookies["current_team"] = "1"
+
+    response = api_client.post(
+        "/api/v1/operation_analysis/api/data_source/preview/",
+        {
             "source_type": DataSourceAPIModel.SOURCE_TYPE_REST_API,
             "connection_config": {"url": "https://example.com/api"},
             "query_config": {"response_path": "data"},
         },
+        format="json",
     )
-
-    response = datasource_view.DataSourceAPIModelViewSet.as_view({"post": "preview_config"})(request)
 
     assert response.status_code == expected_status
     assert len(executor.calls) == (1 if expected_status == status.HTTP_200_OK else 0)
 
 
-@pytest.mark.django_db
 @pytest.mark.parametrize(
     ("permission", "expected_status"),
     [
@@ -123,6 +98,7 @@ def test_preview_unsaved_datasource_requires_add_or_edit_permission(
     ],
 )
 def test_preview_saved_datasource_requires_edit_permission(
+    api_client,
     authenticated_user,
     monkeypatch,
     permission,
@@ -144,36 +120,57 @@ def test_preview_saved_datasource_requires_edit_permission(
             query_config={"response_path": "data"},
         ),
     )
-    request = _build_preview_request(
-        authenticated_user,
-        path="/operation_analysis/api/data_source/1/preview/",
-    )
+    api_client.cookies["current_team"] = "1"
 
-    response = datasource_view.DataSourceAPIModelViewSet.as_view({"post": "preview"})(request, pk="1")
+    response = api_client.post("/api/v1/operation_analysis/api/data_source/1/preview/", {}, format="json")
 
     assert response.status_code == expected_status
     assert len(executor.calls) == (1 if expected_status == status.HTTP_200_OK else 0)
 
 
-@pytest.mark.django_db
-def test_preview_unsaved_datasource_executes_inline_config(authenticated_user, monkeypatch):
+def test_preview_saved_datasource_rejects_team_outside_user_groups(api_client, authenticated_user, monkeypatch):
+    authenticated_user.is_superuser = False
+    authenticated_user.permission = {"ops-analysis": {"data_source-Edit"}}
+    authenticated_user.group_list = [{"id": 1}]
+    executor = FakePreviewExecutor()
+    monkeypatch.setattr(datasource_view, "get_preview_executor", lambda source_type: executor)
+    monkeypatch.setattr(
+        datasource_view.DataSourceAPIModelViewSet,
+        "get_object",
+        lambda self: SimpleNamespace(
+            id=1,
+            name="rest-demo",
+            groups=[2],
+            source_type=DataSourceAPIModel.SOURCE_TYPE_REST_API,
+            connection_config={"url": "https://example.com/api"},
+            query_config={"response_path": "data"},
+        ),
+    )
+    api_client.cookies["current_team"] = "2"
+
+    response = api_client.post("/api/v1/operation_analysis/api/data_source/1/preview/", {}, format="json")
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert executor.calls == []
+
+
+def test_preview_unsaved_datasource_executes_inline_config(api_client, authenticated_user, monkeypatch):
     authenticated_user.is_superuser = True
     executor = FakePreviewExecutor()
     monkeypatch.setattr(datasource_view, "get_preview_executor", lambda source_type: executor)
+    api_client.cookies["current_team"] = "1"
 
-    request = _build_preview_request(
-        authenticated_user,
-        data={
+    response = api_client.post(
+        "/api/v1/operation_analysis/api/data_source/preview/",
+        {
             "source_type": DataSourceAPIModel.SOURCE_TYPE_REST_API,
             "connection_config": {"url": "https://example.com/api", "method": "GET"},
             "query_config": {"response_path": "data"},
             "limit": 10,
         },
+        format="json",
     )
-
-    response = datasource_view.DataSourceAPIModelViewSet.as_view({"post": "preview_config"})(request)
-    response.render()
-    payload = json.loads(response.rendered_content)
+    payload = response.json()
 
     assert response.status_code == status.HTTP_200_OK
     assert payload["result"] is True
@@ -184,21 +181,20 @@ def test_preview_unsaved_datasource_executes_inline_config(authenticated_user, m
     assert executor.calls[0]["limit"] == 10
 
 
-@pytest.mark.django_db
-def test_preview_unsaved_excel_datasource_accepts_upload(authenticated_user):
+def test_preview_unsaved_excel_datasource_accepts_upload(api_client, authenticated_user):
     authenticated_user.is_superuser = True
-    request = _build_multipart_preview_request(
-        authenticated_user,
-        data={
+    api_client.cookies["current_team"] = "1"
+
+    response = api_client.post(
+        "/api/v1/operation_analysis/api/data_source/preview/",
+        {
             "source_type": DataSourceAPIModel.SOURCE_TYPE_EXCEL,
             "file": _build_excel_upload(),
             "limit": "10",
         },
+        format="multipart",
     )
-
-    response = datasource_view.DataSourceAPIModelViewSet.as_view({"post": "preview_config"})(request)
-    response.render()
-    payload = json.loads(response.rendered_content)
+    payload = response.json()
 
     assert response.status_code == status.HTTP_200_OK
     assert payload["result"] is True
@@ -206,14 +202,10 @@ def test_preview_unsaved_excel_datasource_accepts_upload(authenticated_user):
     assert payload["data"]["fields"][2]["key"] == "users"
 
 
-@pytest.mark.django_db
-def test_preview_saved_datasource_checks_group(authenticated_user, monkeypatch):
+def test_preview_saved_datasource_checks_group(api_client, authenticated_user, monkeypatch):
     authenticated_user.is_superuser = False
     authenticated_user.permission = {"ops-analysis": {"data_source-Edit"}}
-    request = _build_preview_request(
-        authenticated_user,
-        path="/operation_analysis/api/data_source/1/preview/",
-    )
+    api_client.cookies["current_team"] = "1"
 
     monkeypatch.setattr(
         datasource_view.DataSourceAPIModelViewSet,
@@ -228,17 +220,15 @@ def test_preview_saved_datasource_checks_group(authenticated_user, monkeypatch):
         ),
     )
 
-    response = datasource_view.DataSourceAPIModelViewSet.as_view({"post": "preview"})(request, pk="1")
-    response.render()
-    payload = json.loads(response.rendered_content)
+    response = api_client.post("/api/v1/operation_analysis/api/data_source/1/preview/", {}, format="json")
+    payload = response.json()
 
     assert response.status_code == status.HTTP_403_FORBIDDEN
     assert payload["result"] is False
     assert payload["message"] == "无权访问当前数据源"
 
 
-@pytest.mark.django_db
-def test_preview_saved_datasource_uses_persisted_config(authenticated_user, monkeypatch):
+def test_preview_saved_datasource_uses_persisted_config(api_client, authenticated_user, monkeypatch):
     authenticated_user.is_superuser = True
     executor = FakePreviewExecutor()
     monkeypatch.setattr(datasource_view, "get_preview_executor", lambda source_type: executor)
@@ -254,16 +244,14 @@ def test_preview_saved_datasource_uses_persisted_config(authenticated_user, monk
             query_config={"response_path": "data.items"},
         ),
     )
+    api_client.cookies["current_team"] = "1"
 
-    request = _build_preview_request(
-        authenticated_user,
-        data={"limit": 5},
-        path="/operation_analysis/api/data_source/1/preview/",
+    response = api_client.post(
+        "/api/v1/operation_analysis/api/data_source/1/preview/",
+        {"limit": 5},
+        format="json",
     )
-
-    response = datasource_view.DataSourceAPIModelViewSet.as_view({"post": "preview"})(request, pk="1")
-    response.render()
-    payload = json.loads(response.rendered_content)
+    payload = response.json()
 
     assert response.status_code == status.HTTP_200_OK
     assert payload["result"] is True
@@ -272,32 +260,27 @@ def test_preview_saved_datasource_uses_persisted_config(authenticated_user, monk
     assert executor.calls[0]["limit"] == 5
 
 
-@pytest.mark.django_db
-def test_preview_returns_not_found_for_deleted_datasource(authenticated_user, monkeypatch):
+def test_preview_returns_not_found_for_deleted_datasource(api_client, authenticated_user, monkeypatch):
     authenticated_user.is_superuser = True
-    request = _build_preview_request(
-        authenticated_user,
-        path="/operation_analysis/api/data_source/1/preview/",
-    )
+    api_client.cookies["current_team"] = "1"
     monkeypatch.setattr(
         datasource_view.DataSourceAPIModelViewSet,
         "get_object",
         lambda self: (_ for _ in ()).throw(Http404()),
     )
 
-    response = datasource_view.DataSourceAPIModelViewSet.as_view({"post": "preview"})(request, pk="1")
-    response.render()
-    payload = json.loads(response.rendered_content)
+    response = api_client.post("/api/v1/operation_analysis/api/data_source/1/preview/", {}, format="json")
+    payload = response.json()
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
     assert payload["result"] is False
     assert payload["message"] == "数据源不存在或已删除"
 
 
-@pytest.mark.django_db
-def test_get_source_data_executes_inline_datasource(authenticated_user, monkeypatch):
+def test_get_source_data_executes_inline_datasource(api_client, authenticated_user, monkeypatch):
     authenticated_user.is_superuser = False
     authenticated_user.permission = {"ops-analysis": {"data_source-View"}}
+    api_client.cookies["current_team"] = "1"
     executor = FakePreviewExecutor()
     monkeypatch.setattr(datasource_view, "get_preview_executor", lambda source_type: executor)
     monkeypatch.setattr(
@@ -314,11 +297,12 @@ def test_get_source_data_executes_inline_datasource(authenticated_user, monkeypa
         ),
     )
 
-    request = _build_source_data_request(authenticated_user, data={"page_size": 20})
-
-    response = datasource_view.DataSourceAPIModelViewSet.as_view({"post": "get_source_data"})(request, pk="1")
-    response.render()
-    payload = json.loads(response.rendered_content)
+    response = api_client.post(
+        "/api/v1/operation_analysis/api/data_source/get_source_data/1/",
+        {"page_size": 20},
+        format="json",
+    )
+    payload = response.json()
 
     assert response.status_code == status.HTTP_200_OK
     assert payload["result"] is True
@@ -326,8 +310,7 @@ def test_get_source_data_executes_inline_datasource(authenticated_user, monkeypa
     assert executor.calls[0]["limit"] == 20
 
 
-@pytest.mark.django_db
-def test_get_source_data_returns_saved_excel_items(authenticated_user, monkeypatch):
+def test_get_source_data_returns_saved_excel_items(api_client, authenticated_user, monkeypatch):
     authenticated_user.is_superuser = True
     monkeypatch.setattr(
         datasource_view.DataSourceAPIModelViewSet,
@@ -351,33 +334,34 @@ def test_get_source_data_returns_saved_excel_items(authenticated_user, monkeypat
             params=[],
         ),
     )
+    api_client.cookies["current_team"] = "1"
 
-    request = _build_source_data_request(authenticated_user, data={"page_size": 1})
-
-    response = datasource_view.DataSourceAPIModelViewSet.as_view({"post": "get_source_data"})(request, pk="1")
-    response.render()
-    payload = json.loads(response.rendered_content)
+    response = api_client.post(
+        "/api/v1/operation_analysis/api/data_source/get_source_data/1/",
+        {"page_size": 1},
+        format="json",
+    )
+    payload = response.json()
 
     assert response.status_code == status.HTTP_200_OK
     assert payload["result"] is True
     assert payload["data"] == [{"name": "官网", "value": 120}]
 
 
-@pytest.mark.django_db
-def test_preview_rejects_unsupported_source_type(authenticated_user):
+def test_preview_rejects_unsupported_source_type(api_client, authenticated_user):
     authenticated_user.is_superuser = True
-    request = _build_preview_request(
-        authenticated_user,
-        data={
+    api_client.cookies["current_team"] = "1"
+
+    response = api_client.post(
+        "/api/v1/operation_analysis/api/data_source/preview/",
+        {
             "source_type": DataSourceAPIModel.SOURCE_TYPE_NATS,
             "connection_config": {},
             "query_config": {},
         },
+        format="json",
     )
-
-    response = datasource_view.DataSourceAPIModelViewSet.as_view({"post": "preview_config"})(request)
-    response.render()
-    payload = json.loads(response.rendered_content)
+    payload = response.json()
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert payload["result"] is False

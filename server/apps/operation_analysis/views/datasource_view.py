@@ -520,7 +520,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
         except Http404:
             return _build_error_response("数据源不存在或已删除", status.HTTP_404_NOT_FOUND)
 
-        current_team = self._parse_current_team_cookie(request)
+        current_team = self._validate_current_team_permission(request)
         if current_team not in (instance.groups or []):
             return _build_error_response("无权访问当前数据源", status.HTTP_403_FORBIDDEN)
 
