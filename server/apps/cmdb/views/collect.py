@@ -59,6 +59,7 @@ class CollectModelViewSet(AuthViewSet):
         "info",
         "exec_task",
         "task_overview",
+        "pc_handover",
     }
 
     @staticmethod
@@ -242,6 +243,24 @@ class CollectModelViewSet(AuthViewSet):
             raise BaseAppException("您没有操作该采集任务的权限！")
         result = CollectModelService.exec_task(instance=instance, operator=request.user.username)
         return result
+
+    @HasPermission("auto_collection-Execute")
+    @action(methods=["POST"], detail=True, url_path="pc_handover")
+    def pc_handover(self, request, *args, **kwargs):
+        """PC 权威任务显式移交：管理员授权本任务接管指定 PC。"""
+        from apps.cmdb.services.pc_discovery import PCAuthorityService
+
+        instance = self.get_object()
+        if instance.model_id != "pc":
+            raise BaseAppException("仅 PC 发现任务支持权威移交")
+        user = request.user
+        current_team = get_current_team_from_request(request)
+        include_children = request.COOKIES.get("include_children", "0") == "1"
+        has_permission = self.get_has_permission(user, instance, current_team, include_children=include_children)
+        if not has_permission:
+            raise BaseAppException("您没有操作该采集任务的权限！")
+        result = PCAuthorityService.request_handovers(instance, request.data.get("pc_inst_names", []))
+        return WebUtils.response_success(result)
 
     @action(methods=["GET"], detail=False)
     @HasPermission("auto_collection-View")

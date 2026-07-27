@@ -211,6 +211,44 @@ class PCAuthorityService:
             return authority
 
     @staticmethod
+    def request_handovers(task, pc_inst_names):
+        """批量移交入口（视图层调用）。
+
+        先全量校验再统一写入：任一 PC 无权威记录整体拒绝（ValidationAppException），
+        不产生部分移交；当前 owner 重复发起为幂等成功（already_owner，不写 pending）。
+        """
+        from apps.cmdb.models.pc_discovery import PCDiscoveryAuthority
+        from apps.core.exceptions.base_app_exception import ValidationAppException
+
+        names = list(pc_inst_names or [])
+        existing = {
+            authority.pc_inst_name: authority
+            for authority in PCDiscoveryAuthority.objects.filter(pc_inst_name__in=names)
+        }
+        missing = [name for name in names if name not in existing]
+        if missing:
+            raise ValidationAppException(f"PC 不存在或未建立权威来源: {', '.join(missing)}")
+
+        results = []
+        for name in names:
+            authority = existing[name]
+            if authority.authoritative_task_id == task.id:
+                # owner 重复发起移交：幂等成功，同时取消进行中的待移交
+                if authority.pending_task_id is not None:
+                    with transaction.atomic():
+                        locked = PCDiscoveryAuthority.objects.select_for_update().get(pk=authority.pk)
+                        locked.pending_task = None
+                        locked.save(update_fields=["pending_task", "updated_at"])
+                results.append({"pc_inst_name": name, "status": "already_owner"})
+                continue
+            with transaction.atomic():
+                locked = PCDiscoveryAuthority.objects.select_for_update().get(pk=authority.pk)
+                locked.pending_task = task
+                locked.save(update_fields=["pending_task", "updated_at"])
+            results.append({"pc_inst_name": name, "status": "pending"})
+        return {"task_id": task.id, "results": results}
+
+    @staticmethod
     def complete_handover(authority, task, snapshot_status):
         """完整快照落地后切换权威；部分快照或非待移交任务一律不切换。"""
         if snapshot_status != "complete":
@@ -321,7 +359,7 @@ class PCSnapshotReconciler:
 
         绝不查询整个 pc_software 模型作为差集。删除成功的实体写 DELETE_INST 审计。
         """
-        counts = {"software_deleted": 0, "delete_failed": 0}
+        counts = {"software_deleted": 0, "delete_failed": 0, "deleted_names": [], "failed_names": []}
         edges = ag.query_edge(
             INSTANCE_ASSOCIATION,
             [
@@ -352,12 +390,14 @@ class PCSnapshotReconciler:
                 ag.detach_delete_entity(INSTANCE, src_id)
                 deleted_entities.append(entity)
                 counts["software_deleted"] += 1
+                counts["deleted_names"].append(entity.get("inst_name", ""))
             except Exception as exc:  # noqa: BLE001 - 单条删除失败保留实体，下轮重试
                 logger.warning(
                     "[PC] software delete failed: task=%s sw=%s err=%s",
                     getattr(self.task, "id", None), entity.get("inst_name"), type(exc).__name__,
                 )
                 counts["delete_failed"] += 1
+                counts["failed_names"].append(entity.get("inst_name", ""))
         if deleted_entities:
             self._write_delete_audit(deleted_entities, snapshot.snapshot_id)
         return counts
@@ -386,7 +426,7 @@ class PCSnapshotReconciler:
 
     def _upsert_software(self, ag, snapshot, pc_entity):
         """软件按 inst_name 无删除 upsert + install_on 关联；任一失败计入 software_failed。"""
-        counts = {"software_added": 0, "software_updated": 0, "software_failed": 0}
+        counts = {"software_added": 0, "software_updated": 0, "software_failed": 0, "outcomes": []}
         collect_time = snapshot.collected_at.isoformat()
         for row in snapshot.software:
             payload = filter_software_payload(row)
@@ -400,6 +440,7 @@ class PCSnapshotReconciler:
                     ag.set_entity_properties(INSTANCE, [existing[0]["_id"]], dict(payload, collect_time=collect_time), {}, [])
                     sw_entity = dict(existing[0], **payload)
                     counts["software_updated"] += 1
+                    counts["outcomes"].append((payload["inst_name"], "success"))
                 else:
                     create_payload = dict(payload)
                     create_payload.update(
@@ -411,6 +452,7 @@ class PCSnapshotReconciler:
                     )
                     sw_entity = ag.create_entity(INSTANCE, create_payload, {}, [])
                     counts["software_added"] += 1
+                    counts["outcomes"].append((payload["inst_name"], "success"))
                 asso_info = {
                     "model_asst_id": "pc_software_install_on_pc",
                     "src_model_id": "pc_software",
@@ -433,15 +475,22 @@ class PCSnapshotReconciler:
                     getattr(self.task, "id", None), payload.get("inst_name"), type(exc).__name__,
                 )
                 counts["software_failed"] += 1
+                counts["outcomes"].append((payload.get("inst_name", ""), "failed"))
         return counts
 
 
 def apply_pc_snapshots(task, snapshots):
     """逐 PC 独立对账：单台异常捕获为稳定错误码并继续下一台，互不回滚。
 
+    format_data 为 IPAM 同款行列表（add/update/delete/association + all），
+    每行带 _status/_error 供 celery 摘要计数；pc_summary 汇总 PC 级状态分类。
     错误详情脱敏（不落凭据）且截断到 500 字符。
     """
-    summary = {"add": 0, "update": 0, "delete": 0, "association": 0}
+    format_data = {"add": [], "update": [], "delete": [], "association": []}
+    pc_summary = {
+        "pc_total": 0, "pc_complete": 0, "pc_partial": 0, "pc_failed": 0,
+        "source_conflict": 0, "software_added": 0, "software_updated": 0, "software_deleted": 0,
+    }
     rows = []
     for snapshot in snapshots or []:
         inst_name = (snapshot.pc or {}).get("inst_name", "")
@@ -455,24 +504,49 @@ def apply_pc_snapshots(task, snapshots):
                 "error_code": "CMDB_WRITE_PARTIAL",
                 "error_detail": str(exc)[:_MAX_ERROR_DETAIL],
             }
-        status = "failed" if result.get("pc_failed") or result.get("software_failed") else "success"
-        if result.get("pc_status") == "added":
-            summary["add"] += 1
-        elif result.get("pc_status") == "updated":
-            summary["update"] += 1
-        summary["association"] += result.get("software_added", 0)
-        row = {
-            "inst_name": inst_name,
-            "_status": status,
-            "_error": result.get("error_code", ""),
-        }
+        failed = bool(result.get("pc_failed") or result.get("software_failed") or result.get("delete_failed"))
+        status = "failed" if failed else "success"
+        pc_row = {"inst_name": inst_name, "model_id": "pc", "_status": status, "_error": result.get("error_code", "")}
         if result.get("error_detail"):
-            row["_error_detail"] = result["error_detail"][:_MAX_ERROR_DETAIL]
-        rows.append(row)
+            pc_row["_error_detail"] = result["error_detail"][:_MAX_ERROR_DETAIL]
+        if result.get("pc_status") == "added":
+            format_data["add"].append(pc_row)
+        else:
+            format_data["update"].append(pc_row)
+        result_row = {"inst_name": inst_name, "_status": status, "_error": result.get("error_code", "")}
+        if result.get("error_detail"):
+            result_row["_error_detail"] = result["error_detail"][:_MAX_ERROR_DETAIL]
+        rows.append(result_row)
+
+        for sw_name, sw_status in (result.get("outcomes") or []):
+            format_data["association"].append(
+                {"inst_name": sw_name, "model_id": "pc_software", "_status": sw_status,
+                 "_error": "CMDB_WRITE_PARTIAL" if sw_status == "failed" else ""}
+            )
+        for name in result.get("deleted_names") or []:
+            format_data["delete"].append({"inst_name": name, "model_id": "pc_software", "_status": "success", "_error": ""})
+        for name in result.get("failed_names") or []:
+            format_data["delete"].append({"inst_name": name, "model_id": "pc_software", "_status": "failed", "_error": "CMDB_WRITE_PARTIAL"})
+
+        pc_summary["pc_total"] += 1
+        if result.get("error_code") == "SOURCE_TASK_CONFLICT":
+            pc_summary["source_conflict"] += 1
+        if failed:
+            pc_summary["pc_failed"] += 1
+        elif snapshot.status == "complete":
+            pc_summary["pc_complete"] += 1
+        else:
+            pc_summary["pc_partial"] += 1
+        pc_summary["software_added"] += result.get("software_added", 0)
+        pc_summary["software_updated"] += result.get("software_updated", 0)
+        pc_summary["software_deleted"] += result.get("software_deleted", 0)
+
+    format_data["all"] = pc_summary["pc_total"]
+    format_data["pc_summary"] = pc_summary
     logger.info(
-        "[PC] apply_pc_snapshots: task=%s summary=%s", getattr(task, "id", None), summary
+        "[PC] apply_pc_snapshots: task=%s pc_summary=%s", getattr(task, "id", None), pc_summary
     )
-    return {"format_data": summary, "snapshots": len(snapshots or []), "results": rows}
+    return {"format_data": format_data, "snapshots": len(snapshots or []), "results": rows}
 
 
 def cleanup_expired_pc_software(task, threshold_dt, threshold_iso):

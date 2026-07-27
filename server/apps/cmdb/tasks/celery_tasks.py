@@ -212,6 +212,41 @@ def _node_mgmt_collect_version_allowed(instance_id, execution_id, config_id, con
         return False
 
 
+def _apply_pc_digest(collect_digest, format_data):
+    """把 PC 插件的 pc_summary 复制进任务摘要；非 PC 任务返回 None。"""
+    pc_summary = (format_data or {}).get("pc_summary")
+    if isinstance(pc_summary, dict):
+        collect_digest["pc_summary"] = pc_summary
+        return pc_summary
+    return None
+
+
+def _decide_collect_exec_status(collect_digest, raw_data, pc_summary=None):
+    """任务状态判定：全部失败 ERROR / 混合 PARTIAL_SUCCESS / 全成功 SUCCESS。
+
+    PC 任务以逐 PC 行（add/update/delete/association 计数）为口径；
+    完整空软件快照 raw_data 为空但有 pc_summary 时，不以空原始数据误判 ERROR。
+    """
+    if len(raw_data) == 0 and not pc_summary:
+        return CollectRunStatusType.ERROR
+    data_keys = ("add", "update", "delete")
+    data_total = sum(collect_digest.get(k, 0) for k in data_keys)
+    data_error = sum(collect_digest.get(f"{k}_error", 0) for k in data_keys)
+    data_success = data_total - data_error
+    any_failure = any(
+        collect_digest.get(f"{k}_error", 0) > 0 for k in ("add", "update", "delete", "association")
+    )
+    collect_success = collect_digest.get("collect_success", 0)
+    collect_failed = collect_digest.get("collect_failed", 0)
+    if collect_success == 0 and collect_failed > 0:
+        return CollectRunStatusType.ERROR
+    if data_total > 0 and data_success == 0:
+        return CollectRunStatusType.ERROR
+    if any_failure or collect_failed > 0:
+        return CollectRunStatusType.PARTIAL_SUCCESS
+    return CollectRunStatusType.SUCCESS
+
+
 def _count_raw_collection_outcomes(raw_data) -> tuple[int, int]:
     """统计已经扁平化到原始详情中的 VM 成功、失败指标行数。"""
     rows = [row for row in (raw_data or []) if isinstance(row, dict)]
@@ -415,6 +450,7 @@ def sync_collect_task(self, instance_id, execution_id=None, node_config_id=None,
             "association_error": len([i for i in format_data.get("association", []) if i.get("_status") != "success"]),
             "all": format_data.get("all", 0),  # 总数是发现的正常数据总数，例如：扫描了10个ip，其中6个是真的ip，4个ip不存在，总数为6
         }
+        pc_summary = _apply_pc_digest(collect_digest, format_data)
         raw_data = format_data.get("__raw_data__", [])
         collect_success, collect_failed = _count_raw_collection_outcomes(raw_data)
         collect_digest["collect_success"] = collect_success
@@ -431,7 +467,7 @@ def sync_collect_task(self, instance_id, execution_id=None, node_config_id=None,
                 collect_digest["traceback"] = exec_traceback_excerpt
         elif config_file_pending:
             collect_digest["message"] = "配置文件采集已触发，等待回传中"
-        elif len(raw_data) == 0:
+        elif len(raw_data) == 0 and not pc_summary:
             collect_digest["message"] = "未发现任何有效数据，请检查采集目标连通性、凭据与采集范围配置"
             instance.exec_status = CollectRunStatusType.ERROR
         else:
@@ -448,20 +484,14 @@ def sync_collect_task(self, instance_id, execution_id=None, node_config_id=None,
             # - 否则只要存在任意失败(含 association) → PARTIAL_SUCCESS（部分成功，需运维感知）
             # - 全部成功 → 保持 SUCCESS
             # 注：association 失败不单独升级为 ERROR（目标实例未采到等场景常见且非致命）。
-            data_keys = ("add", "update", "delete")
-            data_total = sum(collect_digest.get(k, 0) for k in data_keys)
-            data_error = sum(collect_digest.get(f"{k}_error", 0) for k in data_keys)
-            data_success = data_total - data_error
-            any_failure = any(
-                collect_digest.get(f"{k}_error", 0) > 0 for k in ("add", "update", "delete", "association")
-            )
-            if collect_success == 0 and collect_failed > 0:
+            decided = _decide_collect_exec_status(collect_digest, raw_data, pc_summary)
+            if decided == CollectRunStatusType.ERROR:
                 instance.exec_status = CollectRunStatusType.ERROR
-                collect_digest["message"] = "本轮采集结果全部失败，请检查原始数据中的采集错误"
-            elif data_total > 0 and data_success == 0:
-                instance.exec_status = CollectRunStatusType.ERROR
-                collect_digest["message"] = "实例数据写入全部失败，请检查 add/update/delete 错误数"
-            elif any_failure or collect_failed > 0:
+                if collect_success == 0 and collect_failed > 0:
+                    collect_digest["message"] = "本轮采集结果全部失败，请检查原始数据中的采集错误"
+                else:
+                    collect_digest["message"] = "实例数据写入全部失败，请检查 add/update/delete 错误数"
+            elif decided == CollectRunStatusType.PARTIAL_SUCCESS:
                 instance.exec_status = CollectRunStatusType.PARTIAL_SUCCESS
                 collect_digest["message"] = "部分采集或数据写入失败，请检查原始数据及错误数"
         update_values = {
