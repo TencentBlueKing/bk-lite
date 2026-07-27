@@ -617,7 +617,6 @@ export const DashboardShell = ({
           onTimeChange={dashboard.onTimeChange}
           onFrequenceChange={dashboard.setFrequence}
           onRefresh={dashboard.onRefresh}
-          onBack={dashboard.onBack}
           showTimeSelector={false}
           styles={styles}
         />

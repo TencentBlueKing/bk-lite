@@ -12,6 +12,7 @@ import MonitorAlarm from './monitorAlarm';
 import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
 import { INIT_VIEW_MODAL_FORM } from '@/app/monitor/constants/view';
 import { getProfessionalDashboardUrl } from '@/app/monitor/dashboards/registry';
+import { withDashboardReturnContext } from '@/app/monitor/dashboards/shared/utils';
 
 const ViewModal = forwardRef<ModalRef, ViewModalProps>(
   ({ monitorObject, monitorName, plugins, metrics, objects = [] }, ref) => {
@@ -79,7 +80,10 @@ const ViewModal = forwardRef<ModalRef, ViewModalProps>(
             ? monitorItem.instance_id_keys.join(',')
             : 'instance_id'
       };
-      const params = new URLSearchParams(row);
+      const params = withDashboardReturnContext(new URLSearchParams(row), {
+        objectId: String(monitorObject || ''),
+        objectName: String(monitorItem?.display_name || monitorItem?.name || '')
+      });
       const professionalDashboardUrl = getProfessionalDashboardUrl(monitorName, monitorItem?.display_name, params.toString());
       const targetUrl = professionalDashboardUrl || `/monitor/view/detail?${params.toString()}`;
       router.push(targetUrl);
