@@ -1,4 +1,5 @@
 from queue import Queue
+import time
 
 import pytest
 import yaml
@@ -111,13 +112,15 @@ def test_windows_remote_bootstrap_stages_and_runs_native_worker():
         "{{ bklite_session_file }}",
         "--require-https",
     ]
-    assert commands[7]["ansible.windows.win_command"]["argv"][-8:] == [
+    assert commands[7]["ansible.windows.win_command"]["argv"][-10:] == [
         "--execution-id",
         "{{ bklite_execution_id }}",
         "--task-node-id",
         "{{ bklite_task_node_id }}",
         "--attempt",
         "{{ bklite_execution_attempt }}",
+        "--deadline-unix",
+        "{{ bklite_execution_deadline_unix }}",
         "--progress-subject",
         "{{ bklite_progress_subject }}",
     ]
@@ -395,7 +398,11 @@ def test_install_task_routes_windows_through_winrm_bootstrap(monkeypatch):
         winrm_transport="ntlm",
         winrm_cert_validation=True,
         status="running",
-        result={"execution_phase": "bootstrap_running", "execution_attempt": 1},
+        result={
+            "execution_phase": "bootstrap_running",
+            "execution_attempt": 1,
+            "execution_deadline_unix": int(time.time()) + 3600,
+        },
     )
     calls = []
     subscriptions = []
@@ -436,6 +443,7 @@ def test_install_task_routes_windows_through_winrm_bootstrap(monkeypatch):
     assert command_calls[0]["task_node_id"] == task_node.id
     assert command_calls[0]["execution_id"] == calls[0]["execution_id"]
     assert command_calls[0]["execution_attempt"] == 1
+    assert command_calls[0]["execution_deadline_unix"] > int(time.time())
     assert calls[0]["target"] == WindowsBootstrapTarget(
         host="10.0.0.8",
         port=5986,
@@ -468,6 +476,7 @@ def test_windows_remote_session_token_rejects_revoked_execution_claim(settings):
     region = CloudRegion.objects.create(name="session-fence-region")
     task = ControllerTask.objects.create(cloud_region=region, type="install", status="running")
     execution_id = "0123456789abcdef0123456789abcdef"
+    execution_deadline_unix = int(time.time()) + 3600
     task_node = ControllerTaskNode.objects.create(
         task=task,
         ip="10.0.0.8",
@@ -480,6 +489,7 @@ def test_windows_remote_session_token_rejects_revoked_execution_claim(settings):
             "installer_execution_id": execution_id,
             "execution_attempt": 1,
             "execution_phase": "bootstrap_running",
+            "execution_deadline_unix": execution_deadline_unix,
         },
     )
     token = InstallTokenService.generate_install_token(
@@ -495,6 +505,7 @@ def test_windows_remote_session_token_rejects_revoked_execution_claim(settings):
         task_node_id=task_node.id,
         execution_id=execution_id,
         execution_attempt=1,
+        execution_deadline_unix=execution_deadline_unix,
     )
 
     assert InstallTokenService.validate_and_get_token_data(token)["execution_id"] == execution_id

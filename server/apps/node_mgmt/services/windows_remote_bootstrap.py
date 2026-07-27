@@ -247,6 +247,8 @@ class WindowsRemoteBootstrapService:
                                         "{{ bklite_task_node_id }}",
                                         "--attempt",
                                         "{{ bklite_execution_attempt }}",
+                                        "--deadline-unix",
+                                        "{{ bklite_execution_deadline_unix }}",
                                         "--progress-subject",
                                         "{{ bklite_progress_subject }}",
                                     ]
@@ -351,6 +353,7 @@ class WindowsRemoteBootstrapService:
         progress_subject: str = "",
         event_callback=None,
         ownership_validator=None,
+        execution_deadline_unix: int = 0,
     ) -> str:
         if target.scheme != "https" or target.port != 5986 or target.transport != "ntlm" or target.validate_certificate is not True:
             raise BaseAppException("Windows remote installation requires HTTPS, NTLM, port 5986, and server certificate validation")
@@ -398,6 +401,7 @@ class WindowsRemoteBootstrapService:
                     "bklite_execution_id": execution_id,
                     "bklite_task_node_id": task_node_id,
                     "bklite_execution_attempt": attempt,
+                    "bklite_execution_deadline_unix": execution_deadline_unix,
                     "bklite_progress_subject": progress_subject,
                 },
                 task_id=run_task_id,

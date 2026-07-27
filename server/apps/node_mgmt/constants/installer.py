@@ -19,6 +19,7 @@ class InstallerConstants:
 
     EXECUTION_PHASE_KEY = "execution_phase"
     EXECUTION_ATTEMPT_KEY = "execution_attempt"
+    EXECUTION_DEADLINE_UNIX_KEY = "execution_deadline_unix"
     INSTALLER_EXECUTION_ID_KEY = "installer_execution_id"
     INSTALL_NODE_ID_KEY = "install_node_id"
     EXECUTION_PHASE_BOOTSTRAP_RUNNING = "bootstrap_running"

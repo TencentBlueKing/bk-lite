@@ -709,21 +709,51 @@ func TestClassifyInstallErrorMarksRetainedBackupForManualRecovery(t *testing.T) 
 
 func TestWindowsInstallFenceRejectsOlderOrDuplicateRemoteExecution(t *testing.T) {
 	installDir := filepath.Join(t.TempDir(), "fusion-collectors")
-	first := &Config{RemoteTaskNodeID: 31, RemoteAttempt: 2, RemoteExecutionID: "first"}
+	deadline := time.Now().Add(time.Hour).Unix()
+	first := &Config{RemoteTaskNodeID: 31, RemoteAttempt: 2, RemoteExecutionID: "first", RemoteDeadlineUnix: deadline}
 	if err := claimWindowsInstallFence(first, installDir); err != nil {
 		t.Fatalf("claim first fence: %v", err)
 	}
-	newer := &Config{RemoteTaskNodeID: 32, RemoteAttempt: 1, RemoteExecutionID: "newer"}
+	newer := &Config{RemoteTaskNodeID: 32, RemoteAttempt: 1, RemoteExecutionID: "newer", RemoteDeadlineUnix: deadline}
 	if err := claimWindowsInstallFence(newer, installDir); err != nil {
 		t.Fatalf("claim newer fence: %v", err)
 	}
 	for _, stale := range []*Config{
-		{RemoteTaskNodeID: 31, RemoteAttempt: 3, RemoteExecutionID: "older-node"},
-		{RemoteTaskNodeID: 32, RemoteAttempt: 1, RemoteExecutionID: "duplicate"},
+		{RemoteTaskNodeID: 31, RemoteAttempt: 3, RemoteExecutionID: "older-node", RemoteDeadlineUnix: deadline},
+		{RemoteTaskNodeID: 32, RemoteAttempt: 1, RemoteExecutionID: "duplicate", RemoteDeadlineUnix: deadline},
 	} {
 		if err := claimWindowsInstallFence(stale, installDir); err == nil {
 			t.Fatalf("expected stale fence rejection for %#v", stale)
 		}
+	}
+}
+
+func TestWindowsInstallFenceRejectsExpiredExecutionWithoutReplacingFence(t *testing.T) {
+	installDir := filepath.Join(t.TempDir(), "fusion-collectors")
+	active := &Config{
+		RemoteTaskNodeID: 31, RemoteAttempt: 1, RemoteExecutionID: "active",
+		RemoteDeadlineUnix: time.Now().Add(time.Hour).Unix(),
+	}
+	if err := claimWindowsInstallFence(active, installDir); err != nil {
+		t.Fatalf("claim active fence: %v", err)
+	}
+	original, err := os.ReadFile(installDir + ".bklite-install.fence")
+	if err != nil {
+		t.Fatalf("read active fence: %v", err)
+	}
+	expired := &Config{
+		RemoteTaskNodeID: 32, RemoteAttempt: 1, RemoteExecutionID: "expired",
+		RemoteDeadlineUnix: time.Now().Add(-time.Second).Unix(),
+	}
+	if err := claimWindowsInstallFence(expired, installDir); err == nil {
+		t.Fatal("expected expired execution rejection")
+	}
+	retained, err := os.ReadFile(installDir + ".bklite-install.fence")
+	if err != nil {
+		t.Fatalf("read retained fence: %v", err)
+	}
+	if !bytes.Equal(original, retained) {
+		t.Fatalf("expired execution replaced the active fence: %q", retained)
 	}
 }
 

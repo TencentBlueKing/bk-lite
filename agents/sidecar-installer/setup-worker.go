@@ -46,6 +46,7 @@ type Config struct {
 	RemoteTaskNodeID    int64         `json:"-"`
 	RemoteAttempt       int           `json:"-"`
 	RemoteExecutionID   string        `json:"-"`
+	RemoteDeadlineUnix  int64         `json:"-"`
 	Package             PackageConfig `json:"package"`
 	Storage             StorageConfig `json:"storage"`
 }
@@ -193,16 +194,17 @@ func (reporter *InstallerEventReporter) publish(line string) {
 var installerEventReporter, _ = NewInstallerEventReporter(os.Stdout, "", "")
 
 var (
-	configURL        = flag.String("url", "", "Configuration URL")
-	configURLFile    = flag.String("url-file", "", "Read the configuration URL from a file")
-	installDir       = flag.String("install-dir", "", "Installation directory")
-	skipTLS          = flag.Bool("skip-tls", false, "Skip TLS certificate verification")
-	requireHTTPS     = flag.Bool("require-https", false, "Require HTTPS for configuration and server URLs")
-	fetchOnly        = flag.Bool("fetch-only", false, "Only fetch and display config")
-	progressSubject  = flag.String("progress-subject", "", "NATS subject for live installation events")
-	executionID      = flag.String("execution-id", "", "Installation execution ID")
-	taskNodeID       = flag.Int64("task-node-id", 0, "Controller task node ID used for remote execution fencing")
-	executionAttempt = flag.Int("attempt", 0, "Controller task attempt used for remote execution fencing")
+	configURL         = flag.String("url", "", "Configuration URL")
+	configURLFile     = flag.String("url-file", "", "Read the configuration URL from a file")
+	installDir        = flag.String("install-dir", "", "Installation directory")
+	skipTLS           = flag.Bool("skip-tls", false, "Skip TLS certificate verification")
+	requireHTTPS      = flag.Bool("require-https", false, "Require HTTPS for configuration and server URLs")
+	fetchOnly         = flag.Bool("fetch-only", false, "Only fetch and display config")
+	progressSubject   = flag.String("progress-subject", "", "NATS subject for live installation events")
+	executionID       = flag.String("execution-id", "", "Installation execution ID")
+	taskNodeID        = flag.Int64("task-node-id", 0, "Controller task node ID used for remote execution fencing")
+	executionAttempt  = flag.Int("attempt", 0, "Controller task attempt used for remote execution fencing")
+	executionDeadline = flag.Int64("deadline-unix", 0, "Non-extendable remote execution deadline")
 )
 
 func main() {
@@ -306,6 +308,7 @@ func run(client *http.Client) {
 	cfg.RemoteTaskNodeID = *taskNodeID
 	cfg.RemoteAttempt = *executionAttempt
 	cfg.RemoteExecutionID = *executionID
+	cfg.RemoteDeadlineUnix = *executionDeadline
 	log("      Node: %s", cfg.NodeID)
 
 	if *installDir != "" {
@@ -1269,6 +1272,9 @@ func claimWindowsInstallFence(cfg *Config, installDir string) error {
 	if cfg.RemoteTaskNodeID <= 0 || cfg.RemoteAttempt <= 0 || cfg.RemoteExecutionID == "" {
 		return fmt.Errorf("incomplete Windows remote installation fence")
 	}
+	if err := validateRemoteExecutionDeadline(cfg); err != nil {
+		return err
+	}
 	current := windowsInstallFence{
 		TaskNodeID:  cfg.RemoteTaskNodeID,
 		Attempt:     cfg.RemoteAttempt,
@@ -1298,10 +1304,48 @@ func claimWindowsInstallFence(cfg *Config, installDir string) error {
 	if err != nil {
 		return fmt.Errorf("encode Windows installation fence: %w", err)
 	}
-	if err := os.WriteFile(fencePath, append(encoded, '\n'), 0600); err != nil {
+	if err := writeWindowsInstallFence(fencePath, append(encoded, '\n')); err != nil {
 		return fmt.Errorf("write Windows installation fence: %w", err)
 	}
 	return nil
+}
+
+func validateRemoteExecutionDeadline(cfg *Config) error {
+	if cfg.RemoteTaskNodeID == 0 && cfg.RemoteAttempt == 0 && cfg.RemoteExecutionID == "" {
+		return nil
+	}
+	if cfg.RemoteDeadlineUnix <= 0 {
+		return fmt.Errorf("missing Windows remote installation deadline")
+	}
+	if time.Now().Unix() >= cfg.RemoteDeadlineUnix {
+		return fmt.Errorf("Windows remote installation deadline expired")
+	}
+	return nil
+}
+
+func writeWindowsInstallFence(fencePath string, content []byte) error {
+	temporary, err := os.CreateTemp(filepath.Dir(fencePath), filepath.Base(fencePath)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	temporaryPath := temporary.Name()
+	defer os.Remove(temporaryPath)
+	if err := temporary.Chmod(0600); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if _, err := temporary.Write(content); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if err := temporary.Sync(); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if err := temporary.Close(); err != nil {
+		return err
+	}
+	return replaceFileAtomically(temporaryPath, fencePath)
 }
 
 func installWindowsPackage(cfg *Config, zipPath string, controller windowsServiceController) error {
@@ -1356,6 +1400,9 @@ func installWindowsPackage(cfg *Config, zipPath string, controller windowsServic
 	}
 	if _, err := os.Stat(filepath.Join(stagingDir, "collector-sidecar.exe")); err != nil {
 		return fmt.Errorf("staged collector-sidecar.exe validation failed: %w", err)
+	}
+	if err := validateRemoteExecutionDeadline(cfg); err != nil {
+		return err
 	}
 
 	serviceExisted, err := controller.Stop()

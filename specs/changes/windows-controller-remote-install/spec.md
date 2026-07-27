@@ -15,7 +15,7 @@ Windows 远程安装采用“Ansible Executor 负责 WinRM 编排，原生 Go bo
 3. Ansible Executor 从 Server NATS Object Store 获取 Windows x86_64 bootstrap，并通过 WinRM 复制到目标主机临时目录。
 4. Executor 把安装会话 URL 写入临时文件，以 `argv` 调用 bootstrap 的 `--url-file` 参数，不把会话放入命令行。
 5. Go bootstrap 使用自身 HTTP/TLS 与 NATS 客户端获取配置和控制器包，在 staging 目录完成有界解压和校验后切换安装目录并注册服务。
-   Server 会话校验当前 `execution_id + attempt` 租约；同一安装目录同时使用操作系统文件锁和持久化单调 fencing 记录，拒绝旧任务或重复任务在新任务之后切换目录。
+   Server 会话校验当前 `execution_id + attempt` 租约并签发不可延长的执行截止时间；同一安装目录同时使用操作系统文件锁和原子持久化的单调 fencing 记录，bootstrap 在切换目录前再次校验截止时间，拒绝超时、旧任务或重复任务修改安装目录。
 6. 新服务启动失败时恢复原目录和原服务；若服务管理器连续拒绝停止失败的新服务，则不得冒险替换其在用目录，应保留原目录备份并返回不可自动重试的人工恢复状态；成功切换保留 `cache`、`logs`、`generated` 运行数据。
 7. bootstrap 将与 stdout 相同的结构化事件实时发布到 `installer.progress.<execution_id>`；Server 消费实时事件，并对 Ansible 终态 stdout 回放按事件内容去重。
 8. Ansible `always` 与 Server 侧兜底清理共同删除临时会话文件和 bootstrap；最终成功仍以 Sidecar 回连为准。

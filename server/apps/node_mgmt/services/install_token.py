@@ -1,4 +1,5 @@
 import uuid
+import time
 from django.core.cache import cache
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.node_mgmt.constants.installer import InstallerConstants
@@ -56,6 +57,7 @@ class InstallTokenService:
         task_node_id: int | None = None,
         execution_id: str = "",
         execution_attempt: int | None = None,
+        execution_deadline_unix: int | None = None,
     ) -> str:
         """
         生成安装令牌（30分钟有效，最多使用5次）
@@ -90,6 +92,7 @@ class InstallTokenService:
                 "task_node_id": task_node_id,
                 "execution_id": execution_id,
                 "execution_attempt": execution_attempt,
+                "execution_deadline_unix": execution_deadline_unix,
                 "usage_count": 0,
                 "max_usage": InstallerConstants.INSTALL_TOKEN_MAX_USAGE,
             },
@@ -122,6 +125,10 @@ class InstallTokenService:
                 or result.get(InstallerConstants.EXECUTION_ATTEMPT_KEY) != data.get("execution_attempt")
                 or result.get(InstallerConstants.EXECUTION_PHASE_KEY)
                 != InstallerConstants.EXECUTION_PHASE_BOOTSTRAP_RUNNING
+                or result.get(InstallerConstants.EXECUTION_DEADLINE_UNIX_KEY)
+                != data.get("execution_deadline_unix")
+                or not isinstance(data.get("execution_deadline_unix"), int)
+                or int(time.time()) >= data["execution_deadline_unix"]
             ):
                 raise BaseAppException("Windows remote installation execution is no longer active")
 
@@ -149,6 +156,7 @@ class InstallTokenService:
             "task_node_id": data.get("task_node_id"),
             "execution_id": data.get("execution_id", ""),
             "execution_attempt": data.get("execution_attempt"),
+            "execution_deadline_unix": data.get("execution_deadline_unix"),
             "remaining_usage": max_usage - usage_count,
         }
 

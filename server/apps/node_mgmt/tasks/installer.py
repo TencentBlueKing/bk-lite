@@ -3,6 +3,7 @@ import json
 import logging
 import queue
 import threading
+import time
 import uuid
 
 from celery import shared_task
@@ -520,6 +521,9 @@ def _dispatch_or_finalize_controller_task(task_id: int):
             result = node_obj.result or {}
             result[InstallerConstants.EXECUTION_PHASE_KEY] = InstallerConstants.EXECUTION_PHASE_BOOTSTRAP_RUNNING
             result[InstallerConstants.EXECUTION_ATTEMPT_KEY] = attempt
+            result[InstallerConstants.EXECUTION_DEADLINE_UNIX_KEY] = (
+                int(time.time()) + CONTROLLER_INSTALL_TASK_TIMEOUT_SECONDS
+            )
             node_obj.status = InstallerConstants.STEP_STATUS_RUNNING
             node_obj.result = result
             node_obj.save(update_fields=["status", "result"])
@@ -818,6 +822,11 @@ def install_controller_on_nodes(
                 task_node_id=node_obj.id if resolved_package.os == NodeConstants.WINDOWS_OS else None,
                 execution_id=execution_id if resolved_package.os == NodeConstants.WINDOWS_OS else "",
                 execution_attempt=execution_attempt if resolved_package.os == NodeConstants.WINDOWS_OS else None,
+                execution_deadline_unix=(node_obj.result or {}).get(
+                    InstallerConstants.EXECUTION_DEADLINE_UNIX_KEY
+                )
+                if resolved_package.os == NodeConstants.WINDOWS_OS
+                else None,
             )
 
             exec_result = None
@@ -910,6 +919,10 @@ def install_controller_on_nodes(
                             execution_attempt,
                         )
                         is not None,
+                        execution_deadline_unix=(node_obj.result or {}).get(
+                            InstallerConstants.EXECUTION_DEADLINE_UNIX_KEY,
+                            0,
+                        ),
                     )
                 finally:
                     stop_event.set()

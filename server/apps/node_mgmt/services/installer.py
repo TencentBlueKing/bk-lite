@@ -93,6 +93,7 @@ class InstallerService:
         task_node_id: int | None = None,
         execution_id: str = "",
         execution_attempt: int | None = None,
+        execution_deadline_unix: int | None = None,
     ):
         """
         获取安装命令（生成包含临时 token 的 curl 命令）
@@ -135,6 +136,7 @@ class InstallerService:
             task_node_id=task_node_id,
             execution_id=execution_id,
             execution_attempt=execution_attempt,
+            execution_deadline_unix=execution_deadline_unix,
         )
 
         # 根据操作系统生成不同的安装命令
