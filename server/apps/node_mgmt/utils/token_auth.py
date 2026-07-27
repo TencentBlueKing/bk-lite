@@ -75,8 +75,6 @@ def check_token_auth(node_id, request):
                        f"处理建议：在该机器上重新执行安装命令，用最新的 token 覆盖旧配置。")
         raise UnauthorizedException("Token无效或已过期：与服务端记录不一致")
 
-    logger.info(f"【Sidecar认证成功】节点 {node_id} 认证通过。")
-
 
 def generate_node_token(node_id: str, ip: str, user: str, secret: str = SECRET_KEY):
     data = {"node_id": node_id, "ip": ip, "user": user}

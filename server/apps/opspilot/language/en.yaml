@@ -103,6 +103,9 @@ base_constant:
   float: float
   json: json
 error:
+  network_whitelist_required: The target IP is not in the allowlist. Add it in System Management > Network Allowlist.
+  go_to_network_whitelist: Open Network Allowlist
+  connection_target_forbidden: This target address is not allowed.
   no_group_id: No Group ID
   no_view_permission: User does not have permission to view this instance
   model_in_use: Cannot delete because it is still in use by {count} knowledge graph(s).

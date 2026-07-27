@@ -14,7 +14,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useTheme } from '@/context/theme';
+import { useThemeMode } from '@/theme';
 import { useTranslation } from '@/utils/i18n';
 
 declare global {
@@ -37,9 +37,9 @@ export default function WechatQrLoginPanel({ callbackUrl, thirdLogin }: WechatQr
   const [wechatSettings, setWechatSettings] = useState<WechatSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const { themeName } = useTheme();
+  const { mode } = useThemeMode();
   const { t } = useTranslation();
-  const isDarkTheme = themeName === 'dark';
+  const isDarkTheme = mode === 'dark';
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   const redirectUri = useMemo(() => {
