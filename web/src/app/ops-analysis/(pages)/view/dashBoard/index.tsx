@@ -1169,7 +1169,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
             : 'h-full flex-1 overflow-auto'
         }`}
         style={{
-          backgroundColor: isDarkTheme ? 'var(--color-fill-1)' : '#f7f8fa',
+          backgroundColor: isDarkTheme ? 'var(--color-bg-2)' : '#f7f8fa',
           zIndex: isFullscreen ? 1100 : undefined,
         }}
       >
@@ -1201,6 +1201,9 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
             toolbar={dashboardToolbar}
             filterBar={dashboardFilterBar}
             contentRef={exportRef}
+            contentClassName={
+              isDarkTheme ? 'bg-[var(--color-bg-2)]' : 'bg-[#f7f8fa]'
+            }
           >
             {dashboardCanvas}
           </ViewWorkspace>

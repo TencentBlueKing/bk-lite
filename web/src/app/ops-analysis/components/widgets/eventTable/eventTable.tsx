@@ -15,7 +15,10 @@ import type {
 } from '@/app/ops-analysis/types/dashBoard';
 import { useTranslation } from '@/utils/i18n';
 import CustomTable from '@/components/custom-table';
-import { getOpsChartThemeByMode } from '@/app/ops-analysis/utils/chartTheme';
+import {
+  getOpsChartThemeByMode,
+  isScreenChartThemeMode,
+} from '@/app/ops-analysis/utils/chartTheme';
 import { EventTableDetail } from './eventTableDetail';
 import {
   parseTableLikeData,
@@ -57,11 +60,11 @@ const EventTable: React.FC<EventTableProps> = ({
       pageSize: 20,
     });
   const [tableScrollY, setTableScrollY] = useState<string>();
-  const usesScreenDarkTheme = config?.chartThemeMode === 'screen-dark';
+  const usesScreenTheme = isScreenChartThemeMode(config?.chartThemeMode);
   const screenTableTheme = getOpsChartThemeByMode(config?.chartThemeMode);
   const widgetScale = getScreenWidgetScale(screenRenderContext);
   const screenTableStyle = useMemo(() => {
-    if (!usesScreenDarkTheme) return undefined;
+    if (!usesScreenTheme) return undefined;
 
     return {
       '--ops-screen-table-bg': screenTableTheme.panelBg,
@@ -71,6 +74,12 @@ const EventTable: React.FC<EventTableProps> = ({
       '--ops-screen-table-heading': screenTableTheme.panelTitleColor,
       '--ops-screen-table-muted': screenTableTheme.singleValueMetaColor,
       '--ops-screen-table-accent': screenTableTheme.pieValueColor,
+      '--ops-screen-table-row-bg': screenTableTheme.panelBg,
+      '--ops-screen-table-row-alt-bg': screenTableTheme.panelSubtleBg,
+      '--ops-screen-table-row-hover-bg': screenTableTheme.legendHoverBg,
+      '--ops-screen-table-control-bg': screenTableTheme.panelBg,
+      '--ops-screen-table-scrollbar-thumb': screenTableTheme.axisPointerColor,
+      '--ops-screen-table-scrollbar-track': screenTableTheme.panelSubtleBg,
       '--ops-screen-table-header-font-size': `${Math.round(14 * widgetScale)}px`,
       '--ops-screen-table-body-font-size': `${Math.round(13 * widgetScale)}px`,
       '--ops-screen-table-line-height': `${Math.round(20 * widgetScale)}px`,
@@ -80,7 +89,7 @@ const EventTable: React.FC<EventTableProps> = ({
       '--ops-screen-table-pagination-gap': `${Math.round(6 * widgetScale)}px`,
       '--ops-screen-table-scrollbar-size': `${Math.round(8 * widgetScale)}px`,
     } as React.CSSProperties;
-  }, [screenTableTheme, usesScreenDarkTheme, widgetScale]);
+  }, [screenTableTheme, usesScreenTheme, widgetScale]);
 
   const { rows, pagination, isPaginated } = useMemo(
     () => parseTableLikeData<EventTableRow>(rawData, queryPagination),
@@ -219,17 +228,17 @@ const EventTable: React.FC<EventTableProps> = ({
     <div
       ref={containerRef}
       className={`ops-analysis-event-table h-full min-h-0 flex flex-col ${
-        usesScreenDarkTheme ? styles.screenDarkRoot : ''
+        usesScreenTheme ? styles.screenDarkRoot : ''
       }`}
       style={screenTableStyle}
     >
       <div
         className={`flex-1 min-h-0 overflow-hidden ${
-          usesScreenDarkTheme ? styles.screenDarkTableWrap : ''
+          usesScreenTheme ? styles.screenDarkTableWrap : ''
         }`}
       >
         <CustomTable
-          className={usesScreenDarkTheme ? styles.screenDarkTable : undefined}
+          className={usesScreenTheme ? styles.screenDarkTable : undefined}
           columns={columns}
           dataSource={rows}
           loading={loading}

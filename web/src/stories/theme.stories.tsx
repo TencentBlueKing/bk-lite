@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs';
 import ThemeSwitcher from '@/app/(core)/components/top-menu/user-info/themeSwitcher';
 
 const meta: Meta<typeof ThemeSwitcher> = {

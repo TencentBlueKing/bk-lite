@@ -44,17 +44,13 @@ export type Room3DTranslator = (id: string) => string;
 
 export interface Room3DDisplayOptions {
   immersive: boolean;
-  transparentScene: boolean;
 }
 
 export const getRoom3DDisplayOptions = (config?: {
   appearance?: { frame?: string };
 }): Room3DDisplayOptions => {
   const immersive = config?.appearance?.frame === 'bare';
-  return {
-    immersive,
-    transparentScene: immersive,
-  };
+  return { immersive };
 };
 
 const OPTIONAL_NUMBER_FIELDS: Array<keyof Room3DRack> = [

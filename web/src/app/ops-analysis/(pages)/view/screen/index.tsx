@@ -51,6 +51,7 @@ import {
   isScreenWidgetChartType,
   moveScreenItem,
   normalizeScreenWidgetAppearance,
+  resolveScreenWidgetAppearance,
   resizeScreenItem,
   syncScreenFilterBindings,
   updateScreenItemConfig,
@@ -482,8 +483,10 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen }, ref) => {
           ...currentConfigItem.valueConfig,
           ...values,
           chartType: nextChartType,
-          chartThemeMode: "screen-dark" as const,
-          appearance: normalizeScreenWidgetAppearance(values.appearance),
+          appearance: resolveScreenWidgetAppearance(
+            nextChartType,
+            values.appearance,
+          ),
         },
       };
       setDraftViewSets((current) =>
@@ -655,7 +658,6 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen }, ref) => {
             valueConfig: {
               ...currentConfigItem.valueConfig,
               chartType: currentConfigItem.chartType,
-              chartThemeMode: "screen-dark",
               appearance: normalizeScreenWidgetAppearance(
                 currentConfigItem.valueConfig?.appearance,
               ),

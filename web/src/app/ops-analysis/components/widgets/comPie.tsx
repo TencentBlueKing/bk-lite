@@ -6,6 +6,7 @@ import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransfor
 import {
   getOpsChartColorsByMode,
   getOpsChartThemeByMode,
+  isScreenChartThemeMode,
   resolveOpsChartThemeName,
 } from '@/app/ops-analysis/utils/chartTheme';
 import ChartLegend from '@/app/ops-analysis/components/chartLegend';
@@ -35,9 +36,7 @@ const OsPie: React.FC<OsPieProps> = ({
 }) => {
   const chartRef = useRef<any>(null);
   const themeName = resolveOpsChartThemeName();
-  const usesScreenChartTheme =
-    config?.chartThemeMode === 'screen-dark' ||
-    config?.chartThemeMode === 'screen-light';
+  const usesScreenChartTheme = isScreenChartThemeMode(config?.chartThemeMode);
   const chartTheme = getOpsChartThemeByMode(config?.chartThemeMode);
   const chartColors = usesScreenChartTheme
     ? getOpsChartColorsByMode(config?.chartThemeMode, themeName)

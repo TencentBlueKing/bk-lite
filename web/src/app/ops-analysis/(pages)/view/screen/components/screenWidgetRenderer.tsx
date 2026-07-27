@@ -3,6 +3,7 @@
 import React, { useMemo } from 'react';
 import WidgetWrapper from '@/app/ops-analysis/components/widgetDataRenderer';
 import type { FilterValue, UnifiedFilterDefinition } from '@/app/ops-analysis/types/dashBoard';
+import type { OpsChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import type { ScreenWidgetItem } from '@/app/ops-analysis/types/screen';
 import { buildScreenWidgetConfig } from '../utils/widgetConfig';
@@ -17,6 +18,7 @@ interface ScreenWidgetRendererProps {
   fitScale: number;
   screenDensity: number;
   screenUiScale: number;
+  chartThemeMode: OpsChartThemeMode;
   filterDefinitions?: UnifiedFilterDefinition[];
   unifiedFilterValues?: Record<string, FilterValue>;
   filterSearchVersion?: number;
@@ -38,6 +40,7 @@ const ScreenWidgetRenderer: React.FC<ScreenWidgetRendererProps> = ({
   fitScale,
   screenDensity,
   screenUiScale,
+  chartThemeMode,
   filterDefinitions,
   unifiedFilterValues,
   filterSearchVersion = 0,
@@ -47,7 +50,10 @@ const ScreenWidgetRenderer: React.FC<ScreenWidgetRendererProps> = ({
   onEditConfig,
   onDelete,
 }) => {
-  const widgetConfig = useMemo(() => buildScreenWidgetConfig(item), [item]);
+  const widgetConfig = useMemo(
+    () => buildScreenWidgetConfig(item, chartThemeMode),
+    [chartThemeMode, item],
+  );
   const screenRenderContext = useMemo(
     () => ({
       enabled: true,

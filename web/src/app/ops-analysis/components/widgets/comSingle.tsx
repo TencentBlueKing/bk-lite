@@ -20,6 +20,7 @@ import {
 } from '@/app/ops-analysis/types/dashBoard';
 import {
   getOpsChartThemeByMode,
+  isScreenChartThemeMode,
 } from '@/app/ops-analysis/utils/chartTheme';
 import {
   extractComparableValue,
@@ -198,7 +199,7 @@ const ComSingle: React.FC<ComSingleProps> = ({
 }) => {
   const { t } = useTranslation();
   const chartTheme = getOpsChartThemeByMode(config?.chartThemeMode);
-  const usesScreenDarkTheme = config?.chartThemeMode === 'screen-dark';
+  const usesScreenTheme = isScreenChartThemeMode(config?.chartThemeMode);
   const widgetScale = getScreenWidgetScale(screenRenderContext);
   const contentAreaRef = useRef<HTMLDivElement>(null);
   const valueAreaRef = useRef<HTMLDivElement>(null);
@@ -296,15 +297,15 @@ const ComSingle: React.FC<ComSingleProps> = ({
 
       const availableHeight = contentAreaRef.current?.clientHeight ?? 0;
       let nextFontSize = Math.min(
-        getBaseFontSizeByWidth(availableWidth, usesScreenDarkTheme) *
+        getBaseFontSizeByWidth(availableWidth, usesScreenTheme) *
           widgetScale,
         getBaseFontSizeByHeight(
           availableHeight,
           Boolean(config?.compare),
-          usesScreenDarkTheme,
+          usesScreenTheme,
         ) * widgetScale,
       );
-      if (usesScreenDarkTheme && screenRenderContext?.enabled) {
+      if (usesScreenTheme && screenRenderContext?.enabled) {
         const minScreenFontSize = scaleScreenMetric(18, screenRenderContext);
         const maxScreenFontSize = scaleScreenMetric(
           config?.compare ? 22 : 24,
@@ -349,7 +350,7 @@ const ComSingle: React.FC<ComSingleProps> = ({
     displayUnit,
     showSparkline,
     unitText,
-    usesScreenDarkTheme,
+    usesScreenTheme,
     widgetScale,
   ]);
 
@@ -524,10 +525,10 @@ const ComSingle: React.FC<ComSingleProps> = ({
   return (
     <div
       className={`flex h-full w-full flex-col overflow-hidden ${
-        usesScreenDarkTheme ? 'px-7 py-4' : 'px-2'
+        usesScreenTheme ? 'px-7 py-4' : 'px-2'
       }`}
       style={
-        usesScreenDarkTheme
+        usesScreenTheme
           ? {
             padding: `${scaleScreenMetric(8, screenRenderContext)}px ${scaleScreenMetric(12, screenRenderContext)}px`,
           }

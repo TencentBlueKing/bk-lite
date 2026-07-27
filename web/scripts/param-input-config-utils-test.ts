@@ -50,6 +50,23 @@ assert.equal(
   resolveDynamicSourceId(
     {
       type: 'dynamic',
+      sourceId: 12,
+      sourceRef: { type: 'rest_api', value: 'cmdb/get_room_list' },
+      valueField: '_id',
+      labelField: 'inst_name',
+    },
+    [
+      { id: 8, rest_api: 'monitor/query' },
+      { id: 9, rest_api: 'cmdb/get_room_list' },
+    ],
+  ),
+  9,
+);
+
+assert.equal(
+  resolveDynamicSourceId(
+    {
+      type: 'dynamic',
       sourceRef: { type: 'rest_api', value: 'cmdb/get_room_list' },
       valueField: '_id',
       labelField: 'inst_name',
