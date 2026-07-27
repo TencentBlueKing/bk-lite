@@ -513,6 +513,8 @@ func classifyInstallError(err error) string {
 	}
 	message := strings.ToLower(err.Error())
 	switch {
+	case strings.Contains(message, "previous installation retained"):
+		return "manual_recovery_required"
 	case strings.Contains(message, "permission denied") || strings.Contains(message, "operation not permitted"):
 		return "permission"
 	case strings.Contains(message, "exec format error"):

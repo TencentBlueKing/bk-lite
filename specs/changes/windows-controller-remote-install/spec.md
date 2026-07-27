@@ -16,7 +16,7 @@ Windows 远程安装采用“Ansible Executor 负责 WinRM 编排，原生 Go bo
 4. Executor 把安装会话 URL 写入临时文件，以 `argv` 调用 bootstrap 的 `--url-file` 参数，不把会话放入命令行。
 5. Go bootstrap 使用自身 HTTP/TLS 与 NATS 客户端获取配置和控制器包，在 staging 目录完成有界解压和校验后切换安装目录并注册服务。
    同一安装目录使用操作系统文件锁串行化，Ansible 超时后的迟到进程与重试任务不会并发切换目录。
-6. 新服务启动失败时恢复原目录和原服务；成功切换保留 `cache`、`logs`、`generated` 运行数据。
+6. 新服务启动失败时恢复原目录和原服务；若服务管理器连续拒绝停止失败的新服务，则不得冒险替换其在用目录，应保留原目录备份并返回不可自动重试的人工恢复状态；成功切换保留 `cache`、`logs`、`generated` 运行数据。
 7. bootstrap 将与 stdout 相同的结构化事件实时发布到 `installer.progress.<execution_id>`；Server 消费实时事件，并对 Ansible 终态 stdout 回放按事件内容去重。
 8. Ansible `always` 与 Server 侧兜底清理共同删除临时会话文件和 bootstrap；最终成功仍以 Sidecar 回连为准。
 
@@ -72,7 +72,7 @@ Windows 远程安装采用“Ansible Executor 负责 WinRM 编排，原生 Go bo
 - bootstrap 下发失败、WinRM 连接失败、安装失败或回连超时均进入现有节点任务错误/超时状态。
 - bootstrap 输出的 `BKINSTALL_EVENT` 在 Ansible 返回前实时进入现有安装进度模型；终态 stdout 补偿不丢失失败事件，也不重复步骤。
 - 执行结束后目标临时目录不存在会话 URL 文件和本次 bootstrap 文件。
-- 新包校验失败不得停止旧服务；新服务启动失败必须恢复旧目录和旧服务。
+- 新包校验失败不得停止旧服务；新服务启动失败必须恢复旧目录和旧服务。仅当无法确认失败的新服务已经停止时，允许安全降级为保留原目录备份并明确标记“需要人工恢复”，不得继续自动重试或强行覆盖在用目录。
 - 下载和解压超过资源边界时快速失败，不修改现有安装。
 - Linux 远程安装入口、认证和执行链路与 Windows 手动 GUI 安装行为保持不变；共享安装引擎统一执行下载和解压资源边界。
 

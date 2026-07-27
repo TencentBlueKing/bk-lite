@@ -700,6 +700,13 @@ func parseEventPayload(t *testing.T, output string) InstallerEvent {
 	return event
 }
 
+func TestClassifyInstallErrorMarksRetainedBackupForManualRecovery(t *testing.T) {
+	err := fmt.Errorf("activate new service: failed; previous installation retained at C:\\fusion-collectors.bklite-backup for recovery")
+	if got := classifyInstallError(err); got != "manual_recovery_required" {
+		t.Fatalf("expected manual_recovery_required, got %q", got)
+	}
+}
+
 func TestEmitEventWithOptionsPreservesLegacyAndNewFields(t *testing.T) {
 	output := captureStdout(t, func() {
 		emitEventWithOptions("download_package", "failed", "Download failed", nil, 0, 0, "Download failed: get object failed: nats: object not found", &EventOptions{
