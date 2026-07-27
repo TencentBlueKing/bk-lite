@@ -15,6 +15,7 @@ def superuser_client(authenticated_user):
     client = APIClient()
     client.force_authenticate(user=authenticated_user)
     client.cookies["current_team"] = "1"
+    client.authenticated_user = authenticated_user
     return client
 
 
@@ -118,7 +119,7 @@ def test_manual_trigger_writes_operator_log_for_change_record_tab(mock_get, supe
     assert log.action == "execute"   # LogAction.EXECUTE
     assert log.target_type == "alert" # LogTargetType.ALERT
     assert log.target_id == "A1"
-    assert log.operator == superuser_client.handler._force_user.username
+    assert log.operator == superuser_client.authenticated_user.username
     # overview 至少包含规则名
     assert "重启Nginx" in (log.overview or "")
 
@@ -151,7 +152,56 @@ def test_manual_trigger_rejects_other_team_alert_and_rule(mock_get, superuser_cl
     assert other_alert_resp.status_code == 400
     assert other_rule_resp.status_code == 400
     assert ActionExecution.objects.count() == 0
+    assert OperatorLog.objects.count() == 0
     mock_get.assert_not_called()
+
+
+@pytest.mark.django_db
+@patch("apps.alerts.views.action.get_handler")
+def test_manual_trigger_rejects_incompatible_rule_within_authorized_children(mock_get, superuser_client):
+    alert = Alert.objects.create(
+        alert_id="A-PARENT", fingerprint="f-parent", title="parent", content="c", level="0", team=[1]
+    )
+    child_rule = ActionRule.objects.create(name="child-rule", team=[2])
+    user = superuser_client.authenticated_user
+    user.group_tree = [{"id": 1, "subGroups": [{"id": 2}]}]
+    superuser_client.cookies["include_children"] = "1"
+
+    response = superuser_client.post(
+        "/api/v1/alerts/api/action_execution/manual_trigger/",
+        data={"alert_id": alert.alert_id, "rule_id": child_rule.id},
+        format="json",
+        HTTP_IDEMPOTENCY_KEY="manual-incompatible-child-rule",
+    )
+
+    assert response.status_code == 400
+    assert ActionExecution.objects.count() == 0
+    assert OperatorLog.objects.count() == 0
+    mock_get.assert_not_called()
+
+
+@pytest.mark.django_db
+@patch("apps.alerts.views.action.get_handler")
+def test_manual_trigger_allows_child_team_when_include_children(mock_get, superuser_client):
+    mock_get.return_value.execute.return_value = None
+    child_alert = Alert.objects.create(
+        alert_id="A-CHILD", fingerprint="f-child", title="child", content="c", level="0", team=[2]
+    )
+    child_rule = ActionRule.objects.create(name="child-rule", team=[2])
+    user = superuser_client.authenticated_user
+    user.group_tree = [{"id": 1, "subGroups": [{"id": 2}]}]
+    superuser_client.cookies["include_children"] = "1"
+
+    response = superuser_client.post(
+        "/api/v1/alerts/api/action_execution/manual_trigger/",
+        data={"alert_id": child_alert.alert_id, "rule_id": child_rule.id},
+        format="json",
+        HTTP_IDEMPOTENCY_KEY="manual-authorized-child-team",
+    )
+
+    assert response.status_code == 200
+    assert ActionExecution.objects.filter(alert=child_alert, rule=child_rule).exists()
+    mock_get.return_value.execute.assert_called_once()
 
 
 @pytest.mark.django_db
