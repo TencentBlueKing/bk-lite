@@ -96,6 +96,8 @@ interface TableItem {
 
 interface BaseTaskFormProps {
   children?: React.ReactNode;
+  /** 注入到任务名称之后、扫描周期之前的扩展字段（如 PC 的操作系统选择） */
+  afterTaskName?: React.ReactNode;
   nodeId?: string;
   showAdvanced?: boolean;
   modelItem: ModelItem;
@@ -126,6 +128,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
   (
     {
       children,
+      afterTaskName,
       showAdvanced = true,
       nodeId,
       submitLoading,
@@ -669,6 +672,8 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
             >
               <Input placeholder={t('common.inputTip')} />
             </Form.Item>
+
+            {afterTaskName}
 
             {/* 扫描周期 */}
             <Form.Item

@@ -13,6 +13,7 @@ import IPMITask from './components/ipmiTask';
 import ConfigFileTask from './components/configFileTask';
 import NetworkConfigFileTask from './components/networkConfigFileTask';
 import IpTask from './components/ipTask';
+import PCTask from './components/pcTask';
 import PluginCard from './components/pluginCard';
 import TaskDetail from './components/taskDetail';
 import NodeMgmtSyncDetail from './components/nodeMgmtSyncDetail';
@@ -596,6 +597,10 @@ const ProfessionalCollection: React.FC = () => {
       modelItem: currentPlugin as ModelItem,
       editId: editingId,
     };
+
+    if (currentPlugin.model_id === 'pc') {
+      return <PCTask {...taskProps} />;
+    }
 
       const taskMap: Record<string, React.ComponentType<any>> = {
         k8s: K8sTask,

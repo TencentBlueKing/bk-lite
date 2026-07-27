@@ -609,6 +609,25 @@
             "password": "密码",
             "sslVerify": "SSL 验证"
         },
+        "PCTask": {
+            "osType": "操作系统",
+            "usernameTip": "支持域、本地和 UPN 表达",
+            "scheme": "协议",
+            "transport": "认证方式",
+            "certValidation": "证书校验",
+            "winrmHttpWarning": "HTTP 明文传输凭据，仅建议在受信网络使用",
+            "winrmCertWarning": "关闭证书校验存在中间人攻击风险",
+            "authType": "认证方式",
+            "authTypePassword": "密码",
+            "authTypePrivateKey": "PEM 私钥",
+            "privateKey": "私钥",
+            "privateKeyTip": "粘贴 PEM 格式私钥",
+            "passphrase": "密码短语",
+            "passphraseTip": "私钥有密码短语时填写",
+            "testNeedsTarget": "请先填写 IP 范围或选择资产",
+            "testSuccess": "连接成功",
+            "testFailed": "连接测试失败"
+        },
         "IPMITask": {
             "privilege": "权限级别",
             "privilegeTooltip": "用于控制 IPMI 会话的权限级别。为保证兼容性，建议选择 administrator；较低权限级别可能无法返回完整资产信息。"

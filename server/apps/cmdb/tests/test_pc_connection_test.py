@@ -211,6 +211,30 @@ def test_pc_connection_test_masked_credential_decrypted_by_task(superuser, monke
 
 
 @pytest.mark.django_db
+def test_pc_connection_test_frontend_placeholder_decrypted_by_task(superuser, monkeypatch):
+    """前端序列化掩码是 ******（与调试工具的 •••••• 不同），两种占位符都必须识别。"""
+    _bypass_permission(monkeypatch)
+    monkeypatch.setattr(CollectModelViewSet, "get_has_permission", lambda *a, **k: True)
+    task = _task("pc-task", credential={"username": "ACME\\alice", "password": "real-secret", "port": 5986})
+    calls = {}
+
+    def fake_post(url, json=None, timeout=None, **kwargs):
+        calls["json"] = json
+        return _FakeResponse(STARGAZER_OK)
+
+    monkeypatch.setattr("apps.cmdb.services.pc_connection_test.requests.post", fake_post)
+
+    payload = dict(WINDOWS_REQUEST)
+    payload["task_id"] = task.id
+    payload["credential"] = {"username": "ACME\\alice", "password": "******", "port": 5986}
+    response = _test_connection(superuser, payload)
+
+    assert response.status_code == 200
+    assert calls["json"]["password"] == "real-secret"
+    assert "******" not in response.content.decode()
+
+
+@pytest.mark.django_db
 def test_pc_connection_test_masked_credential_without_permission_denied(superuser, monkeypatch):
     _bypass_permission(monkeypatch)
     monkeypatch.setattr(CollectModelViewSet, "get_has_permission", lambda *a, **k: False)

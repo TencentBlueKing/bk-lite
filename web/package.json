@@ -68,7 +68,8 @@
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
     "audit:component-ownership": "node scripts/component-ownership-audit.mjs",
-    "check:component-ownership": "node scripts/component-ownership-audit.mjs --check"
+    "check:component-ownership": "node scripts/component-ownership-audit.mjs --check",
+    "test:cmdb-pc-discovery-form": "pnpm exec tsx scripts/cmdb-pc-discovery-form-test.ts"
   },
   "dependencies": {
     "@ant-design/colors": "^8.0.1",

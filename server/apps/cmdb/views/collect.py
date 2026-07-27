@@ -288,8 +288,10 @@ class CollectModelViewSet(AuthViewSet):
             decrypted = instance.decrypt_credentials or {}
             if isinstance(decrypted, list):
                 decrypted = decrypted[0] if decrypted else {}
+            # 前端任务序列化掩码为 ******，调试工具掩码为 ••••••，两种占位符都识别
+            masked_sentinels = {MASKED_PASSWORD, "******"}
             for field in PCConnectionTestService.SECRET_FIELDS:
-                if credential.get(field) == MASKED_PASSWORD:
+                if credential.get(field) in masked_sentinels:
                     if field not in decrypted:
                         raise BaseAppException(f"无法从原任务获取字段 {field} 的凭据")
                     credential[field] = decrypted[field]

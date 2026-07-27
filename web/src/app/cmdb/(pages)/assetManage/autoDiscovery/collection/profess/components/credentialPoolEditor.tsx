@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   Button,
   Input,
   InputNumber,
@@ -43,7 +44,7 @@ import { useTranslation } from '@/utils/i18n';
 
 import styles from '../index.module.scss';
 
-type CredentialShape = 'ssh' | 'sql' | 'snmp' | 'config_file' | 'network_config_file' | 'vm' | 'cloud' | 'ipmi';
+type CredentialShape = 'ssh' | 'sql' | 'snmp' | 'config_file' | 'network_config_file' | 'vm' | 'cloud' | 'ipmi' | 'winrm' | 'macos_ssh';
 
 const IPMI_PRIVILEGE_OPTIONS = [
   { label: 'callback', value: 'callback' },
@@ -85,6 +86,24 @@ const createEmptyCredential = (shape: CredentialShape, showDatabase?: boolean): 
       level: 'authNoPriv',
       integrity: 'sha',
       privacy: 'aes',
+    };
+  }
+
+  if (shape === 'winrm') {
+    return {
+      _client_id: makeClientId(),
+      port: 5986,
+      scheme: 'https',
+      transport: 'ntlm',
+      certValidation: false,
+    };
+  }
+
+  if (shape === 'macos_ssh') {
+    return {
+      _client_id: makeClientId(),
+      port: 22,
+      authType: 'password',
     };
   }
 
@@ -141,6 +160,33 @@ function getPreviewFields(
         isSecret: true,
       },
       { label: t('Collection.cloudTask.region', '区域'), value: item.regionName || item.regionId || '--' },
+    ];
+  }
+
+  if (shape === 'winrm') {
+    return [
+      { label: t('user', '用户'), value: item.username || '--' },
+      {
+        label: t('password', '密码'),
+        value: passwordVisible && item.password && item.password !== PASSWORD_PLACEHOLDER ? item.password : getMaskedSecret(item.password),
+        isSecret: true,
+      },
+      { label: t('Collection.port', '端口'), value: String(item.port || 5986) },
+      { label: t('Collection.PCTask.scheme', '协议'), value: (item.scheme || 'https').toUpperCase() },
+    ];
+  }
+
+  if (shape === 'macos_ssh') {
+    const isKeyAuth = item.authType === 'privateKey';
+    const secretValue = isKeyAuth ? item.private_key : item.password;
+    return [
+      { label: t('user', '用户'), value: item.username || '--' },
+      {
+        label: isKeyAuth ? t('Collection.PCTask.privateKey', '私钥') : t('password', '密码'),
+        value: passwordVisible && secretValue && secretValue !== PASSWORD_PLACEHOLDER ? secretValue : getMaskedSecret(secretValue),
+        isSecret: true,
+      },
+      { label: t('Collection.port', '端口'), value: String(item.port || 22) },
     ];
   }
 
@@ -352,6 +398,143 @@ function renderCredentialFields({
               </>
             )}
           </>
+        )}
+      </div>
+    );
+  }
+
+  if (shape === 'winrm') {
+    const scheme = item.scheme || 'https';
+    return (
+      <div className={styles.credentialFieldGrid}>
+        <InputRow label={t('user', '用户')}>
+          <Input
+            value={item.username}
+            placeholder={t('Collection.PCTask.usernameTip', '支持域、本地和 UPN 表达')}
+            onChange={(event) => updateItem(index, { username: event.target.value })}
+          />
+        </InputRow>
+        <InputRow label={t('password', '密码')}>
+          <SecretInput
+            value={item.password}
+            placeholder={t('common.inputTip', '请输入')}
+            editMode={editMode}
+            onChange={(nextValue) => updateItem(index, { password: nextValue })}
+          />
+        </InputRow>
+        <InputRow label={t('Collection.PCTask.scheme', '协议')}>
+          <Select
+            value={scheme}
+            onChange={(nextValue) =>
+              updateItem(index, {
+                scheme: nextValue,
+                port: nextValue === 'https' ? 5986 : 5985,
+              })
+            }
+            options={[
+              { label: 'HTTPS', value: 'https' },
+              { label: 'HTTP', value: 'http' },
+            ]}
+          />
+        </InputRow>
+        <InputRow label={t('Collection.port', '端口')}>
+          <InputNumber
+            min={1}
+            max={65535}
+            className="w-32"
+            value={item.port as any}
+            onChange={(nextValue) => updateItem(index, { port: nextValue as any })}
+          />
+        </InputRow>
+        <InputRow label={t('Collection.PCTask.transport', '认证方式')} required={false}>
+          <Input value="NTLM" disabled />
+        </InputRow>
+        <InputRow label={t('Collection.PCTask.certValidation', '证书校验')} required={false}>
+          <Switch
+            checked={Boolean(item.certValidation)}
+            onChange={(checked) => updateItem(index, { certValidation: checked })}
+          />
+        </InputRow>
+        {(scheme === 'http' || !item.certValidation) && (
+          <Alert
+            type="warning"
+            showIcon
+            message={
+              scheme === 'http'
+                ? t('Collection.PCTask.winrmHttpWarning', 'HTTP 明文传输凭据，仅建议在受信网络使用')
+                : t('Collection.PCTask.winrmCertWarning', '关闭证书校验存在中间人攻击风险')
+            }
+          />
+        )}
+      </div>
+    );
+  }
+
+  if (shape === 'macos_ssh') {
+    const authType = item.authType || 'password';
+    return (
+      <div className={styles.credentialFieldGrid}>
+        <InputRow label={t('user', '用户')}>
+          <Input
+            value={item.username}
+            placeholder={t('common.inputTip', '请输入')}
+            onChange={(event) => updateItem(index, { username: event.target.value })}
+          />
+        </InputRow>
+        <InputRow label={t('Collection.port', '端口')}>
+          <InputNumber
+            min={1}
+            max={65535}
+            className="w-32"
+            value={item.port as any}
+            onChange={(nextValue) => updateItem(index, { port: nextValue as any })}
+          />
+        </InputRow>
+        <InputRow label={t('Collection.PCTask.authType', '认证方式')}>
+          <Select
+            value={authType}
+            onChange={(nextValue) =>
+              updateItem(
+                index,
+                nextValue === 'privateKey'
+                  ? { authType: nextValue, password: '' }
+                  : { authType: nextValue, private_key: '', passphrase: '' }
+              )
+            }
+            options={[
+              { label: t('Collection.PCTask.authTypePassword', '密码'), value: 'password' },
+              { label: t('Collection.PCTask.authTypePrivateKey', 'PEM 私钥'), value: 'privateKey' },
+            ]}
+          />
+        </InputRow>
+        {authType === 'privateKey' ? (
+          <>
+            <InputRow label={t('Collection.PCTask.privateKey', '私钥')}>
+              <Input.TextArea
+                rows={4}
+                value={item.private_key === PASSWORD_PLACEHOLDER ? '' : item.private_key}
+                placeholder={t('Collection.PCTask.privateKeyTip', '粘贴 PEM 格式私钥')}
+                onChange={(event) => updateItem(index, { private_key: event.target.value })}
+              />
+            </InputRow>
+            <InputRow label={t('Collection.PCTask.passphrase', '密码短语')} required={false}>
+              <SecretInput
+                value={item.passphrase}
+                placeholder={t('Collection.PCTask.passphraseTip', '私钥有密码短语时填写')}
+                editMode={editMode}
+                onChange={(nextValue) => updateItem(index, { passphrase: nextValue })}
+              />
+            </InputRow>
+          </>
+        ) : (
+          <InputRow label={t('password', '密码')}>
+            <SecretInput
+              value={item.password}
+              placeholder={t('common.inputTip', '请输入')}
+              editMode={editMode}
+              onChange={(nextValue) => updateItem(index, { password: nextValue })}
+            />
+          </InputRow>
         )}
       </div>
     );

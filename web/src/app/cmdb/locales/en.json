@@ -609,6 +609,25 @@
             "password": "Password",
             "sslVerify": "SSL verify"
         },
+        "PCTask": {
+            "osType": "Operating System",
+            "usernameTip": "Supports domain, local and UPN formats",
+            "scheme": "Protocol",
+            "transport": "Authentication",
+            "certValidation": "Certificate Validation",
+            "winrmHttpWarning": "HTTP transmits credentials in plaintext; use only on trusted networks",
+            "winrmCertWarning": "Disabling certificate validation risks man-in-the-middle attacks",
+            "authType": "Authentication",
+            "authTypePassword": "Password",
+            "authTypePrivateKey": "PEM Private Key",
+            "privateKey": "Private Key",
+            "privateKeyTip": "Paste the PEM-formatted private key",
+            "passphrase": "Passphrase",
+            "passphraseTip": "Required when the private key has a passphrase",
+            "testNeedsTarget": "Please enter an IP range or select assets first",
+            "testSuccess": "Connection succeeded",
+            "testFailed": "Connection test failed"
+        },
         "IPMITask": {
             "privilege": "Privilege",
             "privilegeTooltip": "Controls the IPMI session permission level. Recommend administrator for compatibility; lower levels may not return full inventory."
