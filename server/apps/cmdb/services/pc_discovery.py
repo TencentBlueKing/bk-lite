@@ -1,11 +1,11 @@
 # -- coding: utf-8 --
-"""PC 发现采集的 Server 侧服务：VM 快照解析、安全门与逐 PC 对账入口。
+"""PC 发现采集的 Server 侧服务：VM 快照解析、权威状态机与逐 PC 对账。
 
-本模块按 Task 6~10 逐步填充：
 - parse_pc_vm_rows：把 pc_info / pc_software_info 指标行解析为逐 PC 的不可变快照，
   任何完整性条件不满足都降级 partial（绝不伪装 complete）；
-- apply_pc_snapshots：逐 PC 对账入口（白名单写入、软件 upsert、安全差集删除
-  分别在 Task 8/9/10 落地），当前只产出任务摘要骨架。
+- PCAuthorityService：一台 PC 同一时间只由一个权威任务写入和删除（设计 §11）；
+- PCSnapshotReconciler：严格白名单写入 PC 资产，人工字段绝不被采集覆盖；
+- apply_pc_snapshots：逐 PC 独立对账，单台失败不影响其他目标。
 """
 
 from dataclasses import dataclass, field
@@ -13,10 +13,29 @@ from datetime import datetime, timezone
 
 from django.db import transaction
 
+from apps.cmdb.constants.constants import INSTANCE
+from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.core.logger import cmdb_logger as logger
 
 PC_METRIC_NAME = "pc_info"
 PC_SOFTWARE_METRIC_NAME = "pc_software_info"
+
+# 采集允许写入的 PC 字段（与 model_config.xlsx attr-pc 自动发现信息组一致）。
+# 人工资产字段（asset_code/user/location 等）和组织字段绝不出现在更新 payload。
+PC_COLLECTED_FIELDS = frozenset({
+    "inst_name", "host_name", "ip_addr", "os_type", "os_name", "os_version",
+    "os_build", "architecture", "hardware_uuid", "serial_number",
+    "device_model", "logged_in_user", "last_collect_time",
+})
+
+_OS_INST_PREFIX = {"windows": "WIN-", "macos": "MAC-"}
+
+_MAX_ERROR_DETAIL = 500
+
+
+def filter_pc_payload(raw):
+    """严格白名单：只保留采集字段，禁止把原始 PC dict 全量传给图客户端。"""
+    return {key: value for key, value in (raw or {}).items() if key in PC_COLLECTED_FIELDS}
 
 
 @dataclass(frozen=True)
@@ -200,16 +219,106 @@ class PCAuthorityService:
         authority.save(update_fields=["last_snapshot_id", "last_snapshot_time", "updated_at"])
 
 
-def apply_pc_snapshots(task, snapshots):
-    """逐 PC 对账入口。
+class PCSnapshotReconciler:
+    """单台 PC 的快照对账：权威校验 → 白名单写入（创建/更新）。
 
-    Task 8/9/10 将在此落地白名单写入、软件 upsert 与安全差集删除；
-    当前返回空摘要，保证任务详情链路可用且不触碰 CMDB 数据。
+    软件 upsert 与安全差集删除在 Task 9/10 扩展本类；
+    当前 apply() 只负责 PC 实体本身，allow_delete 透传权威决策与快照完整性。
+    """
+
+    def __init__(self, task):
+        self.task = task
+
+    def _organization(self):
+        team = getattr(self.task, "team", None) or []
+        return team[0] if team else ""
+
+    @staticmethod
+    def _validate_identity(payload):
+        inst_name = payload.get("inst_name", "")
+        os_type = payload.get("os_type", "")
+        prefix = _OS_INST_PREFIX.get(os_type)
+        if not inst_name or prefix is None or not inst_name.startswith(prefix):
+            return False
+        return True
+
+    def apply(self, snapshot):
+        result = {"pc_failed": 0, "pc_status": "skipped", "error_code": "", "allow_delete": False}
+        payload = filter_pc_payload(snapshot.pc)
+        if not self._validate_identity(payload):
+            result.update(pc_failed=1, error_code="PC_IDENTITY_INVALID")
+            return result
+
+        decision = PCAuthorityService.authorize(
+            self.task, payload["inst_name"], snapshot.snapshot_id, snapshot.collected_at
+        )
+        if decision.mode == "conflict":
+            result.update(pc_failed=1, error_code=decision.error_code)
+            return result
+        if decision.mode == "stale":
+            result["pc_status"] = "stale"
+            return result
+
+        params = [
+            {"field": "model_id", "type": "str=", "value": "pc"},
+            {"field": "inst_name", "type": "str=", "value": payload["inst_name"]},
+        ]
+        with GraphClient() as ag:
+            existing, _ = ag.query_entity(INSTANCE, params)
+            if existing:
+                entity = ag.set_entity_properties(INSTANCE, [existing[0]["_id"]], payload, {}, [])
+                result["pc_status"] = "updated"
+                result["pc_entity"] = entity[0] if entity else existing[0]
+            else:
+                create_payload = dict(payload)
+                create_payload.update(
+                    model_id="pc",
+                    organization=self._organization(),
+                    collect_task=self.task.id,
+                    auto_collect=True,
+                )
+                result["pc_entity"] = ag.create_entity(INSTANCE, create_payload, {}, [])
+                result["pc_status"] = "added"
+
+        if decision.mode == "owner":
+            PCAuthorityService.mark_applied(decision.authority, snapshot.snapshot_id, snapshot.collected_at)
+            result["allow_delete"] = snapshot.can_delete
+        return result
+
+
+def apply_pc_snapshots(task, snapshots):
+    """逐 PC 独立对账：单台异常捕获为稳定错误码并继续下一台，互不回滚。
+
+    错误详情脱敏（不落凭据）且截断到 500 字符。
     """
     summary = {"add": 0, "update": 0, "delete": 0, "association": 0}
+    rows = []
+    for snapshot in snapshots or []:
+        inst_name = (snapshot.pc or {}).get("inst_name", "")
+        try:
+            result = PCSnapshotReconciler(task).apply(snapshot)
+        except Exception as exc:  # noqa: BLE001 - 单台失败不阻断其他目标
+            logger.warning("[PC] reconcile failed: task=%s pc=%s err=%s", getattr(task, "id", None), inst_name, type(exc).__name__)
+            result = {
+                "pc_failed": 1,
+                "pc_status": "failed",
+                "error_code": "CMDB_WRITE_PARTIAL",
+                "error_detail": str(exc)[:_MAX_ERROR_DETAIL],
+            }
+        status = "failed" if result.get("pc_failed") else "success"
+        if result.get("pc_status") == "added":
+            summary["add"] += 1
+        elif result.get("pc_status") == "updated":
+            summary["update"] += 1
+        row = {
+            "inst_name": inst_name,
+            "_status": status,
+            "_error": result.get("error_code", ""),
+        }
+        if result.get("error_detail"):
+            row["_error_detail"] = result["error_detail"][:_MAX_ERROR_DETAIL]
+        rows.append(row)
     logger.info(
-        "[PC] apply_pc_snapshots skeleton: task=%s snapshots=%s",
-        getattr(task, "id", None),
-        [f"{snap.pc.get('inst_name')}:{snap.status}" for snap in snapshots or []],
+        "[PC] apply_pc_snapshots: task=%s summary=%s", getattr(task, "id", None), summary
     )
-    return {"format_data": summary, "snapshots": len(snapshots or [])}
+    return {"format_data": summary, "snapshots": len(snapshots or []), "results": rows}
