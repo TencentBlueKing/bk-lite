@@ -408,10 +408,8 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
           setRuntimeLinkOverrides({});
           setRuntimeInterfaceSummaryOverrides({});
           editor.resetConfig(next);
-          // Phase A：分享态只读配置，不触发 WeOps runtime。
-          if (!shareMode) {
-            void loadConfiguredRuntime(id, next);
-          }
+          // Phase B-1：分享态通过 session proxy 拉 metric_values / link_runtime。
+          void loadConfiguredRuntime(id, next);
         })
         .catch((err: unknown) => {
           if (!active) return;
@@ -475,12 +473,12 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
     }, [runtimeNodes]);
 
     useEffect(() => {
-      if (shareMode || !canvasId || refreshIntervalMs <= 0) return undefined;
+      if (!canvasId || refreshIntervalMs <= 0) return undefined;
       const timer = setInterval(() => {
         void loadConfiguredRuntime(canvasId, config);
       }, refreshIntervalMs);
       return () => clearInterval(timer);
-    }, [canvasId, config, loadConfiguredRuntime, refreshIntervalMs, shareMode]);
+    }, [canvasId, config, loadConfiguredRuntime, refreshIntervalMs]);
 
     const loadNodeMetrics = useCallback(
       (node: NetworkTopologyNode) => {
@@ -1182,7 +1180,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
           enterFullscreen();
         }}
         onRefresh={() => {
-          if (canvasId && !shareMode) void loadConfiguredRuntime(canvasId, config);
+          if (canvasId) void loadConfiguredRuntime(canvasId, config);
         }}
         onFrequencyChange={setRefreshIntervalMs}
         onEnterEdit={onEnterEdit}

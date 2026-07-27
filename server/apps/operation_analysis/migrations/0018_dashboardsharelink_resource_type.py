@@ -17,6 +17,7 @@ class Migration(migrations.Migration):
                     ("architecture", "架构图"),
                     ("screen", "大屏"),
                     ("report", "报表"),
+                    ("networkTopology", "网络拓扑"),
                 ],
                 db_index=True,
                 default="dashboard",

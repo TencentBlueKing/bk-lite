@@ -477,11 +477,13 @@ def _freeze_param_value(value):
 
 
 def allowed_share_query_keys(*, dashboard, data_source_id: int) -> set[str]:
-    """对齐前端实际发参：数据源 schema ∪ 组件声明 ∪ 表格运行时键 ∪ 分页。
+    """分享查询只允许画布声明的交互能力。
 
-    前端会把 table 的 query_list、topN 运行时切换键等放进 extraParams；
-    即使组件 dataSourceParams 只覆盖了部分字段，这些键仍可能出现在请求中。
-    fixed 取值由 filter_share_query_params 按 effective specs 强制覆盖。
+    允许：分页、namespace_id、组件 dataSourceParams、filterBindings、
+    valueConfig.params 运行时键、表格 query_list。
+    另外允许 effective specs（schema∪widget）中的 fixed 键名——可出现在请求中，
+    随后由 filter_share_query_params 强制覆盖为画布值。
+    不再并入数据源 schema 的非 fixed 参数，避免访客扩大未声明查询面。
     """
     allowed = {"page", "page_size", "namespace_id"}
     filter_defs = {
@@ -495,7 +497,19 @@ def allowed_share_query_keys(*, dashboard, data_source_id: int) -> set[str]:
 
     for value_config in _matching_value_configs(dashboard=dashboard, data_source_id=data_source_id):
         matched_widget = True
-        allowed.update(_param_names_from_specs(value_config.get("dataSourceParams") or []))
+        widget_params = value_config.get("dataSourceParams") or []
+        allowed.update(_param_names_from_specs(widget_params))
+
+        # fixed 可随请求出现，但取值不可由访客决定
+        effective = _merge_effective_param_specs(
+            schema_params=schema_params,
+            widget_params=widget_params,
+        )
+        for name, spec in effective.items():
+            if spec.get("filterType") != "fixed":
+                continue
+            if isinstance(name, str) and name.strip():
+                allowed.add(name.strip())
 
         chart_type = _widget_chart_type(value_config)
         if chart_type in {"table", "eventTable"}:
@@ -518,12 +532,8 @@ def allowed_share_query_keys(*, dashboard, data_source_id: int) -> set[str]:
                 if isinstance(key, str) and key.strip():
                     allowed.add(key.strip())
 
-    if matched_widget:
-        # 始终并入数据源 schema：与普通查询 _resolve_request_params 的允许键对齐，
-        # 覆盖「组件只存了部分覆盖、运行时仍带 schema 键」的情况。
-        allowed.update(_param_names_from_specs(schema_params))
-        if allow_query_list:
-            allowed.add("query_list")
+    if matched_widget and allow_query_list:
+        allowed.add("query_list")
 
     return allowed
 

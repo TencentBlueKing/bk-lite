@@ -1,6 +1,12 @@
 import { useCallback, useMemo } from 'react';
 import useApiClient from '@/utils/request';
 import { useShareCanvasDetailOverride } from '@/app/ops-analysis/context/shareCanvasDetail';
+import { useShareMode } from '@/app/ops-analysis/context/shareMode';
+import { useSharedNetworkTopologyRuntime } from '@/app/ops-analysis/context/shareNetworkTopologyRuntime';
+import {
+  isNetworkTopologyShareAccess,
+  rejectNetworkTopologyEditApiInShareMode,
+} from '@/app/ops-analysis/api/networkTopologyShareGuard';
 import type {
   NetworkTopologyConfig,
   NetworkTopologyDetail,
@@ -69,7 +75,14 @@ const encodeNodeRef = (nodeRef: Record<string, unknown>): string =>
 
 export const useNetworkTopologyApi = () => {
   const { get, post, put, del } = useApiClient();
+  const shareMode = useShareMode();
   const shareDetailOverride = useShareCanvasDetailOverride();
+  const shareRuntime = useSharedNetworkTopologyRuntime();
+  const shareAccess = isNetworkTopologyShareAccess({
+    shareMode,
+    shareDetailOverride: Boolean(shareDetailOverride),
+    shareRuntime: Boolean(shareRuntime),
+  });
 
   const getNetworkTopologyDetail = useCallback(
     async (id: string | number) => {
@@ -82,27 +95,33 @@ export const useNetworkTopologyApi = () => {
   );
 
   const createNetworkTopology = useCallback(
-    (payload: NetworkTopologyCreatePayload) =>
-      post<NetworkTopologyDetail>(
+    (payload: NetworkTopologyCreatePayload) => {
+      rejectNetworkTopologyEditApiInShareMode(shareAccess, 'createNetworkTopology');
+      return post<NetworkTopologyDetail>(
         '/operation_analysis/api/network_topology/',
         payload,
-      ),
-    [post],
+      );
+    },
+    [post, shareAccess],
   );
 
   const updateNetworkTopology = useCallback(
-    (id: string | number, payload: NetworkTopologySavePayload) =>
-      put<NetworkTopologyDetail>(
+    (id: string | number, payload: NetworkTopologySavePayload) => {
+      rejectNetworkTopologyEditApiInShareMode(shareAccess, 'updateNetworkTopology');
+      return put<NetworkTopologyDetail>(
         `/operation_analysis/api/network_topology/${id}/`,
         payload,
-      ),
-    [put],
+      );
+    },
+    [put, shareAccess],
   );
 
   const deleteNetworkTopology = useCallback(
-    (id: string | number) =>
-      del(`/operation_analysis/api/network_topology/${id}/`),
-    [del],
+    (id: string | number) => {
+      rejectNetworkTopologyEditApiInShareMode(shareAccess, 'deleteNetworkTopology');
+      return del(`/operation_analysis/api/network_topology/${id}/`);
+    },
+    [del, shareAccess],
   );
 
   /** 读取画布 view_sets JSON(后端实际为 `/config`)。 */
@@ -129,41 +148,49 @@ export const useNetworkTopologyApi = () => {
 
   /** 全量替换画布 view_sets JSON(后端实际为 `PUT /config`)。 */
   const saveViewSets = useCallback(
-    (id: string | number, view_sets: NetworkTopologyConfig) =>
-      put<NetworkTopologyConfig>(
+    (id: string | number, view_sets: NetworkTopologyConfig) => {
+      rejectNetworkTopologyEditApiInShareMode(shareAccess, 'saveViewSets');
+      return put<NetworkTopologyConfig>(
         `/operation_analysis/api/network_topology/${id}/config/`,
         view_sets,
-      ),
-    [put],
+      );
+    },
+    [put, shareAccess],
   );
 
   /** 验证 WeOps 连接(form 临时传 token,后端不落库)。 */
   const testConnection = useCallback(
-    (payload: NetworkTopologyTestConnectionPayload) =>
-      post<NetworkTopologyTestConnectionResult>(
+    (payload: NetworkTopologyTestConnectionPayload) => {
+      rejectNetworkTopologyEditApiInShareMode(shareAccess, 'testConnection');
+      return post<NetworkTopologyTestConnectionResult>(
         '/operation_analysis/api/network_topology/test_connection/',
         payload,
-      ),
-    [post],
+      );
+    },
+    [post, shareAccess],
   );
 
   /** 验证已保存画布的 WeOps 连接；编辑态可复用已保存 token。 */
   const testSavedConnection = useCallback(
-    (canvasId: string | number, payload: Partial<NetworkTopologyTestConnectionPayload>) =>
-      post<NetworkTopologyTestConnectionResult>(
+    (canvasId: string | number, payload: Partial<NetworkTopologyTestConnectionPayload>) => {
+      rejectNetworkTopologyEditApiInShareMode(shareAccess, 'testSavedConnection');
+      return post<NetworkTopologyTestConnectionResult>(
         `/operation_analysis/api/network_topology/${canvasId}/test_connection/`,
         payload,
-      ),
-    [post],
+      );
+    },
+    [post, shareAccess],
   );
 
   /** 节点模型(后端转发到 WeOps `/node_models/`)。 */
   const getNodeModels = useCallback(
-    (canvasId: string | number) =>
-      get<NetworkNodeModel[]>(
+    (canvasId: string | number) => {
+      rejectNetworkTopologyEditApiInShareMode(shareAccess, 'getNodeModels');
+      return get<NetworkNodeModel[]>(
         `/operation_analysis/api/network_topology/${canvasId}/weops/node_models/`,
-      ),
-    [get],
+      );
+    },
+    [get, shareAccess],
   );
 
   /** 节点库(后端转发 all=true,一次拉全部)。 */
@@ -171,20 +198,23 @@ export const useNetworkTopologyApi = () => {
     (
       canvasId: string | number,
       params?: { bk_obj_id?: string; keyword?: string },
-    ) =>
-      get<{ count: number; results: NetworkNodeLibraryItem[] }>(
+    ) => {
+      rejectNetworkTopologyEditApiInShareMode(shareAccess, 'getNodes');
+      return get<{ count: number; results: NetworkNodeLibraryItem[] }>(
         `/operation_analysis/api/network_topology/${canvasId}/weops/nodes/`,
         {
           params: { all: true, ...(params || {}) },
         },
-      ),
-    [get],
+      );
+    },
+    [get, shareAccess],
   );
 
   /** 节点接口列表 —— 后端编码 node_ref 后放在 URL 段。 */
   const getNodeInterfaces = useCallback(
-    (canvasId: string | number, nodeRef: Record<string, unknown>) =>
-      get<{
+    (canvasId: string | number, nodeRef: Record<string, unknown>) => {
+      rejectNetworkTopologyEditApiInShareMode(shareAccess, 'getNodeInterfaces');
+      return get<{
         items?: Array<{
           interface_key: string;
           bk_obj_id: 'bk_interface';
@@ -202,14 +232,16 @@ export const useNetworkTopologyApi = () => {
         error_message?: string;
       }>(
         `/operation_analysis/api/network_topology/${canvasId}/weops/nodes/${encodeNodeRef(nodeRef)}/interfaces/`,
-      ),
-    [get],
+      );
+    },
+    [get, shareAccess],
   );
 
   /** 节点指标 —— 后端编码 node_ref 后放在 URL 段。 */
   const getNodeMetrics = useCallback(
-    (canvasId: string | number, nodeRef: Record<string, unknown>) =>
-      get<{
+    (canvasId: string | number, nodeRef: Record<string, unknown>) => {
+      rejectNetworkTopologyEditApiInShareMode(shareAccess, 'getNodeMetrics');
+      return get<{
         items?: Array<{
           metric_field: string;
           field_name: string;
@@ -222,8 +254,9 @@ export const useNetworkTopologyApi = () => {
         status?: string;
       }>(
         `/operation_analysis/api/network_topology/${canvasId}/weops/nodes/${encodeNodeRef(nodeRef)}/metrics/`,
-      ),
-    [get],
+      );
+    },
+    [get, shareAccess],
   );
 
   /** 维度值。 */
@@ -235,8 +268,9 @@ export const useNetworkTopologyApi = () => {
         metric_ref: { metric_field: string; result_table_id: string };
         dimension_keys: string[];
       },
-    ) =>
-      post<{
+    ) => {
+      rejectNetworkTopologyEditApiInShareMode(shareAccess, 'getDimensionValues');
+      return post<{
         items?: Array<{
           dimension: string;
           list: Array<{ label: string; value: string }>;
@@ -245,8 +279,9 @@ export const useNetworkTopologyApi = () => {
       }>(
         `/operation_analysis/api/network_topology/${canvasId}/weops/dimension_values/`,
         payload,
-      ),
-    [post],
+      );
+    },
+    [post, shareAccess],
   );
 
   const getMetricValues = useCallback(
@@ -261,12 +296,16 @@ export const useNetworkTopologyApi = () => {
         display_mode?: "aggregate" | "dimension";
         aggregate_type?: "sum" | "max" | "min" | "mean" | "last";
       }>,
-    ) =>
-      post<{ items?: NetworkMetricRuntime[] }>(
+    ) => {
+      if (shareRuntime) {
+        return shareRuntime.getMetricValues(items);
+      }
+      return post<{ items?: NetworkMetricRuntime[] }>(
         `/operation_analysis/api/network_topology/${canvasId}/weops/metric_values/`,
         { items },
-      ),
-    [post],
+      );
+    },
+    [post, shareRuntime],
   );
 
   const getLinkRuntime = useCallback(
@@ -276,8 +315,11 @@ export const useNetworkTopologyApi = () => {
         link: NetworkTopologyLink;
         nodes: NetworkTopologyConfig['nodes'];
       },
-    ) =>
-      post<{
+    ) => {
+      if (shareRuntime) {
+        return shareRuntime.getLinkRuntime(payload);
+      }
+      return post<{
         link?: NetworkLinkRuntime | null;
         node_interface_summary?: Record<
           string,
@@ -287,8 +329,9 @@ export const useNetworkTopologyApi = () => {
       }>(
         `/operation_analysis/api/network_topology/${canvasId}/weops/link_runtime/`,
         payload,
-      ),
-    [post],
+      );
+    },
+    [post, shareRuntime],
   );
 
   return useMemo(

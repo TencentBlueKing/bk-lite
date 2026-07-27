@@ -34,11 +34,10 @@ import json
 import logging
 
 from django.core.exceptions import ValidationError as DjangoValidationError
-from rest_framework import status
+from rest_framework import permissions, status
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError as DRFValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError as DRFValidationError
 from rest_framework.response import Response
-from rest_framework.viewsets import ModelViewSet
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
@@ -74,13 +73,72 @@ def _adapter_for(topology: NetworkTopology) -> WeOpsTopologyAdapter:
 # --------------------------------------------------------------------------- #
 
 
-class NetworkTopologyViewSet(ModelViewSet):
+class NetworkTopologyFeaturePermission(permissions.BasePermission):
+    """按正式 API 动作校验运营分析模块权限。"""
+
+    def has_permission(self, request, view):
+        user = request.user
+        if getattr(user, "is_superuser", False):
+            return True
+        required = view.required_feature_permissions(request)
+        user_permissions = getattr(user, "permission", {})
+        if isinstance(user_permissions, dict):
+            user_permissions = user_permissions.get("ops-analysis", set())
+        return bool(required.intersection(user_permissions if isinstance(user_permissions, set) else set()))
+
+
+class NetworkTopologyViewSet(AuthViewSet):
     """DRF view for the canvas CRUD + WeOps-aware actions."""
 
     queryset = NetworkTopology.objects.all()
     serializer_class = NetworkTopologySerializer
     permission_key = "directory.networkTopology"
-    _parse_current_team_cookie = staticmethod(AuthViewSet._parse_current_team_cookie)
+    permission_classes = [permissions.IsAuthenticated, NetworkTopologyFeaturePermission]
+    ORGANIZATION_FIELD = "groups"
+
+    _EDIT_ACTIONS = frozenset(
+        {
+            "update",
+            "partial_update",
+            "test_saved_connection",
+            "remove_node",
+        }
+    )
+
+    def required_feature_permissions(self, request):
+        if self.action == "destroy":
+            return {"view-DeleteChart"}
+        if self.action == "create":
+            return {"view-AddChart"}
+        if self.action == "test_connection":
+            return {"view-AddChart", "view-EditChart"}
+        if self.action in self._EDIT_ACTIONS or (
+            self.action == "config" and request.method == "PUT"
+        ):
+            return {"view-EditChart"}
+        return {"view-View"}
+
+    def _is_instance_write(self, request):
+        return self.action in self._EDIT_ACTIONS or self.action == "destroy" or (
+            self.action == "config" and request.method == "PUT"
+        )
+
+    def check_object_permissions(self, request, obj):
+        """所有正式 detail/action 统一执行空间与实例规则校验。"""
+        super().check_object_permissions(request, obj)
+        if getattr(request.user, "is_superuser", False):
+            return
+
+        current_team = self._validate_current_team_permission(request)
+        if current_team not in (obj.groups or []):
+            raise PermissionDenied("无权访问该团队数据")
+        if not self.get_has_permission(
+            request.user,
+            obj,
+            current_team,
+            is_check=not self._is_instance_write(request),
+        ):
+            raise PermissionDenied("无权访问当前网络拓扑")
 
     # ------------------------------------------------------------------ #
     # Helpers                                                              #

@@ -11,9 +11,17 @@ from apps.core.utils.open_base import login_exempt
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
 from apps.operation_analysis.serializers.share_serializers import (
     ShareExchangeSerializer,
+    ShareNetworkTopologyLinkRuntimeSerializer,
+    ShareNetworkTopologyMetricValuesSerializer,
     SharePrepareSerializer,
 )
 from apps.operation_analysis.services.share_audit import log_share_access
+from apps.operation_analysis.services.share_network_topology import (
+    ShareNetworkTopologyRuntimeDenied,
+    reject_forbidden_topology_body_keys,
+    validate_share_link_runtime,
+    validate_share_metric_values,
+)
 from apps.operation_analysis.services.share_service import (
     SHARE_DATASOURCE_RESOURCE_TYPES,
     SHARE_PREPARE_COOKIE,
@@ -32,6 +40,8 @@ from apps.operation_analysis.services.share_throttle import (
     DashboardShareInvalidTokenThrottle,
     DashboardSharePrepareThrottle,
 )
+from apps.operation_analysis.services.network_topology.runtime import NetworkTopologyRuntimeService
+from apps.operation_analysis.services.network_topology.weops_adapter import WeOpsTopologyAdapterError
 from apps.operation_analysis.views.datasource_view import DataSourceAPIModelViewSet
 from apps.system_mgmt.nats.auth import build_user_authorization_context
 
@@ -328,3 +338,153 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
                 for item in data_sources
             ]
         )
+
+    def _resolve_network_topology_principal(self, request, session_id, *, action_name: str):
+        try:
+            principal = resolve_session(session_id=session_id, visitor=request.user)
+        except ShareRateLimited:
+            log_share_access(request, action=action_name, result="reject", reason="rate_limited")
+            return None, Response({"detail": "请求过于频繁"}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+        except ShareLinkInvalid:
+            log_share_access(request, action=action_name, result="reject", reason="invalid")
+            return None, Response(INVALID_SHARE_RESPONSE, status=status.HTTP_404_NOT_FOUND)
+
+        if principal.resource_type != "networkTopology":
+            log_share_access(
+                request,
+                action=action_name,
+                principal=principal,
+                visitor=request.user,
+                result="reject",
+                reason="resource_type_mismatch",
+            )
+            return None, Response(
+                {"detail": "当前分享会话不是网络拓扑"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return principal, None
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path=r"session/(?P<session_id>[^/.]+)/network_topology/metric_values",
+    )
+    def network_topology_metric_values(self, request, session_id=None):
+        principal, error = self._resolve_network_topology_principal(
+            request, session_id, action_name="nt_metric_values"
+        )
+        if error is not None:
+            return error
+
+        try:
+            reject_forbidden_topology_body_keys(request.data)
+            serializer = ShareNetworkTopologyMetricValuesSerializer(data=request.data or {})
+            serializer.is_valid(raise_exception=True)
+            items = validate_share_metric_values(
+                view_sets=getattr(principal.resource, "view_sets", None),
+                items=serializer.validated_data.get("items") or [],
+            )
+            from apps.operation_analysis.views.network_topology_view import (
+                NetworkTopologyViewSet,
+                _adapter_for,
+            )
+
+            adapter = _adapter_for(principal.resource)
+            payload = adapter.batch_metric_values(items)
+        except ShareNetworkTopologyRuntimeDenied as exc:
+            log_share_access(
+                request,
+                action="nt_metric_values",
+                principal=principal,
+                visitor=request.user,
+                result="reject",
+                reason="not_in_view_sets",
+            )
+            return Response({"detail": str(exc.detail)}, status=status.HTTP_403_FORBIDDEN)
+        except WeOpsTopologyAdapterError as exc:
+            log_share_access(
+                request,
+                action="nt_metric_values",
+                principal=principal,
+                visitor=request.user,
+                result="reject",
+                reason=getattr(exc, "code", "weops_error"),
+            )
+            from apps.operation_analysis.views.network_topology_view import NetworkTopologyViewSet
+
+            return NetworkTopologyViewSet._adapter_error_response(exc)
+
+        log_share_access(
+            request,
+            action="nt_metric_values",
+            principal=principal,
+            visitor=request.user,
+            result="ok",
+        )
+        return Response(payload)
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path=r"session/(?P<session_id>[^/.]+)/network_topology/link_runtime",
+    )
+    def network_topology_link_runtime(self, request, session_id=None):
+        principal, error = self._resolve_network_topology_principal(
+            request, session_id, action_name="nt_link_runtime"
+        )
+        if error is not None:
+            return error
+
+        try:
+            reject_forbidden_topology_body_keys(request.data)
+            serializer = ShareNetworkTopologyLinkRuntimeSerializer(data=request.data or {})
+            serializer.is_valid(raise_exception=True)
+            link_payload, nodes_payload = validate_share_link_runtime(
+                view_sets=getattr(principal.resource, "view_sets", None),
+                link_payload=serializer.validated_data.get("link"),
+                nodes_payload=serializer.validated_data.get("nodes"),
+            )
+            from apps.operation_analysis.views.network_topology_view import (
+                NetworkTopologyViewSet,
+                _adapter_for,
+            )
+
+            adapter = _adapter_for(principal.resource)
+            response = NetworkTopologyRuntimeService.build_link_runtime_preview(
+                principal.resource,
+                adapter,
+                link_payload,
+                nodes_payload=nodes_payload,
+            )
+        except ShareNetworkTopologyRuntimeDenied as exc:
+            log_share_access(
+                request,
+                action="nt_link_runtime",
+                principal=principal,
+                visitor=request.user,
+                result="reject",
+                reason="not_in_view_sets",
+            )
+            return Response({"detail": str(exc.detail)}, status=status.HTTP_403_FORBIDDEN)
+        except WeOpsTopologyAdapterError as exc:
+            log_share_access(
+                request,
+                action="nt_link_runtime",
+                principal=principal,
+                visitor=request.user,
+                result="reject",
+                reason=getattr(exc, "code", "weops_error"),
+            )
+            from apps.operation_analysis.views.network_topology_view import NetworkTopologyViewSet
+
+            return NetworkTopologyViewSet._adapter_error_response(exc)
+
+        data = response.get("data", response) if isinstance(response, dict) else response
+        log_share_access(
+            request,
+            action="nt_link_runtime",
+            principal=principal,
+            visitor=request.user,
+            result="ok",
+        )
+        return Response(data)

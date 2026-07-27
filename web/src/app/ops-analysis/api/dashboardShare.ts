@@ -66,12 +66,49 @@ export const useCanvasShareApi = () => {
     [get],
   );
 
+  const getSharedNetworkTopologyMetricValues = useCallback(
+    (
+      sessionId: string,
+      items: Array<{
+        request_id: string;
+        node_ref: Record<string, unknown>;
+        metric_ref: { metric_field: string; result_table_id: string };
+        dimensions?: Record<string, string>;
+        condition_filter?: Array<{ dimension_id: string; value: string[] }>;
+        display_mode?: 'aggregate' | 'dimension';
+        aggregate_type?: 'sum' | 'max' | 'min' | 'mean' | 'last';
+      }>,
+    ) =>
+      post(
+        `/operation_analysis/api/dashboard_share/session/${sessionId}/network_topology/metric_values/`,
+        { items },
+      ),
+    [post],
+  );
+
+  const getSharedNetworkTopologyLinkRuntime = useCallback(
+    (
+      sessionId: string,
+      payload: {
+        link: unknown;
+        nodes?: unknown;
+      },
+    ) =>
+      post(
+        `/operation_analysis/api/dashboard_share/session/${sessionId}/network_topology/link_runtime/`,
+        payload,
+      ),
+    [post],
+  );
+
   return {
     createShare,
     exchangeShare,
     getSharedCanvas,
     querySharedDataSource,
     getSharedDataSources,
+    getSharedNetworkTopologyMetricValues,
+    getSharedNetworkTopologyLinkRuntime,
   };
 };
 

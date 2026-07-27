@@ -17,3 +17,12 @@ class ShareExchangeSerializer(serializers.Serializer):
         attrs["token"] = token or None
         attrs["state"] = state or None
         return attrs
+
+
+class ShareNetworkTopologyMetricValuesSerializer(serializers.Serializer):
+    items = serializers.ListField(child=serializers.DictField(), allow_empty=True)
+
+
+class ShareNetworkTopologyLinkRuntimeSerializer(serializers.Serializer):
+    link = serializers.DictField()
+    nodes = serializers.ListField(child=serializers.DictField(), required=False, allow_null=True)

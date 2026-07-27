@@ -241,3 +241,417 @@ def test_network_topology_session_rejects_datasource_query(
         format="json",
     )
     assert response.status_code == 403
+
+
+def _node(node_id, bk_inst_id=10001, *, with_metric=True, metric_overrides=None):
+    node = {
+        "id": node_id,
+        "bk_obj_id": "bk_switch",
+        "bk_inst_id": bk_inst_id,
+        "bk_inst_name": f"switch-{bk_inst_id}",
+        "ip_addr": "10.0.0.1",
+        "network_collect_task_id": 12,
+        "network_collect_instance_id": 345,
+        "plugin_group_id": 3,
+        "plugin_template_id": "tpl-1",
+        "position": {"x": 10, "y": 20},
+        "metrics": [],
+    }
+    if with_metric:
+        metric = {
+            "metric_field": "cpu_usage",
+            "result_table_id": "rt.cpu",
+            "display_name": "CPU",
+            "unit": "%",
+            "thresholds": [],
+            "dimensions": {"ifName": "GigE0/1"},
+            "condition_filter": [{"dimension_id": "ifName", "value": ["GigE0/1"]}],
+            "display_mode": "dimension",
+            "aggregate_type": "max",
+        }
+        if metric_overrides:
+            metric.update(metric_overrides)
+        node["metrics"] = [metric]
+    return node
+
+
+def _link(link_id="link-1", source="node-1", target="node-2"):
+    return {
+        "id": link_id,
+        "source_node_id": source,
+        "target_node_id": target,
+        "is_draft": False,
+        "port_pairs": [
+            {
+                "source_interface": {
+                    "bk_obj_id": "bk_interface",
+                    "bk_inst_id": 90001,
+                    "interface_name": "GigE0/1",
+                },
+                "target_interface": {
+                    "bk_obj_id": "bk_interface",
+                    "bk_inst_id": 90002,
+                    "interface_name": "GigE0/1",
+                },
+            }
+        ],
+        "interface_metrics": ["ifInOctets_5min"],
+    }
+
+
+def _open_nt_session(settings, sharer, visitor, monkeypatch, topology):
+    settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.share_service.can_view_canvas",
+        lambda **_: True,
+    )
+    result = create_or_get_share(
+        resource_type=DashboardShareLink.ResourceType.NETWORK_TOPOLOGY,
+        resource=topology,
+        sharer=sharer,
+        tenant_domain=topology.domain,
+        space_id=1,
+    )
+    session = exchange_share(token=result.token, visitor=visitor)
+    client = APIClient()
+    client.force_authenticate(visitor)
+    return client, session
+
+
+@pytest.mark.django_db
+def test_share_nt_metric_values_and_link_runtime_success(
+    settings, sharer, visitor, monkeypatch
+):
+    topology = _make_network_topology(
+        view_sets={
+            "nodes": [_node("node-1", 10001), _node("node-2", 10002)],
+            "links": [_link()],
+        }
+    )
+    client, session = _open_nt_session(settings, sharer, visitor, monkeypatch, topology)
+
+    captured = {}
+
+    class FakeAdapter:
+        def batch_metric_values(self, items):
+            captured["metric_items"] = items
+            return {
+                "items": [
+                    {
+                        "request_id": items[0]["request_id"],
+                        "status": "ok",
+                        "value": 42,
+                    }
+                ]
+            }
+
+    def fake_build_link_runtime(topology_obj, adapter, link_payload, nodes_payload=None):
+        captured["link"] = link_payload
+        captured["nodes"] = nodes_payload
+        return {
+            "result": True,
+            "data": {
+                "link": {
+                    "id": link_payload["id"],
+                    "status": "normal",
+                },
+                "node_interface_summary": {},
+            },
+        }
+
+    monkeypatch.setattr(
+        "apps.operation_analysis.views.network_topology_view._adapter_for",
+        lambda topology_obj: FakeAdapter(),
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.views.share_view.NetworkTopologyRuntimeService.build_link_runtime_preview",
+        fake_build_link_runtime,
+    )
+
+    metric_body = {
+        "items": [
+            {
+                "request_id": "node-1:cpu_usage",
+                "node_ref": {
+                    "bk_obj_id": "bk_switch",
+                    "bk_inst_id": 10001,
+                    "network_collect_task_id": 12,
+                    "network_collect_instance_id": 345,
+                    "plugin_template_id": "tpl-1",
+                },
+                "metric_ref": {"metric_field": "cpu_usage", "result_table_id": "rt.cpu"},
+            }
+        ]
+    }
+    metric_resp = client.post(
+        f"/api/v1/operation_analysis/api/dashboard_share/session/"
+        f"{session.session_id}/network_topology/metric_values/",
+        metric_body,
+        format="json",
+    )
+    assert metric_resp.status_code == 200, metric_resp.data
+    assert metric_resp.data["items"][0]["value"] == 42
+    assert captured["metric_items"][0]["node_ref"]["bk_inst_id"] == 10001
+    assert captured["metric_items"][0]["dimensions"] == {"ifName": "GigE0/1"}
+    assert captured["metric_items"][0]["condition_filter"] == [
+        {"dimension_id": "ifName", "value": ["GigE0/1"]}
+    ]
+    assert captured["metric_items"][0]["display_mode"] == "dimension"
+    assert captured["metric_items"][0]["aggregate_type"] == "max"
+    assert "super-secret-weops-token" not in str(metric_resp.data)
+    assert "token" not in metric_resp.data
+    assert "base_url" not in metric_resp.data
+
+    link_resp = client.post(
+        f"/api/v1/operation_analysis/api/dashboard_share/session/"
+        f"{session.session_id}/network_topology/link_runtime/",
+        {
+            "link": topology.view_sets["links"][0],
+            "nodes": topology.view_sets["nodes"],
+        },
+        format="json",
+    )
+    assert link_resp.status_code == 200, link_resp.data
+    assert link_resp.data["link"]["id"] == "link-1"
+    assert captured["link"]["id"] == "link-1"
+    assert {n["id"] for n in captured["nodes"]} == {"node-1", "node-2"}
+    assert "super-secret-weops-token" not in str(link_resp.data)
+    assert "token" not in link_resp.data
+    assert "base_url" not in link_resp.data
+
+@pytest.mark.django_db
+def test_dashboard_session_cannot_call_nt_runtime_proxy(
+    settings, sharer, visitor, monkeypatch
+):
+    from apps.operation_analysis.models.models import Dashboard
+
+    settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.share_service.can_view_canvas",
+        lambda **_: True,
+    )
+    directory = Directory.objects.create(
+        name=f"dash-dir-{uuid.uuid4()}", groups=[1], created_by="alice"
+    )
+    dashboard = Dashboard.objects.create(
+        name=f"dash-{uuid.uuid4()}",
+        directory=directory,
+        groups=[1],
+        created_by="alice",
+        domain="domain.com",
+        view_sets=[],
+    )
+    result = create_or_get_share(
+        resource_type=DashboardShareLink.ResourceType.DASHBOARD,
+        resource=dashboard,
+        sharer=sharer,
+        tenant_domain=dashboard.domain,
+        space_id=1,
+    )
+    session = exchange_share(token=result.token, visitor=visitor)
+    client = APIClient()
+    client.force_authenticate(visitor)
+
+    metric_resp = client.post(
+        f"/api/v1/operation_analysis/api/dashboard_share/session/"
+        f"{session.session_id}/network_topology/metric_values/",
+        {"items": []},
+        format="json",
+    )
+    link_resp = client.post(
+        f"/api/v1/operation_analysis/api/dashboard_share/session/"
+        f"{session.session_id}/network_topology/link_runtime/",
+        {"link": {"id": "x"}},
+        format="json",
+    )
+    assert metric_resp.status_code == 403
+    assert link_resp.status_code == 403
+
+
+@pytest.mark.django_db
+def test_share_nt_rejects_tampered_node_ref(settings, sharer, visitor, monkeypatch):
+    topology = _make_network_topology(
+        view_sets={"nodes": [_node("node-1", 10001)], "links": []}
+    )
+    client, session = _open_nt_session(settings, sharer, visitor, monkeypatch, topology)
+    monkeypatch.setattr(
+        "apps.operation_analysis.views.network_topology_view._adapter_for",
+        lambda topology_obj: (_ for _ in ()).throw(AssertionError("should not call adapter")),
+    )
+    response = client.post(
+        f"/api/v1/operation_analysis/api/dashboard_share/session/"
+        f"{session.session_id}/network_topology/metric_values/",
+        {
+            "items": [
+                {
+                    "request_id": "evil",
+                    "node_ref": {
+                        "bk_obj_id": "bk_switch",
+                        "bk_inst_id": 99999,
+                        "network_collect_task_id": 12,
+                        "network_collect_instance_id": 345,
+                        "plugin_template_id": "tpl-1",
+                    },
+                    "metric_ref": {"metric_field": "cpu_usage", "result_table_id": "rt.cpu"},
+                }
+            ]
+        },
+        format="json",
+    )
+    assert response.status_code == 403
+
+
+@pytest.mark.django_db
+def test_share_nt_uses_stored_metric_query_params(settings, sharer, visitor, monkeypatch):
+    """客户端篡改 dimensions/condition_filter/display_mode/aggregate_type 时仍转发画布配置。"""
+    topology = _make_network_topology(
+        view_sets={"nodes": [_node("node-1", 10001)], "links": []}
+    )
+    client, session = _open_nt_session(settings, sharer, visitor, monkeypatch, topology)
+    captured = {}
+
+    class FakeAdapter:
+        def batch_metric_values(self, items):
+            captured["items"] = items
+            return {"items": [{"request_id": items[0]["request_id"], "status": "ok", "value": 1}]}
+
+    monkeypatch.setattr(
+        "apps.operation_analysis.views.network_topology_view._adapter_for",
+        lambda topology_obj: FakeAdapter(),
+    )
+    response = client.post(
+        f"/api/v1/operation_analysis/api/dashboard_share/session/"
+        f"{session.session_id}/network_topology/metric_values/",
+        {
+            "items": [
+                {
+                    "request_id": "tamper",
+                    "node_ref": {
+                        "bk_obj_id": "bk_switch",
+                        "bk_inst_id": 10001,
+                        "network_collect_task_id": 12,
+                        "network_collect_instance_id": 345,
+                        "plugin_template_id": "tpl-1",
+                    },
+                    "metric_ref": {"metric_field": "cpu_usage", "result_table_id": "rt.cpu"},
+                    "dimensions": {},
+                    "condition_filter": [],
+                    "display_mode": "aggregate",
+                    "aggregate_type": "sum",
+                }
+            ]
+        },
+        format="json",
+    )
+    assert response.status_code == 200, response.data
+    forwarded = captured["items"][0]
+    assert forwarded["dimensions"] == {"ifName": "GigE0/1"}
+    assert forwarded["condition_filter"] == [{"dimension_id": "ifName", "value": ["GigE0/1"]}]
+    assert forwarded["display_mode"] == "dimension"
+    assert forwarded["aggregate_type"] == "max"
+
+
+@pytest.mark.django_db
+def test_share_nt_rejects_undeclared_metric_ref(settings, sharer, visitor, monkeypatch):
+    topology = _make_network_topology(
+        view_sets={"nodes": [_node("node-1", 10001)], "links": []}
+    )
+    client, session = _open_nt_session(settings, sharer, visitor, monkeypatch, topology)
+    monkeypatch.setattr(
+        "apps.operation_analysis.views.network_topology_view._adapter_for",
+        lambda topology_obj: (_ for _ in ()).throw(AssertionError("should not call adapter")),
+    )
+    response = client.post(
+        f"/api/v1/operation_analysis/api/dashboard_share/session/"
+        f"{session.session_id}/network_topology/metric_values/",
+        {
+            "items": [
+                {
+                    "request_id": "evil-metric",
+                    "node_ref": {
+                        "bk_obj_id": "bk_switch",
+                        "bk_inst_id": 10001,
+                        "network_collect_task_id": 12,
+                        "network_collect_instance_id": 345,
+                        "plugin_template_id": "tpl-1",
+                    },
+                    "metric_ref": {
+                        "metric_field": "mem_usage",
+                        "result_table_id": "rt.mem",
+                    },
+                }
+            ]
+        },
+        format="json",
+    )
+    assert response.status_code == 403
+
+
+@pytest.mark.django_db
+def test_share_nt_rejects_tampered_link(settings, sharer, visitor, monkeypatch):
+    topology = _make_network_topology(
+        view_sets={
+            "nodes": [_node("node-1", 10001), _node("node-2", 10002)],
+            "links": [_link()],
+        }
+    )
+    client, session = _open_nt_session(settings, sharer, visitor, monkeypatch, topology)
+    monkeypatch.setattr(
+        "apps.operation_analysis.views.share_view.NetworkTopologyRuntimeService.build_link_runtime_preview",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("should not build")),
+    )
+    response = client.post(
+        f"/api/v1/operation_analysis/api/dashboard_share/session/"
+        f"{session.session_id}/network_topology/link_runtime/",
+        {
+            "link": _link(link_id="link-evil", source="node-1", target="node-2"),
+            "nodes": topology.view_sets["nodes"],
+        },
+        format="json",
+    )
+    assert response.status_code == 403
+
+
+@pytest.mark.django_db
+def test_share_nt_runtime_response_excludes_canvas_token(
+    settings, sharer, visitor, monkeypatch
+):
+    topology = _make_network_topology(
+        view_sets={"nodes": [_node("node-1", 10001)], "links": []}
+    )
+    client, session = _open_nt_session(settings, sharer, visitor, monkeypatch, topology)
+
+    class FakeAdapter:
+        def batch_metric_values(self, items):
+            return {"items": [{"request_id": items[0]["request_id"], "status": "ok", "value": 1}]}
+
+    monkeypatch.setattr(
+        "apps.operation_analysis.views.network_topology_view._adapter_for",
+        lambda topology_obj: FakeAdapter(),
+    )
+    response = client.post(
+        f"/api/v1/operation_analysis/api/dashboard_share/session/"
+        f"{session.session_id}/network_topology/metric_values/",
+        {
+            "items": [
+                {
+                    "request_id": "r1",
+                    "node_ref": {
+                        "bk_obj_id": "bk_switch",
+                        "bk_inst_id": 10001,
+                        "network_collect_task_id": 12,
+                        "network_collect_instance_id": 345,
+                        "plugin_template_id": "tpl-1",
+                    },
+                    "metric_ref": {"metric_field": "cpu_usage", "result_table_id": "rt.cpu"},
+                }
+            ]
+        },
+        format="json",
+    )
+    assert response.status_code == 200
+    blob = str(response.data)
+    assert "super-secret-weops-token" not in blob
+    assert "weops.example.com" not in blob
+    assert "token" not in response.data
+    assert "base_url" not in response.data

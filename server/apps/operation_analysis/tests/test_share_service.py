@@ -606,10 +606,13 @@ def test_share_query_case2_visitor_cannot_change_widget_fixed_params(settings, d
 
 
 @pytest.mark.django_db
-def test_share_query_case3_widget_empty_falls_back_to_datasource_schema(settings, dashboard):
-    """case3: widget 无参数 → datasource schema fallback → 分享查询正常，schema fixed 不可改。"""
+def test_share_query_case3_widget_empty_rejects_schema_only_params(settings, dashboard):
+    """case3: widget 未声明交互参数时，禁止提交 schema 非 fixed 键；fixed 仍强制注入。"""
     from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
-    from apps.operation_analysis.services.share_service import filter_share_query_params
+    from apps.operation_analysis.services.share_service import (
+        ShareQueryParamsDenied,
+        filter_share_query_params,
+    )
 
     datasource = DataSourceAPIModel.objects.create(
         name=f"share-schema-fallback-{uuid.uuid4()}",
@@ -625,12 +628,26 @@ def test_share_query_case3_widget_empty_falls_back_to_datasource_schema(settings
     dashboard.view_sets = [{"valueConfig": {"dataSource": datasource.id, "dataSourceParams": []}}]
     dashboard.save(update_fields=["view_sets"])
 
+    with pytest.raises(ShareQueryParamsDenied, match="未声明参数"):
+        filter_share_query_params(
+            dashboard=dashboard,
+            data_source_id=datasource.id,
+            request_data={"group_by": "week", "limit": 99},
+        )
+
     filtered = filter_share_query_params(
         dashboard=dashboard,
         data_source_id=datasource.id,
-        request_data={"group_by": "week", "limit": 99},
+        request_data={"limit": 99},
     )
-    assert filtered == {"group_by": "week", "limit": 10}
+    assert filtered == {"limit": 10}
+
+    filtered_empty = filter_share_query_params(
+        dashboard=dashboard,
+        data_source_id=datasource.id,
+        request_data={},
+    )
+    assert filtered_empty == {"limit": 10}
 
 
 @pytest.mark.django_db
@@ -669,8 +686,8 @@ def test_share_query_case4_unknown_params_rejected(settings, dashboard):
 
 
 @pytest.mark.django_db
-def test_share_query_merges_datasource_schema_with_partial_widget_params(settings, dashboard):
-    """组件只覆盖部分 params 时，运行时仍可能带上数据源 schema 中的其它键。"""
+def test_share_query_rejects_schema_only_params_when_widget_partial(settings, dashboard):
+    """组件只声明部分 params 时，schema 中未在画布声明的非 fixed 键不可提交。"""
     from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
     from apps.operation_analysis.services.share_service import (
         ShareQueryParamsDenied,
@@ -699,18 +716,25 @@ def test_share_query_merges_datasource_schema_with_partial_widget_params(setting
     ]
     dashboard.save(update_fields=["view_sets"])
 
+    with pytest.raises(ShareQueryParamsDenied, match="未声明参数"):
+        filter_share_query_params(
+            dashboard=dashboard,
+            data_source_id=datasource.id,
+            request_data={"group_by": "day", "limit": 10},
+        )
+
     filtered = filter_share_query_params(
         dashboard=dashboard,
         data_source_id=datasource.id,
-        request_data={"group_by": "day", "limit": 10},
+        request_data={"limit": 99},
     )
-    assert filtered == {"group_by": "day", "limit": 10}
+    assert filtered == {"limit": 10}
 
     with pytest.raises(ShareQueryParamsDenied):
         filter_share_query_params(
             dashboard=dashboard,
             data_source_id=datasource.id,
-            request_data={"group_by": "day", "query_list": []},
+            request_data={"query_list": []},
         )
 
 
@@ -762,7 +786,8 @@ def test_share_query_allows_query_list_only_for_table_widgets(settings, dashboar
 
 
 @pytest.mark.django_db
-def test_share_query_falls_back_to_datasource_params_when_widget_empty(settings, dashboard):
+def test_share_query_widget_empty_only_allows_fixed_and_runtime_keys(settings, dashboard):
+    """widget 无 dataSourceParams 时，不可提交 schema 非 fixed；未知键仍拒绝。"""
     from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
     from apps.operation_analysis.services.share_service import (
         ShareQueryParamsDenied,
@@ -783,18 +808,25 @@ def test_share_query_falls_back_to_datasource_params_when_widget_empty(settings,
     dashboard.view_sets = [{"valueConfig": {"dataSource": datasource.id, "dataSourceParams": []}}]
     dashboard.save(update_fields=["view_sets"])
 
+    with pytest.raises(ShareQueryParamsDenied, match="未声明参数"):
+        filter_share_query_params(
+            dashboard=dashboard,
+            data_source_id=datasource.id,
+            request_data={"group_by": "day", "limit": 10},
+        )
+
     filtered = filter_share_query_params(
         dashboard=dashboard,
         data_source_id=datasource.id,
-        request_data={"group_by": "day", "limit": 10},
+        request_data={"limit": 10},
     )
-    assert filtered == {"group_by": "day", "limit": 10}
+    assert filtered == {"limit": 10}
 
     with pytest.raises(ShareQueryParamsDenied):
         filter_share_query_params(
             dashboard=dashboard,
             data_source_id=datasource.id,
-            request_data={"group_by": "day", "unknown_key": 1},
+            request_data={"unknown_key": 1},
         )
 
 

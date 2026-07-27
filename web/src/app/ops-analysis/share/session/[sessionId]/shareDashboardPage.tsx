@@ -12,10 +12,12 @@ import { useCanvasShareApi } from '@/app/ops-analysis/api/dashboardShare';
 import { ShareCanvasDetailProvider } from '@/app/ops-analysis/context/shareCanvasDetail';
 import { ShareDataSourceProvider } from '@/app/ops-analysis/context/shareDataSource';
 import { ShareModeProvider } from '@/app/ops-analysis/context/shareMode';
+import { ShareNetworkTopologyRuntimeProvider } from '@/app/ops-analysis/context/shareNetworkTopologyRuntime';
 import { OpsAnalysisProvider } from '@/app/ops-analysis/context/common';
 import { useTranslation } from '@/utils/i18n';
 import type { DirItem } from '@/app/ops-analysis/types';
 import type { SharedCanvasDto } from '@/app/ops-analysis/types/dashboardShare';
+import type { NetworkTopologyConfig, NetworkTopologyLink } from '@/app/ops-analysis/types/networkTopology';
 
 const DS_TYPES = new Set(['dashboard', 'topology', 'screen']);
 
@@ -61,6 +63,22 @@ export default function ShareDashboardPage() {
       getDataSourceDetails: () => api.getSharedDataSources(params.sessionId),
     }),
     [api.getSharedDataSources, params.sessionId, queryDataSource],
+  );
+  const networkTopologyRuntime = useMemo(
+    () => ({
+      getMetricValues: (
+        items: Parameters<typeof api.getSharedNetworkTopologyMetricValues>[1],
+      ) => api.getSharedNetworkTopologyMetricValues(params.sessionId, items),
+      getLinkRuntime: (payload: {
+        link: NetworkTopologyLink;
+        nodes: NetworkTopologyConfig['nodes'];
+      }) => api.getSharedNetworkTopologyLinkRuntime(params.sessionId, payload),
+    }),
+    [
+      api.getSharedNetworkTopologyLinkRuntime,
+      api.getSharedNetworkTopologyMetricValues,
+      params.sessionId,
+    ],
   );
 
   if (invalid) {
@@ -138,6 +156,13 @@ export default function ShareDashboardPage() {
 
   if (DS_TYPES.has(canvas.resource_type)) {
     body = <ShareDataSourceProvider value={shareAccess}>{body}</ShareDataSourceProvider>;
+  }
+  if (canvas.resource_type === 'networkTopology') {
+    body = (
+      <ShareNetworkTopologyRuntimeProvider value={networkTopologyRuntime}>
+        {body}
+      </ShareNetworkTopologyRuntimeProvider>
+    );
   }
 
   return body;
