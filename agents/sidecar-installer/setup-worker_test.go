@@ -307,6 +307,41 @@ func TestInterruptedRecoveryRevalidatesLeaseAfterStoppingService(t *testing.T) {
 	}
 }
 
+func TestInterruptedRecoveryRestartsServiceWhenStopFails(t *testing.T) {
+	installDir := filepath.Join(t.TempDir(), "fusion-collectors")
+	backupDir := installDir + ".bklite-backup"
+	if err := os.MkdirAll(installDir, 0755); err != nil {
+		t.Fatalf("create current install: %v", err)
+	}
+	if err := os.MkdirAll(backupDir, 0755); err != nil {
+		t.Fatalf("create backup install: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(backupDir, "collector-sidecar.exe"), []byte("previous"), 0644); err != nil {
+		t.Fatalf("write previous binary: %v", err)
+	}
+	controller := &fakeWindowsServiceController{
+		serviceExisted: true,
+		stopErrors:     []error{fmt.Errorf("recovery stop timed out")},
+	}
+
+	err := recoverInterruptedWindowsInstallation(
+		controller,
+		installDir,
+		backupDir,
+		&Config{InstallDir: installDir, OS: "windows"},
+	)
+
+	if err == nil || !strings.Contains(err.Error(), "recovery stop timed out") {
+		t.Fatalf("expected recovery stop failure, got %v", err)
+	}
+	if len(controller.startCalls) != 1 || controller.startCalls[0] != installDir {
+		t.Fatalf("service was not restarted after recovery stop failure: %#v", controller.startCalls)
+	}
+	if _, statErr := os.Stat(backupDir); statErr != nil {
+		t.Fatalf("backup changed after recovery stop failure: %v", statErr)
+	}
+}
+
 func TestInstallWindowsPackageRejectsInvalidRecoveryBackupBeforeStoppingService(t *testing.T) {
 	installDir := filepath.Join(t.TempDir(), "fusion-collectors")
 	if err := os.MkdirAll(installDir+".bklite-backup", 0755); err != nil {

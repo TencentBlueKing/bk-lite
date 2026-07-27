@@ -1238,6 +1238,11 @@ func recoverInterruptedWindowsInstallation(
 	}
 	serviceExisted, err := controller.Stop()
 	if err != nil {
+		if serviceExisted {
+			if restartErr := controller.Start(installDir, true); restartErr != nil {
+				return fmt.Errorf("stop service before interrupted installation recovery: %v; restart service: %w", err, restartErr)
+			}
+		}
 		return fmt.Errorf("stop service before interrupted installation recovery: %w", err)
 	}
 	if cfg.RemoteLeaseValidator != nil {
