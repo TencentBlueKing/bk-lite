@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "incremental": false
+  },
+  "include": [
+    "src/theme/**/*.ts",
+    "src/theme/**/*.tsx",
+    "scripts/theme-module-test.tsx"
+  ],
+  "exclude": ["node_modules"]
+}

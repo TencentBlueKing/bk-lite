@@ -1,12 +1,9 @@
+import { getAppliedThemeMode } from '@/theme';
+
 export type OpsChartThemeName = 'light' | 'dark';
 export type OpsChartThemeMode = 'default' | 'screen-dark' | 'screen-light';
 
-export const resolveOpsChartThemeName = (): OpsChartThemeName => {
-  if (typeof document !== 'undefined' && document.documentElement.classList.contains('dark')) {
-    return 'dark';
-  }
-  return 'light';
-};
+export const resolveOpsChartThemeName = (): OpsChartThemeName => getAppliedThemeMode();
 
 export const getOpsChartTheme = (themeName: OpsChartThemeName) => {
   const isDarkTheme = themeName === 'dark';
