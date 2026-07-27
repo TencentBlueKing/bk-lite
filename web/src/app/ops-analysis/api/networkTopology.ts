@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import useApiClient from '@/utils/request';
+import { useShareCanvasDetailOverride } from '@/app/ops-analysis/context/shareCanvasDetail';
 import type {
   NetworkTopologyConfig,
   NetworkTopologyDetail,
@@ -10,6 +11,7 @@ import type {
   NetworkLinkRuntime,
   NetworkNodeRuntime,
 } from '@/app/ops-analysis/types/networkTopology';
+import type { SharedCanvasDto } from '@/app/ops-analysis/types/dashboardShare';
 
 /**
  * 网络拓扑画布 API client。
@@ -67,11 +69,16 @@ const encodeNodeRef = (nodeRef: Record<string, unknown>): string =>
 
 export const useNetworkTopologyApi = () => {
   const { get, post, put, del } = useApiClient();
+  const shareDetailOverride = useShareCanvasDetailOverride();
 
   const getNetworkTopologyDetail = useCallback(
-    (id: string | number) =>
-      get<NetworkTopologyDetail>(`/operation_analysis/api/network_topology/${id}/`),
-    [get],
+    async (id: string | number) => {
+      if (shareDetailOverride) {
+        return (await shareDetailOverride()) as NetworkTopologyDetail;
+      }
+      return get<NetworkTopologyDetail>(`/operation_analysis/api/network_topology/${id}/`);
+    },
+    [get, shareDetailOverride],
   );
 
   const createNetworkTopology = useCallback(
@@ -100,11 +107,24 @@ export const useNetworkTopologyApi = () => {
 
   /** 读取画布 view_sets JSON(后端实际为 `/config`)。 */
   const getViewSets = useCallback(
-    (id: string | number) =>
-      get<NetworkTopologyConfig>(
+    async (id: string | number) => {
+      if (shareDetailOverride) {
+        const detail = (await shareDetailOverride()) as SharedCanvasDto;
+        const viewSets = detail?.view_sets;
+        if (viewSets && typeof viewSets === 'object' && !Array.isArray(viewSets)) {
+          const payload = viewSets as Partial<NetworkTopologyConfig>;
+          return {
+            nodes: Array.isArray(payload.nodes) ? payload.nodes : [],
+            links: Array.isArray(payload.links) ? payload.links : [],
+          } as NetworkTopologyConfig;
+        }
+        return { nodes: [], links: [] } as NetworkTopologyConfig;
+      }
+      return get<NetworkTopologyConfig>(
         `/operation_analysis/api/network_topology/${id}/config/`,
-      ),
-    [get],
+      );
+    },
+    [get, shareDetailOverride],
   );
 
   /** 全量替换画布 view_sets JSON(后端实际为 `PUT /config`)。 */

@@ -3,7 +3,8 @@ export type CanvasShareResourceType =
   | 'screen'
   | 'topology'
   | 'architecture'
-  | 'report';
+  | 'report'
+  | 'networkTopology';
 
 export interface CanvasShareLinkDto {
   id: number;
@@ -22,6 +23,8 @@ export interface SharedCanvasDto {
   other?: Record<string, unknown>;
   view_sets: unknown;
   is_build_in: boolean;
+  refresh_interval?: number;
+  status?: string;
 }
 
 /** @deprecated Use SharedCanvasDto */

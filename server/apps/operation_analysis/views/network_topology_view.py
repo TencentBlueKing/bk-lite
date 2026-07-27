@@ -40,6 +40,8 @@ from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
+from apps.core.decorators.api_permission import HasPermission
+from apps.core.utils.viewset_utils import AuthViewSet
 from apps.operation_analysis.models.models import NetworkTopology
 from apps.operation_analysis.serializers.network_topology_serializers import (
     NetworkTopologySerializer,
@@ -49,6 +51,7 @@ from apps.operation_analysis.serializers.network_topology_serializers import (
 from apps.operation_analysis.services.network_topology import canvas_config
 from apps.operation_analysis.services.network_topology.runtime import NetworkTopologyRuntimeService
 from apps.operation_analysis.services.network_topology.weops_adapter import WeOpsTopologyAdapter, WeOpsTopologyAdapterError
+from apps.operation_analysis.views.view import _create_canvas_share_response
 
 logger = logging.getLogger("apps.operation_analysis.network_topology")
 
@@ -76,6 +79,8 @@ class NetworkTopologyViewSet(ModelViewSet):
 
     queryset = NetworkTopology.objects.all()
     serializer_class = NetworkTopologySerializer
+    permission_key = "directory.networkTopology"
+    _parse_current_team_cookie = staticmethod(AuthViewSet._parse_current_team_cookie)
 
     # ------------------------------------------------------------------ #
     # Helpers                                                              #
@@ -206,6 +211,17 @@ class NetworkTopologyViewSet(ModelViewSet):
             raise DRFValidationError({"node_id": ["缺少 node_id 路径参数"]})
         updated = canvas_config.cascade_remove_node(topology, node_id)
         return Response(updated)
+
+    @HasPermission("view-View")
+    @action(detail=True, methods=["post"], url_path="share")
+    def share(self, request, *args, **kwargs):
+        """创建网络拓扑只读配置分享（复用 Canvas Share，不含 WeOps runtime）。"""
+        return _create_canvas_share_response(
+            self,
+            request,
+            resource_type="networkTopology",
+            resource_label="网络拓扑",
+        )
 
     # ------------------------------------------------------------------ #
     # WeOps proxy endpoints                                                #

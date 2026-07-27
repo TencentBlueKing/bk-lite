@@ -7,6 +7,7 @@ import Dashboard from '@/app/ops-analysis/(pages)/view/dashBoard';
 import Topology from '@/app/ops-analysis/(pages)/view/topology';
 import Architecture from '@/app/ops-analysis/(pages)/view/architecture';
 import Screen from '@/app/ops-analysis/(pages)/view/screen';
+import NetworkTopology from '@/app/ops-analysis/(pages)/view/networkTopology';
 import { useCanvasShareApi } from '@/app/ops-analysis/api/dashboardShare';
 import { ShareCanvasDetailProvider } from '@/app/ops-analysis/context/shareCanvasDetail';
 import { ShareDataSourceProvider } from '@/app/ops-analysis/context/shareDataSource';
@@ -113,6 +114,13 @@ export default function ShareDashboardPage() {
         return <Architecture selectedArchitecture={selectedItem} shareMode />;
       case 'screen':
         return <Screen selectedScreen={selectedItem} shareMode />;
+      case 'networkTopology':
+        return (
+          <NetworkTopology
+            selectedNetworkTopology={selectedItem}
+            shareMode
+          />
+        );
       default:
         return null;
     }

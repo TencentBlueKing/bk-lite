@@ -238,4 +238,5 @@ export interface NetworkTopologyFormValues {
 /** page props。 */
 export interface NetworkTopologyProps {
   selectedNetworkTopology?: DirItem | null;
+  shareMode?: boolean;
 }

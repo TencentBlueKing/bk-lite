@@ -33,6 +33,7 @@ SHARE_DETAIL_ONLY_RESOURCE_TYPES = frozenset(
     {
         DashboardShareLink.ResourceType.ARCHITECTURE,
         DashboardShareLink.ResourceType.REPORT,
+        DashboardShareLink.ResourceType.NETWORK_TOPOLOGY,
     }
 )
 

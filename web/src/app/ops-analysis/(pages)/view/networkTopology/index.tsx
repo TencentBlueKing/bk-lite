@@ -21,6 +21,7 @@ import {
 import {
   useNetworkTopologyApi,
 } from '@/app/ops-analysis/api/networkTopology';
+import { useCanvasShareAction } from '@/app/ops-analysis/hooks/useCanvasShareAction';
 import { useNetworkEditor } from './hooks/useNetworkEditor';
 import { useNetworkLibrary } from './hooks/useNetworkLibrary';
 import { useTranslation } from '@/utils/i18n';
@@ -153,8 +154,9 @@ const groupLinkMetricRowsByInterface = (
 };
 
 const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
-  ({ selectedNetworkTopology }, ref) => {
+  ({ selectedNetworkTopology, shareMode = false }, ref) => {
     const api = useNetworkTopologyApi();
+    const { shareLoading, openShare } = useCanvasShareAction('networkTopology');
     const { t } = useTranslation();
     const canvasId = selectedNetworkTopology?.data_id;
     const [config, setConfig] = useState<NetworkTopologyConfig>(emptyConfig);
@@ -406,7 +408,10 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
           setRuntimeLinkOverrides({});
           setRuntimeInterfaceSummaryOverrides({});
           editor.resetConfig(next);
-          void loadConfiguredRuntime(id, next);
+          // Phase A：分享态只读配置，不触发 WeOps runtime。
+          if (!shareMode) {
+            void loadConfiguredRuntime(id, next);
+          }
         })
         .catch((err: unknown) => {
           if (!active) return;
@@ -422,7 +427,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
       };
       // 故意省略 api/editor 等稳定依赖,避免画布切换以外的因素触发重新拉取。
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [canvasId]);
+    }, [canvasId, shareMode]);
 
     const loadNodeModels = useCallback(
       (id: string | number) => api.getNodeModels(id),
@@ -435,7 +440,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
     );
     const library = useNetworkLibrary({
       canvasId,
-      enabled: Boolean(canvasId),
+      enabled: Boolean(canvasId) && !shareMode,
       loadModels: loadNodeModels,
       loadNodes: loadLibraryNodes,
     });
@@ -470,12 +475,12 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
     }, [runtimeNodes]);
 
     useEffect(() => {
-      if (!canvasId || refreshIntervalMs <= 0) return undefined;
+      if (shareMode || !canvasId || refreshIntervalMs <= 0) return undefined;
       const timer = setInterval(() => {
         void loadConfiguredRuntime(canvasId, config);
       }, refreshIntervalMs);
       return () => clearInterval(timer);
-    }, [canvasId, config, loadConfiguredRuntime, refreshIntervalMs]);
+    }, [canvasId, config, loadConfiguredRuntime, refreshIntervalMs, shareMode]);
 
     const loadNodeMetrics = useCallback(
       (node: NetworkTopologyNode) => {
@@ -1142,6 +1147,15 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
         editMode={editor.editMode}
         dirty={editor.isDirty}
         saving={saving}
+        shareMode={shareMode}
+        shareLoading={shareLoading}
+        onOpenShare={
+          !shareMode && selectedNetworkTopology?.data_id
+            ? () => {
+                void openShare(selectedNetworkTopology.data_id);
+              }
+            : undefined
+        }
         onZoomIn={() => graph?.zoom(0.1)}
         onZoomOut={() => graph?.zoom(-0.1)}
         onFit={() => {
@@ -1168,7 +1182,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
           enterFullscreen();
         }}
         onRefresh={() => {
-          if (canvasId) void loadConfiguredRuntime(canvasId, config);
+          if (canvasId && !shareMode) void loadConfiguredRuntime(canvasId, config);
         }}
         onFrequencyChange={setRefreshIntervalMs}
         onEnterEdit={onEnterEdit}
@@ -1218,7 +1232,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
               className="flex h-full min-h-0 gap-[10px]"
               data-testid="network-topology-workspace"
             >
-              {!isFullscreen && (
+              {!shareMode && !isFullscreen && (
                 <section
                   className="flex shrink-0 min-h-0 flex-col overflow-visible rounded-lg border border-[var(--color-border-1,#d9e0e8)] bg-[var(--color-bg-1,#fff)] shadow-[0_10px_24px_rgba(34,47,62,0.05)]"
                   data-testid="network-topology-library-panel"

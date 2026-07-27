@@ -11,6 +11,7 @@ class DashboardShareLink(models.Model):
         ARCHITECTURE = "architecture", "架构图"
         SCREEN = "screen", "大屏"
         REPORT = "report", "报表"
+        NETWORK_TOPOLOGY = "networkTopology", "网络拓扑"
 
     class Status(models.TextChoices):
         ACTIVE = "active", "有效"

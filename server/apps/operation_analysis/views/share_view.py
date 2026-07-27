@@ -55,6 +55,18 @@ def _canvas_data_source_ids(value):
 
 def _serialize_shared_resource(principal):
     resource = principal.resource
+    if principal.resource_type == "networkTopology":
+        # Phase A：只返回脱敏配置；禁止 token / base_url / runtime cache 等 WeOps 凭证面。
+        return {
+            "resource_type": principal.resource_type,
+            "id": resource.id,
+            "name": resource.name,
+            "desc": getattr(resource, "desc", "") or "",
+            "view_sets": getattr(resource, "view_sets", None) or {},
+            "is_build_in": bool(getattr(resource, "is_build_in", False)),
+            "refresh_interval": getattr(resource, "refresh_interval", 60),
+            "status": getattr(resource, "status", "") or "",
+        }
     payload = {
         "resource_type": principal.resource_type,
         "id": resource.id,

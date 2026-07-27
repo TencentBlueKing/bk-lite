@@ -2,11 +2,11 @@ from django.db.models.signals import pre_delete, pre_save
 from django.dispatch import receiver
 from django.utils import timezone
 
-from apps.operation_analysis.models.models import Architecture, Dashboard, Report, Screen, Topology
+from apps.operation_analysis.models.models import Architecture, Dashboard, NetworkTopology, Report, Screen, Topology
 from apps.operation_analysis.models.share_models import DashboardShareLink
 from apps.operation_analysis.services.canvas.registry import CANVAS_TYPE_REGISTRY
 
-_CANVAS_MODELS = (Dashboard, Topology, Architecture, Screen, Report)
+_CANVAS_MODELS = (Dashboard, Topology, Architecture, Screen, Report, NetworkTopology)
 _MODEL_TO_RESOURCE_TYPE = {
     meta.model: object_type for object_type, meta in CANVAS_TYPE_REGISTRY.items()
 }
