@@ -80,6 +80,82 @@ class FakePreviewExecutor:
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("permission", "expected_status"),
+    [
+        ("data_source-View", status.HTTP_403_FORBIDDEN),
+        ("data_source-Add", status.HTTP_200_OK),
+        ("data_source-Edit", status.HTTP_200_OK),
+    ],
+)
+def test_preview_unsaved_datasource_requires_add_or_edit_permission(
+    authenticated_user,
+    monkeypatch,
+    permission,
+    expected_status,
+):
+    authenticated_user.is_superuser = False
+    authenticated_user.permission = {"ops-analysis": {permission}}
+    executor = FakePreviewExecutor()
+    monkeypatch.setattr(datasource_view, "get_preview_executor", lambda source_type: executor)
+    request = _build_preview_request(
+        authenticated_user,
+        data={
+            "source_type": DataSourceAPIModel.SOURCE_TYPE_REST_API,
+            "connection_config": {"url": "https://example.com/api"},
+            "query_config": {"response_path": "data"},
+        },
+    )
+
+    response = datasource_view.DataSourceAPIModelViewSet.as_view({"post": "preview_config"})(request)
+
+    assert response.status_code == expected_status
+    assert len(executor.calls) == (1 if expected_status == status.HTTP_200_OK else 0)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("permission", "expected_status"),
+    [
+        ("data_source-View", status.HTTP_403_FORBIDDEN),
+        ("data_source-Add", status.HTTP_403_FORBIDDEN),
+        ("data_source-Edit", status.HTTP_200_OK),
+    ],
+)
+def test_preview_saved_datasource_requires_edit_permission(
+    authenticated_user,
+    monkeypatch,
+    permission,
+    expected_status,
+):
+    authenticated_user.is_superuser = False
+    authenticated_user.permission = {"ops-analysis": {permission}}
+    executor = FakePreviewExecutor()
+    monkeypatch.setattr(datasource_view, "get_preview_executor", lambda source_type: executor)
+    monkeypatch.setattr(
+        datasource_view.DataSourceAPIModelViewSet,
+        "get_object",
+        lambda self: SimpleNamespace(
+            id=1,
+            name="rest-demo",
+            groups=[1],
+            source_type=DataSourceAPIModel.SOURCE_TYPE_REST_API,
+            connection_config={"url": "https://example.com/api"},
+            query_config={"response_path": "data"},
+        ),
+    )
+    request = _build_preview_request(
+        authenticated_user,
+        path="/operation_analysis/api/data_source/1/preview/",
+    )
+
+    response = datasource_view.DataSourceAPIModelViewSet.as_view({"post": "preview"})(request, pk="1")
+
+    assert response.status_code == expected_status
+    assert len(executor.calls) == (1 if expected_status == status.HTTP_200_OK else 0)
+
+
+@pytest.mark.django_db
 def test_preview_unsaved_datasource_executes_inline_config(authenticated_user, monkeypatch):
     authenticated_user.is_superuser = True
     executor = FakePreviewExecutor()
@@ -132,7 +208,8 @@ def test_preview_unsaved_excel_datasource_accepts_upload(authenticated_user):
 
 @pytest.mark.django_db
 def test_preview_saved_datasource_checks_group(authenticated_user, monkeypatch):
-    authenticated_user.is_superuser = True
+    authenticated_user.is_superuser = False
+    authenticated_user.permission = {"ops-analysis": {"data_source-Edit"}}
     request = _build_preview_request(
         authenticated_user,
         path="/operation_analysis/api/data_source/1/preview/",
@@ -219,7 +296,8 @@ def test_preview_returns_not_found_for_deleted_datasource(authenticated_user, mo
 
 @pytest.mark.django_db
 def test_get_source_data_executes_inline_datasource(authenticated_user, monkeypatch):
-    authenticated_user.is_superuser = True
+    authenticated_user.is_superuser = False
+    authenticated_user.permission = {"ops-analysis": {"data_source-View"}}
     executor = FakePreviewExecutor()
     monkeypatch.setattr(datasource_view, "get_preview_executor", lambda source_type: executor)
     monkeypatch.setattr(

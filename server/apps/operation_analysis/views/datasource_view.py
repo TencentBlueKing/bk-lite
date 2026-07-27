@@ -489,7 +489,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
 
         return Response(result.get("data"))
 
-    @HasPermission("data_source-View")
+    @HasPermission("data_source-Add,data_source-Edit")
     @action(detail=False, methods=["post"], url_path="preview")
     def preview_config(self, request, *args, **kwargs):
         source_type = request.data.get("source_type") or DataSourceAPIModel.SOURCE_TYPE_NATS
@@ -512,7 +512,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
 
         return Response(payload)
 
-    @HasPermission("data_source-View")
+    @HasPermission("data_source-Edit")
     @action(detail=True, methods=["post"], url_path="preview")
     def preview(self, request, *args, **kwargs):
         try:
