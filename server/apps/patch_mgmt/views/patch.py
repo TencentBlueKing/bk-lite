@@ -1,11 +1,18 @@
 """补丁库视图。"""
 
+import json
+
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.patch_mgmt.constants import GovernanceTaskStatus, OSType, PackageStatus
 from apps.patch_mgmt.filters.patch import PatchFilter
 from apps.patch_mgmt.models import GovernanceTask, Patch, WindowsPatchDetail
 from apps.patch_mgmt.serializers.patch import PatchDetailSerializer, PatchListSerializer
+from apps.patch_mgmt.services.manual_windows_patch_write import (
+    ManualWindowsPatchStorageFailure,
+    create_manual_windows_patch,
+    update_manual_windows_patch,
+)
 from apps.patch_mgmt.services.windows_package import (
     WindowsPackageError,
     replace_failed_windows_package,
@@ -14,7 +21,8 @@ from apps.patch_mgmt.services.windows_package import (
 from apps.patch_mgmt.utils.operation_log import log_patch_created, log_patch_deleted, log_patch_updated
 from rest_framework import status
 from rest_framework.decorators import action
-from rest_framework.parsers import MultiPartParser
+from rest_framework.exceptions import ValidationError
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 
 
@@ -28,6 +36,46 @@ class PatchViewSet(AuthViewSet):
     search_fields = ["title"]
     ORGANIZATION_FIELD = "team"
     permission_key = "patch"
+    parser_classes = [JSONParser, FormParser, MultiPartParser]
+
+    def _manual_windows_metadata(self, request):
+        raw_metadata = request.data.get("metadata")
+        try:
+            metadata = (
+                raw_metadata
+                if isinstance(raw_metadata, dict)
+                else json.loads(raw_metadata or "")
+            )
+        except (TypeError, ValueError) as exc:
+            raise ValidationError({"metadata": "补丁元数据必须是有效的 JSON 对象"}) from exc
+        if not isinstance(metadata, dict):
+            raise ValidationError({"metadata": "补丁元数据必须是 JSON 对象"})
+
+        if not metadata.get("team"):
+            current_team = self._parse_current_team_cookie(request)
+            if current_team:
+                metadata["team"] = [current_team]
+        return metadata
+
+    def _patch_response(self, patch, *, response_status=status.HTTP_200_OK):
+        patch = self.get_queryset().get(pk=patch.pk)
+        return Response(
+            PatchDetailSerializer(patch, context=self.get_serializer_context()).data,
+            status=response_status,
+        )
+
+    def _storage_failure_response(self, failure):
+        patch = self.get_queryset().get(pk=failure.patch.pk)
+        return Response(
+            {
+                "detail": failure.detail,
+                "patch": PatchDetailSerializer(
+                    patch,
+                    context=self.get_serializer_context(),
+                ).data,
+            },
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
 
     def get_serializer_class(self):
         if self.action == "retrieve":
@@ -44,6 +92,23 @@ class PatchViewSet(AuthViewSet):
 
     @HasPermission("patch-Add")
     def create(self, request, *args, **kwargs):
+        if "metadata" in request.data:
+            metadata = self._manual_windows_metadata(request)
+            try:
+                patch = create_manual_windows_patch(
+                    metadata=metadata,
+                    uploaded_file=request.FILES.get("file"),
+                    context=self.get_serializer_context(),
+                )
+            except ManualWindowsPatchStorageFailure as failure:
+                log_patch_created(request, metadata.get("title", ""))
+                return self._storage_failure_response(failure)
+            log_patch_created(request, metadata.get("title", ""))
+            return self._patch_response(
+                patch,
+                response_status=status.HTTP_201_CREATED,
+            )
+
         request.data["pkg_status"] = (
             PackageStatus.DOWNLOADING
             if request.data.get("os_type") == OSType.WINDOWS
@@ -59,6 +124,21 @@ class PatchViewSet(AuthViewSet):
 
     @HasPermission("patch-Edit")
     def update(self, request, *args, **kwargs):
+        if "metadata" in request.data:
+            metadata = self._manual_windows_metadata(request)
+            try:
+                patch = update_manual_windows_patch(
+                    patch=self.get_object(),
+                    metadata=metadata,
+                    uploaded_file=request.FILES.get("file"),
+                    context=self.get_serializer_context(),
+                )
+            except ManualWindowsPatchStorageFailure as failure:
+                log_patch_updated(request, metadata.get("title", ""))
+                return self._storage_failure_response(failure)
+            log_patch_updated(request, metadata.get("title", ""))
+            return self._patch_response(patch)
+
         response = super().update(request, *args, **kwargs)
         log_patch_updated(request, request.data.get("title", ""))
         return response
