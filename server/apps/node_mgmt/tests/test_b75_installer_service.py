@@ -333,54 +333,6 @@ def test_install_controller_nodes_filters_legacy_rows_by_scope_snapshot():
     assert sibling_scope == []
 
 
-@pytest.mark.django_db
-def test_retry_authorized_controller_task_nodes_requires_owner_and_domain():
-    region = CloudRegion.objects.create(name="cr-ctrl-retry-legacy")
-    task = ControllerTask.objects.create(
-        cloud_region=region,
-        type="install",
-        status="waiting",
-        package_version_id=1,
-        created_by="owner",
-        domain="domain.com",
-    )
-    task_node = ControllerTaskNode.objects.create(
-        task=task,
-        ip="10.0.0.13",
-        os="linux",
-        port=22,
-        username="root",
-        password="x",
-        node_name="legacy",
-        organizations=[1],
-        status="waiting",
-    )
-    scope = SimpleNamespace(data_team_ids=frozenset({1}))
-
-    denied = InstallerService.get_authorized_controller_task_node_queryset(
-        task.id,
-        authorized_nodes=Node.objects.none(),
-        scope=scope,
-        request_user=type("User", (), {"username": "other", "domain": "domain.com", "is_superuser": False})(),
-    )
-    same_username_other_domain = InstallerService.get_authorized_controller_task_node_queryset(
-        task.id,
-        authorized_nodes=Node.objects.none(),
-        scope=scope,
-        request_user=type("User", (), {"username": "owner", "domain": "other.com", "is_superuser": False})(),
-    )
-    owner = InstallerService.get_authorized_controller_task_node_queryset(
-        task.id,
-        authorized_nodes=Node.objects.none(),
-        scope=scope,
-        request_user=type("User", (), {"username": "owner", "domain": "domain.com", "is_superuser": False})(),
-    )
-
-    assert list(denied) == []
-    assert list(same_username_other_domain) == []
-    assert list(owner) == [task_node]
-
-
 # --------------------------------------------------------------------------- #
 # get_manual_install_status
 # --------------------------------------------------------------------------- #

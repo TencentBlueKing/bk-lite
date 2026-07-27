@@ -128,7 +128,7 @@ class InstallerViewSet(ViewSet):
 
         node_ids = [task_node.node_id for task_node in selected_task_nodes if task_node.node_id]
         if node_ids:
-            error_response = _authorize_existing_install_nodes(request, node_ids)
+            _, error_response = authorize_node_ids(request, node_ids, required_permission="Operate")
             if error_response:
                 return error_response
 
