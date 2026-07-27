@@ -5,6 +5,7 @@ import dayjs from 'dayjs';
 import styles from './index.module.scss';
 import K8sTask from './components/k8s/k8sGuidedTask';
 import VMTask from './components/vmTask';
+import WinSphereTask from './components/winsphereTask';
 import SNMPTask from './components/snmpTask';
 import SQLTask from './components/sqlTask';
 import CloudTask from './components/cloudTask';
@@ -600,6 +601,10 @@ const ProfessionalCollection: React.FC = () => {
 
     if (currentPlugin.model_id === 'pc') {
       return <PCTask {...taskProps} />;
+    }
+
+    if (currentPlugin.model_id === 'winsphere') {
+      return <WinSphereTask {...taskProps} />;
     }
 
       const taskMap: Record<string, React.ComponentType<any>> = {

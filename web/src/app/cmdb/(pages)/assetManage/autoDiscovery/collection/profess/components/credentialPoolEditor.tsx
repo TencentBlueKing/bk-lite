@@ -44,7 +44,7 @@ import { useTranslation } from '@/utils/i18n';
 
 import styles from '../index.module.scss';
 
-type CredentialShape = 'ssh' | 'sql' | 'snmp' | 'config_file' | 'network_config_file' | 'vm' | 'cloud' | 'ipmi' | 'winrm' | 'macos_ssh';
+type CredentialShape = 'ssh' | 'sql' | 'snmp' | 'config_file' | 'network_config_file' | 'vm' | 'winsphere' | 'cloud' | 'ipmi' | 'winrm' | 'macos_ssh';
 
 const IPMI_PRIVILEGE_OPTIONS = [
   { label: 'callback', value: 'callback' },
@@ -109,7 +109,15 @@ const createEmptyCredential = (shape: CredentialShape, showDatabase?: boolean): 
 
   return {
     _client_id: makeClientId(),
-    port: shape === 'sql' ? (showDatabase ? '1433' : '3306') : shape === 'vm' ? '443' : '22',
+    ...(shape === 'winsphere'
+      ? { user: '', password: '', https_port: 443, verify_tls: false }
+      : {
+        port: shape === 'sql'
+          ? (showDatabase ? '1433' : '3306')
+          : shape === 'vm'
+            ? '443'
+            : '22',
+      }),
     ...(shape === 'vm' ? { ssl: false } : {}),
     ...(shape === 'cloud' ? { accessKey: '', accessSecret: '', regionId: '' } : {}),
     ...(shape === 'ipmi' ? { port: '623', privilege: 'administrator' } : {}),
@@ -160,6 +168,27 @@ function getPreviewFields(
         isSecret: true,
       },
       { label: t('Collection.cloudTask.region', '区域'), value: item.regionName || item.regionId || '--' },
+    ];
+  }
+
+  if (shape === 'winsphere') {
+    return [
+      { label: t('Collection.WinSphereTask.user', 'WinSphere账号'), value: item.user || '--' },
+      {
+        label: t('Collection.WinSphereTask.password', '密码'),
+        value: passwordVisible && item.password && item.password !== PASSWORD_PLACEHOLDER
+          ? item.password
+          : getMaskedSecret(item.password),
+        isSecret: true,
+      },
+      {
+        label: t('Collection.WinSphereTask.httpsPort', 'HTTPS端口'),
+        value: String(item.https_port || 443),
+      },
+      {
+        label: t('Collection.WinSphereTask.verifyTls', 'TLS证书校验'),
+        value: item.verify_tls ? t('common.yes', '是') : t('common.no', '否'),
+      },
     ];
   }
 
@@ -609,6 +638,43 @@ function renderCredentialFields({
               className={styles.credentialRefreshButton}
             />
           </div>
+        </InputRow>
+      </div>
+    );
+  }
+
+  if (shape === 'winsphere') {
+    return (
+      <div className={styles.credentialFieldGrid}>
+        <InputRow label={t('Collection.WinSphereTask.user', 'WinSphere账号')}>
+          <Input
+            value={item.user}
+            placeholder={t('common.inputTip', '请输入')}
+            onChange={(event) => updateItem(index, { user: event.target.value })}
+          />
+        </InputRow>
+        <InputRow label={t('Collection.WinSphereTask.password', '密码')}>
+          <SecretInput
+            value={item.password}
+            placeholder={t('common.inputTip', '请输入')}
+            editMode={editMode}
+            onChange={(nextValue) => updateItem(index, { password: nextValue })}
+          />
+        </InputRow>
+        <InputRow label={t('Collection.WinSphereTask.httpsPort', 'HTTPS端口')}>
+          <InputNumber
+            min={1}
+            max={65535}
+            className="w-32"
+            value={item.https_port as any}
+            onChange={(nextValue) => updateItem(index, { https_port: nextValue as any })}
+          />
+        </InputRow>
+        <InputRow label={t('Collection.WinSphereTask.verifyTls', 'TLS证书校验')}>
+          <Switch
+            checked={Boolean(item.verify_tls)}
+            onChange={(checked) => updateItem(index, { verify_tls: checked })}
+          />
         </InputRow>
       </div>
     );
