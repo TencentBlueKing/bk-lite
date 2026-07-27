@@ -56,6 +56,12 @@ interface NodeContextMenuState {
   nodeId: string;
 }
 
+interface RelationshipEdgeData {
+  sourceNodeId?: string;
+  targetNodeId?: string;
+  relationshipIds?: string[];
+}
+
 const GROUP_LABELS: Record<string, string> = {
   application: 'ApplicationResourceOverview.groupApplication',
   host: 'ApplicationResourceOverview.groupHost',
@@ -105,6 +111,17 @@ const COMPACT_NODE = {
   labelWidth: 170,
 } as const;
 
+const HOVER_COLOR = 'color-mix(in srgb, var(--color-primary) 72%, var(--color-bg))';
+
+const RELATIONSHIP_LABEL_ATTRS = {
+  textFill: 'var(--color-text-3)',
+  activeTextFill: HOVER_COLOR,
+  bgFill: 'var(--color-bg)',
+  activeBgFill: 'var(--color-primary-bg-active)',
+  bgStroke: 'var(--color-border-2)',
+  activeBgStroke: HOVER_COLOR,
+} as const;
+
 const buildRelationshipLabel = (text: string, position = 0.5) => ({
   position,
   markup: [
@@ -114,7 +131,7 @@ const buildRelationshipLabel = (text: string, position = 0.5) => ({
   attrs: {
     txt: {
       text,
-      fill: 'var(--color-text-3)',
+      fill: RELATIONSHIP_LABEL_ATTRS.textFill,
       fontSize: 10,
       fontWeight: 500,
       textAnchor: 'middle',
@@ -126,15 +143,51 @@ const buildRelationshipLabel = (text: string, position = 0.5) => ({
       refHeight: '155%',
       refX: '-20%',
       refY: '-27%',
-      fill: 'var(--color-bg)',
+      fill: RELATIONSHIP_LABEL_ATTRS.bgFill,
       fillOpacity: 0.94,
-      stroke: 'var(--color-border-2)',
+      stroke: RELATIONSHIP_LABEL_ATTRS.bgStroke,
       strokeWidth: 1,
       rx: 4,
       ry: 4,
     },
   },
 });
+
+const buildHoverLabels = (labels: unknown, active: boolean) => {
+  if (!Array.isArray(labels)) return labels;
+  return labels.map((label) => {
+    if (!label || typeof label !== 'object') return label;
+    const typedLabel = label as { attrs?: { txt?: Record<string, unknown>; bg?: Record<string, unknown> } };
+    const attrs = typedLabel.attrs || {};
+    return {
+      ...typedLabel,
+      attrs: {
+        ...attrs,
+        txt: {
+          ...(attrs.txt || {}),
+          fill: active
+            ? RELATIONSHIP_LABEL_ATTRS.activeTextFill
+            : RELATIONSHIP_LABEL_ATTRS.textFill,
+          fontWeight: active ? 700 : 500,
+        },
+        bg: {
+          ...(attrs.bg || {}),
+          fill: active
+            ? RELATIONSHIP_LABEL_ATTRS.activeBgFill
+            : RELATIONSHIP_LABEL_ATTRS.bgFill,
+          stroke: active
+            ? RELATIONSHIP_LABEL_ATTRS.activeBgStroke
+            : RELATIONSHIP_LABEL_ATTRS.bgStroke,
+          strokeWidth: active ? 1.35 : 1,
+          fillOpacity: active ? 0.98 : 0.94,
+          filter: active
+            ? 'drop-shadow(0 3px 6px var(--color-portal-card-shadow))'
+            : 'none',
+        },
+      },
+    };
+  });
+};
 
 const resolveEdgeCellId = (terminal: unknown) => {
   if (typeof terminal === 'string' || typeof terminal === 'number') {
@@ -242,6 +295,7 @@ function buildCompactGraphData(graphData: ReturnType<typeof buildNetworkTopology
     hasReverseEdge: boolean;
     forwardRelationships: Set<string>;
     reverseRelationships: Set<string>;
+    relationshipIds: Set<string>;
   }>();
 
   graphData.edges.forEach((edge) => {
@@ -269,8 +323,10 @@ function buildCompactGraphData(graphData: ReturnType<typeof buildNetworkTopology
       hasReverseEdge: false,
       forwardRelationships: new Set<string>(),
       reverseRelationships: new Set<string>(),
+      relationshipIds: new Set<string>(),
     };
 
+    group.relationshipIds.add(String(edge.id));
     if (sourceCell === visualSourceCell) {
       group.hasForwardEdge = true;
       if (relationship) {
@@ -473,6 +529,7 @@ function buildCompactGraphData(graphData: ReturnType<typeof buildNetworkTopology
         data: {
           sourceNodeId: group.visualSourceCell,
           targetNodeId: group.visualTargetCell,
+          relationshipIds: Array.from(group.relationshipIds),
         },
         labels: relationshipLines.length
           ? [buildRelationshipLabel(relationshipLines.join('\n'))]
@@ -695,6 +752,9 @@ export default function ApplicationResourceOverview({ modelId, instId }: Props) 
     nodeId: '',
   });
   const [relationsOpen, setRelationsOpen] = useState(false);
+  const [hoveredRelationId, setHoveredRelationId] = useState<string | null>(null);
+  const [hoveredGraphNodeId, setHoveredGraphNodeId] = useState<string | null>(null);
+  const [hoveredGraphEdgeId, setHoveredGraphEdgeId] = useState<string | null>(null);
   const topologyCardRef = useRef<HTMLDivElement | null>(null);
   const relationsButtonRef = useRef<HTMLAnchorElement | HTMLButtonElement | null>(null);
   const graphViewportFrameRef = useRef<number | null>(null);
@@ -725,6 +785,9 @@ export default function ApplicationResourceOverview({ modelId, instId }: Props) 
     let cancelled = false;
     async function loadApplicationData() {
       if (!selectedTarget) return;
+      setHoveredRelationId(null);
+      setHoveredGraphNodeId(null);
+      setHoveredGraphEdgeId(null);
       setLoading(true);
       try {
         const topologyRes = await getApplicationResourceTopology(selectedTarget.model_id, selectedTarget.id, initialDepth);
@@ -818,62 +881,21 @@ export default function ApplicationResourceOverview({ modelId, instId }: Props) 
     const graph = graphInstance;
     if (!graph) return undefined;
 
-    const hoveredNodeIds = new Set<string>();
-    const hoveredEdgeIds = new Set<string>();
-    const nodeAttrs = new Map(graphData.nodes.map((node) => [String(node.id), node.attrs]));
-    const edgeAttrs = new Map(graphData.edges.map((edge) => [String(edge.id), edge.attrs]));
-
-    const applyHoverState = () => {
-      graph.getNodes().forEach((node) => {
-        const active = hoveredNodeIds.has(String(node.id));
-        const original = nodeAttrs.get(String(node.id));
-        node.attr({
-          body: {
-            stroke: active ? 'var(--color-primary)' : original?.body?.stroke,
-            strokeWidth: active ? 1.8 : original?.body?.strokeWidth,
-            filter: active
-              ? 'drop-shadow(0 4px 8px var(--color-portal-card-shadow))'
-              : original?.body?.filter,
-          },
-          iconColumn: {
-            fill: active
-              ? 'color-mix(in srgb, var(--color-primary) 10%, var(--color-bg))'
-              : original?.iconColumn?.fill,
-          },
-        });
-      });
-
-      graph.getEdges().forEach((edge) => {
-        const data = edge.getData() as { sourceNodeId?: string; targetNodeId?: string } | undefined;
-        const active = hoveredEdgeIds.has(String(edge.id))
-          || hoveredNodeIds.has(String(data?.sourceNodeId || ''))
-          || hoveredNodeIds.has(String(data?.targetNodeId || ''));
-        const original = edgeAttrs.get(String(edge.id));
-        edge.attr({
-          line: {
-            stroke: active ? 'var(--color-primary)' : original?.line?.stroke,
-            strokeOpacity: active ? 0.95 : original?.line?.strokeOpacity,
-            strokeWidth: active ? 2 : original?.line?.strokeWidth,
-          },
-        });
-      });
-    };
-
     const handleNodeEnter = ({ node }: { node: Node }) => {
-      hoveredNodeIds.add(String(node.id));
-      applyHoverState();
+      setHoveredGraphNodeId(String(node.id));
     };
     const handleNodeLeave = ({ node }: { node: Node }) => {
-      hoveredNodeIds.delete(String(node.id));
-      applyHoverState();
+      setHoveredGraphNodeId((current) => (
+        current === String(node.id) ? null : current
+      ));
     };
     const handleEdgeEnter = ({ edge }: { edge: Edge }) => {
-      hoveredEdgeIds.add(String(edge.id));
-      applyHoverState();
+      setHoveredGraphEdgeId(String(edge.id));
     };
     const handleEdgeLeave = ({ edge }: { edge: Edge }) => {
-      hoveredEdgeIds.delete(String(edge.id));
-      applyHoverState();
+      setHoveredGraphEdgeId((current) => (
+        current === String(edge.id) ? null : current
+      ));
     };
 
     graph.on('node:mouseenter', handleNodeEnter);
@@ -887,10 +909,101 @@ export default function ApplicationResourceOverview({ modelId, instId }: Props) 
       graph.off('edge:mouseenter', handleEdgeEnter);
       graph.off('edge:mouseleave', handleEdgeLeave);
     };
-  }, [graphData, graphInstance]);
+  }, [graphInstance]);
+
+  useEffect(() => {
+    const graph = graphInstance;
+    if (!graph) return;
+
+    const nodeAttrs = new Map(graphData.nodes.map((node) => [String(node.id), node.attrs]));
+    const edgeAttrs = new Map(graphData.edges.map((edge) => [String(edge.id), edge.attrs]));
+    const edgeLabels = new Map(graphData.edges.map((edge) => [String(edge.id), edge.labels]));
+    const edgeData = new Map(graphData.edges.map((edge) => [
+      String(edge.id),
+      edge.data as RelationshipEdgeData | undefined,
+    ]));
+
+    const withActiveMarker = (marker: unknown) => {
+      if (!marker || typeof marker !== 'object') return marker;
+      return {
+        ...(marker as Record<string, unknown>),
+        fill: HOVER_COLOR,
+        stroke: HOVER_COLOR,
+      };
+    };
+
+    const relationActiveNodeIds = new Set<string>();
+    graph.getEdges().forEach((edge) => {
+      const data = edgeData.get(String(edge.id));
+      if (hoveredRelationId && data?.relationshipIds?.includes(hoveredRelationId)) {
+        if (data.sourceNodeId) relationActiveNodeIds.add(String(data.sourceNodeId));
+        if (data.targetNodeId) relationActiveNodeIds.add(String(data.targetNodeId));
+      }
+    });
+
+    graph.getNodes().forEach((node) => {
+      const active = hoveredGraphNodeId === String(node.id)
+        || relationActiveNodeIds.has(String(node.id));
+      const original = nodeAttrs.get(String(node.id));
+      node.attr({
+        body: {
+          stroke: active ? HOVER_COLOR : original?.body?.stroke,
+          strokeWidth: active ? 1.6 : original?.body?.strokeWidth,
+          filter: active
+            ? 'drop-shadow(0 4px 8px var(--color-portal-card-shadow))'
+            : original?.body?.filter,
+        },
+        iconColumn: {
+          fill: active
+            ? 'var(--color-primary-bg-active)'
+            : original?.iconColumn?.fill,
+        },
+      });
+    });
+
+    graph.getEdges().forEach((edge) => {
+      const data = edgeData.get(String(edge.id));
+      const relationActive = Boolean(
+        hoveredRelationId && data?.relationshipIds?.includes(hoveredRelationId)
+      );
+      const active = hoveredGraphEdgeId === String(edge.id)
+        || relationActive
+        || hoveredGraphNodeId === String(data?.sourceNodeId || '')
+        || hoveredGraphNodeId === String(data?.targetNodeId || '');
+      const original = edgeAttrs.get(String(edge.id));
+      (edge as Edge & { attr: (attrs: unknown) => void }).attr({
+        line: {
+          stroke: active ? HOVER_COLOR : original?.line?.stroke,
+          strokeOpacity: active ? 0.88 : original?.line?.strokeOpacity,
+          strokeWidth: active ? 2.1 : original?.line?.strokeWidth,
+          sourceMarker: active
+            ? withActiveMarker(original?.line?.sourceMarker)
+            : original?.line?.sourceMarker,
+          targetMarker: active
+            ? withActiveMarker(original?.line?.targetMarker)
+            : original?.line?.targetMarker,
+          filter: active
+            ? 'drop-shadow(0 2px 4px var(--color-portal-card-shadow))'
+            : original?.line?.filter,
+        },
+      });
+      (edge as Edge & { setLabels?: (labels: unknown) => void }).setLabels?.(
+        buildHoverLabels(edgeLabels.get(String(edge.id)), active)
+      );
+    });
+  }, [
+    graphData,
+    graphInstance,
+    hoveredGraphEdgeId,
+    hoveredGraphNodeId,
+    hoveredRelationId,
+  ]);
 
   const handleReset = async () => {
     if (!selectedTarget) return;
+    setHoveredGraphNodeId(null);
+    setHoveredGraphEdgeId(null);
+    setHoveredRelationId(null);
     setNodeContextMenu((current) => ({ ...current, visible: false }));
     setLoading(true);
     try {
@@ -909,6 +1022,9 @@ export default function ApplicationResourceOverview({ modelId, instId }: Props) 
   };
 
   const handleExpandNode = async (node: ApplicationResourceNode, depth: number) => {
+    setHoveredRelationId(null);
+    setHoveredGraphNodeId(null);
+    setHoveredGraphEdgeId(null);
     setNodeContextMenu((current) => ({ ...current, visible: false }));
     setLoading(true);
     try {
@@ -998,6 +1114,10 @@ export default function ApplicationResourceOverview({ modelId, instId }: Props) 
                 <div
                   ref={topologyCardRef}
                   className={styles.graphPane}
+                  onMouseLeave={() => {
+                    setHoveredGraphNodeId(null);
+                    setHoveredGraphEdgeId(null);
+                  }}
                 >
                   {!topology?.nodes?.length ? (
                     <div className={styles.graphEmpty}>
@@ -1164,12 +1284,16 @@ export default function ApplicationResourceOverview({ modelId, instId }: Props) 
                         icon={<DoubleRightOutlined />}
                         tabIndex={relationsOpen ? 0 : -1}
                         onClick={() => {
+                          setHoveredRelationId(null);
                           setRelationsOpen(false);
                           window.requestAnimationFrame(() => relationsButtonRef.current?.focus());
                         }}
                       />
                     </div>
-                    <div className={styles.relationsTable}>
+                    <div
+                      className={styles.relationsTable}
+                      onMouseLeave={() => setHoveredRelationId(null)}
+                    >
                       {!topology?.links?.length ? (
                         <Empty
                           image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -1184,6 +1308,17 @@ export default function ApplicationResourceOverview({ modelId, instId }: Props) 
                           scroll={{ y: 'calc(100vh - 308px)' }}
                           dataSource={topology.links}
                           columns={linkColumns}
+                          rowClassName={(record) =>
+                            record.id === hoveredRelationId ? styles.relationRowActive : ''
+                          }
+                          onRow={(record) => ({
+                            onMouseEnter: () => setHoveredRelationId(record.id),
+                            onMouseLeave: () => {
+                              setHoveredRelationId((current) =>
+                                current === record.id ? null : current
+                              );
+                            },
+                          })}
                         />
                       )}
                     </div>

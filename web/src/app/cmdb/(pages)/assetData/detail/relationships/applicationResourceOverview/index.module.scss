@@ -270,6 +270,14 @@
   background: var(--color-bg-hover);
 }
 
+.relationsTable :global(.ant-table-tbody) > .relationRowActive > td {
+  background: var(--color-primary-bg-active);
+}
+
+.relationsTable :global(.ant-table-tbody) > .relationRowActive:hover > td {
+  background: var(--color-primary-bg-active);
+}
+
 .relationCell {
   overflow: hidden;
   white-space: nowrap;
