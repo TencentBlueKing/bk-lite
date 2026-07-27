@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Tag, Button, Input, Select, Space, Tabs, Modal, Form, message, Tooltip, Popconfirm, Upload } from 'antd';
+import { Tag, Button, Input, Select, Space, Tabs, Modal, Form, message, Popconfirm, Upload } from 'antd';
 import PermissionWrapper from '@/components/permission';
 import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined, CloudDownloadOutlined, EditOutlined, DeleteOutlined, CloseOutlined, InboxOutlined, UploadOutlined } from '@ant-design/icons';
@@ -103,6 +103,19 @@ function getPatchArch(patch: Patch): string {
   return (archs || []).join('、') || '—';
 }
 
+function normalizeRepoType(repoType?: string): string {
+  switch (repoType) {
+    case 'yum_repo':
+      return 'yum';
+    case 'dnf_repo':
+      return 'dnf';
+    case 'apt_repo':
+      return 'apt';
+    default:
+      return repoType || 'yum';
+  }
+}
+
 export default function LibraryPage() {
   const api = usePatchManagerApi();
   const { isLoading } = useApiClient();
@@ -116,6 +129,8 @@ export default function LibraryPage() {
   const [candidateSearch, setCandidateSearch] = useState('');
   const [selectedCandidates, setSelectedCandidates] = useState<React.Key[]>([]);
   const [editingPatch, setEditingPatch] = useState<Patch | null>(null);
+  const [createSaving, setCreateSaving] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
   const [createForm] = Form.useForm();
   const [editForm] = Form.useForm();
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
@@ -163,8 +178,13 @@ export default function LibraryPage() {
     return params;
   };
 
-  const loadData = async (page?: number, pageSize?: number, currentFilters?: SearchFilters) => {
-    setLoading(true);
+  const loadData = async (
+    page?: number,
+    pageSize?: number,
+    currentFilters?: SearchFilters,
+    silent = false,
+  ) => {
+    if (!silent) setLoading(true);
     const requestedTab = activeTab;
     const targetPage = page ?? pagination.current;
     const targetSize = pageSize ?? pagination.pageSize;
@@ -176,12 +196,12 @@ export default function LibraryPage() {
         setPagination((p) => ({ ...p, current: targetPage, pageSize: targetSize, total: res.count || 0 }));
       }
     } catch {
-      if (requestedTab === activeTab) {
+      if (requestedTab === activeTab && !silent) {
         setData([]);
         setPagination((p) => ({ ...p, current: targetPage, pageSize: targetSize, total: 0 }));
       }
     } finally {
-      if (requestedTab === activeTab) {
+      if (requestedTab === activeTab && !silent) {
         setLoading(false);
       }
     }
@@ -197,7 +217,10 @@ export default function LibraryPage() {
   const hasProcessingPackage = data.some((patch) => patch.pkg_status === 'downloading');
   useEffect(() => {
     if (!hasProcessingPackage) return;
-    const timer = window.setInterval(() => loadData(), 2000);
+    const timer = window.setInterval(
+      () => loadData(undefined, undefined, undefined, true),
+      2000,
+    );
     return () => window.clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasProcessingPackage, activeTab, pagination.current, pagination.pageSize, filters]);
@@ -213,6 +236,7 @@ export default function LibraryPage() {
     if (activeTab === 'win') {
       return {
         ...base,
+        name: editingPatch.windows_detail?.kb_number || '',
         version: (editingPatch.windows_detail?.product_list || []).join('、') || '',
         arch: (editingPatch.windows_detail?.architectures || [])[0] || '',
         package_file: getWindowsPackageUploadState(editingPatch).fileList,
@@ -220,6 +244,7 @@ export default function LibraryPage() {
     }
     return {
       ...base,
+      name: editingPatch.linux_detail?.pkg_name || '',
       minVer: editingPatch.linux_detail?.pkg_version || '',
       dist: editingPatch.linux_detail?.distro_name || '',
       arch: (editingPatch.linux_detail?.architectures || [])[0] || '',
@@ -293,7 +318,7 @@ export default function LibraryPage() {
     }
     const osType = OS_TYPE_MAP[activeTab];
     const patchPayload: Partial<Patch> = {
-      title: values.desc || '',
+      title: values.desc?.trim() || values.name,
       os_type: osType,
       severity: values.severity,
       patch_type: 'security',
@@ -316,26 +341,27 @@ export default function LibraryPage() {
       };
     }
 
+    const file = values.package_file?.[0]?.originFileObj as File | undefined;
+    if (activeTab === 'win' && !file) {
+      message.error('请上传 MSU 或 CAB 补丁文件');
+      return;
+    }
+
+    setCreateSaving(true);
     try {
-      const created = await api.createPatch(patchPayload);
+      if (activeTab === 'win') {
+        await api.saveManualWindowsPatch(patchPayload, file);
+      } else {
+        await api.createPatch(patchPayload);
+      }
       createForm.resetFields();
       setCreateOpen(false);
+      message.success('新增成功');
       loadData(1);
-      if (activeTab === 'win') {
-        const file = values.package_file?.[0]?.originFileObj as File | undefined;
-        if (file) {
-          message.success('补丁记录已创建，补丁包正在处理中');
-          void api.uploadWindowsPatchPackage(created.id, file)
-            .then(() => {
-              message.success('补丁包上传完成');
-              loadData(1);
-            })
-            .catch(() => loadData(1));
-        }
-      } else {
-        message.success('新增成功');
-      }
     } catch {
+      loadData(1);
+    } finally {
+      setCreateSaving(false);
     }
   };
 
@@ -461,20 +487,7 @@ export default function LibraryPage() {
   const candidateColumns: ColumnsType<CandidateItem> = [
     { title: activeTab === 'win' ? 'KB 号' : '包名', dataIndex: 'name', width: 130 },
     {
-      title: () => (
-        <span>
-          严重级别
-          <Tooltip title="批量修改严重级别">
-            <EditOutlined
-              style={{ marginLeft: 6, cursor: 'pointer', color: 'var(--color-primary, #1677ff)' }}
-              onClick={() => {
-                setBatchSeverityValue(undefined);
-                setBatchSeverityOpen(true);
-              }}
-            />
-          </Tooltip>
-        </span>
-      ),
+      title: '严重级别',
       dataIndex: 'severity',
       width: 130,
       render: (_: unknown, r: CandidateItem) => (
@@ -548,12 +561,17 @@ export default function LibraryPage() {
       <OperateDrawer
         title="新增补丁"
         open={createOpen}
-        onClose={() => setCreateOpen(false)}
+        onClose={() => {
+          if (!createSaving) setCreateOpen(false);
+        }}
+        closable={!createSaving}
+        maskClosable={!createSaving}
+        keyboard={!createSaving}
         width={520}
         footer={
           <Space>
-            <Button onClick={() => { createForm.resetFields(); setCreateOpen(false); }}>取消</Button>
-            <Button type="primary" onClick={handleCreateSubmit}>确定</Button>
+            <Button disabled={createSaving} onClick={() => { createForm.resetFields(); setCreateOpen(false); }}>取消</Button>
+            <Button type="primary" loading={createSaving} onClick={handleCreateSubmit}>确定</Button>
           </Space>
         }
       >
@@ -561,17 +579,8 @@ export default function LibraryPage() {
           <Form.Item label={activeTab === 'win' ? 'KB 号' : '包名'} name="name" rules={[{ required: true, message: activeTab === 'win' ? '请输入 KB 号' : '请输入包名' }]}>
             <Input placeholder={activeTab === 'win' ? '例如 KB5034441' : '例如 openssl'} />
           </Form.Item>
-          <Form.Item label="描述" name="desc" rules={[{ required: true, message: '请输入补丁描述' }]}>
-            <Input placeholder="请输入补丁描述" />
-          </Form.Item>
-          {activeTab === 'win' ? (
+          {activeTab === 'win' && (
             <>
-              <Form.Item label="适用版本" name="version" rules={[{ required: true, message: '请输入适用版本' }]}>
-                <Input placeholder="例如 Windows Server 2019" />
-              </Form.Item>
-              <Form.Item label="架构" name="arch" rules={[{ required: true, message: '请选择架构' }]}>
-                <Select placeholder="请选择" options={[{ label: 'x64', value: 'x64' }, { label: 'x86', value: 'x86' }]} />
-              </Form.Item>
               <Form.Item
                 label="补丁文件"
                 name="package_file"
@@ -583,6 +592,24 @@ export default function LibraryPage() {
                   <p><InboxOutlined /></p>
                   <p>点击或拖拽 MSU / CAB 文件到此处</p>
                 </Upload.Dragger>
+              </Form.Item>
+            </>
+          )}
+          <Form.Item label="描述" name="desc">
+            <Input placeholder="请输入补丁描述" />
+          </Form.Item>
+          {activeTab === 'win' && (
+            <Form.Item label="严重级别" name="severity" rules={[{ required: true, message: '请选择严重级别' }]}>
+              <Select placeholder="请选择" options={[{ label: '严重', value: 'critical' }, { label: '重要', value: 'important' }, { label: '中等', value: 'moderate' }, { label: '低', value: 'low' }]} />
+            </Form.Item>
+          )}
+          {activeTab === 'win' ? (
+            <>
+              <Form.Item label="适用版本" name="version">
+                <Input placeholder="例如 Windows Server 2019" />
+              </Form.Item>
+              <Form.Item label="架构" name="arch">
+                <Select placeholder="请选择" options={[{ label: 'x64', value: 'x64' }, { label: 'x86', value: 'x86' }]} />
               </Form.Item>
             </>
           ) : (
@@ -598,9 +625,11 @@ export default function LibraryPage() {
               </Form.Item>
             </>
           )}
-          <Form.Item label="严重级别" name="severity" rules={[{ required: true, message: '请选择严重级别' }]}>
-            <Select placeholder="请选择" options={[{ label: '严重', value: 'critical' }, { label: '重要', value: 'important' }, { label: '中等', value: 'moderate' }, { label: '低', value: 'low' }]} />
-          </Form.Item>
+          {activeTab !== 'win' && (
+            <Form.Item label="严重级别" name="severity" rules={[{ required: true, message: '请选择严重级别' }]}>
+              <Select placeholder="请选择" options={[{ label: '严重', value: 'critical' }, { label: '重要', value: 'important' }, { label: '中等', value: 'moderate' }, { label: '低', value: 'low' }]} />
+            </Form.Item>
+          )}
         </Form>
       </OperateDrawer>
 
@@ -714,58 +743,79 @@ export default function LibraryPage() {
         </div>
       </Modal>
 
-      <Modal title="编辑补丁" open={!!editingPatch} onCancel={() => setEditingPatch(null)} onOk={async () => {
-        let values;
-        try {
-          values = await editForm.validateFields();
-        } catch (err: any) {
-          if (err?.errorFields) return;
-          message.error('表单校验失败');
-          return;
-        }
-        if (!editingPatch) return;
-        try {
-          const payload: Partial<Patch> = { title: values.title, severity: values.severity };
-          if (activeTab === 'win') {
-            payload.windows_detail = {
-              kb_number: editingPatch.windows_detail?.kb_number || '',
-              ms_bulletin: editingPatch.windows_detail?.ms_bulletin || '',
-              product_list: values.version ? values.version.split('、').map((s: string) => s.trim()) : [],
-              architectures: values.arch ? [values.arch] : [],
-            };
-          } else {
-            payload.linux_detail = {
-              pkg_name: editingPatch.linux_detail?.pkg_name || '',
-              pkg_version: values.minVer || '',
-              distro_name: values.dist || '',
-              os_version_range: editingPatch.linux_detail?.os_version_range || '',
-              architectures: values.arch ? [values.arch] : [],
-              repo_type: editingPatch.linux_detail?.repo_type || 'yum',
-            };
+      <Modal
+        title="编辑补丁"
+        open={!!editingPatch}
+        onCancel={() => {
+          if (!editSaving) setEditingPatch(null);
+        }}
+        confirmLoading={editSaving}
+        cancelButtonProps={{ disabled: editSaving }}
+        closable={!editSaving}
+        maskClosable={!editSaving}
+        keyboard={!editSaving}
+        onOk={async () => {
+          let values;
+          try {
+            values = await editForm.validateFields();
+          } catch (err: any) {
+            if (err?.errorFields) return;
+            message.error('表单校验失败');
+            return;
           }
-          await api.updatePatch(editingPatch.id, payload);
-          const replacement = values.package_file?.[0]?.originFileObj as File | undefined;
-          if (editingPatch.pkg_status === 'download_failed' && replacement) {
-            await api.uploadWindowsPatchPackage(editingPatch.id, replacement, true);
+          if (!editingPatch) return;
+          setEditSaving(true);
+          try {
+            const payload: Partial<Patch> = {
+              title: values.title?.trim() || values.name,
+              os_type: editingPatch.os_type,
+              severity: values.severity,
+              team: editingPatch.team,
+            };
+            if (activeTab === 'win') {
+              payload.windows_detail = {
+                kb_number: values.name,
+                ms_bulletin: editingPatch.windows_detail?.ms_bulletin || '',
+                product_list: values.version ? values.version.split('、').map((s: string) => s.trim()) : [],
+                architectures: values.arch ? [values.arch] : [],
+              };
+            } else {
+              payload.linux_detail = {
+                pkg_name: editingPatch.linux_detail?.pkg_name || '',
+                pkg_version: values.minVer || '',
+                distro_name: values.dist || '',
+                os_version_range: editingPatch.linux_detail?.os_version_range || '',
+                architectures: values.arch ? [values.arch] : [],
+                repo_type: normalizeRepoType(editingPatch.linux_detail?.repo_type),
+              };
+            }
+            const replacement = values.package_file?.[0]?.originFileObj as File | undefined;
+            if (activeTab === 'win') {
+              await api.saveManualWindowsPatch(payload, replacement, editingPatch.id);
+            } else {
+              await api.updatePatch(editingPatch.id, payload);
+            }
+            message.success('已保存');
+            setEditingPatch(null);
+            loadData();
+          } catch {
+          } finally {
+            setEditSaving(false);
           }
-          message.success('已保存');
-          setEditingPatch(null);
-          loadData();
-        } catch {
-        }
-      }} okText="保存" destroyOnClose>
+        }}
+        okText="保存"
+        destroyOnClose
+      >
         <Form layout="vertical" form={editForm} preserve={false} initialValues={editInitialValues}>
-          <Form.Item label={activeTab === 'win' ? 'KB 号' : '包名'}>
-            <Input disabled value={editingPatch ? getPatchName(editingPatch) : ''} />
-          </Form.Item>
-          <Form.Item label="描述" name="title" rules={[{ required: true, message: '请输入描述' }]}>
-            <Input />
+          <Form.Item
+            label={activeTab === 'win' ? 'KB 号' : '包名'}
+            name="name"
+            rules={[{ required: true, message: activeTab === 'win' ? '请输入 KB 号' : '请输入包名' }]}
+          >
+            <Input disabled={Boolean(activeTab === 'win' ? editingPatch?.windows_detail?.kb_number : editingPatch?.linux_detail?.pkg_name)} />
           </Form.Item>
           {activeTab === 'win' ? (
             <>
-              <Form.Item label="适用版本" name="version">
-                <Input />
-              </Form.Item>
               {editPackageUploadState.visible && (
                 <Form.Item
                   label="补丁文件"
@@ -775,6 +825,15 @@ export default function LibraryPage() {
                   extra={editPackageUploadState.disabled
                     ? '补丁包已就绪或正在处理中，暂不能替换'
                     : '上次上传失败，可删除旧文件后重新选择 MSU 或 CAB 文件'}
+                  rules={editingPatch?.pkg_status === 'download_failed' ? [
+                    { required: true, message: '请重新上传 MSU 或 CAB 补丁文件' },
+                    {
+                      validator: async (_rule, files) => {
+                        if (files?.some((file: any) => file.originFileObj)) return;
+                        throw new Error('请重新上传 MSU 或 CAB 补丁文件');
+                      },
+                    },
+                  ] : undefined}
                 >
                   <Upload
                     maxCount={1}
@@ -793,23 +852,38 @@ export default function LibraryPage() {
                   </Upload>
                 </Form.Item>
               )}
+              <Form.Item label="描述" name="title">
+                <Input />
+              </Form.Item>
+              <Form.Item label="严重级别" name="severity" rules={[{ required: true, message: '请选择严重级别' }]}>
+                <Select options={SEVERITY_OPTIONS.map(({ id, name }) => ({ label: name, value: id }))} />
+              </Form.Item>
+              <Form.Item label="适用版本" name="version">
+                <Input />
+              </Form.Item>
+              <Form.Item label="架构" name="arch">
+                <Input />
+              </Form.Item>
             </>
           ) : (
             <>
+              <Form.Item label="描述" name="title">
+                <Input />
+              </Form.Item>
               <Form.Item label="最低版本要求" name="minVer">
                 <Input />
               </Form.Item>
               <Form.Item label="发行版" name="dist">
                 <Input />
               </Form.Item>
+              <Form.Item label="架构" name="arch">
+                <Input />
+              </Form.Item>
+              <Form.Item label="严重级别" name="severity" rules={[{ required: true, message: '请选择严重级别' }]}>
+                <Select options={SEVERITY_OPTIONS.map(({ id, name }) => ({ label: name, value: id }))} />
+              </Form.Item>
             </>
           )}
-          <Form.Item label="架构" name="arch">
-            <Input />
-          </Form.Item>
-          <Form.Item label="严重级别" name="severity" rules={[{ required: true, message: '请选择严重级别' }]}>
-            <Select options={SEVERITY_OPTIONS.map(({ id, name }) => ({ label: name, value: id }))} />
-          </Form.Item>
         </Form>
       </Modal>
     </div>

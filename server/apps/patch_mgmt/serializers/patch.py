@@ -5,6 +5,7 @@ import re
 from rest_framework import serializers
 
 from apps.core.utils.serializers import TeamSerializer
+from apps.patch_mgmt.constants import PackageManagerType
 from apps.patch_mgmt.models import LinuxPatchDetail, Patch, WindowsPatchDetail
 
 
@@ -14,10 +15,20 @@ class WindowsPatchDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = WindowsPatchDetail
         fields = ["kb_number", "product_list", "architectures", "ms_bulletin"]
+        extra_kwargs = {"kb_number": {"validators": []}}
 
 
 class LinuxPatchDetailSerializer(serializers.ModelSerializer):
     """Linux 补丁详情序列化器（支持读写）"""
+
+    repo_type = serializers.CharField(required=False, allow_blank=True)
+
+    def validate_repo_type(self, value):
+        repo_type = PackageManagerType.normalize(value)
+        valid_values = {choice[0] for choice in PackageManagerType.CHOICES}
+        if repo_type not in valid_values:
+            raise serializers.ValidationError("不是合法选项。")
+        return repo_type
 
     class Meta:
         model = LinuxPatchDetail

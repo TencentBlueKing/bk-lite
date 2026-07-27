@@ -358,6 +358,8 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
           </Form.Item>
           {connectivityResult && (
             <Alert
+              key={connectivityResult.checkedAt}
+              closable
               showIcon
               style={{ marginBottom: 16 }}
               type={connectivityResult.status === 'connected' ? 'success' : 'error'}
