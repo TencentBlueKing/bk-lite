@@ -1,0 +1,62 @@
+{
+  "status": "success",
+  "data": {
+    "resultType": "vector",
+    "result": [
+      {
+        "metric": {
+          "__name__": "pc_info",
+          "model_id": "pc",
+          "bk_obj_id": "pc",
+          "collect_status": "success",
+          "host": "192.168.1.88",
+          "inst_name": "MAC-00001111-2222-3333-4444-555566667777",
+          "host_name": "DESIGN-MBP-01",
+          "ip_addr": "192.168.1.88",
+          "os_type": "macos",
+          "os_name": "macOS",
+          "os_version": "14.5",
+          "os_build": "23F79",
+          "architecture": "arm64",
+          "hardware_uuid": "00001111-2222-3333-4444-555566667777",
+          "serial_number": "C02XL0AAJHD3",
+          "device_model": "MacBookPro18,3",
+          "logged_in_user": "designer",
+          "snapshot_id": "a1b2c3d4-5e6f-4789-8abc-def012345678",
+          "software_snapshot_status": "complete",
+          "software_expected_count": "1",
+          "software_error_count": "0"
+        },
+        "value": [
+          1753200000,
+          "1"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "pc_software_info",
+          "model_id": "pc_software",
+          "bk_obj_id": "pc_software",
+          "collect_status": "success",
+          "host": "192.168.1.88",
+          "inst_name": "SW-0B22C66586805CD4A2F1F2A669501741",
+          "pc_inst_name": "MAC-00001111-2222-3333-4444-555566667777",
+          "snapshot_id": "a1b2c3d4-5e6f-4789-8abc-def012345678",
+          "software_key": "com.google.chrome",
+          "name": "Google Chrome",
+          "version": "127.0.6533.89",
+          "publisher": "Google LLC",
+          "product_id": "com.google.Chrome",
+          "install_location": "/Applications/Google Chrome.app",
+          "install_date": "2026-06-01",
+          "architecture": "universal",
+          "source": "macos_application"
+        },
+        "value": [
+          1753200000,
+          "1"
+        ]
+      }
+    ]
+  }
+}
