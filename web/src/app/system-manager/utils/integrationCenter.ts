@@ -15,9 +15,6 @@ export interface IntegrationSummaryItem {
   tone: IntegrationSummaryTone;
 }
 
-export interface IntegrationBaseCapabilityStatusItem extends IntegrationSummaryItem {
-  enableValue: string;
-}
 export const INTEGRATION_DETAIL_TAB_ORDER = ['base', 'user_sync', 'login_auth', 'im_notification'] as const;
 
 export type IntegrationDetailTab = typeof INTEGRATION_DETAIL_TAB_ORDER[number];
@@ -76,7 +73,8 @@ export function resolveIntegrationProviderIcon(providerKey: string) {
     oidc: 'OIDC',
     saml: 'SAML',
     github: 'github-fill',
-    wechat: 'wechat'
+    wechat: 'wechat',
+    wecom: 'wecom',
   };
   return providerIconMap[providerKey] || 'jicheng';
 }
@@ -287,29 +285,29 @@ export function getIntegrationBaseTestStatusMeta(
 export function getIntegrationBaseCapabilityStatusItems(input: {
   instance: Pick<IntegrationInstance, 'status' | 'capability_status' | 'capability_enabled'>;
   t: (key: string, fallback?: string) => string;
-}): IntegrationBaseCapabilityStatusItem[] {
+}): IntegrationSummaryItem[] {
   const { instance, t } = input;
 
   return getAvailableIntegrationTabs(instance)
     .filter((tabKey) => tabKey !== 'base')
     .map((capabilityKey) => {
-      const capabilityTestStatus = instance.status === 'ready'
-        ? instance.capability_status?.[capabilityKey] === 'ready'
-          ? { text: t('system.integrationCenter.capabilityValidationPassed'), tone: 'success' as const }
-          : instance.capability_status?.[capabilityKey] === 'verification_failed'
-            ? { text: t('system.integrationCenter.capabilityValidationFailed'), tone: 'error' as const }
-            : { text: t('system.integrationCenter.capabilityValidationPending'), tone: 'neutral' as const }
-        : instance.status === 'verification_failed'
-          ? { text: t('system.integrationCenter.baseConnectionAbnormal'), tone: 'error' as const }
-          : { text: t('system.integrationCenter.baseConnectionPending'), tone: 'neutral' as const };
+      const capabilityEnabled = Boolean(instance.capability_enabled?.[capabilityKey]);
+      const capabilityTestStatus = !capabilityEnabled
+        ? { text: t('system.integrationCenter.disabled'), tone: 'neutral' as const }
+        : instance.status === 'ready'
+          ? instance.capability_status?.[capabilityKey] === 'ready'
+            ? { text: t('system.integrationCenter.capabilityValidationPassed'), tone: 'success' as const }
+            : instance.capability_status?.[capabilityKey] === 'verification_failed'
+              ? { text: t('system.integrationCenter.capabilityValidationFailed'), tone: 'error' as const }
+              : { text: t('system.integrationCenter.capabilityValidationPending'), tone: 'neutral' as const }
+          : instance.status === 'verification_failed'
+            ? { text: t('system.integrationCenter.baseConnectionAbnormal'), tone: 'error' as const }
+            : { text: t('system.integrationCenter.baseConnectionPending'), tone: 'neutral' as const };
 
       return {
         label: getIntegrationCapabilityLabel(capabilityKey, t),
         value: capabilityTestStatus.text,
         tone: capabilityTestStatus.tone,
-        enableValue: instance.capability_enabled?.[capabilityKey]
-          ? t('system.integrationCenter.enabled')
-          : t('system.integrationCenter.disabled'),
       };
     });
 }
@@ -375,15 +373,20 @@ export function getIntegrationDetailSummaryItems(input: {
   }
 
   const capabilityEnabled = Boolean(instance.capability_enabled?.[activeTab]);
+  const capabilityStatusValue = instance.capability_status?.[activeTab];
   const capabilityTestStatus = instance.status === 'ready'
-    ? getIntegrationBaseTestStatusMeta(instance.capability_status?.[activeTab], t)
+    ? capabilityStatusValue === 'ready'
+      ? { text: t('system.integrationCenter.capabilityValidationPassed'), tone: 'success' as const }
+      : capabilityStatusValue === 'verification_failed'
+        ? { text: t('system.integrationCenter.capabilityValidationFailed'), tone: 'error' as const }
+        : { text: t('system.integrationCenter.capabilityValidationPending'), tone: 'neutral' as const }
     : instance.status === 'verification_failed'
       ? { text: t('system.integrationCenter.baseConnectionAbnormal'), tone: 'error' as const }
       : { text: t('system.integrationCenter.baseConnectionPending'), tone: 'neutral' as const };
   return [
     {
       label: t('system.integrationCenter.enableStatus'),
-      value: capabilityEnabled ? t('system.integrationCenter.enabled') : t('system.integrationCenter.disabled'),
+      value: t(capabilityEnabled ? 'system.integrationCenter.enabled' : 'system.integrationCenter.disabled'),
       tone: capabilityEnabled ? 'success' : 'neutral',
     },
     {

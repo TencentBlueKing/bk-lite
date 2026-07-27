@@ -599,7 +599,7 @@ const IntegrationDetailPage: React.FC = () => {
                     </Tooltip>
                     <Badge
                       status={item.tone === 'success' ? 'success' : item.tone === 'error' ? 'error' : 'default'}
-                      text={<span className="whitespace-nowrap text-[14px] text-[var(--color-text)]">{item.enableValue} · {item.value}</span>}
+                      text={<span className="whitespace-nowrap text-[14px] text-[var(--color-text)]">{item.value}</span>}
                     />
                   </div>
                 ))}

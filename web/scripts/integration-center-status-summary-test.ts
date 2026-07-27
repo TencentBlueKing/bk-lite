@@ -43,13 +43,11 @@ assert.deepEqual(
       label: 'system.integrationCenter.capability.userSync',
       value: 'system.integrationCenter.capabilityValidationPending',
       tone: 'neutral',
-      enableValue: 'system.integrationCenter.enabled',
     },
     {
       label: 'system.integrationCenter.capability.loginAuth',
-      value: 'system.integrationCenter.capabilityValidationPassed',
-      tone: 'success',
-      enableValue: 'system.integrationCenter.disabled',
+      value: 'system.integrationCenter.disabled',
+      tone: 'neutral',
     },
   ],
 );
@@ -70,6 +68,53 @@ assert.deepEqual(
       label: 'system.integrationCenter.capabilityConfigurationValidation',
       value: 'system.integrationCenter.baseConnectionAbnormal',
       tone: 'error',
+    },
+  ],
+);
+
+assert.deepEqual(
+  getIntegrationDetailSummaryItems({
+    activeTab: 'user_sync',
+    instance: {
+      ...readyInstance,
+      capability_enabled: { user_sync: false },
+      capability_status: { user_sync: 'verification_failed' },
+    },
+    t,
+  }),
+  [
+    {
+      label: 'system.integrationCenter.enableStatus',
+      value: 'system.integrationCenter.disabled',
+      tone: 'neutral',
+    },
+    {
+      label: 'system.integrationCenter.capabilityConfigurationValidation',
+      value: 'system.integrationCenter.capabilityValidationFailed',
+      tone: 'error',
+    },
+  ],
+);
+
+assert.deepEqual(
+  getIntegrationDetailSummaryItems({
+    activeTab: 'user_sync',
+    instance: {
+      ...readyInstance,
+      capability_status: { user_sync: 'ready' },
+    },
+    t,
+  }),
+  [
+    {
+      label: 'system.integrationCenter.enableStatus',
+      value: 'system.integrationCenter.enabled',
+      tone: 'success',
+    },
+    {
+      label: 'system.integrationCenter.capabilityConfigurationValidation',
+      value: 'system.integrationCenter.capabilityValidationPassed',
+      tone: 'success',
     },
   ],
 );
