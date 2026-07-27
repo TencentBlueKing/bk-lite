@@ -170,6 +170,27 @@ def test_update_rejects_new_team_outside_current_scope(editor, monkeypatch):
 
 
 @pytest.mark.django_db
+def test_update_allows_keeping_existing_team_outside_current_scope(
+    editor, monkeypatch
+):
+    monkeypatch.setattr(
+        f"{SVC}.get_library_or_raise",
+        lambda pk: SimpleNamespace(team=[1, 9]),
+    )
+    monkeypatch.setattr(
+        f"{SVC}.update_library",
+        lambda pk, payload, operator: {"id": int(pk)},
+    )
+
+    response = PublicEnumLibraryViewSet.as_view({"put": "update"})(
+        _req("put", editor, data={"name": "x", "team": [1, 9]}), pk="5"
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert _body(response)["data"]["id"] == 5
+
+
+@pytest.mark.django_db
 def test_update_allows_child_library_when_include_children_enabled(editor, monkeypatch):
     monkeypatch.setattr(
         f"{SVC}.get_library_or_raise",
