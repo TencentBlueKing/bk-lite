@@ -86,6 +86,38 @@ class TestTargetCrud:
         assert resp.status_code == 201
         assert Target.objects.filter(name="host1").exists()
 
+    @pytest.mark.parametrize(
+        ("submitted_value", "expected_value"),
+        [
+            (True, True),
+            (False, False),
+        ],
+    )
+    def test_create_windows_target_respects_explicit_cert_validation(self, su_client, submitted_value, expected_value):
+        resp = su_client.post(
+            URL,
+            self._payload(
+                os_type="windows",
+                winrm_user="administrator",
+                winrm_password="secret",
+                winrm_cert_validation=submitted_value,
+            ),
+            format="json",
+        )
+
+        assert resp.status_code == 201
+        assert Target.objects.get(name="host1").winrm_cert_validation is expected_value
+
+    def test_create_windows_target_keeps_legacy_default_without_cert_validation(self, su_client):
+        resp = su_client.post(
+            URL,
+            self._payload(os_type="windows", winrm_user="administrator", winrm_password="secret"),
+            format="json",
+        )
+
+        assert resp.status_code == 201
+        assert Target.objects.get(name="host1").winrm_cert_validation is False
+
     def test_create_missing_ssh_password_returns_400(self, su_client):
         resp = su_client.post(URL, self._payload(ssh_password=""), format="json")
         assert resp.status_code == 400
