@@ -9,7 +9,12 @@ from typing import Optional
 
 from django.utils import timezone
 
-from apps.patch_mgmt.constants import ConnectivityStatus, OSType, PatchSourceType
+from apps.patch_mgmt.constants import (
+    ConnectivityStatus,
+    OSType,
+    PackageManagerType,
+    PatchSourceType,
+)
 from apps.patch_mgmt.models import PatchSource
 from apps.patch_mgmt.services.patch_source_service import PatchSourceService
 
@@ -182,7 +187,7 @@ class SourceSyncService:
                     "distro_name": source.distro_name or "",
                     "os_version_range": source.os_version or "",
                     "architectures": sorted({p.arch for p in adv.packages if p.arch}),
-                    "repo_type": source.source_type,
+                    "repo_type": PackageManagerType.normalize(source.source_type),
                     "install_deps": adv.install_deps or {},
                 },
             )
@@ -268,7 +273,7 @@ class SourceSyncService:
             return candidates
 
         if source.source_type == PatchSourceType.WSUS:
-            from apps.patch_mgmt.services.wsus_sync import WsusClient
+            from apps.patch_mgmt.services.wsus_sync import WsusClient, normalize_wsus_kb
 
             client = WsusClient(source)
             updates = client.get_approved_updates()
@@ -278,6 +283,8 @@ class SourceSyncService:
             )
             candidates = []
             for upd in updates:
+                if not normalize_wsus_kb(upd.kb_number):
+                    continue
                 name = upd.kb_number or upd.title or upd.update_id
                 candidates.append({
                     "key": upd.update_id,
@@ -366,7 +373,7 @@ class SourceSyncService:
                         "distro_name": source.distro_name or "",
                         "os_version_range": source.os_version or "",
                         "architectures": sorted({p.arch for p in adv.packages if p.arch}),
-                        "repo_type": source.source_type,
+                        "repo_type": PackageManagerType.normalize(source.source_type),
                         "install_deps": adv.install_deps or {},
                     },
                 )
@@ -376,7 +383,11 @@ class SourceSyncService:
                     updated += 1
 
         elif source.source_type == "wsus":
-            from apps.patch_mgmt.services.wsus_sync import WsusClient, resolve_wsus_patch
+            from apps.patch_mgmt.services.wsus_sync import (
+                WsusClient,
+                normalize_wsus_kb,
+                resolve_wsus_patch,
+            )
 
             client = WsusClient(source)
             updates = client.get_approved_updates()
@@ -388,6 +399,13 @@ class SourceSyncService:
             }
             for upd in updates:
                 if upd.update_id not in key_set:
+                    continue
+                if not normalize_wsus_kb(upd.kb_number):
+                    skipped += 1
+                    logger.warning(
+                        "SourceSyncService.ingest_selected: 跳过无 KB 的 WSUS 更新 update_id=%s",
+                        upd.update_id,
+                    )
                     continue
                 override = severity_overrides.get(upd.update_id)
                 if override:

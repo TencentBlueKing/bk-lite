@@ -64,7 +64,7 @@ class TargetSerializer(TeamSerializer):
         EncryptMixin.encrypt_field("ssh_password", validated_data)
         EncryptMixin.encrypt_field("ssh_key_passphrase", validated_data)
         EncryptMixin.encrypt_field("winrm_password", validated_data)
-        validated_data["winrm_cert_validation"] = False
+        validated_data.setdefault("winrm_cert_validation", False)
         return super().create(validated_data)
 
     def update(self, instance, validated_data):

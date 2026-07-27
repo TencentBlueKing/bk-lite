@@ -4,15 +4,15 @@ import type {
   InputOption,
 } from '@/app/ops-analysis/types/dataSource';
 
-type LegacyOptionsEntity = {
+interface LegacyOptionsEntity {
   inputConfig?: InputControlConfig;
   options?: InputOption[];
-};
+}
 
-type SourceLike = {
+interface SourceLike {
   id: number;
   rest_api?: string;
-};
+}
 
 export const normalizeInputConfig = (
   entity?: LegacyOptionsEntity | null,
@@ -73,7 +73,8 @@ export const resolveDynamicSourceId = (
   source: DynamicOptionsSource,
   dataSources: SourceLike[],
 ): number | undefined => {
-  if (typeof source.sourceId === 'number') return source.sourceId;
-  if (source.sourceRef?.type !== 'rest_api') return undefined;
-  return dataSources.find((item) => item.rest_api === source.sourceRef?.value)?.id;
+  if (source.sourceRef?.type === 'rest_api') {
+    return dataSources.find((item) => item.rest_api === source.sourceRef?.value)?.id;
+  }
+  return typeof source.sourceId === 'number' ? source.sourceId : undefined;
 };

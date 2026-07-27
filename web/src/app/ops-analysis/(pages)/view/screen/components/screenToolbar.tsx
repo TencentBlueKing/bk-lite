@@ -78,19 +78,19 @@ const ScreenToolbar: React.FC<ScreenToolbarProps> = ({
           </Tooltip>
           <Button
             type="default"
-            icon={<FilterOutlined />}
-            className="rounded-full!"
-            onClick={onOpenFilterConfig}
-          >
-            {t('dashboard.unifiedFilterConfig')}
-          </Button>
-          <Button
-            type="default"
             icon={<PlusOutlined />}
             className="rounded-full!"
             onClick={onOpenWidgetSelector}
           >
             {t('opsAnalysis.screen.addWidget')}
+          </Button>
+          <Button
+            type="default"
+            icon={<FilterOutlined />}
+            className="rounded-full!"
+            onClick={onOpenFilterConfig}
+          >
+            {t('dashboard.unifiedFilterConfig')}
           </Button>
         </>
       )}

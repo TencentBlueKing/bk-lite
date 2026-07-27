@@ -33,10 +33,30 @@ if (!(sourceFooter.indexOf('取消') < sourceFooter.indexOf('测试连通性')
   throw new Error('补丁源弹窗按钮顺序必须是：取消、测试连通性、保存');
 }
 
+const sourceConnectivityAlert = settingsPage.match(
+  /\{connectivityResult && \(\s*<Alert([\s\S]*?)\/>\s*\)\}/,
+)?.[1] || '';
+if (!sourceConnectivityAlert.includes('closable')) {
+  throw new Error('补丁源连通性测试结果必须支持手动关闭');
+}
+if (!sourceConnectivityAlert.includes('key={connectivityResult.checkedAt}')) {
+  throw new Error('补丁源连通性测试结果关闭后，再次测试时必须重新显示');
+}
+
 const targetFooter = targetPage.match(/footer=\{([\s\S]*?)\}\s*>\s*<Form layout="vertical" form=\{form\}/)?.[1] || '';
 if (!(targetFooter.indexOf('取消') < targetFooter.indexOf('测试连通性')
   && targetFooter.indexOf('测试连通性') < targetFooter.indexOf("editingTarget ? '保存' : '创建'"))) {
   throw new Error('目标录入抽屉按钮顺序必须是：取消、测试连通性、保存/创建');
+}
+
+const targetConnectivityAlert = targetPage.match(
+  /\{connectivityResult && \(\s*<Alert([\s\S]*?)\/>\s*\)\}/,
+)?.[1] || '';
+if (!targetConnectivityAlert.includes('closable')) {
+  throw new Error('目标连通性测试结果必须支持手动关闭');
+}
+if (!targetConnectivityAlert.includes('key={connectivityResult.checkedAt}')) {
+  throw new Error('目标连通性测试结果关闭后，再次测试时必须重新显示');
 }
 
 console.log('补丁源与目标录入表单约束通过');

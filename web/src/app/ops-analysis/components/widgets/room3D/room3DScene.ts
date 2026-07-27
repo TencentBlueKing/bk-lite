@@ -41,10 +41,6 @@ export interface Room3DSceneController {
   dispose: () => void;
 }
 
-export interface Room3DSceneOptions {
-  transparentScene: boolean;
-}
-
 interface RackInteractionState {
   selectedRackId: string;
   openRackId: string;
@@ -243,7 +239,6 @@ export const getRoom3DRackScenePosition = (
 export const createRoom3DScene = (
   mountNode: HTMLDivElement,
   roomData: Room3DResponse,
-  options: Room3DSceneOptions,
   callbacks: Room3DSceneCallbacks,
 ): Room3DSceneController => {
   const sceneRacks = getRoom3DSceneRacks(roomData);
@@ -251,10 +246,6 @@ export const createRoom3DScene = (
   const maxCol = Math.max(...sceneRacks.map((rack) => rack.col), 1);
   const { floorWidth, floorDepth } = buildRoomFloorSize(maxRow, maxCol);
   const scene = new THREE.Scene();
-  if (!options.transparentScene) {
-    scene.background = new THREE.Color("#08111f");
-    scene.fog = new THREE.Fog("#08111f", 18, 64);
-  }
 
   const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 1000);
   const initialCameraPosition = buildInitialCameraPosition(
@@ -268,12 +259,10 @@ export const createRoom3DScene = (
 
   const renderer = new THREE.WebGLRenderer({
     antialias: true,
-    alpha: options.transparentScene,
+    alpha: true,
     powerPreference: "high-performance",
   });
-  if (options.transparentScene) {
-    renderer.setClearColor(0x000000, 0);
-  }
+  renderer.setClearColor(0x000000, 0);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;

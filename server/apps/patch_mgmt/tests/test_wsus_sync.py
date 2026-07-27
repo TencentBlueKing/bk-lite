@@ -410,6 +410,38 @@ class TestSyncWsus:
         assert result["created"] == 1
         assert Patch.objects.get(title="5072654").pkg_status == PackageStatus.READY
 
+    def test_preview_and_ingest_skip_update_without_kb(self, monkeypatch):
+        source = _make_source()
+        update = WsusUpdate(
+            update_id="uid-without-kb",
+            title="Windows Defender Definition Update",
+            severity="Moderate",
+            products=["Windows Defender"],
+        )
+        monkeypatch.setattr(WsusClient, "get_approved_updates", lambda self: [update])
+
+        candidates = SourceSyncService.preview_sync_candidates(source)
+        result = SourceSyncService.ingest_selected(source, [update.update_id])
+
+        assert candidates == []
+        assert result == {"created": 0, "updated": 0, "skipped": 1, "total": 1}
+        assert not Patch.objects.filter(os_type=OSType.WINDOWS).exists()
+
+    def test_sync_skips_update_without_kb(self, monkeypatch):
+        source = _make_source()
+        update = WsusUpdate(
+            update_id="uid-without-kb",
+            title="Windows Defender Definition Update",
+            severity="Moderate",
+            products=["Windows Defender"],
+        )
+        monkeypatch.setattr(WsusClient, "get_approved_updates", lambda self: [update])
+
+        result = sync_wsus(source)
+
+        assert result == {"total": 1, "created": 0, "updated": 0, "skipped": 1}
+        assert not Patch.objects.filter(os_type=OSType.WINDOWS).exists()
+
     def test_sync_winrm_failure_raises(self, monkeypatch):
         source = _make_source()
 

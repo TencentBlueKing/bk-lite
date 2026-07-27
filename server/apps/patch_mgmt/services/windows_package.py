@@ -2,6 +2,7 @@
 
 import hashlib
 import logging
+from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
 
@@ -22,11 +23,23 @@ class WindowsPackageError(ValueError):
     """手工 Windows 补丁包不可接受。"""
 
 
+class WindowsPackageStorageError(WindowsPackageError):
+    """补丁包已通过校验，但对象存储不可用。"""
+
+
+@dataclass(frozen=True)
+class PreparedWindowsPackage:
+    file_name: str
+    extension: str
+    file_size: int
+    sha256: str
+
+
 def _safe_file_name(value: str) -> str:
     return Path(str(value or "package")).name
 
 
-def _validate_and_hash(uploaded_file) -> tuple[str, str, int, str]:
+def prepare_windows_package(uploaded_file) -> PreparedWindowsPackage:
     file_name = _safe_file_name(getattr(uploaded_file, "name", ""))
     extension = Path(file_name).suffix.lower()
     if extension not in {".msu", ".cab"}:
@@ -56,7 +69,12 @@ def _validate_and_hash(uploaded_file) -> tuple[str, str, int, str]:
     for chunk in uploaded_file.chunks():
         digest.update(chunk)
     uploaded_file.seek(0)
-    return file_name, extension, file_size, digest.hexdigest()
+    return PreparedWindowsPackage(
+        file_name=file_name,
+        extension=extension,
+        file_size=file_size,
+        sha256=digest.hexdigest(),
+    )
 
 
 def _mark_failed(patch: Patch, detail, message: str) -> None:
@@ -66,8 +84,12 @@ def _mark_failed(patch: Patch, detail, message: str) -> None:
     detail.save(update_fields=["package_error"])
 
 
-@transaction.atomic
-def store_windows_package(patch: Patch, uploaded_file) -> dict:
+def store_windows_package(
+    patch: Patch,
+    uploaded_file,
+    *,
+    prepared: PreparedWindowsPackage | None = None,
+) -> dict:
     """校验并保存手工补丁包，成功后才将补丁置为就绪。"""
     if patch.os_type != OSType.WINDOWS:
         raise WindowsPackageError("仅 Windows 补丁支持上传文件")
@@ -76,25 +98,26 @@ def store_windows_package(patch: Patch, uploaded_file) -> dict:
 
     detail = patch.windows_detail
     try:
-        file_name, extension, file_size, sha256 = _validate_and_hash(uploaded_file)
-        detail.package_original_name = file_name
-        detail.package_extension = extension
-        detail.package_size = file_size
-        detail.package_sha256 = sha256
-        detail.package_error = ""
-        detail.package_file.save(file_name, uploaded_file, save=False)
-        detail.package_uploaded_at = timezone.now()
-        detail.save(
-            update_fields=[
-                "package_file",
-                "package_original_name",
-                "package_extension",
-                "package_size",
-                "package_sha256",
-                "package_error",
-                "package_uploaded_at",
-            ]
-        )
+        with transaction.atomic():
+            package = prepared or prepare_windows_package(uploaded_file)
+            detail.package_original_name = package.file_name
+            detail.package_extension = package.extension
+            detail.package_size = package.file_size
+            detail.package_sha256 = package.sha256
+            detail.package_error = ""
+            detail.package_file.save(package.file_name, uploaded_file, save=False)
+            detail.package_uploaded_at = timezone.now()
+            detail.save(
+                update_fields=[
+                    "package_file",
+                    "package_original_name",
+                    "package_extension",
+                    "package_size",
+                    "package_sha256",
+                    "package_error",
+                    "package_uploaded_at",
+                ]
+            )
     except WindowsPackageError as exc:
         _mark_failed(patch, detail, str(exc))
         raise
@@ -105,20 +128,25 @@ def store_windows_package(patch: Patch, uploaded_file) -> dict:
             except Exception:
                 pass
         _mark_failed(patch, detail, f"补丁包存储失败: {exc}")
-        raise WindowsPackageError("补丁包存储失败") from exc
+        raise WindowsPackageStorageError("补丁包存储失败") from exc
 
-    patch.pkg_status = PackageStatus.READY
-    patch.save(update_fields=["pkg_status", "updated_at"])
+    with transaction.atomic():
+        patch.pkg_status = PackageStatus.READY
+        patch.save(update_fields=["pkg_status", "updated_at"])
     return {
-        "file_name": file_name,
-        "file_size": file_size,
-        "sha256": sha256,
-        "extension": extension,
+        "file_name": package.file_name,
+        "file_size": package.file_size,
+        "sha256": package.sha256,
+        "extension": package.extension,
     }
 
 
-@transaction.atomic
-def replace_failed_windows_package(patch: Patch, uploaded_file) -> dict:
+def replace_failed_windows_package(
+    patch: Patch,
+    uploaded_file,
+    *,
+    prepared: PreparedWindowsPackage | None = None,
+) -> dict:
     """仅对失败记录重新上传，就绪文件不允许替换。"""
     if patch.pkg_status != PackageStatus.DOWNLOAD_FAILED:
         raise WindowsPackageError("仅上传失败的补丁允许替换文件")
@@ -130,9 +158,10 @@ def replace_failed_windows_package(patch: Patch, uploaded_file) -> dict:
         except Exception as exc:
             raise WindowsPackageError("无法清理上次失败的补丁包") from exc
 
-    patch.pkg_status = PackageStatus.DOWNLOADING
-    patch.save(update_fields=["pkg_status", "updated_at"])
-    return store_windows_package(patch, uploaded_file)
+    with transaction.atomic():
+        patch.pkg_status = PackageStatus.DOWNLOADING
+        patch.save(update_fields=["pkg_status", "updated_at"])
+    return store_windows_package(patch, uploaded_file, prepared=prepared)
 
 
 def expire_stale_windows_package_uploads(

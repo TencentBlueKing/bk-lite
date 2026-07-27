@@ -436,17 +436,15 @@ assert.deepEqual(getDefaultScreenWidgetAppearance("room3D"), { frame: "bare" });
 assert.deepEqual(getDefaultScreenWidgetAppearance("line"), { frame: "panel" });
 assert.deepEqual(getRoom3DDisplayOptions({ appearance: { frame: "bare" } }), {
   immersive: true,
-  transparentScene: true,
 });
 assert.deepEqual(getRoom3DDisplayOptions({ appearance: { frame: "panel" } }), {
   immersive: false,
-  transparentScene: false,
 });
 
 const room3DWidget = createScreenWidgetItem("room3D", []);
 assert.deepEqual(room3DWidget.valueConfig.appearance, { frame: "bare" });
 
-const screenWithBareLine = addConfiguredScreenWidget(
+const screenWithUnsupportedBareLine = addConfiguredScreenWidget(
   {
     viewport: { width: 1920, height: 1080 },
     decorations: {},
@@ -459,7 +457,7 @@ const screenWithBareLine = addConfiguredScreenWidget(
     appearance: { frame: "bare" },
   },
 );
-assert.equal(screenWithBareLine.items[0].chartType, "line");
-assert.deepEqual(screenWithBareLine.items[0].valueConfig.appearance, {
-  frame: "bare",
+assert.equal(screenWithUnsupportedBareLine.items[0].chartType, "line");
+assert.deepEqual(screenWithUnsupportedBareLine.items[0].valueConfig.appearance, {
+  frame: "panel",
 });

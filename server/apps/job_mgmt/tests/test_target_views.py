@@ -9,12 +9,13 @@ from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.job_mgmt.models import Target
 from apps.job_mgmt.views import target as target_views
 
-pytestmark = [pytest.mark.unit, pytest.mark.django_db]
+pytestmark = pytest.mark.django_db
 
 URL = "/api/v1/job_mgmt/api/target/"
 
 
 # ----------------------------- 纯函数 ----------------------------- #
+@pytest.mark.unit
 class TestParseSshTestResult:
     def test_string_success(self):
         ok, out, err, detail = target_views._parse_ssh_test_result("success")
@@ -33,6 +34,7 @@ class TestParseSshTestResult:
         assert ok is False and "未知返回类型" in err
 
 
+@pytest.mark.unit
 class TestBuildActorContext:
     def _req(self, current_team="1", include_children="0", superuser=False):
         user = SimpleNamespace(username="u", domain="domain.com", is_superuser=superuser)
@@ -57,6 +59,7 @@ class TestBuildActorContext:
             target_views._build_actor_context(self._req(current_team="abc"))
 
 
+@pytest.mark.unit
 class TestBuildSshTestFailureMessage:
     def test_merges_fallbacks(self):
         msg = target_views._build_ssh_test_failure_message({}, "err-detail", "stdout-detail")
@@ -64,6 +67,7 @@ class TestBuildSshTestFailureMessage:
 
 
 # ----------------------------- HTTP ----------------------------- #
+@pytest.mark.integration
 class TestTargetCrud:
     def _payload(self, **over):
         p = {
@@ -86,6 +90,64 @@ class TestTargetCrud:
         assert resp.status_code == 201
         assert Target.objects.filter(name="host1").exists()
 
+    @pytest.mark.parametrize(
+        ("submitted_value", "expected_value"),
+        [
+            (True, True),
+            (False, False),
+        ],
+    )
+    def test_create_windows_target_respects_explicit_cert_validation(self, su_client, submitted_value, expected_value):
+        resp = su_client.post(
+            URL,
+            self._payload(
+                os_type="windows",
+                winrm_user="administrator",
+                winrm_password="secret",
+                winrm_cert_validation=submitted_value,
+            ),
+            format="json",
+        )
+
+        assert resp.status_code == 201
+        assert Target.objects.get(name="host1").winrm_cert_validation is expected_value
+
+    def test_create_windows_target_keeps_legacy_default_without_cert_validation(self, su_client):
+        resp = su_client.post(
+            URL,
+            self._payload(os_type="windows", winrm_user="administrator", winrm_password="secret"),
+            format="json",
+        )
+
+        assert resp.status_code == 201
+        assert Target.objects.get(name="host1").winrm_cert_validation is False
+
+    def test_update_windows_target_keeps_stored_false_without_cert_validation(self, su_client):
+        target = Target.objects.create(
+            name="windows-host",
+            ip="10.0.0.2",
+            os_type="windows",
+            winrm_cert_validation=False,
+            team=[1],
+        )
+
+        resp = su_client.put(
+            f"{URL}{target.id}/",
+            self._payload(
+                name="windows-host-renamed",
+                ip=target.ip,
+                os_type="windows",
+                winrm_user="administrator",
+                winrm_password="secret",
+            ),
+            format="json",
+        )
+
+        assert resp.status_code == 200
+        target.refresh_from_db()
+        assert target.name == "windows-host-renamed"
+        assert target.winrm_cert_validation is False
+
     def test_create_missing_ssh_password_returns_400(self, su_client):
         resp = su_client.post(URL, self._payload(ssh_password=""), format="json")
         assert resp.status_code == 400
@@ -98,6 +160,7 @@ class TestTargetCrud:
         assert resp.data["deleted_count"] == 2
 
 
+@pytest.mark.integration
 class TestQueryNodes:
     def test_query_nodes_success(self, su_client):
         with patch("apps.job_mgmt.views.target.SystemMgmt") as MSys, patch("apps.job_mgmt.views.target.NodeMgmt") as MNode, patch(
@@ -127,6 +190,7 @@ class TestQueryNodes:
         assert resp.status_code == 500
 
 
+@pytest.mark.integration
 class TestCloudRegions:
     def test_cloud_regions_success(self, su_client):
         with patch("apps.job_mgmt.views.target.NodeMgmt") as MNode:
@@ -142,6 +206,7 @@ class TestCloudRegions:
         assert resp.status_code == 500
 
 
+@pytest.mark.integration
 class TestTestConnection:
     def test_windows_not_supported(self, su_client):
         # windows + manual 需带 winrm 凭据才能过序列化器校验，进而到达视图的"暂不支持"分支
