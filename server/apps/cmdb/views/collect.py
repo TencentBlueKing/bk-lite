@@ -262,6 +262,41 @@ class CollectModelViewSet(AuthViewSet):
         result = PCAuthorityService.request_handovers(instance, request.data.get("pc_inst_names", []))
         return WebUtils.response_success(result)
 
+    @HasPermission("auto_collection-Execute")
+    @action(methods=["POST"], detail=False, url_path="pc_test_connection")
+    def pc_test_connection(self, request, *args, **kwargs):
+        """PC 连接测试：未落库表单经 HTTP debug 端点直连 Stargazer，不写 CMDB。
+
+        编辑场景掩码凭据按 task_id 解密（需对象权限），秘密只在转发 body 内存中传递。
+        """
+        from apps.cmdb.services.collect_tool_service import MASKED_PASSWORD
+        from apps.cmdb.services.pc_connection_test import PCConnectionTestService
+
+        payload = dict(request.data or {})
+        task_id = payload.pop("task_id", None)
+        if task_id:
+            instance = get_object_or_404(self.queryset, id=task_id)
+            if instance.model_id != "pc":
+                raise BaseAppException("仅 PC 发现任务支持凭据掩码解密")
+            user = request.user
+            current_team = get_current_team_from_request(request)
+            include_children = request.COOKIES.get("include_children", "0") == "1"
+            has_permission = self.get_has_permission(user, instance, current_team, include_children=include_children)
+            if not has_permission:
+                raise BaseAppException("您没有操作该采集任务的权限！")
+            credential = dict(payload.get("credential") or {})
+            decrypted = instance.decrypt_credentials or {}
+            if isinstance(decrypted, list):
+                decrypted = decrypted[0] if decrypted else {}
+            for field in PCConnectionTestService.SECRET_FIELDS:
+                if credential.get(field) == MASKED_PASSWORD:
+                    if field not in decrypted:
+                        raise BaseAppException(f"无法从原任务获取字段 {field} 的凭据")
+                    credential[field] = decrypted[field]
+            payload["credential"] = credential
+        result = PCConnectionTestService.test_connection(payload)
+        return WebUtils.response_success(result)
+
     @action(methods=["GET"], detail=False)
     @HasPermission("auto_collection-View")
     def nodes(self, request, *args, **kwargs):
