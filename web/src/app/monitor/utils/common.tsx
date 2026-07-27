@@ -805,7 +805,7 @@ const getEnterpriseBrands = (): Array<{ match: RegExp; label: string; icon?: str
 // 按插件名取品牌 logo 图标;命中 CE BRANDS 或运行时注入的 EE __ENTERPRISE_BRANDS 任一即返回。
 // 失败降级:都未命中 → undefined,调用方回退到监控对象 icon。
 export const getPluginBrandIcon = (pluginName = ''): string | undefined => {
-  const all = [...BRANDS, ...getEnterpriseBrands()];
+  const all = [...getEnterpriseBrands(), ...BRANDS];
   return all.find((brand) => brand.match.test(pluginName))?.icon;
 };
 
