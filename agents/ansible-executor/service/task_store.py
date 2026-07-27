@@ -1,8 +1,11 @@
 import base64
+import fcntl
 import hashlib
 import json
 import os
+import secrets
 import sqlite3
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -33,7 +36,21 @@ SENSITIVE_EXTRA_VAR_MARKERS = (
 
 
 def _sanitize_extra_vars(extra_vars: dict[str, Any]) -> dict[str, Any]:
-    return {key: "***" if any(marker in str(key).lower() for marker in SENSITIVE_EXTRA_VAR_MARKERS) else value for key, value in extra_vars.items()}
+    sanitized: dict[str, Any] = {}
+    for key, value in extra_vars.items():
+        if any(marker in str(key).lower() for marker in SENSITIVE_EXTRA_VAR_MARKERS):
+            sanitized[key] = "***"
+        else:
+            sanitized[key] = _sanitize_extra_var_value(value)
+    return sanitized
+
+
+def _sanitize_extra_var_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return _sanitize_extra_vars(value)
+    if isinstance(value, list):
+        return [_sanitize_extra_var_value(item) for item in value]
+    return value
 
 
 def _sanitize_payload_for_storage(payload: dict[str, Any]) -> dict[str, Any]:
@@ -79,15 +96,60 @@ def _sanitize_payload_for_storage(payload: dict[str, Any]) -> dict[str, Any]:
 
 class TaskStore:
     EXECUTION_PAYLOAD_PREFIX = "fernet:v1:"
+    LOCAL_KEY_SUFFIX = ".payload.key"
 
     def __init__(self, db_path: str, encryption_secret: str | None = None):
         self.db_path = db_path
         secret = encryption_secret or os.getenv("ANSIBLE_PAYLOAD_ENCRYPTION_KEY", "")
         if not secret:
-            raise ValueError("ANSIBLE_PAYLOAD_ENCRYPTION_KEY is required to protect task execution payloads")
+            secret = self._load_or_create_local_encryption_secret()
         key = base64.urlsafe_b64encode(hashlib.sha256(secret.encode("utf-8")).digest())
         self._payload_cipher = Fernet(key)
         self._ensure_schema()
+
+    def _load_or_create_local_encryption_secret(self) -> str:
+        if self.db_path == ":memory:":
+            return secrets.token_urlsafe(48)
+
+        key_path = Path(f"{self.db_path}{self.LOCAL_KEY_SUFFIX}")
+        lock_path = Path(f"{key_path}.lock")
+        key_path.parent.mkdir(parents=True, exist_ok=True)
+        with lock_path.open("a+", encoding="utf-8") as lock_file:
+            os.chmod(lock_path, 0o600)
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                existing_secret = key_path.read_text(encoding="utf-8").strip()
+            except FileNotFoundError:
+                existing_secret = ""
+            if existing_secret:
+                os.chmod(key_path, 0o600)
+                return existing_secret
+            if key_path.exists():
+                try:
+                    key_path.unlink()
+                except FileNotFoundError:
+                    pass
+
+            secret = secrets.token_urlsafe(48)
+            descriptor, temporary_path = tempfile.mkstemp(
+                prefix=f".{key_path.name}.",
+                dir=key_path.parent,
+            )
+            try:
+                with os.fdopen(descriptor, "w", encoding="utf-8") as key_file:
+                    key_file.write(secret)
+                    key_file.flush()
+                    os.fsync(key_file.fileno())
+                os.replace(temporary_path, key_path)
+                os.chmod(key_path, 0o600)
+                directory_descriptor = os.open(key_path.parent, os.O_RDONLY)
+                try:
+                    os.fsync(directory_descriptor)
+                finally:
+                    os.close(directory_descriptor)
+                return secret
+            finally:
+                Path(temporary_path).unlink(missing_ok=True)
 
     def _encrypt_execution_payload(self, payload: dict[str, Any]) -> str:
         plaintext = json.dumps(payload or {}, ensure_ascii=False).encode("utf-8")

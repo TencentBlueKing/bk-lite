@@ -1225,6 +1225,8 @@ def retry_controller(task_id, task_node_ids, password=None, private_key=None, pa
 
     if not retry_nodes.exists():
         raise BaseAppException("No valid nodes found for retry")
+    if any(InstallerService.requires_manual_recovery(node.result) for node in retry_nodes):
+        raise BaseAppException("Manual recovery is required before this node can be retried")
 
     # 加密并更新到节点
     aes_obj = AESCryptor()

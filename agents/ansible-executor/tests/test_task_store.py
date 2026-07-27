@@ -1,3 +1,5 @@
+from concurrent.futures import ThreadPoolExecutor
+
 import pytest
 
 from service.task_store import SENSITIVE_CREDENTIAL_KEYS, TaskStore, _sanitize_payload_for_storage
@@ -195,6 +197,39 @@ def test_sanitize_payload_redacts_sensitive_extra_vars():
     assert sanitized["extra_vars"]["target_path"] == "C:/Windows/Temp/bootstrap.exe"
 
 
+def test_sanitize_payload_recursively_redacts_sensitive_extra_vars(tmp_path):
+    secret = "nested-database-password"
+    payload = {
+        "task_id": "nested-extra-vars-test",
+        "extra_vars": {
+            "database": {"username": "reader", "password": secret},
+            "targets": [
+                {"host": "10.0.0.1", "api_token": "nested-api-token"},
+                [{"host": "10.0.0.2", "client_secret": "nested-client-secret"}],
+            ],
+        },
+    }
+
+    store = TaskStore(str(tmp_path / "task.db"))
+    store.create_if_absent(
+        payload["task_id"],
+        "queued",
+        payload,
+        {},
+        "2026-04-23T00:00:00+00:00",
+    )
+
+    task = store.get_task(payload["task_id"])
+    assert task["payload"]["extra_vars"] == {
+        "database": {"username": "reader", "password": "***"},
+        "targets": [
+            {"host": "10.0.0.1", "api_token": "***"},
+            [{"host": "10.0.0.2", "client_secret": "***"}],
+        ],
+    }
+    assert secret.encode() not in (tmp_path / "task.db").read_bytes()
+
+
 def test_sanitize_payload_handles_empty_payload():
     """Verify empty/None payloads are handled gracefully."""
     assert _sanitize_payload_for_storage({}) == {}
@@ -272,6 +307,52 @@ def test_create_if_absent_preserves_execution_payload_for_worker_use(tmp_path):
     )
 
     assert store.get_execution_payload("execution-payload-test") is None
+
+
+def test_task_store_generates_stable_local_key_when_no_secret_is_configured(tmp_path, monkeypatch):
+    monkeypatch.delenv("ANSIBLE_PAYLOAD_ENCRYPTION_KEY", raising=False)
+    db_path = tmp_path / "task.db"
+    payload = {"task_id": "anonymous-nats", "password": "credential"}
+
+    first_store = TaskStore(str(db_path))
+    first_store.create_if_absent(
+        payload["task_id"],
+        "queued",
+        payload,
+        {},
+        "2026-04-23T00:00:00+00:00",
+    )
+    second_store = TaskStore(str(db_path))
+
+    assert second_store.get_execution_payload(payload["task_id"]) == payload
+    key_path = tmp_path / f"task.db{TaskStore.LOCAL_KEY_SUFFIX}"
+    assert key_path.stat().st_mode & 0o777 == 0o600
+
+
+def test_task_store_recovers_interrupted_empty_local_key(tmp_path, monkeypatch):
+    monkeypatch.delenv("ANSIBLE_PAYLOAD_ENCRYPTION_KEY", raising=False)
+    db_path = tmp_path / "task.db"
+    key_path = tmp_path / f"task.db{TaskStore.LOCAL_KEY_SUFFIX}"
+    key_path.touch(mode=0o600)
+
+    store = TaskStore(str(db_path))
+
+    assert key_path.read_text(encoding="utf-8").strip()
+    assert store._payload_cipher is not None
+
+
+def test_task_store_concurrently_publishes_one_stable_local_key(tmp_path):
+    db_path = tmp_path / "task.db"
+
+    def load_secret():
+        store = TaskStore.__new__(TaskStore)
+        store.db_path = str(db_path)
+        return store._load_or_create_local_encryption_secret()
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        secrets = list(executor.map(lambda _: load_secret(), range(16)))
+
+    assert len(set(secrets)) == 1
 
 
 def test_sensitive_credential_keys_is_comprehensive():

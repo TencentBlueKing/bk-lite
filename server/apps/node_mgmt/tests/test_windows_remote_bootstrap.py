@@ -1,5 +1,5 @@
-from queue import Queue
 import time
+from queue import Queue
 
 import pytest
 import yaml
@@ -12,14 +12,20 @@ from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.management.commands.installer_init import Command as InstallerInitCommand
 from apps.node_mgmt.models import ControllerTask, ControllerTaskNode, Node, PackageVersion
 from apps.node_mgmt.models.cloud_region import CloudRegion
-from apps.node_mgmt.serializers.installer import InstallNodeSerializer
+from apps.node_mgmt.serializers.installer import (
+    ControllerInstallRequestSerializer,
+    ControllerManualInstallRequestSerializer,
+    InstallNodeSerializer,
+)
 from apps.node_mgmt.services.install_token import InstallTokenService
+from apps.node_mgmt.services.installer import InstallerService
 from apps.node_mgmt.services.windows_remote_bootstrap import (
     AnsibleExecutorResolver,
     WindowsBootstrapTarget,
     WindowsRemoteBootstrapService,
 )
 from apps.node_mgmt.tasks import installer as installer_tasks
+from apps.node_mgmt.utils.task_result_schema import normalize_task_result_for_read
 
 
 class FakeExecutor:
@@ -55,6 +61,191 @@ class FakeResolver:
     def resolve(cls, cloud_region_id):
         assert cloud_region_id == 7
         return "executor-node"
+
+
+@pytest.mark.parametrize(
+    ("serializer_class", "data"),
+    [
+        (
+            ControllerInstallRequestSerializer,
+            {
+                "cloud_region_id": 7,
+                "work_node": "executor-node",
+                "package_id": 1,
+                "cpu_architecture": "x86_64",
+                "nodes": [],
+            },
+        ),
+        (
+            ControllerManualInstallRequestSerializer,
+            {
+                "cloud_region_id": 7,
+                "os": NodeConstants.WINDOWS_OS,
+                "package_id": 1,
+                "cpu_architecture": "x86_64",
+                "nodes": [],
+            },
+        ),
+    ],
+)
+def test_controller_install_requests_reject_empty_nodes(serializer_class, data):
+    serializer = serializer_class(data=data)
+
+    assert serializer.is_valid() is False
+    assert "nodes" in serializer.errors
+
+
+@pytest.mark.django_db
+def test_windows_manual_install_does_not_require_winrm_credentials():
+    serializer = ControllerManualInstallRequestSerializer(
+        data={
+            "cloud_region_id": 7,
+            "os": NodeConstants.WINDOWS_OS,
+            "package_id": 1,
+            "cpu_architecture": NodeConstants.X86_64_ARCH,
+            "nodes": [
+                {
+                    "ip": "10.0.0.5",
+                    "os": NodeConstants.WINDOWS_OS,
+                    "organizations": [1],
+                    "node_id": "manual-windows-node",
+                }
+            ],
+        }
+    )
+
+    assert serializer.is_valid(), serializer.errors
+
+
+def test_manual_recovery_failure_survives_later_generic_failure_projection():
+    result = normalize_task_result_for_read(
+        {
+            "overall_status": "error",
+            "steps": [
+                {
+                    "action": "install",
+                    "status": "error",
+                    "message": "Previous installation requires manual recovery",
+                    "details": {"error_type": "manual_recovery_required"},
+                },
+                {
+                    "action": "run",
+                    "status": "error",
+                    "message": "Installation failed",
+                    "details": {"error": "bootstrap command failed"},
+                },
+            ],
+        }
+    )
+
+    assert result["failure"]["type"] == "manual_recovery_required"
+    assert result["failure"]["retriable"] is False
+
+
+def test_controller_remote_install_rejects_mixed_operating_systems():
+    serializer = ControllerInstallRequestSerializer(
+        data={
+            "cloud_region_id": 7,
+            "work_node": "executor-node",
+            "package_id": 1,
+            "cpu_architecture": "x86_64",
+            "nodes": [
+                {
+                    "ip": "10.0.0.1",
+                    "os": NodeConstants.LINUX_OS,
+                    "organizations": [1],
+                    "port": 22,
+                    "username": "root",
+                },
+                {
+                    "ip": "10.0.0.2",
+                    "os": NodeConstants.WINDOWS_OS,
+                    "organizations": [1],
+                    "port": 5986,
+                    "username": "Administrator",
+                    "password": "credential",
+                },
+            ],
+        }
+    )
+
+    assert serializer.is_valid() is False
+    assert "nodes" in serializer.errors
+
+
+@pytest.mark.django_db
+def test_controller_install_rejects_existing_package_for_other_operating_system():
+    windows_package = PackageVersion.objects.create(
+        type="controller",
+        os=NodeConstants.WINDOWS_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        object="Controller",
+        version="package-os-mismatch-test",
+        name="controller-windows-mismatch",
+    )
+
+    with pytest.raises(BaseAppException, match="operating system mismatch"):
+        InstallerService.install_controller(
+            cloud_region_id=1,
+            work_node="executor-node",
+            package_version_id=windows_package.id,
+            nodes=[
+                {
+                    "ip": "10.0.0.4",
+                    "node_name": "linux-node",
+                    "os": NodeConstants.LINUX_OS,
+                    "cpu_architecture": NodeConstants.X86_64_ARCH,
+                    "organizations": [1],
+                    "port": 22,
+                    "username": "root",
+                }
+            ],
+            cpu_architecture=NodeConstants.X86_64_ARCH,
+        )
+
+    assert ControllerTask.objects.filter(package_version_id=windows_package.id).exists() is False
+
+
+@pytest.mark.django_db
+def test_retry_controller_rejects_manual_recovery_required_result(monkeypatch):
+    region = CloudRegion.objects.create(name="manual-recovery-region")
+    package = PackageVersion.objects.create(
+        type="controller",
+        os=NodeConstants.WINDOWS_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        object="Controller",
+        version="manual-recovery-test",
+        name="controller-windows",
+    )
+    task = ControllerTask.objects.create(
+        cloud_region=region,
+        type="install",
+        status="finished",
+        package_version_id=package.id,
+    )
+    task_node = ControllerTaskNode.objects.create(
+        task=task,
+        ip="10.0.0.3",
+        node_name="windows-node",
+        os=NodeConstants.WINDOWS_OS,
+        organizations=[1],
+        port=5986,
+        status="error",
+        result={
+            "overall_status": "error",
+            "failure": {"type": "manual_recovery_required"},
+            "execution_attempt": 2,
+        },
+    )
+    monkeypatch.setattr(installer_tasks, "_dispatch_or_finalize_controller_task", lambda task_id: None)
+
+    with pytest.raises(BaseAppException, match="Manual recovery is required"):
+        installer_tasks.retry_controller(task.id, [task_node.id])
+
+    task_node.refresh_from_db()
+    assert task_node.status == "error"
+    assert task_node.result["failure"]["type"] == "manual_recovery_required"
+    assert task_node.result["execution_attempt"] == 2
 
 
 def test_windows_remote_bootstrap_stages_and_runs_native_worker():
@@ -788,36 +979,43 @@ def test_ansible_executor_resolver_selects_healthy_region_executor():
 
 
 @pytest.mark.parametrize(
-    ("payload", "error_field"),
+    "payload",
     [
-        ({"os": "windows", "password": ""}, "password"),
-        (
-            {
-                "os": "windows",
-                "password": "credential",
-                "winrm_scheme": "http",
-                "winrm_transport": "basic",
-            },
-            "params_error",
-        ),
+        {"os": "windows", "password": ""},
+        {
+            "os": "windows",
+            "password": "credential",
+            "winrm_scheme": "http",
+            "winrm_transport": "basic",
+        },
     ],
 )
-def test_windows_install_node_serializer_rejects_unsafe_credentials(payload, error_field):
-    serializer = InstallNodeSerializer(
+@pytest.mark.django_db
+def test_windows_remote_request_rejects_unsafe_credentials(payload):
+    serializer = ControllerInstallRequestSerializer(
         data={
-            "ip": "10.0.0.8",
-            "organizations": [1],
-            "port": 5986,
-            "username": "Administrator",
-            **payload,
+            "cloud_region_id": 7,
+            "work_node": "executor-node",
+            "package_id": 1,
+            "cpu_architecture": NodeConstants.X86_64_ARCH,
+            "nodes": [
+                {
+                    "ip": "10.0.0.8",
+                    "organizations": [1],
+                    "port": 5986,
+                    "username": "Administrator",
+                    **payload,
+                }
+            ],
         }
     )
 
     assert not serializer.is_valid()
-    assert error_field in serializer.errors
+    assert "nodes" in serializer.errors
 
 
 @pytest.mark.unit
+@pytest.mark.django_db
 @pytest.mark.parametrize(
     "winrm_overrides",
     [
@@ -830,23 +1028,31 @@ def test_windows_install_node_serializer_rejects_unsafe_credentials(payload, err
     ],
 )
 def test_windows_remote_install_accepts_only_the_stable_winrm_profile(winrm_overrides):
-    serializer = InstallNodeSerializer(
+    serializer = ControllerInstallRequestSerializer(
         data={
-            "ip": "10.0.0.8",
-            "os": "windows",
-            "organizations": [1],
-            "port": 5986,
-            "username": "Administrator",
-            "password": "credential",
-            "winrm_scheme": "https",
-            "winrm_transport": "ntlm",
-            "winrm_cert_validation": True,
-            **winrm_overrides,
+            "cloud_region_id": 7,
+            "work_node": "executor-node",
+            "package_id": 1,
+            "cpu_architecture": NodeConstants.X86_64_ARCH,
+            "nodes": [
+                {
+                    "ip": "10.0.0.8",
+                    "os": "windows",
+                    "organizations": [1],
+                    "port": 5986,
+                    "username": "Administrator",
+                    "password": "credential",
+                    "winrm_scheme": "https",
+                    "winrm_transport": "ntlm",
+                    "winrm_cert_validation": True,
+                    **winrm_overrides,
+                }
+            ],
         }
     )
 
     assert not serializer.is_valid()
-    assert "params_error" in serializer.errors
+    assert "nodes" in serializer.errors
 
 
 @pytest.mark.unit

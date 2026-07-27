@@ -116,6 +116,10 @@ class InstallerViewSet(ViewSet):
         authorized_task_node_ids = {str(task_node.id) for task_node in authorized_task_nodes}
         if not requested_task_node_ids or any(str(task_node_id) not in authorized_task_node_ids for task_node_id in requested_task_node_ids):
             return WebUtils.response_403("User does not have permission to retry this task node")
+        requested_task_node_id_set = {str(node_id) for node_id in requested_task_node_ids}
+        selected_task_nodes = [task_node for task_node in authorized_task_nodes if str(task_node.id) in requested_task_node_id_set]
+        if any(InstallerService.requires_manual_recovery(task_node.result) for task_node in selected_task_nodes):
+            return WebUtils.response_error(error_message="Manual recovery is required before this node can be retried")
 
         retry_controller.delay(
             request.data["task_id"],

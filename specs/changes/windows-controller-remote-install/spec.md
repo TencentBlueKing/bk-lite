@@ -31,7 +31,7 @@ Windows 远程安装采用“Ansible Executor 负责 WinRM 编排，原生 Go bo
 - Windows 远程安装只接受密码凭据，不接受 SSH 私钥。
 - 密码继续使用现有 AES 字段暂存，并在单节点任务结束后清空。
 - 安装会话 URL 通过权限受限的 Ansible vars 文件传递，不进入 Executor 进程参数；相关任务启用 `no_log`，任务结束后删除远端会话文件。
-- Executor 恢复执行所需的敏感载荷使用版本化 Fernet 密文持久化，优先使用 `ANSIBLE_PAYLOAD_ENCRYPTION_KEY`，未配置时沿用部署注入的 NATS 密码派生密钥。
+- Executor 恢复执行所需的敏感载荷使用版本化 Fernet 密文持久化，优先使用 `ANSIBLE_PAYLOAD_ENCRYPTION_KEY`，未配置时沿用部署注入的 NATS 密码派生密钥；两者均未配置的兼容场景，在状态数据库旁生成权限为 `0600` 的稳定本机密钥，避免匿名 NATS 的既有部署升级后无法启动。
 - 控制器包下载上限为 4 GiB、解压上限为 8 GiB/100000 个文件；超过边界时在停止旧服务前失败。
 - Ansible Executor 必须与目标节点同云区域且 `ansibleexecutor_linux` 采集器健康；找不到时快速失败，不跨区域兜底。
 - `ansible.windows` 固定为 3.7.0，与仓库现有 `ansible-core==2.18.6` 组合构建，避免部署时自动获取不兼容的新版本。

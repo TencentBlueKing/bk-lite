@@ -29,8 +29,8 @@ class InstallNodeSerializer(serializers.Serializer):
         required=True,
         allow_empty=False,
     )
-    port = serializers.IntegerField(required=False)
-    username = serializers.CharField(required=False, allow_blank=True)
+    port = serializers.IntegerField(required=False, default=22)
+    username = serializers.CharField(required=False, allow_blank=True, default="")
     password = serializers.CharField(required=False, allow_blank=True, default="")
     private_key = serializers.CharField(required=False, allow_blank=True, default="")
     passphrase = serializers.CharField(required=False, allow_blank=True, default="")
@@ -43,36 +43,43 @@ class InstallNodeSerializer(serializers.Serializer):
     )
     winrm_cert_validation = serializers.BooleanField(required=False, default=True)
 
-    def validate(self, attrs):
-        if attrs.get("os") == NodeConstants.WINDOWS_OS:
-            if not attrs.get("password"):
-                raise serializers.ValidationError({"password": "Windows remote installation requires a password"})
-            if (
-                attrs.get("port") != 5986
-                or attrs.get("winrm_scheme") != "https"
-                or attrs.get("winrm_transport") != "ntlm"
-                or attrs.get("winrm_cert_validation") is not True
-            ):
-                raise serializers.ValidationError("Windows remote installation currently requires HTTPS, NTLM, and server certificate validation")
-        return attrs
-
-
 class ControllerInstallRequestSerializer(serializers.Serializer):
     cloud_region_id = serializers.IntegerField()
     work_node = serializers.CharField()
     package_id = serializers.IntegerField()
     cpu_architecture = serializers.CharField(allow_blank=False)
-    nodes = InstallNodeSerializer(many=True)
+    nodes = InstallNodeSerializer(many=True, allow_empty=False)
 
     def validate(self, attrs):
+        node_operating_systems = {
+            node.get("os") or NodeConstants.LINUX_OS for node in attrs["nodes"]
+        }
+        if len(node_operating_systems) != 1:
+            raise serializers.ValidationError({"nodes": "A controller installation batch must use one operating system"})
+        target_os = node_operating_systems.pop()
+        InstallerService.validate_controller_package_os(attrs["package_id"], target_os)
         normalized_arch = InstallerService.normalize_required_cpu_architecture(
-            attrs["nodes"][0].get("os", NodeConstants.LINUX_OS),
+            target_os,
             attrs["cpu_architecture"],
         )
         attrs["cpu_architecture"] = normalized_arch
         normalized_nodes = []
         for node in attrs["nodes"]:
             node_os = node.get("os") or NodeConstants.LINUX_OS
+            if not node.get("username"):
+                raise serializers.ValidationError({"nodes": "Remote installation requires a username"})
+            if node_os == NodeConstants.WINDOWS_OS:
+                if not node.get("password"):
+                    raise serializers.ValidationError({"nodes": "Windows remote installation requires a password"})
+                if (
+                    node.get("port") != 5986
+                    or node.get("winrm_scheme") != "https"
+                    or node.get("winrm_transport") != "ntlm"
+                    or node.get("winrm_cert_validation") is not True
+                ):
+                    raise serializers.ValidationError(
+                        {"nodes": "Windows remote installation currently requires HTTPS, NTLM, and server certificate validation"}
+                    )
             node["os"] = node_os
             node["cpu_architecture"] = InstallerService.normalize_required_cpu_architecture(
                 node_os,
@@ -88,9 +95,10 @@ class ControllerManualInstallRequestSerializer(serializers.Serializer):
     os = serializers.CharField()
     cpu_architecture = serializers.CharField(allow_blank=False)
     package_id = serializers.IntegerField()
-    nodes = InstallNodeSerializer(many=True)
+    nodes = InstallNodeSerializer(many=True, allow_empty=False)
 
     def validate(self, attrs):
+        InstallerService.validate_controller_package_os(attrs["package_id"], attrs["os"])
         attrs["cpu_architecture"] = InstallerService.normalize_required_cpu_architecture(
             attrs["os"],
             attrs["cpu_architecture"],
