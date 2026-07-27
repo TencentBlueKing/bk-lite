@@ -1,308 +1,540 @@
 'use client';
-import { useState, useEffect } from 'react';
-import { useRouter, usePathname, useSearchParams } from 'next/navigation';
+
+import { useEffect, useState } from 'react';
 import {
-  Card,
-  Segmented,
-  Input,
+  Alert,
   Button,
-  Tag,
-  Space,
+  Card,
+  Descriptions,
+  Empty,
   Form,
+  Input,
   message,
   Modal,
+  Segmented,
+  Space,
   Spin,
-  Empty,
+  Steps,
+  Tag,
+  Typography,
 } from 'antd';
-import { useTranslation } from '@/utils/i18n';
 import {
+  CheckCircleOutlined,
+  CloseCircleOutlined,
+  ExclamationCircleFilled,
+  ExportOutlined,
+  InfoCircleOutlined,
   RocketOutlined,
   StarOutlined,
-  EditOutlined,
   SyncOutlined,
-  CheckOutlined,
-  ExclamationCircleFilled,
+  ToolOutlined,
 } from '@ant-design/icons';
+import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
 import CodeEditor from '@/app/node-manager/components/codeEditor';
-import { useCommon } from '@/app/node-manager/context/common';
 import MainLayout from '../mainlayout/layout';
 import useNodeManagerApi from '@/app/node-manager/api';
 import useCloudId from '@/app/node-manager/hooks/useCloudRegionId';
-import { ServiceItem } from '@/app/node-manager/types/cloudregion';
+import type {
+  CloudRegionDetail,
+  ServiceItem,
+} from '@/app/node-manager/types/cloudregion';
 import useCommandCopyDialog from '@/app/node-manager/hooks/useCommandCopyDialog';
 import PermissionWrapper from '@/components/permission';
 
+const isValidProxyAddress = (value: string) => {
+  const candidate = value.trim();
+  const ipPattern =
+    /^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+  const domainPattern =
+    /^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/;
+  if (ipPattern.test(candidate) || domainPattern.test(candidate)) return true;
+
+  const ipv6Candidate =
+    candidate.startsWith('[') && candidate.endsWith(']')
+      ? candidate.slice(1, -1)
+      : candidate;
+  if (!ipv6Candidate.includes(':')) return false;
+  try {
+    return new URL(`http://[${ipv6Candidate}]`).hostname.length > 0;
+  } catch {
+    return false;
+  }
+};
+
+type DeploymentView = 'container' | 'k8s';
+
 const EnvironmentPage = () => {
   const { t } = useTranslation();
-  const router = useRouter();
-  const { copyCommand, commandCopyDialog, copying } =
-    useCommandCopyDialog();
-  const pathname = usePathname();
-  const commonContext = useCommon();
-  const nodeStateEnum = commonContext?.nodeStateEnum || {};
+  const [messageApi, messageContextHolder] = message.useMessage();
+  const [modal, modalContextHolder] = Modal.useModal();
   const { isLoading } = useApiClient();
-  const { getCloudRegionDetail, getDeployCommand, updatePartCloudIntro } =
-    useNodeManagerApi();
   const cloudId = useCloudId();
-  const [form] = Form.useForm();
-  const searchParams = useSearchParams();
-  const notDeployed = searchParams.get('not_deployed');
-  const isNotDeployed = notDeployed === '1';
-  const proxyAddress = searchParams.get('proxy_address') || '';
-  const [deployType, setDeployType] = useState('container');
+  const {
+    getCloudRegionDetail,
+    getDeployCommand,
+    updatePartCloudIntro,
+    stageCloudRegionProxyAddress,
+    activateCloudRegionProxyAddress,
+    cancelCloudRegionProxyAddress,
+  } = useNodeManagerApi();
+  const { copyCommand, commandCopyDialog, copying } = useCommandCopyDialog();
+  const [deployForm] = Form.useForm();
+  const [changeForm] = Form.useForm();
+  const [detail, setDetail] = useState<CloudRegionDetail | null>(null);
   const [script, setScript] = useState('');
-  const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [generateLoading, setGenerateLoading] = useState(false);
-  const [envStatusList, setEnvStatusList] = useState<ServiceItem[]>([]);
+  const [generating, setGenerating] = useState(false);
+  const [changeModalOpen, setChangeModalOpen] = useState(false);
+  const [changing, setChanging] = useState(false);
+  const [activating, setActivating] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [deploymentView, setDeploymentView] =
+    useState<DeploymentView>('container');
 
-  useEffect(() => {
-    if (!isLoading) {
-      fetchCloudRegions();
-    }
-  }, [isLoading]);
-
-  // 获取相关的接口
-  const fetchCloudRegions = async () => {
+  const fetchCloudRegion = async (showSuccess = false) => {
     setLoading(true);
+    setLoadFailed(false);
     try {
-      const data = await getCloudRegionDetail(cloudId);
-      const services = data?.services || [];
-      const list = services.map((item: ServiceItem) => ({
-        ...item,
-        icon:
-          item.name === 'stargazer' ? (
-            <StarOutlined style={{ fontSize: 24, color: '#faad14' }} />
-          ) : (
-            <RocketOutlined
-              style={{ fontSize: 24, color: 'var(--color-primary)' }}
-            />
-          ),
-      }));
-      setEnvStatusList(list);
-      // 修改 not_deployed 参数为 2 并跳转
-      const servicesNotDeployed = services.find(
-        (service) => service.status === 'not_deployed'
-      );
-      const flag = servicesNotDeployed ? '1' : '0';
-      if (notDeployed !== flag) {
-        const searchParams = new URLSearchParams(window.location.search);
-        searchParams.set('not_deployed', flag);
-        router.replace(`${pathname}?${searchParams.toString()}`);
+      const data = (await getCloudRegionDetail(cloudId)) as CloudRegionDetail;
+      setDetail(data);
+      if (data.deployment_state === 'not_deployed') {
+        deployForm.setFieldValue('proxyIp', data.proxy_address || '');
       }
+      if (showSuccess) messageApi.success(t('common.refSuccess'));
+      return data;
+    } catch {
+      setLoadFailed(true);
+      messageApi.error(
+        t('node-manager.cloudregion.environment.loadFailed')
+      );
+      return null;
     } finally {
       setLoading(false);
     }
   };
 
-  // 根据颜色值生成带透明度的背景色
-  const getBackgroundColor = (color: string, opacity: number = 0.04) => {
-    if (color.startsWith('var(')) {
-      const varName = color.match(/var\((--[^)]+)\)/)?.[1];
-      if (varName && typeof window !== 'undefined') {
-        const computedColor = getComputedStyle(document.documentElement)
-          .getPropertyValue(varName)
-          .trim();
-        return `color-mix(in srgb, ${computedColor} ${
-          opacity * 100
-        }%, transparent)`;
+  useEffect(() => {
+    if (!isLoading) void fetchCloudRegion();
+    // API hooks are recreated by the request context; cloudId/isLoading are the route inputs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cloudId, isLoading]);
+
+  const generateScript = async (options?: { firstDeploy?: boolean }) => {
+    if (!detail || detail.is_default) return;
+    setGenerating(true);
+    setScript('');
+    try {
+      if (options?.firstDeploy) {
+        const { proxyIp } = await deployForm.validateFields(['proxyIp']);
+        if (proxyIp !== detail.proxy_address) {
+          await updatePartCloudIntro(String(cloudId), {
+            proxy_address: proxyIp,
+          });
+          await fetchCloudRegion();
+        }
       }
+      const generatedScript = await getDeployCommand({
+        cloud_region_id: cloudId,
+      });
+      setScript(generatedScript || '');
+      messageApi.success(t('node-manager.cloudregion.environment.generateSuccess'));
+    } catch (error: unknown) {
+      const validationError = error as { errorFields?: unknown[] };
+      if (!validationError?.errorFields) {
+        messageApi.error(
+          t('node-manager.cloudregion.environment.operationFailed')
+        );
+      }
+    } finally {
+      setGenerating(false);
     }
-    return `color-mix(in srgb, ${color} ${opacity * 100}%, transparent)`;
   };
 
-  // 状态配置管理
-  const statusConfig = {
-    error: {
-      borderColor: 'var(--color-fail)',
-      backgroundColor: getBackgroundColor('var(--color-fail)', 0.04),
-      textColor: 'var(--color-fail)',
-      tagColor: 'error' as const,
-      label:
-        nodeStateEnum.cloud_server_status?.error ||
-        t('node-manager.cloudregion.environment.abnormal'),
-    },
-    normal: {
-      borderColor: 'var(--color-success)',
-      backgroundColor: getBackgroundColor('var(--color-success)', 0.04),
-      textColor: 'var(--color-success)',
-      tagColor: 'success' as const,
-      label:
-        nodeStateEnum.cloud_server_status?.normal ||
-        t('node-manager.cloudregion.environment.normal'),
-    },
-    not_deployed: {
-      borderColor: 'var(--color-fill-1)',
-      backgroundColor: 'var(--color-fill-1)',
-      textColor: 'var(--color-text-2)',
-      tagColor: 'default' as const,
-      label:
-        nodeStateEnum.cloud_server_status?.not_deployed ||
-        t('node-manager.cloudregion.environment.notDeployed'),
-    },
+  const stageProxyAddress = async () => {
+    const { proxyIp } = await changeForm.validateFields(['proxyIp']);
+    setChanging(true);
+    try {
+      await stageCloudRegionProxyAddress(cloudId, proxyIp);
+      changeForm.resetFields();
+      setChangeModalOpen(false);
+      await fetchCloudRegion();
+      messageApi.success(t('node-manager.cloudregion.environment.changeStaged'));
+      await generateScript();
+    } catch (error) {
+      messageApi.error(
+        t('node-manager.cloudregion.environment.operationFailed')
+      );
+      throw error;
+    } finally {
+      setChanging(false);
+    }
   };
 
-  const deployTabs = [
-    {
-      label: t('node-manager.cloudregion.environment.containerDeploy'),
-      value: 'container',
-    },
-    {
-      label: t('node-manager.cloudregion.environment.k8sDeploy'),
-      value: 'k8s',
-    },
-  ];
-
-  const generateScript = () => {
-    form.validateFields(['proxyIp']).then(async (values) => {
-      setScript('');
-      setGenerateLoading(true);
-      setIsEditing(false);
-      const { proxyIp } = values;
-      try {
-        await updatePartCloudIntro(String(cloudId), {
-          proxy_address: proxyIp || '',
-        });
-      } catch {
-        setGenerateLoading(false);
-      }
-      // 模拟异步生成脚本
-      getDeployCommand({ cloud_region_id: cloudId })
-        .then((res) => {
-          const generatedScript = res || '';
-          setScript(generatedScript);
-          message.success(
-            t('node-manager.cloudregion.environment.generateSuccess')
-          );
-        })
-        .finally(() => {
-          setGenerateLoading(false);
-        });
-    });
-  };
-
-  const handleEditConfirm = async () => {
-    // 强制标记字段为 touched，确保验证被触发
-    form.setFields([
-      {
-        name: 'proxyIp',
-        touched: true,
-      },
-    ]);
-    form.validateFields(['proxyIp']).then(() => {
-      setIsEditing(false);
-    });
-  };
-
-  const handleEditClick = () => {
-    Modal.confirm({
-      title: t('node-manager.cloudregion.environment.editWarningTitle'),
-      icon: <ExclamationCircleFilled style={{ color: '#faad14' }} />,
-      content: (
-        <div>
-          <p style={{ marginBottom: 16 }}>
-            {t('node-manager.cloudregion.environment.editWarningContent')}
-          </p>
-          <div
-            style={{
-              background: getBackgroundColor('#faad14', 0.04),
-              borderLeft: '3px solid #faad14',
-              borderRadius: 4,
-              padding: '12px 16px',
-              color: 'var(--color-warning-text)',
-            }}
-          >
-            {t('node-manager.cloudregion.environment.editWarningTip')}
-          </div>
-        </div>
-      ),
-      okText: t('node-manager.cloudregion.environment.confirmEdit'),
+  const confirmActivation = () => {
+    modal.confirm({
+      title: t('node-manager.cloudregion.environment.activateTitle'),
+      icon: <ExclamationCircleFilled className="text-[var(--color-warning)]" />,
+      content: t('node-manager.cloudregion.environment.activateDescription'),
+      okText: t('node-manager.cloudregion.environment.activateConfirm'),
       cancelText: t('common.cancel'),
-      onOk: () => {
-        setIsEditing(true);
+      onOk: async () => {
+        setActivating(true);
+        try {
+          await activateCloudRegionProxyAddress(cloudId);
+          setScript('');
+          await fetchCloudRegion();
+          messageApi.success(t('node-manager.cloudregion.environment.activateSuccess'));
+        } catch (error) {
+          messageApi.error(
+            t('node-manager.cloudregion.environment.operationFailed')
+          );
+          throw error;
+        } finally {
+          setActivating(false);
+        }
       },
     });
   };
 
-  const copyScript = () => {
-    void copyCommand(script);
-  };
-
-  // 刷新环境状态
-  const refreshEnvStatus = () => {
-    return new Promise<void>(async (resolve) => {
-      await fetchCloudRegions();
-      message.success(t('common.refSuccess'));
-      resolve();
+  const cancelPendingChange = () => {
+    modal.confirm({
+      title: t('node-manager.cloudregion.environment.cancelChangeTitle'),
+      content: t('node-manager.cloudregion.environment.cancelChangeDescription'),
+      okText: t('common.confirm'),
+      cancelText: t('common.cancel'),
+      onOk: async () => {
+        try {
+          await cancelCloudRegionProxyAddress(cloudId);
+          setScript('');
+          await fetchCloudRegion();
+          messageApi.success(t('node-manager.cloudregion.environment.cancelChangeSuccess'));
+        } catch (error) {
+          messageApi.error(
+            t('node-manager.cloudregion.environment.operationFailed')
+          );
+          throw error;
+        }
+      },
     });
   };
 
-  const linkToBklite = () => {
-    window.open('https://bklite.ai/');
+  const serviceStatus = (service: ServiceItem) => {
+    if (service.deployment_status === 'not_deployed') {
+      return {
+        label: t('node-manager.cloudregion.environment.notDeployed'),
+        color: 'default' as const,
+        icon: <InfoCircleOutlined />,
+      };
+    }
+    if (service.health_status === 'normal') {
+      return {
+        label: t('node-manager.cloudregion.environment.normal'),
+        color: 'success' as const,
+        icon: <CheckCircleOutlined />,
+      };
+    }
+    return {
+      label: t('node-manager.cloudregion.environment.abnormal'),
+      color: 'error' as const,
+      icon: <CloseCircleOutlined />,
+    };
+  };
+
+  const renderScript = () =>
+    script ? (
+      <div className="mt-4">
+        <div className="mb-2 flex items-center justify-between">
+          <Typography.Text strong>
+            {t('node-manager.cloudregion.environment.deployScript')}
+          </Typography.Text>
+          <Button
+            type="link"
+            size="small"
+            loading={copying}
+            onClick={() => void copyCommand(script)}
+          >
+            {t('node-manager.cloudregion.environment.copyScript')}
+          </Button>
+        </div>
+        <CodeEditor
+          value={script}
+          width="100%"
+          height="250px"
+          mode="shell"
+          theme="monokai"
+          name="cloud-region-deploy-script"
+          readOnly
+        />
+        <Alert
+          className="mt-3"
+          type="info"
+          showIcon
+          message={t('node-manager.cloudregion.environment.executeScriptTip')}
+        />
+      </div>
+    ) : null;
+
+  const renderDefaultMaintenance = () => (
+    <Card title={t('node-manager.cloudregion.environment.maintenanceMethod')}>
+      <Alert
+        type={detail?.health_state === 'abnormal' ? 'warning' : 'info'}
+        showIcon
+        message={t('node-manager.cloudregion.environment.defaultManagedTitle')}
+        description={
+          detail?.health_state === 'abnormal'
+            ? t('node-manager.cloudregion.environment.defaultManagedAbnormal')
+            : t('node-manager.cloudregion.environment.defaultManagedDescription')
+        }
+      />
+      {detail?.health_state === 'abnormal' && (
+        <div className="mt-4 rounded-[8px] border border-[var(--color-border)] bg-[var(--color-fill-1)] p-4">
+          <Typography.Text strong>
+            {t('node-manager.cloudregion.environment.troubleshootingTitle')}
+          </Typography.Text>
+          <Typography.Paragraph className="!mb-0 !mt-2 text-[var(--color-text-2)]">
+            {t('node-manager.cloudregion.environment.troubleshootingDescription')}
+          </Typography.Paragraph>
+        </div>
+      )}
+    </Card>
+  );
+
+  const renderK8sDeployment = () => (
+    <Card title={t('node-manager.cloudregion.environment.k8sDeploy')}>
+      <Alert
+        type="info"
+        showIcon
+        message={t('node-manager.cloudregion.deploy.upgradeTitle')}
+        description={t('node-manager.cloudregion.deploy.upgradeDescription')}
+        action={
+          <Button
+            type="primary"
+            icon={<ExportOutlined />}
+            href="https://bklite.ai/"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {t('node-manager.cloudregion.deploy.upgradeButton')}
+          </Button>
+        }
+      />
+    </Card>
+  );
+
+  const renderFirstDeployment = () => (
+    <Card title={t('node-manager.cloudregion.environment.firstDeployTitle')}>
+      <Steps
+        className="mb-6"
+        current={script ? 1 : 0}
+        items={[
+          { title: t('node-manager.cloudregion.environment.stepAddress') },
+          { title: t('node-manager.cloudregion.environment.stepScript') },
+          { title: t('node-manager.cloudregion.environment.stepVerify') },
+        ]}
+      />
+      <Form form={deployForm} layout="vertical">
+        <Form.Item
+          name="proxyIp"
+          label={t('node-manager.cloudregion.environment.proxyIpOrDomain')}
+          extra={t('node-manager.cloudregion.environment.proxyTips')}
+          rules={[
+            { required: true, message: t('common.inputRequired') },
+            {
+              validator: (_, value) =>
+                !value || isValidProxyAddress(value)
+                  ? Promise.resolve()
+                  : Promise.reject(
+                    new Error(t('node-manager.cloudregion.deploy.ipFormatError'))
+                  ),
+            },
+          ]}
+        >
+          <Input
+            className="h-10"
+            placeholder={t('node-manager.cloudregion.environment.proxyIpPlaceholder')}
+          />
+        </Form.Item>
+        <PermissionWrapper requiredPermissions={['Edit']}>
+          <PermissionWrapper requiredPermissions={['DeployCommand']}>
+            <Button
+              type="primary"
+              icon={<RocketOutlined />}
+              loading={generating}
+              onClick={() => void generateScript({ firstDeploy: true })}
+            >
+              {t('node-manager.cloudregion.environment.generateScript')}
+            </Button>
+          </PermissionWrapper>
+        </PermissionWrapper>
+      </Form>
+      {renderScript()}
+    </Card>
+  );
+
+  const renderManagedDeployment = () => {
+    const pendingAddress = detail?.pending_proxy_address;
+    return (
+      <Card
+        title={t('node-manager.cloudregion.environment.deploySummary')}
+        extra={
+          !pendingAddress && (
+            <Space size={8}>
+              <PermissionWrapper requiredPermissions={['Edit']}>
+                <Button
+                  onClick={() => setChangeModalOpen(true)}
+                >
+                  {t('node-manager.cloudregion.environment.changeProxy')}
+                </Button>
+              </PermissionWrapper>
+              <PermissionWrapper requiredPermissions={['DeployCommand']}>
+                <Button
+                  icon={<ToolOutlined />}
+                  loading={generating}
+                  onClick={() => void generateScript()}
+                >
+                  {t('node-manager.cloudregion.environment.redeploy')}
+                </Button>
+              </PermissionWrapper>
+            </Space>
+          )
+        }
+      >
+        <Descriptions column={1} size="small">
+          <Descriptions.Item label={t('node-manager.cloudregion.environment.currentProxy')}>
+            {detail?.proxy_address || '-'}
+          </Descriptions.Item>
+          <Descriptions.Item label={t('node-manager.cloudregion.environment.deployMethod')}>
+            {t('node-manager.cloudregion.environment.containerDeploy')}
+          </Descriptions.Item>
+          <Descriptions.Item label={t('node-manager.cloudregion.environment.deployState')}>
+            {detail?.deployment_state === 'partially_deployed'
+              ? t('node-manager.cloudregion.environment.partiallyDeployed')
+              : t('node-manager.cloudregion.environment.deployed')}
+          </Descriptions.Item>
+          <Descriptions.Item label={t('node-manager.cloudregion.environment.healthState')}>
+            <Tag color={detail?.health_state === 'normal' ? 'success' : 'error'}>
+              {detail?.health_state === 'normal'
+                ? t('node-manager.cloudregion.environment.normal')
+                : t('node-manager.cloudregion.environment.abnormal')}
+            </Tag>
+          </Descriptions.Item>
+        </Descriptions>
+
+        {detail?.health_state === 'abnormal' && !pendingAddress && (
+          <Alert
+            className="mt-4"
+            type="warning"
+            showIcon
+            message={t('node-manager.cloudregion.environment.deployedAbnormalTitle')}
+            description={t('node-manager.cloudregion.environment.deployedAbnormalDescription')}
+          />
+        )}
+
+        {pendingAddress && (
+          <Alert
+            className="mt-4"
+            type="warning"
+            showIcon
+            message={t('node-manager.cloudregion.environment.pendingChangeTitle')}
+            description={t(
+              'node-manager.cloudregion.environment.pendingChangeDescription',
+              undefined,
+              {
+                current: detail?.proxy_address || '-',
+                pending: pendingAddress,
+              }
+            )}
+            action={
+              <Space wrap size={8}>
+                <PermissionWrapper requiredPermissions={['DeployCommand']}>
+                  <Button loading={generating} onClick={() => void generateScript()}>
+                    {t('node-manager.cloudregion.environment.generatePendingScript')}
+                  </Button>
+                </PermissionWrapper>
+                <PermissionWrapper requiredPermissions={['Edit']}>
+                  <Space size={8}>
+                    <Button
+                      type="primary"
+                      loading={activating}
+                      onClick={confirmActivation}
+                    >
+                      {t('node-manager.cloudregion.environment.activatePending')}
+                    </Button>
+                    <Button onClick={cancelPendingChange}>
+                      {t('node-manager.cloudregion.environment.cancelChange')}
+                    </Button>
+                  </Space>
+                </PermissionWrapper>
+              </Space>
+            }
+          />
+        )}
+        {renderScript()}
+      </Card>
+    );
   };
 
   return (
     <MainLayout>
-      <div className="h-full w-[calc(100vw-285px)] min-w-[1000px]">
-        {/* 环境状态 */}
-        <div style={{ marginBottom: 32 }}>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              marginBottom: 16,
-            }}
-          >
-            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>
+      {messageContextHolder}
+      {modalContextHolder}
+      <div className="h-full w-full min-w-0">
+        <section className="mb-8" aria-labelledby="environment-status-title">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 id="environment-status-title" className="m-0 text-base font-semibold">
               {t('node-manager.cloudregion.environment.envStatus')}
             </h3>
             <Button
               icon={<SyncOutlined />}
-              type="link"
-              onClick={refreshEnvStatus}
-            />
+              aria-label={t('node-manager.cloudregion.environment.refreshStatus')}
+              loading={loading}
+              onClick={() => void fetchCloudRegion(true)}
+            >
+              {t('node-manager.cloudregion.environment.refreshStatus')}
+            </Button>
           </div>
-          <Spin spinning={loading}>
-            {!!envStatusList?.length ? (
-              <div style={{ display: 'flex', gap: 24 }}>
-                {envStatusList.map((envItem) => {
-                  const config =
-                    statusConfig[envItem.status] || statusConfig.not_deployed;
+          {loadFailed && (
+            <Alert
+              className="mb-4"
+              type="error"
+              showIcon
+              message={t('node-manager.cloudregion.environment.loadFailed')}
+              description={t(
+                'node-manager.cloudregion.environment.loadFailedDescription'
+              )}
+              action={
+                <Button onClick={() => void fetchCloudRegion()}>
+                  {t('common.retry')}
+                </Button>
+              }
+            />
+          )}
+          <Spin spinning={loading && !detail}>
+            {detail?.services?.length ? (
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                {detail.services.map((service) => {
+                  const status = serviceStatus(service);
                   return (
-                    <Card
-                      key={envItem.id}
-                      bordered={false}
-                      style={{
-                        flex: 1,
-                        borderTop: `3px solid ${config.borderColor}`,
-                        borderRadius: '4px',
-                        background: config.backgroundColor,
-                      }}
-                      bodyStyle={{ padding: '20px 24px' }}
-                    >
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                        }}
-                      >
+                    <Card key={service.id} size="small" className="border-[var(--color-border)]">
+                      <div className="flex min-h-12 items-center justify-between gap-4">
                         <Space size={12}>
-                          {envItem.icon}
-                          <span
-                            style={{
-                              fontSize: 16,
-                              fontWeight: 500,
-                              color: config.textColor,
-                            }}
-                          >
-                            {envItem.name}
-                          </span>
+                          {service.name === 'stargazer' ? (
+                            <StarOutlined className="text-xl text-[var(--color-warning)]" />
+                          ) : (
+                            <RocketOutlined className="text-xl text-[var(--color-primary)]" />
+                          )}
+                          <div>
+                            <Typography.Text strong>{service.name}</Typography.Text>
+                            {service.message && service.health_status === 'abnormal' && (
+                              <div className="mt-1 max-w-[560px] text-xs text-[var(--color-text-3)]">
+                                {service.message}
+                              </div>
+                            )}
+                          </div>
                         </Space>
-                        <Tag color={config.tagColor} style={{ margin: 0 }}>
-                          {config.label}
+                        <Tag color={status.color} icon={status.icon} className="m-0">
+                          {status.label}
                         </Tag>
                       </div>
                     </Card>
@@ -310,186 +542,99 @@ const EnvironmentPage = () => {
                 })}
               </div>
             ) : (
-              <Empty
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                style={{ height: 54 }}
-              />
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
             )}
           </Spin>
-        </div>
+        </section>
 
-        {/* 环境部署 */}
-        <div>
-          <h3 style={{ marginBottom: 16, fontSize: 16, fontWeight: 600 }}>
+        <section aria-labelledby="environment-deployment-title">
+          <h3
+            id="environment-deployment-title"
+            className="mb-4 text-base font-semibold"
+          >
             {t('node-manager.cloudregion.environment.envDeploy')}
           </h3>
-
           <Segmented
-            options={deployTabs}
-            value={deployType}
-            onChange={(value) => setDeployType(value as string)}
-            style={{ marginBottom: 24 }}
+            className="mb-4"
+            value={deploymentView}
+            options={[
+              {
+                label: t('node-manager.cloudregion.environment.containerDeploy'),
+                value: 'container',
+              },
+              {
+                label: t('node-manager.cloudregion.environment.k8sDeploy'),
+                value: 'k8s',
+              },
+            ]}
+            onChange={(value) => setDeploymentView(value as DeploymentView)}
           />
 
-          {deployType === 'container' && (
-            <Form
-              form={form}
-              layout="vertical"
-              initialValues={{
-                proxyIp: proxyAddress,
-              }}
-            >
-              <div
-                style={{
-                  background: 'var(--color-fill-1)',
-                  padding: 24,
-                  borderRadius: 4,
-                  marginBottom: 24,
-                }}
-              >
-                <Form.Item
-                  label={t(
-                    'node-manager.cloudregion.environment.proxyIpOrDomain'
-                  )}
-                >
-                  <Space.Compact style={{ width: '100%' }}>
-                    <Form.Item
-                      name="proxyIp"
-                      noStyle
-                      rules={[
-                        {
-                          validator: (_, value) => {
-                            if (!value) return Promise.resolve();
-                            // IP地址验证
-                            const ipPattern =
-                              /^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
-                            // 域名验证
-                            const domainPattern =
-                              /^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/;
-                            // URL验证 (http/https)
-                            const urlPattern =
-                              /^https?:\/\/([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}(\/.*)?$/;
-
-                            if (
-                              ipPattern.test(value) ||
-                              domainPattern.test(value) ||
-                              urlPattern.test(value)
-                            ) {
-                              return Promise.resolve();
-                            }
-                            return Promise.reject(
-                              new Error(
-                                t(
-                                  'node-manager.cloudregion.deploy.ipFormatError'
-                                )
-                              )
-                            );
-                          },
-                        },
-                      ]}
-                    >
-                      <Input
-                        placeholder={t(
-                          'node-manager.cloudregion.environment.proxyIpPlaceholder'
-                        )}
-                        disabled={!isEditing && !isNotDeployed}
-                      />
-                    </Form.Item>
-                    {!isNotDeployed && (
-                      <Button
-                        icon={isEditing ? <CheckOutlined /> : <EditOutlined />}
-                        onClick={
-                          isEditing ? handleEditConfirm : handleEditClick
-                        }
-                      />
-                    )}
-                  </Space.Compact>
-                </Form.Item>
-                <div
-                  style={{
-                    marginBottom: 16,
-                    fontSize: 12,
-                    color: 'var(--color-text-3)',
-                    lineHeight: 1.6,
-                  }}
-                >
-                  {t('node-manager.cloudregion.environment.proxyTips')}
-                </div>
-                <PermissionWrapper
-                  className="mb-[20px]"
-                  requiredPermissions={['Edit']}
-                >
-                  <Button
-                    type="primary"
-                    onClick={generateScript}
-                    loading={generateLoading}
-                  >
-                    {t('node-manager.cloudregion.environment.generateScript')}
-                  </Button>
-                </PermissionWrapper>
-                {script && (
-                  <>
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        marginBottom: 8,
-                      }}
-                    >
-                      <span style={{ fontWeight: 500, fontSize: 14 }}>
-                        {t('node-manager.cloudregion.environment.deployScript')}
-                      </span>
-                      <Button
-                        type="link"
-                        loading={copying}
-                        onClick={copyScript}
-                        style={{ padding: 0 }}
-                      >
-                        {t('node-manager.cloudregion.environment.copyScript')}
-                      </Button>
-                    </div>
-                    <Form.Item label="">
-                      <CodeEditor
-                        value={script}
-                        width="100%"
-                        height="250px"
-                        mode="python"
-                        theme="monokai"
-                        name="editor"
-                        readOnly
-                      />
-                    </Form.Item>
-                  </>
-                )}
-              </div>
-            </Form>
+          {deploymentView === 'k8s'
+            ? renderK8sDeployment()
+            : detail &&
+              (detail.is_default
+                ? renderDefaultMaintenance()
+                : detail.deployment_state === 'not_deployed'
+                  ? renderFirstDeployment()
+                  : renderManagedDeployment())}
+          {(deploymentView !== 'container' ||
+            detail?.deployment_state !== 'not_deployed' ||
+            detail?.is_default) && (
+            <Form form={deployForm} className="hidden" aria-hidden />
           )}
-          {deployType === 'k8s' && (
-            <div className="min-h-[400px] flex items-center justify-center bg-[var(--color-fill-1)] border-dashed border-[var(--color-primary)] border rounded-xl">
-              <div className="text-center py-10 px-5">
-                <div className="inline-flex items-center justify-center w-20 h-20 bg-[var(--color-primary)] rounded-[20px] mb-6">
-                  <RocketOutlined className="text-[40px] text-white" />
-                </div>
-                <h3 className="text-lg font-semibold text-[var(--color-text-1)] mb-3">
-                  {t('node-manager.cloudregion.deploy.upgradeTitle')}
-                </h3>
-                <p className="text-sm text-[var(--color-text-3)] mb-8 leading-relaxed">
-                  {t('node-manager.cloudregion.deploy.upgradeDescription')}
-                </p>
-                <Button
-                  type="primary"
-                  size="large"
-                  className="min-w-[140px] h-10 text-[15px] rounded-lg"
-                  onClick={linkToBklite}
-                >
-                  {t('node-manager.cloudregion.deploy.upgradeButton')}
-                </Button>
-              </div>
-            </div>
-          )}
-        </div>
+        </section>
       </div>
+
+      {changeModalOpen ? (
+        <Modal
+          title={t('node-manager.cloudregion.environment.changeProxyTitle')}
+          open
+          confirmLoading={changing}
+          okText={t('node-manager.cloudregion.environment.stageAndGenerate')}
+          cancelText={t('common.cancel')}
+          onOk={() => stageProxyAddress()}
+          onCancel={() => {
+            changeForm.resetFields();
+            setChangeModalOpen(false);
+          }}
+        >
+          <Alert
+            className="mb-4"
+            type="warning"
+            showIcon
+            message={t('node-manager.cloudregion.environment.changeProxyWarning')}
+          />
+          <Form form={changeForm} layout="vertical">
+            <Form.Item label={t('node-manager.cloudregion.environment.currentProxy')}>
+              <Input value={detail?.proxy_address || '-'} readOnly />
+            </Form.Item>
+            <Form.Item
+              name="proxyIp"
+              label={t('node-manager.cloudregion.environment.pendingProxy')}
+              rules={[
+                { required: true, message: t('common.inputRequired') },
+                {
+                  validator: (_, value) =>
+                    !value || isValidProxyAddress(value)
+                      ? Promise.resolve()
+                      : Promise.reject(
+                        new Error(t('node-manager.cloudregion.deploy.ipFormatError'))
+                      ),
+                },
+              ]}
+            >
+              <Input
+                autoFocus
+                className="h-10"
+                placeholder={t('node-manager.cloudregion.environment.proxyIpPlaceholder')}
+              />
+            </Form.Item>
+          </Form>
+        </Modal>
+      ) : (
+        <Form form={changeForm} className="hidden" aria-hidden />
+      )}
       {commandCopyDialog}
     </MainLayout>
   );

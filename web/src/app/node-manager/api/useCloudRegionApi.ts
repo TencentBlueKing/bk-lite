@@ -66,6 +66,30 @@ const useCloudRegionApi = () => {
     return await post(`/node_mgmt/api/cloud_region/deploy_command/`, data);
   };
 
+  const stageCloudRegionProxyAddress = async (
+    id: string | number,
+    proxyAddress: string
+  ) => {
+    return await post(
+      `/node_mgmt/api/cloud_region/${id}/stage_proxy_address/`,
+      { proxy_address: proxyAddress }
+    );
+  };
+
+  const activateCloudRegionProxyAddress = async (id: string | number) => {
+    return await post(
+      `/node_mgmt/api/cloud_region/${id}/activate_proxy_address/`,
+      { confirmed: true }
+    );
+  };
+
+  const cancelCloudRegionProxyAddress = async (id: string | number) => {
+    return await post(
+      `/node_mgmt/api/cloud_region/${id}/cancel_proxy_address/`,
+      {}
+    );
+  };
+
   return {
     getCloudList,
     createCloudRegion,
@@ -75,6 +99,9 @@ const useCloudRegionApi = () => {
     deployCloudRegion,
     getCloudRegionDetail,
     getDeployCommand,
+    stageCloudRegionProxyAddress,
+    activateCloudRegionProxyAddress,
+    cancelCloudRegionProxyAddress,
   };
 };
 

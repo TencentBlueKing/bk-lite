@@ -3,6 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.viewsets import GenericViewSet
 from rest_framework.response import Response
 from rest_framework import status
+from django.db import transaction
 from django.http import HttpResponse
 
 from apps.core.decorators.api_permission import HasPermission
@@ -13,6 +14,8 @@ from apps.node_mgmt.constants.cloudregion_service import CloudRegionServiceConst
 from apps.node_mgmt.filters.cloud_region import CloudRegionFilter
 from apps.node_mgmt.models import Node
 from apps.node_mgmt.serializers.cloud_region import (
+    CloudRegionProxyActivationSerializer,
+    CloudRegionProxyAddressSerializer,
     CloudRegionSerializer,
     CloudRegionUpdateSerializer,
 )
@@ -69,30 +72,64 @@ class CloudRegionViewSet(
         return Response(result)
 
     @HasPermission("cloud_region-Edit")
-    def partial_update(self, request, *args, **kwargs):
+    @transaction.atomic
+    def update(self, request, *args, **kwargs):
         self.serializer_class = CloudRegionUpdateSerializer
-        # 默认云区域default禁止编辑
         cloud_region_id = kwargs.get("pk")
-        cloud_region = CloudRegion.objects.filter(id=cloud_region_id).first()
-        if cloud_region and cloud_region.name == "default":
-            raise BaseAppException("默认云区域禁止编辑")
+        cloud_region = self.get_object()
+        RegionService.ensure_user_managed_region(cloud_region)
 
-        # 如果proxy_address修改了，要同步更新云区域的环境变量PROXY_ADDRESS_REPLACE_KEYS
         old_proxy_address = cloud_region.proxy_address if cloud_region else None
         new_proxy_address = request.data.get("proxy_address")
+        proxy_address_changed = new_proxy_address is not None and old_proxy_address != new_proxy_address
+        if proxy_address_changed and cloud_region.cloudregionservice_set.filter(
+            deployed_status=CloudRegionServiceConstants.DEPLOYED
+        ).exists():
+            raise BaseAppException("已部署云区域请通过代理地址变更流程修改地址")
 
-        # 执行更新
-        response = super().partial_update(request, *args, **kwargs)
+        response = super().update(request, *args, **kwargs)
 
-        # 如果proxy_address发生变化，更新相关环境变量
-        if new_proxy_address is not None and old_proxy_address != new_proxy_address:
-            RegionService.update_env_vars_on_proxy_change(
+        if proxy_address_changed:
+            RegionService.sync_proxy_related_env_vars(
                 cloud_region_id=cloud_region_id,
                 old_proxy_address=old_proxy_address,
-                new_proxy_address=new_proxy_address,
+                new_proxy_address=response.data["proxy_address"],
             )
 
         return response
+
+    @HasPermission("cloud_region-Edit")
+    def partial_update(self, request, *args, **kwargs):
+        kwargs["partial"] = True
+        return self.update(request, *args, **kwargs)
+
+    @HasPermission("cloud_region-Edit")
+    @action(methods=["post"], detail=True, url_path="stage_proxy_address")
+    def stage_proxy_address(self, request, *args, **kwargs):
+        serializer = CloudRegionProxyAddressSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        cloud_region = RegionService.stage_proxy_address(
+            int(kwargs["pk"]),
+            serializer.validated_data["proxy_address"],
+        )
+        return Response(CloudRegionSerializer(cloud_region).data)
+
+    @HasPermission("cloud_region-Edit")
+    @action(methods=["post"], detail=True, url_path="activate_proxy_address")
+    def activate_proxy_address(self, request, *args, **kwargs):
+        serializer = CloudRegionProxyActivationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        cloud_region = RegionService.activate_pending_proxy_address(
+            int(kwargs["pk"]),
+            confirmed=serializer.validated_data["confirmed"],
+        )
+        return Response(CloudRegionSerializer(cloud_region).data)
+
+    @HasPermission("cloud_region-Edit")
+    @action(methods=["post"], detail=True, url_path="cancel_proxy_address")
+    def cancel_proxy_address(self, request, *args, **kwargs):
+        cloud_region = RegionService.cancel_pending_proxy_address(int(kwargs["pk"]))
+        return Response(CloudRegionSerializer(cloud_region).data)
 
     @HasPermission("cloud_region-Create")
     def create(self, request, *args, **kwargs):
@@ -122,6 +159,8 @@ class CloudRegionViewSet(
     def destroy(self, request, *args, **kwargs):
         # 校验云区域下是否存在节点
         cloud_region_id = kwargs.get("pk")
+        cloud_region = self.get_object()
+        RegionService.ensure_user_managed_region(cloud_region)
         if Node.objects.filter(cloud_region_id=cloud_region_id).exists():
             raise BaseAppException("该云区域下存在节点，无法删除")
         return super().destroy(request, *args, **kwargs)
