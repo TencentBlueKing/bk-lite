@@ -12,6 +12,7 @@ from .schemas import ProviderManifest
 BUILTIN_PROVIDER_MODULES = (
     "apps.system_mgmt.providers.manifests.feishu",
     "apps.system_mgmt.providers.manifests.wechat",
+    "apps.system_mgmt.providers.manifests.wecom",
     "apps.system_mgmt.providers.manifests.ad",
 )
 
@@ -54,15 +55,16 @@ def load_builtin_providers(force: bool = False):
                 )
                 provider_registry.register(manifest)
 
-                if manifest.base_connection_adapter_key and manifest.base_connection_adapter_path:
-                    capability_adapter_registry.register(
-                        manifest.base_connection_adapter_key,
-                        import_string(manifest.base_connection_adapter_path),
-                    )
-
                 for capability in manifest.capabilities:
                     adapter_cls = import_string(capability.adapter_path)
                     capability_adapter_registry.register(capability.adapter_key, adapter_cls)
+
+                if manifest.base_connection_adapter_key and manifest.base_connection_adapter_path:
+                    base_adapter_cls = import_string(manifest.base_connection_adapter_path)
+                    capability_adapter_registry.register(
+                        manifest.base_connection_adapter_key,
+                        base_adapter_cls,
+                    )
 
                 logger.debug(
                     f"Loaded provider manifest '{manifest.key}' "
