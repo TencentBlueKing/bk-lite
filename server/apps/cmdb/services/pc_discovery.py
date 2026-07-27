@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 
 from django.db import transaction
 
-from apps.cmdb.constants.constants import INSTANCE
+from apps.cmdb.constants.constants import INSTANCE, INSTANCE_ASSOCIATION
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.core.logger import cmdb_logger as logger
 
@@ -28,6 +28,13 @@ PC_COLLECTED_FIELDS = frozenset({
     "device_model", "logged_in_user", "last_collect_time",
 })
 
+# 采集允许写入的软件字段（与 attr-pc_software 一致）。
+# 归属只走 install_on 关联：pc_inst_name/snapshot_id 是 VM 传输标签，不落为资产字段。
+SOFTWARE_COLLECTED_FIELDS = frozenset({
+    "inst_name", "name", "version", "publisher", "software_key", "product_id",
+    "install_location", "install_date", "architecture", "source", "last_collect_time",
+})
+
 _OS_INST_PREFIX = {"windows": "WIN-", "macos": "MAC-"}
 
 _MAX_ERROR_DETAIL = 500
@@ -36,6 +43,11 @@ _MAX_ERROR_DETAIL = 500
 def filter_pc_payload(raw):
     """严格白名单：只保留采集字段，禁止把原始 PC dict 全量传给图客户端。"""
     return {key: value for key, value in (raw or {}).items() if key in PC_COLLECTED_FIELDS}
+
+
+def filter_software_payload(raw):
+    """软件白名单：去掉传输标签（pc_inst_name/snapshot_id）与未知字段。"""
+    return {key: value for key, value in (raw or {}).items() if key in SOFTWARE_COLLECTED_FIELDS}
 
 
 @dataclass(frozen=True)
@@ -279,11 +291,65 @@ class PCSnapshotReconciler:
                 )
                 result["pc_entity"] = ag.create_entity(INSTANCE, create_payload, {}, [])
                 result["pc_status"] = "added"
+            sw_counts = self._upsert_software(ag, snapshot, result["pc_entity"])
 
+        result.update(sw_counts)
         if decision.mode == "owner":
             PCAuthorityService.mark_applied(decision.authority, snapshot.snapshot_id, snapshot.collected_at)
-            result["allow_delete"] = snapshot.can_delete
+            # 任何软件写入或关联失败都不得删除（降级部分成功）
+            result["allow_delete"] = snapshot.can_delete and sw_counts["software_failed"] == 0
+        if sw_counts["software_failed"]:
+            result["error_code"] = "CMDB_WRITE_PARTIAL"
         return result
+
+    def _upsert_software(self, ag, snapshot, pc_entity):
+        """软件按 inst_name 无删除 upsert + install_on 关联；任一失败计入 software_failed。"""
+        counts = {"software_added": 0, "software_updated": 0, "software_failed": 0}
+        for row in snapshot.software:
+            payload = filter_software_payload(row)
+            try:
+                params = [
+                    {"field": "model_id", "type": "str=", "value": "pc_software"},
+                    {"field": "inst_name", "type": "str=", "value": payload["inst_name"]},
+                ]
+                existing, _ = ag.query_entity(INSTANCE, params)
+                if existing:
+                    ag.set_entity_properties(INSTANCE, [existing[0]["_id"]], payload, {}, [])
+                    sw_entity = dict(existing[0], **payload)
+                    counts["software_updated"] += 1
+                else:
+                    create_payload = dict(payload)
+                    create_payload.update(
+                        model_id="pc_software",
+                        organization=self._organization(),
+                        collect_task=self.task.id,
+                        auto_collect=True,
+                    )
+                    sw_entity = ag.create_entity(INSTANCE, create_payload, {}, [])
+                    counts["software_added"] += 1
+                asso_info = {
+                    "model_asst_id": "pc_software_install_on_pc",
+                    "src_model_id": "pc_software",
+                    "src_inst_id": sw_entity["_id"],
+                    "dst_model_id": "pc",
+                    "dst_inst_id": pc_entity["_id"],
+                    "asst_id": "install_on",
+                }
+                try:
+                    ag.create_edge(
+                        INSTANCE_ASSOCIATION, sw_entity["_id"], INSTANCE,
+                        pc_entity["_id"], INSTANCE, asso_info, "model_asst_id",
+                    )
+                except Exception as exc:  # noqa: BLE001 - 边已存在即目标状态，幂等视为成功
+                    if str(exc) != "edge already exists":
+                        raise
+            except Exception as exc:  # noqa: BLE001 - 单条软件失败不影响其余软件
+                logger.warning(
+                    "[PC] software upsert failed: task=%s sw=%s err=%s",
+                    getattr(self.task, "id", None), payload.get("inst_name"), type(exc).__name__,
+                )
+                counts["software_failed"] += 1
+        return counts
 
 
 def apply_pc_snapshots(task, snapshots):
@@ -305,11 +371,12 @@ def apply_pc_snapshots(task, snapshots):
                 "error_code": "CMDB_WRITE_PARTIAL",
                 "error_detail": str(exc)[:_MAX_ERROR_DETAIL],
             }
-        status = "failed" if result.get("pc_failed") else "success"
+        status = "failed" if result.get("pc_failed") or result.get("software_failed") else "success"
         if result.get("pc_status") == "added":
             summary["add"] += 1
         elif result.get("pc_status") == "updated":
             summary["update"] += 1
+        summary["association"] += result.get("software_added", 0)
         row = {
             "inst_name": inst_name,
             "_status": status,

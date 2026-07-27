@@ -27,13 +27,15 @@ T1 = datetime(2026, 7, 22, 10, 0, 0, tzinfo=timezone.utc)
 
 
 class InMemoryGraph:
-    """最小图存储 fake：query/create/set_properties 直接操作字典。"""
+    """最小图存储 fake：query/create/set_properties/create_edge 直接操作字典。"""
 
-    def __init__(self, fail_on_inst=None):
+    def __init__(self, fail_on_inst=None, fail_edges=False):
         self.store = {}  # inst_name -> entity dict
         self._next_id = 1
         self.fail_on_inst = fail_on_inst or set()
+        self.fail_edges = fail_edges
         self.set_payloads = {}  # inst_name -> 最近一次更新 payload
+        self.edges = []  # asso_info 列表
 
     def __enter__(self):
         return self
@@ -69,6 +71,17 @@ class InMemoryGraph:
         self.set_payloads[entity["inst_name"]] = dict(entity_info)
         entity.update(entity_info)
         return [dict(entity)]
+
+    def create_edge(self, label, src_id, src_label, dst_id, dst_label, asso_info, key):
+        if self.fail_edges:
+            raise RuntimeError("edge write boom")
+        for edge in self.edges:
+            if (edge["src_inst_id"], edge["dst_inst_id"], edge["asst_id"]) == (
+                asso_info["src_inst_id"], asso_info["dst_inst_id"], asso_info["asst_id"],
+            ):
+                raise RuntimeError("edge already exists")
+        self.edges.append(dict(asso_info))
+        return dict(asso_info)
 
 
 def _task(name="pc-task"):
@@ -230,3 +243,110 @@ def test_source_conflict_zero_writes(graph):
     assert result["pc_failed"] == 1
     assert result["error_code"] == "SOURCE_TASK_CONFLICT"
     assert graph.set_payloads == {}
+
+
+# ---- Task 9: 软件 upsert 与 install_on 关联 ----
+
+
+def _software(inst="SW-AAA", pc_inst="WIN-ABC", snapshot_id="s1", name="Chrome", version="126.0", **fields):
+    row = {
+        "inst_name": inst,
+        "pc_inst_name": pc_inst,
+        "snapshot_id": snapshot_id,
+        "software_key": "chrome|google",
+        "name": name,
+        "version": version,
+        "publisher": "Google",
+        "source": "registry",
+        "last_collect_time": "2026-07-22T10:00:00+00:00",
+    }
+    row.update(fields)
+    return row
+
+
+def _software_of(graph, pc_inst):
+    """通过 install_on 边找出属于某台 PC 的软件（归属只走关联，不落字段）。"""
+    pc_id = graph.store[pc_inst]["_id"]
+    sw_ids = {e["src_inst_id"] for e in graph.edges if e["dst_inst_id"] == pc_id and e["asst_id"] == "install_on"}
+    return {name: e for name, e in graph.store.items() if e.get("_id") in sw_ids}
+
+
+@pytest.mark.django_db
+def test_software_written_with_install_on_association(graph):
+    task = _task()
+
+    result = PCSnapshotReconciler(task).apply(_snapshot(software=[_software()]))
+
+    assert result["software_failed"] == 0
+    assert result["software_added"] == 1
+    sw = graph.store["SW-AAA"]
+    assert sw["model_id"] == "pc_software"
+    assert sw["organization"] == 7
+    assert sw["version"] == "126.0"
+    assert len(graph.edges) == 1
+    edge = graph.edges[0]
+    assert edge["asst_id"] == "install_on"
+    assert edge["model_asst_id"] == "pc_software_install_on_pc"
+    assert edge["src_inst_id"] == sw["_id"]
+    assert edge["dst_inst_id"] == graph.store["WIN-ABC"]["_id"]
+
+
+@pytest.mark.django_db
+def test_software_upgrade_updates_same_instance(graph):
+    task = _task()
+    reconciler = PCSnapshotReconciler(task)
+
+    reconciler.apply(_snapshot(software=[_software(version="126.0")]))
+    first = graph.store["SW-AAA"]["_id"]
+    reconciler.apply(
+        _snapshot(snapshot_id="s2", collected_at=datetime(2026, 7, 22, 11, tzinfo=timezone.utc),
+                  software=[_software(snapshot_id="s2", version="127.0")])
+    )
+
+    assert graph.store["SW-AAA"]["_id"] == first
+    assert graph.store["SW-AAA"]["version"] == "127.0"
+    # 重复采集不重复建边（edge already exists 幂等成功）
+    assert len(graph.edges) == 1
+
+
+@pytest.mark.django_db
+def test_software_isolated_across_pcs(graph):
+    task = _task()
+
+    apply_pc_snapshots(task, [
+        _snapshot(inst="WIN-AAA", software=[_software(inst="SW-AAA", pc_inst="WIN-AAA")]),
+        _snapshot(inst="WIN-BBB", software=[_software(inst="SW-BBB", pc_inst="WIN-BBB")]),
+    ])
+
+    assert set(_software_of(graph, "WIN-AAA")) == {"SW-AAA"}
+    assert set(_software_of(graph, "WIN-BBB")) == {"SW-BBB"}
+    pc_by_edge = {e["dst_inst_id"] for e in graph.edges}
+    assert pc_by_edge == {graph.store["WIN-AAA"]["_id"], graph.store["WIN-BBB"]["_id"]}
+
+
+@pytest.mark.django_db
+def test_association_failure_blocks_delete(monkeypatch):
+    task = _task()
+    fake = InMemoryGraph(fail_edges=True)
+    monkeypatch.setattr("apps.cmdb.services.pc_discovery.GraphClient", lambda *a, **k: fake)
+
+    result = PCSnapshotReconciler(task).apply(_snapshot(software=[_software()]))
+
+    assert result["allow_delete"] is False
+    assert result["software_failed"] == 1
+    assert result["error_code"] == "CMDB_WRITE_PARTIAL"
+    # PC 与软件实体已写入，仅关联失败，不回滚
+    assert "WIN-ABC" in fake.store
+    assert "SW-AAA" in fake.store
+
+
+@pytest.mark.django_db
+def test_software_payload_whitelisted(graph):
+    task = _task()
+
+    PCSnapshotReconciler(task).apply(_snapshot(software=[_software(evil_field="x", snapshot_id="s1")]))
+
+    sw = graph.store["SW-AAA"]
+    assert "evil_field" not in sw
+    assert "snapshot_id" not in sw
+    assert "pc_inst_name" not in sw  # 归属只走 install_on 关联，不作为资产字段
