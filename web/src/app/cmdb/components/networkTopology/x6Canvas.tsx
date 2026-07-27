@@ -80,6 +80,25 @@ interface NetworkTopologyX6CanvasProps {
 const NODE_WIDTH = NETWORK_TOPO_VISUAL.node.width;
 const NODE_HEIGHT = NETWORK_TOPO_VISUAL.node.height;
 const DEVICE_NODE_SHAPE = 'topo-network-device';
+const DYNAMIC_COLOR_PATTERN = /(?:var|color-mix)\(/;
+
+const inlineDynamicSvgStyles = (source: SVGSVGElement, target: SVGSVGElement) => {
+  const sourceElements = [source, ...Array.from(source.querySelectorAll('*'))];
+  const targetElements = [target, ...Array.from(target.querySelectorAll('*'))];
+
+  targetElements.forEach((targetElement, index) => {
+    const sourceElement = sourceElements[index];
+    if (!sourceElement) return;
+
+    const computedStyle = window.getComputedStyle(sourceElement);
+    Array.from(targetElement.attributes).forEach(({ name, value }) => {
+      if (!DYNAMIC_COLOR_PATTERN.test(value)) return;
+
+      const computedValue = computedStyle.getPropertyValue(name).trim();
+      if (computedValue) targetElement.setAttribute(name, computedValue);
+    });
+  });
+};
 
 const toolbarWrapperStyle: React.CSSProperties = {
   position: 'absolute',
@@ -474,6 +493,10 @@ const NetworkTopologyX6Canvas: React.FC<NetworkTopologyX6CanvasProps> = ({
       padding: 40,
       backgroundColor: '#ffffff',
       copyStyles: false,
+      beforeSerialize: (svg) => {
+        inlineDynamicSvgStyles(graph.view.svg, svg);
+        return svg;
+      },
     });
   }, [toolbar?.exportFileName]);
 

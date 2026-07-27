@@ -93,10 +93,7 @@ const SortableFieldItem = ({ field, onRemove }: SortableFieldItemProps) => {
 };
 
 const FieldDragOverlay = ({ field }: { field: ColumnItem }) => (
-  <div
-    aria-hidden="true"
-    className={`${fieldSettingModalStyle.fieldItem} ${fieldSettingModalStyle.dragOverlay}`}
-  >
+  <div aria-hidden="true" className={fieldSettingModalStyle.dragOverlay}>
     <HolderOutlined className={fieldSettingModalStyle.dragTrigger} />
     <span className={fieldSettingModalStyle.dragLabel}>{field.title}</span>
   </div>
