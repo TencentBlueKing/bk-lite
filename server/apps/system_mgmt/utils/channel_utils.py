@@ -23,6 +23,7 @@ import nats_client
 from apps.core.logger import system_mgmt_logger as logger
 from apps.system_mgmt.models import Channel
 from apps.system_mgmt.utils.network_whitelist_cache import get_network_whitelist_cidrs, get_network_whitelist_domains
+from apps.system_mgmt.utils.network_whitelist_error import build_network_whitelist_error_payload
 
 
 def is_valid_webhook_url(url: str) -> bool:
@@ -263,7 +264,7 @@ def send_by_wecom_bot(channel_obj: Channel, content, receivers):
     # SSRF 防护：验证 webhook URL 域名
     if not is_valid_webhook_url(webhook_url):
         logger.warning(f"[SSRF] 阻断非法 webhook hostname: {_webhook_hostname(webhook_url)}")
-        return {"result": False, "message": "webhook domain or IP not in whitelist"}
+        return build_network_whitelist_error_payload()
 
     try:
         res = requests.post(webhook_url, json=payload, timeout=5, allow_redirects=False)
@@ -287,7 +288,7 @@ def send_by_feishu_bot(channel_obj: Channel, title, content, receivers):
     # SSRF 防护：验证 webhook URL 域名
     if not is_valid_webhook_url(webhook_url):
         logger.warning(f"[SSRF] 阻断非法 webhook hostname: {_webhook_hostname(webhook_url)}")
-        return {"result": False, "message": "webhook domain or IP not in whitelist"}
+        return build_network_whitelist_error_payload()
 
     payload = {
         "msg_type": "interactive",
@@ -331,7 +332,7 @@ def send_by_dingtalk_bot(channel_obj: Channel, title, content, receivers):
     # SSRF protection: validate webhook URL against allowlist before signing
     if not is_valid_webhook_url(webhook_url):
         logger.warning(f"[SSRF] 阻断非法 webhook hostname: {_webhook_hostname(webhook_url)}")
-        return {"result": False, "message": "webhook domain or IP not in whitelist"}
+        return build_network_whitelist_error_payload()
 
     # 可选签名验证（毫秒级时间戳，URL 编码）
     channel_obj.decrypt_field("sign_secret", channel_config)
@@ -396,7 +397,7 @@ def send_by_custom_webhook(channel_obj: Channel, content, receivers):
     if not webhook_url:
         return {"result": False, "message": "Custom webhook url is not configured"}
     if not is_valid_webhook_url(webhook_url):
-        return {"result": False, "message": "webhook domain or IP not in whitelist"}
+        return build_network_whitelist_error_payload()
     if receivers:
         to_user_mentions = " ".join(f"@{name} " for name in receivers)
         content = f"{content}<br>To: {to_user_mentions}"

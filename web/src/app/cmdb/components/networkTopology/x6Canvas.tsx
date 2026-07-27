@@ -80,6 +80,25 @@ interface NetworkTopologyX6CanvasProps {
 const NODE_WIDTH = NETWORK_TOPO_VISUAL.node.width;
 const NODE_HEIGHT = NETWORK_TOPO_VISUAL.node.height;
 const DEVICE_NODE_SHAPE = 'topo-network-device';
+const DYNAMIC_COLOR_PATTERN = /(?:var|color-mix)\(/;
+
+const inlineDynamicSvgStyles = (source: SVGSVGElement, target: SVGSVGElement) => {
+  const sourceElements = [source, ...Array.from(source.querySelectorAll('*'))];
+  const targetElements = [target, ...Array.from(target.querySelectorAll('*'))];
+
+  targetElements.forEach((targetElement, index) => {
+    const sourceElement = sourceElements[index];
+    if (!sourceElement) return;
+
+    const computedStyle = window.getComputedStyle(sourceElement);
+    Array.from(targetElement.attributes).forEach(({ name, value }) => {
+      if (!DYNAMIC_COLOR_PATTERN.test(value)) return;
+
+      const computedValue = computedStyle.getPropertyValue(name).trim();
+      if (computedValue) targetElement.setAttribute(name, computedValue);
+    });
+  });
+};
 
 const toolbarWrapperStyle: React.CSSProperties = {
   position: 'absolute',
@@ -143,6 +162,16 @@ const buildStructureKey = (data: NetworkTopologyX6GraphData) =>
       edge.vertices,
     ]),
   });
+
+const fitGraphToView = (
+  graph: Graph,
+  options?: NetworkTopologyX6CanvasProps['fitViewOptions']
+) => {
+  graph.zoomToFit({
+    padding: options?.padding ?? 112,
+    maxScale: options?.maxScale ?? 1.12,
+  });
+};
 
 const patchGraphAttrs = (graph: Graph, data: NetworkTopologyX6GraphData) => {
   data.nodes.forEach((node) => {
@@ -370,10 +399,7 @@ const GraphLoader: React.FC<NetworkTopologyX6CanvasProps> = ({
     if (!graph) return undefined;
     const timer = window.setTimeout(() => {
       try {
-        graph.zoomToFit({
-          padding: fitViewOptions?.padding ?? 112,
-          maxScale: fitViewOptions?.maxScale ?? 1.12,
-        });
+        fitGraphToView(graph, fitViewOptions);
       } catch {
         // ignore graph warm-up timing
       }
@@ -455,11 +481,10 @@ const NetworkTopologyX6Canvas: React.FC<NetworkTopologyX6CanvasProps> = ({
   const hasGraph = data.nodes.length > 0;
 
   const fitView = useCallback(() => {
-    internalGraphRef.current?.zoomToFit({
-      padding: fitViewOptions?.padding ?? 112,
-      maxScale: fitViewOptions?.maxScale ?? 1.12,
-    });
-  }, [fitViewOptions?.maxScale, fitViewOptions?.padding]);
+    if (internalGraphRef.current) {
+      fitGraphToView(internalGraphRef.current, fitViewOptions);
+    }
+  }, [fitViewOptions]);
 
   const handleExport = useCallback(() => {
     const graph = internalGraphRef.current;
@@ -468,6 +493,10 @@ const NetworkTopologyX6Canvas: React.FC<NetworkTopologyX6CanvasProps> = ({
       padding: 40,
       backgroundColor: '#ffffff',
       copyStyles: false,
+      beforeSerialize: (svg) => {
+        inlineDynamicSvgStyles(graph.view.svg, svg);
+        return svg;
+      },
     });
   }, [toolbar?.exportFileName]);
 

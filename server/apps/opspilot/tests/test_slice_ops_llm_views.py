@@ -21,12 +21,7 @@ import pytest
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.opspilot.models import LLMModel, LLMSkill, ModelVendor, SkillRequestLog
-from apps.opspilot.viewsets.llm_view import (
-    LLMModelViewSet,
-    LLMViewSet,
-    SkillRequestLogViewSet,
-    SkillToolsViewSet,
-)
+from apps.opspilot.viewsets.llm_view import LLMModelViewSet, LLMViewSet, SkillRequestLogViewSet, SkillToolsViewSet
 
 pytestmark = pytest.mark.django_db
 
@@ -293,7 +288,10 @@ class TestConnectionActions:
     def test_es_url_ssrf拦截(self, mocker):
         norm = mocker.patch(f"{LLM_MOD}.normalize_es_instance")
         resp = _dispatch(SkillToolsViewSet, "test_es_connection", "post", data={"url": "http://169.254.169.254/"})
+        body = _body(resp)
         assert resp.status_code == 400
+        assert body["code"] == "CONNECTION_TARGET_FORBIDDEN"
+        assert "data" not in body
         norm.assert_not_called()
 
     def test_jenkins_成功(self, mocker):
@@ -315,7 +313,12 @@ class TestConnectionActions:
         norm = mocker.patch(f"{LLM_MOD}.normalize_kubernetes_instance")
         kubeconfig = "apiVersion: v1\nclusters:\n- cluster:\n    server: https://10.0.0.5:6443\n"
         resp = _dispatch(SkillToolsViewSet, "test_kubernetes_connection", "post", data={"kubeconfig_data": kubeconfig})
+        body = _body(resp)
         assert resp.status_code == 400
+        assert body["code"] == "NETWORK_WHITELIST_REQUIRED"
+        assert body["message"] == "The target IP is not in the allowlist. Add it in System Management > Network Allowlist."
+        assert body["data"]["network_whitelist_url"] == "/system-manager/settings/network-whitelist"
+        assert body["data"]["action_label"] == "Open Network Allowlist"
         norm.assert_not_called()
 
 

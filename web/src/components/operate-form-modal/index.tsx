@@ -34,6 +34,7 @@ const OperateFormModal: React.FC<OperateFormModalProps> = ({
   return (
     <OperateModal
       {...modalProps}
+      onCancel={onCancel}
       footer={
         hideFooter
           ? null
