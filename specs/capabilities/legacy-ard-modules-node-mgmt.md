@@ -34,12 +34,13 @@ NATS handlers（`@nats_client.register`，`nats/node.py`）：
 ## 4. 通信机制【已实现/已存在】
 - NATS：`nats/{node,permission}.py` 节点数据同步与权限。安装日志事件流走 NATS core 订阅：`installer.py` 通过 `subscribe_lines_sync` 订阅普通 subject `executor.stream.{execution_id}`，并未使用 JetStream 持久消费者（`tasks/installer.py:591-604`）。`subscribe_lines_sync` 定义在服务端顶层包 `server/nats_client/clients.py:256-285`（用 `nc.subscribe(subject, cb=...)` 即 core 订阅）；同文件另有 JetStream 原语 `ensure_stream`/`iter_jetstream_subject`（`server/nats_client/clients.py:304,332`），但 node_mgmt installer 未引用。
 - SSH：`utils/installer.py` 远程安装控制器。
+- WinRM：Windows 控制器远程安装由云区域内健康的 Ansible Executor 连接目标主机，固定使用 HTTPS/5986、NTLM 和服务端证书校验；Executor 将原生 `bklite-controller-bootstrap.exe` 分发到目标主机并执行，不新增独立 WinRM 服务。
 - Celery：
   - 控制器：`install/uninstall_controller`。
   - 采集器：`install_collector`（实际执行安装）；`uninstall_collector` 当前为占位任务，函数体仅 `pass`、未实现卸载逻辑（`tasks/installer.py:1148-1150`）。
   - 收敛 / 超时（两组）：控制器安装侧 `converge_controller_install_connectivity_for_node`（`tasks/installer.py:722`）/ `timeout_controller_install_task`（`tasks/installer.py:766`）；采集器动作侧 `converge_collector_action_task_for_node`（`tasks/action_task.py:153`）/ `timeout_collector_action_task`（`tasks/action_task.py:217`）。
   - 其他：`discover_node_versions`、`sync_node_properties_to_sidecar`（推送配置到 sidecar.yaml）、`check_all_region_services`（健康检查 nats-executor/stargazer）。
-- 管理命令【已实现/已存在】：`node_init` 初始化内置节点数据；`collector_package_init` / `controller_package_init` 上传 collector/controller 包；`installer_init` 上传 latest 安装器对象；`node_token_init` / `reset_node_token` 生成或重置节点 token；`backfill_node_cpu_architecture`、`backfill_package_storage_paths`、`verify_architecture_rollout` 分别用于 CPU 架构回填、包对象路径回填与架构发布校验。
+- 管理命令【已实现/已存在】：`node_init` 初始化内置节点数据；`collector_package_init` / `controller_package_init` 上传 collector/controller 包；`installer_init` 上传 latest 安装器对象，其中 Windows GUI 安装器使用默认 `installer` variant，Windows 远程安装产物使用 `--variant bootstrap` 上传到 `installer/windows/x86_64/bklite-controller-bootstrap.exe`；`node_token_init` / `reset_node_token` 生成或重置节点 token；`backfill_node_cpu_architecture`、`backfill_package_storage_paths`、`verify_architecture_rollout` 分别用于 CPU 架构回填、包对象路径回填与架构发布校验。
 
 ## 5. 风险 / 待确认
 - 安装日志事件流采用 NATS core 订阅（`subscribe_lines_sync` 订阅 `executor.stream.{execution_id}`），不依赖 JetStream，订阅在超时或 `stop_event` 后即解订阅、不做持久化与重放，进程/网络中断期间的日志行可能丢失【已实现，见 `tasks/installer.py:591-604`、`server/nats_client/clients.py:256-285`】。

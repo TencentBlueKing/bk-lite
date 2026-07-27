@@ -182,15 +182,15 @@ BK-Lite 采集节点管理采用四层分布式架构，各层职责明确，层
 
 **NATS-Executor** 专注于与平台的双向消息通信，接收来自平台的 NATS 消息指令（如文件下载、命令执行、Ansible 任务等），在本地执行后将结果精确回传至平台。NATS-Executor 是控制器的"执行通道"，所有平台发起的操作指令均经由这一路径到达节点。
 
-控制器以单一可执行文件的形式分发（Linux 平台为 `bklite-controller-installer`，Windows 平台为 `bklite-controller-installer.exe`），目标主机无需预装 Python、Java 或任何运行时依赖，向下兼容低版本 SSH 协议与无 sudo 权限的受限环境，实现真正意义上的低侵入性部署。
+控制器安装工具以原生可执行文件分发：Linux 平台为 `bklite-controller-installer`；Windows 手动安装为 `bklite-controller-installer.exe`，Windows 远程安装使用无 GUI 的 `bklite-controller-bootstrap.exe`。目标主机无需预装 Python、Java 等额外运行时；Windows bootstrap 由平台经 WinRM 临时分发，完成安装后清理。
 
 ### 4.2 控制器安装模式：覆盖全场景网络拓扑
 
 控制器提供远程安装与手动安装两种模式，以覆盖不同网络拓扑与安全策略下的安装场景。
 
-**远程安装模式**适用于平台能够通过 SSH 直接访问目标主机的场景。运维人员在平台界面填写目标主机的 SSH 凭据（支持密码认证与密钥认证），平台自动完成安装包下载、解压、安装的全部流程，并通过步骤状态树实时展示每个安装步骤的执行状态。安装失败时，步骤级日志直接在控制台可读，运维人员无需登录目标服务器即可定位问题，显著缩短故障排查时间。
+**远程安装模式**适用于平台能够连接目标主机的场景。Linux 使用 SSH，支持密码或密钥认证；Windows 由云区域内的 Ansible Executor 通过 HTTPS/5986 WinRM、NTLM 和服务端证书校验连接，并临时分发原生 `bklite-controller-bootstrap.exe`。平台自动完成安装包下载、校验、解压、安装及失败回滚，并通过步骤状态树展示执行状态。
 
-**手动安装模式**适用于 Windows 节点、受安全策略限制无法 SSH 直连的节点，或其他受限网络场景。平台生成携带有效令牌的 PowerShell 安装脚本（Linux 场景为 Shell 脚本），运维人员通过 SCCM、SaltStack 或其他分发渠道将脚本推送至目标节点执行。控制器安装完成后自动回传状态，管理员在进度面板实时查看每台节点的安装结果，无需登录目标主机进行人工核查。手动安装节点具备独立的状态流转机制（等待安装→安装成功），支持状态精确追踪。
+**手动安装模式**适用于无法建立 SSH/WinRM 远程连接或受其他安全策略限制的节点。运维人员下载对应平台安装器，或通过 SCCM、SaltStack 等既有渠道分发执行。控制器安装完成后自动回传状态，管理员可在进度面板查看每台节点的安装结果。手动安装节点具备独立的状态流转机制（等待安装→安装成功），支持状态精确追踪。
 
 批量控制器操作规则要求所选节点操作系统与安装方式保持一致；远程安装/卸载面向同操作系统且安装方式一致的节点批次，防止操作模式混淆导致执行异常。
 
@@ -422,6 +422,8 @@ BK-Lite 采集节点管理的技术演进将在以下方向持续推进：
 | 安装包存储路径格式 | `installer/<os>/<arch>/<filename>` |
 | Linux 控制器安装器文件名 | `bklite-controller-installer` |
 | Windows 控制器安装器文件名 | `bklite-controller-installer.exe` |
+| Windows 远程安装 bootstrap 文件名 | `bklite-controller-bootstrap.exe` |
+| Windows 远程安装 bootstrap 发布路径 | `installer/windows/x86_64/bklite-controller-bootstrap.exe`（通过 `installer_init --variant bootstrap` 初始化） |
 | 安装包唯一性约束（四元组） | 操作系统 + CPU 架构 + 对象 + 版本 |
 | 安装脚本令牌有效期 | 30 分钟 |
 | 安装脚本令牌最大使用次数 | 5 次 |
