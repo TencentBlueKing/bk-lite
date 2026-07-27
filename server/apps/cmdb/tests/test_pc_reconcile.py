@@ -13,8 +13,10 @@ from datetime import datetime, timezone
 
 import pytest
 
-from apps.cmdb.constants.constants import CollectDriverTypes, CollectPluginTypes
+from apps.cmdb.constants.constants import CollectDriverTypes, CollectPluginTypes, DataCleanupStrategy
+from apps.cmdb.models.change_record import COLLECT_AUTOMATION_CHANGE, DELETE_INST, ChangeRecord
 from apps.cmdb.models.collect_model import CollectModels
+from apps.cmdb.models.pc_discovery import PCDiscoveryAuthority
 from apps.cmdb.services.pc_discovery import (
     PC_COLLECTED_FIELDS,
     PCSnapshot,
@@ -46,10 +48,15 @@ class InMemoryGraph:
     def query_entity(self, label, params):
         model_id = next((p["value"] for p in params if p["field"] == "model_id"), None)
         inst_name = next((p["value"] for p in params if p["field"] == "inst_name"), None)
+        entity_id = next((p["value"] for p in params if p["field"] == "_id"), None)
+        collect_task = next((p["value"] for p in params if p["field"] == "collect_task"), None)
         items = [
             dict(entity)
             for entity in self.store.values()
-            if entity.get("model_id") == model_id and (inst_name is None or entity.get("inst_name") == inst_name)
+            if entity.get("model_id") == model_id
+            and (inst_name is None or entity.get("inst_name") == inst_name)
+            and (entity_id is None or entity.get("_id") == entity_id)
+            and (collect_task is None or entity.get("collect_task") == collect_task)
         ]
         return items, len(items)
 
@@ -83,8 +90,24 @@ class InMemoryGraph:
         self.edges.append(dict(asso_info))
         return dict(asso_info)
 
+    def query_edge(self, label, params, param_type="AND", return_entity=False):
+        def _match(edge):
+            for p in params:
+                if edge.get(p["field"]) != p["value"]:
+                    return False
+            return True
 
-def _task(name="pc-task"):
+        return [dict(edge) for edge in self.edges if _match(edge)]
+
+    def detach_delete_entity(self, label, entity_id):
+        inst = next((name for name, e in self.store.items() if e["_id"] == entity_id), None)
+        if inst in self.fail_on_inst:
+            raise RuntimeError("delete boom")
+        self.store.pop(inst, None)
+        self.edges = [e for e in self.edges if e["src_inst_id"] != entity_id and e["dst_inst_id"] != entity_id]
+
+
+def _task(name="pc-task", strategy=DataCleanupStrategy.NO_CLEANUP, **fields):
     return CollectModels.objects.create(
         name=name,
         task_type=CollectPluginTypes.HOST,
@@ -92,6 +115,8 @@ def _task(name="pc-task"):
         model_id="pc",
         cycle_value_type="cycle",
         team=[7],
+        data_cleanup_strategy=strategy,
+        **fields,
     )
 
 
@@ -350,3 +375,115 @@ def test_software_payload_whitelisted(graph):
     assert "evil_field" not in sw
     assert "snapshot_id" not in sw
     assert "pc_inst_name" not in sw  # 归属只走 install_on 关联，不作为资产字段
+
+
+# ---- Task 10: 安全差集删除与删除审计 ----
+
+
+def _seed_pc_with_software(graph, pc_inst, sw_insts):
+    """预置一台 PC 及其软件+install_on 边（模拟上一轮采集已写入）。"""
+    pc = graph.create_entity("instance", {"model_id": "pc", "inst_name": pc_inst}, {}, [])
+    for sw_inst in sw_insts:
+        sw = graph.create_entity("instance", {"model_id": "pc_software", "inst_name": sw_inst}, {}, [])
+        graph.edges.append({
+            "model_asst_id": "pc_software_install_on_pc",
+            "src_model_id": "pc_software",
+            "src_inst_id": sw["_id"],
+            "dst_model_id": "pc",
+            "dst_inst_id": pc["_id"],
+            "asst_id": "install_on",
+        })
+    return pc
+
+
+@pytest.mark.django_db
+def test_complete_snapshot_deletes_missing_software_and_audits(graph):
+    task = _task(strategy=DataCleanupStrategy.IMMEDIATELY)
+    _seed_pc_with_software(graph, "WIN-ABC", ["SW-OLD"])
+    old_id = graph.store["SW-OLD"]["_id"]
+
+    result = PCSnapshotReconciler(task).apply(_snapshot(software=[_software(inst="SW-NEW")]))
+
+    assert "SW-OLD" not in graph.store
+    assert "SW-NEW" in graph.store
+    assert result["software_deleted"] == 1
+    record = ChangeRecord.objects.get(type=DELETE_INST, inst_id=old_id)
+    assert record.before_data["inst_name"] == "SW-OLD"
+    assert record.model_id == "pc_software"
+    assert record.scenario == COLLECT_AUTOMATION_CHANGE
+    assert record.operator == "system"
+    assert "s1" in record.message
+
+
+@pytest.mark.django_db
+def test_complete_empty_snapshot_deletes_only_current_pc(graph):
+    task = _task(strategy=DataCleanupStrategy.IMMEDIATELY)
+    _seed_pc_with_software(graph, "WIN-ABC", ["SW-ABC-1"])
+    _seed_pc_with_software(graph, "WIN-XYZ", ["SW-XYZ-1"])
+
+    apply_pc_snapshots(task, [_snapshot(inst="WIN-ABC", software=[], snapshot_id="s-empty")])
+
+    assert _software_of(graph, "WIN-ABC") == {}
+    assert set(_software_of(graph, "WIN-XYZ")) == {"SW-XYZ-1"}
+
+
+@pytest.mark.django_db
+def test_partial_snapshot_never_deletes(graph):
+    task = _task(strategy=DataCleanupStrategy.IMMEDIATELY)
+    _seed_pc_with_software(graph, "WIN-ABC", ["SW-OLD"])
+
+    result = PCSnapshotReconciler(task).apply(
+        _snapshot(software=[], status="partial", snapshot_id="s-p")
+    )
+
+    assert result["allow_delete"] is False
+    assert "SW-OLD" in graph.store
+    assert ChangeRecord.objects.filter(type=DELETE_INST).count() == 0
+
+
+@pytest.mark.django_db
+def test_delete_failure_keeps_entity_and_retries_next_round(graph):
+    task = _task(strategy=DataCleanupStrategy.IMMEDIATELY)
+    _seed_pc_with_software(graph, "WIN-ABC", ["SW-OLD"])
+    graph.fail_on_inst.add("SW-OLD")
+
+    result = PCSnapshotReconciler(task).apply(_snapshot(software=[], snapshot_id="s1"))
+
+    assert "SW-OLD" in graph.store
+    assert result["delete_failed"] == 1
+    # 删除未完整落地：不推进权威水位，下一轮可重试
+    authority = PCDiscoveryAuthority.objects.get(pc_inst_name="WIN-ABC")
+    assert authority.last_snapshot_id == ""
+
+
+@pytest.mark.django_db
+def test_stale_snapshot_never_deletes(graph):
+    task = _task(strategy=DataCleanupStrategy.IMMEDIATELY)
+    PCSnapshotReconciler(task).apply(_snapshot(software=[_software()], snapshot_id="s1"))
+    _seed_pc_with_software(graph, "WIN-ABC", ["SW-LATER"])
+    # 旧于已应用水位的延迟快照到达
+    result = PCSnapshotReconciler(task).apply(_snapshot(software=[], snapshot_id="s0", collected_at=T1))
+
+    assert result["pc_status"] == "stale"
+    assert "SW-LATER" in graph.store
+
+
+@pytest.mark.django_db
+def test_no_cleanup_strategy_never_deletes(graph):
+    task = _task(strategy=DataCleanupStrategy.NO_CLEANUP)
+    _seed_pc_with_software(graph, "WIN-ABC", ["SW-OLD"])
+
+    result = PCSnapshotReconciler(task).apply(_snapshot(software=[], snapshot_id="s1"))
+
+    assert result.get("software_deleted", 0) == 0
+    assert "SW-OLD" in graph.store
+
+
+@pytest.mark.django_db
+def test_after_expiration_strategy_does_not_delete_immediately(graph):
+    task = _task(strategy=DataCleanupStrategy.AFTER_EXPIRATION, expire_days=7)
+    _seed_pc_with_software(graph, "WIN-ABC", ["SW-OLD"])
+
+    PCSnapshotReconciler(task).apply(_snapshot(software=[], snapshot_id="s1"))
+
+    assert "SW-OLD" in graph.store

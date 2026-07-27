@@ -13,8 +13,10 @@ from datetime import datetime, timezone
 
 from django.db import transaction
 
-from apps.cmdb.constants.constants import INSTANCE, INSTANCE_ASSOCIATION
+from apps.cmdb.constants.constants import INSTANCE, INSTANCE_ASSOCIATION, DataCleanupStrategy, OPERATOR_INSTANCE
 from apps.cmdb.graph.drivers.graph_client import GraphClient
+from apps.cmdb.models.change_record import COLLECT_AUTOMATION_CHANGE, DELETE_INST
+from apps.cmdb.utils.change_record import batch_create_change_record
 from apps.core.logger import cmdb_logger as logger
 
 PC_METRIC_NAME = "pc_info"
@@ -275,10 +277,11 @@ class PCSnapshotReconciler:
             {"field": "model_id", "type": "str=", "value": "pc"},
             {"field": "inst_name", "type": "str=", "value": payload["inst_name"]},
         ]
+        runtime = {"collect_time": snapshot.collected_at.isoformat()}
         with GraphClient() as ag:
             existing, _ = ag.query_entity(INSTANCE, params)
             if existing:
-                entity = ag.set_entity_properties(INSTANCE, [existing[0]["_id"]], payload, {}, [])
+                entity = ag.set_entity_properties(INSTANCE, [existing[0]["_id"]], dict(payload, **runtime), {}, [])
                 result["pc_status"] = "updated"
                 result["pc_entity"] = entity[0] if entity else existing[0]
             else:
@@ -288,23 +291,103 @@ class PCSnapshotReconciler:
                     organization=self._organization(),
                     collect_task=self.task.id,
                     auto_collect=True,
+                    **runtime,
                 )
                 result["pc_entity"] = ag.create_entity(INSTANCE, create_payload, {}, [])
                 result["pc_status"] = "added"
             sw_counts = self._upsert_software(ag, snapshot, result["pc_entity"])
 
         result.update(sw_counts)
-        if decision.mode == "owner":
+        allow_delete = (
+            decision.mode == "owner"
+            and snapshot.can_delete
+            and sw_counts["software_failed"] == 0
+        )
+        delete_counts = {"software_deleted": 0, "delete_failed": 0}
+        if allow_delete and getattr(self.task, "data_cleanup_strategy", "") == DataCleanupStrategy.IMMEDIATELY:
+            with GraphClient() as ag:
+                delete_counts = self._delete_missing_software(ag, snapshot, result["pc_entity"])
+        result.update(delete_counts)
+        result["allow_delete"] = allow_delete
+        if decision.mode == "owner" and delete_counts["delete_failed"] == 0:
+            # 删除未完整落地时不推进水位，下一轮按同水位重试
             PCAuthorityService.mark_applied(decision.authority, snapshot.snapshot_id, snapshot.collected_at)
-            # 任何软件写入或关联失败都不得删除（降级部分成功）
-            result["allow_delete"] = snapshot.can_delete and sw_counts["software_failed"] == 0
-        if sw_counts["software_failed"]:
+        if sw_counts["software_failed"] or delete_counts["delete_failed"]:
             result["error_code"] = "CMDB_WRITE_PARTIAL"
         return result
+
+    def _delete_missing_software(self, ag, snapshot, pc_entity):
+        """当前 PC 关联集合的差集删除：只删该 PC install_on 下、不在快照中的软件。
+
+        绝不查询整个 pc_software 模型作为差集。删除成功的实体写 DELETE_INST 审计。
+        """
+        counts = {"software_deleted": 0, "delete_failed": 0}
+        edges = ag.query_edge(
+            INSTANCE_ASSOCIATION,
+            [
+                {"field": "dst_inst_id", "type": "int=", "value": pc_entity["_id"]},
+                {"field": "asst_id", "type": "str=", "value": "install_on"},
+                {"field": "model_asst_id", "type": "str=", "value": "pc_software_install_on_pc"},
+            ],
+        )
+        keep_inst_names = {row.get("inst_name") for row in snapshot.software}
+        id_to_entity = {}
+        deleted_entities = []
+        for edge in edges:
+            src_id = edge.get("src_inst_id")
+            entity = id_to_entity.get(src_id)
+            if entity is None:
+                items, _ = ag.query_entity(
+                    INSTANCE,
+                    [
+                        {"field": "model_id", "type": "str=", "value": "pc_software"},
+                        {"field": "_id", "type": "id=", "value": src_id},
+                    ],
+                )
+                entity = items[0] if items else None
+                id_to_entity[src_id] = entity
+            if entity is None or entity.get("inst_name") in keep_inst_names:
+                continue
+            try:
+                ag.detach_delete_entity(INSTANCE, src_id)
+                deleted_entities.append(entity)
+                counts["software_deleted"] += 1
+            except Exception as exc:  # noqa: BLE001 - 单条删除失败保留实体，下轮重试
+                logger.warning(
+                    "[PC] software delete failed: task=%s sw=%s err=%s",
+                    getattr(self.task, "id", None), entity.get("inst_name"), type(exc).__name__,
+                )
+                counts["delete_failed"] += 1
+        if deleted_entities:
+            self._write_delete_audit(deleted_entities, snapshot.snapshot_id)
+        return counts
+
+    def _write_delete_audit(self, deleted_entities, snapshot_id):
+        records = [
+            {
+                "inst_id": entity["_id"],
+                "model_id": entity.get("model_id", "pc_software"),
+                "before_data": entity,
+                "model_object": OPERATOR_INSTANCE,
+                "message": (
+                    f"自动采集删除实例. 模型:{entity.get('model_id', 'pc_software')} "
+                    f"实例:{entity.get('inst_name')} 任务:{self.task.id} 快照:{snapshot_id}"
+                ),
+            }
+            for entity in deleted_entities
+        ]
+        batch_create_change_record(
+            INSTANCE,
+            DELETE_INST,
+            records,
+            operator="system",
+            scenario=COLLECT_AUTOMATION_CHANGE,
+        )
 
     def _upsert_software(self, ag, snapshot, pc_entity):
         """软件按 inst_name 无删除 upsert + install_on 关联；任一失败计入 software_failed。"""
         counts = {"software_added": 0, "software_updated": 0, "software_failed": 0}
+        collect_time = snapshot.collected_at.isoformat()
         for row in snapshot.software:
             payload = filter_software_payload(row)
             try:
@@ -314,7 +397,7 @@ class PCSnapshotReconciler:
                 ]
                 existing, _ = ag.query_entity(INSTANCE, params)
                 if existing:
-                    ag.set_entity_properties(INSTANCE, [existing[0]["_id"]], payload, {}, [])
+                    ag.set_entity_properties(INSTANCE, [existing[0]["_id"]], dict(payload, collect_time=collect_time), {}, [])
                     sw_entity = dict(existing[0], **payload)
                     counts["software_updated"] += 1
                 else:
@@ -324,6 +407,7 @@ class PCSnapshotReconciler:
                         organization=self._organization(),
                         collect_task=self.task.id,
                         auto_collect=True,
+                        collect_time=collect_time,
                     )
                     sw_entity = ag.create_entity(INSTANCE, create_payload, {}, [])
                     counts["software_added"] += 1
@@ -389,3 +473,70 @@ def apply_pc_snapshots(task, snapshots):
         "[PC] apply_pc_snapshots: task=%s summary=%s", getattr(task, "id", None), summary
     )
     return {"format_data": summary, "snapshots": len(snapshots or []), "results": rows}
+
+
+def cleanup_expired_pc_software(task, threshold_dt, threshold_iso):
+    """after_expiration 分流：只删除该任务拥有 PC 下 collect_time 早于阈值的软件。
+
+    严禁删除 PC 实体本身；删除仍写 DELETE_INST 审计。
+    """
+    from apps.cmdb.services.data_cleanup_service import DataCleanupService
+
+    deleted = []
+    failed = 0
+    with GraphClient() as ag:
+        pcs, _ = ag.query_entity(
+            INSTANCE,
+            [
+                {"field": "collect_task", "type": "int=", "value": task.id},
+                {"field": "model_id", "type": "str=", "value": "pc"},
+            ],
+        )
+        for pc in pcs:
+            edges = ag.query_edge(
+                INSTANCE_ASSOCIATION,
+                [
+                    {"field": "dst_inst_id", "type": "int=", "value": pc["_id"]},
+                    {"field": "asst_id", "type": "str=", "value": "install_on"},
+                    {"field": "model_asst_id", "type": "str=", "value": "pc_software_install_on_pc"},
+                ],
+            )
+            for edge in edges:
+                src_id = edge.get("src_inst_id")
+                items, _ = ag.query_entity(
+                    INSTANCE,
+                    [
+                        {"field": "model_id", "type": "str=", "value": "pc_software"},
+                        {"field": "_id", "type": "id=", "value": src_id},
+                    ],
+                )
+                if not items:
+                    continue
+                entity = items[0]
+                collect_time = DataCleanupService.parse_collect_time(entity.get("collect_time"))
+                if not collect_time or collect_time >= threshold_dt:
+                    continue
+                try:
+                    ag.detach_delete_entity(INSTANCE, src_id)
+                    deleted.append(entity)
+                except Exception as exc:  # noqa: BLE001 - 单条失败保留，下轮重试
+                    logger.warning(
+                        "[PC] expired software delete failed: task=%s sw=%s err=%s",
+                        task.id, entity.get("inst_name"), type(exc).__name__,
+                    )
+                    failed += 1
+    if deleted:
+        PCSnapshotReconciler(task)._write_delete_audit(deleted, f"expire:{threshold_iso}")
+    logger.info(
+        "[PC] 过期软件清理完成 task=%s deleted=%s failed=%s", task.id, len(deleted), failed
+    )
+    result = {
+        "task_id": task.id,
+        "model_id": "pc_software",
+        "deleted_count": len(deleted),
+        "deleted_ids": [entity["_id"] for entity in deleted],
+        "threshold": threshold_iso,
+    }
+    if failed:
+        result["failed_count"] = failed
+    return result
