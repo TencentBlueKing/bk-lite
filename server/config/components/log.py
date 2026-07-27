@@ -42,12 +42,38 @@ class IgnoreSpecificPaths(logging.Filter):
         return True
 
 
+class SuppressSuccessfulSidecarAccessLogs(logging.Filter):
+    """过滤 Uvicorn 中高频的 Sidecar 成功访问日志，异常状态仍保留。"""
+
+    SIDECAR_OPEN_API_PATH_PREFIXES = (
+        "/node_mgmt/open_api/node",
+        "/api/v1/node_mgmt/open_api/node",
+    )
+
+    def filter(self, record):
+        # Uvicorn access log 参数依次为 client、method、path、HTTP version、status。
+        if not isinstance(record.args, tuple) or len(record.args) < 5:
+            return True
+
+        path = str(record.args[2])
+        try:
+            status_code = int(record.args[4])
+        except (TypeError, ValueError):
+            return True
+
+        is_sidecar_request = any(path.startswith(prefix) for prefix in self.SIDECAR_OPEN_API_PATH_PREFIXES)
+        return not (is_sidecar_request and status_code < 400)
+
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
     "filters": {
         "ignore_paths": {
             "()": IgnoreSpecificPaths,
+        },
+        "suppress_successful_sidecar_access_logs": {
+            "()": SuppressSuccessfulSidecarAccessLogs,
         },
     },
     "formatters": {
@@ -66,6 +92,12 @@ LOGGING = {
             "class": "logging.StreamHandler",
             "formatter": "simple",
             "filters": ["ignore_paths"],  # 添加 filter
+        },
+        "uvicorn_access_console": {
+            "level": "INFO",
+            "class": "logging.StreamHandler",
+            "formatter": "simple",
+            "filters": ["suppress_successful_sidecar_access_logs"],
         },
         "null": {"level": "DEBUG", "class": "logging.NullHandler"},
         "root": {
@@ -159,6 +191,11 @@ LOGGING = {
         "alert": {"handlers": ["alert", "console"], "level": LOG_LEVEL, "propagate": True},
         "celery": {"handlers": ["root"], "level": "INFO", "propagate": True},
         "playground": {"handlers": ["playground", "console"], "level": LOG_LEVEL, "propagate": True},
+        "uvicorn.access": {
+            "handlers": ["uvicorn_access_console"],
+            "level": "INFO",
+            "propagate": False,
+        },
         # httpx 会在 INFO 级别输出每次成功请求:
         # HTTP Request: POST ... "HTTP/1.1 200 OK"。解析/构建调用 LLM 时会刷屏,
         # 这里仅保留 warning/error，异常仍可见。
