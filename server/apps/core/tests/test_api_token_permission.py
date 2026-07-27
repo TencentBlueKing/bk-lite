@@ -395,7 +395,9 @@ class TestPopulateUserPermissions:
         backend = APISecretAuthBackend()
         user = MockUser(username="newuser", domain="test.com", group_list=[1])
 
-        with patch("apps.core.backends.cache") as mock_cache:
+        with patch("apps.core.backends.cache") as mock_cache, patch(
+            "apps.core.backends.register_api_token_permission_cache_key"
+        ) as mock_register_cache_key:
             mock_cache.get.return_value = None  # 缓存未命中
 
             with patch.object(backend, "_get_user_all_roles", return_value=set()):
@@ -412,6 +414,12 @@ class TestPopulateUserPermissions:
             call_args = mock_cache.set.call_args
             assert "roles" in call_args[0][1]
             assert "permission" in call_args[0][1]
+            mock_register_cache_key.assert_called_once_with(
+                "newuser",
+                "test.com",
+                backend._get_permission_cache_key("newuser", "test.com", 1),
+                backend.PERMISSION_CACHE_TTL,
+            )
 
     def test_exception_handling(self):
         """测试异常处理 - 设置空权限"""

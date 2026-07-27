@@ -10,6 +10,7 @@ from apps.system_mgmt.models import Group, Menu, Role, User
 from apps.system_mgmt.serializers.role_serializer import RoleSerializer
 from apps.system_mgmt.services.role_manage import RoleManage
 from apps.system_mgmt.utils.group_filter_mixin import get_unauthorized_group_ids
+from apps.system_mgmt.utils.group_utils import GroupUtils
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 from apps.system_mgmt.utils.viewset_utils import ViewSetUtils
 
@@ -17,6 +18,24 @@ from apps.system_mgmt.utils.viewset_utils import ViewSetUtils
 class RoleViewSet(LanguageViewSet, ViewSetUtils):
     queryset = Role.objects.exclude(app="")
     serializer_class = RoleSerializer
+
+    @staticmethod
+    def _get_users_in_group_trees(group_ids):
+        affected_group_ids = GroupUtils.get_group_with_descendants(group_ids)
+        query = Q()
+        for group_id in affected_group_ids:
+            query |= Q(group_list__contains=int(group_id))
+        return User.objects.filter(query)
+
+    @classmethod
+    def _get_users_affected_by_role(cls, role_id):
+        role_group_ids = list(Group.objects.filter(roles__id=role_id).values_list("id", flat=True))
+        query = Q(role_list__contains=int(role_id))
+        if role_group_ids:
+            affected_group_ids = GroupUtils.get_group_with_descendants(role_group_ids)
+            for group_id in affected_group_ids:
+                query |= Q(group_list__contains=int(group_id))
+        return User.objects.filter(query).distinct()
 
     def _validate_group_scope_for_request(self, request, group_ids):
         unauthorized_group_ids = get_unauthorized_group_ids(request.user, group_ids)
@@ -132,7 +151,10 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
                     "message": self.loader.get("error.role_used_by_users").format(users=msg),
                 }
             )
+        affected_user_info = list(self._get_users_affected_by_role(role_id).values("username", "domain"))
         Role.objects.filter(id=role_id).delete()
+        if affected_user_info:
+            clear_users_permission_cache(affected_user_info)
 
         # 记录操作日志
         log_operation(request, "delete", "system-manager", f"删除角色: {role_name}")
@@ -142,7 +164,11 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
     @HasPermission("application_role-Edit")
     def update_role(self, request):
         role_name = request.data.get("role_name")
-        Role.objects.filter(id=request.data.get("role_id")).update(name=role_name)
+        role_id = request.data.get("role_id")
+        Role.objects.filter(id=role_id).update(name=role_name)
+        affected_user_info = list(self._get_users_affected_by_role(role_id).values("username", "domain"))
+        if affected_user_info:
+            clear_users_permission_cache(affected_user_info)
 
         # 记录操作日志
         log_operation(request, "update", "system-manager", f"更新角色名称: {role_name}")
@@ -236,7 +262,7 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
         role_obj.save()
 
         # 清除受影响用户的菜单缓存和权限缓存
-        affected_users = User.objects.filter(role_list__contains=int(role_id))
+        affected_users = self._get_users_affected_by_role(role_id)
 
         # 直接构造缓存键并删除 (兼容 Redis 缓存后端)
         menu_cache_keys = [f"menus-user:{user.id}" for user in affected_users]
@@ -302,7 +328,7 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
         role.group_set.add(*groups)
 
         # 清除受影响组织中用户的权限缓存
-        affected_users = User.objects.filter(group_list__overlap=group_ids).values("username", "domain")
+        affected_users = self._get_users_in_group_trees(group_ids).values("username", "domain")
         if affected_users:
             clear_users_permission_cache(list(affected_users))
 
@@ -362,7 +388,7 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
         role.group_set.remove(*groups)
 
         # 清除受影响组织中用户的权限缓存
-        affected_users = User.objects.filter(group_list__overlap=group_ids).values("username", "domain")
+        affected_users = self._get_users_in_group_trees(group_ids).values("username", "domain")
         if affected_users:
             clear_users_permission_cache(list(affected_users))
 
