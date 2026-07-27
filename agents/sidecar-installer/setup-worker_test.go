@@ -223,7 +223,11 @@ func TestInstallWindowsPackageRecoversRetainedBackupOnRetry(t *testing.T) {
 	controller := &fakeWindowsServiceController{
 		serviceExisted: true,
 		startErrors:    []error{fmt.Errorf("new service failed"), nil},
-		stopErrors:     []error{nil, fmt.Errorf("failed service is still stopping")},
+		stopErrors: []error{
+			nil,
+			fmt.Errorf("failed service is still stopping"),
+			fmt.Errorf("failed service remains stuck"),
+		},
 	}
 	cfg := &Config{InstallDir: installDir, OS: "windows"}
 

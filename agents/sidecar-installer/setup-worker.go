@@ -1357,12 +1357,15 @@ func installWindowsPackage(cfg *Config, zipPath string, controller windowsServic
 	if err := controller.Start(installDir, serviceExisted); err != nil {
 		activationErr := err
 		if _, stopErr := controller.Stop(); stopErr != nil {
-			return fmt.Errorf(
-				"activate new service: %v; stop failed service before rollback: %w; previous installation retained at %s for recovery",
-				activationErr,
-				stopErr,
-				backupDir,
-			)
+			if _, retryStopErr := controller.Stop(); retryStopErr != nil {
+				return fmt.Errorf(
+					"activate new service: %v; stop failed service before rollback: %v; retry stop: %w; previous installation retained at %s for recovery",
+					activationErr,
+					stopErr,
+					retryStopErr,
+					backupDir,
+				)
+			}
 		}
 		if !serviceExisted {
 			if removeServiceErr := controller.Remove(); removeServiceErr != nil {
