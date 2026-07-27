@@ -551,7 +551,7 @@ export const getIconByObjectName = (objectName = '', objects: ObjectItem[]) => {
 // 品牌专属采集模板/实例（如思科交换机）的品牌识别：按名称匹配 → 提供品牌标签（及可选 logo 图标）。
 // icon 可选：未提供时集成卡片回退到监控对象默认图标，仪表盘头部仍展示品牌文字标签。
 const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
-  { match: /cisco/i, label: 'Cisco', icon: 'mm-cisco_思科' },
+  { match: /^(?!.*san_cisco).*cisco/i, label: 'Cisco', icon: 'mm-cisco_思科' },
   { match: /huawei/i, label: 'Huawei', icon: 'mm-huawei_华为' },
   { match: /aruba/i, label: 'Aruba', icon: 'mm-aruba_aruba' },
   { match: /juniper/i, label: 'Juniper', icon: 'mm-juniper_juniper' },
@@ -805,7 +805,7 @@ const getEnterpriseBrands = (): Array<{ match: RegExp; label: string; icon?: str
 // 按插件名取品牌 logo 图标;命中 CE BRANDS 或运行时注入的 EE __ENTERPRISE_BRANDS 任一即返回。
 // 失败降级:都未命中 → undefined,调用方回退到监控对象 icon。
 export const getPluginBrandIcon = (pluginName = ''): string | undefined => {
-  const all = [...getEnterpriseBrands(), ...BRANDS];
+  const all = [...BRANDS, ...getEnterpriseBrands()];
   return all.find((brand) => brand.match.test(pluginName))?.icon;
 };
 
