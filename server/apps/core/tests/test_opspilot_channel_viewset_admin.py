@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 from rest_framework import serializers, viewsets
+from rest_framework.test import APIRequestFactory, force_authenticate
 
 
 class _Objects:
@@ -45,10 +46,11 @@ def channel_view_module(monkeypatch):
     return module
 
 
-def _request(*, is_superuser, roles=None):
+def _request(*, is_superuser, roles=None, api_pass=False):
     return SimpleNamespace(
         user=SimpleNamespace(is_superuser=is_superuser, roles=roles or [], locale="en"),
         data={},
+        api_pass=api_pass,
     )
 
 
@@ -80,7 +82,8 @@ def test_channel_crud_keeps_superuser_access(channel_view_module, mocker, action
 
 
 @pytest.mark.parametrize("action", ["list", "retrieve", "create", "update", "partial_update", "destroy"])
-def test_channel_crud_keeps_admin_role_access(channel_view_module, mocker, action):
+@pytest.mark.parametrize(("roles", "api_pass"), [(["admin"], False), (["opspilot--admin"], True)])
+def test_channel_crud_keeps_admin_role_access(channel_view_module, mocker, action, roles, api_pass):
     view = channel_view_module.ChannelViewSet()
     expected = SimpleNamespace(status_code=200, data={})
     parent_action = "update" if action == "partial_update" else action
@@ -88,7 +91,34 @@ def test_channel_crud_keeps_admin_role_access(channel_view_module, mocker, actio
     if action == "destroy":
         mocker.patch.object(view, "get_object", return_value=SimpleNamespace(name="protected"))
 
-    response = getattr(view, action)(_request(is_superuser=False, roles=["admin"]), pk=1)
+    response = getattr(view, action)(_request(is_superuser=False, roles=roles, api_pass=api_pass), pk=1)
 
     assert response is expected
     parent.assert_called_once()
+
+
+def test_channel_route_dispatch_rejects_non_admin(channel_view_module, mocker):
+    request = APIRequestFactory().get("/")
+    force_authenticate(request, user=SimpleNamespace(is_superuser=False, roles=[], locale="en"))
+    parent = mocker.patch.object(viewsets.ModelViewSet, "list", side_effect=AssertionError("parent called"))
+
+    response = channel_view_module.ChannelViewSet.as_view({"get": "list"})(request)
+
+    assert response.status_code == 403
+    parent.assert_not_called()
+
+
+def test_channel_initialization_uses_orm_without_http_permission(monkeypatch, mocker):
+    models = types.ModuleType("apps.opspilot.models")
+    objects = mocker.Mock()
+    models.Channel = SimpleNamespace(objects=objects)
+    monkeypatch.setitem(sys.modules, "apps.opspilot.models", models)
+    path = Path(__file__).parents[2] / "opspilot/services/channel_init_service.py"
+    spec = importlib.util.spec_from_file_location("issue4033_channel_init_service", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    module.ChannelInitService(owner=object()).init()
+
+    assert objects.get_or_create.call_count == 3
+    objects.update_or_create.assert_called_once()
