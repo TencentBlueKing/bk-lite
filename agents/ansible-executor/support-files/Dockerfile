@@ -19,6 +19,8 @@ WORKDIR /opt
 COPY pyproject.toml /opt/pyproject.toml
 COPY collections/requirements.yml /opt/collections-requirements.yml
 COPY main.py /opt/main.py
+COPY core /opt/core
+COPY service /opt/service
 COPY support-files/startup.sh /opt/startup.sh
 COPY support-files/service.conf /etc/supervisor/conf.d/service.conf
 

@@ -177,18 +177,16 @@ class WindowsRemoteBootstrapService:
                                 "changed_when": False,
                             },
                             {
-                                "name": "Write protected installer session",
-                                "ansible.windows.win_copy": {
-                                    "content": "{{ bklite_session_url }}",
-                                    "dest": "{{ bklite_session_file }}",
-                                    "force": True,
+                                "name": "Create protected installer session directory",
+                                "ansible.windows.win_file": {
+                                    "path": "{{ bklite_session_dir }}",
+                                    "state": "directory",
                                 },
-                                "no_log": True,
                             },
                             {
-                                "name": "Grant installer account access to protected session",
+                                "name": "Grant installer account access to protected session directory",
                                 "ansible.windows.win_acl": {
-                                    "path": "{{ bklite_session_file }}",
+                                    "path": "{{ bklite_session_dir }}",
                                     "user": "{{ bklite_session_user }}",
                                     "rights": "FullControl",
                                     "type": "allow",
@@ -197,9 +195,9 @@ class WindowsRemoteBootstrapService:
                                 "no_log": True,
                             },
                             {
-                                "name": "Grant SYSTEM access to protected session",
+                                "name": "Grant SYSTEM access to protected session directory",
                                 "ansible.windows.win_acl": {
-                                    "path": "{{ bklite_session_file }}",
+                                    "path": "{{ bklite_session_dir }}",
                                     "user": "SYSTEM",
                                     "rights": "FullControl",
                                     "type": "allow",
@@ -208,10 +206,19 @@ class WindowsRemoteBootstrapService:
                                 "no_log": True,
                             },
                             {
-                                "name": "Remove inherited access from protected session",
+                                "name": "Remove inherited access from protected session directory",
                                 "ansible.windows.win_acl_inheritance": {
-                                    "path": "{{ bklite_session_file }}",
+                                    "path": "{{ bklite_session_dir }}",
                                     "state": "absent",
+                                },
+                                "no_log": True,
+                            },
+                            {
+                                "name": "Write protected installer session",
+                                "ansible.windows.win_copy": {
+                                    "content": "{{ bklite_session_url }}",
+                                    "dest": "{{ bklite_session_file }}",
+                                    "force": True,
                                 },
                                 "no_log": True,
                             },
@@ -240,8 +247,8 @@ class WindowsRemoteBootstrapService:
                         ],
                         "always": [
                             {
-                                "name": "Remove protected installer session",
-                                "ansible.windows.win_file": {"path": "{{ bklite_session_file }}", "state": "absent"},
+                                "name": "Remove protected installer session directory",
+                                "ansible.windows.win_file": {"path": "{{ bklite_session_dir }}", "state": "absent"},
                                 "no_log": True,
                                 "register": "bklite_session_cleanup",
                                 "ignore_errors": True,
@@ -268,15 +275,15 @@ class WindowsRemoteBootstrapService:
         return yaml.safe_dump(playbook, allow_unicode=True, sort_keys=False)
 
     @staticmethod
-    def _cleanup_playbook(remote_path: str, session_file: str) -> str:
+    def _cleanup_playbook(remote_path: str, session_dir: str) -> str:
         playbook = [
             {
                 "hosts": "all",
                 "gather_facts": False,
                 "tasks": [
                     {
-                        "name": "Remove protected installer session",
-                        "ansible.windows.win_file": {"path": session_file, "state": "absent"},
+                        "name": "Remove protected installer session directory",
+                        "ansible.windows.win_file": {"path": session_dir, "state": "absent"},
                         "no_log": True,
                         "register": "bklite_session_cleanup",
                         "ignore_errors": True,
@@ -304,14 +311,14 @@ class WindowsRemoteBootstrapService:
         task_node_id: int,
         attempt: int,
         remote_path: str,
-        session_file: str,
+        session_dir: str,
         timeout: int,
     ) -> None:
         cleanup_timeout = min(timeout, 30)
         cleanup_task_id = f"controller-bootstrap-cleanup-{task_node_id}-{attempt}"
         accepted = executor.playbook(
             host_credentials=credentials,
-            playbook_content=self._cleanup_playbook(remote_path, session_file),
+            playbook_content=self._cleanup_playbook(remote_path, session_dir),
             task_id=cleanup_task_id,
             timeout=cleanup_timeout,
         )
@@ -342,7 +349,8 @@ class WindowsRemoteBootstrapService:
         artifact = InstallerSessionService.windows_bootstrap_artifact(cpu_architecture)
         remote_name = f"bklite-controller-bootstrap-{task_node_id}-{attempt}.exe"
         remote_path = f"C:/Windows/Temp/{remote_name}"
-        session_file = f"C:/Windows/Temp/bklite-controller-session-{task_node_id}-{attempt}.url"
+        session_dir = f"C:/Windows/Temp/bklite-controller-session-{task_node_id}-{attempt}"
+        session_file = f"{session_dir}/session.url"
 
         primary_error = None
         try:
@@ -366,6 +374,7 @@ class WindowsRemoteBootstrapService:
                 playbook_content=self._execution_playbook(),
                 extra_vars={
                     "bklite_session_url": session_url,
+                    "bklite_session_dir": session_dir,
                     "bklite_session_file": session_file,
                     "bklite_session_user": target.user,
                     "bklite_bootstrap_path": remote_path,
@@ -403,7 +412,7 @@ class WindowsRemoteBootstrapService:
                     task_node_id,
                     attempt,
                     remote_path,
-                    session_file,
+                    session_dir,
                     timeout,
                 )
             except Exception:

@@ -147,6 +147,40 @@ def _apply_installer_events_for_execution(node_id: int, output_text: str, execut
         return _apply_installer_events_to_node(locked_node, output_text)
 
 
+def _claim_installer_execution(node_id: int, execution_id: str, attempt: int) -> dict | None:
+    """Claim one Windows bootstrap delivery and reject concurrent redeliveries."""
+    with transaction.atomic():
+        locked_node = ControllerTaskNode.objects.select_for_update().get(id=node_id)
+        result = locked_node.result or {}
+        if (
+            _get_execution_attempt(locked_node) != attempt
+            or result.get(InstallerConstants.INSTALLER_EXECUTION_ID_KEY)
+        ):
+            return None
+        result[InstallerConstants.INSTALLER_EXECUTION_ID_KEY] = execution_id
+        locked_node.result = result
+        locked_node.save(update_fields=["result"])
+        return locked_node.result or {}
+
+
+def _finish_installer_execution(node_id: int, output_text: str, execution_id: str, attempt: int) -> dict | None:
+    """Persist terminal events and release the claim without a fencing gap."""
+    with transaction.atomic():
+        locked_node = ControllerTaskNode.objects.select_for_update().get(id=node_id)
+        result = locked_node.result or {}
+        if (
+            result.get(InstallerConstants.INSTALLER_EXECUTION_ID_KEY) != execution_id
+            or _get_execution_attempt(locked_node) != attempt
+        ):
+            return None
+        _apply_installer_events_to_node(locked_node, output_text)
+        result = locked_node.result or {}
+        result.pop(InstallerConstants.INSTALLER_EXECUTION_ID_KEY, None)
+        locked_node.result = result
+        locked_node.save(update_fields=["result"])
+        return locked_node.result or {}
+
+
 def _close_installer_execution(node_id: int, execution_id: str, attempt: int) -> dict:
     with transaction.atomic():
         locked_node = ControllerTaskNode.objects.select_for_update().get(id=node_id)
@@ -531,7 +565,13 @@ def _handle_step_exception(node_obj, error_message, exception_obj=None, timestam
         )
 
 
-def install_controller_on_nodes(task_obj, nodes, package_obj):
+def install_controller_on_nodes(
+    task_obj,
+    nodes,
+    package_obj,
+    windows_execution_id: str | None = None,
+    windows_execution_attempt: int | None = None,
+):
     """安装控制器任务调度入口"""
     aes_obj = AESCryptor()
     nodes_list = list(nodes)
@@ -682,14 +722,20 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
                     subscribe_thread.join(timeout=2)
                     consume_thread.join(timeout=2)
             else:
-                execution_id = uuid.uuid4().hex
-                execution_attempt = _get_execution_attempt(node_obj)
+                execution_id = windows_execution_id or uuid.uuid4().hex
+                execution_attempt = windows_execution_attempt or _get_execution_attempt(node_obj)
                 progress_subject = f"installer.progress.{execution_id}"
                 stop_event = threading.Event()
-                result = node_obj.result or {}
-                result[InstallerConstants.INSTALLER_EXECUTION_ID_KEY] = execution_id
-                node_obj.result = result
-                node_obj.save(update_fields=["result"])
+                if windows_execution_id is None:
+                    claimed_result = _claim_installer_execution(node_obj.id, execution_id, execution_attempt)
+                    if claimed_result is None:
+                        logger.info(
+                            "Skip duplicate Windows bootstrap delivery: task_node_id=%s attempt=%s",
+                            node_obj.id,
+                            execution_attempt,
+                        )
+                        continue
+                    node_obj.result = claimed_result
 
                 def event_handler(
                     output,
@@ -716,6 +762,7 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
                 )
                 subscribe_thread.start()
                 consume_thread.start()
+                execution_completed = False
                 try:
                     exec_result = WindowsRemoteBootstrapService().run(
                         cloud_region_id=task_obj.cloud_region_id,
@@ -737,11 +784,13 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
                         progress_subject=progress_subject,
                         event_callback=event_handler,
                     )
+                    execution_completed = True
                 finally:
                     stop_event.set()
                     subscribe_thread.join(timeout=2)
                     consume_thread.join(timeout=2)
-                    node_obj.result = _close_installer_execution(node_obj.id, execution_id, execution_attempt)
+                    if not execution_completed:
+                        node_obj.result = _close_installer_execution(node_obj.id, execution_id, execution_attempt)
             installer_output = ""
             if isinstance(exec_result, dict):
                 installer_output = exec_result.get("result") or exec_result.get("output") or ""
@@ -750,7 +799,23 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
             elif exec_result is not None:
                 installer_output = str(exec_result)
 
-            _apply_installer_events_to_node(node_obj, installer_output)
+            if resolved_package.os == NodeConstants.WINDOWS_OS:
+                finished_result = _finish_installer_execution(
+                    node_obj.id,
+                    installer_output,
+                    execution_id,
+                    execution_attempt,
+                )
+                if finished_result is None:
+                    logger.info(
+                        "Ignore stale Windows bootstrap terminal result: task_node_id=%s attempt=%s",
+                        node_obj.id,
+                        execution_attempt,
+                    )
+                    continue
+                node_obj.result = finished_result
+            else:
+                _apply_installer_events_to_node(node_obj, installer_output)
             _finalize_non_connectivity_running_steps(node_obj)
             _advance_step(
                 node_obj,
@@ -819,9 +884,30 @@ def install_controller_for_node(task_node_id, attempt):
         _dispatch_or_finalize_controller_task(task_node.task_id)
         return
 
+    execution_id = None
+    if package_obj.os == NodeConstants.WINDOWS_OS:
+        execution_id = uuid.uuid4().hex
+        claimed_result = _claim_installer_execution(task_node.id, execution_id, attempt)
+        if claimed_result is None:
+            logger.info(
+                "Skip duplicate controller installer delivery: task_node_id=%s attempt=%s",
+                task_node.id,
+                attempt,
+            )
+            return
+        task_node.result = claimed_result
+
     try:
-        install_controller_on_nodes(task_obj, [task_node], package_obj)
+        install_controller_on_nodes(
+            task_obj,
+            [task_node],
+            package_obj,
+            windows_execution_id=execution_id,
+            windows_execution_attempt=attempt if execution_id else None,
+        )
     finally:
+        if execution_id:
+            _close_installer_execution(task_node.id, execution_id, attempt)
         ControllerTaskNode.objects.filter(
             id=task_node.id,
             result__execution_attempt=attempt,
@@ -892,7 +978,29 @@ def timeout_controller_install_task(task_id):
     )
 
     for task_node in pending_nodes:
-        if _get_execution_phase(task_node) != InstallerConstants.EXECUTION_PHASE_CONNECTIVITY_WAITING:
+        execution_phase = _get_execution_phase(task_node)
+        if execution_phase == InstallerConstants.EXECUTION_PHASE_BOOTSTRAP_RUNNING:
+            with transaction.atomic():
+                locked_node = ControllerTaskNode.objects.select_for_update().get(id=task_node.id)
+                if _get_execution_phase(locked_node) != InstallerConstants.EXECUTION_PHASE_BOOTSTRAP_RUNNING:
+                    continue
+                result = locked_node.result or {}
+                result.pop(InstallerConstants.INSTALLER_EXECUTION_ID_KEY, None)
+                result[InstallerConstants.EXECUTION_ATTEMPT_KEY] = _get_execution_attempt(locked_node) + 1
+                locked_node.result = result
+                locked_node.password = ""
+                locked_node.private_key = ""
+                locked_node.passphrase = ""
+                locked_node.save(update_fields=["result", "password", "private_key", "passphrase"])
+                _handle_step_exception(
+                    locked_node,
+                    "Controller bootstrap timeout",
+                    TimeoutError("Controller bootstrap exceeded the task deadline"),
+                )
+                _save_node_result(locked_node, "error", "Controller bootstrap timeout")
+            continue
+
+        if execution_phase != InstallerConstants.EXECUTION_PHASE_CONNECTIVITY_WAITING:
             continue
 
         result = task_node.result or {}

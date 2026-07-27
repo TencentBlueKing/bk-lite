@@ -166,6 +166,11 @@ Server 使用的 NATS 账号需要：
 subscribe: installer.progress.>
 ```
 
+Windows 远程安装还要求云区域配置 `NATS_PROTOCOL=tls`，并使用受信任的 NATS
+服务端证书。该模式不会回退到 `NATS_ADMIN_USERNAME/PASSWORD`，也不会接受
+`nats://` 明文地址；未满足时任务会在下载控制器包前快速失败。Windows GUI
+手动安装仍沿用既有兼容策略。
+
 bootstrap 只接受 `installer.progress.<32 位小写十六进制 execution_id>`，实时发布失败会自动降级为 Ansible 终态 stdout 回放，不会让安装失败；但页面将无法实时显示下载和解压过程。生产验收必须覆盖实时进度，不能只验证最终成功。
 
 ## 8. 发布验收清单
@@ -176,6 +181,7 @@ bootstrap 只接受 `installer.progress.<32 位小写十六进制 execution_id>`
 - [ ] 对象存储存在 `installer/windows/x86_64/bklite-controller-bootstrap.exe`，大小和 SHA-256 与本次构建一致。
 - [ ] Ansible Executor 镜像为本次构建版本，并包含固定版本的 `ansible.windows`、`pywinrm` 和 `cryptography`。
 - [ ] 所需云区域至少有一个健康的 Ansible Executor。
+- [ ] 所需云区域已配置 `NATS_PROTOCOL=tls`、可信 NATS 证书和专用 `NATS_INSTALLER_USERNAME/PASSWORD`。
 - [ ] NodeMgmt 的 `0037`、`0038`、`0039` 迁移均已应用。
 - [ ] Windows 控制器安装页面显示远程安装，账号默认值为 Administrator；页面不暴露固定安全参数，并实际使用 5986、HTTPS、NTLM 和证书校验。
 - [ ] 安装执行期间，页面能在 Ansible 任务结束前持续看到下载、解压和服务切换进度，最终回放不产生重复步骤。

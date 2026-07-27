@@ -128,6 +128,7 @@ class InstallerService:
             organizations=organizations,
             node_name=node_name,
             cpu_architecture=normalized_arch,
+            install_mode=install_mode,
         )
 
         # 根据操作系统生成不同的安装命令

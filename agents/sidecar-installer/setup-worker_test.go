@@ -210,6 +210,44 @@ func TestInstallWindowsPackageRestoresExistingInstallationWhenNewServiceFails(t 
 	}
 }
 
+func TestInstallWindowsPackageRecoversRetainedBackupOnRetry(t *testing.T) {
+	installDir := filepath.Join(t.TempDir(), "fusion-collectors")
+	if err := os.MkdirAll(installDir, 0755); err != nil {
+		t.Fatalf("create install dir: %v", err)
+	}
+	oldBinary := filepath.Join(installDir, "collector-sidecar.exe")
+	if err := os.WriteFile(oldBinary, []byte("old-binary"), 0644); err != nil {
+		t.Fatalf("write old binary: %v", err)
+	}
+	zipPath := writeControllerZip(t, map[string]string{"collector-sidecar.exe": "new-binary"})
+	controller := &fakeWindowsServiceController{
+		serviceExisted: true,
+		startErrors:    []error{fmt.Errorf("new service failed"), nil},
+		stopErrors:     []error{nil, fmt.Errorf("failed service is still stopping")},
+	}
+	cfg := &Config{InstallDir: installDir, OS: "windows"}
+
+	firstErr := installWindowsPackage(cfg, zipPath, controller)
+	if firstErr == nil || !strings.Contains(firstErr.Error(), "previous installation retained") {
+		t.Fatalf("expected retained recovery backup, got %v", firstErr)
+	}
+	if _, err := os.Stat(installDir + ".bklite-backup"); err != nil {
+		t.Fatalf("previous installation backup was not retained: %v", err)
+	}
+
+	retryErr := installWindowsPackage(cfg, zipPath, controller)
+	if retryErr == nil || !strings.Contains(retryErr.Error(), "recovered previous Windows installation") {
+		t.Fatalf("expected recovery-before-retry result, got %v", retryErr)
+	}
+	content, readErr := os.ReadFile(oldBinary)
+	if readErr != nil || string(content) != "old-binary" {
+		t.Fatalf("previous installation was not recovered: %q, %v", content, readErr)
+	}
+	if _, err := os.Stat(installDir + ".bklite-backup"); !os.IsNotExist(err) {
+		t.Fatalf("recovery backup should be consumed, got %v", err)
+	}
+}
+
 func TestInstallWindowsPackageRestartsExistingServiceWhenStopFails(t *testing.T) {
 	installDir := filepath.Join(t.TempDir(), "fusion-collectors")
 	if err := os.MkdirAll(installDir, 0755); err != nil {

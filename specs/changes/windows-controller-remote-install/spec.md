@@ -36,6 +36,7 @@ Windows 远程安装采用“Ansible Executor 负责 WinRM 编排，原生 Go bo
 - Ansible Executor 必须与目标节点同云区域且 `ansibleexecutor_linux` 采集器健康；找不到时快速失败，不跨区域兜底。
 - `ansible.windows` 固定为 3.7.0，与仓库现有 `ansible-core==2.18.6` 组合构建，避免部署时自动获取不兼容的新版本。
 - 实时事件 subject 只接受由 Server 生成的 32 位小写十六进制 execution ID；安装器 NATS 用户仅需 `installer.progress.>` 发布权限，发布失败降级到终态 stdout，不阻断安装。
+- Windows 远程安装会话只下发专用 `NATS_INSTALLER_USERNAME/PASSWORD`，且要求 `NATS_PROTOCOL=tls`；不得回退管理员账号或通过明文 NATS 传输凭据。Windows GUI 手动安装保留原有兼容策略。
 
 ## Component Boundary
 
@@ -62,6 +63,7 @@ Windows 远程安装采用“Ansible Executor 负责 WinRM 编排，原生 Go bo
 5. 确认每个需要 Windows 远程安装的云区域至少有一个健康 Ansible Executor。
 6. 在目标 Windows 主机预配置 WinRM listener、防火墙、认证方式与证书信任。
 7. 为安装器 NATS 用户配置 `installer.progress.>` 发布权限，并允许 Server 账号订阅。
+8. 为 Windows 远程安装配置 `NATS_PROTOCOL=tls`、可信服务端证书和专用安装器账号；明文 NATS 或管理员账号回退会快速失败。
 
 ## Acceptance Criteria
 

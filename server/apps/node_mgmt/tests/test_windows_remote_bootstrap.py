@@ -98,16 +98,17 @@ def test_windows_remote_bootstrap_stages_and_runs_native_worker():
     commands = block["block"]
     assert commands[0]["name"] == "Verify supported Windows and PowerShell version"
     assert "PowerShell 5.1" in commands[0]["ansible.builtin.raw"]
-    assert commands[1]["no_log"] is True
+    assert commands[1]["ansible.windows.win_file"]["state"] == "directory"
     assert commands[2]["ansible.windows.win_acl"]["rights"] == "FullControl"
     assert commands[3]["ansible.windows.win_acl"]["user"] == "SYSTEM"
     assert commands[4]["ansible.windows.win_acl_inheritance"]["state"] == "absent"
-    assert commands[5]["ansible.windows.win_command"]["argv"][1:4] == [
+    assert commands[5]["no_log"] is True
+    assert commands[6]["ansible.windows.win_command"]["argv"][1:4] == [
         "--url-file",
         "{{ bklite_session_file }}",
         "--require-https",
     ]
-    assert commands[5]["ansible.windows.win_command"]["argv"][-4:] == [
+    assert commands[6]["ansible.windows.win_command"]["argv"][-4:] == [
         "--execution-id",
         "{{ bklite_execution_id }}",
         "--progress-subject",
@@ -118,6 +119,7 @@ def test_windows_remote_bootstrap_stages_and_runs_native_worker():
     assert block["always"][2]["ansible.builtin.fail"]["msg"] == "BK-Lite temporary file cleanup failed"
     assert execution["extra_vars"]["bklite_session_url"].endswith("/secret")
     assert execution["extra_vars"]["bklite_session_user"] == "Administrator"
+    assert execution["extra_vars"]["bklite_session_file"].endswith("/session.url")
     assert execution["extra_vars"]["bklite_execution_id"] == "0123456789abcdef0123456789abcdef"
     cleanup_playbook = yaml.safe_load(cleanup["playbook_content"])
     cleanup_tasks = cleanup_playbook[0]["tasks"]
@@ -128,7 +130,7 @@ def test_windows_remote_bootstrap_stages_and_runs_native_worker():
     }
     assert cleanup_paths == {
         "C:/Windows/Temp/bklite-controller-bootstrap-31-2.exe",
-        "C:/Windows/Temp/bklite-controller-session-31-2.url",
+        "C:/Windows/Temp/bklite-controller-session-31-2",
     }
     assert output.startswith("BKINSTALL_EVENT ")
 
@@ -452,6 +454,78 @@ def test_installer_progress_rejects_stale_execution_events():
     messages = [step.get("message") for step in task_node.result.get("steps", [])]
     assert "current" in messages
     assert "stale" not in messages
+
+
+@pytest.mark.django_db
+def test_installer_execution_claim_rejects_duplicate_delivery_and_fences_terminal_events():
+    region = CloudRegion.objects.create(name="progress-claim-region")
+    task = ControllerTask.objects.create(cloud_region=region, type="install", status="running")
+    task_node = ControllerTaskNode.objects.create(
+        task=task,
+        ip="10.0.0.9",
+        node_name="windows-node",
+        os=NodeConstants.WINDOWS_OS,
+        organizations=[1],
+        port=5986,
+        result={"execution_phase": "bootstrap_running", "execution_attempt": 3, "steps": []},
+    )
+
+    assert installer_tasks._claim_installer_execution(task_node.id, "first-execution", 3) is not None
+    assert installer_tasks._claim_installer_execution(task_node.id, "duplicate-execution", 3) is None
+
+    terminal_event = 'BKINSTALL_EVENT {"action":"download","status":"running","message":"first"}'
+    finished = installer_tasks._finish_installer_execution(task_node.id, terminal_event, "first-execution", 3)
+    assert finished is not None
+    assert "installer_execution_id" not in finished
+    assert installer_tasks._finish_installer_execution(
+        task_node.id,
+        'BKINSTALL_EVENT {"action":"install","status":"error","message":"stale"}',
+        "first-execution",
+        3,
+    ) is None
+
+    task_node.refresh_from_db()
+    messages = [step.get("message") for step in task_node.result.get("steps", [])]
+    assert "first" in messages
+    assert "stale" not in messages
+
+
+@pytest.mark.django_db
+def test_controller_timeout_fences_stuck_windows_bootstrap(monkeypatch):
+    region = CloudRegion.objects.create(name="bootstrap-timeout-region")
+    task = ControllerTask.objects.create(cloud_region=region, type="install", status="running")
+    task_node = ControllerTaskNode.objects.create(
+        task=task,
+        ip="10.0.0.10",
+        node_name="windows-node",
+        os=NodeConstants.WINDOWS_OS,
+        organizations=[1],
+        port=5986,
+        password="encrypted-password",
+        result={
+            "execution_phase": "bootstrap_running",
+            "execution_attempt": 1,
+            "installer_execution_id": "stuck-execution",
+            "steps": [{"action": "run", "status": "running", "message": "Run installer"}],
+        },
+        status="running",
+    )
+    monkeypatch.setattr(installer_tasks, "_dispatch_or_finalize_controller_task", lambda task_id: None)
+
+    installer_tasks.timeout_controller_install_task(task.id)
+
+    task_node.refresh_from_db()
+    assert task_node.status == "error"
+    assert task_node.password == ""
+    assert task_node.result["execution_attempt"] == 2
+    assert "installer_execution_id" not in task_node.result
+    assert task_node.result["steps"][-1]["status"] == "error"
+    assert not installer_tasks._apply_installer_events_for_execution(
+        task_node.id,
+        'BKINSTALL_EVENT {"action":"install","status":"success","message":"late"}',
+        "stuck-execution",
+        1,
+    )
 
 
 @pytest.mark.django_db

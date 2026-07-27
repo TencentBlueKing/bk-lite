@@ -50,6 +50,7 @@ class InstallTokenService:
         organizations: list,
         node_name: str,
         cpu_architecture: str = "",
+        install_mode: str = "manual",
     ) -> str:
         """
         生成安装令牌（30分钟有效，最多使用5次）
@@ -80,6 +81,7 @@ class InstallTokenService:
                 "organizations": organizations,
                 "node_name": node_name,
                 "cpu_architecture": cpu_architecture,
+                "install_mode": install_mode,
                 "usage_count": 0,
                 "max_usage": InstallerConstants.INSTALL_TOKEN_MAX_USAGE,
             },
@@ -123,6 +125,7 @@ class InstallTokenService:
             "organizations": data["organizations"],
             "node_name": data["node_name"],
             "cpu_architecture": data.get("cpu_architecture", ""),
+            "install_mode": data.get("install_mode", "manual"),
             "remaining_usage": max_usage - usage_count,
         }
 

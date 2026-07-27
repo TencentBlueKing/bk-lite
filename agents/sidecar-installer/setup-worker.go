@@ -1190,6 +1190,44 @@ func cleanupActivatedWindowsBackup(backupDir string) {
 	}
 }
 
+func recoverInterruptedWindowsInstallation(
+	controller windowsServiceController,
+	installDir string,
+	backupDir string,
+) error {
+	serviceExisted, err := controller.Stop()
+	if err != nil {
+		return fmt.Errorf("stop service before interrupted installation recovery: %w", err)
+	}
+	movedRuntimeDirectories := []string{}
+	for _, name := range windowsRuntimeDirectories {
+		source := filepath.Join(installDir, name)
+		target := filepath.Join(backupDir, name)
+		if _, sourceErr := os.Stat(source); sourceErr != nil {
+			if os.IsNotExist(sourceErr) {
+				continue
+			}
+			return sourceErr
+		}
+		if _, targetErr := os.Stat(target); os.IsNotExist(targetErr) {
+			movedRuntimeDirectories = append(movedRuntimeDirectories, name)
+		} else if targetErr != nil {
+			return targetErr
+		}
+	}
+	if err := restorePreviousWindowsInstallation(
+		controller,
+		installDir,
+		backupDir,
+		true,
+		serviceExisted,
+		movedRuntimeDirectories,
+	); err != nil {
+		return err
+	}
+	return fmt.Errorf("recovered previous Windows installation after an interrupted activation; retry installation")
+}
+
 func installWindowsPackage(cfg *Config, zipPath string, controller windowsServiceController) error {
 	installDir := filepath.Clean(cfg.InstallDir)
 	stagingDir := installDir + ".bklite-staging"
@@ -1203,7 +1241,7 @@ func installWindowsPackage(cfg *Config, zipPath string, controller windowsServic
 	}
 	defer releaseInstallLock()
 	if _, err := os.Stat(backupDir); err == nil {
-		return fmt.Errorf("previous Windows installation backup requires recovery: %s", backupDir)
+		return recoverInterruptedWindowsInstallation(controller, installDir, backupDir)
 	} else if !os.IsNotExist(err) {
 		return err
 	}
@@ -1270,7 +1308,12 @@ func installWindowsPackage(cfg *Config, zipPath string, controller windowsServic
 	if err := controller.Start(installDir, serviceExisted); err != nil {
 		activationErr := err
 		if _, stopErr := controller.Stop(); stopErr != nil {
-			return fmt.Errorf("activate new service: %v; stop failed service before rollback: %w", activationErr, stopErr)
+			return fmt.Errorf(
+				"activate new service: %v; stop failed service before rollback: %w; previous installation retained at %s for recovery",
+				activationErr,
+				stopErr,
+				backupDir,
+			)
 		}
 		if !serviceExisted {
 			if removeServiceErr := controller.Remove(); removeServiceErr != nil {
