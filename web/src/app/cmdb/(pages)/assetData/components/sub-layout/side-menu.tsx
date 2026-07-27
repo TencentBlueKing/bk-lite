@@ -42,8 +42,10 @@ interface ModelAssociation {
   asst_id: string;
   src_id: number;
   src_model_id: string;
+  src_model_name?: string;
   dst_id: number;
   dst_model_id: string;
+  dst_model_name?: string;
 }
 
 const SideMenu: React.FC<SideMenuProps> = ({
@@ -63,7 +65,7 @@ const SideMenu: React.FC<SideMenuProps> = ({
   const searchParams = useSearchParams();
   const router = useRouter();
   const modelId = searchParams.get('model_id');
-  const { setSelectedAssoId, assoInstances, assoTypes, modelList } =
+  const { setSelectedAssoId, assoInstances, assoTypes } =
     useRelationships();
   const [allAssociations, setAllAssociations] = useState<ModelAssociation[]>(
     []
@@ -170,13 +172,9 @@ const SideMenu: React.FC<SideMenuProps> = ({
         }
 
         const text =
-          modelList.find(
-            (model) =>
-              model.model_id ===
-              (item.dst_model_id === modelId
-                ? item.src_model_id
-                : item.dst_model_id)
-          )?.model_name || '--';
+          item.dst_model_id === modelId
+            ? item.src_model_name || item.src_model_id
+            : item.dst_model_name || item.dst_model_id;
 
         acc.get(title)?.push({
           model_asst_id: item.model_asst_id,
@@ -191,7 +189,7 @@ const SideMenu: React.FC<SideMenuProps> = ({
       const dedupedMap = new Map<string, ListItem>();
 
       children.forEach((child: ListItem) => {
-        const dedupKey = child.text;
+        const dedupKey = child.model_asst_id;
         const existing = dedupedMap.get(dedupKey);
 
         if (!existing) {
@@ -212,7 +210,7 @@ const SideMenu: React.FC<SideMenuProps> = ({
         children: Array.from(dedupedMap.values()),
       };
     });
-  }, [assoInstances, assoTypes, allAssociations, modelList]);
+  }, [assoInstances, assoTypes, allAssociations]);
 
   const orderedMenuItems = useMemo(() => {
     const items = [...menuItems];

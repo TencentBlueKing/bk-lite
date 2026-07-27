@@ -119,6 +119,22 @@ def test_model_detail_missing_returns_stable_404(
 
 
 @patch("apps.cmdb.open_api.views.CMDBOpenAPIContext.from_request")
+@patch(
+    "apps.cmdb.open_api.services.ModelManage.search_model_info",
+    return_value={"model_id": "docker", "is_visible": False},
+)
+def test_hidden_model_detail_returns_stable_404(
+    mock_info, mock_context, api_client, api_secret_allowed
+):
+    _context(mock_context)
+
+    response = _api_request(api_client, "/api/v1/cmdb/api/open/models/docker")
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "cmdb.model.not_found"
+
+
+@patch("apps.cmdb.open_api.views.CMDBOpenAPIContext.from_request")
 @patch("apps.cmdb.open_api.services.get_default_group_id", return_value=[1])
 @patch("apps.cmdb.open_api.services.CmdbRulesFormatUtil.has_object_permission", return_value=True)
 @patch(
@@ -173,7 +189,7 @@ def test_model_associations_are_returned_after_model_visibility_check(
 
     assert response.status_code == 200
     assert response.json()["data"] == [{"model_asst_id": "host_run"}]
-    mock_associations.assert_called_once_with("host")
+    mock_associations.assert_called_once_with("host", business_only=True)
 
 
 def test_api_secret_rejection_returns_stable_error_envelope(api_client):

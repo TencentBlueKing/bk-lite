@@ -43,6 +43,7 @@ from apps.cmdb.services.auto_relation_rule import (
     validate_auto_relation_rule_set_payload,
 )
 from apps.cmdb.services.classification import ClassificationManage
+from apps.cmdb.services.model_visibility import BusinessModelVisibility
 from apps.cmdb.services.unique_rule import (
     UniqueRulePayload,
     apply_unique_rules_to_attr_export_rows,
@@ -885,6 +886,16 @@ class ModelManage(object):
                 organization_field="group",
             )
             models, _ = ag.query_entity(**query)
+            if not include_hidden:
+                visible_models = BusinessModelVisibility.filter_models(
+                    models,
+                    graph=ag,
+                )
+                models = [
+                    model
+                    for model in models
+                    if model["model_id"] in visible_models
+                ]
 
         lan = SettingLanguage(language)
 
@@ -895,9 +906,6 @@ class ModelManage(object):
                 model["order_id"] = 0
             if "is_visible" not in model:
                 model["is_visible"] = True
-
-        if not include_hidden:
-            models = [m for m in models if m.get("is_visible", True)]
 
         return models
 
@@ -1488,7 +1496,12 @@ class ModelManage(object):
         return edges[0]
 
     @staticmethod
-    def model_association_search(model_id: str):
+    def model_association_search(
+        model_id: str,
+        *,
+        business_only: bool = False,
+        language: str = "en",
+    ):
         """
         查询模型所有的关联
         """
@@ -1499,6 +1512,11 @@ class ModelManage(object):
         with GraphClient() as ag:
             edges = ag.query_edge(MODEL_ASSOCIATION, query_list, param_type="OR")
 
+        if business_only:
+            return BusinessModelVisibility.filter_associations(
+                edges,
+                language=language,
+            )
         return edges
 
     @staticmethod
@@ -2074,7 +2092,11 @@ class ModelManage(object):
             for row in attr_rows:
                 ws_attr.append([row.get(header, "") for header in ATTR_HEADERS_EN])
 
-            associations = ModelManage.model_association_search(model_id)
+            associations = ModelManage.model_association_search(
+                model_id,
+                business_only=True,
+                language=language,
+            )
             if associations:
                 if selected_ids is not None:
                     associations = [

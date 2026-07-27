@@ -1247,7 +1247,13 @@ class InstanceManage(object):
 
 
     @staticmethod
-    def instance_association_instance_list(model_id: str, inst_id: int):
+    def instance_association_instance_list(
+            model_id: str,
+            inst_id: int,
+            *,
+            business_only: bool = False,
+            language: str = "en",
+    ):
         """查询模型实例关联的实例列表"""
 
         with GraphClient() as ag:
@@ -1265,16 +1271,39 @@ class InstanceManage(object):
             ]
             dst_edge = ag.query_edge(INSTANCE_ASSOCIATION, dst_query_data, return_entity=True)
 
+        edge_items = src_edge + dst_edge
+        visible_associations = {}
+        if business_only:
+            from apps.cmdb.services.model_visibility import BusinessModelVisibility
+
+            visible_associations = {
+                item["model_asst_id"]: item
+                for item in BusinessModelVisibility.filter_associations(
+                    [item["edge"] for item in edge_items],
+                    language=language,
+                )
+            }
+            edge_items = [
+                item
+                for item in edge_items
+                if item["edge"].get("model_asst_id") in visible_associations
+            ]
+
         result = {}
-        for item in src_edge + dst_edge:
+        for item in edge_items:
             model_asst_id = item["edge"]["model_asst_id"]
             item_key = "src" if model_id == item["edge"]["dst_model_id"] else "dst"
             if model_asst_id not in result:
+                visible_association = visible_associations.get(model_asst_id, {})
                 result[model_asst_id] = {
                     "src_model_id": item["edge"]["src_model_id"],
                     "dst_model_id": item["edge"]["dst_model_id"],
                     "model_asst_id": item["edge"]["model_asst_id"],
                     "asst_id": item["edge"].get("asst_id"),
+                    "src_model_name": visible_association.get("src_model_name", ""),
+                    "dst_model_name": visible_association.get("dst_model_name", ""),
+                    "src_model_icn": visible_association.get("src_model_icn", ""),
+                    "dst_model_icn": visible_association.get("dst_model_icn", ""),
                     "inst_list": [],
                 }
             item[item_key].update(inst_asst_id=item["edge"]["_id"])
@@ -1284,7 +1313,13 @@ class InstanceManage(object):
 
 
     @staticmethod
-    def instance_association(model_id: str, inst_id: int):
+    def instance_association(
+            model_id: str,
+            inst_id: int,
+            *,
+            business_only: bool = False,
+            language: str = "en",
+    ):
         """查询模型实例关联的实例列表"""
 
         with GraphClient() as ag:
@@ -1302,7 +1337,15 @@ class InstanceManage(object):
             ]
             dst_edge = ag.query_edge(INSTANCE_ASSOCIATION, dst_query_data)
 
-        return src_edge + dst_edge
+        edges = src_edge + dst_edge
+        if business_only:
+            from apps.cmdb.services.model_visibility import BusinessModelVisibility
+
+            return BusinessModelVisibility.filter_associations(
+                edges,
+                language=language,
+            )
+        return edges
 
 
     @staticmethod
@@ -1623,7 +1666,10 @@ class InstanceManage(object):
     def download_import_template(model_id: str):
         """下载导入模板"""
         attrs = ModelManage.search_model_attr_v2(model_id)
-        association = ModelManage.model_association_search(model_id)
+        association = ModelManage.model_association_search(
+            model_id,
+            business_only=True,
+        )
         return Export(attrs, model_id=model_id, association=association).export_template()
 
 
@@ -1779,7 +1825,10 @@ class InstanceManage(object):
     ):
         """实例导出"""
         attrs = ModelManage.search_model_attr_v2(model_id)
-        association = ModelManage.model_association_search(model_id)
+        association = ModelManage.model_association_search(
+            model_id,
+            business_only=True,
+        )
         format_permission_dict = InstanceManage._build_format_permission_dict(permissions_map, creator)
         # 添加调试日志
         logger.info(f"导出参数 - model_id: {model_id}, ids: {ids}, association_list: {association_list}")
