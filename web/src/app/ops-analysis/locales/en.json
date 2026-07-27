@@ -786,7 +786,8 @@
     "shareCreateFailed": "Failed to create share link",
     "shareInvalid": "This share link is invalid or no longer available",
     "shareOpening": "Opening shared dashboard",
-    "shareLoading": "Loading shared dashboard"
+    "shareLoading": "Loading shared dashboard",
+    "shareNavigationDisabled": "Navigation to other resources is disabled in share mode"
   },
   "opsAnalysisSidebar": {
     "addArch": "Add Architecture",

@@ -10,6 +10,7 @@ from apps.operation_analysis.models.models import Dashboard, Directory
 from apps.operation_analysis.models.share_models import DashboardShareLink, DashboardShareSession
 from apps.operation_analysis.services.share_service import (
     ShareLinkInvalid,
+    SharePermissionDenied,
     create_or_get_share,
     exchange_share,
     resolve_link,
@@ -446,3 +447,581 @@ def test_space_mismatch_marks_dashboard_invalid_not_permission_lost(
 
     result.link.refresh_from_db()
     assert result.link.status == DashboardShareLink.Status.DASHBOARD_INVALID
+
+
+@pytest.mark.django_db
+def test_non_member_cannot_create_share(settings, dashboard, sharer, monkeypatch):
+    settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
+    sharer.group_list = [{"id": 99}]
+    sharer.save(update_fields=["group_list"])
+    with pytest.raises(SharePermissionDenied):
+        create_or_get_share(
+            dashboard=dashboard,
+            sharer=sharer,
+            tenant_domain=dashboard.domain,
+            space_id=1,
+        )
+
+
+@pytest.mark.django_db
+def test_share_query_rejects_undeclared_params(settings, dashboard, sharer, visitor, monkeypatch):
+    settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.share_service.can_view_dashboard",
+        lambda **_: True,
+    )
+    dashboard.view_sets = [
+        {
+            "valueConfig": {
+                "dataSource": 1,
+                "dataSourceParams": [{"name": "region", "filterType": "filter"}],
+            }
+        }
+    ]
+    dashboard.save(update_fields=["view_sets"])
+    from apps.operation_analysis.services.share_service import (
+        ShareQueryParamsDenied,
+        filter_share_query_params,
+    )
+
+    with pytest.raises(ShareQueryParamsDenied):
+        filter_share_query_params(
+            dashboard=dashboard,
+            data_source_id=1,
+            request_data={"region": "east", "query_list": [{"k": "v"}]},
+        )
+
+    filtered = filter_share_query_params(
+        dashboard=dashboard,
+        data_source_id=1,
+        request_data={"region": "east", "page": 1},
+    )
+    assert filtered == {"region": "east", "page": 1}
+
+
+@pytest.mark.django_db
+def test_share_query_allows_runtime_group_by_from_value_config_params(settings, dashboard):
+    """topN 等运行时切换键在 valueConfig.params；filterType=params 时允许访问者提交切换值。"""
+    from apps.operation_analysis.services.share_service import filter_share_query_params
+
+    dashboard.view_sets = [
+        {
+            "valueConfig": {
+                "dataSource": 33,
+                "dataSourceParams": [
+                    {"name": "group_by", "filterType": "params", "value": "instance_type"},
+                    {"name": "region", "filterType": "filter"},
+                ],
+                "params": {"group_by": "department"},
+            }
+        }
+    ]
+    dashboard.save(update_fields=["view_sets"])
+
+    filtered = filter_share_query_params(
+        dashboard=dashboard,
+        data_source_id=33,
+        request_data={"group_by": "department", "region": "east"},
+    )
+    assert filtered == {"group_by": "department", "region": "east"}
+
+
+@pytest.mark.django_db
+def test_share_query_case1_widget_fixed_params_accepted(settings, dashboard):
+    """case1: widget fixed 参数可进入最终请求，且保持配置值。"""
+    from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
+    from apps.operation_analysis.services.share_service import filter_share_query_params
+
+    datasource = DataSourceAPIModel.objects.create(
+        name=f"share-fixed-ok-{uuid.uuid4()}",
+        rest_api="monitor/test",
+        groups=[1],
+        params=[
+            {"name": "region", "filterType": "params", "value": "west"},
+            {"name": "group_by", "filterType": "params", "value": "day"},
+        ],
+        created_by="alice",
+        updated_by="alice",
+    )
+    dashboard.view_sets = [
+        {
+            "valueConfig": {
+                "dataSource": datasource.id,
+                "dataSourceParams": [
+                    {"name": "region", "filterType": "fixed", "value": "east"},
+                    {"name": "group_by", "filterType": "params", "value": "day"},
+                ],
+            }
+        }
+    ]
+    dashboard.save(update_fields=["view_sets"])
+
+    filtered = filter_share_query_params(
+        dashboard=dashboard,
+        data_source_id=datasource.id,
+        request_data={"region": "east", "group_by": "day"},
+    )
+    assert filtered == {"region": "east", "group_by": "day"}
+
+
+@pytest.mark.django_db
+def test_share_query_case2_visitor_cannot_change_widget_fixed_params(settings, dashboard):
+    """case2: 访问者修改 fixed 参数 → 覆盖回画布声明值。"""
+    from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
+    from apps.operation_analysis.services.share_service import filter_share_query_params
+
+    datasource = DataSourceAPIModel.objects.create(
+        name=f"share-fixed-tamper-{uuid.uuid4()}",
+        rest_api="monitor/test",
+        groups=[1],
+        # schema 为可改类型：若只靠 get_source_data 会接受 west；分享层必须覆盖
+        params=[{"name": "region", "filterType": "params", "value": "west"}],
+        created_by="alice",
+        updated_by="alice",
+    )
+    dashboard.view_sets = [
+        {
+            "valueConfig": {
+                "dataSource": datasource.id,
+                "dataSourceParams": [{"name": "region", "filterType": "fixed", "value": "east"}],
+            }
+        }
+    ]
+    dashboard.save(update_fields=["view_sets"])
+
+    filtered = filter_share_query_params(
+        dashboard=dashboard,
+        data_source_id=datasource.id,
+        request_data={"region": "west"},
+    )
+    assert filtered == {"region": "east"}
+
+    # 省略 fixed 键时也应注入，避免访问者靠缺省绕过
+    filtered_omitted = filter_share_query_params(
+        dashboard=dashboard,
+        data_source_id=datasource.id,
+        request_data={},
+    )
+    assert filtered_omitted == {"region": "east"}
+
+
+@pytest.mark.django_db
+def test_share_query_case3_widget_empty_falls_back_to_datasource_schema(settings, dashboard):
+    """case3: widget 无参数 → datasource schema fallback → 分享查询正常，schema fixed 不可改。"""
+    from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
+    from apps.operation_analysis.services.share_service import filter_share_query_params
+
+    datasource = DataSourceAPIModel.objects.create(
+        name=f"share-schema-fallback-{uuid.uuid4()}",
+        rest_api="monitor/test",
+        groups=[1],
+        params=[
+            {"name": "group_by", "filterType": "params", "value": "day"},
+            {"name": "limit", "filterType": "fixed", "value": 10},
+        ],
+        created_by="alice",
+        updated_by="alice",
+    )
+    dashboard.view_sets = [{"valueConfig": {"dataSource": datasource.id, "dataSourceParams": []}}]
+    dashboard.save(update_fields=["view_sets"])
+
+    filtered = filter_share_query_params(
+        dashboard=dashboard,
+        data_source_id=datasource.id,
+        request_data={"group_by": "week", "limit": 99},
+    )
+    assert filtered == {"group_by": "week", "limit": 10}
+
+
+@pytest.mark.django_db
+def test_share_query_case4_unknown_params_rejected(settings, dashboard):
+    """case4: 未知参数 → 拒绝。"""
+    from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
+    from apps.operation_analysis.services.share_service import (
+        ShareQueryParamsDenied,
+        filter_share_query_params,
+    )
+
+    datasource = DataSourceAPIModel.objects.create(
+        name=f"share-unknown-{uuid.uuid4()}",
+        rest_api="monitor/test",
+        groups=[1],
+        params=[{"name": "region", "filterType": "filter", "value": "east"}],
+        created_by="alice",
+        updated_by="alice",
+    )
+    dashboard.view_sets = [
+        {
+            "valueConfig": {
+                "dataSource": datasource.id,
+                "dataSourceParams": [{"name": "region", "filterType": "filter", "value": "east"}],
+            }
+        }
+    ]
+    dashboard.save(update_fields=["view_sets"])
+
+    with pytest.raises(ShareQueryParamsDenied, match="未声明参数"):
+        filter_share_query_params(
+            dashboard=dashboard,
+            data_source_id=datasource.id,
+            request_data={"region": "east", "secret_scope": "all"},
+        )
+
+
+@pytest.mark.django_db
+def test_share_query_merges_datasource_schema_with_partial_widget_params(settings, dashboard):
+    """组件只覆盖部分 params 时，运行时仍可能带上数据源 schema 中的其它键。"""
+    from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
+    from apps.operation_analysis.services.share_service import (
+        ShareQueryParamsDenied,
+        filter_share_query_params,
+    )
+
+    datasource = DataSourceAPIModel.objects.create(
+        name=f"share-partial-{uuid.uuid4()}",
+        rest_api="monitor/test",
+        groups=[1],
+        params=[
+            {"name": "group_by", "filterType": "params", "value": "day"},
+            {"name": "limit", "filterType": "fixed", "value": 10},
+        ],
+        created_by="alice",
+        updated_by="alice",
+    )
+    dashboard.view_sets = [
+        {
+            "valueConfig": {
+                "dataSource": datasource.id,
+                "chartType": "topN",
+                "dataSourceParams": [{"name": "limit", "filterType": "fixed", "value": 10}],
+            }
+        }
+    ]
+    dashboard.save(update_fields=["view_sets"])
+
+    filtered = filter_share_query_params(
+        dashboard=dashboard,
+        data_source_id=datasource.id,
+        request_data={"group_by": "day", "limit": 10},
+    )
+    assert filtered == {"group_by": "day", "limit": 10}
+
+    with pytest.raises(ShareQueryParamsDenied):
+        filter_share_query_params(
+            dashboard=dashboard,
+            data_source_id=datasource.id,
+            request_data={"group_by": "day", "query_list": []},
+        )
+
+
+@pytest.mark.django_db
+def test_share_query_allows_query_list_only_for_table_widgets(settings, dashboard):
+    from apps.operation_analysis.services.share_service import (
+        ShareQueryParamsDenied,
+        filter_share_query_params,
+    )
+
+    dashboard.view_sets = [
+        {
+            "valueConfig": {
+                "dataSource": 7,
+                "chartType": "table",
+                "dataSourceParams": [{"name": "region", "filterType": "filter"}],
+            }
+        }
+    ]
+    dashboard.save(update_fields=["view_sets"])
+
+    filtered = filter_share_query_params(
+        dashboard=dashboard,
+        data_source_id=7,
+        request_data={
+            "page": 1,
+            "page_size": 20,
+            "query_list": [{"field": "name", "type": "str*", "value": "bk"}],
+        },
+    )
+    assert filtered["query_list"] == [{"field": "name", "type": "str*", "value": "bk"}]
+
+    dashboard.view_sets = [
+        {
+            "valueConfig": {
+                "dataSource": 7,
+                "chartType": "line",
+                "dataSourceParams": [{"name": "region", "filterType": "filter"}],
+            }
+        }
+    ]
+    dashboard.save(update_fields=["view_sets"])
+    with pytest.raises(ShareQueryParamsDenied):
+        filter_share_query_params(
+            dashboard=dashboard,
+            data_source_id=7,
+            request_data={"query_list": []},
+        )
+
+
+@pytest.mark.django_db
+def test_share_query_falls_back_to_datasource_params_when_widget_empty(settings, dashboard):
+    from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
+    from apps.operation_analysis.services.share_service import (
+        ShareQueryParamsDenied,
+        filter_share_query_params,
+    )
+
+    datasource = DataSourceAPIModel.objects.create(
+        name=f"share-fallback-{uuid.uuid4()}",
+        rest_api="monitor/test",
+        groups=[1],
+        params=[
+            {"name": "group_by", "filterType": "params", "value": "day"},
+            {"name": "limit", "filterType": "fixed", "value": 10},
+        ],
+        created_by="alice",
+        updated_by="alice",
+    )
+    dashboard.view_sets = [{"valueConfig": {"dataSource": datasource.id, "dataSourceParams": []}}]
+    dashboard.save(update_fields=["view_sets"])
+
+    filtered = filter_share_query_params(
+        dashboard=dashboard,
+        data_source_id=datasource.id,
+        request_data={"group_by": "day", "limit": 10},
+    )
+    assert filtered == {"group_by": "day", "limit": 10}
+
+    with pytest.raises(ShareQueryParamsDenied):
+        filter_share_query_params(
+            dashboard=dashboard,
+            data_source_id=datasource.id,
+            request_data={"group_by": "day", "unknown_key": 1},
+        )
+
+
+@pytest.mark.django_db
+def test_share_query_rejects_undeclared_namespace_id(settings, dashboard):
+    from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, NameSpace
+    from apps.operation_analysis.services.share_service import (
+        ShareQueryParamsDenied,
+        filter_share_query_params,
+    )
+
+    allowed_ns = NameSpace.objects.create(
+        name=f"share-ns-ok-{uuid.uuid4()}",
+        account="a",
+        password="b",
+        domain="localhost:4222",
+    )
+    other_ns = NameSpace.objects.create(
+        name=f"share-ns-other-{uuid.uuid4()}",
+        account="a",
+        password="b",
+        domain="localhost:4222",
+    )
+    datasource = DataSourceAPIModel.objects.create(
+        name=f"share-ns-{uuid.uuid4()}",
+        rest_api="monitor/test",
+        groups=[1],
+        params=[],
+        created_by="alice",
+        updated_by="alice",
+    )
+    datasource.namespaces.add(allowed_ns)
+    dashboard.view_sets = [{"valueConfig": {"dataSource": datasource.id, "dataSourceParams": []}}]
+    dashboard.save(update_fields=["view_sets"])
+
+    filtered = filter_share_query_params(
+        dashboard=dashboard,
+        data_source_id=datasource.id,
+        request_data={"namespace_id": allowed_ns.id},
+    )
+    assert filtered == {"namespace_id": allowed_ns.id}
+
+    with pytest.raises(ShareQueryParamsDenied):
+        filter_share_query_params(
+            dashboard=dashboard,
+            data_source_id=datasource.id,
+            request_data={"namespace_id": other_ns.id},
+        )
+
+
+@pytest.mark.django_db
+def test_prepare_state_roundtrip_exchanges_without_raw_token(
+    settings, dashboard, sharer, visitor, monkeypatch
+):
+    settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.share_service.can_view_dashboard",
+        lambda **_: True,
+    )
+    store = {}
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.share_service.cache.set",
+        lambda key, value, timeout=None: store.__setitem__(key, value),
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.share_service.cache.get",
+        lambda key, default=None: store.get(key, default),
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.share_service.cache.delete",
+        lambda key: store.pop(key, None) is not None,
+    )
+    from apps.operation_analysis.services.share_service import prepare_share_exchange
+
+    result = create_or_get_share(
+        dashboard=dashboard,
+        sharer=sharer,
+        tenant_domain=dashboard.domain,
+        space_id=1,
+    )
+    state, nonce = prepare_share_exchange(token=result.token)
+    session = exchange_share(state=state, prepare_nonce=nonce, visitor=visitor)
+    assert session.share_link_id == result.link.id
+    with pytest.raises(ShareLinkInvalid):
+        exchange_share(state=state, prepare_nonce=nonce, visitor=visitor)
+
+
+@pytest.mark.django_db
+def test_exchange_state_requires_matching_prepare_nonce(
+    settings, dashboard, sharer, visitor, monkeypatch
+):
+    settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.share_service.can_view_dashboard",
+        lambda **_: True,
+    )
+    store = {}
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.share_service.cache.set",
+        lambda key, value, timeout=None: store.__setitem__(key, value),
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.share_service.cache.get",
+        lambda key, default=None: store.get(key, default),
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.share_service.cache.delete",
+        lambda key: store.pop(key, None) is not None,
+    )
+    from apps.operation_analysis.services.share_service import prepare_share_exchange
+
+    result = create_or_get_share(
+        dashboard=dashboard,
+        sharer=sharer,
+        tenant_domain=dashboard.domain,
+        space_id=1,
+    )
+    state, nonce = prepare_share_exchange(token=result.token)
+    with pytest.raises(ShareLinkInvalid):
+        exchange_share(state=state, prepare_nonce="wrong-nonce", visitor=visitor)
+    # state 未被错误 nonce 消费，正确 nonce 仍可兑换
+    session = exchange_share(state=state, prepare_nonce=nonce, visitor=visitor)
+    assert session.share_link_id == result.link.id
+
+
+@pytest.mark.django_db
+def test_rate_limit_failure_does_not_consume_prepare_state(
+    settings, dashboard, sharer, visitor, monkeypatch
+):
+    settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.share_service.can_view_dashboard",
+        lambda **_: True,
+    )
+    store = {}
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.share_service.cache.set",
+        lambda key, value, timeout=None: store.__setitem__(key, value),
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.share_service.cache.get",
+        lambda key, default=None: store.get(key, default),
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.share_service.cache.delete",
+        lambda key: store.pop(key, None) is not None,
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.share_service.enforce_share_visitor_link_rate_limit",
+        lambda **_: (_ for _ in ()).throw(ShareRateLimited()),
+    )
+    from apps.operation_analysis.services.share_service import (
+        ShareRateLimited,
+        prepare_share_exchange,
+    )
+
+    result = create_or_get_share(
+        dashboard=dashboard,
+        sharer=sharer,
+        tenant_domain=dashboard.domain,
+        space_id=1,
+    )
+    state, nonce = prepare_share_exchange(token=result.token)
+    with pytest.raises(ShareRateLimited):
+        exchange_share(state=state, prepare_nonce=nonce, visitor=visitor)
+
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.share_service.enforce_share_visitor_link_rate_limit",
+        lambda **_: None,
+    )
+    session = exchange_share(state=state, prepare_nonce=nonce, visitor=visitor)
+    assert session.share_link_id == result.link.id
+
+
+@pytest.mark.django_db
+def test_visitor_link_rate_limit_is_isolated_per_visitor(
+    settings, dashboard, sharer, visitor, monkeypatch
+):
+    settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.share_service.can_view_dashboard",
+        lambda **_: True,
+    )
+    counters = {}
+
+    def fake_add(key, value, timeout=None):
+        if key in counters:
+            return False
+        counters[key] = value
+        return True
+
+    def fake_incr(key):
+        counters[key] = counters.get(key, 0) + 1
+        return counters[key]
+
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.share_service.cache.add",
+        fake_add,
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.share_service.cache.incr",
+        fake_incr,
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.share_service.SHARE_VISITOR_LINK_RATE_LIMIT",
+        1,
+    )
+    from apps.operation_analysis.services.share_service import (
+        ShareRateLimited,
+        enforce_share_visitor_link_rate_limit,
+    )
+
+    result = create_or_get_share(
+        dashboard=dashboard,
+        sharer=sharer,
+        tenant_domain=dashboard.domain,
+        space_id=1,
+    )
+    visitor_c = User.objects.create(
+        username="carol-rate",
+        domain="third.com",
+        display_name="Carol",
+        email="carol-rate@example.com",
+        password="x",
+    )
+    enforce_share_visitor_link_rate_limit(link_id=result.link.id, visitor=visitor)
+    with pytest.raises(ShareRateLimited):
+        enforce_share_visitor_link_rate_limit(link_id=result.link.id, visitor=visitor)
+    # 另一访问者不受影响
+    enforce_share_visitor_link_rate_limit(link_id=result.link.id, visitor=visitor_c)

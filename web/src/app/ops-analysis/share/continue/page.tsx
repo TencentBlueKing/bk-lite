@@ -2,42 +2,37 @@
 
 import { useEffect, useState } from 'react';
 import { Button, Spin } from 'antd';
-import { signIn, useSession } from 'next-auth/react';
-import { useParams, useRouter } from 'next/navigation';
-import { prepareShareToken } from '@/app/ops-analysis/api/dashboardShare';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useDashboardShareApi } from '@/app/ops-analysis/api/dashboardShare';
 import { useTranslation } from '@/utils/i18n';
 
-export default function DashboardShareTokenPage() {
-  const params = useParams<{ token: string }>();
+export default function DashboardShareContinuePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { t } = useTranslation();
-  const { status } = useSession();
+  const { exchangeShare } = useDashboardShareApi();
   const [invalid, setInvalid] = useState(false);
+  const state = searchParams.get('state');
 
   useEffect(() => {
-    if (status === 'loading' || !params.token) return;
+    if (!state) {
+      setInvalid(true);
+      return;
+    }
     let active = true;
-
-    prepareShareToken(params.token)
+    exchangeShare({ state })
       .then((result) => {
-        if (!active) return;
-        const continuePath = `/ops-analysis/share/continue?state=${encodeURIComponent(result.state)}`;
-        if (status === 'unauthenticated') {
-          void signIn(undefined, {
-            callbackUrl: `${window.location.origin}${continuePath}`,
-          });
-          return;
+        if (active) {
+          router.replace(`/ops-analysis/share/session/${result.session_id}`);
         }
-        router.replace(continuePath);
       })
       .catch(() => {
         if (active) setInvalid(true);
       });
-
     return () => {
       active = false;
     };
-  }, [params.token, router, status]);
+  }, [exchangeShare, router, state]);
 
   if (invalid) {
     return (

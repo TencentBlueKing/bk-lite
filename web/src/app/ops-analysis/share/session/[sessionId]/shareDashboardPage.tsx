@@ -6,6 +6,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Dashboard from '@/app/ops-analysis/(pages)/view/dashBoard';
 import { useDashboardShareApi } from '@/app/ops-analysis/api/dashboardShare';
 import { ShareDataSourceProvider } from '@/app/ops-analysis/context/shareDataSource';
+import { ShareModeProvider } from '@/app/ops-analysis/context/shareMode';
 import { OpsAnalysisProvider } from '@/app/ops-analysis/context/common';
 import { useTranslation } from '@/utils/i18n';
 import type { DirItem } from '@/app/ops-analysis/types';
@@ -71,17 +72,19 @@ export default function ShareDashboardPage() {
   }
 
   return (
-    <ShareDataSourceProvider value={shareAccess}>
-      <OpsAnalysisProvider>
-        <main className="h-full w-full overflow-hidden">
-          <Dashboard
-            selectedDashboard={selectedDashboard}
-            shareMode
-            shareSessionId={params.sessionId}
-            getDashboardDetailOverride={getDashboardDetail}
-          />
-        </main>
-      </OpsAnalysisProvider>
-    </ShareDataSourceProvider>
+    <ShareModeProvider value>
+      <ShareDataSourceProvider value={shareAccess}>
+        <OpsAnalysisProvider>
+          <main className="h-full w-full overflow-hidden">
+            <Dashboard
+              selectedDashboard={selectedDashboard}
+              shareMode
+              shareSessionId={params.sessionId}
+              getDashboardDetailOverride={getDashboardDetail}
+            />
+          </main>
+        </OpsAnalysisProvider>
+      </ShareDataSourceProvider>
+    </ShareModeProvider>
   );
 }

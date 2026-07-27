@@ -238,15 +238,26 @@ class DashboardModelViewSet(BuiltinVisibleMixin, AuthViewSet):
     def share(self, request, *args, **kwargs):
         from rest_framework.exceptions import PermissionDenied
 
+        from apps.operation_analysis.services.share_audit import log_share_access
+
+        space_id = self._parse_current_team_cookie(request)
         dashboard = self.get_object()
         try:
             result = create_or_get_share(
                 dashboard=dashboard,
                 sharer=request.user,
                 tenant_domain=dashboard.domain,
-                space_id=self._parse_current_team_cookie(request),
+                space_id=space_id,
             )
         except SharePermissionDenied as exc:
+            log_share_access(
+                request,
+                action="create",
+                dashboard=dashboard,
+                visitor=request.user,
+                result="reject",
+                reason="permission_denied",
+            )
             raise PermissionDenied("无权分享该仪表盘") from exc
         response = Response(
             {
@@ -256,7 +267,14 @@ class DashboardModelViewSet(BuiltinVisibleMixin, AuthViewSet):
                 "sharer_username": result.link.sharer_username,
             }
         )
-        log_ops_analysis_success(request, response, "create", f"获取仪表盘分享链接: {dashboard.name}")
+        log_share_access(
+            request,
+            action="create",
+            link=result.link,
+            dashboard=dashboard,
+            visitor=request.user,
+            result="ok",
+        )
         return response
 
 

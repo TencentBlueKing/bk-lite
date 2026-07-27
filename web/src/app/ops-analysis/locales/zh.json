@@ -786,7 +786,8 @@
     "shareCreateFailed": "创建分享链接失败",
     "shareInvalid": "分享链接无效或已失效",
     "shareOpening": "正在打开分享仪表盘",
-    "shareLoading": "正在加载分享仪表盘"
+    "shareLoading": "正在加载分享仪表盘",
+    "shareNavigationDisabled": "分享模式下不可跳转到其他资源"
   },
   "opsAnalysisSidebar": {
     "addArch": "添加架构图",
