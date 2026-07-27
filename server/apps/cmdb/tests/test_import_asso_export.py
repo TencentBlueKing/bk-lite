@@ -231,7 +231,7 @@ def test_export_format_inst_asst_name_with_association(monkeypatch):
     )
     monkeypatch.setattr(
         "apps.cmdb.services.instance.InstanceManage.instance_association_instance_list",
-        lambda mid, iid: [
+        lambda mid, iid, **kwargs: [
             {"model_asst_id": "host_conn_sw",
              "inst_list": [{"inst_name": "sw1"}, {"inst_name": "sw2"}]}
         ],

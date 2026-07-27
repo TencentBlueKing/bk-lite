@@ -1,9 +1,10 @@
 'use client';
 
 import React from 'react';
-import { Form, Switch, Select, InputNumber, Checkbox, Button, Space } from 'antd';
+import { Form, Switch, InputNumber, Checkbox, Button, Space } from 'antd';
 import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
+import NotificationTargetFields from './notificationTargetFields';
 
 interface Option {
   label: string;
@@ -66,20 +67,12 @@ const EscalationChain: React.FC<EscalationChainProps> = ({
                     </span>
                     <MinusCircleOutlined onClick={() => remove(field.name)} />
                   </Space>
-                  <Form.Item
-                    {...field}
-                    key={`${field.key}-personnel`}
-                    name={[field.name, 'personnel']}
-                    label={t('settings.assignStrategy.formPersonnelSelect')}
-                    rules={[
-                      {
-                        required: true,
-                        message: t('settings.assignStrategy.escalationPersonnelTip'),
-                      },
-                    ]}
-                  >
-                    <Select mode="multiple" options={personnelOptions} />
-                  </Form.Item>
+                  <NotificationTargetFields
+                    namePrefix={[field.name]}
+                    watchPrefix={['escalation', 'layers', field.name]}
+                    personnelOptions={personnelOptions}
+                    typeLabel={t('settings.assignStrategy.escalationTarget')}
+                  />
                   <Form.Item
                     {...field}
                     key={`${field.key}-wait`}

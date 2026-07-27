@@ -56,7 +56,11 @@ export interface AssoTypeItem {
 export interface AssoFieldType {
   asst_id: string;
   src_model_id: string;
+  src_model_name?: string;
+  src_model_icn?: string;
   dst_model_id: string;
+  dst_model_name?: string;
+  dst_model_icn?: string;
   mapping: string;
   _id?: string;
   [key: string]: unknown;
@@ -219,8 +223,12 @@ export interface AssoInstItem {
 export interface AssoDetailItem {
   asst_id: string;
   src_model_id: string;
+  src_model_name?: string;
+  src_model_icn?: string;
   model_asst_id: string;
   dst_model_id: string;
+  dst_model_name?: string;
+  dst_model_icn?: string;
   inst_list: InstDetail[];
   [key: string]: unknown;
 }

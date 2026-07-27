@@ -4,6 +4,7 @@ from apps.cmdb.constants.constants import OPERATE, PERMISSION_INSTANCES, PERMISS
 from apps.cmdb.services.classification import ClassificationManage
 from apps.cmdb.services.instance import InstanceBatchError, InstanceManage
 from apps.cmdb.services.model import ModelManage
+from apps.cmdb.services.model_visibility import BusinessModelVisibility
 from apps.cmdb.utils.base import get_default_group_id
 from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -89,7 +90,7 @@ class CMDBOpenAPIService:
     def get_model(self, model_id):
         self.context.require_feature("model_management-View")
         model = ModelManage.search_model_info(model_id)
-        if not model:
+        if not BusinessModelVisibility.is_visible(model):
             raise CMDBOpenAPIError("cmdb.model.not_found", "模型不存在", 404)
         if not CmdbRulesFormatUtil.has_object_permission(
             obj_type=PERMISSION_MODEL,
@@ -108,12 +109,15 @@ class CMDBOpenAPIService:
 
     def get_model_associations(self, model_id):
         self.get_model(model_id)
-        return ModelManage.model_association_search(model_id)
+        return ModelManage.model_association_search(model_id, business_only=True)
 
     def _instance_permission_map(self, model_id):
         return self.context.permission_map(model_id, PERMISSION_INSTANCES)
 
     def _get_instance(self, model_id, inst_id, operator):
+        model = ModelManage.search_model_info(model_id)
+        if not BusinessModelVisibility.is_visible(model):
+            raise CMDBOpenAPIError("cmdb.instance.not_found", "实例不存在", 404)
         instance = InstanceManage.query_entity_by_id(int(inst_id))
         if (
             not instance
@@ -204,7 +208,11 @@ class CMDBOpenAPIService:
     def list_instance_associations(self, model_id, inst_id):
         self.context.require_feature("asset_info-View")
         self._get_instance(model_id, inst_id, VIEW)
-        return InstanceManage.instance_association_instance_list(model_id, int(inst_id))
+        return InstanceManage.instance_association_instance_list(
+            model_id,
+            int(inst_id),
+            business_only=True,
+        )
 
     def create_instance_association(self, model_id, inst_id, payload):
         self.context.require_feature("asset_info-Add Associate")
