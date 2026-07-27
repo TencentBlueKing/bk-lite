@@ -46,6 +46,9 @@ Windows 远程安装采用“Ansible Executor 负责 WinRM 编排，原生 Go bo
 
 ## Operational Requirements
 
+面向运维发布和流水线改造的完整步骤见
+[`docs/operations/windows-controller-remote-install-release.md`](../../../docs/operations/windows-controller-remote-install-release.md)。
+
 发布前必须：
 
 1. 构建 `agents/sidecar-installer` 的 release artifacts。

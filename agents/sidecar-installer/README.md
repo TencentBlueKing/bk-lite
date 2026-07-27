@@ -1,5 +1,8 @@
 # Sidecar Installer Build & Release Runbook
 
+Windows 远程安装的流水线改造、环境初始化、验收与回滚要求见
+[`docs/operations/windows-controller-remote-install-release.md`](../../docs/operations/windows-controller-remote-install-release.md)。
+
 ## Artifacts
 
 - Windows installer filename: `bklite-controller-installer.exe`
