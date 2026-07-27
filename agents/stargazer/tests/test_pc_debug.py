@@ -13,15 +13,15 @@
 import json
 import sys
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from enterprise.plugins.inputs.pc.pc_inventory import PC_ERROR_CODES  # noqa: E402
-from service.debug.pc_debug import (  # noqa: E402
+from enterprise.plugins.inputs.pc.pc_inventory import PC_ERROR_CODES
+from service.debug.pc_debug import (
     PC_CONNECTION_TEST_TIMEOUT,
     run_pc_test_connection,
 )

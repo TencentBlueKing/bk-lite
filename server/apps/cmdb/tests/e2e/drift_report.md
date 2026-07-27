@@ -1,6 +1,6 @@
 # 字段漂移报告
 
-扫描 78 个 model_id
+扫描 79 个 model_id
 
 ## 统计
 - ok(完全对齐): 11
@@ -8,7 +8,7 @@
 - 多字段: 0
 - 无 fixture: 4
 - 无 expected_subset: 44
-- 无 schema: 13
+- 无 schema: 14
 
 ## 缺字段 / 类型错
 
