@@ -101,6 +101,9 @@ base_constant:
   float: 浮点数
   json: JSON
 error:
+  network_whitelist_required: 目标 IP 不在白名单内，请前往系统管理的白名单管理中添加。
+  go_to_network_whitelist: 前往白名单管理
+  connection_target_forbidden: 该目标地址不允许访问。
   no_group_id: 无组 ID
   no_view_permission: 你没有权限查看此实例
   model_in_use: 无法删除，仍被 {count} 个知识图谱引用。
