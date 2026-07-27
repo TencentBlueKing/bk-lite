@@ -60,6 +60,24 @@ const DIST_RENDER = (dist: { label: string; color: string }[]) => (
   <Space size={6} wrap>{dist.map((d) => <Tag key={d.label} color={d.color}>{d.label}</Tag>)}</Space>
 );
 
+const InstallImpactColumnTitle = () => (
+  <Tooltip
+    title={(
+      <div>
+        <div style={{ fontWeight: 500, marginBottom: 4 }}>来自 Linux 包管理器 dry-run</div>
+        <div>除所选补丁外，依赖解析可能连带升级、安装或移除其他软件包；Windows 暂不提供该预估。</div>
+      </div>
+    )}
+  >
+    <span
+      tabIndex={0}
+      style={{ borderBottom: '1px dashed currentColor', cursor: 'help' }}
+    >
+      预计连带变更
+    </span>
+  </Tooltip>
+);
+
 export default function RiskPendingPage() {
   const searchParams = useSearchParams();
   const routeHostId = Number(searchParams.get('host_id')) || undefined;
@@ -256,7 +274,7 @@ export default function RiskPendingPage() {
   };
   const detailCommonCols = [
     { title: '合规要求', dataIndex: 'condition', width: 160, ellipsis: true },
-    { title: '预计连带变更', dataIndex: 'install_impact', width: 180, render: (_: unknown, r: RiskItem) => renderInstallImpact(r.install_impact, r.os_type) },
+    { title: <InstallImpactColumnTitle />, dataIndex: 'install_impact', width: 180, render: (_: unknown, r: RiskItem) => renderInstallImpact(r.install_impact, r.os_type) },
     { title: '治理状态', dataIndex: 'remediation', width: 100, render: (_: unknown, r: RiskItem) => remediationTag(r.remediation) },
   ];
   const detailColumns = view === '主机视角'
@@ -336,7 +354,11 @@ export default function RiskPendingPage() {
     }
     try {
       const items = scopeSelectedObjs.map((s) => ({ host_id: s.host_id, patch_id: s.patch_id }));
-      const payload: any = { items, execution_mode: execMode, auto_reboot: autoReboot };
+      const payload: Parameters<typeof api.remediateRisk>[0] = {
+        items,
+        execution_mode: execMode,
+        auto_reboot: autoReboot,
+      };
       if (execMode === 'window' && windowRange) {
         payload.execution_window_start = windowRange[0].toISOString();
         payload.execution_window_end = windowRange[1].toISOString();
@@ -719,13 +741,6 @@ export default function RiskPendingPage() {
           {currentStep === 0 && (
             <div style={{ display: 'flex', gap: 16, flex: 1, minHeight: 0 }}>
               <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                <Alert
-                  type="info"
-                  showIcon
-                  style={{ marginBottom: 12 }}
-                  message="预计连带变更来自 Linux 包管理器 dry-run"
-                  description="除所选补丁外，依赖解析可能连带升级、安装或移除其他软件包；Windows 暂不提供该预估。"
-                />
                 <div style={{ flex: 1, minHeight: 0 }}>
                   <CustomTable
                     size="small"
@@ -744,7 +759,7 @@ export default function RiskPendingPage() {
                       { title: '补丁要求', dataIndex: 'patch', width: 130 },
                       { title: '严重级别', dataIndex: 'sev', width: 80, render: (v: string) => <Tag color={v === '严重' ? 'error' : 'warning'}>{v}</Tag> },
                       { title: '状态', dataIndex: 'status', width: 80, render: (_: unknown, r: typeof SCOPE_RISKS[number]) => r.remark ? <Tooltip title={r.remark}><Tag color={r.status === '未纳入' ? 'error' : r.status === '待修复' ? 'warning' : 'processing'}>{r.status}</Tag></Tooltip> : <Tag color={r.status === '未纳入' ? 'error' : r.status === '待修复' ? 'warning' : 'processing'}>{r.status}</Tag> },
-                      { title: '预计连带变更', dataIndex: 'install_impact', width: 180, render: (_: unknown, r: ScopeItem) => renderInstallImpact(r.install_impact, r.os_type) },
+                      { title: <InstallImpactColumnTitle />, dataIndex: 'install_impact', width: 180, render: (_: unknown, r: ScopeItem) => renderInstallImpact(r.install_impact, r.os_type) },
                     ]}
                   />
                 </div>
@@ -773,7 +788,7 @@ export default function RiskPendingPage() {
           <style>{`.scope-item:hover .scope-remove-btn { opacity: 1 !important; }`}</style>
 
           {currentStep === 1 && (
-          <div style={{ maxWidth: 500, flex: 1, overflowY: 'auto' }}>
+          <div style={{ width: '100%', flex: 1, overflowY: 'auto' }}>
             <div style={{ fontWeight: 500, marginBottom: 6 }}>执行方式</div>
             <Radio.Group value={execMode} onChange={(e) => setExecMode(e.target.value)} style={{ marginBottom: 10 }}>
               <Radio value="now">立即执行</Radio>
@@ -785,22 +800,23 @@ export default function RiskPendingPage() {
               </div>
             )}
 
-            <div style={{ marginBottom: 4 }}>
-              <span style={{ fontWeight: 500 }}>自动重启</span>
+            <div style={{ fontWeight: 500, marginBottom: 6 }}>
+              自动重启
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-              <Switch checked={autoReboot} onChange={setAutoReboot} />
-            </div>
-            {autoReboot && (
-              <Alert
-                style={{ marginBottom: 14 }}
-                type="warning"
-                showIcon
-                message="仅自动重启明确需要重启的主机"
-                description="补丁安装完成后检测重启需求；无需重启的主机将跳过重启，无法确认的主机将进入待重启并等待人工处理。重启可能导致业务短暂中断。"
+            <Alert
+              style={{ width: '100%', marginBottom: 12 }}
+              type="warning"
+              showIcon
+              message="仅自动重启明确需要重启的主机"
+              description="补丁安装完成后检测重启需求；无需重启的主机将跳过重启，无法确认的主机将进入待重启并等待人工处理。重启可能导致业务短暂中断。"
+            />
+            <div style={{ marginBottom: 14 }}>
+              <Switch
+                aria-label="自动重启"
+                checked={autoReboot}
+                onChange={(checked: boolean) => setAutoReboot(checked)}
               />
-            )}
-            {!autoReboot && <div style={{ marginBottom: 14 }} />}
+            </div>
           </div>
           )}
         </div>
