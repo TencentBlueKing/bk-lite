@@ -144,6 +144,16 @@ const buildStructureKey = (data: NetworkTopologyX6GraphData) =>
     ]),
   });
 
+const fitGraphToView = (
+  graph: Graph,
+  options?: NetworkTopologyX6CanvasProps['fitViewOptions']
+) => {
+  graph.zoomToFit({
+    padding: options?.padding ?? 112,
+    maxScale: options?.maxScale ?? 1.12,
+  });
+};
+
 const patchGraphAttrs = (graph: Graph, data: NetworkTopologyX6GraphData) => {
   data.nodes.forEach((node) => {
     const cell = graph.getCellById(node.id) as any;
@@ -370,10 +380,7 @@ const GraphLoader: React.FC<NetworkTopologyX6CanvasProps> = ({
     if (!graph) return undefined;
     const timer = window.setTimeout(() => {
       try {
-        graph.zoomToFit({
-          padding: fitViewOptions?.padding ?? 112,
-          maxScale: fitViewOptions?.maxScale ?? 1.12,
-        });
+        fitGraphToView(graph, fitViewOptions);
       } catch {
         // ignore graph warm-up timing
       }
@@ -455,11 +462,10 @@ const NetworkTopologyX6Canvas: React.FC<NetworkTopologyX6CanvasProps> = ({
   const hasGraph = data.nodes.length > 0;
 
   const fitView = useCallback(() => {
-    internalGraphRef.current?.zoomToFit({
-      padding: fitViewOptions?.padding ?? 112,
-      maxScale: fitViewOptions?.maxScale ?? 1.12,
-    });
-  }, [fitViewOptions?.maxScale, fitViewOptions?.padding]);
+    if (internalGraphRef.current) {
+      fitGraphToView(internalGraphRef.current, fitViewOptions);
+    }
+  }, [fitViewOptions]);
 
   const handleExport = useCallback(() => {
     const graph = internalGraphRef.current;
