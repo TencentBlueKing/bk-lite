@@ -10,6 +10,7 @@ from apps.node_mgmt.models import Collector, Controller, PackageVersion
 from apps.node_mgmt.models.cloud_region import CloudRegion, SidecarEnv
 
 BASE = "/api/v1/node_mgmt"
+pytestmark = pytest.mark.integration
 
 
 def _grant_node_permissions(user, *permissions):
@@ -128,7 +129,7 @@ def test_package_create_missing_params_returns_error(api_client):
 def test_package_create_success_uploads(api_client, authenticated_user):
     from django.core.files.uploadedfile import SimpleUploadedFile
 
-    _grant_node_permissions(authenticated_user, "controller_packet-AddPacket")
+    authenticated_user.permission = {"controller_packet-AddPacket"}
     file = SimpleUploadedFile("fusion-collectors-1.0.0.tar.gz", b"content")
     with patch("apps.node_mgmt.views.package.PackageService.upload_file") as upload:
         resp = api_client.post(
@@ -145,6 +146,111 @@ def test_package_create_success_uploads(api_client, authenticated_user):
     assert resp.status_code == 200
     upload.assert_called_once()
     assert PackageVersion.objects.filter(object="fusion-collectors", version="1.0.0").exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("permission", "filename", "package_type", "object_name"),
+    [
+        ("controller_list-AddPacket", "fusion-collectors-1.0.0.tar.gz", "controller", "fusion-collectors"),
+        ("collector_list-AddPacket", "telegraf-1.0.0.tar.gz", "collector", "telegraf"),
+        ("collector_packet-AddPacket", "telegraf-1.0.0.tar.gz", "collector", "telegraf"),
+    ],
+)
+def test_package_create_accepts_existing_write_permissions(
+    api_client,
+    authenticated_user,
+    permission,
+    filename,
+    package_type,
+    object_name,
+):
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    _grant_node_permissions(authenticated_user, permission)
+    file = SimpleUploadedFile(filename, b"content")
+    with patch("apps.node_mgmt.views.package.PackageService.upload_file") as upload:
+        resp = api_client.post(
+            f"{BASE}/api/package/",
+            {
+                "file": file,
+                "type": package_type,
+                "os": "linux",
+                "object": object_name,
+                "cpu_architecture": "x86_64",
+            },
+            format="multipart",
+        )
+    assert resp.status_code == 200
+    upload.assert_called_once()
+
+
+@pytest.mark.django_db
+def test_package_create_allows_node_admin_without_explicit_permission(api_client, authenticated_user):
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    authenticated_user.roles = ["node--admin"]
+    file = SimpleUploadedFile("fusion-collectors-1.0.0.tar.gz", b"content")
+    with patch("apps.node_mgmt.views.package.PackageService.upload_file") as upload:
+        resp = api_client.post(
+            f"{BASE}/api/package/",
+            {
+                "file": file,
+                "type": "controller",
+                "os": "linux",
+                "object": "fusion-collectors",
+                "cpu_architecture": "x86_64",
+            },
+            format="multipart",
+        )
+    assert resp.status_code == 200
+    upload.assert_called_once()
+
+
+@pytest.mark.django_db
+def test_package_create_overwrites_latest_with_matching_permission(api_client, authenticated_user):
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    _grant_node_permissions(authenticated_user, "controller_packet-AddPacket")
+    existing = PackageVersion.objects.create(
+        type="controller",
+        os="linux",
+        cpu_architecture="x86_64",
+        object="fusion-collectors",
+        version="latest",
+        name="fusion-collectors.tar.gz",
+        description="old",
+    )
+    file = SimpleUploadedFile("fusion-collectors-latest.tar.gz", b"new-content")
+    parsed_info = {
+        "version": "latest",
+        "name_without_version": "fusion-collectors.tar.gz",
+        "existing_package": existing,
+    }
+    with (
+        patch(
+            "apps.node_mgmt.views.package.PackageService.validate_package",
+            return_value=(True, "", parsed_info),
+        ),
+        patch("apps.node_mgmt.views.package.PackageService.upload_file") as upload,
+    ):
+        resp = api_client.post(
+            f"{BASE}/api/package/",
+            {
+                "file": file,
+                "type": "controller",
+                "os": "linux",
+                "object": "fusion-collectors",
+                "cpu_architecture": "x86_64",
+                "description": "new",
+            },
+            format="multipart",
+        )
+    assert resp.status_code == 200
+    upload.assert_called_once()
+    existing.refresh_from_db()
+    assert existing.description == "new"
+    assert PackageVersion.objects.filter(object="fusion-collectors", version="latest").count() == 1
 
 
 @pytest.mark.django_db
@@ -192,11 +298,72 @@ def test_package_create_rejects_permission_for_other_package_type(api_client, au
 
 
 @pytest.mark.django_db
-def test_package_destroy_deletes_file_and_record(api_client, authenticated_user):
-    _grant_node_permissions(authenticated_user, "collector_packet-Delete")
+@pytest.mark.parametrize("admin_kind", ["superuser", "node_admin"])
+def test_package_create_rejects_unknown_package_type(api_client, authenticated_user, admin_kind):
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    if admin_kind == "superuser":
+        authenticated_user.is_superuser = True
+    else:
+        authenticated_user.roles = ["node--admin"]
+    _grant_node_permissions(
+        authenticated_user,
+        "controller_list-AddPacket",
+        "controller_packet-AddPacket",
+        "collector_list-AddPacket",
+        "collector_packet-AddPacket",
+    )
+    file = SimpleUploadedFile("unknown-1.0.0.tar.gz", b"content")
+    with patch("apps.node_mgmt.views.package.PackageService.upload_file") as upload:
+        resp = api_client.post(
+            f"{BASE}/api/package/",
+            {
+                "file": file,
+                "type": "unknown",
+                "os": "linux",
+                "object": "unknown",
+                "cpu_architecture": "x86_64",
+            },
+            format="multipart",
+        )
+    assert resp.status_code == 400
+    upload.assert_not_called()
+    assert not PackageVersion.objects.filter(type="unknown").exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("package_type", "permission", "object_name"),
+    [
+        ("collector", "collector_packet-Delete", "telegraf"),
+        ("controller", "controller_packet-Delete", "fusion-collectors"),
+    ],
+)
+def test_package_destroy_deletes_file_and_record(
+    api_client,
+    authenticated_user,
+    package_type,
+    permission,
+    object_name,
+):
+    _grant_node_permissions(authenticated_user, permission)
     pkg = PackageVersion.objects.create(
-        type="collector", os="linux", cpu_architecture="x86_64",
-        object="telegraf", version="2.0.0", name="telegraf.tar.gz",
+        type=package_type, os="linux", cpu_architecture="x86_64",
+        object=object_name, version="2.0.0", name=f"{object_name}.tar.gz",
+    )
+    with patch("apps.node_mgmt.views.package.PackageService.delete_file") as delete:
+        resp = api_client.delete(f"{BASE}/api/package/{pkg.id}/")
+    delete.assert_called_once()
+    assert resp.status_code in (200, 204)
+    assert not PackageVersion.objects.filter(id=pkg.id).exists()
+
+
+@pytest.mark.django_db
+def test_package_destroy_allows_superuser_without_explicit_permission(api_client, authenticated_user):
+    authenticated_user.is_superuser = True
+    pkg = PackageVersion.objects.create(
+        type="controller", os="linux", cpu_architecture="x86_64",
+        object="fusion-collectors", version="2.0.0", name="fusion-collectors.tar.gz",
     )
     with patch("apps.node_mgmt.views.package.PackageService.delete_file") as delete:
         resp = api_client.delete(f"{BASE}/api/package/{pkg.id}/")
@@ -216,6 +383,20 @@ def test_package_destroy_rejects_user_without_matching_permission(api_client, au
         resp = api_client.delete(f"{BASE}/api/package/{pkg.id}/")
     delete.assert_not_called()
     assert resp.status_code == 403
+    assert PackageVersion.objects.filter(id=pkg.id).exists()
+
+
+@pytest.mark.django_db
+def test_package_destroy_rejects_unknown_type_for_superuser(api_client, authenticated_user):
+    authenticated_user.is_superuser = True
+    pkg = PackageVersion.objects.create(
+        type="unknown", os="linux", cpu_architecture="x86_64",
+        object="unknown", version="2.0.0", name="unknown.tar.gz",
+    )
+    with patch("apps.node_mgmt.views.package.PackageService.delete_file") as delete:
+        resp = api_client.delete(f"{BASE}/api/package/{pkg.id}/")
+    delete.assert_not_called()
+    assert resp.status_code == 400
     assert PackageVersion.objects.filter(id=pkg.id).exists()
 
 

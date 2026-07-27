@@ -1,6 +1,6 @@
 from rest_framework import mixins
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.viewsets import GenericViewSet
 
 from apps.core.utils.web_utils import WebUtils
@@ -14,11 +14,18 @@ from config.drf.pagination import CustomPageNumberPagination
 
 
 PACKAGE_WRITE_PERMISSIONS = {
-    (PackageConstants.TYPE_CONTROLLER, "create"): "controller_packet-AddPacket",
-    (PackageConstants.TYPE_CONTROLLER, "destroy"): "controller_packet-Delete",
-    (PackageConstants.TYPE_COLLECTOR, "create"): "collector_packet-AddPacket",
-    (PackageConstants.TYPE_COLLECTOR, "destroy"): "collector_packet-Delete",
+    (PackageConstants.TYPE_CONTROLLER, "create"): {
+        "controller_list-AddPacket",
+        "controller_packet-AddPacket",
+    },
+    (PackageConstants.TYPE_CONTROLLER, "destroy"): {"controller_packet-Delete"},
+    (PackageConstants.TYPE_COLLECTOR, "create"): {
+        "collector_list-AddPacket",
+        "collector_packet-AddPacket",
+    },
+    (PackageConstants.TYPE_COLLECTOR, "destroy"): {"collector_packet-Delete"},
 }
+NODE_APP_ADMIN_ROLE = "node--admin"
 
 
 class PackageMgmtView(
@@ -40,15 +47,19 @@ class PackageMgmtView(
 
     @staticmethod
     def _require_write_permission(request, package_type, action):
-        if getattr(request.user, "is_superuser", False):
+        required_permissions = PACKAGE_WRITE_PERMISSIONS.get((package_type, action))
+        if not required_permissions:
+            raise ValidationError({"type": ["不支持的包类型"]})
+
+        user_roles = getattr(request.user, "roles", ()) or ()
+        if getattr(request.user, "is_superuser", False) or NODE_APP_ADMIN_ROLE in user_roles:
             return
 
-        required_permission = PACKAGE_WRITE_PERMISSIONS.get((package_type, action))
         user_permissions = getattr(request.user, "permission", set()) or set()
         if isinstance(user_permissions, dict):
             user_permissions = user_permissions.get("node", set())
 
-        if not required_permission or required_permission not in user_permissions:
+        if required_permissions.isdisjoint(user_permissions):
             raise PermissionDenied()
 
     def destroy(self, request, *args, **kwargs):
