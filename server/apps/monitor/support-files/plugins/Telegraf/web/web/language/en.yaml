@@ -1,7 +1,7 @@
 Website:
   desc: Through the Telegraf collector, regularly perform active checks on the availability
     and performance of HTTP/HTTPS connections.
-  name: HTTP(Telegraf)
+  name: Website Probe(Telegraf)
 monitor_object:
   Website: Website
 monitor_object_type:
