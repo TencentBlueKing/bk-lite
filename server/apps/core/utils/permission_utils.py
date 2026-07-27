@@ -2,52 +2,57 @@ from django.db.models import Q
 
 from apps.core.constants import DEFAULT_PERMISSION
 from apps.core.logger import nats_logger as logger
-from apps.core.utils.permission_cache import get_cached_permission_rules, set_cached_permission_rules
+from apps.core.utils.permission_cache import get_cached_permission_rules, get_user_permission_version, set_cached_permission_rules
 from apps.rpc.system_mgmt import SystemMgmt
 
 
 def get_permission_rules(user, current_team, app_name, permission_key, include_children=False):
     """获取某app某类权限的某个对象的规则"""
-    # 尝试从缓存获取
-    cached = get_cached_permission_rules(
-        username=user.username,
-        domain=user.domain,
-        current_team=int(current_team),
-        app_name=app_name,
-        permission_key=permission_key,
-        include_children=include_children,
-    )
-    if cached is not None:
-        return cached
-
-    # 缓存未命中，发起 RPC 调用
-    app, child_module, client, module = set_rules_module_params(app_name, permission_key)
-    try:
-        permission_data = client.get_user_rules_by_app(
-            int(current_team),
-            user.username,
-            app,
-            module,
-            child_module,
-            user.domain,
-            include_children,
-        )
-        # 缓存结果
-        set_cached_permission_rules(
+    rpc_params = None
+    for _attempt in range(2):
+        permission_version = get_user_permission_version(user.username, user.domain)
+        cached = get_cached_permission_rules(
             username=user.username,
             domain=user.domain,
             current_team=int(current_team),
             app_name=app_name,
             permission_key=permission_key,
-            permission_data=permission_data,
             include_children=include_children,
+            permission_version=permission_version,
         )
-        return permission_data
-    except Exception:
-        import traceback
+        if cached is not None:
+            return cached
 
-        logger.error(traceback.format_exc())
-        return {}
+        try:
+            if rpc_params is None:
+                rpc_params = set_rules_module_params(app_name, permission_key)
+            app, child_module, client, module = rpc_params
+            permission_data = client.get_user_rules_by_app(
+                int(current_team),
+                user.username,
+                app,
+                module,
+                child_module,
+                user.domain,
+                include_children,
+            )
+            if set_cached_permission_rules(
+                username=user.username,
+                domain=user.domain,
+                current_team=int(current_team),
+                app_name=app_name,
+                permission_key=permission_key,
+                permission_data=permission_data,
+                include_children=include_children,
+                permission_version=permission_version,
+            ):
+                return permission_data
+        except Exception:
+            import traceback
+
+            logger.error(traceback.format_exc())
+            return {}
+    return {}
 
 
 def set_rules_module_params(app_name, permission_key):

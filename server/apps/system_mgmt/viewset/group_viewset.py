@@ -1,4 +1,5 @@
 from django.core.cache import cache
+from django.db import transaction
 from django.db.models import Q
 from django.http import JsonResponse
 from rest_framework.decorators import action
@@ -229,25 +230,24 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
         if "allow_inherit_roles" in request.data:
             update_fields["allow_inherit_roles"] = request.data.get("allow_inherit_roles", False)
 
-        Group.objects.filter(id=request.data.get("group_id")).update(**update_fields)
+        with transaction.atomic():
+            Group.objects.filter(id=request.data.get("group_id")).update(**update_fields)
 
-        # 更新组的角色
-        if isinstance(role_ids, list):
-            obj.roles.set(role_ids)
-            # 清除该组织中所有用户的权限缓存和菜单缓存
-            group_id = request.data.get("group_id")
-            affected_group_ids = GroupUtils.get_group_with_descendants(group_id)
-            affected_users_query = Q()
-            for affected_group_id in affected_group_ids:
-                affected_users_query |= Q(group_list__contains=int(affected_group_id))
-            affected_users = User.objects.filter(affected_users_query).values("id", "username", "domain")
-            affected_users_list = list(affected_users)
-            if affected_users_list:
-                # 清除权限规则缓存（default 缓存）
-                clear_users_permission_cache(affected_users_list)
-                # 清除用户菜单缓存（db 缓存）
-                menu_cache_keys = [f"menus-user:{user['id']}" for user in affected_users_list]
-                cache.delete_many(menu_cache_keys)
+            # 更新组的角色
+            if isinstance(role_ids, list):
+                obj.roles.set(role_ids)
+                # 清除该组织及其后代组织中所有用户的权限缓存和菜单缓存
+                group_id = request.data.get("group_id")
+                affected_group_ids = GroupUtils.get_group_with_descendants(group_id)
+                affected_users_query = Q()
+                for affected_group_id in affected_group_ids:
+                    affected_users_query |= Q(group_list__contains=int(affected_group_id))
+                affected_users = User.objects.filter(affected_users_query).values("id", "username", "domain")
+                affected_users_list = list(affected_users)
+                if affected_users_list:
+                    clear_users_permission_cache(affected_users_list)
+                    menu_cache_keys = [f"menus-user:{user['id']}" for user in affected_users_list]
+                    transaction.on_commit(lambda: cache.delete_many(menu_cache_keys), robust=True)
 
         # 同步组织数据到CMDB
         try:

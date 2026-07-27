@@ -1,7 +1,8 @@
 """旧 apps.system_mgmt.nats_api 路径兼容层回归测试。"""
+
 import ast
-from pathlib import Path
 import types
+from pathlib import Path
 
 from apps.system_mgmt import nats_api
 
@@ -61,6 +62,7 @@ def test_get_user_login_token_uses_legacy_nats_api_jwt_payload_patch(monkeypatch
 
     user = types.SimpleNamespace(
         id=42,
+        user_id="user-42",
         username="alice",
         display_name="Alice",
         domain="domain.com",
@@ -125,24 +127,42 @@ def test_verify_token_uses_legacy_nats_api_collect_ancestor_patch(monkeypatch):
         def filter(**kwargs):
             return FakeMenuQuerySet()
 
-    monkeypatch.setattr(
-        nats_api,
-        "_verify_token",
-        lambda token: types.SimpleNamespace(
-            id=7,
-            username="alice",
-            display_name="Alice",
-            domain="domain.com",
-            email="alice@example.com",
-            group_list=[1],
-            locale="zh-Hans",
-            timezone="Asia/Shanghai",
-        ),
+    fake_user = types.SimpleNamespace(
+        id=7,
+        username="alice",
+        display_name="Alice",
+        domain="domain.com",
+        email="alice@example.com",
+        group_list=[1],
+        locale="zh-Hans",
+        timezone="Asia/Shanghai",
     )
+
+    class FakeUserQuery:
+        def __init__(self):
+            self.return_identity = False
+
+        def values(self, *args):
+            self.return_identity = True
+            return self
+
+        def first(self):
+            if self.return_identity:
+                return {"username": fake_user.username, "domain": fake_user.domain}
+            return fake_user
+
+    class FakeUserObjects:
+        @staticmethod
+        def filter(**kwargs):
+            return FakeUserQuery()
+
+    monkeypatch.setattr(nats_api, "_verify_token", lambda token: fake_user)
     monkeypatch.setattr(nats_api, "_collect_ancestor_group_ids", fake_collect_ancestor_group_ids)
     monkeypatch.setattr(nats_api, "get_user_all_roles", lambda user: [100])
-    monkeypatch.setattr(nats_api._auth, "get_cached_token_info", lambda username, domain: None)
-    monkeypatch.setattr(nats_api._auth, "set_cached_token_info", lambda username, domain, result: None)
+    monkeypatch.setattr(nats_api._auth, "get_user_permission_version", lambda username, domain: 0)
+    monkeypatch.setattr(nats_api._auth, "get_cached_token_info", lambda username, domain, **kwargs: None)
+    monkeypatch.setattr(nats_api._auth, "set_cached_token_info", lambda username, domain, result, **kwargs: True)
+    monkeypatch.setattr(nats_api._auth, "User", types.SimpleNamespace(objects=FakeUserObjects()))
     monkeypatch.setattr(nats_api._auth, "Role", types.SimpleNamespace(objects=FakeRoleObjects()))
     monkeypatch.setattr(nats_api._auth, "Group", types.SimpleNamespace(objects=FakeGroupObjects()))
     monkeypatch.setattr(nats_api._auth, "Menu", types.SimpleNamespace(objects=FakeMenuObjects()))
@@ -177,20 +197,14 @@ def test_nats_modules_explicitly_import_private_common_helpers():
             continue
 
         module_tree = ast.parse(module_path.read_text())
-        defined_names = {
-            node.name
-            for node in ast.walk(module_tree)
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
-        }
+        defined_names = {node.name for node in ast.walk(module_tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))}
         explicit_private_imports = set()
         used_private_names = set()
 
         for node in ast.walk(module_tree):
             if isinstance(node, ast.ImportFrom) and node.module == "common":
                 explicit_private_imports.update(
-                    alias.asname or alias.name
-                    for alias in node.names
-                    if alias.name != "*" and (alias.asname or alias.name).startswith("_")
+                    alias.asname or alias.name for alias in node.names if alias.name != "*" and (alias.asname or alias.name).startswith("_")
                 )
             elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
                 if node.id.startswith("_") and not node.id.startswith("__"):

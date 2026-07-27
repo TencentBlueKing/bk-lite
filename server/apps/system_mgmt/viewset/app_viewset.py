@@ -1,3 +1,4 @@
+from django.db import transaction
 from django.db.models import Q
 from django.http import JsonResponse
 
@@ -20,10 +21,10 @@ class AppViewSet(LanguageViewSet):
             return User.objects.none()
         query = Q()
         for role_id in role_ids:
-            query |= Q(role_list__contains=int(role_id))
+            query |= Q(role_list__contains=[int(role_id)])
         role_group_ids = Group.objects.filter(roles__id__in=role_ids).values_list("id", flat=True)
         for group_id in GroupUtils.get_group_with_descendants(role_group_ids):
-            query |= Q(group_list__contains=int(group_id))
+            query |= Q(group_list__contains=[int(group_id)])
         return User.objects.filter(query).distinct()
 
     @HasPermission("application_list-Delete")
@@ -36,13 +37,14 @@ class AppViewSet(LanguageViewSet):
         app_name = obj.name
         role_ids = list(Role.objects.filter(app=app_name).values_list("id", flat=True))
         affected_users = list(self._get_users_affected_by_roles(role_ids).values("username", "domain"))
-        Role.objects.filter(app=app_name).delete()
-        response = super().destroy(request, *args, **kwargs)
+        with transaction.atomic():
+            Role.objects.filter(app=app_name).delete()
+            response = super().destroy(request, *args, **kwargs)
+            if response.status_code == 204 and affected_users:
+                clear_users_permission_cache(affected_users)
 
         # 记录操作日志
         if response.status_code == 204:
-            if affected_users:
-                clear_users_permission_cache(affected_users)
             log_operation(request, "delete", "system-manager", f"删除应用: {app_name}")
 
         return response
@@ -64,14 +66,18 @@ class AppViewSet(LanguageViewSet):
         old_name = obj.name
         role_ids = list(Role.objects.filter(app=old_name).values_list("id", flat=True))
         affected_users = list(self._get_users_affected_by_roles(role_ids).values("username", "domain"))
-        response = super().update(request, *args, **kwargs)
+        with transaction.atomic():
+            response = super().update(request, *args, **kwargs)
+
+            if response.status_code == 200:
+                new_name = response.data.get("name", "")
+                if old_name != new_name:
+                    Role.objects.filter(app=old_name).update(app=new_name)
+                    if affected_users:
+                        clear_users_permission_cache(affected_users)
 
         if response.status_code == 200:
             new_name = response.data.get("name", "")
-            if old_name != new_name:
-                Role.objects.filter(app=old_name).update(app=new_name)
-                if affected_users:
-                    clear_users_permission_cache(affected_users)
             log_operation(request, "update", "system-manager", f"编辑应用: {new_name}")
 
         return response

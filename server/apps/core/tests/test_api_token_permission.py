@@ -11,7 +11,7 @@ API Token 权限填充和权限检查的单元测试
 """
 
 from types import SimpleNamespace
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from django.core.cache.backends.locmem import LocMemCache
@@ -185,9 +185,7 @@ class TestGetUserAllRoles:
         """
         from apps.system_mgmt.models import User as SystemUser
 
-        SystemUser.objects.create(
-            username="directuser", domain="domain.com", role_list=[1, 2, 3]
-        )
+        SystemUser.objects.create(username="directuser", domain="domain.com", role_list=[1, 2, 3])
         backend = APISecretAuthBackend()
         user = MockUser(username="directuser", group_list=[])
 
@@ -215,9 +213,7 @@ class TestGetUserAllRoles:
         """测试用户直接角色（来自 system_mgmt.User.role_list）和组织角色的合并"""
         from apps.system_mgmt.models import User as SystemUser
 
-        SystemUser.objects.create(
-            username="combineduser", domain="domain.com", role_list=[1, 2]
-        )
+        SystemUser.objects.create(username="combineduser", domain="domain.com", role_list=[1, 2])
         backend = APISecretAuthBackend()
         user = MockUser(username="combineduser", group_list=[10])
 
@@ -397,9 +393,10 @@ class TestPopulateUserPermissions:
         backend = APISecretAuthBackend()
         user = MockUser(username="newuser", domain="test.com", group_list=[1])
 
-        with patch("apps.core.backends.cache") as mock_cache, patch(
-            "apps.core.backends.register_api_token_permission_cache_key"
-        ) as mock_register_cache_key:
+        with (
+            patch("apps.core.backends.cache") as mock_cache,
+            patch("apps.core.backends.register_api_token_permission_cache_key") as mock_register_cache_key,
+        ):
             mock_cache.get.return_value = None  # 缓存未命中
 
             with patch.object(backend, "_get_user_all_roles", return_value=set()):
@@ -423,28 +420,36 @@ class TestPopulateUserPermissions:
                 backend.PERMISSION_CACHE_TTL,
             )
 
-    def test_cache_index_registration_failure_does_not_leave_snapshot(self):
-        """索引登记失败时不得先写入无法失效的权限快照。"""
+    def test_cache_index_registration_failure_does_not_block_versioned_snapshot(self):
+        """索引仅用于物理清理，登记失败不应阻止受代际保护的权限快照。"""
         backend = APISecretAuthBackend()
         user = MockUser(username="newuser", domain="test.com", group_list=[1])
 
-        with patch("apps.core.backends.cache") as mock_cache, patch(
-            "apps.core.backends.register_api_token_permission_cache_key", side_effect=RuntimeError("index unavailable")
+        with (
+            patch("apps.core.backends.cache") as mock_cache,
+            patch("apps.core.backends.register_api_token_permission_cache_key", side_effect=RuntimeError("index unavailable")),
         ):
             mock_cache.get.return_value = None
-            with patch.object(backend, "_get_user_all_roles", return_value=set()), patch(
-                "apps.core.backends.Role"
-            ) as mock_role:
+            with patch.object(backend, "_get_user_all_roles", return_value=set()), patch("apps.core.backends.Role") as mock_role:
                 mock_role.objects.filter.return_value.__iter__.return_value = iter([])
                 mock_role.objects.filter.return_value.values_list.return_value = []
                 backend._populate_user_permissions(user, 1)
 
-        mock_cache.set.assert_not_called()
+        mock_cache.set.assert_called_once()
         assert user.permission == {}
         assert user.is_superuser is False
 
     def test_revocation_prevents_next_api_auth_from_reusing_snapshot(self):
         """撤权统一清理后，下一次 API 鉴权必须重新计算而不能复用旧权限。"""
+        from apps.system_mgmt.models import User as SystemUser
+
+        SystemUser.objects.create(
+            username="revoked",
+            domain="test.com",
+            display_name="Revoked user",
+            email="revoked@example.com",
+            password="unused",
+        )
         backend = APISecretAuthBackend()
         user = MockUser(username="revoked", domain="test.com", group_list=[1])
         cache_backend = LocMemCache("api-token-revocation", {})
@@ -461,16 +466,51 @@ class TestPopulateUserPermissions:
         )
 
         with patch("apps.core.backends.cache", cache_backend), patch.object(permission_cache, "cache", cache_backend):
-            permission_cache.register_api_token_permission_cache_key(
-                "revoked", "test.com", cache_key, backend.PERMISSION_CACHE_TTL
-            )
+            permission_cache.register_api_token_permission_cache_key("revoked", "test.com", cache_key, backend.PERMISSION_CACHE_TTL)
             backend._populate_user_permissions(user, 1)
             assert user.is_superuser is True
 
             permission_cache.clear_user_permission_cache("revoked", "test.com")
-            with patch.object(backend, "_get_user_all_roles", return_value=set()), patch(
-                "apps.core.backends.Role"
-            ) as mock_role:
+            with patch.object(backend, "_get_user_all_roles", return_value=set()), patch("apps.core.backends.Role") as mock_role:
+                mock_role.objects.filter.return_value.__iter__.return_value = iter([])
+                mock_role.objects.filter.return_value.values_list.return_value = []
+                backend._populate_user_permissions(user, 1)
+
+        assert user.is_superuser is False
+        assert user.permission == {}
+        assert user.role_ids == []
+
+    def test_snapshot_written_after_revocation_cannot_be_reused(self):
+        """与撤权并发的旧权限回写不得重新成为下一次鉴权的命中项。"""
+        from apps.system_mgmt.models import User as SystemUser
+
+        system_user = SystemUser.objects.create(
+            username="racing-revocation",
+            domain="test.com",
+            display_name="Racing revocation",
+            email="racing@example.com",
+            password="unused",
+        )
+        backend = APISecretAuthBackend()
+        user = MockUser(username="racing-revocation", domain="test.com", group_list=[1])
+        cache_backend = LocMemCache("api-token-revocation-race", {})
+
+        with patch("apps.core.backends.cache", cache_backend), patch.object(permission_cache, "cache", cache_backend):
+            stale_cache_key = backend._get_permission_cache_key("racing-revocation", "test.com", 1)
+            permission_cache.clear_user_permission_cache("racing-revocation", "test.com")
+            assert permission_cache.get_user_permission_version(system_user.username, system_user.domain) > 1
+            cache_backend.set(
+                stale_cache_key,
+                {
+                    "roles": ["admin"],
+                    "permission": {"cmdb": ["secret-View"]},
+                    "is_superuser": True,
+                    "role_ids": [1],
+                },
+                backend.PERMISSION_CACHE_TTL,
+            )
+
+            with patch.object(backend, "_get_user_all_roles", return_value=set()), patch("apps.core.backends.Role") as mock_role:
                 mock_role.objects.filter.return_value.__iter__.return_value = iter([])
                 mock_role.objects.filter.return_value.values_list.return_value = []
                 backend._populate_user_permissions(user, 1)

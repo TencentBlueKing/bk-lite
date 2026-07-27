@@ -100,14 +100,43 @@ def verify_token(token):
             return_data["error_code"] = VERIFY_TOKEN_USER_NOT_FOUND_CODE
         return return_data
 
-    # 命中缓存直接返回，跳过全量数据库查询
-    cached = get_cached_token_info(user.username, user.domain)
-    if cached is not None:
-        return cached
+    user_id = user.id
+    for _attempt in range(2):
+        identity = User.objects.filter(id=user_id).values("username", "domain").first()
+        if identity is None:
+            return {
+                "result": False,
+                "message": VERIFY_TOKEN_USER_NOT_FOUND_MESSAGE,
+                "error_code": VERIFY_TOKEN_USER_NOT_FOUND_CODE,
+            }
+        permission_version = get_user_permission_version(identity["username"], identity["domain"])
+        user = User.objects.filter(id=user_id).first()
+        if user is None:
+            return {
+                "result": False,
+                "message": VERIFY_TOKEN_USER_NOT_FOUND_MESSAGE,
+                "error_code": VERIFY_TOKEN_USER_NOT_FOUND_CODE,
+            }
+        if (user.username, user.domain) != (identity["username"], identity["domain"]):
+            continue
+        cached = get_cached_token_info(
+            user.username,
+            user.domain,
+            permission_version=permission_version,
+        )
+        if cached is not None:
+            return cached
 
-    result = {"result": True, "data": build_user_authorization_context(user)}
-    set_cached_token_info(user.username, user.domain, result)
-    return result
+        result = {"result": True, "data": build_user_authorization_context(user)}
+        if set_cached_token_info(
+            user.username,
+            user.domain,
+            result,
+            permission_version=permission_version,
+        ):
+            return result
+
+    return {"result": False, "message": "User permissions changed during token verification"}
 
 
 @nats_client.register

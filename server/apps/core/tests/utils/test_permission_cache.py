@@ -1,4 +1,5 @@
 import pydantic.root_model  # noqa
+
 """apps/core/utils/permission_cache.py 真实行为单元测试。
 
 策略：以真实 Django cache（locmem，不支持 delete_pattern）执行键生成/读写/清除主路径；
@@ -15,11 +16,13 @@ pytestmark = pytest.mark.unit
 
 
 @pytest.fixture(autouse=True)
-def _locmem_cache():
+def _locmem_cache(monkeypatch):
     """强制使用 locmem 后端：确定性、无外部依赖，且不支持 delete_pattern（覆盖索引兜底路径）。"""
-    with override_settings(
-        CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache", "LOCATION": "perm-cache-test"}}
-    ):
+    monkeypatch.setattr(pc, "_advance_user_permission_versions", lambda users: len(users))
+    monkeypatch.setattr(pc, "_advance_all_user_permission_versions", lambda: 0)
+    monkeypatch.setattr(pc, "get_user_permission_version", lambda username, domain: 0)
+    monkeypatch.setattr(pc.transaction, "on_commit", lambda callback: callback())
+    with override_settings(CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache", "LOCATION": "perm-cache-test"}}):
         cache.clear()
         yield
         cache.clear()
@@ -39,6 +42,10 @@ class _PatternCache:
 
     def delete(self, key):
         self.store.pop(key, None)
+
+    def delete_many(self, keys):
+        for key in keys:
+            self.delete(key)
 
     def delete_pattern(self, pattern):
         prefix = pattern.rstrip("*")
@@ -68,7 +75,7 @@ class TestKeyDerivation:
         assert k1 != k2
 
     def test_token_info_key_format(self):
-        assert pc._get_token_info_key("u", "d") == "token_info:u:d"
+        assert pc._get_token_info_key("u", "d") == "token_info:u:d:v0"
 
     def test_user_keys_index_format(self):
         assert pc._get_user_keys_index("u", "d") == "user_perm_keys:u:d"
@@ -90,6 +97,25 @@ class TestTokenInfoCache:
         assert pc.get_cached_token_info("u", "domain.com") == {"id": 1}
         pc.clear_token_info_cache("u", "domain.com")
         assert pc.get_cached_token_info("u", "domain.com") is None
+
+    def test_version_change_makes_other_worker_entry_unreachable(self, monkeypatch):
+        version = {"value": 0}
+        monkeypatch.setattr(pc, "get_user_permission_version", lambda username, domain: version["value"])
+        pc.set_cached_token_info("u", "domain.com", {"id": 1}, permission_version=0)
+
+        version["value"] = 1
+
+        assert cache.get("token_info:u:domain.com:v0") == {"id": 1}
+        assert pc.get_cached_token_info("u", "domain.com") is None
+
+    def test_version_change_during_write_rejects_result(self, monkeypatch):
+        versions = iter([0, 1])
+        monkeypatch.setattr(pc, "get_user_permission_version", lambda username, domain: next(versions))
+
+        cached = pc.set_cached_token_info("u", "domain.com", {"id": 1}, permission_version=0)
+
+        assert cached is False
+        assert cache.get("token_info:u:domain.com:v0") == {"id": 1}
 
 
 # ---------------------------------------------------------------------------
@@ -113,6 +139,51 @@ class TestPermissionRulesCache:
         assert index is not None
         cache_key = pc._get_cache_key("u", "domain.com", 1, "cmdb", "view")
         assert cache_key in index
+
+    def test_version_change_makes_other_worker_entry_unreachable(self, monkeypatch):
+        version = {"value": 0}
+        monkeypatch.setattr(pc, "get_user_permission_version", lambda username, domain: version["value"])
+        data = {"team": [1], "instance": []}
+        pc.set_cached_permission_rules(
+            "u",
+            "domain.com",
+            1,
+            "cmdb",
+            "view",
+            data,
+            permission_version=0,
+        )
+        old_key = pc._get_cache_key(
+            "u",
+            "domain.com",
+            1,
+            "cmdb",
+            "view",
+            permission_version=0,
+        )
+
+        version["value"] = 1
+
+        assert cache.get(old_key) == data
+        assert pc.get_cached_permission_rules("u", "domain.com", 1, "cmdb", "view") is None
+
+    def test_version_change_during_write_rejects_result(self, monkeypatch):
+        versions = iter([0, 1])
+        monkeypatch.setattr(pc, "get_user_permission_version", lambda username, domain: next(versions))
+        data = {"team": [1], "instance": []}
+
+        cached = pc.set_cached_permission_rules(
+            "u",
+            "domain.com",
+            1,
+            "cmdb",
+            "view",
+            data,
+            permission_version=0,
+        )
+
+        assert cached is False
+        assert cache.get(pc._get_cache_key("u", "domain.com", 1, "cmdb", "view", permission_version=0)) == data
 
     def test_clear_user_cache_by_index_removes_entries(self):
         pc.set_cached_permission_rules("u", "domain.com", 1, "cmdb", "view", {"team": [1]})

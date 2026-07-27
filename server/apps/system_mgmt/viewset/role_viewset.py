@@ -1,4 +1,5 @@
 from django.core.cache import cache
+from django.db import transaction
 from django.db.models import Q
 from django.http import JsonResponse
 from rest_framework.decorators import action
@@ -24,17 +25,17 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
         affected_group_ids = GroupUtils.get_group_with_descendants(group_ids)
         query = Q()
         for group_id in affected_group_ids:
-            query |= Q(group_list__contains=int(group_id))
+            query |= Q(group_list__contains=[int(group_id)])
         return User.objects.filter(query)
 
     @classmethod
     def _get_users_affected_by_role(cls, role_id):
         role_group_ids = list(Group.objects.filter(roles__id=role_id).values_list("id", flat=True))
-        query = Q(role_list__contains=int(role_id))
+        query = Q(role_list__contains=[int(role_id)])
         if role_group_ids:
             affected_group_ids = GroupUtils.get_group_with_descendants(role_group_ids)
             for group_id in affected_group_ids:
-                query |= Q(group_list__contains=int(group_id))
+                query |= Q(group_list__contains=[int(group_id)])
         return User.objects.filter(query).distinct()
 
     def _validate_group_scope_for_request(self, request, group_ids):
@@ -152,9 +153,10 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
                 }
             )
         affected_user_info = list(self._get_users_affected_by_role(role_id).values("username", "domain"))
-        Role.objects.filter(id=role_id).delete()
-        if affected_user_info:
-            clear_users_permission_cache(affected_user_info)
+        with transaction.atomic():
+            Role.objects.filter(id=role_id).delete()
+            if affected_user_info:
+                clear_users_permission_cache(affected_user_info)
 
         # 记录操作日志
         log_operation(request, "delete", "system-manager", f"删除角色: {role_name}")
@@ -165,10 +167,11 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
     def update_role(self, request):
         role_name = request.data.get("role_name")
         role_id = request.data.get("role_id")
-        Role.objects.filter(id=role_id).update(name=role_name)
         affected_user_info = list(self._get_users_affected_by_role(role_id).values("username", "domain"))
-        if affected_user_info:
-            clear_users_permission_cache(affected_user_info)
+        with transaction.atomic():
+            Role.objects.filter(id=role_id).update(name=role_name)
+            if affected_user_info:
+                clear_users_permission_cache(affected_user_info)
 
         # 记录操作日志
         log_operation(request, "update", "system-manager", f"更新角色名称: {role_name}")
@@ -194,11 +197,10 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
                 i.role_list.append(int(role_id))
                 usernames.append(i.username)
                 affected_users.append({"username": i.username, "domain": i.domain})
-        User.objects.bulk_update(user_list, ["role_list"], batch_size=100)
-
-        # 清除受影响用户的权限缓存
-        if affected_users:
-            clear_users_permission_cache(affected_users)
+        with transaction.atomic():
+            User.objects.bulk_update(user_list, ["role_list"], batch_size=100)
+            if affected_users:
+                clear_users_permission_cache(affected_users)
 
         # 记录操作日志
         if is_superuser:
@@ -232,11 +234,10 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
                 i.role_list.remove(pk)
                 usernames.append(i.username)
                 affected_users.append({"username": i.username, "domain": i.domain})
-        User.objects.bulk_update(user_list, ["role_list"], batch_size=100)
-
-        # 清除受影响用户的权限缓存
-        if affected_users:
-            clear_users_permission_cache(affected_users)
+        with transaction.atomic():
+            User.objects.bulk_update(user_list, ["role_list"], batch_size=100)
+            if affected_users:
+                clear_users_permission_cache(affected_users)
 
         # 记录操作日志
         if is_superuser:
@@ -258,21 +259,16 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
         menus = params.get("menus")
         role_obj = Role.objects.get(id=role_id)
         menu_ids = Menu.objects.filter(app=role_obj.app, name__in=menus).values_list("id", flat=True)
-        role_obj.menu_list = list(menu_ids)
-        role_obj.save()
+        with transaction.atomic():
+            role_obj.menu_list = list(menu_ids)
+            role_obj.save()
 
-        # 清除受影响用户的菜单缓存和权限缓存
-        affected_users = self._get_users_affected_by_role(role_id)
-
-        # 直接构造缓存键并删除 (兼容 Redis 缓存后端)
-        menu_cache_keys = [f"menus-user:{user.id}" for user in affected_users]
-        if menu_cache_keys:
-            cache.delete_many(menu_cache_keys)
-
-        # 清除用户权限缓存
-        affected_user_info = list(affected_users.values("username", "domain"))
-        if affected_user_info:
-            clear_users_permission_cache(affected_user_info)
+            affected_users = list(self._get_users_affected_by_role(role_id).values("id", "username", "domain"))
+            menu_cache_keys = [f"menus-user:{user['id']}" for user in affected_users]
+            if menu_cache_keys:
+                transaction.on_commit(lambda: cache.delete_many(menu_cache_keys), robust=True)
+            if affected_users:
+                clear_users_permission_cache(affected_users)
 
         # 记录操作日志
         log_operation(
@@ -324,13 +320,13 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
                 }
             )
 
-        # 使用ManyToMany关系批量分配角色（从角色侧批量添加，避免N+1）
-        role.group_set.add(*groups)
+        with transaction.atomic():
+            # 使用ManyToMany关系批量分配角色（从角色侧批量添加，避免N+1）
+            role.group_set.add(*groups)
 
-        # 清除受影响组织中用户的权限缓存
-        affected_users = self._get_users_in_group_trees(group_ids).values("username", "domain")
-        if affected_users:
-            clear_users_permission_cache(list(affected_users))
+            affected_users = list(self._get_users_in_group_trees(group_ids).values("username", "domain"))
+            if affected_users:
+                clear_users_permission_cache(affected_users)
 
         # 记录操作日志
         group_names = list(groups.values_list("name", flat=True))
@@ -384,13 +380,13 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
                 }
             )
 
-        # 使用ManyToMany关系批量回收角色（从角色侧批量移除，避免N+1）
-        role.group_set.remove(*groups)
+        with transaction.atomic():
+            # 使用ManyToMany关系批量回收角色（从角色侧批量移除，避免N+1）
+            role.group_set.remove(*groups)
 
-        # 清除受影响组织中用户的权限缓存
-        affected_users = self._get_users_in_group_trees(group_ids).values("username", "domain")
-        if affected_users:
-            clear_users_permission_cache(list(affected_users))
+            affected_users = list(self._get_users_in_group_trees(group_ids).values("username", "domain"))
+            if affected_users:
+                clear_users_permission_cache(affected_users)
 
         # 记录操作日志
         group_names = list(groups.values_list("name", flat=True))

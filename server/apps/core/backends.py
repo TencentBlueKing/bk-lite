@@ -14,10 +14,7 @@ from apps.base.models import User, UserAPISecret
 from apps.core.constants import VERIFY_TOKEN_USER_NOT_FOUND_CODE, VERIFY_TOKEN_USER_NOT_FOUND_MESSAGE
 from apps.core.logger import logger
 from apps.core.utils.custom_error import DoesNotExist
-from apps.core.utils.permission_cache import (
-    API_TOKEN_PERMISSION_CACHE_PREFIX,
-    register_api_token_permission_cache_key,
-)
+from apps.core.utils.permission_cache import API_TOKEN_PERMISSION_CACHE_PREFIX, get_user_permission_version, register_api_token_permission_cache_key
 from apps.rpc.system_mgmt import SystemMgmt
 from apps.system_mgmt.models import Group, Menu, Role
 from apps.system_mgmt.models import User as SystemUser
@@ -41,10 +38,7 @@ def _collect_ancestor_group_ids(seed_ids: List) -> Set[int]:
     if not seed_ids:
         return set()
     # 一次轻量查询：只取 (id, parent_id, allow_inherit_roles)，不加载角色关联
-    all_meta = {
-        row[0]: (row[1], row[2])
-        for row in Group.objects.values_list("id", "parent_id", "allow_inherit_roles")
-    }
+    all_meta = {row[0]: (row[1], row[2]) for row in Group.objects.values_list("id", "parent_id", "allow_inherit_roles")}
     result: Set[int] = set()
     stack = list(seed_ids)
     while stack:
@@ -78,6 +72,16 @@ class APISecretAuthBackend(ModelBackend):
             if user_secret is None:
                 return None
             user = User._default_manager.get(username=user_secret.username, domain=user_secret.domain)
+            if not SystemUser.objects.filter(
+                username=user_secret.username,
+                domain=user_secret.domain,
+            ).exists():
+                logger.warning(
+                    "API token user is missing from system management: %s@%s",
+                    user_secret.username,
+                    user_secret.domain,
+                )
+                return None
             user.group_list = [user_secret.team]
 
             # 填充用户权限信息
@@ -97,9 +101,11 @@ class APISecretAuthBackend(ModelBackend):
                 logger.error(f"API token authentication failed: {e}")
             return None
 
-    def _get_permission_cache_key(self, username: str, domain: str, team: int) -> str:
+    def _get_permission_cache_key(self, username: str, domain: str, team: int, permission_version: int = None) -> str:
         """生成权限缓存 key"""
-        return f"{self.PERMISSION_CACHE_KEY_PREFIX}:{username}:{domain}:{team}"
+        if permission_version is None:
+            permission_version = get_user_permission_version(username, domain)
+        return f"{self.PERMISSION_CACHE_KEY_PREFIX}:{username}:{domain}:v{permission_version}:{team}"
 
     def _populate_user_permissions(self, user: User, team: int) -> None:
         """
@@ -110,9 +116,12 @@ class APISecretAuthBackend(ModelBackend):
         """
         try:
             # 尝试从缓存获取
-            cache_key = self._get_permission_cache_key(user.username, user.domain, team)
+            permission_version = get_user_permission_version(user.username, user.domain)
+            cache_key = self._get_permission_cache_key(user.username, user.domain, team, permission_version)
             cached = cache.get(cache_key)
             if cached:
+                if get_user_permission_version(user.username, user.domain) != permission_version:
+                    raise RuntimeError("Permission version changed while reading API token snapshot")
                 user.roles = cached.get("roles", [])
                 user.permission = {k: set(v) for k, v in cached.get("permission", {}).items()}
                 user.is_superuser = cached.get("is_superuser", False)
@@ -147,13 +156,21 @@ class APISecretAuthBackend(ModelBackend):
             user.is_superuser = is_superuser
             user.role_ids = list(all_role_ids)
 
-            # 先登记再写入快照：登记失败时必须 fail-closed，避免留下无法精确失效的权限缓存。
-            register_api_token_permission_cache_key(
-                user.username,
-                user.domain,
-                cache_key,
-                self.PERMISSION_CACHE_TTL,
-            )
+            try:
+                register_api_token_permission_cache_key(
+                    user.username,
+                    user.domain,
+                    cache_key,
+                    self.PERMISSION_CACHE_TTL,
+                )
+            except Exception as e:
+                # 索引仅用于回收旧条目；权限代际保证旧快照不可达。
+                logger.warning(
+                    "Failed to register API token permission cache key for %s@%s: %s",
+                    user.username,
+                    user.domain,
+                    e,
+                )
             cache.set(
                 cache_key,
                 {
@@ -164,6 +181,8 @@ class APISecretAuthBackend(ModelBackend):
                 },
                 self.PERMISSION_CACHE_TTL,
             )
+            if get_user_permission_version(user.username, user.domain) != permission_version:
+                raise RuntimeError("Permission version changed while calculating API token permissions")
 
         except Exception as e:
             logger.error(f"Failed to populate user permissions for {user.username}@{user.domain}: {e}")
@@ -198,10 +217,7 @@ class APISecretAuthBackend(ModelBackend):
             # 2. 按 ID 集合有界加载含角色关联的 Group 对象
             seed_ids = [gid.get("id") if isinstance(gid, dict) else gid for gid in user_groups if gid]
             ancestor_ids = _collect_ancestor_group_ids(seed_ids)
-            all_groups = {
-                g.id: g
-                for g in Group.objects.prefetch_related("roles").filter(id__in=ancestor_ids)
-            }
+            all_groups = {g.id: g for g in Group.objects.prefetch_related("roles").filter(id__in=ancestor_ids)}
             visited: Set[int] = set()
 
             def collect_roles(group_id: int) -> None:
