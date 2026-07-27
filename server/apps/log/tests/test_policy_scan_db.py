@@ -7,7 +7,11 @@
 
 DB（Policy/Alert/Event/AlertSnapshot）走真实，断言落库副作用。
 """
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
+
 import pytest
+from django.db import close_old_connections
 from django.utils import timezone
 
 from apps.log.constants.alert_policy import AlertConstants
@@ -221,13 +225,15 @@ class TestCreateEvents:
             start_event_time=timezone.now(),
             end_event_time=timezone.now(),
         )
-        events = [{
-            "source_id": f"policy_{policy.id}",
-            "level": "critical",
-            "content": "新内容",
-            "value": 9,
-            "raw_data": [],
-        }]
+        events = [
+            {
+                "source_id": f"policy_{policy.id}",
+                "level": "critical",
+                "content": "新内容",
+                "value": 9,
+                "raw_data": [],
+            }
+        ]
         scan.create_events(events)
         existing.refresh_from_db()
         assert existing.content == "新内容"
@@ -236,6 +242,140 @@ class TestCreateEvents:
         # 级别变化导致 notice 重置为 False
         assert existing.notice is False
         # 没有创建新告警
+        assert Alert.objects.filter(policy=policy).count() == 1
+
+    def test_same_execution_level_change_resets_event_notification(self, mocker):
+        scan_time = timezone.datetime(2026, 7, 24, tzinfo=timezone.utc)
+        policy = _make_policy(notice=True, notice_users=["u1"])
+        first_scan = LogPolicyScan(policy, scan_time=scan_time, execution_key="same-execution")
+        first_event = first_scan.create_events(
+            [
+                {
+                    "source_id": f"policy_{policy.id}",
+                    "level": "warning",
+                    "content": "首次命中",
+                    "value": 1,
+                    "raw_data": [],
+                }
+            ]
+        )[0]
+        Event.objects.filter(id=first_event.id).update(notified=True)
+        Alert.objects.filter(id=first_event.alert_id).update(notice=True)
+
+        retry_scan = LogPolicyScan(
+            policy,
+            scan_time=scan_time + timezone.timedelta(minutes=1),
+            execution_key="same-execution",
+        )
+        retry_event = retry_scan.create_events(
+            [
+                {
+                    "source_id": f"policy_{policy.id}",
+                    "level": "critical",
+                    "content": "升级命中",
+                    "value": 2,
+                    "raw_data": [],
+                }
+            ]
+        )[0]
+
+        retry_event.refresh_from_db()
+        retry_event.alert.refresh_from_db()
+        assert retry_event.id == first_event.id
+        assert retry_event.notified is False
+        assert retry_event.alert.notice is False
+
+        send = mocker.patch.object(LogPolicyScan, "send_notice", return_value=(True, {"result": True}))
+        retry_scan.notice([retry_event])
+
+        send.assert_called_once()
+        retry_event.refresh_from_db()
+        assert retry_event.notified is True
+
+    @pytest.mark.django_db(transaction=True)
+    def test_concurrent_same_execution_recovers_event_conflict(self):
+        policy = _make_policy()
+        events = [
+            {
+                "source_id": f"policy_{policy.id}",
+                "level": "warning",
+                "content": "并发命中",
+                "value": 1,
+                "raw_data": [],
+            }
+        ]
+        barrier = Barrier(2)
+
+        class CoordinatedScan(LogPolicyScan):
+            def _find_existing_events(self, event_ids, source_ids):
+                existing = super()._find_existing_events(event_ids, source_ids)
+                barrier.wait(timeout=5)
+                return existing
+
+        def create_once():
+            close_old_connections()
+            try:
+                return CoordinatedScan(
+                    Policy.objects.get(id=policy.id),
+                    execution_key="same-execution",
+                ).create_events(events)
+            finally:
+                close_old_connections()
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            results = list(executor.map(lambda _: create_once(), range(2)))
+
+        assert [len(result) for result in results] == [1, 1]
+        assert Event.objects.filter(policy=policy).count() == 1
+        assert Alert.objects.filter(policy=policy).count() == 1
+
+    @pytest.mark.django_db(transaction=True)
+    def test_concurrent_different_windows_force_loser_to_retry(self):
+        policy = _make_policy()
+        events = [
+            {
+                "source_id": f"policy_{policy.id}",
+                "level": "warning",
+                "content": "并发命中",
+                "value": 1,
+                "raw_data": [],
+            }
+        ]
+        barrier = Barrier(2)
+        scan_times = [
+            timezone.datetime(2026, 7, 24, 0, 2, tzinfo=timezone.utc),
+            timezone.datetime(2026, 7, 24, 0, 3, tzinfo=timezone.utc),
+        ]
+
+        class CoordinatedScan(LogPolicyScan):
+            def _find_existing_events(self, event_ids, source_ids):
+                existing = super()._find_existing_events(event_ids, source_ids)
+                barrier.wait(timeout=5)
+                return existing
+
+        def create_once(scan_time):
+            close_old_connections()
+            try:
+                return CoordinatedScan(
+                    Policy.objects.get(id=policy.id),
+                    scan_time=scan_time,
+                    execution_key="same-execution",
+                ).create_events(events)
+            finally:
+                close_old_connections()
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [executor.submit(create_once, scan_time) for scan_time in scan_times]
+            outcomes = []
+            for future in futures:
+                try:
+                    outcomes.append(("success", future.result()))
+                except RuntimeError as exc:
+                    outcomes.append(("retry", str(exc)))
+
+        assert [outcome[0] for outcome in outcomes].count("success") == 1
+        assert [outcome[0] for outcome in outcomes].count("retry") == 1
+        assert Event.objects.filter(policy=policy).count() == 1
         assert Alert.objects.filter(policy=policy).count() == 1
 
 
@@ -475,7 +615,9 @@ class TestNotice:
 
     def test_already_notified_alert_skipped(self, mocker):
         policy = _make_policy(notice=True, notice_users=["u1"])
-        alert = Alert.objects.create(id="a-noticed", policy=policy, source_id="s", level="warning", status="new", start_event_time=timezone.now(), notice=True)
+        alert = Alert.objects.create(
+            id="a-noticed", policy=policy, source_id="s", level="warning", status="new", start_event_time=timezone.now(), notice=True
+        )
         ev = self._persist_event(policy, alert, level="warning")
         send = mocker.patch.object(LogPolicyScan, "send_notice")
         LogPolicyScan(policy).notice([ev])
@@ -485,7 +627,9 @@ class TestNotice:
 
     def test_successful_notice_marks_alert(self, mocker):
         policy = _make_policy(notice=True, notice_users=["u1"])
-        alert = Alert.objects.create(id="a-send", policy=policy, source_id="s", level="warning", status="new", start_event_time=timezone.now(), notice=False)
+        alert = Alert.objects.create(
+            id="a-send", policy=policy, source_id="s", level="warning", status="new", start_event_time=timezone.now(), notice=False
+        )
         ev = self._persist_event(policy, alert, level="warning")
         mocker.patch.object(LogPolicyScan, "send_notice", return_value=(True, {"result": True}))
         LogPolicyScan(policy).notice([ev])
@@ -516,8 +660,198 @@ class TestNotice:
         assert event.notified is True
         assert alert.notice is False
 
+    def test_retry_does_not_resend_event_already_notified_before_alert_closed(self, mocker):
+        policy = _make_policy(notice=True, notice_users=["u1"])
+        alert = Alert.objects.create(
+            id="a-notified-before-close",
+            policy=policy,
+            source_id="s",
+            level="warning",
+            status=AlertConstants.STATUS_NEW,
+            start_event_time=timezone.now(),
+            notice=False,
+        )
+        event = self._persist_event(policy, alert, level="warning")
+
+        def send_then_close(*args, **kwargs):
+            Alert.objects.filter(id=alert.id).update(
+                status=AlertConstants.STATUS_CLOSED,
+                notice=False,
+            )
+            return True, {"result": True}
+
+        send = mocker.patch.object(LogPolicyScan, "send_notice", side_effect=send_then_close)
+        scan = LogPolicyScan(policy)
+        scan.notice([event])
+        retry_event = Event.objects.select_related("alert").get(id=event.id)
+
+        scan.notice([retry_event])
+
+        send.assert_called_once()
+
+    def test_retry_resends_event_whose_notice_failed(self, mocker):
+        policy = _make_policy(notice=True, notice_users=["u1"])
+        alert = Alert.objects.create(
+            id="a-notice-retry",
+            policy=policy,
+            source_id="s",
+            level="warning",
+            status=AlertConstants.STATUS_NEW,
+            start_event_time=timezone.now(),
+            notice=False,
+        )
+        event = self._persist_event(policy, alert, level="warning")
+        send = mocker.patch.object(
+            LogPolicyScan,
+            "send_notice",
+            side_effect=[
+                (False, {"result": False}),
+                (True, {"result": True}),
+            ],
+        )
+        scan = LogPolicyScan(policy)
+
+        scan.notice([event])
+        retry_event = Event.objects.select_related("alert").get(id=event.id)
+        scan.notice([retry_event])
+
+        assert send.call_count == 2
+        retry_event.refresh_from_db()
+        assert retry_event.notified is True
+
 
 class TestRun:
+    def test_retrying_same_scan_does_not_duplicate_event(self, mocker):
+        scan_time = timezone.datetime(2026, 7, 24, tzinfo=timezone.utc)
+        policy = _make_policy(last_run_time=scan_time)
+        scan = LogPolicyScan(policy, scan_time=scan_time)
+        mocker.patch.object(
+            scan.vlogs_api,
+            "query",
+            side_effect=[
+                [{"_msg": "err"}],
+                [{"total_count": "2"}],
+                [{"_msg": "err"}],
+                [{"total_count": "2"}],
+            ],
+        )
+
+        scan.run()
+        first_event_id = Event.objects.get(policy=policy).id
+
+        scan.run()
+
+        assert list(Event.objects.filter(policy=policy).values_list("id", flat=True)) == [first_event_id]
+
+    def test_retrying_from_same_cursor_is_idempotent_when_safe_time_moves(self, mocker):
+        cursor = timezone.datetime(2026, 7, 24, tzinfo=timezone.utc)
+        policy = _make_policy(last_run_time=cursor)
+        first_scan = LogPolicyScan(
+            policy,
+            scan_time=cursor + timezone.timedelta(minutes=2),
+            window_start=int(cursor.timestamp()) - 180,
+            window_end=int(cursor.timestamp()) + 120,
+            execution_key=cursor.isoformat(),
+        )
+        retry_scan = LogPolicyScan(
+            policy,
+            scan_time=cursor + timezone.timedelta(minutes=3),
+            window_start=int(cursor.timestamp()) - 120,
+            window_end=int(cursor.timestamp()) + 180,
+            execution_key=cursor.isoformat(),
+        )
+        for scan in (first_scan, retry_scan):
+            mocker.patch.object(
+                scan.vlogs_api,
+                "query",
+                side_effect=[[{"_msg": "err"}], [{"total_count": "2"}]],
+            )
+
+        first_scan.run()
+        retry_scan.run()
+
+        assert Event.objects.filter(policy=policy).count() == 1
+        event = Event.objects.get(policy=policy)
+        assert event.event_time == retry_scan.scan_time
+        assert event.value == 2
+        assert event.content == "报错: 检测到 2 条匹配日志"
+
+    def test_retry_reuses_legacy_uuid_event_created_before_upgrade(self, mocker):
+        cursor = timezone.datetime(2026, 7, 24, tzinfo=timezone.utc)
+        scan_time = cursor + timezone.timedelta(minutes=5)
+        policy = _make_policy(last_run_time=cursor)
+        alert = Alert.objects.create(
+            id="legacy-alert",
+            policy=policy,
+            source_id=f"policy_{policy.id}",
+            level="warning",
+            status=AlertConstants.STATUS_NEW,
+            start_event_time=scan_time,
+        )
+        legacy_event = Event.objects.create(
+            id="legacy-random-uuid",
+            policy=policy,
+            alert=alert,
+            source_id=f"policy_{policy.id}",
+            event_time=scan_time,
+            level="warning",
+            content="旧版本已提交",
+        )
+        scan = LogPolicyScan(
+            policy,
+            scan_time=scan_time,
+            window_start=int(cursor.timestamp()),
+            window_end=int(scan_time.timestamp()),
+            execution_key="new-version-execution",
+            cursor_time=cursor,
+        )
+        mocker.patch.object(
+            scan.vlogs_api,
+            "query",
+            side_effect=[[{"_msg": "err"}], [{"total_count": "2"}]],
+        )
+
+        scan.run()
+
+        assert list(Event.objects.filter(policy=policy).values_list("id", flat=True)) == [legacy_event.id]
+
+    def test_first_retry_reuses_legacy_uuid_event_when_safe_time_moves(self, mocker):
+        first_scan_time = timezone.datetime(2026, 7, 24, tzinfo=timezone.utc)
+        retry_scan_time = first_scan_time + timezone.timedelta(minutes=1)
+        policy = _make_policy(last_run_time=None)
+        alert = Alert.objects.create(
+            id="legacy-first-alert",
+            policy=policy,
+            source_id=f"policy_{policy.id}",
+            level="warning",
+            status=AlertConstants.STATUS_NEW,
+            start_event_time=first_scan_time,
+        )
+        legacy_event = Event.objects.create(
+            id="legacy-first-random-uuid",
+            policy=policy,
+            alert=alert,
+            source_id=f"policy_{policy.id}",
+            event_time=first_scan_time,
+            level="warning",
+            content="旧版本首次扫描已提交",
+        )
+        scan = LogPolicyScan(
+            policy,
+            scan_time=retry_scan_time,
+            execution_key="new-version-first-execution",
+            cursor_time=None,
+        )
+        mocker.patch.object(
+            scan.vlogs_api,
+            "query",
+            side_effect=[[{"_msg": "err"}], [{"total_count": "2"}]],
+        )
+
+        scan.run()
+
+        assert list(Event.objects.filter(policy=policy).values_list("id", flat=True)) == [legacy_event.id]
+
     def test_keyword_run_full_flow(self, mocker):
         policy = _make_policy(notice=False)
         scan = LogPolicyScan(policy)

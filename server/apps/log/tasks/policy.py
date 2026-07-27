@@ -1,16 +1,33 @@
+import time
+from datetime import datetime, timedelta, timezone
+
 from celery import shared_task
 from celery_singleton import Singleton
-from datetime import datetime, timedelta, timezone
-import time
+
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.logger import celery_logger as logger
 from apps.log.constants.alert_policy import AlertConstants
 from apps.log.constants.database import DatabaseConstants
 from apps.log.models.policy import Alert, Event, Policy
-from apps.core.logger import celery_logger as logger
 from apps.log.services.alert_lifecycle_notify import LogAlertLifecycleNotifier
 from apps.log.tasks.services.policy_scan import LogPolicyScan
 from apps.log.tasks.utils.policy import period_to_seconds
 from apps.system_mgmt.models.channel import Channel, ChannelChoices
+
+
+def _execution_key(policy_id, cursor_time):
+    """同一成功游标后的所有重试共享执行身份。"""
+    return f"{policy_id}:{cursor_time.isoformat() if cursor_time else 'initial'}"
+
+
+def _advance_policy_cursor(policy_id, cursor_time, scan_time):
+    """用 CAS 单调推进游标；并发执行不能覆盖其他窗口的结果。"""
+    updated = Policy.objects.filter(id=policy_id, last_run_time=cursor_time).update(last_run_time=scan_time)
+    if updated:
+        return
+    current_cursor = Policy.objects.values_list("last_run_time", flat=True).get(id=policy_id)
+    if current_cursor != scan_time:
+        raise RuntimeError(f"日志策略 [{policy_id}] 扫描游标已被并发修改")
 
 
 @shared_task(base=Singleton, raise_on_duplicate=False)
@@ -50,52 +67,55 @@ def scan_log_policy_task(policy_id):
         safe_time = current_time - timedelta(seconds=AlertConstants.INGEST_DELAY_SECONDS)
         overlap_seconds = AlertConstants.WINDOW_OVERLAP_SECONDS
 
-        if not policy_obj.last_run_time:
-            policy_obj.last_run_time = safe_time
-            logger.info(f"日志策略 [{policy_id}] 首次执行，设置 last_run_time: {safe_time}")
-            LogPolicyScan(policy_obj, scan_time=safe_time).run()
-            Policy.objects.filter(id=policy_id).update(last_run_time=safe_time)
+        if policy_obj.last_run_time is None:
+            scan_time = safe_time
+            window_end = int(scan_time.timestamp())
+            window_start = max(int(policy_obj.created_at.timestamp()) - period_seconds, 0)
+            LogPolicyScan(
+                policy_obj,
+                scan_time=scan_time,
+                window_start=window_start,
+                window_end=window_end,
+                execution_key=_execution_key(policy_id, None),
+                cursor_time=None,
+            ).run()
+            _advance_policy_cursor(policy_id, None, scan_time)
         else:
             gap_seconds = max((safe_time - policy_obj.last_run_time).total_seconds(), 0)
             gap_seconds = min(gap_seconds, AlertConstants.MAX_BACKFILL_SECONDS)
-
             backfill_count = int(gap_seconds // period_seconds)
-
             if backfill_count == 0:
-                window_end_time = safe_time
-                window_start = int(window_end_time.timestamp()) - period_seconds
-                if overlap_seconds > 0:
-                    window_start = max(window_start - overlap_seconds, 0)
-
-                policy_obj.last_run_time = window_end_time
-                logger.info(f"开始执行日志策略 [{policy_id}] 的扫描逻辑")
+                cursor_time = policy_obj.last_run_time
+                scan_time = safe_time
+                window_end = int(scan_time.timestamp())
+                window_start = max(int(cursor_time.timestamp()) - period_seconds - overlap_seconds, 0)
                 LogPolicyScan(
                     policy_obj,
-                    scan_time=window_end_time,
+                    scan_time=scan_time,
                     window_start=window_start,
-                    window_end=int(window_end_time.timestamp()),
+                    window_end=window_end,
+                    execution_key=_execution_key(policy_id, cursor_time),
+                    cursor_time=cursor_time,
                 ).run()
-                Policy.objects.filter(id=policy_id).update(last_run_time=window_end_time)
+                _advance_policy_cursor(policy_id, cursor_time, scan_time)
             else:
                 backfill_count = min(backfill_count, AlertConstants.MAX_BACKFILL_COUNT)
                 logger.info(f"日志策略 [{policy_id}] 需要补偿 {backfill_count} 个周期")
-
-                for i in range(backfill_count):
-                    previous_success_time = policy_obj.last_run_time
-                    next_scan_time = policy_obj.last_run_time + timedelta(seconds=period_seconds)
-                    window_start = int(previous_success_time.timestamp())
-                    if overlap_seconds > 0:
-                        window_start = max(window_start - overlap_seconds, 0)
-
-                    policy_obj.last_run_time = next_scan_time
-                    logger.info(f"开始执行日志策略 [{policy_id}] 的第 {i + 1}/{backfill_count} 次补偿扫描，扫描时间点: {next_scan_time}")
+                for index in range(backfill_count):
+                    cursor_time = policy_obj.last_run_time
+                    scan_time = cursor_time + timedelta(seconds=period_seconds)
+                    window_start = max(int(cursor_time.timestamp()) - overlap_seconds, 0)
+                    logger.info(f"开始执行日志策略 [{policy_id}] 的第 {index + 1}/{backfill_count} 次补偿扫描，" f"扫描时间点: {scan_time}")
                     LogPolicyScan(
                         policy_obj,
-                        scan_time=next_scan_time,
+                        scan_time=scan_time,
                         window_start=window_start,
-                        window_end=int(next_scan_time.timestamp()),
+                        window_end=int(scan_time.timestamp()),
+                        execution_key=_execution_key(policy_id, cursor_time),
+                        cursor_time=cursor_time,
                     ).run()
-                    Policy.objects.filter(id=policy_id).update(last_run_time=policy_obj.last_run_time)
+                    policy_obj.last_run_time = scan_time
+                    _advance_policy_cursor(policy_id, cursor_time, scan_time)
 
         duration = time.time() - start_time
         logger.info(f"日志策略 [{policy_id}] 扫描完成，耗时: {duration:.2f}s")

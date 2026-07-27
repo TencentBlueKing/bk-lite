@@ -13,7 +13,7 @@ from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.log.constants.alert_policy import AlertConstants
 from apps.log.models.policy import Alert, Event, Policy
 from apps.log.services.alert_lifecycle_notify import LogAlertLifecycleNotifier
-from apps.log.tasks.policy import compensate_log_notice_task, scan_log_policy_task
+from apps.log.tasks.policy import _advance_policy_cursor, compensate_log_notice_task, scan_log_policy_task
 from apps.system_mgmt.models.channel import Channel
 
 pytestmark = pytest.mark.django_db
@@ -43,6 +43,55 @@ def _make_policy(**overrides):
 
 
 class TestScanLogPolicyTask:
+    @pytest.mark.parametrize(
+        ("delay_periods", "expected_windows", "expected_cursor_periods"),
+        [
+            (0.5, [(-1, 0.5)], 0.5),
+            (1, [(0, 1)], 1),
+            (1.5, [(0, 1)], 1),
+            (2, [(0, 1), (1, 2)], 2),
+        ],
+    )
+    def test_scan_window_boundaries(self, mocker, delay_periods, expected_windows, expected_cursor_periods):
+        period_seconds = 5 * 60
+        cursor = datetime(2026, 7, 24, tzinfo=timezone.utc)
+        safe_time = cursor + timedelta(seconds=period_seconds * delay_periods)
+        policy = _make_policy(last_run_time=cursor)
+        mocker.patch("apps.log.tasks.policy.datetime").now.return_value = safe_time + timedelta(seconds=AlertConstants.INGEST_DELAY_SECONDS)
+        scan = mocker.patch("apps.log.tasks.policy.LogPolicyScan")
+
+        result = scan_log_policy_task(policy.id)
+
+        assert result["success"] is True
+        assert [(call.kwargs["window_start"], call.kwargs["window_end"]) for call in scan.call_args_list] == [
+            (
+                int(cursor.timestamp() + start_period * period_seconds),
+                int(cursor.timestamp() + end_period * period_seconds),
+            )
+            for start_period, end_period in expected_windows
+        ]
+        policy.refresh_from_db()
+        assert policy.last_run_time == cursor + timedelta(seconds=period_seconds * expected_cursor_periods)
+
+    def test_backfill_overlap_does_not_break_cursor_continuity(self, mocker):
+        period_seconds = 5 * 60
+        cursor = datetime(2026, 7, 24, tzinfo=timezone.utc)
+        policy = _make_policy(last_run_time=cursor)
+        safe_time = cursor + timedelta(seconds=period_seconds * 2)
+        mocker.patch("apps.log.tasks.policy.datetime").now.return_value = safe_time + timedelta(seconds=AlertConstants.INGEST_DELAY_SECONDS)
+        mocker.patch.object(AlertConstants, "WINDOW_OVERLAP_SECONDS", 30)
+        scan = mocker.patch("apps.log.tasks.policy.LogPolicyScan")
+
+        result = scan_log_policy_task(policy.id)
+
+        assert result["success"] is True
+        assert [(call.kwargs["window_start"], call.kwargs["window_end"]) for call in scan.call_args_list] == [
+            (int(cursor.timestamp()) - 30, int(cursor.timestamp()) + period_seconds),
+            (int(cursor.timestamp()) + period_seconds - 30, int(cursor.timestamp()) + period_seconds * 2),
+        ]
+        policy.refresh_from_db()
+        assert policy.last_run_time == cursor + timedelta(seconds=period_seconds * 2)
+
     def test_missing_policy_raises(self):
         with pytest.raises(BaseAppException, match="未找到"):
             scan_log_policy_task(999999)
@@ -101,10 +150,88 @@ class TestScanLogPolicyTask:
             scan_time=last_run_time + timedelta(seconds=period_seconds),
             window_start=int(last_run_time.timestamp()),
             window_end=int(last_run_time.timestamp()) + period_seconds,
+            execution_key=mocker.ANY,
+            cursor_time=last_run_time,
         )
         scan.return_value.run.assert_called_once_with()
         policy.refresh_from_db()
         assert policy.last_run_time == last_run_time + timedelta(seconds=period_seconds)
+
+    def test_failed_partial_window_reuses_cursor_identity_when_safe_time_moves(self, mocker):
+        period_seconds = 5 * 60
+        cursor = datetime(2026, 7, 24, tzinfo=timezone.utc)
+        safe_times = [
+            cursor + timedelta(seconds=period_seconds * 0.5),
+            cursor + timedelta(seconds=period_seconds * 0.75),
+        ]
+        policy = _make_policy(last_run_time=cursor)
+        mocker.patch("apps.log.tasks.policy.datetime").now.side_effect = [
+            safe_time + timedelta(seconds=AlertConstants.INGEST_DELAY_SECONDS) for safe_time in safe_times
+        ]
+        scan = mocker.patch("apps.log.tasks.policy.LogPolicyScan")
+        scan.return_value.run.side_effect = [RuntimeError("worker lost"), None]
+
+        with pytest.raises(RuntimeError, match="worker lost"):
+            scan_log_policy_task(policy.id)
+        policy.refresh_from_db()
+        assert policy.last_run_time == cursor
+
+        result = scan_log_policy_task(policy.id)
+
+        assert result["success"] is True
+        assert scan.call_args_list[0].kwargs["execution_key"] == scan.call_args_list[1].kwargs["execution_key"]
+        assert [(call.kwargs["window_start"], call.kwargs["window_end"]) for call in scan.call_args_list] == [
+            (int(cursor.timestamp()) - period_seconds, int(cursor.timestamp()) + period_seconds // 2),
+            (
+                int(cursor.timestamp()) - period_seconds,
+                int(cursor.timestamp()) + period_seconds * 3 // 4,
+            ),
+        ]
+        policy.refresh_from_db()
+        assert policy.last_run_time == cursor + timedelta(seconds=period_seconds * 0.75)
+
+    def test_backfill_resumes_from_second_window_after_mid_run_failure(self, mocker):
+        period_seconds = 5 * 60
+        cursor = datetime(2026, 7, 24, tzinfo=timezone.utc)
+        safe_times = [
+            cursor + timedelta(seconds=period_seconds * 2),
+            cursor + timedelta(seconds=period_seconds * 2.5),
+        ]
+        policy = _make_policy(last_run_time=cursor)
+        mocker.patch("apps.log.tasks.policy.datetime").now.side_effect = [
+            safe_time + timedelta(seconds=AlertConstants.INGEST_DELAY_SECONDS) for safe_time in safe_times
+        ]
+        scan = mocker.patch("apps.log.tasks.policy.LogPolicyScan")
+        scan.return_value.run.side_effect = [None, RuntimeError("second window failed"), None]
+
+        with pytest.raises(RuntimeError, match="second window failed"):
+            scan_log_policy_task(policy.id)
+        policy.refresh_from_db()
+        assert policy.last_run_time == cursor + timedelta(seconds=period_seconds)
+
+        result = scan_log_policy_task(policy.id)
+
+        assert result["success"] is True
+        assert [(call.kwargs["window_start"], call.kwargs["window_end"]) for call in scan.call_args_list] == [
+            (int(cursor.timestamp()), int(cursor.timestamp()) + period_seconds),
+            (int(cursor.timestamp()) + period_seconds, int(cursor.timestamp()) + period_seconds * 2),
+            (int(cursor.timestamp()) + period_seconds, int(cursor.timestamp()) + period_seconds * 2),
+        ]
+        assert scan.call_args_list[1].kwargs["execution_key"] == scan.call_args_list[2].kwargs["execution_key"]
+        policy.refresh_from_db()
+        assert policy.last_run_time == cursor + timedelta(seconds=period_seconds * 2)
+
+    def test_cursor_compare_and_swap_rejects_different_concurrent_window(self):
+        cursor = datetime(2026, 7, 24, tzinfo=timezone.utc)
+        policy = _make_policy(last_run_time=cursor)
+        newer_scan_time = cursor + timedelta(minutes=4)
+
+        _advance_policy_cursor(policy.id, cursor, newer_scan_time)
+
+        with pytest.raises(RuntimeError, match="并发修改"):
+            _advance_policy_cursor(policy.id, cursor, cursor + timedelta(minutes=3))
+        policy.refresh_from_db()
+        assert policy.last_run_time == newer_scan_time
 
     def test_backfill_multiple_windows(self, mocker):
         # last_run_time 远早于 now → 多周期补偿
@@ -207,7 +334,9 @@ class TestCompensateLogNoticeTask:
 
     def test_successful_resend_marks_alert(self, mocker):
         policy = _make_policy(notice=True, enable=True, notice_users=["u1"])
-        alert = Alert.objects.create(id="a-c2", policy=policy, source_id="s", level="warning", status="new", start_event_time=dj_timezone.now(), notice=False)
+        alert = Alert.objects.create(
+            id="a-c2", policy=policy, source_id="s", level="warning", status="new", start_event_time=dj_timezone.now(), notice=False
+        )
         ev = self._make_event(policy, alert, id="ev-resend")
         mocker.patch(
             "apps.log.tasks.services.policy_scan.LogPolicyScan.send_notice",
@@ -223,7 +352,9 @@ class TestCompensateLogNoticeTask:
 
     def test_failed_resend_increments_retry(self, mocker):
         policy = _make_policy(notice=True, enable=True, notice_users=["u1"])
-        alert = Alert.objects.create(id="a-c3", policy=policy, source_id="s", level="warning", status="new", start_event_time=dj_timezone.now(), notice=False)
+        alert = Alert.objects.create(
+            id="a-c3", policy=policy, source_id="s", level="warning", status="new", start_event_time=dj_timezone.now(), notice=False
+        )
         ev = self._make_event(policy, alert, id="ev-fail")
         mocker.patch(
             "apps.log.tasks.services.policy_scan.LogPolicyScan.send_notice",
@@ -266,9 +397,7 @@ class TestCompensateLogNoticeTask:
             notice_type="nats",
             notice_type_id=channel.id,
         )
-        closed_at = dj_timezone.now() - timedelta(
-            seconds=AlertConstants.NOTICE_COMPENSATE_MIN_AGE_SECONDS + 60
-        )
+        closed_at = dj_timezone.now() - timedelta(seconds=AlertConstants.NOTICE_COMPENSATE_MIN_AGE_SECONDS + 60)
         alert = Alert.objects.create(
             id="a-closed-compensate",
             policy=policy,
@@ -300,9 +429,7 @@ class TestCompensateLogNoticeTask:
             notice_type="nats",
             notice_type_id=channel.id,
         )
-        closed_at = dj_timezone.now() - timedelta(
-            seconds=AlertConstants.NOTICE_COMPENSATE_MIN_AGE_SECONDS + 60
-        )
+        closed_at = dj_timezone.now() - timedelta(seconds=AlertConstants.NOTICE_COMPENSATE_MIN_AGE_SECONDS + 60)
         alert = Alert.objects.create(
             id="a-closed-fail",
             policy=policy,
