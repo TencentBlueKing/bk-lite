@@ -1195,6 +1195,16 @@ func recoverInterruptedWindowsInstallation(
 	installDir string,
 	backupDir string,
 ) error {
+	backupInfo, err := os.Stat(backupDir)
+	if err != nil {
+		return fmt.Errorf("inspect interrupted installation backup: %w", err)
+	}
+	if !backupInfo.IsDir() {
+		return fmt.Errorf("interrupted installation backup is not a directory: %s", backupDir)
+	}
+	if _, err := os.Stat(filepath.Join(backupDir, "collector-sidecar.exe")); err != nil {
+		return fmt.Errorf("interrupted installation backup is invalid: %w", err)
+	}
 	serviceExisted, err := controller.Stop()
 	if err != nil {
 		return fmt.Errorf("stop service before interrupted installation recovery: %w", err)

@@ -248,6 +248,24 @@ func TestInstallWindowsPackageRecoversRetainedBackupOnRetry(t *testing.T) {
 	}
 }
 
+func TestInstallWindowsPackageRejectsInvalidRecoveryBackupBeforeStoppingService(t *testing.T) {
+	installDir := filepath.Join(t.TempDir(), "fusion-collectors")
+	if err := os.MkdirAll(installDir+".bklite-backup", 0755); err != nil {
+		t.Fatalf("create invalid backup dir: %v", err)
+	}
+	zipPath := writeControllerZip(t, map[string]string{"collector-sidecar.exe": "new-binary"})
+	controller := &fakeWindowsServiceController{serviceExisted: true}
+
+	err := installWindowsPackage(&Config{InstallDir: installDir, OS: "windows"}, zipPath, controller)
+
+	if err == nil || !strings.Contains(err.Error(), "backup is invalid") {
+		t.Fatalf("expected invalid recovery backup rejection, got %v", err)
+	}
+	if controller.stopCalls != 0 {
+		t.Fatalf("invalid recovery backup must be rejected before stopping service")
+	}
+}
+
 func TestInstallWindowsPackageRestartsExistingServiceWhenStopFails(t *testing.T) {
 	installDir := filepath.Join(t.TempDir(), "fusion-collectors")
 	if err := os.MkdirAll(installDir, 0755); err != nil {
