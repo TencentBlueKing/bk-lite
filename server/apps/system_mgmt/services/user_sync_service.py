@@ -3,11 +3,12 @@ import os
 import uuid
 from copy import deepcopy
 from datetime import timedelta
+from threading import Event, Thread
 
 from django.contrib.auth.hashers import make_password
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, close_old_connections, connection, transaction
 from django.db.models import Count, Q
-from django.db.utils import NotSupportedError
+from django.db.utils import NotSupportedError, OperationalError
 from django.utils import timezone
 
 from apps.core.logger import system_mgmt_logger as logger
@@ -23,6 +24,7 @@ DEFAULT_FIELD_MAPPING = {
 }
 ALL_DEPARTMENT_SELECTION_ID = "__all__"
 DEFAULT_USER_SYNC_STALE_TIMEOUT_SECONDS = 6 * 60 * 60
+MAX_USER_SYNC_HEARTBEAT_INTERVAL_SECONDS = 60
 
 
 def _get_user_sync_stale_timeout_seconds() -> int:
@@ -42,26 +44,100 @@ def _get_user_sync_stale_timeout_seconds() -> int:
     return max(timeout_seconds, 60)
 
 
+def _supports_user_sync_row_locks() -> bool:
+    return connection.features.has_select_for_update
+
+
+def _supports_user_sync_skip_locked() -> bool:
+    return connection.features.has_select_for_update_skip_locked
+
+
 def _release_stale_user_sync_runs(source: UserSyncSource) -> int:
-    now = timezone.now()
-    stale_before = now - timedelta(seconds=_get_user_sync_stale_timeout_seconds())
-    return UserSyncRun.objects.filter(
-        source=source,
-        status=UserSyncRunStatusChoices.RUNNING,
-        updated_at__lt=stale_before,
-    ).update(
-        status=UserSyncRunStatusChoices.FAILED,
-        summary="User sync timed out and was released automatically",
-        finished_at=now,
-        updated_at=now,
-    )
+    if not _supports_user_sync_row_locks():
+        now = timezone.now()
+        stale_before = now - timedelta(seconds=_get_user_sync_stale_timeout_seconds())
+        try:
+            # SQLite 等无行锁数据库依靠条件 UPDATE 竞争写锁：活跃阶段先写
+            # heartbeat 并持有事务写锁；回收若遇到锁竞争则 fail closed。
+            return UserSyncRun.objects.filter(
+                source=source,
+                status=UserSyncRunStatusChoices.RUNNING,
+                updated_at__lt=stale_before,
+            ).update(
+                status=UserSyncRunStatusChoices.FAILED,
+                summary="User sync timed out and was released automatically",
+                finished_at=now,
+                updated_at=now,
+            )
+        except OperationalError as error:
+            if "locked" in str(error).lower() or "busy" in str(error).lower():
+                logger.info(
+                    "Skipped stale user sync release because the database is busy: source_id=%s",
+                    source.id,
+                )
+                return 0
+            raise
+
+    with transaction.atomic():
+        select_for_update_kwargs = {}
+        if _supports_user_sync_skip_locked():
+            select_for_update_kwargs["skip_locked"] = True
+        locked_source = (
+            UserSyncSource.objects.select_for_update(**select_for_update_kwargs)
+            .filter(pk=source.pk)
+            .first()
+        )
+        # 活跃落库阶段持有 source 行锁。支持 SKIP LOCKED 的数据库立即跳过，
+        # 其余数据库等待阶段提交后再用最新 heartbeat 判断，均不会误回收。
+        if locked_source is None:
+            return 0
+        now = timezone.now()
+        stale_before = now - timedelta(seconds=_get_user_sync_stale_timeout_seconds())
+        stale_run_ids = list(
+            UserSyncRun.objects.select_for_update()
+            .filter(
+                source=source,
+                status=UserSyncRunStatusChoices.RUNNING,
+                updated_at__lt=stale_before,
+            )
+            .values_list("id", flat=True)
+        )
+        if not stale_run_ids:
+            return 0
+        return UserSyncRun.objects.filter(
+            id__in=stale_run_ids,
+            status=UserSyncRunStatusChoices.RUNNING,
+            updated_at__lt=stale_before,
+        ).update(
+            status=UserSyncRunStatusChoices.FAILED,
+            summary="User sync timed out and was released automatically",
+            finished_at=now,
+            updated_at=now,
+        )
 
 
 class UserSyncRunExpired(RuntimeError):
     pass
 
 
+def _lock_user_sync_source(source_id: int) -> UserSyncSource:
+    if not _supports_user_sync_row_locks():
+        return UserSyncSource.objects.get(pk=source_id)
+    return UserSyncSource.objects.select_for_update().get(pk=source_id)
+
+
 def _lock_running_user_sync_run(run_id: int) -> UserSyncRun:
+    if not _supports_user_sync_row_locks():
+        # 单条条件 UPDATE 同时完成状态 fencing 与写锁获取。若回收先提交，
+        # status 条件使旧 worker 无法继续；若本事务先写，则回收只能等待/失败。
+        updated_count = UserSyncRun.objects.filter(
+            pk=run_id,
+            status=UserSyncRunStatusChoices.RUNNING,
+        ).update(updated_at=timezone.now())
+        if not updated_count:
+            raise UserSyncRunExpired("User sync run expired before applying provider result")
+        return UserSyncRun.objects.get(pk=run_id)
+
     run = UserSyncRun.objects.select_for_update().get(pk=run_id)
     if run.status != UserSyncRunStatusChoices.RUNNING:
         raise UserSyncRunExpired("User sync run expired before applying provider result")
@@ -73,6 +149,50 @@ def _touch_running_user_sync_run(run_id: int) -> UserSyncRun:
     run.updated_at = timezone.now()
     run.save(update_fields=["updated_at"])
     return run
+
+
+def _get_user_sync_heartbeat_interval_seconds() -> float:
+    timeout_seconds = _get_user_sync_stale_timeout_seconds()
+    return max(min(timeout_seconds / 3, MAX_USER_SYNC_HEARTBEAT_INTERVAL_SECONDS), 1)
+
+
+def _heartbeat_user_sync_run(run_id: int, stop_event: Event, interval_seconds: float) -> None:
+    """Provider 阻塞调用期间用独立数据库连接续租；进程退出时心跳自然停止。"""
+    close_old_connections()
+    try:
+        while not stop_event.wait(interval_seconds):
+            try:
+                with transaction.atomic():
+                    _touch_running_user_sync_run(run_id)
+            except UserSyncRunExpired:
+                return
+            except Exception as error:
+                logger.warning(
+                    "Failed to refresh user sync heartbeat: run_id=%s, error=%r",
+                    run_id,
+                    error,
+                )
+    finally:
+        close_old_connections()
+
+
+def _start_user_sync_run_heartbeat(run_id: int) -> tuple[Event, Thread]:
+    stop_event = Event()
+    thread = Thread(
+        target=_heartbeat_user_sync_run,
+        args=(run_id, stop_event, _get_user_sync_heartbeat_interval_seconds()),
+        name=f"user-sync-heartbeat-{run_id}",
+        daemon=True,
+    )
+    thread.start()
+    return stop_event, thread
+
+
+def _stop_user_sync_run_heartbeat(stop_event: Event, thread: Thread) -> None:
+    stop_event.set()
+    thread.join(timeout=5)
+    if thread.is_alive():
+        logger.warning("User sync heartbeat thread did not stop promptly: thread=%s", thread.name)
 
 
 # 同步进度阶段 key(在 payload.phase_progress 下作为子键使用)
@@ -318,13 +438,17 @@ def execute_user_sync(source_id: int, trigger_mode: str = UserSyncTriggerModeCho
         return {"result": False, "message": "User sync is already running"}
 
     runtime_service = RuntimeApplicationService()
-    result = runtime_service.execute(
-        provider_key=instance.provider_key,
-        capability_key="user_sync",
-        operation="sync_users",
-        config=instance.get_runtime_config(),
-        source=source,
-    )
+    heartbeat_stop, heartbeat_thread = _start_user_sync_run_heartbeat(run.id)
+    try:
+        result = runtime_service.execute(
+            provider_key=instance.provider_key,
+            capability_key="user_sync",
+            operation="sync_users",
+            config=instance.get_runtime_config(),
+            source=source,
+        )
+    finally:
+        _stop_user_sync_run_heartbeat(heartbeat_stop, heartbeat_thread)
     input_summary = _extract_input_summary(result.payload)
 
     try:
@@ -595,11 +719,14 @@ def _apply_user_sync_payload(source: UserSyncSource, payload: dict, current_run:
     try:
         with transaction.atomic():
             if has_run:
+                _lock_user_sync_source(source.id)
                 _touch_running_user_sync_run(current_run.id)
             root_group = _get_or_create_root_group(source)
             group_id_mapping, active_group_ids = _sync_groups(
                 source, group_list, root_group, root_scope_value, group_counters
             )
+            if has_run:
+                _touch_running_user_sync_run(current_run.id)
     except Exception as error:
         logger.exception("User sync group stage failed: source=%s, error=%r", source.name, error)
         _record_error(PHASE_SYNC_GROUPS, current=0, total=len(group_list), error=error)
@@ -633,6 +760,7 @@ def _apply_user_sync_payload(source: UserSyncSource, payload: dict, current_run:
                 with transaction.atomic():
                     # 锁定 run,供 batch 内的 password_init_service 复用同一实例
                     if has_run:
+                        _lock_user_sync_source(source.id)
                         locked_run = _touch_running_user_sync_run(current_run.id)
                     else:
                         locked_run = None
@@ -644,6 +772,8 @@ def _apply_user_sync_payload(source: UserSyncSource, payload: dict, current_run:
                         root_department_id=root_scope_value,
                         locked_run=locked_run,
                     )
+                    if has_run:
+                        _touch_running_user_sync_run(current_run.id)
             except Exception as error:
                 logger.exception(
                     f"User sync batch failed: source={source.name}, "
@@ -671,6 +801,7 @@ def _apply_user_sync_payload(source: UserSyncSource, payload: dict, current_run:
     try:
         with transaction.atomic():
             if has_run:
+                _lock_user_sync_source(source.id)
                 _touch_running_user_sync_run(current_run.id)
             reconcile_result = _reconcile_synced_directory(
                 source=source,
@@ -678,6 +809,8 @@ def _apply_user_sync_payload(source: UserSyncSource, payload: dict, current_run:
                 active_group_ids=active_group_ids,
                 root_group_id=root_group.id,
             )
+            if has_run:
+                _touch_running_user_sync_run(current_run.id)
     except Exception as error:
         logger.exception("User sync reconcile stage failed: source=%s, error=%r", source.name, error)
         _record_error(PHASE_RECONCILE, current=0, total=1, error=error)
