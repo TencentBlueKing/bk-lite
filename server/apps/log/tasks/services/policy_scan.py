@@ -736,6 +736,11 @@ class LogPolicyScan:
                 existing_event = existing_events.get(event_id) or legacy_events.get(source_id)
 
                 if existing_event:
+                    # 同一执行的旧 worker 可能在较新结果提交后才返回；旧结果只能复用，
+                    # 不得回退 Event/Alert/RawData/快照的时间与内容。
+                    if existing_event.event_time and self.scan_time and existing_event.event_time > self.scan_time:
+                        existing_event_objs.append(existing_event)
+                        continue
                     alert_obj = existing_event.alert
                     level_changed = existing_event.level != event["level"]
                     if level_changed:
@@ -1130,54 +1135,45 @@ class LogPolicyScan:
             end_event_time=closed_alert.end_event_time,
         ).update(notice=closed_success)
 
-    def notice(self, event_objs):
+    def notice(self, event_objs, max_attempts=None):
         """通知"""
         if not event_objs or not self.policy.notice:
             return
 
         try:
-            success_alert_ids = set()
-
             for event in event_objs:
-                # info级别事件不通知
-                if event.level == "info":
-                    continue
-                # Event 是 created 通知的持久化幂等边界；告警后续关闭时 notice 会重置，
-                # 不能据此重放已经成功的 created。
-                if event.notified:
-                    continue
-                # 告警已成功通知过且未发生级别变化时不重复通知，避免持续命中导致每个扫描周期重复发送
-                if event.alert.notice:
-                    event.notice_result = [{"result": True, "message": "skipped: alert already notified"}]
-                    # 去重跳过视为已结清：必须置 notified=True，否则补偿任务会把
-                    # 这些事件当作发送失败反复重投，去重就失效了（与 #3312 的语义对齐）
-                    event.notified = True
-                    continue
-                is_notice, notice_result = self.send_notice(event)
-                event.notice_result = notice_result
-                # 记录发送是否成功 + 累计尝试次数，供补偿任务（范围B）回扫 notified=False 的失败事件
-                event.notified = is_notice
-                event.notice_retry_count = (event.notice_retry_count or 0) + 1
+                with transaction.atomic():
+                    # 同步首发与补偿/并发扫描都以 Event 行锁领取通知；锁必须覆盖外部发送和
+                    # 回执落库，避免两个持有旧对象的 worker 同时看到 notified=False 后双投。
+                    current = Event.objects.select_for_update().select_related("alert").get(pk=event.pk)
+                    if current.level == "info" or current.notified:
+                        continue
+                    if current.alert.notice:
+                        current.notice_result = [{"result": True, "message": "skipped: alert already notified"}]
+                        current.notified = True
+                        current.save(update_fields=["notice_result", "notified", "updated_at"])
+                        continue
 
-                if is_notice:
-                    event.alert.notice = True
-                    success_alert_ids.add(event.alert_id)
+                    is_notice, notice_result = self.send_notice(current, max_attempts=max_attempts)
+                    current.notice_result = notice_result
+                    current.notified = is_notice
+                    current.notice_retry_count = (current.notice_retry_count or 0) + 1
+                    current.save(
+                        update_fields=[
+                            "notice_result",
+                            "notified",
+                            "notice_retry_count",
+                            "updated_at",
+                        ]
+                    )
+                    if is_notice:
+                        # 仅活跃告警接收 created 回执，避免覆盖并发关闭留下的补偿状态。
+                        Alert.objects.filter(
+                            id=current.alert_id,
+                            status=AlertConstants.STATUS_NEW,
+                        ).update(notice=True)
 
-            # 批量更新通知结果
-            Event.objects.bulk_update(
-                event_objs,
-                ["notice_result", "notified", "notice_retry_count"],
-                batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE,
-            )
             logger.info(f"Completed notification for {len(event_objs)} events")
-
-            # 批量更新告警的通知状态
-            if success_alert_ids:
-                # 仅活跃告警接收 created 回执，避免覆盖并发关闭留下的补偿状态。
-                Alert.objects.filter(
-                    id__in=success_alert_ids,
-                    status=AlertConstants.STATUS_NEW,
-                ).update(notice=True)
 
         except Exception as e:
             logger.error(f"notice failed for policy {self.policy.id}: {e}")

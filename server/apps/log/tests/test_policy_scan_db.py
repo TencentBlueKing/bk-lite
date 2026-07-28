@@ -292,6 +292,39 @@ class TestCreateEvents:
         retry_event.refresh_from_db()
         assert retry_event.notified is True
 
+    def test_late_same_execution_cannot_overwrite_newer_event(self):
+        cursor = timezone.datetime(2026, 7, 24, tzinfo=timezone.utc)
+        policy = _make_policy(last_run_time=cursor)
+        source_id = f"policy_{policy.id}"
+        newer_scan = LogPolicyScan(
+            policy,
+            scan_time=cursor + timezone.timedelta(minutes=4),
+            execution_key="same-execution",
+            cursor_time=cursor,
+        )
+        older_scan = LogPolicyScan(
+            policy,
+            scan_time=cursor + timezone.timedelta(minutes=3),
+            execution_key="same-execution",
+            cursor_time=cursor,
+        )
+
+        newer_scan.create_events(
+            [{"source_id": source_id, "level": "warning", "content": "newer", "value": 4, "raw_data": []}]
+        )
+        older_scan.create_events(
+            [{"source_id": source_id, "level": "warning", "content": "older", "value": 3, "raw_data": []}]
+        )
+
+        event = Event.objects.get(policy=policy)
+        event.alert.refresh_from_db()
+        assert event.event_time == newer_scan.scan_time
+        assert event.content == "newer"
+        assert event.value == 4
+        assert event.alert.end_event_time == newer_scan.scan_time
+        assert event.alert.content == "newer"
+        assert event.alert.value == 4
+
     @pytest.mark.django_db(transaction=True)
     def test_concurrent_same_execution_recovers_event_conflict(self):
         policy = _make_policy()
@@ -686,6 +719,28 @@ class TestNotice:
         retry_event = Event.objects.select_related("alert").get(id=event.id)
 
         scan.notice([retry_event])
+
+        send.assert_called_once()
+
+    def test_stale_event_copy_does_not_resend_after_success(self, mocker):
+        policy = _make_policy(notice=True, notice_users=["u1"])
+        alert = Alert.objects.create(
+            id="a-stale-notice",
+            policy=policy,
+            source_id="s",
+            level="warning",
+            status=AlertConstants.STATUS_NEW,
+            start_event_time=timezone.now(),
+            notice=False,
+        )
+        event = self._persist_event(policy, alert, level="warning")
+        first_copy = Event.objects.select_related("alert").get(id=event.id)
+        stale_copy = Event.objects.select_related("alert").get(id=event.id)
+        send = mocker.patch.object(LogPolicyScan, "send_notice", return_value=(True, {"result": True}))
+        scan = LogPolicyScan(policy)
+
+        scan.notice([first_copy])
+        scan.notice([stale_copy])
 
         send.assert_called_once()
 

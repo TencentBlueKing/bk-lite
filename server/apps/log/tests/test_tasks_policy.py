@@ -46,7 +46,7 @@ class TestScanLogPolicyTask:
     @pytest.mark.parametrize(
         ("delay_periods", "expected_windows", "expected_cursor_periods"),
         [
-            (0.5, [(-1, 0.5)], 0.5),
+            (0.5, [(0, 0.5)], 0.5),
             (1, [(0, 1)], 1),
             (1.5, [(0, 1)], 1),
             (2, [(0, 1), (1, 2)], 2),
@@ -121,6 +121,36 @@ class TestScanLogPolicyTask:
         policy.refresh_from_db()
         assert policy.last_run_time is not None
 
+    def test_first_run_failure_persists_bounded_retry_window(self, mocker):
+        period_seconds = 5 * 60
+        first_safe_time = datetime(2026, 7, 24, tzinfo=timezone.utc)
+        retry_safe_time = first_safe_time + timedelta(seconds=period_seconds // 4)
+        policy = _make_policy(last_run_time=None)
+        Policy.objects.filter(id=policy.id).update(created_at=first_safe_time - timedelta(days=30))
+        mocker.patch("apps.log.tasks.policy.datetime").now.side_effect = [
+            first_safe_time + timedelta(seconds=AlertConstants.INGEST_DELAY_SECONDS),
+            retry_safe_time + timedelta(seconds=AlertConstants.INGEST_DELAY_SECONDS),
+        ]
+        scan = mocker.patch("apps.log.tasks.policy.LogPolicyScan")
+        scan.return_value.run.side_effect = [RuntimeError("worker lost"), None]
+
+        with pytest.raises(RuntimeError, match="worker lost"):
+            scan_log_policy_task(policy.id)
+        policy.refresh_from_db()
+        initial_cursor = first_safe_time - timedelta(seconds=period_seconds)
+        assert policy.last_run_time == initial_cursor
+
+        result = scan_log_policy_task(policy.id)
+
+        assert result["success"] is True
+        assert [(call.kwargs["window_start"], call.kwargs["window_end"]) for call in scan.call_args_list] == [
+            (int(initial_cursor.timestamp()), int(first_safe_time.timestamp())),
+            (int(initial_cursor.timestamp()), int(first_safe_time.timestamp())),
+        ]
+        assert scan.call_args_list[0].kwargs["execution_key"] == scan.call_args_list[1].kwargs["execution_key"]
+        policy.refresh_from_db()
+        assert policy.last_run_time == first_safe_time
+
     def test_single_window_run(self, mocker):
         # last_run_time 接近 now → backfill_count == 0 单周期分支
         recent = datetime.now(timezone.utc) - timedelta(seconds=120)
@@ -181,9 +211,9 @@ class TestScanLogPolicyTask:
         assert result["success"] is True
         assert scan.call_args_list[0].kwargs["execution_key"] == scan.call_args_list[1].kwargs["execution_key"]
         assert [(call.kwargs["window_start"], call.kwargs["window_end"]) for call in scan.call_args_list] == [
-            (int(cursor.timestamp()) - period_seconds, int(cursor.timestamp()) + period_seconds // 2),
+            (int(cursor.timestamp()), int(cursor.timestamp()) + period_seconds // 2),
             (
-                int(cursor.timestamp()) - period_seconds,
+                int(cursor.timestamp()),
                 int(cursor.timestamp()) + period_seconds * 3 // 4,
             ),
         ]
