@@ -30,7 +30,7 @@ export const PG_TOP_DB_QUERIES: PgTopDbQuery[] = [
     title: '事务回滚 Top',
     unit: 'cps',
     color: '#ff4d4f',
-    query: `topk(${PG_TOP_N}, sum by (db) (rate(postgresql_xact_rollback{__$labels__}[5m])))`,
+    query: `topk(${PG_TOP_N}, sum by (db) (rate(postgresql_xact_rollback{__$labels__}[__$window__])))`,
     guide: [{ label: '回滚排行', detail: '各数据库事务回滚速率,定位失败 / 冲突集中的库。' }]
   },
   {
@@ -38,7 +38,7 @@ export const PG_TOP_DB_QUERIES: PgTopDbQuery[] = [
     title: '临时文件 Top',
     unit: 'cps',
     color: '#faad14',
-    query: `topk(${PG_TOP_N}, sum by (db) (rate(postgresql_temp_files{__$labels__}[5m])))`,
+    query: `topk(${PG_TOP_N}, sum by (db) (rate(postgresql_temp_files{__$labels__}[__$window__])))`,
     guide: [{ label: '临时文件排行', detail: '各数据库临时文件创建速率,定位复杂查询 / work_mem 压力大的库。' }]
   }
 ];

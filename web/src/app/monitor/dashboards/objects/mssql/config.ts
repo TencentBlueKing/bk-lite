@@ -21,7 +21,7 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '进程 CPU 使用率',
       description: 'SQL Server 数据库进程的 CPU 使用率。',
       unit: 'percent',
-      query: 'avg_over_time(sqlserver_cpu_sqlserver_process_cpu{__$labels__}[5m])',
+      query: 'avg_over_time(sqlserver_cpu_sqlserver_process_cpu{__$labels__}[__$window__])',
       color: '#2f6bff'
     },
     {
@@ -29,7 +29,7 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '系统空闲 CPU',
       description: '操作系统整体空闲 CPU 百分比。',
       unit: 'percent',
-      query: 'avg_over_time(sqlserver_cpu_system_idle_cpu{__$labels__}[5m])',
+      query: 'avg_over_time(sqlserver_cpu_system_idle_cpu{__$labels__}[__$window__])',
       color: '#9aa9bf'
     },
     {
@@ -37,7 +37,7 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '数据库读延迟',
       description: '数据库文件读操作的平均延迟时间。',
       unit: 'ms',
-      query: 'avg without (database) (avg_over_time(sqlserver_database_io_read_latency_ms{__$labels__}[5m]))',
+      query: 'avg without (database) (avg_over_time(sqlserver_database_io_read_latency_ms{__$labels__}[__$window__]))',
       color: '#2f6bff'
     },
     {
@@ -45,7 +45,7 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '数据库写延迟',
       description: '数据库文件写操作的平均延迟时间。',
       unit: 'ms',
-      query: 'avg without (database) (avg_over_time(sqlserver_database_io_write_latency_ms{__$labels__}[5m]))',
+      query: 'avg without (database) (avg_over_time(sqlserver_database_io_write_latency_ms{__$labels__}[__$window__]))',
       color: '#ff8a1f'
     },
     {
@@ -53,7 +53,7 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '数据库读取速率',
       description: '数据库文件读操作速率。',
       unit: 'cps',
-      query: 'sum without (database) (rate(sqlserver_database_io_reads{__$labels__}[5m]))',
+      query: 'sum without (database) (rate(sqlserver_database_io_reads{__$labels__}[__$window__]))',
       color: '#2f6bff'
     },
     {
@@ -61,7 +61,7 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '数据库写入速率',
       description: '数据库文件写操作速率。',
       unit: 'cps',
-      query: 'sum without (database) (rate(sqlserver_database_io_writes{__$labels__}[5m]))',
+      query: 'sum without (database) (rate(sqlserver_database_io_writes{__$labels__}[__$window__]))',
       color: '#27c274'
     },
     {
@@ -77,7 +77,7 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '批量请求速率',
       description: 'SQL Server 处理批量请求的速率。',
       unit: 'cps',
-      query: 'rate(sqlserver_performance_value{counter=~"Batch Requests/sec", __$labels__}[5m])',
+      query: 'rate(sqlserver_performance_value{counter=~"Batch Requests/sec", __$labels__}[__$window__])',
       color: '#27c274'
     },
     {
@@ -85,7 +85,7 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '检查点写页速率',
       description: '检查点进程将脏页刷写到磁盘的速率。',
       unit: 'cps',
-      query: 'rate(sqlserver_performance_value{counter="Checkpoint pages/sec", __$labels__}[5m])',
+      query: 'rate(sqlserver_performance_value{counter="Checkpoint pages/sec", __$labels__}[__$window__])',
       color: '#2f6bff'
     },
     {
@@ -93,7 +93,7 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '惰性写入速率',
       description: '惰性写入器为腾出缓冲池空间而刷写页面的速率。',
       unit: 'cps',
-      query: 'rate(sqlserver_performance_value{counter="Lazy writes/sec", __$labels__}[5m])',
+      query: 'rate(sqlserver_performance_value{counter="Lazy writes/sec", __$labels__}[__$window__])',
       color: '#8a5cff'
     },
     {
@@ -149,7 +149,7 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '事务日志刷写速率',
       description: '事务日志刷写速率。',
       unit: 'cps',
-      query: 'rate(sqlserver_performance_value{counter="Log Flushes/sec", __$labels__}[5m])',
+      query: 'rate(sqlserver_performance_value{counter="Log Flushes/sec", __$labels__}[__$window__])',
       color: '#13c2c2'
     },
     {
@@ -165,7 +165,7 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '死锁速率',
       description: 'SQL Server 死锁发生速率。',
       unit: 'cps',
-      query: 'rate(sqlserver_performance_value{counter="Number of Deadlocks/sec", __$labels__}[5m])',
+      query: 'rate(sqlserver_performance_value{counter="Number of Deadlocks/sec", __$labels__}[__$window__])',
       color: '#ff4d4f'
     },
     {
@@ -173,7 +173,7 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: 'SQL 编译速率',
       description: 'SQL 语句编译速率。',
       unit: 'cps',
-      query: 'rate(sqlserver_performance_value{counter="SQL Compilations/sec", __$labels__}[5m])',
+      query: 'rate(sqlserver_performance_value{counter="SQL Compilations/sec", __$labels__}[__$window__])',
       color: '#13c2c2'
     },
     {
@@ -181,7 +181,7 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: 'SQL 重编译速率',
       description: 'SQL 语句重编译速率。',
       unit: 'cps',
-      query: 'rate(sqlserver_performance_value{counter="SQL Re-Compilations/sec", __$labels__}[5m])',
+      query: 'rate(sqlserver_performance_value{counter="SQL Re-Compilations/sec", __$labels__}[__$window__])',
       color: '#faad14'
     },
     {
@@ -213,7 +213,7 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '锁等待速率',
       description: '锁等待发生速率。',
       unit: 'cps',
-      query: 'rate(sqlserver_performance_value{counter="Lock Waits/sec", __$labels__}[5m])',
+      query: 'rate(sqlserver_performance_value{counter="Lock Waits/sec", __$labels__}[__$window__])',
       color: '#ff8a1f'
     },
     {
@@ -243,9 +243,9 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     {
       name: 'sqlserver_requests_cpu_time_ms_rate',
       display_name: '请求 CPU 时间速率',
-      description: '请求消耗 CPU 时间的速率。',
-      unit: 'ms',
-      query: 'rate(sqlserver_requests_cpu_time_ms{__$labels__}[5m])',
+      description: '请求消耗 CPU 时间的速率（ms/s）。',
+      unit: 'msps',
+      query: 'rate(sqlserver_requests_cpu_time_ms{__$labels__}[__$window__])',
       color: '#2f6bff'
     },
     {
@@ -253,47 +253,47 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '请求逻辑读速率',
       description: '请求逻辑读操作速率。',
       unit: 'cps',
-      query: 'rate(sqlserver_requests_logical_reads{__$labels__}[5m])',
+      query: 'rate(sqlserver_requests_logical_reads{__$labels__}[__$window__])',
       color: '#13c2c2'
     },
     {
       name: 'sqlserver_requests_total_elapsed_time_ms_rate',
       display_name: '请求总耗时速率',
-      description: '请求总执行时间速率。',
-      unit: 'ms',
-      query: 'rate(sqlserver_requests_total_elapsed_time_ms{__$labels__}[5m])',
+      description: '请求总执行时间速率（ms/s）。',
+      unit: 'msps',
+      query: 'rate(sqlserver_requests_total_elapsed_time_ms{__$labels__}[__$window__])',
       color: '#8a5cff'
     },
     {
       name: 'sqlserver_requests_wait_time_ms_rate',
       display_name: '请求等待时间速率',
-      description: '请求等待资源时间速率。',
-      unit: 'ms',
-      query: 'rate(sqlserver_requests_wait_time_ms{__$labels__}[5m])',
+      description: '请求等待资源时间速率（ms/s）。',
+      unit: 'msps',
+      query: 'rate(sqlserver_requests_wait_time_ms{__$labels__}[__$window__])',
       color: '#ff8a1f'
     },
     {
       name: 'sqlserver_waitstats_resource_wait_ms',
       display_name: '资源等待速率',
-      description: '等待外部资源的时间速率。',
-      unit: 'ms',
-      query: 'rate(sqlserver_waitstats_resource_wait_ms{__$labels__}[5m])',
+      description: '等待外部资源的时间速率（ms/s）。',
+      unit: 'msps',
+      query: 'rate(sqlserver_waitstats_resource_wait_ms{__$labels__}[__$window__])',
       color: '#faad14'
     },
     {
       name: 'sqlserver_waitstats_wait_time_ms_rate',
       display_name: '等待时间速率',
-      description: 'SQL Server 各类等待类型累计等待时间速率。',
-      unit: 'ms',
-      query: 'rate(sqlserver_waitstats_wait_time_ms{__$labels__}[5m])',
+      description: 'SQL Server 各类等待类型累计等待时间速率（ms/s）。',
+      unit: 'msps',
+      query: 'rate(sqlserver_waitstats_wait_time_ms{__$labels__}[__$window__])',
       color: '#8a5cff'
     },
     {
       name: 'sqlserver_waitstats_signal_wait_time_ms_rate',
       display_name: '信号等待速率',
-      description: '等待 CPU 调度器的时间速率。',
-      unit: 'ms',
-      query: 'rate(sqlserver_waitstats_signal_wait_time_ms{__$labels__}[5m])',
+      description: '等待 CPU 调度器的时间速率（ms/s）。',
+      unit: 'msps',
+      query: 'rate(sqlserver_waitstats_signal_wait_time_ms{__$labels__}[__$window__])',
       color: '#ff8a1f'
     },
     {
@@ -301,31 +301,31 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '卷可用空间',
       description: '存储卷的可用空间。',
       unit: 'bytes',
-      query: 'sqlserver_volume_space_available_space_bytes{__$labels__}',
+      query: 'sum by (instance_id) (sqlserver_volume_space_available_space_bytes{__$labels__})',
       color: '#13c2c2'
     },
     {
       name: 'sqlserver_volume_space_total_space_bytes',
       display_name: '卷总空间',
-      description: '存储卷的总容量。',
+      description: '存储卷的总容量（多卷按实例求和）。',
       unit: 'bytes',
-      query: 'sqlserver_volume_space_total_space_bytes{__$labels__}',
+      query: 'sum by (instance_id) (sqlserver_volume_space_total_space_bytes{__$labels__})',
       color: '#9aa9bf'
     },
     {
       name: 'sqlserver_volume_space_used_space_bytes',
       display_name: '卷已用空间',
-      description: '存储卷的已用空间。',
+      description: '存储卷的已用空间（多卷按实例求和）。',
       unit: 'bytes',
-      query: 'sqlserver_volume_space_used_space_bytes{__$labels__}',
+      query: 'sum by (instance_id) (sqlserver_volume_space_used_space_bytes{__$labels__})',
       color: '#2f6bff'
     },
     {
       name: 'sqlserver_volume_space_used_ratio',
       display_name: '卷空间使用率',
-      description: '存储卷已用空间占总容量的比例。',
+      description: '实例各卷合计已用空间占总容量的比例。',
       unit: 'percent',
-      query: '100 * sqlserver_volume_space_used_space_bytes{__$labels__} / clamp_min(sqlserver_volume_space_total_space_bytes{__$labels__}, 1)',
+      query: '100 * sum by (instance_id) (sqlserver_volume_space_used_space_bytes{__$labels__}) / clamp_min(sum by (instance_id) (sqlserver_volume_space_total_space_bytes{__$labels__}), 1)',
       color: '#2f6bff'
     }
   ],
@@ -356,11 +356,7 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       icon: 'database',
       compare: true,
       compareFavorableDirection: 'up',
-      guide: [{ label: '缓存命中率', detail: '缓冲池满足数据页读取的比例，低值说明内存或缓存压力偏高。' }],
-      footer: [
-        { label: '页面生命周期', metric: 'sqlserver_page_life_expectancy', unit: 's' },
-        { label: '内存授予等待', metric: 'sqlserver_memory_grants_pending', unit: 'counts' }
-      ]
+      guide: [{ label: '缓存命中率', detail: '缓冲池满足数据页读取的比例，低值说明内存或缓存压力偏高。' }]
     },
     {
       title: '读延迟',
@@ -368,11 +364,7 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       color: '#ff8a1f',
       icon: 'api',
       compare: true,
-      guide: [{ label: '读延迟', detail: '数据库文件读操作平均延迟，持续升高需排查存储性能。' }],
-      footer: [
-        { label: '写延迟', metric: 'sqlserver_database_io_write_latency_ms', unit: 'ms' },
-        { label: '逻辑读', metric: 'sqlserver_requests_logical_reads_rate', unit: 'cps' }
-      ]
+      guide: [{ label: '读延迟', detail: '数据库文件读操作平均延迟，持续升高需排查存储性能；写延迟见下方「读写延迟」趋势。' }]
     },
     {
       title: '卷可用空间',
@@ -381,8 +373,7 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       icon: 'database',
       guide: [{ label: '卷可用空间', detail: '数据库所在卷剩余空间，空间不足会影响写入和维护任务。' }],
       footer: [
-        { label: '总空间', metric: 'sqlserver_volume_space_total_space_bytes', unit: 'bytes' },
-        { label: '使用率', metric: 'sqlserver_volume_space_used_ratio', unit: 'percent' }
+        { label: '总空间', metric: 'sqlserver_volume_space_total_space_bytes', unit: 'bytes' }
       ]
     }
   ],
@@ -423,7 +414,7 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       ],
       series: [
         { metric: 'sqlserver_cpu_sqlserver_process_cpu_avg', label: '进程 CPU', color: '#2f6bff', unit: 'percent' },
-        { metric: 'sqlserver_cpu_system_idle_cpu_avg', label: '系统空闲', color: '#9aa9bf', unit: 'percent' }
+        { metric: 'sqlserver_cpu_system_idle_cpu_avg', label: '系统空闲', color: '#69c0ff', unit: 'percent' }
       ]
     },
     {
@@ -444,14 +435,14 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       subtitle: '总等待与信号等待',
       metric: 'sqlserver_waitstats_wait_time_ms_rate',
       guide: [
-        { label: '总等待', detail: '各类等待累计耗时速率。' },
-        { label: '信号等待', detail: '等待 CPU 调度器的时间速率。' },
-        { label: '资源等待', detail: '等待外部资源的时间速率。' }
+        { label: '总等待', detail: '各类等待累计耗时速率（ms/s）。' },
+        { label: '信号等待', detail: '等待 CPU 调度器的时间速率（ms/s）。' },
+        { label: '资源等待', detail: '等待外部资源的时间速率（ms/s）。' }
       ],
       series: [
-        { metric: 'sqlserver_waitstats_wait_time_ms_rate', label: '总等待', color: '#8a5cff', unit: 'ms' },
-        { metric: 'sqlserver_waitstats_signal_wait_time_ms_rate', label: '信号等待', color: '#ff8a1f', unit: 'ms' },
-        { metric: 'sqlserver_waitstats_resource_wait_ms', label: '资源等待', color: '#faad14', unit: 'ms' }
+        { metric: 'sqlserver_waitstats_wait_time_ms_rate', label: '总等待', color: '#8a5cff', unit: 'msps' },
+        { metric: 'sqlserver_waitstats_signal_wait_time_ms_rate', label: '信号等待', color: '#ff8a1f', unit: 'msps' },
+        { metric: 'sqlserver_waitstats_resource_wait_ms', label: '资源等待', color: '#13c2c2', unit: 'msps' }
       ]
     },
     {
@@ -477,8 +468,7 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       ],
       series: [
         { metric: 'sqlserver_processes_blocked', label: '阻塞进程', color: '#ff4d4f', unit: 'counts' },
-        { metric: 'sqlserver_memory_grants_pending', label: '内存授予等待', color: '#ff8a1f', unit: 'counts' },
-        { metric: 'sqlserver_memory_grants_outstanding', label: '已授予内存', color: '#2f6bff', unit: 'counts' }
+        { metric: 'sqlserver_memory_grants_pending', label: '内存授予等待', color: '#ff8a1f', unit: 'counts' }
       ]
     },
     {
@@ -527,7 +517,7 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       ],
       series: [
         { metric: 'sqlserver_sql_compilations_rate', label: 'SQL 编译', color: '#13c2c2', unit: 'cps' },
-        { metric: 'sqlserver_sql_recompilations_rate', label: 'SQL 重编译', color: '#faad14', unit: 'cps' },
+        { metric: 'sqlserver_sql_recompilations_rate', label: 'SQL 重编译', color: '#8a5cff', unit: 'cps' },
         { metric: 'sqlserver_deadlocks_rate', label: '死锁', color: '#ff4d4f', unit: 'cps' }
       ]
     },
@@ -536,30 +526,18 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       subtitle: 'CPU、等待与总耗时',
       metric: 'sqlserver_requests_total_elapsed_time_ms_rate',
       guide: [
-        { label: '总耗时', detail: '请求总执行时间速率。' },
-        { label: 'CPU 时间', detail: '请求消耗 CPU 时间速率。' },
-        { label: '等待时间', detail: '请求等待资源时间速率。' }
+        { label: '总耗时', detail: '请求总执行时间速率（ms/s）。' },
+        { label: 'CPU 时间', detail: '请求消耗 CPU 时间速率（ms/s）。' },
+        { label: '等待时间', detail: '请求等待资源时间速率（ms/s）。' }
       ],
       series: [
-        { metric: 'sqlserver_requests_total_elapsed_time_ms_rate', label: '总耗时', color: '#8a5cff', unit: 'ms' },
-        { metric: 'sqlserver_requests_cpu_time_ms_rate', label: 'CPU 时间', color: '#2f6bff', unit: 'ms' },
-        { metric: 'sqlserver_requests_wait_time_ms_rate', label: '等待时间', color: '#ff8a1f', unit: 'ms' }
+        { metric: 'sqlserver_requests_total_elapsed_time_ms_rate', label: '总耗时', color: '#8a5cff', unit: 'msps' },
+        { metric: 'sqlserver_requests_cpu_time_ms_rate', label: 'CPU 时间', color: '#2f6bff', unit: 'msps' },
+        { metric: 'sqlserver_requests_wait_time_ms_rate', label: '等待时间', color: '#ff8a1f', unit: 'msps' }
       ]
     }
   ],
   ringPanels: [
-    {
-      title: '缓存命中分布',
-      subtitle: '命中与未命中',
-      centerMetric: 'sqlserver_buffer_cache_hit_ratio',
-      centerCaption: '命中率',
-      centerUnit: 'percent',
-      guide: [{ label: '缓存命中', detail: '缓冲区缓存命中率与剩余未命中占比。' }],
-      segments: [
-        { label: '命中', metric: 'sqlserver_buffer_cache_hit_ratio', color: '#27c274', unit: 'percent' },
-        { label: '未命中', metric: 'sqlserver_buffer_cache_hit_ratio', color: '#ffccc7', unit: 'percent', transform: 'percentRemaining' }
-      ]
-    },
     {
       title: '存储空间分布',
       subtitle: '已用与可用',
@@ -581,21 +559,10 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       guide: [{ label: '调度器压力', detail: '活跃工作线程、可运行任务和等待任务的当前分布。' }],
       items: [
         { label: '活跃工作线程', metric: 'sqlserver_schedulers_active_workers_count', color: '#2f6bff', unit: 'counts' },
-        { label: '可运行任务', metric: 'sqlserver_schedulers_runnable_tasks_count', color: '#faad14', unit: 'counts' },
+        { label: '可运行任务', metric: 'sqlserver_schedulers_runnable_tasks_count', color: '#8a5cff', unit: 'counts' },
         { label: '等待任务', metric: 'sqlserver_waitstats_waiting_tasks_count', color: '#ff4d4f', unit: 'counts' }
       ]
     },
-    {
-      title: '请求资源消耗',
-      subtitle: 'CPU、等待与总耗时',
-      showTrend: true,
-      guide: [{ label: '请求资源', detail: '请求 CPU 时间、等待时间和总耗时速率，用于定位高成本查询。' }],
-      items: [
-        { label: '总耗时', metric: 'sqlserver_requests_total_elapsed_time_ms_rate', color: '#8a5cff', unit: 'ms' },
-        { label: 'CPU 时间', metric: 'sqlserver_requests_cpu_time_ms_rate', color: '#2f6bff', unit: 'ms' },
-        { label: '等待时间', metric: 'sqlserver_requests_wait_time_ms_rate', color: '#ff8a1f', unit: 'ms' }
-      ]
-    }
   ],
   details: []
 };
