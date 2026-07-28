@@ -13,8 +13,8 @@ const userModalDataSource = readFileSync(
 
 assert.match(
   userModalSource,
-  /label=\{t\('common\.organization'\)\}[\s\S]*required=\{type === 'edit' && !isSuperuser\}/,
-  'only editing a normal user should mark organization as required'
+  /label=\{t\('common\.organization'\)\}[\s\S]*required=\{!isSuperuser\}/,
+  'a normal user should always require organization selection'
 );
 assert.match(
   userModalSource,
@@ -23,13 +23,13 @@ assert.match(
 );
 assert.match(
   userModalDataSource,
-  /if \(type === 'edit' && !isSuperuser && selectedGroups\.length === 0\)/,
-  'only editing a normal user should require organization selection'
+  /if \(!isSuperuser && selectedGroups\.length === 0\)/,
+  'a normal user should always require organization selection'
 );
 assert.match(
   userModalDataSource,
-  /if \(type === 'edit' && !isSuperuser && !hasNormalGroupSelection\(selectedGroups, groupTreeData\)\)/,
-  'only editing a normal user should require a normal organization'
+  /if \(!isSuperuser && !hasNormalGroupSelection\(selectedGroups, groupTreeData\)\)/,
+  'a normal user should always require a normal organization'
 );
 assert.match(
   userModalDataSource,

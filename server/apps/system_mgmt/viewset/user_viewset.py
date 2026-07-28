@@ -342,14 +342,13 @@ class UserViewSet(ViewSetUtils):
         loader = LanguageLoader(app="system_mgmt", default_lang=locale)
 
         groups = kwargs.get("groups", [])
-        if groups != []:
-            group_validation_error = _validate_selected_groups(groups, loader)
-            if group_validation_error:
-                return JsonResponse({"result": False, "message": group_validation_error})
-            groups, _ = _normalize_group_ids(groups)
-            group_scope_error = self._validate_group_scope_for_request(request, groups, loader)
-            if group_scope_error:
-                return group_scope_error
+        group_validation_error = _validate_selected_groups(groups, loader)
+        if group_validation_error:
+            return JsonResponse({"result": False, "message": group_validation_error})
+        groups, _ = _normalize_group_ids(groups)
+        group_scope_error = self._validate_group_scope_for_request(request, groups, loader)
+        if group_scope_error:
+            return group_scope_error
 
         # 校验 roles ID 是否真实存在
         roles = kwargs.get("roles", [])

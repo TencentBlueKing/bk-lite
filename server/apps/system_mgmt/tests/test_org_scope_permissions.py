@@ -276,7 +276,8 @@ def test_create_user_allows_accessible_groups():
 
 
 @pytest.mark.django_db
-def test_create_user_allows_pending_authorization_account():
+def test_create_user_allows_empty_personal_roles():
+    group = Group.objects.create(name="scope-create-role-optional-group", parent_id=0, is_virtual=False)
     factory = APIRequestFactory()
     view = UserViewSet.as_view({"post": "create_user"})
     request = factory.post(
@@ -285,6 +286,37 @@ def test_create_user_allows_pending_authorization_account():
             "username": "pending_authorization_user",
             "lastName": "Pending Authorization User",
             "email": "pending_authorization@example.com",
+            "phone": None,
+            "locale": "zh-Hans",
+            "timezone": "Asia/Shanghai",
+            "groups": [group.id],
+            "roles": [],
+            "rules": [],
+        },
+        format="json",
+    )
+    force_authenticate(request, user=_request_user([group.id], {"user_group-Add User"}))
+
+    response = view(request)
+    payload = _json_payload(response)
+
+    assert response.status_code == 200
+    assert payload == {"result": True}
+    user = User.objects.get(username="pending_authorization_user")
+    assert user.group_list == [group.id]
+    assert user.role_list == []
+
+
+@pytest.mark.django_db
+def test_create_user_still_rejects_empty_groups():
+    factory = APIRequestFactory()
+    view = UserViewSet.as_view({"post": "create_user"})
+    request = factory.post(
+        "/system_mgmt/api/user/create_user/",
+        {
+            "username": "scope_create_required_group_user",
+            "lastName": "Scope Create Required Group User",
+            "email": "scope_create_required_group@example.com",
             "phone": None,
             "locale": "zh-Hans",
             "timezone": "Asia/Shanghai",
@@ -300,10 +332,8 @@ def test_create_user_allows_pending_authorization_account():
     payload = _json_payload(response)
 
     assert response.status_code == 200
-    assert payload == {"result": True}
-    user = User.objects.get(username="pending_authorization_user")
-    assert user.group_list == []
-    assert user.role_list == []
+    assert payload["result"] is False
+    assert not User.objects.filter(username="scope_create_required_group_user").exists()
 
 
 @pytest.mark.django_db

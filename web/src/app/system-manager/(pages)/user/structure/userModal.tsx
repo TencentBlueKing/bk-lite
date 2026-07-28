@@ -193,7 +193,7 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
           </Form.Item>
           <Form.Item
             label={t('common.organization')}
-            required={type === 'edit' && !isSuperuser}
+            required={!isSuperuser}
           >
             <RoleTransfer
               mode="group"

@@ -258,12 +258,12 @@ export function useUserModalData(): UseUserModalDataReturn {
         setIsSubmitting(true);
         const formData = await formRef.current?.validateFields();
 
-        if (type === 'edit' && !isSuperuser && selectedGroups.length === 0) {
+        if (!isSuperuser && selectedGroups.length === 0) {
           message.error(t('system.user.form.groupSelectionRequired'));
           return;
         }
 
-        if (type === 'edit' && !isSuperuser && !hasNormalGroupSelection(selectedGroups, groupTreeData)) {
+        if (!isSuperuser && !hasNormalGroupSelection(selectedGroups, groupTreeData)) {
           message.error(t('system.user.form.normalGroupRequired'));
           return;
         }
