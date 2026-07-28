@@ -95,6 +95,9 @@ export interface Target {
   ssh_user: string;
   ssh_key_file: string | null;
   ssh_key_file_name: string;
+  has_ssh_password: boolean;
+  has_ssh_key: boolean;
+  has_winrm_password: boolean;
   credential_id: string;
   winrm_port: number;
   winrm_scheme: string;

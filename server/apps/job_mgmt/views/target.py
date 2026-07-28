@@ -1,5 +1,8 @@
 """目标管理视图"""
 
+import time
+import uuid
+
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -8,7 +11,7 @@ from apps.core.decorators.api_permission import HasPermission
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import job_logger as logger
 from apps.core.utils.viewset_utils import AuthViewSet
-from apps.job_mgmt.constants import OSType, SSHCredentialType
+from apps.job_mgmt.constants import OSType, SSHCredentialType, WinRMTransport
 from apps.job_mgmt.filters.target import TargetFilter
 from apps.job_mgmt.models import Target
 from apps.job_mgmt.serializers.target import TargetBatchDeleteSerializer, TargetSerializer, TargetTestConnectionSerializer
@@ -16,6 +19,7 @@ from apps.job_mgmt.services.error_response import exception_to_response
 from apps.job_mgmt.services.execution_base_service import ExecutionTaskBaseService
 from apps.job_mgmt.views.mixins import BatchDeleteMixin
 from apps.node_mgmt.models import CloudRegion
+from apps.rpc.ansible import AnsibleExecutor
 from apps.rpc.executor import Executor
 from apps.rpc.node_mgmt import NodeMgmt
 from apps.rpc.system_mgmt import SystemMgmt
@@ -298,15 +302,34 @@ class TargetViewSet(BatchDeleteMixin, AuthViewSet):
         """
         serializer = TargetTestConnectionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        validated_data = serializer.validated_data
+        return self._perform_connection_test(serializer.validated_data)
+
+    @action(detail=True, methods=["post"], url_path="test_connection")
+    @HasPermission("target-View")
+    def test_saved_connection(self, request, pk=None):
+        """使用已保存凭据测试编辑中的目标，表单中的非敏感连接参数可覆盖原值。"""
+        target = self.get_object()
+        serializer = TargetTestConnectionSerializer(
+            data=request.data,
+            context={"saved_target": target},
+            partial=True,
+        )
+        serializer.is_valid(raise_exception=True)
+        return self._perform_connection_test(serializer.validated_data, saved_target=target)
+
+    @staticmethod
+    def _perform_connection_test(validated_data, saved_target=None):
+        """执行连接测试；详情接口缺少明文凭据时，仅在进程内解密已保存值。"""
 
         ip = validated_data.get("ip")
         os_type = validated_data.get("os_type", OSType.LINUX)
         cloud_region_id = validated_data.get("cloud_region_id")
 
-        # Windows 暂不支持
         if os_type == OSType.WINDOWS:
-            return Response({"success": False, "message": "Windows 测试连接暂不支持"})
+            return TargetViewSet._perform_windows_connection_test(
+                validated_data,
+                saved_target=saved_target,
+            )
 
         # 获取执行节点
         try:
@@ -320,16 +343,25 @@ class TargetViewSet(BatchDeleteMixin, AuthViewSet):
         ssh_port = validated_data.get("ssh_port", 22)
         ssh_credential_type = validated_data.get("ssh_credential_type", SSHCredentialType.PASSWORD)
 
+        stored_credential = {}
+        if saved_target is not None:
+            credentials = ExecutionTaskBaseService._build_host_credentials([saved_target])
+            if not credentials:
+                return Response({"success": False, "message": "目标未配置可用凭据"})
+            stored_credential = credentials[0]
+
         password = None
         private_key = None
 
         if ssh_credential_type == SSHCredentialType.PASSWORD:
-            password = validated_data.get("ssh_password", "")
+            password = validated_data.get("ssh_password") or stored_credential.get("password")
         else:
             # 密钥方式：读取上传的文件内容
             ssh_key_file = validated_data.get("ssh_key_file")
             if ssh_key_file:
                 private_key = ssh_key_file.read().decode("utf-8")
+            else:
+                private_key = stored_credential.get("private_key_content")
 
         # 执行测试命令
         try:
@@ -359,3 +391,61 @@ class TargetViewSet(BatchDeleteMixin, AuthViewSet):
         except Exception as e:
             logger.exception(f"[test_connection] SSH connection test error: {ssh_user}@{ip}:{ssh_port}, error: {e}")
             return Response({"success": False, "message": "连接测试异常，请查看后端日志排查"})
+
+    @staticmethod
+    def _perform_windows_connection_test(validated_data, saved_target=None):
+        """通过区域内 Ansible Executor 执行一次有边界的 WinRM win_ping。"""
+        cloud_region_id = validated_data.get("cloud_region_id")
+        try:
+            node_id = ExecutionTaskBaseService._get_ansible_node(cloud_region_id)
+        except ValueError as e:
+            return Response({"success": False, "message": str(e)})
+
+        if saved_target is not None:
+            credentials = ExecutionTaskBaseService._build_host_credentials([saved_target])
+            if not credentials:
+                return Response({"success": False, "message": "目标未配置可用凭据"})
+            credential = credentials[0]
+        else:
+            credential = {
+                "connection": "winrm",
+                "password": validated_data.get("winrm_password"),
+            }
+
+        credential.update({
+            "host": str(validated_data.get("ip")),
+            "port": validated_data.get("winrm_port", 5986),
+            "user": validated_data.get("winrm_user", ""),
+            "connection": "winrm",
+            "winrm_scheme": validated_data.get("winrm_scheme", "https"),
+            "winrm_transport": validated_data.get("winrm_transport", WinRMTransport.NTLM),
+            "winrm_cert_validation": validated_data.get("winrm_cert_validation", True),
+        })
+        if validated_data.get("winrm_password"):
+            credential["password"] = validated_data["winrm_password"]
+
+        task_id = f"target-connectivity-{uuid.uuid4().hex}"
+        executor = AnsibleExecutor(node_id)
+        try:
+            accepted = executor.adhoc(
+                host_credentials=[credential],
+                module="ansible.windows.win_ping",
+                task_id=task_id,
+                timeout=30,
+            )
+            accepted_task_id = (accepted.get("task_id") if isinstance(accepted, dict) else None) or task_id
+            deadline = time.monotonic() + 30
+            while time.monotonic() < deadline:
+                query_result = executor.task_query(accepted_task_id, timeout=5)
+                if not isinstance(query_result, dict):
+                    return Response({"success": False, "message": "WinRM 测试返回格式异常"})
+                task_status = query_result.get("status")
+                if task_status == "success":
+                    return Response({"success": True, "message": "WinRM 连接测试成功"})
+                if task_status in {"failed", "callback_failed"}:
+                    return Response({"success": False, "message": "WinRM 连接测试失败，请查看执行器日志"})
+                time.sleep(0.2)
+            return Response({"success": False, "message": "WinRM 连接测试超时"})
+        except Exception as e:
+            logger.exception("[test_connection] WinRM connection test error: target=%s, error=%s", credential["host"], e)
+            return Response({"success": False, "message": "WinRM 连接测试异常，请查看后端日志排查"})
