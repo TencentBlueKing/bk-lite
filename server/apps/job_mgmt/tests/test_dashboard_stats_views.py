@@ -11,7 +11,7 @@ from django.utils import timezone
 from apps.job_mgmt.constants import ExecutionStatus, JobType
 from apps.job_mgmt.models import JobExecution, Playbook, ScheduledTask, Script, Target
 
-pytestmark = [pytest.mark.unit, pytest.mark.django_db]
+pytestmark = [pytest.mark.integration, pytest.mark.django_db]
 
 STATS_URL = "/api/v1/job_mgmt/api/dashboard/stats/"
 JOB_TYPE_URL = "/api/v1/job_mgmt/api/dashboard/job_type_distribution/"
