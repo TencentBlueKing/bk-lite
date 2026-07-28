@@ -1,7 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/nextjs';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
-  Alert,
   Button,
   Collapse,
   Col,
@@ -313,6 +312,33 @@ function TopMenuBar({ active = 'home' }: { active?: string }) {
  * 首页工具栏:仅"刷新全部"按钮,首页时间窗不可自定义
  * ============================================================ */
 function HomeToolbar({ onRefresh }: { onRefresh?: () => void }) {
+  // 「X 秒前更新」 + auto refresh 倒计时:每 30 秒自动刷新一次,告诉用户数据新鲜度
+  const REFRESH_INTERVAL = 30;
+  const [lastUpdated, setLastUpdated] = useState<number>(Date.now());
+  const [countdown, setCountdown] = useState<number>(REFRESH_INTERVAL);
+
+  useEffect(() => {
+    const t = setInterval(() => {
+      setCountdown((c) => {
+        if (c <= 1) {
+          setLastUpdated(Date.now());
+          return REFRESH_INTERVAL;
+        }
+        return c - 1;
+      });
+    }, 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const handleRefresh = () => {
+    setLastUpdated(Date.now());
+    setCountdown(REFRESH_INTERVAL);
+    onRefresh?.();
+  };
+
+  const ago = Math.max(0, Math.floor((Date.now() - lastUpdated) / 1000));
+  const fresh = ago < 5;
+
   return (
     <div
       style={{
@@ -331,14 +357,17 @@ function HomeToolbar({ onRefresh }: { onRefresh?: () => void }) {
         </Text>
       </Space>
       <Space size={12}>
-        <Text style={{ fontSize: 12, color: TOKENS.textTertiary }}>
+        <Text style={{ fontSize: 12, color: fresh ? TOKENS.success : TOKENS.textTertiary }}>
           <ClockCircleOutlined style={{ marginRight: 4 }} />
-          {new Date().toLocaleString('zh-CN', { hour12: false })}
+          {ago === 0 ? '刚刚更新' : `${ago} 秒前更新`}
+        </Text>
+        <Text style={{ fontSize: 12, color: TOKENS.textTertiary, fontVariantNumeric: 'tabular-nums' }}>
+          {countdown}s 后自动刷新
         </Text>
         <Button
           size="small"
           icon={<ReloadOutlined />}
-          onClick={onRefresh}
+          onClick={handleRefresh}
           style={{ borderRadius: 4 }}
         >
           刷新
@@ -381,6 +410,41 @@ function GlobalHealthCard() {
         marginBottom: 16,
       }}
     >
+      {/* 事故 banner:放到 hero 顶部,danger > 0 时显示(SRE 5 秒判断的关键信号) */}
+      {danger > 0 && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            background: `${TOKENS.danger}10`,
+            border: `1px solid ${TOKENS.danger}40`,
+            borderRadius: 4,
+            padding: '12px 16px',
+            marginBottom: 20,
+          }}
+        >
+          <BellOutlined
+            style={{ fontSize: 18, color: TOKENS.danger, flexShrink: 0 }}
+          />
+          <div style={{ flex: 1, fontSize: 13, color: TOKENS.text }}>
+            当前有 <b style={{ color: TOKENS.danger, fontSize: 15 }}>{danger}</b> 个服务处于严重 / 警告状态
+            <span style={{ color: TOKENS.textTertiary, marginLeft: 8 }}>
+              严重 {buckets[0].count} · 警告 {buckets[1].count}
+            </span>
+          </div>
+          <Button
+            type="primary"
+            danger
+            size="small"
+            style={{ borderRadius: 4, fontWeight: 500 }}
+            href={STORY_URLS.service}
+          >
+            立即处理 →
+          </Button>
+        </div>
+      )}
+
       {/* 顶部行 */}
       <div
         style={{
@@ -513,9 +577,6 @@ function GlobalHealthCard() {
             height={80}
             series={[
               { data: trend.h1, color: TOKENS.h1 },
-              { data: trend.h2, color: TOKENS.h2 },
-              { data: trend.h3, color: TOKENS.h3 },
-              { data: trend.h4, color: TOKENS.h4 },
               { data: trend.h5, color: TOKENS.h5 },
             ]}
           />
@@ -545,19 +606,6 @@ function GlobalHealthCard() {
         </div>
       </div>
 
-      {danger > 0 && (
-        <Alert
-          showIcon
-          type="error"
-          icon={<BellOutlined />}
-          style={{ marginTop: 20, borderRadius: 4, border: `1px solid ${TOKENS.danger}40`, background: `${TOKENS.danger}08` }}
-          message={
-            <span style={{ fontSize: 13 }}>
-              当前有 <b style={{ color: TOKENS.danger }}>{danger}</b> 个服务处于严重 / 警告状态,建议立即排查。
-            </span>
-          }
-        />
-      )}
     </div>
   );
 }
@@ -632,7 +680,10 @@ function HealthDot({ level }: { level: 1 | 2 | 3 | 4 | 5 }) {
 
 function ActiveServicesCard() {
   const [env, setEnv] = useState<'prod' | 'staging' | 'dev'>('prod');
-  const rows = ACTIVE_SERVICES[env];
+  // 默认按错误率降序排序,让 SRE 一眼看到 top 出问题服务
+  const rows = [...ACTIVE_SERVICES[env]].sort(
+    (a, b) => parseFloat(b.errorRate) - parseFloat(a.errorRate),
+  );
 
   return (
     <div style={{ ...surfaceCardStyle, padding: '20px 24px', height: '100%' }}>
