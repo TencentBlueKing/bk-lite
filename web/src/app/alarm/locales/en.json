@@ -14,7 +14,13 @@
         "advanced": "Advanced",
         "partialFailure": "Partial failure",
         "successOperate": "Successfully",
-        "all": "All"
+        "all": "All",
+        "heatMap": {
+            "month": "Month",
+            "day": "Day",
+            "previous": "Previous period",
+            "level": "Level"
+        }
     },
     "incidents": {
         "table": "Table",
