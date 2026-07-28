@@ -63,7 +63,7 @@ export const TCP_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '当前最差的 TCP 探测结果码。',
       unit: 'none',
       query: 'max(net_response_result_code{__$labels__})',
-      color: '#9aa9bf'
+      color: '#8a5cff'
     },
     {
       name: 'tcp_string_found_rate',
@@ -94,19 +94,8 @@ export const TCP_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       icon: 'clock',
       compare: true,
       compareFavorableDirection: 'down',
-      guide: [],
+      guide: [{ label: '平均响应时间', detail: 'TCP 建连平均耗时；持续升高时对照最大响应与失败率，区分链路变慢与间歇故障。' }],
       footer: [{ label: '最大响应时间', metric: 'tcp_response_time_max', unit: 'ms' }]
-    },
-    {
-      title: '最大响应时间',
-      metric: 'tcp_response_time_max',
-      unit: 'ms',
-      color: '#ff8a1f',
-      icon: 'clock',
-      compare: true,
-      compareFavorableDirection: 'down',
-      guide: [{ label: '最大响应时间', detail: '探测节点的最大建连耗时，用于捕捉延迟尖刺。' }],
-      footer: [{ label: '平均响应时间', metric: 'tcp_response_time_avg', unit: 'ms' }]
     },
     {
       title: '探测失败率',
@@ -147,7 +136,7 @@ export const TCP_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       title: '连通成功率趋势',
       subtitle: '成功率变化',
       metric: 'tcp_success_rate',
-      guide: [{ label: '连通成功率趋势', detail: '观察 TCP 探测连通成功率随时间变化。' }],
+      guide: [{ label: '连通成功率趋势', detail: '成功率下跌时优先查端口监听、防火墙与对端进程；对照失败率与结果码。' }],
       series: [{ metric: 'tcp_success_rate', label: '连通成功率', color: '#27c274', unit: 'percent' }]
     }
   ],

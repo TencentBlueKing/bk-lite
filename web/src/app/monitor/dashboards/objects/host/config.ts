@@ -277,10 +277,9 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       icon: 'node',
       guide: [{
         label: '系统负载',
-        detail: '主机最近 1 分钟平均负载（可运行 + 不可中断等待的进程数）。对照脚注 CPU 核数：负载持续高于核数即偏高；再结合 CPU 使用率与 I/O Wait 区分算力打满还是卡在 I/O。'
+        detail: '主机最近 1 分钟平均负载（可运行 + 不可中断等待的进程数）。结合 CPU 使用率与 I/O Wait 区分算力打满还是卡在 I/O。'
       }],
       footer: [
-        { label: 'CPU 核数', metric: 'host_cpu_core_count', unit: 'counts' },
         { label: '5 分钟负载', metric: 'system_load5', unit: 'none' }
       ]
     }
@@ -302,7 +301,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       title: '系统负载趋势',
       subtitle: '1 / 5 / 15 分钟',
       metric: 'system_load1',
-      guide: [{ label: '系统负载', detail: '1 / 5 / 15 分钟平均负载（运行 + 等待的进程数）。对照健康概览中的 CPU 核数：持续超过核数即偏高。' }],
+      guide: [{ label: '系统负载', detail: '1 / 5 / 15 分钟平均负载（运行 + 等待的进程数）。持续偏高时结合 CPU 使用率与 I/O Wait 判断是算力不足还是等待 I/O。' }],
       series: [
         { metric: 'system_load1', label: '1 分钟', color: '#27c274', unit: 'none' },
         { metric: 'system_load5', label: '5 分钟', color: '#13c2c2', unit: 'none' },
