@@ -5,6 +5,8 @@ from django.utils import timezone
 from apps.core.models.time_info import TimeInfo
 from apps.operation_analysis.models.models import Dashboard
 
+EXECUTION_SNAPSHOT_IMMUTABLE_ERROR = "Execution Input Snapshot 创建后不可修改"
+
 
 class DashboardReportSubscription(TimeInfo):
     class Status(models.TextChoices):
@@ -142,3 +144,43 @@ class DashboardReportExecution(TimeInfo):
             self.error_message = error_message
             update_fields.extend(["failure_stage", "error_message"])
         self.save(update_fields=update_fields)
+
+
+class DashboardReportExecutionSnapshotQuerySet(models.QuerySet):
+    def update(self, **kwargs):
+        raise ValidationError(EXECUTION_SNAPSHOT_IMMUTABLE_ERROR)
+
+    def bulk_update(self, objs, fields, batch_size=None):
+        raise ValidationError(EXECUTION_SNAPSHOT_IMMUTABLE_ERROR)
+
+
+class DashboardReportExecutionSnapshot(models.Model):
+    execution = models.OneToOneField(
+        DashboardReportExecution,
+        on_delete=models.CASCADE,
+        related_name="snapshot",
+        verbose_name="报告执行",
+    )
+    dashboard_id = models.BigIntegerField(verbose_name="仪表盘 ID")
+    creator_id = models.CharField(max_length=32, verbose_name="创建者 ID")
+    subscription_id = models.BigIntegerField(verbose_name="报告订阅 ID")
+    filter_values = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="筛选值",
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        db_index=True,
+        verbose_name="创建时间",
+    )
+    objects = DashboardReportExecutionSnapshotQuerySet.as_manager()
+
+    class Meta:
+        db_table = "operation_analysis_dashboard_report_execution_snapshot"
+        verbose_name = "仪表盘报告执行输入快照"
+
+    def save(self, *args, **kwargs):
+        if self.pk is not None and type(self).objects.filter(pk=self.pk).exists():
+            raise ValidationError(EXECUTION_SNAPSHOT_IMMUTABLE_ERROR)
+        super().save(*args, **kwargs)

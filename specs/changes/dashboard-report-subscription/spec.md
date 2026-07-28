@@ -41,6 +41,26 @@ Phase 1B-1 的同步实验执行严格经过
 Scheduler、Celery Task、PDF、Chromium Worker、Email、完整 Snapshot、Retry
 或 Render Token。
 
+## Phase 1B-2A 实现状态（2026-07-28）
+
+已实现且验证：
+
+- 独立的一对一 `DashboardReportExecutionSnapshot` 输入快照模型；
+- 执行创建时冻结 `dashboard_id`、`subscription_id`、`creator_id` 与
+  Subscription 已保存的 `config.filter_values`；
+- Snapshot 创建成功后 Execution 保持 `pending`，等待后续 Worker 消费；
+- Snapshot 创建失败时严格经过 `pending → running → failed`，并记录
+  `failure_stage=snapshot`；
+- Execution 详情 API 只读返回 Snapshot，后续订阅配置修改不改变已有快照；
+- Snapshot 模型拒绝对已持久化记录再次执行 `save()`。
+
+Phase 1B-2A 不从 Dashboard 页面临时 state 读取筛选值。当前 Subscription
+尚未开放筛选配置写入，因此既有 Phase 1A Subscription 通常冻结空
+`filter_values`；浏览器当前 applied filters、namespace、Dashboard 布局与
+Widget/DataSource 配置分别留待后续 Subscription 输入和 Render Snapshot
+阶段。本阶段仍未接入 Celery、Chromium、PDF、Email、Retry、Render Token、
+完整权限 Snapshot 或 DataSource Runtime Snapshot。
+
 ## Problem Statement
 
 运营分析仪表盘已经支持用户在浏览器中手工导出 PDF，但现有实现依赖当前页面 DOM、`html-to-image`、`jsPDF.save()` 和用户登录会话，只能下载到用户本机，不能由后台周期任务无会话生成并作为邮件附件发送。

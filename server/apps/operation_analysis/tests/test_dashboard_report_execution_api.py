@@ -1,10 +1,16 @@
 import pytest
+from django.core.exceptions import ValidationError
 from rest_framework.test import APIClient
 
 from apps.base.models import User
 from apps.operation_analysis.models.models import Dashboard, Directory
 from apps.operation_analysis.models.subscription_models import (
+    DashboardReportExecution,
+    DashboardReportExecutionSnapshot,
     DashboardReportSubscription,
+)
+from apps.operation_analysis.services.execution_service import (
+    DashboardReportExecutionService,
 )
 
 
@@ -37,6 +43,12 @@ def subscription(authenticated_user, dashboard):
         creator=authenticated_user.username,
         name="日报",
         recipient_email="ops@example.com",
+        config={
+            "filter_values": {
+                "environment": "production",
+                "time_range": "last_7_days",
+            }
+        },
     )
 
 
@@ -78,11 +90,21 @@ def test_creator_with_dashboard_view_can_execute_and_retrieve(
     assert create_response.data["dashboard"] == subscription.dashboard_id
     assert create_response.data["creator"] == authenticated_user.username
     assert create_response.data["trigger_type"] == "manual"
-    assert create_response.data["status"] == "succeeded"
-    assert create_response.data["started_at"] is not None
-    assert create_response.data["finished_at"] is not None
+    assert create_response.data["status"] == "pending"
+    assert create_response.data["started_at"] is None
+    assert create_response.data["finished_at"] is None
     assert create_response.data["failure_stage"] == ""
     assert create_response.data["error_message"] == ""
+    assert create_response.data["snapshot"] == {
+        "dashboard_id": subscription.dashboard_id,
+        "creator_id": authenticated_user.username,
+        "subscription_id": subscription.id,
+        "filter_values": {
+            "environment": "production",
+            "time_range": "last_7_days",
+        },
+        "created_at": create_response.data["snapshot"]["created_at"],
+    }
 
     retrieve_response = api_client.get(
         f"{execution_url}{create_response.data['id']}/"
@@ -106,6 +128,125 @@ def test_user_without_dashboard_view_cannot_execute(
     )
 
     assert response.status_code == 403, response.data
+
+
+def test_subscription_changes_do_not_affect_existing_snapshot(
+    api_client,
+    subscription,
+    subscription_url,
+    execution_url,
+    monkeypatch,
+):
+    grant_dashboard_view(monkeypatch)
+    create_response = api_client.post(
+        f"{subscription_url}{subscription.id}/execute/",
+        format="json",
+    )
+    execution_id = create_response.data["id"]
+
+    subscription.config = {
+        "filter_values": {
+            "environment": "staging",
+            "time_range": "today",
+        }
+    }
+    subscription.save(update_fields=["config", "updated_at"])
+
+    retrieve_response = api_client.get(f"{execution_url}{execution_id}/")
+
+    assert retrieve_response.status_code == 200
+    assert retrieve_response.data["snapshot"]["filter_values"] == {
+        "environment": "production",
+        "time_range": "last_7_days",
+    }
+
+
+def test_snapshot_creation_failure_marks_execution_failed(
+    api_client,
+    subscription,
+    subscription_url,
+    monkeypatch,
+):
+    grant_dashboard_view(monkeypatch)
+    subscription.config = {"filter_values": ["invalid"]}
+    subscription.save(update_fields=["config", "updated_at"])
+
+    response = api_client.post(
+        f"{subscription_url}{subscription.id}/execute/",
+        format="json",
+    )
+
+    assert response.status_code == 201, response.data
+    assert response.data["status"] == "failed"
+    assert response.data["failure_stage"] == "snapshot"
+    assert response.data["error_message"] == (
+        "Execution Input Snapshot 创建失败"
+    )
+    assert response.data["started_at"] is not None
+    assert response.data["finished_at"] is not None
+    assert response.data["snapshot"] is None
+
+
+def test_unexpected_snapshot_creation_failure_marks_execution_failed(
+    api_client,
+    subscription,
+    subscription_url,
+    monkeypatch,
+):
+    grant_dashboard_view(monkeypatch)
+
+    def raise_snapshot_error(cls, execution, source_subscription):
+        raise RuntimeError("unexpected snapshot error")
+
+    monkeypatch.setattr(
+        DashboardReportExecutionService,
+        "_create_snapshot",
+        classmethod(raise_snapshot_error),
+    )
+
+    response = api_client.post(
+        f"{subscription_url}{subscription.id}/execute/",
+        format="json",
+    )
+
+    assert response.status_code == 201, response.data
+    execution = DashboardReportExecution.objects.get(id=response.data["id"])
+    assert execution.status == DashboardReportExecution.Status.FAILED
+    assert execution.failure_stage == "snapshot"
+    assert execution.error_message == "Execution Input Snapshot 创建失败"
+    assert not hasattr(execution, "snapshot")
+
+
+def test_execution_snapshot_cannot_be_updated(
+    api_client,
+    subscription,
+    subscription_url,
+    monkeypatch,
+):
+    grant_dashboard_view(monkeypatch)
+    response = api_client.post(
+        f"{subscription_url}{subscription.id}/execute/",
+        format="json",
+    )
+    snapshot = DashboardReportExecutionSnapshot.objects.get(
+        execution_id=response.data["id"]
+    )
+
+    snapshot.filter_values = {"environment": "staging"}
+
+    with pytest.raises(
+        ValidationError,
+        match="Execution Input Snapshot 创建后不可修改",
+    ):
+        snapshot.save()
+
+    with pytest.raises(
+        ValidationError,
+        match="Execution Input Snapshot 创建后不可修改",
+    ):
+        DashboardReportExecutionSnapshot.objects.filter(pk=snapshot.pk).update(
+            filter_values={"environment": "staging"}
+        )
 
 
 def test_user_cannot_execute_another_users_subscription(

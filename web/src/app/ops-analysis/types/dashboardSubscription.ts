@@ -31,6 +31,14 @@ export type DashboardExecutionStatus =
   | 'failed'
   | 'unknown';
 
+export interface DashboardReportExecutionSnapshot {
+  dashboard_id: number;
+  creator_id: string;
+  subscription_id: number;
+  filter_values: Record<string, unknown>;
+  created_at: string;
+}
+
 export interface DashboardReportExecution {
   id: number;
   subscription: number | null;
@@ -43,4 +51,5 @@ export interface DashboardReportExecution {
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
+  snapshot: DashboardReportExecutionSnapshot | null;
 }

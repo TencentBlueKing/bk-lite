@@ -68,13 +68,20 @@ beforeEach(() => {
     subscription: 1,
     dashboard: 8,
     creator: 'test',
-    status: 'succeeded',
+    status: 'pending',
     trigger_type: 'manual',
     failure_stage: '',
     error_message: '',
     created_at: '2026-07-28T00:00:00Z',
-    started_at: '2026-07-28T00:00:00Z',
-    finished_at: '2026-07-28T00:00:01Z',
+    started_at: null,
+    finished_at: null,
+    snapshot: {
+      dashboard_id: 8,
+      creator_id: 'test',
+      subscription_id: 1,
+      filter_values: {},
+      created_at: '2026-07-28T00:00:00Z',
+    },
   });
   Object.defineProperty(window, 'matchMedia', {
     writable: true,

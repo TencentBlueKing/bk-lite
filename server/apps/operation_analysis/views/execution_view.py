@@ -20,6 +20,7 @@ class DashboardReportExecutionViewSet(
         queryset = DashboardReportExecution.objects.select_related(
             "subscription",
             "dashboard",
+            "snapshot",
         )
         if not getattr(self.request.user, "is_superuser", False):
             queryset = queryset.filter(creator=self.request.user.username)
