@@ -3,7 +3,6 @@ import React, { useState } from 'react';
 import {
   Button,
   Col,
-  Dropdown,
   Layout,
   Row,
   Segmented,
@@ -22,6 +21,7 @@ import {
   FireOutlined,
   RadarChartOutlined,
   RocketOutlined,
+  TagsOutlined,
   ThunderboltOutlined,
   WarningOutlined,
 } from '@ant-design/icons';
@@ -37,15 +37,16 @@ const { Title, Paragraph, Text } = Typography;
  *                   (应用数量 / 服务数量 / 活跃告警数 /
  *                    请求量 / 错误请求数 / P95 延迟)
  *   §3.2 健康度分布  环形图(健康 / 警告 / 严重 / 未知) + 图例
- *   §3.3 健康度趋势  3 线时序图(整体 / 核心 / 外部依赖),1h/4h/1d 切换
+ *   §3.3 SLO 概览   4 列表格(服务 / 可用性目标 / 达成率 / 状态),挪到中段
  *   §3.4 实时告警    未恢复告警倒序,5 条 + 查看全部
  *   §3.5 服务 TOP5 错误率   横条(按严重度着色)
  *   §3.6 P95 响应时间 TOP5 横条(按严重度着色)
- *   §3.7 SLO 概览   4 列表格(服务 / 可用性目标 / 达成率 / 状态)
+ *   §3.7 版本发布变更  5 条(服务 / 版本 / 时间 / 部署人 / 状态)
  *
  * 首页是只读汇总,卡片内容来源于其他菜单的近窗数据(spec §2 / §4)。
  * 视觉风格:克制色白底、细线、大数字、SVG 自绘图表(不引 echarts/recharts)。
- * P0 阶段不展示"最近部署"独立段(部署信息在服务菜单时序叠加)。
+ * P0 阶段不展示"健康度趋势时序图"独立段(健康度随时间变化由"健康度分布
+ * + SLO 概览 + 服务详情"组合承载,首页不重复展示以避免视觉冗余)。
  * ============================================================ */
 
 const TOKENS = {
@@ -230,112 +231,6 @@ function DonutChart({
   );
 }
 
-/* ============================================================
- * TrendChart(多线时序图,SVG 自绘,用于 §3.3 健康度趋势)
- * - 网格 + Y 轴百分比刻度 + X 轴时间刻度 + 3 条折线
- * - 段间留白,不画平滑曲线
- * ============================================================ */
-function TrendChart({
-  series,
-  xLabels,
-  yLabels,
-  width = 520,
-  height = 220,
-  padding = { top: 16, right: 12, bottom: 28, left: 40 },
-  yMin = 0,
-  yMax = 100,
-  yUnit = '%',
-}: {
-  series: { name: string; data: number[]; color: string }[];
-  xLabels: string[];
-  yLabels: string[];
-  width?: number;
-  height?: number;
-  padding?: { top: number; right: number; bottom: number; left: number };
-  yMin?: number;
-  yMax?: number;
-  yUnit?: string;
-}) {
-  const innerW = width - padding.left - padding.right;
-  const innerH = height - padding.top - padding.bottom;
-  const xStep = innerW / Math.max(xLabels.length - 1, 1);
-  const yRange = yMax - yMin;
-  const toX = (i: number) => padding.left + i * xStep;
-  const toY = (v: number) => padding.top + innerH * (1 - (v - yMin) / yRange);
-
-  // Y 网格线
-  const yTicks = yLabels.map((lbl) => {
-    const v = parseFloat(lbl);
-    return { label: lbl, y: toY(v) };
-  });
-
-  return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
-      {/* 横向网格 */}
-      {yTicks.map((t, i) => (
-        <g key={i}>
-          <line
-            x1={padding.left}
-            x2={width - padding.right}
-            y1={t.y}
-            y2={t.y}
-            stroke={TOKENS.border}
-            strokeWidth={0.5}
-            strokeDasharray={i === yTicks.length - 1 ? undefined : '2 2'}
-          />
-          <text
-            x={padding.left - 6}
-            y={t.y + 3}
-            textAnchor="end"
-            fontSize={10}
-            fill={TOKENS.textTertiary}
-            style={{ fontVariantNumeric: 'tabular-nums' }}
-          >
-            {t.label}
-            {yUnit}
-          </text>
-        </g>
-      ))}
-      {/* X 轴标签 */}
-      {xLabels.map((lbl, i) => (
-        <text
-          key={i}
-          x={toX(i)}
-          y={height - padding.bottom + 16}
-          textAnchor="middle"
-          fontSize={10}
-          fill={TOKENS.textTertiary}
-        >
-          {lbl}
-        </text>
-      ))}
-      {/* 3 条折线 */}
-      {series.map((s, i) => {
-        if (s.data.length === 0) return null;
-        const xSeg = innerW / Math.max(s.data.length - 1, 1);
-        const points = s.data.map((v, idx) => {
-          const x = padding.left + idx * xSeg;
-          const y = toY(v);
-          return [x, y] as const;
-        });
-        const d = points
-          .map(([x, y], idx) => (idx === 0 ? `M ${x} ${y}` : `L ${x} ${y}`))
-          .join(' ');
-        return (
-          <path
-            key={i}
-            d={d}
-            fill="none"
-            stroke={s.color}
-            strokeWidth={1.5}
-            strokeLinejoin="round"
-            strokeLinecap="round"
-          />
-        );
-      })}
-    </svg>
-  );
-}
 
 /* ============================================================
  * Top5BarChart(横条,SVG 自绘,用于 §3.5 / §3.6 服务排行)
@@ -836,144 +731,6 @@ function HealthDistributionCard() {
   );
 }
 
-/* ============================================================
- * §3.3 健康度趋势(3 线时序图)
- * 3 条线:整体健康度 / 核心服务 / 外部依赖
- * 时间窗:1h / 4h / 1d(默认 1h)
- * ============================================================ */
-const TREND_RANGES = {
-  '1h': {
-    labels: ['09:00', '09:15', '09:30', '09:45', '10:00'],
-    series: [
-      {
-        name: '整体健康度',
-        data: [88, 89, 90, 91, 90, 91, 92, 92, 91, 92, 92, 92, 92, 92, 92, 92, 92, 92, 92, 92, 93, 92, 92, 92],
-        color: TOKENS.success,
-      },
-      {
-        name: '核心服务',
-        data: [96, 96, 97, 97, 96, 97, 97, 98, 98, 97, 98, 98, 98, 98, 98, 98, 98, 98, 98, 98, 99, 99, 98, 98],
-        color: TOKENS.primary,
-      },
-      {
-        name: '外部依赖',
-        data: [78, 80, 79, 81, 82, 80, 82, 83, 82, 84, 85, 84, 86, 85, 87, 86, 88, 87, 86, 88, 87, 88, 89, 88],
-        color: TOKENS.warning,
-      },
-    ],
-  },
-  '4h': {
-    labels: ['06:00', '07:00', '08:00', '09:00', '10:00'],
-    series: [
-      {
-        name: '整体健康度',
-        data: [89, 90, 91, 90, 92],
-        color: TOKENS.success,
-      },
-      {
-        name: '核心服务',
-        data: [97, 97, 98, 97, 98],
-        color: TOKENS.primary,
-      },
-      {
-        name: '外部依赖',
-        data: [80, 82, 83, 81, 87],
-        color: TOKENS.warning,
-      },
-    ],
-  },
-  '1d': {
-    labels: ['昨日 10:00', '14:00', '18:00', '22:00', '今日 10:00'],
-    series: [
-      {
-        name: '整体健康度',
-        data: [93, 91, 90, 89, 92],
-        color: TOKENS.success,
-      },
-      {
-        name: '核心服务',
-        data: [98, 98, 97, 96, 98],
-        color: TOKENS.primary,
-      },
-      {
-        name: '外部依赖',
-        data: [85, 83, 82, 80, 88],
-        color: TOKENS.warning,
-      },
-    ],
-  },
-};
-
-function HealthTrendCard() {
-  const [range, setRange] = useState<'1h' | '4h' | '1d'>('1h');
-  const conf = TREND_RANGES[range];
-
-  return (
-    <div style={{ ...surfaceCardStyle, padding: '20px 24px', height: '100%' }}>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: 12,
-        }}
-      >
-        <Space size={8} align="center">
-          <RadarChartOutlined style={{ color: TOKENS.primary, fontSize: 15 }} />
-          <Title level={5} style={{ margin: 0, fontWeight: 600 }}>
-            服务健康度趋势
-          </Title>
-        </Space>
-        <Dropdown
-          menu={{
-            items: [
-              { key: '1h', label: '近 1 小时' },
-              { key: '4h', label: '近 4 小时' },
-              { key: '1d', label: '近 1 天' },
-            ],
-            onClick: ({ key }) => setRange(key as '1h' | '4h' | '1d'),
-            selectedKeys: [range],
-          }}
-        >
-          <a style={{ color: TOKENS.text, fontSize: 13, cursor: 'pointer' }}>
-            {range === '1h' ? '近 1 小时' : range === '4h' ? '近 4 小时' : '近 1 天'} ▾
-          </a>
-        </Dropdown>
-      </div>
-      <TrendChart
-        series={conf.series}
-        xLabels={conf.labels}
-        yLabels={['100', '75', '50', '25', '0']}
-        width={520}
-        height={220}
-      />
-      {/* 图例 */}
-      <div style={{ display: 'flex', gap: 16, marginTop: 8, flexWrap: 'wrap' }}>
-        {conf.series.map((s) => {
-          const avg = s.data.length
-            ? (s.data.reduce((a, b) => a + b, 0) / s.data.length).toFixed(1)
-            : '—';
-          return (
-            <Space key={s.name} size={6} align="center">
-              <span
-                style={{
-                  width: 10,
-                  height: 2,
-                  background: s.color,
-                  display: 'inline-block',
-                }}
-              />
-              <span style={{ fontSize: 12, color: TOKENS.textSecondary }}>{s.name}</span>
-              <span style={{ ...tabularNumStyle, fontSize: 12, color: TOKENS.text, fontWeight: 600 }}>
-                {avg}%
-              </span>
-            </Space>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
 
 /* ============================================================
  * §3.4 实时告警(未恢复,倒序,最多 5 条)
@@ -1326,6 +1083,130 @@ function SloOverviewCard() {
 }
 
 /* ============================================================
+ * §3.7 版本发布变更(右下角,近窗 7 天 top 5)
+ * 字段:服务名 / 版本 / 发布时间 / 部署人 / 状态
+ * 状态四态:成功(绿)/ 进行中(蓝)/ 回滚(琥珀)/ 失败(红)
+ * ============================================================ */
+const RECENT_RELEASES = [
+  { key: '1', service: 'payment-svc', version: 'v5.3.0', time: '2 小时前', by: 'alice', state: '成功' as const },
+  { key: '2', service: 'api-gateway', version: 'v2.8.0', time: '1 天前', by: 'carol', state: '成功' as const },
+  { key: '3', service: 'auth-svc', version: 'v3.0.2', time: '5 天前', by: 'bob', state: '成功' as const },
+  { key: '4', service: 'order-svc', version: 'v2.4.1', time: '1 周前', by: 'diana', state: '回滚' as const },
+  { key: '5', service: 'inventory-svc', version: 'v1.8.0', time: '2 周前', by: 'evan', state: '成功' as const },
+];
+
+const RELEASE_STATE_STYLE: Record<string, { color: string; bg: string }> = {
+  成功: { color: TOKENS.success, bg: TOKENS.successSoft },
+  进行中: { color: TOKENS.info, bg: '#eff6ff' },
+  回滚: { color: TOKENS.warning, bg: TOKENS.warningSoft },
+  失败: { color: TOKENS.danger, bg: TOKENS.dangerSoft },
+};
+
+function ReleaseCard() {
+  return (
+    <div style={{ ...surfaceCardStyle, padding: '20px 24px', height: '100%' }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 12,
+        }}
+      >
+        <Space size={8} align="center">
+          <TagsOutlined style={{ color: TOKENS.primary, fontSize: 15 }} />
+          <Title level={5} style={{ margin: 0, fontWeight: 600 }}>
+            版本发布变更
+          </Title>
+          <Text style={{ fontSize: 12, color: TOKENS.textSecondary }}>近 7 天</Text>
+        </Space>
+        <a href={STORY_URLS.service} style={{ color: TOKENS.primary, fontSize: 13 }}>
+          查看全部 →
+        </a>
+      </div>
+      {RECENT_RELEASES.length === 0 ? (
+        <div
+          style={{
+            padding: '40px 0',
+            textAlign: 'center',
+            color: TOKENS.textSecondary,
+            fontSize: 13,
+          }}
+        >
+          近 7 天无发布
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          {RECENT_RELEASES.map((r, i) => {
+            const s = RELEASE_STATE_STYLE[r.state] || RELEASE_STATE_STYLE['成功'];
+            return (
+              <div
+                key={r.key}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '10px 0',
+                  borderBottom:
+                    i < RECENT_RELEASES.length - 1 ? `1px solid ${TOKENS.border}` : 'none',
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                    <a
+                      style={{
+                        color: TOKENS.text,
+                        fontSize: 13,
+                        fontWeight: 500,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                      title={r.service}
+                    >
+                      {r.service}
+                    </a>
+                    <span
+                      style={{
+                        fontFamily: 'ui-monospace, "SF Mono", monospace',
+                        fontSize: 11,
+                        color: TOKENS.textSecondary,
+                        background: TOKENS.bg,
+                        padding: '1px 6px',
+                        borderRadius: 3,
+                      }}
+                    >
+                      {r.version}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 11, color: TOKENS.textTertiary, marginTop: 3 }}>
+                    {r.time} · {r.by}
+                  </div>
+                </div>
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 500,
+                    color: s.color,
+                    background: s.bg,
+                    padding: '2px 8px',
+                    borderRadius: 3,
+                    minWidth: 50,
+                    textAlign: 'center',
+                  }}
+                >
+                  {r.state}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================
  * 空状态(未接入任何应用)
  * ============================================================ */
 function HomeEmptyState() {
@@ -1374,8 +1255,8 @@ function HomeEmptyState() {
  * HomeDashboard · 完整首页
  * 布局:TopMenuBar + HomeToolbar
  *       + KpiStrip(6 卡)
- *       + Row1[健康度分布 | 健康度趋势 | 实时告警]
- *       + Row2[TOP5 错误率 | P95 TOP5 | SLO 概览]
+ *       + Row1[健康度分布 | SLO 概览 | 实时告警]
+ *       + Row2[TOP5 错误率 | P95 TOP5 | 版本发布变更]
  * ============================================================ */
 function HomeDashboard() {
   const [empty, setEmpty] = useState(false);
@@ -1395,7 +1276,7 @@ function HomeDashboard() {
                 <HealthDistributionCard />
               </Col>
               <Col xs={24} lg={8}>
-                <HealthTrendCard />
+                <SloOverviewCard />
               </Col>
               <Col xs={24} lg={8}>
                 <RealtimeAlertsCard />
@@ -1409,7 +1290,7 @@ function HomeDashboard() {
                 <Top5ByP95Card />
               </Col>
               <Col xs={24} lg={8}>
-                <SloOverviewCard />
+                <ReleaseCard />
               </Col>
             </Row>
             <div
