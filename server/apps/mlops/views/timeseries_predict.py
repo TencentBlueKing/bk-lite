@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 from config.drf.viewsets import ModelViewSet
 from apps.mlops.filters.timeseries_predict import *
 from apps.mlops.constants import TrainJobStatus, DatasetReleaseStatus, MLflowRunStatus
@@ -684,6 +686,21 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
 
     MLFLOW_PREFIX = "TimeseriesPredict"  # MLflow 命名前缀
 
+    @staticmethod
+    def _snapshot_database_state(instance):
+        return {
+            field.attname: deepcopy(getattr(instance, field.attname))
+            for field in instance._meta.concrete_fields
+            if not field.primary_key
+        }
+
+    @staticmethod
+    def _restore_database_state(instance, old_state, **overrides):
+        restored_state = {**old_state, **overrides}
+        instance.__class__.objects.filter(pk=instance.pk).update(**restored_state)
+        for field_name, value in restored_state.items():
+            setattr(instance, field_name, deepcopy(value))
+
     @HasPermission("timeseries_predict-View")
     def list(self, request, *args, **kwargs):
         """列表查询，实时同步容器状态"""
@@ -917,6 +934,14 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
         if access_error is not None:
             return access_error
         kwargs["_update_access_prechecked"] = True
+        old_database_state = self._snapshot_database_state(instance)
+        deferred_delete_teams = []
+        if self.ORGANIZATION_FIELD in request.data:
+            new_teams = self._normalize_org_values(request.data, self.ORGANIZATION_FIELD)
+            deferred_delete_teams = [
+                team for team in old_database_state.get(self.ORGANIZATION_FIELD, []) if team not in new_teams
+            ]
+            kwargs["_skip_rule_cleanup"] = True
 
         # 兜底校验：容器未运行时不允许设置 status=active
         new_status = request.data.get("status")
@@ -968,6 +993,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
 
         # 只有容器在运行时才考虑重启
         if container_state != "running":
+            self.delete_rules(instance.id, deferred_delete_teams)
             return response
 
         # 决策：是否需要重启
@@ -991,17 +1017,17 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                 if container_port and str(new_port) != str(container_port):
                     need_restart = True
 
+        if not need_restart:
+            self.delete_rules(instance.id, deferred_delete_teams)
+            return response
+
         # 如果需要重启，先删除旧容器
         if need_restart:
             try:
                 model_uri = self._resolve_model_uri(instance)
                 train_image = get_image_by_prefix(self.MLFLOW_PREFIX, instance.train_job.algorithm)
             except Exception as e:
-                instance.model_version = old_model_version
-                instance.train_job_id = old_train_job_id
-                instance.port = old_port
-                instance.container_info = old_container_info
-                instance.save(update_fields=["model_version", "train_job", "port", "container_info"])
+                self._restore_database_state(instance, old_database_state)
                 logger.error(f"新 serving 配置校验失败，保留旧服务: {e}", exc_info=True)
                 return Response(
                     {"error": f"配置更新未生效，旧服务保持运行: {str(e)}"},
@@ -1012,11 +1038,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                 logger.warning(f"配置变更需要重启，删除旧容器: {container_id}")
                 WebhookClient.remove(container_id)
             except Exception as e:
-                instance.model_version = old_model_version
-                instance.train_job_id = old_train_job_id
-                instance.port = old_port
-                instance.container_info = old_container_info
-                instance.save(update_fields=["model_version", "train_job", "port", "container_info"])
+                self._restore_database_state(instance, old_database_state)
                 logger.error(f"删除旧容器失败，配置已回滚: {e}", exc_info=True)
                 return Response(
                     {"error": f"配置更新未生效，旧服务保持运行: {str(e)}"},
@@ -1042,6 +1064,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                 # 更新返回数据
                 response.data["container_info"] = result
                 response.data["message"] = "配置已更新并重启服务"
+                self.delete_rules(instance.id, deferred_delete_teams)
 
             except Exception as e:
                 logger.error(f"自动重启失败: {str(e)}", exc_info=True)
@@ -1082,11 +1105,12 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                         rollback_port = old_port
                         rollback_message = "新服务启动失败，旧配置已恢复但旧服务恢复失败"
 
-                instance.model_version = old_model_version
-                instance.train_job_id = old_train_job_id
-                instance.port = rollback_port
-                instance.container_info = rollback_result
-                instance.save(update_fields=["model_version", "train_job", "port", "container_info"])
+                self._restore_database_state(
+                    instance,
+                    old_database_state,
+                    port=rollback_port,
+                    container_info=rollback_result,
+                )
                 return Response(
                     {
                         "error": f"配置更新未生效: {str(e)}",

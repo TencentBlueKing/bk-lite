@@ -158,7 +158,11 @@ def test_update_restores_old_service_when_new_container_fails(
 
     response = mlops_api_client.patch(
         f"/api/v1/mlops/timeseries_predict_servings/{serving.id}/",
-        {"model_version": "v2"},
+        {
+            "model_version": "v2",
+            "name": "must-roll-back",
+            "description": "must-roll-back",
+        },
         format="json",
     )
 
@@ -176,6 +180,8 @@ def test_update_restores_old_service_when_new_container_fails(
     assert serve_calls[1]["kwargs"]["port"] == 3000
     serving.refresh_from_db()
     assert serving.model_version == "latest"
+    assert serving.name == "timeseries-timeout-test"
+    assert serving.description == ""
     assert serving.port == 3000
     assert serving.container_info["state"] == "running"
 

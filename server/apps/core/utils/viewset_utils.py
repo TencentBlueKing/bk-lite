@@ -596,6 +596,7 @@ class AuthViewSet(MaintainerViewSet):
         try:
             user = getattr(request, "user", None)
             update_access_prechecked = kwargs.pop("_update_access_prechecked", False)
+            skip_rule_cleanup = kwargs.pop("_skip_rule_cleanup", False)
             partial = kwargs.pop("partial", False)
             data = request.data
             instance = self.get_object()
@@ -608,7 +609,8 @@ class AuthViewSet(MaintainerViewSet):
                 if org_field in data:
                     org_values = self._normalize_org_values(data, org_field)
                     delete_team = [i for i in instance_org_value if i not in org_values]
-                    self.delete_rules(instance.id, delete_team)
+                    if not skip_rule_cleanup:
+                        self.delete_rules(instance.id, delete_team)
                 return super().update(request, *args, **kwargs)
 
             if not update_access_prechecked:
@@ -618,7 +620,8 @@ class AuthViewSet(MaintainerViewSet):
             if org_field in data:
                 org_values = self._normalize_org_values(data, org_field)
                 delete_team = [i for i in instance_org_value if i not in org_values]
-                self.delete_rules(instance.id, delete_team)
+                if not skip_rule_cleanup:
+                    self.delete_rules(instance.id, delete_team)
             serializer = self.get_serializer(instance, data=data, partial=partial)
             serializer.is_valid(raise_exception=True)
             self.perform_update(serializer)
