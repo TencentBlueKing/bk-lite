@@ -109,6 +109,82 @@ def test_normalize_failure_marks_manual_windows_recovery_as_non_retriable():
     assert failure["retriable"] is False
 
 
+def test_normalize_failure_preserves_clock_skew_type_and_context():
+    failure = normalize_failure(
+        message="Node clock is 726 seconds ahead of Server",
+        error="Node clock is 726 seconds ahead of Server",
+        details={
+            "error_type": "clock_skew",
+            "node_time": "2026-07-29T10:12:06Z",
+            "server_time": "2026-07-29T10:00:00Z",
+            "clock_offset_seconds": 726.0,
+            "clock_skew_seconds": 726.0,
+            "max_clock_skew_seconds": 300,
+        },
+    )
+
+    assert failure is not None
+    assert failure["type"] == "clock_skew"
+    assert failure["retriable"] is False
+    assert failure["context"] == {
+        "node_time": "2026-07-29T10:12:06Z",
+        "server_time": "2026-07-29T10:00:00Z",
+        "clock_offset_seconds": 726.0,
+        "clock_skew_seconds": 726.0,
+        "max_clock_skew_seconds": 300,
+    }
+
+
+def test_clock_check_event_is_optional_for_historical_installer_summaries():
+    installer_steps = [
+        ("fetch_session", "success"),
+        ("prepare_dirs", "success"),
+        ("download", "success"),
+        ("extract", "success"),
+        ("write_config", "success"),
+        ("install", "success"),
+    ]
+    normalized = normalize_task_result_for_read(
+        {
+            "overall_status": "running",
+            "steps": [
+                {
+                    "action": action,
+                    "status": status,
+                    "message": action,
+                    "details": {"installer_event": True, "raw_step": action},
+                }
+                for action, status in installer_steps
+            ]
+            + [{"action": "connectivity_check", "status": "running", "message": "waiting"}],
+        }
+    )
+
+    assert normalized["installer_summary"]["missing_steps"] == []
+
+    with_clock_check = normalize_task_result_for_read(
+        {
+            "overall_status": "running",
+            "steps": [
+                {
+                    "action": "clock_check",
+                    "status": "success",
+                    "message": "clock checked",
+                    "details": {"installer_event": True, "raw_step": "clock_check"},
+                }
+            ]
+            + normalized["installer_summary"]["steps"]
+            + [{"action": "connectivity_check", "status": "running", "message": "waiting"}],
+        }
+    )
+    assert with_clock_check["installer_summary"]["expected_count"] == 6
+    assert with_clock_check["installer_summary"]["missing_steps"] == []
+    assert [step["action"] for step in with_clock_check["installer_summary"]["steps"]] == [
+        "clock_check",
+        *[action for action, _ in installer_steps],
+    ]
+
+
 def test_normalize_failure_ignores_successful_status_messages():
     assert normalize_failure(message="Sidecar acknowledged action", details={}) is None
     assert normalize_failure(message="Collector action completed", details={}) is None

@@ -161,6 +161,83 @@ func TestInstallerEventReporterFlushesTerminalEventBeforeProcessExit(t *testing.
 	}
 }
 
+func TestValidateClockSkewAllowsBoundaryAndBothDirections(t *testing.T) {
+	serverTime := time.Date(2026, 7, 29, 2, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name       string
+		offset     time.Duration
+		wantAhead  bool
+		wantBehind bool
+	}{
+		{name: "same time"},
+		{name: "ahead within boundary", offset: 300 * time.Second, wantAhead: true},
+		{name: "behind within boundary", offset: -300 * time.Second, wantBehind: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			midpoint := serverTime.Add(tt.offset)
+			cfg := &Config{
+				ClockValidation: &ClockValidationConfig{
+					ServerTimeUnixMS: serverTime.UnixMilli(),
+					MaxSkewSeconds:   300,
+				},
+				sessionRequestStartedAt:  midpoint.Add(-50 * time.Millisecond),
+				sessionRequestFinishedAt: midpoint.Add(50 * time.Millisecond),
+			}
+
+			result, err := validateClockSkew(cfg)
+			if err != nil {
+				t.Fatalf("expected clock skew to pass: %v", err)
+			}
+			if result == nil {
+				t.Fatal("expected clock skew details")
+			}
+			if tt.wantAhead && result.OffsetSeconds <= 0 {
+				t.Fatalf("expected node clock ahead, got %f", result.OffsetSeconds)
+			}
+			if tt.wantBehind && result.OffsetSeconds >= 0 {
+				t.Fatalf("expected node clock behind, got %f", result.OffsetSeconds)
+			}
+		})
+	}
+}
+
+func TestValidateClockSkewRejectsAheadAndBehindBeyondBoundary(t *testing.T) {
+	serverTime := time.Date(2026, 7, 29, 2, 0, 0, 0, time.UTC)
+	for _, offset := range []time.Duration{300*time.Second + 2*time.Millisecond, -300*time.Second - 2*time.Millisecond} {
+		midpoint := serverTime.Add(offset)
+		cfg := &Config{
+			ClockValidation: &ClockValidationConfig{
+				ServerTimeUnixMS: serverTime.UnixMilli(),
+				MaxSkewSeconds:   300,
+			},
+			sessionRequestStartedAt:  midpoint.Add(-50 * time.Millisecond),
+			sessionRequestFinishedAt: midpoint.Add(50 * time.Millisecond),
+		}
+
+		result, err := validateClockSkew(cfg)
+		if err == nil || !strings.Contains(err.Error(), "maximum allowed skew is 300 seconds") {
+			t.Fatalf("expected clock skew rejection for %v, got result=%#v err=%v", offset, result, err)
+		}
+	}
+}
+
+func TestValidateClockSkewRejectsInvalidContractAndAllowsMissingLegacyContract(t *testing.T) {
+	if result, err := validateClockSkew(&Config{}); err != nil || result != nil {
+		t.Fatalf("legacy session without clock contract must remain compatible: result=%#v err=%v", result, err)
+	}
+
+	invalid := &Config{
+		ClockValidation:          &ClockValidationConfig{},
+		sessionRequestStartedAt:  time.Now(),
+		sessionRequestFinishedAt: time.Now(),
+	}
+	if _, err := validateClockSkew(invalid); err == nil {
+		t.Fatal("invalid clock validation contract must fail")
+	}
+}
+
 func TestInstallWindowsPackageRestoresExistingInstallationWhenNewServiceFails(t *testing.T) {
 	installDir := filepath.Join(t.TempDir(), "fusion-collectors")
 	if err := os.MkdirAll(installDir, 0755); err != nil {

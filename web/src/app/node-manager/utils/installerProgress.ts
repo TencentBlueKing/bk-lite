@@ -59,6 +59,11 @@ const normalizeFailureContext = (context?: InstallerFailureContext | null) => {
   const installDir = normalizeText(context.install_dir);
   const targetPath = normalizeText(context.target_path);
   const exitCode = normalizeNumber(context.exit_code);
+  const nodeTime = normalizeText(context.node_time);
+  const serverTime = normalizeText(context.server_time);
+  const clockOffsetSeconds = normalizeNumber(context.clock_offset_seconds);
+  const clockSkewSeconds = normalizeNumber(context.clock_skew_seconds);
+  const maxClockSkewSeconds = normalizeNumber(context.max_clock_skew_seconds);
 
   if (bucket) normalizedContext.bucket = bucket;
   if (fileKey) normalizedContext.file_key = fileKey;
@@ -67,6 +72,17 @@ const normalizeFailureContext = (context?: InstallerFailureContext | null) => {
   if (installDir) normalizedContext.install_dir = installDir;
   if (targetPath) normalizedContext.target_path = targetPath;
   if (exitCode !== null) normalizedContext.exit_code = Math.round(exitCode);
+  if (nodeTime) normalizedContext.node_time = nodeTime;
+  if (serverTime) normalizedContext.server_time = serverTime;
+  if (clockOffsetSeconds !== null)
+    normalizedContext.clock_offset_seconds = clockOffsetSeconds;
+  if (clockSkewSeconds !== null)
+    normalizedContext.clock_skew_seconds = Math.max(clockSkewSeconds, 0);
+  if (maxClockSkewSeconds !== null)
+    normalizedContext.max_clock_skew_seconds = Math.max(
+      Math.round(maxClockSkewSeconds),
+      0
+    );
 
   return Object.keys(normalizedContext).length ? normalizedContext : undefined;
 };
@@ -326,6 +342,7 @@ export const INSTALLER_STEP_LABEL_KEYS: InstallerStepLabelMap = {
   execute_command: 'node-manager.cloudregion.node.stepExecuteCollectorAction',
   callback_or_timeout: 'node-manager.cloudregion.node.stepAwaitCollectorResult',
   fetch_session: 'node-manager.cloudregion.node.installerStepFetchSession',
+  clock_check: 'node-manager.cloudregion.node.installerStepClockCheck',
   prepare_dirs: 'node-manager.cloudregion.node.installerStepPrepareDirs',
   prepare_directories:
     'node-manager.cloudregion.node.installerStepPrepareDirs',
@@ -345,6 +362,7 @@ export const INSTALLER_STEP_LABEL_KEYS: InstallerStepLabelMap = {
 
 export const INSTALLER_STEP_SUGGESTION_KEYS: InstallerStepLabelMap = {
   fetch_session: 'node-manager.cloudregion.node.installerSuggestionFetchSession',
+  clock_check: 'node-manager.cloudregion.node.installerSuggestionClockSkew',
   prepare_dirs: 'node-manager.cloudregion.node.installerSuggestionPrepareDirs',
   prepare_directories:
     'node-manager.cloudregion.node.installerSuggestionPrepareDirs',
@@ -370,7 +388,8 @@ export const INSTALLER_FAILURE_SUGGESTION_KEYS: Partial<Record<InstallerFailureT
   file_busy: 'node-manager.cloudregion.node.installerSuggestionFileBusy',
   disk: 'node-manager.cloudregion.node.installerSuggestionDisk',
   package_invalid: 'node-manager.cloudregion.node.installerSuggestionPackageInvalid',
-  arch_mismatch: 'node-manager.cloudregion.node.installerSuggestionArchMismatch'
+  arch_mismatch: 'node-manager.cloudregion.node.installerSuggestionArchMismatch',
+  clock_skew: 'node-manager.cloudregion.node.installerSuggestionClockSkew'
 };
 
 export const INSTALLER_FAILURE_CONTEXT_LABEL_KEYS: Partial<Record<keyof InstallerFailureContext, string>> = {
@@ -380,7 +399,14 @@ export const INSTALLER_FAILURE_CONTEXT_LABEL_KEYS: Partial<Record<keyof Installe
   cpu_architecture: 'node-manager.cloudregion.node.failureContextArchitecture',
   install_dir: 'node-manager.cloudregion.node.failureContextInstallDir',
   target_path: 'node-manager.cloudregion.node.failureContextTargetPath',
-  exit_code: 'node-manager.cloudregion.node.failureContextExitCode'
+  exit_code: 'node-manager.cloudregion.node.failureContextExitCode',
+  node_time: 'node-manager.cloudregion.node.failureContextNodeTime',
+  server_time: 'node-manager.cloudregion.node.failureContextServerTime',
+  clock_offset_seconds:
+    'node-manager.cloudregion.node.failureContextClockOffset',
+  clock_skew_seconds: 'node-manager.cloudregion.node.failureContextClockSkew',
+  max_clock_skew_seconds:
+    'node-manager.cloudregion.node.failureContextMaxClockSkew'
 };
 
 export const formatInstallerProgressValue = (value?: number, unit?: string) => {

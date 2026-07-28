@@ -28,6 +28,7 @@ export type InstallerTaskStatus =
 
 export type InstallerStepCode =
   | 'fetch_session'
+  | 'clock_check'
   | 'prepare_dirs'
   | 'prepare_directories'
   | 'download'
@@ -61,6 +62,11 @@ export interface InstallerFailureContext {
   install_dir?: string;
   target_path?: string;
   exit_code?: number;
+  node_time?: string;
+  server_time?: string;
+  clock_offset_seconds?: number;
+  clock_skew_seconds?: number;
+  max_clock_skew_seconds?: number;
 }
 
 export interface InstallerFailure {
@@ -83,6 +89,11 @@ export interface InstallerStepDetails {
   error?: string;
   installer_message?: string;
   failure?: InstallerFailure;
+  node_time?: string;
+  server_time?: string;
+  clock_offset_seconds?: number;
+  clock_skew_seconds?: number;
+  max_clock_skew_seconds?: number;
 }
 
 export interface InstallerProgressSummary {

@@ -12,6 +12,7 @@ from apps.node_mgmt.utils.step_tracker import now_iso
 
 INSTALLER_ACTION_MESSAGES = {
     "bootstrap_running": "Start installation",
+    "clock_check": "Check node and Server clocks",
     "download": "Download installer files",
     "write_config": "Write configuration",
     "install": "Install controller",
@@ -33,6 +34,7 @@ FAILURE_SUMMARY_MAP = {
     "package_invalid": "The downloaded package is invalid or corrupted",
     "arch_mismatch": "The package architecture does not match the target host",
     "manual_recovery_required": "The previous installation was preserved but requires manual recovery",
+    "clock_skew": "The node and Server clocks differ beyond the allowed threshold",
     "unknown": "The installation step failed with an unexpected error",
 }
 
@@ -44,6 +46,11 @@ FAILURE_CONTEXT_FIELDS = (
     "install_dir",
     "target_path",
     "exit_code",
+    "node_time",
+    "server_time",
+    "clock_offset_seconds",
+    "clock_skew_seconds",
+    "max_clock_skew_seconds",
 )
 
 
@@ -179,7 +186,11 @@ def _infer_failure_type(message: str | None, error: str | None, details: dict[st
     ):
         return "package_invalid"
 
-    return explicit_error_type if explicit_error_type in {"connection", "timeout", "manual_recovery_required"} else "unknown"
+    return (
+        explicit_error_type
+        if explicit_error_type in {"connection", "timeout", "manual_recovery_required", "clock_skew"}
+        else "unknown"
+    )
 
 
 def _has_failure_signal(message: str | None, error: str | None, details: dict[str, Any] | None) -> bool:
@@ -354,6 +365,11 @@ def build_installer_event_details(event: dict[str, Any]) -> dict:
         "install_dir",
         "target_path",
         "exit_code",
+        "node_time",
+        "server_time",
+        "clock_offset_seconds",
+        "clock_skew_seconds",
+        "max_clock_skew_seconds",
     ):
         normalized_value = event.get(field_name)
         if normalized_value not in (None, ""):
