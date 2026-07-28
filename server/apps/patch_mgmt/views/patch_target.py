@@ -13,6 +13,7 @@ from apps.patch_mgmt.serializers.patch_target import (
     PatchTargetSerializer,
 )
 from apps.patch_mgmt.services.target_connectivity import probe_target_data, target_connection_data
+from apps.patch_mgmt.utils.i18n import patch_message
 from apps.patch_mgmt.utils.operation_log import (
     log_target_created,
     log_target_deleted,
@@ -116,7 +117,7 @@ class PatchTargetViewSet(AuthViewSet):
 
         targets = request.data.get("targets") or []
         if not isinstance(targets, list) or not targets:
-            raise DRFValidationError({"targets": ["至少选择一个节点"]})
+            raise DRFValidationError({"targets": [patch_message(request, "error.nodes_required", "Select at least one node")]})
         serializer = self.get_serializer(data=targets, many=True)
         serializer.is_valid(raise_exception=True)
         created = serializer.save()

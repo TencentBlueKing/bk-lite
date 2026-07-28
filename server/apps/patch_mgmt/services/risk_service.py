@@ -442,37 +442,24 @@ def _latest_evaluated_at(items: list[RiskItem]) -> str | None:
 
 def _compute_dist(items: list[RiskItem]) -> list[dict]:
     """计算治理状态分布"""
-    status_labels = {
-        RemediationStatus.UNPLANNED: "待修复",
-        RemediationStatus.SCHEDULED: "已计划",
-        RemediationStatus.REMEDIATING: "修复中",
-        "installing": "安装中",
-        "rebooting": "重启中",
-        "verifying": "验证中",
-        RemediationStatus.PENDING_REBOOT: "待重启",
-        RemediationStatus.FAILED: "修复失败",
-        RemediationStatus.FIXED: "已修复",
+    supported_statuses = {
+        RemediationStatus.UNPLANNED, RemediationStatus.SCHEDULED,
+        RemediationStatus.REMEDIATING, "installing", "rebooting", "verifying",
+        RemediationStatus.PENDING_REBOOT, RemediationStatus.FAILED, RemediationStatus.FIXED,
     }
     counts: dict[str, int] = defaultdict(int)
     for item in items:
         if item.compliance == RiskCompliance.INVALIDATED:
-            counts["已失效"] += 1
+            counts["invalidated"] += 1
         else:
-            counts[status_labels.get(item.remediation, "待修复")] += 1
+            counts[item.remediation if item.remediation in supported_statuses else RemediationStatus.UNPLANNED] += 1
 
     color_map = {
-        "待修复": "warning",
-        "已计划": "processing",
-        "修复中": "purple",
-        "安装中": "processing",
-        "重启中": "processing",
-        "验证中": "processing",
-        "待重启": "default",
-        "修复失败": "error",
-        "已修复": "success",
-        "已失效": "default",
+        "unplanned": "warning", "scheduled": "processing", "remediating": "purple",
+        "installing": "processing", "rebooting": "processing", "verifying": "processing",
+        "pending_reboot": "default", "failed": "error", "fixed": "success", "invalidated": "default",
     }
-    return [{"label": f"{label} {count}", "color": color_map.get(label, "default")} for label, count in counts.items()]
+    return [{"status": status_code, "count": count, "color": color_map.get(status_code, "default")} for status_code, count in counts.items()]
 
 
 def _has_active_assessment(target_id: int) -> bool:

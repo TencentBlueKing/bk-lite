@@ -7,6 +7,7 @@ from rest_framework import serializers
 from apps.core.utils.serializers import TeamSerializer
 from apps.patch_mgmt.constants import PackageManagerType
 from apps.patch_mgmt.models import LinuxPatchDetail, Patch, WindowsPatchDetail
+from apps.patch_mgmt.utils.i18n import serializer_message
 
 
 class WindowsPatchDetailSerializer(serializers.ModelSerializer):
@@ -27,7 +28,7 @@ class LinuxPatchDetailSerializer(serializers.ModelSerializer):
         repo_type = PackageManagerType.normalize(value)
         valid_values = {choice[0] for choice in PackageManagerType.CHOICES}
         if repo_type not in valid_values:
-            raise serializers.ValidationError("不是合法选项。")
+            raise serializers.ValidationError(serializer_message(self, "error.invalid_choice", "Not a valid choice."))
         return repo_type
 
     class Meta:
@@ -119,7 +120,7 @@ class PatchListSerializer(TeamSerializer):
         match = re.fullmatch(r"(?i:KB)(\d+)", raw_kb)
         if not match:
             raise serializers.ValidationError(
-                {"windows_detail": {"kb_number": "KB 编号必须为 KB 加数字"}}
+                {"windows_detail": {"kb_number": serializer_message(self, "error.invalid_kb_number", "KB number must start with KB followed by digits")}}
             )
 
         kb_number = f"KB{match.group(1)}"
@@ -128,7 +129,7 @@ class PatchListSerializer(TeamSerializer):
             duplicate = duplicate.exclude(patch=self.instance)
         if duplicate.exists():
             raise serializers.ValidationError(
-                {"windows_detail": {"kb_number": f"{kb_number} 已存在，不允许重复创建"}}
+                {"windows_detail": {"kb_number": serializer_message(self, "error.duplicate_kb", "{kb} already exists and cannot be created again", kb=kb_number)}}
             )
         windows_detail["kb_number"] = kb_number
         return attrs
