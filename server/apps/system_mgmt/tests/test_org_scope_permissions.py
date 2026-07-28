@@ -276,6 +276,80 @@ def test_create_user_allows_accessible_groups():
 
 
 @pytest.mark.django_db
+def test_create_user_allows_pending_authorization_account():
+    factory = APIRequestFactory()
+    view = UserViewSet.as_view({"post": "create_user"})
+    request = factory.post(
+        "/system_mgmt/api/user/create_user/",
+        {
+            "username": "pending_authorization_user",
+            "lastName": "Pending Authorization User",
+            "email": "pending_authorization@example.com",
+            "phone": None,
+            "locale": "zh-Hans",
+            "timezone": "Asia/Shanghai",
+            "groups": [],
+            "roles": [],
+            "rules": [],
+        },
+        format="json",
+    )
+    force_authenticate(request, user=_request_user([], {"user_group-Add User"}, is_superuser=True))
+
+    response = view(request)
+    payload = _json_payload(response)
+
+    assert response.status_code == 200
+    assert payload == {"result": True}
+    user = User.objects.get(username="pending_authorization_user")
+    assert user.group_list == []
+    assert user.role_list == []
+
+
+@pytest.mark.django_db
+def test_update_user_still_rejects_empty_groups():
+    group = Group.objects.create(name="scope-update-required-group", parent_id=0, is_virtual=False)
+    Role.objects.create(name="admin", app="")
+    role = Role.objects.create(name="scope-update-required-role", app="")
+    target = User.objects.create(
+        username="scope_update_required_user",
+        display_name="Scope Update Required User",
+        email="scope_update_required@example.com",
+        password=make_password("password"),
+        group_list=[group.id],
+        role_list=[role.id],
+    )
+
+    factory = APIRequestFactory()
+    view = UserViewSet.as_view({"post": "update_user"})
+    request = factory.post(
+        "/system_mgmt/api/user/update_user/",
+        {
+            "user_id": target.id,
+            "username": target.username,
+            "lastName": target.display_name,
+            "email": target.email,
+            "phone": None,
+            "locale": "zh-Hans",
+            "timezone": "Asia/Shanghai",
+            "groups": [],
+            "roles": [role.id],
+            "rules": [],
+        },
+        format="json",
+    )
+    force_authenticate(request, user=_request_user([group.id], {"user_group-Edit User"}))
+
+    response = view(request)
+    payload = _json_payload(response)
+    target.refresh_from_db()
+
+    assert response.status_code == 200
+    assert payload["result"] is False
+    assert target.group_list == [group.id]
+
+
+@pytest.mark.django_db
 def test_update_user_rejects_unauthorized_groups():
     allowed = Group.objects.create(name="scope-update-allowed", parent_id=0, is_virtual=False)
     other = Group.objects.create(name="scope-update-other", parent_id=0, is_virtual=False)

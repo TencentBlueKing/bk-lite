@@ -193,7 +193,7 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
           </Form.Item>
           <Form.Item
             label={t('common.organization')}
-            required={!isSuperuser}
+            required={type === 'edit' && !isSuperuser}
           >
             <RoleTransfer
               mode="group"
@@ -208,7 +208,7 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
           <Form.Item
             label={t('system.user.form.role')}
             tooltip={t('system.user.form.rolePermissionTip')}
-            required={!isSuperuser}
+            required={type === 'edit' && !isSuperuser}
           >
             <Form.Item name="is_superuser" style={{ marginBottom: 8 }}>
                 <Radio.Group onChange={(e) => handleSuperuserChange(e.target.value)}>
