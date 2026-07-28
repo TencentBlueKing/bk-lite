@@ -7,6 +7,7 @@
 - MLService.predict() 的验证失败路径和正常预测路径（使用 DummyModel）
 """
 
+import importlib
 import sys
 import types
 from unittest.mock import MagicMock, patch
@@ -21,8 +22,11 @@ from pydantic import ValidationError
 
 def _stub_bentoml():
     bentoml = types.ModuleType("bentoml")
+    bentoml.service_options = []
 
     def service(**kwargs):
+        bentoml.service_options.append(kwargs)
+
         def decorator(cls):
             return cls
         return decorator
@@ -186,6 +190,30 @@ class TestDummyModel:
 # ---------------------------------------------------------------------------
 # MLService.predict() 路径测试（注入 DummyModel，不启动真实 BentoML）
 # ---------------------------------------------------------------------------
+
+
+class TestServiceTimeoutBudget:
+    def _reload_service(self):
+        module_name = "classify_timeseries_server.serving.service"
+        sys.modules.pop(module_name, None)
+        sys.modules["bentoml"].service_options.clear()
+        return importlib.import_module(module_name)
+
+    def test_default_timeout_covers_large_prediction_budget(self, monkeypatch):
+        monkeypatch.delenv("TIMESERIES_PREDICT_TIMEOUT_SECONDS", raising=False)
+
+        service_module = self._reload_service()
+
+        assert service_module.TIMESERIES_PREDICT_TIMEOUT_SECONDS == 120
+        assert sys.modules["bentoml"].service_options[-1]["traffic"] == {"timeout": 120}
+
+    def test_timeout_budget_can_be_configured(self, monkeypatch):
+        monkeypatch.setenv("TIMESERIES_PREDICT_TIMEOUT_SECONDS", "75")
+
+        service_module = self._reload_service()
+
+        assert service_module.TIMESERIES_PREDICT_TIMEOUT_SECONDS == 75
+        assert sys.modules["bentoml"].service_options[-1]["traffic"] == {"timeout": 75}
 
 
 class TestMLServicePredict:

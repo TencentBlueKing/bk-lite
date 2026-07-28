@@ -17,12 +17,17 @@ from .metrics import (
     prediction_duration,
 )
 from .models import load_model
-from .schemas import MAX_INPUT_DATA_POINTS, MAX_PREDICTION_STEPS, PredictRequest, PredictResponse
+from .schemas.api_schema import MAX_INPUT_DATA_POINTS, MAX_PREDICTION_STEPS, PredictRequest, PredictResponse
+
+
+TIMESERIES_PREDICT_TIMEOUT_SECONDS = int(os.getenv("TIMESERIES_PREDICT_TIMEOUT_SECONDS", "120"))
+if TIMESERIES_PREDICT_TIMEOUT_SECONDS <= 0:
+    raise ValueError("TIMESERIES_PREDICT_TIMEOUT_SECONDS must be greater than 0")
 
 
 @bentoml.service(
     name="classify_timeseries_service",
-    traffic={"timeout": 30},
+    traffic={"timeout": TIMESERIES_PREDICT_TIMEOUT_SECONDS},
 )
 class MLService:
     """机器学习模型服务."""

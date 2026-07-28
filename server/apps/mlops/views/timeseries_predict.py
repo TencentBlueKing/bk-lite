@@ -41,6 +41,16 @@ from apps.mlops.views.base import TeamModelViewSet
 from apps.mlops.utils.group_scope import filter_queryset_by_parent_team
 
 
+TIMESERIES_PREDICT_PROXY_TIMEOUT_MARGIN_SECONDS = 5
+
+
+def get_timeseries_predict_timeout_seconds():
+    timeout = int(os.getenv("TIMESERIES_PREDICT_TIMEOUT_SECONDS", "120"))
+    if timeout <= 0:
+        raise ValueError("TIMESERIES_PREDICT_TIMEOUT_SECONDS must be greater than 0")
+    return timeout + TIMESERIES_PREDICT_PROXY_TIMEOUT_MARGIN_SECONDS
+
+
 class TimeSeriesPredictDatasetViewSet(TeamModelViewSet):
     queryset = TimeSeriesPredictDataset.objects.all()
     serializer_class = TimeSeriesPredictDatasetSerializer
@@ -1237,7 +1247,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
             response = requests.post(
                 predict_url,
                 json=payload,
-                timeout=60,
+                timeout=get_timeseries_predict_timeout_seconds(),
                 headers={"Content-Type": "application/json"},
             )
 

@@ -253,6 +253,41 @@ def test_timeseries_predict_rejects_oversized_batch(mlops_api_client, mlops_user
     assert post_called["count"] == 0
 
 
+def test_timeseries_predict_uses_configured_timeout_budget(mlops_api_client, mlops_user, monkeypatch):
+    mlops_user.permission["mlops"].add("timeseries_predict-Predict")
+    train_job = create_train_job(TimeSeriesPredictTrainJob, team=1)
+    serving = _create_serving(TimeSeriesPredictServing, train_job)
+
+    monkeypatch.setattr("apps.mlops.views.timeseries_predict.build_predict_url", _fake_build_predict_url)
+    monkeypatch.setenv("TIMESERIES_PREDICT_TIMEOUT_SECONDS", "75")
+
+    captured = {}
+
+    class FakeResponse:
+        status_code = 200
+
+        def json(self):
+            return {"success": True, "prediction": []}
+
+    def fake_post(*args, **kwargs):
+        captured.update(kwargs)
+        return FakeResponse()
+
+    monkeypatch.setattr("apps.mlops.views.timeseries_predict.requests.post", fake_post)
+
+    response = mlops_api_client.post(
+        f"/api/v1/mlops/timeseries_predict_servings/{serving.id}/predict/",
+        {
+            "data": [{"timestamp": "2024-01-01", "value": 1}],
+            "config": {"steps": 1000},
+        },
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert captured["timeout"] == 80
+
+
 # ---------------------------------------------------------------------------
 # log_clustering — data list
 # ---------------------------------------------------------------------------
