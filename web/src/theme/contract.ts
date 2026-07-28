@@ -73,6 +73,8 @@ export interface SemanticColorTokens {
   chartSuccess: string;
   chartWarning: string;
   chartError: string;
+  chartGapFill: string;
+  chartGapBoundary: string;
 }
 
 export interface ThemeMetadata {

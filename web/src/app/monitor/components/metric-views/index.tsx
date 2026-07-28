@@ -20,14 +20,14 @@ import { SearchParams } from '@/app/monitor/types/search';
 import { useTranslation } from '@/utils/i18n';
 import {
   mergeViewQueryKeyValues,
-  renderChart,
-  getRecentTimeRange
+  renderChart
 } from '@/app/monitor/utils/common';
 import { calculateQueryStep } from '@/app/monitor/utils/queryStep';
 import { attachGapIntervals, buildGapDetectionParams } from '@/app/monitor/utils/gapIntervals';
 
 import dayjs, { Dayjs } from 'dayjs';
 import LazyMetricItem from './lazyMetricItem';
+import { createMetricQueryWindow } from './queryWindow';
 
 const MYSQL_GROUP_NAME_MAP: Record<string, string> = {
   ConnStatus: '连接状态',
@@ -153,6 +153,16 @@ const MetricViews: React.FC<ViewDetailProps> = ({
   const activeTimeValues = externalTimeValues || timeValues;
   const activeTimeDefaultValue = externalTimeDefaultValue || timeDefaultValue;
   const activeFrequence = typeof externalFrequence === 'number' ? externalFrequence : frequence;
+  const [activeQueryWindow, setActiveQueryWindow] = useState(() =>
+    createMetricQueryWindow(activeTimeValues)
+  );
+  const activeQueryWindowRef = useRef(activeQueryWindow);
+
+  const snapshotActiveQueryWindow = () => {
+    const nextQueryWindow = createMetricQueryWindow(activeTimeValues);
+    activeQueryWindowRef.current = nextQueryWindow;
+    setActiveQueryWindow(nextQueryWindow);
+  };
 
   const getDisplayName = (item: { name?: string; display_name?: string }) => {
     const displayName = item.display_name || item.name || '--';
@@ -399,12 +409,10 @@ const MetricViews: React.FC<ViewDetailProps> = ({
       ),
       source_unit: item.unit || ''
     };
-    const recentTimeRange = getRecentTimeRange(activeTimeValues);
-    const startTime = recentTimeRange.at(0);
-    const endTime = recentTimeRange.at(1);
-    if (Number.isFinite(startTime) && Number.isFinite(endTime)) {
-      params.start = startTime;
-      params.end = endTime;
+    const queryWindow = activeQueryWindowRef.current;
+    if (queryWindow) {
+      params.start = queryWindow.startMs;
+      params.end = queryWindow.endMs;
       params.step = calculateQueryStep(params.start, params.end, collectionInterval);
     }
     return buildGapDetectionParams(params, collectionInterval);
@@ -433,9 +441,9 @@ const MetricViews: React.FC<ViewDetailProps> = ({
       return;
     }
     setLoadingMetricIds((prev) => new Set(prev).add(metric.id));
+    const params = getParams(metric, idValues);
     let response;
     try {
-      const params = getParams(metric, idValues);
       response = await get(`/monitor/api/metrics_instance/query_range/`, {
         params,
         signal: abortController.signal
@@ -564,6 +572,7 @@ const MetricViews: React.FC<ViewDetailProps> = ({
 
   const handleSearch = (type: string) => {
     if (['refresh', 'timer'].includes(type)) {
+      snapshotActiveQueryWindow();
       cancelAllRequests();
       setResetCounter((prev) => prev + 1);
       setNeedsRefreshOnExpand(true);
@@ -809,6 +818,7 @@ const MetricViews: React.FC<ViewDetailProps> = ({
                       isCancelled={cancelledMetricIds.has(item.id)}
                       onVisibilityChange={handleVisibilityChange}
                       isInViewport={visibleMetricIds.has(item.id)}
+                      xAxisDomain={activeQueryWindow?.xAxisDomain}
                     />
                   ))}
                 </div>
