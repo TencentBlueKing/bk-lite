@@ -249,6 +249,62 @@ def test_update_failure_does_not_overwrite_concurrent_database_update(
     assert serving.container_info["state"] == "running"
 
 
+def test_update_acquires_row_lock_before_runtime_transition(
+    mlops_api_client,
+    mlops_user,
+    monkeypatch,
+):
+    mlops_user.permission["mlops"].add("timeseries_predict-Edit")
+    serving = _create_serving(port=3000)
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.TimeSeriesPredictServingViewSet.get_has_permission",
+        lambda *args, **kwargs: True,
+    )
+    monkeypatch.setenv("TIMESERIES_PREDICT_TIMEOUT_SECONDS", "75")
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.get_mlflow_tracking_uri",
+        lambda: "http://mlflow:15000",
+    )
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.get_image_by_prefix",
+        lambda prefix, algorithm: "classify-timeseries:latest",
+    )
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.TimeSeriesPredictServingViewSet._resolve_model_uri",
+        lambda self, instance: f"models:/timeseries/{instance.model_version}",
+    )
+    runtime_events = []
+    original_select_for_update = TimeSeriesPredictServing.objects.select_for_update
+
+    def tracked_select_for_update(*args, **kwargs):
+        runtime_events.append("lock")
+        return original_select_for_update(*args, **kwargs)
+
+    monkeypatch.setattr(TimeSeriesPredictServing.objects, "select_for_update", tracked_select_for_update)
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.WebhookClient.remove",
+        lambda serving_id: runtime_events.append("remove"),
+    )
+
+    def fake_serve(*args, **kwargs):
+        runtime_events.append("serve")
+        return {"status": "success", "state": "running", "port": "3000"}
+
+    monkeypatch.setattr("apps.mlops.views.timeseries_predict.WebhookClient.serve", fake_serve)
+
+    response = mlops_api_client.patch(
+        f"/api/v1/mlops/timeseries_predict_servings/{serving.id}/",
+        {"model_version": "v2"},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert runtime_events == ["lock", "remove", "serve"]
+    serving.refresh_from_db()
+    assert serving.model_version == "v2"
+    assert serving.container_info["state"] == "running"
+
+
 def test_update_reconciles_remove_timeout_before_restoring_old_runtime(
     mlops_api_client,
     mlops_user,
@@ -300,6 +356,75 @@ def test_update_reconciles_remove_timeout_before_restoring_old_runtime(
     assert response.data["message"] == "配置已回滚，并在对账确认旧服务已删除后恢复旧服务"
     assert len(serve_calls) == 1
     assert serve_calls[0][0][2] == "models:/timeseries/latest"
+    serving.refresh_from_db()
+    assert serving.model_version == "latest"
+    assert serving.container_info["state"] == "running"
+
+
+def test_update_remove_error_cleans_stopped_runtime_before_restore(
+    mlops_api_client,
+    mlops_user,
+    monkeypatch,
+):
+    from apps.mlops.utils.webhook_client import WebhookError
+
+    mlops_user.permission["mlops"].add("timeseries_predict-Edit")
+    serving = _create_serving(port=3000)
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.TimeSeriesPredictServingViewSet.get_has_permission",
+        lambda *args, **kwargs: True,
+    )
+    monkeypatch.setenv("TIMESERIES_PREDICT_TIMEOUT_SECONDS", "75")
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.get_mlflow_tracking_uri",
+        lambda: "http://mlflow:15000",
+    )
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.get_image_by_prefix",
+        lambda prefix, algorithm: "classify-timeseries:latest",
+    )
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.TimeSeriesPredictServingViewSet._resolve_model_uri",
+        lambda self, instance: f"models:/timeseries/{instance.model_version}",
+    )
+    runtime_events = []
+
+    def fake_remove(serving_id):
+        runtime_events.append(("remove", serving_id))
+        if len(runtime_events) == 1:
+            raise WebhookError("stop succeeded but rm failed")
+
+    status_calls = 0
+
+    def fake_get_status(ids):
+        nonlocal status_calls
+        status_calls += 1
+        state = "completed" if status_calls == 1 else "not_found"
+        runtime_events.append(("status", state))
+        return [{"id": ids[0], "status": "success", "state": state, "port": ""}]
+
+    def fake_serve(*args, **kwargs):
+        runtime_events.append(("serve", args[0]))
+        return {"status": "success", "state": "running", "port": "3000"}
+
+    monkeypatch.setattr("apps.mlops.views.timeseries_predict.WebhookClient.remove", fake_remove)
+    monkeypatch.setattr("apps.mlops.views.timeseries_predict.WebhookClient.get_status", fake_get_status)
+    monkeypatch.setattr("apps.mlops.views.timeseries_predict.WebhookClient.serve", fake_serve)
+
+    response = mlops_api_client.patch(
+        f"/api/v1/mlops/timeseries_predict_servings/{serving.id}/",
+        {"model_version": "v2"},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+    assert runtime_events == [
+        ("remove", f"TimeseriesPredict_Serving_{serving.id}"),
+        ("status", "completed"),
+        ("remove", f"TimeseriesPredict_Serving_{serving.id}"),
+        ("status", "not_found"),
+        ("serve", f"TimeseriesPredict_Serving_{serving.id}"),
+    ]
     serving.refresh_from_db()
     assert serving.model_version == "latest"
     assert serving.container_info["state"] == "running"

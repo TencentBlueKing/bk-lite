@@ -930,6 +930,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
         return response
 
     @HasPermission("timeseries_predict-Edit")
+    @transaction.atomic
     def update(self, request, *args, **kwargs):
         """
         更新 serving 配置，自动检测并重启容器
@@ -938,7 +939,10 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
         - 容器 running + 配置变更 → 自动重启
         - 容器非 running → 仅更新数据库，用户自行决定是否启动
         """
-        instance = self.get_object()
+        # 同一 serving 的数据库写入和外部运行时切换必须串行；普通并发 UPDATE
+        # 也会在 PostgreSQL 行锁上等待，避免另一个请求接管同一 runtime ID。
+        unlocked_instance = self.get_object()
+        instance = unlocked_instance.__class__.objects.select_for_update().get(pk=unlocked_instance.pk)
 
         # 本方法在父类更新前会解析 MLflow、镜像和运行时配置，因此先复用父类的
         # 完整实例授权门禁；父类收到标记后不再重复执行同一校验。
@@ -1064,7 +1068,25 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                     rollback_message = "配置已回滚，但旧服务删除结果未知"
                 else:
                     runtime_state = observed_runtime[0] if observed_runtime else {}
-                    if runtime_state.get("state") == "not_found":
+                    observed_state = runtime_state.get("state")
+                    if runtime_state and observed_state not in {"running", "not_found"}:
+                        try:
+                            # stop 成功但 remove 失败时会留下 completed/failed/stopped
+                            # 资源；再次幂等删除并确认消失后才能复用相同 ID。
+                            WebhookClient.remove(container_id)
+                            verified_runtime = WebhookClient.get_status([container_id])
+                            runtime_state = verified_runtime[0] if verified_runtime else {}
+                            observed_state = runtime_state.get("state")
+                        except Exception as cleanup_error:
+                            logger.error(f"清理非运行态旧 serving 失败: {cleanup_error}", exc_info=True)
+                            runtime_state = {
+                                "status": "error",
+                                "state": "unknown",
+                                "message": f"旧服务非运行态资源清理失败: {str(cleanup_error)}",
+                            }
+                            observed_state = "unknown"
+
+                    if observed_state == "not_found":
                         try:
                             rollback_result = WebhookClient.serve(
                                 container_id,
@@ -1089,16 +1111,16 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                             }
                             rollback_port = old_port
                             rollback_message = "配置已回滚，但旧服务恢复失败"
-                    elif runtime_state:
+                    elif observed_state == "running":
                         rollback_result = runtime_state
                         rollback_port = (
                             int(runtime_state.get("port", 0))
                             if runtime_state.get("port")
                             else old_port
                         )
-                        rollback_message = "配置已回滚，并已对账确认旧服务状态"
+                        rollback_message = "配置已回滚，并已对账确认旧服务仍在运行"
                     else:
-                        rollback_result = {
+                        rollback_result = runtime_state or {
                             "status": "error",
                             "state": "unknown",
                             "message": "旧服务删除结果未知：状态查询未返回目标资源",

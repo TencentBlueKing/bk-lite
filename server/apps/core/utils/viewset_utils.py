@@ -80,12 +80,16 @@ class GenericViewSetFun(object):
 
     def get_has_permission(self, user, instance, current_team, is_list=False, is_check=False, include_children=False):
         """获取规则实例ID"""
-        user_groups = normalize_user_group_ids(getattr(user, "group_list", []))
+        try:
+            normalized_current_team = int(current_team)
+        except (TypeError, ValueError):
+            normalized_current_team = current_team
+        scoped_groups = {normalized_current_team}
         if include_children:
             group_tree = getattr(user, "group_tree", [])
             child_groups = self.extract_child_group_ids(group_tree, current_team)
             if child_groups:
-                user_groups = child_groups
+                scoped_groups = set(child_groups)
         org_field = getattr(self, "ORGANIZATION_FIELD", "team")
         if is_list:
             instance_id = list(instance.values_list("id", flat=True))
@@ -93,12 +97,12 @@ class GenericViewSetFun(object):
                 if hasattr(i, org_field):
                     # 判断两个集合是否有交集
                     org_value = getattr(i, org_field)
-                    if not set(org_value).intersection(set(user_groups)):
+                    if not set(org_value).intersection(scoped_groups):
                         return False
         else:
             if hasattr(instance, org_field):
                 org_value = getattr(instance, org_field)
-                if not set(org_value).intersection(set(user_groups)):
+                if not set(org_value).intersection(scoped_groups):
                     return False
             instance_id = [instance.id]
         try:
@@ -112,7 +116,7 @@ class GenericViewSetFun(object):
                 # "对象属于当前组织树即放行"，造成子组织任务越权（issue #3037）。
                 # current_team 自身已授权的情况已由上方 current_team in permission_rules["team"] 覆盖。
                 allowed_teams = {i for i in permission_rules.get("team", [])}
-                if allowed_teams & set(user_groups):
+                if allowed_teams & scoped_groups:
                     return True
 
             operate = "View" if is_check else "Operate"
