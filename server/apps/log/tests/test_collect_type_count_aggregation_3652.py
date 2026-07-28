@@ -1,4 +1,5 @@
 import json
+from types import SimpleNamespace
 
 import pytest
 from rest_framework.test import APIRequestFactory, force_authenticate
@@ -106,7 +107,7 @@ def test_collect_type_counts_use_permission_aware_aggregate_queries(
             ]
         return {
             "data": {
-                "all": {"team": [{"id": 9}, {"id": "8"}]},
+                "all": {"team": [{"id": 9}, {"id": 8}]},
                 str(collect_type_a.id): {
                     "instance": instance_permissions,
                     "team": [{"id": 2}, {"id": "1"}],
@@ -120,6 +121,16 @@ def test_collect_type_counts_use_permission_aware_aggregate_queries(
         collect_config,
         "get_permissions_rules",
         get_permissions_rules,
+    )
+    monkeypatch.setattr(
+        collect_config.LogAccessScopeService,
+        "get_data_scope",
+        lambda request: SimpleNamespace(
+            current_team=1,
+            data_team_ids=frozenset({1, 2}),
+            include_children=True,
+            is_superuser=False,
+        ),
     )
 
     request = APIRequestFactory().get(
@@ -140,4 +151,6 @@ def test_collect_type_counts_use_permission_aware_aggregate_queries(
         item["name"]: (item["policy_count"], item["instance_count"])
         for item in json.loads(response.content)["data"]
     }
-    assert data == {"type-a": (2, 2), "type-b": (2, 2)}
+    # Explicit grants without a data-scope organization and global grants for
+    # organizations outside the data scope must not expand the visible counts.
+    assert data == {"type-a": (1, 1), "type-b": (2, 2)}

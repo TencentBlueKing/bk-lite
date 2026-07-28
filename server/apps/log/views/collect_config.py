@@ -137,7 +137,10 @@ class CollectTypeViewSet(ModelViewSet):
             permission_scope |= Q(collect_type_id=collect_type_id) & object_scope
 
         counts = (
-            model.objects.filter(collect_type_id__in=collect_type_ids)
+            model.objects.filter(
+                collect_type_id__in=collect_type_ids,
+                **{organization_lookup: current_teams},
+            )
             .filter(permission_scope)
             .values("collect_type_id")
             .annotate(count=Count("id", distinct=True))
