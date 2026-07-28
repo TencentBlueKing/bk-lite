@@ -1,0 +1,48 @@
+name: Server Import Check
+
+on:
+  pull_request:
+    paths:
+      - 'server/**'
+  push:
+    branches: [master]
+    paths:
+      - 'server/**'
+  workflow_dispatch:
+
+jobs:
+  import-check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+
+    # 轻量 import 冒烟：用 sqlite 免去外部服务，只验证全量 app 能完成
+    # django.setup() 与系统检查，专拦"import 了未提交/不存在的模块"这类
+    # 启动即崩的破坏。migrate 与迁移一致性仍由 Server Migrate Check 负责。
+    env:
+      DB_ENGINE: sqlite
+      DB_NAME: ":memory:"
+      SECRET_KEY: github-actions-import-check
+      ENABLE_CELERY: "true"
+      MINIO_ENDPOINT: 127.0.0.1:9000
+      MINIO_ACCESS_KEY: import-check
+      MINIO_SECRET_KEY: import-check-secret
+      MINIO_USE_HTTPS: "false"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: server/pyproject.toml
+
+      - name: Install dependencies
+        run: pip install -e ".[cmdb,dev,mlops,opspilot]"
+
+      - name: Django import smoke check
+        run: python manage.py check
