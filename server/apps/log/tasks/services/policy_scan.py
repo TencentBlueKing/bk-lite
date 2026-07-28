@@ -16,6 +16,8 @@ except ValueError:
     _MAX_ALERT_SNAPSHOTS = 500
 
 from django.db import IntegrityError, transaction
+from django.utils import timezone as django_timezone
+from django.utils.dateparse import parse_datetime
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import celery_logger as logger
@@ -726,7 +728,6 @@ class LogPolicyScan:
             events_to_update = []
             # 建立 event_id 到原始数据的映射，用于后续快照创建
             event_id_to_raw_data = {}
-            source_ids = [event["source_id"] for event in events]
             event_ids = [self._build_event_id(source_id) for source_id in source_ids]
             existing_events, legacy_events = self._find_existing_events(event_ids, source_ids)
 
@@ -739,7 +740,6 @@ class LogPolicyScan:
                     # 同一执行的旧 worker 可能在较新结果提交后才返回；旧结果只能复用，
                     # 不得回退 Event/Alert/RawData/快照的时间与内容。
                     if existing_event.event_time and self.scan_time and existing_event.event_time > self.scan_time:
-                        existing_event_objs.append(existing_event)
                         continue
                     alert_obj = existing_event.alert
                     level_changed = existing_event.level != event["level"]
@@ -820,6 +820,81 @@ class LogPolicyScan:
             # → 事务回滚，DB 保持一致。快照写入在事务外独立执行（各自已有 atomic 保护）。
             try:
                 with transaction.atomic():
+                    # 分类阶段的查询可能早于并发 worker 提交。写入前按 Event → Alert 的
+                    # 固定顺序加行锁并重新判定时间，避免旧 worker 的陈旧对象反向覆盖。
+                    locked_events = {
+                        event.id: event
+                        for event in Event.objects.select_for_update()
+                        .filter(id__in=[event.id for event in events_to_update])
+                        .order_by("id")
+                    }
+                    locked_alerts = {
+                        alert.id: alert
+                        for alert in Alert.objects.select_for_update()
+                        .filter(id__in=[alert.id for alert in alerts_to_update])
+                        .order_by("id")
+                    }
+                    stale_alert_ids = {
+                        alert.id
+                        for alert in locked_alerts.values()
+                        if alert.status != AlertConstants.STATUS_NEW
+                        or (
+                            self.execution_key is not None
+                            and alert.end_event_time
+                            and self.scan_time
+                            and alert.end_event_time > self.scan_time
+                        )
+                    }
+
+                    refreshed_events = []
+                    refreshed_existing_event_objs = []
+                    for desired_event in events_to_update:
+                        current_event = locked_events[desired_event.id]
+                        if current_event.alert_id in stale_alert_ids or (
+                            current_event.event_time and self.scan_time and current_event.event_time > self.scan_time
+                        ):
+                            stale_alert_ids.add(current_event.alert_id)
+                            continue
+
+                        if current_event.level != desired_event.level:
+                            current_event.notified = False
+                            current_event.notice_result = []
+                            current_event.notice_retry_count = 0
+                        current_event.event_time = desired_event.event_time
+                        current_event.value = desired_event.value
+                        current_event.level = desired_event.level
+                        current_event.content = desired_event.content
+                        refreshed_events.append(current_event)
+                        refreshed_existing_event_objs.append(current_event)
+
+                    events_to_update = refreshed_events
+                    existing_event_objs = refreshed_existing_event_objs
+
+                    refreshed_alerts = {}
+                    for desired_alert in alerts_to_update:
+                        current_alert = locked_alerts[desired_alert.id]
+                        if current_alert.id in stale_alert_ids:
+                            continue
+                        if current_alert.level != desired_alert.level:
+                            current_alert.notice = False
+                        current_alert.value = desired_alert.value
+                        current_alert.content = desired_alert.content
+                        current_alert.level = desired_alert.level
+                        current_alert.end_event_time = desired_alert.end_event_time
+                        refreshed_alerts[current_alert.id] = current_alert
+                    alerts_to_update = list(refreshed_alerts.values())
+
+                    if stale_alert_ids:
+                        create_events = [event for event in create_events if event.alert_id not in stale_alert_ids]
+
+                    writable_event_ids = {event.id for event in create_events}
+                    writable_event_ids.update(event.id for event in existing_event_objs)
+                    event_id_to_raw_data = {
+                        event_id: raw_data
+                        for event_id, raw_data in event_id_to_raw_data.items()
+                        if event_id in writable_event_ids
+                    }
+
                     # 批量创建新告警
                     if alerts_to_create:
                         Alert.objects.bulk_create(alerts_to_create, batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE)
@@ -1001,6 +1076,24 @@ class LogPolicyScan:
                         raw_data = event_raw_data_map.get(event_obj.id, {})
                         event_snapshot = existing_snapshots.get(event_obj.id)
                         if event_snapshot:
+                            # 主数据事务与快照事务刻意分离；旧 worker 可能晚于新 worker
+                            # 取得快照锁，只允许相同或更新的事件时间覆盖同一 event_id。
+                            persisted_time = parse_datetime(
+                                event_snapshot.get("event_time") or event_snapshot.get("snapshot_time") or ""
+                            )
+                            candidate_time = event_obj.event_time or snapshot_time
+                            if persisted_time and django_timezone.is_naive(persisted_time):
+                                persisted_time = django_timezone.make_aware(
+                                    persisted_time,
+                                    django_timezone.get_default_timezone(),
+                                )
+                            if candidate_time and django_timezone.is_naive(candidate_time):
+                                candidate_time = django_timezone.make_aware(
+                                    candidate_time,
+                                    django_timezone.get_default_timezone(),
+                                )
+                            if persisted_time and candidate_time and persisted_time > candidate_time:
+                                continue
                             event_snapshot.update(
                                 {
                                     "event_time": event_obj.event_time.isoformat() if event_obj.event_time else None,
@@ -1145,10 +1238,11 @@ class LogPolicyScan:
                 with transaction.atomic():
                     # 同步首发与补偿/并发扫描都以 Event 行锁领取通知；锁必须覆盖外部发送和
                     # 回执落库，避免两个持有旧对象的 worker 同时看到 notified=False 后双投。
-                    current = Event.objects.select_for_update().select_related("alert").get(pk=event.pk)
+                    current = Event.objects.select_for_update().get(pk=event.pk)
+                    current_alert = Alert.objects.select_for_update().get(pk=current.alert_id)
                     if current.level == "info" or current.notified:
                         continue
-                    if current.alert.notice:
+                    if current_alert.notice:
                         current.notice_result = [{"result": True, "message": "skipped: alert already notified"}]
                         current.notified = True
                         current.save(update_fields=["notice_result", "notified", "updated_at"])

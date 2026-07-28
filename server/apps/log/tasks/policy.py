@@ -20,25 +20,37 @@ def _execution_key(policy_id, cursor_time):
 
 
 def _advance_policy_cursor(policy_id, cursor_time, scan_time):
-    """用 CAS 单调推进游标；并发执行不能覆盖其他窗口的结果。"""
+    """用 CAS 单调推进游标，并将异常并发完成的窗口汇合到最晚时间。"""
     updated = Policy.objects.filter(id=policy_id, last_run_time=cursor_time).update(last_run_time=scan_time)
     if updated:
         return
+
+    # 正常生产入口由 celery-singleton 按 policy_id 排他。若锁被绕过，同一游标的
+    # 多个已完成窗口仍可能在副作用落库后竞争 CAS；接受这些窗口的并集并原子汇合到
+    # 最大 scan_time，避免“任务报错但副作用已发生”后用新 execution_key 重扫。
+    Policy.objects.filter(
+        id=policy_id,
+        last_run_time__lt=scan_time,
+    ).update(last_run_time=scan_time)
     current_cursor = Policy.objects.values_list("last_run_time", flat=True).get(id=policy_id)
-    if current_cursor != scan_time:
-        raise RuntimeError(f"日志策略 [{policy_id}] 扫描游标已被并发修改")
+    if current_cursor is None or current_cursor < scan_time:
+        raise RuntimeError(f"日志策略 [{policy_id}] 扫描游标无法单调推进")
 
 
-def _initialize_policy_cursor(policy_obj, safe_time, period_seconds):
-    """为首次扫描持久化一个有界左边界，失败重试不得移动该边界。"""
-    earliest = safe_time - timedelta(seconds=period_seconds)
-    created_at = min(policy_obj.created_at, safe_time)
-    initial_cursor = max(created_at, earliest)
-    updated = Policy.objects.filter(id=policy_obj.id, last_run_time__isnull=True).update(last_run_time=initial_cursor)
-    if not updated:
-        initial_cursor = Policy.objects.values_list("last_run_time", flat=True).get(id=policy_obj.id)
-    policy_obj.last_run_time = initial_cursor
-    return initial_cursor
+def _run_policy_window(policy_obj, cursor_time, scan_time, period_seconds, overlap_seconds):
+    """执行一个完整检测周期，并在成功后单调推进游标。"""
+    window_end = int(scan_time.timestamp())
+    window_start = max(window_end - period_seconds - overlap_seconds, 0)
+    LogPolicyScan(
+        policy_obj,
+        scan_time=scan_time,
+        window_start=window_start,
+        window_end=window_end,
+        execution_key=_execution_key(policy_obj.id, cursor_time),
+        cursor_time=cursor_time,
+    ).run()
+    _advance_policy_cursor(policy_obj.id, cursor_time, scan_time)
+    policy_obj.last_run_time = scan_time
 
 
 @shared_task(base=Singleton, raise_on_duplicate=False)
@@ -79,43 +91,60 @@ def scan_log_policy_task(policy_id):
         overlap_seconds = AlertConstants.WINDOW_OVERLAP_SECONDS
 
         if policy_obj.last_run_time is None:
-            _initialize_policy_cursor(policy_obj, safe_time, period_seconds)
-
-        gap_seconds = max((safe_time - policy_obj.last_run_time).total_seconds(), 0)
-        gap_seconds = min(gap_seconds, AlertConstants.MAX_BACKFILL_SECONDS)
-        backfill_count = int(gap_seconds // period_seconds)
-        if backfill_count == 0:
-            cursor_time = policy_obj.last_run_time
-            scan_time = safe_time
-            window_end = int(scan_time.timestamp())
-            window_start = max(int(cursor_time.timestamp()) - overlap_seconds, 0)
-            LogPolicyScan(
+            # 首次执行仍保持一个完整 period 的滚动窗口。游标只在成功后写入；
+            # 失败重试继续使用 initial 执行身份，可兼容复用升级前已落库的随机 UUID Event。
+            _run_policy_window(
                 policy_obj,
-                scan_time=scan_time,
-                window_start=window_start,
-                window_end=window_end,
-                execution_key=_execution_key(policy_id, cursor_time),
-                cursor_time=cursor_time,
-            ).run()
-            _advance_policy_cursor(policy_id, cursor_time, scan_time)
-        else:
-            backfill_count = min(backfill_count, AlertConstants.MAX_BACKFILL_COUNT)
-            logger.info(f"日志策略 [{policy_id}] 需要补偿 {backfill_count} 个周期")
+                cursor_time=None,
+                scan_time=safe_time,
+                period_seconds=period_seconds,
+                overlap_seconds=overlap_seconds,
+            )
+            duration = time.time() - start_time
+            logger.info(f"日志策略 [{policy_id}] 首次扫描完成，耗时: {duration:.2f}s")
+            return {"success": True, "duration": duration, "message": "执行成功"}
+
+        max_progress_seconds = min(
+            AlertConstants.MAX_BACKFILL_SECONDS,
+            AlertConstants.MAX_BACKFILL_COUNT * period_seconds,
+        )
+        effective_safe_time = min(
+            safe_time,
+            policy_obj.last_run_time + timedelta(seconds=max_progress_seconds),
+        )
+        gap_seconds = max((effective_safe_time - policy_obj.last_run_time).total_seconds(), 0)
+        backfill_count = int(gap_seconds // period_seconds)
+
+        if backfill_count:
+            logger.info(f"日志策略 [{policy_id}] 需要补偿 {backfill_count} 个完整周期")
             for index in range(backfill_count):
                 cursor_time = policy_obj.last_run_time
                 scan_time = cursor_time + timedelta(seconds=period_seconds)
-                window_start = max(int(cursor_time.timestamp()) - overlap_seconds, 0)
-                logger.info(f"开始执行日志策略 [{policy_id}] 的第 {index + 1}/{backfill_count} 次补偿扫描，" f"扫描时间点: {scan_time}")
-                LogPolicyScan(
+                logger.info(
+                    f"开始执行日志策略 [{policy_id}] 的第 {index + 1}/{backfill_count} 次补偿扫描，"
+                    f"扫描时间点: {scan_time}"
+                )
+                _run_policy_window(
                     policy_obj,
-                    scan_time=scan_time,
-                    window_start=window_start,
-                    window_end=int(scan_time.timestamp()),
-                    execution_key=_execution_key(policy_id, cursor_time),
                     cursor_time=cursor_time,
-                ).run()
-                policy_obj.last_run_time = scan_time
-                _advance_policy_cursor(policy_id, cursor_time, scan_time)
+                    scan_time=scan_time,
+                    period_seconds=period_seconds,
+                    overlap_seconds=overlap_seconds,
+                )
+
+        # 补偿完整周期后若已追到 safe_time 前不足一个周期，立即执行尾部滚动窗口。
+        # 查询宽度始终是 period（外加 overlap），避免 schedule < period 时缩短聚合语义。
+        remaining_gap = max((effective_safe_time - policy_obj.last_run_time).total_seconds(), 0)
+        if 0 < remaining_gap < period_seconds:
+            cursor_time = policy_obj.last_run_time
+            scan_time = effective_safe_time
+            _run_policy_window(
+                policy_obj,
+                cursor_time=cursor_time,
+                scan_time=scan_time,
+                period_seconds=period_seconds,
+                overlap_seconds=overlap_seconds,
+            )
 
         duration = time.time() - start_time
         logger.info(f"日志策略 [{policy_id}] 扫描完成，耗时: {duration:.2f}s")
@@ -137,13 +166,14 @@ def compensate_log_notice_task():
 
     产生事件复用 Event 的发送状态与重试次数；关闭事件复用 Alert 的状态、关闭时间与
     notice。
-    两类对象均限制在补偿窗口、最小落库年龄与批量上限内，通知语义为 at-least-once。
+    两类对象均限制在补偿窗口、最小落库年龄与批量上限内，通知语义为有界 best-effort；
+    发送成功但事务提交前退出时仍可能重放。
     """
     start_time = time.time()
     now = datetime.now(timezone.utc)
     window_start = now - timedelta(seconds=AlertConstants.NOTICE_COMPENSATE_WINDOW_SECONDS)
     # 仅补偿落库已超 MIN_AGE 的事件：等待本轮扫描的同步 notice() 完成，降低与首发并发双投的概率
-    # （门槛取值须大于 notice() 最坏耗时量级，见 AlertConstants 说明；通知语义为 at-least-once）
+    # （门槛取值须大于 notice() 最坏耗时量级，见 AlertConstants 说明）
     settle_before = now - timedelta(seconds=AlertConstants.NOTICE_COMPENSATE_MIN_AGE_SECONDS)
 
     # closed 没有独立重试字段，仅扫描明确指向告警中心的策略。
