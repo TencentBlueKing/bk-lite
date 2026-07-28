@@ -42,13 +42,22 @@ from apps.mlops.utils.group_scope import filter_queryset_by_parent_team
 
 
 TIMESERIES_PREDICT_PROXY_TIMEOUT_MARGIN_SECONDS = 5
+MAX_TIMESERIES_PREDICT_TIMEOUT_SECONDS = 290
 
 
-def get_timeseries_predict_timeout_seconds():
-    timeout = int(os.getenv("TIMESERIES_PREDICT_TIMEOUT_SECONDS", "120"))
-    if timeout <= 0:
-        raise ValueError("TIMESERIES_PREDICT_TIMEOUT_SECONDS must be greater than 0")
-    return timeout + TIMESERIES_PREDICT_PROXY_TIMEOUT_MARGIN_SECONDS
+def get_timeseries_predict_budget_seconds() -> int:
+    raw_timeout = os.getenv("TIMESERIES_PREDICT_TIMEOUT_SECONDS", "120")
+    try:
+        timeout = int(raw_timeout)
+    except ValueError:
+        raise ValueError("TIMESERIES_PREDICT_TIMEOUT_SECONDS must be an integer between 1 and 290") from None
+    if not 1 <= timeout <= MAX_TIMESERIES_PREDICT_TIMEOUT_SECONDS:
+        raise ValueError("TIMESERIES_PREDICT_TIMEOUT_SECONDS must be an integer between 1 and 290")
+    return timeout
+
+
+def get_timeseries_predict_timeout_seconds() -> int:
+    return get_timeseries_predict_budget_seconds() + TIMESERIES_PREDICT_PROXY_TIMEOUT_MARGIN_SECONDS
 
 
 class TimeSeriesPredictDatasetViewSet(TeamModelViewSet):
@@ -832,6 +841,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                     model_uri,
                     port=serving.port,
                     train_image=get_image_by_prefix(self.MLFLOW_PREFIX, serving.train_job.algorithm),
+                    timeseries_predict_timeout_seconds=get_timeseries_predict_budget_seconds(),
                 )
 
                 # 启动成功，仅更新容器信息
@@ -976,6 +986,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                     model_uri,
                     port=instance.port,
                     train_image=get_image_by_prefix(self.MLFLOW_PREFIX, instance.train_job.algorithm),
+                    timeseries_predict_timeout_seconds=get_timeseries_predict_budget_seconds(),
                 )
 
                 # 更新容器信息（status 由用户控制，不修改）
@@ -1038,6 +1049,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                     model_uri,
                     port=serving.port,
                     train_image=get_image_by_prefix(self.MLFLOW_PREFIX, serving.train_job.algorithm),
+                    timeseries_predict_timeout_seconds=get_timeseries_predict_budget_seconds(),
                 )
 
                 # 正常启动成功，更新容器信息
@@ -1242,12 +1254,13 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
 
             # 构建请求体
             payload = {"data": data, "config": {"steps": steps}}
+            proxy_timeout_seconds = get_timeseries_predict_timeout_seconds()
 
             # 发起 HTTP POST 请求
             response = requests.post(
                 predict_url,
                 json=payload,
-                timeout=get_timeseries_predict_timeout_seconds(),
+                timeout=proxy_timeout_seconds,
                 headers={"Content-Type": "application/json"},
             )
 
@@ -1287,7 +1300,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                 return Response({"error": error_msg}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         except requests.exceptions.Timeout:
-            error_msg = f"预测请求超时（超过 60 秒）"
+            error_msg = f"预测请求超时（超过 {proxy_timeout_seconds} 秒）"
             logger.error(f"预测超时: serving_id={serving.id}, url={predict_url}")
             return Response({"error": error_msg}, status=status.HTTP_504_GATEWAY_TIMEOUT)
         except requests.exceptions.ConnectionError as e:

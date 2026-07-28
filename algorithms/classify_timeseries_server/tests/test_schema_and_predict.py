@@ -215,6 +215,13 @@ class TestServiceTimeoutBudget:
         assert service_module.TIMESERIES_PREDICT_TIMEOUT_SECONDS == 75
         assert sys.modules["bentoml"].service_options[-1]["traffic"] == {"timeout": 75}
 
+    @pytest.mark.parametrize("invalid_timeout", ["0", "291", "not-a-number"])
+    def test_timeout_budget_rejects_invalid_values(self, monkeypatch, invalid_timeout):
+        monkeypatch.setenv("TIMESERIES_PREDICT_TIMEOUT_SECONDS", invalid_timeout)
+
+        with pytest.raises(ValueError, match="integer between 1 and 290"):
+            self._reload_service()
+
 
 class TestMLServicePredict:
     def _make_service(self, steps=3):

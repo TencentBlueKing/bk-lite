@@ -11,6 +11,9 @@ import type {
 } from '@/app/mlops/types';
 
 
+const TIMESERIES_PREDICT_REQUEST_TIMEOUT_MS = 300_000;
+
+
 const useMlopsModelReleaseApi = () => {
   const {
     get,
@@ -129,7 +132,11 @@ const useMlopsModelReleaseApi = () => {
 
   // 时序预测推理
   const timeseriesPredictReason = async (servingId: number, params: TimeseriesPredictReasonParams) => {
-    return await post(`/mlops/timeseries_predict_servings/${servingId}/predict/`, params);
+    return await post(
+      `/mlops/timeseries_predict_servings/${servingId}/predict/`,
+      params,
+      { timeout: TIMESERIES_PREDICT_REQUEST_TIMEOUT_MS }
+    );
   };
 
   // 日志聚类推理

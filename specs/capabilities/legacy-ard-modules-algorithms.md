@@ -35,6 +35,7 @@
 ## 4. 运行安全配置【已实现/已存在】
 - 异常检测服务：`PREDICT_MAX_DATA_POINTS` 限制单次预测数据点数（`classify_anomaly_server/serving/schemas/api_schema.py:8-9`），服务层在预测入口执行上限校验（`service.py:148`）。
 - 时序预测服务：`MAX_PREDICTION_STEPS` 与 `MAX_INPUT_DATA_POINTS` 分别限制预测步长与输入数据点（`classify_timeseries_server/serving/schemas/api_schema.py:9-11`），服务层在预测入口执行上限校验（`service.py:222`）。
+- 时序预测服务预算：`TIMESERIES_PREDICT_TIMEOUT_SECONDS` 取值 1～290 秒、默认 120 秒，由 MLOps 发布链注入新建或重启的算法容器；非法值在 BentoML 装载时快速失败。存量容器升级后需停止并重新启动以采用新预算。
 - 本地模型加载支持 `MODEL_SHA256` 校验：异常检测与日志聚类 loader 在配置该环境变量时校验本地模型文件摘要；未配置时不强制校验（`classify_anomaly_server/serving/models/loader.py:84`、`classify_log_server/serving/models/loader.py:80`）。
 
 ## 5. 集成关系【已实现/已存在 / 推断】

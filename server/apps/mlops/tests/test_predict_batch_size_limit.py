@@ -288,6 +288,28 @@ def test_timeseries_predict_uses_configured_timeout_budget(mlops_api_client, mlo
     assert captured["timeout"] == 80
 
 
+def test_timeseries_predict_timeout_error_reports_configured_budget(mlops_api_client, mlops_user, monkeypatch):
+    mlops_user.permission["mlops"].add("timeseries_predict-Predict")
+    train_job = create_train_job(TimeSeriesPredictTrainJob, team=1)
+    serving = _create_serving(TimeSeriesPredictServing, train_job)
+
+    monkeypatch.setattr("apps.mlops.views.timeseries_predict.build_predict_url", _fake_build_predict_url)
+    monkeypatch.setenv("TIMESERIES_PREDICT_TIMEOUT_SECONDS", "75")
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.requests.post",
+        lambda *args, **kwargs: (_ for _ in ()).throw(requests.exceptions.Timeout),
+    )
+
+    response = mlops_api_client.post(
+        f"/api/v1/mlops/timeseries_predict_servings/{serving.id}/predict/",
+        {"data": [{"timestamp": "2024-01-01", "value": 1}], "config": {"steps": 1000}},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_504_GATEWAY_TIMEOUT
+    assert response.data["error"] == "预测请求超时（超过 80 秒）"
+
+
 # ---------------------------------------------------------------------------
 # log_clustering — data list
 # ---------------------------------------------------------------------------

@@ -68,6 +68,21 @@ assert.match(
   'explicit client timeouts must be mapped to the proxy compatibility header'
 );
 
+const mlopsModelReleaseSource = readFileSync(
+  new URL('../src/app/mlops/api/modelRelease.ts', import.meta.url),
+  'utf8'
+);
+assert.match(
+  mlopsModelReleaseSource,
+  /TIMESERIES_PREDICT_REQUEST_TIMEOUT_MS = 300_000/,
+  'timeseries prediction must reserve the bounded long-request envelope'
+);
+assert.match(
+  mlopsModelReleaseSource,
+  /timeseries_predict_servings[^]*timeout: TIMESERIES_PREDICT_REQUEST_TIMEOUT_MS/,
+  'timeseries prediction must forward its timeout to Axios and the Next proxy'
+);
+
 function readSource(file: string): string {
   return readFileSync(new URL(file, import.meta.url), 'utf8');
 }

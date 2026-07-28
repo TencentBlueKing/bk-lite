@@ -20,9 +20,21 @@ from .models import load_model
 from .schemas.api_schema import MAX_INPUT_DATA_POINTS, MAX_PREDICTION_STEPS, PredictRequest, PredictResponse
 
 
-TIMESERIES_PREDICT_TIMEOUT_SECONDS = int(os.getenv("TIMESERIES_PREDICT_TIMEOUT_SECONDS", "120"))
-if TIMESERIES_PREDICT_TIMEOUT_SECONDS <= 0:
-    raise ValueError("TIMESERIES_PREDICT_TIMEOUT_SECONDS must be greater than 0")
+MAX_TIMESERIES_PREDICT_TIMEOUT_SECONDS = 290
+
+
+def get_timeseries_predict_timeout_seconds() -> int:
+    raw_timeout = os.getenv("TIMESERIES_PREDICT_TIMEOUT_SECONDS", "120")
+    try:
+        timeout = int(raw_timeout)
+    except ValueError:
+        raise ValueError("TIMESERIES_PREDICT_TIMEOUT_SECONDS must be an integer between 1 and 290") from None
+    if not 1 <= timeout <= MAX_TIMESERIES_PREDICT_TIMEOUT_SECONDS:
+        raise ValueError("TIMESERIES_PREDICT_TIMEOUT_SECONDS must be an integer between 1 and 290")
+    return timeout
+
+
+TIMESERIES_PREDICT_TIMEOUT_SECONDS = get_timeseries_predict_timeout_seconds()
 
 
 @bentoml.service(

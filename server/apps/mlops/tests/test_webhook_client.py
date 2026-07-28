@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pydantic.root_model  # noqa
 
 import pytest
@@ -256,7 +258,13 @@ def test_serve_builds_payload_and_returns_result(monkeypatch):
 
     monkeypatch.setattr(WebhookClient, "_request", staticmethod(fake_request))
     result = WebhookClient.serve(
-        "Svc_1", "http://mlflow", "models:/m/1", port=3042, train_image="img", device="gpu"
+        "Svc_1",
+        "http://mlflow",
+        "models:/m/1",
+        port=3042,
+        train_image="img",
+        device="gpu",
+        timeseries_predict_timeout_seconds=75,
     )
     assert result["port"] == "3042"
     assert captured["endpoint"] == "serve"
@@ -266,6 +274,7 @@ def test_serve_builds_payload_and_returns_result(monkeypatch):
     assert p["port"] == 3042
     assert p["train_image"] == "img"
     assert p["device"] == "gpu"
+    assert p["timeseries_predict_timeout_seconds"] == 75
 
 
 def test_serve_error_status_raises(monkeypatch):
@@ -292,6 +301,35 @@ def test_serve_omits_optional_params(monkeypatch):
     assert "port" not in captured
     assert "train_image" not in captured
     assert "device" not in captured
+    assert "timeseries_predict_timeout_seconds" not in captured
+
+
+@pytest.mark.parametrize("invalid_timeout", [0, 291])
+def test_serve_rejects_invalid_timeseries_predict_timeout(monkeypatch, invalid_timeout):
+    _setup_hook(monkeypatch)
+
+    with pytest.raises(ValueError, match="between 1 and 290"):
+        WebhookClient.serve(
+            "Svc_1",
+            "http://mlflow",
+            "models:/m/1",
+            timeseries_predict_timeout_seconds=invalid_timeout,
+        )
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        "agents/webhookd/mlops/docker/serve.sh",
+        "agents/webhookd/mlops/kubernetes/serve.sh",
+    ],
+)
+def test_serve_scripts_forward_timeseries_predict_timeout(relative_path):
+    repo_root = Path(__file__).resolve().parents[4]
+    source = (repo_root / relative_path).read_text(encoding="utf-8")
+
+    assert ".timeseries_predict_timeout_seconds" in source
+    assert "TIMESERIES_PREDICT_TIMEOUT_SECONDS" in source
 
 
 def test_train_builds_payload(monkeypatch):
