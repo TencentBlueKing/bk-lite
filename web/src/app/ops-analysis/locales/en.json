@@ -804,7 +804,10 @@
     "subscriptionCreateFailed": "Failed to create subscription",
     "subscriptionUpdateFailed": "Failed to update subscription",
     "subscriptionDeleteFailed": "Failed to delete subscription",
-    "subscriptionDeleteConfirm": "Delete this report subscription?"
+    "subscriptionDeleteConfirm": "Delete this report subscription?",
+    "subscriptionExecute": "Test now",
+    "subscriptionExecuteCreated": "Test execution created",
+    "subscriptionExecuteFailed": "Failed to create test execution"
   },
   "opsAnalysisSidebar": {
     "addArch": "Add Architecture",

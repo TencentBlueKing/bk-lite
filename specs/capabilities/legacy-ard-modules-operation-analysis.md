@@ -17,11 +17,12 @@
 | DataSourceAPIModel | `models/datasource_models.py` | 数据源定义；含 `source_type`（NATS/MySQL/PostgreSQL/REST API/Excel）、`connection_config`（连接配置）、`query_config`（取数配置）、`chart_type`（JSON，图表类型，default=list）、`field_schema`（JSON，接口返回字段定义，default=list）、`is_active`（内部预留） |
 | DataSourceTag | `models/datasource_models.py` | 数据源标签；含 `build_in`（是否内置） |
 | DashboardReportSubscription | `models/subscription_models.py` | Dashboard 报告订阅配置；绑定 Dashboard、创建者、名称、状态、单个接收邮箱及预留 config。Phase 1A 仅提供配置 CRUD，不执行报告 |
+| DashboardReportExecution | `models/subscription_models.py` | 一次 Dashboard 报告订阅执行的基础审计记录；Phase 1B-1 支持 manual 触发及 pending/running/succeeded/failed/unknown 状态，不执行渲染或投递 |
 
 内置机制【已实现/已存在】：`Directory`/`Dashboard`/`Topology`/`Architecture`/`Screen`/`Report` 通过 `is_build_in` + 唯一 `build_in_key` 标识内置画布，承载「内置视图对组织可见但不可删改」语义（删改在视图层被 `_raise_if_builtin` 拦截，见 §3）；`DataSourceTag.build_in` 标识内置标签。
 
 ## 3. 接口【已实现/已存在】
-路由组：`data_source`/`dashboard`/`dashboard_subscription`/`directory`/`topology`/`architecture`/`screen`/`report`/`namespace`/`tag`/`import_export`/`scene_widgets`；开放端点 `open_api/import_export`。
+路由组：`data_source`/`dashboard`/`dashboard_subscription`/`dashboard_execution`/`directory`/`topology`/`architecture`/`screen`/`report`/`namespace`/`tag`/`import_export`/`scene_widgets`；开放端点 `open_api/import_export`。
 
 关键自定义动作【已实现/已存在】：
 - `data_source` 的 `get_source_data/{pk}`（POST）：组件运行时取数对外入口，是整个取数链路的起点（`views/datasource_view.py:337`）。
@@ -30,6 +31,7 @@
 - `scene_widgets/network_status_topology`（POST）：按 `model_id`、`inst_id`、`depth` 构建网络状态拓扑场景数据，是网络状态拓扑组件的专用后端入口；复用 CMDB network_topology/实例权限并汇总 Alerts 活跃告警，权限动作 `view`（证据：`urls.py:23`、`views/scene_widget_view.py:10-23,10,12`、`services/network_status_topology.py:5,65,87`）。
 - `screen` / `report`【已实现/已存在】：通过 `CanvasModelViewSet` 复用画布类 CRUD、权限与内置对象保护逻辑，新增 `directory.screen` 与 `directory.report` 两类权限域（`views/view.py:347-423`）。
 - `dashboard_subscription`【Phase 1A 已实现】：提供当前用户 Dashboard 报告订阅的 GET/POST/PATCH/DELETE。创建与更新要求当前用户仍可查看目标 Dashboard；删除允许创建者在 Dashboard 查看权限丢失后清理；`terminated` 暂不对 API 开放（证据：`views/subscription_view.py`、`services/subscription_service.py`、`serializers/subscription_serializers.py`）。
+- `dashboard_subscription/{id}/execute` 与 `dashboard_execution/{id}`【Phase 1B-1 已实现】：前者为已保存订阅创建一次 manual Execution，并同步经过 `pending → running → succeeded`；后者只读返回当前用户自己的执行状态、触发方式、时间与失败字段。本阶段不接 Celery、Chromium、PDF 或邮件（证据：`views/{subscription_view,execution_view}.py`、`services/execution_service.py`、`serializers/execution_serializers.py`）。
 - `open_api/import_export`：开放导入导出 API 通过 `api_pass`/API Token 校验，支持 `export`、`precheck_import`、`submit_import` 三类动作；授权服务解析组织、计算导入导出权限矩阵，并在实例/组织维度过滤对象（证据：`views/openapi_import_export_view.py:34,48,118,190,280`、`services/import_export/authorization_service.py:24,71,87,180`）。
 
 安全说明【已实现/已存在】：`NameSpace` 密码使用 AES（`PasswordCrypto`）加解密，密钥取自 `constants.constants.SECRET_KEY`；该密钥已移除源码内置硬编码值，仅从环境变量 `SECRET_KEY` 读取，未配置时为空串（`constants/constants.py:51-53`）。命名空间编辑时前端只回显掩码占位符；若用户未修改密码，提交时会省略 `password` 字段并以 PATCH 保留原密文，避免因重复提交掩码值而覆盖真实密码（`web/src/app/ops-analysis/(pages)/settings/namespace/operateModal.tsx:10-18,30-49,74-83`、`web/src/app/ops-analysis/api/namespace.ts:22-27`）。
@@ -83,6 +85,10 @@
 ## 2026-07-28 Phase 1A 校准
 
 - `[operation_analysis#20260728-001]` 新增 Dashboard 报告订阅配置模型、migration、CRUD API 与 Dashboard 内 Modal。状态单字段为 `active/paused/terminated`，Phase 1A 仅开放前两者；未引入 Execution、Scheduler、PDF、Chromium、Email 或 Snapshot。
+
+## 2026-07-28 Phase 1B-1 校准
+
+- `[operation_analysis#20260728-002]` 新增 Dashboard 报告 Execution 基础模型、manual execute/retrieve API 与 Modal 立即测试反馈。同步实验路径显式经过 `pending/running/succeeded`，仅验证执行记录与状态机，不执行报告。
 
 ## 6. 证据来源
 `server/apps/operation_analysis/{urls.py,models/*,views/datasource_view.py,views/view.py,nats/nats.py,common/get_nats_source_data.py,constants/constants.py,tasks/tasks.py,management/commands/*,services/*}`、`apps/operation_analysis/migrations/0010_remove_namespace_groups.py`、`apps/rpc/base.py:OperationAnalysisRpc`、`web/src/app/ops-analysis/{utils/widgetRequestCache.ts,components/widgetDataRenderer.tsx,api/namespace.ts,(pages)/settings/namespace/operateModal.tsx}`。

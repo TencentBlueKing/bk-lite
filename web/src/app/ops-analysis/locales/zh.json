@@ -804,7 +804,10 @@
     "subscriptionCreateFailed": "创建订阅失败",
     "subscriptionUpdateFailed": "更新订阅失败",
     "subscriptionDeleteFailed": "删除订阅失败",
-    "subscriptionDeleteConfirm": "确认删除该报告订阅？"
+    "subscriptionDeleteConfirm": "确认删除该报告订阅？",
+    "subscriptionExecute": "立即测试",
+    "subscriptionExecuteCreated": "测试执行已创建",
+    "subscriptionExecuteFailed": "测试执行创建失败"
   },
   "opsAnalysisSidebar": {
     "addArch": "添加架构图",

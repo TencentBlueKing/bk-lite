@@ -1,4 +1,6 @@
-from rest_framework import viewsets
+from rest_framework import status, viewsets
+from rest_framework.decorators import action
+from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.operation_analysis.models.subscription_models import (
@@ -6,6 +8,12 @@ from apps.operation_analysis.models.subscription_models import (
 )
 from apps.operation_analysis.serializers.subscription_serializers import (
     DashboardReportSubscriptionSerializer,
+)
+from apps.operation_analysis.serializers.execution_serializers import (
+    DashboardReportExecutionSerializer,
+)
+from apps.operation_analysis.services.execution_service import (
+    DashboardReportExecutionService,
 )
 from apps.operation_analysis.services.subscription_service import (
     DashboardSubscriptionService,
@@ -55,4 +63,16 @@ class DashboardReportSubscriptionViewSet(viewsets.ModelViewSet):
             self.request,
             self.get_object(),
             serializer,
+        )
+
+    @HasPermission("view-View")
+    @action(detail=True, methods=["post"])
+    def execute(self, request, *args, **kwargs):
+        execution = DashboardReportExecutionService.execute_manual(
+            request,
+            self.get_object(),
+        )
+        return Response(
+            DashboardReportExecutionSerializer(execution).data,
+            status=status.HTTP_201_CREATED,
         )

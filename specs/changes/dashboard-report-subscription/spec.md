@@ -23,6 +23,24 @@ Email Delivery、Retry、Render Token 与 Snapshot。后续章节描述完整 MV
 因此 Dashboard 的 `SET_NULL` 删除路径在 Phase 1B 接入 Execution 前仍需补充
 将关联订阅终止为 `terminated` 的事务性处理。
 
+## Phase 1B-1 实现状态（2026-07-28）
+
+已实现且验证：
+
+- `DashboardReportExecution` 基础模型及 migration；
+- `pending/running/succeeded/failed/unknown` 状态集合与显式合法流转；
+- `manual` 手动触发类型；
+- Subscription detail action `POST /execute/`；
+- 当前用户自己的 Execution 详情查询；
+- 手动触发实时复用创建者与 Dashboard View 权限；
+- Dashboard Subscription Modal 的“立即测试”入口及成功、失败反馈；
+- DRF execute/retrieve API 与 Modal 用户行为回归测试。
+
+Phase 1B-1 的同步实验执行严格经过
+`pending → running → succeeded`，但不执行任何报告工作。本阶段仍未实现
+Scheduler、Celery Task、PDF、Chromium Worker、Email、完整 Snapshot、Retry
+或 Render Token。
+
 ## Problem Statement
 
 运营分析仪表盘已经支持用户在浏览器中手工导出 PDF，但现有实现依赖当前页面 DOM、`html-to-image`、`jsPDF.save()` 和用户登录会话，只能下载到用户本机，不能由后台周期任务无会话生成并作为邮件附件发送。

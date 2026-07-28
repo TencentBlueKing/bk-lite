@@ -4,6 +4,7 @@ import type {
   DashboardSubscription,
   DashboardSubscriptionPayload,
   DashboardSubscriptionUpdatePayload,
+  DashboardReportExecution,
 } from '@/app/ops-analysis/types/dashboardSubscription';
 import useApiClient from '@/utils/request';
 
@@ -41,10 +42,19 @@ export const useDashboardSubscriptionApi = () => {
     [del],
   );
 
+  const executeSubscription = useCallback(
+    (id: number) =>
+      post<DashboardReportExecution>(
+        `${SUBSCRIPTION_ENDPOINT}${id}/execute/`,
+      ),
+    [post],
+  );
+
   return {
     listSubscriptions,
     createSubscription,
     updateSubscription,
     deleteSubscription,
+    executeSubscription,
   };
 };

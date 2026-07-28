@@ -6,6 +6,7 @@
 from rest_framework import routers
 
 from apps.operation_analysis.views.datasource_view import DataSourceAPIModelViewSet, DataSourceTagModelViewSet, NameSpaceModelViewSet
+from apps.operation_analysis.views.execution_view import DashboardReportExecutionViewSet
 from apps.operation_analysis.views.import_export_view import ImportExportViewSet
 from apps.operation_analysis.views.network_topology_view import NetworkTopologyViewSet
 from apps.operation_analysis.views.openapi_import_export_view import OpenImportExportViewSet
@@ -29,6 +30,11 @@ router.register(
     r"api/dashboard_subscription",
     DashboardReportSubscriptionViewSet,
     basename="dashboard_subscription",
+)
+router.register(
+    r"api/dashboard_execution",
+    DashboardReportExecutionViewSet,
+    basename="dashboard_execution",
 )
 router.register(r"api/directory", DirectoryModelViewSet, basename="directory")
 router.register(r"api/topology", TopologyModelViewSet, basename="topology")

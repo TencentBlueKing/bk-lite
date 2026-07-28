@@ -1,5 +1,6 @@
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils import timezone
 
 from apps.core.models.time_info import TimeInfo
 from apps.operation_analysis.models.models import Dashboard
@@ -45,3 +46,99 @@ class DashboardReportSubscription(TimeInfo):
 
     def __str__(self):
         return self.name
+
+
+class DashboardReportExecution(TimeInfo):
+    class Status(models.TextChoices):
+        PENDING = "pending", "等待执行"
+        RUNNING = "running", "执行中"
+        SUCCEEDED = "succeeded", "成功"
+        FAILED = "failed", "失败"
+        UNKNOWN = "unknown", "状态未知"
+
+    class TriggerType(models.TextChoices):
+        MANUAL = "manual", "手动"
+
+    ALLOWED_TRANSITIONS = {
+        Status.PENDING: {Status.RUNNING, Status.UNKNOWN},
+        Status.RUNNING: {
+            Status.SUCCEEDED,
+            Status.FAILED,
+            Status.UNKNOWN,
+        },
+        Status.SUCCEEDED: set(),
+        Status.FAILED: set(),
+        Status.UNKNOWN: set(),
+    }
+
+    subscription = models.ForeignKey(
+        DashboardReportSubscription,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="executions",
+        verbose_name="报告订阅",
+    )
+    dashboard = models.ForeignKey(
+        Dashboard,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="report_executions",
+        verbose_name="仪表盘",
+    )
+    creator = models.CharField(max_length=32, db_index=True, verbose_name="创建者")
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+        verbose_name="状态",
+    )
+    trigger_type = models.CharField(
+        max_length=16,
+        choices=TriggerType.choices,
+        default=TriggerType.MANUAL,
+        verbose_name="触发方式",
+    )
+    failure_stage = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        verbose_name="失败阶段",
+    )
+    error_message = models.TextField(blank=True, default="", verbose_name="错误信息")
+    started_at = models.DateTimeField(null=True, blank=True, verbose_name="开始时间")
+    finished_at = models.DateTimeField(null=True, blank=True, verbose_name="完成时间")
+
+    class Meta:
+        db_table = "operation_analysis_dashboard_report_execution"
+        verbose_name = "仪表盘报告执行"
+        ordering = ["-id"]
+
+    def transition_to(
+        self,
+        target_status: str,
+        *,
+        failure_stage: str = "",
+        error_message: str = "",
+    ):
+        if target_status not in self.ALLOWED_TRANSITIONS[self.status]:
+            raise ValidationError(
+                {"status": f"不允许从 {self.status} 转换到 {target_status}"}
+            )
+
+        now = timezone.now()
+        self.status = target_status
+        update_fields = ["status", "updated_at"]
+        if target_status == self.Status.RUNNING:
+            self.started_at = now
+            update_fields.append("started_at")
+        if target_status in {self.Status.SUCCEEDED, self.Status.FAILED}:
+            self.finished_at = now
+            update_fields.append("finished_at")
+        if target_status == self.Status.FAILED:
+            self.failure_stage = failure_stage
+            self.error_message = error_message
+            update_fields.extend(["failure_stage", "error_message"])
+        self.save(update_fields=update_fields)

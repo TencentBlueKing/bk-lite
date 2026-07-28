@@ -48,6 +48,7 @@ const DashboardSubscriptionModal = ({
     createSubscription,
     updateSubscription,
     deleteSubscription,
+    executeSubscription,
   } = useDashboardSubscriptionApi();
   const [form] = Form.useForm<SubscriptionFormValues>();
   const [subscriptions, setSubscriptions] = useState<
@@ -58,13 +59,18 @@ const DashboardSubscriptionModal = ({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [executingId, setExecutingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
+  const [executionNotice, setExecutionNotice] = useState<string | null>(
+    null,
+  );
 
   const loadSubscriptions = useCallback(async () => {
     setLoading(true);
     setError(null);
     setLoadFailed(false);
+    setExecutionNotice(null);
     try {
       setSubscriptions(await listSubscriptions(dashboardId));
     } catch {
@@ -149,6 +155,21 @@ const DashboardSubscriptionModal = ({
     }
   };
 
+  const executeManualTest = async (id: number) => {
+    setExecutingId(id);
+    setError(null);
+    setLoadFailed(false);
+    setExecutionNotice(null);
+    try {
+      await executeSubscription(id);
+      setExecutionNotice(t('dashboard.subscriptionExecuteCreated'));
+    } catch {
+      setError(t('dashboard.subscriptionExecuteFailed'));
+    } finally {
+      setExecutingId(null);
+    }
+  };
+
   return (
     <Modal
       open={open}
@@ -180,6 +201,14 @@ const DashboardSubscriptionModal = ({
               </Button>
             ) : undefined
           }
+        />
+      )}
+      {executionNotice && (
+        <Alert
+          className="mb-4"
+          type="success"
+          showIcon
+          message={executionNotice}
         />
       )}
 
@@ -277,6 +306,19 @@ const DashboardSubscriptionModal = ({
               renderItem={(subscription) => (
                 <List.Item
                   actions={[
+                    <Button
+                      key="execute"
+                      type="link"
+                      size="small"
+                      loading={executingId === subscription.id}
+                      disabled={
+                        executingId !== null
+                        && executingId !== subscription.id
+                      }
+                      onClick={() => executeManualTest(subscription.id)}
+                    >
+                      {t('dashboard.subscriptionExecute')}
+                    </Button>,
                     <Button
                       key="edit"
                       type="link"

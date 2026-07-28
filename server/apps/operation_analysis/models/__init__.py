@@ -4,9 +4,13 @@
 # @Author: windyzhao
 
 from apps.operation_analysis.models.share_models import DashboardShareLink, DashboardShareSession
-from apps.operation_analysis.models.subscription_models import DashboardReportSubscription
+from apps.operation_analysis.models.subscription_models import (
+    DashboardReportExecution,
+    DashboardReportSubscription,
+)
 
 __all__ = [
+    "DashboardReportExecution",
     "DashboardReportSubscription",
     "DashboardShareLink",
     "DashboardShareSession",

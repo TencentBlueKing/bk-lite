@@ -23,3 +23,24 @@ export type DashboardSubscriptionUpdatePayload = Omit<
   DashboardSubscriptionPayload,
   'dashboard'
 >;
+
+export type DashboardExecutionStatus =
+  | 'pending'
+  | 'running'
+  | 'succeeded'
+  | 'failed'
+  | 'unknown';
+
+export interface DashboardReportExecution {
+  id: number;
+  subscription: number | null;
+  dashboard: number | null;
+  creator: string;
+  status: DashboardExecutionStatus;
+  trigger_type: 'manual';
+  failure_stage: string;
+  error_message: string;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
