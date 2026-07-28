@@ -2,7 +2,12 @@ import pytest
 import requests
 from rest_framework import status
 
-from apps.mlops.models.timeseries_predict import TimeSeriesPredictServing, TimeSeriesPredictTrainJob
+from apps.mlops.models.timeseries_predict import (
+    TimeSeriesPredictServing,
+    TimeSeriesPredictTrainJob,
+    TimeSeriesRuntimeCleanupIntent,
+    TimeSeriesRuntimeGuard,
+)
 
 from .conftest import create_train_job
 
@@ -642,16 +647,20 @@ def test_create_initializes_runtime_inside_atomic_row_lock(
     train_job = create_train_job(TimeSeriesPredictTrainJob, team=1)
     _mock_create_runtime_dependencies(monkeypatch)
     locked_in_atomic = []
+    runtime_guard_locked = []
     original_select_for_update = QuerySet.select_for_update
 
     def track_select_for_update(queryset, *args, **kwargs):
         if queryset.model is TimeSeriesPredictServing:
             locked_in_atomic.append(connection.in_atomic_block)
+        if queryset.model is TimeSeriesRuntimeGuard:
+            runtime_guard_locked.append(connection.in_atomic_block)
         return original_select_for_update(queryset, *args, **kwargs)
 
     def fake_serve(container_id, *args, **kwargs):
         assert connection.in_atomic_block
         assert locked_in_atomic == [True]
+        assert runtime_guard_locked == [True]
         return {"id": container_id, "status": "success", "state": "running", "port": "3000"}
 
     monkeypatch.setattr(QuerySet, "select_for_update", track_select_for_update)
@@ -670,6 +679,8 @@ def test_create_initializes_runtime_inside_atomic_row_lock(
     assert response.data["container_info"]["state"] == "running"
     assert response.data["container_info"]["_runtime_generation"] == 2
     assert locked_in_atomic == [True]
+    assert runtime_guard_locked == [True]
+    assert TimeSeriesRuntimeGuard.objects.filter(serving_id=response.data["id"]).exists()
 
 
 def test_create_save_failure_rolls_back_record_and_cleans_runtime(
@@ -719,6 +730,10 @@ def test_create_save_failure_rolls_back_record_and_cleans_runtime(
     assert runtime_ids
     assert removed_ids == runtime_ids
     assert not TimeSeriesPredictServing.objects.filter(name="failed-create").exists()
+    cleanup_intent = TimeSeriesRuntimeCleanupIntent.objects.get(
+        container_id=runtime_ids[0],
+    )
+    assert cleanup_intent.status == TimeSeriesRuntimeCleanupIntent.Status.COMPLETED
 
 
 def test_create_cleanup_failure_dispatches_retry_task(monkeypatch):
@@ -726,7 +741,7 @@ def test_create_cleanup_failure_dispatches_retry_task(monkeypatch):
 
     dispatch_calls = []
     monkeypatch.setattr(
-        "apps.mlops.services.timeseries_runtime_cleanup.reconcile_orphan_timeseries_runtime",
+        "apps.mlops.services.timeseries_runtime_cleanup.process_runtime_cleanup_intent",
         lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("cleanup unavailable")),
     )
     monkeypatch.setattr(
@@ -737,13 +752,15 @@ def test_create_cleanup_failure_dispatches_retry_task(monkeypatch):
     TimeSeriesPredictServingViewSet._cleanup_uncommitted_create_runtime(
         "TimeseriesPredict_Serving_9001",
         9001,
+        "31bee19f-34bf-47c8-b1d8-3ba0826ff26b",
     )
 
+    intent = TimeSeriesRuntimeCleanupIntent.objects.get(serving_id=9001)
     assert dispatch_calls == [
         (
             (),
             {
-                "args": ("TimeseriesPredict_Serving_9001", 9001),
+                "args": (intent.pk,),
                 "retry": True,
                 "retry_policy": {
                     "max_retries": 5,
@@ -778,6 +795,7 @@ def test_orphan_cleanup_confirms_not_found_after_lost_remove_response(monkeypatc
 
     assert result["result"] is True
     assert result["state"] == "not_found"
+    assert TimeSeriesRuntimeGuard.objects.filter(serving_id=9002).exists()
 
 
 def test_orphan_cleanup_stops_when_database_id_is_owned(monkeypatch):
@@ -805,11 +823,19 @@ def test_orphan_cleanup_stops_when_database_id_is_owned(monkeypatch):
 def test_orphan_cleanup_task_retries_until_not_found(monkeypatch):
     from celery.exceptions import Retry
 
+    from apps.mlops.services.timeseries_runtime_cleanup import (
+        create_runtime_cleanup_intent,
+    )
     from apps.mlops.tasks.runtime_cleanup import cleanup_orphan_timeseries_runtime
 
     retry_calls = []
+    intent = create_runtime_cleanup_intent(
+        "TimeseriesPredict_Serving_9003",
+        9003,
+        "8dcfd813-d1ec-45c8-8a47-2c9b8acbc6ac",
+    )
     monkeypatch.setattr(
-        "apps.mlops.tasks.runtime_cleanup.reconcile_orphan_timeseries_runtime",
+        "apps.mlops.tasks.runtime_cleanup.process_runtime_cleanup_intent",
         lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("still running")),
     )
 
@@ -820,15 +846,192 @@ def test_orphan_cleanup_task_retries_until_not_found(monkeypatch):
     monkeypatch.setattr(cleanup_orphan_timeseries_runtime, "retry", fake_retry)
 
     with pytest.raises(Retry):
-        cleanup_orphan_timeseries_runtime.run(
-            "TimeseriesPredict_Serving_9003",
-            9003,
-        )
+        cleanup_orphan_timeseries_runtime.run(intent.pk)
 
     assert cleanup_orphan_timeseries_runtime.max_retries is None
     assert cleanup_orphan_timeseries_runtime.acks_late is True
     assert cleanup_orphan_timeseries_runtime.reject_on_worker_lost is True
     assert retry_calls[0][1]["countdown"] == 30
+
+
+def test_cleanup_intent_survives_initial_broker_publish_failure(monkeypatch):
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from apps.mlops.tasks.runtime_cleanup import (
+        dispatch_pending_timeseries_runtime_cleanup,
+    )
+    from apps.mlops.views.timeseries_predict import TimeSeriesPredictServingViewSet
+
+    monkeypatch.setattr(
+        "apps.mlops.services.timeseries_runtime_cleanup.process_runtime_cleanup_intent",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("cleanup unavailable")),
+    )
+    monkeypatch.setattr(
+        "apps.mlops.tasks.runtime_cleanup.cleanup_orphan_timeseries_runtime.apply_async",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("broker unavailable")),
+    )
+
+    TimeSeriesPredictServingViewSet._cleanup_uncommitted_create_runtime(
+        "TimeseriesPredict_Serving_9004",
+        9004,
+        "e5d772ac-2516-4e46-a4cf-afc8bbd35d4d",
+    )
+
+    intent = TimeSeriesRuntimeCleanupIntent.objects.get(serving_id=9004)
+    assert intent.status == TimeSeriesRuntimeCleanupIntent.Status.PENDING
+
+    scheduled = []
+    TimeSeriesRuntimeCleanupIntent.objects.filter(pk=intent.pk).update(
+        next_retry_at=timezone.now() - timedelta(seconds=1),
+    )
+    monkeypatch.setattr(
+        "apps.mlops.tasks.runtime_cleanup.cleanup_orphan_timeseries_runtime.delay",
+        lambda intent_id: scheduled.append(intent_id),
+    )
+
+    result = dispatch_pending_timeseries_runtime_cleanup()
+
+    assert result == {"claimed": 1, "scheduled": 1}
+    assert scheduled == [intent.pk]
+
+
+def test_cleanup_intent_records_retry_then_completes(monkeypatch):
+    from apps.mlops.services.timeseries_runtime_cleanup import (
+        create_runtime_cleanup_intent,
+        process_runtime_cleanup_intent,
+    )
+
+    intent = create_runtime_cleanup_intent(
+        "TimeseriesPredict_Serving_9005",
+        9005,
+        "ec948061-cbdb-45c0-85a3-1c0ac45ed42f",
+    )
+    monkeypatch.setattr(
+        "apps.mlops.services.timeseries_runtime_cleanup.WebhookClient.remove",
+        lambda container_id: {"status": "success"},
+    )
+    monkeypatch.setattr(
+        "apps.mlops.services.timeseries_runtime_cleanup.WebhookClient.get_status",
+        lambda ids: [{"id": ids[0], "status": "success", "state": "running"}],
+    )
+
+    with pytest.raises(RuntimeError, match="state=running"):
+        process_runtime_cleanup_intent(intent.pk)
+
+    intent.refresh_from_db()
+    assert intent.status == TimeSeriesRuntimeCleanupIntent.Status.PENDING
+    assert intent.attempts == 1
+    assert intent.next_retry_at is not None
+    assert "state=running" in intent.last_error
+
+    monkeypatch.setattr(
+        "apps.mlops.services.timeseries_runtime_cleanup.WebhookClient.get_status",
+        lambda ids: [{"id": ids[0], "status": "success", "state": "not_found"}],
+    )
+    result = process_runtime_cleanup_intent(intent.pk)
+
+    intent.refresh_from_db()
+    assert result["result"] is True
+    assert intent.status == TimeSeriesRuntimeCleanupIntent.Status.COMPLETED
+    assert intent.completed_at is not None
+    assert intent.next_retry_at is None
+    assert intent.last_error == ""
+
+
+def test_cleanup_rejects_noncanonical_container_id():
+    from apps.mlops.services.timeseries_runtime_cleanup import (
+        reconcile_orphan_timeseries_runtime,
+    )
+
+    with pytest.raises(ValueError, match="does not belong"):
+        reconcile_orphan_timeseries_runtime(
+            "TimeseriesPredict_Serving_9006",
+            9005,
+        )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_cleanup_waits_for_uncommitted_create_owner(monkeypatch):
+    import threading
+
+    from django.db import close_old_connections, connection, transaction
+
+    from apps.mlops.services.timeseries_runtime_cleanup import (
+        lock_timeseries_runtime_id,
+        reconcile_orphan_timeseries_runtime,
+    )
+
+    if connection.vendor == "sqlite":
+        pytest.skip("SQLite does not provide the production row-lock semantics")
+
+    train_job = create_train_job(TimeSeriesPredictTrainJob, team=1)
+    owner_locked = threading.Event()
+    allow_owner_commit = threading.Event()
+    cleanup_finished = threading.Event()
+    thread_errors = []
+    cleanup_results = []
+    removed_ids = []
+
+    monkeypatch.setattr(
+        "apps.mlops.services.timeseries_runtime_cleanup.WebhookClient.remove",
+        lambda container_id: removed_ids.append(container_id),
+    )
+
+    def create_owner():
+        close_old_connections()
+        try:
+            with transaction.atomic():
+                TimeSeriesPredictServing.objects.create(
+                    id=9007,
+                    name="concurrent-owner",
+                    description="",
+                    team=[1],
+                    train_job_id=train_job.id,
+                    model_version="latest",
+                    status="inactive",
+                    container_info={},
+                )
+                lock_timeseries_runtime_id(9007)
+                owner_locked.set()
+                if not allow_owner_commit.wait(timeout=5):
+                    raise TimeoutError("test did not release create transaction")
+        except Exception as error:
+            thread_errors.append(error)
+        finally:
+            close_old_connections()
+
+    def cleanup_orphan():
+        close_old_connections()
+        try:
+            cleanup_results.append(
+                reconcile_orphan_timeseries_runtime(
+                    "TimeseriesPredict_Serving_9007",
+                    9007,
+                )
+            )
+        except Exception as error:
+            thread_errors.append(error)
+        finally:
+            cleanup_finished.set()
+            close_old_connections()
+
+    owner_thread = threading.Thread(target=create_owner)
+    cleanup_thread = threading.Thread(target=cleanup_orphan)
+    owner_thread.start()
+    assert owner_locked.wait(timeout=5)
+    cleanup_thread.start()
+
+    # cleanup 必须阻塞在同一 guard，不能越过未提交 owner 执行 remove。
+    assert not cleanup_finished.wait(timeout=0.2)
+    allow_owner_commit.set()
+    owner_thread.join(timeout=5)
+    cleanup_thread.join(timeout=5)
+
+    assert thread_errors == []
+    assert cleanup_results[0]["reason"] == "serving id is owned by a database record"
+    assert removed_ids == []
 
 
 def test_destroy_acquires_shared_row_lock_before_runtime_cleanup(

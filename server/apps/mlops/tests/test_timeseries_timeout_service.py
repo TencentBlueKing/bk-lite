@@ -131,6 +131,50 @@ exit 0
     return result, captured
 
 
+def _run_kubernetes_status_script(tmp_path, mode):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    _write_executable(
+        bin_dir / "kubectl",
+        """#!/bin/bash
+if [ "$1 $2" = "get job" ] || [ "$1 $2" = "get deployment" ]; then
+  if [ "$STUB_MODE" = "workload_query_failure" ]; then exit 1; fi
+  exit 0
+fi
+if [ "$1 $2" = "get service" ]; then
+  if [ "$STUB_MODE" = "orphan_service" ]; then
+    echo '{"metadata":{"name":"timeseriespredict-serving-1-svc"}}'
+  elif [ "$STUB_MODE" = "query_failure" ]; then
+    exit 1
+  fi
+  exit 0
+fi
+exit 0
+""",
+    )
+    env = os.environ.copy()
+    env["PATH"] = f"{bin_dir}:{env['PATH']}"
+    env["STUB_MODE"] = mode
+    script = REPO_ROOT / "agents/webhookd/mlops/kubernetes/status.sh"
+    result = subprocess.run(
+        [
+            "bash",
+            str(script),
+            json.dumps(
+                {
+                    "id": "TimeseriesPredict_Serving_1",
+                    "namespace": "mlops",
+                }
+            ),
+        ],
+        capture_output=True,
+        check=False,
+        env=env,
+        text=True,
+    )
+    return result
+
+
 def _run_stop_script(tmp_path, runtime, mode, remove=True):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -319,6 +363,41 @@ def test_kubernetes_remove_reports_orphan_service_delete_failure(tmp_path):
     assert result.returncode == 1
     error = json.loads(result.stdout)
     assert error["code"] == "SERVICE_DELETE_FAILED"
+
+
+def test_kubernetes_status_does_not_report_not_found_for_orphan_service(tmp_path):
+    result = _run_kubernetes_status_script(tmp_path, mode="orphan_service")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    runtime_status = json.loads(result.stdout)["results"][0]
+    assert runtime_status["state"] == "orphaned"
+
+
+def test_kubernetes_status_reports_not_found_only_when_all_resources_are_absent(tmp_path):
+    result = _run_kubernetes_status_script(tmp_path, mode="absent")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    runtime_status = json.loads(result.stdout)["results"][0]
+    assert runtime_status["state"] == "not_found"
+    assert "Service" in runtime_status["detail"]
+
+
+def test_kubernetes_status_does_not_hide_service_query_failure(tmp_path):
+    result = _run_kubernetes_status_script(tmp_path, mode="query_failure")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    runtime_status = json.loads(result.stdout)["results"][0]
+    assert runtime_status["status"] == "error"
+    assert runtime_status["state"] == "unknown"
+
+
+def test_kubernetes_status_does_not_hide_workload_query_failure(tmp_path):
+    result = _run_kubernetes_status_script(tmp_path, mode="workload_query_failure")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    runtime_status = json.loads(result.stdout)["results"][0]
+    assert runtime_status["status"] == "error"
+    assert runtime_status["state"] == "unknown"
 
 
 @pytest.mark.parametrize("runtime", ["docker", "kubernetes"])

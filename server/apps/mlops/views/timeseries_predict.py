@@ -889,14 +889,29 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
         return instance.container_info
 
     @staticmethod
-    def _cleanup_uncommitted_create_runtime(container_id, serving_id):
-        """创建事务无法提交时同步清理；未确认时交给无限退避任务闭环。"""
-        try:
-            from apps.mlops.services.timeseries_runtime_cleanup import (
-                reconcile_orphan_timeseries_runtime,
-            )
+    def _cleanup_uncommitted_create_runtime(container_id, serving_id, cleanup_token):
+        """事务回滚后先持久化清理意图，再同步清理并由任务持续补投。"""
+        from apps.mlops.services.timeseries_runtime_cleanup import (
+            create_runtime_cleanup_intent,
+            process_runtime_cleanup_intent,
+        )
 
-            reconcile_orphan_timeseries_runtime(container_id, serving_id)
+        try:
+            intent = create_runtime_cleanup_intent(
+                container_id,
+                serving_id,
+                cleanup_token,
+            )
+        except Exception:
+            logger.critical(
+                "创建 serving 事务回滚后的补偿意图持久化失败: "
+                f"container_id={container_id}",
+                exc_info=True,
+            )
+            return
+
+        try:
+            process_runtime_cleanup_intent(intent.pk)
         except Exception as cleanup_error:
             from apps.mlops.tasks.runtime_cleanup import (
                 cleanup_orphan_timeseries_runtime,
@@ -904,7 +919,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
 
             try:
                 cleanup_orphan_timeseries_runtime.apply_async(
-                    args=(container_id, serving_id),
+                    args=(intent.pk,),
                     retry=True,
                     retry_policy={
                         "max_retries": 5,
@@ -916,7 +931,8 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
             except Exception as dispatch_error:
                 logger.critical(
                     "创建 serving 事务回滚后的补偿任务投递失败: "
-                    f"container_id={container_id}, cleanup_error={type(cleanup_error).__name__}, "
+                    f"intent_id={intent.pk}, container_id={container_id}, "
+                    f"cleanup_error={type(cleanup_error).__name__}, "
                     f"dispatch_error={type(dispatch_error).__name__}",
                     exc_info=True,
                 )
@@ -1057,8 +1073,13 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
         except Exception:
             container_id = cleanup_context.get("container_id")
             serving_id = cleanup_context.get("serving_id")
-            if container_id is not None and serving_id is not None:
-                self._cleanup_uncommitted_create_runtime(container_id, serving_id)
+            cleanup_token = cleanup_context.get("cleanup_token")
+            if container_id is not None and serving_id is not None and cleanup_token is not None:
+                self._cleanup_uncommitted_create_runtime(
+                    container_id,
+                    serving_id,
+                    cleanup_token,
+                )
             raise
 
     @transaction.atomic
@@ -1116,8 +1137,16 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
             container_id = f"TimeseriesPredict_Serving_{serving.id}"
             cleanup_context["container_id"] = container_id
             cleanup_context["serving_id"] = serving.id
+            cleanup_context["cleanup_token"] = str(uuid4())
 
             try:
+                from apps.mlops.services.timeseries_runtime_cleanup import (
+                    lock_timeseries_runtime_id,
+                )
+
+                # create 与失败补偿使用同一永久 guard。即使业务行尚未提交，唯一
+                # guard 插入也会阻塞并发 cleanup，直到本事务提交或回滚。
+                lock_timeseries_runtime_id(serving.id)
                 self._claim_runtime_transition(serving, "create")
                 # 调用 WebhookClient 启动服务
                 result = WebhookClient.serve(

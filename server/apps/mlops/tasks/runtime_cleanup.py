@@ -2,7 +2,9 @@ from celery import shared_task
 
 from apps.core.logger import mlops_logger as logger
 from apps.mlops.services.timeseries_runtime_cleanup import (
-    reconcile_orphan_timeseries_runtime,
+    claim_pending_runtime_cleanup_intents,
+    process_runtime_cleanup_intent,
+    release_runtime_cleanup_intent,
 )
 
 
@@ -14,16 +16,34 @@ from apps.mlops.services.timeseries_runtime_cleanup import (
     soft_time_limit=60,
     time_limit=90,
 )
-def cleanup_orphan_timeseries_runtime(self, container_id: str, serving_id: int) -> dict:
-    """持续退避重试，直到确认 orphan runtime 不存在或 ID 已被数据库重新接管。"""
+def cleanup_orphan_timeseries_runtime(self, intent_id: int) -> dict:
+    """持续退避重试持久意图，直到 orphan 不存在或 ID 已被业务记录接管。"""
     try:
-        return reconcile_orphan_timeseries_runtime(container_id, serving_id)
+        return process_runtime_cleanup_intent(intent_id)
     except Exception as error:
         countdown = min(3600, 30 * (2 ** min(self.request.retries, 7)))
         logger.warning(
-            "时序 orphan runtime 清理未确认，将自动重试: container_id=%s, retry=%s, error_type=%s",
-            container_id,
+            "时序 orphan runtime 清理未确认，将自动重试: intent_id=%s, retry=%s, error_type=%s",
+            intent_id,
             self.request.retries + 1,
             type(error).__name__,
         )
         raise self.retry(exc=error, countdown=countdown)
+
+
+@shared_task
+def dispatch_pending_timeseries_runtime_cleanup() -> dict:
+    """周期补投持久意图，覆盖首次发布失败和消息丢失。"""
+    intent_ids = claim_pending_runtime_cleanup_intents()
+    scheduled = 0
+    for intent_id in intent_ids:
+        try:
+            cleanup_orphan_timeseries_runtime.delay(intent_id)
+            scheduled += 1
+        except Exception:
+            release_runtime_cleanup_intent(intent_id)
+            logger.exception(
+                "时序 orphan runtime 补偿任务投递失败，保留意图等待下一轮: intent_id=%s",
+                intent_id,
+            )
+    return {"claimed": len(intent_ids), "scheduled": scheduled}

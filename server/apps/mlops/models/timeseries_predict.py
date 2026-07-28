@@ -1,3 +1,5 @@
+import uuid
+
 from django.db import models
 from django_minio_backend import MinioBackend, iso_date_prefix
 
@@ -260,3 +262,43 @@ class TimeSeriesPredictServing(MaintainerInfo, TimeInfo):
 
     def __str__(self):
         return f"{self.name}"
+
+
+class TimeSeriesRuntimeGuard(models.Model):
+    """跨 create/cleanup 生命周期保留的运行时 ID 锁行。"""
+
+    serving_id = models.BigIntegerField(primary_key=True, serialize=False)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "mlops_timeseries_runtime_guard"
+
+
+class TimeSeriesRuntimeCleanupIntent(TimeInfo):
+    class Status(models.TextChoices):
+        PENDING = "pending", "待清理"
+        COMPLETED = "completed", "已清理"
+        OWNED = "owned", "已被业务记录接管"
+
+    cleanup_token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    container_id = models.CharField(max_length=255)
+    serving_id = models.BigIntegerField(db_index=True)
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+    )
+    attempts = models.PositiveIntegerField(default=0)
+    next_retry_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.TextField(blank=True, default="")
+
+    class Meta:
+        db_table = "mlops_timeseries_runtime_cleanup_intent"
+        indexes = [
+            models.Index(
+                fields=["status", "next_retry_at"],
+                name="mlops_ts_cleanup_retry_idx",
+            )
+        ]
