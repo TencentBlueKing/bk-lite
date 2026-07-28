@@ -713,6 +713,11 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                 for field_name, value in restored_state.items():
                     setattr(instance, field_name, deepcopy(value))
 
+    def _get_runtime_locked_object(self):
+        """获取并锁定同一 serving，串行化所有运行时变更入口。"""
+        unlocked_instance = self.get_object()
+        return unlocked_instance.__class__.objects.select_for_update().get(pk=unlocked_instance.pk)
+
     @HasPermission("timeseries_predict-View")
     def list(self, request, *args, **kwargs):
         """列表查询，实时同步容器状态"""
@@ -941,8 +946,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
         """
         # 同一 serving 的数据库写入和外部运行时切换必须串行；普通并发 UPDATE
         # 也会在 PostgreSQL 行锁上等待，避免另一个请求接管同一 runtime ID。
-        unlocked_instance = self.get_object()
-        instance = unlocked_instance.__class__.objects.select_for_update().get(pk=unlocked_instance.pk)
+        instance = self._get_runtime_locked_object()
 
         # 本方法在父类更新前会解析 MLflow、镜像和运行时配置，因此先复用父类的
         # 完整实例授权门禁；父类收到标记后不再重复执行同一校验。
@@ -1225,12 +1229,13 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="start")
     @HasPermission("timeseries_predict-Start")
+    @transaction.atomic
     def start(self, request, *args, **kwargs):
         """
         启动 serving 服务
         """
         try:
-            serving = self.get_object()
+            serving = self._get_runtime_locked_object()
 
             # 获取 MLflow tracking URI
             mlflow_tracking_uri = get_mlflow_tracking_uri()
@@ -1331,18 +1336,27 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="stop")
     @HasPermission("timeseries_predict-Stop")
+    @transaction.atomic
     def stop(self, request, *args, **kwargs):
         """
         停止 serving 服务（停止并删除容器）
         """
         try:
-            serving = self.get_object()
+            serving = self._get_runtime_locked_object()
 
             # 构建 serving ID
             serving_id = f"TimeseriesPredict_Serving_{serving.id}"
 
             # 调用 WebhookClient 停止服务（默认删除容器）
             result = WebhookClient.stop(serving_id)
+
+            serving.container_info = {
+                "status": "success",
+                "id": serving_id,
+                "state": "removed",
+                "message": "服务已停止并删除",
+            }
+            serving.save(update_fields=["container_info"])
 
             return Response(
                 {
@@ -1368,12 +1382,13 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="remove")
     @HasPermission("timeseries_predict-Remove")
+    @transaction.atomic
     def remove(self, request, *args, **kwargs):
         """
         删除 serving 容器（可处理运行中的容器）
         """
         try:
-            serving = self.get_object()
+            serving = self._get_runtime_locked_object()
 
             # 构建 serving ID
             serving_id = f"TimeseriesPredict_Serving_{serving.id}"

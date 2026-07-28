@@ -305,6 +305,71 @@ def test_update_acquires_row_lock_before_runtime_transition(
     assert serving.container_info["state"] == "running"
 
 
+@pytest.mark.parametrize(
+    ("action_name", "permission_name"),
+    [
+        ("start", "timeseries_predict-Start"),
+        ("stop", "timeseries_predict-Stop"),
+        ("remove", "timeseries_predict-Remove"),
+    ],
+)
+def test_runtime_actions_acquire_shared_row_lock(
+    mlops_api_client,
+    mlops_user,
+    monkeypatch,
+    action_name,
+    permission_name,
+):
+    mlops_user.permission["mlops"].add(permission_name)
+    serving = _create_serving(port=3000)
+    monkeypatch.setenv("TIMESERIES_PREDICT_TIMEOUT_SECONDS", "75")
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.get_mlflow_tracking_uri",
+        lambda: "http://mlflow:15000",
+    )
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.get_image_by_prefix",
+        lambda prefix, algorithm: "classify-timeseries:latest",
+    )
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.TimeSeriesPredictServingViewSet._resolve_model_uri",
+        lambda self, instance: f"models:/timeseries/{instance.model_version}",
+    )
+    runtime_events = []
+    original_select_for_update = TimeSeriesPredictServing.objects.select_for_update
+
+    def tracked_select_for_update(*args, **kwargs):
+        runtime_events.append("lock")
+        return original_select_for_update(*args, **kwargs)
+
+    monkeypatch.setattr(TimeSeriesPredictServing.objects, "select_for_update", tracked_select_for_update)
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.WebhookClient.serve",
+        lambda *args, **kwargs: runtime_events.append("start")
+        or {"status": "success", "state": "running", "port": "3000"},
+    )
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.WebhookClient.stop",
+        lambda serving_id: runtime_events.append("stop") or {"status": "success"},
+    )
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.WebhookClient.remove",
+        lambda serving_id: runtime_events.append("remove") or {"status": "success"},
+    )
+
+    response = mlops_api_client.post(
+        f"/api/v1/mlops/timeseries_predict_servings/{serving.id}/{action_name}/",
+        {},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert runtime_events == ["lock", action_name]
+    serving.refresh_from_db()
+    expected_state = "running" if action_name == "start" else "removed"
+    assert serving.container_info["state"] == expected_state
+
+
 def test_update_reconciles_remove_timeout_before_restoring_old_runtime(
     mlops_api_client,
     mlops_user,
