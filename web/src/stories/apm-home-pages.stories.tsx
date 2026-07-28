@@ -38,12 +38,8 @@ const { Title, Paragraph, Text } = Typography;
 /* ============================================================
  * bklite APM · 首页 · 交互式故事书
  *
- * 关键架构(已对齐规格书《首页.md》):
- *  1) 5 张汇总卡(全局健康度 / 活跃服务 / SLO 违约 / 最近错误 / 最近部署)
- *  2) 首页是只读汇总,所有卡片内容来源于其他菜单的近窗数据
- *  3) 时间窗不可自定义(15min 活跃 / 1h SLO与错误 / 7d 部署)
- *  4) 不带同比 delta(避免猜测;趋势分析由"服务"菜单提供)
- *  5) 危险信号(严重/警告)优先,常态信息降级
+ * 5 张汇总卡(全局健康度 / 活跃服务 / SLO 违约 / 最近错误 / 最近部署),
+ * 首页是只读汇总,卡片内容来源于其他菜单的近窗数据(spec §3 / §4)。
  * ============================================================ */
 
 const TOKENS = {
@@ -89,7 +85,7 @@ const tabularNumStyle: React.CSSProperties = {
 
 /* ---------- 跨 Story URL ---------- */
 const STORY_URLS = {
-  home: '?path=/story/apm-home-pages--home-dashboard',
+  home: '?path=/story/apm-home-pages--home-dashboard-story',
   service: '?path=/story/apm-service-pages--service-directory-app-view',
   topology: '?path=/story/apm-service-pages--service-topology',
   slo: '?path=/story/apm-service-pages--service-slo-list',
@@ -100,8 +96,7 @@ const STORY_URLS = {
 
 /* ============================================================
  * 顶导(全局一级菜单):首页 / 服务 / 探索 / 事件 / 集成
- * 备注:"服务拓扑" 与 "SLO" 是"服务"一级菜单下的二级 tab,
- *      不在顶导中重复(规格书《服务.md》§3.1.1)。
+ * "服务拓扑" / "SLO" 是"服务"一级菜单下的二级 tab,不在顶导中重复。
  * ============================================================ */
 function TopMenuBar({ active = 'home' }: { active?: string }) {
   const items = [
@@ -170,7 +165,7 @@ function TopMenuBar({ active = 'home' }: { active?: string }) {
 }
 
 /* ============================================================
- * 首页工具栏(精简:仅"刷新全部"按钮,因为首页时间窗不可自定义)
+ * 首页工具栏:仅"刷新全部"按钮,首页时间窗不可自定义
  * ============================================================ */
 function HomeToolbar({ onRefresh }: { onRefresh?: () => void }) {
   return (
@@ -212,11 +207,11 @@ function HomeToolbar({ onRefresh }: { onRefresh?: () => void }) {
  * 字段:严重/警告/待定/陈旧/健康/总数
  * ============================================================ */
 function GlobalHealthCard() {
-  // 模拟数据:基于"服务"菜单中各服务的健康分级统计
+  // 模拟数据:基于"服务"菜单中各服务的健康分级统计(spec §3.1 5 状态:健康/警告/严重/待定/陈旧/失联)
   const buckets = [
     { level: 1 as const, label: '严重', count: 2 },
     { level: 2 as const, label: '警告', count: 3 },
-    { level: 3 as const, label: '关注', count: 4 },
+    { level: 3 as const, label: '待定', count: 4 },
     { level: 4 as const, label: '陈旧/失联', count: 1 },
     { level: 5 as const, label: '健康', count: 22 },
   ];
@@ -618,7 +613,7 @@ const RECENT_ISSUES = [
     firstSeen: '12 分钟前',
     count: 142,
     spiking: true,
-    state: '待分诊' as const,
+    state: '待分诊' as '待分诊' | '已分诊' | '已解决' | '已排除',
   },
   {
     key: '2',
@@ -627,7 +622,7 @@ const RECENT_ISSUES = [
     firstSeen: '38 分钟前',
     count: 24,
     spiking: false,
-    state: '已分诊' as const,
+    state: '已分诊' as '待分诊' | '已分诊' | '已解决' | '已排除',
   },
   {
     key: '3',
@@ -636,8 +631,17 @@ const RECENT_ISSUES = [
     firstSeen: '1 小时前',
     count: 8,
     spiking: false,
-    state: '已解决' as const,
+    state: '已解决' as '待分诊' | '已分诊' | '已解决' | '已排除',
     regression: true,
+  },
+  {
+    key: '4',
+    title: '老版本遗留告警,经排查非生产路径',
+    service: 'notification-worker',
+    firstSeen: '3 小时前',
+    count: 3,
+    spiking: false,
+    state: '已排除' as '待分诊' | '已分诊' | '已解决' | '已排除',
   },
 ];
 
@@ -704,17 +708,21 @@ function RecentIssuesCard() {
               style={{
                 margin: 0,
                 background:
-                  it.state === '已分诊'
-                    ? TOKENS.primarySoft
-                    : it.state === '已解决'
-                      ? '#dcfce7'
-                      : '#fef2f0',
+                  it.state === '待分诊'
+                    ? '#fef2f0'
+                    : it.state === '已分诊'
+                      ? TOKENS.primarySoft
+                      : it.state === '已解决'
+                        ? '#dcfce7'
+                        : TOKENS.bg,
                 color:
-                  it.state === '已分诊'
-                    ? TOKENS.primary
-                    : it.state === '已解决'
-                      ? TOKENS.success
-                      : TOKENS.danger,
+                  it.state === '待分诊'
+                    ? TOKENS.danger
+                    : it.state === '已分诊'
+                      ? TOKENS.primary
+                      : it.state === '已解决'
+                        ? TOKENS.success
+                        : TOKENS.textSecondary,
                 border: 'none',
               }}
             >
