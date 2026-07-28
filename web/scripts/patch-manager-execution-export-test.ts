@@ -16,14 +16,13 @@ const assertAbsent = (pattern: RegExp, scope: string) => {
 assertPresent(/import ExcelJS from 'exceljs'/, 'ExcelJS 真实工作簿导出');
 assertPresent(/new ExcelJS\.Workbook\(\)/, '执行记录工作簿');
 assertAbsent(/header:\s*'进度'/, '已隐藏易误解的进度列');
-assertPresent(/header:\s*'主机'/, '每个风险项导出主机');
-assertPresent(/header:\s*'补丁'/, '每个风险项导出补丁');
-assertPresent(/header:\s*'安装状态'/, '安装步骤状态');
-assertPresent(/header:\s*'重启状态'/, '重启步骤状态');
-assertPresent(/header:\s*'验证状态'/, '验证步骤状态');
+assertPresent(/patchManager\.execution\.exportHeaders/, '导出表头使用双语资源');
+assertPresent(/installStatus:\s*stepMap\.install\s*\?\s*translate/, '安装步骤状态翻译');
+assertPresent(/rebootStatus:\s*stepMap\.reboot\s*\?\s*translate/, '重启步骤状态翻译');
+assertPresent(/verifyStatus:\s*stepMap\.verify\s*\?\s*translate/, '验证步骤状态翻译');
 assertPresent(/page_size:\s*10000/, '导出全部遵循当前筛选而非当前页');
 assertPresent(/application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet/, 'XLSX MIME');
-assertPresent(/\u6267\u884c\u8bb0\u5f55[^`]*\.xlsx/, '导出文件扩展名');
+assertPresent(/patchManager\.execution\.records[^\n]*\.xlsx/, '导出文件双语名称与扩展名');
 assertAbsent(/\u6267\u884c\u8bb0\u5f55[^`]*\.csv/, '会自动识别日期的 CSV 导出');
 
 console.log('补丁执行记录导出格式约束通过');

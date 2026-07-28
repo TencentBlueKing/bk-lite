@@ -6,6 +6,7 @@ from apps.core.mixinx import EncryptMixin
 from apps.core.utils.serializers import TeamSerializer
 from apps.patch_mgmt.constants import PatchSourceType
 from apps.patch_mgmt.models import PatchSource
+from apps.patch_mgmt.utils.i18n import serializer_message
 
 
 # MVP 阶段支持的补丁源类型
@@ -115,7 +116,7 @@ class PatchSourceSerializer(TeamSerializer):
 
     def validate_source_type(self, value: str) -> str:
         if value not in MVP_SOURCE_TYPES:
-            raise serializers.ValidationError("MVP 阶段仅支持 WSUS、yum repo、dnf repo、apt repo 四种类型")
+            raise serializers.ValidationError(serializer_message(self, "error.unsupported_source_type", "Only WSUS, yum repo, dnf repo, and apt repo are supported in the MVP"))
         return value
 
     def validate_name(self, value):
@@ -133,7 +134,7 @@ class PatchSourceSerializer(TeamSerializer):
         if self.instance:
             qs = qs.exclude(pk=self.instance.pk)
         if qs.exists():
-            raise serializers.ValidationError("同名补丁源已存在")
+            raise serializers.ValidationError(serializer_message(self, "error.duplicate_source_name", "A patch source with the same name already exists"))
         return value
 
     def validate(self, attrs):

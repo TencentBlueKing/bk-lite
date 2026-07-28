@@ -11,6 +11,7 @@ from apps.patch_mgmt.models import (
     HostBaselineBinding,
     HostComplianceSnapshot,
 )
+from apps.patch_mgmt.utils.i18n import serializer_message
 
 
 class GovernanceTaskHostSerializer(serializers.ModelSerializer):
@@ -148,16 +149,19 @@ class GovernanceTaskListSerializer(TeamSerializer):
         attrs = super().validate(attrs)
         if not attrs.get("name"):
             task_type = attrs.get("task_type", "unknown")
-            attrs["name"] = f"治理任务 · {dict(GovernanceTaskType.CHOICES).get(task_type, task_type)}"
+            task_type_name = serializer_message(self, f"status.task_type.{task_type}", task_type)
+            attrs["name"] = serializer_message(self, "message.governance_task_name", "Governance Task · {type}", type=task_type_name)
         return attrs
 
     def get_host_count(self, obj):
         return obj.host_results.count()
 
     def get_task_type_display(self, obj):
-        if obj.task_type == GovernanceTaskType.INSTALL:
-            return "治理"
-        return obj.get_task_type_display()
+        return serializer_message(
+            self,
+            f"status.task_type.{obj.task_type}",
+            obj.get_task_type_display(),
+        )
 
     def get_progress(self, obj):
         total = obj.host_results.count()

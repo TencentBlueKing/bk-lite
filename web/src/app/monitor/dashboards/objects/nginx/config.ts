@@ -38,14 +38,14 @@ export const NGINX_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '空闲等待请求的连接数。',
       unit: 'counts',
       query: 'nginx_waiting{__$labels__}',
-      color: '#9aa9bf'
+      color: '#8a5cff'
     },
     {
       name: 'nginx_requests_rate',
       display_name: '请求速率',
       description: 'Nginx 处理请求的速率。',
       unit: 'cps',
-      query: 'rate(nginx_requests{__$labels__}[5m])',
+      query: 'rate(nginx_requests{__$labels__}[__$window__])',
       color: '#27c274'
     },
     {
@@ -53,7 +53,7 @@ export const NGINX_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '连接接受速率',
       description: 'Nginx 接受新连接的速率。',
       unit: 'cps',
-      query: 'rate(nginx_accepts{__$labels__}[5m])',
+      query: 'rate(nginx_accepts{__$labels__}[__$window__])',
       color: '#13c2c2'
     },
     {
@@ -61,7 +61,7 @@ export const NGINX_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '连接处理速率',
       description: 'Nginx 处理连接的速率。',
       unit: 'cps',
-      query: 'rate(nginx_handled{__$labels__}[5m])',
+      query: 'rate(nginx_handled{__$labels__}[__$window__])',
       color: '#597ef7'
     },
     {
@@ -78,14 +78,14 @@ export const NGINX_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '等待连接占活跃连接的比例。',
       unit: 'percent',
       query: 'clamp_max(100 * nginx_waiting{__$labels__} / clamp_min(nginx_active{__$labels__}, 1), 100)',
-      color: '#9aa9bf'
+      color: '#8a5cff'
     },
     {
       name: 'nginx_handled_accept_ratio',
       display_name: '连接处理完成率',
       description: '连接处理速率相对接受速率的比例。',
       unit: 'percent',
-      query: '100 * rate(nginx_handled{__$labels__}[5m]) / clamp_min(rate(nginx_accepts{__$labels__}[5m]), 1e-6)',
+      query: '100 * rate(nginx_handled{__$labels__}[__$window__]) / clamp_min(rate(nginx_accepts{__$labels__}[__$window__]), 1e-6)',
       color: '#27c274'
     }
   ],
@@ -95,7 +95,7 @@ export const NGINX_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       metric: 'nginx_active',
       color: '#2f6bff',
       icon: 'node',
-      guide: [{ label: '活跃连接', detail: '当前活跃客户端连接数，反映服务并发负载。' }],
+      guide: [{ label: '活跃连接', detail: '当前活跃客户端连接数；持续升高时结合繁忙占比判断是否接近处理上限。' }],
       footer: [{ label: '等待连接', metric: 'nginx_waiting', unit: 'counts' }]
     },
     {
@@ -103,7 +103,7 @@ export const NGINX_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       metric: 'nginx_requests_rate',
       color: '#27c274',
       icon: 'thunder',
-      guide: [{ label: '请求速率', detail: '每秒处理请求数，反映 Nginx 实时吞吐。' }],
+      guide: [{ label: '请求速率', detail: '每秒处理请求数；骤降常伴随上游故障或入口限流，需对照错误日志与上游健康。' }],
       footer: [{ label: '处理连接', metric: 'nginx_handled_rate', unit: 'cps' }]
     },
     {
@@ -111,7 +111,7 @@ export const NGINX_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       metric: 'nginx_busy_connection_ratio',
       color: '#ff8a1f',
       icon: 'api',
-      guide: [{ label: '繁忙连接', detail: '读取和写入中的连接占活跃连接的比例，可快速判断当前是否处于忙碌处理状态。' }],
+      guide: [{ label: '繁忙连接', detail: '读/写连接占活跃连接比例；持续偏高说明处理能力吃紧，应扩 worker 或限流。' }],
       footer: [{ label: '等待占比', metric: 'nginx_waiting_connection_ratio', unit: 'percent' }]
     },
     {
@@ -121,30 +121,21 @@ export const NGINX_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       icon: 'thunder',
       compare: true,
       compareFavorableDirection: 'up',
-      guide: [{ label: '处理完成率', detail: '连接处理速率相对连接接受速率的比例，偏低时要关注连接处理失败或积压。' }],
+      guide: [{ label: '处理完成率', detail: '处理速率/接受速率；明显低于 100% 表示连接被丢弃，优先查 worker 饱和与 backlog。' }],
       footer: [{ label: '接受速率', metric: 'nginx_accepts_rate', unit: 'cps' }]
     },
-    {
-      title: '连接接受速率',
-      metric: 'nginx_accepts_rate',
-      unit: 'cps',
-      color: '#13c2c2',
-      icon: 'thunder',
-      guide: [{ label: '接受速率', detail: '每秒新接受连接数,反映入口连接压力。' }],
-      footer: [{ label: '处理速率', metric: 'nginx_handled_rate', unit: 'cps' }]
-    }
   ],
   charts: [
     {
       title: '连接状态趋势',
       subtitle: '连接状态变化',
       metric: 'nginx_active',
-      guide: [{ label: '连接状态', detail: '活跃、读取、写入、等待连接数的时间变化。' }],
+      guide: [{ label: '连接状态', detail: '活跃/读取/写入/等待连接的时间变化；等待长期高于读写属 keepalive 常态，读写持续抬升才代表处理压力。' }],
       series: [
         { metric: 'nginx_active', label: '活跃连接', color: '#2f6bff', unit: 'counts' },
         { metric: 'nginx_reading', label: '读取连接', color: '#27c274', unit: 'counts' },
         { metric: 'nginx_writing', label: '写入连接', color: '#ff8a1f', unit: 'counts' },
-        { metric: 'nginx_waiting', label: '等待连接', color: '#9aa9bf', unit: 'counts' }
+        { metric: 'nginx_waiting', label: '等待连接', color: '#8a5cff', unit: 'counts' }
       ]
     },
     {
@@ -164,7 +155,7 @@ export const NGINX_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       guide: [{ label: '连接占比', detail: '对比繁忙连接与等待连接的占比变化，识别负载结构是否出现偏移。' }],
       series: [
         { metric: 'nginx_busy_connection_ratio', label: '繁忙占比', color: '#ff8a1f', unit: 'percent' },
-        { metric: 'nginx_waiting_connection_ratio', label: '等待占比', color: '#9aa9bf', unit: 'percent' }
+        { metric: 'nginx_waiting_connection_ratio', label: '等待占比', color: '#8a5cff', unit: 'percent' }
       ]
     }
   ],
@@ -179,22 +170,10 @@ export const NGINX_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       segments: [
         { label: '读取连接', metric: 'nginx_reading', color: '#27c274', unit: 'counts' },
         { label: '写入连接', metric: 'nginx_writing', color: '#ff8a1f', unit: 'counts' },
-        { label: '等待连接', metric: 'nginx_waiting', color: '#9aa9bf', unit: 'counts' }
+        { label: '等待连接', metric: 'nginx_waiting', color: '#8a5cff', unit: 'counts' }
       ]
     }
   ],
-  barPanels: [
-    {
-      title: '连接压力',
-      subtitle: 'Reading / Writing / Waiting',
-      showTrend: true,
-      guide: [{ label: '连接压力', detail: '读取/写入/等待中的连接构成。Reading、Writing 偏高代表处理压力大，Waiting 为 keepalive 空闲连接。' }],
-      items: [
-        { label: 'Reading', metric: 'nginx_reading', color: '#2f6bff', unit: 'counts' },
-        { label: 'Writing', metric: 'nginx_writing', color: '#ff8a1f', unit: 'counts' },
-        { label: 'Waiting', metric: 'nginx_waiting', color: '#9aa9bf', unit: 'counts' }
-      ]
-    }
-  ],
+  barPanels: [],
   details: []
 };

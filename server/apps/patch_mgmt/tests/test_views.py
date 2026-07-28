@@ -532,7 +532,8 @@ class TestRiskViewApi:
         )
 
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
-        assert "不是待重启状态" in str(resp.data)
+        assert resp.data["code"] == "targets_not_pending_reboot"
+        assert str(target.id) in resp.data["detail"]
         assert not GovernanceTask.objects.filter(task_type="reboot").exists()
 
     def test_risk_reboot_accepts_pending_reboot_host(self, su_client):
@@ -572,7 +573,8 @@ class TestRiskViewApi:
         )
 
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
-        assert "不是待重启状态" in str(resp.data)
+        assert resp.data["code"] == "targets_not_pending_reboot"
+        assert str(normal_target.id) in resp.data["detail"]
         assert not GovernanceTask.objects.filter(task_type="reboot").exists()
 
 
@@ -742,7 +744,8 @@ class TestGovernanceTaskViewApi:
         )
 
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
-        assert "没有尚未执行的主机可取消" in resp.data["detail"]
+        assert resp.data["code"] == "no_waiting_hosts_to_cancel"
+        assert resp.data["detail"]
 
     def test_cancel_terminal_task_is_rejected(self, su_client):
         from apps.patch_mgmt.constants import GovernanceTaskStatus
@@ -759,7 +762,8 @@ class TestGovernanceTaskViewApi:
         )
 
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
-        assert resp.data["detail"] == "任务已结束，不可取消"
+        assert resp.data["code"] == "task_finished_not_cancellable"
+        assert resp.data["detail"]
 
     def test_task_detail_includes_baseline_requirements(self, su_client):
         from apps.patch_mgmt.models import (

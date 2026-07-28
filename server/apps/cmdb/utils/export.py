@@ -111,9 +111,12 @@ class Export:
             dst_model_id = association["dst_model_id"]
             src_model_id = association["src_model_id"]
             model_asst_id = association["model_asst_id"]
-            _asst_model = self.model_name_map[
+            related_model_id = (
                 src_model_id if self.model_id == dst_model_id else dst_model_id
-            ]
+            )
+            _asst_model = self.model_name_map.get(related_model_id)
+            if not _asst_model:
+                continue
             asso_name = f"关联-{self.association_type_map[asst_id]}-{_asst_model}"
             attrs_name.append(asso_name)
             attrs_type.append("关联")
@@ -298,7 +301,9 @@ class Export:
 
         # 获取所有关联关系数据
         asso_insts = InstanceManage.instance_association_instance_list(
-            self.model_id, int(inst_id)
+            self.model_id,
+            int(inst_id),
+            business_only=True,
         )
         model_asst_name_map = {}
         for asso_inst in asso_insts:

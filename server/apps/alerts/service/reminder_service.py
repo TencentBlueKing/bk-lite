@@ -3,14 +3,15 @@
 # @Time: 2025/6/11 10:00
 # @Author: windyzhao
 import json
-
-from django.utils import timezone
-from django.db import transaction, connection
 from datetime import timedelta
-from typing import Dict, Any, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
-from apps.alerts.models import Alert, AlertReminderTask, AlertAssignment, Level
-from apps.alerts.constants import SessionStatus, AlertStatus
+from django.db import connection, transaction
+from django.utils import timezone
+
+from apps.alerts.common.notification_target import normalize_notification_target, read_notification_target, resolve_notification_target
+from apps.alerts.constants import AlertStatus, SessionStatus
+from apps.alerts.models import Alert, AlertAssignment, AlertReminderTask, Level
 from apps.core.logger import alert_logger as logger
 
 
@@ -399,12 +400,35 @@ class ReminderService:
             from apps.alerts.service.escalation_service import EscalationService
 
             roster, layer_channels = EscalationService.active_roster_for_reminder(alert)
-            username_list = roster if roster is not None else assignment.personnel
+            config = assignment.config if isinstance(assignment.config, dict) else {}
+            raw_target = read_notification_target(config)
+            normalized_target = normalize_notification_target(
+                raw_target,
+                assignment.personnel,
+            )
+            username_list = (
+                roster
+                if roster is not None
+                else resolve_notification_target(
+                    raw_target,
+                    assignment.personnel,
+                )
+            )
+            logger.info(
+                "[AlertReminder] 通知目标解析: assignment_id=%s, alert_id=%s, "
+                "type=%s, organization_ids=%s, resolved_count=%s",
+                assignment.id,
+                alert.alert_id,
+                normalized_target["type"],
+                normalized_target["organization_ids"],
+                len(username_list),
+            )
             if not username_list:
                 logger.warning(
                     "[AlertReminder] 提醒任务 %s 没有配置接收人员，无法发送通知",
                     assignment.id,
                 )
+                cls._reschedule_without_consuming(reminder_id)
                 return False
 
             channel_list = layer_channels if layer_channels else assignment.notify_channels
@@ -462,6 +486,25 @@ class ReminderService:
                 exc_info=True,
             )
             return False
+
+    @classmethod
+    def _reschedule_without_consuming(cls, reminder_id: Optional[int]) -> bool:
+        """空接收人时保留次数，并按原间隔安排下次解析。"""
+        if reminder_id is None:
+            return False
+        with transaction.atomic():
+            reminder = (
+                AlertReminderTask.objects.select_for_update()
+                .filter(pk=reminder_id, is_active=True)
+                .first()
+            )
+            if reminder is None:
+                return False
+            reminder.next_reminder_time = timezone.now() + timedelta(
+                minutes=reminder.current_frequency_minutes
+            )
+            reminder.save(update_fields=["next_reminder_time", "updated_at"])
+            return True
 
     @classmethod
     def _advance_reminder_after_enqueue(cls, reminder_id: int) -> bool:

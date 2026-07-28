@@ -16,6 +16,7 @@ import ReadyTag from '@/app/patch-manager/components/ready-tag';
 import CustomTable from '@/components/custom-table';
 import OperateDrawer from '@/app/patch-manager/components/operate-drawer';
 import { getWindowsPackageUploadState } from '@/app/patch-manager/components/windows-package-upload-state';
+import { useTranslation } from '@/utils/i18n';
 
 type TabKey = 'win' | 'linux';
 type SourceType = 'auto' | 'manual';
@@ -24,21 +25,6 @@ const OS_TYPE_MAP: Record<TabKey, OSType> = {
   win: 'windows',
   linux: 'linux',
 };
-
-const SEVERITY_OPTIONS = [
-  { id: 'critical', name: '严重' },
-  { id: 'important', name: '重要' },
-  { id: 'moderate', name: '中等' },
-  { id: 'low', name: '低' },
-  { id: 'unspecified', name: '未指定' },
-];
-
-const READY_OPTIONS = [
-  { id: 'ready', name: '就绪' },
-  { id: 'processing', name: '处理中' },
-  { id: 'action_required', name: '需处理' },
-  { id: 'unavailable', name: '不可用' },
-];
 
 const ARCH_OPTIONS = [
   { id: 'x64', name: 'x64' },
@@ -76,7 +62,7 @@ function getSourceLabel(patch: Patch): string {
       return 'apt';
     case null:
     case undefined:
-      return '手动';
+      return 'manual';
     default:
       return patch.source_type;
   }
@@ -117,6 +103,7 @@ function normalizeRepoType(repoType?: string): string {
 }
 
 export default function LibraryPage() {
+  const { t } = useTranslation();
   const api = usePatchManagerApi();
   const { isLoading } = useApiClient();
   const { convertToLocalizedTime } = useLocalizedTime();
@@ -145,12 +132,12 @@ export default function LibraryPage() {
   const [batchSeverityOpen, setBatchSeverityOpen] = useState(false);
   const [batchSeverityValue, setBatchSeverityValue] = useState<string | undefined>(undefined);
 
-  const SEVERITY_SELECT_OPTIONS = [
-    { label: '严重', value: 'critical' },
-    { label: '重要', value: 'important' },
-    { label: '中等', value: 'moderate' },
-    { label: '低', value: 'low' },
-  ];
+  const SEVERITY_SELECT_OPTIONS = (['critical', 'important', 'moderate', 'low'] as const)
+    .map((value) => ({ label: t(`patchManager.severityValues.${value}`), value }));
+  const severityFilterOptions = (['critical', 'important', 'moderate', 'low', 'unspecified'] as const)
+    .map((id) => ({ id, name: t(`patchManager.severityValues.${id}`) }));
+  const readyFilterOptions = (['ready', 'processing', 'action_required', 'unavailable'] as const)
+    .map((id) => ({ id, name: t(`patchManager.readyStatus.${id}`) }));
 
   const buildParams = (page: number, pageSize: number, currentFilters: SearchFilters): PatchParams => {
     const params: PatchParams = {
@@ -252,29 +239,29 @@ export default function LibraryPage() {
   }, [editingPatch, activeTab]);
 
   const winFieldConfigs: FieldConfig[] = [
-    { name: 'name', label: 'KB 号', lookup_expr: 'icontains' },
-    { name: 'title', label: '描述', lookup_expr: 'icontains' },
-    { name: 'version', label: '适用版本', lookup_expr: 'icontains', options: [{ id: '2019', name: '2019' }, { id: '2022', name: '2022' }, { id: '2008', name: '2008' }] },
-    { name: 'arch', label: '架构', lookup_expr: 'in', options: ARCH_OPTIONS },
-    { name: 'severity', label: '严重级别', lookup_expr: 'in', options: SEVERITY_OPTIONS },
-    { name: 'ready', label: '就绪状态', lookup_expr: 'in', options: READY_OPTIONS },
-    { name: 'sourceType', label: '来源类型', lookup_expr: 'in', options: [{ id: 'auto', name: '自动' }, { id: 'manual', name: '手动' }] },
+    { name: 'name', label: t('patchManager.kbNumber'), lookup_expr: 'icontains' },
+    { name: 'title', label: t('patchManager.libraryPage.description'), lookup_expr: 'icontains' },
+    { name: 'version', label: t('patchManager.libraryPage.applicableVersion'), lookup_expr: 'icontains', options: [{ id: '2019', name: '2019' }, { id: '2022', name: '2022' }, { id: '2008', name: '2008' }] },
+    { name: 'arch', label: t('patchManager.arch'), lookup_expr: 'in', options: ARCH_OPTIONS },
+    { name: 'severity', label: t('patchManager.severity'), lookup_expr: 'in', options: severityFilterOptions },
+    { name: 'ready', label: t('patchManager.libraryPage.readyStatus'), lookup_expr: 'in', options: readyFilterOptions },
+    { name: 'sourceType', label: t('patchManager.libraryPage.sourceType'), lookup_expr: 'in', options: [{ id: 'auto', name: t('patchManager.libraryPage.automatic') }, { id: 'manual', name: t('patchManager.manual') }] },
   ];
 
   const linuxFieldConfigs: FieldConfig[] = [
-    { name: 'name', label: '包名', lookup_expr: 'icontains' },
-    { name: 'title', label: '描述', lookup_expr: 'icontains' },
-    { name: 'version', label: '发行版', lookup_expr: 'in', options: [{ id: 'Rocky 8', name: 'Rocky 8' }, { id: 'Rocky 9', name: 'Rocky 9' }, { id: 'CentOS 7', name: 'CentOS 7' }] },
-    { name: 'arch', label: '架构', lookup_expr: 'in', options: ARCH_OPTIONS },
-    { name: 'severity', label: '严重级别', lookup_expr: 'in', options: SEVERITY_OPTIONS },
-    { name: 'ready', label: '就绪状态', lookup_expr: 'in', options: READY_OPTIONS },
-    { name: 'sourceType', label: '来源类型', lookup_expr: 'in', options: [{ id: 'auto', name: '自动' }, { id: 'manual', name: '手动' }] },
+    { name: 'name', label: t('patchManager.packageName'), lookup_expr: 'icontains' },
+    { name: 'title', label: t('patchManager.libraryPage.description'), lookup_expr: 'icontains' },
+    { name: 'version', label: t('patchManager.distro'), lookup_expr: 'in', options: [{ id: 'Rocky 8', name: 'Rocky 8' }, { id: 'Rocky 9', name: 'Rocky 9' }, { id: 'CentOS 7', name: 'CentOS 7' }] },
+    { name: 'arch', label: t('patchManager.arch'), lookup_expr: 'in', options: ARCH_OPTIONS },
+    { name: 'severity', label: t('patchManager.severity'), lookup_expr: 'in', options: severityFilterOptions },
+    { name: 'ready', label: t('patchManager.libraryPage.readyStatus'), lookup_expr: 'in', options: readyFilterOptions },
+    { name: 'sourceType', label: t('patchManager.libraryPage.sourceType'), lookup_expr: 'in', options: [{ id: 'auto', name: t('patchManager.libraryPage.automatic') }, { id: 'manual', name: t('patchManager.manual') }] },
   ];
 
   const handleDelete = async (row: Patch) => {
     try {
       await api.deletePatch(row.id);
-      message.success('已删除');
+      message.success(t('patchManager.libraryPage.deleted'));
       loadData();
     } catch {
     }
@@ -283,29 +270,29 @@ export default function LibraryPage() {
   const columns: ColumnsType<Patch> = useMemo(() => {
     const isWin = activeTab === 'win';
     return [
-      { title: isWin ? 'KB 号' : '包名', dataIndex: 'name', width: 120, render: (_: unknown, r: Patch) => getPatchName(r) },
-      { title: '描述', dataIndex: 'title', ellipsis: true },
-      { title: '严重级别', dataIndex: 'severity', width: 100, render: (v: PatchSeverity) => <SeverityTag severity={v} /> },
-      { title: isWin ? '适用版本' : '发行版', dataIndex: 'version', width: 140, render: (_: unknown, r: Patch) => getPatchVersion(r) },
-      { title: '架构', dataIndex: 'arch', width: 100, render: (_: unknown, r: Patch) => getPatchArch(r) },
-      { title: '来源', dataIndex: 'sources', width: 120, render: (_: unknown, r: Patch) => <span style={{ color: '#8c8c8c' }}>{getSourceLabel(r)}</span> },
-      { title: '来源类型', dataIndex: 'sourceType', width: 100, render: (_: unknown, r: Patch) => {
-        const t = getSourceType(r);
-        return <Tag color={t === 'auto' ? 'default' : 'warning'}>{t === 'auto' ? '自动' : '手动'}</Tag>;
+      { title: isWin ? t('patchManager.kbNumber') : t('patchManager.packageName'), dataIndex: 'name', width: 120, render: (_: unknown, r: Patch) => getPatchName(r) },
+      { title: t('patchManager.libraryPage.description'), dataIndex: 'title', ellipsis: true },
+      { title: t('patchManager.severity'), dataIndex: 'severity', width: 100, render: (v: PatchSeverity) => <SeverityTag severity={v} /> },
+      { title: isWin ? t('patchManager.libraryPage.applicableVersion') : t('patchManager.distro'), dataIndex: 'version', width: 140, render: (_: unknown, r: Patch) => getPatchVersion(r) },
+      { title: t('patchManager.arch'), dataIndex: 'arch', width: 100, render: (_: unknown, r: Patch) => getPatchArch(r) },
+      { title: t('patchManager.libraryPage.source'), dataIndex: 'sources', width: 120, render: (_: unknown, r: Patch) => <span style={{ color: '#8c8c8c' }}>{getSourceLabel(r) === 'manual' ? t('patchManager.manual') : getSourceLabel(r)}</span> },
+      { title: t('patchManager.libraryPage.sourceType'), dataIndex: 'sourceType', width: 100, render: (_: unknown, r: Patch) => {
+        const sourceType = getSourceType(r);
+        return <Tag color={sourceType === 'auto' ? 'default' : 'warning'}>{sourceType === 'auto' ? t('patchManager.libraryPage.automatic') : t('patchManager.manual')}</Tag>;
       }},
-      { title: '就绪状态', dataIndex: 'pkg_status', width: 120, render: (_: unknown, r: Patch) => <ReadyTag status={mapPkgStatus(r.pkg_status)} /> },
-      { title: '被基线引用', dataIndex: 'baseline_requirement_count', width: 110, render: (v: number) => <span style={{ color: '#bfbfbf' }}>{v ?? 0}</span> },
-      { title: '最近更新', dataIndex: 'last_synced_at', width: 180, render: (v: string | null, r: Patch) => convertToLocalizedTime(v || r.updated_at) || '—' },
-      { title: '操作', dataIndex: 'op', width: 180, fixed: 'right', render: (_: unknown, r: Patch) => (
+      { title: t('patchManager.libraryPage.readyStatus'), dataIndex: 'pkg_status', width: 120, render: (_: unknown, r: Patch) => <ReadyTag status={mapPkgStatus(r.pkg_status)} /> },
+      { title: t('patchManager.libraryPage.baselineReferences'), dataIndex: 'baseline_requirement_count', width: 110, render: (v: number) => <span style={{ color: '#bfbfbf' }}>{v ?? 0}</span> },
+      { title: t('patchManager.libraryPage.lastUpdated'), dataIndex: 'last_synced_at', width: 180, render: (v: string | null, r: Patch) => convertToLocalizedTime(v || r.updated_at) || '—' },
+      { title: t('patchManager.operation'), dataIndex: 'op', width: 180, fixed: 'right', render: (_: unknown, r: Patch) => (
         <Space size={12}>
-          <PermissionWrapper requiredPermissions={['Edit']}><a style={{ color: '#1677ff' }} onClick={() => setEditingPatch(r)}><EditOutlined /> 编辑</a></PermissionWrapper>
-          <PermissionWrapper requiredPermissions={['Delete']}><Popconfirm title="确定删除该补丁？" onConfirm={() => handleDelete(r)} okText="删除" cancelText="取消">
-            <a style={{ color: '#ff4d4f' }}><DeleteOutlined /> 删除</a>
+          <PermissionWrapper requiredPermissions={['Edit']}><a style={{ color: '#1677ff' }} onClick={() => setEditingPatch(r)}><EditOutlined /> {t('patchManager.edit')}</a></PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['Delete']}><Popconfirm title={t('patchManager.libraryPage.deleteConfirm')} onConfirm={() => handleDelete(r)} okText={t('patchManager.delete')} cancelText={t('patchManager.cancel')}>
+            <a style={{ color: '#ff4d4f' }}><DeleteOutlined /> {t('patchManager.delete')}</a>
           </Popconfirm></PermissionWrapper>
         </Space>
       )},
     ];
-  }, [activeTab]);
+  }, [activeTab, convertToLocalizedTime, t]);
 
   const handleCreateSubmit = async () => {
     let values;
@@ -313,7 +300,7 @@ export default function LibraryPage() {
       values = await createForm.validateFields();
     } catch (err: any) {
       if (err?.errorFields) return;
-      message.error('表单校验失败');
+      message.error(t('patchManager.libraryPage.validationFailed'));
       return;
     }
     const osType = OS_TYPE_MAP[activeTab];
@@ -343,7 +330,7 @@ export default function LibraryPage() {
 
     const file = values.package_file?.[0]?.originFileObj as File | undefined;
     if (activeTab === 'win' && !file) {
-      message.error('请上传 MSU 或 CAB 补丁文件');
+      message.error(t('patchManager.libraryPage.packageFileRequired'));
       return;
     }
 
@@ -356,7 +343,7 @@ export default function LibraryPage() {
       }
       createForm.resetFields();
       setCreateOpen(false);
-      message.success('新增成功');
+      message.success(t('patchManager.libraryPage.created'));
       loadData(1);
     } catch {
       loadData(1);
@@ -452,9 +439,9 @@ export default function LibraryPage() {
       });
       const res = await api.ingestPatchSource(selectedSourceId, selectedCandidates.map(String), severityOverrides);
       if (isAsyncIngestResult(res)) {
-        message.success('已提交后台入库任务，完成后补丁状态将自动更新');
+        message.success(t('patchManager.libraryPage.ingestSubmitted'));
       } else {
-        message.success(`入库完成：新增 ${res.created}，更新 ${res.updated}`);
+        message.success(t('patchManager.libraryPage.ingestCompleted', undefined, { created: res.created, updated: res.updated }));
       }
       setImportOpen(false);
       setSelectedCandidates([]);
@@ -474,9 +461,9 @@ export default function LibraryPage() {
       if (sev) severityOverrides[item.key] = sev;
       const res = await api.ingestPatchSource(selectedSourceId, [item.key], severityOverrides);
       if (isAsyncIngestResult(res)) {
-        message.success('已提交后台入库任务，完成后补丁状态将自动更新');
+        message.success(t('patchManager.libraryPage.ingestSubmitted'));
       } else {
-        message.success(`入库完成：新增 ${res.created}，更新 ${res.updated}`);
+        message.success(t('patchManager.libraryPage.ingestCompleted', undefined, { created: res.created, updated: res.updated }));
         setCandidateData((prev) => prev.map((c) => c.key === item.key ? { ...c, added: true } : c));
       }
       loadData();
@@ -485,9 +472,9 @@ export default function LibraryPage() {
   };
 
   const candidateColumns: ColumnsType<CandidateItem> = [
-    { title: activeTab === 'win' ? 'KB 号' : '包名', dataIndex: 'name', width: 130 },
+    { title: activeTab === 'win' ? t('patchManager.kbNumber') : t('patchManager.packageName'), dataIndex: 'name', width: 130 },
     {
-      title: '严重级别',
+      title: t('patchManager.severity'),
       dataIndex: 'severity',
       width: 130,
       render: (_: unknown, r: CandidateItem) => (
@@ -500,14 +487,14 @@ export default function LibraryPage() {
         />
       ),
     },
-    { title: '描述', dataIndex: 'title', ellipsis: true },
+    { title: t('patchManager.libraryPage.description'), dataIndex: 'title', ellipsis: true },
     ...(activeTab === 'win'
-      ? [{ title: '适用版本', dataIndex: 'version', width: 100 }, { title: '架构', dataIndex: 'arch', width: 80 }]
-      : [{ title: '发行版', dataIndex: 'dist', width: 100 }, { title: '架构', dataIndex: 'arch', width: 80 }]),
-    { title: '操作', dataIndex: 'op', width: 90, fixed: 'right', render: (_: unknown, r: CandidateItem) => (
+      ? [{ title: t('patchManager.libraryPage.applicableVersion'), dataIndex: 'version', width: 100 }, { title: t('patchManager.arch'), dataIndex: 'arch', width: 80 }]
+      : [{ title: t('patchManager.distro'), dataIndex: 'dist', width: 100 }, { title: t('patchManager.arch'), dataIndex: 'arch', width: 80 }]),
+    { title: t('patchManager.operation'), dataIndex: 'op', width: 90, fixed: 'right', render: (_: unknown, r: CandidateItem) => (
       r.added
-        ? <Button type="link" disabled>已入库</Button>
-        : <Button type="link" onClick={() => handleSingleIngest(r)}>入库</Button>
+        ? <Button type="link" disabled>{t('patchManager.libraryPage.ingested')}</Button>
+        : <Button type="link" onClick={() => handleSingleIngest(r)}>{t('patchManager.libraryPage.ingest')}</Button>
     )},
   ];
 
@@ -532,9 +519,9 @@ export default function LibraryPage() {
           selectWidth={360}
         />
         <Space>
-          <PermissionWrapper requiredPermissions={['Edit']}><Button icon={<CloudDownloadOutlined />} onClick={handleImportSearch}>同步入库</Button></PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['Edit']}><Button icon={<CloudDownloadOutlined />} onClick={handleImportSearch}>{t('patchManager.libraryPage.syncIngest')}</Button></PermissionWrapper>
           {activeTab === 'win' && (
-            <PermissionWrapper requiredPermissions={['Add']}><Button icon={<PlusOutlined />} onClick={() => { createForm.resetFields(); setCreateOpen(true); }}>新增补丁</Button></PermissionWrapper>
+            <PermissionWrapper requiredPermissions={['Add']}><Button icon={<PlusOutlined />} onClick={() => { createForm.resetFields(); setCreateOpen(true); }}>{t('patchManager.libraryPage.addPatch')}</Button></PermissionWrapper>
           )}
         </Space>
       </div>
@@ -551,7 +538,7 @@ export default function LibraryPage() {
             pageSize: pagination.pageSize,
             total: pagination.total,
             showSizeChanger: true,
-            showTotal: (t: number) => `共 ${t} 条`,
+            showTotal: (total: number) => t('patchManager.common.totalItems', undefined, { count: total }),
             style: { marginBottom: 0 },
             onChange: (page, pageSize) => loadData(page, pageSize),
           }}
@@ -559,7 +546,7 @@ export default function LibraryPage() {
       </div>
 
       <OperateDrawer
-        title="新增补丁"
+        title={t('patchManager.libraryPage.addPatch')}
         open={createOpen}
         onClose={() => {
           if (!createSaving) setCreateOpen(false);
@@ -570,79 +557,79 @@ export default function LibraryPage() {
         width={520}
         footer={
           <Space>
-            <Button disabled={createSaving} onClick={() => { createForm.resetFields(); setCreateOpen(false); }}>取消</Button>
-            <Button type="primary" loading={createSaving} onClick={handleCreateSubmit}>确定</Button>
+            <Button disabled={createSaving} onClick={() => { createForm.resetFields(); setCreateOpen(false); }}>{t('patchManager.cancel')}</Button>
+            <Button type="primary" loading={createSaving} onClick={handleCreateSubmit}>{t('patchManager.confirm')}</Button>
           </Space>
         }
       >
         <Form layout="vertical" form={createForm} preserve={false}>
-          <Form.Item label={activeTab === 'win' ? 'KB 号' : '包名'} name="name" rules={[{ required: true, message: activeTab === 'win' ? '请输入 KB 号' : '请输入包名' }]}>
-            <Input placeholder={activeTab === 'win' ? '例如 KB5034441' : '例如 openssl'} />
+          <Form.Item label={activeTab === 'win' ? t('patchManager.kbNumber') : t('patchManager.packageName')} name="name" rules={[{ required: true, message: activeTab === 'win' ? t('patchManager.libraryPage.kbRequired') : t('patchManager.libraryPage.packageNameRequired') }]}>
+            <Input placeholder={activeTab === 'win' ? t('patchManager.libraryPage.kbPlaceholder') : t('patchManager.libraryPage.packagePlaceholder')} />
           </Form.Item>
           {activeTab === 'win' && (
             <>
               <Form.Item
-                label="补丁文件"
+                label={t('patchManager.libraryPage.patchFile')}
                 name="package_file"
                 valuePropName="fileList"
                 getValueFromEvent={(event) => Array.isArray(event) ? event : event?.fileList}
-                rules={[{ required: true, message: '请上传 MSU 或 CAB 补丁文件' }]}
+                rules={[{ required: true, message: t('patchManager.libraryPage.packageFileRequired') }]}
               >
                 <Upload.Dragger maxCount={1} beforeUpload={() => false} accept=".msu,.cab">
                   <p><InboxOutlined /></p>
-                  <p>点击或拖拽 MSU / CAB 文件到此处</p>
+                  <p>{t('patchManager.libraryPage.fileDrop')}</p>
                 </Upload.Dragger>
               </Form.Item>
             </>
           )}
-          <Form.Item label="描述" name="desc">
-            <Input placeholder="请输入补丁描述" />
+          <Form.Item label={t('patchManager.libraryPage.description')} name="desc">
+            <Input placeholder={t('patchManager.libraryPage.descriptionPlaceholder')} />
           </Form.Item>
           {activeTab === 'win' && (
-            <Form.Item label="严重级别" name="severity" rules={[{ required: true, message: '请选择严重级别' }]}>
-              <Select placeholder="请选择" options={[{ label: '严重', value: 'critical' }, { label: '重要', value: 'important' }, { label: '中等', value: 'moderate' }, { label: '低', value: 'low' }]} />
+            <Form.Item label={t('patchManager.severity')} name="severity" rules={[{ required: true, message: t('patchManager.libraryPage.severityRequired') }]}>
+              <Select placeholder={t('patchManager.libraryPage.select')} options={SEVERITY_SELECT_OPTIONS} />
             </Form.Item>
           )}
           {activeTab === 'win' ? (
             <>
-              <Form.Item label="适用版本" name="version">
-                <Input placeholder="例如 Windows Server 2019" />
+              <Form.Item label={t('patchManager.libraryPage.applicableVersion')} name="version">
+                <Input placeholder={t('patchManager.libraryPage.versionPlaceholder')} />
               </Form.Item>
-              <Form.Item label="架构" name="arch">
-                <Select placeholder="请选择" options={[{ label: 'x64', value: 'x64' }, { label: 'x86', value: 'x86' }]} />
+              <Form.Item label={t('patchManager.arch')} name="arch">
+                <Select placeholder={t('patchManager.libraryPage.select')} options={[{ label: 'x64', value: 'x64' }, { label: 'x86', value: 'x86' }]} />
               </Form.Item>
             </>
           ) : (
             <>
-              <Form.Item label="发行版" name="dist" rules={[{ required: true, message: '请输入发行版' }]}>
-                <Input placeholder="例如 Rocky 8" />
+              <Form.Item label={t('patchManager.distro')} name="dist" rules={[{ required: true, message: t('patchManager.libraryPage.distroRequired') }]}>
+                <Input placeholder={t('patchManager.libraryPage.distroPlaceholder')} />
               </Form.Item>
-              <Form.Item label="最低版本要求" name="minVer" rules={[{ required: true, message: '请输入最低版本要求' }]}>
-                <Input placeholder="例如 1.1.1k-7.el8" />
+              <Form.Item label={t('patchManager.libraryPage.minimumVersion')} name="minVer" rules={[{ required: true, message: t('patchManager.libraryPage.minimumVersionRequired') }]}>
+                <Input placeholder={t('patchManager.libraryPage.minimumVersionPlaceholder')} />
               </Form.Item>
-              <Form.Item label="架构" name="arch" rules={[{ required: true, message: '请选择架构' }]}>
-                <Select placeholder="请选择" options={[{ label: 'x64', value: 'x64' }, { label: 'x86', value: 'x86' }]} />
+              <Form.Item label={t('patchManager.arch')} name="arch" rules={[{ required: true, message: t('patchManager.libraryPage.archRequired') }]}>
+                <Select placeholder={t('patchManager.libraryPage.select')} options={[{ label: 'x64', value: 'x64' }, { label: 'x86', value: 'x86' }]} />
               </Form.Item>
             </>
           )}
           {activeTab !== 'win' && (
-            <Form.Item label="严重级别" name="severity" rules={[{ required: true, message: '请选择严重级别' }]}>
-              <Select placeholder="请选择" options={[{ label: '严重', value: 'critical' }, { label: '重要', value: 'important' }, { label: '中等', value: 'moderate' }, { label: '低', value: 'low' }]} />
+            <Form.Item label={t('patchManager.severity')} name="severity" rules={[{ required: true, message: t('patchManager.libraryPage.severityRequired') }]}>
+              <Select placeholder={t('patchManager.libraryPage.select')} options={SEVERITY_SELECT_OPTIONS} />
             </Form.Item>
           )}
         </Form>
       </OperateDrawer>
 
       <OperateDrawer
-        title="同步入库"
+        title={t('patchManager.libraryPage.syncIngest')}
         open={importOpen}
         onClose={() => setImportOpen(false)}
         width={900}
         bodyStyle={{ padding: 0, overflow: 'hidden' }}
         footer={
           <Space>
-            <Button onClick={() => setImportOpen(false)}>取消</Button>
-            <Button type="primary" disabled={selectedCandidates.length === 0} icon={<CloudDownloadOutlined />} onClick={handleImportSubmit}>批量入库 ({selectedCandidates.length})</Button>
+            <Button onClick={() => setImportOpen(false)}>{t('patchManager.cancel')}</Button>
+            <Button type="primary" disabled={selectedCandidates.length === 0} icon={<CloudDownloadOutlined />} onClick={handleImportSubmit}>{t('patchManager.libraryPage.batchIngest', undefined, { count: selectedCandidates.length })}</Button>
           </Space>
         }
       >
@@ -651,14 +638,14 @@ export default function LibraryPage() {
             <div style={{ display: 'flex', gap: 12, marginBottom: 12, alignItems: 'center' }}>
               <Select
                 style={{ width: 220 }}
-                placeholder="请选择补丁源"
+                placeholder={t('patchManager.libraryPage.selectSource')}
                 virtual
                 value={selectedSourceId ?? undefined}
                 onChange={handleSourceChange}
                 options={sources.map((s) => ({ value: s.id, label: `${s.name} (${s.source_type_display || s.source_type})` }))}
               />
               <Input.Search
-                placeholder={activeTab === 'win' ? 'KB 号' : '包名'}
+                placeholder={activeTab === 'win' ? t('patchManager.kbNumber') : t('patchManager.packageName')}
                 value={candidateSearch}
                 onChange={(e) => setCandidateSearch(e.target.value)}
                 onSearch={(v) => handleCandidateSearch(v)}
@@ -677,7 +664,7 @@ export default function LibraryPage() {
                   pageSize: candidatePagination.pageSize,
                   total: candidatePagination.total,
                   showSizeChanger: true,
-                  showTotal: (t) => `共 ${t} 条`,
+                  showTotal: (total) => t('patchManager.common.totalItems', undefined, { count: total }),
                   onChange: (p, ps) => {
                     if (selectedSourceId) loadCandidates(selectedSourceId, p, ps, candidateSearch);
                   },
@@ -688,9 +675,9 @@ export default function LibraryPage() {
           </div>
           <div style={{ width: 220, display: 'flex', flexDirection: 'column', borderLeft: '1px solid var(--color-border-1, #e8e8e8)', paddingLeft: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <span style={{ fontWeight: 500 }}>已选 {selectedCandidates.length} 条</span>
+              <span style={{ fontWeight: 500 }}>{t('patchManager.libraryPage.selectedCount', undefined, { count: selectedCandidates.length })}</span>
               {selectedCandidates.length > 0 && (
-                <a style={{ color: '#ff4d4f', fontSize: 12 }} onClick={() => setSelectedCandidates([])}>全部清除</a>
+                <a style={{ color: '#ff4d4f', fontSize: 12 }} onClick={() => setSelectedCandidates([])}>{t('patchManager.common.clearAll')}</a>
               )}
             </div>
             <div style={{ flex: 1, overflowY: 'auto' }}>
@@ -701,7 +688,7 @@ export default function LibraryPage() {
                 </div>
               ))}
               {selectedCandidates.length === 0 && (
-                <div style={{ color: 'var(--color-text-3, #8c8c8c)', fontSize: 13, textAlign: 'center', marginTop: 40 }}>暂未选择</div>
+                <div style={{ color: 'var(--color-text-3, #8c8c8c)', fontSize: 13, textAlign: 'center', marginTop: 40 }}>{t('patchManager.common.noSelection')}</div>
               )}
             </div>
           </div>
@@ -710,12 +697,12 @@ export default function LibraryPage() {
       </OperateDrawer>
 
       <Modal
-        title="批量修改严重级别"
+        title={t('patchManager.libraryPage.batchSeverity')}
         open={batchSeverityOpen}
         onCancel={() => setBatchSeverityOpen(false)}
         onOk={() => {
           if (!batchSeverityValue) {
-            message.warning('请选择严重级别');
+            message.warning(t('patchManager.libraryPage.severityRequired'));
             return;
           }
           setCandidateSeverity((prev) => {
@@ -724,27 +711,27 @@ export default function LibraryPage() {
             return next;
           });
           setBatchSeverityOpen(false);
-          message.success('已批量修改当前页严重级别');
+          message.success(t('patchManager.libraryPage.batchSeverityUpdated'));
         }}
         width={360}
       >
         <div style={{ padding: '16px 0' }}>
-          <span style={{ marginRight: 12 }}>严重级别：</span>
+          <span style={{ marginRight: 12 }}>{t('patchManager.severity')}：</span>
           <Select
             value={batchSeverityValue}
             onChange={setBatchSeverityValue}
             options={SEVERITY_SELECT_OPTIONS}
             style={{ width: 160 }}
-            placeholder="请选择"
+            placeholder={t('patchManager.libraryPage.select')}
           />
           <div style={{ marginTop: 12, color: 'var(--color-text-3, #8c8c8c)', fontSize: 12 }}>
-            将当前页所有候选补丁的严重级别统一修改为所选值。
+            {t('patchManager.libraryPage.batchSeverityHelp')}
           </div>
         </div>
       </Modal>
 
       <Modal
-        title="编辑补丁"
+        title={t('patchManager.libraryPage.editPatch')}
         open={!!editingPatch}
         onCancel={() => {
           if (!editSaving) setEditingPatch(null);
@@ -760,7 +747,7 @@ export default function LibraryPage() {
             values = await editForm.validateFields();
           } catch (err: any) {
             if (err?.errorFields) return;
-            message.error('表单校验失败');
+            message.error(t('patchManager.libraryPage.validationFailed'));
             return;
           }
           if (!editingPatch) return;
@@ -795,7 +782,7 @@ export default function LibraryPage() {
             } else {
               await api.updatePatch(editingPatch.id, payload);
             }
-            message.success('已保存');
+            message.success(t('patchManager.libraryPage.saved'));
             setEditingPatch(null);
             loadData();
           } catch {
@@ -803,14 +790,14 @@ export default function LibraryPage() {
             setEditSaving(false);
           }
         }}
-        okText="保存"
+        okText={t('patchManager.save')}
         destroyOnClose
       >
         <Form layout="vertical" form={editForm} preserve={false} initialValues={editInitialValues}>
           <Form.Item
-            label={activeTab === 'win' ? 'KB 号' : '包名'}
+            label={activeTab === 'win' ? t('patchManager.kbNumber') : t('patchManager.packageName')}
             name="name"
-            rules={[{ required: true, message: activeTab === 'win' ? '请输入 KB 号' : '请输入包名' }]}
+            rules={[{ required: true, message: activeTab === 'win' ? t('patchManager.libraryPage.kbRequired') : t('patchManager.libraryPage.packageNameRequired') }]}
           >
             <Input disabled={Boolean(activeTab === 'win' ? editingPatch?.windows_detail?.kb_number : editingPatch?.linux_detail?.pkg_name)} />
           </Form.Item>
@@ -818,19 +805,19 @@ export default function LibraryPage() {
             <>
               {editPackageUploadState.visible && (
                 <Form.Item
-                  label="补丁文件"
+                  label={t('patchManager.libraryPage.patchFile')}
                   name="package_file"
                   valuePropName="fileList"
                   getValueFromEvent={(event) => Array.isArray(event) ? event : event?.fileList}
                   extra={editPackageUploadState.disabled
-                    ? '补丁包已就绪或正在处理中，暂不能替换'
-                    : '上次上传失败，可删除旧文件后重新选择 MSU 或 CAB 文件'}
+                    ? t('patchManager.libraryPage.packageNotReplaceable')
+                    : t('patchManager.libraryPage.packageRetryHelp')}
                   rules={editingPatch?.pkg_status === 'download_failed' ? [
-                    { required: true, message: '请重新上传 MSU 或 CAB 补丁文件' },
+                    { required: true, message: t('patchManager.libraryPage.packageReuploadRequired') },
                     {
                       validator: async (_rule, files) => {
                         if (files?.some((file: any) => file.originFileObj)) return;
-                        throw new Error('请重新上传 MSU 或 CAB 补丁文件');
+                        throw new Error(t('patchManager.libraryPage.packageReuploadRequired'));
                       },
                     },
                   ] : undefined}
@@ -847,40 +834,40 @@ export default function LibraryPage() {
                     }}
                   >
                     {!editPackageUploadState.disabled && (
-                      <Button icon={<UploadOutlined />}>选择文件</Button>
+                      <Button icon={<UploadOutlined />}>{t('patchManager.libraryPage.selectFile')}</Button>
                     )}
                   </Upload>
                 </Form.Item>
               )}
-              <Form.Item label="描述" name="title">
+              <Form.Item label={t('patchManager.libraryPage.description')} name="title">
                 <Input />
               </Form.Item>
-              <Form.Item label="严重级别" name="severity" rules={[{ required: true, message: '请选择严重级别' }]}>
-                <Select options={SEVERITY_OPTIONS.map(({ id, name }) => ({ label: name, value: id }))} />
+              <Form.Item label={t('patchManager.severity')} name="severity" rules={[{ required: true, message: t('patchManager.libraryPage.severityRequired') }]}>
+                <Select options={severityFilterOptions.map(({ id, name }) => ({ label: name, value: id }))} />
               </Form.Item>
-              <Form.Item label="适用版本" name="version">
+              <Form.Item label={t('patchManager.libraryPage.applicableVersion')} name="version">
                 <Input />
               </Form.Item>
-              <Form.Item label="架构" name="arch">
+              <Form.Item label={t('patchManager.arch')} name="arch">
                 <Input />
               </Form.Item>
             </>
           ) : (
             <>
-              <Form.Item label="描述" name="title">
+              <Form.Item label={t('patchManager.libraryPage.description')} name="title">
                 <Input />
               </Form.Item>
-              <Form.Item label="最低版本要求" name="minVer">
+              <Form.Item label={t('patchManager.libraryPage.minimumVersion')} name="minVer">
                 <Input />
               </Form.Item>
-              <Form.Item label="发行版" name="dist">
+              <Form.Item label={t('patchManager.distro')} name="dist">
                 <Input />
               </Form.Item>
-              <Form.Item label="架构" name="arch">
+              <Form.Item label={t('patchManager.arch')} name="arch">
                 <Input />
               </Form.Item>
-              <Form.Item label="严重级别" name="severity" rules={[{ required: true, message: '请选择严重级别' }]}>
-                <Select options={SEVERITY_OPTIONS.map(({ id, name }) => ({ label: name, value: id }))} />
+              <Form.Item label={t('patchManager.severity')} name="severity" rules={[{ required: true, message: t('patchManager.libraryPage.severityRequired') }]}>
+                <Select options={severityFilterOptions.map(({ id, name }) => ({ label: name, value: id }))} />
               </Form.Item>
             </>
           )}
