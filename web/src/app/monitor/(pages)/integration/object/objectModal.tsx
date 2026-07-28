@@ -114,8 +114,7 @@ const ICON_LIST = [
   'mm-influxdb_InfluxDB',
   'mm-haproxy_HAProxy',
   'mm-consul_Consul',
-  'mm-nacos_Nacos',
-  'mm-dameng_达梦'
+  'mm-nacos_Nacos'
 ];
 
 interface ModalProps {
