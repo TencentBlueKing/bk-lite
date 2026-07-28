@@ -718,6 +718,17 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
         unlocked_instance = self.get_object()
         return unlocked_instance.__class__.objects.select_for_update().get(pk=unlocked_instance.pk)
 
+    @staticmethod
+    def _sync_runtime_status_if_unchanged(instance_id, observed_container_info, runtime_container_info):
+        """仅在查询期间数据库状态未变化时写回，避免旧查询覆盖新切换结果。"""
+        updated = TimeSeriesPredictServing.objects.filter(
+            pk=instance_id,
+            container_info=observed_container_info,
+        ).update(container_info=runtime_container_info)
+        if updated:
+            return runtime_container_info
+        return TimeSeriesPredictServing.objects.values_list("container_info", flat=True).get(pk=instance_id)
+
     @HasPermission("timeseries_predict-View")
     def list(self, request, *args, **kwargs):
         """列表查询，实时同步容器状态"""
@@ -738,25 +749,17 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
             result = WebhookClient.get_status(serving_ids)
             status_map = {s.get("id"): s for s in result}
 
-            # 批量获取所有需要更新的对象（避免N+1查询）
-            serving_id_list = [s["id"] for s in servings]
-            serving_objs = TimeSeriesPredictServing.objects.filter(id__in=serving_id_list)
-            serving_obj_map = {obj.id: obj for obj in serving_objs}
-
-            updates = []
             for serving_data in servings:
                 serving_id = f"TimeseriesPredict_Serving_{serving_data['id']}"
                 container_info = status_map.get(serving_id)
 
                 if container_info:
-                    # 直接使用 webhookd 响应
-                    serving_data["container_info"] = container_info
-
-                    # 同步到数据库：从缓存字典获取对象，无额外查询
-                    serving_obj = serving_obj_map.get(serving_data["id"])
-                    if serving_obj:
-                        serving_obj.container_info = container_info
-                        updates.append(serving_obj)
+                    observed_container_info = serving_data.get("container_info")
+                    serving_data["container_info"] = self._sync_runtime_status_if_unchanged(
+                        serving_data["id"],
+                        observed_container_info,
+                        container_info,
+                    )
                 else:
                     # webhookd 没返回这个容器的状态（不应该发生）
                     serving_data["container_info"] = {
@@ -764,9 +767,6 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                         "state": "unknown",
                         "message": "webhookd 未返回此容器状态",
                     }
-
-            if updates:
-                TimeSeriesPredictServing.objects.bulk_update(updates, ["container_info"])
 
         except WebhookError as e:
             logger.error(f"查询容器状态失败: {e}")
@@ -794,11 +794,12 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
             container_info = result[0] if result else None
 
             if container_info:
-                # 直接使用 webhookd 响应
-                response.data["container_info"] = container_info
-
-                # 更新数据库
-                TimeSeriesPredictServing.objects.filter(id=response.data["id"]).update(container_info=container_info)
+                observed_container_info = response.data.get("container_info")
+                response.data["container_info"] = self._sync_runtime_status_if_unchanged(
+                    response.data["id"],
+                    observed_container_info,
+                    container_info,
+                )
             else:
                 # webhookd 没返回状态
                 response.data["container_info"] = {
@@ -824,9 +825,13 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
     @transaction.atomic
     def destroy(self, request, *args, **kwargs):
         serving = self._get_runtime_locked_object()
+        access_error = self._validate_destroy_access(request, serving)
+        if access_error is not None:
+            return access_error
         cleanup_error = self.cleanup_serving_runtime(serving)
         if cleanup_error is not None:
             return cleanup_error
+        kwargs["_destroy_access_prechecked"] = True
         return super().destroy(request, *args, **kwargs)
 
     @HasPermission("timeseries_predict-Add")

@@ -131,6 +131,70 @@ exit 0
     return result, captured
 
 
+def _run_stop_script(tmp_path, runtime, mode, remove=True):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    capture_file = tmp_path / f"{runtime}-stop-capture"
+    deleted_file = tmp_path / "service-deleted"
+    if runtime == "docker":
+        _write_executable(
+            bin_dir / "docker",
+            """#!/bin/bash
+echo "$*" >> "$CAPTURE_FILE"
+if [ "$1 $2" = "ps -a" ]; then
+  if [ "$STUB_MODE" != "missing" ]; then echo "TimeseriesPredict_Serving_1"; fi
+  exit 0
+fi
+if [ "$1" = "stop" ]; then exit 0; fi
+if [ "$1" = "rm" ]; then
+  if [ "$STUB_MODE" = "remove_failure" ]; then echo "remove failed" >&2; exit 1; fi
+  exit 0
+fi
+exit 0
+""",
+        )
+        script = REPO_ROOT / "agents/webhookd/mlops/docker/stop.sh"
+    else:
+        _write_executable(
+            bin_dir / "kubectl",
+            """#!/bin/bash
+echo "$*" >> "$CAPTURE_FILE"
+if [ "$1 $2" = "get job" ] || [ "$1 $2" = "get deployment" ]; then
+  exit 0
+fi
+if [ "$1 $2" = "get service" ]; then
+  if { [ "$STUB_MODE" = "orphan_service" ] || [ "$STUB_MODE" = "service_delete_failure" ]; } && [ ! -f "$DELETED_FILE" ]; then
+    echo "service/orphan-svc"
+  fi
+  exit 0
+fi
+if [ "$1 $2" = "delete service" ]; then
+  if [ "$STUB_MODE" = "service_delete_failure" ]; then echo "delete failed" >&2; exit 1; fi
+  touch "$DELETED_FILE"
+  exit 0
+fi
+exit 0
+""",
+        )
+        script = REPO_ROOT / "agents/webhookd/mlops/kubernetes/stop.sh"
+
+    env = os.environ.copy()
+    env["PATH"] = f"{bin_dir}:{env['PATH']}"
+    env["CAPTURE_FILE"] = str(capture_file)
+    env["DELETED_FILE"] = str(deleted_file)
+    env["STUB_MODE"] = mode
+    payload = {"id": "TimeseriesPredict_Serving_1", "remove": remove, "namespace": "mlops"}
+    result = subprocess.run(
+        ["bash", str(script), json.dumps(payload)],
+        capture_output=True,
+        check=False,
+        env=env,
+        text=True,
+    )
+    captured = capture_file.read_text(encoding="utf-8") if capture_file.exists() else ""
+    return result, captured
+
+
 def test_webhook_client_forwards_timeseries_budget(monkeypatch):
     captured = {}
     monkeypatch.setattr(
@@ -251,6 +315,54 @@ def test_kubernetes_remove_deletes_orphan_service_without_deployment(tmp_path):
 
 def test_kubernetes_remove_reports_orphan_service_delete_failure(tmp_path):
     result, _ = _run_kubernetes_remove_script(tmp_path, mode="delete_failure")
+
+    assert result.returncode == 1
+    error = json.loads(result.stdout)
+    assert error["code"] == "SERVICE_DELETE_FAILED"
+
+
+@pytest.mark.parametrize("runtime", ["docker", "kubernetes"])
+def test_stop_script_reports_removed_when_runtime_is_already_absent(tmp_path, runtime):
+    result, _ = _run_stop_script(tmp_path, runtime, mode="missing")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)["state"] == "removed"
+
+
+def test_docker_stop_reports_synchronous_terminal_state(tmp_path):
+    result, captured = _run_stop_script(tmp_path, "docker", mode="existing")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)["state"] == "removed"
+    assert "stop --time=5 TimeseriesPredict_Serving_1" in captured
+    assert "rm TimeseriesPredict_Serving_1" in captured
+
+
+def test_docker_stop_without_remove_reports_stopped(tmp_path):
+    result, _ = _run_stop_script(tmp_path, "docker", mode="existing", remove=False)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)["state"] == "stopped"
+
+
+def test_docker_stop_does_not_claim_removed_when_remove_fails(tmp_path):
+    result, _ = _run_stop_script(tmp_path, "docker", mode="remove_failure")
+
+    assert result.returncode == 1
+    error = json.loads(result.stdout)
+    assert error["code"] == "CONTAINER_REMOVE_FAILED"
+
+
+def test_kubernetes_stop_deletes_orphan_service_and_reports_terminating(tmp_path):
+    result, captured = _run_stop_script(tmp_path, "kubernetes", mode="orphan_service")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)["state"] == "terminating"
+    assert "delete service timeseriespredict-serving-1-svc" in captured
+
+
+def test_kubernetes_stop_does_not_hide_orphan_service_delete_failure(tmp_path):
+    result, _ = _run_stop_script(tmp_path, "kubernetes", mode="service_delete_failure")
 
     assert result.returncode == 1
     error = json.loads(result.stdout)
