@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Tooltip } from 'antd';
+import { Empty, Tooltip } from 'antd';
 import { GuideItem } from '../types';
 import { ChartData } from '@/app/monitor/types';
 import { TitleWithGuide, GuideTooltipStyles } from './guide-tooltip';
@@ -54,6 +54,9 @@ export interface HorizontalBarPanelProps {
   emphasizeTop?: number;
   /** 分档模式:第 1 名醒目大行、2-3 名强调、≥4 名弱化。开启后忽略 emphasizeTop。需 item.rank。 */
   tiered?: boolean;
+  /** 空态：不渲染条形，展示 emptyDescription（与 RingChartPanel 对齐）。 */
+  isEmpty?: boolean;
+  emptyDescription?: React.ReactNode;
   styles: HorizontalBarPanelStyles;
 }
 
@@ -149,6 +152,8 @@ export const HorizontalBarPanel = ({
   className,
   emphasizeTop = 0,
   tiered = false,
+  isEmpty = false,
+  emptyDescription = '暂无数据',
   styles
 }: HorizontalBarPanelProps) => {
   return (
@@ -165,7 +170,13 @@ export const HorizontalBarPanel = ({
           {subtitle ? <div className={styles.panelSubTitle}>{subtitle}</div> : null}
         </div>
       </div>
-      <BarList items={items} emphasizeTop={emphasizeTop} tiered={tiered} styles={styles} />
+      {isEmpty ? (
+        <div style={{ minHeight: 176, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Empty description={emptyDescription} image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        </div>
+      ) : (
+        <BarList items={items} emphasizeTop={emphasizeTop} tiered={tiered} styles={styles} />
+      )}
     </div>
   );
 };
