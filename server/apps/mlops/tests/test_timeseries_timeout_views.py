@@ -350,7 +350,8 @@ def test_runtime_actions_acquire_shared_row_lock(
     )
     monkeypatch.setattr(
         "apps.mlops.views.timeseries_predict.WebhookClient.stop",
-        lambda serving_id: runtime_events.append("stop") or {"status": "success"},
+        lambda serving_id: runtime_events.append("stop")
+        or {"status": "success", "state": "terminating"},
     )
     monkeypatch.setattr(
         "apps.mlops.views.timeseries_predict.WebhookClient.remove",
@@ -366,8 +367,46 @@ def test_runtime_actions_acquire_shared_row_lock(
     assert response.status_code == status.HTTP_200_OK
     assert runtime_events == ["lock", action_name]
     serving.refresh_from_db()
-    expected_state = "running" if action_name == "start" else "removed"
+    expected_state = {
+        "start": "running",
+        "stop": "terminating",
+        "remove": "removed",
+    }[action_name]
     assert serving.container_info["state"] == expected_state
+
+
+def test_destroy_acquires_shared_row_lock_before_runtime_cleanup(
+    mlops_api_client,
+    mlops_user,
+    monkeypatch,
+):
+    mlops_user.permission["mlops"].add("timeseries_predict-Delete")
+    serving = _create_serving(port=3000)
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.TimeSeriesPredictServingViewSet.get_has_permission",
+        lambda *args, **kwargs: True,
+    )
+    runtime_events = []
+    original_select_for_update = TimeSeriesPredictServing.objects.select_for_update
+
+    def tracked_select_for_update(*args, **kwargs):
+        runtime_events.append("lock")
+        return original_select_for_update(*args, **kwargs)
+
+    monkeypatch.setattr(TimeSeriesPredictServing.objects, "select_for_update", tracked_select_for_update)
+    monkeypatch.setattr(
+        "apps.mlops.views.base.WebhookClient.remove",
+        lambda serving_id: runtime_events.append("cleanup") or {"status": "success"},
+    )
+
+    response = mlops_api_client.delete(
+        f"/api/v1/mlops/timeseries_predict_servings/{serving.id}/",
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert runtime_events == ["lock", "cleanup"]
+    assert not TimeSeriesPredictServing.objects.filter(pk=serving.pk).exists()
 
 
 def test_update_reconciles_remove_timeout_before_restoring_old_runtime(

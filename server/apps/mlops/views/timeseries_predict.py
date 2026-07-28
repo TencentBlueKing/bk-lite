@@ -821,8 +821,13 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
         return response
 
     @HasPermission("timeseries_predict-Delete")
+    @transaction.atomic
     def destroy(self, request, *args, **kwargs):
-        return self.destroy_serving_with_runtime_cleanup(request, *args, **kwargs)
+        serving = self._get_runtime_locked_object()
+        cleanup_error = self.cleanup_serving_runtime(serving)
+        if cleanup_error is not None:
+            return cleanup_error
+        return super().destroy(request, *args, **kwargs)
 
     @HasPermission("timeseries_predict-Add")
     def create(self, request, *args, **kwargs):
@@ -1350,11 +1355,11 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
             # 调用 WebhookClient 停止服务（默认删除容器）
             result = WebhookClient.stop(serving_id)
 
+            # Kubernetes stop 使用异步删除并可能返回 terminating；必须保留
+            # webhookd 的真实状态，不能提前宣称资源已 removed。
             serving.container_info = {
-                "status": "success",
-                "id": serving_id,
-                "state": "removed",
-                "message": "服务已停止并删除",
+                **result,
+                "id": result.get("id", serving_id),
             }
             serving.save(update_fields=["container_info"])
 
