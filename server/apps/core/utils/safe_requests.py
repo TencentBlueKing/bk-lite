@@ -13,11 +13,13 @@
     response = safe_post("https://example.com/api", json={"key": "value"})
 """
 
+from collections.abc import Iterable, Mapping
 from typing import Any, Optional
 from urllib.parse import urljoin, urlparse
 
 import requests
 from requests import Response
+from requests.exceptions import UnrewindableBodyError
 
 from apps.core.logger import logger
 from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
@@ -54,6 +56,55 @@ def _should_strip_credentials(current_url: str, redirect_url: str) -> bool:
 def _without_headers(headers: dict[str, Any], names: set[str]) -> dict[str, Any]:
     blocked = {name.lower() for name in names}
     return {name: value for name, value in headers.items() if name.lower() not in blocked}
+
+
+def _iter_request_body_streams(kwargs: dict[str, Any]):
+    data = kwargs.get("data")
+    if hasattr(data, "read") or (
+        isinstance(data, Iterable) and not isinstance(data, (str, bytes, list, tuple, Mapping))
+    ):
+        yield data
+
+    files = kwargs.get("files")
+    if not files:
+        return
+    file_values = files.values() if isinstance(files, Mapping) else (value for _, value in files)
+    for file_value in file_values:
+        payload = file_value[1] if isinstance(file_value, (tuple, list)) and len(file_value) > 1 else file_value
+        if hasattr(payload, "read"):
+            yield payload
+
+
+def _capture_request_body_positions(kwargs: dict[str, Any]) -> list[tuple[Any, int | None]]:
+    positions = []
+    seen = set()
+    for stream in _iter_request_body_streams(kwargs):
+        if id(stream) in seen:
+            continue
+        seen.add(id(stream))
+        try:
+            position = stream.tell() if callable(getattr(stream, "tell", None)) else None
+        except (OSError, ValueError):
+            position = None
+        if not callable(getattr(stream, "seek", None)):
+            position = None
+        positions.append((stream, position))
+    return positions
+
+
+def _rewind_request_body(
+    kwargs: dict[str, Any],
+    positions: list[tuple[Any, int | None]],
+) -> None:
+    if not any(key in kwargs for key in ("data", "files")):
+        return
+    for stream, position in positions:
+        if position is None:
+            raise UnrewindableBodyError("重定向请求体不可回卷")
+        try:
+            stream.seek(position)
+        except (OSError, ValueError) as exc:
+            raise UnrewindableBodyError("重定向请求体回卷失败") from exc
 
 
 def _prepare_redirect_request(
@@ -139,6 +190,7 @@ def safe_request(
     # 2. 禁用自动重定向，手动处理
     kwargs["allow_redirects"] = False
     kwargs["timeout"] = timeout
+    body_positions = _capture_request_body_positions(kwargs)
 
     try:
         response = requests.request(method, validated_url, **kwargs)
@@ -165,6 +217,8 @@ def safe_request(
                 method, kwargs = _prepare_redirect_request(
                     method, current_url, validated_redirect, response.status_code, kwargs
                 )
+                if response.status_code in (requests.codes.temporary_redirect, requests.codes.permanent_redirect):
+                    _rewind_request_body(kwargs, body_positions)
             finally:
                 response.close()
             response = requests.request(method, validated_redirect, **kwargs)
@@ -245,6 +299,7 @@ def safe_request_llm_endpoint(
     # 2. 禁用自动重定向，手动处理
     kwargs["allow_redirects"] = False
     kwargs["timeout"] = timeout
+    body_positions = _capture_request_body_positions(kwargs)
 
     try:
         response = requests.request(method, validated_url, **kwargs)
@@ -271,6 +326,8 @@ def safe_request_llm_endpoint(
                 method, kwargs = _prepare_redirect_request(
                     method, current_url, validated_redirect, response.status_code, kwargs
                 )
+                if response.status_code in (requests.codes.temporary_redirect, requests.codes.permanent_redirect):
+                    _rewind_request_body(kwargs, body_positions)
             finally:
                 response.close()
             response = requests.request(method, validated_redirect, **kwargs)

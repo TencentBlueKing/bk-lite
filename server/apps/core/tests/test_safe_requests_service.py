@@ -1,5 +1,6 @@
-import pydantic.root_model  # noqa
+from io import BytesIO
 
+import pydantic.root_model  # noqa
 import pytest
 import requests
 
@@ -30,18 +31,29 @@ class TestSafeRequest:
             (308, "PATCH", "PATCH", True),
         ],
     )
-    def test_redirect_method_and_body_matrix(self, status_code, method, expected_method, keeps_body):
-        redirect_method, redirect_kwargs = sr._prepare_redirect_request(
+    def test_redirect_method_and_body_matrix_from_public_entry(
+        self, mocker, status_code, method, expected_method, keeps_body
+    ):
+        mocker.patch.object(
+            sr.SSRFValidator,
+            "validate",
+            side_effect=["https://service.example/start", "https://service.example/next"],
+        )
+        first = _make_response(status_code=status_code, location="https://service.example/next")
+        req = mocker.patch.object(sr.requests, "request", side_effect=[first, _make_response()])
+
+        sr.safe_request(
             method,
             "https://service.example/start",
-            "https://service.example/next",
-            status_code,
-            {"json": {"state": "ready"}, "headers": {"Content-Type": "application/json"}},
+            allow_redirects=True,
+            json={"state": "ready"},
+            headers={"Content-Type": "application/json"},
         )
 
-        assert redirect_method == expected_method
-        assert ("json" in redirect_kwargs) is keeps_body
-        assert ("Content-Type" in redirect_kwargs["headers"]) is keeps_body
+        redirect_call = req.call_args_list[1]
+        assert redirect_call.args == (expected_method, "https://service.example/next")
+        assert ("json" in redirect_call.kwargs) is keeps_body
+        assert ("Content-Type" in redirect_call.kwargs["headers"]) is keeps_body
 
     def test_validates_url_and_returns_response(self, mocker):
         validate = mocker.patch.object(sr.SSRFValidator, "validate", return_value="https://safe.example/api")
@@ -107,6 +119,7 @@ class TestSafeRequest:
         headers = {
             "Authorization": "Bearer secret",
             "Cookie": "session=secret",
+            "Host": "source.example",
             "Proxy-Authorization": "Basic proxy-secret",
             "Content-Type": "application/json",
             "X-Request-ID": "request-id",
@@ -120,15 +133,72 @@ class TestSafeRequest:
             cookies={"session": "secret"},
             json={"action": "charge"},
             params={"source": "tool"},
+            auth=("user", "password"),
         )
 
         redirect_call = req.call_args_list[1]
         assert redirect_call.args == ("GET", "https://target.example/next")
         assert redirect_call.kwargs["headers"] == {"X-Request-ID": "request-id"}
         assert "cookies" not in redirect_call.kwargs
+        assert "auth" not in redirect_call.kwargs
         assert "json" not in redirect_call.kwargs
         assert "params" not in redirect_call.kwargs
         assert headers["Authorization"] == "Bearer secret"
+
+    def test_307_rewinds_seekable_stream_before_redirect(self, mocker):
+        mocker.patch.object(
+            sr.SSRFValidator,
+            "validate",
+            side_effect=["https://service.example/start", "https://service.example/next"],
+        )
+        class NonIterableStream:
+            def __init__(self, content):
+                self._stream = BytesIO(content)
+
+            def read(self):
+                return self._stream.read()
+
+            def tell(self):
+                return self._stream.tell()
+
+            def seek(self, position):
+                return self._stream.seek(position)
+
+        stream = NonIterableStream(b"request-body")
+        payloads = []
+
+        def request(method, url, **kwargs):
+            payloads.append(kwargs["data"].read())
+            if len(payloads) == 1:
+                return _make_response(status_code=307, location="https://service.example/next")
+            return _make_response()
+
+        mocker.patch.object(sr.requests, "request", side_effect=request)
+
+        sr.safe_request("POST", "https://service.example/start", allow_redirects=True, data=stream)
+
+        assert payloads == [b"request-body", b"request-body"]
+
+    def test_307_rejects_unrewindable_stream(self, mocker):
+        mocker.patch.object(
+            sr.SSRFValidator,
+            "validate",
+            side_effect=["https://service.example/start", "https://service.example/next"],
+        )
+
+        def body():
+            yield b"request-body"
+
+        def request(method, url, **kwargs):
+            list(kwargs["data"])
+            return _make_response(status_code=307, location="https://service.example/next")
+
+        req = mocker.patch.object(sr.requests, "request", side_effect=request)
+
+        with pytest.raises(sr.SafeRequestsError, match="重定向请求体不可回卷"):
+            sr.safe_request("POST", "https://service.example/start", allow_redirects=True, data=body())
+
+        assert req.call_count == 1
 
     def test_same_origin_307_preserves_method_body_and_credentials(self, mocker):
         mocker.patch.object(
