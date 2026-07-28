@@ -22,6 +22,8 @@ AD_LOGIN_ATTRIBUTES = [
     "displayName",
     "mail",
     "telephoneNumber",
+    "mobile",
+    "mobilePhone",
     "distinguishedName",
 ]
 
@@ -164,7 +166,11 @@ class ADLoginAuthAdapter(BaseLoginAuthAdapter):
                     "userPrincipalName": get_ldap_scalar(user.get("userPrincipalName")),
                     "name": get_ldap_scalar(user.get("displayName")) or get_ldap_scalar(user.get("sAMAccountName")) or username,
                     "email": get_ldap_scalar(user.get("mail")),
-                    "mobile": get_ldap_scalar(user.get("telephoneNumber")),
+                    "mobile": (
+                        get_ldap_scalar(user.get("mobile"))
+                        or get_ldap_scalar(user.get("telephoneNumber"))
+                        or get_ldap_scalar(user.get("mobilePhone"))
+                    ),
                     "distinguishedName": distinguished_name,
                 }
             },
@@ -307,6 +313,8 @@ class ADUserSyncAdapter(BaseUserSyncAdapter):
             "displayName": get_ldap_scalar(user_entry.get("displayName")) or get_ldap_scalar(user_entry.get("sAMAccountName")),
             "mail": get_ldap_scalar(user_entry.get("mail")),
             "telephoneNumber": get_ldap_scalar(user_entry.get("telephoneNumber")),
+            "mobile": get_ldap_scalar(user_entry.get("mobile")),
+            "mobilePhone": get_ldap_scalar(user_entry.get("mobilePhone")),
             "distinguishedName": get_ldap_scalar(user_entry.get("distinguishedName")),
         }
 

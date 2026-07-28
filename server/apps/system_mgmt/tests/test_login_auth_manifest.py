@@ -1,6 +1,19 @@
+from apps.system_mgmt.providers.manifests.ad import PROVIDER_MANIFEST as AD_PROVIDER_MANIFEST
 from apps.system_mgmt.providers.manifests.feishu import PROVIDER_MANIFEST as FEISHU_PROVIDER_MANIFEST
 from apps.system_mgmt.providers.manifests.wechat import PROVIDER_MANIFEST as WECHAT_PROVIDER_MANIFEST
 from apps.system_mgmt.providers.manifests.wecom import PROVIDER_MANIFEST as WECOM_PROVIDER_MANIFEST
+
+
+def test_ad_login_auth_manifest_exposes_mobile_and_mobile_phone_external_fields():
+    """AD 域里手机号常见存在 mobile / mobilePhone（不是 telephoneNumber），
+    白名单必须包含这三种才能让 field_mapping.phone 自由选择。"""
+    login_template = AD_PROVIDER_MANIFEST.business_templates["login_auth_form"]
+    sync_template = AD_PROVIDER_MANIFEST.business_templates["user_sync_form"]
+
+    for template in (login_template, sync_template):
+        assert "telephoneNumber" in template.available_external_fields
+        assert "mobile" in template.available_external_fields
+        assert "mobilePhone" in template.available_external_fields
 
 
 def test_feishu_login_auth_manifest_declares_recommended_external_field():
