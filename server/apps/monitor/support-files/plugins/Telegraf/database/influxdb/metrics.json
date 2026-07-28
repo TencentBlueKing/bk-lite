@@ -3,7 +3,7 @@
   "plugin_desc": "由 Telegraf 采集器通过 InfluxDB v1 的 /debug/vars 接口采集关键指标，重点关注序列规模、HTTP 服务质量、写入异常、查询压力和运行时内存。",
   "status_query": "any({instance_type='influxdb', collect_type='database'}) by (host, instance_role)",
   "name": "InfluxDB",
-  "icon": "mm-db_数据库",
+  "icon": "mm-influxdb_InfluxDB",
   "type": "Database",
   "description": "",
   "default_metric": "any({instance_type='influxdb'}) by (instance_id)",
