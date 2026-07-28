@@ -703,6 +703,10 @@ def test_create_save_failure_rolls_back_record_and_cleans_runtime(
         "apps.mlops.views.timeseries_predict.WebhookClient.remove",
         lambda container_id: removed_ids.append(container_id),
     )
+    monkeypatch.setattr(
+        "apps.mlops.services.timeseries_runtime_cleanup.WebhookClient.get_status",
+        lambda ids: [{"id": ids[0], "status": "success", "state": "not_found"}],
+    )
     monkeypatch.setattr(TimeSeriesPredictServing, "save", fail_final_save)
 
     response = mlops_api_client.post(
@@ -715,6 +719,116 @@ def test_create_save_failure_rolls_back_record_and_cleans_runtime(
     assert runtime_ids
     assert removed_ids == runtime_ids
     assert not TimeSeriesPredictServing.objects.filter(name="failed-create").exists()
+
+
+def test_create_cleanup_failure_dispatches_retry_task(monkeypatch):
+    from apps.mlops.views.timeseries_predict import TimeSeriesPredictServingViewSet
+
+    dispatch_calls = []
+    monkeypatch.setattr(
+        "apps.mlops.services.timeseries_runtime_cleanup.reconcile_orphan_timeseries_runtime",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("cleanup unavailable")),
+    )
+    monkeypatch.setattr(
+        "apps.mlops.tasks.runtime_cleanup.cleanup_orphan_timeseries_runtime.apply_async",
+        lambda *args, **kwargs: dispatch_calls.append((args, kwargs)),
+    )
+
+    TimeSeriesPredictServingViewSet._cleanup_uncommitted_create_runtime(
+        "TimeseriesPredict_Serving_9001",
+        9001,
+    )
+
+    assert dispatch_calls == [
+        (
+            (),
+            {
+                "args": ("TimeseriesPredict_Serving_9001", 9001),
+                "retry": True,
+                "retry_policy": {
+                    "max_retries": 5,
+                    "interval_start": 0,
+                    "interval_step": 1,
+                    "interval_max": 5,
+                },
+            },
+        )
+    ]
+
+
+def test_orphan_cleanup_confirms_not_found_after_lost_remove_response(monkeypatch):
+    from apps.mlops.services.timeseries_runtime_cleanup import (
+        reconcile_orphan_timeseries_runtime,
+    )
+    from apps.mlops.utils.webhook_client import WebhookTimeoutError
+
+    monkeypatch.setattr(
+        "apps.mlops.services.timeseries_runtime_cleanup.WebhookClient.remove",
+        lambda container_id: (_ for _ in ()).throw(WebhookTimeoutError("response lost")),
+    )
+    monkeypatch.setattr(
+        "apps.mlops.services.timeseries_runtime_cleanup.WebhookClient.get_status",
+        lambda ids: [{"id": ids[0], "status": "success", "state": "not_found"}],
+    )
+
+    result = reconcile_orphan_timeseries_runtime(
+        "TimeseriesPredict_Serving_9002",
+        9002,
+    )
+
+    assert result["result"] is True
+    assert result["state"] == "not_found"
+
+
+def test_orphan_cleanup_stops_when_database_id_is_owned(monkeypatch):
+    from apps.mlops.services.timeseries_runtime_cleanup import (
+        reconcile_orphan_timeseries_runtime,
+    )
+
+    serving = _create_serving(port=3000)
+    unexpected_remove_calls = []
+    monkeypatch.setattr(
+        "apps.mlops.services.timeseries_runtime_cleanup.WebhookClient.remove",
+        lambda container_id: unexpected_remove_calls.append(container_id),
+    )
+
+    result = reconcile_orphan_timeseries_runtime(
+        f"TimeseriesPredict_Serving_{serving.id}",
+        serving.id,
+    )
+
+    assert result["result"] is False
+    assert result["reason"] == "serving id is owned by a database record"
+    assert unexpected_remove_calls == []
+
+
+def test_orphan_cleanup_task_retries_until_not_found(monkeypatch):
+    from celery.exceptions import Retry
+
+    from apps.mlops.tasks.runtime_cleanup import cleanup_orphan_timeseries_runtime
+
+    retry_calls = []
+    monkeypatch.setattr(
+        "apps.mlops.tasks.runtime_cleanup.reconcile_orphan_timeseries_runtime",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("still running")),
+    )
+
+    def fake_retry(*args, **kwargs):
+        retry_calls.append((args, kwargs))
+        raise Retry()
+
+    monkeypatch.setattr(cleanup_orphan_timeseries_runtime, "retry", fake_retry)
+
+    with pytest.raises(Retry):
+        cleanup_orphan_timeseries_runtime.run(
+            "TimeseriesPredict_Serving_9003",
+            9003,
+        )
+
+    assert cleanup_orphan_timeseries_runtime.max_retries is None
+    assert cleanup_orphan_timeseries_runtime.acks_late is True
+    assert cleanup_orphan_timeseries_runtime.reject_on_worker_lost is True
+    assert retry_calls[0][1]["countdown"] == 30
 
 
 def test_destroy_acquires_shared_row_lock_before_runtime_cleanup(

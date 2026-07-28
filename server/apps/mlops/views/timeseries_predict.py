@@ -889,15 +889,37 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
         return instance.container_info
 
     @staticmethod
-    def _cleanup_uncommitted_create_runtime(container_id):
-        """创建事务无法提交时，幂等清理可能已经产生的外部资源。"""
+    def _cleanup_uncommitted_create_runtime(container_id, serving_id):
+        """创建事务无法提交时同步清理；未确认时交给无限退避任务闭环。"""
         try:
-            WebhookClient.remove(container_id)
-        except Exception as cleanup_error:
-            logger.critical(
-                f"创建 serving 事务回滚后清理残留运行时失败: container_id={container_id}, error={cleanup_error}",
-                exc_info=True,
+            from apps.mlops.services.timeseries_runtime_cleanup import (
+                reconcile_orphan_timeseries_runtime,
             )
+
+            reconcile_orphan_timeseries_runtime(container_id, serving_id)
+        except Exception as cleanup_error:
+            from apps.mlops.tasks.runtime_cleanup import (
+                cleanup_orphan_timeseries_runtime,
+            )
+
+            try:
+                cleanup_orphan_timeseries_runtime.apply_async(
+                    args=(container_id, serving_id),
+                    retry=True,
+                    retry_policy={
+                        "max_retries": 5,
+                        "interval_start": 0,
+                        "interval_step": 1,
+                        "interval_max": 5,
+                    },
+                )
+            except Exception as dispatch_error:
+                logger.critical(
+                    "创建 serving 事务回滚后的补偿任务投递失败: "
+                    f"container_id={container_id}, cleanup_error={type(cleanup_error).__name__}, "
+                    f"dispatch_error={type(dispatch_error).__name__}",
+                    exc_info=True,
+                )
 
     @HasPermission("timeseries_predict-View")
     def list(self, request, *args, **kwargs):
@@ -1034,8 +1056,9 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
             return self._create_under_runtime_lock(request, cleanup_context, *args, **kwargs)
         except Exception:
             container_id = cleanup_context.get("container_id")
-            if container_id is not None:
-                self._cleanup_uncommitted_create_runtime(container_id)
+            serving_id = cleanup_context.get("serving_id")
+            if container_id is not None and serving_id is not None:
+                self._cleanup_uncommitted_create_runtime(container_id, serving_id)
             raise
 
     @transaction.atomic
@@ -1092,6 +1115,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
             # 构建 serving ID
             container_id = f"TimeseriesPredict_Serving_{serving.id}"
             cleanup_context["container_id"] = container_id
+            cleanup_context["serving_id"] = serving.id
 
             try:
                 self._claim_runtime_transition(serving, "create")
