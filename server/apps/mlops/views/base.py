@@ -47,6 +47,28 @@ class TeamModelViewSet(AuthViewSet):
     def get_object(self):
         return self.get_authorized_object()
 
+    @staticmethod
+    def parse_run_list_pagination(request):
+        """解析运行列表的旧分页契约；参数非法时返回 ``None``。"""
+        raw_page_size = request.GET.get("page_size")
+        try:
+            page = int(request.GET.get("page", 1))
+        except (TypeError, ValueError):
+            return None
+
+        if raw_page_size is None or raw_page_size in {"0", "-1"}:
+            return page, None, False
+
+        try:
+            page_size = int(raw_page_size)
+        except (TypeError, ValueError):
+            return None
+
+        if page < 1 or page_size < 1:
+            return None
+
+        return page, page_size, True
+
     def get_train_job_runs(self, train_job):
         from apps.mlops.utils import mlflow_service
 
