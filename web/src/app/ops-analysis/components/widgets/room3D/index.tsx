@@ -86,7 +86,6 @@ const Room3D: React.FC<Room3DProps> = ({
     const controller = createRoom3DScene(
       mountNode,
       roomData,
-      { transparentScene: displayOptions.transparentScene },
       {
         onHover: setHoverState,
         onSelect: (rack) => {
@@ -104,7 +103,7 @@ const Room3D: React.FC<Room3DProps> = ({
       controller.dispose();
       resetViewRef.current = () => undefined;
     };
-  }, [displayOptions.transparentScene, roomData]);
+  }, [roomData]);
 
   const legendItems = useMemo(() => {
     if (!roomData?.racks.length) {

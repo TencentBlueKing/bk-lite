@@ -362,7 +362,7 @@
       "syslogNodeDes": "请选择已托管 Telegraf 采集器的容器节点",
       "syslogTargetPort": "目标端口",
       "syslogStep1": "在设备上配置 Syslog 目标地址",
-      "endpointPlaceholder": "Docer守护进程连接地址，默认为 unix:///var/run/docker.sock",
+      "endpointPlaceholder": "Docker守护进程连接地址，默认为 unix:///var/run/docker.sock",
       "endpoint": "端点",
       "accessLog": "访问日志 (Access Log)",
       "accessLogDesc": "采集 Apache 访问日志，记录每个 HTTP 请求的详细信息",

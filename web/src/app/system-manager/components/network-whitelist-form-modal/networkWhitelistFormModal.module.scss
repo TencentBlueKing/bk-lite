@@ -1,21 +1,3 @@
-.modal {
-  :global(.ant-modal-content) {
-    border: 1px solid var(--color-border-1);
-    border-radius: 14px;
-    box-shadow: 0 18px 48px rgb(16 24 40 / 18%);
-  }
-
-  :global(.ant-modal-header) {
-    margin-bottom: 16px;
-  }
-
-  :global(.ant-modal-footer) {
-    margin-top: 18px;
-    padding-top: 14px;
-    border-top: 1px solid var(--color-border-1);
-  }
-}
-
 .titleBlock {
   padding-right: 28px;
 }
@@ -33,7 +15,7 @@
 }
 
 .titleDescription {
-  margin-top: 2px;
+  margin-top: 4px;
   color: var(--color-text-3);
   font-size: 12px;
   font-weight: 400;
@@ -42,11 +24,17 @@
 
 .form {
   :global(.ant-form-item) {
-    margin-bottom: 16px;
+    margin-bottom: 20px;
   }
 
   :global(.ant-form-item-label) {
-    padding-bottom: 7px;
+    padding-bottom: 8px;
+
+    > label {
+      height: auto;
+      color: var(--color-text-1);
+      font-weight: 500;
+    }
   }
 
   :global(.ant-form-item-extra) {
@@ -59,7 +47,7 @@
 }
 
 .typeSection {
-  margin-bottom: 16px;
+  margin-bottom: 20px;
 }
 
 .typeLabel,
@@ -79,32 +67,17 @@
 }
 
 .typeSelector {
-  width: fit-content;
-  padding: 2px;
-  background: transparent;
-  border: 1px solid var(--color-border-1);
-  border-radius: 8px;
+  display: flex;
+  gap: 32px;
+  min-height: 22px;
 
-  :global(.ant-segmented-group) {
-    gap: 2px;
-  }
-
-  :global(.ant-segmented-item) {
-    min-width: 76px;
+  :global(.ant-radio-wrapper) {
+    margin-inline-end: 0;
     color: var(--color-text-2);
-    border-radius: 6px;
   }
 
-  :global(.ant-segmented-item-selected) {
-    color: var(--color-primary);
-    background: var(--color-primary-bg-active);
-    box-shadow: none;
-  }
-
-  :global(.ant-segmented-thumb) {
-    background: var(--color-primary-bg-active);
-    border-radius: 6px;
-    box-shadow: none;
+  :global(.ant-radio-wrapper-checked) {
+    color: var(--color-text-1);
   }
 }
 
@@ -117,6 +90,14 @@
 
 .inputIcon {
   color: var(--color-text-3);
+}
+
+.enabledField {
+  margin-bottom: 16px !important;
+
+  :global(.ant-form-item-control-input) {
+    min-height: 24px;
+  }
 }
 
 .remarkLabel {

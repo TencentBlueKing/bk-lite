@@ -630,7 +630,9 @@ class TestCustomWebhookValidation:
         ):
             result = send_by_custom_webhook(channel_obj, "hello", [])
 
-        assert result == {"result": False, "message": "webhook domain or IP not in whitelist"}
+        assert result["code"] == "NETWORK_WHITELIST_REQUIRED"
+        assert result["data"]["network_whitelist_url"] == "/system-manager/settings/network-whitelist"
+        assert result["data"]["action_label"] == "Open Network Allowlist"
         validator.assert_called_once_with("https://internal.example.com/hook")
         request.assert_not_called()
 

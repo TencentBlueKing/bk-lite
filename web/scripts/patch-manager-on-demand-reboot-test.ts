@@ -42,5 +42,24 @@ assertPresent(page, /仅自动重启明确需要重启的主机/, '自动重启�
 assertPresent(page, /无需重启的主机将跳过重启/, '无需重启分支提示');
 assertPresent(page, /无法确认的主机将进入待重启并等待人工处理/, '未知分支提示');
 assertPresent(page, /仅自动重启检测为需要重启的主机/, '提交确认提示');
+assertPresent(
+  page,
+  />\s*自动重启\s*<\/div>[\s\S]{0,200}<Alert[\s\S]{0,200}type="warning"[\s\S]{0,200}showIcon[\s\S]{0,200}message="仅自动重启明确需要重启的主机"[\s\S]{0,600}<Switch\s+aria-label="自动重启"/,
+  '自动重启标题、常驻 Alert 与开关按三行排列',
+);
+assertPresent(page, /<div style=\{\{ width: '100%', flex: 1, overflowY: 'auto' \}\}>/, '执行设置区域占满抽屉内容宽度');
+assertPresent(page, /<Alert\s+style=\{\{ width: '100%', marginBottom: 12 \}\}/, '自动重启 Alert 占满内容宽度');
+assertPresent(
+  page,
+  /const payload: Parameters<typeof api\.remediateRisk>\[0\][\s\S]{0,180}auto_reboot: autoReboot/,
+  '治理请求复用 API 入参类型',
+);
+assertPresent(
+  page,
+  /checked=\{autoReboot\}[\s\S]{0,160}onChange=\{\(checked: boolean\) => setAutoReboot\(checked\)\}/,
+  '自动重启开关传递明确的布尔值',
+);
+assertAbsent(page, /checkedChildren=|unCheckedChildren=/, '自动重启开关不应显示状态文字');
+assertAbsent(page, /\{autoReboot\s*&&\s*\(\s*<Alert/, '自动重启提示不应随开关隐藏');
 
 console.log('补丁治理按需重启前端约束通过');

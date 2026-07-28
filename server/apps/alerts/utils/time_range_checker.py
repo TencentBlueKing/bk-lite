@@ -14,7 +14,7 @@
 """
 
 import datetime
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 from django.db.models import Q
 from django.utils import timezone
@@ -68,10 +68,10 @@ class TimeRangeChecker:
         Returns:
             ``Q`` 对象（可直接传给 ``.filter()``），或 ``None``（表示无法下推）。
         """
-        if not self.config:
+        if not self.config or "type" not in self.config:
             return Q()  # 无配置 → 全部匹配，返回空 Q（.filter(Q()) 等同于无条件）
 
-        time_type = self.config.get("type", "one")
+        time_type = self.config["type"]
         if time_type != "one":
             return None  # 循环型时段无法用 SQL 精确下推，由调用方退化到 Python 过滤
 
@@ -99,10 +99,10 @@ class TimeRangeChecker:
         Returns:
             bool: 是否在时间范围内
         """
-        if not self.config:
+        if not self.config or "type" not in self.config:
             return True
 
-        time_type = self.config.get("type", "one")
+        time_type = self.config["type"]
 
         try:
             if time_type == "one":

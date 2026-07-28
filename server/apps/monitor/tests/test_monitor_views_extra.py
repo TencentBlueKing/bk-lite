@@ -3,6 +3,7 @@
 外部边界（NodeMgmt RPC / get_permission_rules / InstanceConfigService）mock。
 """
 
+from nats.errors import NoRespondersError
 import pytest
 
 from apps.monitor.models.monitor_condition import (
@@ -159,9 +160,78 @@ class TestNodeMgmtView:
         )
         assert resp.status_code == 200
         assert resp.json()["data"]["count"] == 1
+        assert resp.json()["data"]["nodes"] == [{"id": "n1"}]
         query = node_mgmt.return_value.node_list.call_args.args[0]
         assert query["cloud_region_id"] == 1
         assert query["page"] == 1 and query["page_size"] == 10
+
+    def test_get_nodes_marks_configured_host_monitoring_nodes(self, api_client, mocker):
+        api_client.cookies["current_team"] = "1"
+        _patch_current_team_scope(mocker)
+        host = MonitorObject.objects.create(name="Host", level="base")
+        plugin = MonitorPlugin.objects.create(
+            name="HostNodeStatusPlugin",
+            collector="Telegraf",
+            collect_type="host",
+        )
+        plugin.monitor_object.add(host)
+        node_mgmt = mocker.patch("apps.monitor.views.node_mgmt.NodeMgmt")
+        node_mgmt.return_value.node_list.return_value = {
+            "count": 2,
+            "nodes": [{"id": "n1"}, {"id": "n2"}],
+        }
+        mocker.patch(
+            "apps.monitor.views.node_mgmt.HostDeploymentStatus.get_configured_node_ids",
+            return_value={"n2"},
+        )
+
+        resp = api_client.post(
+            f"{BASE}/api/node_mgmt/nodes/",
+            {"monitor_plugin_id": plugin.id, "page": 1, "page_size": 10},
+            format="json",
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["data"]["nodes"] == [
+            {"id": "n1", "deployment_state": "available"},
+            {"id": "n2", "deployment_state": "configured"},
+        ]
+
+    def test_get_nodes_fails_closed_when_deployment_status_rpc_has_no_responder(self, api_client, mocker):
+        api_client.cookies["current_team"] = "1"
+        _patch_current_team_scope(mocker)
+        host = MonitorObject.objects.create(name="Host", level="base")
+        plugin = MonitorPlugin.objects.create(
+            name="HostNodeStatusUnavailablePlugin",
+            collector="Telegraf",
+            collect_type="host",
+        )
+        plugin.monitor_object.add(host)
+        node_mgmt = mocker.patch("apps.monitor.views.node_mgmt.NodeMgmt")
+        node_mgmt.return_value.node_list.return_value = {
+            "count": 1,
+            "nodes": [{"id": "n1", "name": "node-1", "ip": "10.0.0.1"}],
+        }
+        mocker.patch(
+            "apps.monitor.views.node_mgmt.HostDeploymentStatus.get_configured_node_ids",
+            side_effect=NoRespondersError(),
+        )
+
+        resp = api_client.post(
+            f"{BASE}/api/node_mgmt/nodes/",
+            {"monitor_plugin_id": plugin.id, "page": 1, "page_size": 10},
+            format="json",
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["data"]["nodes"] == [
+            {
+                "id": "n1",
+                "name": "node-1",
+                "ip": "10.0.0.1",
+                "deployment_state": "unknown",
+            }
+        ]
 
     def test_get_config_content(self, api_client, mocker):
         api_client.cookies["current_team"] = "1"

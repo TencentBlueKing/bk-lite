@@ -122,6 +122,26 @@ def test_get_model_info_not_found(superuser, monkeypatch):
 
 
 @pytest.mark.django_db
+def test_get_hidden_model_info_returns_not_found_for_superuser(superuser, monkeypatch):
+    monkeypatch.setattr(
+        f"{VIEWS}.ModelManage.search_model_info",
+        lambda model_id: {
+            "model_id": "docker",
+            "model_name": "Docker",
+            "group": [1],
+            "is_visible": False,
+        },
+    )
+
+    response = ModelViewSet.as_view({"get": "get_model_info"})(
+        _req("get", superuser),
+        model_id="docker",
+    )
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+@pytest.mark.django_db
 def test_get_model_info_ok(superuser, monkeypatch):
     monkeypatch.setattr(
         f"{VIEWS}.ModelManage.search_model_info",
@@ -348,7 +368,10 @@ def test_model_association_list_ok(superuser, monkeypatch):
     monkeypatch.setattr(
         f"{VIEWS}.ModelManage.search_model_info", lambda mid: {"model_id": mid, "group": [1]}
     )
-    monkeypatch.setattr(f"{VIEWS}.ModelManage.model_association_search", lambda mid: [{"_id": 1}])
+    monkeypatch.setattr(
+        f"{VIEWS}.ModelManage.model_association_search",
+        lambda mid, **kwargs: [{"_id": 1}],
+    )
     response = ModelViewSet.as_view({"get": "model_association_list"})(_req("get", superuser), model_id="host")
     assert _body(response)["data"][0]["_id"] == 1
 

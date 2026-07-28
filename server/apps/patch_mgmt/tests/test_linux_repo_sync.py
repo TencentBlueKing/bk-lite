@@ -10,11 +10,22 @@ import gzip
 
 import pytest
 
-from apps.patch_mgmt.constants import OSType, PatchSeverity, PatchSourceType, PatchType
+from apps.patch_mgmt.constants import (
+    OSType,
+    PackageManagerType,
+    PatchSeverity,
+    PatchSourceType,
+    PatchType,
+)
 from apps.patch_mgmt.models import LinuxPatchDetail, Patch, PatchSource
 from apps.patch_mgmt.services import connectivity_prober  # noqa: F401 (确保 services 包可导入)
 from apps.patch_mgmt.services import linux_repo_sync
-from apps.patch_mgmt.services.linux_repo_sync import RepoSyncError, fetch_advisories
+from apps.patch_mgmt.services.linux_repo_sync import (
+    ParsedAdvisory,
+    ParsedPackage,
+    RepoSyncError,
+    fetch_advisories,
+)
 from apps.patch_mgmt.services.source_sync_service import SourceSyncError, SourceSyncService
 
 REPOMD = """<?xml version="1.0" encoding="UTF-8"?>
@@ -133,6 +144,42 @@ Description: SSL library
 
 @pytest.mark.django_db
 class TestSyncLinuxRepo:
+    @pytest.mark.parametrize(
+        ("source_type", "expected_repo_type"),
+        [
+            (PatchSourceType.YUM_REPO, PackageManagerType.YUM),
+            (PatchSourceType.DNF_REPO, PackageManagerType.DNF),
+            (PatchSourceType.APT_REPO, PackageManagerType.APT),
+        ],
+    )
+    def test_ingest_selected_creates_detail_for_each_linux_source(
+        self,
+        mocker,
+        source_type,
+        expected_repo_type,
+    ):
+        advisory = ParsedAdvisory(
+            advisory_id=f"ADV-{expected_repo_type}",
+            title=f"{expected_repo_type} security update",
+            adv_type="security",
+            severity="Important",
+            packages=[ParsedPackage("kernel", "1.0", "x86_64")],
+        )
+        mocker.patch(
+            "apps.patch_mgmt.services.linux_repo_sync.fetch_advisories",
+            return_value=[advisory],
+        )
+        source = _source(
+            source_type=source_type,
+            name=f"{expected_repo_type}-source",
+        )
+
+        result = SourceSyncService.ingest_selected(source, [advisory.advisory_id])
+
+        assert result == {"created": 1, "updated": 0, "skipped": 0, "total": 1}
+        detail = LinuxPatchDetail.objects.get(patch__title=advisory.advisory_id)
+        assert detail.repo_type == expected_repo_type
+
     def test_creates_patches_and_details(self, mocker):
         _make_get(mocker)
         source = _source()
@@ -151,7 +198,7 @@ class TestSyncLinuxRepo:
         assert detail.pkg_name == "openssl"
         assert detail.pkg_version == "1.1.1k-7.el8"
         assert detail.distro_name == "centos"
-        assert detail.repo_type == PatchSourceType.YUM_REPO
+        assert detail.repo_type == PackageManagerType.YUM
         assert detail.architectures == ["x86_64"]
 
     def test_bugfix_maps_to_generic_moderate(self, mocker):

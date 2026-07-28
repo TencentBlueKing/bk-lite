@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { Spin, Empty, Alert, Drawer, Tag } from 'antd';
 import { useTranslation } from '@/utils/i18n';
-import { useTheme } from '@/context/theme';
+import { useThemeMode } from '@/theme';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useInstanceApi } from '@/app/cmdb/api/instance';
 import type { RoomLayoutData, RoomRack, RackDevice } from '@/app/cmdb/types/rackRoom';
@@ -20,14 +20,14 @@ interface Props {
 
 const RoomFloorPlan: React.FC<Props> = ({ modelId, instId }) => {
   const { t } = useTranslation();
-  const { themeName } = useTheme();
+  const { mode } = useThemeMode();
   const { getRoomLayout } = useInstanceApi();
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<RoomLayoutData | null>(null);
   const [rack, setRack] = useState<RoomRack | null>(null);
   const [device, setDevice] = useState<RackDevice | null>(null);
   const [devOpen, setDevOpen] = useState(false);
-  const isDark = themeName === 'dark';
+  const isDark = mode === 'dark';
 
   useEffect(() => {
     if (!modelId || !instId) return;

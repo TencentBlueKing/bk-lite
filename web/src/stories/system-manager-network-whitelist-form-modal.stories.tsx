@@ -88,7 +88,7 @@ export const AddNetwork: Story = {
   play: async () => {
     const dialog = await within(document.body).findByRole('dialog', { name: /新增白名单/ });
     await expect(within(dialog).getByText('保存后不可变更')).toBeInTheDocument();
-    expect(dialog.querySelector('.ant-segmented')).not.toBeNull();
+    expect(dialog.querySelector('.ant-radio-group')).not.toBeNull();
     await expect(within(dialog).getByText('选填')).toBeInTheDocument();
   },
 };

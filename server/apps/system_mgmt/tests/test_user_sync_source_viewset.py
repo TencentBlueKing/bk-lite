@@ -6,6 +6,7 @@ from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from apps.core.utils.permission_cache import get_user_permission_version
 from apps.system_mgmt.models import Group, IntegrationInstance, User, UserSyncRun, UserSyncSource
 from apps.system_mgmt.providers import RuntimeApplicationService
 from apps.system_mgmt.providers.runtime import CapabilityExecutionResult
@@ -110,7 +111,6 @@ def test_destroy_deletes_root_subtree_and_users(api_client, authenticated_user, 
         group_list=[child_group.id],
         sync_source=None,
     )
-
     response = api_client.delete(f"/api/v1/system_mgmt/user_sync_source/{user_sync_source.id}/")
 
     assert response.status_code == 200
@@ -152,12 +152,16 @@ def test_delete_user_sync_source_does_not_scan_all_users(user_sync_source):
         group_list=[child_group.id],
         sync_source=None,
     )
+    synced_version = get_user_permission_version(synced_user.username, synced_user.domain)
+    grouped_version = get_user_permission_version(grouped_user.username, grouped_user.domain)
 
     with patch("apps.system_mgmt.services.user_sync_service.User.objects.all", side_effect=AssertionError("full user scan")):
         result = delete_user_sync_source(user_sync_source)
 
     assert result["result"] is True
     assert User.objects.filter(id__in=[synced_user.id, grouped_user.id]).count() == 0
+    assert get_user_permission_version(synced_user.username, synced_user.domain) > synced_version
+    assert get_user_permission_version(grouped_user.username, grouped_user.domain) > grouped_version
 
 
 @pytest.mark.django_db
@@ -207,10 +211,13 @@ def test_create_source_logs_operation(api_client, authenticated_user, ready_inte
     authenticated_user.permission = {"system-manager": {"user_sync-Add"}}
     authenticated_user.save(update_fields=["is_superuser"])
 
-    with patch(
-        "apps.system_mgmt.serializers.user_sync_source_serializer.get_user_sync_root_department_input_mode",
-        return_value="manual_input",
-    ), patch("apps.system_mgmt.viewset.user_sync_source_viewset.log_operation") as mock_log:
+    with (
+        patch(
+            "apps.system_mgmt.serializers.user_sync_source_serializer.get_user_sync_root_department_input_mode",
+            return_value="manual_input",
+        ),
+        patch("apps.system_mgmt.viewset.user_sync_source_viewset.log_operation") as mock_log,
+    ):
         response = api_client.post(
             "/api/v1/system_mgmt/user_sync_source/",
             {
@@ -228,6 +235,7 @@ def test_create_source_logs_operation(api_client, authenticated_user, ready_inte
     assert response.status_code == 201
     assert UserSyncSource.objects.filter(name="source-b").exists() is True
     mock_log.assert_called_once()
+
 
 @pytest.mark.django_db
 def test_create_source_accepts_weekly_schedule_config(api_client, authenticated_user, ready_integration_instance):
@@ -295,10 +303,13 @@ def test_update_source_logs_operation(api_client, authenticated_user, user_sync_
     authenticated_user.permission = {"system-manager": {"user_sync-Edit"}}
     authenticated_user.save(update_fields=["is_superuser"])
 
-    with patch(
-        "apps.system_mgmt.serializers.user_sync_source_serializer.get_user_sync_root_department_input_mode",
-        return_value="manual_input",
-    ), patch("apps.system_mgmt.viewset.user_sync_source_viewset.log_operation") as mock_log:
+    with (
+        patch(
+            "apps.system_mgmt.serializers.user_sync_source_serializer.get_user_sync_root_department_input_mode",
+            return_value="manual_input",
+        ),
+        patch("apps.system_mgmt.viewset.user_sync_source_viewset.log_operation") as mock_log,
+    ):
         response = api_client.put(
             f"/api/v1/system_mgmt/user_sync_source/{user_sync_source.id}/",
             {
@@ -380,10 +391,9 @@ def test_department_options_rejects_manual_input_provider(api_client, authentica
     assert response.status_code == 400
     assert "manual_input mode" in response.json()["message"]
 
+
 @pytest.mark.django_db
-def test_department_options_returns_serialized_errors_when_provider_call_fails(
-    api_client, authenticated_user, ready_integration_instance
-):
+def test_department_options_returns_serialized_errors_when_provider_call_fails(api_client, authenticated_user, ready_integration_instance):
     authenticated_user.is_superuser = True
     authenticated_user.permission = {"system-manager": {"user_sync-View"}}
     authenticated_user.save(update_fields=["is_superuser"])
@@ -429,13 +439,16 @@ def test_department_options_returns_provider_tree_payload(api_client, authentica
         },
     )
 
-    with patch(
-        "apps.system_mgmt.viewset.user_sync_source_viewset.get_user_sync_root_department_input_mode",
-        return_value="department_select",
-    ), patch(
-        "apps.system_mgmt.viewset.user_sync_source_viewset.RuntimeApplicationService.execute",
-        return_value=result,
-    ) as mock_execute:
+    with (
+        patch(
+            "apps.system_mgmt.viewset.user_sync_source_viewset.get_user_sync_root_department_input_mode",
+            return_value="department_select",
+        ),
+        patch(
+            "apps.system_mgmt.viewset.user_sync_source_viewset.RuntimeApplicationService.execute",
+            return_value=result,
+        ) as mock_execute,
+    ):
         response = api_client.get(
             "/api/v1/system_mgmt/user_sync_source/department_options/",
             {"integration_instance": ready_integration_instance.id, "current_root_department_id": "dept-a"},
@@ -499,6 +512,7 @@ def test_list_records_supports_search_by_source_name(api_client, authenticated_u
     assert response.data["count"] == 1
     assert response.data["items"][0]["source_name"] == "alpha-source"
 
+
 @pytest.mark.django_db
 def test_list_prefetches_only_latest_run_per_source(api_client, authenticated_user, ready_integration_instance):
     authenticated_user.is_superuser = True
@@ -526,9 +540,7 @@ def test_list_prefetches_only_latest_run_per_source(api_client, authenticated_us
     assert response.status_code == 200
     run_table = UserSyncRun._meta.db_table
     run_selects = [
-        query["sql"]
-        for query in context.captured_queries
-        if query["sql"].lstrip().upper().startswith("SELECT") and run_table in query["sql"]
+        query["sql"] for query in context.captured_queries if query["sql"].lstrip().upper().startswith("SELECT") and run_table in query["sql"]
     ]
     assert len(run_selects) == 1
     assert {item["latest_run"]["summary"] for item in response.data["items"]} == {"latest"}
@@ -585,10 +597,13 @@ def test_preview_uses_existing_source_without_persisting(api_client, authenticat
 
     preview_result = {"result": True, "message": "preview ok", "data": {"estimated_user_count": 3}}
 
-    with patch(
-        "apps.system_mgmt.serializers.user_sync_source_serializer.get_user_sync_root_department_input_mode",
-        return_value="manual_input",
-    ), patch("apps.system_mgmt.viewset.user_sync_source_viewset.preview_user_sync", return_value=preview_result) as mock_preview:
+    with (
+        patch(
+            "apps.system_mgmt.serializers.user_sync_source_serializer.get_user_sync_root_department_input_mode",
+            return_value="manual_input",
+        ),
+        patch("apps.system_mgmt.viewset.user_sync_source_viewset.preview_user_sync", return_value=preview_result) as mock_preview,
+    ):
         response = api_client.post(
             "/api/v1/system_mgmt/user_sync_source/preview/",
             {
@@ -606,9 +621,7 @@ def test_preview_uses_existing_source_without_persisting(api_client, authenticat
 
 
 @pytest.mark.django_db
-def test_sync_source_accepts_root_dn_without_base_dn_rail(
-    api_client, authenticated_user, ready_ad_integration_instance
-):
+def test_sync_source_accepts_root_dn_without_base_dn_rail(api_client, authenticated_user, ready_ad_integration_instance):
     """T3: AD user-sync source must accept business_config with only root_dn.
 
     The legacy is_sub_dn(root_dn, base_dn) boundary check used
@@ -650,9 +663,7 @@ def test_sync_source_accepts_root_dn_without_base_dn_rail(
 
 
 @pytest.mark.django_db
-def test_sync_source_still_requires_root_dn_non_empty(
-    api_client, authenticated_user, ready_ad_integration_instance
-):
+def test_sync_source_still_requires_root_dn_non_empty(api_client, authenticated_user, ready_ad_integration_instance):
     """T3 complementary: empty root_dn must still be rejected for AD."""
     authenticated_user.is_superuser = True
     authenticated_user.permission = {"system-manager": {"user_sync-Add"}}
@@ -791,9 +802,7 @@ def test_preview_keeps_password_init_in_platform_config(
         ({"mode": "uniform", "uniform_password": "123", "email_channel_id": 7}, "密码"),
     ],
 )
-def test_preview_rejects_invalid_platform_password_init(
-    password_init, expected_error, password_init_preview_admin, ready_integration_instance
-):
+def test_preview_rejects_invalid_platform_password_init(password_init, expected_error, password_init_preview_admin, ready_integration_instance):
     response = password_init_preview_admin.post(
         PREVIEW_URL,
         _password_init_preview_payload(ready_integration_instance, platform_config={"password_init": password_init}),

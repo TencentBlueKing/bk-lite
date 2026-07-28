@@ -17,6 +17,7 @@ import { Input, Modal, message, Select } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useOpsAnalysis } from '@/app/ops-analysis/context/common';
 import { useCanvasResources } from '@/app/ops-analysis/hooks/useCanvasResources';
+import { useCanvasShareAction } from '@/app/ops-analysis/hooks/useCanvasShareAction';
 import {
   DashboardLayoutItem,
   DashboardWidgetLayoutItem,
@@ -69,6 +70,9 @@ import {
 
 interface DashboardProps {
   selectedDashboard?: DirItem | null;
+  shareMode?: boolean;
+  shareSessionId?: string;
+  getDashboardDetailOverride?: (id: string | number) => Promise<any>;
 }
 
 export interface DashboardRef {
@@ -76,7 +80,7 @@ export interface DashboardRef {
 }
 
 const Dashboard = forwardRef<DashboardRef, DashboardProps>(
-  ({ selectedDashboard }, ref) => {
+  ({ selectedDashboard, shareMode = false, getDashboardDetailOverride }, ref) => {
     const { t } = useTranslation();
     const { data: session } = useSession();
     const themeName = resolveOpsChartThemeName();
@@ -132,19 +136,20 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     const [filterSearchVersion, setFilterSearchVersion] = useState(0);
     const [namespaceSearchVersion, setNamespaceSearchVersion] = useState(0);
     const exportRef = useRef<HTMLDivElement>(null);
-    const getDashboardDetailRef = useRef(getDashboardDetail);
+    const getDashboardDetailRef = useRef(getDashboardDetailOverride ?? getDashboardDetail);
     const collapsedGroupsHydratedKeyRef = useRef<string | null>(null);
     const skipCollapsedGroupsPersistRef = useRef(false);
     const [collapsedGroupsLayoutReadyId, setCollapsedGroupsLayoutReadyId] =
       useState<number | string | null>(null);
+    const { shareLoading, openShare } = useCanvasShareAction('dashboard');
     const [exporting, setExporting] = useState(false);
     const resumeEditModeAfterFullscreenRef = useRef(false);
     const { isFullscreen, enterFullscreen, exitFullscreen } =
       useAppViewFullscreen();
 
     useEffect(() => {
-      getDashboardDetailRef.current = getDashboardDetail;
-    }, [getDashboardDetail]);
+      getDashboardDetailRef.current = getDashboardDetailOverride ?? getDashboardDetail;
+    }, [getDashboardDetail, getDashboardDetailOverride]);
 
     const {
       definitions,
@@ -1060,6 +1065,10 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       });
     };
 
+    const handleShare = () => {
+      void openShare(selectedDashboard?.data_id);
+    };
+
     const dashboardToolbar = (
       <DashboardToolbar
         selectedDashboard={selectedDashboard}
@@ -1077,6 +1086,9 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         onToggleEditMode={toggleEditMode}
         onCancelEdit={handleCancelEdit}
         onSave={handleSave}
+        shareMode={shareMode}
+        shareLoading={shareLoading}
+        onOpenShare={!shareMode && selectedDashboard?.data_id ? handleShare : undefined}
       />
     );
 
@@ -1132,7 +1144,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
             : 'h-full flex-1 overflow-auto'
         }`}
         style={{
-          backgroundColor: isDarkTheme ? 'var(--color-fill-1)' : '#f7f8fa',
+          backgroundColor: isDarkTheme ? 'var(--color-bg-2)' : '#f7f8fa',
           zIndex: isFullscreen ? 1100 : undefined,
         }}
       >
@@ -1164,6 +1176,9 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
             toolbar={dashboardToolbar}
             filterBar={dashboardFilterBar}
             contentRef={exportRef}
+            contentClassName={
+              isDarkTheme ? 'bg-[var(--color-bg-2)]' : 'bg-[#f7f8fa]'
+            }
           >
             {dashboardCanvas}
           </ViewWorkspace>

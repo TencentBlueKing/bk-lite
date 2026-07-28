@@ -34,6 +34,7 @@ import AccessDashboard from './objects/access';
 import NetworkServiceDashboard from './objects/network_service';
 import ConsoleServerDashboard from './objects/console_server';
 import VoiceGatewayDashboard from './objects/voice_gateway';
+import JvmDashboard from './objects/jvm';
 import { ENTERPRISE_PROFESSIONAL_DASHBOARDS } from './objects/(enterprise)-registry';
 import { normalizeDashboardKey } from './shared/utils';
 
@@ -47,6 +48,7 @@ export const PROFESSIONAL_DASHBOARD_GROUPS = {
 } as const;
 
 const COMMUNITY_DASHBOARDS: ProfessionalDashboardRegistryItem[] = [
+  { key: 'jvm', groupKey: 'middleware', objectName: 'JVM', objectDisplayName: 'JVM', inheritedPermissionPath: '/monitor/view', component: JvmDashboard },
   {
     key: 'mysql',
     groupKey: 'database',

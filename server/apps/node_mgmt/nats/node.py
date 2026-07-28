@@ -601,6 +601,12 @@ def node_list(query_data: dict):
 
 
 @nats_client.register
+def get_nodes_with_child_config(node_ids: list, collector: str, collect_type: str):
+    """查询关联了指定采集器子配置的节点。"""
+    return NodeService.get_nodes_with_child_config(node_ids, collector, collect_type)
+
+
+@nats_client.register
 def get_node_names_by_ids(node_ids: list):
     """按节点ID批量获取节点名称。"""
     return NodeService.get_node_names_by_ids(node_ids)

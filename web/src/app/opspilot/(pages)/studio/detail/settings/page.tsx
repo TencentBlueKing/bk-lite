@@ -14,6 +14,7 @@ import {useStudioApi} from '@/app/opspilot/api/studio';
 import ChatflowSettings from '@/app/opspilot/components/studio/chatflowSettings';
 import {useUnsavedChanges} from '@/app/opspilot/hooks/useUnsavedChanges';
 import {useStudio} from '@/app/opspilot/context/studioContext';
+import { useThemeMode } from '@/theme';
 
 const actionButtonClassName = 'inline-flex h-7 items-center rounded-md px-2.5 text-[11px] font-medium leading-none';
 const actionTagClassName = 'mb-0 mr-0 inline-flex h-7 items-center rounded-md px-2 text-[11px] font-medium leading-none';
@@ -110,8 +111,8 @@ const StudioSettingsPage: React.FC = () => {
     }
   };
 
-  const theme = typeof window !== 'undefined' && localStorage.getItem('theme');
-  const overlayBgClass = theme === 'dark' ? 'bg-gray-950' : 'bg-white';
+  const { mode } = useThemeMode();
+  const overlayBgClass = mode === 'dark' ? 'bg-gray-950' : 'bg-white';
 
   // Move chatflow related functions to top level
   const handleClearCanvas = () => {

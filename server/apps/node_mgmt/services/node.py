@@ -13,7 +13,7 @@ from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models import NodeCollectorInstallStatus
 from apps.node_mgmt.models.action import CollectorActionTask, CollectorActionTaskNode
-from apps.node_mgmt.models.sidecar import Action, Collector, CollectorConfiguration, Node
+from apps.node_mgmt.models.sidecar import Action, ChildConfig, Collector, CollectorConfiguration, Node
 from apps.node_mgmt.serializers.node import NodeSerializer
 from apps.node_mgmt.services.sidecar import Sidecar
 from apps.node_mgmt.tasks.action_task import ACTION_TASK_TIMEOUT_SECONDS, timeout_collector_action_task
@@ -442,6 +442,22 @@ class NodeService:
         serializer = NodeSerializer(nodes, many=True)
         node_data = serializer.data
         return dict(count=count, nodes=node_data)
+
+    @staticmethod
+    def get_nodes_with_child_config(node_ids, collector, collect_type):
+        """返回关联了指定采集器子配置的节点 ID。"""
+        normalized_node_ids = list({str(node_id) for node_id in node_ids if node_id not in (None, "")})
+        if not normalized_node_ids:
+            return []
+        if len(normalized_node_ids) > NodeService.NODE_LIST_PAGE_SIZE_MAX:
+            raise BaseAppException(f"单次最多查询 {NodeService.NODE_LIST_PAGE_SIZE_MAX} 个节点")
+
+        configured_node_ids = ChildConfig.objects.filter(
+            collector_config__nodes__id__in=normalized_node_ids,
+            collector_config__collector__name=collector,
+            collect_type=collect_type,
+        ).values_list("collector_config__nodes__id", flat=True)
+        return sorted(set(configured_node_ids))
 
     @staticmethod
     def _normalize_page(page):

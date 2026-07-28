@@ -4,7 +4,7 @@ import React, { useMemo } from 'react';
 import Icon from '@/components/icon';
 import { useTranslation } from '@/utils/i18n';
 import { useClientData } from '@/context/client';
-import { useTheme } from '@/context/theme';
+import { useThemeMode } from '@/theme';
 import { useUserInfoContext } from '@/context/userInfo';
 
 interface PortalConsolePreviewProps {
@@ -59,7 +59,7 @@ const PortalConsolePreview: React.FC<PortalConsolePreviewProps> = ({
 }) => {
   const { t } = useTranslation();
   const { clientData, appConfigList, loading, appConfigLoading } = useClientData();
-  const { themeName } = useTheme();
+  const { mode } = useThemeMode();
   const { username, displayName } = useUserInfoContext();
 
   const displayApps = useMemo(() => {
@@ -129,7 +129,7 @@ const PortalConsolePreview: React.FC<PortalConsolePreviewProps> = ({
           </div>
 
           <div
-            className={`relative min-h-140 overflow-hidden bg-cover bg-top px-6 pb-6 pt-7 ${themeName === 'dark' ? 'bg-[url(/app/console_bg_dark.jpg)]' : 'bg-[url(/app/console_bg.jpg)]'}`}
+            className={`relative min-h-140 overflow-hidden bg-cover bg-top px-6 pb-6 pt-7 ${mode === 'dark' ? 'bg-[url(/app/console_bg_dark.jpg)]' : 'bg-[url(/app/console_bg.jpg)]'}`}
           >
             <div className="relative z-2 -mx-6 -mt-7 mb-7 border-b border-(--color-portal-preview-divider) bg-(--color-portal-preview-shell) px-5 py-3 shadow-[0_6px_18px_var(--color-portal-card-shadow)] backdrop-blur-sm">
               <div className="flex items-center justify-between gap-3">

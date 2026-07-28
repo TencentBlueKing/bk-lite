@@ -27,6 +27,10 @@ from apps.operation_analysis.serializers.directory_serializers import (
     TopologyModelSerializer,
 )
 from apps.operation_analysis.services.directory_service import DictDirectoryService
+from apps.operation_analysis.services.share_service import (
+    SharePermissionDenied,
+    create_or_get_share,
+)
 from config.drf.pagination import CustomPageNumberPagination
 
 
@@ -36,6 +40,51 @@ def _raise_if_builtin(instance, action_name="修改"):
         from rest_framework.exceptions import PermissionDenied
 
         raise PermissionDenied(f"内置对象不允许{action_name}")
+
+
+def _create_canvas_share_response(viewset, request, *, resource_type, resource_label):
+    from rest_framework.exceptions import PermissionDenied
+
+    from apps.operation_analysis.services.share_audit import log_share_access
+
+    space_id = viewset._parse_current_team_cookie(request)
+    resource = viewset.get_object()
+    try:
+        result = create_or_get_share(
+            resource_type=resource_type,
+            resource=resource,
+            sharer=request.user,
+            tenant_domain=resource.domain,
+            space_id=space_id,
+        )
+    except SharePermissionDenied as exc:
+        log_share_access(
+            request,
+            action="create",
+            dashboard=resource if resource_type == "dashboard" else None,
+            visitor=request.user,
+            result="reject",
+            reason="permission_denied",
+        )
+        raise PermissionDenied(f"无权分享该{resource_label}") from exc
+    response = Response(
+        {
+            "id": result.link.id,
+            "url": f"/ops-analysis/share/{result.token}",
+            "status": result.link.status,
+            "sharer_username": result.link.sharer_username,
+            "resource_type": result.link.resource_type,
+        }
+    )
+    log_share_access(
+        request,
+        action="create",
+        link=result.link,
+        dashboard=resource if resource_type == "dashboard" else None,
+        visitor=request.user,
+        result="ok",
+    )
+    return response
 
 
 def _partial_update_with_auth(viewset, request, *args, **kwargs):
@@ -229,6 +278,16 @@ class DashboardModelViewSet(BuiltinVisibleMixin, AuthViewSet):
         log_ops_analysis_success(request, response, "delete", f"删除仪表盘: {name}")
         return response
 
+    @HasPermission("view-View")
+    @action(detail=True, methods=["post"], url_path="share")
+    def share(self, request, *args, **kwargs):
+        return _create_canvas_share_response(
+            self,
+            request,
+            resource_type="dashboard",
+            resource_label="仪表盘",
+        )
+
 
 class TopologyModelViewSet(BuiltinVisibleMixin, AuthViewSet):
     """
@@ -285,6 +344,16 @@ class TopologyModelViewSet(BuiltinVisibleMixin, AuthViewSet):
         response = super(TopologyModelViewSet, self).destroy(request, *args, **kwargs)
         log_ops_analysis_success(request, response, "delete", f"删除拓扑图: {name}")
         return response
+
+    @HasPermission("view-View")
+    @action(detail=True, methods=["post"], url_path="share")
+    def share(self, request, *args, **kwargs):
+        return _create_canvas_share_response(
+            self,
+            request,
+            resource_type="topology",
+            resource_label="拓扑图",
+        )
 
 
 class ArchitectureModelViewSet(BuiltinVisibleMixin, AuthViewSet):
@@ -343,6 +412,16 @@ class ArchitectureModelViewSet(BuiltinVisibleMixin, AuthViewSet):
         log_ops_analysis_success(request, response, "delete", f"删除架构图: {name}")
         return response
 
+    @HasPermission("view-View")
+    @action(detail=True, methods=["post"], url_path="share")
+    def share(self, request, *args, **kwargs):
+        return _create_canvas_share_response(
+            self,
+            request,
+            resource_type="architecture",
+            resource_label="架构图",
+        )
+
 
 class CanvasModelViewSet(BuiltinVisibleMixin, AuthViewSet):
     """
@@ -398,6 +477,20 @@ class CanvasModelViewSet(BuiltinVisibleMixin, AuthViewSet):
         log_ops_analysis_success(request, response, "delete", f"删除{self.canvas_label}: {name}")
         return response
 
+    @HasPermission("view-View")
+    @action(detail=True, methods=["post"], url_path="share")
+    def share(self, request, *args, **kwargs):
+        if not getattr(self, "share_resource_type", None):
+            from rest_framework.exceptions import MethodNotAllowed
+
+            raise MethodNotAllowed("POST")
+        return _create_canvas_share_response(
+            self,
+            request,
+            resource_type=self.share_resource_type,
+            resource_label=self.canvas_label,
+        )
+
 
 class ScreenModelViewSet(CanvasModelViewSet):
     """
@@ -409,6 +502,7 @@ class ScreenModelViewSet(CanvasModelViewSet):
     filterset_class = ScreenModelFilter
     permission_key = "directory.screen"
     canvas_label = "大屏"
+    share_resource_type = "screen"
 
 
 class ReportModelViewSet(CanvasModelViewSet):
@@ -421,3 +515,4 @@ class ReportModelViewSet(CanvasModelViewSet):
     filterset_class = ReportModelFilter
     permission_key = "directory.report"
     canvas_label = "报表"
+    # 第一阶段不开放报表分享入口；resource_type 仍保留以支持解析与迁移。

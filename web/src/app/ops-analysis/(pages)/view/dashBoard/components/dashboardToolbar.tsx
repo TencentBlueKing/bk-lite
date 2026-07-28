@@ -6,6 +6,7 @@ import {
   FullscreenOutlined,
   PlusOutlined,
   ReloadOutlined,
+  ShareAltOutlined,
   SettingOutlined,
 } from '@ant-design/icons';
 
@@ -32,6 +33,9 @@ interface DashboardToolbarProps {
   onToggleEditMode: () => void;
   onCancelEdit: () => void;
   onSave: () => void;
+  shareMode?: boolean;
+  shareLoading?: boolean;
+  onOpenShare?: () => void;
 }
 
 const DashboardToolbar: React.FC<DashboardToolbarProps> = ({
@@ -50,6 +54,9 @@ const DashboardToolbar: React.FC<DashboardToolbarProps> = ({
   onToggleEditMode,
   onCancelEdit,
   onSave,
+  shareMode = false,
+  shareLoading = false,
+  onOpenShare,
 }) => {
   const { t } = useTranslation();
 
@@ -74,7 +81,7 @@ const DashboardToolbar: React.FC<DashboardToolbarProps> = ({
           />
         </Tooltip>
 
-        {!isEditMode && (
+        {!shareMode && !isEditMode && (
           <Tooltip title={t('dashboard.exportPdf')}>
             <Button
               type="text"
@@ -86,7 +93,20 @@ const DashboardToolbar: React.FC<DashboardToolbarProps> = ({
           </Tooltip>
         )}
 
-        {isEditMode && (
+        {!shareMode && !isEditMode && onOpenShare && (
+          <Tooltip title={t('dashboard.share')}>
+            <Button
+              type="text"
+              icon={<ShareAltOutlined />}
+              loading={shareLoading}
+              disabled={shareLoading}
+              onClick={onOpenShare}
+              className="rounded-full!"
+            />
+          </Tooltip>
+        )}
+
+        {!shareMode && isEditMode && (
           <>
             <PermissionWrapper requiredPermissions={['EditChart']}>
               <Tooltip title={t('dashboard.configUnifiedFilterFields')}>
@@ -131,7 +151,7 @@ const DashboardToolbar: React.FC<DashboardToolbarProps> = ({
           </>
         )}
 
-        <PermissionWrapper requiredPermissions={['EditChart']}>
+        {!shareMode && <PermissionWrapper requiredPermissions={['EditChart']}>
           {!isEditMode ? (
             <Tooltip title={t('common.edit')}>
               <Button
@@ -167,7 +187,7 @@ const DashboardToolbar: React.FC<DashboardToolbarProps> = ({
               </Button>
             </div>
           )}
-        </PermissionWrapper>
+        </PermissionWrapper>}
     </div>
   );
 };

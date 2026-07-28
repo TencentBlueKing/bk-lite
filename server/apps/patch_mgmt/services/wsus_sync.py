@@ -267,6 +267,10 @@ def sync_wsus(source: PatchSource) -> dict:
     now = timezone.now()
 
     for upd in updates:
+        if not normalize_wsus_kb(upd.kb_number):
+            skipped += 1
+            logger.warning("sync_wsus: 跳过无 KB 的更新 update_id=%s", upd.update_id)
+            continue
         patch_type = PatchType.SECURITY
         severity = sev_map.get((upd.severity or "").lower(), "unspecified")
         patch, is_new, manual_conflict, normalized_kb = resolve_wsus_patch(

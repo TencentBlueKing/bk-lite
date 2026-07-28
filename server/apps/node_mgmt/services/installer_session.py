@@ -13,6 +13,18 @@ from config.components.nats import NATS_NAMESPACE
 
 class InstallerSessionService:
     @staticmethod
+    def windows_bootstrap_artifact(cpu_architecture: str = "") -> dict:
+        normalized_arch = normalize_cpu_architecture(cpu_architecture) or NodeConstants.X86_64_ARCH
+        return {
+            "filename": InstallerConstants.WINDOWS_BOOTSTRAP_FILENAME,
+            "object_key": InstallerConstants.build_latest_bootstrap_path(
+                NodeConstants.WINDOWS_OS,
+                normalized_arch,
+            ),
+            "architecture": normalized_arch,
+        }
+
+    @staticmethod
     def installer_artifact(os_name: str, cpu_architecture: str = "") -> dict:
         normalized_arch = normalize_cpu_architecture(cpu_architecture) or "generic"
         if os_name == NodeConstants.WINDOWS_OS:
@@ -70,8 +82,16 @@ class InstallerSessionService:
         # Prefer dedicated installer credentials; fall back to admin credentials with warning
         nats_username = envs.get(NodeConstants.NATS_INSTALLER_USERNAME_KEY)
         nats_password = envs.get(NodeConstants.NATS_INSTALLER_PASSWORD_KEY)
+        is_windows_remote = (
+            token_data["os"] == NodeConstants.WINDOWS_OS
+            and token_data.get("install_mode") == "auto"
+        )
 
         if not nats_username or not nats_password:
+            if is_windows_remote:
+                raise BaseAppException(
+                    "Windows remote installation requires dedicated NATS_INSTALLER_USERNAME/PASSWORD credentials"
+                )
             # Fallback to admin credentials (legacy deployments)
             logger.warning(
                 "NATS_INSTALLER_USERNAME/PASSWORD not configured for cloud region %s, "
@@ -90,7 +110,13 @@ class InstallerSessionService:
         groups = ",".join([str(org_id) for org_id in token_data.get("organizations", [])])
 
         nats_tls_ca = envs.get("NATS_TLS_CA") or ""
-        nats_protocol = envs.get("NATS_PROTOCOL") or "nats"
+        nats_protocol = (envs.get("NATS_PROTOCOL") or "nats").strip().lower()
+        if is_windows_remote:
+            if nats_protocol != "tls":
+                raise BaseAppException("Windows remote installation requires NATS_PROTOCOL=tls")
+            configured_servers = [item.strip() for item in nats_servers.split(",") if item.strip()]
+            if any("://" in item and not item.lower().startswith("tls://") for item in configured_servers):
+                raise BaseAppException("Windows remote installation requires TLS NATS server URLs")
 
         install_dir = (
             InstallerConstants.WINDOWS_INSTALL_DEFAULT_DIR

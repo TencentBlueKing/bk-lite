@@ -1,0 +1,16 @@
+@use '../common/simple-dashboard.module.scss';
+
+.sectionLabel {
+  margin: 2px 2px 4px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--color-border-1);
+  color: var(--color-text-3);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.dashboardSection + .sectionLabel {
+  margin-top: 8px;
+}

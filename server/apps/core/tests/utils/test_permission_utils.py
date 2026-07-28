@@ -1,4 +1,5 @@
 import pydantic.root_model  # noqa
+
 """apps/core/utils/permission_utils.py 真实行为单元测试。
 
 覆盖：
@@ -19,6 +20,11 @@ from apps.core import constants
 from apps.core.utils import permission_utils as pu
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture(autouse=True)
+def _permission_version(mocker):
+    mocker.patch.object(pu, "get_user_permission_version", return_value=0)
 
 
 def _user(username="u", domain="domain.com"):

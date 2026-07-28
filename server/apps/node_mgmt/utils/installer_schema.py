@@ -32,6 +32,7 @@ FAILURE_SUMMARY_MAP = {
     "disk": "The target host does not have enough disk space for installation",
     "package_invalid": "The downloaded package is invalid or corrupted",
     "arch_mismatch": "The package architecture does not match the target host",
+    "manual_recovery_required": "The previous installation was preserved but requires manual recovery",
     "unknown": "The installation step failed with an unexpected error",
 }
 
@@ -178,7 +179,7 @@ def _infer_failure_type(message: str | None, error: str | None, details: dict[st
     ):
         return "package_invalid"
 
-    return explicit_error_type if explicit_error_type in {"connection", "timeout"} else "unknown"
+    return explicit_error_type if explicit_error_type in {"connection", "timeout", "manual_recovery_required"} else "unknown"
 
 
 def _has_failure_signal(message: str | None, error: str | None, details: dict[str, Any] | None) -> bool:

@@ -2,20 +2,24 @@ import pytest
 
 from apps.base.models import User, UserAPISecret
 from apps.core.backends import APISecretAuthBackend
+from apps.system_mgmt.models import User as SystemUser
 
 
 @pytest.mark.django_db
-def test_api_secret_authenticates_with_raw_token_against_hashed_storage(monkeypatch):
+def test_api_secret_authenticates_with_raw_token_against_hashed_storage():
     raw_secret = UserAPISecret.generate_api_secret()
     user = User.objects.create(username="alice", domain="domain.com")
+    SystemUser.objects.create(
+        username=user.username,
+        domain=user.domain,
+        group_list=[7],
+    )
     UserAPISecret.objects.create(
         username=user.username,
         domain=user.domain,
         team=7,
         api_secret=UserAPISecret.hash_api_secret(raw_secret),
     )
-    monkeypatch.setattr(APISecretAuthBackend, "_populate_user_permissions", lambda self, user, team: None)
-
     authenticated = APISecretAuthBackend().authenticate(api_token=raw_secret)
 
     assert authenticated == user

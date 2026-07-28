@@ -42,6 +42,16 @@ def _extract_latest_failure_from_steps(steps):
     return None
 
 
+def _prefer_failure(current, candidate):
+    if not isinstance(candidate, dict):
+        return current
+    if not isinstance(current, dict) or candidate.get("type") == "manual_recovery_required":
+        return candidate
+    if current.get("type") == "manual_recovery_required":
+        return current
+    return candidate
+
+
 def _normalize_step_message(step_message):
     if isinstance(step_message, str):
         stripped_message = step_message.strip()
@@ -303,8 +313,7 @@ def normalize_task_result_for_read(result=None):
         }
         if step_details:
             normalized_step["details"] = step_details
-            if step_details.get("failure"):
-                latest_failure = step_details.get("failure")
+            latest_failure = _prefer_failure(latest_failure, step_details.get("failure"))
 
         normalized_steps.append(normalized_step)
 
@@ -314,6 +323,7 @@ def normalize_task_result_for_read(result=None):
     if not isinstance(installer_progress, dict):
         prepared_result["installer_progress"] = None
 
+    latest_failure = _prefer_failure(latest_failure, prepared_result.get("failure"))
     latest_failure = latest_failure or _extract_latest_failure_from_steps(prepared_result.get("steps"))
 
     if latest_failure and prepared_result.get("overall_status") in {"error", "timeout", "cancelled"}:

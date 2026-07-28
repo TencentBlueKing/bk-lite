@@ -40,20 +40,55 @@
 - **WHEN** 用户使用 API Token 发起请求
 - **AND** 缓存中存在该用户的权限信息
 - **AND** 缓存未过期
+- **AND** 缓存代际与数据库中的用户权限代际一致
 - **THEN** 系统 SHALL 直接使用缓存的权限信息
-- **AND** 系统 SHALL NOT 查询数据库
+- **AND** 系统 SHALL 只允许查询轻量的权限代际，不再查询角色、菜单或组织权限数据
 
 #### Scenario: 缓存未命中
 
 - **WHEN** 用户使用 API Token 发起请求
 - **AND** 缓存中不存在该用户的权限信息或已过期
 - **THEN** 系统 SHALL 查询数据库计算权限信息
-- **AND** 系统 SHALL 将计算结果缓存 60 秒
+- **AND** 系统 SHALL 将计算结果按可配置 TTL 缓存（默认 600 秒）
 
 #### Scenario: 缓存 Key 格式
 
 - **WHEN** 系统缓存 API Token 用户的权限信息
-- **THEN** 缓存 Key SHALL 为 `api_token_permissions:{username}:{domain}:{team}`
+- **THEN** 缓存 Key SHALL 为 `api_token_permissions:{username}:{domain}:v{permission_version}:{team}`
+
+#### Scenario: 权限变更与并发鉴权
+
+- **WHEN** 用户角色、组织继承、角色菜单或应用权限发生变更
+- **THEN** 系统 SHALL 在同一数据库事务中单调推进独立的用户权限代际
+- **AND** 变更前开始的鉴权 SHALL NOT 将旧权限写入新代际缓存
+- **AND** 旧代际缓存即使位于其他 Worker 或物理删除失败，也 SHALL NOT 被后续鉴权复用
+
+#### Scenario: 用户删除与重建
+
+- **WHEN** 系统用户被删除
+- **THEN** 权限代际 SHALL 独立于用户记录继续保留并推进
+- **AND** 仅保留基础用户或 API Secret 时 SHALL NOT 通过 API Token 认证
+- **AND** 同名同域用户重建后 SHALL 使用更高的新代际
+
+#### Scenario: Web Token 授权上下文
+
+- **WHEN** Web Token 鉴权读取或写入 `token_info` 授权上下文缓存
+- **THEN** 缓存键 SHALL 包含同一个用户权限代际
+- **AND** 计算期间代际变化时 SHALL 最多重试一次并拒绝返回旧授权上下文
+
+#### Scenario: 数据权限规则
+
+- **WHEN** 系统读取或写入 `perm_rules` 数据权限缓存
+- **THEN** 缓存键 SHALL 包含同一个用户权限代际
+- **AND** 计算期间代际变化时 SHALL 最多重试一次，持续变化时返回空权限
+
+#### Scenario: 首次上线版本化缓存
+
+- **WHEN** 从不识别权限代际的旧版本升级到版本化权限缓存
+- **THEN** 发布流程 SHALL 按 `docs/operations/api-token-permission-cache-rollout.md` 排空全部旧 Worker
+- **AND** SHALL NOT 让旧 Worker 与新 Worker 在权限变更窗口内混合提供 API Token 鉴权
+- **AND** 回滚到旧版本前 SHALL 同样排空新 Worker，并执行
+  `python manage.py prepare_permission_cache_rollback --confirm` 仅清理权限缓存命名空间中的旧缓存键
 
 ### Requirement: 角色继承计算
 

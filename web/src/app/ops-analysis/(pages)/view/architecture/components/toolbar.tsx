@@ -5,6 +5,7 @@ import {
   EditOutlined,
   FullscreenOutlined,
   FullscreenExitOutlined,
+  ShareAltOutlined,
 } from '@ant-design/icons';
 import { ArchitectureProps } from '@/app/ops-analysis/types/architecture';
 import PermissionWrapper from '@/components/permission';
@@ -14,6 +15,9 @@ interface ArchitectureToolbarProps {
   selectedArchitecture: ArchitectureProps['selectedArchitecture'];
   isEditMode: boolean;
   isFullscreen: boolean;
+  shareMode?: boolean;
+  shareLoading?: boolean;
+  onOpenShare?: () => void;
   loading: boolean;
   onEdit: () => void;
   onSave: () => void;
@@ -24,6 +28,9 @@ const ArchitectureToolbar: React.FC<ArchitectureToolbarProps> = ({
   selectedArchitecture,
   isEditMode,
   isFullscreen,
+  shareMode = false,
+  shareLoading = false,
+  onOpenShare,
   loading,
   onEdit,
   onSave,
@@ -70,27 +77,41 @@ const ArchitectureToolbar: React.FC<ArchitectureToolbarProps> = ({
             onClick={onFullscreenToggle}
           />
         </Tooltip>
-        <PermissionWrapper requiredPermissions={['EditChart']}>
-          {isEditMode ? (
+        {!shareMode && !isEditMode && onOpenShare && (
+          <Tooltip title={t('dashboard.share')}>
             <Button
-              icon={<SaveOutlined />}
-              loading={loading}
-              onClick={onSave}
-              type="primary"
-            >
-              {t('common.save')}
-            </Button>
-          ) : (
-            <Tooltip title={t('common.edit')}>
+              type="text"
+              icon={<ShareAltOutlined style={{ fontSize: 16 }} />}
+              loading={shareLoading}
+              disabled={shareLoading}
+              aria-label={t('dashboard.share')}
+              onClick={onOpenShare}
+            />
+          </Tooltip>
+        )}
+        {!shareMode && (
+          <PermissionWrapper requiredPermissions={['EditChart']}>
+            {isEditMode ? (
               <Button
-                type="text"
-                icon={<EditOutlined style={{ fontSize: 16 }} />}
-                onClick={onEdit}
-                disabled={selectedArchitecture?.is_build_in}
-              />
-            </Tooltip>
-          )}
-        </PermissionWrapper>
+                icon={<SaveOutlined />}
+                loading={loading}
+                onClick={onSave}
+                type="primary"
+              >
+                {t('common.save')}
+              </Button>
+            ) : (
+              <Tooltip title={t('common.edit')}>
+                <Button
+                  type="text"
+                  icon={<EditOutlined style={{ fontSize: 16 }} />}
+                  onClick={onEdit}
+                  disabled={selectedArchitecture?.is_build_in}
+                />
+              </Tooltip>
+            )}
+          </PermissionWrapper>
+        )}
       </div>
     </div>
   );

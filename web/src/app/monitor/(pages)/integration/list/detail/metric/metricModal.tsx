@@ -16,6 +16,7 @@ import {
   Cascader,
   InputNumber,
   ColorPicker,
+  Descriptions,
   theme
 } from 'antd';
 import { AggregationColor } from 'antd/es/color-picker/color';
@@ -81,6 +82,7 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
     ]);
 
     const [enumList, setEnumList] = useState<EnumItem[]>([]);
+    const isView = type === 'view';
 
     useImperativeHandle(ref, () => ({
       showModal: ({ type, form, title }) => {
@@ -246,25 +248,74 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
           visible={groupVisible}
           onCancel={handleCancel}
           footer={
-            <div>
-              <Button
-                className="mr-[10px]"
-                type="primary"
-                loading={confirmLoading}
-                onClick={handleSubmit}
-              >
-                {t('common.confirm')}
-              </Button>
-              <Button onClick={handleCancel}>{t('common.cancel')}</Button>
-            </div>
+            isView ? (
+              <Button onClick={handleCancel}>{t('common.close')}</Button>
+            ) : (
+              <div>
+                <Button
+                  className="mr-[10px]"
+                  type="primary"
+                  loading={confirmLoading}
+                  onClick={handleSubmit}
+                >
+                  {t('common.confirm')}
+                </Button>
+                <Button onClick={handleCancel}>{t('common.cancel')}</Button>
+              </div>
+            )
           }
         >
-          <Form
-            ref={formRef}
-            name="basic"
-            labelCol={{ span: 4 }}
-            wrapperCol={{ span: 18 }}
-          >
+          {isView ? (
+            <Descriptions bordered column={1} size="small">
+              <Descriptions.Item label={t('common.id')}>
+                {groupForm.name || '--'}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('common.name')}>
+                {groupForm.display_name || '--'}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('monitor.integrations.metricGroup')}>
+                {groupList.find(
+                  (item) => String(item.id) === String(groupForm.metric_group)
+                )?.display_name || '--'}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('monitor.integrations.dimension')}>
+                {dimensions.some((item) => item.name)
+                  ? dimensions
+                    .filter((item) => item.name)
+                    .map((item) => item.name)
+                    .join(', ')
+                  : '--'}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('monitor.integrations.formula')}>
+                <div className="whitespace-pre-wrap break-all">
+                  {groupForm.query || '--'}
+                </div>
+              </Descriptions.Item>
+              <Descriptions.Item label={t('monitor.integrations.dataType')}>
+                {groupForm.data_type || '--'}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('common.unit')}>
+                {groupForm.data_type === 'Enum'
+                  ? enumList
+                    .map((item) => `${item.id}: ${item.name}`)
+                    .join(', ') || '--'
+                  : Array.isArray(groupForm.unit)
+                    ? groupForm.unit.at(-1) || '--'
+                    : groupForm.unit || '--'}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('common.description')}>
+                <div className="whitespace-pre-wrap break-words">
+                  {groupForm.description || '--'}
+                </div>
+              </Descriptions.Item>
+            </Descriptions>
+          ) : (
+            <Form
+              ref={formRef}
+              name="basic"
+              labelCol={{ span: 4 }}
+              wrapperCol={{ span: 18 }}
+            >
             <Form.Item<MetricInfo>
               label={t('common.id')}
               name="name"
@@ -446,7 +497,8 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
             >
               <Input.TextArea rows={4} />
             </Form.Item>
-          </Form>
+            </Form>
+          )}
         </OperateModal>
       </div>
     );

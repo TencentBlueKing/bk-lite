@@ -1,3 +1,17 @@
+export interface AssignmentNotificationTarget {
+    type: 'user' | 'organization';
+    usernames?: string[];
+    organization_ids?: number[];
+    include_children?: boolean;
+}
+
+export interface AssignmentEscalationLayer {
+    personnel: string[];
+    notification_target?: AssignmentNotificationTarget;
+    wait_minutes: number;
+    notify_channels: ChannelItem[];
+}
+
 export interface AlertAssignListItem {
     id: number;
     created_at: string;
@@ -8,13 +22,19 @@ export interface AlertAssignListItem {
     match_type: string;
     match_rules: Record<string, any>;
     personnel: string[];
-    notify_channels: string;
-    notification_scenario: string;
+    notify_channels: ChannelItem[];
+    notification_scenario: string[];
     config: {
         type: string;
         end_time: string;
         start_time: string;
         week_month: string;
+        notification_target?: AssignmentNotificationTarget;
+        escalation?: {
+            enabled: boolean;
+            mode?: 'append' | 'replace';
+            layers?: AssignmentEscalationLayer[];
+        };
     };
     notification_frequency: Record<
         string,

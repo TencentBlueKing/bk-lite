@@ -6,9 +6,12 @@ import { ConversationProvider } from '@/context/conversation';
 import { LocaleProvider } from '@/context/locale';
 import { ThemeProvider } from '@/context/theme';
 import { MobileNavigationProvider } from '@/navigation/mobile-back';
-import type { ReactNode } from 'react';
+import { applyNativeViewportZoomPolicy } from '@/utils/viewportZoom';
+import { useEffect, type ReactNode } from 'react';
 
 export function AppProviders({ children }: { children: ReactNode }) {
+  useEffect(() => applyNativeViewportZoomPolicy(), []);
+
   return (
     <MobileNavigationProvider>
       <ThemeProvider>

@@ -178,7 +178,10 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
         item.src_model_id === modelId ? item.dst_model_id : item.src_model_id;
       const params: any = {
         icn: '',
-        model_name: showModelName(linkModelId, modelList),
+        model_name:
+          item.src_model_id === modelId
+            ? item.dst_model_name || item.dst_model_id
+            : item.src_model_name || item.src_model_id,
         model_id: linkModelId,
         classification_id: '',
         inst_id: row._id,

@@ -13,7 +13,10 @@ import CustomTable from '@/components/custom-table';
 import MoreActionsDropdown from '@/components/more-actions-dropdown';
 import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
 import { formatOpsRequestTime } from '@/app/ops-analysis/utils/dateTime';
-import { getOpsChartThemeByMode } from '@/app/ops-analysis/utils/chartTheme';
+import {
+  getOpsChartThemeByMode,
+  isScreenChartThemeMode,
+} from '@/app/ops-analysis/utils/chartTheme';
 import {
   parseTableLikeData,
   resolveTableLikeColumns,
@@ -28,6 +31,7 @@ import type {
   TableFilterFieldConfig,
   DashboardActionConfig,
 } from '@/app/ops-analysis/types/dashBoard';
+import { useShareMode } from '@/app/ops-analysis/context/shareMode';
 import {
   buildDashboardActionUrl,
   resolveDashboardActionParams,
@@ -61,6 +65,7 @@ const ComTable: React.FC<ComTableProps> = ({
   onQueryChange,
 }) => {
   const { t } = useTranslation();
+  const shareMode = useShareMode();
   const [filters, setFilters] = useState<Record<string, any>>({});
   const [keywordDrafts, setKeywordDrafts] = useState<Record<string, string>>(
     {},
@@ -72,11 +77,11 @@ const ComTable: React.FC<ComTableProps> = ({
       current: 1,
       pageSize: 20,
     });
-  const usesScreenDarkTheme = config?.chartThemeMode === 'screen-dark';
+  const usesScreenTheme = isScreenChartThemeMode(config?.chartThemeMode);
   const screenTableTheme = getOpsChartThemeByMode(config?.chartThemeMode);
   const widgetScale = getScreenWidgetScale(screenRenderContext);
   const screenTableStyle = useMemo(() => {
-    if (!usesScreenDarkTheme) return undefined;
+    if (!usesScreenTheme) return undefined;
 
     return {
       '--ops-screen-table-bg': screenTableTheme.panelBg,
@@ -86,6 +91,12 @@ const ComTable: React.FC<ComTableProps> = ({
       '--ops-screen-table-heading': screenTableTheme.panelTitleColor,
       '--ops-screen-table-muted': screenTableTheme.singleValueMetaColor,
       '--ops-screen-table-accent': screenTableTheme.pieValueColor,
+      '--ops-screen-table-row-bg': screenTableTheme.panelBg,
+      '--ops-screen-table-row-alt-bg': screenTableTheme.panelSubtleBg,
+      '--ops-screen-table-row-hover-bg': screenTableTheme.legendHoverBg,
+      '--ops-screen-table-control-bg': screenTableTheme.panelBg,
+      '--ops-screen-table-scrollbar-thumb': screenTableTheme.axisPointerColor,
+      '--ops-screen-table-scrollbar-track': screenTableTheme.panelSubtleBg,
       '--ops-screen-table-header-font-size': `${Math.round(14 * widgetScale)}px`,
       '--ops-screen-table-body-font-size': `${Math.round(13 * widgetScale)}px`,
       '--ops-screen-table-line-height': `${Math.round(20 * widgetScale)}px`,
@@ -95,7 +106,7 @@ const ComTable: React.FC<ComTableProps> = ({
       '--ops-screen-table-pagination-gap': `${Math.round(6 * widgetScale)}px`,
       '--ops-screen-table-scrollbar-size': `${Math.round(8 * widgetScale)}px`,
     } as React.CSSProperties;
-  }, [screenTableTheme, usesScreenDarkTheme, widgetScale]);
+  }, [screenTableTheme, usesScreenTheme, widgetScale]);
   
   const { tableData, pagination } = useMemo(() => {
     const parsed = parseTableLikeData<TableDataItem>(rawData, queryPagination);
@@ -144,6 +155,10 @@ const ComTable: React.FC<ComTableProps> = ({
 
   const handleActionClick = useCallback(
     (action: DashboardActionConfig, record: TableDataItem) => {
+      if (shareMode) {
+        message.warning(t('dashboard.shareNavigationDisabled'));
+        return;
+      }
       const params = resolveDashboardActionParams(action.params, record);
       const url = buildDashboardActionUrl(action.url, params);
       if (!url) {
@@ -158,12 +173,12 @@ const ComTable: React.FC<ComTableProps> = ({
 
       window.location.href = url;
     },
-    [t],
+    [shareMode, t],
   );
 
   const renderActionButtons = useCallback(
     (actions: DashboardActionConfig[], record: TableDataItem) => {
-      if (actions.length === 0) {
+      if (shareMode || actions.length === 0) {
         return '-';
       }
 
@@ -196,7 +211,7 @@ const ComTable: React.FC<ComTableProps> = ({
         </div>
       );
     },
-    [handleActionClick, t],
+    [handleActionClick, shareMode, t],
   );
 
   const antColumns = useMemo((): ColumnsType<TableDataItem> => {
@@ -368,7 +383,7 @@ const ComTable: React.FC<ComTableProps> = ({
 
     return (
       <div
-        className={`mb-3 flex flex-wrap gap-2 ${usesScreenDarkTheme ? styles.screenDarkFilters : ''}`}
+        className={`mb-3 flex flex-wrap gap-2 ${usesScreenTheme ? styles.screenDarkFilters : ''}`}
       >
         {searchableFilterFields.length > 0 && (
           <div className="flex items-center">
@@ -462,20 +477,20 @@ const ComTable: React.FC<ComTableProps> = ({
 
   return (
     <div
-      className={`h-full flex flex-col ${usesScreenDarkTheme ? styles.screenDarkRoot : ''}`}
+      className={`h-full flex flex-col ${usesScreenTheme ? styles.screenDarkRoot : ''}`}
       style={screenTableStyle}
     >
       {renderFilters()}
 
       <div
         className={`flex-1 min-h-0 ${
-          usesScreenDarkTheme
+          usesScreenTheme
             ? `overflow-hidden ${styles.screenDarkTableWrap}`
             : 'overflow-visible'
         }`}
       >
         <CustomTable
-          className={usesScreenDarkTheme ? styles.screenDarkTable : undefined}
+          className={usesScreenTheme ? styles.screenDarkTable : undefined}
           columns={antColumns}
           dataSource={tableData}
           loading={loading}

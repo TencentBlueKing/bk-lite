@@ -8,7 +8,7 @@ import { SessionProvider } from 'next-auth/react';
 import { LocaleProvider } from '@/context/locale';
 import zhCommon from '@/locales/zh.json';
 import zhOpspilot from '@/app/opspilot/locales/zh.json';
-import { ThemeProvider } from '@/context/theme';
+import { ThemeBootstrap, ThemeProvider } from '@/theme';
 import { ClientProvider } from '@/context/client';
 import { PermissionsProvider } from '@/context/permissions';
 import { UserInfoProvider } from '@/context/userInfo';
@@ -45,6 +45,7 @@ const preview: Preview = {
   decorators: [
     (Story) => (
       <SessionProvider session={mockSession}>
+        <ThemeBootstrap />
         <Script src="/iconfont.js" strategy="afterInteractive" />
         <LocaleProvider>
           <ThemeProvider>

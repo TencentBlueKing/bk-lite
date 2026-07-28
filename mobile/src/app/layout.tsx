@@ -8,12 +8,18 @@ export const metadata: Metadata = {
   description: 'AI 原生的轻量化运维平台',
 };
 
-// 只由 Next.js 输出一个 viewport，确保 iOS 将 WebView 铺到安全区边缘。
+const isTauriBuild = process.env.BK_MOBILE_BUILD_TARGET === 'tauri';
+
+// H5 保留浏览器缩放；Tauri 构建从首屏开始使用 App 级禁缩放策略。
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
   interactiveWidget: 'resizes-content',
+  ...(isTauriBuild ? {
+    maximumScale: 1,
+    userScalable: false,
+  } : {}),
 };
 
 export default function RootLayout({
