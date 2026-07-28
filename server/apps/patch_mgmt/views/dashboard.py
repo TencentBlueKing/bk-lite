@@ -26,25 +26,26 @@ from apps.patch_mgmt.models import (
 )
 from apps.patch_mgmt.serializers.governance import GovernanceTaskListSerializer
 from apps.patch_mgmt.services.risk_service import compute_risk_items
+from apps.patch_mgmt.utils.i18n import patch_message
 
 
-def _relative_time(value):
-    """返回中文相对时间（用于最近执行记录）"""
+def _relative_time(value, request):
+    """按当前用户语言返回最近执行记录的相对时间。"""
     if not value:
         return "—"
     now = timezone.now()
     if value > now:
-        return "刚刚"
+        return patch_message(request, "message.just_now", "Just now")
     diff = now - value
     seconds = diff.total_seconds()
     if seconds < 60:
-        return "刚刚"
+        return patch_message(request, "message.just_now", "Just now")
     if seconds < 3600:
-        return f"{int(seconds // 60)} 分钟前"
+        return patch_message(request, "message.minutes_ago", "{count} minutes ago", count=int(seconds // 60))
     if seconds < 86400:
-        return f"{int(seconds // 3600)} 小时前"
+        return patch_message(request, "message.hours_ago", "{count} hours ago", count=int(seconds // 3600))
     if seconds < 172800:
-        return "昨天"
+        return patch_message(request, "message.yesterday", "Yesterday")
     return value.strftime("%m-%d")
 
 
@@ -198,9 +199,10 @@ class PatchDashboardViewSet(AuthViewSet):
                 "id": task.id,
                 "name": task.name,
                 "status": status_display,
+                "status_code": task.status,
                 "status_color": _task_status_color(task.status),
                 "progress": f"{completed} / {total}",
-                "time": _relative_time(task.created_at),
+                "time": _relative_time(task.created_at, request),
                 "created_at": task.created_at.isoformat() if task.created_at else None,
             })
 

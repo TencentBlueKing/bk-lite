@@ -7,6 +7,7 @@
 from rest_framework import serializers
 
 from apps.patch_mgmt.constants import OSType, PackageStatus
+from apps.patch_mgmt.exceptions import PatchBusinessError
 from apps.patch_mgmt.models import Patch
 from apps.patch_mgmt.serializers.patch import PatchListSerializer
 from apps.patch_mgmt.services.windows_package import (
@@ -37,8 +38,10 @@ def _validated_serializer(*, metadata, context, instance=None) -> PatchListSeria
         getattr(instance, "os_type", None),
     )
     if os_type != OSType.WINDOWS:
-        raise serializers.ValidationError(
-            {"os_type": "合并文件写入仅支持手工 Windows 补丁"}
+        raise PatchBusinessError(
+            "manual_windows_only",
+            "Combined file writes only support manual Windows patches",
+            field="os_type",
         )
     return serializer
 
@@ -53,7 +56,11 @@ def _prepare_file(uploaded_file):
 def create_manual_windows_patch(*, metadata, uploaded_file, context) -> Patch:
     """校验元数据和文件后创建补丁，成功返回已就绪记录。"""
     if uploaded_file is None:
-        raise serializers.ValidationError({"file": "请选择 MSU 或 CAB 补丁包"})
+        raise PatchBusinessError(
+            "patch_file_type",
+            "Select an MSU or CAB patch package",
+            field="file",
+        )
 
     serializer = _validated_serializer(metadata=metadata, context=context)
     prepared = _prepare_file(uploaded_file)
@@ -82,13 +89,17 @@ def update_manual_windows_patch(
     prepared = None
     if patch.pkg_status == PackageStatus.DOWNLOAD_FAILED:
         if uploaded_file is None:
-            raise serializers.ValidationError(
-                {"file": "上次上传失败，请重新选择 MSU 或 CAB 补丁包"}
+            raise PatchBusinessError(
+                "retry_patch_file",
+                "The previous upload failed; select an MSU or CAB patch package again",
+                field="file",
             )
         prepared = _prepare_file(uploaded_file)
     elif uploaded_file is not None:
-        raise serializers.ValidationError(
-            {"file": "仅上传失败的补丁允许替换文件"}
+        raise PatchBusinessError(
+            "replace_failed_only",
+            "Only patches with a failed upload may replace the file",
+            field="file",
         )
 
     patch = serializer.save()

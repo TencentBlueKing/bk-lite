@@ -13,6 +13,7 @@ import CustomTable from '@/components/custom-table';
 import OperateDrawer from '@/app/patch-manager/components/operate-drawer';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useSearchParams } from 'next/navigation';
+import { useTranslation } from '@/utils/i18n';
 
 const { RangePicker } = DatePicker;
 
@@ -45,9 +46,9 @@ interface RiskRow {
   key: string;
   patch: string;
   sub: string;
-  sev: '严重' | '重要';
+  sev: string;
   hosts: number;
-  dist: { label: string; color: string }[];
+  dist: { status: string; count: number; color: string }[];
   items: RiskItem[];
 }
 
@@ -56,16 +57,18 @@ interface SelectedRow {
   items?: RiskItem[];
 }
 
-const DIST_RENDER = (dist: { label: string; color: string }[]) => (
-  <Space size={6} wrap>{dist.map((d) => <Tag key={d.label} color={d.color}>{d.label}</Tag>)}</Space>
-);
+const DistRender = ({ dist }: { dist: { status: string; count: number; color: string }[] }) => {
+  const { t } = useTranslation();
+  return <Space size={6} wrap>{dist.map((d) => <Tag key={d.status} color={d.color}>{t(`patchManager.remediationStatus.${d.status}`, d.status)} {d.count}</Tag>)}</Space>;
+};
 
-const InstallImpactColumnTitle = () => (
-  <Tooltip
+const InstallImpactColumnTitle = () => {
+  const { t } = useTranslation();
+  return <Tooltip
     title={(
       <div>
-        <div style={{ fontWeight: 500, marginBottom: 4 }}>来自 Linux 包管理器 dry-run</div>
-        <div>除所选补丁外，依赖解析可能连带升级、安装或移除其他软件包；Windows 暂不提供该预估。</div>
+        <div style={{ fontWeight: 500, marginBottom: 4 }}>{t('patchManager.risk.installImpactSource')}</div>
+        <div>{t('patchManager.risk.installImpactHelp')}</div>
       </div>
     )}
   >
@@ -73,12 +76,13 @@ const InstallImpactColumnTitle = () => (
       tabIndex={0}
       style={{ borderBottom: '1px dashed currentColor', cursor: 'help' }}
     >
-      预计连带变更
+      {t('patchManager.risk.installImpact')}
     </span>
-  </Tooltip>
-);
+  </Tooltip>;
+};
 
 export default function RiskPendingPage() {
+  const { t } = useTranslation();
   const searchParams = useSearchParams();
   const routeHostId = Number(searchParams.get('host_id')) || undefined;
   const routeHostName = searchParams.get('host_name') || undefined;
@@ -88,7 +92,7 @@ export default function RiskPendingPage() {
   const [rebootOpen, setRebootOpen] = useState(false);
   const [execMode, setExecMode] = useState<'now' | 'window'>('now');
   const [autoReboot, setAutoReboot] = useState(false);
-  const [view, setView] = useState('主机视角');
+  const [view, setView] = useState<'host' | 'patch' | 'baseline'>('host');
   const [currentStep, setCurrentStep] = useState(0);
   const [scopeSelected, setScopeSelected] = useState<React.Key[]>([]);
   const [scopeRows, setScopeRows] = useState<SelectedRow[]>([]);
@@ -117,17 +121,17 @@ export default function RiskPendingPage() {
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
   const [hostIdFilter, setHostIdFilter] = useState<number | undefined>(routeHostId);
 
-  const viewParam = useMemo(() => (view === '主机视角' ? 'host' : view === '基线视角' ? 'baseline' : 'patch'), [view]);
+  const viewParam = view;
 
   const loadRisk = async (page = 1, pageSize = pagination.pageSize, silent = false) => {
     if (!silent) setLoading(true);
     try {
       const params: any = { view: viewParam, page, page_size: pageSize };
-      if (view === '主机视角') {
+      if (view === 'host') {
         if (hostIdFilter) params.host_id = hostIdFilter;
         if (filters.host_name) params.host_name = filters.host_name;
         if (filters.os_type) params.os_type = filters.os_type === 'win' ? 'windows' : 'linux';
-      } else if (view === '补丁视角') {
+      } else if (view === 'patch') {
         if (filters.patch_name) params.patch_name = filters.patch_name;
         if (filters.severity) params.severity = filters.severity;
       } else {
@@ -193,48 +197,48 @@ export default function RiskPendingPage() {
     return (
       <Space size={4}>
         {remediable ? (
-          <PermissionWrapper requiredPermissions={['Add']}><Button type="link" size="small" onClick={() => openScope([row])}>治理</Button></PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['Add']}><Button type="link" size="small" onClick={() => openScope([row])}>{t('patchManager.risk.remediate')}</Button></PermissionWrapper>
         ) : (
-          <Tooltip title="该补丁无可治理的风险项"><Button type="link" size="small" disabled>治理</Button></Tooltip>
+          <Tooltip title={t('patchManager.risk.noRemediableItems')}><Button type="link" size="small" disabled>{t('patchManager.risk.remediate')}</Button></Tooltip>
         )}
         {rebootable && (
-          <PermissionWrapper requiredPermissions={['Add']}><Button type="link" size="small" onClick={() => { setRebootRows([row]); setRebootOpen(true); }}>重启</Button></PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['Add']}><Button type="link" size="small" onClick={() => { setRebootRows([row]); setRebootOpen(true); }}>{t('patchManager.risk.reboot')}</Button></PermissionWrapper>
         )}
-        <Button type="link" size="small" onClick={() => setDetailRecord({ name: getRowName(r), items })}>详情</Button>
+        <Button type="link" size="small" onClick={() => setDetailRecord({ name: getRowName(r), items })}>{t('patchManager.risk.details')}</Button>
       </Space>
     );
   };
 
   const patchCols = [
-    { title: '补丁', dataIndex: 'patch', width: 140 },
-    { title: '描述', dataIndex: 'sub', ellipsis: true },
-    { title: '严重级别', dataIndex: 'sev', width: 100, render: (v: string) => <SeverityTag severity={v} /> },
-    { title: '影响主机', dataIndex: 'hosts', width: 90, render: (v: number) => `${v} 台` },
-    { title: '治理状态', dataIndex: 'dist', render: (_: unknown, r: RiskRow) => DIST_RENDER(r.dist) },
-    { title: '更新时间', dataIndex: 'evaluated_at', width: 180, render: (v: string | null) => convertToLocalizedTime(v) || '—' },
-    { title: '操作', dataIndex: 'op', width: 240, fixed: 'right' as const, render: (_: unknown, r: RiskRow) => opCell(r) },
+    { title: t('patchManager.risk.patch'), dataIndex: 'patch', width: 140 },
+    { title: t('patchManager.risk.description'), dataIndex: 'sub', ellipsis: true },
+    { title: t('patchManager.severity'), dataIndex: 'sev', width: 100, render: (v: string) => <SeverityTag severity={v} /> },
+    { title: t('patchManager.risk.affectedHosts'), dataIndex: 'hosts', width: 90, render: (v: number) => t('patchManager.dashboard.targetCount', undefined, { count: v }) },
+    { title: t('patchManager.risk.remediationStatus'), dataIndex: 'dist', render: (_: unknown, r: RiskRow) => <DistRender dist={r.dist} /> },
+    { title: t('patchManager.updateTime'), dataIndex: 'evaluated_at', width: 180, render: (v: string | null) => convertToLocalizedTime(v) || '—' },
+    { title: t('patchManager.operation'), dataIndex: 'op', width: 240, fixed: 'right' as const, render: (_: unknown, r: RiskRow) => opCell(r) },
   ];
   const hostCols = [
-    { title: '主机', dataIndex: 'host', width: 140 },
-    { title: '操作系统', dataIndex: 'os_type', width: 100, render: (v: string) => v === 'windows' ? 'Windows' : v === 'linux' ? 'Linux' : v || '—' },
-    { title: '当前基线', dataIndex: 'baseline', width: 180 },
-    { title: '缺失要求', dataIndex: 'missing', width: 100, render: (v: number) => <Tag color="error">缺 {v}</Tag> },
-    { title: '治理状态', dataIndex: 'dist', render: (_: unknown, r: { dist: { label: string; color: string }[] }) => DIST_RENDER(r.dist) },
-    { title: '更新时间', dataIndex: 'evaluated_at', width: 180, render: (v: string | null) => convertToLocalizedTime(v) || '—' },
-    { title: '操作', dataIndex: 'op', width: 240, fixed: 'right' as const, render: (_: unknown, r: any) => opCell(r) },
+    { title: t('patchManager.risk.host'), dataIndex: 'host', width: 140 },
+    { title: t('patchManager.osType'), dataIndex: 'os_type', width: 100, render: (v: string) => v === 'windows' ? 'Windows' : v === 'linux' ? 'Linux' : v || '—' },
+    { title: t('patchManager.risk.currentBaseline'), dataIndex: 'baseline', width: 180 },
+    { title: t('patchManager.risk.missingRequirements'), dataIndex: 'missing', width: 100, render: (v: number) => <Tag color="error">{t('patchManager.risk.missingCount', undefined, { count: v })}</Tag> },
+    { title: t('patchManager.risk.remediationStatus'), dataIndex: 'dist', render: (_: unknown, r: { dist: RiskRow['dist'] }) => <DistRender dist={r.dist} /> },
+    { title: t('patchManager.updateTime'), dataIndex: 'evaluated_at', width: 180, render: (v: string | null) => convertToLocalizedTime(v) || '—' },
+    { title: t('patchManager.operation'), dataIndex: 'op', width: 240, fixed: 'right' as const, render: (_: unknown, r: any) => opCell(r) },
   ];
   const baselineCols = [
-    { title: '基线', dataIndex: 'baseline', width: 200 },
-    { title: '适用', dataIndex: 'apply', width: 200, render: (_: unknown, r: any) => r.apply || '-' },
-    { title: '影响主机', width: 100, render: (_: unknown, r: any) => `${new Set((r.items || []).map((i: any) => i.host_id)).size} 台` },
-    { title: '治理状态', dataIndex: 'dist', render: (_: unknown, r: { dist: { label: string; color: string }[] }) => DIST_RENDER(r.dist) },
-    { title: '更新时间', dataIndex: 'evaluated_at', width: 180, render: (v: string | null) => convertToLocalizedTime(v) || '—' },
-    { title: '操作', dataIndex: 'op', width: 240, fixed: 'right' as const, render: (_: unknown, r: any) => opCell(r) },
+    { title: t('patchManager.risk.baseline'), dataIndex: 'baseline', width: 200 },
+    { title: t('patchManager.risk.applicable'), dataIndex: 'apply', width: 200, render: (_: unknown, r: any) => r.apply || '-' },
+    { title: t('patchManager.risk.affectedHosts'), width: 100, render: (_: unknown, r: any) => t('patchManager.dashboard.targetCount', undefined, { count: new Set((r.items || []).map((i: any) => i.host_id)).size }) },
+    { title: t('patchManager.risk.remediationStatus'), dataIndex: 'dist', render: (_: unknown, r: { dist: RiskRow['dist'] }) => <DistRender dist={r.dist} /> },
+    { title: t('patchManager.updateTime'), dataIndex: 'evaluated_at', width: 180, render: (v: string | null) => convertToLocalizedTime(v) || '—' },
+    { title: t('patchManager.operation'), dataIndex: 'op', width: 240, fixed: 'right' as const, render: (_: unknown, r: any) => opCell(r) },
   ];
 
-  const cfg = view === '主机视角'
+  const cfg = view === 'host'
     ? { columns: hostCols, data: riskData }
-    : view === '基线视角'
+    : view === 'baseline'
       ? { columns: baselineCols, data: riskData }
       : { columns: patchCols, data: riskData };
 
@@ -244,15 +248,15 @@ export default function RiskPendingPage() {
   const renderInstallImpact = (v: RiskItem['install_impact'], osType?: string) => {
     if (osType === 'windows') return <span style={{ color: '#bfbfbf' }}>—</span>;
     if (!v || (!v.summary && !v.error)) return <span style={{ color: '#bfbfbf' }}>-</span>;
-    if (v.error) return <Tooltip title={v.error}><Tag color="warning">评估失败</Tag></Tooltip>;
+    if (v.error) return <Tooltip title={v.error}><Tag color="warning">{t('patchManager.complianceStatus.failed')}</Tag></Tooltip>;
     const content = <div style={{ maxWidth: 440 }}>
-      <div style={{ marginBottom: 6, color: 'var(--color-text-2, #595959)' }}>包管理器 dry-run 预估的整批变更：</div>
-      <div>升级：{v.upgrade?.length ? v.upgrade.join('、') : '无'}</div>
-      <div>连带安装：{v.install?.length ? v.install.join('、') : '无'}</div>
-      <div>移除：{v.remove?.length ? v.remove.join('、') : '无'}</div>
+      <div style={{ marginBottom: 6, color: 'var(--color-text-2, #595959)' }}>{t('patchManager.risk.installImpactBatch')}</div>
+      <div>{t('patchManager.risk.upgrade')}：{v.upgrade?.length ? v.upgrade.join('、') : t('patchManager.risk.none')}</div>
+      <div>{t('patchManager.risk.additionalInstall')}：{v.install?.length ? v.install.join('、') : t('patchManager.risk.none')}</div>
+      <div>{t('patchManager.risk.remove')}：{v.remove?.length ? v.remove.join('、') : t('patchManager.risk.none')}</div>
     </div>;
     return (
-      <Popover title="预计连带变更" content={content} trigger="hover">
+      <Popover title={t('patchManager.risk.installImpact')} content={content} trigger="hover">
         <Button
           type="link"
           size="small"
@@ -273,18 +277,18 @@ export default function RiskPendingPage() {
     );
   };
   const detailCommonCols = [
-    { title: '合规要求', dataIndex: 'condition', width: 160, ellipsis: true },
+    { title: t('patchManager.risk.complianceRequirement'), dataIndex: 'condition', width: 160, ellipsis: true },
     { title: <InstallImpactColumnTitle />, dataIndex: 'install_impact', width: 180, render: (_: unknown, r: RiskItem) => renderInstallImpact(r.install_impact, r.os_type) },
-    { title: '治理状态', dataIndex: 'remediation', width: 100, render: (_: unknown, r: RiskItem) => remediationTag(r.remediation) },
+    { title: t('patchManager.risk.remediationStatus'), dataIndex: 'remediation', width: 100, render: (_: unknown, r: RiskItem) => remediationTag(r.remediation) },
   ];
-  const detailColumns = view === '主机视角'
-    ? [{ title: '补丁要求', width: 160, fixed: 'left' as const, render: (_: unknown, r: any) => r.kb_number || r.pkg_name || r.patch_title || r.patch }, ...detailCommonCols]
-    : view === '基线视角'
-      ? [{ title: '主机', width: 140, fixed: 'left' as const, render: (_: unknown, r: any) => r.host_name || r.host }, { title: '补丁要求', width: 160, render: (_: unknown, r: any) => r.kb_number || r.pkg_name || r.patch_title || r.patch }, ...detailCommonCols]
-      : [{ title: '主机', width: 140, fixed: 'left' as const, render: (_: unknown, r: any) => r.host_name || r.host }, ...detailCommonCols];
+  const detailColumns = view === 'host'
+    ? [{ title: t('patchManager.risk.patchRequirement'), width: 160, fixed: 'left' as const, render: (_: unknown, r: any) => r.kb_number || r.pkg_name || r.patch_title || r.patch }, ...detailCommonCols]
+    : view === 'baseline'
+      ? [{ title: t('patchManager.risk.host'), width: 140, fixed: 'left' as const, render: (_: unknown, r: any) => r.host_name || r.host }, { title: t('patchManager.risk.patchRequirement'), width: 160, render: (_: unknown, r: any) => r.kb_number || r.pkg_name || r.patch_title || r.patch }, ...detailCommonCols]
+      : [{ title: t('patchManager.risk.host'), width: 140, fixed: 'left' as const, render: (_: unknown, r: any) => r.host_name || r.host }, ...detailCommonCols];
 
   const rowSelection = useMemo(() => {
-    if (view === '主机视角') {
+    if (view === 'host') {
       return {
         type: 'checkbox' as const,
         selectedRowKeys: selected,
@@ -321,9 +325,9 @@ export default function RiskPendingPage() {
     rows.forEach((row) => {
       (row.items || []).forEach((it: RiskItem) => {
         const disabled = it.inOtherTask || it.compliance === 'invalidated' || (it.remediation !== 'unplanned' && it.remediation !== 'failed');
-        const sevDisplay = it.patch_severity === 'critical' ? '严重' : it.patch_severity === 'important' ? '重要' : it.patch_severity === 'moderate' ? '中等' : it.patch_severity === 'low' ? '低' : '-';
-        const status = it.remediation === 'failed' ? '修复失败' : it.inOtherTask ? '已计划' : '待修复';
-        const patchLabel = it.kb_number || it.pkg_name || it.patch_title || it.patch || '未知补丁';
+        const sevDisplay = it.patch_severity || 'unspecified';
+        const status = it.remediation === 'failed' ? 'failed' : it.inOtherTask ? 'scheduled' : 'unplanned';
+        const patchLabel = it.kb_number || it.pkg_name || it.patch_title || it.patch || t('patchManager.risk.unknownPatch');
         items.push({
           key: `${it.host_id}-${it.patch_id}`,
           host_id: it.host_id,
@@ -332,7 +336,7 @@ export default function RiskPendingPage() {
           patch: patchLabel,
           sev: sevDisplay,
           status,
-          remark: it.inOtherTask ? '已在其他任务' : it.compliance === 'invalidated' ? '基线已修改，风险失效' : '',
+          remark: it.inOtherTask ? t('patchManager.risk.inOtherTask') : it.compliance === 'invalidated' ? t('patchManager.risk.riskInvalidated') : '',
           deps: it.deps || '-',
           install_impact: it.install_impact,
           os_type: it.os_type,
@@ -349,7 +353,7 @@ export default function RiskPendingPage() {
   const handleScopeSubmit = async () => {
     if (scopeSelectedObjs.length === 0) return;
     if (execMode === 'window' && (!windowRange || !windowRange[0] || !windowRange[1])) {
-      message.error('请选择执行窗口');
+      message.error(t('patchManager.risk.selectExecutionWindow'));
       return;
     }
     try {
@@ -364,7 +368,7 @@ export default function RiskPendingPage() {
         payload.execution_window_end = windowRange[1].toISOString();
       }
       await api.remediateRisk(payload);
-      message.success(`已创建治理任务，包含 ${items.length} 项`);
+      message.success(t('patchManager.risk.remediationCreated', undefined, { count: items.length }));
       setScopeOpen(false);
       setSelected([]);
       loadRisk(pagination.current, pagination.pageSize);
@@ -379,11 +383,11 @@ export default function RiskPendingPage() {
         .map((i: RiskItem) => i.host_id)),
     ));
     if (hosts.length === 0) {
-      message.error('没有可重启主机');
+      message.error(t('patchManager.risk.noRebootHosts'));
       return;
     }
     if (!rebootRange || !rebootRange[0] || !rebootRange[1]) {
-      message.error('请选择重启窗口');
+      message.error(t('patchManager.risk.selectRebootWindow'));
       return;
     }
     try {
@@ -392,7 +396,7 @@ export default function RiskPendingPage() {
         execution_window_start: rebootRange[0].toISOString(),
         execution_window_end: rebootRange[1].toISOString(),
       });
-      message.success(`已创建重启任务，包含 ${hosts.length} 台主机`);
+      message.success(t('patchManager.risk.rebootCreated', undefined, { count: hosts.length }));
       setRebootOpen(false);
       setSelected([]);
       loadRisk(pagination.current, pagination.pageSize);
@@ -407,7 +411,7 @@ export default function RiskPendingPage() {
       (r.items || [])
         .filter((i: RiskItem) => i.remediation === 'pending_reboot')
         .forEach((i: RiskItem) => {
-          const patchLabel = i.kb_number || i.pkg_name || i.patch_title || i.patch || '未知补丁';
+          const patchLabel = i.kb_number || i.pkg_name || i.patch_title || i.patch || t('patchManager.risk.unknownPatch');
           const sev = i.patch_severity || 'moderate';
           const existing = hostMap.get(i.host_id);
           if (existing) {
@@ -424,18 +428,18 @@ export default function RiskPendingPage() {
       key: String(id),
       host: v.host,
       patches: v.patches.join('、'),
-      sev: v.maxSev === 'critical' ? '严重' : v.maxSev === 'important' ? '重要' : '中',
+      sev: v.maxSev,
     }));
-  }, [rebootRows]);
+  }, [rebootRows, t]);
 
-  const formatDist = (dist: { label: string; color: string }[]) => (dist || []).map((d) => d.label).join('、');
+  const formatDist = (dist: RiskRow['dist']) => (dist || []).map((d) => `${t(`patchManager.remediationStatus.${d.status}`, d.status)} ${d.count}`).join('、');
 
   const buildWorkbook = (rows: any[], viewLabel: string) => {
     const workbook = new ExcelJS.Workbook();
     const summarySheet = workbook.addWorksheet(viewLabel);
-    const detailSheet = workbook.addWorksheet('Detail');
+    const detailSheet = workbook.addWorksheet(t('patchManager.risk.detailSheet'));
 
-    detailSheet.addRow(['聚合KEY', '主机', '补丁要求', '严重级别', '合规要求', '治理状态', '更新时间']);
+    detailSheet.addRow(t('patchManager.risk.exportDetailHeaders').split('|'));
     const keyToFirstRow: Record<string, number> = {};
     rows.forEach((row) => {
       const items: RiskItem[] = row.items || [];
@@ -458,8 +462,8 @@ export default function RiskPendingPage() {
     let headers: string[] = [];
     let rowToArray: (r: any) => (string | number)[];
     let firstColumnName: (r: any) => string;
-    if (view === '主机视角') {
-      headers = ['主机', '操作系统', '当前基线', '缺失要求', '治理状态', '更新时间', '查看明细'];
+    if (view === 'host') {
+      headers = t('patchManager.risk.exportHostHeaders').split('|');
       rowToArray = (r) => [
         r.host,
         r.os_type === 'windows' ? 'Windows' : r.os_type === 'linux' ? 'Linux' : r.os_type || '—',
@@ -469,12 +473,12 @@ export default function RiskPendingPage() {
         convertToLocalizedTime(r.evaluated_at) || '—',
       ];
       firstColumnName = (r) => r.host;
-    } else if (view === '补丁视角') {
-      headers = ['补丁', '描述', '严重级别', '影响主机', '治理状态', '更新时间', '查看明细'];
+    } else if (view === 'patch') {
+      headers = t('patchManager.risk.exportPatchHeaders').split('|');
       rowToArray = (r) => [r.patch, r.sub, r.sev, r.hosts, formatDist(r.dist), convertToLocalizedTime(r.evaluated_at) || '—'];
       firstColumnName = (r) => r.patch;
     } else {
-      headers = ['基线', '适用', '治理状态', '更新时间', '查看明细'];
+      headers = t('patchManager.risk.exportBaselineHeaders').split('|');
       rowToArray = (r) => [r.baseline, r.apply || '—', formatDist(r.dist), convertToLocalizedTime(r.evaluated_at) || '—'];
       firstColumnName = (r) => r.baseline;
     }
@@ -510,14 +514,14 @@ export default function RiskPendingPage() {
 
   const handleExportAll = async () => {
     if (riskData.length === 0) {
-      message.warning('暂无数据可导出');
+      message.warning(t('patchManager.risk.noExportData'));
       return;
     }
     try {
       const workbook = buildWorkbook(riskData, view);
       const timestamp = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '');
-      await downloadWorkbook(workbook, `待治理风险-${view}-${timestamp}.xlsx`);
-      message.success('导出成功');
+      await downloadWorkbook(workbook, `${t('patchManager.risk.exportFilePrefix')}-${t(`patchManager.risk.view.${view}`)}-${timestamp}.xlsx`);
+      message.success(t('patchManager.risk.exportSucceeded'));
     } catch {
     }
   };
@@ -527,8 +531,8 @@ export default function RiskPendingPage() {
     try {
       const workbook = buildWorkbook(selectedRows, view);
       const timestamp = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '');
-      await downloadWorkbook(workbook, `待治理风险-${view}-选中-${timestamp}.xlsx`);
-      message.success('导出选中成功');
+      await downloadWorkbook(workbook, `${t('patchManager.risk.exportFilePrefix')}-${t(`patchManager.risk.view.${view}`)}-${t('patchManager.risk.selected')}-${timestamp}.xlsx`);
+      message.success(t('patchManager.risk.exportSelectedSucceeded'));
     } catch {
     }
   };
@@ -538,23 +542,23 @@ export default function RiskPendingPage() {
   return (
     <div style={{ background: 'var(--color-bg-1, #fff)', border: '1px solid var(--color-border-1, #e8e8e8)', borderRadius: 10, padding: '16px', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 14 }}>
-        <Segmented options={['主机视角', '补丁视角', '基线视角']} value={view} onChange={(v) => { setView(v as string); setSelected([]); setFilters({}); setSearchInputs({}); }} />
+        <Segmented options={(['host', 'patch', 'baseline'] as const).map((value) => ({ label: t(`patchManager.risk.view.${value}`), value }))} value={view} onChange={(v) => { setView(v as typeof view); setSelected([]); setFilters({}); setSearchInputs({}); }} />
         <Space>
-          <Button icon={<ExportOutlined />} onClick={handleExportAll}>导出全部</Button>
+          <Button icon={<ExportOutlined />} onClick={handleExportAll}>{t('patchManager.risk.exportAll')}</Button>
           <PermissionWrapper requiredPermissions={['Add']}><Dropdown
             disabled={selected.length === 0}
             menu={{
               items: [
-                { key: 'export', label: '导出选中', icon: <ExportOutlined />, onClick: handleExportSelected },
-                { key: 'remediate', label: '一键治理', icon: <ToolOutlined />, disabled: !batchCanRemediate, onClick: () => openScope() },
+                { key: 'export', label: t('patchManager.risk.exportSelected'), icon: <ExportOutlined />, onClick: handleExportSelected },
+                { key: 'remediate', label: t('patchManager.risk.oneClickRemediation'), icon: <ToolOutlined />, disabled: !batchCanRemediate, onClick: () => openScope() },
                 {
                   key: 'reboot',
                   label: (
                     <Tooltip
-                      title={!batchCanReboot ? '所选范围包含非待重启主机' : undefined}
+                      title={!batchCanReboot ? t('patchManager.risk.rebootSelectionBlocked') : undefined}
                       zIndex={10001}
                     >
-                      <span style={{ display: 'block' }}>一键重启</span>
+                      <span style={{ display: 'block' }}>{t('patchManager.risk.oneClickReboot')}</span>
                     </Tooltip>
                   ),
                   icon: <ReloadOutlined />,
@@ -565,17 +569,17 @@ export default function RiskPendingPage() {
             }}
           >
             <Button type="primary" icon={<ToolOutlined />}>
-              批量操作{selected.length ? `(${selected.length})` : ''} <DownOutlined />
+              {t('patchManager.risk.batchActions')}{selected.length ? `(${selected.length})` : ''} <DownOutlined />
             </Button>
           </Dropdown></PermissionWrapper>
         </Space>
       </div>
       <Row gutter={[12, 12]} style={{ marginBottom: 12 }} align="middle">
-        {view === '主机视角' && (
+        {view === 'host' && (
           <>
             <Col>
               <Input.Search
-                placeholder="主机名称"
+                placeholder={t('patchManager.risk.hostName')}
                 allowClear
                 value={searchInputs.host_name}
                 onChange={(e) => {
@@ -595,7 +599,7 @@ export default function RiskPendingPage() {
             </Col>
             <Col>
               <Select
-                placeholder="操作系统"
+                placeholder={t('patchManager.osType')}
                 style={{ width: 120 }}
                 allowClear
                 value={filters.os_type}
@@ -605,11 +609,11 @@ export default function RiskPendingPage() {
             </Col>
           </>
         )}
-        {view === '补丁视角' && (
+        {view === 'patch' && (
           <>
             <Col>
               <Input.Search
-                placeholder="补丁名称/KB/包名"
+                placeholder={t('patchManager.risk.patchSearch')}
                 allowClear
                 value={searchInputs.patch_name}
                 onChange={(e) => {
@@ -625,21 +629,21 @@ export default function RiskPendingPage() {
             </Col>
             <Col>
               <Select
-                placeholder="严重级别"
+                placeholder={t('patchManager.severity')}
                 style={{ width: 120 }}
                 allowClear
                 value={filters.severity}
                 onChange={(v) => setFilters((f) => ({ ...f, severity: v }))}
-                options={[{ label: '严重', value: 'critical' }, { label: '重要', value: 'important' }, { label: '中等', value: 'moderate' }, { label: '低', value: 'low' }]}
+                options={(['critical', 'important', 'moderate', 'low'] as const).map((value) => ({ label: t(`patchManager.severityValues.${value}`), value }))}
               />
             </Col>
           </>
         )}
-        {view === '基线视角' && (
+        {view === 'baseline' && (
           <>
             <Col>
               <Input.Search
-                placeholder="基线名称"
+                placeholder={t('patchManager.baseline.name')}
                 allowClear
                 value={searchInputs.baseline_name}
                 onChange={(e) => {
@@ -657,12 +661,12 @@ export default function RiskPendingPage() {
         )}
         <Col>
           <Select
-            placeholder="治理状态"
+            placeholder={t('patchManager.risk.remediationStatus')}
             style={{ width: 130 }}
             allowClear
             value={filters.remediation}
             onChange={(v) => setFilters((f) => ({ ...f, remediation: v }))}
-            options={[{ label: '待修复', value: 'unplanned' }, { label: '已计划', value: 'scheduled' }, { label: '安装中', value: 'installing' }, { label: '待重启', value: 'pending_reboot' }, { label: '重启中', value: 'rebooting' }, { label: '验证中', value: 'verifying' }, { label: '修复失败', value: 'failed' }, { label: '已失效', value: 'invalidated' }]}
+            options={(['unplanned', 'scheduled', 'installing', 'pending_reboot', 'rebooting', 'verifying', 'failed', 'invalidated'] as const).map((value) => ({ label: t(`patchManager.remediationStatus.${value}`), value }))}
           />
         </Col>
       </Row>
@@ -678,7 +682,7 @@ export default function RiskPendingPage() {
             pageSize: pagination.pageSize,
             total: pagination.total,
             showSizeChanger: true,
-            showTotal: (t) => `共 ${t} 条`,
+            showTotal: (total) => t('patchManager.common.totalItems', undefined, { count: total }),
             style: { marginBottom: 0 },
             onChange: (page, pageSize) => loadRisk(page, pageSize),
           }}
@@ -686,7 +690,7 @@ export default function RiskPendingPage() {
       </div>
 
       <Drawer
-        title={`风险项明细 - ${detailRecord?.name || ''}`}
+        title={t('patchManager.risk.detailTitle', undefined, { name: detailRecord?.name || '' })}
         open={!!detailRecord}
         onClose={() => setDetailRecord(null)}
         width={720}
@@ -697,33 +701,33 @@ export default function RiskPendingPage() {
           pagination={false}
           dataSource={detailRecord?.items || []}
           columns={detailColumns as never}
-          scroll={view === '基线视角' ? { x: 740 } : undefined}
+          scroll={view === 'baseline' ? { x: 740 } : undefined}
         />
       </Drawer>
 
       <OperateDrawer
-        title="一键治理"
+        title={t('patchManager.risk.oneClickRemediation')}
         open={scopeOpen}
         onClose={() => setScopeOpen(false)}
         width={900}
         bodyStyle={{ padding: 0, overflow: 'hidden' }}
         footer={
           <Space>
-            <Button onClick={() => setScopeOpen(false)}>取消</Button>
+            <Button onClick={() => setScopeOpen(false)}>{t('patchManager.cancel')}</Button>
             {currentStep === 0 && (
-              <Button type="primary" disabled={scopeSelected.length === 0} onClick={() => setCurrentStep(1)}>下一步</Button>
+              <Button type="primary" disabled={scopeSelected.length === 0} onClick={() => setCurrentStep(1)}>{t('patchManager.risk.next')}</Button>
             )}
             {currentStep === 1 && (
               <>
-                <Button onClick={() => setCurrentStep(0)}>上一步</Button>
+                <Button onClick={() => setCurrentStep(0)}>{t('patchManager.risk.previous')}</Button>
                 <Popconfirm
-                  title="确认创建治理任务"
-                  description={`将对 ${scopeSelected.length} 台主机执行补丁安装，${autoReboot ? '仅自动重启检测为需要重启的主机' : '安装完成后不自动重启'}。`}
+                  title={t('patchManager.risk.confirmCreateRemediation')}
+                  description={t('patchManager.risk.createRemediationConfirm', undefined, { count: scopeSelected.length, reboot: autoReboot ? t('patchManager.risk.onlyRequiredReboot') : t('patchManager.risk.noAutomaticReboot') })}
                   onConfirm={handleScopeSubmit}
-                  okText="确认"
-                  cancelText="取消"
+                  okText={t('patchManager.confirm')}
+                  cancelText={t('patchManager.cancel')}
                 >
-                  <Button type="primary">确认创建治理任务</Button>
+                  <Button type="primary">{t('patchManager.risk.confirmCreateRemediation')}</Button>
                 </Popconfirm>
               </>
             )}
@@ -735,7 +739,7 @@ export default function RiskPendingPage() {
             current={currentStep}
             size="small"
             style={{ marginBottom: 16, flexShrink: 0 }}
-            items={[{ title: '确认风险项' }, { title: '执行设置' }]}
+            items={[{ title: t('patchManager.risk.confirmRiskItems') }, { title: t('patchManager.risk.executionSettings') }]}
           />
 
           {currentStep === 0 && (
@@ -753,12 +757,12 @@ export default function RiskPendingPage() {
                       preserveSelectedRowKeys: true,
                     }}
                     dataSource={SCOPE_RISKS}
-                    pagination={{ total: SCOPE_RISKS.length, pageSize: 10, showSizeChanger: true, showTotal: (t) => `共 ${t} 条` }}
+                    pagination={{ total: SCOPE_RISKS.length, pageSize: 10, showSizeChanger: true, showTotal: (total) => t('patchManager.common.totalItems', undefined, { count: total }) }}
                     columns={[
-                      { title: '主机', dataIndex: 'host', width: 100 },
-                      { title: '补丁要求', dataIndex: 'patch', width: 130 },
-                      { title: '严重级别', dataIndex: 'sev', width: 80, render: (v: string) => <Tag color={v === '严重' ? 'error' : 'warning'}>{v}</Tag> },
-                      { title: '状态', dataIndex: 'status', width: 80, render: (_: unknown, r: typeof SCOPE_RISKS[number]) => r.remark ? <Tooltip title={r.remark}><Tag color={r.status === '未纳入' ? 'error' : r.status === '待修复' ? 'warning' : 'processing'}>{r.status}</Tag></Tooltip> : <Tag color={r.status === '未纳入' ? 'error' : r.status === '待修复' ? 'warning' : 'processing'}>{r.status}</Tag> },
+                      { title: t('patchManager.risk.host'), dataIndex: 'host', width: 100 },
+                      { title: t('patchManager.risk.patchRequirement'), dataIndex: 'patch', width: 130 },
+                      { title: t('patchManager.severity'), dataIndex: 'sev', width: 80, render: (v: string) => <SeverityTag severity={v} /> },
+                      { title: t('patchManager.taskStatus'), dataIndex: 'status', width: 80, render: (_: unknown, r: typeof SCOPE_RISKS[number]) => r.remark ? <Tooltip title={r.remark}><span><RemediationTag status={r.status} /></span></Tooltip> : <RemediationTag status={r.status} /> },
                       { title: <InstallImpactColumnTitle />, dataIndex: 'install_impact', width: 180, render: (_: unknown, r: ScopeItem) => renderInstallImpact(r.install_impact, r.os_type) },
                     ]}
                   />
@@ -766,9 +770,9 @@ export default function RiskPendingPage() {
               </div>
               <div style={{ width: 200, display: 'flex', flexDirection: 'column', borderLeft: '1px solid var(--color-border-1, #e8e8e8)', paddingLeft: 16 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                  <span style={{ fontWeight: 500 }}>已选 {scopeSelectedObjs.length} 项</span>
+                  <span style={{ fontWeight: 500 }}>{t('patchManager.common.selectedItems', undefined, { count: scopeSelectedObjs.length })}</span>
                   {scopeSelectedObjs.length > 0 && (
-                    <Button type="link" size="small" danger style={{ paddingInline: 0 }} onClick={() => setScopeSelected([])}>全部清除</Button>
+                    <Button type="link" size="small" danger style={{ paddingInline: 0 }} onClick={() => setScopeSelected([])}>{t('patchManager.common.clearAll')}</Button>
                   )}
                 </div>
                 <div style={{ flex: 1, overflowY: 'auto' }}>
@@ -779,7 +783,7 @@ export default function RiskPendingPage() {
                     </div>
                   ))}
                   {scopeSelectedObjs.length === 0 && (
-                    <div style={{ color: 'var(--color-text-3, #8c8c8c)', fontSize: 13, textAlign: 'center', marginTop: 40 }}>暂未选择</div>
+                    <div style={{ color: 'var(--color-text-3, #8c8c8c)', fontSize: 13, textAlign: 'center', marginTop: 40 }}>{t('patchManager.common.noSelection')}</div>
                   )}
                 </div>
               </div>
@@ -789,30 +793,30 @@ export default function RiskPendingPage() {
 
           {currentStep === 1 && (
           <div style={{ width: '100%', flex: 1, overflowY: 'auto' }}>
-            <div style={{ fontWeight: 500, marginBottom: 6 }}>执行方式</div>
+            <div style={{ fontWeight: 500, marginBottom: 6 }}>{t('patchManager.risk.executionMode')}</div>
             <Radio.Group value={execMode} onChange={(e) => setExecMode(e.target.value)} style={{ marginBottom: 10 }}>
-              <Radio value="now">立即执行</Radio>
-              <Radio value="window">执行窗口</Radio>
+              <Radio value="now">{t('patchManager.risk.executeNow')}</Radio>
+              <Radio value="window">{t('patchManager.risk.executionWindow')}</Radio>
             </Radio.Group>
             {execMode === 'window' && (
               <div style={{ marginBottom: 12 }}>
-                <RangePicker showTime style={{ width: '100%' }} placeholder={['窗口开始', '窗口结束']} value={windowRange} onChange={(v) => setWindowRange(v as any)} />
+                <RangePicker showTime style={{ width: '100%' }} placeholder={[t('patchManager.risk.windowStart'), t('patchManager.risk.windowEnd')]} value={windowRange} onChange={(v) => setWindowRange(v as any)} />
               </div>
             )}
 
             <div style={{ fontWeight: 500, marginBottom: 6 }}>
-              自动重启
+              {t('patchManager.risk.autoReboot')}
             </div>
             <Alert
               style={{ width: '100%', marginBottom: 12 }}
               type="warning"
               showIcon
-              message="仅自动重启明确需要重启的主机"
-              description="补丁安装完成后检测重启需求；无需重启的主机将跳过重启，无法确认的主机将进入待重启并等待人工处理。重启可能导致业务短暂中断。"
+              message={t('patchManager.risk.autoRebootTitle')}
+              description={t('patchManager.risk.autoRebootHelp')}
             />
             <div style={{ marginBottom: 14 }}>
               <Switch
-                aria-label="自动重启"
+                aria-label={t('patchManager.risk.autoReboot')}
                 checked={autoReboot}
                 onChange={(checked: boolean) => setAutoReboot(checked)}
               />
@@ -823,25 +827,25 @@ export default function RiskPendingPage() {
       </OperateDrawer>
 
       <Modal
-        title="提交前范围确认 · 重启"
+        title={t('patchManager.risk.rebootScopeTitle')}
         open={rebootOpen}
         width={620}
         onCancel={() => setRebootOpen(false)}
         footer={[
-          <Button key="cancel" onClick={() => setRebootOpen(false)}>取消</Button>,
+          <Button key="cancel" onClick={() => setRebootOpen(false)}>{t('patchManager.cancel')}</Button>,
           <Popconfirm
             key="ok"
-            title="确认创建重启任务"
-            description={`将对 ${rebootHosts.length} 台主机执行重启，可能导致业务短暂中断。`}
+            title={t('patchManager.risk.confirmCreateReboot')}
+            description={t('patchManager.risk.rebootConfirm', undefined, { count: rebootHosts.length })}
             onConfirm={handleRebootSubmit}
-            okText="确认"
-            cancelText="取消"
+            okText={t('patchManager.confirm')}
+            cancelText={t('patchManager.cancel')}
           >
-            <Button type="primary">确认创建重启任务</Button>
+            <Button type="primary">{t('patchManager.risk.confirmCreateReboot')}</Button>
           </Popconfirm>,
         ]}
       >
-        <div style={{ fontWeight: 500, marginBottom: 6 }}>待重启主机</div>
+        <div style={{ fontWeight: 500, marginBottom: 6 }}>{t('patchManager.risk.pendingRebootHosts')}</div>
         <Table
           size="small"
           rowKey="key"
@@ -849,14 +853,14 @@ export default function RiskPendingPage() {
           style={{ marginBottom: 14 }}
           dataSource={rebootHosts}
           columns={[
-            { title: '主机', dataIndex: 'host', width: 120 },
-            { title: '补丁要求', dataIndex: 'patches', ellipsis: true },
-            { title: '严重级别', dataIndex: 'sev', width: 80, render: (v: string) => <Tag color={v === '严重' ? 'error' : 'warning'}>{v}</Tag> },
+            { title: t('patchManager.risk.host'), dataIndex: 'host', width: 120 },
+            { title: t('patchManager.risk.patchRequirement'), dataIndex: 'patches', ellipsis: true },
+            { title: t('patchManager.severity'), dataIndex: 'sev', width: 80, render: (v: string) => <SeverityTag severity={v} /> },
           ]}
         />
-        <Alert style={{ marginBottom: 12 }} type="info" showIcon message="重启任务必须设置执行窗口，重启策略固定为「窗口内自动重启」" />
+        <Alert style={{ marginBottom: 12 }} type="info" showIcon message={t('patchManager.risk.rebootWindowHelp')} />
         <div style={{ marginBottom: 12 }}>
-          <RangePicker showTime style={{ width: '100%' }} placeholder={['窗口开始', '窗口结束']} value={rebootRange} onChange={(v) => setRebootRange(v as any)} />
+          <RangePicker showTime style={{ width: '100%' }} placeholder={[t('patchManager.risk.windowStart'), t('patchManager.risk.windowEnd')]} value={rebootRange} onChange={(v) => setRebootRange(v as any)} />
         </div>
       </Modal>
     </div>

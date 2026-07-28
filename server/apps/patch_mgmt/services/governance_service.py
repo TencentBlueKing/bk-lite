@@ -19,6 +19,7 @@ from apps.patch_mgmt.constants import (
     RemediationStatus,
     RebootPolicy,
 )
+from apps.patch_mgmt.exceptions import PatchBusinessError
 from apps.patch_mgmt.models import (
     BaselineRequirement,
     GovernanceTask,
@@ -31,12 +32,16 @@ from apps.patch_mgmt.models import (
 logger = logging.getLogger("app")
 
 
-class HostBusyError(ValueError):
+class HostBusyError(PatchBusinessError):
     """立即执行请求命中了正在运行补丁任务的主机。"""
 
     def __init__(self, target_ids: list[int]):
         self.target_ids = sorted(set(target_ids))
-        super().__init__(f"以下主机正在执行补丁任务: {self.target_ids}")
+        super().__init__(
+            "hosts_busy",
+            "The following targets are running patch tasks: {ids}",
+            params={"ids": self.target_ids},
+        )
 
 
 def _now():
@@ -51,14 +56,14 @@ def _validate_window(data: dict) -> tuple[datetime | None, datetime | None]:
     start_raw = data.get("execution_window_start")
     end_raw = data.get("execution_window_end")
     if not start_raw or not end_raw:
-        raise ValueError("执行窗口模式下必须提供开始/结束时间")
+        raise PatchBusinessError("execution_window_required", "Start and end times are required in execution-window mode")
     try:
         start = datetime.fromisoformat(str(start_raw).replace("Z", "+00:00"))
         end = datetime.fromisoformat(str(end_raw).replace("Z", "+00:00"))
     except (TypeError, ValueError) as exc:
-        raise ValueError(f"执行窗口时间格式错误: {exc}") from exc
+        raise PatchBusinessError("invalid_execution_window", "Invalid execution-window time", raw_detail=str(exc)) from exc
     if end <= start:
-        raise ValueError("执行窗口结束时间必须晚于开始时间")
+        raise PatchBusinessError("execution_window_order", "Execution-window end time must be later than its start time")
     return start, end
 
 
@@ -198,7 +203,7 @@ def create_remediation_task(request, items: list[dict], data: dict) -> Governanc
     自动去重并校验所有 host/patch 必须存在且已绑定基线（未绑定时拒绝）。
     """
     if not items:
-        raise ValueError("items 不能为空")
+        raise PatchBusinessError("items_required", "items is required")
 
     # 去重 + 类型转换；保留用户选择顺序，供详情左侧风险项稳定展示。
     pairs: list[tuple[int, int]] = []
@@ -220,7 +225,7 @@ def create_remediation_task(request, items: list[dict], data: dict) -> Governanc
             seen_pairs.add(pair)
 
     if invalid:
-        raise ValueError(f"items 含非法项: {invalid[:3]}{'...' if len(invalid) > 3 else ''}")
+        raise PatchBusinessError("invalid_items", "items contains invalid entries: {items}", params={"items": invalid[:3]})
 
     target_ids = list(dict.fromkeys(h for h, _ in pairs))
     patch_ids = list(dict.fromkeys(p for _, p in pairs))
@@ -229,7 +234,7 @@ def create_remediation_task(request, items: list[dict], data: dict) -> Governanc
     existing_targets = set(PatchTarget.objects.filter(pk__in=target_ids).values_list("id", flat=True))
     missing_targets = [h for h in target_ids if h not in existing_targets]
     if missing_targets:
-        raise ValueError(f"目标主机不存在: {missing_targets}")
+        raise PatchBusinessError("targets_not_found", "Targets not found: {ids}", params={"ids": missing_targets})
 
     # 校验所有目标必须已绑定基线
     bindings = {
@@ -241,13 +246,13 @@ def create_remediation_task(request, items: list[dict], data: dict) -> Governanc
     bound = set(bindings)
     unbound = [h for h in target_ids if h not in bound]
     if unbound:
-        raise ValueError(f"以下主机未绑定基线: {unbound}")
+        raise PatchBusinessError("targets_without_baseline", "The following targets have no baseline: {ids}", params={"ids": unbound})
     _lock_and_assert_hosts_available(target_ids, data.get("execution_mode", "now"))
 
     patches = Patch.objects.in_bulk(patch_ids)
     missing_patches = [patch_id for patch_id in patch_ids if patch_id not in patches]
     if missing_patches:
-        raise ValueError(f"补丁不存在: {missing_patches}")
+        raise PatchBusinessError("patches_not_found", "Patches not found: {ids}", params={"ids": missing_patches})
 
     valid_requirements = set(
         BaselineRequirement.objects.filter(
@@ -261,7 +266,7 @@ def create_remediation_task(request, items: list[dict], data: dict) -> Governanc
         if (bindings[host_id].baseline_id, patch_id) not in valid_requirements
     ]
     if invalid_pairs:
-        raise ValueError(f"所选补丁不属于对应主机的当前基线: {invalid_pairs}")
+        raise PatchBusinessError("patches_not_in_baseline", "Selected patches are not in the targets' current baselines: {pairs}", params={"pairs": invalid_pairs})
 
     risk_snapshot = [
         {
@@ -302,12 +307,12 @@ def create_reboot_task(request, target_ids: list, data: dict) -> GovernanceTask:
 
     target_ids = sorted({int(t) for t in target_ids if t})
     if not target_ids:
-        raise ValueError("target_ids 不能为空")
+        raise PatchBusinessError("target_ids_required", "target_ids is required")
 
     existing = set(PatchTarget.objects.filter(pk__in=target_ids).values_list("id", flat=True))
     missing = [h for h in target_ids if h not in existing]
     if missing:
-        raise ValueError(f"目标主机不存在: {missing}")
+        raise PatchBusinessError("targets_not_found", "Targets not found: {ids}", params={"ids": missing})
 
     pending_items = [
         item
@@ -318,7 +323,7 @@ def create_reboot_task(request, target_ids: list, data: dict) -> GovernanceTask:
     pending_reboot_target_ids = {item.host_id for item in pending_items}
     not_pending_reboot = sorted(set(target_ids) - pending_reboot_target_ids)
     if not_pending_reboot:
-        raise ValueError(f"以下主机当前不是待重启状态: {not_pending_reboot}")
+        raise PatchBusinessError("targets_not_pending_reboot", "The following targets are not pending reboot: {ids}", params={"ids": not_pending_reboot})
 
     # 重启必须有窗口
     if data.get("execution_mode") != "window":
@@ -378,7 +383,7 @@ def _create_evaluation_task(
     """评估/验证任务创建公共逻辑。"""
     target_ids = [int(t) for t in target_ids if t]
     if not target_ids:
-        raise ValueError("target_ids 不能为空")
+        raise PatchBusinessError("target_ids_required", "target_ids is required")
     _lock_and_assert_hosts_available(target_ids, data.get("execution_mode", "now"))
 
     name = (data.get("name") or "").strip() or f"{default_name_prefix} · {len(target_ids)} 台 · {_now().strftime('%m-%d %H:%M')}"
@@ -440,9 +445,9 @@ def create_retry_task(request, original_task: GovernanceTask, target_id: int) ->
         for item in build_risk_item_summaries(original_task)
     )
     if retryable_host is None and not has_unmet_item:
-        raise ValueError("该主机不可重试或不存在")
+        raise PatchBusinessError("target_not_retryable", "The target does not exist or cannot be retried")
     if not PatchTarget.objects.filter(pk=target_id).exists():
-        raise ValueError("目标不存在或已删除，无法重试")
+        raise PatchBusinessError("target_deleted", "The target does not exist or has been deleted and cannot be retried")
 
     _lock_and_assert_hosts_available([target_id], "now")
     host = original_task.host_results.filter(target_id=target_id).first() or retryable_host

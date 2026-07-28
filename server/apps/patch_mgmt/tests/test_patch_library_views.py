@@ -124,7 +124,7 @@ class TestPatchWriteViewApi:
 
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
         assert Patch.objects.filter(pk=patch.id).exists()
-        assert "基线" in resp.data["detail"]
+        assert resp.data["detail"]
 
     def test_destroy_api_deletes_manual_package_object_before_record(self, su_client):
         patch = Patch.objects.create(title="手工补丁", os_type=OSType.WINDOWS, team=[1])
@@ -158,7 +158,7 @@ class TestPatchWriteViewApi:
 
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
         assert Patch.objects.filter(pk=patch.id).exists()
-        assert "文件" in resp.data["detail"]
+        assert resp.data["detail"]
 
 
 @pytest.mark.django_db

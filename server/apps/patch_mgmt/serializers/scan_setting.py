@@ -5,6 +5,7 @@ from rest_framework import serializers
 from apps.core.utils.celery_utils import CeleryUtils
 from apps.patch_mgmt.models import ScanSetting
 from apps.patch_mgmt.tasks import run_periodic_compliance_scan
+from apps.patch_mgmt.utils.i18n import serializer_message
 
 
 class ScanSettingSerializer(serializers.ModelSerializer):
@@ -37,22 +38,22 @@ class ScanSettingSerializer(serializers.ModelSerializer):
         if frequency == "hourly" and (
             hour_interval is None or hour_interval < 1 or hour_interval > 24
         ):
-            raise serializers.ValidationError({"hour_interval": "小时间隔必须在 1-24 之间"})
+            raise serializers.ValidationError({"hour_interval": serializer_message(self, "error.hour_interval_range", "The hourly interval must be between 1 and 24")})
 
         if frequency == "weekly" and (
             weekday is None or weekday < 1 or weekday > 7
         ):
-            raise serializers.ValidationError({"weekday": "周几必须在 1-7 之间"})
+            raise serializers.ValidationError({"weekday": serializer_message(self, "error.weekday_range", "The weekday must be between 1 and 7")})
 
         if frequency in ("daily", "weekly"):
             if not isinstance(time_value, str) or len(time_value.split(":")) != 2:
-                raise serializers.ValidationError({"time": "时间格式必须为 HH:MM"})
+                raise serializers.ValidationError({"time": serializer_message(self, "error.invalid_time_format", "Time must use the HH:MM format")})
             try:
                 hour, minute = map(int, time_value.split(":"))
                 if not (0 <= hour <= 23 and 0 <= minute <= 59):
                     raise ValueError
             except ValueError as exc:
-                raise serializers.ValidationError({"time": "时间格式必须为 HH:MM"}) from exc
+                raise serializers.ValidationError({"time": serializer_message(self, "error.invalid_time_format", "Time must use the HH:MM format")}) from exc
 
         return attrs
 

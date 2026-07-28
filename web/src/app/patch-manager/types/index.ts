@@ -214,6 +214,7 @@ export interface RecentTaskItem {
   id: number;
   name: string;
   status: string;
+  status_code?: string;
   status_color: string;
   progress: string;
   time: string;
