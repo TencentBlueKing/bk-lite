@@ -475,7 +475,7 @@ def test_runtime_action_timeout_without_matching_status_keeps_unknown(
     )
     monkeypatch.setattr(
         "apps.mlops.views.timeseries_predict.WebhookClient.get_status",
-        lambda ids: [],
+        lambda ids: [{"id": "TimeseriesPredict_Serving_foreign", "status": "success", "state": "running"}],
     )
 
     response = mlops_api_client.post(
@@ -488,6 +488,94 @@ def test_runtime_action_timeout_without_matching_status_keeps_unknown(
     serving.refresh_from_db()
     assert serving.container_info["state"] == "unknown"
     assert serving.container_info["_runtime_generation"] == 2
+
+
+def test_retrieve_rejects_foreign_runtime_status(
+    mlops_api_client,
+    monkeypatch,
+):
+    serving = _create_serving(port=3000)
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.TimeSeriesPredictServingViewSet.get_has_permission",
+        lambda *args, **kwargs: True,
+    )
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.WebhookClient.get_status",
+        lambda ids: [{"id": "TimeseriesPredict_Serving_foreign", "status": "success", "state": "running"}],
+    )
+
+    response = mlops_api_client.get(
+        f"/api/v1/mlops/timeseries_predict_servings/{serving.id}/",
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["container_info"]["state"] == "unknown"
+    assert "foreign" not in str(response.data["container_info"])
+
+
+def test_start_already_exists_rejects_foreign_runtime_status(
+    mlops_api_client,
+    mlops_user,
+    monkeypatch,
+):
+    from apps.mlops.utils.webhook_client import WebhookError
+
+    mlops_user.permission["mlops"].add("timeseries_predict-Start")
+    serving = _create_serving(port=3000)
+    _mock_create_runtime_dependencies(monkeypatch)
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.WebhookClient.serve",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            WebhookError("exists", code="CONTAINER_ALREADY_EXISTS")
+        ),
+    )
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.WebhookClient.get_status",
+        lambda ids: [{"id": "TimeseriesPredict_Serving_foreign", "status": "success", "state": "running"}],
+    )
+
+    response = mlops_api_client.post(
+        f"/api/v1/mlops/timeseries_predict_servings/{serving.id}/start/",
+        {},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["container_info"]["state"] == "unknown"
+    assert response.data["container_info"]["id"] == f"TimeseriesPredict_Serving_{serving.id}"
+
+
+def test_create_already_exists_rejects_foreign_runtime_status(
+    mlops_api_client,
+    mlops_user,
+    monkeypatch,
+):
+    from apps.mlops.utils.webhook_client import WebhookError
+
+    mlops_user.permission["mlops"].add("timeseries_predict-Add")
+    train_job = create_train_job(TimeSeriesPredictTrainJob, team=1)
+    _mock_create_runtime_dependencies(monkeypatch)
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.WebhookClient.serve",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            WebhookError("exists", code="CONTAINER_ALREADY_EXISTS")
+        ),
+    )
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.WebhookClient.get_status",
+        lambda ids: [{"id": "TimeseriesPredict_Serving_foreign", "status": "success", "state": "running"}],
+    )
+
+    response = mlops_api_client.post(
+        "/api/v1/mlops/timeseries_predict_servings/",
+        _create_serving_payload(train_job, "foreign-create-status"),
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    assert response.data["container_info"]["state"] == "unknown"
+    assert response.data["container_info"]["id"] == f"TimeseriesPredict_Serving_{response.data['id']}"
 
 
 def test_create_initializes_runtime_inside_atomic_row_lock(
@@ -1072,6 +1160,55 @@ def test_update_remove_timeout_with_failed_status_check_is_not_marked_running(
     assert serving.model_version == "latest"
     assert serving.container_info["state"] == "unknown"
     assert serving.container_info["status"] == "error"
+
+
+def test_update_remove_timeout_rejects_foreign_not_found_status(
+    mlops_api_client,
+    mlops_user,
+    monkeypatch,
+):
+    from apps.mlops.utils.webhook_client import WebhookTimeoutError
+
+    mlops_user.permission["mlops"].add("timeseries_predict-Edit")
+    serving = _create_serving(port=3000)
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.TimeSeriesPredictServingViewSet.get_has_permission",
+        lambda *args, **kwargs: True,
+    )
+    monkeypatch.setenv("TIMESERIES_PREDICT_TIMEOUT_SECONDS", "75")
+    _mock_create_runtime_dependencies(monkeypatch)
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.WebhookClient.remove",
+        lambda serving_id: (_ for _ in ()).throw(WebhookTimeoutError("response lost")),
+    )
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.WebhookClient.get_status",
+        lambda ids: [
+            {
+                "id": "TimeseriesPredict_Serving_foreign",
+                "status": "success",
+                "state": "not_found",
+            }
+        ],
+    )
+    unexpected_serve_calls = []
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.WebhookClient.serve",
+        lambda *args, **kwargs: unexpected_serve_calls.append((args, kwargs)),
+    )
+
+    response = mlops_api_client.patch(
+        f"/api/v1/mlops/timeseries_predict_servings/{serving.id}/",
+        {"model_version": "v2"},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+    assert response.data["message"] == "配置已回滚，但旧服务删除结果未知"
+    assert unexpected_serve_calls == []
+    serving.refresh_from_db()
+    assert serving.model_version == "latest"
+    assert serving.container_info["state"] == "unknown"
 
 
 def test_update_does_not_restore_old_service_until_failed_runtime_is_removed(

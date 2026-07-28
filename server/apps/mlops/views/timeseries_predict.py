@@ -750,6 +750,22 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
         except (TypeError, ValueError):
             return 0
 
+    @staticmethod
+    def _matching_runtime_status(runtime_statuses, serving_id):
+        """仅接受目标 ID 明确匹配且包含 state 的运行时状态。"""
+        if not isinstance(runtime_statuses, list):
+            return None
+        return next(
+            (
+                item
+                for item in runtime_statuses
+                if isinstance(item, dict)
+                and item.get("id") == serving_id
+                and item.get("state")
+            ),
+            None,
+        )
+
     @classmethod
     def _reserve_runtime_status_sync(cls, observed_statuses):
         """查询 runtime 前批量认领 generation；并发查询只允许最新认领者写回。"""
@@ -850,14 +866,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
         """副作用结果不确定时查询实际状态；查询失败则持久化 unknown。"""
         try:
             observed_runtime = WebhookClient.get_status([serving_id])
-            runtime_info = next(
-                (
-                    item
-                    for item in observed_runtime
-                    if item.get("id") == serving_id and item.get("state")
-                ),
-                None,
-            )
+            runtime_info = cls._matching_runtime_status(observed_runtime, serving_id)
             if runtime_info is None:
                 runtime_info = {
                     "status": "error",
@@ -961,7 +970,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
 
         try:
             result = WebhookClient.get_status([serving_id])
-            container_info = result[0] if result else None
+            container_info = self._matching_runtime_status(result, serving_id)
 
             if container_info:
                 current_info_by_id = self._finalize_runtime_status_sync(
@@ -1106,15 +1115,14 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                 if e.code == "CONTAINER_ALREADY_EXISTS":
                     try:
                         result = WebhookClient.get_status([container_id])
-                        container_info = (
-                            result[0]
-                            if result
-                            else {
+                        container_info = self._matching_runtime_status(result, container_id)
+                        if container_info is None:
+                            container_info = {
                                 "status": "error",
                                 "id": container_id,
-                                "message": "无法查询容器状态",
+                                "state": "unknown",
+                                "message": "状态查询未返回目标运行时",
                             }
-                        )
 
                         # 仅更新容器信息，不修改 status
                         container_info = self._assign_runtime_container_info(serving, container_info)
@@ -1292,7 +1300,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                     rollback_port = old_port
                     rollback_message = "配置已回滚，但旧服务删除结果未知"
                 else:
-                    runtime_state = observed_runtime[0] if observed_runtime else {}
+                    runtime_state = self._matching_runtime_status(observed_runtime, container_id) or {}
                     observed_state = runtime_state.get("state")
                     if runtime_state and observed_state not in {"running", "not_found"}:
                         try:
@@ -1300,7 +1308,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                             # 资源；再次幂等删除并确认消失后才能复用相同 ID。
                             WebhookClient.remove(container_id)
                             verified_runtime = WebhookClient.get_status([container_id])
-                            runtime_state = verified_runtime[0] if verified_runtime else {}
+                            runtime_state = self._matching_runtime_status(verified_runtime, container_id) or {}
                             observed_state = runtime_state.get("state")
                         except Exception as cleanup_error:
                             logger.error(f"清理非运行态旧 serving 失败: {cleanup_error}", exc_info=True)
@@ -1512,15 +1520,14 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                     try:
                         # 查询当前容器状态
                         result = WebhookClient.get_status([serving_id])
-                        container_info = (
-                            result[0]
-                            if result
-                            else {
+                        container_info = self._matching_runtime_status(result, serving_id)
+                        if container_info is None:
+                            container_info = {
                                 "status": "error",
                                 "id": serving_id,
-                                "message": "无法查询容器状态",
+                                "state": "unknown",
+                                "message": "状态查询未返回目标运行时",
                             }
-                        )
 
                         # 仅更新容器信息，不修改 status
                         container_info = self._assign_runtime_container_info(serving, container_info)
