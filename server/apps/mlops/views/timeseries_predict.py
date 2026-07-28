@@ -751,20 +751,23 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
             return 0
 
     @staticmethod
-    def _matching_runtime_status(runtime_statuses, serving_id):
-        """仅接受目标 ID 明确匹配且包含 state 的运行时状态。"""
+    def _runtime_status_map(runtime_statuses, expected_ids):
+        """线性构建已校验状态映射；错 ID、缺 state 和畸形响应全部忽略。"""
         if not isinstance(runtime_statuses, list):
-            return None
-        return next(
-            (
-                item
-                for item in runtime_statuses
-                if isinstance(item, dict)
-                and item.get("id") == serving_id
-                and item.get("state")
-            ),
-            None,
-        )
+            return {}
+        expected_ids = set(expected_ids)
+        return {
+            item["id"]: item
+            for item in runtime_statuses
+            if isinstance(item, dict)
+            and item.get("id") in expected_ids
+            and item.get("state")
+        }
+
+    @classmethod
+    def _matching_runtime_status(cls, runtime_statuses, serving_id):
+        """仅接受目标 ID 明确匹配且包含 state 的运行时状态。"""
+        return cls._runtime_status_map(runtime_statuses, [serving_id]).get(serving_id)
 
     @classmethod
     def _reserve_runtime_status_sync(cls, observed_statuses):
@@ -917,7 +920,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
         try:
             # 批量查询
             result = WebhookClient.get_status(serving_ids)
-            status_map = {s.get("id"): s for s in result}
+            status_map = self._runtime_status_map(result, serving_ids)
 
             runtime_info_by_id = {}
             for serving_data in servings:
@@ -934,7 +937,11 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                         "message": "webhookd 未返回此容器状态",
                     }
 
-            current_info_by_id = self._finalize_runtime_status_sync(claims_by_id, runtime_info_by_id)
+            current_info_by_id = (
+                self._finalize_runtime_status_sync(claims_by_id, runtime_info_by_id)
+                if runtime_info_by_id
+                else {}
+            )
             for serving_data in servings:
                 instance_id = serving_data["id"]
                 if instance_id in runtime_info_by_id:

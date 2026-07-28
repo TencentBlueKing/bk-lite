@@ -514,6 +514,58 @@ def test_retrieve_rejects_foreign_runtime_status(
     assert "foreign" not in str(response.data["container_info"])
 
 
+@pytest.mark.parametrize("runtime_response_kind", ["missing_state", "non_list"])
+def test_list_rejects_runtime_status_without_executable_contract(
+    mlops_api_client,
+    monkeypatch,
+    runtime_response_kind,
+):
+    from apps.mlops.views.timeseries_predict import TimeSeriesPredictServingViewSet
+
+    serving = _create_serving(port=3000)
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.TimeSeriesPredictServingViewSet.get_has_permission",
+        lambda *args, **kwargs: True,
+    )
+    monkeypatch.setattr(
+        "apps.core.utils.viewset_utils.get_permission_rules",
+        lambda *args, **kwargs: {"team": [1], "instance": []},
+    )
+
+    def invalid_status(ids):
+        invalid_item = {
+            "id": ids[0],
+            "status": "error",
+            "message": "Container not found",
+        }
+        return [invalid_item] if runtime_response_kind == "missing_state" else invalid_item
+
+    finalize_calls = []
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.WebhookClient.get_status",
+        invalid_status,
+    )
+    monkeypatch.setattr(
+        TimeSeriesPredictServingViewSet,
+        "_finalize_runtime_status_sync",
+        lambda *args, **kwargs: finalize_calls.append((args, kwargs)),
+    )
+
+    response = mlops_api_client.get(
+        "/api/v1/mlops/timeseries_predict_servings/",
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    items = response.data.get("items", []) if isinstance(response.data, dict) else response.data
+    response_serving = next(item for item in items if item["id"] == serving.id)
+    assert response_serving["container_info"]["state"] == "unknown"
+    assert finalize_calls == []
+    serving.refresh_from_db()
+    assert serving.container_info["state"] == "running"
+    assert "Container not found" not in str(serving.container_info)
+
+
 def test_start_already_exists_rejects_foreign_runtime_status(
     mlops_api_client,
     mlops_user,
