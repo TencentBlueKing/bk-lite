@@ -902,12 +902,29 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                 serving_id,
                 cleanup_token,
             )
-        except Exception:
-            logger.critical(
-                "创建 serving 事务回滚后的补偿意图持久化失败: "
-                f"container_id={container_id}",
-                exc_info=True,
+        except Exception as intent_error:
+            from apps.mlops.tasks.runtime_cleanup import (
+                bootstrap_timeseries_runtime_cleanup,
             )
+
+            try:
+                bootstrap_timeseries_runtime_cleanup.apply_async(
+                    args=(container_id, serving_id, cleanup_token),
+                    retry=True,
+                    retry_policy={
+                        "max_retries": 5,
+                        "interval_start": 0,
+                        "interval_step": 1,
+                        "interval_max": 5,
+                    },
+                )
+            except Exception as dispatch_error:
+                logger.critical(
+                    "创建 serving 事务回滚后的补偿意图与 bootstrap 任务均未持久化: "
+                    f"container_id={container_id}, intent_error={type(intent_error).__name__}, "
+                    f"dispatch_error={type(dispatch_error).__name__}",
+                    exc_info=True,
+                )
             return
 
         try:

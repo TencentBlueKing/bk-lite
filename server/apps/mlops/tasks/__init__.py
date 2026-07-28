@@ -23,6 +23,7 @@ from .object_detection import (
 from .poll_train_job_status import poll_train_job_status  # noqa: F401
 from .file_cleanup import cleanup_train_data_file
 from .runtime_cleanup import (
+    bootstrap_timeseries_runtime_cleanup,
     cleanup_orphan_timeseries_runtime,
     dispatch_pending_timeseries_runtime_cleanup,
 )
@@ -36,6 +37,7 @@ __all__ = [
     "object_detection_publish_dataset_release_async",
     "poll_train_job_status",
     "cleanup_train_data_file",
+    "bootstrap_timeseries_runtime_cleanup",
     "cleanup_orphan_timeseries_runtime",
     "dispatch_pending_timeseries_runtime_cleanup",
 ]

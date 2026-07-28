@@ -773,6 +773,46 @@ def test_create_cleanup_failure_dispatches_retry_task(monkeypatch):
     ]
 
 
+def test_cleanup_intent_persist_failure_dispatches_bootstrap_task(monkeypatch):
+    from apps.mlops.views.timeseries_predict import TimeSeriesPredictServingViewSet
+
+    dispatch_calls = []
+    monkeypatch.setattr(
+        "apps.mlops.services.timeseries_runtime_cleanup.create_runtime_cleanup_intent",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("database unavailable")),
+    )
+    monkeypatch.setattr(
+        "apps.mlops.tasks.runtime_cleanup.bootstrap_timeseries_runtime_cleanup.apply_async",
+        lambda *args, **kwargs: dispatch_calls.append((args, kwargs)),
+    )
+
+    TimeSeriesPredictServingViewSet._cleanup_uncommitted_create_runtime(
+        "TimeseriesPredict_Serving_9008",
+        9008,
+        "973a0b28-1ef9-4767-b72f-bb4c281c6a2c",
+    )
+
+    assert dispatch_calls == [
+        (
+            (),
+            {
+                "args": (
+                    "TimeseriesPredict_Serving_9008",
+                    9008,
+                    "973a0b28-1ef9-4767-b72f-bb4c281c6a2c",
+                ),
+                "retry": True,
+                "retry_policy": {
+                    "max_retries": 5,
+                    "interval_start": 0,
+                    "interval_step": 1,
+                    "interval_max": 5,
+                },
+            },
+        )
+    ]
+
+
 def test_orphan_cleanup_confirms_not_found_after_lost_remove_response(monkeypatch):
     from apps.mlops.services.timeseries_runtime_cleanup import (
         reconcile_orphan_timeseries_runtime,
@@ -851,6 +891,38 @@ def test_orphan_cleanup_task_retries_until_not_found(monkeypatch):
     assert cleanup_orphan_timeseries_runtime.max_retries is None
     assert cleanup_orphan_timeseries_runtime.acks_late is True
     assert cleanup_orphan_timeseries_runtime.reject_on_worker_lost is True
+    assert retry_calls[0][1]["countdown"] == 30
+
+
+def test_cleanup_bootstrap_task_retries_until_intent_can_be_persisted(monkeypatch):
+    from celery.exceptions import Retry
+
+    from apps.mlops.tasks.runtime_cleanup import (
+        bootstrap_timeseries_runtime_cleanup,
+    )
+
+    retry_calls = []
+    monkeypatch.setattr(
+        "apps.mlops.tasks.runtime_cleanup.create_runtime_cleanup_intent",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("database unavailable")),
+    )
+
+    def fake_retry(*args, **kwargs):
+        retry_calls.append((args, kwargs))
+        raise Retry()
+
+    monkeypatch.setattr(bootstrap_timeseries_runtime_cleanup, "retry", fake_retry)
+
+    with pytest.raises(Retry):
+        bootstrap_timeseries_runtime_cleanup.run(
+            "TimeseriesPredict_Serving_9009",
+            9009,
+            "d9be670a-d486-4e49-a5b7-351c3120085f",
+        )
+
+    assert bootstrap_timeseries_runtime_cleanup.max_retries is None
+    assert bootstrap_timeseries_runtime_cleanup.acks_late is True
+    assert bootstrap_timeseries_runtime_cleanup.reject_on_worker_lost is True
     assert retry_calls[0][1]["countdown"] == 30
 
 
