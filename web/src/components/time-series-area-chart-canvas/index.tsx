@@ -84,6 +84,7 @@ export interface TimeSeriesAreaChartCanvasProps<T extends TimeSeriesAreaCanvasDa
   syncId?: string;
   toRangeValue?: (label: number) => Dayjs;
   xAxisDataKey: string;
+  xAxisAllowDataOverflow?: boolean;
   xAxisDomain?: React.ComponentProps<typeof XAxis>['domain'];
   xAxisDy?: number;
   xAxisMinTickGap?: number;
@@ -120,6 +121,7 @@ const TimeSeriesAreaChartCanvas = <T extends TimeSeriesAreaCanvasData>({
   syncId,
   toRangeValue = (label) => dayjs(label),
   xAxisDataKey,
+  xAxisAllowDataOverflow,
   xAxisDomain,
   xAxisDy,
   xAxisMinTickGap,
@@ -161,6 +163,7 @@ const TimeSeriesAreaChartCanvas = <T extends TimeSeriesAreaCanvasData>({
           dataKey={xAxisDataKey}
           type={xAxisType}
           domain={xAxisDomain}
+          allowDataOverflow={xAxisAllowDataOverflow}
           tick={{ fill: 'var(--color-text-3)', fontSize: 14 }}
           tickFormatter={
             xAxisTickFormatter

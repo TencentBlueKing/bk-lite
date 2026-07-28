@@ -73,6 +73,8 @@ const cssVariableMap = {
   chartSuccess: '--theme-color-chart-success',
   chartWarning: '--theme-color-chart-warning',
   chartError: '--theme-color-chart-error',
+  chartGapFill: '--theme-color-chart-gap-fill',
+  chartGapBoundary: '--theme-color-chart-gap-boundary',
 } satisfies Record<keyof SemanticColorTokens, `--${string}`>;
 
 const legacyVariableMap: Record<string, keyof SemanticColorTokens> = {
@@ -133,6 +135,8 @@ const legacyVariableMap: Record<string, keyof SemanticColorTokens> = {
   '--color-portal-preview-shell': 'portalPreviewShell',
   '--color-portal-preview-tab-bg': 'portalPreviewTabBackground',
   '--color-portal-preview-icon-bg': 'portalPreviewIconBackground',
+  '--color-chart-gap-fill': 'chartGapFill',
+  '--color-chart-gap-boundary': 'chartGapBoundary',
 };
 
 const declarationsFor = (tokens: SemanticColorTokens) => {
