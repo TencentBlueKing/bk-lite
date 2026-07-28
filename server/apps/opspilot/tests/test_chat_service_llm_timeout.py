@@ -14,6 +14,8 @@
 
 import os
 import re
+import time
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -93,7 +95,7 @@ class TestChatServiceFutureTimeout:
         TimeoutError 处理块应返回 error_type='TimeoutError'，便于前端区分超时与其他错误。
         """
         # Find the TimeoutError handler block
-        idx = chat_service_src.find("except concurrent.futures.TimeoutError")
+        idx = chat_service_src.rfind("except concurrent.futures.TimeoutError")
         assert idx != -1, "未找到 TimeoutError 处理块"
         # Check the next 500 chars for the error_type field
         handler_snippet = chat_service_src[idx : idx + 600]
@@ -103,6 +105,47 @@ class TestChatServiceFutureTimeout:
     def test_os_is_imported(self, chat_service_src):
         """os 模块必须被 import，用于 os.getenv('LLM_INVOKE_TIMEOUT', ...)"""
         assert "import os" in chat_service_src, "chat_service.py 缺少 import os，无法调用 os.getenv()"
+
+    def test_timeout_returns_without_waiting_for_running_worker(self, mocker, monkeypatch):
+        """整轮预算耗尽后应立即返回，不能等待仍在运行的 agent 线程。"""
+        from apps.opspilot.services.chat_service import ChatService
+
+        class BlockingGraph:
+            async def execute(self, _request):
+                time.sleep(2)
+                return SimpleNamespace(
+                    message="late response",
+                    total_tokens=0,
+                    prompt_tokens=0,
+                    completion_tokens=0,
+                    browser_steps=[],
+                )
+
+        mocker.patch(
+            "apps.opspilot.services.chat_service.LLMModel.objects.get",
+            return_value=MagicMock(id=1),
+        )
+        mocker.patch(
+            "apps.opspilot.services.chat_service.ChatService.format_chat_server_kwargs",
+            return_value=({}, {}, {}),
+        )
+        mocker.patch(
+            "apps.opspilot.services.chat_service.create_agent_instance",
+            return_value=(BlockingGraph(), MagicMock()),
+        )
+        mocker.patch(
+            "apps.opspilot.services.chat_service._is_eventlet_environment",
+            return_value=False,
+        )
+        monkeypatch.setenv("AGENT_EXECUTE_TIMEOUT", "1")
+
+        started_at = time.perf_counter()
+        result, _, _ = ChatService.invoke_chat({"llm_model": 1, "skill_type": "test"})
+        elapsed = time.perf_counter() - started_at
+
+        assert result["success"] is False
+        assert result["error_type"] == "TimeoutError"
+        assert elapsed < 1.5, f"超时返回仍等待了后台线程: {elapsed:.3f}s"
 
 
 class TestLLMClientFactoryTimeout:
