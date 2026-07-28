@@ -14,6 +14,7 @@ from apps.cmdb.utils.base import (
 )
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.utils.user_group import normalize_user_group_ids
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.core.utils.web_utils import WebUtils
 
@@ -23,20 +24,21 @@ class PublicEnumLibraryViewSet(AuthViewSet):
     ORGANIZATION_FIELD = "team"
 
     def _get_user_team(self, request) -> list:
-        return [g["id"] for g in getattr(request.user, "group_list", []) or []]
+        return normalize_user_group_ids(
+            getattr(request.user, "group_list", []) or []
+        )
 
     def _get_editable_team_scope(self, request) -> set[str]:
         user_team = self._get_user_team(request)
-        current_team = get_current_team_from_request(request, required=False)
-        if not current_team:
-            return {str(team) for team in user_team}
+        current_team = get_current_team_from_request(request)
 
         if str(current_team) not in {str(team) for team in user_team}:
             raise PermissionDenied("无权访问该团队数据")
 
         if request.COOKIES.get("include_children") == "1":
             team = get_organization_and_children_ids(
-                tree_data=request.user.group_tree, target_id=current_team
+                tree_data=getattr(request.user, "group_tree", []),
+                target_id=current_team,
             )
             return {str(team_id) for team_id in (team or [current_team])}
 
@@ -61,6 +63,28 @@ class PublicEnumLibraryViewSet(AuthViewSet):
         )
         if not authorized:
             raise PermissionDenied("无权修改该组织的公共选项库")
+
+    def _validate_team_update_scope(
+        self, request, existing_team, requested_team
+    ) -> None:
+        if (
+            getattr(request.user, "is_superuser", False)
+            or not isinstance(requested_team, list)
+        ):
+            return
+        if not isinstance(existing_team, list):
+            raise PermissionDenied("公共选项库组织数据非法，禁止修改")
+        if existing_team and not requested_team:
+            raise PermissionDenied("无权将组织公共选项库改为全局库")
+
+        self._validate_team_scope(request, requested_team)
+        existing_team_ids = {str(team_id) for team_id in existing_team}
+        added_team = [
+            team_id
+            for team_id in requested_team
+            if str(team_id) not in existing_team_ids
+        ]
+        self._validate_team_scope(request, added_team, require_all=True)
 
     @HasPermission("model_management-View")
     def list(self, request):
@@ -101,25 +125,19 @@ class PublicEnumLibraryViewSet(AuthViewSet):
         payload = request.data
         operator = request.user.username
         try:
+            authorize = None
             if not getattr(request.user, "is_superuser", False):
-                library = library_service.get_library_or_raise(pk)
-                self._validate_team_scope(request, library.team)
-            if "team" in payload:
-                team = payload["team"]
-                if (
-                    not getattr(request.user, "is_superuser", False)
-                    and isinstance(team, list)
-                ):
-                    existing_team = {str(team_id) for team_id in library.team}
-                    team = [
-                        team_id
-                        for team_id in team
-                        if str(team_id) not in existing_team
-                    ]
-                self._validate_team_scope(
-                    request, team, require_all=True
-                )
-            result = library_service.update_library(pk, payload, operator)
+
+                def authorize(library):
+                    self._validate_team_scope(request, library.team)
+                    if "team" in payload:
+                        self._validate_team_update_scope(
+                            request, library.team, payload["team"]
+                        )
+
+            result = library_service.update_library(
+                pk, payload, operator, authorize=authorize
+            )
             return WebUtils.response_success(result)
         except BaseAppException as e:
             if "不存在" in e.message:
@@ -134,10 +152,15 @@ class PublicEnumLibraryViewSet(AuthViewSet):
     def destroy(self, request, pk: str):
         operator = request.user.username
         try:
+            authorize = None
             if not getattr(request.user, "is_superuser", False):
-                library = library_service.get_library_or_raise(pk)
-                self._validate_team_scope(request, library.team)
-            library_service.delete_library(pk, operator)
+
+                def authorize(library):
+                    self._validate_team_scope(request, library.team)
+
+            library_service.delete_library(
+                pk, operator, authorize=authorize
+            )
             return WebUtils.response_success({"message": "删除成功"})
         except BaseAppException as e:
             if "不存在" in e.message:

@@ -45,11 +45,18 @@ def editor(authenticated_user):
     return u
 
 
-def _req(method, user, data=None, include_children=False):
+def _req(
+    method,
+    user,
+    data=None,
+    include_children=False,
+    current_team="1",
+):
     factory = APIRequestFactory()
     fn = getattr(factory, method)
     request = fn("/x/") if data is None else fn("/x/", data=data, format="json")
-    request.COOKIES["current_team"] = "1"
+    if current_team is not None:
+        request.COOKIES["current_team"] = current_team
     request.COOKIES["include_children"] = "1" if include_children else "0"
     force_authenticate(request, user=user)
     return request
@@ -60,6 +67,27 @@ def _body(response):
         response.render()
         return json.loads(response.rendered_content)
     return json.loads(response.content)
+
+
+def _update_stub(library_team, called=None):
+    def _update(pk, payload, operator, *, authorize=None):
+        assert authorize is not None
+        authorize(SimpleNamespace(team=library_team))
+        if called is not None:
+            called["updated"] = True
+        return {"id": int(pk)}
+
+    return _update
+
+
+def _delete_stub(library_team, called=None):
+    def _delete(pk, operator, *, authorize=None):
+        assert authorize is not None
+        authorize(SimpleNamespace(team=library_team))
+        if called is not None:
+            called["deleted"] = True
+
+    return _delete
 
 
 @pytest.mark.django_db
@@ -109,8 +137,50 @@ def test_create_rejects_team_outside_current_scope(editor, monkeypatch):
 
 
 @pytest.mark.django_db
+def test_create_requires_current_team_for_scoped_library(editor, monkeypatch):
+    called = {}
+    monkeypatch.setattr(
+        f"{SVC}.create_library",
+        lambda payload, operator: called.setdefault("created", True),
+    )
+
+    response = PublicEnumLibraryViewSet.as_view({"post": "create"})(
+        _req(
+            "post",
+            editor,
+            data={"name": "x", "team": [1]},
+            current_team=None,
+        )
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert called == {}
+
+
+@pytest.mark.django_db
+def test_create_accepts_api_token_integer_group_scope(editor, monkeypatch):
+    editor.group_list = [1]
+    monkeypatch.setattr(
+        f"{SVC}.create_library",
+        lambda payload, operator: {"id": 9},
+    )
+    request = _req(
+        "post",
+        editor,
+        data={"name": "x", "team": [1]},
+        current_team=None,
+    )
+    request._api_current_team = 1
+
+    response = PublicEnumLibraryViewSet.as_view({"post": "create"})(request)
+
+    assert response.status_code == status.HTTP_200_OK
+    assert _body(response)["data"]["id"] == 9
+
+
+@pytest.mark.django_db
 def test_update_not_found(superuser, monkeypatch):
-    def _raise(pk, payload, operator):
+    def _raise(pk, payload, operator, *, authorize=None):
         raise BaseAppException("枚举库不存在")
 
     monkeypatch.setattr(f"{SVC}.update_library", _raise)
@@ -122,7 +192,10 @@ def test_update_not_found(superuser, monkeypatch):
 
 @pytest.mark.django_db
 def test_update_ok(superuser, monkeypatch):
-    monkeypatch.setattr(f"{SVC}.update_library", lambda pk, payload, operator: {"id": int(pk)})
+    monkeypatch.setattr(
+        f"{SVC}.update_library",
+        lambda pk, payload, operator, **kwargs: {"id": int(pk)},
+    )
     response = PublicEnumLibraryViewSet.as_view({"put": "update"})(
         _req("put", superuser, data={"name": "x"}), pk="5"
     )
@@ -133,12 +206,8 @@ def test_update_ok(superuser, monkeypatch):
 def test_update_rejects_library_outside_current_scope(editor, monkeypatch):
     called = {}
     monkeypatch.setattr(
-        f"{SVC}.get_library_or_raise",
-        lambda pk: SimpleNamespace(team=[9]),
-    )
-    monkeypatch.setattr(
         f"{SVC}.update_library",
-        lambda pk, payload, operator: called.setdefault("updated", True),
+        _update_stub([9], called),
     )
 
     response = PublicEnumLibraryViewSet.as_view({"put": "update"})(
@@ -153,12 +222,8 @@ def test_update_rejects_library_outside_current_scope(editor, monkeypatch):
 def test_update_rejects_new_team_outside_current_scope(editor, monkeypatch):
     called = {}
     monkeypatch.setattr(
-        f"{SVC}.get_library_or_raise",
-        lambda pk: SimpleNamespace(team=[1]),
-    )
-    monkeypatch.setattr(
         f"{SVC}.update_library",
-        lambda pk, payload, operator: called.setdefault("updated", True),
+        _update_stub([1], called),
     )
 
     response = PublicEnumLibraryViewSet.as_view({"put": "update"})(
@@ -174,12 +239,8 @@ def test_update_allows_keeping_existing_team_outside_current_scope(
     editor, monkeypatch
 ):
     monkeypatch.setattr(
-        f"{SVC}.get_library_or_raise",
-        lambda pk: SimpleNamespace(team=[1, 9]),
-    )
-    monkeypatch.setattr(
         f"{SVC}.update_library",
-        lambda pk, payload, operator: {"id": int(pk)},
+        _update_stub([1, 9]),
     )
 
     response = PublicEnumLibraryViewSet.as_view({"put": "update"})(
@@ -191,14 +252,51 @@ def test_update_allows_keeping_existing_team_outside_current_scope(
 
 
 @pytest.mark.django_db
-def test_update_allows_child_library_when_include_children_enabled(editor, monkeypatch):
-    monkeypatch.setattr(
-        f"{SVC}.get_library_or_raise",
-        lambda pk: SimpleNamespace(team=[2]),
-    )
+def test_update_allows_removing_existing_team_outside_current_scope(
+    editor, monkeypatch
+):
     monkeypatch.setattr(
         f"{SVC}.update_library",
-        lambda pk, payload, operator: {"id": int(pk)},
+        _update_stub([1, 9]),
+    )
+
+    response = PublicEnumLibraryViewSet.as_view({"put": "update"})(
+        _req("put", editor, data={"name": "x", "team": [1]}), pk="5"
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert _body(response)["data"]["id"] == 5
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("requested_team", ([9], []))
+def test_update_rejects_removing_own_team_scope(
+    editor, monkeypatch, requested_team
+):
+    called = {}
+    monkeypatch.setattr(
+        f"{SVC}.update_library",
+        _update_stub([1, 9], called),
+    )
+
+    response = PublicEnumLibraryViewSet.as_view({"put": "update"})(
+        _req(
+            "put",
+            editor,
+            data={"name": "x", "team": requested_team},
+        ),
+        pk="5",
+    )
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert called == {}
+
+
+@pytest.mark.django_db
+def test_update_allows_child_library_when_include_children_enabled(editor, monkeypatch):
+    monkeypatch.setattr(
+        f"{SVC}.update_library",
+        _update_stub([2]),
     )
 
     response = PublicEnumLibraryViewSet.as_view({"put": "update"})(
@@ -212,12 +310,8 @@ def test_update_allows_child_library_when_include_children_enabled(editor, monke
 @pytest.mark.django_db
 def test_update_keeps_global_library_compatible_for_editor(editor, monkeypatch):
     monkeypatch.setattr(
-        f"{SVC}.get_library_or_raise",
-        lambda pk: SimpleNamespace(team=[]),
-    )
-    monkeypatch.setattr(
         f"{SVC}.update_library",
-        lambda pk, payload, operator: {"id": int(pk)},
+        _update_stub([]),
     )
 
     response = PublicEnumLibraryViewSet.as_view({"put": "update"})(
@@ -230,7 +324,10 @@ def test_update_keeps_global_library_compatible_for_editor(editor, monkeypatch):
 
 @pytest.mark.django_db
 def test_destroy_ok(superuser, monkeypatch):
-    monkeypatch.setattr(f"{SVC}.delete_library", lambda pk, operator: None)
+    monkeypatch.setattr(
+        f"{SVC}.delete_library",
+        lambda pk, operator, **kwargs: None,
+    )
     response = PublicEnumLibraryViewSet.as_view({"delete": "destroy"})(_req("delete", superuser), pk="5")
     assert response.status_code == status.HTTP_200_OK
 
@@ -239,12 +336,8 @@ def test_destroy_ok(superuser, monkeypatch):
 def test_destroy_rejects_library_outside_current_scope(editor, monkeypatch):
     called = {}
     monkeypatch.setattr(
-        f"{SVC}.get_library_or_raise",
-        lambda pk: SimpleNamespace(team=[9]),
-    )
-    monkeypatch.setattr(
         f"{SVC}.delete_library",
-        lambda pk, operator: called.setdefault("deleted", True),
+        _delete_stub([9], called),
     )
 
     response = PublicEnumLibraryViewSet.as_view({"delete": "destroy"})(
@@ -257,7 +350,7 @@ def test_destroy_rejects_library_outside_current_scope(editor, monkeypatch):
 
 @pytest.mark.django_db
 def test_destroy_not_found(superuser, monkeypatch):
-    def _raise(pk, operator):
+    def _raise(pk, operator, **kwargs):
         raise BaseAppException("枚举库不存在")
 
     monkeypatch.setattr(f"{SVC}.delete_library", _raise)
@@ -267,7 +360,7 @@ def test_destroy_not_found(superuser, monkeypatch):
 
 @pytest.mark.django_db
 def test_destroy_conflict(superuser, monkeypatch):
-    def _raise(pk, operator):
+    def _raise(pk, operator, **kwargs):
         raise BaseAppException("存在引用", data={"references": [{"model_id": "host"}]})
 
     monkeypatch.setattr(f"{SVC}.delete_library", _raise)
