@@ -59,6 +59,65 @@ class TestDangerousRuleViewSet:
         assert "rm" in resp.data[DangerousLevel.FORBIDDEN]
         assert "dd" not in resp.data[DangerousLevel.FORBIDDEN]
 
+    def test_builtin_is_visible_and_superuser_can_edit_and_delete(self, su_client):
+        rule = DangerousRule.objects.create(
+            name="系统规则", pattern="shutdown", level=DangerousLevel.CONFIRM,
+            is_builtin=True, team=[],
+        )
+
+        list_resp = su_client.get(f"{RULE_URL}?page_size=100")
+        assert list_resp.status_code == 200
+        listed_rule = next(item for item in list_resp.data["items"] if item["id"] == rule.id)
+        assert listed_rule["is_builtin"] is True
+        assert set(listed_rule).isdisjoint({"preset_key", "preset_version", "disabled_reason", "disabled_by", "disabled_at", "can_toggle"})
+
+        edit_resp = su_client.patch(f"{RULE_URL}{rule.id}/", {"name": "被修改"}, format="json")
+        assert edit_resp.status_code == 200
+        rule.refresh_from_db()
+        assert rule.name == "被修改"
+
+        delete_resp = su_client.delete(f"{RULE_URL}{rule.id}/")
+        assert delete_resp.status_code in (200, 204)
+        assert not DangerousRule.objects.filter(id=rule.id).exists()
+
+    def test_builtin_toggle_does_not_require_reason(self, su_client):
+        rule = DangerousRule.objects.create(
+            name="系统规则", pattern="shutdown", level=DangerousLevel.CONFIRM,
+            is_builtin=True, team=[],
+        )
+
+        resp = su_client.patch(f"{RULE_URL}{rule.id}/", {"is_enabled": False}, format="json")
+        assert resp.status_code == 200
+        rule.refresh_from_db()
+        assert rule.is_enabled is False
+
+    def test_non_superuser_cannot_operate_builtin(self, api_client, authenticated_user):
+        authenticated_user.is_superuser = False
+        authenticated_user.permission = {
+            "job": {"dangerous_command-View", "dangerous_command-Edit", "dangerous_command-Delete"},
+        }
+        api_client.cookies["current_team"] = "1"
+        rule = DangerousRule.objects.create(
+            name="系统规则", pattern="shutdown", level=DangerousLevel.CONFIRM,
+            is_builtin=True, team=[],
+        )
+
+        edit_resp = api_client.patch(f"{RULE_URL}{rule.id}/", {"name": "被修改"}, format="json")
+        delete_resp = api_client.delete(f"{RULE_URL}{rule.id}/")
+
+        assert edit_resp.status_code == 403
+        assert delete_resp.status_code == 403
+        assert DangerousRule.objects.filter(id=rule.id, name="系统规则").exists()
+
+    def test_enabled_rules_includes_global_builtin(self, su_client):
+        DangerousRule.objects.create(
+            name="全局规则", pattern="global-danger", level=DangerousLevel.FORBIDDEN,
+            is_builtin=True, is_enabled=True, team=[],
+        )
+        resp = su_client.get(f"{RULE_URL}enabled_rules/")
+        assert resp.status_code == 200
+        assert "global-danger" in resp.data[DangerousLevel.FORBIDDEN]
+
 
 class TestDangerousPathViewSet:
     def test_create_returns_201(self, su_client):
@@ -101,3 +160,31 @@ class TestDangerousPathViewSet:
         assert resp.status_code == 200
         assert "/etc" in resp.data[DangerousLevel.FORBIDDEN][MatchType.EXACT]
         assert "/var/.*" in resp.data[DangerousLevel.CONFIRM][MatchType.REGEX]
+
+    def test_enabled_paths_includes_global_builtin(self, su_client):
+        DangerousPath.objects.create(
+            name="全局路径", pattern="/global-danger", match_type=MatchType.EXACT,
+            level=DangerousLevel.FORBIDDEN, is_builtin=True,
+            is_enabled=True, team=[],
+        )
+        resp = su_client.get(f"{PATH_URL}enabled_paths/")
+        assert resp.status_code == 200
+        assert "/global-danger" in resp.data[DangerousLevel.FORBIDDEN][MatchType.EXACT]
+
+    def test_non_superuser_cannot_operate_builtin(self, api_client, authenticated_user):
+        authenticated_user.is_superuser = False
+        authenticated_user.permission = {
+            "job": {"dangerous_path-View", "dangerous_path-Edit", "dangerous_path-Delete"},
+        }
+        api_client.cookies["current_team"] = "1"
+        path = DangerousPath.objects.create(
+            name="系统路径", pattern="/etc", match_type=MatchType.EXACT,
+            is_builtin=True, team=[],
+        )
+
+        edit_resp = api_client.patch(f"{PATH_URL}{path.id}/", {"pattern": "/tmp"}, format="json")
+        delete_resp = api_client.delete(f"{PATH_URL}{path.id}/")
+
+        assert edit_resp.status_code == 403
+        assert delete_resp.status_code == 403
+        assert DangerousPath.objects.filter(id=path.id, pattern="/etc").exists()

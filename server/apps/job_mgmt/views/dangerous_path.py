@@ -49,7 +49,7 @@ class DangerousPathViewSet(BaseDangerousItemViewSet):
     def enabled_paths(self, request):
         """获取当前组启用的所有高危路径规则"""
         current_team = int(get_current_team(request, 0))
-        paths = DangerousPath.objects.filter(is_enabled=True, team__contains=current_team)
+        paths = [path for path in DangerousPath.objects.filter(is_enabled=True) if not path.team or current_team in path.team]
 
         result = {
             DangerousLevel.CONFIRM: {MatchType.EXACT: [], MatchType.REGEX: []},

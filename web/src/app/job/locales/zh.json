@@ -182,6 +182,7 @@
     "targetName": "目标名称",
     "targetNamePlaceholder": "请输入目标名称，例如：web-server-01",
     "source": "来源",
+    "customRule": "自定义",
     "sourceSync": "节点管理",
     "sourceManual": "手动录入",
     "driverAnsible": "Ansible",

@@ -48,7 +48,7 @@ class DangerousRuleViewSet(BaseDangerousItemViewSet):
     @action(detail=False, methods=["GET"])
     def enabled_rules(self, request):
         current_team = int(get_current_team(request, 0))
-        rules = DangerousRule.objects.filter(is_enabled=True, team__contains=current_team)
+        rules = [rule for rule in DangerousRule.objects.filter(is_enabled=True) if not rule.team or current_team in rule.team]
         result = {DangerousLevel.CONFIRM: [], DangerousLevel.FORBIDDEN: []}
         for rule in rules:
             result[rule.level].append(rule.pattern)

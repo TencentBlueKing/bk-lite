@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   Button,
   Input,
@@ -28,6 +28,9 @@ import SearchCombination from '@/components/search-combination';
 import { SearchFilters, FieldConfig } from '@/components/search-combination/types';
 
 const { Dragger } = Upload;
+const TARGET_DATA_COLUMN_COUNT = 7;
+const MIN_TARGET_DATA_COLUMN_WIDTH = 120;
+const TARGET_ACTION_COLUMN_WIDTH = 120;
 
 const TargetPage = () => {
   const { t } = useTranslation();
@@ -56,6 +59,8 @@ const TargetPage = () => {
   const [editingTarget, setEditingTarget] = useState<Target | null>(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [testLoading, setTestLoading] = useState(false);
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+  const [targetDataColumnWidth, setTargetDataColumnWidth] = useState(MIN_TARGET_DATA_COLUMN_WIDTH);
 
   const [cloudRegions, setCloudRegions] = useState<{ id: number; name: string }[]>([]);
 
@@ -164,6 +169,28 @@ const TargetPage = () => {
       fetchData();
     }
   }, [pagination.current, pagination.pageSize]);
+
+  useEffect(() => {
+    const container = tableContainerRef.current;
+    if (!container) return;
+
+    const updateTargetColumnWidth = () => {
+      const tableBody = container.querySelector<HTMLElement>('.ant-table-body');
+      const scrollbarWidth = tableBody ? tableBody.offsetWidth - tableBody.clientWidth : 0;
+      const availableWidth = container.clientWidth - TARGET_ACTION_COLUMN_WIDTH - scrollbarWidth;
+      const averageWidth = Math.floor(availableWidth / TARGET_DATA_COLUMN_COUNT);
+      setTargetDataColumnWidth(Math.max(MIN_TARGET_DATA_COLUMN_WIDTH, averageWidth));
+    };
+
+    const frameId = window.requestAnimationFrame(updateTargetColumnWidth);
+    const resizeObserver = new ResizeObserver(updateTargetColumnWidth);
+    resizeObserver.observe(container);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      resizeObserver.disconnect();
+    };
+  }, [data.length, loading]);
 
   const handleSearchChange = useCallback((filters: SearchFilters) => {
     setSearchFilters(filters);
@@ -398,31 +425,31 @@ const TargetPage = () => {
       title: t('job.targetName'),
       dataIndex: 'name',
       key: 'name',
-      width: 160,
+      width: targetDataColumnWidth,
     },
     {
       title: t('job.ipAddress'),
       dataIndex: 'ip',
       key: 'ip',
-      width: 140,
+      width: targetDataColumnWidth,
     },
     {
       title: t('job.cloudRegion'),
       dataIndex: 'cloud_region_name',
       key: 'cloud_region_name',
-      width: 120,
+      width: targetDataColumnWidth,
     },
     {
       title: t('job.osType'),
       dataIndex: 'os_type_display',
       key: 'os_type_display',
-      width: 100,
+      width: targetDataColumnWidth,
     },
     {
       title: t('job.currentDriver'),
       dataIndex: 'driver',
       key: 'driver',
-      width: 130,
+      width: targetDataColumnWidth,
       render: (_: unknown, record: Target) => (
         <span style={{ color: getDriverColor(record.driver) }}>
           {record.driver_display || record.driver}
@@ -433,7 +460,7 @@ const TargetPage = () => {
       title: t('job.credential'),
       dataIndex: 'credential',
       key: 'credential',
-      width: 100,
+      width: targetDataColumnWidth,
       render: (_: unknown, record: Target) => {
         const hasCredential = record.ssh_user || record.ssh_port;
         return (
@@ -450,7 +477,7 @@ const TargetPage = () => {
       title: t('job.organization'),
       dataIndex: 'team_name',
       key: 'team_name',
-      width: 120,
+      width: targetDataColumnWidth,
       render: (_: unknown, record: Target) => (
         <span>{Array.isArray(record.team_name) ? record.team_name.join(', ') : '-'}</span>
       ),
@@ -459,7 +486,8 @@ const TargetPage = () => {
       title: t('job.operation'),
       dataIndex: 'action',
       key: 'action',
-      width: 120,
+      width: TARGET_ACTION_COLUMN_WIDTH,
+      fixed: 'right',
       render: (_: unknown, record: Target) => (
         <div className="flex items-center gap-3">
           <a
@@ -528,7 +556,7 @@ const TargetPage = () => {
         </div>
 
         {/* Table */}
-        <div className="flex-1 min-h-0">
+        <div ref={tableContainerRef} className="flex-1 min-h-0">
           <CustomTable
             columns={columns}
             dataSource={data}
