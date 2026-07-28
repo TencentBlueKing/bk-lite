@@ -91,6 +91,7 @@ if [ -n "$TIMESERIES_PREDICT_TIMEOUT_SECONDS" ]; then
 fi
 
 # 启动 serving 容器（使用 Dockerfile 定义的 ENTRYPOINT: startup.sh -> supervisord）
+set +e
 DOCKER_OUTPUT=$(docker run -d \
     --name "$ID" \
     --network "$NETWORK_MODE" \
@@ -111,6 +112,7 @@ DOCKER_OUTPUT=$(docker run -d \
     "$TRAIN_IMAGE" 2>&1)
 
 DOCKER_STATUS=$?
+set -e
 
 if [ $DOCKER_STATUS -ne 0 ]; then
     json_error "CONTAINER_START_FAILED" "$ID" "Failed to start container" "$DOCKER_OUTPUT"

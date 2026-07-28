@@ -1,7 +1,7 @@
 import json
 import os
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -24,7 +24,7 @@ def _write_executable(path, source):
     path.chmod(0o755)
 
 
-def _run_serve_script(tmp_path, runtime, payload):
+def _run_serve_script(tmp_path, runtime, payload, mode="success"):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     capture_file = tmp_path / f"{runtime}-capture"
@@ -34,9 +34,16 @@ def _run_serve_script(tmp_path, runtime, payload):
             """#!/bin/bash
 echo "$*" >> "$CAPTURE_FILE"
 case "$1 $2" in
-  "ps -a") exit 0 ;;
+  "ps -a")
+    if [ "$STUB_MODE" = "existing" ]; then echo "TimeseriesPredict_Serving_1"; fi
+    exit 0
+    ;;
   "images --format") echo "classify-timeseries:latest"; exit 0 ;;
-  "run -d") echo "container-id"; exit 0 ;;
+  "run -d")
+    if [ "$STUB_MODE" = "dependency_failure" ]; then echo "docker unavailable" >&2; exit 1; fi
+    echo "container-id"
+    exit 0
+    ;;
   "ps -q") echo "container-id"; exit 0 ;;
 esac
 exit 0
@@ -50,8 +57,18 @@ exit 0
             bin_dir / "kubectl",
             """#!/bin/bash
 if [ "$1 $2" = "get namespace" ]; then exit 0; fi
-if [ "$1 $2" = "get deployment" ]; then exit 1; fi
-if [ "$1 $2" = "apply -f" ]; then cat > "$CAPTURE_FILE"; exit 0; fi
+if [ "$1 $2" = "get deployment" ]; then
+  if [ "$STUB_MODE" = "existing" ]; then
+    if [[ "$*" == *"jsonpath"* ]]; then echo "1"; fi
+    exit 0
+  fi
+  exit 1
+fi
+if [ "$1 $2" = "apply -f" ]; then
+  cat > "$CAPTURE_FILE"
+  if [ "$STUB_MODE" = "dependency_failure" ]; then echo "cluster unavailable" >&2; exit 1; fi
+  exit 0
+fi
 if [ "$1 $2" = "get svc" ]; then echo "31001"; exit 0; fi
 exit 0
 """,
@@ -61,6 +78,7 @@ exit 0
     env = os.environ.copy()
     env["PATH"] = f"{bin_dir}:{env['PATH']}"
     env["CAPTURE_FILE"] = str(capture_file)
+    env["STUB_MODE"] = mode
     result = subprocess.run(
         ["bash", str(script), json.dumps(payload)],
         capture_output=True,
@@ -134,6 +152,38 @@ def test_serve_script_omits_timeseries_budget_for_other_services(tmp_path, runti
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "TIMESERIES_PREDICT_TIMEOUT_SECONDS" not in captured
+
+
+@pytest.mark.parametrize(
+    ("runtime", "expected_code"),
+    [
+        ("docker", "CONTAINER_ALREADY_EXISTS"),
+        ("kubernetes", "DEPLOYMENT_ALREADY_EXISTS"),
+    ],
+)
+def test_serve_script_rejects_existing_resource_without_replacing_it(tmp_path, runtime, expected_code):
+    result, captured = _run_serve_script(tmp_path, runtime, BASE_PAYLOAD, mode="existing")
+
+    assert result.returncode == 1
+    error = json.loads(result.stdout)
+    assert error["code"] == expected_code
+    assert "run -d" not in captured
+    assert "apiVersion:" not in captured
+
+
+@pytest.mark.parametrize(
+    ("runtime", "expected_code"),
+    [
+        ("docker", "CONTAINER_START_FAILED"),
+        ("kubernetes", "RESOURCE_APPLY_FAILED"),
+    ],
+)
+def test_serve_script_reports_dependency_failure(tmp_path, runtime, expected_code):
+    result, _ = _run_serve_script(tmp_path, runtime, BASE_PAYLOAD, mode="dependency_failure")
+
+    assert result.returncode == 1
+    error = json.loads(result.stdout)
+    assert error["code"] == expected_code
 
 
 @pytest.mark.parametrize("runtime", ["docker", "kubernetes"])

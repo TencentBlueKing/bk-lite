@@ -929,16 +929,25 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
 
         # 获取容器实际状态（更新前），防御性处理 container_info 为空的情况
         container_info = instance.container_info or {}
+        old_container_info = dict(container_info)
         container_state = container_info.get("state")
         container_port = container_info.get("port")
 
-        # 需要重启时先校验预算，避免因系统配置错误先删掉仍在运行的旧容器。
+        # 需要重启时先校验全部旧服务恢复参数，避免系统配置错误导致旧容器下线。
         predict_budget_seconds = None
+        mlflow_tracking_uri = None
+        old_model_uri = None
+        old_train_image = None
         if container_state == "running" and (model_version_changed or train_job_changed or port_changed):
             try:
                 predict_budget_seconds = get_timeseries_predict_budget_seconds()
-            except ValueError as e:
-                logger.error(f"时序预测超时预算配置无效: {e}")
+                mlflow_tracking_uri = get_mlflow_tracking_uri()
+                if not mlflow_tracking_uri:
+                    raise ValueError("环境变量 MLFLOW_TRACKER_URL 未配置")
+                old_model_uri = self._resolve_model_uri(instance)
+                old_train_image = get_image_by_prefix(self.MLFLOW_PREFIX, instance.train_job.algorithm)
+            except Exception as e:
+                logger.error(f"时序预测重启前置配置无效: {e}")
                 return Response(
                     {"error": f"系统配置错误: {str(e)}"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -946,6 +955,8 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
 
         # 更新数据库
         response = super().update(request, *args, **kwargs)
+        if not isinstance(response, Response) or response.status_code >= 400:
+            return response
         instance.refresh_from_db()
 
         # 只有容器在运行时才考虑重启
@@ -976,28 +987,43 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
         # 如果需要重启，先删除旧容器
         if need_restart:
             try:
-                logger.warning(f"配置变更需要重启，删除旧容器: {container_id}")
-                WebhookClient.remove(container_id)
-            except WebhookError as e:
-                logger.warning(f"删除旧容器失败（可能已不存在）: {e}")
-                # 继续执行，尝试启动新容器
+                model_uri = self._resolve_model_uri(instance)
+                train_image = get_image_by_prefix(self.MLFLOW_PREFIX, instance.train_job.algorithm)
+            except Exception as e:
+                instance.model_version = old_model_version
+                instance.train_job_id = old_train_job_id
+                instance.port = old_port
+                instance.container_info = old_container_info
+                instance.save(update_fields=["model_version", "train_job", "port", "container_info"])
+                logger.error(f"新 serving 配置校验失败，保留旧服务: {e}", exc_info=True)
+                return Response(
+                    {"error": f"配置更新未生效，旧服务保持运行: {str(e)}"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
 
             try:
-                # 获取 MLflow tracking URI
-                mlflow_tracking_uri = get_mlflow_tracking_uri()
-                if not mlflow_tracking_uri:
-                    raise ValueError("环境变量 MLFLOW_TRACKER_URL 未配置")
+                logger.warning(f"配置变更需要重启，删除旧容器: {container_id}")
+                WebhookClient.remove(container_id)
+            except Exception as e:
+                instance.model_version = old_model_version
+                instance.train_job_id = old_train_job_id
+                instance.port = old_port
+                instance.container_info = old_container_info
+                instance.save(update_fields=["model_version", "train_job", "port", "container_info"])
+                logger.error(f"删除旧容器失败，配置已回滚: {e}", exc_info=True)
+                return Response(
+                    {"error": f"配置更新未生效，旧服务保持运行: {str(e)}"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
 
-                # 解析新的 model_uri
-                model_uri = self._resolve_model_uri(instance)
-
+            try:
                 # 启动新容器
                 result = WebhookClient.serve(
                     container_id,
                     mlflow_tracking_uri,
                     model_uri,
                     port=instance.port,
-                    train_image=get_image_by_prefix(self.MLFLOW_PREFIX, instance.train_job.algorithm),
+                    train_image=train_image,
                     timeseries_predict_timeout_seconds=predict_budget_seconds,
                 )
 
@@ -1012,17 +1038,43 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
 
             except Exception as e:
                 logger.error(f"自动重启失败: {str(e)}", exc_info=True)
+                try:
+                    rollback_result = WebhookClient.serve(
+                        container_id,
+                        mlflow_tracking_uri,
+                        old_model_uri,
+                        port=old_port,
+                        train_image=old_train_image,
+                        timeseries_predict_timeout_seconds=predict_budget_seconds,
+                    )
+                    rollback_port = (
+                        int(rollback_result.get("port", 0))
+                        if rollback_result.get("port")
+                        else old_port
+                    )
+                    rollback_message = "新服务启动失败，已恢复旧配置与旧服务"
+                except Exception as rollback_error:
+                    logger.error(f"恢复旧 serving 失败: {rollback_error}", exc_info=True)
+                    rollback_result = {
+                        "status": "error",
+                        "message": f"新服务与旧服务恢复均失败: {str(rollback_error)}",
+                    }
+                    rollback_port = old_port
+                    rollback_message = "新服务启动失败，旧配置已恢复但旧服务恢复失败"
 
-                # 启动失败，仅更新容器信息
-                instance.container_info = {
-                    "status": "error",
-                    "message": f"配置已更新但重启失败: {str(e)}",
-                }
-                instance.save(update_fields=["container_info"])
-
-                response.data["container_info"] = instance.container_info
-                response.data["message"] = f"配置已更新但重启失败: {str(e)}"
-                response.data["warning"] = "请手动调用 start 接口重新启动服务"
+                instance.model_version = old_model_version
+                instance.train_job_id = old_train_job_id
+                instance.port = rollback_port
+                instance.container_info = rollback_result
+                instance.save(update_fields=["model_version", "train_job", "port", "container_info"])
+                return Response(
+                    {
+                        "error": f"配置更新未生效: {str(e)}",
+                        "message": rollback_message,
+                        "container_info": rollback_result,
+                    },
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
 
         return response
 

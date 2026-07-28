@@ -7,8 +7,10 @@
 - MLService.predict() 的验证失败路径和正常预测路径（使用 DummyModel）
 """
 
+import asyncio
 import importlib
 import sys
+import time
 import types
 from unittest.mock import MagicMock, patch
 
@@ -255,6 +257,34 @@ class TestMLServicePredict:
         data = [{"timestamp": 1700000000 + i * 60, "value": float(i)} for i in range(5)]
         config = {"steps": steps}
         response = await svc.predict(data, config)
+        assert response.success is True
+        assert response.prediction is not None
+        assert len(response.prediction) == steps
+
+    @pytest.mark.asyncio
+    async def test_max_steps_completes_within_scaled_service_budget(self):
+        """时间缩放的负载契约：旧 30 秒预算会红，默认 120 秒预算可完成 1000 步。"""
+        from classify_timeseries_server.serving.service import TIMESERIES_PREDICT_TIMEOUT_SECONDS
+
+        steps = 1000
+        svc = self._make_service(steps=steps)
+
+        def slow_predict(features):
+            assert features["steps"] == steps
+            time.sleep(0.35)
+            return [1.0] * steps
+
+        svc.model.predict.side_effect = slow_predict
+        data = [{"timestamp": 1700000000 + i * 60, "value": float(i)} for i in range(5)]
+        scaled_timeout = TIMESERIES_PREDICT_TIMEOUT_SECONDS / 100
+
+        response = await asyncio.wait_for(
+            asyncio.to_thread(
+                lambda: asyncio.run(svc.predict(data, {"steps": steps})),
+            ),
+            timeout=scaled_timeout,
+        )
+
         assert response.success is True
         assert response.prediction is not None
         assert len(response.prediction) == steps
