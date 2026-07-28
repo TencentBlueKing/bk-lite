@@ -471,7 +471,7 @@ class InstallerService:
                 "else echo 'Error: root or sudo is required to install controller'; exit 1; fi; "
             )
 
-        return (
+        command = (
             f"{shell_detection}{privilege_detection}"
             'umask 077; bootstrap_file="$(mktemp)" || exit 1; '
             'cleanup_bootstrap() { rm -f "$bootstrap_file"; }; '
@@ -484,3 +484,8 @@ class InstallerService:
             'else sudo "$bootstrap_shell" "$bootstrap_file" || bootstrap_status=$?; fi; '
             'exit "$bootstrap_status"'
         )
+        if install_mode == InstallerService.MANUAL_INSTALL_MODE:
+            # 手动命令会直接粘贴到用户当前的登录 Shell 中执行。使用子 Shell
+            # 隔离内部 exit，既保留安装退出码，也不结束用户的登录会话。
+            return f"( {command} )"
+        return command

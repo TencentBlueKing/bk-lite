@@ -639,6 +639,54 @@ def test_get_linux_bootstrap_command_manual_mode_uses_interactive_sudo_for_non_r
 
 
 @pytest.mark.django_db
+def test_get_linux_bootstrap_command_manual_mode_keeps_login_shell_alive(tmp_path):
+    env, _, _, bootstrap_log = _prepare_bootstrap_shell_test(tmp_path, "sh")
+    shell_alive_log = tmp_path / "shell-alive.log"
+    env["SHELL_ALIVE_LOG"] = str(shell_alive_log)
+    with patch(
+        "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
+        return_value=_SESSION_CFG,
+    ):
+        cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="manual")
+
+    result = subprocess.run(
+        ["/bin/sh", "-c", f'{cmd}; printf alive > "$SHELL_ALIVE_LOG"'],
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert bootstrap_log.read_text(encoding="utf-8") == "ran"
+    assert shell_alive_log.read_text(encoding="utf-8") == "alive"
+
+
+@pytest.mark.django_db
+def test_get_linux_bootstrap_command_auto_mode_still_ends_execution_shell(tmp_path):
+    env, _, _, bootstrap_log = _prepare_bootstrap_shell_test(tmp_path, "sh")
+    shell_alive_log = tmp_path / "shell-alive.log"
+    env["SHELL_ALIVE_LOG"] = str(shell_alive_log)
+    with patch(
+        "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
+        return_value=_SESSION_CFG,
+    ):
+        cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="auto")
+
+    result = subprocess.run(
+        ["/bin/sh", "-c", f'{cmd}; printf alive > "$SHELL_ALIVE_LOG"'],
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert bootstrap_log.read_text(encoding="utf-8") == "ran"
+    assert not shell_alive_log.exists()
+
+
+@pytest.mark.django_db
 def test_get_linux_bootstrap_command_preserves_download_failure_and_cleans_temp_file(tmp_path):
     env, bootstrap_temp, runner_log, bootstrap_log = _prepare_bootstrap_shell_test(
         tmp_path,
