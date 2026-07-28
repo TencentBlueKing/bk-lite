@@ -64,11 +64,13 @@ export function resolveUserSyncTemplate(
   instanceId: number | undefined,
   availableInstances: AvailableInstance[],
   providers: ProviderManifest[],
+  providerKey?: string,
 ): BusinessTemplate | null {
   if (!instanceId) return null;
   const instance = availableInstances.find((item) => item.id === instanceId);
-  if (!instance) return null;
-  const provider = providers.find((item) => item.key === instance.provider_key);
+  const resolvedProviderKey = instance?.provider_key || providerKey;
+  if (!resolvedProviderKey) return null;
+  const provider = providers.find((item) => item.key === resolvedProviderKey);
   if (!provider) return null;
   const capability = provider.capabilities.find((item) => item.key === 'user_sync');
   if (!capability?.business_template) return null;

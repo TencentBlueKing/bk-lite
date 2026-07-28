@@ -15,6 +15,7 @@ class IMNotificationSyncRunSerializer(serializers.ModelSerializer):
 
 class IMNotificationUserMappingSerializer(serializers.ModelSerializer):
     username = serializers.SerializerMethodField()
+    display_name = serializers.SerializerMethodField()
 
     class Meta:
         model = IMNotificationUserMapping
@@ -22,6 +23,9 @@ class IMNotificationUserMappingSerializer(serializers.ModelSerializer):
 
     def get_username(self, obj):
         return obj.user.username if obj.user_id else ""
+
+    def get_display_name(self, obj):
+        return obj.user.display_name if obj.user_id else ""
 
 
 class IMNotificationChannelSerializer(UsernameSerializer):

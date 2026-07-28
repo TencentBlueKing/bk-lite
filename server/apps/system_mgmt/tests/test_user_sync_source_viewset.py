@@ -165,7 +165,7 @@ def test_delete_user_sync_source_does_not_scan_all_users(user_sync_source):
 
 
 @pytest.mark.django_db
-def test_list_returns_explicit_root_scope_field(api_client, authenticated_user, user_sync_source):
+def test_list_returns_provider_key_and_explicit_root_scope_field(api_client, authenticated_user, user_sync_source):
     authenticated_user.is_superuser = True
     authenticated_user.permission = {"system-manager": {"user_sync-View"}}
     authenticated_user.save(update_fields=["is_superuser"])
@@ -174,6 +174,7 @@ def test_list_returns_explicit_root_scope_field(api_client, authenticated_user, 
 
     assert response.status_code == 200
     payload = response.data if isinstance(response.data, list) else response.data.get("items", response.data.get("results"))
+    assert payload[0]["integration_provider_key"] == "feishu"
     assert payload[0]["root_scope_field"] == "root_department_id"
 
 
