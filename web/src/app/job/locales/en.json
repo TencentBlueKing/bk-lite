@@ -181,6 +181,7 @@
     "targetName": "Target Name",
     "targetNamePlaceholder": "Enter target name, e.g.: web-server-01",
     "source": "Source",
+    "customRule": "Custom",
     "sourceSync": "Node Manager",
     "sourceManual": "Manual",
     "driverAnsible": "Ansible",

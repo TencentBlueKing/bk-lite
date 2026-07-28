@@ -101,6 +101,7 @@ export interface UpdateIntegrationInstancePayload {
 export interface CapabilityExecutionError {
   code: string;
   message: string;
+  detail: string;
   retryable: boolean;
   field: string;
   external_code: string;

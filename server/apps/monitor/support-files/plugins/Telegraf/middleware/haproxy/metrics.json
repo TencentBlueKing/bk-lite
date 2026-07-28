@@ -3,7 +3,7 @@
   "plugin_desc": "Real-time collection of HAProxy frontend, backend, and server runtime data based on the Telegraf haproxy input, including sessions, queues, traffic, HTTP responses, errors, server health, and latency, helping users diagnose load-balancing performance and availability issues.",
   "status_query": "any({instance_type='haproxy', collect_type='middleware'}) by (instance_id)",
   "name": "Haproxy",
-  "icon": "mm-middleware_中间件",
+  "icon": "mm-haproxy_HAProxy",
   "type": "Middleware",
   "description": "",
   "default_metric": "any({instance_type='haproxy'}) by (instance_id)",

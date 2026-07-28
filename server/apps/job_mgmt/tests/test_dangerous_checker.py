@@ -4,6 +4,9 @@
 覆盖纯逻辑部分（匹配算法 + 结果聚合）和缓存层，不依赖 DB。
 """
 
+import importlib
+import re
+
 from types import SimpleNamespace
 from unittest.mock import MagicMock, call, patch
 
@@ -20,6 +23,19 @@ from apps.job_mgmt.services.dangerous_checker import (
 )
 
 pytestmark = pytest.mark.unit
+
+
+def test_builtin_baseline_contains_linux_and_windows_rules():
+    migration = importlib.import_module("apps.job_mgmt.migrations.0013_dangerous_builtin_metadata")
+    command_names = {item[0] for item in migration.COMMAND_PRESETS}
+    path_patterns = {item[1] for item in migration.PATH_PRESETS}
+
+    assert any("Linux" in name or "Shell" in name or "块设备" in name for name in command_names)
+    assert any("Windows" in name for name in command_names)
+    assert any(pattern.startswith("/") for pattern in path_patterns)
+    assert any(pattern.startswith("C:\\") for pattern in path_patterns)
+    for _, pattern, _ in migration.COMMAND_PRESETS:
+        re.compile(pattern)
 
 
 def _rule(level, pattern="rm -rf", name="r", rid=1):
@@ -63,6 +79,10 @@ class TestMatchPathPattern:
 
     def test_正则路径匹配(self):
         assert DangerousChecker._match_path_pattern(r"/etc/.*", "/etc/passwd", MatchType.REGEX) == ["/etc/passwd"]
+
+    def test_windows路径忽略大小写和分隔符(self):
+        match = DangerousChecker._match_path_pattern
+        assert match(r"C:\Windows", r"c:/windows/System32", MatchType.EXACT) == [r"C:\Windows"]
 
 
 class TestDangerousCheckResult:

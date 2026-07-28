@@ -18,13 +18,16 @@ class DangerousPathSerializer(serializers.ModelSerializer):
             "match_type",
             "level",
             "is_enabled",
+            "is_builtin",
             "team",
             "created_by",
             "created_at",
             "updated_by",
             "updated_at",
         ]
-        read_only_fields = ["id", "created_by", "created_at", "updated_by", "updated_at"]
+        read_only_fields = [
+            "id", "is_builtin", "created_by", "created_at", "updated_by", "updated_at",
+        ]
 
 
 class DangerousPathCreateSerializer(serializers.ModelSerializer):

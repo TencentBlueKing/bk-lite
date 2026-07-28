@@ -20,6 +20,7 @@ export interface DangerousRule {
   match_type?: DangerousRuleMatchType;
   level: 'confirm' | 'forbidden';
   is_enabled: boolean;
+  is_builtin: boolean;
   team: number[];
   created_by: string;
   created_at: string;
