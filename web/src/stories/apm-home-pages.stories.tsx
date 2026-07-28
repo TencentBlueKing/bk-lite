@@ -12,17 +12,18 @@ import {
   Typography,
 } from 'antd';
 import {
+  ApartmentOutlined,
   ApiOutlined,
   AppstoreOutlined,
   BellOutlined,
   CompassOutlined,
-  ContainerOutlined,
   DashboardOutlined,
+  FieldTimeOutlined,
   FireOutlined,
-  HeartOutlined,
   RadarChartOutlined,
   RocketOutlined,
   ThunderboltOutlined,
+  WarningOutlined,
 } from '@ant-design/icons';
 
 const { Content } = Layout;
@@ -32,7 +33,9 @@ const { Title, Paragraph, Text } = Typography;
  * bklite APM · 首页 · 交互式故事书
  *
  * 7 段汇总(控制塔 / Datadog 风格):
- *   §3.1 KPI 概览    顶部 6 卡 + sparkline + 较昨日 delta
+ *   §3.1 KPI 概览    顶部 6 卡 + sparkline
+ *                   (应用数量 / 服务数量 / 活跃告警数 /
+ *                    请求量 / 错误请求数 / P95 延迟)
  *   §3.2 健康度分布  环形图(健康 / 警告 / 严重 / 未知) + 图例
  *   §3.3 健康度趋势  3 线时序图(整体 / 核心 / 外部依赖),1h/4h/1d 切换
  *   §3.4 实时告警    未恢复告警倒序,5 条 + 查看全部
@@ -650,20 +653,19 @@ function KpiCard({ kpi }: { kpi: KpiConfig }) {
  * ============================================================ */
 const KPI_DATA: KpiConfig[] = [
   {
-    key: 'health',
-    label: '服务健康度',
-    icon: <HeartOutlined />,
-    iconBg: TOKENS.successSoft,
-    iconColor: TOKENS.success,
-    value: '92.5',
-    unit: '%',
-    trend: [88, 90, 89, 91, 90, 92, 92, 93, 91, 92, 92, 92, 91, 92, 92, 93, 92, 92, 92, 92, 93, 92, 92, 92.5],
-    sparkColor: TOKENS.success,
+    key: 'apps',
+    label: '应用数量',
+    icon: <ApartmentOutlined />,
+    iconBg: TOKENS.primarySoft,
+    iconColor: TOKENS.primary,
+    value: '24',
+    trend: [16, 17, 18, 19, 20, 21, 21, 22, 22, 22, 23, 23, 23, 23, 23, 24, 24, 24, 24, 24, 24, 24, 24, 24],
+    sparkColor: TOKENS.primary,
     sparkKind: 'area',
   },
   {
     key: 'services',
-    label: '服务总数',
+    label: '服务数量',
     icon: <AppstoreOutlined />,
     iconBg: TOKENS.primarySoft,
     iconColor: TOKENS.primary,
@@ -673,19 +675,8 @@ const KPI_DATA: KpiConfig[] = [
     sparkKind: 'area',
   },
   {
-    key: 'instances',
-    label: '实例数',
-    icon: <ContainerOutlined />,
-    iconBg: TOKENS.primarySoft,
-    iconColor: TOKENS.primary,
-    value: '512',
-    trend: [488, 488, 490, 490, 492, 492, 494, 496, 496, 498, 498, 500, 500, 502, 502, 504, 504, 506, 506, 508, 508, 510, 512, 512],
-    sparkColor: TOKENS.primary,
-    sparkKind: 'area',
-  },
-  {
     key: 'alerts',
-    label: '告警中',
+    label: '活跃告警数',
     icon: <BellOutlined />,
     iconBg: TOKENS.dangerSoft,
     iconColor: TOKENS.danger,
@@ -695,19 +686,8 @@ const KPI_DATA: KpiConfig[] = [
     sparkKind: 'area',
   },
   {
-    key: 'events',
-    label: '事件总数',
-    icon: <ThunderboltOutlined />,
-    iconBg: TOKENS.warningSoft,
-    iconColor: TOKENS.warning,
-    value: '18',
-    trend: [12, 13, 14, 12, 15, 16, 14, 13, 15, 14, 16, 17, 15, 14, 15, 16, 17, 16, 18, 17, 18, 17, 18, 18],
-    sparkColor: TOKENS.warning,
-    sparkKind: 'area',
-  },
-  {
-    key: 'throughput',
-    label: '吞吐量',
+    key: 'requests',
+    label: '请求量',
     icon: <ApiOutlined />,
     iconBg: TOKENS.primarySoft,
     iconColor: TOKENS.primary,
@@ -715,6 +695,30 @@ const KPI_DATA: KpiConfig[] = [
     unit: 'k req/s',
     trend: [2.8, 2.9, 2.85, 2.95, 3.0, 3.05, 3.1, 3.0, 3.15, 3.1, 3.2, 3.25, 3.2, 3.3, 3.25, 3.3, 3.35, 3.3, 3.4, 3.35, 3.4, 3.38, 3.4, 3.42],
     sparkColor: TOKENS.primary,
+    sparkKind: 'area',
+  },
+  {
+    key: 'errors',
+    label: '错误请求数',
+    icon: <WarningOutlined />,
+    iconBg: TOKENS.dangerSoft,
+    iconColor: TOKENS.danger,
+    value: '17',
+    unit: '/s',
+    trend: [3, 4, 5, 6, 7, 8, 8, 9, 10, 11, 12, 12, 13, 13, 14, 14, 15, 15, 16, 16, 16, 17, 17, 17],
+    sparkColor: TOKENS.danger,
+    sparkKind: 'area',
+  },
+  {
+    key: 'p95',
+    label: 'P95 延迟',
+    icon: <FieldTimeOutlined />,
+    iconBg: TOKENS.warningSoft,
+    iconColor: TOKENS.warning,
+    value: '285',
+    unit: 'ms',
+    trend: [180, 195, 210, 220, 230, 240, 250, 255, 260, 265, 270, 275, 275, 280, 280, 285, 280, 285, 285, 290, 290, 285, 285, 285],
+    sparkColor: TOKENS.warning,
     sparkKind: 'area',
   },
 ];
