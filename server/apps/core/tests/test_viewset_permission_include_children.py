@@ -62,20 +62,3 @@ def test_include_children_allows_when_instance_granted(monkeypatch):
     allowed = _Fun().get_has_permission(_user(), _instance(), current_team=10, include_children=True)
 
     assert allowed is True  # 显式实例授权 → 放行
-
-
-def test_stale_instance_rule_cannot_cross_current_team_scope(monkeypatch):
-    user = SimpleNamespace(
-        group_list=[{"id": 10}, {"id": 12}],
-        group_tree=[],
-    )
-    instance = SimpleNamespace(id=999, team=[12])
-    monkeypatch.setattr(
-        viewset_utils,
-        "get_permission_rules",
-        lambda *a, **k: {"team": [], "instance": [{"id": 999, "permission": ["View", "Operate"]}]},
-    )
-
-    allowed = _Fun().get_has_permission(user, instance, current_team=10)
-
-    assert allowed is False

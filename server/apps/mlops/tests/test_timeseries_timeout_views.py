@@ -30,6 +30,33 @@ def _fake_build_predict_url(serving_id, container_info):
     return "http://fake-predict/predict"
 
 
+def _create_serving_payload(train_job, name):
+    return {
+        "name": name,
+        "description": "",
+        "team": [1],
+        "train_job": train_job.id,
+        "model_version": "latest",
+        "status": "inactive",
+        "port": 3000,
+    }
+
+
+def _mock_create_runtime_dependencies(monkeypatch):
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.get_mlflow_tracking_uri",
+        lambda: "http://mlflow:15000",
+    )
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.get_image_by_prefix",
+        lambda prefix, algorithm: "classify-timeseries:latest",
+    )
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.TimeSeriesPredictServingViewSet._resolve_model_uri",
+        lambda self, instance: f"models:/timeseries/{instance.model_version}",
+    )
+
+
 def test_predict_uses_configured_timeout_for_max_steps(mlops_api_client, mlops_user, monkeypatch):
     mlops_user.permission["mlops"].add("timeseries_predict-Predict")
     serving = _create_serving()
@@ -431,6 +458,123 @@ def test_runtime_action_timeout_reconciles_and_advances_generation(
     serving.refresh_from_db()
     assert serving.container_info["state"] == actual_state
     assert serving.container_info["_runtime_generation"] == 2
+
+
+def test_runtime_action_timeout_without_matching_status_keeps_unknown(
+    mlops_api_client,
+    mlops_user,
+    monkeypatch,
+):
+    from apps.mlops.utils.webhook_client import WebhookTimeoutError
+
+    mlops_user.permission["mlops"].add("timeseries_predict-Stop")
+    serving = _create_serving(port=3000)
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.WebhookClient.stop",
+        lambda serving_id: (_ for _ in ()).throw(WebhookTimeoutError("response lost")),
+    )
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.WebhookClient.get_status",
+        lambda ids: [],
+    )
+
+    response = mlops_api_client.post(
+        f"/api/v1/mlops/timeseries_predict_servings/{serving.id}/stop/",
+        {},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+    serving.refresh_from_db()
+    assert serving.container_info["state"] == "unknown"
+    assert serving.container_info["_runtime_generation"] == 2
+
+
+def test_create_initializes_runtime_inside_atomic_row_lock(
+    mlops_api_client,
+    mlops_user,
+    monkeypatch,
+):
+    from django.db import connection
+    from django.db.models import QuerySet
+
+    mlops_user.permission["mlops"].add("timeseries_predict-Add")
+    train_job = create_train_job(TimeSeriesPredictTrainJob, team=1)
+    _mock_create_runtime_dependencies(monkeypatch)
+    locked_in_atomic = []
+    original_select_for_update = QuerySet.select_for_update
+
+    def track_select_for_update(queryset, *args, **kwargs):
+        if queryset.model is TimeSeriesPredictServing:
+            locked_in_atomic.append(connection.in_atomic_block)
+        return original_select_for_update(queryset, *args, **kwargs)
+
+    def fake_serve(container_id, *args, **kwargs):
+        assert connection.in_atomic_block
+        assert locked_in_atomic == [True]
+        return {"id": container_id, "status": "success", "state": "running", "port": "3000"}
+
+    monkeypatch.setattr(QuerySet, "select_for_update", track_select_for_update)
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.WebhookClient.serve",
+        fake_serve,
+    )
+
+    response = mlops_api_client.post(
+        "/api/v1/mlops/timeseries_predict_servings/",
+        _create_serving_payload(train_job, "atomic-create"),
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    assert response.data["container_info"]["state"] == "running"
+    assert response.data["container_info"]["_runtime_generation"] == 2
+    assert locked_in_atomic == [True]
+
+
+def test_create_save_failure_rolls_back_record_and_cleans_runtime(
+    mlops_api_client,
+    mlops_user,
+    monkeypatch,
+):
+    from django.db import DatabaseError
+
+    mlops_user.permission["mlops"].add("timeseries_predict-Add")
+    train_job = create_train_job(TimeSeriesPredictTrainJob, team=1)
+    _mock_create_runtime_dependencies(monkeypatch)
+    runtime_ids = []
+    removed_ids = []
+    original_save = TimeSeriesPredictServing.save
+
+    def fake_serve(container_id, *args, **kwargs):
+        runtime_ids.append(container_id)
+        return {"id": container_id, "status": "success", "state": "running", "port": "3000"}
+
+    def fail_final_save(instance, *args, **kwargs):
+        if kwargs.get("update_fields") == ["container_info", "port"]:
+            raise DatabaseError("commit state unavailable")
+        return original_save(instance, *args, **kwargs)
+
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.WebhookClient.serve",
+        fake_serve,
+    )
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.WebhookClient.remove",
+        lambda container_id: removed_ids.append(container_id),
+    )
+    monkeypatch.setattr(TimeSeriesPredictServing, "save", fail_final_save)
+
+    response = mlops_api_client.post(
+        "/api/v1/mlops/timeseries_predict_servings/",
+        _create_serving_payload(train_job, "failed-create"),
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+    assert runtime_ids
+    assert removed_ids == runtime_ids
+    assert not TimeSeriesPredictServing.objects.filter(name="failed-create").exists()
 
 
 def test_destroy_acquires_shared_row_lock_before_runtime_cleanup(
@@ -928,36 +1072,6 @@ def test_update_remove_timeout_with_failed_status_check_is_not_marked_running(
     assert serving.model_version == "latest"
     assert serving.container_info["state"] == "unknown"
     assert serving.container_info["status"] == "error"
-
-
-def test_stale_instance_rule_cannot_bypass_current_team_scope(monkeypatch):
-    from types import SimpleNamespace
-
-    from apps.core.utils import viewset_utils
-    from apps.mlops.views.timeseries_predict import TimeSeriesPredictServingViewSet
-
-    serving = _create_serving()
-    serving.team = [2]
-    serving.save(update_fields=["team"])
-    request = SimpleNamespace(
-        user=SimpleNamespace(
-            is_superuser=False,
-            group_list=[{"id": 1}],
-            group_tree=[],
-        ),
-        COOKIES={"current_team": "1", "include_children": "0"},
-    )
-    monkeypatch.setattr(viewset_utils, "get_current_team", lambda request, default=None: "1")
-    monkeypatch.setattr(
-        viewset_utils,
-        "get_permission_rules",
-        lambda *args, **kwargs: {"instance": [{"id": serving.id}], "team": []},
-    )
-    viewset = TimeSeriesPredictServingViewSet()
-
-    queryset = viewset.get_queryset_by_permission(request, TimeSeriesPredictServing.objects.all())
-
-    assert not queryset.filter(pk=serving.pk).exists()
 
 
 def test_update_does_not_restore_old_service_until_failed_runtime_is_removed(

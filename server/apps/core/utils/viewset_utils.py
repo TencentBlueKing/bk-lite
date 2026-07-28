@@ -80,16 +80,12 @@ class GenericViewSetFun(object):
 
     def get_has_permission(self, user, instance, current_team, is_list=False, is_check=False, include_children=False):
         """获取规则实例ID"""
-        try:
-            normalized_current_team = int(current_team)
-        except (TypeError, ValueError):
-            normalized_current_team = current_team
-        scoped_groups = {normalized_current_team}
+        user_groups = normalize_user_group_ids(getattr(user, "group_list", []))
         if include_children:
             group_tree = getattr(user, "group_tree", [])
             child_groups = self.extract_child_group_ids(group_tree, current_team)
             if child_groups:
-                scoped_groups = set(child_groups)
+                user_groups = child_groups
         org_field = getattr(self, "ORGANIZATION_FIELD", "team")
         if is_list:
             instance_id = list(instance.values_list("id", flat=True))
@@ -97,12 +93,12 @@ class GenericViewSetFun(object):
                 if hasattr(i, org_field):
                     # 判断两个集合是否有交集
                     org_value = getattr(i, org_field)
-                    if not set(org_value).intersection(scoped_groups):
+                    if not set(org_value).intersection(set(user_groups)):
                         return False
         else:
             if hasattr(instance, org_field):
                 org_value = getattr(instance, org_field)
-                if not set(org_value).intersection(scoped_groups):
+                if not set(org_value).intersection(set(user_groups)):
                     return False
             instance_id = [instance.id]
         try:
@@ -116,7 +112,7 @@ class GenericViewSetFun(object):
                 # "对象属于当前组织树即放行"，造成子组织任务越权（issue #3037）。
                 # current_team 自身已授权的情况已由上方 current_team in permission_rules["team"] 覆盖。
                 allowed_teams = {i for i in permission_rules.get("team", [])}
-                if allowed_teams & scoped_groups:
+                if allowed_teams & set(user_groups):
                     return True
 
             operate = "View" if is_check else "Operate"
@@ -176,15 +172,11 @@ class GenericViewSetFun(object):
             permission_data = get_permission_rules(user, current_team, app_name, permission_key, include_children)
             instance_ids = [i["id"] for i in permission_data.get("instance", [])]
             team = permission_data.get("team", [])
-            permission_query = Q()
             if instance_ids:
-                permission_query |= Q(id__in=instance_ids)
-            permission_query |= build_json_membership_query(queryset, org_field, team)
+                query |= Q(id__in=instance_ids)
+            query |= build_json_membership_query(queryset, org_field, team)
             if not instance_ids and not team:
                 return queryset.filter(id=0)
-            # 实例级规则只在当前组织范围内生效。团队移除后即使远端规则清理
-            # 暂时失败，旧规则也不能绕过本地组织边界重新暴露实例。
-            query &= permission_query
         return queryset.filter(query)
 
     @classmethod

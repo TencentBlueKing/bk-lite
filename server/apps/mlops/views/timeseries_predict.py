@@ -7,7 +7,7 @@ from apps.mlops.constants import TrainJobStatus, DatasetReleaseStatus, MLflowRun
 from rest_framework.decorators import action
 from rest_framework import status
 from rest_framework.response import Response
-from django.db import transaction
+from django.db import DatabaseError, transaction
 from django.db.models import Case, F, JSONField, Q, Value, When
 from django.http import FileResponse
 from apps.mlops.utils.webhook_client import (
@@ -850,12 +850,21 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
         """副作用结果不确定时查询实际状态；查询失败则持久化 unknown。"""
         try:
             observed_runtime = WebhookClient.get_status([serving_id])
-            runtime_info = observed_runtime[0] if observed_runtime else {
-                "status": "success",
-                "id": serving_id,
-                "state": "not_found",
-                "message": f"{transition} 后未发现运行时资源",
-            }
+            runtime_info = next(
+                (
+                    item
+                    for item in observed_runtime
+                    if item.get("id") == serving_id and item.get("state")
+                ),
+                None,
+            )
+            if runtime_info is None:
+                runtime_info = {
+                    "status": "error",
+                    "id": serving_id,
+                    "state": "unknown",
+                    "message": f"{transition} 结果未知: {str(error)}; 状态查询未返回目标资源",
+                }
         except Exception as status_error:
             runtime_info = {
                 "status": "error",
@@ -866,6 +875,17 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
         cls._assign_runtime_container_info(instance, runtime_info)
         instance.save(update_fields=["container_info"])
         return instance.container_info
+
+    @staticmethod
+    def _cleanup_uncommitted_create_runtime(container_id):
+        """创建事务无法提交时，幂等清理可能已经产生的外部资源。"""
+        try:
+            WebhookClient.remove(container_id)
+        except Exception as cleanup_error:
+            logger.critical(
+                f"创建 serving 事务回滚后清理残留运行时失败: container_id={container_id}, error={cleanup_error}",
+                exc_info=True,
+            )
 
     @HasPermission("timeseries_predict-View")
     def list(self, request, *args, **kwargs):
@@ -993,8 +1013,22 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
 
     @HasPermission("timeseries_predict-Add")
     def create(self, request, *args, **kwargs):
+        cleanup_context = {}
+        try:
+            return self._create_under_runtime_lock(request, cleanup_context, *args, **kwargs)
+        except Exception:
+            container_id = cleanup_context.get("container_id")
+            if container_id is not None:
+                self._cleanup_uncommitted_create_runtime(container_id)
+            raise
+
+    @transaction.atomic
+    def _create_under_runtime_lock(self, request, cleanup_context, *args, **kwargs):
         """
-        创建 serving 服务并自动启动容器
+        创建 serving 服务并自动启动容器。
+
+        新记录及外部运行时在同一事务内初始化，提交前对其他请求不可见；若事务
+        或最终落库失败，外层会在事务退出后幂等清理可能已创建的运行时。
         """
         # 创建 serving 记录（初始状态为 inactive）
         response = super().create(request, *args, **kwargs)
@@ -1003,8 +1037,8 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
         container_id = None
 
         try:
-            # 获取创建的 serving 对象
-            serving = TimeSeriesPredictServing.objects.get(id=serving_id)
+            # 新记录在提交前不可见；显式行锁使创建与其余运行时入口使用同一锁约定。
+            serving = TimeSeriesPredictServing.objects.select_for_update().get(id=serving_id)
 
             # 获取 MLflow tracking URI
             mlflow_tracking_uri = get_mlflow_tracking_uri()
@@ -1041,6 +1075,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
 
             # 构建 serving ID
             container_id = f"TimeseriesPredict_Serving_{serving.id}"
+            cleanup_context["container_id"] = container_id
 
             try:
                 self._claim_runtime_transition(serving, "create")
@@ -1106,6 +1141,8 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                     response.data["container_info"] = serving.container_info
                     response.data["message"] = f"服务已创建但启动失败: {error_msg}"
 
+        except DatabaseError:
+            raise
         except Exception as e:
             logger.error(f"自动启动 serving 异常: {str(e)}", exc_info=True)
             if serving is not None and container_id is not None:
