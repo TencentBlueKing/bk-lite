@@ -184,6 +184,7 @@ def test_update_restores_old_service_when_new_container_fails(
     assert serving.description == ""
     assert serving.port == 3000
     assert serving.container_info["state"] == "running"
+    assert serving.container_info["_runtime_generation"] == 1
 
 
 def test_update_failure_does_not_overwrite_concurrent_database_update(
@@ -303,6 +304,7 @@ def test_update_acquires_row_lock_before_runtime_transition(
     serving.refresh_from_db()
     assert serving.model_version == "v2"
     assert serving.container_info["state"] == "running"
+    assert serving.container_info["_runtime_generation"] == 1
 
 
 @pytest.mark.parametrize(
@@ -373,6 +375,7 @@ def test_runtime_actions_acquire_shared_row_lock(
         "remove": "removed",
     }[action_name]
     assert serving.container_info["state"] == expected_state
+    assert serving.container_info["_runtime_generation"] == 1
 
 
 def test_destroy_acquires_shared_row_lock_before_runtime_cleanup(
@@ -486,6 +489,129 @@ def test_runtime_status_sync_does_not_overwrite_concurrent_transition(
     assert response_serving["container_info"] == transitioned_info
     serving.refresh_from_db()
     assert serving.container_info == transitioned_info
+
+
+@pytest.mark.parametrize("endpoint", ["list", "retrieve"])
+def test_runtime_status_sync_generation_blocks_aba_transition(
+    mlops_api_client,
+    mlops_user,
+    monkeypatch,
+    endpoint,
+):
+    mlops_user.permission["mlops"].add("timeseries_predict-View")
+    serving = _create_serving(port=3000)
+    initial_info = {**CONTAINER_INFO, "_runtime_generation": 4}
+    transitioned_info = {**CONTAINER_INFO, "_runtime_generation": 5}
+    TimeSeriesPredictServing.objects.filter(pk=serving.pk).update(container_info=initial_info)
+    stale_runtime_info = {
+        "id": f"TimeseriesPredict_Serving_{serving.id}",
+        "status": "success",
+        "state": "not_found",
+    }
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.TimeSeriesPredictServingViewSet.get_has_permission",
+        lambda *args, **kwargs: True,
+    )
+    monkeypatch.setattr(
+        "apps.core.utils.viewset_utils.get_permission_rules",
+        lambda *args, **kwargs: {"team": [1], "instance": []},
+    )
+
+    def query_stale_status(_serving_ids):
+        # 新 runtime 的公开状态与旧 runtime 相同，只有单调 generation 能识别 ABA。
+        TimeSeriesPredictServing.objects.filter(pk=serving.pk).update(container_info=transitioned_info)
+        return [stale_runtime_info]
+
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.WebhookClient.get_status",
+        query_stale_status,
+    )
+    url = (
+        "/api/v1/mlops/timeseries_predict_servings/"
+        if endpoint == "list"
+        else f"/api/v1/mlops/timeseries_predict_servings/{serving.id}/"
+    )
+
+    response = mlops_api_client.get(url)
+
+    assert response.status_code == status.HTTP_200_OK
+    if endpoint == "list":
+        response_items = response.data.get("items", []) if isinstance(response.data, dict) else response.data
+    else:
+        response_items = [response.data]
+    response_serving = next(item for item in response_items if item["id"] == serving.id)
+    assert response_serving["container_info"] == transitioned_info
+    serving.refresh_from_db()
+    assert serving.container_info == transitioned_info
+
+
+@pytest.mark.parametrize("endpoint", ["list", "retrieve"])
+def test_runtime_status_sync_tolerates_concurrent_delete(
+    mlops_api_client,
+    mlops_user,
+    monkeypatch,
+    endpoint,
+):
+    mlops_user.permission["mlops"].add("timeseries_predict-View")
+    serving = _create_serving(port=3000)
+    runtime_info = {
+        "id": f"TimeseriesPredict_Serving_{serving.id}",
+        "status": "success",
+        "state": "not_found",
+    }
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.TimeSeriesPredictServingViewSet.get_has_permission",
+        lambda *args, **kwargs: True,
+    )
+    monkeypatch.setattr(
+        "apps.core.utils.viewset_utils.get_permission_rules",
+        lambda *args, **kwargs: {"team": [1], "instance": []},
+    )
+
+    def query_after_delete(_serving_ids):
+        TimeSeriesPredictServing.objects.filter(pk=serving.pk).delete()
+        return [runtime_info]
+
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.WebhookClient.get_status",
+        query_after_delete,
+    )
+    url = (
+        "/api/v1/mlops/timeseries_predict_servings/"
+        if endpoint == "list"
+        else f"/api/v1/mlops/timeseries_predict_servings/{serving.id}/"
+    )
+
+    response = mlops_api_client.get(url)
+
+    assert response.status_code == status.HTTP_200_OK
+    assert not TimeSeriesPredictServing.objects.filter(pk=serving.pk).exists()
+
+
+def test_runtime_status_batch_sync_uses_two_queries(django_assert_num_queries):
+    from apps.mlops.views.timeseries_predict import TimeSeriesPredictServingViewSet
+
+    first = _create_serving(port=3000)
+    second = _create_serving(port=3001)
+    updates = [
+        (
+            first.id,
+            first.container_info,
+            {"id": f"TimeseriesPredict_Serving_{first.id}", "status": "success", "state": "running"},
+        ),
+        (
+            second.id,
+            second.container_info,
+            {"id": f"TimeseriesPredict_Serving_{second.id}", "status": "success", "state": "running"},
+        ),
+    ]
+
+    with django_assert_num_queries(2):
+        current_info = TimeSeriesPredictServingViewSet._sync_runtime_statuses_if_generation_unchanged(updates)
+
+    assert set(current_info) == {first.id, second.id}
+    assert current_info[first.id]["_runtime_generation"] == 0
+    assert current_info[second.id]["_runtime_generation"] == 0
 
 
 def test_update_reconciles_remove_timeout_before_restoring_old_runtime(

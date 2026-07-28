@@ -7,6 +7,7 @@ from rest_framework.decorators import action
 from rest_framework import status
 from rest_framework.response import Response
 from django.db import transaction
+from django.db.models import Case, F, JSONField, Q, Value, When
 from django.http import FileResponse
 from apps.mlops.utils.webhook_client import (
     WebhookClient,
@@ -686,6 +687,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
     permission_key = "serving.timeseries_predict_serving"
 
     MLFLOW_PREFIX = "TimeseriesPredict"  # MLflow 命名前缀
+    RUNTIME_GENERATION_KEY = "_runtime_generation"
 
     @staticmethod
     def _snapshot_database_state(instance):
@@ -695,8 +697,8 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
             if not field.primary_key
         }
 
-    @staticmethod
-    def _restore_database_state(instance, old_state, applied_state, **overrides):
+    @classmethod
+    def _restore_database_state(cls, instance, old_state, applied_state, **overrides):
         """只回滚仍保持本请求写入值的字段，避免覆盖并发请求。"""
         with transaction.atomic():
             current = instance.__class__.objects.select_for_update().get(pk=instance.pk)
@@ -707,6 +709,8 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                     restored_state[field_name] = deepcopy(old_value)
             for field_name, value in overrides.items():
                 if getattr(current, field_name) == applied_state[field_name]:
+                    if field_name == "container_info":
+                        value = cls._next_runtime_container_info(current, value)
                     restored_state[field_name] = deepcopy(value)
             if restored_state:
                 instance.__class__.objects.filter(pk=instance.pk).update(**restored_state)
@@ -718,16 +722,75 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
         unlocked_instance = self.get_object()
         return unlocked_instance.__class__.objects.select_for_update().get(pk=unlocked_instance.pk)
 
-    @staticmethod
-    def _sync_runtime_status_if_unchanged(instance_id, observed_container_info, runtime_container_info):
-        """仅在查询期间数据库状态未变化时写回，避免旧查询覆盖新切换结果。"""
-        updated = TimeSeriesPredictServing.objects.filter(
-            pk=instance_id,
-            container_info=observed_container_info,
-        ).update(container_info=runtime_container_info)
-        if updated:
-            return runtime_container_info
-        return TimeSeriesPredictServing.objects.values_list("container_info", flat=True).get(pk=instance_id)
+    @classmethod
+    def _next_runtime_container_info(cls, instance, runtime_container_info):
+        """运行时所有者每次变更都递增 generation，避免状态值 ABA。"""
+        current_info = instance.container_info if isinstance(instance.container_info, dict) else {}
+        try:
+            current_generation = int(current_info.get(cls.RUNTIME_GENERATION_KEY, 0))
+        except (TypeError, ValueError):
+            current_generation = 0
+        return {
+            **(runtime_container_info or {}),
+            cls.RUNTIME_GENERATION_KEY: current_generation + 1,
+        }
+
+    @classmethod
+    def _assign_runtime_container_info(cls, instance, runtime_container_info):
+        instance.container_info = cls._next_runtime_container_info(instance, runtime_container_info)
+        return instance.container_info
+
+    @classmethod
+    def _runtime_status_cas_condition(cls, instance_id, observed_container_info):
+        observed_info = observed_container_info if isinstance(observed_container_info, dict) else {}
+        if cls.RUNTIME_GENERATION_KEY in observed_info:
+            generation_lookup = f"container_info__{cls.RUNTIME_GENERATION_KEY}"
+            return Q(pk=instance_id, **{generation_lookup: observed_info[cls.RUNTIME_GENERATION_KEY]})
+        # 兼容尚未经过运行时变更的旧记录；首次写回会注入 generation=0。
+        return Q(pk=instance_id, container_info=observed_container_info)
+
+    @classmethod
+    def _sync_runtime_statuses_if_generation_unchanged(cls, status_updates):
+        """一条 CAS UPDATE 批量写回，再一条查询返回当前状态；并发删除时跳过。"""
+        if not status_updates:
+            return {}
+
+        update_filter = Q(pk__in=[])
+        update_cases = []
+        instance_ids = []
+        for instance_id, observed_container_info, runtime_container_info in status_updates:
+            condition = cls._runtime_status_cas_condition(instance_id, observed_container_info)
+            observed_info = observed_container_info if isinstance(observed_container_info, dict) else {}
+            try:
+                generation = int(observed_info.get(cls.RUNTIME_GENERATION_KEY, 0))
+            except (TypeError, ValueError):
+                generation = 0
+            versioned_runtime_info = {
+                **runtime_container_info,
+                cls.RUNTIME_GENERATION_KEY: generation,
+            }
+            update_filter |= condition
+            update_cases.append(
+                When(
+                    condition,
+                    then=Value(versioned_runtime_info, output_field=JSONField()),
+                )
+            )
+            instance_ids.append(instance_id)
+
+        TimeSeriesPredictServing.objects.filter(update_filter).update(
+            container_info=Case(
+                *update_cases,
+                default=F("container_info"),
+                output_field=JSONField(),
+            )
+        )
+        return dict(
+            TimeSeriesPredictServing.objects.filter(pk__in=instance_ids).values_list(
+                "pk",
+                "container_info",
+            )
+        )
 
     @HasPermission("timeseries_predict-View")
     def list(self, request, *args, **kwargs):
@@ -749,17 +812,16 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
             result = WebhookClient.get_status(serving_ids)
             status_map = {s.get("id"): s for s in result}
 
+            status_updates = []
+            runtime_info_by_id = {}
             for serving_data in servings:
                 serving_id = f"TimeseriesPredict_Serving_{serving_data['id']}"
                 container_info = status_map.get(serving_id)
 
                 if container_info:
                     observed_container_info = serving_data.get("container_info")
-                    serving_data["container_info"] = self._sync_runtime_status_if_unchanged(
-                        serving_data["id"],
-                        observed_container_info,
-                        container_info,
-                    )
+                    status_updates.append((serving_data["id"], observed_container_info, container_info))
+                    runtime_info_by_id[serving_data["id"]] = container_info
                 else:
                     # webhookd 没返回这个容器的状态（不应该发生）
                     serving_data["container_info"] = {
@@ -767,6 +829,16 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                         "state": "unknown",
                         "message": "webhookd 未返回此容器状态",
                     }
+
+            current_info_by_id = self._sync_runtime_statuses_if_generation_unchanged(status_updates)
+            for serving_data in servings:
+                instance_id = serving_data["id"]
+                if instance_id in runtime_info_by_id:
+                    # 并发 DELETE 时记录已不存在，保留本次已取得的运行时快照。
+                    serving_data["container_info"] = current_info_by_id.get(
+                        instance_id,
+                        runtime_info_by_id[instance_id],
+                    )
 
         except WebhookError as e:
             logger.error(f"查询容器状态失败: {e}")
@@ -795,9 +867,13 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
 
             if container_info:
                 observed_container_info = response.data.get("container_info")
-                response.data["container_info"] = self._sync_runtime_status_if_unchanged(
+                current_info_by_id = self._sync_runtime_statuses_if_generation_unchanged(
+                    [(response.data["id"], observed_container_info, container_info)]
+                )
+                # 详情已在请求开始时形成快照；并发 DELETE 时返回已取得的运行时状态，
+                # 不把正常竞争转换成 500。
+                response.data["container_info"] = current_info_by_id.get(
                     response.data["id"],
-                    observed_container_info,
                     container_info,
                 )
             else:
@@ -851,10 +927,13 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
             mlflow_tracking_uri = get_mlflow_tracking_uri()
             if not mlflow_tracking_uri:
                 logger.error("环境变量 MLFLOW_TRACKER_URL 未配置")
-                serving.container_info = {
-                    "status": "error",
-                    "message": "环境变量 MLFLOW_TRACKER_URL 未配置",
-                }
+                self._assign_runtime_container_info(
+                    serving,
+                    {
+                        "status": "error",
+                        "message": "环境变量 MLFLOW_TRACKER_URL 未配置",
+                    },
+                )
                 serving.save(update_fields=["container_info"])
                 response.data["container_info"] = serving.container_info
                 response.data["message"] = "服务已创建但启动失败：环境变量未配置"
@@ -865,10 +944,13 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                 model_uri = self._resolve_model_uri(serving)
             except ValueError as e:
                 logger.error(f"解析 model URI 失败: {e}")
-                serving.container_info = {
-                    "status": "error",
-                    "message": f"解析模型 URI 失败: {str(e)}",
-                }
+                self._assign_runtime_container_info(
+                    serving,
+                    {
+                        "status": "error",
+                        "message": f"解析模型 URI 失败: {str(e)}",
+                    },
+                )
                 serving.save(update_fields=["container_info"])
                 response.data["container_info"] = serving.container_info
                 response.data["message"] = f"服务已创建但启动失败：{str(e)}"
@@ -889,12 +971,12 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                 )
 
                 # 启动成功，仅更新容器信息
-                serving.container_info = result
+                versioned_result = self._assign_runtime_container_info(serving, result)
                 serving.port = int(result.get("port", 0)) if result.get("port") else serving.port
                 serving.save(update_fields=["container_info", "port"])
 
                 # 更新返回数据（status 由用户控制，不修改）
-                response.data["container_info"] = result
+                response.data["container_info"] = versioned_result
                 response.data["message"] = "服务已创建并启动"
 
             except WebhookError as e:
@@ -916,23 +998,29 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                         )
 
                         # 仅更新容器信息，不修改 status
-                        serving.container_info = container_info
+                        container_info = self._assign_runtime_container_info(serving, container_info)
                         serving.save(update_fields=["container_info"])
 
                         response.data["container_info"] = container_info
                         response.data["message"] = "服务已创建，检测到容器已存在并同步容器状态"
                         response.data["warning"] = "容器已存在，已同步容器信息"
                     except WebhookError:
-                        serving.container_info = {
-                            "status": "error",
-                            "message": f"容器已存在但同步状态失败: {error_msg}",
-                        }
+                        self._assign_runtime_container_info(
+                            serving,
+                            {
+                                "status": "error",
+                                "message": f"容器已存在但同步状态失败: {error_msg}",
+                            },
+                        )
                         serving.save(update_fields=["container_info"])
                         response.data["container_info"] = serving.container_info
                         response.data["message"] = "服务已创建但启动失败"
                 else:
                     # 其他错误
-                    serving.container_info = {"status": "error", "message": error_msg}
+                    self._assign_runtime_container_info(
+                        serving,
+                        {"status": "error", "message": error_msg},
+                    )
                     serving.save(update_fields=["container_info"])
                     response.data["container_info"] = serving.container_info
                     response.data["message"] = f"服务已创建但启动失败: {error_msg}"
@@ -1171,12 +1259,12 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                 )
 
                 # 更新容器信息（status 由用户控制，不修改）
-                instance.container_info = result
+                versioned_result = self._assign_runtime_container_info(instance, result)
                 instance.port = int(result.get("port", 0)) if result.get("port") else instance.port
                 instance.save(update_fields=["container_info", "port"])
 
                 # 更新返回数据
-                response.data["container_info"] = result
+                response.data["container_info"] = versioned_result
                 response.data["message"] = "配置已更新并重启服务"
                 self.delete_rules(instance.id, deferred_delete_teams)
 
@@ -1277,7 +1365,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                 )
 
                 # 正常启动成功，更新容器信息
-                serving.container_info = result
+                versioned_result = self._assign_runtime_container_info(serving, result)
                 serving.port = int(result.get("port", 0)) if result.get("port") else serving.port
                 serving.save(update_fields=["container_info", "port"])
 
@@ -1285,7 +1373,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                     {
                         "message": "服务已启动",
                         "serving_id": serving_id,
-                        "container_info": result,
+                        "container_info": versioned_result,
                     }
                 )
 
@@ -1309,7 +1397,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                         )
 
                         # 仅更新容器信息，不修改 status
-                        serving.container_info = container_info
+                        container_info = self._assign_runtime_container_info(serving, container_info)
                         serving.save(update_fields=["container_info"])
 
                         return Response(
@@ -1362,10 +1450,13 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
 
             # Kubernetes stop 使用异步删除并可能返回 terminating；必须保留
             # webhookd 的真实状态，不能提前宣称资源已 removed。
-            serving.container_info = {
-                **result,
-                "id": result.get("id", serving_id),
-            }
+            self._assign_runtime_container_info(
+                serving,
+                {
+                    **result,
+                    "id": result.get("id", serving_id),
+                },
+            )
             serving.save(update_fields=["container_info"])
 
             return Response(
@@ -1407,12 +1498,15 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
             result = WebhookClient.remove(serving_id)
 
             # 更新容器信息（status 由用户控制，不修改）
-            serving.container_info = {
-                "status": "success",
-                "id": serving_id,
-                "state": "removed",
-                "message": "容器已删除",
-            }
+            self._assign_runtime_container_info(
+                serving,
+                {
+                    "status": "success",
+                    "id": serving_id,
+                    "state": "removed",
+                    "message": "容器已删除",
+                },
+            )
             serving.save(update_fields=["container_info"])
 
             return Response(
