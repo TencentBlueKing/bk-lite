@@ -27,8 +27,9 @@ from apps.mlops.models.timeseries_predict import (
     TimeSeriesPredictDataset,
     TimeSeriesPredictTrainData,
 )
+from apps.mlops.tasks.file_cleanup import cleanup_train_data_file
 
-pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.integration]
+pytestmark = [pytest.mark.django_db, pytest.mark.integration]
 
 TRAIN_DATA_MODELS = [
     (AnomalyDetectionDataset, AnomalyDetectionTrainData),
@@ -85,18 +86,22 @@ def test_database_save_failure_preserves_old_file(
     assert _persisted_train_data_path(train_data_model, instance) == "old/train-data.bin"
 
 
-def test_outer_transaction_rollback_preserves_old_file(monkeypatch):
+def test_outer_transaction_rollback_preserves_old_file(
+    monkeypatch,
+    django_capture_on_commit_callbacks,
+):
     instance = _create_train_data(
         AnomalyDetectionDataset,
         AnomalyDetectionTrainData,
     )
     delete = _mock_storage_delete(monkeypatch, AnomalyDetectionTrainData)
 
-    with pytest.raises(RuntimeError, match="rollback caller transaction"):
-        with transaction.atomic():
-            instance.train_data = "new/train-data.bin"
-            instance.save()
-            raise RuntimeError("rollback caller transaction")
+    with django_capture_on_commit_callbacks(execute=True):
+        with pytest.raises(RuntimeError, match="rollback caller transaction"):
+            with transaction.atomic():
+                instance.train_data = "new/train-data.bin"
+                instance.save()
+                raise RuntimeError("rollback caller transaction")
 
     delete.assert_not_called()
     assert (
@@ -105,15 +110,19 @@ def test_outer_transaction_rollback_preserves_old_file(monkeypatch):
     )
 
 
-def test_committed_replacement_deletes_old_file(monkeypatch):
+def test_committed_replacement_deletes_old_file(
+    monkeypatch,
+    django_capture_on_commit_callbacks,
+):
     instance = _create_train_data(
         AnomalyDetectionDataset,
         AnomalyDetectionTrainData,
     )
     delete = _mock_storage_delete(monkeypatch, AnomalyDetectionTrainData)
 
-    instance.train_data = "new/train-data.bin"
-    instance.save()
+    with django_capture_on_commit_callbacks(execute=True):
+        instance.train_data = "new/train-data.bin"
+        instance.save()
 
     delete.assert_called_once_with("old/train-data.bin")
     assert (
@@ -122,15 +131,19 @@ def test_committed_replacement_deletes_old_file(monkeypatch):
     )
 
 
-def test_committed_clear_deletes_old_file(monkeypatch):
+def test_committed_clear_deletes_old_file(
+    monkeypatch,
+    django_capture_on_commit_callbacks,
+):
     instance = _create_train_data(
         AnomalyDetectionDataset,
         AnomalyDetectionTrainData,
     )
     delete = _mock_storage_delete(monkeypatch, AnomalyDetectionTrainData)
 
-    instance.train_data = None
-    instance.save()
+    with django_capture_on_commit_callbacks(execute=True):
+        instance.train_data = None
+        instance.save()
 
     delete.assert_called_once_with("old/train-data.bin")
     assert _persisted_train_data_path(AnomalyDetectionTrainData, instance) == ""
@@ -167,7 +180,10 @@ def test_update_fields_without_file_keeps_persisted_file(monkeypatch):
     )
 
 
-def test_cleanup_failure_does_not_rollback_committed_database_update(monkeypatch):
+def test_cleanup_failure_schedules_retry_without_rolling_back_database_update(
+    monkeypatch,
+    django_capture_on_commit_callbacks,
+):
     instance = _create_train_data(
         AnomalyDetectionDataset,
         AnomalyDetectionTrainData,
@@ -177,18 +193,41 @@ def test_cleanup_failure_does_not_rollback_committed_database_update(monkeypatch
         AnomalyDetectionTrainData,
         side_effect=OSError("object storage unavailable"),
     )
+    apply_async = Mock()
+    monkeypatch.setattr(cleanup_train_data_file, "apply_async", apply_async)
 
-    instance.train_data = "new/train-data.bin"
-    instance.save()
+    with django_capture_on_commit_callbacks(execute=True):
+        instance.train_data = "new/train-data.bin"
+        instance.save()
 
     delete.assert_called_once_with("old/train-data.bin")
+    apply_async.assert_called_once_with(
+        kwargs={
+            "model_label": "mlops.AnomalyDetectionTrainData",
+            "instance_pk": instance.pk,
+            "file_field_name": "train_data",
+            "old_path": "old/train-data.bin",
+            "using": "default",
+        },
+        delivery_mode=2,
+        retry=True,
+        retry_policy={
+            "max_retries": 3,
+            "interval_start": 0,
+            "interval_step": 1,
+            "interval_max": 3,
+        },
+    )
     assert (
         _persisted_train_data_path(AnomalyDetectionTrainData, instance)
         == "new/train-data.bin"
     )
 
 
-def test_stale_instance_non_file_save_preserves_committed_replacement(monkeypatch):
+def test_stale_instance_non_file_save_preserves_committed_replacement(
+    monkeypatch,
+    django_capture_on_commit_callbacks,
+):
     instance = _create_train_data(
         AnomalyDetectionDataset,
         AnomalyDetectionTrainData,
@@ -196,8 +235,9 @@ def test_stale_instance_non_file_save_preserves_committed_replacement(monkeypatc
     stale_instance = AnomalyDetectionTrainData.objects.get(pk=instance.pk)
     delete = _mock_storage_delete(monkeypatch, AnomalyDetectionTrainData)
 
-    instance.train_data = "new/train-data.bin"
-    instance.save()
+    with django_capture_on_commit_callbacks(execute=True):
+        instance.train_data = "new/train-data.bin"
+        instance.save()
 
     stale_instance.name = "renamed by concurrent request"
     stale_instance.save()
@@ -209,21 +249,52 @@ def test_stale_instance_non_file_save_preserves_committed_replacement(monkeypatc
     delete.assert_called_once_with("old/train-data.bin")
 
 
-def test_multiple_replacements_in_outer_transaction_keep_final_file(monkeypatch):
+def test_multiple_replacements_in_outer_transaction_keep_final_file(
+    monkeypatch,
+    django_capture_on_commit_callbacks,
+):
     instance = _create_train_data(
         AnomalyDetectionDataset,
         AnomalyDetectionTrainData,
     )
     delete = _mock_storage_delete(monkeypatch, AnomalyDetectionTrainData)
 
-    with transaction.atomic():
-        instance.train_data = "intermediate/train-data.bin"
-        instance.save()
-        instance.train_data = "old/train-data.bin"
-        instance.save()
+    with django_capture_on_commit_callbacks(execute=True):
+        with transaction.atomic():
+            instance.train_data = "intermediate/train-data.bin"
+            instance.save()
+            instance.train_data = "old/train-data.bin"
+            instance.save()
 
     assert (
         _persisted_train_data_path(AnomalyDetectionTrainData, instance)
         == "old/train-data.bin"
     )
     delete.assert_called_once_with("intermediate/train-data.bin")
+
+
+def test_retry_task_rechecks_current_database_reference(monkeypatch):
+    instance = _create_train_data(
+        AnomalyDetectionDataset,
+        AnomalyDetectionTrainData,
+    )
+    delete = _mock_storage_delete(monkeypatch, AnomalyDetectionTrainData)
+    cleanup_kwargs = {
+        "model_label": "mlops.AnomalyDetectionTrainData",
+        "instance_pk": instance.pk,
+        "file_field_name": "train_data",
+        "old_path": "old/train-data.bin",
+        "using": "default",
+    }
+
+    assert cleanup_train_data_file.run(**cleanup_kwargs) == "referenced"
+    delete.assert_not_called()
+
+    AnomalyDetectionTrainData.objects.filter(pk=instance.pk).update(
+        train_data="new/train-data.bin"
+    )
+    assert cleanup_train_data_file.run(**cleanup_kwargs) == "deleted"
+    delete.assert_called_once_with("old/train-data.bin")
+    assert cleanup_train_data_file.max_retries == 5
+    assert cleanup_train_data_file.acks_late is True
+    assert cleanup_train_data_file.reject_on_worker_lost is True

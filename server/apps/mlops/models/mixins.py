@@ -101,32 +101,49 @@ class TrainDataFileCleanupMixin:
             self._loaded_file_path = new_path
 
             if old_path and old_path != new_path:
-                model_class = self.__class__
-                instance_pk = self.pk
-                storage = old_file.storage
+                cleanup_kwargs = {
+                    "model_label": self.__class__._meta.label,
+                    "instance_pk": self.pk,
+                    "file_field_name": file_field_name,
+                    "old_path": old_path,
+                    "using": using,
+                }
 
                 def delete_old_file():
+                    from apps.mlops.services.train_data_file_cleanup import (
+                        delete_unreferenced_train_data_file,
+                    )
+
                     try:
-                        current_path = (
-                            model_class.objects.using(using)
-                            .values_list(file_field_name, flat=True)
-                            .filter(pk=instance_pk)
-                            .first()
-                        )
-                        if current_path == old_path:
-                            logger.info(
-                                f"Skipped deleting referenced {file_field_name} file for {model_class.__name__} {instance_pk}: {old_path}"
-                            )
-                            return
-                        storage.delete(old_path)
-                        logger.info(
-                            f"Deleted old {file_field_name} file for {model_class.__name__} {instance_pk}: "
-                            f"old={old_path}, new={new_path or 'None'}"
-                        )
+                        delete_unreferenced_train_data_file(**cleanup_kwargs)
                     except Exception as delete_err:
                         logger.warning(
-                            f"Failed to delete old file '{old_path}': {delete_err}"
+                            "Failed to delete old file '%s'; scheduling retry: %s",
+                            old_path,
+                            delete_err,
                         )
+                        try:
+                            from apps.mlops.tasks.file_cleanup import (
+                                cleanup_train_data_file,
+                            )
+
+                            cleanup_train_data_file.apply_async(
+                                kwargs=cleanup_kwargs,
+                                delivery_mode=2,
+                                retry=True,
+                                retry_policy={
+                                    "max_retries": 3,
+                                    "interval_start": 0,
+                                    "interval_step": 1,
+                                    "interval_max": 3,
+                                },
+                            )
+                        except Exception as publish_err:
+                            logger.error(
+                                "Failed to publish cleanup retry for '%s': %s",
+                                old_path,
+                                publish_err,
+                            )
 
                 transaction.on_commit(delete_old_file, using=using)
 
