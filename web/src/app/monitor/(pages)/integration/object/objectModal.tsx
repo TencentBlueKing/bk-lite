@@ -113,8 +113,7 @@ const ICON_LIST = [
   'mm-zookeeper_Zookeeper',
   'mm-influxdb_InfluxDB',
   'mm-haproxy_HAProxy',
-  'mm-consul_Consul',
-  'mm-nacos_Nacos'
+  'mm-consul_Consul'
 ];
 
 interface ModalProps {
