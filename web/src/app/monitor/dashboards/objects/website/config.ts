@@ -11,13 +11,14 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   pageTitle: '网站监控仪表盘',
   objectFallbackName: '网站',
   instanceType: 'web',
-  collectionStatusQuery: "count(http_response_result_type{instance_type='web', collect_type='web', result='success', __$labels__}) by (instance_id)",
+  // Layer 0：任意 result_type 样本即表示采集在跑；不要求 success，避免失败时误报「无采集」。
+  collectionStatusQuery: "count(http_response_result_type{instance_type='web', collect_type='web', __$labels__}) by (instance_id)",
   metaItems: ['Telegraf', 'web'],
   metrics: [
     {
       name: 'website_success_rate_avg',
       display_name: '探测成功率',
-      description: '网站探测节点平均成功率。',
+      description: '网站探测节点平均成功率（Telegraf result_type=success，不等于 HTTP 2xx）。',
       unit: 'percent',
       query: SUCCESS_RATE_EXPR,
       color: '#27c274'
@@ -47,12 +48,60 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       color: '#8a5cff'
     },
     {
-      name: 'website_content_length_avg',
-      display_name: '平均内容长度',
-      description: '网站返回内容平均大小。',
-      unit: 'bytes',
-      query: 'avg by (instance_id) (http_response_content_length{__$labels__})',
-      color: '#597ef7'
+      name: 'website_result_success_rate',
+      display_name: '成功占比',
+      description: 'result_code=0 的探测占比。',
+      unit: 'percent',
+      query: 'avg(http_response_result_code{__$labels__} == bool 0) * 100',
+      color: '#27c274'
+    },
+    {
+      name: 'website_result_body_mismatch_rate',
+      display_name: '响应内容不匹配占比',
+      description: 'result_code=1 的探测占比。',
+      unit: 'percent',
+      query: 'avg(http_response_result_code{__$labels__} == bool 1) * 100',
+      color: '#faad14'
+    },
+    {
+      name: 'website_result_body_read_fail_rate',
+      display_name: '响应体读取失败占比',
+      description: 'result_code=2 的探测占比。',
+      unit: 'percent',
+      query: 'avg(http_response_result_code{__$labels__} == bool 2) * 100',
+      color: '#d48806'
+    },
+    {
+      name: 'website_result_conn_fail_rate',
+      display_name: '连接失败占比',
+      description: 'result_code=3 的探测占比。',
+      unit: 'percent',
+      query: 'avg(http_response_result_code{__$labels__} == bool 3) * 100',
+      color: '#ff4d4f'
+    },
+    {
+      name: 'website_result_timeout_rate',
+      display_name: '超时占比',
+      description: 'result_code=4 的探测占比。',
+      unit: 'percent',
+      query: 'avg(http_response_result_code{__$labels__} == bool 4) * 100',
+      color: '#ff7875'
+    },
+    {
+      name: 'website_result_dns_fail_rate',
+      display_name: 'DNS错误占比',
+      description: 'result_code=5 的探测占比。',
+      unit: 'percent',
+      query: 'avg(http_response_result_code{__$labels__} == bool 5) * 100',
+      color: '#cf1322'
+    },
+    {
+      name: 'website_result_status_mismatch_rate',
+      display_name: '响应状态码不匹配占比',
+      description: 'result_code=6 的探测占比。',
+      unit: 'percent',
+      query: 'avg(http_response_result_code{__$labels__} == bool 6) * 100',
+      color: '#ffa940'
     },
     {
       name: 'website_status_code_2xx_count',
@@ -85,12 +134,22 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       unit: 'counts',
       query: 'count(http_response_http_response_code{__$labels__} >= 500) or on() vector(0)',
       color: '#ff4d4f'
-    },
+    }
   ],
+  // Layer0 + A 成功率 + B 响应时间；失败归因交给下方「探测结果分布 / 状态码分布」
   summaryCards: [
     {
       title: '探测成功率',
-      guide: [{ label: '探测成功率', detail: '优先确认当前可用性是否已下降，并结合失败占比判断影响面。' }],
+      guide: [
+        {
+          label: '探测成功率',
+          detail: '基于 Telegraf http_response 的 result_type=success。成功 ≠ HTTP 2xx；未配置期望状态码时非 2xx 仍可能计为成功。'
+        },
+        {
+          label: '失败占比',
+          detail: '与成功率互补。下跌时先看「探测结果分布」区分建连/超时/DNS 与内容/状态码校验失败。'
+        }
+      ],
       metric: 'website_success_rate_avg',
       color: '#27c274',
       icon: 'api',
@@ -99,43 +158,26 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       footer: [{ label: '失败占比', metric: 'website_failure_rate_avg', unit: 'percent' }]
     },
     {
-      title: '异常状态码',
-      guide: [{ label: '异常状态码', detail: '当前返回 5xx 的探测节点数，非零表示服务端错误，需立即排查。' }],
-      metric: 'website_status_code_5xx_count',
-      unit: 'counts',
-      color: '#ff4d4f',
-      icon: 'api',
-      compare: true,
-      compareFavorableDirection: 'down',
-      footer: [{ label: '4xx 节点', metric: 'website_status_code_4xx_count', unit: 'counts' }]
-    },
-    {
       title: '平均响应时间',
-      guide: [{ label: '平均响应时间', detail: '优先观察平均响应是否持续升高，再对比峰值判断是否存在抖动。' }],
+      guide: [{ label: '平均响应时间', detail: '优先观察平均响应是否持续升高，再对比峰值判断是整体变慢还是尖刺。' }],
       metric: 'website_response_time_avg',
       color: '#2f6bff',
       icon: 'clock',
       compare: true,
       footer: [{ label: '峰值响应', metric: 'website_response_time_max', unit: 's' }]
-    },
-    {
-      title: '可用节点(2xx)',
-      guide: [{ label: '可用节点(2xx)', detail: '当前返回 2xx 状态码的探测节点数,反映正常服务的探测覆盖面。' }],
-      metric: 'website_status_code_2xx_count',
-      unit: 'counts',
-      color: '#27c274',
-      icon: 'api',
-      compare: true,
-      compareFavorableDirection: 'up',
-      footer: [{ label: '3xx 节点', metric: 'website_status_code_3xx_count', unit: 'counts' }]
-    },
+    }
   ],
   charts: [
     {
       title: '探测成功率趋势',
-      subtitle: '多节点成功率',
+      subtitle: '可用性变化',
       metric: 'website_success_rate_avg',
-      guide: [{ label: '成功率趋势', detail: '成功率下跌时优先查 5xx/4xx 分布与响应时间；对照状态码条判断错误类型。' }],
+      guide: [
+        {
+          label: '成功率趋势',
+          detail: '下跌时先看探测结果分布与响应时间；连接失败/超时/DNS 不会产生 HTTP 状态码。'
+        }
+      ],
       series: [{ metric: 'website_success_rate_avg', label: '探测成功率', color: '#27c274', unit: 'percent' }]
     },
     {
@@ -147,22 +189,48 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
         { metric: 'website_response_time_avg', label: '平均响应', color: '#2f6bff', unit: 's' },
         { metric: 'website_response_time_max', label: '峰值响应', color: '#8a5cff', unit: 's' }
       ]
-    },
-    {
-      title: '内容长度趋势',
-      subtitle: '返回内容大小',
-      metric: 'website_content_length_avg',
-      guide: [{ label: '内容长度', detail: '单次响应正文字节数(bytes);骤增减常意味页面改版、错误页或被劫持,需核对页面内容。' }],
-      series: [{ metric: 'website_content_length_avg', label: '平均内容长度', color: '#597ef7', unit: 'bytes' }]
     }
   ],
-  ringPanels: [],
-  barPanels: [
+  ringPanels: [
+    {
+      title: '探测结果分布',
+      subtitle: '按 result_code 失败归因',
+      guide: [
+        {
+          label: '探测结果分布',
+          detail: 'Telegraf http_response result_code 占比：成功、内容不匹配、读体失败、连接失败、超时、DNS错误、状态码不匹配。'
+        }
+      ],
+      centerMetric: 'website_result_success_rate',
+      centerCaption: '成功占比',
+      centerUnit: 'percent',
+      emptyWhenAllZero: true,
+      emptyDescription: '当前窗口无探测结果码样本',
+      segments: [
+        { label: '成功', metric: 'website_result_success_rate', color: '#27c274', unit: 'percent' },
+        { label: '内容不匹配', metric: 'website_result_body_mismatch_rate', color: '#faad14', unit: 'percent' },
+        { label: '读体失败', metric: 'website_result_body_read_fail_rate', color: '#d48806', unit: 'percent' },
+        { label: '连接失败', metric: 'website_result_conn_fail_rate', color: '#ff4d4f', unit: 'percent' },
+        { label: '超时', metric: 'website_result_timeout_rate', color: '#ff7875', unit: 'percent' },
+        { label: 'DNS错误', metric: 'website_result_dns_fail_rate', color: '#cf1322', unit: 'percent' },
+        { label: '状态码不匹配', metric: 'website_result_status_mismatch_rate', color: '#ffa940', unit: 'percent' }
+      ]
+    },
     {
       title: '状态码分布',
-      subtitle: '2xx~5xx节点',
-      guide: [{ label: '状态码结构', detail: '优先判断当前异常请求主要集中在 4xx 还是 5xx。' }],
-      items: [
+      subtitle: '有 HTTP 响应时的码段结构',
+      guide: [
+        {
+          label: '状态码结构',
+          detail: '仅在拿到 HTTP 状态码时有意义。优先看 4xx vs 5xx；全空表示失败发生在建连/TLS/超时阶段，或尚未采集到状态码。'
+        }
+      ],
+      centerMetric: 'website_status_code_2xx_count',
+      centerCaption: '2xx 节点',
+      centerUnit: 'counts',
+      emptyWhenAllZero: true,
+      emptyDescription: '当前窗口无 HTTP 状态码（失败可能发生在建连/TLS/超时阶段，或尚未采集到状态码）',
+      segments: [
         { label: '2xx', metric: 'website_status_code_2xx_count', color: '#27c274', unit: 'counts' },
         { label: '3xx', metric: 'website_status_code_3xx_count', color: '#2f6bff', unit: 'counts' },
         { label: '4xx', metric: 'website_status_code_4xx_count', color: '#ff8a1f', unit: 'counts' },
@@ -170,5 +238,6 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       ]
     }
   ],
+  barPanels: [],
   details: []
 };
