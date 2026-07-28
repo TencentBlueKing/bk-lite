@@ -22,6 +22,9 @@ import { useRouter } from 'next/navigation';
 import useApiClient from '@/utils/request';
 import usePatchManagerApi from '@/app/patch-manager/api';
 import { PatchDashboardStats, ComplianceDistributionItem, RecentTaskItem, TopRiskItem } from '@/app/patch-manager/types';
+import { useTranslation } from '@/utils/i18n';
+import { useLocalizedTime } from '@/hooks/useLocalizedTime';
+import SeverityTag from '@/app/patch-manager/components/severity-tag';
 
 interface KpiProps {
   label: string;
@@ -65,6 +68,8 @@ function Kpi({ label, value, color, arrow, icon, onClick }: KpiProps) {
 }
 
 export default function HomePage() {
+  const { t } = useTranslation();
+  const { convertToLocalizedTime } = useLocalizedTime();
   const api = usePatchManagerApi();
   const { isLoading } = useApiClient();
   const router = useRouter();
@@ -106,7 +111,7 @@ export default function HomePage() {
       const res = await api.getPatchTargetList({ page: 1, page_size: -1 });
       const targets = Array.isArray(res) ? res : (res.items || []);
       if (targets.length === 0) {
-        message.info('当前没有纳管主机');
+        message.info(t('patchManager.dashboard.noManagedTargets'));
         return;
       }
       await api.createGovernanceTask({
@@ -114,7 +119,7 @@ export default function HomePage() {
         target_list: targets.map((t: any) => t.id),
         execution_mode: 'now',
       });
-      message.success(`已创建全局评估任务，包含 ${targets.length} 台主机`);
+      message.success(t('patchManager.dashboard.assessmentCreated', undefined, { count: targets.length }));
     } catch {
     } finally {
       setAssessLoading(false);
@@ -122,13 +127,13 @@ export default function HomePage() {
   };
 
   const kpis = [
-    { label: '纳管主机', value: stats?.target_total ?? '—', icon: <DesktopOutlined /> },
-    { label: '已评估合规率', value: stats?.compliance_rate != null ? `${stats.compliance_rate}%` : '—', color: '#0F6E56', icon: <CheckCircleOutlined /> },
-    { label: '评估覆盖率', value: stats?.coverage_rate != null ? `${stats.coverage_rate}%` : '—', icon: <EyeOutlined /> },
-    { label: '不合规主机', value: stats?.non_compliant_hosts ?? '—', color: '#A32D2D', icon: <WarningOutlined /> },
-    { label: '未配置基线', value: stats?.unconfigured_hosts ?? '—', color: '#854F0B', icon: <ExclamationCircleOutlined /> },
-    { label: '待治理风险', value: stats?.pending_risk_count ?? '—', color: '#854F0B', icon: <ToolOutlined /> },
-    { label: '修复异常', value: stats?.failed_tasks ?? '—', color: '#A32D2D', icon: <AlertOutlined /> },
+    { label: t('patchManager.dashboard.managedTargets'), value: stats?.target_total ?? '—', icon: <DesktopOutlined /> },
+    { label: t('patchManager.dashboard.complianceRate'), value: stats?.compliance_rate != null ? `${stats.compliance_rate}%` : '—', color: '#0F6E56', icon: <CheckCircleOutlined /> },
+    { label: t('patchManager.dashboard.coverageRate'), value: stats?.coverage_rate != null ? `${stats.coverage_rate}%` : '—', icon: <EyeOutlined /> },
+    { label: t('patchManager.dashboard.nonCompliantTargets'), value: stats?.non_compliant_hosts ?? '—', color: '#A32D2D', icon: <WarningOutlined /> },
+    { label: t('patchManager.dashboard.unconfiguredBaselines'), value: stats?.unconfigured_hosts ?? '—', color: '#854F0B', icon: <ExclamationCircleOutlined /> },
+    { label: t('patchManager.dashboard.pendingRisks'), value: stats?.pending_risk_count ?? '—', color: '#854F0B', icon: <ToolOutlined /> },
+    { label: t('patchManager.dashboard.remediationFailures'), value: stats?.failed_tasks ?? '—', color: '#A32D2D', icon: <AlertOutlined /> },
   ];
 
   const dist: ComplianceDistributionItem[] = stats?.compliance_distribution || [];
@@ -165,7 +170,7 @@ export default function HomePage() {
       data: [''],
     },
     series: dist.map((d) => ({
-      name: d.label,
+      name: t(`patchManager.complianceStatus.${d.filter}`, d.label),
       type: 'bar',
       stack: 'total',
       barWidth: 16,
@@ -173,7 +178,7 @@ export default function HomePage() {
       data: [d.count],
       emphasis: { focus: 'series' },
     })),
-  }), [dist, distTotal]);
+  }), [dist, distTotal, t]);
 
   return (
     <div style={{ position: 'relative', overflowX: 'hidden' }}>
@@ -198,7 +203,7 @@ export default function HomePage() {
       {/* 第2行：主机合规分布 */}
       <div style={{ display: 'flex', gap: 14, marginBottom: 14, flexWrap: 'wrap' }}>
         <div style={{ background: 'var(--color-bg-1, #fff)', border: '1px solid var(--color-border-1, #e8e8e8)', borderRadius: 10, padding: '12px 16px', flex: '1 1 100%', minWidth: 0, maxWidth: '100%', minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ fontWeight: 500, marginBottom: 10 }}>主机合规分布</div>
+          <div style={{ fontWeight: 500, marginBottom: 10 }}>{t('patchManager.dashboard.complianceDistribution')}</div>
           <div style={{ height: 16, borderRadius: 8, overflow: 'hidden' }}>
             <ReactECharts
               option={distributionOption}
@@ -214,14 +219,14 @@ export default function HomePage() {
             ))}
           </Space>
           <div style={{ marginTop: 10, fontSize: 12, color: 'var(--color-text-3, #8c8c8c)' }}>
-            合规率 = 合规 / (合规+不合规){rateHint}；评估覆盖率 = 已评估 / 纳管主机{coverageHint}；未配置/待评估/评估失败不计入合规率；分母为 0 时显示 -。
+            {t('patchManager.dashboard.rateHelp', undefined, { rateHint, coverageHint })}
           </div>
         </div>
       </div>
 
       {/* 快捷操作 */}
       <Card
-        title={<span><PlayCircleOutlined style={{ marginRight: 6 }} />快捷操作</span>}
+        title={<span><PlayCircleOutlined style={{ marginRight: 6 }} />{t('patchManager.dashboard.quickActions')}</span>}
         style={{ borderRadius: 10, marginBottom: 14 }}
         styles={{ body: { padding: '12px 16px' } }}
       >
@@ -229,42 +234,42 @@ export default function HomePage() {
           <Card size="small" style={{ flex: '1 1 200px', borderRadius: 8 }} styles={{ body: { padding: 14 } }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
               <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--color-fill-2, #f0f2f5)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-primary, #1677ff)' }}><PlayCircleOutlined /></div>
-              <div style={{ fontWeight: 500 }}>立即评估</div>
+              <div style={{ fontWeight: 500 }}>{t('patchManager.dashboard.assessNow')}</div>
             </div>
-            <div style={{ fontSize: 12, color: 'var(--color-text-3, #8c8c8c)', marginBottom: 12, minHeight: 34 }}>立即对所有主机执行一次合规评估，刷新风险数据。</div>
+            <div style={{ fontSize: 12, color: 'var(--color-text-3, #8c8c8c)', marginBottom: 12, minHeight: 34 }}>{t('patchManager.dashboard.assessNowDescription')}</div>
             <PermissionWrapper
               requiredPermissions={['Add']}
               permissionPath="/patch-manager/risk-execution"
               className="block!"
             >
-              <Popconfirm title="确定对所有主机执行合规评估？" onConfirm={handleImmediateAssess} okText="确定" cancelText="取消">
-                <Button type="primary" block icon={<PlayCircleOutlined />} loading={assessLoading}>立即评估</Button>
+              <Popconfirm title={t('patchManager.dashboard.confirmAssessAll')} onConfirm={handleImmediateAssess} okText={t('patchManager.confirm')} cancelText={t('patchManager.cancel')}>
+                <Button type="primary" block icon={<PlayCircleOutlined />} loading={assessLoading}>{t('patchManager.dashboard.assessNow')}</Button>
               </Popconfirm>
             </PermissionWrapper>
           </Card>
           <Card size="small" style={{ flex: '1 1 200px', borderRadius: 8 }} styles={{ body: { padding: 14 } }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
               <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--color-fill-2, #f0f2f5)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-primary, #1677ff)' }}><PlusOutlined /></div>
-              <div style={{ fontWeight: 500 }}>添加主机</div>
+              <div style={{ fontWeight: 500 }}>{t('patchManager.dashboard.addTarget')}</div>
             </div>
-            <div style={{ fontSize: 12, color: 'var(--color-text-3, #8c8c8c)', marginBottom: 12, minHeight: 34 }}>将新的 Windows 或 Linux 主机纳入补丁管理。</div>
-            <Button type="primary" block icon={<PlusOutlined />} onClick={() => router.push('/patch-manager/target')}>添加主机</Button>
+            <div style={{ fontSize: 12, color: 'var(--color-text-3, #8c8c8c)', marginBottom: 12, minHeight: 34 }}>{t('patchManager.dashboard.addTargetDescription')}</div>
+            <Button type="primary" block icon={<PlusOutlined />} onClick={() => router.push('/patch-manager/target')}>{t('patchManager.dashboard.addTarget')}</Button>
           </Card>
           <Card size="small" style={{ flex: '1 1 200px', borderRadius: 8 }} styles={{ body: { padding: 14 } }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
               <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--color-fill-2, #f0f2f5)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-primary, #1677ff)' }}><PlusOutlined /></div>
-              <div style={{ fontWeight: 500 }}>新建基线</div>
+              <div style={{ fontWeight: 500 }}>{t('patchManager.dashboard.createBaseline')}</div>
             </div>
-            <div style={{ fontSize: 12, color: 'var(--color-text-3, #8c8c8c)', marginBottom: 12, minHeight: 34 }}>定义主机应满足的补丁/包版本要求。</div>
-            <Button type="primary" block icon={<PlusOutlined />} onClick={() => router.push('/patch-manager/baseline')}>新建基线</Button>
+            <div style={{ fontSize: 12, color: 'var(--color-text-3, #8c8c8c)', marginBottom: 12, minHeight: 34 }}>{t('patchManager.dashboard.createBaselineDescription')}</div>
+            <Button type="primary" block icon={<PlusOutlined />} onClick={() => router.push('/patch-manager/baseline')}>{t('patchManager.dashboard.createBaseline')}</Button>
           </Card>
           <Card size="small" style={{ flex: '1 1 200px', borderRadius: 8 }} styles={{ body: { padding: 14 } }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
               <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--color-fill-2, #f0f2f5)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-primary, #1677ff)' }}><FileTextOutlined /></div>
-              <div style={{ fontWeight: 500 }}>执行记录</div>
+              <div style={{ fontWeight: 500 }}>{t('patchManager.dashboard.executionRecords')}</div>
             </div>
-            <div style={{ fontSize: 12, color: 'var(--color-text-3, #8c8c8c)', marginBottom: 12, minHeight: 34 }}>查看治理任务的执行进度、结果和日志。</div>
-            <Button type="primary" block icon={<FileTextOutlined />} onClick={() => router.push('/patch-manager/risk-execution')}>查看记录</Button>
+            <div style={{ fontSize: 12, color: 'var(--color-text-3, #8c8c8c)', marginBottom: 12, minHeight: 34 }}>{t('patchManager.dashboard.executionRecordsDescription')}</div>
+            <Button type="primary" block icon={<FileTextOutlined />} onClick={() => router.push('/patch-manager/risk-execution')}>{t('patchManager.dashboard.viewRecords')}</Button>
           </Card>
         </div>
       </Card>
@@ -272,10 +277,10 @@ export default function HomePage() {
       {/* 第3行：最近执行 + TOP风险 */}
       <div ref={bottomRef} style={{ display: 'flex', gap: 14, flexWrap: 'nowrap', height: tableHeight }}>
         <Card
-          title={<span><FileTextOutlined style={{ marginRight: 6 }} />最近执行记录</span>}
+          title={<span><FileTextOutlined style={{ marginRight: 6 }} />{t('patchManager.dashboard.recentExecutions')}</span>}
           style={{ flex: '2 1 0', minWidth: 0, borderRadius: 10, height: '100%', display: 'flex', flexDirection: 'column' }}
           styles={{ body: { padding: '10px 10px', flex: 1, overflow: 'hidden' } }}
-          extra={<Button type="link" size="small" onClick={() => router.push('/patch-manager/risk-execution')}>查看更多</Button>}
+          extra={<Button type="link" size="small" onClick={() => router.push('/patch-manager/risk-execution')}>{t('patchManager.dashboard.viewMore')}</Button>}
         >
           <CustomTable<RecentTaskItem>
             size="small"
@@ -284,19 +289,19 @@ export default function HomePage() {
             dataSource={stats?.recent_tasks || []}
             scroll={{ y: Math.max(120, tableHeight - 76) }}
             columns={[
-              { title: '任务名称', dataIndex: 'name', ellipsis: true },
-              { title: '状态', dataIndex: 'status', width: 100, render: (_: unknown, r: RecentTaskItem) => <Tag color={r.status_color}>{r.status}</Tag> },
-              { title: '进度', dataIndex: 'progress', width: 80 },
-              { title: '时间', dataIndex: 'time', width: 100, render: (v: string) => <span style={{ color: 'var(--color-text-3, #8c8c8c)' }}>{v}</span> },
+              { title: t('patchManager.dashboard.taskName'), dataIndex: 'name', ellipsis: true },
+              { title: t('patchManager.statusLabel'), dataIndex: 'status', width: 100, render: (_: unknown, r: RecentTaskItem) => <Tag color={r.status_color}>{t(`patchManager.execution.statuses.${r.status_code}`, r.status)}</Tag> },
+              { title: t('patchManager.dashboard.progress'), dataIndex: 'progress', width: 80 },
+              { title: t('patchManager.dashboard.time'), dataIndex: 'time', width: 150, render: (_: string, r: RecentTaskItem) => <span style={{ color: 'var(--color-text-3, #8c8c8c)' }}>{convertToLocalizedTime(r.created_at) || '—'}</span> },
             ]}
           />
         </Card>
 
         <Card
-          title={<span><ArrowRightOutlined style={{ marginRight: 6 }} />TOP 风险补丁</span>}
+          title={<span><ArrowRightOutlined style={{ marginRight: 6 }} />{t('patchManager.dashboard.topRiskPatches')}</span>}
           style={{ flex: '1 1 0', minWidth: 0, borderRadius: 10, height: '100%', display: 'flex', flexDirection: 'column' }}
           styles={{ body: { padding: '10px 10px', flex: 1, overflow: 'hidden' } }}
-          extra={<Button type="link" size="small" onClick={() => router.push('/patch-manager/risk-pending')}>查看全部</Button>}
+          extra={<Button type="link" size="small" onClick={() => router.push('/patch-manager/risk-pending')}>{t('patchManager.dashboard.viewAll')}</Button>}
         >
           <CustomTable<TopRiskItem>
             size="small"
@@ -305,9 +310,9 @@ export default function HomePage() {
             dataSource={stats?.top_risks || []}
             scroll={{ y: Math.max(120, tableHeight - 76) }}
             columns={[
-              { title: '补丁要求', dataIndex: 'patch', ellipsis: true },
-              { title: '影响主机', dataIndex: 'hosts', width: 90, render: (v: number) => `${v} 台` },
-              { title: '严重级别', dataIndex: 'sev', width: 90, render: (v: string) => <Tag color={v === '严重' ? 'error' : 'warning'}>{v}</Tag> },
+              { title: t('patchManager.dashboard.patchRequirement'), dataIndex: 'patch', ellipsis: true },
+              { title: t('patchManager.dashboard.affectedTargets'), dataIndex: 'hosts', width: 90, render: (v: number) => t('patchManager.dashboard.targetCount', undefined, { count: v }) },
+              { title: t('patchManager.severity'), dataIndex: 'severity', width: 90, render: (v: string) => <SeverityTag severity={v} /> },
             ]}
           />
         </Card>

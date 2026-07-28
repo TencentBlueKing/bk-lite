@@ -25,11 +25,11 @@ if (!settingsPage.includes('<Password') || settingsPage.includes('<Input.Passwor
 }
 
 const sourceFooter = settingsPage.match(/footer=\{([\s\S]*?)\}\s*>\s*<Form form=\{form\}/)?.[1] || '';
-for (const label of ['取消', '测试连通性', '保存']) {
-  if (!sourceFooter.includes(label)) throw new Error(`补丁源弹窗 footer 缺少“${label}”按钮`);
+for (const key of ['patchManager.cancel', 'patchManager.testConnection', 'patchManager.save']) {
+  if (!sourceFooter.includes(key)) throw new Error(`补丁源弹窗 footer 缺少双语按钮 ${key}`);
 }
-if (!(sourceFooter.indexOf('取消') < sourceFooter.indexOf('测试连通性')
-  && sourceFooter.indexOf('测试连通性') < sourceFooter.indexOf('保存'))) {
+if (!(sourceFooter.indexOf('patchManager.cancel') < sourceFooter.indexOf('patchManager.testConnection')
+  && sourceFooter.indexOf('patchManager.testConnection') < sourceFooter.indexOf('patchManager.save'))) {
   throw new Error('补丁源弹窗按钮顺序必须是：取消、测试连通性、保存');
 }
 
@@ -44,8 +44,8 @@ if (!sourceConnectivityAlert.includes('key={connectivityResult.checkedAt}')) {
 }
 
 const targetFooter = targetPage.match(/footer=\{([\s\S]*?)\}\s*>\s*<Form layout="vertical" form=\{form\}/)?.[1] || '';
-if (!(targetFooter.indexOf('取消') < targetFooter.indexOf('测试连通性')
-  && targetFooter.indexOf('测试连通性') < targetFooter.indexOf("editingTarget ? '保存' : '创建'"))) {
+if (!(targetFooter.indexOf('patchManager.cancel') < targetFooter.indexOf('patchManager.testConnection')
+  && targetFooter.indexOf('patchManager.testConnection') < targetFooter.indexOf("editingTarget ? t('patchManager.save') : t('patchManager.targetPage.create')"))) {
   throw new Error('目标录入抽屉按钮顺序必须是：取消、测试连通性、保存/创建');
 }
 

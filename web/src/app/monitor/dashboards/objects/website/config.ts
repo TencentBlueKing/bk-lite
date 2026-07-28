@@ -4,7 +4,7 @@ import type { SimpleDashboardConfig } from '../common/simple-dashboard-core';
 // (与「全量指标」视图一致)。仪表盘必须用同款表达式,不能直接查裸指标名 http_node_success_rate
 // ——后者只有预置种子数据(website_01/02/03)才有存储序列,真实下发实例查不到 → 三卡片无数据。
 const SUCCESS_RATE_EXPR =
-  'avg((sum without (result) (count_over_time(http_response_result_type{result="success",__$labels__}[5m])) or sum without (result) (count_over_time(http_response_result_type{__$labels__}[5m])) * 0) / sum without (result) (count_over_time(http_response_result_type{__$labels__}[5m])) * 100)';
+  'avg by (instance_id) ((sum without (result) (count_over_time(http_response_result_type{result="success",__$labels__}[__$window__])) or sum without (result) (count_over_time(http_response_result_type{__$labels__}[__$window__])) * 0) / sum without (result) (count_over_time(http_response_result_type{__$labels__}[__$window__])) * 100)';
 
 export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   routeKey: 'website',
@@ -35,7 +35,7 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '平均响应时间',
       description: '网站探测平均响应时间。',
       unit: 's',
-      query: 'avg(http_response_response_time{__$labels__})',
+      query: 'avg by (instance_id) (http_response_response_time{__$labels__})',
       color: '#2f6bff'
     },
     {
@@ -43,15 +43,15 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '最大响应时间',
       description: '网站探测最大响应时间。',
       unit: 's',
-      query: 'max(http_response_response_time{__$labels__})',
-      color: '#ff8a1f'
+      query: 'max by (instance_id) (http_response_response_time{__$labels__})',
+      color: '#8a5cff'
     },
     {
       name: 'website_content_length_avg',
       display_name: '平均内容长度',
       description: '网站返回内容平均大小。',
       unit: 'bytes',
-      query: 'avg(http_response_content_length{__$labels__})',
+      query: 'avg by (instance_id) (http_response_content_length{__$labels__})',
       color: '#597ef7'
     },
     {
@@ -129,23 +129,13 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       compareFavorableDirection: 'up',
       footer: [{ label: '3xx 节点', metric: 'website_status_code_3xx_count', unit: 'counts' }]
     },
-    {
-      title: '平均内容长度',
-      guide: [{ label: '平均内容长度', detail: '网站返回内容平均字节数;骤增减常意味页面改版、错误页或被劫持,需核对页面内容。' }],
-      metric: 'website_content_length_avg',
-      unit: 'bytes',
-      color: '#597ef7',
-      icon: 'database',
-      compare: true,
-      footer: [{ label: '探测成功率', metric: 'website_success_rate_avg', unit: 'percent' }]
-    }
   ],
   charts: [
     {
       title: '探测成功率趋势',
       subtitle: '多节点成功率',
       metric: 'website_success_rate_avg',
-      guide: [{ label: '成功率趋势', detail: '观察网站探测成功率的波动情况。' }],
+      guide: [{ label: '成功率趋势', detail: '成功率下跌时优先查 5xx/4xx 分布与响应时间；对照状态码条判断错误类型。' }],
       series: [{ metric: 'website_success_rate_avg', label: '探测成功率', color: '#27c274', unit: 'percent' }]
     },
     {
@@ -155,7 +145,7 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       metric: 'website_response_time_avg',
       series: [
         { metric: 'website_response_time_avg', label: '平均响应', color: '#2f6bff', unit: 's' },
-        { metric: 'website_response_time_max', label: '峰值响应', color: '#ff8a1f', unit: 's' }
+        { metric: 'website_response_time_max', label: '峰值响应', color: '#8a5cff', unit: 's' }
       ]
     },
     {
@@ -166,20 +156,7 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       series: [{ metric: 'website_content_length_avg', label: '平均内容长度', color: '#597ef7', unit: 'bytes' }]
     }
   ],
-  ringPanels: [
-    {
-      title: '可用性分布',
-      subtitle: '成功与失败占比',
-      centerMetric: 'website_success_rate_avg',
-      centerCaption: '探测成功率',
-      centerUnit: 'percent',
-      guide: [{ label: '可用性分布', detail: '展示网站探测的成功与失败占比。' }],
-      segments: [
-        { label: '成功占比', metric: 'website_success_rate_avg', color: '#27c274', unit: 'percent' },
-        { label: '失败占比', metric: 'website_failure_rate_avg', color: '#ffccc7', unit: 'percent' }
-      ]
-    },
-  ],
+  ringPanels: [],
   barPanels: [
     {
       title: '状态码分布',

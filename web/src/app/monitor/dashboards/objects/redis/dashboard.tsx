@@ -8,10 +8,9 @@ import {
   TrendSection,
   useFilteredBarPanels,
   useFilteredChartPanels,
-  useFilteredRingPanels,
   useFilteredSummaryCards
 } from '../common/dashboard-components';
-import { TrendChartPanel, RingChartPanel, HorizontalBarPanel } from '../../shared/widgets';
+import { TrendChartPanel, HorizontalBarPanel } from '../../shared/widgets';
 import { REDIS_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
 
@@ -26,9 +25,7 @@ export default function RedisDashboardPage() {
   const summaryCards = useFilteredSummaryCards(dashboard.summaryCards, SUMMARY_TITLES);
   const trendCharts = useFilteredChartPanels(dashboard.chartPanels, TREND_TITLES);
   const lifecycleCharts = useFilteredChartPanels(dashboard.chartPanels, LIFECYCLE_TITLES);
-  // 「内存与命中分布」行:内存碎片(折线,替换原内存占用分布) + 命中分布(环图) + 客户端状态(条形),各 span4。
   const fragChart = useFilteredChartPanels(dashboard.chartPanels, ['内存碎片'])[0];
-  const hitRing = useFilteredRingPanels(dashboard.ringPanels, ['命中分布'])[0];
   const clientBar = useFilteredBarPanels(dashboard.barPanels, ['客户端状态'])[0];
 
   return (
@@ -43,8 +40,7 @@ export default function RedisDashboardPage() {
           <div className={styles.sectionLabel}>性能与缓存</div>
           <TrendSection charts={trendCharts} onXRangeChange={dashboard.onXRangeChange} loading={dashboard.loading} styles={styles} />
 
-          {/* 内存碎片(折线) + 命中分布(环图) + 客户端状态(条形)同行,各 span4 */}
-          <div className={styles.sectionLabel}>内存与命中分布</div>
+          <div className={styles.sectionLabel}>内存与客户端</div>
           <section className={styles.dashboardSection}>
             <div className={styles.sectionGrid}>
               {fragChart && (
@@ -59,20 +55,7 @@ export default function RedisDashboardPage() {
                   loading={dashboard.loading}
                   seriesStyles={fragChart.seriesStyles}
                   onXRangeChange={dashboard.onXRangeChange}
-                  className={`${styles.panel} ${styles.span4}`}
-                  styles={styles}
-                />
-              )}
-              {hitRing && (
-                <RingChartPanel
-                  title={hitRing.panel.title}
-                  subtitle={hitRing.panel.subtitle}
-                  guide={hitRing.panel.guide}
-                  data={hitRing.data}
-                  centerValue={hitRing.centerValue}
-                  centerCaption={hitRing.panel.centerCaption}
-                  isEmpty={hitRing.isEmpty}
-                  className={`${styles.panel} ${styles.span4}`}
+                  className={`${styles.panel} ${styles.span6}`}
                   styles={styles}
                 />
               )}
@@ -82,7 +65,7 @@ export default function RedisDashboardPage() {
                   subtitle={clientBar.panel.subtitle}
                   guide={clientBar.panel.guide}
                   items={clientBar.items}
-                  className={`${styles.panel} ${styles.span4}`}
+                  className={`${styles.panel} ${styles.span6}`}
                   styles={styles}
                 />
               )}

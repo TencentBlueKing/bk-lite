@@ -50,10 +50,10 @@ export const ELASTICSEARCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     },
     {
       name: 'elasticsearch_jvm_gc_collectors_young_collection_time_in_millis_rate',
-      display_name: '新生代 GC 耗时',
-      description: '新生代 GC 每秒累计耗时。',
+      display_name: '新生代 GC 耗时速率',
+      description: '新生代 GC 每秒累计耗时（ms/s）；升高表示 GC 占用墙钟时间增多。',
       unit: 'ms',
-      query: 'rate(elasticsearch_jvm_gc_collectors_young_collection_time_in_millis{__$labels__}[5m])',
+      query: 'rate(elasticsearch_jvm_gc_collectors_young_collection_time_in_millis{__$labels__}[__$window__])',
       color: '#ff8a1f'
     },
     {
@@ -70,7 +70,7 @@ export const ELASTICSEARCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: 'Elasticsearch 进程 CPU 使用率。',
       unit: 'percent',
       query: 'elasticsearch_process_cpu_percent{__$labels__}',
-      color: '#ff8a1f'
+      color: '#2f6bff'
     },
     {
       name: 'elasticsearch_process_open_file_descriptors',
@@ -85,7 +85,7 @@ export const ELASTICSEARCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: 'Fielddata 熔断速率',
       description: 'Fielddata 熔断触发速率。',
       unit: 'cps',
-      query: 'rate(elasticsearch_breakers_fielddata_tripped{__$labels__}[5m])',
+      query: 'rate(elasticsearch_breakers_fielddata_tripped{__$labels__}[__$window__])',
       color: '#ff4d4f'
     },
     {
@@ -93,7 +93,7 @@ export const ELASTICSEARCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '请求熔断速率',
       description: '请求级熔断触发速率。',
       unit: 'cps',
-      query: 'rate(elasticsearch_breakers_request_tripped{__$labels__}[5m])',
+      query: 'rate(elasticsearch_breakers_request_tripped{__$labels__}[__$window__])',
       color: '#ff8a1f'
     },
     {
@@ -109,7 +109,7 @@ export const ELASTICSEARCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: 'HTTP 新建连接速率',
       description: 'HTTP 服务新建连接速率。',
       unit: 'cps',
-      query: 'rate(elasticsearch_http_total_opened{__$labels__}[5m])',
+      query: 'rate(elasticsearch_http_total_opened{__$labels__}[__$window__])',
       color: '#27c274'
     },
     {
@@ -210,7 +210,7 @@ export const ELASTICSEARCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       ]
     },
     {
-      title: 'GC 耗时趋势',
+      title: 'GC 耗时速率趋势',
       subtitle: 'Young GC',
       metric: 'elasticsearch_jvm_gc_collectors_young_collection_time_in_millis_rate',
       guide: [{ label: 'GC 耗时', detail: '新生代 GC 每秒累计耗时。' }],
@@ -252,27 +252,6 @@ export const ELASTICSEARCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     }
   ],
   ringPanels: [],
-  barPanels: [
-    {
-      title: '线程池压力',
-      subtitle: '写入与搜索队列',
-      showTrend: true,
-      guide: [{ label: '线程池压力', detail: '写线程池与搜索线程池队列长度，队列增长说明处理能力不足。' }],
-      items: [
-        { label: '写入队列', metric: 'elasticsearch_thread_pool_write_queue', color: '#2f6bff', unit: 'counts' },
-        { label: '搜索队列', metric: 'elasticsearch_thread_pool_search_queue', color: '#ff8a1f', unit: 'counts' }
-      ]
-    },
-    {
-      title: '熔断器热点',
-      subtitle: '熔断触发',
-      showTrend: true,
-      guide: [{ label: '熔断器', detail: 'Fielddata 与请求级熔断触发速率，非零表示近期存在内存保护触发。' }],
-      items: [
-        { label: 'Fielddata 熔断', metric: 'elasticsearch_breakers_fielddata_tripped_rate', color: '#ff4d4f', unit: 'cps' },
-        { label: '请求熔断', metric: 'elasticsearch_breakers_request_tripped_rate', color: '#ff8a1f', unit: 'cps' }
-      ]
-    }
-  ],
+  barPanels: [],
   details: []
 };

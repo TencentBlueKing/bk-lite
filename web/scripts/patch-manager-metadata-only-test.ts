@@ -64,7 +64,7 @@ if (candidateColumns.includes('批量修改严重级别')) {
 }
 
 const createDrawer = libraryPage.match(
-  /<OperateDrawer\s+title="新增补丁"([\s\S]*?)<OperateDrawer\s+title="同步入库"/,
+  /<OperateDrawer\s+title=\{t\('patchManager\.libraryPage\.addPatch'\)\}([\s\S]*?)<OperateDrawer\s+title=\{t\('patchManager\.libraryPage\.syncIngest'\)\}/,
 )?.[1] || '';
 const windowsFieldOrder = [
   'name="name"',
@@ -78,15 +78,15 @@ if (windowsFieldOrder.some((index) => index < 0)
   || windowsFieldOrder.some((index, position) => position > 0 && index <= windowsFieldOrder[position - 1])) {
   throw new Error('Windows 新增补丁字段顺序必须是：KB 号、补丁文件、描述、严重级别、适用版本、架构');
 }
-if (/label="描述" name="desc" rules=/.test(createDrawer)) {
+if (/label=\{t\('patchManager\.libraryPage\.description'\)\} name="desc" rules=/.test(createDrawer)) {
   throw new Error('Windows 新增补丁的描述应为非必填');
 }
-if (/label="适用版本" name="version" rules=/.test(createDrawer)) {
+if (/label=\{t\('patchManager\.libraryPage\.applicableVersion'\)\} name="version" rules=/.test(createDrawer)) {
   throw new Error('Windows 新增补丁的适用版本应为非必填');
 }
 
 const editDialog = libraryPage.match(
-  /<Modal\s+title="编辑补丁"([\s\S]*?)<\/Modal>/,
+  /<Modal\s+title=\{t\('patchManager\.libraryPage\.editPatch'\)\}([\s\S]*?)<\/Modal>/,
 )?.[1] || '';
 const editWindowsFieldOrder = [
   'name="name"',
@@ -100,7 +100,7 @@ if (editWindowsFieldOrder.some((index) => index < 0)
   || editWindowsFieldOrder.some((index, position) => position > 0 && index <= editWindowsFieldOrder[position - 1])) {
   throw new Error('Windows 编辑补丁字段顺序必须与新增一致');
 }
-if (/label="描述" name="title" rules=/.test(editDialog)) {
+if (/label=\{t\('patchManager\.libraryPage\.description'\)\} name="title" rules=/.test(editDialog)) {
   throw new Error('Windows 编辑补丁的描述应为非必填');
 }
 

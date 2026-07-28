@@ -39,7 +39,7 @@ export const MSSQL_TOP_DB_QUERIES: MssqlTopDbQuery[] = [
     title: 'I/O 速率 Top',
     unit: 'cps',
     color: '#27c274',
-    query: `topk(${MSSQL_TOP_N}, sum by (database_name) (rate(sqlserver_database_io_reads{__$labels__}[5m]) + rate(sqlserver_database_io_writes{__$labels__}[5m])))`,
+    query: `topk(${MSSQL_TOP_N}, sum by (database_name) (rate(sqlserver_database_io_reads{__$labels__}[__$window__]) + rate(sqlserver_database_io_writes{__$labels__}[__$window__])))`,
     guide: [{ label: 'I/O 速率排行', detail: '各数据库读写操作合计速率,定位 I/O 负载最重的库。' }]
   }
 ];

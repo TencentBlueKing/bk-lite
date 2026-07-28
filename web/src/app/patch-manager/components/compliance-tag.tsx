@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Tag } from 'antd';
+import { useTranslation } from '@/utils/i18n';
 
 export type ComplianceStatus =
   | 'compliant'
@@ -20,15 +21,6 @@ const COMP_COLOR: Record<ComplianceStatus, string> = {
   unconfigured: 'gold',
 };
 
-const COMP_TEXT: Record<ComplianceStatus, string> = {
-  compliant: '合规',
-  non_compliant: '不合规',
-  pending: '待评估',
-  evaluating: '评估中',
-  failed: '评估失败',
-  unconfigured: '未配置',
-};
-
 function isComplianceStatus(value: string | undefined): value is ComplianceStatus {
   return value !== undefined && value in COMP_COLOR;
 }
@@ -42,10 +34,12 @@ export default function ComplianceTag({
   status,
   missing,
 }: ComplianceTagProps): React.ReactElement {
+  const { t } = useTranslation();
   const key = isComplianceStatus(status) ? status : 'unconfigured';
+  const statusText = t(`patchManager.complianceStatus.${key}`);
   const text =
     key === 'non_compliant' && missing !== undefined
-      ? `${COMP_TEXT[key]} · 缺${missing}`
-      : COMP_TEXT[key];
+      ? t('patchManager.complianceStatus.missingCount', '{status} · Missing {count}', { status: statusText, count: missing })
+      : statusText;
   return <Tag color={COMP_COLOR[key]}>{text}</Tag>;
 }

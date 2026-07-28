@@ -62,7 +62,7 @@ export const PING_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: 'Ping 探测节点当前最差结果码。',
       unit: 'none',
       query: 'max(ping_result_code{__$labels__})',
-      color: '#9aa9bf'
+      color: '#8a5cff'
     }
   ],
   summaryCards: [
@@ -73,7 +73,7 @@ export const PING_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       icon: 'api',
       compare: true,
       compareFavorableDirection: 'up',
-      guide: [],
+      guide: [{ label: '连通成功率', detail: '由丢包率换算；低于基线或持续下跌时优先查链路、中间设备与目标可达性。' }],
       footer: [{ label: '平均丢包率', metric: 'ping_packet_loss_avg', unit: 'percent' }]
     },
     {
@@ -82,19 +82,8 @@ export const PING_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       color: '#2f6bff',
       icon: 'clock',
       compare: true,
-      guide: [],
+      guide: [{ label: '平均延迟', detail: '往返时延均值；持续升高结合最大延迟判断是整体变慢还是尖刺抖动。' }],
       footer: [{ label: '最大延迟', metric: 'ping_latency_max', unit: 'ms' }]
-    },
-    {
-      title: '最大延迟',
-      metric: 'ping_latency_max',
-      unit: 'ms',
-      color: '#ff8a1f',
-      icon: 'clock',
-      compare: true,
-      compareFavorableDirection: 'down',
-      guide: [{ label: '最大延迟', detail: '探测节点的最大往返延迟，用于捕捉延迟尖刺。' }],
-      footer: [{ label: '平均延迟', metric: 'ping_latency_avg', unit: 'ms' }]
     },
     {
       title: '平均丢包率',
@@ -103,7 +92,7 @@ export const PING_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       icon: 'api',
       compare: true,
       compareFavorableDirection: 'down',
-      guide: [],
+      guide: [{ label: '平均丢包率', detail: '非零丢包表示链路不稳；持续升高优先查拥塞、错包与对端负载。' }],
       footer: [{ label: '平均 TTL', metric: 'ping_ttl_avg', unit: 'counts' }],
     },
     {

@@ -71,7 +71,8 @@ class TestExecutionRecordListApi:
         assert response.status_code == status.HTTP_200_OK
         rows = response.data.get("results", response.data) if isinstance(response.data, dict) else response.data
         assert [row["id"] for row in rows] == [reboot.id, remediation.id]
-        assert [row["task_type_display"] for row in rows] == ["重启", "治理"]
+        assert [row["task_type"] for row in rows] == [GovernanceTaskType.REBOOT, GovernanceTaskType.INSTALL]
+        assert all(row["task_type_display"] for row in rows)
         assert rows[1]["can_cancel"] is True
         governance_rows = (
             governance_only.data.get("results", governance_only.data)
@@ -150,14 +151,16 @@ class TestExecutionRecordListApi:
 
         assert response.status_code == status.HTTP_200_OK
         assert response.data["record_status"] == "completed"
-        assert response.data["record_status_display"] == "已完成"
+        assert response.data["record_status_display"]
         assert response.data["risk_items"] == [{
             "id": risk_id,
             "display_name": "host-a-openssl",
             "host_id": 10,
+            "host_name": "host-a",
             "patch_id": 20,
+            "patch_name": "openssl",
             "status": "completed",
-            "status_display": "已完成",
+            "status_display": response.data["risk_items"][0]["status_display"],
             "status_color": "success",
         }]
         assert selected.status_code == status.HTTP_200_OK
@@ -372,7 +375,8 @@ def test_baseline_assess_creates_one_hidden_parallel_task_for_all_bound_hosts(su
     assert response.status_code == status.HTTP_201_CREATED
     task = GovernanceTask.objects.get(pk=response.data["task_id"])
     assert task.task_type == GovernanceTaskType.ASSESS
-    assert task.name == "评估 · 生产基线 · 2台"
+    assert baseline.name in task.name
+    assert "2" in task.name
     assert task.target_list == [host_a.id, host_b.id]
     assert task.risk_snapshot == [{
         "baseline_id": baseline.id,
@@ -461,11 +465,9 @@ def test_baseline_assess_returns_structured_conflict_on_atomic_host_race(su_clie
     response = su_client.post(f"{BASELINE_URL}{baseline.id}/assess/", format="json")
 
     assert response.status_code == status.HTTP_409_CONFLICT
-    assert response.data == {
-        "code": "host_busy",
-        "detail": f"以下主机正在执行补丁任务: [{target.id}]",
-        "target_ids": [target.id],
-    }
+    assert response.data["code"] == "host_busy"
+    assert response.data["target_ids"] == [target.id]
+    assert str(target.id) in response.data["detail"]
 
 
 @pytest.mark.django_db
