@@ -47,6 +47,7 @@ class LogClusteringTrainData(TrainDataFileCleanupMixin, MaintainerInfo, TimeInfo
         help_text="存储在MinIO中的日志数据文件",
         blank=True,
         null=True,
+        db_index=True,
     )
 
     metadata = S3JSONField(

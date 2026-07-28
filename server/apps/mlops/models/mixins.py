@@ -50,24 +50,50 @@ class TrainDataFileCleanupMixin:
         4. Deletes the old file after the surrounding transaction commits
         """
         from django.db import router, transaction
-        from apps.core.logger import mlops_logger as logger
+        from apps.mlops.services.train_data_file_cleanup import (
+            _assert_file_reference_available,
+            _lock_file_reference_guards,
+            _mark_file_reference_active,
+        )
 
         file_field_name = self._file_field_name
+        file_field = self._meta.get_field(file_field_name)
         update_fields = kwargs.get("update_fields")
+        using = kwargs.get("using") or router.db_for_write(
+            self.__class__, instance=self
+        )
 
         # New records and partial saves that exclude the file keep normal Model.save semantics.
         if not self.pk:
-            super().save(*args, **kwargs)
-            file_value = getattr(self, file_field_name)
-            self._loaded_file_path = file_value.name if file_value else None
+            with transaction.atomic(using=using):
+                file_value = getattr(self, file_field_name)
+                candidate_path = self._file_reference_lock_path(
+                    file_field,
+                    file_value,
+                )
+                guards = _lock_file_reference_guards(
+                    paths=[candidate_path],
+                    using=using,
+                )
+                _assert_file_reference_available(
+                    field_file=file_value,
+                    guard=guards.get(candidate_path),
+                    using=using,
+                )
+                super().save(*args, **kwargs)
+                file_value = getattr(self, file_field_name)
+                actual_path = file_value.name if file_value else None
+                _mark_file_reference_active(
+                    path=actual_path,
+                    using=using,
+                    guards=guards,
+                )
+                self._loaded_file_path = actual_path
             return
         if update_fields is not None and file_field_name not in update_fields:
             super().save(*args, **kwargs)
             return
 
-        using = kwargs.get("using") or router.db_for_write(
-            self.__class__, instance=self
-        )
         with transaction.atomic(using=using):
             try:
                 old_instance = (
@@ -95,9 +121,30 @@ class TrainDataFileCleanupMixin:
                 and old_path != loaded_path
             ):
                 setattr(self, file_field_name, old_file)
+                new_file = getattr(self, file_field_name)
                 new_path = old_path
 
+            candidate_path = self._file_reference_lock_path(
+                file_field,
+                new_file,
+            )
+            guards = _lock_file_reference_guards(
+                paths=[old_path, candidate_path],
+                using=using,
+            )
+            _assert_file_reference_available(
+                field_file=new_file,
+                guard=guards.get(candidate_path),
+                using=using,
+            )
             super().save(*args, **kwargs)
+            new_file = getattr(self, file_field_name)
+            new_path = new_file.name if new_file else None
+            _mark_file_reference_active(
+                path=new_path,
+                using=using,
+                guards=guards,
+            )
             self._loaded_file_path = new_path
 
             if old_path and old_path != new_path:
@@ -111,41 +158,19 @@ class TrainDataFileCleanupMixin:
 
                 def delete_old_file():
                     from apps.mlops.services.train_data_file_cleanup import (
-                        delete_unreferenced_train_data_file,
+                        delete_train_data_file_with_retry,
                     )
 
-                    try:
-                        delete_unreferenced_train_data_file(**cleanup_kwargs)
-                    except Exception as delete_err:
-                        logger.warning(
-                            "Failed to delete old file '%s'; scheduling retry: %s",
-                            old_path,
-                            delete_err,
-                        )
-                        try:
-                            from apps.mlops.tasks.file_cleanup import (
-                                cleanup_train_data_file,
-                            )
-
-                            cleanup_train_data_file.apply_async(
-                                kwargs=cleanup_kwargs,
-                                delivery_mode=2,
-                                retry=True,
-                                retry_policy={
-                                    "max_retries": 3,
-                                    "interval_start": 0,
-                                    "interval_step": 1,
-                                    "interval_max": 3,
-                                },
-                            )
-                        except Exception as publish_err:
-                            logger.error(
-                                "Failed to publish cleanup retry for '%s': %s",
-                                old_path,
-                                publish_err,
-                            )
+                    delete_train_data_file_with_retry(**cleanup_kwargs)
 
                 transaction.on_commit(delete_old_file, using=using)
+
+    def _file_reference_lock_path(self, file_field, field_file):
+        if not field_file:
+            return None
+        if field_file._committed:
+            return field_file.name
+        return file_field.generate_filename(self, field_file.name)
 
 
 class TrainJobConfigSyncMixin:
