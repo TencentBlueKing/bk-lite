@@ -57,6 +57,7 @@ from apps.opspilot.utils.sse_chat import stream_chat
 from apps.opspilot.utils.vendor_model_mixin import VendorModelMixin
 from apps.system_mgmt.utils.network_whitelist_error import build_network_whitelist_error_payload
 from apps.system_mgmt.utils.operation_log_utils import log_operation
+from config.drf.renderers import CustomRenderer, EventStreamRenderer
 
 
 class LLMFilter(FilterSet):
@@ -320,7 +321,11 @@ class LLMViewSet(PinMixin, AuthViewSet):
             logger.exception("Skill execute failed: skill_id=%s", params.get("skill_id"))
             return self.create_error_stream_response(str(e))
 
-    @action(methods=["POST"], detail=False)
+    @action(
+        methods=["POST"],
+        detail=False,
+        renderer_classes=[CustomRenderer, EventStreamRenderer],
+    )
     @HasPermission("skill_setting-View")
     def execute_agui(self, request):
         """
