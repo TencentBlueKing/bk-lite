@@ -911,6 +911,25 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
         """
         instance = self.get_object()
 
+        # ``AuthViewSet.update`` 会在序列化写入前校验实例级权限，但本方法还会在
+        # 调用父类前解析 MLflow、镜像和运行时配置。必须先执行同一实例权限门禁，
+        # 避免无权请求触发外部预检。
+        if not getattr(request.user, "is_superuser", False) and hasattr(self, "permission_key"):
+            current_team = self._parse_current_team_cookie(request, default=None)
+            include_children = request.COOKIES.get("include_children", "0") == "1"
+            if current_team is None or not self.get_has_permission(
+                request.user,
+                instance,
+                current_team,
+                include_children=include_children,
+            ):
+                message = (
+                    self.loader.get("error.no_permission_update")
+                    if self.loader
+                    else "User does not have permission to update this instance"
+                )
+                return self.value_error(message)
+
         # 兜底校验：容器未运行时不允许设置 status=active
         new_status = request.data.get("status")
         if error_response := validate_serving_status_change(instance, new_status):
@@ -1039,28 +1058,41 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
             except Exception as e:
                 logger.error(f"自动重启失败: {str(e)}", exc_info=True)
                 try:
-                    rollback_result = WebhookClient.serve(
-                        container_id,
-                        mlflow_tracking_uri,
-                        old_model_uri,
-                        port=old_port,
-                        train_image=old_train_image,
-                        timeseries_predict_timeout_seconds=predict_budget_seconds,
-                    )
-                    rollback_port = (
-                        int(rollback_result.get("port", 0))
-                        if rollback_result.get("port")
-                        else old_port
-                    )
-                    rollback_message = "新服务启动失败，已恢复旧配置与旧服务"
-                except Exception as rollback_error:
-                    logger.error(f"恢复旧 serving 失败: {rollback_error}", exc_info=True)
+                    # serve.sh 可能在返回失败前已创建容器或 Kubernetes 资源。
+                    # remove 端点对不存在资源幂等；确认清理完成后才能复用同一 ID。
+                    WebhookClient.remove(container_id)
+                except Exception as cleanup_error:
+                    logger.error(f"清理失败的新 serving 资源失败: {cleanup_error}", exc_info=True)
                     rollback_result = {
                         "status": "error",
-                        "message": f"新服务与旧服务恢复均失败: {str(rollback_error)}",
+                        "message": f"新服务启动失败且残留资源清理失败: {str(cleanup_error)}",
                     }
                     rollback_port = old_port
-                    rollback_message = "新服务启动失败，旧配置已恢复但旧服务恢复失败"
+                    rollback_message = "新服务启动失败，旧配置已恢复但运行时残留未清理"
+                else:
+                    try:
+                        rollback_result = WebhookClient.serve(
+                            container_id,
+                            mlflow_tracking_uri,
+                            old_model_uri,
+                            port=old_port,
+                            train_image=old_train_image,
+                            timeseries_predict_timeout_seconds=predict_budget_seconds,
+                        )
+                        rollback_port = (
+                            int(rollback_result.get("port", 0))
+                            if rollback_result.get("port")
+                            else old_port
+                        )
+                        rollback_message = "新服务启动失败，已恢复旧配置与旧服务"
+                    except Exception as rollback_error:
+                        logger.error(f"恢复旧 serving 失败: {rollback_error}", exc_info=True)
+                        rollback_result = {
+                            "status": "error",
+                            "message": f"新服务与旧服务恢复均失败: {str(rollback_error)}",
+                        }
+                        rollback_port = old_port
+                        rollback_message = "新服务启动失败，旧配置已恢复但旧服务恢复失败"
 
                 instance.model_version = old_model_version
                 instance.train_job_id = old_train_job_id
