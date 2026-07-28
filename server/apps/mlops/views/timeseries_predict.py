@@ -6,6 +6,7 @@ from apps.mlops.constants import TrainJobStatus, DatasetReleaseStatus, MLflowRun
 from rest_framework.decorators import action
 from rest_framework import status
 from rest_framework.response import Response
+from django.db import transaction
 from django.http import FileResponse
 from apps.mlops.utils.webhook_client import (
     WebhookClient,
@@ -695,11 +696,22 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
         }
 
     @staticmethod
-    def _restore_database_state(instance, old_state, **overrides):
-        restored_state = {**old_state, **overrides}
-        instance.__class__.objects.filter(pk=instance.pk).update(**restored_state)
-        for field_name, value in restored_state.items():
-            setattr(instance, field_name, deepcopy(value))
+    def _restore_database_state(instance, old_state, applied_state, **overrides):
+        """只回滚仍保持本请求写入值的字段，避免覆盖并发请求。"""
+        with transaction.atomic():
+            current = instance.__class__.objects.select_for_update().get(pk=instance.pk)
+            restored_state = {}
+            for field_name, old_value in old_state.items():
+                applied_value = applied_state[field_name]
+                if old_value != applied_value and getattr(current, field_name) == applied_value:
+                    restored_state[field_name] = deepcopy(old_value)
+            for field_name, value in overrides.items():
+                if getattr(current, field_name) == applied_state[field_name]:
+                    restored_state[field_name] = deepcopy(value)
+            if restored_state:
+                instance.__class__.objects.filter(pk=instance.pk).update(**restored_state)
+                for field_name, value in restored_state.items():
+                    setattr(instance, field_name, deepcopy(value))
 
     @HasPermission("timeseries_predict-View")
     def list(self, request, *args, **kwargs):
@@ -990,6 +1002,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
         if not isinstance(response, Response) or response.status_code >= 400:
             return response
         instance.refresh_from_db()
+        applied_database_state = self._snapshot_database_state(instance)
 
         # 只有容器在运行时才考虑重启
         if container_state != "running":
@@ -1027,7 +1040,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                 model_uri = self._resolve_model_uri(instance)
                 train_image = get_image_by_prefix(self.MLFLOW_PREFIX, instance.train_job.algorithm)
             except Exception as e:
-                self._restore_database_state(instance, old_database_state)
+                self._restore_database_state(instance, old_database_state, applied_database_state)
                 logger.error(f"新 serving 配置校验失败，保留旧服务: {e}", exc_info=True)
                 return Response(
                     {"error": f"配置更新未生效，旧服务保持运行: {str(e)}"},
@@ -1038,10 +1051,75 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                 logger.warning(f"配置变更需要重启，删除旧容器: {container_id}")
                 WebhookClient.remove(container_id)
             except Exception as e:
-                self._restore_database_state(instance, old_database_state)
-                logger.error(f"删除旧容器失败，配置已回滚: {e}", exc_info=True)
+                try:
+                    observed_runtime = WebhookClient.get_status([container_id])
+                except Exception as status_error:
+                    logger.error(f"删除旧容器失败且状态对账失败: {status_error}", exc_info=True)
+                    rollback_result = {
+                        "status": "error",
+                        "state": "unknown",
+                        "message": f"旧服务删除结果未知: {str(status_error)}",
+                    }
+                    rollback_port = old_port
+                    rollback_message = "配置已回滚，但旧服务删除结果未知"
+                else:
+                    runtime_state = observed_runtime[0] if observed_runtime else {}
+                    if runtime_state.get("state") == "not_found":
+                        try:
+                            rollback_result = WebhookClient.serve(
+                                container_id,
+                                mlflow_tracking_uri,
+                                old_model_uri,
+                                port=old_port,
+                                train_image=old_train_image,
+                                timeseries_predict_timeout_seconds=predict_budget_seconds,
+                            )
+                            rollback_port = (
+                                int(rollback_result.get("port", 0))
+                                if rollback_result.get("port")
+                                else old_port
+                            )
+                            rollback_message = "配置已回滚，并在对账确认旧服务已删除后恢复旧服务"
+                        except Exception as rollback_error:
+                            logger.error(f"对账后恢复旧 serving 失败: {rollback_error}", exc_info=True)
+                            rollback_result = {
+                                "status": "error",
+                                "state": "not_found",
+                                "message": f"旧服务已删除且恢复失败: {str(rollback_error)}",
+                            }
+                            rollback_port = old_port
+                            rollback_message = "配置已回滚，但旧服务恢复失败"
+                    elif runtime_state:
+                        rollback_result = runtime_state
+                        rollback_port = (
+                            int(runtime_state.get("port", 0))
+                            if runtime_state.get("port")
+                            else old_port
+                        )
+                        rollback_message = "配置已回滚，并已对账确认旧服务状态"
+                    else:
+                        rollback_result = {
+                            "status": "error",
+                            "state": "unknown",
+                            "message": "旧服务删除结果未知：状态查询未返回目标资源",
+                        }
+                        rollback_port = old_port
+                        rollback_message = "配置已回滚，但旧服务删除结果未知"
+
+                self._restore_database_state(
+                    instance,
+                    old_database_state,
+                    applied_database_state,
+                    port=rollback_port,
+                    container_info=rollback_result,
+                )
+                logger.error(f"删除旧容器失败，配置已回滚并完成状态对账: {e}", exc_info=True)
                 return Response(
-                    {"error": f"配置更新未生效，旧服务保持运行: {str(e)}"},
+                    {
+                        "error": f"配置更新未生效: {str(e)}",
+                        "message": rollback_message,
+                        "container_info": rollback_result,
+                    },
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
@@ -1108,6 +1186,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                 self._restore_database_state(
                     instance,
                     old_database_state,
+                    applied_database_state,
                     port=rollback_port,
                     container_info=rollback_result,
                 )

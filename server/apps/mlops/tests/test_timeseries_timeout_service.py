@@ -90,6 +90,47 @@ exit 0
     return result, captured
 
 
+def _run_kubernetes_remove_script(tmp_path, mode):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    capture_file = tmp_path / "kubectl-capture"
+    deleted_file = tmp_path / "service-deleted"
+    _write_executable(
+        bin_dir / "kubectl",
+        """#!/bin/bash
+echo "$*" >> "$CAPTURE_FILE"
+if [ "$1 $2" = "get job" ] || [ "$1 $2" = "get deployment" ]; then
+  exit 0
+fi
+if [ "$1 $2" = "get service" ]; then
+  if [ ! -f "$DELETED_FILE" ]; then echo "service/orphan-svc"; fi
+  exit 0
+fi
+if [ "$1 $2" = "delete service" ]; then
+  if [ "$STUB_MODE" = "delete_failure" ]; then echo "delete failed" >&2; exit 1; fi
+  touch "$DELETED_FILE"
+  exit 0
+fi
+exit 0
+""",
+    )
+    env = os.environ.copy()
+    env["PATH"] = f"{bin_dir}:{env['PATH']}"
+    env["CAPTURE_FILE"] = str(capture_file)
+    env["DELETED_FILE"] = str(deleted_file)
+    env["STUB_MODE"] = mode
+    script = REPO_ROOT / "agents/webhookd/mlops/kubernetes/remove.sh"
+    result = subprocess.run(
+        ["bash", str(script), json.dumps({"id": "orphan", "namespace": "mlops"})],
+        capture_output=True,
+        check=False,
+        env=env,
+        text=True,
+    )
+    captured = capture_file.read_text(encoding="utf-8") if capture_file.exists() else ""
+    return result, captured
+
+
 def test_webhook_client_forwards_timeseries_budget(monkeypatch):
     captured = {}
     monkeypatch.setattr(
@@ -198,3 +239,19 @@ def test_serve_script_rejects_invalid_budget_before_mutation(tmp_path, runtime):
     error = json.loads(result.stdout)
     assert error["code"] == "INVALID_PREDICT_TIMEOUT"
     assert captured == ""
+
+
+def test_kubernetes_remove_deletes_orphan_service_without_deployment(tmp_path):
+    result, captured = _run_kubernetes_remove_script(tmp_path, mode="orphan_service")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "delete service orphan-svc" in captured
+    assert "Resources removed successfully: Service" in result.stdout
+
+
+def test_kubernetes_remove_reports_orphan_service_delete_failure(tmp_path):
+    result, _ = _run_kubernetes_remove_script(tmp_path, mode="delete_failure")
+
+    assert result.returncode == 1
+    error = json.loads(result.stdout)
+    assert error["code"] == "SERVICE_DELETE_FAILED"

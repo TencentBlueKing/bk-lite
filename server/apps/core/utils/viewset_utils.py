@@ -172,11 +172,15 @@ class GenericViewSetFun(object):
             permission_data = get_permission_rules(user, current_team, app_name, permission_key, include_children)
             instance_ids = [i["id"] for i in permission_data.get("instance", [])]
             team = permission_data.get("team", [])
+            permission_query = Q()
             if instance_ids:
-                query |= Q(id__in=instance_ids)
-            query |= build_json_membership_query(queryset, org_field, team)
+                permission_query |= Q(id__in=instance_ids)
+            permission_query |= build_json_membership_query(queryset, org_field, team)
             if not instance_ids and not team:
                 return queryset.filter(id=0)
+            # 实例级规则只在当前组织范围内生效。团队移除后即使远端规则清理
+            # 暂时失败，旧规则也不能绕过本地组织边界重新暴露实例。
+            query &= permission_query
         return queryset.filter(query)
 
     @classmethod
