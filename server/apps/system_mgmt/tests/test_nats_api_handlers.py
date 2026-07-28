@@ -69,6 +69,10 @@ def test_nats_api_compat_exports_local_and_nats_entrypoints():
         "_list_opspilot_nats_channels",
         "create_default_rule",
         "bk_lite_user_login",
+        "get_group_users",
+        "get_group_users_scoped",
+        "get_all_users",
+        "search_users",
     }
     registered_entrypoints = expected_entrypoints - local_only_entrypoints
 
@@ -77,8 +81,7 @@ def test_nats_api_compat_exports_local_and_nats_entrypoints():
 
     assert exported_entrypoints == expected_entrypoints
     assert registered_entrypoints <= actual_registered_entrypoints
-    assert "create_default_rule" not in actual_registered_entrypoints
-    assert "bk_lite_user_login" not in actual_registered_entrypoints
+    assert local_only_entrypoints.isdisjoint(actual_registered_entrypoints)
 
 
 def test_bk_lite_user_login_keeps_local_app_client_path(monkeypatch):
