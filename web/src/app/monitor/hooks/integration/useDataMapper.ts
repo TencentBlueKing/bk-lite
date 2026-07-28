@@ -358,12 +358,16 @@ export class DataMapper {
           (n: any) => n?.value === firstNodeId || n?.id === firstNodeId
         )
         : undefined;
-      // 生成 instance_id（如果有模板）,使用 SHA256 哈希编码
+      // 生成 instance_id：UUID 策略复用当前行稳定的 UUID key；
+      // 普通模板继续使用既有哈希编码。
       let instance_id = row.instance_id;
       if (!instance_id && context.instance_id) {
-        instance_id = this.hashInstanceId(
-          this.applyTemplate(context.instance_id, row, context)
-        );
+        instance_id =
+          context.instance_id === '{{uuid}}'
+            ? String(row.key).replaceAll('-', '').toLowerCase()
+            : this.hashInstanceId(
+              this.applyTemplate(context.instance_id, row, context)
+            );
       }
       // 过滤掉 key 字段和所有 _error 字段，并处理加密字段
       const cleanedInstanceData = Object.keys(row)
