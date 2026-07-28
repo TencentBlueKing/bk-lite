@@ -911,24 +911,12 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
         """
         instance = self.get_object()
 
-        # ``AuthViewSet.update`` 会在序列化写入前校验实例级权限，但本方法还会在
-        # 调用父类前解析 MLflow、镜像和运行时配置。必须先执行同一实例权限门禁，
-        # 避免无权请求触发外部预检。
-        if not getattr(request.user, "is_superuser", False) and hasattr(self, "permission_key"):
-            current_team = self._parse_current_team_cookie(request, default=None)
-            include_children = request.COOKIES.get("include_children", "0") == "1"
-            if current_team is None or not self.get_has_permission(
-                request.user,
-                instance,
-                current_team,
-                include_children=include_children,
-            ):
-                message = (
-                    self.loader.get("error.no_permission_update")
-                    if self.loader
-                    else "User does not have permission to update this instance"
-                )
-                return self.value_error(message)
+        # 本方法在父类更新前会解析 MLflow、镜像和运行时配置，因此先复用父类的
+        # 完整实例授权门禁；父类收到标记后不再重复执行同一校验。
+        access_error = self._validate_update_access(request, instance, request.data)
+        if access_error is not None:
+            return access_error
+        kwargs["_update_access_prechecked"] = True
 
         # 兜底校验：容器未运行时不允许设置 status=active
         new_status = request.data.get("status")

@@ -288,3 +288,78 @@ def test_update_permission_denial_does_not_restart_runtime(
     serving.refresh_from_db()
     assert serving.model_version == "latest"
     assert serving.container_info["state"] == "running"
+
+
+def test_update_wrong_current_team_does_not_run_external_preflight(
+    mlops_api_client,
+    mlops_user,
+    monkeypatch,
+):
+    mlops_user.permission["mlops"].add("timeseries_predict-Edit")
+    mlops_user.group_tree = [
+        {
+            "id": 2,
+            "subGroups": [{"id": 1, "subGroups": []}],
+        }
+    ]
+    mlops_api_client.cookies["current_team"] = "2"
+    mlops_api_client.cookies["include_children"] = "1"
+    serving = _create_serving(port=3000)
+    unexpected_calls = []
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.TimeSeriesPredictServingViewSet.get_has_permission",
+        lambda *args, **kwargs: True,
+    )
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.get_timeseries_predict_budget_seconds",
+        lambda: unexpected_calls.append("predict_budget"),
+    )
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.get_mlflow_tracking_uri",
+        lambda: unexpected_calls.append("mlflow_tracking_uri"),
+    )
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.get_image_by_prefix",
+        lambda *args: unexpected_calls.append("train_image"),
+    )
+
+    response = mlops_api_client.patch(
+        f"/api/v1/mlops/timeseries_predict_servings/{serving.id}/",
+        {"model_version": "v2"},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["result"] is False
+    assert unexpected_calls == []
+
+
+def test_update_rejects_unmanaged_new_team_before_external_preflight(
+    mlops_api_client,
+    mlops_user,
+    monkeypatch,
+):
+    mlops_user.permission["mlops"].add("timeseries_predict-Edit")
+    serving = _create_serving(port=3000)
+    unexpected_calls = []
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.TimeSeriesPredictServingViewSet.get_has_permission",
+        lambda *args, **kwargs: True,
+    )
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.get_timeseries_predict_budget_seconds",
+        lambda: unexpected_calls.append("predict_budget"),
+    )
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.get_mlflow_tracking_uri",
+        lambda: unexpected_calls.append("mlflow_tracking_uri"),
+    )
+
+    response = mlops_api_client.patch(
+        f"/api/v1/mlops/timeseries_predict_servings/{serving.id}/",
+        {"team": [1, 3], "model_version": "v2"},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert unexpected_calls == []
