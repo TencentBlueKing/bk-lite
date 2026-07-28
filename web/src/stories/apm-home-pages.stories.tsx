@@ -1,11 +1,12 @@
 import type { Meta, StoryObj } from '@storybook/nextjs';
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   Button,
   Col,
   Dropdown,
   Layout,
   Row,
+  Segmented,
   Space,
   Table,
   Typography,
@@ -13,18 +14,13 @@ import {
 import {
   ApiOutlined,
   AppstoreOutlined,
-  ArrowDownOutlined,
-  ArrowUpOutlined,
   BellOutlined,
-  ClockCircleOutlined,
   CompassOutlined,
   ContainerOutlined,
   DashboardOutlined,
   FireOutlined,
   HeartOutlined,
-  MinusOutlined,
   RadarChartOutlined,
-  ReloadOutlined,
   RocketOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons';
@@ -510,114 +506,64 @@ function TopMenuBar({ active = 'home' }: { active?: string }) {
 }
 
 /* ============================================================
- * 首页工具栏:标题 + 数据新鲜度 + 自动刷新倒计时 + 手动刷新
+ * 时间窗 segmented(右上角全局控件,样式对齐服务页)
+ * 5 个固定档位:15m / 1h / 4h / 1d / 7d(默认 1h)
  * ============================================================ */
-function HomeToolbar({ onRefresh }: { onRefresh?: () => void }) {
-  const REFRESH_INTERVAL = 30;
-  const [lastUpdated, setLastUpdated] = useState<number>(Date.now());
-  const [countdown, setCountdown] = useState<number>(REFRESH_INTERVAL);
+type TimeWindow = '15m' | '1h' | '4h' | '1d' | '7d';
 
-  useEffect(() => {
-    const t = setInterval(() => {
-      setCountdown((c) => {
-        if (c <= 1) {
-          setLastUpdated(Date.now());
-          return REFRESH_INTERVAL;
-        }
-        return c - 1;
-      });
-    }, 1000);
-    return () => clearInterval(t);
-  }, []);
+function TimeWindowControl({
+  value = '1h',
+  onChange,
+}: {
+  value?: TimeWindow;
+  onChange?: (v: TimeWindow) => void;
+}) {
+  return (
+    <Space size={6} align="center">
+      <Text type="secondary" style={{ fontSize: 12 }}>时间窗</Text>
+      <Segmented
+        value={value}
+        onChange={(v) => onChange?.(v as TimeWindow)}
+        options={[
+          { value: '15m', label: '15m' },
+          { value: '1h', label: '1h' },
+          { value: '4h', label: '4h' },
+          { value: '1d', label: '1d' },
+          { value: '7d', label: '7d' },
+        ]}
+      />
+    </Space>
+  );
+}
 
-  const handleRefresh = () => {
-    setLastUpdated(Date.now());
-    setCountdown(REFRESH_INTERVAL);
-    onRefresh?.();
-  };
-
-  const ago = Math.max(0, Math.floor((Date.now() - lastUpdated) / 1000));
-  const fresh = ago < 5;
-
+/* ============================================================
+ * 首页工具栏:仅右侧时间窗控件,无标题/副标题/刷新状态
+ * 首页作为 P0 入口无需展示页面名,顶部即为内容
+ * ============================================================ */
+function HomeToolbar({
+  timeWindow,
+  onTimeWindowChange,
+}: {
+  timeWindow: TimeWindow;
+  onTimeWindowChange: (v: TimeWindow) => void;
+}) {
   return (
     <div
       style={{
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'space-between',
+        justifyContent: 'flex-end',
         padding: '0 4px 16px 4px',
       }}
     >
-      <Space size={12} align="baseline">
-        <Title level={3} style={{ margin: 0, fontWeight: 600, letterSpacing: -0.3 }}>
-          平台总览
-        </Title>
-        <Text style={{ fontSize: 13, color: TOKENS.textSecondary }}>
-          7 段汇总 · Group 隔离 · 首页时间窗不可自定义
-        </Text>
-      </Space>
-      <Space size={12}>
-        <Text style={{ fontSize: 12, color: fresh ? TOKENS.success : TOKENS.textTertiary }}>
-          <ClockCircleOutlined style={{ marginRight: 4 }} />
-          {ago === 0 ? '刚刚更新' : `${ago} 秒前更新`}
-        </Text>
-        <Text style={{ fontSize: 12, color: TOKENS.textTertiary, fontVariantNumeric: 'tabular-nums' }}>
-          {countdown}s 后自动刷新
-        </Text>
-        <Button
-          size="small"
-          icon={<ReloadOutlined />}
-          onClick={handleRefresh}
-          style={{ borderRadius: 4 }}
-        >
-          刷新
-        </Button>
-      </Space>
+      <TimeWindowControl value={timeWindow} onChange={onTimeWindowChange} />
     </div>
   );
 }
 
 /* ============================================================
- * 较昨日 delta 渲染:
- *   up   = 涨(可绿可红,按 isPositive 决定)
- *   down = 跌(可绿可红,按 isPositive 决定)
- *   flat = 平(灰色)
- *   na   = 无数据(灰色 —)
- * ============================================================ */
-type DeltaDir = 'up' | 'down' | 'flat' | 'na';
-function DeltaBadge({
-  dir,
-  text,
-  invertColor,
-}: {
-  dir: DeltaDir;
-  text: string;
-  invertColor?: boolean; // true = 上升为恶化(告警/事件用)
-}) {
-  if (dir === 'na') {
-    return (
-      <span style={{ ...tabularNumStyle, fontSize: 12, color: TOKENS.textTertiary }}>
-        <MinusOutlined style={{ fontSize: 10, marginRight: 2 }} />
-        {text}
-      </span>
-    );
-  }
-  const isUp = dir === 'up';
-  const goodWhenUp = !invertColor;
-  const positive = dir === 'flat' ? null : isUp === goodWhenUp;
-  const color = dir === 'flat' ? TOKENS.textSecondary : positive ? TOKENS.success : TOKENS.danger;
-  const Icon = dir === 'flat' ? MinusOutlined : isUp ? ArrowUpOutlined : ArrowDownOutlined;
-  return (
-    <span style={{ ...tabularNumStyle, fontSize: 12, color, fontWeight: 500 }}>
-      <Icon style={{ fontSize: 10, marginRight: 2 }} />
-      {text}
-    </span>
-  );
-}
-
-/* ============================================================
  * §3.1 KPI 概览 · 单卡
- * 字段(图标 + 指标名 + 主数值 + 较昨日 delta + sparkline)
+ * 字段(图标 + 指标名 + 主数值 + sparkline),不放较昨日
  * ============================================================ */
 interface KpiConfig {
   key: string;
@@ -627,7 +573,6 @@ interface KpiConfig {
   iconColor: string;
   value: React.ReactNode;
   unit?: string;
-  delta: { dir: DeltaDir; text: string; invertColor?: boolean };
   trend: number[];
   sparkColor: string;
   sparkKind?: SparklineKind;
@@ -667,7 +612,7 @@ function KpiCard({ kpi }: { kpi: KpiConfig }) {
         </span>
       </div>
 
-      {/* 主数值 + delta */}
+      {/* 主数值(只展示当前值,无较昨日) */}
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 4 }}>
         <span
           style={{
@@ -684,10 +629,6 @@ function KpiCard({ kpi }: { kpi: KpiConfig }) {
         {kpi.unit && (
           <span style={{ fontSize: 12, color: TOKENS.textSecondary }}>{kpi.unit}</span>
         )}
-      </div>
-      <div style={{ height: 18 }}>
-        <DeltaBadge dir={kpi.delta.dir} text={kpi.delta.text} invertColor={kpi.delta.invertColor} />
-        <span style={{ fontSize: 11, color: TOKENS.textTertiary, marginLeft: 6 }}>较昨日</span>
       </div>
 
       {/* sparkline */}
@@ -716,7 +657,6 @@ const KPI_DATA: KpiConfig[] = [
     iconColor: TOKENS.success,
     value: '92.5',
     unit: '%',
-    delta: { dir: 'up', text: '3.6%' },
     trend: [88, 90, 89, 91, 90, 92, 92, 93, 91, 92, 92, 92, 91, 92, 92, 93, 92, 92, 92, 92, 93, 92, 92, 92.5],
     sparkColor: TOKENS.success,
     sparkKind: 'area',
@@ -728,7 +668,6 @@ const KPI_DATA: KpiConfig[] = [
     iconBg: TOKENS.primarySoft,
     iconColor: TOKENS.primary,
     value: '128',
-    delta: { dir: 'up', text: '8' },
     trend: [120, 120, 121, 121, 122, 122, 123, 123, 124, 124, 124, 125, 125, 125, 125, 125, 126, 126, 126, 127, 127, 127, 128, 128],
     sparkColor: TOKENS.primary,
     sparkKind: 'area',
@@ -740,7 +679,6 @@ const KPI_DATA: KpiConfig[] = [
     iconBg: TOKENS.primarySoft,
     iconColor: TOKENS.primary,
     value: '512',
-    delta: { dir: 'up', text: '24' },
     trend: [488, 488, 490, 490, 492, 492, 494, 496, 496, 498, 498, 500, 500, 502, 502, 504, 504, 506, 506, 508, 508, 510, 512, 512],
     sparkColor: TOKENS.primary,
     sparkKind: 'area',
@@ -752,7 +690,6 @@ const KPI_DATA: KpiConfig[] = [
     iconBg: TOKENS.dangerSoft,
     iconColor: TOKENS.danger,
     value: '6',
-    delta: { dir: 'up', text: '2', invertColor: true },
     trend: [1, 1, 2, 1, 2, 3, 2, 1, 2, 1, 2, 2, 3, 2, 1, 1, 1, 2, 2, 3, 2, 2, 1, 1, 2, 3, 4, 6],
     sparkColor: TOKENS.danger,
     sparkKind: 'area',
@@ -764,7 +701,6 @@ const KPI_DATA: KpiConfig[] = [
     iconBg: TOKENS.warningSoft,
     iconColor: TOKENS.warning,
     value: '18',
-    delta: { dir: 'up', text: '3', invertColor: true },
     trend: [12, 13, 14, 12, 15, 16, 14, 13, 15, 14, 16, 17, 15, 14, 15, 16, 17, 16, 18, 17, 18, 17, 18, 18],
     sparkColor: TOKENS.warning,
     sparkKind: 'area',
@@ -777,7 +713,6 @@ const KPI_DATA: KpiConfig[] = [
     iconColor: TOKENS.primary,
     value: '3.42',
     unit: 'k req/s',
-    delta: { dir: 'up', text: '12.3%' },
     trend: [2.8, 2.9, 2.85, 2.95, 3.0, 3.05, 3.1, 3.0, 3.15, 3.1, 3.2, 3.25, 3.2, 3.3, 3.25, 3.3, 3.35, 3.3, 3.4, 3.35, 3.4, 3.38, 3.4, 3.42],
     sparkColor: TOKENS.primary,
     sparkKind: 'area',
@@ -1440,11 +1375,12 @@ function HomeEmptyState() {
  * ============================================================ */
 function HomeDashboard() {
   const [empty, setEmpty] = useState(false);
+  const [timeWindow, setTimeWindow] = useState<TimeWindow>('1h');
   return (
     <div style={shellStyle}>
       <TopMenuBar active="home" />
       <Content style={{ padding: '24px 32px 40px' }}>
-        <HomeToolbar onRefresh={() => undefined} />
+        <HomeToolbar timeWindow={timeWindow} onTimeWindowChange={setTimeWindow} />
         {empty ? (
           <HomeEmptyState />
         ) : (
