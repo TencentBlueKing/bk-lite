@@ -1,0 +1,113 @@
+import base64
+import io
+import json
+import os
+import re
+import subprocess
+import tarfile
+from pathlib import Path
+
+import pytest
+from cryptography import x509
+from cryptography.x509.oid import ExtensionOID
+
+
+PROXY_SCRIPT = Path(__file__).resolve().parents[1] / "proxy.sh"
+
+
+@pytest.fixture(scope="module")
+def certificate_authority(tmp_path_factory):
+    cert_dir = tmp_path_factory.mktemp("proxy-ca")
+    key_path = cert_dir / "ca.key"
+    cert_path = cert_dir / "ca.crt"
+    subprocess.run(
+        [
+            "openssl",
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-nodes",
+            "-keyout",
+            str(key_path),
+            "-out",
+            str(cert_path),
+            "-days",
+            "1",
+            "-subj",
+            "/CN=proxy-test-ca",
+        ],
+        check=True,
+        capture_output=True,
+    )
+    return key_path, cert_path
+
+
+def _generate_proxy_archive(proxy_address, certificate_authority):
+    key_path, cert_path = certificate_authority
+    payload = {
+        "node_id": "proxy-test",
+        "zone_id": "2",
+        "zone_name": "proxy-test",
+        "server_url": "https://server.example.com",
+        "nats_url": f"nats://{proxy_address}:4222",
+        "nats_username": "user",
+        "nats_password": "password",
+        "api_token": "token",
+        "redis_password": "redis-password",
+        "proxy_ip": proxy_address,
+        "nats_monitor_username": "monitor",
+        "nats_monitor_password": "monitor-password",
+        "traefik_web_port": "443",
+    }
+    env = os.environ | {
+        "PROXY_CA_KEY_PATH": str(key_path),
+        "PROXY_CA_CERT_PATH": str(cert_path),
+    }
+    result = subprocess.run(
+        [str(PROXY_SCRIPT), json.dumps(payload)],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    install_script = json.loads(result.stdout)["install_script"]
+    archive_match = re.search(r'^ARCHIVE="([^"]+)"$', install_script, re.MULTILINE)
+    assert archive_match
+    archive_bytes = base64.b64decode(archive_match.group(1))
+    return tarfile.open(fileobj=io.BytesIO(archive_bytes), mode="r:gz")
+
+
+@pytest.mark.parametrize(
+    ("proxy_address", "expected_dns", "expected_ip"),
+    [
+        ("proxy.example.com", "proxy.example.com", None),
+        ("10.0.0.8", None, "10.0.0.8"),
+        ("[2001:db8::8]", None, "2001:db8::8"),
+    ],
+)
+def test_proxy_certificate_contains_typed_san_and_valid_nats_route(
+    proxy_address,
+    expected_dns,
+    expected_ip,
+    certificate_authority,
+):
+    with _generate_proxy_archive(proxy_address, certificate_authority) as archive:
+        certificate = x509.load_pem_x509_certificate(
+            archive.extractfile("./conf/certs/proxy.crt").read()
+        )
+        san = certificate.extensions.get_extension_for_oid(
+            ExtensionOID.SUBJECT_ALTERNATIVE_NAME
+        ).value
+        nats_config = archive.extractfile(
+            "./conf/nats/nats.conf"
+        ).read().decode()
+
+    if expected_dns:
+        assert expected_dns in san.get_values_for_type(x509.DNSName)
+    if expected_ip:
+        assert expected_ip in {
+            str(address)
+            for address in san.get_values_for_type(x509.IPAddress)
+        }
+    assert f'url: "tls://{proxy_address}:4222"' in nats_config

@@ -23,6 +23,7 @@ from apps.alerts.serializers.action import ActionExecutionSerializer, ActionRule
 from apps.alerts.utils.operator_log import record_operator_log
 from apps.alerts.utils.permission_scope import (
     apply_team_scope_for_request,
+    apply_team_scope_with_group_ids,
     get_authorized_group_ids,
     get_current_team_from_request,
 )
@@ -223,13 +224,20 @@ class ActionExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        alert = apply_team_scope_for_request(Alert.objects.all(), request).filter(
+        authorized_group_ids = get_authorized_group_ids(request)
+        alert = apply_team_scope_with_group_ids(Alert.objects.all(), authorized_group_ids).filter(
             alert_id=request.data.get("alert_id")
         ).first()
-        rule = apply_team_scope_for_request(ActionRule.objects.all(), request).filter(
-            id=request.data.get("rule_id")
-        ).first()
+        rule = ActionRule.objects.filter(id=request.data.get("rule_id")).first()
         if not alert or not rule:
+            return Response({"detail": "alert/rule 不存在或无权访问"}, status=status.HTTP_400_BAD_REQUEST)
+
+        authorized_teams = {str(team_id) for team_id in authorized_group_ids}
+        alert_teams = {str(team_id) for team_id in (alert.team or [])}
+        rule_teams = {str(team_id) for team_id in (rule.team or [])}
+        rule_out_of_scope = rule_teams and not (rule_teams & authorized_teams)
+        rule_incompatible_with_alert = alert_teams and rule_teams and not (alert_teams & rule_teams)
+        if rule_out_of_scope or rule_incompatible_with_alert:
             return Response({"detail": "alert/rule 不存在或无权访问"}, status=status.HTTP_400_BAD_REQUEST)
 
         operator = getattr(request.user, "username", None) or "anonymous"

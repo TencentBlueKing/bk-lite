@@ -7,7 +7,7 @@ import Icon from '@/components/icon';
 import useApiClient from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
 import { useClientData } from '@/context/client';
-import { useTheme } from '@/context/theme';
+import { useThemeMode } from '@/theme';
 import { useLocale } from '@/context/locale';
 import { ClientData, AppConfigItem } from '@/types/index';
 import OperateModal from '@/components/operate-modal'
@@ -23,7 +23,7 @@ const ControlPage = () => {
   const [isPopoverVisible, setIsPopoverVisible] = useState<boolean>(false);
   const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
   const [form] = Form.useForm();
-  const { themeName } = useTheme();
+  const { mode } = useThemeMode();
   const { locale } = useLocale();
   const { portalName } = usePortalBranding();
   const [overlayBgClass, setOverlayBgClass] = useState<string>('bg-[url(/app/console_bg.jpg)]');
@@ -80,8 +80,8 @@ const ControlPage = () => {
   }, []);
 
   useEffect(() => {
-    setOverlayBgClass(themeName === 'dark' ? 'bg-[url(/app/console_bg_dark.jpg)]' : 'bg-[url(/app/console_bg.jpg)]');
-  }, [themeName]);
+    setOverlayBgClass(mode === 'dark' ? 'bg-[url(/app/console_bg_dark.jpg)]' : 'bg-[url(/app/console_bg.jpg)]');
+  }, [mode]);
 
   const getRandomColor = () => {
     return colorOptions[Math.floor(Math.random() * colorOptions.length)];

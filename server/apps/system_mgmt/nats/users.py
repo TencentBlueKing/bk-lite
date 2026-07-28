@@ -1,6 +1,7 @@
 # flake8: noqa
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.current_team_scope import _normalize_organization_ids
+from apps.core.utils.permission_cache import clear_all_permission_cache
 
 from .common import *  # noqa: F401,F403
 from .common import _collect_ancestor_group_ids
@@ -221,12 +222,23 @@ def create_guest_role():
         "cmdb": CMDB_MENUS[:],
         "monitor": MONITOR_MENUS[:],
     }
-    guest_group, _ = Group.objects.get_or_create(name="Guest", parent_id=0, defaults={"description": "Guest group"})
-    app_guest_group, _ = Group.objects.get_or_create(name="OpsPilotGuest", parent_id=0)
-    for app, app_menus in app_map.items():
-        menus = dict(Menu.objects.filter(app=app).values_list("id", "name"))
-        menu_list = [k for k, v in menus.items() if v in app_menus]
-        Role.objects.update_or_create(name="guest", app=app, defaults={"menu_list": menu_list})
+    with transaction.atomic():
+        guest_group, _ = Group.objects.get_or_create(name="Guest", parent_id=0, defaults={"description": "Guest group"})
+        app_guest_group, _ = Group.objects.get_or_create(name="OpsPilotGuest", parent_id=0)
+        permissions_changed = False
+        for app, app_menus in app_map.items():
+            menus = dict(Menu.objects.filter(app=app).values_list("id", "name"))
+            menu_list = [k for k, v in menus.items() if v in app_menus]
+            role = Role.objects.filter(name="guest", app=app).first()
+            if role is None:
+                Role.objects.create(name="guest", app=app, menu_list=menu_list)
+                permissions_changed = True
+            elif role.menu_list != menu_list:
+                role.menu_list = menu_list
+                role.save(update_fields=["menu_list"])
+                permissions_changed = True
+        if permissions_changed:
+            clear_all_permission_cache()
     return {"result": True, "data": {"group_id": app_guest_group.id}}
 
 
@@ -289,11 +301,12 @@ def set_opspilot_guest_group_default_rule(default_group, user):
     cmdb_rule = GroupDataRule.objects.get(name="游客数据权限", app="cmdb", group_id=default_group.id)
     log_rule = GroupDataRule.objects.get(name="log内置规则", app="log", group_id=default_group.id)
     node_rule = GroupDataRule.objects.get(name="节点管理内置数据权限", app="node", group_id=default_group.id)
-    UserRule.objects.get_or_create(username=user.username, group_rule_id=cmdb_rule.id)
-    UserRule.objects.get_or_create(username=user.username, group_rule_id=default_rule.id)
-    UserRule.objects.get_or_create(username=user.username, group_rule_id=monitor_rule.id)
-    UserRule.objects.get_or_create(username=user.username, group_rule_id=log_rule.id)
-    UserRule.objects.get_or_create(username=user.username, group_rule_id=node_rule.id)
+    identity = {"username": user.username, "domain": user.domain}
+    UserRule.objects.get_or_create(**identity, group_rule_id=cmdb_rule.id)
+    UserRule.objects.get_or_create(**identity, group_rule_id=default_rule.id)
+    UserRule.objects.get_or_create(**identity, group_rule_id=monitor_rule.id)
+    UserRule.objects.get_or_create(**identity, group_rule_id=log_rule.id)
+    UserRule.objects.get_or_create(**identity, group_rule_id=node_rule.id)
 
 
 @nats_client.register

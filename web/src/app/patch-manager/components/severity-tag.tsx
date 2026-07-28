@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Tag } from 'antd';
+import { useTranslation } from '@/utils/i18n';
 
 export type Severity = 'critical' | 'important' | 'moderate' | 'low' | 'unspecified';
 
@@ -13,14 +14,6 @@ const SEV_COLOR: Record<Severity, string> = {
   unspecified: 'default',
 };
 
-const SEV_TEXT: Record<Severity, string> = {
-  critical: '严重',
-  important: '重要',
-  moderate: '中等',
-  low: '低',
-  unspecified: '未指定',
-};
-
 function isSeverity(value: string | undefined): value is Severity {
   return value !== undefined && value in SEV_COLOR;
 }
@@ -30,6 +23,7 @@ interface SeverityTagProps {
 }
 
 export default function SeverityTag({ severity }: SeverityTagProps): React.ReactElement {
+  const { t } = useTranslation();
   const key = isSeverity(severity) ? severity : 'unspecified';
-  return <Tag color={SEV_COLOR[key]}>{SEV_TEXT[key]}</Tag>;
+  return <Tag color={SEV_COLOR[key]}>{t(`patchManager.severityValues.${key}`)}</Tag>;
 }

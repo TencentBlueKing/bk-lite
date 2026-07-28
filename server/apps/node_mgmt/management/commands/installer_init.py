@@ -31,12 +31,25 @@ class Command(BaseCommand):
             default=NodeConstants.X86_64_ARCH,
             help="安装器 CPU 架构",
         )
+        parser.add_argument(
+            "--variant",
+            choices=["installer", "bootstrap"],
+            default="installer",
+            help="Windows 产物类型：手动 GUI 安装器或远程 bootstrap",
+        )
 
     def handle(self, *args, **options):
         target_os = options["os"]
         file_path = options["file_path"]
         cpu_architecture = options["cpu_architecture"]
-        alias_path = InstallerConstants.build_latest_alias_path(target_os, cpu_architecture)
+        variant = options.get("variant", "installer")
+        if variant == "bootstrap" and target_os != NodeConstants.WINDOWS_OS:
+            raise ValueError("bootstrap variant currently supports Windows only")
+        alias_path = (
+            InstallerConstants.build_latest_bootstrap_path(target_os, cpu_architecture)
+            if variant == "bootstrap"
+            else InstallerConstants.build_latest_alias_path(target_os, cpu_architecture)
+        )
 
         logger.info(f"{target_os}/{cpu_architecture} 安装器初始化开始，文件路径: {file_path}")
 

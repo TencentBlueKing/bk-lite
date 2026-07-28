@@ -25,6 +25,8 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "dashboard_share_exchange": "30/minute",
         "dashboard_share_access": "300/minute",
+        "dashboard_share_prepare": "30/minute",
+        "dashboard_share_invalid_token": "20/minute",
     },
 }
 

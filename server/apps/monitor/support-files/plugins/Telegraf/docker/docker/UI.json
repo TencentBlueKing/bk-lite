@@ -15,9 +15,9 @@
       "required": true,
       "visible_in": "edit",
       "editable": false,
-      "description": "监控的Docker容器所在主机的网络地址，用于准确定位和采集性能数据",
+      "description": "Docker 守护进程连接地址，例如 unix:///var/run/docker.sock 或 tcp://host:2375，用于定位采集目标",
       "widget_props": {
-        "placeholder": "Docer守护进程连接地址，默认为 unix:///var/run/docker.sock"
+        "placeholder": "Docker守护进程连接地址，默认为 unix:///var/run/docker.sock"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.endpoint"
@@ -78,7 +78,7 @@
         "target_field": "instance_name"
       },
       "widget_props": {
-        "placeholder": "Docer守护进程连接地址，默认为 unix:///var/run/docker.sock"
+        "placeholder": "Docker守护进程连接地址，默认为 unix:///var/run/docker.sock"
       },
       "label_en": "Endpoint"
     },

@@ -6,6 +6,7 @@ from django.db import transaction
 
 from apps.core.utils.permission_cache import clear_users_permission_cache
 from apps.system_mgmt.models import CustomMenuGroup, Group, Menu, Role, User
+from apps.system_mgmt.utils.group_utils import GroupUtils
 
 APP_NAME = "opspilot"
 LEGACY_MENU_BASE_NAMES = {
@@ -70,9 +71,9 @@ class Command(BaseCommand):
             changed_role_ids = _migrate_roles(legacy_menus, wiki_menu_ids)
             changed_group_count = _migrate_custom_menu_groups(legacy_menus)
             deleted_menu_count, _ = Menu.objects.filter(id__in=[menu.id for menu in legacy_menus]).delete()
+            _clear_permission_cache_for_roles(changed_role_ids)
 
         _clear_menu_cache()
-        _clear_permission_cache_for_roles(changed_role_ids)
 
         self.stdout.write(self.style.SUCCESS("OpsPilot legacy knowledge menus cleanup completed."))
         self.stdout.write(f"legacy menus deleted: {deleted_menu_count}")
@@ -298,12 +299,13 @@ def _clear_permission_cache_for_roles(role_ids):
 
     role_id_set = set(role_ids)
     group_ids = set(Group.objects.filter(roles__id__in=role_ids).values_list("id", flat=True))
+    affected_group_ids = set(GroupUtils.get_group_with_descendants(group_ids))
     affected_users = []
 
     for user in User.objects.all().only("username", "domain", "role_list", "group_list"):
         user_role_ids = set(user.role_list or [])
         user_group_ids = set(user.group_list or [])
-        if role_id_set.intersection(user_role_ids) or group_ids.intersection(user_group_ids):
+        if role_id_set.intersection(user_role_ids) or affected_group_ids.intersection(user_group_ids):
             affected_users.append({"username": user.username, "domain": user.domain})
 
     if affected_users:

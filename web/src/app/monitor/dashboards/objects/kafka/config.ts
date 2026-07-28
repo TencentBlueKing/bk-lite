@@ -13,7 +13,7 @@ export const KAFKA_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: 'Broker 数',
       description: 'Kafka 集群当前可发现的 Broker 数量。',
       unit: 'counts',
-      query: 'sum(kafka_brokers_gauge{__$labels__})',
+      query: 'sum by (instance_id) (kafka_brokers_gauge{__$labels__})',
       color: '#2f6bff',
     },
     {
@@ -21,7 +21,7 @@ export const KAFKA_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '不同步分区数',
       description: '副本未全部同步的分区数量；非零时需优先排查副本健康。',
       unit: 'counts',
-      query: 'sum(kafka_topic_partition_under_replicated_partition_gauge{__$labels__})',
+      query: 'sum by (instance_id) (kafka_topic_partition_under_replicated_partition_gauge{__$labels__})',
       color: '#ff8a1f',
     },
     {
@@ -29,7 +29,7 @@ export const KAFKA_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '最大消费者 Lag',
       description: '所有消费者组、Topic 和分区中当前最大的消费滞后。',
       unit: 'counts',
-      query: 'max(kafka_consumergroup_lag_gauge{__$labels__})',
+      query: 'max by (instance_id) (kafka_consumergroup_lag_gauge{__$labels__})',
       color: '#ff4d4f',
     },
     {
@@ -37,7 +37,7 @@ export const KAFKA_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: 'Topic 分区数',
       description: '当前已采集 Topic 的分区总数。',
       unit: 'counts',
-      query: 'sum(kafka_topic_partitions_gauge{__$labels__})',
+      query: 'sum by (instance_id) (kafka_topic_partitions_gauge{__$labels__})',
       color: '#13c2c2',
     },
   ],
@@ -68,7 +68,7 @@ export const KAFKA_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       icon: 'backlog',
       compare: true,
       compareFavorableDirection: 'down',
-      guide: [{ label: '消费者 Lag', detail: '取当前最严重的消费者组分区滞后；持续升高说明消费速度落后于生产。' }],
+      guide: [{ label: '消费者 Lag', detail: '取最严重分区滞后；持续升高时优先扩消费者、查消费卡住或生产突增，并对照不同步分区。' }],
     },
     {
       title: 'Topic 分区数',
@@ -84,7 +84,7 @@ export const KAFKA_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       title: '消费者 Lag 趋势',
       subtitle: '最大消费者组分区 Lag',
       metric: 'kafka_max_consumergroup_lag',
-      guide: [{ label: 'Lag 趋势', detail: '折线展示最大 Lag 的时间变化；悬浮任一点可查看精确数值和时间。' }],
+      guide: [{ label: 'Lag 趋势', detail: '最大 Lag 时间变化；持续抬升需扩容消费者或排查阻塞消费逻辑。' }],
       series: [{ metric: 'kafka_max_consumergroup_lag', label: '最大 Lag', color: '#ff4d4f', unit: 'counts' }],
     },
     {

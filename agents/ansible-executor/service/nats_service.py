@@ -1,6 +1,7 @@
 import asyncio
 import importlib
 import json
+import os
 import ssl
 import uuid
 from copy import deepcopy
@@ -85,7 +86,8 @@ class AnsibleNATSService:
     def __init__(self, config: ServiceConfig):
         self.config = config
         self.workers: list[asyncio.Task] = []
-        self.task_store = TaskStore(config.state_db_path)
+        payload_encryption_secret = os.getenv("ANSIBLE_PAYLOAD_ENCRYPTION_KEY", "") or config.nats_password
+        self.task_store = TaskStore(config.state_db_path, payload_encryption_secret)
 
     @staticmethod
     def _now_iso() -> str:

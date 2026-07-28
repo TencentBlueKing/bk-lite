@@ -17,15 +17,16 @@ import { FieldListProps, FieldTopValue } from '@/app/log/types/search';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { cloneDeep } from 'lodash';
 import useSearchApi from '@/app/log/api/search';
+import {
+  canExpandFieldStats,
+  getFieldStatsAttribute
+} from './fieldStats';
 
 const DEFAULT_FIELDS = ['timestamp', 'message'];
 const DEFAULT_FIELDS_MAP: Record<string, string> = {
   timestamp: '_time',
   message: '_msg'
 };
-
-// 不显示展开按钮的字段
-const HIDDEN_EXPAND_FIELDS = ['timestamp'];
 
 // 虚拟滚动配置
 const ITEM_HEIGHT = 32;
@@ -120,7 +121,7 @@ const FieldList: React.FC<FieldListProps> = ({
               query: searchParams.query || '*',
               start_time: searchParams.start_time,
               end_time: searchParams.end_time,
-              attr: field,
+              attr: getFieldStatsAttribute(field),
               top_num: 5,
               log_groups: searchParams.log_groups || []
             });
@@ -149,7 +150,7 @@ const FieldList: React.FC<FieldListProps> = ({
 
   // 判断字段是否显示展开按钮
   const shouldShowExpandButton = useCallback((field: string) => {
-    return !HIDDEN_EXPAND_FIELDS.includes(field);
+    return canExpandFieldStats(field);
   }, []);
 
   const operateFields = useCallback(

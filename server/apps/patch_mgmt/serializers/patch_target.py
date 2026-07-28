@@ -8,6 +8,7 @@ from rest_framework import serializers
 from apps.core.mixinx import EncryptMixin
 from apps.core.utils.serializers import TeamSerializer
 from apps.patch_mgmt.models import GovernanceTask, GovernanceTaskHost, PatchTarget
+from apps.patch_mgmt.utils.i18n import serializer_message
 
 
 class PatchTargetConnectivitySerializer(serializers.Serializer):
@@ -87,7 +88,7 @@ class PatchTargetSerializer(TeamSerializer):
         if self.instance:
             qs = qs.exclude(pk=self.instance.pk)
         if qs.exists():
-            raise serializers.ValidationError("同名目标主机已存在")
+            raise serializers.ValidationError(serializer_message(self, "error.duplicate_target_name", "A target with the same name already exists"))
         return value
 
     def create(self, validated_data):
@@ -166,7 +167,8 @@ class PatchTargetSerializer(TeamSerializer):
             task__task_type__in=("assess", "verify"),
             stage__in=("failed", "pending_confirmation"),
         ).order_by("-created_at").first()
-        reason = (host.reason or host.timeout_reason or "评估执行失败") if host else "评估执行失败"
+        fallback = serializer_message(self, "error.assessment_execution_failed", "Assessment execution failed")
+        reason = (host.reason or host.timeout_reason or fallback) if host else fallback
         return re.sub(
             r"(?i)(password|passwd|pwd|token|secret)\s*[:=]\s*\S+",
             r"\1=***",

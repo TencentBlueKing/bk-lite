@@ -24,6 +24,7 @@ import OperateDrawer from '@/app/patch-manager/components/operate-drawer';
 import usePatchManagerApi from '@/app/patch-manager/api';
 import useApiClient from '@/utils/request';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
+import { useTranslation } from '@/utils/i18n';
 
 import {
   createExecutionListPolling,
@@ -53,6 +54,8 @@ interface RiskSummary {
   status: string;
   status_display: string;
   status_color: string;
+  host_name?: string;
+  patch_name?: string;
 }
 
 const STATUS_COLOR: Record<string, string> = {
@@ -80,11 +83,11 @@ const STEP_BORDER: Record<string, string> = {
   unknown: '#faad14',
 };
 
-function executionText(task: any, formatTime: (value: string) => string) {
-  if (task.execution_mode !== 'window') return '立即执行';
+function executionText(task: any, formatTime: (value: string) => string, translate: (key: string) => string) {
+  if (task.execution_mode !== 'window') return translate('patchManager.risk.executeNow');
   const start = task.execution_window_start ? formatTime(task.execution_window_start) : '—';
   const end = task.execution_window_end ? formatTime(task.execution_window_end) : '—';
-  return `执行窗口 ${start}–${end}`;
+  return `${translate('patchManager.risk.executionWindow')} ${start}–${end}`;
 }
 
 async function exportTasks(
@@ -92,25 +95,12 @@ async function exportTasks(
   filename: string,
   loadRiskRows: (taskId: number) => Promise<any[]>,
   formatTime: (value?: string | null) => string,
+  translate: (key: string) => string,
 ) {
   const workbook = new ExcelJS.Workbook();
-  const sheet = workbook.addWorksheet('执行记录');
+  const sheet = workbook.addWorksheet(translate('patchManager.execution.records'));
   sheet.columns = [
-    { header: '任务名称', key: 'name', width: 36 },
-    { header: '类型', key: 'type', width: 12 },
-    { header: '执行方式', key: 'exec', width: 28 },
-    { header: '创建时间', key: 'createdAt', width: 24 },
-    { header: '主机', key: 'host', width: 22 },
-    { header: '补丁', key: 'patch', width: 28 },
-    { header: '安装状态', key: 'installStatus', width: 14 },
-    { header: '安装时间', key: 'installTime', width: 36 },
-    { header: '重启状态', key: 'rebootStatus', width: 14 },
-    { header: '重启时间', key: 'rebootTime', width: 36 },
-    { header: '验证状态', key: 'verifyStatus', width: 14 },
-    { header: '验证时间', key: 'verifyTime', width: 36 },
-    { header: '最终结果', key: 'status', width: 14 },
-    { header: '原因', key: 'reason', width: 40 },
-    { header: '重试次数', key: 'retryCount', width: 12 },
+    ...translate('patchManager.execution.exportHeaders').split('|').map((header, index) => ({ header, key: ['name', 'type', 'exec', 'createdAt', 'host', 'patch', 'installStatus', 'installTime', 'rebootStatus', 'rebootTime', 'verifyStatus', 'verifyTime', 'status', 'reason', 'retryCount'][index], width: index === 0 ? 36 : [2, 7, 9, 11].includes(index) ? 36 : index === 13 ? 40 : 14 })),
   ];
   sheet.views = [{ state: 'frozen', ySplit: 1 }];
   for (const row of rows) {
@@ -129,13 +119,13 @@ async function exportTasks(
         ...row,
         host: risk.host_name || risk.host_id,
         patch: risk.patch_name || risk.patch_id,
-        installStatus: stepMap.install?.status_display || '—',
+        installStatus: stepMap.install ? translate(`patchManager.execution.statuses.${stepMap.install.status}`) : '—',
         installTime: attemptTime(stepMap.install),
-        rebootStatus: stepMap.reboot?.status_display || '—',
+        rebootStatus: stepMap.reboot ? translate(`patchManager.execution.statuses.${stepMap.reboot.status}`) : '—',
         rebootTime: attemptTime(stepMap.reboot),
-        verifyStatus: stepMap.verify?.status_display || '—',
+        verifyStatus: stepMap.verify ? translate(`patchManager.execution.statuses.${stepMap.verify.status}`) : '—',
         verifyTime: attemptTime(stepMap.verify),
-        status: risk.status_display,
+        status: translate(`patchManager.execution.statuses.${risk.status}`),
         reason: attempts.map((attempt: any) => attempt.reason).filter(Boolean).at(-1) || '',
         retryCount: Math.max(0, attempts.length - (risk.steps || []).filter((step: any) => step.attempts?.length).length),
       });
@@ -155,6 +145,7 @@ async function exportTasks(
 }
 
 export default function RiskExecutionPage() {
+  const { t } = useTranslation();
   const api = usePatchManagerApi();
   const { isLoading } = useApiClient();
   const { convertToLocalizedTime } = useLocalizedTime();
@@ -167,7 +158,7 @@ export default function RiskExecutionPage() {
   const [selectedTasks, setSelectedTasks] = useState<React.Key[]>([]);
   const [taskSearch, setTaskSearch] = useState('');
   const [appliedTaskSearch, setAppliedTaskSearch] = useState('');
-  const [taskType, setTaskType] = useState<string>();
+  const [taskType, setTaskType] = useState<ExecutionListQuery['taskType']>();
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [detailTask, setDetailTask] = useState<any>();
@@ -180,7 +171,7 @@ export default function RiskExecutionPage() {
   const [cancelSubmitting, setCancelSubmitting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const listRequestSeq = useRef(0);
-  const listPollingRef = useRef<ReturnType<typeof createExecutionListPolling>>();
+  const listPollingRef = useRef<ReturnType<typeof createExecutionListPolling> | undefined>(undefined);
   const listQueryRef = useRef<ExecutionListQuery>({
     page: pagination.current,
     pageSize: pagination.pageSize,
@@ -206,17 +197,17 @@ export default function RiskExecutionPage() {
       key: String(task.id),
       id: task.id,
       name: task.name,
-      type: task.task_type_display || task.task_type,
+      type: t(`patchManager.execution.taskTypes.${task.task_type}`, task.task_type),
       taskType: task.task_type,
-      exec: executionText(task, formatDateTime),
-      status: task.record_status_display || task.status_display || task.status,
+      exec: executionText(task, formatDateTime, t),
+      status: t(`patchManager.execution.statuses.${task.record_status || task.status}`, task.record_status_display || task.status_display || task.status),
       statusColor: task.record_status_color || STATUS_COLOR[task.record_status || task.status] || 'default',
       createdAt: formatDateTime(task.created_at),
       canCancel: Boolean(task.can_cancel),
       canRetry: Boolean(task.can_retry),
       raw: task,
     }))
-  ), [formatDateTime]);
+  ), [formatDateTime, t]);
 
   const loadTasks = useCallback(async (
     query: ExecutionListQuery,
@@ -327,7 +318,7 @@ export default function RiskExecutionPage() {
   const handleRetry = async () => {
     if (!detailTask?.id || !riskDetail?.host_id) return;
     await api.retryGovernanceTaskHost(detailTask.id, riskDetail.host_id);
-    message.success('已在当前执行记录中开始重试');
+    message.success(t('patchManager.execution.retryStarted'));
     await loadTaskDetail(detailTask.id);
   };
 
@@ -336,7 +327,7 @@ export default function RiskExecutionPage() {
     setCancelSubmitting(true);
     try {
       const result = await api.cancelGovernanceTask(cancelTask.id, cancelReason.trim());
-      message.success(result?.detail || '取消请求已处理');
+      message.success(result?.detail || t('patchManager.execution.cancelHandled'));
       setCancelTask(undefined);
       setCancelReason('');
       await loadTasks({
@@ -377,10 +368,11 @@ export default function RiskExecutionPage() {
       await exportTasks(
         rows,
         selectedOnly
-          ? `执行记录_选中_${new Date().toISOString().slice(0, 10)}.xlsx`
-          : `执行记录_${new Date().toISOString().slice(0, 10)}.xlsx`,
+          ? `${t('patchManager.execution.records')}_${t('patchManager.risk.selected')}_${new Date().toISOString().slice(0, 10)}.xlsx`
+          : `${t('patchManager.execution.records')}_${new Date().toISOString().slice(0, 10)}.xlsx`,
         loadExportRiskRows,
         formatDateTime,
+        t,
       );
     } finally {
       setExporting(false);
@@ -388,17 +380,17 @@ export default function RiskExecutionPage() {
   };
 
   const columns = [
-    { title: '任务名称', dataIndex: 'name' },
-    { title: '类型', dataIndex: 'type', width: 90, render: (value: string) => <Tag>{value}</Tag> },
-    { title: '执行方式', dataIndex: 'exec', width: 230 },
-    { title: '执行状态', dataIndex: 'status', width: 120, render: (_: unknown, row: TaskRow) => <Tag color={row.statusColor}>{row.status}</Tag> },
-    { title: '创建时间', dataIndex: 'createdAt', width: 180 },
+    { title: t('patchManager.execution.taskName'), dataIndex: 'name' },
+    { title: t('patchManager.execution.type'), dataIndex: 'type', width: 90, render: (value: string) => <Tag>{value}</Tag> },
+    { title: t('patchManager.risk.executionMode'), dataIndex: 'exec', width: 230 },
+    { title: t('patchManager.execution.status'), dataIndex: 'status', width: 120, render: (_: unknown, row: TaskRow) => <Tag color={row.statusColor}>{row.status}</Tag> },
+    { title: t('patchManager.createTime'), dataIndex: 'createdAt', width: 180 },
     {
-      title: '操作',
+      title: t('patchManager.operation'),
       width: 150,
       render: (_: unknown, row: TaskRow) => <Space size={12}>
-        <Button type="link" size="small" onClick={() => openDetail(row.id)}>详情</Button>
-        {row.canCancel && <PermissionWrapper requiredPermissions={['Edit']}><Button type="link" size="small" danger onClick={() => setCancelTask(row)}>取消</Button></PermissionWrapper>}
+        <Button type="link" size="small" onClick={() => openDetail(row.id)}>{t('patchManager.risk.details')}</Button>
+        {row.canCancel && <PermissionWrapper requiredPermissions={['Edit']}><Button type="link" size="small" danger onClick={() => setCancelTask(row)}>{t('patchManager.cancel')}</Button></PermissionWrapper>}
       </Space>,
     },
   ];
@@ -406,7 +398,7 @@ export default function RiskExecutionPage() {
   return <div style={{ background: 'var(--color-bg-1, #fff)', border: '1px solid var(--color-border-1, #e8e8e8)', borderRadius: 10, padding: 16, flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 14 }}>
       <Space>
-        <Input.Search placeholder="任务名称" value={taskSearch} onChange={(event) => setTaskSearch(event.target.value)} onSearch={(value) => {
+        <Input.Search placeholder={t('patchManager.execution.taskName')} value={taskSearch} onChange={(event) => setTaskSearch(event.target.value)} onSearch={(value) => {
           setAppliedTaskSearch(value);
           setPagination((current) => ({ ...current, current: 1 }));
           listPollingRef.current?.restart({
@@ -416,7 +408,7 @@ export default function RiskExecutionPage() {
             taskType: taskType as ExecutionListQuery['taskType'],
           });
         }} style={{ width: 220 }} />
-        <Select allowClear placeholder="任务类型" value={taskType} style={{ width: 130 }} options={[{ label: '治理', value: 'install' }, { label: '重启', value: 'reboot' }]} onChange={(value) => {
+        <Select allowClear placeholder={t('patchManager.execution.taskType')} value={taskType} style={{ width: 130 }} options={[{ label: t('patchManager.risk.remediate'), value: 'install' }, { label: t('patchManager.risk.reboot'), value: 'reboot' }]} onChange={(value) => {
           setTaskType(value);
           setPagination((current) => ({ ...current, current: 1 }));
           listPollingRef.current?.restart({
@@ -428,9 +420,9 @@ export default function RiskExecutionPage() {
         }} />
       </Space>
       <Space>
-        <Button loading={exporting} icon={<ExportOutlined />} onClick={() => handleExport(false)}>导出全部</Button>
-        <Dropdown disabled={!selectedTasks.length || exporting} menu={{ items: [{ key: 'export', label: '导出选中', icon: <ExportOutlined />, onClick: () => handleExport(true) }] }}>
-          <Button type="primary">批量操作{selectedTasks.length ? `(${selectedTasks.length})` : ''} <DownOutlined /></Button>
+        <Button loading={exporting} icon={<ExportOutlined />} onClick={() => handleExport(false)}>{t('patchManager.risk.exportAll')}</Button>
+        <Dropdown disabled={!selectedTasks.length || exporting} menu={{ items: [{ key: 'export', label: t('patchManager.risk.exportSelected'), icon: <ExportOutlined />, onClick: () => handleExport(true) }] }}>
+          <Button type="primary">{t('patchManager.risk.batchActions')}{selectedTasks.length ? `(${selectedTasks.length})` : ''} <DownOutlined /></Button>
         </Dropdown>
       </Space>
     </div>
@@ -446,7 +438,7 @@ export default function RiskExecutionPage() {
           pageSize: pagination.pageSize,
           total: pagination.total,
           showSizeChanger: true,
-          showTotal: (total) => `共 ${total} 条`,
+          showTotal: (total) => t('patchManager.common.totalItems', undefined, { count: total }),
           onChange: (page, pageSize) => {
             setPagination((current) => ({
               ...current,
@@ -465,9 +457,9 @@ export default function RiskExecutionPage() {
     </div>
 
     <OperateDrawer
-      title={detailTask?.name || '执行详情'}
-      subTitle={detailTask ? <Tag color={detailTask.record_status_color || STATUS_COLOR[detailTask.record_status]}>{detailTask.record_status_display}</Tag> : null}
-      extra={<Button type="link" icon={<ReloadOutlined />} onClick={() => detailTask?.id && loadTaskDetail(detailTask.id)}>刷新</Button>}
+      title={detailTask?.name || t('patchManager.execution.details')}
+      subTitle={detailTask ? <Tag color={detailTask.record_status_color || STATUS_COLOR[detailTask.record_status]}>{t(`patchManager.execution.statuses.${detailTask.record_status}`, detailTask.record_status_display)}</Tag> : null}
+      extra={<Button type="link" icon={<ReloadOutlined />} onClick={() => detailTask?.id && loadTaskDetail(detailTask.id)}>{t('patchManager.refresh')}</Button>}
       open={drawerOpen}
       onClose={() => { setDrawerOpen(false); selectedAbortRef.current?.abort(); }}
       width={980}
@@ -475,25 +467,25 @@ export default function RiskExecutionPage() {
     >
       {detailLoading && !detailTask ? <Spin style={{ margin: 'auto' }} /> : <>
         <div style={{ width: 310, borderRight: '1px solid var(--color-border-1, #e8e8e8)', padding: 12, overflow: 'auto' }}>
-          <Input.Search placeholder="主机名-补丁名" value={riskSearch} onChange={(event) => setRiskSearch(event.target.value)} style={{ marginBottom: 12 }} />
+          <Input.Search placeholder={t('patchManager.execution.riskSearch')} value={riskSearch} onChange={(event) => setRiskSearch(event.target.value)} style={{ marginBottom: 12 }} />
           {filteredRiskItems.length ? filteredRiskItems.map((item) => {
             const selected = item.id === selectedRiskId;
             return <div key={item.id} onClick={() => setSelectedRiskId(item.id)} style={{ padding: '10px 12px', marginBottom: 8, cursor: 'pointer', borderRadius: 7, border: '1px solid var(--color-border-1, #e8e8e8)', borderLeft: `3px solid ${STEP_BORDER[item.status] || '#d9d9d9'}`, background: selected ? 'var(--color-fill-1, #f4f6f9)' : 'var(--color-bg-1, #fff)' }}>
-              <Tooltip title={item.display_name}><div style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.display_name}</div></Tooltip>
-              <Tag color={item.status_color} style={{ marginTop: 6 }}>{item.status_display}</Tag>
+              <Tooltip title={`${item.host_name || ''}-${item.patch_name || t('patchManager.risk.patch')}`}><div style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.host_name || ''}-{item.patch_name || t('patchManager.risk.patch')}</div></Tooltip>
+              <Tag color={item.status_color} style={{ marginTop: 6 }}>{t(`patchManager.execution.statuses.${item.status}`, item.status_display)}</Tag>
             </div>;
-          }) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="没有匹配的风险项" />}
+          }) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('patchManager.execution.noMatchingRisk')} />}
         </div>
         <div style={{ flex: 1, padding: '16px 20px', overflow: 'auto' }}>
           {detailLoading && !riskDetail ? <Spin /> : riskDetail ? <>
             {detailTask?.cancelled_at && <Alert
               type="info"
               showIcon
-              message="取消信息"
+              message={t('patchManager.execution.cancelInfo')}
               description={<Space direction="vertical" size={2}>
-                <span>取消人：{detailTask.cancelled_by || '—'}</span>
-                <span>取消时间：{formatDateTime(detailTask.cancelled_at)}</span>
-                <span>取消原因：{detailTask.cancel_reason || '—'}</span>
+                <span>{t('patchManager.execution.cancelledBy')}：{detailTask.cancelled_by || '—'}</span>
+                <span>{t('patchManager.execution.cancelledAt')}：{formatDateTime(detailTask.cancelled_at)}</span>
+                <span>{t('patchManager.execution.cancelReason')}：{detailTask.cancel_reason || '—'}</span>
               </Space>}
               style={{ marginBottom: 16 }}
             />}
@@ -502,17 +494,17 @@ export default function RiskExecutionPage() {
                 <div style={{ fontSize: 16, fontWeight: 600 }}>{riskDetail.display_name}</div>
                 <div style={{ color: 'var(--color-text-3, #8c8c8c)', marginTop: 4 }}>{riskDetail.host_ip || '—'} · {riskDetail.baseline_name || '—'}</div>
               </div>
-              {detailTask?.can_retry && ['failed', 'unknown', 'unmet'].includes(riskDetail.status) && <PermissionWrapper requiredPermissions={['Edit']}><Button type="link" size="small" onClick={handleRetry}>重试</Button></PermissionWrapper>}
+              {detailTask?.can_retry && ['failed', 'unknown', 'unmet'].includes(riskDetail.status) && <PermissionWrapper requiredPermissions={['Edit']}><Button type="link" size="small" onClick={handleRetry}>{t('patchManager.execution.retry')}</Button></PermissionWrapper>}
             </div>
             {(riskDetail.steps || []).map((step: any, stepIndex: number) => <div key={step.key} style={{ position: 'relative', paddingLeft: 28, paddingBottom: stepIndex === riskDetail.steps.length - 1 ? 0 : 18 }}>
               {stepIndex < riskDetail.steps.length - 1 && <div style={{ position: 'absolute', left: 9, top: 20, bottom: -2, width: 2, background: STEP_BORDER[step.status] || '#d9d9d9' }} />}
               <div style={{ position: 'absolute', left: 0, top: 2, width: 20, height: 20, borderRadius: '50%', background: STEP_BORDER[step.status] || '#d9d9d9', color: '#fff', textAlign: 'center', lineHeight: '20px', fontSize: 12 }}>{stepIndex + 1}</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}><strong>{step.name}</strong><Tag color={step.status_color}>{step.status_display}</Tag></div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}><strong>{t(`patchManager.execution.steps.${step.key}`, step.name)}</strong><Tag color={step.status_color}>{t(`patchManager.execution.statuses.${step.status}`, step.status_display)}</Tag></div>
               <div style={{ display: 'grid', gap: 8 }}>
                 {(step.attempts?.length ? step.attempts : [{ id: `${step.key}-empty`, status: step.status, status_display: step.status_display, status_color: step.status_color, log: '' }]).map((attempt: any, attemptIndex: number) => {
                   return <div key={attempt.id} style={{ borderLeft: `3px solid ${STEP_BORDER[attempt.status] || '#d9d9d9'}`, background: 'var(--color-fill-1, #f4f6f9)', borderRadius: 6, padding: '10px 12px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                      <span>{step.attempts?.length > 1 ? `第 ${attemptIndex + 1} 次尝试` : step.name}</span>
+                      <span>{step.attempts?.length > 1 ? t('patchManager.execution.attempt', undefined, { count: attemptIndex + 1 }) : t(`patchManager.execution.steps.${step.key}`, step.name)}</span>
                       <span style={{ color: 'var(--color-text-3, #8c8c8c)' }}>{formatDateTime(attempt.started_at)}{attempt.finished_at ? ` ～ ${formatDateTime(attempt.finished_at)}` : ''}</span>
                     </div>
                     {attempt.reason && <Alert type={attempt.status === 'failed' ? 'error' : 'info'} showIcon={false} message={attempt.reason} style={{ marginTop: 8 }} />}
@@ -520,15 +512,15 @@ export default function RiskExecutionPage() {
                 })}
               </div>
             </div>)}
-          </> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="请选择风险项" />}
+          </> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('patchManager.execution.selectRisk')} />}
         </div>
       </>}
     </OperateDrawer>
 
-    <Modal title={`取消任务${cancelTask ? `：${cancelTask.name}` : ''}`} open={Boolean(cancelTask)} okText="确认" cancelText="取消" okButtonProps={{ danger: true, disabled: !cancelReason.trim() }} confirmLoading={cancelSubmitting} onOk={handleCancel} onCancel={() => { if (!cancelSubmitting) { setCancelTask(undefined); setCancelReason(''); } }} destroyOnClose>
-      <Alert type="warning" showIcon message="仅取消尚未执行的主机" description="已开始执行的主机不会被中断；已安装待重启的主机不会撤销安装。" style={{ marginBottom: 16 }} />
-      <div style={{ marginBottom: 8 }}>取消原因</div>
-      <Input.TextArea value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} placeholder="请输入取消原因" maxLength={500} autoSize={{ minRows: 3, maxRows: 6 }} />
+    <Modal title={t('patchManager.execution.cancelTask', undefined, { name: cancelTask ? `：${cancelTask.name}` : '' })} open={Boolean(cancelTask)} okText={t('patchManager.confirm')} cancelText={t('patchManager.cancel')} okButtonProps={{ danger: true, disabled: !cancelReason.trim() }} confirmLoading={cancelSubmitting} onOk={handleCancel} onCancel={() => { if (!cancelSubmitting) { setCancelTask(undefined); setCancelReason(''); } }} destroyOnClose>
+      <Alert type="warning" showIcon message={t('patchManager.execution.cancelWaitingOnly')} description={t('patchManager.execution.cancelHelp')} style={{ marginBottom: 16 }} />
+      <div style={{ marginBottom: 8 }}>{t('patchManager.execution.cancelReason')}</div>
+      <Input.TextArea value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} placeholder={t('patchManager.execution.cancelReasonPlaceholder')} maxLength={500} autoSize={{ minRows: 3, maxRows: 6 }} />
     </Modal>
   </div>;
 }

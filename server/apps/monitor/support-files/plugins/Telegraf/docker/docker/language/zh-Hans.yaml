@@ -18,14 +18,14 @@ monitor_object_metric_group:
 monitor_object_metric:
   Docker:
     docker_n_containers_running:
-      name: 运行中容器数量
-      desc: Docker 主机上正在运行的容器数量。
+      name: 运行容器数
+      desc: Docker 主机上当前处于运行状态的容器数量。
     docker_n_containers:
-      name: 容器总数
+      name: 总容器数
       desc: Docker 主机上的容器总数量。
     docker_n_containers_stopped:
-      name: 已停止容器数量
-      desc: Docker 主机上已停止的容器数量。
+      name: 停止容器数
+      desc: Docker 主机上当前停止的容器数量。
   Docker Container:
     docker_container_status:
       name: 容器状态
@@ -34,38 +34,38 @@ monitor_object_metric:
       name: 容器重启次数
       desc: 容器自上次启动以来发生的重启次数。
     docker_container_cpu_usage_percent:
-      name: CPU 使用率
+      name: 容器 CPU 使用率
       desc: 容器使用的可用 CPU 资源百分比。
     docker_container_mem_usage_percent:
-      name: 内存使用率
+      name: 容器内存使用率
       desc: 容器已使用的配置内存上限百分比。
     docker_container_mem_usage:
-      name: 已用内存
+      name: 容器内存使用量
       desc: 容器当前实际占用的物理内存。
     docker_container_blkio_io_service_bytes_recursive_total_rate:
-      name: 块 I/O 吞吐量
+      name: 块 I/O 总速率
       desc: 容器所有块 I/O 操作每秒传输的总字节数。
     docker_container_blkio_io_service_bytes_recursive_read_rate:
-      name: 块 I/O 读取吞吐量
+      name: 块设备读取速率
       desc: 容器从块设备每秒读取的字节数。
     docker_container_blkio_io_service_bytes_recursive_write_rate:
-      name: 块 I/O 写入吞吐量
+      name: 块设备写入速率
       desc: 容器向块设备每秒写入的字节数。
     docker_container_net_rx_bytes_rate:
-      name: 网络接收吞吐量
+      name: 网络接收速率
       desc: 容器网络接口每秒接收的字节数。
     docker_container_net_tx_bytes_rate:
-      name: 网络发送吞吐量
+      name: 网络发送速率
       desc: 容器网络接口每秒发送的字节数。
     docker_container_net_rx_errors_rate:
-      name: 网络接收错误数
+      name: 网络接收错误速率
       desc: 容器每秒发生的接收数据包错误数。
     docker_container_net_tx_errors_rate:
-      name: 网络发送错误数
+      name: 网络发送错误速率
       desc: 容器每秒发生的发送数据包错误数。
     docker_container_net_rx_packets_rate:
-      name: 网络接收数据包数
+      name: 网络接收包速率
       desc: 容器每秒接收的数据包数量。
     docker_container_net_tx_packets_rate:
-      name: 网络发送数据包数
+      name: 网络发送包速率
       desc: 容器每秒发送的数据包数量。

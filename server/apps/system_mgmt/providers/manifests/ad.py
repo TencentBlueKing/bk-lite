@@ -4,6 +4,8 @@ from apps.system_mgmt.providers.schemas import ProviderManifest
 PROVIDER_MANIFEST = ProviderManifest.model_validate(
     {
         "key": "ad",
+        "base_connection_adapter_key": "ad.base_connection",
+        "base_connection_adapter_path": "apps.system_mgmt.providers.adapters.ad.ADBaseConnectionAdapter",
         "name": "Active Directory",
         "description": "Built-in Active Directory integration provider for login auth and user sync.",
         "instance_templates": {
@@ -100,6 +102,8 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                     "displayName",
                     "mail",
                     "telephoneNumber",
+                    "mobile",
+                    "mobilePhone",
                     "distinguishedName",
                 ],
                 "default_external_match_field": "sAMAccountName",
@@ -155,6 +159,8 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                     "displayName",
                     "mail",
                     "telephoneNumber",
+                    "mobile",
+                    "mobilePhone",
                     "distinguishedName",
                     "department_ids",
                 ],

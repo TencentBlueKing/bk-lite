@@ -20,13 +20,13 @@ import { useTranslation } from '@/utils/i18n';
 import {
   mergeViewQueryKeyValues,
   renderChart,
-  getRecentTimeRange,
 } from '@/app/monitor/utils/common';
 import { calculateQueryStep } from '@/app/monitor/utils/queryStep';
 import { attachGapIntervals, buildGapDetectionParams } from '@/app/monitor/utils/gapIntervals';
 import dayjs, { Dayjs } from 'dayjs';
 import { INIT_VIEW_MODAL_FORM } from '@/app/monitor/constants/view';
 import LazyMetricItem from '@/app/monitor/components/metric-views/lazyMetricItem';
+import { createMetricQueryWindow } from '@/app/monitor/components/metric-views/queryWindow';
 
 const MonitorView: React.FC<ViewModalProps> = ({
   monitorObject,
@@ -45,6 +45,10 @@ const MonitorView: React.FC<ViewModalProps> = ({
     timeRange: [],
     originValue: 15,
   });
+  const [activeQueryWindow, setActiveQueryWindow] = useState(() =>
+    createMetricQueryWindow({ timeRange: [], originValue: 15 })
+  );
+  const activeQueryWindowRef = useRef(activeQueryWindow);
   const [timeDefaultValue, setTimeDefaultValue] =
     useState<TimeSelectorDefaultValue>({
       selectValue: 15,
@@ -77,6 +81,12 @@ const MonitorView: React.FC<ViewModalProps> = ({
   const MAX_CONCURRENT_REQUESTS = 12;
   const activeRequestsRef = useRef<Map<number, AbortController>>(new Map());
   const requestQueueRef = useRef<number[]>([]);
+
+  const snapshotActiveQueryWindow = () => {
+    const nextQueryWindow = createMetricQueryWindow(timeValues);
+    activeQueryWindowRef.current = nextQueryWindow;
+    setActiveQueryWindow(nextQueryWindow);
+  };
 
   const cancelRequest = (metricId: number) => {
     const abortController = activeRequestsRef.current.get(metricId);
@@ -291,12 +301,10 @@ const MonitorView: React.FC<ViewModalProps> = ({
       ),
       source_unit: item.unit || '',
     };
-    const recentTimeRange = getRecentTimeRange(timeValues);
-    const startTime = recentTimeRange.at(0);
-    const endTime = recentTimeRange.at(1);
-    if (Number.isFinite(startTime) && Number.isFinite(endTime)) {
-      params.start = startTime;
-      params.end = endTime;
+    const queryWindow = activeQueryWindowRef.current;
+    if (queryWindow) {
+      params.start = queryWindow.startMs;
+      params.end = queryWindow.endMs;
       params.step = calculateQueryStep(
         params.start,
         params.end,
@@ -459,6 +467,7 @@ const MonitorView: React.FC<ViewModalProps> = ({
 
   const handleSearch = (type: string) => {
     if (['refresh', 'timer'].includes(type)) {
+      snapshotActiveQueryWindow();
       cancelAllRequests();
       setResetCounter((prev) => prev + 1);
       setNeedsRefreshOnExpand(true);
@@ -684,6 +693,7 @@ const MonitorView: React.FC<ViewModalProps> = ({
                       isCancelled={cancelledMetricIds.has(item.id)}
                       onVisibilityChange={handleVisibilityChange}
                       isInViewport={visibleMetricIds.has(item.id)}
+                      xAxisDomain={activeQueryWindow?.xAxisDomain}
                     />
                   ))}
                 </div>

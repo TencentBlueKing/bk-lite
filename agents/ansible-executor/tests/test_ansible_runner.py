@@ -1,3 +1,4 @@
+import json
 import sys
 import zipfile
 
@@ -5,16 +6,26 @@ import pytest
 from core.config import ServiceConfig
 from service import ansible_runner
 from service.ansible_runner import (
+    AdhocRequest,
     PlaybookRequest,
     _build_host_credentials_inventory,
     _quote_inventory_value,
+    _redact_cli_command,
     _safe_extract_zip,
     _safe_workspace_path,
     parse_ansible_output_per_host,
     parse_playbook_recap,
+    prepare_adhoc_execution,
     prepare_playbook_execution,
     run_command,
 )
+
+
+def test_redact_cli_command_hides_extra_vars_values():
+    command = ["ansible-playbook", "playbook.yml", "--extra-vars", '{"bklite_session_url":"secret"}']
+
+    assert _redact_cli_command(command) == ["ansible-playbook", "playbook.yml", "--extra-vars", "***"]
+    assert command[-1] != "***"
 
 
 def test_safe_workspace_path_rejects_parent_escape(tmp_path):
@@ -183,6 +194,27 @@ async def test_prepare_playbook_execution_rejects_missing_explicit_zip_playbook_
 
 
 @pytest.mark.asyncio
+async def test_prepare_playbook_execution_keeps_extra_vars_out_of_process_arguments(tmp_path, monkeypatch):
+    monkeypatch.setattr(ansible_runner, "BASE_TASK_DIR", tmp_path / "work")
+    config = ServiceConfig(nats_servers=["nats://127.0.0.1:4222"], nats_instance_id="default")
+    request = PlaybookRequest(
+        playbook_content="- hosts: all\n  gather_facts: false\n  tasks: []\n",
+        inventory_content="[all]\n127.0.0.1 ansible_connection=local\n",
+        extra_vars={"bklite_session_url": "https://server.example/session/secret"},
+        task_id="secret-extra-vars",
+    )
+
+    command, workspace, _ = await prepare_playbook_execution(config, request)
+
+    assert not any("session/secret" in argument for argument in command)
+    extra_vars_reference = command[command.index("--extra-vars") + 1]
+    assert extra_vars_reference.startswith("@")
+    extra_vars_path = workspace / extra_vars_reference.removeprefix("@")
+    assert json.loads(extra_vars_path.read_text(encoding="utf-8"))["bklite_session_url"].endswith("/secret")
+    assert extra_vars_path.stat().st_mode & 0o777 == 0o600
+
+
+@pytest.mark.asyncio
 async def test_run_command_returns_untruncated_output_for_small_payload():
     code, output, output_meta = await run_command(
         [sys.executable, "-c", "print('hello world')"],
@@ -298,3 +330,31 @@ def test_host_credentials_inventory_password_with_hash_survives_shlex_parsing(tm
     assert "ansible_password=CW@roger1117!@#" in tokens
     # 行内 '#' 之后的连接参数不能被注释吃掉
     assert "ansible_connection=ssh" in tokens
+
+
+def test_prepare_adhoc_execution_restricts_credential_inventory_permissions(tmp_path, monkeypatch):
+    monkeypatch.setattr(ansible_runner, "BASE_TASK_DIR", tmp_path / "work")
+    _, workspace = prepare_adhoc_execution(
+        AdhocRequest(
+            host_credentials=[{"host": "10.0.0.8", "user": "Administrator", "password": "secret"}],
+            module="ping",
+            task_id="restricted-adhoc-inventory",
+        )
+    )
+
+    assert (workspace / "inventory.ini").stat().st_mode & 0o777 == 0o600
+
+
+@pytest.mark.asyncio
+async def test_prepare_playbook_execution_restricts_credential_inventory_permissions(tmp_path, monkeypatch):
+    monkeypatch.setattr(ansible_runner, "BASE_TASK_DIR", tmp_path / "work")
+    config = ServiceConfig(nats_servers=["nats://127.0.0.1:4222"], nats_instance_id="default")
+    request = PlaybookRequest(
+        playbook_content="- hosts: all\n  gather_facts: false\n  tasks: []\n",
+        host_credentials=[{"host": "10.0.0.8", "user": "Administrator", "password": "secret"}],
+        task_id="restricted-playbook-inventory",
+    )
+
+    _, workspace, _ = await prepare_playbook_execution(config, request)
+
+    assert (workspace / "inventory.ini").stat().st_mode & 0o777 == 0o600

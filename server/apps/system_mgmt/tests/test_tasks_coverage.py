@@ -9,7 +9,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from django.utils import timezone as django_timezone
 
-from apps.system_mgmt.models import Channel, ErrorLog, Group, LoginModule, SystemSettings, User
+from apps.core.utils.permission_cache import clear_user_permission_cache, get_user_permission_version
+from apps.system_mgmt.models import Channel, ErrorLog, Group, LoginModule, Role, SystemSettings, User
 from apps.system_mgmt.models.channel import ChannelChoices
 from apps.system_mgmt import tasks
 
@@ -185,11 +186,90 @@ def test_sync_groups_deletes_stale_external_groups():
     lm = _make_login_module(root_group="ROOT", domain="d.com")
     parent, _ = Group.objects.get_or_create(name="ROOT", parent_id=0, defaults={"description": "x"})
     stale = Group.objects.create(name="Stale", parent_id=parent.id, external_id="goneext", description="d")
+    affected_user = User.objects.create(
+        username="stale-group-user",
+        display_name="Stale group user",
+        email="stale-group@example.com",
+        password="",
+        domain="d.com",
+        group_list=[stale.id],
+    )
+    initial_version = get_user_permission_version(affected_user.username, affected_user.domain)
     # 新的 group_list 不含 goneext -> 应被删除
     group_list = [{"id": "keep", "parent_id": None, "name": "Keep"}]
     tasks._sync_groups(group_list, parent, None)
     assert not Group.objects.filter(id=stale.id).exists()
     assert Group.objects.filter(name="Keep", parent_id=parent.id).exists()
+    assert get_user_permission_version(affected_user.username, affected_user.domain) > initial_version
+
+
+def test_sync_groups_deleting_parent_advances_descendant_user_version():
+    parent = Group.objects.create(name="ROOT-descendant", parent_id=0, description="x")
+    stale_parent = Group.objects.create(
+        name="Stale parent",
+        parent_id=parent.id,
+        external_id="gone-parent",
+        description="d",
+    )
+    child = Group.objects.create(
+        name="Stale child",
+        parent_id=stale_parent.id,
+        external_id="gone-child",
+        description="d",
+    )
+    inherited_role = Role.objects.create(name="inherited-stale-role", app="")
+    stale_parent.roles.add(inherited_role)
+    descendant_user = User.objects.create(
+        username="descendant-group-user",
+        display_name="Descendant group user",
+        email="descendant-group@example.com",
+        password="",
+        domain="d.com",
+        group_list=[child.id],
+    )
+    initial_version = get_user_permission_version(descendant_user.username, descendant_user.domain)
+
+    tasks._sync_groups(
+        [{"id": "keep", "parent_id": None, "name": "Keep"}],
+        parent,
+        None,
+    )
+
+    assert not Group.objects.filter(id=stale_parent.id).exists()
+    assert get_user_permission_version(descendant_user.username, descendant_user.domain) > initial_version
+
+
+def test_sync_groups_delete_rolls_back_when_version_advance_fails():
+    parent = Group.objects.create(name="ROOT-rollback", parent_id=0, description="x")
+    stale = Group.objects.create(
+        name="Stale rollback",
+        parent_id=parent.id,
+        external_id="gone-rollback",
+        description="d",
+    )
+    User.objects.create(
+        username="stale-rollback-user",
+        display_name="Stale rollback user",
+        email="stale-rollback@example.com",
+        password="",
+        domain="d.com",
+        group_list=[stale.id],
+    )
+
+    with (
+        patch(
+            "apps.core.utils.permission_cache._advance_user_permission_versions",
+            side_effect=RuntimeError("version update failed"),
+        ),
+        pytest.raises(RuntimeError, match="version update failed"),
+    ):
+        tasks._sync_groups(
+            [{"id": "keep", "parent_id": None, "name": "Keep"}],
+            parent,
+            None,
+        )
+
+    assert Group.objects.filter(id=stale.id).exists()
 
 
 def test_sync_groups_recurses_into_children():
@@ -256,6 +336,30 @@ def test_sync_users_creates_and_updates():
     assert fresh.role_list == [9]
     assert fresh.group_list == [g.id]
     m_clear.assert_called_once()
+
+
+def test_sync_users_recreate_advances_existing_tombstone():
+    old_user = User.objects.create(
+        username="recreated",
+        display_name="Old",
+        email="old@example.com",
+        domain="dd.com",
+        group_list=[],
+        role_list=[],
+        password="",
+    )
+    clear_user_permission_cache(old_user.username, old_user.domain)
+    old_user.delete()
+    tombstone_version = get_user_permission_version("recreated", "dd.com")
+
+    tasks._sync_users(
+        [{"username": "recreated", "display_name": "New", "departments": []}],
+        {},
+        "dd.com",
+        [9],
+    )
+
+    assert get_user_permission_version("recreated", "dd.com") > tombstone_version
 
 
 # ---------------------------------------------------------------------------

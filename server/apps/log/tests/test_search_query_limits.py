@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 from apps.log.constants.victoriametrics import VictoriaLogsConstants
 from apps.log.nats.log import _build_paginated_alert_segments, _normalize_bounded_int, log_search
-from apps.log.serializers.search import LogFieldValuesSerializer, LogHitsSerializer, LogSearchSerializer
+from apps.log.serializers.search import LogFieldValuesSerializer, LogHitsSerializer, LogSearchSerializer, LogTopStatsSerializer
 from apps.log.utils.query_log import VictoriaMetricsAPI
 
 
@@ -37,6 +37,20 @@ def test_log_field_values_serializer_rejects_oversized_limit():
 
     assert not serializer.is_valid()
     assert "limit" in serializer.errors
+
+
+def test_log_top_stats_serializer_rejects_non_aggregatable_meta_fields():
+    for field in ("_stream", "_stream_id", "_time"):
+        serializer = LogTopStatsSerializer(data={"attr": field, "log_groups": ["default"]})
+
+        assert not serializer.is_valid()
+        assert serializer.errors["attr"][0] == "该字段不支持 TopN 统计"
+
+
+def test_log_top_stats_serializer_accepts_message_storage_field():
+    serializer = LogTopStatsSerializer(data={"attr": "_msg", "log_groups": ["default"]})
+
+    assert serializer.is_valid(), serializer.errors
 
 
 def test_log_nats_search_rejects_oversized_limit_without_vm_query(monkeypatch):

@@ -10,6 +10,7 @@ from rest_framework.response import Response
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.patch_mgmt.constants import GovernanceTaskStatus, GovernanceTaskType
+from apps.patch_mgmt.exceptions import PatchBusinessError
 from apps.patch_mgmt.models import GovernanceTask, GovernanceTaskHost, PatchTarget
 from apps.patch_mgmt.serializers.governance import (
     GovernanceTaskDetailSerializer,
@@ -23,6 +24,7 @@ from apps.patch_mgmt.services.governance_service import (
     create_verify_task,
 )
 from apps.patch_mgmt.utils.data_permissions import require_authorized_ids
+from apps.patch_mgmt.utils.i18n import patch_message, render_business_error
 from apps.patch_mgmt.utils.operation_log import log_governance_task_cancelled
 
 
@@ -89,11 +91,11 @@ class GovernanceTaskViewSet(AuthViewSet):
                     task = create_verify_task(request, target_list, data)
             except HostBusyError as exc:
                 return Response(
-                    {"code": "host_busy", "detail": str(exc), "target_ids": exc.target_ids},
+                    {"code": exc.code, "detail": render_business_error(request, exc), "target_ids": exc.target_ids},
                     status=status.HTTP_409_CONFLICT,
                 )
-            except ValueError as exc:
-                return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            except PatchBusinessError as exc:
+                return Response({"code": exc.code, "detail": render_business_error(request, exc)}, status=status.HTTP_400_BAD_REQUEST)
 
             # service 已写 team，此处仅作防御性兜底
             if not task.team:
@@ -114,12 +116,24 @@ class GovernanceTaskViewSet(AuthViewSet):
         scoped_task = self.get_object()
         reason = str(request.data.get("reason") or "").strip()
         if not reason:
-            return Response({"detail": "取消原因不能为空"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {
+                    "code": "cancel_reason_required",
+                    "detail": patch_message(request, "error.cancel_reason_required", "Cancellation reason is required"),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         with transaction.atomic():
             task = GovernanceTask.objects.select_for_update().get(pk=scoped_task.pk)
             if task.status not in GovernanceTaskStatus.ACTIVE_STATES:
-                return Response({"detail": "任务已结束，不可取消"}, status=status.HTTP_400_BAD_REQUEST)
+                return Response(
+                    {
+                        "code": "task_finished_not_cancellable",
+                        "detail": patch_message(request, "error.task_finished_not_cancellable", "The task has finished and cannot be cancelled"),
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
             waiting_hosts = GovernanceTaskHost.objects.filter(task=task, stage="waiting")
             cancelled_count = waiting_hosts.update(
@@ -130,7 +144,10 @@ class GovernanceTaskViewSet(AuthViewSet):
             )
             if cancelled_count == 0:
                 return Response(
-                    {"detail": "没有尚未执行的主机可取消，当前执行将继续"},
+                    {
+                        "code": "no_waiting_hosts_to_cancel",
+                        "detail": patch_message(request, "error.no_waiting_hosts_to_cancel", "There are no waiting targets to cancel; current executions will continue"),
+                    },
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -157,7 +174,7 @@ class GovernanceTaskViewSet(AuthViewSet):
         log_governance_task_cancelled(request, task.name, reason)
         return Response(
             {
-                "detail": f"已取消 {cancelled_count} 台尚未执行的主机",
+                "detail": patch_message(request, "message.hosts_cancelled", "Cancelled {count} waiting targets", count=cancelled_count),
                 "cancelled_count": cancelled_count,
             }
         )
@@ -169,20 +186,20 @@ class GovernanceTaskViewSet(AuthViewSet):
         task = self.get_object()
         target_id = request.data.get("target_id")
         if not target_id:
-            return Response({"detail": "缺少 target_id"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": patch_message(request, "error.target_id_required", "target_id is required")}, status=status.HTTP_400_BAD_REQUEST)
         require_authorized_ids(
             self,
             request, PatchTarget.objects.all(), [target_id], "patch_target"
         )
         try:
             new_task = create_retry_task(request, task, int(target_id))
-        except ValueError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except PatchBusinessError as exc:
+            return Response({"code": exc.code, "detail": render_business_error(request, exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(
             {
                 "task_id": task.id,
                 "attempt_task_id": new_task.id,
-                "message": "已在当前执行记录中开始重试",
+                "message": patch_message(request, "message.retry_started", "Retry started in the current execution record"),
             }
         )
 
@@ -194,8 +211,8 @@ class GovernanceTaskViewSet(AuthViewSet):
 
         risk_item_id = request.query_params.get("risk_item_id")
         if not risk_item_id:
-            return Response({"detail": "risk_item_id 不能为空"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": patch_message(request, "error.risk_item_id_required", "risk_item_id is required")}, status=status.HTTP_400_BAD_REQUEST)
         detail = build_risk_item_detail(self.get_object(), risk_item_id)
         if detail is None:
-            return Response({"detail": "风险项不存在"}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"detail": patch_message(request, "error.risk_item_not_found", "Risk item not found")}, status=status.HTTP_404_NOT_FOUND)
         return Response(detail)

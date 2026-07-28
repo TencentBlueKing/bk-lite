@@ -1,8 +1,44 @@
 [[inputs.http_response]]
     startup_error_behavior = "retry"
-    urls = ["{{ url }}"]
+    urls = ["{{ request_url | default(url, true) }}"]
     interval = "{{ interval }}s"
     insecure_skip_verify = {{ insecure_skip_verify | default(false) | lower }}
+    {% if request_method %}
+    method = "{{ request_method }}"
+    {% endif %}
+    {% if request_body %}
+    body = "{{ request_body }}"
+    {% endif %}
+    {% if response_status_code %}
+    response_status_code = {{ response_status_code }}
+    {% endif %}
+    {% if response_string_match %}
+    response_string_match = "{{ response_string_match }}"
+    {% endif %}
+    {% if response_timeout %}
+    response_timeout = "{{ response_timeout }}s"
+    {% endif %}
+    {% if follow_redirects == false %}
+    follow_redirects = false
+    {% elif follow_redirects == true %}
+    follow_redirects = true
+    {% endif %}
+    {% if auth_type == "basic" %}
+    username = "{{ username }}"
+    password = "${PASSWORD__{{ config_id }}}"
+    {% endif %}
+    {% if request_headers %}
+    [inputs.http_response.headers]
+    {% for header in request_headers %}
+        "{{ header.key }}" = "{{ header.value }}"
+    {% endfor %}
+    {% endif %}
+    {% if auth_type == "bearer" %}
+    {% if not request_headers %}
+    [inputs.http_response.headers]
+    {% endif %}
+        Authorization = "Bearer ${BEARER_TOKEN__{{ config_id }}}"
+    {% endif %}
     [inputs.http_response.tags]
         instance_id = "{{ instance_id }}"
         instance_type = "{{ instance_type }}"

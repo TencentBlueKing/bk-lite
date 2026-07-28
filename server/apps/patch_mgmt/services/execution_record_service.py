@@ -246,6 +246,8 @@ def build_risk_item_summaries(root: GovernanceTask) -> list[dict]:
             {
                 "id": str(item["id"]),
                 "display_name": f'{item.get("host_name") or item["host_id"]}-{item.get("patch_name") or "补丁"}',
+                "host_name": item.get("host_name") or str(item["host_id"]),
+                "patch_name": item.get("patch_name") or "",
                 "host_id": int(item["host_id"]),
                 "patch_id": int(item.get("patch_id") or 0),
                 "status": status,

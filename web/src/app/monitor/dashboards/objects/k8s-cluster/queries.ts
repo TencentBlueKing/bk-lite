@@ -48,7 +48,7 @@ export const QUERIES: Record<string, ClusterQuery> = {
 
   cpuAllocatable: { query: `sum(prometheus_remote_write_kube_node_status_allocatable{instance_type="k8s",resource="cpu", __$labels__})`, unit: 'none' },
   cpuRequests: { query: `sum(prometheus_remote_write_kube_pod_container_resource_requests{instance_type="k8s",resource="cpu", __$labels__})`, unit: 'none' },
-  cpuUsedCores: { query: `sum(irate(prometheus_remote_write_container_cpu_usage_seconds_total{instance_type="k8s", __$labels__}[5m]))`, unit: 'none' },
+  cpuUsedCores: { query: `sum(irate(prometheus_remote_write_container_cpu_usage_seconds_total{instance_type="k8s", __$labels__}[__$window__]))`, unit: 'none' },
   memAllocatable: { query: `sum(prometheus_remote_write_kube_node_status_allocatable{instance_type="k8s",resource="memory", __$labels__})`, unit: 'bytes' },
   memRequests: { query: `sum(prometheus_remote_write_kube_pod_container_resource_requests{instance_type="k8s",resource="memory", __$labels__})`, unit: 'bytes' },
   memUsedBytes: { query: `sum(prometheus_remote_write_container_memory_working_set_bytes{instance_type="k8s", __$labels__})`, unit: 'bytes' },
@@ -56,7 +56,7 @@ export const QUERIES: Record<string, ClusterQuery> = {
   nodeMemTop: { query: `topk(${TOP_N}, prometheus_remote_write_mem_used_percent${L})`, unit: 'percent' },
   restartTop: { query: `topk(${TOP_N}, sum by (pod) (increase(prometheus_remote_write_kube_pod_container_status_restarts_total${L}[1h])))`, unit: 'counts' },
 
-  topPodCpu: { query: `topk(${TOP_N}, sum by (pod) (rate(prometheus_remote_write_container_cpu_usage_seconds_total${L}[5m])))`, unit: 'none' },
+  topPodCpu: { query: `topk(${TOP_N}, sum by (pod) (rate(prometheus_remote_write_container_cpu_usage_seconds_total${L}[__$window__])))`, unit: 'none' },
   topPodMem: { query: `topk(${TOP_N}, sum by (pod) (prometheus_remote_write_container_memory_working_set_bytes${L}))`, unit: 'bytes' },
   topNsMem: { query: `topk(${TOP_N}, sum by (container_label_io_kubernetes_pod_namespace) (prometheus_remote_write_container_memory_working_set_bytes${L}))`, unit: 'bytes' },
 

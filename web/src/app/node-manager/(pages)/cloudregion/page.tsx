@@ -125,32 +125,37 @@ const CloudRegion = () => {
     (data: any) => {
       return (
         <Menu onClick={(e) => e.domEvent.preventDefault()}>
-          <Menu.Item
-            className="!p-0"
-            onClick={() =>
-              openModal({ title: 'editform', type: 'edit', form: data })
-            }
-          >
-            <PermissionWrapper
-              requiredPermissions={['Edit']}
-              className="!block"
-            >
-              <Button type="text" className="w-full">
-                {t(`common.edit`)}
-              </Button>
-            </PermissionWrapper>
-          </Menu.Item>
-          {data?.originalName !== 'default' && (
-            <Menu.Item className="!p-0" onClick={() => handleDelete(data.id)}>
-              <PermissionWrapper
-                requiredPermissions={['Delete']}
-                className="!block"
+          {!data?.is_default && (
+            <>
+              <Menu.Item
+                className="!p-0"
+                onClick={() =>
+                  openModal({ title: 'editform', type: 'edit', form: data })
+                }
               >
-                <Button type="text" className="w-full">
-                  {t(`common.delete`)}
-                </Button>
-              </PermissionWrapper>
-            </Menu.Item>
+                <PermissionWrapper
+                  requiredPermissions={['Edit']}
+                  className="!block"
+                >
+                  <Button type="text" className="w-full">
+                    {t(`common.edit`)}
+                  </Button>
+                </PermissionWrapper>
+              </Menu.Item>
+              <Menu.Item
+                className="!p-0"
+                onClick={() => handleDelete(data.id)}
+              >
+                <PermissionWrapper
+                  requiredPermissions={['Delete']}
+                  className="!block"
+                >
+                  <Button type="text" className="w-full">
+                    {t(`common.delete`)}
+                  </Button>
+                </PermissionWrapper>
+              </Menu.Item>
+            </>
           )}
         </Menu>
       );
